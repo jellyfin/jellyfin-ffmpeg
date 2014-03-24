@@ -1,0 +1,3 @@
+# This is a bug in lintian thinking only libav (and not also FFmpeg) build libpostproc.
+# See: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=729203#430
+libpostproc152: embedded-library usr/lib/x86_64-linux-gnu/libpostproc.so.152.3.100: libpostproc

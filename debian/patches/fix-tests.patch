@@ -1,0 +1,33 @@
+Description: Fix the test by exporting LD_LIBRARY_PATH
+ Most tests failed, because they didn't find the FFmpeg libraries.
+ Exporting the local library folders as LD_LIBRARY_PATH in the test
+ Makefile before running the tests fixes this.
+ 
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Forwarded: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/155297.html>
+Last-Update: <2014-03-24>
+
+--- ffmpeg-2.2.orig/tests/Makefile
++++ ffmpeg-2.2/tests/Makefile
+@@ -31,7 +31,9 @@ tests/data/vsynth2.yuv: tests/rotozoom$(
+ 	$(M)$< $(SRC_PATH)/tests/lena.pnm $@
+ 
+ tests/data/ffprobe-test.nut: ffmpeg$(EXESUF) | tests/data
+-	$(M)$(TARGET_EXEC) ./$< \
++	$(M)$(TARGET_EXEC) \
++		export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; \
++        ./$< \
+         -f lavfi -i "aevalsrc=sin(400*PI*2*t):d=0.125[out0]; testsrc=d=0.125[out1]; testsrc=s=100x100:d=0.125[out2]" \
+         -f ffmetadata -i $(SRC_PATH)/tests/test.ffmeta \
+         -flags +bitexact -map 0:0 -map 0:1 -map 0:2 -map_metadata 1 \
+@@ -177,7 +179,9 @@ fate:: $(FATE)
+ 
+ $(FATE) $(FATE_TESTS-no): $(FATE_UTILS:%=tests/%$(HOSTEXESUF))
+ 	@echo "TEST    $(@:fate-%=%)"
+-	$(Q)$(SRC_PATH)/tests/fate-run.sh $@ "$(SAMPLES)" "$(TARGET_EXEC)" "$(TARGET_PATH)" '$(CMD)' '$(CMP)' '$(REF)' '$(FUZZ)' '$(THREADS)' '$(THREAD_TYPE)' '$(CPUFLAGS)' '$(CMP_SHIFT)' '$(CMP_TARGET)' '$(SIZE_TOLERANCE)' '$(CMP_UNIT)' '$(GEN)'
++	$(Q) \
++		export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; \
++		$(SRC_PATH)/tests/fate-run.sh $@ "$(SAMPLES)" "$(TARGET_EXEC)" "$(TARGET_PATH)" '$(CMD)' '$(CMP)' '$(REF)' '$(FUZZ)' '$(THREADS)' '$(THREAD_TYPE)' '$(CPUFLAGS)' '$(CMP_SHIFT)' '$(CMP_TARGET)' '$(SIZE_TOLERANCE)' '$(CMP_UNIT)' '$(GEN)'
+ 
+ fate-list:
+ 	@printf '%s\n' $(sort $(FATE))

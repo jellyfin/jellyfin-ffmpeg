@@ -1,0 +1,281 @@
+Description: Fix spelling errors in texi files
+  Upstream texi files have some spelling errors:
+      accomodate  -> accommodate
+      allows to   -> allows one to
+      choosen     -> chosen
+      compability -> compatibility
+      explictly   -> explicitly
+      overriden   -> overridden
+      specifed    -> specified
+      Trasmission -> Transmission
+
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Forwarded: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/155297.html>
+Applied-Upstream: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/155304.html>
+Last-Update: <2014-03-24>
+
+--- ffmpeg-2.2.orig/doc/demuxers.texi
++++ ffmpeg-2.2/doc/demuxers.texi
+@@ -296,7 +296,7 @@ teletext packet PTS and DTS values untou
+ 
+ Raw video demuxer.
+ 
+-This demuxer allows to read raw video data. Since there is no header
++This demuxer allows one to read raw video data. Since there is no header
+ specifying the assumed video parameters, the user must specify them
+ in order to be able to decode the data correctly.
+ 
+--- ffmpeg-2.2.orig/doc/encoders.texi
++++ ffmpeg-2.2/doc/encoders.texi
+@@ -807,7 +807,7 @@ while producing the worst quality.
+ 
+ @item reservoir
+ Enable use of bit reservoir when set to 1. Default value is 1. LAME
+-has this enabled by default, but can be overriden by use
++has this enabled by default, but can be overridden by use
+ @option{--nores} option.
+ 
+ @item joint_stereo (@emph{-m j})
+@@ -1525,7 +1525,7 @@ for detail retention (adaptive quantizat
+ Many libx264 encoder options are mapped to FFmpeg global codec
+ options, while unique encoder options are provided through private
+ options. Additionally the @option{x264opts} and @option{x264-params}
+-private options allows to pass a list of key=value tuples as accepted
++private options allows one to pass a list of key=value tuples as accepted
+ by the libx264 @code{x264_param_parse} function.
+ 
+ The x264 project website is at
+@@ -1853,7 +1853,7 @@ Override the x264 configuration using a
+ parameters.
+ 
+ This option is functionally the same as the @option{x264opts}, but is
+-duplicated for compability with the Libav fork.
++duplicated for compatibility with the Libav fork.
+ 
+ For example to specify libx264 encoding options with @command{ffmpeg}:
+ @example
+@@ -2047,7 +2047,7 @@ Set physical density of pixels, in dots
+ Apple ProRes encoder.
+ 
+ FFmpeg contains 2 ProRes encoders, the prores-aw and prores-ks encoder.
+-The used encoder can be choosen with the @code{-vcodec} option.
++The used encoder can be chosen with the @code{-vcodec} option.
+ 
+ @subsection Private Options for prores-ks
+ 
+--- ffmpeg-2.2.orig/doc/ffmpeg-resampler.texi
++++ ffmpeg-2.2/doc/ffmpeg-resampler.texi
+@@ -14,7 +14,7 @@
+ 
+ The FFmpeg resampler provides a high-level interface to the
+ libswresample library audio resampling utilities. In particular it
+-allows to perform audio resampling, audio channel layout rematrixing,
++allows one to perform audio resampling, audio channel layout rematrixing,
+ and convert audio format and packing layout.
+ 
+ @c man end DESCRIPTION
+--- ffmpeg-2.2.orig/doc/ffmpeg-scaler.texi
++++ ffmpeg-2.2/doc/ffmpeg-scaler.texi
+@@ -13,7 +13,7 @@
+ @c man begin DESCRIPTION
+ 
+ The FFmpeg rescaler provides a high-level interface to the libswscale
+-library image conversion utilities. In particular it allows to perform
++library image conversion utilities. In particular it allows one to perform
+ image rescaling and pixel format conversion.
+ 
+ @c man end DESCRIPTION
+--- ffmpeg-2.2.orig/doc/filters.texi
++++ ffmpeg-2.2/doc/filters.texi
+@@ -172,7 +172,7 @@ terminated when the next special charact
+ 
+ The name and arguments of the filter are optionally preceded and
+ followed by a list of link labels.
+-A link label allows to name a link and associate it to a filter output
++A link label allows one to name a link and associate it to a filter output
+ or input pad. The preceding labels @var{in_link_1}
+ ... @var{in_link_N}, are associated to the filter input pads,
+ the following labels @var{out_link_1} ... @var{out_link_M}, are
+@@ -3921,7 +3921,7 @@ The high threshold selects the "strong"
+ connected through 8-connectivity with the "weak" edge pixels selected
+ by the low threshold.
+ 
+-@var{low} and @var{high} threshold values must be choosen in the range
++@var{low} and @var{high} threshold values must be chosen in the range
+ [0,1], and @var{low} should be lesser or equal to @var{high}.
+ 
+ Default value for @var{low} is @code{20/255}, and default value for @var{high}
+@@ -5238,7 +5238,7 @@ Set progressive threshold.
+ 
+ Deinterleave or interleave fields.
+ 
+-This filter allows to process interlaced images fields without
++This filter allows one to process interlaced images fields without
+ deinterlacing them. Deinterleaving splits the input frame into 2
+ fields (so called half pictures). Odd lines are moved to the top
+ half of the output image, even lines to the bottom half.
+@@ -6860,7 +6860,7 @@ rotate=A*sin(2*PI/T*t)
+ @end example
+ 
+ @item
+-Rotate the video, output size is choosen so that the whole rotating
++Rotate the video, output size is chosen so that the whole rotating
+ input video is always completely contained in the output:
+ @example
+ rotate='2*PI*t:ow=hypot(iw,ih):oh=ow'
+@@ -6983,7 +6983,7 @@ Default value is @samp{0}.
+ @item flags
+ Set libswscale scaling flags. See
+ @ref{sws_flags,,the ffmpeg-scaler manual,ffmpeg-scaler} for the
+-complete list of values. If not explictly specified the filter applies
++complete list of values. If not explicitly specified the filter applies
+ the default flags.
+ 
+ @item size, s
+@@ -7797,7 +7797,7 @@ Produce 8x8 PNG tiles of all keyframes (
+ ffmpeg -skip_frame nokey -i file.avi -vf 'scale=128:72,tile=8x8' -an -vsync 0 keyframes%03d.png
+ @end example
+ The @option{-vsync 0} is necessary to prevent @command{ffmpeg} from
+-duplicating each output frame to accomodate the originally detected frame
++duplicating each output frame to accommodate the originally detected frame
+ rate.
+ 
+ @item
+@@ -8394,7 +8394,7 @@ Set dithering to reduce the circular ban
+ (enabled).
+ 
+ @item aspect
+-Set vignette aspect. This setting allows to adjust the shape of the vignette.
++Set vignette aspect. This setting allows one to adjust the shape of the vignette.
+ Setting this value to the SAR of the input will make a rectangular vignetting
+ following the dimensions of the video.
+ 
+@@ -8903,7 +8903,7 @@ horizontally, vertically, or diagonally
+ 
+ At each interaction the grid evolves according to the adopted rule,
+ which specifies the number of neighbor alive cells which will make a
+-cell stay alive or born. The @option{rule} option allows to specify
++cell stay alive or born. The @option{rule} option allows one to specify
+ the rule to adopt.
+ 
+ This source accepts the following options:
+@@ -10323,7 +10323,7 @@ Note that when the movie is looped the s
+ changed, so it will generate non monotonically increasing timestamps.
+ @end table
+ 
+-This filter allows to overlay a second video on top of main input of
++This filter allows one to overlay a second video on top of main input of
+ a filtergraph as shown in this graph:
+ @example
+ input -----------> deltapts0 --> overlay --> output
+--- ffmpeg-2.2.orig/doc/git-howto.texi
++++ ffmpeg-2.2/doc/git-howto.texi
+@@ -299,7 +299,7 @@ the current branch history.
+ git commit --amend
+ @end example
+ 
+-allows to amend the last commit details quickly.
++allows one to amend the last commit details quickly.
+ 
+ @example
+ git rebase -i origin/master
+--- ffmpeg-2.2.orig/doc/indevs.texi
++++ ffmpeg-2.2/doc/indevs.texi
+@@ -409,7 +409,7 @@ OpenAL is part of Core Audio, the offici
+ See @url{http://developer.apple.com/technologies/mac/audio-and-video.html}
+ @end table
+ 
+-This device allows to capture from an audio input device handled
++This device allows one to capture from an audio input device handled
+ through OpenAL.
+ 
+ You need to specify the name of the device to capture in the provided
+@@ -617,7 +617,7 @@ Select the pixel format (only valid for
+ 
+ @item input_format
+ Set the preferred pixel format (for raw video) or a codec name.
+-This option allows to select the input format, when several are
++This option allows one to select the input format, when several are
+ available.
+ 
+ @item framerate
+@@ -678,7 +678,7 @@ other filename will be interpreted as de
+ 
+ X11 video input device.
+ 
+-This device allows to capture a region of an X11 display.
++This device allows one to capture a region of an X11 display.
+ 
+ The filename passed as input has the syntax:
+ @example
+--- ffmpeg-2.2.orig/doc/muxers.texi
++++ ffmpeg-2.2/doc/muxers.texi
+@@ -758,7 +758,7 @@ The segment muxer supports the following
+ @table @option
+ @item reference_stream @var{specifier}
+ Set the reference stream, as specified by the string @var{specifier}.
+-If @var{specifier} is set to @code{auto}, the reference is choosen
++If @var{specifier} is set to @code{auto}, the reference is chosen
+ automatically. Otherwise it must be a stream specifier (see the ``Stream
+ specifiers'' chapter in the ffmpeg manual) which specifies the
+ reference stream. The default value is @code{auto}.
+--- ffmpeg-2.2.orig/doc/outdevs.texi
++++ ffmpeg-2.2/doc/outdevs.texi
+@@ -42,7 +42,7 @@ ffmpeg -i INPUT -f alsa hw:1,7
+ 
+ CACA output device.
+ 
+-This output device allows to show a video stream in CACA window.
++This output device allows one to show a video stream in CACA window.
+ Only one CACA window is allowed per application, so you can
+ have only one instance of this output device in an application.
+ 
+@@ -302,7 +302,7 @@ ffmpeg  -i INPUT -f pulse "stream name"
+ 
+ SDL (Simple DirectMedia Layer) output device.
+ 
+-This output device allows to show a video stream in an SDL
++This output device allows one to show a video stream in an SDL
+ window. Only one SDL window is allowed per application, so you can
+ have only one instance of this output device in an application.
+ 
+@@ -361,7 +361,7 @@ sndio audio output device.
+ 
+ XV (XVideo) output device.
+ 
+-This output device allows to show a video stream in a X Window System
++This output device allows one to show a video stream in a X Window System
+ window.
+ 
+ @subsection Options
+--- ffmpeg-2.2.orig/doc/protocols.texi
++++ ffmpeg-2.2/doc/protocols.texi
+@@ -960,7 +960,7 @@ used as master salt.
+ 
+ @section tcp
+ 
+-Trasmission Control Protocol.
++Transmission Control Protocol.
+ 
+ The required syntax for a TCP url is:
+ @example
+@@ -1066,7 +1066,7 @@ udp://@var{hostname}:@var{port}[?@var{op
+ @var{options} contains a list of &-separated options of the form @var{key}=@var{val}.
+ 
+ In case threading is enabled on the system, a circular buffer is used
+-to store the incoming data, which allows to reduce loss of data due to
++to store the incoming data, which allows one to reduce loss of data due to
+ UDP socket buffer overruns. The @var{fifo_size} and
+ @var{overrun_nonfatal} options are related to this buffer.
+ 
+--- ffmpeg-2.2.orig/doc/utils.texi
++++ ffmpeg-2.2/doc/utils.texi
+@@ -1056,7 +1056,7 @@ which can be obtained with @code{ffmpeg
+ @item device_idx
+ Select the index of the device used to run OpenCL code.
+ 
+-The specifed index must be one of the indexes in the device list which
++The specified index must be one of the indexes in the device list which
+ can be obtained with @code{ffmpeg -opencl_bench} or @code{av_opencl_get_device_list()}.
+ 
+ @end table

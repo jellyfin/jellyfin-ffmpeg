@@ -1,0 +1,118 @@
+#!/usr/bin/make -f
+
+# This enables verbose mode.
+#export DH_VERBOSE=1
+
+# Get the Debian version revision:
+DEB_VERSION  := $(shell dpkg-parsechangelog | sed -n 's/^Version: //p')
+DEB_REVISION := $(word 2, $(subst -, ,$(DEB_VERSION)))
+
+# Get the architecture triplett:
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
+# Get the host architecture OS
+DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+
+# Only use '-O0' if given (via noopt) and enable all compiler warnings.
+# Hardening is enabled via the configure option --toolchain=hardened.
+CFLAGS   := $(filter -O0,$(shell dpkg-buildflags --get CFLAGS)) -Wall
+CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS)) -Wall
+
+# Get the date of the latest changelog entry.
+# This is used to make the build more binary reproducible.
+DATE=$(shell dpkg-parsechangelog | grep Date: | sed s/Date:\ //)
+
+# Enable as many features as possible, as long as the result is still GPLv2+ (and not only GPLv3+).
+# Therefore the following flags (and build-dependencies) are not added:
+#	--enable-libopencore_amrnb		(libopencore-amrnb-dev)
+#	--enable-libopencore_amrwb		(libopencore-amrwb-dev)
+#	--enable-libvo_aacenc			(libvo-aacenc-dev)
+#	--enable-libvo_amrwbenc			(libvo-amrwbenc-dev)
+# The following flags are not added, because I couldn't find the necessary libraries:
+#	--enable-decklink
+#	--enable-libcelt
+#	--enable-libilbc
+#	--enable-libnut
+#	--enable-libstagefright-h264
+#	--enable-libutvideo
+#	--enable-libvidstab
+#	--enable-libx265
+#	--enable-libxavs
+#	--enable-opencl
+# The following flags/libraries are not added, because the configure script fails to detect them:
+#  * "ERROR: shine not found", but libshine-dev is installed. This is probably due to libshine in Debian being too old (2.0.0, while 3.0.0 exists.).
+#	--enable-libshine				(libshine-dev)
+# The following flags are not added for various reasons:
+#	* --enable-libquvi: The wrapper wasn't updated for recent versions (due to license concerns) and thus might produce problems, e.g. for mpv.
+#	* --enable-libv4l2 [!hurd-any]: This is only needed for very old devices and may cause problems for others.
+#	                                Should anyone need it, using LD_PRELOAD pointing on libv4l2 has the same effect.
+# For the shared libraries there are three ways to build:
+#  * Without further option: This will have no compatibility with libav, but some sonames clash. Therefore no good choice.
+#  * With --enable-incompatible-libav-abi, packages build against libav would work with this libraries, but probably not the other way around.
+#    This could be used together with Breaks:, Replaces: against the corresponding libav libraries.
+#  * With --enable-raise-major, the resulting binaries should be coninstallable with the libav ones and thus no conflicts would be necessary.
+#    This seems to be the best approach, as it allows the maintainer of every package to decide which library to build against.
+CONFIG := --prefix=/usr --extra-version="$(DEB_REVISION)" --toolchain=hardened \
+	--extra-cflags="$(CFLAGS)" --extra-cxxflags="$(CXXFLAGS)" \
+	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) --shlibdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
+	--enable-raise-major --enable-gpl --enable-shared --disable-stripping \
+	--enable-avisynth --enable-fontconfig --enable-frei0r --enable-gnutls \
+	 --enable-ladspa --enable-libass --enable-libbluray --enable-libcaca \
+	--enable-libcdio --enable-libdc1394 --enable-libflite --enable-libfreetype \
+	--enable-libgme --enable-libgsm --enable-libmodplug --enable-libmp3lame \
+	--enable-libopencv --enable-libopenjpeg --enable-libopus --enable-libpulse \
+	--enable-librtmp --enable-libschroedinger --enable-libsoxr --enable-libspeex \
+	--enable-libssh --enable-libtheora --enable-libtwolame --enable-libvorbis \
+	--enable-libvpx --enable-libwavpack --enable-libwebp --enable-libx264 \
+	--enable-openal --enable-opengl --enable-x11grab --enable-libxvid
+
+# Some libraries are build only on linux.
+ifeq ($(DEB_HOST_ARCH_OS),linux)
+	CONFIG += --enable-libiec61883 --enable-libzvbi
+endif
+
+# Some libraries are not build on hurd.
+ifneq ($(DEB_HOST_ARCH_OS),hurd)
+	CONFIG += --enable-libzmq
+endif
+
+# Use the default debhelper scripts, where possible.
+# Enable parallel building.
+%:
+	dh $@ --parallel
+
+# Add configuration options:
+override_dh_auto_configure:
+	$(info DEB_BUILD_OPTIONS = $(DEB_BUILD_OPTIONS))
+	$(info CFLAGS = $(CFLAGS))
+	$(info CXXFLAGS = $(CXXFLAGS))
+	./configure $(CONFIG)
+
+# Building the source package fails without this override, because config.mak does not exist in the source.
+# It (and related files) are created by configure and removed by distclean.
+# The folder doc/examples/pc-uninstalled is not removed by distclean, so remove it manually.
+override_dh_auto_clean:
+	[ ! -f config.mak ] || make distclean
+	[ ! -d doc/examples/pc-uninstalled ] || rm -r doc/examples/pc-uninstalled
+
+# Create doxygen documentation:
+override_dh_auto_build-indep:
+	faketime "$(DATE)" doc/doxy-wrapper.sh ./ doc/Doxyfile
+
+# Use faketime to make the build more binary reproducible.
+# Build qt-faststart here, to make it possible to build with 'nocheck'.
+override_dh_auto_build-arch:
+	faketime "$(DATE)" dh_auto_build -a -- tools/qt-faststart
+
+# Move the debug symbols to the debug package:
+override_dh_strip:
+	dh_strip --dbg-package=ffmpeg-dbg
+
+# Don't compress the example source code files.
+override_dh_compress:
+	dh_compress -Xexamples
+
+# TODO: Remove this for the upload to unstable.
+# The acodec-flac test fails in experimental, due to gcc-4.9.
+override_dh_auto_test:
+	-dh_auto_test

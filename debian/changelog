@@ -1,0 +1,24 @@
+ffmpeg (4:2.2-1) experimental; urgency=medium
+
+  * Reintroduce FFmpeg to Debian. (Closes: #729203)
+    There are far to many changes since FFmpeg 0.5 to mention them here, see:
+        https://git.videolan.org/?p=ffmpeg.git;a=shortlog;h=n2.2
+    Many security issues have been fixed as well, see:
+        https://ffmpeg.org/security.html
+    Among them are:
+     - 0.5: CVE-2008-4610
+     - 0.10: CVE-2011-3941, CVE-2011-3944, CVE-2011-3934, CVE-2011-3946
+     - 0.11: CVE-2012-5359, CVE-2012-5360, CVE-2012-5361
+     - 1.1: CVE-2012-6618, CVE-2013-0844, CVE-2013-0846, CVE-2013-0848,
+            CVE-2013-0849, CVE-2013-0850, CVE-2013-0854, CVE-2013-0856,
+            CVE-2013-0858
+     - 1.1.1: CVE-2013-0860
+     - 1.1.2: CVE-2013-0865, CVE-2013-0867, CVE-2013-0868, CVE-2013-0869
+     - 1.1.3: CVE-2013-0873, CVE-2013-2277
+     - 1.2: CVE-2012-5150, CVE-2013-0894, CVE-2013-2495, CVE-2013-2496
+     - 2.0: CVE-2013-3670, CVE-2013-3672
+     - 2.1: CVE-2013-7009, CVE-2013-7010, CVE-2013-7011, CVE-2013-7015,
+            CVE-2013-7020
+     - 2.1.4: CVE-2014-2263
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Mon, 24 Mar 2014 18:56:11 +0100

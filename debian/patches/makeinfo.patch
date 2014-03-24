@@ -1,0 +1,110 @@
+Description: Transition from texi2html to makeinfo
+ Texi2html has been deprecated in favor of makeinfo, see:
+ https://wiki.debian.org/Texi2htmlTransition
+ The makeinfo --init-file seems to expect a perl script as init file.
+ This is different from the init file used by texi2html.
+ I converted most of the functionality of the doc/t2h.init to perl
+ in the file doc/t2h.pm.
+
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Forwarded: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/155297.html>
+Last-Update: <2014-03-24>
+
+--- ffmpeg-2.2.orig/configure
++++ ffmpeg-2.2/configure
+@@ -1663,7 +1663,6 @@ HAVE_LIST="
+     sys_un_h
+     sys_videoio_h
+     termios_h
+-    texi2html
+     threads
+     unistd_h
+     usleep
+@@ -2443,7 +2442,7 @@ ffserver_select="ffm_muxer rtp_protocol
+ # documentation
+ podpages_deps="perl"
+ manpages_deps="perl pod2man"
+-htmlpages_deps="perl texi2html"
++htmlpages_deps="perl makeinfo"
+ txtpages_deps="perl makeinfo"
+ doc_deps_any="manpages htmlpages podpages txtpages"
+ 
+@@ -4588,7 +4587,6 @@ else
+ fi
+ enabled sdl && add_cflags $sdl_cflags && add_extralibs $sdl_libs
+ 
+-texi2html --help 2> /dev/null | grep -q 'init-file' && enable texi2html || disable texi2html
+ makeinfo --version > /dev/null 2>&1 && enable makeinfo  || disable makeinfo
+ perl -v            > /dev/null 2>&1 && enable perl      || disable perl
+ pod2man --help     > /dev/null 2>&1 && enable pod2man   || disable pod2man
+@@ -4995,7 +4993,6 @@ echo "safe bitstream reader     ${safe_b
+ echo "SDL support               ${sdl-no}"
+ echo "opencl enabled            ${opencl-no}"
+ echo "libzvbi enabled           ${libzvbi-no}"
+-echo "texi2html enabled         ${texi2html-no}"
+ echo "perl enabled              ${perl-no}"
+ echo "pod2man enabled           ${pod2man-no}"
+ echo "makeinfo enabled          ${makeinfo-no}"
+--- ffmpeg-2.2.orig/doc/Makefile
++++ ffmpeg-2.2/doc/Makefile
+@@ -81,12 +81,12 @@ $(GENTEXI): doc/avoptions_%.texi: doc/pr
+ doc/%.html: TAG = HTML
+ doc/%.html: doc/%.texi $(SRC_PATH)/doc/t2h.init $(GENTEXI)
+ 	$(Q)$(TEXIDEP)
+-	$(M)texi2html -I doc -monolithic --D=config-not-all --init-file $(SRC_PATH)/doc/t2h.init --output $@ $<
++	$(M)makeinfo --html -I doc --no-split -D config-not-all --init-file=$(SRC_PATH)/doc/t2h.pm --output $@ $<
+ 
+ doc/%-all.html: TAG = HTML
+ doc/%-all.html: doc/%.texi $(SRC_PATH)/doc/t2h.init $(GENTEXI)
+ 	$(Q)$(TEXIDEP)
+-	$(M)texi2html -I doc -monolithic --D=config-all --init-file $(SRC_PATH)/doc/t2h.init --output $@ $<
++	$(M)makeinfo --html -I doc --no-split -D config-all --init-file=$(SRC_PATH)/doc/t2h.pm --output $@ $<
+ 
+ doc/%.pod: TAG = POD
+ doc/%.pod: doc/%.texi $(SRC_PATH)/doc/texi2pod.pl $(GENTEXI)
+--- ffmpeg-2.2.orig/doc/platform.texi
++++ ffmpeg-2.2/doc/platform.texi
+@@ -264,7 +264,7 @@ llrint() in its C library.
+ Install your Cygwin with all the "Base" packages, plus the
+ following "Devel" ones:
+ @example
+-binutils, gcc4-core, make, git, mingw-runtime, texi2html
++binutils, gcc4-core, make, git, mingw-runtime, texinfo
+ @end example
+ 
+ In order to run FATE you will also need the following "Utils" packages:
+--- /dev/null
++++ ffmpeg-2.2/doc/t2h.pm
+@@ -0,0 +1,29 @@
++# Set the doctype to html.
++set_from_init_file('DOCTYPE', '<!DOCTYPE html>');
++
++# Add an icon.
++set_from_init_file('EXTRA_HEAD', '<link rel="icon" href="favicon.png" type="image/png" />');
++
++# Use the defaul.css file.
++set_from_init_file('CSS_LINES', '<link rel="stylesheet" type="text/css" href="default.css" />');
++
++# Add additional div's at the beginning of the body and close them before the end.
++set_from_init_file('AFTER_BODY_OPEN', '<div id="container">
++<div id="body">
++');
++set_from_init_file('PRE_BODY_CLOSE', '</div></div>');
++
++# empty body text
++set_from_init_file('BODYTEXT', '');
++
++# Write the creation time in the footer.
++set_from_init_file('PROGRAM_NAME_IN_FOOTER', "+");
++
++# no navigation elements
++set_from_init_file('HEADERS', 0);
++
++# TOC and Chapter headings link
++set_from_init_file('TOC_LINKS', 1);
++
++# print the TOC where @contents is used
++set_from_init_file('INLINE_CONTENTS', 1);
++
++# Make chapters <h1>
++set_from_init_file('CHAPTER_HEADER_LEVEL', 1);

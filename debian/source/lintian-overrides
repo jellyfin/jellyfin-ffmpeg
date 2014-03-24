@@ -1,0 +1,3 @@
+# The new location for the upstream signing key is upstream/signing-key.{asc,pgp}, but lintian is not yet updated.
+# See: https://bugs.debian.org/738597
+ffmpeg source: debian-watch-file-pubkey-file-is-missing

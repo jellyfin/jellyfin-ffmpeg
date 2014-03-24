@@ -1,0 +1,858 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: FFmpeg
+Upstream-Contact: ffmpeg-devel@ffmpeg.org
+Source: https://ffmpeg.org
+Comments:
+ Most files in FFmpeg are under the GNU Lesser General Public License
+ version 2.1 or later (LGPL v2.1+), but some optional parts of FFmpeg are
+ licensed under the GNU General Public License version 2 or later (GPL v2+)
+ and a few have different, but compatible licenses.
+ For building the Debian packages some of the GPL licensed files are used,
+ so the resulting binaries are under GPL v2+.
+ FFmpeg can also be combined with external libraries under GPL v3, but this is
+ not done for the Debian packages.
+
+Files: *
+Copyright:
+  Sebastien Bechet <s.bechet@av7.net>
+  1993, Computer Science, Speech Group
+  1990, James Ashton - Sydney University
+  1994-2012, by the Xiph.Org Foundation and contributors
+  1998-2009, Conifer Software
+  1999-2000, Chris Bagwell <cbagwell@sprynet.com>
+  1999, Intel Corporation
+  1999, Nick Bailey
+  1999, Roger Hardiman
+  1999-2000, Sebastien Rougeaux <sebastien.rougeaux@anu.edu.au>
+  2000, Edward Beingessner And Sundry Contributors
+  2000-2003, 2005, Fabrice Bellard
+  2000-2001, Gerard Lantau
+  2000-2001, Michel Lespinasse <walken@zoy.org>
+  2000-2001, Peter Gubanov <peter@elecard.net.ru>
+  2001-2003, BERO <bero@geocities.co.jp>
+  2001, Daniel Maas <dmaas@dcine.com> <dmaas@maasdigital.com>
+  2001, Juan J. Sierralta P
+  2001, Lionel Ulmer
+  2001-2014, Michael Niedermayer <michaelni@gmx.at>
+  2001-2005, the ffmpeg project
+  2001, Tim Ferguson
+  2002-2006, Alex Beregszaszi
+  2002, Anders Johansson <ajh@atri.curtin.edu.au>
+  2002, Falk Hueffner <falk@debian.org>
+  2002, 2005, Francois Revol
+  2002, Gunnar Monell <gmo@linux.nu>
+  2002, Laszlo Torok <torokl@alpha.dfmk.hu>
+  2002, Lennert Buytenhek <buytenh@gnu.org>
+  2002, Mark Hills <mark@pogo.org.uk>
+  2002-2004, 2006-2013, Maxim Poliakovski
+  2002, Remi Guyomarch <rguyom@pobox.com>
+  2002-2005, Roberto Togni
+  2002, Steve O'Hara-Smith
+  2002, the xine project
+  2003-2005, by Christopher R. Hertel <crh@ubiqx.mn.org>
+  2003, David S. Miller <davem@redhat.com>
+  2003, Dr. Tim Ferguson
+  2003, Ewald Snel
+  2003, Gustavo Sverzut Barbieri <gsbarbieri@yahoo.com.br>
+  2003, Ivan Kalvachev
+  2003, James Klicman <james@klicman.org>
+  2003, Max Krasnyansky <maxk@qualcomm.com>
+  2003, 2004, 2007, Mike Melanson <melanson@pcisys.net>
+  2003, Nick Kurshev
+  2003, Pascal Massimino <skal@planet-d.net>
+  2003-2004, 2006, Roman Shaposhnik
+  2003, Rich Felker
+  2003-2004, Romain Dolbeau <romain@dolbeau.org>
+  2003, 2008-2011, Sascha Sommer <saschasommer@freenet.de>
+  2003, Tinic Uro
+  2003, Thomas Raivio
+  2004, Adam Thayer <krevnik@comcast.net>
+  2004, 2007, Benjamin Zores <ben@geexbox.org>
+  2004-2005, 2007, Denes Balatoni <dbalatoni@programozo.hu>
+  2004-2007, Eric Lasota
+  2004, Gildas Bazin  <gbazin@netcourrier.com> <gbazin@videolan.org>
+  2004-2010, 2013, Loren Merritt <lorenm@u.washington.edu>
+  2004, Maarten Daniels
+  2004, 2007, Marc Hoffman <marc.hoffman@analog.com> <mmh@pleasantst.com> <mmhoffm@gmail.com>
+  2004-2014, Konstantin Shishkov <kostya.shishkov@gmail.com>
+  2005, Alban Bedel <albeu@free.fr>
+  2005, Anonymous
+  2005-2011, Benjamin Larsson
+  2005, David Hammerton
+  2005, DivX, Inc
+  2005, 2007-2008, Ian Caulfield
+  2005, Jeff Muizelaar
+  2005-2007, Luca Barbato <lu_zero@gentoo.org>
+  2005-2012, Mans Rullgard <mans@mansr.com>
+  2005, Matthieu CASTET
+  2005-2006, Oded Shimon <ods15@ods15.dyndns.org>
+  2005, Ole André Vadla Ravnås <oleavr@gmail.com>
+  2005, 2011-2014, Peter Ross <pross@xvid.org>
+  2005, 2007-2011, 2013, Reimar Döffinger <Reimar.Doeffinger@gmx.de>
+  2005-2006, Robert Edele <yartrebo@earthlink.net>
+  2005, Steve Underwood <steveu@coppice.org>
+  2005, Vidar Madsen
+  2005, Wim Taymans
+  2005, 2007, Wolfram Gloger
+  2006-2010, Aurelien Jacobs <aurel@gnuage.org>
+  2006-2011, Baptiste Coudurier <baptiste.coudurier@free.fr>
+  2006, Corey Hickey
+  2006, Cyril Zorin
+  2006, 2008, Gregory Montoir <cyx@users.sourceforge.net>
+  2006-2013, Justin Ruggles <justin.ruggles@gmail.com>
+  2006, Kartikey Mahendra BHATT <bhattkm@gmail.com>
+  2006-2007, Maxim Gavrilov <maxim.gavrilov@gmail.com>
+  2006, 2007, Michel Bardiaux <mbardiaux@mediaxim.be>
+  2006, Michael Benjamin <michael.benjamin@analog.com>
+  2006, Patrick Guimond
+  2006, Paul Richards <paul.richards@gmail.com>
+  2006, Guillaume Poirier <gpoirier@mplayerhq.hu>
+  2006-2010, Prakash Punnoor <prakash@punnoor.de>
+  2006-2010, 2013-2014, Ramiro Polla <ramiro.polla@gmail.com>
+  2006-2007, Reynaldo H. Verdejo Pinochet
+  2006-2009, 2012, Rob Sykes <robs@users.sourceforge.net>
+  2006-2009, Robert Swain <rob@opendot.cl>
+  2006-2007, Ryan Martell <rdm4@martellventures.com>
+  2006, Smartjog S.A.S, Baptiste Coudurier <baptiste.coudurier@gmail.com>
+  2006-2007, SmartJog S.A., Baptiste Coudurier <baptiste.coudurier@smartjog.com>
+  2006, Stefan Gehrer <stefan.gehrer@gmx.de>
+  2006, Steve Lhomme
+  2006, Thijs Vermeir <thijs.vermeir@barco.com>
+  2007, Alexis Ballier
+  2007, 2010, Anssi Hannula <anssi.hannula@gmail.com>
+  2007-2009, Bartlomiej Wolowiec <bartek.wolowiec@gmail.com>
+  2007, Benoit Fouet <benoit.fouet@free.fr>
+  2007, 2009, Björn Axelsson
+  2007, Bobby Bingham
+  2007-2009, Bartlomiej Wolowiec <bartek.wolowiec@gmail.com>
+  2007, Christian Ohm
+  2007, Collabora Ltd, Philippe Kalaf
+  2007, Edward Hervey
+  2007-2008, Ivo van Poorten
+  2007-2008, Joseph Artsimovich <jart@users.sourceforge.net>
+  2007, Kamil Nowosad
+  2007-2009, Luca Abeni
+  2007-2008, Marco Gerards <marco@gnu.org>
+  2007, Nicholas Tung
+  2007, 2010-2013, Nicolas George <nicolas.george@normalesup.org>
+  2007, Nokia Corporation
+  2007-2010, 2012-2013, Ronald S. Bultje <rsbultje@gmail.com>
+  2007-2008, Siarhei Siamashka <ssvb@users.sourceforge.net>
+  2007-2013, Stefano Sabatini <stefano.sabatini-lala@poste.it> <stefasab@gmail.com>
+  2007-2008, UAB "DKD"
+  2007, Ulion
+  2007-2010, Vitor Sessak <vitor1001@gmail.com>
+  2007-2008, 2011, Vladimir Voroshilov
+  2008, Affine Systems, Inc (Michael Sullivan, Bobby Impollonia)
+  2008, Alessandro Sappia
+  2008-2013, Alex Converse <alex.converse@gmail.com>
+  2008-2012, Alexander E. Patrakov
+  2008, 2010, Alexander Strange <astrange@ithinksw.com>
+  2008-2009, Andrej Stepanchuk
+  2008, BBC, Anuradha Suraparaju <asuraparaju@gmail.com>
+  2008-2010, David Conrad <lessen42@gmail.com>
+  2008, 2010, Eli Friedman <eli.friedman@gmail.com>
+  2008, GUCAS, Zhentan Feng <spyfeng@gmail.com>
+  2008-2010, Laurent Aimar <fenrir@videolan.org>
+  2008, NVIDIA
+  2008-2009, Jaikrishnan Menon <realityman@gmx.net>
+  2008-2010, Paul Kendall <paul@kcbbs.gen.nz>
+  2008, Robert Marston
+  2008, Sisir Koppaka
+  2008-2009, Splitted-Desktop Systems
+  2008, Victor Paesa
+  2008, vmrsss
+  2009, Colin McQuillan
+  2009-2010, 2013, Daniel Verkamp <daniel@drv.nu>
+  2009, Dylan Yudaken
+  2009, Giliard B. de Freitas <giliarde@gmail.com>
+  2009-2010, Howard Chu
+  2009, Ivan Schreter
+  2009-2010, James Darnley
+  2009, Jimmy Christensen
+  2009, Joshua Warner
+  2009, Kenan Gillet
+  2009-2013, Martin Storsjo
+  2009, Michael Tison
+  2009, 2012, Nathan Caldwell <saintdev@gmail.com>
+  2009, Nicolas Martin <martinic@iro.umontreal.ca>
+  2009, Samalyse
+  2009, Sebastien Lucas <sebastien.lucas@gmail.com>
+  2009, Stephen Backway
+  2009-2010, 2013, Thilo Borgmann <thilo.borgmann@mail.de>
+  2009, Thomas P. Higdon <thomas.p.higdon@gmail.com>
+  2009, Tobias Bindhammer
+  2009, Toshimitsu Kimura
+  2009, Xuggle Incorporated
+  2009, Zuxy Meng <zuxy.meng@gmail.com>
+  2010, Adrian Daerr
+  2010, Amanda, Y.N. Wu <amanda11192003@gmail.com>
+  2010-2011, Anatoly Nenashev
+  2010, Brandon Mintern
+  2010-2012, Carl Eugen Hoyos
+  2010, Daniel G. Taylor <dan@programmer-art.org>
+  2010-2011, Elvis Presley
+  2010, Francesco Lavra <francescolavra@interfree.it>
+  2010, 2013, Georg Martius <georg.martius@web.de>
+  2010, 2012, Google, Inc
+  2010, Hans de Goede <hdegoede@redhat.com>
+  2010-2011, Janne Grunau <janne-libav@jannau.net>
+  2010, Jacob Meuser
+  2010, Jason Garrett-Glaser <darkshikari@gmail.com>
+  2010, Josh Allmann
+  2010, Marcelo Galvao Povoa
+  2010, Mark Nauwelaerts
+  2010, Michele Orrù
+  2010-2011, Mohamed Naufal Basheer <naufal11@gmail.com>
+  2010, Nolan Lum <nol888@gmail.com>
+  2010-2012, Philip Langdale <ffmpeg.philipl@overt.org> <philipl@overt.org>
+  2010, Rafael Carre
+  2010, S.N. Hemanth Meenakshisundaram <smeenaks@ucsd.edu>
+  2010, Sebastian Vater <cdgs.basty@googlemail.com>
+  2010, tipok <piratfm@gmail.com>
+  2010, Tomas Härdin
+  2010-2011, x264 project
+  2010-2011, Zhentan Feng <spyfeng@gmail.com>
+  2011, Anatoliy Wasserman
+  2011, Andreas Öman
+  2011-2013, Anton Khirnov <anton@khirnov.net>
+  2011-2013, Clément Bœsch <u@pkh.me>
+  2011-2014, Derek Buitenhuis
+  2011, Jordi Ortiz
+  2011, Juan Carlos Rodriguez <ing.juancarlosrodriguez@hotmail.com>
+  2011, Kieran Kunhya <kieran@kunhya.com>
+  2011, KO Myung-Hun <komh@chollian.net>
+  2011, Mark Himsley
+  2011-2012, Mashiat Sarker Shakkhar
+  2011, Matthew Hoops <clone2727@gmail.com>
+  2011, Max Horn
+  2011-2012, Michael Bradshaw <mjbshaw@gmail.com>
+  2011, Michael Karcher
+  2011, Mina Nagy Zaki
+  2011, MirriAd Ltd
+  2011, Oskar Arvidsson
+  2011-2013, Paul B Mahol
+  2011, Roger Pau Monné <roger.pau@entel.upc.edu>
+  2011, Sebastien Zwickert
+  2011-2012, Smartjog S.A.S, Clément Bœsch <clement.boesch@smartjog.com>
+  2011, Sven Hesse <drmccoy@drmccoy.de>
+  2011, Thomas Kuehnel
+  2012, Aleksi Nurmi
+  2012-2013, Andrey Utkin <andrey.krieger.utkin@gmail.com>
+  2012-2013, Aneesh Dogra (lionaneesh) <lionaneesh@gmail.com>
+  2012, Antti Seppälä
+  2012, AvxSynth Team.
+  2012, British Broadcasting Corporation
+  2012-2014, Christophe Gisquet <christophe.gisquet@gmail.com>
+  2012, Daniel Kang
+  2012, David Kment
+  2012, Fredrik Mellbin
+  2012, Georg Lippitsch <georg.lippitsch@gmx.at>
+  2012-2013, Gildas Cocherel
+  2012-2013, Guillaume Martres <smarter@ubuntu.com>
+  2012, Jan Ekström
+  2012, Li Cao <li@multicorewareinc.com>
+  2012-2013, Mickael Raulet
+  2012, Pavel Koshevoy <pkoshevoy@gmail.com>
+  2012, Peng Gao <peng@multicorewareinc.com>
+  2012, Petri Hintukainen <phintuka@users.sourceforge.net>
+  2012, Robert Nagy <ronag89@gmail.com>
+  2012-2013, Rudolf Polzer <divverent@xonotic.org>
+  2012, Samuel Pitoiset
+  2012, Steven Robertson
+  2012, Vitaliy E Sugrobov
+  2012-2013, Wassim Hamidouche
+  2012-2013, Wei Gao <weigao@multicorewareinc.com>
+  2012, Xidorn Quan
+  2013, Anand Meher Kotra
+  2013-2014, Andrew Kelley
+  2013, Ash Hughes
+  2013, Christian Schmidt
+  2013, Darryl Wallace <wallacdj@gmail.com>
+  2013, Diego Biurrun <diego@biurrun.de>
+  2013, Dirk Farin <dirk.farin@gmail.com>
+  2013-2014, James Almer <jamrial@gmail.com>
+  2013, Jeff Moguillansky
+  2013, Lenny Wang
+  2013-2014, Lukasz Marek <lukasz.m.luki@gmail.com>
+  2013, Matthew Heaney
+  2013, Nicolas Bertrand <nicoinattendu@gmail.com>
+  2013, Rémi Denis-Courmont
+  2013, Rl, Aetey Global Technologies AB
+  2013, Seppo Tomperi
+  2013, Vittorio Giovara <vittorio.giovara@gmail.com>
+  2013, Xiaolei Yu <dreifachstein@gmail.com>
+  2014, Nicholas Robbins
+  2014, Tim Walker <tdskywalker@gmail.com>
+License: LGPL-2.1+
+ FFmpeg is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ FFmpeg is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+Comments:
+ You should have received a copy of the GNU Lesser General Public
+ License along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ .
+ On Debian systems, the full text of the GNU Lesser General Public License
+ version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
+ .
+ The copyright details for Joseph Artsimovich and UAB "DKD" were extracted
+ from the referenced source:
+ <http://samples.mplayerhq.hu/A-codecs/Nelly_Moser/ASAO/ASAO.zip>.
+
+Files: libavcodec/libzvbi-teletextdec.c
+Copyright:
+  2005-2010, 2012, Wolfram Gloger
+  2013, Marton Balint
+License: LGPL-2+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2 of the License, or (at your option) any later version.
+ .
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU Lesser General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+Files:
+  libavcodec/fft_init_table.c
+  libavcodec/fft_fixed_32.c
+  libavcodec/fft_table.h
+  libavcodec/mdct_fixed_32.c
+  libavcodec/mips/aaccoder_mips.c
+  libavcodec/mips/aacdec_mips.h
+  libavcodec/mips/aacpsdsp_mips.c
+  libavcodec/mips/aacpsy_mips.h
+  libavcodec/mips/aacsbr_mips.c
+  libavcodec/mips/aacsbr_mips.h
+  libavcodec/mips/ac3dsp_mips.c
+  libavcodec/mips/acelp_filters_mips.c
+  libavcodec/mips/acelp_vectors_mips.c
+  libavcodec/mips/amrwbdec_mips.c
+  libavcodec/mips/amrwbdec_mips.h
+  libavcodec/mips/celp_filters_mips.c
+  libavcodec/mips/celp_math_mips.c
+  libavcodec/mips/compute_antialias_fixed.h
+  libavcodec/mips/compute_antialias_float.h
+  libavcodec/mips/fft_mips.c
+  libavcodec/mips/fmtconvert_mips.c
+  libavcodec/mips/iirfilter_mips.c
+  libavcodec/mips/lsp_mips.h
+  libavcodec/mips/mpegaudiodsp_mips_fixed.c
+  libavcodec/mips/mpegaudiodsp_mips_float.c
+  libavcodec/mips/sbrdsp_mips.c
+  libavutil/mips/float_dsp_mips.c
+  libavutil/mips/libm_mips.h
+Copyright: 2012, MIPS Technologies, Inc., California.
+License: BSD-3-clause and LGPL-2.1+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+ 3. Neither the name of the MIPS Technologies, Inc., nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE MIPS TECHNOLOGIES, INC. ``AS IS'' AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED.  IN NO EVENT SHALL THE MIPS TECHNOLOGIES, INC. BE LIABLE
+ FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+ .
+ FFmpeg is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ FFmpeg is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU Lesser General Public License
+ version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+Files:
+  libavdevice/x11grab.c
+  libavfilter/f_ebur128.c
+  libavfilter/vf_blackframe.c
+  libavfilter/vf_boxblur.c
+  libavfilter/vf_cropdetect.c
+  libavfilter/vf_delogo.c
+  libavfilter/vf_geq.c
+  libavfilter/vf_histeq.c
+  libavfilter/vf_hqdn3d.c
+  libavfilter/vf_hqdn3d.h
+  libavfilter/vf_interlace.c
+  libavfilter/vf_kerndeint.c
+  libavfilter/vf_mcdeint.c
+  libavfilter/vf_mp.c
+  libavfilter/vf_mpdecimate.c
+  libavfilter/vf_owdenoise.c
+  libavfilter/vf_perspective.c
+  libavfilter/vf_phase.c
+  libavfilter/vf_pp.c
+  libavfilter/vf_pullup.c
+  libavfilter/vf_pullup.h
+  libavfilter/vf_sab.c
+  libavfilter/vf_smartblur.c
+  libavfilter/vf_spp.c
+  libavfilter/vf_spp.h
+  libavfilter/vf_stereo3d.c
+  libavfilter/vf_super2xsai.c
+  libavfilter/vf_tinterlace.c
+  libavfilter/vsrc_mptestsrc.c
+  libavfilter/x86/vf_hqdn3d_init.c
+  libavfilter/x86/vf_pullup_init.c
+  libavfilter/x86/vf_spp.c
+  libavfilter/yadif.h
+  libpostproc/postprocess_altivec_template.c
+  libpostproc/postprocess.c
+  libpostproc/postprocess.h
+  libpostproc/postprocess_internal.h
+  libpostproc/postprocess_template.c
+Copyright:
+  1997-1998, Rasca, Berlin
+  1997-2001, ZSNES Team <zsknight@zsnes.com> <_demo_@zsnes.com>
+  2000-2001, Fabrice Bellard
+  2001, 2006, Daniel Maas <dmaas@dcine.com> <dmaas@maasdigital.com>
+  2001, 2003, Donald A. Graft
+  2001-2003, 2005-2007, 2011-2012 Michael Niedermayer (michaelni@gmx.at)
+  2002, A'rpi
+  2002, Brian Foley
+  2002-2003, Brian J. Murrell
+  2002, Dieter Shirley
+  2002, Jindrich Makovicka <makovick@gmail.com>
+  2002-2008, 2013, The FFmpeg Project
+  2003, Daniel Moreno <comac@comac.darktech.org>
+  2003-2004, Karl H. Beckers, Frankfurt
+  2003, Michael Zucchi <notzed@ximian.com>
+  2003, Rich Felker
+  2004-2005, 2007, Denes Balatoni <dbalatoni@interware.hu> <dbalatoni@programozo.hu>
+  2004, Romain Dolbeau <romain@dolbeau.org>
+  2004, Tobias Diedrich
+  2004, Ville Saari
+  2006, Clemens Fruhwirth <clemens@endorphin.org>
+  2006, Edouard Gomez <ed.gomez@free.fr>
+  2006, Ivo van Poorten
+  2006, Julian Hall
+  2010, Baptiste Coudurier <baptiste.coudurier@free.fr>
+  2010, Gordon Schmidt <gordon.schmidt@s2000.tu-chemnitz.de>
+  2010, Laurent Aimar
+  2010, Michael Chinen
+  2010, Niel van der Westhuizen <nielkie@gmail.com>
+  2010-2012, Stefano Sabatini <stefano.sabatini-lala@poste.it>
+  2012-2013, Clément Bœsch
+  2012, Jeremy Tran
+  2012, Loren Merritt <lorenm@u.washington.edu>
+  2013, Jean Delvare <khali@linux-fr.org>
+  2013-2014, Paul B Mahol
+  2013, Vittorio Giovara <vittorio.giovara@gmail.com>
+License: GPL-2+
+ FFmpeg is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+ .
+ FFmpeg is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public License
+ along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+Files: libavfilter/vf_colormatrix.c
+Copyright:
+  2006-2007, Kevin Stone
+  Wilbert Dijkhof
+License: GPL-2+
+ This program is free software; you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the
+ Free Software Foundation; either version 2 of the License, or (at your
+ option) any later version.
+ .
+ This program is distributed in the hope that it will be useful, but
+ OUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+ License for more details.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public License
+ along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+Files:
+  compat/avisynth/avisynth_c.h
+  compat/avisynth/avxsynth_c.h
+Copyright: 2003, Kevin Atkinson
+License: GPL-2+ with Avisynth exception
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ As a special exception, I give you permission to link to the
+ Avisynth C interface with independent modules that communicate with
+ the Avisynth C interface solely through the interfaces defined in
+ avisynth_c.h, regardless of the license terms of these independent
+ modules, and to copy and distribute the resulting combined work
+ under terms of your choice, provided that every copy of the
+ combined work is accompanied by a complete copy of the source code
+ of the Avisynth C interface and Avisynth itself (with the version
+ used to produce the combined work), being distributed under the
+ terms of the GNU General Public License plus this exception.  An
+ independent module is a module which is not derived from or based
+ on Avisynth C Interface, such as 3rd-party filters, import and
+ export plugins, or graphical user interfaces.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA,
+ or visit <http://www.gnu.org/copyleft/gpl.html>.
+
+Files: doc/texi2pod.pl
+Copyright: 1999-2001, Free Software Foundation, Inc
+License: GPL-2+
+ GNU CC is free software; you can redistribute it and/or modify it under
+ the terms of the GNU General Public License as published by the Free
+ Software Foundation; either version 2, or (at your option) any later
+ version.
+ .
+ GNU CC is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ for more details.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA,
+ or visit <http://www.gnu.org/copyleft/gpl.html>.
+
+Files:
+  libavfilter/libmpcodecs/av_helpers.h
+  libavfilter/libmpcodecs/img_format.c
+  libavfilter/libmpcodecs/img_format.h
+  libavfilter/libmpcodecs/libvo/video_out.h
+  libavfilter/libmpcodecs/mpc_info.h
+  libavfilter/libmpcodecs/mp_image.c
+  libavfilter/libmpcodecs/mp_image.h
+  libavfilter/libmpcodecs/mp_msg.h
+  libavfilter/libmpcodecs/vfcap.h
+  libavfilter/libmpcodecs/vf_eq2.c
+  libavfilter/libmpcodecs/vf_eq.c
+  libavfilter/libmpcodecs/vf_fspp.c
+  libavfilter/libmpcodecs/vf.h
+  libavfilter/libmpcodecs/vf_ilpack.c
+  libavfilter/libmpcodecs/vf_pp7.c
+  libavfilter/libmpcodecs/vf_softpulldown.c
+  libavfilter/libmpcodecs/vf_uspp.c
+Copyright:
+  1999, Aaron Holtzman
+  1999, MPlayer developers
+  2003, 2005, Michael Niedermayer <michaelni@gmx.at>
+  2005, Nikolaj Poroshin <porosh3@psu.ru>
+License: GPL-2+
+ MPlayer is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+ .
+ MPlayer is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public License along
+ with MPlayer; if not, write to the Free Software Foundation, Inc.,
+ 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+Files: libswresample/swresample-test.c
+Copyright:
+  2002, Fabrice Bellard
+  2011-2012, Michael Niedermayer <michaelni@gmx.at>
+License: GPL-2+
+ libswresample is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+ .
+ libswresample is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public License
+ along with libswresample; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+Files: tests/tiny_ssim.c
+Copyright: 2003-2013, Loren Merritt
+License: GPL-2+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110 USA
+
+Files:
+  libavcodec/libutvideodec.cpp
+  libavcodec/libutvideoenc.cpp
+  libavcodec/libutvideo.h
+Copyright:
+  2011-2012, Derek Buitenhuis
+License: GPL-2
+ FFmpeg is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public
+ License as published by the Free Software Foundation;
+ version 2 of the License.
+ .
+ FFmpeg is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
+ .
+ You should have received a copy of the GNU General Public
+ License along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+Files: doc/doxy/doxy_stylesheet.css
+Copyright: 2012, Twitter, Inc
+License: Apache-2.0
+ Licensed under the Apache License v2.0
+Comments:
+ On Debian systems, the  full text of the Apache License version 2.0
+ can be found in the file `/usr/share/common-licenses/Apache-2.0'.
+
+Files:
+  compat/avisynth/avisynth_c_25.h
+  doc/examples/*
+  libavcodec/cinepakenc.c
+  libavcodec/nellymoser.c
+  libavcodec/nellymoserdec.c
+  libavcodec/nellymoser.h
+  libavcodec/x86/vc1dsp_init.c
+  libavcodec/x86/vc1dsp_mmx.c
+  libavformat/oggdec.c
+  libavformat/oggdec.h
+  libavformat/oggparseogm.c
+  libavformat/oggparsetheora.c
+  libavformat/oggparsevorbis.c
+Copyright:
+  2001, 2003, Fabrice Bellard
+  2005, Alex Beregszaszi
+  2005, Måns Rullgård
+  2005, Matthieu CASTET
+  2005, Michael Ahlberg
+  2007, a840bda5870ba11f19698ff6eb9581dfb0f95fa5
+  2007, 520e17cd55896441042b14df2566a6eb610ed444
+  2007, 539459aeb7d425140b62a3ec7dbf6dc8e408a306
+  2007, Benjamin Larsson
+  2007, Christophe GISQUET <christophe.gisquet@free.fr>
+  2007, Loic Minier <lool at dooz.org>
+  2008, Reimar Döffinger
+  2010, Nicolas George
+  2011, FFmpegSource Project
+  2011, Jonathan Baldwin
+  2011, Reinhard Tartler
+  2011-2014, Stefano Sabatini
+  2011, Tomas Härdin
+  2012, Clément Bœsch
+  2013-2014, Rl, Aetey Global Technologies AB
+License: expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+
+Files:
+  tools/cws2fws.c
+  tools/qt-faststart.c
+Copyright:
+  Alex Beregszaszi
+  Mike Melanson <melanson@pcisys.net>
+License: public-domain
+ This file is placed in the public domain. Use the program however you see fit.
+
+Files:
+  libavcodec/faandct.c
+  libavcodec/zerocodec.c
+  libavdevice/openal-dec.c
+Copyright:
+  2003, Michael Niedermayer <michaelni@gmx.at>
+  2003, Roman Shaposhnik
+  2011, Jonathan Baldwin
+  2012, Derek Buitenhuis
+License: ISC
+ Permission to use, copy, modify, and/or distribute this software for any
+ purpose with or without fee is hereby granted, provided that the above
+ copyright notice and this permission notice appear in all copies.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+Files: libavutil/adler32.c
+Copyright: 1995, Mark Adler
+License: Zlib
+ This software is provided 'as-is', without any express or implied
+ warranty.  In no event will the authors be held liable for any damages
+ arising from the use of this software.
+ .
+ Permission is granted to anyone to use this software for any purpose,
+ including commercial applications, and to alter it and redistribute it
+ freely, subject to the following restrictions:
+ .
+ 1. The origin of this software must not be misrepresented; you must not
+    claim that you wrote the original software. If you use this software
+    in a product, an acknowledgment in the product documentation would be
+    appreciated but is not required.
+ 2. Altered source versions must be plainly marked as such, and must not be
+    misrepresented as being the original software.
+ 3. This notice may not be removed or altered from any source distribution.
+
+Files:
+  libavcodec/jfdctfst.c
+  libavcodec/jfdctint_template.c
+  libavcodec/jrevdct.c
+Copyright: 1991-1996, Thomas G. Lane
+License: IJG
+ The authors make NO WARRANTY or representation, either express or implied,
+ with respect to this software, its quality, accuracy, merchantability, or
+ fitness for a particular purpose.  This software is provided "AS IS", and
+ you, its user, assume the entire risk as to its quality and accuracy.
+ .
+ Permission is hereby granted to use, copy, modify, and distribute this
+ software (or portions thereof) for any purpose, without fee, subject to
+ these conditions:
+ (1) If any part of the source code for this software is distributed, then
+ this README file must be included, with this copyright and no-warranty
+ notice unaltered; and any additions, deletions, or changes to the original
+ files must be clearly indicated in accompanying documentation.
+ (2) If only executable code is distributed, then the accompanying
+ documentation must state that "this software is based in part on the work
+ of the Independent JPEG Group".
+ (3) Permission for use of this software is granted only if the user accepts
+ full responsibility for any undesirable consequences; the authors accept
+ NO LIABILITY for damages of any kind.
+ .
+ These conditions apply to any software derived from or based on the IJG
+ code, not just to the unmodified library.  If you use our work, you ought
+ to acknowledge us.
+ .
+ Permission is NOT granted for the use of any IJG author's name or company
+ name in advertising or publicity relating to this software or products
+ derived from it.  This software may be referred to only as "the Independent
+ JPEG Group's software".
+ .
+ We specifically permit and encourage the use of this software as the basis
+ of commercial products, provided that all warranty or liability claims are
+ assumed by the product vendor.
+
+Files: debian/*
+Copyright: 2014, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+License: LGPL-v2.1+
+ This packaging is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ This packaging is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+Comments:
+ On Debian systems, the full text of the GNU Lesser General Public License
+ version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with this packaging; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+Files: debian/qt-faststart.1
+Copyright: Andres Mejia <mcitadel@gmail.com>
+License: man-page
+ This manual page was written by Andres Mejia <mcitadel@gmail.com>
+ for the Debian GNU/Linux system, but may be used by others.

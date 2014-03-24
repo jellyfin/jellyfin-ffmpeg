@@ -1,0 +1,43 @@
+Description: FFmpeg 2.2 introduced some more spelling errors
+ Fix texi files:
+ more informations --> more information
+ allows to         --> allows one to
+
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Forwarded: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/155978.html>
+Applied-Upstream: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/156009.html>
+Last-Update: <2014-03-25>
+
+--- ffmpeg-2.2.orig/doc/encoders.texi
++++ ffmpeg-2.2/doc/encoders.texi
+@@ -1271,7 +1271,7 @@ Requires the presence of the libtheora h
+ configuration. You need to explicitly configure the build with
+ @code{--enable-libtheora}.
+ 
+-For more informations about the libtheora project see
++For more information about the libtheora project see
+ @url{http://www.theora.org/}.
+ 
+ @subsection Options
+--- ffmpeg-2.2.orig/doc/ffserver.texi
++++ ffmpeg-2.2/doc/ffserver.texi
+@@ -111,7 +111,7 @@ must be configured in the stream configu
+ the @command{ffmpeg} encoders.
+ 
+ The @command{ffmpeg} @option{override_ffserver} commandline option
+-allows to override the encoding parameters set by the server.
++allows one to override the encoding parameters set by the server.
+ 
+ Multiple streams can be connected to the same feed.
+ 
+--- ffmpeg-2.2.orig/doc/outdevs.texi
++++ ffmpeg-2.2/doc/outdevs.texi
+@@ -216,7 +216,7 @@ OpenGL output device.
+ 
+ To enable this output device you need to configure FFmpeg with @code{--enable-opengl}.
+ 
+-Device allows to render to OpenGL context.
++This output device allows one to render to OpenGL context.
+ Context may be provided by application or default SDL window is created.
+ 
+ When device renders to external context, application must implement handlers for following messages:

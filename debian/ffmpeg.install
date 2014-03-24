@@ -1,0 +1,4 @@
+doc/ffserver.conf					etc
+usr/bin/ff*
+usr/share/man/man1
+usr/share/ffmpeg/*.ffpreset
