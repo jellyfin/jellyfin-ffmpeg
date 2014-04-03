@@ -41,7 +41,6 @@ FT = faketime -f -m "$(DATE)"
 #	--enable-libvidstab
 #	--enable-libx265
 #	--enable-libxavs
-#	--enable-opencl
 # The following flags/libraries are not added, because the configure script fails to detect them:
 #  * "ERROR: shine not found", but libshine-dev is installed. This is probably due to libshine in Debian being too old (2.0.0, while 3.0.0 exists.).
 #	--enable-libshine				(libshine-dev)
@@ -76,7 +75,7 @@ endif
 
 # Some libraries are not build on hurd.
 ifneq ($(DEB_HOST_ARCH_OS),hurd)
-	CONFIG += --enable-libzmq
+	CONFIG += --enable-libzmq --enable-opencl
 endif
 
 # Use the default debhelper scripts, where possible.

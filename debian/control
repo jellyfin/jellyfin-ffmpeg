@@ -106,6 +106,8 @@ Build-Depends:
  libzmq3-dev [!hurd-any],
 # --enable-libzvbi
  libzvbi-dev [linux-any],
+# --enable-opencl
+ ocl-icd-opencl-dev [!hurd-any] | opencl-dev [!hurd-any],
 # HTML documentation
  texinfo,
 # assembler optimizations

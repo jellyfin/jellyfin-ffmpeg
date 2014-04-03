@@ -242,6 +242,28 @@ libavutil.so.152 libavutil152 #MINVER#
  av_murmur3_update@LIBAVUTIL_152 4:2.1
  av_nearer_q@LIBAVUTIL_152 4:2.1
  av_next_option@LIBAVUTIL_152 4:2.1
+ (optional)av_opencl_alloc_external_env@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_benchmark@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_buffer_create@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_buffer_read@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_buffer_read_image@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_buffer_release@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_buffer_write@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_buffer_write_image@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_compile@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_create_kernel@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_errstr@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_free_device_list@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_free_external_env@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_free_option@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_get_command_queue@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_get_device_list@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_get_option@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_init@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_register_kernel_code@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_release_kernel@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_set_option@LIBAVUTIL_152 4:2.2
+ (optional)av_opencl_uninit@LIBAVUTIL_152 4:2.2
  av_opt_child_class_next@LIBAVUTIL_152 4:2.1
  av_opt_child_next@LIBAVUTIL_152 4:2.1
  av_opt_eval_double@LIBAVUTIL_152 4:2.1
@@ -408,3 +430,4 @@ libavutil.so.152 libavutil152 #MINVER#
  ff_get_cpu_flags_x86@LIBAVUTIL_152 4:2.1
  ff_init_lls_x86@LIBAVUTIL_152 4:2.1
  ff_log2_tab@LIBAVUTIL_152 4:2.1
+ (optional)ff_opencl_set_parameter@LIBAVUTIL_152 4:2.2
