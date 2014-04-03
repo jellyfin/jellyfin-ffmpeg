@@ -20,7 +20,10 @@ CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS)) -Wall
 
 # Get the date of the latest changelog entry.
 # This is used to make the build more binary reproducible.
-DATE=$(shell dpkg-parsechangelog | grep Date: | sed s/Date:\ //)
+DAT  = $(shell dpkg-parsechangelog | grep Date: | sed s/Date:\ //)
+# Change the format to the only one that stops faketime from incresing the time.
+DATE = $(shell faketime "$(DAT)" date -u +"%Y-%m-%d %H:%M:%S")
+FT = faketime -f -m "$(DATE)"
 
 # Enable as many features as possible, as long as the result is still GPLv2+ (and not only GPLv3+).
 # Therefore the following flags (and build-dependencies) are not added:
@@ -97,16 +100,19 @@ override_dh_auto_clean:
 
 # Create doxygen documentation:
 override_dh_auto_build-indep:
-	faketime "$(DATE)" doc/doxy-wrapper.sh ./ doc/Doxyfile
+	# Use faketime, because doxygen embeds the creation date.
+	$(FT) doc/doxy-wrapper.sh ./ doc/Doxyfile
 
-# Use faketime to make the build more binary reproducible.
-# Build qt-faststart here, to make it possible to build with 'nocheck'.
 override_dh_auto_build-arch:
-	faketime "$(DATE)" dh_auto_build -a -- tools/qt-faststart
+	# Build qt-faststart here, to make it possible to build with 'nocheck'.
+	make tools/qt-faststart
+	# Use faketime to make the build more binary reproducible.
+	$(FT) dh_auto_build -a
 
 # Move the debug symbols to the debug package:
+# Faketime is necessary here, because dh_strip adds timestamps to static libraries (*.a).
 override_dh_strip:
-	dh_strip --dbg-package=ffmpeg-dbg
+	$(FT) dh_strip --dbg-package=ffmpeg-dbg
 
 # Don't compress the example source code files.
 override_dh_compress:
