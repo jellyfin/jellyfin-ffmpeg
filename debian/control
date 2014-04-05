@@ -134,7 +134,7 @@ Description: Tools for transcoding, streaming and playing of multimedia files
   * ffprobe: a simple multimedia stream analyzer
  .
  NOTE: It does not contain qt-faststart to avoid a conflict with libav-tools.
-       If you need qt-faststart from ffmepg, install the package qt-faststart.
+       If you need qt-faststart from FFmpeg, install the package qt-faststart.
 
 Package: qt-faststart
 Architecture: any
