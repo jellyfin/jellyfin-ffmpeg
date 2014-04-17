@@ -2,6 +2,7 @@ Source: ffmpeg
 Section: video
 Priority: optional
 Maintainer: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Uploaders: Alexander Strasser <eclipse7@gmx.net>
 Homepage: https://ffmpeg.org/
 Standards-Version: 3.9.5
 Vcs-Git: git://anonscm.debian.org/collab-maint/ffmpeg.git
