@@ -319,6 +319,7 @@ Depends:
  libavcodec-ffmpeg-dev (= ${binary:Version}),
  libavfilter104 (= ${binary:Version}),
  libavformat-ffmpeg-dev (= ${binary:Version}),
+ libavresample-ffmpeg-dev (= ${binary:Version}),
  libavutil-ffmpeg-dev (= ${binary:Version}),
  libpostproc-ffmpeg-dev (= ${binary:Version}),
  libswresample-ffmpeg-dev (= ${binary:Version}),
@@ -377,6 +378,47 @@ Description: FFmpeg library with (de)muxers for multimedia containers - developm
  (muxing and demuxing) audio, video and subtitle streams. It encompasses
  multiple muxers and demuxers for multimedia container formats. It also
  supports several input and output protocols to access a media resource.
+ .
+ This package contains the development files.
+
+Package: libavresample101
+Architecture: any
+Section: libs
+Multi-Arch: same
+Pre-Depends:
+ ${misc:Pre-Depends}
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends}
+Description: FFmpeg compatibility library for resampling - runtime files
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This library is provided for compatibility reasons only.
+ The FFmpeg project advises to use libswresample instead.
+ .
+ This package contains the runtime files.
+
+Package: libavresample-ffmpeg-dev
+Architecture: any
+Section: libdevel
+Multi-Arch: same
+Conflicts:
+ libavresample-dev
+Depends:
+ libavutil-ffmpeg-dev (= ${binary:Version}),
+ libavresample101 (= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg compatibility library for resampling - development files
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This library is provided for compatibility reasons only.
+ The FFmpeg project advises to use libswresample instead.
  .
  This package contains the development files.
 

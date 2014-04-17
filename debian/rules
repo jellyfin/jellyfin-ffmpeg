@@ -57,7 +57,7 @@ FT = faketime -f -m "$(DATE)"
 CONFIG := --prefix=/usr --extra-version="$(DEB_REVISION)" --toolchain=hardened \
 	--extra-cflags="$(CFLAGS)" --extra-cxxflags="$(CXXFLAGS)" \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) --shlibdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
-	--enable-raise-major --enable-gpl --enable-shared --disable-stripping \
+	--enable-raise-major --enable-gpl --enable-shared --disable-stripping --enable-avresample \
 	--enable-avisynth --enable-fontconfig --enable-frei0r --enable-gnutls \
 	 --enable-ladspa --enable-libass --enable-libbluray --enable-libcaca \
 	--enable-libcdio --enable-libdc1394 --enable-libflite --enable-libfreetype \
