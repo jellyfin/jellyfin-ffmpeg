@@ -1,8 +1,8 @@
-ffmpeg (4:2.2-1) experimental; urgency=medium
+ffmpeg (4:2.2.1-1) experimental; urgency=medium
 
   * Reintroduce FFmpeg to Debian. (Closes: #729203)
     There are far to many changes since FFmpeg 0.5 to mention them here, see:
-        https://git.videolan.org/?p=ffmpeg.git;a=shortlog;h=n2.2
+        https://git.videolan.org/?p=ffmpeg.git;a=shortlog;h=n2.2.1
     Many security issues have been fixed as well, see:
         https://ffmpeg.org/security.html
     Among them are:
