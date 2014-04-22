@@ -3,8 +3,12 @@
 # This enables verbose mode.
 #export DH_VERBOSE=1
 
+# Determine the debian directory, which is the directory of this makefile.
+# The path of this makefile is the first word in the MAKEFILE_LIST.
+DEBIAN_DIR = $(dir $(firstword $(MAKEFILE_LIST)))
+
 # Get the Debian version revision:
-DEB_VERSION  := $(shell dpkg-parsechangelog | sed -n 's/^Version: //p')
+DEB_VERSION  := $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog | sed -n 's/^Version: //p')
 DEB_REVISION := $(word 2, $(subst -, ,$(DEB_VERSION)))
 
 # Get the architecture triplett:
@@ -20,7 +24,7 @@ CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS)) -Wall
 
 # Get the date of the latest changelog entry.
 # This is used to make the build more binary reproducible.
-DAT  = $(shell dpkg-parsechangelog | grep Date: | sed s/Date:\ //)
+DAT  = $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog | grep Date: | sed s/Date:\ //)
 # Change the format to the only one that stops faketime from incresing the time.
 DATE = $(shell faketime "$(DAT)" date -u +"%Y-%m-%d %H:%M:%S")
 FT = faketime -f -m "$(DATE)"
@@ -121,3 +125,8 @@ override_dh_compress:
 # The acodec-flac test fails in experimental, due to gcc-4.9.
 override_dh_auto_test:
 	-dh_auto_test
+
+# Download the latest upstream tarball.
+get-orig-source:
+	cd $(DEBIAN_DIR)../ && \
+	uscan --rename --force-download --destdir $(CURDIR)
