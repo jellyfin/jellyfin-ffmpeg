@@ -1,7 +1,8 @@
 #!/usr/bin/make -f
 
 # This enables verbose mode.
-#export DH_VERBOSE=1
+export DH_VERBOSE=1
+VERBOSE = V=1
 
 # Determine the debian directory, which is the directory of this makefile.
 # The path of this makefile is the first word in the MAKEFILE_LIST.
@@ -108,9 +109,9 @@ override_dh_auto_build-indep:
 
 override_dh_auto_build-arch:
 	# Build qt-faststart here, to make it possible to build with 'nocheck'.
-	make tools/qt-faststart
+	make tools/qt-faststart $(VERBOSE)
 	# Use faketime to make the build more binary reproducible.
-	$(FT) dh_auto_build -a
+	$(FT) dh_auto_build -a -- $(VERBOSE)
 
 # Move the debug symbols to the debug package:
 # Faketime is necessary here, because dh_strip adds timestamps to static libraries (*.a).
