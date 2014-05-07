@@ -58,11 +58,12 @@ FT = faketime -f -m "$(DATE)"
 #  * With --enable-incompatible-libav-abi, packages build against libav would work with this libraries, but probably not the other way around.
 #    This could be used together with Breaks:, Replaces: against the corresponding libav libraries.
 #  * With --enable-raise-major, the resulting binaries should be coninstallable with the libav ones and thus no conflicts would be necessary.
-#    This seems to be the best approach, as it allows the maintainer of every package to decide which library to build against.
-CONFIG := --prefix=/usr --extra-version="$(DEB_REVISION)" --toolchain=hardened \
+#    But this could break versioned configure checks.
+#  * With --build-suffix="-ffmpeg" the library name is changed, so there can't be a conflict with Libav.
+CONFIG := --prefix=/usr --extra-version="$(DEB_REVISION)" --build-suffix="-ffmpeg" --toolchain=hardened \
 	--extra-cflags="$(CFLAGS)" --extra-cxxflags="$(CXXFLAGS)" \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) --shlibdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
-	--enable-raise-major --enable-gpl --enable-shared --disable-stripping --enable-avresample \
+	--enable-gpl --enable-shared --disable-stripping --enable-avresample \
 	--enable-avisynth --enable-fontconfig --enable-frei0r --enable-gnutls \
 	 --enable-ladspa --enable-libass --enable-libbluray --enable-libcaca \
 	--enable-libcdio --enable-libdc1394 --enable-libflite --enable-libfreetype \
