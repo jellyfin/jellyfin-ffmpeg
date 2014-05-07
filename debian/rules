@@ -23,12 +23,19 @@ DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 CFLAGS   := $(filter -O0,$(shell dpkg-buildflags --get CFLAGS)) -Wall
 CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS)) -Wall
 
-# Get the date of the latest changelog entry.
-# This is used to make the build more binary reproducible.
-DAT  = $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog | grep Date: | sed s/Date:\ //)
-# Change the format to the only one that stops faketime from incresing the time.
-DATE = $(shell faketime "$(DAT)" date -u +"%Y-%m-%d %H:%M:%S")
-FT = faketime -f -m "$(DATE)"
+# Faketime on hurd currently (faketime 0.9.1-2) segfaults and newer versions FTBFS.
+# Thus don't use it there.
+# TODO: Use faketime on hurd again, once this is fixed.
+ifeq ($(DEB_HOST_ARCH_OS),hurd)
+  FT=
+else
+  # Get the date of the latest changelog entry.
+  # This is used to make the build more binary reproducible.
+  DAT  = $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog | grep Date: | sed s/Date:\ //)
+  # Change the format to the only one that stops faketime from incresing the time.
+  DATE = $(shell faketime "$(DAT)" date -u +"%Y-%m-%d %H:%M:%S")
+  FT = faketime -f -m "$(DATE)"
+endif
 
 # Enable as many features as possible, as long as the result is still GPLv2+ (and not only GPLv3+).
 # Therefore the following flags (and build-dependencies) are not added:
