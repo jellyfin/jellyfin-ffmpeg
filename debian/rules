@@ -60,6 +60,7 @@ FT = faketime -f -m "$(DATE)"
 #  * With --enable-raise-major, the resulting binaries should be coninstallable with the libav ones and thus no conflicts would be necessary.
 #    But this could break versioned configure checks.
 #  * With --build-suffix="-ffmpeg" the library name is changed, so there can't be a conflict with Libav.
+#    The patch pkg-config_file_without_build_suffix.patch ensures that packages using pkg-config still work with these FFmpeg library packages.
 CONFIG := --prefix=/usr --extra-version="$(DEB_REVISION)" --build-suffix="-ffmpeg" --toolchain=hardened \
 	--extra-cflags="$(CFLAGS)" --extra-cxxflags="$(CXXFLAGS)" \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) --shlibdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
