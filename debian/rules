@@ -134,7 +134,7 @@ override_dh_compress:
 # TODO: Remove this for the upload to unstable.
 # The acodec-flac test fails in experimental, due to gcc-4.9.
 override_dh_auto_test:
-	-dh_auto_test
+	-dh_auto_test -- $(VERBOSE)
 
 # Download the latest upstream tarball.
 get-orig-source:
