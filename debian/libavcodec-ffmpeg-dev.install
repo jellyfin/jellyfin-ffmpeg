@@ -1,4 +1,4 @@
 usr/include/libavcodec
-usr/lib/*/libavcodec.a
-usr/lib/*/libavcodec.so
+usr/lib/*/libavcodec-ffmpeg.a
+usr/lib/*/libavcodec-ffmpeg.so
 usr/lib/*/pkgconfig/libavcodec.pc

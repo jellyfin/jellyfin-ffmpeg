@@ -1,3 +1,3 @@
 # This is a bug in lintian thinking only libav (and not also FFmpeg) build libavdevice.
 # See: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=729203#430
-libavdevice155: embedded-library usr/lib/x86_64-linux-gnu/libavdevice.so.155.10.100: libavdevice
+libavdevice-ffmpeg55: embedded-library usr/lib/x86_64-linux-gnu/libavdevice-ffmpeg.so.55.10.100: libavdevice

@@ -1,0 +1,10 @@
+libavdevice-ffmpeg.so.55 libavdevice-ffmpeg55 #MINVER#
+ LIBAVDEVICE_55@LIBAVDEVICE_55 4:2.1
+ avdevice_app_to_dev_control_message@LIBAVDEVICE_55 4:2.2
+ avdevice_configuration@LIBAVDEVICE_55 4:2.1
+ avdevice_dev_to_app_control_message@LIBAVDEVICE_55 4:2.2
+ avdevice_free_list_devices@LIBAVDEVICE_55 4:2.2
+ avdevice_license@LIBAVDEVICE_55 4:2.1
+ avdevice_list_devices@LIBAVDEVICE_55 4:2.2
+ avdevice_register_all@LIBAVDEVICE_55 4:2.1
+ avdevice_version@LIBAVDEVICE_55 4:2.1
