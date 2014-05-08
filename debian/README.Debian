@@ -1,0 +1,33 @@
+README.Debian for FFmpeg
+------------------------
+
+If you want to compile your program using these FFmpeg libraries, you
+can use the lib*-ffmpeg-dev packages, which include the necessary
+headers and pkg-config files.
+
+Using pkg-config to check for the correct linker flags is highly
+recommended, as the Debian FFmpeg libraries are suffixed with '-ffmpeg'
+to distinguish them from the Libav libraries, thus linking with e.g.
+'-lavcodec' will fail. But replacing this with '-lavcodec-ffmpeg'
+prevents it from building with vanilla FFmpeg. Thus use pkg-config!
+
+This can be be done on various ways, depending on your build tools.
+For example to check for libavcodec you can use:
+ * configure script:
+    LIBAVCODEC_LIBS=`pkg-config --libs libavcodec`
+ * configure.ac using autoconf:
+    PKG_CHECK_MODULES(AVCODEC, libavcodec, have_libavcodec="yes",
+                      have_libavcodec="no  (libavcodec not found)")
+ * CMakeLists.txt using cmake:
+    pkg_check_modules(LIBAVCODEC REQUIRED libavcodec)
+
+
+IF YOU ARE A MULTIMEDIA MAINTAINER READ THIS
+
+FFmpeg provides more formats and codecs support for your application
+than Libav. For a comparison, see e.g. http://lucy.pkh.me/diff/.
+It also has slight API differences to Libav. If your package's upstream
+uses FFmpeg for development, you should try to change your build-dependencies
+to the lib*-ffmpeg-dev packages and see if your bugs vanish.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 07 May 2014 22:23:49 +0200
