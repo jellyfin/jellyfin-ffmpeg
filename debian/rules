@@ -23,6 +23,9 @@ DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 CFLAGS   := $(filter -O0,$(shell dpkg-buildflags --get CFLAGS)) -Wall
 CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS)) -Wall
 
+# Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
+LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFLAGS))
+
 # Faketime on hurd currently (faketime 0.9.1-2) segfaults and newer versions FTBFS.
 # Thus don't use it there.
 # TODO: Use faketime on hurd again, once this is fixed.
