@@ -1,9 +1,12 @@
-ffmpeg (7:2.2.1-2) UNRELEASED; urgency=medium
+ffmpeg (7:2.2.2-1) UNRELEASED; urgency=medium
+  * Import new upstream version 2.2.2.
   * Fix FTBFS in Ubuntu caused by the -Bsymbolic-functions linker flag.
     Thanks to Guillaume Martres for pointing out the fix that Fabian Greffrath
     created for the Libav package.
+  * Don't ignore test failures anymore, since gcc-4.9 has been fixed to
+    compile FFmpeg correctly.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 11 May 2014 23:47:37 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
 ffmpeg (7:2.2.1-1) experimental; urgency=medium
 
