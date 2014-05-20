@@ -1,4 +1,5 @@
 ffmpeg (7:2.2.2-1) UNRELEASED; urgency=medium
+
   * Import new upstream version 2.2.2.
   * Fix FTBFS in Ubuntu caused by the -Bsymbolic-functions linker flag.
     Thanks to Guillaume Martres for pointing out the fix that Fabian Greffrath
