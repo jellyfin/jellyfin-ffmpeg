@@ -6,6 +6,7 @@ ffmpeg (7:2.2.2-1) UNRELEASED; urgency=medium
     created for the Libav package.
   * Don't ignore test failures anymore, since gcc-4.9 has been fixed to
     compile FFmpeg correctly.
+  * Enable libdc1394 only on linux. This fixes FTBFS on !linux-any.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
