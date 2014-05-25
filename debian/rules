@@ -77,7 +77,7 @@ CONFIG := --prefix=/usr --extra-version="$(DEB_REVISION)" --build-suffix="-ffmpe
 	--enable-gpl --enable-shared --disable-stripping --enable-avresample \
 	--enable-avisynth --enable-fontconfig --enable-frei0r --enable-gnutls \
 	 --enable-ladspa --enable-libass --enable-libbluray --enable-libcaca \
-	--enable-libcdio --enable-libdc1394 --enable-libflite --enable-libfreetype \
+	--enable-libcdio --enable-libflite --enable-libfreetype \
 	--enable-libgme --enable-libgsm --enable-libmodplug --enable-libmp3lame \
 	--enable-libopencv --enable-libopenjpeg --enable-libopus --enable-libpulse \
 	--enable-librtmp --enable-libschroedinger --enable-libsoxr --enable-libspeex \
@@ -87,7 +87,7 @@ CONFIG := --prefix=/usr --extra-version="$(DEB_REVISION)" --build-suffix="-ffmpe
 
 # Some libraries are build only on linux.
 ifeq ($(DEB_HOST_ARCH_OS),linux)
-	CONFIG += --enable-libiec61883 --enable-libzvbi
+	CONFIG += --enable-libdc1394 --enable-libiec61883 --enable-libzvbi
 endif
 
 # Some libraries are not build on hurd.
