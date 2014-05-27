@@ -4,3 +4,4 @@ fix-spelling-texi.patch
 fix-tests.patch
 makeinfo.patch
 pkg-config_file_without_build_suffix.patch
+fix-architecture-x86-detection.patch
