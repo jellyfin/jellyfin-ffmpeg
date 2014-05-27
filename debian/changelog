@@ -9,6 +9,7 @@ ffmpeg (7:2.2.2-1) UNRELEASED; urgency=medium
   * Enable libdc1394 only on linux. This fixes FTBFS on !linux-any.
   * Use wildcards instead of multiarch paths and sonames in lintian
     overrides.
+  * Fix building on hurd.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
