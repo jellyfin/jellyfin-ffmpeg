@@ -2173,7 +2173,7 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
             if (s->core_downmix && (s->core_downmix_amode == DCA_STEREO ||
                                     s->core_downmix_amode == DCA_STEREO_TOTAL)) {
                 int sign, code;
-                for (i = 0; i < s->prim_channels + !!s->lfe; i++) {
+                for (i = 0; i < num_core_channels + !!s->lfe; i++) {
                     sign = s->core_downmix_codes[i][0] & 0x100 ? 1 : -1;
                     code = s->core_downmix_codes[i][0] & 0x0FF;
                     s->downmix_coef[i][0] = (!code ? 0.0f :
@@ -2191,19 +2191,19 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
                            "Invalid channel mode %d\n", am);
                     return AVERROR_INVALIDDATA;
                 }
-                if (s->prim_channels + !!s->lfe >
+                if (num_core_channels + !!s->lfe >
                     FF_ARRAY_ELEMS(dca_default_coeffs[0])) {
                     avpriv_request_sample(s->avctx, "Downmixing %d channels",
                                           s->prim_channels + !!s->lfe);
                     return AVERROR_PATCHWELCOME;
                 }
-                for (i = 0; i < s->prim_channels + !!s->lfe; i++) {
+                for (i = 0; i < num_core_channels + !!s->lfe; i++) {
                     s->downmix_coef[i][0] = dca_default_coeffs[am][i][0];
                     s->downmix_coef[i][1] = dca_default_coeffs[am][i][1];
                 }
             }
             av_dlog(s->avctx, "Stereo downmix coeffs:\n");
-            for (i = 0; i < s->prim_channels + !!s->lfe; i++) {
+            for (i = 0; i < num_core_channels + !!s->lfe; i++) {
                 av_dlog(s->avctx, "L, input channel %d = %f\n", i,
                         s->downmix_coef[i][0]);
                 av_dlog(s->avctx, "R, input channel %d = %f\n", i,
@@ -2329,6 +2329,17 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
     { /* xxx should also do MA extensions */
         if (s->amode < 16) {
             avctx->channel_layout = dca_core_channel_layout[s->amode];
+
+            if (s->prim_channels + !!s->lfe > 2 &&
+                avctx->request_channel_layout == AV_CH_LAYOUT_STEREO) {
+                /*
+                 * Neither the core's auxiliary data nor our default tables contain
+                 * downmix coefficients for the additional channel coded in the XCh
+                 * extension, so when we're doing a Stereo downmix, don't decode it.
+                 */
+                s->xch_disable = 1;
+            }
+
 #if FF_API_REQUEST_CHANNELS
 FF_DISABLE_DEPRECATION_WARNINGS
             if (s->xch_present && !s->xch_disable &&
@@ -2366,7 +2377,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 return AVERROR_INVALIDDATA;
             }
 
-            if (s->prim_channels + !!s->lfe > 2 &&
+            if (num_core_channels + !!s->lfe > 2 &&
                 avctx->request_channel_layout == AV_CH_LAYOUT_STEREO) {
                 channels = 2;
                 s->output = s->prim_channels == 2 ? s->amode : DCA_STEREO;
@@ -2415,7 +2426,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
          * masks in some sense -- unfortunately some channels could overlap */
         if (av_popcount(channel_mask) != av_popcount(channel_layout)) {
             av_log(avctx, AV_LOG_DEBUG,
-                   "DTS-XXCH: Inconsistant avcodec/dts channel layouts\n");
+                   "DTS-XXCH: Inconsistent avcodec/dts channel layouts\n");
             return AVERROR_INVALIDDATA;
         }
 
@@ -2433,6 +2444,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
                         s->xxch_order_tab[j++] = posn;
                     }
                 }
+
             }
 
             s->lfe_index = av_popcount(channel_layout & (AV_CH_LOW_FREQUENCY-1));
