@@ -177,7 +177,8 @@ Description: Debug symbols for the FFmpeg multimedia framework
  machines have created. It supports the most obscure ancient formats up to the
  cutting edge.
  .
- This package contains the debug symbols used to produce useful bugreports.
+ This package contains the debug symbols used to produce useful debugging
+ back-traces.
 
 Package: ffmpeg-doc
 Section: doc
