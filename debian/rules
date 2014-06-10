@@ -2,7 +2,7 @@
 
 # This enables verbose mode.
 export DH_VERBOSE=1
-VERBOSE = V=1
+export V=1
 
 # Determine the debian directory, which is the directory of this makefile.
 # The path of this makefile is the first word in the MAKEFILE_LIST.
@@ -158,9 +158,13 @@ override_dh_auto_build-indep:
 
 override_dh_auto_build-arch:
 	# Build qt-faststart here, to make it possible to build with 'nocheck'.
-	make tools/qt-faststart $(VERBOSE)
+	make tools/qt-faststart
 	# Use faketime to make the build more binary reproducible.
-	$(FT) dh_auto_build -a -- $(VERBOSE)
+	$(FT) dh_auto_build -a
+
+# Set the library path for the dynamic linker, because the test otherwise don't find the libraries.
+override_dh_auto_test:
+	export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; dh_auto_test
 
 # Move the debug symbols to the debug package:
 # Faketime is necessary here, because dh_strip adds timestamps to static libraries (*.a).
@@ -170,10 +174,6 @@ override_dh_strip:
 # Don't compress the example source code files.
 override_dh_compress:
 	dh_compress -Xexamples
-
-# Make the tests verbose.
-override_dh_auto_test:
-	dh_auto_test -- $(VERBOSE)
 
 # Download the latest upstream tarball.
 get-orig-source:
