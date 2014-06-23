@@ -621,7 +621,8 @@ static void write_frame(AVFormatContext *s, AVPacket *pkt, OutputStream *ost)
         bsfc = bsfc->next;
     }
 
-    if (!(s->oformat->flags & AVFMT_NOTIMESTAMPS) &&
+    if (!(s->oformat->flags & AVFMT_NOTIMESTAMPS)) {
+     if(
         (avctx->codec_type == AVMEDIA_TYPE_AUDIO || avctx->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->dts != AV_NOPTS_VALUE &&
         ost->last_mux_dts != AV_NOPTS_VALUE) {
@@ -642,6 +643,16 @@ static void write_frame(AVFormatContext *s, AVPacket *pkt, OutputStream *ost)
             pkt->pts = FFMAX(pkt->pts, max);
         pkt->dts = max;
       }
+     }
+        if (pkt->dts != AV_NOPTS_VALUE &&
+            pkt->pts != AV_NOPTS_VALUE &&
+            pkt->dts > pkt->pts) {
+            av_log(s, AV_LOG_WARNING, "Invalid DTS: %"PRId64" PTS: %"PRId64" in output stream %d:%d\n",
+                   pkt->dts, pkt->pts,
+                   ost->file_index, ost->st->index);
+            pkt->pts = AV_NOPTS_VALUE;
+            pkt->dts = AV_NOPTS_VALUE;
+        }
     }
     ost->last_mux_dts = pkt->dts;
 
@@ -1088,6 +1099,19 @@ static void do_video_stats(OutputStream *ost, int frame_size)
         fprintf(vstats_file, "s_size= %8.0fkB time= %0.3f br= %7.1fkbits/s avg_br= %7.1fkbits/s ",
                (double)video_size / 1024, ti1, bitrate, avg_bitrate);
         fprintf(vstats_file, "type= %c\n", av_get_picture_type_char(enc->coded_frame->pict_type));
+    }
+}
+
+static void finish_output_stream(OutputStream *ost)
+{
+    OutputFile *of = output_files[ost->file_index];
+    int i;
+
+    ost->finished = ENCODER_FINISHED | MUXER_FINISHED;
+
+    if (of->shortest) {
+        for (i = 0; i < of->ctx->nb_streams; i++)
+            output_streams[of->ost_index + i]->finished = ENCODER_FINISHED | MUXER_FINISHED;
     }
 }
 
@@ -3147,7 +3171,7 @@ static int process_input(int file_index)
 
                 if (ost->source_index == ifile->ist_index + i &&
                     (ost->stream_copy || ost->enc->type == AVMEDIA_TYPE_SUBTITLE))
-                    close_output_stream(ost);
+                    finish_output_stream(ost);
             }
         }
 
