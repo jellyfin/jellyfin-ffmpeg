@@ -3,14 +3,19 @@ Upstream-Name: FFmpeg
 Upstream-Contact: ffmpeg-devel@ffmpeg.org
 Source: https://ffmpeg.org
 Comments:
- Most files in FFmpeg are under the GNU Lesser General Public License
+ Most files in FFmpeg are licensed under the GNU Lesser General Public License
  version 2.1 or later (LGPL v2.1+), but some optional parts of FFmpeg are
  licensed under the GNU General Public License version 2 or later (GPL v2+)
  and a few have different, but compatible licenses.
+ .
  For building the Debian packages some of the GPL licensed files are used,
- so the resulting binaries are under GPL v2+.
- FFmpeg can also be combined with external libraries under GPL v3, but this is
- not done for the Debian packages.
+ so the resulting binaries are licensed under GPL v2+.
+ .
+ FFmpeg can also be combined with external libraries licensed under the
+ Apache License 2.0, which would make the resulting binaries effectively
+ licensed under the GPL v3+, or even with non-free libraries, which would
+ make the resulting binaries unredistributable.
+ But this is not done for the Debian packages.
 
 Files: *
 Copyright:
