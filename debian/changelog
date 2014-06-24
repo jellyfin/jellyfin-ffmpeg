@@ -12,6 +12,8 @@ ffmpeg (7:2.2.4-1) UNRELEASED; urgency=medium
   * Fix building on hurd (patch included upstream in 2.2.3).
   * Improve the description of the debug package.
   * Drop fix-tests.patch. Instead export the LD_LIBRARY_PATH in debian/rules.
+  * Improve the comment in debian/copyright, explaining the effective license
+    of the binary packages.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
