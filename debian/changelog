@@ -1,6 +1,7 @@
 ffmpeg (7:2.2.4-1) UNRELEASED; urgency=medium
 
   * Import new upstream bugfix release 2.2.4.
+     - Fix integer overflow in LZO code. (CVE-2014-4610)
   * Fix FTBFS in Ubuntu caused by the -Bsymbolic-functions linker flag.
     Thanks to Guillaume Martres for pointing out the fix that Fabian Greffrath
     created for the Libav package.
