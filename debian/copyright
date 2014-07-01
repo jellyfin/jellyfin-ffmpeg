@@ -405,6 +405,57 @@ Comment:
  License along with FFmpeg; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+Files: libavcodec/arm/vp8dsp_armv6.S
+Copyright:
+  2010, Google Inc.
+  2010, Rob Clark <rob@ti.com>
+  2011, Mans Rullgard <mans@mansr.com>
+License: LGPL-2.1+ and BSD-3-clause
+ FFmpeg is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ FFmpeg is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+ .
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+ .
+ * Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+ .
+ * Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in
+   the documentation and/or other materials provided with the
+   distribution.
+ .
+ * Neither the name of Google nor the names of its contributors may
+   be used to endorse or promote products derived from this software
+   without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+Comment:
+ On Debian systems, the full text of the GNU Lesser General Public License
+ version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
 Files:
   libavdevice/x11grab.c
   libavfilter/f_ebur128.c
@@ -696,7 +747,20 @@ Comment:
 
 Files:
   compat/avisynth/avisynth_c_25.h
-  doc/examples/*
+  doc/examples/avcodec.c
+  doc/examples/avio_reading.c
+  doc/examples/demuxing_decoding.c
+  doc/examples/filtering_audio.c
+  doc/examples/filtering_video.c
+  doc/examples/Makefile
+  doc/examples/metadata.c
+  doc/examples/muxing.c
+  doc/examples/README
+  doc/examples/remuxing.c
+  doc/examples/resampling_audio.c
+  doc/examples/scaling_video.c
+  doc/examples/transcode_aac.c
+  libavcodec/arm/jrevdct_arm.S
   libavcodec/cinepakenc.c
   libavcodec/nellymoser.c
   libavcodec/nellymoserdec.c
@@ -706,10 +770,12 @@ Files:
   libavformat/oggdec.c
   libavformat/oggdec.h
   libavformat/oggparseogm.c
+  libavformat/oggparsespeex.c
   libavformat/oggparsetheora.c
   libavformat/oggparsevorbis.c
 Copyright:
   2001, 2003, Fabrice Bellard
+  2001 Lionel Ulmer <lionel.ulmer@free.fr> <bbrox@bbrox.org>
   2005, Alex Beregszaszi
   2005, Måns Rullgård
   2005, Matthieu CASTET
@@ -758,6 +824,7 @@ License: public-domain
  This file is placed in the public domain. Use the program however you see fit.
 
 Files:
+  compat/windows/makedef
   libavcodec/faandct.c
   libavcodec/zerocodec.c
   libavdevice/openal-dec.c
@@ -765,7 +832,7 @@ Copyright:
   2003, Michael Niedermayer <michaelni@gmx.at>
   2003, Roman Shaposhnik
   2011, Jonathan Baldwin
-  2012, Derek Buitenhuis
+  2012-2013, Derek Buitenhuis
 License: ISC
  Permission to use, copy, modify, and/or distribute this software for any
  purpose with or without fee is hereby granted, provided that the above
