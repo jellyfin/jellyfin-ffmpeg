@@ -154,7 +154,7 @@ override_dh_auto_clean:
 # Create doxygen documentation:
 override_dh_auto_build-indep:
 	# Use faketime, because doxygen embeds the creation date.
-	$(FT) doc/doxy-wrapper.sh ./ doc/Doxyfile
+	$(FT) dh_auto_build -i -- apidoc
 
 override_dh_auto_build-arch:
 	# Build qt-faststart here, to make it possible to build with 'nocheck'.
