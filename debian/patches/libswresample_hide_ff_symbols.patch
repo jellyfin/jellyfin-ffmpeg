@@ -1,0 +1,16 @@
+Description: swresample/libswresample.v: hide ff_*
+ The ff_* symbols are not part of the public API and should not be part
+ of the ABI.
+
+Author: Michael Niedermayer <michaelni@gmx.at>
+Origin: upstream-commit: 52fafaf4740b78174e9da0d2aaaf3dd93ab33d63
+Last-Update: <2014-07-12>
+
+--- ffmpeg-2.2.4.orig/libswresample/libswresample.v
++++ ffmpeg-2.2.4/libswresample/libswresample.v
+@@ -1,4 +1,4 @@
+ LIBSWRESAMPLE_$MAJOR {
+-        global: swr_*; ff_*; swresample_*;
++        global: swr_*; swresample_*;
+         local: *;
+ };

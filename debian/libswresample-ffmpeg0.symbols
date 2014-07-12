@@ -1,7 +1,5 @@
 libswresample-ffmpeg.so.0 libswresample-ffmpeg0 #MINVER#
  LIBSWRESAMPLE_0@LIBSWRESAMPLE_0 7:2.1
- ff_log2_tab@LIBSWRESAMPLE_0 7:2.1
- ff_resample_int16_rounder@LIBSWRESAMPLE_0 7:2.1
  swr_alloc@LIBSWRESAMPLE_0 7:2.1
  swr_alloc_set_opts@LIBSWRESAMPLE_0 7:2.1
  swr_convert@LIBSWRESAMPLE_0 7:2.1
