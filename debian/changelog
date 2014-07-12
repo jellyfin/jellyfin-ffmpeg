@@ -20,6 +20,8 @@ ffmpeg (7:2.2.4-1) UNRELEASED; urgency=medium
   * Add -Wformat and -WError=format-security to the build-flags.
   * Don't export the ff_* symbols from libswresample, because they shouldn't
     be part of the ABI.
+  * Call the upstream Makefile from debian/rules to build the apidoc
+    instead of calling the doxy-wrapper directly.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
