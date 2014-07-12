@@ -1,2 +1,3 @@
 makeinfo.patch
 pkg-config_file_without_build_suffix.patch
+Add-Wformat-Werror-format-security-CFLAGS.patch

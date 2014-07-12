@@ -20,8 +20,8 @@ DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 
 # Only use '-O0' if given (via noopt) and enable all compiler warnings.
 # Hardening is enabled via the configure option --toolchain=hardened.
-CFLAGS   := $(filter -O0,$(shell dpkg-buildflags --get CFLAGS)) -Wall
-CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS)) -Wall
+CFLAGS   := $(filter -O0,$(shell dpkg-buildflags --get CFLAGS))
+CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS))
 
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
 LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFLAGS))
