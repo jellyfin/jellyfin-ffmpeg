@@ -22,6 +22,9 @@ ffmpeg (7:2.2.4-1) UNRELEASED; urgency=medium
     be part of the ABI.
   * Call the upstream Makefile from debian/rules to build the apidoc
     instead of calling the doxy-wrapper directly.
+  * Add _FFMPEG to the symbol versions of the libraries to ensure that there
+    is no confusion, if a binary is linked against FFmpeg and another shared
+    library, which is linked against Libav.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
