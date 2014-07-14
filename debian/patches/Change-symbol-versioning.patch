@@ -1,0 +1,93 @@
+Description: Add _FFMPEG to the symbol versions
+ This is done to ensure that there is no confusion, if a binary is linked
+ against FFmpeg and another shared library, which is linked against Libav.
+
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Last-Update: <2014-07-14>
+
+--- ffmpeg-2.2.4.orig/libavcodec/libavcodec.v
++++ ffmpeg-2.2.4/libavcodec/libavcodec.v
+@@ -1,4 +1,4 @@
+-LIBAVCODEC_$MAJOR {
++LIBAVCODEC_FFMPEG_$MAJOR {
+         global: av*;
+                 #deprecated, remove after next bump
+                 audio_resample;
+--- ffmpeg-2.2.4.orig/libavcodec/utils.c
++++ ffmpeg-2.2.4/libavcodec/utils.c
+@@ -119,9 +119,9 @@ static void *codec_mutex;
+ static void *avformat_mutex;
+ 
+ #if CONFIG_RAISE_MAJOR
+-#    define LIBNAME "LIBAVCODEC_155"
++#    define LIBNAME "LIBAVCODEC_FFMPEG_155"
+ #else
+-#    define LIBNAME "LIBAVCODEC_55"
++#    define LIBNAME "LIBAVCODEC_FFMPEG_55"
+ #endif
+ 
+ #if FF_API_FAST_MALLOC && CONFIG_SHARED && HAVE_SYMVER
+--- ffmpeg-2.2.4.orig/libavdevice/libavdevice.v
++++ ffmpeg-2.2.4/libavdevice/libavdevice.v
+@@ -1,4 +1,4 @@
+-LIBAVDEVICE_$MAJOR {
++LIBAVDEVICE_FFMPEG_$MAJOR {
+         global: avdevice_*;
+         local: *;
+ };
+--- ffmpeg-2.2.4.orig/libavfilter/libavfilter.v
++++ ffmpeg-2.2.4/libavfilter/libavfilter.v
+@@ -1,4 +1,4 @@
+-LIBAVFILTER_$MAJOR {
++LIBAVFILTER_FFMPEG_$MAJOR {
+         global: avfilter_*; av_*;
+             ff_default_query_formats;
+         local: *;
+--- ffmpeg-2.2.4.orig/libavformat/libavformat.v
++++ ffmpeg-2.2.4/libavformat/libavformat.v
+@@ -1,4 +1,4 @@
+-LIBAVFORMAT_$MAJOR {
++LIBAVFORMAT_FFMPEG_$MAJOR {
+         global: av*;
+                 #FIXME those are for ffserver
+                 ff_inet_aton;
+--- ffmpeg-2.2.4.orig/libavresample/libavresample.v
++++ ffmpeg-2.2.4/libavresample/libavresample.v
+@@ -1,4 +1,4 @@
+-LIBAVRESAMPLE_$MAJOR {
++LIBAVRESAMPLE_FFMPEG_$MAJOR {
+         global: av*;
+         local:  *;
+ };
+--- ffmpeg-2.2.4.orig/libavutil/libavutil.v
++++ ffmpeg-2.2.4/libavutil/libavutil.v
+@@ -1,4 +1,4 @@
+-LIBAVUTIL_$MAJOR {
++LIBAVUTIL_FFMPEG_$MAJOR {
+         global: av*; ff_*;
+         local: *;
+ };
+--- ffmpeg-2.2.4.orig/libpostproc/libpostproc.v
++++ ffmpeg-2.2.4/libpostproc/libpostproc.v
+@@ -1,4 +1,4 @@
+-LIBPOSTPROC_$MAJOR {
++LIBPOSTPROC_FFMPEG_$MAJOR {
+         global: postproc_*; pp_*;
+         local: *;
+ };
+--- ffmpeg-2.2.4.orig/libswresample/libswresample.v
++++ ffmpeg-2.2.4/libswresample/libswresample.v
+@@ -1,4 +1,4 @@
+-LIBSWRESAMPLE_$MAJOR {
++LIBSWRESAMPLE_FFMPEG_$MAJOR {
+         global: swr_*; swresample_*;
+         local: *;
+ };
+--- ffmpeg-2.2.4.orig/libswscale/libswscale.v
++++ ffmpeg-2.2.4/libswscale/libswscale.v
+@@ -1,4 +1,4 @@
+-LIBSWSCALE_$MAJOR {
++LIBSWSCALE_FFMPEG_$MAJOR {
+         global: swscale_*; sws_*;
+         local: *;
+ };
