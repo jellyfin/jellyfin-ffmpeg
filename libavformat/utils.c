@@ -110,6 +110,11 @@ MAKE_ACCESSORS(AVFormatContext, format, int, metadata_header_padding)
 MAKE_ACCESSORS(AVFormatContext, format, void *, opaque)
 MAKE_ACCESSORS(AVFormatContext, format, av_format_control_message, control_message_cb)
 
+struct AVCodecParserContext *av_stream_get_parser(const AVStream *st)
+{
+    return st->parser;
+}
+
 static AVCodec *find_decoder(AVFormatContext *s, AVStream *st, enum AVCodecID codec_id)
 {
     if (st->codec->codec)
@@ -1597,7 +1602,8 @@ int av_read_frame(AVFormatContext *s, AVPacket *pkt)
             }
 
             /* read packet from packet buffer, if there is data */
-            if (!(next_pkt->pts == AV_NOPTS_VALUE &&
+            st = s->streams[next_pkt->stream_index];
+            if (!(next_pkt->pts == AV_NOPTS_VALUE && st->discard < AVDISCARD_ALL &&
                   next_pkt->dts != AV_NOPTS_VALUE && !eof)) {
                 ret = read_from_packet_buffer(&s->packet_buffer,
                                                &s->packet_buffer_end, pkt);
