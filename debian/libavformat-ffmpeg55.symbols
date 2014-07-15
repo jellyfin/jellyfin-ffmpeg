@@ -140,6 +140,7 @@ libavformat-ffmpeg.so.55 libavformat-ffmpeg55 #MINVER#
  avpriv_dv_produce_packet@LIBAVFORMAT_FFMPEG_55 7:2.1
  avpriv_new_chapter@LIBAVFORMAT_FFMPEG_55 7:2.1
  avpriv_set_pts_info@LIBAVFORMAT_FFMPEG_55 7:2.1
+ av_stream_get_parser@LIBAVFORMAT_FFMPEG_55 7:2.2.5
  ff_codec_get_id@LIBAVFORMAT_FFMPEG_55 7:2.1
  ff_inet_aton@LIBAVFORMAT_FFMPEG_55 7:2.1
  ff_mpegts_parse_close@LIBAVFORMAT_FFMPEG_55 7:2.1
