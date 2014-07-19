@@ -1,6 +1,6 @@
-ffmpeg (7:2.2.5-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.3-1) UNRELEASED; urgency=medium
 
-  * Import new upstream bugfix release 2.2.5.
+  * Import new upstream release 2.3.
      - Fix integer overflow in LZO code. (CVE-2014-4610)
   * Fix FTBFS in Ubuntu caused by the -Bsymbolic-functions linker flag.
     Thanks to Guillaume Martres for pointing out the fix that Fabian Greffrath
@@ -17,14 +17,22 @@ ffmpeg (7:2.2.5-1) UNRELEASED; urgency=medium
     of the binary packages.
   * Change 'Comments:' to the correct 'Comment:' in debian/copyright.
   * Add some missing files to debian/copyright.
-  * Add -Wformat and -WError=format-security to the build-flags.
-  * Don't export the ff_* symbols from libswresample, because they shouldn't
-    be part of the ABI.
   * Call the upstream Makefile from debian/rules to build the apidoc
     instead of calling the doxy-wrapper directly.
   * Add _FFMPEG to the symbol versions of the libraries to ensure that there
     is no confusion, if a binary is linked against FFmpeg and another shared
     library, which is linked against Libav.
+  * Update patches to apply cleanly to 2.3.
+  * Add new symbols to the .symbols files.
+  * Update lintian overrides.
+  * Include config.log in the build-log, when configure fails.
+  * Add libgnutls28-dev build-dependency, which was previously pulled in as
+    a dependency of another build-dependency.
+  * Install the release notes into /usr/share/doc/ffmpeg.
+  * Add build-dependencies and enable in debian/rules:
+     - libbs2b
+     - libfribidi
+  * Update debian/copyright.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
