@@ -20,12 +20,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <inttypes.h>
+
 #include "avcodec.h"
 #include "bytestream.h"
-#include "dsputil.h"
 #include "internal.h"
 #include "get_bits.h"
 #include "golomb.h"
+#include "idctdsp.h"
 #include "unary.h"
 
 #define AIC_HDR_SIZE    24
@@ -137,7 +139,7 @@ static const uint8_t *aic_scan[NUM_BANDS] = {
 typedef struct AICContext {
     AVCodecContext *avctx;
     AVFrame        *frame;
-    DSPContext     dsp;
+    IDCTDSPContext idsp;
     ScanTable      scantable;
 
     int            num_x_slices;
@@ -170,7 +172,7 @@ static int aic_decode_header(AICContext *ctx, const uint8_t *src, int size)
     width      = AV_RB16(src + 6);
     height     = AV_RB16(src + 8);
     if (frame_size > size) {
-        av_log(ctx->avctx, AV_LOG_ERROR, "Frame size should be %d got %d\n",
+        av_log(ctx->avctx, AV_LOG_ERROR, "Frame size should be %"PRIu32" got %d\n",
                frame_size, size);
         return AVERROR_INVALIDDATA;
     }
@@ -336,16 +338,15 @@ static int aic_decode_slice(AICContext *ctx, int mb_x, int mb_y,
                 recombine_block_il(ctx->block, ctx->scantable.permutated,
                                    &base_y, &ext_y, blk);
             unquant_block(ctx->block, ctx->quant, ctx->quant_matrix);
-            ctx->dsp.idct(ctx->block);
+            ctx->idsp.idct(ctx->block);
 
             if (!ctx->interlaced) {
                 dst = Y + (blk >> 1) * 8 * ystride + (blk & 1) * 8;
-                ctx->dsp.put_signed_pixels_clamped(ctx->block, dst,
-                                                   ystride);
+                ctx->idsp.put_signed_pixels_clamped(ctx->block, dst, ystride);
             } else {
                 dst = Y + (blk & 1) * 8 + (blk >> 1) * ystride;
-                ctx->dsp.put_signed_pixels_clamped(ctx->block, dst,
-                                                   ystride * 2);
+                ctx->idsp.put_signed_pixels_clamped(ctx->block, dst,
+                                                    ystride * 2);
             }
         }
         Y += 16;
@@ -354,9 +355,9 @@ static int aic_decode_slice(AICContext *ctx, int mb_x, int mb_y,
             recombine_block(ctx->block, ctx->scantable.permutated,
                             &base_c, &ext_c);
             unquant_block(ctx->block, ctx->quant, ctx->quant_matrix);
-            ctx->dsp.idct(ctx->block);
-            ctx->dsp.put_signed_pixels_clamped(ctx->block, C[blk],
-                                               ctx->frame->linesize[blk + 1]);
+            ctx->idsp.idct(ctx->block);
+            ctx->idsp.put_signed_pixels_clamped(ctx->block, C[blk],
+                                                ctx->frame->linesize[blk + 1]);
             C[blk] += 8;
         }
     }
@@ -426,13 +427,13 @@ static av_cold int aic_decode_init(AVCodecContext *avctx)
 
     avctx->pix_fmt = AV_PIX_FMT_YUV420P;
 
-    ff_dsputil_init(&ctx->dsp, avctx);
+    ff_idctdsp_init(&ctx->idsp, avctx);
 
     for (i = 0; i < 64; i++)
         scan[i] = i;
-    ff_init_scantable(ctx->dsp.idct_permutation, &ctx->scantable, scan);
+    ff_init_scantable(ctx->idsp.idct_permutation, &ctx->scantable, scan);
     for (i = 0; i < 64; i++)
-        ctx->quant_matrix[ctx->dsp.idct_permutation[i]] = aic_quant_matrix[i];
+        ctx->quant_matrix[ctx->idsp.idct_permutation[i]] = aic_quant_matrix[i];
 
     ctx->mb_width  = FFALIGN(avctx->width,  16) >> 4;
     ctx->mb_height = FFALIGN(avctx->height, 16) >> 4;

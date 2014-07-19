@@ -25,6 +25,7 @@
  * JPEG 2000 image encoder and decoder common functions
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/common.h"
 #include "libavutil/mem.h"
@@ -153,7 +154,7 @@ static int getsgnctxno(int flag, uint8_t *xorbit)
     return ctxlbltab[hcontrib][vcontrib];
 }
 
-void ff_jpeg2000_init_tier1_luts(void)
+void av_cold ff_jpeg2000_init_tier1_luts(void)
 {
     int i, j;
     for (i = 0; i < 256; i++)
@@ -249,7 +250,7 @@ int ff_jpeg2000_init_component(Jpeg2000Component *comp,
         else
             reslevel->nbands = 3;
 
-        /* Number of precincts wich span the tile for resolution level reslevelno
+        /* Number of precincts which span the tile for resolution level reslevelno
          * see B.6 in ISO/IEC 15444-1:2002 eq. B-16
          * num_precincts_x = |- trx_1 / 2 ^ log2_prec_width) -| - (trx_0 / 2 ^ log2_prec_width)
          * num_precincts_y = |- try_1 / 2 ^ log2_prec_width) -| - (try_0 / 2 ^ log2_prec_width)

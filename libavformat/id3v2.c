@@ -59,6 +59,7 @@ const AVMetadataConv ff_id3v2_34_metadata_conv[] = {
 };
 
 const AVMetadataConv ff_id3v2_4_metadata_conv[] = {
+    { "TCMP", "compilation"   },
     { "TDRL", "date"          },
     { "TDRC", "date"          },
     { "TDEN", "creation_time" },
@@ -71,6 +72,7 @@ const AVMetadataConv ff_id3v2_4_metadata_conv[] = {
 static const AVMetadataConv id3v2_2_metadata_conv[] = {
     { "TAL", "album"        },
     { "TCO", "genre"        },
+    { "TCP", "compilation"  },
     { "TT2", "title"        },
     { "TEN", "encoded_by"   },
     { "TP1", "artist"       },
@@ -325,14 +327,14 @@ static void read_geobtag(AVFormatContext *s, AVIOContext *pb, int taglen,
 
     geob_data = av_mallocz(sizeof(ID3v2ExtraMetaGEOB));
     if (!geob_data) {
-        av_log(s, AV_LOG_ERROR, "Failed to alloc %zu bytes\n",
+        av_log(s, AV_LOG_ERROR, "Failed to alloc %"SIZE_SPECIFIER" bytes\n",
                sizeof(ID3v2ExtraMetaGEOB));
         return;
     }
 
     new_extra = av_mallocz(sizeof(ID3v2ExtraMeta));
     if (!new_extra) {
-        av_log(s, AV_LOG_ERROR, "Failed to alloc %zu bytes\n",
+        av_log(s, AV_LOG_ERROR, "Failed to alloc %"SIZE_SPECIFIER" bytes\n",
                sizeof(ID3v2ExtraMeta));
         goto fail;
     }
