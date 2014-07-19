@@ -67,7 +67,7 @@ static int query_formats(AVFilterContext *ctx)
     return 0;
 }
 
-#define ABS(a) (((a) ^ ((a) >> 31)) - ((a) >> 31))
+#define ABS(a) ((a) > 0 ? (a) : -(a))
 
 static int diff_c(const uint8_t *a, const uint8_t *b, ptrdiff_t s)
 {
@@ -137,7 +137,7 @@ static void free_field_queue(PullupField *head)
         av_free(f->combs);
         av_free(f->vars);
         next = f->next;
-        memset(f, 0, sizeof(*f));
+        memset(f, 0, sizeof(*f)); // clear all pointers to avoid stale ones
         av_free(f);
         f = next;
     } while (f != head);
