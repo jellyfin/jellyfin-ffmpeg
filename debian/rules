@@ -46,6 +46,7 @@ endif
 #	--enable-libopencore_amrwb		(libopencore-amrwb-dev)
 #	--enable-libvo_aacenc			(libvo-aacenc-dev)
 #	--enable-libvo_amrwbenc			(libvo-amrwbenc-dev)
+#	--enable-libsmbclient			(libsmbclient-dev)
 # The following flags are not added, because I couldn't find the necessary libraries:
 #	--enable-decklink
 #	--enable-libcelt
@@ -90,10 +91,12 @@ CONFIG := --prefix=/usr \
 	--enable-ladspa \
 	--enable-libass \
 	--enable-libbluray \
+	--enable-libbs2b \
 	--enable-libcaca \
 	--enable-libcdio \
 	--enable-libflite \
 	--enable-libfreetype \
+	--enable-libfribidi \
 	--enable-libgme \
 	--enable-libgsm \
 	--enable-libmodplug \

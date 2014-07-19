@@ -25,6 +25,8 @@ Build-Depends:
  libass-dev,
 # --enable-libbluray
  libbluray-dev,
+# --enable-libbs2b
+ libbs2b-dev,
 # autodetected: external library 'bzlib'
  libbz2-dev,
 # --enable-libcaca
@@ -36,6 +38,8 @@ Build-Depends:
 # --enable-libdc1394
 # This is also pulled in as a dependency of libopencv-dev.
 # libdc1394-22-dev [linux-any],
+# --enable-fribidi
+ libfribidi-dev,
 # --enable-libgme
  libgme-dev,
 # --enable-gnutls
