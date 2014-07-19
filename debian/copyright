@@ -55,7 +55,6 @@ Copyright:
   2002, Steve O'Hara-Smith
   2002, the xine project
   2003-2005, by Christopher R. Hertel <crh@ubiqx.mn.org>
-  2003, David S. Miller <davem@redhat.com>
   2003, Dr. Tim Ferguson
   2003, Ewald Snel
   2003, Gustavo Sverzut Barbieri <gsbarbieri@yahoo.com.br>
@@ -73,9 +72,10 @@ Copyright:
   2003, Thomas Raivio
   2004, Adam Thayer <krevnik@comcast.net>
   2004, 2007, Benjamin Zores <ben@geexbox.org>
-  2004-2005, 2007, Denes Balatoni <dbalatoni@programozo.hu>
+  2004-2005, Denes Balatoni <dbalatoni@programozo.hu>
   2004-2007, Eric Lasota
   2004, Gildas Bazin  <gbazin@netcourrier.com> <gbazin@videolan.org>
+  2004-2006, Lennart Poettering
   2004-2010, 2013, Loren Merritt <lorenm@u.washington.edu>
   2004, Maarten Daniels
   2004, 2007, Marc Hoffman <marc.hoffman@analog.com> <mmh@pleasantst.com> <mmhoffm@gmail.com>
@@ -92,7 +92,7 @@ Copyright:
   2005, Matthieu CASTET
   2005-2006, Oded Shimon <ods15@ods15.dyndns.org>
   2005, Ole André Vadla Ravnås <oleavr@gmail.com>
-  2005, 2011-2014, Peter Ross <pross@xvid.org>
+  2005, 2010-2014, Peter Ross <pross@xvid.org>
   2005, 2007-2011, 2013, Reimar Döffinger <Reimar.Doeffinger@gmx.de>
   2005-2006, Robert Edele <yartrebo@earthlink.net>
   2005, Steve Underwood <steveu@coppice.org>
@@ -124,7 +124,7 @@ Copyright:
   2006, Steve Lhomme
   2006, Thijs Vermeir <thijs.vermeir@barco.com>
   2007, Alexis Ballier
-  2007, 2010, Anssi Hannula <anssi.hannula@gmail.com>
+  2007, 2010, 2013, Anssi Hannula <anssi.hannula@gmail.com>
   2007-2009, Bartlomiej Wolowiec <bartek.wolowiec@gmail.com>
   2007, Benoit Fouet <benoit.fouet@free.fr>
   2007, 2009, Björn Axelsson
@@ -139,7 +139,7 @@ Copyright:
   2007-2009, Luca Abeni
   2007-2008, Marco Gerards <marco@gnu.org>
   2007, Nicholas Tung
-  2007, 2010-2013, Nicolas George <nicolas.george@normalesup.org>
+  2007, 2010-2014, Nicolas George <nicolas.george@normalesup.org>
   2007, Nokia Corporation
   2007-2010, 2012-2013, Ronald S. Bultje <rsbultje@gmail.com>
   2007-2008, Siarhei Siamashka <ssvb@users.sourceforge.net>
@@ -182,9 +182,10 @@ Copyright:
   2009, 2012, Nathan Caldwell <saintdev@gmail.com>
   2009, Nicolas Martin <martinic@iro.umontreal.ca>
   2009, Samalyse
+  2009, 2011, Sebastian Gesemann
   2009, Sebastien Lucas <sebastien.lucas@gmail.com>
   2009, Stephen Backway
-  2009-2010, 2013, Thilo Borgmann <thilo.borgmann@mail.de>
+  2009-2010, 2013-2014, Thilo Borgmann <thilo.borgmann@mail.de>
   2009, Thomas P. Higdon <thomas.p.higdon@gmail.com>
   2009, Tobias Bindhammer
   2009, Toshimitsu Kimura
@@ -197,15 +198,16 @@ Copyright:
   2010-2012, Carl Eugen Hoyos
   2010, Daniel G. Taylor <dan@programmer-art.org>
   2010-2011, Elvis Presley
+  2010, Fiona Glaser <fiona@x264.com>
   2010, Francesco Lavra <francescolavra@interfree.it>
   2010, 2013, Georg Martius <georg.martius@web.de>
   2010, 2012, Google, Inc
   2010, Hans de Goede <hdegoede@redhat.com>
   2010-2011, Janne Grunau <janne-libav@jannau.net>
   2010, Jacob Meuser
-  2010, Jason Garrett-Glaser <darkshikari@gmail.com>
   2010, Josh Allmann
   2010, Marcelo Galvao Povoa
+  2010, Mark Heath <mjpeg0@silicontrip.org>
   2010, Mark Nauwelaerts
   2010, Michele Orrù
   2010-2011, Mohamed Naufal Basheer <naufal11@gmail.com>
@@ -221,7 +223,7 @@ Copyright:
   2011, Anatoliy Wasserman
   2011, Andreas Öman
   2011-2013, Anton Khirnov <anton@khirnov.net>
-  2011-2013, Clément Bœsch <u@pkh.me>
+  2011-2014, Clément Bœsch <u@pkh.me>
   2011-2014, Derek Buitenhuis
   2011, Jordi Ortiz
   2011, Juan Carlos Rodriguez <ing.juancarlosrodriguez@hotmail.com>
@@ -243,6 +245,7 @@ Copyright:
   2011, Sven Hesse <drmccoy@drmccoy.de>
   2011, Thomas Kuehnel
   2012, Aleksi Nurmi
+  2012, Andrew D'Addesio
   2012-2013, Andrey Utkin <andrey.krieger.utkin@gmail.com>
   2012-2013, Aneesh Dogra (lionaneesh) <lionaneesh@gmail.com>
   2012, Antti Seppälä
@@ -252,7 +255,7 @@ Copyright:
   2012, Daniel Kang
   2012, David Kment
   2012, Fredrik Mellbin
-  2012, Georg Lippitsch <georg.lippitsch@gmx.at>
+  2012, 2014, Georg Lippitsch <georg.lippitsch@gmx.at>
   2012-2013, Gildas Cocherel
   2012-2013, Guillaume Martres <smarter@ubuntu.com>
   2012, Jan Ekström
@@ -272,6 +275,7 @@ Copyright:
   2013, Anand Meher Kotra
   2013-2014, Andrew Kelley
   2013, Ash Hughes
+  2013, Calvin Walton <calvin.walton@kepstin.ca>
   2013, Christian Schmidt
   2013, Darryl Wallace <wallacdj@gmail.com>
   2013, Diego Biurrun <diego@biurrun.de>
@@ -281,14 +285,25 @@ Copyright:
   2013, Lenny Wang
   2013-2014, Lukasz Marek <lukasz.m.luki@gmail.com>
   2013, Matthew Heaney
+  2013-2014, Mozilla Corporation
   2013, Nicolas Bertrand <nicoinattendu@gmail.com>
+  2013-2014, Pierre-Edouard Lepere
   2013, Rémi Denis-Courmont
   2013, Rl, Aetey Global Technologies AB
   2013, Seppo Tomperi
-  2013, Vittorio Giovara <vittorio.giovara@gmail.com>
+  2013, Vadim Kalinsky <vadim@kalinsky.ru>
+  2013-2014, Vittorio Giovara <vittorio.giovara@gmail.com>
   2013, Xiaolei Yu <dreifachstein@gmail.com>
+  2014, Aman Gupta <ffmpeg@tmm1.net>
+  2014, Dave Rice @dericed
+  2014, Muhammad Faiz <mfcc64@gmail.com>
   2014, Nicholas Robbins
+  2014, RISC OS Open Ltd
+  2014, Rong Yan
+  2014, Samsung Electronics
+  2014, StarBrilliant <m13253@hotmail.com>
   2014, Tim Walker <tdskywalker@gmail.com>
+  2014, Vignesh Venkatasubramanian
 License: LGPL-2.1+
  FFmpeg is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
@@ -334,6 +349,7 @@ Comment:
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 Files:
+  libavcodec/ac3dec_fixed.c
   libavcodec/fft_init_table.c
   libavcodec/fft_fixed_32.c
   libavcodec/fft_table.h
@@ -360,6 +376,8 @@ Files:
   libavcodec/mips/mpegaudiodsp_mips_fixed.c
   libavcodec/mips/mpegaudiodsp_mips_float.c
   libavcodec/mips/sbrdsp_mips.c
+  libavutil/fixed_dsp.c
+  libavutil/fixed_dsp.h
   libavutil/mips/float_dsp_mips.c
   libavutil/mips/libm_mips.h
 Copyright: 2012, MIPS Technologies, Inc., California.
@@ -747,8 +765,8 @@ Comment:
 
 Files:
   compat/avisynth/avisynth_c_25.h
-  doc/examples/avcodec.c
   doc/examples/avio_reading.c
+  doc/examples/decoding_encoding.c
   doc/examples/demuxing_decoding.c
   doc/examples/filtering_audio.c
   doc/examples/filtering_video.c
@@ -760,6 +778,7 @@ Files:
   doc/examples/resampling_audio.c
   doc/examples/scaling_video.c
   doc/examples/transcode_aac.c
+  doc/examples/transcoding.c
   libavcodec/arm/jrevdct_arm.S
   libavcodec/cinepakenc.c
   libavcodec/nellymoser.c
@@ -795,6 +814,7 @@ Copyright:
   2011, Tomas Härdin
   2012, Clément Bœsch
   2013-2014, Rl, Aetey Global Technologies AB
+  2014, Andrey Utkin
 License: expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -826,13 +846,18 @@ License: public-domain
 Files:
   compat/windows/makedef
   libavcodec/faandct.c
+  libavcodec/libfdk-aacdec.c
+  libavcodec/libfdk-aacenc.c
   libavcodec/zerocodec.c
   libavdevice/openal-dec.c
+  libavfilter/vf_hqx.c
 Copyright:
   2003, Michael Niedermayer <michaelni@gmx.at>
   2003, Roman Shaposhnik
   2011, Jonathan Baldwin
   2012-2013, Derek Buitenhuis
+  2012, Martin Storsjo
+  2014, Clément Bœsch
 License: ISC
  Permission to use, copy, modify, and/or distribute this software for any
  purpose with or without fee is hereby granted, provided that the above
