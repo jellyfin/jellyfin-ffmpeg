@@ -74,10 +74,14 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_dict_parse_string@LIBAVUTIL_FFMPEG_52 7:2.1
  av_dict_set@LIBAVUTIL_FFMPEG_52 7:2.1
  av_dirname@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_display_matrix_flip@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_display_rotation_get@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_display_rotation_set@LIBAVUTIL_FFMPEG_52 7:2.3
  av_div_q@LIBAVUTIL_FFMPEG_52 7:2.1
  av_downmix_info_update_side_data@LIBAVUTIL_FFMPEG_52 7:2.2
  av_dynarray2_add@LIBAVUTIL_FFMPEG_52 7:2.1
  av_dynarray_add@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_dynarray_add_nofree@LIBAVUTIL_FFMPEG_52 7:2.3
  av_escape@LIBAVUTIL_FFMPEG_52 7:2.1
  av_evaluate_lls@LIBAVUTIL_FFMPEG_52 7:2.1
  av_expr_eval@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -88,8 +92,10 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_fast_malloc@LIBAVUTIL_FFMPEG_52 7:2.2
  av_fast_realloc@LIBAVUTIL_FFMPEG_52 7:2.2
  av_fifo_alloc@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_fifo_alloc_array@LIBAVUTIL_FFMPEG_52 7:2.3
  av_fifo_drain@LIBAVUTIL_FFMPEG_52 7:2.1
  av_fifo_free@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_fifo_freep@LIBAVUTIL_FFMPEG_52 7:2.3
  av_fifo_generic_read@LIBAVUTIL_FFMPEG_52 7:2.1
  av_fifo_generic_write@LIBAVUTIL_FFMPEG_52 7:2.1
  av_fifo_grow@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -99,6 +105,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_fifo_space@LIBAVUTIL_FFMPEG_52 7:2.1
  av_file_map@LIBAVUTIL_FFMPEG_52 7:2.1
  av_file_unmap@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_find_best_pix_fmt_of_2@LIBAVUTIL_FFMPEG_52 7:2.3
  av_find_info_tag@LIBAVUTIL_FFMPEG_52 7:2.1
  av_find_nearest_q_idx@LIBAVUTIL_FFMPEG_52 7:2.1
  av_find_opt@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -130,6 +137,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_frame_move_ref@LIBAVUTIL_FFMPEG_52 7:2.1
  av_frame_new_side_data@LIBAVUTIL_FFMPEG_52 7:2.1
  av_frame_ref@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_frame_remove_side_data@LIBAVUTIL_FFMPEG_52 7:2.3
  av_frame_set_best_effort_timestamp@LIBAVUTIL_FFMPEG_52 7:2.1
  av_frame_set_channel_layout@LIBAVUTIL_FFMPEG_52 7:2.1
  av_frame_set_channels@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -167,6 +175,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_get_padded_bits_per_pixel@LIBAVUTIL_FFMPEG_52 7:2.1
  av_get_picture_type_char@LIBAVUTIL_FFMPEG_52 7:2.1
  av_get_pix_fmt@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_get_pix_fmt_loss@LIBAVUTIL_FFMPEG_52 7:2.3
  av_get_pix_fmt_name@LIBAVUTIL_FFMPEG_52 7:2.1
  av_get_pix_fmt_string@LIBAVUTIL_FFMPEG_52 7:2.1
  av_get_planar_sample_fmt@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -177,10 +186,16 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_get_sample_fmt_string@LIBAVUTIL_FFMPEG_52 7:2.1
  av_get_standard_channel_layout@LIBAVUTIL_FFMPEG_52 7:2.1
  av_get_string@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_get_time_base_q@LIBAVUTIL_FFMPEG_52 7:2.3
  av_get_token@LIBAVUTIL_FFMPEG_52 7:2.1
  av_gettime@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_gettime_relative@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_gettime_relative_is_monotonic@LIBAVUTIL_FFMPEG_52 7:2.3
  av_hash_alloc@LIBAVUTIL_FFMPEG_52 7:2.1
  av_hash_final@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_hash_final_b64@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_hash_final_bin@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_hash_final_hex@LIBAVUTIL_FFMPEG_52 7:2.3
  av_hash_freep@LIBAVUTIL_FFMPEG_52 7:2.1
  av_hash_get_name@LIBAVUTIL_FFMPEG_52 7:2.1
  av_hash_get_size@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -194,6 +209,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_hmac_init@LIBAVUTIL_FFMPEG_52 7:2.1
  av_hmac_update@LIBAVUTIL_FFMPEG_52 7:2.1
  av_image_alloc@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_image_check_sar@LIBAVUTIL_FFMPEG_52 7:2.3
  av_image_check_size@LIBAVUTIL_FFMPEG_52 7:2.1
  av_image_copy@LIBAVUTIL_FFMPEG_52 7:2.1
  av_image_copy_plane@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -218,6 +234,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_log@LIBAVUTIL_FFMPEG_52 7:2.1
  av_log_default_callback@LIBAVUTIL_FFMPEG_52 7:2.1
  av_log_format_line@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_log_get_flags@LIBAVUTIL_FFMPEG_52 7:2.3
  av_log_get_level@LIBAVUTIL_FFMPEG_52 7:2.1
  av_log_set_callback@LIBAVUTIL_FFMPEG_52 7:2.1
  av_log_set_flags@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -266,6 +283,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  (optional)av_opencl_uninit@LIBAVUTIL_FFMPEG_52 7:2.2
  av_opt_child_class_next@LIBAVUTIL_FFMPEG_52 7:2.1
  av_opt_child_next@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_opt_copy@LIBAVUTIL_FFMPEG_52 7:2.3
  av_opt_eval_double@LIBAVUTIL_FFMPEG_52 7:2.1
  av_opt_eval_flags@LIBAVUTIL_FFMPEG_52 7:2.1
  av_opt_eval_float@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -296,6 +314,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_opt_set_channel_layout@LIBAVUTIL_FFMPEG_52 7:2.1
  av_opt_set_defaults2@LIBAVUTIL_FFMPEG_52 7:2.1
  av_opt_set_defaults@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_opt_set_dict2@LIBAVUTIL_FFMPEG_52 7:2.3
  av_opt_set_dict@LIBAVUTIL_FFMPEG_52 7:2.1
  av_opt_set_double@LIBAVUTIL_FFMPEG_52 7:2.1
  av_opt_set_from_string@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -382,6 +401,12 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_strtok@LIBAVUTIL_FFMPEG_52 7:2.1
  av_sub_q@LIBAVUTIL_FFMPEG_52 7:2.1
  av_tempfile@LIBAVUTIL_FFMPEG_52 7:2.1
+ av_thread_message_queue_alloc@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_thread_message_queue_free@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_thread_message_queue_recv@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_thread_message_queue_send@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_thread_message_queue_set_err_recv@LIBAVUTIL_FFMPEG_52 7:2.3
+ av_thread_message_queue_set_err_send@LIBAVUTIL_FFMPEG_52 7:2.3
  av_timecode_adjust_ntsc_framenum2@LIBAVUTIL_FFMPEG_52 7:2.1
  av_timecode_check_frame_rate@LIBAVUTIL_FFMPEG_52 7:2.1
  av_timecode_get_smpte_from_framenum@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -405,6 +430,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_write_image_line@LIBAVUTIL_FFMPEG_52 7:2.1
  av_xtea_crypt@LIBAVUTIL_FFMPEG_52 7:2.1
  av_xtea_init@LIBAVUTIL_FFMPEG_52 7:2.1
+ avpriv_alloc_fixed_dsp@LIBAVUTIL_FFMPEG_52 7:2.3
  avpriv_cga_font@LIBAVUTIL_FFMPEG_52 7:2.1
  avpriv_emms_yasm@LIBAVUTIL_FFMPEG_52 7:2.1
  avpriv_evaluate_lls@LIBAVUTIL_FFMPEG_52 7:2.1

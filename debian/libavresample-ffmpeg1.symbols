@@ -10,6 +10,7 @@ libavresample-ffmpeg.so.1 libavresample-ffmpeg1 #MINVER#
  avresample_get_class@LIBAVRESAMPLE_FFMPEG_1 7:2.2
  avresample_get_delay@LIBAVRESAMPLE_FFMPEG_1 7:2.2
  avresample_get_matrix@LIBAVRESAMPLE_FFMPEG_1 7:2.2
+ avresample_get_out_samples@LIBAVRESAMPLE_FFMPEG_1 7:2.3
  avresample_is_open@LIBAVRESAMPLE_FFMPEG_1 7:2.2
  avresample_license@LIBAVRESAMPLE_FFMPEG_1 7:2.2
  avresample_open@LIBAVRESAMPLE_FFMPEG_1 7:2.2

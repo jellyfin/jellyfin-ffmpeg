@@ -2,6 +2,7 @@ libswresample-ffmpeg.so.0 libswresample-ffmpeg0 #MINVER#
  LIBSWRESAMPLE_FFMPEG_0@LIBSWRESAMPLE_FFMPEG_0 7:2.1
  swr_alloc@LIBSWRESAMPLE_FFMPEG_0 7:2.1
  swr_alloc_set_opts@LIBSWRESAMPLE_FFMPEG_0 7:2.1
+ swr_close@LIBSWRESAMPLE_FFMPEG_0 7:2.3
  swr_convert@LIBSWRESAMPLE_FFMPEG_0 7:2.1
  swr_drop_output@LIBSWRESAMPLE_FFMPEG_0 7:2.1
  swr_free@LIBSWRESAMPLE_FFMPEG_0 7:2.1

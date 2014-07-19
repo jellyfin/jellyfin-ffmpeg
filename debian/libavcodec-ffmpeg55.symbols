@@ -32,6 +32,8 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  av_dct_init@LIBAVCODEC_FFMPEG_55 7:2.1
  av_destruct_packet@LIBAVCODEC_FFMPEG_55 7:2.1
  av_dup_packet@LIBAVCODEC_FFMPEG_55 7:2.1
+ av_dv_codec_profile@LIBAVCODEC_FFMPEG_55 7:2.3
+ av_dv_frame_profile@LIBAVCODEC_FFMPEG_55 7:2.3
  av_fast_malloc@LIBAVCODEC_FFMPEG_55 7:2.1
  av_fast_padded_malloc@LIBAVCODEC_FFMPEG_55 7:2.1
  av_fast_padded_mallocz@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -68,6 +70,7 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  av_packet_new_side_data@LIBAVCODEC_FFMPEG_55 7:2.1
  av_packet_pack_dictionary@LIBAVCODEC_FFMPEG_55 7:2.2
  av_packet_ref@LIBAVCODEC_FFMPEG_55 7:2.1
+ av_packet_rescale_ts@LIBAVCODEC_FFMPEG_55 7:2.3
  av_packet_shrink_side_data@LIBAVCODEC_FFMPEG_55 7:2.1
  av_packet_split_side_data@LIBAVCODEC_FFMPEG_55 7:2.1
  av_packet_unpack_dictionary@LIBAVCODEC_FFMPEG_55 7:2.2
@@ -133,6 +136,7 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  avcodec_find_encoder@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_find_encoder_by_name@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_flush_buffers@LIBAVCODEC_FFMPEG_55 7:2.1
+ avcodec_free_context@LIBAVCODEC_FFMPEG_55 7:2.3
  avcodec_free_frame@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_get_chroma_sub_sample@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_get_class@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -177,6 +181,7 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  avpriv_dv_codec_profile@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_dv_frame_profile2@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_dv_frame_profile@LIBAVCODEC_FFMPEG_55 7:2.1
+ avpriv_exif_decode_ifd@LIBAVCODEC_FFMPEG_55 7:2.3
  avpriv_find_pix_fmt@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_find_start_code@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_flac_is_extradata_valid@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -199,6 +204,8 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  avpriv_mpeg4audio_get_config@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_mpeg4audio_sample_rates@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_mpegaudio_decode_header@LIBAVCODEC_FFMPEG_55 7:2.1
+ avpriv_pix_fmt_bps_avi@LIBAVCODEC_FFMPEG_55 7:2.3
+ avpriv_pix_fmt_bps_mov@LIBAVCODEC_FFMPEG_55 7:2.3
  avpriv_put_string@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_split_xiph_headers@LIBAVCODEC_FFMPEG_55 7:2.1
  avpriv_tak_parse_streaminfo@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -235,6 +242,8 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  ff_fdct_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fdct_mmxext@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fdct_sse2@LIBAVCODEC_FFMPEG_55 7:2.1
+ ff_fdctdsp_init@LIBAVCODEC_FFMPEG_55 7:2.3
+ ff_fdctdsp_init_x86@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_fft_end@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fft_end_fixed@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fft_end_fixed_32@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -252,6 +261,7 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  ff_idct_xvid_sse2@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_idct_xvid_sse2_add@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_idct_xvid_sse2_put@LIBAVCODEC_FFMPEG_55 7:2.1
+ ff_idctdsp_init@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_jpeg_fdct_islow_10@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_jpeg_fdct_islow_8@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_calc_c@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -266,6 +276,7 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  ff_mdct_init_fixed_32@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_win_fixed@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_win_float@LIBAVCODEC_FFMPEG_55 7:2.1
+ ff_pixblockdsp_init@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_raw_pix_fmt_tags@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_rdft_end@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_rdft_init@LIBAVCODEC_FFMPEG_55 7:2.1

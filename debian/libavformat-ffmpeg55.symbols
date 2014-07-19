@@ -23,6 +23,7 @@ libavformat-ffmpeg.so.55 libavformat-ffmpeg55 #MINVER#
  av_format_get_probe_score@LIBAVFORMAT_FFMPEG_55 7:2.1
  av_format_get_subtitle_codec@LIBAVFORMAT_FFMPEG_55 7:2.1
  av_format_get_video_codec@LIBAVFORMAT_FFMPEG_55 7:2.1
+ av_format_inject_global_side_data@LIBAVFORMAT_FFMPEG_55 7:2.3
  av_format_set_audio_codec@LIBAVFORMAT_FFMPEG_55 7:2.1
  av_format_set_control_message_cb@LIBAVFORMAT_FFMPEG_55 7:2.2
  av_format_set_metadata_header_padding@LIBAVFORMAT_FFMPEG_55 7:2.2
@@ -63,7 +64,9 @@ libavformat-ffmpeg.so.55 libavformat-ffmpeg55 #MINVER#
  av_sdp_create@LIBAVFORMAT_FFMPEG_55 7:2.1
  av_seek_frame@LIBAVFORMAT_FFMPEG_55 7:2.1
  av_set_pts_info@LIBAVFORMAT_FFMPEG_55 7:2.1
+ av_stream_get_end_pts@LIBAVFORMAT_FFMPEG_55 7:2.3
  av_stream_get_r_frame_rate@LIBAVFORMAT_FFMPEG_55 7:2.1
+ av_stream_get_side_data@LIBAVFORMAT_FFMPEG_55 7:2.3
  av_stream_set_r_frame_rate@LIBAVFORMAT_FFMPEG_55 7:2.1
  av_url_split@LIBAVFORMAT_FFMPEG_55 7:2.1
  av_write_frame@LIBAVFORMAT_FFMPEG_55 7:2.1
