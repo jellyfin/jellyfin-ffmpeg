@@ -8,19 +8,19 @@ Description: Transition from texi2html to makeinfo
 
 Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 Forwarded: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/155297.html>
-Last-Update: <2014-03-24>
+Last-Update: <2014-07-19>
 
 --- ffmpeg-2.2.orig/configure
 +++ ffmpeg-2.2/configure
-@@ -1663,7 +1663,6 @@ HAVE_LIST="
-     sys_un_h
-     sys_videoio_h
-     termios_h
+@@ -1785,7 +1785,6 @@ HAVE_LIST="
+     perl
+     pod2man
+     sdl
 -    texi2html
      threads
-     unistd_h
-     usleep
-@@ -2443,7 +2442,7 @@ ffserver_select="ffm_muxer rtp_protocol
+     vdpau_x11
+     xlib
+@@ -2602,7 +2601,7 @@ ffserver_select="ffm_muxer rtp_protocol
  # documentation
  podpages_deps="perl"
  manpages_deps="perl pod2man"
@@ -29,7 +29,7 @@ Last-Update: <2014-03-24>
  txtpages_deps="perl makeinfo"
  doc_deps_any="manpages htmlpages podpages txtpages"
  
-@@ -4588,7 +4587,6 @@ else
+@@ -4833,7 +4832,6 @@ else
  fi
  enabled sdl && add_cflags $sdl_cflags && add_extralibs $sdl_libs
  
@@ -37,17 +37,17 @@ Last-Update: <2014-03-24>
  makeinfo --version > /dev/null 2>&1 && enable makeinfo  || disable makeinfo
  perl -v            > /dev/null 2>&1 && enable perl      || disable perl
  pod2man --help     > /dev/null 2>&1 && enable pod2man   || disable pod2man
-@@ -4995,7 +4993,6 @@ echo "safe bitstream reader     ${safe_b
+@@ -5310,7 +5308,6 @@ echo "safe bitstream reader     ${safe_b
+ echo "safe bitstream reader     ${safe_bitstream_reader-no}"
  echo "SDL support               ${sdl-no}"
  echo "opencl enabled            ${opencl-no}"
- echo "libzvbi enabled           ${libzvbi-no}"
 -echo "texi2html enabled         ${texi2html-no}"
  echo "perl enabled              ${perl-no}"
  echo "pod2man enabled           ${pod2man-no}"
  echo "makeinfo enabled          ${makeinfo-no}"
 --- ffmpeg-2.2.orig/doc/Makefile
 +++ ffmpeg-2.2/doc/Makefile
-@@ -81,12 +81,12 @@ $(GENTEXI): doc/avoptions_%.texi: doc/pr
+@@ -82,12 +82,12 @@ $(GENTEXI): doc/avoptions_%.texi: doc/pr
  doc/%.html: TAG = HTML
  doc/%.html: doc/%.texi $(SRC_PATH)/doc/t2h.init $(GENTEXI)
  	$(Q)$(TEXIDEP)
@@ -64,7 +64,7 @@ Last-Update: <2014-03-24>
  doc/%.pod: doc/%.texi $(SRC_PATH)/doc/texi2pod.pl $(GENTEXI)
 --- ffmpeg-2.2.orig/doc/platform.texi
 +++ ffmpeg-2.2/doc/platform.texi
-@@ -264,7 +264,7 @@ llrint() in its C library.
+@@ -275,7 +275,7 @@ llrint() in its C library.
  Install your Cygwin with all the "Base" packages, plus the
  following "Devel" ones:
  @example
