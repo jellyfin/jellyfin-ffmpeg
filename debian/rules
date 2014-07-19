@@ -142,7 +142,7 @@ override_dh_auto_configure:
 	$(info DEB_BUILD_OPTIONS = $(DEB_BUILD_OPTIONS))
 	$(info CFLAGS = $(CFLAGS))
 	$(info CXXFLAGS = $(CXXFLAGS))
-	./configure $(CONFIG)
+	./configure $(CONFIG) || cat config.log
 
 # Building the source package fails without this override, because config.mak does not exist in the source.
 # It (and related files) are created by configure and removed by distclean.
