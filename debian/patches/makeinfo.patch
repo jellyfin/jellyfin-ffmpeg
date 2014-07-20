@@ -12,7 +12,7 @@ Last-Update: <2014-07-19>
 
 --- ffmpeg-2.2.orig/configure
 +++ ffmpeg-2.2/configure
-@@ -1785,7 +1785,6 @@ HAVE_LIST="
+@@ -1789,7 +1789,6 @@ HAVE_LIST="
      perl
      pod2man
      sdl
@@ -20,7 +20,7 @@ Last-Update: <2014-07-19>
      threads
      vdpau_x11
      xlib
-@@ -2602,7 +2601,7 @@ ffserver_select="ffm_muxer rtp_protocol
+@@ -2607,7 +2606,7 @@ ffserver_select="ffm_muxer rtp_protocol
  # documentation
  podpages_deps="perl"
  manpages_deps="perl pod2man"
@@ -29,7 +29,7 @@ Last-Update: <2014-07-19>
  txtpages_deps="perl makeinfo"
  doc_deps_any="manpages htmlpages podpages txtpages"
  
-@@ -4833,7 +4832,6 @@ else
+@@ -4844,7 +4843,6 @@ else
  fi
  enabled sdl && add_cflags $sdl_cflags && add_extralibs $sdl_libs
  
@@ -37,7 +37,7 @@ Last-Update: <2014-07-19>
  makeinfo --version > /dev/null 2>&1 && enable makeinfo  || disable makeinfo
  perl -v            > /dev/null 2>&1 && enable perl      || disable perl
  pod2man --help     > /dev/null 2>&1 && enable pod2man   || disable pod2man
-@@ -5310,7 +5308,6 @@ echo "safe bitstream reader     ${safe_b
+@@ -5323,7 +5321,6 @@ echo "safe bitstream reader     ${safe_b
  echo "safe bitstream reader     ${safe_bitstream_reader-no}"
  echo "SDL support               ${sdl-no}"
  echo "opencl enabled            ${opencl-no}"

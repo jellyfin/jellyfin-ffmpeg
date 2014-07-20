@@ -9,7 +9,16 @@ Last-Update: <2014-07-19>
 
 --- ffmpeg-2.2.1.orig/configure
 +++ ffmpeg-2.2.1/configure
-@@ -5571,7 +5571,7 @@ pkgconfig_generate(){
+@@ -5568,7 +5568,7 @@ fi
+ # build pkg-config files
+ 
+ lib_version(){
+-    eval printf "\"lib${1}${build_suffix} >= \$LIB$(toupper ${1})_VERSION, \""
++    eval printf "\"lib${1} >= \$LIB$(toupper ${1})_VERSION, \""
+ }
+ 
+ pkgconfig_generate(){
+@@ -5581,7 +5581,7 @@ pkgconfig_generate(){
      requires=${requires%, }
      enabled ${name#lib} || return 0
      mkdir -p $name

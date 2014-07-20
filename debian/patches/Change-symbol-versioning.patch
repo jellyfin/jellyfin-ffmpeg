@@ -15,7 +15,7 @@ Last-Update: <2014-07-14>
                  audio_resample;
 --- ffmpeg-2.2.4.orig/libavcodec/utils.c
 +++ ffmpeg-2.2.4/libavcodec/utils.c
-@@ -119,9 +119,9 @@ static void *codec_mutex;
+@@ -120,9 +120,9 @@ static void *codec_mutex;
  static void *avformat_mutex;
  
  #if CONFIG_RAISE_MAJOR

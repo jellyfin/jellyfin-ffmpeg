@@ -9,7 +9,7 @@ export V=1
 DEBIAN_DIR = $(dir $(firstword $(MAKEFILE_LIST)))
 
 # Get the Debian version revision:
-DEB_VERSION  := $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog | sed -n 's/^Version: //p')
+DEB_VERSION  := $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog -SVersion)
 DEB_REVISION := $(word 2, $(subst -, ,$(DEB_VERSION)))
 
 # Get the architecture triplett:
