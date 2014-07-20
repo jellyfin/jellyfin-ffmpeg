@@ -1,0 +1,28 @@
+Description: Fix spelling errors
+
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Forwarded: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160118.html
+Last-Update: <2014-07-20>
+
+--- ffmpeg-2.3.orig/doc/encoders.texi
++++ ffmpeg-2.3/doc/encoders.texi
+@@ -1032,7 +1032,7 @@ configuration. You need to explicitly configure the build with
+ 
+ @subsection Option Mapping
+ 
+-Most libopus options are modeled after the @command{opusenc} utility from
++Most libopus options are modelled after the @command{opusenc} utility from
+ opus-tools. The following is an option mapping chart describing options
+ supported by the libopus wrapper, and their @command{opusenc}-equivalent
+ in parentheses.
+--- ffmpeg-2.3.orig/doc/protocols.texi
++++ ffmpeg-2.3/doc/protocols.texi
+@@ -539,7 +539,7 @@ firewalls.
+ 
+ @section libsmbclient
+ 
+-libsmbclient permits to manipulate CIFS/SMB network resources.
++libsmbclient permits one to manipulate CIFS/SMB network resources.
+ 
+ Following syntax is required.
+ 
