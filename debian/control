@@ -235,6 +235,7 @@ Conflicts:
 Depends:
  libavcodec-ffmpeg55 (= ${binary:Version}),
  libavutil-ffmpeg-dev (= ${binary:Version}),
+ libswresample-ffmpeg-dev (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library with de/encoders for audio/video codecs - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -280,9 +281,15 @@ Multi-Arch: same
 Conflicts:
  libavdevice-dev
 Depends:
+ libavcodec-ffmpeg-dev (= ${binary:Version}),
  libavdevice-ffmpeg55 (= ${binary:Version}),
  libavfilter-ffmpeg-dev (= ${binary:Version}),
  libavformat-ffmpeg-dev (= ${binary:Version}),
+ libavresample-ffmpeg-dev (= ${binary:Version}),
+ libavutil-ffmpeg-dev (= ${binary:Version}),
+ libpostproc-ffmpeg-dev (= ${binary:Version}),
+ libswscale-ffmpeg-dev (= ${binary:Version}),
+ libswresample-ffmpeg-dev (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for handling input and output devices - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -374,6 +381,8 @@ Conflicts:
 Depends:
  libavcodec-ffmpeg-dev (= ${binary:Version}),
  libavformat-ffmpeg55 (= ${binary:Version}),
+ libavutil-ffmpeg-dev (= ${binary:Version}),
+ libswresample-ffmpeg-dev (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library with (de)muxers for multimedia containers - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
