@@ -33,6 +33,7 @@ ffmpeg (7:2.3-1) UNRELEASED; urgency=medium
      - libbs2b
      - libfribidi
   * Update debian/copyright.
+  * Update the dependencies of the *-dev packages.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 
