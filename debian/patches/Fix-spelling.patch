@@ -2,7 +2,8 @@ Description: Fix spelling errors
 
 Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 Forwarded: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160118.html
-Last-Update: <2014-07-20>
+Applied-Upstream: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160119.html
+Last-Update: <2014-07-22>
 
 --- ffmpeg-2.3.orig/doc/encoders.texi
 +++ ffmpeg-2.3/doc/encoders.texi

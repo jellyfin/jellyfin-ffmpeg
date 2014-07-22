@@ -5,7 +5,8 @@ Description: Create the pkg-config files without build_suffix.
  checks in programs building with FFmpeg.
 
 Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
-Last-Update: <2014-07-19>
+Forwarded: not-needed
+Last-Update: <2014-07-22>
 
 --- ffmpeg-2.2.1.orig/configure
 +++ ffmpeg-2.2.1/configure

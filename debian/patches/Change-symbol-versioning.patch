@@ -3,7 +3,8 @@ Description: Add _FFMPEG to the symbol versions
  against FFmpeg and another shared library, which is linked against Libav.
 
 Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
-Last-Update: <2014-07-14>
+Forwarded: not-needed
+Last-Update: <2014-07-22>
 
 --- ffmpeg-2.2.4.orig/libavcodec/libavcodec.v
 +++ ffmpeg-2.2.4/libavcodec/libavcodec.v
