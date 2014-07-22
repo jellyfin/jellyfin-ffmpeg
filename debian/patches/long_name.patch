@@ -6,9 +6,9 @@ Forwarded: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160145.html
 Applied-Upstream: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160147.html
 Last-Update: <2014-07-22>
 
---- ffmpeg-2.3.orig/libavformat/img2dec.c
-+++ ffmpeg-2.3/libavformat/img2dec.c
-@@ -666,6 +666,7 @@ static const AVClass imgname ## _class =
+--- a/libavformat/img2dec.c
++++ b/libavformat/img2dec.c
+@@ -666,6 +666,7 @@
  };\
  AVInputFormat ff_image_ ## imgname ## _pipe_demuxer = {\
      .name           = AV_STRINGIFY(imgname) "_pipe",\

@@ -8,9 +8,9 @@ Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 Forwarded: not-needed
 Last-Update: <2014-07-22>
 
---- ffmpeg-2.2.1.orig/configure
-+++ ffmpeg-2.2.1/configure
-@@ -5568,7 +5568,7 @@ fi
+--- a/configure
++++ b/configure
+@@ -5568,7 +5568,7 @@
  # build pkg-config files
  
  lib_version(){
@@ -19,7 +19,7 @@ Last-Update: <2014-07-22>
  }
  
  pkgconfig_generate(){
-@@ -5581,7 +5581,7 @@ pkgconfig_generate(){
+@@ -5581,7 +5581,7 @@
      requires=${requires%, }
      enabled ${name#lib} || return 0
      mkdir -p $name
@@ -28,9 +28,9 @@ Last-Update: <2014-07-22>
  prefix=$prefix
  exec_prefix=\${prefix}
  libdir=$libdir
---- ffmpeg-2.2.1.orig/library.mak
-+++ ffmpeg-2.2.1/library.mak
-@@ -85,7 +85,7 @@ install-lib$(NAME)-headers: $(addprefix
+--- a/library.mak
++++ b/library.mak
+@@ -85,7 +85,7 @@
  	$(Q)mkdir -p "$(INCINSTDIR)"
  	$$(INSTALL) -m 644 $$^ "$(INCINSTDIR)"
  

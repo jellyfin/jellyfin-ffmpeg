@@ -5,9 +5,9 @@ Forwarded: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160118.html
 Applied-Upstream: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160119.html
 Last-Update: <2014-07-22>
 
---- ffmpeg-2.3.orig/doc/encoders.texi
-+++ ffmpeg-2.3/doc/encoders.texi
-@@ -1032,7 +1032,7 @@ configuration. You need to explicitly configure the build with
+--- a/doc/encoders.texi
++++ b/doc/encoders.texi
+@@ -1032,7 +1032,7 @@
  
  @subsection Option Mapping
  
@@ -16,9 +16,9 @@ Last-Update: <2014-07-22>
  opus-tools. The following is an option mapping chart describing options
  supported by the libopus wrapper, and their @command{opusenc}-equivalent
  in parentheses.
---- ffmpeg-2.3.orig/doc/protocols.texi
-+++ ffmpeg-2.3/doc/protocols.texi
-@@ -539,7 +539,7 @@ firewalls.
+--- a/doc/protocols.texi
++++ b/doc/protocols.texi
+@@ -539,7 +539,7 @@
  
  @section libsmbclient
  

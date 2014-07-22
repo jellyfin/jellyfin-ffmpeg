@@ -10,9 +10,9 @@ Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 Forwarded: <https://ffmpeg.org/pipermail/ffmpeg-devel/2014-March/155297.html>
 Last-Update: <2014-07-19>
 
---- ffmpeg-2.2.orig/configure
-+++ ffmpeg-2.2/configure
-@@ -1789,7 +1789,6 @@ HAVE_LIST="
+--- a/configure
++++ b/configure
+@@ -1789,7 +1789,6 @@
      perl
      pod2man
      sdl
@@ -20,7 +20,7 @@ Last-Update: <2014-07-19>
      threads
      vdpau_x11
      xlib
-@@ -2607,7 +2606,7 @@ ffserver_select="ffm_muxer rtp_protocol
+@@ -2607,7 +2606,7 @@
  # documentation
  podpages_deps="perl"
  manpages_deps="perl pod2man"
@@ -29,7 +29,7 @@ Last-Update: <2014-07-19>
  txtpages_deps="perl makeinfo"
  doc_deps_any="manpages htmlpages podpages txtpages"
  
-@@ -4844,7 +4843,6 @@ else
+@@ -4844,7 +4843,6 @@
  fi
  enabled sdl && add_cflags $sdl_cflags && add_extralibs $sdl_libs
  
@@ -37,7 +37,7 @@ Last-Update: <2014-07-19>
  makeinfo --version > /dev/null 2>&1 && enable makeinfo  || disable makeinfo
  perl -v            > /dev/null 2>&1 && enable perl      || disable perl
  pod2man --help     > /dev/null 2>&1 && enable pod2man   || disable pod2man
-@@ -5323,7 +5321,6 @@ echo "safe bitstream reader     ${safe_b
+@@ -5323,7 +5321,6 @@
  echo "safe bitstream reader     ${safe_bitstream_reader-no}"
  echo "SDL support               ${sdl-no}"
  echo "opencl enabled            ${opencl-no}"
@@ -45,9 +45,9 @@ Last-Update: <2014-07-19>
  echo "perl enabled              ${perl-no}"
  echo "pod2man enabled           ${pod2man-no}"
  echo "makeinfo enabled          ${makeinfo-no}"
---- ffmpeg-2.2.orig/doc/Makefile
-+++ ffmpeg-2.2/doc/Makefile
-@@ -82,12 +82,12 @@ $(GENTEXI): doc/avoptions_%.texi: doc/pr
+--- a/doc/Makefile
++++ b/doc/Makefile
+@@ -82,12 +82,12 @@
  doc/%.html: TAG = HTML
  doc/%.html: doc/%.texi $(SRC_PATH)/doc/t2h.init $(GENTEXI)
  	$(Q)$(TEXIDEP)
@@ -62,9 +62,9 @@ Last-Update: <2014-07-19>
  
  doc/%.pod: TAG = POD
  doc/%.pod: doc/%.texi $(SRC_PATH)/doc/texi2pod.pl $(GENTEXI)
---- ffmpeg-2.2.orig/doc/platform.texi
-+++ ffmpeg-2.2/doc/platform.texi
-@@ -275,7 +275,7 @@ llrint() in its C library.
+--- a/doc/platform.texi
++++ b/doc/platform.texi
+@@ -275,7 +275,7 @@
  Install your Cygwin with all the "Base" packages, plus the
  following "Devel" ones:
  @example
@@ -74,8 +74,8 @@ Last-Update: <2014-07-19>
  
  In order to run FATE you will also need the following "Utils" packages:
 --- /dev/null
-+++ ffmpeg-2.2/doc/t2h.pm
-@@ -0,0 +1,29 @@
++++ b/doc/t2h.pm
+@@ -0,0 +1,32 @@
 +# Set the doctype to html.
 +set_from_init_file('DOCTYPE', '<!DOCTYPE html>');
 +
