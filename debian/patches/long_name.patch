@@ -1,0 +1,18 @@
+Description: libavformat/img2dec.c: Add a long_name to the piped image demuxers
+ This fixes segfaults in gst-libav1.0 compiled against FFmpeg 2.3.
+
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Forwarded: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160145.html
+Applied-Upstream: https://ffmpeg.org/pipermail/ffmpeg-devel/2014-July/160147.html
+Last-Update: <2014-07-22>
+
+--- ffmpeg-2.3.orig/libavformat/img2dec.c
++++ ffmpeg-2.3/libavformat/img2dec.c
+@@ -666,6 +666,7 @@ static const AVClass imgname ## _class =
+ };\
+ AVInputFormat ff_image_ ## imgname ## _pipe_demuxer = {\
+     .name           = AV_STRINGIFY(imgname) "_pipe",\
++    .long_name      = NULL_IF_CONFIG_SMALL("piped " AV_STRINGIFY(imgname) " sequence"),\
+     .priv_data_size = sizeof(VideoDemuxData),\
+     .read_probe     = imgname ## _probe,\
+     .read_header    = ff_img_read_header,\
