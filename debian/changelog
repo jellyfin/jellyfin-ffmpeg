@@ -36,8 +36,6 @@ ffmpeg (7:2.3-1) UNRELEASED; urgency=medium
   * Update the dependencies of the *-dev packages.
   * Use packaged libjs-jquery instead of the jquery created by doxygen.
   * Add Fix-spelling patch to fix spelling errors.
-  * Add long_name.patch to workaround a bug in gst-libav1.0, allowing
-    it to work with FFmpeg 2.3. (see #755717)
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
 

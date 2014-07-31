@@ -2,4 +2,3 @@ makeinfo.patch
 pkg-config_file_without_build_suffix.patch
 Change-symbol-versioning.patch
 Fix-spelling.patch
-long_name.patch
