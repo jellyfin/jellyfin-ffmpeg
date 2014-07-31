@@ -107,6 +107,9 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  avcodec_close@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_configuration@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_copy_context@LIBAVCODEC_FFMPEG_55 7:2.1
+ avcodec_dct_alloc@LIBAVCODEC_FFMPEG_55 7:2.3.1
+ avcodec_dct_get_class@LIBAVCODEC_FFMPEG_55 7:2.3.1
+ avcodec_dct_init@LIBAVCODEC_FFMPEG_55 7:2.3.1
  avcodec_decode_audio3@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_decode_audio4@LIBAVCODEC_FFMPEG_55 7:2.1
  avcodec_decode_subtitle2@LIBAVCODEC_FFMPEG_55 7:2.1
