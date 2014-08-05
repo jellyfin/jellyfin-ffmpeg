@@ -432,7 +432,7 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  av_xtea_init@LIBAVUTIL_FFMPEG_52 7:2.1
  avpriv_alloc_fixed_dsp@LIBAVUTIL_FFMPEG_52 7:2.3
  avpriv_cga_font@LIBAVUTIL_FFMPEG_52 7:2.1
- avpriv_emms_yasm@LIBAVUTIL_FFMPEG_52 7:2.1
+ (optional)avpriv_emms_yasm@LIBAVUTIL_FFMPEG_52 7:2.1
  avpriv_evaluate_lls@LIBAVUTIL_FFMPEG_52 7:2.1
  avpriv_float_dsp_init@LIBAVUTIL_FFMPEG_52 7:2.1
  avpriv_frame_get_metadatap@LIBAVUTIL_FFMPEG_52 7:2.1
@@ -450,10 +450,24 @@ libavutil-ffmpeg.so.52 libavutil-ffmpeg52 #MINVER#
  avutil_configuration@LIBAVUTIL_FFMPEG_52 7:2.1
  avutil_license@LIBAVUTIL_FFMPEG_52 7:2.1
  avutil_version@LIBAVUTIL_FFMPEG_52 7:2.1
+ (optional)ff_butterflies_float_neon@LIBAVUTIL_FFMPEG_52 7:2.3
  ff_check_pixfmt_descriptors@LIBAVUTIL_FFMPEG_52 7:2.1
- ff_float_dsp_init_x86@LIBAVUTIL_FFMPEG_52 7:2.1
+ (optional)ff_float_dsp_init_arm@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_float_dsp_init_neon@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_float_dsp_init_vfp@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_float_dsp_init_x86@LIBAVUTIL_FFMPEG_52 7:2.1
  ff_get_channel_layout@LIBAVUTIL_FFMPEG_52 7:2.1
- ff_get_cpu_flags_x86@LIBAVUTIL_FFMPEG_52 7:2.1
- ff_init_lls_x86@LIBAVUTIL_FFMPEG_52 7:2.1
+ (optional)ff_get_cpu_flags_arm@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_get_cpu_flags_x86@LIBAVUTIL_FFMPEG_52 7:2.1
+ (optional)ff_init_lls_x86@LIBAVUTIL_FFMPEG_52 7:2.1
  ff_log2_tab@LIBAVUTIL_FFMPEG_52 7:2.1
  (optional)ff_opencl_set_parameter@LIBAVUTIL_FFMPEG_52 7:2.2
+ (optional)ff_scalarproduct_float_neon@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmac_scalar_neon@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmul_add_neon@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmul_neon@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmul_reverse_neon@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmul_reverse_vfp@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmul_scalar_neon@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmul_vfp@LIBAVUTIL_FFMPEG_52 7:2.3
+ (optional)ff_vector_fmul_window_neon@LIBAVUTIL_FFMPEG_52 7:2.3

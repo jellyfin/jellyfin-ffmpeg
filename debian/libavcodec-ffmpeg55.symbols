@@ -225,11 +225,15 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  ff_dct32_float@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_dct_common_init@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_dct_encode_init@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_dct_encode_init_x86@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_dct_encode_init_x86@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_dct_end@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_dct_init@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_dct_init_x86@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_dct_init_x86@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_dct_quantize_c@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_dct_unquantize_h263_armv5te@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_dct_unquantize_h263_inter_neon@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_dct_unquantize_h263_intra_neon@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_dct_unquantize_h263_neon@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_dnxhd_cid_table@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_dnxhd_get_cid_table@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_dsputil_init@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -242,38 +246,47 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  ff_fdct248_islow_8@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fdct_ifast248@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fdct_ifast@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_fdct_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_fdct_mmxext@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_fdct_sse2@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_fdct_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_fdct_mmxext@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_fdct_sse2@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fdctdsp_init@LIBAVCODEC_FFMPEG_55 7:2.3
- ff_fdctdsp_init_x86@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_fdctdsp_init_x86@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_fft16_vfp@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_fft_calc_neon@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_fft_end@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fft_end_fixed@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fft_end_fixed_32@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_fft_fixed_calc_neon@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_fft_fixed_init_arm@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_fft_init@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_fft_init_arm@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_fft_init_fixed@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fft_init_fixed_32@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_fft_init_x86@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_fft_init_x86@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_fft_lut_init@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_mmx_add@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_mmx_put@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_mmxext@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_mmxext_add@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_mmxext_put@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_sse2@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_sse2_add@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_idct_xvid_sse2_put@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_fft_permute_neon@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_idct_xvid_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_mmx_add@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_mmx_put@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_mmxext@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_mmxext_add@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_mmxext_put@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_sse2@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_sse2_add@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_idct_xvid_sse2_put@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_idctdsp_init@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_jpeg_fdct_islow_10@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_jpeg_fdct_islow_8@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_calc_c@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_calc_c_fixed@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_calc_c_fixed_32@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_mdct_calc_neon@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_mdct_calcw_c@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_end@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_end_fixed@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_end_fixed_32@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_mdct_fixed_calc_neon@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_mdct_fixed_calcw_neon@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_mdct_init@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_init_fixed@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_mdct_init_fixed_32@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -281,8 +294,10 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  ff_mdct_win_float@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_pixblockdsp_init@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_raw_pix_fmt_tags@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_rdft_calc_neon@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_rdft_end@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_rdft_init@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_rdft_init_arm@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_simple_idct248_put@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_simple_idct44_add@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_simple_idct48_add@LIBAVCODEC_FFMPEG_55 7:2.1
@@ -293,9 +308,19 @@ libavcodec-ffmpeg.so.55 libavcodec-ffmpeg55 #MINVER#
  ff_simple_idct_add_10@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_simple_idct_add_12@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_simple_idct_add_8@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_simple_idct_add_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_simple_idct_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_simple_idct_add_armv5te@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_add_armv6@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_add_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_simple_idct_add_neon@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_arm@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_armv5te@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_armv6@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_simple_idct_neon@LIBAVCODEC_FFMPEG_55 7:2.3
  ff_simple_idct_put_10@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_simple_idct_put_12@LIBAVCODEC_FFMPEG_55 7:2.1
  ff_simple_idct_put_8@LIBAVCODEC_FFMPEG_55 7:2.1
- ff_simple_idct_put_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_simple_idct_put_armv5te@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_put_armv6@LIBAVCODEC_FFMPEG_55 7:2.3
+ (optional)ff_simple_idct_put_mmx@LIBAVCODEC_FFMPEG_55 7:2.1
+ (optional)ff_simple_idct_put_neon@LIBAVCODEC_FFMPEG_55 7:2.3
