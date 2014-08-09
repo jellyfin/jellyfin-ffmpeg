@@ -1,6 +1,6 @@
-ffmpeg (7:2.3.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.3.1-1) experimental; urgency=medium
 
-  * Import new upstream release 2.3.1.
+  * Import new upstream release 2.3.1. (Closes: #729203)
      - Fix integer overflow in LZO code. (CVE-2014-4610)
   * Fix FTBFS in Ubuntu caused by the -Bsymbolic-functions linker flag.
     Thanks to Guillaume Martres for pointing out the fix that Fabian Greffrath
@@ -38,7 +38,7 @@ ffmpeg (7:2.3.1-1) UNRELEASED; urgency=medium
   * Add Fix-spelling patch to fix spelling errors.
   * Mark architecture-dependent symbols as optional.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 May 2014 10:59:21 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 09 Aug 2014 14:00:38 +0200
 
 ffmpeg (7:2.2.1-1) experimental; urgency=medium
 
