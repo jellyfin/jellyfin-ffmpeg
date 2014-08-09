@@ -381,7 +381,7 @@ Files:
   libavutil/mips/float_dsp_mips.c
   libavutil/mips/libm_mips.h
 Copyright: 2012, MIPS Technologies, Inc., California.
-License: BSD-3-clause and LGPL-2.1+
+License: BSD-3-Clause and LGPL-2.1+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
  are met:
@@ -428,7 +428,7 @@ Copyright:
   2010, Google Inc.
   2010, Rob Clark <rob@ti.com>
   2011, Mans Rullgard <mans@mansr.com>
-License: LGPL-2.1+ and BSD-3-clause
+License: LGPL-2.1+ and BSD-3-Clause
  FFmpeg is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
  License as published by the Free Software Foundation; either
@@ -815,7 +815,7 @@ Copyright:
   2012, Clément Bœsch
   2013-2014, Rl, Aetey Global Technologies AB
   2014, Andrey Utkin
-License: expat
+License: Expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
@@ -851,9 +851,11 @@ Files:
   libavcodec/zerocodec.c
   libavdevice/openal-dec.c
   libavfilter/vf_hqx.c
+  libavutil/x86/x86inc.asm
 Copyright:
   2003, Michael Niedermayer <michaelni@gmx.at>
   2003, Roman Shaposhnik
+  2005-2013, x264 project
   2011, Jonathan Baldwin
   2012-2013, Derek Buitenhuis
   2012, Martin Storsjo
