@@ -1,3 +1,9 @@
+ffmpeg (7:2.3.2-1) UNRELEASED; urgency=medium
+
+  * Import new upstream bugfix release 2.3.2.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
+
 ffmpeg (7:2.3.1-1) experimental; urgency=medium
 
   * Import new upstream release 2.3.1. (Closes: #729203)
