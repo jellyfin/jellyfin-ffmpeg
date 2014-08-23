@@ -1,4 +1,4 @@
 usr/include/libavutil
 usr/lib/*/libavutil-ffmpeg.a
-usr/lib/*/libavutil-ffmpeg.so
+usr/lib/*/libavutil*.so
 usr/lib/*/pkgconfig/libavutil.pc

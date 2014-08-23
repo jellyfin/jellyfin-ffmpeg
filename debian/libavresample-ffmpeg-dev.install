@@ -1,4 +1,4 @@
 usr/include/libavresample
 usr/lib/*/libavresample-ffmpeg.a
-usr/lib/*/libavresample-ffmpeg.so
+usr/lib/*/libavresample*.so
 usr/lib/*/pkgconfig/libavresample.pc
