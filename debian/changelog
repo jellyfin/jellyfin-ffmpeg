@@ -4,6 +4,10 @@ ffmpeg (7:2.3.3-1) UNRELEASED; urgency=medium
      - Fixes CVE-2014-5271: proresenc_ks: fix buffer overflow
      - Fixes CVE-2014-5272: iff: fix out of array access
   * Switch Vcs-Browser to the cgit interface.
+  * In the development packages add symbolic links from the standard lib*.so
+    library names to the suffixed ones.
+    This makes it possible to use the normal linker flags, e.g. '-lavcodec',
+    to link against the FFmpeg libraries with '-ffmpeg' suffix.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
 
