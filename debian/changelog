@@ -1,6 +1,8 @@
 ffmpeg (7:2.3.3-1) UNRELEASED; urgency=medium
 
   * Import new upstream bugfix release 2.3.3.
+     - Fixes CVE-2014-5271: proresenc_ks: fix buffer overflow
+     - Fixes CVE-2014-5272: iff: fix out of array access
   * Switch Vcs-Browser to the cgit interface.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
