@@ -75,9 +75,8 @@ Build-Depends:
  libsctp-dev [linux-any],
 # SDL support
  libsdl-dev,
-# Fails to be detected by configure script.
-## --enable-libshine
-# libshine-dev,
+# --enable-libshine
+ libshine-dev (>= 3.0.0),
 # --enable-libsoxr
  libsoxr-dev,
 # --enable-libspeex

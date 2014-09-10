@@ -15,6 +15,8 @@ ffmpeg (7:2.3.3-1) UNRELEASED; urgency=medium
   * Add lintian overrides for wildcard-matches-nothing-in-dep5-copyright
     false positives.
   * Add qt-faststart to the Recommends: of the ffmpeg binary package.
+  * Configure with --enable-libshine, since libshine >= 3.0.0 is now available
+    in Debian.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
 

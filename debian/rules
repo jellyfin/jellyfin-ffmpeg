@@ -47,19 +47,16 @@ endif
 #	--enable-libvo_aacenc			(libvo-aacenc-dev)
 #	--enable-libvo_amrwbenc			(libvo-amrwbenc-dev)
 #	--enable-libsmbclient			(libsmbclient-dev)
-# The following flags are not added, because I couldn't find the necessary libraries:
+# The following flags are not added, because the necessary libraries are not in Debian:
 #	--enable-decklink
-#	--enable-libcelt
-#	--enable-libilbc
+#	--enable-libcelt				(see #676592: removed from Debian as abandoned upstream, replaced by opus)
+#	--enable-libilbc				(see #675959 for the RFP bug)
 #	--enable-libnut
 #	--enable-libstagefright-h264
 #	--enable-libutvideo
-#	--enable-libvidstab
-#	--enable-libx265
+#	--enable-libvidstab				(see #709193 for the RFP bug)
+#	--enable-libx265				(see #750817 for the ITP bug)
 #	--enable-libxavs
-# The following flags/libraries are not added, because the configure script fails to detect them:
-#  * "ERROR: shine not found", but libshine-dev is installed. This is probably due to libshine in Debian being too old (2.0.0, while 3.0.0 exists.).
-#	--enable-libshine				(libshine-dev)
 # The following flags are not added for various reasons:
 #	* --enable-libquvi: The wrapper wasn't updated for recent versions (due to license concerns) and thus might produce problems, e.g. for mpv.
 #	* --enable-libv4l2 [!hurd-any]: This is only needed for very old devices and may cause problems for others.
@@ -107,6 +104,7 @@ CONFIG := --prefix=/usr \
 	--enable-libpulse \
 	--enable-librtmp \
 	--enable-libschroedinger \
+	--enable-libshine \
 	--enable-libsoxr \
 	--enable-libspeex \
 	--enable-libssh \
