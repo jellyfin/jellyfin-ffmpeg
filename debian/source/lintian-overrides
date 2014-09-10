@@ -2,3 +2,14 @@
 ffmpeg source: space-in-std-shortname-in-dep5-copyright bsd-3-clause and lgpl-2.1+ (paragraph at line 362)
 ffmpeg source: space-in-std-shortname-in-dep5-copyright gpl-2+ with avisynth exception (paragraph at line 606)
 ffmpeg source: space-in-std-shortname-in-dep5-copyright lgpl-2.1+ and bsd-3-clause (paragraph at line 438)
+
+# These are false positives, caused by an empty first line in the Files: stanzas, see #761125.
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 362)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 489)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 606)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 664)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 731)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 755)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 823)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 832)
+ffmpeg source: wildcard-matches-nothing-in-dep5-copyright  (paragraph at line 881)
