@@ -128,6 +128,8 @@ Multi-Arch: foreign
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Recommends:
+ qt-faststart
 Description: Tools for transcoding, streaming and playing of multimedia files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -141,7 +143,8 @@ Description: Tools for transcoding, streaming and playing of multimedia files
   * ffprobe: a simple multimedia stream analyzer
  .
  NOTE: It does not contain qt-faststart to avoid a conflict with libav-tools.
-       If you need qt-faststart from FFmpeg, install the package qt-faststart.
+       If you need qt-faststart from FFmpeg, install the package qt-faststart,
+       which is recommended by this package.
 
 Package: qt-faststart
 Architecture: any
