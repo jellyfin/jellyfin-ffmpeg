@@ -20,6 +20,7 @@ ffmpeg (7:2.3.3-1) UNRELEASED; urgency=medium
   * Drop pkg-config_file_without_build_suffix.patch and instead create symlinks
     from the lib*.pc files to the suffixed lib*-ffmpeg.pc files.
   * Install similar symlinks for the static libraries.
+  * Don't hardcode default.css as CSS filename in debian/ffmpeg-doc.install.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
 

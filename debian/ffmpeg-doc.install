@@ -4,7 +4,7 @@ doc/examples/Makefile				usr/share/doc/ffmpeg-doc/examples
 doc/examples/README					usr/share/doc/ffmpeg-doc/examples
 doc/examples/pc-uninstalled			usr/share/doc/ffmpeg-doc/examples
 doc/*.html							usr/share/doc/ffmpeg-doc/manual
-doc/default.css						usr/share/doc/ffmpeg-doc/manual
+doc/*.css							usr/share/doc/ffmpeg-doc/manual
 doc/APIchanges						usr/share/doc/ffmpeg-doc/developer-info
 doc/*.txt							usr/share/doc/ffmpeg-doc/developer-info
 usr/share/man/man3
