@@ -1,0 +1,4 @@
+# These are correct according to the copyright format specification and thus false positives in lintian, see #760642.
+ffmpeg source: space-in-std-shortname-in-dep5-copyright bsd-3-clause and lgpl-2.1+ (paragraph at line 362)
+ffmpeg source: space-in-std-shortname-in-dep5-copyright gpl-2+ with avisynth exception (paragraph at line 606)
+ffmpeg source: space-in-std-shortname-in-dep5-copyright lgpl-2.1+ and bsd-3-clause (paragraph at line 438)
