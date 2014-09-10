@@ -9,6 +9,7 @@ ffmpeg (7:2.3.3-1) UNRELEASED; urgency=medium
     This makes it possible to use the normal linker flags, e.g. '-lavcodec',
     to link against the FFmpeg libraries with '-ffmpeg' suffix.
   * Add missing copyright holders/years to debian/copyright.
+  * Fix wildcard-matches-nothing-in-dep5-copyright lintian warnings.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
 

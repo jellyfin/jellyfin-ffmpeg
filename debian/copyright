@@ -516,9 +516,8 @@ Files:
   libavfilter/vf_super2xsai.c
   libavfilter/vf_tinterlace.c
   libavfilter/vsrc_mptestsrc.c
-  libavfilter/x86/vf_hqdn3d_init.asm
   libavfilter/x86/vf_hqdn3d_init.c
-  libavfilter/x86/vf_pullup_init.asm
+  libavfilter/x86/vf_pullup.asm
   libavfilter/x86/vf_pullup_init.c
   libavfilter/x86/vf_spp.c
   libavfilter/yadif.h
@@ -753,14 +752,6 @@ Comment:
  License along with FFmpeg; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-Files: doc/doxy/doxy_stylesheet.css
-Copyright: 2012, Twitter, Inc
-License: Apache-2.0
- Licensed under the Apache License v2.0
-Comment:
- On Debian systems, the  full text of the Apache License version 2.0
- can be found in the file `/usr/share/common-licenses/Apache-2.0'.
-
 Files:
   compat/avisynth/avisynth_c_25.h
   doc/examples/avio_reading.c
@@ -927,7 +918,7 @@ License: IJG
 
 Files: debian/*
 Copyright: 2014, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
-License: LGPL-v2.1+
+License: LGPL-2.1+
  This packaging is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
  License as published by the Free Software Foundation; either
