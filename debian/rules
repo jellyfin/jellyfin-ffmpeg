@@ -174,8 +174,8 @@ override_dh_strip:
 
 override_dh_auto_install:
 	dh_auto_install
-	# Create symbolic links from the standard library lib*.so symlinks and pkg-config files to the suffixed ones.
-	for lib in `find debian/ -name lib*-ffmpeg.so; find debian/ -name lib*.pc`; do \
+	# Create symbolic links from the standard library lib*.so symlinks, pkg-config files and static libraries to the suffixed ones.
+	for lib in `find debian/ -name lib*-ffmpeg.so; find debian/ -name lib*.pc; find debian/ -name lib*.a`; do \
 		dir=`dirname $$lib`; \
 		base=`basename $$lib`; \
 		link=`echo $$base | sed 's/-ffmpeg//'`; \
