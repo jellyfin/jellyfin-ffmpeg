@@ -1,0 +1,12 @@
+libavdevice-ffmpeg.so.56 libavdevice-ffmpeg56 #MINVER#
+ LIBAVDEVICE_FFMPEG_56@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_app_to_dev_control_message@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_capabilities_create@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_capabilities_free@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_configuration@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_dev_to_app_control_message@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_free_list_devices@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_license@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_list_devices@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_register_all@LIBAVDEVICE_FFMPEG_56 7:2.4
+ avdevice_version@LIBAVDEVICE_FFMPEG_56 7:2.4

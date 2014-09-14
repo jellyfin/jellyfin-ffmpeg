@@ -1,3 +1,3 @@
 # This is a bug in lintian thinking only libav (and not also FFmpeg) build libavfilter.
 # See: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=729203#430
-libavfilter-ffmpeg4: embedded-library usr/lib/*/libavfilter-ffmpeg.so.*: libavfilter
+libavfilter-ffmpeg5: embedded-library usr/lib/*/libavfilter-ffmpeg.so.*: libavfilter

@@ -1,0 +1,11 @@
+libpostproc-ffmpeg.so.53 libpostproc-ffmpeg53 #MINVER#
+ LIBPOSTPROC_FFMPEG_53@LIBPOSTPROC_FFMPEG_53 7:2.4
+ postproc_configuration@LIBPOSTPROC_FFMPEG_53 7:2.4
+ postproc_license@LIBPOSTPROC_FFMPEG_53 7:2.4
+ postproc_version@LIBPOSTPROC_FFMPEG_53 7:2.4
+ pp_free_context@LIBPOSTPROC_FFMPEG_53 7:2.4
+ pp_free_mode@LIBPOSTPROC_FFMPEG_53 7:2.4
+ pp_get_context@LIBPOSTPROC_FFMPEG_53 7:2.4
+ pp_get_mode_by_name_and_quality@LIBPOSTPROC_FFMPEG_53 7:2.4
+ pp_help@LIBPOSTPROC_FFMPEG_53 7:2.4
+ pp_postprocess@LIBPOSTPROC_FFMPEG_53 7:2.4

@@ -1,2 +1,0 @@
-# [67] = "Psychadelic", /* sic, the misspelling is used in the specification */
-libavformat-ffmpeg55: spelling-error-in-binary usr/lib/*/libavformat-ffmpeg.so.* Psychadelic Psychedelic
