@@ -18,6 +18,10 @@ ffmpeg (7:2.4-1) UNRELEASED; urgency=medium
     from the lib*.pc files to the suffixed lib*-ffmpeg.pc files.
   * Install similar symlinks for the static libraries.
   * Don't hardcode default.css as CSS filename in debian/ffmpeg-doc.install.
+  * Drop patches included upstream:
+     - makeinfo.patch
+     - Fix-spelling.patch
+  * Update Change-symbol-versioning.patch.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
 
