@@ -1,8 +1,9 @@
-ffmpeg (7:2.3.3-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.4-1) UNRELEASED; urgency=medium
 
-  * Import new upstream bugfix release 2.3.3.
+  * Import new major upstream release 2.4.
      - Fixes CVE-2014-5271: proresenc_ks: fix buffer overflow
      - Fixes CVE-2014-5272: iff: fix out of array access
+     - The non-free image tests/lena.pnm is not shipped anymore.
   * Switch Vcs-Browser to the cgit interface.
   * In the development packages add symbolic links from the standard lib*.so
     library names to the suffixed ones.
