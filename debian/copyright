@@ -1,4 +1,4 @@
-Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: FFmpeg
 Upstream-Contact: ffmpeg-devel@ffmpeg.org
 Source: https://ffmpeg.org
@@ -10,6 +10,9 @@ Comment:
  .
  For building the Debian packages some of the GPL licensed files are used,
  so the resulting binaries are licensed under GPL v2+.
+ The HTML documention /usr/share/doc/ffmpeg-doc/manual/*.html in the ffmpeg-doc
+ package is effectively licensed under GPL-3+, because during its creation
+ the GPL-3+ licensed file doc/t2h.pm is used.
  .
  FFmpeg can also be combined with external libraries licensed under the
  Apache License 2.0, which would make the resulting binaries effectively
@@ -26,24 +29,23 @@ Copyright:
   1997-1999, H. Dietz
   1997-1999, R. Fisher
   1998-2009, Conifer Software
-  1999-2000, Chris Bagwell <cbagwell@sprynet.com>
+  1999-2001, Chris Bagwell <cbagwell@sprynet.com>
   1999, Intel Corporation
   1999, Nick Bailey
   1999, Roger Hardiman
   1999-2000, Sebastien Rougeaux <sebastien.rougeaux@anu.edu.au>
   2000, Edward Beingessner And Sundry Contributors
   2000-2003, 2005, Fabrice Bellard
-  2000-2001, Gerard Lantau
   2000-2001, Michel Lespinasse <walken@zoy.org>
   2000-2001, 2003, Nick Kurshev <nickols_k@mail.ru>
   2000-2001, Peter Gubanov <peter@elecard.net.ru>
   2001-2003, BERO <bero@geocities.co.jp>
   2001, Daniel Maas <dmaas@dcine.com> <dmaas@maasdigital.com>
+  2001, Heikki Leinonen
   2001, Juan J. Sierralta P
   2001, Lionel Ulmer
   2001-2014, Michael Niedermayer <michaelni@gmx.at>
   2001, 2005-2014, Peter Ross <pross@xvid.org>
-  2001-2005, the ffmpeg project
   2001, Tim Ferguson
   2002-2006, Alex Beregszaszi
   2002, Anders Johansson <ajh@atri.curtin.edu.au>
@@ -58,9 +60,10 @@ Copyright:
   2002, Remi Guyomarch <rguyom@pobox.com>
   2002-2005, Roberto Togni
   2002, Steve O'Hara-Smith
-  2002, the xine project
+  2002, The Xine project
   2002, Zdenek Kabelac <kabi@informatics.muni.cz>
   2003-2005, by Christopher R. Hertel <crh@ubiqx.mn.org>
+  2003, Donnie Smith
   2003, Dr. Tim Ferguson
   2003, Ewald Snel
   2003, Gustavo Sverzut Barbieri <gsbarbieri@yahoo.com.br>
@@ -68,7 +71,7 @@ Copyright:
   2003, James Klicman <james@klicman.org>
   2003, Max Krasnyansky <maxk@qualcomm.com>
   2003, 2004, 2007, Mike Melanson <melanson@pcisys.net>
-  2003, Pascal Massimino <skal@planet-d.net>
+  2003, 2014, Pascal Massimino <skal@planet-d.net> <pascal.massimino@gmail.com>
   2003-2004, 2006, Roman Shaposhnik
   2003, Rich Felker
   2003-2004, Romain Dolbeau <romain@dolbeau.org>
@@ -94,12 +97,12 @@ Copyright:
   2005, DivX, Inc
   2005, 2007-2008, Ian Caulfield
   2005, Jeff Muizelaar
-  2005-2007, Luca Barbato <lu_zero@gentoo.org>
+  2005-2007, 2014, Luca Barbato <lu_zero@gentoo.org>
   2005-2012, Mans Rullgard <mans@mansr.com>
   2005, Matthieu CASTET
   2005-2006, Oded Shimon <ods15@ods15.dyndns.org>
   2005, Ole André Vadla Ravnås <oleavr@gmail.com>
-  2005, 2007-2011, 2013, Reimar Döffinger <Reimar.Doeffinger@gmx.de>
+  2005, 2007-2011, 2013-2014, Reimar Döffinger <Reimar.Doeffinger@gmx.de>
   2005-2006, Robert Edele <yartrebo@earthlink.net>
   2005, Steve Underwood <steveu@coppice.org>
   2005, Vidar Madsen
@@ -130,6 +133,7 @@ Copyright:
   2006, Stefan Gehrer <stefan.gehrer@gmx.de>
   2006, Steve Lhomme
   2006, Thijs Vermeir <thijs.vermeir@barco.com>
+  2006-2011, Xvid Solutions GmbH
   2007, Alexis Ballier
   2007, 2010, 2013, Anssi Hannula <anssi.hannula@gmail.com>
   2007-2009, Bartlomiej Wolowiec <bartek.wolowiec@gmail.com>
@@ -148,6 +152,7 @@ Copyright:
   2007, Nicholas Tung
   2007, 2010-2014, Nicolas George <nicolas.george@normalesup.org>
   2007, Nokia Corporation
+  2007, Richard Spindler
   2007-2010, 2012-2014, Ronald S. Bultje <rsbultje@gmail.com>
   2007-2008, Siarhei Siamashka <ssvb@users.sourceforge.net>
   2007-2013, Stefano Sabatini <stefano.sabatini-lala@poste.it> <stefasab@gmail.com>
@@ -247,7 +252,7 @@ Copyright:
   2011, Mina Nagy Zaki
   2011, MirriAd Ltd
   2011, Oskar Arvidsson
-  2011-2013, Paul B Mahol
+  2011-2014, Paul B Mahol
   2011, Roger Pau Monné <roger.pau@entel.upc.edu>
   2011, Sebastien Zwickert
   2011-2012, Smartjog S.A.S, Clément Bœsch <clement.boesch@smartjog.com>
@@ -307,12 +312,17 @@ Copyright:
   2013-2014, Vittorio Giovara <vittorio.giovara@gmail.com>
   2013, Xiaolei Yu <dreifachstein@gmail.com>
   2014, Aman Gupta <ffmpeg@tmm1.net>
+  2014, Daniel Oberhoff
   2014, Dave Rice @dericed
+  2014, James Yu <james.yu@linaro.org>
+  2014, Marvin Scholz
   2014, Muhammad Faiz <mfcc64@gmail.com>
+  2014, Neil Birkbeck <birkbeck@google.com>
   2014, Nicholas Robbins
   2014, Rong Yan
   2014, Samsung Electronics
   2014, StarBrilliant <m13253@hotmail.com>
+  2014, Thomas Volkert <thomas@homer-conferencing.com>
   2014, Tim Walker <tdskywalker@gmail.com>
   2014, Vignesh Venkatasubramanian
 License: LGPL-2.1+
@@ -487,6 +497,7 @@ Comment:
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 Files:
+  libavcodec/x86/flac_dsp_gpl.asm
   libavdevice/x11grab.c
   libavfilter/f_ebur128.c
   libavfilter/vf_blackframe.c
@@ -538,7 +549,7 @@ Copyright:
   2002-2003, Brian J. Murrell
   2002, Dieter Shirley
   2002, Jindrich Makovicka <makovick@gmail.com>
-  2002-2008, 2013, The FFmpeg Project
+  2001-2008, 2013, The FFmpeg Project
   2003, Daniel Moreno <comac@comac.darktech.org>
   2003-2004, Karl H. Beckers, Frankfurt
   2003, Michael Zucchi <notzed@ximian.com>
@@ -563,6 +574,7 @@ Copyright:
   2013, Jean Delvare <khali@linux-fr.org>
   2013-2014, Paul B Mahol
   2013, Vittorio Giovara <vittorio.giovara@gmail.com>
+  2014, James Darnley <james.darnley@gmail.com>
 License: GPL-2+
  FFmpeg is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -752,12 +764,37 @@ Comment:
  License along with FFmpeg; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+Files: doc/t2h.pm
+Copyright:
+  2011, 2012, Free Software Foundation, Inc.
+  2014, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+  2014, Tiancheng "Timothy" Gu <timothygu99@gmail.com>
+License: GPL-3+
+ FFmpeg is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 3 of the License, or
+ (at your option) any later version.
+ .
+ FFmpeg is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+Comment:
+ On Debian systems, the full text of the GNU General Public License
+ version 3 can be found in the file `/usr/share/common-licenses/GPL-3'.
+ .
+ You should have received a copy of the GNU General Public
+ License along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
 Files:
   compat/avisynth/avisynth_c_25.h
+  doc/bootstrap.min.css
   doc/examples/avio_reading.c
   doc/examples/decoding_encoding.c
   doc/examples/demuxing_decoding.c
   doc/examples/filtering_audio.c
+  doc/examples/extract_mvs.c
   doc/examples/filtering_video.c
   doc/examples/metadata.c
   doc/examples/muxing.c
@@ -765,6 +802,7 @@ Files:
   doc/examples/resampling_audio.c
   doc/examples/scaling_video.c
   doc/examples/transcoding.c
+  doc/style.min.css
   libavcodec/arm/jrevdct_arm.S
   libavcodec/cinepakenc.c
   libavcodec/nellymoser.c
@@ -798,9 +836,11 @@ Copyright:
   2011, Reinhard Tartler
   2011-2014, Stefano Sabatini
   2011, Tomas Härdin
-  2012, Clément Bœsch
+  2011-2014, Twitter, Inc
+  2012, 2014, Clément Bœsch
   2013-2014, Rl, Aetey Global Technologies AB
   2014, Andrey Utkin
+  2014, Barbara Lepage <db0company@gmail.com>
 License: Expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -935,6 +975,58 @@ Comment:
  You should have received a copy of the GNU Lesser General Public
  License along with this packaging; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+Files: debian/missing-sources/ffmpeg-web/src/less/style.less
+Copyright: 2014, Barbara Lepage <db0company@gmail.com>
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+.
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+.
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+Comment:
+ This is the source of doc/style.min.css.
+ It was obtained from the FFmpeg web repository:
+ <https://github.com/FFmpeg/web>
+
+Files: debian/missing-sources/bootstrap*
+Copyright: 2011-2014, Twitter, Inc.
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+.
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+.
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+Comment:
+ This is the source of doc/bootstrap.min.css.
+ It was obtained from the Bootstrap repository:
+ <https://github.com/twbs/bootstrap>
+ The full text of the license was obtained from:
+ <https://github.com/twbs/bootstrap/blob/master/LICENSE>
 
 Files: debian/qt-faststart.1
 Copyright: Andres Mejia <mcitadel@gmail.com>
