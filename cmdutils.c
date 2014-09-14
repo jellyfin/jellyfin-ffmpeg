@@ -166,7 +166,7 @@ void show_help_options(const OptionDef *options, const char *msg, int req_flags,
     int first;
 
     first = 1;
-    for (po = options; po->name != NULL; po++) {
+    for (po = options; po->name; po++) {
         char buf[64];
 
         if (((po->flags & req_flags) != req_flags) ||
@@ -205,7 +205,7 @@ static const OptionDef *find_option(const OptionDef *po, const char *name)
     const char *p = strchr(name, ':');
     int len = p ? p - name : strlen(name);
 
-    while (po->name != NULL) {
+    while (po->name) {
         if (!strncmp(name, po->name, len) && strlen(po->name) == len)
             break;
         po++;
@@ -254,7 +254,7 @@ static void prepare_app_arguments(int *argc_ptr, char ***argv_ptr)
 
     win32_argv_utf8 = av_mallocz(sizeof(char *) * (win32_argc + 1) + buffsize);
     argstr_flat     = (char *)win32_argv_utf8 + sizeof(char *) * (win32_argc + 1);
-    if (win32_argv_utf8 == NULL) {
+    if (!win32_argv_utf8) {
         LocalFree(argv_w);
         return;
     }
@@ -1242,7 +1242,7 @@ static int show_formats_devices(void *optctx, const char *opt, const char *arg, 
             is_dev = is_device(ofmt->priv_class);
             if (!is_dev && device_only)
                 continue;
-            if ((name == NULL || strcmp(ofmt->name, name) < 0) &&
+            if ((!name || strcmp(ofmt->name, name) < 0) &&
                 strcmp(ofmt->name, last_name) > 0) {
                 name      = ofmt->name;
                 long_name = ofmt->long_name;
@@ -1253,7 +1253,7 @@ static int show_formats_devices(void *optctx, const char *opt, const char *arg, 
             is_dev = is_device(ifmt->priv_class);
             if (!is_dev && device_only)
                 continue;
-            if ((name == NULL || strcmp(ifmt->name, name) < 0) &&
+            if ((!name || strcmp(ifmt->name, name) < 0) &&
                 strcmp(ifmt->name, last_name) > 0) {
                 name      = ifmt->name;
                 long_name = ifmt->long_name;
@@ -1262,7 +1262,7 @@ static int show_formats_devices(void *optctx, const char *opt, const char *arg, 
             if (name && strcmp(ifmt->name, name) == 0)
                 decode = 1;
         }
-        if (name == NULL)
+        if (!name)
             break;
         last_name = name;
 
@@ -1639,19 +1639,19 @@ int show_layouts(void *optctx, const char *opt, const char *arg)
     const char *name, *descr;
 
     printf("Individual channels:\n"
-           "NAME        DESCRIPTION\n");
+           "NAME           DESCRIPTION\n");
     for (i = 0; i < 63; i++) {
         name = av_get_channel_name((uint64_t)1 << i);
         if (!name)
             continue;
         descr = av_get_channel_description((uint64_t)1 << i);
-        printf("%-12s%s\n", name, descr);
+        printf("%-14s %s\n", name, descr);
     }
     printf("\nStandard channel layouts:\n"
-           "NAME        DECOMPOSITION\n");
+           "NAME           DECOMPOSITION\n");
     for (i = 0; !av_get_standard_channel_layout(i, &layout, &name); i++) {
         if (name) {
-            printf("%-12s", name);
+            printf("%-14s ", name);
             for (j = 1; j; j <<= 1)
                 if ((layout & j))
                     printf("%s%s", (layout & (j - 1)) ? "+" : "", av_get_channel_name(j));

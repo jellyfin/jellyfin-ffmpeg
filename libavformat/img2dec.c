@@ -162,6 +162,8 @@ static int img_read_probe(AVProbeData *p)
             return AVPROBE_SCORE_MAX;
         else if (is_glob(p->filename))
             return AVPROBE_SCORE_MAX;
+        else if (p->buf_size == 0)
+            return 0;
         else if (av_match_ext(p->filename, "raw") || av_match_ext(p->filename, "gif"))
             return 5;
         else
@@ -308,7 +310,7 @@ int ff_img_read_header(AVFormatContext *s1)
             int probe_buffer_size = 2048;
             uint8_t *probe_buffer = av_realloc(NULL, probe_buffer_size + AVPROBE_PADDING_SIZE);
             AVInputFormat *fmt = NULL;
-            AVProbeData pd;
+            AVProbeData pd = { 0 };
 
             if (!probe_buffer)
                 return AVERROR(ENOMEM);
@@ -395,7 +397,7 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
         }
 
         if (codec->codec_id == AV_CODEC_ID_NONE) {
-            AVProbeData pd;
+            AVProbeData pd = { 0 };
             AVInputFormat *ifmt;
             uint8_t header[PROBE_BUF_MIN + AVPROBE_PADDING_SIZE];
             int ret;
@@ -419,7 +421,7 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
             infer_size(&codec->width, &codec->height, size[0]);
     } else {
         f[0] = s1->pb;
-        if (url_feof(f[0]))
+        if (avio_feof(f[0]))
             return AVERROR(EIO);
         if (s->frame_size > 0) {
             size[0] = s->frame_size;
@@ -503,7 +505,7 @@ static int img_read_seek(AVFormatContext *s, int stream_index, int64_t timestamp
 
 #define OFFSET(x) offsetof(VideoDemuxData, x)
 #define DEC AV_OPT_FLAG_DECODING_PARAM
-static const AVOption options[] = {
+const AVOption ff_img_options[] = {
     { "framerate",    "set the video framerate",             OFFSET(framerate),    AV_OPT_TYPE_VIDEO_RATE, {.str = "25"}, 0, 0,   DEC },
     { "loop",         "force loop over input file sequence", OFFSET(loop),         AV_OPT_TYPE_INT,    {.i64 = 0   }, 0, 1,       DEC },
 
@@ -528,7 +530,7 @@ static const AVOption options[] = {
 static const AVClass img2_class = {
     .class_name = "image2 demuxer",
     .item_name  = av_default_item_name,
-    .option     = options,
+    .option     = ff_img_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 AVInputFormat ff_image2_demuxer = {
@@ -548,7 +550,7 @@ AVInputFormat ff_image2_demuxer = {
 static const AVClass img2pipe_class = {
     .class_name = "image2pipe demuxer",
     .item_name  = av_default_item_name,
-    .option     = options,
+    .option     = ff_img_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 AVInputFormat ff_image2pipe_demuxer = {
@@ -574,7 +576,7 @@ static int bmp_probe(AVProbeData *p)
         return 0;
 
     if (!AV_RN32(b + 6)) {
-        return AVPROBE_SCORE_EXTENSION + 1;
+        return AVPROBE_SCORE_EXTENSION - 1; // lower than extension as bmp pipe has bugs
     } else {
         return AVPROBE_SCORE_EXTENSION / 4;
     }
@@ -606,6 +608,15 @@ static int j2k_probe(AVProbeData *p)
     if (AV_RB64(b) == 0x0000000c6a502020 ||
         AV_RB32(b) == 0xff4fff51)
         return AVPROBE_SCORE_EXTENSION + 1;
+    return 0;
+}
+
+static int jpegls_probe(AVProbeData *p)
+{
+    const uint8_t *b = p->buf;
+
+    if (AV_RB32(b) == 0xffd8fff7)
+         return AVPROBE_SCORE_EXTENSION + 1;
     return 0;
 }
 
@@ -652,8 +663,19 @@ static int tiff_probe(AVProbeData *p)
 {
     const uint8_t *b = p->buf;
 
-    if (AV_RB32(b) == 0x49492a00)
+    if (AV_RB32(b) == 0x49492a00 ||
+        AV_RB32(b) == 0x4D4D002a)
         return AVPROBE_SCORE_EXTENSION + 1;
+    return 0;
+}
+
+static int webp_probe(AVProbeData *p)
+{
+    const uint8_t *b = p->buf;
+
+    if (AV_RB32(b)     == 0x52494646 &&
+        AV_RB32(b + 8) == 0x57454250)
+        return AVPROBE_SCORE_MAX - 1;
     return 0;
 }
 
@@ -661,7 +683,7 @@ static int tiff_probe(AVProbeData *p)
 static const AVClass imgname ## _class = {\
     .class_name = AV_STRINGIFY(imgname) " demuxer",\
     .item_name  = av_default_item_name,\
-    .option     = options,\
+    .option     = ff_img_options,\
     .version    = LIBAVUTIL_VERSION_INT,\
 };\
 AVInputFormat ff_image_ ## imgname ## _pipe_demuxer = {\
@@ -679,8 +701,10 @@ IMAGEAUTO_DEMUXER(bmp,     AV_CODEC_ID_BMP)
 IMAGEAUTO_DEMUXER(dpx,     AV_CODEC_ID_DPX)
 IMAGEAUTO_DEMUXER(exr,     AV_CODEC_ID_EXR)
 IMAGEAUTO_DEMUXER(j2k,     AV_CODEC_ID_JPEG2000)
+IMAGEAUTO_DEMUXER(jpegls,  AV_CODEC_ID_JPEGLS)
 IMAGEAUTO_DEMUXER(pictor,  AV_CODEC_ID_PICTOR)
 IMAGEAUTO_DEMUXER(png,     AV_CODEC_ID_PNG)
 IMAGEAUTO_DEMUXER(sgi,     AV_CODEC_ID_SGI)
 IMAGEAUTO_DEMUXER(sunrast, AV_CODEC_ID_SUNRAST)
 IMAGEAUTO_DEMUXER(tiff,    AV_CODEC_ID_TIFF)
+IMAGEAUTO_DEMUXER(webp,    AV_CODEC_ID_WEBP)

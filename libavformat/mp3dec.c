@@ -138,6 +138,7 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
 
     MP3DecContext *mp3 = s->priv_data;
     static const int64_t xing_offtbl[2][2] = {{32, 17}, {17,9}};
+    uint64_t fsize = avio_size(s->pb);
 
     /* Check for Xing / Info tag */
     avio_skip(s->pb, xing_offtbl[c->lsf == 1][c->nb_channels == 1]);
@@ -151,6 +152,17 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
         mp3->frames = avio_rb32(s->pb);
     if (v & XING_FLAG_SIZE)
         mp3->header_filesize = avio_rb32(s->pb);
+    if (fsize && mp3->header_filesize) {
+        uint64_t min, delta;
+        min = FFMIN(fsize, mp3->header_filesize);
+        delta = FFMAX(fsize, mp3->header_filesize) - min;
+        if (fsize > mp3->header_filesize && delta > min >> 4) {
+            mp3->frames = 0;
+        } else if (delta > min >> 4) {
+            av_log(s, AV_LOG_WARNING,
+                   "filesize and duration do not match (growing file?)\n");
+        }
+    }
     if (v & XING_FLAG_TOC)
         read_xing_toc(s, mp3->header_filesize, av_rescale_q(mp3->frames,
                                        (AVRational){spf, c->sample_rate},
@@ -398,8 +410,13 @@ static int mp3_seek(AVFormatContext *s, int stream_index, int64_t timestamp,
     int64_t ret  = av_index_search_timestamp(st, timestamp, flags);
     int i, j;
     int dir = (flags&AVSEEK_FLAG_BACKWARD) ? -1 : 1;
+    int64_t best_pos;
+    int best_score;
 
-    if (mp3->is_cbr && st->duration > 0 && mp3->header_filesize > s->data_offset) {
+    if (   mp3->is_cbr
+        && st->duration > 0
+        && mp3->header_filesize > s->data_offset
+        && mp3->frames) {
         int64_t filesize = avio_size(s->pb);
         int64_t duration;
         if (filesize <= s->data_offset)
@@ -421,28 +438,37 @@ static int mp3_seek(AVFormatContext *s, int stream_index, int64_t timestamp,
         return -1;
     }
 
-    if (dir < 0)
-        avio_seek(s->pb, FFMAX(ie->pos - 4096, 0), SEEK_SET);
+    avio_seek(s->pb, FFMAX(ie->pos - 4096, 0), SEEK_SET);
     ret = avio_seek(s->pb, ie->pos, SEEK_SET);
     if (ret < 0)
         return ret;
 
 #define MIN_VALID 3
+    best_pos = ie->pos;
+    best_score = 999;
     for(i=0; i<4096; i++) {
-        int64_t pos = ie->pos + i*dir;
+        int64_t pos = ie->pos + (dir > 0 ? i - 1024 : -i);
+        int64_t candidate = -1;
+        int score = 999;
         for(j=0; j<MIN_VALID; j++) {
             ret = check(s, pos);
             if(ret < 0)
                 break;
+            if ((ie->pos - pos)*dir <= 0 && abs(MIN_VALID/2-j) < score) {
+                candidate = pos;
+                score = abs(MIN_VALID/2-j);
+            }
             pos += ret;
         }
-        if(j==MIN_VALID)
-            break;
+        if (best_score > score && j == MIN_VALID) {
+            best_pos = candidate;
+            best_score = score;
+            if(score == 0)
+                break;
+        }
     }
-    if(j!=MIN_VALID)
-        i=0;
 
-    ret = avio_seek(s->pb, ie->pos + i*dir, SEEK_SET);
+    ret = avio_seek(s->pb, best_pos, SEEK_SET);
     if (ret < 0)
         return ret;
     ff_update_cur_dts(s, st, ie->timestamp);

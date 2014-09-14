@@ -31,6 +31,7 @@
 #include "mpeg4video.h"
 #include "h263.h"
 #include "thread.h"
+#include "xvididct.h"
 
 /* The defines below define the number of bits that are read at once for
  * reading vlc values. Changing these may improve speed and data cache needs
@@ -1723,7 +1724,7 @@ static int decode_vol_header(Mpeg4DecContext *ctx, GetBitContext *gb)
         s->avctx->sample_aspect_ratio = ff_h263_pixel_aspect[s->aspect_ratio_info];
     }
 
-    if ((s->vol_control_parameters = get_bits1(gb))) { /* vol control parameter */
+    if ((ctx->vol_control_parameters = get_bits1(gb))) { /* vol control parameter */
         int chroma_format = get_bits(gb, 2);
         if (chroma_format != CHROMA_420)
             av_log(s->avctx, AV_LOG_ERROR, "illegal chroma format\n");
@@ -2124,7 +2125,7 @@ int ff_mpeg4_workaround_bugs(AVCodecContext *avctx)
 
     if (ctx->xvid_build == -1 && ctx->divx_version == -1 && ctx->lavc_build == -1)
         if (s->codec_tag == AV_RL32("DIVX") && s->vo_type == 0 &&
-            s->vol_control_parameters == 0)
+            ctx->vol_control_parameters == 0)
             ctx->divx_version = 400;  // divx 4
 
     if (ctx->xvid_build >= 0 && ctx->divx_version >= 0) {
@@ -2208,15 +2209,14 @@ int ff_mpeg4_workaround_bugs(AVCodecContext *avctx)
                s->workaround_bugs, ctx->lavc_build, ctx->xvid_build,
                ctx->divx_version, ctx->divx_build, s->divx_packed ? "p" : "");
 
-#if HAVE_MMX
-    if (s->codec_id == AV_CODEC_ID_MPEG4 && ctx->xvid_build >= 0 &&
-        avctx->idct_algo == FF_IDCT_AUTO &&
-        (av_get_cpu_flags() & AV_CPU_FLAG_MMX)) {
-        avctx->idct_algo = FF_IDCT_XVIDMMX;
-        ff_dct_common_init(s);
+    if (CONFIG_MPEG4_DECODER && ctx->xvid_build >= 0 &&
+        s->codec_id == AV_CODEC_ID_MPEG4 &&
+        avctx->idct_algo == FF_IDCT_AUTO) {
+        avctx->idct_algo = FF_IDCT_XVID;
+        ff_mpv_idct_init(s);
         return 1;
     }
-#endif
+
     return 0;
 }
 
@@ -2228,8 +2228,8 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
 
     s->pict_type = get_bits(gb, 2) + AV_PICTURE_TYPE_I;        /* pict type: I = 0 , P = 1 */
     if (s->pict_type == AV_PICTURE_TYPE_B && s->low_delay &&
-        s->vol_control_parameters == 0 && !(s->flags & CODEC_FLAG_LOW_DELAY)) {
-        av_log(s->avctx, AV_LOG_ERROR, "low_delay flag incorrectly, clearing it\n");
+        ctx->vol_control_parameters == 0 && !(s->flags & CODEC_FLAG_LOW_DELAY)) {
+        av_log(s->avctx, AV_LOG_ERROR, "low_delay flag set incorrectly, clearing it\n");
         s->low_delay = 0;
     }
 
@@ -2446,7 +2446,7 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
                    s->data_partitioning, ctx->resync_marker,
                    ctx->num_sprite_warping_points, s->sprite_warping_accuracy,
                    1 - s->no_rounding, s->vo_type,
-                   s->vol_control_parameters ? " VOLC" : " ", ctx->intra_dc_threshold,
+                   ctx->vol_control_parameters ? " VOLC" : " ", ctx->intra_dc_threshold,
                    ctx->cplx_estimation_trash_i, ctx->cplx_estimation_trash_p,
                    ctx->cplx_estimation_trash_b,
                    s->time,
@@ -2470,7 +2470,7 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
     /* detect buggy encoders which don't set the low_delay flag
      * (divx4/xvid/opendivx). Note we cannot detect divx5 without b-frames
      * easily (although it's buggy too) */
-    if (s->vo_type == 0 && s->vol_control_parameters == 0 &&
+    if (s->vo_type == 0 && ctx->vol_control_parameters == 0 &&
         ctx->divx_version == -1 && s->picture_number == 0) {
         av_log(s->avctx, AV_LOG_WARNING,
                "looks like this file was encoded with (divx4/(old)xvid/opendivx) -> forcing low_delay flag\n");
@@ -2684,6 +2684,7 @@ static int mpeg4_update_thread_context(AVCodecContext *dst,
 {
     Mpeg4DecContext *s = dst->priv_data;
     const Mpeg4DecContext *s1 = src->priv_data;
+    int init = s->m.context_initialized;
 
     int ret = ff_mpeg_update_thread_context(dst, src);
 
@@ -2691,6 +2692,9 @@ static int mpeg4_update_thread_context(AVCodecContext *dst,
         return ret;
 
     memcpy(((uint8_t*)s) + sizeof(MpegEncContext), ((uint8_t*)s1) + sizeof(MpegEncContext), sizeof(Mpeg4DecContext) - sizeof(MpegEncContext));
+
+    if (CONFIG_MPEG4_DECODER && !init && s1->xvid_build >= 0)
+        ff_xvid_idct_init(&s->m.idsp, dst);
 
     return 0;
 }
@@ -2755,13 +2759,6 @@ static const AVClass mpeg4_class = {
     LIBAVUTIL_VERSION_INT,
 };
 
-static const AVClass mpeg4_vdpau_class = {
-    "MPEG4 Video VDPAU Decoder",
-    av_default_item_name,
-    mpeg4_options,
-    LIBAVUTIL_VERSION_INT,
-};
-
 AVCodec ff_mpeg4_decoder = {
     .name                  = "mpeg4",
     .long_name             = NULL_IF_CONFIG_SMALL("MPEG-4 part 2"),
@@ -2784,6 +2781,13 @@ AVCodec ff_mpeg4_decoder = {
 
 
 #if CONFIG_MPEG4_VDPAU_DECODER
+static const AVClass mpeg4_vdpau_class = {
+    "MPEG4 Video VDPAU Decoder",
+    av_default_item_name,
+    mpeg4_options,
+    LIBAVUTIL_VERSION_INT,
+};
+
 AVCodec ff_mpeg4_vdpau_decoder = {
     .name           = "mpeg4_vdpau",
     .long_name      = NULL_IF_CONFIG_SMALL("MPEG-4 part 2 (VDPAU)"),

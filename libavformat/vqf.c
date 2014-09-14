@@ -144,11 +144,7 @@ static int vqf_read_header(AVFormatContext *s)
             break;
         case MKTAG('D','S','I','Z'): // size of compressed data
         {
-            char buf[8] = {0};
-            int size = avio_rb32(s->pb);
-
-            snprintf(buf, sizeof(buf), "%d", size);
-            av_dict_set(&s->metadata, "size", buf, 0);
+            av_dict_set_int(&s->metadata, "size", avio_rb32(s->pb), 0);
         }
             break;
         case MKTAG('Y','E','A','R'): // recording date
@@ -166,7 +162,7 @@ static int vqf_read_header(AVFormatContext *s)
 
         header_size -= len;
 
-    } while (header_size >= 0 && !url_feof(s->pb));
+    } while (header_size >= 0 && !avio_feof(s->pb));
 
     switch (rate_flag) {
     case -1:

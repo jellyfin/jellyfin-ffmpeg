@@ -133,10 +133,10 @@ static av_cold int dnxhd_init_vlc(DNXHDEncContext *ctx)
     int i, j, level, run;
     int max_level = 1 << (ctx->cid_table->bit_depth + 2);
 
-    FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->vlc_codes,
-                      max_level * 4 * sizeof(*ctx->vlc_codes), fail);
-    FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->vlc_bits,
-                      max_level * 4 * sizeof(*ctx->vlc_bits), fail);
+    FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->vlc_codes,
+                      max_level, 4 * sizeof(*ctx->vlc_codes), fail);
+    FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->vlc_bits,
+                      max_level, 4 * sizeof(*ctx->vlc_bits), fail);
     FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->run_codes,
                       63 * 2, fail);
     FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->run_bits,
@@ -197,15 +197,15 @@ static av_cold int dnxhd_init_qmat(DNXHDEncContext *ctx, int lbias, int cbias)
     const uint8_t *luma_weight_table   = ctx->cid_table->luma_weight;
     const uint8_t *chroma_weight_table = ctx->cid_table->chroma_weight;
 
-    FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->qmatrix_l,
-                      (ctx->m.avctx->qmax + 1) * 64 * sizeof(int), fail);
-    FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->qmatrix_c,
-                      (ctx->m.avctx->qmax + 1) * 64 * sizeof(int), fail);
-    FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->qmatrix_l16,
-                      (ctx->m.avctx->qmax + 1) * 64 * 2 * sizeof(uint16_t),
+    FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->qmatrix_l,
+                      (ctx->m.avctx->qmax + 1), 64 * sizeof(int), fail);
+    FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->qmatrix_c,
+                      (ctx->m.avctx->qmax + 1), 64 * sizeof(int), fail);
+    FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->qmatrix_l16,
+                      (ctx->m.avctx->qmax + 1), 64 * 2 * sizeof(uint16_t),
                       fail);
-    FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->qmatrix_c16,
-                      (ctx->m.avctx->qmax + 1) * 64 * 2 * sizeof(uint16_t),
+    FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->qmatrix_c16,
+                      (ctx->m.avctx->qmax + 1), 64 * 2 * sizeof(uint16_t),
                       fail);
 
     if (ctx->cid_table->bit_depth == 8) {
@@ -271,10 +271,10 @@ fail:
 
 static av_cold int dnxhd_init_rc(DNXHDEncContext *ctx)
 {
-    FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->mb_rc, 8160 * (ctx->m.avctx->qmax + 1) * sizeof(RCEntry), fail);
+    FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->mb_rc, (ctx->m.avctx->qmax + 1), 8160 * sizeof(RCEntry), fail);
     if (ctx->m.avctx->mb_decision != FF_MB_DECISION_RD)
-        FF_ALLOCZ_OR_GOTO(ctx->m.avctx, ctx->mb_cmp,
-                          ctx->m.mb_num * sizeof(RCCMPEntry), fail);
+        FF_ALLOCZ_ARRAY_OR_GOTO(ctx->m.avctx, ctx->mb_cmp,
+                          ctx->m.mb_num, sizeof(RCCMPEntry), fail);
 
     ctx->frame_bits = (ctx->cid_table->coding_unit_size -
                        640 - 4 - ctx->min_padding) * 8;
@@ -324,10 +324,9 @@ static av_cold int dnxhd_encode_init(AVCodecContext *avctx)
 
     ff_blockdsp_init(&ctx->bdsp, avctx);
     ff_fdctdsp_init(&ctx->m.fdsp, avctx);
-    ff_idctdsp_init(&ctx->m.idsp, avctx);
+    ff_mpv_idct_init(&ctx->m);
     ff_mpegvideoencdsp_init(&ctx->m.mpvencdsp, avctx);
     ff_pixblockdsp_init(&ctx->m.pdsp, avctx);
-    ff_dct_common_init(&ctx->m);
     ff_dct_encode_init(&ctx->m);
 
     if (!ctx->m.dct_quantize)

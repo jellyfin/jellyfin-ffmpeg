@@ -785,7 +785,6 @@ static int open_input_file(OptionsContext *o, const char *filename)
     AVInputFormat *file_iformat = NULL;
     int err, i, ret;
     int64_t timestamp;
-    uint8_t buf[128];
     AVDictionary **opts;
     AVDictionary *unused_opts = NULL;
     AVDictionaryEntry *e = NULL;
@@ -814,8 +813,7 @@ static int open_input_file(OptionsContext *o, const char *filename)
         exit_program(1);
     }
     if (o->nb_audio_sample_rate) {
-        snprintf(buf, sizeof(buf), "%d", o->audio_sample_rate[o->nb_audio_sample_rate - 1].u.i);
-        av_dict_set(&o->g->format_opts, "sample_rate", buf, 0);
+        av_dict_set_int(&o->g->format_opts, "sample_rate", o->audio_sample_rate[o->nb_audio_sample_rate - 1].u.i, 0);
     }
     if (o->nb_audio_channels) {
         /* because we set audio_channels based on both the "ac" and
@@ -824,9 +822,7 @@ static int open_input_file(OptionsContext *o, const char *filename)
         if (file_iformat && file_iformat->priv_class &&
             av_opt_find(&file_iformat->priv_class, "channels", NULL, 0,
                         AV_OPT_SEARCH_FAKE_OBJ)) {
-            snprintf(buf, sizeof(buf), "%d",
-                     o->audio_channels[o->nb_audio_channels - 1].u.i);
-            av_dict_set(&o->g->format_opts, "channels", buf, 0);
+            av_dict_set_int(&o->g->format_opts, "channels", o->audio_channels[o->nb_audio_channels - 1].u.i, 0);
         }
     }
     if (o->nb_frame_rates) {
@@ -872,6 +868,7 @@ static int open_input_file(OptionsContext *o, const char *filename)
         print_error(filename, err);
         exit_program(1);
     }
+    remove_avoptions(&o->g->format_opts, o->g->codec_opts);
     assert_avoptions(o->g->format_opts);
 
     /* apply forced codec ids */
@@ -1477,11 +1474,13 @@ static OutputStream *new_audio_stream(OptionsContext *o, AVFormatContext *oc, in
                 }
 
                 if (!ist || (ist->file_index == map->file_idx && ist->st->index == map->stream_idx)) {
-                    if (ost->audio_channels_mapped < FF_ARRAY_ELEMS(ost->audio_channels_map))
-                        ost->audio_channels_map[ost->audio_channels_mapped++] = map->channel_idx;
-                    else
-                        av_log(NULL, AV_LOG_FATAL, "Max channel mapping for output %d.%d reached\n",
-                               ost->file_index, ost->st->index);
+                    if (av_reallocp_array(&ost->audio_channels_map,
+                                          ost->audio_channels_mapped + 1,
+                                          sizeof(*ost->audio_channels_map)
+                                          ) < 0 )
+                        exit_program(1);
+
+                    ost->audio_channels_map[ost->audio_channels_mapped++] = map->channel_idx;
                 }
             }
         }
@@ -1869,8 +1868,27 @@ static int open_output_file(OptionsContext *o, const char *filename)
         if (!o->subtitle_disable && (avcodec_find_encoder(oc->oformat->subtitle_codec) || subtitle_codec_name)) {
             for (i = 0; i < nb_input_streams; i++)
                 if (input_streams[i]->st->codec->codec_type == AVMEDIA_TYPE_SUBTITLE) {
-                    new_subtitle_stream(o, oc, i);
-                    break;
+                    AVCodecDescriptor const *input_descriptor =
+                        avcodec_descriptor_get(input_streams[i]->st->codec->codec_id);
+                    AVCodecDescriptor const *output_descriptor = NULL;
+                    AVCodec const *output_codec =
+                        avcodec_find_encoder(oc->oformat->subtitle_codec);
+                    int input_props = 0, output_props = 0;
+                    if (output_codec)
+                        output_descriptor = avcodec_descriptor_get(output_codec->id);
+                    if (input_descriptor)
+                        input_props = input_descriptor->props & (AV_CODEC_PROP_TEXT_SUB | AV_CODEC_PROP_BITMAP_SUB);
+                    if (output_descriptor)
+                        output_props = output_descriptor->props & (AV_CODEC_PROP_TEXT_SUB | AV_CODEC_PROP_BITMAP_SUB);
+                    if (subtitle_codec_name ||
+                        input_props & output_props ||
+                        // Map dvb teletext which has neither property to any output subtitle encoder
+                        input_descriptor && output_descriptor &&
+                        (!input_descriptor->props ||
+                         !output_descriptor->props)) {
+                        new_subtitle_stream(o, oc, i);
+                        break;
+                    }
                 }
         }
         /* do something with data? */
@@ -1992,8 +2010,13 @@ loop_end:
         const AVClass *class = avcodec_get_class();
         const AVOption *option = av_opt_find(&class, e->key, NULL, 0,
                                              AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ);
-        if (!option)
+        const AVClass *fclass = avformat_get_class();
+        const AVOption *foption = av_opt_find(&fclass, e->key, NULL, 0,
+                                              AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ);
+        if (!option || foption)
             continue;
+
+
         if (!(option->flags & AV_OPT_FLAG_ENCODING_PARAM)) {
             av_log(NULL, AV_LOG_ERROR, "Codec AVOption %s (%s) specified for "
                    "output file #%d (%s) is not an encoding option.\n", e->key,
@@ -2038,9 +2061,7 @@ loop_end:
         assert_file_overwrite(filename);
 
     if (o->mux_preload) {
-        uint8_t buf[64];
-        snprintf(buf, sizeof(buf), "%d", (int)(o->mux_preload*AV_TIME_BASE));
-        av_dict_set(&of->opts, "preload", buf, 0);
+        av_dict_set_int(&of->opts, "preload", o->mux_preload*AV_TIME_BASE, 0);
     }
     oc->max_delay = (int)(o->mux_max_delay * AV_TIME_BASE);
 
@@ -2166,7 +2187,8 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
             for (j = 0; j < nb_input_files; j++) {
                 for (i = 0; i < input_files[j]->nb_streams; i++) {
                     AVCodecContext *c = input_files[j]->ctx->streams[i]->codec;
-                    if (c->codec_type != AVMEDIA_TYPE_VIDEO)
+                    if (c->codec_type != AVMEDIA_TYPE_VIDEO ||
+                        !c->time_base.num)
                         continue;
                     fr = c->time_base.den * 1000 / c->time_base.num;
                     if (fr == 25000) {
@@ -2199,19 +2221,19 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
 
         parse_option(o, "s", norm == PAL ? "352x288" : "352x240", options);
         parse_option(o, "r", frame_rates[norm], options);
-        av_dict_set(&o->g->codec_opts, "g", norm == PAL ? "15" : "18", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "g", norm == PAL ? "15" : "18");
 
-        av_dict_set(&o->g->codec_opts, "b:v", "1150000", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->codec_opts, "maxrate", "1150000", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->codec_opts, "minrate", "1150000", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->codec_opts, "bufsize", "327680", AV_DICT_DONT_OVERWRITE); // 40*1024*8;
+        opt_default(NULL, "b:v", "1150000");
+        opt_default(NULL, "maxrate", "1150000");
+        opt_default(NULL, "minrate", "1150000");
+        opt_default(NULL, "bufsize", "327680"); // 40*1024*8;
 
-        av_dict_set(&o->g->codec_opts, "b:a", "224000", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "b:a", "224000");
         parse_option(o, "ar", "44100", options);
         parse_option(o, "ac", "2", options);
 
-        av_dict_set(&o->g->format_opts, "packetsize", "2324", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->format_opts, "muxrate", "1411200", AV_DICT_DONT_OVERWRITE); // 2352 * 75 * 8;
+        opt_default(NULL, "packetsize", "2324");
+        opt_default(NULL, "muxrate", "1411200"); // 2352 * 75 * 8;
 
         /* We have to offset the PTS, so that it is consistent with the SCR.
            SCR starts at 36000, but the first two packs contain only padding
@@ -2228,18 +2250,18 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         parse_option(o, "s", norm == PAL ? "480x576" : "480x480", options);
         parse_option(o, "r", frame_rates[norm], options);
         parse_option(o, "pix_fmt", "yuv420p", options);
-        av_dict_set(&o->g->codec_opts, "g", norm == PAL ? "15" : "18", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "g", norm == PAL ? "15" : "18");
 
-        av_dict_set(&o->g->codec_opts, "b:v", "2040000", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->codec_opts, "maxrate", "2516000", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->codec_opts, "minrate", "0", AV_DICT_DONT_OVERWRITE); // 1145000;
-        av_dict_set(&o->g->codec_opts, "bufsize", "1835008", AV_DICT_DONT_OVERWRITE); // 224*1024*8;
-        av_dict_set(&o->g->codec_opts, "scan_offset", "1", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "b:v", "2040000");
+        opt_default(NULL, "maxrate", "2516000");
+        opt_default(NULL, "minrate", "0"); // 1145000;
+        opt_default(NULL, "bufsize", "1835008"); // 224*1024*8;
+        opt_default(NULL, "scan_offset", "1");
 
-        av_dict_set(&o->g->codec_opts, "b:a", "224000", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "b:a", "224000");
         parse_option(o, "ar", "44100", options);
 
-        av_dict_set(&o->g->format_opts, "packetsize", "2324", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "packetsize", "2324");
 
     } else if (!strcmp(arg, "dvd")) {
 
@@ -2250,17 +2272,17 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         parse_option(o, "s", norm == PAL ? "720x576" : "720x480", options);
         parse_option(o, "r", frame_rates[norm], options);
         parse_option(o, "pix_fmt", "yuv420p", options);
-        av_dict_set(&o->g->codec_opts, "g", norm == PAL ? "15" : "18", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "g", norm == PAL ? "15" : "18");
 
-        av_dict_set(&o->g->codec_opts, "b:v", "6000000", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->codec_opts, "maxrate", "9000000", AV_DICT_DONT_OVERWRITE);
-        av_dict_set(&o->g->codec_opts, "minrate", "0", AV_DICT_DONT_OVERWRITE); // 1500000;
-        av_dict_set(&o->g->codec_opts, "bufsize", "1835008", AV_DICT_DONT_OVERWRITE); // 224*1024*8;
+        opt_default(NULL, "b:v", "6000000");
+        opt_default(NULL, "maxrate", "9000000");
+        opt_default(NULL, "minrate", "0"); // 1500000;
+        opt_default(NULL, "bufsize", "1835008"); // 224*1024*8;
 
-        av_dict_set(&o->g->format_opts, "packetsize", "2048", AV_DICT_DONT_OVERWRITE);  // from www.mpucoder.com: DVD sectors contain 2048 bytes of data, this is also the size of one pack.
-        av_dict_set(&o->g->format_opts, "muxrate", "10080000", AV_DICT_DONT_OVERWRITE); // from mplex project: data_rate = 1260000. mux_rate = data_rate * 8
+        opt_default(NULL, "packetsize", "2048");  // from www.mpucoder.com: DVD sectors contain 2048 bytes of data, this is also the size of one pack.
+        opt_default(NULL, "muxrate", "10080000"); // from mplex project: data_rate = 1260000. mux_rate = data_rate * 8
 
-        av_dict_set(&o->g->codec_opts, "b:a", "448000", AV_DICT_DONT_OVERWRITE);
+        opt_default(NULL, "b:a", "448000");
         parse_option(o, "ar", "48000", options);
 
     } else if (!strncmp(arg, "dv", 2)) {
@@ -2279,6 +2301,10 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         av_log(NULL, AV_LOG_ERROR, "Unknown target: %s\n", arg);
         return AVERROR(EINVAL);
     }
+
+    av_dict_copy(&o->g->codec_opts,  codec_opts, AV_DICT_DONT_OVERWRITE);
+    av_dict_copy(&o->g->format_opts, format_opts, AV_DICT_DONT_OVERWRITE);
+
     return 0;
 }
 

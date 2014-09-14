@@ -26,8 +26,9 @@
 #include "avcodec.h"
 
 /* minimum number of bytes to read from a DV stream in order to
-   determine the profile */
-#define DV_PROFILE_BYTES (6*80) /* 6 DIF blocks */
+ * determine the profile */
+#define DV_PROFILE_BYTES (6 * 80) /* 6 DIF blocks */
+
 
 /*
  * AVDVProfile is used to express the differences between various
@@ -59,11 +60,6 @@ typedef struct AVDVProfile {
 
 const AVDVProfile* avpriv_dv_frame_profile2(AVCodecContext* codec, const AVDVProfile *sys,
                                             const uint8_t* frame, unsigned buf_size);
-#if LIBAVCODEC_VERSION_MAJOR < 56
-const AVDVProfile *avpriv_dv_frame_profile(const AVDVProfile *sys,
-                                           const uint8_t* frame, unsigned buf_size);
-const AVDVProfile *avpriv_dv_codec_profile(AVCodecContext* codec);
-#endif
 
 /**
  * Get a DV profile for the provided compressed frame.

@@ -38,7 +38,7 @@
 #include "dirac_dwt.h"
 #include "dirac.h"
 #include "diracdsp.h"
-#include "videodsp.h" // for ff_emulated_edge_mc_8
+#include "videodsp.h"
 
 /**
  * The spec limits the number of wavelet decompositions to 4 for both
@@ -72,8 +72,6 @@
  * is held for delayed output.
  */
 #define DELAYED_PIC_REF 4
-
-#define ff_emulated_edge_mc ff_emulated_edge_mc_8 /* Fix: change the calls to this function regarding bit depth */
 
 #define CALC_PADDING(size, depth)                       \
     (((size + (1 << depth) - 1) >> depth) << depth)
@@ -138,6 +136,7 @@ typedef struct Plane {
 typedef struct DiracContext {
     AVCodecContext *avctx;
     MpegvideoEncDSPContext mpvencdsp;
+    VideoDSPContext vdsp;
     DiracDSPContext diracdsp;
     GetBitContext gb;
     dirac_source_params source;
@@ -235,7 +234,8 @@ enum dirac_subband {
     subband_ll = 0,
     subband_hl = 1,
     subband_lh = 2,
-    subband_hh = 3
+    subband_hh = 3,
+    subband_nb,
 };
 
 static const uint8_t default_qmat[][4][4] = {
@@ -425,6 +425,7 @@ static av_cold int dirac_decode_init(AVCodecContext *avctx)
 
     ff_diracdsp_init(&s->diracdsp);
     ff_mpegvideoencdsp_init(&s->mpvencdsp, avctx);
+    ff_videodsp_init(&s->vdsp, 8);
 
     for (i = 0; i < MAX_FRAMES; i++) {
         s->all_frames[i].avframe = av_frame_alloc();
@@ -1451,10 +1452,10 @@ static int mc_subpel(DiracContext *s, DiracBlock *block, const uint8_t *src[5],
         y + p->yblen > p->height+EDGE_WIDTH/2 ||
         x < 0 || y < 0) {
         for (i = 0; i < nplanes; i++) {
-            ff_emulated_edge_mc(s->edge_emu_buffer[i], src[i],
-                                p->stride, p->stride,
-                                p->xblen, p->yblen, x, y,
-                                p->width+EDGE_WIDTH/2, p->height+EDGE_WIDTH/2);
+            s->vdsp.emulated_edge_mc(s->edge_emu_buffer[i], src[i],
+                                     p->stride, p->stride,
+                                     p->xblen, p->yblen, x, y,
+                                     p->width+EDGE_WIDTH/2, p->height+EDGE_WIDTH/2);
             src[i] = s->edge_emu_buffer[i];
         }
     }
@@ -1959,7 +1960,6 @@ static int dirac_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
             int min_num = s->delay_frames[0]->avframe->display_picture_number;
             /* Too many delayed frames, so we display the frame with the lowest pts */
             av_log(avctx, AV_LOG_ERROR, "Delay frame overflow\n");
-            delayed_frame = s->delay_frames[0];
 
             for (i = 1; s->delay_frames[i]; i++)
                 if (s->delay_frames[i]->avframe->display_picture_number < min_num)

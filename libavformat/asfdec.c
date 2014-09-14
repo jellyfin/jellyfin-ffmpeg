@@ -785,7 +785,7 @@ static int asf_read_header(AVFormatContext *s)
             continue;
         } else if (!ff_guidcmp(&g, &ff_asf_marker_header)) {
             asf_read_marker(s, gsize);
-        } else if (url_feof(pb)) {
+        } else if (avio_feof(pb)) {
             return AVERROR_EOF;
         } else {
             if (!s->keylen) {
@@ -822,7 +822,7 @@ static int asf_read_header(AVFormatContext *s)
     avio_rl64(pb);
     avio_r8(pb);
     avio_r8(pb);
-    if (url_feof(pb))
+    if (avio_feof(pb))
         return AVERROR_EOF;
     asf->data_offset      = avio_tell(pb);
     asf->packet_size_left = 0;
@@ -922,20 +922,20 @@ static int asf_get_packet(AVFormatContext *s, AVIOContext *pb)
          * the stream. */
         if (pb->error == AVERROR(EAGAIN))
             return AVERROR(EAGAIN);
-        if (!url_feof(pb))
+        if (!avio_feof(pb))
             av_log(s, AV_LOG_ERROR,
                    "ff asf bad header %x  at:%"PRId64"\n", c, avio_tell(pb));
     }
     if ((c & 0x8f) == 0x82) {
         if (d || e) {
-            if (!url_feof(pb))
+            if (!avio_feof(pb))
                 av_log(s, AV_LOG_ERROR, "ff asf bad non zero\n");
             return AVERROR_INVALIDDATA;
         }
         c      = avio_r8(pb);
         d      = avio_r8(pb);
         rsize += 3;
-    } else if(!url_feof(pb)) {
+    } else if(!avio_feof(pb)) {
         avio_seek(pb, -1, SEEK_CUR); // FIXME
     }
 
@@ -1126,7 +1126,7 @@ static int asf_parse_packet(AVFormatContext *s, AVIOContext *pb, AVPacket *pkt)
     ASFStream *asf_st = 0;
     for (;;) {
         int ret;
-        if (url_feof(pb))
+        if (avio_feof(pb))
             return AVERROR_EOF;
         if (asf->packet_size_left < FRAME_HEADER_SIZE ||
             asf->packet_segments < 1 && asf->packet_time_start == 0) {
@@ -1195,6 +1195,8 @@ static int asf_parse_packet(AVFormatContext *s, AVIOContext *pb, AVPacket *pkt)
         if (asf_st->pkt.size != asf_st->packet_obj_size ||
             // FIXME is this condition sufficient?
             asf_st->frag_offset + asf->packet_frag_size > asf_st->pkt.size) {
+            int ret;
+
             if (asf_st->pkt.data) {
                 av_log(s, AV_LOG_INFO,
                        "freeing incomplete packet size %d, new %d\n",
@@ -1203,7 +1205,8 @@ static int asf_parse_packet(AVFormatContext *s, AVIOContext *pb, AVPacket *pkt)
                 av_free_packet(&asf_st->pkt);
             }
             /* new packet */
-            av_new_packet(&asf_st->pkt, asf_st->packet_obj_size);
+            if ((ret = av_new_packet(&asf_st->pkt, asf_st->packet_obj_size)) < 0)
+                return ret;
             asf_st->seq              = asf->packet_seq;
             if (asf->ts_is_pts) {
                 asf_st->pkt.pts          = asf->packet_frag_timestamp - asf->hdr.preroll;
@@ -1494,7 +1497,7 @@ static int asf_build_simple_index(AVFormatContext *s, int stream_index)
      * skip them until the simple index object is reached */
     while (ff_guidcmp(&g, &ff_asf_simple_index_header)) {
         int64_t gsize = avio_rl64(s->pb);
-        if (gsize < 24 || url_feof(s->pb)) {
+        if (gsize < 24 || avio_feof(s->pb)) {
             goto end;
         }
         avio_skip(s->pb, gsize - 24);
@@ -1532,7 +1535,7 @@ static int asf_build_simple_index(AVFormatContext *s, int stream_index)
         asf->index_read = ict > 1;
     }
 end:
-//     if (url_feof(s->pb)) {
+//     if (avio_feof(s->pb)) {
 //         ret = 0;
 //     }
     avio_seek(s->pb, current_pos, SEEK_SET);

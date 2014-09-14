@@ -468,7 +468,7 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
         else
             goto unk_pixfmt;
         s->avctx->color_range = s->cs_itu601 ? AVCOL_RANGE_MPEG : AVCOL_RANGE_JPEG;
-        s->chroma_height = s->height / 2;
+        s->chroma_height = (s->height + 1) / 2;
         break;
     case 0x11000000:
     case 0x13000000:
@@ -485,13 +485,14 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
             s->avctx->pix_fmt = AV_PIX_FMT_GRAY16;
         break;
     case 0x12111100:
+    case 0x14121200:
     case 0x22211100:
     case 0x22112100:
         if (s->bits <= 8) s->avctx->pix_fmt = s->cs_itu601 ? AV_PIX_FMT_YUV440P : AV_PIX_FMT_YUVJ440P;
         else
             goto unk_pixfmt;
         s->avctx->color_range = s->cs_itu601 ? AVCOL_RANGE_MPEG : AVCOL_RANGE_JPEG;
-        s->chroma_height = s->height / 2;
+        s->chroma_height = (s->height + 1) / 2;
         break;
     case 0x21111100:
         if (s->bits <= 8) s->avctx->pix_fmt = s->cs_itu601 ? AV_PIX_FMT_YUV422P : AV_PIX_FMT_YUVJ422P;
@@ -512,7 +513,7 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
         s->avctx->color_range = s->cs_itu601 ? AVCOL_RANGE_MPEG : AVCOL_RANGE_JPEG;
         if (pix_fmt_id == 0x42111100) {
             s->upscale_h = 6;
-            s->chroma_height = s->height / 2;
+            s->chroma_height = (s->height + 1) / 2;
         }
         break;
     case 0x41111100:
@@ -2096,8 +2097,11 @@ the_end:
                 continue;
             if (p==1 || p==2)
                 w >>= hshift;
+            av_assert0(w > 0);
             for (i = 0; i < s->chroma_height; i++) {
-                for (index = w - 1; index; index--) {
+                if (is16bit) ((uint16_t*)line)[w - 1] = ((uint16_t*)line)[(w - 1) / 2];
+                else                      line[w - 1] = line[(w - 1) / 2];
+                for (index = w - 2; index > 0; index--) {
                     if (is16bit)
                         ((uint16_t*)line)[index] = (((uint16_t*)line)[index / 2] + ((uint16_t*)line)[(index + 1) / 2]) >> 1;
                     else
@@ -2123,11 +2127,11 @@ the_end:
             if (!(s->upscale_v & (1<<p)))
                 continue;
             if (p==1 || p==2)
-                w >>= hshift;
+                w = FF_CEIL_RSHIFT(w, hshift);
             for (i = s->height - 1; i; i--) {
                 uint8_t *src1 = &((uint8_t *)s->picture_ptr->data[p])[i / 2 * s->linesize[p]];
                 uint8_t *src2 = &((uint8_t *)s->picture_ptr->data[p])[(i + 1) / 2 * s->linesize[p]];
-                if (src1 == src2) {
+                if (src1 == src2 || i == s->height - 1) {
                     memcpy(dst, src1, w);
                 } else {
                     for (index = 0; index < w; index++)

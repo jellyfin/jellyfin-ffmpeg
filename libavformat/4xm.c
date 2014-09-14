@@ -1,6 +1,6 @@
 /*
  * 4X Technologies .4xm File Demuxer (no muxer)
- * Copyright (c) 2003  The ffmpeg Project
+ * Copyright (c) 2003  The FFmpeg Project
  *
  * This file is part of FFmpeg.
  *
@@ -293,7 +293,7 @@ static int fourxm_read_packet(AVFormatContext *s,
             return ret;
         fourcc_tag = AV_RL32(&header[0]);
         size       = AV_RL32(&header[4]);
-        if (url_feof(pb))
+        if (avio_feof(pb))
             return AVERROR(EIO);
         switch (fourcc_tag) {
         case LIST_TAG:

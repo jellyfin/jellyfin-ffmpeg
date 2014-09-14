@@ -29,5 +29,6 @@
 #define have_vfp(flags)     CPUEXT(flags, VFP)
 #define have_vfpv3(flags)   CPUEXT(flags, VFPV3)
 #define have_neon(flags)    CPUEXT(flags, NEON)
+#define have_setend(flags)  CPUEXT(flags, SETEND)
 
 #endif /* AVUTIL_ARM_CPU_H */

@@ -1,29 +1,22 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
-version 2.3.3:
-- h264: fix grayscale only decoding with weighted prediction
-- mjpegdec: support AV_PIX_FMT_YUV420P16 with upscale_h
-- proresenc_ks: fix buffer overflow
-- matroskadec: fix crash
+version <next>:
 
-version 2.3.2:
-- snow: fix null pointer dereference
-- huffyucdec: fix overread
-- vc1dec: fix crash
-- iff: fix out of array access
-- matroskaenc: fix assertion failure
-- cdgraphics: fix infinite loop
-- dvdsub_parser: fix infinite loop
-- mpeg12dec: support decoding some broken files
-- v4l2enc: fix crash
-- h264_parser: fix handling huge resolutions
-- h264_mp4toannexb_bsf: multiple bugfixes
+version 2.4:
+- Icecast protocol
+- ported lenscorrection filter from frei0r filter
+- large optimizations in dctdnoiz to make it usable
+- ICY metadata are now requested by default with the HTTP protocol
+- support for using metadata in stream specifiers in fftools
+- LZMA compression support in TIFF decoder
+- support for H.261 RTP payload format (RFC 4587)
+- HEVC/H.265 RTP payload format (draft v6) depacketizer
+- added codecview filter to visualize information exported by some codecs
+- Matroska 3D support thorugh side data
+- HTML generation using texi2html is deprecated in favor of makeinfo/texi2any
+- silenceremove filter
 
-version 2.3.1:
-- public AVDCT API/ABI for DCT functions
-- g2meet: allow size changes within original sizes
-- dv: improved error resilience, fixing Ticket2340 and Ticket2341
 
 version 2.3:
 - AC3 fixed-point decoding
@@ -48,7 +41,7 @@ version 2.3:
 - libbs2b-based stereo-to-binaural audio filter
 - libx264 reference frames count limiting depending on level
 - native Opus decoder
-- display matrix export and rotation api
+- display matrix export and rotation API
 - WebVTT encoder
 - showcqt multimedia filter
 - zoompan filter
@@ -90,6 +83,7 @@ version 2.2:
 - libx265 encoder
 - dejudder filter
 - Autodetect VDA like all other hardware accelerations
+- aliases and defaults for Ogg subtypes (opus, spx)
 
 
 version 2.1:

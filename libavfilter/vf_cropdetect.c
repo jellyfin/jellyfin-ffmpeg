@@ -113,8 +113,7 @@ static int config_input(AVFilterLink *inlink)
 }
 
 #define SET_META(key, value) \
-    snprintf(buf, sizeof(buf), "%d", value);  \
-    av_dict_set(metadata, key, buf, 0)
+    av_dict_set_int(metadata, key, value, 0)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
@@ -123,7 +122,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     int bpp = s->max_pixsteps[0];
     int w, h, x, y, shrink_by;
     AVDictionary **metadata;
-    char buf[32];
 
     // ignore first 2 frames - they may be empty
     if (++s->frame_nb > 0) {
@@ -145,7 +143,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             }
         }
 
-        for (y = frame->height - 1; y > s->y2; y--) {
+        for (y = frame->height - 1; y > FFMAX(s->y2, s->y1); y--) {
             if (checkline(ctx, frame->data[0] + frame->linesize[0] * y, bpp, frame->width, bpp) > s->limit) {
                 s->y2 = y;
                 break;
@@ -159,7 +157,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             }
         }
 
-        for (y = frame->width - 1; y > s->x2; y--) {
+        for (y = frame->width - 1; y > FFMAX(s->x2, s->x1); y--) {
             if (checkline(ctx, frame->data[0] + bpp*y, frame->linesize[0], frame->height, bpp) > s->limit) {
                 s->x2 = y;
                 break;

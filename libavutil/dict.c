@@ -77,8 +77,8 @@ int av_dict_set(AVDictionary **pm, const char *key, const char *value,
 
     if (tag) {
         if (flags & AV_DICT_DONT_OVERWRITE) {
-            if (flags & AV_DICT_DONT_STRDUP_KEY) av_free(key);
-            if (flags & AV_DICT_DONT_STRDUP_VAL) av_free(value);
+            if (flags & AV_DICT_DONT_STRDUP_KEY) av_free((void*)key);
+            if (flags & AV_DICT_DONT_STRDUP_VAL) av_free((void*)value);
             return 0;
         }
         if (flags & AV_DICT_APPEND)
@@ -90,10 +90,9 @@ int av_dict_set(AVDictionary **pm, const char *key, const char *value,
     } else {
         AVDictionaryEntry *tmp = av_realloc(m->elems,
                                             (m->count + 1) * sizeof(*m->elems));
-        if (tmp)
-            m->elems = tmp;
-        else
-            return AVERROR(ENOMEM);
+        if (!tmp)
+            goto err_out;
+        m->elems = tmp;
     }
     if (value) {
         if (flags & AV_DICT_DONT_STRDUP_KEY)
@@ -106,7 +105,7 @@ int av_dict_set(AVDictionary **pm, const char *key, const char *value,
             int len = strlen(oldval) + strlen(value) + 1;
             char *newval = av_mallocz(len);
             if (!newval)
-                return AVERROR(ENOMEM);
+                goto err_out;
             av_strlcat(newval, oldval, len);
             av_freep(&oldval);
             av_strlcat(newval, value, len);
@@ -121,6 +120,23 @@ int av_dict_set(AVDictionary **pm, const char *key, const char *value,
     }
 
     return 0;
+
+err_out:
+    if (!m->count) {
+        av_free(m->elems);
+        av_freep(pm);
+    }
+    if (flags & AV_DICT_DONT_STRDUP_KEY) av_free((void*)key);
+    if (flags & AV_DICT_DONT_STRDUP_VAL) av_free((void*)value);
+    return AVERROR(ENOMEM);
+}
+
+int av_dict_set_int(AVDictionary **pm, const char *key, int64_t value,
+                int flags)
+{
+    char valuestr[22];
+    snprintf(valuestr, sizeof(valuestr), "%"PRId64, value);
+    return av_dict_set(pm, key, valuestr, flags);
 }
 
 static int parse_key_value_pair(AVDictionary **pm, const char **buf,
