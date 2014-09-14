@@ -1,177 +1,81 @@
- ┌───────────────────────────────────────────┐
- │ RELEASE NOTES for FFmpeg 2.3 "Mandelbrot" │
- └───────────────────────────────────────────┘
+ ┌────────────────────────────────────────┐
+ │ RELEASE NOTES for FFmpeg 2.4 "Fresnel" │
+ └────────────────────────────────────────┘
 
-   The FFmpeg Project proudly presents FFmpeg 2.3 "Mandelbrot", a major
-   release with all the great features committed during the three-month period
-   since the release of FFmpeg 2.2.
+   The FFmpeg Project proudly presents FFmpeg 2.4 "Fresnel", just 2 months
+   after the release of 2.3. Since this wasn't a long time ago, the Changelog
+   is a bit short this time.
 
-   In this release, there are lots of internal overhauls that make FFmpeg a
-   more accessible project for new developers. Many important new
-   optimizations and features like QTKit and AVFoundation input devices are
-   committed. Contributions done by Libav such as a new native Opus decoder
-   are also merged.
+   The most important thing in this release is the major version bump of the
+   libraries.  This means that this release is neither ABI-compatible nor
+   fully API-compatible. But on the other hand it is aligned with the Libav
+   11 release series, and will as a result probably end up being maintained for
+   a long time.
 
-   Because of the increasing difficulty to maintain and lack of maintainers,
-   we are very sorry to say that we have removed all Blackfin and SPARC
-   architecture assembly optimizations with the cleanups done. If you are
-   interested in maintaining optimization for these two architecture, feel
-   free to contact us and we will restore the code!
-
-   Oh, and since this release, this modern-looking release note is provided in
-   addition to the old-style Changelog file, to make it easier for you to
-   focus on the most important features in this release.
-
-   Enjoy!
+   As usual, if you have any question on this release or any FFmpeg related
+   topic, feel free to join us on the #ffmpeg IRC channel (on
+   irc.freenode.net).
 
    ┌────────────────────────────┐
-   │ *  API Information         │
+   │ 🔨  API Information         │
    └────────────────────────────┘
 
-     FFmpeg 2.3 is completely source-compatible to the FFmpeg 2.2 series. There
-     are however some API deprecations that you need to take care of. Use `git
-     diff n2.2 n2.3 doc/APIchanges` to show the list of added and deprecated
-     APIs. FFmpeg 2.3 includes the following library versions:
+     FFmpeg 2.4 includes the following library versions:
 
-       • libavutil      52.92.100
-       • libavcodec     55.69.100
-       • libavformat    55.48.100
-       • libavdevice    55.13.102
-       • libavfilter     4.11.100
-       • libswscale      2. 6.100
-       • libswresample   0.19.100
-       • libpostproc    52. 3.100
+       • libavutil      54.7.100
+       • libavcodec     56.1.100
+       • libavformat    56.4.101
+       • libavdevice    56.0.100
+       • libavfilter     5.1.100
+       • libswscale      3.0.100
+       • libswresample   1.1.100
+       • libpostproc    53.0.100
 
-     Please refer to the doc/APIChanges file for more information.
+     Important API changes since 2.3:
 
-   ┌────────────────────────────┐
-   │ New Optimization           │
-   └────────────────────────────┘
+       • The new field mime_type was added to AVProbeData, which can
+         cause crashes, if it is not initialized.
+       • Some deprecated functions were removed.
+       • The avfilter_graph_parse function was made compatible with Libav.
+       • The Matroska demuxer now outputs verbatim ASS packets.
 
-     We are excited to announce that we have committed new x86 assembly
-     optimization for HEVC, and FFmpeg's audio resampler libswresample. ARM
-     users will get a boost in MLP/TrueHD decoding thanks to new optimization.
-     Decoding Huffyuv also got a major boost from optimization on the C code.
-
-     Of special interest for Microsoft Visual Studio users, we have also
-     converted some preexisting x86 assembly to NASM/Yasm format compatible
-     with MSVC setup, especially in the area of audio resampling.
-
-     Another major feature in this release is the introduction of AArch64
-     (ARMv8) assembly optimization. AArch64 is another name for the first
-     64-bit ARM architecture, used by Apple A7 SoC inside iPhone 5S. Some
-     32-bit ARM assembly has already been ported to AArch64, but more work is
-     underway.
-
-   ┌────────────────────────────┐
-   │ Native Opus decoder        │
-   └────────────────────────────┘
-
-     Opus is an open audio format jointly developed by Xiph.Org, Mozilla,
-     Skype/Microsoft, and Broadcom. It combines the features of the Skype Cilk
-     speech codec and the Xiph.Org CELT music codec into one low-latency
-     codec. Decoding Opus is already possible since FFmpeg 1.0 using the
-     libopus library, but the new Opus native decoder brings a higher level of
-     stability and speed.
-
-   ┌────────────────────────────┐
-   │ QTKit and AVFoundation     │
-   └────────────────────────────┘
-
-     For OS X users, the new QTKit and AVFoundation devices allow you to use
-     the integrated camera on Macs. AVFoundation is a newer API only available
-     on OS X 10.7 "Lion" or newer. For users with older OS X systems, the
-     QTKit device using the older OS X API is for you.
-
-   ┌────────────────────────────┐
-   │ API Additions              │
-   └────────────────────────────┘
-
-     In this release, stream side data are introduced as AVStream.side_data as
-     a way to store miscellaneous stream-wide information. The format is
-     similar to the previously anonymous structure AVPacket.side_data (now
-     named as AVPacketSideData). With this change, audio ReplayGain
-     information and video rotation matrix are now exported through this API,
-     if available in the demuxer.
-
-     We also have improved libswresample's Doxygen API documentation, so new
-     developers wishing to use FFmpeg's excellent libraries can get started
-     more easily and faster.
-
-   ┌────────────────────────────┐
-   │ Last But Not Least         │
-   └────────────────────────────┘
-
-     Other interesting new features including hqx video filter, a pixel art
-     scaling filter; a fixed-point AC-3 decoder contributed by Imagination
-     Technologies; an On2 TrueMotion VP7 video decoder; an HTML5 WebVTT
-     subtitle encoder that allows creation of WebVTT from any text-based
-     subtitles; and an 1-bit Direct Stream Digital audio decoder.
+     Please refer to the doc/APIchanges file for more information.
 
  ┌────────────────────────────┐
  │ ★  List of New Features    │
  └────────────────────────────┘
 
    ┌────────────────────────────┐
-   │ Command line tools         │
-   └────────────────────────────┘
-
-    • Support for decoding through DXVA2 in ffmpeg
-
-   ┌────────────────────────────┐
-   │ libavcodec                 │
-   └────────────────────────────┘
-
-    • AC3 fixed-point decoding
-    • VP7 video decoder
-    • Alias PIX image encoder and decoder
-    • Improvements to the BRender PIX image decoder
-    • Improvements to the XBM decoder
-    • Improvements to OpenEXR image decoder
-    • Support decoding 16-bit RLE SGI images
-    • Direct Stream Digital (DSD) decoder
-    • On2 AVC (Audio for Video) decoder
-    • Native Opus decoder
-    • WebVTT encoder
-
-   ┌────────────────────────────┐
-   │ libavdevice                │
-   └────────────────────────────┘
-
-    • QTKit input device
-    • GDI screen grabbing for Windows
-    • AVFoundation input device
-
-   ┌────────────────────────────┐
    │ libavformat                │
    └────────────────────────────┘
 
-    • subfile protocol
-    • Phantom Cine demuxer
-    • Alternative rendition support for HTTP Live Streaming
-    • Magic Lantern Video (MLV) demuxer
-    • Image format auto-detection
-    • LRC lyric file demuxer and muxer
-    • Samba protocol (via libsmbclient)
-    • WebM DASH Manifest muxer
+    • Icecast protocol.
+    • API for live metadata updates through event flags.
+    • UTF-16 support in text subtitles formats.
+    • The ASS muxer now reorders the Dialogue events properly.
 
    ┌────────────────────────────┐
    │ libavfilter                │
    └────────────────────────────┘
 
-    • shuffleplanes filter
-    • libbs2b-based stereo-to-binaural audio filter
-    • showcqt multimedia filter
-    • zoompan filter
-    • signalstats filter
-    • hqx filter (hq2x, hq3x, hq4x)
-    • flanger filter
-    • libfribidi support in drawtext
+    • Ported lenscorrection filter from frei0r filter.
+    • Large optimizations in dctdnoiz to make it usable.
+    • Added codecview filter to visualize information exported by some codecs.
+    • Added silenceremove filter.
+
+   ┌────────────────────────────┐
+   │ libavutil                  │
+   └────────────────────────────┘
+
+    • Added clip() function in eval.
 
  ┌────────────────────────────┐
  │ ⚠  Behaviour changes       │
  └────────────────────────────┘
 
-  • libx264 reference frames count is now limited depending on level chosen
-  • Because of the new image format auto-detection feature, you don't need to
-    specify image format when decoding an image with no extension.
+  • dctdnoiz filter now uses a block size of 8x8 instead of 16x16 by default
+  • -vismv option is deprecated in favor of the codecview filter
+  • libmodplug is now detected through pkg-config
+  • HTML documentation generation through texi2html is deprecated in
+    favor of makeinfo/texi2any
+  • ICY metadata are now requested by default with the HTTP protocol

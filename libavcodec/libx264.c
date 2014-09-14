@@ -314,7 +314,7 @@ static av_cold int X264_close(AVCodecContext *avctx)
 #define OPT_STR(opt, param)                                                   \
     do {                                                                      \
         int ret;                                                              \
-        if (param!=NULL && (ret = x264_param_parse(&x4->params, opt, param)) < 0) { \
+        if (param && (ret = x264_param_parse(&x4->params, opt, param)) < 0) { \
             if(ret == X264_PARAM_BAD_NAME)                                    \
                 av_log(avctx, AV_LOG_ERROR,                                   \
                         "bad option '%s': '%s'\n", opt, param);               \
@@ -371,8 +371,6 @@ static av_cold int X264_init(AVCodecContext *avctx)
 
     x4->params.b_deblocking_filter         = avctx->flags & CODEC_FLAG_LOOP_FILTER;
 
-    x4->params.rc.f_pb_factor             = avctx->b_quant_factor;
-    x4->params.analyse.i_chroma_qp_offset = avctx->chromaoffset;
     if (x4->preset || x4->tune)
         if (x264_param_default_preset(&x4->params, x4->preset, x4->tune) < 0) {
             int i;
@@ -430,6 +428,10 @@ static av_cold int X264_init(AVCodecContext *avctx)
 
     if (avctx->i_quant_factor > 0)
         x4->params.rc.f_ip_factor         = 1 / fabs(avctx->i_quant_factor);
+    if (avctx->b_quant_factor > 0)
+        x4->params.rc.f_pb_factor         = avctx->b_quant_factor;
+    if (avctx->chromaoffset)
+        x4->params.analyse.i_chroma_qp_offset = avctx->chromaoffset;
 
     if (avctx->me_method == ME_EPZS)
         x4->params.analyse.i_me_method = X264_ME_DIA;
@@ -827,6 +829,7 @@ static const AVCodecDefault x264_defaults[] = {
     { "flags2",           "0" },
     { "g",                "-1" },
     { "i_qfactor",        "-1" },
+    { "b_qfactor",        "-1" },
     { "qmin",             "-1" },
     { "qmax",             "-1" },
     { "qdiff",            "-1" },

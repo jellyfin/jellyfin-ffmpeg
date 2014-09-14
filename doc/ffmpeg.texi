@@ -339,7 +339,7 @@ ffmpeg -i in.avi -metadata title="my title" out.flv
 
 To set the language of the first audio stream:
 @example
-ffmpeg -i INPUT -metadata:s:a:1 language=eng OUTPUT
+ffmpeg -i INPUT -metadata:s:a:0 language=eng OUTPUT
 @end example
 
 @item -target @var{type} (@emph{output})
@@ -473,6 +473,9 @@ Set frame rate (Hz value, fraction or abbreviation).
 
 As an input option, ignore any timestamps stored in the file and instead
 generate timestamps assuming constant frame rate @var{fps}.
+This is not the same as the @option{-framerate} option used for some input formats
+like image2 or v4l2 (it used to be the same in older versions of FFmpeg).
+If in doubt use @option{-framerate} instead of the input option @option{-r}.
 
 As an output option, duplicate or drop input frames to achieve constant output
 frame rate @var{fps}.
@@ -819,6 +822,11 @@ ffmpeg -i INPUT -map 0:v -map 0:a:2 OUTPUT
 To map all the streams except the second audio, use negative mappings
 @example
 ffmpeg -i INPUT -map 0 -map -0:a:1 OUTPUT
+@end example
+
+To pick the English audio stream:
+@example
+ffmpeg -i INPUT -map 0:m:language:eng OUTPUT
 @end example
 
 Note that using this option disables the default mappings for this output file.
@@ -1450,11 +1458,11 @@ ffmpeg -f image2 -pattern_type glob -i 'foo-*.jpeg' -r 12 -s WxH foo.avi
 You can put many streams of the same type in the output:
 
 @example
-ffmpeg -i test1.avi -i test2.avi -map 0:3 -map 0:2 -map 0:1 -map 0:0 -c copy test12.nut
+ffmpeg -i test1.avi -i test2.avi -map 1:1 -map 1:0 -map 0:1 -map 0:0 -c copy -y test12.nut
 @end example
 
-The resulting output file @file{test12.avi} will contain first four streams from
-the input file in reverse order.
+The resulting output file @file{test12.nut} will contain the first four streams
+from the input files in reverse order.
 
 @item
 To force CBR video output:

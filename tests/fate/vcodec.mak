@@ -91,11 +91,13 @@ fate-vsynth%-h263:               ENCOPTS = -qscale 10
 fate-vsynth%-h263-obmc:          ENCOPTS = -qscale 10 -obmc 1
 fate-vsynth%-h263p:              ENCOPTS = -qscale 2 -flags +aic -umv 1 -aiv 1 -ps 300
 
-FATE_VCODEC-$(call ENCDEC, HUFFYUV, AVI) += huffyuv huffyuvbgr24
+FATE_VCODEC-$(call ENCDEC, HUFFYUV, AVI) += huffyuv huffyuvbgr24 huffyuvbgra
 fate-vsynth%-huffyuv:            ENCOPTS = -vcodec huffyuv -pix_fmt yuv422p -sws_flags neighbor
 fate-vsynth%-huffyuv:            DECOPTS = -sws_flags neighbor
 fate-vsynth%-huffyuvbgr24:       ENCOPTS = -vcodec huffyuv -pix_fmt bgr24 -sws_flags neighbor
 fate-vsynth%-huffyuvbgr24:       DECOPTS = -sws_flags neighbor
+fate-vsynth%-huffyuvbgra:        ENCOPTS = -vcodec huffyuv -pix_fmt bgr32 -sws_flags neighbor
+fate-vsynth%-huffyuvbgra:        DECOPTS = -sws_flags neighbor
 
 FATE_VCODEC-$(call ENCDEC, JPEGLS, AVI) += jpegls
 fate-vsynth%-jpegls:             ENCOPTS = -sws_flags neighbor+full_chroma_int
@@ -316,7 +318,8 @@ $(FATE_VSYNTH1): tests/data/vsynth1.yuv
 $(FATE_VSYNTH2): tests/data/vsynth2.yuv
 $(FATE_VSYNTH3): tests/data/vsynth3.yuv
 
-FATE_AVCONV += $(FATE_VSYNTH1) $(FATE_VSYNTH2) $(FATE_VSYNTH3)
+FATE_AVCONV += $(FATE_VSYNTH1) $(FATE_VSYNTH3)
+FATE_SAMPLES_AVCONV += $(FATE_VSYNTH2)
 
 fate-vsynth1: $(FATE_VSYNTH1)
 fate-vsynth2: $(FATE_VSYNTH2)

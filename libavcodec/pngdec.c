@@ -185,7 +185,8 @@ void ff_add_png_paeth_prediction(uint8_t *dst, uint8_t *src, uint8_t *top,
     }
 }
 
-#define UNROLL1(bpp, op) {                                                    \
+#define UNROLL1(bpp, op)                                                      \
+    {                                                                         \
         r = dst[0];                                                           \
         if (bpp >= 2)                                                         \
             g = dst[1];                                                       \
@@ -205,16 +206,21 @@ void ff_add_png_paeth_prediction(uint8_t *dst, uint8_t *src, uint8_t *top,
                 continue;                                                     \
             dst[i + 3] = a = op(a, src[i + 3], last[i + 3]);                  \
         }                                                                     \
-}
+    }
 
-#define UNROLL_FILTER(op)\
-         if (bpp == 1) UNROLL1(1, op)\
-    else if (bpp == 2) UNROLL1(2, op)\
-    else if (bpp == 3) UNROLL1(3, op)\
-    else if (bpp == 4) UNROLL1(4, op)\
-    for (; i < size; i++) {\
-        dst[i] = op(dst[i - bpp], src[i], last[i]);\
-    }\
+#define UNROLL_FILTER(op)                                                     \
+    if (bpp == 1) {                                                           \
+        UNROLL1(1, op)                                                        \
+    } else if (bpp == 2) {                                                    \
+        UNROLL1(2, op)                                                        \
+    } else if (bpp == 3) {                                                    \
+        UNROLL1(3, op)                                                        \
+    } else if (bpp == 4) {                                                    \
+        UNROLL1(4, op)                                                        \
+    }                                                                         \
+    for (; i < size; i++) {                                                   \
+        dst[i] = op(dst[i - bpp], src[i], last[i]);                           \
+    }
 
 /* NOTE: 'dst' can be equal to 'last' */
 static void png_filter_row(PNGDSPContext *dsp, uint8_t *dst, int filter_type,
@@ -553,7 +559,7 @@ static int decode_frame(AVCodecContext *avctx,
     }
     for (;;) {
         if (bytestream2_get_bytes_left(&s->gb) <= 0) {
-            av_log(avctx, AV_LOG_ERROR, "No bytes left\n");
+            av_log(avctx, AV_LOG_ERROR, "%d bytes left\n", bytestream2_get_bytes_left(&s->gb));
             if (   s->state & PNG_ALLIMAGE
                 && avctx->strict_std_compliance <= FF_COMPLIANCE_NORMAL)
                 goto exit_loop;
@@ -648,7 +654,10 @@ static int decode_frame(AVCodecContext *avctx,
                     avctx->pix_fmt = AV_PIX_FMT_MONOBLACK;
                 } else if (s->bit_depth == 8 &&
                            s->color_type == PNG_COLOR_TYPE_GRAY_ALPHA) {
-                    avctx->pix_fmt = AV_PIX_FMT_Y400A;
+                    avctx->pix_fmt = AV_PIX_FMT_YA8;
+                } else if (s->bit_depth == 16 &&
+                           s->color_type == PNG_COLOR_TYPE_GRAY_ALPHA) {
+                    avctx->pix_fmt = AV_PIX_FMT_YA16BE;
                 } else {
                     av_log(avctx, AV_LOG_ERROR, "unsupported bit depth %d "
                                                 "and color type %d\n",

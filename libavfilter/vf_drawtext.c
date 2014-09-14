@@ -37,6 +37,7 @@
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
+#include <fenv.h>
 
 #if CONFIG_LIBFONTCONFIG
 #include <fontconfig/fontconfig.h>
@@ -142,6 +143,8 @@ typedef struct DrawTextContext {
     uint8_t *fontfile;              ///< font to be used
     uint8_t *text;                  ///< text to be drawn
     AVBPrint expanded_text;         ///< used to contain the expanded text
+    uint8_t *fontcolor_expr;        ///< fontcolor expression to evaluate
+    AVBPrint expanded_fontcolor;    ///< used to contain the expanded fontcolor spec
     int ft_load_flags;              ///< flags used for loading fonts, see FT_LOAD_*
     FT_Vector *positions;           ///< positions for each element in the text
     size_t nb_positions;            ///< number of elements of positions array
@@ -200,6 +203,7 @@ static const AVOption drawtext_options[]= {
     {"text",        "set text",             OFFSET(text),               AV_OPT_TYPE_STRING, {.str=NULL},  CHAR_MIN, CHAR_MAX, FLAGS},
     {"textfile",    "set text file",        OFFSET(textfile),           AV_OPT_TYPE_STRING, {.str=NULL},  CHAR_MIN, CHAR_MAX, FLAGS},
     {"fontcolor",   "set foreground color", OFFSET(fontcolor.rgba),     AV_OPT_TYPE_COLOR,  {.str="black"}, CHAR_MIN, CHAR_MAX, FLAGS},
+    {"fontcolor_expr", "set foreground color expression", OFFSET(fontcolor_expr), AV_OPT_TYPE_STRING, {.str=""}, CHAR_MIN, CHAR_MAX, FLAGS},
     {"boxcolor",    "set box color",        OFFSET(boxcolor.rgba),      AV_OPT_TYPE_COLOR,  {.str="white"}, CHAR_MIN, CHAR_MAX, FLAGS},
     {"bordercolor", "set border color",     OFFSET(bordercolor.rgba),   AV_OPT_TYPE_COLOR,  {.str="black"}, CHAR_MIN, CHAR_MAX, FLAGS},
     {"shadowcolor", "set shadow color",     OFFSET(shadowcolor.rgba),   AV_OPT_TYPE_COLOR,  {.str="black"}, CHAR_MIN, CHAR_MAX, FLAGS},
@@ -264,11 +268,11 @@ AVFILTER_DEFINE_CLASS(drawtext);
 #define FT_ERRORDEF(e, v, s) { (e), (s) },
 #define FT_ERROR_END_LIST { 0, NULL } };
 
-struct ft_error
+static const struct ft_error
 {
     int err;
     const char *err_msg;
-} static ft_errors[] =
+} ft_errors[] =
 #include FT_ERRORS_H
 
 #define FT_ERRMSG(e) ft_errors[e].err_msg
@@ -682,6 +686,7 @@ static av_cold int init(AVFilterContext *ctx)
         av_log(ctx, AV_LOG_WARNING, "expansion=strftime is deprecated.\n");
 
     av_bprint_init(&s->expanded_text, 0, AV_BPRINT_SIZE_UNLIMITED);
+    av_bprint_init(&s->expanded_fontcolor, 0, AV_BPRINT_SIZE_UNLIMITED);
 
     return 0;
 }
@@ -725,6 +730,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     FT_Done_FreeType(s->library);
 
     av_bprint_finalize(&s->expanded_text, NULL);
+    av_bprint_finalize(&s->expanded_fontcolor, NULL);
 }
 
 static int config_input(AVFilterLink *inlink)
@@ -908,6 +914,66 @@ static int func_eval_expr(AVFilterContext *ctx, AVBPrint *bp,
     return ret;
 }
 
+static int func_eval_expr_int_format(AVFilterContext *ctx, AVBPrint *bp,
+                          char *fct, unsigned argc, char **argv, int tag)
+{
+    DrawTextContext *s = ctx->priv;
+    double res;
+    int intval;
+    int ret;
+    unsigned int positions = 0;
+    char fmt_str[30] = "%";
+
+    /*
+     * argv[0] expression to be converted to `int`
+     * argv[1] format: 'x', 'X', 'd' or 'u'
+     * argv[2] positions printed (optional)
+     */
+
+    ret = av_expr_parse_and_eval(&res, argv[0], var_names, s->var_values,
+                                 NULL, NULL, fun2_names, fun2,
+                                 &s->prng, 0, ctx);
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR,
+               "Expression '%s' for the expr text expansion function is not valid\n",
+               argv[0]);
+        return ret;
+    }
+
+    if (!strchr("xXdu", argv[1][0])) {
+        av_log(ctx, AV_LOG_ERROR, "Invalid format '%c' specified,"
+                " allowed values: 'x', 'X', 'd', 'u'\n", argv[1][0]);
+        return AVERROR(EINVAL);
+    }
+
+    if (argc == 3) {
+        ret = sscanf(argv[2], "%u", &positions);
+        if (ret != 1) {
+            av_log(ctx, AV_LOG_ERROR, "expr_int_format(): Invalid number of positions"
+                    " to print: '%s'\n", argv[2]);
+            return AVERROR(EINVAL);
+        }
+    }
+
+    feclearexcept(FE_ALL_EXCEPT);
+    intval = res;
+    if ((ret = fetestexcept(FE_INVALID|FE_OVERFLOW|FE_UNDERFLOW))) {
+        av_log(ctx, AV_LOG_ERROR, "Conversion of floating-point result to int failed. Control register: 0x%08x. Conversion result: %d\n", ret, intval);
+        return AVERROR(EINVAL);
+    }
+
+    if (argc == 3)
+        av_strlcatf(fmt_str, sizeof(fmt_str), "0%u", positions);
+    av_strlcatf(fmt_str, sizeof(fmt_str), "%c", argv[1][0]);
+
+    av_log(ctx, AV_LOG_DEBUG, "Formatting value %f (expr '%s') with spec '%s'\n",
+            res, argv[0], fmt_str);
+
+    av_bprintf(bp, fmt_str, intval);
+
+    return 0;
+}
+
 static const struct drawtext_function {
     const char *name;
     unsigned argc_min, argc_max;
@@ -916,6 +982,8 @@ static const struct drawtext_function {
 } functions[] = {
     { "expr",      1, 1, 0,   func_eval_expr },
     { "e",         1, 1, 0,   func_eval_expr },
+    { "expr_int_format", 2, 3, 0, func_eval_expr_int_format },
+    { "eif",       2, 3, 0,   func_eval_expr_int_format },
     { "pict_type", 0, 0, 0,   func_pict_type },
     { "pts",       0, 2, 0,   func_pts      },
     { "gmtime",    0, 1, 'G', func_strftime },
@@ -992,11 +1060,8 @@ end:
     return ret;
 }
 
-static int expand_text(AVFilterContext *ctx)
+static int expand_text(AVFilterContext *ctx, char *text, AVBPrint *bp)
 {
-    DrawTextContext *s = ctx->priv;
-    char *text = s->text;
-    AVBPrint *bp = &s->expanded_text;
     int ret;
 
     av_bprint_clear(bp);
@@ -1092,7 +1157,7 @@ static int draw_text(AVFilterContext *ctx, AVFrame *frame,
         av_bprintf(bp, "%s", s->text);
         break;
     case EXP_NORMAL:
-        if ((ret = expand_text(ctx)) < 0)
+        if ((ret = expand_text(ctx, s->text, &s->expanded_text)) < 0)
             return ret;
         break;
     case EXP_STRFTIME:
@@ -1116,6 +1181,20 @@ static int draw_text(AVFilterContext *ctx, AVFrame *frame,
               av_realloc(s->positions, len*sizeof(*s->positions))))
             return AVERROR(ENOMEM);
         s->nb_positions = len;
+    }
+
+    if (s->fontcolor_expr[0]) {
+        /* If expression is set, evaluate and replace the static value */
+        av_bprint_clear(&s->expanded_fontcolor);
+        if ((ret = expand_text(ctx, s->fontcolor_expr, &s->expanded_fontcolor)) < 0)
+            return ret;
+        if (!av_bprint_is_complete(&s->expanded_fontcolor))
+            return AVERROR(ENOMEM);
+        av_log(s, AV_LOG_DEBUG, "Evaluated fontcolor is '%s'\n", s->expanded_fontcolor.str);
+        ret = av_parse_color(s->fontcolor.rgba, s->expanded_fontcolor.str, -1, s);
+        if (ret)
+            return ret;
+        ff_draw_color(&s->dc, &s->fontcolor, s->fontcolor.rgba);
     }
 
     x = 0;

@@ -39,7 +39,7 @@ static int get_swf_tag(AVIOContext *pb, int *len_ptr)
 {
     int tag, len;
 
-    if (url_feof(pb))
+    if (avio_feof(pb))
         return AVERROR_EOF;
 
     tag = avio_rl16(pb);
@@ -289,6 +289,7 @@ static int swf_read_packet(AVFormatContext *s, AVPacket *pkt)
             const int bmp_fmt = avio_r8(pb);
             const int width   = avio_rl16(pb);
             const int height  = avio_rl16(pb);
+            int pix_fmt;
 
             len -= 2+1+2+2;
 
@@ -353,17 +354,21 @@ static int swf_read_packet(AVFormatContext *s, AVPacket *pkt)
                 avpriv_set_pts_info(vst, 64, 256, swf->frame_rate);
                 st = vst;
             }
-            st->codec->width  = width;
-            st->codec->height = height;
 
             if ((res = av_new_packet(pkt, out_len - colormapsize * colormapbpp)) < 0)
                 goto bitmap_end;
+            if (!st->codec->width && !st->codec->height) {
+                st->codec->width  = width;
+                st->codec->height = height;
+            } else {
+                ff_add_param_change(pkt, 0, 0, 0, width, height);
+            }
             pkt->pos = pos;
             pkt->stream_index = st->index;
 
             switch (bmp_fmt) {
             case 3:
-                st->codec->pix_fmt = AV_PIX_FMT_PAL8;
+                pix_fmt = AV_PIX_FMT_PAL8;
                 for (i = 0; i < colormapsize; i++)
                     if (alpha_bmp)  colormap[i] = buf[3]<<24 | AV_RB24(buf + 4*i);
                     else            colormap[i] = 0xffU <<24 | AV_RB24(buf + 3*i);
@@ -375,14 +380,20 @@ static int swf_read_packet(AVFormatContext *s, AVPacket *pkt)
                 memcpy(pal, colormap, AVPALETTE_SIZE);
                 break;
             case 4:
-                st->codec->pix_fmt = AV_PIX_FMT_RGB555;
+                pix_fmt = AV_PIX_FMT_RGB555;
                 break;
             case 5:
-                st->codec->pix_fmt = alpha_bmp ? AV_PIX_FMT_ARGB : AV_PIX_FMT_0RGB;
+                pix_fmt = alpha_bmp ? AV_PIX_FMT_ARGB : AV_PIX_FMT_0RGB;
                 break;
             default:
                 av_assert0(0);
             }
+            if (st->codec->pix_fmt != AV_PIX_FMT_NONE && st->codec->pix_fmt != pix_fmt) {
+                av_log(s, AV_LOG_ERROR, "pixel format change unsupported\n");
+                res = AVERROR_PATCHWELCOME;
+                goto bitmap_end;
+            }
+            st->codec->pix_fmt = pix_fmt;
 
             if (linesize * height > pkt->size) {
                 res = AVERROR_INVALIDDATA;

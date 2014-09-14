@@ -28,6 +28,9 @@
 #if CONFIG_ZLIB
 #include <zlib.h>
 #endif
+#if CONFIG_LZMA
+#include <lzma.h>
+#endif
 
 #include "libavutil/attributes.h"
 #include "libavutil/avstring.h"
@@ -283,6 +286,34 @@ static int deinvert_buffer(TiffContext *s, const uint8_t *src, int size)
     return 0;
 }
 
+static void unpack_yuv(TiffContext *s, AVFrame *p,
+                       const uint8_t *src, int lnum)
+{
+    int i, j, k;
+    int w       = (s->width - 1) / s->subsampling[0] + 1;
+    uint8_t *pu = &p->data[1][lnum / s->subsampling[1] * p->linesize[1]];
+    uint8_t *pv = &p->data[2][lnum / s->subsampling[1] * p->linesize[2]];
+    if (s->width % s->subsampling[0] || s->height % s->subsampling[1]) {
+        for (i = 0; i < w; i++) {
+            for (j = 0; j < s->subsampling[1]; j++)
+                for (k = 0; k < s->subsampling[0]; k++)
+                    p->data[0][FFMIN(lnum + j, s->height-1) * p->linesize[0] +
+                               FFMIN(i * s->subsampling[0] + k, s->width-1)] = *src++;
+            *pu++ = *src++;
+            *pv++ = *src++;
+        }
+    }else{
+        for (i = 0; i < w; i++) {
+            for (j = 0; j < s->subsampling[1]; j++)
+                for (k = 0; k < s->subsampling[0]; k++)
+                    p->data[0][(lnum + j) * p->linesize[0] +
+                               i * s->subsampling[0] + k] = *src++;
+            *pu++ = *src++;
+            *pv++ = *src++;
+        }
+    }
+}
+
 #if CONFIG_ZLIB
 static int tiff_uncompress(uint8_t *dst, unsigned long *len, const uint8_t *src,
                            int size)
@@ -305,9 +336,9 @@ static int tiff_uncompress(uint8_t *dst, unsigned long *len, const uint8_t *src,
     return zret == Z_STREAM_END ? Z_OK : zret;
 }
 
-static int tiff_unpack_zlib(TiffContext *s, uint8_t *dst, int stride,
-                            const uint8_t *src, int size,
-                            int width, int lines)
+static int tiff_unpack_zlib(TiffContext *s, AVFrame *p, uint8_t *dst, int stride,
+                            const uint8_t *src, int size, int width, int lines,
+                            int strip_start, int is_yuv)
 {
     uint8_t *zbuf;
     unsigned long outlen;
@@ -338,6 +369,10 @@ static int tiff_unpack_zlib(TiffContext *s, uint8_t *dst, int stride,
         } else {
             memcpy(dst, src, width);
         }
+        if (is_yuv) {
+            unpack_yuv(s, p, dst, strip_start + line);
+            line += s->subsampling[1] - 1;
+        }
         dst += stride;
         src += width;
     }
@@ -346,6 +381,70 @@ static int tiff_unpack_zlib(TiffContext *s, uint8_t *dst, int stride,
 }
 #endif
 
+#if CONFIG_LZMA
+static int tiff_uncompress_lzma(uint8_t *dst, uint64_t *len, const uint8_t *src,
+                                int size)
+{
+    lzma_stream stream = LZMA_STREAM_INIT;
+    lzma_ret ret;
+
+    stream.next_in   = (uint8_t *)src;
+    stream.avail_in  = size;
+    stream.next_out  = dst;
+    stream.avail_out = *len;
+    ret              = lzma_stream_decoder(&stream, UINT64_MAX, 0);
+    if (ret != LZMA_OK) {
+        av_log(NULL, AV_LOG_ERROR, "LZMA init error: %d\n", ret);
+        return ret;
+    }
+    ret = lzma_code(&stream, LZMA_RUN);
+    lzma_end(&stream);
+    *len = stream.total_out;
+    return ret == LZMA_STREAM_END ? LZMA_OK : ret;
+}
+
+static int tiff_unpack_lzma(TiffContext *s, AVFrame *p, uint8_t *dst, int stride,
+                            const uint8_t *src, int size, int width, int lines,
+                            int strip_start, int is_yuv)
+{
+    uint64_t outlen = width * lines;
+    int ret, line;
+    uint8_t *buf = av_malloc(outlen);
+    if (!buf)
+        return AVERROR(ENOMEM);
+    if (s->fill_order) {
+        if ((ret = deinvert_buffer(s, src, size)) < 0) {
+            av_free(buf);
+            return ret;
+        }
+        src = s->deinvert_buf;
+    }
+    ret = tiff_uncompress_lzma(buf, &outlen, src, size);
+    if (ret != LZMA_OK) {
+        av_log(s->avctx, AV_LOG_ERROR,
+               "Uncompressing failed (%"PRIu64" of %"PRIu64") with error %d\n", outlen,
+               (uint64_t)width * lines, ret);
+        av_free(buf);
+        return AVERROR_UNKNOWN;
+    }
+    src = buf;
+    for (line = 0; line < lines; line++) {
+        if (s->bpp < 8 && s->avctx->pix_fmt == AV_PIX_FMT_PAL8) {
+            horizontal_fill(s->bpp, dst, 1, src, 0, width, 0);
+        } else {
+            memcpy(dst, src, width);
+        }
+        if (is_yuv) {
+            unpack_yuv(s, p, dst, strip_start + line);
+            line += s->subsampling[1] - 1;
+        }
+        dst += stride;
+        src += width;
+    }
+    av_free(buf);
+    return 0;
+}
+#endif
 
 static int tiff_unpack_fax(TiffContext *s, uint8_t *dst, int stride,
                            const uint8_t *src, int size, int width, int lines)
@@ -383,35 +482,6 @@ static int tiff_unpack_fax(TiffContext *s, uint8_t *dst, int stride,
     return ret;
 }
 
-static void unpack_yuv(TiffContext *s, AVFrame *p,
-                       const uint8_t *src, int lnum)
-{
-    int i, j, k;
-    int w       = (s->width - 1) / s->subsampling[0] + 1;
-    uint8_t *pu = &p->data[1][lnum / s->subsampling[1] * p->linesize[1]];
-    uint8_t *pv = &p->data[2][lnum / s->subsampling[1] * p->linesize[2]];
-    if (s->width % s->subsampling[0] || s->height % s->subsampling[1]) {
-        for (i = 0; i < w; i++) {
-            for (j = 0; j < s->subsampling[1]; j++)
-                for (k = 0; k < s->subsampling[0]; k++)
-                    p->data[0][FFMIN(lnum + j, s->height-1) * p->linesize[0] +
-                               FFMIN(i * s->subsampling[0] + k, s->width-1)] = *src++;
-            *pu++ = *src++;
-            *pv++ = *src++;
-        }
-    }else{
-        for (i = 0; i < w; i++) {
-            for (j = 0; j < s->subsampling[1]; j++)
-                for (k = 0; k < s->subsampling[0]; k++)
-                    p->data[0][(lnum + j) * p->linesize[0] +
-                               i * s->subsampling[0] + k] = *src++;
-            *pu++ = *src++;
-            *pv++ = *src++;
-        }
-    }
-}
-
-
 static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int stride,
                              const uint8_t *src, int size, int strip_start, int lines)
 {
@@ -419,7 +489,10 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
     int c, line, pixels, code, ret;
     const uint8_t *ssrc = src;
     int width = ((s->width * s->bpp) + 7) >> 3;
-    int is_yuv = s->photometric == TIFF_PHOTOMETRIC_YCBCR;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(p->format);
+    int is_yuv = !(desc->flags & AV_PIX_FMT_FLAG_RGB) &&
+                 (desc->flags & AV_PIX_FMT_FLAG_PLANAR) &&
+                 desc->nb_components >= 3;
 
     if (s->planar)
         width /= s->bppcount;
@@ -443,16 +516,23 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
     }
 
     if (s->compr == TIFF_DEFLATE || s->compr == TIFF_ADOBE_DEFLATE) {
-        if (is_yuv) {
-            av_log(s->avctx, AV_LOG_ERROR, "YUV deflate is unsupported");
-            return AVERROR_PATCHWELCOME;
-        }
 #if CONFIG_ZLIB
-        return tiff_unpack_zlib(s, dst, stride, src, size, width, lines);
+        return tiff_unpack_zlib(s, p, dst, stride, src, size, width, lines,
+                                strip_start, is_yuv);
 #else
         av_log(s->avctx, AV_LOG_ERROR,
                "zlib support not enabled, "
                "deflate compression not supported\n");
+        return AVERROR(ENOSYS);
+#endif
+    }
+    if (s->compr == TIFF_LZMA) {
+#if CONFIG_LZMA
+        return tiff_unpack_lzma(s, p, dst, stride, src, size, width, lines,
+                                strip_start, is_yuv);
+#else
+        av_log(s->avctx, AV_LOG_ERROR,
+               "LZMA support not enabled\n");
         return AVERROR(ENOSYS);
 #endif
     }
@@ -572,8 +652,8 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
 
 static int init_image(TiffContext *s, ThreadFrame *frame)
 {
-    int i, ret;
-    uint32_t *pal;
+    int ret;
+    int create_gray_palette = 0;
 
     switch (s->planar * 1000 + s->bpp * 10 + s->bppcount) {
     case 11:
@@ -583,8 +663,13 @@ static int init_image(TiffContext *s, ThreadFrame *frame)
         }
     case 21:
     case 41:
-    case 81:
         s->avctx->pix_fmt = AV_PIX_FMT_PAL8;
+        if (!s->palette_is_set) {
+            create_gray_palette = 1;
+        }
+        break;
+    case 81:
+        s->avctx->pix_fmt = s->palette_is_set ? AV_PIX_FMT_PAL8 : AV_PIX_FMT_GRAY8;
         break;
     case 243:
         if (s->photometric == TIFF_PHOTOMETRIC_YCBCR) {
@@ -611,7 +696,10 @@ static int init_image(TiffContext *s, ThreadFrame *frame)
         s->avctx->pix_fmt = s->le ? AV_PIX_FMT_GRAY16LE : AV_PIX_FMT_GRAY16BE;
         break;
     case 162:
-        s->avctx->pix_fmt = AV_PIX_FMT_GRAY8A;
+        s->avctx->pix_fmt = AV_PIX_FMT_YA8;
+        break;
+    case 322:
+        s->avctx->pix_fmt = s->le ? AV_PIX_FMT_YA16LE : AV_PIX_FMT_YA16BE;
         break;
     case 324:
         s->avctx->pix_fmt = AV_PIX_FMT_RGBA;
@@ -640,6 +728,17 @@ static int init_image(TiffContext *s, ThreadFrame *frame)
                s->bpp, s->bppcount);
         return AVERROR_INVALIDDATA;
     }
+
+    if (s->photometric == TIFF_PHOTOMETRIC_YCBCR) {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->avctx->pix_fmt);
+        if((desc->flags & AV_PIX_FMT_FLAG_RGB) ||
+           !(desc->flags & AV_PIX_FMT_FLAG_PLANAR) ||
+           desc->nb_components < 3) {
+            av_log(s->avctx, AV_LOG_ERROR, "Unsupported YCbCr variant\n");
+            return AVERROR_INVALIDDATA;
+        }
+    }
+
     if (s->width != s->avctx->width || s->height != s->avctx->height) {
         ret = ff_set_dimensions(s->avctx, s->width, s->height);
         if (ret < 0)
@@ -648,11 +747,12 @@ static int init_image(TiffContext *s, ThreadFrame *frame)
     if ((ret = ff_thread_get_buffer(s->avctx, frame, 0)) < 0)
         return ret;
     if (s->avctx->pix_fmt == AV_PIX_FMT_PAL8) {
-        if (s->palette_is_set) {
+        if (!create_gray_palette)
             memcpy(frame->f->data[1], s->palette, sizeof(s->palette));
-        } else {
+        else {
             /* make default grayscale pal */
-            pal = (uint32_t *) frame->f->data[1];
+            int i;
+            uint32_t *pal = (uint32_t *)frame->f->data[1];
             for (i = 0; i < 1<<s->bpp; i++)
                 pal[i] = 0xFFU << 24 | i * 255 / ((1<<s->bpp) - 1) * 0x010101;
         }
@@ -777,6 +877,13 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         case TIFF_NEWJPEG:
             avpriv_report_missing_feature(s->avctx, "JPEG compression");
             return AVERROR_PATCHWELCOME;
+        case TIFF_LZMA:
+#if CONFIG_LZMA
+            break;
+#else
+            av_log(s->avctx, AV_LOG_ERROR, "LZMA not compiled in\n");
+            return AVERROR(ENOSYS);
+#endif
         default:
             av_log(s->avctx, AV_LOG_ERROR, "Unknown compression method %i\n",
                    s->compr);

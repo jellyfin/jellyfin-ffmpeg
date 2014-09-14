@@ -291,7 +291,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
             ) {
                 if (st->sample_aspect_ratio.num != 0 &&
                     st->sample_aspect_ratio.den != 0 &&
-                    codec->sample_aspect_ratio.den != 0 &&
+                    codec->sample_aspect_ratio.num != 0 &&
                     codec->sample_aspect_ratio.den != 0) {
                     av_log(s, AV_LOG_ERROR, "Aspect ratio mismatch between muxer "
                            "(%d/%d) and encoder layer (%d/%d)\n",
@@ -421,6 +421,8 @@ int avformat_write_header(AVFormatContext *s, AVDictionary **options)
             ret = s->pb->error;
         if (ret < 0)
             return ret;
+        if (s->flush_packets && s->pb && s->pb->error >= 0 && s->flags & AVFMT_FLAG_FLUSH_PACKETS)
+            avio_flush(s->pb);
     }
 
     if ((ret = init_pts(s)) < 0)
@@ -519,7 +521,7 @@ static int compute_pkt_fields2(AVFormatContext *s, AVStream *st, AVPacket *pkt)
     case AVMEDIA_TYPE_AUDIO:
         frame_size = (pkt->flags & AV_PKT_FLAG_UNCODED_FRAME) ?
                      ((AVFrame *)pkt->data)->nb_samples :
-                     ff_get_audio_frame_size(st->codec, pkt->size, 1);
+                     av_get_audio_frame_duration(st->codec, pkt->size);
 
         /* HACK/FIXME, we skip the initial 0 size packets as they are most
          * likely equal to the encoder delay, but it would be better if we
@@ -658,12 +660,12 @@ int av_write_frame(AVFormatContext *s, AVPacket *pkt)
 #define CHUNK_START 0x1000
 
 int ff_interleave_add_packet(AVFormatContext *s, AVPacket *pkt,
-                              int (*compare)(AVFormatContext *, AVPacket *, AVPacket *))
+                             int (*compare)(AVFormatContext *, AVPacket *, AVPacket *))
 {
+    int ret;
     AVPacketList **next_point, *this_pktl;
     AVStream *st   = s->streams[pkt->stream_index];
     int chunked    = s->max_chunk_size || s->max_chunk_duration;
-    int ret;
 
     this_pktl      = av_mallocz(sizeof(AVPacketList));
     if (!this_pktl)
@@ -681,7 +683,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         av_assert0(pkt->size == UNCODED_FRAME_PACKET_SIZE);
         av_assert0(((AVFrame *)pkt->data)->buf);
     } else {
-        // duplicate the packet if it uses non-allocated memory
+        // Duplicate the packet if it uses non-allocated memory
         if ((ret = av_dup_packet(&this_pktl->pkt)) < 0) {
             av_free(this_pktl);
             return ret;
@@ -735,6 +737,7 @@ next_non_null:
 
     s->streams[pkt->stream_index]->last_in_packet_buffer =
         *next_point                                      = this_pktl;
+
     return 0;
 }
 
@@ -765,19 +768,21 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
                                  AVPacket *pkt, int flush)
 {
     AVPacketList *pktl;
-    int stream_count = 0, noninterleaved_count = 0;
+    int stream_count = 0;
+    int noninterleaved_count = 0;
     int i, ret;
 
     if (pkt) {
-        ret = ff_interleave_add_packet(s, pkt, interleave_compare_dts);
-        if (ret < 0)
+        if ((ret = ff_interleave_add_packet(s, pkt, interleave_compare_dts)) < 0)
             return ret;
     }
 
     for (i = 0; i < s->nb_streams; i++) {
         if (s->streams[i]->last_in_packet_buffer) {
             ++stream_count;
-        } else if (s->streams[i]->codec->codec_type == AVMEDIA_TYPE_SUBTITLE) {
+        } else if (s->streams[i]->codec->codec_type != AVMEDIA_TYPE_ATTACHMENT &&
+                   s->streams[i]->codec->codec_id != AV_CODEC_ID_VP8 &&
+                   s->streams[i]->codec->codec_id != AV_CODEC_ID_VP9) {
             ++noninterleaved_count;
         }
     }
@@ -785,7 +790,11 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
     if (s->internal->nb_interleaved_streams == stream_count)
         flush = 1;
 
-    if (s->max_interleave_delta > 0 && s->packet_buffer && !flush) {
+    if (s->max_interleave_delta > 0 &&
+        s->packet_buffer &&
+        !flush &&
+        s->internal->nb_interleaved_streams == stream_count+noninterleaved_count
+    ) {
         AVPacket *top_pkt = &s->packet_buffer->pkt;
         int64_t delta_dts = INT64_MIN;
         int64_t top_dts = av_rescale_q(top_pkt->dts,
@@ -959,9 +968,10 @@ int av_get_output_timestamp(struct AVFormatContext *s, int stream,
 }
 
 int ff_write_chained(AVFormatContext *dst, int dst_stream, AVPacket *pkt,
-                     AVFormatContext *src)
+                     AVFormatContext *src, int interleave)
 {
     AVPacket local_pkt;
+    int ret;
 
     local_pkt = *pkt;
     local_pkt.stream_index = dst_stream;
@@ -977,7 +987,12 @@ int ff_write_chained(AVFormatContext *dst, int dst_stream, AVPacket *pkt,
         local_pkt.duration = av_rescale_q(pkt->duration,
                                           src->streams[pkt->stream_index]->time_base,
                                           dst->streams[dst_stream]->time_base);
-    return av_write_frame(dst, &local_pkt);
+
+    if (interleave) ret = av_interleaved_write_frame(dst, &local_pkt);
+    else            ret = av_write_frame(dst, &local_pkt);
+    pkt->buf = local_pkt.buf;
+    pkt->destruct = local_pkt.destruct;
+    return ret;
 }
 
 static int av_write_uncoded_frame_internal(AVFormatContext *s, int stream_index,

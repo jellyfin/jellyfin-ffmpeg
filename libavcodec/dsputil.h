@@ -23,17 +23,17 @@
 /**
  * @file
  * DSP utils.
- * Note, many functions in here may use MMX which trashes the FPU state, it is
- * absolutely necessary to call emms_c() between DSP & float/double code.
+ * This is deprecated
  */
 
 #ifndef AVCODEC_DSPUTIL_H
 #define AVCODEC_DSPUTIL_H
 
 #include "avcodec.h"
+#include "version.h"
+#include "me_cmp.h"
 
-extern uint32_t ff_square_tab[512];
-
+#if FF_API_DSPUTIL
 
 /* minimum alignment rules ;)
  * If you notice errors in the align stuff, need more alignment for some ASM code
@@ -49,14 +49,6 @@ extern uint32_t ff_square_tab[512];
  */
 
 struct MpegEncContext;
-/* Motion estimation:
- * h is limited to { width / 2, width, 2 * width },
- * but never larger than 16 and never smaller than 2.
- * Although currently h < 4 is not used as functions with
- * width < 8 are neither used nor implemented. */
-typedef int (*me_cmp_func)(struct MpegEncContext *c,
-                           uint8_t *blk1 /* align width (8 or 16) */,
-                           uint8_t *blk2 /* align 1 */, int line_size, int h);
 
 /**
  * DSPContext.
@@ -89,20 +81,7 @@ typedef struct DSPContext {
     me_cmp_func pix_abs[2][4];
 } DSPContext;
 
-void ff_dsputil_static_init(void);
-void ff_dsputil_init(DSPContext *p, AVCodecContext *avctx);
-void avpriv_dsputil_init(DSPContext* p, AVCodecContext *avctx);
-attribute_deprecated void dsputil_init(DSPContext* c, AVCodecContext *avctx);
+attribute_deprecated void avpriv_dsputil_init(DSPContext* p, AVCodecContext *avctx);
 
-int ff_check_alignment(void);
-
-void ff_set_cmp(DSPContext *c, me_cmp_func *cmp, int type);
-
-void ff_dsputil_init_alpha(DSPContext* c, AVCodecContext *avctx);
-void ff_dsputil_init_arm(DSPContext *c, AVCodecContext *avctx);
-void ff_dsputil_init_ppc(DSPContext *c, AVCodecContext *avctx);
-void ff_dsputil_init_x86(DSPContext *c, AVCodecContext *avctx);
-
-void ff_dsputil_init_dwt(DSPContext *c);
-
+#endif
 #endif /* AVCODEC_DSPUTIL_H */

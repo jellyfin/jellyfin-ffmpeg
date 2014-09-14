@@ -49,7 +49,7 @@ static int flac_read_header(AVFormatContext *s)
     }
 
     /* process metadata blocks */
-    while (!url_feof(s->pb) && !metadata_last) {
+    while (!avio_feof(s->pb) && !metadata_last) {
         avio_read(s->pb, header, 4);
         flac_parse_block_header(header, &metadata_last, &metadata_type,
                                    &metadata_size);
@@ -138,8 +138,11 @@ static int flac_read_header(AVFormatContext *s)
             if (metadata_type == FLAC_METADATA_TYPE_VORBIS_COMMENT) {
                 AVDictionaryEntry *chmask;
 
-                if (ff_vorbis_comment(s, &s->metadata, buffer, metadata_size, 1)) {
+                ret = ff_vorbis_comment(s, &s->metadata, buffer, metadata_size, 1);
+                if (ret < 0) {
                     av_log(s, AV_LOG_WARNING, "error parsing VorbisComment metadata\n");
+                } else if (ret > 0) {
+                    s->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
                 }
 
                 /* parse the channels mask if present */

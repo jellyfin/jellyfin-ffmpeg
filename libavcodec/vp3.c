@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003-2004 the ffmpeg project
+ * Copyright (c) 2003-2004 The FFmpeg Project
  *
  * This file is part of FFmpeg.
  *
@@ -1429,7 +1429,7 @@ static void vp3_draw_horiz_band(Vp3DecodeContext *s, int y)
                                   0);
     }
 
-    if (s->avctx->draw_horiz_band == NULL)
+    if (!s->avctx->draw_horiz_band)
         return;
 
     h = y - s->last_slice_end;

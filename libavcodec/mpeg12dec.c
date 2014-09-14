@@ -56,6 +56,8 @@ typedef struct Mpeg1Context {
     int has_stereo3d;
     uint8_t *a53_caption;
     int a53_caption_size;
+    uint8_t afd;
+    int has_afd;
     int slice_count;
     int save_aspect_info;
     int save_width, save_height, save_progressive_seq;
@@ -1116,18 +1118,15 @@ static av_cold int mpeg_decode_init(AVCodecContext *avctx)
 {
     Mpeg1Context *s    = avctx->priv_data;
     MpegEncContext *s2 = &s->mpeg_enc_ctx;
-    int i;
 
-    /* we need some permutation to store matrices,
-     * until MPV_common_init() sets the real permutation. */
-    for (i = 0; i < 64; i++)
-        s2->idsp.idct_permutation[i] = i;
-
-    ff_MPV_decode_defaults(s2);
+    ff_mpv_decode_defaults(s2);
+    ff_mpv_decode_init(s2, avctx);
 
     s->mpeg_enc_ctx.avctx  = avctx;
-    s->mpeg_enc_ctx.flags  = avctx->flags;
-    s->mpeg_enc_ctx.flags2 = avctx->flags2;
+
+    /* we need some permutation to store matrices,
+     * until the decoder sets the real permutation. */
+    ff_mpv_idct_init(s2);
     ff_mpeg12_common_init(&s->mpeg_enc_ctx);
     ff_mpeg12_init_vlcs();
 
@@ -1268,7 +1267,7 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
         if (s1->mpeg_enc_ctx_allocated) {
             ParseContext pc = s->parse_context;
             s->parse_context.buffer = 0;
-            ff_MPV_common_end(s);
+            ff_mpv_common_end(s);
             s->parse_context = pc;
             s1->mpeg_enc_ctx_allocated = 0;
         }
@@ -1357,7 +1356,8 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
          * if DCT permutation is changed. */
         memcpy(old_permutation, s->idsp.idct_permutation, 64 * sizeof(uint8_t));
 
-        if (ff_MPV_common_init(s) < 0)
+        ff_mpv_idct_init(s);
+        if (ff_mpv_common_init(s) < 0)
             return -2;
 
         quant_matrix_rebuild(s->intra_matrix,        old_permutation, s->idsp.idct_permutation);
@@ -1617,7 +1617,7 @@ static int mpeg_field_start(MpegEncContext *s, const uint8_t *buf, int buf_size)
     if (s->first_field || s->picture_structure == PICT_FRAME) {
         AVFrameSideData *pan_scan;
 
-        if (ff_MPV_frame_start(s, avctx) < 0)
+        if (ff_mpv_frame_start(s, avctx) < 0)
             return -1;
 
         ff_mpeg_er_frame_start(s);
@@ -1659,6 +1659,18 @@ static int mpeg_field_start(MpegEncContext *s, const uint8_t *buf, int buf_size)
             *stereo = s1->stereo3d;
             s1->has_stereo3d = 0;
         }
+
+        if (s1->has_afd) {
+            AVFrameSideData *sd =
+                av_frame_new_side_data(s->current_picture_ptr->f,
+                                       AV_FRAME_DATA_AFD, 1);
+            if (!sd)
+                return AVERROR(ENOMEM);
+
+            *sd->data   = s1->afd;
+            s1->has_afd = 0;
+        }
+
         if (HAVE_THREADS && (avctx->active_thread_type & FF_THREAD_FRAME))
             ff_thread_finish_setup(avctx);
     } else { // second field
@@ -1845,13 +1857,13 @@ static int mpeg_decode_slice(MpegEncContext *s, int mb_y,
         s->dest[1] +=(16 >> lowres) >> s->chroma_x_shift;
         s->dest[2] +=(16 >> lowres) >> s->chroma_x_shift;
 
-        ff_MPV_decode_mb(s, s->block);
+        ff_mpv_decode_mb(s, s->block);
 
         if (++s->mb_x >= s->mb_width) {
             const int mb_size = 16 >> s->avctx->lowres;
 
             ff_mpeg_draw_horiz_band(s, mb_size * (s->mb_y >> field_pic), mb_size);
-            ff_MPV_report_decode_progress(s);
+            ff_mpv_report_decode_progress(s);
 
             s->mb_x  = 0;
             s->mb_y += 1 << field_pic;
@@ -1884,6 +1896,10 @@ static int mpeg_decode_slice(MpegEncContext *s, int mb_y,
                 } else
                     goto eos;
             }
+            // There are some files out there which are missing the last slice
+            // in cases where the slice is completely outside the visible
+            // area, we detect this here instead of running into the end expecting
+            // more data
             if (s->mb_y >= ((s->height + 15) >> 4) &&
                 s->progressive_frame &&
                 !s->progressive_sequence &&
@@ -1957,8 +1973,10 @@ static int mpeg_decode_slice(MpegEncContext *s, int mb_y,
         }
     }
 eos: // end of slice
-    if (get_bits_left(&s->gb) < 0)
+    if (get_bits_left(&s->gb) < 0) {
+        av_log(s, AV_LOG_ERROR, "overread %d\n", -get_bits_left(&s->gb));
         return AVERROR_INVALIDDATA;
+    }
     *buf += (get_bits_count(&s->gb) - 1) / 8;
     av_dlog(s, "y %d %d %d %d\n", s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y);
     return 0;
@@ -2035,7 +2053,7 @@ static int slice_end(AVCodecContext *avctx, AVFrame *pict)
 
         ff_er_frame_end(&s->er);
 
-        ff_MPV_frame_end(s);
+        ff_mpv_frame_end(s);
 
         if (s->pict_type == AV_PICTURE_TYPE_B || s->low_delay) {
             int ret = av_frame_ref(pict, s->current_picture_ptr->f);
@@ -2048,7 +2066,7 @@ static int slice_end(AVCodecContext *avctx, AVFrame *pict)
                 s->picture_number++;
             /* latency of 1 frame for I- and P-frames */
             /* XXX: use another variable than picture_number */
-            if (s->last_picture_ptr != NULL) {
+            if (s->last_picture_ptr) {
                 int ret = av_frame_ref(pict, s->last_picture_ptr->f);
                 if (ret < 0)
                     return ret;
@@ -2156,7 +2174,7 @@ static int vcr2_init_sequence(AVCodecContext *avctx)
     /* start new MPEG-1 context decoding */
     s->out_format = FMT_MPEG1;
     if (s1->mpeg_enc_ctx_allocated) {
-        ff_MPV_common_end(s);
+        ff_mpv_common_end(s);
         s1->mpeg_enc_ctx_allocated = 0;
     }
     s->width            = avctx->coded_width;
@@ -2167,7 +2185,8 @@ static int vcr2_init_sequence(AVCodecContext *avctx)
     avctx->pix_fmt = mpeg_get_pixelformat(avctx);
     setup_hwaccel_for_pixfmt(avctx);
 
-    if (ff_MPV_common_init(s) < 0)
+    ff_mpv_idct_init(s);
+    if (ff_mpv_common_init(s) < 0)
         return -1;
     s1->mpeg_enc_ctx_allocated = 1;
 
@@ -2258,6 +2277,7 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
 {
     Mpeg1Context *s = avctx->priv_data;
     const uint8_t *buf_end = p + buf_size;
+    Mpeg1Context *s1 = avctx->priv_data;
 
     if (buf_size > 29){
         int i;
@@ -2284,7 +2304,13 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
         if (flags & 0x40) {
             if (buf_end - p < 1)
                 return;
+#if FF_API_AFD
+FF_DISABLE_DEPRECATION_WARNINGS
             avctx->dtg_active_format = p[0] & 0x0f;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif /* FF_API_AFD */
+            s1->has_afd = 1;
+            s1->afd     = p[0] & 0x0f;
         }
     } else if (buf_end - p >= 6 &&
                p[0] == 'J' && p[1] == 'P' && p[2] == '3' && p[3] == 'D' &&
@@ -2296,7 +2322,6 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
             S3D_video_format_type == 0x04 ||
             S3D_video_format_type == 0x08 ||
             S3D_video_format_type == 0x23) {
-            Mpeg1Context *s1   = avctx->priv_data;
 
             s1->has_stereo3d = 1;
 
@@ -2571,7 +2596,7 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
                     return -1;
                 }
 
-                if (s2->last_picture_ptr == NULL) {
+                if (!s2->last_picture_ptr) {
                     /* Skip B-frames if we do not have reference frames and
                      * GOP is not closed. */
                     if (s2->pict_type == AV_PICTURE_TYPE_B) {
@@ -2583,7 +2608,7 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
                 }
                 if (s2->pict_type == AV_PICTURE_TYPE_I || (s2->flags2 & CODEC_FLAG2_SHOW_ALL))
                     s->sync = 1;
-                if (s2->next_picture_ptr == NULL) {
+                if (!s2->next_picture_ptr) {
                     /* Skip P-frames if we do not have a reference frame or
                      * we have an invalid header. */
                     if (s2->pict_type == AV_PICTURE_TYPE_P && !s->sync) {
@@ -2754,7 +2779,7 @@ static av_cold int mpeg_decode_end(AVCodecContext *avctx)
     Mpeg1Context *s = avctx->priv_data;
 
     if (s->mpeg_enc_ctx_allocated)
-        ff_MPV_common_end(&s->mpeg_enc_ctx);
+        ff_mpv_common_end(&s->mpeg_enc_ctx);
     av_freep(&s->a53_caption);
     return 0;
 }

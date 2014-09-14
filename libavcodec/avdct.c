@@ -21,6 +21,7 @@
 #include "avcodec.h"
 #include "idctdsp.h"
 #include "fdctdsp.h"
+#include "pixblockdsp.h"
 #include "avdct.h"
 
 #define OFFSET(x) offsetof(AVDCT,x)
@@ -58,7 +59,8 @@ static const AVOption avdct_options[] = {
 {"simplealpha", "experimental / for debugging", 0, AV_OPT_TYPE_CONST, {.i64 = FF_IDCT_SIMPLEALPHA }, INT_MIN, INT_MAX, V|E|D, "idct"},
 #endif
 {"ipp", "experimental / for debugging", 0, AV_OPT_TYPE_CONST, {.i64 = FF_IDCT_IPP }, INT_MIN, INT_MAX, V|E|D, "idct"},
-{"xvidmmx", "experimental / for debugging", 0, AV_OPT_TYPE_CONST, {.i64 = FF_IDCT_XVIDMMX }, INT_MIN, INT_MAX, V|E|D, "idct"},
+{"xvid", "experimental / for debugging", 0, AV_OPT_TYPE_CONST, {.i64 = FF_IDCT_XVID }, INT_MIN, INT_MAX, V|E|D, "idct"},
+{"xvidmmx", "experimental / for debugging", 0, AV_OPT_TYPE_CONST, {.i64 = FF_IDCT_XVID }, INT_MIN, INT_MAX, V|E|D, "idct"},
 {"faani", "floating point AAN IDCT (experimental / for debugging)", 0, AV_OPT_TYPE_CONST, {.i64 = FF_IDCT_FAAN }, INT_MIN, INT_MAX, V|D|E, "idct"},
 {"simpleauto", "experimental / for debugging", 0, AV_OPT_TYPE_CONST, {.i64 = FF_IDCT_SIMPLEAUTO }, INT_MIN, INT_MAX, V|E|D, "idct"},
 {NULL},
@@ -114,6 +116,14 @@ int avcodec_dct_init(AVDCT *dsp)
         FDCTDSPContext fdsp;
         ff_fdctdsp_init(&fdsp, avctx);
         COPY(fdsp, fdct);
+    }
+#endif
+
+#if CONFIG_PIXBLOCKDSP
+    {
+        PixblockDSPContext pdsp;
+        ff_pixblockdsp_init(&pdsp, avctx);
+        COPY(pdsp, get_pixels);
     }
 #endif
 

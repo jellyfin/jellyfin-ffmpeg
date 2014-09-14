@@ -27,11 +27,10 @@
 #include <vfw.h>
 #include "avdevice.h"
 
-/* Defines for VFW missing from MinGW.
- * Remove this when MinGW incorporates them. */
-#define HWND_MESSAGE                ((HWND)-3)
-
-/* End of missing MinGW defines */
+/* Some obsolete versions of MinGW32 before 4.0.0 lack this. */
+#ifndef HWND_MESSAGE
+#define HWND_MESSAGE ((HWND) -3)
+#endif
 
 struct vfw_ctx {
     const AVClass *class;
@@ -228,7 +227,7 @@ static int vfw_read_close(AVFormatContext *s)
     pktl = ctx->pktl;
     while (pktl) {
         AVPacketList *next = pktl->next;
-        av_destruct_packet(&pktl->pkt);
+        av_free_packet(&pktl->pkt);
         av_free(pktl);
         pktl = next;
     }

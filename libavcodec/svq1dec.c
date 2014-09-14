@@ -3,8 +3,8 @@
  * ported to MPlayer by Arpi <arpi@thot.banki.hu>
  * ported to libavcodec by Nick Kurshev <nickols_k@mail.ru>
  *
- * Copyright (C) 2002 the xine project
- * Copyright (C) 2002 the ffmpeg project
+ * Copyright (c) 2002 The Xine Project
+ * Copyright (c) 2002 The FFmpeg Project
  *
  * SVQ1 Encoder (c) 2004 Mike Melanson <melanson@pcisys.net>
  *
@@ -60,6 +60,10 @@ typedef struct SVQ1Context {
     HpelDSPContext hdsp;
     GetBitContext gb;
     AVFrame *prev;
+
+    uint8_t *pkt_swapped;
+    int pkt_swapped_allocated;
+
     int width;
     int height;
     int frame_code;
@@ -624,7 +628,24 @@ static int svq1_decode_frame(AVCodecContext *avctx, void *data,
 
     /* swap some header bytes (why?) */
     if (s->frame_code != 0x20) {
-        uint32_t *src = (uint32_t *)(buf + 4);
+        uint32_t *src;
+
+        if (buf_size < 9 * 4) {
+            av_log(avctx, AV_LOG_ERROR, "Input packet too small\n");
+            return AVERROR_INVALIDDATA;
+        }
+
+        av_fast_padded_malloc(&s->pkt_swapped, &s->pkt_swapped_allocated,
+                       buf_size);
+        if (!s->pkt_swapped)
+            return AVERROR(ENOMEM);
+
+        memcpy(s->pkt_swapped, buf, buf_size);
+        buf = s->pkt_swapped;
+        init_get_bits(&s->gb, buf, buf_size * 8);
+        skip_bits(&s->gb, 22);
+
+        src = (uint32_t *)(s->pkt_swapped + 4);
 
         if (buf_size < 36)
             return AVERROR_INVALIDDATA;
@@ -796,6 +817,8 @@ static av_cold int svq1_decode_end(AVCodecContext *avctx)
     SVQ1Context *s = avctx->priv_data;
 
     av_frame_free(&s->prev);
+    av_freep(&s->pkt_swapped);
+    s->pkt_swapped_allocated = 0;
 
     return 0;
 }

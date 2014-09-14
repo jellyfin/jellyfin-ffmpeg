@@ -82,7 +82,7 @@ static int64_t find_tag(WAVDemuxContext * wav, AVIOContext *pb, uint32_t tag1)
     int64_t size;
 
     for (;;) {
-        if (url_feof(pb))
+        if (avio_feof(pb))
             return AVERROR_EOF;
         size = next_tag(pb, &tag);
         if (tag == tag1)
@@ -291,7 +291,7 @@ static int wav_read_header(AVFormatContext *s)
         size         = next_tag(pb, &tag);
         next_tag_ofs = avio_tell(pb) + size;
 
-        if (url_feof(pb))
+        if (avio_feof(pb))
             break;
 
         switch (tag) {
@@ -402,7 +402,8 @@ break_loop:
 
     avio_seek(pb, data_ofs, SEEK_SET);
 
-    if (data_size > 0 && sample_count && data_size / sample_count / st->codec->channels > 8) {
+    if (   data_size > 0 && sample_count && st->codec->channels
+        && data_size / sample_count / st->codec->channels > 8) {
         av_log(s, AV_LOG_WARNING, "ignoring wrong sample_count %"PRId64"\n", sample_count);
         sample_count = 0;
     }
@@ -434,7 +435,7 @@ static int64_t find_guid(AVIOContext *pb, const uint8_t guid1[16])
     uint8_t guid[16];
     int64_t size;
 
-    while (!url_feof(pb)) {
+    while (!avio_feof(pb)) {
         avio_read(pb, guid, 16);
         size = avio_rl64(pb);
         if (size <= 24)
@@ -652,7 +653,7 @@ static int w64_read_header(AVFormatContext *s)
     if (!st)
         return AVERROR(ENOMEM);
 
-    while (!url_feof(pb)) {
+    while (!avio_feof(pb)) {
         if (avio_read(pb, guid, 16) != 16)
             break;
         size = avio_rl64(pb);
@@ -692,7 +693,7 @@ static int w64_read_header(AVFormatContext *s)
             for (i = 0; i < count; i++) {
                 char chunk_key[5], *value;
 
-                if (url_feof(pb) || (cur = avio_tell(pb)) < 0 || cur > end - 8 /* = tag + size */)
+                if (avio_feof(pb) || (cur = avio_tell(pb)) < 0 || cur > end - 8 /* = tag + size */)
                     break;
 
                 chunk_key[4] = 0;

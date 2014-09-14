@@ -109,10 +109,9 @@ static int read_kuki_chunk(AVFormatContext *s, int64_t size)
            The lavc AAC decoder requires the data from the codec specific
            description as extradata input. */
         int strt, skip;
-        MOVAtom atom;
 
         strt = avio_tell(pb);
-        ff_mov_read_esds(s, pb, atom);
+        ff_mov_read_esds(s, pb);
         skip = size - (avio_tell(pb) - strt);
         if (skip < 0 || !st->codec->extradata ||
             st->codec->codec_id != AV_CODEC_ID_AAC) {
@@ -205,7 +204,7 @@ static void read_info_chunk(AVFormatContext *s, int64_t size)
     AVIOContext *pb = s->pb;
     unsigned int i;
     unsigned int nb_entries = avio_rb32(pb);
-    for (i = 0; i < nb_entries; i++) {
+    for (i = 0; i < nb_entries && !avio_feof(pb); i++) {
         char key[32];
         char value[1024];
         avio_get_str(pb, INT_MAX, key, sizeof(key));
@@ -241,7 +240,7 @@ static int read_header(AVFormatContext *s)
 
     /* parse each chunk */
     found_data = 0;
-    while (!url_feof(pb)) {
+    while (!avio_feof(pb)) {
 
         /* stop at data chunk if seeking is not supported or
            data chunk size is unknown */
@@ -251,7 +250,7 @@ static int read_header(AVFormatContext *s)
         tag  = avio_rb32(pb);
         size = avio_rb64(pb);
         pos  = avio_tell(pb);
-        if (url_feof(pb))
+        if (avio_feof(pb))
             break;
 
         switch (tag) {
@@ -339,7 +338,7 @@ static int read_packet(AVFormatContext *s, AVPacket *pkt)
     int res, pkt_size = 0, pkt_frames = 0;
     int64_t left      = CAF_MAX_PKT_SIZE;
 
-    if (url_feof(pb))
+    if (avio_feof(pb))
         return AVERROR_EOF;
 
     /* don't read past end of data chunk */

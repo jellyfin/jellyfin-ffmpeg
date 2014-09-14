@@ -245,74 +245,6 @@ int av_filename_number_test(const char *filename)
            (av_get_frame_filename(buf, sizeof(buf), filename, 1) >= 0);
 }
 
-AVInputFormat *av_probe_input_format3(AVProbeData *pd, int is_opened,
-                                      int *score_ret)
-{
-    AVProbeData lpd = *pd;
-    AVInputFormat *fmt1 = NULL, *fmt;
-    int score, nodat = 0, score_max = 0;
-    const static uint8_t zerobuffer[AVPROBE_PADDING_SIZE];
-
-    if (!lpd.buf)
-        lpd.buf = zerobuffer;
-
-    if (lpd.buf_size > 10 && ff_id3v2_match(lpd.buf, ID3v2_DEFAULT_MAGIC)) {
-        int id3len = ff_id3v2_tag_len(lpd.buf);
-        if (lpd.buf_size > id3len + 16) {
-            lpd.buf      += id3len;
-            lpd.buf_size -= id3len;
-        } else if (id3len >= PROBE_BUF_MAX) {
-            nodat = 2;
-        } else
-            nodat = 1;
-    }
-
-    fmt = NULL;
-    while ((fmt1 = av_iformat_next(fmt1))) {
-        if (!is_opened == !(fmt1->flags & AVFMT_NOFILE))
-            continue;
-        score = 0;
-        if (fmt1->read_probe) {
-            score = fmt1->read_probe(&lpd);
-            if (fmt1->extensions && av_match_ext(lpd.filename, fmt1->extensions)) {
-                if      (nodat == 0) score = FFMAX(score, 1);
-                else if (nodat == 1) score = FFMAX(score, AVPROBE_SCORE_EXTENSION / 2 - 1);
-                else                 score = FFMAX(score, AVPROBE_SCORE_EXTENSION);
-            }
-        } else if (fmt1->extensions) {
-            if (av_match_ext(lpd.filename, fmt1->extensions))
-                score = AVPROBE_SCORE_EXTENSION;
-        }
-        if (score > score_max) {
-            score_max = score;
-            fmt       = fmt1;
-        } else if (score == score_max)
-            fmt = NULL;
-    }
-    if (nodat == 1)
-        score_max = FFMIN(AVPROBE_SCORE_EXTENSION / 2 - 1, score_max);
-    *score_ret = score_max;
-
-    return fmt;
-}
-
-AVInputFormat *av_probe_input_format2(AVProbeData *pd, int is_opened, int *score_max)
-{
-    int score_ret;
-    AVInputFormat *fmt = av_probe_input_format3(pd, is_opened, &score_ret);
-    if (score_ret > *score_max) {
-        *score_max = score_ret;
-        return fmt;
-    } else
-        return NULL;
-}
-
-AVInputFormat *av_probe_input_format(AVProbeData *pd, int is_opened)
-{
-    int score = 0;
-    return av_probe_input_format2(pd, is_opened, &score);
-}
-
 static int set_codec_from_probe_data(AVFormatContext *s, AVStream *st,
                                      AVProbeData *pd)
 {
@@ -346,11 +278,11 @@ static int set_codec_from_probe_data(AVFormatContext *s, AVStream *st,
             if (!strcmp(fmt->name, fmt_id_type[i].name)) {
                 st->codec->codec_id   = fmt_id_type[i].id;
                 st->codec->codec_type = fmt_id_type[i].type;
-                break;
+                return score;
             }
         }
     }
-    return score;
+    return 0;
 }
 
 /************************************************************/
@@ -369,100 +301,6 @@ int av_demuxer_open(AVFormatContext *ic) {
         ic->data_offset = avio_tell(ic->pb);
 
     return 0;
-}
-
-
-int av_probe_input_buffer2(AVIOContext *pb, AVInputFormat **fmt,
-                          const char *filename, void *logctx,
-                          unsigned int offset, unsigned int max_probe_size)
-{
-    AVProbeData pd = { filename ? filename : "" };
-    uint8_t *buf = NULL;
-    uint8_t *mime_type;
-    int ret = 0, probe_size, buf_offset = 0;
-    int score = 0;
-
-    if (!max_probe_size)
-        max_probe_size = PROBE_BUF_MAX;
-    else if (max_probe_size < PROBE_BUF_MIN) {
-        av_log(logctx, AV_LOG_ERROR,
-               "Specified probe size value %u cannot be < %u\n", max_probe_size, PROBE_BUF_MIN);
-        return AVERROR(EINVAL);
-    }
-
-    if (offset >= max_probe_size)
-        return AVERROR(EINVAL);
-
-    if (!*fmt && pb->av_class && av_opt_get(pb, "mime_type", AV_OPT_SEARCH_CHILDREN, &mime_type) >= 0 && mime_type) {
-        if (!av_strcasecmp(mime_type, "audio/aacp")) {
-            *fmt = av_find_input_format("aac");
-        }
-        av_freep(&mime_type);
-    }
-
-    for (probe_size = PROBE_BUF_MIN; probe_size <= max_probe_size && !*fmt;
-         probe_size = FFMIN(probe_size << 1,
-                            FFMAX(max_probe_size, probe_size + 1))) {
-        score = probe_size < max_probe_size ? AVPROBE_SCORE_RETRY : 0;
-
-        /* Read probe data. */
-        if ((ret = av_reallocp(&buf, probe_size + AVPROBE_PADDING_SIZE)) < 0)
-            return ret;
-        if ((ret = avio_read(pb, buf + buf_offset,
-                             probe_size - buf_offset)) < 0) {
-            /* Fail if error was not end of file, otherwise, lower score. */
-            if (ret != AVERROR_EOF) {
-                av_free(buf);
-                return ret;
-            }
-            score = 0;
-            ret   = 0;          /* error was end of file, nothing read */
-        }
-        buf_offset += ret;
-        if (buf_offset < offset)
-            continue;
-        pd.buf_size = buf_offset - offset;
-        pd.buf = &buf[offset];
-
-        memset(pd.buf + pd.buf_size, 0, AVPROBE_PADDING_SIZE);
-
-        /* Guess file format. */
-        *fmt = av_probe_input_format2(&pd, 1, &score);
-        if (*fmt) {
-            /* This can only be true in the last iteration. */
-            if (score <= AVPROBE_SCORE_RETRY) {
-                av_log(logctx, AV_LOG_WARNING,
-                       "Format %s detected only with low score of %d, "
-                       "misdetection possible!\n", (*fmt)->name, score);
-            } else
-                av_log(logctx, AV_LOG_DEBUG,
-                       "Format %s probed with size=%d and score=%d\n",
-                       (*fmt)->name, probe_size, score);
-#if 0
-            FILE *f = fopen("probestat.tmp", "ab");
-            fprintf(f, "probe_size:%d format:%s score:%d filename:%s\n", probe_size, (*fmt)->name, score, filename);
-            fclose(f);
-#endif
-        }
-    }
-
-    if (!*fmt) {
-        av_free(buf);
-        return AVERROR_INVALIDDATA;
-    }
-
-    /* Rewind. Reuse probe buffer to avoid seeking. */
-    ret = ffio_rewind_with_probe_data(pb, &buf, buf_offset);
-
-    return ret < 0 ? ret : score;
-}
-
-int av_probe_input_buffer(AVIOContext *pb, AVInputFormat **fmt,
-                          const char *filename, void *logctx,
-                          unsigned int offset, unsigned int max_probe_size)
-{
-    int ret = av_probe_input_buffer2(pb, fmt, filename, logctx, offset, max_probe_size);
-    return ret < 0 ? ret : 0;
 }
 
 /* Open input file and probe the format if necessary. */
@@ -875,34 +713,6 @@ static int determinable_frame_size(AVCodecContext *avctx)
 }
 
 /**
- * Get the number of samples of an audio frame. Return -1 on error.
- */
-int ff_get_audio_frame_size(AVCodecContext *enc, int size, int mux)
-{
-    int frame_size;
-
-    /* give frame_size priority if demuxing */
-    if (!mux && enc->frame_size > 1)
-        return enc->frame_size;
-
-    if ((frame_size = av_get_audio_frame_duration(enc, size)) > 0)
-        return frame_size;
-
-    /* Fall back on using frame_size if muxing. */
-    if (enc->frame_size > 1)
-        return enc->frame_size;
-
-    //For WMA we currently have no other means to calculate duration thus we
-    //do it here by assuming CBR, which is true for all known cases.
-    if (!mux && enc->bit_rate>0 && size>0 && enc->sample_rate>0 && enc->block_align>1) {
-        if (enc->codec_id == AV_CODEC_ID_WMAV1 || enc->codec_id == AV_CODEC_ID_WMAV2)
-            return  ((int64_t)size * 8 * enc->sample_rate) / enc->bit_rate;
-    }
-
-    return -1;
-}
-
-/**
  * Return the frame duration in seconds. Return 0 if not available.
  */
 void ff_compute_frame_duration(int *pnum, int *pden, AVStream *st,
@@ -937,7 +747,7 @@ void ff_compute_frame_duration(int *pnum, int *pden, AVStream *st,
         }
         break;
     case AVMEDIA_TYPE_AUDIO:
-        frame_size = ff_get_audio_frame_size(st->codec, pkt->size, 0);
+        frame_size = av_get_audio_frame_duration(st->codec, pkt->size);
         if (frame_size <= 0 || st->codec->sample_rate <= 0)
             break;
         *pnum = frame_size;
@@ -1448,6 +1258,7 @@ static int read_from_packet_buffer(AVPacketList **pkt_buffer,
 static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
 {
     int ret = 0, i, got_packet = 0;
+    AVDictionary *metadata = NULL;
 
     av_init_packet(pkt);
 
@@ -1573,6 +1384,14 @@ static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
             av_packet_merge_side_data(pkt);
     }
 
+    av_opt_get_dict_val(s, "metadata", AV_OPT_SEARCH_CHILDREN, &metadata);
+    if (metadata) {
+        s->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
+        av_dict_copy(&s->metadata, metadata, 0);
+        av_dict_free(&metadata);
+        av_opt_set_dict_val(s, "metadata", NULL, AV_OPT_SEARCH_CHILDREN);
+    }
+
     if (s->debug & FF_FDEBUG_TS)
         av_log(s, AV_LOG_DEBUG,
                "read_frame_internal stream=%d, pts=%s, dts=%s, "
@@ -1693,23 +1512,36 @@ static void flush_packet_queue(AVFormatContext *s)
 
 int av_find_default_stream_index(AVFormatContext *s)
 {
-    int first_audio_index = -1;
     int i;
     AVStream *st;
+    int best_stream = 0;
+    int best_score = -1;
 
     if (s->nb_streams <= 0)
         return -1;
     for (i = 0; i < s->nb_streams; i++) {
+        int score = 0;
         st = s->streams[i];
         if (st->codec->codec_type == AVMEDIA_TYPE_VIDEO &&
             !(st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
-            return i;
+            if (!st->codec->width && !st->codec->height && !st->codec_info_nb_frames)
+                score += 25;
+            else
+                score += 100;
         }
-        if (first_audio_index < 0 &&
-            st->codec->codec_type == AVMEDIA_TYPE_AUDIO)
-            first_audio_index = i;
+        if (st->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+            if (!st->codec->sample_rate && !st->codec_info_nb_frames)
+                score += 12;
+            else
+                score += 50;
+        }
+
+        if (score > best_score) {
+            best_score = score;
+            best_stream = i;
+        }
     }
-    return first_audio_index >= 0 ? first_audio_index : 0;
+    return best_stream;
 }
 
 /** Flush the frame reader. */
@@ -2079,7 +1911,6 @@ int64_t ff_gen_search(AVFormatContext *s, int stream_index, int64_t target_ts,
             av_log(s, AV_LOG_ERROR, "read_timestamp() failed in the middle\n");
             return -1;
         }
-        assert(ts != AV_NOPTS_VALUE);
         if (target_ts <= ts) {
             pos_limit = start_pos - 1;
             pos_max   = pos;
@@ -2456,7 +2287,8 @@ static void estimate_timings_from_bit_rate(AVFormatContext *ic)
     if (ic->duration == AV_NOPTS_VALUE &&
         ic->bit_rate != 0) {
         filesize = ic->pb ? avio_size(ic->pb) : 0;
-        if (filesize > 0) {
+        if (filesize > ic->data_offset) {
+            filesize -= ic->data_offset;
             for (i = 0; i < ic->nb_streams; i++) {
                 st      = ic->streams[i];
                 if (   st->time_base.num <= INT64_MAX / ic->bit_rate
@@ -3112,10 +2944,15 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
     int64_t old_offset  = avio_tell(ic->pb);
     // new streams might appear, no options for those
     int orig_nb_streams = ic->nb_streams;
-    int flush_codecs    = ic->probesize > 0;
+    int flush_codecs;
     int64_t max_analyze_duration = ic->max_analyze_duration2;
+    int64_t probesize = ic->probesize2;
+
     if (!max_analyze_duration)
         max_analyze_duration = ic->max_analyze_duration;
+    if (ic->probesize)
+        probesize = ic->probesize;
+    flush_codecs = probesize > 0;
 
     av_opt_set(ic, "skip_clear", "1", AV_OPT_SEARCH_CHILDREN);
 
@@ -3227,6 +3064,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                 break;
             if (st->first_dts == AV_NOPTS_VALUE &&
                 !(ic->iformat->flags & AVFMT_NOTIMESTAMPS) &&
+                st->codec_info_nb_frames < ic->max_ts_probe &&
                 (st->codec->codec_type == AVMEDIA_TYPE_VIDEO ||
                  st->codec->codec_type == AVMEDIA_TYPE_AUDIO))
                 break;
@@ -3243,10 +3081,10 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
             }
         }
         /* We did not get all the codec info, but we read too much data. */
-        if (read_size >= ic->probesize) {
+        if (read_size >= probesize) {
             ret = count;
             av_log(ic, AV_LOG_DEBUG,
-                   "Probe buffer size limit of %d bytes reached\n", ic->probesize);
+                   "Probe buffer size limit of %"PRId64" bytes reached\n", probesize);
             for (i = 0; i < ic->nb_streams; i++)
                 if (!ic->streams[i]->r_frame_rate.num &&
                     ic->streams[i]->info->duration_count <= 1 &&
@@ -3419,7 +3257,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
         if (st->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
             if (st->codec->codec_id == AV_CODEC_ID_RAWVIDEO && !st->codec->codec_tag && !st->codec->bits_per_coded_sample) {
                 uint32_t tag= avcodec_pix_fmt_to_codec_tag(st->codec->pix_fmt);
-                if (avpriv_find_pix_fmt(ff_raw_pix_fmt_tags, tag) == st->codec->pix_fmt)
+                if (avpriv_find_pix_fmt(avpriv_get_raw_pix_fmt_tags(), tag) == st->codec->pix_fmt)
                     st->codec->codec_tag= tag;
             }
 
@@ -3490,7 +3328,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
         }
     }
 
-    if (ic->probesize)
+    if (probesize)
     estimate_timings(ic, old_offset);
 
     if (ret >= 0 && ic->nb_streams)
@@ -3688,6 +3526,7 @@ void avformat_free_context(AVFormatContext *s)
     av_dict_free(&s->metadata);
     av_freep(&s->streams);
     av_freep(&s->internal);
+    flush_packet_queue(s);
     av_free(s);
 }
 
@@ -3709,7 +3548,7 @@ void avformat_close_input(AVFormatContext **ps)
     s  = *ps;
     pb = s->pb;
 
-    if ((s->iformat && s->iformat->flags & AVFMT_NOFILE) ||
+    if ((s->iformat && strcmp(s->iformat->name, "image2") && s->iformat->flags & AVFMT_NOFILE) ||
         (s->flags & AVFMT_FLAG_CUSTOM_IO))
         pb = NULL;
 
@@ -4171,7 +4010,7 @@ int64_t ff_iso8601_to_unix_time(const char *datestr)
         return av_timegm(&time1);
 }
 
-int avformat_query_codec(AVOutputFormat *ofmt, enum AVCodecID codec_id,
+int avformat_query_codec(const AVOutputFormat *ofmt, enum AVCodecID codec_id,
                          int std_compliance)
 {
     if (ofmt) {
@@ -4351,6 +4190,29 @@ int avformat_match_stream_specifier(AVFormatContext *s, AVStream *st,
         stream_id = strtol(spec, &endptr, 0);
         if (!*endptr)
             return stream_id == st->id;
+    } else if (*spec == 'm' && *(spec + 1) == ':') {
+        AVDictionaryEntry *tag;
+        char *key, *val;
+        int ret;
+
+        spec += 2;
+        val = strchr(spec, ':');
+
+        key = val ? av_strndup(spec, val - spec) : av_strdup(spec);
+        if (!key)
+            return AVERROR(ENOMEM);
+
+        tag = av_dict_get(st->metadata, key, NULL, 0);
+        if (tag) {
+            if (!val || !strcmp(tag->value, val + 1))
+                ret = 1;
+            else
+                ret = 0;
+        } else
+            ret = 0;
+
+        av_freep(&key);
+        return ret;
     } else if (!*spec) /* empty specifier, matches everything */
         return 1;
 

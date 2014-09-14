@@ -596,6 +596,16 @@ typedef struct AVCodecDescriptor {
  */
 #define AV_CODEC_PROP_LOSSLESS      (1 << 2)
 /**
+ * Codec supports frame reordering. That is, the coded order (the order in which
+ * the encoded packets are output by the encoders / stored / input to the
+ * decoders) may be different from the presentation order of the corresponding
+ * frames.
+ *
+ * For codecs that do not have this property set, PTS and DTS should always be
+ * equal.
+ */
+#define AV_CODEC_PROP_REORDER       (1 << 3)
+/**
  * Subtitle codec is bitmap based
  * Decoded AVSubtitle data can be read from the AVSubtitleRect->pict field.
  */
@@ -757,6 +767,7 @@ typedef struct RcOverride{
 
 #define CODEC_FLAG2_CHUNKS        0x00008000 ///< Input bitstream might be truncated at a packet boundaries instead of only at frame boundaries.
 #define CODEC_FLAG2_SHOW_ALL      0x00400000 ///< Show all frames before the first keyframe
+#define CODEC_FLAG2_EXPORT_MVS    0x10000000 ///< Export motion vectors through frame side data
 
 /* Unsupported options :
  *              Syntax Arithmetic coding (SAC)
@@ -1015,6 +1026,12 @@ enum AVPacketSideDataType {
      * See libavutil/display.h for a detailed description of the data.
      */
     AV_PKT_DATA_DISPLAYMATRIX,
+
+    /**
+     * This side data should be associated with a video stream and contains
+     * Stereoscopic 3D information in form of the AVStereo3D struct.
+     */
+    AV_PKT_DATA_STEREO3D,
 
     /**
      * Recommmends skipping the specified number of samples
@@ -1680,6 +1697,7 @@ typedef struct AVCodecContext {
      */
     int me_subpel_quality;
 
+#if FF_API_AFD
     /**
      * DTG active format information (additional aspect ratio
      * information only used in DVB MPEG-2 transport streams)
@@ -1687,8 +1705,9 @@ typedef struct AVCodecContext {
      *
      * - encoding: unused
      * - decoding: Set by decoder.
+     * @deprecated Deprecated in favor of AVSideData
      */
-    int dtg_active_format;
+    attribute_deprecated int dtg_active_format;
 #define FF_DTG_AFD_SAME         8
 #define FF_DTG_AFD_4_3          9
 #define FF_DTG_AFD_16_9         10
@@ -1696,6 +1715,7 @@ typedef struct AVCodecContext {
 #define FF_DTG_AFD_4_3_SP_14_9  13
 #define FF_DTG_AFD_16_9_SP_14_9 14
 #define FF_DTG_AFD_SP_4_3       15
+#endif /* FF_API_AFD */
 
     /**
      * maximum motion estimation search range in subpel units
@@ -1881,12 +1901,14 @@ typedef struct AVCodecContext {
      */
     int chromaoffset;
 
+#if FF_API_UNUSED_MEMBERS
     /**
      * Multiplied by qscale for each frame and added to scene_change_score.
      * - encoding: Set by user.
      * - decoding: unused
      */
-    int scenechange_factor;
+    attribute_deprecated int scenechange_factor;
+#endif
 
     /**
      *
@@ -2336,7 +2358,9 @@ typedef struct AVCodecContext {
 #define FF_CODER_TYPE_AC        1
 #define FF_CODER_TYPE_RAW       2
 #define FF_CODER_TYPE_RLE       3
+#if FF_API_UNUSED_MEMBERS
 #define FF_CODER_TYPE_DEFLATE   4
+#endif /* FF_API_UNUSED_MEMBERS */
     /**
      * coder type
      * - encoding: Set by user.
@@ -2542,7 +2566,9 @@ typedef struct AVCodecContext {
 #define FF_DEBUG_DCT_COEFF   0x00000040
 #define FF_DEBUG_SKIP        0x00000080
 #define FF_DEBUG_STARTCODE   0x00000100
+#if FF_API_UNUSED_MEMBERS
 #define FF_DEBUG_PTS         0x00000200
+#endif /* FF_API_UNUSED_MEMBERS */
 #define FF_DEBUG_ER          0x00000400
 #define FF_DEBUG_MMCO        0x00000800
 #define FF_DEBUG_BUGS        0x00001000
@@ -2594,7 +2620,6 @@ typedef struct AVCodecContext {
     /**
      * opaque 64bit number (generally a PTS) that will be reordered and
      * output in AVFrame.reordered_opaque
-     * @deprecated in favor of pkt_pts
      * - encoding: unused
      * - decoding: Set by user.
      */
@@ -2634,7 +2659,9 @@ typedef struct AVCodecContext {
     int dct_algo;
 #define FF_DCT_AUTO    0
 #define FF_DCT_FASTINT 1
+#if FF_API_UNUSED_MEMBERS
 #define FF_DCT_INT     2
+#endif /* FF_API_UNUSED_MEMBERS */
 #define FF_DCT_MMX     3
 #define FF_DCT_ALTIVEC 5
 #define FF_DCT_FAAN    6
@@ -2655,8 +2682,13 @@ typedef struct AVCodecContext {
 #define FF_IDCT_SH4           9
 #endif
 #define FF_IDCT_SIMPLEARM     10
+#if FF_API_UNUSED_MEMBERS
 #define FF_IDCT_IPP           13
+#endif /* FF_API_UNUSED_MEMBERS */
+#define FF_IDCT_XVID          14
+#if FF_API_IDCT_XVIDMMX
 #define FF_IDCT_XVIDMMX       14
+#endif /* FF_API_IDCT_XVIDMMX */
 #define FF_IDCT_SIMPLEARMV5TE 16
 #define FF_IDCT_SIMPLEARMV6   17
 #if FF_API_ARCH_SPARC
@@ -3282,7 +3314,7 @@ typedef struct AVHWAccel {
     /**
      * Called for every Macroblock in a slice.
      *
-     * XvMC uses it to replace the ff_MPV_decode_mb().
+     * XvMC uses it to replace the ff_mpv_decode_mb().
      * Instead of decoding to raw picture, MB parameters are
      * stored in an array provided by the video driver.
      *
@@ -4277,7 +4309,7 @@ typedef struct AVCodecParser {
     struct AVCodecParser *next;
 } AVCodecParser;
 
-AVCodecParser *av_parser_next(AVCodecParser *c);
+AVCodecParser *av_parser_next(const AVCodecParser *c);
 
 void av_register_codec_parser(AVCodecParser *parser);
 AVCodecParserContext *av_parser_init(int codec_id);
@@ -5001,7 +5033,7 @@ void av_bitstream_filter_close(AVBitStreamFilterContext *bsf);
  * This function can be used to iterate over all registered bitstream
  * filters.
  */
-AVBitStreamFilter *av_bitstream_filter_next(AVBitStreamFilter *f);
+AVBitStreamFilter *av_bitstream_filter_next(const AVBitStreamFilter *f);
 
 /* memory */
 
@@ -5069,7 +5101,7 @@ void av_register_hwaccel(AVHWAccel *hwaccel);
  * if hwaccel is non-NULL, returns the next registered hardware accelerator
  * after hwaccel, or NULL if hwaccel is the last one.
  */
-AVHWAccel *av_hwaccel_next(AVHWAccel *hwaccel);
+AVHWAccel *av_hwaccel_next(const AVHWAccel *hwaccel);
 
 
 /**

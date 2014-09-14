@@ -69,6 +69,15 @@
     SWAP %2, %3
 %endmacro
 
+%macro TRANSPOSE2x4x4B 5
+    SBUTTERFLY bw,  %1, %2, %5
+    SBUTTERFLY bw,  %3, %4, %5
+    SBUTTERFLY wd,  %1, %3, %5
+    SBUTTERFLY wd,  %2, %4, %5
+    SBUTTERFLY dq,  %1, %2, %5
+    SBUTTERFLY dq,  %3, %4, %5
+%endmacro
+
 %macro TRANSPOSE2x4x4W 5
     SBUTTERFLY wd,  %1, %2, %5
     SBUTTERFLY wd,  %3, %4, %5
@@ -598,7 +607,9 @@
 %endmacro
 
 %macro SPLATW 2-3 0
-%if mmsize == 16
+%if cpuflag(avx2) && %3 == 0
+    vpbroadcastw %1, %2
+%elif mmsize == 16
     pshuflw    %1, %2, (%3)*0x55
     punpcklqdq %1, %1
 %elif cpuflag(mmxext)

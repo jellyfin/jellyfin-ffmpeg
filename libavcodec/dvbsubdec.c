@@ -888,7 +888,7 @@ static void dvbsub_parse_pixel_data_block(AVCodecContext *avctx, DVBSubObjectDis
         av_dlog(avctx, "\n");
 #endif
 
-    if (region == 0)
+    if (!region)
         return;
 
     pbuf = region->pbuf;
@@ -1383,7 +1383,7 @@ static void save_display_set(DVBSubContext *ctx)
 
             clut = get_clut(ctx, region->clut);
 
-            if (clut == 0)
+            if (!clut)
                 clut = &default_clut;
 
             switch (region->depth) {
@@ -1585,8 +1585,9 @@ end:
     return p - buf;
 }
 
+#define DS AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_SUBTITLE_PARAM
 static const AVOption options[] = {
-    {"compute_edt", "compute end of time using pts or timeout", offsetof(DVBSubContext, compute_edt), FF_OPT_TYPE_INT, {.i64 = 0}, 0, 1, 0},
+    {"compute_edt", "compute end of time using pts or timeout", offsetof(DVBSubContext, compute_edt), FF_OPT_TYPE_INT, {.i64 = 0}, 0, 1, DS},
     {NULL}
 };
 static const AVClass dvbsubdec_class = {

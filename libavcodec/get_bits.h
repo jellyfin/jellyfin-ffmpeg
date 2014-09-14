@@ -125,19 +125,20 @@ typedef struct RL_VLC_ELEM {
 #   define MIN_CACHE_BITS 25
 #endif
 
-#if UNCHECKED_BITSTREAM_READER
-#define OPEN_READER(name, gb)                   \
+#define OPEN_READER_NOSIZE(name, gb)            \
     unsigned int name ## _index = (gb)->index;  \
     unsigned int av_unused name ## _cache
 
-#define HAVE_BITS_REMAINING(name, gb) 1
+#if UNCHECKED_BITSTREAM_READER
+#define OPEN_READER(name, gb) OPEN_READER_NOSIZE(name, gb)
+
+#define BITS_AVAILABLE(name, gb) 1
 #else
 #define OPEN_READER(name, gb)                   \
-    unsigned int name ## _index = (gb)->index;  \
-    unsigned int av_unused name ## _cache = 0;  \
-    unsigned int av_unused name ## _size_plus8 = (gb)->size_in_bits_plus8
+    OPEN_READER_NOSIZE(name, gb);               \
+    unsigned int name ## _size_plus8 = (gb)->size_in_bits_plus8
 
-#define HAVE_BITS_REMAINING(name, gb) name ## _index < name ## _size_plus8
+#define BITS_AVAILABLE(name, gb) name ## _index < name ## _size_plus8
 #endif
 
 #define CLOSE_READER(name, gb) (gb)->index = name ## _index
@@ -286,7 +287,7 @@ static inline unsigned int get_bits_le(GetBitContext *s, int n)
 static inline unsigned int show_bits(GetBitContext *s, int n)
 {
     register int tmp;
-    OPEN_READER(re, s);
+    OPEN_READER_NOSIZE(re, s);
     av_assert2(n>0 && n<=25);
     UPDATE_CACHE(re, s);
     tmp = SHOW_UBITS(re, s, n);
@@ -413,7 +414,7 @@ static inline int init_get_bits(GetBitContext *s, const uint8_t *buffer,
     int ret = 0;
 
     if (bit_size >= INT_MAX - 7 || bit_size < 0 || !buffer) {
-        buffer_size = bit_size = 0;
+        bit_size    = 0;
         buffer      = NULL;
         ret         = AVERROR_INVALIDDATA;
     }

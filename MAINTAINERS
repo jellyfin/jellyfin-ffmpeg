@@ -54,7 +54,7 @@ release management                      Michael Niedermayer
 Communication
 =============
 
-website                                 Robert Swain
+website                                 Deby Barbara Lepage
 fate.ffmpeg.org                         Timothy Gu
 Trac bug tracker                        Alexander Strasser, Michael Niedermayer, Carl Eugen Hoyos, Lou Logan
 mailing lists                           Michael Niedermayer, Baptiste Coudurier, Lou Logan
@@ -319,7 +319,7 @@ libavdevice
   pulse_audio_enc.c                     Lukasz Marek
   qtkit.m                               Thilo Borgmann
   sdl                                   Stefano Sabatini
-  v4l2.c                                Luca Abeni
+  v4l2.c                                Giorgio Vazzana
   vfwcap.c                              Ramiro Polla
   xv.c                                  Lukasz Marek
 
@@ -343,6 +343,7 @@ Filters:
   af_compand.c                          Paul B Mahol
   af_ladspa.c                           Paul B Mahol
   af_pan.c                              Nicolas George
+  af_silenceremove.c                    Paul B Mahol
   avf_avectorscope.c                    Paul B Mahol
   avf_showcqt.c                         Muhammad Faiz
   vf_blend.c                            Paul B Mahol
@@ -353,7 +354,9 @@ Filters:
   vf_extractplanes.c                    Paul B Mahol
   vf_histogram.c                        Paul B Mahol
   vf_hqx.c                              Clément Bœsch
+  vf_idet.c                             Pascal Massimino
   vf_il.c                               Paul B Mahol
+  vf_lenscorrection.c                   Daniel Oberhoff
   vf_mergeplanes.c                      Paul B Mahol
   vf_psnr.c                             Paul B Mahol
   vf_scale.c                            Michael Niedermayer
@@ -458,12 +461,15 @@ Muxers/Demuxers:
   rmdec.c, rmenc.c                      Ronald S. Bultje, Kostya Shishkov
   rtmp*                                 Kostya Shishkov
   rtp.c, rtpenc.c                       Martin Storsjo
+  rtpdec_h261.*, rtpenc_h261.*          Thomas Volkert
+  rtpdec_hevc.*                         Thomas Volkert
   rtpdec_asf.*                          Ronald S. Bultje
   rtpenc_mpv.*, rtpenc_aac.*            Martin Storsjo
   rtsp.c                                Luca Barbato
   sbgdec.c                              Nicolas George
   sdp.c                                 Martin Storsjo
   segafilm.c                            Mike Melanson
+  segment.c                             Stefano Sabatini
   siff.c                                Kostya Shishkov
   smacker.c                             Kostya Shishkov
   smjpeg*                               Paul B Mahol
@@ -528,7 +534,7 @@ x86                                     Michael Niedermayer
 Releases
 ========
 
-2.3                                     Michael Niedermayer
+2.4                                     Michael Niedermayer
 2.2                                     Michael Niedermayer
 1.2                                     Michael Niedermayer
 

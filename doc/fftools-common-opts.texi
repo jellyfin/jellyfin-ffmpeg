@@ -3,7 +3,7 @@ representing a number as input, which may be followed by one of the SI
 unit prefixes, for example: 'K', 'M', or 'G'.
 
 If 'i' is appended to the SI unit prefix, the complete prefix will be
-interpreted as a unit prefix for binary multiplies, which are based on
+interpreted as a unit prefix for binary multiples, which are based on
 powers of 1024 instead of powers of 1000. Appending 'B' to the SI unit
 prefix multiplies the value by 8. This allows using, for example:
 'KB', 'MiB', 'G' and 'B' as number suffixes.
@@ -46,6 +46,13 @@ in the program with the id @var{program_id}. Otherwise, it matches all streams i
 program.
 @item #@var{stream_id} or i:@var{stream_id}
 Match the stream by stream id (e.g. PID in MPEG-TS container).
+@item m:@var{key}[:@var{value}]
+Matches streams with the metadata tag @var{key} having the specified value. If
+@var{value} is not given, matches streams that contain the given tag with any
+value.
+
+Note that in @command{ffmpeg}, matching by metadata will only work properly for
+input files.
 @end table
 
 @section Generic options

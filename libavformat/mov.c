@@ -83,6 +83,7 @@ static int mov_metadata_track_or_disc_number(MOVContext *c, AVIOContext *pb,
         snprintf(buf, sizeof(buf), "%d", current);
     else
         snprintf(buf, sizeof(buf), "%d/%d", current, total);
+    c->fc->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
     av_dict_set(&c->fc->metadata, key, buf, 0);
 
     return 0;
@@ -91,15 +92,13 @@ static int mov_metadata_track_or_disc_number(MOVContext *c, AVIOContext *pb,
 static int mov_metadata_int8_bypass_padding(MOVContext *c, AVIOContext *pb,
                                             unsigned len, const char *key)
 {
-    char buf[16];
-
     /* bypass padding bytes */
     avio_r8(pb);
     avio_r8(pb);
     avio_r8(pb);
 
-    snprintf(buf, sizeof(buf), "%d", avio_r8(pb));
-    av_dict_set(&c->fc->metadata, key, buf, 0);
+    c->fc->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
+    av_dict_set_int(&c->fc->metadata, key, avio_r8(pb), 0);
 
     return 0;
 }
@@ -107,10 +106,8 @@ static int mov_metadata_int8_bypass_padding(MOVContext *c, AVIOContext *pb,
 static int mov_metadata_int8_no_padding(MOVContext *c, AVIOContext *pb,
                                         unsigned len, const char *key)
 {
-    char buf[16];
-
-    snprintf(buf, sizeof(buf), "%d", avio_r8(pb));
-    av_dict_set(&c->fc->metadata, key, buf, 0);
+    c->fc->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
+    av_dict_set_int(&c->fc->metadata, key, avio_r8(pb), 0);
 
     return 0;
 }
@@ -119,15 +116,14 @@ static int mov_metadata_gnre(MOVContext *c, AVIOContext *pb,
                              unsigned len, const char *key)
 {
     short genre;
-    char buf[20];
 
     avio_r8(pb); // unknown
 
     genre = avio_r8(pb);
     if (genre < 1 || genre > ID3v1_GENRE_MAX)
         return 0;
-    snprintf(buf, sizeof(buf), "%s", ff_id3v1_genre_str[genre-1]);
-    av_dict_set(&c->fc->metadata, key, buf, 0);
+    c->fc->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
+    av_dict_set(&c->fc->metadata, key, ff_id3v1_genre_str[genre-1], 0);
 
     return 0;
 }
@@ -256,6 +252,7 @@ static int mov_metadata_loci(MOVContext *c, AVIOContext *pb, unsigned len)
         snprintf(key2, sizeof(key2), "%s-%s", key, language);
         av_dict_set(&c->fc->metadata, key2, buf, 0);
     }
+    c->fc->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
     return av_dict_set(&c->fc->metadata, key, buf, 0);
 }
 
@@ -320,6 +317,8 @@ static int mov_read_udta_string(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return mov_metadata_raw(c, pb, atom.size, "quicktime_version");
     case MKTAG( 'l','o','c','i'):
         return mov_metadata_loci(c, pb, atom.size);
+    case MKTAG( 'X','M','P','_'):
+        return mov_metadata_raw(c, pb, atom.size, "xmp");
     }
 
     if (c->itunes_metadata && atom.size > 8) {
@@ -372,6 +371,7 @@ static int mov_read_udta_string(MOVContext *c, AVIOContext *pb, MOVAtom atom)
                 return ret < 0 ? ret : AVERROR_INVALIDDATA;
             str[str_size] = 0;
         }
+        c->fc->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
         av_dict_set(&c->fc->metadata, key, str, 0);
         if (*language && strcmp(language, "und")) {
             snprintf(key2, sizeof(key2), "%s-%s", key, language);
@@ -485,7 +485,7 @@ static int mov_read_dref(MOVContext *c, AVIOContext *pb, MOVAtom atom)
             avio_skip(pb, 16);
 
             for (type = 0; type != -1 && avio_tell(pb) < next; ) {
-                if(url_feof(pb))
+                if(avio_feof(pb))
                     return AVERROR_EOF;
                 type = avio_rb16(pb);
                 len = avio_rb16(pb);
@@ -580,7 +580,7 @@ static int mov_read_hdlr(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     return 0;
 }
 
-int ff_mov_read_esds(AVFormatContext *fc, AVIOContext *pb, MOVAtom atom)
+int ff_mov_read_esds(AVFormatContext *fc, AVIOContext *pb)
 {
     AVStream *st;
     int tag;
@@ -604,7 +604,7 @@ int ff_mov_read_esds(AVFormatContext *fc, AVIOContext *pb, MOVAtom atom)
 
 static int mov_read_esds(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
-    return ff_mov_read_esds(c->fc, pb, atom);
+    return ff_mov_read_esds(c->fc, pb);
 }
 
 static int mov_read_dac3(MOVContext *c, AVIOContext *pb, MOVAtom atom)
@@ -730,7 +730,6 @@ static int mov_read_ftyp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
     uint32_t minor_ver;
     int comp_brand_size;
-    char minor_ver_str[11]; /* 32 bit integer -> 10 digits + null */
     char* comp_brands_str;
     uint8_t type[5] = {0};
 
@@ -740,8 +739,7 @@ static int mov_read_ftyp(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     av_log(c->fc, AV_LOG_DEBUG, "ISO: File Type Major Brand: %.4s\n",(char *)&type);
     av_dict_set(&c->fc->metadata, "major_brand", type, 0);
     minor_ver = avio_rb32(pb); /* minor version */
-    snprintf(minor_ver_str, sizeof(minor_ver_str), "%"PRIu32"", minor_ver);
-    av_dict_set(&c->fc->metadata, "minor_version", minor_ver_str, 0);
+    av_dict_set_int(&c->fc->metadata, "minor_version", minor_ver, 0);
 
     comp_brand_size = atom.size - 8;
     if (comp_brand_size < 0)
@@ -1007,7 +1005,10 @@ static int mov_read_jp2h(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 
 static int mov_read_avid(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
-    return mov_read_extradata(c, pb, atom, AV_CODEC_ID_AVUI);
+    int ret = mov_read_extradata(c, pb, atom, AV_CODEC_ID_AVUI);
+    if(ret == 0)
+        ret = mov_read_extradata(c, pb, atom, AV_CODEC_ID_DNXHD);
+    return ret;
 }
 
 static int mov_read_targa_y216(MOVContext *c, AVIOContext *pb, MOVAtom atom)
@@ -1531,6 +1532,26 @@ static int mov_parse_stsd_data(MOVContext *c, AVIOContext *pb,
                 st->codec->flags2 |= CODEC_FLAG2_DROP_FRAME_TIMECODE;
             st->codec->time_base.den = st->codec->extradata[16]; /* number of frame */
             st->codec->time_base.num = 1;
+            if (size > 30) {
+                uint32_t len = AV_RB32(st->codec->extradata + 18); /* name atom length */
+                uint32_t format = AV_RB32(st->codec->extradata + 22);
+                if (format == AV_RB32("name") && (int64_t)size >= (int64_t)len + 18) {
+                    uint16_t str_size = AV_RB16(st->codec->extradata + 26); /* string length */
+                    if (str_size > 0 && size >= (int)str_size + 26) {
+                        char *reel_name = av_malloc(str_size + 1);
+                        if (!reel_name)
+                            return AVERROR(ENOMEM);
+                        memcpy(reel_name, st->codec->extradata + 30, str_size);
+                        reel_name[str_size] = 0; /* Add null terminator */
+                        /* don't add reel_name if emtpy string */
+                        if (*reel_name == 0) {
+                            av_free(reel_name);
+                        } else {
+                            av_dict_set(&st->metadata, "reel_name", reel_name,  AV_DICT_DONT_STRDUP_VAL);
+                        }
+                    }
+                }
+            }
         }
     } else {
         /* other codec type, just skip (rtp, mp4s ...) */
@@ -1614,7 +1635,7 @@ static int mov_finalize_stsd_codec(MOVContext *c, AVIOContext *pb,
 
 static int mov_skip_multiple_stsd(MOVContext *c, AVIOContext *pb,
                                   int codec_tag, int format,
-                                  int size)
+                                  int64_t size)
 {
     int video_codec_id = ff_codec_get_id(ff_codec_movvideo_tags, format);
 
@@ -2534,8 +2555,8 @@ static int mov_read_custom_2plus(MOVContext *c, AVIOContext *pb, int size)
                 if(priming>0 && priming<16384)
                     sc->start_pad = priming;
             }
-        } else if (strcmp(key, "cdec") == 0) {
-        } else {
+        }
+        if (strcmp(key, "cdec") != 0) {
             av_dict_set(&c->fc->metadata, key, val,
                         AV_DICT_DONT_STRDUP_KEY | AV_DICT_DONT_STRDUP_VAL);
             key = val = NULL;
@@ -3052,7 +3073,7 @@ static int mov_read_uuid(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         }
 
         ptr = buffer;
-        while ((ptr = av_stristr(ptr, "systemBitrate=\"")) != NULL) {
+        while ((ptr = av_stristr(ptr, "systemBitrate=\""))) {
             ptr += sizeof("systemBitrate=\"") - 1;
             c->bitrates_count++;
             c->bitrates = av_realloc_f(c->bitrates, c->bitrates_count, sizeof(*c->bitrates));
@@ -3153,7 +3174,7 @@ static int mov_read_default(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 
     if (atom.size < 0)
         atom.size = INT64_MAX;
-    while (total_size + 8 <= atom.size && !url_feof(pb)) {
+    while (total_size + 8 <= atom.size && !avio_feof(pb)) {
         int (*parse)(MOVContext*, AVIOContext*, MOVAtom) = NULL;
         a.size = atom.size;
         a.type=0;
@@ -3541,7 +3562,7 @@ static int mov_read_header(AVFormatContext *s)
     if (mov->moov_retry)
         avio_seek(pb, 0, SEEK_SET);
     if ((err = mov_read_default(mov, pb, atom)) < 0) {
-        av_log(s, AV_LOG_ERROR, "error reading header: %d\n", err);
+        av_log(s, AV_LOG_ERROR, "error reading header\n");
         mov_read_close(s);
         return err;
     }
@@ -3701,7 +3722,7 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
         avio_seek(s->pb, mov->next_root_atom, SEEK_SET);
         mov->next_root_atom = 0;
         if (mov_read_default(mov, s->pb, (MOVAtom){ AV_RL32("root"), INT64_MAX }) < 0 ||
-            url_feof(s->pb))
+            avio_feof(s->pb))
             return AVERROR_EOF;
         av_dlog(s, "read fragments, offset 0x%"PRIx64"\n", avio_tell(s->pb));
         goto retry;

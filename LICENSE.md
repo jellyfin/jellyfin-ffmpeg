@@ -15,6 +15,7 @@ Specifically, the GPL parts of FFmpeg are:
 - libpostproc
 - libmpcodecs
 - optional x86 optimizations in the files
+  libavcodec/x86/flac_dsp_gpl.asm
   libavcodec/x86/idct_mmx.c
 - libutvideo encoding/decoding wrappers in
   libavcodec/libutvideo*.cpp
@@ -33,6 +34,7 @@ Specifically, the GPL parts of FFmpeg are:
     - vf_geq.c
     - vf_histeq.c
     - vf_hqdn3d.c
+    - vf_interlace.c
     - vf_kerndeint.c
     - vf_mcdeint.c
     - vf_mp.c
