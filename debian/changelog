@@ -11,10 +11,6 @@ ffmpeg (7:2.4-1) UNRELEASED; urgency=medium
     to link against the FFmpeg libraries with '-ffmpeg' suffix.
   * Add missing copyright holders/years to debian/copyright.
   * Fix wildcard-matches-nothing-in-dep5-copyright lintian warnings.
-  * Add lintian overrides for space-in-std-shortname-in-dep5-copyright
-    false positives.
-  * Add lintian overrides for wildcard-matches-nothing-in-dep5-copyright
-    false positives.
   * Add qt-faststart to the Recommends: of the ffmpeg binary package.
   * Configure with --enable-libshine, since libshine >= 3.0.0 is now available
     in Debian.
