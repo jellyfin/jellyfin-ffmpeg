@@ -24,6 +24,8 @@ ffmpeg (7:2.4-1) UNRELEASED; urgency=medium
   * Update Change-symbol-versioning.patch.
   * Adapt the packaging to the changed library soversions.
   * Generalize ffmpeg.lintian-overrides with wildcards.
+  * Add debian/missing-sources with the sources of the minified CSS files in 
+    the upstream tarball.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 12 Aug 2014 18:22:14 +0200
 
