@@ -1,6 +1,6 @@
 ffmpeg (7:2.4-1) experimental; urgency=medium
 
-  * Import new major upstream release 2.4.
+  * Import new major upstream release 2.4. (Closes: #729203)
      - Fixes CVE-2014-5271: proresenc_ks: fix buffer overflow
      - Fixes CVE-2014-5272: iff: fix out of array access
      - The non-free image tests/lena.pnm is not shipped anymore.
