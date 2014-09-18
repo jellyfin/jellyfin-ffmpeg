@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 Uploaders: Alexander Strasser <eclipse7@gmx.net>
 Homepage: https://ffmpeg.org/
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Vcs-Git: git://anonscm.debian.org/collab-maint/ffmpeg.git
 Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/ffmpeg.git
 Build-Depends-Indep:
@@ -69,7 +69,7 @@ Build-Depends:
 # --enable-libopus
  libopus-dev,
 # Disabled, as it might produce problems.
-## --enable-libquvi
+# # --enable-libquvi
 # libquvi-dev,
 # --enable-librtmp
  librtmp-dev,
@@ -92,7 +92,7 @@ Build-Depends:
 # --enable-libtwolame
  libtwolame-dev,
 # This is not necessary, see explanation in debian/rules.
-## --enable-libv4l2
+# # --enable-libv4l2
 # libv4l-dev [!hurd-any],
 # autodetected: hwaccels 'h263_vaapi, mpeg2_vaapi, vc1_vaapi, h264_vaapi, mpeg4_vaapi, wmv3_vaapi'
  libva-dev [!hurd-any],
@@ -116,8 +116,9 @@ Build-Depends:
  libzmq3-dev [!hurd-any],
 # --enable-libzvbi
  libzvbi-dev [linux-any],
-# --enable-opencl
- ocl-icd-opencl-dev [!hurd-any] | opencl-dev [!hurd-any],
+# The opencl API is considered experimental.
+# # --enable-opencl
+# ocl-icd-opencl-dev [!hurd-any] | opencl-dev [!hurd-any],
 # HTML documentation
  texinfo,
 # assembler optimizations
@@ -195,6 +196,7 @@ Description: Debug symbols for the FFmpeg multimedia framework
 Package: ffmpeg-doc
 Section: doc
 Architecture: all
+Multi-Arch: foreign
 Depends:
  libjs-jquery,
  ${misc:Depends}

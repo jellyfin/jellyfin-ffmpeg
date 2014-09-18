@@ -252,26 +252,6 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_murmur3_update@LIBAVUTIL_FFMPEG_54 7:2.4
  av_nearer_q@LIBAVUTIL_FFMPEG_54 7:2.4
  av_next_option@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_alloc_external_env@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_benchmark@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_buffer_create@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_buffer_read@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_buffer_read_image@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_buffer_release@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_buffer_write@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_buffer_write_image@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_compile@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_errstr@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_free_device_list@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_free_external_env@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_free_option@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_get_command_queue@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_get_device_list@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_get_option@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_init@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_register_kernel_code@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_set_option@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)av_opencl_uninit@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_child_class_next@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_child_next@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_copy@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -430,7 +410,6 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  avpriv_frame_get_metadatap@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_init_lls@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_open@LIBAVUTIL_FFMPEG_54 7:2.4
- avpriv_opencl_set_parameter@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_report_missing_feature@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_request_sample@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_scalarproduct_float_c@LIBAVUTIL_FFMPEG_54 7:2.4
