@@ -78,6 +78,7 @@ CONFIG := --prefix=/usr \
 	--extra-cxxflags="$(CXXFLAGS)" \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--shlibdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
+	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
 	--enable-gpl \
 	--enable-shared \
 	--disable-stripping \
