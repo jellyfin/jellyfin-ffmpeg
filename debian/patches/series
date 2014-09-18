@@ -1,1 +1,4 @@
 Change-symbol-versioning.patch
+fix-build-when-AV_READ_TIME-is-unavailable.patch
+vf_deshake-rename-Transform.vector-to-Transform.vec.patch
+avcodec-x86-vp9lpf_Always-include-x86util.asm.patch

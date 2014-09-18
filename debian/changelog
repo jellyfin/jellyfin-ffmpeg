@@ -1,3 +1,15 @@
+ffmpeg (7:2.4-2) UNRELEASED; urgency=medium
+
+  * Cherrypick patches from upstream:
+     - fix-build-when-AV_READ_TIME-is-unavailable.patch:
+       This fixes building on armel, mipsel and s390x.
+     - vf_deshake-rename-Transform.vector-to-Transform.vec.patch:
+       This fixes building on powerpc and ppc64el.
+     - avcodec-x86-vp9lpf_Always-include-x86util.asm.patch:
+       This fixes the executable stack lintian warning for libavcodec on i386.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 18 Sep 2014 19:01:33 +0200
+
 ffmpeg (7:2.4-1) experimental; urgency=medium
 
   * Import new major upstream release 2.4. (Closes: #729203)
@@ -24,7 +36,7 @@ ffmpeg (7:2.4-1) experimental; urgency=medium
   * Update Change-symbol-versioning.patch.
   * Adapt the packaging to the changed library soversions.
   * Generalize ffmpeg.lintian-overrides with wildcards.
-  * Add debian/missing-sources with the sources of the minified CSS files in 
+  * Add debian/missing-sources with the sources of the minified CSS files in
     the upstream tarball.
   * Create the minified CSS files during package build instead of using the
     ones shipped in the tarball.
