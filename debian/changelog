@@ -1,4 +1,4 @@
-ffmpeg (7:2.4-2) UNRELEASED; urgency=medium
+ffmpeg (7:2.4-2) experimental; urgency=medium
 
   * Cherrypick patches from upstream:
      - fix-build-when-AV_READ_TIME-is-unavailable.patch:
@@ -16,7 +16,7 @@ ffmpeg (7:2.4-2) UNRELEASED; urgency=medium
     This is necessary, because some headers (e.g. libavutil/avconfig.h)
     are architecture-dependant.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 18 Sep 2014 19:01:33 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 18 Sep 2014 21:54:12 +0200
 
 ffmpeg (7:2.4-1) experimental; urgency=medium
 
