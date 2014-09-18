@@ -7,6 +7,8 @@ ffmpeg (7:2.4-2) UNRELEASED; urgency=medium
        This fixes building on powerpc and ppc64el.
      - avcodec-x86-vp9lpf_Always-include-x86util.asm.patch:
        This fixes the executable stack lintian warning for libavcodec on i386.
+  * Add lintian overrides for shlib-with-non-pic-code on i386, where non-PIC
+    code is allowed.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 18 Sep 2014 19:01:33 +0200
 

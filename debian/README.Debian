@@ -13,4 +13,9 @@ It also has slight API differences to Libav. If your package's upstream
 uses FFmpeg for development, you should try to change your build-dependencies
 to the lib*-ffmpeg-dev packages and see if your bugs vanish.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 07 May 2014 22:23:49 +0200
+The lintian error shlib-with-non-pic-code is overridden on any-i386
+architectures, because the upstream build system doesn't use -fPIC there.
+This is done due to performance reasons and because FFmpeg contains
+hand-crafted assembly, which fails to build with -fPIC.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 18 Sep 2014 19:07:26 +0200
