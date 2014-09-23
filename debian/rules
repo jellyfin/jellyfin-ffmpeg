@@ -15,8 +15,9 @@ DEB_REVISION := $(word 2, $(subst -, ,$(DEB_VERSION)))
 # Get the architecture triplet:
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 
-# Get the host architecture OS:
+# Get the host architecture/OS:
 DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 
 # Only use '-O0' if given (via noopt).
 # Hardening is enabled via the configure option --toolchain=hardened.
@@ -132,6 +133,11 @@ endif
 # Some libraries are not build on hurd.
 ifneq ($(DEB_HOST_ARCH_OS),hurd)
 	CONFIG += --enable-libzmq
+endif
+
+# Disable altivec optimizations on powerpc, because they are not always available on this architecture.
+ifeq ($(DEB_HOST_ARCH),powerpc)
+	CONFIG += --disable-altivec
 endif
 
 # Use the default debhelper scripts, where possible.
