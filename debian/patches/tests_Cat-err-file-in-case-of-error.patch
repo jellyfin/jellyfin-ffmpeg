@@ -1,0 +1,29 @@
+From 00d3bb1a074b60fd9687679e4147f56d81886b05 Mon Sep 17 00:00:00 2001
+From: Michael Niedermayer <michaelni@gmx.at>
+Date: Tue, 23 Sep 2014 23:38:29 +0200
+Subject: [PATCH] tests/fate-run.sh: Cat .err file in case of error with V>0
+
+This may make fate failures where only the console output is available
+easier to analyze
+
+Suggested-by: Andreas Cadhalpun
+Signed-off-by: Michael Niedermayer <michaelni@gmx.at>
+---
+ tests/fate-run.sh | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/fate-run.sh b/tests/fate-run.sh
+index 7fe7e74..b994aba 100755
+--- a/tests/fate-run.sh
++++ b/tests/fate-run.sh
+@@ -248,6 +248,7 @@ if test $err = 0; then
+     rm -f $outfile $errfile $cmpfile $cleanfiles
+ elif test $gen = "no"; then
+     echo "Test $test failed. Look at $errfile for details."
++    test "${V:-0}" -gt 0 && cat $errfile
+ else
+     echo "Updating reference failed, possibly no output file was generated."
+ fi
+-- 
+2.1.0
+
