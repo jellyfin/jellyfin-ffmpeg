@@ -1,3 +1,13 @@
+ffmpeg (7:2.4.1-1) UNRELEASED; urgency=medium
+
+  * Import new upstream bugfix release 2.4.1.
+  * Drop patches included upstream:
+     - avcodec-x86-vp9lpf_Always-include-x86util.asm.patch
+     - fix-build-when-AV_READ_TIME-is-unavailable.patch
+     - vf_deshake-rename-Transform.vector-to-Transform.vec.patch
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 23 Sep 2014 20:50:39 +0200
+
 ffmpeg (7:2.4-2) experimental; urgency=medium
 
   * Cherrypick patches from upstream:
