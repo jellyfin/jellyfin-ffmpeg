@@ -156,6 +156,8 @@ Multi-Arch: foreign
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: ffmpeg (<< 7:2)
+Replaces: ffmpeg (<< 7:2)
 Description: Utility to rearrange a Quicktime file
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
