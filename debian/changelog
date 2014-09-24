@@ -9,6 +9,7 @@ ffmpeg (7:2.4.1-1) UNRELEASED; urgency=medium
   * Cherry-pick tests_Cat-err-file-in-case-of-error.patch to ease debugging
     of test failures.
   * Add Breaks and Replaces on old ffmpeg packages to qt-faststart.
+  * Disable optimizations on mips(el) to fix test failures.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 23 Sep 2014 20:50:39 +0200
 

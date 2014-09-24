@@ -140,6 +140,14 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 	CONFIG += --disable-altivec
 endif
 
+# Disable optimizations on mips(el), because they are not always available on these architecture.
+ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
+	CONFIG += --disable-mips32r2 \
+	--disable-mipsdspr1 \
+	--disable-mipsdspr2 \
+	--disable-mipsfpu
+endif
+
 # Use the default debhelper scripts, where possible.
 # Enable parallel building.
 %:
