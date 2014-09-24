@@ -15,7 +15,6 @@ to the lib*-ffmpeg-dev packages and see if your bugs vanish.
 
 The lintian error shlib-with-non-pic-code is overridden on any-i386
 architectures, because the upstream build system doesn't use -fPIC there.
-This is done due to performance reasons and because FFmpeg contains
-hand-crafted assembly, which fails to build with -fPIC.
+This is done due to performance reasons.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 18 Sep 2014 19:07:26 +0200
