@@ -30,7 +30,7 @@ Build-Depends:
 # --enable-libbluray
  libbluray-dev,
 # --enable-libbs2b
- libbs2b-dev,
+ libbs2b-dev [!arm64],
 # autodetected: external library 'bzlib'
  libbz2-dev,
 # --enable-libcaca

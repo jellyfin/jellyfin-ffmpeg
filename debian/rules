@@ -91,7 +91,6 @@ CONFIG := --prefix=/usr \
 	--enable-ladspa \
 	--enable-libass \
 	--enable-libbluray \
-	--enable-libbs2b \
 	--enable-libcaca \
 	--enable-libcdio \
 	--enable-libflite \
@@ -146,6 +145,11 @@ ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 	--disable-mipsdspr1 \
 	--disable-mipsdspr2 \
 	--disable-mipsfpu
+endif
+
+# libbs2b currently fails to build on arm64
+ifneq ($(DEB_HOST_ARCH),arm64)
+	CONFIG += --enable-libbs2b
 endif
 
 # Use the default debhelper scripts, where possible.

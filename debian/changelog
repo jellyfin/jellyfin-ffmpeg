@@ -10,6 +10,7 @@ ffmpeg (7:2.4.1-1) UNRELEASED; urgency=medium
     of test failures.
   * Add Breaks and Replaces on old ffmpeg packages to qt-faststart.
   * Disable optimizations on mips(el) to fix test failures.
+  * Don't enable libbs2b on arm64, because it is not (yet) available there.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 23 Sep 2014 20:50:39 +0200
 
