@@ -1,4 +1,4 @@
-ffmpeg (7:2.4.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.4.1-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.4.1.
   * Drop patches included upstream:
@@ -12,8 +12,9 @@ ffmpeg (7:2.4.1-1) UNRELEASED; urgency=medium
   * Disable optimizations on mips(el) to fix test failures.
   * Don't enable libbs2b on arm64, because it is not (yet) available there.
   * Disable assembler optimizations on ppc64el to (hopefully) fix the tests.
+  * Upload to unstable.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 23 Sep 2014 20:50:39 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 26 Sep 2014 21:58:10 +0200
 
 ffmpeg (7:2.4-2) experimental; urgency=medium
 
