@@ -162,6 +162,8 @@ static int img_read_probe(AVProbeData *p)
             return AVPROBE_SCORE_MAX;
         else if (is_glob(p->filename))
             return AVPROBE_SCORE_MAX;
+        else if (p->filename[strcspn(p->filename, "*?{")]) // probably PT_GLOB
+            return AVPROBE_SCORE_EXTENSION + 2; // score chosen to be a tad above the image pipes
         else if (p->buf_size == 0)
             return 0;
         else if (av_match_ext(p->filename, "raw") || av_match_ext(p->filename, "gif"))
@@ -421,8 +423,10 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
             infer_size(&codec->width, &codec->height, size[0]);
     } else {
         f[0] = s1->pb;
+        if (avio_feof(f[0]) && s->loop && s->is_pipe)
+            avio_seek(f[0], 0, SEEK_SET);
         if (avio_feof(f[0]))
-            return AVERROR(EIO);
+            return AVERROR_EOF;
         if (s->frame_size > 0) {
             size[0] = s->frame_size;
         } else if (!s1->streams[0]->parser) {
@@ -450,10 +454,19 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
         pkt->pts      = s->pts;
     }
 
+    if (s->is_pipe)
+        pkt->pos = avio_tell(f[0]);
+
     pkt->size = 0;
     for (i = 0; i < 3; i++) {
         if (f[i]) {
             ret[i] = avio_read(f[i], pkt->data + pkt->size, size[i]);
+            if (s->loop && s->is_pipe && ret[i] == AVERROR_EOF) {
+                if (avio_seek(f[i], 0, SEEK_SET) >= 0) {
+                    pkt->pos = 0;
+                    ret[i] = avio_read(f[i], pkt->data + pkt->size, size[i]);
+                }
+            }
             if (!s->is_pipe)
                 avio_close(f[i]);
             if (ret[i] > 0)
@@ -463,7 +476,13 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
 
     if (ret[0] <= 0 || ret[1] < 0 || ret[2] < 0) {
         av_free_packet(pkt);
-        return AVERROR(EIO); /* signal EOF */
+        if (ret[0] < 0) {
+            return ret[0];
+        } else if (ret[1] < 0) {
+            return ret[1];
+        } else if (ret[2] < 0)
+            return ret[2];
+        return AVERROR_EOF;
     } else {
         s->img_count++;
         s->img_number++;
@@ -694,6 +713,7 @@ AVInputFormat ff_image_ ## imgname ## _pipe_demuxer = {\
     .read_header    = ff_img_read_header,\
     .read_packet    = ff_img_read_packet,\
     .priv_class     = & imgname ## _class,\
+    .flags          = AVFMT_GENERIC_INDEX, \
     .raw_codec_id   = codecid,\
 };
 
