@@ -19,7 +19,7 @@ Last-Update: <2014-09-14>
 @@ -1,4 +1,4 @@
 -LIBAVDEVICE_$MAJOR {
 +LIBAVDEVICE_FFMPEG_$MAJOR {
-         global: avdevice_*;
+         global: avdevice_*; av_*;
          local: *;
  };
 --- a/libavfilter/libavfilter.v
