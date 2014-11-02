@@ -86,11 +86,11 @@ CONFIG := --prefix=/usr \
 	--enable-avresample \
 	--enable-avisynth \
 	--enable-fontconfig \
-	--enable-frei0r \
 	--enable-gnutls \
 	--enable-ladspa \
 	--enable-libass \
 	--enable-libbluray \
+	--enable-libbs2b \
 	--enable-libcaca \
 	--enable-libcdio \
 	--enable-libflite \
@@ -100,14 +100,12 @@ CONFIG := --prefix=/usr \
 	--enable-libgsm \
 	--enable-libmodplug \
 	--enable-libmp3lame \
-	--enable-libopencv \
 	--enable-libopenjpeg \
 	--enable-libopus \
 	--enable-libpulse \
 	--enable-librtmp \
 	--enable-libschroedinger \
 	--enable-libshine \
-	--enable-libsoxr \
 	--enable-libspeex \
 	--enable-libssh \
 	--enable-libtheora \
@@ -116,8 +114,6 @@ CONFIG := --prefix=/usr \
 	--enable-libvpx \
 	--enable-libwavpack \
 	--enable-libwebp \
-	--enable-libx264 \
-	--enable-openal \
 	--enable-opengl \
 	--enable-x11grab \
 	--enable-libxvid
@@ -134,13 +130,30 @@ ifneq ($(DEB_HOST_ARCH_OS),hurd)
 	CONFIG += --enable-libzmq
 endif
 
+# Some libraries are not available on x32.
+ifneq ($(DEB_HOST_ARCH),x32)
+	CONFIG += --enable-frei0r \
+	--enable-libx264
+endif
+
+# Some libraries are not available on sparc64.
+ifneq ($(DEB_HOST_ARCH),sparc64)
+	CONFIG += --enable-libsoxr \
+	--enable-openal
+endif
+
+# OpenCV is not available on some architectures.
+ifneq (,$(filter $(DEB_HOST_ARCH),m68k sh4 sparc64 x32))
+	CONFIG += --enable-libopencv
+endif
+
 # Disable altivec optimizations on powerpc, because they are not always available on this architecture.
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	CONFIG += --disable-altivec
 endif
 
-# Disable assembly optimizations on armel and ppc64el, because they don't work (yet).
-ifneq (,$(filter $(DEB_HOST_ARCH),armel ppc64el))
+# Disable assembly optimizations on armel, ppc64el and x32, because they don't work (yet).
+ifneq (,$(filter $(DEB_HOST_ARCH),armel ppc64el x32))
 	CONFIG += --disable-asm
 endif
 
@@ -151,11 +164,6 @@ ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 	--disable-mipsdspr1 \
 	--disable-mipsdspr2 \
 	--disable-mipsfpu
-endif
-
-# libbs2b currently fails to build on arm64
-ifneq ($(DEB_HOST_ARCH),arm64)
-	CONFIG += --enable-libbs2b
 endif
 
 # Use the default debhelper scripts, where possible.

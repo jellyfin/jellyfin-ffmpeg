@@ -22,7 +22,7 @@ Build-Depends:
 # --enable-libflite
  flite1-dev,
 # --enable-frei0r
- frei0r-plugins-dev,
+ frei0r-plugins-dev [!x32],
 # --enable-ladspa
  ladspa-sdk,
 # --enable-libass
@@ -30,7 +30,7 @@ Build-Depends:
 # --enable-libbluray
  libbluray-dev,
 # --enable-libbs2b
- libbs2b-dev [!arm64],
+ libbs2b-dev,
 # autodetected: external library 'bzlib'
  libbz2-dev,
 # --enable-libcaca
@@ -40,8 +40,7 @@ Build-Depends:
 # autodetected 'crystalhd'
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
-# This is also pulled in as a dependency of libopencv-dev.
-# libdc1394-22-dev [linux-any],
+ libdc1394-22-dev [linux-any],
 # --enable-fribidi
  libfribidi-dev,
 # --enable-libgme
@@ -61,9 +60,9 @@ Build-Depends:
 # --enable-libmp3lame
  libmp3lame-dev,
 # --enable-openal
- libopenal-dev,
+ libopenal-dev [!sparc64],
 # --enable-libopencv
- libopencv-dev,
+ libopencv-dev [!m68k !sh4 !sparc64 !x32],
 # --enable-libopenjpeg
  libopenjpeg-dev,
 # --enable-libopus
@@ -82,7 +81,7 @@ Build-Depends:
 # --enable-libshine
  libshine-dev (>= 3.0.0),
 # --enable-libsoxr
- libsoxr-dev,
+ libsoxr-dev [!sparc64],
 # --enable-libspeex
  libspeex-dev,
 # --enable-libssh
@@ -107,7 +106,7 @@ Build-Depends:
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
- libx264-dev,
+ libx264-dev [!x32],
 # --enable-libxvid
  libxvidcore-dev,
 # autodetected: decoder 'mpeg_xvmc'; outdev 'xv'
