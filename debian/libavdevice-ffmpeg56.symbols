@@ -1,5 +1,10 @@
 libavdevice-ffmpeg.so.56 libavdevice-ffmpeg56 #MINVER#
  LIBAVDEVICE_FFMPEG_56@LIBAVDEVICE_FFMPEG_56 7:2.4
+ av_device_capabilities@LIBAVDEVICE_FFMPEG_56 7:2.4.3
+ av_input_audio_device_next@LIBAVDEVICE_FFMPEG_56 7:2.4.3
+ av_input_video_device_next@LIBAVDEVICE_FFMPEG_56 7:2.4.3
+ av_output_audio_device_next@LIBAVDEVICE_FFMPEG_56 7:2.4.3
+ av_output_video_device_next@LIBAVDEVICE_FFMPEG_56 7:2.4.3
  avdevice_app_to_dev_control_message@LIBAVDEVICE_FFMPEG_56 7:2.4
  avdevice_capabilities_create@LIBAVDEVICE_FFMPEG_56 7:2.4
  avdevice_capabilities_free@LIBAVDEVICE_FFMPEG_56 7:2.4

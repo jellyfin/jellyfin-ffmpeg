@@ -1,7 +1,8 @@
 ffmpeg (7:2.4.3-1) UNRELEASED; urgency=medium
 
   * Import new upstream bugfix release 2.4.3.
-  * Refresh Change-symbol-versioning.patch.
+     - Refresh Change-symbol-versioning.patch.
+     - Add new symbols to the libavdevice symbols file.
   * Enable libbs2b on arm64, since it is now available.
   * Disable frei0r and libx264 on x32, libsoxr and openal on sparc64
     and libopencv on m68k, sh4, sparc64 and x32, because they are not
