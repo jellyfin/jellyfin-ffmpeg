@@ -176,7 +176,7 @@ override_dh_auto_configure:
 	$(info DEB_BUILD_OPTIONS = $(DEB_BUILD_OPTIONS))
 	$(info CFLAGS = $(CFLAGS))
 	$(info CXXFLAGS = $(CXXFLAGS))
-	./configure $(CONFIG) || cat config.log
+	./configure $(CONFIG) || (cat config.log && exit 1)
 
 # Building the source package fails without this override, because config.mak does not exist in the source.
 # It (and related files) are created by configure and removed by distclean.
@@ -203,7 +203,7 @@ override_dh_auto_build-arch:
 	# Build qt-faststart here, to make it possible to build with 'nocheck'.
 	make tools/qt-faststart
 	# Use faketime to make the build more binary reproducible.
-	$(FT) dh_auto_build -a
+	$(FT) dh_auto_build -a || (cat config.log && exit 1)
 
 # Set the library path for the dynamic linker, because the test otherwise don't find the libraries.
 override_dh_auto_test:

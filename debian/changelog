@@ -8,8 +8,9 @@ ffmpeg (7:2.4.3-1) unstable; urgency=medium
     and libopencv on m68k, sh4, sparc64 and x32, because they are not
     (yet) avialable there.
   * Disable assembler optimizations on x32, as they wouldn't work there.
+  * Include config.log in the build-log, when compiling fails.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 02 Nov 2014 19:15:44 +0100
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 04 Nov 2014 23:26:43 +0100
 
 ffmpeg (7:2.4.2-1) unstable; urgency=medium
 
