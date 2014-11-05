@@ -1,0 +1,19 @@
+Description: Fix test failures on hppa
+ The gcc compiler on hppa creates wrong code with tail call optimization.
+ Work around that by using -fno-optimize-sibling-calls also for gcc 4.9.
+
+Author: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=55023
+Last-Update: <2014-11-05>
+
+--- ffmpeg-2.4.3.orig/configure
++++ ffmpeg-2.4.3/configure
+@@ -4500,7 +4500,7 @@ elif enabled parisc; then
+ 
+     if enabled gcc; then
+         case $($cc -dumpversion) in
+-            4.[3-8].*) check_cflags -fno-optimize-sibling-calls ;;
++            4.[3-9].*) check_cflags -fno-optimize-sibling-calls ;;
+         esac
+     fi
+ 
