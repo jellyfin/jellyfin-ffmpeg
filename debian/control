@@ -46,7 +46,7 @@ Build-Depends:
 # --enable-libgme
  libgme-dev,
 # --enable-gnutls
- libgnutls28-dev | libgnutls-dev,
+ libgnutls28-dev [!sparc64] | libgnutls-dev [!sparc64],
 # --enable-libgsm
  libgsm1-dev,
 # Fails to be detected by configure script, if not also libavc1394-dev is installed.

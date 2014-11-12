@@ -86,7 +86,6 @@ CONFIG := --prefix=/usr \
 	--enable-avresample \
 	--enable-avisynth \
 	--enable-fontconfig \
-	--enable-gnutls \
 	--enable-ladspa \
 	--enable-libass \
 	--enable-libbluray \
@@ -139,6 +138,7 @@ endif
 # Some libraries are not available on sparc64.
 ifneq ($(DEB_HOST_ARCH),sparc64)
 	CONFIG += --enable-libsoxr \
+	--enable-gnutls \
 	--enable-openal
 endif
 
