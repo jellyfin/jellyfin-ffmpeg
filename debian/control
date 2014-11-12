@@ -114,7 +114,7 @@ Build-Depends:
 # --enable-libzmq
  libzmq3-dev [!hurd-any],
 # --enable-libzvbi
- libzvbi-dev [linux-any],
+ libzvbi-dev [!hurd-any !kfreebsd-any !m68k],
 # The opencl API is considered experimental.
 # # --enable-opencl
 # ocl-icd-opencl-dev [!hurd-any] | opencl-dev [!hurd-any],

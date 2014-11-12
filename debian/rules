@@ -120,8 +120,11 @@ CONFIG := --prefix=/usr \
 # Some libraries are build only on linux.
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIG += --enable-libdc1394 \
-	--enable-libiec61883 \
-	--enable-libzvbi
+	--enable-libiec61883
+# libzvbi is not available on m68k
+ifneq ($(DEB_HOST_ARCH),m68k)
+	CONFIG += --enable-libzvbi
+endif
 endif
 
 # Some libraries are not build on hurd.
