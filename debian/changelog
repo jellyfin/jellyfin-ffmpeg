@@ -2,6 +2,9 @@ ffmpeg (7:2.4.3-2) UNRELEASED; urgency=medium
 
   * Do not enable gnutls on sparc64 and libzvbi on m68k, because they are
     not available there. Thanks to Carl Eugen Hoyos.
+  * Backport patches from upstream:
+     - Remove-fminf-emulation.patch: Fix building on powerpcspe.
+     - configure-Hack-to-treat-x32-as-x86_64.patch: Fix building on x32.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 12 Nov 2014 21:20:31 +0100
 

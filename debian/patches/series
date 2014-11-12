@@ -1,2 +1,4 @@
 Change-symbol-versioning.patch
 fix-hppa-tests.patch
+Remove-fminf-emulation.patch
+configure-Hack-to-treat-x32-as-x86_64.patch
