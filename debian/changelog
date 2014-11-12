@@ -1,3 +1,10 @@
+ffmpeg (7:2.4.3-2) UNRELEASED; urgency=medium
+
+  * Do not enable gnutls on sparc64 and libzvbi on m68k, because they are
+    not available there. Thanks to Carl Eugen Hoyos.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 12 Nov 2014 21:20:31 +0100
+
 ffmpeg (7:2.4.3-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.4.3.
