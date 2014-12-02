@@ -279,7 +279,7 @@ void avcodec_align_dimensions2(AVCodecContext *s, int *width, int *height,
     int i;
     int w_align = 1;
     int h_align = 1;
-    AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(s->pix_fmt);
+    AVPixFmtDescriptor const *desc = av_pix_fmt_desc_get(s->pix_fmt);
 
     if (desc) {
         w_align = 1 << desc->log2_chroma_w;
@@ -3610,6 +3610,11 @@ int avpriv_bprint_to_extradata(AVCodecContext *avctx, struct AVBPrint *buf)
     ret = av_bprint_finalize(buf, &str);
     if (ret < 0)
         return ret;
+    if (!av_bprint_is_complete(buf)) {
+        av_free(str);
+        return AVERROR(ENOMEM);
+    }
+
     avctx->extradata = str;
     /* Note: the string is NUL terminated (so extradata can be read as a
      * string), but the ending character is not accounted in the size (in

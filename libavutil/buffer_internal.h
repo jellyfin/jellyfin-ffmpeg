@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 #include "buffer.h"
+#include "thread.h"
 
 /**
  * The buffer is always treated as read-only.
@@ -72,6 +73,7 @@ typedef struct BufferPoolEntry {
 } BufferPoolEntry;
 
 struct AVBufferPool {
+    AVMutex mutex;
     BufferPoolEntry * volatile pool;
 
     /*
