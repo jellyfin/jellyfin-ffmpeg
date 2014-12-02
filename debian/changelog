@@ -7,6 +7,8 @@ ffmpeg (7:2.4.4-1) UNRELEASED; urgency=medium
   * Do not enable libsdl and libvpx on x32, because they are not available.
   * Add explicit build-dependencies on libfontconfig1-dev, libfreetype6-dev,
     libgl1-mesa-dev, libpulse-dev and libxext-dev.
+  * Add build-dependency on libx265-dev on the architectures, where it is
+    already available.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 12 Nov 2014 21:20:31 +0100
 

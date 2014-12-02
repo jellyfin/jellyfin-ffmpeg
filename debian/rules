@@ -56,7 +56,6 @@ endif
 #   --enable-libstagefright-h264
 #   --enable-libutvideo
 #   --enable-libvidstab             (see #709193 for the RFP bug)
-#   --enable-libx265                (see #750817 for the ITP bug)
 #   --enable-libxavs
 # The following flags are not added for various reasons:
 #   * --enable-libquvi: The wrapper wasn't updated for recent versions (due to license concerns) and thus might produce problems, e.g. for mpv.
@@ -148,6 +147,11 @@ endif
 # OpenCV is not available on some architectures.
 ifeq (,$(filter $(DEB_HOST_ARCH),m68k sh4 sparc64 x32))
 	CONFIG += --enable-libopencv
+endif
+
+# X265 is not (yet) available on some architectures.
+ifeq (,$(filter $(DEB_HOST_ARCH),mips mipsel powerpc sparc hppa m68k powerpcspe sh4 sparc64 x32))
+	CONFIG += --enable-libx265
 endif
 
 # Disable altivec optimizations on powerpc, because they are not always available on this architecture.

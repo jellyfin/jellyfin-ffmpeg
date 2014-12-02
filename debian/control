@@ -115,6 +115,8 @@ Build-Depends:
  libwebp-dev,
 # --enable-libx264
  libx264-dev [!x32],
+# --enable-libx265
+ libx265-dev [!mips !mipsel !powerpc !sparc !hppa !m68k !powerpcspe !sh4 !sparc64 !x32],
 # --enable-x11grab
  libxext-dev,
 # --enable-libxvid
