@@ -1,4 +1,4 @@
-ffmpeg (7:2.4.4-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.4.4-1) unstable; urgency=medium
 
   * New upstream bugfix release 2.4.4.
   * Drop fix-hppa-tests.patch included upstream.
@@ -10,7 +10,7 @@ ffmpeg (7:2.4.4-1) UNRELEASED; urgency=medium
   * Add build-dependency on libx265-dev on the architectures, where it is
     already available.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 12 Nov 2014 21:20:31 +0100
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 03 Dec 2014 00:29:36 +0100
 
 ffmpeg (7:2.4.3-1) unstable; urgency=medium
 
