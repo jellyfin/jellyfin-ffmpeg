@@ -110,7 +110,6 @@ CONFIG := --prefix=/usr \
 	--enable-libtheora \
 	--enable-libtwolame \
 	--enable-libvorbis \
-	--enable-libvpx \
 	--enable-libwavpack \
 	--enable-libwebp \
 	--enable-opengl \
@@ -135,6 +134,7 @@ endif
 # Some libraries are not available on x32.
 ifneq ($(DEB_HOST_ARCH),x32)
 	CONFIG += --enable-frei0r \
+	--enable-libvpx \
 	--enable-libx264
 endif
 
