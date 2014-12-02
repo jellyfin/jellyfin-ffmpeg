@@ -41,8 +41,14 @@ Build-Depends:
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
  libdc1394-22-dev [linux-any],
+# --enable-libfontconfig
+ libfontconfig1-dev,
+# --enable-libfreetype
+ libfreetype6-dev,
 # --enable-fribidi
  libfribidi-dev,
+# --enable-opengl
+ libgl1-mesa-dev,
 # --enable-libgme
  libgme-dev,
 # --enable-gnutls
@@ -70,13 +76,15 @@ Build-Depends:
 # Disabled, as it might produce problems.
 # # --enable-libquvi
 # libquvi-dev,
+# --enable-libpulse
+ libpulse-dev,
 # --enable-librtmp
  librtmp-dev,
 # --enable-libschroedinger
  libschroedinger-dev,
 # autodetected: protocol 'sctp'
  libsctp-dev [linux-any],
-# SDL support
+# autodetected: SDL support
  libsdl-dev [!x32],
 # --enable-libshine
  libshine-dev (>= 3.0.0),
@@ -107,6 +115,8 @@ Build-Depends:
  libwebp-dev,
 # --enable-libx264
  libx264-dev [!x32],
+# --enable-x11grab
+ libxext-dev,
 # --enable-libxvid
  libxvidcore-dev,
 # autodetected: decoder 'mpeg_xvmc'; outdev 'xv'

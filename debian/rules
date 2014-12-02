@@ -85,7 +85,6 @@ CONFIG := --prefix=/usr \
 	--disable-stripping \
 	--enable-avresample \
 	--enable-avisynth \
-	--enable-fontconfig \
 	--enable-ladspa \
 	--enable-libass \
 	--enable-libbluray \
@@ -93,6 +92,7 @@ CONFIG := --prefix=/usr \
 	--enable-libcaca \
 	--enable-libcdio \
 	--enable-libflite \
+	--enable-libfontconfig \
 	--enable-libfreetype \
 	--enable-libfribidi \
 	--enable-libgme \
@@ -112,9 +112,9 @@ CONFIG := --prefix=/usr \
 	--enable-libvorbis \
 	--enable-libwavpack \
 	--enable-libwebp \
+	--enable-libxvid \
 	--enable-opengl \
-	--enable-x11grab \
-	--enable-libxvid
+	--enable-x11grab
 
 # Some libraries are build only on linux.
 ifeq ($(DEB_HOST_ARCH_OS),linux)

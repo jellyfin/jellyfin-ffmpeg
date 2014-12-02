@@ -3,6 +3,8 @@ ffmpeg (7:2.4.3-2) UNRELEASED; urgency=medium
   * Do not enable gnutls on sparc64 and libzvbi on m68k, because they are
     not available there. Thanks to Carl Eugen Hoyos.
   * Do not enable libsdl and libvpx on x32, because they are not available.
+  * Add explicit build-dependencies on libfontconfig1-dev, libfreetype6-dev,
+    libgl1-mesa-dev, libpulse-dev and libxext-dev.
   * Backport patches from upstream:
      - Remove-fminf-emulation.patch: Fix building on powerpcspe.
      - configure-Hack-to-treat-x32-as-x86_64.patch: Fix building on x32.
