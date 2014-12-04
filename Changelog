@@ -1,115 +1,23 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
-version <next>:
-
-version 2.4.4:
-- avformat: replace some odd 30-60 rates by higher less odd ones in  get_std_framerate()
-- swscale: fix yuv2yuvX_8 assembly on x86
-- avcodec/hevc_ps: Check num_long_term_ref_pics_sps
-- avcodec/mjpegdec: Fix integer overflow in shift
-- avcodec/hevc_ps: Check return code from pps_range_extensions()
-- avcodec/rawdec: Check the return code of avpicture_get_size()
-- avcodec/pngdec: Check IHDR/IDAT order
-- avcodec/flacdec: Call ff_flacdsp_init() unconditionally
-- avcodec/utils: Check that the data is complete in avpriv_bprint_to_extradata()
-- avcodec/mjpegdec: Fix context fields becoming inconsistent
-- avcodec/mjpegdec: Check for pixfmtid 0x42111100 || 0x24111100 with more than 8 bits
-- swscale/x86/rgb2rgb_template: handle the first 2 lines with C in rgb24toyv12_*()
-- doc/APIchanges: Fix some wrong versions
-- avformat/hlsenc: Free context after hls_append_segment
-- avcodec/mpeg4video_parser: fix spurious extradata parse warnings
-- lavu/opt: fix av_opt_get function
-- avcodec/wmaprodec: Fix integer overflow in sfb_offsets initialization
-- avcodec/utvideodec: fix assumtation that slice_height >= 1
-- avcodec/options_table fix min of audio channels and sample rate
-- libavutil/thread.h: Support OS/2 threads
-- fix Makefile objects for pulseaudio support
-- opusdec: make sure all substreams have the same number of coded samples
-- lavu: add wrappers for the pthreads mutex API
-- avformat/avidec: fix handling dv in avi
-- avfilter/vf_lut: gammaval709()
-- cinedec: report white balance gain coefficients using metadata
-- swscale/utils: support bayer input + scaling, and bayer input + any supported output
-- swscale: support internal scaler cascades
-- avformat/dtsdec: dts_probe: check reserved bit, check lfe, check sr_code similarity
-- avformat/segment: export inner muxer timebase
-- Remove fminf() emulation, fix build issues
-- avcodec/mpegaudio_parser: fix off by 1 error in bitrate calculation
-- Use -fno-optimize-sibling-calls on parisc also for gcc 4.9.
-- ffmpeg_opt: store canvas size in decoder context
-- avcodec/mpeg12dec: do not trust AVCodecContext input dimensions
-
-version 2.4.3:
-- avcodec/svq1dec: zero terminate embedded message before printing
-- avcodec/cook: check that the subpacket sizes fit in block_align
-- avcodec/g2meet: check tile dimensions to avoid integer overflow
-- avcodec/utils: Align dimensions by at least their chroma sub-sampling factors.
-- avcodec/dnxhddec: treat pix_fmt like width/height
-- avcodec/dxa: check dimensions
-- avcodec/dirac_arith: fix integer overflow
-- avcodec/diracdec: Tighter checks on CODEBLOCKS_X/Y
-- avcodec/diracdec: Use 64bit in calculation of codeblock coordinates
-- avcodec/sgidec: fix count check
-- avcodec/sgidec: fix linesize for 16bit
-- avcodec/hevc_ps: Check default display window bitstream and skip if invalid
-- avcodec/tiffenc: properly compute packet size
-- lavd: export all symbols with av_ prefix
-- avformat/mxfdec: Fix termination of mxf_data_essence_container_uls
-- postproc: fix qp count
-- postproc/postprocess: fix quant store for fq mode
-- vf_drawtext: add missing clear of pointers after av_expr_free()
-- utvideoenc: properly set slice height/last line
-- swresample: fix sample drop loop end condition
-- resample: Avoid off-by-1 errors in PTS calcs.
-- imc: fix order of operations in coefficients read
-- hevc_mvs: make sure to always initialize the temporal MV fully
-- hevc_mvs: initialize the temporal MV in case of missing reference
-
-version 2.4.2:
-- avcodec/on2avc: Check number of channels
-- avcodec/hevc: fix chroma transform_add size
-- avcodec/h264: Check mode before considering mixed mode intra prediction
-- avformat/mpegts: use a padded buffer in read_sl_header()
-- avformat/mpegts: Check desc_len / get8() return code
-- avcodec/vorbisdec: Fix off by 1 error in ptns_to_read
-- sdp: add support for H.261
-- avcodec/svq3: Do not memcpy AVFrame
-- avcodec/smc: fix off by 1 error
-- avcodec/qpeg: fix off by 1 error in MV bounds check
-- avcodec/gifdec: factorize interleave end handling out
-- avcodec/cinepak: fix integer underflow
-- avcodec/pngdec: Check bits per pixel before setting monoblack pixel format
-- avcodec/pngdec: Calculate MPNG bytewidth more defensively
-- avcodec/tiff: more completely check bpp/bppcount
-- avcodec/mmvideo: Bounds check 2nd line of HHV Intra blocks
-- avcodec/h263dec: Fix decoding messenger.h263
-- avcodec/utils: Add case for jv to avcodec_align_dimensions2()
-- avcodec/mjpegdec: check bits per pixel for changes similar to dimensions
-- avcodec/jpeglsdec: Check run value more completely in ls_decode_line()
-- avformat/hlsenc: export inner muxer timebase
-- configure: add noexecstack to linker options if supported.
-- avcodec/ac3enc_template: fix out of array read
-- avutil/x86/cpu: fix cpuid sub-leaf selection
-- avformat/img2dec: enable generic seeking for image pipes
-- avformat/img2dec: initialize pkt->pos for image pipes
-- avformat/img2dec: pass error code and signal EOF
-- avformat/img2dec: fix error code at EOF for pipes
-- libavutil/opt: fix av_opt_set_channel_layout() to access correct memory address
-- tests/fate-run.sh: Cat .err file in case of error with V>0
-- avformat/riffenc: Filter out "BottomUp" in ff_put_bmp_header()
-- avcodec/webp: fix default palette color 0xff000000 -> 0x00000000
-- avcodec/asvenc: fix AAN scaling
-- Fix compile error on arm4/arm5 platform
-
-
-version 2.4.1:
-- swscale: Allow chroma samples to be above and to the left of luma samples
-- avcodec/libilbc: support for latest git of libilbc
-- avcodec/webp: treat out-of-bound palette index as translucent black
-- vf_deshake: rename Transform.vector to Transform.vec to avoid compiler confusion
-- apetag: Fix APE tag size check
-- tools/crypto_bench: fix build when AV_READ_TIME is unavailable
+version 2.5:
+- HEVC/H.265 RTP payload format (draft v6) packetizer
+- SUP/PGS subtitle demuxer
+- ffprobe -show_pixel_formats option
+- CAST128 symmetric block cipher, ECB mode
+- STL subtitle demuxer and decoder
+- libutvideo YUV 4:2:2 10bit support
+- XCB-based screen-grabber
+- UDP-Lite support (RFC 3828)
+- xBR scaling filter
+- AVFoundation screen capturing support
+- ffserver supports codec private options
+- creating DASH compatible fragmented MP4, MPEG-DASH segmenting muxer
+- WebP muxer with animated WebP support
+- zygoaudio decoding support
+- APNG demuxer
+- postproc visualization support
 
 
 version 2.4:

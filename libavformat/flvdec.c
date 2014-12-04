@@ -746,7 +746,7 @@ static int flv_data_packet(AVFormatContext *s, AVPacket *pkt,
     if (i == s->nb_streams) {
         st = create_stream(s, AVMEDIA_TYPE_DATA);
         if (!st)
-            return AVERROR_INVALIDDATA;
+            return AVERROR(ENOMEM);
         st->codec->codec_id = AV_CODEC_ID_TEXT;
     }
 
@@ -885,10 +885,14 @@ skip:
     if (s->pb->seekable && (!s->duration || s->duration == AV_NOPTS_VALUE) && !flv->searched_for_end) {
         int size;
         const int64_t pos   = avio_tell(s->pb);
+        // Read the last 4 bytes of the file, this should be the size of the
+        // previous FLV tag. Use the timestamp of its payload as duration.
         int64_t fsize       = avio_size(s->pb);
 retry_duration:
         avio_seek(s->pb, fsize - 4, SEEK_SET);
         size = avio_rb32(s->pb);
+        // Seek to the start of the last FLV tag at position (fsize - 4 - size)
+        // but skip the byte indicating the type.
         avio_seek(s->pb, fsize - 3 - size, SEEK_SET);
         if (size == avio_rb24(s->pb) + 11) {
             uint32_t ts = avio_rb24(s->pb);
@@ -930,6 +934,7 @@ retry_duration:
         } else {
             AVCodecContext ctx = {0};
             ctx.sample_rate = sample_rate;
+            ctx.bits_per_coded_sample = bits_per_coded_sample;
             flv_set_audio_codec(s, st, &ctx, flags & FLV_AUDIO_CODECID_MASK);
             sample_rate = ctx.sample_rate;
         }

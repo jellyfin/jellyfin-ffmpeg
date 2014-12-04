@@ -359,7 +359,7 @@ static void xvid_correct_framerate(AVCodecContext *avctx)
 
 static av_cold int xvid_encode_init(AVCodecContext *avctx)
 {
-    int xerr, i;
+    int xerr, i, ret = -1;
     int xvid_flags = avctx->flags;
     struct xvid_context *x = avctx->priv_data;
     uint16_t *intra, *inter;
@@ -488,6 +488,7 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
         if (!x->twopassbuffer || !x->old_twopassbuffer) {
             av_log(avctx, AV_LOG_ERROR,
                    "Xvid: Cannot allocate 2-pass log buffers\n");
+            ret = AVERROR(ENOMEM);
             goto fail;
         }
         x->twopassbuffer[0]     =
@@ -501,8 +502,9 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
         rc2pass2.bitrate = avctx->bit_rate;
 
         fd = av_tempfile("xvidff.", &x->twopassfile, 0, avctx);
-        if (fd == -1) {
+        if (fd < 0) {
             av_log(avctx, AV_LOG_ERROR, "Xvid: Cannot write 2-pass pipe\n");
+            ret = fd;
             goto fail;
         }
         x->twopassfd = fd;
@@ -510,14 +512,19 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
         if (!avctx->stats_in) {
             av_log(avctx, AV_LOG_ERROR,
                    "Xvid: No 2-pass information loaded for second pass\n");
+            ret = AVERROR(EINVAL);
             goto fail;
         }
 
-        if (strlen(avctx->stats_in) >
-            write(fd, avctx->stats_in, strlen(avctx->stats_in))) {
+        ret = write(fd, avctx->stats_in, strlen(avctx->stats_in));
+        if (ret == -1)
+            ret = AVERROR(errno);
+        else if (strlen(avctx->stats_in) > ret) {
             av_log(avctx, AV_LOG_ERROR, "Xvid: Cannot write to 2-pass pipe\n");
-            goto fail;
+            ret = AVERROR(EIO);
         }
+        if (ret < 0)
+            goto fail;
 
         rc2pass2.filename                          = x->twopassfile;
         plugins[xvid_enc_create.num_plugins].func  = xvid_plugin_2pass2;
@@ -659,13 +666,15 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
 
     x->encoder_handle  = xvid_enc_create.handle;
     avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
-        return AVERROR(ENOMEM);
+    if (!avctx->coded_frame) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
 
     return 0;
 fail:
     xvid_encode_close(avctx);
-    return -1;
+    return ret;
 }
 
 static int xvid_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
@@ -812,6 +821,7 @@ static av_cold int xvid_encode_close(AVCodecContext *avctx)
     av_freep(&x->twopassfile);
     av_freep(&x->intra_matrix);
     av_freep(&x->inter_matrix);
+    av_frame_free(&avctx->coded_frame);
 
     return 0;
 }

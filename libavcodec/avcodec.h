@@ -42,11 +42,6 @@
 
 #include "version.h"
 
-#if FF_API_FAST_MALLOC
-// to provide fast_*alloc
-#include "libavutil/mem.h"
-#endif
-
 /**
  * @defgroup libavc Encoding/Decoding Library
  * @{
@@ -324,6 +319,7 @@ enum AVCodecID {
     AV_CODEC_ID_HEVC       = MKBETAG('H','2','6','5'),
 #define AV_CODEC_ID_H265 AV_CODEC_ID_HEVC
     AV_CODEC_ID_VP7        = MKBETAG('V','P','7','0'),
+    AV_CODEC_ID_APNG       = MKBETAG('A','P','N','G'),
 
     /* various PCM "codecs" */
     AV_CODEC_ID_FIRST_AUDIO = 0x10000,     ///< A dummy id pointing at the start of audio codecs
@@ -514,6 +510,7 @@ enum AVCodecID {
     AV_CODEC_ID_JACOSUB    = MKBETAG('J','S','U','B'),
     AV_CODEC_ID_SAMI       = MKBETAG('S','A','M','I'),
     AV_CODEC_ID_REALTEXT   = MKBETAG('R','T','X','T'),
+    AV_CODEC_ID_STL        = MKBETAG('S','p','T','L'),
     AV_CODEC_ID_SUBVIEWER1 = MKBETAG('S','b','V','1'),
     AV_CODEC_ID_SUBVIEWER  = MKBETAG('S','u','b','V'),
     AV_CODEC_ID_SUBRIP     = MKBETAG('S','R','i','p'),
@@ -552,7 +549,7 @@ enum AVCodecID {
 /**
  * This struct describes the properties of a single codec described by an
  * AVCodecID.
- * @see avcodec_get_descriptor()
+ * @see avcodec_descriptor_get()
  */
 typedef struct AVCodecDescriptor {
     enum AVCodecID     id;
@@ -768,6 +765,7 @@ typedef struct RcOverride{
 #define CODEC_FLAG2_CHUNKS        0x00008000 ///< Input bitstream might be truncated at a packet boundaries instead of only at frame boundaries.
 #define CODEC_FLAG2_SHOW_ALL      0x00400000 ///< Show all frames before the first keyframe
 #define CODEC_FLAG2_EXPORT_MVS    0x10000000 ///< Export motion vectors through frame side data
+#define CODEC_FLAG2_SKIP_MANUAL   0x20000000 ///< Do not skip samples and export skip information as frame side data
 
 /* Unsupported options :
  *              Syntax Arithmetic coding (SAC)
@@ -1350,8 +1348,11 @@ typedef struct AVCodecContext {
      * of which frame timestamps are represented. For fixed-fps content,
      * timebase should be 1/framerate and timestamp increments should be
      * identically 1.
+     * This often, but not always is the inverse of the frame rate or field rate
+     * for video.
      * - encoding: MUST be set by user.
-     * - decoding: Set by libavcodec.
+     * - decoding: the use of this field for decoding is deprecated.
+     *             Use framerate instead.
      */
     AVRational time_base;
 
@@ -1377,16 +1378,7 @@ typedef struct AVCodecContext {
      *   encoded input.
      *
      * Audio:
-     *   For encoding, this is the number of "priming" samples added by the
-     *   encoder to the beginning of the stream. The decoded output will be
-     *   delayed by this many samples relative to the input to the encoder (or
-     *   more, if the decoder adds its own padding).
-     *   The timestamps on the output packets are adjusted by the encoder so
-     *   that they always refer to the first sample of the data actually
-     *   contained in the packet, including any added padding.
-     *   E.g. if the timebase is 1/samplerate and the timestamp of the first
-     *   input sample is 0, the timestamp of the first output packet will be
-     *   -delay.
+     *   For encoding, this field is unused (see initial_padding).
      *
      *   For decoding, this is the number of samples the decoder needs to
      *   output before the decoder's output is valid. When seeking, you should
@@ -1480,6 +1472,10 @@ typedef struct AVCodecContext {
      * @param fmt is the list of formats which are supported by the codec,
      * it is terminated by -1 as 0 is a valid format, the formats are ordered by quality.
      * The first is always the native one.
+     * @note The callback may be called again immediately if initialization for
+     * the selected (hardware-accelerated) pixel format failed.
+     * @warning Behavior is undefined if the callback returns a value not
+     * in the fmt list of formats.
      * @return the chosen format
      * - encoding: unused
      * - decoding: Set by user, if not set the native format will be chosen.
@@ -1800,21 +1796,19 @@ typedef struct AVCodecContext {
      */
     int noise_reduction;
 
+#if FF_API_MPV_OPT
     /**
-     * Motion estimation threshold below which no motion estimation is
-     * performed, but instead the user specified motion vectors are used.
-     *
-     * - encoding: Set by user.
-     * - decoding: unused
+     * @deprecated this field is unused
      */
+    attribute_deprecated
     int me_threshold;
 
     /**
-     * Macroblock threshold below which the user specified macroblock types will be used.
-     * - encoding: Set by user.
-     * - decoding: unused
+     * @deprecated this field is unused
      */
+    attribute_deprecated
     int mb_threshold;
+#endif
 
     /**
      * precision of the intra DC coefficient - 8
@@ -1837,13 +1831,13 @@ typedef struct AVCodecContext {
      */
     int skip_bottom;
 
+#if FF_API_MPV_OPT
     /**
-     * Border processing masking, raises the quantizer for mbs on the borders
-     * of the picture.
-     * - encoding: Set by user.
-     * - decoding: unused
+     * @deprecated use encoder private options instead
      */
+    attribute_deprecated
     float border_masking;
+#endif
 
     /**
      * minimum MB lagrange multipler
@@ -2277,16 +2271,18 @@ typedef struct AVCodecContext {
      */
     int max_qdiff;
 
+#if FF_API_MPV_OPT
     /**
-     * ratecontrol qmin qmax limiting method
-     * 0-> clipping, 1-> use a nice continuous function to limit qscale within qmin/qmax.
-     * - encoding: Set by user.
-     * - decoding: unused
+     * @deprecated use encoder private options instead
      */
+    attribute_deprecated
     float rc_qsquish;
 
+    attribute_deprecated
     float rc_qmod_amp;
+    attribute_deprecated
     int rc_qmod_freq;
+#endif
 
     /**
      * decoder bitstream buffer size
@@ -2303,12 +2299,13 @@ typedef struct AVCodecContext {
     int rc_override_count;
     RcOverride *rc_override;
 
+#if FF_API_MPV_OPT
     /**
-     * rate control equation
-     * - encoding: Set by user
-     * - decoding: unused
+     * @deprecated use encoder private options instead
      */
+    attribute_deprecated
     const char *rc_eq;
+#endif
 
     /**
      * maximum bitrate
@@ -2324,14 +2321,16 @@ typedef struct AVCodecContext {
      */
     int rc_min_rate;
 
+#if FF_API_MPV_OPT
+    /**
+     * @deprecated use encoder private options instead
+     */
+    attribute_deprecated
     float rc_buffer_aggressivity;
 
-    /**
-     * initial complexity for pass1 ratecontrol
-     * - encoding: Set by user.
-     * - decoding: unused
-     */
+    attribute_deprecated
     float rc_initial_cplx;
+#endif
 
     /**
      * Ratecontrol attempt to use, at maximum, <value> of what can be used without an underflow.
@@ -2375,19 +2374,19 @@ typedef struct AVCodecContext {
      */
     int context_model;
 
+#if FF_API_MPV_OPT
     /**
-     * minimum Lagrange multiplier
-     * - encoding: Set by user.
-     * - decoding: unused
+     * @deprecated use encoder private options instead
      */
+    attribute_deprecated
     int lmin;
 
     /**
-     * maximum Lagrange multiplier
-     * - encoding: Set by user.
-     * - decoding: unused
+     * @deprecated use encoder private options instead
      */
+    attribute_deprecated
     int lmax;
+#endif
 
     /**
      * frame skip threshold
@@ -2981,6 +2980,31 @@ typedef struct AVCodecContext {
     int side_data_only_packets;
 
     /**
+     * Audio only. The number of "priming" samples (padding) inserted by the
+     * encoder at the beginning of the audio. I.e. this number of leading
+     * decoded samples must be discarded by the caller to get the original audio
+     * without leading padding.
+     *
+     * - decoding: unused
+     * - encoding: Set by libavcodec. The timestamps on the output packets are
+     *             adjusted by the encoder so that they always refer to the
+     *             first sample of the data actually contained in the packet,
+     *             including any added padding.  E.g. if the timebase is
+     *             1/samplerate and the timestamp of the first input sample is
+     *             0, the timestamp of the first output packet will be
+     *             -initial_padding.
+     */
+    int initial_padding;
+
+    /**
+     * - decoding: For codecs that store a framerate value in the compressed
+     *             bitstream, the decoder may export it here. { 0, 1} when
+     *             unknown.
+     * - encoding: unused
+     */
+    AVRational framerate;
+
+    /**
      * Timebase in which pkt_dts/pts and AVPacket.dts/pts are.
      * Code outside libavcodec should access this field using:
      * av_codec_{get,set}_pkt_timebase(avctx)
@@ -3079,6 +3103,24 @@ typedef struct AVCodecContext {
      * - decoding: unused.
      */
     uint16_t *chroma_intra_matrix;
+
+    /**
+     * dump format separator.
+     * can be ", " or "\n      " or anything else
+     * Code outside libavcodec should access this field using AVOptions
+     * (NO direct access).
+     * - encoding: Set by user.
+     * - decoding: Set by user.
+     */
+    uint8_t *dump_separator;
+
+    /**
+     * ',' separated list of allowed decoders.
+     * If NULL then all are allowed
+     * - encoding: unused
+     * - decoding: set by user through AVOPtions (NO direct access)
+     */
+    char *codec_whitelist;
 } AVCodecContext;
 
 AVRational av_codec_get_pkt_timebase         (const AVCodecContext *avctx);
@@ -3210,7 +3252,8 @@ int av_codec_get_max_lowres(const AVCodec *codec);
 struct MpegEncContext;
 
 /**
- * AVHWAccel.
+ * @defgroup lavc_hwaccel AVHWAccel
+ * @{
  */
 typedef struct AVHWAccel {
     /**
@@ -3345,6 +3388,17 @@ typedef struct AVHWAccel {
      */
     int priv_data_size;
 } AVHWAccel;
+
+/**
+ * Hardware acceleration should be used for decoding even if the codec level
+ * used is unknown or higher than the maximum supported level reported by the
+ * hardware driver.
+ */
+#define AV_HWACCEL_FLAG_IGNORE_LEVEL (1 << 0)
+
+/**
+ * @}
+ */
 
 /**
  * @defgroup lavc_picture AVPicture
@@ -5116,16 +5170,26 @@ enum AVLockOp {
 
 /**
  * Register a user provided lock manager supporting the operations
- * specified by AVLockOp. mutex points to a (void *) where the
- * lockmgr should store/get a pointer to a user allocated mutex. It's
- * NULL upon AV_LOCK_CREATE and != NULL for all other ops.
+ * specified by AVLockOp. The "mutex" argument to the function points
+ * to a (void *) where the lockmgr should store/get a pointer to a user
+ * allocated mutex. It is NULL upon AV_LOCK_CREATE and equal to the
+ * value left by the last call for all other ops. If the lock manager is
+ * unable to perform the op then it should leave the mutex in the same
+ * state as when it was called and return a non-zero value. However,
+ * when called with AV_LOCK_DESTROY the mutex will always be assumed to
+ * have been successfully destroyed. If av_lockmgr_register succeeds
+ * it will return a non-negative value, if it fails it will return a
+ * negative value and destroy all mutex and unregister all callbacks.
+ * av_lockmgr_register is not thread-safe, it must be called from a
+ * single thread before any calls which make use of locking are used.
  *
- * @param cb User defined callback. Note: FFmpeg may invoke calls to this
- *           callback during the call to av_lockmgr_register().
- *           Thus, the application must be prepared to handle that.
- *           If cb is set to NULL the lockmgr will be unregistered.
- *           Also note that during unregistration the previously registered
- *           lockmgr callback may also be invoked.
+ * @param cb User defined callback. av_lockmgr_register invokes calls
+ *           to this callback and the previously registered callback.
+ *           The callback will be used to create more than one mutex
+ *           each of which must be backed by its own underlying locking
+ *           mechanism (i.e. do not use a single static object to
+ *           implement your lock manager). If cb is set to NULL the
+ *           lockmgr will be unregistered.
  */
 int av_lockmgr_register(int (*cb)(void **mutex, enum AVLockOp op));
 

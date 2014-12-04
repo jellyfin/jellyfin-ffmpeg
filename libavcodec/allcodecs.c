@@ -105,6 +105,7 @@ void avcodec_register_all(void)
     REGISTER_ENCDEC (AMV,               amv);
     REGISTER_DECODER(ANM,               anm);
     REGISTER_DECODER(ANSI,              ansi);
+    REGISTER_DECODER(APNG,              apng);
     REGISTER_ENCDEC (ASV1,              asv1);
     REGISTER_ENCDEC (ASV2,              asv2);
     REGISTER_DECODER(AURA,              aura);
@@ -490,6 +491,7 @@ void avcodec_register_all(void)
     REGISTER_DECODER(REALTEXT,          realtext);
     REGISTER_DECODER(SAMI,              sami);
     REGISTER_ENCDEC (SRT,               srt);
+    REGISTER_DECODER(STL,               stl);
     REGISTER_ENCDEC (SUBRIP,            subrip);
     REGISTER_DECODER(SUBVIEWER,         subviewer);
     REGISTER_DECODER(SUBVIEWER1,        subviewer1);

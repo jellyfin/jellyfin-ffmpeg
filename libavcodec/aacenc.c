@@ -252,7 +252,7 @@ static void apply_window_and_mdct(AACEncContext *s, SingleChannelElement *sce,
     int i;
     float *output = sce->ret_buf;
 
-    apply_window[sce->ics.window_sequence[0]](&s->fdsp, sce, audio);
+    apply_window[sce->ics.window_sequence[0]](s->fdsp, sce, audio);
 
     if (sce->ics.window_sequence[0] != EIGHT_SHORT_SEQUENCE)
         s->mdct1024.mdct_calc(&s->mdct1024, sce->coeffs, output);
@@ -567,6 +567,10 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                 ics->group_len[w] = wi[ch].grouping[w];
 
             apply_window_and_mdct(s, &cpe->ch[ch], overlap);
+            if (isnan(cpe->ch->coeffs[0])) {
+                av_log(avctx, AV_LOG_ERROR, "Input contains NaN\n");
+                return AVERROR(EINVAL);
+            }
         }
         start_ch += chans;
     }
@@ -678,6 +682,7 @@ static av_cold int aac_encode_end(AVCodecContext *avctx)
         ff_psy_preprocess_end(s->psypp);
     av_freep(&s->buffer.samples);
     av_freep(&s->cpe);
+    av_freep(&s->fdsp);
     ff_af_queue_close(&s->afq);
     return 0;
 }
@@ -686,7 +691,9 @@ static av_cold int dsp_init(AVCodecContext *avctx, AACEncContext *s)
 {
     int ret = 0;
 
-    avpriv_float_dsp_init(&s->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    s->fdsp = avpriv_float_dsp_alloc(avctx->flags & CODEC_FLAG_BITEXACT);
+    if (!s->fdsp)
+        return AVERROR(ENOMEM);
 
     // window init
     ff_kbd_window_init(ff_aac_kbd_long_1024, 4.0, 1024);
@@ -776,7 +783,7 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     for (i = 0; i < 428; i++)
         ff_aac_pow34sf_tab[i] = sqrt(ff_aac_pow2sf_tab[i] * sqrt(ff_aac_pow2sf_tab[i]));
 
-    avctx->delay = 1024;
+    avctx->initial_padding = 1024;
     ff_af_queue_init(avctx, &s->afq);
 
     return 0;

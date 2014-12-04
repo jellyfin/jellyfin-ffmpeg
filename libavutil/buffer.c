@@ -25,9 +25,6 @@
 #include "mem.h"
 #include "thread.h"
 
-//#define USE_ATOMICS !(HAVE_PTHREADS || HAVE_W32THREADS)
-#define USE_ATOMICS 1 // can be changed to the above once it received more testing in master
-
 AVBufferRef *av_buffer_create(uint8_t *data, int size,
                               void (*free)(void *opaque, uint8_t *data),
                               void *opaque, int flags)

@@ -74,6 +74,7 @@ typedef struct MOVFragmentInfo {
     int64_t time;
     int64_t duration;
     int64_t tfrf_offset;
+    int size;
 } MOVFragmentInfo;
 
 typedef struct MOVTrack {
@@ -128,7 +129,7 @@ typedef struct MOVTrack {
     AVIOContext *mdat_buf;
     int64_t     data_offset;
     int64_t     frag_start;
-    int64_t     tfrf_offset;
+    int         frag_discont;
 
     int         nb_frag_info;
     MOVFragmentInfo *frag_info;
@@ -142,6 +143,8 @@ typedef struct MOVTrack {
         int     packet_entry;
         int     slices;
     } vc1_info;
+
+    void       *eac3_priv;
 } MOVTrack;
 
 typedef struct MOVMuxContext {
@@ -169,8 +172,8 @@ typedef struct MOVMuxContext {
     int max_fragment_size;
     int ism_lookahead;
     AVIOContext *mdat_buf;
+    int first_trun;
 
-    int use_editlist;
     int video_track_timescale;
 
     int reserved_moov_size; ///< 0 for disabled, -1 for automatic, size otherwise
@@ -180,18 +183,23 @@ typedef struct MOVMuxContext {
 
     int per_stream_grouping;
     AVFormatContext *fc;
+
+    int use_editlist;
 } MOVMuxContext;
 
-#define FF_MOV_FLAG_RTP_HINT 1
-#define FF_MOV_FLAG_FRAGMENT 2
-#define FF_MOV_FLAG_EMPTY_MOOV 4
-#define FF_MOV_FLAG_FRAG_KEYFRAME 8
-#define FF_MOV_FLAG_SEPARATE_MOOF 16
-#define FF_MOV_FLAG_FRAG_CUSTOM 32
-#define FF_MOV_FLAG_ISML 64
-#define FF_MOV_FLAG_FASTSTART 128
-#define FF_MOV_FLAG_OMIT_TFHD_OFFSET 256
-#define FF_MOV_FLAG_DISABLE_CHPL 512
+#define FF_MOV_FLAG_RTP_HINT              (1 <<  0)
+#define FF_MOV_FLAG_FRAGMENT              (1 <<  1)
+#define FF_MOV_FLAG_EMPTY_MOOV            (1 <<  2)
+#define FF_MOV_FLAG_FRAG_KEYFRAME         (1 <<  3)
+#define FF_MOV_FLAG_SEPARATE_MOOF         (1 <<  4)
+#define FF_MOV_FLAG_FRAG_CUSTOM           (1 <<  5)
+#define FF_MOV_FLAG_ISML                  (1 <<  6)
+#define FF_MOV_FLAG_FASTSTART             (1 <<  7)
+#define FF_MOV_FLAG_OMIT_TFHD_OFFSET      (1 <<  8)
+#define FF_MOV_FLAG_DISABLE_CHPL          (1 <<  9)
+#define FF_MOV_FLAG_DEFAULT_BASE_MOOF     (1 << 10)
+#define FF_MOV_FLAG_DASH                  (1 << 11)
+#define FF_MOV_FLAG_FRAG_DISCONT          (1 << 12)
 
 int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt);
 

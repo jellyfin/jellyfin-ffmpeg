@@ -360,7 +360,7 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
     VideoDemuxData *s = s1->priv_data;
     char filename_bytes[1024];
     char *filename = filename_bytes;
-    int i;
+    int i, res;
     int size[3]           = { 0 }, ret[3] = { 0 };
     AVIOContext *f[3]     = { NULL };
     AVCodecContext *codec = s1->streams[0]->codec;
@@ -436,8 +436,9 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
         }
     }
 
-    if (av_new_packet(pkt, size[0] + size[1] + size[2]) < 0)
-        return AVERROR(ENOMEM);
+    res = av_new_packet(pkt, size[0] + size[1] + size[2]);
+    if (res < 0)
+        return res;
     pkt->stream_index = 0;
     pkt->flags       |= AV_PKT_FLAG_KEY;
     if (s->ts_from_file) {
@@ -595,7 +596,7 @@ static int bmp_probe(AVProbeData *p)
         return 0;
 
     if (!AV_RN32(b + 6)) {
-        return AVPROBE_SCORE_EXTENSION - 1; // lower than extension as bmp pipe has bugs
+        return AVPROBE_SCORE_EXTENSION + 1;
     } else {
         return AVPROBE_SCORE_EXTENSION / 4;
     }
@@ -628,6 +629,57 @@ static int j2k_probe(AVProbeData *p)
         AV_RB32(b) == 0xff4fff51)
         return AVPROBE_SCORE_EXTENSION + 1;
     return 0;
+}
+
+static int jpeg_probe(AVProbeData *p)
+{
+    const uint8_t *b = p->buf;
+    int i, state = 0xD8;
+
+    if (AV_RB16(b) != 0xFFD8 ||
+        AV_RB32(b) == 0xFFD8FFF7)
+    return 0;
+
+    b += 2;
+    for (i = 0; i < p->buf_size - 2; i++) {
+        int c;
+        if (b[i] != 0xFF)
+            continue;
+        c = b[i + 1];
+        switch (c) {
+        case 0xD8:
+            return 0;
+        case 0xC0:
+        case 0xC1:
+        case 0xC2:
+        case 0xC3:
+        case 0xC5:
+        case 0xC6:
+        case 0xC7:
+            if (state != 0xD8)
+                return 0;
+            state = 0xC0;
+            break;
+        case 0xDA:
+            if (state != 0xC0)
+                return 0;
+            state = 0xDA;
+            break;
+        case 0xD9:
+            if (state != 0xDA)
+                return 0;
+            state = 0xD9;
+            break;
+        default:
+            if (  (c >= 0x02 && c <= 0xBF)
+                || c == 0xC8)
+                return 0;
+        }
+    }
+
+    if (state == 0xD9)
+        return AVPROBE_SCORE_EXTENSION + 1;
+    return AVPROBE_SCORE_EXTENSION / 8;
 }
 
 static int jpegls_probe(AVProbeData *p)
@@ -721,6 +773,7 @@ IMAGEAUTO_DEMUXER(bmp,     AV_CODEC_ID_BMP)
 IMAGEAUTO_DEMUXER(dpx,     AV_CODEC_ID_DPX)
 IMAGEAUTO_DEMUXER(exr,     AV_CODEC_ID_EXR)
 IMAGEAUTO_DEMUXER(j2k,     AV_CODEC_ID_JPEG2000)
+IMAGEAUTO_DEMUXER(jpeg,    AV_CODEC_ID_MJPEG)
 IMAGEAUTO_DEMUXER(jpegls,  AV_CODEC_ID_JPEGLS)
 IMAGEAUTO_DEMUXER(pictor,  AV_CODEC_ID_PICTOR)
 IMAGEAUTO_DEMUXER(png,     AV_CODEC_ID_PNG)

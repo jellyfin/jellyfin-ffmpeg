@@ -58,33 +58,93 @@ AVFoundation input device.
 AVFoundation is the currently recommended framework by Apple for streamgrabbing on OSX >= 10.7 as well as on iOS.
 The older QTKit framework has been marked deprecated since OSX version 10.7.
 
-The filename passed as input is parsed to contain either a device name or index.
-The device index can also be given by using -video_device_index.
-A given device index will override any given device name.
-If the desired device consists of numbers only, use -video_device_index to identify it.
-The default device will be chosen if an empty string  or the device name "default" is given.
-The available devices can be enumerated by using -list_devices.
-The pixel format can be set using -pixel_format.
-Available formats:
- monob, rgb555be, rgb555le, rgb565be, rgb565le, rgb24, bgr24, 0rgb, bgr0, 0bgr, rgb0,
+The input filename has to be given in the following syntax:
+@example
+-i "[[VIDEO]:[AUDIO]]"
+@end example
+The first entry selects the video input while the latter selects the audio input.
+The stream has to be specified by the device name or the device index as shown by the device list.
+Alternatively, the video and/or audio input device can be chosen by index using the
+@option{
+    -video_device_index <INDEX>
+}
+and/or
+@option{
+    -audio_device_index <INDEX>
+}
+, overriding any
+device name or index given in the input filename.
+
+All available devices can be enumerated by using @option{-list_devices true}, listing
+all device names and corresponding indices.
+
+There are two device name aliases:
+@table @code
+
+@item default
+Select the AVFoundation default device of the corresponding type.
+
+@item none
+Do not record the corresponding media type.
+This is equivalent to specifying an empty device name or index.
+
+@end table
+
+@subsection Options
+
+AVFoundation supports the following options:
+
+@table @option
+
+@item -list_devices <TRUE|FALSE>
+If set to true, a list of all available input devices is given showing all
+device names and indices.
+
+@item -video_device_index <INDEX>
+Specify the video device by its index. Overrides anything given in the input filename.
+
+@item -audio_device_index <INDEX>
+Specify the audio device by its index. Overrides anything given in the input filename.
+
+@item -pixel_format <FORMAT>
+Request the video device to use a specific pixel format.
+If the specified format is not supported, a list of available formats is given
+und the first one in this list is used instead. Available pixel formats are:
+@code{monob, rgb555be, rgb555le, rgb565be, rgb565le, rgb24, bgr24, 0rgb, bgr0, 0bgr, rgb0,
  bgr48be, uyvy422, yuva444p, yuva444p16le, yuv444p, yuv422p16, yuv422p10, yuv444p10,
- yuv420p, nv12, yuyv422, gray
+ yuv420p, nv12, yuyv422, gray}
 
+@end table
+
+@subsection Examples
+
+@itemize
+
+@item
+Print the list of AVFoundation supported devices and exit:
 @example
-ffmpeg -f avfoundation -i "0" out.mpg
+$ ffmpeg -f avfoundation -list_devices true -i ""
 @end example
 
+@item
+Record video from video device 0 and audio from audio device 0 into out.avi:
 @example
-ffmpeg -f avfoundation -video_device_index 0 -i "" out.mpg
+$ ffmpeg -f avfoundation -i "0:0" out.avi
 @end example
 
+@item
+Record video from video device 2 and audio from audio device 1 into out.avi:
 @example
-ffmpeg -f avfoundation -pixel_format bgr0 -i "default" out.mpg
+$ ffmpeg -f avfoundation -video_device_index 2 -i ":1" out.avi
 @end example
 
+@item
+Record video from the system default video device using the pixel format bgr0 and do not record any audio into out.avi:
 @example
-ffmpeg -f avfoundation -list_devices true -i ""
+$ ffmpeg -f avfoundation -pixel_format bgr0 -i "default:none" out.avi
 @end example
+
+@end itemize
 
 @section bktr
 
@@ -921,5 +981,59 @@ Set the video frame size. Default value is @code{vga}.
 Use the MIT-SHM extension for shared memory. Default value is @code{1}.
 It may be necessary to disable it for remote displays.
 @end table
+
+@section decklink
+
+The decklink input device provides capture capabilities for Blackmagic
+DeckLink devices.
+
+To enable this input device, you need the Blackmagic DeckLink SDK and you
+need to configure with the appropriate @code{--extra-cflags}
+and @code{--extra-ldflags}.
+On Windows, you need to run the IDL files through @command{widl}.
+
+DeckLink is very picky about the formats it supports. Pixel format is always
+uyvy422, framerate and video size must be determined for your device with
+@command{-list_formats 1}. Audio sample rate is always 48 kHz and the number
+of channels currently is limited to 2 (stereo).
+
+@subsection Options
+
+@table @option
+
+@item list_devices
+If set to @option{true}, print a list of devices and exit.
+Defaults to @option{false}.
+
+@item list_formats
+If set to @option{true}, print a list of supported formats and exit.
+Defaults to @option{false}.
+
+@end table
+
+@subsection Examples
+
+@itemize
+
+@item
+List input devices:
+@example
+ffmpeg -f decklink -list_devices 1 -i dummy
+@end example
+
+@item
+List supported formats:
+@example
+ffmpeg -f decklink -list_formats 1 -i 'Intensity Pro'
+@end example
+
+@item
+Capture video clip at 1080i50 (format 11):
+@example
+ffmpeg -f decklink -i 'Intensity Pro@@11' -acodec copy -vcodec copy output.avi
+@end example
+
+@end itemize
+
 
 @c man end INPUT DEVICES

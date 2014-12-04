@@ -688,9 +688,10 @@ static int vp8_decode_frame_header(VP8Context *s, const uint8_t *buf, int buf_si
     buf_size -= header_size;
 
     if (s->keyframe) {
-        if (vp8_rac_get(c))
+        s->colorspace = vp8_rac_get(c);
+        if (s->colorspace)
             av_log(s->avctx, AV_LOG_WARNING, "Unspecified colorspace\n");
-        vp8_rac_get(c); // whether we can skip clamping in dsp functions
+        s->fullrange = vp8_rac_get(c);
     }
 
     if ((s->segmentation.enabled = vp8_rac_get(c)))
@@ -1915,8 +1916,8 @@ void inter_predict(VP8Context *s, VP8ThreadData *td, uint8_t *dst[3],
                          mb->bmv[2 * y       * 4 + 2 * x + 1].y +
                          mb->bmv[(2 * y + 1) * 4 + 2 * x    ].y +
                          mb->bmv[(2 * y + 1) * 4 + 2 * x + 1].y;
-                uvmv.x = (uvmv.x + 2 + (uvmv.x >> (INT_BIT - 1))) >> 2;
-                uvmv.y = (uvmv.y + 2 + (uvmv.y >> (INT_BIT - 1))) >> 2;
+                uvmv.x = (uvmv.x + 2 + FF_SIGNBIT(uvmv.x)) >> 2;
+                uvmv.y = (uvmv.y + 2 + FF_SIGNBIT(uvmv.y)) >> 2;
                 if (s->profile == 3) {
                     uvmv.x &= ~7;
                     uvmv.y &= ~7;
@@ -2546,6 +2547,13 @@ int vp78_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
             vp8_release_frame(s, &s->frames[i]);
 
     curframe = s->framep[VP56_FRAME_CURRENT] = vp8_find_free_buffer(s);
+
+    if (!s->colorspace)
+        avctx->colorspace = AVCOL_SPC_BT470BG;
+    if (s->fullrange)
+        avctx->color_range = AVCOL_RANGE_JPEG;
+    else
+        avctx->color_range = AVCOL_RANGE_MPEG;
 
     /* Given that arithmetic probabilities are updated every frame, it's quite
      * likely that the values we have on a random interframe are complete

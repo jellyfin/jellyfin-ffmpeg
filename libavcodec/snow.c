@@ -324,7 +324,7 @@ static void mc_block(Plane *p, uint8_t *dst, const uint8_t *src, int stride, int
     }
 }
 
-void ff_snow_pred_block(SnowContext *s, uint8_t *dst, uint8_t *tmp, ptrdiff_t stride, int sx, int sy, int b_w, int b_h, BlockNode *block, int plane_index, int w, int h){
+void ff_snow_pred_block(SnowContext *s, uint8_t *dst, uint8_t *tmp, ptrdiff_t stride, int sx, int sy, int b_w, int b_h, const BlockNode *block, int plane_index, int w, int h){
     if(block->type & BLOCK_INTRA){
         int x, y;
         const unsigned color  = block->color[plane_index];
@@ -637,8 +637,10 @@ void ff_snow_release_buffer(AVCodecContext *avctx)
     if(s->last_picture[s->max_ref_frames-1]->data[0]){
         av_frame_unref(s->last_picture[s->max_ref_frames-1]);
         for(i=0; i<9; i++)
-            if(s->halfpel_plane[s->max_ref_frames-1][1+i/3][i%3])
+            if(s->halfpel_plane[s->max_ref_frames-1][1+i/3][i%3]) {
                 av_free(s->halfpel_plane[s->max_ref_frames-1][1+i/3][i%3] - EDGE_WIDTH*(1+s->current_picture->linesize[i%3]));
+                s->halfpel_plane[s->max_ref_frames-1][1+i/3][i%3] = NULL;
+            }
     }
 }
 

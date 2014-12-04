@@ -30,6 +30,7 @@
 #include "golomb.h"
 #include "h264chroma.h"
 #include "idctdsp.h"
+#include "internal.h"
 #include "mathops.h"
 #include "qpeldsp.h"
 #include "cavs.h"
@@ -539,8 +540,8 @@ static inline void scale_mv(AVSContext *h, int *d_x, int *d_y,
 {
     int den = h->scale_den[FFMAX(src->ref, 0)];
 
-    *d_x = (src->x * distp * den + 256 + (src->x >> 31)) >> 9;
-    *d_y = (src->y * distp * den + 256 + (src->y >> 31)) >> 9;
+    *d_x = (src->x * distp * den + 256 + FF_SIGNBIT(src->x)) >> 9;
+    *d_y = (src->y * distp * den + 256 + FF_SIGNBIT(src->y)) >> 9;
 }
 
 static inline void mv_pred_median(AVSContext *h,
@@ -822,16 +823,16 @@ av_cold int ff_cavs_end(AVCodecContext *avctx)
     av_frame_free(&h->DPB[0].f);
     av_frame_free(&h->DPB[1].f);
 
-    av_free(h->top_qp);
-    av_free(h->top_mv[0]);
-    av_free(h->top_mv[1]);
-    av_free(h->top_pred_Y);
-    av_free(h->top_border_y);
-    av_free(h->top_border_u);
-    av_free(h->top_border_v);
-    av_free(h->col_mv);
-    av_free(h->col_type_base);
-    av_free(h->block);
+    av_freep(&h->top_qp);
+    av_freep(&h->top_mv[0]);
+    av_freep(&h->top_mv[1]);
+    av_freep(&h->top_pred_Y);
+    av_freep(&h->top_border_y);
+    av_freep(&h->top_border_u);
+    av_freep(&h->top_border_v);
+    av_freep(&h->col_mv);
+    av_freep(&h->col_type_base);
+    av_freep(&h->block);
     av_freep(&h->edge_emu_buffer);
     return 0;
 }

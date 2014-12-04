@@ -37,6 +37,7 @@
 #define XING_FLAG_FRAMES 0x01
 #define XING_FLAG_SIZE   0x02
 #define XING_FLAG_TOC    0x04
+#define XING_FLAC_QSCALE 0x08
 
 #define XING_TOC_COUNT 100
 
@@ -168,8 +169,8 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
                                        (AVRational){spf, c->sample_rate},
                                        st->time_base));
     /* VBR quality */
-    if(v & 8)
-        avio_skip(s->pb, 4);
+    if (v & XING_FLAC_QSCALE)
+        avio_rb32(s->pb);
 
     /* Encoder short version string */
     memset(version, 0, sizeof(version));
@@ -214,11 +215,17 @@ static void mp3_parse_info_tag(AVFormatContext *s, AVStream *st,
     /* Encoder delays */
     v= avio_rb24(s->pb);
     if(AV_RB32(version) == MKBETAG('L', 'A', 'M', 'E')
-        || AV_RB32(version) == MKBETAG('L', 'a', 'v', 'f')) {
+        || AV_RB32(version) == MKBETAG('L', 'a', 'v', 'f')
+        || AV_RB32(version) == MKBETAG('L', 'a', 'v', 'c')
+    ) {
 
         mp3->start_pad = v>>12;
         mp3->  end_pad = v&4095;
         st->skip_samples = mp3->start_pad + 528 + 1;
+        if (mp3->frames) {
+            st->first_discard_sample = -mp3->end_pad + 528 + 1 + mp3->frames * (int64_t)spf;
+            st->last_discard_sample = mp3->frames * (int64_t)spf;
+        }
         if (!st->start_time)
             st->start_time = av_rescale_q(st->skip_samples,
                                             (AVRational){1, c->sample_rate},
@@ -450,6 +457,10 @@ static int mp3_seek(AVFormatContext *s, int stream_index, int64_t timestamp,
         int64_t pos = ie->pos + (dir > 0 ? i - 1024 : -i);
         int64_t candidate = -1;
         int score = 999;
+
+        if (pos < 0)
+            continue;
+
         for(j=0; j<MIN_VALID; j++) {
             ret = check(s, pos);
             if(ret < 0)

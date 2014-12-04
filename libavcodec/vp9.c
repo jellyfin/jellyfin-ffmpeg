@@ -145,6 +145,7 @@ typedef struct VP9Context {
     uint8_t yac_qi;
     int8_t ydc_qdelta, uvdc_qdelta, uvac_qdelta;
     uint8_t lossless;
+#define MAX_SEGMENT 8
     struct {
         uint8_t enabled;
         uint8_t temporal;
@@ -160,7 +161,7 @@ typedef struct VP9Context {
             int8_t lf_val;
             int16_t qmul[2][2];
             uint8_t lflvl[4][2];
-        } feat[8];
+        } feat[MAX_SEGMENT];
     } segmentation;
     struct {
         unsigned log2_tile_cols, log2_tile_rows;
@@ -3780,6 +3781,18 @@ static int vp9_decode_frame(AVCodecContext *ctx, void *frame,
             return res;
     }
 
+    if (s->fullrange)
+        ctx->color_range = AVCOL_RANGE_JPEG;
+    else
+        ctx->color_range = AVCOL_RANGE_MPEG;
+
+    switch (s->colorspace) {
+    case 1: ctx->colorspace = AVCOL_SPC_BT470BG; break;
+    case 2: ctx->colorspace = AVCOL_SPC_BT709; break;
+    case 3: ctx->colorspace = AVCOL_SPC_SMPTE170M; break;
+    case 4: ctx->colorspace = AVCOL_SPC_SMPTE240M; break;
+    }
+
     // main tile decode loop
     memset(s->above_partition_ctx, 0, s->cols);
     memset(s->above_skip_ctx, 0, s->cols);
@@ -3813,6 +3826,8 @@ static int vp9_decode_frame(AVCodecContext *ctx, void *frame,
                 break;
         }
         s->prob_ctx[s->framectxid].p = s->prob.p;
+        ff_thread_finish_setup(ctx);
+    } else if (!s->refreshctx) {
         ff_thread_finish_setup(ctx);
     }
 

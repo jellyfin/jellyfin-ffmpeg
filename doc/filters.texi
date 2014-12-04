@@ -282,6 +282,10 @@ sequential number of the input frame, starting from 0
 
 @item pos
 the position in the file of the input frame, NAN if unknown
+
+@item w
+@item h
+width and height of the input frame if video
 @end table
 
 Additionally, these filters support an @option{enable} command that can be used
@@ -308,41 +312,6 @@ The configure output will show the audio filters included in your
 build.
 
 Below is a description of the currently available audio filters.
-
-@section aconvert
-
-Convert the input audio format to the specified formats.
-
-@emph{This filter is deprecated. Use @ref{aformat} instead.}
-
-The filter accepts a string of the form:
-"@var{sample_format}:@var{channel_layout}".
-
-@var{sample_format} specifies the sample format, and can be a string or the
-corresponding numeric value defined in @file{libavutil/samplefmt.h}. Use 'p'
-suffix for a planar sample format.
-
-@var{channel_layout} specifies the channel layout, and can be a string
-or the corresponding number value defined in @file{libavutil/channel_layout.h}.
-
-The special parameter "auto", signifies that the filter will
-automatically select the output format depending on the output filter.
-
-@subsection Examples
-
-@itemize
-@item
-Convert input to float, planar, stereo:
-@example
-aconvert=fltp:stereo
-@end example
-
-@item
-Convert input to unsigned 8-bit, automatically select out channel layout:
-@example
-aconvert=u8:auto
-@end example
-@end itemize
 
 @section adelay
 
@@ -1741,11 +1710,11 @@ The default is 0.707q and gives a Butterworth response.
 Mix channels with specific gain levels. The filter accepts the output
 channel layout followed by a set of channels definitions.
 
-This filter is also designed to remap efficiently the channels of an audio
+This filter is also designed to efficiently remap the channels of an audio
 stream.
 
 The filter accepts parameters of the form:
-"@var{l}:@var{outdef}:@var{outdef}:..."
+"@var{l}|@var{outdef}|@var{outdef}|..."
 
 @table @option
 @item l
@@ -1776,13 +1745,13 @@ avoiding clipping noise.
 For example, if you want to down-mix from stereo to mono, but with a bigger
 factor for the left channel:
 @example
-pan=1:c0=0.9*c0+0.1*c1
+pan=1c|c0=0.9*c0+0.1*c1
 @end example
 
 A customized down-mix to stereo that works automatically for 3-, 4-, 5- and
 7-channels surround:
 @example
-pan=stereo: FL < FL + 0.5*FC + 0.6*BL + 0.6*SL : FR < FR + 0.5*FC + 0.6*BR + 0.6*SR
+pan=stereo| FL < FL + 0.5*FC + 0.6*BL + 0.6*SL | FR < FR + 0.5*FC + 0.6*BR + 0.6*SR
 @end example
 
 Note that @command{ffmpeg} integrates a default down-mix (and up-mix) system
@@ -1805,25 +1774,25 @@ remapping.
 For example, if you have a 5.1 source and want a stereo audio stream by
 dropping the extra channels:
 @example
-pan="stereo: c0=FL : c1=FR"
+pan="stereo| c0=FL | c1=FR"
 @end example
 
 Given the same source, you can also switch front left and front right channels
 and keep the input channel layout:
 @example
-pan="5.1: c0=c1 : c1=c0 : c2=c2 : c3=c3 : c4=c4 : c5=c5"
+pan="5.1| c0=c1 | c1=c0 | c2=c2 | c3=c3 | c4=c4 | c5=c5"
 @end example
 
 If the input is a stereo audio stream, you can mute the front left channel (and
 still keep the stereo channel layout) with:
 @example
-pan="stereo:c1=c1"
+pan="stereo|c1=c1"
 @end example
 
 Still with a stereo audio stream input, you can copy the right channel in both
 front left and right:
 @example
-pan="stereo: c0=FR : c1=FR"
+pan="stereo| c0=FR | c1=FR"
 @end example
 
 @section replaygain
@@ -2551,6 +2520,26 @@ overlay to a video stream, consider the @var{overlay} filter instead.
 Same as the @ref{subtitles} filter, except that it doesn't require libavcodec
 and libavformat to work. On the other hand, it is limited to ASS (Advanced
 Substation Alpha) subtitles files.
+
+This filter accepts the following option in addition to the common options from
+the @ref{subtitles} filter:
+
+@table @option
+@item shaping
+Set the shaping engine
+
+Available values are:
+@table @samp
+@item auto
+The default libass shaping engine, which is the best available.
+@item simple
+Fast, font-agnostic shaper that can do only substitutions
+@item complex
+Slower shaper using OpenType for substitutions and positioning
+@end table
+
+The default is @code{auto}.
+@end table
 
 @section bbox
 
@@ -4185,7 +4174,7 @@ drawtext='fontfile=Linux Libertine O-40\:style=Semibold:text=FFmpeg'
 @item
 Print the date of a real-time encoding (see strftime(3)):
 @example
-drawtext='fontfile=FreeSans.ttf:text=%@{localtime:%a %b %d %Y@}'
+drawtext='fontfile=FreeSans.ttf:text=%@{localtime\:%a %b %d %Y@}'
 @end example
 
 @item
@@ -4457,6 +4446,10 @@ Note that this filter uses the same algorithms as TIVTC/TFM (AviSynth project)
 and VIVTC/VFM (VapourSynth project). The later is a light clone of TFM from
 which @code{fieldmatch} is based on. While the semantic and usage are very
 close, some behaviour and options names can differ.
+
+The @ref{decimate} filter currently only works for constant frame rate input.
+Do not use @code{fieldmatch} and @ref{decimate} if your input has mixed
+telecined and progressive content with changing framerate.
 
 The filter accepts the following options:
 
@@ -5124,6 +5117,22 @@ Modify RGB components depending on pixel position:
 @example
 geq=r='X/W*r(X,Y)':g='(1-X/W)*g(X,Y)':b='(H-Y)/H*b(X,Y)'
 @end example
+
+@item
+Create a radial gradient that is the same size as the input (also see
+the @ref{vignette} filter):
+@example
+geq=lum=255*gauss((X/W-0.5)*3)*gauss((Y/H-0.5)*3)/gauss(0)/gauss(0),format=gray
+@end example
+
+@item
+Create a linear gradient to use as a mask for another filter, then
+compose with @ref{overlay}. In this example the video will gradually
+become more blurry from the top to the bottom of the y-axis as defined
+by the linear gradient:
+@example
+ffmpeg -i input.mp4 -filter_complex "geq=lum=255*(Y/H),format=gray[grad];[0:v]boxblur=4[blur];[blur][grad]alphamerge[alpha];[0:v][alpha]overlay" output.mp4
+@end example
 @end itemize
 
 @section gradfun
@@ -5565,8 +5574,62 @@ value.
 
 Detect video interlacing type.
 
-This filter tries to detect if the input is interlaced or progressive,
-top or bottom field first.
+This filter tries to detect if the input frames as interlaced, progressive,
+top or bottom field first. It will also try and detect fields that are
+repeated between adjacent frames (a sign of telecine).
+
+Single frame detection considers only immediately adjacent frames when classifying each frame.
+Multiple frame detection incorporates the classification history of previous frames.
+
+The filter will log these metadata values:
+
+@table @option
+@item single.current_frame
+Detected type of current frame using single-frame detection. One of:
+``tff'' (top field first), ``bff'' (bottom field first),
+``progressive'', or ``undetermined''
+
+@item single.tff
+Cumulative number of frames detected as top field first using single-frame detection.
+
+@item multiple.tff
+Cumulative number of frames detected as top field first using multiple-frame detection.
+
+@item single.bff
+Cumulative number of frames detected as bottom field first using single-frame detection.
+
+@item multiple.current_frame
+Detected type of current frame using multiple-frame detection. One of:
+``tff'' (top field first), ``bff'' (bottom field first),
+``progressive'', or ``undetermined''
+
+@item multiple.bff
+Cumulative number of frames detected as bottom field first using multiple-frame detection.
+
+@item single.progressive
+Cumulative number of frames detected as progressive using single-frame detection.
+
+@item multiple.progressive
+Cumulative number of frames detected as progressive using multiple-frame detection.
+
+@item single.undetermined
+Cumulative number of frames that could not be classified using single-frame detection.
+
+@item multiple.undetermined
+Cumulative number of frames that could not be classified using multiple-frame detection.
+
+@item repeated.current_frame
+Which field in the current frame is repeated from the last. One of ``neither'', ``top'', or ``bottom''.
+
+@item repeated.neither
+Cumulative number of frames with no repeated field.
+
+@item repeated.top
+Cumulative number of frames with the top field repeated from the previous frame's top field.
+
+@item repeated.bottom
+Cumulative number of frames with the bottom field repeated from the previous frame's bottom field.
+@end table
 
 The filter accepts the following options:
 
@@ -5575,6 +5638,13 @@ The filter accepts the following options:
 Set interlacing threshold.
 @item prog_thres
 Set progressive threshold.
+@item repeat_thres
+Threshold for repeated field detection.
+@item half_life
+Number of frames after which a given frame's contribution to the
+statistics is halved (i.e., it contributes only 0.5 to it's
+classification). The default of 0 means that all frames seen are given
+full weight of 1.0 forever.
 @end table
 
 @section il
@@ -6221,7 +6291,7 @@ values are assumed.
 
 Refer to the official libopencv documentation for more precise
 information:
-@url{http://opencv.willowgarage.com/documentation/c/image_filtering.html}
+@url{http://docs.opencv.org/master/modules/imgproc/doc/filtering.html}
 
 Several libopencv filters are supported; see the following subsections.
 
@@ -6713,6 +6783,9 @@ A description of the accepted parameters follows.
 @item y3
 Set coordinates expression for top left, top right, bottom left and bottom right corners.
 Default values are @code{0:0:W:0:0:H:W:H} with which perspective will remain unchanged.
+If the @code{sense} option is set to @code{source}, then the specified points will be sent
+to the corners of the destination. If the @code{sense} option is set to @code{destination},
+then the corners of the source will be sent to the specified coordinates.
 
 The expressions can use the following variables:
 
@@ -6732,6 +6805,24 @@ It accepts the following values:
 @end table
 
 Default value is @samp{linear}.
+
+@item sense
+Set interpretation of coordinate options.
+
+It accepts the following values:
+@table @samp
+@item 0, source
+
+Send point in the source specified by the given coordinates to
+the corners of the destination.
+
+@item 1, destination
+
+Send the corners of the source to the point in the destination specified
+by the given coordinates.
+
+Default value is @samp{source}.
+@end table
 @end table
 
 @section phase
@@ -8646,6 +8737,7 @@ ffmpeg -i INPUT -vf trim=duration=1
 @end itemize
 
 
+@anchor{unsharp}
 @section unsharp
 
 Sharpen or blur the input video.
@@ -8807,7 +8899,7 @@ Read a file with transform information for each frame and
 apply/compensate them. Together with the @ref{vidstabdetect}
 filter this can be used to deshake videos. See also
 @url{http://public.hronopik.de/vid.stab}. It is important to also use
-the unsharp filter, see below.
+the @ref{unsharp} filter, see below.
 
 To enable compilation of this filter you need to configure FFmpeg with
 @code{--enable-libvidstab}.
@@ -8817,7 +8909,7 @@ To enable compilation of this filter you need to configure FFmpeg with
 @table @option
 @item input
 Set path to the file used to read the transforms. Default value is
-@file{transforms.trf}).
+@file{transforms.trf}.
 
 @item smoothing
 Set the number of frames (value*2 + 1) used for lowpass filtering the
@@ -8825,9 +8917,9 @@ camera movements. Default value is 10.
 
 For example a number of 10 means that 21 frames are used (10 in the
 past and 10 in the future) to smoothen the motion in the video. A
-larger values leads to a smoother video, but limits the acceleration
-of the camera (pan/tilt movements). 0 is a special case where a
-static camera is simulated.
+larger value leads to a smoother video, but limits the acceleration of
+the camera (pan/tilt movements). 0 is a special case where a static
+camera is simulated.
 
 @item optalgo
 Set the camera path optimization algorithm.
@@ -8864,7 +8956,7 @@ fill the border black
 Invert transforms if set to 1. Default value is 0.
 
 @item relative
-Consider transforms as relative to previsou frame if set to 1,
+Consider transforms as relative to previous frame if set to 1,
 absolute if set to 0. Default value is 0.
 
 @item zoom
@@ -8930,7 +9022,7 @@ Use @command{ffmpeg} for a typical stabilization with default values:
 ffmpeg -i inp.mpeg -vf vidstabtransform,unsharp=5:5:0.8:3:3:0.4 inp_stabilized.mpeg
 @end example
 
-Note the use of the unsharp filter which is always recommended.
+Note the use of the @ref{unsharp} filter which is always recommended.
 
 @item
 Zoom in a bit more and load transform data from a given file:
@@ -9102,6 +9194,20 @@ Only deinterlace frames marked as interlaced.
 @end table
 
 Default value is @samp{all}.
+@end table
+
+@section xbr
+Apply the xBR high-quality magnification filter which is designed for pixel
+art. It follows a set of edge-detection rules, see
+@url{http://www.libretro.com/forums/viewtopic.php?f=6&t=134}.
+
+It accepts the following option:
+
+@table @option
+@item n
+Set the scaling dimension: @code{2} for @code{2xBR}, @code{3} for
+@code{3xBR} and @code{4} for @code{4xBR}.
+Default is @code{3}.
 @end table
 
 @anchor{yadif}
