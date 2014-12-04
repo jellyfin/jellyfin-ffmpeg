@@ -16,7 +16,8 @@ OBJS-$(CONFIG_ALSA_OUTDEV)               += alsa-audio-common.o \
 OBJS-$(CONFIG_AVFOUNDATION_INDEV)        += avfoundation.o
 OBJS-$(CONFIG_BKTR_INDEV)                += bktr.o
 OBJS-$(CONFIG_CACA_OUTDEV)               += caca.o
-OBJS-$(CONFIG_DECKLINK_OUTDEV)           += decklink_enc.o decklink_enc_c.o
+OBJS-$(CONFIG_DECKLINK_OUTDEV)           += decklink_enc.o decklink_enc_c.o decklink_common.o
+OBJS-$(CONFIG_DECKLINK_INDEV)            += decklink_dec.o decklink_dec_c.o decklink_common.o
 OBJS-$(CONFIG_DSHOW_INDEV)               += dshow.o dshow_enummediatypes.o \
                                             dshow_enumpins.o dshow_filter.o \
                                             dshow_pin.o dshow_common.o
@@ -46,6 +47,7 @@ OBJS-$(CONFIG_V4L2_OUTDEV)               += v4l2enc.o v4l2-common.o
 OBJS-$(CONFIG_V4L_INDEV)                 += v4l.o
 OBJS-$(CONFIG_VFWCAP_INDEV)              += vfwcap.o
 OBJS-$(CONFIG_X11GRAB_INDEV)             += x11grab.o
+OBJS-$(CONFIG_X11GRAB_XCB_INDEV)         += xcbgrab.o
 OBJS-$(CONFIG_XV_OUTDEV)                 += xv.o
 
 # external libraries
@@ -57,7 +59,8 @@ OBJS-$(HAVE_LIBC_MSVCRT)                 += file_open.o
 # Windows resource file
 SLIBOBJS-$(HAVE_GNU_WINDRES)             += avdeviceres.o
 
-SKIPHEADERS-$(CONFIG_DECKLINK)           += decklink_enc.h
+SKIPHEADERS-$(CONFIG_DECKLINK)           += decklink_enc.h decklink_dec.h \
+                                            decklink_common.h decklink_common_c.h
 SKIPHEADERS-$(CONFIG_DSHOW_INDEV)        += dshow_capture.h
 SKIPHEADERS-$(CONFIG_FBDEV_INDEV)        += fbdev_common.h
 SKIPHEADERS-$(CONFIG_FBDEV_OUTDEV)       += fbdev_common.h

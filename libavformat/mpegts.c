@@ -29,6 +29,7 @@
 #include "libavutil/avassert.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/get_bits.h"
+#include "libavcodec/opus.h"
 #include "avformat.h"
 #include "mpegts.h"
 #include "internal.h"
@@ -140,6 +141,8 @@ struct MpegTSContext {
     int skip_changes;
     int skip_clear;
 
+    int scan_all_pmts;
+
     int resync_size;
 
     /******************************************/
@@ -164,6 +167,8 @@ static const AVOption options[] = {
      {.i64 = 1}, 0, 1, AV_OPT_FLAG_DECODING_PARAM },
     {"ts_packetsize", "Output option carrying the raw packet size.", offsetof(MpegTSContext, raw_packet_size), AV_OPT_TYPE_INT,
      {.i64 = 0}, 0, 0, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_EXPORT | AV_OPT_FLAG_READONLY },
+    {"scan_all_pmts",   "Scan and combine all PMTs", offsetof(MpegTSContext, scan_all_pmts), AV_OPT_TYPE_INT,
+     { .i64 =  -1}, -1, 1,  AV_OPT_FLAG_DECODING_PARAM },
     {"skip_changes", "Skip changing / adding streams / programs.", offsetof(MpegTSContext, skip_changes), AV_OPT_TYPE_INT,
      {.i64 = 0}, 0, 1, 0 },
     {"skip_clear", "Skip clearing programs.", offsetof(MpegTSContext, skip_clear), AV_OPT_TYPE_INT,
@@ -298,11 +303,17 @@ static void add_pid_to_pmt(MpegTSContext *ts, unsigned int programid,
                            unsigned int pid)
 {
     struct Program *p = get_program(ts, programid);
+    int i;
     if (!p)
         return;
 
     if (p->nb_pids >= MAX_PIDS_PER_PROGRAM)
         return;
+
+    for (i = 0; i < p->nb_pids; i++)
+        if (p->pids[i] == pid)
+            return;
+
     p->pids[p->nb_pids++] = pid;
 }
 
@@ -701,6 +712,7 @@ static const StreamType REGD_types[] = {
     { MKTAG('H', 'E', 'V', 'C'), AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_HEVC  },
     { MKTAG('K', 'L', 'V', 'A'), AVMEDIA_TYPE_DATA,  AV_CODEC_ID_SMPTE_KLV },
     { MKTAG('V', 'C', '-', '1'), AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_VC1   },
+    { MKTAG('O', 'p', 'u', 's'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_OPUS  },
     { 0 },
 };
 
@@ -1499,13 +1511,28 @@ static void m4sl_cb(MpegTSFilter *filter, const uint8_t *section,
         av_free(mp4_descr[i].dec_config_descr);
 }
 
+static const uint8_t opus_coupled_stream_cnt[9] = {
+    1, 0, 1, 1, 2, 2, 2, 3, 3
+};
+
+static const uint8_t opus_channel_map[8][8] = {
+    { 0 },
+    { 0,1 },
+    { 0,2,1 },
+    { 0,1,2,3 },
+    { 0,4,1,2,3 },
+    { 0,4,1,2,3,5 },
+    { 0,4,1,2,3,5,6 },
+    { 0,6,1,2,3,4,5,7 },
+};
+
 int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type,
                               const uint8_t **pp, const uint8_t *desc_list_end,
                               Mp4Descr *mp4_descr, int mp4_descr_count, int pid,
                               MpegTSContext *ts)
 {
     const uint8_t *desc_end;
-    int desc_len, desc_tag, desc_es_id;
+    int desc_len, desc_tag, desc_es_id, ext_desc_tag, channels, channel_config_code;
     char language[252];
     int i;
 
@@ -1710,6 +1737,41 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                 mpegts_find_stream_type(st, st->codec->codec_tag, METADATA_types);
         }
         break;
+    case 0x7f: /* DVB extension descriptor */
+        ext_desc_tag = get8(pp, desc_end);
+        if (ext_desc_tag < 0)
+            return AVERROR_INVALIDDATA;
+        if (st->codec->codec_id == AV_CODEC_ID_OPUS &&
+            ext_desc_tag == 0x80) { /* User defined (provisional Opus) */
+            if (!st->codec->extradata) {
+                st->codec->extradata = av_mallocz(sizeof(opus_default_extradata) +
+                                                  FF_INPUT_BUFFER_PADDING_SIZE);
+                if (!st->codec->extradata)
+                    return AVERROR(ENOMEM);
+
+                st->codec->extradata_size = sizeof(opus_default_extradata);
+                memcpy(st->codec->extradata, opus_default_extradata, sizeof(opus_default_extradata));
+
+                channel_config_code = get8(pp, desc_end);
+                if (channel_config_code < 0)
+                    return AVERROR_INVALIDDATA;
+                if (channel_config_code <= 0x8) {
+                    st->codec->extradata[9]  = channels = channel_config_code ? channel_config_code : 2;
+                    st->codec->extradata[18] = channels > 2;
+                    st->codec->extradata[19] = channel_config_code;
+                    if (channel_config_code == 0) { /* Dual Mono */
+                        st->codec->extradata[18] = 255; /* Mapping */
+                        st->codec->extradata[19] = 2;   /* Stream Count */
+                    }
+                    st->codec->extradata[20] = opus_coupled_stream_cnt[channel_config_code];
+                    memcpy(&st->codec->extradata[21], opus_channel_map[channels - 1], channels);
+                } else {
+                    avpriv_request_sample(fc, "Opus in MPEG-TS - channel_config_code > 0x8");
+                }
+                st->need_parsing = AVSTREAM_PARSE_FULL;
+            }
+        }
+        break;
     default:
         break;
     }
@@ -1740,15 +1802,17 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     if (parse_section_header(h, &p, p_end) < 0)
         return;
 
-    av_dlog(ts->stream, "sid=0x%x sec_num=%d/%d\n",
-            h->id, h->sec_num, h->last_sec_num);
+    av_dlog(ts->stream, "sid=0x%x sec_num=%d/%d version=%d\n",
+            h->id, h->sec_num, h->last_sec_num, h->version);
 
     if (h->tid != PMT_TID)
         return;
-    if (ts->skip_changes)
+    if (!ts->scan_all_pmts && ts->skip_changes)
         return;
 
-    clear_program(ts, h->id);
+    if (!ts->skip_clear)
+        clear_program(ts, h->id);
+
     pcr_pid = get16(&p, p_end);
     if (pcr_pid < 0)
         return;
@@ -1925,8 +1989,10 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
         } else {
             MpegTSFilter *fil = ts->pids[pmt_pid];
             program = av_new_program(ts->stream, sid);
-            program->program_num = sid;
-            program->pmt_pid = pmt_pid;
+            if (program) {
+                program->program_num = sid;
+                program->pmt_pid = pmt_pid;
+            }
             if (fil)
                 if (   fil->type != MPEGTS_SECTION
                     || fil->pid != pmt_pid
@@ -2134,14 +2200,19 @@ static int handle_packet(MpegTSContext *ts, const uint8_t *packet)
 
         // stop find_stream_info from waiting for more streams
         // when all programs have received a PMT
-        if (ts->stream->ctx_flags & AVFMTCTX_NOHEADER) {
+        if (ts->stream->ctx_flags & AVFMTCTX_NOHEADER && ts->scan_all_pmts <= 0) {
             int i;
             for (i = 0; i < ts->nb_prg; i++) {
                 if (!ts->prg[i].pmt_found)
                     break;
             }
             if (i == ts->nb_prg && ts->nb_prg > 0) {
-                if (ts->stream->nb_streams > 1 || pos > 100000) {
+                int types = 0;
+                for (i = 0; i < ts->stream->nb_streams; i++) {
+                    AVStream *st = ts->stream->streams[i];
+                    types |= 1<<st->codec->codec_type;
+                }
+                if ((types & (1<<AVMEDIA_TYPE_AUDIO) && types & (1<<AVMEDIA_TYPE_VIDEO)) || pos > 100000) {
                     av_log(ts->stream, AV_LOG_DEBUG, "All programs have pmt, headers found\n");
                     ts->stream->ctx_flags &= ~AVFMTCTX_NOHEADER;
                 }

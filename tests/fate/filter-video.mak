@@ -156,6 +156,13 @@ fate-filter-hq3x: CMD = framecrc -i $(TARGET_SAMPLES)/filter/pixelart%d.png -vf 
 fate-filter-hq4x: CMD = framecrc -i $(TARGET_SAMPLES)/filter/pixelart%d.png -vf hqx=4 -pix_fmt bgra
 fate-filter-hqx: $(FATE_FILTER_HQX-yes)
 
+FATE_FILTER_XBR-$(call ALLYES, IMAGE2_DEMUXER PNG_DECODER XBR_FILTER) = fate-filter-2xbr fate-filter-3xbr fate-filter-4xbr
+FATE_FILTER-yes += $(FATE_FILTER_XBR-yes)
+fate-filter-2xbr: CMD = framecrc -i $(TARGET_SAMPLES)/filter/pixelart%d.png -vf xbr=2 -pix_fmt bgra
+fate-filter-3xbr: CMD = framecrc -i $(TARGET_SAMPLES)/filter/pixelart%d.png -vf xbr=3 -pix_fmt bgra
+fate-filter-4xbr: CMD = framecrc -i $(TARGET_SAMPLES)/filter/pixelart%d.png -vf xbr=4 -pix_fmt bgra
+fate-filter-xbr: $(FATE_FILTER_XBR-yes)
+
 FATE_FILTER-$(call ALLYES, UTVIDEO_DECODER AVI_DEMUXER PERMS_FILTER CURVES_FILTER) += fate-filter-curves
 fate-filter-curves: CMD = framecrc -i $(TARGET_SAMPLES)/utvideo/utvideo_rgb_median.avi -vf perms=random,curves=vintage
 
@@ -228,6 +235,9 @@ fate-filter-pad: CMD = video_filter "pad=iw*1.5:ih*1.5:iw*0.3:ih*0.2"
 
 FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp
 fate-filter-pp: CMD = video_filter "pp=be/hb/vb/tn/l5/al"
+
+FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp1
+fate-filter-pp1: CMD = video_filter "pp=fq|4/be/hb/vb/tn/l5/al"
 
 FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp2
 fate-filter-pp2: CMD = video_filter "pp=be/fq|16/h1/v1/lb"

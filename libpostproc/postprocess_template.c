@@ -108,7 +108,7 @@
 /**
  * Check if the middle 8x8 Block in the given 8x16 block is flat
  */
-static inline int RENAME(vertClassify)(uint8_t src[], int stride, PPContext *c){
+static inline int RENAME(vertClassify)(const uint8_t src[], int stride, PPContext *c){
     int numEq= 0, dcOk;
     src+= stride*4; // src points to begin of the 8x8 Block
     __asm__ volatile(
@@ -1571,10 +1571,10 @@ DEINT_CUBIC((%%REGd, %1), (%0, %1, 8) , (%%REGd, %1, 4), (%%REGc)    , (%%REGc, 
     int x;
     src+= stride*3;
     for(x=0; x<8; x++){
-        src[stride*3] = CLIP((-src[0]        + 9*src[stride*2] + 9*src[stride*4] - src[stride*6])>>4);
-        src[stride*5] = CLIP((-src[stride*2] + 9*src[stride*4] + 9*src[stride*6] - src[stride*8])>>4);
-        src[stride*7] = CLIP((-src[stride*4] + 9*src[stride*6] + 9*src[stride*8] - src[stride*10])>>4);
-        src[stride*9] = CLIP((-src[stride*6] + 9*src[stride*8] + 9*src[stride*10] - src[stride*12])>>4);
+        src[stride*3] = av_clip_uint8((-src[0]        + 9*src[stride*2] + 9*src[stride*4] - src[stride*6])>>4);
+        src[stride*5] = av_clip_uint8((-src[stride*2] + 9*src[stride*4] + 9*src[stride*6] - src[stride*8])>>4);
+        src[stride*7] = av_clip_uint8((-src[stride*4] + 9*src[stride*6] + 9*src[stride*8] - src[stride*10])>>4);
+        src[stride*9] = av_clip_uint8((-src[stride*6] + 9*src[stride*8] + 9*src[stride*10] - src[stride*12])>>4);
         src++;
     }
 #endif //TEMPLATE_PP_SSE2 || TEMPLATE_PP_MMXEXT || TEMPLATE_PP_3DNOW
@@ -1645,13 +1645,13 @@ DEINT_FF((%%REGd, %1), (%%REGd, %1, 2), (%0, %1, 8) , (%%REGd, %1, 4))
         int t1= tmp[x];
         int t2= src[stride*1];
 
-        src[stride*1]= CLIP((-t1 + 4*src[stride*0] + 2*t2 + 4*src[stride*2] - src[stride*3] + 4)>>3);
+        src[stride*1]= av_clip_uint8((-t1 + 4*src[stride*0] + 2*t2 + 4*src[stride*2] - src[stride*3] + 4)>>3);
         t1= src[stride*4];
-        src[stride*3]= CLIP((-t2 + 4*src[stride*2] + 2*t1 + 4*src[stride*4] - src[stride*5] + 4)>>3);
+        src[stride*3]= av_clip_uint8((-t2 + 4*src[stride*2] + 2*t1 + 4*src[stride*4] - src[stride*5] + 4)>>3);
         t2= src[stride*6];
-        src[stride*5]= CLIP((-t1 + 4*src[stride*4] + 2*t2 + 4*src[stride*6] - src[stride*7] + 4)>>3);
+        src[stride*5]= av_clip_uint8((-t1 + 4*src[stride*4] + 2*t2 + 4*src[stride*6] - src[stride*7] + 4)>>3);
         t1= src[stride*8];
-        src[stride*7]= CLIP((-t2 + 4*src[stride*6] + 2*t1 + 4*src[stride*8] - src[stride*9] + 4)>>3);
+        src[stride*7]= av_clip_uint8((-t2 + 4*src[stride*6] + 2*t1 + 4*src[stride*8] - src[stride*9] + 4)>>3);
         tmp[x]= t1;
 
         src++;
@@ -1736,21 +1736,21 @@ DEINT_L5(%%mm1, %%mm0, (%%REGd, %1, 2), (%0, %1, 8)    , (%%REGd, %1, 4))
         int t2= tmp2[x];
         int t3= src[0];
 
-        src[stride*0]= CLIP((-(t1 + src[stride*2]) + 2*(t2 + src[stride*1]) + 6*t3 + 4)>>3);
+        src[stride*0]= av_clip_uint8((-(t1 + src[stride*2]) + 2*(t2 + src[stride*1]) + 6*t3 + 4)>>3);
         t1= src[stride*1];
-        src[stride*1]= CLIP((-(t2 + src[stride*3]) + 2*(t3 + src[stride*2]) + 6*t1 + 4)>>3);
+        src[stride*1]= av_clip_uint8((-(t2 + src[stride*3]) + 2*(t3 + src[stride*2]) + 6*t1 + 4)>>3);
         t2= src[stride*2];
-        src[stride*2]= CLIP((-(t3 + src[stride*4]) + 2*(t1 + src[stride*3]) + 6*t2 + 4)>>3);
+        src[stride*2]= av_clip_uint8((-(t3 + src[stride*4]) + 2*(t1 + src[stride*3]) + 6*t2 + 4)>>3);
         t3= src[stride*3];
-        src[stride*3]= CLIP((-(t1 + src[stride*5]) + 2*(t2 + src[stride*4]) + 6*t3 + 4)>>3);
+        src[stride*3]= av_clip_uint8((-(t1 + src[stride*5]) + 2*(t2 + src[stride*4]) + 6*t3 + 4)>>3);
         t1= src[stride*4];
-        src[stride*4]= CLIP((-(t2 + src[stride*6]) + 2*(t3 + src[stride*5]) + 6*t1 + 4)>>3);
+        src[stride*4]= av_clip_uint8((-(t2 + src[stride*6]) + 2*(t3 + src[stride*5]) + 6*t1 + 4)>>3);
         t2= src[stride*5];
-        src[stride*5]= CLIP((-(t3 + src[stride*7]) + 2*(t1 + src[stride*6]) + 6*t2 + 4)>>3);
+        src[stride*5]= av_clip_uint8((-(t3 + src[stride*7]) + 2*(t1 + src[stride*6]) + 6*t2 + 4)>>3);
         t3= src[stride*6];
-        src[stride*6]= CLIP((-(t1 + src[stride*8]) + 2*(t2 + src[stride*7]) + 6*t3 + 4)>>3);
+        src[stride*6]= av_clip_uint8((-(t1 + src[stride*8]) + 2*(t2 + src[stride*7]) + 6*t3 + 4)>>3);
         t1= src[stride*7];
-        src[stride*7]= CLIP((-(t2 + src[stride*9]) + 2*(t3 + src[stride*8]) + 6*t1 + 4)>>3);
+        src[stride*7]= av_clip_uint8((-(t2 + src[stride*9]) + 2*(t3 + src[stride*8]) + 6*t1 + 4)>>3);
 
         tmp[x]= t3;
         tmp2[x]= t1;
@@ -1989,7 +1989,7 @@ MEDIAN((%%REGd, %1), (%%REGd, %1, 2), (%0, %1, 8))
 /**
  * Transpose and shift the given 8x8 Block into dst1 and dst2.
  */
-static inline void RENAME(transpose1)(uint8_t *dst1, uint8_t *dst2, uint8_t *src, int srcStride)
+static inline void RENAME(transpose1)(uint8_t *dst1, uint8_t *dst2, const uint8_t *src, int srcStride)
 {
     __asm__(
         "lea (%0, %1), %%"REG_a"                \n\t"
@@ -2074,7 +2074,7 @@ static inline void RENAME(transpose1)(uint8_t *dst1, uint8_t *dst2, uint8_t *src
 /**
  * Transpose the given 8x8 block.
  */
-static inline void RENAME(transpose2)(uint8_t *dst, int dstStride, uint8_t *src)
+static inline void RENAME(transpose2)(uint8_t *dst, int dstStride, const uint8_t *src)
 {
     __asm__(
         "lea (%0, %1), %%"REG_a"                \n\t"
@@ -2155,7 +2155,7 @@ static inline void RENAME(transpose2)(uint8_t *dst, int dstStride, uint8_t *src)
 
 #if !TEMPLATE_PP_ALTIVEC
 static inline void RENAME(tempNoiseReducer)(uint8_t *src, int stride,
-                                    uint8_t *tempBlurred, uint32_t *tempBlurredPast, int *maxNoise)
+                                    uint8_t *tempBlurred, uint32_t *tempBlurredPast, const int *maxNoise)
 {
     // to save a register (FIXME do this outside of the loops)
     tempBlurredPast[127]= maxNoise[0];
@@ -2544,7 +2544,7 @@ Switch between
 /**
  * accurate deblock filter
  */
-static av_always_inline void RENAME(do_a_deblock)(uint8_t *src, int step, int stride, PPContext *c){
+static av_always_inline void RENAME(do_a_deblock)(uint8_t *src, int step, int stride, const PPContext *c, int mode){
     int64_t dc_mask, eq_mask, both_masks;
     int64_t sums[10*8*2];
     src+= step*3; // src points to begin of the 8x8 Block
@@ -3272,6 +3272,12 @@ static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[
     uint8_t * const tempDst= (dstStride > 0 ? c.tempDst : c.tempDst - 23*dstStride) + 32;
     //const int mbWidth= isColor ? (width+7)>>3 : (width+15)>>4;
 
+    if (mode & VISUALIZE){
+        if(!(mode & (V_A_DEBLOCK | H_A_DEBLOCK)) || TEMPLATE_PP_MMX) {
+            av_log(c2, AV_LOG_WARNING, "Visualization is currently only supported with the accurate deblock filter without SIMD\n");
+        }
+    }
+
 #if TEMPLATE_PP_MMX
     for(i=0; i<57; i++){
         int offset= ((i*c.ppMode.baseDcDiff)>>8) + 1;
@@ -3566,7 +3572,7 @@ static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[
                     else if(t==2)
                         RENAME(doVertDefFilter)(dstBlock, stride, &c);
                 }else if(mode & V_A_DEBLOCK){
-                    RENAME(do_a_deblock)(dstBlock, stride, 1, &c);
+                    RENAME(do_a_deblock)(dstBlock, stride, 1, &c, mode);
                 }
             }
 
@@ -3587,7 +3593,7 @@ static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[
                     else if(t==2)
                         RENAME(doVertDefFilter)(tempBlock1, 16, &c);
                 }else if(mode & H_A_DEBLOCK){
-                        RENAME(do_a_deblock)(tempBlock1, 16, 1, &c);
+                        RENAME(do_a_deblock)(tempBlock1, 16, 1, &c, mode);
                 }
 
                 RENAME(transpose2)(dstBlock-4, dstStride, tempBlock1 + 4*16);
@@ -3619,7 +3625,7 @@ static void RENAME(postProcess)(const uint8_t src[], int srcStride, uint8_t dst[
                         RENAME(doHorizDefFilter)(dstBlock-4, stride, &c);
 #endif
                 }else if(mode & H_A_DEBLOCK){
-                    RENAME(do_a_deblock)(dstBlock-8, 1, stride, &c);
+                    RENAME(do_a_deblock)(dstBlock-8, 1, stride, &c, mode);
                 }
 #endif //TEMPLATE_PP_MMX
                 if(mode & DERING){

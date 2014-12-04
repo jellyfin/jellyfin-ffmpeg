@@ -108,7 +108,7 @@ static void apply_mdct(AC3EncodeContext *s)
             const SampleType *input_samples = &s->planar_samples[ch][blk * AC3_BLOCK_SIZE];
 
 #if CONFIG_AC3ENC_FLOAT
-            s->fdsp.vector_fmul(s->windowed_samples, input_samples,
+            s->fdsp->vector_fmul(s->windowed_samples, input_samples,
                                 s->mdct_window, AC3_WINDOW_SIZE);
 #else
             s->ac3dsp.apply_window_int16(s->windowed_samples, input_samples,
@@ -443,7 +443,7 @@ int AC3_NAME(encode_frame)(AVCodecContext *avctx, AVPacket *avpkt,
     ff_ac3_output_frame(s, avpkt->data);
 
     if (frame->pts != AV_NOPTS_VALUE)
-        avpkt->pts = frame->pts - ff_samples_to_time_base(avctx, avctx->delay);
+        avpkt->pts = frame->pts - ff_samples_to_time_base(avctx, avctx->initial_padding);
 
     *got_packet_ptr = 1;
     return 0;

@@ -309,6 +309,7 @@ libavdevice
 
 
   avfoundation.m                        Thilo Borgmann
+  decklink*                             Deti Fliegl
   dshow.c                               Roger Pack (CC rogerdpack@gmail.com)
   fbdev_enc.c                           Lukasz Marek
   gdigrab.c                             Roger Pack (CC rogerdpack@gmail.com)
@@ -385,6 +386,7 @@ Muxers/Demuxers:
   aiffdec.c                             Baptiste Coudurier, Matthieu Bouron
   aiffenc.c                             Baptiste Coudurier, Matthieu Bouron
   ape.c                                 Kostya Shishkov
+  apngdec.c                             Benoit Fouet
   ass*                                  Aurelien Jacobs
   astdec.c                              Paul B Mahol
   astenc.c                              James Almer
@@ -462,7 +464,7 @@ Muxers/Demuxers:
   rtmp*                                 Kostya Shishkov
   rtp.c, rtpenc.c                       Martin Storsjo
   rtpdec_h261.*, rtpenc_h261.*          Thomas Volkert
-  rtpdec_hevc.*                         Thomas Volkert
+  rtpdec_hevc.*, rtpenc_hevc.*          Thomas Volkert
   rtpdec_asf.*                          Ronald S. Bultje
   rtpenc_mpv.*, rtpenc_aac.*            Martin Storsjo
   rtsp.c                                Luca Barbato
@@ -496,6 +498,7 @@ Protocols:
   libssh.c                              Lukasz Marek
   mms*.c                                Ronald S. Bultje
   udp.c                                 Luca Abeni
+  icecast.c                             Marvin Scholz
 
 
 libswresample

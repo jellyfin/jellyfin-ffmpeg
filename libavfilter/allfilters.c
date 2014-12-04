@@ -45,9 +45,6 @@ void avfilter_register_all(void)
         return;
     initialized = 1;
 
-#if FF_API_ACONVERT_FILTER
-    REGISTER_FILTER(ACONVERT,       aconvert,       af);
-#endif
     REGISTER_FILTER(ADELAY,         adelay,         af);
     REGISTER_FILTER(AECHO,          aecho,          af);
     REGISTER_FILTER(AEVAL,          aeval,          af);
@@ -216,6 +213,7 @@ void avfilter_register_all(void)
     REGISTER_FILTER(VIDSTABTRANSFORM, vidstabtransform, vf);
     REGISTER_FILTER(VIGNETTE,       vignette,       vf);
     REGISTER_FILTER(W3FDIF,         w3fdif,         vf);
+    REGISTER_FILTER(XBR,            xbr,            vf);
     REGISTER_FILTER(YADIF,          yadif,          vf);
     REGISTER_FILTER(ZMQ,            zmq,            vf);
     REGISTER_FILTER(ZOOMPAN,        zoompan,        vf);

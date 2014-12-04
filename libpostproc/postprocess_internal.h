@@ -69,14 +69,13 @@
 #define TEMP_NOISE_FILTER               0x100000
 #define FORCE_QUANT                     0x200000
 #define BITEXACT                        0x1000000
+#define VISUALIZE                       0x2000000
 
 //use if you want a faster postprocessing code
 //cannot differentiate between chroma & luma filters (both on or both off)
 //obviously the -pp option on the command line has no effect except turning the here selected
 //filters on
 //#define COMPILE_TIME_MODE 0x77
-
-#define CLIP av_clip_uint8
 
 /**
  * Postprocessing filter.

@@ -756,6 +756,10 @@ static int avi_read_header(AVFormatContext *s)
                         pal_size = FFMIN(pal_size, st->codec->extradata_size);
                         pal_src  = st->codec->extradata +
                                    st->codec->extradata_size - pal_size;
+                        /* Exclude the "BottomUp" field from the palette */
+                        if (pal_src - st->codec->extradata >= 9 &&
+                            !memcmp(st->codec->extradata + st->codec->extradata_size - 9, "BottomUp", 9))
+                            pal_src -= 9;
                         for (i = 0; i < pal_size / 4; i++)
                             ast->pal[i] = 0xFFU<<24 | AV_RL32(pal_src+4*i);
                         ast->has_pal = 1;
@@ -992,7 +996,7 @@ fail:
     return 0;
 }
 
-static int read_gab2_sub(AVStream *st, AVPacket *pkt)
+static int read_gab2_sub(AVFormatContext *s, AVStream *st, AVPacket *pkt)
 {
     if (pkt->size >= 7 &&
         pkt->size < INT_MAX - AVPROBE_PADDING_SIZE &&
@@ -1035,6 +1039,10 @@ static int read_gab2_sub(AVStream *st, AVPacket *pkt)
             goto error;
 
         ast->sub_ctx->pb = pb;
+
+        if (ff_copy_whitelists(ast->sub_ctx, s) < 0)
+            goto error;
+
         if (!avformat_open_input(&ast->sub_ctx, "", sub_demuxer, NULL)) {
             ff_read_packet(ast->sub_ctx, &ast->sub_pkt);
             *st->codec = *ast->sub_ctx->streams[0]->codec;
@@ -1047,6 +1055,7 @@ static int read_gab2_sub(AVStream *st, AVPacket *pkt)
         return 1;
 
 error:
+        av_freep(&ast->sub_ctx);
         av_freep(&pb);
     }
     return 0;
@@ -1086,7 +1095,7 @@ static AVStream *get_subtitle_pkt(AVFormatContext *s, AVStream *next_st,
     return sub_st;
 }
 
-static int get_stream_idx(unsigned *d)
+static int get_stream_idx(const unsigned *d)
 {
     if (d[0] >= '0' && d[0] <= '9' &&
         d[1] >= '0' && d[1] <= '9') {
@@ -1389,7 +1398,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
             if (size < 0)
                 av_free_packet(pkt);
         } else if (st->codec->codec_type == AVMEDIA_TYPE_SUBTITLE &&
-                   !st->codec->codec_tag && read_gab2_sub(st, pkt)) {
+                   !st->codec->codec_tag && read_gab2_sub(s, st, pkt)) {
             ast->frame_offset++;
             avi->stream_index = -1;
             ast->remaining    = 0;
