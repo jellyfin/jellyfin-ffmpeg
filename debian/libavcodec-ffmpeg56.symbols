@@ -93,9 +93,15 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
  av_resample_init@LIBAVCODEC_FFMPEG_56 7:2.4
  av_shrink_packet@LIBAVCODEC_FFMPEG_56 7:2.4
  (optional)av_vdpau_alloc_context@LIBAVCODEC_FFMPEG_56 7:2.4
+ av_vdpau_bind_context@LIBAVCODEC_FFMPEG_56 7:2.5
  (optional)av_vdpau_get_profile@LIBAVCODEC_FFMPEG_56 7:2.4
  (optional)av_vdpau_hwaccel_get_render2@LIBAVCODEC_FFMPEG_56 7:2.4
  (optional)av_vdpau_hwaccel_set_render2@LIBAVCODEC_FFMPEG_56 7:2.4
+ av_vorbis_parse_frame@LIBAVCODEC_FFMPEG_56 7:2.5
+ av_vorbis_parse_frame_flags@LIBAVCODEC_FFMPEG_56 7:2.5
+ av_vorbis_parse_free@LIBAVCODEC_FFMPEG_56 7:2.5
+ av_vorbis_parse_init@LIBAVCODEC_FFMPEG_56 7:2.5
+ av_vorbis_parse_reset@LIBAVCODEC_FFMPEG_56 7:2.5
  av_xiphlacing@LIBAVCODEC_FFMPEG_56 7:2.4
  avcodec_align_dimensions2@LIBAVCODEC_FFMPEG_56 7:2.4
  avcodec_align_dimensions@LIBAVCODEC_FFMPEG_56 7:2.4

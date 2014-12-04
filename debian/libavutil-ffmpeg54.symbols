@@ -50,7 +50,16 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_buffer_ref@LIBAVUTIL_FFMPEG_54 7:2.4
  av_buffer_unref@LIBAVUTIL_FFMPEG_54 7:2.4
  av_calloc@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_cast5_alloc@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_cast5_crypt@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_cast5_init@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_cast5_size@LIBAVUTIL_FFMPEG_54 7:2.5
  av_channel_layout_extract_channel@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_chroma_location_name@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_color_primaries_name@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_color_range_name@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_color_space_name@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_color_transfer_name@LIBAVUTIL_FFMPEG_54 7:2.5
  av_compare_mod@LIBAVUTIL_FFMPEG_54 7:2.4
  av_compare_ts@LIBAVUTIL_FFMPEG_54 7:2.4
  av_cpu_count@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -69,6 +78,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_dict_count@LIBAVUTIL_FFMPEG_54 7:2.4
  av_dict_free@LIBAVUTIL_FFMPEG_54 7:2.4
  av_dict_get@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_dict_get_string@LIBAVUTIL_FFMPEG_54 7:2.5
  av_dict_parse_string@LIBAVUTIL_FFMPEG_54 7:2.4
  av_dict_set@LIBAVUTIL_FFMPEG_54 7:2.4
  av_dict_set_int@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -234,6 +244,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_lzo1x_decode@LIBAVUTIL_FFMPEG_54 7:2.4
  av_malloc@LIBAVUTIL_FFMPEG_54 7:2.4
  av_mallocz@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_match_list@LIBAVUTIL_FFMPEG_54 7:2.5
  av_match_name@LIBAVUTIL_FFMPEG_54 7:2.4
  av_max_alloc@LIBAVUTIL_FFMPEG_54 7:2.4
  av_md5_alloc@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -277,10 +288,13 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_opt_get_q@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_get_sample_fmt@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_get_video_rate@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_opt_is_set_to_default@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_opt_is_set_to_default_by_name@LIBAVUTIL_FFMPEG_54 7:2.5
  av_opt_next@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_ptr@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_query_ranges@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_query_ranges_default@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_opt_serialize@LIBAVUTIL_FFMPEG_54 7:2.5
  av_opt_set@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_set_bin@LIBAVUTIL_FFMPEG_54 7:2.4
  av_opt_set_channel_layout@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -406,6 +420,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  avpriv_alloc_fixed_dsp@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_cga_font@LIBAVUTIL_FFMPEG_54 7:2.4
  (optional)avpriv_emms_yasm@LIBAVUTIL_FFMPEG_54 7:2.4
+ avpriv_float_dsp_alloc@LIBAVUTIL_FFMPEG_54 7:2.5
  avpriv_float_dsp_init@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_frame_get_metadatap@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_init_lls@LIBAVUTIL_FFMPEG_54 7:2.4

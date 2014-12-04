@@ -2,6 +2,7 @@ ffmpeg (7:2.5-1) UNRELEASED; urgency=medium
 
   * Import new major upstream release 2.4.
   * Update debian/changelog.
+  * Add new symbols to the symbols files.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Dec 2014 00:15:48 +0100
 

@@ -61,8 +61,10 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  av_seek_frame@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_stream_get_end_pts@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_stream_get_r_frame_rate@LIBAVFORMAT_FFMPEG_56 7:2.4
+ av_stream_get_recommended_encoder_configuration@LIBAVFORMAT_FFMPEG_56 7:2.5
  av_stream_get_side_data@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_stream_set_r_frame_rate@LIBAVFORMAT_FFMPEG_56 7:2.4
+ av_stream_set_recommended_encoder_configuration@LIBAVFORMAT_FFMPEG_56 7:2.5
  av_url_split@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_write_frame@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_write_trailer@LIBAVFORMAT_FFMPEG_56 7:2.4
