@@ -97,7 +97,7 @@ Copyright:
   2005, DivX, Inc
   2005, 2007-2008, Ian Caulfield
   2005, Jeff Muizelaar
-  2005-2007, 2014, Luca Barbato <lu_zero@gentoo.org>
+  2005-2007, 2013-2014, Luca Barbato <lu_zero@gentoo.org>
   2005-2012, Mans Rullgard <mans@mansr.com>
   2005, Matthieu CASTET
   2005-2006, Oded Shimon <ods15@ods15.dyndns.org>
@@ -137,7 +137,7 @@ Copyright:
   2007, Alexis Ballier
   2007, 2010, 2013, Anssi Hannula <anssi.hannula@gmail.com>
   2007-2009, Bartlomiej Wolowiec <bartek.wolowiec@gmail.com>
-  2007, Benoit Fouet <benoit.fouet@free.fr>
+  2007, 2014, Benoit Fouet <benoit.fouet@free.fr>
   2007, 2009, Björn Axelsson
   2007, Bobby Bingham
   2007-2009, Bartlomiej Wolowiec <bartek.wolowiec@gmail.com>
@@ -189,7 +189,7 @@ Copyright:
   2009, Jimmy Christensen
   2009, Joshua Warner
   2009, Kenan Gillet
-  2009-2013, Martin Storsjo
+  2009-2014, Martin Storsjo
   2009, Michael Tison
   2009, Naotoshi Nojiri
   2009, 2012, Nathan Caldwell <saintdev@gmail.com>
@@ -239,9 +239,10 @@ Copyright:
   2011-2013, Anton Khirnov <anton@khirnov.net>
   2011-2014, Clément Bœsch <u@pkh.me>
   2011-2014, Derek Buitenhuis
+  2011-2012, Hyllian/Jararaca <sergiogdb@gmail.com>
   2011, Jordi Ortiz
   2011, Juan Carlos Rodriguez <ing.juancarlosrodriguez@hotmail.com>
-  2011, Kieran Kunhya <kieran@kunhya.com>
+  2011, 2014, Kieran Kunhya <kieran@kunhya.com>
   2011, KO Myung-Hun <komh@chollian.net>
   2011, Mark Himsley
   2011-2012, Mashiat Sarker Shakkhar
@@ -293,6 +294,7 @@ Copyright:
   2013, Calvin Walton <calvin.walton@kepstin.ca>
   2013, Christian Schmidt
   2013, Darryl Wallace <wallacdj@gmail.com>
+  2013-2014, Deti Fliegl
   2013, Diego Biurrun <diego@biurrun.de>
   2013, Dirk Farin <dirk.farin@gmail.com>
   2013, Jeff Moguillansky
@@ -312,8 +314,10 @@ Copyright:
   2013-2014, Vittorio Giovara <vittorio.giovara@gmail.com>
   2013, Xiaolei Yu <dreifachstein@gmail.com>
   2014, Aman Gupta <ffmpeg@tmm1.net>
+  2014, Arwa Arif <arwaarif1994@gmail.com>
   2014, Daniel Oberhoff
   2014, Dave Rice @dericed
+  2014, Eejya Singh
   2014, James Yu <james.yu@linaro.org>
   2014, Marvin Scholz
   2014, Muhammad Faiz <mfcc64@gmail.com>
@@ -322,6 +326,7 @@ Copyright:
   2014, Rong Yan
   2014, Samsung Electronics
   2014, StarBrilliant <m13253@hotmail.com>
+  2014, Supraja Meedinti
   2014, Thomas Volkert <thomas@homer-conferencing.com>
   2014, Tim Walker <tdskywalker@gmail.com>
   2014, Vignesh Venkatasubramanian
@@ -816,6 +821,7 @@ Files:
   libavformat/oggparsespeex.c
   libavformat/oggparsetheora.c
   libavformat/oggparsevorbis.c
+  tests/reference.pnm
 Copyright:
   2001, 2003, Fabrice Bellard
   2001, Lionel Ulmer <lionel.ulmer@free.fr> <bbrox@bbrox.org>
@@ -833,7 +839,7 @@ Copyright:
   2010, Nicolas George
   2011, FFmpegSource Project
   2011, Jonathan Baldwin
-  2011, Reinhard Tartler
+  2011, 2014, Reinhard Tartler
   2011-2014, Stefano Sabatini
   2011, Tomas Härdin
   2011-2014, Twitter, Inc
