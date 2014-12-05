@@ -79,7 +79,7 @@ Build-Depends:
 # --enable-libpulse
  libpulse-dev,
 # --enable-librtmp
- librtmp-dev,
+ librtmp-dev [!powerpcspe !sparc64],
 # --enable-libschroedinger
  libschroedinger-dev,
 # autodetected: protocol 'sctp'

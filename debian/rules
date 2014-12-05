@@ -101,7 +101,6 @@ CONFIG := --prefix=/usr \
 	--enable-libopenjpeg \
 	--enable-libopus \
 	--enable-libpulse \
-	--enable-librtmp \
 	--enable-libschroedinger \
 	--enable-libshine \
 	--enable-libspeex \
@@ -147,6 +146,11 @@ endif
 # OpenCV is not available on some architectures.
 ifeq (,$(filter $(DEB_HOST_ARCH),m68k sh4 sparc64 x32))
 	CONFIG += --enable-libopencv
+endif
+
+# librtmp-dev is uninstallable on some architectures.
+ifeq (,$(filter $(DEB_HOST_ARCH),powerpcspe sparc64))
+	CONFIG += --enable-librtmp
 endif
 
 # X265 is not (yet) available on some architectures.
