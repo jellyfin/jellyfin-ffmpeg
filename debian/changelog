@@ -1,4 +1,4 @@
-ffmpeg (7:2.5-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.5-1) unstable; urgency=medium
 
   * Import new major upstream release 2.4.
   * Update debian/changelog.
@@ -8,7 +8,7 @@ ffmpeg (7:2.5-1) UNRELEASED; urgency=medium
   * Disable opencv on powerpcspe, as it is currently uninstallable.
   * Enable x265 on mips, mipsel and powerpc, as it's now available there.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Dec 2014 00:15:48 +0100
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 06 Dec 2014 14:07:28 +0100
 
 ffmpeg (7:2.4.4-1) unstable; urgency=medium
 
