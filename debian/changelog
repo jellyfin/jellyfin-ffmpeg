@@ -5,6 +5,7 @@ ffmpeg (7:2.5-1) UNRELEASED; urgency=medium
   * Add new symbols to the symbols files.
   * Disable rtmp on powerpcspe and sparc64 as librtmp-dev is currently
     uninstallable there.
+  * Disable opencv on powerpcspe, as it is currently uninstallable.
   * Enable x265 on mips, mipsel and powerpc, as it's now available there.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Dec 2014 00:15:48 +0100

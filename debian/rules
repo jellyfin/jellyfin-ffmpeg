@@ -144,7 +144,7 @@ ifneq ($(DEB_HOST_ARCH),sparc64)
 endif
 
 # OpenCV is not available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),m68k sh4 sparc64 x32))
+ifeq (,$(filter $(DEB_HOST_ARCH),m68k powerpcspe sh4 sparc64 x32))
 	CONFIG += --enable-libopencv
 endif
 

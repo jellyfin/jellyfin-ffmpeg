@@ -68,7 +68,7 @@ Build-Depends:
 # --enable-openal
  libopenal-dev [!sparc64],
 # --enable-libopencv
- libopencv-dev [!m68k !sh4 !sparc64 !x32],
+ libopencv-dev [!m68k !powerpcspe !sh4 !sparc64 !x32],
 # --enable-libopenjpeg
  libopenjpeg-dev,
 # --enable-libopus
