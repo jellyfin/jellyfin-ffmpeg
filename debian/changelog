@@ -1,6 +1,6 @@
 ffmpeg (7:2.5-1) unstable; urgency=medium
 
-  * Import new major upstream release 2.4.
+  * Import new major upstream release 2.5.
   * Update debian/changelog.
   * Add new symbols to the symbols files.
   * Disable rtmp on powerpcspe and sparc64 as librtmp-dev is currently
