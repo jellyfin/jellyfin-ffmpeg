@@ -2,6 +2,8 @@ ffmpeg (7:2.5.1-1) UNRELEASED; urgency=medium
 
   * Import new upstream bugfix release 2.5.1.
   * Enable assembler optimizations on ppc64el. They should work now.
+  * Enable rtmp on powerpcspe, x265 on hppa and zvbi on hurd and kfreebsd,
+    as they are now available there.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 16 Dec 2014 00:20:20 +0100
 

@@ -79,7 +79,7 @@ Build-Depends:
 # --enable-libpulse
  libpulse-dev,
 # --enable-librtmp
- librtmp-dev [!powerpcspe !sparc64],
+ librtmp-dev [!sparc64],
 # --enable-libschroedinger
  libschroedinger-dev,
 # autodetected: protocol 'sctp'
@@ -116,7 +116,7 @@ Build-Depends:
 # --enable-libx264
  libx264-dev [!x32],
 # --enable-libx265
- libx265-dev [!sparc !hppa !m68k !powerpcspe !sh4 !sparc64 !x32],
+ libx265-dev [!sparc !m68k !powerpcspe !sh4 !sparc64 !x32],
 # --enable-x11grab
  libxext-dev,
 # --enable-libxvid
@@ -126,7 +126,7 @@ Build-Depends:
 # --enable-libzmq
  libzmq3-dev [!hurd-any],
 # --enable-libzvbi
- libzvbi-dev [!hurd-any !kfreebsd-any !m68k],
+ libzvbi-dev [!m68k],
 # The opencl API is considered experimental.
 # # --enable-opencl
 # ocl-icd-opencl-dev [!hurd-any] | opencl-dev [!hurd-any],
