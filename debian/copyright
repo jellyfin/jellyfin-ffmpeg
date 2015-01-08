@@ -963,7 +963,7 @@ License: IJG
  assumed by the product vendor.
 
 Files: debian/*
-Copyright: 2014, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Copyright: 2014-2015, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 License: LGPL-2.1+
  This packaging is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
