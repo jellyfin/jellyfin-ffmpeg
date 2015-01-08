@@ -164,8 +164,8 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 	CONFIG += --disable-altivec
 endif
 
-# Disable assembly optimizations on armel and x32, because they don't work (yet).
-ifneq (,$(filter $(DEB_HOST_ARCH),armel x32))
+# Disable assembly optimizations on x32, because they don't work (yet).
+ifneq (,$(filter $(DEB_HOST_ARCH),x32))
 	CONFIG += --disable-asm
 endif
 
