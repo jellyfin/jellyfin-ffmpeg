@@ -412,7 +412,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_tree_node_size@LIBAVUTIL_FFMPEG_54 7:2.4
  av_usleep@LIBAVUTIL_FFMPEG_54 7:2.4
  av_utf8_decode@LIBAVUTIL_FFMPEG_54 7:2.4
- av_util_ffversion@LIBAVUTIL_FFMPEG_54 7:2.5.2-1
+ av_util_ffversion@LIBAVUTIL_FFMPEG_54 7:2.5.2
  av_vbprintf@LIBAVUTIL_FFMPEG_54 7:2.4
  av_vlog@LIBAVUTIL_FFMPEG_54 7:2.4
  av_write_image_line@LIBAVUTIL_FFMPEG_54 7:2.4

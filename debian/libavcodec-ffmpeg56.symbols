@@ -11,7 +11,7 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
  av_bitstream_filter_filter@LIBAVCODEC_FFMPEG_56 7:2.4
  av_bitstream_filter_init@LIBAVCODEC_FFMPEG_56 7:2.4
  av_bitstream_filter_next@LIBAVCODEC_FFMPEG_56 7:2.4
- av_codec_ffversion@LIBAVCODEC_FFMPEG_56 7:2.5.2-1
+ av_codec_ffversion@LIBAVCODEC_FFMPEG_56 7:2.5.2
  av_codec_get_chroma_intra_matrix@LIBAVCODEC_FFMPEG_56 7:2.4
  av_codec_get_codec_descriptor@LIBAVCODEC_FFMPEG_56 7:2.4
  av_codec_get_lowres@LIBAVCODEC_FFMPEG_56 7:2.4
