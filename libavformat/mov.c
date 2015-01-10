@@ -210,7 +210,11 @@ static int mov_read_covr(MOVContext *c, AVIOContext *pb, int type, int len)
 static int mov_metadata_raw(MOVContext *c, AVIOContext *pb,
                             unsigned len, const char *key)
 {
-    char *value = av_malloc(len + 1);
+    char *value;
+    // Check for overflow.
+    if (len >= INT_MAX)
+        return AVERROR(EINVAL);
+    value = av_malloc(len + 1);
     if (!value)
         return AVERROR(ENOMEM);
     avio_read(pb, value, len);
@@ -352,7 +356,7 @@ static int mov_read_udta_string(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 
     if (!key)
         return 0;
-    if (atom.size < 0)
+    if (atom.size < 0 || str_size >= INT_MAX/2)
         return AVERROR_INVALIDDATA;
 
     str_size_alloc = str_size << 1; // worst-case requirement for output string in case of utf8 coded input
@@ -1150,7 +1154,7 @@ static int mov_read_wave(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         st->codec->codec_id == AV_CODEC_ID_QDMC ||
         st->codec->codec_id == AV_CODEC_ID_SPEEX) {
         // pass all frma atom to codec, needed at least for QDMC and QDM2
-        av_free(st->codec->extradata);
+        av_freep(&st->codec->extradata);
         if (ff_get_extradata(st->codec, pb, atom.size) < 0)
             return AVERROR(ENOMEM);
     } else if (atom.size > 8) { /* to read frma, esds atoms */
@@ -1190,7 +1194,7 @@ static int mov_read_glbl(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         av_log(c, AV_LOG_WARNING, "ignoring multiple glbl\n");
         return 0;
     }
-    av_free(st->codec->extradata);
+    av_freep(&st->codec->extradata);
     if (ff_get_extradata(st->codec, pb, atom.size) < 0)
         return AVERROR(ENOMEM);
 
@@ -1215,7 +1219,7 @@ static int mov_read_dvc1(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return 0;
 
     avio_seek(pb, 6, SEEK_CUR);
-    av_free(st->codec->extradata);
+    av_freep(&st->codec->extradata);
     if ((ret = ff_get_extradata(st->codec, pb, atom.size - 7)) < 0)
         return ret;
 
@@ -1241,7 +1245,7 @@ static int mov_read_strf(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return AVERROR_INVALIDDATA;
 
     avio_skip(pb, 40);
-    av_free(st->codec->extradata);
+    av_freep(&st->codec->extradata);
     if (ff_get_extradata(st->codec, pb, atom.size - 40) < 0)
         return AVERROR(ENOMEM);
     return 0;
@@ -3428,7 +3432,7 @@ static int mov_read_default(MOVContext *c, AVIOContext *pb, MOVAtom atom)
                 }
             }
             total_size += 8;
-            if (a.size == 1) { /* 64 bit extended size */
+            if (a.size == 1 && total_size + 8 <= atom.size) { /* 64 bit extended size */
                 a.size = avio_rb64(pb) - 8;
                 total_size += 8;
             }
@@ -3779,35 +3783,39 @@ static void export_orphan_timecode(AVFormatContext *s)
 static int read_tfra(MOVContext *mov, AVIOContext *f)
 {
     MOVFragmentIndex* index = NULL;
-    int version, fieldlength, i, j, err;
+    int version, fieldlength, i, j;
     int64_t pos = avio_tell(f);
     uint32_t size = avio_rb32(f);
+    void *tmp;
+
     if (avio_rb32(f) != MKBETAG('t', 'f', 'r', 'a')) {
-        return -1;
+        return 1;
     }
     av_log(mov->fc, AV_LOG_VERBOSE, "found tfra\n");
     index = av_mallocz(sizeof(MOVFragmentIndex));
     if (!index) {
         return AVERROR(ENOMEM);
     }
-    mov->fragment_index_count++;
-    if ((err = av_reallocp(&mov->fragment_index_data,
-                           mov->fragment_index_count *
-                           sizeof(MOVFragmentIndex*))) < 0) {
+
+    tmp = av_realloc_array(mov->fragment_index_data,
+                           mov->fragment_index_count + 1,
+                           sizeof(MOVFragmentIndex*));
+    if (!tmp) {
         av_freep(&index);
-        return err;
+        return AVERROR(ENOMEM);
     }
-    mov->fragment_index_data[mov->fragment_index_count - 1] =
-        index;
+    mov->fragment_index_data = tmp;
+    mov->fragment_index_data[mov->fragment_index_count++] = index;
 
     version = avio_r8(f);
     avio_rb24(f);
     index->track_id = avio_rb32(f);
     fieldlength = avio_rb32(f);
     index->item_count = avio_rb32(f);
-    index->items = av_mallocz(
-            index->item_count * sizeof(MOVFragmentIndexItem));
+    index->items = av_mallocz_array(
+            index->item_count, sizeof(MOVFragmentIndexItem));
     if (!index->items) {
+        index->item_count = 0;
         return AVERROR(ENOMEM);
     }
     for (i = 0; i < index->item_count; i++) {
@@ -3861,11 +3869,13 @@ static int mov_read_mfra(MOVContext *c, AVIOContext *f)
         av_log(c->fc, AV_LOG_DEBUG, "doesn't look like mfra (tag mismatch)\n");
         goto fail;
     }
-    ret = 0;
     av_log(c->fc, AV_LOG_VERBOSE, "stream has mfra\n");
-    while (!read_tfra(c, f)) {
-        /* Empty */
-    }
+    do {
+        ret = read_tfra(c, f);
+        if (ret < 0)
+            goto fail;
+    } while (!ret);
+    ret = 0;
 fail:
     seek_ret = avio_seek(f, original_pos, SEEK_SET);
     if (seek_ret < 0) {
@@ -4104,7 +4114,7 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
 #if CONFIG_DV_DEMUXER
         if (mov->dv_demux && sc->dv_audio_container) {
             avpriv_dv_produce_packet(mov->dv_demux, pkt, pkt->data, pkt->size, pkt->pos);
-            av_free(pkt->data);
+            av_freep(&pkt->data);
             pkt->size = 0;
             ret = avpriv_dv_get_packet(mov->dv_demux, pkt);
             if (ret < 0)
