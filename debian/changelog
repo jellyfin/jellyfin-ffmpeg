@@ -1,6 +1,7 @@
 ffmpeg (7:2.5.2-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.5.2.
+  * Add new av_*_ffversion symbols to the symbols files.
   * Let the test suite continue after the first error.
   * Update copyright year for debian packaging.
   * Re-enable assembler optimizations on armel.

@@ -17,6 +17,7 @@ libavfilter-ffmpeg.so.5 libavfilter-ffmpeg5 #MINVER#
  av_buffersrc_buffer@LIBAVFILTER_FFMPEG_5 7:2.4
  av_buffersrc_get_nb_failed_requests@LIBAVFILTER_FFMPEG_5 7:2.4
  av_buffersrc_write_frame@LIBAVFILTER_FFMPEG_5 7:2.4
+ av_filter_ffversion@LIBAVFILTER_FFMPEG_5 7:2.5.2-1
  av_filter_next@LIBAVFILTER_FFMPEG_5 7:2.4
  avfilter_add_matrix@LIBAVFILTER_FFMPEG_5 7:2.4
  avfilter_all_channel_layouts@LIBAVFILTER_FFMPEG_5 7:2.4

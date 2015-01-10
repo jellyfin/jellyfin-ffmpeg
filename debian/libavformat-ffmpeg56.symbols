@@ -14,6 +14,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  av_find_input_format@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_find_program_from_stream@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_fmt_ctx_get_duration_estimation_method@LIBAVFORMAT_FFMPEG_56 7:2.4
+ av_format_ffversion@LIBAVFORMAT_FFMPEG_56 7:2.5.2-1
  av_format_get_audio_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_control_message_cb@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_metadata_header_padding@LIBAVFORMAT_FFMPEG_56 7:2.4

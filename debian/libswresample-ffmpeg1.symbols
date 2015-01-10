@@ -7,6 +7,7 @@ libswresample-ffmpeg.so.1 libswresample-ffmpeg1 #MINVER#
  swr_convert@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_convert_frame@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_drop_output@LIBSWRESAMPLE_FFMPEG_1 7:2.4
+ swr_ffversion@LIBSWRESAMPLE_FFMPEG_1 7:2.5.2-1
  swr_free@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_get_class@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_get_delay@LIBSWRESAMPLE_FFMPEG_1 7:2.4
