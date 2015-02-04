@@ -27,20 +27,6 @@ CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS))
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
 LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFLAGS))
 
-# Faketime on hurd currently (faketime 0.9.6-3) doesn't work.
-# Thus don't use it there.
-# TODO: Use faketime on hurd again, once this is fixed.
-ifeq ($(DEB_HOST_ARCH_OS),hurd)
-  FT=
-else
-  # Get the date of the latest changelog entry.
-  # This is used to make the build more binary reproducible.
-  DAT  = $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog | grep Date: | sed s/Date:\ //)
-  # Change the format to the only one that stops faketime from incresing the time.
-  DATE = $(shell faketime "$(DAT)" date -u +"%Y-%m-%d %H:%M:%S")
-  FT = faketime -f -m "$(DATE)"
-endif
-
 # Enable as many features as possible, as long as the result is still GPLv2+ (and not only GPLv3+).
 # Therefore the following flags (and build-dependencies) are not added:
 #   --enable-libopencore_amrnb      (libopencore-amrnb-dev)
@@ -202,8 +188,7 @@ override_dh_auto_clean:
 
 # Create doxygen documentation:
 override_dh_auto_build-indep:
-	# Use faketime, because doxygen embeds the creation date.
-	$(FT) dh_auto_build -i -- apidoc
+	dh_auto_build -i -- apidoc
 	# Backup the minified CSS files distributed by upstream.
 	mv doc/bootstrap.min.css debian/bootstrap.min.css.bak
 	mv doc/style.min.css debian/style.min.css.bak
@@ -214,17 +199,17 @@ override_dh_auto_build-indep:
 override_dh_auto_build-arch:
 	# Build qt-faststart here, to make it possible to build with 'nocheck'.
 	make tools/qt-faststart
-	# Use faketime to make the build more binary reproducible.
-	$(FT) dh_auto_build -a || (cat config.log && exit 1)
+	dh_auto_build -a || (cat config.log && exit 1)
 
 # Set the library path for the dynamic linker, because the test otherwise don't find the libraries.
 override_dh_auto_test:
 	export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; dh_auto_test -- -k
 
 # Move the debug symbols to the debug package:
-# Faketime is necessary here, because dh_strip adds timestamps to static libraries (*.a).
 override_dh_strip:
-	$(FT) dh_strip --dbg-package=ffmpeg-dbg
+	# dh_strip would add timestamps to static libraries (*.a), so handle them manually.
+	dh_strip --dbg-package=ffmpeg-dbg -X.a
+	for lib in debian/*/usr/lib/*/*.a; do strip --strip-debug --enable-deterministic-archives "$$lib"; done
 
 override_dh_auto_install:
 	dh_auto_install

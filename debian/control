@@ -133,9 +133,7 @@ Build-Depends:
 # HTML documentation
  texinfo,
 # assembler optimizations
- yasm,
-# make build more binary-reproducible
- faketime
+ yasm
 
 Package: ffmpeg
 Architecture: any
