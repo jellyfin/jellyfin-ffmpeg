@@ -148,11 +148,10 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 	CONFIG += --disable-altivec
 endif
 
-# Disable assembly optimizations on x32, because they don't work (yet).
-ifneq (,$(filter $(DEB_HOST_ARCH),x32))
+# Disable assembly optimizations on ppc64el and x32, because they don't work (yet).
+ifneq (,$(filter $(DEB_HOST_ARCH),ppc64el x32))
 	CONFIG += --disable-asm
 endif
-
 
 # Disable optimizations on mips(el), because they are not always available on these architecture.
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
