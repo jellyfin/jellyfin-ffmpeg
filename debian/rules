@@ -19,11 +19,6 @@ DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 
-# Only use '-O0' if given (via noopt).
-# Hardening is enabled via the configure option --toolchain=hardened.
-CFLAGS   := $(filter -O0,$(shell dpkg-buildflags --get CFLAGS))
-CXXFLAGS := $(filter -O0,$(shell dpkg-buildflags --get CXXFLAGS))
-
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
 LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFLAGS))
 
@@ -60,8 +55,6 @@ CONFIG := --prefix=/usr \
 	--extra-version="$(DEB_REVISION)" \
 	--build-suffix="-ffmpeg" \
 	--toolchain=hardened \
-	--extra-cflags="$(CFLAGS)" \
-	--extra-cxxflags="$(CXXFLAGS)" \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--shlibdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
@@ -99,6 +92,11 @@ CONFIG := --prefix=/usr \
 	--enable-libxvid \
 	--enable-opengl \
 	--enable-x11grab
+
+# Disable optimizations if requested.
+ifneq (,$(filter $(DEB_BUILD_OPTIONS),noopt))
+	CONFIG += --disable-optimizations
+endif
 
 # Some libraries are build only on linux.
 ifeq ($(DEB_HOST_ARCH_OS),linux)
@@ -172,8 +170,6 @@ endif
 # Add configuration options:
 override_dh_auto_configure:
 	$(info DEB_BUILD_OPTIONS = $(DEB_BUILD_OPTIONS))
-	$(info CFLAGS = $(CFLAGS))
-	$(info CXXFLAGS = $(CXXFLAGS))
 	./configure $(CONFIG) || (cat config.log && exit 1)
 
 # Building the source package fails without this override, because config.mak does not exist in the source.
