@@ -153,8 +153,9 @@ ifneq (,$(filter $(DEB_HOST_ARCH),ppc64el x32))
 	CONFIG += --disable-asm
 endif
 
-# Disable optimizations on mips(el), because they are not always available on these architecture.
-ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
+# Disable optimizations on mips(el), because they are not always available on these architecture
+# and on mips64(el), because they don't work (yet).
+ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel mips64 mips64el))
 	CONFIG += --disable-mips32r2 \
 	--disable-mipsdspr1 \
 	--disable-mipsdspr2 \

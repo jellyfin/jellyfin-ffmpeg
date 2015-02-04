@@ -3,7 +3,9 @@ ffmpeg (7:2.5.3-2) UNRELEASED; urgency=medium
   * Add patches making the build binary reproducible.
   * Stop using faketime.
   * Correctly handle noopt in DEB_BUILD_OPTIONS.
-  * Disable assembler optimizations on ppc64el, because they don't work yet.
+  * Disable assembler optimizations on ppc64el, as they don't work yet.
+  * Disable assembler optimizations on mips64(el), as they don't work yet.
+    Thanks to James Cowgill. (Closes: #776649)
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 04 Feb 2015 23:22:30 +0100
 
