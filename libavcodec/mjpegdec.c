@@ -561,9 +561,12 @@ unk_pixfmt:
     }
     if (s->ls) {
         s->upscale_h = s->upscale_v = 0;
-        if (s->nb_components > 1)
+        if (s->nb_components == 3) {
             s->avctx->pix_fmt = AV_PIX_FMT_RGB24;
-        else if (s->palette_index && s->bits <= 8)
+        } else if (s->nb_components != 1) {
+            av_log(s->avctx, AV_LOG_ERROR, "Unsupported number of components %d\n", s->nb_components);
+            return AVERROR_PATCHWELCOME;
+        } else if (s->palette_index && s->bits <= 8)
             s->avctx->pix_fmt = AV_PIX_FMT_PAL8;
         else if (s->bits <= 8)
             s->avctx->pix_fmt = AV_PIX_FMT_GRAY8;
@@ -1248,13 +1251,18 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s, int nb_components, int Ah,
 
                     if (s->interlaced && s->bottom_field)
                         block_offset += linesize[c] >> 1;
-                    ptr = data[c] + block_offset;
+                    if (   8*(h * mb_x + x) < s->width
+                        && 8*(v * mb_y + y) < s->height) {
+                        ptr = data[c] + block_offset;
+                    } else
+                        ptr = NULL;
                     if (!s->progressive) {
-                        if (copy_mb)
-                            mjpeg_copy_block(s, ptr, reference_data[c] + block_offset,
-                                             linesize[c], s->avctx->lowres);
+                        if (copy_mb) {
+                            if (ptr)
+                                mjpeg_copy_block(s, ptr, reference_data[c] + block_offset,
+                                                linesize[c], s->avctx->lowres);
 
-                        else {
+                        } else {
                             s->bdsp.clear_block(s->block);
                             if (decode_block(s, s->block, i,
                                              s->dc_index[i], s->ac_index[i],
@@ -1263,9 +1271,11 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s, int nb_components, int Ah,
                                        "error y=%d x=%d\n", mb_y, mb_x);
                                 return AVERROR_INVALIDDATA;
                             }
-                            s->idsp.idct_put(ptr, linesize[c], s->block);
-                            if (s->bits & 7)
-                                shift_output(s, ptr, linesize[c]);
+                            if (ptr) {
+                                s->idsp.idct_put(ptr, linesize[c], s->block);
+                                if (s->bits & 7)
+                                    shift_output(s, ptr, linesize[c]);
+                            }
                         }
                     } else {
                         int block_idx  = s->block_stride[c] * (v * mb_y + y) +
@@ -1904,6 +1914,10 @@ int ff_mjpeg_find_marker(MJpegDecodeContext *s,
             put_bits(&pb, 8, x);
             if (x == 0xFF) {
                 x = src[b++];
+                if (x & 0x80) {
+                    av_log(s->avctx, AV_LOG_WARNING, "Invalid escape sequence\n");
+                    x &= 0x7f;
+                }
                 put_bits(&pb, 7, x);
                 bit_count--;
             }
