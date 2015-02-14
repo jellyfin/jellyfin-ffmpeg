@@ -1,6 +1,8 @@
 ffmpeg (7:2.5.4-1) UNRELEASED; urgency=medium
 
   * Import new upstream bugfix release 2.5.4.
+  * Drop configure-enable-vsx-together-with-altivec-for-ppc64el.patch
+    included upstream.
   * Add patches making the build binary reproducible.
   * Stop using faketime.
   * Correctly handle noopt in DEB_BUILD_OPTIONS.

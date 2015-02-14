@@ -1,4 +1,3 @@
 Change-symbol-versioning.patch
-configure-enable-vsx-together-with-altivec-for-ppc64el.patch
 configure-use-ar-and-ranlib-in-deterministic-mode-if.patch
 stop-embedding-the-build-date.patch
