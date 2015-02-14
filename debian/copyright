@@ -331,15 +331,6 @@ Copyright:
   2014, Tim Walker <tdskywalker@gmail.com>
   2014, Vignesh Venkatasubramanian
 License: LGPL-2.1+
- FFmpeg is free software; you can redistribute it and/or
- modify it under the terms of the GNU Lesser General Public
- License as published by the Free Software Foundation; either
- version 2.1 of the License, or (at your option) any later version.
- .
- FFmpeg is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- Lesser General Public License for more details.
 Comment:
  You should have received a copy of the GNU Lesser General Public
  License along with FFmpeg; if not, write to the Free Software
@@ -376,6 +367,7 @@ Comment:
 
 Files:
   libavcodec/ac3dec_fixed.c
+  libavcodec/arm/vp8dsp_armv6.S
   libavcodec/fft_init_table.c
   libavcodec/fft_fixed_32.c
   libavcodec/fft_table.h
@@ -407,92 +399,12 @@ Files:
   libavutil/fixed_dsp.h
   libavutil/mips/float_dsp_mips.c
   libavutil/mips/libm_mips.h
-Copyright: 2012, MIPS Technologies, Inc., California.
-License: BSD-3-Clause and LGPL-2.1+
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions
- are met:
- 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
- 2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
- 3. Neither the name of the MIPS Technologies, Inc., nor the names of its
-    contributors may be used to endorse or promote products derived from
-    this software without specific prior written permission.
- .
- THIS SOFTWARE IS PROVIDED BY THE MIPS TECHNOLOGIES, INC. ``AS IS'' AND
- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- ARE DISCLAIMED.  IN NO EVENT SHALL THE MIPS TECHNOLOGIES, INC. BE LIABLE
- FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- SUCH DAMAGE.
- .
- FFmpeg is free software; you can redistribute it and/or
- modify it under the terms of the GNU Lesser General Public
- License as published by the Free Software Foundation; either
- version 2.1 of the License, or (at your option) any later version.
- .
- FFmpeg is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- Lesser General Public License for more details.
-Comment:
- On Debian systems, the full text of the GNU Lesser General Public License
- version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
- .
- You should have received a copy of the GNU Lesser General Public
- License along with FFmpeg; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
-
-Files: libavcodec/arm/vp8dsp_armv6.S
 Copyright:
   2010, Google Inc.
   2010, Rob Clark <rob@ti.com>
   2011, Mans Rullgard <mans@mansr.com>
-License: LGPL-2.1+ and BSD-3-Clause
- FFmpeg is free software; you can redistribute it and/or
- modify it under the terms of the GNU Lesser General Public
- License as published by the Free Software Foundation; either
- version 2.1 of the License, or (at your option) any later version.
- .
- FFmpeg is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- Lesser General Public License for more details.
- .
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions are
- met:
- .
- * Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
- .
- * Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in
-   the documentation and/or other materials provided with the
-   distribution.
- .
- * Neither the name of Google nor the names of its contributors may
-   be used to endorse or promote products derived from this software
-   without specific prior written permission.
- .
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  2012, MIPS Technologies, Inc., California.
+License: BSD-3-Clause and LGPL-2.1+
 Comment:
  On Debian systems, the full text of the GNU Lesser General Public License
  version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
@@ -502,11 +414,14 @@ Comment:
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 Files:
+  doc/texi2pod.pl
   libavcodec/x86/flac_dsp_gpl.asm
   libavdevice/x11grab.c
   libavfilter/f_ebur128.c
+  libavfilter/libmpcodecs/*
   libavfilter/vf_blackframe.c
   libavfilter/vf_boxblur.c
+  libavfilter/vf_colormatrix.c
   libavfilter/vf_cropdetect.c
   libavfilter/vf_delogo.c
   libavfilter/vf_geq.c
@@ -542,13 +457,19 @@ Files:
   libpostproc/postprocess.h
   libpostproc/postprocess_internal.h
   libpostproc/postprocess_template.c
+  libswresample/swresample-test.c
+  tests/tiny_ssim.c
 Copyright:
+  MPlayer developers
+  Wilbert Dijkhof
   1997-1998, Rasca, Berlin
   1997-2001, ZSNES Team <zsknight@zsnes.com> <_demo_@zsnes.com>
-  2000-2001, Fabrice Bellard
+  1999, Aaron Holtzman
+  1999-2001, Free Software Foundation, Inc
+  2000-2002, Fabrice Bellard
   2001, 2006, Daniel Maas <dmaas@dcine.com> <dmaas@maasdigital.com>
   2001, 2003, Donald A. Graft
-  2001-2003, 2005-2007, 2011-2012 Michael Niedermayer (michaelni@gmx.at)
+  2001-2003, 2005-2007, 2011-2012 Michael Niedermayer <michaelni@gmx.at>
   2002, A'rpi
   2002, Brian Foley
   2002-2003, Brian J. Murrell
@@ -557,15 +478,18 @@ Copyright:
   2001-2008, 2013, The FFmpeg Project
   2003, Daniel Moreno <comac@comac.darktech.org>
   2003-2004, Karl H. Beckers, Frankfurt
+  2003-2014, Loren Merritt <lorenm@u.washington.edu>
   2003, Michael Zucchi <notzed@ximian.com>
   2003, Rich Felker
   2003-2004, Romain Dolbeau <romain@dolbeau.org>
   2004-2005, 2007, Denes Balatoni <dbalatoni@interware.hu> <dbalatoni@programozo.hu>
   2004, Tobias Diedrich
   2004, Ville Saari
+  2005, Nikolaj Poroshin <porosh3@psu.ru>
   2006, Clemens Fruhwirth <clemens@endorphin.org>
   2006, Edouard Gomez <ed.gomez@free.fr>
   2006, Ivo van Poorten
+  2006-2007, Kevin Stone
   2006, Julian Hall
   2010, Baptiste Coudurier <baptiste.coudurier@free.fr>
   2010, Gordon Schmidt <gordon.schmidt@s2000.tu-chemnitz.de>
@@ -575,7 +499,6 @@ Copyright:
   2010-2012, Stefano Sabatini <stefano.sabatini-lala@poste.it>
   2012-2013, Clément Bœsch
   2012, Jeremy Tran
-  2012, 2014, Loren Merritt <lorenm@u.washington.edu>
   2013, Jean Delvare <khali@linux-fr.org>
   2013-2014, Paul B Mahol
   2013, Vittorio Giovara <vittorio.giovara@gmail.com>
@@ -590,28 +513,6 @@ License: GPL-2+
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
-Comment:
- On Debian systems, the full text of the GNU General Public License
- version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
- .
- You should have received a copy of the GNU General Public License
- along with FFmpeg; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
-
-Files: libavfilter/vf_colormatrix.c
-Copyright:
-  2006-2007, Kevin Stone
-  Wilbert Dijkhof
-License: GPL-2+
- This program is free software; you can redistribute it and/or modify it
- under the terms of the GNU General Public License as published by the
- Free Software Foundation; either version 2 of the License, or (at your
- option) any later version.
- .
- This program is distributed in the hope that it will be useful, but
- OUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
- License for more details.
 Comment:
  On Debian systems, the full text of the GNU General Public License
  version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
@@ -656,94 +557,6 @@ Comment:
  along with this program; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA,
  or visit <http://www.gnu.org/copyleft/gpl.html>.
-
-Files: doc/texi2pod.pl
-Copyright: 1999-2001, Free Software Foundation, Inc
-License: GPL-2+
- GNU CC is free software; you can redistribute it and/or modify it under
- the terms of the GNU General Public License as published by the Free
- Software Foundation; either version 2, or (at your option) any later
- version.
- .
- GNU CC is distributed in the hope that it will be useful, but WITHOUT
- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- for more details.
-Comment:
- On Debian systems, the full text of the GNU General Public License
- version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
- .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA,
- or visit <http://www.gnu.org/copyleft/gpl.html>.
-
-Files:
-  libavfilter/libmpcodecs/*
-Copyright:
-  MPlayer developers
-  1999, Aaron Holtzman
-  2003, 2005, Michael Niedermayer <michaelni@gmx.at>
-  2005, Nikolaj Poroshin <porosh3@psu.ru>
-License: GPL-2+
- MPlayer is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
- .
- MPlayer is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-Comment:
- On Debian systems, the full text of the GNU General Public License
- version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
- .
- You should have received a copy of the GNU General Public License along
- with MPlayer; if not, write to the Free Software Foundation, Inc.,
- 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-
-Files: libswresample/swresample-test.c
-Copyright:
-  2002, Fabrice Bellard
-  2011-2012, Michael Niedermayer <michaelni@gmx.at>
-License: GPL-2+
- libswresample is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
- .
- libswresample is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-Comment:
- On Debian systems, the full text of the GNU General Public License
- version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
- .
- You should have received a copy of the GNU General Public License
- along with libswresample; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
-
-Files: tests/tiny_ssim.c
-Copyright: 2003-2013, Loren Merritt
-License: GPL-2+
- This program is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
- .
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-Comment:
- On Debian systems, the full text of the GNU General Public License
- version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
- .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110 USA
 
 Files:
   libavcodec/libutvideodec.cpp
@@ -848,23 +661,6 @@ Copyright:
   2014, Andrey Utkin
   2014, Barbara Lepage <db0company@gmail.com>
 License: Expat
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
- .
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- THE SOFTWARE.
 
 Files:
   tools/cws2fws.c
@@ -965,15 +761,6 @@ License: IJG
 Files: debian/*
 Copyright: 2014-2015, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 License: LGPL-2.1+
- This packaging is free software; you can redistribute it and/or
- modify it under the terms of the GNU Lesser General Public
- License as published by the Free Software Foundation; either
- version 2.1 of the License, or (at your option) any later version.
- .
- This packaging is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- Lesser General Public License for more details.
 Comment:
  On Debian systems, the full text of the GNU Lesser General Public License
  version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
@@ -985,23 +772,6 @@ Comment:
 Files: debian/missing-sources/ffmpeg-web/src/less/style.less
 Copyright: 2014, Barbara Lepage <db0company@gmail.com>
 License: Expat
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
- .
- The above copyright notice and this permission notice shall be included in all
- copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
 Comment:
  This is the source of doc/style.min.css.
  It was obtained from the FFmpeg web repository:
@@ -1009,6 +779,45 @@ Comment:
 
 Files: debian/missing-sources/bootstrap*
 Copyright: 2011-2014, Twitter, Inc.
+License: Expat
+Comment:
+ This is the source of doc/bootstrap.min.css.
+ It was obtained from the Bootstrap repository:
+ <https://github.com/twbs/bootstrap>
+ The full text of the license was obtained from:
+ <https://github.com/twbs/bootstrap/blob/master/LICENSE>
+
+Files: debian/qt-faststart.1
+Copyright: Andres Mejia <mcitadel@gmail.com>
+License: man-page
+ This manual page was written by Andres Mejia <mcitadel@gmail.com>
+ for the Debian GNU/Linux system, but may be used by others.
+
+License: BSD-3-Clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+ 3. Neither the name of the MIPS Technologies, Inc., nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE MIPS TECHNOLOGIES, INC. ``AS IS'' AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED.  IN NO EVENT SHALL THE MIPS TECHNOLOGIES, INC. BE LIABLE
+ FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
 License: Expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -1027,15 +836,14 @@ License: Expat
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
-Comment:
- This is the source of doc/bootstrap.min.css.
- It was obtained from the Bootstrap repository:
- <https://github.com/twbs/bootstrap>
- The full text of the license was obtained from:
- <https://github.com/twbs/bootstrap/blob/master/LICENSE>
 
-Files: debian/qt-faststart.1
-Copyright: Andres Mejia <mcitadel@gmail.com>
-License: man-page
- This manual page was written by Andres Mejia <mcitadel@gmail.com>
- for the Debian GNU/Linux system, but may be used by others.
+License: LGPL-2.1+
+ FFmpeg is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ FFmpeg is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.

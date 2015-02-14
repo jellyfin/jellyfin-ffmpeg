@@ -9,6 +9,7 @@ ffmpeg (7:2.5.4-1) UNRELEASED; urgency=medium
   * Disable assembler optimizations on ppc64el, as they don't work yet.
   * Disable assembler optimizations on mips64(el), as they don't work yet.
     Thanks to James Cowgill. (Closes: #776649)
+  * Fix dep5-copyright-license-name-not-unique lintian warnings.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 14 Feb 2015 21:35:51 +0100
 
