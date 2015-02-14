@@ -1,4 +1,4 @@
-ffmpeg (7:2.5.4-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.5.4-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.5.4.
   * Drop configure-enable-vsx-together-with-altivec-for-ppc64el.patch
@@ -11,7 +11,7 @@ ffmpeg (7:2.5.4-1) UNRELEASED; urgency=medium
     Thanks to James Cowgill. (Closes: #776649)
   * Fix dep5-copyright-license-name-not-unique lintian warnings.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 14 Feb 2015 21:35:51 +0100
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 14 Feb 2015 23:14:52 +0100
 
 ffmpeg (7:2.5.3-1) unstable; urgency=medium
 
