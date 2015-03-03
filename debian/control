@@ -143,6 +143,8 @@ Depends:
  ${misc:Depends}
 Recommends:
  qt-faststart
+Breaks: libav-tools (<< 6:9~)
+Replaces: libav-tools (<< 6:9~)
 Description: Tools for transcoding, streaming and playing of multimedia files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
