@@ -58,10 +58,13 @@ typedef struct {
 static int mp3_read_probe(AVProbeData *p)
 {
     int max_frames, first_frames = 0;
-    int fsize, frames, sample_rate;
+    int fsize, frames;
     uint32_t header;
     const uint8_t *buf, *buf0, *buf2, *end;
-    AVCodecContext avctx;
+    AVCodecContext *avctx = avcodec_alloc_context3(NULL);
+
+    if (!avctx)
+        return 0;
 
     buf0 = p->buf;
     end = p->buf + p->buf_size - sizeof(uint32_t);
@@ -77,8 +80,9 @@ static int mp3_read_probe(AVProbeData *p)
             continue;
 
         for(frames = 0; buf2 < end; frames++) {
+            int dummy;
             header = AV_RB32(buf2);
-            fsize = avpriv_mpa_decode_header(&avctx, header, &sample_rate, &sample_rate, &sample_rate, &sample_rate);
+            fsize = avpriv_mpa_decode_header(avctx, header, &dummy, &dummy, &dummy, &dummy);
             if(fsize < 0)
                 break;
             buf2 += fsize;
@@ -87,6 +91,7 @@ static int mp3_read_probe(AVProbeData *p)
         if(buf == buf0)
             first_frames= frames;
     }
+    avcodec_free_context(&avctx);
     // keep this in sync with ac3 probe, both need to avoid
     // issues with MPEG-files!
     if   (first_frames>=4) return AVPROBE_SCORE_EXTENSION + 1;
@@ -422,18 +427,18 @@ static int mp3_seek(AVFormatContext *s, int stream_index, int64_t timestamp,
 
     if (   mp3->is_cbr
         && st->duration > 0
-        && mp3->header_filesize > s->data_offset
+        && mp3->header_filesize > s->internal->data_offset
         && mp3->frames) {
         int64_t filesize = avio_size(s->pb);
         int64_t duration;
-        if (filesize <= s->data_offset)
+        if (filesize <= s->internal->data_offset)
             filesize = mp3->header_filesize;
-        filesize -= s->data_offset;
-        duration = av_rescale(st->duration, filesize, mp3->header_filesize - s->data_offset);
+        filesize -= s->internal->data_offset;
+        duration = av_rescale(st->duration, filesize, mp3->header_filesize - s->internal->data_offset);
         ie = &ie1;
         timestamp = av_clip64(timestamp, 0, duration);
         ie->timestamp = timestamp;
-        ie->pos       = av_rescale(timestamp, filesize, duration) + s->data_offset;
+        ie->pos       = av_rescale(timestamp, filesize, duration) + s->internal->data_offset;
     } else if (mp3->xing_toc) {
         if (ret < 0)
             return ret;

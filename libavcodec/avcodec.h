@@ -290,6 +290,7 @@ enum AVCodecID {
     AV_CODEC_ID_SGIRLE_DEPRECATED,
     AV_CODEC_ID_MVC1_DEPRECATED,
     AV_CODEC_ID_MVC2_DEPRECATED,
+    AV_CODEC_ID_HQX,
 
     AV_CODEC_ID_BRENDER_PIX= MKBETAG('B','P','I','X'),
     AV_CODEC_ID_Y41P       = MKBETAG('Y','4','1','P'),
@@ -390,7 +391,9 @@ enum AVCodecID {
     AV_CODEC_ID_ADPCM_IMA_APC,
     AV_CODEC_ID_ADPCM_VIMA_DEPRECATED,
     AV_CODEC_ID_ADPCM_VIMA = MKBETAG('V','I','M','A'),
+#if FF_API_VIMA_DECODER
     AV_CODEC_ID_VIMA       = MKBETAG('V','I','M','A'),
+#endif
     AV_CODEC_ID_ADPCM_AFC  = MKBETAG('A','F','C',' '),
     AV_CODEC_ID_ADPCM_IMA_OKI = MKBETAG('O','K','I',' '),
     AV_CODEC_ID_ADPCM_DTK  = MKBETAG('D','T','K',' '),
@@ -481,6 +484,7 @@ enum AVCodecID {
     AV_CODEC_ID_METASOUND,
     AV_CODEC_ID_PAF_AUDIO_DEPRECATED,
     AV_CODEC_ID_ON2AVC,
+    AV_CODEC_ID_DSS_SP,
     AV_CODEC_ID_FFWAVESYNTH = MKBETAG('F','F','W','S'),
     AV_CODEC_ID_SONIC       = MKBETAG('S','O','N','C'),
     AV_CODEC_ID_SONIC_LS    = MKBETAG('S','O','N','L'),
@@ -1032,6 +1036,12 @@ enum AVPacketSideDataType {
     AV_PKT_DATA_STEREO3D,
 
     /**
+     * This side data should be associated with an audio stream and corresponds
+     * to enum AVAudioServiceType.
+     */
+    AV_PKT_DATA_AUDIO_SERVICE_TYPE,
+
+    /**
      * Recommmends skipping the specified number of samples
      * @code
      * u32le number of samples to skip from start of this packet
@@ -1260,13 +1270,13 @@ typedef struct AVCodecContext {
      */
     unsigned int codec_tag;
 
+#if FF_API_STREAM_CODEC_TAG
     /**
-     * fourcc from the AVI stream header (LSB first, so "ABCD" -> ('D'<<24) + ('C'<<16) + ('B'<<8) + 'A').
-     * This is used to work around some encoder bugs.
-     * - encoding: unused
-     * - decoding: Set by user, will be converted to uppercase by libavcodec during init.
+     * @deprecated this field is unused
      */
+    attribute_deprecated
     unsigned int stream_codec_tag;
+#endif
 
     void *priv_data;
 
@@ -3005,6 +3015,13 @@ typedef struct AVCodecContext {
     AVRational framerate;
 
     /**
+     * Nominal unaccelerated pixel format, see AV_PIX_FMT_xxx.
+     * - encoding: unused.
+     * - decoding: Set by libavcodec before calling get_format()
+     */
+    enum AVPixelFormat sw_pix_fmt;
+
+    /**
      * Timebase in which pkt_dts/pts and AVPacket.dts/pts are.
      * Code outside libavcodec should access this field using:
      * av_codec_{get,set}_pkt_timebase(avctx)
@@ -3397,6 +3414,12 @@ typedef struct AVHWAccel {
 #define AV_HWACCEL_FLAG_IGNORE_LEVEL (1 << 0)
 
 /**
+ * Hardware acceleration can output YUV pixel formats with a different chroma
+ * sampling than 4:2:0 and/or other than 8 bits per component.
+ */
+#define AV_HWACCEL_FLAG_ALLOW_HIGH_DEPTH (1 << 1)
+
+/**
  * @}
  */
 
@@ -3451,7 +3474,7 @@ typedef struct AVSubtitleRect {
 
     /**
      * data+linesize for the bitmap of this subtitle.
-     * can be set for text/ass as well once they where rendered
+     * can be set for text/ass as well once they are rendered
      */
     AVPicture pict;
     enum AVSubtitleType type;
@@ -3633,6 +3656,9 @@ void avcodec_free_frame(AVFrame **frame);
  * retrieving a codec.
  *
  * @warning This function is not thread safe!
+ *
+ * @note Always call this function before using decoding routines (such as
+ * @ref avcodec_decode_video2()).
  *
  * @code
  * avcodec_register_all();
@@ -4082,6 +4108,9 @@ attribute_deprecated int avcodec_decode_audio3(AVCodecContext *avctx, int16_t *s
  *          larger than the actual read bytes because some optimized bitstream
  *          readers read 32 or 64 bits at once and could read over the end.
  *
+ * @note The AVCodecContext MUST have been opened with @ref avcodec_open2()
+ * before packets may be fed to the decoder.
+ *
  * @param      avctx the codec context
  * @param[out] frame The AVFrame in which to store decoded audio samples.
  *                   The decoder will allocate a buffer for the decoded frame by
@@ -4125,6 +4154,9 @@ int avcodec_decode_audio4(AVCodecContext *avctx, AVFrame *frame,
  * @note Codecs which have the CODEC_CAP_DELAY capability set have a delay
  * between input and output, these need to be fed with avpkt->data=NULL,
  * avpkt->size=0 at the end to return the remaining frames.
+ *
+ * @note The AVCodecContext MUST have been opened with @ref avcodec_open2()
+ * before packets may be fed to the decoder.
  *
  * @param avctx the codec context
  * @param[out] picture The AVFrame in which the decoded video frame will be stored.
@@ -4171,6 +4203,9 @@ int avcodec_decode_video2(AVCodecContext *avctx, AVFrame *picture,
  * with avpkt->data set to NULL and avpkt->size set to 0 until it stops
  * returning subtitles. It is safe to flush even those decoders that are not
  * marked with CODEC_CAP_DELAY, then no subtitles will be returned.
+ *
+ * @note The AVCodecContext MUST have been opened with @ref avcodec_open2()
+ * before packets may be fed to the decoder.
  *
  * @param avctx the codec context
  * @param[out] sub The Preallocated AVSubtitle in which the decoded subtitle will be stored,
@@ -4348,12 +4383,36 @@ typedef struct AVCodecParserContext {
      * For example, this corresponds to H.264 PicOrderCnt.
      */
     int output_picture_number;
+
+    /**
+     * Dimensions of the decoded video intended for presentation.
+     */
+    int width;
+    int height;
+
+    /**
+     * Dimensions of the coded video.
+     */
+    int coded_width;
+    int coded_height;
+
+    /**
+     * The format of the coded data, corresponds to enum AVPixelFormat for video
+     * and for enum AVSampleFormat for audio.
+     *
+     * Note that a decoder can have considerable freedom in how exactly it
+     * decodes the data, so the format reported here might be different from the
+     * one returned by a decoder.
+     */
+    int format;
 } AVCodecParserContext;
 
 typedef struct AVCodecParser {
     int codec_ids[5]; /* several codec IDs are permitted */
     int priv_data_size;
     int (*parser_init)(AVCodecParserContext *s);
+    /* This callback never returns an error, a negative value means that
+     * the frame start was in a previous packet. */
     int (*parser_parse)(AVCodecParserContext *s,
                         AVCodecContext *avctx,
                         const uint8_t **poutbuf, int *poutbuf_size,

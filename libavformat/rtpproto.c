@@ -437,6 +437,10 @@ static int rtp_write(URLContext *h, const uint8_t *buf, int size)
     if (size < 2)
         return AVERROR(EINVAL);
 
+    if ((buf[0] & 0xc0) != (RTP_VERSION << 6))
+        av_log(h, AV_LOG_WARNING, "Data doesn't look like RTP packets, "
+                                  "make sure the RTP muxer is used\n");
+
     if (s->write_to_source) {
         int fd;
         struct sockaddr_storage *source, temp_source;
@@ -506,10 +510,10 @@ static int rtp_close(URLContext *h)
     int i;
 
     for (i = 0; i < s->nb_ssm_include_addrs; i++)
-        av_free(s->ssm_include_addrs[i]);
+        av_freep(&s->ssm_include_addrs[i]);
     av_freep(&s->ssm_include_addrs);
     for (i = 0; i < s->nb_ssm_exclude_addrs; i++)
-        av_free(s->ssm_exclude_addrs[i]);
+        av_freep(&s->ssm_exclude_addrs[i]);
     av_freep(&s->ssm_exclude_addrs);
 
     ffurl_close(s->rtp_hd);

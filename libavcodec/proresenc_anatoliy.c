@@ -304,7 +304,7 @@ static int encode_slice_plane(AVCodecContext *avctx, int mb_count,
     }
 
     blocks_per_slice = mb_count << (2 - chroma);
-    init_put_bits(&pb, buf, buf_size << 3);
+    init_put_bits(&pb, buf, buf_size);
 
     encode_dc_coeffs(&pb, blocks, blocks_per_slice, qmat);
     encode_ac_coeffs(avctx, &pb, blocks, blocks_per_slice, qmat);
@@ -601,7 +601,7 @@ static av_cold int prores_encode_init(AVCodecContext *avctx)
 static av_cold int prores_encode_close(AVCodecContext *avctx)
 {
     ProresContext* ctx = avctx->priv_data;
-    av_freep(&avctx->coded_frame);
+    av_frame_free(&avctx->coded_frame);
     av_freep(&ctx->fill_y);
 
     return 0;

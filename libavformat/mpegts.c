@@ -34,7 +34,6 @@
 #include "mpegts.h"
 #include "internal.h"
 #include "avio_internal.h"
-#include "seek.h"
 #include "mpeg.h"
 #include "isom.h"
 
@@ -519,7 +518,8 @@ static void mpegts_close_filter(MpegTSContext *ts, MpegTSFilter *filter)
     ts->pids[pid] = NULL;
 }
 
-static int analyze(const uint8_t *buf, int size, int packet_size, int *index)
+static int analyze(const uint8_t *buf, int size, int packet_size, int *index,
+                   int probe)
 {
     int stat[TS_MAX_PACKET_SIZE];
     int stat_all = 0;
@@ -529,7 +529,8 @@ static int analyze(const uint8_t *buf, int size, int packet_size, int *index)
     memset(stat, 0, packet_size * sizeof(*stat));
 
     for (i = 0; i < size - 3; i++) {
-        if (buf[i] == 0x47 && !(buf[i + 1] & 0x80) && buf[i + 3] != 0x47) {
+        if (buf[i] == 0x47 &&
+            (!probe || (!(buf[i + 1] & 0x80) && buf[i + 3] != 0x47))) {
             int x = i % packet_size;
             stat[x]++;
             stat_all++;
@@ -552,9 +553,9 @@ static int get_packet_size(const uint8_t *buf, int size)
     if (size < (TS_FEC_PACKET_SIZE * 5 + 1))
         return AVERROR_INVALIDDATA;
 
-    score      = analyze(buf, size, TS_PACKET_SIZE, NULL);
-    dvhs_score = analyze(buf, size, TS_DVHS_PACKET_SIZE, NULL);
-    fec_score  = analyze(buf, size, TS_FEC_PACKET_SIZE, NULL);
+    score      = analyze(buf, size, TS_PACKET_SIZE,      NULL, 0);
+    dvhs_score = analyze(buf, size, TS_DVHS_PACKET_SIZE, NULL, 0);
+    fec_score  = analyze(buf, size, TS_FEC_PACKET_SIZE,  NULL, 0);
     av_dlog(NULL, "score: %d, dvhs_score: %d, fec_score: %d \n",
             score, dvhs_score, fec_score);
 
@@ -655,7 +656,7 @@ static int parse_section_header(SectionHeader *h,
     return 0;
 }
 
-typedef struct {
+typedef struct StreamType {
     uint32_t stream_type;
     enum AVMediaType codec_type;
     enum AVCodecID codec_id;
@@ -674,6 +675,7 @@ static const StreamType ISO_types[] = {
     { 0x11, AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AAC_LATM   }, /* LATM syntax */
 #endif
     { 0x1b, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264       },
+    { 0x20, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264       },
     { 0x24, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_HEVC       },
     { 0x42, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_CAVS       },
     { 0xd1, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_DIRAC      },
@@ -1213,7 +1215,7 @@ static PESContext *add_pes_stream(MpegTSContext *ts, int pid, int pcr_pid)
 }
 
 #define MAX_LEVEL 4
-typedef struct {
+typedef struct MP4DescrParseContext {
     AVFormatContext *s;
     AVIOContext pb;
     Mp4Descr *descr;
@@ -1515,6 +1517,10 @@ static const uint8_t opus_coupled_stream_cnt[9] = {
     1, 0, 1, 1, 2, 2, 2, 3, 3
 };
 
+static const uint8_t opus_stream_cnt[9] = {
+    1, 1, 1, 2, 2, 3, 4, 4, 5,
+};
+
 static const uint8_t opus_channel_map[8][8] = {
     { 0 },
     { 0,1 },
@@ -1555,6 +1561,8 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
     switch (desc_tag) {
     case 0x1E: /* SL descriptor */
         desc_es_id = get16(pp, desc_end);
+        if (desc_es_id < 0)
+            break;
         if (ts && ts->pids[pid])
             ts->pids[pid]->es_id = desc_es_id;
         for (i = 0; i < mp4_descr_count; i++)
@@ -1573,7 +1581,8 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
             }
         break;
     case 0x1F: /* FMC descriptor */
-        get16(pp, desc_end);
+        if (get16(pp, desc_end) < 0)
+            break;
         if (mp4_descr_count > 0 &&
             (st->codec->codec_id == AV_CODEC_ID_AAC_LATM || st->request_probe > 0) &&
             mp4_descr->dec_config_descr_len && mp4_descr->es_id == pid) {
@@ -1757,12 +1766,8 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                     return AVERROR_INVALIDDATA;
                 if (channel_config_code <= 0x8) {
                     st->codec->extradata[9]  = channels = channel_config_code ? channel_config_code : 2;
-                    st->codec->extradata[18] = channels > 2;
-                    st->codec->extradata[19] = channel_config_code;
-                    if (channel_config_code == 0) { /* Dual Mono */
-                        st->codec->extradata[18] = 255; /* Mapping */
-                        st->codec->extradata[19] = 2;   /* Stream Count */
-                    }
+                    st->codec->extradata[18] = channel_config_code ? (channels > 2) : /* Dual Mono */ 255;
+                    st->codec->extradata[19] = opus_stream_cnt[channel_config_code];
                     st->codec->extradata[20] = opus_coupled_stream_cnt[channel_config_code];
                     memcpy(&st->codec->extradata[21], opus_channel_map[channels - 1], channels);
                 } else {
@@ -2391,9 +2396,9 @@ static int mpegts_probe(AVProbeData *p)
 
     for (i = 0; i<check_count; i+=CHECK_BLOCK) {
         int left = FFMIN(check_count - i, CHECK_BLOCK);
-        int score      = analyze(p->buf + TS_PACKET_SIZE     *i, TS_PACKET_SIZE     *left, TS_PACKET_SIZE     , NULL);
-        int dvhs_score = analyze(p->buf + TS_DVHS_PACKET_SIZE*i, TS_DVHS_PACKET_SIZE*left, TS_DVHS_PACKET_SIZE, NULL);
-        int fec_score  = analyze(p->buf + TS_FEC_PACKET_SIZE *i, TS_FEC_PACKET_SIZE *left, TS_FEC_PACKET_SIZE , NULL);
+        int score      = analyze(p->buf + TS_PACKET_SIZE     *i, TS_PACKET_SIZE     *left, TS_PACKET_SIZE     , NULL, 1);
+        int dvhs_score = analyze(p->buf + TS_DVHS_PACKET_SIZE*i, TS_DVHS_PACKET_SIZE*left, TS_DVHS_PACKET_SIZE, NULL, 1);
+        int fec_score  = analyze(p->buf + TS_FEC_PACKET_SIZE *i, TS_FEC_PACKET_SIZE *left, TS_FEC_PACKET_SIZE , NULL, 1);
         score = FFMAX3(score, dvhs_score, fec_score);
         sumscore += score;
         maxscore = FFMAX(maxscore, score);
@@ -2455,7 +2460,8 @@ static int mpegts_read_header(AVFormatContext *s)
     int len;
     int64_t pos, probesize = s->probesize ? s->probesize : s->probesize2;
 
-    ffio_ensure_seekback(pb, probesize);
+    if (ffio_ensure_seekback(pb, probesize) < 0)
+        av_log(s, AV_LOG_WARNING, "Failed to allocate buffers for seekback\n");
 
     /* read the first 8192 bytes to get packet size */
     pos = avio_tell(pb);

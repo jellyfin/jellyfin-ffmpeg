@@ -513,9 +513,9 @@ static int config_input(AVFilterLink *inlink)
 
     s->p_linesize = linesize = FFALIGN(s->pr_width, 32);
     for (i = 0; i < 2; i++) {
-        s->cbuf[i][0] = av_malloc(linesize * s->pr_height * sizeof(*s->cbuf[i][0]));
-        s->cbuf[i][1] = av_malloc(linesize * s->pr_height * sizeof(*s->cbuf[i][1]));
-        s->cbuf[i][2] = av_malloc(linesize * s->pr_height * sizeof(*s->cbuf[i][2]));
+        s->cbuf[i][0] = av_malloc_array(linesize * s->pr_height, sizeof(*s->cbuf[i][0]));
+        s->cbuf[i][1] = av_malloc_array(linesize * s->pr_height, sizeof(*s->cbuf[i][1]));
+        s->cbuf[i][2] = av_malloc_array(linesize * s->pr_height, sizeof(*s->cbuf[i][2]));
         if (!s->cbuf[i][0] || !s->cbuf[i][1] || !s->cbuf[i][2])
             return AVERROR(ENOMEM);
     }
@@ -732,14 +732,14 @@ static av_cold void uninit(AVFilterContext *ctx)
     int i;
     DCTdnoizContext *s = ctx->priv;
 
-    av_free(s->weights);
+    av_freep(&s->weights);
     for (i = 0; i < 2; i++) {
-        av_free(s->cbuf[i][0]);
-        av_free(s->cbuf[i][1]);
-        av_free(s->cbuf[i][2]);
+        av_freep(&s->cbuf[i][0]);
+        av_freep(&s->cbuf[i][1]);
+        av_freep(&s->cbuf[i][2]);
     }
     for (i = 0; i < s->nb_threads; i++) {
-        av_free(s->slices[i]);
+        av_freep(&s->slices[i]);
         av_expr_free(s->expr[i]);
     }
 }
