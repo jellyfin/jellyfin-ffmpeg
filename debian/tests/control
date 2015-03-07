@@ -1,0 +1,5 @@
+Tests: examples
+Depends: build-essential, ffmpeg-doc, libavdevice-ffmpeg-dev, libavformat-ffmpeg-dev, libavfilter-ffmpeg-dev, libavcodec-ffmpeg-dev, libswresample-ffmpeg-dev, libswscale-ffmpeg-dev, libavutil-ffmpeg-dev, pkg-config
+
+Tests: encdec
+Depends: ffmpeg
