@@ -9,6 +9,9 @@ ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
      - Don't add --disable-mipsfpu on mips64(el) as it should work there.
   * Enable libx265-dev on sparc, m68k and sh4, where it is now available.
   * Update debian/missing-sources.
+  * Drop patches included upstream:
+     - configure-use-ar-and-ranlib-in-deterministic-mode-if.patch
+     - stop-embedding-the-build-date.patch
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 03 Mar 2015 21:15:43 +0100
 
