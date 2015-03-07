@@ -33,7 +33,9 @@ LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFL
 #   --enable-decklink
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
 #   --enable-libilbc                (see #675959 for the RFP bug)
+#   --enable-libmfx
 #   --enable-libnut
+#   --enable-libopenh264
 #   --enable-libstagefright-h264
 #   --enable-libutvideo
 #   --enable-libvidstab             (see #709193 for the RFP bug)
@@ -56,7 +58,6 @@ CONFIG := --prefix=/usr \
 	--build-suffix="-ffmpeg" \
 	--toolchain=hardened \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
-	--shlibdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
 	--enable-gpl \
 	--enable-shared \
@@ -153,13 +154,13 @@ ifneq (,$(filter $(DEB_HOST_ARCH),ppc64el x32))
 	CONFIG += --disable-asm
 endif
 
-# Disable optimizations on mips(el), because they are not always available on these architecture
-# and on mips64(el), because they don't work (yet).
+# Disable optimizations on mips(el) and some on mips64(el), because they are not always available on these architectures.
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel mips64 mips64el))
-	CONFIG += --disable-mips32r2 \
-	--disable-mipsdspr1 \
-	--disable-mipsdspr2 \
-	--disable-mipsfpu
+	CONFIG += --disable-mipsdspr1 \
+	--disable-mipsdspr2
+endif
+ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
+	CONFIG += --disable-mipsfpu
 endif
 
 # Use the default debhelper scripts, where possible.

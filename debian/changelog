@@ -3,6 +3,10 @@ ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
   * Import new major upstream release 2.6.
   * Add Breaks and Replaces on libav-tools (<< 6:9~), which shipped ff*
     symlinks. Thanks to Andreas Beckmann. (Closes: #779664)
+  * Adapt debian/rules to changes in the configure script:
+     - Don't explicitly set shlibdir as it now defaults to libdir.
+     - Drop --disable-mips32r2, which has no effect anymore.
+     - Don't add --disable-mipsfpu on mips64(el) as it should work there.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 03 Mar 2015 21:15:43 +0100
 
