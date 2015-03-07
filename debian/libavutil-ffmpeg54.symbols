@@ -50,7 +50,12 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_buffer_ref@LIBAVUTIL_FFMPEG_54 7:2.4
  av_buffer_unref@LIBAVUTIL_FFMPEG_54 7:2.4
  av_calloc@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_camellia_alloc@LIBAVUTIL_FFMPEG_54 7:2.6
+ av_camellia_crypt@LIBAVUTIL_FFMPEG_54 7:2.6
+ av_camellia_init@LIBAVUTIL_FFMPEG_54 7:2.6
+ av_camellia_size@LIBAVUTIL_FFMPEG_54 7:2.6
  av_cast5_alloc@LIBAVUTIL_FFMPEG_54 7:2.5
+ av_cast5_crypt2@LIBAVUTIL_FFMPEG_54 7:2.6
  av_cast5_crypt@LIBAVUTIL_FFMPEG_54 7:2.5
  av_cast5_init@LIBAVUTIL_FFMPEG_54 7:2.5
  av_cast5_size@LIBAVUTIL_FFMPEG_54 7:2.5
@@ -410,6 +415,10 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_tree_insert@LIBAVUTIL_FFMPEG_54 7:2.4
  av_tree_node_alloc@LIBAVUTIL_FFMPEG_54 7:2.4
  av_tree_node_size@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_twofish_alloc@LIBAVUTIL_FFMPEG_54 7:2.6
+ av_twofish_crypt@LIBAVUTIL_FFMPEG_54 7:2.6
+ av_twofish_init@LIBAVUTIL_FFMPEG_54 7:2.6
+ av_twofish_size@LIBAVUTIL_FFMPEG_54 7:2.6
  av_usleep@LIBAVUTIL_FFMPEG_54 7:2.4
  av_utf8_decode@LIBAVUTIL_FFMPEG_54 7:2.4
  av_util_ffversion@LIBAVUTIL_FFMPEG_54 7:2.5.2
@@ -424,6 +433,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  avpriv_float_dsp_alloc@LIBAVUTIL_FFMPEG_54 7:2.5
  avpriv_float_dsp_init@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_frame_get_metadatap@LIBAVUTIL_FFMPEG_54 7:2.4
+ avpriv_get_gamma_from_trc@LIBAVUTIL_FFMPEG_54 7:2.6
  avpriv_init_lls@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_open@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_report_missing_feature@LIBAVUTIL_FFMPEG_54 7:2.4

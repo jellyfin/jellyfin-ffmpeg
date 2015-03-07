@@ -17,6 +17,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  av_format_ffversion@LIBAVFORMAT_FFMPEG_56 7:2.5.2
  av_format_get_audio_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_control_message_cb@LIBAVFORMAT_FFMPEG_56 7:2.4
+ av_format_get_data_codec@LIBAVFORMAT_FFMPEG_56 7:2.6
  av_format_get_metadata_header_padding@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_opaque@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_probe_score@LIBAVFORMAT_FFMPEG_56 7:2.4
@@ -25,6 +26,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  av_format_inject_global_side_data@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_set_audio_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_set_control_message_cb@LIBAVFORMAT_FFMPEG_56 7:2.4
+ av_format_set_data_codec@LIBAVFORMAT_FFMPEG_56 7:2.6
  av_format_set_metadata_header_padding@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_set_opaque@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_set_subtitle_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
@@ -76,6 +78,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  avformat_close_input@LIBAVFORMAT_FFMPEG_56 7:2.4
  avformat_configuration@LIBAVFORMAT_FFMPEG_56 7:2.4
  avformat_find_stream_info@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avformat_flush@LIBAVFORMAT_FFMPEG_56 7:2.6
  avformat_free_context@LIBAVFORMAT_FFMPEG_56 7:2.4
  avformat_get_class@LIBAVFORMAT_FFMPEG_56 7:2.4
  avformat_get_mov_audio_tags@LIBAVFORMAT_FFMPEG_56 7:2.4
@@ -110,6 +113,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  avio_open_dyn_buf@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_pause@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_printf@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avio_put_str16be@LIBAVFORMAT_FFMPEG_56 7:2.6
  avio_put_str16le@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_put_str@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_r8@LIBAVFORMAT_FFMPEG_56 7:2.4

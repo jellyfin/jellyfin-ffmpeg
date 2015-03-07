@@ -12,6 +12,7 @@ ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
   * Drop patches included upstream:
      - configure-use-ar-and-ranlib-in-deterministic-mode-if.patch
      - stop-embedding-the-build-date.patch
+  * Add new symbols to debian/*.symbols.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 03 Mar 2015 21:15:43 +0100
 

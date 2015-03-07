@@ -33,6 +33,7 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
  av_dct_init@LIBAVCODEC_FFMPEG_56 7:2.4
  av_destruct_packet@LIBAVCODEC_FFMPEG_56 7:2.4
  av_dup_packet@LIBAVCODEC_FFMPEG_56 7:2.4
+ av_dv_codec_profile2@LIBAVCODEC_FFMPEG_56 7:2.6
  av_dv_codec_profile@LIBAVCODEC_FFMPEG_56 7:2.4
  av_dv_frame_profile@LIBAVCODEC_FFMPEG_56 7:2.4
  av_fast_padded_malloc@LIBAVCODEC_FFMPEG_56 7:2.4
@@ -82,6 +83,7 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
  av_picture_copy@LIBAVCODEC_FFMPEG_56 7:2.4
  av_picture_crop@LIBAVCODEC_FFMPEG_56 7:2.4
  av_picture_pad@LIBAVCODEC_FFMPEG_56 7:2.4
+ av_qsv_alloc_context@LIBAVCODEC_FFMPEG_56 7:2.6
  av_rdft_calc@LIBAVCODEC_FFMPEG_56 7:2.4
  av_rdft_end@LIBAVCODEC_FFMPEG_56 7:2.4
  av_rdft_init@LIBAVCODEC_FFMPEG_56 7:2.4
@@ -96,6 +98,7 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
  (optional)av_vdpau_alloc_context@LIBAVCODEC_FFMPEG_56 7:2.4
  av_vdpau_bind_context@LIBAVCODEC_FFMPEG_56 7:2.5
  (optional)av_vdpau_get_profile@LIBAVCODEC_FFMPEG_56 7:2.4
+ (optional)av_vdpau_get_surface_parameters@LIBAVCODEC_FFMPEG_56 7:2.6
  (optional)av_vdpau_hwaccel_get_render2@LIBAVCODEC_FFMPEG_56 7:2.4
  (optional)av_vdpau_hwaccel_set_render2@LIBAVCODEC_FFMPEG_56 7:2.4
  av_vorbis_parse_frame@LIBAVCODEC_FFMPEG_56 7:2.5
