@@ -1,5 +1,6 @@
-ffmpeg (7:2.5.4-2) UNRELEASED; urgency=medium
+ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
 
+  * Import new major upstream release 2.6.
   * Add Breaks and Replaces on libav-tools (<< 6:9~), which shipped ff*
     symlinks. Thanks to Andreas Beckmann. (Closes: #779664)
 
