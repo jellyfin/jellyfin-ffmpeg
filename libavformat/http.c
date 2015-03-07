@@ -45,7 +45,7 @@
 #define BUFFER_SIZE   MAX_URL_SIZE
 #define MAX_REDIRECTS 8
 
-typedef struct {
+typedef struct HTTPContext {
     const AVClass *class;
     URLContext *hd;
     unsigned char buffer[BUFFER_SIZE], *buf_ptr, *buf_end;
@@ -643,9 +643,9 @@ static int get_cookies(HTTPContext *s, char **cookies, const char *path,
         }
 
         done_cookie:
-        av_free(cdomain);
-        av_free(cpath);
-        av_free(cvalue);
+        av_freep(&cdomain);
+        av_freep(&cpath);
+        av_freep(&cvalue);
         if (ret < 0) {
             if (*cookies) av_freep(cookies);
             av_free(cset_cookies);

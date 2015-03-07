@@ -205,8 +205,6 @@ static int asfrtp_parse_packet(AVFormatContext *s, PayloadContext *asf,
             int start_off = avio_tell(pb);
 
             mflags = avio_r8(pb);
-            if (mflags & 0x80)
-                flags |= RTP_FLAG_KEY;
             len_off = avio_rb24(pb);
             if (mflags & 0x20)   /**< relative timestamp */
                 avio_skip(pb, 4);
@@ -224,10 +222,7 @@ static int asfrtp_parse_packet(AVFormatContext *s, PayloadContext *asf,
                  * multiple RTP packets.
                  */
                 if (asf->pktbuf && len_off != avio_tell(asf->pktbuf)) {
-                    uint8_t *p;
-                    avio_close_dyn_buf(asf->pktbuf, &p);
-                    asf->pktbuf = NULL;
-                    av_free(p);
+                    ffio_free_dyn_buf(&asf->pktbuf);
                 }
                 if (!len_off && !asf->pktbuf &&
                     (res = avio_open_dyn_buf(&asf->pktbuf)) < 0)
@@ -288,21 +283,10 @@ static int asfrtp_parse_packet(AVFormatContext *s, PayloadContext *asf,
     return res == 1 ? -1 : res;
 }
 
-static PayloadContext *asfrtp_new_context(void)
+static void asfrtp_close_context(PayloadContext *asf)
 {
-    return av_mallocz(sizeof(PayloadContext));
-}
-
-static void asfrtp_free_context(PayloadContext *asf)
-{
-    if (asf->pktbuf) {
-        uint8_t *p = NULL;
-        avio_close_dyn_buf(asf->pktbuf, &p);
-        asf->pktbuf = NULL;
-        av_free(p);
-    }
+    ffio_free_dyn_buf(&asf->pktbuf);
     av_freep(&asf->buf);
-    av_free(asf);
 }
 
 #define RTP_ASF_HANDLER(n, s, t) \
@@ -310,9 +294,9 @@ RTPDynamicProtocolHandler ff_ms_rtp_ ## n ## _handler = { \
     .enc_name         = s, \
     .codec_type       = t, \
     .codec_id         = AV_CODEC_ID_NONE, \
+    .priv_data_size   = sizeof(PayloadContext), \
     .parse_sdp_a_line = asfrtp_parse_sdp_line, \
-    .alloc            = asfrtp_new_context, \
-    .free             = asfrtp_free_context, \
+    .close            = asfrtp_close_context, \
     .parse_packet     = asfrtp_parse_packet,   \
 }
 

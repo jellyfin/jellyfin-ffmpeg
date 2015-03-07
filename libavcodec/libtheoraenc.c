@@ -99,8 +99,11 @@ static int get_stats(AVCodecContext *avctx, int eos)
         return AVERROR_EXTERNAL;
     }
     if (!eos) {
-        h->stats = av_fast_realloc(h->stats, &h->stats_size,
+        void *tmp = av_fast_realloc(h->stats, &h->stats_size,
                                    h->stats_offset + bytes);
+        if (!tmp)
+            return AVERROR(ENOMEM);
+        h->stats = tmp;
         memcpy(h->stats + h->stats_offset, buf, bytes);
         h->stats_offset += bytes;
     } else {
@@ -131,6 +134,10 @@ static int submit_stats(AVCodecContext *avctx)
         }
         h->stats_size = strlen(avctx->stats_in) * 3/4;
         h->stats      = av_malloc(h->stats_size);
+        if (!h->stats) {
+            h->stats_size = 0;
+            return AVERROR(ENOMEM);
+        }
         h->stats_size = av_base64_decode(h->stats, avctx->stats_in, h->stats_size);
     }
     while (h->stats_size - h->stats_offset > 0) {
@@ -352,7 +359,7 @@ static av_cold int encode_close(AVCodecContext* avc_context)
 
     th_encode_free(h->t_state);
     av_freep(&h->stats);
-    av_freep(&avc_context->coded_frame);
+    av_frame_free(&avc_context->coded_frame);
     av_freep(&avc_context->stats_out);
     av_freep(&avc_context->extradata);
     avc_context->extradata_size = 0;

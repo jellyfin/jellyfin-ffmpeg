@@ -26,7 +26,9 @@
 #include "png.h"
 
 #include "libavutil/avassert.h"
+#include "libavutil/libm.h"
 #include "libavutil/opt.h"
+#include "libavutil/color_utils.h"
 
 #include <zlib.h>
 
@@ -231,6 +233,59 @@ static int png_write_row(PNGEncContext *s, const uint8_t *data, int size)
     return 0;
 }
 
+#define AV_WB32_PNG(buf, n) AV_WB32(buf, lrint((n) * 100000))
+static int png_get_chrm(enum AVColorPrimaries prim,  uint8_t *buf)
+{
+    double rx, ry, gx, gy, bx, by, wx = 0.3127, wy = 0.3290;
+    switch (prim) {
+        case AVCOL_PRI_BT709:
+            rx = 0.640; ry = 0.330;
+            gx = 0.300; gy = 0.600;
+            bx = 0.150; by = 0.060;
+            break;
+        case AVCOL_PRI_BT470M:
+            rx = 0.670; ry = 0.330;
+            gx = 0.210; gy = 0.710;
+            bx = 0.140; by = 0.080;
+            wx = 0.310; wy = 0.316;
+            break;
+        case AVCOL_PRI_BT470BG:
+            rx = 0.640; ry = 0.330;
+            gx = 0.290; gy = 0.600;
+            bx = 0.150; by = 0.060;
+            break;
+        case AVCOL_PRI_SMPTE170M:
+        case AVCOL_PRI_SMPTE240M:
+            rx = 0.630; ry = 0.340;
+            gx = 0.310; gy = 0.595;
+            bx = 0.155; by = 0.070;
+            break;
+        case AVCOL_PRI_BT2020:
+            rx = 0.708; ry = 0.292;
+            gx = 0.170; gy = 0.797;
+            bx = 0.131; by = 0.046;
+            break;
+        default:
+            return 0;
+    }
+
+    AV_WB32_PNG(buf     , wx); AV_WB32_PNG(buf + 4 , wy);
+    AV_WB32_PNG(buf + 8 , rx); AV_WB32_PNG(buf + 12, ry);
+    AV_WB32_PNG(buf + 16, gx); AV_WB32_PNG(buf + 20, gy);
+    AV_WB32_PNG(buf + 24, bx); AV_WB32_PNG(buf + 28, by);
+    return 1;
+}
+
+static int png_get_gama(enum AVColorTransferCharacteristic trc, uint8_t *buf)
+{
+    double gamma = avpriv_get_gamma_from_trc(trc);
+    if (gamma <= 1e-6)
+        return 0;
+
+    AV_WB32_PNG(buf, 1.0 / gamma);
+    return 1;
+}
+
 static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                         const AVFrame *pict, int *got_packet)
 {
@@ -273,6 +328,10 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         break;
     case AV_PIX_FMT_GRAY8A:
         bit_depth = 8;
+        color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
+        break;
+    case AV_PIX_FMT_YA16BE:
+        bit_depth = 16;
         color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
         break;
     case AV_PIX_FMT_MONOBLACK:
@@ -353,6 +412,18 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
       s->buf[8] = 0; /* unit specifier is unknown */
     }
     png_write_chunk(&s->bytestream, MKTAG('p', 'H', 'Y', 's'), s->buf, 9);
+
+    /* write colorspace information */
+    if (pict->color_primaries == AVCOL_PRI_BT709 &&
+        pict->color_trc == AVCOL_TRC_IEC61966_2_1) {
+        s->buf[0] = 1; /* rendering intent, relative colorimetric by default */
+        png_write_chunk(&s->bytestream, MKTAG('s', 'R', 'G', 'B'), s->buf, 1);
+    }
+
+    if (png_get_chrm(pict->color_primaries, s->buf))
+        png_write_chunk(&s->bytestream, MKTAG('c', 'H', 'R', 'M'), s->buf, 32);
+    if (png_get_gama(pict->color_trc, s->buf))
+        png_write_chunk(&s->bytestream, MKTAG('g', 'A', 'M', 'A'), s->buf, 4);
 
     /* put the palette if needed */
     if (color_type == PNG_COLOR_TYPE_PALETTE) {
@@ -533,7 +604,7 @@ AVCodec ff_png_encoder = {
         AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,
         AV_PIX_FMT_PAL8,
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
-        AV_PIX_FMT_GRAY16BE,
+        AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE,
         AV_PIX_FMT_MONOBLACK, AV_PIX_FMT_NONE
     },
     .priv_class     = &pngenc_class,

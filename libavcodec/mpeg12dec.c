@@ -59,7 +59,7 @@ typedef struct Mpeg1Context {
     uint8_t afd;
     int has_afd;
     int slice_count;
-    int save_aspect_info;
+    AVRational save_aspect;
     int save_width, save_height, save_progressive_seq;
     AVRational frame_rate_ext;  /* MPEG-2 specific framerate modificator */
     int sync;                   /* Did we reach a sync point like a GOP/SEQ/KEYFrame? */
@@ -151,7 +151,7 @@ static inline int mpeg1_decode_block_intra(MpegEncContext *s,
     component = (n <= 3 ? 0 : n - 4 + 1);
     diff = decode_dc(&s->gb, component);
     if (diff >= 0xffff)
-        return -1;
+        return AVERROR_INVALIDDATA;
     dc  = s->last_dc[component];
     dc += diff;
     s->last_dc[component] = dc;
@@ -563,7 +563,7 @@ static inline int mpeg2_decode_block_intra(MpegEncContext *s,
     }
     diff = decode_dc(&s->gb, component);
     if (diff >= 0xffff)
-        return -1;
+        return AVERROR_INVALIDDATA;
     dc  = s->last_dc[component];
     dc += diff;
     s->last_dc[component] = dc;
@@ -648,7 +648,7 @@ static inline int mpeg2_fast_decode_block_intra(MpegEncContext *s,
     }
     diff = decode_dc(&s->gb, component);
     if (diff >= 0xffff)
-        return -1;
+        return AVERROR_INVALIDDATA;
     dc = s->last_dc[component];
     dc += diff;
     s->last_dc[component] = dc;
@@ -1273,12 +1273,56 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
     uint8_t old_permutation[64];
     int ret;
 
+    if (avctx->codec_id == AV_CODEC_ID_MPEG1VIDEO) {
+        // MPEG-1 aspect
+        avctx->sample_aspect_ratio = av_d2q(1.0 / ff_mpeg1_aspect[s->aspect_ratio_info], 255);
+    } else { // MPEG-2
+        // MPEG-2 aspect
+        if (s->aspect_ratio_info > 1) {
+            AVRational dar =
+                av_mul_q(av_div_q(ff_mpeg2_aspect[s->aspect_ratio_info],
+                                  (AVRational) { s1->pan_scan.width,
+                                                 s1->pan_scan.height }),
+                         (AVRational) { s->width, s->height });
+
+            /* We ignore the spec here and guess a bit as reality does not
+             * match the spec, see for example res_change_ffmpeg_aspect.ts
+             * and sequence-display-aspect.mpg.
+             * issue1613, 621, 562 */
+            if ((s1->pan_scan.width == 0) || (s1->pan_scan.height == 0) ||
+                (av_cmp_q(dar, (AVRational) { 4, 3 }) &&
+                 av_cmp_q(dar, (AVRational) { 16, 9 }))) {
+                s->avctx->sample_aspect_ratio =
+                    av_div_q(ff_mpeg2_aspect[s->aspect_ratio_info],
+                             (AVRational) { s->width, s->height });
+            } else {
+                s->avctx->sample_aspect_ratio =
+                    av_div_q(ff_mpeg2_aspect[s->aspect_ratio_info],
+                             (AVRational) { s1->pan_scan.width, s1->pan_scan.height });
+// issue1613 4/3 16/9 -> 16/9
+// res_change_ffmpeg_aspect.ts 4/3 225/44 ->4/3
+// widescreen-issue562.mpg 4/3 16/9 -> 16/9
+//                s->avctx->sample_aspect_ratio = av_mul_q(s->avctx->sample_aspect_ratio, (AVRational) {s->width, s->height});
+                av_dlog(avctx, "A %d/%d\n",
+                        ff_mpeg2_aspect[s->aspect_ratio_info].num,
+                        ff_mpeg2_aspect[s->aspect_ratio_info].den);
+                av_dlog(avctx, "B %d/%d\n", s->avctx->sample_aspect_ratio.num,
+                        s->avctx->sample_aspect_ratio.den);
+            }
+        } else {
+            s->avctx->sample_aspect_ratio =
+                ff_mpeg2_aspect[s->aspect_ratio_info];
+        }
+    } // MPEG-2
+
+    ff_set_sar(s->avctx, s->avctx->sample_aspect_ratio);
+
     if ((s1->mpeg_enc_ctx_allocated == 0)                   ||
         avctx->coded_width       != s->width                ||
         avctx->coded_height      != s->height               ||
         s1->save_width           != s->width                ||
         s1->save_height          != s->height               ||
-        s1->save_aspect_info     != s->aspect_ratio_info    ||
+        av_cmp_q(s1->save_aspect, s->avctx->sample_aspect_ratio) ||
         (s1->save_progressive_seq != s->progressive_sequence && FFALIGN(s->height, 16) != FFALIGN(s->height, 32)) ||
         0) {
         if (s1->mpeg_enc_ctx_allocated) {
@@ -1288,9 +1332,6 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
             s->parse_context = pc;
             s1->mpeg_enc_ctx_allocated = 0;
         }
-
-        if ((s->width == 0) || (s->height == 0))
-            return -2;
 
         ret = ff_set_dimensions(avctx, s->width, s->height);
         if (ret < 0)
@@ -1302,7 +1343,7 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
                    (s->bit_rate != 0x3FFFF*400 || s->vbv_delay != 0xFFFF)) {
             avctx->bit_rate = s->bit_rate;
         }
-        s1->save_aspect_info     = s->aspect_ratio_info;
+        s1->save_aspect          = s->avctx->sample_aspect_ratio;
         s1->save_width           = s->width;
         s1->save_height          = s->height;
         s1->save_progressive_seq = s->progressive_sequence;
@@ -1314,8 +1355,6 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
         if (avctx->codec_id == AV_CODEC_ID_MPEG1VIDEO) {
             // MPEG-1 fps
             avctx->framerate = ff_mpeg12_frame_rate_tab[s->frame_rate_index];
-            // MPEG-1 aspect
-            avctx->sample_aspect_ratio = av_d2q(1.0 / ff_mpeg1_aspect[s->aspect_ratio_info], 255);
             avctx->ticks_per_frame     = 1;
         } else { // MPEG-2
             // MPEG-2 fps
@@ -1325,45 +1364,7 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
                       ff_mpeg12_frame_rate_tab[s->frame_rate_index].den * s1->frame_rate_ext.den,
                       1 << 30);
             avctx->ticks_per_frame = 2;
-            // MPEG-2 aspect
-            if (s->aspect_ratio_info > 1) {
-                AVRational dar =
-                    av_mul_q(av_div_q(ff_mpeg2_aspect[s->aspect_ratio_info],
-                                      (AVRational) { s1->pan_scan.width,
-                                                     s1->pan_scan.height }),
-                             (AVRational) { s->width, s->height });
-
-                /* We ignore the spec here and guess a bit as reality does not
-                 * match the spec, see for example res_change_ffmpeg_aspect.ts
-                 * and sequence-display-aspect.mpg.
-                 * issue1613, 621, 562 */
-                if ((s1->pan_scan.width == 0) || (s1->pan_scan.height == 0) ||
-                    (av_cmp_q(dar, (AVRational) { 4, 3 }) &&
-                     av_cmp_q(dar, (AVRational) { 16, 9 }))) {
-                    s->avctx->sample_aspect_ratio =
-                        av_div_q(ff_mpeg2_aspect[s->aspect_ratio_info],
-                                 (AVRational) { s->width, s->height });
-                } else {
-                    s->avctx->sample_aspect_ratio =
-                        av_div_q(ff_mpeg2_aspect[s->aspect_ratio_info],
-                                 (AVRational) { s1->pan_scan.width, s1->pan_scan.height });
-// issue1613 4/3 16/9 -> 16/9
-// res_change_ffmpeg_aspect.ts 4/3 225/44 ->4/3
-// widescreen-issue562.mpg 4/3 16/9 -> 16/9
-//                    s->avctx->sample_aspect_ratio = av_mul_q(s->avctx->sample_aspect_ratio, (AVRational) {s->width, s->height});
-                    av_dlog(avctx, "A %d/%d\n",
-                            ff_mpeg2_aspect[s->aspect_ratio_info].num,
-                            ff_mpeg2_aspect[s->aspect_ratio_info].den);
-                    av_dlog(avctx, "B %d/%d\n", s->avctx->sample_aspect_ratio.num,
-                            s->avctx->sample_aspect_ratio.den);
-                }
-            } else {
-                s->avctx->sample_aspect_ratio =
-                    ff_mpeg2_aspect[s->aspect_ratio_info];
-            }
         } // MPEG-2
-
-        ff_set_sar(s->avctx, s->avctx->sample_aspect_ratio);
 
         avctx->pix_fmt = mpeg_get_pixelformat(avctx);
         setup_hwaccel_for_pixfmt(avctx);
@@ -1373,8 +1374,8 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
         memcpy(old_permutation, s->idsp.idct_permutation, 64 * sizeof(uint8_t));
 
         ff_mpv_idct_init(s);
-        if (ff_mpv_common_init(s) < 0)
-            return -2;
+        if ((ret = ff_mpv_common_init(s)) < 0)
+            return ret;
 
         quant_matrix_rebuild(s->intra_matrix,        old_permutation, s->idsp.idct_permutation);
         quant_matrix_rebuild(s->inter_matrix,        old_permutation, s->idsp.idct_permutation);
@@ -1695,7 +1696,7 @@ static int mpeg_field_start(MpegEncContext *s, const uint8_t *buf, int buf_size)
 
         if (!s->current_picture_ptr) {
             av_log(s->avctx, AV_LOG_ERROR, "first field missing\n");
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
 
         if (s->avctx->hwaccel &&
@@ -1910,7 +1911,7 @@ static int mpeg_decode_slice(MpegEncContext *s, int mb_y,
                     ((avctx->err_recognition & (AV_EF_BITSTREAM | AV_EF_AGGRESSIVE)) && left > 8)) {
                     av_log(avctx, AV_LOG_ERROR, "end mismatch left=%d %0X\n",
                            left, show_bits(&s->gb, FFMIN(left, 23)));
-                    return -1;
+                    return AVERROR_INVALIDDATA;
                 } else
                     goto eos;
             }
@@ -1947,7 +1948,7 @@ static int mpeg_decode_slice(MpegEncContext *s, int mb_y,
                     } else if (code == 35) {
                         if (s->mb_skip_run != 0 || show_bits(&s->gb, 15) != 0) {
                             av_log(s->avctx, AV_LOG_ERROR, "slice mismatch\n");
-                            return -1;
+                            return AVERROR_INVALIDDATA;
                         }
                         goto eos; /* end of slice */
                     }
@@ -2043,7 +2044,7 @@ static int slice_decode_thread(AVCodecContext *c, void *arg)
         if (s->picture_structure == PICT_BOTTOM_FIELD)
             mb_y++;
         if (mb_y < 0 || mb_y >= s->end_mb_y)
-            return -1;
+            return AVERROR_INVALIDDATA;
     }
 }
 
@@ -2125,7 +2126,8 @@ static int mpeg1_decode_sequence(AVCodecContext *avctx,
     }
     s->frame_rate_index = get_bits(&s->gb, 4);
     if (s->frame_rate_index == 0 || s->frame_rate_index > 13) {
-        av_log(avctx, AV_LOG_WARNING, "frame_rate_index %d is invalid\n", s->frame_rate_index);
+        av_log(avctx, AV_LOG_WARNING,
+               "frame_rate_index %d is invalid\n", s->frame_rate_index);
         s->frame_rate_index = 1;
     }
     s->bit_rate = get_bits(&s->gb, 18) * 400;
@@ -2191,8 +2193,7 @@ static int vcr2_init_sequence(AVCodecContext *avctx)
 {
     Mpeg1Context *s1  = avctx->priv_data;
     MpegEncContext *s = &s1->mpeg_enc_ctx;
-    int i, v;
-    int ret;
+    int i, v, ret;
 
     /* start new MPEG-1 context decoding */
     s->out_format = FMT_MPEG1;
@@ -2302,19 +2303,21 @@ static void mpeg_decode_user_data(AVCodecContext *avctx,
     const uint8_t *buf_end = p + buf_size;
     Mpeg1Context *s1 = avctx->priv_data;
 
+#if 0
+    int i;
+    for(i=0; !(!p[i-2] && !p[i-1] && p[i]==1) && i<buf_size; i++){
+        av_log(avctx, AV_LOG_ERROR, "%c", p[i]);
+    }
+    av_log(avctx, AV_LOG_ERROR, "\n");
+#endif
+
     if (buf_size > 29){
         int i;
         for(i=0; i<20; i++)
             if (!memcmp(p+i, "\0TMPGEXS\0", 9)){
                 s->tmpgexs= 1;
             }
-
-/*        for(i=0; !(!p[i-2] && !p[i-1] && p[i]==1) && i<buf_size; i++){
-            av_log(avctx, AV_LOG_ERROR, "%c", p[i]);
-        }
-            av_log(avctx, AV_LOG_ERROR, "\n");*/
     }
-
     /* we parse the DTG active format information */
     if (buf_end - p >= 5 &&
         p[0] == 'D' && p[1] == 'T' && p[2] == 'G' && p[3] == '1') {

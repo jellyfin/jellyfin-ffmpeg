@@ -71,7 +71,7 @@ typedef struct mkv_seekhead {
     int                     num_entries;
 } mkv_seekhead;
 
-typedef struct {
+typedef struct mkv_cuepoint {
     uint64_t        pts;
     int             stream_idx;
     int             tracknum;
@@ -80,13 +80,13 @@ typedef struct {
     int64_t         duration;           ///< duration of the block according to time base
 } mkv_cuepoint;
 
-typedef struct {
+typedef struct mkv_cues {
     int64_t         segment_offset;
     mkv_cuepoint    *entries;
     int             num_entries;
 } mkv_cues;
 
-typedef struct {
+typedef struct mkv_track {
     int             write_dts;
     int             has_cue;
     int64_t         ts_offset;
@@ -123,6 +123,8 @@ typedef struct MatroskaMuxContext {
 
     uint32_t chapter_id_offset;
     int wrote_chapters;
+
+    int allow_raw_vfw;
 } MatroskaMuxContext;
 
 
@@ -491,7 +493,7 @@ static int64_t mkv_write_cues(AVFormatContext *s, mkv_cues *cues, mkv_track *tra
 
 static int put_xiph_codecpriv(AVFormatContext *s, AVIOContext *pb, AVCodecContext *codec)
 {
-    uint8_t *header_start[3];
+    const uint8_t *header_start[3];
     int header_len[3];
     int first_header_size;
     int j;
@@ -570,20 +572,21 @@ static int put_flac_codecpriv(AVFormatContext *s,
     return 0;
 }
 
-static void get_aac_sample_rates(AVFormatContext *s, AVCodecContext *codec,
-                                 int *sample_rate, int *output_sample_rate)
+static int get_aac_sample_rates(AVFormatContext *s, AVCodecContext *codec,
+                                int *sample_rate, int *output_sample_rate)
 {
     MPEG4AudioConfig mp4ac;
 
     if (avpriv_mpeg4audio_get_config(&mp4ac, codec->extradata,
                                      codec->extradata_size * 8, 1) < 0) {
-        av_log(s, AV_LOG_WARNING,
+        av_log(s, AV_LOG_ERROR,
                "Error parsing AAC extradata, unable to determine samplerate.\n");
-        return;
+        return AVERROR(EINVAL);
     }
 
     *sample_rate        = mp4ac.sample_rate;
     *output_sample_rate = mp4ac.ext_sample_rate;
+    return 0;
 }
 
 static int mkv_write_native_codecprivate(AVFormatContext *s,
@@ -664,7 +667,7 @@ static int mkv_write_codecprivate(AVFormatContext *s, AVIOContext *pb,
             if (!codec->codec_tag)
                 codec->codec_tag = ff_codec_get_tag(ff_codec_bmp_tags,
                                                     codec->codec_id);
-            if (!codec->codec_tag) {
+            if (!codec->codec_tag && codec->codec_id != AV_CODEC_ID_RAWVIDEO) {
                 av_log(s, AV_LOG_ERROR, "No bmp codec tag found for codec %s\n",
                        avcodec_get_name(codec->codec_id));
                 ret = AVERROR(EINVAL);
@@ -822,8 +825,11 @@ static int mkv_write_track(AVFormatContext *s, MatroskaMuxContext *mkv,
     if (!bit_depth)
         bit_depth = codec->bits_per_coded_sample;
 
-    if (codec->codec_id == AV_CODEC_ID_AAC)
-        get_aac_sample_rates(s, codec, &sample_rate, &output_sample_rate);
+    if (codec->codec_id == AV_CODEC_ID_AAC) {
+        ret = get_aac_sample_rates(s, codec, &sample_rate, &output_sample_rate);
+        if (ret < 0)
+            return ret;
+    }
 
     track = start_ebml_master(pb, MATROSKA_ID_TRACKENTRY, 0);
     put_ebml_uint (pb, MATROSKA_ID_TRACKNUMBER,
@@ -875,6 +881,15 @@ static int mkv_write_track(AVFormatContext *s, MatroskaMuxContext *mkv,
                 break;
             }
         }
+        if (codec->codec_id == AV_CODEC_ID_RAWVIDEO && !codec->codec_tag) {
+            if (mkv->allow_raw_vfw) {
+                native_id = 0;
+            } else {
+                av_log(s, AV_LOG_ERROR, "Raw RGB is not supported Natively in Matroska, you can use AVI or NUT or\n"
+                                        "If you would like to store it anyway using VFW mode, enable allow_raw_vfw (-allow_raw_vfw 1)\n");
+                return AVERROR(EINVAL);
+            }
+        }
     }
 
     if (codec->codec_type == AVMEDIA_TYPE_AUDIO && codec->initial_padding && codec->codec_id == AV_CODEC_ID_OPUS) {
@@ -913,7 +928,7 @@ static int mkv_write_track(AVFormatContext *s, MatroskaMuxContext *mkv,
 
         if (!native_id &&
             ff_codec_get_tag(ff_codec_movvideo_tags, codec->codec_id) &&
-            (!ff_codec_get_tag(ff_codec_bmp_tags,   codec->codec_id) ||
+            ((!ff_codec_get_tag(ff_codec_bmp_tags,   codec->codec_id) && codec->codec_id != AV_CODEC_ID_RAWVIDEO) ||
              codec->codec_id == AV_CODEC_ID_SVQ1 ||
              codec->codec_id == AV_CODEC_ID_SVQ3 ||
              codec->codec_id == AV_CODEC_ID_CINEPAK))
@@ -1059,14 +1074,16 @@ static int mkv_write_chapters(AVFormatContext *s)
     for (i = 0; i < s->nb_chapters; i++) {
         ebml_master chapteratom, chapterdisplay;
         AVChapter *c     = s->chapters[i];
+        int64_t chapterstart = av_rescale_q(c->start, c->time_base, scale);
+        int64_t chapterend   = av_rescale_q(c->end,   c->time_base, scale);
         AVDictionaryEntry *t = NULL;
+        if (chapterstart < 0 || chapterstart > chapterend)
+            return AVERROR_INVALIDDATA;
 
         chapteratom = start_ebml_master(pb, MATROSKA_ID_CHAPTERATOM, 0);
         put_ebml_uint(pb, MATROSKA_ID_CHAPTERUID, c->id + mkv->chapter_id_offset);
-        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMESTART,
-                      av_rescale_q(c->start, c->time_base, scale));
-        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMEEND,
-                      av_rescale_q(c->end,   c->time_base, scale));
+        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMESTART, chapterstart);
+        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMEEND, chapterend);
         put_ebml_uint(pb, MATROSKA_ID_CHAPTERFLAGHIDDEN , 0);
         put_ebml_uint(pb, MATROSKA_ID_CHAPTERFLAGENABLED, 1);
         if ((t = av_dict_get(c->metadata, "title", NULL, 0))) {
@@ -1084,12 +1101,15 @@ static int mkv_write_chapters(AVFormatContext *s)
     return 0;
 }
 
-static void mkv_write_simpletag(AVIOContext *pb, AVDictionaryEntry *t)
+static int mkv_write_simpletag(AVIOContext *pb, AVDictionaryEntry *t)
 {
     uint8_t *key = av_strdup(t->key);
     uint8_t *p   = key;
     const uint8_t *lang = NULL;
     ebml_master tag;
+
+    if (!key)
+        return AVERROR(ENOMEM);
 
     if ((p = strrchr(p, '-')) &&
         (lang = av_convert_lang_to(p + 1, AV_LANG_ISO639_2_BIBL)))
@@ -1112,6 +1132,7 @@ static void mkv_write_simpletag(AVIOContext *pb, AVDictionaryEntry *t)
     end_ebml_master(pb, tag);
 
     av_freep(&key);
+    return 0;
 }
 
 static int mkv_write_tag(AVFormatContext *s, AVDictionary *m, unsigned int elementid,
@@ -1135,11 +1156,15 @@ static int mkv_write_tag(AVFormatContext *s, AVDictionary *m, unsigned int eleme
         put_ebml_uint(s->pb, elementid, uid);
     end_ebml_master(s->pb, targets);
 
-    while ((t = av_dict_get(m, "", t, AV_DICT_IGNORE_SUFFIX)))
+    while ((t = av_dict_get(m, "", t, AV_DICT_IGNORE_SUFFIX))) {
         if (av_strcasecmp(t->key, "title") &&
             av_strcasecmp(t->key, "stereo_mode") &&
-            av_strcasecmp(t->key, "encoding_tool"))
-            mkv_write_simpletag(s->pb, t);
+            av_strcasecmp(t->key, "encoding_tool")) {
+            ret = mkv_write_simpletag(s->pb, t);
+            if (ret < 0)
+                return ret;
+        }
+    }
 
     end_ebml_master(s->pb, tag);
     return 0;
@@ -1978,6 +2003,7 @@ static const AVOption options[] = {
     { "cluster_time_limit",  "Store at most the provided number of milliseconds in a cluster.",                               OFFSET(cluster_time_limit), AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, INT64_MAX, FLAGS },
     { "dash", "Create a WebM file conforming to WebM DASH specification", OFFSET(is_dash), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS },
     { "dash_track_number", "Track number for the DASH stream", OFFSET(dash_track_number), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 127, FLAGS },
+    { "allow_raw_vfw", "allow RAW VFW mode", OFFSET(allow_raw_vfw), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS },
     { NULL },
 };
 

@@ -46,6 +46,7 @@ DOC_EXAMPLES-$(CONFIG_FILTERING_AUDIO_EXAMPLE)   += filtering_audio
 DOC_EXAMPLES-$(CONFIG_FILTERING_VIDEO_EXAMPLE)   += filtering_video
 DOC_EXAMPLES-$(CONFIG_METADATA_EXAMPLE)          += metadata
 DOC_EXAMPLES-$(CONFIG_MUXING_EXAMPLE)            += muxing
+DOC_EXAMPLES-$(CONFIG_QSVDEC_EXAMPLE)            += qsvdec
 DOC_EXAMPLES-$(CONFIG_REMUXING_EXAMPLE)          += remuxing
 DOC_EXAMPLES-$(CONFIG_RESAMPLING_AUDIO_EXAMPLE)  += resampling_audio
 DOC_EXAMPLES-$(CONFIG_SCALING_VIDEO_EXAMPLE)     += scaling_video
@@ -114,9 +115,9 @@ doc/%-all.pod: doc/%.texi $(SRC_PATH)/doc/texi2pod.pl $(GENTEXI)
 
 doc/%.1 doc/%.3: TAG = MAN
 doc/%.1: doc/%.pod $(GENTEXI)
-	$(M)pod2man --section=1 --center=" " --release=" " $< > $@
+	$(M)pod2man --section=1 --center=" " --release=" " --date=" " $< > $@
 doc/%.3: doc/%.pod $(GENTEXI)
-	$(M)pod2man --section=3 --center=" " --release=" " $< > $@
+	$(M)pod2man --section=3 --center=" " --release=" " --date=" " $< > $@
 
 $(DOCS) doc/doxy/html: | doc/
 $(DOC_EXAMPLES:%$(EXESUF)=%.o): | doc/examples

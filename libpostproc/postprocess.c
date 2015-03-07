@@ -700,6 +700,8 @@ pp_mode *pp_get_mode_by_name_and_quality(const char *name, int quality)
     }
 
     ppMode= av_malloc(sizeof(PPMode));
+    if (!ppMode)
+        return NULL;
 
     ppMode->lumMode= 0;
     ppMode->chromMode= 0;
@@ -912,12 +914,14 @@ static const char * context_to_name(void * ptr) {
 
 static const AVClass av_codec_context_class = { "Postproc", context_to_name, NULL };
 
-pp_context *pp_get_context(int width, int height, int cpuCaps){
-    PPContext *c= av_malloc(sizeof(PPContext));
+av_cold pp_context *pp_get_context(int width, int height, int cpuCaps){
+    PPContext *c= av_mallocz(sizeof(PPContext));
     int stride= FFALIGN(width, 16);  //assumed / will realloc if needed
     int qpStride= (width+15)/16 + 2; //assumed / will realloc if needed
 
-    memset(c, 0, sizeof(PPContext));
+    if (!c)
+        return NULL;
+
     c->av_class = &av_codec_context_class;
     if(cpuCaps&PP_FORMAT){
         c->hChromaSubSample= cpuCaps&0x3;
@@ -943,7 +947,7 @@ pp_context *pp_get_context(int width, int height, int cpuCaps){
     return c;
 }
 
-void pp_free_context(void *vc){
+av_cold void pp_free_context(void *vc){
     PPContext *c = (PPContext*)vc;
     int i;
 
