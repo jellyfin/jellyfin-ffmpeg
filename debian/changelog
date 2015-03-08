@@ -1,4 +1,4 @@
-ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.6-1) unstable; urgency=medium
 
   * Import new major upstream release 2.6.
   * Add Breaks and Replaces on libav-tools (<< 6:9~), which shipped ff*
@@ -22,7 +22,7 @@ ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
   * Add Breaks on kodi-bin (<= 14.0+dfsg1-1), because it uses internal FFmpeg
     API, which was changed incompatibly.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 03 Mar 2015 21:15:43 +0100
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 08 Mar 2015 13:17:49 +0100
 
 ffmpeg (7:2.5.4-1) unstable; urgency=medium
 
