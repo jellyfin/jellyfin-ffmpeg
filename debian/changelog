@@ -16,6 +16,7 @@ ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
   * Add autopkgtests:
      - examples: compile the example programs
      - encdec: test creating/reading files for many codec/format combinations
+  * Update debian/copyright.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 03 Mar 2015 21:15:43 +0100
 

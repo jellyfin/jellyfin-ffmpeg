@@ -34,6 +34,8 @@ Copyright:
   1999, Nick Bailey
   1999, Roger Hardiman
   1999-2000, Sebastien Rougeaux <sebastien.rougeaux@anu.edu.au>
+  2000, Chris Ausbrooks <weed@bucket.pp.ualr.edu>
+  2000, Fabien COELHO <fabien@coelho.net>
   2000, Edward Beingessner And Sundry Contributors
   2000-2003, 2005, Fabrice Bellard
   2000-2001, Michel Lespinasse <walken@zoy.org>
@@ -44,7 +46,7 @@ Copyright:
   2001, Heikki Leinonen
   2001, Juan J. Sierralta P
   2001, Lionel Ulmer
-  2001-2014, Michael Niedermayer <michaelni@gmx.at>
+  2001-2015, Michael Niedermayer <michaelni@gmx.at>
   2001, 2005-2014, Peter Ross <pross@xvid.org>
   2001, Tim Ferguson
   2002-2006, Alex Beregszaszi
@@ -184,7 +186,6 @@ Copyright:
   2009, Dylan Yudaken
   2009, Giliard B. de Freitas <giliarde@gmail.com>
   2009-2010, Howard Chu
-  2009, Ivan Schreter
   2009-2013, James Darnley <james.darnley@gmail.com>
   2009, Jimmy Christensen
   2009, Joshua Warner
@@ -236,7 +237,7 @@ Copyright:
   2010-2011, Zhentan Feng <spyfeng@gmail.com>
   2011, Anatoliy Wasserman
   2011, Andreas Öman
-  2011-2013, Anton Khirnov <anton@khirnov.net>
+  2011-2013, 2015, Anton Khirnov <anton@khirnov.net>
   2011-2014, Clément Bœsch <u@pkh.me>
   2011-2014, Derek Buitenhuis
   2011-2012, Hyllian/Jararaca <sergiogdb@gmail.com>
@@ -273,7 +274,7 @@ Copyright:
   2012, 2014, Georg Lippitsch <georg.lippitsch@gmx.at>
   2012-2013, Gildas Cocherel
   2012-2013, Guillaume Martres <smarter@ubuntu.com>
-  2012-2014, James Almer <jamrial@gmail.com>
+  2012-2015, James Almer <jamrial@gmail.com>
   2012, Jan Ekström
   2012, Li Cao <li@multicorewareinc.com>
   2012-2013, Mickael Raulet
@@ -307,7 +308,7 @@ Copyright:
   2013, Rémi Denis-Courmont
   2013-2014, RISC OS Open Ltd
   2013, Rl, Aetey Global Technologies AB
-  2013, Seppo Tomperi
+  2013-2015, Seppo Tomperi <seppo.tomperi@vtt.fi>
   2013-2014, Tiancheng "Timothy" Gu <timothygu99@gmail.com>
   2013, Vadim Kalinsky <vadim@kalinsky.ru>
   2013, VTT
@@ -318,18 +319,28 @@ Copyright:
   2014, Daniel Oberhoff
   2014, Dave Rice @dericed
   2014, Eejya Singh
+  2014-2015, Hendrik Leppkes
   2014, James Yu <james.yu@linaro.org>
   2014, Marvin Scholz
   2014, Muhammad Faiz <mfcc64@gmail.com>
   2014, Neil Birkbeck <birkbeck@google.com>
   2014, Nicholas Robbins
+  2014, Oleksij Rempel <linux@rempel-privat.de>
+  2014-2015, Peter Meerwald <pmeerw@pmeerw.net>
   2014, Rong Yan
   2014, Samsung Electronics
   2014, StarBrilliant <m13253@hotmail.com>
-  2014, Supraja Meedinti
-  2014, Thomas Volkert <thomas@homer-conferencing.com>
+  2014-2015, Supraja Meedinti
+  2014-2015, Thomas Volkert <thomas@homer-conferencing.com>
   2014, Tim Walker <tdskywalker@gmail.com>
+  2014, Timo Rothenpieler <timo@rothenpieler.org>
   2014, Vignesh Venkatasubramanian
+  2015, Anshul Maheshwari
+  2015, Gilles Chanteperdrix <gch@xenomai.org>
+  2015, Imagination Technologies Ltd
+  2015, Kevin Wheatley <kevin.j.wheatley@gmail.com>
+  2015, Roger Pack
+  2015, Stupeflix
 License: LGPL-2.1+
 Comment:
  You should have received a copy of the GNU Lesser General Public
@@ -418,12 +429,15 @@ Files:
   libavcodec/x86/flac_dsp_gpl.asm
   libavdevice/x11grab.c
   libavfilter/f_ebur128.c
-  libavfilter/libmpcodecs/*
   libavfilter/vf_blackframe.c
   libavfilter/vf_boxblur.c
   libavfilter/vf_colormatrix.c
   libavfilter/vf_cropdetect.c
   libavfilter/vf_delogo.c
+  libavfilter/vf_eq.c
+  libavfilter/vf_eq.h
+  libavfilter/vf_fspp.c
+  libavfilter/vf_fspp.h
   libavfilter/vf_geq.c
   libavfilter/vf_histeq.c
   libavfilter/vf_hqdn3d.c
@@ -431,14 +445,16 @@ Files:
   libavfilter/vf_interlace.c
   libavfilter/vf_kerndeint.c
   libavfilter/vf_mcdeint.c
-  libavfilter/vf_mp.c
   libavfilter/vf_mpdecimate.c
   libavfilter/vf_owdenoise.c
   libavfilter/vf_perspective.c
   libavfilter/vf_phase.c
   libavfilter/vf_pp.c
+  libavfilter/vf_pp7.c
+  libavfilter/vf_pp7.h
   libavfilter/vf_pullup.c
   libavfilter/vf_pullup.h
+  libavfilter/vf_repeatfields.c
   libavfilter/vf_sab.c
   libavfilter/vf_smartblur.c
   libavfilter/vf_spp.c
@@ -446,8 +462,13 @@ Files:
   libavfilter/vf_stereo3d.c
   libavfilter/vf_super2xsai.c
   libavfilter/vf_tinterlace.c
+  libavfilter/vf_uspp.c
   libavfilter/vsrc_mptestsrc.c
+  libavfilter/x86/vf_fspp.asm
+  libavfilter/x86/vf_fspp_init.c
   libavfilter/x86/vf_hqdn3d_init.c
+  libavfilter/x86/vf_pp7.asm
+  libavfilter/x86/vf_pp7_init.c
   libavfilter/x86/vf_pullup.asm
   libavfilter/x86/vf_pullup_init.c
   libavfilter/x86/vf_spp.c
@@ -459,12 +480,11 @@ Files:
   libpostproc/postprocess_template.c
   libswresample/swresample-test.c
   tests/tiny_ssim.c
+  tools/coverity.c
 Copyright:
-  MPlayer developers
   Wilbert Dijkhof
   1997-1998, Rasca, Berlin
   1997-2001, ZSNES Team <zsknight@zsnes.com> <_demo_@zsnes.com>
-  1999, Aaron Holtzman
   1999-2001, Free Software Foundation, Inc
   2000-2002, Fabrice Bellard
   2001, 2006, Daniel Maas <dmaas@dcine.com> <dmaas@maasdigital.com>
@@ -502,7 +522,9 @@ Copyright:
   2013, Jean Delvare <khali@linux-fr.org>
   2013-2014, Paul B Mahol
   2013, Vittorio Giovara <vittorio.giovara@gmail.com>
+  2014-2015, Arwa Arif <arwaarif1994@gmail.com>
   2014, James Darnley <james.darnley@gmail.com>
+  2014, Red Hat, Inc.
 License: GPL-2+
  FFmpeg is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -616,6 +638,7 @@ Files:
   doc/examples/filtering_video.c
   doc/examples/metadata.c
   doc/examples/muxing.c
+  doc/examples/qsvdec.c
   doc/examples/remuxing.c
   doc/examples/resampling_audio.c
   doc/examples/scaling_video.c
@@ -660,6 +683,7 @@ Copyright:
   2013-2014, Rl, Aetey Global Technologies AB
   2014, Andrey Utkin
   2014, Barbara Lepage <db0company@gmail.com>
+  2015, Anton Khirnov <anton@khirnov.net>
 License: Expat
 
 Files:
