@@ -17,6 +17,8 @@ ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
      - examples: compile the example programs
      - encdec: test creating/reading files for many codec/format combinations
   * Update debian/copyright.
+  * Add doc-avoid-the-incorrect-phrase-allow-to.patch to fix
+    spelling-error-in-manpage lintian warnings.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 03 Mar 2015 21:15:43 +0100
 
