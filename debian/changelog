@@ -19,6 +19,8 @@ ffmpeg (7:2.6-1) UNRELEASED; urgency=medium
   * Update debian/copyright.
   * Add doc-avoid-the-incorrect-phrase-allow-to.patch to fix
     spelling-error-in-manpage lintian warnings.
+  * Add Breaks on kodi-bin (<= 14.0+dfsg1-1), because it uses internal FFmpeg
+    API, which was changed incompatibly.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 03 Mar 2015 21:15:43 +0100
 
