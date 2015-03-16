@@ -1,6 +1,6 @@
-ffmpeg (7:2.6-1) unstable; urgency=medium
+ffmpeg (7:2.6.1-1) unstable; urgency=medium
 
-  * Import new major upstream release 2.6.
+  * Import new major upstream release 2.6.1.
   * Add Breaks and Replaces on libav-tools (<< 6:9~), which shipped ff*
     symlinks. Thanks to Andreas Beckmann. (Closes: #779664)
   * Adapt debian/rules to changes in the configure script:
@@ -17,12 +17,10 @@ ffmpeg (7:2.6-1) unstable; urgency=medium
      - examples: compile the example programs
      - encdec: test creating/reading files for many codec/format combinations
   * Update debian/copyright.
-  * Add doc-avoid-the-incorrect-phrase-allow-to.patch to fix
-    spelling-error-in-manpage lintian warnings.
   * Add Breaks on kodi-bin (<= 14.0+dfsg1-1), because it uses internal FFmpeg
     API, which was changed incompatibly.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 08 Mar 2015 13:17:49 +0100
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Mon, 16 Mar 2015 23:53:34 +0100
 
 ffmpeg (7:2.5.4-1) unstable; urgency=medium
 
