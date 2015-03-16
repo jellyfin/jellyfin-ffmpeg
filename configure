@@ -1769,6 +1769,7 @@ SYSTEM_FUNCS="
 TOOLCHAIN_FEATURES="
     as_dn_directive
     as_func
+    as_object_arch
     asm_mod_q
     attribute_may_alias
     attribute_packed
@@ -2595,6 +2596,8 @@ deshake_filter_select="pixelutils"
 drawtext_filter_deps="libfreetype"
 ebur128_filter_deps="gpl"
 eq_filter_deps="gpl"
+fftfilt_filter_deps="avcodec"
+fftfilt_filter_select="rdft"
 flite_filter_deps="libflite"
 frei0r_filter_deps="frei0r dlopen"
 frei0r_src_filter_deps="frei0r dlopen"
@@ -4562,6 +4565,11 @@ ra .dn d0.i16
 .unreq ra
 EOF
 
+    # llvm's integrated assembler supports .object_arch from llvm 3.5
+    [ "$objformat" = elf ] && check_as <<EOF && enable as_object_arch
+.object_arch armv4
+EOF
+
     [ $target_os != win32 ] && enabled_all armv6t2 shared !pic && enable_weak_pic
 
 elif enabled mips; then
@@ -5451,6 +5459,7 @@ enabled asyncts_filter      && prepend avfilter_deps "avresample"
 enabled atempo_filter       && prepend avfilter_deps "avcodec"
 enabled ebur128_filter && enabled swresample && prepend avfilter_deps "swresample"
 enabled elbg_filter         && prepend avfilter_deps "avcodec"
+enabled fftfilt_filter      && prepend avfilter_deps "avcodec"
 enabled mcdeint_filter      && prepend avfilter_deps "avcodec"
 enabled movie_filter    && prepend avfilter_deps "avformat avcodec"
 enabled pan_filter          && prepend avfilter_deps "swresample"
