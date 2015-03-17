@@ -872,7 +872,7 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
                 start_subband += start_subband - 7;
             end_subband    = get_bits(gbc, 3) + 5;
 #if USE_FIXED
-            s->spx_dst_end_freq = end_freq_inv_tab[end_subband];
+            s->spx_dst_end_freq = end_freq_inv_tab[end_subband-5];
 #endif
             if (end_subband   > 7)
                 end_subband   += end_subband   - 7;
@@ -939,7 +939,7 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
                             nblend = 0;
                             sblend = 0x800000;
                         } else if (nratio > 0x7fffff) {
-                            nblend = 0x800000;
+                            nblend = 14529495; // sqrt(3) in FP.23
                             sblend = 0;
                         } else {
                             nblend = fixed_sqrt(nratio, 23);
