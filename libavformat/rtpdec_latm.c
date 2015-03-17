@@ -19,7 +19,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "avio_internal.h"
 #include "rtpdec_formats.h"
 #include "internal.h"
 #include "libavutil/avstring.h"
@@ -32,10 +31,22 @@ struct PayloadContext {
     uint32_t timestamp;
 };
 
-static void latm_close_context(PayloadContext *data)
+static PayloadContext *latm_new_context(void)
 {
-    ffio_free_dyn_buf(&data->dyn_buf);
-    av_freep(&data->buf);
+    return av_mallocz(sizeof(PayloadContext));
+}
+
+static void latm_free_context(PayloadContext *data)
+{
+    if (!data)
+        return;
+    if (data->dyn_buf) {
+        uint8_t *p;
+        avio_close_dyn_buf(data->dyn_buf, &p);
+        av_free(p);
+    }
+    av_free(data->buf);
+    av_free(data);
 }
 
 static int latm_parse_packet(AVFormatContext *ctx, PayloadContext *data,
@@ -48,7 +59,10 @@ static int latm_parse_packet(AVFormatContext *ctx, PayloadContext *data,
     if (buf) {
         if (!data->dyn_buf || data->timestamp != *timestamp) {
             av_freep(&data->buf);
-            ffio_free_dyn_buf(&data->dyn_buf);
+            if (data->dyn_buf)
+                avio_close_dyn_buf(data->dyn_buf, &data->buf);
+            data->dyn_buf = NULL;
+            av_freep(&data->buf);
 
             data->timestamp = *timestamp;
             if ((ret = avio_open_dyn_buf(&data->dyn_buf)) < 0)
@@ -58,7 +72,7 @@ static int latm_parse_packet(AVFormatContext *ctx, PayloadContext *data,
 
         if (!(flags & RTP_FLAG_MARKER))
             return AVERROR(EAGAIN);
-        av_freep(&data->buf);
+        av_free(data->buf);
         data->len = avio_close_dyn_buf(data->dyn_buf, &data->buf);
         data->dyn_buf = NULL;
         data->pos = 0;
@@ -89,7 +103,7 @@ static int latm_parse_packet(AVFormatContext *ctx, PayloadContext *data,
     return data->pos < data->len;
 }
 
-static int parse_fmtp_config(AVStream *st, const char *value)
+static int parse_fmtp_config(AVStream *st, char *value)
 {
     int len = ff_hex_to_data(NULL, value), i, ret = 0;
     GetBitContext gb;
@@ -130,7 +144,7 @@ end:
 
 static int parse_fmtp(AVFormatContext *s,
                       AVStream *stream, PayloadContext *data,
-                      const char *attr, const char *value)
+                      char *attr, char *value)
 {
     int res;
 
@@ -166,8 +180,8 @@ RTPDynamicProtocolHandler ff_mp4a_latm_dynamic_handler = {
     .enc_name           = "MP4A-LATM",
     .codec_type         = AVMEDIA_TYPE_AUDIO,
     .codec_id           = AV_CODEC_ID_AAC,
-    .priv_data_size     = sizeof(PayloadContext),
     .parse_sdp_a_line   = latm_parse_sdp_line,
-    .close              = latm_close_context,
-    .parse_packet       = latm_parse_packet,
+    .alloc              = latm_new_context,
+    .free               = latm_free_context,
+    .parse_packet       = latm_parse_packet
 };

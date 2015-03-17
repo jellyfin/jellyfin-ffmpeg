@@ -19,7 +19,6 @@
 #include "config.h"
 #include "common.h"
 #include "pixelutils.h"
-#include "internal.h"
 
 #if CONFIG_PIXELUTILS
 
@@ -151,8 +150,6 @@ int main(void)
         ret = 1;
         goto end;
     }
-
-    ff_check_pixfmt_descriptors();
 
 #define RANDOM_INIT(buf, size) do {             \
     int k;                                      \

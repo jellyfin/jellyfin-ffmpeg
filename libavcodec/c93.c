@@ -23,7 +23,7 @@
 #include "bytestream.h"
 #include "internal.h"
 
-typedef struct C93DecoderContext {
+typedef struct {
     AVFrame *pictures[2];
     int currentpic;
 } C93DecoderContext;

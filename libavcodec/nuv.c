@@ -33,7 +33,7 @@
 #include "internal.h"
 #include "rtjpeg.h"
 
-typedef struct NuvContext {
+typedef struct {
     AVFrame *pic;
     int codec_frameheader;
     int quality;

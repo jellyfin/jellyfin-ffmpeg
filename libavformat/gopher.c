@@ -28,7 +28,7 @@
 #include "network.h"
 #include "url.h"
 
-typedef struct GopherContext {
+typedef struct {
     URLContext *hd;
 } GopherContext;
 

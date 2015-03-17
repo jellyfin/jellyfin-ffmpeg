@@ -27,7 +27,7 @@
 #include "parser.h"
 #include "libavutil/intreadwrite.h"
 
-typedef struct RV34ParseContext {
+typedef struct {
     ParseContext pc;
     int64_t key_dts;
     int key_pts;

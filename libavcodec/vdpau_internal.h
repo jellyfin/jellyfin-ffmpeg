@@ -31,10 +31,10 @@
 #endif
 #include "h264.h"
 
-#include "libavutil/frame.h"
-
 #include "avcodec.h"
 #include "mpeg4video.h"
+#include "mpegvideo.h"
+#include "version.h"
 
 /** Extract VdpVideoSurface from an AVFrame */
 static inline uintptr_t ff_vdpau_get_surface_id(AVFrame *pic)
@@ -44,17 +44,16 @@ static inline uintptr_t ff_vdpau_get_surface_id(AVFrame *pic)
 
 struct vdpau_picture_context;
 #if CONFIG_VDPAU
-union VDPAUPictureInfo {
+#if !FF_API_BUFS_VDPAU
+union AVVDPAUPictureInfo {
     VdpPictureInfoH264        h264;
     VdpPictureInfoMPEG1Or2    mpeg;
     VdpPictureInfoVC1          vc1;
     VdpPictureInfoMPEG4Part2 mpeg4;
-#ifdef VDP_DECODER_PROFILE_H264_HIGH_444_PREDICTIVE
-    VdpPictureInfoH264Predictive h264_predictive;
-#endif
 };
-
+#else
 #include "vdpau.h"
+#endif
 
 typedef struct VDPAUHWContext {
     AVVDPAUContext context;
@@ -93,7 +92,7 @@ struct vdpau_picture_context {
     /**
      * VDPAU picture information.
      */
-    union VDPAUPictureInfo info;
+    union AVVDPAUPictureInfo info;
 
     /**
      * Allocated size of the bitstream_buffers table.

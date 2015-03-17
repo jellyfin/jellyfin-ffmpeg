@@ -113,24 +113,22 @@ typedef int (*DynamicPayloadPacketHandlerProc)(AVFormatContext *ctx,
                                                int len, uint16_t seq, int flags);
 
 struct RTPDynamicProtocolHandler {
-    const char *enc_name;
+    const char enc_name[50];
     enum AVMediaType codec_type;
     enum AVCodecID codec_id;
-    enum AVStreamParseType need_parsing;
     int static_payload_id; /* 0 means no payload id is set. 0 is a valid
                             * payload ID (PCMU), too, but that format doesn't
                             * require any custom depacketization code. */
-    int priv_data_size;
 
     /** Initialize dynamic protocol handler, called after the full rtpmap line is parsed, may be null */
     int (*init)(AVFormatContext *s, int st_index, PayloadContext *priv_data);
     /** Parse the a= line from the sdp field */
     int (*parse_sdp_a_line)(AVFormatContext *s, int st_index,
                             PayloadContext *priv_data, const char *line);
-    /** Free any data needed by the rtp parsing for this dynamic data.
-      * Don't free the protocol_data pointer itself, that is freed by the
-      * caller. This is called even if the init method failed. */
-    void (*close)(PayloadContext *protocol_data);
+    /** Allocate any data needed by the rtp parsing for this dynamic data. */
+    PayloadContext *(*alloc)(void);
+    /** Free any data needed by the rtp parsing for this dynamic data. */
+    void (*free)(PayloadContext *protocol_data);
     /** Parse handler for this dynamic packet */
     DynamicPayloadPacketHandlerProc parse_packet;
     int (*need_keyframe)(PayloadContext *context);
@@ -207,7 +205,7 @@ int ff_parse_fmtp(AVFormatContext *s,
                   int (*parse_fmtp)(AVFormatContext *s,
                                     AVStream *stream,
                                     PayloadContext *data,
-                                    const char *attr, const char *value));
+                                    char *attr, char *value));
 
 void ff_register_rtp_dynamic_payload_handlers(void);
 

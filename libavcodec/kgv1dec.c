@@ -30,7 +30,7 @@
 #include "avcodec.h"
 #include "internal.h"
 
-typedef struct KgvContext {
+typedef struct {
     uint16_t *frame_buffer;
     uint16_t *last_frame_buffer;
 } KgvContext;

@@ -28,6 +28,10 @@
 #include "riff.h"
 #include "asf.h"
 
+#undef NDEBUG
+#include <assert.h>
+
+
 #define ASF_INDEXED_INTERVAL    10000000
 #define ASF_INDEX_BLOCK         (1<<9)
 #define ASF_PAYLOADS_PER_PACKET 63
@@ -183,7 +187,7 @@
 
 #define DATA_HEADER_SIZE 50
 
-typedef struct ASFContext {
+typedef struct {
     uint32_t seqno;
     int is_streamed;
     ASFStream streams[128];              ///< it's max number and it's not that big
@@ -481,7 +485,7 @@ static int asf_write_header1(AVFormatContext *s, int64_t file_size,
     /* chapters using ASF markers */
     if (!asf->is_streamed && s->nb_chapters) {
         int ret;
-        if ((ret = asf_write_markers(s)) < 0)
+        if (ret = asf_write_markers(s))
             return ret;
     }
     /* stream headers */

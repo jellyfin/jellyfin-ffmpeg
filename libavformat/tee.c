@@ -305,7 +305,8 @@ static void close_slaves(AVFormatContext *avf)
         av_freep(&tee->slaves[i].stream_map);
         av_freep(&tee->slaves[i].bsfs);
 
-        avio_closep(&avf2->pb);
+        avio_close(avf2->pb);
+        avf2->pb = NULL;
         avformat_free_context(avf2);
         tee->slaves[i].avf = NULL;
     }
@@ -436,9 +437,10 @@ static int tee_write_trailer(AVFormatContext *avf)
             if (!ret_all)
                 ret_all = ret;
         if (!(avf2->oformat->flags & AVFMT_NOFILE)) {
-            if ((ret = avio_closep(&avf2->pb)) < 0)
+            if ((ret = avio_close(avf2->pb)) < 0)
                 if (!ret_all)
                     ret_all = ret;
+            avf2->pb = NULL;
         }
     }
     close_slaves(avf);

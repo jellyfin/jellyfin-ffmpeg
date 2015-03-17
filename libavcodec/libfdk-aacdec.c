@@ -44,12 +44,11 @@ typedef struct FDKAACDecContext {
     int initialized;
     uint8_t *decoder_buffer;
     uint8_t *anc_buffer;
-    int conceal_method;
+    enum ConcealMethod conceal_method;
     int drc_level;
     int drc_boost;
     int drc_heavy;
     int drc_cut;
-    int level_limit;
 } FDKAACDecContext;
 
 
@@ -72,9 +71,6 @@ static const AVOption fdk_aac_dec_options[] = {
                      OFFSET(drc_level),      AV_OPT_TYPE_INT,   { .i64 = -1},  -1, 127, AD, NULL    },
     { "drc_heavy", "Dynamic Range Control: heavy compression, where [1] is on (RF mode) and [0] is off",
                      OFFSET(drc_heavy),      AV_OPT_TYPE_INT,   { .i64 = -1},  -1, 1,   AD, NULL    },
-#ifdef AACDECODER_LIB_VL0
-    { "level_limit", "Signal level limiting", OFFSET(level_limit), AV_OPT_TYPE_INT, { .i64 = 0 }, -1, 1, AD },
-#endif
     { NULL }
 };
 
@@ -104,7 +100,7 @@ static int get_stream_info(AVCodecContext *avctx)
 
     for (i = 0; i < info->numChannels; i++) {
         AUDIO_CHANNEL_TYPE ctype = info->pChannelType[i];
-        if (ctype <= ACT_NONE || ctype >= FF_ARRAY_ELEMS(channel_counts)) {
+        if (ctype <= ACT_NONE || ctype > FF_ARRAY_ELEMS(channel_counts)) {
             av_log(avctx, AV_LOG_WARNING, "unknown channel type\n");
             break;
         }
@@ -295,13 +291,6 @@ static av_cold int fdk_aac_decode_init(AVCodecContext *avctx)
             return AVERROR_UNKNOWN;
         }
     }
-
-#ifdef AACDECODER_LIB_VL0
-    if (aacDecoder_SetParam(s->handle, AAC_PCM_LIMITER_ENABLE, s->level_limit) != AAC_DEC_OK) {
-        av_log(avctx, AV_LOG_ERROR, "Unable to set in signal level limiting in the decoder\n");
-        return AVERROR_UNKNOWN;
-    }
-#endif
 
     avctx->sample_fmt = AV_SAMPLE_FMT_S16;
 

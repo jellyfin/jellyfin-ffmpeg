@@ -700,8 +700,6 @@ static av_cold int X264_init(AVCodecContext *avctx)
 
         s = x264_encoder_headers(x4->enc, &nal, &nnal);
         avctx->extradata = p = av_malloc(s);
-        if (!p)
-            goto nomem;
 
         for (i = 0; i < nnal; i++) {
             /* Don't put the SEI in extradata. */
@@ -709,8 +707,6 @@ static av_cold int X264_init(AVCodecContext *avctx)
                 av_log(avctx, AV_LOG_INFO, "%s\n", nal[i].p_payload+25);
                 x4->sei_size = nal[i].i_payload;
                 x4->sei      = av_malloc(x4->sei_size);
-                if (!x4->sei)
-                    goto nomem;
                 memcpy(x4->sei, nal[i].p_payload, nal[i].i_payload);
                 continue;
             }
@@ -721,9 +717,6 @@ static av_cold int X264_init(AVCodecContext *avctx)
     }
 
     return 0;
-nomem:
-    X264_close(avctx);
-    return AVERROR(ENOMEM);
 }
 
 static const enum AVPixelFormat pix_fmts_8bit[] = {
@@ -784,10 +777,7 @@ static const AVOption options[] = {
     { "aq-mode",       "AQ method",                                       OFFSET(aq_mode),       AV_OPT_TYPE_INT,    { .i64 = -1 }, -1, INT_MAX, VE, "aq_mode"},
     { "none",          NULL,                              0, AV_OPT_TYPE_CONST, {.i64 = X264_AQ_NONE},         INT_MIN, INT_MAX, VE, "aq_mode" },
     { "variance",      "Variance AQ (complexity mask)",   0, AV_OPT_TYPE_CONST, {.i64 = X264_AQ_VARIANCE},     INT_MIN, INT_MAX, VE, "aq_mode" },
-    { "autovariance",  "Auto-variance AQ",                0, AV_OPT_TYPE_CONST, {.i64 = X264_AQ_AUTOVARIANCE}, INT_MIN, INT_MAX, VE, "aq_mode" },
-#if X264_BUILD >= 144
-    { "autovariance-biased", "Auto-variance AQ with bias to dark scenes", 0, AV_OPT_TYPE_CONST, {.i64 = X264_AQ_AUTOVARIANCE_BIASED}, INT_MIN, INT_MAX, VE, "aq_mode" },
-#endif
+    { "autovariance",  "Auto-variance AQ (experimental)", 0, AV_OPT_TYPE_CONST, {.i64 = X264_AQ_AUTOVARIANCE}, INT_MIN, INT_MAX, VE, "aq_mode" },
     { "aq-strength",   "AQ strength. Reduces blocking and blurring in flat and textured areas.", OFFSET(aq_strength), AV_OPT_TYPE_FLOAT, {.dbl = -1}, -1, FLT_MAX, VE},
     { "psy",           "Use psychovisual optimizations.",                 OFFSET(psy),           AV_OPT_TYPE_INT,    { .i64 = -1 }, -1, 1, VE },
     { "psy-rd",        "Strength of psychovisual optimization, in <psy-rd>:<psy-trellis> format.", OFFSET(psy_rd), AV_OPT_TYPE_STRING,  {0 }, 0, 0, VE},

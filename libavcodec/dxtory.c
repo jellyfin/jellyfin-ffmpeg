@@ -285,8 +285,7 @@ static int dxtory_decode_v2_565(AVCodecContext *avctx, AVFrame *pic,
                    "Slice sizes mismatch: got %"PRIu32" instead of %"PRIu32"\n",
                    AV_RL32(src + off), slice_size - 16);
         }
-        if ((ret = init_get_bits8(&gb2, src + off + 16, slice_size - 16)) < 0)
-            return ret;
+        init_get_bits(&gb2, src + off + 16, (slice_size - 16) * 8);
         dx2_decode_slice_565(&gb2, avctx->width, slice_height, dst,
                              pic->linesize[0], is_565);
 
@@ -368,8 +367,7 @@ static int dxtory_decode_v2_rgb(AVCodecContext *avctx, AVFrame *pic,
                    "Slice sizes mismatch: got %"PRIu32" instead of %"PRIu32"\n",
                    AV_RL32(src + off), slice_size - 16);
         }
-        if ((ret = init_get_bits8(&gb2, src + off + 16, slice_size - 16)) < 0)
-            return ret;
+        init_get_bits(&gb2, src + off + 16, (slice_size - 16) * 8);
         dx2_decode_slice_rgb(&gb2, avctx->width, slice_height, dst,
                              pic->linesize[0]);
 
@@ -466,8 +464,7 @@ static int dxtory_decode_v2_410(AVCodecContext *avctx, AVFrame *pic,
                    "Slice sizes mismatch: got %"PRIu32" instead of %"PRIu32"\n",
                    AV_RL32(src + off), slice_size - 16);
         }
-        if ((ret = init_get_bits8(&gb2, src + off + 16, slice_size - 16)) < 0)
-            return ret;
+        init_get_bits(&gb2, src + off + 16, (slice_size - 16) * 8);
         dx2_decode_slice_410(&gb2, avctx->width, slice_height, Y, U, V,
                              pic->linesize[0], pic->linesize[1],
                              pic->linesize[2]);
@@ -569,8 +566,7 @@ static int dxtory_decode_v2_420(AVCodecContext *avctx, AVFrame *pic,
                    "Slice sizes mismatch: got %"PRIu32" instead of %"PRIu32"\n",
                    AV_RL32(src + off), slice_size - 16);
         }
-        if ((ret = init_get_bits8(&gb2, src + off + 16, slice_size - 16)) < 0)
-            return ret;
+        init_get_bits(&gb2, src + off + 16, (slice_size - 16) * 8);
         dx2_decode_slice_420(&gb2, avctx->width, slice_height, Y, U, V,
                              pic->linesize[0], pic->linesize[1],
                              pic->linesize[2]);
@@ -662,8 +658,7 @@ static int dxtory_decode_v2_444(AVCodecContext *avctx, AVFrame *pic,
                    "Slice sizes mismatch: got %"PRIu32" instead of %"PRIu32"\n",
                    AV_RL32(src + off), slice_size - 16);
         }
-        if ((ret = init_get_bits8(&gb2, src + off + 16, slice_size - 16)) < 0)
-            return ret;
+        init_get_bits(&gb2, src + off + 16, (slice_size - 16) * 8);
         dx2_decode_slice_444(&gb2, avctx->width, slice_height, Y, U, V,
                              pic->linesize[0], pic->linesize[1],
                              pic->linesize[2]);

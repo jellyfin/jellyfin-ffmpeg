@@ -205,7 +205,7 @@ static int parse_iplconvkernel(IplConvKernel **kernel, char *buf, void *log_ctx)
 {
     char shape_filename[128] = "", shape_str[32] = "rect";
     int cols = 0, rows = 0, anchor_x = 0, anchor_y = 0, shape = CV_SHAPE_RECT;
-    int *values = NULL, ret = 0;
+    int *values = NULL, ret;
 
     sscanf(buf, "%dx%d+%dx%d/%32[^=]=%127s", &cols, &rows, &anchor_x, &anchor_y, shape_str, shape_filename);
 
@@ -219,36 +219,30 @@ static int parse_iplconvkernel(IplConvKernel **kernel, char *buf, void *log_ctx)
     } else {
         av_log(log_ctx, AV_LOG_ERROR,
                "Shape unspecified or type '%s' unknown.\n", shape_str);
-        ret = AVERROR(EINVAL);
-        goto out;
+        return AVERROR(EINVAL);
     }
 
     if (rows <= 0 || cols <= 0) {
         av_log(log_ctx, AV_LOG_ERROR,
                "Invalid non-positive values for shape size %dx%d\n", cols, rows);
-        ret = AVERROR(EINVAL);
-        goto out;
+        return AVERROR(EINVAL);
     }
 
     if (anchor_x < 0 || anchor_y < 0 || anchor_x >= cols || anchor_y >= rows) {
         av_log(log_ctx, AV_LOG_ERROR,
                "Shape anchor %dx%d is not inside the rectangle with size %dx%d.\n",
                anchor_x, anchor_y, cols, rows);
-        ret = AVERROR(EINVAL);
-        goto out;
+        return AVERROR(EINVAL);
     }
 
     *kernel = cvCreateStructuringElementEx(cols, rows, anchor_x, anchor_y, shape, values);
-    if (!*kernel) {
-        ret = AVERROR(ENOMEM);
-        goto out;
-    }
+    av_freep(&values);
+    if (!*kernel)
+        return AVERROR(ENOMEM);
 
     av_log(log_ctx, AV_LOG_VERBOSE, "Structuring element: w:%d h:%d x:%d y:%d shape:%s\n",
            rows, cols, anchor_x, anchor_y, shape_str);
-out:
-    av_freep(&values);
-    return ret;
+    return 0;
 }
 
 typedef struct DilateContext {
@@ -261,24 +255,19 @@ static av_cold int dilate_init(AVFilterContext *ctx, const char *args)
     OCVContext *s = ctx->priv;
     DilateContext *dilate = s->priv;
     char default_kernel_str[] = "3x3+0x0/rect";
-    char *kernel_str = NULL;
+    char *kernel_str;
     const char *buf = args;
     int ret;
 
-    if (args) {
+    if (args)
         kernel_str = av_get_token(&buf, "|");
-
-        if (!kernel_str)
-            return AVERROR(ENOMEM);
-    }
-
-    ret = parse_iplconvkernel(&dilate->kernel,
-                              (!kernel_str || !*kernel_str) ? default_kernel_str
-                                                            : kernel_str,
-                              ctx);
-    av_free(kernel_str);
-    if (ret < 0)
+    else
+        kernel_str = av_strdup(default_kernel_str);
+    if (!kernel_str)
+        return AVERROR(ENOMEM);
+    if ((ret = parse_iplconvkernel(&dilate->kernel, kernel_str, ctx)) < 0)
         return ret;
+    av_free(kernel_str);
 
     if (!buf || sscanf(buf, "|%d", &dilate->nb_iterations) != 1)
         dilate->nb_iterations = 1;
@@ -359,7 +348,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     if (s->uninit)
         s->uninit(ctx);
-    av_freep(&s->priv);
+    av_free(s->priv);
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)

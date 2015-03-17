@@ -325,9 +325,8 @@ static av_cold int XAVS_init(AVCodecContext *avctx)
     if (avctx->level > 0)
         x4->params.i_level_idc = avctx->level;
 
-    if (avctx->bit_rate > 0)
-        x4->params.rc.f_rate_tolerance =
-            (float)avctx->bit_rate_tolerance/avctx->bit_rate;
+    x4->params.rc.f_rate_tolerance =
+        (float)avctx->bit_rate_tolerance/avctx->bit_rate;
 
     if ((avctx->rc_buffer_size) &&
         (avctx->rc_initial_buffer_occupancy <= avctx->rc_buffer_size)) {
@@ -363,7 +362,7 @@ static av_cold int XAVS_init(AVCodecContext *avctx)
 
     /* TAG: Do we have GLOBAL HEADER in AVS */
     /* We Have PPS and SPS in AVS */
-    if (avctx->flags & CODEC_FLAG_GLOBAL_HEADER && 0) {
+    if (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) {
         xavs_nal_t *nal;
         int nnal, s, i, size;
         uint8_t *p;

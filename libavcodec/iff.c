@@ -41,7 +41,7 @@ typedef enum {
     MASK_LASSO
 } mask_type;
 
-typedef struct IffContext {
+typedef struct {
     AVFrame *frame;
     int planesize;
     uint8_t * planebuf;

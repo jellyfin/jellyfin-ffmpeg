@@ -43,6 +43,8 @@
 #include "libswresample/swresample.h"
 
 #include "avcodec.h"
+#include "celp_filters.h"
+#include "fft.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "mathops.h"
@@ -472,8 +474,10 @@ static int opus_decode_packet(AVCodecContext *avctx, void *data,
 
     /* setup the data buffers */
     ret = ff_get_buffer(avctx, frame, 0);
-    if (ret < 0)
+    if (ret < 0) {
+        av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
+    }
     frame->nb_samples = 0;
 
     for (i = 0; i < avctx->channels; i++) {

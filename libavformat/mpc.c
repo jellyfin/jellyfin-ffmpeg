@@ -31,12 +31,12 @@
 #define DELAY_FRAMES   32
 
 static const int mpc_rate[4] = { 44100, 48000, 37800, 32000 };
-typedef struct MPCFrame {
+typedef struct {
     int64_t pos;
     int size, skip;
 }MPCFrame;
 
-typedef struct MPCContext {
+typedef struct {
     int ver;
     uint32_t curframe, lastframe;
     uint32_t fcount;

@@ -92,7 +92,7 @@ fail:
     return ret;
 }
 
-int ff_raw_data_read_header(AVFormatContext *s)
+static int ff_raw_data_read_header(AVFormatContext *s)
 {
     AVStream *st = avformat_new_stream(s, NULL);
     if (!st)

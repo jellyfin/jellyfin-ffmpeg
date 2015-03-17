@@ -824,9 +824,10 @@ static int find_slice_quant(AVCodecContext *avctx, const AVFrame *pic,
         if (ctx->alpha_bits)
             bits += estimate_alpha_plane(ctx, &error, src, linesize[3],
                                          mbs_per_slice, q, td->blocks[3]);
-        if (bits > 65000 * 8)
+        if (bits > 65000 * 8) {
             error = SCORE_LIMIT;
-
+            break;
+        }
         slice_bits[q]  = bits;
         slice_score[q] = error;
     }
@@ -914,7 +915,7 @@ static int find_quant_thread(AVCodecContext *avctx, void *arg,
     for (x = mb = 0; x < ctx->mb_width; x += mbs_per_slice, mb++) {
         while (ctx->mb_width - x < mbs_per_slice)
             mbs_per_slice >>= 1;
-        q = find_slice_quant(avctx, arg,
+        q = find_slice_quant(avctx, avctx->coded_frame,
                              (mb + 1) * TRELLIS_WIDTH, x, y,
                              mbs_per_slice, td);
     }
@@ -941,6 +942,10 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int pkt_size, ret;
     int max_slice_size = (ctx->frame_size_upper_bound - 200) / (ctx->pictures_per_frame * ctx->slices_per_picture + 1);
     uint8_t frame_flags;
+
+    *avctx->coded_frame           = *pic;
+    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
+    avctx->coded_frame->key_frame = 1;
 
     pkt_size = ctx->frame_size_upper_bound;
 
@@ -1002,7 +1007,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
         // slices
         if (!ctx->force_quant) {
-            ret = avctx->execute2(avctx, find_quant_thread, (void*)pic, NULL,
+            ret = avctx->execute2(avctx, find_quant_thread, NULL, NULL,
                                   ctx->mb_height);
             if (ret)
                 return ret;
@@ -1053,7 +1058,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                     slice_hdr        = pkt->data + (slice_hdr        - start);
                     tmp              = pkt->data + (tmp              - start);
                 }
-                init_put_bits(&pb, buf, (pkt_size - (buf - orig_buf)));
+                init_put_bits(&pb, buf, (pkt_size - (buf - orig_buf)) * 8);
                 ret = encode_slice(avctx, pic, &pb, sizes, x, y, q,
                                    mbs_per_slice);
                 if (ret < 0)
@@ -1092,7 +1097,7 @@ static av_cold int encode_close(AVCodecContext *avctx)
     ProresContext *ctx = avctx->priv_data;
     int i;
 
-    av_frame_free(&avctx->coded_frame);
+    av_freep(&avctx->coded_frame);
 
     if (ctx->tdata) {
         for (i = 0; i < avctx->thread_count; i++)
@@ -1130,8 +1135,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
     avctx->coded_frame = av_frame_alloc();
     if (!avctx->coded_frame)
         return AVERROR(ENOMEM);
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
 
     ctx->fdct      = prores_fdct;
     ctx->scantable = interlaced ? ff_prores_interlaced_scan

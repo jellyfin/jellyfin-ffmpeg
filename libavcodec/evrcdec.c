@@ -760,8 +760,7 @@ static int evrc_decode_frame(AVCodecContext *avctx, void *data,
                                  && !e->prev_error_flag)
         goto erasure;
 
-    if ((ret = init_get_bits8(&e->gb, buf, buf_size)) < 0)
-        return ret;
+    init_get_bits(&e->gb, buf, 8 * buf_size);
     memset(&e->frame, 0, sizeof(EVRCAFrame));
 
     unpack_frame(e);

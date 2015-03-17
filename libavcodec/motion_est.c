@@ -36,6 +36,9 @@
 #include "mpegutils.h"
 #include "mpegvideo.h"
 
+#undef NDEBUG
+#include <assert.h>
+
 #define P_LEFT P[1]
 #define P_TOP P[2]
 #define P_TOPRIGHT P[3]
@@ -317,9 +320,6 @@ int ff_init_me(MpegEncContext *s){
     }
 
     c->avctx= s->avctx;
-
-    if(s->codec_id == AV_CODEC_ID_H261)
-        c->avctx->me_sub_cmp = c->avctx->me_cmp;
 
     if(cache_size < 2*dia_size && !c->stride){
         av_log(s->avctx, AV_LOG_INFO, "ME_MAP size may be a little small for the selected diamond size\n");

@@ -217,7 +217,6 @@ AVCodec ff_adpcm_vima_decoder = {
     .capabilities = CODEC_CAP_DR1,
 };
 
-#if FF_API_VIMA_DECODER
 AVCodec ff_vima_decoder = {
     .name         = "vima",
     .long_name    = NULL_IF_CONFIG_SMALL("LucasArts VIMA audio"),
@@ -227,4 +226,3 @@ AVCodec ff_vima_decoder = {
     .decode       = decode_frame,
     .capabilities = CODEC_CAP_DR1,
 };
-#endif

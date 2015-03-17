@@ -56,7 +56,8 @@
 #define HUF_TOKENS 256
 #define PALETTE_COUNT 256
 
-typedef struct hnode {
+typedef struct
+{
   int count;
   unsigned char used;
   int children[2];

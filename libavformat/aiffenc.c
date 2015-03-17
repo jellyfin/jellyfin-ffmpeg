@@ -30,7 +30,7 @@
 #include "isom.h"
 #include "id3v2.h"
 
-typedef struct AIFFOutputContext {
+typedef struct {
     const AVClass *class;
     int64_t form;
     int64_t frames;

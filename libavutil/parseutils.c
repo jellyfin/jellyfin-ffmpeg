@@ -62,12 +62,12 @@ int av_parse_ratio(AVRational *q, const char *str, int max,
     return 0;
 }
 
-typedef struct VideoSizeAbbr {
+typedef struct {
     const char *abbr;
     int width, height;
 } VideoSizeAbbr;
 
-typedef struct VideoRateAbbr {
+typedef struct {
     const char *abbr;
     AVRational rate;
 } VideoRateAbbr;
@@ -186,7 +186,7 @@ int av_parse_video_rate(AVRational *rate, const char *arg)
     return 0;
 }
 
-typedef struct ColorEntry {
+typedef struct {
     const char *name;            ///< a string representing the name of the color
     uint8_t     rgb_color[3];    ///< RGB values for the color
 } ColorEntry;

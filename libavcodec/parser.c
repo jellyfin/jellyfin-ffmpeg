@@ -23,12 +23,10 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "libavutil/avassert.h"
 #include "libavutil/atomic.h"
 #include "libavutil/mem.h"
 
 #include "parser.h"
-#include "internal.h"
 
 static AVCodecParser *av_first_parser = NULL;
 
@@ -86,8 +84,6 @@ found:
     s->dts_sync_point       = INT_MIN;
     s->dts_ref_dts_delta    = INT_MIN;
     s->pts_dts_delta        = INT_MIN;
-    s->format               = -1;
-
     return s;
 
 err_out:
@@ -97,16 +93,14 @@ err_out:
     return NULL;
 }
 
-void ff_fetch_timestamp(AVCodecParserContext *s, int off, int remove, int fuzzy)
+void ff_fetch_timestamp(AVCodecParserContext *s, int off, int remove)
 {
     int i;
 
-    if (!fuzzy) {
-        s->dts    =
-        s->pts    = AV_NOPTS_VALUE;
-        s->pos    = -1;
-        s->offset = 0;
-    }
+    s->dts    =
+    s->pts    = AV_NOPTS_VALUE;
+    s->pos    = -1;
+    s->offset = 0;
     for (i = 0; i < AV_PARSER_PTS_NB; i++) {
         if (s->cur_offset + off >= s->cur_frame_offset[i] &&
             (s->frame_offset < s->cur_frame_offset[i] ||
@@ -114,12 +108,10 @@ void ff_fetch_timestamp(AVCodecParserContext *s, int off, int remove, int fuzzy)
             // check disabled since MPEG-TS does not send complete PES packets
             /*s->next_frame_offset + off <*/  s->cur_frame_end[i]){
 
-            if (!fuzzy || s->cur_frame_dts[i] != AV_NOPTS_VALUE) {
-                s->dts    = s->cur_frame_dts[i];
-                s->pts    = s->cur_frame_pts[i];
-                s->pos    = s->cur_frame_pos[i];
-                s->offset = s->next_frame_offset - s->cur_frame_offset[i];
-            }
+            s->dts    = s->cur_frame_dts[i];
+            s->pts    = s->cur_frame_pts[i];
+            s->pos    = s->cur_frame_pos[i];
+            s->offset = s->next_frame_offset - s->cur_frame_offset[i];
             if (remove)
                 s->cur_frame_offset[i] = INT64_MAX;
             if (s->cur_offset + off < s->cur_frame_end[i])
@@ -162,12 +154,11 @@ int av_parser_parse2(AVCodecParserContext *s, AVCodecContext *avctx,
         s->last_pts        = s->pts;
         s->last_dts        = s->dts;
         s->last_pos        = s->pos;
-        ff_fetch_timestamp(s, 0, 0, 0);
+        ff_fetch_timestamp(s, 0, 0);
     }
     /* WARNING: the returned index can be negative */
     index = s->parser->parser_parse(s, avctx, (const uint8_t **) poutbuf,
                                     poutbuf_size, buf, buf_size);
-    av_assert0(index > -0x20000000); // The API does not allow returning AVERROR codes
     /* update the file pointer */
     if (*poutbuf_size) {
         /* fill the data for the current frame */
@@ -205,8 +196,6 @@ int av_parser_change(AVCodecParserContext *s, AVCodecContext *avctx,
 
             *poutbuf_size = size;
             *poutbuf      = av_malloc(size + FF_INPUT_BUFFER_PADDING_SIZE);
-            if (!*poutbuf)
-                return AVERROR(ENOMEM);
 
             memcpy(*poutbuf, avctx->extradata, avctx->extradata_size);
             memcpy(*poutbuf + avctx->extradata_size, buf,
@@ -311,14 +300,13 @@ void ff_parse_close(AVCodecParserContext *s)
 
 int ff_mpeg4video_split(AVCodecContext *avctx, const uint8_t *buf, int buf_size)
 {
+    int i;
     uint32_t state = -1;
-    const uint8_t *ptr = buf, *end = buf + buf_size;
 
-    while (ptr < end) {
-        ptr = avpriv_find_start_code(ptr, end, &state);
+    for (i = 0; i < buf_size; i++) {
+        state = state << 8 | buf[i];
         if (state == 0x1B3 || state == 0x1B6)
-            return ptr - 4 - buf;
+            return i - 3;
     }
-
     return 0;
 }

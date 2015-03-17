@@ -32,7 +32,7 @@
 #include "avformat.h"
 #include "riff.h"
 
-typedef struct QCPContext {
+typedef struct {
     uint32_t data_size;                     ///< size of data chunk
 
 #define QCP_MAX_MODE 4

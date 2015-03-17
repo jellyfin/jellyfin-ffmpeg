@@ -402,8 +402,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
     }
 
     /* do volume scaling in-place if input buffer is writable */
-    if (av_frame_is_writable(buf)
-            && (vol->precision != PRECISION_FIXED || vol->volume_i > 0)) {
+    if (av_frame_is_writable(buf)) {
         out_buf = buf;
     } else {
         out_buf = ff_get_audio_buffer(inlink, nb_samples);

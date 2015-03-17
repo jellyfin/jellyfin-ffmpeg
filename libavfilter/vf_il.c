@@ -98,17 +98,17 @@ static int query_formats(AVFilterContext *ctx)
 
 static int config_input(AVFilterLink *inlink)
 {
-    IlContext *s = inlink->dst->priv;
+    IlContext *il = inlink->dst->priv;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
     int ret;
 
-    s->nb_planes = av_pix_fmt_count_planes(inlink->format);
+    il->nb_planes = av_pix_fmt_count_planes(inlink->format);
 
-    s->has_alpha = !!(desc->flags & AV_PIX_FMT_FLAG_ALPHA);
-    if ((ret = av_image_fill_linesizes(s->linesize, inlink->format, inlink->w)) < 0)
+    il->has_alpha = !!(desc->flags & AV_PIX_FMT_FLAG_ALPHA);
+    if ((ret = av_image_fill_linesizes(il->linesize, inlink->format, inlink->w)) < 0)
         return ret;
 
-    s->chroma_height = FF_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
+    il->chroma_height = FF_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
 
     return 0;
 }
@@ -146,7 +146,7 @@ static void interleave(uint8_t *dst, uint8_t *src, int w, int h,
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *inpicref)
 {
-    IlContext *s = inlink->dst->priv;
+    IlContext *il = inlink->dst->priv;
     AVFilterLink *outlink = inlink->dst->outputs[0];
     AVFrame *out;
     int comp;
@@ -159,23 +159,23 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpicref)
     av_frame_copy_props(out, inpicref);
 
     interleave(out->data[0], inpicref->data[0],
-               s->linesize[0], inlink->h,
+               il->linesize[0], inlink->h,
                out->linesize[0], inpicref->linesize[0],
-               s->luma_mode, s->luma_swap);
+               il->luma_mode, il->luma_swap);
 
-    for (comp = 1; comp < (s->nb_planes - s->has_alpha); comp++) {
+    for (comp = 1; comp < (il->nb_planes - il->has_alpha); comp++) {
         interleave(out->data[comp], inpicref->data[comp],
-                   s->linesize[comp], s->chroma_height,
+                   il->linesize[comp], il->chroma_height,
                    out->linesize[comp], inpicref->linesize[comp],
-                   s->chroma_mode, s->chroma_swap);
+                   il->chroma_mode, il->chroma_swap);
     }
 
-    if (s->has_alpha) {
-        comp = s->nb_planes - 1;
+    if (il->has_alpha) {
+        comp = il->nb_planes - 1;
         interleave(out->data[comp], inpicref->data[comp],
-                   s->linesize[comp], inlink->h,
+                   il->linesize[comp], inlink->h,
                    out->linesize[comp], inpicref->linesize[comp],
-                   s->alpha_mode, s->alpha_swap);
+                   il->alpha_mode, il->alpha_swap);
     }
 
     av_frame_free(&inpicref);

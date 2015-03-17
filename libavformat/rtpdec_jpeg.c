@@ -20,7 +20,6 @@
  */
 
 #include "avformat.h"
-#include "avio_internal.h"
 #include "rtpdec.h"
 #include "rtpdec_formats.h"
 #include "libavutil/intreadwrite.h"
@@ -60,9 +59,25 @@ static const uint8_t default_quantizers[128] = {
     99,  99,  99,  99,  99,  99,  99,  99
 };
 
-static void jpeg_close_context(PayloadContext *jpeg)
+static PayloadContext *jpeg_new_context(void)
 {
-    ffio_free_dyn_buf(&jpeg->frame);
+    return av_mallocz(sizeof(PayloadContext));
+}
+
+static inline void free_frame_if_needed(PayloadContext *jpeg)
+{
+    if (jpeg->frame) {
+        uint8_t *p;
+        avio_close_dyn_buf(jpeg->frame, &p);
+        av_free(p);
+        jpeg->frame = NULL;
+    }
+}
+
+static void jpeg_free_context(PayloadContext *jpeg)
+{
+    free_frame_if_needed(jpeg);
+    av_free(jpeg);
 }
 
 static int jpeg_create_huffman_table(PutByteContext *p, int table_class,
@@ -323,7 +338,7 @@ static int jpeg_parse_packet(AVFormatContext *ctx, PayloadContext *jpeg,
 
         /* Skip the current frame in case of the end packet
          * has been lost somewhere. */
-        ffio_free_dyn_buf(&jpeg->frame);
+        free_frame_if_needed(jpeg);
 
         if ((ret = avio_open_dyn_buf(&jpeg->frame)) < 0)
             return ret;
@@ -349,7 +364,7 @@ static int jpeg_parse_packet(AVFormatContext *ctx, PayloadContext *jpeg,
     if (jpeg->timestamp != *timestamp) {
         /* Skip the current frame if timestamp is incorrect.
          * A start packet has been lost somewhere. */
-        ffio_free_dyn_buf(&jpeg->frame);
+        free_frame_if_needed(jpeg);
         av_log(ctx, AV_LOG_ERROR, "RTP timestamps don't match.\n");
         return AVERROR_INVALIDDATA;
     }
@@ -387,8 +402,8 @@ RTPDynamicProtocolHandler ff_jpeg_dynamic_handler = {
     .enc_name          = "JPEG",
     .codec_type        = AVMEDIA_TYPE_VIDEO,
     .codec_id          = AV_CODEC_ID_MJPEG,
-    .priv_data_size    = sizeof(PayloadContext),
-    .close             = jpeg_close_context,
+    .alloc             = jpeg_new_context,
+    .free              = jpeg_free_context,
     .parse_packet      = jpeg_parse_packet,
     .static_payload_id = 26,
 };

@@ -26,7 +26,6 @@
  */
 
 #include "avformat.h"
-#include "avio_internal.h"
 #include "rtpdec_formats.h"
 #include "libavutil/attributes.h"
 #include "libavutil/intreadwrite.h"
@@ -40,9 +39,29 @@ struct PayloadContext {
     int          newformat;
 };
 
-static void h263_close_context(PayloadContext *data)
+static PayloadContext *h263_new_context(void)
 {
-    ffio_free_dyn_buf(&data->buf);
+    return av_mallocz(sizeof(PayloadContext));
+}
+
+static void h263_free_context(PayloadContext *data)
+{
+    if (!data)
+        return;
+    if (data->buf) {
+        uint8_t *p;
+        avio_close_dyn_buf(data->buf, &p);
+        av_free(p);
+    }
+    av_free(data);
+}
+
+static av_cold int h263_init(AVFormatContext *ctx, int st_index, PayloadContext *data)
+{
+    if (st_index < 0)
+        return 0;
+    ctx->streams[st_index]->need_parsing = AVSTREAM_PARSE_FULL;
+    return 0;
 }
 
 static int h263_handle_packet(AVFormatContext *ctx, PayloadContext *data,
@@ -60,7 +79,10 @@ static int h263_handle_packet(AVFormatContext *ctx, PayloadContext *data,
 
     if (data->buf && data->timestamp != *timestamp) {
         /* Dropping old buffered, unfinished data */
-        ffio_free_dyn_buf(&data->buf);
+        uint8_t *p;
+        avio_close_dyn_buf(data->buf, &p);
+        av_free(p);
+        data->buf = NULL;
         data->endbyte_bits = 0;
     }
 
@@ -186,9 +208,9 @@ static int h263_handle_packet(AVFormatContext *ctx, PayloadContext *data,
 RTPDynamicProtocolHandler ff_h263_rfc2190_dynamic_handler = {
     .codec_type        = AVMEDIA_TYPE_VIDEO,
     .codec_id          = AV_CODEC_ID_H263,
-    .need_parsing      = AVSTREAM_PARSE_FULL,
+    .init              = h263_init,
     .parse_packet      = h263_handle_packet,
-    .priv_data_size    = sizeof(PayloadContext),
-    .close             = h263_close_context,
+    .alloc             = h263_new_context,
+    .free              = h263_free_context,
     .static_payload_id = 34,
 };

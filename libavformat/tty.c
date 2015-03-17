@@ -34,7 +34,7 @@
 #include "internal.h"
 #include "sauce.h"
 
-typedef struct TtyDemuxContext {
+typedef struct {
     AVClass *class;
     int chars_per_frame;
     uint64_t fsize;  /**< file size less metadata buffer */

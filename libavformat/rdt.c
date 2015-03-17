@@ -132,7 +132,7 @@ static int
 rdt_load_mdpr (PayloadContext *rdt, AVStream *st, int rule_nr)
 {
     AVIOContext pb;
-    unsigned int size;
+    int size;
     uint32_t tag;
 
     /**
@@ -299,12 +299,12 @@ rdt_parse_packet (AVFormatContext *ctx, PayloadContext *rdt, AVStream *st,
     AVIOContext pb;
 
     if (rdt->audio_pkt_cnt == 0) {
-        int pos, rmflags;
+        int pos;
 
         ffio_init_context(&pb, (uint8_t *)buf, len, 0, NULL, NULL, NULL, NULL);
-        rmflags = (flags & RTP_FLAG_KEY) ? 2 : 0;
+        flags = (flags & RTP_FLAG_KEY) ? 2 : 0;
         res = ff_rm_parse_packet (rdt->rmctx, &pb, st, rdt->rmst[st->index], len, pkt,
-                                  &seq, rmflags, *timestamp);
+                                  &seq, flags, *timestamp);
         pos = avio_tell(&pb);
         if (res < 0)
             return res;
@@ -434,8 +434,6 @@ rdt_parse_sdp_line (AVFormatContext *s, int st_index,
                     rdt->nb_rmst = count;
                 }
                 rdt->rmst[s->streams[n]->index] = ff_rm_alloc_rmstream();
-                if (!rdt->rmst[s->streams[n]->index])
-                    return AVERROR(ENOMEM);
                 rdt_load_mdpr(rdt, s->streams[n], (n - first) * 2);
            }
     }
@@ -521,15 +519,24 @@ ff_real_parse_sdp_a_line (AVFormatContext *s, int stream_index,
         real_parse_asm_rulebook(s, s->streams[stream_index], p);
 }
 
-
-
-static av_cold int rdt_init(AVFormatContext *s, int st_index, PayloadContext *rdt)
+static PayloadContext *
+rdt_new_context (void)
 {
-    int ret;
+    PayloadContext *rdt = av_mallocz(sizeof(PayloadContext));
+    if (!rdt)
+        return NULL;
 
     rdt->rmctx = avformat_alloc_context();
     if (!rdt->rmctx)
-        return AVERROR(ENOMEM);
+        av_freep(&rdt);
+
+    return rdt;
+}
+
+static int
+rdt_init_context (AVFormatContext *s, int st_index, PayloadContext *rdt)
+{
+    int ret;
 
     if ((ret = ff_copy_whitelists(rdt->rmctx, s)) < 0)
         return ret;
@@ -538,7 +545,7 @@ static av_cold int rdt_init(AVFormatContext *s, int st_index, PayloadContext *rd
 }
 
 static void
-rdt_close_context (PayloadContext *rdt)
+rdt_free_context (PayloadContext *rdt)
 {
     int i;
 
@@ -551,6 +558,7 @@ rdt_close_context (PayloadContext *rdt)
         avformat_close_input(&rdt->rmctx);
     av_freep(&rdt->mlti_data);
     av_freep(&rdt->rmst);
+    av_free(rdt);
 }
 
 #define RDT_HANDLER(n, s, t) \
@@ -558,10 +566,10 @@ static RTPDynamicProtocolHandler rdt_ ## n ## _handler = { \
     .enc_name         = s, \
     .codec_type       = t, \
     .codec_id         = AV_CODEC_ID_NONE, \
-    .priv_data_size   = sizeof(PayloadContext), \
-    .init             = rdt_init, \
     .parse_sdp_a_line = rdt_parse_sdp_line, \
-    .close            = rdt_close_context, \
+    .alloc            = rdt_new_context, \
+    .init             = rdt_init_context, \
+    .free             = rdt_free_context, \
     .parse_packet     = rdt_parse_packet \
 }
 

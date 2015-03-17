@@ -28,6 +28,8 @@
 # include "libavutil/bprint.h"
 #endif
 
+#undef NDEBUG
+#include <assert.h>
 #include "libavutil/avassert.h"
 
 /*********************************************/
@@ -99,9 +101,6 @@ static int mpegps_probe(AVProbeData *p)
 
     if (vid + audio > invalid + 1) /* invalid VDR files nd short PES streams */
         score = AVPROBE_SCORE_EXTENSION / 2;
-
-//     av_log(NULL, AV_LOG_ERROR, "vid:%d aud:%d sys:%d pspack:%d invalid:%d size:%d \n",
-//            vid, audio, sys, pspack, invalid, p->buf_size);
 
     if (sys > invalid && sys * 9 <= pspack * 10)
         return (audio > 12 || vid > 3 || pspack > 2) ? AVPROBE_SCORE_EXTENSION + 2
@@ -208,7 +207,7 @@ static long mpegps_psm_parse(MpegDemuxContext *m, AVIOContext *pb)
 
     /* skip program_stream_info */
     avio_skip(pb, ps_info_length);
-    /*es_map_length = */avio_rb16(pb);
+    es_map_length = avio_rb16(pb);
     /* Ignore es_map_length, trust psm_length */
     es_map_length = psm_length - ps_info_length - 10;
 

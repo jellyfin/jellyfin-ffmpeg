@@ -33,8 +33,6 @@
 #include "libavutil/avstring.h"
 #include "libavcodec/get_bits.h"
 
-#define MAX_AAC_HBR_FRAME_SIZE 8191
-
 /** Structure listing useful vars to parse RTP packet payload */
 struct PayloadContext {
     int sizelength;
@@ -61,12 +59,11 @@ struct PayloadContext {
     int au_headers_length_bytes;
     int cur_au_index;
 
-    uint8_t buf[FFMAX(RTP_MAX_PACKET_LENGTH, MAX_AAC_HBR_FRAME_SIZE)];
+    uint8_t buf[RTP_MAX_PACKET_LENGTH];
     int buf_pos, buf_size;
-    uint32_t timestamp;
 };
 
-typedef struct AttrNameMap {
+typedef struct {
     const char *str;
     uint16_t    type;
     uint32_t    offset;
@@ -91,17 +88,23 @@ static const AttrNameMap attr_names[] = {
     { NULL, -1, -1 },
 };
 
-static void close_context(PayloadContext *data)
+static PayloadContext *new_context(void)
 {
-    av_freep(&data->au_headers);
-    av_freep(&data->mode);
+    return av_mallocz(sizeof(PayloadContext));
 }
 
-static int parse_fmtp_config(AVCodecContext *codec, const char *value)
+static void free_context(PayloadContext *data)
+{
+    av_free(data->au_headers);
+    av_free(data->mode);
+    av_free(data);
+}
+
+static int parse_fmtp_config(AVCodecContext *codec, char *value)
 {
     /* decode the hexa encoded parameter */
     int len = ff_hex_to_data(NULL, value);
-    av_freep(&codec->extradata);
+    av_free(codec->extradata);
     if (ff_alloc_extradata(codec, len))
         return AVERROR(ENOMEM);
     ff_hex_to_data(codec->extradata, value);
@@ -165,95 +168,30 @@ static int aac_parse_packet(AVFormatContext *ctx, PayloadContext *data,
 {
     int ret;
 
-
     if (!buf) {
-        if (data->cur_au_index > data->nb_au_headers) {
-            av_log(ctx, AV_LOG_ERROR, "Invalid parser state\n");
+        if (data->cur_au_index > data->nb_au_headers)
             return AVERROR_INVALIDDATA;
-        }
-        if (data->buf_size - data->buf_pos < data->au_headers[data->cur_au_index].size) {
-            av_log(ctx, AV_LOG_ERROR, "Invalid AU size\n");
+        if (data->buf_size - data->buf_pos < data->au_headers[data->cur_au_index].size)
             return AVERROR_INVALIDDATA;
-        }
-        if ((ret = av_new_packet(pkt, data->au_headers[data->cur_au_index].size)) < 0) {
-            av_log(ctx, AV_LOG_ERROR, "Out of memory\n");
+        if ((ret = av_new_packet(pkt, data->au_headers[data->cur_au_index].size)) < 0)
             return ret;
-        }
         memcpy(pkt->data, &data->buf[data->buf_pos], data->au_headers[data->cur_au_index].size);
         data->buf_pos += data->au_headers[data->cur_au_index].size;
         pkt->stream_index = st->index;
         data->cur_au_index++;
-
-        if (data->cur_au_index == data->nb_au_headers) {
-            data->buf_pos = 0;
-            return 0;
-        }
-
-        return 1;
+        return data->cur_au_index < data->nb_au_headers;
     }
 
-    if (rtp_parse_mp4_au(data, buf, len)) {
-        av_log(ctx, AV_LOG_ERROR, "Error parsing AU headers\n");
+    if (rtp_parse_mp4_au(data, buf, len))
         return -1;
-    }
 
     buf += data->au_headers_length_bytes + 2;
     len -= data->au_headers_length_bytes + 2;
-    if (data->nb_au_headers == 1 && len < data->au_headers[0].size) {
-        /* Packet is fragmented */
 
-        if (!data->buf_pos) {
-            if (data->au_headers[0].size > MAX_AAC_HBR_FRAME_SIZE) {
-                av_log(ctx, AV_LOG_ERROR, "Invalid AU size\n");
-                return AVERROR_INVALIDDATA;
-            }
-
-            data->buf_size = data->au_headers[0].size;
-            data->timestamp = *timestamp;
-        }
-
-        if (data->timestamp != *timestamp ||
-            data->au_headers[0].size != data->buf_size ||
-            data->buf_pos + len > MAX_AAC_HBR_FRAME_SIZE) {
-            data->buf_pos = 0;
-            data->buf_size = 0;
-            av_log(ctx, AV_LOG_ERROR, "Invalid packet received\n");
-            return AVERROR_INVALIDDATA;
-        }
-
-        memcpy(&data->buf[data->buf_pos], buf, len);
-        data->buf_pos += len;
-
-        if (!(flags & RTP_FLAG_MARKER))
-            return AVERROR(EAGAIN);
-
-        if (data->buf_pos != data->buf_size) {
-            data->buf_pos = 0;
-            av_log(ctx, AV_LOG_ERROR, "Missed some packets, discarding frame\n");
-            return AVERROR_INVALIDDATA;
-        }
-
-        data->buf_pos = 0;
-        ret = av_new_packet(pkt, data->buf_size);
-        if (ret < 0) {
-            av_log(ctx, AV_LOG_ERROR, "Out of memory\n");
-            return ret;
-        }
-        pkt->stream_index = st->index;
-
-        memcpy(pkt->data, data->buf, data->buf_size);
-
-        return 0;
-    }
-
-    if (len < data->au_headers[0].size) {
-        av_log(ctx, AV_LOG_ERROR, "First AU larger than packet size\n");
+    if (len < data->au_headers[0].size)
         return AVERROR_INVALIDDATA;
-    }
-    if ((ret = av_new_packet(pkt, data->au_headers[0].size)) < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Out of memory\n");
+    if ((ret = av_new_packet(pkt, data->au_headers[0].size)) < 0)
         return ret;
-    }
     memcpy(pkt->data, buf, data->au_headers[0].size);
     len -= data->au_headers[0].size;
     buf += data->au_headers[0].size;
@@ -272,7 +210,7 @@ static int aac_parse_packet(AVFormatContext *ctx, PayloadContext *data,
 
 static int parse_fmtp(AVFormatContext *s,
                       AVStream *stream, PayloadContext *data,
-                      const char *attr, const char *value)
+                      char *attr, char *value)
 {
     AVCodecContext *codec = stream->codec;
     int res, i;
@@ -314,12 +252,20 @@ static int parse_sdp_line(AVFormatContext *s, int st_index,
     return 0;
 }
 
+static av_cold int init_video(AVFormatContext *s, int st_index,
+                              PayloadContext *data)
+{
+    if (st_index < 0)
+        return 0;
+    s->streams[st_index]->need_parsing = AVSTREAM_PARSE_FULL;
+    return 0;
+}
+
 RTPDynamicProtocolHandler ff_mp4v_es_dynamic_handler = {
     .enc_name           = "MP4V-ES",
     .codec_type         = AVMEDIA_TYPE_VIDEO,
     .codec_id           = AV_CODEC_ID_MPEG4,
-    .need_parsing       = AVSTREAM_PARSE_FULL,
-    .priv_data_size     = sizeof(PayloadContext),
+    .init               = init_video,
     .parse_sdp_a_line   = parse_sdp_line,
 };
 
@@ -327,8 +273,8 @@ RTPDynamicProtocolHandler ff_mpeg4_generic_dynamic_handler = {
     .enc_name           = "mpeg4-generic",
     .codec_type         = AVMEDIA_TYPE_AUDIO,
     .codec_id           = AV_CODEC_ID_AAC,
-    .priv_data_size     = sizeof(PayloadContext),
     .parse_sdp_a_line   = parse_sdp_line,
-    .close              = close_context,
-    .parse_packet       = aac_parse_packet,
+    .alloc              = new_context,
+    .free               = free_context,
+    .parse_packet       = aac_parse_packet
 };

@@ -165,27 +165,27 @@ omitted. "repeat" can also be used alone.
 If "repeat" is used alone, and with no prior loglevel set, the default
 loglevel will be used. If multiple loglevel parameters are given, using
 'repeat' will not change the loglevel.
-@var{loglevel} is a string or a number containing one of the following values:
+@var{loglevel} is a number or a string containing one of the following values:
 @table @samp
-@item quiet, -8
+@item quiet
 Show nothing at all; be silent.
-@item panic, 0
+@item panic
 Only show fatal errors which could lead the process to crash, such as
 and assert failure. This is not currently used for anything.
-@item fatal, 8
+@item fatal
 Only show fatal errors. These are errors after which the process absolutely
 cannot continue after.
-@item error, 16
+@item error
 Show all errors, including ones which can be recovered from.
-@item warning, 24
+@item warning
 Show all warnings and errors. Any message related to possibly
 incorrect or unexpected events will be shown.
-@item info, 32
+@item info
 Show informative messages during processing. This is in addition to
 warnings and errors. This is the default value.
-@item verbose, 40
+@item verbose
 Same as @code{info}, except more verbose.
-@item debug, 48
+@item debug
 Show everything, including debugging information.
 @end table
 
@@ -204,28 +204,20 @@ directory.
 This file can be useful for bug reports.
 It also implies @code{-loglevel verbose}.
 
-Setting the environment variable @env{FFREPORT} to any value has the
+Setting the environment variable @code{FFREPORT} to any value has the
 same effect. If the value is a ':'-separated key=value sequence, these
-options will affect the report; option values must be escaped if they
+options will affect the report; options values must be escaped if they
 contain special characters or the options delimiter ':' (see the
-``Quoting and escaping'' section in the ffmpeg-utils manual).
-
-The following options are recognized:
+``Quoting and escaping'' section in the ffmpeg-utils manual). The
+following option is recognized:
 @table @option
 @item file
 set the file name to use for the report; @code{%p} is expanded to the name
 of the program, @code{%t} is expanded to a timestamp, @code{%%} is expanded
 to a plain @code{%}
 @item level
-set the log verbosity level using a numerical value (see @code{-loglevel}).
+set the log level
 @end table
-
-For example, to output a report to a file named @file{ffreport.log}
-using a log level of @code{32} (alias for log level @code{info}):
-
-@example
-FFREPORT=file=ffreport.log:level=32 ffmpeg -i input output
-@end example
 
 Errors in parsing the environment variable are not fatal, and will not
 appear in the report.
@@ -294,41 +286,8 @@ Possible flags for this option are:
 @end table
 
 @item -opencl_bench
-This option is used to benchmark all available OpenCL devices and print the
-results. This option is only available when FFmpeg has been compiled with
-@code{--enable-opencl}.
-
-When FFmpeg is configured with @code{--enable-opencl}, the options for the
-global OpenCL context are set via @option{-opencl_options}. See the
-"OpenCL Options" section in the ffmpeg-utils manual for the complete list of
-supported options. Amongst others, these options include the ability to select
-a specific platform and device to run the OpenCL code on. By default, FFmpeg
-will run on the first device of the first platform. While the options for the
-global OpenCL context provide flexibility to the user in selecting the OpenCL
-device of their choice, most users would probably want to select the fastest
-OpenCL device for their system.
-
-This option assists the selection of the most efficient configuration by
-identifying the appropriate device for the user's system. The built-in
-benchmark is run on all the OpenCL devices and the performance is measured for
-each device. The devices in the results list are sorted based on their
-performance with the fastest device listed first. The user can subsequently
-invoke @command{ffmpeg} using the device deemed most appropriate via
-@option{-opencl_options} to obtain the best performance for the OpenCL
-accelerated code.
-
-Typical usage to use the fastest OpenCL device involve the following steps.
-
-Run the command:
-@example
-ffmpeg -opencl_bench
-@end example
-Note down the platform ID (@var{pidx}) and device ID (@var{didx}) of the first
-i.e. fastest device in the list.
-Select the platform and device using the command:
-@example
-ffmpeg -opencl_options platform_idx=@var{pidx}:device_idx=@var{didx} ...
-@end example
+Benchmark all available OpenCL devices and show the results. This option
+is only available when FFmpeg has been compiled with @code{--enable-opencl}.
 
 @item -opencl_options options (@emph{global})
 Set OpenCL environment options. This option is only available when

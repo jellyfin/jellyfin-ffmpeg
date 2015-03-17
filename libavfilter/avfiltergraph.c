@@ -1280,8 +1280,6 @@ static void heap_bubble_up(AVFilterGraph *graph,
 {
     AVFilterLink **links = graph->sink_links;
 
-    av_assert0(index >= 0);
-
     while (index) {
         int parent = (index - 1) >> 1;
         if (links[parent]->current_pts >= link->current_pts)
@@ -1298,8 +1296,6 @@ static void heap_bubble_down(AVFilterGraph *graph,
                              AVFilterLink *link, int index)
 {
     AVFilterLink **links = graph->sink_links;
-
-    av_assert0(index >= 0);
 
     while (1) {
         int child = 2 * index + 1;

@@ -34,6 +34,7 @@
 #include "get_bits.h"
 #include "dct.h"
 #include "rdft.h"
+#include "fmtconvert.h"
 #include "internal.h"
 #include "wma_freqs.h"
 #include "libavutil/intfloat.h"
@@ -43,7 +44,7 @@ static float quant_table[96];
 #define MAX_CHANNELS 2
 #define BINK_BLOCK_MAX_SIZE (MAX_CHANNELS << 11)
 
-typedef struct BinkAudioContext {
+typedef struct {
     GetBitContext gb;
     int version_b;          ///< Bink version 'b'
     int first;

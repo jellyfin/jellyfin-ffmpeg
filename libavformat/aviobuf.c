@@ -42,28 +42,28 @@
  */
 #define SHORT_SEEK_THRESHOLD 4096
 
-static void *ff_avio_child_next(void *obj, void *prev)
+static void *ffio_url_child_next(void *obj, void *prev)
 {
     AVIOContext *s = obj;
     return prev ? NULL : s->opaque;
 }
 
-static const AVClass *ff_avio_child_class_next(const AVClass *prev)
+static const AVClass *ffio_url_child_class_next(const AVClass *prev)
 {
     return prev ? NULL : &ffurl_context_class;
 }
 
-static const AVOption ff_avio_options[] = {
+static const AVOption ffio_url_options[] = {
     { NULL },
 };
 
-const AVClass ff_avio_class = {
+const AVClass ffio_url_class = {
     .class_name = "AVIOContext",
     .item_name  = av_default_item_name,
     .version    = LIBAVUTIL_VERSION_INT,
-    .option     = ff_avio_options,
-    .child_next = ff_avio_child_next,
-    .child_class_next = ff_avio_child_class_next,
+    .option     = ffio_url_options,
+    .child_next = ffio_url_child_next,
+    .child_class_next = ffio_url_child_class_next,
 };
 
 static void fill_buffer(AVIOContext *s);
@@ -228,7 +228,7 @@ int64_t avio_seek(AVIOContext *s, int64_t offset, int whence)
 
     offset1 = offset - pos;
     if (!s->must_flush && (!s->direct || !s->seek) &&
-        offset1 >= 0 && offset1 <= buffer_size - s->write_flag) {
+        offset1 >= 0 && offset1 <= buffer_size) {
         /* can do the seek inside the buffer */
         s->buf_ptr = s->buffer + offset1;
     } else if ((!s->seekable ||
@@ -342,7 +342,7 @@ int avio_put_str(AVIOContext *s, const char *str)
     return len;
 }
 
-static inline int put_str16(AVIOContext *s, const char *str, const int be)
+int avio_put_str16le(AVIOContext *s, const char *str)
 {
     const uint8_t *q = str;
     int ret = 0;
@@ -353,33 +353,18 @@ static inline int put_str16(AVIOContext *s, const char *str, const int be)
         uint16_t tmp;
 
         GET_UTF8(ch, *q++, goto invalid;)
-        PUT_UTF16(ch, tmp, be ? avio_wb16(s, tmp) : avio_wl16(s, tmp);
-                  ret += 2;)
+        PUT_UTF16(ch, tmp, avio_wl16(s, tmp); ret += 2;)
         continue;
 invalid:
-        av_log(s, AV_LOG_ERROR, "Invaid UTF8 sequence in avio_put_str16%s\n", be ? "be" : "le");
+        av_log(s, AV_LOG_ERROR, "Invaid UTF8 sequence in avio_put_str16le\n");
         err = AVERROR(EINVAL);
     }
-    if (be)
-        avio_wb16(s, 0);
-    else
-        avio_wl16(s, 0);
+    avio_wl16(s, 0);
     if (err)
         return err;
     ret += 2;
     return ret;
 }
-
-#define PUT_STR16(type, big_endian)                          \
-int avio_put_str16 ## type(AVIOContext *s, const char *str)  \
-{                                                            \
-return put_str16(s, str, big_endian);                        \
-}
-
-PUT_STR16(le, 0)
-PUT_STR16(be, 1)
-
-#undef PUT_STR16
 
 int ff_get_v_length(uint64_t val)
 {
@@ -790,7 +775,7 @@ int ffio_fdopen(AVIOContext **s, URLContext *h)
         (*s)->read_pause = (int (*)(void *, int))h->prot->url_read_pause;
         (*s)->read_seek  = (int64_t (*)(void *, int, int64_t, int))h->prot->url_read_seek;
     }
-    (*s)->av_class = &ff_avio_class;
+    (*s)->av_class = &ffio_url_class;
     return 0;
 }
 
@@ -1130,16 +1115,6 @@ int avio_close_dyn_buf(AVIOContext *s, uint8_t **pbuffer)
     av_free(d);
     av_free(s);
     return size - padding;
-}
-
-void ffio_free_dyn_buf(AVIOContext **s)
-{
-    uint8_t *tmp;
-    if (!*s)
-        return;
-    avio_close_dyn_buf(*s, &tmp);
-    av_free(tmp);
-    *s = NULL;
 }
 
 static int null_buf_write(void *opaque, uint8_t *buf, int buf_size)

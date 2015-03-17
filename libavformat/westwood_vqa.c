@@ -103,7 +103,7 @@ static int wsvqa_read_header(AVFormatContext *s)
     /* the VQA header needs to go to the decoder */
     if (ff_get_extradata(st->codec, pb, VQA_HEADER_SIZE) < 0)
         return AVERROR(ENOMEM);
-    header = st->codec->extradata;
+    header = (uint8_t *)st->codec->extradata;
     st->codec->width = AV_RL16(&header[6]);
     st->codec->height = AV_RL16(&header[8]);
     fps = header[12];

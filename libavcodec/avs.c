@@ -23,7 +23,8 @@
 #include "get_bits.h"
 #include "internal.h"
 
-typedef struct AvsContext {
+
+typedef struct {
     AVFrame *frame;
 } AvsContext;
 

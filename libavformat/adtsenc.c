@@ -31,7 +31,7 @@
 
 #define ADTS_HEADER_SIZE 7
 
-typedef struct ADTSContext {
+typedef struct {
     AVClass *class;
     int write_adts;
     int objecttype;

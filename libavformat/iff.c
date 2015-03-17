@@ -98,7 +98,7 @@ typedef enum {
     COMP_EXP
 } svx8_compression_type;
 
-typedef struct IffDemuxContext {
+typedef struct {
     int      is_64bit;  ///< chunk size is 64-bit
     int64_t  body_pos;
     int64_t  body_end;

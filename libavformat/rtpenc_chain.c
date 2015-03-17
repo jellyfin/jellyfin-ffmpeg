@@ -89,9 +89,11 @@ int ff_rtp_chain_mux_open(AVFormatContext **out, AVFormatContext *s,
 
     if (ret) {
         if (handle && rtpctx->pb) {
-            avio_closep(&rtpctx->pb);
+            avio_close(rtpctx->pb);
         } else if (rtpctx->pb) {
-            ffio_free_dyn_buf(&rtpctx->pb);
+            uint8_t *ptr;
+            avio_close_dyn_buf(rtpctx->pb, &ptr);
+            av_free(ptr);
         }
         avformat_free_context(rtpctx);
         return ret;

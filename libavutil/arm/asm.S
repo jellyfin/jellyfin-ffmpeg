@@ -89,16 +89,12 @@ FUNC    .func   \name
     .endif
 .endm
 
-.macro  const   name, align=2, relocate=0
+.macro  const   name, align=2
     .macro endconst
 ELF     .size   \name, . - \name
         .purgem endconst
     .endm
-.if HAVE_SECTION_DATA_REL_RO && \relocate
-        .section        .data.rel.ro
-.else
         .section        .rodata
-.endif
         .align          \align
 \name:
 .endm

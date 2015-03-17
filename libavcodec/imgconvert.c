@@ -378,15 +378,13 @@ static void deinterlace_bottom_field(uint8_t *dst, int dst_wrap,
     deinterlace_line(dst,src_m2,src_m1,src_0,src_0,src_0,width);
 }
 
-static int deinterlace_bottom_field_inplace(uint8_t *src1, int src_wrap,
-                                            int width, int height)
+static void deinterlace_bottom_field_inplace(uint8_t *src1, int src_wrap,
+                                             int width, int height)
 {
     uint8_t *src_m1, *src_0, *src_p1, *src_p2;
     int y;
     uint8_t *buf;
     buf = av_malloc(width);
-    if (!buf)
-        return AVERROR(ENOMEM);
 
     src_m1 = src1;
     memcpy(buf,src_m1,width);
@@ -403,13 +401,12 @@ static int deinterlace_bottom_field_inplace(uint8_t *src1, int src_wrap,
     /* do last line */
     deinterlace_line_inplace(buf,src_m1,src_0,src_0,src_0,width);
     av_free(buf);
-    return 0;
 }
 
 int avpicture_deinterlace(AVPicture *dst, const AVPicture *src,
                           enum AVPixelFormat pix_fmt, int width, int height)
 {
-    int i, ret;
+    int i;
 
     if (pix_fmt != AV_PIX_FMT_YUV420P &&
         pix_fmt != AV_PIX_FMT_YUVJ420P &&
@@ -445,11 +442,8 @@ int avpicture_deinterlace(AVPicture *dst, const AVPicture *src,
             }
         }
         if (src == dst) {
-            ret = deinterlace_bottom_field_inplace(dst->data[i],
-                                                   dst->linesize[i],
-                                                   width, height);
-            if (ret < 0)
-                return ret;
+            deinterlace_bottom_field_inplace(dst->data[i], dst->linesize[i],
+                                 width, height);
         } else {
             deinterlace_bottom_field(dst->data[i],dst->linesize[i],
                                         src->data[i], src->linesize[i],

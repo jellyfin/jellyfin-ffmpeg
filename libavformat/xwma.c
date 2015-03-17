@@ -30,7 +30,7 @@
  * Demuxer for xWMA, a Microsoft audio container used by XAudio 2.
  */
 
-typedef struct XWMAContext {
+typedef struct {
     int64_t data_end;
 } XWMAContext;
 
@@ -75,7 +75,7 @@ static int xwma_read_header(AVFormatContext *s)
     if (!st)
         return AVERROR(ENOMEM);
 
-    ret = ff_get_wav_header(pb, st->codec, size, 0);
+    ret = ff_get_wav_header(pb, st->codec, size);
     if (ret < 0)
         return ret;
     st->need_parsing = AVSTREAM_PARSE_NONE;

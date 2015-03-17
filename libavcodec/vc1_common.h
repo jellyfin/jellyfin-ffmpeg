@@ -26,7 +26,6 @@
 #include <stdint.h>
 
 #include "libavutil/attributes.h"
-#include "internal.h"
 
 /** Markers used in VC-1 AP frame data */
 //@{
@@ -58,9 +57,12 @@ enum Profile {
  */
 static av_always_inline const uint8_t* find_next_marker(const uint8_t *src, const uint8_t *end)
 {
-    if (end - src >= 4) {
-        uint32_t mrk = 0xFFFFFFFF;
-        src = avpriv_find_start_code(src, end, &mrk);
+    uint32_t mrk = 0xFFFFFFFF;
+
+    if (end-src < 4)
+        return end;
+    while (src < end) {
+        mrk = (mrk << 8) | *src++;
         if (IS_MARKER(mrk))
             return src - 4;
     }

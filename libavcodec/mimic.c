@@ -35,7 +35,7 @@
 
 #define MIMIC_HEADER_SIZE   20
 
-typedef struct MimicContext {
+typedef struct {
     AVCodecContext *avctx;
 
     int             num_vblocks[3];

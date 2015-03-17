@@ -110,11 +110,9 @@ void av_register_all(void)
     REGISTER_MUXDEMUX(DNXHD,            dnxhd);
     REGISTER_DEMUXER (DSF,              dsf);
     REGISTER_DEMUXER (DSICIN,           dsicin);
-    REGISTER_DEMUXER (DSS,              dss);
     REGISTER_MUXDEMUX(DTS,              dts);
     REGISTER_DEMUXER (DTSHD,            dtshd);
     REGISTER_MUXDEMUX(DV,               dv);
-    REGISTER_DEMUXER (DVBSUB,           dvbsub);
     REGISTER_DEMUXER (DXA,              dxa);
     REGISTER_DEMUXER (EA,               ea);
     REGISTER_DEMUXER (EA_CDATA,         ea_cdata);
@@ -207,7 +205,6 @@ void av_register_all(void)
     REGISTER_DEMUXER (MVI,              mvi);
     REGISTER_MUXDEMUX(MXF,              mxf);
     REGISTER_MUXER   (MXF_D10,          mxf_d10);
-    REGISTER_MUXER   (MXF_OPATOM,       mxf_opatom);
     REGISTER_DEMUXER (MXG,              mxg);
     REGISTER_DEMUXER (NC,               nc);
     REGISTER_DEMUXER (NISTSPHERE,       nistsphere);
@@ -257,7 +254,6 @@ void av_register_all(void)
     REGISTER_DEMUXER (RSD,              rsd);
     REGISTER_MUXDEMUX(RSO,              rso);
     REGISTER_MUXDEMUX(RTP,              rtp);
-    REGISTER_MUXER   (RTP_MPEGTS,       rtp_mpegts);
     REGISTER_MUXDEMUX(RTSP,             rtsp);
     REGISTER_DEMUXER (SAMI,             sami);
     REGISTER_MUXDEMUX(SAP,              sap);

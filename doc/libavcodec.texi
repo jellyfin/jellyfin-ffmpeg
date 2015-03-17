@@ -1,5 +1,4 @@
 \input texinfo @c -*- texinfo -*-
-@documentencoding UTF-8
 
 @settitle Libavcodec Documentation
 @titlepage

@@ -30,7 +30,7 @@
 #include <glob.h>
 #endif
 
-typedef struct VideoDemuxData {
+typedef struct {
     const AVClass *class;  /**< Class for private options. */
     int img_first;
     int img_last;

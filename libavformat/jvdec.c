@@ -33,14 +33,14 @@
 
 #define JV_PREAMBLE_SIZE 5
 
-typedef struct JVFrame {
+typedef struct {
     int audio_size;    /**< audio packet size (bytes) */
     int video_size;    /**< video packet size (bytes) */
     int palette_size;  /**< palette size (bytes) */
     int video_type;    /**< per-frame video compression type */
 } JVFrame;
 
-typedef struct JVDemuxContext {
+typedef struct {
     JVFrame *frames;
     enum {
         JV_AUDIO = 0,

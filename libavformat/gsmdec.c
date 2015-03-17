@@ -29,7 +29,7 @@
 #define GSM_BLOCK_SAMPLES 160
 #define GSM_SAMPLE_RATE   8000
 
-typedef struct GSMDemuxerContext {
+typedef struct {
     AVClass *class;
     int sample_rate;
 } GSMDemuxerContext;

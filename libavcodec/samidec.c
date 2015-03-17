@@ -91,7 +91,6 @@ static int sami_paragraph_to_ass(AVCodecContext *avctx, const char *src)
                     break;
                 if (*p == '>')
                     p++;
-                continue;
             }
             if (!av_isspace(*p))
                 av_bprint_chars(dst, *p, 1);

@@ -37,7 +37,7 @@
 #include "rawenc.h"
 #include "sox.h"
 
-typedef struct SoXContext {
+typedef struct {
     int64_t header_size;
 } SoXContext;
 

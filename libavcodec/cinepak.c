@@ -47,7 +47,7 @@ typedef uint8_t cvid_codebook[12];
 
 #define MAX_STRIPS      32
 
-typedef struct cvid_strip {
+typedef struct {
     uint16_t          id;
     uint16_t          x1, y1;
     uint16_t          x2, y2;

@@ -220,6 +220,19 @@ static int config_props(AVFilterLink *inlink)
 
 #define NB_PLANES 4
 
+static inline int mirror(int x, int w)
+{
+    if (!w)
+        return 0;
+
+    while ((unsigned)x > (unsigned)w) {
+        x = -x;
+        if (x < 0)
+            x += 2 * w;
+    }
+    return x;
+}
+
 static void blur(uint8_t       *dst, const int dst_linesize,
                  const uint8_t *src, const int src_linesize,
                  const int w, const int h, FilterParam *fp)
@@ -253,7 +266,7 @@ static void blur(uint8_t       *dst, const int dst_linesize,
                 for (dy = 0; dy < radius*2 + 1; dy++) {
                     int dx;
                     int iy = y+dy - radius;
-                    iy = avpriv_mirror(iy, h-1);
+                    iy = mirror(iy, h-1);
 
                     for (dx = 0; dx < radius*2 + 1; dx++) {
                         const int ix = x+dx - radius;
@@ -264,11 +277,11 @@ static void blur(uint8_t       *dst, const int dst_linesize,
                 for (dy = 0; dy < radius*2+1; dy++) {
                     int dx;
                     int iy = y+dy - radius;
-                    iy = avpriv_mirror(iy, h-1);
+                    iy = mirror(iy, h-1);
 
                     for (dx = 0; dx < radius*2 + 1; dx++) {
                         int ix = x+dx - radius;
-                        ix = avpriv_mirror(ix, w-1);
+                        ix = mirror(ix, w-1);
                         UPDATE_FACTOR;
                     }
                 }

@@ -104,8 +104,6 @@ static av_cold int bktr_init(const char *video_device, int width, int height,
     char *arg;
     int c;
     struct sigaction act = { {0} }, old;
-    int ret;
-    char errbuf[128];
 
     if (idev < 0 || idev > 4)
     {
@@ -144,10 +142,8 @@ static av_cold int bktr_init(const char *video_device, int width, int height,
 
     *video_fd = avpriv_open(video_device, O_RDONLY);
     if (*video_fd < 0) {
-        ret = AVERROR(errno);
-        av_strerror(ret, errbuf, sizeof(errbuf));
-        av_log(NULL, AV_LOG_ERROR, "%s: %s\n", video_device, errbuf);
-        return ret;
+        av_log(NULL, AV_LOG_ERROR, "%s: %s\n", video_device, strerror(errno));
+        return -1;
     }
 
     geo.rows = height;
@@ -169,25 +165,19 @@ static av_cold int bktr_init(const char *video_device, int width, int height,
         geo.oformat |= METEOR_GEO_EVEN_ONLY;
 
     if (ioctl(*video_fd, METEORSETGEO, &geo) < 0) {
-        ret = AVERROR(errno);
-        av_strerror(ret, errbuf, sizeof(errbuf));
-        av_log(NULL, AV_LOG_ERROR, "METEORSETGEO: %s\n", errbuf);
-        return ret;
+        av_log(NULL, AV_LOG_ERROR, "METEORSETGEO: %s\n", strerror(errno));
+        return -1;
     }
 
     if (ioctl(*video_fd, BT848SFMT, &c) < 0) {
-        ret = AVERROR(errno);
-        av_strerror(ret, errbuf, sizeof(errbuf));
-        av_log(NULL, AV_LOG_ERROR, "BT848SFMT: %s\n", errbuf);
-        return ret;
+        av_log(NULL, AV_LOG_ERROR, "BT848SFMT: %s\n", strerror(errno));
+        return -1;
     }
 
     c = bktr_dev[idev];
     if (ioctl(*video_fd, METEORSINPUT, &c) < 0) {
-        ret = AVERROR(errno);
-        av_strerror(ret, errbuf, sizeof(errbuf));
-        av_log(NULL, AV_LOG_ERROR, "METEORSINPUT: %s\n", errbuf);
-        return ret;
+        av_log(NULL, AV_LOG_ERROR, "METEORSINPUT: %s\n", strerror(errno));
+        return -1;
     }
 
     video_buf_size = width * height * 12 / 8;
@@ -195,10 +185,8 @@ static av_cold int bktr_init(const char *video_device, int width, int height,
     video_buf = (uint8_t *)mmap((caddr_t)0, video_buf_size,
         PROT_READ, MAP_SHARED, *video_fd, (off_t)0);
     if (video_buf == MAP_FAILED) {
-        ret = AVERROR(errno);
-        av_strerror(ret, errbuf, sizeof(errbuf));
-        av_log(NULL, AV_LOG_ERROR, "mmap: %s\n", errbuf);
-        return ret;
+        av_log(NULL, AV_LOG_ERROR, "mmap: %s\n", strerror(errno));
+        return -1;
     }
 
     if (frequency != 0.0) {

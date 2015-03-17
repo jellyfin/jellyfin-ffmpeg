@@ -42,7 +42,7 @@ enum {
     PARAM_NUMBER
 };
 
-typedef struct SrtStack {
+typedef struct {
     char tag[128];
     char param[PARAM_NUMBER][128];
 } SrtStack;

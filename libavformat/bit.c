@@ -119,12 +119,8 @@ static int write_header(AVFormatContext *s)
 {
     AVCodecContext *enc = s->streams[0]->codec;
 
-    if ((enc->codec_id != AV_CODEC_ID_G729) || enc->channels != 1) {
-        av_log(s, AV_LOG_ERROR,
-               "only codec g729 with 1 channel is supported by this format\n");
-        return AVERROR(EINVAL);
-    }
-
+    enc->codec_id = AV_CODEC_ID_G729;
+    enc->channels = 1;
     enc->bits_per_coded_sample = 16;
     enc->block_align = (enc->bits_per_coded_sample * enc->channels) >> 3;
 
@@ -136,9 +132,6 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
     AVIOContext *pb = s->pb;
     GetBitContext gb;
     int i;
-
-    if (pkt->size != 10)
-        return AVERROR(EINVAL);
 
     avio_wl16(pb, SYNC_WORD);
     avio_wl16(pb, 8 * 10);

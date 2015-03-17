@@ -129,7 +129,7 @@ static const struct frame_type_desc {
 /**
  * WMA Voice decoding context.
  */
-typedef struct WMAVoiceContext {
+typedef struct {
     /**
      * @name Global values specified in the stream header / extradata or used all over.
      * @{

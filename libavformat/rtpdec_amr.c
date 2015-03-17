@@ -38,10 +38,17 @@ struct PayloadContext {
     int channels;
 };
 
-static av_cold int amr_init(AVFormatContext *s, int st_index, PayloadContext *data)
+static PayloadContext *amr_new_context(void)
 {
+    PayloadContext *data = av_mallocz(sizeof(PayloadContext));
+    if(!data) return data;
     data->channels = 1;
-    return 0;
+    return data;
+}
+
+static void amr_free_context(PayloadContext *data)
+{
+    av_free(data);
 }
 
 static int amr_handle_packet(AVFormatContext *ctx, PayloadContext *data,
@@ -134,7 +141,7 @@ static int amr_handle_packet(AVFormatContext *ctx, PayloadContext *data,
 
 static int amr_parse_fmtp(AVFormatContext *s,
                           AVStream *stream, PayloadContext *data,
-                          const char *attr, const char *value)
+                          char *attr, char *value)
 {
     /* Some AMR SDP configurations contain "octet-align", without
      * the trailing =1. Therefore, if the value is empty,
@@ -143,7 +150,7 @@ static int amr_parse_fmtp(AVFormatContext *s,
     if (!strcmp(value, "")) {
         av_log(s, AV_LOG_WARNING, "AMR fmtp attribute %s had "
                                   "nonstandard empty value\n", attr);
-        value = "1";
+        strcpy(value, "1");
     }
     if (!strcmp(attr, "octet-align"))
         data->octet_align = atoi(value);
@@ -186,9 +193,9 @@ RTPDynamicProtocolHandler ff_amr_nb_dynamic_handler = {
     .enc_name         = "AMR",
     .codec_type       = AVMEDIA_TYPE_AUDIO,
     .codec_id         = AV_CODEC_ID_AMR_NB,
-    .priv_data_size   = sizeof(PayloadContext),
-    .init             = amr_init,
     .parse_sdp_a_line = amr_parse_sdp_line,
+    .alloc            = amr_new_context,
+    .free             = amr_free_context,
     .parse_packet     = amr_handle_packet,
 };
 
@@ -196,8 +203,8 @@ RTPDynamicProtocolHandler ff_amr_wb_dynamic_handler = {
     .enc_name         = "AMR-WB",
     .codec_type       = AVMEDIA_TYPE_AUDIO,
     .codec_id         = AV_CODEC_ID_AMR_WB,
-    .priv_data_size   = sizeof(PayloadContext),
-    .init             = amr_init,
     .parse_sdp_a_line = amr_parse_sdp_line,
+    .alloc            = amr_new_context,
+    .free             = amr_free_context,
     .parse_packet     = amr_handle_packet,
 };

@@ -23,7 +23,7 @@
 #include "libavutil/avstring.h"
 #include "internal.h"
 
-typedef struct IdStrMap {
+typedef struct {
     enum AVCodecID id;
     const char *str;
 } IdStrMap;

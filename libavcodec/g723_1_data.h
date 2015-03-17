@@ -78,7 +78,7 @@ typedef struct G723_1_Subframe {
 /**
  * Pitch postfilter parameters
  */
-typedef struct PPFParam {
+typedef struct {
     int     index;    ///< postfilter backward/forward lag
     int16_t opt_gain; ///< optimal gain
     int16_t sc_gain;  ///< scaling gain
@@ -87,7 +87,7 @@ typedef struct PPFParam {
 /**
  * Harmonic filter parameters
  */
-typedef struct HFParam {
+typedef struct {
     int index;
     int gain;
 } HFParam;
@@ -95,7 +95,7 @@ typedef struct HFParam {
 /**
  * Optimized fixed codebook excitation parameters
  */
-typedef struct FCBParam {
+typedef struct {
     int min_err;
     int amp_index;
     int grid_index;

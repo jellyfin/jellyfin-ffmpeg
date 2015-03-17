@@ -32,7 +32,8 @@
 #define MAX_DPCM (127*127)
 
 
-typedef struct ROQDPCMContext {
+typedef struct
+{
     short lastSample[2];
     int input_frames;
     int buffered_samples;

@@ -48,16 +48,16 @@ typedef struct {
     int nb_display_channels;
     int channel_height;
     int sliding;                ///< 1 if sliding mode, 0 otherwise
-    int mode;                   ///< channel display mode
-    int color_mode;             ///< display color scheme
-    int scale;
+    enum DisplayMode mode;      ///< channel display mode
+    enum ColorMode color_mode;  ///< display color scheme
+    enum DisplayScale scale;
     float saturation;           ///< color saturation multiplier
     int xpos;                   ///< x position (current column)
     RDFTContext *rdft;          ///< Real Discrete Fourier Transform context
     int rdft_bits;              ///< number of bits (RDFT window size = 1<<rdft_bits)
     FFTSample **rdft_data;      ///< bins holder for each (displayed) channels
     float *window_func_lut;     ///< Window function LUT
-    int win_func;
+    enum WindowFunc win_func;
     float *combine_buffer;      ///< color combining buffer (3 * h items)
 } ShowSpectrumContext;
 
