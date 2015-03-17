@@ -287,6 +287,8 @@ static int xvid_strip_vol_header(AVCodecContext *avctx, AVPacket *pkt,
         /* We need to store the header, so extract it */
         if (!avctx->extradata) {
             avctx->extradata = av_malloc(vo_len);
+            if (!avctx->extradata)
+                return AVERROR(ENOMEM);
             memcpy(avctx->extradata, pkt->data, vo_len);
             avctx->extradata_size = vo_len;
         }
@@ -471,6 +473,19 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
     xvid_enc_create.num_zones = 0;
 
     xvid_enc_create.num_threads = avctx->thread_count;
+#if (XVID_VERSION <= 0x010303) && (XVID_VERSION >= 0x010300)
+    /* workaround for a bug in libxvidcore */
+    if (avctx->height <= 16) {
+        if (avctx->thread_count < 2) {
+            xvid_enc_create.num_threads = 0;
+        } else {
+            av_log(avctx, AV_LOG_ERROR,
+                   "Too small height for threads > 1.");
+            ret = AVERROR(EINVAL);
+            goto fail;
+        }
+    }
+#endif
 
     xvid_enc_create.plugins     = plugins;
     xvid_enc_create.num_plugins = 0;
@@ -612,11 +627,19 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
         if (avctx->intra_matrix) {
             intra           = avctx->intra_matrix;
             x->intra_matrix = av_malloc(sizeof(unsigned char) * 64);
+            if (!x->intra_matrix) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
         } else
             intra = NULL;
         if (avctx->inter_matrix) {
             inter           = avctx->inter_matrix;
             x->inter_matrix = av_malloc(sizeof(unsigned char) * 64);
+            if (!x->inter_matrix) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
         } else
             inter = NULL;
 
@@ -690,7 +713,7 @@ static int xvid_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     xvid_enc_frame_t xvid_enc_frame = { 0 };
     xvid_enc_stats_t xvid_enc_stats = { 0 };
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, mb_width*mb_height*MAX_MB_BYTES + FF_MIN_BUFFER_SIZE)) < 0)
+    if ((ret = ff_alloc_packet2(avctx, pkt, mb_width*(int64_t)mb_height*MAX_MB_BYTES + FF_MIN_BUFFER_SIZE)) < 0)
         return ret;
 
     /* Start setting up the frame */

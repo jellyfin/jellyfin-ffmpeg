@@ -32,10 +32,10 @@
 
 #include "libavutil/float_dsp.h"
 #include "avcodec.h"
+#include "imdct15.h"
 #include "fft.h"
 #include "mpeg4audio.h"
 #include "sbr.h"
-#include "fmtconvert.h"
 
 #include <stdint.h>
 
@@ -233,7 +233,8 @@ typedef struct SingleChannelElement {
     float sf[120];                                  ///< scalefactors
     int sf_idx[128];                                ///< scalefactor indices (used by encoder)
     uint8_t zeroes[128];                            ///< band is not coded (used by encoder)
-    DECLARE_ALIGNED(32, float,   coeffs)[1024];     ///< coefficients for IMDCT
+    DECLARE_ALIGNED(32, float,   pcoeffs)[1024];    ///< coefficients for IMDCT, pristine
+    DECLARE_ALIGNED(32, float,   coeffs)[1024];     ///< coefficients for IMDCT, maybe processed
     DECLARE_ALIGNED(32, float,   saved)[1536];      ///< overlap
     DECLARE_ALIGNED(32, float,   ret_buf)[2048];    ///< PCM output buffer
     DECLARE_ALIGNED(16, float,   ltp_state)[3072];  ///< time signal for LTP
@@ -294,7 +295,7 @@ struct AACContext {
     FFTContext mdct_small;
     FFTContext mdct_ld;
     FFTContext mdct_ltp;
-    FmtConvertContext fmt_conv;
+    IMDCT15Context *mdct480;
     AVFloatDSPContext *fdsp;
     int random_state;
     /** @} */

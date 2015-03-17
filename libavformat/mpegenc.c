@@ -35,19 +35,15 @@
 
 #define MAX_PAYLOAD_SIZE 4096
 
-#undef NDEBUG
-#include <assert.h>
-
 typedef struct PacketDesc {
     int64_t pts;
     int64_t dts;
     int size;
     int unwritten_size;
-    int flags;
     struct PacketDesc *next;
 } PacketDesc;
 
-typedef struct {
+typedef struct StreamInfo {
     AVFifoBuffer *fifo;
     uint8_t id;
     int max_buffer_size; /* in bytes */
@@ -63,7 +59,7 @@ typedef struct {
     int64_t vobu_start_pts;
 } StreamInfo;
 
-typedef struct {
+typedef struct MpegMuxContext {
     const AVClass *class;
     int packet_size; /* required packet size */
     int packet_number;
@@ -520,7 +516,7 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
 
 fail:
     for (i = 0; i < ctx->nb_streams; i++)
-        av_free(ctx->streams[i]->priv_data);
+        av_freep(&ctx->streams[i]->priv_data);
     return AVERROR(ENOMEM);
 }
 
@@ -874,7 +870,7 @@ static int flush_packet(AVFormatContext *ctx, int stream_index,
         }
 
         /* output data */
-        assert(payload_size - stuffing_size <= av_fifo_size(stream->fifo));
+        av_assert0(payload_size - stuffing_size <= av_fifo_size(stream->fifo));
         av_fifo_generic_read(stream->fifo, ctx->pb,
                              payload_size - stuffing_size,
                              (void (*)(void*, void*, int))avio_write);
@@ -964,6 +960,7 @@ static int output_packet(AVFormatContext *ctx, int flush)
     int best_i = -1;
     int best_score = INT_MIN;
     int ignore_constraints = 0;
+    int ignore_delay = 0;
     int64_t scr = s->last_scr;
     PacketDesc *timestamp_packet;
     const int64_t max_delay = av_rescale(ctx->max_delay, 90000, AV_TIME_BASE);
@@ -989,7 +986,7 @@ retry:
         if (space < s->packet_size && !ignore_constraints)
             continue;
 
-        if (next_pkt && next_pkt->dts - scr > max_delay)
+        if (next_pkt && next_pkt->dts - scr > max_delay && !ignore_delay)
             continue;
         if (   stream->predecode_packet
             && stream->predecode_packet->size > stream->buffer_index)
@@ -1003,6 +1000,7 @@ retry:
 
     if (best_i < 0) {
         int64_t best_dts = INT64_MAX;
+        int has_premux = 0;
 
         for (i = 0; i < ctx->nb_streams; i++) {
             AVStream *st = ctx->streams[i];
@@ -1010,32 +1008,40 @@ retry:
             PacketDesc *pkt_desc = stream->predecode_packet;
             if (pkt_desc && pkt_desc->dts < best_dts)
                 best_dts = pkt_desc->dts;
+            has_premux |= !!stream->premux_packet;
         }
 
-        av_dlog(ctx, "bumping scr, scr:%f, dts:%f\n",
-                scr / 90000.0, best_dts / 90000.0);
-        if (best_dts == INT64_MAX)
+        if (best_dts < INT64_MAX) {
+            av_dlog(ctx, "bumping scr, scr:%f, dts:%f\n",
+                    scr / 90000.0, best_dts / 90000.0);
+
+            if (scr >= best_dts + 1 && !ignore_constraints) {
+                av_log(ctx, AV_LOG_ERROR,
+                    "packet too large, ignoring buffer limits to mux it\n");
+                ignore_constraints = 1;
+            }
+            scr = FFMAX(best_dts + 1, scr);
+            if (remove_decoded_packets(ctx, scr) < 0)
+                return -1;
+        } else if (has_premux && flush) {
+            av_log(ctx, AV_LOG_ERROR,
+                  "delay too large, ignoring ...\n");
+            ignore_delay = 1;
+            ignore_constraints = 1;
+        } else
             return 0;
 
-        if (scr >= best_dts + 1 && !ignore_constraints) {
-            av_log(ctx, AV_LOG_ERROR,
-                   "packet too large, ignoring buffer limits to mux it\n");
-            ignore_constraints = 1;
-        }
-        scr = FFMAX(best_dts + 1, scr);
-        if (remove_decoded_packets(ctx, scr) < 0)
-            return -1;
         goto retry;
     }
 
-    assert(best_i >= 0);
+    av_assert0(best_i >= 0);
 
     st     = ctx->streams[best_i];
     stream = st->priv_data;
 
-    assert(av_fifo_size(stream->fifo) > 0);
+    av_assert0(av_fifo_size(stream->fifo) > 0);
 
-    assert(avail_space >= s->packet_size || ignore_constraints);
+    av_assert0(avail_space >= s->packet_size || ignore_constraints);
 
     timestamp_packet = stream->premux_packet;
     if (timestamp_packet->unwritten_size == timestamp_packet->size) {
@@ -1053,7 +1059,7 @@ retry:
         es_size = flush_packet(ctx, best_i, timestamp_packet->pts,
                                timestamp_packet->dts, scr, trailer_size);
     } else {
-        assert(av_fifo_size(stream->fifo) == trailer_size);
+        av_assert0(av_fifo_size(stream->fifo) == trailer_size);
         es_size = flush_packet(ctx, best_i, AV_NOPTS_VALUE, AV_NOPTS_VALUE, scr,
                                trailer_size);
     }
@@ -1186,7 +1192,7 @@ static int mpeg_mux_end(AVFormatContext *ctx)
     for (i = 0; i < ctx->nb_streams; i++) {
         stream = ctx->streams[i]->priv_data;
 
-        assert(av_fifo_size(stream->fifo) == 0);
+        av_assert0(av_fifo_size(stream->fifo) == 0);
         av_fifo_freep(&stream->fifo);
     }
     return 0;

@@ -27,7 +27,7 @@
 #include "avio_internal.h"
 
 /// Two-byte MPC tag
-#define MKMPCTAG(a, b) (a | (b << 8))
+#define MKMPCTAG(a, b) ((a) | ((b) << 8))
 
 #define TAG_MPCK MKTAG('M','P','C','K')
 
@@ -47,7 +47,7 @@ enum MPCPacketTags{
 
 static const int mpc8_rate[8] = { 44100, 48000, 37800, 32000, -1, -1, -1, -1 };
 
-typedef struct {
+typedef struct MPCContext {
     int ver;
     int64_t header_pos;
     int64_t samples;

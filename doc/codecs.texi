@@ -7,7 +7,7 @@ all the encoders and decoders. In addition each codec may support
 so-called private options, which are specific for a given codec.
 
 Sometimes, a global option may only affect a specific kind of codec,
-and may be unsensical or ignored by another, so you need to be aware
+and may be nonsensical or ignored by another, so you need to be aware
 of the meaning of the specified options. Also some options are
 meant only for decoding or encoding.
 
@@ -495,6 +495,8 @@ visualize block types
 picture buffer allocations
 @item thread_ops
 threading operations
+@item nomc
+skip motion compensation
 @end table
 
 @item vismv @var{integer} (@emph{decoding,video})
@@ -862,6 +864,14 @@ Possible values:
 @item mpeg2_aac_low
 
 @item mpeg2_aac_he
+
+@item mpeg4_sp
+
+@item mpeg4_core
+
+@item mpeg4_main
+
+@item mpeg4_asp
 
 @item dts
 

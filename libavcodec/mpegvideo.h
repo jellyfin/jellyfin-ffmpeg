@@ -443,6 +443,8 @@ typedef struct MpegEncContext {
     int ac_esc_length;       ///< num of bits needed to encode the longest esc
     uint8_t *intra_ac_vlc_length;
     uint8_t *intra_ac_vlc_last_length;
+    uint8_t *intra_chroma_ac_vlc_length;
+    uint8_t *intra_chroma_ac_vlc_last_length;
     uint8_t *inter_ac_vlc_length;
     uint8_t *inter_ac_vlc_last_length;
     uint8_t *luma_dc_vlc_length;
@@ -681,11 +683,6 @@ typedef struct MpegEncContext {
     AVFrame *tmp_frames[MAX_B_FRAMES + 2];
 } MpegEncContext;
 
-#define REBASE_PICTURE(pic, new_ctx, old_ctx)             \
-    ((pic && pic >= old_ctx->picture &&                   \
-      pic < old_ctx->picture + MAX_PICTURE_COUNT) ?  \
-        &new_ctx->picture[pic - old_ctx->picture] : NULL)
-
 /* mpegvideo_enc common options */
 #define FF_MPV_FLAG_SKIP_RD      0x0001
 #define FF_MPV_FLAG_STRICT_GOP   0x0002
@@ -788,7 +785,6 @@ int ff_mpv_export_qp_table(MpegEncContext *s, AVFrame *f, Picture *p, int qp_typ
 
 void ff_write_quant_matrix(PutBitContext *pb, uint16_t *matrix);
 int ff_find_unused_picture(MpegEncContext *s, int shared);
-void ff_denoise_dct(MpegEncContext *s, int16_t *block);
 int ff_update_duplicate_context(MpegEncContext *dst, MpegEncContext *src);
 int ff_mpeg_update_thread_context(AVCodecContext *dst, const AVCodecContext *src);
 void ff_set_qscale(MpegEncContext * s, int qscale);
@@ -883,7 +879,7 @@ extern const uint8_t ff_aic_dc_scale_table[32];
 extern const uint8_t ff_h263_chroma_qscale_table[32];
 
 /* rv10.c */
-void ff_rv10_encode_picture_header(MpegEncContext *s, int picture_number);
+int ff_rv10_encode_picture_header(MpegEncContext *s, int picture_number);
 int ff_rv_decode_dc(MpegEncContext *s, int n);
 void ff_rv20_encode_picture_header(MpegEncContext *s, int picture_number);
 
@@ -897,7 +893,7 @@ void ff_msmpeg4_encode_mb(MpegEncContext * s,
 int ff_msmpeg4_decode_picture_header(MpegEncContext * s);
 int ff_msmpeg4_decode_ext_header(MpegEncContext * s, int buf_size);
 int ff_msmpeg4_decode_init(AVCodecContext *avctx);
-void ff_msmpeg4_encode_init(MpegEncContext *s);
+int ff_msmpeg4_encode_init(MpegEncContext *s);
 int ff_wmv2_decode_picture_header(MpegEncContext * s);
 int ff_wmv2_decode_secondary_picture_header(MpegEncContext * s);
 void ff_wmv2_add_mb(MpegEncContext *s, int16_t block[6][64], uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr);

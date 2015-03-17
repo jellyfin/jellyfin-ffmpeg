@@ -112,6 +112,7 @@ typedef struct MOVTrack {
     uint32_t    tref_tag;
     int         tref_id; ///< trackID of the referenced track
     int64_t     start_dts;
+    int64_t     start_cts;
 
     int         hint_track;   ///< the track that hints this track, -1 if no hint track is set
     int         src_track;    ///< the track that this hint (or tmcd) track describes
@@ -136,7 +137,6 @@ typedef struct MOVTrack {
     unsigned    frag_info_capacity;
 
     struct {
-        int64_t struct_offset;
         int     first_packet_seq;
         int     first_packet_entry;
         int     packet_seq;
@@ -185,6 +185,7 @@ typedef struct MOVMuxContext {
     AVFormatContext *fc;
 
     int use_editlist;
+    float gamma;
 } MOVMuxContext;
 
 #define FF_MOV_FLAG_RTP_HINT              (1 <<  0)
@@ -200,6 +201,9 @@ typedef struct MOVMuxContext {
 #define FF_MOV_FLAG_DEFAULT_BASE_MOOF     (1 << 10)
 #define FF_MOV_FLAG_DASH                  (1 << 11)
 #define FF_MOV_FLAG_FRAG_DISCONT          (1 << 12)
+#define FF_MOV_FLAG_DELAY_MOOV            (1 << 13)
+#define FF_MOV_FLAG_WRITE_COLR            (1 << 14)
+#define FF_MOV_FLAG_WRITE_GAMA            (1 << 15)
 
 int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt);
 

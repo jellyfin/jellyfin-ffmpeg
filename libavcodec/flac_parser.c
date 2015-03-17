@@ -182,7 +182,7 @@ static int find_headers_search_validate(FLACParseContext *fpc, int offset)
             size++;
         }
 
-        *end_handle = av_mallocz(sizeof(FLACHeaderMarker));
+        *end_handle = av_mallocz(sizeof(**end_handle));
         if (!*end_handle) {
             av_log(fpc->avctx, AV_LOG_ERROR,
                    "couldn't allocate FLACHeaderMarker\n");
@@ -192,6 +192,13 @@ static int find_headers_search_validate(FLACParseContext *fpc, int offset)
         (*end_handle)->offset       = offset;
         (*end_handle)->link_penalty = av_malloc(sizeof(int) *
                                             FLAC_MAX_SEQUENTIAL_HEADERS);
+        if (!(*end_handle)->link_penalty) {
+            av_freep(end_handle);
+            av_log(fpc->avctx, AV_LOG_ERROR,
+                   "couldn't allocate link_penalty\n");
+            return AVERROR(ENOMEM);
+        }
+
         for (i = 0; i < FLAC_MAX_SEQUENTIAL_HEADERS; i++)
             (*end_handle)->link_penalty[i] = FLAC_HEADER_NOT_PENALIZED_YET;
 
@@ -707,8 +714,11 @@ static av_cold int flac_parse_init(AVCodecParserContext *c)
     /* There will generally be FLAC_MIN_HEADERS buffered in the fifo before
        it drains.  This is allocated early to avoid slow reallocation. */
     fpc->fifo_buf = av_fifo_alloc_array(FLAC_MIN_HEADERS + 3, FLAC_AVG_FRAME_SIZE);
-    if (!fpc->fifo_buf)
+    if (!fpc->fifo_buf) {
+        av_log(fpc->avctx, AV_LOG_ERROR,
+                "couldn't allocate fifo_buf\n");
         return AVERROR(ENOMEM);
+    }
     return 0;
 }
 

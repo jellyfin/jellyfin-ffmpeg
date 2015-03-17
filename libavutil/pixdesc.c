@@ -1900,6 +1900,10 @@ const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
         .name = "vda",
         .flags = AV_PIX_FMT_FLAG_HWACCEL,
     },
+    [AV_PIX_FMT_QSV] = {
+        .name = "qsv",
+        .flags = AV_PIX_FMT_FLAG_HWACCEL,
+    },
 };
 
 static const char *color_range_names[AVCOL_RANGE_NB] = {
@@ -2049,7 +2053,6 @@ enum AVPixelFormat av_pix_fmt_desc_get_id(const AVPixFmtDescriptor *desc)
 
     return desc - av_pix_fmt_descriptors;
 }
-FF_ENABLE_DEPRECATION_WARNINGS
 
 int av_pix_fmt_get_chroma_sub_sample(enum AVPixelFormat pix_fmt,
                                      int *h_shift, int *v_shift)
@@ -2118,6 +2121,7 @@ void ff_check_pixfmt_descriptors(void){
         }
     }
 }
+FF_ENABLE_DEPRECATION_WARNINGS
 
 
 enum AVPixelFormat av_pix_fmt_swap_endianness(enum AVPixelFormat pix_fmt)

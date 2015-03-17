@@ -39,7 +39,7 @@
 
 #define VALIDATE_INDEX_TS_THRESH 2500
 
-typedef struct {
+typedef struct FLVContext {
     const AVClass *class; ///< Class for private options.
     int trust_metadata;   ///< configure streams according onMetaData
     int wrong_dts;        ///< wrong dts due to negative cts
@@ -405,8 +405,10 @@ static int amf_parse_object(AVFormatContext *s, AVStream *astream,
         num_val = avio_r8(ioc);
         break;
     case AMF_DATA_TYPE_STRING:
-        if (amf_get_string(ioc, str_val, sizeof(str_val)) < 0)
+        if (amf_get_string(ioc, str_val, sizeof(str_val)) < 0) {
+            av_log(s, AV_LOG_ERROR, "AMF_DATA_TYPE_STRING parsing failed\n");
             return -1;
+        }
         break;
     case AMF_DATA_TYPE_OBJECT:
         if ((vstream || astream) && key &&
@@ -421,8 +423,10 @@ static int amf_parse_object(AVFormatContext *s, AVStream *astream,
             if (amf_parse_object(s, astream, vstream, str_val, max_pos,
                                  depth + 1) < 0)
                 return -1;     // if we couldn't skip, bomb out.
-        if (avio_r8(ioc) != AMF_END_OF_OBJECT)
+        if (avio_r8(ioc) != AMF_END_OF_OBJECT) {
+            av_log(s, AV_LOG_ERROR, "Missing AMF_END_OF_OBJECT in AMF_DATA_TYPE_OBJECT\n");
             return -1;
+        }
         break;
     case AMF_DATA_TYPE_NULL:
     case AMF_DATA_TYPE_UNDEFINED:
@@ -437,8 +441,10 @@ static int amf_parse_object(AVFormatContext *s, AVStream *astream,
             if (amf_parse_object(s, astream, vstream, str_val, max_pos,
                                  depth + 1) < 0)
                 return -1;
-        if (avio_r8(ioc) != AMF_END_OF_OBJECT)
+        if (avio_r8(ioc) != AMF_END_OF_OBJECT) {
+            av_log(s, AV_LOG_ERROR, "Missing AMF_END_OF_OBJECT in AMF_DATA_TYPE_MIXEDARRAY\n");
             return -1;
+        }
         break;
     case AMF_DATA_TYPE_ARRAY:
     {
@@ -455,6 +461,7 @@ static int amf_parse_object(AVFormatContext *s, AVStream *astream,
         avio_skip(ioc, 8 + 2);  // timestamp (double) and UTC offset (int16)
         break;
     default:                    // unsupported type, we couldn't skip
+        av_log(s, AV_LOG_ERROR, "unsupported amf type %d\n", amf_type);
         return -1;
     }
 
@@ -538,6 +545,9 @@ static int amf_parse_object(AVFormatContext *s, AVStream *astream,
     return 0;
 }
 
+#define TYPE_ONTEXTDATA 1
+#define TYPE_UNKNOWN 2
+
 static int flv_read_metabody(AVFormatContext *s, int64_t next_pos)
 {
     AMFDataType type;
@@ -558,13 +568,13 @@ static int flv_read_metabody(AVFormatContext *s, int64_t next_pos)
     type = avio_r8(ioc);
     if (type != AMF_DATA_TYPE_STRING ||
         amf_get_string(ioc, buffer, sizeof(buffer)) < 0)
-        return 2;
+        return TYPE_UNKNOWN;
 
     if (!strcmp(buffer, "onTextData"))
-        return 1;
+        return TYPE_ONTEXTDATA;
 
     if (strcmp(buffer, "onMetaData") && strcmp(buffer, "onCuePoint"))
-        return 2;
+        return TYPE_UNKNOWN;
 
     // find the streams now so that amf_parse_object doesn't need to do
     // the lookup every time it is called.

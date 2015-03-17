@@ -37,10 +37,15 @@ fate-vsynth%-dnxhd-720p-10bit:   ENCOPTS = -s hd720 -b 90M              \
                                            -pix_fmt yuv422p10 -frames 5 -qmax 8
 fate-vsynth%-dnxhd-720p-10bit:   FMT     = dnxhd
 
-FATE_VCODEC-$(call ENCDEC, DNXHD, MOV)  += dnxhd-1080i
+FATE_VCODEC-$(call ENCDEC, DNXHD, MOV)  += dnxhd-1080i dnxhd-1080i-colr
 fate-vsynth%-dnxhd-1080i:        ENCOPTS = -s hd1080 -b 120M -flags +ildct \
                                            -pix_fmt yuv422p -frames 5 -qmax 8
 fate-vsynth%-dnxhd-1080i:        FMT     = mov
+
+fate-vsynth%-dnxhd-1080i-colr:   ENCOPTS = -s hd1080 -b 120M -flags +ildct -movflags write_colr \
+                                           -pix_fmt yuv422p -frames 5 -qmax 8
+fate-vsynth%-dnxhd-1080i-colr:   DECOPTS = -sws_flags area+accurate_rnd+bitexact
+fate-vsynth%-dnxhd-1080i-colr:   FMT     = mov
 
 FATE_VCODEC-$(call ENCDEC, DVVIDEO, DV) += dv dv-411 dv-50
 fate-vsynth%-dv:                 CODEC   = dvvideo
@@ -113,10 +118,11 @@ fate-vsynth%-jpeg2000-97:             DECINOPTS = -vcodec jpeg2000
 FATE_VCODEC-$(call ENCDEC, LJPEG MJPEG, AVI) += ljpeg
 fate-vsynth%-ljpeg:              ENCOPTS = -strict -1
 
-FATE_VCODEC-$(call ENCDEC, MJPEG, AVI)  += mjpeg mjpeg-422 mjpeg-444
+FATE_VCODEC-$(call ENCDEC, MJPEG, AVI)  += mjpeg mjpeg-422 mjpeg-444 mjpeg-trell
 fate-vsynth%-mjpeg:              ENCOPTS = -qscale 9 -pix_fmt yuvj420p
 fate-vsynth%-mjpeg-422:          ENCOPTS = -qscale 9 -pix_fmt yuvj422p
 fate-vsynth%-mjpeg-444:          ENCOPTS = -qscale 9 -pix_fmt yuvj444p
+fate-vsynth%-mjpeg-trell:        ENCOPTS = -qscale 9 -pix_fmt yuvj420p -trellis 1
 
 FATE_VCODEC-$(call ENCDEC, MPEG1VIDEO, MPEG1VIDEO MPEGVIDEO) += mpeg1 mpeg1b
 fate-vsynth%-mpeg1:              FMT     = mpeg1video
