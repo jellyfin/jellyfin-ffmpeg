@@ -164,9 +164,9 @@ ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 endif
 
 # Use the default debhelper scripts, where possible.
-# Enable parallel building.
+# Enable parallel building and move the debug symbols to the debug package.
 %:
-	dh $@ --parallel
+	dh $@ --parallel --dbg-package=ffmpeg-dbg
 
 # Add configuration options:
 override_dh_auto_configure:
@@ -201,12 +201,6 @@ override_dh_auto_build-arch:
 # Set the library path for the dynamic linker, because the test otherwise don't find the libraries.
 override_dh_auto_test:
 	export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; dh_auto_test -- -k
-
-# Move the debug symbols to the debug package:
-override_dh_strip:
-	# dh_strip would add timestamps to static libraries (*.a), so handle them manually.
-	dh_strip --dbg-package=ffmpeg-dbg -X.a
-	for lib in debian/*/usr/lib/*/*.a; do strip --strip-debug --enable-deterministic-archives "$$lib"; done
 
 override_dh_auto_install:
 	dh_auto_install
