@@ -1,11 +1,11 @@
-ffmpeg (7:2.6.2-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.6.2-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.6.2.
   * Drop build-dependency on bc, the tests use awk since 2.6.
   * Drop override_dh_strip in debian/rules, because binutils is now built
     with --enable-deterministic-archives.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 12 Apr 2015 20:17:32 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 12 Apr 2015 22:51:20 +0200
 
 ffmpeg (7:2.6.1-1) unstable; urgency=medium
 
