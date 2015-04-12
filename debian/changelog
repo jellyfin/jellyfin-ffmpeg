@@ -1,6 +1,7 @@
 ffmpeg (7:2.6.2-1) UNRELEASED; urgency=medium
 
   * Import new upstream bugfix release 2.6.2.
+  * Drop build-dependency on bc, the tests use awk since 2.6.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 12 Apr 2015 20:17:32 +0200
 

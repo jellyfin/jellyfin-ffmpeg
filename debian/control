@@ -15,8 +15,6 @@ Build-Depends-Indep:
 # needed to create the CSS files for the HTML manuals
  node-less
 Build-Depends:
-# needed for some tests: fate-swr-resample-*, fate-acodec-*
- bc,
 # needed for dh
  debhelper (>= 9),
 # --enable-libflite
