@@ -7,6 +7,8 @@ ffmpeg (7:2.6.3-1) UNRELEASED; urgency=medium
   * Explicitly build-depend on pkg-config.
   * Enable gnutls and librtmp on sparc64, libvpx and libsdl on x32 and
     opencv on powerpcspe, since they are now available.
+  * Disable i686 optimizations on (hurd-)i386, because i586 is still
+    supported.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 17 May 2015 19:57:08 +0200
 
