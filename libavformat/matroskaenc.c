@@ -545,12 +545,15 @@ static int put_flac_codecpriv(AVFormatContext *s,
                              "Lavf" : LIBAVFORMAT_IDENT;
         AVDictionary *dict = NULL;
         uint8_t buf[32], *data, *p;
-        int len;
+        int64_t len;
 
         snprintf(buf, sizeof(buf), "0x%"PRIx64, codec->channel_layout);
         av_dict_set(&dict, "WAVEFORMATEXTENSIBLE_CHANNEL_MASK", buf, 0);
 
         len = ff_vorbiscomment_length(dict, vendor);
+        if (len >= ((1<<24) - 4))
+            return AVERROR(EINVAL);
+
         data = av_malloc(len + 4);
         if (!data) {
             av_dict_free(&dict);
@@ -940,6 +943,7 @@ static int mkv_write_track(AVFormatContext *s, MatroskaMuxContext *mkv,
             // if there is no mkv-specific codec ID, use VFW mode
             put_ebml_string(pb, MATROSKA_ID_CODECID, "V_MS/VFW/FOURCC");
             mkv->tracks[i].write_dts = 1;
+            s->internal->avoid_negative_ts_use_pts = 0;
         }
 
         subinfo = start_ebml_master(pb, MATROSKA_ID_TRACKVIDEO, 0);
@@ -1265,6 +1269,11 @@ static int mkv_write_attachments(AVFormatContext *s)
                     mimetype = ff_mkv_mime_tags[i].str;
                     break;
                 }
+            for (i = 0; ff_mkv_image_mime_tags[i].id != AV_CODEC_ID_NONE; i++)
+                if (ff_mkv_image_mime_tags[i].id == st->codec->codec_id) {
+                    mimetype = ff_mkv_image_mime_tags[i].str;
+                    break;
+                }
         }
         if (!mimetype) {
             av_log(s, AV_LOG_ERROR, "Attachment stream %d has no mimetype tag and "
@@ -1311,8 +1320,10 @@ static int mkv_write_header(AVFormatContext *s)
     else
         mkv->mode = MODE_MATROSKAv2;
 
-    if (s->avoid_negative_ts < 0)
+    if (s->avoid_negative_ts < 0) {
         s->avoid_negative_ts = 1;
+        s->internal->avoid_negative_ts_use_pts = 1;
+    }
 
     if (mkv->mode != MODE_WEBM ||
         av_dict_get(s->metadata, "stereo_mode", NULL, 0) ||
@@ -1995,6 +2006,12 @@ static const AVCodecTag additional_video_tags[] = {
     { AV_CODEC_ID_NONE,      0xFFFFFFFF }
 };
 
+static const AVCodecTag additional_subtitle_tags[] = {
+    { AV_CODEC_ID_DVB_SUBTITLE,      0xFFFFFFFF },
+    { AV_CODEC_ID_HDMV_PGS_SUBTITLE, 0xFFFFFFFF },
+    { AV_CODEC_ID_NONE,              0xFFFFFFFF }
+};
+
 #define OFFSET(x) offsetof(MatroskaMuxContext, x)
 #define FLAGS AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
@@ -2032,7 +2049,7 @@ AVOutputFormat ff_matroska_muxer = {
                          AVFMT_TS_NONSTRICT | AVFMT_ALLOW_FLUSH,
     .codec_tag         = (const AVCodecTag* const []){
          ff_codec_bmp_tags, ff_codec_wav_tags,
-         additional_audio_tags, additional_video_tags, 0
+         additional_audio_tags, additional_video_tags, additional_subtitle_tags, 0
     },
     .subtitle_codec    = AV_CODEC_ID_ASS,
     .query_codec       = mkv_query_codec,

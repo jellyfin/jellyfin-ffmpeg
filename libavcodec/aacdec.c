@@ -900,7 +900,7 @@ static int decode_eld_specific_config(AACContext *ac, AVCodecContext *avctx,
         if (len == 15 + 255)
             len += get_bits(gb, 16);
         if (get_bits_left(gb) < len * 8 + 4) {
-            av_log(ac->avctx, AV_LOG_ERROR, overread_err);
+            av_log(avctx, AV_LOG_ERROR, overread_err);
             return AVERROR_INVALIDDATA;
         }
         skip_bits_long(gb, 8 * len);
@@ -3071,6 +3071,12 @@ static int aac_decode_frame_int(AVCodecContext *avctx, void *data,
         const uint8_t *side = av_packet_get_side_data(avpkt, AV_PKT_DATA_SKIP_SAMPLES, &side_size);
         if (side && side_size>=4)
             AV_WL32(side, 2*AV_RL32(side));
+    }
+
+    if (!ac->frame->data[0] && samples) {
+        av_log(avctx, AV_LOG_ERROR, "no frame data found\n");
+        err = AVERROR_INVALIDDATA;
+        goto fail;
     }
 
     *got_frame_ptr = !!samples;

@@ -1274,15 +1274,13 @@ static int matroska_decode_buffer(uint8_t **buf, int *buf_size,
             newpktdata = av_realloc(pkt_data, pkt_size);
             if (!newpktdata) {
                 inflateEnd(&zstream);
+                result = AVERROR(ENOMEM);
                 goto failed;
             }
             pkt_data          = newpktdata;
             zstream.avail_out = pkt_size - zstream.total_out;
             zstream.next_out  = pkt_data + zstream.total_out;
-            if (pkt_data) {
-                result = inflate(&zstream, Z_NO_FLUSH);
-            } else
-                result = Z_MEM_ERROR;
+            result = inflate(&zstream, Z_NO_FLUSH);
         } while (result == Z_OK && pkt_size < 10000000);
         pkt_size = zstream.total_out;
         inflateEnd(&zstream);
@@ -1309,15 +1307,13 @@ static int matroska_decode_buffer(uint8_t **buf, int *buf_size,
             newpktdata = av_realloc(pkt_data, pkt_size);
             if (!newpktdata) {
                 BZ2_bzDecompressEnd(&bzstream);
+                result = AVERROR(ENOMEM);
                 goto failed;
             }
             pkt_data           = newpktdata;
             bzstream.avail_out = pkt_size - bzstream.total_out_lo32;
             bzstream.next_out  = pkt_data + bzstream.total_out_lo32;
-            if (pkt_data) {
-                result = BZ2_bzDecompress(&bzstream);
-            } else
-                result = BZ_MEM_ERROR;
+            result = BZ2_bzDecompress(&bzstream);
         } while (result == BZ_OK && pkt_size < 10000000);
         pkt_size = bzstream.total_out_lo32;
         BZ2_bzDecompressEnd(&bzstream);
@@ -1496,7 +1492,7 @@ static void matroska_add_index_entries(MatroskaDemuxContext *matroska)
 {
     EbmlList *index_list;
     MatroskaIndex *index;
-    int index_scale = 1;
+    uint64_t index_scale = 1;
     int i, j;
 
     if (matroska->ctx->flags & AVFMT_FLAG_IGNIDX)
@@ -2004,8 +2000,8 @@ static int matroska_parse_tracks(AVFormatContext *s)
                 snprintf(buf, sizeof(buf), "%s_%d",
                          ff_matroska_video_stereo_plane[planes[j].type], i);
                 for (k=0; k < matroska->tracks.nb_elem; k++)
-                    if (planes[j].uid == tracks[k].uid) {
-                        av_dict_set(&s->streams[k]->metadata,
+                    if (planes[j].uid == tracks[k].uid && tracks[k].stream) {
+                        av_dict_set(&tracks[k].stream->metadata,
                                     "stereo_mode", buf, 0);
                         break;
                     }
@@ -2142,20 +2138,41 @@ static int matroska_read_header(AVFormatContext *s)
             av_dict_set(&st->metadata, "filename", attachments[j].filename, 0);
             av_dict_set(&st->metadata, "mimetype", attachments[j].mime, 0);
             st->codec->codec_id   = AV_CODEC_ID_NONE;
-            st->codec->codec_type = AVMEDIA_TYPE_ATTACHMENT;
-            if (ff_alloc_extradata(st->codec, attachments[j].bin.size))
-                break;
-            memcpy(st->codec->extradata, attachments[j].bin.data,
-                   attachments[j].bin.size);
 
-            for (i = 0; ff_mkv_mime_tags[i].id != AV_CODEC_ID_NONE; i++) {
-                if (!strncmp(ff_mkv_mime_tags[i].str, attachments[j].mime,
-                             strlen(ff_mkv_mime_tags[i].str))) {
-                    st->codec->codec_id = ff_mkv_mime_tags[i].id;
+            for (i = 0; ff_mkv_image_mime_tags[i].id != AV_CODEC_ID_NONE; i++) {
+                if (!strncmp(ff_mkv_image_mime_tags[i].str, attachments[j].mime,
+                             strlen(ff_mkv_image_mime_tags[i].str))) {
+                    st->codec->codec_id = ff_mkv_image_mime_tags[i].id;
                     break;
                 }
             }
-            attachments[j].stream = st;
+
+            if (st->codec->codec_id != AV_CODEC_ID_NONE) {
+                st->disposition      |= AV_DISPOSITION_ATTACHED_PIC;
+                st->codec->codec_type = AVMEDIA_TYPE_VIDEO;
+
+                av_init_packet(&st->attached_pic);
+                if ((res = av_new_packet(&st->attached_pic, attachments[j].bin.size)) < 0)
+                    return res;
+                memcpy(st->attached_pic.data, attachments[j].bin.data, attachments[j].bin.size);
+                st->attached_pic.stream_index = st->index;
+                st->attached_pic.flags       |= AV_PKT_FLAG_KEY;
+            } else {
+                st->codec->codec_type = AVMEDIA_TYPE_ATTACHMENT;
+                if (ff_alloc_extradata(st->codec, attachments[j].bin.size))
+                    break;
+                memcpy(st->codec->extradata, attachments[j].bin.data,
+                    attachments[j].bin.size);
+
+                for (i = 0; ff_mkv_mime_tags[i].id != AV_CODEC_ID_NONE; i++) {
+                    if (!strncmp(ff_mkv_mime_tags[i].str, attachments[j].mime,
+                                strlen(ff_mkv_mime_tags[i].str))) {
+                        st->codec->codec_id = ff_mkv_mime_tags[i].id;
+                        break;
+                    }
+                }
+                attachments[j].stream = st;
+            }
         }
     }
 
