@@ -694,11 +694,25 @@ static int hls_slice_header(HEVCContext *s)
 
     sh->num_entry_point_offsets = 0;
     if (s->pps->tiles_enabled_flag || s->pps->entropy_coding_sync_enabled_flag) {
-        sh->num_entry_point_offsets = get_ue_golomb_long(gb);
+        unsigned num_entry_point_offsets = get_ue_golomb_long(gb);
+        // It would be possible to bound this tighter but this here is simpler
+        if (num_entry_point_offsets > get_bits_left(gb)) {
+            av_log(s->avctx, AV_LOG_ERROR, "num_entry_point_offsets %d is invalid\n", num_entry_point_offsets);
+            return AVERROR_INVALIDDATA;
+        }
+
+        sh->num_entry_point_offsets = num_entry_point_offsets;
         if (sh->num_entry_point_offsets > 0) {
             int offset_len = get_ue_golomb_long(gb) + 1;
             int segments = offset_len >> 4;
             int rest = (offset_len & 15);
+
+            if (offset_len < 1 || offset_len > 32) {
+                sh->num_entry_point_offsets = 0;
+                av_log(s->avctx, AV_LOG_ERROR, "offset_len %d is invalid\n", offset_len);
+                return AVERROR_INVALIDDATA;
+            }
+
             av_freep(&sh->entry_point_offset);
             av_freep(&sh->offset);
             av_freep(&sh->size);
@@ -2983,7 +2997,6 @@ static int decode_nal_units(HEVCContext *s, const uint8_t *buf, int length)
 
     /* parse the NAL units */
     for (i = 0; i < s->nb_nals; i++) {
-        int ret;
         s->skipped_bytes = s->skipped_bytes_nal[i];
         s->skipped_bytes_pos = s->skipped_bytes_pos_nal[i];
 
