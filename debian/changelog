@@ -1,4 +1,4 @@
-ffmpeg (7:2.6.3-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.6.3-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.6.3.
   * Don't install the pc-uninstalled directory.
@@ -13,7 +13,7 @@ ffmpeg (7:2.6.3-1) UNRELEASED; urgency=medium
   * Re-enable assembler optimizations on ppc64el, since they are
     finally really fixed.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 17 May 2015 19:57:08 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 17 May 2015 22:03:38 +0200
 
 ffmpeg (7:2.6.2-1) unstable; urgency=medium
 
