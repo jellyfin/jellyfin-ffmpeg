@@ -4,6 +4,7 @@ ffmpeg (7:2.6.3-1) UNRELEASED; urgency=medium
   * Don't install the pc-uninstalled directory.
     It is only useful in the source.
   * Use 'set -e' in the autopkgtests.
+  * Explicitly build-depend on pkg-config.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 17 May 2015 19:57:08 +0200
 
