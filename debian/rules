@@ -63,6 +63,7 @@ CONFIG := --prefix=/usr \
 	--disable-stripping \
 	--enable-avresample \
 	--enable-avisynth \
+	--enable-gnutls \
 	--enable-ladspa \
 	--enable-libass \
 	--enable-libbluray \
@@ -80,6 +81,7 @@ CONFIG := --prefix=/usr \
 	--enable-libopenjpeg \
 	--enable-libopus \
 	--enable-libpulse \
+	--enable-librtmp \
 	--enable-libschroedinger \
 	--enable-libshine \
 	--enable-libspeex \
@@ -87,6 +89,7 @@ CONFIG := --prefix=/usr \
 	--enable-libtheora \
 	--enable-libtwolame \
 	--enable-libvorbis \
+	--enable-libvpx \
 	--enable-libwavpack \
 	--enable-libwebp \
 	--enable-libxvid \
@@ -117,25 +120,18 @@ endif
 # Some libraries are not available on x32.
 ifneq ($(DEB_HOST_ARCH),x32)
 	CONFIG += --enable-frei0r \
-	--enable-libvpx \
 	--enable-libx264
 endif
 
 # Some libraries are not available on sparc64.
 ifneq ($(DEB_HOST_ARCH),sparc64)
 	CONFIG += --enable-libsoxr \
-	--enable-gnutls \
 	--enable-openal
 endif
 
 # OpenCV is not available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),m68k powerpcspe sh4 sparc64 x32))
+ifeq (,$(filter $(DEB_HOST_ARCH),m68k sh4 sparc64 x32))
 	CONFIG += --enable-libopencv
-endif
-
-# librtmp-dev is uninstallable on sparc64.
-ifeq (,$(filter $(DEB_HOST_ARCH),sparc64))
-	CONFIG += --enable-librtmp
 endif
 
 # X265 is not (yet) available on some architectures.
