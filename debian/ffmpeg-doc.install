@@ -2,7 +2,6 @@ doc/doxy/html/*						usr/share/doc/ffmpeg-doc/api
 doc/examples/*.c					usr/share/doc/ffmpeg-doc/examples
 doc/examples/Makefile				usr/share/doc/ffmpeg-doc/examples
 doc/examples/README					usr/share/doc/ffmpeg-doc/examples
-doc/examples/pc-uninstalled			usr/share/doc/ffmpeg-doc/examples
 doc/*.html							usr/share/doc/ffmpeg-doc/manual
 doc/*.css							usr/share/doc/ffmpeg-doc/manual
 doc/APIchanges						usr/share/doc/ffmpeg-doc/developer-info
