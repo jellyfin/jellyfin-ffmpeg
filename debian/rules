@@ -52,7 +52,6 @@ LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFL
 #  * With --enable-raise-major, the resulting binaries should be co-installable with the Libav ones and thus no conflicts would be necessary.
 #    But this could break versioned configure checks.
 #  * With --build-suffix="-ffmpeg" the library names are changed, so there can't be a conflict with Libav.
-#    The patch pkg-config_file_without_build_suffix.patch ensures that packages using pkg-config still work with these FFmpeg library packages.
 CONFIG := --prefix=/usr \
 	--extra-version="$(DEB_REVISION)" \
 	--build-suffix="-ffmpeg" \
