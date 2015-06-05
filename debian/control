@@ -1,8 +1,9 @@
 Source: ffmpeg
 Section: video
 Priority: optional
-Maintainer: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
-Uploaders: Alexander Strasser <eclipse7@gmx.net>
+Maintainer: Debian Multimedia Maintainers <pkg-multimedia-maintainers@lists.alioth.debian.org>
+Uploaders: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>,
+ Alexander Strasser <eclipse7@gmx.net>
 Homepage: https://ffmpeg.org/
 Standards-Version: 3.9.6
 Vcs-Git: git://anonscm.debian.org/collab-maint/ffmpeg.git
