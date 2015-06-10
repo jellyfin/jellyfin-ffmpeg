@@ -4,6 +4,8 @@ ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
   * Change maintainer to the pkg-multimedia team and move myself to uploaders.
   * Let ffmpeg suggest ffmpeg-doc.
   * Fix encdec autopkgtest to not fail, when skipping tests.
+  * Restrict shlib-with-non-pic-code lintian override to i386.
+    Thanks to Jakub Wilk for the hint.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Jun 2015 14:23:01 +0200
 

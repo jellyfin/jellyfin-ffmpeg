@@ -7,4 +7,4 @@ libpostproc-ffmpeg53: embedded-library usr/lib/*/libpostproc-ffmpeg.so.*: libpos
 # performance penalty, especially on i386.
 # Therefore -fPIC is not used by the upstream build system on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f83
-libpostproc-ffmpeg53: shlib-with-non-pic-code usr/lib/i386*/libpostproc-ffmpeg.so.*
+libpostproc-ffmpeg53 [i386]: shlib-with-non-pic-code usr/lib/i386*/libpostproc-ffmpeg.so.*

@@ -7,4 +7,4 @@ libavfilter-ffmpeg5: embedded-library usr/lib/*/libavfilter-ffmpeg.so.*: libavfi
 # performance penalty, especially on i386.
 # Therefore -fPIC is not used by the upstream build system on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f83
-libavfilter-ffmpeg5: shlib-with-non-pic-code usr/lib/i386*/libavfilter-ffmpeg.so.*
+libavfilter-ffmpeg5 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavfilter-ffmpeg.so.*
