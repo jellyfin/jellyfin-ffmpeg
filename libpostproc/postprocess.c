@@ -168,37 +168,6 @@ static const char * const replaceTable[]=
     NULL //End Marker
 };
 
-
-#if ARCH_X86 && HAVE_INLINE_ASM
-static inline void prefetchnta(const void *p)
-{
-    __asm__ volatile(   "prefetchnta (%0)\n\t"
-        : : "r" (p)
-    );
-}
-
-static inline void prefetcht0(const void *p)
-{
-    __asm__ volatile(   "prefetcht0 (%0)\n\t"
-        : : "r" (p)
-    );
-}
-
-static inline void prefetcht1(const void *p)
-{
-    __asm__ volatile(   "prefetcht1 (%0)\n\t"
-        : : "r" (p)
-    );
-}
-
-static inline void prefetcht2(const void *p)
-{
-    __asm__ volatile(   "prefetcht2 (%0)\n\t"
-        : : "r" (p)
-    );
-}
-#endif
-
 /* The horizontal functions exist only in C because the MMX
  * code is faster with vertical filters and transposing. */
 
@@ -712,7 +681,7 @@ pp_mode *pp_get_mode_by_name_and_quality(const char *name, int quality)
     ppMode->minAllowedY= 16;
     ppMode->baseDcDiff= 256/8;
     ppMode->flatnessThreshold= 56-16-1;
-    ppMode->maxClippedThreshold= 0.01;
+    ppMode->maxClippedThreshold= (AVRational){1,100};
     ppMode->error=0;
 
     memset(temp, 0, GET_MODE_BUFFER_SIZE);
@@ -768,7 +737,7 @@ pp_mode *pp_get_mode_by_name_and_quality(const char *name, int quality)
         /* replace stuff from the replace Table */
         for(i=0; replaceTable[2*i]; i++){
             if(!strcmp(replaceTable[2*i], filterName)){
-                int newlen= strlen(replaceTable[2*i + 1]);
+                size_t newlen = strlen(replaceTable[2*i + 1]);
                 int plen;
                 int spaceLeft;
 

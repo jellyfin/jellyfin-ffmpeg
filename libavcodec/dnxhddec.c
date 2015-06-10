@@ -90,6 +90,7 @@ static int dnxhd_init_vlc(DNXHDContext *ctx, uint32_t cid)
             return AVERROR_INVALIDDATA;
         }
         ctx->cid_table = &ff_dnxhd_cid_table[index];
+        av_log(ctx->avctx, AV_LOG_VERBOSE, "Profile cid %d.\n", cid);
 
         ff_free_vlc(&ctx->ac_vlc);
         ff_free_vlc(&ctx->dc_vlc);
@@ -128,7 +129,9 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
     }
 
     if (memcmp(buf, header_prefix, 5) && memcmp(buf, header_prefix444, 5)) {
-        av_log(ctx->avctx, AV_LOG_ERROR, "error in header\n");
+        av_log(ctx->avctx, AV_LOG_ERROR,
+               "unknown header 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
+               buf[0], buf[1], buf[2], buf[3], buf[4]);
         return AVERROR_INVALIDDATA;
     }
     if (buf[5] & 2) { /* interlaced */
@@ -137,12 +140,14 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
         frame->top_field_first  = first_field ^ ctx->cur_field;
         av_log(ctx->avctx, AV_LOG_DEBUG,
                "interlaced %d, cur field %d\n", buf[5] & 3, ctx->cur_field);
+    } else {
+        ctx->cur_field = 0;
     }
 
     ctx->height = AV_RB16(buf + 0x18);
     ctx->width  = AV_RB16(buf + 0x1a);
 
-    av_dlog(ctx->avctx, "width %d, height %d\n", ctx->width, ctx->height);
+    ff_dlog(ctx->avctx, "width %d, height %d\n", ctx->width, ctx->height);
 
     if (buf[0x21] == 0x58) { /* 10 bit */
         ctx->bit_depth = ctx->avctx->bits_per_raw_sample = 10;
@@ -173,7 +178,7 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
     }
 
     cid = AV_RB32(buf + 0x28);
-    av_dlog(ctx->avctx, "compression id %d\n", cid);
+    ff_dlog(ctx->avctx, "compression id %d\n", cid);
 
     if ((ret = dnxhd_init_vlc(ctx, cid)) < 0)
         return ret;
@@ -196,7 +201,7 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
     ctx->mb_width  = ctx->width >> 4;
     ctx->mb_height = buf[0x16d];
 
-    av_dlog(ctx->avctx,
+    ff_dlog(ctx->avctx,
             "mb width %d, mb height %d\n", ctx->mb_width, ctx->mb_height);
 
     if ((ctx->height + 15) >> 4 == ctx->mb_height && frame->interlaced_frame)
@@ -211,7 +216,7 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
 
     for (i = 0; i < ctx->mb_height; i++) {
         ctx->mb_scan_index[i] = AV_RB32(buf + 0x170 + (i << 2));
-        av_dlog(ctx->avctx, "mb scan index %d\n", ctx->mb_scan_index[i]);
+        ff_dlog(ctx->avctx, "mb scan index %d\n", ctx->mb_scan_index[i]);
         if (buf_size < ctx->mb_scan_index[i] + 0x280LL) {
             av_log(ctx->avctx, AV_LOG_ERROR,
                    "invalid mb scan index (%d < %d).\n",
@@ -448,7 +453,7 @@ static int dnxhd_decode_frame(AVCodecContext *avctx, void *data,
     int first_field = 1;
     int ret;
 
-    av_dlog(avctx, "frame size %d\n", buf_size);
+    ff_dlog(avctx, "frame size %d\n", buf_size);
 
 decode_coding_unit:
     if ((ret = dnxhd_decode_header(ctx, picture, buf, buf_size, first_field)) < 0)

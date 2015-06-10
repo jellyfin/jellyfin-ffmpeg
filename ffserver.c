@@ -967,6 +967,10 @@ static int handle_connection(HTTPContext *c)
         /* close connection if trailer sent */
         if (c->state == HTTPSTATE_SEND_DATA_TRAILER)
             return -1;
+        /* Check if it is a single jpeg frame 123 */
+        if (c->stream->single_frame && c->data_count > c->cur_frame_bytes && c->cur_frame_bytes > 0) {
+            close_connection(c);
+        }
         break;
     case HTTPSTATE_RECEIVE_DATA:
         /* no need to read if no events */
@@ -1204,6 +1208,10 @@ static FFServerIPAddressACL* parse_dynamic_acl(FFServerStream *stream,
     }
 
     acl = av_mallocz(sizeof(FFServerIPAddressACL));
+    if (!acl) {
+        fclose(f);
+        return NULL;
+    }
 
     /* Build ACL */
     while (fgets(line, sizeof(line), f)) {
@@ -2055,12 +2063,19 @@ static int open_input_stream(HTTPContext *c, const char *info)
     ret = avformat_open_input(&s, input_filename, c->stream->ifmt,
                               &c->stream->in_opts);
     if (ret < 0) {
-        http_log("Could not open input '%s': %s\n", input_filename, av_err2str(ret));
+        http_log("Could not open input '%s': %s\n",
+                 input_filename, av_err2str(ret));
         return ret;
     }
 
     /* set buffer size */
-    if (buf_size > 0) ffio_set_buf_size(s->pb, buf_size);
+    if (buf_size > 0) {
+        ret = ffio_set_buf_size(s->pb, buf_size);
+        if (ret < 0) {
+            http_log("Failed to set buffer size\n");
+            return ret;
+        }
+    }
 
     s->flags |= AVFMT_FLAG_GENPTS;
     c->fmt_in = s;
@@ -2122,14 +2137,20 @@ static int http_prepare_data(HTTPContext *c)
     switch(c->state) {
     case HTTPSTATE_SEND_DATA_HEADER:
         ctx = avformat_alloc_context();
+        if (!ctx)
+            return AVERROR(ENOMEM);
         c->fmt_ctx = *ctx;
         av_freep(&ctx);
         av_dict_copy(&(c->fmt_ctx.metadata), c->stream->metadata, 0);
-        c->fmt_ctx.streams = av_mallocz_array(c->stream->nb_streams, sizeof(AVStream *));
+        c->fmt_ctx.streams = av_mallocz_array(c->stream->nb_streams,
+                                              sizeof(AVStream *));
+        if (!c->fmt_ctx.streams)
+            return AVERROR(ENOMEM);
 
         for(i=0;i<c->stream->nb_streams;i++) {
             AVStream *src;
             c->fmt_ctx.streams[i] = av_mallocz(sizeof(AVStream));
+
             /* if file or feed, then just take streams from FFServerStream struct */
             if (!c->stream->feed ||
                 c->stream->feed == c->stream)
@@ -2280,7 +2301,8 @@ static int http_prepare_data(HTTPContext *c)
                             max_packet_size = RTSP_TCP_MAX_PACKET_SIZE;
                         else
                             max_packet_size = c->rtp_handles[c->packet_stream_index]->max_packet_size;
-                        ret = ffio_open_dyn_packet_buf(&ctx->pb, max_packet_size);
+                        ret = ffio_open_dyn_packet_buf(&ctx->pb,
+                                                       max_packet_size);
                     } else {
                         ret = avio_open_dyn_buf(&ctx->pb);
                     }
@@ -2292,10 +2314,13 @@ static int http_prepare_data(HTTPContext *c)
 
                     ctx->pb->seekable = 0;
                     if (pkt.dts != AV_NOPTS_VALUE)
-                        pkt.dts = av_rescale_q(pkt.dts, ist->time_base, ost->time_base);
+                        pkt.dts = av_rescale_q(pkt.dts, ist->time_base,
+                                               ost->time_base);
                     if (pkt.pts != AV_NOPTS_VALUE)
-                        pkt.pts = av_rescale_q(pkt.pts, ist->time_base, ost->time_base);
-                    pkt.duration = av_rescale_q(pkt.duration, ist->time_base, ost->time_base);
+                        pkt.pts = av_rescale_q(pkt.pts, ist->time_base,
+                                               ost->time_base);
+                    pkt.duration = av_rescale_q(pkt.duration, ist->time_base,
+                                                ost->time_base);
                     if ((ret = av_write_frame(ctx, &pkt)) < 0) {
                         http_log("Error writing frame to output for stream '%s': %s\n",
                                  c->stream->filename, av_err2str(ret));
@@ -2437,7 +2462,8 @@ static int http_send_data(HTTPContext *c)
                     ffurl_write(c->rtp_handles[c->packet_stream_index],
                                 c->buffer_ptr, len);
                     c->buffer_ptr += len;
-                    /* here we continue as we can send several packets per 10 ms slot */
+                    /* here we continue as we can send several packets
+                     * per 10 ms slot */
                 }
             } else {
                 /* TCP data output */
@@ -2642,6 +2668,9 @@ static int http_receive_data(HTTPContext *c)
 
             pb = avio_alloc_context(c->buffer, c->buffer_end - c->buffer,
                                     0, NULL, NULL, NULL, NULL);
+            if (!pb)
+                goto fail;
+
             pb->seekable = 0;
 
             s->pb = pb;
@@ -2830,9 +2859,12 @@ static int prepare_sdp_description(FFServerStream *stream, uint8_t **pbuffer,
         snprintf(avc->filename, 1024, "rtp://0.0.0.0");
     }
 
-    if (!(avc->streams = av_malloc_array(avc->nb_streams, sizeof(*avc->streams))))
+    avc->streams = av_malloc_array(avc->nb_streams, sizeof(*avc->streams));
+    if (!avc->streams)
         goto sdp_done;
-    if (!(avs = av_malloc_array(avc->nb_streams, sizeof(*avs))))
+
+    avs = av_malloc_array(avc->nb_streams, sizeof(*avs));
+    if (!avs)
         goto sdp_done;
 
     for(i = 0; i < stream->nb_streams; i++) {
@@ -2840,6 +2872,8 @@ static int prepare_sdp_description(FFServerStream *stream, uint8_t **pbuffer,
         avc->streams[i]->codec = stream->streams[i]->codec;
     }
     *pbuffer = av_mallocz(2048);
+    if (!*pbuffer)
+        goto sdp_done;
     av_sdp_create(&avc, 1, *pbuffer, 2048);
 
  sdp_done:
@@ -2894,7 +2928,8 @@ static void rtsp_cmd_describe(HTTPContext *c, const char *url)
     /* get the host IP */
     len = sizeof(my_addr);
     getsockname(c->fd, (struct sockaddr *)&my_addr, &len);
-    content_length = prepare_sdp_description(stream, &content, my_addr.sin_addr);
+    content_length = prepare_sdp_description(stream, &content,
+                                             my_addr.sin_addr);
     if (content_length < 0) {
         rtsp_reply_error(c, RTSP_STATUS_INTERNAL);
         return;
@@ -3355,6 +3390,10 @@ static AVStream *add_av_stream1(FFServerStream *stream,
         return NULL;
     if (copy) {
         fst->codec = avcodec_alloc_context3(codec->codec);
+        if (!fst->codec) {
+            av_free(fst);
+            return NULL;
+        }
         avcodec_copy_context(fst->codec, codec);
     } else {
         /* live streams must use the actual feed's codec since it may be
@@ -3463,7 +3502,6 @@ static void extract_mpeg4_header(AVFormatContext *infile)
                 if (p[0] == 0x00 && p[1] == 0x00 &&
                     p[2] == 0x01 && p[3] == 0xb6) {
                     size = p - pkt.data;
-                    //                    av_hex_dump_log(infile, AV_LOG_DEBUG, pkt.data, size);
                     st->codec->extradata = av_mallocz(size + FF_INPUT_BUFFER_PADDING_SIZE);
                     st->codec->extradata_size = size;
                     memcpy(st->codec->extradata, pkt.data, size);
@@ -3550,7 +3588,8 @@ static void build_feed_streams(void)
             } else {
                 /* we handle a stream coming from a feed */
                 for(i=0;i<stream->nb_streams;i++)
-                    stream->feed_streams[i] = add_av_stream(feed, stream->streams[i]);
+                    stream->feed_streams[i] = add_av_stream(feed,
+                                                            stream->streams[i]);
             }
         }
     }
@@ -3566,7 +3605,12 @@ static void build_feed_streams(void)
 
             if (avformat_open_input(&s, feed->feed_filename, NULL, NULL) >= 0) {
                 /* set buffer size */
-                ffio_set_buf_size(s->pb, FFM_PACKET_SIZE);
+                int ret = ffio_set_buf_size(s->pb, FFM_PACKET_SIZE);
+                if (ret < 0) {
+                    http_log("Failed to set buffer size\n");
+                    exit(1);
+                }
+
                 /* Now see if it matches */
                 if (s->nb_streams == feed->nb_streams) {
                     matches = 1;
@@ -3636,6 +3680,11 @@ static void build_feed_streams(void)
         }
         if (avio_check(feed->feed_filename, AVIO_FLAG_WRITE) <= 0) {
             AVFormatContext *s = avformat_alloc_context();
+
+            if (!s) {
+                http_log("Failed to allocate context\n");
+                exit(1);
+            }
 
             if (feed->readonly) {
                 http_log("Unable to create feed file '%s' as it is marked readonly\n",

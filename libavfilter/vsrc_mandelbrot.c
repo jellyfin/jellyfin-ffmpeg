@@ -69,8 +69,8 @@ typedef struct {
     double end_scale;
     double end_pts;
     double bailout;
-    enum Outer outer;
-    enum Inner inner;
+    int outer;
+    int inner;
     int cache_allocated;
     int cache_used;
     Point *point_cache;
@@ -153,8 +153,10 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_NONE
     };
 
-    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-    return 0;
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    if (!fmts_list)
+        return AVERROR(ENOMEM);
+    return ff_set_common_formats(ctx, fmts_list);
 }
 
 static int config_props(AVFilterLink *inlink)

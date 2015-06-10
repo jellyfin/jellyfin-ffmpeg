@@ -283,7 +283,6 @@ static int svq1_encode_plane(SVQ1EncContext *s, int plane,
         s->m.pict_type                     = f->pict_type;
         s->m.me_method                     = s->avctx->me_method;
         s->m.me.scene_change_score         = 0;
-        s->m.flags                         = s->avctx->flags;
         // s->m.out_format                    = FMT_H263;
         // s->m.unrestricted_mv               = 1;
         s->m.lambda                        = f->quality;
@@ -422,8 +421,8 @@ static int svq1_encode_plane(SVQ1EncContext *s, int plane,
                     av_assert1(my     >= -32 && my     <= 31);
                     av_assert1(pred_x >= -32 && pred_x <= 31);
                     av_assert1(pred_y >= -32 && pred_y <= 31);
-                    ff_h263_encode_motion(&s->m, mx - pred_x, 1);
-                    ff_h263_encode_motion(&s->m, my - pred_y, 1);
+                    ff_h263_encode_motion(&s->m.pb, mx - pred_x, 1);
+                    ff_h263_encode_motion(&s->m.pb, my - pred_y, 1);
                     s->reorder_pb[5] = s->m.pb;
                     score[1]        += lambda * put_bits_count(&s->reorder_pb[5]);
 
@@ -557,8 +556,8 @@ static av_cold int svq1_encode_init(AVCodecContext *avctx)
                                         s->y_block_height * sizeof(int32_t));
     s->ssd_int8_vs_int16   = ssd_int8_vs_int16_c;
 
-    if (!s->m.me.scratchpad || !s->m.me.map || !s->m.me.score_map ||
-        !s->mb_type || !s->dummy) {
+    if (!s->m.me.temp || !s->m.me.scratchpad || !s->m.me.map ||
+        !s->m.me.score_map || !s->mb_type || !s->dummy) {
         svq1_encode_end(avctx);
         return AVERROR(ENOMEM);
     }
@@ -623,8 +622,15 @@ static int svq1_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                               s->frame_width  / (i ? 4 : 1),
                               s->frame_height / (i ? 4 : 1),
                               pict->linesize[i],
-                              s->current_picture->linesize[i]) < 0)
+                              s->current_picture->linesize[i]) < 0) {
+            int j;
+            for (j = 0; j < i; j++) {
+                av_freep(&s->motion_val8[j]);
+                av_freep(&s->motion_val16[j]);
+            }
+            av_freep(&s->scratchbuf);
             return -1;
+        }
 
     // avpriv_align_put_bits(&s->pb);
     while (put_bits_count(&s->pb) & 31)

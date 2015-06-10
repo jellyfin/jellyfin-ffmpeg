@@ -25,15 +25,16 @@
 
 #define FFMPEG_CONFIG_H
 #define AVUTIL_LOG_H
-#define av_log(a, ...)
-#define av_dlog(a, ...)
+#define av_log(a, ...) while(0)
+#define ff_dlog(a, ...) while(0)
 #define AVUTIL_MEM_H
 #define av_malloc(s) NULL
 #define av_malloc_array(a, b) NULL
 #define av_realloc_f(p, o, n) NULL
-#define av_free(p)
-#define av_freep(p)
+#define av_free(p) while(0)
+#define av_freep(p) while(0)
 #define AVCODEC_AVCODEC_H
+#define AVCODEC_INTERNAL_H
 #include "tableprint.h"
 #include "get_bits.h"
 #include "mathtables.c"

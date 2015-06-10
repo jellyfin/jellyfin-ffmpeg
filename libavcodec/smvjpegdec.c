@@ -50,7 +50,7 @@ static inline void smv_img_pnt_plane(uint8_t      **dst, uint8_t *src,
 
 static inline void smv_img_pnt(uint8_t *dst_data[4], uint8_t *src_data[4],
                                const int src_linesizes[4],
-                               enum PixelFormat pix_fmt, int width, int height,
+                               enum AVPixelFormat pix_fmt, int width, int height,
                                int nlines)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
@@ -94,7 +94,7 @@ static av_cold int smvjpeg_decode_init(AVCodecContext *avctx)
     SMVJpegDecodeContext *s = avctx->priv_data;
     AVCodec *codec;
     AVDictionary *thread_opt = NULL;
-    int ret = 0;
+    int ret = 0, r;
 
     s->frames_per_jpeg = 0;
 
@@ -115,13 +115,14 @@ static av_cold int smvjpeg_decode_init(AVCodecContext *avctx)
 
     if (s->frames_per_jpeg <= 0) {
         av_log(avctx, AV_LOG_ERROR, "Invalid number of frames per jpeg.\n");
-        ret = -1;
+        ret = AVERROR_INVALIDDATA;
     }
 
     codec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
     if (!codec) {
         av_log(avctx, AV_LOG_ERROR, "MJPEG codec not found\n");
-        ret = -1;
+        smvjpeg_decode_end(avctx);
+        return AVERROR_DECODER_NOT_FOUND;
     }
 
     s->avctx = avcodec_alloc_context3(codec);
@@ -130,9 +131,9 @@ static av_cold int smvjpeg_decode_init(AVCodecContext *avctx)
     s->avctx->refcounted_frames = 1;
     s->avctx->flags = avctx->flags;
     s->avctx->idct_algo = avctx->idct_algo;
-    if (ff_codec_open2_recursive(s->avctx, codec, &thread_opt) < 0) {
+    if ((r = ff_codec_open2_recursive(s->avctx, codec, &thread_opt)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "MJPEG codec failed to open\n");
-        ret = -1;
+        ret = r;
     }
     av_dict_free(&thread_opt);
 

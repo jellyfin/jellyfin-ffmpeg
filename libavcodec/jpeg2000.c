@@ -286,18 +286,17 @@ int ff_jpeg2000_init_component(Jpeg2000Component *comp,
              * see ISO/IEC 15444-1:2002 E.1 and A.6.4. */
             switch (qntsty->quantsty) {
                 uint8_t gain;
-                int numbps;
             case JPEG2000_QSTY_NONE:
                 /* TODO: to verify. No quantization in this case */
                 band->f_stepsize = 1;
                 break;
             case JPEG2000_QSTY_SI:
                 /*TODO: Compute formula to implement. */
-                numbps = cbps +
-                         lut_gain[codsty->transform == FF_DWT53][bandno + (reslevelno > 0)];
-                band->f_stepsize = SHL(2048 + qntsty->mant[gbandno],
-                                       2 + numbps - qntsty->expn[gbandno]);
-                break;
+//                 numbps = cbps +
+//                          lut_gain[codsty->transform == FF_DWT53][bandno + (reslevelno > 0)];
+//                 band->f_stepsize = SHL(2048 + qntsty->mant[gbandno],
+//                                        2 + numbps - qntsty->expn[gbandno]);
+//                 break;
             case JPEG2000_QSTY_SE:
                 /* Exponent quantization step.
                  * Formula:
@@ -363,11 +362,6 @@ int ff_jpeg2000_init_component(Jpeg2000Component *comp,
                 log2_band_prec_width  = reslevel->log2_prec_width  - 1;
                 log2_band_prec_height = reslevel->log2_prec_height - 1;
             }
-
-            for (j = 0; j < 2; j++)
-                band->coord[0][j] = ff_jpeg2000_ceildiv(band->coord[0][j], dx);
-            for (j = 0; j < 2; j++)
-                band->coord[1][j] = ff_jpeg2000_ceildiv(band->coord[1][j], dy);
 
             if (reslevel->num_precincts_x * (uint64_t)reslevel->num_precincts_y > INT_MAX) {
                 band->prec = NULL;

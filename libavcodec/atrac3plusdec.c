@@ -72,6 +72,9 @@ static av_cold int atrac3p_decode_close(AVCodecContext *avctx)
     av_freep(&ctx->ch_units);
     av_freep(&ctx->fdsp);
 
+    ff_mdct_end(&ctx->mdct_ctx);
+    ff_mdct_end(&ctx->ipqf_dct_ctx);
+
     return 0;
 }
 
@@ -381,7 +384,7 @@ static int atrac3p_decode_frame(AVCodecContext *avctx, void *data,
 
     *got_frame_ptr = 1;
 
-    return avctx->block_align;
+    return FFMIN(avctx->block_align, avpkt->size);
 }
 
 AVCodec ff_atrac3p_decoder = {

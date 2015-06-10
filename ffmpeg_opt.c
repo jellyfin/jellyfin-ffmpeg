@@ -110,6 +110,9 @@ static int no_file_overwrite  = 0;
 static int do_psnr            = 0;
 static int input_sync;
 static int override_ffserver  = 0;
+static int input_stream_potentially_available = 0;
+static int ignore_unknown_streams = 0;
+static int copy_unknown_streams = 0;
 
 static void uninit_options(OptionsContext *o)
 {
@@ -601,6 +604,9 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
         ist->ts_scale = 1.0;
         MATCH_PER_STREAM_OPT(ts_scale, dbl, ist->ts_scale, ic, st);
 
+        ist->autorotate = 1;
+        MATCH_PER_STREAM_OPT(autorotate, i, ist->autorotate, ic, st);
+
         MATCH_PER_STREAM_OPT(codec_tags, str, codec_tag, ic, st);
         if (codec_tag) {
             uint32_t tag = strtol(codec_tag, &next, 0);
@@ -918,12 +924,25 @@ static int open_input_file(OptionsContext *o, const char *filename)
 
     timestamp = (o->start_time == AV_NOPTS_VALUE) ? 0 : o->start_time;
     /* add the stream start time */
-    if (ic->start_time != AV_NOPTS_VALUE)
+    if (!o->seek_timestamp && ic->start_time != AV_NOPTS_VALUE)
         timestamp += ic->start_time;
 
     /* if seeking requested, we execute it */
     if (o->start_time != AV_NOPTS_VALUE) {
-        ret = avformat_seek_file(ic, -1, INT64_MIN, timestamp, timestamp, 0);
+        int64_t seek_timestamp = timestamp;
+
+        if (!(ic->iformat->flags & AVFMT_SEEK_TO_PTS)) {
+            int dts_heuristic = 0;
+            for (i=0; i<ic->nb_streams; i++) {
+                AVCodecContext *avctx = ic->streams[i]->codec;
+                if (avctx->has_b_frames)
+                    dts_heuristic = 1;
+            }
+            if (dts_heuristic) {
+                seek_timestamp -= 3*AV_TIME_BASE / 23;
+            }
+        }
+        ret = avformat_seek_file(ic, -1, INT64_MIN, seek_timestamp, seek_timestamp, 0);
         if (ret < 0) {
             av_log(NULL, AV_LOG_WARNING, "%s: could not seek to position %0.3f\n",
                    filename, (double)timestamp / AV_TIME_BASE);
@@ -1007,6 +1026,8 @@ static int open_input_file(OptionsContext *o, const char *filename)
     for (i = 0; i < orig_nb_streams; i++)
         av_dict_free(&opts[i]);
     av_freep(&opts);
+
+    input_stream_potentially_available = 1;
 
     return 0;
 }
@@ -1546,6 +1567,19 @@ static OutputStream *new_data_stream(OptionsContext *o, AVFormatContext *oc, int
     return ost;
 }
 
+static OutputStream *new_unknown_stream(OptionsContext *o, AVFormatContext *oc, int source_index)
+{
+    OutputStream *ost;
+
+    ost = new_output_stream(o, oc, AVMEDIA_TYPE_UNKNOWN, source_index);
+    if (!ost->stream_copy) {
+        av_log(NULL, AV_LOG_FATAL, "Unknown stream encoding not supported yet (only streamcopy)\n");
+        exit_program(1);
+    }
+
+    return ost;
+}
+
 static OutputStream *new_attachment_stream(OptionsContext *o, AVFormatContext *oc, int source_index)
 {
     OutputStream *ost = new_output_stream(o, oc, AVMEDIA_TYPE_ATTACHMENT, source_index);
@@ -1998,10 +2032,22 @@ loop_end:
                 case AVMEDIA_TYPE_SUBTITLE:   ost = new_subtitle_stream  (o, oc, src_idx); break;
                 case AVMEDIA_TYPE_DATA:       ost = new_data_stream      (o, oc, src_idx); break;
                 case AVMEDIA_TYPE_ATTACHMENT: ost = new_attachment_stream(o, oc, src_idx); break;
+                case AVMEDIA_TYPE_UNKNOWN:
+                    if (copy_unknown_streams) {
+                        ost = new_unknown_stream   (o, oc, src_idx);
+                        break;
+                    }
                 default:
-                    av_log(NULL, AV_LOG_FATAL, "Cannot map stream #%d:%d - unsupported type.\n",
+                    av_log(NULL, ignore_unknown_streams ? AV_LOG_WARNING : AV_LOG_FATAL,
+                           "Cannot map stream #%d:%d - unsupported type.\n",
                            map->file_index, map->stream_index);
-                    exit_program(1);
+                    if (!ignore_unknown_streams) {
+                        av_log(NULL, AV_LOG_FATAL,
+                               "If you want unsupported types ignored instead "
+                               "of failing, please use the -ignore_unknown option\n"
+                               "If you want them copied, please use -copy_unknown\n");
+                        exit_program(1);
+                    }
                 }
             }
         }
@@ -2035,8 +2081,8 @@ loop_end:
         ost->stream_copy               = 0;
         ost->attachment_filename       = o->attachments[i];
         ost->finished                  = 1;
-        ost->enc_ctx->extradata      = attachment;
-        ost->enc_ctx->extradata_size = len;
+        ost->st->codec->extradata      = attachment;
+        ost->st->codec->extradata_size = len;
 
         p = strrchr(o->attachments[i], '/');
         av_dict_set(&ost->st->metadata, "filename", (p && *p) ? p + 1 : o->attachments[i], AV_DICT_DONT_OVERWRITE);
@@ -2102,6 +2148,12 @@ loop_end:
             print_error(oc->filename, AVERROR(EINVAL));
             exit_program(1);
         }
+    }
+
+    if (!(oc->oformat->flags & AVFMT_NOSTREAMS) && !input_stream_potentially_available) {
+        av_log(NULL, AV_LOG_ERROR,
+               "No input streams but output needs an input stream\n");
+        exit_program(1);
     }
 
     if (!(oc->oformat->flags & AVFMT_NOFILE)) {
@@ -2172,8 +2224,11 @@ loop_end:
                 continue;
             ist = input_streams[output_streams[i]->source_index];
             av_dict_copy(&output_streams[i]->st->metadata, ist->st->metadata, AV_DICT_DONT_OVERWRITE);
-            if (!output_streams[i]->stream_copy)
+            if (!output_streams[i]->stream_copy) {
                 av_dict_set(&output_streams[i]->st->metadata, "encoder", NULL, 0);
+                if (ist->autorotate)
+                    av_dict_set(&output_streams[i]->st->metadata, "rotate", NULL, 0);
+            }
         }
 
     /* process manually set metadata */
@@ -2194,8 +2249,12 @@ loop_end:
         parse_meta_type(o->metadata[i].specifier, &type, &index, &stream_spec);
         if (type == 's') {
             for (j = 0; j < oc->nb_streams; j++) {
+                ost = output_streams[nb_output_streams - oc->nb_streams + j];
                 if ((ret = check_stream_specifier(oc, oc->streams[j], stream_spec)) > 0) {
                     av_dict_set(&oc->streams[j]->metadata, o->metadata[i].u.str, *val ? val : NULL, 0);
+                    if (!strcmp(o->metadata[i].u.str, "rotate")) {
+                        ost->rotate_overridden = 1;
+                    }
                 } else if (ret < 0)
                     exit_program(1);
             }
@@ -2282,9 +2341,9 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         opt_default(NULL, "g", norm == PAL ? "15" : "18");
 
         opt_default(NULL, "b:v", "1150000");
-        opt_default(NULL, "maxrate", "1150000");
-        opt_default(NULL, "minrate", "1150000");
-        opt_default(NULL, "bufsize", "327680"); // 40*1024*8;
+        opt_default(NULL, "maxrate:v", "1150000");
+        opt_default(NULL, "minrate:v", "1150000");
+        opt_default(NULL, "bufsize:v", "327680"); // 40*1024*8;
 
         opt_default(NULL, "b:a", "224000");
         parse_option(o, "ar", "44100", options);
@@ -2311,9 +2370,9 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         opt_default(NULL, "g", norm == PAL ? "15" : "18");
 
         opt_default(NULL, "b:v", "2040000");
-        opt_default(NULL, "maxrate", "2516000");
-        opt_default(NULL, "minrate", "0"); // 1145000;
-        opt_default(NULL, "bufsize", "1835008"); // 224*1024*8;
+        opt_default(NULL, "maxrate:v", "2516000");
+        opt_default(NULL, "minrate:v", "0"); // 1145000;
+        opt_default(NULL, "bufsize:v", "1835008"); // 224*1024*8;
         opt_default(NULL, "scan_offset", "1");
 
         opt_default(NULL, "b:a", "224000");
@@ -2333,9 +2392,9 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         opt_default(NULL, "g", norm == PAL ? "15" : "18");
 
         opt_default(NULL, "b:v", "6000000");
-        opt_default(NULL, "maxrate", "9000000");
-        opt_default(NULL, "minrate", "0"); // 1500000;
-        opt_default(NULL, "bufsize", "1835008"); // 224*1024*8;
+        opt_default(NULL, "maxrate:v", "9000000");
+        opt_default(NULL, "minrate:v", "0"); // 1500000;
+        opt_default(NULL, "bufsize:v", "1835008"); // 224*1024*8;
 
         opt_default(NULL, "packetsize", "2048");  // from www.mpucoder.com: DVD sectors contain 2048 bytes of data, this is also the size of one pack.
         opt_default(NULL, "muxrate", "10080000"); // from mplex project: data_rate = 1260000. mux_rate = data_rate * 8
@@ -2608,6 +2667,9 @@ static int opt_filter_complex(void *optctx, const char *opt, const char *arg)
     filtergraphs[nb_filtergraphs - 1]->graph_desc = av_strdup(arg);
     if (!filtergraphs[nb_filtergraphs - 1]->graph_desc)
         return AVERROR(ENOMEM);
+
+    input_stream_potentially_available = 1;
+
     return 0;
 }
 
@@ -2622,6 +2684,9 @@ static int opt_filter_complex_script(void *optctx, const char *opt, const char *
         return AVERROR(ENOMEM);
     filtergraphs[nb_filtergraphs - 1]->index      = nb_filtergraphs - 1;
     filtergraphs[nb_filtergraphs - 1]->graph_desc = graph_desc;
+
+    input_stream_potentially_available = 1;
+
     return 0;
 }
 
@@ -2817,6 +2882,10 @@ const OptionDef options[] = {
         "overwrite output files" },
     { "n",              OPT_BOOL,                                    {              &no_file_overwrite },
         "never overwrite output files" },
+    { "ignore_unknown", OPT_BOOL,                                    {              &ignore_unknown_streams },
+        "Ignore unknown stream types" },
+    { "copy_unknown",   OPT_BOOL | OPT_EXPERT,                       {              &copy_unknown_streams },
+        "Copy unknown stream types" },
     { "c",              HAS_ARG | OPT_STRING | OPT_SPEC |
                         OPT_INPUT | OPT_OUTPUT,                      { .off       = OFFSET(codec_names) },
         "codec name", "codec" },
@@ -2850,6 +2919,9 @@ const OptionDef options[] = {
     { "ss",             HAS_ARG | OPT_TIME | OPT_OFFSET |
                         OPT_INPUT | OPT_OUTPUT,                      { .off = OFFSET(start_time) },
         "set the start time offset", "time_off" },
+    { "seek_timestamp", HAS_ARG | OPT_INT | OPT_OFFSET |
+                        OPT_INPUT,                                   { .off = OFFSET(seek_timestamp) },
+        "enable/disable seeking by timestamp with -ss" },
     { "accurate_seek",  OPT_BOOL | OPT_OFFSET | OPT_EXPERT |
                         OPT_INPUT,                                   { .off = OFFSET(accurate_seek) },
         "enable/disable accurate seeking with -ss" },
@@ -3025,7 +3097,7 @@ const OptionDef options[] = {
                       OPT_INPUT | OPT_OUTPUT,                                    { .off = OFFSET(top_field_first) },
         "top=1/bottom=0/auto=-1 field first", "" },
     { "vtag",         OPT_VIDEO | HAS_ARG | OPT_EXPERT  | OPT_PERFILE |
-                      OPT_OUTPUT,                                                { .func_arg = opt_old2new },
+                      OPT_INPUT | OPT_OUTPUT,                                    { .func_arg = opt_old2new },
         "force video tag/fourcc", "fourcc/tag" },
     { "qphist",       OPT_VIDEO | OPT_BOOL | OPT_EXPERT ,                        { &qp_hist },
         "show QP histogram" },
@@ -3051,6 +3123,9 @@ const OptionDef options[] = {
 #if HAVE_VDPAU_X11
     { "vdpau_api_ver", HAS_ARG | OPT_INT | OPT_EXPERT, { &vdpau_api_ver }, "" },
 #endif
+    { "autorotate",       HAS_ARG | OPT_BOOL | OPT_SPEC |
+                          OPT_EXPERT | OPT_INPUT,                                { .off = OFFSET(autorotate) },
+        "automatically insert correct rotate filters" },
 
     /* audio options */
     { "aframes",        OPT_AUDIO | HAS_ARG  | OPT_PERFILE | OPT_OUTPUT,           { .func_arg = opt_audio_frames },

@@ -470,7 +470,7 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
             if (current_run == 34)
                 current_run += get_bits(gb, 12);
 
-            if (current_superblock + current_run > s->superblock_count) {
+            if (current_run > s->superblock_count - current_superblock) {
                 av_log(s->avctx, AV_LOG_ERROR,
                        "Invalid partially coded superblock run length\n");
                 return -1;
@@ -2196,7 +2196,7 @@ static int read_huffman_tree(AVCodecContext *avctx, GetBitContext *gb)
             return -1;
         }
         token = get_bits(gb, 5);
-        av_dlog(avctx, "hti %d hbits %x token %d entry : %d size %d\n",
+        ff_dlog(avctx, "hti %d hbits %x token %d entry : %d size %d\n",
                 s->hti, s->hbits, token, s->entries, s->huff_code_size);
         s->huffman_table[s->hti][token][0] = s->hbits;
         s->huffman_table[s->hti][token][1] = s->huff_code_size;

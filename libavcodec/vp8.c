@@ -757,8 +757,10 @@ static int vp8_decode_frame_header(VP8Context *s, const uint8_t *buf, int buf_si
 static av_always_inline
 void clamp_mv(VP8Context *s, VP56mv *dst, const VP56mv *src)
 {
-    dst->x = av_clip(src->x, s->mv_min.x, s->mv_max.x);
-    dst->y = av_clip(src->y, s->mv_min.y, s->mv_max.y);
+    dst->x = av_clip(src->x, av_clip(s->mv_min.x, INT16_MIN, INT16_MAX),
+                             av_clip(s->mv_max.x, INT16_MIN, INT16_MAX));
+    dst->y = av_clip(src->y, av_clip(s->mv_min.y, INT16_MIN, INT16_MAX),
+                             av_clip(s->mv_max.y, INT16_MIN, INT16_MAX));
 }
 
 /**
@@ -1615,7 +1617,7 @@ void intra_predict(VP8Context *s, VP8ThreadData *td, uint8_t *dst[3],
             for (x = 0; x < 4; x++) {
                 int copy = 0, linesize = s->linesize;
                 uint8_t *dst = ptr + 4 * x;
-                DECLARE_ALIGNED(4, uint8_t, copy_dst)[5 * 8];
+                LOCAL_ALIGNED(4, uint8_t, copy_dst, [5 * 8]);
 
                 if ((y == 0 || x == 3) && mb_y == 0) {
                     topright = tr_top;
@@ -1721,8 +1723,8 @@ void vp8_mc_luma(VP8Context *s, VP8ThreadData *td, uint8_t *dst,
     if (AV_RN32A(mv)) {
         int src_linesize = linesize;
 
-        int mx = (mv->x << 1) & 7, mx_idx = subpel_idx[0][mx];
-        int my = (mv->y << 1) & 7, my_idx = subpel_idx[0][my];
+        int mx = (mv->x * 2) & 7, mx_idx = subpel_idx[0][mx];
+        int my = (mv->y * 2) & 7, my_idx = subpel_idx[0][my];
 
         x_off += mv->x >> 2;
         y_off += mv->y >> 2;
@@ -2259,8 +2261,8 @@ static void vp8_decode_mv_mb_modes(AVCodecContext *avctx, VP8Frame *cur_frame,
         }                                                                     \
     } while (0)
 #else
-#define check_thread_pos(td, otd, mb_x_check, mb_y_check)
-#define update_pos(td, mb_y, mb_x)
+#define check_thread_pos(td, otd, mb_x_check, mb_y_check) while(0)
+#define update_pos(td, mb_y, mb_x) while(0)
 #endif
 
 static av_always_inline void decode_mb_row_no_filter(AVCodecContext *avctx, void *tdata,

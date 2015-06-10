@@ -197,7 +197,7 @@ static inline int16_t adpcm_ima_wav_expand_nibble(ADPCMChannelStatus *c, GetBitC
     step_index = av_clip(step_index, 0, 88);
 
     sign = nibble & (1 << shift);
-    delta = nibble & ((1 << shift) - 1);
+    delta = av_mod_uintp2(nibble, shift);
     diff = ((2 * delta + 1) * step) >> shift;
     predictor = c->predictor;
     if (sign) predictor -= diff;
@@ -578,6 +578,8 @@ static int get_nb_samples(AVCodecContext *avctx, GetByteContext *gb,
     case AV_CODEC_ID_ADPCM_IMA_DK4:
         if (avctx->block_align > 0)
             buf_size = FFMIN(buf_size, avctx->block_align);
+        if (buf_size < 4 * ch)
+            return AVERROR_INVALIDDATA;
         nb_samples = 1 + (buf_size - 4 * ch) * 2 / ch;
         break;
     case AV_CODEC_ID_ADPCM_IMA_RAD:
@@ -591,13 +593,15 @@ static int get_nb_samples(AVCodecContext *avctx, GetByteContext *gb,
         int bsamples = ff_adpcm_ima_block_samples[avctx->bits_per_coded_sample - 2];
         if (avctx->block_align > 0)
             buf_size = FFMIN(buf_size, avctx->block_align);
+        if (buf_size < 4 * ch)
+            return AVERROR_INVALIDDATA;
         nb_samples = 1 + (buf_size - 4 * ch) / (bsize * ch) * bsamples;
         break;
     }
     case AV_CODEC_ID_ADPCM_MS:
         if (avctx->block_align > 0)
             buf_size = FFMIN(buf_size, avctx->block_align);
-        nb_samples = 2 + (buf_size - 7 * ch) * 2 / ch;
+        nb_samples = (buf_size - 6 * ch) * 2 / ch;
         break;
     case AV_CODEC_ID_ADPCM_SBPRO_2:
     case AV_CODEC_ID_ADPCM_SBPRO_3:
@@ -610,6 +614,8 @@ static int get_nb_samples(AVCodecContext *avctx, GetByteContext *gb,
         case AV_CODEC_ID_ADPCM_SBPRO_4: samples_per_byte = 2; break;
         }
         if (!s->status[0].step_index) {
+            if (buf_size < ch)
+                return AVERROR_INVALIDDATA;
             nb_samples++;
             buf_size -= ch;
         }
@@ -1498,7 +1504,7 @@ static int adpcm_decode_frame(AVCodecContext *avctx, void *data,
                         prev = 0;
                     }
 
-                    prev = av_clip((prev + 0x20) >> 6, -0x200000, 0x1fffff);
+                    prev = av_clip_intp2((prev + 0x20) >> 6, 21);
 
                     byte = bytestream2_get_byteu(&gb);
                     if (!channel)
@@ -1527,6 +1533,11 @@ static int adpcm_decode_frame(AVCodecContext *avctx, void *data,
     }
 
     *got_frame_ptr = 1;
+
+    if (avpkt->size < bytestream2_tell(&gb)) {
+        av_log(avctx, AV_LOG_ERROR, "Overread of %d < %d\n", avpkt->size, bytestream2_tell(&gb));
+        return avpkt->size;
+    }
 
     return bytestream2_tell(&gb);
 }

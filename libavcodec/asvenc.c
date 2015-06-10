@@ -333,6 +333,8 @@ static av_cold int encode_init(AVCodecContext *avctx)
                      avctx->global_quality / 2) / avctx->global_quality;
 
     avctx->extradata                   = av_mallocz(8);
+    if (!avctx->extradata)
+        return AVERROR(ENOMEM);
     avctx->extradata_size              = 8;
     ((uint32_t *) avctx->extradata)[0] = av_le2ne32(a->inv_qscale);
     ((uint32_t *) avctx->extradata)[1] = av_le2ne32(AV_RL32("ASUS"));
@@ -361,6 +363,8 @@ AVCodec ff_asv1_encoder = {
     .encode2        = encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 
@@ -375,5 +379,7 @@ AVCodec ff_asv2_encoder = {
     .encode2        = encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

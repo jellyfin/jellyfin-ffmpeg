@@ -119,7 +119,7 @@ static void handle_stream_probing(AVStream *st)
 {
     if (st->codec->codec_id == AV_CODEC_ID_PCM_S16LE) {
         st->request_probe = AVPROBE_SCORE_EXTENSION;
-        st->probe_packets = FFMIN(st->probe_packets, 14);
+        st->probe_packets = FFMIN(st->probe_packets, 32);
     }
 }
 
@@ -335,9 +335,14 @@ static int wav_read_header(AVFormatContext *s)
 
             if (rf64) {
                 next_tag_ofs = wav->data_end = avio_tell(pb) + data_size;
-            } else {
+            } else if (size != 0xFFFFFFFF) {
                 data_size    = size;
                 next_tag_ofs = wav->data_end = size ? next_tag_ofs : INT64_MAX;
+            } else {
+                av_log(s, AV_LOG_WARNING, "Ignoring maximum wav data size, "
+                       "file may be invalid\n");
+                data_size    = 0;
+                next_tag_ofs = wav->data_end = INT64_MAX;
             }
 
             data_ofs = avio_tell(pb);

@@ -82,7 +82,7 @@ typedef struct WAVMuxContext {
     int write_peak;
     int rf64;
     int peak_block_size;
-    PeakFormat peak_format;
+    int peak_format;
     int peak_block_pos;
     int peak_ppv;
     int peak_bps;
@@ -92,7 +92,7 @@ typedef struct WAVMuxContext {
 static inline void bwf_write_bext_string(AVFormatContext *s, const char *key, int maxlen)
 {
     AVDictionaryEntry *tag;
-    int len = 0;
+    size_t len = 0;
 
     if (tag = av_dict_get(s->metadata, key, NULL, 0)) {
         len = strlen(tag->value);
@@ -120,11 +120,11 @@ static void bwf_write_bext_chunk(AVFormatContext *s)
     avio_wl64(s->pb, time_reference);
     avio_wl16(s->pb, 1);  // set version to 1
 
-    if (tmp_tag = av_dict_get(s->metadata, "umid", NULL, 0)) {
+    if ((tmp_tag = av_dict_get(s->metadata, "umid", NULL, 0)) && strlen(tmp_tag->value) > 2) {
         unsigned char umidpart_str[17] = {0};
-        int i;
+        int64_t i;
         uint64_t umidpart;
-        int len = strlen(tmp_tag->value+2);
+        size_t len = strlen(tmp_tag->value+2);
 
         for (i = 0; i < len/16; i++) {
             memcpy(umidpart_str, tmp_tag->value + 2 + (i*16), 16);
@@ -425,7 +425,7 @@ static int wav_write_trailer(AVFormatContext *s)
     avio_flush(pb);
 
     if (s->pb->seekable) {
-        if (wav->write_peak != 2) {
+        if (wav->write_peak != 2 && avio_tell(pb) - wav->data < UINT32_MAX) {
             ff_end_tag(pb, wav->data);
             avio_flush(pb);
         }
@@ -440,12 +440,16 @@ static int wav_write_trailer(AVFormatContext *s)
         data_size = file_size - wav->data;
         if (wav->rf64 == RF64_ALWAYS || (wav->rf64 == RF64_AUTO && file_size - 8 > UINT32_MAX)) {
             rf64 = 1;
-        } else {
+        } else if (file_size - 8 <= UINT32_MAX) {
             avio_seek(pb, 4, SEEK_SET);
             avio_wl32(pb, (uint32_t)(file_size - 8));
             avio_seek(pb, file_size, SEEK_SET);
 
             avio_flush(pb);
+        } else {
+            av_log(s, AV_LOG_ERROR,
+                   "Filesize %"PRId64" invalid for wav, output file will be broken\n",
+                   file_size);
         }
 
         number_of_samples = av_rescale(wav->maxpts - wav->minpts + wav->last_duration,

@@ -28,12 +28,14 @@
 #include <zlib.h>
 
 #include "libavutil/intreadwrite.h"
+
 #include "avcodec.h"
 #include "blockdsp.h"
 #include "bytestream.h"
-#include "idctdsp.h"
 #include "get_bits.h"
+#include "idctdsp.h"
 #include "internal.h"
+#include "jpegtables.h"
 #include "mjpeg.h"
 
 enum ChunkType {
@@ -251,7 +253,8 @@ static int jpg_decode_data(JPGContext *c, int width, int height,
         return ret;
     jpg_unescape(src, src_size, c->buf, &unesc_size);
     memset(c->buf + unesc_size, 0, FF_INPUT_BUFFER_PADDING_SIZE);
-    init_get_bits(&gb, c->buf, unesc_size * 8);
+    if((ret = init_get_bits8(&gb, c->buf, unesc_size)) < 0)
+        return ret;
 
     width = FFALIGN(width, 16);
     mb_w  =  width        >> 4;
@@ -262,7 +265,8 @@ static int jpg_decode_data(JPGContext *c, int width, int height,
 
     for (i = 0; i < 3; i++)
         c->prev_dc[i] = 1024;
-    bx = by = 0;
+    bx =
+    by = 0;
     c->bdsp.clear_blocks(c->block[0]);
     for (mb_y = 0; mb_y < mb_h; mb_y++) {
         for (mb_x = 0; mb_x < mb_w; mb_x++) {
@@ -314,7 +318,7 @@ static int jpg_decode_data(JPGContext *c, int width, int height,
     return 0;
 }
 
-static void kempf_restore_buf(const uint8_t *src, int len,
+static int kempf_restore_buf(const uint8_t *src, int len,
                               uint8_t *dst, int stride,
                               const uint8_t *jpeg_tile, int tile_stride,
                               int width, int height,
@@ -322,8 +326,10 @@ static void kempf_restore_buf(const uint8_t *src, int len,
 {
     GetBitContext gb;
     int i, j, nb, col;
+    int ret;
 
-    init_get_bits(&gb, src, len * 8);
+    if ((ret = init_get_bits8(&gb, src, len)) < 0)
+        return ret;
 
     if (npal <= 2)       nb = 1;
     else if (npal <= 4)  nb = 2;
@@ -341,6 +347,8 @@ static void kempf_restore_buf(const uint8_t *src, int len,
                 memcpy(dst + i * 3, jpeg_tile + i * 3, 3);
         }
     }
+
+    return 0;
 }
 
 static int kempf_decode_tile(G2MContext *c, int tile_x, int tile_y,

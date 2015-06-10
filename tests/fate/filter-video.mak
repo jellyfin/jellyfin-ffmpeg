@@ -245,46 +245,37 @@ FATE_FILTER_VSYNTH-$(CONFIG_VFLIP_FILTER) += fate-filter-vflip_vflip
 fate-filter-vflip_vflip: CMD = video_filter "vflip,vflip"
 
 FATE_FILTER_VSYNTH-$(call ALLYES, FORMAT_FILTER PERMS_FILTER EDGEDETECT_FILTER) += fate-filter-edgedetect
-fate-filter-edgedetect: CMD = video_filter "format=gray,perms=random,edgedetect"
+fate-filter-edgedetect: CMD = video_filter "format=gray,perms=random,edgedetect" -vframes 20
 
 FATE_FILTER_VSYNTH-$(call ALLYES, FORMAT_FILTER PERMS_FILTER EDGEDETECT_FILTER) += fate-filter-edgedetect-colormix
-fate-filter-edgedetect-colormix: CMD = video_filter "format=gbrp,perms=random,edgedetect=mode=colormix"
+fate-filter-edgedetect-colormix: CMD = video_filter "format=gbrp,perms=random,edgedetect=mode=colormix" -vframes 20
 
 FATE_FILTER_VSYNTH-$(call ALLYES, PERMS_FILTER HUE_FILTER) += fate-filter-hue
-fate-filter-hue: CMD = video_filter "perms=random,hue=s=sin(2*PI*t)+1"
+fate-filter-hue: CMD = video_filter "perms=random,hue=s=sin(2*PI*t)+1" -vframes 20
 
 FATE_FILTER_VSYNTH-$(CONFIG_IDET_FILTER) += fate-filter-idet
-fate-filter-idet: CMD = video_filter "idet"
+fate-filter-idet: CMD = framecrc -flags bitexact -idct simple -i $(SRC) -vf idet -vframes 25 -flags +bitexact
 
 FATE_FILTER_VSYNTH-$(CONFIG_PAD_FILTER) += fate-filter-pad
 fate-filter-pad: CMD = video_filter "pad=iw*1.5:ih*1.5:iw*0.3:ih*0.2"
 
-FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp
-fate-filter-pp: CMD = video_filter "pp=be/hb/vb/tn/l5/al"
+FATE_FILTER_PP = fate-filter-pp fate-filter-pp1 fate-filter-pp2 fate-filter-pp3 fate-filter-pp4 fate-filter-pp5 fate-filter-pp6
+FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += $(FATE_FILTER_PP)
+$(FATE_FILTER_PP): fate-vsynth1-mpeg4-qprd
 
-FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp1
+fate-filter-pp:  CMD = framecrc -flags bitexact -idct simple -i $(TARGET_PATH)/tests/data/fate/vsynth1-mpeg4-qprd.avi -vframes 5 -flags +bitexact -vf "pp=be/hb/vb/tn/l5/al"
 fate-filter-pp1: CMD = video_filter "pp=fq|4/be/hb/vb/tn/l5/al"
-
-FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp2
-fate-filter-pp2: CMD = video_filter "pp=be/fq|16/h1/v1/lb"
-
-FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp3
-fate-filter-pp3: CMD = video_filter "pp=be/fq|8/ha|128|7/va/li"
-
-FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp4
+fate-filter-pp2: CMD = video_filter "qp=x+y,pp=be/h1/v1/lb"
+fate-filter-pp3: CMD = video_filter "qp=x+y,pp=be/ha|128|7/va/li"
 fate-filter-pp4: CMD = video_filter "pp=be/ci"
-
-FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp5
 fate-filter-pp5: CMD = video_filter "pp=md"
-
-FATE_FILTER_VSYNTH-$(CONFIG_PP_FILTER) += fate-filter-pp6
 fate-filter-pp6: CMD = video_filter "pp=be/fd"
 
 FATE_FILTER_VSYNTH-$(call ALLYES, QP_FILTER PP_FILTER) += fate-filter-qp
 fate-filter-qp: CMD = video_filter "qp=17,pp=be/hb/vb/tn/l5/al"
 
 FATE_FILTER_VSYNTH-$(CONFIG_SELECT_FILTER) += fate-filter-select
-fate-filter-select: CMD = video_filter "select=not(eq(mod(n\,2)\,0)+eq(mod(n\,3)\,0))"
+fate-filter-select: CMD = framecrc -flags bitexact -idct simple -i $(SRC) -vf "select=not(eq(mod(n\,2)\,0)+eq(mod(n\,3)\,0))" -vframes 25 -flags +bitexact
 
 FATE_FILTER_VSYNTH-$(CONFIG_SETDAR_FILTER) += fate-filter-setdar
 fate-filter-setdar: CMD = video_filter "setdar=dar=16/9"
@@ -358,7 +349,7 @@ FATE_FILTER_PIXFMTS-$(CONFIG_FIELD_FILTER) += fate-filter-pixfmts-field
 fate-filter-pixfmts-field: CMD = pixfmts "bottom"
 
 FATE_FILTER_PIXFMTS-$(call ALLYES, TELECINE_FILTER FIELDMATCH_FILTER) += fate-filter-pixfmts-fieldmatch
-fate-filter-pixfmts-fieldmatch: CMD = pixfmts "" "telecine,"
+fate-filter-pixfmts-fieldmatch: CMD = pixfmts "" "telecine," 25
 
 FATE_FILTER_PIXFMTS-$(CONFIG_FIELDORDER_FILTER) += fate-filter-pixfmts-fieldorder
 fate-filter-pixfmts-fieldorder: CMD = pixfmts "tff" "setfield=bff,"
@@ -385,7 +376,7 @@ FATE_FILTER_PIXFMTS-$(CONFIG_PAD_FILTER) += fate-filter-pixfmts-pad
 fate-filter-pixfmts-pad:   CMD = pixfmts "500:400:20:20"
 
 FATE_FILTER_PIXFMTS-$(call ALLYES, TELECINE_FILTER PULLUP_FILTER) += fate-filter-pixfmts-pullup
-fate-filter-pixfmts-pullup: CMD = pixfmts "" "telecine,"
+fate-filter-pixfmts-pullup: CMD = pixfmts "" "telecine," 25
 
 FATE_FILTER_PIXFMTS-$(CONFIG_ROTATE_FILTER) += fate-filter-pixfmts-rotate
 fate-filter-pixfmts-rotate: CMD = pixfmts "2*PI*n/50"

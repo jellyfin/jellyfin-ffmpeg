@@ -535,8 +535,8 @@ int ff_snow_common_init_after_header(AVCodecContext *avctx) {
         int h= s->avctx->height;
 
         if(plane_index){
-            w>>= s->chroma_h_shift;
-            h>>= s->chroma_v_shift;
+            w = FF_CEIL_RSHIFT(w, s->chroma_h_shift);
+            h = FF_CEIL_RSHIFT(h, s->chroma_v_shift);
         }
         s->plane[plane_index].width = w;
         s->plane[plane_index].height= h;
@@ -590,8 +590,8 @@ static int halfpel_interpol(SnowContext *s, uint8_t *halfpel[4][4], AVFrame *fra
 
     for(p=0; p < s->nb_planes; p++){
         int is_chroma= !!p;
-        int w= is_chroma ? s->avctx->width >>s->chroma_h_shift : s->avctx->width;
-        int h= is_chroma ? s->avctx->height>>s->chroma_v_shift : s->avctx->height;
+        int w= is_chroma ? FF_CEIL_RSHIFT(s->avctx->width,  s->chroma_h_shift) : s->avctx->width;
+        int h= is_chroma ? FF_CEIL_RSHIFT(s->avctx->height, s->chroma_v_shift) : s->avctx->height;
         int ls= frame->linesize[p];
         uint8_t *src= frame->data[p];
 
@@ -679,7 +679,7 @@ int ff_snow_frame_start(SnowContext *s){
         s->ref_frames= i;
         if(s->ref_frames==0){
             av_log(s->avctx,AV_LOG_ERROR, "No reference frames\n");
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
     }
     if ((ret = ff_snow_get_buffer(s, s->current_picture)) < 0)
@@ -704,7 +704,7 @@ av_cold void ff_snow_common_end(SnowContext *s)
     av_freep(&s->m.me.scratchpad);
     av_freep(&s->m.me.map);
     av_freep(&s->m.me.score_map);
-    av_freep(&s->m.obmc_scratchpad);
+    av_freep(&s->m.sc.obmc_scratchpad);
 
     av_freep(&s->block);
     av_freep(&s->scratchbuf);

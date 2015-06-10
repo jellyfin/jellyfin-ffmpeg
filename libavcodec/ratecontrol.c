@@ -27,6 +27,7 @@
 
 #include "libavutil/attributes.h"
 #include "avcodec.h"
+#include "internal.h"
 #include "ratecontrol.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
@@ -160,7 +161,7 @@ av_cold int ff_rate_control_init(MpegEncContext *s)
     if (!rcc->buffer_index)
         rcc->buffer_index = s->avctx->rc_buffer_size * 3 / 4;
 
-    if (s->flags & CODEC_FLAG_PASS2) {
+    if (s->avctx->flags & CODEC_FLAG_PASS2) {
         int i;
         char *p;
 
@@ -222,11 +223,13 @@ av_cold int ff_rate_control_init(MpegEncContext *s)
             p = next;
         }
 
-        if (init_pass2(s) < 0)
+        if (init_pass2(s) < 0) {
+            ff_rate_control_uninit(s);
             return -1;
+        }
 
         // FIXME maybe move to end
-        if ((s->flags & CODEC_FLAG_PASS2) && s->avctx->rc_strategy == FF_RC_STRATEGY_XVID) {
+        if ((s->avctx->flags & CODEC_FLAG_PASS2) && s->avctx->rc_strategy == FF_RC_STRATEGY_XVID) {
 #if CONFIG_LIBXVID
             return ff_xvid_rate_control_init(s);
 #else
@@ -237,7 +240,7 @@ av_cold int ff_rate_control_init(MpegEncContext *s)
         }
     }
 
-    if (!(s->flags & CODEC_FLAG_PASS2)) {
+    if (!(s->avctx->flags & CODEC_FLAG_PASS2)) {
         rcc->short_term_qsum   = 0.001;
         rcc->short_term_qcount = 0.001;
 
@@ -306,7 +309,7 @@ av_cold void ff_rate_control_uninit(MpegEncContext *s)
     av_freep(&rcc->entry);
 
 #if CONFIG_LIBXVID
-    if ((s->flags & CODEC_FLAG_PASS2) && s->avctx->rc_strategy == FF_RC_STRATEGY_XVID)
+    if ((s->avctx->flags & CODEC_FLAG_PASS2) && s->avctx->rc_strategy == FF_RC_STRATEGY_XVID)
         ff_xvid_rate_control_uninit(s);
 #endif
 }
@@ -319,7 +322,7 @@ int ff_vbv_update(MpegEncContext *s, int frame_size)
     const double min_rate   = s->avctx->rc_min_rate / fps;
     const double max_rate   = s->avctx->rc_max_rate / fps;
 
-    av_dlog(s, "%d %f %d %f %f\n",
+    ff_dlog(s, "%d %f %d %f %f\n",
             buffer_size, rcc->buffer_index, frame_size, min_rate, max_rate);
 
     if (buffer_size) {
@@ -566,7 +569,7 @@ static double modify_qscale(MpegEncContext *s, RateControlEntry *rce,
             }
         }
     }
-    av_dlog(s, "q:%f max:%f min:%f size:%f index:%f agr:%f\n",
+    ff_dlog(s, "q:%f max:%f min:%f size:%f index:%f agr:%f\n",
             q, max_rate, min_rate, buffer_size, rcc->buffer_index,
             s->rc_buffer_aggressivity);
     if (s->rc_qsquish == 0.0 || qmin == qmax) {
@@ -759,7 +762,7 @@ float ff_rate_estimate_qscale(MpegEncContext *s, int dry_run)
     emms_c();
 
 #if CONFIG_LIBXVID
-    if ((s->flags & CODEC_FLAG_PASS2) &&
+    if ((s->avctx->flags & CODEC_FLAG_PASS2) &&
         s->avctx->rc_strategy == FF_RC_STRATEGY_XVID)
         return ff_xvid_rate_estimate_qscale(s, dry_run);
 #endif
@@ -779,7 +782,7 @@ float ff_rate_estimate_qscale(MpegEncContext *s, int dry_run)
                          s->frame_bits - s->stuffing_bits);
     }
 
-    if (s->flags & CODEC_FLAG_PASS2) {
+    if (s->avctx->flags & CODEC_FLAG_PASS2) {
         av_assert0(picture_number >= 0);
         if (picture_number >= rcc->num_entries) {
             av_log(s, AV_LOG_ERROR, "Input is longer than 2-pass log file\n");
@@ -813,12 +816,12 @@ float ff_rate_estimate_qscale(MpegEncContext *s, int dry_run)
     var = pict_type == AV_PICTURE_TYPE_I ? pic->mb_var_sum : pic->mc_mb_var_sum;
 
     short_term_q = 0; /* avoid warning */
-    if (s->flags & CODEC_FLAG_PASS2) {
+    if (s->avctx->flags & CODEC_FLAG_PASS2) {
         if (pict_type != AV_PICTURE_TYPE_I)
             av_assert0(pict_type == rce->new_pict_type);
 
         q = rce->new_qscale / br_compensation;
-        av_dlog(s, "%f %f %f last:%d var:%"PRId64" type:%d//\n", q, rce->new_qscale,
+        ff_dlog(s, "%f %f %f last:%d var:%"PRId64" type:%d//\n", q, rce->new_qscale,
                 br_compensation, s->frame_bits, var, pict_type);
     } else {
         rce->pict_type     =
@@ -1023,7 +1026,7 @@ static int init_pass2(MpegEncContext *s)
             expected_bits     += bits;
         }
 
-        av_dlog(s->avctx,
+        ff_dlog(s->avctx,
                 "expected_bits: %f all_available_bits: %d rate_factor: %f\n",
                 expected_bits, (int)all_available_bits, rate_factor);
         if (expected_bits > all_available_bits) {
@@ -1037,7 +1040,7 @@ static int init_pass2(MpegEncContext *s)
     /* check bitrate calculations and print info */
     qscale_sum = 0.0;
     for (i = 0; i < rcc->num_entries; i++) {
-        av_dlog(s, "[lavc rc] entry[%d].new_qscale = %.3f  qp = %.3f\n",
+        ff_dlog(s, "[lavc rc] entry[%d].new_qscale = %.3f  qp = %.3f\n",
                 i,
                 rcc->entry[i].new_qscale,
                 rcc->entry[i].new_qscale / FF_QP2LAMBDA);

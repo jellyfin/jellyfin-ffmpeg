@@ -27,8 +27,8 @@
 #include "libavutil/atomic.h"
 #include "libavutil/mem.h"
 
-#include "parser.h"
 #include "internal.h"
+#include "parser.h"
 
 static AVCodecParser *av_first_parser = NULL;
 
@@ -232,9 +232,9 @@ int ff_combine_frame(ParseContext *pc, int next,
                      const uint8_t **buf, int *buf_size)
 {
     if (pc->overread) {
-        av_dlog(NULL, "overread %d, state:%X next:%d index:%d o_index:%d\n",
+        ff_dlog(NULL, "overread %d, state:%X next:%d index:%d o_index:%d\n",
                 pc->overread, pc->state, next, pc->index, pc->overread_index);
-        av_dlog(NULL, "%X %X %X %X\n",
+        ff_dlog(NULL, "%X %X %X %X\n",
                 (*buf)[0], (*buf)[1], (*buf)[2], (*buf)[3]);
     }
 
@@ -255,6 +255,7 @@ int ff_combine_frame(ParseContext *pc, int next,
                                            FF_INPUT_BUFFER_PADDING_SIZE);
 
         if (!new_buffer) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to reallocate parser buffer to %d\n", *buf_size + pc->index + FF_INPUT_BUFFER_PADDING_SIZE);
             pc->index = 0;
             return AVERROR(ENOMEM);
         }
@@ -273,6 +274,7 @@ int ff_combine_frame(ParseContext *pc, int next,
                                            next + pc->index +
                                            FF_INPUT_BUFFER_PADDING_SIZE);
         if (!new_buffer) {
+            av_log(NULL, AV_LOG_ERROR, "Failed to reallocate parser buffer to %d\n", next + pc->index + FF_INPUT_BUFFER_PADDING_SIZE);
             pc->overread_index =
             pc->index = 0;
             return AVERROR(ENOMEM);
@@ -293,9 +295,9 @@ int ff_combine_frame(ParseContext *pc, int next,
     }
 
     if (pc->overread) {
-        av_dlog(NULL, "overread %d, state:%X next:%d index:%d o_index:%d\n",
+        ff_dlog(NULL, "overread %d, state:%X next:%d index:%d o_index:%d\n",
                 pc->overread, pc->state, next, pc->index, pc->overread_index);
-        av_dlog(NULL, "%X %X %X %X\n",
+        ff_dlog(NULL, "%X %X %X %X\n",
                 (*buf)[0], (*buf)[1], (*buf)[2], (*buf)[3]);
     }
 
