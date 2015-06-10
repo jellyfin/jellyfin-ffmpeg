@@ -268,7 +268,7 @@ for test in $tests; do
     num_test=$((num_test + 1))
     echo "Test $num_test:"
     # skip the test, if the muxer/encoder is not available
-    available=$(echo "$possible_tests" | grep " $test ")
+    available=$(echo "$possible_tests" | grep " $test ") || true
     if [ ! "$available" ]; then
         skipped="${skipped}${test}\n"
         echo -e "SKIPPED: $test\n\n"
