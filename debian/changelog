@@ -1,4 +1,4 @@
-ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.7-1) unstable; urgency=medium
 
   * Import new major upstream release 2.7.
      - Suggest new mpeg4_unpack_bframes bitstream filter instead of
@@ -15,7 +15,7 @@ ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
   * Update debian/copyright.
   * Update debian/tests/encdec_list.txt.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Jun 2015 14:23:01 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 11 Jun 2015 00:47:35 +0200
 
 ffmpeg (7:2.6.3-1) unstable; urgency=medium
 
