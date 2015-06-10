@@ -12,6 +12,7 @@ ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
   * Use '-strict -2' in the encdec autopkgtest also for probing/decoding.
   * Disable loongson3 optimizations on mips, because they are not always
     available.
+  * Update debian/copyright.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Jun 2015 14:23:01 +0200
 

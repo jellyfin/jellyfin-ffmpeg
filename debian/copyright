@@ -99,7 +99,7 @@ Copyright:
   2005, DivX, Inc
   2005, 2007-2008, Ian Caulfield
   2005, Jeff Muizelaar
-  2005-2007, 2013-2014, Luca Barbato <lu_zero@gentoo.org>
+  2005-2007, 2013-2015, Luca Barbato <lu_zero@gentoo.org>
   2005-2012, Mans Rullgard <mans@mansr.com>
   2005, Matthieu CASTET
   2005-2006, Oded Shimon <ods15@ods15.dyndns.org>
@@ -133,7 +133,7 @@ Copyright:
   2006, Smartjog S.A.S, Baptiste Coudurier <baptiste.coudurier@gmail.com>
   2006-2007, SmartJog S.A., Baptiste Coudurier <baptiste.coudurier@smartjog.com>
   2006, Stefan Gehrer <stefan.gehrer@gmx.de>
-  2006, Steve Lhomme
+  2006, 2015, Steve Lhomme
   2006, Thijs Vermeir <thijs.vermeir@barco.com>
   2006-2011, Xvid Solutions GmbH
   2007, Alexis Ballier
@@ -312,10 +312,11 @@ Copyright:
   2013-2014, Tiancheng "Timothy" Gu <timothygu99@gmail.com>
   2013, Vadim Kalinsky <vadim@kalinsky.ru>
   2013, VTT
-  2013-2014, Vittorio Giovara <vittorio.giovara@gmail.com>
+  2013-2015, Vittorio Giovara <vittorio.giovara@gmail.com>
   2013, Xiaolei Yu <dreifachstein@gmail.com>
+  2013, Yukinori Yamazoe
   2014, Aman Gupta <ffmpeg@tmm1.net>
-  2014, Arwa Arif <arwaarif1994@gmail.com>
+  2014-2015, Arwa Arif <arwaarif1994@gmail.com>
   2014, Daniel Oberhoff
   2014, Dave Rice @dericed
   2014, Eejya Singh
@@ -325,6 +326,7 @@ Copyright:
   2014, Muhammad Faiz <mfcc64@gmail.com>
   2014, Neil Birkbeck <birkbeck@google.com>
   2014, Nicholas Robbins
+  2014, Niels Möller
   2014, Oleksij Rempel <linux@rempel-privat.de>
   2014-2015, Peter Meerwald <pmeerw@pmeerw.net>
   2014, Rong Yan
@@ -334,13 +336,23 @@ Copyright:
   2014-2015, Thomas Volkert <thomas@homer-conferencing.com>
   2014, Tim Walker <tdskywalker@gmail.com>
   2014, Timo Rothenpieler <timo@rothenpieler.org>
-  2014, Vignesh Venkatasubramanian
+  2014-2015, Vignesh Venkatasubramanian
+  2015, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
   2015, Anshul Maheshwari
+  2015, Donny Yang
   2015, Gilles Chanteperdrix <gch@xenomai.org>
+  2015, Himangi Saraogi <himangi774@gmail.com>
   2015, Imagination Technologies Ltd
   2015, Kevin Wheatley <kevin.j.wheatley@gmail.com>
+  2015, Loongson Technology Corporation Limited
+  2015, Manojkumar Bhosale <Manojkumar.Bhosale@imgtec.com>
+  2015, Parag Salasakar <Parag.Salasakar@imgtec.com>
+  2015, Rodger Combs
   2015, Roger Pack
   2015, Stupeflix
+  2015, Urvang Joshi
+  2015, Zhang Shuangshuang <zhangshuangshuang@ict.ac.cn>
+  2015, Zhou Xiaoyong <zhouxiaoyong@loongson.cn>
 License: LGPL-2.1+
 Comment:
  You should have received a copy of the GNU Lesser General Public
@@ -410,12 +422,27 @@ Files:
   libavutil/fixed_dsp.h
   libavutil/mips/float_dsp_mips.c
   libavutil/mips/libm_mips.h
+  libavutil/softfloat_tables.h
 Copyright:
   2010, Google Inc.
   2010, Rob Clark <rob@ti.com>
   2011, Mans Rullgard <mans@mansr.com>
   2012, MIPS Technologies, Inc., California.
 License: BSD-3-Clause and LGPL-2.1+
+Comment:
+ On Debian systems, the full text of the GNU Lesser General Public License
+ version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with FFmpeg; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+Files:
+ libavfilter/af_chorus.c
+Copyright:
+ 1998, Juergen Mueller And Sundry Contributors
+ 2015, Paul B Mahol
+License: Sundry and LGPL-2.1+
 Comment:
  On Debian systems, the full text of the GNU Lesser General Public License
  version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
@@ -432,10 +459,12 @@ Files:
   libavfilter/vf_blackframe.c
   libavfilter/vf_boxblur.c
   libavfilter/vf_colormatrix.c
+  libavfilter/vf_cover_rect.c
   libavfilter/vf_cropdetect.c
   libavfilter/vf_delogo.c
   libavfilter/vf_eq.c
   libavfilter/vf_eq.h
+  libavfilter/vf_find_rect.c
   libavfilter/vf_fspp.c
   libavfilter/vf_fspp.h
   libavfilter/vf_geq.c
@@ -489,7 +518,7 @@ Copyright:
   2000-2002, Fabrice Bellard
   2001, 2006, Daniel Maas <dmaas@dcine.com> <dmaas@maasdigital.com>
   2001, 2003, Donald A. Graft
-  2001-2003, 2005-2007, 2011-2012 Michael Niedermayer <michaelni@gmx.at>
+  2001-2003, 2005-2007, 2011-2012, 2014-2015, Michael Niedermayer <michaelni@gmx.at>
   2002, A'rpi
   2002, Brian Foley
   2002-2003, Brian J. Murrell
@@ -545,6 +574,9 @@ Comment:
 
 Files:
   compat/avisynth/avisynth_c.h
+  compat/avisynth/avs/capi.h
+  compat/avisynth/avs/config.h
+  compat/avisynth/avs/types.h
   compat/avisynth/avxsynth_c.h
 Copyright: 2003, Kevin Atkinson
 License: GPL-2+ with Avisynth exception
@@ -628,8 +660,8 @@ Comment:
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 Files:
-  compat/avisynth/avisynth_c_25.h
   doc/bootstrap.min.css
+  doc/examples/avio_list_dir.c
   doc/examples/avio_reading.c
   doc/examples/decoding_encoding.c
   doc/examples/demuxing_decoding.c
@@ -645,6 +677,7 @@ Files:
   doc/examples/transcoding.c
   doc/style.min.css
   libavcodec/arm/jrevdct_arm.S
+  libavcodec/api-flac-test.c
   libavcodec/cinepakenc.c
   libavcodec/nellymoser.c
   libavcodec/nellymoserdec.c
@@ -673,7 +706,6 @@ Copyright:
   2007, Loic Minier <lool at dooz.org>
   2008, Reimar Döffinger
   2010, Nicolas George
-  2011, FFmpegSource Project
   2011, Jonathan Baldwin
   2011, 2014, Reinhard Tartler
   2011-2014, Stefano Sabatini
@@ -683,7 +715,9 @@ Copyright:
   2013-2014, Rl, Aetey Global Technologies AB
   2014, Andrey Utkin
   2014, Barbara Lepage <db0company@gmail.com>
+  2014, Lukasz Marek <lukasz.m.luki@gmail.com>
   2015, Anton Khirnov <anton@khirnov.net>
+  2015, Ludmila Glinskih
 License: Expat
 
 Files:
@@ -871,3 +905,9 @@ License: LGPL-2.1+
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Lesser General Public License for more details.
+
+License: Sundry
+ This source code is freely redistributable and may be used for
+ any purpose.  This copyright notice must be maintained.
+ Juergen Mueller And Sundry Contributors are not responsible for
+ the consequences of using this software.
