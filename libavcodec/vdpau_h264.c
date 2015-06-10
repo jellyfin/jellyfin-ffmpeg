@@ -51,7 +51,7 @@ static void vdpau_h264_clear_rf(VdpReferenceFrameH264 *rf)
 static void vdpau_h264_set_rf(VdpReferenceFrameH264 *rf, H264Picture *pic,
                               int pic_structure)
 {
-    VdpVideoSurface surface = ff_vdpau_get_surface_id(&pic->f);
+    VdpVideoSurface surface = ff_vdpau_get_surface_id(pic->f);
 
     if (pic_structure == 0)
         pic_structure = pic->reference;
@@ -88,7 +88,7 @@ static void vdpau_h264_set_reference_frames(AVCodecContext *avctx)
             if (!pic || !pic->reference)
                 continue;
             pic_frame_idx = pic->long_ref ? pic->pic_id : pic->frame_num;
-            surface_ref = ff_vdpau_get_surface_id(&pic->f);
+            surface_ref = ff_vdpau_get_surface_id(pic->f);
 
             rf2 = &info->referenceFrames[0];
             while (rf2 != rf) {
@@ -198,15 +198,16 @@ static int vdpau_h264_decode_slice(AVCodecContext *avctx,
 static int vdpau_h264_end_frame(AVCodecContext *avctx)
 {
     H264Context *h = avctx->priv_data;
+    H264SliceContext *sl = &h->slice_ctx[0];
     H264Picture *pic = h->cur_pic_ptr;
     struct vdpau_picture_context *pic_ctx = pic->hwaccel_picture_private;
     int val;
 
-    val = ff_vdpau_common_end_frame(avctx, &pic->f, pic_ctx);
+    val = ff_vdpau_common_end_frame(avctx, pic->f, pic_ctx);
     if (val < 0)
         return val;
 
-    ff_h264_draw_horiz_band(h, 0, h->avctx->height);
+    ff_h264_draw_horiz_band(h, sl, 0, h->avctx->height);
     return 0;
 }
 

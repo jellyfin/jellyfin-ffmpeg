@@ -76,6 +76,7 @@ typedef int     (* resample_flush_func)(struct SwrContext *c);
 typedef int     (* set_compensation_func)(struct ResampleContext *c, int sample_delta, int compensation_distance);
 typedef int64_t (* get_delay_func)(struct SwrContext *s, int64_t base);
 typedef int     (* invert_initial_buffer_func)(struct ResampleContext *c, AudioData *dst, const AudioData *src, int src_size, int *dst_idx, int *dst_count);
+typedef int64_t (* get_out_samples_func)(struct SwrContext *s, int in_samples);
 
 struct Resampler {
   resample_init_func            init;
@@ -85,6 +86,7 @@ struct Resampler {
   set_compensation_func         set_compensation;
   get_delay_func                get_delay;
   invert_initial_buffer_func    invert_initial_buffer;
+  get_out_samples_func          get_out_samples;
 };
 
 extern struct Resampler const swri_resampler;
@@ -192,7 +194,7 @@ void swri_rematrix_free(SwrContext *s);
 int swri_rematrix(SwrContext *s, AudioData *out, AudioData *in, int len, int mustcopy);
 int swri_rematrix_init_x86(struct SwrContext *s);
 
-void swri_get_dither(SwrContext *s, void *dst, int len, unsigned seed, enum AVSampleFormat noise_fmt);
+int swri_get_dither(SwrContext *s, void *dst, int len, unsigned seed, enum AVSampleFormat noise_fmt);
 int swri_dither_init(SwrContext *s, enum AVSampleFormat out_fmt, enum AVSampleFormat in_fmt);
 
 void swri_audio_convert_init_aarch64(struct AudioConvert *ac,

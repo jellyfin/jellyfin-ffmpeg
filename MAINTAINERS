@@ -45,7 +45,7 @@ Miscellaneous Areas
 
 documentation                           Stefano Sabatini, Mike Melanson, Timothy Gu
 build system (configure, makefiles)     Diego Biurrun, Mans Rullgard
-project server                          Árpád Gereöffy, Michael Niedermayer, Reimar Doeffinger, Alexander Strasser
+project server                          Árpád Gereöffy, Michael Niedermayer, Reimar Doeffinger, Alexander Strasser, Lou Logan
 presets                                 Robert Swain
 metadata subsystem                      Aurelien Jacobs
 release management                      Michael Niedermayer
@@ -59,7 +59,7 @@ fate.ffmpeg.org                         Timothy Gu
 Trac bug tracker                        Alexander Strasser, Michael Niedermayer, Carl Eugen Hoyos, Lou Logan
 mailing lists                           Michael Niedermayer, Baptiste Coudurier, Lou Logan
 Google+                                 Paul B Mahol, Michael Niedermayer, Alexander Strasser
-Twitter                                 Lou Logan
+Twitter                                 Lou Logan, Reynaldo H. Verdejo Pinochet
 Launchpad                               Timothy Gu
 
 
@@ -545,6 +545,7 @@ x86                                     Michael Niedermayer
 Releases
 ========
 
+2.7                                     Michael Niedermayer
 2.6                                     Michael Niedermayer
 2.5                                     Michael Niedermayer
 2.4                                     Michael Niedermayer

@@ -34,7 +34,7 @@
 #ifdef DEBUG
 #    define hex_dump_debug(class, buf, size) av_hex_dump_log(class, AV_LOG_DEBUG, buf, size)
 #else
-#    define hex_dump_debug(class, buf, size)
+#    define hex_dump_debug(class, buf, size) do { if (0) av_hex_dump_log(class, AV_LOG_DEBUG, buf, size); } while(0)
 #endif
 
 typedef struct AVCodecTag {
@@ -411,6 +411,11 @@ enum AVCodecID ff_get_pcm_codec_id(int bps, int flt, int be, int sflags);
 AVRational ff_choose_timebase(AVFormatContext *s, AVStream *st, int min_precision);
 
 /**
+ * Chooses a timebase for muxing the specified stream.
+ */
+enum AVChromaLocation ff_choose_chroma_location(AVFormatContext *s, AVStream *st);
+
+/**
  * Generate standard extradata for AVC-Intra based on width/height and field
  * order.
  */
@@ -486,5 +491,8 @@ enum AVWriteUncodedFrameFlags {
  * Copies the whilelists from one context to the other
  */
 int ff_copy_whitelists(AVFormatContext *dst, AVFormatContext *src);
+
+int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *url, int flags,
+                       const AVIOInterruptCB *int_cb, AVDictionary **options);
 
 #endif /* AVFORMAT_INTERNAL_H */

@@ -191,13 +191,16 @@ static inline int decode_vui_parameters(H264Context *h, SPS *sps)
 
     sps->timing_info_present_flag = get_bits1(&h->gb);
     if (sps->timing_info_present_flag) {
-        sps->num_units_in_tick = get_bits_long(&h->gb, 32);
-        sps->time_scale        = get_bits_long(&h->gb, 32);
-        if (!sps->num_units_in_tick || !sps->time_scale) {
+        unsigned num_units_in_tick = get_bits_long(&h->gb, 32);
+        unsigned time_scale        = get_bits_long(&h->gb, 32);
+        if (!num_units_in_tick || !time_scale) {
             av_log(h->avctx, AV_LOG_ERROR,
-                   "time_scale/num_units_in_tick invalid or unsupported (%"PRIu32"/%"PRIu32")\n",
-                   sps->time_scale, sps->num_units_in_tick);
-            return AVERROR_INVALIDDATA;
+                   "time_scale/num_units_in_tick invalid or unsupported (%u/%u)\n",
+                   time_scale, num_units_in_tick);
+            sps->timing_info_present_flag = 0;
+        } else {
+            sps->num_units_in_tick = num_units_in_tick;
+            sps->time_scale = time_scale;
         }
         sps->fixed_frame_rate_flag = get_bits1(&h->gb);
     }
@@ -454,10 +457,10 @@ int ff_h264_decode_seq_parameter_set(H264Context *h, int ignore_truncation)
 #endif
     sps->crop = get_bits1(&h->gb);
     if (sps->crop) {
-        int crop_left   = get_ue_golomb(&h->gb);
-        int crop_right  = get_ue_golomb(&h->gb);
-        int crop_top    = get_ue_golomb(&h->gb);
-        int crop_bottom = get_ue_golomb(&h->gb);
+        unsigned int crop_left   = get_ue_golomb(&h->gb);
+        unsigned int crop_right  = get_ue_golomb(&h->gb);
+        unsigned int crop_top    = get_ue_golomb(&h->gb);
+        unsigned int crop_bottom = get_ue_golomb(&h->gb);
         int width  = 16 * sps->mb_width;
         int height = 16 * sps->mb_height * (2 - sps->frame_mbs_only_flag);
 
@@ -556,7 +559,7 @@ int ff_h264_decode_seq_parameter_set(H264Context *h, int ignore_truncation)
 
 fail:
     av_free(sps);
-    return -1;
+    return AVERROR_INVALIDDATA;
 }
 
 static void build_qp_table(PPS *pps, int t, int index, const int depth)
@@ -585,11 +588,12 @@ static int more_rbsp_data_in_pps(H264Context *h, PPS *pps)
 
 int ff_h264_decode_picture_parameter_set(H264Context *h, int bit_length)
 {
+    const SPS *sps;
     unsigned int pps_id = get_ue_golomb(&h->gb);
     PPS *pps;
-    SPS *sps;
     int qp_bd_offset;
     int bits_left;
+    int ret;
 
     if (pps_id >= MAX_PPS_COUNT) {
         av_log(h->avctx, AV_LOG_ERROR, "pps_id %u out of range\n", pps_id);
@@ -603,19 +607,21 @@ int ff_h264_decode_picture_parameter_set(H264Context *h, int bit_length)
     if ((unsigned)pps->sps_id >= MAX_SPS_COUNT ||
         !h->sps_buffers[pps->sps_id]) {
         av_log(h->avctx, AV_LOG_ERROR, "sps_id %u out of range\n", pps->sps_id);
+        ret = AVERROR_INVALIDDATA;
         goto fail;
     }
     sps = h->sps_buffers[pps->sps_id];
-    qp_bd_offset = 6 * (sps->bit_depth_luma - 8);
     if (sps->bit_depth_luma > 14) {
         av_log(h->avctx, AV_LOG_ERROR,
                "Invalid luma bit depth=%d\n",
                sps->bit_depth_luma);
+        ret = AVERROR_INVALIDDATA;
         goto fail;
     } else if (sps->bit_depth_luma == 11 || sps->bit_depth_luma == 13) {
         av_log(h->avctx, AV_LOG_ERROR,
                "Unimplemented luma bit depth=%d\n",
                sps->bit_depth_luma);
+        ret = AVERROR_PATCHWELCOME;
         goto fail;
     }
 
@@ -661,8 +667,11 @@ int ff_h264_decode_picture_parameter_set(H264Context *h, int bit_length)
     pps->ref_count[1] = get_ue_golomb(&h->gb) + 1;
     if (pps->ref_count[0] - 1 > 32 - 1 || pps->ref_count[1] - 1 > 32 - 1) {
         av_log(h->avctx, AV_LOG_ERROR, "reference overflow (pps)\n");
+        ret = AVERROR_INVALIDDATA;
         goto fail;
     }
+
+    qp_bd_offset = 6 * (sps->bit_depth_luma - 8);
 
     pps->weighted_pred                        = get_bits1(&h->gb);
     pps->weighted_bipred_idc                  = get_bits(&h->gb, 2);
@@ -692,8 +701,10 @@ int ff_h264_decode_picture_parameter_set(H264Context *h, int bit_length)
         pps->chroma_qp_index_offset[1] = pps->chroma_qp_index_offset[0];
     }
 
-    build_qp_table(pps, 0, pps->chroma_qp_index_offset[0], sps->bit_depth_luma);
-    build_qp_table(pps, 1, pps->chroma_qp_index_offset[1], sps->bit_depth_luma);
+    build_qp_table(pps, 0, pps->chroma_qp_index_offset[0],
+                   sps->bit_depth_luma);
+    build_qp_table(pps, 1, pps->chroma_qp_index_offset[1],
+                   sps->bit_depth_luma);
     if (pps->chroma_qp_index_offset[0] != pps->chroma_qp_index_offset[1])
         pps->chroma_qp_diff = 1;
 
@@ -718,5 +729,5 @@ int ff_h264_decode_picture_parameter_set(H264Context *h, int bit_length)
 
 fail:
     av_free(pps);
-    return -1;
+    return ret;
 }

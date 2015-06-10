@@ -69,6 +69,7 @@ typedef struct OutputStream {
     int nb_segments, segments_size, segment_index;
     Segment **segments;
     int64_t first_pts, start_pts, max_pts;
+    int64_t last_dts;
     int bit_rate;
     char bandwidth_str[64];
 
@@ -423,6 +424,17 @@ static void write_time(AVIOContext *out, int64_t time)
     avio_printf(out, "%d.%dS", seconds, fractions / (AV_TIME_BASE / 10));
 }
 
+static void format_date_now(char *buf, int size)
+{
+    time_t t = time(NULL);
+    struct tm *ptm, tmbuf;
+    ptm = gmtime_r(&t, &tmbuf);
+    if (ptm) {
+        if (!strftime(buf, size, "%Y-%m-%dT%H:%M:%S", ptm))
+            buf[0] = '\0';
+    }
+}
+
 static int write_manifest(AVFormatContext *s, int final)
 {
     DASHContext *c = s->priv_data;
@@ -450,22 +462,19 @@ static int write_manifest(AVFormatContext *s, int final)
         avio_printf(out, "\"\n");
     } else {
         int64_t update_period = c->last_duration / AV_TIME_BASE;
+        char now_str[100];
         if (c->use_template && !c->use_timeline)
             update_period = 500;
         avio_printf(out, "\tminimumUpdatePeriod=\"PT%"PRId64"S\"\n", update_period);
         avio_printf(out, "\tsuggestedPresentationDelay=\"PT%"PRId64"S\"\n", c->last_duration / AV_TIME_BASE);
         if (!c->availability_start_time[0] && s->nb_streams > 0 && c->streams[0].nb_segments > 0) {
-            time_t t = time(NULL);
-            struct tm *ptm, tmbuf;
-            ptm = gmtime_r(&t, &tmbuf);
-            if (ptm) {
-                if (!strftime(c->availability_start_time, sizeof(c->availability_start_time),
-                              "%Y-%m-%dT%H:%M:%S", ptm))
-                    c->availability_start_time[0] = '\0';
-            }
+            format_date_now(c->availability_start_time, sizeof(c->availability_start_time));
         }
         if (c->availability_start_time[0])
             avio_printf(out, "\tavailabilityStartTime=\"%s\"\n", c->availability_start_time);
+        format_date_now(now_str, sizeof(now_str));
+        if (now_str[0])
+            avio_printf(out, "\tpublishTime=\"%s\"\n", now_str);
         if (c->window_size && c->use_template) {
             avio_printf(out, "\ttimeShiftBufferDepth=\"");
             write_time(out, c->last_duration * c->window_size);
@@ -654,6 +663,7 @@ static int dash_write_header(AVFormatContext *s)
         set_codec_str(s, st->codec, os->codec_str, sizeof(os->codec_str));
         os->first_pts = AV_NOPTS_VALUE;
         os->max_pts = AV_NOPTS_VALUE;
+        os->last_dts = AV_NOPTS_VALUE;
         os->segment_index = 1;
     }
 
@@ -692,9 +702,11 @@ static int add_segment(OutputStream *os, const char *file,
         return AVERROR(ENOMEM);
     av_strlcpy(seg->file, file, sizeof(seg->file));
     seg->time = time;
-    if (seg->time < 0) // If pts<0, it is expected to be cut away with an edit list
-        seg->time = 0;
     seg->duration = duration;
+    if (seg->time < 0) { // If pts<0, it is expected to be cut away with an edit list
+        seg->duration += seg->time;
+        seg->time = 0;
+    }
     seg->start_pos = start_pos;
     seg->range_length = range_length;
     seg->index_length = index_length;
@@ -865,6 +877,16 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     ret = update_stream_extradata(s, os, st->codec);
     if (ret < 0)
         return ret;
+
+    // Fill in a heuristic guess of the packet duration, if none is available.
+    // The mp4 muxer will do something similar (for the last packet in a fragment)
+    // if nothing is set (setting it for the other packets doesn't hurt).
+    // By setting a nonzero duration here, we can be sure that the mp4 muxer won't
+    // invoke its heuristic (this doesn't have to be identical to that algorithm),
+    // so that we know the exact timestamps of fragments.
+    if (!pkt->duration && os->last_dts != AV_NOPTS_VALUE)
+        pkt->duration = pkt->dts - os->last_dts;
+    os->last_dts = pkt->dts;
 
     // If forcing the stream to start at 0, the mp4 muxer will set the start
     // timestamps to 0. Do the same here, to avoid mismatches in duration/timestamps.

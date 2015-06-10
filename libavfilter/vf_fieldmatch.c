@@ -86,13 +86,13 @@ typedef struct {
     /* options */
     int order;
     int ppsrc;
-    enum matching_mode mode;
+    int mode;                       ///< matching_mode
     int field;
     int mchroma;
     int y0, y1;
     int64_t scthresh;
     double scthresh_flt;
-    enum comb_matching_mode combmatch;
+    int combmatch;                  ///< comb_matching_mode
     int combdbg;
     int cthresh;
     int chroma;
@@ -855,8 +855,10 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,
         AV_PIX_FMT_NONE
     };
-    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-    return 0;
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    if (!fmts_list)
+        return AVERROR(ENOMEM);
+    return ff_set_common_formats(ctx, fmts_list);
 }
 
 static int config_input(AVFilterLink *inlink)

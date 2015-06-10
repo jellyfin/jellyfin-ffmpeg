@@ -98,7 +98,9 @@ static int ffm_read_data(AVFormatContext *s,
     retry_read:
             if (pb->buffer_size != ffm->packet_size) {
                 int64_t tell = avio_tell(pb);
-                ffio_set_buf_size(pb, ffm->packet_size);
+                int ret = ffio_set_buf_size(pb, ffm->packet_size);
+                if (ret < 0)
+                    return ret;
                 avio_seek(pb, tell, SEEK_SET);
             }
             id = avio_rb16(pb); /* PACKET_ID */
@@ -438,7 +440,8 @@ static int ffm2_read_header(AVFormatContext *s)
             }
             avio_get_str(pb, INT_MAX, buffer, size);
             av_set_options_string(codec, buffer, "=", ",");
-            ffm_append_recommended_configuration(st, &buffer);
+            if ((ret = ffm_append_recommended_configuration(st, &buffer)) < 0)
+                goto fail;
             break;
         }
         avio_seek(pb, next, SEEK_SET);

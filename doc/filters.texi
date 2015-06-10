@@ -8,13 +8,13 @@ outputs.
 To illustrate the sorts of things that are possible, we consider the
 following filtergraph.
 
-@example
+@verbatim
                 [main]
 input --> split ---------------------> overlay --> output
             |                             ^
             |[tmp]                  [flip]|
             +-----> crop --> vflip -------+
-@end example
+@end verbatim
 
 This filtergraph splits the input stream in two streams, then sends one
 stream through the crop filter and the vflip filter, before merging it
@@ -163,13 +163,13 @@ follow the same constraints order of the previous point. The following
 
 If the option value itself is a list of items (e.g. the @code{format} filter
 takes a list of pixel formats), the items in the list are usually separated by
-'|'.
+@samp{|}.
 
-The list of arguments can be quoted using the character "'" as initial
-and ending mark, and the character '\' for escaping the characters
+The list of arguments can be quoted using the character @samp{'} as initial
+and ending mark, and the character @samp{\} for escaping the characters
 within the quoted text; otherwise the argument string is considered
 terminated when the next special character (belonging to the set
-"[]=;,") is encountered.
+@samp{[]=;,}) is encountered.
 
 The name and arguments of the filter are optionally preceded and
 followed by a list of link labels.
@@ -1319,6 +1319,61 @@ ffmpeg -i in.wav -filter_complex
 front_center.wav -map '[LFE]' lfe.wav -map '[SL]' side_left.wav -map '[SR]'
 side_right.wav
 @end example
+
+@section chorus
+Add a chorus effect to the audio.
+
+Can make a single vocal sound like a chorus, but can also be applied to instrumentation.
+
+Chorus resembles an echo effect with a short delay, but whereas with echo the delay is
+constant, with chorus, it is varied using using sinusoidal or triangular modulation.
+The modulation depth defines the range the modulated delay is played before or after
+the delay. Hence the delayed sound will sound slower or faster, that is the delayed
+sound tuned around the original one, like in a chorus where some vocals are slightly
+off key.
+
+It accepts the following parameters:
+@table @option
+@item in_gain
+Set input gain. Default is 0.4.
+
+@item out_gain
+Set output gain. Default is 0.4.
+
+@item delays
+Set delays. A typical delay is around 40ms to 60ms.
+
+@item decays
+Set decays.
+
+@item speeds
+Set speeds.
+
+@item depths
+Set depths.
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+A single delay:
+@example
+chorus=0.7:0.9:55:0.4:0.25:2
+@end example
+
+@item
+Two delays:
+@example
+chorus=0.6:0.9:50|60:0.4|0.32:0.25|0.4:2|1.3
+@end example
+
+@item
+Fuller sounding chorus with three delays:
+@example
+chorus=0.5:0.9:50|60|40:0.4|0.32|0.3:0.25|0.4|0.3:2|2.3|1.3
+@end example
+@end itemize
 
 @section compand
 Compress or expand the audio's dynamic range.
@@ -2693,8 +2748,11 @@ Available values for component modes are:
 @item divide
 @item dodge
 @item exclusion
+@item glow
 @item hardlight
+@item hardmix
 @item lighten
+@item linearlight
 @item multiply
 @item negation
 @item normal
@@ -3728,6 +3786,33 @@ FFmpeg was configured with @code{--enable-opencl}. Default value is 0.
 
 @end table
 
+@section detelecine
+
+Apply an exact inverse of the telecine operation. It requires a predefined
+pattern specified using the pattern option which must be the same as that passed
+to the telecine filter.
+
+This filter accepts the following options:
+
+@table @option
+@item first_field
+@table @samp
+@item top, t
+top field first
+@item bottom, b
+bottom field first
+The default value is @code{top}.
+@end table
+
+@item pattern
+A string of numbers representing the pulldown pattern you wish to apply.
+The default value is @code{23}.
+
+@item start_frame
+A number representing position of the first frame with respect to the telecine
+pattern. This is to be used if the stream is cut. The default value is @code{0}.
+@end table
+
 @section drawbox
 
 Draw a colored box on the input image.
@@ -3928,6 +4013,10 @@ Used to draw a box around text using the background color.
 The value must be either 1 (enable) or 0 (disable).
 The default value of @var{box} is 0.
 
+@item boxborderw
+Set the width of the border to be drawn around the box using @var{boxcolor}.
+The default value of @var{boxborderw} is 0.
+
 @item boxcolor
 The color to be used for drawing box around text. For the syntax of this
 option, check the "Color" section in the ffmpeg-utils manual.
@@ -3970,6 +4059,16 @@ The font family to be used for drawing text. By default Sans.
 @item fontfile
 The font file to be used for drawing text. The path must be included.
 This parameter is mandatory if the fontconfig support is disabled.
+
+@item draw
+This option does not exist, please see the timeline system
+
+@item alpha
+Draw the text applying alpha blending. The value can
+be either a number between 0.0 and 1.0
+The expression accepts the same variables @var{x, y} do.
+The default value is 1.
+Please see fontcolor_expr
 
 @item fontsize
 The font size to be used for drawing text.
@@ -4149,7 +4248,7 @@ If @option{expansion} is set to @code{none}, the text is printed verbatim.
 If @option{expansion} is set to @code{normal} (which is the default),
 the following expansion mechanism is used.
 
-The backslash character '\', followed by any character, always expands to
+The backslash character @samp{\}, followed by any character, always expands to
 the second character.
 
 Sequence of the form @code{%@{...@}} are expanded. The text between the
@@ -4181,8 +4280,9 @@ value.
 Evaluate the expression's value and output as formatted integer.
 
 The first argument is the expression to be evaluated, just as for the @var{expr} function.
-The second argument specifies the output format. Allowed values are 'x', 'X', 'd' and
-'u'. They are treated exactly as in the printf function.
+The second argument specifies the output format. Allowed values are @samp{x},
+@samp{X}, @samp{d} and @samp{u}. They are treated exactly as in the
+@code{printf} function.
 The third parameter is optional and sets the number of positions taken by the output.
 It can be used to add padding with zeros from the left.
 
@@ -4366,40 +4466,72 @@ The filter accepts the following options:
 
 @table @option
 @item contrast
-Set the contrast value. It accepts a float value in range @code{-2.0} to
-@code{2.0}. The default value is @code{0.0}.
+Set the contrast expression. The value must be a float value in range
+@code{-2.0} to @code{2.0}. The default value is "0".
 
 @item brightness
-Set the brightness value. It accepts a float value in range @code{-1.0} to
-@code{1.0}. The default value is @code{0.0}.
+Set the brightness expression. The value must be a float value in
+range @code{-1.0} to @code{1.0}. The default value is "0".
 
 @item saturation
-Set the saturation value. It accepts a float value in range @code{0.0} to
-@code{3.0}. The default value is @code{1.0}.
+Set the saturation expression. The value must be a float in
+range @code{0.0} to @code{3.0}. The default value is "1".
 
 @item gamma
-Set the gamma value. It accepts a float value in range @code{0.1} to @code{10.0}.
-The default value is @code{1.0}.
+Set the gamma expression. The value must be a float in range
+@code{0.1} to @code{10.0}.  The default value is "1".
 
 @item gamma_r
-Set the gamma value for red. It accepts a float value in range
-@code{0.1} to @code{10.0}. The default value is @code{1.0}.
+Set the gamma expression for red. The value must be a float in
+range @code{0.1} to @code{10.0}. The default value is "1".
 
 @item gamma_g
-Set the gamma value for green. It accepts a float value in range
-@code{0.1} to @code{10.0}. The default value is @code{1.0}.
+Set the gamma expression for green. The value must be a float in range
+@code{0.1} to @code{10.0}. The default value is "1".
 
 @item gamma_b
-Set the gamma value for blue. It accepts a float value in range
-@code{0.1} to @code{10.0}. The default value is @code{1.0}.
+Set the gamma expression for blue. The value must be a float in range
+@code{0.1} to @code{10.0}. The default value is "1".
 
 @item gamma_weight
-Can be used to reduce the effect of a high gamma value on bright image areas,
-e.g. keep them from getting overamplified and just plain white. It accepts a
-float value in range @code{0.0} to @code{1.0}.A value of @code{0.0} turns the
-gamma correction all the way down while @code{1.0} leaves it at its full strength.
-Default is @code{1.0}.
+Set the gamma weight expression. It can be used to reduce the effect
+of a high gamma value on bright image areas, e.g. keep them from
+getting overamplified and just plain white. The value must be a float
+in range @code{0.0} to @code{1.0}. A value of @code{0.0} turns the
+gamma correction all the way down while @code{1.0} leaves it at its
+full strength. Default is "1".
 
+@item eval
+Set when the expressions for brightness, contrast, saturation and
+gamma expressions are evaluated.
+
+It accepts the following values:
+@table @samp
+@item init
+only evaluate expressions once during the filter initialization or
+when a command is processed
+
+@item frame
+evaluate expressions for each incoming frame
+@end table
+
+Default value is @samp{init}.
+@end table
+
+The expressions accept the following parameters:
+@table @option
+@item n
+frame count of the input frame starting from 0
+
+@item pos
+byte position of the corresponding packet in the input file, NAN if
+unspecified
+
+@item r
+frame rate of the input video, NAN if the input frame rate is unknown
+
+@item t
+timestamp expressed in seconds, NAN if the input timestamp is unknown
 @end table
 
 @subsection Commands
@@ -4538,7 +4670,8 @@ The number of seconds for which the fade effect has to last. At the end of the
 fade-in effect the output video will have the same intensity as the input video,
 at the end of the fade-out transition the output video will be filled with the
 selected @option{color}.
-If both duration and nb_frames are specified, duration is used. Default is 0.
+If both duration and nb_frames are specified, duration is used. Default is 0
+(nb_frames is used by default).
 
 @item color, c
 Specify the color of the fade. Default is "black".
@@ -4587,6 +4720,67 @@ fade=in:0:25:alpha=1
 Make the first 5.5 seconds black, then fade in for 0.5 seconds:
 @example
 fade=t=in:st=5.5:d=0.5
+@end example
+
+@end itemize
+
+@section fftfilt
+Apply arbitrary expressions to samples in frequency domain
+
+@table @option
+@item dc_Y
+Adjust the dc value (gain) of the luma plane of the image. The filter
+accepts an integer value in range @code{0} to @code{1000}. The default
+value is set to @code{0}.
+
+@item dc_U
+Adjust the dc value (gain) of the 1st chroma plane of the image. The
+filter accepts an integer value in range @code{0} to @code{1000}. The
+default value is set to @code{0}.
+
+@item dc_V
+Adjust the dc value (gain) of the 2nd chroma plane of the image. The
+filter accepts an integer value in range @code{0} to @code{1000}. The
+default value is set to @code{0}.
+
+@item weight_Y
+Set the frequency domain weight expression for the luma plane.
+
+@item weight_U
+Set the frequency domain weight expression for the 1st chroma plane.
+
+@item weight_V
+Set the frequency domain weight expression for the 2nd chroma plane.
+
+The filter accepts the following variables:
+@item X
+@item Y
+The coordinates of the current sample.
+
+@item W
+@item H
+The width and height of the image.
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+High-pass:
+@example
+fftfilt=dc_Y=128:weight_Y='squish(1-(Y+X)/100)'
+@end example
+
+@item
+Low-pass:
+@example
+fftfilt=dc_Y=0:weight_Y='squish((Y+X)/100-1)'
+@end example
+
+@item
+Sharpen:
+@example
+fftfilt=dc_Y=0:weight_Y='1+squish(1-(Y+X)/100)'
 @end example
 
 @end itemize
@@ -4971,6 +5165,70 @@ It is mainly useful when auto-inserted by the libavfilter
 framework.
 
 It does not take parameters.
+
+@section find_rect
+
+Find a rectangular object
+
+It accepts the following options:
+
+@table @option
+@item object
+Filepath of the object image, needs to be in gray8.
+
+@item threshold
+Detection threshold, default is 0.5.
+
+@item mipmaps
+Number of mipmaps, default is 3.
+
+@item xmin, ymin, xmax, ymax
+Specifies the rectangle in which to search.
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Generate a representative palette of a given video using @command{ffmpeg}:
+@example
+ffmpeg -i file.ts -vf find_rect=newref.pgm,cover_rect=cover.jpg:mode=cover new.mkv
+@end example
+@end itemize
+
+@section cover_rect
+
+Cover a rectangular object
+
+It accepts the following options:
+
+@table @option
+@item cover
+Filepath of the optional cover image, needs to be in yuv420.
+
+@item mode
+Set covering mode.
+
+It accepts the following values:
+@table @samp
+@item cover
+cover it by the supplied image
+@item blur
+cover it by interpolating the surrounding pixels
+@end table
+
+Default value is @var{blur}.
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Generate a representative palette of a given video using @command{ffmpeg}:
+@example
+ffmpeg -i file.ts -vf find_rect=newref.pgm,cover_rect=cover.jpg:mode=cover new.mkv
+@end example
+@end itemize
 
 @anchor{format}
 @section format
@@ -5866,7 +6124,7 @@ full weight of 1.0 forever.
 When this is not 0 then idet will use the specified number of frames to determine
 if the interlaced flag is accurate, it will not count undetermined frames.
 If the flag is found to be accurate it will be used without any further
-computations, if it is found to be inaccuarte it will be cleared without any
+computations, if it is found to be inaccurate it will be cleared without any
 further computations. This allows inserting the idet filter as a low computational
 method to clean up the interlaced flag
 @end table
@@ -11676,6 +11934,33 @@ Create a synthetic signal and show it with showwaves, forcing a
 frame rate of 30 frames per second:
 @example
 aevalsrc=sin(1*2*PI*t)*sin(880*2*PI*t):cos(2*PI*200*t),asplit[out0],showwaves=r=30[out1]
+@end example
+@end itemize
+
+@section showwavespic
+
+Convert input audio to a single video frame, representing the samples waves.
+
+The filter accepts the following options:
+
+@table @option
+@item size, s
+Specify the video size for the output. For the syntax of this option, check the
+@ref{video size syntax,,"Video size" section in the ffmpeg-utils manual,ffmpeg-utils}.
+Default value is @code{600x240}.
+
+@item split_channels
+Set if channels should be drawn separately or overlap. Default value is 0.
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Extract a channel split representation of the wave form of a whole audio track
+in a 1024x800 picture using @command{ffmpeg}:
+@example
+ffmpeg -i audio.flac -lavfi showwavespic=split_channels=1:s=1024x800 waveform.png
 @end example
 @end itemize
 

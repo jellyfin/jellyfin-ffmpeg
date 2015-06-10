@@ -40,7 +40,7 @@ typedef struct {
     int vsub;       // vertical subsampling
     int fs;         // pixel count per frame
     int cfs;        // pixel count per frame of chroma planes
-    enum FilterMode outfilter;
+    int outfilter;  // FilterMode
     int filters;
     AVFrame *frame_prev;
     uint8_t rgba_color[4];
@@ -118,8 +118,10 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_NONE
     };
 
-    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-    return 0;
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    if (!fmts_list)
+        return AVERROR(ENOMEM);
+    return ff_set_common_formats(ctx, fmts_list);
 }
 
 static AVFrame *alloc_frame(enum AVPixelFormat pixfmt, int w, int h)

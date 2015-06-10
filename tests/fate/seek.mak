@@ -179,6 +179,7 @@ FATE_SEEK_LAVF-$(call ENCDEC,  PCM_MULAW,             PCM_MULAW)   += mulaw
 FATE_SEEK_LAVF-$(call ENCDEC2, MPEG2VIDEO, PCM_S16LE, MXF)         += mxf
 FATE_SEEK_LAVF-$(call ENCDEC2, MPEG2VIDEO, PCM_S16LE, MXF_D10 MXF) += mxf_d10
 FATE_SEEK_LAVF-$(call ENCDEC2, DNXHD,      PCM_S16LE, MXF_OPATOM MXF) += mxf_opatom
+FATE_SEEK_LAVF-$(call ENCDEC2, DNXHD,      PCM_S16LE, MXF_OPATOM MXF) += mxf_opatom_audio
 FATE_SEEK_LAVF-$(call ENCDEC2, MPEG4,      MP2,       NUT)         += nut
 FATE_SEEK_LAVF-$(call ENCDEC,  FLAC,                  OGG)         += ogg
 FATE_SEEK_LAVF-$(call ENCDEC,  PBM,                   IMAGE2PIPE)  += pbmpipe
@@ -218,6 +219,7 @@ fate-seek-lavf-mulaw:    SRC = lavf/lavf.ul
 fate-seek-lavf-mxf:      SRC = lavf/lavf.mxf
 fate-seek-lavf-mxf_d10:  SRC = lavf/lavf.mxf_d10
 fate-seek-lavf-mxf_opatom: SRC = lavf/lavf.mxf_opatom
+fate-seek-lavf-mxf_opatom_audio: SRC = lavf/lavf.mxf_opatom_audio
 fate-seek-lavf-nut:      SRC = lavf/lavf.nut
 fate-seek-lavf-ogg:      SRC = lavf/lavf.ogg
 fate-seek-lavf-pbmpipe:  SRC = lavf/pbmpipe.pbm
@@ -239,11 +241,18 @@ fate-seek-lavf-yuv4mpeg: SRC = lavf/lavf.y4m
 
 FATE_SEEK += $(FATE_SEEK_LAVF-yes:%=fate-seek-lavf-%)
 
-$(FATE_SEEK) $(FATE_SAMPLES_SEEK): libavformat/seek-test$(EXESUF)
+# extra files
+
+FATE_SEEK_EXTRA-$(CONFIG_MP3_DEMUXER)   += fate-seek-extra-mp3
+fate-seek-extra-mp3:  CMD = run libavformat/seek-test$(EXESUF) $(TARGET_SAMPLES)/gapless/gapless.mp3 -usetoc 0
+FATE_SEEK_EXTRA += $(FATE_SEEK_EXTRA-yes)
+
+
+$(FATE_SEEK) $(FATE_SAMPLES_SEEK) $(FATE_SEEK_EXTRA): libavformat/seek-test$(EXESUF)
 $(FATE_SEEK) $(FATE_SAMPLES_SEEK): CMD = run libavformat/seek-test$(EXESUF) $(TARGET_PATH)/tests/data/$(SRC)
 $(FATE_SEEK) $(FATE_SAMPLES_SEEK): fate-seek-%: fate-%
 fate-seek-%: REF = $(SRC_PATH)/tests/ref/seek/$(@:fate-seek-%=%)
 
 FATE_AVCONV += $(FATE_SEEK)
-FATE_SAMPLES_AVCONV += $(FATE_SAMPLES_SEEK)
-fate-seek:     $(FATE_SEEK) $(FATE_SAMPLES_SEEK)
+FATE_SAMPLES_AVCONV += $(FATE_SAMPLES_SEEK) $(FATE_SEEK_EXTRA)
+fate-seek:     $(FATE_SEEK) $(FATE_SAMPLES_SEEK) $(FATE_SEEK_EXTRA)

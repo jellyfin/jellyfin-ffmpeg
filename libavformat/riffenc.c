@@ -103,7 +103,7 @@ int ff_put_wav_header(AVIOContext *pb, AVCodecContext *enc, int flags)
     }
 
     if (enc->codec_id == AV_CODEC_ID_MP2) {
-        blkalign = frame_size;
+        blkalign = (144 * enc->bit_rate - 1)/enc->sample_rate + 1;
     } else if (enc->codec_id == AV_CODEC_ID_MP3) {
         blkalign = 576 * (enc->sample_rate <= (24000 + 32000)/2 ? 1 : 2);
     } else if (enc->codec_id == AV_CODEC_ID_AC3) {
@@ -269,8 +269,8 @@ void ff_parse_specific_params(AVStream *st, int *au_rate,
 
 void ff_riff_write_info_tag(AVIOContext *pb, const char *tag, const char *str)
 {
-    int len = strlen(str);
-    if (len > 0) {
+    size_t len = strlen(str);
+    if (len > 0 && len < UINT32_MAX) {
         len++;
         ffio_wfourcc(pb, tag);
         avio_wl32(pb, len);

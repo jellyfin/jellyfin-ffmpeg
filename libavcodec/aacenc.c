@@ -388,15 +388,26 @@ static void encode_band_info(AACEncContext *s, SingleChannelElement *sce)
 static void encode_scale_factors(AVCodecContext *avctx, AACEncContext *s,
                                  SingleChannelElement *sce)
 {
-    int off = sce->sf_idx[0], diff;
+    int diff, off_sf = sce->sf_idx[0], off_pns = sce->sf_idx[0] - NOISE_OFFSET;
+    int noise_flag = 1;
     int i, w;
 
     for (w = 0; w < sce->ics.num_windows; w += sce->ics.group_len[w]) {
         for (i = 0; i < sce->ics.max_sfb; i++) {
             if (!sce->zeroes[w*16 + i]) {
-                diff = sce->sf_idx[w*16 + i] - off + SCALE_DIFF_ZERO;
+                if (sce->band_type[w*16 + i] == NOISE_BT) {
+                    diff = sce->sf_idx[w*16 + i] - off_pns;
+                    off_pns = sce->sf_idx[w*16 + i];
+                    if (noise_flag-- > 0) {
+                        put_bits(&s->pb, NOISE_PRE_BITS, diff + NOISE_PRE);
+                        continue;
+                    }
+                } else {
+                    diff = sce->sf_idx[w*16 + i] - off_sf;
+                    off_sf = sce->sf_idx[w*16 + i];
+                }
+                diff += SCALE_DIFF_ZERO;
                 av_assert0(diff >= 0 && diff <= 120);
-                off = sce->sf_idx[w*16 + i];
                 put_bits(&s->pb, ff_aac_scalefactor_bits[diff], ff_aac_scalefactor_code[diff]);
             }
         }
@@ -722,9 +733,9 @@ static av_cold int dsp_init(AVCodecContext *avctx, AACEncContext *s)
     ff_init_ff_sine_windows(10);
     ff_init_ff_sine_windows(7);
 
-    if (ret = ff_mdct_init(&s->mdct1024, 11, 0, 32768.0))
+    if ((ret = ff_mdct_init(&s->mdct1024, 11, 0, 32768.0)) < 0)
         return ret;
-    if (ret = ff_mdct_init(&s->mdct128,   8, 0, 32768.0))
+    if ((ret = ff_mdct_init(&s->mdct128,   8, 0, 32768.0)) < 0)
         return ret;
 
     return 0;
@@ -831,6 +842,9 @@ static const AVOption aacenc_options[] = {
         {"anmr",     "ANMR method",               0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_ANMR},    INT_MIN, INT_MAX, AACENC_FLAGS, "aac_coder"},
         {"twoloop",  "Two loop searching method", 0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_TWOLOOP}, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_coder"},
         {"fast",     "Constant quantizer",        0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_FAST},    INT_MIN, INT_MAX, AACENC_FLAGS, "aac_coder"},
+    {"aac_pns", "Perceptual Noise Substitution", offsetof(AACEncContext, options.pns), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, AACENC_FLAGS, "aac_pns"},
+        {"disable",  "Disable PNS", 0, AV_OPT_TYPE_CONST, {.i64 =  0 }, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_pns"},
+        {"enable",   "Enable PNS (Proof of concept)",  0, AV_OPT_TYPE_CONST, {.i64 =  1 }, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_pns"},
     {NULL}
 };
 

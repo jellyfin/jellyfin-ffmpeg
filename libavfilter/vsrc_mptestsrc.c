@@ -55,7 +55,7 @@ typedef struct MPTestContext {
     AVRational frame_rate;
     int64_t pts, max_pts, duration;
     int hsub, vsub;
-    enum test_type test;
+    int test;           ///< test_type
 } MPTestContext;
 
 #define OFFSET(x) offsetof(MPTestContext, x)
@@ -291,8 +291,10 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE
     };
 
-    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-    return 0;
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    if (!fmts_list)
+        return AVERROR(ENOMEM);
+    return ff_set_common_formats(ctx, fmts_list);
 }
 
 static int request_frame(AVFilterLink *outlink)

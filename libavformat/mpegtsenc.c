@@ -1219,7 +1219,7 @@ int ff_check_h264_startcode(AVFormatContext *s, const AVStream *st, const AVPack
 
 static int check_hevc_startcode(AVFormatContext *s, const AVStream *st, const AVPacket *pkt)
 {
-    if (pkt->size < 5 || AV_RB32(pkt->data) != 0x0000001) {
+    if (pkt->size < 5 || AV_RB32(pkt->data) != 0x0000001 && AV_RB24(pkt->data) != 0x000001) {
         if (!st->nb_frames) {
             av_log(s, AV_LOG_ERROR, "HEVC bitstream malformed, no startcode found\n");
             return AVERROR_PATCHWELCOME;
@@ -1281,7 +1281,7 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
 
         do {
             p = avpriv_find_start_code(p, buf_end, &state);
-            av_dlog(s, "nal %d\n", state & 0x1f);
+            av_log(s, AV_LOG_TRACE, "nal %d\n", state & 0x1f);
             if ((state & 0x1f) == 7)
                 extradd = 0;
         } while (p < buf_end && (state & 0x1f) != 9 &&
@@ -1356,7 +1356,10 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
         }
     }
 
-    if (ts_st->payload_size && ts_st->payload_size + size > ts->pes_payload_size) {
+    if (ts_st->payload_size && (ts_st->payload_size + size > ts->pes_payload_size ||
+        (dts != AV_NOPTS_VALUE && ts_st->payload_dts != AV_NOPTS_VALUE &&
+         av_compare_ts(dts - ts_st->payload_dts, st->time_base,
+                       s->max_delay, AV_TIME_BASE_Q) >= 0))) {
         mpegts_write_pes(s, st, ts_st->payload, ts_st->payload_size,
                          ts_st->payload_pts, ts_st->payload_dts,
                          ts_st->payload_flags & AV_PKT_FLAG_KEY);

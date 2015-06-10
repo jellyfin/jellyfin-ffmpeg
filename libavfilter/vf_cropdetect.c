@@ -62,8 +62,10 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_NONE
     };
 
-    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-    return 0;
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    if (!fmts_list)
+        return AVERROR(ENOMEM);
+    return ff_set_common_formats(ctx, fmts_list);
 }
 
 static int checkline(void *ctx, const unsigned char *src, int stride, int len, int bpp)
@@ -90,12 +92,12 @@ static int checkline(void *ctx, const unsigned char *src, int stride, int len, i
         while (len >= 8) {
             total += src16[       0] + src16[  stride] + src16[2*stride] + src16[3*stride]
                   +  src16[4*stride] + src16[5*stride] + src16[6*stride] + src16[7*stride];
-            src += 8*stride;
+            src16 += 8*stride;
             len -= 8;
         }
         while (--len >= 0) {
             total += src16[0];
-            src += stride;
+            src16 += stride;
         }
         break;
     case 3:

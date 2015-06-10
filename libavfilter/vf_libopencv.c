@@ -63,9 +63,10 @@ static int query_formats(AVFilterContext *ctx)
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
     };
-
-    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-    return 0;
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    if (!fmts_list)
+        return AVERROR(ENOMEM);
+    return ff_set_common_formats(ctx, fmts_list);
 }
 
 typedef struct OCVContext {
@@ -321,7 +322,7 @@ typedef struct OCVFilterEntry {
     void (*end_frame_filter)(AVFilterContext *ctx, IplImage *inimg, IplImage *outimg);
 } OCVFilterEntry;
 
-static OCVFilterEntry ocv_filter_entries[] = {
+static const OCVFilterEntry ocv_filter_entries[] = {
     { "dilate", sizeof(DilateContext), dilate_init, dilate_uninit, dilate_end_frame_filter },
     { "erode",  sizeof(DilateContext), dilate_init, dilate_uninit, erode_end_frame_filter  },
     { "smooth", sizeof(SmoothContext), smooth_init, NULL, smooth_end_frame_filter },
@@ -337,7 +338,7 @@ static av_cold int init(AVFilterContext *ctx)
         return AVERROR(EINVAL);
     }
     for (i = 0; i < FF_ARRAY_ELEMS(ocv_filter_entries); i++) {
-        OCVFilterEntry *entry = &ocv_filter_entries[i];
+        const OCVFilterEntry *entry = &ocv_filter_entries[i];
         if (!strcmp(s->name, entry->name)) {
             s->init             = entry->init;
             s->uninit           = entry->uninit;

@@ -180,9 +180,9 @@ static int16_t *precalc_coefs(double dist25, int depth)
 
     gamma = log(0.25) / log(1.0 - FFMIN(dist25,252.0)/255.0 - 0.00001);
 
-    for (i = -255<<LUT_BITS; i <= 255<<LUT_BITS; i++) {
+    for (i = -256<<LUT_BITS; i < 256<<LUT_BITS; i++) {
         double f = ((i<<(9-LUT_BITS)) + (1<<(8-LUT_BITS)) - 1) / 512.0; // midpoint of the bin
-        simil = 1.0 - FFABS(f) / 255.0;
+        simil = FFMAX(0, 1.0 - FFABS(f) / 255.0);
         C = pow(simil, gamma) * 256.0 * f;
         ct[(256<<LUT_BITS)+i] = lrint(C);
     }
@@ -253,10 +253,10 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_YUV444P16,
         AV_PIX_FMT_NONE
     };
-
-    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-
-    return 0;
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    if (!fmts_list)
+        return AVERROR(ENOMEM);
+    return ff_set_common_formats(ctx, fmts_list);
 }
 
 static int config_input(AVFilterLink *inlink)

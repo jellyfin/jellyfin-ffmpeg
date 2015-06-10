@@ -32,6 +32,7 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/colorspace.h"
+#include "libavutil/eval.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/imgutils.h"
@@ -1531,7 +1532,7 @@ static void step_to_next_frame(VideoState *is)
 
 static double compute_target_delay(double delay, VideoState *is)
 {
-    double sync_threshold, diff;
+    double sync_threshold, diff = 0;
 
     /* update delay to follow master synchronisation source */
     if (get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER) {
@@ -1553,7 +1554,7 @@ static double compute_target_delay(double delay, VideoState *is)
         }
     }
 
-    av_dlog(NULL, "video: delay=%0.3f A-V=%f\n",
+    av_log(NULL, AV_LOG_TRACE, "video: delay=%0.3f A-V=%f\n",
             delay, -diff);
 
     return delay;
@@ -1995,20 +1996,20 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
 
 /* Note: this macro adds a filter before the lastly added filter, so the
  * processing order of the filters is in reverse */
-#define INSERT_FILT(name, arg) do {                                         \
-    AVFilterContext *filt_ctx;                                              \
-                                                                            \
-    ret = avfilter_graph_create_filter(&filt_ctx,                           \
-                                       avfilter_get_by_name(name),          \
-                                       "ffplay_" name, arg, NULL, graph);   \
-    if (ret < 0)                                                            \
-        goto fail;                                                          \
-                                                                            \
-    ret = avfilter_link(filt_ctx, 0, last_filter, 0);                       \
-    if (ret < 0)                                                            \
-        goto fail;                                                          \
-                                                                            \
-    last_filter = filt_ctx;                                                 \
+#define INSERT_FILT(name, arg) do {                                          \
+    AVFilterContext *filt_ctx;                                               \
+                                                                             \
+    ret = avfilter_graph_create_filter(&filt_ctx,                            \
+                                       avfilter_get_by_name(name),           \
+                                       "ffplay_" name, arg, NULL, graph);    \
+    if (ret < 0)                                                             \
+        goto fail;                                                           \
+                                                                             \
+    ret = avfilter_link(filt_ctx, 0, last_filter, 0);                        \
+    if (ret < 0)                                                             \
+        goto fail;                                                           \
+                                                                             \
+    last_filter = filt_ctx;                                                  \
 } while (0)
 
     /* SDL YUV code is not handling odd width/height for some driver
@@ -2016,20 +2017,19 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
     INSERT_FILT("crop", "floor(in_w/2)*2:floor(in_h/2)*2");
 
     if (autorotate) {
-        AVDictionaryEntry *rotate_tag = av_dict_get(is->video_st->metadata, "rotate", NULL, 0);
-        if (rotate_tag && *rotate_tag->value && strcmp(rotate_tag->value, "0")) {
-            if (!strcmp(rotate_tag->value, "90")) {
-                INSERT_FILT("transpose", "clock");
-            } else if (!strcmp(rotate_tag->value, "180")) {
-                INSERT_FILT("hflip", NULL);
-                INSERT_FILT("vflip", NULL);
-            } else if (!strcmp(rotate_tag->value, "270")) {
-                INSERT_FILT("transpose", "cclock");
-            } else {
-                char rotate_buf[64];
-                snprintf(rotate_buf, sizeof(rotate_buf), "%s*PI/180", rotate_tag->value);
-                INSERT_FILT("rotate", rotate_buf);
-            }
+        double theta  = get_rotation(is->video_st);
+
+        if (fabs(theta - 90) < 1.0) {
+            INSERT_FILT("transpose", "clock");
+        } else if (fabs(theta - 180) < 1.0) {
+            INSERT_FILT("hflip", NULL);
+            INSERT_FILT("vflip", NULL);
+        } else if (fabs(theta - 270) < 1.0) {
+            INSERT_FILT("transpose", "cclock");
+        } else if (fabs(theta) > 1.0) {
+            char rotate_buf[64];
+            snprintf(rotate_buf, sizeof(rotate_buf), "%f*PI/180", theta);
+            INSERT_FILT("rotate", rotate_buf);
         }
     }
 
@@ -2231,10 +2231,19 @@ static int video_thread(void *arg)
     enum AVPixelFormat last_format = -2;
     int last_serial = -1;
     int last_vfilter_idx = 0;
+    if (!graph) {
+        av_frame_free(&frame);
+        return AVERROR(ENOMEM);
+    }
+
 #endif
 
-    if (!frame)
+    if (!frame) {
+#if CONFIG_AVFILTER
+        avfilter_graph_free(&graph);
+#endif
         return AVERROR(ENOMEM);
+    }
 
     for (;;) {
         ret = get_video_frame(is, frame);
@@ -2403,9 +2412,9 @@ static int synchronize_audio(VideoState *is, int nb_samples)
                     wanted_nb_samples = nb_samples + (int)(diff * is->audio_src.freq);
                     min_nb_samples = ((nb_samples * (100 - SAMPLE_CORRECTION_PERCENT_MAX) / 100));
                     max_nb_samples = ((nb_samples * (100 + SAMPLE_CORRECTION_PERCENT_MAX) / 100));
-                    wanted_nb_samples = FFMIN(FFMAX(wanted_nb_samples, min_nb_samples), max_nb_samples);
+                    wanted_nb_samples = av_clip(wanted_nb_samples, min_nb_samples, max_nb_samples);
                 }
-                av_dlog(NULL, "diff=%f adiff=%f sample_diff=%d apts=%0.3f %f\n",
+                av_log(NULL, AV_LOG_TRACE, "diff=%f adiff=%f sample_diff=%d apts=%0.3f %f\n",
                         diff, avg_diff, wanted_nb_samples - nb_samples,
                         is->audio_clock, is->audio_diff_threshold);
             }
