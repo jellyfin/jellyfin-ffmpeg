@@ -13,6 +13,7 @@ ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
   * Disable loongson3 optimizations on mips, because they are not always
     available.
   * Update debian/copyright.
+  * Update debian/tests/encdec_list.txt.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Jun 2015 14:23:01 +0200
 
