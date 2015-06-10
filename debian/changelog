@@ -1,6 +1,8 @@
 ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
 
   * Import new major upstream release 2.7.
+     - Suggest new mpeg4_unpack_bframes bitstream filter instead of
+       VirtualDub/Avidemux. (Closes: #781510)
   * Add new symbols.
   * Change maintainer to the pkg-multimedia team and move myself to uploaders.
   * Let ffmpeg suggest ffmpeg-doc.
