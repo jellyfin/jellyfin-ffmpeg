@@ -10,6 +10,8 @@ ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
   * Restrict shlib-with-non-pic-code lintian override to i386.
     Thanks to Jakub Wilk for the hint.
   * Use '-strict -2' in the encdec autopkgtest also for probing/decoding.
+  * Disable loongson3 optimizations on mips, because they are not always
+    available.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 05 Jun 2015 14:23:01 +0200
 

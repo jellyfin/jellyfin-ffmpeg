@@ -32,6 +32,7 @@ LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFL
 # The following flags are not added, because the necessary libraries are not in Debian:
 #   --enable-decklink
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
+#   --enable-libdcadec
 #   --enable-libilbc                (see #675959 for the RFP bug)
 #   --enable-libmfx
 #   --enable-libnut
@@ -160,7 +161,8 @@ endif
 # Disable optimizations on mips(el) and some on mips64(el), because they are not always available on these architectures.
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel mips64 mips64el))
 	CONFIG += --disable-mipsdspr1 \
-	--disable-mipsdspr2
+	--disable-mipsdspr2 \
+	--disable-loongson3
 endif
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 	CONFIG += --disable-mipsfpu
