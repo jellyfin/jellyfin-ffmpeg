@@ -7,6 +7,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_aes_crypt@LIBAVUTIL_FFMPEG_54 7:2.4
  av_aes_init@LIBAVUTIL_FFMPEG_54 7:2.4
  av_aes_size@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_append_path_component@LIBAVUTIL_FFMPEG_54 7:2.7
  av_asprintf@LIBAVUTIL_FFMPEG_54 7:2.4
  av_audio_fifo_alloc@LIBAVUTIL_FFMPEG_54 7:2.4
  av_audio_fifo_drain@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -332,6 +333,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_pix_fmt_get_chroma_sub_sample@LIBAVUTIL_FFMPEG_54 7:2.4
  av_pix_fmt_swap_endianness@LIBAVUTIL_FFMPEG_54 7:2.4
  av_pixelutils_get_sad_fn@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_q2intfloat@LIBAVUTIL_FFMPEG_54 7:2.7
  av_rc4_crypt@LIBAVUTIL_FFMPEG_54 7:2.4
  av_rc4_init@LIBAVUTIL_FFMPEG_54 7:2.4
  av_read_image_line@LIBAVUTIL_FFMPEG_54 7:2.4

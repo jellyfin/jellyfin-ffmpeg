@@ -1,6 +1,7 @@
 ffmpeg (7:2.7-1) UNRELEASED; urgency=medium
 
   * Import new major upstream release 2.7.
+  * Add new symbols.
   * Change maintainer to the pkg-multimedia team and move myself to uploaders.
   * Let ffmpeg suggest ffmpeg-doc.
   * Fix encdec autopkgtest to not fail, when skipping tests.

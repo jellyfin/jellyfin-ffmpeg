@@ -11,6 +11,7 @@ libswresample-ffmpeg.so.1 libswresample-ffmpeg1 #MINVER#
  swr_free@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_get_class@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_get_delay@LIBSWRESAMPLE_FFMPEG_1 7:2.4
+ swr_get_out_samples@LIBSWRESAMPLE_FFMPEG_1 7:2.7
  swr_init@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_inject_silence@LIBSWRESAMPLE_FFMPEG_1 7:2.4
  swr_is_initialized@LIBSWRESAMPLE_FFMPEG_1 7:2.4

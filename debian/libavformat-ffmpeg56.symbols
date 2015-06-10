@@ -20,6 +20,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  av_format_get_data_codec@LIBAVFORMAT_FFMPEG_56 7:2.6
  av_format_get_metadata_header_padding@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_opaque@LIBAVFORMAT_FFMPEG_56 7:2.4
+ av_format_get_open_cb@LIBAVFORMAT_FFMPEG_56 7:2.7
  av_format_get_probe_score@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_subtitle_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_get_video_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
@@ -29,6 +30,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  av_format_set_data_codec@LIBAVFORMAT_FFMPEG_56 7:2.6
  av_format_set_metadata_header_padding@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_set_opaque@LIBAVFORMAT_FFMPEG_56 7:2.4
+ av_format_set_open_cb@LIBAVFORMAT_FFMPEG_56 7:2.7
  av_format_set_subtitle_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_format_set_video_codec@LIBAVFORMAT_FFMPEG_56 7:2.4
  av_get_frame_filename@LIBAVFORMAT_FFMPEG_56 7:2.4
@@ -99,17 +101,20 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  avio_alloc_context@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_check@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_close@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avio_close_dir@LIBAVFORMAT_FFMPEG_56 7:2.7
  avio_close_dyn_buf@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_closep@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_enum_protocols@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_feof@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_find_protocol_name@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_flush@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avio_free_directory_entry@LIBAVFORMAT_FFMPEG_56 7:2.7
  avio_get_str16be@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_get_str16le@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_get_str@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_open2@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_open@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avio_open_dir@LIBAVFORMAT_FFMPEG_56 7:2.7
  avio_open_dyn_buf@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_pause@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_printf@LIBAVFORMAT_FFMPEG_56 7:2.4
@@ -122,6 +127,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  avio_rb32@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_rb64@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_read@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avio_read_dir@LIBAVFORMAT_FFMPEG_56 7:2.7
  avio_read_to_bprint@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_rl16@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_rl24@LIBAVFORMAT_FFMPEG_56 7:2.4

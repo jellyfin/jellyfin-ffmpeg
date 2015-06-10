@@ -72,6 +72,7 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
  av_packet_ref@LIBAVCODEC_FFMPEG_56 7:2.4
  av_packet_rescale_ts@LIBAVCODEC_FFMPEG_56 7:2.4
  av_packet_shrink_side_data@LIBAVCODEC_FFMPEG_56 7:2.4
+ av_packet_side_data_name@LIBAVCODEC_FFMPEG_56 7:2.7
  av_packet_split_side_data@LIBAVCODEC_FFMPEG_56 7:2.4
  av_packet_unpack_dictionary@LIBAVCODEC_FFMPEG_56 7:2.4
  av_packet_unref@LIBAVCODEC_FFMPEG_56 7:2.4
@@ -187,6 +188,7 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
  avpriv_dca_sample_rates@LIBAVCODEC_FFMPEG_56 7:2.4
  avpriv_dirac_parse_sequence_header@LIBAVCODEC_FFMPEG_56 7:2.4
  avpriv_dnxhd_get_frame_size@LIBAVCODEC_FFMPEG_56 7:2.4
+ avpriv_dnxhd_get_interlaced@LIBAVCODEC_FFMPEG_56 7:2.7
  avpriv_do_elbg@LIBAVCODEC_FFMPEG_56 7:2.4
  avpriv_dv_frame_profile2@LIBAVCODEC_FFMPEG_56 7:2.4
  avpriv_exif_decode_ifd@LIBAVCODEC_FFMPEG_56 7:2.4
