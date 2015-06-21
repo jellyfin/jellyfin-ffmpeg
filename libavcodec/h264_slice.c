@@ -251,11 +251,11 @@ static int alloc_picture(H264Context *h, H264Picture *pic)
         av_pix_fmt_get_chroma_sub_sample(pic->f->format,
                                          &h_chroma_shift, &v_chroma_shift);
 
-        for(i=0; i<FF_CEIL_RSHIFT(h->avctx->height, v_chroma_shift); i++) {
+        for(i=0; i<FF_CEIL_RSHIFT(pic->f->height, v_chroma_shift); i++) {
             memset(pic->f->data[1] + pic->f->linesize[1]*i,
-                   0x80, FF_CEIL_RSHIFT(h->avctx->width, h_chroma_shift));
+                   0x80, FF_CEIL_RSHIFT(pic->f->width, h_chroma_shift));
             memset(pic->f->data[2] + pic->f->linesize[2]*i,
-                   0x80, FF_CEIL_RSHIFT(h->avctx->width, h_chroma_shift));
+                   0x80, FF_CEIL_RSHIFT(pic->f->width, h_chroma_shift));
         }
     }
 
@@ -1549,12 +1549,15 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
              * vectors.  Given we are concealing a lost frame, this probably
              * is not noticeable by comparison, but it should be fixed. */
             if (h->short_ref_count) {
-                if (prev) {
+                if (prev &&
+                    h->short_ref[0]->f->width == prev->f->width &&
+                    h->short_ref[0]->f->height == prev->f->height &&
+                    h->short_ref[0]->f->format == prev->f->format) {
                     av_image_copy(h->short_ref[0]->f->data,
                                   h->short_ref[0]->f->linesize,
                                   (const uint8_t **)prev->f->data,
                                   prev->f->linesize,
-                                  h->avctx->pix_fmt,
+                                  prev->f->format,
                                   h->mb_width  * 16,
                                   h->mb_height * 16);
                     h->short_ref[0]->poc = prev->poc + 2;
