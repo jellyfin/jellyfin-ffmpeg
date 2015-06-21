@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 # This enables verbose mode.
-export DH_VERBOSE=1
+#export DH_VERBOSE=1
 export V=1
 
 # Determine the debian directory, which is the directory of this makefile.
