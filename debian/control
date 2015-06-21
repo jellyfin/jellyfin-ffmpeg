@@ -199,8 +199,10 @@ Depends:
  libavformat-ffmpeg56 (= ${binary:Version}),
  libavutil-ffmpeg54 (= ${binary:Version}),
  libpostproc-ffmpeg53 (= ${binary:Version}),
+ libavresample-ffmpeg2 (= ${binary:Version}),
  libswresample-ffmpeg1 (= ${binary:Version}),
  libswscale-ffmpeg3 (= ${binary:Version}),
+ qt-faststart (= ${binary:Version}),
  ${misc:Depends}
 Description: Debug symbols for the FFmpeg multimedia framework
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
