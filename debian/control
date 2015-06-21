@@ -69,7 +69,7 @@ Build-Depends:
 # --enable-openal
  libopenal-dev [!sparc64],
 # --enable-libopencv
- libopencv-dev [!m68k !sh4 !sparc64 !x32],
+ libopencv-dev [!alpha !sh4 !sparc64 !x32],
 # --enable-libopenjpeg
  libopenjpeg-dev,
 # --enable-libopus
@@ -127,7 +127,7 @@ Build-Depends:
 # --enable-libzmq
  libzmq3-dev [!hurd-any],
 # --enable-libzvbi
- libzvbi-dev [!m68k],
+ libzvbi-dev,
 # The opencl API is considered experimental.
 # # --enable-opencl
 # ocl-icd-opencl-dev [!hurd-any] | opencl-dev [!hurd-any],

@@ -94,6 +94,7 @@ CONFIG := --prefix=/usr \
 	--enable-libwavpack \
 	--enable-libwebp \
 	--enable-libxvid \
+	--enable-libzvbi \
 	--enable-opengl \
 	--enable-x11grab
 
@@ -106,11 +107,6 @@ endif
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIG += --enable-libdc1394 \
 	--enable-libiec61883
-endif
-
-# libzvbi is not available on m68k
-ifneq ($(DEB_HOST_ARCH),m68k)
-	CONFIG += --enable-libzvbi
 endif
 
 # Some libraries are not build on hurd.
@@ -134,7 +130,7 @@ else
 endif
 
 # OpenCV is not available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),m68k sh4 sparc64 x32))
+ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64 x32))
 	CONFIG += --enable-libopencv
 endif
 
