@@ -3286,7 +3286,7 @@ static void decode_b(AVCodecContext *ctx, int row, int col,
     }
 
     // emulated overhangs if the stride of the target buffer can't hold. This
-    // allows to support emu-edge and so on even if we have large block
+    // makes it possible to support emu-edge and so on even if we have large block
     // overhangs
     emu[0] = (col + w4) * 8 > f->linesize[0] ||
              (row + h4) > s->rows;
@@ -3988,7 +3988,8 @@ static int vp9_decode_frame(AVCodecContext *ctx, void *frame,
     int size = pkt->size;
     VP9Context *s = ctx->priv_data;
     int res, tile_row, tile_col, i, ref, row, col;
-    int retain_segmap_ref = s->segmentation.enabled && !s->segmentation.update_map;
+    int retain_segmap_ref = s->segmentation.enabled && !s->segmentation.update_map
+                            && s->frames[REF_FRAME_SEGMAP].segmentation_map;
     ptrdiff_t yoff, uvoff, ls_y, ls_uv;
     AVFrame *f;
     int bytesperpixel;
