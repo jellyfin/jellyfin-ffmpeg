@@ -1,8 +1,14 @@
 ffmpeg (7:2.7.1-1) UNRELEASED; urgency=medium
 
   * Import new upstream bugfix release 2.7.1.
+  * Use DEB_LDFLAGS_MAINT_STRIP for removing the Bsymbolic-functions flag.
+  * Use lissh-gcrypt-dev to avoid linking against libssl.
+  * Disable DH_VERBOSE in debian/rules.
+  * Add libavresample-ffmpeg2 and qt-faststart dependencies to ffmpeg-dbg.
+  * Enable opencv and zvbi on m68k, disable opencv on alpha.
+  * Remove unused, optional and private avpriv_emms_yasm from symbols file.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 21 Jun 2015 21:40:09 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 21 Jun 2015 23:38:07 +0200
 
 ffmpeg (7:2.7-1) unstable; urgency=medium
 
