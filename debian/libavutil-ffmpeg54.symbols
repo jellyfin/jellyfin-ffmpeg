@@ -431,7 +431,6 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_xtea_init@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_alloc_fixed_dsp@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_cga_font@LIBAVUTIL_FFMPEG_54 7:2.4
- (optional)avpriv_emms_yasm@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_float_dsp_alloc@LIBAVUTIL_FFMPEG_54 7:2.5
  avpriv_float_dsp_init@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_frame_get_metadatap@LIBAVUTIL_FFMPEG_54 7:2.4
