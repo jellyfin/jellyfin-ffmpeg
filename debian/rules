@@ -20,7 +20,7 @@ DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
-LDFLAGS := $(filter-out %-Bsymbolic-functions,$(shell dpkg-buildflags --get LDFLAGS))
+export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
 
 # Enable as many features as possible, as long as the result is still GPLv2+ (and not only GPLv3+).
 # Therefore the following flags (and build-dependencies) are not added:
