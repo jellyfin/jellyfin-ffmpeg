@@ -1,0 +1,2 @@
+usr/lib/*/libswresample-ffmpeg.so.*
+usr/lib/*/*/libswresample-ffmpeg.so.*

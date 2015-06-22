@@ -1,0 +1,2 @@
+usr/lib/*/libavfilter-ffmpeg.so.*
+usr/lib/*/*/libavfilter-ffmpeg.so.*

@@ -147,6 +147,11 @@ endif
 # Disable altivec optimizations on powerpc, because they are not always available on this architecture.
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	CONFIG += --disable-altivec
+	# Build an altivec flavor of the libraries on powerpc.
+	# This works around the problem that runtime cpu detection on powerpc currently does not work,
+	# because, if altivec is enabled, all files are build with '-maltivec' so that the compiler inserts altivec instructions, wherever it likes.
+	CONFIG_altivec = --enable-altivec --disable-doc
+	FLAVORS += altivec
 endif
 
 # Disable assembly optimizations on x32, because they don't work (yet).
@@ -172,6 +177,11 @@ endif
 # Add configuration options:
 override_dh_auto_configure:
 	$(info DEB_BUILD_OPTIONS = $(DEB_BUILD_OPTIONS))
+	$(foreach flavor,$(FLAVORS),mkdir -p debian/$(flavor);)
+ifeq ($(wildcard config.h),)
+	$(foreach flavor,$(FLAVORS), echo " *** $(flavor) ***"; cd debian/$(flavor); ../../configure $(CONFIG) $(CONFIG_$(flavor)) || (cat config.log && exit 1); cd ../.. ;)
+endif
+	echo " *** standard ***"
 	./configure $(CONFIG) || (cat config.log && exit 1)
 
 # Building the source package fails without this override, because config.mak does not exist in the source.
@@ -180,6 +190,7 @@ override_dh_auto_configure:
 override_dh_auto_clean:
 	[ ! -f config.mak ] || make distclean
 	[ ! -d doc/examples/pc-uninstalled ] || rm -r doc/examples/pc-uninstalled
+	$(foreach flavor,$(FLAVORS),[ ! -d debian/$(flavor) ] || rm -r debian/$(flavor);)
 	# Restore backed up CSS files
 	[ ! -f debian/bootstrap.min.css.bak ] || mv debian/bootstrap.min.css.bak doc/bootstrap.min.css
 	[ ! -f debian/style.min.css.bak ] || mv debian/style.min.css.bak doc/style.min.css
@@ -196,8 +207,13 @@ override_dh_auto_build-indep:
 
 override_dh_auto_build-arch:
 	# Build qt-faststart here, to make it possible to build with 'nocheck'.
+	echo " *** standard ***"
 	make tools/qt-faststart
 	dh_auto_build -a || (cat config.log && exit 1)
+	for flavor in $(FLAVORS); do \
+		echo " *** $$flavor ***"; \
+		dh_auto_build -a --sourcedirectory=debian/"$$flavor" || (cat debian/"$$flavor"/config.log && exit 1); \
+	done
 
 # Set the library path for the dynamic linker, because the test otherwise don't find the libraries.
 override_dh_auto_test:
@@ -205,6 +221,10 @@ override_dh_auto_test:
 
 override_dh_auto_install:
 	dh_auto_install
+ifeq ($(DEB_HOST_ARCH),powerpc)
+	install -d debian/tmp/usr/lib/powerpc-linux-gnu/altivec
+	install -m 644 debian/altivec/*/*.so.* debian/tmp/usr/lib/powerpc-linux-gnu/altivec
+endif
 	# Create symbolic links from the standard library lib*.so symlinks, pkg-config files and static libraries to the suffixed ones.
 	for lib in `find debian/ -name lib*-ffmpeg.so; find debian/ -name lib*.pc; find debian/ -name lib*.a`; do \
 		dir=`dirname $$lib`; \

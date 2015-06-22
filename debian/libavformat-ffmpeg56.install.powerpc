@@ -1,0 +1,2 @@
+usr/lib/*/libavformat-ffmpeg.so.*
+usr/lib/*/*/libavformat-ffmpeg.so.*
