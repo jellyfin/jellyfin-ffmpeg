@@ -7,6 +7,7 @@ ffmpeg (7:2.7.1-1) UNRELEASED; urgency=medium
   * Add libavresample-ffmpeg2 and qt-faststart dependencies to ffmpeg-dbg.
   * Enable opencv and zvbi on m68k, disable opencv on alpha.
   * Remove unused, optional and private avpriv_emms_yasm from symbols file.
+  * Build an altivec flavor on powerpc.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 21 Jun 2015 23:38:07 +0200
 
