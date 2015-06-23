@@ -1,4 +1,4 @@
-ffmpeg (7:2.7.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.7.1-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.7.1.
   * Use DEB_LDFLAGS_MAINT_STRIP for removing the Bsymbolic-functions flag.
