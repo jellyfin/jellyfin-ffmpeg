@@ -317,16 +317,16 @@ Description: FFmpeg library with extra codecs (transitional package)
  This is a transitional package for libavcodec-ffmpeg-extra56, which now
  "Provides: libavcodec-extra". It can safely be removed.
 
-Package: libavcodec-ffmpeg-dev
+Package: libavcodec-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libavcodec-dev
+ libavcodec-libav-dev
 Depends:
  libavcodec-ffmpeg56 (= ${binary:Version}),
- libavutil-ffmpeg-dev (= ${binary:Version}),
- libswresample-ffmpeg-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
+ libswresample-dev (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library with de/encoders for audio/video codecs - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -365,22 +365,22 @@ Description: FFmpeg library for handling input and output devices - runtime file
  .
  This package contains the runtime files.
 
-Package: libavdevice-ffmpeg-dev
+Package: libavdevice-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libavdevice-dev
+ libavdevice-libav-dev
 Depends:
- libavcodec-ffmpeg-dev (= ${binary:Version}),
+ libavcodec-dev (= ${binary:Version}),
  libavdevice-ffmpeg56 (= ${binary:Version}),
- libavfilter-ffmpeg-dev (= ${binary:Version}),
- libavformat-ffmpeg-dev (= ${binary:Version}),
- libavresample-ffmpeg-dev (= ${binary:Version}),
- libavutil-ffmpeg-dev (= ${binary:Version}),
- libpostproc-ffmpeg-dev (= ${binary:Version}),
- libswscale-ffmpeg-dev (= ${binary:Version}),
- libswresample-ffmpeg-dev (= ${binary:Version}),
+ libavfilter-dev (= ${binary:Version}),
+ libavformat-dev (= ${binary:Version}),
+ libavresample-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
+ libpostproc-dev (= ${binary:Version}),
+ libswscale-dev (= ${binary:Version}),
+ libswresample-dev (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for handling input and output devices - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -414,21 +414,21 @@ Description: FFmpeg library containing media filters - runtime files
  .
  This package contains the runtime files.
 
-Package: libavfilter-ffmpeg-dev
+Package: libavfilter-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libavfilter-dev
+ libavfilter-libav-dev
 Depends:
- libavcodec-ffmpeg-dev (= ${binary:Version}),
+ libavcodec-dev (= ${binary:Version}),
  libavfilter-ffmpeg5 (= ${binary:Version}),
- libavformat-ffmpeg-dev (= ${binary:Version}),
- libavresample-ffmpeg-dev (= ${binary:Version}),
- libavutil-ffmpeg-dev (= ${binary:Version}),
- libpostproc-ffmpeg-dev (= ${binary:Version}),
- libswresample-ffmpeg-dev (= ${binary:Version}),
- libswscale-ffmpeg-dev (= ${binary:Version}),
+ libavformat-dev (= ${binary:Version}),
+ libavresample-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
+ libpostproc-dev (= ${binary:Version}),
+ libswresample-dev (= ${binary:Version}),
+ libswscale-dev (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library containing media filters - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -464,17 +464,17 @@ Description: FFmpeg library with (de)muxers for multimedia containers - runtime 
  .
  This package contains the runtime files.
 
-Package: libavformat-ffmpeg-dev
+Package: libavformat-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libavformat-dev
+ libavformat-libav-dev
 Depends:
- libavcodec-ffmpeg-dev (= ${binary:Version}),
+ libavcodec-dev (= ${binary:Version}),
  libavformat-ffmpeg56 (= ${binary:Version}),
- libavutil-ffmpeg-dev (= ${binary:Version}),
- libswresample-ffmpeg-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
+ libswresample-dev (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library with (de)muxers for multimedia containers - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -509,14 +509,14 @@ Description: FFmpeg compatibility library for resampling - runtime files
  .
  This package contains the runtime files.
 
-Package: libavresample-ffmpeg-dev
+Package: libavresample-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libavresample-dev
+ libavresample-libav-dev
 Depends:
- libavutil-ffmpeg-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
  libavresample-ffmpeg2 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg compatibility library for resampling - development files
@@ -554,12 +554,12 @@ Description: FFmpeg library with functions for simplifying programming - runtime
  .
  This package contains the runtime files.
 
-Package: libavutil-ffmpeg-dev
+Package: libavutil-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libavutil-dev
+ libavutil-libav-dev
 Depends:
  libavutil-ffmpeg54 (= ${binary:Version}),
  ${misc:Depends}
@@ -597,14 +597,14 @@ Description: FFmpeg library for post processing - runtime files
  .
  This package contains the runtime files.
 
-Package: libpostproc-ffmpeg-dev
+Package: libpostproc-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libpostproc-dev
+ libpostproc-libav-dev
 Depends:
- libavutil-ffmpeg-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
  libpostproc-ffmpeg53 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for post processing - development files
@@ -653,12 +653,12 @@ Description: FFmpeg library for audio resampling, rematrixing etc. - runtime fil
  .
  This package contains the runtime files.
 
-Package: libswresample-ffmpeg-dev
+Package: libswresample-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Depends:
- libavutil-ffmpeg-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
  libswresample-ffmpeg1 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for audio resampling, rematrixing etc. - development files
@@ -718,14 +718,14 @@ Description: FFmpeg library for image scaling and various conversions - runtime 
  .
  This package contains the runtime files.
 
-Package: libswscale-ffmpeg-dev
+Package: libswscale-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Conflicts:
- libswscale-dev
+ libswscale-libav-dev
 Depends:
- libavutil-ffmpeg-dev (= ${binary:Version}),
+ libavutil-dev (= ${binary:Version}),
  libswscale-ffmpeg3 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for image scaling and various conversions - development files
@@ -749,3 +749,169 @@ Description: FFmpeg library for image scaling and various conversions - developm
  .
  This package contains the development files.
 
+Package: libav-tools-links
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ ffmpeg,
+ qt-faststart,
+ ${misc:Depends}
+Provides: libav-tools
+Conflicts: libav-tools
+Description: Compatibility links for libav-tools (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package that provides the following links:
+  * avconv  -> ffmpeg
+  * avplay  -> ffplay
+  * avprobe -> ffprobe
+ This package can be removed, when nothing uses the av* program names anymore.
+
+Package: libavcodec-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavcodec-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library with de/encoders - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libavcodec-dev and can safely be removed.
+
+Package: libavdevice-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavdevice-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library for handling devices - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libavdevice-dev and can safely be removed.
+
+Package: libavfilter-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavfilter-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library containing filters - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libavfilter-dev and can safely be removed.
+
+Package: libavformat-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavformat-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library with (de)muxers - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libavformat-dev and can safely be removed.
+
+Package: libavresample-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavresample-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library for resampling - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libavresample-dev and can safely be removed.
+
+Package: libavutil-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavutil-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg utility library - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libavutil-dev and can safely be removed.
+
+Package: libpostproc-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libpostproc-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library for post processing - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libpostproc-dev and can safely be removed.
+
+Package: libswresample-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libswresample-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library for audio resampling - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libswresample-dev and can safely be removed.
+
+Package: libswscale-ffmpeg-dev
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libswscale-dev (>= ${binary:Version}),
+ ${misc:Depends}
+Description: FFmpeg library for image scaling - development files (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libswscale-dev and can safely be removed.
