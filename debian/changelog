@@ -1,3 +1,9 @@
+ffmpeg (7:2.7.1-2) UNRELEASED; urgency=medium
+
+  * Start new upload to experimental.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 24 Jun 2015 17:17:47 +0200
+
 ffmpeg (7:2.7.1-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.7.1.
