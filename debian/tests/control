@@ -3,3 +3,6 @@ Depends: build-essential, ffmpeg-doc, libavdevice-ffmpeg-dev, libavformat-ffmpeg
 
 Tests: encdec
 Depends: ffmpeg
+
+Tests: encdec-extra
+Depends: ffmpeg, libavcodec-extra

@@ -5,7 +5,9 @@ set -e
 # test encoders and decoders
 
 SCRIPT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
-ENCDECLIST="$SCRIPT_DIR/encdec_list.txt"
+TEST_NAME="$1"
+[ ! -z $TEST_NAME ] || TEST_NAME=${BASH_SOURCE[0]##*/}
+ENCDECLIST="$SCRIPT_DIR/${TEST_NAME}"_list.txt
 TEST_DIR="$ADTTMP/test"
 
 encode_file() {
@@ -217,6 +219,7 @@ read_tests() {
     IFS=$old_IFS
 }
 
+echo "TEST: $TEST_NAME"
 echo -e "ADTTMP directory: $ADTTMP\n\n"
 
 mkdir -p "$TEST_DIR"
@@ -374,6 +377,9 @@ fi
 
 if [ "$num_success" != "0" ]; then
     echo -e "\n\nsuccess: $num_success\n"
+else
+    ret=1
+    echo -e "\n\nno single success: something is definitely wrong\n"
 fi
 
 exit $ret
