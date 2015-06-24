@@ -22,13 +22,13 @@ DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
 export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
 
-# Enable as many features as possible, as long as the result is still GPLv2+ (and not only GPLv3+).
-# Therefore the following flags (and build-dependencies) are not added:
-#   --enable-libopencore_amrnb      (libopencore-amrnb-dev)
-#   --enable-libopencore_amrwb      (libopencore-amrwb-dev)
-#   --enable-libvo_aacenc           (libvo-aacenc-dev)
-#   --enable-libvo_amrwbenc         (libvo-amrwbenc-dev)
-#   --enable-libsmbclient           (libsmbclient-dev)
+# Package name for the extra flavor.
+EXTRA_PKG := $(shell sed -nr 's/^Package:[[:space:]]*(.*extra[0-9]+)[[:space:]]*$$/\1/p' debian/control)
+FLAVORS = extra
+
+# Enable as many features as possible, as long as the result is still GPLv2+ (a GPLv3+ variant is built as libavcodec-extra flavor).
+# The following flags (and build-dependencies) are not added, because they would require a libavformat-extra flavor:
+#   --enable-libsmbclient           (libsmbclient-dev [!hurd-i386 !m68k !sparc64])
 # The following flags are not added, because the necessary libraries are not in Debian:
 #   --enable-decklink
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
@@ -98,6 +98,21 @@ CONFIG := --prefix=/usr \
 	--enable-opengl \
 	--enable-x11grab
 
+# With these enabled, resulting binaries are effectively licensed as GPLv3+.
+CONFIG_extra = --enable-version3 \
+	--disable-doc \
+	--disable-programs \
+	--disable-avdevice \
+	--disable-avfilter \
+	--disable-avformat \
+	--disable-avresample \
+	--disable-postproc \
+	--disable-swscale \
+	--enable-libopencore_amrnb \
+	--enable-libopencore_amrwb \
+	--enable-libvo_aacenc \
+	--enable-libvo_amrwbenc
+
 # Disable optimizations if requested.
 ifneq (,$(filter $(DEB_BUILD_OPTIONS),noopt))
 	CONFIG += --disable-optimizations
@@ -150,8 +165,11 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 	# Build an altivec flavor of the libraries on powerpc.
 	# This works around the problem that runtime cpu detection on powerpc currently does not work,
 	# because, if altivec is enabled, all files are build with '-maltivec' so that the compiler inserts altivec instructions, wherever it likes.
-	CONFIG_altivec = --enable-altivec --disable-doc
-	FLAVORS += altivec
+	CONFIG_altivec = --enable-altivec \
+		--disable-doc \
+		--disable-programs
+	CONFIG_altivec-extra = $(CONFIG_altivec) $(CONFIG_extra)
+	FLAVORS += altivec altivec-extra
 endif
 
 # Disable assembly optimizations on x32, because they don't work (yet).
@@ -210,20 +228,34 @@ override_dh_auto_build-arch:
 	echo " *** standard ***"
 	make tools/qt-faststart
 	dh_auto_build -a || (cat config.log && exit 1)
+	# Copy built object files to avoid building them again for the extra flavor.
 	for flavor in $(FLAVORS); do \
 		echo " *** $$flavor ***"; \
+		if echo "$$flavor" | grep -q "extra"; then \
+			subdir=`echo "$$flavor" | grep "-" | sed 's_\(.*\)-.*_debian/\1/_'`; \
+			for dir in `cd ./$$subdir; find libavcodec libavutil libswresample -type d`; do \
+				mkdir -p debian/"$$flavor"/"$$dir"; \
+				echo "$$subdir$$dir"/*.o | grep -q '*' || cp "$$subdir$$dir"/*.o debian/"$$flavor"/"$$dir"; \
+			done; \
+			rm debian/"$$flavor"/libavcodec/allcodecs.o; \
+		fi; \
 		dh_auto_build -a --sourcedirectory=debian/"$$flavor" || (cat debian/"$$flavor"/config.log && exit 1); \
 	done
 
-# Set the library path for the dynamic linker, because the test otherwise don't find the libraries.
+# Set the library path for the dynamic linker, because the tests otherwise don't find the libraries.
 override_dh_auto_test:
 	export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; dh_auto_test -- -k
 
 override_dh_auto_install:
 	dh_auto_install
 ifeq ($(DEB_HOST_ARCH),powerpc)
-	install -d debian/tmp/usr/lib/powerpc-linux-gnu/altivec
-	install -m 644 debian/altivec/*/*.so.* debian/tmp/usr/lib/powerpc-linux-gnu/altivec
+	install -d debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
+	install -m 644 debian/altivec/*/*.so.* debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
+endif
+	dh_auto_install --sourcedirectory=debian/extra --destdir=debian/tmp/extra
+ifeq ($(DEB_HOST_ARCH),powerpc)
+	install -d debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
+	install -m 644 debian/altivec/*/*.so.* debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 endif
 	# Create symbolic links from the standard library lib*.so symlinks, pkg-config files and static libraries to the suffixed ones.
 	for lib in `find debian/ -name lib*-ffmpeg.so; find debian/ -name lib*.pc; find debian/ -name lib*.a`; do \
@@ -233,6 +265,10 @@ endif
 		ln -sf $$base $$link; \
 		mv $$link $$dir; \
 	done
+
+override_dh_install:
+	dh_install -N $(EXTRA_PKG)
+	dh_install -p $(EXTRA_PKG) --sourcedir=debian/tmp/extra
 
 # Don't compress the example source code files.
 override_dh_compress:

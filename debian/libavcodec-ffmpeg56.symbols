@@ -1,4 +1,4 @@
-libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER#
+libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER# | libavcodec-ffmpeg-extra56 #MINVER#
  LIBAVCODEC_FFMPEG_56@LIBAVCODEC_FFMPEG_56 7:2.4
  audio_resample@LIBAVCODEC_FFMPEG_56 7:2.4
  audio_resample_close@LIBAVCODEC_FFMPEG_56 7:2.4

@@ -8,16 +8,17 @@ Comment:
  licensed under the GNU General Public License version 2 or later (GPL v2+)
  and a few have different, but compatible licenses.
  .
- For building the Debian packages some of the GPL licensed files are used,
+ For building the default Debian packages some of the GPL licensed files are used,
  so the resulting binaries are licensed under GPL v2+.
+ For libavcodec an extra flavor is built, which links against external libraries
+ licensed under the Apache License 2.0, which makes it effectively licensed
+ under the GPL v3+
  The HTML documention /usr/share/doc/ffmpeg-doc/manual/*.html in the ffmpeg-doc
  package is effectively licensed under GPL-3+, because during its creation
  the GPL-3+ licensed file doc/t2h.pm is used.
  .
- FFmpeg can also be combined with external libraries licensed under the
- Apache License 2.0, which would make the resulting binaries effectively
- licensed under the GPL v3+, or even with non-free libraries, which would
- make the resulting binaries unredistributable.
+ FFmpeg can also be combined with with non-free libraries, which would make the
+ resulting binaries unredistributable.
  But this is not done for the Debian packages.
 
 Files: *

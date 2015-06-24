@@ -68,6 +68,10 @@ Build-Depends:
  libmp3lame-dev,
 # --enable-openal
  libopenal-dev [!sparc64],
+# --enable-libopencore_amrnb
+ libopencore-amrnb-dev,
+# --enable-libopencore_amrwb
+ libopencore-amrwb-dev,
 # --enable-libopencv
  libopencv-dev [!alpha !sh4 !sparc64 !x32],
 # --enable-libopenjpeg
@@ -106,6 +110,10 @@ Build-Depends:
  libva-dev [!hurd-any],
 # autodetected: hwaccels 'h263_vdpau, mpeg2_vdpau, vc1_vdpau, h264_vdpau, mpeg4_vdpau, wmv3_vdpau, mpeg1_vdpau', decoders 'h264_vdpau, mpeg1_vdpau, mpeg4_vdpau, mpeg_vdpau, vc1_vdpau, wmv3_vdpau'
  libvdpau-dev,
+# --enable-libvo_aacenc
+ libvo-aacenc-dev,
+# --enable-libvo_amrwbenc
+ libvo-amrwbenc-dev,
 # --enable-libvorbis
  libvorbis-dev,
 # --enable-libvpx
@@ -254,6 +262,60 @@ Description: FFmpeg library with de/encoders for audio/video codecs - runtime fi
  codecs as well as for experimentation.
  .
  This package contains the runtime files.
+
+Package: libavcodec-ffmpeg-extra56
+Architecture: any
+Section: libs
+Multi-Arch: same
+Conflicts: libavcodec-ffmpeg56
+Provides: libavcodec-extra
+Pre-Depends:
+ ${misc:Pre-Depends}
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends}
+Description: FFmpeg library with additional de/encoders for audio/video codecs
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This library provides a generic encoding/decoding framework and
+ contains multiple decoders and encoders for audio, video and subtitle streams,
+ and several bitstream filters.
+ .
+ The shared architecture provides various services ranging from bit stream I/O
+ to DSP optimizations, and makes it suitable for implementing robust and fast
+ codecs as well as for experimentation.
+ .
+ This package replaces the libavcodec-ffmpeg56 package and contains the
+ following additional codecs:
+ .
+  * OpenCORE Adaptive Multi-Rate (AMR) Narrow-Band (Encoder/Decoder)
+  * OpenCORE Adaptive Multi-Rate (AMR) Wide-Band (Decoder)
+  * Android VisualOn AAC (Encoder)
+  * Android VisualOn Adaptive Multi-Rate (AMR) Wide-Band (Encoder)
+ .
+ Because this package links against libraries that are licensed under
+ Apache License 2.0, the resulting binaries are distributed under the
+ GPL version 3 or later.
+
+Package: libavcodec-extra
+Architecture: all
+Section: oldlibs
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavcodec-ffmpeg-extra56,
+ ${misc:Depends}
+Description: FFmpeg library with extra codecs (transitional package)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This is a transitional package for libavcodec-ffmpeg-extra56, which now
+ "Provides: libavcodec-extra". It can safely be removed.
 
 Package: libavcodec-ffmpeg-dev
 Architecture: any
