@@ -302,20 +302,21 @@ Description: FFmpeg library with additional de/encoders for audio/video codecs
 
 Package: libavcodec-extra
 Architecture: all
-Section: oldlibs
-Priority: extra
+Section: libs
 Multi-Arch: foreign
 Depends:
  libavcodec-ffmpeg-extra56,
  ${misc:Depends}
-Description: FFmpeg library with extra codecs (transitional package)
+Description: FFmpeg library with extra codecs (metapackage)
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
  machines have created. It supports the most obscure ancient formats up to the
  cutting edge.
  .
- This is a transitional package for libavcodec-ffmpeg-extra56, which now
- "Provides: libavcodec-extra". It can safely be removed.
+ This metapackage depends on the latest version of the libavcodec variant
+ that offers additional codec support. Application packages can depend
+ on it if they require or suggest this variant in a robust manner.
+
 
 Package: libavcodec-dev
 Architecture: any
