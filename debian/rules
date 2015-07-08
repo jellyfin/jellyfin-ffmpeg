@@ -143,9 +143,6 @@ endif
 ifneq ($(DEB_HOST_ARCH),sparc64)
 	CONFIG += --enable-libsoxr \
 	--enable-openal
-else
-	# added temporarily to debug SIGBUS errors in the fate tests on sparc64
-	CONFIG += --target-exec="gdb --batch -ex r -ex 'bt full' -ex q --args"
 endif
 
 # OpenCV is not available on some architectures.

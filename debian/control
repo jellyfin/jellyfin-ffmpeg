@@ -22,8 +22,6 @@ Build-Depends:
  flite1-dev,
 # --enable-frei0r
  frei0r-plugins-dev [!x32],
-# temporarily added for debugging
- gdb [sparc64],
 # --enable-ladspa
  ladspa-sdk,
 # --enable-libass
