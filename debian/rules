@@ -150,7 +150,7 @@ ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64 x32))
 endif
 
 # X265 is not (yet) available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),sparc64 x32))
+ifeq (,$(filter $(DEB_HOST_ARCH),sparc64 x32 alpha))
 	CONFIG += --enable-libx265
 endif
 

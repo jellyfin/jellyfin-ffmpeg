@@ -127,7 +127,7 @@ Build-Depends:
 # --enable-libx264
  libx264-dev [!x32],
 # --enable-libx265
- libx265-dev [!sparc64 !x32],
+ libx265-dev [!sparc64 !x32 !alpha],
 # --enable-x11grab
  libxext-dev,
 # --enable-libxvid
