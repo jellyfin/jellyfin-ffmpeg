@@ -62,6 +62,8 @@ Build-Depends:
  libavc1394-dev [linux-any],
 # autodetected: indev 'jack'
  libjack-jackd2-dev,
+# autodetected for the tiff decoder
+ liblzma-dev,
 # --enable-libmodplug
  libmodplug-dev,
 # --enable-libmp3lame
