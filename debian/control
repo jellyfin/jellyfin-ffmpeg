@@ -67,7 +67,7 @@ Build-Depends:
 # --enable-libmp3lame
  libmp3lame-dev,
 # --enable-openal
- libopenal-dev [!sparc64],
+ libopenal-dev,
 # --enable-libopencore_amrnb
  libopencore-amrnb-dev,
 # --enable-libopencore_amrwb
