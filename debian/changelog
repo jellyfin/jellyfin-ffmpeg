@@ -1,11 +1,22 @@
 ffmpeg (7:2.7.1-2) UNRELEASED; urgency=medium
 
+  [ Andreas Cadhalpun ]
   * Build libavcodec-extra flavor.
   * Add encdec-extra autopkgtest for the libavcodec-extra flavor.
   * Add lib*-dev and libav-tools-links packages.
   * Drop README.Debian.
+  * Remove bogus apng-ffm autopkg test.
+  * Explicitly build-depend on liblzma-dev used by the tiff decoder.
+  * Use the pkg-multimedia repository for the Vcs links.
+  * Use the plain lib*-dev packages for the test dependencies.
+  * Disable libssh on sparc due to #790067.
+  * Remove temporary gdb dependency on sparc64.
+  * Enable openal on sparc64.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 24 Jun 2015 17:51:45 +0200
+  [ Carl Eugen Hoyos ]
+  * Disable x265 on alpha due to #789807.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 09 Jul 2015 23:42:42 +0200
 
 ffmpeg (7:2.7.1-1) unstable; urgency=medium
 
