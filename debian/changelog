@@ -1,4 +1,4 @@
-ffmpeg (7:2.7.1-2) UNRELEASED; urgency=medium
+ffmpeg (7:2.7.1-2) experimental; urgency=medium
 
   [ Andreas Cadhalpun ]
   * Build libavcodec-extra flavor.
