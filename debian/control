@@ -153,12 +153,12 @@ Multi-Arch: foreign
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
-Recommends:
- qt-faststart
 Suggests:
  ffmpeg-doc
-Breaks: libav-tools (<< 6:9~)
-Replaces: libav-tools (<< 6:12~)
+Breaks: libav-tools (<< 6:9~),
+ qt-faststart (<< 7:2.7.1-3~)
+Replaces: libav-tools (<< 6:12~),
+ qt-faststart (<< 7:2.7.1-3~)
 Description: Tools for transcoding, streaming and playing of multimedia files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -170,30 +170,7 @@ Description: Tools for transcoding, streaming and playing of multimedia files
   * ffserver: a multimedia streaming server for live broadcasts
   * ffplay: a simple media player based on SDL and the FFmpeg libraries
   * ffprobe: a simple multimedia stream analyzer
- .
- NOTE: It does not contain qt-faststart to avoid a conflict with libav-tools.
-       If you need qt-faststart from FFmpeg, install the package qt-faststart,
-       which is recommended by this package.
-
-Package: qt-faststart
-Architecture: any
-Multi-Arch: foreign
-Depends:
- ${shlibs:Depends},
- ${misc:Depends}
-Breaks: ffmpeg (<< 7:2)
-Replaces: ffmpeg (<< 7:2)
-Description: Utility to rearrange a Quicktime file
- FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
- mux, demux, stream, filter and play pretty much anything that humans and
- machines have created. It supports the most obscure ancient formats up to the
- cutting edge.
- .
- This package contains qt-faststart, a utility that rearranges a Quicktime
- file such that the moov atom is in front of the data, thus facilitating
- network streaming.
- .
- NOTE: It diverts the qt-faststart from libav-tools to qt-faststart.libav.
+  * qt-faststart: a utility to rearrange Quicktime files
 
 Package: ffmpeg-dbg
 Section: debug
@@ -211,7 +188,6 @@ Depends:
  libavresample-ffmpeg2 (= ${binary:Version}),
  libswresample-ffmpeg1 (= ${binary:Version}),
  libswscale-ffmpeg3 (= ${binary:Version}),
- qt-faststart (= ${binary:Version}),
  ${misc:Depends}
 Description: Debug symbols for the FFmpeg multimedia framework
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -758,7 +734,6 @@ Priority: extra
 Multi-Arch: foreign
 Depends:
  ffmpeg,
- qt-faststart,
  ${misc:Depends}
 Provides: libav-tools
 Conflicts: libav-tools
