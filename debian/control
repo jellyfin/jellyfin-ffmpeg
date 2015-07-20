@@ -22,7 +22,7 @@ Build-Depends:
 # --enable-libflite
  flite1-dev,
 # --enable-frei0r
- frei0r-plugins-dev [!x32],
+ frei0r-plugins-dev,
 # --enable-ladspa
  ladspa-sdk,
 # --enable-libass
@@ -74,7 +74,7 @@ Build-Depends:
 # --enable-libopencore_amrwb
  libopencore-amrwb-dev,
 # --enable-libopencv
- libopencv-dev [!alpha !sh4 !sparc64 !x32],
+ libopencv-dev [!alpha !sh4 !sparc64],
 # --enable-libopenjpeg
  libopenjpeg-dev,
 # --enable-libopus
@@ -124,9 +124,9 @@ Build-Depends:
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
- libx264-dev [!x32],
+ libx264-dev [!sparc64],
 # --enable-libx265
- libx265-dev [!sparc64 !x32 !alpha],
+ libx265-dev [!alpha],
 # --enable-x11grab
  libxext-dev,
 # --enable-libxvid

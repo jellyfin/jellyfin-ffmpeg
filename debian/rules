@@ -64,6 +64,7 @@ CONFIG := --prefix=/usr \
 	--disable-stripping \
 	--enable-avresample \
 	--enable-avisynth \
+	--enable-frei0r \
 	--enable-gnutls \
 	--enable-ladspa \
 	--enable-libass \
@@ -134,24 +135,19 @@ ifneq ($(DEB_HOST_ARCH),sparc)
 	CONFIG += --enable-libssh
 endif
 
-# Some libraries are not available on x32.
-ifneq ($(DEB_HOST_ARCH),x32)
-	CONFIG += --enable-frei0r \
+# Some libraries are not available/unusable (#792921) on sparc64.
+ifneq ($(DEB_HOST_ARCH),sparc64)
+	CONFIG += --enable-libsoxr \
 	--enable-libx264
 endif
 
-# Some libraries are not available on sparc64.
-ifneq ($(DEB_HOST_ARCH),sparc64)
-	CONFIG += --enable-libsoxr
-endif
-
 # OpenCV is not available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64 x32))
+ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64))
 	CONFIG += --enable-libopencv
 endif
 
-# X265 is not (yet) available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),sparc64 x32 alpha))
+# Recent x265 is not available on alpha due to #789807.
+ifeq (,$(filter $(DEB_HOST_ARCH),alpha))
 	CONFIG += --enable-libx265
 endif
 
