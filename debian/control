@@ -155,9 +155,9 @@ Depends:
  ${misc:Depends}
 Suggests:
  ffmpeg-doc
-Breaks: libav-tools (<< 6:9~),
+Breaks: libav-tools (<< 6:12~~),
  qt-faststart (<< 7:2.7.1-3~)
-Replaces: libav-tools (<< 6:12~),
+Replaces: libav-tools (<< 6:12~~),
  qt-faststart (<< 7:2.7.1-3~)
 Description: Tools for transcoding, streaming and playing of multimedia files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
