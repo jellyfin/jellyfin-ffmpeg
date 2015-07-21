@@ -732,6 +732,8 @@ Architecture: all
 Section: oldlibs
 Priority: extra
 Multi-Arch: foreign
+Breaks: libav-tools-links (<< 7:2.7.2-2~)
+Replaces: libav-tools-links (<< 7:2.7.2-2~)
 Depends:
  ffmpeg,
  ${misc:Depends}
