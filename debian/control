@@ -727,7 +727,7 @@ Description: FFmpeg library for image scaling and various conversions - developm
  .
  This package contains the development files.
 
-Package: libav-tools-links
+Package: libav-tools
 Architecture: all
 Section: oldlibs
 Priority: extra
@@ -735,8 +735,6 @@ Multi-Arch: foreign
 Depends:
  ffmpeg,
  ${misc:Depends}
-Provides: libav-tools
-Conflicts: libav-tools
 Description: Compatibility links for libav-tools (transitional package)
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
