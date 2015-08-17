@@ -1,3 +1,15 @@
+ffmpeg (7:2.7.2-2) unstable; urgency=medium
+
+  [ Reinhard Tartler ]
+  * Tighten breaks/replaces on libav-tools. (Closes: #793085)
+  * Take over the libav-tools package.
+
+  [ Andreas Cadhalpun ]
+  * Rename d/libav-tools-links.links to d/libav-tools.links.
+  * Disable libsoxr support to workaround glibc bug #793641.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Mon, 17 Aug 2015 22:45:02 +0200
+
 ffmpeg (7:2.7.2-1) unstable; urgency=medium
 
   [ Reinhard Tartler ]
