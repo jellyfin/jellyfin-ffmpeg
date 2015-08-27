@@ -185,9 +185,9 @@ ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 endif
 
 # Use the default debhelper scripts, where possible.
-# Enable parallel building and move the debug symbols to the debug package.
+# Enable parallel building.
 %:
-	dh $@ --parallel --dbg-package=ffmpeg-dbg
+	dh $@ --parallel
 
 # Add configuration options:
 override_dh_auto_configure:
@@ -270,6 +270,10 @@ override_dh_install:
 # Don't compress the example source code files.
 override_dh_compress:
 	dh_compress -Xexamples
+
+# Move the debug symbols to the debug package.
+override_dh_strip:
+	dh_strip --dbg-package=ffmpeg-dbg
 
 # Download the latest upstream tarball.
 get-orig-source:
