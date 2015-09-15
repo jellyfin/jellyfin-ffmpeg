@@ -428,7 +428,6 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
-Breaks: kodi-bin (<= 14.0+dfsg1-1)
 Description: FFmpeg library with (de)muxers for multimedia containers - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
