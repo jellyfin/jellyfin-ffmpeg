@@ -34,6 +34,7 @@ FLAVORS = extra
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
 #   --enable-libdcadec
 #   --enable-libilbc                (see #675959 for the RFP bug)
+#   --enable-libkvazaar
 #   --enable-libmfx
 #   --enable-libnut
 #   --enable-libopenh264
@@ -89,6 +90,7 @@ CONFIG := --prefix=/usr \
 	--enable-librtmp \
 	--enable-libschroedinger \
 	--enable-libshine \
+	--enable-libsnappy \
 	--enable-libspeex \
 	--enable-libssh \
 	--enable-libtheora \

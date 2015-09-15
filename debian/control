@@ -94,6 +94,8 @@ Build-Depends:
  libsdl-dev,
 # --enable-libshine
  libshine-dev (>= 3.0.0),
+# --enable-libsnappy
+ libsnappy-dev,
 # --enable-libsoxr
 # libsoxr-dev [!sparc64],
 # --enable-libspeex
