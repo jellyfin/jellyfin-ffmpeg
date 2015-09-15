@@ -211,6 +211,26 @@ int ffurl_connect(URLContext *uc, AVDictionary **options)
     return 0;
 }
 
+int ffurl_accept(URLContext *s, URLContext **c)
+{
+    av_assert0(!*c);
+    if (s->prot->url_accept)
+        return s->prot->url_accept(s, c);
+    return AVERROR(EBADF);
+}
+
+int ffurl_handshake(URLContext *c)
+{
+    int ret;
+    if (c->prot->url_handshake) {
+        ret = c->prot->url_handshake(c);
+        if (ret)
+            return ret;
+    }
+    c->is_connected = 1;
+    return 0;
+}
+
 #define URL_SCHEME_CHARS                        \
     "abcdefghijklmnopqrstuvwxyz"                \
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"                \
@@ -421,6 +441,44 @@ int avio_check(const char *url, int flags)
     return ret;
 }
 
+int avpriv_io_move(const char *url_src, const char *url_dst)
+{
+    URLContext *h_src, *h_dst;
+    int ret = ffurl_alloc(&h_src, url_src, AVIO_FLAG_READ_WRITE, NULL);
+    if (ret < 0)
+        return ret;
+    ret = ffurl_alloc(&h_dst, url_dst, AVIO_FLAG_WRITE, NULL);
+    if (ret < 0) {
+        ffurl_close(h_src);
+        return ret;
+    }
+
+    if (h_src->prot == h_dst->prot && h_src->prot->url_move)
+        ret = h_src->prot->url_move(h_src, h_dst);
+    else
+        ret = AVERROR(ENOSYS);
+
+    ffurl_close(h_src);
+    ffurl_close(h_dst);
+    return ret;
+}
+
+int avpriv_io_delete(const char *url)
+{
+    URLContext *h;
+    int ret = ffurl_alloc(&h, url, AVIO_FLAG_WRITE, NULL);
+    if (ret < 0)
+        return ret;
+
+    if (h->prot->url_delete)
+        ret = h->prot->url_delete(h);
+    else
+        ret = AVERROR(ENOSYS);
+
+    ffurl_close(h);
+    return ret;
+}
+
 int avio_open_dir(AVIODirContext **s, const char *url, AVDictionary **options)
 {
     URLContext *h = NULL;
@@ -447,6 +505,7 @@ int avio_open_dir(AVIODirContext **s, const char *url, AVDictionary **options)
     if (ret < 0)
         goto fail;
 
+    h->is_connected = 1;
     ctx->url_context = h;
     *s = ctx;
     return 0;

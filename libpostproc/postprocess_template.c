@@ -1317,7 +1317,7 @@ DERING_CORE((%0, %1, 8)    ,(%%REGd, %1, 4),%%mm2,%%mm4,%%mm0,%%mm3,%%mm5,%%mm1,
         "1:                        \n\t"
         : : "r" (src), "r" ((x86_reg)stride), "m" (c->pQPb), "m"(c->pQPb2), "q"(tmp)
           NAMED_CONSTRAINTS_ADD(deringThreshold,b00,b02,b08)
-        : "%"REG_a, "%"REG_d, "%"REG_SP
+        : "%"REG_a, "%"REG_d, "%"REG_sp
     );
 #else // HAVE_7REGS && (TEMPLATE_PP_MMXEXT || TEMPLATE_PP_3DNOW)
     int y;
@@ -1383,7 +1383,7 @@ DERING_CORE((%0, %1, 8)    ,(%%REGd, %1, 4),%%mm2,%%mm4,%%mm0,%%mm3,%%mm5,%%mm1,
 #ifdef DEBUG_DERING_THRESHOLD
                     __asm__ volatile("emms\n\t":);
                     {
-                    static long long numPixels=0;
+                    static uint64_t numPixels=0;
                     if(x!=1 && x!=8 && y!=1 && y!=8) numPixels++;
 //                    if((max-min)<20 || (max-min)*QP<200)
 //                    if((max-min)*QP < 500)

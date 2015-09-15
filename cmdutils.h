@@ -46,7 +46,7 @@ extern const int program_birth_year;
 
 extern AVCodecContext *avcodec_opts[AVMEDIA_TYPE_NB];
 extern AVFormatContext *avformat_opts;
-extern struct SwsContext *sws_opts;
+extern AVDictionary *sws_dict;
 extern AVDictionary *swr_opts;
 extern AVDictionary *format_opts, *codec_opts, *resample_opts;
 extern int hide_banner;
@@ -277,7 +277,7 @@ typedef struct OptionGroup {
     AVDictionary *codec_opts;
     AVDictionary *format_opts;
     AVDictionary *resample_opts;
-    struct SwsContext *sws_opts;
+    AVDictionary *sws_dict;
     AVDictionary *swr_opts;
 } OptionGroup;
 
@@ -528,18 +528,6 @@ int show_colors(void *optctx, const char *opt, const char *arg);
  * starts with [yY], otherwise return 0.
  */
 int read_yesno(void);
-
-/**
- * Read the file with name filename, and put its content in a newly
- * allocated 0-terminated buffer.
- *
- * @param filename file to read from
- * @param bufptr location where pointer to buffer is returned
- * @param size   location where size of buffer is returned
- * @return >= 0 in case of success, a negative value corresponding to an
- * AVERROR error code in case of failure.
- */
-int cmdutils_read_file(const char *filename, char **bufptr, size_t *size);
 
 /**
  * Get a file corresponding to a preset file.

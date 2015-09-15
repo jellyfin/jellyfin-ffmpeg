@@ -654,7 +654,7 @@ static int flv_queue_extradata(FLVContext *flv, AVIOContext *pb, int stream,
 {
     av_free(flv->new_extradata[stream]);
     flv->new_extradata[stream] = av_mallocz(size +
-                                            FF_INPUT_BUFFER_PADDING_SIZE);
+                                            AV_INPUT_BUFFER_PADDING_SIZE);
     if (!flv->new_extradata[stream])
         return AVERROR(ENOMEM);
     flv->new_extradata_size[stream] = size;
@@ -789,7 +789,8 @@ skip:
 static int flv_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     FLVContext *flv = s->priv_data;
-    int ret, i, type, size, flags;
+    int ret, i, size, flags;
+    enum FlvTagType type;
     int stream_type=-1;
     int64_t next, pos, meta_pos;
     int64_t dts, pts = AV_NOPTS_VALUE;
@@ -896,8 +897,9 @@ skip:
         }
         av_log(s, AV_LOG_TRACE, "%d %X %d \n", stream_type, flags, st->discard);
 
-        if ((flags & FLV_VIDEO_FRAMETYPE_MASK) == FLV_FRAME_KEY ||
-            stream_type == FLV_STREAM_TYPE_AUDIO)
+        if (s->pb->seekable &&
+            ((flags & FLV_VIDEO_FRAMETYPE_MASK) == FLV_FRAME_KEY ||
+              stream_type == FLV_STREAM_TYPE_AUDIO))
             av_add_index_entry(st, pos, dts, size, 0, AVINDEX_KEYFRAME);
 
         if (  (st->discard >= AVDISCARD_NONKEY && !((flags & FLV_VIDEO_FRAMETYPE_MASK) == FLV_FRAME_KEY || (stream_type == FLV_STREAM_TYPE_AUDIO)))

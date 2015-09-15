@@ -25,6 +25,13 @@ enabled decoders.
 A description of some of the currently available video decoders
 follows.
 
+@section hevc
+
+HEVC / H.265 decoder.
+
+Note: the @option{skip_loop_filter} option has effect only at level
+@code{all}.
+
 @section rawvideo
 
 Raw video decoder.
@@ -187,6 +194,25 @@ without this library.
 
 @chapter Subtitles Decoders
 @c man begin SUBTILES DECODERS
+
+@section dvbsub
+
+@subsection Options
+
+@table @option
+@item compute_clut
+@table @option
+@item -1
+Compute clut if no matching CLUT is in the stream.
+@item 0
+Never compute CLUT
+@item 1
+Always compute CLUT and override the one provided in the stream.
+@end table
+@item dvb_substream
+Selects the dvb substream, or all substreams if -1 which is default.
+
+@end table
 
 @section dvdsub
 

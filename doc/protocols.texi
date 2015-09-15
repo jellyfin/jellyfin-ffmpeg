@@ -19,6 +19,18 @@ supported protocols.
 
 A description of the currently available protocols follows.
 
+@section async
+
+Asynchronous data filling wrapper for input stream.
+
+Fill data in a background thread, to decouple I/O operation from demux thread.
+
+@example
+async:@var{URL}
+async:http://host/resource
+async:cache:http://host/resource
+@end example
+
 @section bluray
 
 Read BluRay playlist.
@@ -292,6 +304,8 @@ autodetection in the future.
 If set to 1 enables experimental HTTP server. This can be used to send data when
 used as an output option, or read data from a client with HTTP POST when used as
 an input option.
+If set to 2 enables experimental mutli-client HTTP server. This is not yet implemented
+in ffmpeg.c or ffserver.c and thus must not be used as a command line option.
 @example
 # Server side (sending):
 ffmpeg -i somefile.ogg -c copy -listen 1 -f ogg http://@var{server}:@var{port}

@@ -31,6 +31,10 @@ struct MpegEncContext;
 
 #define MAX_MV 4096
 
+#define FF_ME_ZERO 0
+#define FF_ME_EPZS 1
+#define FF_ME_XONE 2
+
 /**
  * Motion estimation context.
  */
@@ -121,8 +125,5 @@ void ff_fix_long_p_mvs(struct MpegEncContext *s);
 void ff_fix_long_mvs(struct MpegEncContext *s, uint8_t *field_select_table,
                      int field_select, int16_t (*mv_table)[2], int f_code,
                      int type, int truncate);
-
-extern const uint8_t ff_aic_dc_scale_table[32];
-extern const uint8_t ff_h263_chroma_qscale_table[32];
 
 #endif /* AVCODEC_MOTIONEST_H */

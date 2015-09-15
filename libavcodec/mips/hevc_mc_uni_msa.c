@@ -249,7 +249,7 @@ static void copy_width64_msa(uint8_t *src, int32_t src_stride,
     copy_16multx8mult_msa(src, src_stride, dst, dst_stride, height, 64);
 }
 
-uint8_t mc_filt_mask_arr[16 * 3] = {
+static const uint8_t mc_filt_mask_arr[16 * 3] = {
     /* 8 width cases */
     0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8,
     /* 4 width cases */
@@ -3871,7 +3871,7 @@ UNI_MC_COPY(64);
 #undef UNI_MC_COPY
 
 #define UNI_MC(PEL, DIR, WIDTH, TAP, DIR1, FILT_DIR)                           \
-void ff_hevc_put_hevc_uni_##PEL##_##DIR####WIDTH##_8_msa(uint8_t *dst,         \
+void ff_hevc_put_hevc_uni_##PEL##_##DIR##WIDTH##_8_msa(uint8_t *dst,           \
                                                          ptrdiff_t             \
                                                          dst_stride,           \
                                                          uint8_t *src,         \
@@ -3925,7 +3925,7 @@ UNI_MC(epel, v, 32, 4, vt, my);
 #undef UNI_MC
 
 #define UNI_MC_HV(PEL, DIR, WIDTH, TAP, DIR1)                           \
-void ff_hevc_put_hevc_uni_##PEL##_##DIR####WIDTH##_8_msa(uint8_t *dst,  \
+void ff_hevc_put_hevc_uni_##PEL##_##DIR##WIDTH##_8_msa(uint8_t *dst,    \
                                                          ptrdiff_t      \
                                                          dst_stride,    \
                                                          uint8_t *src,  \

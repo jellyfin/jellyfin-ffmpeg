@@ -263,7 +263,7 @@ static inline void xan_wc3_copy_pixel_run(XanContext *s, AVFrame *frame,
     prevframe_x = x + motion_x;
 
     if (prev_palette_plane == palette_plane && FFABS(curframe_index - prevframe_index) < pixel_count) {
-         avpriv_request_sample(s->avctx, "Overlapping copy\n");
+         avpriv_request_sample(s->avctx, "Overlapping copy");
          return ;
     }
 
@@ -644,5 +644,5 @@ AVCodec ff_xan_wc3_decoder = {
     .init           = xan_decode_init,
     .close          = xan_decode_end,
     .decode         = xan_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
 };

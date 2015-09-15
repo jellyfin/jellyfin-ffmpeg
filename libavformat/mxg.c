@@ -111,7 +111,7 @@ static int mxg_update_cache(AVFormatContext *s, unsigned int cache_size)
     soi_pos = mxg->soi_ptr - mxg->buffer;
     buffer = av_fast_realloc(mxg->buffer, &mxg->buffer_size,
                              current_pos + cache_size +
-                             FF_INPUT_BUFFER_PADDING_SIZE);
+                             AV_INPUT_BUFFER_PADDING_SIZE);
     if (!buffer)
         return AVERROR(ENOMEM);
     mxg->buffer = buffer;
@@ -182,7 +182,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
                 if (mxg->soi_ptr - mxg->buffer > mxg->cache_size) {
                     if (mxg->cache_size > 0) {
-                        memcpy(mxg->buffer, mxg->buffer_ptr, mxg->cache_size);
+                        memmove(mxg->buffer, mxg->buffer_ptr, mxg->cache_size);
                     }
 
                     mxg->buffer_ptr = mxg->buffer;

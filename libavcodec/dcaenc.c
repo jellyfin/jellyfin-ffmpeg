@@ -916,7 +916,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     const int32_t *samples;
     int ret, i;
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, c->frame_size )) < 0)
+    if ((ret = ff_alloc_packet2(avctx, avpkt, c->frame_size , 0)) < 0)
         return ret;
 
     samples = (const int32_t *)frame->data[0];
@@ -937,6 +937,10 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     put_primary_audio_header(c);
     for (i = 0; i < SUBFRAMES; i++)
         put_subframe(c, i);
+
+
+    for (i = put_bits_count(&c->pb); i < 8*c->frame_size; i++)
+        put_bits(&c->pb, 1, 0);
 
     flush_put_bits(&c->pb);
 
@@ -960,7 +964,7 @@ AVCodec ff_dca_encoder = {
     .priv_data_size        = sizeof(DCAEncContext),
     .init                  = encode_init,
     .encode2               = encode_frame,
-    .capabilities          = CODEC_CAP_EXPERIMENTAL,
+    .capabilities          = AV_CODEC_CAP_EXPERIMENTAL,
     .sample_fmts           = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S32,
                                                             AV_SAMPLE_FMT_NONE },
     .supported_samplerates = sample_rates,

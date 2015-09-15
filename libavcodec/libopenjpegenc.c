@@ -242,18 +242,11 @@ static av_cold int libopenjpeg_encode_init(AVCodecContext *avctx)
         goto fail;
     }
 
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame) {
-        av_log(avctx, AV_LOG_ERROR, "Error allocating coded frame\n");
-        goto fail;
-    }
-
     return 0;
 
 fail:
     opj_image_destroy(ctx->image);
     ctx->image = NULL;
-    av_frame_free(&avctx->coded_frame);
     return err;
 }
 
@@ -586,7 +579,7 @@ static int libopenjpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     len = cio_tell(stream);
-    if ((ret = ff_alloc_packet2(avctx, pkt, len)) < 0) {
+    if ((ret = ff_alloc_packet2(avctx, pkt, len, 0)) < 0) {
         return ret;
     }
 
@@ -608,7 +601,6 @@ static av_cold int libopenjpeg_encode_close(AVCodecContext *avctx)
 
     opj_image_destroy(ctx->image);
     ctx->image = NULL;
-    av_frame_free(&avctx->coded_frame);
     return 0;
 }
 
@@ -657,7 +649,7 @@ AVCodec ff_libopenjpeg_encoder = {
     .init           = libopenjpeg_encode_init,
     .encode2        = libopenjpeg_encode_frame,
     .close          = libopenjpeg_encode_close,
-    .capabilities   = CODEC_CAP_FRAME_THREADS | CODEC_CAP_INTRA_ONLY,
+    .capabilities   = AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_INTRA_ONLY,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA, AV_PIX_FMT_RGB48,
         AV_PIX_FMT_RGBA64, AV_PIX_FMT_GBR24P,

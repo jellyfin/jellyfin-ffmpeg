@@ -145,6 +145,14 @@ x265 is under the GNU Public License Version 2 or later
 details), you must upgrade FFmpeg's license to GPL in order to use it.
 @end float
 
+@section kvazaar
+
+FFmpeg can make use of the kvazaar library for HEVC encoding.
+
+Go to @url{https://github.com/ultravideo/kvazaar} and follow the
+instructions for installing the library. Then pass
+@code{--enable-libkvazaar} to configure to enable it.
+
 @section libilbc
 
 iLBC is a narrowband speech codec that has been made freely available
@@ -192,6 +200,17 @@ end user having AviSynth or AvxSynth installed - they'll only need to be
 installed to use AviSynth scripts (obviously).
 @end float
 
+@section Intel QuickSync Video
+
+FFmpeg can use Intel QuickSync Video (QSV) for accelerated encoding and decoding
+of multiple codecs. To use QSV, FFmpeg must be linked against the @code{libmfx}
+dispatcher, which loads the actual decoding libraries.
+
+The dispatcher is open source and can be downloaded from
+@url{https://github.com/lu-zero/mfx_dispatch.git}. FFmpeg needs to be configured
+with the @code{--enable-libmfx} option and @code{pkg-config} needs to be able to
+locate the dispatcher's @code{.pc} files.
+
 
 @chapter Supported File Formats, Codecs or Features
 
@@ -207,6 +226,10 @@ library:
 @item 4xm                       @tab   @tab X
     @tab 4X Technologies format, used in some games.
 @item 8088flex TMV              @tab   @tab X
+@item AAX                       @tab   @tab X
+    @tab Audible Enhanced Audio format, used in audiobooks.
+@item AA                        @tab   @tab X
+    @tab Audible Format 2, 3, and 4, used in audiobooks.
 @item ACT Voice                 @tab   @tab X
     @tab contains G.729 audio
 @item Adobe Filmstrip           @tab X @tab X
@@ -243,6 +266,8 @@ library:
     @tab Used in Z and Z95 games.
 @item Brute Force & Ignorance   @tab   @tab X
     @tab Used in the game Flash Traffic: City of Angels.
+@item BFSTM                     @tab   @tab X
+    @tab Audio format used on the Nintendo WiiU (based on BRSTM).
 @item BRSTM                     @tab   @tab X
     @tab Audio format used on the Nintendo Wii.
 @item BWF                       @tab X @tab X
@@ -273,6 +298,7 @@ library:
 @item Deluxe Paint Animation    @tab   @tab X
 @item DFA                       @tab   @tab X
     @tab This format is used in Chronomaster game
+@item DirectDraw Surface        @tab   @tab X
 @item DSD Stream File (DSF)     @tab   @tab X
 @item DV video                  @tab X @tab X
 @item DXA                       @tab   @tab X
@@ -477,6 +503,7 @@ library:
     @tab Tiertex .seq files used in the DOS CD-ROM version of the game Flashback.
 @item True Audio                @tab   @tab X
 @item VC-1 test bitstream       @tab X @tab X
+@item Vidvox Hap                @tab X @tab X
 @item Vivo                      @tab   @tab X
 @item WAV                       @tab X @tab X
 @item WavPack                   @tab X @tab X
@@ -663,6 +690,8 @@ following image formats are supported:
     @tab Sorenson H.263 used in Flash
 @item Forward Uncompressed   @tab     @tab  X
 @item Fraps                  @tab     @tab  X
+@item Go2Meeting             @tab     @tab  X
+    @tab fourcc: G2M2, G2M3
 @item Go2Webinar             @tab     @tab  X
     @tab fourcc: G2M4
 @item H.261                  @tab  X  @tab  X
@@ -671,7 +700,7 @@ following image formats are supported:
 @item H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10  @tab  E  @tab  X
     @tab encoding supported through external library libx264 and OpenH264
 @item HEVC                   @tab  X  @tab  X
-    @tab encoding supported through the external library libx265
+    @tab encoding supported through external library libx265 and libkvazaar
 @item HNM version 4          @tab     @tab  X
 @item HuffYUV                @tab  X  @tab  X
 @item HuffYUV FFmpeg variant @tab  X  @tab  X
@@ -836,7 +865,7 @@ following image formats are supported:
 @item Name @tab Encoding @tab Decoding @tab Comments
 @item 8SVX exponential       @tab     @tab  X
 @item 8SVX fibonacci         @tab     @tab  X
-@item AAC+                   @tab  E  @tab  X
+@item AAC+                   @tab  E  @tab  IX
     @tab encoding supported through external library libaacplus
 @item AAC                    @tab  E  @tab  X
     @tab encoding supported through external library libfaac and libvo-aacenc
@@ -876,7 +905,7 @@ following image formats are supported:
 @item ADPCM MS IMA           @tab  X  @tab  X
 @item ADPCM Nintendo Gamecube AFC  @tab     @tab  X
 @item ADPCM Nintendo Gamecube DTK  @tab     @tab  X
-@item ADPCM Nintendo Gamecube THP  @tab     @tab  X
+@item ADPCM Nintendo THP  @tab     @tab  X
 @item ADPCM QT IMA           @tab  X  @tab  X
 @item ADPCM SEGA CRI ADX     @tab  X  @tab  X
     @tab Used in Sega Dreamcast games.

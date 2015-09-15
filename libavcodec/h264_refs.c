@@ -617,6 +617,7 @@ int ff_h264_execute_ref_pic_marking(H264Context *h, MMCO *mmco, int mmco_count)
 {
     int i, av_uninit(j);
     int pps_count;
+    int pps_ref_count[2] = {0};
     int current_ref_assigned = 0, err = 0;
     H264Picture *av_uninit(pic);
 
@@ -683,15 +684,18 @@ int ff_h264_execute_ref_pic_marking(H264Context *h, MMCO *mmco, int mmco_count)
                 remove_short_at_index(h, 0);
             }
 
-            if (h->long_ref[mmco[i].long_arg] != h->cur_pic_ptr) {
-                if (h->cur_pic_ptr->long_ref) {
-                    for(j=0; j<16; j++) {
-                        if(h->long_ref[j] == h->cur_pic_ptr) {
-                            remove_long(h, j, 0);
+            /* make sure the current picture is not already assigned as a long ref */
+            if (h->cur_pic_ptr->long_ref) {
+                for (j = 0; j < FF_ARRAY_ELEMS(h->long_ref); j++) {
+                    if (h->long_ref[j] == h->cur_pic_ptr) {
+                        if (j != mmco[i].long_arg)
                             av_log(h->avctx, AV_LOG_ERROR, "mmco: cannot assign current picture to 2 long term references\n");
-                        }
+                        remove_long(h, j, 0);
                     }
                 }
+            }
+
+            if (h->long_ref[mmco[i].long_arg] != h->cur_pic_ptr) {
                 av_assert0(!h->cur_pic_ptr->long_ref);
                 remove_long(h, mmco[i].long_arg, 0);
 
@@ -798,13 +802,17 @@ int ff_h264_execute_ref_pic_marking(H264Context *h, MMCO *mmco, int mmco_count)
     print_long_term(h);
 
     pps_count = 0;
-    for (i = 0; i < FF_ARRAY_ELEMS(h->pps_buffers); i++)
+    for (i = 0; i < FF_ARRAY_ELEMS(h->pps_buffers); i++) {
         pps_count += !!h->pps_buffers[i];
+        pps_ref_count[0] = FFMAX(pps_ref_count[0], h->pps.ref_count[0]);
+        pps_ref_count[1] = FFMAX(pps_ref_count[1], h->pps.ref_count[1]);
+    }
 
     if (   err >= 0
         && h->long_ref_count==0
-        && (h->short_ref_count<=2 || h->pps.ref_count[0] <= 1 && h->pps.ref_count[1] <= 1 && pps_count == 1)
-        && h->pps.ref_count[0]<=2 + (h->picture_structure != PICT_FRAME) + (2*!h->has_recovery_point)
+        && (   h->short_ref_count<=2
+            || pps_ref_count[0] <= 1 + (h->picture_structure != PICT_FRAME) && pps_ref_count[1] <= 1)
+        && pps_ref_count[0]<=2 + (h->picture_structure != PICT_FRAME) + (2*!h->has_recovery_point)
         && h->cur_pic_ptr->f->pict_type == AV_PICTURE_TYPE_I){
         h->cur_pic_ptr->recovered |= 1;
         if(!h->avctx->has_b_frames)

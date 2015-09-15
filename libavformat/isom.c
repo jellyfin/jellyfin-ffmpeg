@@ -110,7 +110,7 @@ const AVCodecTag ff_codec_movvideo_tags[] = {
 
     { AV_CODEC_ID_MJPEG,  MKTAG('j', 'p', 'e', 'g') }, /* PhotoJPEG */
     { AV_CODEC_ID_MJPEG,  MKTAG('m', 'j', 'p', 'a') }, /* Motion-JPEG (format A) */
-    { AV_CODEC_ID_MJPEG,  MKTAG('A', 'V', 'D', 'J') }, /* MJPEG with alpha-channel (AVID JFIF meridien compressed) */
+    { AV_CODEC_ID_AVRN ,  MKTAG('A', 'V', 'D', 'J') }, /* MJPEG with alpha-channel (AVID JFIF meridien compressed) */
 /*  { AV_CODEC_ID_MJPEG,  MKTAG('A', 'V', 'R', 'n') }, *//* MJPEG with alpha-channel (AVID ABVB/Truevision NuVista) */
     { AV_CODEC_ID_MJPEG,  MKTAG('d', 'm', 'b', '1') }, /* Motion JPEG OpenDML */
     { AV_CODEC_ID_MJPEGB, MKTAG('m', 'j', 'p', 'b') }, /* Motion-JPEG (format B) */
@@ -257,6 +257,10 @@ const AVCodecTag ff_codec_movvideo_tags[] = {
     { AV_CODEC_ID_FLIC,   MKTAG('f', 'l', 'i', 'c') },
 
     { AV_CODEC_ID_AIC, MKTAG('i', 'c', 'o', 'd') },
+
+    { AV_CODEC_ID_HAP, MKTAG('H', 'a', 'p', '1') },
+    { AV_CODEC_ID_HAP, MKTAG('H', 'a', 'p', '5') },
+    { AV_CODEC_ID_HAP, MKTAG('H', 'a', 'p', 'Y') },
 
     { AV_CODEC_ID_NONE, 0 },
 };
@@ -447,18 +451,23 @@ static const AVCodecTag mp4_audio_types[] = {
 int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext *pb)
 {
     enum AVCodecID codec_id;
+    unsigned v;
     int len, tag;
     int ret;
     int object_type_id = avio_r8(pb);
     avio_r8(pb); /* stream type */
     avio_rb24(pb); /* buffer size db */
-    avio_rb32(pb); /* max bitrate */
-    avio_rb32(pb); /* avg bitrate */
 
     if(avcodec_is_open(st->codec)) {
         av_log(fc, AV_LOG_DEBUG, "codec open in read_dec_config_descr\n");
         return -1;
     }
+
+    v = avio_rb32(pb);
+    if (v < INT32_MAX)
+        st->codec->rc_max_rate = v;
+
+    st->codec->bit_rate = avio_rb32(pb); /* avg bitrate */
 
     codec_id= ff_codec_get_id(ff_mp4_obj_type, object_type_id);
     if (codec_id)

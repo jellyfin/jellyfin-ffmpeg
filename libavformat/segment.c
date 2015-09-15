@@ -33,6 +33,7 @@
 #include "internal.h"
 
 #include "libavutil/avassert.h"
+#include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 #include "libavutil/avstring.h"
@@ -112,6 +113,9 @@ typedef struct SegmentContext {
     char *reference_stream_specifier; ///< reference stream specifier
     int   reference_stream_index;
     int   break_non_keyframes;
+
+    int use_rename;
+    char temp_list_filename[1024];
 
     SegmentListEntry cur_entry;
     SegmentListEntry *segment_list_entries;
@@ -258,7 +262,8 @@ static int segment_list_open(AVFormatContext *s)
     SegmentContext *seg = s->priv_data;
     int ret;
 
-    ret = avio_open2(&seg->list_pb, seg->list, AVIO_FLAG_WRITE,
+    snprintf(seg->temp_list_filename, sizeof(seg->temp_list_filename), seg->use_rename ? "%s.tmp" : "%s", seg->list);
+    ret = avio_open2(&seg->list_pb, seg->temp_list_filename, AVIO_FLAG_WRITE,
                      &s->interrupt_callback, NULL);
     if (ret < 0) {
         av_log(s, AV_LOG_ERROR, "Failed to open segment list '%s'\n", seg->list);
@@ -347,6 +352,7 @@ static int segment_end(AVFormatContext *s, int write_trailer, int is_last)
 
             /* append new element */
             memcpy(entry, &seg->cur_entry, sizeof(*entry));
+            entry->filename = av_strdup(entry->filename);
             if (!seg->segment_list_entries)
                 seg->segment_list_entries = seg->segment_list_entries_end = entry;
             else
@@ -368,6 +374,8 @@ static int segment_end(AVFormatContext *s, int write_trailer, int is_last)
             if (seg->list_type == LIST_TYPE_M3U8 && is_last)
                 avio_printf(seg->list_pb, "#EXT-X-ENDLIST\n");
             avio_closep(&seg->list_pb);
+            if (seg->use_rename)
+                ff_rename(seg->temp_list_filename, seg->list, s);
         } else {
             segment_list_print_entry(seg->list_pb, seg->list_type, &seg->cur_entry, s);
             avio_flush(seg->list_pb);
@@ -644,9 +652,13 @@ static int seg_write_header(AVFormatContext *s)
             else if (av_match_ext(seg->list, "ffcat,ffconcat")) seg->list_type = LIST_TYPE_FFCONCAT;
             else                                      seg->list_type = LIST_TYPE_FLAT;
         }
-        if (!seg->list_size && seg->list_type != LIST_TYPE_M3U8)
+        if (!seg->list_size && seg->list_type != LIST_TYPE_M3U8) {
             if ((ret = segment_list_open(s)) < 0)
                 goto fail;
+        } else {
+            const char *proto = avio_find_protocol_name(s->filename);
+            seg->use_rename = proto && !strcmp(proto, "file");
+        }
     }
     if (seg->list_type == LIST_TYPE_EXT)
         av_log(s, AV_LOG_WARNING, "'ext' list type option is deprecated in favor of 'csv'\n");
@@ -774,7 +786,7 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
         }
     }
 
-    av_dlog(s, "packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d\n",
+    ff_dlog(s, "packet stream:%d pts:%s pts_time:%s duration_time:%s is_key:%d frame:%d\n",
             pkt->stream_index, av_ts2str(pkt->pts), av_ts2timestr(pkt->pts, &st->time_base),
             av_ts2timestr(pkt->duration, &st->time_base),
             pkt->flags & AV_PKT_FLAG_KEY,
@@ -860,7 +872,8 @@ static int seg_write_trailer(struct AVFormatContext *s)
     if (!seg->write_header_trailer) {
         if ((ret = segment_end(s, 0, 1)) < 0)
             goto fail;
-        open_null_ctx(&oc->pb);
+        if ((ret = open_null_ctx(&oc->pb)) < 0)
+            goto fail;
         ret = av_write_trailer(oc);
         close_null_ctxp(&oc->pb);
     } else {
@@ -874,6 +887,7 @@ fail:
     av_opt_free(seg);
     av_freep(&seg->times);
     av_freep(&seg->frames);
+    av_freep(&seg->cur_entry.filename);
 
     cur = seg->segment_list_entries;
     while (cur) {

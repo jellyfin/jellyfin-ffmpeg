@@ -81,7 +81,6 @@ static av_cold int utvideo_encode_init(AVCodecContext *avctx)
     flags = ((avctx->prediction_method + 1) << 8) | (avctx->thread_count - 1);
 
     avctx->priv_data = utv;
-    avctx->coded_frame = av_frame_alloc();
 
     /* Alloc extradata buffer */
     info = (UtVideoExtra *)av_malloc(sizeof(*info));
@@ -144,7 +143,7 @@ static int utvideo_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *dst;
 
     /* Alloc buffer */
-    if ((ret = ff_alloc_packet2(avctx, pkt, utv->buf_size)) < 0)
+    if ((ret = ff_alloc_packet2(avctx, pkt, utv->buf_size, 0)) < 0)
         return ret;
 
     dst = pkt->data;
@@ -199,8 +198,6 @@ static int utvideo_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
      * assert that this is true.
      */
     av_assert2(keyframe == true);
-    avctx->coded_frame->key_frame = 1;
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
 
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
@@ -211,7 +208,6 @@ static av_cold int utvideo_encode_close(AVCodecContext *avctx)
 {
     UtVideoContext *utv = (UtVideoContext *)avctx->priv_data;
 
-    av_frame_free(&avctx->coded_frame);
     av_freep(&avctx->extradata);
     av_freep(&utv->buffer);
 
@@ -226,7 +222,7 @@ AVCodec ff_libutvideo_encoder = {
     NULL_IF_CONFIG_SMALL("Ut Video"),
     AVMEDIA_TYPE_VIDEO,
     AV_CODEC_ID_UTVIDEO,
-    CODEC_CAP_AUTO_THREADS | CODEC_CAP_LOSSLESS,
+    AV_CODEC_CAP_AUTO_THREADS | AV_CODEC_CAP_LOSSLESS | AV_CODEC_CAP_INTRA_ONLY,
     NULL, /* supported_framerates */
     (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUYV422, AV_PIX_FMT_BGR24,

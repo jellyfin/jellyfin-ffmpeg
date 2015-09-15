@@ -15,6 +15,42 @@ libavutil:     2014-08-09
 
 API changes, most recent first:
 
+-------- 8< --------- FFmpeg 2.8 was cut here -------- 8< ---------
+
+2015-08-27 - 1dd854e1 - lavc 56.58.100 - vaapi.h
+  Deprecate old VA-API context (vaapi_context) fields that were only
+  set and used by libavcodec. They are all managed internally now.
+
+2015-08-19 - 9f8e57ef - lavu 54.31.100 - pixfmt.h
+  Add a unique pixel format for VA-API (AV_PIX_FMT_VAAPI) that
+  indicates the nature of the underlying storage: a VA surface. This
+  yields the same value as AV_PIX_FMT_VAAPI_VLD.
+  Deprecate old VA-API related pixel formats: AV_PIX_FMT_VAAPI_MOCO,
+  AV_PIX_FMT_VAAPI_IDCT, AV_PIX_FMT_VAAPI_VLD.
+
+2015-08-02 - lavu 54.30.100 / 54.17.0
+  9ed59f1 / 7a7df34c -  Add av_blowfish_alloc().
+  a130ec9 / ae365453 -  Add av_rc4_alloc().
+  9ca1997 / 5d8bea3b -  Add av_xtea_alloc().
+  3cf08e9 / d9e8b47e -  Add av_des_alloc().
+
+2015-07-27 - lavc 56.56.100 / 56.35.0 - avcodec.h
+  94d68a4 / 7c6eb0a1 - Rename CODEC_FLAG* defines to AV_CODEC_FLAG*.
+  444e987 / def97856 - Rename CODEC_CAP_* defines to AV_CODEC_CAP_*.
+  29d147c / 059a9348 - Rename FF_INPUT_BUFFER_PADDING_SIZE and FF_MIN_BUFFER_SIZE
+              to AV_INPUT_BUFFER_PADDING_SIZE and AV_INPUT_BUFFER_MIN_SIZE.
+
+2015-07-22 - c40ecff - lavc 56.51.100 - avcodec.h
+  Add AV_PKT_DATA_QUALITY_STATS to export the quality value, PSNR, and pict_type
+  of an AVPacket.
+
+2015-07-16 - 8dad213 - lavc 56.49.100
+  Add av_codec_get_codec_properties(), FF_CODEC_PROPERTY_LOSSLESS
+  and FF_CODEC_PROPERTY_CLOSED_CAPTIONS
+
+2015-07-03 - d563e13 / 83212943 - lavu 54.28.100 / 56.15.0
+  Add av_version_info().
+
 -------- 8< --------- FFmpeg 2.7 was cut here -------- 8< ---------
 
 2015-06-04 - cc17b43 - lswr  1.2.100
@@ -691,6 +727,9 @@ API changes, most recent first:
    av_ripemd_init()
    av_ripemd_update()
    av_ripemd_final()
+
+2013-06-10 - 82ef670 - lavu 52.35.101 - hmac.h
+  Add AV_HMAC_SHA224, AV_HMAC_SHA256, AV_HMAC_SHA384, AV_HMAC_SHA512
 
 2013-06-04 - 30b491f / fc962d4 - lavu 52.35.100 / 52.13.0 - mem.h
   Add av_realloc_array and av_reallocp_array

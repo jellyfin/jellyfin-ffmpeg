@@ -6,8 +6,11 @@ OBJS-$(CONFIG_IDET_FILTER)                   += x86/vf_idet_init.o
 OBJS-$(CONFIG_INTERLACE_FILTER)              += x86/vf_interlace_init.o
 OBJS-$(CONFIG_NOISE_FILTER)                  += x86/vf_noise.o
 OBJS-$(CONFIG_PP7_FILTER)                    += x86/vf_pp7_init.o
+OBJS-$(CONFIG_PSNR_FILTER)                   += x86/vf_psnr_init.o
 OBJS-$(CONFIG_PULLUP_FILTER)                 += x86/vf_pullup_init.o
+OBJS-$(CONFIG_REMOVEGRAIN_FILTER)            += x86/vf_removegrain_init.o
 OBJS-$(CONFIG_SPP_FILTER)                    += x86/vf_spp.o
+OBJS-$(CONFIG_SSIM_FILTER)                   += x86/vf_ssim_init.o
 OBJS-$(CONFIG_TINTERLACE_FILTER)             += x86/vf_tinterlace_init.o
 OBJS-$(CONFIG_VOLUME_FILTER)                 += x86/af_volume_init.o
 OBJS-$(CONFIG_YADIF_FILTER)                  += x86/vf_yadif_init.o
@@ -18,7 +21,12 @@ YASM-OBJS-$(CONFIG_HQDN3D_FILTER)            += x86/vf_hqdn3d.o
 YASM-OBJS-$(CONFIG_IDET_FILTER)              += x86/vf_idet.o
 YASM-OBJS-$(CONFIG_INTERLACE_FILTER)         += x86/vf_interlace.o
 YASM-OBJS-$(CONFIG_PP7_FILTER)               += x86/vf_pp7.o
+YASM-OBJS-$(CONFIG_PSNR_FILTER)              += x86/vf_psnr.o
 YASM-OBJS-$(CONFIG_PULLUP_FILTER)            += x86/vf_pullup.o
+ifdef CONFIG_GPL
+YASM-OBJS-$(CONFIG_REMOVEGRAIN_FILTER)       += x86/vf_removegrain.o
+endif
+YASM-OBJS-$(CONFIG_SSIM_FILTER)              += x86/vf_ssim.o
 YASM-OBJS-$(CONFIG_TINTERLACE_FILTER)        += x86/vf_interlace.o
 YASM-OBJS-$(CONFIG_VOLUME_FILTER)            += x86/af_volume.o
 YASM-OBJS-$(CONFIG_YADIF_FILTER)             += x86/vf_yadif.o x86/yadif-16.o x86/yadif-10.o

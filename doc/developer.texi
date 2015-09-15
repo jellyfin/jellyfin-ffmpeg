@@ -544,6 +544,10 @@ should not crash, end in a (near) infinite loop, or allocate ridiculous
 amounts of memory when fed damaged data.
 
 @item
+Did you test your decoder or demuxer against sample files?
+Samples may be obtained at @url{http://samples.ffmpeg.org}.
+
+@item
 Does the patch not mix functional and cosmetic changes?
 
 @item
@@ -632,6 +636,10 @@ When resubmitting patches, please do not make any significant changes
 not related to the comments received during review. Such patches will
 be rejected. Instead, submit significant changes or new features as
 separate patches.
+
+Everyone is welcome to review patches. Also if you are waiting for your patch
+to be reviewed, please consider helping to review other patches, that is a great
+way to get everyone's patches reviewed sooner.
 
 @anchor{Regression tests}
 @section Regression tests
