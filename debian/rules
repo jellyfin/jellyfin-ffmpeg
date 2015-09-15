@@ -96,6 +96,7 @@ CONFIG := --prefix=/usr \
 	--enable-libvpx \
 	--enable-libwavpack \
 	--enable-libwebp \
+	--enable-libx265 \
 	--enable-libxvid \
 	--enable-libzvbi \
 	--enable-opengl \
@@ -140,11 +141,6 @@ endif
 # OpenCV is not available on some architectures.
 ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64))
 	CONFIG += --enable-libopencv
-endif
-
-# Recent x265 is not available on alpha due to #789807.
-ifeq (,$(filter $(DEB_HOST_ARCH),alpha))
-	CONFIG += --enable-libx265
 endif
 
 # Disable i686 optimizations on i386, because they are not always available on this architecture.
