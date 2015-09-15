@@ -99,7 +99,7 @@ Build-Depends:
 # --enable-libspeex
  libspeex-dev,
 # --enable-libssh
- libssh-gcrypt-dev [!sparc],
+ libssh-gcrypt-dev,
 # --enable-libtheora
  libtheora-dev,
 # --enable-libtwolame

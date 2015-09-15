@@ -89,6 +89,7 @@ CONFIG := --prefix=/usr \
 	--enable-libschroedinger \
 	--enable-libshine \
 	--enable-libspeex \
+	--enable-libssh \
 	--enable-libtheora \
 	--enable-libtwolame \
 	--enable-libvorbis \
@@ -129,11 +130,6 @@ endif
 # Some libraries are not build on hurd.
 ifneq ($(DEB_HOST_ARCH_OS),hurd)
 	CONFIG += --enable-libzmq
-endif
-
-# libssh is not available on sparc due to #790067.
-ifneq ($(DEB_HOST_ARCH),sparc)
-	CONFIG += --enable-libssh
 endif
 
 # Some libraries are not available/unusable (#792921) on sparc64.
