@@ -1,3 +1,28 @@
+ffmpeg (7:2.8-1) unstable; urgency=medium
+
+  [ Fabian Greffrath ]
+  * Pass the --dbg-package=ffmpeg-dbg parameter only to dh_strip.
+  * Add alternative Depends: libavcodec-ffmpeg-extra56 to libavcodec-dev and
+    ffmpeg-dbg to allow for building and debugging with this library installed.
+
+  [ Andreas Cadhalpun ]
+  * Import new major upstream release 2.8.
+  * Remove the transitional lib*-ffmpeg-dev packages.
+  * Drop old Breaks on kodi-bin.
+  * Drop workaround for sparc, which is no Debian architecture anymore.
+  * Re-enable x265 on alpha, as it's available again.
+  * Disable unavailable frei0r, opencv and x264 on mips64el.
+  * Disable libopenjpeg (#787275) and libschroedinger (#787957) decoders.
+    (Closes: #786670)
+  * Disable libdc1394 on sparc64, because it links against the broken due to
+    #790560 libudev1.
+  * Enable libsnappy support.
+  * Add new symbols.
+  * Update debian/copyright.
+  * Update debian/tests/encdec_list.txt.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 16 Sep 2015 00:40:10 +0200
+
 ffmpeg (7:2.7.2-2) unstable; urgency=medium
 
   [ Reinhard Tartler ]
