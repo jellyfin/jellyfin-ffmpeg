@@ -63,6 +63,8 @@ CONFIG := --prefix=/usr \
 	--enable-gpl \
 	--enable-shared \
 	--disable-stripping \
+	--disable-decoder=libopenjpeg \
+	--disable-decoder=libschroedinger \
 	--enable-avresample \
 	--enable-avisynth \
 	--enable-gnutls \
