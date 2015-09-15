@@ -12,6 +12,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_audio_fifo_alloc@LIBAVUTIL_FFMPEG_54 7:2.4
  av_audio_fifo_drain@LIBAVUTIL_FFMPEG_54 7:2.4
  av_audio_fifo_free@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_audio_fifo_peek@LIBAVUTIL_FFMPEG_54 7:2.8
  av_audio_fifo_read@LIBAVUTIL_FFMPEG_54 7:2.4
  av_audio_fifo_realloc@LIBAVUTIL_FFMPEG_54 7:2.4
  av_audio_fifo_reset@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -21,6 +22,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_base64_decode@LIBAVUTIL_FFMPEG_54 7:2.4
  av_base64_encode@LIBAVUTIL_FFMPEG_54 7:2.4
  av_basename@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_blowfish_alloc@LIBAVUTIL_FFMPEG_54 7:2.8
  av_blowfish_crypt@LIBAVUTIL_FFMPEG_54 7:2.4
  av_blowfish_crypt_ecb@LIBAVUTIL_FFMPEG_54 7:2.4
  av_blowfish_init@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -77,6 +79,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_d2str@LIBAVUTIL_FFMPEG_54 7:2.4
  av_default_get_category@LIBAVUTIL_FFMPEG_54 7:2.4
  av_default_item_name@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_des_alloc@LIBAVUTIL_FFMPEG_54 7:2.8
  av_des_crypt@LIBAVUTIL_FFMPEG_54 7:2.4
  av_des_init@LIBAVUTIL_FFMPEG_54 7:2.4
  av_des_mac@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -109,6 +112,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_fifo_drain@LIBAVUTIL_FFMPEG_54 7:2.4
  av_fifo_free@LIBAVUTIL_FFMPEG_54 7:2.4
  av_fifo_freep@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_fifo_generic_peek@LIBAVUTIL_FFMPEG_54 7:2.8
  av_fifo_generic_read@LIBAVUTIL_FFMPEG_54 7:2.4
  av_fifo_generic_write@LIBAVUTIL_FFMPEG_54 7:2.4
  av_fifo_grow@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -334,6 +338,7 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_pix_fmt_swap_endianness@LIBAVUTIL_FFMPEG_54 7:2.4
  av_pixelutils_get_sad_fn@LIBAVUTIL_FFMPEG_54 7:2.4
  av_q2intfloat@LIBAVUTIL_FFMPEG_54 7:2.7
+ av_rc4_alloc@LIBAVUTIL_FFMPEG_54 7:2.8
  av_rc4_crypt@LIBAVUTIL_FFMPEG_54 7:2.4
  av_rc4_init@LIBAVUTIL_FFMPEG_54 7:2.4
  av_read_image_line@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -395,6 +400,10 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_strtod@LIBAVUTIL_FFMPEG_54 7:2.4
  av_strtok@LIBAVUTIL_FFMPEG_54 7:2.4
  av_sub_q@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_tea_alloc@LIBAVUTIL_FFMPEG_54 7:2.8
+ av_tea_crypt@LIBAVUTIL_FFMPEG_54 7:2.8
+ av_tea_init@LIBAVUTIL_FFMPEG_54 7:2.8
+ av_tea_size@LIBAVUTIL_FFMPEG_54 7:2.8
  av_tempfile@LIBAVUTIL_FFMPEG_54 7:2.4
  av_thread_message_queue_alloc@LIBAVUTIL_FFMPEG_54 7:2.4
  av_thread_message_queue_free@LIBAVUTIL_FFMPEG_54 7:2.4
@@ -425,8 +434,10 @@ libavutil-ffmpeg.so.54 libavutil-ffmpeg54 #MINVER#
  av_utf8_decode@LIBAVUTIL_FFMPEG_54 7:2.4
  av_util_ffversion@LIBAVUTIL_FFMPEG_54 7:2.5.2
  av_vbprintf@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_version_info@LIBAVUTIL_FFMPEG_54 7:2.8
  av_vlog@LIBAVUTIL_FFMPEG_54 7:2.4
  av_write_image_line@LIBAVUTIL_FFMPEG_54 7:2.4
+ av_xtea_alloc@LIBAVUTIL_FFMPEG_54 7:2.8
  av_xtea_crypt@LIBAVUTIL_FFMPEG_54 7:2.4
  av_xtea_init@LIBAVUTIL_FFMPEG_54 7:2.4
  avpriv_alloc_fixed_dsp@LIBAVUTIL_FFMPEG_54 7:2.4

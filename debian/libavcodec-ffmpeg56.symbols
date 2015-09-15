@@ -14,6 +14,7 @@ libavcodec-ffmpeg.so.56 libavcodec-ffmpeg56 #MINVER# | libavcodec-ffmpeg-extra56
  av_codec_ffversion@LIBAVCODEC_FFMPEG_56 7:2.5.2
  av_codec_get_chroma_intra_matrix@LIBAVCODEC_FFMPEG_56 7:2.4
  av_codec_get_codec_descriptor@LIBAVCODEC_FFMPEG_56 7:2.4
+ av_codec_get_codec_properties@LIBAVCODEC_FFMPEG_56 7:2.8
  av_codec_get_lowres@LIBAVCODEC_FFMPEG_56 7:2.4
  av_codec_get_max_lowres@LIBAVCODEC_FFMPEG_56 7:2.4
  av_codec_get_pkt_timebase@LIBAVCODEC_FFMPEG_56 7:2.4

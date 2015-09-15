@@ -98,6 +98,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  avformat_seek_file@LIBAVFORMAT_FFMPEG_56 7:2.4
  avformat_version@LIBAVFORMAT_FFMPEG_56 7:2.4
  avformat_write_header@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avio_accept@LIBAVFORMAT_FFMPEG_56 7:2.8
  avio_alloc_context@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_check@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_close@LIBAVFORMAT_FFMPEG_56 7:2.4
@@ -112,6 +113,7 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  avio_get_str16be@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_get_str16le@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_get_str@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avio_handshake@LIBAVFORMAT_FFMPEG_56 7:2.8
  avio_open2@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_open@LIBAVFORMAT_FFMPEG_56 7:2.4
  avio_open_dir@LIBAVFORMAT_FFMPEG_56 7:2.7
@@ -150,6 +152,8 @@ libavformat-ffmpeg.so.56 libavformat-ffmpeg56 #MINVER#
  avpriv_dv_get_packet@LIBAVFORMAT_FFMPEG_56 7:2.4
  avpriv_dv_init_demux@LIBAVFORMAT_FFMPEG_56 7:2.4
  avpriv_dv_produce_packet@LIBAVFORMAT_FFMPEG_56 7:2.4
+ avpriv_io_delete@LIBAVFORMAT_FFMPEG_56 7:2.8
+ avpriv_io_move@LIBAVFORMAT_FFMPEG_56 7:2.8
  avpriv_mpegts_parse_close@LIBAVFORMAT_FFMPEG_56 7:2.4
  avpriv_mpegts_parse_open@LIBAVFORMAT_FFMPEG_56 7:2.4
  avpriv_mpegts_parse_packet@LIBAVFORMAT_FFMPEG_56 7:2.4
