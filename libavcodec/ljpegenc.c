@@ -217,7 +217,7 @@ static int ljpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     const int height = avctx->height;
     const int mb_width  = (width  + s->hsample[0] - 1) / s->hsample[0];
     const int mb_height = (height + s->vsample[0] - 1) / s->vsample[0];
-    int max_pkt_size = FF_MIN_BUFFER_SIZE;
+    int max_pkt_size = AV_INPUT_BUFFER_MIN_SIZE;
     int ret, header_bits;
 
     if(    avctx->pix_fmt == AV_PIX_FMT_BGR0
@@ -229,7 +229,7 @@ static int ljpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                         * s->hsample[0] * s->vsample[0];
     }
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, max_pkt_size)) < 0)
+    if ((ret = ff_alloc_packet2(avctx, pkt, max_pkt_size, 0)) < 0)
         return ret;
 
     init_put_bits(&pb, pkt->data, pkt->size);
@@ -265,7 +265,6 @@ static av_cold int ljpeg_encode_close(AVCodecContext *avctx)
 {
     LJpegEncContext *s = avctx->priv_data;
 
-    av_frame_free(&avctx->coded_frame);
     av_freep(&s->scratch);
 
     return 0;
@@ -286,12 +285,12 @@ static av_cold int ljpeg_encode_init(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
-        return AVERROR(ENOMEM);
-
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
     avctx->coded_frame->key_frame = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     s->scratch = av_malloc_array(avctx->width + 1, sizeof(*s->scratch));
     if (!s->scratch)
@@ -327,7 +326,7 @@ AVCodec ff_ljpeg_encoder = {
     .init           = ljpeg_encode_init,
     .encode2        = ljpeg_encode_frame,
     .close          = ljpeg_encode_close,
-    .capabilities   = CODEC_CAP_FRAME_THREADS | CODEC_CAP_INTRA_ONLY,
+    .capabilities   = AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_INTRA_ONLY,
     .pix_fmts       = (const enum AVPixelFormat[]){
         AV_PIX_FMT_BGR24   , AV_PIX_FMT_BGRA    , AV_PIX_FMT_BGR0,
         AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P,

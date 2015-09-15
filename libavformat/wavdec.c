@@ -134,7 +134,7 @@ static int wav_parse_fmt_tag(AVFormatContext *s, int64_t size, AVStream **st)
     if (!*st)
         return AVERROR(ENOMEM);
 
-    ret = ff_get_wav_header(pb, (*st)->codec, size, wav->rifx);
+    ret = ff_get_wav_header(s, pb, (*st)->codec, size, wav->rifx);
     if (ret < 0)
         return ret;
     handle_stream_probing(*st);
@@ -429,8 +429,29 @@ break_loop:
 
     avio_seek(pb, data_ofs, SEEK_SET);
 
+    if (data_size > (INT64_MAX>>3)) {
+        av_log(s, AV_LOG_WARNING, "Data size %"PRId64" is too large\n", data_size);
+        data_size = 0;
+    }
+
+    if (   st->codec->bit_rate > 0 && data_size > 0
+        && st->codec->sample_rate > 0
+        && sample_count > 0 && st->codec->channels > 1
+        && sample_count % st->codec->channels == 0) {
+        if (fabs(8.0 * data_size * st->codec->channels * st->codec->sample_rate /
+            sample_count /st->codec->bit_rate - 1.0) < 0.3)
+            sample_count /= st->codec->channels;
+    }
+
     if (   data_size > 0 && sample_count && st->codec->channels
-        && data_size / sample_count / st->codec->channels > 8) {
+        && (data_size << 3) / sample_count / st->codec->channels > st->codec->bits_per_coded_sample  + 1) {
+        av_log(s, AV_LOG_WARNING, "ignoring wrong sample_count %"PRId64"\n", sample_count);
+        sample_count = 0;
+    }
+
+    /* G.729 hack (for Ticket4577)
+     * FIXME: Come up with cleaner, more general solution */
+    if (st->codec->codec_id == AV_CODEC_ID_G729 && sample_count && (data_size << 3) > sample_count) {
         av_log(s, AV_LOG_WARNING, "ignoring wrong sample_count %"PRId64"\n", sample_count);
         sample_count = 0;
     }
@@ -689,7 +710,7 @@ static int w64_read_header(AVFormatContext *s)
 
         if (!memcmp(guid, ff_w64_guid_fmt, 16)) {
             /* subtract chunk header size - normal wav file doesn't count it */
-            ret = ff_get_wav_header(pb, st->codec, size - 24, 0);
+            ret = ff_get_wav_header(s, pb, st->codec, size - 24, 0);
             if (ret < 0)
                 return ret;
             avio_skip(pb, FFALIGN(size, INT64_C(8)) - size);

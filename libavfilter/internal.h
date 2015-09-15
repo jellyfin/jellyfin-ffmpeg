@@ -33,6 +33,7 @@
 #include "video.h"
 #include "libavcodec/avcodec.h"
 
+#if FF_API_AVFILTERBUFFER
 #define POOL_SIZE 32
 typedef struct AVFilterPool {
     AVFilterBufferRef *pic[POOL_SIZE];
@@ -40,6 +41,7 @@ typedef struct AVFilterPool {
     int refcount;
     int draining;
 } AVFilterPool;
+#endif
 
 typedef struct AVFilterCommand {
     double time;                ///< time expressed in seconds
@@ -305,8 +307,27 @@ int ff_poll_frame(AVFilterLink *link);
 /**
  * Request an input frame from the filter at the other end of the link.
  *
+ * The input filter may pass the request on to its inputs, fulfill the
+ * request from an internal buffer or any other means specific to its function.
+ *
+ * When the end of a stream is reached AVERROR_EOF is returned and no further
+ * frames are returned after that.
+ *
+ * When a filter is unable to output a frame for example due to its sources
+ * being unable to do so or because it depends on external means pushing data
+ * into it then AVERROR(EAGAIN) is returned.
+ * It is important that a AVERROR(EAGAIN) return is returned all the way to the
+ * caller (generally eventually a user application) as this step may (but does
+ * not have to be) necessary to provide the input with the next frame.
+ *
+ * If a request is successful then the filter_frame() function will be called
+ * at least once before ff_request_frame() returns
+ *
  * @param link the input link
  * @return     zero on success
+ *             AVERROR_EOF on end of file
+ *             AVERROR(EAGAIN) if the previous filter cannot output a frame
+ *             currently and can neither guarantee that EOF has been reached.
  */
 int ff_request_frame(AVFilterLink *link);
 
@@ -319,9 +340,6 @@ int ff_request_frame(AVFilterLink *link);
         .category   = AV_CLASS_CATEGORY_FILTER, \
     }
 
-AVFilterBufferRef *ff_copy_buffer_ref(AVFilterLink *outlink,
-                                      AVFilterBufferRef *ref);
-
 /**
  * Find the index of a link.
  *
@@ -330,9 +348,6 @@ AVFilterBufferRef *ff_copy_buffer_ref(AVFilterLink *outlink,
 #define FF_INLINK_IDX(link)  ((int)((link)->dstpad - (link)->dst->input_pads))
 #define FF_OUTLINK_IDX(link) ((int)((link)->srcpad - (link)->src->output_pads))
 
-int ff_buffersink_read_compat(AVFilterContext *ctx, AVFilterBufferRef **buf);
-int ff_buffersink_read_samples_compat(AVFilterContext *ctx, AVFilterBufferRef **pbuf,
-                                      int nb_samples);
 /**
  * Send a frame of data to the next filter.
  *

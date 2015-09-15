@@ -312,7 +312,7 @@ static av_always_inline int encode_line(FFV1Context *s, int w,
         diff = fold(diff, bits);
 
         if (s->ac) {
-            if (s->flags & CODEC_FLAG_PASS1) {
+            if (s->flags & AV_CODEC_FLAG_PASS1) {
                 put_symbol_inline(c, p->state[context], diff, 1, s->rc_stat,
                                   s->rc_stat2[p->quant_table_index][context]);
             } else {
@@ -550,7 +550,7 @@ static int write_extradata(FFV1Context *f)
 
     f->avctx->extradata_size = 10000 + 4 +
                                     (11 * 11 * 5 * 5 * 5 + 11 * 11 * 11) * 32;
-    f->avctx->extradata = av_malloc(f->avctx->extradata_size + FF_INPUT_BUFFER_PADDING_SIZE);
+    f->avctx->extradata = av_malloc(f->avctx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
     if (!f->avctx->extradata)
         return AVERROR(ENOMEM);
     ff_init_range_encoder(c, f->avctx->extradata, f->avctx->extradata_size);
@@ -667,12 +667,13 @@ static av_cold int encode_init(AVCodecContext *avctx)
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
     int i, j, k, m, ret;
 
-    if ((ret = ffv1_common_init(avctx)) < 0)
+    if ((ret = ff_ffv1_common_init(avctx)) < 0)
         return ret;
 
     s->version = 0;
 
-    if ((avctx->flags & (CODEC_FLAG_PASS1|CODEC_FLAG_PASS2)) || avctx->slices>1)
+    if ((avctx->flags & (AV_CODEC_FLAG_PASS1 | AV_CODEC_FLAG_PASS2)) ||
+        avctx->slices > 1)
         s->version = FFMAX(s->version, 2);
 
     // Unspecified level & slices, we choose version 1.2+ to ensure multithreaded decodability
@@ -754,6 +755,8 @@ static av_cold int encode_init(AVCodecContext *avctx)
         s->colorspace = 0;
         s->transparency = desc->nb_components == 4;
         if (!avctx->bits_per_raw_sample && !s->bits_per_raw_sample)
+            s->bits_per_raw_sample = 8;
+        else if (!s->bits_per_raw_sample)
             s->bits_per_raw_sample = 8;
         break;
     case AV_PIX_FMT_RGB32:
@@ -848,14 +851,14 @@ static av_cold int encode_init(AVCodecContext *avctx)
         p->context_count     = s->context_count[p->quant_table_index];
     }
 
-    if ((ret = ffv1_allocate_initial_states(s)) < 0)
+    if ((ret = ff_ffv1_allocate_initial_states(s)) < 0)
         return ret;
 
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
-        return AVERROR(ENOMEM);
-
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     if (!s->transparency)
         s->plane_count = 2;
@@ -865,7 +868,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     avcodec_get_chroma_sub_sample(avctx->pix_fmt, &s->chroma_h_shift, &s->chroma_v_shift);
     s->picture_number = 0;
 
-    if (avctx->flags & (CODEC_FLAG_PASS1 | CODEC_FLAG_PASS2)) {
+    if (avctx->flags & (AV_CODEC_FLAG_PASS1 | AV_CODEC_FLAG_PASS2)) {
         for (i = 0; i < s->quant_table_count; i++) {
             s->rc_stat2[i] = av_mallocz(s->context_count[i] *
                                         sizeof(*s->rc_stat2[i]));
@@ -972,13 +975,13 @@ slices_ok:
             return ret;
     }
 
-    if ((ret = ffv1_init_slice_contexts(s)) < 0)
+    if ((ret = ff_ffv1_init_slice_contexts(s)) < 0)
         return ret;
-    if ((ret = ffv1_init_slices_state(s)) < 0)
+    if ((ret = ff_ffv1_init_slices_state(s)) < 0)
         return ret;
 
 #define STATS_OUT_SIZE 1024 * 1024 * 6
-    if (avctx->flags & CODEC_FLAG_PASS1) {
+    if (avctx->flags & AV_CODEC_FLAG_PASS1) {
         avctx->stats_out = av_mallocz(STATS_OUT_SIZE);
         if (!avctx->stats_out)
             return AVERROR(ENOMEM);
@@ -1020,7 +1023,7 @@ static void encode_slice_header(FFV1Context *f, FFV1Context *fs)
     if (f->version > 3) {
         put_rac(c, state, fs->slice_coding_mode == 1);
         if (fs->slice_coding_mode == 1)
-            ffv1_clear_slice_state(f, fs);
+            ff_ffv1_clear_slice_state(f, fs);
         put_symbol(c, state, fs->slice_coding_mode, 0);
         if (fs->slice_coding_mode != 1) {
             put_symbol(c, state, fs->slice_rct_by_coef, 0);
@@ -1136,8 +1139,8 @@ static int encode_slice(AVCodecContext *c, void *arg)
     }
 
 retry:
-    if (c->coded_frame->key_frame)
-        ffv1_clear_slice_state(f, fs);
+    if (f->key_frame)
+        ff_ffv1_clear_slice_state(f, fs);
     if (f->version > 2) {
         encode_slice_header(f, fs);
     }
@@ -1194,11 +1197,11 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t keystate    = 128;
     uint8_t *buf_p;
     int i, ret;
-    int64_t maxsize =   FF_MIN_BUFFER_SIZE
+    int64_t maxsize =   AV_INPUT_BUFFER_MIN_SIZE
                       + avctx->width*avctx->height*35LL*4;
 
     if(!pict) {
-        if (avctx->flags & CODEC_FLAG_PASS1) {
+        if (avctx->flags & AV_CODEC_FLAG_PASS1) {
             int j, k, m;
             char *p   = avctx->stats_out;
             char *end = p + STATS_OUT_SIZE;
@@ -1243,9 +1246,9 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     if (f->version > 3)
-        maxsize = FF_MIN_BUFFER_SIZE + avctx->width*avctx->height*3LL*4;
+        maxsize = AV_INPUT_BUFFER_MIN_SIZE + avctx->width*avctx->height*3LL*4;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, maxsize)) < 0)
+    if ((ret = ff_alloc_packet2(avctx, pkt, maxsize, 0)) < 0)
         return ret;
 
     ff_init_range_encoder(c, pkt->data, pkt->size);
@@ -1258,12 +1261,12 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     if (avctx->gop_size == 0 || f->picture_number % avctx->gop_size == 0) {
         put_rac(c, &keystate, 1);
-        avctx->coded_frame->key_frame = 1;
+        f->key_frame = 1;
         f->gob_count++;
         write_header(f);
     } else {
         put_rac(c, &keystate, 0);
-        avctx->coded_frame->key_frame = 0;
+        f->key_frame = 0;
     }
 
     if (f->ac > 1) {
@@ -1313,14 +1316,20 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         buf_p += bytes;
     }
 
-    if (avctx->flags & CODEC_FLAG_PASS1)
+    if (avctx->flags & AV_CODEC_FLAG_PASS1)
         avctx->stats_out[0] = '\0';
+
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+    avctx->coded_frame->key_frame = f->key_frame;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     f->picture_number++;
     pkt->size   = buf_p - pkt->data;
     pkt->pts    =
     pkt->dts    = pict->pts;
-    pkt->flags |= AV_PKT_FLAG_KEY * avctx->coded_frame->key_frame;
+    pkt->flags |= AV_PKT_FLAG_KEY * f->key_frame;
     *got_packet = 1;
 
     return 0;
@@ -1328,8 +1337,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 static av_cold int encode_close(AVCodecContext *avctx)
 {
-    av_frame_free(&avctx->coded_frame);
-    ffv1_close(avctx);
+    ff_ffv1_close(avctx);
     return 0;
 }
 
@@ -1361,7 +1369,7 @@ AVCodec ff_ffv1_encoder = {
     .init           = encode_init,
     .encode2        = encode_frame,
     .close          = encode_close,
-    .capabilities   = CODEC_CAP_SLICE_THREADS | CODEC_CAP_DELAY,
+    .capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_DELAY,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,   AV_PIX_FMT_YUVA420P,  AV_PIX_FMT_YUVA422P,  AV_PIX_FMT_YUV444P,
         AV_PIX_FMT_YUVA444P,  AV_PIX_FMT_YUV440P,   AV_PIX_FMT_YUV422P,   AV_PIX_FMT_YUV411P,

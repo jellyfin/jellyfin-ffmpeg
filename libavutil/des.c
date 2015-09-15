@@ -22,9 +22,8 @@
 #include "avutil.h"
 #include "common.h"
 #include "intreadwrite.h"
+#include "mem.h"
 #include "des.h"
-
-typedef struct AVDES AVDES;
 
 #define T(a, b, c, d, e, f, g, h) 64-a,64-b,64-c,64-d,64-e,64-f,64-g,64-h
 static const uint8_t IP_shuffle[] = {
@@ -284,6 +283,11 @@ static uint64_t des_encdec(uint64_t in, uint64_t K[16], int decrypt) {
     // reverse shuffle used to ease hardware implementations
     in = shuffle_inv(in, IP_shuffle, sizeof(IP_shuffle));
     return in;
+}
+
+AVDES *av_des_alloc(void)
+{
+    return av_mallocz(sizeof(struct AVDES));
 }
 
 int av_des_init(AVDES *d, const uint8_t *key, int key_bits, av_unused int decrypt) {

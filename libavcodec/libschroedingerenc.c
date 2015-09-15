@@ -159,10 +159,6 @@ static av_cold int libschroedinger_encode_init(AVCodecContext *avctx)
                                                     avctx->width,
                                                     avctx->height);
 
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
-        return AVERROR(ENOMEM);
-
     if (!avctx->gop_size) {
         schro_encoder_setting_set_double(p_schro_params->encoder,
                                          "gop_structure",
@@ -179,7 +175,7 @@ static av_cold int libschroedinger_encode_init(AVCodecContext *avctx)
     }
 
     /* FIXME - Need to handle SCHRO_ENCODER_RATE_CONTROL_LOW_DELAY. */
-    if (avctx->flags & CODEC_FLAG_QSCALE) {
+    if (avctx->flags & AV_CODEC_FLAG_QSCALE) {
         if (!avctx->global_quality) {
             /* lossless coding */
             schro_encoder_setting_set_double(p_schro_params->encoder,
@@ -206,14 +202,14 @@ static av_cold int libschroedinger_encode_init(AVCodecContext *avctx)
                                          "bitrate", avctx->bit_rate);
     }
 
-    if (avctx->flags & CODEC_FLAG_INTERLACED_ME)
+    if (avctx->flags & AV_CODEC_FLAG_INTERLACED_ME)
         /* All material can be coded as interlaced or progressive
            irrespective of the type of source material. */
         schro_encoder_setting_set_double(p_schro_params->encoder,
                                          "interlaced_coding", 1);
 
     schro_encoder_setting_set_double(p_schro_params->encoder, "open_gop",
-                                     !(avctx->flags & CODEC_FLAG_CLOSED_GOP));
+                                     !(avctx->flags & AV_CODEC_FLAG_CLOSED_GOP));
 
     /* FIXME: Signal range hardcoded to 8-bit data until both libschroedinger
      * and libdirac support other bit-depth data. */
@@ -383,16 +379,20 @@ static int libschroedinger_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     pkt_size = p_frame_output->size;
     if (last_frame_in_sequence && p_schro_params->enc_buf_size > 0)
         pkt_size += p_schro_params->enc_buf_size;
-    if ((ret = ff_alloc_packet2(avctx, pkt, pkt_size)) < 0)
+    if ((ret = ff_alloc_packet2(avctx, pkt, pkt_size, 0)) < 0)
         goto error;
 
     memcpy(pkt->data, p_frame_output->p_encbuf, p_frame_output->size);
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avctx->coded_frame->key_frame = p_frame_output->key_frame;
+    avctx->coded_frame->pts = p_frame_output->frame_num;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     /* Use the frame number of the encoded frame as the pts. It is OK to
      * do so since Dirac is a constant frame rate codec. It expects input
      * to be of constant frame rate. */
-    pkt->pts =
-    avctx->coded_frame->pts = p_frame_output->frame_num;
+    pkt->pts = p_frame_output->frame_num;
     pkt->dts = p_schro_params->dts++;
     enc_size = p_frame_output->size;
 
@@ -436,8 +436,6 @@ static int libschroedinger_encode_close(AVCodecContext *avctx)
     /* Free the video format structure. */
     av_freep(&p_schro_params->format);
 
-    av_frame_free(&avctx->coded_frame);
-
     return 0;
 }
 
@@ -451,7 +449,7 @@ AVCodec ff_libschroedinger_encoder = {
     .init           = libschroedinger_encode_init,
     .encode2        = libschroedinger_encode_frame,
     .close          = libschroedinger_encode_close,
-    .capabilities   = CODEC_CAP_DELAY,
+    .capabilities   = AV_CODEC_CAP_DELAY,
     .pix_fmts       = (const enum AVPixelFormat[]){
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE
     },

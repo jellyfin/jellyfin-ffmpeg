@@ -57,7 +57,6 @@ enum MappingMode {
 #define MAX_CH 64
 typedef struct ChannelMapContext {
     const AVClass *class;
-    AVFilterChannelLayouts *channel_layouts;
     char *mapping_str;
     char *channel_layout_str;
     uint64_t output_layout;
@@ -275,8 +274,6 @@ static av_cold int channelmap_init(AVFilterContext *ctx)
         return AVERROR(EINVAL);
     }
 
-    ff_add_channel_layout(&s->channel_layouts, s->output_layout);
-
     if (mode == MAP_PAIR_INT_STR || mode == MAP_PAIR_STR_STR) {
         for (i = 0; i < s->nch; i++) {
             s->map[i].out_channel_idx = av_get_channel_layout_channel_index(
@@ -291,16 +288,19 @@ static int channelmap_query_formats(AVFilterContext *ctx)
 {
     ChannelMapContext *s = ctx->priv;
     AVFilterChannelLayouts *layouts;
-
-    ff_set_common_formats(ctx, ff_planar_sample_fmts());
-    ff_set_common_samplerates(ctx, ff_all_samplerates());
+    AVFilterChannelLayouts *channel_layouts = NULL;
 
     layouts = ff_all_channel_layouts();
     if (!layouts)
         return AVERROR(ENOMEM);
 
+    ff_add_channel_layout(&channel_layouts, s->output_layout);
+
+    ff_set_common_formats(ctx, ff_planar_sample_fmts());
+    ff_set_common_samplerates(ctx, ff_all_samplerates());
+
     ff_channel_layouts_ref(layouts, &ctx->inputs[0]->out_channel_layouts);
-    ff_channel_layouts_ref(s->channel_layouts,       &ctx->outputs[0]->in_channel_layouts);
+    ff_channel_layouts_ref(channel_layouts,          &ctx->outputs[0]->in_channel_layouts);
 
     return 0;
 }

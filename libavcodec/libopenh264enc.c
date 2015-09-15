@@ -92,7 +92,7 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
 
     (*s->encoder)->GetDefaultParams(s->encoder, &param);
 
-    param.fMaxFrameRate              = avctx->time_base.den / avctx->time_base.num;
+    param.fMaxFrameRate              = 1/av_q2d(avctx->time_base);
     param.iPicWidth                  = avctx->width;
     param.iPicHeight                 = avctx->height;
     param.iTargetBitrate             = avctx->bit_rate;
@@ -137,13 +137,13 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
         goto fail;
     }
 
-    if (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) {
+    if (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
         SFrameBSInfo fbi = { 0 };
         int i, size = 0;
         (*s->encoder)->EncodeParameterSets(s->encoder, &fbi);
         for (i = 0; i < fbi.sLayerInfo[0].iNalCount; i++)
             size += fbi.sLayerInfo[0].pNalLengthInByte[i];
-        avctx->extradata = av_mallocz(size + FF_INPUT_BUFFER_PADDING_SIZE);
+        avctx->extradata = av_mallocz(size + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!avctx->extradata) {
             err = AVERROR(ENOMEM);
             goto fail;
@@ -192,7 +192,7 @@ static int svc_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     // frames have two layers, where the first layer contains the SPS/PPS.
     // If using global headers, don't include the SPS/PPS in the returned
     // packet - thus, only return one layer.
-    if (avctx->flags & CODEC_FLAG_GLOBAL_HEADER)
+    if (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)
         first_layer = fbi.iLayerNum - 1;
 
     for (layer = first_layer; layer < fbi.iLayerNum; layer++) {
@@ -202,7 +202,7 @@ static int svc_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     }
     av_log(avctx, AV_LOG_DEBUG, "%d slices\n", fbi.sLayerInfo[fbi.iLayerNum - 1].iNalCount);
 
-    if ((ret = ff_alloc_packet(avpkt, size))) {
+    if ((ret = ff_alloc_packet2(avctx, avpkt, size, size))) {
         av_log(avctx, AV_LOG_ERROR, "Error getting output packet\n");
         return ret;
     }
@@ -227,7 +227,7 @@ AVCodec ff_libopenh264_encoder = {
     .init           = svc_encode_init,
     .encode2        = svc_encode_frame,
     .close          = svc_encode_close,
-    .capabilities   = CODEC_CAP_AUTO_THREADS,
+    .capabilities   = AV_CODEC_CAP_AUTO_THREADS,
     .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P,
                                                     AV_PIX_FMT_NONE },
     .priv_class     = &class,

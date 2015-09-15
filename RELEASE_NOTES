@@ -1,10 +1,10 @@
 
-              ┌─────────────────────────────────────┐
-              │ RELEASE NOTES for FFmpeg 2.7 "Nash" │
-              └─────────────────────────────────────┘
+              ┌────────────────────────────────────────┐
+              │ RELEASE NOTES for FFmpeg 2.8 "Feynman" │
+              └────────────────────────────────────────┘
 
-   The FFmpeg Project proudly presents FFmpeg 2.7 "Nash", about 3
-   months after the release of FFmpeg 2.6.
+   The FFmpeg Project proudly presents FFmpeg 2.8 "Feynman", about 3
+   months after the release of FFmpeg 2.7.
 
    A complete Changelog is available at the root of the project, and the
    complete Git history on http://source.ffmpeg.org.

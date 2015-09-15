@@ -164,7 +164,6 @@ typedef struct MOVMuxContext {
 
     int flags;
     int rtp_flags;
-    int exact;
 
     int iods_skip;
     int iods_video_profile;
@@ -182,7 +181,7 @@ typedef struct MOVMuxContext {
     int video_track_timescale;
 
     int reserved_moov_size; ///< 0 for disabled, -1 for automatic, size otherwise
-    int64_t reserved_moov_pos;
+    int64_t reserved_header_pos;
 
     char *major_brand;
 
@@ -210,8 +209,9 @@ typedef struct MOVMuxContext {
 #define FF_MOV_FLAG_DASH                  (1 << 11)
 #define FF_MOV_FLAG_FRAG_DISCONT          (1 << 12)
 #define FF_MOV_FLAG_DELAY_MOOV            (1 << 13)
-#define FF_MOV_FLAG_WRITE_COLR            (1 << 14)
-#define FF_MOV_FLAG_WRITE_GAMA            (1 << 15)
+#define FF_MOV_FLAG_GLOBAL_SIDX           (1 << 14)
+#define FF_MOV_FLAG_WRITE_COLR            (1 << 15)
+#define FF_MOV_FLAG_WRITE_GAMA            (1 << 16)
 
 int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt);
 

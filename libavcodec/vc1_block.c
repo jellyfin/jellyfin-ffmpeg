@@ -99,7 +99,7 @@ static void vc1_put_signed_blocks_clamped(VC1Context *v)
             s->idsp.put_signed_pixels_clamped(v->block[v->topleft_blk_idx][3],
                                               s->dest[0] - v_dist * s->linesize - 8,
                                               stride_y);
-            if (!CONFIG_GRAY || !(s->avctx->flags & CODEC_FLAG_GRAY)) {
+            if (!CONFIG_GRAY || !(s->avctx->flags & AV_CODEC_FLAG_GRAY)) {
             s->idsp.put_signed_pixels_clamped(v->block[v->topleft_blk_idx][4],
                                               s->dest[1] - 8 * s->uvlinesize - 8,
                                               s->uvlinesize);
@@ -126,7 +126,7 @@ static void vc1_put_signed_blocks_clamped(VC1Context *v)
             s->idsp.put_signed_pixels_clamped(v->block[v->top_blk_idx][3],
                                               s->dest[0] - v_dist * s->linesize + 8,
                                               stride_y);
-            if (!CONFIG_GRAY || !(s->avctx->flags & CODEC_FLAG_GRAY)) {
+            if (!CONFIG_GRAY || !(s->avctx->flags & AV_CODEC_FLAG_GRAY)) {
             s->idsp.put_signed_pixels_clamped(v->block[v->top_blk_idx][4],
                                               s->dest[1] - 8 * s->uvlinesize,
                                               s->uvlinesize);
@@ -961,7 +961,7 @@ static int vc1_decode_intra_block(VC1Context *v, int16_t block[64], int n,
         q2 = s->current_picture.qscale_table[mb_pos - 1];
     if (!dc_pred_dir && a_avail && mb_pos >= s->mb_stride)
         q2 = s->current_picture.qscale_table[mb_pos - s->mb_stride];
-    if ( dc_pred_dir && n == 1)
+    if (dc_pred_dir && n == 1)
         q2 = q1;
     if (!dc_pred_dir && n == 2)
         q2 = q1;
@@ -1327,7 +1327,7 @@ static int vc1_decode_p_mb(VC1Context *v)
 
                     vc1_decode_intra_block(v, s->block[i], i, val, mquant,
                                            (i & 4) ? v->codingset2 : v->codingset);
-                    if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & CODEC_FLAG_GRAY))
+                    if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                         continue;
                     v->vc1dsp.vc1_inv_trans_8x8(s->block[i]);
                     if (v->rangeredfrm)
@@ -1348,7 +1348,7 @@ static int vc1_decode_p_mb(VC1Context *v)
                 } else if (val) {
                     pat = vc1_decode_p_block(v, s->block[i], i, mquant, ttmb, first_block,
                                              s->dest[dst_idx] + off, (i & 4) ? s->uvlinesize : s->linesize,
-                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & CODEC_FLAG_GRAY), &block_tt);
+                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & AV_CODEC_FLAG_GRAY), &block_tt);
                     block_cbp |= pat << (i << 2);
                     if (!v->ttmbf && ttmb < 8)
                         ttmb = -1;
@@ -1438,7 +1438,7 @@ static int vc1_decode_p_mb(VC1Context *v)
 
                     vc1_decode_intra_block(v, s->block[i], i, is_coded[i], mquant,
                                            (i & 4) ? v->codingset2 : v->codingset);
-                    if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & CODEC_FLAG_GRAY))
+                    if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                         continue;
                     v->vc1dsp.vc1_inv_trans_8x8(s->block[i]);
                     if (v->rangeredfrm)
@@ -1460,7 +1460,7 @@ static int vc1_decode_p_mb(VC1Context *v)
                     pat = vc1_decode_p_block(v, s->block[i], i, mquant, ttmb,
                                              first_block, s->dest[dst_idx] + off,
                                              (i & 4) ? s->uvlinesize : s->linesize,
-                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & CODEC_FLAG_GRAY),
+                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & AV_CODEC_FLAG_GRAY),
                                              &block_tt);
                     block_cbp |= pat << (i << 2);
                     if (!v->ttmbf && ttmb < 8)
@@ -1586,7 +1586,7 @@ static int vc1_decode_p_mb_intfr(VC1Context *v)
 
                 vc1_decode_intra_block(v, s->block[i], i, val, mquant,
                                        (i & 4) ? v->codingset2 : v->codingset);
-                if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & CODEC_FLAG_GRAY))
+                if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                     continue;
                 v->vc1dsp.vc1_inv_trans_8x8(s->block[i]);
                 if (i < 4) {
@@ -1673,7 +1673,7 @@ static int vc1_decode_p_mb_intfr(VC1Context *v)
                     pat = vc1_decode_p_block(v, s->block[i], i, mquant, ttmb,
                                              first_block, s->dest[dst_idx] + off,
                                              (i & 4) ? s->uvlinesize : (s->linesize << fieldtx),
-                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & CODEC_FLAG_GRAY), &block_tt);
+                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & AV_CODEC_FLAG_GRAY), &block_tt);
                     block_cbp |= pat << (i << 2);
                     if (!v->ttmbf && ttmb < 8)
                         ttmb = -1;
@@ -1752,7 +1752,7 @@ static int vc1_decode_p_mb_intfi(VC1Context *v)
 
             vc1_decode_intra_block(v, s->block[i], i, val, mquant,
                                    (i & 4) ? v->codingset2 : v->codingset);
-            if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & CODEC_FLAG_GRAY))
+            if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                 continue;
             v->vc1dsp.vc1_inv_trans_8x8(s->block[i]);
             off  = (i & 4) ? 0 : ((i & 1) * 8 + (i & 2) * 4 * s->linesize);
@@ -1806,7 +1806,7 @@ static int vc1_decode_p_mb_intfi(VC1Context *v)
                 pat = vc1_decode_p_block(v, s->block[i], i, mquant, ttmb,
                                          first_block, s->dest[dst_idx] + off,
                                          (i & 4) ? s->uvlinesize : s->linesize,
-                                         CONFIG_GRAY && (i & 4) && (s->avctx->flags & CODEC_FLAG_GRAY),
+                                         CONFIG_GRAY && (i & 4) && (s->avctx->flags & AV_CODEC_FLAG_GRAY),
                                          &block_tt);
                 block_cbp |= pat << (i << 2);
                 if (!v->ttmbf && ttmb < 8)
@@ -1953,7 +1953,7 @@ static void vc1_decode_b_mb(VC1Context *v)
 
             vc1_decode_intra_block(v, s->block[i], i, val, mquant,
                                    (i & 4) ? v->codingset2 : v->codingset);
-            if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & CODEC_FLAG_GRAY))
+            if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                 continue;
             v->vc1dsp.vc1_inv_trans_8x8(s->block[i]);
             if (v->rangeredfrm)
@@ -1967,7 +1967,7 @@ static void vc1_decode_b_mb(VC1Context *v)
             vc1_decode_p_block(v, s->block[i], i, mquant, ttmb,
                                first_block, s->dest[dst_idx] + off,
                                (i & 4) ? s->uvlinesize : s->linesize,
-                               CONFIG_GRAY && (i & 4) && (s->avctx->flags & CODEC_FLAG_GRAY), NULL);
+                               CONFIG_GRAY && (i & 4) && (s->avctx->flags & AV_CODEC_FLAG_GRAY), NULL);
             if (!v->ttmbf && ttmb < 8)
                 ttmb = -1;
             first_block = 0;
@@ -2028,7 +2028,7 @@ static void vc1_decode_b_mb_intfi(VC1Context *v)
 
             vc1_decode_intra_block(v, s->block[i], i, val, mquant,
                                    (i & 4) ? v->codingset2 : v->codingset);
-            if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & CODEC_FLAG_GRAY))
+            if (CONFIG_GRAY && (i > 3) && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                 continue;
             v->vc1dsp.vc1_inv_trans_8x8(s->block[i]);
             if (v->rangeredfrm)
@@ -2126,7 +2126,7 @@ static void vc1_decode_b_mb_intfi(VC1Context *v)
                 vc1_decode_p_block(v, s->block[i], i, mquant, ttmb,
                                    first_block, s->dest[dst_idx] + off,
                                    (i & 4) ? s->uvlinesize : s->linesize,
-                                   CONFIG_GRAY && (i & 4) && (s->avctx->flags & CODEC_FLAG_GRAY), NULL);
+                                   CONFIG_GRAY && (i & 4) && (s->avctx->flags & AV_CODEC_FLAG_GRAY), NULL);
                 if (!v->ttmbf && ttmb < 8)
                     ttmb = -1;
                 first_block = 0;
@@ -2251,7 +2251,7 @@ static int vc1_decode_b_mb_intfr(VC1Context *v)
 
             vc1_decode_intra_block(v, s->block[i], i, val, mquant,
                                    (i & 4) ? v->codingset2 : v->codingset);
-            if (CONFIG_GRAY && i > 3 && (s->avctx->flags & CODEC_FLAG_GRAY))
+            if (CONFIG_GRAY && i > 3 && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                 continue;
             v->vc1dsp.vc1_inv_trans_8x8(s->block[i]);
             if (i < 4) {
@@ -2417,7 +2417,7 @@ static int vc1_decode_b_mb_intfr(VC1Context *v)
                     pat = vc1_decode_p_block(v, s->block[i], i, mquant, ttmb,
                                              first_block, s->dest[dst_idx] + off,
                                              (i & 4) ? s->uvlinesize : (s->linesize << fieldtx),
-                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & CODEC_FLAG_GRAY), &block_tt);
+                                             CONFIG_GRAY && (i & 4) && (s->avctx->flags & AV_CODEC_FLAG_GRAY), &block_tt);
                     block_cbp |= pat << (i << 2);
                     if (!v->ttmbf && ttmb < 8)
                         ttmb = -1;
@@ -2560,7 +2560,7 @@ static void vc1_decode_i_blocks(VC1Context *v)
 
                 vc1_decode_i_block(v, s->block[k], k, val, (k < 4) ? v->codingset : v->codingset2);
 
-                if (CONFIG_GRAY && k > 3 && (s->avctx->flags & CODEC_FLAG_GRAY))
+                if (CONFIG_GRAY && k > 3 && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                     continue;
                 v->vc1dsp.vc1_inv_trans_8x8(s->block[k]);
                 if (v->pq >= 9 && v->overlap) {
@@ -2584,7 +2584,7 @@ static void vc1_decode_i_blocks(VC1Context *v)
                 if (s->mb_x) {
                     v->vc1dsp.vc1_h_overlap(s->dest[0], s->linesize);
                     v->vc1dsp.vc1_h_overlap(s->dest[0] + 8 * s->linesize, s->linesize);
-                    if (!CONFIG_GRAY || !(s->avctx->flags & CODEC_FLAG_GRAY)) {
+                    if (!CONFIG_GRAY || !(s->avctx->flags & AV_CODEC_FLAG_GRAY)) {
                         v->vc1dsp.vc1_h_overlap(s->dest[1], s->uvlinesize);
                         v->vc1dsp.vc1_h_overlap(s->dest[2], s->uvlinesize);
                     }
@@ -2594,7 +2594,7 @@ static void vc1_decode_i_blocks(VC1Context *v)
                 if (!s->first_slice_line) {
                     v->vc1dsp.vc1_v_overlap(s->dest[0], s->linesize);
                     v->vc1dsp.vc1_v_overlap(s->dest[0] + 8, s->linesize);
-                    if (!CONFIG_GRAY || !(s->avctx->flags & CODEC_FLAG_GRAY)) {
+                    if (!CONFIG_GRAY || !(s->avctx->flags & AV_CODEC_FLAG_GRAY)) {
                         v->vc1dsp.vc1_v_overlap(s->dest[1], s->uvlinesize);
                         v->vc1dsp.vc1_v_overlap(s->dest[2], s->uvlinesize);
                     }
@@ -2692,7 +2692,7 @@ static void vc1_decode_i_blocks_adv(VC1Context *v)
             if (v->fieldtx_is_raw)
                 v->fieldtx_plane[mb_pos] = get_bits1(&v->s.gb);
             cbp = get_vlc2(&v->s.gb, ff_msmp4_mb_i_vlc.table, MB_INTRA_VLC_BITS, 2);
-            if ( v->acpred_is_raw)
+            if (v->acpred_is_raw)
                 v->s.ac_pred = get_bits1(&v->s.gb);
             else
                 v->s.ac_pred = v->acpred_plane[mb_pos];
@@ -2723,7 +2723,7 @@ static void vc1_decode_i_blocks_adv(VC1Context *v)
                 vc1_decode_i_block_adv(v, block[k], k, val,
                                        (k < 4) ? v->codingset : v->codingset2, mquant);
 
-                if (CONFIG_GRAY && k > 3 && (s->avctx->flags & CODEC_FLAG_GRAY))
+                if (CONFIG_GRAY && k > 3 && (s->avctx->flags & AV_CODEC_FLAG_GRAY))
                     continue;
                 v->vc1dsp.vc1_inv_trans_8x8(block[k]);
             }

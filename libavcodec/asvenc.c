@@ -207,7 +207,7 @@ static inline void dct_get(ASV1Context *a, const AVFrame *frame,
     for (i = 0; i < 4; i++)
         a->fdsp.fdct(block[i]);
 
-    if (!(a->avctx->flags & CODEC_FLAG_GRAY)) {
+    if (!(a->avctx->flags & AV_CODEC_FLAG_GRAY)) {
         a->pdsp.get_pixels(block[4], ptr_cb, frame->linesize[1]);
         a->pdsp.get_pixels(block[5], ptr_cr, frame->linesize[2]);
         for (i = 4; i < 6; i++)
@@ -265,7 +265,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     if ((ret = ff_alloc_packet2(avctx, pkt, a->mb_height * a->mb_width * MAX_MB_SIZE +
-                                FF_MIN_BUFFER_SIZE)) < 0)
+                                AV_INPUT_BUFFER_MIN_SIZE, 0)) < 0)
         return ret;
 
     init_put_bits(&a->pb, pkt->data, pkt->size);
@@ -363,8 +363,7 @@ AVCodec ff_asv1_encoder = {
     .encode2        = encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 
@@ -379,7 +378,6 @@ AVCodec ff_asv2_encoder = {
     .encode2        = encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

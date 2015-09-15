@@ -508,8 +508,10 @@ int avfilter_register(AVFilter *filter)
 
     for(i=0; filter->inputs && filter->inputs[i].name; i++) {
         const AVFilterPad *input = &filter->inputs[i];
+#if FF_API_AVFILTERPAD_PUBLIC
         av_assert0(     !input->filter_frame
                     || (!input->start_frame && !input->end_frame));
+#endif
     }
 
     filter->next = NULL;
@@ -893,7 +895,7 @@ int avfilter_init_str(AVFilterContext *filter, const char *args)
             return AVERROR(EINVAL);
         }
 
-#if FF_API_OLD_FILTER_OPTS
+#if FF_API_OLD_FILTER_OPTS || FF_API_OLD_FILTER_OPTS_ERROR
             if (   !strcmp(filter->filter->name, "format")     ||
                    !strcmp(filter->filter->name, "noformat")   ||
                    !strcmp(filter->filter->name, "frei0r")     ||
@@ -953,18 +955,30 @@ int avfilter_init_str(AVFilterContext *filter, const char *args)
             while ((p = strchr(p, ':')))
                 *p++ = '|';
 
+#if FF_API_OLD_FILTER_OPTS
             if (deprecated)
                 av_log(filter, AV_LOG_WARNING, "This syntax is deprecated. Use "
                        "'|' to separate the list items.\n");
 
             av_log(filter, AV_LOG_DEBUG, "compat: called with args=[%s]\n", copy);
             ret = process_options(filter, &options, copy);
+#else
+            if (deprecated) {
+                av_log(filter, AV_LOG_ERROR, "This syntax is deprecated. Use "
+                       "'|' to separate the list items ('%s' instead of '%s')\n",
+                       copy, args);
+                ret = AVERROR(EINVAL);
+            } else {
+                ret = process_options(filter, &options, copy);
+            }
+#endif
             av_freep(&copy);
 
             if (ret < 0)
                 goto fail;
+        } else
 #endif
-        } else {
+        {
             ret = process_options(filter, &options, args);
             if (ret < 0)
                 goto fail;
@@ -1024,7 +1038,6 @@ static int ff_filter_frame_framed(AVFilterLink *link, AVFrame *frame)
     if (dst->needs_writable && !av_frame_is_writable(frame)) {
         av_log(link->dst, AV_LOG_DEBUG, "Copying data in avfilter.\n");
 
-        /* Maybe use ff_copy_buffer_ref instead? */
         switch (link->type) {
         case AVMEDIA_TYPE_VIDEO:
             out = ff_get_video_buffer(link, link->w, link->h);
@@ -1148,8 +1161,11 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
 
     /* Consistency checks */
     if (link->type == AVMEDIA_TYPE_VIDEO) {
-        if (strcmp(link->dst->filter->name, "scale") &&
-            strcmp(link->dst->filter->name, "idet")) {
+        if (strcmp(link->dst->filter->name, "buffersink") &&
+            strcmp(link->dst->filter->name, "format") &&
+            strcmp(link->dst->filter->name, "idet") &&
+            strcmp(link->dst->filter->name, "null") &&
+            strcmp(link->dst->filter->name, "scale")) {
             av_assert1(frame->format                 == link->format);
             av_assert1(frame->width               == link->w);
             av_assert1(frame->height               == link->h);

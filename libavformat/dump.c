@@ -377,6 +377,9 @@ static void dump_sidedata(void *ctx, AVStream *st, const char *indent)
             av_log(ctx, AV_LOG_INFO, "audio service type: ");
             dump_audioservicetype(ctx, &sd);
             break;
+        case AV_PKT_DATA_QUALITY_STATS:
+            av_log(ctx, AV_LOG_INFO, "quality factor: %d, pict_type: %c", AV_RL32(sd.data), av_get_picture_type_char(sd.data[4]));
+            break;
         default:
             av_log(ctx, AV_LOG_WARNING,
                    "unknown side data type %d (%d bytes)", sd.type, sd.size);
@@ -420,8 +423,8 @@ static void dump_stream_format(AVFormatContext *ic, int i,
         av_cmp_q(st->sample_aspect_ratio, st->codec->sample_aspect_ratio)) {
         AVRational display_aspect_ratio;
         av_reduce(&display_aspect_ratio.num, &display_aspect_ratio.den,
-                  st->codec->width  * st->sample_aspect_ratio.num,
-                  st->codec->height * st->sample_aspect_ratio.den,
+                  st->codec->width  * (int64_t)st->sample_aspect_ratio.num,
+                  st->codec->height * (int64_t)st->sample_aspect_ratio.den,
                   1024 * 1024);
         av_log(NULL, AV_LOG_INFO, ", SAR %d:%d DAR %d:%d",
                st->sample_aspect_ratio.num, st->sample_aspect_ratio.den,
@@ -509,7 +512,7 @@ void av_dump_format(AVFormatContext *ic, int index,
             int secs, us;
             av_log(NULL, AV_LOG_INFO, ", start: ");
             secs = ic->start_time / AV_TIME_BASE;
-            us   = abs(ic->start_time % AV_TIME_BASE);
+            us   = llabs(ic->start_time % AV_TIME_BASE);
             av_log(NULL, AV_LOG_INFO, "%d.%06d",
                    secs, (int) av_rescale(us, 1000000, AV_TIME_BASE));
         }

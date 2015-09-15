@@ -33,28 +33,23 @@
 #   include "x86/intmath.h"
 #endif
 
-/**
- * @addtogroup lavu_internal
- * @{
- */
-
 #if HAVE_FAST_CLZ
-#if AV_GCC_VERSION_AT_LEAST(3,4)
-#ifndef ff_log2
-#   define ff_log2(x) (31 - __builtin_clz((x)|1))
-#   ifndef ff_log2_16bit
-#      define ff_log2_16bit av_log2
-#   endif
-#endif /* ff_log2 */
-#elif defined( __INTEL_COMPILER )
+#if defined( __INTEL_COMPILER )
 #ifndef ff_log2
 #   define ff_log2(x) (_bit_scan_reverse((x)|1))
 #   ifndef ff_log2_16bit
 #      define ff_log2_16bit av_log2
 #   endif
 #endif /* ff_log2 */
-#endif
+#elif AV_GCC_VERSION_AT_LEAST(3,4)
+#ifndef ff_log2
+#   define ff_log2(x) (31 - __builtin_clz((x)|1))
+#   ifndef ff_log2_16bit
+#      define ff_log2_16bit av_log2
+#   endif
+#endif /* ff_log2 */
 #endif /* AV_GCC_VERSION_AT_LEAST(3,4) */
+#endif
 
 extern const uint8_t ff_log2_tab[256];
 
@@ -106,22 +101,18 @@ static av_always_inline av_const int ff_log2_16bit_c(unsigned int v)
 #define av_log2_16bit ff_log2_16bit
 
 /**
- * @}
- */
-
-/**
  * @addtogroup lavu_math
  * @{
  */
 
 #if HAVE_FAST_CLZ
-#if AV_GCC_VERSION_AT_LEAST(3,4)
-#ifndef ff_ctz
-#define ff_ctz(v) __builtin_ctz(v)
-#endif
-#elif defined( __INTEL_COMPILER )
+#if defined( __INTEL_COMPILER )
 #ifndef ff_ctz
 #define ff_ctz(v) _bit_scan_forward(v)
+#endif
+#elif AV_GCC_VERSION_AT_LEAST(3,4)
+#ifndef ff_ctz
+#define ff_ctz(v) __builtin_ctz(v)
 #endif
 #endif
 #endif

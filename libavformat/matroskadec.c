@@ -806,7 +806,7 @@ static int ebml_read_sint(AVIOContext *pb, int size, int64_t *num)
 
         /* big-endian ordering; build up number */
         while (n++ < size)
-            *num = (*num << 8) | avio_r8(pb);
+            *num = ((uint64_t)*num << 8) | avio_r8(pb);
     }
 
     return 0;
@@ -995,6 +995,15 @@ static int ebml_parse_nest(MatroskaDemuxContext *matroska, EbmlSyntax *syntax,
     return res;
 }
 
+static int is_ebml_id_valid(uint32_t id)
+{
+    // Due to endian nonsense in Matroska, the highest byte with any bits set
+    // will contain the leading length bit. This bit in turn identifies the
+    // total byte length of the element by its position within the byte.
+    unsigned int bits = av_log2(id);
+    return id && (bits + 7) / 8 ==  (8 - bits % 8);
+}
+
 /*
  * Allocate and return the entry for the level1 element with the given ID. If
  * an entry already exists, return the existing entry.
@@ -1004,6 +1013,9 @@ static MatroskaLevel1Element *matroska_find_level1_elem(MatroskaDemuxContext *ma
 {
     int i;
     MatroskaLevel1Element *elem;
+
+    if (!is_ebml_id_valid(id))
+        return NULL;
 
     // Some files link to all clusters; useless.
     if (id == MATROSKA_ID_CLUSTER)
@@ -1780,7 +1792,7 @@ static int matroska_parse_tracks(AVFormatContext *s)
             ffio_init_context(&b, track->codec_priv.data,
                               track->codec_priv.size,
                               0, NULL, NULL, NULL, NULL);
-            ret = ff_get_wav_header(&b, st->codec, track->codec_priv.size, 0);
+            ret = ff_get_wav_header(s, &b, st->codec, track->codec_priv.size, 0);
             if (ret < 0)
                 return ret;
             codec_id         = st->codec->codec_id;
@@ -1841,7 +1853,7 @@ static int matroska_parse_tracks(AVFormatContext *s)
         } else if (codec_id == AV_CODEC_ID_AAC && !track->codec_priv.size) {
             int profile = matroska_aac_profile(track->codec_id);
             int sri     = matroska_aac_sri(track->audio.samplerate);
-            extradata   = av_mallocz(5 + FF_INPUT_BUFFER_PADDING_SIZE);
+            extradata   = av_mallocz(5 + AV_INPUT_BUFFER_PADDING_SIZE);
             if (!extradata)
                 return AVERROR(ENOMEM);
             extradata[0] = (profile << 3) | ((sri & 0x0E) >> 1);
@@ -1854,13 +1866,13 @@ static int matroska_parse_tracks(AVFormatContext *s)
                 extradata_size = 5;
             } else
                 extradata_size = 2;
-        } else if (codec_id == AV_CODEC_ID_ALAC && track->codec_priv.size && track->codec_priv.size < INT_MAX - 12 - FF_INPUT_BUFFER_PADDING_SIZE) {
+        } else if (codec_id == AV_CODEC_ID_ALAC && track->codec_priv.size && track->codec_priv.size < INT_MAX - 12 - AV_INPUT_BUFFER_PADDING_SIZE) {
             /* Only ALAC's magic cookie is stored in Matroska's track headers.
              * Create the "atom size", "tag", and "tag version" fields the
              * decoder expects manually. */
             extradata_size = 12 + track->codec_priv.size;
             extradata      = av_mallocz(extradata_size +
-                                        FF_INPUT_BUFFER_PADDING_SIZE);
+                                        AV_INPUT_BUFFER_PADDING_SIZE);
             if (!extradata)
                 return AVERROR(ENOMEM);
             AV_WB32(extradata, extradata_size);
@@ -1870,7 +1882,7 @@ static int matroska_parse_tracks(AVFormatContext *s)
                    track->codec_priv.size);
         } else if (codec_id == AV_CODEC_ID_TTA) {
             extradata_size = 30;
-            extradata      = av_mallocz(extradata_size + FF_INPUT_BUFFER_PADDING_SIZE);
+            extradata      = av_mallocz(extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
             if (!extradata)
                 return AVERROR(ENOMEM);
             ffio_init_context(&b, extradata, extradata_size, 1,
@@ -2053,7 +2065,9 @@ static int matroska_parse_tracks(AVFormatContext *s)
             st->codec->channels    = track->audio.channels;
             if (!st->codec->bits_per_coded_sample)
                 st->codec->bits_per_coded_sample = track->audio.bitdepth;
-            if (st->codec->codec_id != AV_CODEC_ID_AAC)
+            if (st->codec->codec_id == AV_CODEC_ID_MP3)
+                st->need_parsing = AVSTREAM_PARSE_FULL;
+            else if (st->codec->codec_id != AV_CODEC_ID_AAC)
                 st->need_parsing = AVSTREAM_PARSE_HEADERS;
             if (track->codec_delay > 0) {
                 st->codec->delay = av_rescale_q(track->codec_delay,

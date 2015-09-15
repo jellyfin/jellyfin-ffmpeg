@@ -60,6 +60,7 @@ void av_register_all(void)
 
     /* (de)muxers */
     REGISTER_MUXER   (A64,              a64);
+    REGISTER_DEMUXER (AA,               aa);
     REGISTER_DEMUXER (AAC,              aac);
     REGISTER_MUXDEMUX(AC3,              ac3);
     REGISTER_DEMUXER (ACT,              act);
@@ -77,6 +78,7 @@ void av_register_all(void)
     REGISTER_MUXDEMUX(APNG,             apng);
     REGISTER_DEMUXER (AQTITLE,          aqtitle);
     REGISTER_MUXDEMUX(ASF,              asf);
+    REGISTER_DEMUXER (ASF_O,            asf_o);
     REGISTER_MUXDEMUX(ASS,              ass);
     REGISTER_MUXDEMUX(AST,              ast);
     REGISTER_MUXER   (ASF_STREAM,       asf_stream);
@@ -92,6 +94,7 @@ void av_register_all(void)
     REGISTER_DEMUXER (BINK,             bink);
     REGISTER_MUXDEMUX(BIT,              bit);
     REGISTER_DEMUXER (BMV,              bmv);
+    REGISTER_DEMUXER (BFSTM,            bfstm);
     REGISTER_DEMUXER (BRSTM,            brstm);
     REGISTER_DEMUXER (BOA,              boa);
     REGISTER_DEMUXER (C93,              c93);
@@ -333,6 +336,7 @@ void av_register_all(void)
 
     /* image demuxers */
     REGISTER_DEMUXER (IMAGE_BMP_PIPE,        image_bmp_pipe);
+    REGISTER_DEMUXER (IMAGE_DDS_PIPE,        image_dds_pipe);
     REGISTER_DEMUXER (IMAGE_DPX_PIPE,        image_dpx_pipe);
     REGISTER_DEMUXER (IMAGE_EXR_PIPE,        image_exr_pipe);
     REGISTER_DEMUXER (IMAGE_J2K_PIPE,        image_j2k_pipe);
@@ -348,6 +352,7 @@ void av_register_all(void)
 
 
     /* protocols */
+    REGISTER_PROTOCOL(ASYNC,            async);
     REGISTER_PROTOCOL(BLURAY,           bluray);
     REGISTER_PROTOCOL(CACHE,            cache);
     REGISTER_PROTOCOL(CONCAT,           concat);

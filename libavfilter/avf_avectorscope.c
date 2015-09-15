@@ -36,6 +36,7 @@
 enum VectorScopeMode {
     LISSAJOUS,
     LISSAJOUS_XY,
+    POLAR,
     MODE_NB,
 };
 
@@ -45,8 +46,8 @@ typedef struct AudioVectorScopeContext {
     int w, h;
     int hw, hh;
     int mode;
-    int contrast[3];
-    int fade[3];
+    int contrast[4];
+    int fade[4];
     double zoom;
     AVRational frame_rate;
 } AudioVectorScopeContext;
@@ -59,17 +60,20 @@ static const AVOption avectorscope_options[] = {
     { "m",    "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=LISSAJOUS}, 0, MODE_NB-1, FLAGS, "mode" },
     { "lissajous",    "", 0, AV_OPT_TYPE_CONST, {.i64=LISSAJOUS},    0, 0, FLAGS, "mode" },
     { "lissajous_xy", "", 0, AV_OPT_TYPE_CONST, {.i64=LISSAJOUS_XY}, 0, 0, FLAGS, "mode" },
+    { "polar",        "", 0, AV_OPT_TYPE_CONST, {.i64=POLAR},        0, 0, FLAGS, "mode" },
     { "rate", "set video rate", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str="25"}, 0, 0, FLAGS },
     { "r",    "set video rate", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str="25"}, 0, 0, FLAGS },
     { "size", "set video size", OFFSET(w), AV_OPT_TYPE_IMAGE_SIZE, {.str="400x400"}, 0, 0, FLAGS },
     { "s",    "set video size", OFFSET(w), AV_OPT_TYPE_IMAGE_SIZE, {.str="400x400"}, 0, 0, FLAGS },
-    { "rc", "set red contrast",   OFFSET(contrast[0]), AV_OPT_TYPE_INT, {.i64=40}, 0, 255, FLAGS },
+    { "rc", "set red contrast",   OFFSET(contrast[0]), AV_OPT_TYPE_INT, {.i64=40},  0, 255, FLAGS },
     { "gc", "set green contrast", OFFSET(contrast[1]), AV_OPT_TYPE_INT, {.i64=160}, 0, 255, FLAGS },
-    { "bc", "set blue contrast",  OFFSET(contrast[2]), AV_OPT_TYPE_INT, {.i64=80}, 0, 255, FLAGS },
+    { "bc", "set blue contrast",  OFFSET(contrast[2]), AV_OPT_TYPE_INT, {.i64=80},  0, 255, FLAGS },
+    { "ac", "set alpha contrast", OFFSET(contrast[3]), AV_OPT_TYPE_INT, {.i64=255}, 0, 255, FLAGS },
     { "rf", "set red fade",       OFFSET(fade[0]), AV_OPT_TYPE_INT, {.i64=15}, 0, 255, FLAGS },
     { "gf", "set green fade",     OFFSET(fade[1]), AV_OPT_TYPE_INT, {.i64=10}, 0, 255, FLAGS },
-    { "bf", "set blue fade",      OFFSET(fade[2]), AV_OPT_TYPE_INT, {.i64=5}, 0, 255, FLAGS },
-    { "zoom", "set zoom factor",  OFFSET(zoom), AV_OPT_TYPE_DOUBLE, {.dbl=1}, 1, 10, FLAGS },
+    { "bf", "set blue fade",      OFFSET(fade[2]), AV_OPT_TYPE_INT, {.i64=5},  0, 255, FLAGS },
+    { "af", "set alpha fade",     OFFSET(fade[3]), AV_OPT_TYPE_INT, {.i64=5},  0, 255, FLAGS },
+    { "zoom", "set zoom factor",  OFFSET(zoom), AV_OPT_TYPE_DOUBLE, {.dbl=1},  1, 10, FLAGS },
     { NULL }
 };
 
@@ -92,6 +96,7 @@ static void draw_dot(AudioVectorScopeContext *s, unsigned x, unsigned y)
     dst[0] = FFMIN(dst[0] + s->contrast[0], 255);
     dst[1] = FFMIN(dst[1] + s->contrast[1], 255);
     dst[2] = FFMIN(dst[2] + s->contrast[2], 255);
+    dst[3] = FFMIN(dst[3] + s->contrast[3], 255);
 }
 
 static void fade(AudioVectorScopeContext *s)
@@ -106,6 +111,7 @@ static void fade(AudioVectorScopeContext *s)
                 d[j+0] = FFMAX(d[j+0] - s->fade[0], 0);
                 d[j+1] = FFMAX(d[j+1] - s->fade[1], 0);
                 d[j+2] = FFMAX(d[j+2] - s->fade[2], 0);
+                d[j+3] = FFMAX(d[j+3] - s->fade[3], 0);
             }
             d += linesize;
         }
@@ -206,9 +212,18 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
             if (s->mode == LISSAJOUS) {
                 x = ((src[1] - src[0]) * zoom / (float)(UINT16_MAX) + 1) * hw;
                 y = (1.0 - (src[0] + src[1]) * zoom / (float)UINT16_MAX) * hh;
-            } else {
+            } else if (s->mode == LISSAJOUS_XY) {
                 x = (src[1] * zoom / (float)INT16_MAX + 1) * hw;
                 y = (src[0] * zoom / (float)INT16_MAX + 1) * hh;
+            } else {
+                float sx, sy, cx, cy;
+
+                sx = src[1] * zoom / (float)INT16_MAX;
+                sy = src[0] * zoom / (float)INT16_MAX;
+                cx = sx * sqrtf(1 - 0.5*sy*sy);
+                cy = sy * sqrtf(1 - 0.5*sx*sx);
+                x = hw + hw * FFSIGN(cx + cy) * (cx - cy) * .7;
+                y = s->h - s->h * FFABS(cx + cy) * .7;
             }
 
             draw_dot(s, x, y);
@@ -221,9 +236,18 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
             if (s->mode == LISSAJOUS) {
                 x = ((src[1] - src[0]) * zoom / 2 + 1) * hw;
                 y = (1.0 - (src[0] + src[1]) * zoom / 2) * hh;
-            } else {
+            } else if (s->mode == LISSAJOUS_XY){
                 x = (src[1] * zoom + 1) * hw;
                 y = (src[0] * zoom + 1) * hh;
+            } else {
+                float sx, sy, cx, cy;
+
+                sx = src[1] * zoom;
+                sy = src[0] * zoom;
+                cx = sx * sqrtf(1 - 0.5 * sy * sy);
+                cy = sy * sqrtf(1 - 0.5 * sx * sx);
+                x = hw + hw * FFSIGN(cx + cy) * (cx - cy) * .7;
+                y = s->h - s->h * FFABS(cx + cy) * .7;
             }
 
             draw_dot(s, x, y);

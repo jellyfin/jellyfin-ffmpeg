@@ -108,7 +108,7 @@ static int decode_ext_header(Wmv2Context *w)
 
     if (s->avctx->debug & FF_DEBUG_PICT_INFO)
         av_log(s->avctx, AV_LOG_DEBUG,
-               "fps:%d, br:%d, qpbit:%d, abt_flag:%d, j_type_bit:%d, "
+               "fps:%d, br:%"PRId64", qpbit:%d, abt_flag:%d, j_type_bit:%d, "
                "tl_mv_flag:%d, mbrl_bit:%d, code:%d, loop_filter:%d, "
                "slices:%d\n",
                fps, s->bit_rate, w->mspel_bit, w->abt_flag, w->j_type_bit,
@@ -453,7 +453,9 @@ static av_cold int wmv2_decode_init(AVCodecContext *avctx)
     Wmv2Context *const w = avctx->priv_data;
     int ret;
 
+#if FF_API_EMU_EDGE
     avctx->flags |= CODEC_FLAG_EMU_EDGE;
+#endif
 
     if ((ret = ff_msmpeg4_decode_init(avctx)) < 0)
         return ret;
@@ -482,7 +484,7 @@ AVCodec ff_wmv2_decoder = {
     .init           = wmv2_decode_init,
     .close          = wmv2_decode_end,
     .decode         = ff_h263_decode_frame,
-    .capabilities   = CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
 };

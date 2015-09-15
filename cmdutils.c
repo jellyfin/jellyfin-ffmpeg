@@ -63,7 +63,7 @@
 
 static int init_report(const char *env);
 
-struct SwsContext *sws_opts;
+AVDictionary *sws_dict;
 AVDictionary *swr_opts;
 AVDictionary *format_opts, *codec_opts, *resample_opts;
 
@@ -73,20 +73,13 @@ int hide_banner = 0;
 
 void init_opts(void)
 {
-
-    if(CONFIG_SWSCALE)
-        sws_opts = sws_getContext(16, 16, 0, 16, 16, 0, SWS_BICUBIC,
-                              NULL, NULL, NULL);
+    av_dict_set(&sws_dict, "flags", "bicubic", 0);
 }
 
 void uninit_opts(void)
 {
-#if CONFIG_SWSCALE
-    sws_freeContext(sws_opts);
-    sws_opts = NULL;
-#endif
-
     av_dict_free(&swr_opts);
+    av_dict_free(&sws_dict);
     av_dict_free(&format_opts);
     av_dict_free(&codec_opts);
     av_dict_free(&resample_opts);
@@ -529,7 +522,7 @@ static const AVOption *opt_find(void *obj, const char *name, const char *unit,
     return o;
 }
 
-#define FLAGS (o->type == AV_OPT_TYPE_FLAGS) ? AV_DICT_APPEND : 0
+#define FLAGS (o->type == AV_OPT_TYPE_FLAGS && (arg[0]=='-' || arg[0]=='+')) ? AV_DICT_APPEND : 0
 int opt_default(void *optctx, const char *opt, const char *arg)
 {
     const AVOption *o;
@@ -565,14 +558,18 @@ int opt_default(void *optctx, const char *opt, const char *arg)
     }
 #if CONFIG_SWSCALE
     sc = sws_get_class();
-    if (!consumed && opt_find(&sc, opt, NULL, 0,
-                         AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ)) {
-        // XXX we only support sws_flags, not arbitrary sws options
-        int ret = av_opt_set(sws_opts, opt, arg, 0);
+    if (!consumed && (o = opt_find(&sc, opt, NULL, 0,
+                         AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ))) {
+        struct SwsContext *sws = sws_alloc_context();
+        int ret = av_opt_set(sws, opt, arg, 0);
+        sws_freeContext(sws);
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Error setting option %s.\n", opt);
             return ret;
         }
+
+        av_dict_set(&sws_dict, opt, arg, FLAGS);
+
         consumed = 1;
     }
 #else
@@ -646,9 +643,7 @@ static void finish_group(OptionParseContext *octx, int group_idx,
     *g             = octx->cur_group;
     g->arg         = arg;
     g->group_def   = l->group_def;
-#if CONFIG_SWSCALE
-    g->sws_opts    = sws_opts;
-#endif
+    g->sws_dict    = sws_dict;
     g->swr_opts    = swr_opts;
     g->codec_opts  = codec_opts;
     g->format_opts = format_opts;
@@ -657,9 +652,7 @@ static void finish_group(OptionParseContext *octx, int group_idx,
     codec_opts  = NULL;
     format_opts = NULL;
     resample_opts = NULL;
-#if CONFIG_SWSCALE
-    sws_opts    = NULL;
-#endif
+    sws_dict    = NULL;
     swr_opts    = NULL;
     init_opts();
 
@@ -715,9 +708,8 @@ void uninit_parse_context(OptionParseContext *octx)
             av_dict_free(&l->groups[j].codec_opts);
             av_dict_free(&l->groups[j].format_opts);
             av_dict_free(&l->groups[j].resample_opts);
-#if CONFIG_SWSCALE
-            sws_freeContext(l->groups[j].sws_opts);
-#endif
+
+            av_dict_free(&l->groups[j].sws_dict);
             av_dict_free(&l->groups[j].swr_opts);
         }
         av_freep(&l->groups);
@@ -1324,12 +1316,12 @@ static void print_codec(const AVCodec *c)
     if (c->type == AVMEDIA_TYPE_VIDEO ||
         c->type == AVMEDIA_TYPE_AUDIO) {
         printf("    Threading capabilities: ");
-        switch (c->capabilities & (CODEC_CAP_FRAME_THREADS |
-                                   CODEC_CAP_SLICE_THREADS)) {
-        case CODEC_CAP_FRAME_THREADS |
-             CODEC_CAP_SLICE_THREADS: printf("frame and slice"); break;
-        case CODEC_CAP_FRAME_THREADS: printf("frame");           break;
-        case CODEC_CAP_SLICE_THREADS: printf("slice");           break;
+        switch (c->capabilities & (AV_CODEC_CAP_FRAME_THREADS |
+                                   AV_CODEC_CAP_SLICE_THREADS)) {
+        case AV_CODEC_CAP_FRAME_THREADS |
+             AV_CODEC_CAP_SLICE_THREADS: printf("frame and slice"); break;
+        case AV_CODEC_CAP_FRAME_THREADS: printf("frame");           break;
+        case AV_CODEC_CAP_SLICE_THREADS: printf("slice");           break;
         default:                      printf("no");              break;
         }
         printf("\n");
@@ -1503,11 +1495,11 @@ static void print_codecs(int encoder)
 
         while ((codec = next_codec_for_id(desc->id, codec, encoder))) {
             printf(" %c", get_media_type_char(desc->type));
-            printf((codec->capabilities & CODEC_CAP_FRAME_THREADS) ? "F" : ".");
-            printf((codec->capabilities & CODEC_CAP_SLICE_THREADS) ? "S" : ".");
-            printf((codec->capabilities & CODEC_CAP_EXPERIMENTAL)  ? "X" : ".");
-            printf((codec->capabilities & CODEC_CAP_DRAW_HORIZ_BAND)?"B" : ".");
-            printf((codec->capabilities & CODEC_CAP_DR1)           ? "D" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) ? "F" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) ? "S" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_EXPERIMENTAL)  ? "X" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_DRAW_HORIZ_BAND)?"B" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_DR1)           ? "D" : ".");
 
             printf(" %-20s %s", codec->name, codec->long_name ? codec->long_name : "");
             if (strcmp(codec->name, desc->name))
@@ -1581,10 +1573,10 @@ int show_filters(void *optctx, const char *opt, const char *arg)
                 *(descr_cur++) = '>';
             }
             pad = i ? filter->outputs : filter->inputs;
-            for (j = 0; pad && pad[j].name; j++) {
+            for (j = 0; pad && avfilter_pad_get_name(pad, j); j++) {
                 if (descr_cur >= descr + sizeof(descr) - 4)
                     break;
-                *(descr_cur++) = get_media_type_char(pad[j].type);
+                *(descr_cur++) = get_media_type_char(avfilter_pad_get_type(pad, j));
             }
             if (!j)
                 *(descr_cur++) = ((!i && (filter->flags & AVFILTER_FLAG_DYNAMIC_INPUTS)) ||
@@ -1875,64 +1867,6 @@ int read_yesno(void)
     return yesno;
 }
 
-int cmdutils_read_file(const char *filename, char **bufptr, size_t *size)
-{
-    int64_t ret;
-    FILE *f = av_fopen_utf8(filename, "rb");
-
-    if (!f) {
-        ret = AVERROR(errno);
-        av_log(NULL, AV_LOG_ERROR, "Cannot read file '%s': %s\n", filename,
-               strerror(errno));
-        return ret;
-    }
-
-    ret = fseek(f, 0, SEEK_END);
-    if (ret == -1) {
-        ret = AVERROR(errno);
-        goto out;
-    }
-
-    ret = ftell(f);
-    if (ret < 0) {
-        ret = AVERROR(errno);
-        goto out;
-    }
-    *size = ret;
-
-    ret = fseek(f, 0, SEEK_SET);
-    if (ret == -1) {
-        ret = AVERROR(errno);
-        goto out;
-    }
-
-    *bufptr = av_malloc(*size + 1);
-    if (!*bufptr) {
-        av_log(NULL, AV_LOG_ERROR, "Could not allocate file buffer\n");
-        ret = AVERROR(ENOMEM);
-        goto out;
-    }
-    ret = fread(*bufptr, 1, *size, f);
-    if (ret < *size) {
-        av_free(*bufptr);
-        if (ferror(f)) {
-            ret = AVERROR(errno);
-            av_log(NULL, AV_LOG_ERROR, "Error while reading file '%s': %s\n",
-                   filename, strerror(errno));
-        } else
-            ret = AVERROR_EOF;
-    } else {
-        ret = 0;
-        (*bufptr)[(*size)++] = '\0';
-    }
-
-out:
-    if (ret < 0)
-        av_log(NULL, AV_LOG_ERROR, "IO error: %s\n", av_err2str(ret));
-    fclose(f);
-    return ret;
-}
-
 FILE *get_preset_file(char *filename, size_t filename_size,
                       const char *preset_name, int is_path,
                       const char *codec_name)
@@ -2106,7 +2040,10 @@ double get_rotation(AVStream *st)
     theta -= 360*floor(theta/360 + 0.9/360);
 
     if (fabs(theta - 90*round(theta/90)) > 2)
-        av_log_ask_for_sample(NULL, "Odd rotation angle\n");
+        av_log(NULL, AV_LOG_WARNING, "Odd rotation angle.\n"
+               "If you want to help, upload a sample "
+               "of this file to ftp://upload.ffmpeg.org/incoming/ "
+               "and contact the ffmpeg-devel mailing list. (ffmpeg-devel@ffmpeg.org)");
 
     return theta;
 }
