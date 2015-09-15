@@ -65,7 +65,6 @@ CONFIG := --prefix=/usr \
 	--disable-stripping \
 	--enable-avresample \
 	--enable-avisynth \
-	--enable-frei0r \
 	--enable-gnutls \
 	--enable-ladspa \
 	--enable-libass \
@@ -133,13 +132,18 @@ ifneq ($(DEB_HOST_ARCH_OS),hurd)
 	CONFIG += --enable-libzmq
 endif
 
-# Some libraries are not available/unusable (#792921) on sparc64.
-ifneq ($(DEB_HOST_ARCH),sparc64)
+# Some libraries are not available on mips64el.
+ifeq (,$(filter $(DEB_HOST_ARCH),mips64el))
+	CONFIG += --enable-frei0r
+endif
+
+# Some libraries are not available/unusable (#792921) on sparc64/mips64el.
+ifeq (,$(filter $(DEB_HOST_ARCH),sparc64 mips64el))
 	CONFIG += --enable-libx264
 endif
 
 # OpenCV is not available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64))
+ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64 mips64el))
 	CONFIG += --enable-libopencv
 endif
 
