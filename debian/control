@@ -226,6 +226,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library with de/encoders for audio/video codecs - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -253,6 +254,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library with additional de/encoders for audio/video codecs
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -333,6 +335,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library for handling input and output devices - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -383,6 +386,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library containing media filters - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -430,6 +434,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library with (de)muxers for multimedia containers - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -477,6 +482,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg compatibility library for resampling - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -566,6 +572,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library for post processing - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -605,6 +612,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library for audio resampling, rematrixing etc. - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
@@ -676,6 +684,7 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks: libavutil-ffmpeg54 (>= 8:0)
 Description: FFmpeg library for image scaling and various conversions - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
