@@ -1,0 +1,30 @@
+From be70574c03f97c83e5701118d68a07e91b81c3d6 Mon Sep 17 00:00:00 2001
+From: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Date: Tue, 22 Sep 2015 13:40:20 +0200
+Subject: [PATCH] hls: only seek if there is an offset
+
+If there is no #EXT-X-BYTERANGE specified, there is no need to seek.
+Seeking fails anyway for rtmp, because this protocol does not support
+url_seek.
+
+This fixes CNN.m3u from trac ticket 4797 (i.e. Debian bug #798189).
+---
+ libavformat/hls.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavformat/hls.c b/libavformat/hls.c
+index c16c770..896d36e 100644
+--- a/libavformat/hls.c
++++ b/libavformat/hls.c
+@@ -1047,7 +1047,7 @@ static int open_input(HLSContext *c, struct playlist *pls)
+     /* Seek to the requested position. If this was a HTTP request, the offset
+      * should already be where want it to, but this allows e.g. local testing
+      * without a HTTP server. */
+-    if (ret == 0 && seg->key_type == KEY_NONE) {
++    if (ret == 0 && seg->key_type == KEY_NONE && seg->url_offset) {
+         int seekret = ffurl_seek(pls->input, seg->url_offset, SEEK_SET);
+         if (seekret < 0) {
+             av_log(pls->parent, AV_LOG_ERROR, "Unable to seek to offset %"PRId64" of HLS segment '%s'\n", seg->url_offset, seg->url);
+-- 
+2.5.1
+
