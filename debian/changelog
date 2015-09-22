@@ -20,8 +20,10 @@ ffmpeg (7:2.8-1) unstable; urgency=medium
   * Add new symbols.
   * Update debian/copyright.
   * Update debian/tests/encdec_list.txt.
+  * Add hls-only-seek-if-there-is-an-offset.patch. (Closes: #798189)
+  * Add 'Breaks: libavutil-ffmpeg54 (>= 8:0)' to the libraries.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Wed, 16 Sep 2015 00:40:10 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 22 Sep 2015 15:15:20 +0200
 
 ffmpeg (7:2.7.2-2) unstable; urgency=medium
 
