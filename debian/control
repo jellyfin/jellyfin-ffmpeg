@@ -4,7 +4,8 @@ Priority: optional
 Maintainer: Debian Multimedia Maintainers <pkg-multimedia-maintainers@lists.alioth.debian.org>
 Uploaders: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>,
  Alexander Strasser <eclipse7@gmx.net>,
- Reinhard Tartler <siretart@tauware.de>
+ Reinhard Tartler <siretart@tauware.de>,
+ Balint Reczey <balint@balintreczey.hu>
 Homepage: https://ffmpeg.org/
 Standards-Version: 3.9.6
 Vcs-Git: git://anonscm.debian.org/pkg-multimedia/ffmpeg.git
