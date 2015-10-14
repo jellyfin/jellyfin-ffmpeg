@@ -145,12 +145,12 @@ ifeq (,$(filter $(DEB_HOST_ARCH),mips64el))
 endif
 
 # Some libraries are not available/unusable (#792921) on sparc64/mips64el.
-ifeq (,$(filter $(DEB_HOST_ARCH),sparc64 mips64el))
+ifeq (,$(filter $(DEB_HOST_ARCH),sparc64))
 	CONFIG += --enable-libx264
 endif
 
 # OpenCV is not available on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),alpha sh4 sparc64 mips64el))
+ifeq (,$(filter $(DEB_HOST_ARCH),sh4 sparc64 mips64el))
 	CONFIG += --enable-libopencv
 endif
 

@@ -75,7 +75,7 @@ Build-Depends:
 # --enable-libopencore_amrwb
  libopencore-amrwb-dev,
 # --enable-libopencv
- libopencv-dev [!alpha !sh4 !sparc64 !mips64el],
+ libopencv-dev [!sh4 !sparc64 !mips64el],
 # --enable-libopenjpeg
  libopenjpeg-dev,
 # --enable-libopus
@@ -127,7 +127,7 @@ Build-Depends:
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
- libx264-dev [!sparc64 !mips64el],
+ libx264-dev [!sparc64],
 # --enable-libx265
  libx265-dev,
 # --enable-x11grab
