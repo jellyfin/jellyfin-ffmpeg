@@ -1,0 +1,34 @@
+From b46efcb2933c6adc11486104195dcd5054485246 Mon Sep 17 00:00:00 2001
+From: Michael Niedermayer <michael@niedermayer.cc>
+Date: Wed, 30 Sep 2015 13:10:48 +0200
+Subject: [PATCH] avcodec/vp8: Do not use num_coeff_partitions in thread/buffer
+ setup
+
+The variable is not a constant and can lead to race conditions
+
+Fixes: repro.webm (not reproducable with FFmpeg alone)
+
+Found-by: Dale Curtis <dalecurtis@google.com>
+Tested-by: Dale Curtis <dalecurtis@google.com>
+Signed-off-by: Michael Niedermayer <michael@niedermayer.cc>
+(cherry picked from commit dabea74d0e82ea80cd344f630497cafcb3ef872c)
+---
+ libavcodec/vp8.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavcodec/vp8.c b/libavcodec/vp8.c
+index 730871a..cb0c7cd 100644
+--- a/libavcodec/vp8.c
++++ b/libavcodec/vp8.c
+@@ -164,7 +164,7 @@ int update_dimensions(VP8Context *s, int width, int height, int is_vp7)
+     s->mb_height = (s->avctx->coded_height + 15) / 16;
+ 
+     s->mb_layout = is_vp7 || avctx->active_thread_type == FF_THREAD_SLICE &&
+-                   FFMIN(s->num_coeff_partitions, avctx->thread_count) > 1;
++                   avctx->thread_count > 1;
+     if (!s->mb_layout) { // Frame threading and one thread
+         s->macroblocks_base       = av_mallocz((s->mb_width + s->mb_height * 2 + 1) *
+                                                sizeof(*s->macroblocks));
+-- 
+2.6.1
+
