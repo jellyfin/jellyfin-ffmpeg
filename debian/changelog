@@ -1,3 +1,17 @@
+ffmpeg (7:2.8.1-1) unstable; urgency=medium
+
+  [ Balint Reczey ]
+  * Add myself to uploaders.
+
+  [ Andreas Cadhalpun ]
+  * Import new upstream bugfix release 2.8.1.
+  * Remove hls-only-seek-if-there-is-an-offset.patch included upstream.
+  * Add avcodec-vp8-Do-not-use-num_coeff_partitions-in-thread.patch to
+    fix CVE-2015-6761.
+  * Enable x264 on mips64el and opencv on alpha.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 15 Oct 2015 00:26:09 +0200
+
 ffmpeg (7:2.8-1) unstable; urgency=medium
 
   [ Fabian Greffrath ]
