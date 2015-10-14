@@ -583,7 +583,7 @@ static int asf_read_metadata_obj(AVFormatContext *s, const GUIDParseTable *g)
             break;
         type     = avio_rl16(pb);
         val_len  = avio_rl32(pb);
-        name     = av_malloc(name_len);
+        name     = av_malloc(buflen);
         if (!name)
             return AVERROR(ENOMEM);
         avio_get_str16le(pb, name_len, name,
@@ -1042,8 +1042,8 @@ static const GUIDParseTable gdef[] = {
     { "Mutex Language",               { 0xD6, 0xE2, 0x2A, 0x00, 0x25, 0xDA, 0x11, 0xD1, 0x90, 0x34, 0x00, 0xA0, 0xC9, 0x03, 0x49, 0xBE }, asf_read_unknown, 1 },
     { "Mutex Bitrate",                { 0xD6, 0xE2, 0x2A, 0x01, 0x25, 0xDA, 0x11, 0xD1, 0x90, 0x34, 0x00, 0xA0, 0xC9, 0x03, 0x49, 0xBE }, asf_read_unknown, 1 },
     { "Mutex Unknown",                { 0xD6, 0xE2, 0x2A, 0x02, 0x25, 0xDA, 0x11, 0xD1, 0x90, 0x34, 0x00, 0xA0, 0xC9, 0x03, 0x49, 0xBE }, asf_read_unknown, 1 },
-    { "Bandwith Sharing Exclusive",   { 0xAF, 0x60, 0x60, 0xAA, 0x51, 0x97, 0x11, 0xD2, 0xB6, 0xAF, 0x00, 0xC0, 0x4F, 0xD9, 0x08, 0xE9 }, asf_read_unknown, 1 },
-    { "Bandwith Sharing Partial",     { 0xAF, 0x60, 0x60, 0xAB, 0x51, 0x97, 0x11, 0xD2, 0xB6, 0xAF, 0x00, 0xC0, 0x4F, 0xD9, 0x08, 0xE9 }, asf_read_unknown, 1 },
+    { "Bandwidth Sharing Exclusive",  { 0xAF, 0x60, 0x60, 0xAA, 0x51, 0x97, 0x11, 0xD2, 0xB6, 0xAF, 0x00, 0xC0, 0x4F, 0xD9, 0x08, 0xE9 }, asf_read_unknown, 1 },
+    { "Bandwidth Sharing Partial",    { 0xAF, 0x60, 0x60, 0xAB, 0x51, 0x97, 0x11, 0xD2, 0xB6, 0xAF, 0x00, 0xC0, 0x4F, 0xD9, 0x08, 0xE9 }, asf_read_unknown, 1 },
     { "Payload Extension System Timecode", { 0x39, 0x95, 0x95, 0xEC, 0x86, 0x67, 0x4E, 0x2D, 0x8F, 0xDB, 0x98, 0x81, 0x4C, 0xE7, 0x6C, 0x1E }, asf_read_unknown, 1 },
     { "Payload Extension System File Name", { 0xE1, 0x65, 0xEC, 0x0E, 0x19, 0xED, 0x45, 0xD7, 0xB4, 0xA7, 0x25, 0xCB, 0xD1, 0xE2, 0x8E, 0x9B }, asf_read_unknown, 1 },
     { "Payload Extension System Content Type", { 0xD5, 0x90, 0xDC, 0x20, 0x07, 0xBC, 0x43, 0x6C, 0x9C, 0xF7, 0xF3, 0xBB, 0xFB, 0xF1, 0xA4, 0xDC }, asf_read_unknown, 1 },
@@ -1141,7 +1141,7 @@ static int asf_read_replicated_data(AVFormatContext *s, ASFPacket *asf_pkt)
     if (!asf_pkt->data_size) {
         asf_pkt->data_size = asf_pkt->size_left = avio_rl32(pb); // read media object size
         if (asf_pkt->data_size <= 0)
-            return AVERROR_EOF;
+            return AVERROR_INVALIDDATA;
         if ((ret = av_new_packet(&asf_pkt->avpkt, asf_pkt->data_size)) < 0)
             return ret;
     } else
@@ -1163,7 +1163,7 @@ static int asf_read_multiple_payload(AVFormatContext *s, AVPacket *pkt,
     int ret;
     int skip = 0;
 
-    // if replicated lenght is 1, subpayloads are present
+    // if replicated length is 1, subpayloads are present
     if (asf->rep_data_len == 1) {
         asf->sub_left = 1;
         asf->state = READ_MULTI_SUB;
@@ -1190,6 +1190,8 @@ static int asf_read_multiple_payload(AVFormatContext *s, AVPacket *pkt,
             skip = pay_len - asf_pkt->size_left;
             pay_len = asf_pkt->size_left;
         }
+        if (asf_pkt->size_left <= 0)
+            return AVERROR_INVALIDDATA;
         if ((ret = avio_read(pb, p, pay_len)) < 0)
             return ret;
         if (s->key && s->keylen == 20)
@@ -1237,7 +1239,7 @@ static int asf_read_single_payload(AVFormatContext *s, AVPacket *pkt,
         return AVERROR_INVALIDDATA;
     }
     p = asf_pkt->avpkt.data + asf_pkt->data_size - asf_pkt->size_left;
-    if (size > asf_pkt->size_left)
+    if (size > asf_pkt->size_left || asf_pkt->size_left <= 0)
         return AVERROR_INVALIDDATA;
     if (asf_pkt->size_left > size)
         asf_pkt->size_left -= size;
