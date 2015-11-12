@@ -207,6 +207,7 @@ Architecture: all
 Multi-Arch: foreign
 Depends:
  libjs-jquery,
+ libjs-bootstrap,
  ${misc:Depends}
 Description: Documentation of the FFmpeg multimedia framework
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
