@@ -169,6 +169,10 @@ static void sbr_dequant(SpectralBandReplication *sbr, int id_aac)
                 else
                   temp1.mant = 0x20000000;
                 temp1.exp = (temp1.exp >> 1) + 1;
+                if (temp1.exp > 66) { // temp1 > 1E20
+                    av_log(NULL, AV_LOG_ERROR, "envelope scalefactor overflow in dequant\n");
+                    temp1 = FLOAT_1;
+                }
 
                 temp2.exp = (pan_offset - sbr->data[1].env_facs[e][k].mant) * alpha;
                 if (temp2.exp & 1)
@@ -188,6 +192,10 @@ static void sbr_dequant(SpectralBandReplication *sbr, int id_aac)
                 temp1.exp = NOISE_FLOOR_OFFSET - \
                     sbr->data[0].noise_facs[e][k].mant + 2;
                 temp1.mant = 0x20000000;
+                if (temp1.exp > 66) { // temp1 > 1E20
+                    av_log(NULL, AV_LOG_ERROR, "envelope scalefactor overflow in dequant\n");
+                    temp1 = FLOAT_1;
+                }
                 temp2.exp = 12 - sbr->data[1].noise_facs[e][k].mant + 1;
                 temp2.mant = 0x20000000;
                 fac   = av_div_sf(temp1, av_add_sf(FLOAT_1, temp2));
@@ -208,7 +216,10 @@ static void sbr_dequant(SpectralBandReplication *sbr, int id_aac)
                     else
                         temp1.mant = 0x20000000;
                     temp1.exp = (temp1.exp >> 1) + 1;
-
+                    if (temp1.exp > 66) { // temp1 > 1E20
+                        av_log(NULL, AV_LOG_ERROR, "envelope scalefactor overflow in dequant\n");
+                        temp1 = FLOAT_1;
+                    }
                     sbr->data[ch].env_facs[e][k] = temp1;
                 }
             for (e = 1; e <= sbr->data[ch].bs_num_noise; e++)
@@ -397,7 +408,8 @@ static void sbr_gain_calc(AACContext *ac, SpectralBandReplication *sbr,
         int delta = !((e == e_a[1]) || (e == e_a[0]));
         for (k = 0; k < sbr->n_lim; k++) {
             SoftFloat gain_boost, gain_max;
-            SoftFloat sum[2] = { { 0, 0}, { 0, 0 } };
+            SoftFloat sum[2];
+            sum[0] = sum[1] = FLOAT_0;
             for (m = sbr->f_tablelim[k] - sbr->kx[1]; m < sbr->f_tablelim[k + 1] - sbr->kx[1]; m++) {
                 const SoftFloat temp = av_div_sf(sbr->e_origmapped[e][m],
                                             av_add_sf(FLOAT_1, sbr->q_mapped[e][m]));
