@@ -127,11 +127,8 @@ endif
 
 # Some libraries are build only on linux.
 ifeq ($(DEB_HOST_ARCH_OS),linux)
-	CONFIG += --enable-libiec61883
-	# Some libraries are not available/unusable (#790560) on sparc64.
-	ifeq (,$(filter $(DEB_HOST_ARCH),sparc64))
-		CONFIG += --enable-libdc1394
-	endif
+	CONFIG += --enable-libdc1394 \
+		--enable-libiec61883
 endif
 
 # Some libraries are not build on hurd.

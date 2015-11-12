@@ -43,7 +43,7 @@ Build-Depends:
 # autodetected 'crystalhd'
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
- libdc1394-22-dev [!kfreebsd-any !hurd-any !sparc64],
+ libdc1394-22-dev [linux-any],
 # --enable-libfontconfig
  libfontconfig1-dev,
 # --enable-libfreetype
