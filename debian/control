@@ -19,11 +19,13 @@ Build-Depends-Indep:
  node-less
 Build-Depends:
 # needed for dh
- debhelper (>= 9),
+ debhelper (>= 9.20141010),
+# for build-profile support
+ dpkg-dev (>= 1.17.14),
 # --enable-libflite
  flite1-dev,
 # --enable-frei0r
- frei0r-plugins-dev [!mips64el],
+ frei0r-plugins-dev [!mips64el] <!stage1>,
 # --enable-ladspa
  ladspa-sdk,
 # --enable-libass
@@ -75,7 +77,7 @@ Build-Depends:
 # --enable-libopencore_amrwb
  libopencore-amrwb-dev,
 # --enable-libopencv
- libopencv-dev [!sh4 !sparc64 !mips64el],
+ libopencv-dev [!sh4 !sparc64 !mips64el] <!stage1>,
 # --enable-libopenjpeg
  libopenjpeg-dev,
 # --enable-libopus
@@ -127,7 +129,7 @@ Build-Depends:
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
- libx264-dev [!sparc64],
+ libx264-dev [!sparc64] <!stage1>,
 # --enable-libx265
  libx265-dev,
 # --enable-x11grab
