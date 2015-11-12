@@ -902,16 +902,6 @@ Comment:
  It was obtained from the FFmpeg web repository:
  <https://github.com/FFmpeg/web>
 
-Files: debian/missing-sources/bootstrap*
-Copyright: 2011-2014, Twitter, Inc.
-License: Expat
-Comment:
- This is the source of doc/bootstrap.min.css.
- It was obtained from the Bootstrap repository:
- <https://github.com/twbs/bootstrap>
- The full text of the license was obtained from:
- <https://github.com/twbs/bootstrap/blob/master/LICENSE>
-
 Files: debian/qt-faststart.1
 Copyright: Andres Mejia <mcitadel@gmail.com>
 License: man-page
