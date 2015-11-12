@@ -1,9 +1,16 @@
-ffmpeg (7:2.8.2-1) UNRELEASED; urgency=medium
+ffmpeg (7:2.8.2-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.8.2.
      - videodsp: don't overread edges in vfix3 emu_edge. (Closes: #801745)
+  * Drop avcodec-vp8-Do-not-use-num_coeff_partitions-in-thread.patch
+    included upstream.
+  * Use system bootstrap for ffmpeg-doc.
+  * Remove now unused bootstrap sources.
+  * Add build-profile support for stage1, disabling frei0r, opencv and x264.
+  * Drop now unnecessary embedded-library lintian-overrides.
+  * Re-enable libdc1394 on sparc64, as libudev is working again.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 12 Nov 2015 22:32:57 +0100
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 12 Nov 2015 23:58:49 +0100
 
 ffmpeg (7:2.8.1-1) unstable; urgency=medium
 
