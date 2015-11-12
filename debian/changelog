@@ -1,3 +1,10 @@
+ffmpeg (7:2.8.2-1) UNRELEASED; urgency=medium
+
+  * Import new upstream bugfix release 2.8.2.
+     - videodsp: don't overread edges in vfix3 emu_edge. (Closes: #801745)
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Thu, 12 Nov 2015 22:32:57 +0100
+
 ffmpeg (7:2.8.1-1) unstable; urgency=medium
 
   [ Balint Reczey ]
