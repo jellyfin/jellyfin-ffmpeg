@@ -1097,6 +1097,7 @@ static int h264_slice_header_init(H264Context *h)
         nb_slices = max_slices;
     }
     h->slice_context_count = nb_slices;
+    h->max_contexts = FFMIN(h->max_contexts, nb_slices);
 
     if (!HAVE_THREADS || !(h->avctx->active_thread_type & FF_THREAD_SLICE)) {
         ret = ff_h264_slice_context_init(h, &h->slice_ctx[0]);
@@ -2371,9 +2372,11 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
         align_get_bits(&sl->gb);
 
         /* init cabac */
-        ff_init_cabac_decoder(&sl->cabac,
+        ret = ff_init_cabac_decoder(&sl->cabac,
                               sl->gb.buffer + get_bits_count(&sl->gb) / 8,
                               (get_bits_left(&sl->gb) + 7) / 8);
+        if (ret < 0)
+            return ret;
 
         ff_h264_init_cabac_states(h, sl);
 
