@@ -1,3 +1,12 @@
+ffmpeg (7:2.8.3-1) unstable; urgency=medium
+
+  * Switch debian/watch to xz instead of gz.
+  * Import new upstream bugfix release 2.8.3.
+    Fixes CVE-2015-8363, CVE-2015-8364 and CVE-2015-8365.
+  * Respect CC and CXX from the environment in debian/rules.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 27 Nov 2015 21:34:24 +0100
+
 ffmpeg (7:2.8.2-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 2.8.2.
