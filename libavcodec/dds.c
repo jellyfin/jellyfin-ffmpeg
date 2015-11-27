@@ -141,6 +141,12 @@ static int parse_pixel_format(AVCodecContext *avctx)
     normal_map      = flags & DDPF_NORMALMAP;
     fourcc = bytestream2_get_le32(gbc);
 
+    if (ctx->compressed && ctx->paletted) {
+        av_log(avctx, AV_LOG_WARNING,
+               "Disabling invalid palette flag for compressed dds.\n");
+        ctx->paletted = 0;
+    }
+
     bpp = bytestream2_get_le32(gbc); // rgbbitcount
     r   = bytestream2_get_le32(gbc); // rbitmask
     g   = bytestream2_get_le32(gbc); // gbitmask
@@ -642,8 +648,17 @@ static int dds_decode(AVCodecContext *avctx, void *data,
         return ret;
 
     if (ctx->compressed) {
+        int size = (avctx->coded_height / TEXTURE_BLOCK_H) *
+                   (avctx->coded_width / TEXTURE_BLOCK_W) * ctx->tex_ratio;
         ctx->slice_count = av_clip(avctx->thread_count, 1,
                                    avctx->coded_height / TEXTURE_BLOCK_H);
+
+        if (bytestream2_get_bytes_left(gbc) < size) {
+            av_log(avctx, AV_LOG_ERROR,
+                   "Compressed Buffer is too small (%d < %d).\n",
+                   bytestream2_get_bytes_left(gbc), size);
+            return AVERROR_INVALIDDATA;
+        }
 
         /* Use the decompress function on the texture, one block per thread. */
         ctx->tex_data = gbc->buffer;
@@ -664,6 +679,12 @@ static int dds_decode(AVCodecContext *avctx, void *data,
                 );
 
             frame->palette_has_changed = 1;
+        }
+
+        if (bytestream2_get_bytes_left(gbc) < frame->height * linesize) {
+            av_log(avctx, AV_LOG_ERROR, "Buffer is too small (%d < %d).\n",
+                   bytestream2_get_bytes_left(gbc), frame->height * linesize);
+            return AVERROR_INVALIDDATA;
         }
 
         av_image_copy_plane(frame->data[0], frame->linesize[0],
