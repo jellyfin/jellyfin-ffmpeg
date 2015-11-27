@@ -61,6 +61,8 @@ CONFIG := --prefix=/usr \
 	--toolchain=hardened \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
+	--cc=$(CC) \
+	--cxx=$(CXX) \
 	--enable-gpl \
 	--enable-shared \
 	--disable-stripping \
