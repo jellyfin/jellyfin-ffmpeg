@@ -47,7 +47,6 @@ FLAVORS = extra
 #   * --enable-libv4l2 [!hurd-any]: This is only needed for very old devices and may cause problems for others.
 #                                   Should anyone need it, using LD_PRELOAD pointing on libv4l2 has the same effect.
 #   * --enable-opencl [!hurd-any]:  This is considered an experimental API.
-#   * --enable-libsoxr:             This is disabled to workaround glibc bug #793641.
 # For the shared libraries there are several ways to build:
 #  * Without further option: This will have no compatibility with Libav, but some sonames clash. Therefore no good choice.
 #  * With --enable-incompatible-libav-abi, packages build against Libav would work with these libraries, but probably not the other way around.
@@ -86,13 +85,13 @@ CONFIG := --prefix=/usr \
 	--enable-libmodplug \
 	--enable-libmp3lame \
 	--enable-libopenjpeg \
-	--enable-openal \
 	--enable-libopus \
 	--enable-libpulse \
 	--enable-librtmp \
 	--enable-libschroedinger \
 	--enable-libshine \
 	--enable-libsnappy \
+	--enable-libsoxr \
 	--enable-libspeex \
 	--enable-libssh \
 	--enable-libtheora \
@@ -104,6 +103,7 @@ CONFIG := --prefix=/usr \
 	--enable-libx265 \
 	--enable-libxvid \
 	--enable-libzvbi \
+	--enable-openal \
 	--enable-opengl \
 	--enable-x11grab
 

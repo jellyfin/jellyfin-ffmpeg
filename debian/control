@@ -100,7 +100,7 @@ Build-Depends:
 # --enable-libsnappy
  libsnappy-dev,
 # --enable-libsoxr
-# libsoxr-dev [!sparc64],
+ libsoxr-dev,
 # --enable-libspeex
  libspeex-dev,
 # --enable-libssh
