@@ -131,7 +131,7 @@ static const uint8_t hilbert_offset[16][2] = {
 
 typedef struct Vp3DecodeContext {
     AVCodecContext *avctx;
-    int theora, theora_tables;
+    int theora, theora_tables, theora_header;
     int version;
     int width, height;
     int chroma_x_shift, chroma_y_shift;
@@ -209,8 +209,8 @@ typedef struct Vp3DecodeContext {
     int16_t *dct_tokens[3][64];
     int16_t *dct_tokens_base;
 #define TOKEN_EOB(eob_run)              ((eob_run) << 2)
-#define TOKEN_ZERO_RUN(coeff, zero_run) (((coeff) << 9) + ((zero_run) << 2) + 1)
-#define TOKEN_COEFF(coeff)              (((coeff) << 2) + 2)
+#define TOKEN_ZERO_RUN(coeff, zero_run) (((coeff) * 512) + ((zero_run) << 2) + 1)
+#define TOKEN_COEFF(coeff)              (((coeff) * 4) + 2)
 
     /**
      * number of blocks that contain DCT coefficients at
@@ -2016,17 +2016,19 @@ static int vp3_decode_frame(AVCodecContext *avctx,
             vp3_decode_end(avctx);
             ret = theora_decode_header(avctx, &gb);
 
+            if (ret >= 0)
+                ret = vp3_decode_init(avctx);
             if (ret < 0) {
                 vp3_decode_end(avctx);
-            } else
-                ret = vp3_decode_init(avctx);
+            }
             return ret;
         } else if (type == 2) {
             ret = theora_decode_tables(avctx, &gb);
+            if (ret >= 0)
+                ret = vp3_decode_init(avctx);
             if (ret < 0) {
                 vp3_decode_end(avctx);
-            } else
-                ret = vp3_decode_init(avctx);
+            }
             return ret;
         }
 
@@ -2251,6 +2253,7 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     int ret;
     AVRational fps, aspect;
 
+    s->theora_header = 0;
     s->theora = get_bits_long(gb, 24);
     av_log(avctx, AV_LOG_DEBUG, "Theora bitstream version %X\n", s->theora);
 
@@ -2321,7 +2324,8 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
             return AVERROR_INVALIDDATA;
         }
         skip_bits(gb, 3); /* reserved */
-    }
+    } else
+        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
 
     ret = ff_set_dimensions(avctx, s->width, s->height);
     if (ret < 0)
@@ -2355,6 +2359,7 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
         avctx->color_trc  = AVCOL_TRC_BT709;
     }
 
+    s->theora_header = 1;
     return 0;
 }
 
@@ -2362,6 +2367,9 @@ static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
 {
     Vp3DecodeContext *s = avctx->priv_data;
     int i, n, matrices, inter, plane;
+
+    if (!s->theora_header)
+        return AVERROR_INVALIDDATA;
 
     if (s->theora >= 0x030200) {
         n = get_bits(gb, 3);
