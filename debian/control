@@ -287,7 +287,7 @@ Description: FFmpeg library with additional de/encoders for audio/video codecs
 
 Package: libavcodec-extra
 Architecture: all
-Section: libs
+Section: metapackages
 Multi-Arch: foreign
 Depends:
  libavcodec-ffmpeg-extra56,
