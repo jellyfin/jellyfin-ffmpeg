@@ -1,3 +1,13 @@
+ffmpeg (7:2.8.4-1) unstable; urgency=medium
+
+  * Import new upstream bugfix release 2.8.4.
+  * Change section of libavcodec-extra from libs to metapackages.
+  * Re-enable libsoxr as glibc bug #793641 is now fixed in testing.
+  * Add patch to make apidoc output independent of SRC_PATH.
+  * Also build standard flavor in a subdirectory. (Closes: #804284)
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 20 Dec 2015 23:12:56 +0100
+
 ffmpeg (7:2.8.3-1) unstable; urgency=medium
 
   * Switch debian/watch to xz instead of gz.
