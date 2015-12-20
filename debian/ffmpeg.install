@@ -3,4 +3,4 @@ usr/bin/ff*
 usr/share/man/man1
 usr/share/ffmpeg/*.ffpreset
 RELEASE_NOTES						usr/share/doc/ffmpeg
-tools/qt-faststart					usr/bin
+debian/standard/tools/qt-faststart	usr/bin

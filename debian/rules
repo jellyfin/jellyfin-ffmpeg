@@ -24,7 +24,7 @@ export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
 
 # Package name for the extra flavor.
 EXTRA_PKG := $(shell sed -nr 's/^Package:[[:space:]]*(.*extra[0-9]+)[[:space:]]*$$/\1/p' debian/control)
-FLAVORS = extra
+FLAVORS = standard extra
 
 # Enable as many features as possible, as long as the result is still GPLv2+ (a GPLv3+ variant is built as libavcodec-extra flavor).
 # The following flags (and build-dependencies) are not added, because they would require a libavformat-extra flavor:
@@ -106,6 +106,9 @@ CONFIG := --prefix=/usr \
 	--enable-openal \
 	--enable-opengl \
 	--enable-x11grab
+
+# The standard configuration only uses the shared CONFIG.
+CONFIG_standard =
 
 # With these enabled, resulting binaries are effectively licensed as GPLv3+.
 CONFIG_extra = --enable-version3 \
@@ -201,55 +204,43 @@ endif
 override_dh_auto_configure:
 	$(info DEB_BUILD_OPTIONS = $(DEB_BUILD_OPTIONS))
 	$(foreach flavor,$(FLAVORS),mkdir -p debian/$(flavor);)
-ifeq ($(wildcard config.h),)
 	$(foreach flavor,$(FLAVORS), echo " *** $(flavor) ***"; cd debian/$(flavor); ../../configure $(CONFIG) $(CONFIG_$(flavor)) || (cat config.log && exit 1); cd ../.. ;)
-endif
-	echo " *** standard ***"
-	./configure $(CONFIG) || (cat config.log && exit 1)
 
-# Building the source package fails without this override, because config.mak does not exist in the source.
-# It (and related files) are created by configure and removed by distclean.
-# The folder doc/examples/pc-uninstalled is not removed by distclean, so remove it manually.
+# Remove the subdirectories generated for the flavors.
 override_dh_auto_clean:
-	[ ! -f config.mak ] || make distclean
-	[ ! -d doc/examples/pc-uninstalled ] || rm -r doc/examples/pc-uninstalled
 	$(foreach flavor,$(FLAVORS),[ ! -d debian/$(flavor) ] || rm -r debian/$(flavor);)
-	# Restore backed up CSS files
-	[ ! -f debian/style.min.css.bak ] || mv debian/style.min.css.bak doc/style.min.css
 
 # Create doxygen documentation:
 override_dh_auto_build-indep:
-	dh_auto_build -i -- apidoc
-	# Backup the minified CSS files distributed by upstream.
-	mv doc/style.min.css debian/style.min.css.bak
+	dh_auto_build -i --sourcedirectory=debian/standard -- apidoc
 	# Create the minified CSS files.
-	lessc debian/missing-sources/ffmpeg-web/src/less/style.less | cleancss > doc/style.min.css
+	lessc debian/missing-sources/ffmpeg-web/src/less/style.less | cleancss > debian/standard/doc/style.min.css
 
 override_dh_auto_build-arch:
-	# Build qt-faststart here, to make it possible to build with 'nocheck'.
-	echo " *** standard ***"
-	make tools/qt-faststart
-	dh_auto_build -a || (cat config.log && exit 1)
 	# Copy built object files to avoid building them again for the extra flavor.
+	# Build qt-faststart here, to make it possible to build with 'nocheck'.
 	for flavor in $(FLAVORS); do \
 		echo " *** $$flavor ***"; \
 		if echo "$$flavor" | grep -q "extra"; then \
 			subdir=`echo "$$flavor" | grep "-" | sed 's_\(.*\)-.*_debian/\1/_'`; \
 			for dir in `cd ./$$subdir; find libavcodec libavutil libswresample -type d`; do \
 				mkdir -p debian/"$$flavor"/"$$dir"; \
-				echo "$$subdir$$dir"/*.o | grep -q '*' || cp "$$subdir$$dir"/*.o debian/"$$flavor"/"$$dir"; \
+				echo debian/standard/"$$subdir$$dir"/*.o | grep -q '*' || cp debian/standard/"$$subdir$$dir"/*.o debian/"$$flavor"/"$$dir"; \
 			done; \
 			rm debian/"$$flavor"/libavcodec/allcodecs.o; \
+		fi; \
+		if [ "$$flavor" = "standard" ]; then \
+			cd debian/standard; make tools/qt-faststart; cd ../..; \
 		fi; \
 		dh_auto_build -a --sourcedirectory=debian/"$$flavor" || (cat debian/"$$flavor"/config.log && exit 1); \
 	done
 
 # Set the library path for the dynamic linker, because the tests otherwise don't find the libraries.
 override_dh_auto_test:
-	export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; dh_auto_test -- -k
+	export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; dh_auto_test --sourcedirectory=debian/standard -- -k
 
 override_dh_auto_install:
-	dh_auto_install
+	dh_auto_install --sourcedirectory=debian/standard
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	install -d debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 	install -m 644 debian/altivec/*/*.so.* debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
@@ -257,7 +248,7 @@ endif
 	dh_auto_install --sourcedirectory=debian/extra --destdir=debian/tmp/extra
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	install -d debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
-	install -m 644 debian/altivec/*/*.so.* debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
+	install -m 644 debian/altivec-extra/*/*.so.* debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 endif
 	# Create symbolic links from the standard library lib*.so symlinks, pkg-config files and static libraries to the suffixed ones.
 	for lib in `find debian/ -name lib*-ffmpeg.so; find debian/ -name lib*.pc; find debian/ -name lib*.a`; do \
