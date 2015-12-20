@@ -883,7 +883,7 @@ int ff_mpeg4_decode_partitions(Mpeg4DecContext *ctx)
     const int part_a_end   = s->pict_type == AV_PICTURE_TYPE_I ? (ER_DC_END   | ER_MV_END)   : ER_MV_END;
 
     mb_num = mpeg4_decode_partition_a(ctx);
-    if (mb_num < 0) {
+    if (mb_num <= 0) {
         ff_er_add_slice(&s->er, s->resync_mb_x, s->resync_mb_y,
                         s->mb_x, s->mb_y, part_a_error);
         return -1;
@@ -1881,6 +1881,10 @@ static int decode_vol_header(Mpeg4DecContext *ctx, GetBitContext *gb)
                 int last = 0;
                 for (i = 0; i < 64; i++) {
                     int j;
+                    if (get_bits_left(gb) < 8) {
+                        av_log(s->avctx, AV_LOG_ERROR, "insufficient data for custom matrix\n");
+                        return AVERROR_INVALIDDATA;
+                    }
                     v = get_bits(gb, 8);
                     if (v == 0)
                         break;
@@ -1904,6 +1908,10 @@ static int decode_vol_header(Mpeg4DecContext *ctx, GetBitContext *gb)
                 int last = 0;
                 for (i = 0; i < 64; i++) {
                     int j;
+                    if (get_bits_left(gb) < 8) {
+                        av_log(s->avctx, AV_LOG_ERROR, "insufficient data for custom matrix\n");
+                        return AVERROR_INVALIDDATA;
+                    }
                     v = get_bits(gb, 8);
                     if (v == 0)
                         break;

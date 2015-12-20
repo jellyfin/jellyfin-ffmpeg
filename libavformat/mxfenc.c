@@ -1266,11 +1266,11 @@ static void mxf_write_package(AVFormatContext *s, enum MXFMetadataSetType type, 
             user_comment_count = mxf_write_user_comments(s, s->metadata);
         mxf_write_metadata_key(pb, 0x013600);
         PRINT_KEY(s, "Material Package key", pb->buf_ptr - 16);
-        klv_encode_ber_length(pb, 92 + name_size + (16*track_count) + (16*user_comment_count) + 12*mxf->store_user_comments);
+        klv_encode_ber_length(pb, 92 + name_size + (16*track_count) + (16*user_comment_count) + 12LL*mxf->store_user_comments);
     } else {
         mxf_write_metadata_key(pb, 0x013700);
         PRINT_KEY(s, "Source Package key", pb->buf_ptr - 16);
-        klv_encode_ber_length(pb, 112 + name_size + (16*track_count) + 12*mxf->store_user_comments); // 20 bytes length for descriptor reference
+        klv_encode_ber_length(pb, 112 + name_size + (16*track_count) + 12LL*mxf->store_user_comments); // 20 bytes length for descriptor reference
     }
 
     // write uid
@@ -2467,6 +2467,10 @@ static int mxf_write_packet(AVFormatContext *s, AVPacket *pkt)
         }
         mxf->edit_units_count++;
     } else if (!mxf->edit_unit_byte_count && st->index == 1) {
+        if (!mxf->edit_units_count) {
+            av_log(s, AV_LOG_ERROR, "No packets in first stream\n");
+            return AVERROR_PATCHWELCOME;
+        }
         mxf->index_entries[mxf->edit_units_count-1].slice_offset =
             mxf->body_offset - mxf->index_entries[mxf->edit_units_count-1].offset;
     }
