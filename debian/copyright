@@ -884,7 +884,7 @@ License: IJG
  assumed by the product vendor.
 
 Files: debian/*
-Copyright: 2014-2015, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Copyright: 2014-2016, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
 License: LGPL-2.1+
 Comment:
  On Debian systems, the full text of the GNU Lesser General Public License
