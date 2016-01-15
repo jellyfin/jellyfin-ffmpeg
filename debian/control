@@ -250,6 +250,7 @@ Description: FFmpeg library with de/encoders for audio/video codecs - runtime fi
 Package: libavcodec-ffmpeg-extra56
 Architecture: any
 Section: libs
+Priority: extra
 Multi-Arch: same
 Conflicts: libavcodec-ffmpeg56
 Provides: libavcodec-extra
@@ -288,6 +289,7 @@ Description: FFmpeg library with additional de/encoders for audio/video codecs
 Package: libavcodec-extra
 Architecture: all
 Section: metapackages
+Priority: extra
 Multi-Arch: foreign
 Depends:
  libavcodec-ffmpeg-extra56,
