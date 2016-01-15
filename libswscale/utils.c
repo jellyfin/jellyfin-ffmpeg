@@ -830,8 +830,6 @@ int sws_setColorspaceDetails(struct SwsContext *c, const int inv_table[4],
     const AVPixFmtDescriptor *desc_dst;
     const AVPixFmtDescriptor *desc_src;
     int need_reinit = 0;
-    memmove(c->srcColorspaceTable, inv_table, sizeof(int) * 4);
-    memmove(c->dstColorspaceTable, table, sizeof(int) * 4);
 
     handle_formats(c);
     desc_dst = av_pix_fmt_desc_get(c->dstFormat);
@@ -842,11 +840,24 @@ int sws_setColorspaceDetails(struct SwsContext *c, const int inv_table[4],
     if(!isYUV(c->srcFormat) && !isGray(c->srcFormat))
         srcRange = 0;
 
+    if (c->srcRange != srcRange ||
+        c->dstRange != dstRange ||
+        c->brightness != brightness ||
+        c->contrast   != contrast ||
+        c->saturation != saturation ||
+        memcmp(c->srcColorspaceTable, inv_table, sizeof(int) * 4) ||
+        memcmp(c->dstColorspaceTable,     table, sizeof(int) * 4)
+    )
+        need_reinit = 1;
+
+    memmove(c->srcColorspaceTable, inv_table, sizeof(int) * 4);
+    memmove(c->dstColorspaceTable, table, sizeof(int) * 4);
+
+
+
     c->brightness = brightness;
     c->contrast   = contrast;
     c->saturation = saturation;
-    if (c->srcRange != srcRange || c->dstRange != dstRange)
-        need_reinit = 1;
     c->srcRange   = srcRange;
     c->dstRange   = dstRange;
 
@@ -860,6 +871,9 @@ int sws_setColorspaceDetails(struct SwsContext *c, const int inv_table[4],
 
     if (c->cascaded_context[0])
         return sws_setColorspaceDetails(c->cascaded_context[0],inv_table, srcRange,table, dstRange, brightness,  contrast, saturation);
+
+    if (!need_reinit)
+        return 0;
 
     if ((isYUV(c->dstFormat) || isGray(c->dstFormat)) && (isYUV(c->srcFormat) || isGray(c->srcFormat))) {
         if (!c->cascaded_context[0] &&
@@ -1192,6 +1206,12 @@ av_cold int sws_init_context(SwsContext *c, SwsFilter *srcFilter,
         av_log(c, AV_LOG_ERROR, "%dx%d -> %dx%d is invalid scaling dimension\n",
                srcW, srcH, dstW, dstH);
         return AVERROR(EINVAL);
+    }
+    if (flags & SWS_FAST_BILINEAR) {
+        if (srcW < 8 || dstW < 8) {
+            flags ^= SWS_FAST_BILINEAR | SWS_BILINEAR;
+            c->flags = flags;
+        }
     }
 
     if (!dstFilter)
@@ -1785,6 +1805,9 @@ fail: // FIXME replace things by appropriate error codes
         int tmpW = sqrt(srcW * (int64_t)dstW);
         int tmpH = sqrt(srcH * (int64_t)dstH);
         enum AVPixelFormat tmpFormat = AV_PIX_FMT_YUV420P;
+
+        if (isALPHA(srcFormat))
+            tmpFormat = AV_PIX_FMT_YUVA420P;
 
         if (srcW*(int64_t)srcH <= 4LL*dstW*dstH)
             return AVERROR(EINVAL);
