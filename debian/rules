@@ -219,10 +219,10 @@ override_dh_auto_build-arch:
 	for flavor in $(FLAVORS); do \
 		echo " *** $$flavor ***"; \
 		if echo "$$flavor" | grep -q "extra"; then \
-			subdir=`echo "$$flavor" | grep "-" | sed 's_\(.*\)-.*_debian/\1/_'`; \
+			subdir=`[ "$$flavor" = "extra" ] && echo "debian/standard/" || echo "debian/altivec/"`; \
 			for dir in `cd ./$$subdir; find libavcodec libavutil libswresample -type d`; do \
 				mkdir -p debian/"$$flavor"/"$$dir"; \
-				echo debian/standard/"$$subdir$$dir"/*.o | grep -q '*' || cp debian/standard/"$$subdir$$dir"/*.o debian/"$$flavor"/"$$dir"; \
+				echo "$$subdir$$dir"/*.o | grep -q '*' || cp "$$subdir$$dir"/*.o debian/"$$flavor"/"$$dir"; \
 			done; \
 			rm debian/"$$flavor"/libavcodec/allcodecs.o; \
 		fi; \
