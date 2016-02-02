@@ -13,7 +13,7 @@ Comment:
  For libavcodec an extra flavor is built, which links against external libraries
  licensed under the Apache License 2.0, which makes it effectively licensed
  under the GPL v3+
- The HTML documentation /usr/share/doc/ffmpeg-doc/manual/*.html in the ffmpeg-doc
+ The HTML documentation /usr/share/doc/ffmpeg/manual/*.html in the ffmpeg-doc
  package is effectively licensed under GPL-3+, because during its creation
  the GPL-3+ licensed file doc/t2h.pm is used.
  .

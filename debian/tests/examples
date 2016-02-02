@@ -7,7 +7,7 @@ set -e
 echo "ADTTMP directory: $ADTTMP"
 cd "$ADTTMP"
 
-cp -r /usr/share/doc/ffmpeg-doc/examples ./
+cp -r /usr/share/doc/ffmpeg/examples ./
 cd examples
 
 echo "building the examples..."
