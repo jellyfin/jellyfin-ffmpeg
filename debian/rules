@@ -53,10 +53,8 @@ FLAVORS = standard extra
 #    This could be used together with Breaks:, Replaces: against the corresponding Libav libraries.
 #  * With --enable-raise-major, the resulting binaries should be co-installable with the Libav ones and thus no conflicts would be necessary.
 #    But this could break versioned configure checks.
-#  * With --build-suffix="-ffmpeg" the library names are changed, so there can't be a conflict with Libav.
 CONFIG := --prefix=/usr \
 	--extra-version="$(DEB_REVISION)" \
-	--build-suffix="-ffmpeg" \
 	--toolchain=hardened \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
@@ -247,14 +245,6 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 	install -d debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 	install -m 644 debian/altivec-extra/*/*.so.* debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 endif
-	# Create symbolic links from the standard library lib*.so symlinks, pkg-config files and static libraries to the suffixed ones.
-	for lib in `find debian/ -name lib*-ffmpeg.so; find debian/ -name lib*.pc; find debian/ -name lib*.a`; do \
-		dir=`dirname $$lib`; \
-		base=`basename $$lib`; \
-		link=`echo $$base | sed 's/-ffmpeg//'`; \
-		ln -sf $$base $$link; \
-		mv $$link $$dir; \
-	done
 
 override_dh_install:
 	dh_install -N $(EXTRA_PKG)
