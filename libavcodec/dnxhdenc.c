@@ -45,7 +45,7 @@
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     { "nitris_compat", "encode with Avid Nitris compatibility",
-        offsetof(DNXHDEncContext, nitris_compat), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, VE },
+        offsetof(DNXHDEncContext, nitris_compat), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "ibias", "intra quant bias",
         offsetof(DNXHDEncContext, intra_quant_bias), AV_OPT_TYPE_INT,
         { .i64 = 0 }, INT_MIN, INT_MAX, VE },
@@ -87,22 +87,14 @@ void dnxhd_10bit_get_pixels_8x4_sym(int16_t *av_restrict block,
                                     const uint8_t *pixels,
                                     ptrdiff_t line_size)
 {
-    int i;
-    const uint16_t* pixels16 = (const uint16_t*)pixels;
-    line_size >>= 1;
-
-    for (i = 0; i < 4; i++) {
-        block[0] = pixels16[0]; block[1] = pixels16[1];
-        block[2] = pixels16[2]; block[3] = pixels16[3];
-        block[4] = pixels16[4]; block[5] = pixels16[5];
-        block[6] = pixels16[6]; block[7] = pixels16[7];
-        pixels16 += line_size;
-        block += 8;
-    }
-    memcpy(block,      block -  8, sizeof(*block) * 8);
-    memcpy(block +  8, block - 16, sizeof(*block) * 8);
-    memcpy(block + 16, block - 24, sizeof(*block) * 8);
-    memcpy(block + 24, block - 32, sizeof(*block) * 8);
+    memcpy(block + 0 * 8, pixels + 0 * line_size, 8 * sizeof(*block));
+    memcpy(block + 7 * 8, pixels + 0 * line_size, 8 * sizeof(*block));
+    memcpy(block + 1 * 8, pixels + 1 * line_size, 8 * sizeof(*block));
+    memcpy(block + 6 * 8, pixels + 1 * line_size, 8 * sizeof(*block));
+    memcpy(block + 2 * 8, pixels + 2 * line_size, 8 * sizeof(*block));
+    memcpy(block + 5 * 8, pixels + 2 * line_size, 8 * sizeof(*block));
+    memcpy(block + 3 * 8, pixels + 3 * line_size, 8 * sizeof(*block));
+    memcpy(block + 4 * 8, pixels + 3 * line_size, 8 * sizeof(*block));
 }
 
 static int dnxhd_10bit_dct_quantize(MpegEncContext *ctx, int16_t *block,
@@ -127,6 +119,11 @@ static int dnxhd_10bit_dct_quantize(MpegEncContext *ctx, int16_t *block,
         if (level)
             last_non_zero = i;
     }
+
+    /* we need this permutation so that we correct the IDCT, we only permute the !=0 elements */
+    if (ctx->idsp.perm_type != FF_IDCT_PERM_NONE)
+        ff_block_permute(block, ctx->idsp.idct_permutation,
+                         scantable, last_non_zero);
 
     return last_non_zero;
 }
@@ -158,9 +155,9 @@ static av_cold int dnxhd_init_vlc(DNXHDEncContext *ctx)
                 alevel -= offset << 6;
             }
             for (j = 0; j < 257; j++) {
-                if (ctx->cid_table->ac_level[j] >> 1 == alevel &&
-                    (!offset || (ctx->cid_table->ac_flags[j] & 1) && offset) &&
-                    (!run    || (ctx->cid_table->ac_flags[j] & 2) && run)) {
+                if (ctx->cid_table->ac_info[2*j+0] >> 1 == alevel &&
+                    (!offset || (ctx->cid_table->ac_info[2*j+1] & 1) && offset) &&
+                    (!run    || (ctx->cid_table->ac_info[2*j+1] & 2) && run)) {
                     av_assert1(!ctx->vlc_codes[index]);
                     if (alevel) {
                         ctx->vlc_codes[index] =
@@ -241,7 +238,7 @@ static av_cold int dnxhd_init_qmat(DNXHDEncContext *ctx, int lbias, int cbias)
         // 10-bit
         for (qscale = 1; qscale <= ctx->m.avctx->qmax; qscale++) {
             for (i = 1; i < 64; i++) {
-                int j = ctx->m.idsp.idct_permutation[ff_zigzag_direct[i]];
+                int j = ff_zigzag_direct[i];
 
                 /* The quantization formula from the VC-3 standard is:
                  * quantized = sign(block[i]) * floor(abs(block[i]/s) * p /
@@ -360,8 +357,7 @@ static av_cold int dnxhd_encode_init(AVCodecContext *avctx)
 
 #if FF_API_QUANT_BIAS
 FF_DISABLE_DEPRECATION_WARNINGS
-    if (ctx->intra_quant_bias == FF_DEFAULT_QUANT_BIAS &&
-        avctx->intra_quant_bias != FF_DEFAULT_QUANT_BIAS)
+    if (avctx->intra_quant_bias != FF_DEFAULT_QUANT_BIAS)
         ctx->intra_quant_bias = avctx->intra_quant_bias;
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
@@ -772,11 +768,13 @@ static int dnxhd_mb_var_thread(AVCodecContext *avctx, void *arg,
             unsigned mb  = mb_y * ctx->m.mb_width + mb_x;
             int sum = 0;
             int sqsum = 0;
+            int bw = FFMIN(avctx->width - 16 * mb_x, 16);
+            int bh = FFMIN((avctx->height >> ctx->interlaced) - 16 * mb_y, 16);
             int mean, sqmean;
             int i, j;
             // Macroblocks are 16x16 pixels, unlike DCT blocks which are 8x8.
-            for (i = 0; i < 16; ++i) {
-                for (j = 0; j < 16; ++j) {
+            for (i = 0; i < bh; ++i) {
+                for (j = 0; j < bw; ++j) {
                     // Turn 16-bit pixels into 10-bit ones.
                     int const sample = (unsigned) pix[j] >> 6;
                     sum   += sample;

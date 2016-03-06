@@ -1,10 +1,10 @@
 
-              ┌────────────────────────────────────────┐
-              │ RELEASE NOTES for FFmpeg 2.8 "Feynman" │
-              └────────────────────────────────────────┘
+              ┌─────────────────────────────────────────┐
+              │ RELEASE NOTES for FFmpeg 3.0 "Einstein" │
+              └─────────────────────────────────────────┘
 
-   The FFmpeg Project proudly presents FFmpeg 2.8 "Feynman", about 3
-   months after the release of FFmpeg 2.7.
+   The FFmpeg Project proudly presents FFmpeg 3.0 "Einstein", about 5
+   months after the release of FFmpeg 2.8.
 
    A complete Changelog is available at the root of the project, and the
    complete Git history on http://source.ffmpeg.org.

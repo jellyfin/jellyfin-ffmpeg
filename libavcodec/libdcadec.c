@@ -29,20 +29,50 @@
 #include "dca.h"
 #include "dca_syncwords.h"
 #include "internal.h"
+#include "profiles.h"
 
 typedef struct DCADecContext {
+    const AVClass *class;
     struct dcadec_context *ctx;
     uint8_t *buffer;
     int buffer_size;
-    int downmix_warned;
+    int lfe_filter;
+    int core_only;
 } DCADecContext;
+
+static void my_log_cb(int level, const char *file, int line,
+                      const char *message, void *cbarg)
+{
+    int av_level;
+
+    switch (level) {
+    case DCADEC_LOG_ERROR:
+        av_level = AV_LOG_ERROR;
+        break;
+    case DCADEC_LOG_WARNING:
+        av_level = AV_LOG_WARNING;
+        break;
+    case DCADEC_LOG_INFO:
+        av_level = AV_LOG_INFO;
+        break;
+    case DCADEC_LOG_VERBOSE:
+        av_level = AV_LOG_VERBOSE;
+        break;
+    case DCADEC_LOG_DEBUG:
+    default:
+        av_level = AV_LOG_DEBUG;
+        break;
+    }
+
+    av_log(cbarg, av_level, "%s\n", message);
+}
 
 static int dcadec_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
     DCADecContext *s = avctx->priv_data;
     AVFrame *frame = data;
-    av_unused struct dcadec_exss_info *exss;
+    struct dcadec_exss_info *exss;
     int ret, i, k;
     int **samples, nsamples, channel_mask, sample_rate, bits_per_sample, profile;
     uint32_t mrk;
@@ -129,20 +159,8 @@ static int dcadec_decode_frame(AVCodecContext *avctx, void *data,
     } else
         avctx->bit_rate = 0;
 
-#if HAVE_STRUCT_DCADEC_EXSS_INFO_MATRIX_ENCODING
     if (exss = dcadec_context_get_exss_info(s->ctx)) {
         enum AVMatrixEncoding matrix_encoding = AV_MATRIX_ENCODING_NONE;
-
-        if (!s->downmix_warned) {
-            uint64_t layout = avctx->request_channel_layout;
-
-            if (((layout == AV_CH_LAYOUT_STEREO_DOWNMIX || layout == AV_CH_LAYOUT_STEREO) && !exss->embedded_stereo) ||
-                ( layout == AV_CH_LAYOUT_5POINT1 && !exss->embedded_6ch))
-                av_log(avctx, AV_LOG_WARNING, "%s downmix was requested but no custom coefficients are available, "
-                                              "this may result in clipping\n",
-                                              layout == AV_CH_LAYOUT_5POINT1 ? "5.1" : "Stereo");
-            s->downmix_warned = 1;
-        }
 
         switch(exss->matrix_encoding) {
         case DCADEC_MATRIX_ENCODING_SURROUND:
@@ -158,7 +176,6 @@ static int dcadec_decode_frame(AVCodecContext *avctx, void *data,
             (ret = ff_side_data_update_matrix_encoding(frame, matrix_encoding)) < 0)
             return ret;
     }
-#endif
 
     frame->nb_samples = nsamples;
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
@@ -209,20 +226,20 @@ static av_cold int dcadec_init(AVCodecContext *avctx)
     if (avctx->flags & AV_CODEC_FLAG_BITEXACT)
         flags |= DCADEC_FLAG_CORE_BIT_EXACT;
 
-    if (avctx->request_channel_layout > 0 && avctx->request_channel_layout != AV_CH_LAYOUT_NATIVE) {
+    if (avctx->err_recognition & AV_EF_EXPLODE)
+        flags |= DCADEC_FLAG_STRICT;
+
+    if (avctx->request_channel_layout) {
         switch (avctx->request_channel_layout) {
         case AV_CH_LAYOUT_STEREO:
         case AV_CH_LAYOUT_STEREO_DOWNMIX:
-            /* libdcadec ignores the 2ch flag if used alone when no custom downmix coefficients
-               are available, silently outputting a 5.1 downmix if possible instead.
-               Using both the 2ch and 6ch flags together forces a 2ch downmix using default
-               coefficients in such cases. This matches the behavior of the 6ch flag when used
-               alone, where a 5.1 downmix is generated if possible, regardless of custom
-               coefficients being available or not. */
-            flags |= DCADEC_FLAG_KEEP_DMIX_2CH | DCADEC_FLAG_KEEP_DMIX_6CH;
+            flags |= DCADEC_FLAG_KEEP_DMIX_2CH;
             break;
         case AV_CH_LAYOUT_5POINT1:
             flags |= DCADEC_FLAG_KEEP_DMIX_6CH;
+            break;
+        case AV_CH_LAYOUT_NATIVE:
+            flags |= DCADEC_FLAG_NATIVE_LAYOUT;
             break;
         default:
             av_log(avctx, AV_LOG_WARNING, "Invalid request_channel_layout\n");
@@ -230,9 +247,25 @@ static av_cold int dcadec_init(AVCodecContext *avctx)
         }
     }
 
+    if (s->core_only)
+        flags |= DCADEC_FLAG_CORE_ONLY;
+
+    switch (s->lfe_filter) {
+#if DCADEC_API_VERSION >= DCADEC_VERSION_CODE(0, 1, 0)
+    case 1:
+        flags |= DCADEC_FLAG_CORE_LFE_IIR;
+        break;
+#endif
+    case 2:
+        flags |= DCADEC_FLAG_CORE_LFE_FIR;
+        break;
+    }
+
     s->ctx = dcadec_context_create(flags);
     if (!s->ctx)
         return AVERROR(ENOMEM);
+
+    dcadec_context_set_log_cb(s->ctx, my_log_cb, avctx);
 
     avctx->sample_fmt = AV_SAMPLE_FMT_S32P;
     avctx->bits_per_raw_sample = 24;
@@ -240,14 +273,24 @@ static av_cold int dcadec_init(AVCodecContext *avctx)
     return 0;
 }
 
-static const AVProfile profiles[] = {
-    { FF_PROFILE_DTS,         "DTS"         },
-    { FF_PROFILE_DTS_ES,      "DTS-ES"      },
-    { FF_PROFILE_DTS_96_24,   "DTS 96/24"   },
-    { FF_PROFILE_DTS_HD_HRA,  "DTS-HD HRA"  },
-    { FF_PROFILE_DTS_HD_MA,   "DTS-HD MA"   },
-    { FF_PROFILE_DTS_EXPRESS, "DTS Express" },
-    { FF_PROFILE_UNKNOWN },
+#define OFFSET(x) offsetof(DCADecContext, x)
+#define PARAM AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_DECODING_PARAM
+
+static const AVOption dcadec_options[] = {
+    { "lfe_filter", "Lossy LFE channel interpolation filter", OFFSET(lfe_filter), AV_OPT_TYPE_INT,   { .i64 = 0 }, 0,       2,       PARAM, "lfe_filter" },
+    { "default",    "Library default",                        0,                  AV_OPT_TYPE_CONST, { .i64 = 0 }, INT_MIN, INT_MAX, PARAM, "lfe_filter" },
+    { "iir",        "IIR filter",                             0,                  AV_OPT_TYPE_CONST, { .i64 = 1 }, INT_MIN, INT_MAX, PARAM, "lfe_filter" },
+    { "fir",        "FIR filter",                             0,                  AV_OPT_TYPE_CONST, { .i64 = 2 }, INT_MIN, INT_MAX, PARAM, "lfe_filter" },
+    { "core_only",  "Decode core only without extensions",    OFFSET(core_only),  AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0,       1,       PARAM },
+    { NULL }
+};
+
+static const AVClass dcadec_class = {
+    .class_name = "libdcadec decoder",
+    .item_name  = av_default_item_name,
+    .option     = dcadec_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+    .category   = AV_CLASS_CATEGORY_DECODER,
 };
 
 AVCodec ff_libdcadec_decoder = {
@@ -263,5 +306,6 @@ AVCodec ff_libdcadec_decoder = {
     .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_NONE },
-    .profiles       = NULL_IF_CONFIG_SMALL(profiles),
+    .priv_class     = &dcadec_class,
+    .profiles       = NULL_IF_CONFIG_SMALL(ff_dca_profiles),
 };

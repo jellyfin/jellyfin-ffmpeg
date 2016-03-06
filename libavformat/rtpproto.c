@@ -69,8 +69,8 @@ static const AVOption options[] = {
     { "rtcp_port",          "Custom rtcp port",                                                 OFFSET(rtcp_port),       AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
     { "local_rtpport",      "Local rtp port",                                                   OFFSET(local_rtpport),   AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
     { "local_rtcpport",     "Local rtcp port",                                                  OFFSET(local_rtcpport),  AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
-    { "connect",            "Connect socket",                                                   OFFSET(connect),         AV_OPT_TYPE_INT,    { .i64 =  0 },     0, 1,       .flags = D|E },
-    { "write_to_source",    "Send packets to the source address of the latest received packet", OFFSET(write_to_source), AV_OPT_TYPE_INT,    { .i64 =  0 },     0, 1,       .flags = D|E },
+    { "connect",            "Connect socket",                                                   OFFSET(connect),         AV_OPT_TYPE_BOOL,   { .i64 =  0 },     0, 1,       .flags = D|E },
+    { "write_to_source",    "Send packets to the source address of the latest received packet", OFFSET(write_to_source), AV_OPT_TYPE_BOOL,   { .i64 =  0 },     0, 1,       .flags = D|E },
     { "pkt_size",           "Maximum packet size",                                              OFFSET(pkt_size),        AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
     { "dscp",               "DSCP class",                                                       OFFSET(dscp),            AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, INT_MAX, .flags = D|E },
     { "sources",            "Source list",                                                      OFFSET(sources),         AV_OPT_TYPE_STRING, { .str = NULL },               .flags = D|E },
@@ -380,7 +380,8 @@ static int rtp_open(URLContext *h, const char *uri, int flags)
         build_udp_url(s, buf, sizeof(buf),
                       hostname, rtp_port, s->local_rtpport,
                       sources, block);
-        if (ffurl_open(&s->rtp_hd, buf, flags, &h->interrupt_callback, NULL) < 0)
+        if (ffurl_open_whitelist(&s->rtp_hd, buf, flags, &h->interrupt_callback,
+                                 NULL, h->protocol_whitelist) < 0)
             goto fail;
         s->local_rtpport = ff_udp_get_local_port(s->rtp_hd);
         if(s->local_rtpport == 65535) {
@@ -392,7 +393,9 @@ static int rtp_open(URLContext *h, const char *uri, int flags)
             build_udp_url(s, buf, sizeof(buf),
                           hostname, s->rtcp_port, s->local_rtcpport,
                           sources, block);
-            if (ffurl_open(&s->rtcp_hd, buf, flags, &h->interrupt_callback, NULL) < 0) {
+            if (ffurl_open_whitelist(&s->rtcp_hd, buf, flags,
+                                     &h->interrupt_callback, NULL,
+                                     h->protocol_whitelist) < 0) {
                 s->local_rtpport = s->local_rtcpport = -1;
                 continue;
             }
@@ -401,7 +404,8 @@ static int rtp_open(URLContext *h, const char *uri, int flags)
         build_udp_url(s, buf, sizeof(buf),
                       hostname, s->rtcp_port, s->local_rtcpport,
                       sources, block);
-        if (ffurl_open(&s->rtcp_hd, buf, flags, &h->interrupt_callback, NULL) < 0)
+        if (ffurl_open_whitelist(&s->rtcp_hd, buf, flags, &h->interrupt_callback,
+                                 NULL, h->protocol_whitelist) < 0)
             goto fail;
         break;
     }

@@ -107,6 +107,26 @@ static const uint8_t default_scaling8[2][64] = {
       24, 25, 27, 28, 30, 32, 33, 35 }
 };
 
+/* maximum number of MBs in the DPB for a given level */
+static const int level_max_dpb_mbs[][2] = {
+    { 10, 396       },
+    { 11, 900       },
+    { 12, 2376      },
+    { 13, 2376      },
+    { 20, 2376      },
+    { 21, 4752      },
+    { 22, 8100      },
+    { 30, 8100      },
+    { 31, 18000     },
+    { 32, 20480     },
+    { 40, 32768     },
+    { 41, 32768     },
+    { 42, 34816     },
+    { 50, 110400    },
+    { 51, 184320    },
+    { 52, 184320    },
+};
+
 static inline int decode_hrd_parameters(H264Context *h, SPS *sps)
 {
     int cpb_count, i;
@@ -307,6 +327,17 @@ int ff_h264_decode_seq_parameter_set(H264Context *h, int ignore_truncation)
     int i, log2_max_frame_num_minus4;
     SPS *sps;
 
+    sps = av_mallocz(sizeof(SPS));
+    if (!sps)
+        return AVERROR(ENOMEM);
+
+    sps->data_size = h->gb.buffer_end - h->gb.buffer;
+    if (sps->data_size > sizeof(sps->data)) {
+        av_log(h->avctx, AV_LOG_WARNING, "Truncating likely oversized SPS\n");
+        sps->data_size = sizeof(sps->data);
+    }
+    memcpy(sps->data, h->gb.buffer, sps->data_size);
+
     profile_idc           = get_bits(&h->gb, 8);
     constraint_set_flags |= get_bits1(&h->gb) << 0;   // constraint_set0_flag
     constraint_set_flags |= get_bits1(&h->gb) << 1;   // constraint_set1_flag
@@ -320,11 +351,8 @@ int ff_h264_decode_seq_parameter_set(H264Context *h, int ignore_truncation)
 
     if (sps_id >= MAX_SPS_COUNT) {
         av_log(h->avctx, AV_LOG_ERROR, "sps_id %u out of range\n", sps_id);
-        return AVERROR_INVALIDDATA;
+        goto fail;
     }
-    sps = av_mallocz(sizeof(SPS));
-    if (!sps)
-        return AVERROR(ENOMEM);
 
     sps->sps_id               = sps_id;
     sps->time_offset_length   = 24;
@@ -527,6 +555,19 @@ int ff_h264_decode_seq_parameter_set(H264Context *h, int ignore_truncation)
             goto fail;
     }
 
+    /* if the maximum delay is not stored in the SPS, derive it based on the
+     * level */
+    if (!sps->bitstream_restriction_flag) {
+        sps->num_reorder_frames = MAX_DELAYED_PIC_COUNT - 1;
+        for (i = 0; i < FF_ARRAY_ELEMS(level_max_dpb_mbs); i++) {
+            if (level_max_dpb_mbs[i][0] == sps->level_idc) {
+                sps->num_reorder_frames = FFMIN(level_max_dpb_mbs[i][1] / (sps->mb_width * sps->mb_height),
+                                                sps->num_reorder_frames);
+                break;
+            }
+        }
+    }
+
     if (!sps->sar.den)
         sps->sar.den = 1;
 
@@ -603,6 +644,12 @@ int ff_h264_decode_picture_parameter_set(H264Context *h, int bit_length)
     pps = av_mallocz(sizeof(PPS));
     if (!pps)
         return AVERROR(ENOMEM);
+    pps->data_size = h->gb.buffer_end - h->gb.buffer;
+    if (pps->data_size > sizeof(pps->data)) {
+        av_log(h->avctx, AV_LOG_WARNING, "Truncating likely oversized PPS\n");
+        pps->data_size = sizeof(pps->data);
+    }
+    memcpy(pps->data, h->gb.buffer, pps->data_size);
     pps->sps_id = get_ue_golomb_31(&h->gb);
     if ((unsigned)pps->sps_id >= MAX_SPS_COUNT ||
         !h->sps_buffers[pps->sps_id]) {

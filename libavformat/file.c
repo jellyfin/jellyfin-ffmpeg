@@ -78,7 +78,7 @@ typedef struct FileContext {
 } FileContext;
 
 static const AVOption file_options[] = {
-    { "truncate", "truncate existing files on write", offsetof(FileContext, trunc), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, AV_OPT_FLAG_ENCODING_PARAM },
+    { "truncate", "truncate existing files on write", offsetof(FileContext, trunc), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, AV_OPT_FLAG_ENCODING_PARAM },
     { "blocksize", "set I/O operation maximum block size", offsetof(FileContext, blocksize), AV_OPT_TYPE_INT, { .i64 = INT_MAX }, 1, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
     { NULL }
 };
@@ -105,19 +105,19 @@ static const AVClass pipe_class = {
 static int file_read(URLContext *h, unsigned char *buf, int size)
 {
     FileContext *c = h->priv_data;
-    int r;
+    int ret;
     size = FFMIN(size, c->blocksize);
-    r = read(c->fd, buf, size);
-    return (-1 == r)?AVERROR(errno):r;
+    ret = read(c->fd, buf, size);
+    return (ret == -1) ? AVERROR(errno) : ret;
 }
 
 static int file_write(URLContext *h, const unsigned char *buf, int size)
 {
     FileContext *c = h->priv_data;
-    int r;
+    int ret;
     size = FFMIN(size, c->blocksize);
-    r = write(c->fd, buf, size);
-    return (-1 == r)?AVERROR(errno):r;
+    ret = write(c->fd, buf, size);
+    return (ret == -1) ? AVERROR(errno) : ret;
 }
 
 static int file_get_handle(URLContext *h)
@@ -349,6 +349,7 @@ URLProtocol ff_file_protocol = {
     .url_open_dir        = file_open_dir,
     .url_read_dir        = file_read_dir,
     .url_close_dir       = file_close_dir,
+    .default_whitelist   = "file"
 };
 
 #endif /* CONFIG_FILE_PROTOCOL */
@@ -387,6 +388,7 @@ URLProtocol ff_pipe_protocol = {
     .url_check           = file_check,
     .priv_data_size      = sizeof(FileContext),
     .priv_data_class     = &pipe_class,
+    .default_whitelist   = "none"
 };
 
 #endif /* CONFIG_PIPE_PROTOCOL */

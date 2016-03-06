@@ -33,6 +33,9 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
+#include "libavutil/imgutils.h"
+#include "libavutil/opt.h"
+
 #include "avcodec.h"
 #include "internal.h"
 #include "libschroedinger.h"
@@ -41,6 +44,8 @@
 
 /** libschroedinger encoder private data */
 typedef struct SchroEncoderParams {
+    AVClass        *class;
+
     /** Schroedinger video format */
     SchroVideoFormat *format;
 
@@ -70,6 +75,9 @@ typedef struct SchroEncoderParams {
 
     /* counter for frames submitted to encoder, used as dts */
     int64_t dts;
+
+    /** enable noarith */
+    int noarith;
 } SchroEncoderParams;
 
 /**
@@ -155,18 +163,24 @@ static av_cold int libschroedinger_encode_init(AVCodecContext *avctx)
     p_schro_params->format->frame_rate_numerator   = avctx->time_base.den;
     p_schro_params->format->frame_rate_denominator = avctx->time_base.num;
 
-    p_schro_params->frame_size = avpicture_get_size(avctx->pix_fmt,
-                                                    avctx->width,
-                                                    avctx->height);
+    p_schro_params->frame_size = av_image_get_buffer_size(avctx->pix_fmt,
+                                                          avctx->width,
+                                                          avctx->height, 1);
 
     if (!avctx->gop_size) {
         schro_encoder_setting_set_double(p_schro_params->encoder,
                                          "gop_structure",
                                          SCHRO_ENCODER_GOP_INTRA_ONLY);
 
-        if (avctx->coder_type == FF_CODER_TYPE_VLC)
-            schro_encoder_setting_set_double(p_schro_params->encoder,
-                                             "enable_noarith", 1);
+#if FF_API_CODER_TYPE
+FF_DISABLE_DEPRECATION_WARNINGS
+        if (avctx->coder_type != FF_CODER_TYPE_VLC)
+            p_schro_params->noarith = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        schro_encoder_setting_set_double(p_schro_params->encoder,
+                                         "enable_noarith",
+                                         p_schro_params->noarith);
     } else {
         schro_encoder_setting_set_double(p_schro_params->encoder,
                                          "au_distance", avctx->gop_size);
@@ -234,17 +248,17 @@ static SchroFrame *libschroedinger_frame_from_data(AVCodecContext *avctx,
                                                    const AVFrame *frame)
 {
     SchroEncoderParams *p_schro_params = avctx->priv_data;
-    SchroFrame *in_frame;
-    /* Input line size may differ from what the codec supports. Especially
-     * when transcoding from one format to another. So use avpicture_layout
-     * to copy the frame. */
-    in_frame = ff_create_schro_frame(avctx, p_schro_params->frame_format);
+    SchroFrame *in_frame = ff_create_schro_frame(avctx,
+                                                 p_schro_params->frame_format);
 
-    if (in_frame)
-        avpicture_layout((const AVPicture *)frame, avctx->pix_fmt,
-                          avctx->width, avctx->height,
-                          in_frame->components[0].data,
-                          p_schro_params->frame_size);
+    if (in_frame) {
+        /* Copy input data to SchroFrame buffers (they match the ones
+         * referenced by the AVFrame stored in priv) */
+        if (av_frame_copy(in_frame->priv, frame) < 0) {
+            av_log(avctx, AV_LOG_ERROR, "Failed to copy input data\n");
+            return NULL;
+        }
+    }
 
     return in_frame;
 }
@@ -439,6 +453,20 @@ static int libschroedinger_encode_close(AVCodecContext *avctx)
     return 0;
 }
 
+#define OFFSET(x) offsetof(SchroEncoderParams, x)
+#define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
+static const AVOption options[] = {
+    { "noarith", "Enable noarith", OFFSET(noarith), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, VE },
+
+    { NULL },
+};
+
+static const AVClass libschroedinger_class = {
+    .class_name = "libschroedinger",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
 
 AVCodec ff_libschroedinger_encoder = {
     .name           = "libschroedinger",
@@ -446,6 +474,7 @@ AVCodec ff_libschroedinger_encoder = {
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_DIRAC,
     .priv_data_size = sizeof(SchroEncoderParams),
+    .priv_class     = &libschroedinger_class,
     .init           = libschroedinger_encode_init,
     .encode2        = libschroedinger_encode_frame,
     .close          = libschroedinger_encode_close,

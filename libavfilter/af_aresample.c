@@ -40,7 +40,6 @@ typedef struct {
     double ratio;
     struct SwrContext *swr;
     int64_t next_pts;
-    int req_fullfilled;
     int more_data;
 } AResampleContext;
 
@@ -89,25 +88,23 @@ static int query_formats(AVFilterContext *ctx)
     AVFilterFormats        *in_formats, *out_formats;
     AVFilterFormats        *in_samplerates, *out_samplerates;
     AVFilterChannelLayouts *in_layouts, *out_layouts;
+    int ret;
 
     av_opt_get_sample_fmt(aresample->swr, "osf", 0, &out_format);
     av_opt_get_int(aresample->swr, "osr", 0, &out_rate);
     av_opt_get_int(aresample->swr, "ocl", 0, &out_layout);
 
     in_formats      = ff_all_formats(AVMEDIA_TYPE_AUDIO);
-    if (!in_formats)
-        return AVERROR(ENOMEM);
-    ff_formats_ref  (in_formats,      &inlink->out_formats);
+    if ((ret = ff_formats_ref(in_formats, &inlink->out_formats)) < 0)
+        return ret;
 
     in_samplerates  = ff_all_samplerates();
-    if (!in_samplerates)
-        return AVERROR(ENOMEM);
-    ff_formats_ref  (in_samplerates,  &inlink->out_samplerates);
+    if ((ret = ff_formats_ref(in_samplerates, &inlink->out_samplerates)) < 0)
+        return ret;
 
     in_layouts      = ff_all_channel_counts();
-    if (!in_layouts)
-         return AVERROR(ENOMEM);
-    ff_channel_layouts_ref(in_layouts,      &inlink->out_channel_layouts);
+    if ((ret = ff_channel_layouts_ref(in_layouts, &inlink->out_channel_layouts)) < 0)
+        return ret;
 
     if(out_rate > 0) {
         int ratelist[] = { out_rate, -1 };
@@ -115,28 +112,25 @@ static int query_formats(AVFilterContext *ctx)
     } else {
         out_samplerates = ff_all_samplerates();
     }
-    if (!out_samplerates) {
-        av_log(ctx, AV_LOG_ERROR, "Cannot allocate output samplerates.\n");
-        return AVERROR(ENOMEM);
-    }
 
-    ff_formats_ref(out_samplerates, &outlink->in_samplerates);
+    if ((ret = ff_formats_ref(out_samplerates, &outlink->in_samplerates)) < 0)
+        return ret;
 
     if(out_format != AV_SAMPLE_FMT_NONE) {
         int formatlist[] = { out_format, -1 };
         out_formats = ff_make_format_list(formatlist);
     } else
         out_formats = ff_all_formats(AVMEDIA_TYPE_AUDIO);
-    ff_formats_ref(out_formats, &outlink->in_formats);
+    if ((ret = ff_formats_ref(out_formats, &outlink->in_formats)) < 0)
+        return ret;
 
     if(out_layout) {
         int64_t layout_list[] = { out_layout, -1 };
         out_layouts = avfilter_make_format64_list(layout_list);
     } else
         out_layouts = ff_all_channel_counts();
-    ff_channel_layouts_ref(out_layouts, &outlink->in_channel_layouts);
 
-    return 0;
+    return ff_channel_layouts_ref(out_layouts, &outlink->in_channel_layouts);
 }
 
 
@@ -231,7 +225,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamplesref)
     outsamplesref->nb_samples  = n_out;
 
     ret = ff_filter_frame(outlink, outsamplesref);
-    aresample->req_fullfilled= 1;
     av_frame_free(&insamplesref);
     return ret;
 }
@@ -284,10 +277,7 @@ static int request_frame(AVFilterLink *outlink)
     aresample->more_data = 0;
 
     // Second request more data from the input
-    aresample->req_fullfilled = 0;
-    do{
-        ret = ff_request_frame(ctx->inputs[0]);
-    }while(!aresample->req_fullfilled && ret>=0);
+    ret = ff_request_frame(ctx->inputs[0]);
 
     // Third if we hit the end flush
     if (ret == AVERROR_EOF) {

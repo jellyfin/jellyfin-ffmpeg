@@ -82,9 +82,9 @@ static const AVOption dynaudnorm_options[] = {
     { "p", "set the peak value",               OFFSET(peak_value),        AV_OPT_TYPE_DOUBLE, {.dbl = 0.95}, 0.0,   1.0, FLAGS },
     { "m", "set the max amplification",        OFFSET(max_amplification), AV_OPT_TYPE_DOUBLE, {.dbl = 10.0}, 1.0, 100.0, FLAGS },
     { "r", "set the target RMS",               OFFSET(target_rms),        AV_OPT_TYPE_DOUBLE, {.dbl = 0.0},  0.0,   1.0, FLAGS },
-    { "n", "enable channel coupling",          OFFSET(channels_coupled),  AV_OPT_TYPE_INT,    {.i64 = 1},      0,     1, FLAGS },
-    { "c", "enable DC correction",             OFFSET(dc_correction),     AV_OPT_TYPE_INT,    {.i64 = 0},      0,     1, FLAGS },
-    { "b", "enable alternative boundary mode", OFFSET(alt_boundary_mode), AV_OPT_TYPE_INT,    {.i64 = 0},      0,     1, FLAGS },
+    { "n", "set channel coupling",             OFFSET(channels_coupled),  AV_OPT_TYPE_BOOL,   {.i64 = 1},      0,     1, FLAGS },
+    { "c", "set DC correction",                OFFSET(dc_correction),     AV_OPT_TYPE_BOOL,   {.i64 = 0},      0,     1, FLAGS },
+    { "b", "set alternative boundary mode",    OFFSET(alt_boundary_mode), AV_OPT_TYPE_BOOL,   {.i64 = 0},      0,     1, FLAGS },
     { "s", "set the compress factor",          OFFSET(compress_factor),   AV_OPT_TYPE_DOUBLE, {.dbl = 0.0},  0.0,  30.0, FLAGS },
     { NULL }
 };
@@ -113,7 +113,7 @@ static int query_formats(AVFilterContext *ctx)
     };
     int ret;
 
-    layouts = ff_all_channel_layouts();
+    layouts = ff_all_channel_counts();
     if (!layouts)
         return AVERROR(ENOMEM);
     ret = ff_set_common_channel_layouts(ctx, layouts);
@@ -135,7 +135,7 @@ static int query_formats(AVFilterContext *ctx)
 
 static inline int frame_size(int sample_rate, int frame_len_msec)
 {
-    const int frame_size = round((double)sample_rate * (frame_len_msec / 1000.0));
+    const int frame_size = lrint((double)sample_rate * (frame_len_msec / 1000.0));
     return frame_size + (frame_size % 2);
 }
 
@@ -162,7 +162,7 @@ static cqueue *cqueue_create(int size)
     q->nb_elements = 0;
     q->first = 0;
 
-    q->elements = av_malloc(sizeof(double) * size);
+    q->elements = av_malloc_array(size, sizeof(double));
     if (!q->elements) {
         av_free(q);
         return NULL;
@@ -173,7 +173,8 @@ static cqueue *cqueue_create(int size)
 
 static void cqueue_free(cqueue *q)
 {
-    av_free(q->elements);
+    if (q)
+        av_free(q->elements);
     av_free(q);
 }
 
@@ -227,8 +228,6 @@ static int cqueue_pop(cqueue *q)
     return 0;
 }
 
-static const double s_pi = 3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679;
-
 static void init_gaussian_filter(DynamicAudioNormalizerContext *s)
 {
     double total_weight = 0.0;
@@ -238,14 +237,14 @@ static void init_gaussian_filter(DynamicAudioNormalizerContext *s)
 
     // Pre-compute constants
     const int offset = s->filter_size / 2;
-    const double c1 = 1.0 / (sigma * sqrt(2.0 * s_pi));
-    const double c2 = 2.0 * pow(sigma, 2.0);
+    const double c1 = 1.0 / (sigma * sqrt(2.0 * M_PI));
+    const double c2 = 2.0 * sigma * sigma;
 
     // Compute weights
     for (i = 0; i < s->filter_size; i++) {
         const int x = i - offset;
 
-        s->weights[i] = c1 * exp(-(pow(x, 2.0) / c2));
+        s->weights[i] = c1 * exp(-x * x / c2);
         total_weight += s->weights[i];
     }
 
@@ -256,11 +255,42 @@ static void init_gaussian_filter(DynamicAudioNormalizerContext *s)
     }
 }
 
+static av_cold void uninit(AVFilterContext *ctx)
+{
+    DynamicAudioNormalizerContext *s = ctx->priv;
+    int c;
+
+    av_freep(&s->prev_amplification_factor);
+    av_freep(&s->dc_correction_value);
+    av_freep(&s->compress_threshold);
+    av_freep(&s->fade_factors[0]);
+    av_freep(&s->fade_factors[1]);
+
+    for (c = 0; c < s->channels; c++) {
+        if (s->gain_history_original)
+            cqueue_free(s->gain_history_original[c]);
+        if (s->gain_history_minimum)
+            cqueue_free(s->gain_history_minimum[c]);
+        if (s->gain_history_smoothed)
+            cqueue_free(s->gain_history_smoothed[c]);
+    }
+
+    av_freep(&s->gain_history_original);
+    av_freep(&s->gain_history_minimum);
+    av_freep(&s->gain_history_smoothed);
+
+    av_freep(&s->weights);
+
+    ff_bufqueue_discard_all(&s->queue);
+}
+
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
     DynamicAudioNormalizerContext *s = ctx->priv;
     int c;
+
+    uninit(ctx);
 
     s->frame_len =
     inlink->min_samples =
@@ -268,16 +298,16 @@ static int config_input(AVFilterLink *inlink)
     inlink->partial_buf_size = frame_size(inlink->sample_rate, s->frame_len_msec);
     av_log(ctx, AV_LOG_DEBUG, "frame len %d\n", s->frame_len);
 
-    s->fade_factors[0] = av_malloc(s->frame_len * sizeof(*s->fade_factors[0]));
-    s->fade_factors[1] = av_malloc(s->frame_len * sizeof(*s->fade_factors[1]));
+    s->fade_factors[0] = av_malloc_array(s->frame_len, sizeof(*s->fade_factors[0]));
+    s->fade_factors[1] = av_malloc_array(s->frame_len, sizeof(*s->fade_factors[1]));
 
-    s->prev_amplification_factor = av_malloc(inlink->channels * sizeof(*s->prev_amplification_factor));
+    s->prev_amplification_factor = av_malloc_array(inlink->channels, sizeof(*s->prev_amplification_factor));
     s->dc_correction_value = av_calloc(inlink->channels, sizeof(*s->dc_correction_value));
     s->compress_threshold = av_calloc(inlink->channels, sizeof(*s->compress_threshold));
     s->gain_history_original = av_calloc(inlink->channels, sizeof(*s->gain_history_original));
     s->gain_history_minimum = av_calloc(inlink->channels, sizeof(*s->gain_history_minimum));
     s->gain_history_smoothed = av_calloc(inlink->channels, sizeof(*s->gain_history_smoothed));
-    s->weights = av_malloc(s->filter_size * sizeof(*s->weights));
+    s->weights = av_malloc_array(s->filter_size, sizeof(*s->weights));
     if (!s->prev_amplification_factor || !s->dc_correction_value ||
         !s->compress_threshold || !s->fade_factors[0] || !s->fade_factors[1] ||
         !s->gain_history_original || !s->gain_history_minimum ||
@@ -302,12 +332,6 @@ static int config_input(AVFilterLink *inlink)
     s->channels = inlink->channels;
     s->delay = s->filter_size;
 
-    return 0;
-}
-
-static int config_output(AVFilterLink *outlink)
-{
-    outlink->flags |= FF_LINK_FLAG_REQUEST_LOOP;
     return 0;
 }
 
@@ -680,32 +704,6 @@ static int request_frame(AVFilterLink *outlink)
     return ret;
 }
 
-static av_cold void uninit(AVFilterContext *ctx)
-{
-    DynamicAudioNormalizerContext *s = ctx->priv;
-    int c;
-
-    av_freep(&s->prev_amplification_factor);
-    av_freep(&s->dc_correction_value);
-    av_freep(&s->compress_threshold);
-    av_freep(&s->fade_factors[0]);
-    av_freep(&s->fade_factors[1]);
-
-    for (c = 0; c < s->channels; c++) {
-        cqueue_free(s->gain_history_original[c]);
-        cqueue_free(s->gain_history_minimum[c]);
-        cqueue_free(s->gain_history_smoothed[c]);
-    }
-
-    av_freep(&s->gain_history_original);
-    av_freep(&s->gain_history_minimum);
-    av_freep(&s->gain_history_smoothed);
-
-    av_freep(&s->weights);
-
-    ff_bufqueue_discard_all(&s->queue);
-}
-
 static const AVFilterPad avfilter_af_dynaudnorm_inputs[] = {
     {
         .name           = "default",
@@ -721,7 +719,6 @@ static const AVFilterPad avfilter_af_dynaudnorm_outputs[] = {
     {
         .name          = "default",
         .type          = AVMEDIA_TYPE_AUDIO,
-        .config_props  = config_output,
         .request_frame = request_frame,
     },
     { NULL }

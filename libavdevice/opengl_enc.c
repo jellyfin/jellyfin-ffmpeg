@@ -733,8 +733,8 @@ static av_cold void opengl_fill_color_map(OpenGLContext *opengl)
         return;
 
 #define FILL_COMPONENT(i) { \
-        shift = desc->comp[i].depth_minus1 >> 3; \
-        opengl->color_map[(i << 2) + ((desc->comp[i].offset_plus1 - 1) >> shift)] = 1.0; \
+        shift = (desc->comp[i].depth - 1) >> 3; \
+        opengl->color_map[(i << 2) + (desc->comp[i].offset >> shift)] = 1.0; \
     }
 
     memset(opengl->color_map, 0, sizeof(opengl->color_map));
@@ -1032,8 +1032,8 @@ static av_cold int opengl_init_context(OpenGLContext *opengl)
         for (i = 1; i < num_planes; i++)
             if (opengl->non_pow_2_textures)
                 opengl_configure_texture(opengl, opengl->texture_name[i],
-                        FF_CEIL_RSHIFT(opengl->width, desc->log2_chroma_w),
-                        FF_CEIL_RSHIFT(opengl->height, desc->log2_chroma_h));
+                        AV_CEIL_RSHIFT(opengl->width, desc->log2_chroma_w),
+                        AV_CEIL_RSHIFT(opengl->height, desc->log2_chroma_h));
             else
                 opengl_configure_texture(opengl, opengl->texture_name[i], opengl->width, opengl->height);
         if (has_alpha)
@@ -1135,8 +1135,8 @@ static uint8_t* opengl_get_plane_pointer(OpenGLContext *opengl, AVPacket *pkt, i
 {
     uint8_t *data = pkt->data;
     int wordsize = opengl_type_size(opengl->type);
-    int width_chroma = FF_CEIL_RSHIFT(opengl->width, desc->log2_chroma_w);
-    int height_chroma = FF_CEIL_RSHIFT(opengl->height, desc->log2_chroma_h);
+    int width_chroma = AV_CEIL_RSHIFT(opengl->width, desc->log2_chroma_w);
+    int height_chroma = AV_CEIL_RSHIFT(opengl->height, desc->log2_chroma_h);
     int plane = desc->comp[comp_index].plane;
 
     switch(plane) {
@@ -1161,8 +1161,8 @@ static uint8_t* opengl_get_plane_pointer(OpenGLContext *opengl, AVPacket *pkt, i
 
 #define LOAD_TEXTURE_DATA(comp_index, sub)                                                  \
 {                                                                                           \
-    int width = sub ? FF_CEIL_RSHIFT(opengl->width, desc->log2_chroma_w) : opengl->width;   \
-    int height = sub ? FF_CEIL_RSHIFT(opengl->height, desc->log2_chroma_h): opengl->height; \
+    int width = sub ? AV_CEIL_RSHIFT(opengl->width, desc->log2_chroma_w) : opengl->width;   \
+    int height = sub ? AV_CEIL_RSHIFT(opengl->height, desc->log2_chroma_h): opengl->height; \
     uint8_t *data;                                                                          \
     int plane = desc->comp[comp_index].plane;                                               \
                                                                                             \

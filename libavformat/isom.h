@@ -37,6 +37,8 @@ extern const AVCodecTag ff_codec_movsubtitle_tags[];
 int ff_mov_iso639_to_lang(const char lang[4], int mp4);
 int ff_mov_lang_to_iso639(unsigned code, char to[4]);
 
+struct AVAESCTR;
+
 /* the QuickTime file format is quite convoluted...
  * it has lots of index tables, each indexing something in another one...
  * Here we just use what is needed to read the chunks
@@ -168,6 +170,15 @@ typedef struct MOVStreamContext {
     int64_t duration_for_fps;
 
     int32_t *display_matrix;
+    uint32_t format;
+
+    struct {
+        int use_subsamples;
+        uint8_t* auxiliary_info;
+        uint8_t* auxiliary_info_end;
+        uint8_t* auxiliary_info_pos;
+        struct AVAESCTR* aes_ctr;
+    } cenc;
 } MOVStreamContext;
 
 typedef struct MOVContext {
@@ -177,6 +188,10 @@ typedef struct MOVContext {
     int64_t duration;     ///< duration of the longest track
     int found_moov;       ///< 'moov' atom has been found
     int found_mdat;       ///< 'mdat' atom has been found
+    int found_hdlr_mdta;  ///< 'hdlr' atom with type 'mdta' has been found
+    int trak_index;       ///< Index of the current 'trak'
+    char **meta_keys;
+    unsigned meta_keys_count;
     DVDemuxContext *dv_demux;
     AVFormatContext *dv_fctx;
     int isom;             ///< 1 if file is ISO Media (mp4/3gp)
@@ -188,6 +203,7 @@ typedef struct MOVContext {
     int chapter_track;
     int use_absolute_path;
     int ignore_editlist;
+    int ignore_chapters;
     int seek_individually;
     int64_t next_root_atom; ///< offset of the next root atom
     int export_all;
@@ -209,6 +225,8 @@ typedef struct MOVContext {
     void *audible_fixed_key;
     int audible_fixed_key_size;
     struct AVAES *aes_decrypt;
+    uint8_t *decryption_key;
+    int decryption_key_len;
     int enable_drefs;
 } MOVContext;
 

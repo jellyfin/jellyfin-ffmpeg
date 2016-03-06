@@ -317,28 +317,6 @@ int av_escape(char **dst, const char *src, const char *special_chars,
     }
 }
 
-int av_isdigit(int c)
-{
-    return c >= '0' && c <= '9';
-}
-
-int av_isgraph(int c)
-{
-    return c > 32 && c < 127;
-}
-
-int av_isspace(int c)
-{
-    return c == ' ' || c == '\f' || c == '\n' || c == '\r' || c == '\t' ||
-           c == '\v';
-}
-
-int av_isxdigit(int c)
-{
-    c = av_tolower(c);
-    return av_isdigit(c) || (c >= 'a' && c <= 'f');
-}
-
 int av_match_name(const char *name, const char *names)
 {
     const char *p;
@@ -348,13 +326,18 @@ int av_match_name(const char *name, const char *names)
         return 0;
 
     namelen = strlen(name);
-    while ((p = strchr(names, ','))) {
+    while (*names) {
+        int negate = '-' == *names;
+        p = strchr(names, ',');
+        if (!p)
+            p = names + strlen(names);
+        names += negate;
         len = FFMAX(p - names, namelen);
-        if (!av_strncasecmp(name, names, len))
-            return 1;
-        names = p + 1;
+        if (!av_strncasecmp(name, names, len) || !strncmp("ALL", names, FFMAX(3, p - names)))
+            return !negate;
+        names = p + (*p == ',');
     }
-    return !av_strcasecmp(name, names);
+    return 0;
 }
 
 int av_utf8_decode(int32_t *codep, const uint8_t **bufp, const uint8_t *buf_end,

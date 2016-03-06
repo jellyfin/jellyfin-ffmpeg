@@ -396,7 +396,7 @@ static int truemotion1_decode_header(TrueMotion1Context *s)
     }
 
     if (compression_types[header.compression].algorithm == ALGO_RGB24H) {
-        new_pix_fmt = AV_PIX_FMT_RGB32;
+        new_pix_fmt = AV_PIX_FMT_0RGB32;
         width_shift = 1;
     } else
         new_pix_fmt = AV_PIX_FMT_RGB555; // RGB565 is supported as well
@@ -645,7 +645,8 @@ static void truemotion1_decode_16bit(TrueMotion1Context *s)
         current_pixel_pair = (unsigned int *)current_line;
         vert_pred = s->vert_pred;
         mb_change_index = 0;
-        mb_change_byte = mb_change_bits[mb_change_index++];
+        if (!keyframe)
+            mb_change_byte = mb_change_bits[mb_change_index++];
         mb_change_byte_mask = 0x01;
         pixels_left = s->avctx->width;
 

@@ -150,7 +150,7 @@ static int config_input(AVFilterLink *inlink)
     if ((ret = av_image_fill_linesizes(s->linesize, inlink->format, inlink->w)) < 0)
         return ret;
 
-    s->height[1] = s->height[2] = FF_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
+    s->height[1] = s->height[2] = AV_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
     s->height[0] = s->height[3] = inlink->h;
 
     s->pv = av_realloc_f(s->pv, w * h, 2 * sizeof(*s->pv));
@@ -213,10 +213,10 @@ static int config_input(AVFilterLink *inlink)
         for (x = 0; x < w; x++){
             int u, v;
 
-            u = (int)floor(SUB_PIXELS * (x0 * x + x1 * y + x2) /
-                                        (x6 * x + x7 * y + x8) + 0.5);
-            v = (int)floor(SUB_PIXELS * (x3 * x + x4 * y + x5) /
-                                        (x6 * x + x7 * y + x8) + 0.5);
+            u =      lrint(SUB_PIXELS * (x0 * x + x1 * y + x2) /
+                                        (x6 * x + x7 * y + x8));
+            v =      lrint(SUB_PIXELS * (x3 * x + x4 * y + x5) /
+                                        (x6 * x + x7 * y + x8));
 
             s->pv[x + y * w][0] = u;
             s->pv[x + y * w][1] = v;
@@ -235,7 +235,7 @@ static int config_input(AVFilterLink *inlink)
             sum += temp[j];
 
         for (j = 0; j < 4; j++)
-            s->coeff[i][j] = (int)floor((1 << COEFF_BITS) * temp[j] / sum + 0.5);
+            s->coeff[i][j] = lrint((1 << COEFF_BITS) * temp[j] / sum);
     }
 
     return 0;

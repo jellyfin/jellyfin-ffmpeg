@@ -244,8 +244,8 @@ static int filter_slice_chroma(AVFilterContext *ctx, void *arg, int jobnr,
     FadeContext *s = ctx->priv;
     AVFrame *frame = arg;
     int i, j, plane;
-    const int width = FF_CEIL_RSHIFT(frame->width, s->hsub);
-    const int height= FF_CEIL_RSHIFT(frame->height, s->vsub);
+    const int width = AV_CEIL_RSHIFT(frame->width, s->hsub);
+    const int height= AV_CEIL_RSHIFT(frame->height, s->vsub);
     int slice_start = (height *  jobnr   ) / nb_jobs;
     int slice_end   = (height * (jobnr+1)) / nb_jobs;
 
@@ -384,7 +384,7 @@ static const AVOption fade_options[] = {
                                                     OFFSET(nb_frames),   AV_OPT_TYPE_INT, { .i64 = 25 }, 0, INT_MAX, FLAGS },
     { "n",           "Number of frames to which the effect should be applied.",
                                                     OFFSET(nb_frames),   AV_OPT_TYPE_INT, { .i64 = 25 }, 0, INT_MAX, FLAGS },
-    { "alpha",       "fade alpha if it is available on the input", OFFSET(alpha),       AV_OPT_TYPE_INT, {.i64 = 0    }, 0,       1, FLAGS },
+    { "alpha",       "fade alpha if it is available on the input", OFFSET(alpha),       AV_OPT_TYPE_BOOL, {.i64 = 0    }, 0,       1, FLAGS },
     { "start_time",  "Number of seconds of the beginning of the effect.",
                                                     OFFSET(start_time),  AV_OPT_TYPE_DURATION, {.i64 = 0. }, 0, INT32_MAX, FLAGS },
     { "st",          "Number of seconds of the beginning of the effect.",

@@ -71,6 +71,13 @@ enum var_name {
     VARS_NB
 };
 
+enum EvalMode {
+    EVAL_MODE_INIT,
+    EVAL_MODE_FRAME,
+    EVAL_MODE_NB
+};
+
+
 typedef struct ScaleContext {
     const AVClass *class;
     struct SwsContext *sws;     ///< software scaler context
@@ -110,6 +117,11 @@ typedef struct ScaleContext {
     int in_v_chr_pos;
 
     int force_original_aspect_ratio;
+
+    int nb_slices;
+
+    int eval_mode;              ///< expression evaluation mode
+
 } ScaleContext;
 
 AVFilter ff_vf_scale2ref;
@@ -188,11 +200,11 @@ static int query_formats(AVFilterContext *ctx)
             if ((sws_isSupportedInput(pix_fmt) ||
                  sws_isSupportedEndiannessConversion(pix_fmt))
                 && (ret = ff_add_format(&formats, pix_fmt)) < 0) {
-                ff_formats_unref(&formats);
                 return ret;
             }
         }
-        ff_formats_ref(formats, &ctx->inputs[0]->out_formats);
+        if ((ret = ff_formats_ref(formats, &ctx->inputs[0]->out_formats)) < 0)
+            return ret;
     }
     if (ctx->outputs[0]) {
         const AVPixFmtDescriptor *desc = NULL;
@@ -202,11 +214,11 @@ static int query_formats(AVFilterContext *ctx)
             if ((sws_isSupportedOutput(pix_fmt) || pix_fmt == AV_PIX_FMT_PAL8 ||
                  sws_isSupportedEndiannessConversion(pix_fmt))
                 && (ret = ff_add_format(&formats, pix_fmt)) < 0) {
-                ff_formats_unref(&formats);
                 return ret;
             }
         }
-        ff_formats_ref(formats, &ctx->outputs[0]->in_formats);
+        if ((ret = ff_formats_ref(formats, &ctx->outputs[0]->in_formats)) < 0)
+            return ret;
     }
 
     return 0;
@@ -388,14 +400,14 @@ static int config_props(AVFilterLink *outlink)
                         return ret;
                 }
             }
-            /* Override YUV420P settings to have the correct (MPEG-2) chroma positions
+            /* Override YUV420P default settings to have the correct (MPEG-2) chroma positions
              * MPEG-2 chroma positions are used by convention
              * XXX: support other 4:2:0 pixel formats */
-            if (inlink0->format == AV_PIX_FMT_YUV420P) {
+            if (inlink0->format == AV_PIX_FMT_YUV420P && scale->in_v_chr_pos == -513) {
                 scale->in_v_chr_pos = (i == 0) ? 128 : (i == 1) ? 64 : 192;
             }
 
-            if (outlink->format == AV_PIX_FMT_YUV420P) {
+            if (outlink->format == AV_PIX_FMT_YUV420P && scale->out_v_chr_pos == -513) {
                 scale->out_v_chr_pos = (i == 0) ? 128 : (i == 1) ? 64 : 192;
             }
 
@@ -492,16 +504,24 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
 
     if(   in->width  != link->w
        || in->height != link->h
-       || in->format != link->format) {
+       || in->format != link->format
+       || in->sample_aspect_ratio.den != link->sample_aspect_ratio.den || in->sample_aspect_ratio.num != link->sample_aspect_ratio.num) {
         int ret;
-        snprintf(buf, sizeof(buf)-1, "%d", outlink->w);
-        av_opt_set(scale, "w", buf, 0);
-        snprintf(buf, sizeof(buf)-1, "%d", outlink->h);
-        av_opt_set(scale, "h", buf, 0);
+
+        if (scale->eval_mode == EVAL_MODE_INIT) {
+            snprintf(buf, sizeof(buf)-1, "%d", outlink->w);
+            av_opt_set(scale, "w", buf, 0);
+            snprintf(buf, sizeof(buf)-1, "%d", outlink->h);
+            av_opt_set(scale, "h", buf, 0);
+        }
 
         link->dst->inputs[0]->format = in->format;
         link->dst->inputs[0]->w      = in->width;
         link->dst->inputs[0]->h      = in->height;
+
+        link->dst->inputs[0]->sample_aspect_ratio.den = in->sample_aspect_ratio.den;
+        link->dst->inputs[0]->sample_aspect_ratio.num = in->sample_aspect_ratio.num;
+
 
         if ((ret = config_props(outlink)) < 0)
             return ret;
@@ -577,6 +597,15 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
     if(scale->interlaced>0 || (scale->interlaced<0 && in->interlaced_frame)){
         scale_slice(link, out, in, scale->isws[0], 0, (link->h+1)/2, 2, 0);
         scale_slice(link, out, in, scale->isws[1], 0,  link->h   /2, 2, 1);
+    }else if (scale->nb_slices) {
+        int i, slice_h, slice_start, slice_end = 0;
+        const int nb_slices = FFMIN(scale->nb_slices, link->h);
+        for (i = 0; i < nb_slices; i++) {
+            slice_start = slice_end;
+            slice_end   = (link->h * (i+1)) / nb_slices;
+            slice_h     = slice_end - slice_start;
+            scale_slice(link, out, in, scale->sws, slice_start, slice_h, 1, 0);
+        }
     }else{
         scale_slice(link, out, in, scale->sws, 0, link->h, 1, 0);
     }
@@ -630,7 +659,7 @@ static const AVOption scale_options[] = {
     { "h",     "Output video height",         OFFSET(h_expr),    AV_OPT_TYPE_STRING,        .flags = FLAGS },
     { "height","Output video height",         OFFSET(h_expr),    AV_OPT_TYPE_STRING,        .flags = FLAGS },
     { "flags", "Flags to pass to libswscale", OFFSET(flags_str), AV_OPT_TYPE_STRING, { .str = "bilinear" }, .flags = FLAGS },
-    { "interl", "set interlacing", OFFSET(interlaced), AV_OPT_TYPE_INT, {.i64 = 0 }, -1, 1, FLAGS },
+    { "interl", "set interlacing", OFFSET(interlaced), AV_OPT_TYPE_BOOL, {.i64 = 0 }, -1, 1, FLAGS },
     { "size",   "set video size",          OFFSET(size_str), AV_OPT_TYPE_STRING, {.str = NULL}, 0, FLAGS },
     { "s",      "set video size",          OFFSET(size_str), AV_OPT_TYPE_STRING, {.str = NULL}, 0, FLAGS },
     {  "in_color_matrix", "set input YCbCr type",   OFFSET(in_color_matrix),  AV_OPT_TYPE_STRING, { .str = "auto" }, .flags = FLAGS },
@@ -653,6 +682,10 @@ static const AVOption scale_options[] = {
     { "increase", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 2 }, 0, 0, FLAGS, "force_oar" },
     { "param0", "Scaler param 0",             OFFSET(param[0]),  AV_OPT_TYPE_DOUBLE, { .dbl = SWS_PARAM_DEFAULT  }, INT_MIN, INT_MAX, FLAGS },
     { "param1", "Scaler param 1",             OFFSET(param[1]),  AV_OPT_TYPE_DOUBLE, { .dbl = SWS_PARAM_DEFAULT  }, INT_MIN, INT_MAX, FLAGS },
+    { "nb_slices", "set the number of slices (debug purpose only)", OFFSET(nb_slices), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, FLAGS },
+    { "eval", "specify when to evaluate expressions", OFFSET(eval_mode), AV_OPT_TYPE_INT, {.i64 = EVAL_MODE_INIT}, 0, EVAL_MODE_NB-1, FLAGS, "eval" },
+         { "init",  "eval expressions once during initialization", 0, AV_OPT_TYPE_CONST, {.i64=EVAL_MODE_INIT},  .flags = FLAGS, .unit = "eval" },
+         { "frame", "eval expressions during initialization and per-frame", 0, AV_OPT_TYPE_CONST, {.i64=EVAL_MODE_FRAME}, .flags = FLAGS, .unit = "eval" },
     { NULL }
 };
 

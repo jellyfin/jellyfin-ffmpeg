@@ -22,7 +22,6 @@
 #define AVUTIL_RC4_H
 
 #include <stdint.h>
-#include "version.h"
 
 /**
  * @defgroup lavu_rc4 RC4

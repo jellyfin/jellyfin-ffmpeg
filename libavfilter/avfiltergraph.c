@@ -135,12 +135,6 @@ int avfilter_graph_add_filter(AVFilterGraph *graph, AVFilterContext *filter)
     graph->filters = filters;
     graph->filters[graph->nb_filters++] = filter;
 
-#if FF_API_FOO_COUNT
-FF_DISABLE_DEPRECATION_WARNINGS
-    graph->filter_count_unused = graph->nb_filters;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     filter->graph = graph;
 
     return 0;
@@ -205,12 +199,6 @@ AVFilterContext *avfilter_graph_alloc_filter(AVFilterGraph *graph,
 
     graph->filters = filters;
     graph->filters[graph->nb_filters++] = s;
-
-#if FF_API_FOO_COUNT
-FF_DISABLE_DEPRECATION_WARNINGS
-    graph->filter_count_unused = graph->nb_filters;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     s->graph = graph;
 
@@ -329,18 +317,15 @@ static int filter_query_formats(AVFilterContext *ctx)
         sanitize_channel_layouts(ctx, ctx->outputs[i]->in_channel_layouts);
 
     formats = ff_all_formats(type);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ff_set_common_formats(ctx, formats);
+    if ((ret = ff_set_common_formats(ctx, formats)) < 0)
+        return ret;
     if (type == AVMEDIA_TYPE_AUDIO) {
         samplerates = ff_all_samplerates();
-        if (!samplerates)
-            return AVERROR(ENOMEM);
-        ff_set_common_samplerates(ctx, samplerates);
+        if ((ret = ff_set_common_samplerates(ctx, samplerates)) < 0)
+            return ret;
         chlayouts = ff_all_channel_layouts();
-        if (!chlayouts)
-            return AVERROR(ENOMEM);
-        ff_set_common_channel_layouts(ctx, chlayouts);
+        if ((ret = ff_set_common_channel_layouts(ctx, chlayouts)) < 0)
+            return ret;
     }
     return 0;
 }
@@ -740,7 +725,7 @@ static int pick_format(AVFilterLink *link, AVFilterLink *ref)
     return 0;
 }
 
-#define REDUCE_FORMATS(fmt_type, list_type, list, var, nb, add_format) \
+#define REDUCE_FORMATS(fmt_type, list_type, list, var, nb, add_format, unref_format) \
 do {                                                                   \
     for (i = 0; i < filter->nb_inputs; i++) {                          \
         AVFilterLink *link = filter->inputs[i];                        \
@@ -760,7 +745,8 @@ do {                                                                   \
             fmts = out_link->in_ ## list;                              \
                                                                        \
             if (!out_link->in_ ## list->nb) {                          \
-                add_format(&out_link->in_ ##list, fmt);                \
+                if ((ret = add_format(&out_link->in_ ##list, fmt)) < 0)\
+                    return ret;                                        \
                 ret = 1;                                               \
                 break;                                                 \
             }                                                          \
@@ -781,9 +767,9 @@ static int reduce_formats_on_filter(AVFilterContext *filter)
     int i, j, k, ret = 0;
 
     REDUCE_FORMATS(int,      AVFilterFormats,        formats,         formats,
-                   nb_formats, ff_add_format);
+                   nb_formats, ff_add_format, ff_formats_unref);
     REDUCE_FORMATS(int,      AVFilterFormats,        samplerates,     formats,
-                   nb_formats, ff_add_format);
+                   nb_formats, ff_add_format, ff_formats_unref);
 
     /* reduce channel layouts */
     for (i = 0; i < filter->nb_inputs; i++) {
@@ -807,7 +793,8 @@ static int reduce_formats_on_filter(AVFilterContext *filter)
                 (!FF_LAYOUT2COUNT(fmt) || fmts->all_counts)) {
                 /* Turn the infinite list into a singleton */
                 fmts->all_layouts = fmts->all_counts  = 0;
-                ff_add_channel_layout(&outlink->in_channel_layouts, fmt);
+                if (ff_add_channel_layout(&outlink->in_channel_layouts, fmt) < 0)
+                    ret = 1;
                 break;
             }
 
@@ -825,16 +812,21 @@ static int reduce_formats_on_filter(AVFilterContext *filter)
     return ret;
 }
 
-static void reduce_formats(AVFilterGraph *graph)
+static int reduce_formats(AVFilterGraph *graph)
 {
-    int i, reduced;
+    int i, reduced, ret;
 
     do {
         reduced = 0;
 
-        for (i = 0; i < graph->nb_filters; i++)
-            reduced |= reduce_formats_on_filter(graph->filters[i]);
+        for (i = 0; i < graph->nb_filters; i++) {
+            if ((ret = reduce_formats_on_filter(graph->filters[i])) < 0)
+                return ret;
+            reduced |= ret;
+        }
     } while (reduced);
+
+    return 0;
 }
 
 static void swap_samplerates_on_filter(AVFilterContext *filter)
@@ -1152,7 +1144,8 @@ static int graph_config_formats(AVFilterGraph *graph, AVClass *log_ctx)
     /* Once everything is merged, it's possible that we'll still have
      * multiple valid media format choices. We try to minimize the amount
      * of format conversion inside filters */
-    reduce_formats(graph);
+    if ((ret = reduce_formats(graph)) < 0)
+        return ret;
 
     /* for audio filters, ensure the best format, sample rate and channel layout
      * is selected */
@@ -1331,7 +1324,7 @@ static void heap_bubble_up(AVFilterGraph *graph,
 
     while (index) {
         int parent = (index - 1) >> 1;
-        if (links[parent]->current_pts >= link->current_pts)
+        if (links[parent]->current_pts_us >= link->current_pts_us)
             break;
         links[index] = links[parent];
         links[index]->age_index = index;
@@ -1353,9 +1346,9 @@ static void heap_bubble_down(AVFilterGraph *graph,
         if (child >= graph->sink_links_count)
             break;
         if (child + 1 < graph->sink_links_count &&
-            links[child + 1]->current_pts < links[child]->current_pts)
+            links[child + 1]->current_pts_us < links[child]->current_pts_us)
             child++;
-        if (link->current_pts < links[child]->current_pts)
+        if (link->current_pts_us < links[child]->current_pts_us)
             break;
         links[index] = links[child];
         links[index]->age_index = index;
@@ -1374,11 +1367,14 @@ void ff_avfilter_graph_update_heap(AVFilterGraph *graph, AVFilterLink *link)
 
 int avfilter_graph_request_oldest(AVFilterGraph *graph)
 {
+    AVFilterLink *oldest = graph->sink_links[0];
+    int r;
+
     while (graph->sink_links_count) {
-        AVFilterLink *oldest = graph->sink_links[0];
-        int r = ff_request_frame(oldest);
+        oldest = graph->sink_links[0];
+        r = ff_request_frame(oldest);
         if (r != AVERROR_EOF)
-            return r;
+            break;
         av_log(oldest->dst, AV_LOG_DEBUG, "EOF on sink link %s:%s.\n",
                oldest->dst ? oldest->dst->name : "unknown",
                oldest->dstpad ? oldest->dstpad->name : "unknown");
@@ -1388,5 +1384,52 @@ int avfilter_graph_request_oldest(AVFilterGraph *graph)
                              oldest->age_index);
         oldest->age_index = -1;
     }
-    return AVERROR_EOF;
+    if (!graph->sink_links_count)
+        return AVERROR_EOF;
+    av_assert1(oldest->age_index >= 0);
+    while (oldest->frame_wanted_out) {
+        r = ff_filter_graph_run_once(graph);
+        if (r < 0)
+            return r;
+    }
+    return 0;
+}
+
+static AVFilterLink *graph_run_once_find_filter(AVFilterGraph *graph)
+{
+    unsigned i, j;
+    AVFilterContext *f;
+
+    /* TODO: replace scanning the graph with a priority list */
+    for (i = 0; i < graph->nb_filters; i++) {
+        f = graph->filters[i];
+        for (j = 0; j < f->nb_outputs; j++)
+            if (f->outputs[j]->frame_wanted_in)
+                return f->outputs[j];
+    }
+    for (i = 0; i < graph->nb_filters; i++) {
+        f = graph->filters[i];
+        for (j = 0; j < f->nb_outputs; j++)
+            if (f->outputs[j]->frame_wanted_out)
+                return f->outputs[j];
+    }
+    return NULL;
+}
+
+int ff_filter_graph_run_once(AVFilterGraph *graph)
+{
+    AVFilterLink *link;
+    int ret;
+
+    link = graph_run_once_find_filter(graph);
+    if (!link) {
+        av_log(NULL, AV_LOG_WARNING, "Useless run of a filter graph\n");
+        return AVERROR(EAGAIN);
+    }
+    ret = ff_request_frame_to_filter(link);
+    if (ret == AVERROR_EOF)
+        /* local EOF will be forwarded through request_frame() /
+           set_status() until it reaches the sink */
+        ret = 0;
+    return ret < 0 ? ret : 1;
 }

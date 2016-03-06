@@ -168,6 +168,7 @@ void avfilter_link_free(AVFilterLink **link)
         return;
 
     av_frame_free(&(*link)->partial_buf);
+    ff_video_frame_pool_uninit((FFVideoFramePool**)&(*link)->video_frame_pool);
 
     av_freep(link);
 }
@@ -177,9 +178,21 @@ int avfilter_link_get_channels(AVFilterLink *link)
     return link->channels;
 }
 
+void ff_avfilter_link_set_in_status(AVFilterLink *link, int status, int64_t pts)
+{
+    ff_avfilter_link_set_out_status(link, status, pts);
+}
+
+void ff_avfilter_link_set_out_status(AVFilterLink *link, int status, int64_t pts)
+{
+    link->status = status;
+    link->frame_wanted_in = link->frame_wanted_out = 0;
+    ff_update_link_current_pts(link, pts);
+}
+
 void avfilter_link_set_closed(AVFilterLink *link, int closed)
 {
-    link->closed = closed;
+    ff_avfilter_link_set_out_status(link, closed ? AVERROR_EOF : 0, AV_NOPTS_VALUE);
 }
 
 int avfilter_insert_filter(AVFilterLink *link, AVFilterContext *filt,
@@ -237,7 +250,8 @@ int avfilter_config_links(AVFilterContext *filter)
         }
 
         inlink = link->src->nb_inputs ? link->src->inputs[0] : NULL;
-        link->current_pts = AV_NOPTS_VALUE;
+        link->current_pts =
+        link->current_pts_us = AV_NOPTS_VALUE;
 
         switch (link->init_state) {
         case AVLINK_INIT:
@@ -275,10 +289,9 @@ int avfilter_config_links(AVFilterContext *filter)
                     link->sample_aspect_ratio = inlink ?
                         inlink->sample_aspect_ratio : (AVRational){1,1};
 
-                if (inlink && !link->frame_rate.num && !link->frame_rate.den)
-                    link->frame_rate = inlink->frame_rate;
-
                 if (inlink) {
+                    if (!link->frame_rate.num && !link->frame_rate.den)
+                        link->frame_rate = inlink->frame_rate;
                     if (!link->w)
                         link->w = inlink->w;
                     if (!link->h)
@@ -342,31 +355,36 @@ void ff_tlog_link(void *ctx, AVFilterLink *link, int end)
 
 int ff_request_frame(AVFilterLink *link)
 {
-    int ret = -1;
     FF_TPRINTF_START(NULL, request_frame); ff_tlog_link(NULL, link, 1);
 
-    if (link->closed)
-        return AVERROR_EOF;
-    av_assert0(!link->frame_requested);
-    link->frame_requested = 1;
-    while (link->frame_requested) {
-        if (link->srcpad->request_frame)
-            ret = link->srcpad->request_frame(link);
-        else if (link->src->inputs[0])
-            ret = ff_request_frame(link->src->inputs[0]);
-        if (ret == AVERROR_EOF && link->partial_buf) {
-            AVFrame *pbuf = link->partial_buf;
-            link->partial_buf = NULL;
-            ret = ff_filter_frame_framed(link, pbuf);
-        }
-        if (ret < 0) {
-            link->frame_requested = 0;
-            if (ret == AVERROR_EOF)
-                link->closed = 1;
-        } else {
-            av_assert0(!link->frame_requested ||
-                       link->flags & FF_LINK_FLAG_REQUEST_LOOP);
-        }
+    if (link->status)
+        return link->status;
+    link->frame_wanted_in = 1;
+    link->frame_wanted_out = 1;
+    return 0;
+}
+
+int ff_request_frame_to_filter(AVFilterLink *link)
+{
+    int ret = -1;
+
+    FF_TPRINTF_START(NULL, request_frame_to_filter); ff_tlog_link(NULL, link, 1);
+    link->frame_wanted_in = 0;
+    if (link->srcpad->request_frame)
+        ret = link->srcpad->request_frame(link);
+    else if (link->src->inputs[0])
+        ret = ff_request_frame(link->src->inputs[0]);
+    if (ret == AVERROR_EOF && link->partial_buf) {
+        AVFrame *pbuf = link->partial_buf;
+        link->partial_buf = NULL;
+        ret = ff_filter_frame_framed(link, pbuf);
+        ff_avfilter_link_set_in_status(link, AVERROR_EOF, AV_NOPTS_VALUE);
+        link->frame_wanted_out = 0;
+        return ret;
+    }
+    if (ret < 0) {
+        if (ret != AVERROR(EAGAIN) && ret != link->status)
+            ff_avfilter_link_set_in_status(link, ret, AV_NOPTS_VALUE);
     }
     return ret;
 }
@@ -451,7 +469,8 @@ void ff_update_link_current_pts(AVFilterLink *link, int64_t pts)
 {
     if (pts == AV_NOPTS_VALUE)
         return;
-    link->current_pts = av_rescale_q(pts, link->time_base, AV_TIME_BASE_Q);
+    link->current_pts = pts;
+    link->current_pts_us = av_rescale_q(pts, link->time_base, AV_TIME_BASE_Q);
     /* TODO use duration */
     if (link->graph && link->age_index >= 0)
         ff_avfilter_graph_update_heap(link->graph, link);
@@ -501,18 +520,9 @@ AVFilter *avfilter_get_by_name(const char *name)
 int avfilter_register(AVFilter *filter)
 {
     AVFilter **f = last_filter;
-    int i;
 
     /* the filter must select generic or internal exclusively */
     av_assert0((filter->flags & AVFILTER_FLAG_SUPPORT_TIMELINE) != AVFILTER_FLAG_SUPPORT_TIMELINE);
-
-    for(i=0; filter->inputs && filter->inputs[i].name; i++) {
-        const AVFilterPad *input = &filter->inputs[i];
-#if FF_API_AVFILTERPAD_PUBLIC
-        av_assert0(     !input->filter_frame
-                    || (!input->start_frame && !input->end_frame));
-#endif
-    }
 
     filter->next = NULL;
 
@@ -671,12 +681,6 @@ AVFilterContext *ff_filter_alloc(const AVFilter *filter, const char *inst_name)
         if (!ret->outputs)
             goto err;
     }
-#if FF_API_FOO_COUNT
-FF_DISABLE_DEPRECATION_WARNINGS
-    ret->output_count = ret->nb_outputs;
-    ret->input_count  = ret->nb_inputs;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     return ret;
 
@@ -1026,9 +1030,9 @@ static int ff_filter_frame_framed(AVFilterLink *link, AVFrame *frame)
     AVFilterCommand *cmd= link->dst->command_queue;
     int64_t pts;
 
-    if (link->closed) {
+    if (link->status) {
         av_frame_free(&frame);
-        return AVERROR_EOF;
+        return link->status;
     }
 
     if (!(filter_frame = dst->filter_frame))
@@ -1103,7 +1107,6 @@ static int ff_filter_frame_framed(AVFilterLink *link, AVFrame *frame)
     }
     ret = filter_frame(link, out);
     link->frame_count++;
-    link->frame_requested = 0;
     ff_update_link_current_pts(link, pts);
     return ret;
 
@@ -1120,7 +1123,6 @@ static int ff_filter_frame_needs_framing(AVFilterLink *link, AVFrame *frame)
     int nb_channels = av_frame_get_channels(frame);
     int ret = 0;
 
-    link->flags |= FF_LINK_FLAG_REQUEST_LOOP;
     /* Handle framing (min_samples, max_samples) */
     while (insamples) {
         if (!pbuf) {
@@ -1148,6 +1150,9 @@ static int ff_filter_frame_needs_framing(AVFilterLink *link, AVFrame *frame)
         if (pbuf->nb_samples >= link->min_samples) {
             ret = ff_filter_frame_framed(link, pbuf);
             pbuf = NULL;
+        } else {
+            if (link->frame_wanted_out)
+                link->frame_wanted_in = 1;
         }
     }
     av_frame_free(&frame);
@@ -1171,12 +1176,25 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
             av_assert1(frame->height               == link->h);
         }
     } else {
-        av_assert1(frame->format                == link->format);
-        av_assert1(av_frame_get_channels(frame) == link->channels);
-        av_assert1(frame->channel_layout        == link->channel_layout);
-        av_assert1(frame->sample_rate           == link->sample_rate);
+        if (frame->format != link->format) {
+            av_log(link->dst, AV_LOG_ERROR, "Format change is not supported\n");
+            goto error;
+        }
+        if (av_frame_get_channels(frame) != link->channels) {
+            av_log(link->dst, AV_LOG_ERROR, "Channel count change is not supported\n");
+            goto error;
+        }
+        if (frame->channel_layout != link->channel_layout) {
+            av_log(link->dst, AV_LOG_ERROR, "Channel layout change is not supported\n");
+            goto error;
+        }
+        if (frame->sample_rate != link->sample_rate) {
+            av_log(link->dst, AV_LOG_ERROR, "Sample rate change is not supported\n");
+            goto error;
+        }
     }
 
+    link->frame_wanted_out = 0;
     /* Go directly to actual filtering if possible */
     if (link->type == AVMEDIA_TYPE_AUDIO &&
         link->min_samples &&
@@ -1187,6 +1205,9 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
     } else {
         return ff_filter_frame_framed(link, frame);
     }
+error:
+    av_frame_free(&frame);
+    return AVERROR_PATCHWELCOME;
 }
 
 const AVClass *avfilter_get_class(void)
