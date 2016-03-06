@@ -264,10 +264,6 @@ override_dh_install:
 override_dh_compress:
 	dh_compress -Xexamples
 
-# Move the debug symbols to the debug package.
-override_dh_strip:
-	dh_strip --dbg-package=ffmpeg-dbg
-
 # Download the latest upstream tarball.
 get-orig-source:
 	cd $(DEBIAN_DIR)../ && \

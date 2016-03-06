@@ -177,32 +177,6 @@ Description: Tools for transcoding, streaming and playing of multimedia files
   * ffprobe: a simple multimedia stream analyzer
   * qt-faststart: a utility to rearrange Quicktime files
 
-Package: ffmpeg-dbg
-Section: debug
-Priority: extra
-Architecture: any
-Multi-Arch: same
-Depends:
- ffmpeg (= ${binary:Version}),
- libavcodec-ffmpeg56 (= ${binary:Version}) | libavcodec-ffmpeg-extra56 (= ${binary:Version}),
- libavdevice-ffmpeg56 (= ${binary:Version}),
- libavfilter-ffmpeg5 (= ${binary:Version}),
- libavformat-ffmpeg56 (= ${binary:Version}),
- libavutil-ffmpeg54 (= ${binary:Version}),
- libpostproc-ffmpeg53 (= ${binary:Version}),
- libavresample-ffmpeg2 (= ${binary:Version}),
- libswresample-ffmpeg1 (= ${binary:Version}),
- libswscale-ffmpeg3 (= ${binary:Version}),
- ${misc:Depends}
-Description: Debug symbols for the FFmpeg multimedia framework
- FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
- mux, demux, stream, filter and play pretty much anything that humans and
- machines have created. It supports the most obscure ancient formats up to the
- cutting edge.
- .
- This package contains the debug symbols used to produce useful debugging
- back-traces.
-
 Package: ffmpeg-doc
 Section: doc
 Architecture: all
