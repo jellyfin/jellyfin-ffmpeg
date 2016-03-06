@@ -1930,6 +1930,7 @@ static int ref_frames(Vp3DecodeContext *dst, Vp3DecodeContext *src)
     return 0;
 }
 
+#if HAVE_THREADS
 static int vp3_update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
 {
     Vp3DecodeContext *s = dst->priv_data, *s1 = src->priv_data;
@@ -1989,6 +1990,7 @@ static int vp3_update_thread_context(AVCodecContext *dst, const AVCodecContext *
 
     return update_frames(dst);
 }
+#endif
 
 static int vp3_decode_frame(AVCodecContext *avctx,
                             void *data, int *got_frame,
@@ -2023,6 +2025,7 @@ static int vp3_decode_frame(AVCodecContext *avctx,
             }
             return ret;
         } else if (type == 2) {
+            vp3_decode_end(avctx);
             ret = theora_decode_tables(avctx, &gb);
             if (ret >= 0)
                 ret = vp3_decode_init(avctx);
@@ -2223,6 +2226,7 @@ static int read_huffman_tree(AVCodecContext *avctx, GetBitContext *gb)
     return 0;
 }
 
+#if HAVE_THREADS
 static int vp3_init_thread_copy(AVCodecContext *avctx)
 {
     Vp3DecodeContext *s = avctx->priv_data;
@@ -2239,6 +2243,7 @@ static int vp3_init_thread_copy(AVCodecContext *avctx)
 
     return init_frames(s);
 }
+#endif
 
 #if CONFIG_THEORA_DECODER
 static const enum AVPixelFormat theora_pix_fmts[4] = {

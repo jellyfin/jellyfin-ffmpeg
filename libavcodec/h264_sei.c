@@ -224,13 +224,17 @@ static int decode_registered_user_data(H264Context *h, int size)
 
 static int decode_unregistered_user_data(H264Context *h, int size)
 {
-    uint8_t user_data[16 + 256];
+    uint8_t *user_data;
     int e, build, i;
 
-    if (size < 16)
+    if (size < 16 || size >= INT_MAX - 16)
         return AVERROR_INVALIDDATA;
 
-    for (i = 0; i < sizeof(user_data) - 1 && i < size; i++)
+    user_data = av_malloc(16 + size + 1);
+    if (!user_data)
+        return AVERROR(ENOMEM);
+
+    for (i = 0; i < size + 16; i++)
         user_data[i] = get_bits(&h->gb, 8);
 
     user_data[i] = 0;
@@ -240,18 +244,16 @@ static int decode_unregistered_user_data(H264Context *h, int size)
     if (e == 1 && build == 1 && !strncmp(user_data+16, "x264 - core 0000", 16))
         h->x264_build = 67;
 
-    if (h->avctx->debug & FF_DEBUG_BUGS)
+    if (strlen(user_data + 16) > 0)
         av_log(h->avctx, AV_LOG_DEBUG, "user data:\"%s\"\n", user_data + 16);
 
-    for (; i < size; i++)
-        skip_bits(&h->gb, 8);
-
+    av_free(user_data);
     return 0;
 }
 
 static int decode_recovery_point(H264Context *h)
 {
-    h->sei_recovery_frame_cnt = get_ue_golomb(&h->gb);
+    h->sei_recovery_frame_cnt = get_ue_golomb_long(&h->gb);
 
     /* 1b exact_match_flag,
      * 1b broken_link_flag,
@@ -304,7 +306,7 @@ static int decode_buffering_period(H264Context *h)
 
 static int decode_frame_packing_arrangement(H264Context *h)
 {
-    h->sei_fpa.frame_packing_arrangement_id          = get_ue_golomb(&h->gb);
+    h->sei_fpa.frame_packing_arrangement_id          = get_ue_golomb_long(&h->gb);
     h->sei_fpa.frame_packing_arrangement_cancel_flag = get_bits1(&h->gb);
     h->sei_frame_packing_present = !h->sei_fpa.frame_packing_arrangement_cancel_flag;
 
@@ -324,7 +326,7 @@ static int decode_frame_packing_arrangement(H264Context *h)
         if (!h->quincunx_subsampling && h->frame_packing_arrangement_type != 5)
             skip_bits(&h->gb, 16);      // frame[01]_grid_position_[xy]
         skip_bits(&h->gb, 8);           // frame_packing_arrangement_reserved_byte
-        h->sei_fpa.frame_packing_arrangement_repetition_period = get_ue_golomb(&h->gb) /* frame_packing_arrangement_repetition_period */;
+        h->sei_fpa.frame_packing_arrangement_repetition_period = get_ue_golomb_long(&h->gb);
     }
     skip_bits1(&h->gb);                 // frame_packing_arrangement_extension_flag
 
@@ -349,8 +351,8 @@ static int decode_display_orientation(H264Context *h)
         h->sei_vflip = get_bits1(&h->gb);     // ver_flip
 
         h->sei_anticlockwise_rotation = get_bits(&h->gb, 16);
-        get_ue_golomb(&h->gb);  // display_orientation_repetition_period
-        skip_bits1(&h->gb);     // display_orientation_extension_flag
+        get_ue_golomb_long(&h->gb);  // display_orientation_repetition_period
+        skip_bits1(&h->gb);          // display_orientation_extension_flag
     }
 
     return 0;

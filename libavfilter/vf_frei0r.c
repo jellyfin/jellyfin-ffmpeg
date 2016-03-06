@@ -30,6 +30,7 @@
 #include "config.h"
 #include "libavutil/avstring.h"
 #include "libavutil/common.h"
+#include "libavutil/eval.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/mathematics.h"
@@ -104,7 +105,7 @@ static int set_param(AVFilterContext *ctx, f0r_param_info_t info, int index, cha
         break;
 
     case F0R_PARAM_DOUBLE:
-        val.d = strtod(param, &tail);
+        val.d = av_strtod(param, &tail);
         if (*tail || val.d == HUGE_VAL)
             goto fail;
         break;
@@ -370,11 +371,14 @@ static int query_formats(AVFilterContext *ctx)
 {
     Frei0rContext *s = ctx->priv;
     AVFilterFormats *formats = NULL;
+    int ret;
 
     if        (s->plugin_info.color_model == F0R_COLOR_MODEL_BGRA8888) {
-        ff_add_format(&formats, AV_PIX_FMT_BGRA);
+        if ((ret = ff_add_format(&formats, AV_PIX_FMT_BGRA)) < 0)
+            return ret;
     } else if (s->plugin_info.color_model == F0R_COLOR_MODEL_RGBA8888) {
-        ff_add_format(&formats, AV_PIX_FMT_RGBA);
+        if ((ret = ff_add_format(&formats, AV_PIX_FMT_RGBA)) < 0)
+            return ret;
     } else {                                   /* F0R_COLOR_MODEL_PACKED32 */
         static const enum AVPixelFormat pix_fmts[] = {
             AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_ARGB, AV_PIX_FMT_NONE

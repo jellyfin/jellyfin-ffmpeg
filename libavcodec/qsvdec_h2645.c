@@ -137,8 +137,8 @@ static int qsv_decode_frame(AVCodecContext *avctx, void *data,
 
 static void qsv_decode_flush(AVCodecContext *avctx)
 {
-//    QSVH2645Context *s = avctx->priv_data;
-    /* TODO: flush qsv engine if necessary */
+    QSVH2645Context *s = avctx->priv_data;
+    ff_qsv_decode_reset(avctx, &s->qsv);
 }
 
 #define OFFSET(x) offsetof(QSVH2645Context, x)
@@ -183,6 +183,9 @@ AVCodec ff_hevc_qsv_decoder = {
     .close          = qsv_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1,
     .priv_class     = &hevc_class,
+    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+                                                    AV_PIX_FMT_QSV,
+                                                    AV_PIX_FMT_NONE },
 };
 #endif
 
@@ -218,5 +221,8 @@ AVCodec ff_h264_qsv_decoder = {
     .close          = qsv_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1,
     .priv_class     = &class,
+    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+                                                    AV_PIX_FMT_QSV,
+                                                    AV_PIX_FMT_NONE },
 };
 #endif

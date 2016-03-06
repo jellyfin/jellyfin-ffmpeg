@@ -37,6 +37,61 @@ ID3v2.3 and ID3v2.4) are supported. The default is version 4.
 
 @end table
 
+@anchor{asf}
+@section asf
+
+Advanced Systems Format muxer.
+
+Note that Windows Media Audio (wma) and Windows Media Video (wmv) use this
+muxer too.
+
+@subsection Options
+
+It accepts the following options:
+
+@table @option
+@item packet_size
+Set the muxer packet size. By tuning this setting you may reduce data
+fragmentation or muxer overhead depending on your source. Default value is
+3200, minimum is 100, maximum is 64k.
+
+@end table
+
+@anchor{chromaprint}
+@section chromaprint
+
+Chromaprint fingerprinter
+
+This muxer feeds audio data to the Chromaprint library, which generates
+a fingerprint for the provided audio data. It takes a single signed
+native-endian 16-bit raw audio stream.
+
+@subsection Options
+
+@table @option
+@item silence_threshold
+Threshold for detecting silence, ranges from 0 to 32767. -1 for default
+(required for use with the AcoustID service).
+
+@item algorithm
+Algorithm index to fingerprint with.
+
+@item fp_format
+Format to output the fingerprint as. Accepts the following options:
+@table @samp
+@item raw
+Binary raw fingerprint
+
+@item compressed
+Binary compressed fingerprint
+
+@item base64
+Base64 compressed fingerprint
+
+@end table
+
+@end table
+
 @anchor{crc}
 @section crc
 
@@ -549,7 +604,7 @@ MD5 testing format.
 This muxer computes and prints the MD5 hash of all the input audio
 and video frames. By default audio frames are converted to signed
 16-bit raw audio and video frames to raw video before computing the
-hash.
+hash. Timestamps are ignored.
 
 The output of the muxer consists of a single line of the form:
 MD5=@var{MD5}, where @var{MD5} is a hexadecimal number representing
@@ -823,6 +878,8 @@ Reemit PAT/PMT before writing the next packet.
 Use LATM packetization for AAC.
 @item pat_pmt_at_frames
 Reemit PAT and PMT at each video frame.
+@item system_b
+Conform to System B (DVB) instead of System A (ATSC).
 @end table
 
 @subsection Example
@@ -1063,6 +1120,28 @@ to create files at 12:00 o'clock, 12:15, 12:30, etc.
 
 Default value is "0".
 
+@item segment_clocktime_offset @var{duration}
+Delay the segment splitting times with the specified duration when using
+@option{segment_atclocktime}.
+
+For example with @option{segment_time} set to "900" and
+@option{segment_clocktime_offset} set to "300" this makes it possible to
+create files at 12:05, 12:20, 12:35, etc.
+
+Default value is "0".
+
+@item segment_clocktime_wrap_duration @var{duration}
+Force the segmenter to only start a new segment if a packet reaches the muxer
+within the specified duration after the segmenting clock time. This way you
+can make the segmenter more resilient to backward local time jumps, such as
+leap seconds or transition to standard time from daylight savings time.
+
+Assuming that the delay between the packets of your source is less than 0.5
+second you can detect a leap second by specifying 0.5 as the duration.
+
+Default is the maximum possible duration which means starting a new segment
+regardless of the elapsed time since the last clock time.
+
 @item segment_time_delta @var{delta}
 Specify the accuracy time when selecting the start time for a
 segment, expressed as a duration specification. Default value is "0".
@@ -1252,7 +1331,8 @@ Several bitstream filters can be specified, separated by ",".
 @item select
 Select the streams that should be mapped to the slave output,
 specified by a stream specifier. If not specified, this defaults to
-all the input streams.
+all the input streams. You may use multiple stream specifiers
+separated by commas (@code{,}) e.g.: @code{a:0,v}
 @end table
 
 @subsection Examples

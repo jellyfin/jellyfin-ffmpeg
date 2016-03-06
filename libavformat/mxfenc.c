@@ -18,7 +18,9 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
- *
+ */
+
+/*
  * signal_standard, color_siting, store_user_comments and klv_fill_key version
  * fixes sponsored by NOA GmbH
  */
@@ -1011,7 +1013,7 @@ static void mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID ke
     int stored_height = (st->codec->height+15)/16*16;
     int display_height;
     int f1, f2;
-    unsigned desc_size = size+8+8+8+8+8+8+8+5+16+sc->interlaced*4+12+20+5;
+    unsigned desc_size = size+8+8+8+8+8+8+8+5+16+4+12+20+5;
     if (sc->interlaced && sc->field_dominance)
         desc_size += 5;
     if (sc->signal_standard)
@@ -1079,12 +1081,12 @@ static void mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID ke
         f1 *= 2;
     }
 
-    mxf_write_local_tag(pb, 12+sc->interlaced*4, 0x320D);
-    avio_wb32(pb, sc->interlaced ? 2 : 1);
+
+    mxf_write_local_tag(pb, 16, 0x320D);
+    avio_wb32(pb, 2);
     avio_wb32(pb, 4);
     avio_wb32(pb, f1);
-    if (sc->interlaced)
-        avio_wb32(pb, f2);
+    avio_wb32(pb, f2);
 
     mxf_write_local_tag(pb, 8, 0x320E);
     avio_wb32(pb, sc->aspect_ratio.num);
@@ -1918,7 +1920,7 @@ static const UID mxf_mpeg2_codec_uls[] = {
 
 static const UID *mxf_get_mpeg2_codec_ul(AVCodecContext *avctx)
 {
-    int long_gop = avctx->gop_size > 1 || avctx->has_b_frames;
+    int long_gop = 1;
 
     if (avctx->profile == 4) { // Main
         if (avctx->level == 8) // Main
@@ -2039,7 +2041,6 @@ static int mxf_write_header(AVFormatContext *s)
     int i, ret;
     uint8_t present[FF_ARRAY_ELEMS(mxf_essence_container_uls)] = {0};
     const MXFSamplesPerFrame *spf = NULL;
-    AVDictionaryEntry *t;
     int64_t timestamp = 0;
 
     if (!s->nb_streams)
@@ -2075,7 +2076,7 @@ static int mxf_write_header(AVFormatContext *s)
             sc->color_siting = 0xFF;
 
             if (pix_desc) {
-                sc->component_depth     = pix_desc->comp[0].depth_minus1 + 1;
+                sc->component_depth     = pix_desc->comp[0].depth;
                 sc->h_chroma_sub_sample = 1 << pix_desc->log2_chroma_w;
             }
             switch (ff_choose_chroma_location(s, st)) {
@@ -2210,9 +2211,7 @@ static int mxf_write_header(AVFormatContext *s)
             sc->order = AV_RB32(sc->track_essence_element_key+12);
     }
 
-    if (t = av_dict_get(s->metadata, "creation_time", NULL, 0))
-        timestamp = ff_iso8601_to_unix_time(t->value);
-    if (timestamp)
+    if (ff_parse_creation_time_metadata(s, &timestamp, 1) > 0)
         mxf->timestamp = mxf_parse_timestamp(timestamp);
     mxf->duration = -1;
 
@@ -2608,7 +2607,7 @@ static int mxf_interleave_get_packet(AVFormatContext *s, AVPacket *out, AVPacket
 
                 if(s->streams[pktl->pkt.stream_index]->last_in_packet_buffer == pktl)
                     s->streams[pktl->pkt.stream_index]->last_in_packet_buffer= NULL;
-                av_free_packet(&pktl->pkt);
+                av_packet_unref(&pktl->pkt);
                 av_freep(&pktl);
                 pktl = next;
             }
@@ -2676,7 +2675,7 @@ static int mxf_interleave(AVFormatContext *s, AVPacket *out, AVPacket *pkt, int 
 static const AVOption mxf_options[] = {
     MXF_COMMON_OPTIONS
     { "store_user_comments", "",
-      offsetof(MXFContext, store_user_comments), AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MXFContext, store_user_comments), AV_OPT_TYPE_BOOL, {.i64 = 1}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 
@@ -2692,7 +2691,7 @@ static const AVOption d10_options[] = {
       offsetof(MXFContext, channel_count), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 8, AV_OPT_FLAG_ENCODING_PARAM},
     MXF_COMMON_OPTIONS
     { "store_user_comments", "",
-      offsetof(MXFContext, store_user_comments), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
+      offsetof(MXFContext, store_user_comments), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 

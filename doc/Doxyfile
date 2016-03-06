@@ -31,7 +31,7 @@ PROJECT_NAME           = FFmpeg
 # This could be handy for archiving the generated documentation or
 # if some version control system is used.
 
-PROJECT_NUMBER         = 2.8.6
+PROJECT_NUMBER         = 3.0
 
 # With the PROJECT_LOGO tag one can specify a logo or icon that is included
 # in the documentation. The maximum height of the logo should not exceed 55
@@ -1360,6 +1360,7 @@ PREDEFINED             = "__attribute__(x)=" \
                          "offsetof(x,y)=0x42" \
                          av_alloc_size \
                          AV_GCC_VERSION_AT_LEAST(x,y)=1 \
+                         AV_GCC_VERSION_AT_MOST(x,y)=0 \
                          __GNUC__=1 \
 
 # If the MACRO_EXPANSION and EXPAND_ONLY_PREDEF tags are set to YES then

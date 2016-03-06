@@ -28,6 +28,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/opt.h"
+#include "libavutil/time.h"
 
 #include "avformat.h"
 #include "http.h"
@@ -66,6 +67,7 @@ typedef struct HTTPContext {
     char *location;
     HTTPAuthState auth_state;
     HTTPAuthState proxy_auth_state;
+    char *http_proxy;
     char *headers;
     char *mime_type;
     char *user_agent;
@@ -105,6 +107,10 @@ typedef struct HTTPContext {
     int send_expect_100;
     char *method;
     int reconnect;
+    int reconnect_at_eof;
+    int reconnect_streamed;
+    int reconnect_delay;
+    int reconnect_delay_max;
     int listen;
     char *resource;
     int reply_code;
@@ -119,29 +125,33 @@ typedef struct HTTPContext {
 #define DEFAULT_USER_AGENT "Lavf/" AV_STRINGIFY(LIBAVFORMAT_VERSION)
 
 static const AVOption options[] = {
-    { "seekable", "control seekability of connection", OFFSET(seekable), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, D },
-    { "chunked_post", "use chunked transfer-encoding for posts", OFFSET(chunked_post), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, E },
-    { "headers", "set custom HTTP headers, can override built in default headers", OFFSET(headers), AV_OPT_TYPE_STRING, { 0 }, 0, 0, D | E },
-    { "content_type", "set a specific content type for the POST messages", OFFSET(content_type), AV_OPT_TYPE_STRING, { 0 }, 0, 0, D | E },
+    { "seekable", "control seekability of connection", OFFSET(seekable), AV_OPT_TYPE_BOOL, { .i64 = -1 }, -1, 1, D },
+    { "chunked_post", "use chunked transfer-encoding for posts", OFFSET(chunked_post), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, E },
+    { "http_proxy", "set HTTP proxy to tunnel through", OFFSET(http_proxy), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
+    { "headers", "set custom HTTP headers, can override built in default headers", OFFSET(headers), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
+    { "content_type", "set a specific content type for the POST messages", OFFSET(content_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "user_agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
     { "user-agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
-    { "multiple_requests", "use persistent connections", OFFSET(multiple_requests), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, D | E },
+    { "multiple_requests", "use persistent connections", OFFSET(multiple_requests), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D | E },
     { "post_data", "set custom HTTP post data", OFFSET(post_data), AV_OPT_TYPE_BINARY, .flags = D | E },
-    { "mime_type", "export the MIME type", OFFSET(mime_type), AV_OPT_TYPE_STRING, { 0 }, 0, 0, AV_OPT_FLAG_EXPORT | AV_OPT_FLAG_READONLY },
-    { "cookies", "set cookies to be sent in applicable future requests, use newline delimited Set-Cookie HTTP field value syntax", OFFSET(cookies), AV_OPT_TYPE_STRING, { 0 }, 0, 0, D },
-    { "icy", "request ICY metadata", OFFSET(icy), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, D },
-    { "icy_metadata_headers", "return ICY metadata headers", OFFSET(icy_metadata_headers), AV_OPT_TYPE_STRING, { 0 }, 0, 0, AV_OPT_FLAG_EXPORT },
-    { "icy_metadata_packet", "return current ICY metadata packet", OFFSET(icy_metadata_packet), AV_OPT_TYPE_STRING, { 0 }, 0, 0, AV_OPT_FLAG_EXPORT },
+    { "mime_type", "export the MIME type", OFFSET(mime_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, AV_OPT_FLAG_EXPORT | AV_OPT_FLAG_READONLY },
+    { "cookies", "set cookies to be sent in applicable future requests, use newline delimited Set-Cookie HTTP field value syntax", OFFSET(cookies), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D },
+    { "icy", "request ICY metadata", OFFSET(icy), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, D },
+    { "icy_metadata_headers", "return ICY metadata headers", OFFSET(icy_metadata_headers), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, AV_OPT_FLAG_EXPORT },
+    { "icy_metadata_packet", "return current ICY metadata packet", OFFSET(icy_metadata_packet), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, AV_OPT_FLAG_EXPORT },
     { "metadata", "metadata read from the bitstream", OFFSET(metadata), AV_OPT_TYPE_DICT, {0}, 0, 0, AV_OPT_FLAG_EXPORT },
     { "auth_type", "HTTP authentication type", OFFSET(auth_state.auth_type), AV_OPT_TYPE_INT, { .i64 = HTTP_AUTH_NONE }, HTTP_AUTH_NONE, HTTP_AUTH_BASIC, D | E, "auth_type"},
     { "none", "No auth method set, autodetect", 0, AV_OPT_TYPE_CONST, { .i64 = HTTP_AUTH_NONE }, 0, 0, D | E, "auth_type"},
     { "basic", "HTTP basic authentication", 0, AV_OPT_TYPE_CONST, { .i64 = HTTP_AUTH_BASIC }, 0, 0, D | E, "auth_type"},
-    { "send_expect_100", "Force sending an Expect: 100-continue header for POST", OFFSET(send_expect_100), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, E },
-    { "location", "The actual location of the data received", OFFSET(location), AV_OPT_TYPE_STRING, { 0 }, 0, 0, D | E },
+    { "send_expect_100", "Force sending an Expect: 100-continue header for POST", OFFSET(send_expect_100), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
+    { "location", "The actual location of the data received", OFFSET(location), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "offset", "initial byte offset", OFFSET(off), AV_OPT_TYPE_INT64, { .i64 = 0 }, 0, INT64_MAX, D },
     { "end_offset", "try to limit the request to bytes preceding this offset", OFFSET(end_off), AV_OPT_TYPE_INT64, { .i64 = 0 }, 0, INT64_MAX, D },
     { "method", "Override the HTTP method or set the expected HTTP method from a client", OFFSET(method), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
-    { "reconnect", "auto reconnect after disconnect before EOF", OFFSET(reconnect), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, D },
+    { "reconnect", "auto reconnect after disconnect before EOF", OFFSET(reconnect), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D },
+    { "reconnect_at_eof", "auto reconnect at EOF", OFFSET(reconnect_at_eof), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D },
+    { "reconnect_streamed", "auto reconnect streamed / non seekable streams", OFFSET(reconnect_streamed), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D },
+    { "reconnect_delay_max", "max reconnect delay in seconds after which to give up", OFFSET(reconnect_delay_max), AV_OPT_TYPE_INT, { .i64 = 120 }, 0, UINT_MAX/1000/1000, D },
     { "listen", "listen on HTTP", OFFSET(listen), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, D | E },
     { "resource", "The resource requested by a client", OFFSET(resource), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, E },
     { "reply_code", "The http status code to return to a client", OFFSET(reply_code), AV_OPT_TYPE_INT, { .i64 = 200}, INT_MIN, 599, E},
@@ -178,7 +188,7 @@ static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
                  path1, sizeof(path1), s->location);
     ff_url_join(hoststr, sizeof(hoststr), NULL, NULL, hostname, port, NULL);
 
-    proxy_path = getenv("http_proxy");
+    proxy_path = s->http_proxy ? s->http_proxy : getenv("http_proxy");
     use_proxy  = !ff_http_match_no_proxy(getenv("no_proxy"), hostname) &&
                  proxy_path && av_strstart(proxy_path, "http://", NULL);
 
@@ -209,8 +219,9 @@ static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
     ff_url_join(buf, sizeof(buf), lower_proto, NULL, hostname, port, NULL);
 
     if (!s->hd) {
-        err = ffurl_open(&s->hd, buf, AVIO_FLAG_READ_WRITE,
-                         &h->interrupt_callback, options);
+        err = ffurl_open_whitelist(&s->hd, buf, AVIO_FLAG_READ_WRITE,
+                                   &h->interrupt_callback, options,
+                                   h->protocol_whitelist);
         if (err < 0)
             return err;
     }
@@ -443,8 +454,10 @@ static int http_listen(URLContext *h, const char *uri, int flags,
                 NULL);
     if ((ret = av_dict_set_int(options, "listen", s->listen, 0)) < 0)
         goto fail;
-    if ((ret = ffurl_open(&s->hd, lower_url, AVIO_FLAG_READ_WRITE,
-                          &h->interrupt_callback, options)) < 0)
+    if ((ret = ffurl_open_whitelist(&s->hd, lower_url, AVIO_FLAG_READ_WRITE,
+                                    &h->interrupt_callback, options,
+                                    h->protocol_whitelist
+                                   )) < 0)
         goto fail;
     s->handshake_step = LOWER_PROTO;
     if (s->listen == HTTP_SINGLE) { /* single client */
@@ -1147,15 +1160,16 @@ static int http_buf_read(URLContext *h, uint8_t *buf, int size)
         memcpy(buf, s->buf_ptr, len);
         s->buf_ptr += len;
     } else {
+        int64_t target_end = s->end_off ? s->end_off : s->filesize;
         if ((!s->willclose || s->chunksize < 0) &&
-            s->filesize >= 0 && s->off >= s->filesize)
+            target_end >= 0 && s->off >= target_end)
             return AVERROR_EOF;
         len = ffurl_read(s->hd, buf, size);
         if (!len && (!s->willclose || s->chunksize < 0) &&
-            s->filesize >= 0 && s->off < s->filesize) {
+            target_end >= 0 && s->off < target_end) {
             av_log(h, AV_LOG_ERROR,
                    "Stream ends prematurely at %"PRId64", should be %"PRId64"\n",
-                   s->off, s->filesize
+                   s->off, target_end
                   );
             return AVERROR(EIO);
         }
@@ -1241,16 +1255,25 @@ static int http_read_stream(URLContext *h, uint8_t *buf, int size)
         return http_buf_read_compressed(h, buf, size);
 #endif /* CONFIG_ZLIB */
     read_ret = http_buf_read(h, buf, size);
-    if (read_ret < 0 && s->reconnect && !h->is_streamed && s->filesize > 0 && s->off < s->filesize) {
-        av_log(h, AV_LOG_INFO, "Will reconnect at %"PRId64".\n", s->off);
-        seek_ret = http_seek_internal(h, s->off, SEEK_SET, 1);
-        if (seek_ret != s->off) {
-            av_log(h, AV_LOG_ERROR, "Failed to reconnect at %"PRId64".\n", s->off);
+    if (   (read_ret  < 0 && s->reconnect        && (!h->is_streamed || s->reconnect_streamed) && s->filesize > 0 && s->off < s->filesize)
+        || (read_ret == 0 && s->reconnect_at_eof && (!h->is_streamed || s->reconnect_streamed))) {
+        int64_t target = h->is_streamed ? 0 : s->off;
+
+        if (s->reconnect_delay > s->reconnect_delay_max)
+            return AVERROR(EIO);
+
+        av_log(h, AV_LOG_INFO, "Will reconnect at %"PRId64" error=%s.\n", s->off, av_err2str(read_ret));
+        av_usleep(1000U*1000*s->reconnect_delay);
+        s->reconnect_delay = 1 + 2*s->reconnect_delay;
+        seek_ret = http_seek_internal(h, target, SEEK_SET, 1);
+        if (seek_ret != target) {
+            av_log(h, AV_LOG_ERROR, "Failed to reconnect at %"PRId64".\n", target);
             return read_ret;
         }
 
         read_ret = http_buf_read(h, buf, size);
-    }
+    } else
+        s->reconnect_delay = 0;
 
     return read_ret;
 }
@@ -1427,7 +1450,7 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
              ((whence == SEEK_CUR && off == 0) ||
               (whence == SEEK_SET && off == s->off)))
         return s->off;
-    else if ((s->filesize == -1 && whence == SEEK_END) || h->is_streamed)
+    else if ((s->filesize == -1 && whence == SEEK_END))
         return AVERROR(ENOSYS);
 
     if (whence == SEEK_CUR)
@@ -1439,6 +1462,9 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
     if (off < 0)
         return AVERROR(EINVAL);
     s->off = off;
+
+    if (s->off && h->is_streamed)
+        return AVERROR(ENOSYS);
 
     /* we save the old context in case the seek fails */
     old_buf_size = s->buf_end - s->buf_ptr;
@@ -1496,6 +1522,7 @@ URLProtocol ff_http_protocol = {
     .priv_data_size      = sizeof(HTTPContext),
     .priv_data_class     = &http_context_class,
     .flags               = URL_PROTOCOL_FLAG_NETWORK,
+    .default_whitelist   = "http,https,tls,rtp,tcp,udp,crypto"
 };
 #endif /* CONFIG_HTTP_PROTOCOL */
 
@@ -1514,6 +1541,7 @@ URLProtocol ff_https_protocol = {
     .priv_data_size      = sizeof(HTTPContext),
     .priv_data_class     = &https_context_class,
     .flags               = URL_PROTOCOL_FLAG_NETWORK,
+    .default_whitelist   = "http,https,tls,rtp,tcp,udp,crypto"
 };
 #endif /* CONFIG_HTTPS_PROTOCOL */
 
@@ -1552,8 +1580,9 @@ static int http_proxy_open(URLContext *h, const char *uri, int flags)
     ff_url_join(lower_url, sizeof(lower_url), "tcp", NULL, hostname, port,
                 NULL);
 redo:
-    ret = ffurl_open(&s->hd, lower_url, AVIO_FLAG_READ_WRITE,
-                     &h->interrupt_callback, NULL);
+    ret = ffurl_open_whitelist(&s->hd, lower_url, AVIO_FLAG_READ_WRITE,
+                               &h->interrupt_callback, NULL,
+                               h->protocol_whitelist);
     if (ret < 0)
         return ret;
 

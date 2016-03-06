@@ -110,9 +110,38 @@ struct AVFormatInternal {
      */
     AVRational offset_timebase;
 
+#if FF_API_COMPUTE_PKT_FIELDS2
+    int missing_ts_warning;
+#endif
+
     int inject_global_side_data;
 
     int avoid_negative_ts_use_pts;
+
+    /**
+     * Whether or not a header has already been written
+     */
+    int header_written;
+};
+
+struct AVStreamInternal {
+    /**
+     * Set to 1 if the codec allows reordering, so pts can be different
+     * from dts.
+     */
+    int reorder;
+
+    /**
+     * bitstream filter to run on stream
+     * - encoding: Set by muxer using ff_stream_add_bitstream_filter
+     * - decoding: unused
+     */
+    AVBitStreamFilterContext *bsfc;
+
+    /**
+     * Whether or not check_bitstream should still be run on each packet
+     */
+    int bitstream_checked;
 };
 
 #ifdef __GNUC__
@@ -143,8 +172,6 @@ char *ff_data_to_hex(char *buf, const uint8_t *src, int size, int lowercase);
  * @return the number of bytes written (or to be written, if data is null)
  */
 int ff_hex_to_data(uint8_t *data, const char *p);
-
-void ff_program_add_stream_index(AVFormatContext *ac, int progid, unsigned int idx);
 
 /**
  * Add packet to AVFormatContext->packet_buffer list, determining its
@@ -294,11 +321,6 @@ void ff_reduce_index(AVFormatContext *s, int stream_index);
 enum AVCodecID ff_guess_image2_codec(const char *filename);
 
 /**
- * Convert a date string in ISO8601 format to Unix timestamp.
- */
-int64_t ff_iso8601_to_unix_time(const char *datestr);
-
-/**
  * Perform a binary search using av_index_search_timestamp() and
  * AVInputFormat.read_timestamp().
  *
@@ -376,7 +398,7 @@ int ff_read_packet(AVFormatContext *s, AVPacket *pkt);
  * Interleave a packet per dts in an output media file.
  *
  * Packets with pkt->destruct == av_destruct_packet will be freed inside this
- * function, so they cannot be used after it. Note that calling av_free_packet()
+ * function, so they cannot be used after it. Note that calling av_packet_unref()
  * on them is still safe.
  *
  * @param s media file handle
@@ -438,6 +460,17 @@ enum AVChromaLocation ff_choose_chroma_location(AVFormatContext *s, AVStream *st
 int ff_generate_avci_extradata(AVStream *st);
 
 /**
+ * Add a bitstream filter to a stream.
+ *
+ * @param st output stream to add a filter to
+ * @param name the name of the filter to add
+ * @param args filter-specific argument string
+ * @return  >0 on success;
+ *          AVERROR code on failure
+ */
+int ff_stream_add_bitstream_filter(AVStream *st, const char *name, const char *args);
+
+/**
  * Wrap errno on rename() error.
  *
  * @param oldpath source path
@@ -454,13 +487,6 @@ static inline int ff_rename(const char *oldpath, const char *newpath, void *logc
     }
     return ret;
 }
-
-/**
- * Add new side data to a stream. If a side data of this type already exists, it
- * is replaced.
- */
-uint8_t *ff_stream_new_side_data(AVStream *st, enum AVPacketSideDataType type,
-                                 int size);
 
 /**
  * Allocate extradata with additional AV_INPUT_BUFFER_PADDING_SIZE at end
@@ -510,5 +536,28 @@ int ff_copy_whitelists(AVFormatContext *dst, AVFormatContext *src);
 
 int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *url, int flags,
                        const AVIOInterruptCB *int_cb, AVDictionary **options);
+
+/**
+ * Returned by demuxers to indicate that data was consumed but discarded
+ * (ignored streams or junk data). The framework will re-call the demuxer.
+ */
+#define FFERROR_REDO FFERRTAG('R','E','D','O')
+
+/*
+ * A wrapper around AVFormatContext.io_close that should be used
+ * intead of calling the pointer directly.
+ */
+void ff_format_io_close(AVFormatContext *s, AVIOContext **pb);
+
+/**
+ * Parse creation_time in AVFormatContext metadata if exists and warn if the
+ * parsing fails.
+ *
+ * @param s AVFormatContext
+ * @param timestamp parsed timestamp in microseconds, only set on successful parsing
+ * @param return_seconds set this to get the number of seconds in timestamp instead of microseconds
+ * @return 1 if OK, 0 if the metadata was not present, AVERROR(EINVAL) on parse error
+ */
+int ff_parse_creation_time_metadata(AVFormatContext *s, int64_t *timestamp, int return_seconds);
 
 #endif /* AVFORMAT_INTERNAL_H */

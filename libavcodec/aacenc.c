@@ -29,6 +29,8 @@
  * add sane pulse detection
  ***********************************/
 
+#include "libavutil/libm.h"
+#include "libavutil/thread.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
@@ -46,6 +48,8 @@
 
 #include "psymodel.h"
 
+static AVOnce aac_table_init = AV_ONCE_INIT;
+
 /**
  * Make AAC audio config object.
  * @see 1.6.2.1 "Syntax - AudioSpecificConfig"
@@ -54,11 +58,12 @@ static void put_audio_specific_config(AVCodecContext *avctx)
 {
     PutBitContext pb;
     AACEncContext *s = avctx->priv_data;
+    int channels = s->channels - (s->channels == 8 ? 1 : 0);
 
     init_put_bits(&pb, avctx->extradata, avctx->extradata_size);
     put_bits(&pb, 5, s->profile+1); //profile
     put_bits(&pb, 4, s->samplerate_index); //sample rate index
-    put_bits(&pb, 4, s->channels);
+    put_bits(&pb, 4, channels);
     //GASpecificConfig
     put_bits(&pb, 1, 0); //frame length - 1024 samples
     put_bits(&pb, 1, 0); //does not depend on core coder
@@ -69,6 +74,16 @@ static void put_audio_specific_config(AVCodecContext *avctx)
     put_bits(&pb, 5,  AOT_SBR);
     put_bits(&pb, 1,  0);
     flush_put_bits(&pb);
+}
+
+void ff_quantize_band_cost_cache_init(struct AACEncContext *s)
+{
+    int sf, g;
+    for (sf = 0; sf < 256; sf++) {
+        for (g = 0; g < 128; g++) {
+            s->quantize_band_cost_cache[sf][g].bits = -1;
+        }
+    }
 }
 
 #define WINDOW_FUNC(type) \
@@ -140,7 +155,7 @@ static void apply_window_and_mdct(AACEncContext *s, SingleChannelElement *sce,
                                   float *audio)
 {
     int i;
-    float *output = sce->ret_buf;
+    const float *output = sce->ret_buf;
 
     apply_window[sce->ics.window_sequence[0]](s->fdsp, sce, audio);
 
@@ -258,6 +273,8 @@ static void apply_intensity_stereo(ChannelElement *cpe)
                     start += ics->swb_sizes[g];
                     continue;
                 }
+                if (cpe->ms_mask[w*16 + g])
+                    p *= -1;
                 for (i = 0; i < ics->swb_sizes[g]; i++) {
                     float sum = (cpe->ch[0].coeffs[start+i] + p*cpe->ch[1].coeffs[start+i])*scale;
                     cpe->ch[0].coeffs[start+i] = sum;
@@ -279,7 +296,13 @@ static void apply_mid_side_stereo(ChannelElement *cpe)
         for (w2 =  0; w2 < ics->group_len[w]; w2++) {
             int start = (w+w2) * 128;
             for (g = 0; g < ics->num_swb; g++) {
-                if (!cpe->ms_mask[w*16 + g]) {
+                /* ms_mask can be used for other purposes in PNS and I/S,
+                 * so must not apply M/S if any band uses either, even if
+                 * ms_mask is set.
+                 */
+                if (!cpe->ms_mask[w*16 + g] || cpe->is_mask[w*16 + g]
+                    || cpe->ch[0].band_type[w*16 + g] >= NOISE_BT
+                    || cpe->ch[1].band_type[w*16 + g] >= NOISE_BT) {
                     start += ics->swb_sizes[g];
                     continue;
                 }
@@ -424,6 +447,8 @@ static int encode_individual_channel(AVCodecContext *avctx, AACEncContext *s,
         put_ics_info(s, &sce->ics);
         if (s->coder->encode_main_pred)
             s->coder->encode_main_pred(s, sce);
+        if (s->coder->encode_ltp_info)
+            s->coder->encode_ltp_info(s, sce, 0);
     }
     encode_band_info(s, sce);
     encode_scale_factors(avctx, s, sce);
@@ -489,7 +514,9 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     float **samples = s->planar_samples, *samples2, *la, *overlap;
     ChannelElement *cpe;
     SingleChannelElement *sce;
-    int i, ch, w, chans, tag, start_ch, ret;
+    IndividualChannelStream *ics;
+    int i, its, ch, w, chans, tag, start_ch, ret, frame_bits;
+    int target_bits, rate_bits, too_many_bits, too_few_bits;
     int ms_mode = 0, is_mode = 0, tns_mode = 0, pred_mode = 0;
     int chan_el_counter[4];
     FFPsyWindowInfo windows[AAC_MAX_CHANNELS];
@@ -517,10 +544,12 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         chans    = tag == TYPE_CPE ? 2 : 1;
         cpe      = &s->cpe[i];
         for (ch = 0; ch < chans; ch++) {
-            IndividualChannelStream *ics = &cpe->ch[ch].ics;
-            int cur_channel = start_ch + ch;
+            int k;
             float clip_avoidance_factor;
-            overlap  = &samples[cur_channel][0];
+            sce = &cpe->ch[ch];
+            ics = &sce->ics;
+            s->cur_channel = start_ch + ch;
+            overlap  = &samples[s->cur_channel][0];
             samples2 = overlap + 1024;
             la       = samples2 + (448+64);
             if (!frame)
@@ -537,7 +566,7 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                  */
                 ics->num_swb = s->samplerate_index >= 8 ? 1 : 3;
             } else {
-                wi[ch] = s->psy.model->window(&s->psy, samples2, la, cur_channel,
+                wi[ch] = s->psy.model->window(&s->psy, samples2, la, s->cur_channel,
                                               ics->window_sequence[0]);
             }
             ics->window_sequence[1] = ics->window_sequence[0];
@@ -571,33 +600,34 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                 ics->clip_avoidance_factor = 1.0f;
             }
 
-            apply_window_and_mdct(s, &cpe->ch[ch], overlap);
+            apply_window_and_mdct(s, sce, overlap);
 
-            if (isnan(cpe->ch[ch].coeffs[    0]) || isinf(cpe->ch[ch].coeffs[    0]) ||
-                isnan(cpe->ch[ch].coeffs[  128]) || isinf(cpe->ch[ch].coeffs[  128]) ||
-                isnan(cpe->ch[ch].coeffs[2*128]) || isinf(cpe->ch[ch].coeffs[2*128]) ||
-                isnan(cpe->ch[ch].coeffs[3*128]) || isinf(cpe->ch[ch].coeffs[3*128]) ||
-                isnan(cpe->ch[ch].coeffs[4*128]) || isinf(cpe->ch[ch].coeffs[4*128]) ||
-                isnan(cpe->ch[ch].coeffs[5*128]) || isinf(cpe->ch[ch].coeffs[5*128]) ||
-                isnan(cpe->ch[ch].coeffs[6*128]) || isinf(cpe->ch[ch].coeffs[6*128]) ||
-                isnan(cpe->ch[ch].coeffs[7*128]) || isinf(cpe->ch[ch].coeffs[7*128])) {
-                av_log(avctx, AV_LOG_ERROR, "Input contains NaN/+-Inf\n");
-                return AVERROR(EINVAL);
+            if (s->options.ltp && s->coder->update_ltp) {
+                s->coder->update_ltp(s, sce);
+                apply_window[sce->ics.window_sequence[0]](s->fdsp, sce, &sce->ltp_state[0]);
+                s->mdct1024.mdct_calc(&s->mdct1024, sce->lcoeffs, sce->ret_buf);
             }
-            avoid_clipping(s, &cpe->ch[ch]);
+
+            for (k = 0; k < 1024; k++) {
+                if (!isfinite(cpe->ch[ch].coeffs[k])) {
+                    av_log(avctx, AV_LOG_ERROR, "Input contains NaN/+-Inf\n");
+                    return AVERROR(EINVAL);
+                }
+            }
+            avoid_clipping(s, sce);
         }
         start_ch += chans;
     }
     if ((ret = ff_alloc_packet2(avctx, avpkt, 8192 * s->channels, 0)) < 0)
         return ret;
+    frame_bits = its = 0;
     do {
-        int frame_bits;
-
         init_put_bits(&s->pb, avpkt->data, avpkt->size);
 
         if ((avctx->frame_number & 0xFF)==1 && !(avctx->flags & AV_CODEC_FLAG_BITEXACT))
             put_bitstream_info(s, LIBAVCODEC_IDENT);
         start_ch = 0;
+        target_bits = 0;
         memset(chan_el_counter, 0, sizeof(chan_el_counter));
         for (i = 0; i < s->chan_map[0]; i++) {
             FFPsyWindowInfo* wi = windows + start_ch;
@@ -614,15 +644,28 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                 sce = &cpe->ch[ch];
                 coeffs[ch] = sce->coeffs;
                 sce->ics.predictor_present = 0;
-                memset(&sce->ics.prediction_used, 0, sizeof(sce->ics.prediction_used));
+                sce->ics.ltp.present = 0;
+                memset(sce->ics.ltp.used, 0, sizeof(sce->ics.ltp.used));
+                memset(sce->ics.prediction_used, 0, sizeof(sce->ics.prediction_used));
                 memset(&sce->tns, 0, sizeof(TemporalNoiseShaping));
                 for (w = 0; w < 128; w++)
                     if (sce->band_type[w] > RESERVED_BT)
                         sce->band_type[w] = 0;
             }
+            s->psy.bitres.alloc = -1;
+            s->psy.bitres.bits = s->last_frame_pb_count / s->channels;
             s->psy.model->analyze(&s->psy, start_ch, coeffs, wi);
+            if (s->psy.bitres.alloc > 0) {
+                /* Lambda unused here on purpose, we need to take psy's unscaled allocation */
+                target_bits += s->psy.bitres.alloc
+                    * (s->lambda / (avctx->global_quality ? avctx->global_quality : 120));
+                s->psy.bitres.alloc /= chans;
+            }
+            s->cur_type = tag;
             for (ch = 0; ch < chans; ch++) {
                 s->cur_channel = start_ch + ch;
+                if (s->options.pns && s->coder->mark_pns)
+                    s->coder->mark_pns(s, avctx, &cpe->ch[ch]);
                 s->coder->search_for_quantizers(avctx, s, &cpe->ch[ch], s->lambda);
             }
             if (chans > 1
@@ -640,14 +683,14 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
             for (ch = 0; ch < chans; ch++) { /* TNS and PNS */
                 sce = &cpe->ch[ch];
                 s->cur_channel = start_ch + ch;
-                if (s->options.pns && s->coder->search_for_pns)
-                    s->coder->search_for_pns(s, avctx, sce);
                 if (s->options.tns && s->coder->search_for_tns)
                     s->coder->search_for_tns(s, sce);
                 if (s->options.tns && s->coder->apply_tns_filt)
                     s->coder->apply_tns_filt(s, sce);
                 if (sce->tns.present)
                     tns_mode = 1;
+                if (s->options.pns && s->coder->search_for_pns)
+                    s->coder->search_for_pns(s, avctx, sce);
             }
             s->cur_channel = start_ch;
             if (s->options.intensity_stereo) { /* Intensity Stereo */
@@ -664,8 +707,8 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                         s->coder->search_for_pred(s, sce);
                     if (cpe->ch[ch].ics.predictor_present) pred_mode = 1;
                 }
-                if (s->coder->adjust_common_prediction)
-                    s->coder->adjust_common_prediction(s, cpe);
+                if (s->coder->adjust_common_pred)
+                    s->coder->adjust_common_pred(s, cpe);
                 for (ch = 0; ch < chans; ch++) {
                     sce = &cpe->ch[ch];
                     s->cur_channel = start_ch + ch;
@@ -674,22 +717,34 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                 }
                 s->cur_channel = start_ch;
             }
-            if (s->options.stereo_mode) { /* Mid/Side stereo */
-                if (s->options.stereo_mode == -1 && s->coder->search_for_ms)
+            if (s->options.mid_side) { /* Mid/Side stereo */
+                if (s->options.mid_side == -1 && s->coder->search_for_ms)
                     s->coder->search_for_ms(s, cpe);
                 else if (cpe->common_window)
                     memset(cpe->ms_mask, 1, sizeof(cpe->ms_mask));
-                for (w = 0; w < 128; w++)
-                    cpe->ms_mask[w] = cpe->is_mask[w] ? 0 : cpe->ms_mask[w];
                 apply_mid_side_stereo(cpe);
             }
             adjust_frame_information(cpe, chans);
+            if (s->options.ltp) { /* LTP */
+                for (ch = 0; ch < chans; ch++) {
+                    sce = &cpe->ch[ch];
+                    s->cur_channel = start_ch + ch;
+                    if (s->coder->search_for_ltp)
+                        s->coder->search_for_ltp(s, sce, cpe->common_window);
+                    if (sce->ics.ltp.present) pred_mode = 1;
+                }
+                s->cur_channel = start_ch;
+                if (s->coder->adjust_common_ltp)
+                    s->coder->adjust_common_ltp(s, cpe);
+            }
             if (chans == 2) {
                 put_bits(&s->pb, 1, cpe->common_window);
                 if (cpe->common_window) {
                     put_ics_info(s, &cpe->ch[0].ics);
                     if (s->coder->encode_main_pred)
                         s->coder->encode_main_pred(s, &cpe->ch[0]);
+                    if (s->coder->encode_ltp_info)
+                        s->coder->encode_ltp_info(s, &cpe->ch[0], 1);
                     encode_ms_info(&s->pb, cpe);
                     if (cpe->ms_mode) ms_mode = 1;
                 }
@@ -701,35 +756,77 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
             start_ch += chans;
         }
 
-        frame_bits = put_bits_count(&s->pb);
-        if (frame_bits <= 6144 * s->channels - 3) {
-            s->psy.bitres.bits = frame_bits / s->channels;
+        if (avctx->flags & CODEC_FLAG_QSCALE) {
+            /* When using a constant Q-scale, don't mess with lambda */
             break;
         }
-        if (is_mode || ms_mode || tns_mode || pred_mode) {
-            for (i = 0; i < s->chan_map[0]; i++) {
-                // Must restore coeffs
-                chans = tag == TYPE_CPE ? 2 : 1;
-                cpe = &s->cpe[i];
-                for (ch = 0; ch < chans; ch++)
-                    memcpy(cpe->ch[ch].coeffs, cpe->ch[ch].pcoeffs, sizeof(cpe->ch[ch].coeffs));
+
+        /* rate control stuff
+         * allow between the nominal bitrate, and what psy's bit reservoir says to target
+         * but drift towards the nominal bitrate always
+         */
+        frame_bits = put_bits_count(&s->pb);
+        rate_bits = avctx->bit_rate * 1024 / avctx->sample_rate;
+        rate_bits = FFMIN(rate_bits, 6144 * s->channels - 3);
+        too_many_bits = FFMAX(target_bits, rate_bits);
+        too_many_bits = FFMIN(too_many_bits, 6144 * s->channels - 3);
+        too_few_bits = FFMIN(FFMAX(rate_bits - rate_bits/4, target_bits), too_many_bits);
+
+        /* When using ABR, be strict (but only for increasing) */
+        too_few_bits = too_few_bits - too_few_bits/8;
+        too_many_bits = too_many_bits + too_many_bits/2;
+
+        if (   its == 0 /* for steady-state Q-scale tracking */
+            || (its < 5 && (frame_bits < too_few_bits || frame_bits > too_many_bits))
+            || frame_bits >= 6144 * s->channels - 3  )
+        {
+            float ratio = ((float)rate_bits) / frame_bits;
+
+            if (frame_bits >= too_few_bits && frame_bits <= too_many_bits) {
+                /*
+                 * This path is for steady-state Q-scale tracking
+                 * When frame bits fall within the stable range, we still need to adjust
+                 * lambda to maintain it like so in a stable fashion (large jumps in lambda
+                 * create artifacts and should be avoided), but slowly
+                 */
+                ratio = sqrtf(sqrtf(ratio));
+                ratio = av_clipf(ratio, 0.9f, 1.1f);
+            } else {
+                /* Not so fast though */
+                ratio = sqrtf(ratio);
             }
+            s->lambda = FFMIN(s->lambda * ratio, 65536.f);
+
+            /* Keep iterating if we must reduce and lambda is in the sky */
+            if (ratio > 0.9f && ratio < 1.1f) {
+                break;
+            } else {
+                if (is_mode || ms_mode || tns_mode || pred_mode) {
+                    for (i = 0; i < s->chan_map[0]; i++) {
+                        // Must restore coeffs
+                        chans = tag == TYPE_CPE ? 2 : 1;
+                        cpe = &s->cpe[i];
+                        for (ch = 0; ch < chans; ch++)
+                            memcpy(cpe->ch[ch].coeffs, cpe->ch[ch].pcoeffs, sizeof(cpe->ch[ch].coeffs));
+                    }
+                }
+                its++;
+            }
+        } else {
+            break;
         }
-
-        s->lambda *= avctx->bit_rate * 1024.0f / avctx->sample_rate / frame_bits;
-
     } while (1);
+
+    if (s->options.ltp && s->coder->ltp_insert_new_frame)
+        s->coder->ltp_insert_new_frame(s);
 
     put_bits(&s->pb, 3, TYPE_END);
     flush_put_bits(&s->pb);
-    avctx->frame_bits = put_bits_count(&s->pb);
 
-    // rate control stuff
-    if (!(avctx->flags & AV_CODEC_FLAG_QSCALE)) {
-        float ratio = avctx->bit_rate * 1024.0f / avctx->sample_rate / avctx->frame_bits;
-        s->lambda *= ratio;
-        s->lambda = FFMIN(s->lambda, 65536.f);
-    }
+    s->last_frame_pb_count = put_bits_count(&s->pb);
+
+    s->lambda_sum += s->lambda;
+    s->lambda_count++;
 
     if (!frame)
         s->last_frame++;
@@ -745,6 +842,8 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 static av_cold int aac_encode_end(AVCodecContext *avctx)
 {
     AACEncContext *s = avctx->priv_data;
+
+    av_log(avctx, AV_LOG_INFO, "Qavg: %.3f\n", s->lambda_sum / s->lambda_count);
 
     ff_mdct_end(&s->mdct1024);
     ff_mdct_end(&s->mdct128);
@@ -796,6 +895,11 @@ alloc_fail:
     return AVERROR(ENOMEM);
 }
 
+static av_cold void aac_encode_init_tables(void)
+{
+    ff_aac_tableinit();
+}
+
 static av_cold int aac_encode_init(AVCodecContext *avctx)
 {
     AACEncContext *s = avctx->priv_data;
@@ -804,45 +908,96 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     uint8_t grouping[AAC_MAX_CHANNELS];
     int lengths[2];
 
+    /* Constants */
+    s->last_frame_pb_count = 0;
+    avctx->extradata_size = 5;
     avctx->frame_size = 1024;
+    avctx->initial_padding = 1024;
+    s->lambda = avctx->global_quality > 0 ? avctx->global_quality : 120;
 
+    /* Channel map and unspecified bitrate guessing */
+    s->channels = avctx->channels;
+    ERROR_IF(s->channels > AAC_MAX_CHANNELS || s->channels == 7,
+             "Unsupported number of channels: %d\n", s->channels);
+    s->chan_map = aac_chan_configs[s->channels-1];
+    if (!avctx->bit_rate) {
+        for (i = 1; i <= s->chan_map[0]; i++) {
+            avctx->bit_rate += s->chan_map[i] == TYPE_CPE ? 128000 : /* Pair */
+                               s->chan_map[i] == TYPE_LFE ? 16000  : /* LFE  */
+                                                            69000  ; /* SCE  */
+        }
+    }
+
+    /* Samplerate */
     for (i = 0; i < 16; i++)
         if (avctx->sample_rate == avpriv_mpeg4audio_sample_rates[i])
             break;
-
-    s->channels = avctx->channels;
-
-    ERROR_IF(i == 16 || i >= ff_aac_swb_size_1024_len || i >= ff_aac_swb_size_128_len,
+    s->samplerate_index = i;
+    ERROR_IF(s->samplerate_index == 16 ||
+             s->samplerate_index >= ff_aac_swb_size_1024_len ||
+             s->samplerate_index >= ff_aac_swb_size_128_len,
              "Unsupported sample rate %d\n", avctx->sample_rate);
-    ERROR_IF(s->channels > AAC_MAX_CHANNELS,
-             "Unsupported number of channels: %d\n", s->channels);
-    WARN_IF(1024.0 * avctx->bit_rate / avctx->sample_rate > 6144 * s->channels,
-             "Too many bits per frame requested, clamping to max\n");
-    if (avctx->profile == FF_PROFILE_AAC_MAIN) {
-        s->options.pred = 1;
-    } else if ((avctx->profile == FF_PROFILE_AAC_LOW ||
-                avctx->profile == FF_PROFILE_UNKNOWN) && s->options.pred) {
-        s->profile = 0; /* Main */
-        WARN_IF(1, "Prediction requested, changing profile to AAC-Main\n");
-    } else if (avctx->profile == FF_PROFILE_AAC_LOW ||
-               avctx->profile == FF_PROFILE_UNKNOWN) {
-        s->profile = 1; /* Low */
-    } else {
-        ERROR_IF(1, "Unsupported profile %d\n", avctx->profile);
-    }
 
-    if (s->options.aac_coder != AAC_CODER_TWOLOOP) {
+    /* Bitrate limiting */
+    WARN_IF(1024.0 * avctx->bit_rate / avctx->sample_rate > 6144 * s->channels,
+             "Too many bits %f > %d per frame requested, clamping to max\n",
+             1024.0 * avctx->bit_rate / avctx->sample_rate,
+             6144 * s->channels);
+    avctx->bit_rate = (int64_t)FFMIN(6144 * s->channels / 1024.0 * avctx->sample_rate,
+                                     avctx->bit_rate);
+
+    /* Profile and option setting */
+    avctx->profile = avctx->profile == FF_PROFILE_UNKNOWN ? FF_PROFILE_AAC_LOW :
+                     avctx->profile;
+    for (i = 0; i < FF_ARRAY_ELEMS(aacenc_profiles); i++)
+        if (avctx->profile == aacenc_profiles[i])
+            break;
+    if (avctx->profile == FF_PROFILE_MPEG2_AAC_LOW) {
+        avctx->profile = FF_PROFILE_AAC_LOW;
+        ERROR_IF(s->options.pred,
+                 "Main prediction unavailable in the \"mpeg2_aac_low\" profile\n");
+        ERROR_IF(s->options.ltp,
+                 "LTP prediction unavailable in the \"mpeg2_aac_low\" profile\n");
+        WARN_IF(s->options.pns,
+                "PNS unavailable in the \"mpeg2_aac_low\" profile, turning off\n");
+        s->options.pns = 0;
+    } else if (avctx->profile == FF_PROFILE_AAC_LTP) {
+        s->options.ltp = 1;
+        ERROR_IF(s->options.pred,
+                 "Main prediction unavailable in the \"aac_ltp\" profile\n");
+    } else if (avctx->profile == FF_PROFILE_AAC_MAIN) {
+        s->options.pred = 1;
+        ERROR_IF(s->options.ltp,
+                 "LTP prediction unavailable in the \"aac_main\" profile\n");
+    } else if (s->options.ltp) {
+        avctx->profile = FF_PROFILE_AAC_LTP;
+        WARN_IF(1,
+                "Chainging profile to \"aac_ltp\"\n");
+        ERROR_IF(s->options.pred,
+                 "Main prediction unavailable in the \"aac_ltp\" profile\n");
+    } else if (s->options.pred) {
+        avctx->profile = FF_PROFILE_AAC_MAIN;
+        WARN_IF(1,
+                "Chainging profile to \"aac_main\"\n");
+        ERROR_IF(s->options.ltp,
+                 "LTP prediction unavailable in the \"aac_main\" profile\n");
+    }
+    s->profile = avctx->profile;
+
+    /* Coder limitations */
+    s->coder = &ff_aac_coders[s->options.coder];
+    if (s->options.coder != AAC_CODER_TWOLOOP) {
+        ERROR_IF(avctx->strict_std_compliance > FF_COMPLIANCE_EXPERIMENTAL,
+                 "Coders other than twoloop require -strict -2 and some may be removed in the future\n");
         s->options.intensity_stereo = 0;
         s->options.pns = 0;
     }
+    ERROR_IF(s->options.ltp && avctx->strict_std_compliance > FF_COMPLIANCE_EXPERIMENTAL,
+             "The LPT profile requires experimental compliance, add -strict -2 to enable!\n");
 
-    avctx->bit_rate = (int)FFMIN(
-        6144 * s->channels / 1024.0 * avctx->sample_rate,
-        avctx->bit_rate);
-
-    s->samplerate_index = i;
-
-    s->chan_map = aac_chan_configs[s->channels-1];
+    /* M/S introduces horrible artifacts with multichannel files, this is temporary */
+    if (s->channels > 3)
+        s->options.mid_side = 0;
 
     if ((ret = dsp_init(avctx, s)) < 0)
         goto fail;
@@ -850,30 +1005,27 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     if ((ret = alloc_buffers(avctx, s)) < 0)
         goto fail;
 
-    avctx->extradata_size = 5;
     put_audio_specific_config(avctx);
 
-    sizes[0]   = ff_aac_swb_size_1024[i];
-    sizes[1]   = ff_aac_swb_size_128[i];
-    lengths[0] = ff_aac_num_swb_1024[i];
-    lengths[1] = ff_aac_num_swb_128[i];
+    sizes[0]   = ff_aac_swb_size_1024[s->samplerate_index];
+    sizes[1]   = ff_aac_swb_size_128[s->samplerate_index];
+    lengths[0] = ff_aac_num_swb_1024[s->samplerate_index];
+    lengths[1] = ff_aac_num_swb_128[s->samplerate_index];
     for (i = 0; i < s->chan_map[0]; i++)
         grouping[i] = s->chan_map[i + 1] == TYPE_CPE;
     if ((ret = ff_psy_init(&s->psy, avctx, 2, sizes, lengths,
                            s->chan_map[0], grouping)) < 0)
         goto fail;
     s->psypp = ff_psy_preprocess_init(avctx);
-    s->coder = &ff_aac_coders[s->options.aac_coder];
     ff_lpc_init(&s->lpc, 2*avctx->frame_size, TNS_MAX_ORDER, FF_LPC_TYPE_LEVINSON);
+    av_lfg_init(&s->lfg, 0x72adca55);
 
-    if (HAVE_MIPSDSPR1)
+    if (HAVE_MIPSDSP)
         ff_aac_coder_init_mips(s);
 
-    s->lambda = avctx->global_quality > 0 ? avctx->global_quality : 120;
+    if ((ret = ff_thread_once(&aac_table_init, &aac_encode_init_tables)) != 0)
+        return AVERROR_UNKNOWN;
 
-    ff_aac_tableinit();
-
-    avctx->initial_padding = 1024;
     ff_af_queue_init(avctx, &s->afq);
 
     return 0;
@@ -884,27 +1036,16 @@ fail:
 
 #define AACENC_FLAGS AV_OPT_FLAG_ENCODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM
 static const AVOption aacenc_options[] = {
-    {"stereo_mode", "Stereo coding method", offsetof(AACEncContext, options.stereo_mode), AV_OPT_TYPE_INT, {.i64 = 0}, -1, 1, AACENC_FLAGS, "stereo_mode"},
-        {"auto",     "Selected by the Encoder", 0, AV_OPT_TYPE_CONST, {.i64 = -1 }, INT_MIN, INT_MAX, AACENC_FLAGS, "stereo_mode"},
-        {"ms_off",   "Disable Mid/Side coding", 0, AV_OPT_TYPE_CONST, {.i64 =  0 }, INT_MIN, INT_MAX, AACENC_FLAGS, "stereo_mode"},
-        {"ms_force", "Force Mid/Side for the whole frame if possible", 0, AV_OPT_TYPE_CONST, {.i64 =  1 }, INT_MIN, INT_MAX, AACENC_FLAGS, "stereo_mode"},
-    {"aac_coder", "Coding algorithm", offsetof(AACEncContext, options.aac_coder), AV_OPT_TYPE_INT, {.i64 = AAC_CODER_TWOLOOP}, 0, AAC_CODER_NB-1, AACENC_FLAGS, "aac_coder"},
-        {"faac",     "FAAC-inspired method",      0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_FAAC},    INT_MIN, INT_MAX, AACENC_FLAGS, "aac_coder"},
-        {"anmr",     "ANMR method",               0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_ANMR},    INT_MIN, INT_MAX, AACENC_FLAGS, "aac_coder"},
-        {"twoloop",  "Two loop searching method", 0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_TWOLOOP}, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_coder"},
-        {"fast",     "Constant quantizer",        0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_FAST},    INT_MIN, INT_MAX, AACENC_FLAGS, "aac_coder"},
-    {"aac_pns", "Perceptual Noise Substitution", offsetof(AACEncContext, options.pns), AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, AACENC_FLAGS, "aac_pns"},
-        {"disable",  "Disable perceptual noise substitution", 0, AV_OPT_TYPE_CONST, {.i64 =  0 }, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_pns"},
-        {"enable",   "Enable perceptual noise substitution",  0, AV_OPT_TYPE_CONST, {.i64 =  1 }, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_pns"},
-    {"aac_is", "Intensity stereo coding", offsetof(AACEncContext, options.intensity_stereo), AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, AACENC_FLAGS, "intensity_stereo"},
-        {"disable",  "Disable intensity stereo coding", 0, AV_OPT_TYPE_CONST, {.i64 = 0}, INT_MIN, INT_MAX, AACENC_FLAGS, "intensity_stereo"},
-        {"enable",   "Enable intensity stereo coding", 0, AV_OPT_TYPE_CONST, {.i64 = 1}, INT_MIN, INT_MAX, AACENC_FLAGS, "intensity_stereo"},
-    {"aac_tns", "Temporal noise shaping", offsetof(AACEncContext, options.tns), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, AACENC_FLAGS, "aac_tns"},
-        {"disable",  "Disable temporal noise shaping", 0, AV_OPT_TYPE_CONST, {.i64 = 0}, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_tns"},
-        {"enable",   "Enable temporal noise shaping", 0, AV_OPT_TYPE_CONST, {.i64 = 1}, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_tns"},
-    {"aac_pred", "AAC-Main prediction", offsetof(AACEncContext, options.pred), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, AACENC_FLAGS, "aac_pred"},
-        {"disable",  "Disable AAC-Main prediction", 0, AV_OPT_TYPE_CONST, {.i64 = 0}, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_pred"},
-        {"enable",   "Enable AAC-Main prediction", 0, AV_OPT_TYPE_CONST, {.i64 = 1}, INT_MIN, INT_MAX, AACENC_FLAGS, "aac_pred"},
+    {"aac_coder", "Coding algorithm", offsetof(AACEncContext, options.coder), AV_OPT_TYPE_INT, {.i64 = AAC_CODER_TWOLOOP}, 0, AAC_CODER_NB-1, AACENC_FLAGS, "coder"},
+        {"anmr",     "ANMR method",               0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_ANMR},    INT_MIN, INT_MAX, AACENC_FLAGS, "coder"},
+        {"twoloop",  "Two loop searching method", 0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_TWOLOOP}, INT_MIN, INT_MAX, AACENC_FLAGS, "coder"},
+        {"fast",     "Constant quantizer",        0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_FAST},    INT_MIN, INT_MAX, AACENC_FLAGS, "coder"},
+    {"aac_ms", "Force M/S stereo coding", offsetof(AACEncContext, options.mid_side), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, AACENC_FLAGS},
+    {"aac_is", "Intensity stereo coding", offsetof(AACEncContext, options.intensity_stereo), AV_OPT_TYPE_BOOL, {.i64 = 1}, -1, 1, AACENC_FLAGS},
+    {"aac_pns", "Perceptual noise substitution", offsetof(AACEncContext, options.pns), AV_OPT_TYPE_BOOL, {.i64 = 1}, -1, 1, AACENC_FLAGS},
+    {"aac_tns", "Temporal noise shaping", offsetof(AACEncContext, options.tns), AV_OPT_TYPE_BOOL, {.i64 = 1}, -1, 1, AACENC_FLAGS},
+    {"aac_ltp", "Long term prediction", offsetof(AACEncContext, options.ltp), AV_OPT_TYPE_BOOL, {.i64 = 0}, -1, 1, AACENC_FLAGS},
+    {"aac_pred", "AAC-Main prediction", offsetof(AACEncContext, options.pred), AV_OPT_TYPE_BOOL, {.i64 = 0}, -1, 1, AACENC_FLAGS},
     {NULL}
 };
 
@@ -913,6 +1054,11 @@ static const AVClass aacenc_class = {
     av_default_item_name,
     aacenc_options,
     LIBAVUTIL_VERSION_INT,
+};
+
+static const AVCodecDefault aac_encode_defaults[] = {
+    { "b", "0" },
+    { NULL }
 };
 
 AVCodec ff_aac_encoder = {
@@ -924,9 +1070,10 @@ AVCodec ff_aac_encoder = {
     .init           = aac_encode_init,
     .encode2        = aac_encode_frame,
     .close          = aac_encode_end,
+    .defaults       = aac_encode_defaults,
     .supported_samplerates = mpeg4audio_sample_rates,
-    .capabilities   = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY |
-                      AV_CODEC_CAP_EXPERIMENTAL,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    .capabilities   = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY,
     .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
                                                      AV_SAMPLE_FMT_NONE },
     .priv_class     = &aacenc_class,

@@ -4,9 +4,9 @@ NAME = avutil
 
 HEADERS = adler32.h                                                     \
           aes.h                                                         \
+          aes_ctr.h                                                     \
           attributes.h                                                  \
           audio_fifo.h                                                  \
-          audioconvert.h                                                \
           avassert.h                                                    \
           avstring.h                                                    \
           avutil.h                                                      \
@@ -21,6 +21,7 @@ HEADERS = adler32.h                                                     \
           common.h                                                      \
           cpu.h                                                         \
           crc.h                                                         \
+          des.h                                                         \
           display.h                                                     \
           downmix_info.h                                                \
           error.h                                                       \
@@ -37,18 +38,19 @@ HEADERS = adler32.h                                                     \
           log.h                                                         \
           macros.h                                                      \
           mathematics.h                                                 \
+          mastering_display_metadata.h                                  \
           md5.h                                                         \
           mem.h                                                         \
           motion_vector.h                                               \
           murmur3.h                                                     \
           dict.h                                                        \
-          old_pix_fmts.h                                                \
           opt.h                                                         \
           parseutils.h                                                  \
           pixdesc.h                                                     \
           pixelutils.h                                                  \
           pixfmt.h                                                      \
           random_seed.h                                                 \
+          rc4.h                                                         \
           replaygain.h                                                  \
           rational.h                                                    \
           ripemd.h                                                      \
@@ -60,6 +62,7 @@ HEADERS = adler32.h                                                     \
           time.h                                                        \
           timecode.h                                                    \
           timestamp.h                                                   \
+          tree.h                                                        \
           twofish.h                                                     \
           version.h                                                     \
           xtea.h                                                        \
@@ -79,6 +82,7 @@ BUILT_HEADERS = avconfig.h                                              \
 
 OBJS = adler32.o                                                        \
        aes.o                                                            \
+       aes_ctr.o                                                        \
        audio_fifo.o                                                     \
        avstring.o                                                       \
        base64.o                                                         \
@@ -105,12 +109,14 @@ OBJS = adler32.o                                                        \
        hash.o                                                           \
        hmac.o                                                           \
        imgutils.o                                                       \
+       integer.o                                                        \
        intmath.o                                                        \
        lfg.o                                                            \
        lls.o                                                            \
        log.o                                                            \
        log2_tab.o                                                       \
        mathematics.o                                                    \
+       mastering_display_metadata.o                                     \
        md5.o                                                            \
        mem.o                                                            \
        murmur3.o                                                        \
@@ -147,8 +153,6 @@ OBJS += $(COMPAT_OBJS:%=../compat/%)
 
 # Windows resource file
 SLIBOBJS-$(HAVE_GNU_WINDRES)            += avutilres.o
-
-SKIPHEADERS          = old_pix_fmts.h
 
 SKIPHEADERS-$(HAVE_ATOMICS_GCC)        += atomic_gcc.h
 SKIPHEADERS-$(HAVE_ATOMICS_SUNCC)      += atomic_suncc.h

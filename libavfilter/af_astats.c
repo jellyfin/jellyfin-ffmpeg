@@ -57,7 +57,7 @@ typedef struct {
 
 static const AVOption astats_options[] = {
     { "length", "set the window length", OFFSET(time_constant), AV_OPT_TYPE_DOUBLE, {.dbl=.05}, .01, 10, FLAGS },
-    { "metadata", "inject metadata in the filtergraph", OFFSET(metadata), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS },
+    { "metadata", "inject metadata in the filtergraph", OFFSET(metadata), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "reset", "recalculate stats after this many frames", OFFSET(reset_count), AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGS },
     { NULL }
 };
@@ -74,7 +74,7 @@ static int query_formats(AVFilterContext *ctx)
     };
     int ret;
 
-    layouts = ff_all_channel_layouts();
+    layouts = ff_all_channel_counts();
     if (!layouts)
         return AVERROR(ENOMEM);
     ret = ff_set_common_channel_layouts(ctx, layouts);
@@ -163,9 +163,9 @@ static inline void update_stat(AudioStatsContext *s, ChannelStats *p, double d)
     p->sigma_x += d;
     p->sigma_x2 += d * d;
     p->avg_sigma_x2 = p->avg_sigma_x2 * s->mult + (1.0 - s->mult) * d * d;
-    p->min_diff = FFMIN(p->min_diff == -1 ? DBL_MAX : p->min_diff, FFABS(d - (p->min_diff == -1 ? DBL_MAX : p->last)));
-    p->max_diff = FFMAX(p->max_diff, FFABS(d - (p->max_diff == -1 ? d : p->last)));
-    p->diff1_sum += FFABS(d - p->last);
+    p->min_diff = FFMIN(p->min_diff == -1 ? DBL_MAX : p->min_diff, fabs(d - (p->min_diff == -1 ? DBL_MAX : p->last)));
+    p->max_diff = FFMAX(p->max_diff, fabs(d - (p->max_diff == -1 ? d : p->last)));
+    p->diff1_sum += fabs(d - p->last);
     p->last = d;
     p->mask |= llrint(d * (UINT64_C(1) << 63));
 

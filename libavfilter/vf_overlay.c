@@ -245,35 +245,57 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_NONE
     };
 
-    AVFilterFormats *main_formats;
-    AVFilterFormats *overlay_formats;
+    AVFilterFormats *main_formats = NULL;
+    AVFilterFormats *overlay_formats = NULL;
+    int ret;
 
     switch (s->format) {
     case OVERLAY_FORMAT_YUV420:
-        main_formats    = ff_make_format_list(main_pix_fmts_yuv420);
-        overlay_formats = ff_make_format_list(overlay_pix_fmts_yuv420);
+        if (!(main_formats    = ff_make_format_list(main_pix_fmts_yuv420)) ||
+            !(overlay_formats = ff_make_format_list(overlay_pix_fmts_yuv420))) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
         break;
     case OVERLAY_FORMAT_YUV422:
-        main_formats    = ff_make_format_list(main_pix_fmts_yuv422);
-        overlay_formats = ff_make_format_list(overlay_pix_fmts_yuv422);
+        if (!(main_formats    = ff_make_format_list(main_pix_fmts_yuv422)) ||
+            !(overlay_formats = ff_make_format_list(overlay_pix_fmts_yuv422))) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
         break;
     case OVERLAY_FORMAT_YUV444:
-        main_formats    = ff_make_format_list(main_pix_fmts_yuv444);
-        overlay_formats = ff_make_format_list(overlay_pix_fmts_yuv444);
+        if (!(main_formats    = ff_make_format_list(main_pix_fmts_yuv444)) ||
+            !(overlay_formats = ff_make_format_list(overlay_pix_fmts_yuv444))) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
         break;
     case OVERLAY_FORMAT_RGB:
-        main_formats    = ff_make_format_list(main_pix_fmts_rgb);
-        overlay_formats = ff_make_format_list(overlay_pix_fmts_rgb);
+        if (!(main_formats    = ff_make_format_list(main_pix_fmts_rgb)) ||
+            !(overlay_formats = ff_make_format_list(overlay_pix_fmts_rgb))) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
         break;
     default:
         av_assert0(0);
     }
 
-    ff_formats_ref(main_formats,    &ctx->inputs [MAIN   ]->out_formats);
-    ff_formats_ref(overlay_formats, &ctx->inputs [OVERLAY]->out_formats);
-    ff_formats_ref(main_formats,    &ctx->outputs[MAIN   ]->in_formats );
+    if ((ret = ff_formats_ref(main_formats   , &ctx->inputs[MAIN]->out_formats   )) < 0 ||
+        (ret = ff_formats_ref(overlay_formats, &ctx->inputs[OVERLAY]->out_formats)) < 0 ||
+        (ret = ff_formats_ref(main_formats   , &ctx->outputs[MAIN]->in_formats   )) < 0)
+            goto fail;
 
     return 0;
+fail:
+    if (main_formats)
+        av_freep(&main_formats->formats);
+    av_freep(&main_formats);
+    if (overlay_formats)
+        av_freep(&overlay_formats->formats);
+    av_freep(&overlay_formats);
+    return ret;
 }
 
 static const enum AVPixelFormat alpha_pix_fmts[] = {
@@ -498,10 +520,10 @@ static void blend_image(AVFilterContext *ctx,
         for (i = 0; i < 3; i++) {
             int hsub = i ? s->hsub : 0;
             int vsub = i ? s->vsub : 0;
-            int src_wp = FF_CEIL_RSHIFT(src_w, hsub);
-            int src_hp = FF_CEIL_RSHIFT(src_h, vsub);
-            int dst_wp = FF_CEIL_RSHIFT(dst_w, hsub);
-            int dst_hp = FF_CEIL_RSHIFT(dst_h, vsub);
+            int src_wp = AV_CEIL_RSHIFT(src_w, hsub);
+            int src_hp = AV_CEIL_RSHIFT(src_h, vsub);
+            int dst_wp = AV_CEIL_RSHIFT(dst_w, hsub);
+            int dst_hp = AV_CEIL_RSHIFT(dst_h, vsub);
             int yp = y>>vsub;
             int xp = x>>hsub;
             uint8_t *s, *sp, *d, *dp, *a, *ap;
@@ -577,6 +599,11 @@ static AVFrame *do_blend(AVFilterContext *ctx, AVFrame *mainpic,
             NAN : mainpic->pts * av_q2d(inlink->time_base);
         s->var_values[VAR_POS] = pos == -1 ? NAN : pos;
 
+        s->var_values[VAR_OVERLAY_W] = s->var_values[VAR_OW] = second->width;
+        s->var_values[VAR_OVERLAY_H] = s->var_values[VAR_OH] = second->height;
+        s->var_values[VAR_MAIN_W   ] = s->var_values[VAR_MW] = mainpic->width;
+        s->var_values[VAR_MAIN_H   ] = s->var_values[VAR_MH] = mainpic->height;
+
         eval_expr(ctx);
         av_log(ctx, AV_LOG_DEBUG, "n:%f t:%f pos:%f x:%f xi:%d y:%f yi:%d\n",
                s->var_values[VAR_N], s->var_values[VAR_T], s->var_values[VAR_POS],
@@ -638,14 +665,14 @@ static const AVOption overlay_options[] = {
     { "eval", "specify when to evaluate expressions", OFFSET(eval_mode), AV_OPT_TYPE_INT, {.i64 = EVAL_MODE_FRAME}, 0, EVAL_MODE_NB-1, FLAGS, "eval" },
          { "init",  "eval expressions once during initialization", 0, AV_OPT_TYPE_CONST, {.i64=EVAL_MODE_INIT},  .flags = FLAGS, .unit = "eval" },
          { "frame", "eval expressions per-frame",                  0, AV_OPT_TYPE_CONST, {.i64=EVAL_MODE_FRAME}, .flags = FLAGS, .unit = "eval" },
-    { "rgb", "force packed RGB in input and output (deprecated)", OFFSET(allow_packed_rgb), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS },
-    { "shortest", "force termination when the shortest input terminates", OFFSET(dinput.shortest), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS },
+    { "rgb", "force packed RGB in input and output (deprecated)", OFFSET(allow_packed_rgb), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
+    { "shortest", "force termination when the shortest input terminates", OFFSET(dinput.shortest), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
     { "format", "set output format", OFFSET(format), AV_OPT_TYPE_INT, {.i64=OVERLAY_FORMAT_YUV420}, 0, OVERLAY_FORMAT_NB-1, FLAGS, "format" },
         { "yuv420", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV420}, .flags = FLAGS, .unit = "format" },
         { "yuv422", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV422}, .flags = FLAGS, .unit = "format" },
         { "yuv444", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV444}, .flags = FLAGS, .unit = "format" },
         { "rgb",    "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_RGB},    .flags = FLAGS, .unit = "format" },
-    { "repeatlast", "repeat overlay of the last overlay frame", OFFSET(dinput.repeatlast), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS },
+    { "repeatlast", "repeat overlay of the last overlay frame", OFFSET(dinput.repeatlast), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, FLAGS },
     { NULL }
 };
 

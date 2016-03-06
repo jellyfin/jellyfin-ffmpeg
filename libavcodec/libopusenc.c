@@ -180,12 +180,12 @@ static av_cold int libopus_encode_init(AVCodecContext *avctx)
         avctx->bit_rate = 64000 * opus->stream_count +
                           32000 * coupled_stream_count;
         av_log(avctx, AV_LOG_WARNING,
-               "No bit rate set. Defaulting to %d bps.\n", avctx->bit_rate);
+               "No bit rate set. Defaulting to %"PRId64" bps.\n", (int64_t)avctx->bit_rate);
     }
 
     if (avctx->bit_rate < 500 || avctx->bit_rate > 256000 * avctx->channels) {
-        av_log(avctx, AV_LOG_ERROR, "The bit rate %d bps is unsupported. "
-               "Please choose a value between 500 and %d.\n", avctx->bit_rate,
+        av_log(avctx, AV_LOG_ERROR, "The bit rate %"PRId64" bps is unsupported. "
+               "Please choose a value between 500 and %d.\n", (int64_t)avctx->bit_rate,
                256000 * avctx->channels);
         return AVERROR(EINVAL);
     }
@@ -361,7 +361,7 @@ static int libopus_encode(AVCodecContext *avctx, AVPacket *avpkt,
     discard_padding = opus->opts.packet_size - avpkt->duration;
     // Check if subtraction resulted in an overflow
     if ((discard_padding < opus->opts.packet_size) != (avpkt->duration > 0)) {
-        av_free_packet(avpkt);
+        av_packet_unref(avpkt);
         av_free(avpkt);
         return AVERROR(EINVAL);
     }
@@ -370,7 +370,7 @@ static int libopus_encode(AVCodecContext *avctx, AVPacket *avpkt,
                                                      AV_PKT_DATA_SKIP_SAMPLES,
                                                      10);
         if(!side_data) {
-            av_free_packet(avpkt);
+            av_packet_unref(avpkt);
             av_free(avpkt);
             return AVERROR(ENOMEM);
         }

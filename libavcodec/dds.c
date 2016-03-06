@@ -28,6 +28,7 @@
 
 #include <stdint.h>
 
+#include "libavutil/libm.h"
 #include "libavutil/imgutils.h"
 
 #include "avcodec.h"
@@ -508,7 +509,7 @@ static void run_postproc(AVCodecContext *avctx, AVFrame *frame)
 
             int d = (255 * 255 - x * x - y * y) / 2;
             if (d > 0)
-                z = rint(sqrtf(d));
+                z = lrint(sqrtf(d));
 
             src[0] = x;
             src[1] = y;
@@ -605,14 +606,14 @@ static int dds_decode(AVCodecContext *avctx, void *data,
     bytestream2_init(gbc, avpkt->data, avpkt->size);
 
     if (bytestream2_get_bytes_left(gbc) < 128) {
-        av_log(avctx, AV_LOG_ERROR, "Frame is too small (%d).",
+        av_log(avctx, AV_LOG_ERROR, "Frame is too small (%d).\n",
                bytestream2_get_bytes_left(gbc));
         return AVERROR_INVALIDDATA;
     }
 
     if (bytestream2_get_le32(gbc) != MKTAG('D', 'D', 'S', ' ') ||
         bytestream2_get_le32(gbc) != 124) { // header size
-        av_log(avctx, AV_LOG_ERROR, "Invalid DDS header.");
+        av_log(avctx, AV_LOG_ERROR, "Invalid DDS header.\n");
         return AVERROR_INVALIDDATA;
     }
 

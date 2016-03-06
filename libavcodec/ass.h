@@ -40,6 +40,7 @@
 #define ASS_DEFAULT_ITALIC      0
 #define ASS_DEFAULT_UNDERLINE   0
 #define ASS_DEFAULT_ALIGNMENT   2
+#define ASS_DEFAULT_BORDERSTYLE 1
 /** @} */
 
 /**
@@ -61,7 +62,7 @@ int ff_ass_subtitle_header(AVCodecContext *avctx,
                            const char *font, int font_size,
                            int color, int back_color,
                            int bold, int italic, int underline,
-                           int alignment);
+                           int border_style, int alignment);
 
 /**
  * Generate a suitable AVCodecContext.subtitle_header for SUBTITLE_ASS
@@ -95,7 +96,7 @@ int ff_ass_add_rect(AVSubtitle *sub, const char *dialog,
                     int ts_start, int duration, int raw);
 
 /**
- * Same as ff_ass_add_rect_bprint, but taking an AVBPrint buffer instead of a
+ * Same as ff_ass_add_rect, but taking an AVBPrint buffer instead of a
  * string, and assuming raw=0.
  */
 int ff_ass_add_rect_bprint(AVSubtitle *sub, AVBPrint *buf,

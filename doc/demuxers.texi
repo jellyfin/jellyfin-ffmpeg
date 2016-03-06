@@ -204,7 +204,42 @@ Currently, the only conversion is adding the h264_mp4toannexb bitstream
 filter to H.264 streams in MP4 format. This is necessary in particular if
 there are resolution changes.
 
+@item segment_time_metadata
+If set to 1, every packet will contain the @var{lavf.concat.start_time} and the
+@var{lavf.concat.duration} packet metadata values which are the start_time and
+the duration of the respective file segments in the concatenated output
+expressed in microseconds. The duration metadata is only set if it is known
+based on the concat file.
+The default is 0.
+
 @end table
+
+@subsection Examples
+
+@itemize
+@item
+Use absolute filenames and include some comments:
+@example
+# my first filename
+file /mnt/share/file-1.wav
+# my second filename including whitespace
+file '/mnt/share/file 2.wav'
+# my third filename including whitespace plus single quote
+file '/mnt/share/file 3'\''.wav'
+@end example
+
+@item
+Allow for input format auto-probing, use safe filenames and set the duration of
+the first file:
+@example
+ffconcat version 1.0
+
+file file-1.wav
+duration 20.0
+
+file subdir/file-2.wav
+@end example
+@end itemize
 
 @section flv
 
@@ -229,18 +264,6 @@ track. Track indexes start at 0. The demuxer exports the number of tracks as
 @var{tracks} meta data entry.
 
 For very large files, the @option{max_size} option may have to be adjusted.
-
-@section libquvi
-
-Play media from Internet services using the quvi project.
-
-The demuxer accepts a @option{format} option to request a specific quality. It
-is by default set to @var{best}.
-
-See @url{http://quvi.sourceforge.net/} for more information.
-
-FFmpeg needs to be built with @code{--enable-libquvi} for this demuxer to be
-enabled.
 
 @section gif
 
@@ -457,6 +480,21 @@ Show the detected raw packet size, cannot be set by the user.
 Scan and combine all PMTs. The value is an integer with value from -1
 to 1 (-1 means automatic setting, 1 means enabled, 0 means
 disabled). Default value is -1.
+@end table
+
+@section mpjpeg
+
+MJPEG encapsulated in multi-part MIME demuxer.
+
+This demuxer allows reading of MJPEG, where each frame is represented as a part of
+multipart/x-mixed-replace stream.
+@table @option
+
+@item strict_mime_boundary
+Default implementation applies a relaxed standard to multi-part MIME boundary detection,
+to prevent regression with numerous existing endpoints not generating a proper MIME
+MJPEG stream. Turning this option on by setting it to 1 will result in a stricter check
+of the boundary value.
 @end table
 
 @section rawvideo

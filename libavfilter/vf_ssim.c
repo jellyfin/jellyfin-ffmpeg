@@ -176,7 +176,7 @@ static float ssim_plane(SSIMDSPContext *dsp,
 
 static double ssim_db(double ssim, double weight)
 {
-    return 10 * (log(weight) / log(10) - log(weight - ssim) / log(10));
+    return 10 * log10(weight / (weight - ssim));
 }
 
 static AVFrame *do_ssim(AVFilterContext *ctx, AVFrame *main,
@@ -224,14 +224,18 @@ static av_cold int init(AVFilterContext *ctx)
     SSIMContext *s = ctx->priv;
 
     if (s->stats_file_str) {
-        s->stats_file = fopen(s->stats_file_str, "w");
-        if (!s->stats_file) {
-            int err = AVERROR(errno);
-            char buf[128];
-            av_strerror(err, buf, sizeof(buf));
-            av_log(ctx, AV_LOG_ERROR, "Could not open stats file %s: %s\n",
-                   s->stats_file_str, buf);
-            return err;
+        if (!strcmp(s->stats_file_str, "-")) {
+            s->stats_file = stdout;
+        } else {
+            s->stats_file = fopen(s->stats_file_str, "w");
+            if (!s->stats_file) {
+                int err = AVERROR(errno);
+                char buf[128];
+                av_strerror(err, buf, sizeof(buf));
+                av_log(ctx, AV_LOG_ERROR, "Could not open stats file %s: %s\n",
+                       s->stats_file_str, buf);
+                return err;
+            }
         }
     }
 
@@ -284,9 +288,9 @@ static int config_input_ref(AVFilterLink *inlink)
     s->comps[2] = s->is_rgb ? 'B' : 'V';
     s->comps[3] = 'A';
 
-    s->planeheight[1] = s->planeheight[2] = FF_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
+    s->planeheight[1] = s->planeheight[2] = AV_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
     s->planeheight[0] = s->planeheight[3] = inlink->h;
-    s->planewidth[1]  = s->planewidth[2]  = FF_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
+    s->planewidth[1]  = s->planewidth[2]  = AV_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
     s->planewidth[0]  = s->planewidth[3]  = inlink->w;
     for (i = 0; i < s->nb_components; i++)
         sum += s->planeheight[i] * s->planewidth[i];
@@ -346,7 +350,8 @@ static av_cold void uninit(AVFilterContext *ctx)
         buf[0] = 0;
         for (i = 0; i < s->nb_components; i++) {
             int c = s->is_rgb ? s->rgba_map[i] : i;
-            av_strlcatf(buf, sizeof(buf), " %c:%f", s->comps[i], s->ssim[c] / s->nb_frames);
+            av_strlcatf(buf, sizeof(buf), " %c:%f (%f)", s->comps[i], s->ssim[c] / s->nb_frames,
+                        ssim_db(s->ssim[c], s->nb_frames));
         }
         av_log(ctx, AV_LOG_INFO, "SSIM%s All:%f (%f)\n", buf,
                s->ssim_total / s->nb_frames, ssim_db(s->ssim_total, s->nb_frames));
@@ -354,7 +359,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     ff_dualinput_uninit(&s->dinput);
 
-    if (s->stats_file)
+    if (s->stats_file && s->stats_file != stdout)
         fclose(s->stats_file);
 
     av_freep(&s->temp);

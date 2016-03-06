@@ -36,7 +36,7 @@
 /** Total number of codebooks, including special ones **/
 #define CB_TOT_ALL 15
 
-#define AAC_MAX_CHANNELS 6
+#define AAC_MAX_CHANNELS 8
 
 extern const uint8_t *ff_aac_swb_size_1024[];
 extern const int      ff_aac_swb_size_1024_len;
@@ -44,13 +44,15 @@ extern const uint8_t *ff_aac_swb_size_128[];
 extern const int      ff_aac_swb_size_128_len;
 
 /** default channel configurations */
-static const uint8_t aac_chan_configs[6][5] = {
-    {1, TYPE_SCE},                               // 1 channel  - single channel element
-    {1, TYPE_CPE},                               // 2 channels - channel pair
-    {2, TYPE_SCE, TYPE_CPE},                     // 3 channels - center + stereo
-    {3, TYPE_SCE, TYPE_CPE, TYPE_SCE},           // 4 channels - front center + stereo + back center
-    {3, TYPE_SCE, TYPE_CPE, TYPE_CPE},           // 5 channels - front center + stereo + back stereo
-    {4, TYPE_SCE, TYPE_CPE, TYPE_CPE, TYPE_LFE}, // 6 channels - front center + stereo + back stereo + LFE
+static const uint8_t aac_chan_configs[AAC_MAX_CHANNELS][6] = {
+    {1, TYPE_SCE},                                         // 1 channel  - single channel element
+    {1, TYPE_CPE},                                         // 2 channels - channel pair
+    {2, TYPE_SCE, TYPE_CPE},                               // 3 channels - center + stereo
+    {3, TYPE_SCE, TYPE_CPE, TYPE_SCE},                     // 4 channels - front center + stereo + back center
+    {3, TYPE_SCE, TYPE_CPE, TYPE_CPE},                     // 5 channels - front center + stereo + back stereo
+    {4, TYPE_SCE, TYPE_CPE, TYPE_CPE, TYPE_LFE},           // 6 channels - front center + stereo + back stereo + LFE
+    {0},                                                   // 7 channels - invalid without PCE
+    {5, TYPE_SCE, TYPE_CPE, TYPE_CPE, TYPE_CPE, TYPE_LFE}, // 8 channels - front center + front stereo + side stereo + back stereo + LFE
 };
 
 /**
@@ -63,6 +65,8 @@ static const uint8_t aac_chan_maps[AAC_MAX_CHANNELS][AAC_MAX_CHANNELS] = {
     { 2, 0, 1, 3 },
     { 2, 0, 1, 3, 4 },
     { 2, 0, 1, 4, 5, 3 },
+    { 0 },
+    { 2, 0, 1, 6, 7, 4, 5, 3 },
 };
 
 /* duplicated from avpriv_mpeg4audio_sample_rates to avoid shared build
@@ -109,5 +113,16 @@ static const uint8_t aac_cb_in_map[CB_TOT_ALL+1] = {0,1,2,3,4,5,6,7,8,9,10,11,0,
 
 static const uint8_t aac_cb_range [12] = {0, 3, 3, 3, 3, 9, 9, 8, 8, 13, 13, 17};
 static const uint8_t aac_cb_maxval[12] = {0, 1, 1, 2, 2, 4, 4, 7, 7, 12, 12, 16};
+
+static const unsigned char aac_maxval_cb[] = {
+    0, 1, 3, 5, 5, 7, 7, 7, 9, 9, 9, 9, 9, 11
+};
+
+static const int aacenc_profiles[] = {
+    FF_PROFILE_AAC_MAIN,
+    FF_PROFILE_AAC_LOW,
+    FF_PROFILE_AAC_LTP,
+    FF_PROFILE_MPEG2_AAC_LOW,
+};
 
 #endif /* AVCODEC_AACENCTAB_H */

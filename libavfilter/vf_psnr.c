@@ -72,7 +72,7 @@ static inline unsigned pow2(unsigned base)
 
 static inline double get_psnr(double mse, uint64_t nb_frames, int max)
 {
-    return 10.0 * log(pow2(max) / (mse / nb_frames)) / log(10.0);
+    return 10.0 * log10(pow2(max) / (mse / nb_frames));
 }
 
 static uint64_t sse_line_8bit(const uint8_t *main_line,  const uint8_t *ref_line, int outw)
@@ -194,14 +194,18 @@ static av_cold int init(AVFilterContext *ctx)
     s->max_mse = -INFINITY;
 
     if (s->stats_file_str) {
-        s->stats_file = fopen(s->stats_file_str, "w");
-        if (!s->stats_file) {
-            int err = AVERROR(errno);
-            char buf[128];
-            av_strerror(err, buf, sizeof(buf));
-            av_log(ctx, AV_LOG_ERROR, "Could not open stats file %s: %s\n",
-                   s->stats_file_str, buf);
-            return err;
+        if (!strcmp(s->stats_file_str, "-")) {
+            s->stats_file = stdout;
+        } else {
+            s->stats_file = fopen(s->stats_file_str, "w");
+            if (!s->stats_file) {
+                int err = AVERROR(errno);
+                char buf[128];
+                av_strerror(err, buf, sizeof(buf));
+                av_log(ctx, AV_LOG_ERROR, "Could not open stats file %s: %s\n",
+                       s->stats_file_str, buf);
+                return err;
+            }
         }
     }
 
@@ -251,10 +255,10 @@ static int config_input_ref(AVFilterLink *inlink)
         return AVERROR(EINVAL);
     }
 
-    s->max[0] = (1 << (desc->comp[0].depth_minus1 + 1)) - 1;
-    s->max[1] = (1 << (desc->comp[1].depth_minus1 + 1)) - 1;
-    s->max[2] = (1 << (desc->comp[2].depth_minus1 + 1)) - 1;
-    s->max[3] = (1 << (desc->comp[3].depth_minus1 + 1)) - 1;
+    s->max[0] = (1 << desc->comp[0].depth) - 1;
+    s->max[1] = (1 << desc->comp[1].depth) - 1;
+    s->max[2] = (1 << desc->comp[2].depth) - 1;
+    s->max[3] = (1 << desc->comp[3].depth) - 1;
 
     s->is_rgb = ff_fill_rgba_map(s->rgba_map, inlink->format) >= 0;
     s->comps[0] = s->is_rgb ? 'r' : 'y' ;
@@ -262,9 +266,9 @@ static int config_input_ref(AVFilterLink *inlink)
     s->comps[2] = s->is_rgb ? 'b' : 'v' ;
     s->comps[3] = 'a';
 
-    s->planeheight[1] = s->planeheight[2] = FF_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
+    s->planeheight[1] = s->planeheight[2] = AV_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
     s->planeheight[0] = s->planeheight[3] = inlink->h;
-    s->planewidth[1]  = s->planewidth[2]  = FF_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
+    s->planewidth[1]  = s->planewidth[2]  = AV_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
     s->planewidth[0]  = s->planewidth[3]  = inlink->w;
     sum = 0;
     for (j = 0; j < s->nb_components; j++)
@@ -274,9 +278,9 @@ static int config_input_ref(AVFilterLink *inlink)
         s->average_max += s->max[j] * s->planeweight[j];
     }
 
-    s->dsp.sse_line = desc->comp[0].depth_minus1 > 7 ? sse_line_16bit : sse_line_8bit;
+    s->dsp.sse_line = desc->comp[0].depth > 8 ? sse_line_16bit : sse_line_8bit;
     if (ARCH_X86)
-        ff_psnr_init_x86(&s->dsp, desc->comp[0].depth_minus1 + 1);
+        ff_psnr_init_x86(&s->dsp, desc->comp[0].depth);
 
     return 0;
 }
@@ -322,10 +326,10 @@ static av_cold void uninit(AVFilterContext *ctx)
         buf[0] = 0;
         for (j = 0; j < s->nb_components; j++) {
             int c = s->is_rgb ? s->rgba_map[j] : j;
-            av_strlcatf(buf, sizeof(buf), " %c:%0.2f", s->comps[j],
+            av_strlcatf(buf, sizeof(buf), " %c:%f", s->comps[j],
                         get_psnr(s->mse_comp[c], s->nb_frames, s->max[c]));
         }
-        av_log(ctx, AV_LOG_INFO, "PSNR%s average:%0.2f min:%0.2f max:%0.2f\n",
+        av_log(ctx, AV_LOG_INFO, "PSNR%s average:%f min:%f max:%f\n",
                buf,
                get_psnr(s->mse, s->nb_frames, s->average_max),
                get_psnr(s->max_mse, 1, s->average_max),
@@ -334,7 +338,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     ff_dualinput_uninit(&s->dinput);
 
-    if (s->stats_file)
+    if (s->stats_file && s->stats_file != stdout)
         fclose(s->stats_file);
 }
 

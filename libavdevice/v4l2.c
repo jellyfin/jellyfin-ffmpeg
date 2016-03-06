@@ -126,7 +126,7 @@ static int device_open(AVFormatContext *ctx)
 #if CONFIG_LIBV4L2
         SET_WRAPPERS(v4l2_);
 #else
-        av_log(ctx, AV_LOG_ERROR, "libavdevice is not build with libv4l2 support.\n");
+        av_log(ctx, AV_LOG_ERROR, "libavdevice is not built with libv4l2 support.\n");
         return AVERROR(EINVAL);
 #endif
     } else {
@@ -394,13 +394,6 @@ static int mmap_init(AVFormatContext *ctx)
     return 0;
 }
 
-#if FF_API_DESTRUCT_PACKET
-static void dummy_release_buffer(AVPacket *pkt)
-{
-    av_assert0(0);
-}
-#endif
-
 static int enqueue_buffer(struct video_data *s, struct v4l2_buffer *buf)
 {
     int res = 0;
@@ -557,7 +550,7 @@ static int mmap_read_frame(AVFormatContext *ctx, AVPacket *pkt)
 
         res = enqueue_buffer(s, &buf);
         if (res) {
-            av_free_packet(pkt);
+            av_packet_unref(pkt);
             return res;
         }
     } else {
@@ -565,11 +558,6 @@ static int mmap_read_frame(AVFormatContext *ctx, AVPacket *pkt)
 
         pkt->data     = s->buf_start[buf.index];
         pkt->size     = buf.bytesused;
-#if FF_API_DESTRUCT_PACKET
-FF_DISABLE_DEPRECATION_WARNINGS
-        pkt->destruct = dummy_release_buffer;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
         buf_descriptor = av_malloc(sizeof(struct buff_data));
         if (!buf_descriptor) {
@@ -951,8 +939,8 @@ static int v4l2_read_header(AVFormatContext *ctx)
         goto fail;
 
     st->codec->pix_fmt = ff_fmt_v4l2ff(desired_format, codec_id);
-    s->frame_size =
-        avpicture_get_size(st->codec->pix_fmt, s->width, s->height);
+    s->frame_size = av_image_get_buffer_size(st->codec->pix_fmt,
+                                             s->width, s->height, 1);
 
     if ((res = mmap_init(ctx)) ||
         (res = mmap_start(ctx)) < 0)
@@ -1124,7 +1112,7 @@ static const AVOption options[] = {
     { "default",      "use timestamps from the kernel",                           OFFSET(ts_mode),      AV_OPT_TYPE_CONST,  {.i64 = V4L_TS_DEFAULT  }, 0, 2, DEC, "timestamps" },
     { "abs",          "use absolute timestamps (wall clock)",                     OFFSET(ts_mode),      AV_OPT_TYPE_CONST,  {.i64 = V4L_TS_ABS      }, 0, 2, DEC, "timestamps" },
     { "mono2abs",     "force conversion from monotonic to absolute timestamps",   OFFSET(ts_mode),      AV_OPT_TYPE_CONST,  {.i64 = V4L_TS_MONO2ABS }, 0, 2, DEC, "timestamps" },
-    { "use_libv4l2",  "use libv4l2 (v4l-utils) conversion functions",             OFFSET(use_libv4l2),  AV_OPT_TYPE_INT,    {.i64 = 0}, 0, 1, DEC },
+    { "use_libv4l2",  "use libv4l2 (v4l-utils) conversion functions",             OFFSET(use_libv4l2),  AV_OPT_TYPE_BOOL,   {.i64 = 0}, 0, 1, DEC },
     { NULL },
 };
 

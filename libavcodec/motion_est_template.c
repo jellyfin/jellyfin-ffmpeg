@@ -24,6 +24,7 @@
  * Motion estimation template.
  */
 
+#include "libavutil/qsort.h"
 #include "mpegvideo.h"
 
 //Let us hope gcc will remove the unused vars ...(gcc 3.2.2 seems to do it ...)
@@ -702,7 +703,8 @@ static int sab_diamond_search(MpegEncContext * s, int *best, int dmin,
 
         key += (1<<(ME_MAP_MV_BITS-1)) + (1<<(2*ME_MAP_MV_BITS-1));
 
-        if((key&((-1)<<(2*ME_MAP_MV_BITS))) != map_generation) continue;
+        if ((key & (-(1 << (2 * ME_MAP_MV_BITS)))) != map_generation)
+            continue;
 
         minima[j].height= score_map[i];
         minima[j].x= key & ((1<<ME_MAP_MV_BITS)-1); key>>=ME_MAP_MV_BITS;
@@ -722,7 +724,7 @@ static int sab_diamond_search(MpegEncContext * s, int *best, int dmin,
         j++;
     }
 
-    qsort(minima, j, sizeof(Minima), minima_cmp);
+    AV_QSORT(minima, j, Minima, minima_cmp);
 
     for(; j<minima_count; j++){
         minima[j].height=256*256*256*64;

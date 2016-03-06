@@ -66,6 +66,15 @@ fate-filter-lavd-life: CMD = framecrc -f lavfi -i life=s=40x40:r=5:seed=42:mold=
 FATE_FILTER-$(call ALLYES, AVDEVICE TESTSRC_FILTER) += fate-filter-lavd-testsrc
 fate-filter-lavd-testsrc: CMD = framecrc -f lavfi -i testsrc=r=7:n=2:d=10
 
+FATE_FILTER-$(call ALLYES, TESTSRC2_FILTER) += fate-filter-testsrc2-yuv420p
+fate-filter-testsrc2-yuv420p: CMD = framecrc -lavfi testsrc2=r=7:d=10 -pix_fmt yuv420p
+
+FATE_FILTER-$(call ALLYES, TESTSRC2_FILTER) += fate-filter-testsrc2-yuv444p
+fate-filter-testsrc2-yuv444p: CMD = framecrc -lavfi testsrc2=r=7:d=10 -pix_fmt yuv444p
+
+FATE_FILTER-$(call ALLYES, TESTSRC2_FILTER) += fate-filter-testsrc2-rgb24
+fate-filter-testsrc2-rgb24: CMD = framecrc -lavfi testsrc2=r=7:d=10 -pix_fmt rgb24
+
 FATE_FILTER-$(call ALLYES, AVDEVICE TESTSRC_FILTER FORMAT_FILTER CONCAT_FILTER SCALE_FILTER) += fate-filter-lavd-scalenorm
 fate-filter-lavd-scalenorm: tests/data/filtergraphs/scalenorm
 fate-filter-lavd-scalenorm: CMD = framecrc -f lavfi -graph_file $(TARGET_PATH)/tests/data/filtergraphs/scalenorm -i dummy
@@ -320,6 +329,9 @@ FATE_FILTER-$(call ALLYES, TESTSRC_FILTER SINE_FILTER CONCAT_FILTER) += fate-fil
 fate-filter-concat: tests/data/filtergraphs/concat
 fate-filter-concat: CMD = framecrc -filter_complex_script $(TARGET_PATH)/tests/data/filtergraphs/concat
 
+FATE_FILTER-$(call ALLYES, TESTSRC2_FILTER FPS_FILTER MPDECIMATE_FILTER) += fate-filter-mpdecimate
+fate-filter-mpdecimate: CMD = framecrc -lavfi testsrc2=r=2:d=10,fps=3,mpdecimate -r 3 -pix_fmt yuv420p
+
 FATE_FILTER_VSYNTH-$(call ALLYES, FORMAT_FILTER SPLIT_FILTER ALPHAEXTRACT_FILTER ALPHAMERGE_FILTER) += fate-filter-alphaextract_alphamerge_rgb
 fate-filter-alphaextract_alphamerge_rgb: tests/data/filtergraphs/alphamerge_alphaextract_rgb
 fate-filter-alphaextract_alphamerge_rgb: CMD = framecrc -c:v pgmyuv -i $(SRC) -filter_complex_script $(TARGET_PATH)/tests/data/filtergraphs/alphamerge_alphaextract_rgb
@@ -348,6 +360,10 @@ fate-filter-scale200: CMD = video_filter "scale=w=200:h=200"
 
 FATE_FILTER_VSYNTH-$(CONFIG_SCALE_FILTER) += fate-filter-scale500
 fate-filter-scale500: CMD = video_filter "scale=w=500:h=500"
+
+FATE_FILTER_VSYNTH-$(CONFIG_SCALE_FILTER) += fate-filter-scalechroma
+fate-filter-scalechroma: tests/data/vsynth1.yuv
+fate-filter-scalechroma: CMD = framecrc -flags bitexact -s 352x288 -pix_fmt yuv444p -i tests/data/vsynth1.yuv -pix_fmt yuv420p -sws_flags +bitexact -vf scale=out_v_chr_pos=33:out_h_chr_pos=151
 
 FATE_FILTER_VSYNTH-$(CONFIG_VFLIP_FILTER) += fate-filter-vflip
 fate-filter-vflip: CMD = video_filter "vflip"
@@ -480,7 +496,7 @@ fate-filter-tile: CMD = video_filter "tile=3x3:nb_frames=5:padding=7:margin=2"
 
 
 tests/pixfmts.mak: TAG = GEN
-tests/pixfmts.mak: ffmpeg$(EXESUF)
+tests/pixfmts.mak: ffmpeg$(PROGSSUF)$(EXESUF)
 	$(M)printf "PIXFMTS = " > $@
 	$(Q)$(TARGET_EXEC) $(TARGET_PATH)/$< -pix_fmts list 2> /dev/null | awk 'NR > 8 && /^IO/ { printf $$2 " " }' >> $@
 	$(Q)printf "\n" >> $@
@@ -575,7 +591,7 @@ FATE_AVCONV-$(call DEMDEC, IMAGE2, PGMYUV) += $(FATE_FILTER_VSYNTH-yes)
 #
 # Metadata tests
 #
-FILTER_METADATA_COMMAND = ffprobe$(EXESUF) -of compact=p=0 -show_entries frame=pkt_pts:frame_tags -bitexact -f lavfi
+FILTER_METADATA_COMMAND = ffprobe$(PROGSSUF)$(EXESUF) -of compact=p=0 -show_entries frame=pkt_pts:frame_tags -bitexact -f lavfi
 
 SCENEDETECT_DEPS = FFPROBE LAVFI_INDEV MOVIE_FILTER SELECT_FILTER SCALE_FILTER \
                    AVCODEC AVDEVICE MOV_DEMUXER SVQ3_DECODER ZLIB

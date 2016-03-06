@@ -554,7 +554,7 @@ static int Rgb16ToPlanarRgb16Wrapper(SwsContext *c, const uint8_t *src[],
     int stride1023[] = { dstStride[1], dstStride[0], dstStride[2], dstStride[3] };
     const AVPixFmtDescriptor *src_format = av_pix_fmt_desc_get(c->srcFormat);
     const AVPixFmtDescriptor *dst_format = av_pix_fmt_desc_get(c->dstFormat);
-    int bpc = dst_format->comp[0].depth_minus1 + 1;
+    int bpc = dst_format->comp[0].depth;
     int alpha = src_format->flags & AV_PIX_FMT_FLAG_ALPHA;
     int swap = 0;
     if ( HAVE_BIGENDIAN && !(src_format->flags & AV_PIX_FMT_FLAG_BE) ||
@@ -725,7 +725,7 @@ static int planarRgb16ToRgb16Wrapper(SwsContext *c, const uint8_t *src[],
     int stride201[] = { srcStride[2], srcStride[0], srcStride[1], srcStride[3] };
     const AVPixFmtDescriptor *src_format = av_pix_fmt_desc_get(c->srcFormat);
     const AVPixFmtDescriptor *dst_format = av_pix_fmt_desc_get(c->dstFormat);
-    int bits_per_sample = src_format->comp[0].depth_minus1 + 1;
+    int bits_per_sample = src_format->comp[0].depth;
     int swap = 0;
     if ( HAVE_BIGENDIAN && !(src_format->flags & AV_PIX_FMT_FLAG_BE) ||
         !HAVE_BIGENDIAN &&   src_format->flags & AV_PIX_FMT_FLAG_BE)
@@ -1413,9 +1413,9 @@ static int planarCopyWrapper(SwsContext *c, const uint8_t *src[],
     const AVPixFmtDescriptor *desc_dst = av_pix_fmt_desc_get(c->dstFormat);
     int plane, i, j;
     for (plane = 0; plane < 4; plane++) {
-        int length = (plane == 0 || plane == 3) ? c->srcW  : FF_CEIL_RSHIFT(c->srcW,   c->chrDstHSubSample);
-        int y =      (plane == 0 || plane == 3) ? srcSliceY: FF_CEIL_RSHIFT(srcSliceY, c->chrDstVSubSample);
-        int height = (plane == 0 || plane == 3) ? srcSliceH: FF_CEIL_RSHIFT(srcSliceH, c->chrDstVSubSample);
+        int length = (plane == 0 || plane == 3) ? c->srcW  : AV_CEIL_RSHIFT(c->srcW,   c->chrDstHSubSample);
+        int y =      (plane == 0 || plane == 3) ? srcSliceY: AV_CEIL_RSHIFT(srcSliceY, c->chrDstVSubSample);
+        int height = (plane == 0 || plane == 3) ? srcSliceH: AV_CEIL_RSHIFT(srcSliceH, c->chrDstVSubSample);
         const uint8_t *srcPtr = src[plane];
         uint8_t *dstPtr = dst[plane] + dstStride[plane] * y;
         int shiftonly = plane == 1 || plane == 2 || (!c->srcRange && plane == 0);
@@ -1427,7 +1427,7 @@ static int planarCopyWrapper(SwsContext *c, const uint8_t *src[],
         if (!src[plane] || (plane == 1 && !src[2])) {
             if (is16BPS(c->dstFormat) || isNBPS(c->dstFormat)) {
                 fillPlane16(dst[plane], dstStride[plane], length, height, y,
-                        plane == 3, desc_dst->comp[plane].depth_minus1,
+                        plane == 3, desc_dst->comp[plane].depth,
                         isBE(c->dstFormat));
             } else {
                 fillPlane(dst[plane], dstStride[plane], length, height, y,
@@ -1437,8 +1437,8 @@ static int planarCopyWrapper(SwsContext *c, const uint8_t *src[],
             if(isNBPS(c->srcFormat) || isNBPS(c->dstFormat)
                || (is16BPS(c->srcFormat) != is16BPS(c->dstFormat))
             ) {
-                const int src_depth = desc_src->comp[plane].depth_minus1 + 1;
-                const int dst_depth = desc_dst->comp[plane].depth_minus1 + 1;
+                const int src_depth = desc_src->comp[plane].depth;
+                const int dst_depth = desc_dst->comp[plane].depth;
                 const uint16_t *srcPtr2 = (const uint16_t *) srcPtr;
                 uint16_t *dstPtr2 = (uint16_t*)dstPtr;
 
@@ -1553,7 +1553,7 @@ static int planarCopyWrapper(SwsContext *c, const uint8_t *src[],
             } else {
                 if (is16BPS(c->srcFormat) && is16BPS(c->dstFormat))
                     length *= 2;
-                else if (!desc_src->comp[0].depth_minus1)
+                else if (desc_src->comp[0].depth == 1)
                     length >>= 3; // monowhite/black
                 for (i = 0; i < height; i++) {
                     memcpy(dstPtr, srcPtr, length);
@@ -1658,7 +1658,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
          dstFormat == AV_PIX_FMT_BGRA64LE || dstFormat == AV_PIX_FMT_BGRA64BE))
         c->swscale = planarRgb16ToRgb16Wrapper;
 
-    if (av_pix_fmt_desc_get(srcFormat)->comp[0].depth_minus1 == 7 &&
+    if (av_pix_fmt_desc_get(srcFormat)->comp[0].depth == 8 &&
         isPackedRGB(srcFormat) && dstFormat == AV_PIX_FMT_GBRP)
         c->swscale = rgbToPlanarRgbWrapper;
 
@@ -1762,7 +1762,9 @@ void ff_get_unscaled_swscale(SwsContext *c)
          c->chrDstHSubSample == c->chrSrcHSubSample &&
          c->chrDstVSubSample == c->chrSrcVSubSample &&
          dstFormat != AV_PIX_FMT_NV12 && dstFormat != AV_PIX_FMT_NV21 &&
-         srcFormat != AV_PIX_FMT_NV12 && srcFormat != AV_PIX_FMT_NV21))
+         dstFormat != AV_PIX_FMT_P010LE && dstFormat != AV_PIX_FMT_P010BE &&
+         srcFormat != AV_PIX_FMT_NV12 && srcFormat != AV_PIX_FMT_NV21 &&
+         srcFormat != AV_PIX_FMT_P010LE && srcFormat != AV_PIX_FMT_P010BE))
     {
         if (isPacked(c->srcFormat))
             c->swscale = packedCopyWrapper;
@@ -1772,8 +1774,8 @@ void ff_get_unscaled_swscale(SwsContext *c)
 
     if (ARCH_PPC)
         ff_get_unscaled_swscale_ppc(c);
-//     if (ARCH_ARM)
-//         ff_get_unscaled_swscale_arm(c);
+     if (ARCH_ARM)
+         ff_get_unscaled_swscale_arm(c);
 }
 
 /* Convert the palette to the same packed 32-bit format as the palette */

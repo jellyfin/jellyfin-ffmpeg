@@ -19,6 +19,7 @@
  */
 
 #include "libavutil/intmath.h"
+#include "libavutil/libm.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
@@ -40,7 +41,14 @@ static av_cold int encode_init(AVCodecContext *avctx)
     int plane_index, ret;
     int i;
 
-    if(avctx->prediction_method == DWT_97
+#if FF_API_PRIVATE_OPT
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (avctx->prediction_method)
+        s->pred = avctx->prediction_method;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
+    if(s->pred == DWT_97
        && (avctx->flags & AV_CODEC_FLAG_QSCALE)
        && avctx->global_quality == 0){
         av_log(avctx, AV_LOG_ERROR, "The 9/7 wavelet is incompatible with lossless mode.\n");
@@ -53,7 +61,7 @@ FF_DISABLE_DEPRECATION_WARNINGS
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 
-    s->spatial_decomposition_type= avctx->prediction_method; //FIXME add decorrelator type r transform_type
+    s->spatial_decomposition_type= s->pred; //FIXME add decorrelator type r transform_type
 
     s->mv_scale       = (avctx->flags & AV_CODEC_FLAG_QPEL) ? 2 : 4;
     s->block_max_depth= (avctx->flags & AV_CODEC_FLAG_4MV ) ? 1 : 0;
@@ -1470,7 +1478,7 @@ static void update_last_header_values(SnowContext *s){
 }
 
 static int qscale2qlog(int qscale){
-    return rint(QROOT*log2(qscale / (float)FF_QP2LAMBDA))
+    return lrint(QROOT*log2(qscale / (float)FF_QP2LAMBDA))
            + 61*QROOT/8; ///< 64 > 60
 }
 
@@ -1547,7 +1555,7 @@ static void calculate_visual_weight(SnowContext *s, Plane *p){
                 }
             }
 
-            b->qlog= (int)(log(352256.0/sqrt(error)) / log(pow(2.0, 1.0/QROOT))+0.5);
+            b->qlog= (int)(QROOT * log2(352256.0/sqrt(error)) + 0.5);
         }
     }
 }
@@ -1557,7 +1565,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 {
     SnowContext *s = avctx->priv_data;
     RangeCoder * const c= &s->c;
-    AVFrame *pic = pict;
+    AVFrame *pic;
     const int width= s->avctx->width;
     const int height= s->avctx->height;
     int level, orientation, plane_index, i, y, ret;
@@ -1573,18 +1581,20 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     for(i=0; i < s->nb_planes; i++){
         int hshift= i ? s->chroma_h_shift : 0;
         int vshift= i ? s->chroma_v_shift : 0;
-        for(y=0; y<FF_CEIL_RSHIFT(height, vshift); y++)
+        for(y=0; y<AV_CEIL_RSHIFT(height, vshift); y++)
             memcpy(&s->input_picture->data[i][y * s->input_picture->linesize[i]],
                    &pict->data[i][y * pict->linesize[i]],
-                   FF_CEIL_RSHIFT(width, hshift));
+                   AV_CEIL_RSHIFT(width, hshift));
         s->mpvencdsp.draw_edges(s->input_picture->data[i], s->input_picture->linesize[i],
-                                FF_CEIL_RSHIFT(width, hshift), FF_CEIL_RSHIFT(height, vshift),
+                                AV_CEIL_RSHIFT(width, hshift), AV_CEIL_RSHIFT(height, vshift),
                                 EDGE_WIDTH >> hshift, EDGE_WIDTH >> vshift,
                                 EDGE_TOP | EDGE_BOTTOM);
 
     }
     emms_c();
-    s->new_picture = pict;
+    pic = s->input_picture;
+    pic->pict_type = pict->pict_type;
+    pic->quality = pict->quality;
 
     s->m.picture_number= avctx->frame_number;
     if(avctx->flags&AV_CODEC_FLAG_PASS2){
@@ -1736,10 +1746,17 @@ redo_frame:
                 }
             predict_plane(s, s->spatial_idwt_buffer, plane_index, 0);
 
+#if FF_API_PRIVATE_OPT
+FF_DISABLE_DEPRECATION_WARNINGS
+            if(s->avctx->scenechange_threshold)
+                s->scenechange_threshold = s->avctx->scenechange_threshold;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
             if(   plane_index==0
                && pic->pict_type == AV_PICTURE_TYPE_P
                && !(avctx->flags&AV_CODEC_FLAG_PASS2)
-               && s->m.me.scene_change_score > s->avctx->scenechange_threshold){
+               && s->m.me.scene_change_score > s->scenechange_threshold){
                 ff_init_range_encoder(c, pkt->data, pkt->size);
                 ff_build_rac_states(c, (1LL<<32)/20, 256-8);
                 pic->pict_type= AV_PICTURE_TYPE_I;
@@ -1835,7 +1852,7 @@ redo_frame:
                     }
                 }
             s->avctx->error[plane_index] += error;
-            s->current_picture->error[plane_index] = error;
+            s->encoding_error[plane_index] = error;
         }
 
     }
@@ -1845,8 +1862,8 @@ redo_frame:
     ff_snow_release_buffer(avctx);
 
     s->current_picture->coded_picture_number = avctx->frame_number;
-    s->current_picture->pict_type = pict->pict_type;
-    s->current_picture->quality = pict->quality;
+    s->current_picture->pict_type = pic->pict_type;
+    s->current_picture->quality = pic->quality;
     s->m.frame_bits = 8*(s->c.bytestream - s->c.bytestream_start);
     s->m.p_tex_bits = s->m.frame_bits - s->m.misc_bits - s->m.mv_bits;
     s->m.current_picture.f->display_picture_number =
@@ -1867,9 +1884,15 @@ redo_frame:
     emms_c();
 
     ff_side_data_set_encoder_stats(pkt, s->current_picture->quality,
-                                   s->current_picture->error,
+                                   s->encoding_error,
                                    (s->avctx->flags&AV_CODEC_FLAG_PSNR) ? 4 : 0,
                                    s->current_picture->pict_type);
+
+#if FF_API_ERROR_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+    memcpy(s->current_picture->error, s->encoding_error, sizeof(s->encoding_error));
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     pkt->size = ff_rac_terminate(c);
     if (s->current_picture->key_frame)
@@ -1896,10 +1919,14 @@ static av_cold int encode_end(AVCodecContext *avctx)
 static const AVOption options[] = {
     FF_MPV_COMMON_OPTS
     { "iter",           NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_ME_ITER }, 0, 0, FF_MPV_OPT_FLAGS, "motion_est" },
-    { "memc_only",      "Only do ME/MC (I frames -> ref, P frame -> ME+MC).",   OFFSET(memc_only), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, VE },
-    { "no_bitstream",   "Skip final bitstream writeout.",                    OFFSET(no_bitstream), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, VE },
+    { "memc_only",      "Only do ME/MC (I frames -> ref, P frame -> ME+MC).",   OFFSET(memc_only), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+    { "no_bitstream",   "Skip final bitstream writeout.",                    OFFSET(no_bitstream), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "intra_penalty",  "Penalty for intra blocks in block decission",      OFFSET(intra_penalty), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, VE },
     { "iterative_dia_size",  "Dia size for the iterative ME",          OFFSET(iterative_dia_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, VE },
+    { "sc_threshold",   "Scene change threshold",                   OFFSET(scenechange_threshold), AV_OPT_TYPE_INT, { .i64 = 0 }, INT_MIN, INT_MAX, VE },
+    { "pred",           "Spatial decomposition type",                                OFFSET(pred), AV_OPT_TYPE_INT, { .i64 = 0 }, DWT_97, DWT_53, VE, "pred" },
+        { "dwt97", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, INT_MIN, INT_MAX, VE, "pred" },
+        { "dwt53", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, INT_MIN, INT_MAX, VE, "pred" },
     { NULL },
 };
 

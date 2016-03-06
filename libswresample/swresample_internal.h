@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef SWR_INTERNAL_H
-#define SWR_INTERNAL_H
+#ifndef SWRESAMPLE_SWRESAMPLE_INTERNAL_H
+#define SWRESAMPLE_SWRESAMPLE_INTERNAL_H
 
 #include "swresample.h"
 #include "libavutil/channel_layout.h"
@@ -69,7 +69,7 @@ struct DitherContext {
 };
 
 typedef struct ResampleContext * (* resample_init_func)(struct ResampleContext *c, int out_rate, int in_rate, int filter_size, int phase_shift, int linear,
-                                    double cutoff, enum AVSampleFormat format, enum SwrFilterType filter_type, int kaiser_beta, double precision, int cheby);
+                                    double cutoff, enum AVSampleFormat format, enum SwrFilterType filter_type, double kaiser_beta, double precision, int cheby);
 typedef void    (* resample_free_func)(struct ResampleContext **c);
 typedef int     (* multiple_resample_func)(struct ResampleContext *c, AudioData *dst, int dst_size, AudioData *src, int src_size, int *consumed);
 typedef int     (* resample_flush_func)(struct SwrContext *c);
@@ -128,7 +128,7 @@ struct SwrContext {
     int linear_interp;                              /**< if 1 then the resampling FIR filter will be linearly interpolated */
     double cutoff;                                  /**< resampling cutoff frequency (swr: 6dB point; soxr: 0dB point). 1.0 corresponds to half the output sample rate */
     int filter_type;                                /**< swr resampling filter type */
-    int kaiser_beta;                                /**< swr beta value for Kaiser window (only applicable if filter_type == AV_FILTER_TYPE_KAISER) */
+    double kaiser_beta;                                /**< swr beta value for Kaiser window (only applicable if filter_type == AV_FILTER_TYPE_KAISER) */
     double precision;                               /**< soxr resampling precision (in bits) */
     int cheby;                                      /**< soxr: if 1 then passband rolloff will be none (Chebyshev) & irrational ratio approximation precision will be higher */
 
@@ -184,6 +184,7 @@ struct SwrContext {
     /* TODO: callbacks for ASM optimizations */
 };
 
+av_warn_unused_result
 int swri_realloc_audio(AudioData *a, int count);
 
 void swri_noise_shaping_int16 (SwrContext *s, AudioData *dsts, const AudioData *srcs, const AudioData *noises, int count);
@@ -191,12 +192,15 @@ void swri_noise_shaping_int32 (SwrContext *s, AudioData *dsts, const AudioData *
 void swri_noise_shaping_float (SwrContext *s, AudioData *dsts, const AudioData *srcs, const AudioData *noises, int count);
 void swri_noise_shaping_double(SwrContext *s, AudioData *dsts, const AudioData *srcs, const AudioData *noises, int count);
 
+av_warn_unused_result
 int swri_rematrix_init(SwrContext *s);
 void swri_rematrix_free(SwrContext *s);
 int swri_rematrix(SwrContext *s, AudioData *out, AudioData *in, int len, int mustcopy);
 int swri_rematrix_init_x86(struct SwrContext *s);
 
+av_warn_unused_result
 int swri_get_dither(SwrContext *s, void *dst, int len, unsigned seed, enum AVSampleFormat noise_fmt);
+av_warn_unused_result
 int swri_dither_init(SwrContext *s, enum AVSampleFormat out_fmt, enum AVSampleFormat in_fmt);
 
 void swri_audio_convert_init_aarch64(struct AudioConvert *ac,

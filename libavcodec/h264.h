@@ -29,6 +29,7 @@
 #define AVCODEC_H264_H
 
 #include "libavutil/intreadwrite.h"
+#include "libavutil/thread.h"
 #include "cabac.h"
 #include "error_resilience.h"
 #include "get_bits.h"
@@ -229,6 +230,8 @@ typedef struct SPS {
     int residual_color_transform_flag;    ///< residual_colour_transform_flag
     int constraint_set_flags;             ///< constraint_set[0-3]_flag
     int new;                              ///< flag to keep track if the decoder context needs re-init due to changed SPS
+    uint8_t data[4096];
+    size_t data_size;
 } SPS;
 
 /**
@@ -254,6 +257,8 @@ typedef struct PPS {
     uint8_t scaling_matrix8[6][64];
     uint8_t chroma_qp_table[2][QP_MAX_NUM+1];  ///< pre-scaled (with chroma_qp_index_offset) version of qp_table
     int chroma_qp_diff;
+    uint8_t data[4096];
+    size_t data_size;
 } PPS;
 
 /**
@@ -664,7 +669,7 @@ typedef struct H264Context {
      */
     int max_pic_num;
 
-    H264Ref default_ref_list[2][32]; ///< base reference list for all slices of a coded picture
+    H264Ref default_ref[2];
     H264Picture *short_ref[32];
     H264Picture *long_ref[32];
     H264Picture *delayed_pic[MAX_DELAYED_PIC_COUNT + 2]; // FIXME size?
@@ -709,8 +714,6 @@ typedef struct H264Context {
 
     enum AVPictureType pict_type;
 
-    int last_slice_type;
-    unsigned int last_ref_count[2];
     /** @} */
 
     /**
@@ -891,11 +894,6 @@ int ff_h264_get_slice_type(const H264SliceContext *sl);
  * needs width/height
  */
 int ff_h264_alloc_tables(H264Context *h);
-
-/**
- * Fill the default_ref_list.
- */
-int ff_h264_fill_default_ref_list(H264Context *h, H264SliceContext *sl);
 
 int ff_h264_decode_ref_pic_list_reordering(H264Context *h, H264SliceContext *sl);
 void ff_h264_fill_mbaff_ref_list(H264Context *h, H264SliceContext *sl);

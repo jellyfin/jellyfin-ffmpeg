@@ -247,7 +247,7 @@ static av_cold int ape_decode_init(AVCodecContext *avctx)
     s->compression_level = AV_RL16(avctx->extradata + 2);
     s->flags             = AV_RL16(avctx->extradata + 4);
 
-    av_log(avctx, AV_LOG_DEBUG, "Compression Level: %d - Flags: %d\n",
+    av_log(avctx, AV_LOG_VERBOSE, "Compression Level: %d - Flags: %d\n",
            s->compression_level, s->flags);
     if (s->compression_level % 1000 || s->compression_level > COMPRESSION_LEVEL_INSANE ||
         !s->compression_level ||
@@ -1284,7 +1284,7 @@ static void do_apply_filter(APEContext *ctx, int version, APEFilter *f,
             /* Update the adaption coefficients */
             absres = FFABS(res);
             if (absres)
-                *f->adaptcoeffs = ((res & (-1<<31)) ^ (-1<<30)) >>
+                *f->adaptcoeffs = ((res & INT32_MIN) ^ (-(1<<30))) >>
                                   (25 + (absres <= f->avg*3) + (absres <= f->avg*4/3));
             else
                 *f->adaptcoeffs = 0;

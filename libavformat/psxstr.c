@@ -218,7 +218,7 @@ static int str_read_packet(AVFormatContext *s,
                 if(pkt->size != sector_count*VIDEO_DATA_CHUNK_SIZE){
                     if(pkt->data)
                         av_log(s, AV_LOG_ERROR, "missmatching sector_count\n");
-                    av_free_packet(pkt);
+                    av_packet_unref(pkt);
                     if (av_new_packet(pkt, sector_count*VIDEO_DATA_CHUNK_SIZE))
                         return AVERROR(EIO);
                     memset(pkt->data, 0, sector_count*VIDEO_DATA_CHUNK_SIZE);
@@ -238,11 +238,6 @@ static int str_read_packet(AVFormatContext *s,
                     pkt->data= NULL;
                     pkt->size= -1;
                     pkt->buf = NULL;
-#if FF_API_DESTRUCT_PACKET
-FF_DISABLE_DEPRECATION_WARNINGS
-                    pkt->destruct = NULL;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
                     return 0;
                 }
 
@@ -303,7 +298,7 @@ static int str_read_close(AVFormatContext *s)
     int i;
     for(i=0; i<32; i++){
         if(str->channels[i].tmp_pkt.data)
-            av_free_packet(&str->channels[i].tmp_pkt);
+            av_packet_unref(&str->channels[i].tmp_pkt);
     }
 
     return 0;

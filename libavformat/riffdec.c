@@ -69,6 +69,8 @@ static void parse_waveformatex(AVIOContext *pb, AVCodecContext *c)
 
     ff_get_guid(pb, &subformat);
     if (!memcmp(subformat + 4,
+                (const uint8_t[]){ FF_AMBISONIC_BASE_GUID }, 12) ||
+        !memcmp(subformat + 4,
                 (const uint8_t[]){ FF_MEDIASUBTYPE_BASE_GUID }, 12)) {
         c->codec_tag = AV_RL32(subformat);
         c->codec_id  = ff_wav_codec_get_id(c->codec_tag,
@@ -97,10 +99,12 @@ int ff_get_wav_header(AVFormatContext *s, AVIOContext *pb,
     codec->codec_type  = AVMEDIA_TYPE_AUDIO;
     if (!big_endian) {
         id                 = avio_rl16(pb);
-        codec->channels    = avio_rl16(pb);
-        codec->sample_rate = avio_rl32(pb);
-        bitrate            = avio_rl32(pb) * 8LL;
-        codec->block_align = avio_rl16(pb);
+        if (id != 0x0165) {
+            codec->channels    = avio_rl16(pb);
+            codec->sample_rate = avio_rl32(pb);
+            bitrate            = avio_rl32(pb) * 8LL;
+            codec->block_align = avio_rl16(pb);
+        }
     } else {
         id                 = avio_rb16(pb);
         codec->channels    = avio_rb16(pb);
@@ -124,7 +128,7 @@ int ff_get_wav_header(AVFormatContext *s, AVIOContext *pb,
         codec->codec_id  = ff_wav_codec_get_id(id,
                                                codec->bits_per_coded_sample);
     }
-    if (size >= 18) {  /* We're obviously dealing with WAVEFORMATEX */
+    if (size >= 18 && id != 0x0165) {  /* We're obviously dealing with WAVEFORMATEX */
         int cbSize = avio_rl16(pb); /* cbSize */
         if (big_endian) {
             avpriv_report_missing_feature(codec, "WAVEFORMATEX support for RIFX files\n");
@@ -147,23 +151,24 @@ int ff_get_wav_header(AVFormatContext *s, AVIOContext *pb,
         /* It is possible for the chunk to contain garbage at the end */
         if (size > 0)
             avio_skip(pb, size);
+    } else if (id == 0x0165 && size >= 32) {
+        int nb_streams, i;
+
+        size -= 4;
+        av_freep(&codec->extradata);
+        if (ff_get_extradata(codec, pb, size) < 0)
+            return AVERROR(ENOMEM);
+        nb_streams         = AV_RL16(codec->extradata + 4);
+        codec->sample_rate = AV_RL32(codec->extradata + 12);
+        codec->channels    = 0;
+        bitrate            = 0;
+        if (size < 8 + nb_streams * 20)
+            return AVERROR_INVALIDDATA;
+        for (i = 0; i < nb_streams; i++)
+            codec->channels += codec->extradata[8 + i * 20 + 17];
     }
 
-    if (bitrate > INT_MAX) {
-        if (s->error_recognition & AV_EF_EXPLODE) {
-            av_log(s, AV_LOG_ERROR,
-                   "The bitrate %"PRIu64" is too large.\n",
-                    bitrate);
-            return AVERROR_INVALIDDATA;
-        } else {
-            av_log(s, AV_LOG_WARNING,
-                   "The bitrate %"PRIu64" is too large, resetting to 0.",
-                   bitrate);
-            codec->bit_rate = 0;
-        }
-    } else {
-        codec->bit_rate = bitrate;
-    }
+    codec->bit_rate = bitrate;
 
     if (codec->sample_rate <= 0) {
         av_log(s, AV_LOG_ERROR,
@@ -274,6 +279,9 @@ int ff_read_riff_info(AVFormatContext *s, int64_t size)
         }
 
         AV_WL32(key, chunk_code);
+        // Work around VC++ 2015 Update 1 code-gen bug:
+        // https://connect.microsoft.com/VisualStudio/feedback/details/2291638
+        key[4] = 0;
 
         if (avio_read(pb, value, chunk_size) != chunk_size) {
             av_log(s, AV_LOG_WARNING,

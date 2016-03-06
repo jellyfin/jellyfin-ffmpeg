@@ -721,11 +721,15 @@ static int iff_read_packet(AVFormatContext *s,
         if (st->codec->codec_tag == ID_DSD || st->codec->codec_tag == ID_MAUD) {
             ret = av_get_packet(pb, pkt, FFMIN(iff->body_end - pos, 1024 * st->codec->block_align));
         } else {
+            if (iff->body_size > INT_MAX)
+                return AVERROR_INVALIDDATA;
             ret = av_get_packet(pb, pkt, iff->body_size);
         }
     } else if (st->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
         uint8_t *buf;
 
+        if (iff->body_size > INT_MAX - 2)
+            return AVERROR_INVALIDDATA;
         if (av_new_packet(pkt, iff->body_size + 2) < 0) {
             return AVERROR(ENOMEM);
         }
@@ -734,7 +738,7 @@ static int iff_read_packet(AVFormatContext *s,
         bytestream_put_be16(&buf, 2);
         ret = avio_read(pb, buf, iff->body_size);
         if (ret<0) {
-            av_free_packet(pkt);
+            av_packet_unref(pkt);
         } else if (ret < iff->body_size)
             av_shrink_packet(pkt, ret + 2);
     } else {

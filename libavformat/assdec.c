@@ -39,6 +39,9 @@ static int ass_probe(AVProbeData *p)
     FFTextReader tr;
     ff_text_init_buf(&tr, p->buf, p->buf_size);
 
+    while (ff_text_peek_r8(&tr) == '\r' || ff_text_peek_r8(&tr) == '\n')
+        ff_text_r8(&tr);
+
     ff_text_read(&tr, buf, sizeof(buf));
 
     if (!memcmp(buf, "[Script Info]", 13))
@@ -125,6 +128,8 @@ static int ass_read_header(AVFormatContext *s)
     av_bprint_init(&line,   0, AV_BPRINT_SIZE_UNLIMITED);
     av_bprint_init(&rline,  0, AV_BPRINT_SIZE_UNLIMITED);
 
+    ass->q.keep_duplicates = 1;
+
     for (;;) {
         int64_t pos = get_line(&line, &tr);
         int64_t ts_start = AV_NOPTS_VALUE;
@@ -152,7 +157,7 @@ static int ass_read_header(AVFormatContext *s)
     if (res < 0)
         goto end;
 
-    ff_subtitles_queue_finalize(&ass->q);
+    ff_subtitles_queue_finalize(s, &ass->q);
 
 end:
     av_bprint_finalize(&header, NULL);

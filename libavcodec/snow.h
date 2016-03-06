@@ -121,7 +121,6 @@ typedef struct SnowContext{
     H264QpelContext h264qpel;
     MpegvideoEncDSPContext mpvencdsp;
     SnowDWTContext dwt;
-    const AVFrame *new_picture;
     AVFrame *input_picture;              ///< new_picture with the internal linesizes
     AVFrame *current_picture;
     AVFrame *last_picture[MAX_REF_FRAMES];
@@ -178,6 +177,7 @@ typedef struct SnowContext{
     int intra_penalty;
     int motion_est;
     int iterative_dia_size;
+    int scenechange_threshold;
 
     MpegEncContext m; // needed for motion estimation, should not be used for anything else, the idea is to eventually make the motion estimation independent of MpegEncContext, so this will be removed then (FIXME/XXX)
 
@@ -186,6 +186,9 @@ typedef struct SnowContext{
 
     AVMotionVector *avmv;
     int avmv_index;
+    uint64_t encoding_error[AV_NUM_DATA_POINTERS];
+
+    int pred;
 }SnowContext;
 
 /* Tables */

@@ -211,8 +211,8 @@ static int vqf_read_header(AVFormatContext *s)
         size = 2048;
         break;
     default:
-        av_log(s, AV_LOG_ERROR, "Mode not suported: %d Hz, %d kb/s.\n",
-               st->codec->sample_rate, st->codec->bit_rate);
+        av_log(s, AV_LOG_ERROR, "Mode not supported: %d Hz, %"PRId64" kb/s.\n",
+               st->codec->sample_rate, (int64_t)st->codec->bit_rate);
         return -1;
     }
     c->frame_bit_len = st->codec->bit_rate*size/st->codec->sample_rate;
@@ -246,7 +246,7 @@ static int vqf_read_packet(AVFormatContext *s, AVPacket *pkt)
     ret = avio_read(s->pb, pkt->data+2, size);
 
     if (ret != size) {
-        av_free_packet(pkt);
+        av_packet_unref(pkt);
         return AVERROR(EIO);
     }
 

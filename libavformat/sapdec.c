@@ -85,8 +85,9 @@ static int sap_read_header(AVFormatContext *s)
 
     ff_url_join(url, sizeof(url), "udp", NULL, host, port, "?localport=%d",
                 port);
-    ret = ffurl_open(&sap->ann_fd, url, AVIO_FLAG_READ,
-                     &s->interrupt_callback, NULL);
+    ret = ffurl_open_whitelist(&sap->ann_fd, url, AVIO_FLAG_READ,
+                               &s->interrupt_callback, NULL,
+                               s->protocol_whitelist);
     if (ret)
         goto fail;
 
@@ -220,7 +221,7 @@ static int sap_fetch_packet(AVFormatContext *s, AVPacket *pkt)
             int i = s->nb_streams;
             AVStream *st = avformat_new_stream(s, NULL);
             if (!st) {
-                av_free_packet(pkt);
+                av_packet_unref(pkt);
                 return AVERROR(ENOMEM);
             }
             st->id = i;

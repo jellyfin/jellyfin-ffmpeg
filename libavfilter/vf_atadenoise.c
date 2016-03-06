@@ -264,12 +264,12 @@ static int config_input(AVFilterLink *inlink)
 
     s->nb_planes = desc->nb_components;
 
-    s->planeheight[1] = s->planeheight[2] = FF_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
+    s->planeheight[1] = s->planeheight[2] = AV_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
     s->planeheight[0] = s->planeheight[3] = inlink->h;
-    s->planewidth[1]  = s->planewidth[2]  = FF_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
+    s->planewidth[1]  = s->planewidth[2]  = AV_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
     s->planewidth[0]  = s->planewidth[3]  = inlink->w;
 
-    depth = desc->comp[0].depth_minus1 + 1;
+    depth = desc->comp[0].depth;
     if (depth == 8)
         s->filter_slice = filter_slice8;
     else
@@ -285,12 +285,6 @@ static int config_input(AVFilterLink *inlink)
     return 0;
 }
 
-static int config_output(AVFilterLink *outlink)
-{
-    outlink->flags |= FF_LINK_FLAG_REQUEST_LOOP;
-    return 0;
-}
-
 static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -301,13 +295,14 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 
     if (s->q.available != s->size) {
         if (s->q.available < s->mid) {
-            out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
-            if (!out)
-                return AVERROR(ENOMEM);
-
-            for (i = 0; i < s->mid; i++)
-                ff_bufqueue_add(ctx, &s->q, av_frame_clone(out));
-            av_frame_free(&out);
+            for (i = 0; i < s->mid; i++) {
+                out = av_frame_clone(buf);
+                if (!out) {
+                    av_frame_free(&buf);
+                    return AVERROR(ENOMEM);
+                }
+                ff_bufqueue_add(ctx, &s->q, out);
+            }
         }
         if (s->q.available < s->size) {
             ff_bufqueue_add(ctx, &s->q, buf);
@@ -368,7 +363,7 @@ static int request_frame(AVFilterLink *outlink)
     ret = ff_request_frame(ctx->inputs[0]);
 
     if (ret == AVERROR_EOF && !ctx->is_disabled && s->available) {
-        AVFrame *buf = ff_get_video_buffer(outlink, outlink->w, outlink->h);
+        AVFrame *buf = av_frame_clone(ff_bufqueue_peek(&s->q, s->available));
         if (!buf)
             return AVERROR(ENOMEM);
 
@@ -401,7 +396,6 @@ static const AVFilterPad outputs[] = {
         .name          = "default",
         .type          = AVMEDIA_TYPE_VIDEO,
         .request_frame = request_frame,
-        .config_props  = config_output,
     },
     { NULL }
 };

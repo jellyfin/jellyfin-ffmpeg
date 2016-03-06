@@ -16,9 +16,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <CoreServices/CoreServices.h>
-
 #include "config.h"
+
+#if HAVE_UTGETOSTYPEFROMSTRING
+#include <CoreServices/CoreServices.h>
+#endif
+
 #include "libavcodec/avcodec.h"
 #if CONFIG_VDA
 #  include "libavcodec/vda.h"
@@ -154,7 +157,13 @@ int videotoolbox_init(AVCodecContext *s)
             CFStringRef pixfmt_str = CFStringCreateWithCString(kCFAllocatorDefault,
                                                                videotoolbox_pixfmt,
                                                                kCFStringEncodingUTF8);
+#if HAVE_UTGETOSTYPEFROMSTRING
             vtctx->cv_pix_fmt_type = UTGetOSTypeFromString(pixfmt_str);
+#else
+            av_log(s, loglevel, "UTGetOSTypeFromString() is not available "
+                   "on this platform, %s pixel format can not be honored from "
+                   "the command line\n", videotoolbox_pixfmt);
+#endif
             ret = av_videotoolbox_default_init2(s, vtctx);
             CFRelease(pixfmt_str);
         }
@@ -168,7 +177,13 @@ int videotoolbox_init(AVCodecContext *s)
             CFStringRef pixfmt_str = CFStringCreateWithCString(kCFAllocatorDefault,
                                                                videotoolbox_pixfmt,
                                                                kCFStringEncodingUTF8);
+#if HAVE_UTGETOSTYPEFROMSTRING
             vdactx->cv_pix_fmt_type = UTGetOSTypeFromString(pixfmt_str);
+#else
+            av_log(s, loglevel, "UTGetOSTypeFromString() is not available "
+                   "on this platform, %s pixel format can not be honored from "
+                   "the command line\n", videotoolbox_pixfmt);
+#endif
             ret = av_vda_default_init2(s, vdactx);
             CFRelease(pixfmt_str);
         }

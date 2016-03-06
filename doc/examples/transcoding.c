@@ -31,7 +31,6 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavfilter/avfiltergraph.h>
-#include <libavfilter/avcodec.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavutil/opt.h>
@@ -537,7 +536,7 @@ int main(int argc, char **argv)
             if (ret < 0)
                 goto end;
         }
-        av_free_packet(&packet);
+        av_packet_unref(&packet);
     }
 
     /* flush filters and encoders */
@@ -561,7 +560,7 @@ int main(int argc, char **argv)
 
     av_write_trailer(ofmt_ctx);
 end:
-    av_free_packet(&packet);
+    av_packet_unref(&packet);
     av_frame_free(&frame);
     for (i = 0; i < ifmt_ctx->nb_streams; i++) {
         avcodec_close(ifmt_ctx->streams[i]->codec);

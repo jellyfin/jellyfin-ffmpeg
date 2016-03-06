@@ -20,10 +20,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "dxva2_internal.h"
 #include "h264.h"
 #include "h264data.h"
 #include "mpegutils.h"
+
+// The headers above may include w32threads.h, which uses the original
+// _WIN32_WINNT define, while dxva2_internal.h redefines it to target a
+// potentially newer version.
+#include "dxva2_internal.h"
 
 struct dxva2_picture_context {
     DXVA_PicParams_H264   pp;
@@ -248,7 +252,7 @@ static void fill_slice_long(AVCodecContext *avctx, DXVA_Slice_H264_Long *slice,
                 else
                     index = get_refpic_index(pp, ff_dxva2_get_surface_index(avctx, ctx, r->f));
                 fill_picture_entry(&slice->RefPicList[list][i], index,
-                                   r->reference == PICT_BOTTOM_FIELD);
+                                   sl->ref_list[list][i].reference == PICT_BOTTOM_FIELD);
                 for (plane = 0; plane < 3; plane++) {
                     int w, o;
                     if (plane == 0 && sl->luma_weight_flag[list]) {

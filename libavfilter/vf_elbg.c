@@ -58,7 +58,7 @@ static const AVOption elbg_options[] = {
     { "n",        "set max number of steps used to compute the mapping", OFFSET(max_steps_nb), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, INT_MAX, FLAGS },
     { "seed", "set the random seed", OFFSET(lfg_seed), AV_OPT_TYPE_INT, {.i64 = -1}, -1, UINT32_MAX, FLAGS },
     { "s",    "set the random seed", OFFSET(lfg_seed), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, UINT32_MAX, FLAGS },
-    { "pal8", "set the pal8 output", OFFSET(pal8), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS },
+    { "pal8", "set the pal8 output", OFFSET(pal8), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
     { NULL }
 };
 
@@ -83,6 +83,7 @@ static av_cold int init(AVFilterContext *ctx)
 static int query_formats(AVFilterContext *ctx)
 {
     ELBGContext *elbg = ctx->priv;
+    int ret;
 
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_ARGB, AV_PIX_FMT_RGBA, AV_PIX_FMT_ABGR, AV_PIX_FMT_BGRA,
@@ -99,8 +100,9 @@ static int query_formats(AVFilterContext *ctx)
             AV_PIX_FMT_PAL8,
             AV_PIX_FMT_NONE
         };
-        ff_formats_ref(ff_make_format_list(pix_fmts), &ctx->inputs[0]->out_formats);
-        ff_formats_ref(ff_make_format_list(pal8_fmt), &ctx->outputs[0]->in_formats);
+        if ((ret = ff_formats_ref(ff_make_format_list(pix_fmts), &ctx->inputs[0]->out_formats)) < 0 ||
+            (ret = ff_formats_ref(ff_make_format_list(pal8_fmt), &ctx->outputs[0]->in_formats)) < 0)
+            return ret;
     }
     return 0;
 }

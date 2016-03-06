@@ -77,6 +77,7 @@ static int do_show_format_tags = 0;
 static int do_show_frame_tags = 0;
 static int do_show_program_tags = 0;
 static int do_show_stream_tags = 0;
+static int do_show_packet_tags = 0;
 
 static int show_value_unit              = 0;
 static int use_value_prefix             = 0;
@@ -135,6 +136,7 @@ typedef enum {
     SECTION_ID_LIBRARY_VERSION,
     SECTION_ID_LIBRARY_VERSIONS,
     SECTION_ID_PACKET,
+    SECTION_ID_PACKET_TAGS,
     SECTION_ID_PACKETS,
     SECTION_ID_PACKETS_AND_FRAMES,
     SECTION_ID_PACKET_SIDE_DATA_LIST,
@@ -178,7 +180,8 @@ static struct section sections[] = {
     [SECTION_ID_LIBRARY_VERSION] =    { SECTION_ID_LIBRARY_VERSION, "library_version", 0, { -1 } },
     [SECTION_ID_PACKETS] =            { SECTION_ID_PACKETS, "packets", SECTION_FLAG_IS_ARRAY, { SECTION_ID_PACKET, -1} },
     [SECTION_ID_PACKETS_AND_FRAMES] = { SECTION_ID_PACKETS_AND_FRAMES, "packets_and_frames", SECTION_FLAG_IS_ARRAY, { SECTION_ID_PACKET, -1} },
-    [SECTION_ID_PACKET] =             { SECTION_ID_PACKET, "packet", 0, { SECTION_ID_PACKET_SIDE_DATA_LIST, -1 } },
+    [SECTION_ID_PACKET] =             { SECTION_ID_PACKET, "packet", 0, { SECTION_ID_PACKET_TAGS, SECTION_ID_PACKET_SIDE_DATA_LIST, -1 } },
+    [SECTION_ID_PACKET_TAGS] =        { SECTION_ID_PACKET_TAGS, "tags", SECTION_FLAG_HAS_VARIABLE_FIELDS, { -1 }, .element_name = "tag", .unique_name = "packet_tags" },
     [SECTION_ID_PACKET_SIDE_DATA_LIST] ={ SECTION_ID_PACKET_SIDE_DATA_LIST, "side_data_list", SECTION_FLAG_IS_ARRAY, { SECTION_ID_PACKET_SIDE_DATA, -1 } },
     [SECTION_ID_PACKET_SIDE_DATA] =     { SECTION_ID_PACKET_SIDE_DATA, "side_data", 0, { -1 } },
     [SECTION_ID_PIXEL_FORMATS] =      { SECTION_ID_PIXEL_FORMATS, "pixel_formats", SECTION_FLAG_IS_ARRAY, { SECTION_ID_PIXEL_FORMAT, -1 } },
@@ -215,8 +218,19 @@ static AVInputFormat *iformat = NULL;
 
 static struct AVHashContext *hash;
 
-static const char *const binary_unit_prefixes [] = { "", "Ki", "Mi", "Gi", "Ti", "Pi" };
-static const char *const decimal_unit_prefixes[] = { "", "K" , "M" , "G" , "T" , "P"  };
+static const struct {
+    double bin_val;
+    double dec_val;
+    const char *bin_str;
+    const char *dec_str;
+} si_prefixes[] = {
+    { 1.0, 1.0, "", "" },
+    { 1.024e3, 1e3, "Ki", "K" },
+    { 1.048576e6, 1e6, "Mi", "M" },
+    { 1.073741824e9, 1e9, "Gi", "G" },
+    { 1.099511627776e12, 1e12, "Ti", "T" },
+    { 1.125899906842624e15, 1e15, "Pi", "P" },
+};
 
 static const char unit_second_str[]         = "s"    ;
 static const char unit_hertz_str[]          = "Hz"   ;
@@ -270,14 +284,14 @@ static char *value_string(char *buf, int buf_size, struct unit_value uv)
 
             if (uv.unit == unit_byte_str && use_byte_value_binary_prefix) {
                 index = (long long int) (log2(vald)) / 10;
-                index = av_clip(index, 0, FF_ARRAY_ELEMS(binary_unit_prefixes) - 1);
-                vald /= exp2(index * 10);
-                prefix_string = binary_unit_prefixes[index];
+                index = av_clip(index, 0, FF_ARRAY_ELEMS(si_prefixes) - 1);
+                vald /= si_prefixes[index].bin_val;
+                prefix_string = si_prefixes[index].bin_str;
             } else {
                 index = (long long int) (log10(vald)) / 3;
-                index = av_clip(index, 0, FF_ARRAY_ELEMS(decimal_unit_prefixes) - 1);
-                vald /= pow(10, index * 3);
-                prefix_string = decimal_unit_prefixes[index];
+                index = av_clip(index, 0, FF_ARRAY_ELEMS(si_prefixes) - 1);
+                vald /= si_prefixes[index].dec_val;
+                prefix_string = si_prefixes[index].dec_str;
             }
             vali = vald;
         }
@@ -807,10 +821,10 @@ typedef struct DefaultContext {
 #define OFFSET(x) offsetof(DefaultContext, x)
 
 static const AVOption default_options[] = {
-    { "noprint_wrappers", "do not print headers and footers", OFFSET(noprint_wrappers), AV_OPT_TYPE_INT, {.i64=0}, 0, 1 },
-    { "nw",               "do not print headers and footers", OFFSET(noprint_wrappers), AV_OPT_TYPE_INT, {.i64=0}, 0, 1 },
-    { "nokey",          "force no key printing",     OFFSET(nokey),          AV_OPT_TYPE_INT, {.i64=0}, 0, 1 },
-    { "nk",             "force no key printing",     OFFSET(nokey),          AV_OPT_TYPE_INT, {.i64=0}, 0, 1 },
+    { "noprint_wrappers", "do not print headers and footers", OFFSET(noprint_wrappers), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1 },
+    { "nw",               "do not print headers and footers", OFFSET(noprint_wrappers), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1 },
+    { "nokey",          "force no key printing",     OFFSET(nokey),          AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1 },
+    { "nk",             "force no key printing",     OFFSET(nokey),          AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1 },
     {NULL},
 };
 
@@ -963,12 +977,12 @@ typedef struct CompactContext {
 static const AVOption compact_options[]= {
     {"item_sep", "set item separator",    OFFSET(item_sep_str),    AV_OPT_TYPE_STRING, {.str="|"},  CHAR_MIN, CHAR_MAX },
     {"s",        "set item separator",    OFFSET(item_sep_str),    AV_OPT_TYPE_STRING, {.str="|"},  CHAR_MIN, CHAR_MAX },
-    {"nokey",    "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_INT,    {.i64=0},    0,        1        },
-    {"nk",       "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_INT,    {.i64=0},    0,        1        },
+    {"nokey",    "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_BOOL,   {.i64=0},    0,        1        },
+    {"nk",       "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_BOOL,   {.i64=0},    0,        1        },
     {"escape",   "set escape mode",       OFFSET(escape_mode_str), AV_OPT_TYPE_STRING, {.str="c"},  CHAR_MIN, CHAR_MAX },
     {"e",        "set escape mode",       OFFSET(escape_mode_str), AV_OPT_TYPE_STRING, {.str="c"},  CHAR_MIN, CHAR_MAX },
-    {"print_section", "print section name", OFFSET(print_section), AV_OPT_TYPE_INT,    {.i64=1},    0,        1        },
-    {"p",             "print section name", OFFSET(print_section), AV_OPT_TYPE_INT,    {.i64=1},    0,        1        },
+    {"print_section", "print section name", OFFSET(print_section), AV_OPT_TYPE_BOOL,   {.i64=1},    0,        1        },
+    {"p",             "print section name", OFFSET(print_section), AV_OPT_TYPE_BOOL,   {.i64=1},    0,        1        },
     {NULL},
 };
 
@@ -1079,12 +1093,12 @@ static const Writer compact_writer = {
 static const AVOption csv_options[] = {
     {"item_sep", "set item separator",    OFFSET(item_sep_str),    AV_OPT_TYPE_STRING, {.str=","},  CHAR_MIN, CHAR_MAX },
     {"s",        "set item separator",    OFFSET(item_sep_str),    AV_OPT_TYPE_STRING, {.str=","},  CHAR_MIN, CHAR_MAX },
-    {"nokey",    "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_INT,    {.i64=1},    0,        1        },
-    {"nk",       "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_INT,    {.i64=1},    0,        1        },
+    {"nokey",    "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_BOOL,   {.i64=1},    0,        1        },
+    {"nk",       "force no key printing", OFFSET(nokey),           AV_OPT_TYPE_BOOL,   {.i64=1},    0,        1        },
     {"escape",   "set escape mode",       OFFSET(escape_mode_str), AV_OPT_TYPE_STRING, {.str="csv"}, CHAR_MIN, CHAR_MAX },
     {"e",        "set escape mode",       OFFSET(escape_mode_str), AV_OPT_TYPE_STRING, {.str="csv"}, CHAR_MIN, CHAR_MAX },
-    {"print_section", "print section name", OFFSET(print_section), AV_OPT_TYPE_INT,    {.i64=1},    0,        1        },
-    {"p",             "print section name", OFFSET(print_section), AV_OPT_TYPE_INT,    {.i64=1},    0,        1        },
+    {"print_section", "print section name", OFFSET(print_section), AV_OPT_TYPE_BOOL,   {.i64=1},    0,        1        },
+    {"p",             "print section name", OFFSET(print_section), AV_OPT_TYPE_BOOL,   {.i64=1},    0,        1        },
     {NULL},
 };
 
@@ -1117,8 +1131,8 @@ typedef struct FlatContext {
 static const AVOption flat_options[]= {
     {"sep_char", "set separator",    OFFSET(sep_str),    AV_OPT_TYPE_STRING, {.str="."},  CHAR_MIN, CHAR_MAX },
     {"s",        "set separator",    OFFSET(sep_str),    AV_OPT_TYPE_STRING, {.str="."},  CHAR_MIN, CHAR_MAX },
-    {"hierarchical", "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_INT, {.i64=1}, 0, 1 },
-    {"h",           "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_INT, {.i64=1}, 0, 1 },
+    {"hierarchical", "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1 },
+    {"h",            "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1 },
     {NULL},
 };
 
@@ -1237,8 +1251,8 @@ typedef struct INIContext {
 #define OFFSET(x) offsetof(INIContext, x)
 
 static const AVOption ini_options[] = {
-    {"hierarchical", "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_INT, {.i64=1}, 0, 1 },
-    {"h",           "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_INT, {.i64=1}, 0, 1 },
+    {"hierarchical", "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1 },
+    {"h",            "specify if the section specification should be hierarchical", OFFSET(hierarchical), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1 },
     {NULL},
 };
 
@@ -1343,8 +1357,8 @@ typedef struct JSONContext {
 #define OFFSET(x) offsetof(JSONContext, x)
 
 static const AVOption json_options[]= {
-    { "compact", "enable compact output", OFFSET(compact), AV_OPT_TYPE_INT, {.i64=0}, 0, 1 },
-    { "c",       "enable compact output", OFFSET(compact), AV_OPT_TYPE_INT, {.i64=0}, 0, 1 },
+    { "compact", "enable compact output", OFFSET(compact), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1 },
+    { "c",       "enable compact output", OFFSET(compact), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1 },
     { NULL }
 };
 
@@ -1506,10 +1520,10 @@ typedef struct XMLContext {
 #define OFFSET(x) offsetof(XMLContext, x)
 
 static const AVOption xml_options[] = {
-    {"fully_qualified", "specify if the output should be fully qualified", OFFSET(fully_qualified), AV_OPT_TYPE_INT, {.i64=0},  0, 1 },
-    {"q",               "specify if the output should be fully qualified", OFFSET(fully_qualified), AV_OPT_TYPE_INT, {.i64=0},  0, 1 },
-    {"xsd_strict",      "ensure that the output is XSD compliant",         OFFSET(xsd_strict),      AV_OPT_TYPE_INT, {.i64=0},  0, 1 },
-    {"x",               "ensure that the output is XSD compliant",         OFFSET(xsd_strict),      AV_OPT_TYPE_INT, {.i64=0},  0, 1 },
+    {"fully_qualified", "specify if the output should be fully qualified", OFFSET(fully_qualified), AV_OPT_TYPE_BOOL, {.i64=0},  0, 1 },
+    {"q",               "specify if the output should be fully qualified", OFFSET(fully_qualified), AV_OPT_TYPE_BOOL, {.i64=0},  0, 1 },
+    {"xsd_strict",      "ensure that the output is XSD compliant",         OFFSET(xsd_strict),      AV_OPT_TYPE_BOOL, {.i64=0},  0, 1 },
+    {"x",               "ensure that the output is XSD compliant",         OFFSET(xsd_strict),      AV_OPT_TYPE_BOOL, {.i64=0},  0, 1 },
     {NULL},
 };
 
@@ -1762,6 +1776,16 @@ static void show_packet(WriterContext *w, AVFormatContext *fmt_ctx, AVPacket *pk
 
     if (pkt->side_data_elems) {
         int i;
+        int size;
+        const uint8_t *side_metadata;
+
+        side_metadata = av_packet_get_side_data(pkt, AV_PKT_DATA_STRINGS_METADATA, &size);
+        if (side_metadata && size && do_show_packet_tags) {
+            AVDictionary *dict = NULL;
+            if (av_packet_unpack_dictionary(side_metadata, size, &dict) >= 0)
+                show_tags(w, dict, SECTION_ID_PACKET_TAGS);
+            av_dict_free(&dict);
+        }
         writer_print_section_header(w, SECTION_ID_PACKET_SIDE_DATA_LIST);
         for (i = 0; i < pkt->side_data_elems; i++) {
             AVPacketSideData *sd = &pkt->side_data[i];
@@ -1814,6 +1838,7 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
                        AVFormatContext *fmt_ctx)
 {
     AVBPrint pbuf;
+    char val_str[128];
     const char *s;
     int i;
 
@@ -1836,7 +1861,7 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
     print_duration_time("pkt_duration_time", av_frame_get_pkt_duration(frame), &stream->time_base);
     if (av_frame_get_pkt_pos (frame) != -1) print_fmt    ("pkt_pos", "%"PRId64, av_frame_get_pkt_pos(frame));
     else                      print_str_opt("pkt_pos", "N/A");
-    if (av_frame_get_pkt_size(frame) != -1) print_fmt    ("pkt_size", "%d", av_frame_get_pkt_size(frame));
+    if (av_frame_get_pkt_size(frame) != -1) print_val    ("pkt_size", av_frame_get_pkt_size(frame), unit_byte_str);
     else                       print_str_opt("pkt_size", "N/A");
 
     switch (stream->codec->codec_type) {
@@ -1890,9 +1915,12 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
             print_str("side_data_type", name ? name : "unknown");
             print_int("side_data_size", sd->size);
             if (sd->type == AV_FRAME_DATA_DISPLAYMATRIX && sd->size >= 9*4) {
-                abort();
                 writer_print_integers(w, "displaymatrix", sd->data, 9, " %11d", 3, 4, 1);
                 print_int("rotation", av_display_rotation_get((int32_t *)sd->data));
+            } else if (sd->type == AV_FRAME_DATA_GOP_TIMECODE && sd->size >= 8) {
+                char tcbuf[AV_TIMECODE_STR_SIZE];
+                av_timecode_make_mpeg_tc_string(tcbuf, *(int64_t *)(sd->data));
+                print_str("timecode", tcbuf);
             }
             writer_print_section_footer(w);
         }
@@ -2056,7 +2084,7 @@ static int read_interval_packets(WriterContext *w, AVFormatContext *fmt_ctx,
                 while (pkt1.size && process_frame(w, fmt_ctx, frame, &pkt1) > 0);
             }
         }
-        av_free_packet(&pkt);
+        av_packet_unref(&pkt);
     }
     av_init_packet(&pkt);
     pkt.data = NULL;
@@ -2136,10 +2164,16 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
             }
         }
 
-        if (dec && (profile = av_get_profile_name(dec, dec_ctx->profile)))
+        if (!do_bitexact && dec && (profile = av_get_profile_name(dec, dec_ctx->profile)))
             print_str("profile", profile);
-        else
-            print_str_opt("profile", "unknown");
+        else {
+            if (dec_ctx->profile != FF_PROFILE_UNKNOWN) {
+                char profile_num[12];
+                snprintf(profile_num, sizeof(profile_num), "%d", dec_ctx->profile);
+                print_str("profile", profile_num);
+            } else
+                print_str_opt("profile", "unknown");
+        }
 
         s = av_get_media_type_string(dec_ctx->codec_type);
         if (s) print_str    ("codec_type", s);
@@ -2197,6 +2231,7 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
             else
                 print_str_opt("chroma_location", av_chroma_location_name(dec_ctx->chroma_sample_location));
 
+#if FF_API_PRIVATE_OPT
             if (dec_ctx->timecode_frame_start >= 0) {
                 char tcbuf[AV_TIMECODE_STR_SIZE];
                 av_timecode_make_mpeg_tc_string(tcbuf, dec_ctx->timecode_frame_start);
@@ -2204,6 +2239,7 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
             } else {
                 print_str_opt("timecode", "N/A");
             }
+#endif
             print_int("refs", dec_ctx->refs);
             break;
 
@@ -2722,7 +2758,7 @@ static void ffprobe_show_pixel_formats(WriterContext *w)
             for (i = 0; i < pixdesc->nb_components; i++) {
                 writer_print_section_header(w, SECTION_ID_PIXEL_FORMAT_COMPONENT);
                 print_int("index", i + 1);
-                print_int("bit_depth", pixdesc->comp[i].depth_minus1 + 1);
+                print_int("bit_depth", pixdesc->comp[i].depth);
                 writer_print_section_footer(w);
             }
             writer_print_section_footer(w);
@@ -3062,16 +3098,16 @@ static int opt_show_versions(const char *opt, const char *arg)
         return 0;                                                       \
     }
 
-DEFINE_OPT_SHOW_SECTION(chapters,         CHAPTERS);
-DEFINE_OPT_SHOW_SECTION(error,            ERROR);
-DEFINE_OPT_SHOW_SECTION(format,           FORMAT);
-DEFINE_OPT_SHOW_SECTION(frames,           FRAMES);
-DEFINE_OPT_SHOW_SECTION(library_versions, LIBRARY_VERSIONS);
-DEFINE_OPT_SHOW_SECTION(packets,          PACKETS);
-DEFINE_OPT_SHOW_SECTION(pixel_formats,    PIXEL_FORMATS);
-DEFINE_OPT_SHOW_SECTION(program_version,  PROGRAM_VERSION);
-DEFINE_OPT_SHOW_SECTION(streams,          STREAMS);
-DEFINE_OPT_SHOW_SECTION(programs,         PROGRAMS);
+DEFINE_OPT_SHOW_SECTION(chapters,         CHAPTERS)
+DEFINE_OPT_SHOW_SECTION(error,            ERROR)
+DEFINE_OPT_SHOW_SECTION(format,           FORMAT)
+DEFINE_OPT_SHOW_SECTION(frames,           FRAMES)
+DEFINE_OPT_SHOW_SECTION(library_versions, LIBRARY_VERSIONS)
+DEFINE_OPT_SHOW_SECTION(packets,          PACKETS)
+DEFINE_OPT_SHOW_SECTION(pixel_formats,    PIXEL_FORMATS)
+DEFINE_OPT_SHOW_SECTION(program_version,  PROGRAM_VERSION)
+DEFINE_OPT_SHOW_SECTION(streams,          STREAMS)
+DEFINE_OPT_SHOW_SECTION(programs,         PROGRAMS)
 
 static const OptionDef real_options[] = {
 #include "cmdutils_common_opts.h"
@@ -3178,6 +3214,7 @@ int main(int argc, char **argv)
     SET_DO_SHOW(FRAME_TAGS, frame_tags);
     SET_DO_SHOW(PROGRAM_TAGS, program_tags);
     SET_DO_SHOW(STREAM_TAGS, stream_tags);
+    SET_DO_SHOW(PACKET_TAGS, packet_tags);
 
     if (do_bitexact && (do_show_program_version || do_show_library_versions)) {
         av_log(NULL, AV_LOG_ERROR,

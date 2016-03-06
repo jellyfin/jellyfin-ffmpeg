@@ -57,6 +57,8 @@ static int qsv_decode_frame(AVCodecContext *avctx, void *data,
 
 static void qsv_decode_flush(AVCodecContext *avctx)
 {
+    QSVMPEG2Context *s = avctx->priv_data;
+    ff_qsv_decode_reset(avctx, &s->qsv);
 }
 
 AVHWAccel ff_mpeg2_qsv_hwaccel = {
@@ -92,4 +94,7 @@ AVCodec ff_mpeg2_qsv_decoder = {
     .close          = qsv_decode_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1,
     .priv_class     = &class,
+    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+                                                    AV_PIX_FMT_QSV,
+                                                    AV_PIX_FMT_NONE },
 };

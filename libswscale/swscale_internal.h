@@ -323,6 +323,7 @@ typedef struct SwsContext {
     uint8_t *cascaded_tmp[4];
     int cascaded1_tmpStride[4];
     uint8_t *cascaded1_tmp[4];
+    int cascaded_mainindex;
 
     double gamma_value;
     int gamma_flag;
@@ -653,14 +654,14 @@ static av_always_inline int is16BPS(enum AVPixelFormat pix_fmt)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
     av_assert0(desc);
-    return desc->comp[0].depth_minus1 == 15;
+    return desc->comp[0].depth == 16;
 }
 
 static av_always_inline int is9_OR_10BPS(enum AVPixelFormat pix_fmt)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
     av_assert0(desc);
-    return desc->comp[0].depth_minus1 >= 8 && desc->comp[0].depth_minus1 <= 13;
+    return desc->comp[0].depth >= 9 && desc->comp[0].depth <= 14;
 }
 
 #define isNBPS(x) is9_OR_10BPS(x)
@@ -867,7 +868,7 @@ extern const uint8_t ff_dither_8x8_220[9][8];
 
 extern const int32_t ff_yuv2rgb_coeffs[8][4];
 
-extern const AVClass sws_context_class;
+extern const AVClass ff_sws_context_class;
 
 /**
  * Set c->swscale to an unscaled converter if one exists for the specific
@@ -930,7 +931,7 @@ static inline void fillPlane16(uint8_t *plane, int stride, int width, int height
 {
     int i, j;
     uint8_t *ptr = plane + stride * y;
-    int v = alpha ? 0xFFFF>>(15-bits) : (1<<bits);
+    int v = alpha ? 0xFFFF>>(16-bits) : (1<<(bits-1));
     for (i = 0; i < height; i++) {
 #define FILL(wfunc) \
         for (j = 0; j < width; j++) {\
@@ -988,21 +989,6 @@ typedef struct SwsFilterDescriptor
     /// Function for processing input slice sliceH lines starting from line sliceY
     int (*process)(SwsContext *c, struct SwsFilterDescriptor *desc, int sliceY, int sliceH);
 } SwsFilterDescriptor;
-
-/// Color conversion instance data
-typedef struct ColorContext
-{
-    uint32_t *pal;
-} ColorContext;
-
-/// Scaler instance data
-typedef struct FilterContext
-{
-    uint16_t *filter;
-    int *filter_pos;
-    int filter_size;
-    int xInc;
-} FilterContext;
 
 // warp input lines in the form (src + width*i + j) to slice format (line[i][j])
 // relative=true means first line src[x][0] otherwise first line is src[x][lum/crh Y]

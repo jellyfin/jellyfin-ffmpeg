@@ -80,6 +80,7 @@
 #include "aacsbr.h"
 #include "mpeg4audio.h"
 #include "aacadtsdec.h"
+#include "profiles.h"
 #include "libavutil/intfloat.h"
 
 #include <math.h>
@@ -438,6 +439,8 @@ AVCodec ff_aac_fixed_decoder = {
         AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_NONE
     },
     .capabilities    = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
+    .caps_internal   = FF_CODEC_CAP_INIT_THREADSAFE,
     .channel_layouts = aac_channel_layout,
+    .profiles        = NULL_IF_CONFIG_SMALL(ff_aac_profiles),
     .flush = flush,
 };

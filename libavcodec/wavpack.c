@@ -93,7 +93,7 @@ static av_always_inline int get_tail(GetBitContext *gb, int k)
         return 0;
     p   = av_log2(k);
     e   = (1 << (p + 1)) - k - 1;
-    res = p ? get_bits(gb, p) : 0;
+    res = get_bitsz(gb, p);
     if (res >= e)
         res = (res << 1) - e + get_bits1(gb);
     return res;
@@ -597,12 +597,14 @@ static av_cold int wv_alloc_frame_context(WavpackContext *c)
     return 0;
 }
 
+#if HAVE_THREADS
 static int init_thread_copy(AVCodecContext *avctx)
 {
     WavpackContext *s = avctx->priv_data;
     s->avctx = avctx;
     return 0;
 }
+#endif
 
 static av_cold int wavpack_decode_init(AVCodecContext *avctx)
 {

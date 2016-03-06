@@ -25,6 +25,7 @@
  */
 
 #include "libavutil/eval.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/rational.h"
 #include "avformat.h"
@@ -131,10 +132,21 @@ static int scan_file(AVFormatContext *avctx, AVStream *vst, AVStream *ast, int f
         if (vst && type == MKTAG('R','A','W','I') && size >= 164) {
             vst->codec->width  = avio_rl16(pb);
             vst->codec->height = avio_rl16(pb);
+            ret = av_image_check_size(vst->codec->width, vst->codec->height, 0, avctx);
+            if (ret < 0)
+                return ret;
             if (avio_rl32(pb) != 1)
                 avpriv_request_sample(avctx, "raw api version");
             avio_skip(pb, 20); // pointer, width, height, pitch, frame_size
             vst->codec->bits_per_coded_sample = avio_rl32(pb);
+            if (vst->codec->bits_per_coded_sample < 0 ||
+                vst->codec->bits_per_coded_sample > (INT_MAX - 7) / (vst->codec->width * vst->codec->height)) {
+                av_log(avctx, AV_LOG_ERROR,
+                       "invalid bits_per_coded_sample %d (size: %dx%d)\n",
+                       vst->codec->bits_per_coded_sample,
+                       vst->codec->width, vst->codec->height);
+                return AVERROR_INVALIDDATA;
+            }
             avio_skip(pb, 8 + 16 + 24); // black_level, white_level, xywh, active_area, exposure_bias
             if (avio_rl32(pb) != 0x2010100) /* RGGB */
                 avpriv_request_sample(avctx, "cfa_pattern");
@@ -332,28 +344,24 @@ static int read_header(AVFormatContext *avctx)
     if (strlen(avctx->filename) > 2) {
         int i;
         char *filename = av_strdup(avctx->filename);
-        AVOpenCallback open_func = avctx->open_cb;
 
         if (!filename)
             return AVERROR(ENOMEM);
 
-        if (!open_func)
-            open_func = ffio_open2_wrapper;
-
         for (i = 0; i < 100; i++) {
             snprintf(filename + strlen(filename) - 2, 3, "%02d", i);
-            if (open_func(avctx, &mlv->pb[i], filename, AVIO_FLAG_READ, &avctx->interrupt_callback, NULL) < 0)
+            if (avctx->io_open(avctx, &mlv->pb[i], filename, AVIO_FLAG_READ, NULL) < 0)
                 break;
             if (check_file_header(mlv->pb[i], guid) < 0) {
                 av_log(avctx, AV_LOG_WARNING, "ignoring %s; bad format or guid mismatch\n", filename);
-                avio_closep(&mlv->pb[i]);
+                ff_format_io_close(avctx, &mlv->pb[i]);
                 continue;
             }
             av_log(avctx, AV_LOG_INFO, "scanning %s\n", filename);
             ret = scan_file(avctx, vst, ast, i);
             if (ret < 0) {
                 av_log(avctx, AV_LOG_WARNING, "ignoring %s; %s\n", filename, av_err2str(ret));
-                avio_closep(&mlv->pb[i]);
+                ff_format_io_close(avctx, &mlv->pb[i]);
                 continue;
             }
         }
@@ -454,7 +462,7 @@ static int read_close(AVFormatContext *s)
     int i;
     for (i = 0; i < 100; i++)
         if (mlv->pb[i])
-            avio_closep(&mlv->pb[i]);
+            ff_format_io_close(s, &mlv->pb[i]);
     return 0;
 }
 

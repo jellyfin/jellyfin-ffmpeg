@@ -41,10 +41,15 @@ fate-vsynth%-dnxhd-720p-10bit:   ENCOPTS = -s hd720 -b 90M              \
                                            -pix_fmt yuv422p10 -frames 5 -qmax 8
 fate-vsynth%-dnxhd-720p-10bit:   FMT     = dnxhd
 
-FATE_VCODEC-$(call ENCDEC, DNXHD, MOV)  += dnxhd-1080i dnxhd-1080i-colr
+FATE_VCODEC-$(call ENCDEC, DNXHD, MOV)  += dnxhd-1080i dnxhd-1080i-10bit dnxhd-1080i-colr
 fate-vsynth%-dnxhd-1080i:        ENCOPTS = -s hd1080 -b 120M -flags +ildct \
                                            -pix_fmt yuv422p -frames 5 -qmax 8
 fate-vsynth%-dnxhd-1080i:        FMT     = mov
+
+fate-vsynth%-dnxhd-1080i-10bit:  ENCOPTS = -s hd1080 -b 185M -flags +ildct \
+                                           -pix_fmt yuv422p10 -frames 5 -qmax 8
+fate-vsynth%-dnxhd-1080i-10bit:  DECOPTS = -sws_flags area+accurate_rnd+bitexact
+fate-vsynth%-dnxhd-1080i-10bit:  FMT     = mov
 
 fate-vsynth%-dnxhd-1080i-colr:   ENCOPTS = -s hd1080 -b 120M -flags +ildct -movflags write_colr \
                                            -pix_fmt yuv422p -frames 5 -qmax 8
@@ -203,9 +208,9 @@ fate-vsynth%-mpeg4:              ENCOPTS = -qscale 10 -flags +mv4 -mbd bits
 fate-vsynth%-mpeg4:              FMT     = mp4
 
 fate-vsynth%-mpeg4-adap:         ENCOPTS = -b 550k -bf 2 -flags +mv4     \
-                                           -mpv_flags +mv0               \
                                            -trellis 1 -cmp 1 -subcmp 2   \
-                                           -mbd rd -scplx_mask 0.3
+                                           -mbd rd -scplx_mask 0.3       \
+                                           -mpv_flags +mv0
 
 fate-vsynth%-mpeg4-adv:          ENCOPTS = -qscale 9 -flags +mv4+aic       \
                                            -data_partitioning 1 -trellis 1 \
@@ -215,7 +220,8 @@ fate-vsynth%-mpeg4-error:        ENCOPTS = -qscale 7 -flags +mv4+aic    \
                                            -data_partitioning 1 -mbd rd \
                                            -ps 250 -error_rate 10
 
-fate-vsynth%-mpeg4-nr:           ENCOPTS = -qscale 8 -flags +mv4 -mbd rd -nr 200
+fate-vsynth%-mpeg4-nr:           ENCOPTS = -qscale 8 -flags +mv4 -mbd rd \
+                                           -noise_reduction 200
 
 fate-vsynth%-mpeg4-nsse:         ENCOPTS = -qscale 7 -cmp nsse -subcmp nsse \
                                            -mbcmp nsse -precmp nsse         \
@@ -225,9 +231,8 @@ fate-vsynth%-mpeg4-qpel:         ENCOPTS = -qscale 7 -flags +mv4+qpel -mbd 2 \
                                            -bf 2 -cmp 1 -subcmp 2
 
 fate-vsynth%-mpeg4-qprd:         ENCOPTS = -b 450k -bf 2 -trellis 1          \
-                                           -flags +mv4 -mpv_flags +qp_rd     \
-                                           -cmp 2 -subcmp 2 -mbd rd          \
-                                           -mpv_flags +mv0
+                                           -flags +mv4 -mpv_flags +qp_rd+mv0 \
+                                           -cmp 2 -subcmp 2 -mbd rd
 
 fate-vsynth%-mpeg4-rc:           ENCOPTS = -b 400k -bf 2
 
@@ -260,9 +265,24 @@ fate-vsynth%-qtrlegray:          CODEC   = qtrle
 fate-vsynth%-qtrlegray:          ENCOPTS = -pix_fmt gray
 fate-vsynth%-qtrlegray:          FMT     = mov
 
-FATE_VCODEC-$(call ENCDEC, RAWVIDEO, AVI) += rgb
+FATE_VCODEC-$(call ENCDEC, RAWVIDEO, AVI) += rgb bpp1 bpp15
 fate-vsynth%-rgb:                CODEC   = rawvideo
 fate-vsynth%-rgb:                ENCOPTS = -pix_fmt bgr24
+fate-vsynth%-bpp1:               CODEC   = rawvideo
+fate-vsynth%-bpp1:               ENCOPTS = -pix_fmt monow
+fate-vsynth%-bpp15:              CODEC   = rawvideo
+fate-vsynth%-bpp15:              ENCOPTS = -pix_fmt bgr555le
+
+FATE_VCODEC-$(call ENCDEC, RAWVIDEO, MOV) += mov-bgr24 mov-bpp15 mov-bpp16
+fate-vsynth%-mov-bgr24:          CODEC   = rawvideo
+fate-vsynth%-mov-bgr24:          ENCOPTS = -pix_fmt bgr24
+fate-vsynth%-mov-bgr24:          FMT      = mov
+fate-vsynth%-mov-bpp15:          CODEC   = rawvideo
+fate-vsynth%-mov-bpp15:          ENCOPTS = -pix_fmt rgb555le
+fate-vsynth%-mov-bpp15:          FMT      = mov
+fate-vsynth%-mov-bpp16:          CODEC   = rawvideo
+fate-vsynth%-mov-bpp16:          ENCOPTS = -pix_fmt rgb565le
+fate-vsynth%-mov-bpp16:          FMT      = mov
 
 FATE_VCODEC-$(call ENCDEC, ROQ, ROQ)    += roqvideo
 fate-vsynth%-roqvideo:           CODEC   = roqvideo
@@ -296,7 +316,8 @@ fate-vsynth%-svq1:               FMT     = mov
 
 FATE_VCODEC-$(call ENCDEC, R210, AVI)   += r210
 
-FATE_VCODEC-$(call ENCDEC, V210, AVI)   += v210
+FATE_VCODEC-$(call ENCDEC, V210, AVI)   += v210 v210-10
+fate-vsynth%-v210-10:            ENCOPTS = -pix_fmt yuv422p10
 
 FATE_VCODEC-$(call ENCDEC, V308, AVI)   += v308
 

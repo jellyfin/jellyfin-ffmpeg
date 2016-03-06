@@ -30,6 +30,7 @@
 #include "libavutil/bprint.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/file.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
@@ -39,6 +40,7 @@
 #include "libavfilter/avfilter.h"
 #include "libavfilter/avfiltergraph.h"
 #include "libavfilter/buffersink.h"
+#include "libavformat/avio_internal.h"
 #include "libavformat/internal.h"
 #include "avdevice.h"
 
@@ -143,7 +145,11 @@ av_cold static int lavfi_read_header(AVFormatContext *avctx)
     if (lavfi->graph_filename) {
         AVBPrint graph_file_pb;
         AVIOContext *avio = NULL;
-        ret = avio_open(&avio, lavfi->graph_filename, AVIO_FLAG_READ);
+        AVDictionary *options = NULL;
+        if (avctx->protocol_whitelist && (ret = av_dict_set(&options, "protocol_whitelist", avctx->protocol_whitelist, 0)) < 0)
+            goto end;
+        ret = avio_open2(&avio, lavfi->graph_filename, AVIO_FLAG_READ, &avctx->interrupt_callback, &options);
+        av_dict_set(&options, "protocol_whitelist", NULL, 0);
         if (ret < 0)
             goto end;
         av_bprint_init(&graph_file_pb, 0, AV_BPRINT_SIZE_UNLIMITED);
@@ -381,7 +387,6 @@ static int lavfi_read_packet(AVFormatContext *avctx, AVPacket *pkt)
     double min_pts = DBL_MAX;
     int stream_idx, min_pts_sink_idx = 0;
     AVFrame *frame = lavfi->decoded_frame;
-    AVPicture pict;
     AVDictionary *frame_metadata;
     int ret, i;
     int size = 0;
@@ -430,15 +435,12 @@ static int lavfi_read_packet(AVFormatContext *avctx, AVPacket *pkt)
     stream_idx = lavfi->sink_stream_map[min_pts_sink_idx];
 
     if (frame->width /* FIXME best way of testing a video */) {
-        size = avpicture_get_size(frame->format, frame->width, frame->height);
+        size = av_image_get_buffer_size(frame->format, frame->width, frame->height, 1);
         if ((ret = av_new_packet(pkt, size)) < 0)
             return ret;
 
-        memcpy(pict.data,     frame->data,     4*sizeof(frame->data[0]));
-        memcpy(pict.linesize, frame->linesize, 4*sizeof(frame->linesize[0]));
-
-        avpicture_layout(&pict, frame->format, frame->width, frame->height,
-                         pkt->data, size);
+        av_image_copy_to_buffer(pkt->data, size, (const uint8_t **)frame->data, frame->linesize,
+                                frame->format, frame->width, frame->height, 1);
     } else if (av_frame_get_channels(frame) /* FIXME test audio */) {
         size = frame->nb_samples * av_get_bytes_per_sample(frame->format) *
                                    av_frame_get_channels(frame);

@@ -18,6 +18,10 @@ fate-mapchan: $(FATE_MAPCHAN)
 FATE_FFMPEG-$(CONFIG_COLOR_FILTER) += fate-ffmpeg-filter_complex
 fate-ffmpeg-filter_complex: CMD = framecrc -filter_complex color=d=1:r=5 -fflags +bitexact
 
+FATE_SAMPLES_FFMPEG-$(CONFIG_COLORKEY_FILTER) += fate-ffmpeg-filter_colorkey
+fate-ffmpeg-filter_colorkey: tests/data/filtergraphs/colorkey
+fate-ffmpeg-filter_colorkey: CMD = framecrc -idct simple -fflags +bitexact -flags +bitexact  -sws_flags +accurate_rnd+bitexact -i $(TARGET_SAMPLES)/cavs/cavs.mpg -fflags +bitexact -flags +bitexact -sws_flags +accurate_rnd+bitexact -i $(TARGET_SAMPLES)/lena.pnm -filter_complex_script $(TARGET_PATH)/tests/data/filtergraphs/colorkey -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -qscale 2 -vframes 10
+
 FATE_FFMPEG-$(CONFIG_COLOR_FILTER) += fate-ffmpeg-lavfi
 fate-ffmpeg-lavfi: CMD = framecrc -lavfi color=d=1:r=5 -fflags +bitexact
 
@@ -46,3 +50,9 @@ fate-unknown_layout-ac3: $(AREF)
 fate-unknown_layout-ac3: CMD = md5 \
   -guess_layout_max 0 -f s16le -ac 1 -ar 44100 -i $(TARGET_PATH)/$(AREF) \
   -f ac3 -flags +bitexact -c ac3_fixed
+
+FATE_SAMPLES_FFMPEG-$(call DEMMUX, OGG, OGG) += fate-limited_input_seek fate-limited_input_seek-copyts
+fate-limited_input_seek: $(TARGET_SAMPLES)/vorbis/moog_small.ogg
+fate-limited_input_seek: CMD = md5 -ss 1.5 -t 1.3 -i $(TARGET_SAMPLES)/vorbis/moog_small.ogg -c:a copy -fflags +bitexact -f ogg
+fate-limited_input_seek-copyts: $(TARGET_SAMPLES)/vorbis/moog_small.ogg
+fate-limited_input_seek-copyts: CMD = md5 -ss 1.5 -t 1.3 -i $(TARGET_SAMPLES)/vorbis/moog_small.ogg -c:a copy -copyts -fflags +bitexact -f ogg
