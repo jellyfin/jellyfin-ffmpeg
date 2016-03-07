@@ -226,7 +226,9 @@ override_dh_auto_build-arch:
 
 # Set the library path for the dynamic linker, because the tests otherwise don't find the libraries.
 override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	export LD_LIBRARY_PATH="libavcodec:libavdevice:libavfilter:libavformat:libavresample:libavutil:libpostproc:libswresample:libswscale"; dh_auto_test --sourcedirectory=debian/standard -- -k
+endif
 
 override_dh_auto_install:
 	dh_auto_install --sourcedirectory=debian/standard
