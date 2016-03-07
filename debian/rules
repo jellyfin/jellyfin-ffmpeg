@@ -43,7 +43,6 @@ FLAVORS = standard extra
 #   --enable-libvidstab             (see #709193 for the RFP bug)
 #   --enable-libxavs
 # The following flags are not added for various reasons:
-#   * --enable-libquvi: The wrapper wasn't updated for recent versions (due to license concerns) and thus might produce problems, e.g. for mpv.
 #   * --enable-libv4l2 [!hurd-any]: This is only needed for very old devices and may cause problems for others.
 #                                   Should anyone need it, using LD_PRELOAD pointing on libv4l2 has the same effect.
 #   * --enable-opencl [!hurd-any]:  This is considered an experimental API.

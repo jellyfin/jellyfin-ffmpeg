@@ -82,9 +82,6 @@ Build-Depends:
  libopenjpeg-dev,
 # --enable-libopus
  libopus-dev,
-# Disabled, as it might produce problems.
-# # --enable-libquvi
-# libquvi-dev,
 # --enable-libpulse
  libpulse-dev,
 # --enable-librtmp
