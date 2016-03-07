@@ -176,7 +176,7 @@ endif
 
 # Disable optimizations on mips(el) and some on mips64(el), because they are not always available on these architectures.
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel mips64 mips64el))
-	CONFIG += --disable-mipsdspr1 \
+	CONFIG += --disable-mipsdsp \
 	--disable-mipsdspr2 \
 	--disable-loongson3
 endif
