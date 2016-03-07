@@ -1,5 +1,4 @@
-# This is a bug in lintian thinking only libav (and not also FFmpeg) build libpostproc.
-# See: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=729203#430
+# Bug in lintian (can be removed once #817004 is fixed)
 libpostproc54: embedded-library usr/lib/*/libpostproc.so.*: libpostproc
 
 # According to Debian policy [1], non position independent code is permitted
