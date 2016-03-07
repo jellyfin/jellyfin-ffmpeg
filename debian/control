@@ -40,6 +40,8 @@ Build-Depends:
  libcaca-dev,
 # --enable-libcdio
  libcdio-paranoia-dev,
+# --enable-libchromaprint
+ libchromaprint-dev <!stage1>,
 # autodetected 'crystalhd'
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
@@ -84,6 +86,8 @@ Build-Depends:
  libopus-dev,
 # --enable-libpulse
  libpulse-dev,
+# --enable-librubberband
+ librubberband-dev,
 # --enable-librtmp
  librtmp-dev,
 # --enable-libschroedinger
