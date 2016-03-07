@@ -12,12 +12,8 @@ DEBIAN_DIR = $(dir $(firstword $(MAKEFILE_LIST)))
 DEB_VERSION  := $(shell dpkg-parsechangelog -l$(DEBIAN_DIR)changelog -SVersion)
 DEB_REVISION := $(word 2, $(subst -, ,$(DEB_VERSION)))
 
-# Get the architecture triplet:
-DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
-
-# Get the host architecture/OS:
-DEB_HOST_ARCH_OS   ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
-DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+# DEB_HOST_* variables
+include /usr/share/dpkg/architecture.mk
 
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
 export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
@@ -156,7 +152,7 @@ else
 endif
 
 # Disable i686 optimizations on i386, because they are not always available on this architecture.
-ifneq (,$(filter $(DEB_HOST_ARCH),i386 hurd-i386))
+ifneq (,$(filter $(DEB_HOST_ARCH_CPU),i386))
 	CONFIG += --disable-i686
 endif
 
