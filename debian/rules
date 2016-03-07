@@ -120,7 +120,6 @@ CONFIG_extra = --enable-version3 \
 	--disable-swscale \
 	--enable-libopencore_amrnb \
 	--enable-libopencore_amrwb \
-	--enable-libvo_aacenc \
 	--enable-libvo_amrwbenc
 
 # Disable optimizations if requested.
