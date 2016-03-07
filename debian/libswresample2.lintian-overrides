@@ -3,4 +3,4 @@
 # performance penalty, especially on i386.
 # Therefore -fPIC is not used by the upstream build system on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f83
-libswresample-ffmpeg1 [i386]: shlib-with-non-pic-code usr/lib/i386*/libswresample-ffmpeg.so.*
+libswresample2 [i386]: shlib-with-non-pic-code usr/lib/i386*/libswresample.so.*
