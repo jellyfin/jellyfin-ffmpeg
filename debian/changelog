@@ -1,5 +1,6 @@
-ffmpeg (7:3.0-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.0-1) experimental; urgency=medium
 
+  * Team upload.
   * New upstream release.
   * SONAME bump and no longer add -ffmpeg to SONAMES.
   * debian/{rules,control}: Use automatic debug symbol packages.
@@ -20,8 +21,9 @@ ffmpeg (7:3.0-1) UNRELEASED; urgency=medium
     - Update Vcs-Git.
     - New Build-Depends: libchromaprint-dev, librubberband-dev.
     - Removed Build-Depends: libvo-aacenc-dev.
+    - Update Description.
 
- -- Sebastian Ramacher <sramacher@debian.org>  Mon, 07 Mar 2016 00:16:40 +0100
+ -- Sebastian Ramacher <sramacher@debian.org>  Tue, 08 Mar 2016 01:58:44 +0100
 
 ffmpeg (7:2.8.6-1) unstable; urgency=medium
 
