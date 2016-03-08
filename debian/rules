@@ -36,7 +36,6 @@ FLAVORS = standard extra
 #   --enable-libmfx
 #   --enable-libnut
 #   --enable-libopenh264
-#   --enable-libstagefright-h264
 #   --enable-libutvideo
 #   --enable-libvidstab             (see #709193 for the RFP bug)
 #   --enable-libxavs
