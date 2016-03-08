@@ -252,7 +252,6 @@ Description: FFmpeg library with additional de/encoders for audio/video codecs
  .
   * OpenCORE Adaptive Multi-Rate (AMR) Narrow-Band (Encoder/Decoder)
   * OpenCORE Adaptive Multi-Rate (AMR) Wide-Band (Decoder)
-  * Android VisualOn AAC (Encoder)
   * Android VisualOn Adaptive Multi-Rate (AMR) Wide-Band (Encoder)
  .
  Because this package links against libraries that are licensed under
