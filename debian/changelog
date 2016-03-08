@@ -1,6 +1,25 @@
 ffmpeg (7:3.0-1) UNRELEASED; urgency=medium
 
   * New upstream release.
+  * SONAME bump and no longer add -ffmpeg to SONAMES.
+  * debian/{rules,control}: Use automatic debug symbol packages.
+  * debian/patches/{build-make-out-of-tree-builds-bit-identical-to-in-tr,
+    doc-make-apidoc-output-independent-of-SRC_PATH}.patch: Removed, included
+    upstream.
+  * debian/missing-sources/ffmpeg-web/src/less/style.less: Update from GitHub.
+  * debian/copyright: Update copyright years and add new copyright holders.
+  * debian/rules:
+    - Honor nocheck.
+    - Simplify CPU check.
+    - No longer build with --enable-libvo_aacenc.
+    - Update use of --disable-mipsdspr1.
+    - Build with --enable-chromaprint and --enable-librubberband.
+    - Do not run tests for -indep builds.
+    - Always fail loop on error.
+  * debian/control:
+    - Update Vcs-Git.
+    - New Build-Depends: libchromaprint-dev, librubberband-dev.
+    - Removed Build-Depends: libvo-aacenc-dev.
 
  -- Sebastian Ramacher <sramacher@debian.org>  Mon, 07 Mar 2016 00:16:40 +0100
 
