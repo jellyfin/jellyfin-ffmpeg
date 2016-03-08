@@ -213,7 +213,7 @@ override_dh_auto_build-indep:
 override_dh_auto_build-arch:
 	# Copy built object files to avoid building them again for the extra flavor.
 	# Build qt-faststart here, to make it possible to build with 'nocheck'.
-	for flavor in $(FLAVORS); do \
+	set -e && for flavor in $(FLAVORS); do \
 		echo " *** $$flavor ***"; \
 		if echo "$$flavor" | grep -q "extra"; then \
 			subdir=`[ "$$flavor" = "extra" ] && echo "debian/standard/" || echo "debian/altivec/"`; \
@@ -224,7 +224,7 @@ override_dh_auto_build-arch:
 			rm debian/"$$flavor"/libavcodec/allcodecs.o; \
 		fi; \
 		if [ "$$flavor" = "standard" ]; then \
-			cd debian/standard; make tools/qt-faststart; cd ../..; \
+			$(MAKE) -C debian/standard tools/qt-faststart; \
 		fi; \
 		dh_auto_build -a --sourcedirectory=debian/"$$flavor" || (cat debian/"$$flavor"/config.log && exit 1); \
 	done
