@@ -1,2 +1,2 @@
-usr/lib/*/libavutil-ffmpeg.so.*
-usr/lib/*/*/libavutil-ffmpeg.so.*
+usr/lib/*/libavutil.so.*
+usr/lib/*/*/libavutil.so.*

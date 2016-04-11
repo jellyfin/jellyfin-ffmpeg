@@ -1,2 +1,2 @@
-usr/lib/*/libswscale-ffmpeg.so.*
-usr/lib/*/*/libswscale-ffmpeg.so.*
+usr/lib/*/libswscale.so.*
+usr/lib/*/*/libswscale.so.*

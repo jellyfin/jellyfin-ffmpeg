@@ -1,2 +1,2 @@
-usr/lib/*/libswresample-ffmpeg.so.*
-usr/lib/*/*/libswresample-ffmpeg.so.*
+usr/lib/*/libswresample.so.*
+usr/lib/*/*/libswresample.so.*

@@ -1,2 +1,2 @@
-usr/lib/*/libavresample-ffmpeg.so.*
-usr/lib/*/*/libavresample-ffmpeg.so.*
+usr/lib/*/libavresample.so.*
+usr/lib/*/*/libavresample.so.*

@@ -1,2 +1,2 @@
-usr/lib/*/libavcodec-ffmpeg.so.*
-usr/lib/*/*/libavcodec-ffmpeg.so.*
+usr/lib/*/libavcodec.so.*
+usr/lib/*/*/libavcodec.so.*
