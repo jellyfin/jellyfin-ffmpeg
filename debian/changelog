@@ -1,8 +1,11 @@
-ffmpeg (7:3.0.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.0.1-1) experimental; urgency=medium
 
+  * Team upload.
   * New upstream release.
+  * debian/*.install.powerpc: Remove extra -ffmpeg from filenames.
+  * debian/control: Bump Standards-Version.
 
- -- Sebastian Ramacher <sramacher@debian.org>  Tue, 29 Mar 2016 15:48:21 +0200
+ -- Sebastian Ramacher <sramacher@debian.org>  Mon, 11 Apr 2016 17:51:27 +0200
 
 ffmpeg (7:3.0-1) experimental; urgency=medium
 
