@@ -264,7 +264,7 @@ Section: metapackages
 Priority: extra
 Multi-Arch: foreign
 Depends:
- libavcodec-extra56,
+ libavcodec-extra57,
  ${misc:Depends}
 Description: FFmpeg library with extra codecs (metapackage)
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
