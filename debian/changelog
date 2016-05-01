@@ -1,3 +1,9 @@
+ffmpeg (7:3.0.2-1) UNRELEASED; urgency=medium
+
+  * New upstream release.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Sun, 01 May 2016 20:58:58 +0200
+
 ffmpeg (7:3.0.1-3) unstable; urgency=medium
 
   * Team upload.
