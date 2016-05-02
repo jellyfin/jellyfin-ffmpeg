@@ -79,7 +79,7 @@ Build-Depends:
 # --enable-libopencore_amrwb
  libopencore-amrwb-dev,
 # --enable-libopencv
- libopencv-dev [!sh4 !sparc64] <!stage1>,
+ libopencv-dev <!stage1>,
 # --enable-libopenjpeg
  libopenjpeg-dev,
 # --enable-libopus

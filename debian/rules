@@ -148,11 +148,6 @@ else
 	ifeq (,$(filter $(DEB_HOST_ARCH),sparc64))
 		CONFIG += --enable-libx264
 	endif
-
-	# OpenCV is not available on some architectures.
-	ifeq (,$(filter $(DEB_HOST_ARCH),sh4 sparc64))
-		CONFIG += --enable-libopencv
-	endif
 endif
 
 # Disable i686 optimizations on i386, because they are not always available on this architecture.
