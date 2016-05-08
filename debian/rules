@@ -125,7 +125,7 @@ ifneq (,$(filter $(DEB_BUILD_OPTIONS),noopt))
 	CONFIG += --disable-optimizations
 endif
 
-# Some libraries are build only on linux.
+# Some libraries are built only on linux.
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIG += --enable-libdc1394 \
 		--enable-libiec61883

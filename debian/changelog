@@ -1,6 +1,6 @@
 ffmpeg (7:3.0.2-1) UNRELEASED; urgency=medium
 
-  * New upstream release.
+  * New upstream release (Closes: #823633).
 
  -- Sebastian Ramacher <sramacher@debian.org>  Sun, 01 May 2016 20:58:58 +0200
 
