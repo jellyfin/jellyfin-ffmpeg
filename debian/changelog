@@ -1,5 +1,6 @@
 ffmpeg (7:3.0.2-2) unstable; urgency=medium
 
+  * Team upload.
   * debian/rules: Build with --disable-mips32r6 on mips(el) to fix FTBFS
     there.
 
