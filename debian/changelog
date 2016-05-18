@@ -1,3 +1,9 @@
+ffmpeg (7:3.0.2-3) UNRELEASED; urgency=medium
+
+  *
+
+ -- Balint Reczey <balint@balintreczey.hu>  Wed, 18 May 2016 23:39:45 +0200
+
 ffmpeg (7:3.0.2-2) unstable; urgency=medium
 
   * Team upload.
