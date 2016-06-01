@@ -150,11 +150,6 @@ else
 	endif
 endif
 
-# Disable i686 optimizations on i386, because they are not always available on this architecture.
-ifneq (,$(filter $(DEB_HOST_ARCH_CPU),i386))
-	CONFIG += --disable-i686
-endif
-
 # Disable altivec optimizations on powerpc, because they are not always available on this architecture.
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	CONFIG += --disable-altivec
