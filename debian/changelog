@@ -1,8 +1,17 @@
-ffmpeg (7:3.0.2-3) UNRELEASED; urgency=medium
+ffmpeg (7:3.0.2-3) unstable; urgency=medium
 
-  *
+  * Team upload.
 
- -- Balint Reczey <balint@balintreczey.hu>  Wed, 18 May 2016 23:39:45 +0200
+  [ Balint Reczey ]
+  * Build-depend on libx265-dev (>= 1.8)
+
+  [ Sebastian Ramacher ]
+  * debian/rules:
+    - No longer disable i686 optimization on i386 based architectures.
+    - Disable mips32r6 for all mips architectures.
+  * debian/copyright: Remove an extra 'with'.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 01 Jun 2016 20:43:32 +0200
 
 ffmpeg (7:3.0.2-2) unstable; urgency=medium
 
