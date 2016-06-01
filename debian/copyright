@@ -17,7 +17,7 @@ Comment:
  package is effectively licensed under GPL-3+, because during its creation
  the GPL-3+ licensed file doc/t2h.pm is used.
  .
- FFmpeg can also be combined with with non-free libraries, which would make the
+ FFmpeg can also be combined with non-free libraries, which would make the
  resulting binaries unredistributable.
  But this is not done for the Debian packages.
 
