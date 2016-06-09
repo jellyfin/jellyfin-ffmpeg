@@ -81,7 +81,7 @@ Build-Depends:
 # --enable-libopencv
  libopencv-dev <!stage1>,
 # --enable-libopenjpeg
- libopenjpeg-dev,
+ libopenjp2-7-dev,
 # --enable-libopus
  libopus-dev,
 # --enable-libpulse
