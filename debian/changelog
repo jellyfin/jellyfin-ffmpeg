@@ -1,3 +1,9 @@
+ffmpeg (7:3.0.2-5) UNRELEASED; urgency=medium
+
+  * debian/rules: Really build with opencv everywhere (Closes: #827868)
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 22 Jun 2016 08:41:22 +0200
+
 ffmpeg (7:3.0.2-4) unstable; urgency=medium
 
   * debian/control: Switch to libopenjp2-7-dev. (Closes: #826812)
