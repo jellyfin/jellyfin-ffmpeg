@@ -142,7 +142,8 @@ ifneq ($(filter stage1,$(DEB_BUILD_PROFILES)),)
 	CONFIG += --disable-libx264 --disable-libopencv --disable-frei0r
 else
 	CONFIG += --enable-frei0r \
-		--enable-chromaprint
+		--enable-chromaprint \
+		--enable-libopencv
 
 	# Some libraries are unusable (#792921) on sparc64.
 	ifeq (,$(filter $(DEB_HOST_ARCH),sparc64))
