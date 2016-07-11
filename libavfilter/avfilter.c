@@ -22,9 +22,11 @@
 #include "libavutil/atomic.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
+#include "libavutil/buffer.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/eval.h"
+#include "libavutil/hwcontext.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
@@ -321,6 +323,17 @@ int avfilter_config_links(AVFilterContext *filter)
                            link->dst->name);
                     return ret;
                 }
+
+            if (link->src->nb_inputs && link->src->inputs[0]->hw_frames_ctx &&
+                !link->hw_frames_ctx) {
+                AVHWFramesContext *input_ctx = (AVHWFramesContext*)link->src->inputs[0]->hw_frames_ctx->data;
+
+                if (input_ctx->format == link->format) {
+                    link->hw_frames_ctx = av_buffer_ref(link->src->inputs[0]->hw_frames_ctx);
+                    if (!link->hw_frames_ctx)
+                        return AVERROR(ENOMEM);
+                }
+            }
 
             link->init_state = AVLINK_INIT;
         }
@@ -715,6 +728,8 @@ static void free_link(AVFilterLink *link)
     if (link->dst)
         link->dst->inputs[link->dstpad - link->dst->input_pads] = NULL;
 
+    av_buffer_unref(&link->hw_frames_ctx);
+
     ff_formats_unref(&link->in_formats);
     ff_formats_unref(&link->out_formats);
     ff_formats_unref(&link->in_samplerates);
@@ -746,6 +761,8 @@ void avfilter_free(AVFilterContext *filter)
 
     if (filter->filter->priv_class)
         av_opt_free(filter->priv);
+
+    av_buffer_unref(&filter->hw_device_ctx);
 
     av_freep(&filter->name);
     av_freep(&filter->input_pads);

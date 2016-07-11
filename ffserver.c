@@ -2622,6 +2622,7 @@ static int http_start_receive_data(HTTPContext *c)
 {
     int fd;
     int ret;
+    int64_t ret64;
 
     if (c->stream->feed_opened) {
         http_log("Stream feed '%s' was not opened\n",
@@ -2657,13 +2658,13 @@ static int http_start_receive_data(HTTPContext *c)
             return ret;
         }
     } else {
-        ret = ffm_read_write_index(fd);
-        if (ret < 0) {
+        ret64 = ffm_read_write_index(fd);
+        if (ret64 < 0) {
             http_log("Error reading write index from feed file '%s': %s\n",
                      c->stream->feed_filename, strerror(errno));
-            return ret;
+            return ret64;
         }
-        c->stream->feed_write_index = ret;
+        c->stream->feed_write_index = ret64;
     }
 
     c->stream->feed_write_index = FFMAX(ffm_read_write_index(fd),
@@ -2995,6 +2996,8 @@ static int prepare_sdp_description(FFServerStream *stream, uint8_t **pbuffer,
     for(i = 0; i < stream->nb_streams; i++) {
         avc->streams[i] = &avs[i];
         avc->streams[i]->codec = stream->streams[i]->codec;
+        avcodec_parameters_from_context(stream->streams[i]->codecpar, stream->streams[i]->codec);
+        avc->streams[i]->codecpar = stream->streams[i]->codecpar;
     }
     *pbuffer = av_mallocz(2048);
     if (!*pbuffer)
@@ -3535,6 +3538,8 @@ static AVStream *add_av_stream1(FFServerStream *stream,
 
     fst->priv_data = av_mallocz(sizeof(FeedData));
     fst->internal = av_mallocz(sizeof(*fst->internal));
+    fst->internal->avctx = avcodec_alloc_context3(NULL);
+    fst->codecpar = avcodec_parameters_alloc();
     fst->index = stream->nb_streams;
     avpriv_set_pts_info(fst, 33, 1, 90000);
     fst->sample_aspect_ratio = codec->sample_aspect_ratio;
@@ -3858,6 +3863,8 @@ drop:
             if (avformat_write_header(s, NULL) < 0) {
                 http_log("Container doesn't support the required parameters\n");
                 avio_closep(&s->pb);
+                s->streams = NULL;
+                s->nb_streams = 0;
                 avformat_free_context(s);
                 goto bail;
             }

@@ -83,7 +83,7 @@ static int import_pem(URLContext *h, char *path, CFArrayRef *array)
 
     if ((ret = ffio_open_whitelist(&s, path, AVIO_FLAG_READ,
                                    &h->interrupt_callback, NULL,
-                                   h->protocol_whitelist)) < 0)
+                                   h->protocol_whitelist, h->protocol_blacklist)) < 0)
         goto end;
 
     if ((ret = avio_size(s)) < 0)
@@ -387,7 +387,7 @@ static const AVClass tls_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-URLProtocol ff_tls_securetransport_protocol = {
+const URLProtocol ff_tls_securetransport_protocol = {
     .name           = "tls",
     .url_open2      = tls_open,
     .url_read       = tls_read,

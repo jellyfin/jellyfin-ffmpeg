@@ -54,12 +54,15 @@ static const AVOption histogram_options[] = {
     { "level_height", "set level height", OFFSET(level_height), AV_OPT_TYPE_INT, {.i64=200}, 50, 2048, FLAGS},
     { "scale_height", "set scale height", OFFSET(scale_height), AV_OPT_TYPE_INT, {.i64=12}, 0, 40, FLAGS},
     { "display_mode", "set display mode", OFFSET(display_mode), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "display_mode"},
-    { "parade",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "display_mode" },
-    { "overlay", NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "display_mode" },
+    { "d",            "set display mode", OFFSET(display_mode), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "display_mode"},
+        { "parade",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "display_mode" },
+        { "overlay", NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "display_mode" },
     { "levels_mode", "set levels mode", OFFSET(levels_mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS, "levels_mode"},
-    { "linear",      NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "levels_mode" },
-    { "logarithmic", NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "levels_mode" },
+    { "m",           "set levels mode", OFFSET(levels_mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS, "levels_mode"},
+        { "linear",      NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "levels_mode" },
+        { "logarithmic", NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "levels_mode" },
     { "components", "set color components to display", OFFSET(components), AV_OPT_TYPE_INT, {.i64=7}, 1, 15, FLAGS},
+    { "c",          "set color components to display", OFFSET(components), AV_OPT_TYPE_INT, {.i64=7}, 1, 15, FLAGS},
     { NULL }
 };
 
@@ -75,8 +78,10 @@ static const enum AVPixelFormat levels_in_pix_fmts[] = {
     AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
     AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
     AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
     AV_PIX_FMT_GBRAP,    AV_PIX_FMT_GBRP,
     AV_PIX_FMT_GBRP9,    AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_GBRP12,   AV_PIX_FMT_GBRAP12,
     AV_PIX_FMT_GRAY8,
     AV_PIX_FMT_NONE
 };
@@ -96,6 +101,11 @@ static const enum AVPixelFormat levels_out_yuv10_pix_fmts[] = {
     AV_PIX_FMT_NONE
 };
 
+static const enum AVPixelFormat levels_out_yuv12_pix_fmts[] = {
+    AV_PIX_FMT_YUV444P12,
+    AV_PIX_FMT_NONE
+};
+
 static const enum AVPixelFormat levels_out_rgb8_pix_fmts[] = {
     AV_PIX_FMT_GBRAP,    AV_PIX_FMT_GBRP,
     AV_PIX_FMT_NONE
@@ -108,6 +118,11 @@ static const enum AVPixelFormat levels_out_rgb9_pix_fmts[] = {
 
 static const enum AVPixelFormat levels_out_rgb10_pix_fmts[] = {
     AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_NONE
+};
+
+static const enum AVPixelFormat levels_out_rgb12_pix_fmts[] = {
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12,
     AV_PIX_FMT_NONE
 };
 
@@ -144,12 +159,18 @@ static int query_formats(AVFilterContext *ctx)
         out_pix_fmts = levels_out_rgb9_pix_fmts;
     else if (rgb && bits == 10)
         out_pix_fmts = levels_out_rgb10_pix_fmts;
+    else if (rgb && bits == 12)
+        out_pix_fmts = levels_out_rgb12_pix_fmts;
     else if (bits == 8)
         out_pix_fmts = levels_out_yuv8_pix_fmts;
     else if (bits == 9)
         out_pix_fmts = levels_out_yuv9_pix_fmts;
-    else // if (bits == 10)
+    else if (bits == 10)
         out_pix_fmts = levels_out_yuv10_pix_fmts;
+    else if (bits == 12)
+        out_pix_fmts = levels_out_yuv12_pix_fmts;
+    else
+        return AVERROR(EAGAIN);
     if ((ret = ff_formats_ref(ff_make_format_list(out_pix_fmts), &ctx->outputs[0]->in_formats)) < 0)
         return ret;
 
@@ -171,6 +192,7 @@ static int config_input(AVFilterLink *inlink)
     h->mult = h->histogram_size / 256;
 
     switch (inlink->format) {
+    case AV_PIX_FMT_GBRP12:
     case AV_PIX_FMT_GBRP10:
     case AV_PIX_FMT_GBRP9:
     case AV_PIX_FMT_GBRAP:

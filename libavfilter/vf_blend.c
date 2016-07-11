@@ -76,9 +76,11 @@ typedef struct ThreadData {
     { "divide",     "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_DIVIDE},     0, 0, FLAGS, "mode" },\
     { "dodge",      "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_DODGE},      0, 0, FLAGS, "mode" },\
     { "exclusion",  "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_EXCLUSION},  0, 0, FLAGS, "mode" },\
+    { "freeze",     "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_FREEZE},     0, 0, FLAGS, "mode" },\
     { "glow",       "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_GLOW},       0, 0, FLAGS, "mode" },\
     { "hardlight",  "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_HARDLIGHT},  0, 0, FLAGS, "mode" },\
     { "hardmix",    "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_HARDMIX},    0, 0, FLAGS, "mode" },\
+    { "heat",       "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_HEAT},       0, 0, FLAGS, "mode" },\
     { "lighten",    "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_LIGHTEN},    0, 0, FLAGS, "mode" },\
     { "linearlight","", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_LINEARLIGHT},0, 0, FLAGS, "mode" },\
     { "multiply",   "", 0, AV_OPT_TYPE_CONST, {.i64=BLEND_MULTIPLY},   0, 0, FLAGS, "mode" },\
@@ -123,7 +125,7 @@ static void blend_copy ## src(const uint8_t *top, ptrdiff_t top_linesize,    \
                             const uint8_t *bottom, ptrdiff_t bottom_linesize,\
                             uint8_t *dst, ptrdiff_t dst_linesize,            \
                             ptrdiff_t width, ptrdiff_t height,               \
-                            FilterParams *param, double *values)             \
+                            FilterParams *param, double *values, int starty) \
 {                                                                            \
     av_image_copy_plane(dst, dst_linesize, src, src ## _linesize,            \
                         width, height);                                 \
@@ -138,7 +140,7 @@ static void blend_normal_8bit(const uint8_t *top, ptrdiff_t top_linesize,
                               const uint8_t *bottom, ptrdiff_t bottom_linesize,
                               uint8_t *dst, ptrdiff_t dst_linesize,
                               ptrdiff_t width, ptrdiff_t height,
-                              FilterParams *param, double *values)
+                              FilterParams *param, double *values, int starty)
 {
     const double opacity = param->opacity;
     int i, j;
@@ -157,7 +159,7 @@ static void blend_normal_16bit(const uint8_t *_top, ptrdiff_t top_linesize,
                                   const uint8_t *_bottom, ptrdiff_t bottom_linesize,
                                   uint8_t *_dst, ptrdiff_t dst_linesize,
                                   ptrdiff_t width, ptrdiff_t height,
-                                  FilterParams *param, double *values)
+                                  FilterParams *param, double *values, int starty)
 {
     const uint16_t *top = (uint16_t*)_top;
     const uint16_t *bottom = (uint16_t*)_bottom;
@@ -183,7 +185,7 @@ static void blend_## name##_8bit(const uint8_t *top, ptrdiff_t top_linesize,    
                                  const uint8_t *bottom, ptrdiff_t bottom_linesize,   \
                                  uint8_t *dst, ptrdiff_t dst_linesize,               \
                                  ptrdiff_t width, ptrdiff_t height,                \
-                                 FilterParams *param, double *values)          \
+                                 FilterParams *param, double *values, int starty) \
 {                                                                              \
     double opacity = param->opacity;                                           \
     int i, j;                                                                  \
@@ -203,7 +205,7 @@ static void blend_## name##_16bit(const uint8_t *_top, ptrdiff_t top_linesize,  
                                   const uint8_t *_bottom, ptrdiff_t bottom_linesize, \
                                   uint8_t *_dst, ptrdiff_t dst_linesize,             \
                                   ptrdiff_t width, ptrdiff_t height,           \
-                                  FilterParams *param, double *values)         \
+                                  FilterParams *param, double *values, int starty)         \
 {                                                                              \
     const uint16_t *top = (uint16_t*)_top;                                     \
     const uint16_t *bottom = (uint16_t*)_bottom;                               \
@@ -245,6 +247,8 @@ DEFINE_BLEND8(screen,     SCREEN(1, A, B))
 DEFINE_BLEND8(overlay,    (A < 128) ? MULTIPLY(2, A, B) : SCREEN(2, A, B))
 DEFINE_BLEND8(hardlight,  (B < 128) ? MULTIPLY(2, B, A) : SCREEN(2, B, A))
 DEFINE_BLEND8(hardmix,    (A < (255 - B)) ? 0: 255)
+DEFINE_BLEND8(heat,       (A == 0) ? 0 : 255 - FFMIN(((255 - B) * (255 - B)) / A, 255))
+DEFINE_BLEND8(freeze,     (B == 0) ? 0 : 255 - FFMIN(((255 - A) * (255 - A)) / B, 255))
 DEFINE_BLEND8(darken,     FFMIN(A, B))
 DEFINE_BLEND8(lighten,    FFMAX(A, B))
 DEFINE_BLEND8(divide,     av_clip_uint8(B == 0 ? 255 : 255 * A / B))
@@ -285,6 +289,8 @@ DEFINE_BLEND16(screen,     SCREEN(1, A, B))
 DEFINE_BLEND16(overlay,    (A < 32768) ? MULTIPLY(2, A, B) : SCREEN(2, A, B))
 DEFINE_BLEND16(hardlight,  (B < 32768) ? MULTIPLY(2, B, A) : SCREEN(2, B, A))
 DEFINE_BLEND16(hardmix,    (A < (65535 - B)) ? 0: 65535)
+DEFINE_BLEND16(heat,       (A == 0) ? 0 : 65535 - FFMIN(((65535 - B) * (65535 - B)) / A, 65535))
+DEFINE_BLEND16(freeze,     (B == 0) ? 0 : 65535 - FFMIN(((65535 - A) * (65535 - A)) / B, 65535))
 DEFINE_BLEND16(darken,     FFMIN(A, B))
 DEFINE_BLEND16(lighten,    FFMAX(A, B))
 DEFINE_BLEND16(divide,     av_clip_uint16(B == 0 ? 65535 : 65535 * A / B))
@@ -307,7 +313,7 @@ static void blend_expr_## name(const uint8_t *_top, ptrdiff_t top_linesize,     
                                const uint8_t *_bottom, ptrdiff_t bottom_linesize,    \
                                uint8_t *_dst, ptrdiff_t dst_linesize,                \
                                ptrdiff_t width, ptrdiff_t height,              \
-                               FilterParams *param, double *values)            \
+                               FilterParams *param, double *values, int starty) \
 {                                                                              \
     const type *top = (type*)_top;                                             \
     const type *bottom = (type*)_bottom;                                       \
@@ -319,7 +325,7 @@ static void blend_expr_## name(const uint8_t *_top, ptrdiff_t top_linesize,     
     bottom_linesize /= div;                                                    \
                                                                                \
     for (y = 0; y < height; y++) {                                             \
-        values[VAR_Y] = y;                                                     \
+        values[VAR_Y] = y + starty;                                            \
         for (x = 0; x < width; x++) {                                          \
             values[VAR_X]      = x;                                            \
             values[VAR_TOP]    = values[VAR_A] = top[x];                       \
@@ -359,7 +365,7 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
                      td->bottom->linesize[td->plane],
                      dst + slice_start * td->dst->linesize[td->plane],
                      td->dst->linesize[td->plane],
-                     td->w, height, td->param, &values[0]);
+                     td->w, height, td->param, &values[0], slice_start);
     return 0;
 }
 
@@ -451,9 +457,11 @@ void ff_blend_init(FilterParams *param, int is_16bit)
     case BLEND_DIVIDE:     param->blend = is_16bit ? blend_divide_16bit     : blend_divide_8bit;     break;
     case BLEND_DODGE:      param->blend = is_16bit ? blend_dodge_16bit      : blend_dodge_8bit;      break;
     case BLEND_EXCLUSION:  param->blend = is_16bit ? blend_exclusion_16bit  : blend_exclusion_8bit;  break;
+    case BLEND_FREEZE:     param->blend = is_16bit ? blend_freeze_16bit     : blend_freeze_8bit;     break;
     case BLEND_GLOW:       param->blend = is_16bit ? blend_glow_16bit       : blend_glow_8bit;       break;
     case BLEND_HARDLIGHT:  param->blend = is_16bit ? blend_hardlight_16bit  : blend_hardlight_8bit;  break;
     case BLEND_HARDMIX:    param->blend = is_16bit ? blend_hardmix_16bit    : blend_hardmix_8bit;    break;
+    case BLEND_HEAT:       param->blend = is_16bit ? blend_heat_16bit       : blend_heat_8bit;       break;
     case BLEND_LIGHTEN:    param->blend = is_16bit ? blend_lighten_16bit    : blend_lighten_8bit;    break;
     case BLEND_LINEARLIGHT:param->blend = is_16bit ? blend_linearlight_16bit: blend_linearlight_8bit;break;
     case BLEND_MULTIPLY:   param->blend = is_16bit ? blend_multiply_16bit   : blend_multiply_8bit;   break;
