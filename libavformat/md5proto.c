@@ -71,7 +71,7 @@ static int md5_close(URLContext *h)
     if (*filename) {
         err = ffurl_open_whitelist(&out, filename, AVIO_FLAG_WRITE,
                                    &h->interrupt_callback, NULL,
-                                   h->protocol_whitelist);
+                                   h->protocol_whitelist, h->protocol_blacklist, h);
         if (err)
             return err;
         err = ffurl_write(out, buf, i*2+1);
@@ -87,7 +87,7 @@ static int md5_close(URLContext *h)
 }
 
 
-URLProtocol ff_md5_protocol = {
+const URLProtocol ff_md5_protocol = {
     .name                = "md5",
     .url_open            = md5_open,
     .url_write           = md5_write,

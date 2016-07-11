@@ -352,6 +352,12 @@ static av_cold int libopenjpeg_encode_init(AVCodecContext *avctx)
     ctx->enc_params.cp_cinema = ctx->cinema_mode;
 #endif
 
+    if (!ctx->numresolution) {
+        ctx->numresolution = 6;
+        while (FFMIN(avctx->width, avctx->height) >> ctx->numresolution < 1)
+            ctx->numresolution --;
+    }
+
     ctx->enc_params.mode = !!avctx->global_quality;
     ctx->enc_params.prog_order = ctx->prog_order;
     ctx->enc_params.numresolution = ctx->numresolution;
@@ -595,6 +601,7 @@ static int libopenjpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 #else // OPENJPEG_MAJOR_VERSION == 2
     opj_codec_t *compress   = NULL;
     opj_stream_t *stream    = NULL;
+    PacketWriter writer     = { 0 };
 #endif // OPENJPEG_MAJOR_VERSION == 1
     int cpyresult = 0;
     int ret;
@@ -746,7 +753,7 @@ static int libopenjpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     memcpy(pkt->data, stream->buffer, len);
 #else // OPENJPEG_MAJOR_VERSION == 2
-    PacketWriter writer = {0, pkt};
+    writer.packet = pkt;
     opj_stream_set_write_function(stream, stream_write);
     opj_stream_set_skip_function(stream, stream_skip);
     opj_stream_set_seek_function(stream, stream_seek);
@@ -814,7 +821,7 @@ static const AVOption options[] = {
     { "rpcl",          NULL,                0,                     AV_OPT_TYPE_CONST, { .i64 = OPJ(RPCL)    }, 0,         0,           VE, "prog_order"  },
     { "pcrl",          NULL,                0,                     AV_OPT_TYPE_CONST, { .i64 = OPJ(PCRL)    }, 0,         0,           VE, "prog_order"  },
     { "cprl",          NULL,                0,                     AV_OPT_TYPE_CONST, { .i64 = OPJ(CPRL)    }, 0,         0,           VE, "prog_order"  },
-    { "numresolution", NULL,                OFFSET(numresolution), AV_OPT_TYPE_INT,   { .i64 = 6           }, 1,         INT_MAX,     VE                },
+    { "numresolution", NULL,                OFFSET(numresolution), AV_OPT_TYPE_INT,   { .i64 = 0           }, 0,         INT_MAX,     VE                },
     { "numlayers",     NULL,                OFFSET(numlayers),     AV_OPT_TYPE_INT,   { .i64 = 1           }, 1,         10,          VE                },
     { "disto_alloc",   NULL,                OFFSET(disto_alloc),   AV_OPT_TYPE_INT,   { .i64 = 1           }, 0,         1,           VE                },
     { "fixed_alloc",   NULL,                OFFSET(fixed_alloc),   AV_OPT_TYPE_INT,   { .i64 = 0           }, 0,         1,           VE                },

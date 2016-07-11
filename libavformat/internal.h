@@ -22,6 +22,8 @@
 #define AVFORMAT_INTERNAL_H
 
 #include <stdint.h>
+
+#include "libavutil/bprint.h"
 #include "avformat.h"
 #include "os_support.h"
 
@@ -122,6 +124,7 @@ struct AVFormatInternal {
      * Whether or not a header has already been written
      */
     int header_written;
+    int write_header_ret;
 };
 
 struct AVStreamInternal {
@@ -132,16 +135,33 @@ struct AVStreamInternal {
     int reorder;
 
     /**
-     * bitstream filter to run on stream
+     * bitstream filters to run on stream
      * - encoding: Set by muxer using ff_stream_add_bitstream_filter
      * - decoding: unused
      */
-    AVBitStreamFilterContext *bsfc;
+    AVBSFContext **bsfcs;
+    int nb_bsfcs;
 
     /**
      * Whether or not check_bitstream should still be run on each packet
      */
     int bitstream_checked;
+
+    /**
+     * The codec context used by avformat_find_stream_info, the parser, etc.
+     */
+    AVCodecContext *avctx;
+    /**
+     * 1 if avctx has been initialized with the values from the codec parameters
+     */
+    int avctx_inited;
+
+    enum AVCodecID orig_codec_id;
+
+    /**
+     * Whether the internal avctx needs to be updated from codecpar (after a late change to codecpar)
+     */
+    int need_context_update;
 };
 
 #ifdef __GNUC__
@@ -495,7 +515,7 @@ static inline int ff_rename(const char *oldpath, const char *newpath, void *logc
  * @param size size of extradata
  * @return 0 if OK, AVERROR_xxx on error
  */
-int ff_alloc_extradata(AVCodecContext *avctx, int size);
+int ff_alloc_extradata(AVCodecParameters *par, int size);
 
 /**
  * Allocate extradata with additional AV_INPUT_BUFFER_PADDING_SIZE at end
@@ -504,7 +524,7 @@ int ff_alloc_extradata(AVCodecContext *avctx, int size);
  * @param size size of extradata
  * @return >= 0 if OK, AVERROR_xxx on error
  */
-int ff_get_extradata(AVCodecContext *avctx, AVIOContext *pb, int size);
+int ff_get_extradata(AVFormatContext *s, AVCodecParameters *par, AVIOContext *pb, int size);
 
 /**
  * add frame for rfps calculation.
@@ -532,7 +552,7 @@ enum AVWriteUncodedFrameFlags {
 /**
  * Copies the whilelists from one context to the other
  */
-int ff_copy_whitelists(AVFormatContext *dst, AVFormatContext *src);
+int ff_copy_whiteblacklists(AVFormatContext *dst, AVFormatContext *src);
 
 int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *url, int flags,
                        const AVIOInterruptCB *int_cb, AVDictionary **options);
@@ -545,7 +565,7 @@ int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *
 
 /*
  * A wrapper around AVFormatContext.io_close that should be used
- * intead of calling the pointer directly.
+ * instead of calling the pointer directly.
  */
 void ff_format_io_close(AVFormatContext *s, AVIOContext **pb);
 
@@ -559,5 +579,58 @@ void ff_format_io_close(AVFormatContext *s, AVIOContext **pb);
  * @return 1 if OK, 0 if the metadata was not present, AVERROR(EINVAL) on parse error
  */
 int ff_parse_creation_time_metadata(AVFormatContext *s, int64_t *timestamp, int return_seconds);
+
+/**
+ * Standardize creation_time metadata in AVFormatContext to an ISO-8601
+ * timestamp string.
+ *
+ * @param s AVFormatContext
+ * @return <0 on error
+ */
+int ff_standardize_creation_time(AVFormatContext *s);
+
+#define CONTAINS_PAL 2
+/**
+ * Reshuffles the lines to use the user specified stride.
+ *
+ * @param ppkt input and output packet
+ * @return negative error code or
+ *         0 if no new packet was allocated
+ *         non-zero if a new packet was allocated and ppkt has to be freed
+ *         CONTAINS_PAL if in addition to a new packet the old contained a palette
+ */
+int ff_reshuffle_raw_rgb(AVFormatContext *s, AVPacket **ppkt, AVCodecParameters *par, int expected_stride);
+
+/**
+ * Retrieves the palette from a packet, either from side data, or
+ * appended to the video data in the packet itself (raw video only).
+ * It is commonly used after a call to ff_reshuffle_raw_rgb().
+ *
+ * Use 0 for the ret parameter to check for side data only.
+ *
+ * @param pkt pointer to packet before calling ff_reshuffle_raw_rgb()
+ * @param ret return value from ff_reshuffle_raw_rgb(), or 0
+ * @param palette pointer to palette buffer
+ * @return negative error code or
+ *         1 if the packet has a palette, else 0
+ */
+int ff_get_packet_palette(AVFormatContext *s, AVPacket *pkt, int ret, uint32_t *palette);
+
+/**
+ * Finalize buf into extradata and set its size appropriately.
+ */
+int ff_bprint_to_codecpar_extradata(AVCodecParameters *par, struct AVBPrint *buf);
+
+/**
+ * Find the next packet in the interleaving queue for the given stream.
+ * The packet is not removed from the interleaving queue, but only
+ * a pointer to it is returned.
+ *
+ * @param ts_offset the ts difference between packet in the que and the muxer.
+ *
+ * @return a pointer to the next packet, or NULL if no packet is queued
+ *         for this stream.
+ */
+const AVPacket *ff_interleaved_peek(AVFormatContext *s, int stream, int64_t *ts_offset);
 
 #endif /* AVFORMAT_INTERNAL_H */

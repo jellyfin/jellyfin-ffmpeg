@@ -32,7 +32,7 @@ static int get_linear(GetBitContext *gb, int n)
 
 static int get_rice_un(GetBitContext *gb, int k)
 {
-    unsigned int v = get_unary(gb, 1, 128);
+    unsigned int v = get_unary(gb, 1, get_bits_left(gb));
     return (v << k) | get_bits_long(gb, k);
 }
 
@@ -123,8 +123,7 @@ static int chs_parse_header(DCAXllDecoder *s, DCAXllChSet *c, DCAExssAsset *asse
     header_size = get_bits(&s->gb, 10) + 1;
 
     // Check CRC
-    if ((s->avctx->err_recognition & (AV_EF_CRCCHECK | AV_EF_CAREFUL))
-        && ff_dca_check_crc(&s->gb, header_pos, header_pos + header_size * 8)) {
+    if (ff_dca_check_crc(s->avctx, &s->gb, header_pos, header_pos + header_size * 8)) {
         av_log(s->avctx, AV_LOG_ERROR, "Invalid XLL sub-header checksum\n");
         return AVERROR_INVALIDDATA;
     }
@@ -460,19 +459,14 @@ static int chs_parse_band_data(DCAXllDecoder *s, DCAXllChSet *c, int band, int s
             // Unpack Rice coding flag
             // 0 - linear code, 1 - Rice code
             c->rice_code_flag[i] = get_bits1(&s->gb);
-            if (!c->seg_common && c->rice_code_flag[i]) {
-                // Unpack Hybrid Rice coding flag
-                // 0 - Rice code, 1 - Hybrid Rice code
-                if (get_bits1(&s->gb))
-                    // Unpack binary code length for isolated samples
-                    c->bitalloc_hybrid_linear[i] = get_bits(&s->gb, c->nabits) + 1;
-                else
-                    // 0 indicates no Hybrid Rice coding
-                    c->bitalloc_hybrid_linear[i] = 0;
-            } else {
+            // Unpack Hybrid Rice coding flag
+            // 0 - Rice code, 1 - Hybrid Rice code
+            if (!c->seg_common && c->rice_code_flag[i] && get_bits1(&s->gb))
+                // Unpack binary code length for isolated samples
+                c->bitalloc_hybrid_linear[i] = get_bits(&s->gb, c->nabits) + 1;
+            else
                 // 0 indicates no Hybrid Rice coding
                 c->bitalloc_hybrid_linear[i] = 0;
-            }
         }
 
         // Unpack coding parameters
@@ -602,7 +596,7 @@ static int chs_parse_band_data(DCAXllDecoder *s, DCAXllChSet *c, int band, int s
     return 0;
 }
 
-static void av_cold chs_clear_band_data(DCAXllDecoder *s, DCAXllChSet *c, int band, int seg)
+static av_cold void chs_clear_band_data(DCAXllDecoder *s, DCAXllChSet *c, int band, int seg)
 {
     DCAXllBand *b = &c->bands[band];
     int i, offset, nsamples;
@@ -789,8 +783,7 @@ static int parse_common_header(DCAXllDecoder *s)
     header_size = get_bits(&s->gb, 8) + 1;
 
     // Check CRC
-    if ((s->avctx->err_recognition & (AV_EF_CRCCHECK | AV_EF_CAREFUL))
-        && ff_dca_check_crc(&s->gb, 32, header_size * 8)) {
+    if (ff_dca_check_crc(s->avctx, &s->gb, 32, header_size * 8)) {
         av_log(s->avctx, AV_LOG_ERROR, "Invalid XLL common header checksum\n");
         return AVERROR_INVALIDDATA;
     }
@@ -998,8 +991,7 @@ static int parse_navi_table(DCAXllDecoder *s)
     skip_bits(&s->gb, 16);
 
     // Check CRC
-    if ((s->avctx->err_recognition & (AV_EF_CRCCHECK | AV_EF_CAREFUL))
-        && ff_dca_check_crc(&s->gb, navi_pos, get_bits_count(&s->gb))) {
+    if (ff_dca_check_crc(s->avctx, &s->gb, navi_pos, get_bits_count(&s->gb))) {
         av_log(s->avctx, AV_LOG_ERROR, "Invalid NAVI checksum\n");
         return AVERROR_INVALIDDATA;
     }
@@ -1078,7 +1070,7 @@ static int copy_to_pbr(DCAXllDecoder *s, uint8_t *data, int size, int delay)
     if (size > DCA_XLL_PBR_BUFFER_MAX)
         return AVERROR(ENOSPC);
 
-    if (!s->pbr_buffer && !(s->pbr_buffer = av_malloc(DCA_XLL_PBR_BUFFER_MAX + DCA_BUFFER_PADDING_SIZE)))
+    if (!s->pbr_buffer && !(s->pbr_buffer = av_malloc(DCA_XLL_PBR_BUFFER_MAX + AV_INPUT_BUFFER_PADDING_SIZE)))
         return AVERROR(ENOMEM);
 
     memcpy(s->pbr_buffer, data, size);
@@ -1242,7 +1234,7 @@ static void scale_down_mix(DCAXllDecoder *s, DCAXllChSet *o, int band)
 
 // Clear all band data and replace non-residual encoded channels with lossy
 // counterparts
-static void av_cold force_lossy_output(DCAXllDecoder *s, DCAXllChSet *c)
+static av_cold void force_lossy_output(DCAXllDecoder *s, DCAXllChSet *c)
 {
     DCAContext *dca = s->avctx->priv_data;
     int band, ch;

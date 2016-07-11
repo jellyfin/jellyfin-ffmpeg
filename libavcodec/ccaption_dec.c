@@ -30,7 +30,7 @@
 #define UNSET_FLAG(var, val) ( (var) &=  ~( 1 << (val)) )
 #define CHECK_FLAG(var, val) ( (var) &    ( 1 << (val)) )
 
-static const AVRational ass_tb = {1, 100};
+static const AVRational ms_tb = {1, 1000};
 
 /*
  * TODO list
@@ -61,6 +61,116 @@ enum cc_font {
     CCFONT_ITALICS,
     CCFONT_UNDERLINED,
     CCFONT_UNDERLINED_ITALICS,
+};
+
+enum cc_charset {
+    CCSET_BASIC_AMERICAN,
+    CCSET_SPECIAL_AMERICAN,
+    CCSET_EXTENDED_SPANISH_FRENCH_MISC,
+    CCSET_EXTENDED_PORTUGUESE_GERMAN_DANISH,
+};
+
+static const char *charset_overrides[4][128] =
+{
+    [CCSET_BASIC_AMERICAN] = {
+        [0x27] = "\u2019",
+        [0x2a] = "\u00e1",
+        [0x5c] = "\u00e9",
+        [0x5e] = "\u00ed",
+        [0x5f] = "\u00f3",
+        [0x60] = "\u00fa",
+        [0x7b] = "\u00e7",
+        [0x7c] = "\u00f7",
+        [0x7d] = "\u00d1",
+        [0x7e] = "\u00f1",
+        [0x7f] = "\u2588"
+    },
+    [CCSET_SPECIAL_AMERICAN] = {
+        [0x30] = "\u00ae",
+        [0x31] = "\u00b0",
+        [0x32] = "\u00bd",
+        [0x33] = "\u00bf",
+        [0x34] = "\u2122",
+        [0x35] = "\u00a2",
+        [0x36] = "\u00a3",
+        [0x37] = "\u266a",
+        [0x38] = "\u00e0",
+        [0x39] = "\u00A0",
+        [0x3a] = "\u00e8",
+        [0x3b] = "\u00e2",
+        [0x3c] = "\u00ea",
+        [0x3d] = "\u00ee",
+        [0x3e] = "\u00f4",
+        [0x3f] = "\u00fb",
+    },
+    [CCSET_EXTENDED_SPANISH_FRENCH_MISC] = {
+        [0x20] = "\u00c1",
+        [0x21] = "\u00c9",
+        [0x22] = "\u00d3",
+        [0x23] = "\u00da",
+        [0x24] = "\u00dc",
+        [0x25] = "\u00fc",
+        [0x26] = "\u00b4",
+        [0x27] = "\u00a1",
+        [0x28] = "*",
+        [0x29] = "\u2018",
+        [0x2a] = "-",
+        [0x2b] = "\u00a9",
+        [0x2c] = "\u2120",
+        [0x2d] = "\u00b7",
+        [0x2e] = "\u201c",
+        [0x2f] = "\u201d",
+        [0x30] = "\u00c0",
+        [0x31] = "\u00c2",
+        [0x32] = "\u00c7",
+        [0x33] = "\u00c8",
+        [0x34] = "\u00ca",
+        [0x35] = "\u00cb",
+        [0x36] = "\u00eb",
+        [0x37] = "\u00ce",
+        [0x38] = "\u00cf",
+        [0x39] = "\u00ef",
+        [0x3a] = "\u00d4",
+        [0x3b] = "\u00d9",
+        [0x3c] = "\u00f9",
+        [0x3d] = "\u00db",
+        [0x3e] = "\u00ab",
+        [0x3f] = "\u00bb",
+    },
+    [CCSET_EXTENDED_PORTUGUESE_GERMAN_DANISH] = {
+        [0x20] = "\u00c3",
+        [0x21] = "\u00e3",
+        [0x22] = "\u00cd",
+        [0x23] = "\u00cc",
+        [0x24] = "\u00ec",
+        [0x25] = "\u00d2",
+        [0x26] = "\u00f2",
+        [0x27] = "\u00d5",
+        [0x28] = "\u00f5",
+        [0x29] = "{",
+        [0x2a] = "}",
+        [0x2b] = "\\",
+        [0x2c] = "^",
+        [0x2d] = "_",
+        [0x2e] = "|",
+        [0x2f] = "~",
+        [0x30] = "\u00c4",
+        [0x31] = "\u00e4",
+        [0x32] = "\u00d6",
+        [0x33] = "\u00f6",
+        [0x34] = "\u00df",
+        [0x35] = "\u00a5",
+        [0x36] = "\u00a4",
+        [0x37] = "\u00a6",
+        [0x38] = "\u00c5",
+        [0x39] = "\u00e5",
+        [0x3a] = "\u00d8",
+        [0x3b] = "\u00f8",
+        [0x3c] = "\u250c",
+        [0x3d] = "\u2510",
+        [0x3e] = "\u2514",
+        [0x3f] = "\u2518",
+    },
 };
 
 static const unsigned char pac2_attribs[32][3] = // Color, font, ident
@@ -103,6 +213,7 @@ static const unsigned char pac2_attribs[32][3] = // Color, font, ident
 struct Screen {
     /* +1 is used to compensate null character of string */
     uint8_t characters[SCREEN_ROWS][SCREEN_COLUMNS+1];
+    uint8_t charsets[SCREEN_ROWS][SCREEN_COLUMNS+1];
     uint8_t colors[SCREEN_ROWS][SCREEN_COLUMNS+1];
     uint8_t fonts[SCREEN_ROWS][SCREEN_COLUMNS+1];
     /*
@@ -123,6 +234,7 @@ typedef struct CCaptionSubContext {
     uint8_t cursor_column;
     uint8_t cursor_color;
     uint8_t cursor_font;
+    uint8_t cursor_charset;
     AVBPrint buffer;
     int buffer_changed;
     int rollup;
@@ -136,6 +248,7 @@ typedef struct CCaptionSubContext {
     char prev_cmd[2];
     /* buffer to store pkt data */
     AVBufferRef *pktbuf;
+    int readorder;
 } CCaptionSubContext;
 
 
@@ -189,10 +302,13 @@ static void flush_decoder(AVCodecContext *avctx)
     ctx->cursor_column = 0;
     ctx->cursor_font = 0;
     ctx->cursor_color = 0;
+    ctx->cursor_charset = 0;
     ctx->active_screen = 0;
     ctx->last_real_time = 0;
     ctx->screen_touched = 0;
     ctx->buffer_changed = 0;
+    if (!(avctx->flags2 & AV_CODEC_FLAG2_RO_FLUSH_NOOP))
+        ctx->readorder = 0;
     av_bprint_clear(&ctx->buffer);
 }
 
@@ -204,10 +320,13 @@ static int write_char(CCaptionSubContext *ctx, struct Screen *screen, char ch)
     uint8_t col = ctx->cursor_column;
     char *row = screen->characters[ctx->cursor_row];
     char *font = screen->fonts[ctx->cursor_row];
+    char *charset = screen->charsets[ctx->cursor_row];
 
     if (col < SCREEN_COLUMNS) {
         row[col] = ch;
         font[col] = ctx->cursor_font;
+        charset[col] = ctx->cursor_charset;
+        ctx->cursor_charset = CCSET_BASIC_AMERICAN;
         if (ch) ctx->cursor_column++;
         return 0;
     }
@@ -306,6 +425,7 @@ static void roll_up(CCaptionSubContext *ctx)
         memcpy(screen->characters[i_row], screen->characters[i_row+1], SCREEN_COLUMNS);
         memcpy(screen->colors[i_row], screen->colors[i_row+1], SCREEN_COLUMNS);
         memcpy(screen->fonts[i_row], screen->fonts[i_row+1], SCREEN_COLUMNS);
+        memcpy(screen->charsets[i_row], screen->charsets[i_row+1], SCREEN_COLUMNS);
         if (CHECK_FLAG(screen->row_used, i_row + 1))
             SET_FLAG(screen->row_used, i_row);
     }
@@ -325,10 +445,12 @@ static int capture_screen(CCaptionSubContext *ctx)
         if (CHECK_FLAG(screen->row_used, i)) {
             const char *row = screen->characters[i];
             const char *font = screen->fonts[i];
+            const char *charset = screen->charsets[i];
+            const char *override;
             int j = 0;
 
             /* skip leading space */
-            while (row[j] == ' ')
+            while (row[j] == ' ' && charset[j] == CCSET_BASIC_AMERICAN)
                 j++;
 
             for (; j < SCREEN_COLUMNS; j++) {
@@ -362,7 +484,12 @@ static int capture_screen(CCaptionSubContext *ctx)
                     }
                 }
                 prev_font = font[j];
-                av_bprintf(&ctx->buffer, "%s%s%c", e_tag, s_tag, row[j]);
+                override = charset_overrides[(int)charset[j]][(int)row[j]];
+                if (override) {
+                    av_bprintf(&ctx->buffer, "%s%s%s", e_tag, s_tag, override);
+                } else {
+                    av_bprintf(&ctx->buffer, "%s%s%c", e_tag, s_tag, row[j]);
+                }
             }
             av_bprintf(&ctx->buffer, "\\N");
         }
@@ -419,6 +546,7 @@ static void handle_pac(CCaptionSubContext *ctx, uint8_t hi, uint8_t lo)
     ctx->cursor_row = row_map[index] - 1;
     ctx->cursor_color =  pac2_attribs[lo][0];
     ctx->cursor_font = pac2_attribs[lo][1];
+    ctx->cursor_charset = CCSET_BASIC_AMERICAN;
     ctx->cursor_column = 0;
     indent = pac2_attribs[lo][2];
     for (i = 0; i < indent; i++) {
@@ -474,7 +602,25 @@ static void handle_char(CCaptionSubContext *ctx, char hi, char lo, int64_t pts)
 
     SET_FLAG(screen->row_used, ctx->cursor_row);
 
-    write_char(ctx, screen, hi);
+    switch (hi) {
+      case 0x11:
+        ctx->cursor_charset = CCSET_SPECIAL_AMERICAN;
+        break;
+      case 0x12:
+        if (ctx->cursor_column > 0)
+            ctx->cursor_column -= 1;
+        ctx->cursor_charset = CCSET_EXTENDED_SPANISH_FRENCH_MISC;
+        break;
+      case 0x13:
+        if (ctx->cursor_column > 0)
+            ctx->cursor_column -= 1;
+        ctx->cursor_charset = CCSET_EXTENDED_PORTUGUESE_GERMAN_DANISH;
+        break;
+      default:
+        ctx->cursor_charset = CCSET_BASIC_AMERICAN;
+        write_char(ctx, screen, hi);
+        break;
+    }
 
     if (lo) {
         write_char(ctx, screen, lo);
@@ -484,9 +630,6 @@ static void handle_char(CCaptionSubContext *ctx, char hi, char lo, int64_t pts)
     if (ctx->mode != CCMODE_POPON)
         ctx->screen_touched = 1;
 
-    /* reset prev command since character can repeat */
-    ctx->prev_cmd[0] = 0;
-    ctx->prev_cmd[1] = 0;
     if (lo)
        ff_dlog(ctx, "(%c,%c)\n", hi, lo);
     else
@@ -497,8 +640,15 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
 {
     if (hi == ctx->prev_cmd[0] && lo == ctx->prev_cmd[1]) {
         /* ignore redundant command */
-    } else if ( (hi == 0x10 && (lo >= 0x40 && lo <= 0x5f)) ||
-              ( (hi >= 0x11 && hi <= 0x17) && (lo >= 0x40 && lo <= 0x7f) ) ) {
+        return;
+    }
+
+    /* set prev command */
+    ctx->prev_cmd[0] = hi;
+    ctx->prev_cmd[1] = lo;
+
+    if ( (hi == 0x10 && (lo >= 0x40 && lo <= 0x5f)) ||
+       ( (hi >= 0x11 && hi <= 0x17) && (lo >= 0x40 && lo <= 0x7f) ) ) {
         handle_pac(ctx, hi, lo);
     } else if ( ( hi == 0x11 && lo >= 0x20 && lo <= 0x2f ) ||
                 ( hi == 0x17 && lo >= 0x2e && lo <= 0x2f) ) {
@@ -556,23 +706,24 @@ static void process_cc608(CCaptionSubContext *ctx, int64_t pts, uint8_t hi, uint
             ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
             break;
         }
+    } else if (hi >= 0x11 && hi <= 0x13) {
+        /* Special characters */
+        handle_char(ctx, hi, lo, pts);
     } else if (hi >= 0x20) {
         /* Standard characters (always in pairs) */
         handle_char(ctx, hi, lo, pts);
+        ctx->prev_cmd[0] = ctx->prev_cmd[1] = 0;
     } else {
         /* Ignoring all other non data code */
         ff_dlog(ctx, "Unknown command 0x%hhx 0x%hhx\n", hi, lo);
     }
-
-    /* set prev command */
-    ctx->prev_cmd[0] = hi;
-    ctx->prev_cmd[1] = lo;
 }
 
 static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avpkt)
 {
     CCaptionSubContext *ctx = avctx->priv_data;
     AVSubtitle *sub = data;
+    const int64_t start_time = sub->pts;
     uint8_t *bptr = NULL;
     int len = avpkt->size;
     int ret = 0;
@@ -597,7 +748,7 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
         if(cc_type == 1)
             continue;
         else
-            process_cc608(ctx, avpkt->pts, *(bptr + i + 1) & 0x7f, *(bptr + i + 2) & 0x7f);
+            process_cc608(ctx, start_time, *(bptr + i + 1) & 0x7f, *(bptr + i + 2) & 0x7f);
 
         if (!ctx->buffer_changed)
             continue;
@@ -605,38 +756,34 @@ static int decode(AVCodecContext *avctx, void *data, int *got_sub, AVPacket *avp
 
         if (*ctx->buffer.str || ctx->real_time)
         {
-            int64_t sub_pts = ctx->real_time ? avpkt->pts : ctx->start_time;
-            int start_time = av_rescale_q(sub_pts, avctx->time_base, ass_tb);
-            int duration = -1;
-            if (!ctx->real_time) {
-                int end_time = av_rescale_q(ctx->end_time, avctx->time_base, ass_tb);
-                duration = end_time - start_time;
-            }
             ff_dlog(ctx, "cdp writing data (%s)\n",ctx->buffer.str);
-            ret = ff_ass_add_rect_bprint(sub, &ctx->buffer, start_time, duration);
+            ret = ff_ass_add_rect(sub, ctx->buffer.str, ctx->readorder++, 0, NULL, NULL);
             if (ret < 0)
                 return ret;
-            sub->pts = av_rescale_q(sub_pts, avctx->time_base, AV_TIME_BASE_Q);
+            sub->pts = ctx->start_time;
+            if (!ctx->real_time)
+                sub->end_display_time = av_rescale_q(ctx->end_time - ctx->start_time,
+                                                     AV_TIME_BASE_Q, ms_tb);
+            else
+                sub->end_display_time = -1;
             ctx->buffer_changed = 0;
-            ctx->last_real_time = avpkt->pts;
+            ctx->last_real_time = sub->pts;
             ctx->screen_touched = 0;
         }
     }
 
     if (ctx->real_time && ctx->screen_touched &&
-        avpkt->pts > ctx->last_real_time + av_rescale_q(20, ass_tb, avctx->time_base)) {
-        int start_time;
-        ctx->last_real_time = avpkt->pts;
+        sub->pts > ctx->last_real_time + av_rescale_q(200, ms_tb, AV_TIME_BASE_Q)) {
+        ctx->last_real_time = sub->pts;
         ctx->screen_touched = 0;
 
         capture_screen(ctx);
         ctx->buffer_changed = 0;
 
-        start_time = av_rescale_q(avpkt->pts, avctx->time_base, ass_tb);
-        ret = ff_ass_add_rect_bprint(sub, &ctx->buffer, start_time, -1);
+        ret = ff_ass_add_rect(sub, ctx->buffer.str, ctx->readorder++, 0, NULL, NULL);
         if (ret < 0)
             return ret;
-        sub->pts = av_rescale_q(avpkt->pts, avctx->time_base, AV_TIME_BASE_Q);
+        sub->end_display_time = -1;
     }
 
     *got_sub = sub->num_rects > 0;

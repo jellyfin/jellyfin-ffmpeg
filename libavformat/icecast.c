@@ -165,7 +165,7 @@ static int icecast_open(URLContext *h, const char *uri, int flags)
     ff_url_join(h_url, sizeof(h_url), "http", auth, host, port, "%s", path);
     // Finally open http proto handler
     ret = ffurl_open_whitelist(&s->hd, h_url, AVIO_FLAG_READ_WRITE, NULL,
-                               &opt_dict, h->protocol_whitelist);
+                               &opt_dict, h->protocol_whitelist, h->protocol_blacklist, h);
 
 cleanup:
     av_freep(&user);
@@ -209,7 +209,7 @@ static const AVClass icecast_context_class = {
     .version        = LIBAVUTIL_VERSION_INT,
 };
 
-URLProtocol ff_icecast_protocol = {
+const URLProtocol ff_icecast_protocol = {
     .name            = "icecast",
     .url_open        = icecast_open,
     .url_write       = icecast_write,

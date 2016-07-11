@@ -20,6 +20,7 @@
 
 #include "avcodec.h"
 #include "libavcodec/ass.h"
+#include "libavcodec/dvbtxt.h"
 #include "libavutil/opt.h"
 #include "libavutil/bprint.h"
 #include "libavutil/internal.h"
@@ -73,6 +74,8 @@ typedef struct TeletextContext
     vbi_export *    ex;
 #endif
     vbi_sliced      sliced[MAX_SLICES];
+
+    int             readorder;
 } TeletextContext;
 
 static int chop_spaces_utf8(const unsigned char* t, int len)
@@ -94,37 +97,20 @@ static void subtitle_rect_free(AVSubtitleRect **sub_rect)
     av_freep(sub_rect);
 }
 
-static int create_ass_text(TeletextContext *ctx, const char *text, char **ass)
+static char *create_ass_text(TeletextContext *ctx, const char *text)
 {
-    int ret;
-    AVBPrint buf, buf2;
-    const int ts_start    = av_rescale_q(ctx->pts,          AV_TIME_BASE_Q,        (AVRational){1, 100});
-    const int ts_duration = av_rescale_q(ctx->sub_duration, (AVRational){1, 1000}, (AVRational){1, 100});
+    char *dialog;
+    AVBPrint buf;
 
-    /* First we escape the plain text into buf. */
     av_bprint_init(&buf, 0, AV_BPRINT_SIZE_UNLIMITED);
     ff_ass_bprint_text_event(&buf, text, strlen(text), "", 0);
-    av_bprintf(&buf, "\r\n");
-
     if (!av_bprint_is_complete(&buf)) {
         av_bprint_finalize(&buf, NULL);
-        return AVERROR(ENOMEM);
+        return NULL;
     }
-
-    /* Then we create the ass dialog line in buf2 from the escaped text in buf. */
-    av_bprint_init(&buf2, 0, AV_BPRINT_SIZE_UNLIMITED);
-    ff_ass_bprint_dialog(&buf2, buf.str, ts_start, ts_duration, 0);
+    dialog = ff_ass_get_dialog(ctx->readorder++, 0, NULL, NULL, buf.str);
     av_bprint_finalize(&buf, NULL);
-
-    if (!av_bprint_is_complete(&buf2)) {
-        av_bprint_finalize(&buf2, NULL);
-        return AVERROR(ENOMEM);
-    }
-
-    if ((ret = av_bprint_finalize(&buf2, ass)) < 0)
-        return ret;
-
-    return 0;
+    return dialog;
 }
 
 /* Draw a page as text */
@@ -180,11 +166,12 @@ static int gen_sub_text(TeletextContext *ctx, AVSubtitleRect *sub_rect, vbi_page
     }
 
     if (buf.len) {
-        int ret;
         sub_rect->type = SUBTITLE_ASS;
-        if ((ret = create_ass_text(ctx, buf.str, &sub_rect->ass)) < 0) {
+        sub_rect->ass = create_ass_text(ctx, buf.str);
+
+        if (!sub_rect->ass) {
             av_bprint_finalize(&buf, NULL);
-            return ret;
+            return AVERROR(ENOMEM);
         }
         av_log(ctx, AV_LOG_DEBUG, "subtext:%s:txetbus\n", sub_rect->ass);
     } else {
@@ -368,12 +355,6 @@ static void handler(vbi_event *ev, void *user_data)
     vbi_unref_page(&page);
 }
 
-static inline int data_identifier_is_teletext(int data_identifier) {
-    /* See EN 301 775 section 4.4.2. */
-    return (data_identifier >= 0x10 && data_identifier <= 0x1F ||
-            data_identifier >= 0x99 && data_identifier <= 0x9B);
-}
-
 static int slice_to_vbi_lines(TeletextContext *ctx, uint8_t* buf, int size)
 {
     int lines = 0;
@@ -382,7 +363,7 @@ static int slice_to_vbi_lines(TeletextContext *ctx, uint8_t* buf, int size)
         int data_unit_length = buf[1];
         if (data_unit_length + 2 > size)
             return AVERROR_INVALIDDATA;
-        if (data_unit_id == 0x02 || data_unit_id == 0x03) {
+        if (ff_data_unit_id_is_teletext(data_unit_id)) {
             if (data_unit_length != 0x2c)
                 return AVERROR_INVALIDDATA;
             else {
@@ -434,7 +415,7 @@ static int teletext_decode_frame(AVCodecContext *avctx, void *data, int *data_si
 
         ctx->handler_ret = pkt->size;
 
-        if (data_identifier_is_teletext(*pkt->data)) {
+        if (ff_data_identifier_is_teletext(*pkt->data)) {
             if ((lines = slice_to_vbi_lines(ctx, pkt->data + 1, pkt->size - 1)) < 0)
                 return lines;
             ff_dlog(avctx, "ctx=%p buf_size=%d lines=%u pkt_pts=%7.3f\n",
@@ -546,6 +527,8 @@ static int teletext_close_decoder(AVCodecContext *avctx)
     vbi_decoder_delete(ctx->vbi);
     ctx->vbi = NULL;
     ctx->pts = AV_NOPTS_VALUE;
+    if (!(avctx->flags2 & AV_CODEC_FLAG2_RO_FLUSH_NOOP))
+        ctx->readorder = 0;
     return 0;
 }
 

@@ -68,9 +68,6 @@ static const struct {
     #if CONFIG_ALAC_DECODER
         { "alacdsp", checkasm_check_alacdsp },
     #endif
-    #if CONFIG_BLEND_FILTER
-        { "vf_blend", checkasm_check_blend },
-    #endif
     #if CONFIG_BSWAPDSP
         { "bswapdsp", checkasm_check_bswapdsp },
     #endif
@@ -92,7 +89,7 @@ static const struct {
     #if CONFIG_JPEG2000_DECODER
         { "jpeg2000dsp", checkasm_check_jpeg2000dsp },
     #endif
-    #if CONFIG_PIXBLOCKDSP
+    #if CONFIG_PIXBLOCKDSP && !(ARCH_PPC64 && HAVE_BIGENDIAN)
         { "pixblockdsp", checkasm_check_pixblockdsp },
     #endif
     #if CONFIG_V210_ENCODER
@@ -103,6 +100,14 @@ static const struct {
     #endif
     #if CONFIG_VIDEODSP
         { "videodsp", checkasm_check_videodsp },
+    #endif
+#endif
+#if CONFIG_AVFILTER
+    #if CONFIG_BLEND_FILTER
+        { "vf_blend", checkasm_check_blend },
+    #endif
+    #if CONFIG_COLORSPACE_FILTER
+        { "vf_colorspace", checkasm_check_colorspace },
     #endif
 #endif
     { NULL }

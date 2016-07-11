@@ -40,7 +40,6 @@
 #include "libavutil/parseutils.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
-#include "libavutil/time_internal.h"
 
 #define DEFAULT_PASS_LOGFILENAME_PREFIX "ffmpeg2pass"
 
@@ -82,8 +81,16 @@ const HWAccel hwaccels[] = {
 #if CONFIG_LIBMFX
     { "qsv",   qsv_init,   HWACCEL_QSV,   AV_PIX_FMT_QSV },
 #endif
+#if CONFIG_VAAPI
+    { "vaapi", vaapi_decode_init, HWACCEL_VAAPI, AV_PIX_FMT_VAAPI },
+#endif
+#if CONFIG_CUVID
+    { "cuvid", cuvid_init, HWACCEL_CUVID, AV_PIX_FMT_CUDA },
+#endif
     { 0 },
 };
+int hwaccel_lax_profile_check = 0;
+AVBufferRef *hw_device_ctx;
 
 char *vstats_filename;
 char *sdp_filename;
@@ -442,6 +449,17 @@ static int opt_sdp_file(void *optctx, const char *opt, const char *arg)
     return 0;
 }
 
+#if CONFIG_VAAPI
+static int opt_vaapi_device(void *optctx, const char *opt, const char *arg)
+{
+    int err;
+    err = vaapi_device_init(arg);
+    if (err < 0)
+        exit_program(1);
+    return 0;
+}
+#endif
+
 /**
  * Parse a metadata specifier passed as 'arg' parameter.
  * @param arg  metadata string to parse
@@ -634,6 +652,7 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
         AVCodecContext *dec = st->codec;
         InputStream *ist = av_mallocz(sizeof(*ist));
         char *framerate = NULL, *hwaccel = NULL, *hwaccel_device = NULL;
+        char *hwaccel_output_format = NULL;
         char *codec_tag = NULL;
         char *next;
         char *discard_str = NULL;
@@ -753,6 +772,19 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
                 if (!ist->hwaccel_device)
                     exit_program(1);
             }
+
+            MATCH_PER_STREAM_OPT(hwaccel_output_formats, str,
+                                 hwaccel_output_format, ic, st);
+            if (hwaccel_output_format) {
+                ist->hwaccel_output_format = av_get_pix_fmt(hwaccel_output_format);
+                if (ist->hwaccel_output_format == AV_PIX_FMT_NONE) {
+                    av_log(NULL, AV_LOG_FATAL, "Unrecognised hwaccel output "
+                           "format: %s", hwaccel_output_format);
+                }
+            } else {
+                ist->hwaccel_output_format = AV_PIX_FMT_NONE;
+            }
+
             ist->hwaccel_pix_fmt = AV_PIX_FMT_NONE;
 
             break;
@@ -2430,7 +2462,6 @@ loop_end:
         char type, *val;
         const char *stream_spec;
         int index = 0, j, ret = 0;
-        char now_time[256];
 
         val = strchr(o->metadata[i].u.str, '=');
         if (!val) {
@@ -2439,17 +2470,6 @@ loop_end:
             exit_program(1);
         }
         *val++ = 0;
-
-        if (!strcmp(o->metadata[i].u.str, "creation_time") &&
-            !strcmp(val, "now")) {
-            time_t now = time(0);
-            struct tm *ptm, tmbuf;
-            ptm = localtime_r(&now, &tmbuf);
-            if (ptm) {
-                if (strftime(now_time, sizeof(now_time), "%Y-%m-%d %H:%M:%S", ptm))
-                    val = now_time;
-            }
-        }
 
         parse_meta_type(o->metadata[i].specifier, &type, &index, &stream_spec);
         if (type == 's') {
@@ -3361,9 +3381,12 @@ const OptionDef options[] = {
     { "hwaccel_device",   OPT_VIDEO | OPT_STRING | HAS_ARG | OPT_EXPERT |
                           OPT_SPEC | OPT_INPUT,                                  { .off = OFFSET(hwaccel_devices) },
         "select a device for HW acceleration", "devicename" },
-#if HAVE_VDPAU_X11
-    { "vdpau_api_ver", HAS_ARG | OPT_INT | OPT_EXPERT, { &vdpau_api_ver }, "" },
-#endif
+    { "hwaccel_output_format", OPT_VIDEO | OPT_STRING | HAS_ARG | OPT_EXPERT |
+                          OPT_SPEC | OPT_INPUT,                                  { .off = OFFSET(hwaccel_output_formats) },
+        "select output format used with HW accelerated decoding", "format" },
+    { "hwaccel_output_format", OPT_VIDEO | OPT_STRING | HAS_ARG | OPT_EXPERT |
+                          OPT_SPEC | OPT_INPUT,                                  { .off = OFFSET(hwaccel_output_formats) },
+        "select output format used with HW accelerated decoding", "format" },
 #if CONFIG_VDA || CONFIG_VIDEOTOOLBOX
     { "videotoolbox_pixfmt", HAS_ARG | OPT_STRING | OPT_EXPERT, { &videotoolbox_pixfmt}, "" },
 #endif
@@ -3372,6 +3395,8 @@ const OptionDef options[] = {
     { "autorotate",       HAS_ARG | OPT_BOOL | OPT_SPEC |
                           OPT_EXPERT | OPT_INPUT,                                { .off = OFFSET(autorotate) },
         "automatically insert correct rotate filters" },
+    { "hwaccel_lax_profile_check", OPT_BOOL | OPT_EXPERT,                        { &hwaccel_lax_profile_check},
+        "attempt to decode anyway if HW accelerated decoder's supported profiles do not exactly match the stream" },
 
     /* audio options */
     { "aframes",        OPT_AUDIO | HAS_ARG  | OPT_PERFILE | OPT_OUTPUT,           { .func_arg = opt_audio_frames },
@@ -3454,6 +3479,11 @@ const OptionDef options[] = {
         "force data codec ('copy' to copy stream)", "codec" },
     { "dn", OPT_BOOL | OPT_VIDEO | OPT_OFFSET | OPT_INPUT | OPT_OUTPUT, { .off = OFFSET(data_disable) },
         "disable data" },
+
+#if CONFIG_VAAPI
+    { "vaapi_device", HAS_ARG | OPT_EXPERT, { .func_arg = opt_vaapi_device },
+        "set VAAPI hardware device (DRM path or X11 display name)", "device" },
+#endif
 
     { NULL, },
 };

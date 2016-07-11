@@ -1,67 +1,68 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
-
-version 3.0.2:
-- avcodec/ttaenc: Reallocate packet if its too small
-- configure: build fix for P5600 with mips code restructuring
-- mips: add support for R6
-- pgssubdec: fix subpicture output colorspace and range
-- avcodec/ac3dec: Reset SPX when switching from EAC3 to AC3
-- avfilter/vf_drawtext: Check return code of load_glyph()
-- avformat/mux: Check that deinit is set before calling it
-- avcodec/takdec: add code that got somehow lost in process of REing
-- avcodec/apedec: fix decoding of stereo files with one channel full of silence
-- avcodec/avpacket: Fix off by 5 error
-- avcodec/h264: Fix for H.264 configuration parsing
-- avcodec/bmp_parser: Ensure remaining_size is not too small in startcode packet crossing corner case
-- avcodec/pngdec: Fix alpha detection with skip_frame
-- Changelog: Make formating consistent
-- avfilter/src_movie: fix how we check for overflows with seek_point
-- avcodec/j2kenc: Add attribution to OpenJPEG project:
+version <next>:
 
 
-version 3.0.1:
-- avcodec/libutvideodec: copy frame so it has reference counters when refcounted_frames is set
-- avformat/rtpdec_jpeg: fix low contrast image on low quality setting
-- avformat/mpegtsenc: Fix used service
-- avformat/mpegtsenc: Keep track of the program for each service
-- avformat/file: Add crypto to default whitelist
-- avcodec/mjpegenc_common: Store approximate aspect if exact cannot be stored
-- lavc/hevc: Allow arbitrary garbage in bytestream as long as at least one NAL unit is found.
-- avcodec/resample: Remove disabled and faulty code
-- indeo2: Fix banding artefacts
-- indeo2data: K&R formatting cosmetics
-- avformat/hlsenc: Fix passing options, regression since bc9a5965c815cf7fd998d8ce14a18b8e861dd9ce
-- avutil/random_seed: Add the runtime in cycles of the main loop to the entropy pool
-- avutil/channel_layout: AV_CH_LAYOUT_6POINT1_BACK not reachable in parsing
-- avformat/concatdec: set safe mode to enabled instead of auto
-- avformat/utils: fix dts from pts code in compute_pkt_fields() during ascending delay
-- avformat/rtpenc: Fix integer overflow in NTP_TO_RTP_FORMAT
-- avcodec/dca: clear X96 channels if nothing was decoded
-- fate/aac: Increase fuzz from of fate-aac-pns-encode from 72 to 74 for Loongson
-- avformat/cache: Fix memleak of tree entries
-- lavf/mov: downgrade sidx errors to non-fatal warnings; fixes trac #5216
-- lavf/mov: fix sidx with edit lists
-- avcodec/mjpegdec: Fix decoding slightly odd progressive jpeg
-- swscale/utils: Fix chrSrcHSubSample for GBRAP16
-- swscale/input: Fix GBRAP16 input
-- avutil/pixdesc: Make get_color_type() aware of CIE XYZ formats
-- avcodec/h264: Execute error concealment before marking the frame as done.
-- swscale/x86/output: Fix yuv2planeX_16* with unaligned destination
-- swscale/x86/output: Move code into yuv2planeX_mainloop
-- MAINTAINERS: add myself as an OS/2 maintainer
-- libwebpenc_animencoder: print library messages in verbose log levels
-- libwebpenc_animencoder: zero initialize the WebPAnimEncoderOptions struct
-- configure: check for SEC_I_CONTEXT_EXPIRED before enabling SChannel
-- lavf/http: Add httpproxy to the default protocol whitelist.
-- doc/utils: fix typo for min() description
-- ffserver&ffm: Fixed issues preventing ffserver write_index and files_size from being set correctly which was breaking ffserver streaming.
-- postproc: fix unaligned access
-- vc2enc: fix use of uninitialized variables in the rate control system, correctly zero out coefficient array padding
-- aacenc: optimize encoding speed
-- avcodec/diracdec: check bitstream size related fields for overflows
-- avcodec/h264_slice: Check PPS more extensively when its not copied
+version 3.1.1:
+- doc/APIchanges: document the lavu/lavf field moves
+- avformat/avformat: Move new field to the end of AVStream
+- avformat/utils: update deprecated AVStream->codec when the context is updated
+- avutil/frame: Move new field to the end of AVFrame
+- libavcodec/exr : fix decoding piz float file.
+- avformat/mov: Check sample size
+- lavfi: Move new field to the end of AVFilterContext
+- lavfi: Move new field to the end of AVFilterLink
+- ffplay: Fix usage of private lavfi API
+- lavc/mediacodecdec_h264: add missing NAL headers to SPS/PPS buffers
+- lavc/pnm_parser: disable parsing for text based PNMs
+
+
+version 3.1:
+- DXVA2-accelerated HEVC Main10 decoding
+- fieldhint filter
+- loop video filter and aloop audio filter
+- Bob Weaver deinterlacing filter
+- firequalizer filter
+- datascope filter
+- bench and abench filters
+- ciescope filter
+- protocol blacklisting API
+- MediaCodec H264 decoding
+- VC-2 HQ RTP payload format (draft v1) depacketizer and packetizer
+- VP9 RTP payload format (draft v2) packetizer
+- AudioToolbox audio decoders
+- AudioToolbox audio encoders
+- coreimage filter (GPU based image filtering on OSX)
+- libdcadec removed
+- bitstream filter for extracting DTS core
+- ADPCM IMA DAT4 decoder
+- musx demuxer
+- aix demuxer
+- remap filter
+- hash and framehash muxers
+- colorspace filter
+- hdcd filter
+- readvitc filter
+- VAAPI-accelerated format conversion and scaling
+- libnpp/CUDA-accelerated format conversion and scaling
+- Duck TrueMotion 2.0 Real Time decoder
+- Wideband Single-bit Data (WSD) demuxer
+- VAAPI-accelerated H.264/HEVC/MJPEG encoding
+- DTS Express (LBR) decoder
+- Generic OpenMAX IL encoder with support for Raspberry Pi
+- IFF ANIM demuxer & decoder
+- Direct Stream Transfer (DST) decoder
+- loudnorm filter
+- MTAF demuxer and decoder
+- MagicYUV decoder
+- OpenExr improvements (tile data and B44/B44A support)
+- BitJazz SheerVideo decoder
+- CUDA CUVID H264/HEVC decoder
+- 10-bit depth support in native utvideo decoder
+- libutvideo wrapper removed
+- YUY2 Lossless Codec decoder
+- VideoToolbox H.264 encoder
 
 
 version 3.0:
@@ -934,8 +935,8 @@ version 0.8:
 - showinfo filter added
 - SMPTE 302M AES3 audio decoder
 - Apple Core Audio Format muxer
-- 9bit and 10bit per sample support in the H.264 decoder
-- 9bit and 10bit FFV1 encoding / decoding
+- 9 bits and 10 bits per sample support in the H.264 decoder
+- 9 bits and 10 bits FFV1 encoding / decoding
 - split filter added
 - select filter added
 - sdl output device added
@@ -1228,7 +1229,7 @@ version 0.4.9-pre1:
 - rate distorted optimal lambda->qp support
 - AAC encoding with libfaac
 - Sunplus JPEG codec (SP5X) support
-- use Lagrange multipler instead of QP for ratecontrol
+- use Lagrange multiplier instead of QP for ratecontrol
 - Theora/VP3 decoding support
 - XA and ADX ADPCM codecs
 - export MPEG-2 active display area / pan scan

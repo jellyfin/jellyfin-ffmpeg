@@ -213,10 +213,10 @@ av_cold int swr_init(struct SwrContext *s){
                  s->rematrix_custom;
 
     if(s->int_sample_fmt == AV_SAMPLE_FMT_NONE){
-        if(   av_get_planar_sample_fmt(s-> in_sample_fmt) <= AV_SAMPLE_FMT_S16P
-           && av_get_planar_sample_fmt(s->out_sample_fmt) <= AV_SAMPLE_FMT_S16P){
+        if(   av_get_bytes_per_sample(s-> in_sample_fmt) <= 2
+           && av_get_bytes_per_sample(s->out_sample_fmt) <= 2){
             s->int_sample_fmt= AV_SAMPLE_FMT_S16P;
-        }else if(   av_get_planar_sample_fmt(s-> in_sample_fmt) <= AV_SAMPLE_FMT_S16P
+        }else if(   av_get_bytes_per_sample(s-> in_sample_fmt) <= 2
            && !s->rematrix
            && s->out_sample_rate==s->in_sample_rate
            && !(s->flags & SWR_FLAG_RESAMPLE)){
@@ -226,7 +226,7 @@ av_cold int swr_init(struct SwrContext *s){
                  && !s->rematrix
                  && s->engine != SWR_ENGINE_SOXR){
             s->int_sample_fmt= AV_SAMPLE_FMT_S32P;
-        }else if(av_get_planar_sample_fmt(s->in_sample_fmt) <= AV_SAMPLE_FMT_FLTP){
+        }else if(av_get_bytes_per_sample(s->in_sample_fmt) <= 4){
             s->int_sample_fmt= AV_SAMPLE_FMT_FLTP;
         }else{
             s->int_sample_fmt= AV_SAMPLE_FMT_DBLP;
@@ -262,7 +262,7 @@ av_cold int swr_init(struct SwrContext *s){
     }
 
     if (s->out_sample_rate!=s->in_sample_rate || (s->flags & SWR_FLAG_RESAMPLE)){
-        s->resample = s->resampler->init(s->resample, s->out_sample_rate, s->in_sample_rate, s->filter_size, s->phase_shift, s->linear_interp, s->cutoff, s->int_sample_fmt, s->filter_type, s->kaiser_beta, s->precision, s->cheby);
+        s->resample = s->resampler->init(s->resample, s->out_sample_rate, s->in_sample_rate, s->filter_size, s->phase_shift, s->linear_interp, s->cutoff, s->int_sample_fmt, s->filter_type, s->kaiser_beta, s->precision, s->cheby, s->exact_rational);
         if (!s->resample) {
             av_log(s, AV_LOG_ERROR, "Failed to initialize resampler\n");
             return AVERROR(ENOMEM);

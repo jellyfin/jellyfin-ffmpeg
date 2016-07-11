@@ -25,10 +25,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef int16_t dwtcoef;
-typedef int32_t qcoef;   /* Quantization needs more precision */
-
-/* Only Deslauriers-Dubuc (9,7) and LeGall (5,3) supported! */
+typedef int32_t dwtcoef;
 
 enum VC2TransformType {
     VC2_TRANSFORM_9_7    = 0,   /* Deslauriers-Dubuc (9,7)  */

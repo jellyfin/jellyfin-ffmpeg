@@ -56,6 +56,8 @@ enum BlendMode {
     BLEND_GLOW,
     BLEND_ADDITION128,
     BLEND_MULTIPLY128,
+    BLEND_HEAT,
+    BLEND_FREEZE,
     BLEND_NB
 };
 
@@ -68,7 +70,7 @@ typedef struct FilterParams {
                   const uint8_t *bottom, ptrdiff_t bottom_linesize,
                   uint8_t *dst, ptrdiff_t dst_linesize,
                   ptrdiff_t width, ptrdiff_t height,
-                  struct FilterParams *param, double *values);
+                  struct FilterParams *param, double *values, int starty);
 } FilterParams;
 
 void ff_blend_init(FilterParams *param, int is_16bit);

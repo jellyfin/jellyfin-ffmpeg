@@ -37,6 +37,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/common.h"
+#include "libavutil/ffmath.h"
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
@@ -85,8 +86,8 @@ typedef struct TestSourceContext {
     { "s",        "set video size",     OFFSET(w),        AV_OPT_TYPE_IMAGE_SIZE, {.str = "320x240"}, 0, 0, FLAGS },\
 
 #define COMMON_OPTIONS_NOSIZE \
-    { "rate",     "set video rate",     OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "25"}, 0, 0, FLAGS },\
-    { "r",        "set video rate",     OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "25"}, 0, 0, FLAGS },\
+    { "rate",     "set video rate",     OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "25"}, 0, INT_MAX, FLAGS },\
+    { "r",        "set video rate",     OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "25"}, 0, INT_MAX, FLAGS },\
     { "duration", "set video duration", OFFSET(duration), AV_OPT_TYPE_DURATION, {.i64 = -1}, -1, INT64_MAX, FLAGS },\
     { "d",        "set video duration", OFFSET(duration), AV_OPT_TYPE_DURATION, {.i64 = -1}, -1, INT64_MAX, FLAGS },\
     { "sar",      "set video sample aspect ratio", OFFSET(sar), AV_OPT_TYPE_RATIONAL, {.dbl= 1},  0, INT_MAX, FLAGS },
@@ -1073,12 +1074,12 @@ AVFilter ff_vsrc_rgbtestsrc = {
 
 static const uint8_t rainbow[7][4] = {
     { 180, 128, 128, 255 },     /* 75% white */
-    { 161,  44, 141, 255 },     /* 75% yellow */
+    { 162,  44, 142, 255 },     /* 75% yellow */
     { 131, 156,  44, 255 },     /* 75% cyan */
-    { 112,  72,  57, 255 },     /* 75% green */
-    {  83, 183, 198, 255 },     /* 75% magenta */
-    {  65,  99, 212, 255 },     /* 75% red */
-    {  34, 212, 114, 255 },     /* 75% blue */
+    { 112,  72,  58, 255 },     /* 75% green */
+    {  84, 184, 198, 255 },     /* 75% magenta */
+    {  65, 100, 212, 255 },     /* 75% red */
+    {  35, 212, 114, 255 },     /* 75% blue */
 };
 
 static const uint8_t rainbowhd[7][4] = {
@@ -1092,9 +1093,9 @@ static const uint8_t rainbowhd[7][4] = {
 };
 
 static const uint8_t wobnair[7][4] = {
-    {  34, 212, 114, 255 },     /* 75% blue */
+    {  35, 212, 114, 255 },     /* 75% blue */
     {  19, 128, 128, 255 },     /* 7.5% intensity black */
-    {  83, 183, 198, 255 },     /* 75% magenta */
+    {  84, 184, 198, 255 },     /* 75% magenta */
     {  19, 128, 128, 255 },     /* 7.5% intensity black */
     { 131, 156,  44, 255 },     /* 75% cyan */
     {  19, 128, 128, 255 },     /* 7.5% intensity black */
