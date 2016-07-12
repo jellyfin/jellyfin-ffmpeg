@@ -1,8 +1,11 @@
-ffmpeg (7:3.0.2-5) UNRELEASED; urgency=medium
+ffmpeg (7:3.1.1-2) UNRELEASED; urgency=medium
 
+  * New upstream release.
   * debian/rules: Really build with opencv everywhere (Closes: #827868)
+  * debian/patches/lavf-mpegts-Return-small-probe-score-for-very-short-.patch:
+    Removed, included upstream.
 
- -- Sebastian Ramacher <sramacher@debian.org>  Wed, 22 Jun 2016 08:41:22 +0200
+ -- Sebastian Ramacher <sramacher@debian.org>  Tue, 12 Jul 2016 02:20:43 +0200
 
 ffmpeg (7:3.0.2-4) unstable; urgency=medium
 
