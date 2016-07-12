@@ -1,10 +1,12 @@
-ffmpeg (7:3.1.1-2) UNRELEASED; urgency=medium
+ffmpeg (7:3.1.1-2) unstable; urgency=medium
+
+  * Team upload.
 
   [ Aurelien Jarno ]
   * debian/rules: Fix FTBFS on mips64el by adding --disable-mips64r6. (Closes:
     #830868)
 
- -- Sebastian Ramacher <sramacher@debian.org>  Tue, 12 Jul 2016 14:18:08 +0200
+ -- Sebastian Ramacher <sramacher@debian.org>  Tue, 12 Jul 2016 16:38:52 +0200
 
 ffmpeg (7:3.1.1-1) unstable; urgency=medium
 
