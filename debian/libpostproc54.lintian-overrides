@@ -1,6 +1,3 @@
-# Bug in lintian (can be removed once #817004 is fixed)
-libpostproc54: embedded-library usr/lib/*/libpostproc.so.*: libpostproc
-
 # According to Debian policy [1], non position independent code is permitted
 # in a shared library on i386 and position independent code may have a
 # performance penalty, especially on i386.
