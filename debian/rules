@@ -65,6 +65,7 @@ CONFIG := --prefix=/usr \
 	--enable-libbs2b \
 	--enable-libcaca \
 	--enable-libcdio \
+	--enable-libebur128 \
 	--enable-libflite \
 	--enable-libfontconfig \
 	--enable-libfreetype \

@@ -46,6 +46,8 @@ Build-Depends:
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
  libdc1394-22-dev [linux-any],
+# --enable-libebur128
+ libebur128-dev,
 # --enable-libfontconfig
  libfontconfig1-dev,
 # --enable-libfreetype
