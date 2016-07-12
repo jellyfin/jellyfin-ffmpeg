@@ -169,7 +169,8 @@ ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel mips64 mips64el))
 	CONFIG += --disable-mipsdsp \
 		--disable-mipsdspr2 \
 		--disable-loongson3 \
-		--disable-mips32r6
+		--disable-mips32r6 \
+		--disable-mips64r6
 endif
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 	CONFIG += --disable-mipsfpu
