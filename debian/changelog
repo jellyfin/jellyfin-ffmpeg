@@ -1,15 +1,22 @@
-ffmpeg (7:3.1.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.1.1-1) unstable; urgency=medium
 
+  * Team upload.
   * New upstream release.
   * debian/rules:
     - Really build with opencv everywhere. (Closes: #827868)
     - Remove obsolete comments.
     - Build with --enable-libebur128.
-  * debian/patches/lavf-mpegts-Return-small-probe-score-for-very-short-.patch:
-    Removed, included upstream.
+  * debian/patches
+    - lavf-mpegts-Return-small-probe-score-for-very-short-.patch: Removed,
+      included upstream.
+    - disable-opj-static.patch: Do not define OPJ_STATIC when building against
+      openjpeg 2.1.x.
   * debian/control: Add libebur128-dev to B-D.
+  * debian/copyright:
+    - Add new copyright holders.
+    - Update copyright years.
 
- -- Sebastian Ramacher <sramacher@debian.org>  Tue, 12 Jul 2016 02:20:43 +0200
+ -- Sebastian Ramacher <sramacher@debian.org>  Tue, 12 Jul 2016 09:37:46 +0200
 
 ffmpeg (7:3.0.2-4) unstable; urgency=medium
 
