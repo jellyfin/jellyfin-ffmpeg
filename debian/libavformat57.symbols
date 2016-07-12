@@ -152,6 +152,7 @@ libavformat.so.57 libavformat57 #MINVER#
  avio_wl32@LIBAVFORMAT_57 7:3.0
  avio_wl64@LIBAVFORMAT_57 7:3.0
  avio_write@LIBAVFORMAT_57 7:3.0
+ avio_write_marker@LIBAVFORMAT_57 7:3.1.1
  avpriv_dv_get_packet@LIBAVFORMAT_57 7:3.0
  avpriv_dv_init_demux@LIBAVFORMAT_57 7:3.0
  avpriv_dv_produce_packet@LIBAVFORMAT_57 7:3.0

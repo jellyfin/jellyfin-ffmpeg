@@ -11,6 +11,14 @@ libavcodec.so.57 libavcodec57 #MINVER# | libavcodec-extra57 #MINVER#
  av_bitstream_filter_filter@LIBAVCODEC_57 7:3.0
  av_bitstream_filter_init@LIBAVCODEC_57 7:3.0
  av_bitstream_filter_next@LIBAVCODEC_57 7:3.0
+ av_bsf_alloc@LIBAVCODEC_57 7:3.1.1
+ av_bsf_free@LIBAVCODEC_57 7:3.1.1
+ av_bsf_get_by_name@LIBAVCODEC_57 7:3.1.1
+ av_bsf_get_class@LIBAVCODEC_57 7:3.1.1
+ av_bsf_init@LIBAVCODEC_57 7:3.1.1
+ av_bsf_next@LIBAVCODEC_57 7:3.1.1
+ av_bsf_receive_packet@LIBAVCODEC_57 7:3.1.1
+ av_bsf_send_packet@LIBAVCODEC_57 7:3.1.1
  av_codec_ffversion@LIBAVCODEC_57 7:3.0
  av_codec_get_chroma_intra_matrix@LIBAVCODEC_57 7:3.0
  av_codec_get_codec_descriptor@LIBAVCODEC_57 7:3.0
@@ -46,6 +54,7 @@ libavcodec.so.57 libavcodec57 #MINVER# | libavcodec-extra57 #MINVER#
  av_fft_init@LIBAVCODEC_57 7:3.0
  av_fft_permute@LIBAVCODEC_57 7:3.0
  av_free_packet@LIBAVCODEC_57 7:3.0
+ av_get_audio_frame_duration2@LIBAVCODEC_57 7:3.1.1
  av_get_audio_frame_duration@LIBAVCODEC_57 7:3.0
  av_get_bits_per_sample@LIBAVCODEC_57 7:3.0
  av_get_codec_tag_string@LIBAVCODEC_57 7:3.0
@@ -57,6 +66,8 @@ libavcodec.so.57 libavcodec57 #MINVER# | libavcodec-extra57 #MINVER#
  av_imdct_calc@LIBAVCODEC_57 7:3.0
  av_imdct_half@LIBAVCODEC_57 7:3.0
  av_init_packet@LIBAVCODEC_57 7:3.0
+ av_jni_get_java_vm@LIBAVCODEC_57 7:3.1.1
+ av_jni_set_java_vm@LIBAVCODEC_57 7:3.1.1
  av_lockmgr_register@LIBAVCODEC_57 7:3.0
  av_log_ask_for_sample@LIBAVCODEC_57 7:3.0
  av_log_missing_feature@LIBAVCODEC_57 7:3.0
@@ -161,10 +172,19 @@ libavcodec.so.57 libavcodec57 #MINVER# | libavcodec-extra57 #MINVER#
  avcodec_is_open@LIBAVCODEC_57 7:3.0
  avcodec_license@LIBAVCODEC_57 7:3.0
  avcodec_open2@LIBAVCODEC_57 7:3.0
+ avcodec_parameters_alloc@LIBAVCODEC_57 7:3.1.1
+ avcodec_parameters_copy@LIBAVCODEC_57 7:3.1.1
+ avcodec_parameters_free@LIBAVCODEC_57 7:3.1.1
+ avcodec_parameters_from_context@LIBAVCODEC_57 7:3.1.1
+ avcodec_parameters_to_context@LIBAVCODEC_57 7:3.1.1
  avcodec_pix_fmt_to_codec_tag@LIBAVCODEC_57 7:3.0
  avcodec_profile_name@LIBAVCODEC_57 7:3.0
+ avcodec_receive_frame@LIBAVCODEC_57 7:3.1.1
+ avcodec_receive_packet@LIBAVCODEC_57 7:3.1.1
  avcodec_register@LIBAVCODEC_57 7:3.0
  avcodec_register_all@LIBAVCODEC_57 7:3.0
+ avcodec_send_frame@LIBAVCODEC_57 7:3.1.1
+ avcodec_send_packet@LIBAVCODEC_57 7:3.1.1
  avcodec_set_dimensions@LIBAVCODEC_57 7:3.0
  avcodec_string@LIBAVCODEC_57 7:3.0
  avcodec_version@LIBAVCODEC_57 7:3.0
@@ -178,6 +198,7 @@ libavcodec.so.57 libavcodec57 #MINVER# | libavcodec-extra57 #MINVER#
  avpriv_ac3_parse_header@LIBAVCODEC_57 7:3.0
  avpriv_align_put_bits@LIBAVCODEC_57 7:3.0
  avpriv_bprint_to_extradata@LIBAVCODEC_57 7:3.0
+ avpriv_codec_get_cap_skip_frame_fill_param@LIBAVCODEC_57 7:3.1.1
  avpriv_copy_bits@LIBAVCODEC_57 7:3.0
  avpriv_copy_pce_data@LIBAVCODEC_57 7:3.0
  avpriv_dca_convert_bitstream@LIBAVCODEC_57 7:3.0

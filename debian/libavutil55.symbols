@@ -22,6 +22,7 @@ libavutil.so.55 libavutil55 #MINVER#
  av_audio_fifo_drain@LIBAVUTIL_55 7:3.0
  av_audio_fifo_free@LIBAVUTIL_55 7:3.0
  av_audio_fifo_peek@LIBAVUTIL_55 7:3.0
+ av_audio_fifo_peek_at@LIBAVUTIL_55 7:3.1.1
  av_audio_fifo_read@LIBAVUTIL_55 7:3.0
  av_audio_fifo_realloc@LIBAVUTIL_55 7:3.0
  av_audio_fifo_reset@LIBAVUTIL_55 7:3.0
@@ -56,6 +57,7 @@ libavutil.so.55 libavutil55 #MINVER#
  av_buffer_is_writable@LIBAVUTIL_55 7:3.0
  av_buffer_make_writable@LIBAVUTIL_55 7:3.0
  av_buffer_pool_get@LIBAVUTIL_55 7:3.0
+ av_buffer_pool_init2@LIBAVUTIL_55 7:3.1.1
  av_buffer_pool_init@LIBAVUTIL_55 7:3.0
  av_buffer_pool_uninit@LIBAVUTIL_55 7:3.0
  av_buffer_realloc@LIBAVUTIL_55 7:3.0
@@ -231,6 +233,17 @@ libavutil.so.55 libavutil55 #MINVER#
  av_hmac_free@LIBAVUTIL_55 7:3.0
  av_hmac_init@LIBAVUTIL_55 7:3.0
  av_hmac_update@LIBAVUTIL_55 7:3.0
+ av_hwdevice_ctx_alloc@LIBAVUTIL_55 7:3.1.1
+ av_hwdevice_ctx_create@LIBAVUTIL_55 7:3.1.1
+ av_hwdevice_ctx_init@LIBAVUTIL_55 7:3.1.1
+ av_hwdevice_get_hwframe_constraints@LIBAVUTIL_55 7:3.1.1
+ av_hwdevice_hwconfig_alloc@LIBAVUTIL_55 7:3.1.1
+ av_hwframe_constraints_free@LIBAVUTIL_55 7:3.1.1
+ av_hwframe_ctx_alloc@LIBAVUTIL_55 7:3.1.1
+ av_hwframe_ctx_init@LIBAVUTIL_55 7:3.1.1
+ av_hwframe_get_buffer@LIBAVUTIL_55 7:3.1.1
+ av_hwframe_transfer_data@LIBAVUTIL_55 7:3.1.1
+ av_hwframe_transfer_get_formats@LIBAVUTIL_55 7:3.1.1
  av_i2int@LIBAVUTIL_55 7:3.0
  av_image_alloc@LIBAVUTIL_55 7:3.0
  av_image_check_sar@LIBAVUTIL_55 7:3.0
@@ -252,6 +265,7 @@ libavutil.so.55 libavutil55 #MINVER#
  av_log2_i@LIBAVUTIL_55 7:3.0
  av_log@LIBAVUTIL_55 7:3.0
  av_log_default_callback@LIBAVUTIL_55 7:3.0
+ av_log_format_line2@LIBAVUTIL_55 7:3.1.1
  av_log_format_line@LIBAVUTIL_55 7:3.0
  av_log_get_flags@LIBAVUTIL_55 7:3.0
  av_log_get_level@LIBAVUTIL_55 7:3.0
@@ -390,6 +404,8 @@ libavutil.so.55 libavutil55 #MINVER#
  av_small_strptime@LIBAVUTIL_55 7:3.0
  av_stereo3d_alloc@LIBAVUTIL_55 7:3.0
  av_stereo3d_create_side_data@LIBAVUTIL_55 7:3.0
+ av_stereo3d_from_name@LIBAVUTIL_55 7:3.1.1
+ av_stereo3d_type_name@LIBAVUTIL_55 7:3.1.1
  av_strcasecmp@LIBAVUTIL_55 7:3.0
  av_strdup@LIBAVUTIL_55 7:3.0
  av_strerror@LIBAVUTIL_55 7:3.0
@@ -463,6 +479,7 @@ libavutil.so.55 libavutil55 #MINVER#
  avpriv_scalarproduct_float_c@LIBAVUTIL_55 7:3.0
  avpriv_set_systematic_pal2@LIBAVUTIL_55 7:3.0
  avpriv_solve_lls@LIBAVUTIL_55 7:3.0
+ avpriv_tempfile@LIBAVUTIL_55 7:3.1.1
  avpriv_vga16_font@LIBAVUTIL_55 7:3.0
  avutil_configuration@LIBAVUTIL_55 7:3.0
  avutil_license@LIBAVUTIL_55 7:3.0

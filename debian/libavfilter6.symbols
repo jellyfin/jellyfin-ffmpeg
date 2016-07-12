@@ -10,6 +10,8 @@ libavfilter.so.6 libavfilter6 #MINVER#
  av_buffersrc_add_frame@LIBAVFILTER_6 7:3.0
  av_buffersrc_add_frame_flags@LIBAVFILTER_6 7:3.0
  av_buffersrc_get_nb_failed_requests@LIBAVFILTER_6 7:3.0
+ av_buffersrc_parameters_alloc@LIBAVFILTER_6 7:3.1.1
+ av_buffersrc_parameters_set@LIBAVFILTER_6 7:3.1.1
  av_buffersrc_write_frame@LIBAVFILTER_6 7:3.0
  av_filter_ffversion@LIBAVFILTER_6 7:3.0
  av_filter_next@LIBAVFILTER_6 7:3.0
