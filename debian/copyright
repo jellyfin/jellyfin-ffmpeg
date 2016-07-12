@@ -50,7 +50,7 @@ Copyright:
   2001, Tim Ferguson
   2001-2003, BERO <bero@geocities.co.jp>
   2001-2010, Krzysztof Foltman, Markus Schmidt, Thor Harald Johansen and others
-  2001-2015, Michael Niedermayer <michaelni@gmx.at>
+  2001-2016, Michael Niedermayer <michaelni@gmx.at>
   2002, 2005, Francois Revol
   2002, Anders Johansson <ajh@atri.curtin.edu.au>
   2002, Falk Hueffner <falk@debian.org>
@@ -96,7 +96,7 @@ Copyright:
   2004-2014, Konstantin Shishkov <kostya.shishkov@gmail.com>
   2005, 2007, Wolfram Gloger
   2005, 2007-2008, Ian Caulfield
-  2005, 2007-2011, 2013-2014, Reimar Döffinger <Reimar.Doeffinger@gmx.de>
+  2005, 2007-2011, 2013-2014, 2016, Reimar Döffinger <Reimar.Doeffinger@gmx.de>
   2005, Alban Bedel <albeu@free.fr>
   2005, Anonymous
   2005, David Hammerton
@@ -144,11 +144,11 @@ Copyright:
   2007, 2010, 2013, Anssi Hannula <anssi.hannula@gmail.com>
   2007, 2010-2014, Nicolas George <nicolas.george@normalesup.org>
   2007, 2014, Benoit Fouet <benoit.fouet@free.fr>
+  2007, 2015 Edward Hervey
   2007, Alexis Ballier
   2007, Bobby Bingham
   2007, Christian Ohm
   2007, Collabora Ltd, Philippe Kalaf
-  2007, Edward Hervey
   2007, Kamil Nowosad
   2007, Nicholas Tung
   2007, Nokia Corporation
@@ -204,11 +204,12 @@ Copyright:
   2009, Xuggle Incorporated
   2009, Zuxy Meng <zuxy.meng@gmail.com>
   2009-2010, 2013, Daniel Verkamp <daniel@drv.nu>
-  2009-2010, 2013-2014, Thilo Borgmann <thilo.borgmann@mail.de>
+  2009-2010, 2013-2014, 2016 Thilo Borgmann <thilo.borgmann@mail.de>
   2009-2010, Howard Chu
   2009-2013, 2015, James Darnley <james.darnley@gmail.com>
   2009-2015, Martin Storsjo
-  2010, 2012, Google, Inc
+  2010, 2012, 2016, Google, Inc
+  2010, 2012, Rafaël Carré <funman@videolan.org>
   2010, 2013, Georg Martius <georg.martius@web.de>
   2010, Adrian Daerr
   2010, Amanda, Y.N. Wu <amanda11192003@gmail.com>
@@ -225,7 +226,6 @@ Copyright:
   2010, Mark Nauwelaerts
   2010, Michele Orrù
   2010, Nolan Lum <nol888@gmail.com>
-  2010, Rafael Carre
   2010, Rob Clark <rob@ti.com>
   2010, S.N. Hemanth Meenakshisundaram <smeenaks@ucsd.edu>
   2010, Sebastian Vater <cdgs.basty@googlemail.com>
@@ -260,10 +260,11 @@ Copyright:
   2011-2012, Michael Bradshaw <mjbshaw@gmail.com>
   2011-2012, Sebastien Zwickert
   2011-2012, Smartjog S.A.S, Clément Bœsch <clement.boesch@smartjog.com>
-  2011-2014, Clément Bœsch <u@pkh.me>
+  2011-2014, 2016, Clément Bœsch <u@pkh.me>
   2011-2015, Derek Buitenhuis
   2011-2016, Paul B Mahol
   2012, 2014, Georg Lippitsch <georg.lippitsch@gmx.at>
+  2012, 2014-2015, Collabor Ltd.
   2012, Aleksi Nurmi
   2012, Andrew D'Addesio
   2012, Antti Seppälä
@@ -323,6 +324,7 @@ Copyright:
   2013-2015, Seppo Tomperi <seppo.tomperi@vtt.fi>
   2013-2015, Vittorio Giovara <vittorio.giovara@gmail.com>
   2013-2016, Tiancheng "Timothy" Gu <timothygu99@gmail.com>
+  2014, 2016, Muhammad Faiz <mfcc64@gmail.com>
   2014, 2016, Neil Birkbeck <birkbeck@google.com>
   2014, Alexandra Hájková
   2014, Aman Gupta <ffmpeg@tmm1.net>
@@ -331,7 +333,6 @@ Copyright:
   2014, Eejya Singh
   2014, James Yu <james.yu@linaro.org>
   2014, Marvin Scholz
-  2014, Muhammad Faiz <mfcc64@gmail.com>
   2014, Nicholas Robbins
   2014, Niels Möller
   2014, Oleksij Rempel <linux@rempel-privat.de>
@@ -343,31 +344,29 @@ Copyright:
   2014-2015, Hendrik Leppkes
   2014-2015, Peter Meerwald <pmeerw@pmeerw.net>
   2014-2015, Supraja Meedinti
-  2014-2015, Thomas Volkert <thomas@homer-conferencing.com>
-  2014-2015, Timo Rothenpieler <timo@rothenpieler.org>
   2014-2015, Vignesh Venkatasubramanian
+  2014-2016, Thomas Volkert <thomas@homer-conferencing.com>
+  2014-2016, Timo Rothenpieler <timo@rothenpieler.org>
   2015, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
   2015, Anshul Maheshwari
   2015, Claudio Freire
   2015, Donny Yang
   2015, Eran Kornblau <erankor@gmail.com>
-  2015, Ganesh Ajjanagadde
   2015, Gilles Chanteperdrix <gch@xenomai.org>
   2015, Henrik Gramner
   2015, Himangi Saraogi <himangi774@gmail.com>
   2015, Imagination Technologies Ltd
   2015, Kevin Wheatley <kevin.j.wheatley@gmail.com>
-  2015, Loongson Technology Corporation Limited
   2015, LoRd_MuldeR <mulder2@gmx.de>
   2015, Manojkumar Bhosale <Manojkumar.Bhosale@imgtec.com>
   2015, Mats Pererson
-  2015, Matthieu Bouron <matthieu.bouron@stupeflix.com>
+  2015, Matthew Waters <matthew@centricular.com>
   2015, Niklas Haas
   2015, Parag Salasakar <Parag.Salasakar@imgtec.com>
   2015, Pedro Arthur <bygrandao@gmail.com>
-  2015, Rodger Combs
   2015, Roger Pack
   2015, Rostislav Pehlivanov
+  2015, Sebastian Dröge <sebastian@centricular.com>
   2015, Shivraj Patil <Shivraj.Patil@imgtec.com>
   2015, Stupeflix
   2015, Tampere University of Technology
@@ -376,8 +375,18 @@ Copyright:
   2015, Vesselin Bontchev
   2015, Zhang Rui <bbcallen@gmail.com>
   2015, Zhang Shuangshuang <zhangshuangshuang@ict.ac.cn>
-  2015, Zhou Xiaoyong <zhouxiaoyong@loongson.cn>
+  2015-2016 Ganesh Ajjanagadde <gajjanaq@gmail.com>
+  2015-2016 Loongson Technology Corporation Limited
+  2015-2016 Zhou Xiaoyong <zhouxiaoyong@loongson.cn>
+  2015-2016, Matthieu Bouron <matthieu.bouron@stupeflix.com>
   2015-2016, Open Broadcast Systems Ltd.
+  2015-2016, Rodger Combs
+  2016, Floris Sluiter
+  2016, KongQuan Yang <kqyang@google.com>
+  2016, Kyle Swanson <k@ylo.ph>
+  2016, Marton Balnt <cus@passwd.hu>
+  2016, Thomas Mundt <loudmax@yahoo.de>
+  2016, Tobias Rapp
   2016, foo86
 License: LGPL-2.1+
 Comment:
@@ -460,7 +469,7 @@ Copyright:
   2010, Rob Clark <rob@ti.com>
   2011, Mans Rullgard <mans@mansr.com>
   2012-2013, MIPS Technologies, Inc., California.
-License: BSD-3-Clause and LGPL-2.1+
+License: BSD-3-clause and LGPL-2.1+
 Comment:
  On Debian systems, the full text of the GNU Lesser General Public License
  version 2.1 can be found in the file `/usr/share/common-licenses/LGPL-2.1'.
@@ -469,11 +478,17 @@ Comment:
  License along with FFmpeg; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+Files:
+  libavfilter/af_hdcd.c
+Copyright:
+  2010, Chris Moeller
+License BSD-3-clause
+
 Files: libavformat/aadec.c
 Copyright:
   2001-2014, Jim Teeuwen
   2015, Vesselin Bontchev
-License: BSD-1-Clause
+License: BSD-1-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
  are met:
@@ -511,6 +526,7 @@ Files:
   libavcodec/x86/flac_dsp_gpl.asm
   libavdevice/x11grab.c
   libavfilter/f_ebur128.c
+  libavfilter/tinterlace.h
   libavfilter/vf_blackframe.c
   libavfilter/vf_boxblur.c
   libavfilter/vf_colormatrix.c
@@ -530,6 +546,7 @@ Files:
   libavfilter/vf_kerndeint.c
   libavfilter/vf_mcdeint.c
   libavfilter/vf_mpdecimate.c
+  libavfilter/vf_nnedi.c
   libavfilter/vf_owdenoise.c
   libavfilter/vf_perspective.c
   libavfilter/vf_phase.c
@@ -551,23 +568,38 @@ Files:
   libavfilter/x86/vf_fspp.asm
   libavfilter/x86/vf_fspp_init.c
   libavfilter/x86/vf_hqdn3d_init.c
+  libavfilter/x86/vf_interlace_init.c
   libavfilter/x86/vf_pp7.asm
   libavfilter/x86/vf_pp7_init.c
   libavfilter/x86/vf_pullup.asm
   libavfilter/x86/vf_pullup_init.c
   libavfilter/x86/vf_removegrain.asm
   libavfilter/x86/vf_spp.c
+  libavfilter/x86/vf_tinterlace_init.c
   libavfilter/yadif.h
   libpostproc/postprocess.c
   libpostproc/postprocess.h
   libpostproc/postprocess_altivec_template.c
   libpostproc/postprocess_internal.h
   libpostproc/postprocess_template.c
+  libswresample/tests/swresample.c
+  tests/checkasm/aarch64/checkasm.S
+  tests/checkasm/alacdsp.c
+  tests/checkasm/arm/checkasm.S
   tests/checkasm/bswapdsp.c
   tests/checkasm/checkasm.c
   tests/checkasm/checkasm.h
+  tests/checkasm/flacdsp.c
+  tests/checkasm/fmtconvert.c
   tests/checkasm/h264pred.c
   tests/checkasm/h264qpel.c
+  tests/checkasm/jpeg2000dsp.c
+  tests/checkasm/pixblockdsp.c
+  tests/checkasm/synth_filter.c
+  tests/checkasm/v210enc.c
+  tests/checkasm/vf_blend.c
+  tests/checkasm/videodsp.c
+  tests/checkasm/vp9dsp.c
   tests/checkasm/x86/checkasm.asm
   tests/tiny_ssim.c
   tools/coverity.c
@@ -718,7 +750,6 @@ Files:
   doc/style.min.css
   libavcodec/arm/jrevdct_arm.S
   libavcodec/cinepakenc.c
-  libavcodec/interplayacm.c
   libavcodec/nellymoser.c
   libavcodec/nellymoserdec.c
   libavcodec/nellymoser.h
@@ -738,6 +769,8 @@ Files:
   tests/api/api-h264-test.c
   tests/api/api-seek-test.c
   tests/reference.pnm
+  libavfilter/vf_deband.c
+  tests/api/api-threadmessage-test.c
 Copyright:
   2001, 2003, Fabrice Bellard
   2001, Lionel Ulmer <lionel.ulmer@free.fr> <bbrox@bbrox.org>
@@ -774,7 +807,27 @@ Copyright:
   2015, Paul B Mahol
   2015, Stephan Holljes
   2015, Vittorio Giovara <vittorio.giovara@gmail.com>
+  2015, Niklas Haas
 License: Expat
+
+Files:
+  libavcodec/interplayacm.c
+Copyright:
+  2004-2008, Marko Kreen
+  2008, Adam Gashlin
+  2015, Paul B Mahol
+License: ISC
+ Permission to use, copy, modify, and distribute this software for any
+ purpose with or without fee is hereby granted, provided that the above
+ copyright notice and this permission notice appear in all copies.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 Files:
   tools/cws2fws.c
@@ -899,7 +952,7 @@ License: man-page
  This manual page was written by Andres Mejia <mcitadel@gmail.com>
  for the Debian GNU/Linux system, but may be used by others.
 
-License: BSD-3-Clause
+License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
  are met:
