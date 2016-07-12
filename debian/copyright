@@ -482,7 +482,7 @@ Files:
   libavfilter/af_hdcd.c
 Copyright:
   2010, Chris Moeller
-License BSD-3-clause
+License: BSD-3-clause
 
 Files: libavformat/aadec.c
 Copyright:
