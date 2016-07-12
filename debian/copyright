@@ -563,7 +563,6 @@ Files:
   libpostproc/postprocess_altivec_template.c
   libpostproc/postprocess_internal.h
   libpostproc/postprocess_template.c
-  libswresample/swresample-test.c
   tests/checkasm/bswapdsp.c
   tests/checkasm/checkasm.c
   tests/checkasm/checkasm.h
@@ -675,30 +674,6 @@ Comment:
  along with this program; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA,
  or visit <http://www.gnu.org/copyleft/gpl.html>.
-
-Files:
-  libavcodec/libutvideodec.cpp
-  libavcodec/libutvideoenc.cpp
-  libavcodec/libutvideo.h
-Copyright:
-  2011-2012, Derek Buitenhuis
-License: GPL-2
- FFmpeg is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public
- License as published by the Free Software Foundation;
- version 2 of the License.
- .
- FFmpeg is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- General Public License for more details.
-Comment:
- On Debian systems, the full text of the GNU General Public License
- version 2 can be found in the file `/usr/share/common-licenses/GPL-2'.
- .
- You should have received a copy of the GNU General Public
- License along with FFmpeg; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 Files: doc/t2h.pm
 Copyright:
