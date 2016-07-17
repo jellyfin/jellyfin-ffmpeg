@@ -130,7 +130,7 @@ Build-Depends:
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
- libx264-dev [!sparc64] <!stage1>,
+ libx264-dev <!stage1>,
 # --enable-libx265
  libx265-dev (>= 1.8),
 # --enable-x11grab

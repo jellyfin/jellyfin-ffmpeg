@@ -138,12 +138,8 @@ ifneq ($(filter stage1,$(DEB_BUILD_PROFILES)),)
 else
 	CONFIG += --enable-frei0r \
 		--enable-chromaprint \
-		--enable-libopencv
-
-	# Some libraries are unusable (#792921) on sparc64.
-	ifeq (,$(filter $(DEB_HOST_ARCH),sparc64))
-		CONFIG += --enable-libx264
-	endif
+		--enable-libopencv \
+		--enable-libx264
 endif
 
 # Disable altivec optimizations on powerpc, because they are not always available on this architecture.
