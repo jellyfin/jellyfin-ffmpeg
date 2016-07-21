@@ -1,1 +1,2 @@
 disable-opj-static.patch
+Revert-configure-Enable-GCC-vectorization-on-4.9-on-.patch

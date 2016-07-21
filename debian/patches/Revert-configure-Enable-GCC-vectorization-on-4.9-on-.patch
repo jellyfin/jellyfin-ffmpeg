@@ -1,0 +1,43 @@
+From f9a150fc31c5336a8d51bc51a921d1f9885d5876 Mon Sep 17 00:00:00 2001
+From: James Almer <jamrial@gmail.com>
+Date: Sat, 9 Jul 2016 16:00:06 -0300
+Subject: [PATCH] =?UTF-8?q?Revert=20"configure:=20Enable=20GCC=20vectoriza?=
+ =?UTF-8?q?tion=20on=20=E2=89=A54.9=20on=20x86"?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This reverts commit cb8646af24bd8e9627cc5e1c62b049a00fe0b07b.
+
+This change has brough more issues than benefits, between compilation
+time failures depending on flags used and code miscompilation causing
+runtime crashes.
+
+See the "[PATCH 2/2] configure: Enable GCC vectorization on ≥4.9"
+thread in the ffmpeg-devel mailing list for the relevant discussion.
+
+(cherry picked from commit fd6dbc53855fbfc9a782095d0ffe11dd3a98905f)
+---
+ configure | 6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/configure b/configure
+index 3760641..adb4c27 100755
+--- a/configure
++++ b/configure
+@@ -6125,11 +6125,7 @@ elif enabled ccc; then
+     add_cflags -msg_disable nonstandcast
+     add_cflags -msg_disable unsupieee
+ elif enabled gcc; then
+-    case $gcc_basever in
+-        4.9*) enabled x86 || check_optflags -fno-tree-vectorize ;;
+-        4.*)                 check_optflags -fno-tree-vectorize ;;
+-        *)    enabled x86 || check_optflags -fno-tree-vectorize ;;
+-    esac
++    check_optflags -fno-tree-vectorize
+     check_cflags -Werror=format-security
+     check_cflags -Werror=implicit-function-declaration
+     check_cflags -Werror=missing-prototypes
+-- 
+2.8.1
+
