@@ -283,8 +283,6 @@ Package: libavcodec-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libavcodec-libav-dev
 Depends:
  libavcodec57 (= ${binary:Version}) | libavcodec-extra57 (= ${binary:Version}),
  libavutil-dev (= ${binary:Version}),
@@ -332,8 +330,6 @@ Package: libavdevice-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libavdevice-libav-dev
 Depends:
  libavcodec-dev (= ${binary:Version}),
  libavdevice57 (= ${binary:Version}),
@@ -382,8 +378,6 @@ Package: libavfilter-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libavfilter-libav-dev
 Depends:
  libavcodec-dev (= ${binary:Version}),
  libavfilter6 (= ${binary:Version}),
@@ -432,8 +426,6 @@ Package: libavformat-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libavformat-libav-dev
 Depends:
  libavcodec-dev (= ${binary:Version}),
  libavformat57 (= ${binary:Version}),
@@ -478,8 +470,6 @@ Package: libavresample-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libavresample-libav-dev
 Depends:
  libavutil-dev (= ${binary:Version}),
  libavresample3 (= ${binary:Version}),
@@ -523,8 +513,6 @@ Package: libavutil-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libavutil-libav-dev
 Depends:
  libavutil55 (= ${binary:Version}),
  ${misc:Depends}
@@ -567,8 +555,6 @@ Package: libpostproc-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libpostproc-libav-dev
 Depends:
  libavutil-dev (= ${binary:Version}),
  libpostproc54 (= ${binary:Version}),
@@ -690,8 +676,6 @@ Package: libswscale-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
-Conflicts:
- libswscale-libav-dev
 Depends:
  libavutil-dev (= ${binary:Version}),
  libswscale4 (= ${binary:Version}),
