@@ -1,3 +1,13 @@
+ffmpeg (7:3.1.1-4) unstable; urgency=high
+
+  * debian/control:
+    - Remove obsolete Conflicts.
+    - Remove obsolete Breaks against dmo packages.
+  * debian/patches/fix-vaapi-default-values.patch: Use local independent
+    default values. Thanks to Carl Eugen Hoyos. (Closes: #831529)
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 03 Aug 2016 15:16:59 +0200
+
 ffmpeg (7:3.1.1-3) unstable; urgency=medium
 
   [ James Clarke ]
