@@ -1,0 +1,41 @@
+Description: Use local independentant default values
+Author: Carl Eugen Hoyos
+
+diff --git a/libavcodec/vaapi_encode_h264.c b/libavcodec/vaapi_encode_h264.c
+index 979cf37..5bed4e4 100644
+--- a/libavcodec/vaapi_encode_h264.c
++++ b/libavcodec/vaapi_encode_h264.c
+@@ -1323,10 +1323,10 @@ static const AVCodecDefault vaapi_encode_h264_defaults[] = {
+     { "b",              "0"   },
+     { "bf",             "2"   },
+     { "g",              "120" },
+-    { "i_qfactor",      "1.0" },
+-    { "i_qoffset",      "0.0" },
+-    { "b_qfactor",      "1.2" },
+-    { "b_qoffset",      "0.0" },
++    { "i_qfactor",      "1"   },
++    { "i_qoffset",      "0"   },
++    { "b_qfactor",      "6/5" },
++    { "b_qoffset",      "0"   },
+     { NULL },
+ };
+ 
+diff --git a/libavcodec/vaapi_encode_h265.c b/libavcodec/vaapi_encode_h265.c
+index 1ef968c..45f6f6d 100644
+--- a/libavcodec/vaapi_encode_h265.c
++++ b/libavcodec/vaapi_encode_h265.c
+@@ -1341,10 +1341,10 @@ static const AVCodecDefault vaapi_encode_h265_defaults[] = {
+     { "b",              "0"   },
+     { "bf",             "2"   },
+     { "g",              "120" },
+-    { "i_qfactor",      "1.0" },
+-    { "i_qoffset",      "0.0" },
+-    { "b_qfactor",      "1.2" },
+-    { "b_qoffset",      "0.0" },
++    { "i_qfactor",      "1"   },
++    { "i_qoffset",      "0"   },
++    { "b_qfactor",      "6/5" },
++    { "b_qoffset",      "0"   },
+     { NULL },
+ };
+ 
