@@ -1,3 +1,9 @@
+ffmpeg (7:3.1.2-1) UNRELEASED; urgency=medium
+
+  * New upstream release.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 10 Aug 2016 19:47:38 +0200
+
 ffmpeg (7:3.1.1-4) unstable; urgency=high
 
   * debian/control:
