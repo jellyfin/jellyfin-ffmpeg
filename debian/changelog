@@ -1,8 +1,12 @@
-ffmpeg (7:3.1.2-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.1.2-1) unstable; urgency=medium
 
   * New upstream release.
+  * debian/patches:
+    - fix-vaapi-default-values.patch: Removed, applied upstream.
+    - Revert-configure-Enable-GCC-vectorization-on-4.9-on-.patch: Removed,
+      included upstream.
 
- -- Sebastian Ramacher <sramacher@debian.org>  Wed, 10 Aug 2016 19:47:38 +0200
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 10 Aug 2016 20:42:29 +0200
 
 ffmpeg (7:3.1.1-4) unstable; urgency=high
 
