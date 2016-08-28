@@ -4,7 +4,6 @@
 # Therefore -fPIC is not used by the upstream build system on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f83
 libavcodec-extra57 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavcodec.so.*
-# The two packages provide the same API/ABI, so the alternative dependency is correct.
-libavcodec-extra57: symbols-declares-dependency-on-other-package libavcodec* #MINVER#
+
 # This is intentional, because this package provides an alternative variant with the same soname.
 libavcodec-extra57: package-name-doesnt-match-sonames libavcodec*
