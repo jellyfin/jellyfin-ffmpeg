@@ -241,8 +241,3 @@ override_dh_install:
 # Don't compress the example source code files.
 override_dh_compress:
 	dh_compress -Xexamples
-
-# Download the latest upstream tarball.
-get-orig-source:
-	cd $(DEBIAN_DIR)../ && \
-	uscan --rename --force-download --destdir $(CURDIR)
