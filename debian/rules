@@ -1,7 +1,5 @@
 #!/usr/bin/make -f
 
-# This enables verbose mode.
-#export DH_VERBOSE=1
 export V=1
 
 # Determine the debian directory, which is the directory of this makefile.
@@ -132,10 +130,13 @@ ifneq ($(DEB_HOST_ARCH_OS),hurd)
 	CONFIG += --enable-libzmq
 endif
 
-# ffmpeg is involed in build-dependency cycles with opencv, x264 and chromapint, so disable them in stage one.
+# ffmpeg is involed in build-dependency cycles with opencv, x264 and chromaprint, so disable them in stage one.
 # Also disable frei0r, which build-depends on opencv.
 ifneq ($(filter stage1,$(DEB_BUILD_PROFILES)),)
-	CONFIG += --disable-libx264 --disable-libopencv --disable-frei0r
+	CONFIG += --disable-frei0r \
+		--disable-chromaprint \
+		--disable-libopencv \
+		--disable-libx264
 else
 	CONFIG += --enable-frei0r \
 		--enable-chromaprint \
@@ -180,7 +181,6 @@ endif
 
 # Add configuration options:
 override_dh_auto_configure:
-	$(info DEB_BUILD_OPTIONS = $(DEB_BUILD_OPTIONS))
 	$(foreach flavor,$(FLAVORS),mkdir -p debian/$(flavor);)
 	$(foreach flavor,$(FLAVORS), echo " *** $(flavor) ***"; cd debian/$(flavor); ../../configure $(CONFIG) $(CONFIG_$(flavor)) || (cat config.log && exit 1); cd ../.. ;)
 
