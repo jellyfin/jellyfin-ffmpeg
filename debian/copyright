@@ -811,25 +811,6 @@ Copyright:
 License: Expat
 
 Files:
-  libavcodec/interplayacm.c
-Copyright:
-  2004-2008, Marko Kreen
-  2008, Adam Gashlin
-  2015, Paul B Mahol
-License: ISC
- Permission to use, copy, modify, and distribute this software for any
- purpose with or without fee is hereby granted, provided that the above
- copyright notice and this permission notice appear in all copies.
- .
- THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-Files:
   tools/cws2fws.c
   tools/qt-faststart.c
 Copyright:
@@ -841,6 +822,7 @@ License: public-domain
 Files:
   compat/windows/makedef
   libavcodec/faandct.c
+  libavcodec/interplayacm.c
   libavcodec/libfdk-aacdec.c
   libavcodec/libfdk-aacenc.c
   libavcodec/zerocodec.c
@@ -850,11 +832,14 @@ Files:
 Copyright:
   2003, Michael Niedermayer <michaelni@gmx.at>
   2003, Roman Shaposhnik
+  2004-2008, Marko Kreen
   2005-2015, x264 project
+  2008, Adam Gashlin
   2011, Jonathan Baldwin
-  2012-2013, Derek Buitenhuis
   2012, Martin Storsjo
+  2012-2013, Derek Buitenhuis
   2014, Clément Bœsch
+  2015, Paul B Mahol
 License: ISC
  Permission to use, copy, modify, and/or distribute this software for any
  purpose with or without fee is hereby granted, provided that the above
