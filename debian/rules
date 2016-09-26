@@ -16,6 +16,8 @@ include /usr/share/dpkg/architecture.mk
 
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
 export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
+# build with all hardening flags except pie
+export DEB_MAINT_BUILD_OPTIONS=hardening=+all,-pie
 
 # Package name for the extra flavor.
 EXTRA_PKG := $(shell sed -nr 's/^Package:[[:space:]]*(.*extra[0-9]+)[[:space:]]*$$/\1/p' debian/control)
@@ -173,6 +175,10 @@ endif
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 	CONFIG += --disable-mipsfpu
 endif
+
+# export all *FLAG env vars
+export DPKG_EXPORT_BUILDFLAGS
+include /usr/share/dpkg/buildflags.mk
 
 # Use the default debhelper scripts, where possible.
 # Enable parallel building.
