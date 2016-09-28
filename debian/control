@@ -76,6 +76,8 @@ Build-Depends:
  libmodplug-dev,
 # --enable-libmp3lame
  libmp3lame-dev,
+# --enable-netcdf
+ libnetcdf-dev,
 # --enable-openal
  libopenal-dev,
 # --enable-libopencore_amrnb

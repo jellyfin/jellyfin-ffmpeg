@@ -26,7 +26,6 @@ FLAVORS = standard extra
 # Enable as many features as possible, as long as the result is still GPLv2+ (a GPLv3+ variant is built as libavcodec-extra flavor).
 # The following flags (and build-dependencies) are not added, because they would require a libavformat-extra flavor:
 #   --enable-libsmbclient           (libsmbclient-dev [!hurd-i386 !m68k !sparc64])
-#   --enable-netcdf
 # The following flags are not added, because the necessary libraries are not in Debian:
 #   --enable-decklink
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
@@ -109,7 +108,8 @@ CONFIG_extra = --enable-version3 \
 	--enable-libopencore_amrnb \
 	--enable-libopencore_amrwb \
 	--enable-libtesseract \
-	--enable-libvo_amrwbenc
+	--enable-libvo_amrwbenc \
+	--enable-netcdf
 
 # Disable optimizations if requested.
 ifneq (,$(filter $(DEB_BUILD_OPTIONS),noopt))
