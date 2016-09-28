@@ -68,6 +68,8 @@ Build-Depends:
  libavc1394-dev [linux-any],
 # autodetected: indev 'jack'
  libjack-jackd2-dev,
+# missing dependency of libtesseract-dev #836849
+ libleptonica-dev,
 # autodetected for the tiff decoder
  liblzma-dev,
 # --enable-libmodplug
@@ -108,6 +110,8 @@ Build-Depends:
  libspeex-dev,
 # --enable-libssh
  libssh-gcrypt-dev,
+# --enable-libtesseract (used only in -extra flavor)
+ libtesseract-dev,
 # --enable-libtheora
  libtheora-dev,
 # --enable-libtwolame
@@ -370,13 +374,61 @@ Description: FFmpeg library containing media filters - runtime files
  .
  This package contains the runtime files.
 
+Package: libavfilter-extra6
+Architecture: any
+Section: libs
+Priority: extra
+Multi-Arch: same
+Conflicts: libavfilter6
+Provides: libavfilter-extra
+Pre-Depends:
+ ${misc:Pre-Depends}
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends}
+Description: FFmpeg library with extra media filters - runtime files
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This library provides a generic audio/video filtering framework containing
+ several filters, sources and sinks.
+ .
+ This package replaces the libavfilter6 package and contains the
+ following additional filters:
+ .
+  * Optical Character Recognition (uses Tesseract)
+ .
+ Because this package links against libraries that are licensed under
+ Apache License 2.0, the resulting binaries are distributed under the
+ GPL version 3 or later.
+
+Package: libavfilter-extra
+Architecture: all
+Section: metapackages
+Priority: extra
+Multi-Arch: foreign
+Depends:
+ libavfilter-extra6,
+ ${misc:Depends}
+Description: FFmpeg library with extra filters (metapackage)
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This metapackage depends on the latest version of the libavfilter variant
+ that offers additional filter support. Application packages can depend
+ on it if they require or suggest this variant in a robust manner.
+
 Package: libavfilter-dev
 Architecture: any
 Section: libdevel
 Multi-Arch: same
 Depends:
  libavcodec-dev (= ${binary:Version}),
- libavfilter6 (= ${binary:Version}),
+ libavfilter6 (= ${binary:Version}) | libavfilter-extra6 (= ${binary:Version}),
  libavformat-dev (= ${binary:Version}),
  libavresample-dev (= ${binary:Version}),
  libavutil-dev (= ${binary:Version}),
