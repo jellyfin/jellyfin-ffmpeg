@@ -202,11 +202,12 @@ override_dh_auto_build-arch:
 		echo " *** $$flavor ***"; \
 		if echo "$$flavor" | grep -q "extra"; then \
 			subdir=`[ "$$flavor" = "extra" ] && echo "debian/standard/" || echo "debian/altivec/"`; \
-			for dir in `cd ./$$subdir; find libavcodec libavutil libswresample -type d`; do \
+			for dir in `cd ./$$subdir; find libavcodec libavformat libavutil libswresample -type d`; do \
 				mkdir -p debian/"$$flavor"/"$$dir"; \
 				echo "$$subdir$$dir"/*.o | grep -q '*' || cp "$$subdir$$dir"/*.o debian/"$$flavor"/"$$dir"; \
 			done; \
 			rm debian/"$$flavor"/libavcodec/allcodecs.o; \
+			rm debian/"$$flavor"/libavformat/allformats.o; \
 		fi; \
 		if [ "$$flavor" = "standard" ]; then \
 			$(MAKE) -C debian/standard tools/qt-faststart; \
