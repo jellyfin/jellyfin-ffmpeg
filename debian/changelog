@@ -1,3 +1,17 @@
+ffmpeg (7:3.1.3-2) UNRELEASED; urgency=medium
+
+  [ Balint Reczey ]
+  * Enable OCR using Tesseract in libavfilter-extra* (Closes: 822555)
+
+  [ Sebastian Ramacher ]
+  * debian/libavcodec*.lintian-overrides: Remove unused lintian override.
+  * debian/rules:
+    - Enable all hardening options except pie.
+    - Apply the same optimization for libavfilter extra flavor.
+  * debian/{control,rules}: Build libavfilter extra flavor with --enable-netcdf.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 28 Sep 2016 21:31:43 +0200
+
 ffmpeg (7:3.1.3-1) unstable; urgency=medium
 
   * Team upload.
