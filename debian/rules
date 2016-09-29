@@ -78,7 +78,6 @@ CONFIG := --prefix=/usr \
 	--enable-libopus \
 	--enable-libpulse \
 	--enable-librubberband \
-	--enable-librtmp \
 	--enable-libschroedinger \
 	--enable-libshine \
 	--enable-libsnappy \

@@ -94,8 +94,6 @@ Build-Depends:
  libpulse-dev,
 # --enable-librubberband
  librubberband-dev,
-# --enable-librtmp
- librtmp-dev,
 # --enable-libschroedinger
  libschroedinger-dev,
 # autodetected: protocol 'sctp'
