@@ -55,7 +55,6 @@ CONFIG := --prefix=/usr \
 	--enable-shared \
 	--disable-libtesseract \
 	--disable-stripping \
-	--disable-decoder=libopenjpeg \
 	--disable-decoder=libschroedinger \
 	--enable-avresample \
 	--enable-avisynth \
