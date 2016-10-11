@@ -92,6 +92,7 @@ CONFIG := --prefix=/usr \
 	--enable-libwebp \
 	--enable-libx265 \
 	--enable-libxvid \
+	--enable-libzmq \
 	--enable-libzvbi \
 	--enable-openal \
 	--enable-opengl \
@@ -119,11 +120,6 @@ endif
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIG += --enable-libdc1394 \
 		--enable-libiec61883
-endif
-
-# Some libraries are not build on hurd.
-ifneq ($(DEB_HOST_ARCH_OS),hurd)
-	CONFIG += --enable-libzmq
 endif
 
 # ffmpeg is involed in build-dependency cycles with opencv, x264 and chromaprint, so disable them in stage one.

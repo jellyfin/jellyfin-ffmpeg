@@ -144,7 +144,7 @@ Build-Depends:
 # autodetected: decoder 'mpeg_xvmc'; outdev 'xv'
  libxvmc-dev,
 # --enable-libzmq
- libzmq3-dev [!hurd-any],
+ libzmq3-dev,
 # --enable-libzvbi
  libzvbi-dev,
 # The opencl API is considered experimental.
