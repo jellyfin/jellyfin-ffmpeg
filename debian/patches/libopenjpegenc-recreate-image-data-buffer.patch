@@ -1,0 +1,38 @@
+From eaf463d45aff5836a21715b82922112b4c3faf86 Mon Sep 17 00:00:00 2001
+From: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Date: Tue, 11 Oct 2016 18:46:28 +0200
+Subject: [PATCH] libopenjpegenc: recreate image data buffer after encoding
+ frame
+
+openjpeg 2 sets the data pointers of the image components to NULL,
+causing segfaults if the image is reused.
+
+Signed-off-by: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+---
+ libavcodec/libopenjpegenc.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/libavcodec/libopenjpegenc.c b/libavcodec/libopenjpegenc.c
+index 023fdf4..2f0ab20 100644
+--- a/libavcodec/libopenjpegenc.c
++++ b/libavcodec/libopenjpegenc.c
+@@ -776,6 +776,16 @@ static int libopenjpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
+         goto done;
+     }
+ 
++    // openjpeg 2 sets the data pointers of the image components to NULL.
++    // Thus the image can't be reused.
++    opj_image_destroy(ctx->image);
++    ctx->image = mj2_create_image(avctx, &ctx->enc_params);
++    if (!ctx->image) {
++        av_log(avctx, AV_LOG_ERROR, "Error creating the mj2 image\n");
++        ret = AVERROR(EINVAL);
++        goto done;
++    }
++
+     av_shrink_packet(pkt, writer.pos);
+ #endif // OPENJPEG_MAJOR_VERSION == 1
+ 
+-- 
+2.9.3
+
