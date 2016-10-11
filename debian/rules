@@ -40,7 +40,7 @@ FLAVORS = standard extra
 #   --enable-libxavs
 #   --enable-libzimg
 # The following flags are not added for various reasons:
-#   * --enable-librtmp:             ffmpeg have better build-in RTMP support with listen mode
+#   * --enable-librtmp:             ffmpeg has better built-in RTMP support with listen mode
 #   * --enable-libv4l2 [!hurd-any]: This is only needed for very old devices and may cause problems for others.
 #                                   Should anyone need it, using LD_PRELOAD pointing on libv4l2 has the same effect.
 #   * --enable-opencl [!hurd-any]:  This is considered an experimental API.
