@@ -49,8 +49,6 @@ CONFIG := --prefix=/usr \
 	--toolchain=hardened \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
-	--cc=$(CC) \
-	--cxx=$(CXX) \
 	--enable-gpl \
 	--enable-shared \
 	--disable-libtesseract \
@@ -114,6 +112,15 @@ CONFIG_extra = --enable-version3 \
 # Disable optimizations if requested.
 ifneq (,$(filter $(DEB_BUILD_OPTIONS),noopt))
 	CONFIG += --disable-optimizations
+endif
+
+# Respect CC/CXX from the environment, if they differ from the default.
+# Don't set them if they equal the default, because that disables autodetection needed for cross-building.
+ifneq ($(CC),cc)
+	CONFIG += --cc=$(CC)
+endif
+ifneq ($(CXX),g++)
+	CONFIG += --cxx=$(CXX)
 endif
 
 # Some libraries are built only on linux.
