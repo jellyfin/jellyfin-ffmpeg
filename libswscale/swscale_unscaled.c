@@ -352,6 +352,7 @@ static int packed_16bpc_bswap(SwsContext *c, const uint8_t *src[],
         int min_stride         = FFMIN(FFABS(srcstr), FFABS(dststr));
         if(!dstPtr || !srcPtr)
             continue;
+        dstPtr += (srcSliceY >> c->chrDstVSubSample) * dststr;
         for (i = 0; i < (srcSliceH >> c->chrDstVSubSample); i++) {
             for (j = 0; j < min_stride; j++) {
                 dstPtr[j] = av_bswap16(srcPtr[j]);
@@ -557,6 +558,8 @@ static int Rgb16ToPlanarRgb16Wrapper(SwsContext *c, const uint8_t *src[],
     int bpc = dst_format->comp[0].depth;
     int alpha = src_format->flags & AV_PIX_FMT_FLAG_ALPHA;
     int swap = 0;
+    int i;
+
     if ( HAVE_BIGENDIAN && !(src_format->flags & AV_PIX_FMT_FLAG_BE) ||
         !HAVE_BIGENDIAN &&   src_format->flags & AV_PIX_FMT_FLAG_BE)
         swap++;
@@ -570,6 +573,12 @@ static int Rgb16ToPlanarRgb16Wrapper(SwsContext *c, const uint8_t *src[],
                src_format->name, dst_format->name);
         return srcSliceH;
     }
+
+    for(i=0; i<4; i++) {
+        dst2013[i] += stride2013[i] * srcSliceY / 2;
+        dst1023[i] += stride1023[i] * srcSliceY / 2;
+    }
+
     switch (c->srcFormat) {
     case AV_PIX_FMT_RGB48LE:
     case AV_PIX_FMT_RGB48BE:
