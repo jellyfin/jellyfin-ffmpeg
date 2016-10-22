@@ -1,0 +1,5 @@
+ffmpeg_opt-Suggest-to-use-file-.-if-a-protocol-was-not-fo.patch
+lavf-mp3enc-write-encoder-delay-padding-upon-closing.patch
+doc-fix-spelling-errors.patch
+faq-use-relative-links-to-own-documentation.patch
+tests-checkasm-pixblockdsp-Test-8-byte-aligned-positions.patch
