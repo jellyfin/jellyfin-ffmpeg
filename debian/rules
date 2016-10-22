@@ -186,9 +186,8 @@ export DPKG_EXPORT_BUILDFLAGS
 include /usr/share/dpkg/buildflags.mk
 
 # Use the default debhelper scripts, where possible.
-# Enable parallel building.
 %:
-	dh $@ --parallel
+	dh $@
 
 # Add configuration options:
 override_dh_auto_configure:
