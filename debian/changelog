@@ -1,3 +1,31 @@
+ffmpeg (7:3.1.5-1) unstable; urgency=medium
+
+  * Import new upstream bugfix release 3.1.5.
+  * Use nasm instead of yasm.
+    - Unlike yasm it is actively maintained upstream.
+    - And it doesn't embed the full build path as DW_AT_comp_dir.
+      (This should make ffmpeg fully reproducible.)
+  * Drop patches, fixed differently upstream:
+    - disable-opj-static.patch
+    - libopenjpegenc-recreate-image-data-buffer.patch
+  * Add patches from upstream:
+     - doc-fix-spelling-errors.patch (Closes: #839542)
+     - faq-use-relative-links-to-own-documentation.patch (Closes: #841501)
+     - ffmpeg_opt-Suggest-to-use-file-.-if-a-protocol-was-not-fo.patch
+       (Closes: #785690)
+     - lavf-mp3enc-write-encoder-delay-padding-upon-closing.patch
+       (Closes: #797965)
+     - tests-checkasm-pixblockdsp-Test-8-byte-aligned-positions.patch
+       (LP: #1612058)
+  * Use debhelper compat 10.
+     - Parallel building is now the default.
+  * Revert: Enable all hardening options except pie.
+     - It doesn't have any effect, anyway.
+     - PIE is now the default.
+  * Adapt lintian overrides to PIE by default.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 22 Oct 2016 22:33:02 +0200
+
 ffmpeg (7:3.1.4-1) unstable; urgency=medium
 
   [ Ondřej Nový ]
