@@ -125,6 +125,21 @@ struct AVFormatInternal {
      */
     int header_written;
     int write_header_ret;
+
+    /**
+     * Timestamp of the end of the shortest stream.
+     */
+    int64_t shortest_end;
+
+    /**
+     * Whether or not avformat_init_output has already been called
+     */
+    int initialized;
+
+    /**
+     * Whether or not avformat_init_output fully initialized streams
+     */
+    int streams_initialized;
 };
 
 struct AVStreamInternal {
@@ -491,6 +506,15 @@ int ff_generate_avci_extradata(AVStream *st);
 int ff_stream_add_bitstream_filter(AVStream *st, const char *name, const char *args);
 
 /**
+ * Copy encoding parameters from source to destination stream
+ *
+ * @param dst pointer to destination AVStream
+ * @param src pointer to source AVStream
+ * @return >=0 on success, AVERROR code on error
+ */
+int ff_stream_encode_params_copy(AVStream *dst, const AVStream *src);
+
+/**
  * Wrap errno on rename() error.
  *
  * @param oldpath source path
@@ -552,7 +576,7 @@ enum AVWriteUncodedFrameFlags {
 /**
  * Copies the whilelists from one context to the other
  */
-int ff_copy_whiteblacklists(AVFormatContext *dst, AVFormatContext *src);
+int ff_copy_whiteblacklists(AVFormatContext *dst, const AVFormatContext *src);
 
 int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *url, int flags,
                        const AVIOInterruptCB *int_cb, AVDictionary **options);
@@ -562,6 +586,16 @@ int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *
  * (ignored streams or junk data). The framework will re-call the demuxer.
  */
 #define FFERROR_REDO FFERRTAG('R','E','D','O')
+
+/**
+ * Utility function to open IO stream of output format.
+ *
+ * @param s AVFormatContext
+ * @param url URL or file name to open for writing
+ * @options optional options which will be passed to io_open callback
+ * @return >=0 on success, negative AVERROR in case of failure
+ */
+int ff_format_output_open(AVFormatContext *s, const char *url, AVDictionary **options);
 
 /*
  * A wrapper around AVFormatContext.io_close that should be used
@@ -626,7 +660,7 @@ int ff_bprint_to_codecpar_extradata(AVCodecParameters *par, struct AVBPrint *buf
  * The packet is not removed from the interleaving queue, but only
  * a pointer to it is returned.
  *
- * @param ts_offset the ts difference between packet in the que and the muxer.
+ * @param ts_offset the ts difference between packet in the queue and the muxer.
  *
  * @return a pointer to the next packet, or NULL if no packet is queued
  *         for this stream.

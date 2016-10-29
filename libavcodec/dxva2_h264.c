@@ -22,8 +22,9 @@
 
 #include "libavutil/avassert.h"
 
-#include "h264.h"
+#include "h264dec.h"
 #include "h264data.h"
+#include "h264_ps.h"
 #include "mpegutils.h"
 
 // The headers above may include w32threads.h, which uses the original

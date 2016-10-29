@@ -168,6 +168,7 @@ typedef struct MatroskaTrackVideo {
     uint64_t pixel_width;
     uint64_t pixel_height;
     EbmlBin color_space;
+    uint64_t display_unit;
     uint64_t interlaced;
     uint64_t field_order;
     uint64_t stereo_mode;
@@ -406,17 +407,17 @@ static const EbmlSyntax matroska_mastering_meta[] = {
 };
 
 static const EbmlSyntax matroska_track_video_color[] = {
-    { MATROSKA_ID_VIDEOCOLORMATRIXCOEFF,      EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, matrix_coefficients), { .u=2 } },
-    { MATROSKA_ID_VIDEOCOLORBITSPERCHANNEL,   EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, bits_per_channel), { .u=8 } },
+    { MATROSKA_ID_VIDEOCOLORMATRIXCOEFF,      EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, matrix_coefficients), { .u = AVCOL_SPC_UNSPECIFIED } },
+    { MATROSKA_ID_VIDEOCOLORBITSPERCHANNEL,   EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, bits_per_channel), { .u=0 } },
     { MATROSKA_ID_VIDEOCOLORCHROMASUBHORZ,    EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, chroma_sub_horz), { .u=0 } },
     { MATROSKA_ID_VIDEOCOLORCHROMASUBVERT,    EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, chroma_sub_vert), { .u=0 } },
     { MATROSKA_ID_VIDEOCOLORCBSUBHORZ,        EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, cb_sub_horz), { .u=0 } },
     { MATROSKA_ID_VIDEOCOLORCBSUBVERT,        EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, cb_sub_vert), { .u=0 } },
-    { MATROSKA_ID_VIDEOCOLORCHROMASITINGHORZ, EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, chroma_siting_horz), { .u=0 } },
-    { MATROSKA_ID_VIDEOCOLORCHROMASITINGVERT, EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, chroma_siting_vert), { .u=0 } },
-    { MATROSKA_ID_VIDEOCOLORRANGE,            EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, range), { .u=0 } },
-    { MATROSKA_ID_VIDEOCOLORTRANSFERCHARACTERISTICS, EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, transfer_characteristics), { .u=2 } },
-    { MATROSKA_ID_VIDEOCOLORPRIMARIES,        EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, primaries), { .u=2 } },
+    { MATROSKA_ID_VIDEOCOLORCHROMASITINGHORZ, EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, chroma_siting_horz), { .u = MATROSKA_COLOUR_CHROMASITINGHORZ_UNDETERMINED } },
+    { MATROSKA_ID_VIDEOCOLORCHROMASITINGVERT, EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, chroma_siting_vert), { .u = MATROSKA_COLOUR_CHROMASITINGVERT_UNDETERMINED } },
+    { MATROSKA_ID_VIDEOCOLORRANGE,            EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, range), { .u = AVCOL_RANGE_UNSPECIFIED } },
+    { MATROSKA_ID_VIDEOCOLORTRANSFERCHARACTERISTICS, EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, transfer_characteristics), { .u = AVCOL_TRC_UNSPECIFIED } },
+    { MATROSKA_ID_VIDEOCOLORPRIMARIES,        EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, primaries), { .u = AVCOL_PRI_UNSPECIFIED } },
     { MATROSKA_ID_VIDEOCOLORMAXCLL,           EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, max_cll), { .u=0 } },
     { MATROSKA_ID_VIDEOCOLORMAXFALL,          EBML_UINT, 0, offsetof(MatroskaTrackVideoColor, max_fall), { .u=0 } },
     { MATROSKA_ID_VIDEOCOLORMASTERINGMETA,    EBML_NEST, 0, offsetof(MatroskaTrackVideoColor, mastering_meta), { .n = matroska_mastering_meta } },
@@ -436,7 +437,7 @@ static const EbmlSyntax matroska_track_video[] = {
     { MATROSKA_ID_VIDEOPIXELCROPT,     EBML_NONE },
     { MATROSKA_ID_VIDEOPIXELCROPL,     EBML_NONE },
     { MATROSKA_ID_VIDEOPIXELCROPR,     EBML_NONE },
-    { MATROSKA_ID_VIDEODISPLAYUNIT,    EBML_NONE },
+    { MATROSKA_ID_VIDEODISPLAYUNIT,    EBML_UINT,  0, offsetof(MatroskaTrackVideo, display_unit), { .u= MATROSKA_VIDEO_DISPLAYUNIT_PIXELS } },
     { MATROSKA_ID_VIDEOFLAGINTERLACED, EBML_UINT,  0, offsetof(MatroskaTrackVideo, interlaced),  { .u = MATROSKA_VIDEO_INTERLACE_FLAG_UNDETERMINED } },
     { MATROSKA_ID_VIDEOFIELDORDER,     EBML_UINT,  0, offsetof(MatroskaTrackVideo, field_order), { .u = MATROSKA_VIDEO_FIELDORDER_UNDETERMINED } },
     { MATROSKA_ID_VIDEOSTEREOMODE,     EBML_UINT,  0, offsetof(MatroskaTrackVideo, stereo_mode), { .u = MATROSKA_VIDEO_STEREOMODE_TYPE_NB } },
@@ -738,13 +739,16 @@ static int matroska_read_close(AVFormatContext *s);
 static int matroska_resync(MatroskaDemuxContext *matroska, int64_t last_pos)
 {
     AVIOContext *pb = matroska->ctx->pb;
+    int64_t ret;
     uint32_t id;
     matroska->current_id = 0;
     matroska->num_levels = 0;
 
     /* seek to next position to resync from */
-    if (avio_seek(pb, last_pos + 1, SEEK_SET) < 0)
-        goto eof;
+    if ((ret = avio_seek(pb, last_pos + 1, SEEK_SET)) < 0) {
+        matroska->done = 1;
+        return ret;
+    }
 
     id = avio_rb32(pb);
 
@@ -760,7 +764,6 @@ static int matroska_resync(MatroskaDemuxContext *matroska, int64_t last_pos)
         id = (id << 8) | avio_r8(pb);
     }
 
-eof:
     matroska->done = 1;
     return AVERROR_EOF;
 }
@@ -1691,13 +1694,8 @@ static int matroska_aac_sri(int samplerate)
 
 static void matroska_metadata_creation_time(AVDictionary **metadata, int64_t date_utc)
 {
-    char buffer[32];
     /* Convert to seconds and adjust by number of seconds between 2001-01-01 and Epoch */
-    time_t creation_time = date_utc / 1000000000 + 978307200;
-    struct tm tmpbuf, *ptm = gmtime_r(&creation_time, &tmpbuf);
-    if (!ptm) return;
-    if (strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", ptm))
-        av_dict_set(metadata, "creation_time", buffer, 0);
+    avpriv_dict_set_timestamp(metadata, "creation_time", date_utc / 1000 + 978307200000000LL);
 }
 
 static int matroska_parse_flac(AVFormatContext *s,
@@ -1755,8 +1753,15 @@ static int matroska_parse_flac(AVFormatContext *s,
     return 0;
 }
 
-static int mkv_field_order(int64_t field_order)
+static int mkv_field_order(MatroskaDemuxContext *matroska, int64_t field_order)
 {
+    int major, minor, micro, bttb = 0;
+
+    /* workaround a bug in our Matroska muxer, introduced in version 57.36 alongside
+     * this function, and fixed in 57.52 */
+    if (matroska->muxingapp && sscanf(matroska->muxingapp, "Lavf%d.%d.%d", &major, &minor, &micro) == 3)
+        bttb = (major == 57 && minor >= 36 && minor <= 51 && micro >= 100);
+
     switch (field_order) {
     case MATROSKA_VIDEO_FIELDORDER_PROGRESSIVE:
         return AV_FIELD_PROGRESSIVE;
@@ -1767,9 +1772,9 @@ static int mkv_field_order(int64_t field_order)
     case MATROSKA_VIDEO_FIELDORDER_BB:
         return AV_FIELD_BB;
     case MATROSKA_VIDEO_FIELDORDER_BT:
-        return AV_FIELD_BT;
+        return bttb ? AV_FIELD_TB : AV_FIELD_BT;
     case MATROSKA_VIDEO_FIELDORDER_TB:
-        return AV_FIELD_TB;
+        return bttb ? AV_FIELD_BT : AV_FIELD_TB;
     default:
         return AV_FIELD_UNKNOWN;
     }
@@ -1813,13 +1818,23 @@ static int mkv_parse_video_color(AVStream *st, const MatroskaTrack *track) {
 
     if (track->video.color.matrix_coefficients != AVCOL_SPC_RESERVED)
         st->codecpar->color_space = track->video.color.matrix_coefficients;
-    if (track->video.color.primaries != AVCOL_PRI_RESERVED)
+    if (track->video.color.primaries != AVCOL_PRI_RESERVED &&
+        track->video.color.primaries != AVCOL_PRI_RESERVED0)
         st->codecpar->color_primaries = track->video.color.primaries;
-    if (track->video.color.transfer_characteristics != AVCOL_TRC_RESERVED)
+    if (track->video.color.transfer_characteristics != AVCOL_TRC_RESERVED &&
+        track->video.color.transfer_characteristics != AVCOL_TRC_RESERVED0)
         st->codecpar->color_trc = track->video.color.transfer_characteristics;
     if (track->video.color.range != AVCOL_RANGE_UNSPECIFIED &&
         track->video.color.range <= AVCOL_RANGE_JPEG)
         st->codecpar->color_range = track->video.color.range;
+    if (track->video.color.chroma_siting_horz != MATROSKA_COLOUR_CHROMASITINGHORZ_UNDETERMINED &&
+        track->video.color.chroma_siting_vert != MATROSKA_COLOUR_CHROMASITINGVERT_UNDETERMINED &&
+        track->video.color.chroma_siting_horz  < MATROSKA_COLOUR_CHROMASITINGHORZ_NB &&
+        track->video.color.chroma_siting_vert  < MATROSKA_COLOUR_CHROMASITINGVERT_NB) {
+        st->codecpar->chroma_location =
+            avcodec_chroma_pos_to_enum((track->video.color.chroma_siting_horz - 1) << 7,
+                                       (track->video.color.chroma_siting_vert - 1) << 7);
+    }
 
     if (has_mastering_primaries || has_mastering_luminance) {
         // Use similar rationals as other standards.
@@ -2283,16 +2298,20 @@ static int matroska_parse_tracks(AVFormatContext *s)
             st->codecpar->height     = track->video.pixel_height;
 
             if (track->video.interlaced == MATROSKA_VIDEO_INTERLACE_FLAG_INTERLACED)
-                st->codecpar->field_order = mkv_field_order(track->video.field_order);
+                st->codecpar->field_order = mkv_field_order(matroska, track->video.field_order);
+            else if (track->video.interlaced == MATROSKA_VIDEO_INTERLACE_FLAG_PROGRESSIVE)
+                st->codecpar->field_order = AV_FIELD_PROGRESSIVE;
 
             if (track->video.stereo_mode && track->video.stereo_mode < MATROSKA_VIDEO_STEREOMODE_TYPE_NB)
                 mkv_stereo_mode_display_mul(track->video.stereo_mode, &display_width_mul, &display_height_mul);
 
-            av_reduce(&st->sample_aspect_ratio.num,
-                      &st->sample_aspect_ratio.den,
-                      st->codecpar->height * track->video.display_width  * display_width_mul,
-                      st->codecpar->width  * track->video.display_height * display_height_mul,
-                      255);
+            if (track->video.display_unit < MATROSKA_VIDEO_DISPLAYUNIT_UNKNOWN) {
+                av_reduce(&st->sample_aspect_ratio.num,
+                          &st->sample_aspect_ratio.den,
+                          st->codecpar->height * track->video.display_width  * display_width_mul,
+                          st->codecpar->width  * track->video.display_height * display_height_mul,
+                          255);
+            }
             if (st->codecpar->codec_id != AV_CODEC_ID_HEVC)
                 st->need_parsing = AVSTREAM_PARSE_HEADERS;
 
@@ -3150,7 +3169,10 @@ static int matroska_parse_block(MatroskaDemuxContext *matroska, uint8_t *data,
 
     if (matroska->skip_to_keyframe &&
         track->type != MATROSKA_TRACK_TYPE_SUBTITLE) {
-        if (timecode < matroska->skip_to_timecode)
+        // Compare signed timecodes. Timecode may be negative due to codec delay
+        // offset. We don't support timestamps greater than int64_t anyway - see
+        // AVPacket's pts.
+        if ((int64_t)timecode < (int64_t)matroska->skip_to_timecode)
             return res;
         if (is_keyframe)
             matroska->skip_to_keyframe = 0;
@@ -3319,16 +3341,17 @@ static int matroska_parse_cluster(MatroskaDemuxContext *matroska)
 static int matroska_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     MatroskaDemuxContext *matroska = s->priv_data;
+    int ret = 0;
 
     while (matroska_deliver_packet(matroska, pkt)) {
         int64_t pos = avio_tell(matroska->ctx->pb);
         if (matroska->done)
-            return AVERROR_EOF;
+            return (ret < 0) ? ret : AVERROR_EOF;
         if (matroska_parse_cluster(matroska) < 0)
-            matroska_resync(matroska, pos);
+            ret = matroska_resync(matroska, pos);
     }
 
-    return 0;
+    return ret;
 }
 
 static int matroska_read_seek(AVFormatContext *s, int stream_index,

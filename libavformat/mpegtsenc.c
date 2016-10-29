@@ -1238,6 +1238,9 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
                         st->codecpar->codec_id == AV_CODEC_ID_AC3 &&
                         ts->m2ts_mode) {
                 *q++ = 0xfd;
+            } else if (st->codecpar->codec_type == AVMEDIA_TYPE_DATA &&
+                       st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
+                *q++ = 0xbd;
             } else if (st->codecpar->codec_type == AVMEDIA_TYPE_DATA) {
                 *q++ = stream_id != -1 ? stream_id : 0xfc;
 
@@ -1787,11 +1790,15 @@ static int mpegts_check_bitstream(struct AVFormatContext *s, const AVPacket *pkt
 
     if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         if (pkt->size >= 5 && AV_RB32(pkt->data) != 0x0000001 &&
-                              AV_RB24(pkt->data) != 0x000001)
+                             (AV_RB24(pkt->data) != 0x000001 ||
+                              (st->codecpar->extradata_size > 0 &&
+                               st->codecpar->extradata[0] == 1)))
             ret = ff_stream_add_bitstream_filter(st, "h264_mp4toannexb", NULL);
     } else if (st->codecpar->codec_id == AV_CODEC_ID_HEVC) {
         if (pkt->size >= 5 && AV_RB32(pkt->data) != 0x0000001 &&
-                              AV_RB24(pkt->data) != 0x000001)
+                             (AV_RB24(pkt->data) != 0x000001 ||
+                              (st->codecpar->extradata_size > 0 &&
+                               st->codecpar->extradata[0] == 1)))
             ret = ff_stream_add_bitstream_filter(st, "hevc_mp4toannexb", NULL);
     }
 
@@ -1840,7 +1847,7 @@ static const AVOption options[] = {
       { .i64 = 0x1000 }, 0x0010, 0x1f00, AV_OPT_FLAG_ENCODING_PARAM },
     { "mpegts_start_pid", "Set the first pid.",
       offsetof(MpegTSWrite, start_pid), AV_OPT_TYPE_INT,
-      { .i64 = 0x0100 }, 0x0020, 0x0f00, AV_OPT_FLAG_ENCODING_PARAM },
+      { .i64 = 0x0100 }, 0x0010, 0x0f00, AV_OPT_FLAG_ENCODING_PARAM },
     { "mpegts_m2ts_mode", "Enable m2ts mode.",
       offsetof(MpegTSWrite, m2ts_mode), AV_OPT_TYPE_BOOL,
       { .i64 = -1 }, -1, 1, AV_OPT_FLAG_ENCODING_PARAM },

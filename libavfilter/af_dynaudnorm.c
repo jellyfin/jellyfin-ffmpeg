@@ -439,15 +439,12 @@ static void update_gain_history(DynamicAudioNormalizerContext *s, int channel,
     if (cqueue_empty(s->gain_history_original[channel]) ||
         cqueue_empty(s->gain_history_minimum[channel])) {
         const int pre_fill_size = s->filter_size / 2;
+        const double initial_value = s->alt_boundary_mode ? current_gain_factor : 1.0;
 
-        s->prev_amplification_factor[channel] = s->alt_boundary_mode ? current_gain_factor : 1.0;
+        s->prev_amplification_factor[channel] = initial_value;
 
         while (cqueue_size(s->gain_history_original[channel]) < pre_fill_size) {
-            cqueue_enqueue(s->gain_history_original[channel], s->alt_boundary_mode ? current_gain_factor : 1.0);
-        }
-
-        while (cqueue_size(s->gain_history_minimum[channel]) < pre_fill_size) {
-            cqueue_enqueue(s->gain_history_minimum[channel], s->alt_boundary_mode ? current_gain_factor : 1.0);
+            cqueue_enqueue(s->gain_history_original[channel], initial_value);
         }
     }
 
@@ -456,6 +453,18 @@ static void update_gain_history(DynamicAudioNormalizerContext *s, int channel,
     while (cqueue_size(s->gain_history_original[channel]) >= s->filter_size) {
         double minimum;
         av_assert0(cqueue_size(s->gain_history_original[channel]) == s->filter_size);
+
+        if (cqueue_empty(s->gain_history_minimum[channel])) {
+            const int pre_fill_size = s->filter_size / 2;
+            double initial_value = s->alt_boundary_mode ? cqueue_peek(s->gain_history_original[channel], 0) : 1.0;
+            int input = pre_fill_size;
+
+            while (cqueue_size(s->gain_history_minimum[channel]) < pre_fill_size) {
+                initial_value = FFMIN(initial_value, cqueue_peek(s->gain_history_original[channel], ++input));
+                cqueue_enqueue(s->gain_history_minimum[channel], initial_value);
+            }
+        }
+
         minimum = minimum_filter(s->gain_history_original[channel]);
 
         cqueue_enqueue(s->gain_history_minimum[channel], minimum);
@@ -510,7 +519,8 @@ static double setup_compress_thresh(double threshold)
         double step_size = 1.0;
 
         while (step_size > DBL_EPSILON) {
-            while ((current_threshold + step_size > current_threshold) &&
+            while ((llrint((current_threshold + step_size) * (UINT64_C(1) << 63)) >
+                    llrint(current_threshold * (UINT64_C(1) << 63))) &&
                    (bound(current_threshold + step_size, 1.0) <= threshold)) {
                 current_threshold += step_size;
             }

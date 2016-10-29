@@ -423,10 +423,13 @@ FF_ENABLE_DEPRECATION_WARNINGS
          *options = tmp;
     }
 
-    if (s->oformat->init && (ret = s->oformat->init(s)) < 0) {
-        if (s->oformat->deinit)
-            s->oformat->deinit(s);
-        goto fail;
+    if (s->oformat->init) {
+        if ((ret = s->oformat->init(s)) < 0) {
+            if (s->oformat->deinit)
+                s->oformat->deinit(s);
+            return ret;
+        }
+        return ret == 0;
     }
 
     return 0;
@@ -493,31 +496,64 @@ static int write_header_internal(AVFormatContext *s)
     return 0;
 }
 
-int avformat_write_header(AVFormatContext *s, AVDictionary **options)
+int avformat_init_output(AVFormatContext *s, AVDictionary **options)
 {
     int ret = 0;
 
     if ((ret = init_muxer(s, options)) < 0)
         return ret;
 
-    if (!s->oformat->check_bitstream) {
+    s->internal->initialized = 1;
+    s->internal->streams_initialized = ret;
+
+    if (s->oformat->init && ret) {
+        if ((ret = init_pts(s)) < 0)
+            return ret;
+
+        if (s->avoid_negative_ts < 0) {
+            av_assert2(s->avoid_negative_ts == AVFMT_AVOID_NEG_TS_AUTO);
+            if (s->oformat->flags & (AVFMT_TS_NEGATIVE | AVFMT_NOTIMESTAMPS)) {
+                s->avoid_negative_ts = 0;
+            } else
+                s->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;
+        }
+
+        return AVSTREAM_INIT_IN_INIT_OUTPUT;
+    }
+
+    return AVSTREAM_INIT_IN_WRITE_HEADER;
+}
+
+int avformat_write_header(AVFormatContext *s, AVDictionary **options)
+{
+    int ret = 0;
+    int already_initialized = s->internal->initialized;
+    int streams_already_initialized = s->internal->streams_initialized;
+
+    if (!already_initialized)
+        if ((ret = avformat_init_output(s, options)) < 0)
+            return ret;
+
+    if (!(s->oformat->check_bitstream && s->flags & AVFMT_FLAG_AUTO_BSF)) {
         ret = write_header_internal(s);
         if (ret < 0)
             goto fail;
     }
 
-    if ((ret = init_pts(s)) < 0)
-        goto fail;
+    if (!s->internal->streams_initialized) {
+        if ((ret = init_pts(s)) < 0)
+            goto fail;
 
-    if (s->avoid_negative_ts < 0) {
-        av_assert2(s->avoid_negative_ts == AVFMT_AVOID_NEG_TS_AUTO);
-        if (s->oformat->flags & (AVFMT_TS_NEGATIVE | AVFMT_NOTIMESTAMPS)) {
-            s->avoid_negative_ts = 0;
-        } else
-            s->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;
+        if (s->avoid_negative_ts < 0) {
+            av_assert2(s->avoid_negative_ts == AVFMT_AVOID_NEG_TS_AUTO);
+            if (s->oformat->flags & (AVFMT_TS_NEGATIVE | AVFMT_NOTIMESTAMPS)) {
+                s->avoid_negative_ts = 0;
+            } else
+                s->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_NON_NEGATIVE;
+        }
     }
 
-    return 0;
+    return streams_already_initialized;
 
 fail:
     if (s->oformat->deinit)
@@ -557,7 +593,7 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
         av_log(s, AV_LOG_TRACE, "compute_muxer_pkt_fields: pts:%s dts:%s cur_dts:%s b:%d size:%d st:%d\n",
             av_ts2str(pkt->pts), av_ts2str(pkt->dts), av_ts2str(st->cur_dts), delay, pkt->size, pkt->stream_index);
 
-    if (pkt->duration < 0 && st->codec->codec_type != AVMEDIA_TYPE_SUBTITLE) {
+    if (pkt->duration < 0 && st->codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE) {
         av_log(s, AV_LOG_WARNING, "Packet with invalid duration %"PRId64" in stream %d\n",
                pkt->duration, pkt->stream_index);
         pkt->duration = 0;
@@ -623,7 +659,7 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
     st->priv_pts->val = pkt->dts;
 
     /* update pts */
-    switch (st->codec->codec_type) {
+    switch (st->codecpar->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
         frame_size = (pkt->flags & AV_PKT_FLAG_UNCODED_FRAME) ?
                      ((AVFrame *)pkt->data)->nb_samples :
@@ -657,6 +693,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
 static int write_packet(AVFormatContext *s, AVPacket *pkt)
 {
     int ret, did_split;
+    int64_t pts_backup, dts_backup;
+
+    pts_backup = pkt->pts;
+    dts_backup = pkt->dts;
 
     if (s->output_ts_offset) {
         AVStream *st = s->streams[pkt->stream_index];
@@ -743,6 +783,11 @@ fail:
     if (did_split)
         av_packet_merge_side_data(pkt);
 
+    if (ret < 0) {
+        pkt->pts = pts_backup;
+        pkt->dts = dts_backup;
+    }
+
     return ret;
 }
 
@@ -817,6 +862,60 @@ static int prepare_input_packet(AVFormatContext *s, AVPacket *pkt)
     return 0;
 }
 
+static int do_packet_auto_bsf(AVFormatContext *s, AVPacket *pkt) {
+    AVStream *st = s->streams[pkt->stream_index];
+    int i, ret;
+
+    if (!(s->flags & AVFMT_FLAG_AUTO_BSF))
+        return 1;
+
+    if (s->oformat->check_bitstream) {
+        if (!st->internal->bitstream_checked) {
+            if ((ret = s->oformat->check_bitstream(s, pkt)) < 0)
+                return ret;
+            else if (ret == 1)
+                st->internal->bitstream_checked = 1;
+        }
+    }
+
+    for (i = 0; i < st->internal->nb_bsfcs; i++) {
+        AVBSFContext *ctx = st->internal->bsfcs[i];
+        if (i > 0) {
+            AVBSFContext* prev_ctx = st->internal->bsfcs[i - 1];
+            if (prev_ctx->par_out->extradata_size != ctx->par_in->extradata_size) {
+                if ((ret = avcodec_parameters_copy(ctx->par_in, prev_ctx->par_out)) < 0)
+                    return ret;
+            }
+        }
+        // TODO: when any bitstream filter requires flushing at EOF, we'll need to
+        // flush each stream's BSF chain on write_trailer.
+        if ((ret = av_bsf_send_packet(ctx, pkt)) < 0) {
+            av_log(ctx, AV_LOG_ERROR,
+                    "Failed to send packet to filter %s for stream %d",
+                    ctx->filter->name, pkt->stream_index);
+            return ret;
+        }
+        // TODO: when any automatically-added bitstream filter is generating multiple
+        // output packets for a single input one, we'll need to call this in a loop
+        // and write each output packet.
+        if ((ret = av_bsf_receive_packet(ctx, pkt)) < 0) {
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                return 0;
+            av_log(ctx, AV_LOG_ERROR,
+                    "Failed to send packet to filter %s for stream %d",
+                    ctx->filter->name, pkt->stream_index);
+            return ret;
+        }
+        if (i == st->internal->nb_bsfcs - 1) {
+            if (ctx->par_out->extradata_size != st->codecpar->extradata_size) {
+                if ((ret = avcodec_parameters_copy(st->codecpar, ctx->par_out)) < 0)
+                    return ret;
+            }
+        }
+    }
+    return 1;
+}
+
 int av_write_frame(AVFormatContext *s, AVPacket *pkt)
 {
     int ret;
@@ -841,6 +940,10 @@ int av_write_frame(AVFormatContext *s, AVPacket *pkt)
         }
         return 1;
     }
+
+    ret = do_packet_auto_bsf(s, pkt);
+    if (ret <= 0)
+        return ret;
 
 #if FF_API_COMPUTE_PKT_FIELDS2 && FF_API_LAVF_AVCTX
     ret = compute_muxer_pkt_fields(s, s->streams[pkt->stream_index], pkt);
@@ -968,6 +1071,7 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
     int stream_count = 0;
     int noninterleaved_count = 0;
     int i, ret;
+    int eof = flush;
 
     if (pkt) {
         if ((ret = ff_interleave_add_packet(s, pkt, interleave_compare_dts)) < 0)
@@ -1017,6 +1121,44 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
                    "muxing queue is %"PRId64" > %"PRId64": forcing output\n",
                    delta_dts, s->max_interleave_delta);
             flush = 1;
+        }
+    }
+
+    if (s->internal->packet_buffer &&
+        eof &&
+        (s->flags & AVFMT_FLAG_SHORTEST) &&
+        s->internal->shortest_end == AV_NOPTS_VALUE) {
+        AVPacket *top_pkt = &s->internal->packet_buffer->pkt;
+
+        s->internal->shortest_end = av_rescale_q(top_pkt->dts,
+                                       s->streams[top_pkt->stream_index]->time_base,
+                                       AV_TIME_BASE_Q);
+    }
+
+    if (s->internal->shortest_end != AV_NOPTS_VALUE) {
+        while (s->internal->packet_buffer) {
+            AVPacket *top_pkt = &s->internal->packet_buffer->pkt;
+            AVStream *st;
+            int64_t top_dts = av_rescale_q(top_pkt->dts,
+                                        s->streams[top_pkt->stream_index]->time_base,
+                                        AV_TIME_BASE_Q);
+
+            if (s->internal->shortest_end + 1 >= top_dts)
+                break;
+
+            pktl = s->internal->packet_buffer;
+            st   = s->streams[pktl->pkt.stream_index];
+
+            s->internal->packet_buffer = pktl->next;
+            if (!s->internal->packet_buffer)
+                s->internal->packet_buffer_end = NULL;
+
+            if (st->last_in_packet_buffer == pktl)
+                st->last_in_packet_buffer = NULL;
+
+            av_packet_unref(&pktl->pkt);
+            av_freep(&pktl);
+            flush = 0;
         }
     }
 
@@ -1082,7 +1224,7 @@ static int interleave_packet(AVFormatContext *s, AVPacket *out, AVPacket *in, in
 
 int av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt)
 {
-    int ret, flush = 0, i;
+    int ret, flush = 0;
 
     ret = prepare_input_packet(s, pkt);
     if (ret < 0)
@@ -1091,50 +1233,11 @@ int av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt)
     if (pkt) {
         AVStream *st = s->streams[pkt->stream_index];
 
-        if (s->oformat->check_bitstream) {
-            if (!st->internal->bitstream_checked) {
-                if ((ret = s->oformat->check_bitstream(s, pkt)) < 0)
-                    goto fail;
-                else if (ret == 1)
-                    st->internal->bitstream_checked = 1;
-            }
-        }
-
-        for (i = 0; i < st->internal->nb_bsfcs; i++) {
-            AVBSFContext *ctx = st->internal->bsfcs[i];
-            if (i > 0) {
-                AVBSFContext* prev_ctx = st->internal->bsfcs[i - 1];
-                if (prev_ctx->par_out->extradata_size != ctx->par_in->extradata_size) {
-                    if ((ret = avcodec_parameters_copy(ctx->par_in, prev_ctx->par_out)) < 0)
-                        goto fail;
-                }
-            }
-            // TODO: when any bitstream filter requires flushing at EOF, we'll need to
-            // flush each stream's BSF chain on write_trailer.
-            if ((ret = av_bsf_send_packet(ctx, pkt)) < 0) {
-                av_log(ctx, AV_LOG_ERROR,
-                       "Failed to send packet to filter %s for stream %d",
-                       ctx->filter->name, pkt->stream_index);
-                goto fail;
-            }
-            // TODO: when any automatically-added bitstream filter is generating multiple
-            // output packets for a single input one, we'll need to call this in a loop
-            // and write each output packet.
-            if ((ret = av_bsf_receive_packet(ctx, pkt)) < 0) {
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                    return 0;
-                av_log(ctx, AV_LOG_ERROR,
-                       "Failed to send packet to filter %s for stream %d",
-                       ctx->filter->name, pkt->stream_index);
-                goto fail;
-            }
-            if (i == st->internal->nb_bsfcs - 1) {
-                if (ctx->par_out->extradata_size != st->codecpar->extradata_size) {
-                    if ((ret = avcodec_parameters_copy(st->codecpar, ctx->par_out)) < 0)
-                        goto fail;
-                }
-            }
-        }
+        ret = do_packet_auto_bsf(s, pkt);
+        if (ret == 0)
+            return 0;
+        else if (ret < 0)
+            goto fail;
 
         if (s->debug & FF_FDEBUG_TS)
             av_log(s, AV_LOG_TRACE, "av_interleaved_write_frame size:%d dts:%s pts:%s\n",
@@ -1224,6 +1327,10 @@ fail:
 
     if (s->oformat->deinit)
         s->oformat->deinit(s);
+
+    s->internal->header_written =
+    s->internal->initialized =
+    s->internal->streams_initialized = 0;
 
     if (s->pb)
        avio_flush(s->pb);

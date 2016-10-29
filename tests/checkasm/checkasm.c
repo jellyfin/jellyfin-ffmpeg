@@ -80,6 +80,9 @@ static const struct {
     #if CONFIG_FMTCONVERT
         { "fmtconvert", checkasm_check_fmtconvert },
     #endif
+    #if CONFIG_H264DSP
+        { "h264dsp", checkasm_check_h264dsp },
+    #endif
     #if CONFIG_H264PRED
         { "h264pred", checkasm_check_h264pred },
     #endif
@@ -89,7 +92,7 @@ static const struct {
     #if CONFIG_JPEG2000_DECODER
         { "jpeg2000dsp", checkasm_check_jpeg2000dsp },
     #endif
-    #if CONFIG_PIXBLOCKDSP && !(ARCH_PPC64 && HAVE_BIGENDIAN)
+    #if CONFIG_PIXBLOCKDSP
         { "pixblockdsp", checkasm_check_pixblockdsp },
     #endif
     #if CONFIG_V210_ENCODER

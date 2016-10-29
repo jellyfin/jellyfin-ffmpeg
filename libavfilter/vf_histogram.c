@@ -35,14 +35,17 @@ typedef struct HistogramContext {
     int            histogram_size;
     int            mult;
     int            ncomp;
-    const uint8_t  *bg_color;
-    const uint8_t  *fg_color;
+    int            dncomp;
+    uint8_t        bg_color[4];
+    uint8_t        fg_color[4];
     int            level_height;
     int            scale_height;
     int            display_mode;
     int            levels_mode;
     const AVPixFmtDescriptor *desc, *odesc;
     int            components;
+    float          fgopacity;
+    float          bgopacity;
     int            planewidth[4];
     int            planeheight[4];
 } HistogramContext;
@@ -63,6 +66,10 @@ static const AVOption histogram_options[] = {
         { "logarithmic", NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "levels_mode" },
     { "components", "set color components to display", OFFSET(components), AV_OPT_TYPE_INT, {.i64=7}, 1, 15, FLAGS},
     { "c",          "set color components to display", OFFSET(components), AV_OPT_TYPE_INT, {.i64=7}, 1, 15, FLAGS},
+    { "fgopacity", "set foreground opacity", OFFSET(fgopacity), AV_OPT_TYPE_FLOAT, {.dbl=0.7}, 0, 1, FLAGS},
+    { "f",         "set foreground opacity", OFFSET(fgopacity), AV_OPT_TYPE_FLOAT, {.dbl=0.7}, 0, 1, FLAGS},
+    { "bgopacity", "set background opacity", OFFSET(bgopacity), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0, 1, FLAGS},
+    { "b",         "set background opacity", OFFSET(bgopacity), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0, 1, FLAGS},
     { NULL }
 };
 
@@ -197,13 +204,16 @@ static int config_input(AVFilterLink *inlink)
     case AV_PIX_FMT_GBRP9:
     case AV_PIX_FMT_GBRAP:
     case AV_PIX_FMT_GBRP:
-        h->bg_color = black_gbrp_color;
-        h->fg_color = white_gbrp_color;
+        memcpy(h->bg_color, black_gbrp_color, 4);
+        memcpy(h->fg_color, white_gbrp_color, 4);
         break;
     default:
-        h->bg_color = black_yuva_color;
-        h->fg_color = white_yuva_color;
+        memcpy(h->bg_color, black_yuva_color, 4);
+        memcpy(h->fg_color, white_yuva_color, 4);
     }
+
+    h->fg_color[3] = h->fgopacity * 255;
+    h->bg_color[3] = h->bgopacity * 255;
 
     h->planeheight[1] = h->planeheight[2] = AV_CEIL_RSHIFT(inlink->h, h->desc->log2_chroma_h);
     h->planeheight[0] = h->planeheight[3] = inlink->h;
@@ -227,6 +237,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = (h->level_height + h->scale_height) * FFMAX(ncomp * h->display_mode, 1);
 
     h->odesc = av_pix_fmt_desc_get(outlink->format);
+    h->dncomp = h->odesc->nb_components;
     outlink->sample_aspect_ratio = (AVRational){1,1};
 
     return 0;
@@ -310,7 +321,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             if (h->histogram_size <= 256) {
                 for (j = h->level_height - 1; j >= col_height; j--) {
                     if (h->display_mode) {
-                        for (l = 0; l < h->ncomp; l++)
+                        for (l = 0; l < h->dncomp; l++)
                             out->data[l][(j + start) * out->linesize[l] + i] = h->fg_color[l];
                     } else {
                         out->data[p][(j + start) * out->linesize[p] + i] = 255;
@@ -323,7 +334,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
                 for (j = h->level_height - 1; j >= col_height; j--) {
                     if (h->display_mode) {
-                        for (l = 0; l < h->ncomp; l++)
+                        for (l = 0; l < h->dncomp; l++)
                             AV_WN16(out->data[l] + (j + start) * out->linesize[l] + i * 2, h->fg_color[l] * mult);
                     } else {
                         AV_WN16(out->data[p] + (j + start) * out->linesize[p] + i * 2, 255 * mult);

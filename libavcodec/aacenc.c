@@ -999,9 +999,9 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
 
     /* Coder limitations */
     s->coder = &ff_aac_coders[s->options.coder];
-    if (s->options.coder != AAC_CODER_TWOLOOP) {
+    if (s->options.coder == AAC_CODER_ANMR) {
         ERROR_IF(avctx->strict_std_compliance > FF_COMPLIANCE_EXPERIMENTAL,
-                 "Coders other than twoloop require -strict -2 and some may be removed in the future\n");
+                 "The ANMR coder is considered experimental, add -strict -2 to enable!\n");
         s->options.intensity_stereo = 0;
         s->options.pns = 0;
     }
@@ -1031,7 +1031,13 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         goto fail;
     s->psypp = ff_psy_preprocess_init(avctx);
     ff_lpc_init(&s->lpc, 2*avctx->frame_size, TNS_MAX_ORDER, FF_LPC_TYPE_LEVINSON);
-    av_lfg_init(&s->lfg, 0x72adca55);
+    s->random_state = 0x1f2e3d4c;
+
+    s->abs_pow34   = abs_pow34_v;
+    s->quant_bands = quantize_bands;
+
+    if (ARCH_X86)
+        ff_aac_dsp_init_x86(s);
 
     if (HAVE_MIPSDSP)
         ff_aac_coder_init_mips(s);

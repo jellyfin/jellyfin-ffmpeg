@@ -145,6 +145,10 @@ if [ -n "$do_nut" ] ; then
 do_lavf nut "" "-acodec mp2 -ab 64k -ar 44100 -threads 1"
 fi
 
+if [ -n "$do_mka" ] ; then
+do_audio_only mka "" "-c:a tta"
+fi
+
 if [ -n "$do_mkv" ] ; then
 do_lavf mkv "" "-acodec mp2 -ab 64k -vcodec mpeg4 \
  -attach ${raw_src%/*}/00.pgm -metadata:s:t mimetype=image/x-portable-greymap -threads 1"
@@ -163,6 +167,10 @@ if [ -n "$do_ogg_vp3" ] ; then
 # -idct simple causes different results on different systems
 DEC_OPTS="$DEC_OPTS -idct auto"
 do_lavf_fate ogg "vp3/coeff_level64.mkv"
+fi
+
+if [ -n "$do_ogg_vp8" ] ; then
+do_lavf_fate ogv "vp8/RRSF49-short.webm" "-acodec copy"
 fi
 
 if [ -n "$do_mov_qtrle_mace6" ] ; then
@@ -344,6 +352,10 @@ fi
 
 if [ -n "$do_sox" ] ; then
 do_audio_only sox
+fi
+
+if [ -n "$do_tta" ] ; then
+do_audio_only tta
 fi
 
 if [ -n "$do_caf" ] ; then

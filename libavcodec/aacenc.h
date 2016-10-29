@@ -23,7 +23,6 @@
 #define AVCODEC_AACENC_H
 
 #include "libavutil/float_dsp.h"
-#include "libavutil/lfg.h"
 #include "avcodec.h"
 #include "put_bits.h"
 
@@ -100,7 +99,6 @@ typedef struct AACEncContext {
     FFTContext mdct1024;                         ///< long (1024 samples) frame transform context
     FFTContext mdct128;                          ///< short (128 samples) frame transform context
     AVFloatDSPContext *fdsp;
-    AVLFG lfg;                                   ///< PRNG needed for PNS
     float *planar_samples[8];                    ///< saved preprocessed input
 
     int profile;                                 ///< copied from avctx
@@ -129,11 +127,17 @@ typedef struct AACEncContext {
     uint16_t quantize_band_cost_cache_generation;
     AACQuantizeBandCostCacheEntry quantize_band_cost_cache[256][128]; ///< memoization area for quantize_band_cost
 
+    void (*abs_pow34)(float *out, const float *in, const int size);
+    void (*quant_bands)(int *out, const float *in, const float *scaled,
+                        int size, int is_signed, int maxval, const float Q34,
+                        const float rounding);
+
     struct {
         float *samples;
     } buffer;
 } AACEncContext;
 
+void ff_aac_dsp_init_x86(AACEncContext *s);
 void ff_aac_coder_init_mips(AACEncContext *c);
 void ff_quantize_band_cost_cache_init(struct AACEncContext *s);
 

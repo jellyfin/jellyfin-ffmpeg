@@ -316,14 +316,6 @@ int avfilter_config_links(AVFilterContext *filter)
                     link->time_base = (AVRational) {1, link->sample_rate};
             }
 
-            if ((config_link = link->dstpad->config_props))
-                if ((ret = config_link(link)) < 0) {
-                    av_log(link->dst, AV_LOG_ERROR,
-                           "Failed to configure input pad on %s\n",
-                           link->dst->name);
-                    return ret;
-                }
-
             if (link->src->nb_inputs && link->src->inputs[0]->hw_frames_ctx &&
                 !link->hw_frames_ctx) {
                 AVHWFramesContext *input_ctx = (AVHWFramesContext*)link->src->inputs[0]->hw_frames_ctx->data;
@@ -334,6 +326,14 @@ int avfilter_config_links(AVFilterContext *filter)
                         return AVERROR(ENOMEM);
                 }
             }
+
+            if ((config_link = link->dstpad->config_props))
+                if ((ret = config_link(link)) < 0) {
+                    av_log(link->dst, AV_LOG_ERROR,
+                           "Failed to configure input pad on %s\n",
+                           link->dst->name);
+                    return ret;
+                }
 
             link->init_state = AVLINK_INIT;
         }
@@ -616,6 +616,8 @@ static const AVOption avfilter_options[] = {
         { .i64 = AVFILTER_THREAD_SLICE }, 0, INT_MAX, FLAGS, "thread_type" },
         { "slice", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AVFILTER_THREAD_SLICE }, .unit = "thread_type" },
     { "enable", "set enable expression", OFFSET(enable_str), AV_OPT_TYPE_STRING, {.str=NULL}, .flags = FLAGS },
+    { "threads", "Allowed number of threads", OFFSET(nb_threads), AV_OPT_TYPE_INT,
+        { .i64 = 0 }, 0, INT_MAX, FLAGS },
     { NULL },
 };
 
@@ -779,6 +781,13 @@ void avfilter_free(AVFilterContext *filter)
     av_freep(&filter->var_values);
     av_freep(&filter->internal);
     av_free(filter);
+}
+
+int ff_filter_get_nb_threads(AVFilterContext *ctx)
+{
+     if (ctx->nb_threads > 0)
+         return FFMIN(ctx->nb_threads, ctx->graph->nb_threads);
+     return ctx->graph->nb_threads;
 }
 
 static int process_options(AVFilterContext *ctx, AVDictionary **options,

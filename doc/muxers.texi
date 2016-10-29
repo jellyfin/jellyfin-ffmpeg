@@ -129,6 +129,27 @@ and the input video converted to MPEG-2 video, use the command:
 ffmpeg -i INPUT -c:a pcm_u8 -c:v mpeg2video -f crc -
 @end example
 
+@section flv
+
+Adobe Flash Video Format muxer.
+
+This muxer accepts the following options:
+
+@table @option
+
+@item flvflags @var{flags}
+Possible values:
+
+@table @samp
+
+@item aac_seq_header_detect
+Place AAC sequence header based on audio stream data.
+
+@item no_sequence_end
+Disable sequence end tag.
+@end table
+@end table
+
 @anchor{framecrc}
 @section framecrc
 
@@ -357,6 +378,12 @@ segmentation.
 This muxer supports the following options:
 
 @table @option
+@item hls_init_time @var{seconds}
+Set the initial target segment length in seconds. Default value is @var{0}.
+Segment will be cut on the next key frame after this time has passed on the first m3u8 list.
+After the initial playlist is filled @command{ffmpeg} will cut segments
+at duration equal to @code{hls_time}
+
 @item hls_time @var{seconds}
 Set the target segment length in seconds. Default value is 2.
 Segment will be cut on the next key frame after this time has passed.
@@ -396,10 +423,10 @@ which can be cyclic, for example if the @option{wrap} option is
 specified.
 
 @item hls_segment_filename @var{filename}
-Set the segment filename. Unless hls_flags single_file is set @var{filename}
-is used as a string format with the segment number:
+Set the segment filename. Unless @code{hls_flags single_file} is set,
+@var{filename} is used as a string format with the segment number:
 @example
-ffmpeg in.nut -hls_segment_filename 'file%03d.ts' out.m3u8
+ffmpeg -i in.nut -hls_segment_filename 'file%03d.ts' out.m3u8
 @end example
 This example will produce the playlist, @file{out.m3u8}, and segment files:
 @file{file000.ts}, @file{file001.ts}, @file{file002.ts}, etc.
@@ -408,7 +435,7 @@ This example will produce the playlist, @file{out.m3u8}, and segment files:
 Use strftime on @var{filename} to expand the segment filename with localtime.
 The segment number (%d) is not available in this mode.
 @example
-ffmpeg in.nut -use_localtime 1 -hls_segment_filename 'file-%Y%m%d-%s.ts' out.m3u8
+ffmpeg -i in.nut -use_localtime 1 -hls_segment_filename 'file-%Y%m%d-%s.ts' out.m3u8
 @end example
 This example will produce the playlist, @file{out.m3u8}, and segment files:
 @file{file-20160215-1455569023.ts}, @file{file-20160215-1455569024.ts}, etc.
@@ -417,7 +444,7 @@ This example will produce the playlist, @file{out.m3u8}, and segment files:
 Used together with -use_localtime, it will create up to one subdirectory which
 is expanded in @var{filename}.
 @example
-ffmpeg in.nut -use_localtime 1 -use_localtime_mkdir 1 -hls_segment_filename '%Y%m%d/file-%Y%m%d-%s.ts' out.m3u8
+ffmpeg -i in.nut -use_localtime 1 -use_localtime_mkdir 1 -hls_segment_filename '%Y%m%d/file-%Y%m%d-%s.ts' out.m3u8
 @end example
 This example will create a directory 201560215 (if it does not exist), and then
 produce the playlist, @file{out.m3u8}, and segment files:
@@ -495,6 +522,30 @@ Will produce the playlist, @file{out.m3u8}, and a single segment file,
 Segment files removed from the playlist are deleted after a period of time
 equal to the duration of the segment plus the duration of the playlist.
 
+@item hls_flags append_list
+Append new segments into the end of old segment list,
+and remove the @code{#EXT-X-ENDLIST} from the old segment list.
+
+@item hls_flags round_durations
+Round the duration info in the playlist file segment info to integer
+values, instead of using floating point.
+
+@item hls_flags discont_starts
+Add the @code{#EXT-X-DISCONTINUITY} tag to the playlist, before the
+first segment's information.
+
+@item hls_flags omit_endlist
+Do not append the @code{EXT-X-ENDLIST} tag at the end of the playlist.
+
+@item hls_flags split_by_time
+Allow segments to start on frames other than keyframes. This improves
+behavior on some players when the time between keyframes is inconsistent,
+but may make things worse on others, and can cause some oddities during
+seeking. This flag should be used with the @code{hls_time} option.
+
+@item hls_flags program_date_time
+Generate @code{EXT-X-PROGRAM-DATE-TIME} tags.
+
 @item hls_playlist_type event
 Emit @code{#EXT-X-PLAYLIST-TYPE:EVENT} in the m3u8 header. Forces
 @option{hls_list_size} to 0; the playlist can only be appended to.
@@ -502,6 +553,17 @@ Emit @code{#EXT-X-PLAYLIST-TYPE:EVENT} in the m3u8 header. Forces
 @item hls_playlist_type vod
 Emit @code{#EXT-X-PLAYLIST-TYPE:VOD} in the m3u8 header. Forces
 @option{hls_list_size} to 0; the playlist must not change.
+
+@item method
+Use the given HTTP method to create the hls files.
+@example
+ffmpeg -re -i in.ts -f hls -method PUT http://example.com/live/out.m3u8
+@end example
+This example will upload all the mpegts segment files to the HTTP
+server using the HTTP PUT method, and update the m3u8 files every
+@code{refresh} times using the same method.
+Note that the HTTP server must support the given method for uploading
+files.
 @end table
 
 @anchor{ico}
@@ -822,6 +884,9 @@ the new default-base-is-moof flag instead. This flag is new from
 14496-12:2012. This may make the fragments easier to parse in certain
 circumstances (avoiding basing track fragment location calculations
 on the implicit end of the previous track fragment).
+@item -write_tmcd
+Specify @code{on} to force writing a timecode track, @code{off} to disable it
+and @code{auto} to write a timecode track only for mov and mp4 output (default).
 @end table
 
 @subsection Example
@@ -1372,9 +1437,9 @@ ffmpeg -i in.mkv -codec copy -map 0 -f segment -segment_list out.csv -segment_fr
 
 @item
 Convert the @file{in.mkv} to TS segments using the @code{libx264}
-and @code{libfaac} encoders:
+and @code{aac} encoders:
 @example
-ffmpeg -i in.mkv -map 0 -codec:v libx264 -codec:a libfaac -f ssegment -segment_list out.list out%03d.ts
+ffmpeg -i in.mkv -map 0 -codec:v libx264 -codec:a aac -f ssegment -segment_list out.list out%03d.ts
 @end example
 
 @item
@@ -1408,6 +1473,101 @@ Specify whether to remove all fragments when finished. Default 0 (do not remove)
 
 @end table
 
+@section fifo
+
+The fifo pseudo-muxer allows the separation of encoding and muxing by using
+first-in-first-out queue and running the actual muxer in a separate thread. This
+is especially useful in combination with the @ref{tee} muxer and can be used to
+send data to several destinations with different reliability/writing speed/latency.
+
+API users should be aware that callback functions (interrupt_callback,
+io_open and io_close) used within its AVFormatContext must be thread-safe.
+
+The behavior of the fifo muxer if the queue fills up or if the output fails is
+selectable,
+
+@itemize @bullet
+
+@item
+output can be transparently restarted with configurable delay between retries
+based on real time or time of the processed stream.
+
+@item
+encoding can be blocked during temporary failure, or continue transparently
+dropping packets in case fifo queue fills up.
+
+@end itemize
+
+@table @option
+
+@item fifo_format
+Specify the format name. Useful if it cannot be guessed from the
+output name suffix.
+
+@item queue_size
+Specify size of the queue (number of packets). Default value is 60.
+
+@item format_opts
+Specify format options for the underlying muxer. Muxer options can be specified
+as a list of @var{key}=@var{value} pairs separated by ':'.
+
+@item drop_pkts_on_overflow @var{bool}
+If set to 1 (true), in case the fifo queue fills up, packets will be dropped
+rather than blocking the encoder. This makes it possible to continue streaming without
+delaying the input, at the cost of omitting part of the stream. By default
+this option is set to 0 (false), so in such cases the encoder will be blocked
+until the muxer processes some of the packets and none of them is lost.
+
+@item attempt_recovery @var{bool}
+If failure occurs, attempt to recover the output. This is especially useful
+when used with network output, since it makes it possible to restart streaming transparently.
+By default this option is set to 0 (false).
+
+@item max_recovery_attempts
+Sets maximum number of successive unsuccessful recovery attempts after which
+the output fails permanently. By default this option is set to 0 (unlimited).
+
+@item recovery_wait_time @var{duration}
+Waiting time before the next recovery attempt after previous unsuccessful
+recovery attempt. Default value is 5 seconds.
+
+@item recovery_wait_streamtime @var{bool}
+If set to 0 (false), the real time is used when waiting for the recovery
+attempt (i.e. the recovery will be attempted after at least
+recovery_wait_time seconds).
+If set to 1 (true), the time of the processed stream is taken into account
+instead (i.e. the recovery will be attempted after at least @var{recovery_wait_time}
+seconds of the stream is omitted).
+By default, this option is set to 0 (false).
+
+@item recover_any_error @var{bool}
+If set to 1 (true), recovery will be attempted regardless of type of the error
+causing the failure. By default this option is set to 0 (false) and in case of
+certain (usually permanent) errors the recovery is not attempted even when
+@var{attempt_recovery} is set to 1.
+
+@item restart_with_keyframe @var{bool}
+Specify whether to wait for the keyframe after recovering from
+queue overflow or failure. This option is set to 0 (false) by default.
+
+@end table
+
+@subsection Examples
+
+@itemize
+
+@item
+Stream something to rtmp server, continue processing the stream at real-time
+rate even in case of temporary failure (network outage) and attempt to recover
+streaming every second indefinitely.
+@example
+ffmpeg -re -i ... -c:v libx264 -c:a aac -f fifo -fifo_format flv -map 0:v -map 0:a
+  -drop_pkts_on_overflow 1 -attempt_recovery 1 -recovery_wait_time 1 rtmp://example.com/live/stream_name
+@end example
+
+@end itemize
+
+@anchor{tee}
 @section tee
 
 The tee muxer can be used to write the same data to several files or any

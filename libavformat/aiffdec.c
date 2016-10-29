@@ -301,7 +301,8 @@ static int aiff_read_header(AVFormatContext *s)
                 return -1;
             if (ff_get_extradata(s, st->codecpar, pb, size) < 0)
                 return AVERROR(ENOMEM);
-            if (st->codecpar->codec_id == AV_CODEC_ID_QDM2 && size>=12*4 && !st->codecpar->block_align) {
+            if (   (st->codecpar->codec_id == AV_CODEC_ID_QDMC || st->codecpar->codec_id == AV_CODEC_ID_QDM2)
+                && size>=12*4 && !st->codecpar->block_align) {
                 st->codecpar->block_align = AV_RB32(st->codecpar->extradata+11*4);
                 aiff->block_duration = AV_RB32(st->codecpar->extradata+9*4);
             } else if (st->codecpar->codec_id == AV_CODEC_ID_QCELP) {
@@ -336,7 +337,10 @@ static int aiff_read_header(AVFormatContext *s)
     }
 
 got_sound:
-    if (!st->codecpar->block_align) {
+    if (!st->codecpar->block_align && st->codecpar->codec_id == AV_CODEC_ID_QCELP) {
+        av_log(s, AV_LOG_WARNING, "qcelp without wave chunk, assuming full rate\n");
+        st->codecpar->block_align = 35;
+    } else if (!st->codecpar->block_align) {
         av_log(s, AV_LOG_ERROR, "could not find COMM tag or invalid block_align value\n");
         return -1;
     }
@@ -367,6 +371,11 @@ static int aiff_read_packet(AVFormatContext *s,
     if (max_size <= 0)
         return AVERROR_EOF;
 
+    if (!st->codecpar->block_align) {
+        av_log(s, AV_LOG_ERROR, "block_align not set\n");
+        return AVERROR_INVALIDDATA;
+    }
+
     /* Now for that packet */
     switch (st->codecpar->codec_id) {
     case AV_CODEC_ID_ADPCM_IMA_QT:
@@ -376,7 +385,7 @@ static int aiff_read_packet(AVFormatContext *s,
         size = st->codecpar->block_align;
         break;
     default:
-        size = (MAX_SIZE / st->codecpar->block_align) * st->codecpar->block_align;
+        size = st->codecpar->block_align ? (MAX_SIZE / st->codecpar->block_align) * st->codecpar->block_align : MAX_SIZE;
     }
     size = FFMIN(max_size, size);
     res = av_get_packet(s->pb, pkt, size);

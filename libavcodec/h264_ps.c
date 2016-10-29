@@ -31,12 +31,14 @@
 #include "internal.h"
 #include "mathops.h"
 #include "avcodec.h"
-#include "h264.h"
 #include "h264data.h"
+#include "h264_ps.h"
 #include "golomb.h"
 
 #define MAX_LOG2_MAX_FRAME_NUM    (12 + 4)
 #define MIN_LOG2_MAX_FRAME_NUM    4
+
+#define EXTENDED_SAR       255
 
 static const uint8_t default_scaling4[2][16] = {
     {  6, 13, 20, 28, 13, 20, 28, 32,
@@ -265,8 +267,9 @@ static void decode_scaling_list(GetBitContext *gb, uint8_t *factors, int size,
         }
 }
 
-static void decode_scaling_matrices(GetBitContext *gb, SPS *sps,
-                                    PPS *pps, int is_sps,
+/* returns non zero if the provided SPS scaling matrix has been filled */
+static int decode_scaling_matrices(GetBitContext *gb, const SPS *sps,
+                                    const PPS *pps, int is_sps,
                                     uint8_t(*scaling_matrix4)[16],
                                     uint8_t(*scaling_matrix8)[64])
 {
@@ -277,8 +280,9 @@ static void decode_scaling_matrices(GetBitContext *gb, SPS *sps,
         fallback_sps ? sps->scaling_matrix8[0] : default_scaling8[0],
         fallback_sps ? sps->scaling_matrix8[3] : default_scaling8[1]
     };
+    int ret = 0;
     if (get_bits1(gb)) {
-        sps->scaling_matrix_present |= is_sps;
+        ret = is_sps;
         decode_scaling_list(gb, scaling_matrix4[0], 16, default_scaling4[0], fallback[0]);        // Intra, Y
         decode_scaling_list(gb, scaling_matrix4[1], 16, default_scaling4[0], scaling_matrix4[0]); // Intra, Cr
         decode_scaling_list(gb, scaling_matrix4[2], 16, default_scaling4[0], scaling_matrix4[1]); // Intra, Cb
@@ -296,6 +300,8 @@ static void decode_scaling_matrices(GetBitContext *gb, SPS *sps,
             }
         }
     }
+
+    return ret;
 }
 
 void ff_h264_ps_uninit(H264ParamSets *ps)
@@ -401,7 +407,7 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
             goto fail;
         }
         sps->transform_bypass = get_bits1(gb);
-        decode_scaling_matrices(gb, sps, NULL, 1,
+        sps->scaling_matrix_present |= decode_scaling_matrices(gb, sps, NULL, 1,
                                 sps->scaling_matrix4, sps->scaling_matrix8);
     } else {
         sps->chroma_format_idc = 1;
@@ -451,8 +457,7 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
     sps->ref_frame_count = get_ue_golomb_31(gb);
     if (avctx->codec_tag == MKTAG('S', 'M', 'V', '2'))
         sps->ref_frame_count = FFMAX(2, sps->ref_frame_count);
-    if (sps->ref_frame_count > H264_MAX_PICTURE_COUNT - 2 ||
-        sps->ref_frame_count > 16U) {
+    if (sps->ref_frame_count > MAX_DELAYED_PIC_COUNT) {
         av_log(avctx, AV_LOG_ERROR,
                "too many reference frames %d\n", sps->ref_frame_count);
         goto fail;
@@ -460,19 +465,20 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
     sps->gaps_in_frame_num_allowed_flag = get_bits1(gb);
     sps->mb_width                       = get_ue_golomb(gb) + 1;
     sps->mb_height                      = get_ue_golomb(gb) + 1;
-    if ((unsigned)sps->mb_width  >= INT_MAX / 16 ||
-        (unsigned)sps->mb_height >= INT_MAX / 16 ||
-        av_image_check_size(16 * sps->mb_width,
-                            16 * sps->mb_height, 0, avctx)) {
-        av_log(avctx, AV_LOG_ERROR, "mb_width/height overflow\n");
-        goto fail;
-    }
 
     sps->frame_mbs_only_flag = get_bits1(gb);
     if (!sps->frame_mbs_only_flag)
         sps->mb_aff = get_bits1(gb);
     else
         sps->mb_aff = 0;
+
+    if ((unsigned)sps->mb_width  >= INT_MAX / 16 ||
+        (unsigned)sps->mb_height >= INT_MAX / (16 * (2 - sps->frame_mbs_only_flag)) ||
+        av_image_check_size(16 * sps->mb_width,
+                            16 * sps->mb_height * (2 - sps->frame_mbs_only_flag), 0, avctx)) {
+        av_log(avctx, AV_LOG_ERROR, "mb_width/height overflow\n");
+        goto fail;
+    }
 
     sps->direct_8x8_inference_flag = get_bits1(gb);
 
@@ -555,7 +561,8 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
 
     /* if the maximum delay is not stored in the SPS, derive it based on the
      * level */
-    if (!sps->bitstream_restriction_flag) {
+    if (!sps->bitstream_restriction_flag &&
+        (sps->ref_frame_count || avctx->strict_std_compliance >= FF_COMPLIANCE_STRICT)) {
         sps->num_reorder_frames = MAX_DELAYED_PIC_COUNT - 1;
         for (i = 0; i < FF_ARRAY_ELEMS(level_max_dpb_mbs); i++) {
             if (level_max_dpb_mbs[i][0] == sps->level_idc) {
@@ -707,7 +714,7 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
                                          H264ParamSets *ps, int bit_length)
 {
     AVBufferRef *pps_buf;
-    SPS *sps;
+    const SPS *sps;
     unsigned int pps_id = get_ue_golomb(gb);
     PPS *pps;
     int qp_bd_offset;
@@ -726,7 +733,9 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
 
     pps->data_size = gb->buffer_end - gb->buffer;
     if (pps->data_size > sizeof(pps->data)) {
-        av_log(avctx, AV_LOG_WARNING, "Truncating likely oversized PPS\n");
+        av_log(avctx, AV_LOG_WARNING, "Truncating likely oversized PPS "
+               "(%"SIZE_SPECIFIER" > %"SIZE_SPECIFIER")\n",
+               pps->data_size, sizeof(pps->data));
         pps->data_size = sizeof(pps->data);
     }
     memcpy(pps->data, gb->buffer, pps->data_size);
@@ -738,7 +747,7 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
         ret = AVERROR_INVALIDDATA;
         goto fail;
     }
-    sps = (SPS*)ps->sps_list[pps->sps_id]->data;
+    sps = (const SPS*)ps->sps_list[pps->sps_id]->data;
     if (sps->bit_depth_luma > 14) {
         av_log(avctx, AV_LOG_ERROR,
                "Invalid luma bit depth=%d\n",
