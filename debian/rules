@@ -2,16 +2,13 @@
 
 export V=1
 
-# Determine the debian directory, which is the directory of this makefile.
-# The path of this makefile is the first word in the MAKEFILE_LIST.
-DEBIAN_DIR = $(dir $(firstword $(MAKEFILE_LIST)))
-
+# sets DEBIAN_VERSION variable
 include /usr/share/dpkg/pkg-info.mk
 
 # Get the Debian version revision:
 DEB_REVISION := $(word 2, $(subst -, ,$(DEB_VERSION)))
 
-# DEB_HOST_* variables
+# sets DEB_HOST_* variables
 include /usr/share/dpkg/architecture.mk
 
 # Ubuntu ld adds -Bsymbolic-functions by default, but that prevents FFmpeg from building.
@@ -21,7 +18,7 @@ export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
 EXTRA_PKGS := $(shell sed -nr 's/^Package:[[:space:]]*(.*extra[0-9]+)[[:space:]]*$$/\1/p' debian/control)
 FLAVORS = standard extra
 
-# Enable as many features as possible, as long as the result is still GPLv2+ (a GPLv3+ variant is built as libavcodec-extra flavor).
+# Enable as many features as possible, as long as the result is still GPLv2+ (a GPLv3+ variant is built as libavcodec-extra/libavfilter-extra flavor).
 # The following flags (and build-dependencies) are not added, because they would require a libavformat-extra flavor:
 #   --enable-libsmbclient           (libsmbclient-dev [!hurd-i386 !m68k !sparc64])
 # The following flags are not added, because the necessary libraries are not in Debian:
@@ -33,12 +30,13 @@ FLAVORS = standard extra
 #   --enable-libmfx
 #   --enable-libnut
 #   --enable-libopenh264
+#   --enable-libopenmpt
 #   --enable-libutvideo
 #   --enable-libvidstab             (see #709193 for the RFP bug)
 #   --enable-libxavs
 #   --enable-libzimg
 # The following flags are not added for various reasons:
-#   * --enable-librtmp:             ffmpeg has better built-in RTMP support with listen mode
+#   * --enable-librtmp:             ffmpeg has better built-in RTMP support with listen mode.
 #   * --enable-libv4l2 [!hurd-any]: This is only needed for very old devices and may cause problems for others.
 #                                   Should anyone need it, using LD_PRELOAD pointing on libv4l2 has the same effect.
 #   * --enable-opencl [!hurd-any]:  This is considered an experimental API.
