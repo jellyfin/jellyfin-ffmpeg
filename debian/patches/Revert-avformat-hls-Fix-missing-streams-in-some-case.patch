@@ -1,0 +1,109 @@
+From: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Date: Sat, 29 Oct 2016 21:29:45 +0200
+Subject: Revert "avformat/hls: Fix missing streams in some cases with MPEG TS"
+
+It broke probing dts/eac3/mp2 in hls.
+
+This reverts commit 04964ac311abe670fb3b60290a330f2067544b13.
+---
+ libavformat/hls.c | 56 +++++--------------------------------------------------
+ 1 file changed, 5 insertions(+), 51 deletions(-)
+
+diff --git a/libavformat/hls.c b/libavformat/hls.c
+index 3c09dd8..b627598 100644
+--- a/libavformat/hls.c
++++ b/libavformat/hls.c
+@@ -98,7 +98,6 @@ struct playlist {
+     int index;
+     AVFormatContext *ctx;
+     AVPacket pkt;
+-    int has_noheader_flag;
+ 
+     /* main demuxer streams associated with this playlist
+      * indexed by the subdemuxer stream indexes */
+@@ -1556,27 +1555,6 @@ static int update_streams_from_subdemuxer(AVFormatContext *s, struct playlist *p
+     return 0;
+ }
+ 
+-static void update_noheader_flag(AVFormatContext *s)
+-{
+-    HLSContext *c = s->priv_data;
+-    int flag_needed = 0;
+-    int i;
+-
+-    for (i = 0; i < c->n_playlists; i++) {
+-        struct playlist *pls = c->playlists[i];
+-
+-        if (pls->has_noheader_flag) {
+-            flag_needed = 1;
+-            break;
+-        }
+-    }
+-
+-    if (flag_needed)
+-        s->ctx_flags |= AVFMTCTX_NOHEADER;
+-    else
+-        s->ctx_flags &= ~AVFMTCTX_NOHEADER;
+-}
+-
+ static int hls_read_header(AVFormatContext *s)
+ {
+     void *u = (s->flags & AVFMT_FLAG_CUSTOM_IO) ? NULL : s->pb;
+@@ -1747,23 +1725,14 @@ static int hls_read_header(AVFormatContext *s)
+             pls->id3_deferred_extra = NULL;
+         }
+ 
++        pls->ctx->ctx_flags &= ~AVFMTCTX_NOHEADER;
++        ret = avformat_find_stream_info(pls->ctx, NULL);
++        if (ret < 0)
++            goto fail;
++
+         if (pls->is_id3_timestamped == -1)
+             av_log(s, AV_LOG_WARNING, "No expected HTTP requests have been made\n");
+ 
+-        /*
+-         * For ID3 timestamped raw audio streams we need to detect the packet
+-         * durations to calculate timestamps in fill_timing_for_id3_timestamped_stream(),
+-         * but for other streams we can rely on our user calling avformat_find_stream_info()
+-         * on us if they want to.
+-         */
+-        if (pls->is_id3_timestamped) {
+-            ret = avformat_find_stream_info(pls->ctx, NULL);
+-            if (ret < 0)
+-                goto fail;
+-        }
+-
+-        pls->has_noheader_flag = !!(pls->ctx->ctx_flags & AVFMTCTX_NOHEADER);
+-
+         /* Create new AVStreams for each stream in this playlist */
+         ret = update_streams_from_subdemuxer(s, pls);
+         if (ret < 0)
+@@ -1774,8 +1743,6 @@ static int hls_read_header(AVFormatContext *s)
+         add_metadata_from_renditions(s, pls, AVMEDIA_TYPE_SUBTITLE);
+     }
+ 
+-    update_noheader_flag(s);
+-
+     return 0;
+ fail:
+     free_playlist_list(c);
+@@ -1947,19 +1914,6 @@ static int hls_read_packet(AVFormatContext *s, AVPacket *pkt)
+     if (minplaylist >= 0) {
+         struct playlist *pls = c->playlists[minplaylist];
+ 
+-        ret = update_streams_from_subdemuxer(s, pls);
+-        if (ret < 0) {
+-            av_packet_unref(&pls->pkt);
+-            reset_packet(&pls->pkt);
+-            return ret;
+-        }
+-
+-        /* check if noheader flag has been cleared by the subdemuxer */
+-        if (pls->has_noheader_flag && !(pls->ctx->ctx_flags & AVFMTCTX_NOHEADER)) {
+-            pls->has_noheader_flag = 0;
+-            update_noheader_flag(s);
+-        }
+-
+         if (pls->pkt.stream_index >= pls->n_main_streams) {
+             av_log(s, AV_LOG_ERROR, "stream index inconsistency: index %d, %d main streams, %d subdemuxer streams\n",
+                    pls->pkt.stream_index, pls->n_main_streams, pls->ctx->nb_streams);
