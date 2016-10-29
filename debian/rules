@@ -16,7 +16,7 @@ export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
 
 # Package name for the extra flavor.
 EXTRA_PKGS := $(shell sed -nr 's/^Package:[[:space:]]*(.*extra[0-9]+)[[:space:]]*$$/\1/p' debian/control)
-FLAVORS = standard extra
+FLAVORS = standard extra static
 
 # Enable as many features as possible, as long as the result is still GPLv2+ (a GPLv3+ variant is built as libavcodec-extra/libavfilter-extra flavor).
 # The following flags (and build-dependencies) are not added, because they would require a libavformat-extra flavor:
@@ -46,7 +46,6 @@ CONFIG := --prefix=/usr \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
 	--enable-gpl \
-	--enable-shared \
 	--disable-libtesseract \
 	--disable-stripping \
 	--disable-decoder=libschroedinger \
@@ -94,10 +93,11 @@ CONFIG := --prefix=/usr \
 	--enable-x11grab
 
 # The standard configuration only uses the shared CONFIG.
-CONFIG_standard =
+CONFIG_standard = --enable-shared
 
 # With these enabled, resulting binaries are effectively licensed as GPLv3+.
-CONFIG_extra = --enable-version3 \
+CONFIG_extra = --enable-shared \
+	--enable-version3 \
 	--disable-doc \
 	--disable-programs \
 	--enable-libopencore_amrnb \
@@ -105,6 +105,11 @@ CONFIG_extra = --enable-version3 \
 	--enable-libtesseract \
 	--enable-libvo_amrwbenc \
 	--enable-netcdf
+
+# The static libraries should not be built with PIC.
+CONFIG_static = --disable-pic \
+	--disable-doc \
+	--disable-programs
 
 # Disable optimizations if requested.
 ifneq (,$(filter $(DEB_BUILD_OPTIONS),noopt))
@@ -236,6 +241,8 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 	install -d debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 	install -m 644 debian/altivec-extra/*/*.so.* debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 endif
+	# Use the static libraries from the --disable-pic build
+	install -m 644 debian/static/*/lib*.a debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)
 
 override_dh_install:
 	dh_install $(addprefix -p,$(EXTRA_PKGS)) --sourcedir=debian/tmp/extra
