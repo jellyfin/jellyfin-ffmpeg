@@ -92,6 +92,7 @@ CONFIG := --prefix=/usr \
 	--enable-libzvbi \
 	--enable-openal \
 	--enable-opengl \
+	--enable-sdl2 \
 	--enable-x11grab
 
 # The standard configuration only uses the shared CONFIG.

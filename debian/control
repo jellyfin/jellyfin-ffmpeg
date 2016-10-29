@@ -98,8 +98,8 @@ Build-Depends:
  libschroedinger-dev,
 # autodetected: protocol 'sctp'
  libsctp-dev [linux-any],
-# autodetected: SDL support
- libsdl-dev,
+# --enable-sdl2
+ libsdl2-dev,
 # --enable-libshine
  libshine-dev (>= 3.0.0),
 # --enable-libsnappy
