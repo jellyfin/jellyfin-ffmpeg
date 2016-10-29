@@ -39,11 +39,12 @@
 #include <string.h>
 
 #include "libavutil/intreadwrite.h"
+
+#define BITSTREAM_READER_LE
 #include "avcodec.h"
 #include "bytestream.h"
-#include "hpeldsp.h"
-#define BITSTREAM_READER_LE
 #include "get_bits.h"
+#include "hpeldsp.h"
 #include "internal.h"
 
 #define PALETTE_COUNT 256
@@ -1012,10 +1013,13 @@ static int ipvideo_decode_frame(AVCodecContext *avctx,
         return ret;
 
     if (!s->is_16bpp) {
-        const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, NULL);
-        if (pal) {
+        int size;
+        const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
+        if (pal && size == AVPALETTE_SIZE) {
             frame->palette_has_changed = 1;
             memcpy(s->pal, pal, AVPALETTE_SIZE);
+        } else if (pal) {
+            av_log(avctx, AV_LOG_ERROR, "Palette size %d is wrong\n", size);
         }
     }
 

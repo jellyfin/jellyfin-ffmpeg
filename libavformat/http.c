@@ -71,6 +71,9 @@ typedef struct HTTPContext {
     char *headers;
     char *mime_type;
     char *user_agent;
+#if FF_API_HTTP_USER_AGENT
+    char *user_agent_deprecated;
+#endif
     char *content_type;
     /* Set if the server correctly handles Connection: close and will close
      * the connection after feeding us the content. */
@@ -131,7 +134,9 @@ static const AVOption options[] = {
     { "headers", "set custom HTTP headers, can override built in default headers", OFFSET(headers), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "content_type", "set a specific content type for the POST messages", OFFSET(content_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "user_agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
-    { "user-agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
+#if FF_API_HTTP_USER_AGENT
+    { "user-agent", "override User-Agent header", OFFSET(user_agent_deprecated), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
+#endif
     { "multiple_requests", "use persistent connections", OFFSET(multiple_requests), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D | E },
     { "post_data", "set custom HTTP post data", OFFSET(post_data), AV_OPT_TYPE_BINARY, .flags = D | E },
     { "mime_type", "export the MIME type", OFFSET(mime_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, AV_OPT_FLAG_EXPORT | AV_OPT_FLAG_READONLY },
@@ -355,7 +360,7 @@ static int http_write_reply(URLContext* h, int status_code)
     case 200:
         reply_code = 200;
         reply_text = "OK";
-        content_type = "application/octet-stream";
+        content_type = s->content_type ? s->content_type : "application/octet-stream";
         break;
     case AVERROR_HTTP_SERVER_ERROR:
     case 500:
@@ -371,12 +376,14 @@ static int http_write_reply(URLContext* h, int status_code)
                  "HTTP/1.1 %03d %s\r\n"
                  "Content-Type: %s\r\n"
                  "Content-Length: %"SIZE_SPECIFIER"\r\n"
+                 "%s"
                  "\r\n"
                  "%03d %s\r\n",
                  reply_code,
                  reply_text,
                  content_type,
                  strlen(reply_text) + 6, // 3 digit status code + space + \r\n
+                 s->headers ? s->headers : "",
                  reply_code,
                  reply_text);
     } else {
@@ -385,10 +392,12 @@ static int http_write_reply(URLContext* h, int status_code)
                  "HTTP/1.1 %03d %s\r\n"
                  "Content-Type: %s\r\n"
                  "Transfer-Encoding: chunked\r\n"
+                 "%s"
                  "\r\n",
                  reply_code,
                  reply_text,
-                 content_type);
+                 content_type,
+                 s->headers ? s->headers : "");
     }
     av_log(h, AV_LOG_TRACE, "HTTP reply header: \n%s----\n", message);
     if ((ret = ffurl_write(s->hd, message, message_len)) < 0)
@@ -1033,6 +1042,12 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
             send_expect_100 = 1;
     }
 
+#if FF_API_HTTP_USER_AGENT
+    if (strcmp(s->user_agent_deprecated, DEFAULT_USER_AGENT)) {
+        av_log(s, AV_LOG_WARNING, "the user-agent option is deprecated, please use user_agent option\n");
+        s->user_agent = av_strdup(s->user_agent_deprecated);
+    }
+#endif
     /* set default headers if needed */
     if (!has_header(s->headers, "\r\nUser-Agent: "))
         len += av_strlcatf(headers + len, sizeof(headers) - len,

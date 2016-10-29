@@ -294,8 +294,20 @@ static int init_processing_chain(AVFilterContext *ctx, int in_width, int in_heig
 
     /* figure out which stages need to be done */
     if (in_width != out_width || in_height != out_height ||
-        in_deinterleaved_format != out_deinterleaved_format)
+        in_deinterleaved_format != out_deinterleaved_format) {
         s->stages[STAGE_RESIZE].stage_needed = 1;
+
+        if (s->interp_algo == NPPI_INTER_SUPER &&
+            (out_width > in_width && out_height > in_height)) {
+            s->interp_algo = NPPI_INTER_LANCZOS;
+            av_log(ctx, AV_LOG_WARNING, "super-sampling not supported for output dimensions, using lanczos instead.\n");
+        }
+        if (s->interp_algo == NPPI_INTER_SUPER &&
+            !(out_width < in_width && out_height < in_height)) {
+            s->interp_algo = NPPI_INTER_CUBIC;
+            av_log(ctx, AV_LOG_WARNING, "super-sampling not supported for output dimensions, using cubic instead.\n");
+        }
+    }
 
     if (!s->stages[STAGE_RESIZE].stage_needed && in_format == out_format)
         s->passthrough = 1;
@@ -337,7 +349,7 @@ static int init_processing_chain(AVFilterContext *ctx, int in_width, int in_heig
     }
 
     if (last_stage < 0)
-        return AVERROR_BUG;
+        return 0;
     ctx->outputs[0]->hw_frames_ctx = av_buffer_ref(s->stages[last_stage].frames_ctx);
     if (!ctx->outputs[0]->hw_frames_ctx)
         return AVERROR(ENOMEM);

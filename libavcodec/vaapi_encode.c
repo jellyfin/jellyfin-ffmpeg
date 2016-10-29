@@ -293,6 +293,27 @@ static int vaapi_encode_issue(AVCodecContext *avctx,
         }
     }
 
+    if (ctx->codec->write_extra_header) {
+        for (i = 0;; i++) {
+            int type;
+            bit_len = 8 * sizeof(data);
+            err = ctx->codec->write_extra_header(avctx, pic, i, &type,
+                                                 data, &bit_len);
+            if (err == AVERROR_EOF)
+                break;
+            if (err < 0) {
+                av_log(avctx, AV_LOG_ERROR, "Failed to write extra "
+                       "header %d: %d.\n", i, err);
+                goto fail;
+            }
+
+            err = vaapi_encode_make_packed_header(avctx, pic, type,
+                                                  data, bit_len);
+            if (err < 0)
+                goto fail;
+        }
+    }
+
     av_assert0(pic->nb_slices <= MAX_PICTURE_SLICES);
     for (i = 0; i < pic->nb_slices; i++) {
         slice = av_mallocz(sizeof(*slice));
@@ -313,7 +334,7 @@ static int vaapi_encode_issue(AVCodecContext *avctx,
         if (ctx->codec->init_slice_params) {
             err = ctx->codec->init_slice_params(avctx, pic, slice);
             if (err < 0) {
-                av_log(avctx, AV_LOG_ERROR, "Failed to initalise slice "
+                av_log(avctx, AV_LOG_ERROR, "Failed to initialise slice "
                        "parameters: %d.\n", err);
                 goto fail;
             }
@@ -1093,8 +1114,11 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx,
                 break;
             }
         }
-        if (recon_format == AV_PIX_FMT_NONE)
-            recon_format = constraints->valid_sw_formats[i];
+        if (recon_format == AV_PIX_FMT_NONE) {
+            // No match.  Just use the first in the supported list and
+            // hope for the best.
+            recon_format = constraints->valid_sw_formats[0];
+        }
     } else {
         // No idea what to use; copy input format.
         recon_format = ctx->input_frames->sw_format;

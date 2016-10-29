@@ -56,6 +56,7 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_H263I,        MKTAG('I', '2', '6', '3') }, /* Intel H.263 */
     { AV_CODEC_ID_H261,         MKTAG('H', '2', '6', '1') },
     { AV_CODEC_ID_H263,         MKTAG('U', '2', '6', '3') },
+    { AV_CODEC_ID_H263,         MKTAG('V', 'S', 'M', '4') }, /* needs -vf il=l=i:c=i */
     { AV_CODEC_ID_MPEG4,        MKTAG('F', 'M', 'P', '4') },
     { AV_CODEC_ID_MPEG4,        MKTAG('D', 'I', 'V', 'X') },
     { AV_CODEC_ID_MPEG4,        MKTAG('D', 'X', '5', '0') },
@@ -181,6 +182,7 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_MJPEG,        MKTAG('L', 'J', 'P', 'G') },
     { AV_CODEC_ID_MJPEG,        MKTAG('d', 'm', 'b', '1') },
     { AV_CODEC_ID_MJPEG,        MKTAG('m', 'j', 'p', 'a') },
+    { AV_CODEC_ID_MJPEG,        MKTAG('J', 'R', '2', '4') }, /* Quadrox Mjpeg */
     { AV_CODEC_ID_LJPEG,        MKTAG('L', 'J', 'P', 'G') },
     /* Pegasus lossless JPEG */
     { AV_CODEC_ID_MJPEG,        MKTAG('J', 'P', 'G', 'L') },
@@ -387,9 +389,11 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'L', 'R', 'G') },
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'L', 'Y', '0') },
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'L', 'Y', '2') },
+    { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'L', 'Y', '4') },
     /* Ut Video version 13.0.1 BT.709 codecs */
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'L', 'H', '0') },
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'L', 'H', '2') },
+    { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'L', 'H', '4') },
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'Q', 'Y', '2') },
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'Q', 'R', 'A') },
     { AV_CODEC_ID_UTVIDEO,      MKTAG('U', 'Q', 'R', 'G') },
@@ -435,6 +439,7 @@ const AVCodecTag ff_codec_wav_tags[] = {
     { AV_CODEC_ID_PCM_U8,          0x0001 },
     { AV_CODEC_ID_PCM_S24LE,       0x0001 },
     { AV_CODEC_ID_PCM_S32LE,       0x0001 },
+    { AV_CODEC_ID_PCM_S64LE,       0x0001 },
     { AV_CODEC_ID_ADPCM_MS,        0x0002 },
     { AV_CODEC_ID_PCM_F32LE,       0x0003 },
     /* must come after f32le in this list */

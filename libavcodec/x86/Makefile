@@ -42,6 +42,7 @@ OBJS-$(CONFIG_XMM_CLOBBER_TEST)        += x86/w64xmmtest.o
 # decoders/encoders
 OBJS-$(CONFIG_AAC_DECODER)             += x86/aacpsdsp_init.o          \
                                           x86/sbrdsp_init.o
+OBJS-$(CONFIG_AAC_ENCODER)             += x86/aacencdsp_init.o
 OBJS-$(CONFIG_ADPCM_G722_DECODER)      += x86/g722dsp_init.o
 OBJS-$(CONFIG_ADPCM_G722_ENCODER)      += x86/g722dsp_init.o
 OBJS-$(CONFIG_ALAC_DECODER)            += x86/alacdsp_init.o
@@ -61,6 +62,7 @@ OBJS-$(CONFIG_SVQ1_ENCODER)            += x86/svq1enc_init.o
 OBJS-$(CONFIG_TAK_DECODER)             += x86/takdsp_init.o
 OBJS-$(CONFIG_TRUEHD_DECODER)          += x86/mlpdsp_init.o
 OBJS-$(CONFIG_TTA_DECODER)             += x86/ttadsp_init.o
+OBJS-$(CONFIG_TTA_ENCODER)             += x86/ttaencdsp_init.o
 OBJS-$(CONFIG_V210_DECODER)            += x86/v210-init.o
 OBJS-$(CONFIG_V210_ENCODER)            += x86/v210enc_init.o
 OBJS-$(CONFIG_VORBIS_DECODER)          += x86/vorbisdsp_init.o
@@ -131,6 +133,7 @@ YASM-OBJS-$(CONFIG_VP8DSP)             += x86/vp8dsp.o                  \
 # decoders/encoders
 YASM-OBJS-$(CONFIG_AAC_DECODER)        += x86/aacpsdsp.o                \
                                           x86/sbrdsp.o
+YASM-OBJS-$(CONFIG_AAC_ENCODER)        += x86/aacencdsp.o
 YASM-OBJS-$(CONFIG_ADPCM_G722_DECODER) += x86/g722dsp.o
 YASM-OBJS-$(CONFIG_ADPCM_G722_ENCODER) += x86/g722dsp.o
 YASM-OBJS-$(CONFIG_ALAC_DECODER)       += x86/alacdsp.o
@@ -160,6 +163,7 @@ YASM-OBJS-$(CONFIG_SVQ1_ENCODER)       += x86/svq1enc.o
 YASM-OBJS-$(CONFIG_TAK_DECODER)        += x86/takdsp.o
 YASM-OBJS-$(CONFIG_TRUEHD_DECODER)     += x86/mlpdsp.o
 YASM-OBJS-$(CONFIG_TTA_DECODER)        += x86/ttadsp.o
+YASM-OBJS-$(CONFIG_TTA_ENCODER)        += x86/ttaencdsp.o
 YASM-OBJS-$(CONFIG_V210_ENCODER)       += x86/v210enc.o
 YASM-OBJS-$(CONFIG_V210_DECODER)       += x86/v210.o
 YASM-OBJS-$(CONFIG_VORBIS_DECODER)     += x86/vorbisdsp.o

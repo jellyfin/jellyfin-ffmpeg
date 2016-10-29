@@ -120,6 +120,7 @@ struct SwrContext {
     int64_t user_in_ch_layout;                      ///< User set input channel layout
     int64_t user_out_ch_layout;                     ///< User set output channel layout
     enum AVSampleFormat user_int_sample_fmt;        ///< User set internal sample format
+    int user_dither_method;                         ///< User set dither method
 
     struct DitherContext dither;
 
@@ -167,7 +168,8 @@ struct SwrContext {
     struct ResampleContext *resample;               ///< resampling context
     struct Resampler const *resampler;              ///< resampler virtual function table
 
-    float matrix[SWR_CH_MAX][SWR_CH_MAX];           ///< floating point rematrixing coefficients
+    double matrix[SWR_CH_MAX][SWR_CH_MAX];          ///< floating point rematrixing coefficients
+    float matrix_flt[SWR_CH_MAX][SWR_CH_MAX];       ///< single precision floating point rematrixing coefficients
     uint8_t *native_matrix;
     uint8_t *native_one;
     uint8_t *native_simd_one;

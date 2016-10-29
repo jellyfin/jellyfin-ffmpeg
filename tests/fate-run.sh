@@ -192,6 +192,24 @@ enc_dec(){
     tests/tiny_psnr $srcfile $decfile $cmp_unit $cmp_shift
 }
 
+transcode(){
+    src_fmt=$1
+    srcfile=$2
+    enc_fmt=$3
+    enc_opt=$4
+    final_decode=$5
+    encfile="${outdir}/${test}.${enc_fmt}"
+    test "$7" = -keep || cleanfiles="$cleanfiles $encfile"
+    tsrcfile=$(target_path $srcfile)
+    tencfile=$(target_path $encfile)
+    ffmpeg -f $src_fmt $DEC_OPTS -i $tsrcfile $ENC_OPTS $enc_opt $FLAGS \
+        -f $enc_fmt -y $tencfile || return
+    do_md5sum $encfile
+    echo $(wc -c $encfile)
+    ffmpeg $DEC_OPTS -i $encfile $ENC_OPTS $FLAGS $final_decode \
+        -f framecrc - || return
+}
+
 lavffatetest(){
     t="${test#lavf-fate-}"
     ref=${base}/ref/lavf-fate/$t
@@ -328,13 +346,14 @@ if [ $err -gt 128 ]; then
     test "${sig}" = "${sig%[!A-Za-z]*}" || unset sig
 fi
 
-if test -e "$ref" || test $cmp = "oneline" ; then
+if test -e "$ref" || test $cmp = "oneline" || test $cmp = "grep" ; then
     case $cmp in
         diff)   diff -u -b "$ref" "$outfile"            >$cmpfile ;;
         rawdiff)diff -u    "$ref" "$outfile"            >$cmpfile ;;
         oneoff) oneoff     "$ref" "$outfile"            >$cmpfile ;;
         stddev) stddev     "$ref" "$outfile"            >$cmpfile ;;
         oneline)oneline    "$ref" "$outfile"            >$cmpfile ;;
+        grep)   grep       "$ref" "$errfile"            >$cmpfile ;;
         null)   cat               "$outfile"            >$cmpfile ;;
     esac
     cmperr=$?

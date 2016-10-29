@@ -37,10 +37,9 @@
 #include "cabac_functions.h"
 #include "internal.h"
 #include "avcodec.h"
-#include "h264.h"
+#include "h264dec.h"
 #include "h264data.h"
 #include "h264_mvpred.h"
-#include "golomb.h"
 #include "mpegutils.h"
 
 #if ARCH_X86
@@ -2359,7 +2358,7 @@ decode_intra_mb:
             }
         }
         if (sl->top_type && !IS_8x8DCT(sl->top_type)){
-            uint32_t top_empty = CABAC(h) && !IS_INTRA(mb_type) ? 0 : 0x40404040;
+            uint32_t top_empty = !IS_INTRA(mb_type) ? 0 : 0x40404040;
             AV_WN32A(&nnz_cache[4+8* 0], top_empty);
             AV_WN32A(&nnz_cache[4+8* 5], top_empty);
             AV_WN32A(&nnz_cache[4+8*10], top_empty);
@@ -2404,8 +2403,8 @@ decode_intra_mb:
                 if (sl->qscale < 0) sl->qscale += max_qp + 1;
                 else                sl->qscale -= max_qp + 1;
             }
-            sl->chroma_qp[0] = get_chroma_qp(h, 0, sl->qscale);
-            sl->chroma_qp[1] = get_chroma_qp(h, 1, sl->qscale);
+            sl->chroma_qp[0] = get_chroma_qp(h->ps.pps, 0, sl->qscale);
+            sl->chroma_qp[1] = get_chroma_qp(h->ps.pps, 1, sl->qscale);
         }else
             sl->last_qscale_diff=0;
 

@@ -395,6 +395,12 @@ static int swf_read_packet(AVFormatContext *s, AVPacket *pkt)
             pkt->pos = pos;
             pkt->stream_index = st->index;
 
+            if (linesize * height > pkt->size) {
+                res = AVERROR_INVALIDDATA;
+                av_packet_unref(pkt);
+                goto bitmap_end;
+            }
+
             switch (bmp_fmt) {
             case 3:
                 pix_fmt = AV_PIX_FMT_PAL8;
@@ -422,10 +428,6 @@ static int swf_read_packet(AVFormatContext *s, AVPacket *pkt)
             } else
                 st->codecpar->format = pix_fmt;
 
-            if (linesize * height > pkt->size) {
-                res = AVERROR_INVALIDDATA;
-                goto bitmap_end;
-            }
             memcpy(pkt->data, buf + colormapsize*colormapbpp, linesize * height);
 
             res = pkt->size;
@@ -516,7 +518,7 @@ bitmap_end_skip:
         }
     skip:
         if(len<0)
-            av_log(s, AV_LOG_WARNING, "Cliping len %d\n", len);
+            av_log(s, AV_LOG_WARNING, "Clipping len %d\n", len);
         len = FFMAX(0, len);
         avio_skip(pb, len);
     }

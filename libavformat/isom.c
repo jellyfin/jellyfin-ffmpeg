@@ -86,6 +86,7 @@ const AVCodecTag ff_codec_movvideo_tags[] = {
     { AV_CODEC_ID_RAWVIDEO, MKTAG('A', 'B', 'G', 'R') },
     { AV_CODEC_ID_RAWVIDEO, MKTAG('b', '1', '6', 'g') },
     { AV_CODEC_ID_RAWVIDEO, MKTAG('b', '4', '8', 'r') },
+    { AV_CODEC_ID_RAWVIDEO, MKTAG('b', '6', '4', 'a') },
     { AV_CODEC_ID_RAWVIDEO, MKTAG('b', 'x', 'b', 'g') }, /* BOXX */
     { AV_CODEC_ID_RAWVIDEO, MKTAG('b', 'x', 'r', 'g') },
     { AV_CODEC_ID_RAWVIDEO, MKTAG('b', 'x', 'y', 'v') },
@@ -487,9 +488,14 @@ int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext 
     avio_rb24(pb); /* buffer size db */
 
     v = avio_rb32(pb);
-    // TODO: fix this
-    //if (v < INT32_MAX)
-    //    st->codecpar->rc_max_rate = v;
+
+    // TODO: fix this with codecpar
+#if FF_API_LAVF_AVCTX
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (v < INT32_MAX)
+        st->codec->rc_max_rate = v;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     st->codecpar->bit_rate = avio_rb32(pb); /* avg bitrate */
 

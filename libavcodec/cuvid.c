@@ -25,18 +25,23 @@
 #include "libavutil/hwcontext_cuda.h"
 #include "libavutil/fifo.h"
 #include "libavutil/log.h"
+#include "libavutil/opt.h"
 
 #include "avcodec.h"
 #include "internal.h"
 
-#include <nvcuvid.h>
+#include "compat/cuda/nvcuvid.h"
 
-#define MAX_FRAME_COUNT 20
+#define MAX_FRAME_COUNT 25
 
 typedef struct CuvidContext
 {
+    AVClass *avclass;
+
     CUvideodecoder cudecoder;
     CUvideoparser cuparser;
+
+    char *cu_gpu;
 
     AVBufferRef *hwdevice;
     AVBufferRef *hwframe;
@@ -45,11 +50,25 @@ typedef struct CuvidContext
 
     AVFifoBuffer *frame_queue;
 
+    int deint_mode;
+    int64_t prev_pts;
+
     int internal_error;
+    int decoder_flushing;
 
     cudaVideoCodec codec_type;
     cudaVideoChromaFormat chroma_format;
+
+    CUVIDPARSERPARAMS cuparseinfo;
+    CUVIDEOFORMATEX cuparse_ext;
 } CuvidContext;
+
+typedef struct CuvidParsedFrame
+{
+    CUVIDPARSERDISPINFO dispinfo;
+    int second_field;
+    int is_deinterlacing;
+} CuvidParsedFrame;
 
 static int check_cu(AVCodecContext *avctx, CUresult err, const char *func)
 {
@@ -81,7 +100,7 @@ static int CUDAAPI cuvid_handle_video_sequence(void *opaque, CUVIDEOFORMAT* form
     AVHWFramesContext *hwframe_ctx = (AVHWFramesContext*)ctx->hwframe->data;
     CUVIDDECODECREATEINFO cuinfo;
 
-    av_log(avctx, AV_LOG_TRACE, "pfnSequenceCallback\n");
+    av_log(avctx, AV_LOG_TRACE, "pfnSequenceCallback, progressive_sequence=%d\n", format->progressive_sequence);
 
     ctx->internal_error = 0;
 
@@ -92,7 +111,7 @@ static int CUDAAPI cuvid_handle_video_sequence(void *opaque, CUVIDEOFORMAT* form
         (AVRational){ format->display_aspect_ratio.x, format->display_aspect_ratio.y },
         (AVRational){ avctx->width, avctx->height }));
 
-    if (!format->progressive_sequence)
+    if (!format->progressive_sequence && ctx->deint_mode == cudaVideoDeinterlaceMode_Weave)
         avctx->flags |= AV_CODEC_FLAG_INTERLACED_DCT;
     else
         avctx->flags &= ~AV_CODEC_FLAG_INTERLACED_DCT;
@@ -122,13 +141,25 @@ static int CUDAAPI cuvid_handle_video_sequence(void *opaque, CUVIDEOFORMAT* form
         return 1;
 
     if (ctx->cudecoder) {
-        av_log(avctx, AV_LOG_ERROR, "re-initializing decoder is not supported\n");
+        av_log(avctx, AV_LOG_TRACE, "Re-initializing decoder\n");
+        ctx->internal_error = CHECK_CU(cuvidDestroyDecoder(ctx->cudecoder));
+        if (ctx->internal_error < 0)
+            return 0;
+        ctx->cudecoder = NULL;
+    }
+
+    if (hwframe_ctx->pool && (
+            hwframe_ctx->width < avctx->width ||
+            hwframe_ctx->height < avctx->height ||
+            hwframe_ctx->format != AV_PIX_FMT_CUDA ||
+            hwframe_ctx->sw_format != AV_PIX_FMT_NV12)) {
+        av_log(avctx, AV_LOG_ERROR, "AVHWFramesContext is already initialized with incompatible parameters\n");
         ctx->internal_error = AVERROR(EINVAL);
         return 0;
     }
 
-    if (hwframe_ctx->pool) {
-        av_log(avctx, AV_LOG_ERROR, "AVHWFramesContext is already initialized\n");
+    if (format->chroma_format != cudaVideoChromaFormat_420) {
+        av_log(avctx, AV_LOG_ERROR, "Chroma formats other than 420 are not supported\n");
         ctx->internal_error = AVERROR(EINVAL);
         return 0;
     }
@@ -157,21 +188,31 @@ static int CUDAAPI cuvid_handle_video_sequence(void *opaque, CUVIDEOFORMAT* form
     cuinfo.ulNumDecodeSurfaces = MAX_FRAME_COUNT;
     cuinfo.ulNumOutputSurfaces = 1;
     cuinfo.ulCreationFlags = cudaVideoCreate_PreferCUVID;
+    cuinfo.bitDepthMinus8 = format->bit_depth_luma_minus8;
 
-    cuinfo.DeinterlaceMode = cudaVideoDeinterlaceMode_Weave;
+    if (format->progressive_sequence) {
+        ctx->deint_mode = cuinfo.DeinterlaceMode = cudaVideoDeinterlaceMode_Weave;
+    } else {
+        cuinfo.DeinterlaceMode = ctx->deint_mode;
+    }
+
+    if (ctx->deint_mode != cudaVideoDeinterlaceMode_Weave)
+        avctx->framerate = av_mul_q(avctx->framerate, (AVRational){2, 1});
 
     ctx->internal_error = CHECK_CU(cuvidCreateDecoder(&ctx->cudecoder, &cuinfo));
     if (ctx->internal_error < 0)
         return 0;
 
-    hwframe_ctx->format = AV_PIX_FMT_CUDA;
-    hwframe_ctx->sw_format = AV_PIX_FMT_NV12;
-    hwframe_ctx->width = FFALIGN(avctx->coded_width, 32);
-    hwframe_ctx->height = FFALIGN(avctx->coded_height, 32);
+    if (!hwframe_ctx->pool) {
+        hwframe_ctx->format = AV_PIX_FMT_CUDA;
+        hwframe_ctx->sw_format = AV_PIX_FMT_NV12;
+        hwframe_ctx->width = avctx->width;
+        hwframe_ctx->height = avctx->height;
 
-    if ((ctx->internal_error = av_hwframe_ctx_init(ctx->hwframe)) < 0) {
-        av_log(avctx, AV_LOG_ERROR, "av_hwframe_ctx_init failed\n");
-        return 0;
+        if ((ctx->internal_error = av_hwframe_ctx_init(ctx->hwframe)) < 0) {
+            av_log(avctx, AV_LOG_ERROR, "av_hwframe_ctx_init failed\n");
+            return 0;
+        }
     }
 
     return 1;
@@ -195,30 +236,42 @@ static int CUDAAPI cuvid_handle_picture_display(void *opaque, CUVIDPARSERDISPINF
 {
     AVCodecContext *avctx = opaque;
     CuvidContext *ctx = avctx->priv_data;
-
-    av_log(avctx, AV_LOG_TRACE, "pfnDisplayPicture\n");
+    CuvidParsedFrame parsed_frame = { *dispinfo, 0, 0 };
 
     ctx->internal_error = 0;
 
-    av_fifo_generic_write(ctx->frame_queue, dispinfo, sizeof(CUVIDPARSERDISPINFO), NULL);
+    if (ctx->deint_mode == cudaVideoDeinterlaceMode_Weave) {
+        av_fifo_generic_write(ctx->frame_queue, &parsed_frame, sizeof(CuvidParsedFrame), NULL);
+    } else {
+        parsed_frame.is_deinterlacing = 1;
+        av_fifo_generic_write(ctx->frame_queue, &parsed_frame, sizeof(CuvidParsedFrame), NULL);
+        parsed_frame.second_field = 1;
+        av_fifo_generic_write(ctx->frame_queue, &parsed_frame, sizeof(CuvidParsedFrame), NULL);
+    }
 
     return 1;
 }
 
-static int cuvid_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+static int cuvid_decode_packet(AVCodecContext *avctx, const AVPacket *avpkt)
 {
     CuvidContext *ctx = avctx->priv_data;
     AVHWDeviceContext *device_ctx = (AVHWDeviceContext*)ctx->hwdevice->data;
     AVCUDADeviceContext *device_hwctx = device_ctx->hwctx;
     CUcontext dummy, cuda_ctx = device_hwctx->cuda_ctx;
-    AVFrame *frame = data;
     CUVIDSOURCEDATAPACKET cupkt;
     AVPacket filter_packet = { 0 };
     AVPacket filtered_packet = { 0 };
-    CUdeviceptr mapped_frame = 0;
-    int ret = 0, eret = 0;
+    int ret = 0, eret = 0, is_flush = ctx->decoder_flushing;
 
-    if (ctx->bsf && avpkt->size) {
+    av_log(avctx, AV_LOG_TRACE, "cuvid_decode_packet\n");
+
+    if (is_flush && avpkt && avpkt->size)
+        return AVERROR_EOF;
+
+    if (av_fifo_size(ctx->frame_queue) / sizeof(CuvidParsedFrame) > MAX_FRAME_COUNT - 2 && avpkt && avpkt->size)
+        return AVERROR(EAGAIN);
+
+    if (ctx->bsf && avpkt && avpkt->size) {
         if ((ret = av_packet_ref(&filter_packet, avpkt)) < 0) {
             av_log(avctx, AV_LOG_ERROR, "av_packet_ref failed\n");
             return ret;
@@ -246,43 +299,85 @@ static int cuvid_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
 
     memset(&cupkt, 0, sizeof(cupkt));
 
-    if (avpkt->size) {
+    if (avpkt && avpkt->size) {
         cupkt.payload_size = avpkt->size;
         cupkt.payload = avpkt->data;
 
         if (avpkt->pts != AV_NOPTS_VALUE) {
             cupkt.flags = CUVID_PKT_TIMESTAMP;
-            cupkt.timestamp = av_rescale_q(avpkt->pts, avctx->time_base, (AVRational){1, 10000000});
+            if (avctx->pkt_timebase.num && avctx->pkt_timebase.den)
+                cupkt.timestamp = av_rescale_q(avpkt->pts, avctx->pkt_timebase, (AVRational){1, 10000000});
+            else
+                cupkt.timestamp = avpkt->pts;
         }
     } else {
         cupkt.flags = CUVID_PKT_ENDOFSTREAM;
+        ctx->decoder_flushing = 1;
     }
 
     ret = CHECK_CU(cuvidParseVideoData(ctx->cuparser, &cupkt));
 
     av_packet_unref(&filtered_packet);
 
-    if (ret < 0) {
-        if (ctx->internal_error)
-            ret = ctx->internal_error;
+    if (ret < 0)
+        goto error;
+
+    // cuvidParseVideoData doesn't return an error just because stuff failed...
+    if (ctx->internal_error) {
+        av_log(avctx, AV_LOG_ERROR, "cuvid decode callback error\n");
+        ret = ctx->internal_error;
         goto error;
     }
 
+error:
+    eret = CHECK_CU(cuCtxPopCurrent(&dummy));
+
+    if (eret < 0)
+        return eret;
+    else if (ret < 0)
+        return ret;
+    else if (is_flush)
+        return AVERROR_EOF;
+    else
+        return 0;
+}
+
+static int cuvid_output_frame(AVCodecContext *avctx, AVFrame *frame)
+{
+    CuvidContext *ctx = avctx->priv_data;
+    AVHWDeviceContext *device_ctx = (AVHWDeviceContext*)ctx->hwdevice->data;
+    AVCUDADeviceContext *device_hwctx = device_ctx->hwctx;
+    CUcontext dummy, cuda_ctx = device_hwctx->cuda_ctx;
+    CUdeviceptr mapped_frame = 0;
+    int ret = 0, eret = 0;
+
+    av_log(avctx, AV_LOG_TRACE, "cuvid_output_frame\n");
+
+    if (ctx->decoder_flushing) {
+        ret = cuvid_decode_packet(avctx, NULL);
+        if (ret < 0 && ret != AVERROR_EOF)
+            return ret;
+    }
+
+    ret = CHECK_CU(cuCtxPushCurrent(cuda_ctx));
+    if (ret < 0)
+        return ret;
+
     if (av_fifo_size(ctx->frame_queue)) {
-        CUVIDPARSERDISPINFO dispinfo;
+        CuvidParsedFrame parsed_frame;
         CUVIDPROCPARAMS params;
         unsigned int pitch = 0;
         int offset = 0;
         int i;
 
-        av_fifo_generic_read(ctx->frame_queue, &dispinfo, sizeof(CUVIDPARSERDISPINFO), NULL);
+        av_fifo_generic_read(ctx->frame_queue, &parsed_frame, sizeof(CuvidParsedFrame), NULL);
 
         memset(&params, 0, sizeof(params));
-        params.progressive_frame = dispinfo.progressive_frame;
-        params.second_field = 0;
-        params.top_field_first = dispinfo.top_field_first;
+        params.progressive_frame = parsed_frame.dispinfo.progressive_frame;
+        params.second_field = parsed_frame.second_field;
+        params.top_field_first = parsed_frame.dispinfo.top_field_first;
 
-        ret = CHECK_CU(cuvidMapVideoFrame(ctx->cudecoder, dispinfo.picture_index, &mapped_frame, &pitch, &params));
+        ret = CHECK_CU(cuvidMapVideoFrame(ctx->cudecoder, parsed_frame.dispinfo.picture_index, &mapped_frame, &pitch, &params));
         if (ret < 0)
             goto error;
 
@@ -309,7 +404,7 @@ static int cuvid_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                     .dstPitch      = frame->linesize[i],
                     .srcY          = offset,
                     .WidthInBytes  = FFMIN(pitch, frame->linesize[i]),
-                    .Height        = avctx->coded_height >> (i ? 1 : 0),
+                    .Height        = avctx->height >> (i ? 1 : 0),
                 };
 
                 ret = CHECK_CU(cuMemcpy2D(&cpy));
@@ -357,24 +452,42 @@ static int cuvid_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
 
         frame->width = avctx->width;
         frame->height = avctx->height;
-        frame->pts = av_rescale_q(dispinfo.timestamp, (AVRational){1, 10000000}, avctx->time_base);
+        if (avctx->pkt_timebase.num && avctx->pkt_timebase.den)
+            frame->pts = av_rescale_q(parsed_frame.dispinfo.timestamp, (AVRational){1, 10000000}, avctx->pkt_timebase);
+        else
+            frame->pts = parsed_frame.dispinfo.timestamp;
+
+        if (parsed_frame.second_field) {
+            if (ctx->prev_pts == INT64_MIN) {
+                ctx->prev_pts = frame->pts;
+                frame->pts += (avctx->pkt_timebase.den * avctx->framerate.den) / (avctx->pkt_timebase.num * avctx->framerate.num);
+            } else {
+                int pts_diff = (frame->pts - ctx->prev_pts) / 2;
+                ctx->prev_pts = frame->pts;
+                frame->pts += pts_diff;
+            }
+        }
 
         /* CUVIDs opaque reordering breaks the internal pkt logic.
          * So set pkt_pts and clear all the other pkt_ fields.
          */
+#if FF_API_PKT_PTS
+FF_DISABLE_DEPRECATION_WARNINGS
         frame->pkt_pts = frame->pts;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         av_frame_set_pkt_pos(frame, -1);
         av_frame_set_pkt_duration(frame, 0);
         av_frame_set_pkt_size(frame, -1);
 
-        frame->interlaced_frame = !dispinfo.progressive_frame;
+        frame->interlaced_frame = !parsed_frame.is_deinterlacing && !parsed_frame.dispinfo.progressive_frame;
 
-        if (!dispinfo.progressive_frame)
-            frame->top_field_first = dispinfo.top_field_first;
-
-        *got_frame = 1;
+        if (frame->interlaced_frame)
+            frame->top_field_first = parsed_frame.dispinfo.top_field_first;
+    } else if (ctx->decoder_flushing) {
+        ret = AVERROR_EOF;
     } else {
-        *got_frame = 0;
+        ret = AVERROR(EAGAIN);
     }
 
 error:
@@ -387,6 +500,37 @@ error:
         return eret;
     else
         return ret;
+}
+
+static int cuvid_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+{
+    CuvidContext *ctx = avctx->priv_data;
+    AVFrame *frame = data;
+    int ret = 0;
+
+    av_log(avctx, AV_LOG_TRACE, "cuvid_decode_frame\n");
+
+    if (ctx->deint_mode != cudaVideoDeinterlaceMode_Weave) {
+        av_log(avctx, AV_LOG_ERROR, "Deinterlacing is not supported via the old API\n");
+        return AVERROR(EINVAL);
+    }
+
+    if (!ctx->decoder_flushing) {
+        ret = cuvid_decode_packet(avctx, avpkt);
+        if (ret < 0)
+            return ret;
+    }
+
+    ret = cuvid_output_frame(avctx, frame);
+    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        *got_frame = 0;
+    } else if (ret < 0) {
+        return ret;
+    } else {
+        *got_frame = 1;
+    }
+
+    return 0;
 }
 
 static av_cold int cuvid_decode_end(AVCodecContext *avctx)
@@ -408,12 +552,6 @@ static av_cold int cuvid_decode_end(AVCodecContext *avctx)
     av_buffer_unref(&ctx->hwdevice);
 
     return 0;
-}
-
-static void cuvid_ctx_free(AVHWDeviceContext *ctx)
-{
-    AVCUDADeviceContext *hwctx = ctx->hwctx;
-    cuCtxDestroy(hwctx->cuda_ctx);
 }
 
 static int cuvid_test_dummy_decoder(AVCodecContext *avctx, CUVIDPARSERPARAMS *cuparseinfo)
@@ -441,6 +579,7 @@ static int cuvid_test_dummy_decoder(AVCodecContext *avctx, CUVIDPARSERPARAMS *cu
     cuinfo.ulNumDecodeSurfaces = MAX_FRAME_COUNT;
     cuinfo.ulNumOutputSurfaces = 1;
     cuinfo.ulCreationFlags = cudaVideoCreate_PreferCUVID;
+    cuinfo.bitDepthMinus8 = 0;
 
     cuinfo.DeinterlaceMode = cudaVideoDeinterlaceMode_Weave;
 
@@ -461,10 +600,7 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
     AVCUDADeviceContext *device_hwctx;
     AVHWDeviceContext *device_ctx;
     AVHWFramesContext *hwframe_ctx;
-    CUVIDPARSERPARAMS cuparseinfo;
-    CUVIDEOFORMATEX cuparse_ext;
     CUVIDSOURCEDATAPACKET seq_pkt;
-    CUdevice device;
     CUcontext cuda_ctx = NULL;
     CUcontext dummy;
     const AVBitStreamFilter *bsf;
@@ -480,7 +616,7 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
         return ret;
     }
 
-    ctx->frame_queue = av_fifo_alloc(MAX_FRAME_COUNT * sizeof(CUVIDPARSERDISPINFO));
+    ctx->frame_queue = av_fifo_alloc(MAX_FRAME_COUNT * sizeof(CuvidParsedFrame));
     if (!ctx->frame_queue) {
         ret = AVERROR(ENOMEM);
         goto error;
@@ -502,45 +638,10 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
             ret = AVERROR(ENOMEM);
             goto error;
         }
-
-        device_ctx = hwframe_ctx->device_ctx;
-        device_hwctx = device_ctx->hwctx;
-        cuda_ctx = device_hwctx->cuda_ctx;
     } else {
-        ctx->hwdevice = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_CUDA);
-        if (!ctx->hwdevice) {
-            av_log(avctx, AV_LOG_ERROR, "Error allocating hwdevice\n");
-            ret = AVERROR(ENOMEM);
-            goto error;
-        }
-
-        ret = CHECK_CU(cuInit(0));
+        ret = av_hwdevice_ctx_create(&ctx->hwdevice, AV_HWDEVICE_TYPE_CUDA, ctx->cu_gpu, NULL, 0);
         if (ret < 0)
             goto error;
-
-        ret = CHECK_CU(cuDeviceGet(&device, 0));
-        if (ret < 0)
-            goto error;
-
-        ret = CHECK_CU(cuCtxCreate(&cuda_ctx, CU_CTX_SCHED_BLOCKING_SYNC, device));
-        if (ret < 0)
-            goto error;
-
-        device_ctx = (AVHWDeviceContext*)ctx->hwdevice->data;
-        device_ctx->free = cuvid_ctx_free;
-
-        device_hwctx = device_ctx->hwctx;
-        device_hwctx->cuda_ctx = cuda_ctx;
-
-        ret = CHECK_CU(cuCtxPopCurrent(&dummy));
-        if (ret < 0)
-            goto error;
-
-        ret = av_hwdevice_ctx_init(ctx->hwdevice);
-        if (ret < 0) {
-            av_log(avctx, AV_LOG_ERROR, "av_hwdevice_ctx_init failed\n");
-            goto error;
-        }
 
         ctx->hwframe = av_hwframe_ctx_alloc(ctx->hwdevice);
         if (!ctx->hwframe) {
@@ -548,38 +649,69 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
             ret = AVERROR(ENOMEM);
             goto error;
         }
+
+        hwframe_ctx = (AVHWFramesContext*)ctx->hwframe->data;
     }
 
-    memset(&cuparseinfo, 0, sizeof(cuparseinfo));
-    memset(&cuparse_ext, 0, sizeof(cuparse_ext));
+    device_ctx = hwframe_ctx->device_ctx;
+    device_hwctx = device_ctx->hwctx;
+    cuda_ctx = device_hwctx->cuda_ctx;
+
+    memset(&ctx->cuparseinfo, 0, sizeof(ctx->cuparseinfo));
+    memset(&ctx->cuparse_ext, 0, sizeof(ctx->cuparse_ext));
     memset(&seq_pkt, 0, sizeof(seq_pkt));
 
-    cuparseinfo.pExtVideoInfo = &cuparse_ext;
+    ctx->cuparseinfo.pExtVideoInfo = &ctx->cuparse_ext;
 
     switch (avctx->codec->id) {
+#if CONFIG_H263_CUVID_DECODER
+    case AV_CODEC_ID_H263:
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_MPEG4;
+        break;
+#endif
 #if CONFIG_H264_CUVID_DECODER
     case AV_CODEC_ID_H264:
-        cuparseinfo.CodecType = cudaVideoCodec_H264;
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_H264;
         break;
 #endif
 #if CONFIG_HEVC_CUVID_DECODER
     case AV_CODEC_ID_HEVC:
-        cuparseinfo.CodecType = cudaVideoCodec_HEVC;
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_HEVC;
+        break;
+#endif
+#if CONFIG_MJPEG_CUVID_DECODER
+    case AV_CODEC_ID_MJPEG:
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_JPEG;
+        break;
+#endif
+#if CONFIG_MPEG1_CUVID_DECODER
+    case AV_CODEC_ID_MPEG1VIDEO:
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_MPEG1;
+        break;
+#endif
+#if CONFIG_MPEG2_CUVID_DECODER
+    case AV_CODEC_ID_MPEG2VIDEO:
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_MPEG2;
+        break;
+#endif
+#if CONFIG_MPEG4_CUVID_DECODER
+    case AV_CODEC_ID_MPEG4:
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_MPEG4;
         break;
 #endif
 #if CONFIG_VP8_CUVID_DECODER
     case AV_CODEC_ID_VP8:
-        cuparseinfo.CodecType = cudaVideoCodec_VP8;
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_VP8;
         break;
 #endif
 #if CONFIG_VP9_CUVID_DECODER
     case AV_CODEC_ID_VP9:
-        cuparseinfo.CodecType = cudaVideoCodec_VP9;
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_VP9;
         break;
 #endif
 #if CONFIG_VC1_CUVID_DECODER
     case AV_CODEC_ID_VC1:
-        cuparseinfo.CodecType = cudaVideoCodec_VC1;
+        ctx->cuparseinfo.CodecType = cudaVideoCodec_VC1;
         break;
 #endif
     default:
@@ -605,38 +737,38 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
             goto error;
         }
 
-        cuparse_ext.format.seqhdr_data_length = ctx->bsf->par_out->extradata_size;
-        memcpy(cuparse_ext.raw_seqhdr_data,
+        ctx->cuparse_ext.format.seqhdr_data_length = ctx->bsf->par_out->extradata_size;
+        memcpy(ctx->cuparse_ext.raw_seqhdr_data,
                ctx->bsf->par_out->extradata,
-               FFMIN(sizeof(cuparse_ext.raw_seqhdr_data), ctx->bsf->par_out->extradata_size));
+               FFMIN(sizeof(ctx->cuparse_ext.raw_seqhdr_data), ctx->bsf->par_out->extradata_size));
     } else if (avctx->extradata_size > 0) {
-        cuparse_ext.format.seqhdr_data_length = avctx->extradata_size;
-        memcpy(cuparse_ext.raw_seqhdr_data,
+        ctx->cuparse_ext.format.seqhdr_data_length = avctx->extradata_size;
+        memcpy(ctx->cuparse_ext.raw_seqhdr_data,
                avctx->extradata,
-               FFMIN(sizeof(cuparse_ext.raw_seqhdr_data), avctx->extradata_size));
+               FFMIN(sizeof(ctx->cuparse_ext.raw_seqhdr_data), avctx->extradata_size));
     }
 
-    cuparseinfo.ulMaxNumDecodeSurfaces = MAX_FRAME_COUNT;
-    cuparseinfo.ulMaxDisplayDelay = 4;
-    cuparseinfo.pUserData = avctx;
-    cuparseinfo.pfnSequenceCallback = cuvid_handle_video_sequence;
-    cuparseinfo.pfnDecodePicture = cuvid_handle_picture_decode;
-    cuparseinfo.pfnDisplayPicture = cuvid_handle_picture_display;
+    ctx->cuparseinfo.ulMaxNumDecodeSurfaces = MAX_FRAME_COUNT;
+    ctx->cuparseinfo.ulMaxDisplayDelay = 4;
+    ctx->cuparseinfo.pUserData = avctx;
+    ctx->cuparseinfo.pfnSequenceCallback = cuvid_handle_video_sequence;
+    ctx->cuparseinfo.pfnDecodePicture = cuvid_handle_picture_decode;
+    ctx->cuparseinfo.pfnDisplayPicture = cuvid_handle_picture_display;
 
     ret = CHECK_CU(cuCtxPushCurrent(cuda_ctx));
     if (ret < 0)
         goto error;
 
-    ret = cuvid_test_dummy_decoder(avctx, &cuparseinfo);
+    ret = cuvid_test_dummy_decoder(avctx, &ctx->cuparseinfo);
     if (ret < 0)
         goto error;
 
-    ret = CHECK_CU(cuvidCreateVideoParser(&ctx->cuparser, &cuparseinfo));
+    ret = CHECK_CU(cuvidCreateVideoParser(&ctx->cuparser, &ctx->cuparseinfo));
     if (ret < 0)
         goto error;
 
-    seq_pkt.payload = cuparse_ext.raw_seqhdr_data;
-    seq_pkt.payload_size = cuparse_ext.format.seqhdr_data_length;
+    seq_pkt.payload = ctx->cuparse_ext.raw_seqhdr_data;
+    seq_pkt.payload_size = ctx->cuparse_ext.format.seqhdr_data_length;
 
     if (seq_pkt.payload && seq_pkt.payload_size) {
         ret = CHECK_CU(cuvidParseVideoData(ctx->cuparser, &seq_pkt));
@@ -648,6 +780,11 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
     if (ret < 0)
         goto error;
 
+    ctx->prev_pts = INT64_MIN;
+
+    if (!avctx->pkt_timebase.num || !avctx->pkt_timebase.den)
+        av_log(avctx, AV_LOG_WARNING, "Invalid pkt_timebase, passing timestamps as-is.\n");
+
     return 0;
 
 error:
@@ -655,7 +792,80 @@ error:
     return ret;
 }
 
+static void cuvid_flush(AVCodecContext *avctx)
+{
+    CuvidContext *ctx = avctx->priv_data;
+    AVHWDeviceContext *device_ctx = (AVHWDeviceContext*)ctx->hwdevice->data;
+    AVCUDADeviceContext *device_hwctx = device_ctx->hwctx;
+    CUcontext dummy, cuda_ctx = device_hwctx->cuda_ctx;
+    CUVIDSOURCEDATAPACKET seq_pkt = { 0 };
+    int ret;
+
+    ret = CHECK_CU(cuCtxPushCurrent(cuda_ctx));
+    if (ret < 0)
+        goto error;
+
+    av_fifo_freep(&ctx->frame_queue);
+
+    ctx->frame_queue = av_fifo_alloc(MAX_FRAME_COUNT * sizeof(CuvidParsedFrame));
+    if (!ctx->frame_queue) {
+        av_log(avctx, AV_LOG_ERROR, "Failed to recreate frame queue on flush\n");
+        return;
+    }
+
+    if (ctx->cudecoder) {
+        cuvidDestroyDecoder(ctx->cudecoder);
+        ctx->cudecoder = NULL;
+    }
+
+    if (ctx->cuparser) {
+        cuvidDestroyVideoParser(ctx->cuparser);
+        ctx->cuparser = NULL;
+    }
+
+    ret = CHECK_CU(cuvidCreateVideoParser(&ctx->cuparser, &ctx->cuparseinfo));
+    if (ret < 0)
+        goto error;
+
+    seq_pkt.payload = ctx->cuparse_ext.raw_seqhdr_data;
+    seq_pkt.payload_size = ctx->cuparse_ext.format.seqhdr_data_length;
+
+    if (seq_pkt.payload && seq_pkt.payload_size) {
+        ret = CHECK_CU(cuvidParseVideoData(ctx->cuparser, &seq_pkt));
+        if (ret < 0)
+            goto error;
+    }
+
+    ret = CHECK_CU(cuCtxPopCurrent(&dummy));
+    if (ret < 0)
+        goto error;
+
+    ctx->prev_pts = INT64_MIN;
+    ctx->decoder_flushing = 0;
+
+    return;
+ error:
+    av_log(avctx, AV_LOG_ERROR, "CUDA reinit on flush failed\n");
+}
+
+#define OFFSET(x) offsetof(CuvidContext, x)
+#define VD AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
+static const AVOption options[] = {
+    { "deint",    "Set deinterlacing mode", OFFSET(deint_mode), AV_OPT_TYPE_INT,   { .i64 = cudaVideoDeinterlaceMode_Weave    }, cudaVideoDeinterlaceMode_Weave, cudaVideoDeinterlaceMode_Adaptive, VD, "deint" },
+    { "weave",    "Weave deinterlacing (do nothing)",        0, AV_OPT_TYPE_CONST, { .i64 = cudaVideoDeinterlaceMode_Weave    }, 0, 0, VD, "deint" },
+    { "bob",      "Bob deinterlacing",                       0, AV_OPT_TYPE_CONST, { .i64 = cudaVideoDeinterlaceMode_Bob      }, 0, 0, VD, "deint" },
+    { "adaptive", "Adaptive deinterlacing",                  0, AV_OPT_TYPE_CONST, { .i64 = cudaVideoDeinterlaceMode_Adaptive }, 0, 0, VD, "deint" },
+    { "gpu",      "GPU to be used for decoding", OFFSET(cu_gpu), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, VD },
+    { NULL }
+};
+
 #define DEFINE_CUVID_CODEC(x, X) \
+    static const AVClass x##_cuvid_class = { \
+        .class_name = #x "_cuvid", \
+        .item_name = av_default_item_name, \
+        .option = options, \
+        .version = LIBAVUTIL_VERSION_INT, \
+    }; \
     AVHWAccel ff_##x##_cuvid_hwaccel = { \
         .name           = #x "_cuvid", \
         .type           = AVMEDIA_TYPE_VIDEO, \
@@ -668,10 +878,14 @@ error:
         .type           = AVMEDIA_TYPE_VIDEO, \
         .id             = AV_CODEC_ID_##X, \
         .priv_data_size = sizeof(CuvidContext), \
+        .priv_class     = &x##_cuvid_class, \
         .init           = cuvid_decode_init, \
         .close          = cuvid_decode_end, \
         .decode         = cuvid_decode_frame, \
-        .capabilities   = AV_CODEC_CAP_DELAY, \
+        .send_packet    = cuvid_decode_packet, \
+        .receive_frame  = cuvid_output_frame, \
+        .flush          = cuvid_flush, \
+        .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING, \
         .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_CUDA, \
                                                         AV_PIX_FMT_NV12, \
                                                         AV_PIX_FMT_NONE }, \
@@ -681,8 +895,28 @@ error:
 DEFINE_CUVID_CODEC(hevc, HEVC)
 #endif
 
+#if CONFIG_H263_CUVID_DECODER
+DEFINE_CUVID_CODEC(h263, H263)
+#endif
+
 #if CONFIG_H264_CUVID_DECODER
 DEFINE_CUVID_CODEC(h264, H264)
+#endif
+
+#if CONFIG_MJPEG_CUVID_DECODER
+DEFINE_CUVID_CODEC(mjpeg, MJPEG)
+#endif
+
+#if CONFIG_MPEG1_CUVID_DECODER
+DEFINE_CUVID_CODEC(mpeg1, MPEG1VIDEO)
+#endif
+
+#if CONFIG_MPEG2_CUVID_DECODER
+DEFINE_CUVID_CODEC(mpeg2, MPEG2VIDEO)
+#endif
+
+#if CONFIG_MPEG4_CUVID_DECODER
+DEFINE_CUVID_CODEC(mpeg4, MPEG4)
 #endif
 
 #if CONFIG_VP8_CUVID_DECODER

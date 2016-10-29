@@ -352,6 +352,7 @@ static const uint8_t multiple_desc_ul[]     = { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x
 
 /**
  * SMPTE RP210 http://www.smpte-ra.org/mdd/index.html
+ *             https://smpte-ra.org/sites/default/files/Labels.xml
  */
 static const MXFLocalTagPair mxf_local_tag_batch[] = {
     // preface set
@@ -671,7 +672,7 @@ static uint64_t mxf_utf16len(const char *utf8_str)
             size += 2;
         continue;
 invalid:
-        av_log(NULL, AV_LOG_ERROR, "Invaid UTF8 sequence in mxf_utf16len\n\n");
+        av_log(NULL, AV_LOG_ERROR, "Invalid UTF8 sequence in mxf_utf16len\n\n");
     }
     size += 1;
     return size;
@@ -1168,8 +1169,6 @@ static void mxf_write_generic_sound_common(AVFormatContext *s, AVStream *st, con
             av_log(s, AV_LOG_WARNING, "d10_channelcount shall be set to 4 or 8 : the output will not comply to MXF D-10 specs\n");
         avio_wb32(pb, mxf->channel_count);
     } else {
-        if (show_warnings && mxf->channel_count != -1 && s->oformat != &ff_mxf_opatom_muxer)
-            av_log(s, AV_LOG_ERROR, "-d10_channelcount requires MXF D-10 and will be ignored\n");
         avio_wb32(pb, st->codecpar->channels);
     }
 
@@ -1822,6 +1821,7 @@ static const struct {
     int profile;
     uint8_t interlaced;
 } mxf_h264_codec_uls[] = {
+    {{ 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0a,0x04,0x01,0x02,0x02,0x01,0x31,0x11,0x01 },      0,  66, 0 }, // AVC Baseline, Unconstrained Coding
     {{ 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0a,0x04,0x01,0x02,0x02,0x01,0x32,0x20,0x01 },      0, 110, 0 }, // AVC High 10 Intra
     {{ 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0a,0x04,0x01,0x02,0x02,0x01,0x32,0x21,0x01 }, 232960,   0, 1 }, // AVC Intra 50 1080i60
     {{ 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0a,0x04,0x01,0x02,0x02,0x01,0x32,0x21,0x02 }, 281088,   0, 1 }, // AVC Intra 50 1080i50
@@ -1860,11 +1860,11 @@ static int mxf_parse_h264_frame(AVFormatContext *s, AVStream *st,
             break;
         --buf;
         switch (state & 0x1f) {
-        case NAL_SPS:
+        case H264_NAL_SPS:
             st->codecpar->profile = buf[1];
             e->flags |= 0x40;
             break;
-        case NAL_PPS:
+        case H264_NAL_PPS:
             if (e->flags & 0x40) { // sequence header present
                 e->flags |= 0x80; // random access
                 extra_size = 0;
