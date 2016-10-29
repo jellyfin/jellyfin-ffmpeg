@@ -1,3 +1,9 @@
+ffmpeg (7:3.2-1) UNRELEASED; urgency=medium
+
+  * Import new major upstream release 3.2.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 29 Oct 2016 18:40:43 +0200
+
 ffmpeg (7:3.1.5-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 3.1.5.
