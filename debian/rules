@@ -87,7 +87,6 @@ CONFIG := --prefix=/usr \
 	--enable-libxvid \
 	--enable-libzmq \
 	--enable-libzvbi \
-	--enable-openal \
 	--enable-opengl \
 	--enable-sdl2 \
 	--enable-x11grab
@@ -103,8 +102,7 @@ CONFIG_extra = --enable-shared \
 	--enable-libopencore_amrnb \
 	--enable-libopencore_amrwb \
 	--enable-libtesseract \
-	--enable-libvo_amrwbenc \
-	--enable-netcdf
+	--enable-libvo_amrwbenc
 
 # The static libraries should not be built with PIC.
 CONFIG_static = --disable-pic \
@@ -131,6 +129,12 @@ ifeq ($(DEB_HOST_ARCH_OS),linux)
 		--enable-libiec61883
 endif
 
+# Some build-dependencies are not installable on some architectures.
+ifeq (,$(filter $(DEB_HOST_ARCH),powerpcspe))
+	CONFIG += --enable-openal
+	CONFIG_extra += --enable-netcdf
+endif
+
 # ffmpeg is involed in build-dependency cycles with opencv, x264 and chromaprint, so disable them in stage one.
 # Also disable frei0r, which build-depends on opencv.
 ifneq ($(filter stage1,$(DEB_BUILD_PROFILES)),)
@@ -139,10 +143,14 @@ ifneq ($(filter stage1,$(DEB_BUILD_PROFILES)),)
 		--disable-libopencv \
 		--disable-libx264
 else
+ifeq (,$(filter $(DEB_HOST_ARCH),powerpcspe))
 	CONFIG += --enable-frei0r \
-		--enable-chromaprint \
 		--enable-libopencv \
 		--enable-libx264
+endif
+ifeq (,$(filter $(DEB_HOST_ARCH),m68k powerpcspe))
+	CONFIG += --enable-chromaprint
+endif
 endif
 
 # Disable altivec optimizations on powerpc, because they are not always available on this architecture.
