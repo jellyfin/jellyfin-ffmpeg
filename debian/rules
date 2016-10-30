@@ -199,6 +199,7 @@ endif
 override_dh_auto_configure:
 	$(foreach flavor,$(FLAVORS),mkdir -p debian/$(flavor);)
 	$(foreach flavor,$(FLAVORS),set -e; echo " *** $(flavor) ***"; cd debian/$(flavor); ../../configure $(CONFIG) $(CONFIG_$(flavor)) || (cat config.log && exit 1); cd ../.. ;)
+	touch override_dh_auto_configure
 
 # Remove the subdirectories generated for the flavors.
 override_dh_auto_clean:
@@ -209,6 +210,7 @@ override_dh_auto_build-indep:
 	dh_auto_build -i --sourcedirectory=debian/standard -- apidoc
 	# Create the minified CSS files.
 	lessc debian/missing-sources/ffmpeg-web/src/less/style.less | cleancss > debian/standard/doc/style.min.css
+	rm override_dh_auto_configure
 
 override_dh_auto_build-arch:
 	# Copy built object files to avoid building them again for the extra flavor.
