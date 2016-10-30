@@ -1,8 +1,27 @@
-ffmpeg (7:3.2-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.2-1) unstable; urgency=medium
 
   * Import new major upstream release 3.2.
+  * Drop patches, included upstream:
+    - ffmpeg_opt-Suggest-to-use-file-.-if-a-protocol-was-not-fo.patch
+    - lavf-mp3enc-write-encoder-delay-padding-upon-closing.patch
+    - doc-fix-spelling-errors.patch
+    - faq-use-relative-links-to-own-documentation.patch
+    - tests-checkasm-pixblockdsp-Test-8-byte-aligned-positions.patch
+  * Switch to SDL 2.
+  * Update comments in debian/rules and drop cruft.
+  * Update debian/copyright.
+  * Add patches to fix autopkgtest failures and spelling errors:
+    - apng-use-side-data-to-pass-extradata-to-muxer.patch
+    - Revert-avformat-hls-Fix-missing-streams-in-some-case.patch
+    - doc-fix-spelling-errors.patch
+  * Update debian/tests_encdec_list.txt.
+  * Build static libraries without -fPIC as required by policy 10.2.
+  * Disable uninstallable BDs on m68k and powerpcspe:
+    - powerpcspe: openal, netcdf, frei0r, opencv, x264 and chromaprint.
+    - m68k: chromaprint
+  * Avoid needlessly re-running configure.
 
- -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 29 Oct 2016 18:40:43 +0200
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sun, 30 Oct 2016 10:15:11 +0100
 
 ffmpeg (7:3.1.5-1) unstable; urgency=medium
 
