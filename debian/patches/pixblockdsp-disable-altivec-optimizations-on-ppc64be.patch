@@ -1,0 +1,35 @@
+From: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+Date: Tue, 1 Nov 2016 00:00:49 +0100
+Subject: pixblockdsp: disable altivec optimizations on ppc64be
+
+The checkasm test fails, see trac ticket 5508.
+
+Also, the following tests fail due to this:
+fate-vsynth1-dnxhd-2k-hr-hq fate-vsynth1-dnxhd-edge1-hr
+fate-vsynth1-dnxhd-edge2-hr fate-vsynth1-dnxhd-edge3-hr
+fate-vsynth1-dnxhd-hr-sq-mov fate-vsynth1-dnxhd-hr-hq-mov
+fate-vsynth2-dnxhd-2k-hr-hq fate-vsynth2-dnxhd-edge1-hr
+fate-vsynth2-dnxhd-edge2-hr fate-vsynth2-dnxhd-edge3-hr
+fate-vsynth2-dnxhd-hr-sq-mov fate-vsynth2-dnxhd-hr-hq-mov
+fate-vsynth3-dnxhd-2k-hr-hq fate-vsynth3-dnxhd-edge1-hr
+fate-vsynth3-dnxhd-edge2-hr fate-vsynth3-dnxhd-edge3-hr
+fate-vsynth3-dnxhd-hr-sq-mov fate-vsynth3-dnxhd-hr-hq-mov
+
+Signed-off-by: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+---
+ libavcodec/ppc/pixblockdsp.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavcodec/ppc/pixblockdsp.c b/libavcodec/ppc/pixblockdsp.c
+index 84aa562..7822eb0 100644
+--- a/libavcodec/ppc/pixblockdsp.c
++++ b/libavcodec/ppc/pixblockdsp.c
+@@ -266,7 +266,7 @@ av_cold void ff_pixblockdsp_init_ppc(PixblockDSPContext *c,
+                                      AVCodecContext *avctx,
+                                      unsigned high_bit_depth)
+ {
+-#if HAVE_ALTIVEC
++#if HAVE_ALTIVEC && !(ARCH_PPC64 && HAVE_BIGENDIAN)
+     if (!PPC_ALTIVEC(av_get_cpu_flags()))
+         return;
+ 

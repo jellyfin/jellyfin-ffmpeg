@@ -1,3 +1,4 @@
 apng-use-side-data-to-pass-extradata-to-muxer.patch
 Revert-avformat-hls-Fix-missing-streams-in-some-case.patch
 doc-fix-spelling-errors.patch
+pixblockdsp-disable-altivec-optimizations-on-ppc64be.patch
