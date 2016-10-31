@@ -159,7 +159,8 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 	# Build an altivec flavor of the libraries on powerpc.
 	# This works around the problem that runtime cpu detection on powerpc currently does not work,
 	# because, if altivec is enabled, all files are build with '-maltivec' so that the compiler inserts altivec instructions, wherever it likes.
-	CONFIG_altivec = --enable-altivec \
+	CONFIG_altivec = --enable-shared \
+		--enable-altivec \
 		--disable-doc \
 		--disable-programs
 	CONFIG_altivec-extra = $(CONFIG_altivec) $(CONFIG_extra)
@@ -240,7 +241,7 @@ override_dh_auto_test-arch:
 # No tests for indep build.
 override_dh_auto_test-indep:
 
-override_dh_auto_install:
+override_dh_auto_install-arch:
 	dh_auto_install --sourcedirectory=debian/standard
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	install -d debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
@@ -253,6 +254,9 @@ ifeq ($(DEB_HOST_ARCH),powerpc)
 endif
 	# Use the static libraries from the --disable-pic build
 	install -m 644 debian/static/*/lib*.a debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)
+
+override_dh_auto_install-indep:
+	dh_auto_install --sourcedirectory=debian/standard
 
 override_dh_install:
 	dh_install $(addprefix -p,$(EXTRA_PKGS)) --sourcedir=debian/tmp/extra
