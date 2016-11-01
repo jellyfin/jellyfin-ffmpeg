@@ -242,12 +242,12 @@ override_dh_auto_test-arch:
 override_dh_auto_test-indep:
 
 override_dh_auto_install-arch:
-	dh_auto_install --sourcedirectory=debian/standard
+	dh_auto_install -a --sourcedirectory=debian/standard
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	install -d debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 	install -m 644 debian/altivec/*/*.so.* debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 endif
-	dh_auto_install --sourcedirectory=debian/extra --destdir=debian/tmp/extra
+	dh_auto_install -a --sourcedirectory=debian/extra --destdir=debian/tmp/extra
 ifeq ($(DEB_HOST_ARCH),powerpc)
 	install -d debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
 	install -m 644 debian/altivec-extra/*/*.so.* debian/tmp/extra/usr/lib/$(DEB_HOST_MULTIARCH)/altivec
@@ -256,7 +256,7 @@ endif
 	install -m 644 debian/static/*/lib*.a debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)
 
 override_dh_auto_install-indep:
-	dh_auto_install --sourcedirectory=debian/standard
+	dh_auto_install -i --sourcedirectory=debian/standard
 
 override_dh_install:
 	dh_install $(addprefix -p,$(EXTRA_PKGS)) --sourcedir=debian/tmp/extra
