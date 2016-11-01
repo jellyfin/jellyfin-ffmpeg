@@ -1,3 +1,11 @@
+ffmpeg (7:3.2-2) unstable; urgency=medium
+
+  * Fix FTBFS on powerpc and arch-independent build.
+  * Add patch to fix test failures on ppc64.
+    - pixblockdsp-disable-altivec-optimizations-on-ppc64be.patch
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 01 Nov 2016 00:42:03 +0100
+
 ffmpeg (7:3.2-1) unstable; urgency=medium
 
   * Import new major upstream release 3.2.
