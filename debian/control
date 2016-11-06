@@ -137,8 +137,14 @@ Build-Depends:
  libx264-dev [!powerpcspe] <!stage1>,
 # --enable-libx265
  libx265-dev (>= 1.8),
+# autodetected libxcb-shape
+ libxcb-shape0-dev,
 # autodetected libxcb-shm
  libxcb-shm0-dev,
+# autodetected libxcb-xfixes
+ libxcb-xfixes0-dev,
+# autodetected xlib
+ libxv-dev,
 # --enable-libxvid
  libxvidcore-dev,
 # autodetected: decoder 'mpeg_xvmc'; outdev 'xv'
@@ -155,7 +161,9 @@ Build-Depends:
 # HTML documentation
  texinfo,
 # assembler optimizations
- nasm
+ nasm,
+# autodetected zlib
+ zlib1g-dev
 
 Package: ffmpeg
 Architecture: any
