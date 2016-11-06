@@ -88,8 +88,7 @@ CONFIG := --prefix=/usr \
 	--enable-libzmq \
 	--enable-libzvbi \
 	--enable-opengl \
-	--enable-sdl2 \
-	--enable-x11grab
+	--enable-sdl2
 
 # The standard configuration only uses the shared CONFIG.
 CONFIG_standard = --enable-shared

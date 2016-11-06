@@ -137,8 +137,6 @@ Build-Depends:
  libx264-dev [!powerpcspe] <!stage1>,
 # --enable-libx265
  libx265-dev (>= 1.8),
-# --enable-x11grab
- libxext-dev,
 # --enable-libxvid
  libxvidcore-dev,
 # autodetected: decoder 'mpeg_xvmc'; outdev 'xv'
