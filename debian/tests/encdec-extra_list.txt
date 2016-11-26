@@ -1,13 +1,13 @@
-3g2; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-3gp; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-amr; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-asf; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-avi; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-caf; a=amr_nb:libopencore_amrnb
-ffm; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-matroska; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-mov; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-nut; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-w64; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-wav; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
-wtv; a=amr_nb:libopencore_amrnb a=amr_wb:libvo_amrwbenc
+3g2; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+3gp; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+amr; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+asf; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+avi; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+caf; a=amr_nb:libopencore_amrnb|1
+ffm; a=amr_nb:libopencore_amrnb|0 a=amr_wb:libvo_amrwbenc|0
+matroska; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+mov; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+nut; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+w64; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+wav; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
+wtv; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
