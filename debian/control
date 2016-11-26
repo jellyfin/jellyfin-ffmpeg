@@ -41,7 +41,7 @@ Build-Depends:
 # --enable-libcdio
  libcdio-paranoia-dev,
 # --enable-libchromaprint
- libchromaprint-dev [!m68k !powerpcspe] <!stage1>,
+ libchromaprint-dev [!sh4] <!stage1>,
 # autodetected 'crystalhd'
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
@@ -79,7 +79,7 @@ Build-Depends:
 # --enable-netcdf
  libnetcdf-dev [!powerpcspe],
 # --enable-openal
- libopenal-dev [!powerpcspe],
+ libopenal-dev,
 # --enable-omx
  libomxil-bellagio-dev,
 # --enable-libopencore_amrnb
@@ -87,7 +87,7 @@ Build-Depends:
 # --enable-libopencore_amrwb
  libopencore-amrwb-dev,
 # --enable-libopencv
- libopencv-imgproc-dev [!powerpcspe] <!stage1>,
+ libopencv-imgproc-dev <!stage1>,
 # --enable-libopenjpeg
  libopenjp2-7-dev,
 # --enable-libopus
