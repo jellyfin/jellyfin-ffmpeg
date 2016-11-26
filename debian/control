@@ -80,6 +80,8 @@ Build-Depends:
  libnetcdf-dev [!powerpcspe],
 # --enable-openal
  libopenal-dev [!powerpcspe],
+# --enable-omx
+ libomxil-bellagio-dev,
 # --enable-libopencore_amrnb
  libopencore-amrnb-dev,
 # --enable-libopencore_amrwb
