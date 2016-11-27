@@ -1,4 +1,4 @@
-ffmpeg (7:3.2.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.2.1-1) unstable; urgency=medium
 
   [ Balint Reczey ]
   * Call dh_auto_install with -a/-i for -arch and for -indep targets
@@ -9,6 +9,19 @@ ffmpeg (7:3.2.1-1) UNRELEASED; urgency=medium
   * Don't enable x11grab, which has been replaced with xcb.
   * Add build-dependency on autodetected libxcb-shm0-dev. (Closes: #843144)
   * Add explicit build-dependencies for autodetected features.
+  * Remove patches, fixed upstream.
+     - Revert-avformat-hls-Fix-missing-streams-in-some-case.patch
+     - apng-use-side-data-to-pass-extradata-to-muxer.patch
+     - doc-fix-spelling-errors.patch
+     - pixblockdsp-disable-altivec-optimizations-on-ppc64be.patch
+  * Disable libschroedinger entirely. (see #845037)
+  * Enable omx.
+  * Update build-dependencies for some ports.
+     - m68k: enable chromaprint
+     - powerpcspe: enable chromaprint, openal, opencv
+     - sh4: disable chromaprint
+  * Add streamcopy testing to the autopkgtest.
+  * Update encdec_list.txt.
 
  -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Sat, 26 Nov 2016 23:44:53 +0100
 
