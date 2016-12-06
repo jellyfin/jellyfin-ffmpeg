@@ -47,7 +47,6 @@ CONFIG := --prefix=/usr \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
 	--enable-gpl \
-	--disable-libtesseract \
 	--disable-stripping \
 	--enable-avresample \
 	--enable-avisynth \
