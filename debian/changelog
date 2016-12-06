@@ -1,3 +1,12 @@
+ffmpeg (7:3.2.2-1) unstable; urgency=medium
+
+  * Import new upstream bugfix release 3.2.2.
+  * Fix log messages in autopkgtest.
+  * Enable frei0r on powerpcspe.
+  * Drop --disable-tesseract.
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Tue, 06 Dec 2016 23:58:20 +0100
+
 ffmpeg (7:3.2.1-1) unstable; urgency=medium
 
   [ Balint Reczey ]
