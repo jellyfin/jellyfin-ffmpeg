@@ -313,7 +313,7 @@ for test in $tests; do
         else
             failures="${failures}${errmsg}\n"
         fi
-        echo -e "FAILED: $errmsg\n\n"
+        echo -e "\nFAILED: $errmsg\n\n"
         continue
     fi
     ret=0
@@ -326,7 +326,7 @@ for test in $tests; do
         else
             failures="${failures}${errmsg}\n"
         fi
-        echo -e "FAILED: $errmsg\n\n"
+        echo -e "\nFAILED: $errmsg\n\n"
         continue
     fi
     ret=0
@@ -339,9 +339,10 @@ for test in $tests; do
         else
             failures="${failures}${errmsg}\n"
         fi
-        echo -e "FAILED: $errmsg\n\n"
+        echo -e "\nFAILED: $errmsg\n\n"
         continue
     fi
+    streamcopy_orig="$streamcopy"
     if [ "$streamcopy" == "1" ]; then
         ret=0
         # test streamcopying the file
@@ -355,7 +356,7 @@ for test in $tests; do
             else
                 failures="${failures}${errmsg}\n"
             fi
-            echo -e "FAILED: $errmsg\n\n"
+            echo -e "\nFAILED: $errmsg\n\n"
             streamcopy=0
         fi
     fi
@@ -370,13 +371,15 @@ for test in $tests; do
             else
                 failures="${failures}${errmsg}\n"
             fi
-            echo -e "FAILED: $errmsg\n\n"
+            echo -e "\nFAILED: $errmsg\n\n"
             streamcopy=0
         fi
     fi
     works=$([ "$streamcopy" = "1" ] && echo works || echo fails)
-    echo -e "\nSUCCESS: correctly created file with format '$mux' and codec '$tenc'; streamcopying $works\n\n"
-    num_success=$((num_success + 1))
+    if [ "$streamcopy_orig" = "$streamcopy" ]; then
+        echo -e "\nSUCCESS: correctly created file with format '$mux' and codec '$tenc'; streamcopying $works\n\n"
+        num_success=$((num_success + 1))
+    fi
     if [ "$update" ]; then
         if [ "x$last_mux" != "x$mux" ]; then
             if [ "$last_mux" ]; then
