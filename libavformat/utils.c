@@ -2597,11 +2597,14 @@ static void update_stream_timings(AVFormatContext *ic)
             if (ic->nb_programs > 1) {
                 for (i = 0; i < ic->nb_programs; i++) {
                     p = ic->programs[i];
-                    if (p->start_time != AV_NOPTS_VALUE && p->end_time > p->start_time)
+                    if (p->start_time != AV_NOPTS_VALUE &&
+                        p->end_time > p->start_time &&
+                        p->end_time - (uint64_t)p->start_time <= INT64_MAX)
                         duration = FFMAX(duration, p->end_time - p->start_time);
                 }
-            } else
+            } else if (end_time >= start_time && end_time - (uint64_t)start_time <= INT64_MAX) {
                 duration = FFMAX(duration, end_time - start_time);
+            }
         }
     }
     if (duration != INT64_MIN && duration > 0 && ic->duration == AV_NOPTS_VALUE) {
@@ -3361,7 +3364,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
     int64_t max_subtitle_analyze_duration;
     int64_t probesize = ic->probesize;
     int eof_reached = 0;
-    int64_t *missing_streams = av_opt_ptr(ic->iformat->priv_class, ic->priv_data, "missing_streams");
+    int *missing_streams = av_opt_ptr(ic->iformat->priv_class, ic->priv_data, "missing_streams");
 
     flush_codecs = probesize > 0;
 

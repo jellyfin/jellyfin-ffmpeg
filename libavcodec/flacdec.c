@@ -268,7 +268,8 @@ static int decode_subframe_fixed(FLACContext *s, int32_t *decoded,
                                  int pred_order, int bps)
 {
     const int blocksize = s->blocksize;
-    int av_uninit(a), av_uninit(b), av_uninit(c), av_uninit(d), i;
+    unsigned av_uninit(a), av_uninit(b), av_uninit(c), av_uninit(d);
+    int i;
     int ret;
 
     /* warm up samples */
@@ -447,7 +448,7 @@ static inline int decode_subframe(FLACContext *s, int channel)
     if (wasted) {
         int i;
         for (i = 0; i < s->blocksize; i++)
-            decoded[i] <<= wasted;
+            decoded[i] = (unsigned)decoded[i] << wasted;
     }
 
     return 0;
