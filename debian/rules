@@ -142,10 +142,10 @@ ifneq ($(filter stage1,$(DEB_BUILD_PROFILES)),)
 		--disable-libopencv \
 		--disable-libx264
 else
-	CONFIG += --enable-libopencv
+	CONFIG += --enable-libopencv \
+		--enable-frei0r
 ifeq (,$(filter $(DEB_HOST_ARCH),powerpcspe))
-	CONFIG += --enable-frei0r \
-		--enable-libx264
+	CONFIG += --enable-libx264
 endif
 ifeq (,$(filter $(DEB_HOST_ARCH),sh4))
 	CONFIG += --enable-chromaprint

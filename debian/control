@@ -25,7 +25,7 @@ Build-Depends:
 # --enable-libflite
  flite1-dev,
 # --enable-frei0r
- frei0r-plugins-dev [!powerpcspe] <!stage1>,
+ frei0r-plugins-dev <!stage1>,
 # --enable-ladspa
  ladspa-sdk,
 # --enable-libass
