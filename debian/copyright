@@ -974,7 +974,7 @@ License: FSF
 
 Files: debian/*
 Copyright:
-  2014-2016, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
+  2014-2017, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
   2016, Sebastian Ramacher <sramacher@debian.org>
 License: LGPL-2.1+
 Comment:
