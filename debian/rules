@@ -141,14 +141,10 @@ ifneq ($(filter stage1,$(DEB_BUILD_PROFILES)),)
 		--disable-libopencv \
 		--disable-libx264
 else
-	CONFIG += --enable-libopencv \
-		--enable-frei0r
-ifeq (,$(filter $(DEB_HOST_ARCH),powerpcspe))
-	CONFIG += --enable-libx264
-endif
-ifeq (,$(filter $(DEB_HOST_ARCH),sh4))
-	CONFIG += --enable-chromaprint
-endif
+	CONFIG += --enable-chromaprint \
+		--enable-frei0r \
+		--enable-libopencv \
+		--enable-libx264
 endif
 
 # Disable altivec optimizations on powerpc, because they are not always available on this architecture.

@@ -41,7 +41,7 @@ Build-Depends:
 # --enable-libcdio
  libcdio-paranoia-dev,
 # --enable-libchromaprint
- libchromaprint-dev [!sh4] <!stage1>,
+ libchromaprint-dev <!stage1>,
 # autodetected 'crystalhd'
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
@@ -134,7 +134,7 @@ Build-Depends:
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
- libx264-dev [!powerpcspe] <!stage1>,
+ libx264-dev <!stage1>,
 # --enable-libx265
  libx265-dev (>= 1.8),
 # autodetected libxcb-shape
