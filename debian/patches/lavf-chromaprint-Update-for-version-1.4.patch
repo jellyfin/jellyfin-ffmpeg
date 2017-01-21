@@ -1,0 +1,25 @@
+From: "Georgi D. Sotirov" <gdsotirov@dir.bg>
+Date: Tue, 6 Dec 2016 21:07:59 +0100
+Subject: lavf/chromaprint: Update for version 1.4
+
+Fixes ticket #5997.
+---
+ libavformat/chromaprint.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/libavformat/chromaprint.c b/libavformat/chromaprint.c
+index 8c9a6c01..4da02bef 100644
+--- a/libavformat/chromaprint.c
++++ b/libavformat/chromaprint.c
+@@ -39,7 +39,11 @@ typedef struct ChromaprintMuxContext {
+     int silence_threshold;
+     int algorithm;
+     FingerprintFormat fp_format;
++#if CPR_VERSION_INT >= AV_VERSION_INT(1, 4, 0)
++    ChromaprintContext *ctx;
++#else
+     ChromaprintContext ctx;
++#endif
+ } ChromaprintMuxContext;
+ 
+ static void cleanup(ChromaprintMuxContext *cpr)
