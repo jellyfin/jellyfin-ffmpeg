@@ -28,9 +28,9 @@ FLAVORS = standard extra static
 #   --enable-libilbc                (see #675959 for the RFP bug)
 #   --enable-libkvazaar
 #   --enable-libmfx
+#   --enable-libmodplug             (see #849840: replaced with libopenmpt)
 #   --enable-libnut
 #   --enable-libopenh264
-#   --enable-libopenmpt
 #   --enable-libschroedinger        (see #845037: removal due to security issues)
 #   --enable-libutvideo
 #   --enable-libvidstab             (see #709193 for the RFP bug)
@@ -64,9 +64,9 @@ CONFIG := --prefix=/usr \
 	--enable-libfribidi \
 	--enable-libgme \
 	--enable-libgsm \
-	--enable-libmodplug \
 	--enable-libmp3lame \
 	--enable-libopenjpeg \
+	--enable-libopenmpt \
 	--enable-libopus \
 	--enable-libpulse \
 	--enable-librubberband \
