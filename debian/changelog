@@ -1,3 +1,14 @@
+ffmpeg (7:3.2.4-1) unstable; urgency=medium
+
+  * Import new upstream bugfix release 3.2.4.
+     - Fixes CVE-2016-9561, CVE-2017-5024 and CVE-2017-5025.
+  * Drop patches, included upstream:
+     - lavf-chromaprint-Update-for-version-1.4.patch
+     - libopenmpt-add-missing-avio_read-return-value-check.patch
+     - swscale-save-ebx-register-when-it-is-not-available.patch
+
+ -- Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>  Fri, 10 Feb 2017 22:24:45 +0100
+
 ffmpeg (7:3.2.2-2) unstable; urgency=medium
 
   * Cherry-pick patches from upstream:
