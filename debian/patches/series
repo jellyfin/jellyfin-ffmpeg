@@ -1,3 +1,0 @@
-lavf-chromaprint-Update-for-version-1.4.patch
-swscale-save-ebx-register-when-it-is-not-available.patch
-libopenmpt-add-missing-avio_read-return-value-check.patch
