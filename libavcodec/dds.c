@@ -39,7 +39,7 @@
 
 #define DDPF_FOURCC    (1 <<  2)
 #define DDPF_PALETTE   (1 <<  5)
-#define DDPF_NORMALMAP (1 << 31)
+#define DDPF_NORMALMAP (1U << 31)
 
 enum DDSPostProc {
     DDS_NONE = 0,
@@ -722,7 +722,7 @@ static int dds_decode(AVCodecContext *avctx, void *data,
                         (frame->data[1][2+i*4]<<0)+
                         (frame->data[1][1+i*4]<<8)+
                         (frame->data[1][0+i*4]<<16)+
-                        (frame->data[1][3+i*4]<<24)
+                        ((unsigned)frame->data[1][3+i*4]<<24)
                 );
 
             frame->palette_has_changed = 1;
