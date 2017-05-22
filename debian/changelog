@@ -1,3 +1,9 @@
+ffmpeg (7:3.2.5-1) UNRELEASED; urgency=medium
+
+  * New upstream release.
+
+ -- Sebastian Ramacher <sramacher@debian.org>  Mon, 22 May 2017 22:03:36 +0200
+
 ffmpeg (7:3.2.4-1) unstable; urgency=medium
 
   * Import new upstream bugfix release 3.2.4.
