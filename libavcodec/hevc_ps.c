@@ -169,6 +169,12 @@ int ff_hevc_decode_short_term_rps(GetBitContext *gb, AVCodecContext *avctx,
             }
         }
 
+        if (k >= FF_ARRAY_ELEMS(rps->used)) {
+            av_log(avctx, AV_LOG_ERROR,
+                   "Invalid num_delta_pocs: %d\n", k);
+            return AVERROR_INVALIDDATA;
+        }
+
         rps->num_delta_pocs    = k;
         rps->num_negative_pics = k0;
         // sort in increasing order (smallest first)
@@ -750,7 +756,7 @@ static int scaling_list_data(GetBitContext *gb, AVCodecContext *avctx, ScalingLi
                                   ff_hevc_diag_scan8x8_x[i];
 
                     scaling_list_delta_coef = get_se_golomb(gb);
-                    next_coef = (next_coef + scaling_list_delta_coef + 256) % 256;
+                    next_coef = (next_coef + 256U + scaling_list_delta_coef) % 256;
                     sl->sl[size_id][matrix_id][pos] = next_coef;
                 }
             }

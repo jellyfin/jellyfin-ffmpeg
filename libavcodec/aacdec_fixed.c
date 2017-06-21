@@ -187,7 +187,7 @@ static void subband_scale(int *dst, int *src, int scale, int offset, int len)
         round = 1 << (s-1);
         for (i=0; i<len; i++) {
             out = (int)((int64_t)((int64_t)src[i] * c + round) >> s);
-            dst[i] = out * ssign;
+            dst[i] = out * (unsigned)ssign;
         }
     }
 }
@@ -207,8 +207,12 @@ static void noise_scale(int *coefs, int scale, int band_energy, int len)
     c /= band_energy;
     s = 21 + nlz - (s >> 2);
 
-    if (s > 0) {
-        round = 1 << (s-1);
+    if (s > 31) {
+        for (i=0; i<len; i++) {
+            coefs[i] = 0;
+        }
+    } else if (s >= 0) {
+        round = s ? 1 << (s-1) : 0;
         for (i=0; i<len; i++) {
             out = (int)(((int64_t)coefs[i] * c) >> 32);
             coefs[i] = ((int)(out+round) >> s) * ssign;
@@ -366,7 +370,9 @@ static void apply_dependent_coupling_fixed(AACContext *ac,
                     shift = (gain-1024) >> 3;
                 }
 
-                if (shift < 0) {
+                if (shift < -31) {
+                    // Nothing to do
+                } else if (shift < 0) {
                     shift = -shift;
                     round = 1 << (shift - 1);
 
@@ -383,7 +389,7 @@ static void apply_dependent_coupling_fixed(AACContext *ac,
                         for (k = offsets[i]; k < offsets[i + 1]; k++) {
                             tmp = (int)(((int64_t)src[group * 128 + k] * c + \
                                         (int64_t)0x1000000000) >> 37);
-                            dest[group * 128 + k] += tmp << shift;
+                            dest[group * 128 + k] += tmp * (1 << shift);
                         }
                     }
                 }

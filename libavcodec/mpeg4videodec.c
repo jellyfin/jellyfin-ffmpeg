@@ -284,26 +284,26 @@ static int mpeg4_decode_sprite_trajectory(Mpeg4DecContext *ctx, GetBitContext *g
         ctx->sprite_shift[1]   = 0;
         break;
     case 2:
-        sprite_offset[0][0]    = (sprite_ref[0][0] * (1 << alpha + rho)) +
-                                 (-r * sprite_ref[0][0] + virtual_ref[0][0]) *
-                                 (-vop_ref[0][0]) +
-                                 (r * sprite_ref[0][1] - virtual_ref[0][1]) *
-                                 (-vop_ref[0][1]) + (1 << (alpha + rho - 1));
-        sprite_offset[0][1]    = (sprite_ref[0][1] * (1 << alpha + rho)) +
-                                 (-r * sprite_ref[0][1] + virtual_ref[0][1]) *
-                                 (-vop_ref[0][0]) +
-                                 (-r * sprite_ref[0][0] + virtual_ref[0][0]) *
-                                 (-vop_ref[0][1]) + (1 << (alpha + rho - 1));
-        sprite_offset[1][0]    = ((-r * sprite_ref[0][0] + virtual_ref[0][0]) *
-                                  (-2 * vop_ref[0][0] + 1) +
-                                  (r * sprite_ref[0][1] - virtual_ref[0][1]) *
-                                  (-2 * vop_ref[0][1] + 1) + 2 * w2 * r *
-                                  sprite_ref[0][0] - 16 * w2 + (1 << (alpha + rho + 1)));
-        sprite_offset[1][1]    = ((-r * sprite_ref[0][1] + virtual_ref[0][1]) *
-                                  (-2 * vop_ref[0][0] + 1) +
-                                  (-r * sprite_ref[0][0] + virtual_ref[0][0]) *
-                                  (-2 * vop_ref[0][1] + 1) + 2 * w2 * r *
-                                  sprite_ref[0][1] - 16 * w2 + (1 << (alpha + rho + 1)));
+        sprite_offset[0][0]    = ((int64_t)      sprite_ref[0][0] * (1 << alpha + rho)) +
+                                 ((int64_t) -r * sprite_ref[0][0] + virtual_ref[0][0]) *
+                                 ((int64_t)        -vop_ref[0][0]) +
+                                 ((int64_t)  r * sprite_ref[0][1] - virtual_ref[0][1]) *
+                                 ((int64_t)        -vop_ref[0][1]) + (1 << (alpha + rho - 1));
+        sprite_offset[0][1]    = ((int64_t)      sprite_ref[0][1] * (1 << alpha + rho)) +
+                                 ((int64_t) -r * sprite_ref[0][1] + virtual_ref[0][1]) *
+                                 ((int64_t)        -vop_ref[0][0]) +
+                                 ((int64_t) -r * sprite_ref[0][0] + virtual_ref[0][0]) *
+                                 ((int64_t)        -vop_ref[0][1]) + (1 << (alpha + rho - 1));
+        sprite_offset[1][0]    = (((int64_t)-r * sprite_ref[0][0] + virtual_ref[0][0]) *
+                                  ((int64_t)-2 *    vop_ref[0][0] + 1) +
+                                  ((int64_t) r * sprite_ref[0][1] - virtual_ref[0][1]) *
+                                  ((int64_t)-2 *    vop_ref[0][1] + 1) + 2 * w2 * r *
+                                   (int64_t)     sprite_ref[0][0] - 16 * w2 + (1 << (alpha + rho + 1)));
+        sprite_offset[1][1]    = (((int64_t)-r * sprite_ref[0][1] + virtual_ref[0][1]) *
+                                  ((int64_t)-2 *    vop_ref[0][0] + 1) +
+                                  ((int64_t)-r * sprite_ref[0][0] + virtual_ref[0][0]) *
+                                  ((int64_t)-2 *    vop_ref[0][1] + 1) + 2 * w2 * r *
+                                  (int64_t)      sprite_ref[0][1] - 16 * w2 + (1 << (alpha + rho + 1)));
         s->sprite_delta[0][0] = (-r * sprite_ref[0][0] + virtual_ref[0][0]);
         s->sprite_delta[0][1] = (+r * sprite_ref[0][1] - virtual_ref[0][1]);
         s->sprite_delta[1][0] = (-r * sprite_ref[0][1] + virtual_ref[0][1]);
@@ -361,14 +361,16 @@ static int mpeg4_decode_sprite_trajectory(Mpeg4DecContext *ctx, GetBitContext *g
         int shift_y = 16 - ctx->sprite_shift[0];
         int shift_c = 16 - ctx->sprite_shift[1];
 
-        if (shift_c < 0 || shift_y < 0 ||
-            FFABS(sprite_offset[0][0]) >= INT_MAX >> shift_y  ||
-            FFABS(sprite_offset[1][0]) >= INT_MAX >> shift_c  ||
-            FFABS(sprite_offset[0][1]) >= INT_MAX >> shift_y  ||
-            FFABS(sprite_offset[1][1]) >= INT_MAX >> shift_c
-        ) {
-            avpriv_request_sample(s->avctx, "Too large sprite shift or offset");
-            goto overflow;
+        for (i = 0; i < 2; i++) {
+            if (shift_c < 0 || shift_y < 0 ||
+                FFABS(  sprite_offset[0][i]) >= INT_MAX >> shift_y  ||
+                FFABS(  sprite_offset[1][i]) >= INT_MAX >> shift_c  ||
+                FFABS(s->sprite_delta[0][i]) >= INT_MAX >> shift_y  ||
+                FFABS(s->sprite_delta[1][i]) >= INT_MAX >> shift_y
+            ) {
+                avpriv_request_sample(s->avctx, "Too large sprite shift, delta or offset");
+                goto overflow;
+            }
         }
 
         for (i = 0; i < 2; i++) {
@@ -2340,7 +2342,7 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
     if (s->pict_type != AV_PICTURE_TYPE_B) {
         s->last_time_base = s->time_base;
         s->time_base     += time_incr;
-        s->time = s->time_base * s->avctx->framerate.num + time_increment;
+        s->time = s->time_base * (int64_t)s->avctx->framerate.num + time_increment;
         if (s->workaround_bugs & FF_BUG_UMP4) {
             if (s->time < s->last_non_b_time) {
                 /* header is not mpeg-4-compatible, broken encoder,
@@ -2352,7 +2354,7 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
         s->pp_time         = s->time - s->last_non_b_time;
         s->last_non_b_time = s->time;
     } else {
-        s->time    = (s->last_time_base + time_incr) * s->avctx->framerate.num + time_increment;
+        s->time    = (s->last_time_base + time_incr) * (int64_t)s->avctx->framerate.num + time_increment;
         s->pb_time = s->pp_time - (s->last_non_b_time - s->time);
         if (s->pp_time <= s->pb_time ||
             s->pp_time <= s->pp_time - s->pb_time ||
@@ -2566,6 +2568,7 @@ int ff_mpeg4_decode_picture_header(Mpeg4DecContext *ctx, GetBitContext *gb)
     MpegEncContext *s = &ctx->m;
     unsigned startcode, v;
     int ret;
+    int vol = 0;
 
     /* search next start code */
     align_get_bits(gb);
@@ -2654,6 +2657,11 @@ int ff_mpeg4_decode_picture_header(Mpeg4DecContext *ctx, GetBitContext *gb)
         }
 
         if (startcode >= 0x120 && startcode <= 0x12F) {
+            if (vol) {
+                av_log(s->avctx, AV_LOG_ERROR, "Multiple VOL headers");
+                return AVERROR_INVALIDDATA;
+            }
+            vol++;
             if ((ret = decode_vol_header(ctx, gb)) < 0)
                 return ret;
         } else if (startcode == USER_DATA_STARTCODE) {
