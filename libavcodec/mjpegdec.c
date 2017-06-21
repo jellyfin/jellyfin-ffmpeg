@@ -734,7 +734,7 @@ static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
                                  int component, int dc_index,
                                  int16_t *quant_matrix, int Al)
 {
-    int val;
+    unsigned val;
     s->bdsp.clear_block(block);
     val = mjpeg_decode_dc(s, dc_index);
     if (val == 0xfffff) {
@@ -1473,6 +1473,15 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
         av_log(s->avctx, AV_LOG_WARNING,
                 "Can not process SOS before SOF, skipping\n");
         return -1;
+    }
+
+    if (reference) {
+        if (reference->width  != s->picture_ptr->width  ||
+            reference->height != s->picture_ptr->height ||
+            reference->format != s->picture_ptr->format) {
+            av_log(s->avctx, AV_LOG_ERROR, "Reference mismatching\n");
+            return AVERROR_INVALIDDATA;
+        }
     }
 
     av_assert0(s->picture_ptr->data[0]);

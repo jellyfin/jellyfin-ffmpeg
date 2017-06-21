@@ -267,11 +267,11 @@ static int decode_segment(TAKDecContext *s, int8_t mode, int32_t *decoded, int l
     code = xcodes[mode - 1];
 
     for (i = 0; i < len; i++) {
-        int x = get_bits_long(gb, code.init);
+        unsigned x = get_bits_long(gb, code.init);
         if (x >= code.escape && get_bits1(gb)) {
             x |= 1 << code.init;
             if (x >= code.aescape) {
-                int scale = get_unary(gb, 1, 9);
+                unsigned scale = get_unary(gb, 1, 9);
                 if (scale == 9) {
                     int scale_bits = get_bits(gb, 3);
                     if (scale_bits > 0) {
@@ -862,7 +862,7 @@ static int tak_decode_frame(AVCodecContext *avctx, void *data,
 
             if (s->sample_shift[chan] > 0)
                 for (i = 0; i < s->nb_samples; i++)
-                    decoded[i] <<= s->sample_shift[chan];
+                    decoded[i] *= 1U << s->sample_shift[chan];
         }
     }
 
@@ -904,7 +904,7 @@ static int tak_decode_frame(AVCodecContext *avctx, void *data,
         for (chan = 0; chan < avctx->channels; chan++) {
             int32_t *samples = (int32_t *)frame->extended_data[chan];
             for (i = 0; i < s->nb_samples; i++)
-                samples[i] <<= 8;
+                samples[i] *= 1U << 8;
         }
         break;
     }
