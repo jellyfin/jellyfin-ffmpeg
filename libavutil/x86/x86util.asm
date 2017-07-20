@@ -29,6 +29,21 @@
 
 %include "libavutil/x86/x86inc.asm"
 
+; expands to [base],...,[base+7*stride]
+%define PASS8ROWS(base, base3, stride, stride3) \
+    [base],           [base  + stride],   [base  + 2*stride], [base3], \
+    [base3 + stride], [base3 + 2*stride], [base3 + stride3],  [base3 + stride*4]
+
+; Interleave low src0 with low src1 and store in src0,
+; interleave high src0 with high src1 and store in src1.
+; %1 - types
+; %2 - index of the register with src0
+; %3 - index of the register with src1
+; %4 - index of the register for intermediate results
+; example for %1 - wd: input: src0: x0 x1 x2 x3 z0 z1 z2 z3
+;                             src1: y0 y1 y2 y3 q0 q1 q2 q3
+;                     output: src0: x0 y0 x1 y1 x2 y2 x3 y3
+;                             src1: z0 q0 z1 q1 z2 q2 z3 q3
 %macro SBUTTERFLY 4
 %ifidn %1, dqqq
     vperm2i128  m%4, m%2, m%3, q0301
@@ -258,6 +273,21 @@
 
     SWAP       %10, %13
     SWAP       %12, %15
+%endmacro
+
+%macro TRANSPOSE_8X8B 8
+    %if mmsize == 8
+        %error "This macro does not support mmsize == 8"
+    %endif
+    punpcklbw m%1, m%2
+    punpcklbw m%3, m%4
+    punpcklbw m%5, m%6
+    punpcklbw m%7, m%8
+    TRANSPOSE4x4W %1, %3, %5, %7, %2
+    MOVHL m%2, m%1
+    MOVHL m%4, m%3
+    MOVHL m%6, m%5
+    MOVHL m%8, m%7
 %endmacro
 
 ; PABSW macro assumes %1 != %2, while ABS1/2 macros work in-place
@@ -803,7 +833,9 @@
 %if cpuflag(avx)
     vbroadcastss %1, %2
 %else ; sse
+%ifnidn %1, %2
     movss        %1, %2
+%endif
     shufps       %1, %1, 0
 %endif
 %endmacro
@@ -869,5 +901,17 @@
     psrldq  %1, %2
 %else
     psrlq   %1, 8*(%2)
+%endif
+%endmacro
+
+%macro MOVHL 2 ; dst, src
+%ifidn %1, %2
+    punpckhqdq %1, %2
+%elif cpuflag(avx)
+    punpckhqdq %1, %2, %2
+%elif cpuflag(sse4)
+    pshufd     %1, %2, q3232 ; pshufd is slow on some older CPUs, so only use it on more modern ones
+%else
+    movhlps    %1, %2        ; may cause an int/float domain transition and has a dependency on dst
 %endif
 %endmacro

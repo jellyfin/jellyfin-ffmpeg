@@ -121,6 +121,24 @@ void av_image_copy(uint8_t *dst_data[4], int dst_linesizes[4],
                    enum AVPixelFormat pix_fmt, int width, int height);
 
 /**
+ * Copy image data located in uncacheable (e.g. GPU mapped) memory. Where
+ * available, this function will use special functionality for reading from such
+ * memory, which may result in greatly improved performance compared to plain
+ * av_image_copy().
+ *
+ * The data pointers and the linesizes must be aligned to the maximum required
+ * by the CPU architecture.
+ *
+ * @note The linesize parameters have the type ptrdiff_t here, while they are
+ *       int for av_image_copy().
+ * @note On x86, the linesizes currently need to be aligned to the cacheline
+ *       size (i.e. 64) to get improved performance.
+ */
+void av_image_copy_uc_from(uint8_t *dst_data[4],       const ptrdiff_t dst_linesizes[4],
+                           const uint8_t *src_data[4], const ptrdiff_t src_linesizes[4],
+                           enum AVPixelFormat pix_fmt, int width, int height);
+
+/**
  * Setup the data pointers and linesizes based on the specified image
  * parameters and the provided array.
  *
@@ -193,7 +211,8 @@ int av_image_check_size(unsigned int w, unsigned int h, int log_offset, void *lo
 
 /**
  * Check if the given dimension of an image is valid, meaning that all
- * bytes of the image can be addressed with a signed int.
+ * bytes of a plane of an image with the specified pix_fmt can be addressed
+ * with a signed int.
  *
  * @param w the width of the picture
  * @param h the height of the picture

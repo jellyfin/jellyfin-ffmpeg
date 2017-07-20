@@ -13,8 +13,9 @@ You can disable all the demuxers using the configure option
 the option @code{--enable-demuxer=@var{DEMUXER}}, or disable it
 with the option @code{--disable-demuxer=@var{DEMUXER}}.
 
-The option @code{-formats} of the ff* tools will display the list of
-enabled demuxers.
+The option @code{-demuxers} of the ff* tools will display the list of
+enabled demuxers. Use @code{-formats} to view a combined list of
+enabled demuxers and muxers.
 
 The description of some of the currently available demuxers follows.
 
@@ -243,11 +244,17 @@ file subdir/file-2.wav
 @end example
 @end itemize
 
-@section flv
+@section flv, live_flv
 
 Adobe Flash Video Format demuxer.
 
-This demuxer is used to demux FLV files and RTMP network streams.
+This demuxer is used to demux FLV files and RTMP network streams. In case of live network streams, if you force format, you may use live_flv option instead of flv to survive timestamp discontinuities.
+
+@example
+ffmpeg -f flv -i myfile.flv ...
+ffmpeg -f live_flv -i rtmp://<any.server>/anything/key ....
+@end example
+
 
 @table @option
 @item -flv_metadata @var{bool}

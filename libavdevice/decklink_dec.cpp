@@ -208,6 +208,7 @@ decklink_input_callback::decklink_input_callback(AVFormatContext *_avctx) : m_re
     avctx = _avctx;
     decklink_cctx       *cctx = (struct decklink_cctx *)avctx->priv_data;
     ctx = (struct decklink_ctx *)cctx->ctx;
+    no_video = 0;
     initial_audio_pts = initial_video_pts = AV_NOPTS_VALUE;
     pthread_mutex_init(&m_mutex, NULL);
 }
@@ -515,6 +516,7 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
     strcpy (fname, avctx->filename);
     tmp=strchr (fname, '@');
     if (tmp != NULL) {
+        av_log(avctx, AV_LOG_WARNING, "The @mode syntax is deprecated and will be removed. Please use the -format_code option.\n");
         mode_num = atoi (tmp+1);
         *tmp = 0;
     }
@@ -538,9 +540,10 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
         goto error;
     }
 
-    if (mode_num > 0) {
+    if (mode_num > 0 || cctx->format_code) {
         if (ff_decklink_set_format(avctx, DIRECTION_IN, mode_num) < 0) {
-            av_log(avctx, AV_LOG_ERROR, "Could not set mode %d for %s\n", mode_num, fname);
+            av_log(avctx, AV_LOG_ERROR, "Could not set mode number %d or format code %s for %s\n",
+                mode_num, (cctx->format_code) ? cctx->format_code : "(unset)", fname);
             ret = AVERROR(EIO);
             goto error;
         }

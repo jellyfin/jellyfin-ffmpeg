@@ -3,7 +3,7 @@
  * Copyright (c) 2006 Industrial Light & Magic, a division of Lucas Digital Ltd. LLC
  * Copyright (c) 2009 Jimmy Christensen
  *
- * B44/B44A, Tile added by Jokyo Images support by CNC - French National Center for Cinema
+ * B44/B44A, Tile, UINT32 added by Jokyo Images support by CNC - French National Center for Cinema
  *
  * This file is part of FFmpeg.
  *
@@ -59,6 +59,8 @@ enum ExrCompr {
     EXR_PXR24,
     EXR_B44,
     EXR_B44A,
+    EXR_DWA,
+    EXR_DWB,
     EXR_UNKN,
 };
 
@@ -882,6 +884,22 @@ static int pxr24_uncompress(EXRContext *s, const uint8_t *src,
                     bytestream_put_le16(&out, pixel);
                 }
                 break;
+            case EXR_UINT:
+                ptr[0] = in;
+                ptr[1] = ptr[0] + s->xdelta;
+                ptr[2] = ptr[1] + s->xdelta;
+                ptr[3] = ptr[2] + s->xdelta;
+                in     = ptr[3] + s->xdelta;
+
+                for (j = 0; j < s->xdelta; ++j) {
+                    uint32_t diff = (*(ptr[0]++) << 24) |
+                    (*(ptr[1]++) << 16) |
+                    (*(ptr[2]++) << 8 ) |
+                    (*(ptr[3]++));
+                    pixel += diff;
+                    bytestream_put_le32(&out, pixel);
+                }
+                break;
             default:
                 return AVERROR_INVALIDDATA;
             }
@@ -1218,7 +1236,7 @@ static int decode_block(AVCodecContext *avctx, void *tdata,
                         *ptr_x++ = exr_flt2uint(bytestream_get_le32(&a));
                 }
             }
-        } else {
+        } else if (s->pixel_type == EXR_HALF) {
             // 16-bit
             for (x = 0; x < td->xsize; x++) {
                 int c;
@@ -1228,6 +1246,15 @@ static int decode_block(AVCodecContext *avctx, void *tdata,
 
                 if (channel_buffer[3])
                     *ptr_x++ = exr_halflt2uint(bytestream_get_le16(&a));
+            }
+        } else if (s->pixel_type == EXR_UINT) {
+            for (x = 0; x < td->xsize; x++) {
+                for (c = 0; c < rgb_channel_count; c++) {
+                    *ptr_x++ = bytestream_get_le32(&rgb[c]) >> 16;
+                }
+
+                if (channel_buffer[3])
+                    *ptr_x++ = bytestream_get_le32(&a) >> 16;
             }
         }
 
@@ -1285,8 +1312,9 @@ static int check_header_variable(EXRContext *s,
     return var_size;
 }
 
-static int decode_header(EXRContext *s)
+static int decode_header(EXRContext *s, AVFrame *frame)
 {
+    AVDictionary *metadata = NULL;
     int magic_number, version, i, flags, sar = 0;
     int layer_match = 0;
 
@@ -1429,14 +1457,14 @@ static int decode_header(EXRContext *s)
                 }
 
                 if (channel_index >= 0 && s->channel_offsets[channel_index] == -1) { /* channel has not been previously assigned */
-                        if (s->pixel_type != EXR_UNKNOWN &&
-                            s->pixel_type != current_pixel_type) {
-                            av_log(s->avctx, AV_LOG_ERROR,
-                                   "RGB channels not of the same depth.\n");
-                            return AVERROR_INVALIDDATA;
-                        }
-                        s->pixel_type                     = current_pixel_type;
-                        s->channel_offsets[channel_index] = s->current_channel_offset;
+                    if (s->pixel_type != EXR_UNKNOWN &&
+                        s->pixel_type != current_pixel_type) {
+                        av_log(s->avctx, AV_LOG_ERROR,
+                               "RGB channels not of the same depth.\n");
+                        return AVERROR_INVALIDDATA;
+                    }
+                    s->pixel_type                     = current_pixel_type;
+                    s->channel_offsets[channel_index] = s->current_channel_offset;
                 }
 
                 s->channels = av_realloc(s->channels,
@@ -1559,6 +1587,14 @@ static int decode_header(EXRContext *s)
             }
 
             continue;
+        } else if ((var_size = check_header_variable(s, "writer",
+                                                     "string", 1)) >= 0) {
+            uint8_t key[256] = { 0 };
+
+            bytestream2_get_buffer(&s->gb, key, FFMIN(sizeof(key) - 1, var_size));
+            av_dict_set(&metadata, "writer", key, 0);
+
+            continue;
         }
 
         // Check if there are enough bytes for a header
@@ -1594,6 +1630,8 @@ static int decode_header(EXRContext *s)
         return AVERROR_INVALIDDATA;
     }
 
+    av_frame_set_metadata(frame, metadata);
+
     // aaand we are done
     bytestream2_skip(&s->gb, 1);
     return 0;
@@ -1609,16 +1647,20 @@ static int decode_frame(AVCodecContext *avctx, void *data,
 
     int y, ret;
     int out_line_size;
-    int nb_blocks;/* nb scanline or nb tile */
+    int nb_blocks;   /* nb scanline or nb tile */
+    uint64_t *table; /* scanline offset table */
+    uint8_t *marker; /* used to recreate invalid scanline offset table */
+    uint8_t *head;
 
     bytestream2_init(&s->gb, avpkt->data, avpkt->size);
 
-    if ((ret = decode_header(s)) < 0)
+    if ((ret = decode_header(s, picture)) < 0)
         return ret;
 
     switch (s->pixel_type) {
     case EXR_FLOAT:
     case EXR_HALF:
+    case EXR_UINT:
         if (s->channel_offsets[3] >= 0) {
             if (!s->is_luma) {
                 avctx->pix_fmt = AV_PIX_FMT_RGBA64;
@@ -1633,9 +1675,6 @@ static int decode_frame(AVCodecContext *avctx, void *data,
             }
         }
         break;
-    case EXR_UINT:
-        avpriv_request_sample(avctx, "32-bit unsigned int");
-        return AVERROR_PATCHWELCOME;
     default:
         av_log(avctx, AV_LOG_ERROR, "Missing channel list.\n");
         return AVERROR_INVALIDDATA;
@@ -1697,6 +1736,20 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     if (bytestream2_get_bytes_left(&s->gb) < nb_blocks * 8)
         return AVERROR_INVALIDDATA;
 
+    // check offset table and recreate it if need
+    if (!s->is_tile && bytestream2_peek_le64(&s->gb) == 0) {
+        head = avpkt->data;
+        table = (uint64_t *)s->gb.buffer;
+        marker = head + bytestream2_tell(&s->gb) + nb_blocks * 8;
+
+        av_log(s->avctx, AV_LOG_DEBUG, "recreating invalid scanline offset table\n");
+
+        for (y = 0; y < nb_blocks; y++) {
+            table[y] = marker - head;
+            marker += ((uint32_t *)marker)[1] + 8;
+        }
+    }
+
     // save pointer we are going to use in decode_block
     s->buf      = avpkt->data;
     s->buf_size = avpkt->size;
@@ -1713,6 +1766,7 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     avctx->execute2(avctx, decode_block, s->thread_data, NULL, nb_blocks);
 
     // Zero out the end if ymax+1 is not h
+    ptr = picture->data[0] + ((s->ymax+1) * picture->linesize[0]);
     for (y = s->ymax + 1; y < avctx->height; y++) {
         memset(ptr, 0, out_line_size);
         ptr += picture->linesize[0];

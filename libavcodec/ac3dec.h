@@ -161,7 +161,7 @@ typedef struct AC3DecodeContext {
     int fbw_channels;                           ///< number of full-bandwidth channels
     int channels;                               ///< number of total channels
     int lfe_ch;                                 ///< index of LFE channel
-    SHORTFLOAT downmix_coeffs[AC3_MAX_CHANNELS][2];  ///< stereo downmix coefficients
+    SHORTFLOAT *downmix_coeffs[2];              ///< stereo downmix coefficients
     int downmixed;                              ///< indicates if coeffs are currently downmixed
     int output_mode;                            ///< output channel configuration
     int out_channels;                           ///< number of output channels
@@ -177,6 +177,10 @@ typedef struct AC3DecodeContext {
 ///@name Bandwidth
     int start_freq[AC3_MAX_CHANNELS];       ///< start frequency bin                    (strtmant)
     int end_freq[AC3_MAX_CHANNELS];         ///< end frequency bin                      (endmant)
+///@}
+
+///@name Consistent noise generation
+    int consistent_noise_generation;        ///< seed noise generation with AC-3 frame on decode
 ///@}
 
 ///@name Rematrixing

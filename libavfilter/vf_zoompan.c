@@ -149,7 +149,7 @@ static int output_single_frame(AVFilterContext *ctx, AVFrame *in, double *var_va
     var_values[VAR_PDURATION] = s->prev_nb_frames;
     var_values[VAR_TIME] = pts * av_q2d(outlink->time_base);
     var_values[VAR_FRAME] = i;
-    var_values[VAR_ON] = outlink->frame_count + 1;
+    var_values[VAR_ON] = outlink->frame_count_in + 1;
     if ((ret = av_expr_parse_and_eval(zoom, s->zoom_expr_str,
                                       var_names, var_values,
                                       NULL, NULL, NULL, NULL, NULL, 0, ctx)) < 0)
@@ -191,7 +191,7 @@ static int output_single_frame(AVFilterContext *ctx, AVFrame *in, double *var_va
     s->sws = sws_alloc_context();
     if (!s->sws) {
         ret = AVERROR(ENOMEM);
-        return ret;
+        goto error;
     }
 
     for (k = 0; in->data[k]; k++)
@@ -206,7 +206,7 @@ static int output_single_frame(AVFilterContext *ctx, AVFrame *in, double *var_va
     av_opt_set_int(s->sws, "sws_flags", SWS_BICUBIC, 0);
 
     if ((ret = sws_init_context(s->sws, NULL, NULL)) < 0)
-        return ret;
+        goto error;
 
     sws_scale(s->sws, (const uint8_t *const *)&input, in->linesize, 0, h, out->data, out->linesize);
 
@@ -217,6 +217,9 @@ static int output_single_frame(AVFilterContext *ctx, AVFrame *in, double *var_va
     sws_freeContext(s->sws);
     s->sws = NULL;
     s->current_frame++;
+    return ret;
+error:
+    av_frame_free(&out);
     return ret;
 }
 
@@ -235,8 +238,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     s->var_values[VAR_IN_H]  = s->var_values[VAR_IH] = in->height;
     s->var_values[VAR_OUT_W] = s->var_values[VAR_OW] = s->w;
     s->var_values[VAR_OUT_H] = s->var_values[VAR_OH] = s->h;
-    s->var_values[VAR_IN]    = inlink->frame_count + 1;
-    s->var_values[VAR_ON]    = outlink->frame_count + 1;
+    s->var_values[VAR_IN]    = inlink->frame_count_out + 1;
+    s->var_values[VAR_ON]    = outlink->frame_count_in + 1;
     s->var_values[VAR_PX]    = s->x;
     s->var_values[VAR_PY]    = s->y;
     s->var_values[VAR_X]     = 0;

@@ -86,17 +86,15 @@ static int url_bio_destroy(BIO *b)
 }
 
 #if OPENSSL_VERSION_NUMBER >= 0x1010000fL
-#define GET_BIO_DATA(x) BIO_get_data(x);
+#define GET_BIO_DATA(x) BIO_get_data(x)
 #else
-#define GET_BIO_DATA(x) (x)->ptr;
+#define GET_BIO_DATA(x) (x)->ptr
 #endif
 
 static int url_bio_bread(BIO *b, char *buf, int len)
 {
-    URLContext *h;
-    int ret;
-    h = GET_BIO_DATA(b);
-    ret = ffurl_read(h, buf, len);
+    URLContext *h = GET_BIO_DATA(b);
+    int ret = ffurl_read(h, buf, len);
     if (ret >= 0)
         return ret;
     BIO_clear_retry_flags(b);
@@ -107,10 +105,8 @@ static int url_bio_bread(BIO *b, char *buf, int len)
 
 static int url_bio_bwrite(BIO *b, const char *buf, int len)
 {
-    URLContext *h;
-    int ret;
-    h = GET_BIO_DATA(b);
-    ret = ffurl_write(h, buf, len);
+    URLContext *h = GET_BIO_DATA(b);
+    int ret = ffurl_write(h, buf, len);
     if (ret >= 0)
         return ret;
     BIO_clear_retry_flags(b);
@@ -233,12 +229,17 @@ static int tls_open(URLContext *h, const char *uri, int flags, AVDictionary **op
     if ((ret = ff_tls_open_underlying(c, h, uri, options)) < 0)
         goto fail;
 
-    p->ctx = SSL_CTX_new(c->listen ? TLSv1_server_method() : TLSv1_client_method());
+    // We want to support all versions of TLS >= 1.0, but not the deprecated
+    // and insecure SSLv2 and SSLv3.  Despite the name, SSLv23_*_method()
+    // enables support for all versions of SSL and TLS, and we then disable
+    // support for the old protocols immediately after creating the context.
+    p->ctx = SSL_CTX_new(c->listen ? SSLv23_server_method() : SSLv23_client_method());
     if (!p->ctx) {
         av_log(h, AV_LOG_ERROR, "%s\n", ERR_error_string(ERR_get_error(), NULL));
         ret = AVERROR(EIO);
         goto fail;
     }
+    SSL_CTX_set_options(p->ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
     if (c->ca_file) {
         if (!SSL_CTX_load_verify_locations(p->ctx, c->ca_file, NULL))
             av_log(h, AV_LOG_ERROR, "SSL_CTX_load_verify_locations %s\n", ERR_error_string(ERR_get_error(), NULL));
@@ -320,6 +321,12 @@ static int tls_write(URLContext *h, const uint8_t *buf, int size)
     return print_tls_error(h, ret);
 }
 
+static int tls_get_file_handle(URLContext *h)
+{
+    TLSContext *c = h->priv_data;
+    return ffurl_get_file_handle(c->tls_shared.tcp);
+}
+
 static const AVOption options[] = {
     TLS_COMMON_OPTIONS(TLSContext, tls_shared),
     { NULL }
@@ -338,6 +345,7 @@ const URLProtocol ff_tls_openssl_protocol = {
     .url_read       = tls_read,
     .url_write      = tls_write,
     .url_close      = tls_close,
+    .url_get_file_handle = tls_get_file_handle,
     .priv_data_size = sizeof(TLSContext),
     .flags          = URL_PROTOCOL_FLAG_NETWORK,
     .priv_data_class = &tls_class,

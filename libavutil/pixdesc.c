@@ -560,6 +560,48 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
         },
         .flags = AV_PIX_FMT_FLAG_RGB,
     },
+    [AV_PIX_FMT_GRAY10BE] = {
+        .name = "gray10be",
+        .nb_components = 1,
+        .log2_chroma_w = 0,
+        .log2_chroma_h = 0,
+        .comp = {
+            { 0, 2, 0, 0, 10, 1, 9, 1 },       /* Y */
+        },
+        .flags = AV_PIX_FMT_FLAG_BE,
+        .alias = "y10be",
+    },
+    [AV_PIX_FMT_GRAY10LE] = {
+        .name = "gray10le",
+        .nb_components = 1,
+        .log2_chroma_w = 0,
+        .log2_chroma_h = 0,
+        .comp = {
+            { 0, 2, 0, 0, 10, 1, 9, 1 },       /* Y */
+        },
+        .alias = "y10le",
+    },
+    [AV_PIX_FMT_GRAY12BE] = {
+        .name = "gray12be",
+        .nb_components = 1,
+        .log2_chroma_w = 0,
+        .log2_chroma_h = 0,
+        .comp = {
+            { 0, 2, 0, 0, 12, 1, 11, 1 },       /* Y */
+        },
+        .flags = AV_PIX_FMT_FLAG_BE,
+        .alias = "y12be",
+    },
+    [AV_PIX_FMT_GRAY12LE] = {
+        .name = "gray12le",
+        .nb_components = 1,
+        .log2_chroma_w = 0,
+        .log2_chroma_h = 0,
+        .comp = {
+            { 0, 2, 0, 0, 12, 1, 11, 1 },       /* Y */
+        },
+        .alias = "y12le",
+    },
     [AV_PIX_FMT_GRAY16BE] = {
         .name = "gray16be",
         .nb_components = 1,
@@ -1873,62 +1915,62 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
     [AV_PIX_FMT_BAYER_BGGR8] = {
         .name = "bayer_bggr8",
         BAYER8_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_BGGR16LE] = {
         .name = "bayer_bggr16le",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_BGGR16BE] = {
         .name = "bayer_bggr16be",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_RGGB8] = {
         .name = "bayer_rggb8",
         BAYER8_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_RGGB16LE] = {
         .name = "bayer_rggb16le",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_RGGB16BE] = {
         .name = "bayer_rggb16be",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_GBRG8] = {
         .name = "bayer_gbrg8",
         BAYER8_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_GBRG16LE] = {
         .name = "bayer_gbrg16le",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_GBRG16BE] = {
         .name = "bayer_gbrg16be",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_GRBG8] = {
         .name = "bayer_grbg8",
         BAYER8_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_GRBG16LE] = {
         .name = "bayer_grbg16le",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_BAYER_GRBG16BE] = {
         .name = "bayer_grbg16be",
         BAYER16_DESC_COMMON
-        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB,
+        .flags = AV_PIX_FMT_FLAG_BE | AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_BAYER,
     },
     [AV_PIX_FMT_NV16] = {
         .name = "nv16",
@@ -2036,6 +2078,30 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
         },
         .flags = AV_PIX_FMT_FLAG_PLANAR | AV_PIX_FMT_FLAG_BE,
     },
+    [AV_PIX_FMT_P016LE] = {
+        .name = "p016le",
+        .nb_components = 3,
+        .log2_chroma_w = 1,
+        .log2_chroma_h = 1,
+        .comp = {
+            { 0, 2, 0, 0, 16, 1, 15, 1 },       /* Y */
+            { 1, 4, 0, 0, 16, 3, 15, 1 },       /* U */
+            { 1, 4, 2, 0, 16, 3, 15, 3 },       /* V */
+        },
+        .flags = AV_PIX_FMT_FLAG_PLANAR,
+    },
+    [AV_PIX_FMT_P016BE] = {
+        .name = "p016be",
+        .nb_components = 3,
+        .log2_chroma_w = 1,
+        .log2_chroma_h = 1,
+        .comp = {
+            { 0, 2, 0, 0, 16, 1, 15, 1 },       /* Y */
+            { 1, 4, 0, 0, 16, 3, 15, 1 },       /* U */
+            { 1, 4, 2, 0, 16, 3, 15, 3 },       /* V */
+        },
+        .flags = AV_PIX_FMT_FLAG_PLANAR | AV_PIX_FMT_FLAG_BE,
+    },
     [AV_PIX_FMT_GBRAP12LE] = {
         .name = "gbrap12le",
         .nb_components = 4,
@@ -2114,9 +2180,10 @@ static const char *color_primaries_names[AVCOL_PRI_NB] = {
     [AVCOL_PRI_SMPTE240M] = "smpte240m",
     [AVCOL_PRI_FILM] = "film",
     [AVCOL_PRI_BT2020] = "bt2020",
-    [AVCOL_PRI_SMPTEST428_1] = "smpte428-1",
+    [AVCOL_PRI_SMPTE428] = "smpte428",
     [AVCOL_PRI_SMPTE431] = "smpte431",
     [AVCOL_PRI_SMPTE432] = "smpte432",
+    [AVCOL_PRI_JEDEC_P22] = "jedec-p22",
 };
 
 static const char *color_transfer_names[] = {
@@ -2135,9 +2202,9 @@ static const char *color_transfer_names[] = {
     [AVCOL_TRC_BT1361_ECG] = "bt1361e",
     [AVCOL_TRC_IEC61966_2_1] = "iec61966-2-1",
     [AVCOL_TRC_BT2020_10] = "bt2020-10",
-    [AVCOL_TRC_BT2020_12] = "bt2020-20",
-    [AVCOL_TRC_SMPTEST2084] = "smpte2084",
-    [AVCOL_TRC_SMPTEST428_1] = "smpte428-1",
+    [AVCOL_TRC_BT2020_12] = "bt2020-12",
+    [AVCOL_TRC_SMPTE2084] = "smpte2084",
+    [AVCOL_TRC_SMPTE428] = "smpte428",
     [AVCOL_TRC_ARIB_STD_B67] = "arib-std-b67",
 };
 
@@ -2150,7 +2217,7 @@ static const char *color_space_names[] = {
     [AVCOL_SPC_BT470BG] = "bt470bg",
     [AVCOL_SPC_SMPTE170M] = "smpte170m",
     [AVCOL_SPC_SMPTE240M] = "smpte240m",
-    [AVCOL_SPC_YCOCG] = "ycgco",
+    [AVCOL_SPC_YCGCO] = "ycgco",
     [AVCOL_SPC_BT2020_NCL] = "bt2020nc",
     [AVCOL_SPC_BT2020_CL] = "bt2020c",
     [AVCOL_SPC_SMPTE2085] = "smpte2085",
@@ -2349,7 +2416,7 @@ void ff_check_pixfmt_descriptors(void){
             } else {
                 av_assert0(8*c->step >= c->depth);
             }
-            if (!strncmp(d->name, "bayer_", 6))
+            if (d->flags & AV_PIX_FMT_FLAG_BAYER)
                 continue;
             av_read_image_line(tmp, (void*)data, linesize, d, 0, 0, j, 2, 0);
             av_assert0(tmp[0] == 0 && tmp[1] == 0);

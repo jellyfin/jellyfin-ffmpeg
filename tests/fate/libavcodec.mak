@@ -1,7 +1,17 @@
+FATE_LIBAVCODEC-yes += fate-avpacket
+fate-avpacket: libavcodec/tests/avpacket$(EXESUF)
+fate-avpacket: CMD = run libavcodec/tests/avpacket
+fate-avpacket: REF = /dev/null
+
 FATE_LIBAVCODEC-$(CONFIG_CABAC) += fate-cabac
 fate-cabac: libavcodec/tests/cabac$(EXESUF)
 fate-cabac: CMD = run libavcodec/tests/cabac
 fate-cabac: REF = /dev/null
+
+FATE_LIBAVCODEC-yes += fate-celp_math
+fate-celp_math: libavcodec/tests/celp_math$(EXESUF)
+fate-celp_math: CMD = run libavcodec/tests/celp_math
+fate-celp_math: REF = /dev/null
 
 FATE_LIBAVCODEC-$(CONFIG_GOLOMB) += fate-golomb
 fate-golomb: libavcodec/tests/golomb$(EXESUF)
@@ -43,6 +53,12 @@ fate-libavcodec-utils: libavcodec/tests/utils$(EXESUF)
 fate-libavcodec-utils: CMD = run libavcodec/tests/utils
 fate-libavcodec-utils: CMP = null
 fate-libavcodec-utils: REF = /dev/null
+
+FATE_LIBAVCODEC-yes += fate-libavcodec-huffman
+fate-libavcodec-huffman: libavcodec/tests/mjpegenc_huffman$(EXESUF)
+fate-libavcodec-huffman: CMD = run libavcodec/tests/mjpegenc_huffman
+fate-libavcodec-huffman: CMP = null
+fate-libavcodec-huffman: REF = /dev/null
 
 FATE-$(CONFIG_AVCODEC) += $(FATE_LIBAVCODEC-yes)
 fate-libavcodec: $(FATE_LIBAVCODEC-yes)

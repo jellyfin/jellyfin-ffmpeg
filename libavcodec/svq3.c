@@ -629,11 +629,6 @@ static av_always_inline void hl_decode_mb_idct_luma(SVQ3Context *s,
     }
 }
 
-static av_always_inline int dctcoef_get(int16_t *mb, int index)
-{
-    return AV_RN16A(mb + index);
-}
-
 static av_always_inline void hl_decode_mb_predict_luma(SVQ3Context *s,
                                                        int mb_type,
                                                        const int *block_offset,
@@ -1070,14 +1065,16 @@ static int svq3_decode_slice_header(AVCodecContext *avctx)
         av_log(s->avctx, AV_LOG_ERROR, "illegal slice type %u \n", slice_id);
         return -1;
     }
+    if (get_bits1(&s->gb_slice)) {
+        avpriv_report_missing_feature(s->avctx, "Media key encryption");
+        return AVERROR_PATCHWELCOME;
+    }
 
     s->slice_type = ff_h264_golomb_to_pict_type[slice_id];
 
     if ((header & 0x9F) == 2) {
-        i = (s->mb_num < 64) ? 6 : (1 + av_log2(s->mb_num - 1));
+        i = (s->mb_num < 64) ? 5 : av_log2(s->mb_num - 1);
         get_bits(&s->gb_slice, i);
-    } else {
-        skip_bits1(&s->gb_slice);
     }
 
     s->slice_num      = get_bits(&s->gb_slice, 8);
@@ -1556,7 +1553,7 @@ static int svq3_decode_frame(AVCodecContext *avctx, void *data,
                         return -1;
                 }
                 if (s->slice_type != s->pict_type) {
-                    avpriv_request_sample(avctx, "non constant slice type\n");
+                    avpriv_request_sample(avctx, "non constant slice type");
                 }
                 /* TODO: support s->mb_skip_run */
             }

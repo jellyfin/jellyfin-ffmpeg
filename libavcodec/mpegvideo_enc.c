@@ -64,6 +64,7 @@
 #include "bytestream.h"
 #include "wmv2.h"
 #include "rv10.h"
+#include "libxvid.h"
 #include <limits.h>
 #include "sp5x.h"
 
@@ -265,7 +266,8 @@ static void mpv_encode_defaults(MpegEncContext *s)
     s->picture_in_gop_number = 0;
 }
 
-av_cold int ff_dct_encode_init(MpegEncContext *s) {
+av_cold int ff_dct_encode_init(MpegEncContext *s)
+{
     if (ARCH_X86)
         ff_dct_encode_init_x86(s);
 
@@ -396,6 +398,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 " 0 and some 8 as base meaning 8bit, the value must not be smaller than that\n");
         return AVERROR(EINVAL);
     }
+
+    if (avctx->codec_id == AV_CODEC_ID_AMV || (avctx->active_thread_type & FF_THREAD_SLICE))
+        s->huffman = 0;
 
     if (s->intra_dc_precision > (avctx->codec_id == AV_CODEC_ID_MPEG2VIDEO ? 3 : 0)) {
         av_log(avctx, AV_LOG_ERROR, "intra dc precision too large\n");
@@ -638,6 +643,15 @@ FF_ENABLE_DEPRECATION_WARNINGS
     if ((s->mpv_flags & FF_MPV_FLAG_QP_RD) &&
         s->avctx->mb_decision != FF_MB_DECISION_RD) {
         av_log(avctx, AV_LOG_ERROR, "QP RD needs mbd=2\n");
+        return -1;
+    }
+
+    if ((s->mpv_flags & FF_MPV_FLAG_QP_RD) &&
+            (s->codec_id == AV_CODEC_ID_AMV ||
+             s->codec_id == AV_CODEC_ID_MJPEG)) {
+        // Used to produce garbage with MJPEG.
+        av_log(avctx, AV_LOG_ERROR,
+               "QP RD is no longer compatible with MJPEG or AMV\n");
         return -1;
     }
 
@@ -1027,8 +1041,31 @@ FF_ENABLE_DEPRECATION_WARNINGS
                           31, 0);
     }
 
+#if FF_API_RC_STRATEGY
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (!s->rc_strategy)
+        s->rc_strategy = s->avctx->rc_strategy;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
     if (ff_rate_control_init(s) < 0)
         return -1;
+
+#if FF_API_RC_STRATEGY
+    av_assert0(MPV_RC_STRATEGY_XVID == FF_RC_STRATEGY_XVID);
+#endif
+
+    if ((s->avctx->flags & AV_CODEC_FLAG_PASS2) && s->rc_strategy == MPV_RC_STRATEGY_XVID) {
+#if CONFIG_LIBXVID
+        ret = ff_xvid_rate_control_init(s);
+#else
+        ret = AVERROR(ENOSYS);
+        av_log(s->avctx, AV_LOG_ERROR,
+               "Xvid ratecontrol requires libavcodec compiled with Xvid support.\n");
+#endif
+        if (ret < 0)
+            return ret;
+    }
 
 #if FF_API_ERROR_RATE
     FF_DISABLE_DEPRECATION_WARNINGS
@@ -1123,6 +1160,10 @@ av_cold int ff_mpv_encode_end(AVCodecContext *avctx)
     int i;
 
     ff_rate_control_uninit(s);
+#if CONFIG_LIBXVID
+    if ((avctx->flags & AV_CODEC_FLAG_PASS2) && s->rc_strategy == MPV_RC_STRATEGY_XVID)
+        ff_xvid_rate_control_uninit(s);
+#endif
 
     ff_mpv_common_end(s);
     if (CONFIG_MJPEG_ENCODER &&
@@ -1395,29 +1436,38 @@ static int skip_check(MpegEncContext *s, Picture *p, Picture *ref)
 static int encode_frame(AVCodecContext *c, AVFrame *frame)
 {
     AVPacket pkt = { 0 };
-    int ret, got_output;
+    int ret;
+    int size = 0;
 
     av_init_packet(&pkt);
-    ret = avcodec_encode_video2(c, &pkt, frame, &got_output);
+
+    ret = avcodec_send_frame(c, frame);
     if (ret < 0)
         return ret;
 
-    ret = pkt.size;
-    av_packet_unref(&pkt);
-    return ret;
+    do {
+        ret = avcodec_receive_packet(c, &pkt);
+        if (ret >= 0) {
+            size += pkt.size;
+            av_packet_unref(&pkt);
+        } else if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
+            return ret;
+    } while (ret >= 0);
+
+    return size;
 }
 
 static int estimate_best_b_count(MpegEncContext *s)
 {
-    AVCodec *codec    = avcodec_find_encoder(s->avctx->codec_id);
-    AVCodecContext *c = avcodec_alloc_context3(NULL);
+    const AVCodec *codec = avcodec_find_encoder(s->avctx->codec_id);
     const int scale = s->brd_scale;
+    int width  = s->width  >> scale;
+    int height = s->height >> scale;
     int i, j, out_size, p_lambda, b_lambda, lambda2;
     int64_t best_rd  = INT64_MAX;
     int best_b_count = -1;
+    int ret = 0;
 
-    if (!c)
-        return AVERROR(ENOMEM);
     av_assert0(scale >= 0 && scale <= 3);
 
     //emms_c();
@@ -1429,21 +1479,6 @@ static int estimate_best_b_count(MpegEncContext *s)
         b_lambda = p_lambda;
     lambda2  = (b_lambda * b_lambda + (1 << FF_LAMBDA_SHIFT) / 2) >>
                FF_LAMBDA_SHIFT;
-
-    c->width        = s->width  >> scale;
-    c->height       = s->height >> scale;
-    c->flags        = AV_CODEC_FLAG_QSCALE | AV_CODEC_FLAG_PSNR;
-    c->flags       |= s->avctx->flags & AV_CODEC_FLAG_QPEL;
-    c->mb_decision  = s->avctx->mb_decision;
-    c->me_cmp       = s->avctx->me_cmp;
-    c->mb_cmp       = s->avctx->mb_cmp;
-    c->me_sub_cmp   = s->avctx->me_sub_cmp;
-    c->pix_fmt      = AV_PIX_FMT_YUV420P;
-    c->time_base    = s->avctx->time_base;
-    c->max_b_frames = s->max_b_frames;
-
-    if (avcodec_open2(c, codec, NULL) < 0)
-        return -1;
 
     for (i = 0; i < s->max_b_frames + 2; i++) {
         Picture pre_input, *pre_input_ptr = i ? s->input_picture[i - 1] :
@@ -1464,32 +1499,55 @@ static int estimate_best_b_count(MpegEncContext *s)
                                        s->tmp_frames[i]->linesize[0],
                                        data[0],
                                        pre_input.f->linesize[0],
-                                       c->width, c->height);
+                                       width, height);
             s->mpvencdsp.shrink[scale](s->tmp_frames[i]->data[1],
                                        s->tmp_frames[i]->linesize[1],
                                        data[1],
                                        pre_input.f->linesize[1],
-                                       c->width >> 1, c->height >> 1);
+                                       width >> 1, height >> 1);
             s->mpvencdsp.shrink[scale](s->tmp_frames[i]->data[2],
                                        s->tmp_frames[i]->linesize[2],
                                        data[2],
                                        pre_input.f->linesize[2],
-                                       c->width >> 1, c->height >> 1);
+                                       width >> 1, height >> 1);
         }
     }
 
     for (j = 0; j < s->max_b_frames + 1; j++) {
+        AVCodecContext *c;
         int64_t rd = 0;
 
         if (!s->input_picture[j])
             break;
 
-        c->error[0] = c->error[1] = c->error[2] = 0;
+        c = avcodec_alloc_context3(NULL);
+        if (!c)
+            return AVERROR(ENOMEM);
+
+        c->width        = width;
+        c->height       = height;
+        c->flags        = AV_CODEC_FLAG_QSCALE | AV_CODEC_FLAG_PSNR;
+        c->flags       |= s->avctx->flags & AV_CODEC_FLAG_QPEL;
+        c->mb_decision  = s->avctx->mb_decision;
+        c->me_cmp       = s->avctx->me_cmp;
+        c->mb_cmp       = s->avctx->mb_cmp;
+        c->me_sub_cmp   = s->avctx->me_sub_cmp;
+        c->pix_fmt      = AV_PIX_FMT_YUV420P;
+        c->time_base    = s->avctx->time_base;
+        c->max_b_frames = s->max_b_frames;
+
+        ret = avcodec_open2(c, codec, NULL);
+        if (ret < 0)
+            goto fail;
 
         s->tmp_frames[0]->pict_type = AV_PICTURE_TYPE_I;
         s->tmp_frames[0]->quality   = 1 * FF_QP2LAMBDA;
 
         out_size = encode_frame(c, s->tmp_frames[0]);
+        if (out_size < 0) {
+            ret = out_size;
+            goto fail;
+        }
 
         //rd += (out_size * lambda2) >> FF_LAMBDA_SHIFT;
 
@@ -1501,15 +1559,21 @@ static int estimate_best_b_count(MpegEncContext *s)
             s->tmp_frames[i + 1]->quality   = is_p ? p_lambda : b_lambda;
 
             out_size = encode_frame(c, s->tmp_frames[i + 1]);
+            if (out_size < 0) {
+                ret = out_size;
+                goto fail;
+            }
 
             rd += (out_size * lambda2) >> (FF_LAMBDA_SHIFT - 3);
         }
 
         /* get the delayed frames */
-        while (out_size) {
-            out_size = encode_frame(c, NULL);
-            rd += (out_size * lambda2) >> (FF_LAMBDA_SHIFT - 3);
+        out_size = encode_frame(c, NULL);
+        if (out_size < 0) {
+            ret = out_size;
+            goto fail;
         }
+        rd += (out_size * lambda2) >> (FF_LAMBDA_SHIFT - 3);
 
         rd += c->error[0] + c->error[1] + c->error[2];
 
@@ -1517,9 +1581,12 @@ static int estimate_best_b_count(MpegEncContext *s)
             best_rd = rd;
             best_b_count = j;
         }
-    }
 
-    avcodec_free_context(&c);
+fail:
+        avcodec_free_context(&c);
+        if (ret < 0)
+            return ret;
+    }
 
     return best_b_count;
 }
@@ -1602,6 +1669,8 @@ static int select_input_picture(MpegEncContext *s)
                 }
             } else if (s->b_frame_strategy == 2) {
                 b_frames = estimate_best_b_count(s);
+                if (b_frames < 0)
+                    return b_frames;
             }
 
             emms_c();
@@ -3629,8 +3698,15 @@ static int estimate_qp(MpegEncContext *s, int dry_run){
         s->current_picture.f->quality = s->next_lambda;
         if(!dry_run) s->next_lambda= 0;
     } else if (!s->fixed_qscale) {
+        int quality;
+#if CONFIG_LIBXVID
+        if ((s->avctx->flags & AV_CODEC_FLAG_PASS2) && s->rc_strategy == MPV_RC_STRATEGY_XVID)
+            quality = ff_xvid_rate_estimate_qscale(s, dry_run);
+        else
+#endif
+        quality = ff_rate_estimate_qscale(s, dry_run);
         s->current_picture_ptr->f->quality =
-        s->current_picture.f->quality = ff_rate_estimate_qscale(s, dry_run);
+        s->current_picture.f->quality = quality;
         if (s->current_picture.f->quality < 0)
             return -1;
     }
@@ -3897,7 +3973,7 @@ static int encode_picture(MpegEncContext *s, int picture_number)
     s->last_bits= put_bits_count(&s->pb);
     switch(s->out_format) {
     case FMT_MJPEG:
-        if (CONFIG_MJPEG_ENCODER)
+        if (CONFIG_MJPEG_ENCODER && s->huffman != HUFFMAN_TABLE_OPTIMAL)
             ff_mjpeg_encode_picture_header(s->avctx, &s->pb, &s->intra_scantable,
                                            s->pred, s->intra_matrix, s->chroma_intra_matrix);
         break;

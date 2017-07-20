@@ -31,6 +31,7 @@
 static const AVOption options[] = {
     { "list_devices", "list available devices"  , OFFSET(list_devices), AV_OPT_TYPE_INT   , { .i64 = 0   }, 0, 1, DEC },
     { "list_formats", "list supported formats"  , OFFSET(list_formats), AV_OPT_TYPE_INT   , { .i64 = 0   }, 0, 1, DEC },
+    { "format_code",  "set format by fourcc"    , OFFSET(format_code),  AV_OPT_TYPE_STRING, { .str = NULL}, 0, 0, DEC },
     { "bm_v210",      "v210 10 bit per channel" , OFFSET(v210),         AV_OPT_TYPE_INT   , { .i64 = 0   }, 0, 1, DEC },
     { "teletext_lines", "teletext lines bitmask", OFFSET(teletext_lines), AV_OPT_TYPE_INT64, { .i64 = 0   }, 0, 0x7ffffffffLL, DEC, "teletext_lines"},
     { "standard",     NULL,                                           0,  AV_OPT_TYPE_CONST, { .i64 = 0x7fff9fffeLL}, 0, 0,    DEC, "teletext_lines"},
@@ -77,7 +78,7 @@ static const AVClass decklink_demuxer_class = {
 AVInputFormat ff_decklink_demuxer = {
     .name           = "decklink",
     .long_name      = NULL_IF_CONFIG_SMALL("Blackmagic DeckLink input"),
-    .flags          = AVFMT_NOFILE | AVFMT_RAWPICTURE,
+    .flags          = AVFMT_NOFILE,
     .priv_class     = &decklink_demuxer_class,
     .priv_data_size = sizeof(struct decklink_cctx),
     .read_header   = ff_decklink_read_header,

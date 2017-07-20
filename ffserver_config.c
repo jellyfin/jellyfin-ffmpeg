@@ -25,9 +25,6 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/avassert.h"
 
-// FIXME those are internal headers, ffserver _really_ shouldn't use them
-#include "libavformat/ffm.h"
-
 #include "cmdutils.h"
 #include "ffserver_config.h"
 
@@ -153,6 +150,11 @@ void ffserver_parse_acl_row(FFServerStream *stream, FFServerStream* feed,
     }
 
     nacl = av_mallocz(sizeof(*nacl));
+    if (!nacl) {
+        fprintf(stderr, "Failed to allocate FFServerIPAddressACL\n");
+        goto bail;
+    }
+
     naclp = 0;
 
     acl.next = 0;
@@ -185,7 +187,7 @@ bail:
 static void add_codec(FFServerStream *stream, AVCodecContext *av,
                       FFServerConfig *config)
 {
-    AVStream *st;
+    LayeredAVStream *st;
     AVDictionary **opts, *recommended = NULL;
     char *enc_config;
 
@@ -316,12 +318,12 @@ static void add_codec(FFServerStream *stream, AVCodecContext *av,
     }
 
 done:
-    st = av_mallocz(sizeof(AVStream));
+    st = av_mallocz(sizeof(*st));
     if (!st)
         return;
     av_dict_get_string(recommended, &enc_config, '=', ',');
     av_dict_free(&recommended);
-    av_stream_set_recommended_encoder_configuration(st, enc_config);
+    st->recommended_encoder_configuration = enc_config;
     st->codec = av;
     st->codecpar = avcodec_parameters_alloc();
     avcodec_parameters_from_context(st->codecpar, av);
@@ -1051,6 +1053,7 @@ static int ffserver_parse_config_stream(FFServerConfig *config, const char *cmd,
                                        AV_OPT_FLAG_VIDEO_PARAM, config) < 0)
             goto nomem;
     } else if (!av_strcasecmp(cmd, "BitExact")) {
+        config->bitexact = 1;
         if (ffserver_save_avoption("flags", "+bitexact", AV_OPT_FLAG_VIDEO_PARAM, config) < 0)
             goto nomem;
     } else if (!av_strcasecmp(cmd, "DctFastint")) {

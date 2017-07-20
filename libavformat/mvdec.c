@@ -317,6 +317,10 @@ static int mv_read_header(AVFormatContext *avctx)
         ast->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
         ast->nb_frames          = vst->nb_frames;
         ast->codecpar->sample_rate = avio_rb32(pb);
+        if (ast->codecpar->sample_rate <= 0) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid sample rate %d\n", ast->codecpar->sample_rate);
+            return AVERROR_INVALIDDATA;
+        }
         avpriv_set_pts_info(ast, 33, 1, ast->codecpar->sample_rate);
         if (set_channels(avctx, ast, avio_rb32(pb)) < 0)
             return AVERROR_INVALIDDATA;
@@ -417,7 +421,7 @@ static int mv_read_packet(AVFormatContext *avctx, AVPacket *pkt)
         if (index->pos > pos)
             avio_skip(pb, index->pos - pos);
         else if (index->pos < pos) {
-            if (!pb->seekable)
+            if (!(pb->seekable & AVIO_SEEKABLE_NORMAL))
                 return AVERROR(EIO);
             ret = avio_seek(pb, index->pos, SEEK_SET);
             if (ret < 0)
@@ -459,7 +463,7 @@ static int mv_read_seek(AVFormatContext *avctx, int stream_index,
     if ((flags & AVSEEK_FLAG_FRAME) || (flags & AVSEEK_FLAG_BYTE))
         return AVERROR(ENOSYS);
 
-    if (!avctx->pb->seekable)
+    if (!(avctx->pb->seekable & AVIO_SEEKABLE_NORMAL))
         return AVERROR(EIO);
 
     frame = av_index_search_timestamp(st, timestamp, flags);

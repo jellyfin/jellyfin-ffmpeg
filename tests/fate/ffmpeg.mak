@@ -20,7 +20,7 @@ fate-ffmpeg-filter_complex: CMD = framecrc -filter_complex color=d=1:r=5 -fflags
 
 FATE_SAMPLES_FFMPEG-$(CONFIG_COLORKEY_FILTER) += fate-ffmpeg-filter_colorkey
 fate-ffmpeg-filter_colorkey: tests/data/filtergraphs/colorkey
-fate-ffmpeg-filter_colorkey: CMD = framecrc -idct simple -fflags +bitexact -flags +bitexact  -sws_flags +accurate_rnd+bitexact -i $(TARGET_SAMPLES)/cavs/cavs.mpg -fflags +bitexact -flags +bitexact -sws_flags +accurate_rnd+bitexact -i $(TARGET_SAMPLES)/lena.pnm -filter_complex_script $(TARGET_PATH)/tests/data/filtergraphs/colorkey -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -qscale 2 -vframes 10
+fate-ffmpeg-filter_colorkey: CMD = framecrc -idct simple -fflags +bitexact -flags +bitexact  -sws_flags +accurate_rnd+bitexact -i $(TARGET_SAMPLES)/cavs/cavs.mpg -fflags +bitexact -flags +bitexact -sws_flags +accurate_rnd+bitexact -i $(TARGET_SAMPLES)/lena.pnm -an -filter_complex_script $(TARGET_PATH)/tests/data/filtergraphs/colorkey -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -qscale 2 -frames:v 10
 
 FATE_FFMPEG-$(CONFIG_COLOR_FILTER) += fate-ffmpeg-lavfi
 fate-ffmpeg-lavfi: CMD = framecrc -lavfi color=d=1:r=5 -fflags +bitexact
@@ -87,7 +87,7 @@ fate-streamcopy: $(FATE_STREAMCOPY-yes)
 FATE_SAMPLES_FFMPEG-$(call ALLYES, MOV_DEMUXER MATROSKA_MUXER) += fate-rgb24-mkv
 fate-rgb24-mkv: $(TARGET_SAMPLES)/qtrle/aletrek-rle.mov
 fate-rgb24-mkv: CMD = transcode "mov" $(TARGET_SAMPLES)/qtrle/aletrek-rle.mov\
-                      matroska "-vcodec rawvideo -pix_fmt rgb24 -allow_raw_vfw 1 -vframes 1"
+                      matroska "-vcodec rawvideo -pix_fmt rgb24 -allow_raw_vfw 1 -frames:v 1"
 
 FATE_SAMPLES_FFMPEG-$(call ALLYES, AAC_DEMUXER MOV_MUXER) += fate-adtstoasc_ticket3715
 fate-adtstoasc_ticket3715: $(TARGET_SAMPLES)/aac/foo.aac
@@ -98,6 +98,12 @@ FATE_SAMPLES_FFMPEG-$(call ALLYES, MOV_DEMUXER H264_MUXER H264_MP4TOANNEXB_BSF) 
 fate-h264_mp4toannexb_ticket2991: $(TARGET_SAMPLES)/h264/wwwq_cut.mp4
 fate-h264_mp4toannexb_ticket2991: CMD = transcode "mp4" $(TARGET_SAMPLES)/h264/wwwq_cut.mp4\
                                   h264 "-c:v copy -bsf:v h264_mp4toannexb" "-codec copy"
+
+FATE_SAMPLES_FFMPEG-$(call ALLYES, MOV_DEMUXER H264_MUXER H264_MP4TOANNEXB_BSF) += fate-h264_mp4toannexb_ticket5927 fate-h264_mp4toannexb_ticket5927_2
+fate-h264_mp4toannexb_ticket5927:   CMD = transcode "mp4" $(TARGET_SAMPLES)/h264/thezerotheorem-cut.mp4 \
+                                          h264 "-c:v copy -bsf:v h264_mp4toannexb -an" "-c:v copy"
+fate-h264_mp4toannexb_ticket5927_2: CMD = transcode "mp4" $(TARGET_SAMPLES)/h264/thezerotheorem-cut.mp4 \
+                                          h264 "-c:v copy -an" "-c:v copy"
 
 FATE_SAMPLES_FFMPEG-$(call ALLYES, MPEGPS_DEMUXER AVI_MUXER REMOVE_EXTRADATA_BSF) += fate-ffmpeg-bsf-remove-k fate-ffmpeg-bsf-remove-r fate-ffmpeg-bsf-remove-e
 fate-ffmpeg-bsf-remove-k: $(TARGET_SAMPLES)/mpeg2/matrixbench_mpeg2.lq1.mpg

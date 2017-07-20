@@ -95,15 +95,10 @@ static int query_formats(AVFilterContext *ctx)
     static const enum AVPixelFormat in_fmts[]  = {AV_PIX_FMT_RGB32, AV_PIX_FMT_NONE};
     static const enum AVPixelFormat out_fmts[] = {AV_PIX_FMT_RGB32, AV_PIX_FMT_NONE};
     int ret;
-    AVFilterFormats *in  = ff_make_format_list(in_fmts);
-    AVFilterFormats *out = ff_make_format_list(out_fmts);
-    if (!in || !out) {
-        av_freep(&in);
-        av_freep(&out);
-        return AVERROR(ENOMEM);
-    }
-    if ((ret = ff_formats_ref(in , &ctx->inputs[0]->out_formats)) < 0 ||
-        (ret = ff_formats_ref(out, &ctx->outputs[0]->in_formats)) < 0)
+
+    if ((ret = ff_formats_ref(ff_make_format_list(in_fmts) , &ctx->inputs[0]->out_formats)) < 0)
+        return ret;
+    if ((ret = ff_formats_ref(ff_make_format_list(out_fmts), &ctx->outputs[0]->in_formats)) < 0)
         return ret;
     return 0;
 }
@@ -244,7 +239,7 @@ static void write_palette(AVFilterContext *ctx, AVFrame *out)
             if (box_id < s->nb_boxes) {
                 pal[x] = s->boxes[box_id++].color;
                 if ((x || y) && pal[x] == last_color)
-                    av_log(ctx, AV_LOG_WARNING, "Dupped color: %08X\n", pal[x]);
+                    av_log(ctx, AV_LOG_WARNING, "Dupped color: %08"PRIX32"\n", pal[x]);
                 last_color = pal[x];
             } else {
                 pal[x] = 0xff000000; // pad with black

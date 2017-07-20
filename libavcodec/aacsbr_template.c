@@ -81,11 +81,12 @@ static void sbr_turnoff(SpectralBandReplication *sbr) {
     memset(&sbr->spectrum_params, -1, sizeof(SpectrumParameters));
 }
 
-av_cold void AAC_RENAME(ff_aac_sbr_ctx_init)(AACContext *ac, SpectralBandReplication *sbr)
+av_cold void AAC_RENAME(ff_aac_sbr_ctx_init)(AACContext *ac, SpectralBandReplication *sbr, int id_aac)
 {
     if(sbr->mdct.mdct_bits)
         return;
     sbr->kx[0] = sbr->kx[1];
+    sbr->id_aac = id_aac;
     sbr_turnoff(sbr);
     sbr->data[0].synthesis_filterbank_samples_offset = SBR_SYNTHESIS_BUF_SIZE - (1280 - 128);
     sbr->data[1].synthesis_filterbank_samples_offset = SBR_SYNTHESIS_BUF_SIZE - (1280 - 128);
@@ -944,14 +945,8 @@ static void read_sbr_extension(AACContext *ac, SpectralBandReplication *sbr,
             skip_bits_long(gb, *num_bits_left); // bs_fill_bits
             *num_bits_left = 0;
         } else {
-#if 1
             *num_bits_left -= AAC_RENAME(ff_ps_read_data)(ac->avctx, gb, &sbr->ps, *num_bits_left);
             ac->avctx->profile = FF_PROFILE_AAC_HE_V2;
-#else
-            avpriv_report_missing_feature(ac->avctx, "Parametric Stereo");
-            skip_bits_long(gb, *num_bits_left); // bs_fill_bits
-            *num_bits_left = 0;
-#endif
         }
         break;
     default:
@@ -1146,6 +1141,7 @@ int AAC_RENAME(ff_decode_sbr_extension)(AACContext *ac, SpectralBandReplication 
     if (bytes_read > cnt) {
         av_log(ac->avctx, AV_LOG_ERROR,
                "Expected to read %d SBR bytes actually read %d.\n", cnt, bytes_read);
+        sbr_turnoff(sbr);
     }
     return cnt;
 }

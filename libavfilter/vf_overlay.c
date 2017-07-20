@@ -103,6 +103,7 @@ enum OverlayFormat {
     OVERLAY_FORMAT_YUV422,
     OVERLAY_FORMAT_YUV444,
     OVERLAY_FORMAT_RGB,
+    OVERLAY_FORMAT_GBRP,
     OVERLAY_FORMAT_NB
 };
 
@@ -125,6 +126,7 @@ typedef struct OverlayContext {
     int main_pix_step[4];       ///< steps per pixel for each plane of the main output
     int overlay_pix_step[4];    ///< steps per pixel for each plane of the overlay
     int hsub, vsub;             ///< chroma subsampling values
+    const AVPixFmtDescriptor *main_desc; ///< format descriptor for main input
 
     double var_values[VAR_VARS_NB];
     char *x_expr, *y_expr;
@@ -215,7 +217,9 @@ static int query_formats(AVFilterContext *ctx)
 
     /* overlay formats contains alpha, for avoiding conversion with alpha information loss */
     static const enum AVPixelFormat main_pix_fmts_yuv420[] = {
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_NONE
+        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVA420P,
+        AV_PIX_FMT_NV12, AV_PIX_FMT_NV21,
+        AV_PIX_FMT_NONE
     };
     static const enum AVPixelFormat overlay_pix_fmts_yuv420[] = {
         AV_PIX_FMT_YUVA420P, AV_PIX_FMT_NONE
@@ -233,6 +237,13 @@ static int query_formats(AVFilterContext *ctx)
     };
     static const enum AVPixelFormat overlay_pix_fmts_yuv444[] = {
         AV_PIX_FMT_YUVA444P, AV_PIX_FMT_NONE
+    };
+
+    static const enum AVPixelFormat main_pix_fmts_gbrp[] = {
+        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP, AV_PIX_FMT_NONE
+    };
+    static const enum AVPixelFormat overlay_pix_fmts_gbrp[] = {
+        AV_PIX_FMT_GBRAP, AV_PIX_FMT_NONE
     };
 
     static const enum AVPixelFormat main_pix_fmts_rgb[] = {
@@ -280,6 +291,13 @@ static int query_formats(AVFilterContext *ctx)
                 goto fail;
             }
         break;
+    case OVERLAY_FORMAT_GBRP:
+        if (!(main_formats    = ff_make_format_list(main_pix_fmts_gbrp)) ||
+            !(overlay_formats = ff_make_format_list(overlay_pix_fmts_gbrp))) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
+        break;
     default:
         av_assert0(0);
     }
@@ -303,7 +321,7 @@ fail:
 static const enum AVPixelFormat alpha_pix_fmts[] = {
     AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
     AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_RGBA,
-    AV_PIX_FMT_BGRA, AV_PIX_FMT_NONE
+    AV_PIX_FMT_BGRA, AV_PIX_FMT_GBRAP, AV_PIX_FMT_NONE
 };
 
 static int config_input_overlay(AVFilterLink *inlink)
@@ -468,7 +486,10 @@ static av_always_inline void blend_plane(AVFilterContext *ctx,
                                          int dst_w, int dst_h,
                                          int i, int hsub, int vsub,
                                          int x, int y,
-                                         int main_has_alpha)
+                                         int main_has_alpha,
+                                         int dst_plane,
+                                         int dst_offset,
+                                         int dst_step)
 {
     int src_wp = AV_CEIL_RSHIFT(src_w, hsub);
     int src_hp = AV_CEIL_RSHIFT(src_h, vsub);
@@ -481,12 +502,14 @@ static av_always_inline void blend_plane(AVFilterContext *ctx,
 
     j = FFMAX(-yp, 0);
     sp = src->data[i] + j         * src->linesize[i];
-    dp = dst->data[i] + (yp+j)    * dst->linesize[i];
+    dp = dst->data[dst_plane]
+                      + (yp+j)    * dst->linesize[dst_plane]
+                      + dst_offset;
     ap = src->data[3] + (j<<vsub) * src->linesize[3];
 
     for (jmax = FFMIN(-yp + dst_hp, src_hp); j < jmax; j++) {
         k = FFMAX(-xp, 0);
-        d = dp + xp+k;
+        d = dp + (xp+k) * dst_step;
         s = sp + k;
         a = ap + (k<<hsub);
 
@@ -525,10 +548,10 @@ static av_always_inline void blend_plane(AVFilterContext *ctx,
             }
             *d = FAST_DIV255(*d * (255 - alpha) + *s * alpha);
             s++;
-            d++;
+            d += dst_step;
             a += 1 << hsub;
         }
-        dp += dst->linesize[i];
+        dp += dst->linesize[dst_plane];
         sp += src->linesize[i];
         ap += (1 << vsub) * src->linesize[3];
     }
@@ -582,6 +605,7 @@ static av_always_inline void blend_image_yuv(AVFilterContext *ctx,
                                              int main_has_alpha,
                                              int x, int y)
 {
+    OverlayContext *s = ctx->priv;
     const int src_w = src->width;
     const int src_h = src->height;
     const int dst_w = dst->width;
@@ -590,9 +614,35 @@ static av_always_inline void blend_image_yuv(AVFilterContext *ctx,
     if (main_has_alpha)
         alpha_composite(src, dst, src_w, src_h, dst_w, dst_h, x, y);
 
-    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 0, 0,       0, x, y, main_has_alpha);
-    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 1, hsub, vsub, x, y, main_has_alpha);
-    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 2, hsub, vsub, x, y, main_has_alpha);
+    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 0, 0,       0, x, y, main_has_alpha,
+                s->main_desc->comp[0].plane, s->main_desc->comp[0].offset, s->main_desc->comp[0].step);
+    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 1, hsub, vsub, x, y, main_has_alpha,
+                s->main_desc->comp[1].plane, s->main_desc->comp[1].offset, s->main_desc->comp[1].step);
+    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 2, hsub, vsub, x, y, main_has_alpha,
+                s->main_desc->comp[2].plane, s->main_desc->comp[2].offset, s->main_desc->comp[2].step);
+}
+
+static av_always_inline void blend_image_rgb(AVFilterContext *ctx,
+                                             AVFrame *dst, const AVFrame *src,
+                                             int hsub, int vsub,
+                                             int main_has_alpha,
+                                             int x, int y)
+{
+    OverlayContext *s = ctx->priv;
+    const int src_w = src->width;
+    const int src_h = src->height;
+    const int dst_w = dst->width;
+    const int dst_h = dst->height;
+
+    if (main_has_alpha)
+        alpha_composite(src, dst, src_w, src_h, dst_w, dst_h, x, y);
+
+    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 0, 0,       0, x, y, main_has_alpha,
+                s->main_desc->comp[1].plane, s->main_desc->comp[1].offset, s->main_desc->comp[1].step);
+    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 1, hsub, vsub, x, y, main_has_alpha,
+                s->main_desc->comp[2].plane, s->main_desc->comp[2].offset, s->main_desc->comp[2].step);
+    blend_plane(ctx, dst, src, src_w, src_h, dst_w, dst_h, 2, hsub, vsub, x, y, main_has_alpha,
+                s->main_desc->comp[0].plane, s->main_desc->comp[0].offset, s->main_desc->comp[0].step);
 }
 
 static void blend_image_yuv420(AVFilterContext *ctx, AVFrame *dst, const AVFrame *src, int x, int y)
@@ -616,6 +666,13 @@ static void blend_image_yuv444(AVFilterContext *ctx, AVFrame *dst, const AVFrame
     blend_image_yuv(ctx, dst, src, 0, 0, s->main_has_alpha, x, y);
 }
 
+static void blend_image_gbrp(AVFilterContext *ctx, AVFrame *dst, const AVFrame *src, int x, int y)
+{
+    OverlayContext *s = ctx->priv;
+
+    blend_image_rgb(ctx, dst, src, 0, 0, s->main_has_alpha, x, y);
+}
+
 static int config_input_main(AVFilterLink *inlink)
 {
     OverlayContext *s = inlink->dst->priv;
@@ -625,6 +682,8 @@ static int config_input_main(AVFilterLink *inlink)
 
     s->hsub = pix_desc->log2_chroma_w;
     s->vsub = pix_desc->log2_chroma_h;
+
+    s->main_desc = pix_desc;
 
     s->main_is_packed_rgb =
         ff_fill_rgba_map(s->main_rgba_map, inlink->format) >= 0;
@@ -642,6 +701,9 @@ static int config_input_main(AVFilterLink *inlink)
     case OVERLAY_FORMAT_RGB:
         s->blend_image = blend_image_packed_rgb;
         break;
+    case OVERLAY_FORMAT_GBRP:
+        s->blend_image = blend_image_gbrp;
+        break;
     }
     return 0;
 }
@@ -655,7 +717,7 @@ static AVFrame *do_blend(AVFilterContext *ctx, AVFrame *mainpic,
     if (s->eval_mode == EVAL_MODE_FRAME) {
         int64_t pos = av_frame_get_pkt_pos(mainpic);
 
-        s->var_values[VAR_N] = inlink->frame_count;
+        s->var_values[VAR_N] = inlink->frame_count_out;
         s->var_values[VAR_T] = mainpic->pts == AV_NOPTS_VALUE ?
             NAN : mainpic->pts * av_q2d(inlink->time_base);
         s->var_values[VAR_POS] = pos == -1 ? NAN : pos;
@@ -735,6 +797,7 @@ static const AVOption overlay_options[] = {
         { "yuv422", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV422}, .flags = FLAGS, .unit = "format" },
         { "yuv444", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV444}, .flags = FLAGS, .unit = "format" },
         { "rgb",    "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_RGB},    .flags = FLAGS, .unit = "format" },
+        { "gbrp",   "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_GBRP},   .flags = FLAGS, .unit = "format" },
     { "repeatlast", "repeat overlay of the last overlay frame", OFFSET(dinput.repeatlast), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, FLAGS },
     { NULL }
 };
