@@ -8,6 +8,11 @@ fate-aes: libavutil/tests/aes$(EXESUF)
 fate-aes: CMD = run libavutil/tests/aes
 fate-aes: REF = /dev/null
 
+FATE_LIBAVUTIL += fate-aes_ctr
+fate-aes_ctr: libavutil/tests/aes_ctr$(EXESUF)
+fate-aes_ctr: CMD = run libavutil/tests/aes_ctr
+fate-aes_ctr: REF = /dev/null
+
 FATE_LIBAVUTIL += fate-camellia
 fate-camellia: libavutil/tests/camellia$(EXESUF)
 fate-camellia: CMD = run libavutil/tests/camellia
@@ -22,6 +27,10 @@ FATE_LIBAVUTIL += fate-atomic
 fate-atomic: libavutil/tests/atomic$(EXESUF)
 fate-atomic: CMD = run libavutil/tests/atomic
 fate-atomic: REF = /dev/null
+
+FATE_LIBAVUTIL += fate-audio_fifo
+fate-audio_fifo: libavutil/tests/audio_fifo$(EXESUF)
+fate-audio_fifo: CMD = run libavutil/tests/audio_fifo
 
 FATE_LIBAVUTIL += fate-avstring
 fate-avstring: libavutil/tests/avstring$(EXESUF)
@@ -43,6 +52,11 @@ FATE_LIBAVUTIL += fate-cpu
 fate-cpu: libavutil/tests/cpu$(EXESUF)
 fate-cpu: CMD = runecho libavutil/tests/cpu $(CPUFLAGS:%=-c%) $(THREADS:%=-t%)
 fate-cpu: REF = /dev/null
+
+FATE_LIBAVUTIL-$(HAVE_THREADS) += fate-cpu_init
+fate-cpu_init: libavutil/tests/cpu_init$(EXESUF)
+fate-cpu_init: CMD = run libavutil/tests/cpu_init
+fate-cpu_init: REF = /dev/null
 
 FATE_LIBAVUTIL += fate-crc
 fate-crc: libavutil/tests/crc$(EXESUF)
@@ -82,6 +96,14 @@ fate-hash: CMD = run libavutil/tests/hash
 FATE_LIBAVUTIL += fate-hmac
 fate-hmac: libavutil/tests/hmac$(EXESUF)
 fate-hmac: CMD = run libavutil/tests/hmac
+
+FATE_LIBAVUTIL += fate-imgutils
+fate-imgutils: libavutil/tests/imgutils$(EXESUF)
+fate-imgutils: CMD = run libavutil/tests/imgutils
+
+FATE_LIBAVUTIL += fate-lfg
+fate-lfg: libavutil/tests/lfg$(EXESUF)
+fate-lfg: CMD = run libavutil/tests/lfg
 
 FATE_LIBAVUTIL += fate-md5
 fate-md5: libavutil/tests/md5$(EXESUF)

@@ -188,6 +188,10 @@ int ff_mjpeg_decode_dqt(MJpegDecodeContext *s)
         /* read quant table */
         for (i = 0; i < 64; i++) {
             s->quant_matrixes[index][i] = get_bits(&s->gb, pr ? 16 : 8);
+            if (s->quant_matrixes[index][i] == 0) {
+                av_log(s->avctx, AV_LOG_ERROR, "dqt: 0 quant value\n");
+                return AVERROR_INVALIDDATA;
+            }
         }
 
         // XXX FIXME fine-tune, and perhaps add dc too
@@ -582,13 +586,13 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
         break;
     default:
 unk_pixfmt:
-        av_log(s->avctx, AV_LOG_ERROR, "Unhandled pixel format 0x%x bits:%d\n", pix_fmt_id, s->bits);
+        avpriv_report_missing_feature(s->avctx, "Pixel format 0x%x bits:%d", pix_fmt_id, s->bits);
         memset(s->upscale_h, 0, sizeof(s->upscale_h));
         memset(s->upscale_v, 0, sizeof(s->upscale_v));
         return AVERROR_PATCHWELCOME;
     }
     if ((AV_RB32(s->upscale_h) || AV_RB32(s->upscale_v)) && s->avctx->lowres) {
-        av_log(s->avctx, AV_LOG_ERROR, "lowres not supported for weird subsampling\n");
+        avpriv_report_missing_feature(s->avctx, "Lowres for weird subsampling");
         return AVERROR_PATCHWELCOME;
     }
     if (s->ls) {
@@ -682,7 +686,7 @@ static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index)
 
 /* decode block and dequantize */
 static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
-                        int dc_index, int ac_index, int16_t *quant_matrix)
+                        int dc_index, int ac_index, uint16_t *quant_matrix)
 {
     int code, i, j, level, val;
 
@@ -732,7 +736,7 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
 
 static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
                                  int component, int dc_index,
-                                 int16_t *quant_matrix, int Al)
+                                 uint16_t *quant_matrix, int Al)
 {
     unsigned val;
     s->bdsp.clear_block(block);
@@ -750,7 +754,7 @@ static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
 /* decode block and dequantize - progressive JPEG version */
 static int decode_block_progressive(MJpegDecodeContext *s, int16_t *block,
                                     uint8_t *last_nnz, int ac_index,
-                                    int16_t *quant_matrix,
+                                    uint16_t *quant_matrix,
                                     int ss, int se, int Al, int *EOBRUN)
 {
     int code, i, j, val, run;
@@ -849,7 +853,7 @@ for (; ; i++) {                                                     \
 /* decode block and dequantize - progressive JPEG refinement pass */
 static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
                                    uint8_t *last_nnz,
-                                   int ac_index, int16_t *quant_matrix,
+                                   int ac_index, uint16_t *quant_matrix,
                                    int ss, int se, int Al, int *EOBRUN)
 {
     int code, i = ss, j, sign, val, run;
@@ -1380,7 +1384,7 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s, int ss,
     int mb_x, mb_y;
     int EOBRUN = 0;
     int c = s->comp_index[0];
-    int16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
+    uint16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
 
     av_assert0(ss>=0 && Ah>=0 && Al>=0);
     if (se < ss || se > 63) {
@@ -1489,8 +1493,9 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
     len = get_bits(&s->gb, 16);
     nb_components = get_bits(&s->gb, 8);
     if (nb_components == 0 || nb_components > MAX_COMPONENTS) {
-        av_log(s->avctx, AV_LOG_ERROR,
-               "decode_sos: nb_components (%d) unsupported\n", nb_components);
+        avpriv_report_missing_feature(s->avctx,
+                                      "decode_sos: nb_components (%d)",
+                                      nb_components);
         return AVERROR_PATCHWELCOME;
     }
     if (len != 6 + 2 * nb_components) {
@@ -1655,11 +1660,9 @@ static int mjpeg_decode_app(MJpegDecodeContext *s)
     id   = get_bits_long(&s->gb, 32);
     len -= 6;
 
-    if (s->avctx->debug & FF_DEBUG_STARTCODE) {
-        char id_str[32];
-        av_get_codec_tag_string(id_str, sizeof(id_str), av_bswap32(id));
-        av_log(s->avctx, AV_LOG_DEBUG, "APPx (%s / %8X) len=%d\n", id_str, id, len);
-    }
+    if (s->avctx->debug & FF_DEBUG_STARTCODE)
+        av_log(s->avctx, AV_LOG_DEBUG, "APPx (%s / %8X) len=%d\n",
+               av_fourcc2str(av_bswap32(id)), id, len);
 
     /* Buggy AVID, it puts EOI only at every 10th frame. */
     /* Also, this fourcc is used by non-avid files too, it holds some
@@ -1675,19 +1678,13 @@ static int mjpeg_decode_app(MJpegDecodeContext *s)
             s->buggy_avid = 1;
         i = get_bits(&s->gb, 8); len--;
         av_log(s->avctx, AV_LOG_DEBUG, "polarity %d\n", i);
-#if 0
-        skip_bits(&s->gb, 8);
-        skip_bits(&s->gb, 32);
-        skip_bits(&s->gb, 32);
-        len -= 10;
-#endif
         goto out;
     }
 
-//    len -= 2;
-
     if (id == AV_RB32("JFIF")) {
         int t_w, t_h, v1, v2;
+        if (len < 8)
+            goto out;
         skip_bits(&s->gb, 8); /* the trailing zero-byte */
         v1 = get_bits(&s->gb, 8);
         v2 = get_bits(&s->gb, 8);
@@ -1867,16 +1864,16 @@ static int mjpeg_decode_app(MJpegDecodeContext *s)
         len -= 4;
         /* Apple MJPEG-A */
         if (id == AV_RB32("mjpg")) {
-#if 0
-            skip_bits(&s->gb, 32); /* field size */
-            skip_bits(&s->gb, 32); /* pad field size */
-            skip_bits(&s->gb, 32); /* next off */
-            skip_bits(&s->gb, 32); /* quant off */
-            skip_bits(&s->gb, 32); /* huff off */
-            skip_bits(&s->gb, 32); /* image off */
-            skip_bits(&s->gb, 32); /* scan off */
-            skip_bits(&s->gb, 32); /* data off */
-#endif
+            /* structure:
+                4bytes      field size
+                4bytes      pad field size
+                4bytes      next off
+                4bytes      quant off
+                4bytes      huff off
+                4bytes      image off
+                4bytes      scan off
+                4bytes      data off
+            */
             if (s->avctx->debug & FF_DEBUG_PICT_INFO)
                 av_log(s->avctx, AV_LOG_INFO, "mjpeg: Apple MJPEG-A header found\n");
         }
@@ -2259,8 +2256,10 @@ eoi_parser:
             goto the_end;
         case SOS:
             s->cur_scan++;
-            if (avctx->skip_frame == AVDISCARD_ALL)
+            if (avctx->skip_frame == AVDISCARD_ALL) {
+                skip_bits(&s->gb, get_bits_left(&s->gb));
                 break;
+            }
 
             if ((ret = ff_mjpeg_decode_sos(s, NULL, 0, NULL)) < 0 &&
                 (avctx->err_recognition & AV_EF_EXPLODE))

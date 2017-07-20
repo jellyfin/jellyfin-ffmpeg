@@ -87,7 +87,6 @@ typedef struct SegmentContext {
     int64_t clocktime_offset; //< clock offset for cutting the segments at regular clock time
     int64_t clocktime_wrap_duration; //< wrapping duration considered for starting a new segment
     int64_t last_val;      ///< remember last time for wrap around detection
-    int64_t last_cut;      ///< remember last cut
     int cut_pending;
     int header_written;    ///< whether we've already called avformat_write_header
 
@@ -353,6 +352,9 @@ static int segment_end(AVFormatContext *s, int write_trailer, int is_last)
     char buf[AV_TIMECODE_STR_SIZE];
     int i;
     int err;
+
+    if (!oc || !oc->pb)
+        return AVERROR(EINVAL);
 
     av_write_frame(oc, NULL); /* Flush any buffered data (fragmented mp4) */
     if (write_trailer)
@@ -798,9 +800,26 @@ static int seg_write_header(AVFormatContext *s)
 {
     SegmentContext *seg = s->priv_data;
     AVFormatContext *oc = seg->avf;
-    int ret;
+    int ret, i;
 
     if (!seg->header_written) {
+        for (i = 0; i < s->nb_streams; i++) {
+            AVStream *st = oc->streams[i];
+            AVCodecParameters *ipar, *opar;
+
+            ipar = s->streams[i]->codecpar;
+            opar = oc->streams[i]->codecpar;
+            avcodec_parameters_copy(opar, ipar);
+            if (!oc->oformat->codec_tag ||
+                av_codec_get_id (oc->oformat->codec_tag, ipar->codec_tag) == opar->codec_id ||
+                av_codec_get_tag(oc->oformat->codec_tag, ipar->codec_id) <= 0) {
+                opar->codec_tag = ipar->codec_tag;
+            } else {
+                opar->codec_tag = 0;
+            }
+            st->sample_aspect_ratio = s->streams[i]->sample_aspect_ratio;
+            st->time_base = s->streams[i]->time_base;
+        }
         ret = avformat_write_header(oc, NULL);
         if (ret < 0)
             return ret;
@@ -833,7 +852,7 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
     int64_t usecs;
     int64_t wrapped_val;
 
-    if (!seg->avf)
+    if (!seg->avf || !seg->avf->pb)
         return AVERROR(EINVAL);
 
 calc_times:
@@ -850,10 +869,8 @@ calc_times:
             localtime_r(&sec, &ti);
             usecs = (int64_t)(ti.tm_hour * 3600 + ti.tm_min * 60 + ti.tm_sec) * 1000000 + (avgt % 1000000);
             wrapped_val = (usecs + seg->clocktime_offset) % seg->time;
-            if (seg->last_cut != usecs && wrapped_val < seg->last_val && wrapped_val < seg->clocktime_wrap_duration) {
+            if (wrapped_val < seg->last_val && wrapped_val < seg->clocktime_wrap_duration)
                 seg->cut_pending = 1;
-                seg->last_cut = usecs;
-            }
             seg->last_val = wrapped_val;
         } else {
             end_pts = seg->time * (seg->segment_count + 1);
@@ -978,6 +995,25 @@ fail:
     return ret;
 }
 
+static int seg_check_bitstream(struct AVFormatContext *s, const AVPacket *pkt)
+{
+    SegmentContext *seg = s->priv_data;
+    AVFormatContext *oc = seg->avf;
+    if (oc->oformat->check_bitstream) {
+        int ret = oc->oformat->check_bitstream(oc, pkt);
+        if (ret == 1) {
+            AVStream *st = s->streams[pkt->stream_index];
+            AVStream *ost = oc->streams[pkt->stream_index];
+            st->internal->bsfcs = ost->internal->bsfcs;
+            st->internal->nb_bsfcs = ost->internal->nb_bsfcs;
+            ost->internal->bsfcs = NULL;
+            ost->internal->nb_bsfcs = 0;
+        }
+        return ret;
+    }
+    return 1;
+}
+
 #define OFFSET(x) offsetof(SegmentContext, x)
 #define E AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
@@ -1041,6 +1077,7 @@ AVOutputFormat ff_segment_muxer = {
     .write_packet   = seg_write_packet,
     .write_trailer  = seg_write_trailer,
     .deinit         = seg_free,
+    .check_bitstream = seg_check_bitstream,
     .priv_class     = &seg_class,
 };
 
@@ -1061,5 +1098,6 @@ AVOutputFormat ff_stream_segment_muxer = {
     .write_packet   = seg_write_packet,
     .write_trailer  = seg_write_trailer,
     .deinit         = seg_free,
+    .check_bitstream = seg_check_bitstream,
     .priv_class     = &sseg_class,
 };

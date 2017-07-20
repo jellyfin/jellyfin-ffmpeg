@@ -32,6 +32,7 @@
 #include "bswapdsp.h"
 #include "bytestream.h"
 #include "get_bits.h"
+#include "internal.h"
 #include "thread.h"
 #include "utvideo.h"
 
@@ -123,7 +124,7 @@ static int build_huff(const uint8_t *src, VLC *vlc, int *fsym)
 }
 
 static int decode_plane10(UtvideoContext *c, int plane_no,
-                          uint16_t *dst, int step, int stride,
+                          uint16_t *dst, int step, ptrdiff_t stride,
                           int width, int height,
                           const uint8_t *src, const uint8_t *huff,
                           int use_pred)
@@ -228,7 +229,7 @@ fail:
 }
 
 static int decode_plane(UtvideoContext *c, int plane_no,
-                        uint8_t *dst, int step, int stride,
+                        uint8_t *dst, int step, ptrdiff_t stride,
                         int width, int height,
                         const uint8_t *src, int use_pred)
 {
@@ -332,8 +333,8 @@ fail:
     return AVERROR_INVALIDDATA;
 }
 
-static void restore_rgb_planes(uint8_t *src, int step, int stride, int width,
-                               int height)
+static void restore_rgb_planes(uint8_t *src, int step, ptrdiff_t stride,
+                               int width, int height)
 {
     int i, j;
     uint8_t r, g, b;
@@ -372,8 +373,111 @@ static void restore_rgb_planes10(AVFrame *frame, int width, int height)
     }
 }
 
-static void restore_median(uint8_t *src, int step, int stride,
-                           int width, int height, int slices, int rmode)
+#undef A
+#undef B
+#undef C
+
+static void restore_median_planar(UtvideoContext *c, uint8_t *src, ptrdiff_t stride,
+                                  int width, int height, int slices, int rmode)
+{
+    int i, j, slice;
+    int A, B, C;
+    uint8_t *bsrc;
+    int slice_start, slice_height;
+    const int cmask = ~rmode;
+
+    for (slice = 0; slice < slices; slice++) {
+        slice_start  = ((slice * height) / slices) & cmask;
+        slice_height = ((((slice + 1) * height) / slices) & cmask) -
+                       slice_start;
+
+        if (!slice_height)
+            continue;
+        bsrc = src + slice_start * stride;
+
+        // first line - left neighbour prediction
+        bsrc[0] += 0x80;
+        c->llviddsp.add_left_pred(bsrc, bsrc, width, 0);
+        bsrc += stride;
+        if (slice_height <= 1)
+            continue;
+        // second line - first element has top prediction, the rest uses median
+        C        = bsrc[-stride];
+        bsrc[0] += C;
+        A        = bsrc[0];
+        for (i = 1; i < width; i++) {
+            B        = bsrc[i - stride];
+            bsrc[i] += mid_pred(A, B, (uint8_t)(A + B - C));
+            C        = B;
+            A        = bsrc[i];
+        }
+        bsrc += stride;
+        // the rest of lines use continuous median prediction
+        for (j = 2; j < slice_height; j++) {
+            c->llviddsp.add_median_pred(bsrc, bsrc - stride,
+                                            bsrc, width, &A, &B);
+            bsrc += stride;
+        }
+    }
+}
+
+/* UtVideo interlaced mode treats every two lines as a single one,
+ * so restoring function should take care of possible padding between
+ * two parts of the same "line".
+ */
+static void restore_median_planar_il(UtvideoContext *c, uint8_t *src, ptrdiff_t stride,
+                                     int width, int height, int slices, int rmode)
+{
+    int i, j, slice;
+    int A, B, C;
+    uint8_t *bsrc;
+    int slice_start, slice_height;
+    const int cmask   = ~(rmode ? 3 : 1);
+    const ptrdiff_t stride2 = stride << 1;
+
+    for (slice = 0; slice < slices; slice++) {
+        slice_start    = ((slice * height) / slices) & cmask;
+        slice_height   = ((((slice + 1) * height) / slices) & cmask) -
+                         slice_start;
+        slice_height >>= 1;
+        if (!slice_height)
+            continue;
+
+        bsrc = src + slice_start * stride;
+
+        // first line - left neighbour prediction
+        bsrc[0] += 0x80;
+        A = c->llviddsp.add_left_pred(bsrc, bsrc, width, 0);
+        c->llviddsp.add_left_pred(bsrc + stride, bsrc + stride, width, A);
+        bsrc += stride2;
+        if (slice_height <= 1)
+            continue;
+        // second line - first element has top prediction, the rest uses median
+        C        = bsrc[-stride2];
+        bsrc[0] += C;
+        A        = bsrc[0];
+        for (i = 1; i < width; i++) {
+            B        = bsrc[i - stride2];
+            bsrc[i] += mid_pred(A, B, (uint8_t)(A + B - C));
+            C        = B;
+            A        = bsrc[i];
+        }
+        c->llviddsp.add_median_pred(bsrc + stride, bsrc - stride,
+                                        bsrc + stride, width, &A, &B);
+        bsrc += stride2;
+        // the rest of lines use continuous median prediction
+        for (j = 2; j < slice_height; j++) {
+            c->llviddsp.add_median_pred(bsrc, bsrc - stride2,
+                                            bsrc, width, &A, &B);
+            c->llviddsp.add_median_pred(bsrc + stride, bsrc - stride,
+                                            bsrc + stride, width, &A, &B);
+            bsrc += stride2;
+        }
+    }
+}
+
+static void restore_median_packed(uint8_t *src, int step, ptrdiff_t stride,
+                                  int width, int height, int slices, int rmode)
 {
     int i, j, slice;
     int A, B, C;
@@ -428,15 +532,15 @@ static void restore_median(uint8_t *src, int step, int stride,
  * so restoring function should take care of possible padding between
  * two parts of the same "line".
  */
-static void restore_median_il(uint8_t *src, int step, int stride,
-                              int width, int height, int slices, int rmode)
+static void restore_median_packed_il(uint8_t *src, int step, ptrdiff_t stride,
+                                     int width, int height, int slices, int rmode)
 {
     int i, j, slice;
     int A, B, C;
     uint8_t *bsrc;
     int slice_start, slice_height;
     const int cmask   = ~(rmode ? 3 : 1);
-    const int stride2 = stride << 1;
+    const ptrdiff_t stride2 = stride << 1;
 
     for (slice = 0; slice < slices; slice++) {
         slice_start    = ((slice * height) / slices) & cmask;
@@ -608,14 +712,14 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                 return ret;
             if (c->frame_pred == PRED_MEDIAN) {
                 if (!c->interlaced) {
-                    restore_median(frame.f->data[0] + ff_ut_rgb_order[i],
-                                   c->planes, frame.f->linesize[0], avctx->width,
-                                   avctx->height, c->slices, 0);
+                    restore_median_packed(frame.f->data[0] + ff_ut_rgb_order[i],
+                                          c->planes, frame.f->linesize[0], avctx->width,
+                                          avctx->height, c->slices, 0);
                 } else {
-                    restore_median_il(frame.f->data[0] + ff_ut_rgb_order[i],
-                                      c->planes, frame.f->linesize[0],
-                                      avctx->width, avctx->height, c->slices,
-                                      0);
+                    restore_median_packed_il(frame.f->data[0] + ff_ut_rgb_order[i],
+                                             c->planes, frame.f->linesize[0],
+                                             avctx->width, avctx->height, c->slices,
+                                             0);
                 }
             }
         }
@@ -644,14 +748,14 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                 return ret;
             if (c->frame_pred == PRED_MEDIAN) {
                 if (!c->interlaced) {
-                    restore_median(frame.f->data[i], 1, frame.f->linesize[i],
-                                   avctx->width >> !!i, avctx->height >> !!i,
-                                   c->slices, !i);
+                    restore_median_planar(c, frame.f->data[i], frame.f->linesize[i],
+                                          avctx->width >> !!i, avctx->height >> !!i,
+                                          c->slices, !i);
                 } else {
-                    restore_median_il(frame.f->data[i], 1, frame.f->linesize[i],
-                                      avctx->width  >> !!i,
-                                      avctx->height >> !!i,
-                                      c->slices, !i);
+                    restore_median_planar_il(c, frame.f->data[i], frame.f->linesize[i],
+                                             avctx->width  >> !!i,
+                                             avctx->height >> !!i,
+                                             c->slices, !i);
                 }
             }
         }
@@ -665,13 +769,13 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                 return ret;
             if (c->frame_pred == PRED_MEDIAN) {
                 if (!c->interlaced) {
-                    restore_median(frame.f->data[i], 1, frame.f->linesize[i],
-                                   avctx->width >> !!i, avctx->height,
-                                   c->slices, 0);
+                    restore_median_planar(c, frame.f->data[i], frame.f->linesize[i],
+                                          avctx->width >> !!i, avctx->height,
+                                          c->slices, 0);
                 } else {
-                    restore_median_il(frame.f->data[i], 1, frame.f->linesize[i],
-                                      avctx->width >> !!i, avctx->height,
-                                      c->slices, 0);
+                    restore_median_planar_il(c, frame.f->data[i], frame.f->linesize[i],
+                                             avctx->width >> !!i, avctx->height,
+                                             c->slices, 0);
                 }
             }
         }
@@ -685,13 +789,13 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                 return ret;
             if (c->frame_pred == PRED_MEDIAN) {
                 if (!c->interlaced) {
-                    restore_median(frame.f->data[i], 1, frame.f->linesize[i],
-                                   avctx->width, avctx->height,
-                                   c->slices, 0);
+                    restore_median_planar(c, frame.f->data[i], frame.f->linesize[i],
+                                          avctx->width, avctx->height,
+                                          c->slices, 0);
                 } else {
-                    restore_median_il(frame.f->data[i], 1, frame.f->linesize[i],
-                                      avctx->width, avctx->height,
-                                      c->slices, 0);
+                    restore_median_planar_il(c, frame.f->data[i], frame.f->linesize[i],
+                                             avctx->width, avctx->height,
+                                             c->slices, 0);
                 }
             }
         }
@@ -724,6 +828,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     c->avctx = avctx;
 
     ff_bswapdsp_init(&c->bdsp);
+    ff_llviddsp_init(&c->llviddsp);
 
     if (avctx->extradata_size >= 16) {
         av_log(avctx, AV_LOG_DEBUG, "Encoder version %d.%d.%d.%d\n",
@@ -837,4 +942,5 @@ AVCodec ff_utvideo_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

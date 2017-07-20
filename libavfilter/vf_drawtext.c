@@ -158,6 +158,7 @@ typedef struct DrawTextContext {
     int borderw;                    ///< border width
     unsigned int fontsize;          ///< font size to use
 
+    int line_spacing;               ///< lines spacing in pixels
     short int draw_box;             ///< draw box around text - true or false
     int boxborderw;                 ///< box border width
     int use_kerning;                ///< font kerning is used - true/false
@@ -209,6 +210,7 @@ static const AVOption drawtext_options[]= {
     {"shadowcolor", "set shadow color",     OFFSET(shadowcolor.rgba),   AV_OPT_TYPE_COLOR,  {.str="black"}, CHAR_MIN, CHAR_MAX, FLAGS},
     {"box",         "set box",              OFFSET(draw_box),           AV_OPT_TYPE_BOOL,   {.i64=0},     0,        1       , FLAGS},
     {"boxborderw",  "set box border width", OFFSET(boxborderw),         AV_OPT_TYPE_INT,    {.i64=0},     INT_MIN,  INT_MAX , FLAGS},
+    {"line_spacing",  "set line spacing in pixels", OFFSET(line_spacing),   AV_OPT_TYPE_INT,    {.i64=0},     INT_MIN,  INT_MAX,FLAGS},
     {"fontsize",    "set font size",        OFFSET(fontsize),           AV_OPT_TYPE_INT,    {.i64=0},     0,        INT_MAX , FLAGS},
     {"x",           "set x expression",     OFFSET(x_expr),             AV_OPT_TYPE_STRING, {.str="0"},   CHAR_MIN, CHAR_MAX, FLAGS},
     {"y",           "set y expression",     OFFSET(y_expr),             AV_OPT_TYPE_STRING, {.str="0"},   CHAR_MIN, CHAR_MAX, FLAGS},
@@ -267,8 +269,7 @@ AVFILTER_DEFINE_CLASS(drawtext);
 #define FT_ERRORDEF(e, v, s) { (e), (s) },
 #define FT_ERROR_END_LIST { 0, NULL } };
 
-static const struct ft_error
-{
+static const struct ft_error {
     int err;
     const char *err_msg;
 } ft_errors[] =
@@ -707,7 +708,8 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     av_expr_free(s->x_pexpr);
     av_expr_free(s->y_pexpr);
-    s->x_pexpr = s->y_pexpr = NULL;
+    av_expr_free(s->a_pexpr);
+    s->x_pexpr = s->y_pexpr = s->a_pexpr = NULL;
     av_freep(&s->positions);
     s->nb_positions = 0;
 
@@ -750,7 +752,8 @@ static int config_input(AVFilterLink *inlink)
 
     av_expr_free(s->x_pexpr);
     av_expr_free(s->y_pexpr);
-    s->x_pexpr = s->y_pexpr = NULL;
+    av_expr_free(s->a_pexpr);
+    s->x_pexpr = s->y_pexpr = s->a_pexpr = NULL;
 
     if ((ret = av_expr_parse(&s->x_pexpr, s->x_expr, var_names,
                              NULL, NULL, fun2_names, fun2, 0, ctx)) < 0 ||
@@ -809,7 +812,7 @@ static int func_pts(AVFilterContext *ctx, AVBPrint *bp,
         pts += (double)delta / AV_TIME_BASE;
     }
     if (!strcmp(fmt, "flt")) {
-        av_bprintf(bp, "%.6f", s->var_values[VAR_T]);
+        av_bprintf(bp, "%.6f", pts);
     } else if (!strcmp(fmt, "hms")) {
         if (isnan(pts)) {
             av_bprintf(bp, " ??:??:??.???");
@@ -1184,7 +1187,7 @@ static int draw_text(AVFilterContext *ctx, AVFrame *frame,
 
     if (s->tc_opt_string) {
         char tcbuf[AV_TIMECODE_STR_SIZE];
-        av_timecode_make_string(&s->tc, tcbuf, inlink->frame_count);
+        av_timecode_make_string(&s->tc, tcbuf, inlink->frame_count_out);
         av_bprint_clear(bp);
         av_bprintf(bp, "%s%s", s->text, tcbuf);
     }
@@ -1250,7 +1253,7 @@ static int draw_text(AVFilterContext *ctx, AVFrame *frame,
         if (is_newline(code)) {
 
             max_text_line_w = FFMAX(max_text_line_w, x);
-            y += s->max_glyph_h;
+            y += s->max_glyph_h + s->line_spacing;
             x = 0;
             continue;
         }
@@ -1345,7 +1348,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 #endif
     }
 
-    s->var_values[VAR_N] = inlink->frame_count+s->start_number;
+    s->var_values[VAR_N] = inlink->frame_count_out + s->start_number;
     s->var_values[VAR_T] = frame->pts == AV_NOPTS_VALUE ?
         NAN : frame->pts * av_q2d(inlink->time_base);
 

@@ -145,7 +145,7 @@ static int rtp_write_header(AVFormatContext *s1)
     } else
         s1->packet_size = s1->pb->max_packet_size;
     if (s1->packet_size <= 12) {
-        av_log(s1, AV_LOG_ERROR, "Max packet size %d too low\n", s1->packet_size);
+        av_log(s1, AV_LOG_ERROR, "Max packet size %u too low\n", s1->packet_size);
         return AVERROR(EIO);
     }
     s->buf = av_malloc(s1->packet_size);
@@ -285,7 +285,7 @@ static void rtcp_send_sr(AVFormatContext *s1, int64_t ntp_time, int bye)
     RTPMuxContext *s = s1->priv_data;
     uint32_t rtp_ts;
 
-    av_log(s1, AV_LOG_TRACE, "RTCP: %02x %"PRIx64" %x\n", s->payload_type, ntp_time, s->timestamp);
+    av_log(s1, AV_LOG_TRACE, "RTCP: %02x %"PRIx64" %"PRIx32"\n", s->payload_type, ntp_time, s->timestamp);
 
     s->last_rtcp_ntp_time = ntp_time;
     rtp_ts = av_rescale_q(ntp_time - s->first_rtcp_ntp_time, (AVRational){1, 1000000},

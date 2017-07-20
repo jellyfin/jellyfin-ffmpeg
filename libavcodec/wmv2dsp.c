@@ -93,7 +93,7 @@ static void wmv2_idct_col(short * b)
     b[8 * 7] = (a0 + a2 - a1 - a5 + (1 << 13)) >> 14;
 }
 
-static void wmv2_idct_add_c(uint8_t *dest, int line_size, int16_t *block)
+static void wmv2_idct_add_c(uint8_t *dest, ptrdiff_t line_size, int16_t *block)
 {
     int i;
 
@@ -116,7 +116,7 @@ static void wmv2_idct_add_c(uint8_t *dest, int line_size, int16_t *block)
     }
 }
 
-static void wmv2_idct_put_c(uint8_t *dest, int line_size, int16_t *block)
+static void wmv2_idct_put_c(uint8_t *dest, ptrdiff_t line_size, int16_t *block)
 {
     int i;
 
@@ -262,4 +262,7 @@ av_cold void ff_wmv2dsp_init(WMV2DSPContext *c)
     c->put_mspel_pixels_tab[5] = put_mspel8_mc12_c;
     c->put_mspel_pixels_tab[6] = put_mspel8_mc22_c;
     c->put_mspel_pixels_tab[7] = put_mspel8_mc32_c;
+
+    if (ARCH_MIPS)
+        ff_wmv2dsp_init_mips(c);
 }

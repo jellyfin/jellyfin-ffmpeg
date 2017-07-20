@@ -119,6 +119,7 @@ static int init_context_defaults(AVCodecContext *s, const AVCodec *codec)
     s->execute2            = avcodec_default_execute2;
     s->sample_aspect_ratio = (AVRational){0,1};
     s->pix_fmt             = AV_PIX_FMT_NONE;
+    s->sw_pix_fmt          = AV_PIX_FMT_NONE;
     s->sample_fmt          = AV_SAMPLE_FMT_NONE;
 
     s->reordered_opaque    = AV_NOPTS_VALUE;
@@ -203,6 +204,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     av_freep(&avctx->extradata);
     av_freep(&avctx->subtitle_header);
     av_buffer_unref(&avctx->hw_frames_ctx);
+    av_buffer_unref(&avctx->hw_device_ctx);
     for (i = 0; i < avctx->nb_coded_side_data; i++)
         av_freep(&avctx->coded_side_data[i].data);
     av_freep(&avctx->coded_side_data);
@@ -254,6 +256,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     dest->rc_override     = NULL;
     dest->subtitle_header = NULL;
     dest->hw_frames_ctx   = NULL;
+    dest->hw_device_ctx   = NULL;
     dest->nb_coded_side_data = 0;
 
 #define alloc_and_copy_or_fail(obj, size, pad) \

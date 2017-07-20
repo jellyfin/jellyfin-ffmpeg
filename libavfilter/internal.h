@@ -29,6 +29,7 @@
 #include "avfiltergraph.h"
 #include "formats.h"
 #include "framepool.h"
+#include "framequeue.h"
 #include "thread.h"
 #include "version.h"
 #include "video.h"
@@ -147,6 +148,7 @@ struct AVFilterPad {
 struct AVFilterGraphInternal {
     void *thread;
     avfilter_execute_func *thread_execute;
+    FFFrameQueueGlobal frame_queues;
 };
 
 struct AVFilterInternal {
@@ -307,6 +309,9 @@ int ff_poll_frame(AVFilterLink *link);
 /**
  * Request an input frame from the filter at the other end of the link.
  *
+ * This function must not be used by filters using the activate callback,
+ * use ff_link_set_frame_wanted() instead.
+ *
  * The input filter may pass the request on to its inputs, fulfill the
  * request from an internal buffer or any other means specific to its function.
  *
@@ -333,8 +338,6 @@ int ff_poll_frame(AVFilterLink *link);
  *             currently and can neither guarantee that EOF has been reached.
  */
 int ff_request_frame(AVFilterLink *link);
-
-int ff_request_frame_to_filter(AVFilterLink *link);
 
 #define AVFILTER_DEFINE_CLASS(fname)            \
     static const AVClass fname##_class = {      \
@@ -376,10 +379,18 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame);
  */
 AVFilterContext *ff_filter_alloc(const AVFilter *filter, const char *inst_name);
 
+int ff_filter_activate(AVFilterContext *filter);
+
 /**
  * Remove a filter from a graph;
  */
 void ff_filter_graph_remove_filter(AVFilterGraph *graph, AVFilterContext *filter);
+
+/**
+ * The filter is aware of hardware frames, and any hardware frame context
+ * should not be automatically propagated through it.
+ */
+#define FF_FILTER_FLAG_HWFRAME_AWARE (1 << 0)
 
 /**
  * Run one round of processing on a filter graph.

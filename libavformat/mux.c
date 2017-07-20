@@ -309,12 +309,6 @@ FF_DISABLE_DEPRECATION_WARNINGS
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 
-        /* update internal context from codecpar, old bsf api needs this
-         * FIXME: remove when autobsf uses new bsf API */
-        ret = avcodec_parameters_to_context(st->internal->avctx, st->codecpar);
-        if (ret < 0)
-            goto fail;
-
         if (!st->time_base.num) {
             /* fall back on the default timebase values */
             if (par->codec_type == AVMEDIA_TYPE_AUDIO && par->sample_rate)
@@ -376,12 +370,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
             }
             if (par->codec_tag) {
                 if (!validate_codec_tag(s, st)) {
-                    char tagbuf[32], tagbuf2[32];
-                    av_get_codec_tag_string(tagbuf, sizeof(tagbuf), par->codec_tag);
-                    av_get_codec_tag_string(tagbuf2, sizeof(tagbuf2), av_codec_get_tag(s->oformat->codec_tag, par->codec_id));
+                    const uint32_t otag = av_codec_get_tag(s->oformat->codec_tag, par->codec_id);
                     av_log(s, AV_LOG_ERROR,
-                           "Tag %s/0x%08x incompatible with output codec id '%d' (%s)\n",
-                           tagbuf, par->codec_tag, par->codec_id, tagbuf2);
+                           "Tag %s incompatible with output codec id '%d' (%s)\n",
+                           av_fourcc2str(par->codec_tag), par->codec_id, av_fourcc2str(otag));
                     ret = AVERROR_INVALIDDATA;
                     goto fail;
                 }
@@ -581,6 +573,7 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
 
     if (!s->internal->missing_ts_warning &&
         !(s->oformat->flags & AVFMT_NOTIMESTAMPS) &&
+        (!(st->disposition & AV_DISPOSITION_ATTACHED_PIC) || (st->disposition & AV_DISPOSITION_TIMED_THUMBNAILS)) &&
         (pkt->pts == AV_NOPTS_VALUE || pkt->dts == AV_NOPTS_VALUE)) {
         av_log(s, AV_LOG_WARNING,
                "Timestamps are unset in a packet for stream %d. "
@@ -698,6 +691,8 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
     pts_backup = pkt->pts;
     dts_backup = pkt->dts;
 
+    // If the timestamp offsetting below is adjusted, adjust
+    // ff_interleaved_peek similarly.
     if (s->output_ts_offset) {
         AVStream *st = s->streams[pkt->stream_index];
         int64_t offset = av_rescale_q(s->output_ts_offset, AV_TIME_BASE_Q, st->time_base);
@@ -755,7 +750,11 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
         }
     }
 
+#if FF_API_LAVF_MERGE_SD
+FF_DISABLE_DEPRECATION_WARNINGS
     did_split = av_packet_split_side_data(pkt);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     if (!s->internal->header_written) {
         ret = s->internal->write_header_ret ? s->internal->write_header_ret : write_header_internal(s);
@@ -780,8 +779,12 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
 fail:
+#if FF_API_LAVF_MERGE_SD
+FF_DISABLE_DEPRECATION_WARNINGS
     if (did_split)
         av_packet_merge_side_data(pkt);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     if (ret < 0) {
         pkt->pts = pts_backup;
@@ -878,6 +881,16 @@ static int do_packet_auto_bsf(AVFormatContext *s, AVPacket *pkt) {
         }
     }
 
+#if FF_API_LAVF_MERGE_SD
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (st->internal->nb_bsfcs) {
+        ret = av_packet_split_side_data(pkt);
+        if (ret < 0)
+            av_log(s, AV_LOG_WARNING, "Failed to split side data before bitstream filter\n");
+    }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
     for (i = 0; i < st->internal->nb_bsfcs; i++) {
         AVBSFContext *ctx = st->internal->bsfcs[i];
         if (i > 0) {
@@ -891,7 +904,7 @@ static int do_packet_auto_bsf(AVFormatContext *s, AVPacket *pkt) {
         // flush each stream's BSF chain on write_trailer.
         if ((ret = av_bsf_send_packet(ctx, pkt)) < 0) {
             av_log(ctx, AV_LOG_ERROR,
-                    "Failed to send packet to filter %s for stream %d",
+                    "Failed to send packet to filter %s for stream %d\n",
                     ctx->filter->name, pkt->stream_index);
             return ret;
         }
@@ -902,7 +915,7 @@ static int do_packet_auto_bsf(AVFormatContext *s, AVPacket *pkt) {
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
                 return 0;
             av_log(ctx, AV_LOG_ERROR,
-                    "Failed to send packet to filter %s for stream %d",
+                    "Failed to send packet to filter %s for stream %d\n",
                     ctx->filter->name, pkt->stream_index);
             return ret;
         }
@@ -1183,23 +1196,30 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
     }
 }
 
-const AVPacket *ff_interleaved_peek(AVFormatContext *s, int stream, int64_t *ts_offset)
+int ff_interleaved_peek(AVFormatContext *s, int stream,
+                        AVPacket *pkt, int add_offset)
 {
     AVPacketList *pktl = s->internal->packet_buffer;
     while (pktl) {
         if (pktl->pkt.stream_index == stream) {
-            AVPacket *pkt = &pktl->pkt;
-            AVStream *st = s->streams[pkt->stream_index];
-            *ts_offset = st->mux_ts_offset;
+            *pkt = pktl->pkt;
+            if (add_offset) {
+                AVStream *st = s->streams[pkt->stream_index];
+                int64_t offset = st->mux_ts_offset;
 
-            if (s->output_ts_offset)
-                *ts_offset += av_rescale_q(s->output_ts_offset, AV_TIME_BASE_Q, st->time_base);
+                if (s->output_ts_offset)
+                    offset += av_rescale_q(s->output_ts_offset, AV_TIME_BASE_Q, st->time_base);
 
-            return pkt;
+                if (pkt->dts != AV_NOPTS_VALUE)
+                    pkt->dts += offset;
+                if (pkt->pts != AV_NOPTS_VALUE)
+                    pkt->pts += offset;
+            }
+            return 0;
         }
         pktl = pktl->next;
     }
-    return NULL;
+    return AVERROR(ENOENT);
 }
 
 /**

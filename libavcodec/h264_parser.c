@@ -202,7 +202,7 @@ static int scan_mmco_reset(AVCodecParserContext *s, GetBitContext *gb,
     if ((p->ps.pps->weighted_pred && slice_type_nos == AV_PICTURE_TYPE_P) ||
         (p->ps.pps->weighted_bipred_idc == 1 && slice_type_nos == AV_PICTURE_TYPE_B))
         ff_h264_pred_weight_table(gb, p->ps.sps, ref_count, slice_type_nos,
-                                  &pwt, p->picture_structure, logctx);
+                                  &pwt, logctx);
 
     if (get_bits1(gb)) { // adaptive_ref_pic_marking_mode_flag
         int i;
@@ -471,7 +471,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
                 }
             }
 
-            if (sps->pic_struct_present_flag) {
+            if (sps->pic_struct_present_flag && p->sei.picture_timing.present) {
                 switch (p->sei.picture_timing.pic_struct) {
                 case SEI_PIC_STRUCT_TOP_FIELD:
                 case SEI_PIC_STRUCT_BOTTOM_FIELD:
@@ -502,7 +502,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
 
             if (p->picture_structure == PICT_FRAME) {
                 s->picture_structure = AV_PICTURE_STRUCTURE_FRAME;
-                if (sps->pic_struct_present_flag) {
+                if (sps->pic_struct_present_flag && p->sei.picture_timing.present) {
                     switch (p->sei.picture_timing.pic_struct) {
                     case SEI_PIC_STRUCT_TOP_BOTTOM:
                     case SEI_PIC_STRUCT_TOP_BOTTOM_TOP:

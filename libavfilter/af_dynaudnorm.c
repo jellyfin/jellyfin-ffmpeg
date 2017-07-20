@@ -341,7 +341,7 @@ static inline double fade(double prev, double next, int pos,
     return fade_factors[0][pos] * prev + fade_factors[1][pos] * next;
 }
 
-static inline double pow2(const double value)
+static inline double pow_2(const double value)
 {
     return value * value;
 }
@@ -384,7 +384,7 @@ static double compute_frame_rms(AVFrame *frame, int channel)
             const double *data_ptr = (double *)frame->extended_data[c];
 
             for (i = 0; i < frame->nb_samples; i++) {
-                rms_value += pow2(data_ptr[i]);
+                rms_value += pow_2(data_ptr[i]);
             }
         }
 
@@ -392,7 +392,7 @@ static double compute_frame_rms(AVFrame *frame, int channel)
     } else {
         const double *data_ptr = (double *)frame->extended_data[channel];
         for (i = 0; i < frame->nb_samples; i++) {
-            rms_value += pow2(data_ptr[i]);
+            rms_value += pow_2(data_ptr[i]);
         }
 
         rms_value /= frame->nb_samples;
@@ -545,7 +545,7 @@ static double compute_frame_std_dev(DynamicAudioNormalizerContext *s,
             const double *data_ptr = (double *)frame->extended_data[c];
 
             for (i = 0; i < frame->nb_samples; i++) {
-                variance += pow2(data_ptr[i]);  // Assume that MEAN is *zero*
+                variance += pow_2(data_ptr[i]);  // Assume that MEAN is *zero*
             }
         }
         variance /= (s->channels * frame->nb_samples) - 1;
@@ -553,7 +553,7 @@ static double compute_frame_std_dev(DynamicAudioNormalizerContext *s,
         const double *data_ptr = (double *)frame->extended_data[channel];
 
         for (i = 0; i < frame->nb_samples; i++) {
-            variance += pow2(data_ptr[i]);      // Assume that MEAN is *zero*
+            variance += pow_2(data_ptr[i]);      // Assume that MEAN is *zero*
         }
         variance /= frame->nb_samples - 1;
     }
@@ -708,8 +708,15 @@ static int request_frame(AVFilterLink *outlink)
 
     ret = ff_request_frame(ctx->inputs[0]);
 
-    if (ret == AVERROR_EOF && !ctx->is_disabled && s->delay)
-        ret = flush_buffer(s, ctx->inputs[0], outlink);
+    if (ret == AVERROR_EOF && !ctx->is_disabled && s->delay) {
+        if (!cqueue_empty(s->gain_history_smoothed[0])) {
+            ret = flush_buffer(s, ctx->inputs[0], outlink);
+        } else if (s->queue.available) {
+            AVFrame *out = ff_bufqueue_get(&s->queue);
+
+            ret = ff_filter_frame(outlink, out);
+        }
+    }
 
     return ret;
 }

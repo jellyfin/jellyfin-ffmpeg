@@ -881,7 +881,7 @@ static void reset_pes_packet_state(PESContext *pes)
 static void new_data_packet(const uint8_t *buffer, int len, AVPacket *pkt)
 {
     av_init_packet(pkt);
-    pkt->data = buffer;
+    pkt->data = (uint8_t *)buffer;
     pkt->size = len;
 }
 
@@ -2605,7 +2605,7 @@ static void seek_back(AVFormatContext *s, AVIOContext *pb, int64_t pos) {
      * probe buffer usually is big enough. Only warn if the seek failed
      * on files where the seek should work. */
     if (avio_seek(pb, pos, SEEK_SET) < 0)
-        av_log(s, pb->seekable ? AV_LOG_ERROR : AV_LOG_INFO, "Unable to seek back to the start\n");
+        av_log(s, (pb->seekable & AVIO_SEEKABLE_NORMAL) ? AV_LOG_ERROR : AV_LOG_INFO, "Unable to seek back to the start\n");
 }
 
 static int mpegts_read_header(AVFormatContext *s)

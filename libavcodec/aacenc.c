@@ -520,13 +520,13 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     int chan_el_counter[4];
     FFPsyWindowInfo windows[AAC_MAX_CHANNELS];
 
-    if (s->last_frame == 2)
-        return 0;
-
     /* add current frame to queue */
     if (frame) {
         if ((ret = ff_af_queue_add(&s->afq, frame)) < 0)
             return ret;
+    } else {
+        if (!s->afq.remaining_samples || (!s->afq.frame_alloc && !s->afq.frame_count))
+            return 0;
     }
 
     copy_input_samples(s, frame);
@@ -769,7 +769,7 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
             start_ch += chans;
         }
 
-        if (avctx->flags & CODEC_FLAG_QSCALE) {
+        if (avctx->flags & AV_CODEC_FLAG_QSCALE) {
             /* When using a constant Q-scale, don't mess with lambda */
             break;
         }
@@ -840,9 +840,6 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     s->lambda_sum += s->lambda;
     s->lambda_count++;
-
-    if (!frame)
-        s->last_frame++;
 
     ff_af_queue_remove(&s->afq, avctx->frame_size, &avpkt->pts,
                        &avpkt->duration);

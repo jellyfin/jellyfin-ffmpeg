@@ -99,11 +99,13 @@ static av_always_inline int get_tail(GetBitContext *gb, int k)
     return res;
 }
 
-static void update_error_limit(WavpackFrameContext *ctx)
+static int update_error_limit(WavpackFrameContext *ctx)
 {
     int i, br[2], sl[2];
 
     for (i = 0; i <= ctx->stereo_in; i++) {
+        if (ctx->ch[i].bitrate_acc > UINT_MAX - ctx->ch[i].bitrate_delta)
+            return AVERROR_INVALIDDATA;
         ctx->ch[i].bitrate_acc += ctx->ch[i].bitrate_delta;
         br[i]                   = ctx->ch[i].bitrate_acc >> 16;
         sl[i]                   = LEVEL_DECAY(ctx->ch[i].slow_level);
@@ -131,6 +133,8 @@ static void update_error_limit(WavpackFrameContext *ctx)
             ctx->ch[i].error_limit = wp_exp2(br[i]);
         }
     }
+
+    return 0;
 }
 
 static int wv_get_value(WavpackFrameContext *ctx, GetBitContext *gb,
@@ -200,8 +204,10 @@ static int wv_get_value(WavpackFrameContext *ctx, GetBitContext *gb,
         ctx->zero = !ctx->one;
     }
 
-    if (ctx->hybrid && !channel)
-        update_error_limit(ctx);
+    if (ctx->hybrid && !channel) {
+        if (update_error_limit(ctx) < 0)
+            goto error;
+    }
 
     if (!t) {
         base = 0;
@@ -262,9 +268,9 @@ error:
 }
 
 static inline int wv_get_value_integer(WavpackFrameContext *s, uint32_t *crc,
-                                       int S)
+                                       unsigned S)
 {
-    int bit;
+    unsigned bit;
 
     if (s->extra_bits) {
         S *= 1 << s->extra_bits;
@@ -409,11 +415,11 @@ static inline int wv_unpack_stereo(WavpackFrameContext *s, GetBitContext *gb,
             if (t > 0) {
                 if (t > 8) {
                     if (t & 1) {
-                        A = 2 * s->decorr[i].samplesA[0] - s->decorr[i].samplesA[1];
-                        B = 2 * s->decorr[i].samplesB[0] - s->decorr[i].samplesB[1];
+                        A = 2U * s->decorr[i].samplesA[0] - s->decorr[i].samplesA[1];
+                        B = 2U * s->decorr[i].samplesB[0] - s->decorr[i].samplesB[1];
                     } else {
-                        A = (3 * s->decorr[i].samplesA[0] - s->decorr[i].samplesA[1]) >> 1;
-                        B = (3 * s->decorr[i].samplesB[0] - s->decorr[i].samplesB[1]) >> 1;
+                        A = (int)(3U * s->decorr[i].samplesA[0] - s->decorr[i].samplesA[1]) >> 1;
+                        B = (int)(3U * s->decorr[i].samplesB[0] - s->decorr[i].samplesB[1]) >> 1;
                     }
                     s->decorr[i].samplesA[1] = s->decorr[i].samplesA[0];
                     s->decorr[i].samplesB[1] = s->decorr[i].samplesB[0];
@@ -482,7 +488,7 @@ static inline int wv_unpack_stereo(WavpackFrameContext *s, GetBitContext *gb,
 
         pos = (pos + 1) & 7;
         if (s->joint)
-            L += (R -= (L >> 1));
+            L += (unsigned)(R -= (unsigned)(L >> 1));
         crc = (crc * 3 + L) * 3 + R;
 
         if (type == AV_SAMPLE_FMT_FLTP) {
@@ -681,6 +687,9 @@ static int wavpack_decode_block(AVCodecContext *avctx, int block_no,
     s->hybrid         =   s->frame_flags & WV_HYBRID_MODE;
     s->hybrid_bitrate =   s->frame_flags & WV_HYBRID_BITRATE;
     s->post_shift     = bpp * 8 - orig_bpp + ((s->frame_flags >> 13) & 0x1f);
+    if (s->post_shift < 0 || s->post_shift > 31) {
+        return AVERROR_INVALIDDATA;
+    }
     s->hybrid_maxclip =  ((1LL << (orig_bpp - 1)) - 1);
     s->hybrid_minclip = ((-1UL << (orig_bpp - 1)));
     s->CRC            = bytestream2_get_le32(&gb);
@@ -852,6 +861,12 @@ static int wavpack_decode_block(AVCodecContext *avctx, int block_no,
                 s->and   = 1;
                 s->shift = val[3];
             }
+            if (s->shift > 31) {
+                av_log(avctx, AV_LOG_ERROR,
+                       "Invalid INT32INFO, shift = %d (> 31)\n", s->shift);
+                s->and = s->or = s->shift = 0;
+                continue;
+            }
             /* original WavPack decoder forces 32-bit lossy sound to be treated
              * as 24-bit one in order to have proper clipping */
             if (s->hybrid && bpp == 4 && s->post_shift < 8 && s->shift > 8) {
@@ -1022,7 +1037,7 @@ static int wavpack_decode_block(AVCodecContext *avctx, int block_no,
 
     if (wc->ch_offset + s->stereo >= avctx->channels) {
         av_log(avctx, AV_LOG_WARNING, "Too many channels coded in a packet.\n");
-        return (avctx->err_recognition & AV_EF_EXPLODE) ? AVERROR_INVALIDDATA : 0;
+        return ((avctx->err_recognition & AV_EF_EXPLODE) || !wc->ch_offset) ? AVERROR_INVALIDDATA : 0;
     }
 
     samples_l = frame->extended_data[wc->ch_offset];

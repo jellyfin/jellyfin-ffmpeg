@@ -697,11 +697,11 @@ static int yae_adjust_position(ATempoContext *atempo)
     AudioFragment       *frag = yae_curr_frag(atempo);
 
     const double prev_output_position =
-        (double)(prev->position[1] - atempo->origin[1] + atempo->window / 2);
+        (double)(prev->position[1] - atempo->origin[1] + atempo->window / 2) *
+        atempo->tempo;
 
     const double ideal_output_position =
-        (double)(prev->position[0] - atempo->origin[0] + atempo->window / 2) /
-        atempo->tempo;
+        (double)(prev->position[0] - atempo->origin[0] + atempo->window / 2);
 
     const int drift = (int)(prev_output_position - ideal_output_position);
 
@@ -914,8 +914,8 @@ static int yae_flush(ATempoContext *atempo,
 
     atempo->state = YAE_FLUSH_OUTPUT;
 
-    if (atempo->position[0] == frag->position[0] + frag->nsamples &&
-        atempo->position[1] == frag->position[1] + frag->nsamples) {
+    if (atempo->position[0] >= frag->position[0] + frag->nsamples &&
+        atempo->position[1] >= frag->position[1] + frag->nsamples) {
         // the current fragment is already flushed:
         return 0;
     }
@@ -1014,7 +1014,7 @@ static int query_formats(AVFilterContext *ctx)
     };
     int ret;
 
-    layouts = ff_all_channel_layouts();
+    layouts = ff_all_channel_counts();
     if (!layouts) {
         return AVERROR(ENOMEM);
     }

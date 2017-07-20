@@ -24,6 +24,12 @@
 #ifndef AVFORMAT_ISOM_H
 #define AVFORMAT_ISOM_H
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include "libavutil/spherical.h"
+#include "libavutil/stereo3d.h"
+
 #include "avio.h"
 #include "internal.h"
 #include "dv.h"
@@ -115,6 +121,11 @@ typedef struct MOVFragmentIndex {
     MOVFragmentIndexItem *items;
 } MOVFragmentIndex;
 
+typedef struct MOVIndexRange {
+    int64_t start;
+    int64_t end;
+} MOVIndexRange;
+
 typedef struct MOVStreamContext {
     AVIOContext *pb;
     int pb_is_copied;
@@ -146,6 +157,9 @@ typedef struct MOVStreamContext {
     int time_scale;
     int64_t time_offset;  ///< time offset of the edit list entries
     int current_sample;
+    int64_t current_index;
+    MOVIndexRange* index_ranges;
+    MOVIndexRange* current_index_range;
     unsigned int bytes_per_frame;
     unsigned int samples_per_frame;
     int dv_audio_container;
@@ -177,8 +191,13 @@ typedef struct MOVStreamContext {
     int stsd_count;
 
     int32_t *display_matrix;
+    AVStereo3D *stereo3d;
+    AVSphericalMapping *spherical;
+    size_t spherical_size;
+
     uint32_t format;
 
+    int has_sidx;  // If there is an sidx entry for this stream.
     struct {
         int use_subsamples;
         uint8_t* auxiliary_info;
@@ -187,6 +206,7 @@ typedef struct MOVStreamContext {
         uint8_t auxiliary_info_default_size;
         uint8_t* auxiliary_info_sizes;
         size_t auxiliary_info_sizes_count;
+        int64_t auxiliary_info_index;
         struct AVAESCTR* aes_ctr;
     } cenc;
 } MOVStreamContext;
@@ -214,6 +234,7 @@ typedef struct MOVContext {
     unsigned int nb_chapter_tracks;
     int use_absolute_path;
     int ignore_editlist;
+    int advanced_editlist;
     int ignore_chapters;
     int seek_individually;
     int64_t next_root_atom; ///< offset of the next root atom
@@ -239,6 +260,7 @@ typedef struct MOVContext {
     uint8_t *decryption_key;
     int decryption_key_len;
     int enable_drefs;
+    int32_t movie_display_matrix[3][3]; ///< display matrix from mvhd
 } MOVContext;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);

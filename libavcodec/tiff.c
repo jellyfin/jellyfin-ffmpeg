@@ -772,9 +772,18 @@ static void set_sar(TiffContext *s, unsigned tag, unsigned num, unsigned den)
     int offset = tag == TIFF_YRES ? 2 : 0;
     s->res[offset++] = num;
     s->res[offset]   = den;
-    if (s->res[0] && s->res[1] && s->res[2] && s->res[3])
+    if (s->res[0] && s->res[1] && s->res[2] && s->res[3]) {
+        uint64_t num = s->res[2] * (uint64_t)s->res[1];
+        uint64_t den = s->res[0] * (uint64_t)s->res[3];
+        if (num > INT64_MAX || den > INT64_MAX) {
+            num = num >> 1;
+            den = den >> 1;
+        }
         av_reduce(&s->avctx->sample_aspect_ratio.num, &s->avctx->sample_aspect_ratio.den,
-                  s->res[2] * (uint64_t)s->res[1], s->res[0] * (uint64_t)s->res[3], INT32_MAX);
+                  num, den, INT32_MAX);
+        if (!s->avctx->sample_aspect_ratio.den)
+            s->avctx->sample_aspect_ratio = (AVRational) {0, 1};
+    }
 }
 
 static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
@@ -997,6 +1006,11 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         bytestream2_skip(&pal_gb[2], count / 3 * off * 2);
 
         off = (type_sizes[type] - 1) << 3;
+        if (off > 31U) {
+            av_log(s->avctx, AV_LOG_ERROR, "palette shift %d is out of range\n", off);
+            return AVERROR_INVALIDDATA;
+        }
+
         for (i = 0; i < count / 3; i++) {
             uint32_t p = 0xFF000000;
             p |= (ff_tget(&pal_gb[0], type, s->le) >> off) << 16;
@@ -1097,8 +1111,6 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
                 if (s->geotags[i].count == 0
                     || s->geotags[i].offset + s->geotags[i].count > count) {
                     av_log(s->avctx, AV_LOG_WARNING, "Invalid GeoTIFF key %d\n", s->geotags[i].key);
-                } else if (s->geotags[i].val) {
-                    av_log(s->avctx, AV_LOG_WARNING, "Duplicate GeoTIFF key %d\n", s->geotags[i].key);
                 } else {
                     char *ap = doubles2str(&dp[s->geotags[i].offset], s->geotags[i].count, ", ");
                     if (!ap) {

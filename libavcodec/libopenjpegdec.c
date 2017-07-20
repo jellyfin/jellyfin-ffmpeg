@@ -540,12 +540,14 @@ static int libopenjpeg_decode_frame(AVCodecContext *avctx,
         }
         break;
     default:
-        av_log(avctx, AV_LOG_ERROR, "unsupported pixel size %d\n", pixel_size);
+        avpriv_report_missing_feature(avctx, "Pixel size %d", pixel_size);
         ret = AVERROR_PATCHWELCOME;
         goto done;
     }
 
     *got_frame = 1;
+    picture->pict_type = AV_PICTURE_TYPE_I;
+    picture->key_frame = 1;
     ret        = buf_size;
 
 done:

@@ -65,7 +65,7 @@ static int adx_write_trailer(AVFormatContext *s)
     AVIOContext *pb = s->pb;
     AVCodecParameters *par = s->streams[0]->codecpar;
 
-    if (pb->seekable) {
+    if (pb->seekable & AVIO_SEEKABLE_NORMAL) {
         int64_t file_size = avio_tell(pb);
         uint64_t sample_count = (file_size - 36) / par->channels / 18 * 32;
         if (sample_count <= UINT32_MAX) {
@@ -332,6 +332,19 @@ AVOutputFormat ff_mlp_muxer = {
     .audio_codec       = AV_CODEC_ID_MLP,
     .video_codec       = AV_CODEC_ID_NONE,
     .write_header      = force_one_stream,
+    .write_packet      = ff_raw_write_packet,
+    .flags             = AVFMT_NOTIMESTAMPS,
+};
+#endif
+
+#if CONFIG_MP2_MUXER
+AVOutputFormat ff_mp2_muxer = {
+    .name              = "mp2",
+    .long_name         = NULL_IF_CONFIG_SMALL("MP2 (MPEG audio layer 2)"),
+    .mime_type         = "audio/mpeg",
+    .extensions        = "mp2,m2a,mpa",
+    .audio_codec       = AV_CODEC_ID_MP2,
+    .video_codec       = AV_CODEC_ID_NONE,
     .write_packet      = ff_raw_write_packet,
     .flags             = AVFMT_NOTIMESTAMPS,
 };

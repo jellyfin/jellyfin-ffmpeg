@@ -233,7 +233,6 @@ AVFilter ff_af_aloop = {
     .priv_size     = sizeof(LoopContext),
     .priv_class    = &aloop_class,
     .uninit        = auninit,
-    .query_formats = ff_query_formats_all,
     .inputs        = ainputs,
     .outputs       = aoutputs,
 };
@@ -298,7 +297,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     LoopContext *s = ctx->priv;
     int ret = 0;
 
-    if (inlink->frame_count >= s->start && s->size > 0 && s->loop != 0) {
+    if (inlink->frame_count_out >= s->start && s->size > 0 && s->loop != 0) {
         if (s->nb_frames < s->size) {
             if (!s->nb_frames)
                 s->start_pts = frame->pts;

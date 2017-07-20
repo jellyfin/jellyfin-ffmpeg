@@ -30,8 +30,8 @@
 #include "avcodec.h"
 #include "get_bits.h"
 #include "mathops.h"
-#include "huffyuvdsp.h"
 #include "lagarithrac.h"
+#include "lossless_videodsp.h"
 #include "thread.h"
 
 enum LagarithFrameType {
@@ -50,7 +50,7 @@ enum LagarithFrameType {
 
 typedef struct LagarithContext {
     AVCodecContext *avctx;
-    HuffYUVDSPContext hdsp;
+    LLVidDSPContext llviddsp;
     int zeros;                  /**< number of consecutive zero bytes encountered */
     int zeros_rem;              /**< number of zero bytes remaining to output */
     uint8_t *rgb_planes;
@@ -262,7 +262,7 @@ static void lag_pred_line(LagarithContext *l, uint8_t *buf,
 
     if (!line) {
         /* Left prediction only for first line */
-        L = l->hdsp.add_hfyu_left_pred(buf, buf, width, 0);
+        L = l->llviddsp.add_left_pred(buf, buf, width, 0);
     } else {
         /* Left pixel is actually prev_row[width] */
         L = buf[width - stride - 1];
@@ -291,7 +291,7 @@ static void lag_pred_line_yuy2(LagarithContext *l, uint8_t *buf,
         L= buf[0];
         if (is_luma)
             buf[0] = 0;
-        l->hdsp.add_hfyu_left_pred(buf, buf, width, 0);
+        l->llviddsp.add_left_pred(buf, buf, width, 0);
         if (is_luma)
             buf[0] = L;
         return;
@@ -314,7 +314,7 @@ static void lag_pred_line_yuy2(LagarithContext *l, uint8_t *buf,
     } else {
         TL = buf[width - (2 * stride) - 1];
         L  = buf[width - stride - 1];
-        l->hdsp.add_hfyu_median_pred(buf, buf - stride, buf, width, &L, &TL);
+        l->llviddsp.add_median_pred(buf, buf - stride, buf, width, &L, &TL);
     }
 }
 
@@ -727,10 +727,20 @@ static av_cold int lag_decode_init(AVCodecContext *avctx)
     LagarithContext *l = avctx->priv_data;
     l->avctx = avctx;
 
-    ff_huffyuvdsp_init(&l->hdsp);
+    ff_llviddsp_init(&l->llviddsp);
 
     return 0;
 }
+
+#if HAVE_THREADS
+static av_cold int lag_decode_init_thread_copy(AVCodecContext *avctx)
+{
+    LagarithContext *l = avctx->priv_data;
+    l->avctx = avctx;
+
+    return 0;
+}
+#endif
 
 static av_cold int lag_decode_end(AVCodecContext *avctx)
 {
@@ -748,6 +758,7 @@ AVCodec ff_lagarith_decoder = {
     .id             = AV_CODEC_ID_LAGARITH,
     .priv_data_size = sizeof(LagarithContext),
     .init           = lag_decode_init,
+    .init_thread_copy = ONLY_IF_THREADS_ENABLED(lag_decode_init_thread_copy),
     .close          = lag_decode_end,
     .decode         = lag_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
