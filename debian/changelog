@@ -1,10 +1,20 @@
-ffmpeg (7:3.3.2-1) experimental; urgency=medium
+ffmpeg (7:3.3.2-1) unstable; urgency=medium
 
-  * New upstream release.
-    - comes with internal ebur128 library, drop dependency on
-      libebur128-dev
+  * Team upload.
 
- -- Reinhard Tartler <siretart@tauware.de>  Wed, 19 Jul 2017 22:00:41 -0400
+  [ Reinhard Tartler ]
+  * New upstream release. (Closes: #869112)
+    - Comes with internal ebur128 library, so drop build-dependency on
+      libebur128-dev.
+
+  [ James Cowgill ]
+  * debian/copyright:
+    - Update.
+  * debian/tests:
+    - Use '-pix_fmt yuv422p' in dnxhd autopkgtests.
+    - Update encdec_list.txt.
+
+ -- James Cowgill <jcowgill@debian.org>  Wed, 26 Jul 2017 21:06:44 +0100
 
 ffmpeg (7:3.2.6-1) unstable; urgency=medium
 
