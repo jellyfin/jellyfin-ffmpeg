@@ -25,7 +25,7 @@ encode_file() {
     if [ "$codec" == "avui" ]; then
         opts="-s 720x486"
     elif [ "$codec" == "dnxhd" ]; then
-        opts="-s 1280x720 -b:v 90M"
+        opts="-s 1280x720 -b:v 90M -pix_fmt yuv422p"
     elif [ "$codec" == "dvvideo" ]; then
         opts="-s 720x480 -pix_fmt yuv411p"
     elif [ "$codec" == "h261" ]; then
