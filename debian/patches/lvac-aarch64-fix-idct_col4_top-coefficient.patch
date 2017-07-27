@@ -1,0 +1,23 @@
+From 20f5e2c17785ef84db565e658420faf6f8ca0807 Mon Sep 17 00:00:00 2001
+From: Matthieu Bouron <matthieu.bouron@gmail.com>
+Date: Tue, 13 Jun 2017 17:19:51 +0200
+Subject: [PATCH] lavc/aarch64/simple_idct: fix idct_col4_top coefficient
+
+Fixes regression introduced by 5d0b8b1ae307951310c7d9a8fa282fbca9b997cd.
+---
+ libavcodec/aarch64/simple_idct_neon.S | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavcodec/aarch64/simple_idct_neon.S b/libavcodec/aarch64/simple_idct_neon.S
+index 92987985d29..5bd31e5be99 100644
+--- a/libavcodec/aarch64/simple_idct_neon.S
++++ b/libavcodec/aarch64/simple_idct_neon.S
+@@ -74,7 +74,7 @@ endconst
+ .endm
+ 
+ .macro idct_col4_top y1, y2, y3, y4, i, l
+-        smull\i         v7.4S,  \y3\l, z1
++        smull\i         v7.4S,  \y3\l, z2
+         smull\i         v16.4S, \y3\l, z6
+         smull\i         v17.4S, \y2\l, z1
+         add             v19.4S, v23.4S, v7.4S
