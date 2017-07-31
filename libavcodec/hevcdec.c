@@ -138,7 +138,7 @@ fail:
     return AVERROR(ENOMEM);
 }
 
-static void pred_weight_table(HEVCContext *s, GetBitContext *gb)
+static int pred_weight_table(HEVCContext *s, GetBitContext *gb)
 {
     int i = 0;
     int j = 0;
@@ -181,6 +181,12 @@ static void pred_weight_table(HEVCContext *s, GetBitContext *gb)
             for (j = 0; j < 2; j++) {
                 int delta_chroma_weight_l0 = get_se_golomb(gb);
                 int delta_chroma_offset_l0 = get_se_golomb(gb);
+
+                if (   (int8_t)delta_chroma_weight_l0 != delta_chroma_weight_l0
+                    || delta_chroma_offset_l0 < -(1<<17) || delta_chroma_offset_l0 > (1<<17)) {
+                    return AVERROR_INVALIDDATA;
+                }
+
                 s->sh.chroma_weight_l0[i][j] = (1 << s->sh.chroma_log2_weight_denom) + delta_chroma_weight_l0;
                 s->sh.chroma_offset_l0[i][j] = av_clip((delta_chroma_offset_l0 - ((128 * s->sh.chroma_weight_l0[i][j])
                                                                                     >> s->sh.chroma_log2_weight_denom) + 128), -128, 127);
@@ -217,6 +223,12 @@ static void pred_weight_table(HEVCContext *s, GetBitContext *gb)
                 for (j = 0; j < 2; j++) {
                     int delta_chroma_weight_l1 = get_se_golomb(gb);
                     int delta_chroma_offset_l1 = get_se_golomb(gb);
+
+                    if (   (int8_t)delta_chroma_weight_l1 != delta_chroma_weight_l1
+                        || delta_chroma_offset_l1 < -(1<<17) || delta_chroma_offset_l1 > (1<<17)) {
+                        return AVERROR_INVALIDDATA;
+                    }
+
                     s->sh.chroma_weight_l1[i][j] = (1 << s->sh.chroma_log2_weight_denom) + delta_chroma_weight_l1;
                     s->sh.chroma_offset_l1[i][j] = av_clip((delta_chroma_offset_l1 - ((128 * s->sh.chroma_weight_l1[i][j])
                                                                                         >> s->sh.chroma_log2_weight_denom) + 128), -128, 127);
@@ -229,6 +241,7 @@ static void pred_weight_table(HEVCContext *s, GetBitContext *gb)
             }
         }
     }
+    return 0;
 }
 
 static int decode_lt_rps(HEVCContext *s, LongTermRPS *rps, GetBitContext *gb)
@@ -247,6 +260,8 @@ static int decode_lt_rps(HEVCContext *s, LongTermRPS *rps, GetBitContext *gb)
         nb_sps = get_ue_golomb_long(gb);
     nb_sh = get_ue_golomb_long(gb);
 
+    if (nb_sps > sps->num_long_term_ref_pics_sps)
+        return AVERROR_INVALIDDATA;
     if (nb_sh + (uint64_t)nb_sps > FF_ARRAY_ELEMS(rps->poc))
         return AVERROR_INVALIDDATA;
 
@@ -270,12 +285,16 @@ static int decode_lt_rps(HEVCContext *s, LongTermRPS *rps, GetBitContext *gb)
 
         delta_poc_msb_present = get_bits1(gb);
         if (delta_poc_msb_present) {
-            int delta = get_ue_golomb_long(gb);
+            int64_t delta = get_ue_golomb_long(gb);
+            int64_t poc;
 
             if (i && i != nb_sps)
                 delta += prev_delta_msb;
 
-            rps->poc[i] += s->poc - delta * max_poc_lsb - s->sh.pic_order_cnt_lsb;
+            poc = rps->poc[i] + s->poc - delta * max_poc_lsb - s->sh.pic_order_cnt_lsb;
+            if (poc != (int32_t)poc)
+                return AVERROR_INVALIDDATA;
+            rps->poc[i] = poc;
             prev_delta_msb = delta;
         }
     }
@@ -676,7 +695,9 @@ static int hls_slice_header(HEVCContext *s)
 
             if ((s->ps.pps->weighted_pred_flag   && sh->slice_type == HEVC_SLICE_P) ||
                 (s->ps.pps->weighted_bipred_flag && sh->slice_type == HEVC_SLICE_B)) {
-                pred_weight_table(s, gb);
+                int ret = pred_weight_table(s, gb);
+                if (ret < 0)
+                    return ret;
             }
 
             sh->max_num_merge_cand = 5 - get_ue_golomb_long(gb);
@@ -2974,7 +2995,7 @@ static int verify_md5(HEVCContext *s, AVFrame *frame)
     return 0;
 }
 
-static int hevc_decode_extradata(HEVCContext *s, uint8_t *buf, int length)
+static int hevc_decode_extradata(HEVCContext *s, uint8_t *buf, int length, int first)
 {
     AVCodecContext *avctx = s->avctx;
     GetByteContext gb;
@@ -3036,7 +3057,7 @@ static int hevc_decode_extradata(HEVCContext *s, uint8_t *buf, int length)
 
     /* export stream parameters from the first SPS */
     for (i = 0; i < FF_ARRAY_ELEMS(s->ps.sps_list); i++) {
-        if (s->ps.sps_list[i]) {
+        if (first && s->ps.sps_list[i]) {
             const HEVCSPS *sps = (const HEVCSPS*)s->ps.sps_list[i]->data;
             export_stream_params(s->avctx, &s->ps, sps);
             break;
@@ -3066,7 +3087,7 @@ static int hevc_decode_frame(AVCodecContext *avctx, void *data, int *got_output,
     new_extradata = av_packet_get_side_data(avpkt, AV_PKT_DATA_NEW_EXTRADATA,
                                             &new_extradata_size);
     if (new_extradata && new_extradata_size > 0) {
-        ret = hevc_decode_extradata(s, new_extradata, new_extradata_size);
+        ret = hevc_decode_extradata(s, new_extradata, new_extradata_size, 0);
         if (ret < 0)
             return ret;
     }
@@ -3349,7 +3370,7 @@ static av_cold int hevc_decode_init(AVCodecContext *avctx)
         s->threads_number = 1;
 
     if (avctx->extradata_size > 0 && avctx->extradata) {
-        ret = hevc_decode_extradata(s, avctx->extradata, avctx->extradata_size);
+        ret = hevc_decode_extradata(s, avctx->extradata, avctx->extradata_size, 1);
         if (ret < 0) {
             hevc_decode_free(avctx);
             return ret;
