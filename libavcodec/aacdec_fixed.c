@@ -181,14 +181,15 @@ static void subband_scale(int *dst, int *src, int scale, int offset, int len)
             out = (int)(((int64_t)src[i] * c) >> 32);
             dst[i] = ((int)(out+round) >> s) * ssign;
         }
-    }
-    else {
+    } else if (s > -32) {
         s = s + 32;
         round = 1 << (s-1);
         for (i=0; i<len; i++) {
             out = (int)((int64_t)((int64_t)src[i] * c + round) >> s);
             dst[i] = out * (unsigned)ssign;
         }
+    } else {
+        av_log(NULL, AV_LOG_ERROR, "Overflow in subband_scale()\n");
     }
 }
 
@@ -389,7 +390,7 @@ static void apply_dependent_coupling_fixed(AACContext *ac,
                         for (k = offsets[i]; k < offsets[i + 1]; k++) {
                             tmp = (int)(((int64_t)src[group * 128 + k] * c + \
                                         (int64_t)0x1000000000) >> 37);
-                            dest[group * 128 + k] += tmp << shift;
+                            dest[group * 128 + k] += tmp * (1 << shift);
                         }
                     }
                 }
@@ -429,7 +430,7 @@ static void apply_independent_coupling_fixed(AACContext *ac,
     else {
       for (i = 0; i < len; i++) {
           tmp = (int)(((int64_t)src[i] * c + (int64_t)0x1000000000) >> 37);
-          dest[i] += tmp << shift;
+          dest[i] += tmp * (1 << shift);
       }
     }
 }
