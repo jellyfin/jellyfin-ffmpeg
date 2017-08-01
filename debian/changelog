@@ -1,8 +1,19 @@
-ffmpeg (7:3.3.3-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.3.3-1) unstable; urgency=medium
 
-  *
+  * Team upload.
+  * New upstream release.
+    - Fixes testsuite failure on arm64. (Closes: #870050)
+  * Add patches to fix testsuite failures on big-endian. (Closes: #870048)
+    - 0001-sws-tests-pixdesc_query-replace-rgb-based-pix-fmts-w.patch.
+    - 0002-swscale-fix-gbrap16-alpha-channel-issues.patch to fix. This patch
+      also fixes some other alpha channel issues with the gbrap16 pixel
+      formats.
 
- -- James Cowgill <jcowgill@debian.org>  Thu, 27 Jul 2017 14:47:32 +0100
+  * debian/rules:
+    - Disable more MIPS optimization options which might not be available on
+      all processors.
+
+ -- James Cowgill <jcowgill@debian.org>  Tue, 01 Aug 2017 16:08:54 +0100
 
 ffmpeg (7:3.3.2-1) unstable; urgency=medium
 
