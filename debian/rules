@@ -165,14 +165,20 @@ ifneq (,$(filter $(DEB_HOST_ARCH),x32))
 	CONFIG += --disable-asm
 endif
 
-# Disable optimizations on mips(el) and some on mips64(el), because they are not always available on these architectures.
+# Disable some optimizations on mips*, because they are not always available on these architectures
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel mips64 mips64el))
 	CONFIG += --disable-mipsdsp \
 		--disable-mipsdspr2 \
+		--disable-loongson2 \
 		--disable-loongson3 \
+		--disable-mmi \
+		--disable-mips32r5 \
 		--disable-mips32r6 \
-		--disable-mips64r6
+		--disable-mips64r6 \
+		--disable-msa
 endif
+
+# Disable mipsfpu on mips and mipsel, because it is not compatible with the FPXX ABI
 ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 	CONFIG += --disable-mipsfpu
 endif
