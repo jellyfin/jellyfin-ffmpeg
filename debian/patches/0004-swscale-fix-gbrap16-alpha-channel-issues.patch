@@ -1,0 +1,89 @@
+From 4f421bf992d0859b3b05658e7ecef5e2485df76d Mon Sep 17 00:00:00 2001
+From: James Cowgill <James.Cowgill@imgtec.com>
+Date: Tue, 1 Aug 2017 13:24:42 +0100
+Subject: [PATCH] swscale: fix gbrap16 alpha channel issues
+
+Fixes filter-pixfmts-scale test failing on big-endian systems due to
+alpSrc not being cast to (const int32_t**).
+
+Also fixes distortions in the output alpha channel values by copying the
+alpha channel code from the rgba64 case found elsewhere in output.c.
+
+Fixes ticket 6555.
+
+Signed-off-by: James Cowgill <James.Cowgill@imgtec.com>
+---
+ libswscale/output.c                 | 15 ++++++++-------
+ tests/ref/fate/filter-pixfmts-scale |  4 ++--
+ 2 files changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/libswscale/output.c b/libswscale/output.c
+index 9774e9f327..8e5ec0a256 100644
+--- a/libswscale/output.c
++++ b/libswscale/output.c
+@@ -2026,17 +2026,18 @@ yuv2gbrp16_full_X_c(SwsContext *c, const int16_t *lumFilter,
+                     const int16_t **lumSrcx, int lumFilterSize,
+                     const int16_t *chrFilter, const int16_t **chrUSrcx,
+                     const int16_t **chrVSrcx, int chrFilterSize,
+-                    const int16_t **alpSrc, uint8_t **dest,
++                    const int16_t **alpSrcx, uint8_t **dest,
+                     int dstW, int y)
+ {
+     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(c->dstFormat);
+     int i;
+-    int hasAlpha = (desc->flags & AV_PIX_FMT_FLAG_ALPHA) && alpSrc;
++    int hasAlpha = (desc->flags & AV_PIX_FMT_FLAG_ALPHA) && alpSrcx;
+     uint16_t **dest16 = (uint16_t**)dest;
+     const int32_t **lumSrc  = (const int32_t**)lumSrcx;
+     const int32_t **chrUSrc = (const int32_t**)chrUSrcx;
+     const int32_t **chrVSrc = (const int32_t**)chrVSrcx;
+-    int A = 0; // init to silence warning
++    const int32_t **alpSrc  = (const int32_t**)alpSrcx;
++    int A = 0xFFFF << 14;
+ 
+     for (i = 0; i < dstW; i++) {
+         int j;
+@@ -2059,13 +2060,13 @@ yuv2gbrp16_full_X_c(SwsContext *c, const int16_t *lumFilter,
+         V >>= 14;
+ 
+         if (hasAlpha) {
+-            A = 1 << 18;
++            A = -0x40000000;
+ 
+             for (j = 0; j < lumFilterSize; j++)
+                 A += alpSrc[j][i] * lumFilter[j];
+ 
+-            if (A & 0xF8000000)
+-                A =  av_clip_uintp2(A, 27);
++            A >>= 1;
++            A += 0x20002000;
+         }
+ 
+         Y -= c->yuv2rgb_y_offset;
+@@ -2083,7 +2084,7 @@ yuv2gbrp16_full_X_c(SwsContext *c, const int16_t *lumFilter,
+         dest16[1][i] = B >> 14;
+         dest16[2][i] = R >> 14;
+         if (hasAlpha)
+-            dest16[3][i] = A >> 11;
++            dest16[3][i] = av_clip_uintp2(A, 30) >> 14;
+     }
+     if ((!isBE(c->dstFormat)) != (!HAVE_BIGENDIAN)) {
+         for (i = 0; i < dstW; i++) {
+diff --git a/tests/ref/fate/filter-pixfmts-scale b/tests/ref/fate/filter-pixfmts-scale
+index 9b601b71da..dcc34bd4d1 100644
+--- a/tests/ref/fate/filter-pixfmts-scale
++++ b/tests/ref/fate/filter-pixfmts-scale
+@@ -23,8 +23,8 @@ gbrap10be           6d89abb9248006c3e9017545e9474654
+ gbrap10le           cf974e23f485a10740f5de74a5c8c3df
+ gbrap12be           1d9b57766ba9c2192403f43967cb9af0
+ gbrap12le           bb1ba1c157717db3dd612a76d38a018e
+-gbrap16be           81542b96575d1fe3b239d23899f5ece3
+-gbrap16le           6feb8b9da131917abe867e0eaaf07b90
++gbrap16be           c72b935a6e57a8e1c37bff08c2db55b1
++gbrap16le           13eb0e62b1ac9c1c86c81521eaefab5f
+ gbrp                dc3387f925f972c61aae7eb23cdc19f0
+ gbrp10be            0277d4c3a8498d75e2783fb81379e481
+ gbrp10le            f3d70f8ab845c3c9b8f7452e4a6e285a
+-- 
+2.13.3
+
