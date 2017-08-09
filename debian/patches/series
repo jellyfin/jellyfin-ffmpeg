@@ -2,3 +2,4 @@
 0002-sws-tests-pixdesc_query-sort-pixel-formats.patch
 0003-sws-tests-pixdesc_query-replace-rgb-based-pix-fmts-w.patch
 0004-swscale-fix-gbrap16-alpha-channel-issues.patch
+0005-arm-thumb2-blx.patch

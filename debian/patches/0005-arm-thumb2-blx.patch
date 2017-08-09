@@ -1,0 +1,80 @@
+Description: Fix SIGBUS on armhf when compiled with binutils 2.29
+ In binutils 2.29, the behavior of the ADR instruction changed so that 1 is
+ added to the address of a Thumb function (previously nothing was added). This
+ allows the loaded address to be passed to a BLX instruction and the correct
+ mode change will occur.
+ .
+ So that the behavior matches in binutils 2.29 and pre-2.29:
+ - Use .eqv to clear the function attribute from a symbol
+ - This allows us to always add 1 to the symbol when in Thumb mode and get the
+   correct result.
+ .
+ See: https://sourceware.org/bugzilla/show_bug.cgi?id=21458
+ Thanks to Jiong Wang for original idea to solve this.
+Author: James Cowgill <jcowgill@debian.org>
+Bug: https://trac.ffmpeg.org/ticket/6571
+Bug-Debian: https://bugs.debian.org/870622
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/libavcodec/arm/h264idct_neon.S
++++ b/libavcodec/arm/h264idct_neon.S
+@@ -20,6 +20,15 @@
+ 
+ #include "libavutil/arm/asm.S"
+ 
++# These .eqv clear the function attribute allowing the +CONFIG_THUMB hack to
++# work on old and new binutils.
++#
++# See: https://sourceware.org/bugzilla/show_bug.cgi?id=21458
++.eqv wfa_ff_h264_idct_add_neon,     X(ff_h264_idct_add_neon)
++.eqv wfa_ff_h264_idct_dc_add_neon,  X(ff_h264_idct_dc_add_neon)
++.eqv wfa_ff_h264_idct8_add_neon,    X(ff_h264_idct8_add_neon)
++.eqv wfa_ff_h264_idct8_dc_add_neon, X(ff_h264_idct8_dc_add_neon)
++
+ function ff_h264_idct_add_neon, export=1
+         vld1.64         {d0-d3},  [r1,:128]
+         vmov.i16        q15, #0
+@@ -113,8 +122,8 @@ function ff_h264_idct_add16_neon, export
+         movne           lr,  #0
+         cmp             lr,  #0
+         ite             ne
+-        adrne           lr,  X(ff_h264_idct_dc_add_neon) + CONFIG_THUMB
+-        adreq           lr,  X(ff_h264_idct_add_neon)    + CONFIG_THUMB
++        adrne           lr,  wfa_ff_h264_idct_dc_add_neon + CONFIG_THUMB
++        adreq           lr,  wfa_ff_h264_idct_add_neon    + CONFIG_THUMB
+         blx             lr
+ 2:      subs            ip,  ip,  #1
+         add             r1,  r1,  #32
+@@ -138,8 +147,8 @@ function ff_h264_idct_add16intra_neon, e
+         cmp             r8,  #0
+         ldrsh           r8,  [r1]
+         iteet           ne
+-        adrne           lr,  X(ff_h264_idct_add_neon)    + CONFIG_THUMB
+-        adreq           lr,  X(ff_h264_idct_dc_add_neon) + CONFIG_THUMB
++        adrne           lr,  wfa_ff_h264_idct_add_neon    + CONFIG_THUMB
++        adreq           lr,  wfa_ff_h264_idct_dc_add_neon + CONFIG_THUMB
+         cmpeq           r8,  #0
+         blxne           lr
+         subs            ip,  ip,  #1
+@@ -166,8 +175,8 @@ function ff_h264_idct_add8_neon, export=
+         cmp             r8,  #0
+         ldrsh           r8,  [r1]
+         iteet           ne
+-        adrne           lr,  X(ff_h264_idct_add_neon)    + CONFIG_THUMB
+-        adreq           lr,  X(ff_h264_idct_dc_add_neon) + CONFIG_THUMB
++        adrne           lr,  wfa_ff_h264_idct_add_neon    + CONFIG_THUMB
++        adreq           lr,  wfa_ff_h264_idct_dc_add_neon + CONFIG_THUMB
+         cmpeq           r8,  #0
+         blxne           lr
+         add             r12, r12, #1
+@@ -388,8 +397,8 @@ function ff_h264_idct8_add4_neon, export
+         movne           lr,  #0
+         cmp             lr,  #0
+         ite             ne
+-        adrne           lr,  X(ff_h264_idct8_dc_add_neon) + CONFIG_THUMB
+-        adreq           lr,  X(ff_h264_idct8_add_neon)    + CONFIG_THUMB
++        adrne           lr,  wfa_ff_h264_idct8_dc_add_neon + CONFIG_THUMB
++        adreq           lr,  wfa_ff_h264_idct8_add_neon    + CONFIG_THUMB
+         blx             lr
+ 2:      subs            r12, r12, #4
+         add             r1,  r1,  #128
