@@ -3,3 +3,4 @@
 0003-sws-tests-pixdesc_query-replace-rgb-based-pix-fmts-w.patch
 0004-swscale-fix-gbrap16-alpha-channel-issues.patch
 0005-arm-thumb2-blx.patch
+0006-disable-ppc-scalarproduct.patch

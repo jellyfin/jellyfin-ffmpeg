@@ -1,0 +1,29 @@
+Description: Disable broken scalarproduct optimizations on PowerPC
+ GCC 7 miscompiles these functions causing various tests to fail on ppc64el.
+ Disable them until the toolchain is fixed.
+ .
+ Toolchain bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=81833
+Author: James Cowgill <jcowgill@debian.org>
+Bug-Debian: https://bugs.debian.org/871565
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/libavcodec/ppc/audiodsp.c
++++ b/libavcodec/ppc/audiodsp.c
+@@ -88,17 +88,4 @@ static int32_t scalarproduct_int16_vsx(c
+ 
+ av_cold void ff_audiodsp_init_ppc(AudioDSPContext *c)
+ {
+-#if HAVE_ALTIVEC
+-    if (!PPC_ALTIVEC(av_get_cpu_flags()))
+-        return;
+-
+-    c->scalarproduct_int16 = scalarproduct_int16_altivec;
+-#endif /* HAVE_ALTIVEC */
+-
+-#if HAVE_VSX
+-    if (!PPC_VSX(av_get_cpu_flags()))
+-        return;
+-
+-    c->scalarproduct_int16 = scalarproduct_int16_vsx;
+-#endif /* HAVE_VSX */
+ }
