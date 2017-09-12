@@ -262,7 +262,7 @@ static int read_high_coeffs(AVCodecContext *avctx, uint8_t *src, int16_t *dst, i
 
         flag = 0;
 
-        if (state * 4ULL > 0xFF || i >= size)
+        if ((uint64_t)state > 0xFF / 4 || i >= size)
             continue;
 
         pfx = ((state + 8) >> 5) + (state ? ff_clz(state): 32) - 24;
@@ -330,6 +330,9 @@ static int read_highpass(AVCodecContext *avctx, uint8_t *ptr, int plane, AVFrame
                    " for plane %d, band %d\n", magic, plane, i);
             return AVERROR_INVALIDDATA;
         }
+
+        if (a == INT32_MIN)
+            return AVERROR_INVALIDDATA;
 
         ret = read_high_coeffs(avctx, ptr + bytestream2_tell(&ctx->gb), dest, size,
                                c, (b >= FFABS(a)) ? b : a, d,

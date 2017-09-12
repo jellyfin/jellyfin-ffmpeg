@@ -749,12 +749,14 @@ static int asf_read_marker(AVFormatContext *s, int64_t size)
     count = avio_rl32(pb);    // markers count
     avio_rl16(pb);            // reserved 2 bytes
     name_len = avio_rl16(pb); // name length
-    for (i = 0; i < name_len; i++)
-        avio_r8(pb); // skip the name
+    avio_skip(pb, name_len);
 
     for (i = 0; i < count; i++) {
         int64_t pres_time;
         int name_len;
+
+        if (avio_feof(pb))
+            return AVERROR_INVALIDDATA;
 
         avio_rl64(pb);             // offset, 8 bytes
         pres_time = avio_rl64(pb); // presentation time
@@ -1607,6 +1609,11 @@ static int asf_build_simple_index(AVFormatContext *s, int stream_index)
             int pktct         = avio_rl16(s->pb);
             int64_t pos       = s->internal->data_offset + s->packet_size * (int64_t)pktnum;
             int64_t index_pts = FFMAX(av_rescale(itime, i, 10000) - asf->hdr.preroll, 0);
+
+            if (avio_feof(s->pb)) {
+                ret = AVERROR_INVALIDDATA;
+                goto end;
+            }
 
             if (pos != last_pos) {
                 av_log(s, AV_LOG_DEBUG, "pktnum:%d, pktct:%d  pts: %"PRId64"\n",

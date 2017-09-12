@@ -37,7 +37,7 @@
 
 #define APPEND_RESIDUE(N, M)                                                   \
     N          |= M >> (N ## _bits);                                           \
-    N ## _bits +=      (M ## _bits)
+    N ## _bits  = (N ## _bits + (M ## _bits)) & 0x3F
 
 int ff_dirac_golomb_read_32bit(DiracGolombLUT *lut_ctx, const uint8_t *buf,
                                int bytes, uint8_t *_dst, int coeffs)
