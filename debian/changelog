@@ -1,8 +1,17 @@
-ffmpeg (7:3.3.4-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.3.4-1) unstable; urgency=medium
 
-  *
+  * New upstream bugfix release.
+    - Fixes CVE-2017-14054, CVE-2017-14055, CVE-2017-14056,
+      CVE-2017-14057, CVE-2017-14058, CVE-2017-14059, CVE-2017-14169,
+      CVE-2017-14170, CVE-2017-14171, CVE-2017-14222, CVE-2017-14223,
+      CVE-2017-14225.
+    - Fixes crashes on ARM due to misalignment. (Closes: #872503)
 
- -- James Cowgill <jcowgill@debian.org>  Tue, 12 Sep 2017 17:43:51 +0100
+  * debian/patches:
+    - Drop 0004-swscale-fix-gbrap16-alpha-channel-issues.patch,
+      applied upstream.
+
+ -- James Cowgill <jcowgill@debian.org>  Tue, 12 Sep 2017 23:44:51 +0100
 
 ffmpeg (7:3.3.3-4) unstable; urgency=medium
 
