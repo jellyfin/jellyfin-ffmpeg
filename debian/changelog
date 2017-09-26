@@ -1,8 +1,9 @@
-ffmpeg (7:3.3.4-2) UNRELEASED; urgency=medium
+ffmpeg (7:3.3.4-2) unstable; urgency=medium
 
-  *
+  * debian/patches/0004-Add-support-for-LibOpenJPEG-v2.2-git.patch:
+    - Add upstream patch to fix FTBFS with OpenJPEG 2.2. (Closes: #876805)
 
- -- James Cowgill <jcowgill@debian.org>  Tue, 26 Sep 2017 11:29:13 +0100
+ -- James Cowgill <jcowgill@debian.org>  Tue, 26 Sep 2017 11:42:03 +0100
 
 ffmpeg (7:3.3.4-1) unstable; urgency=medium
 
