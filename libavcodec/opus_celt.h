@@ -27,6 +27,7 @@
 #include <float.h>
 
 #include "opus.h"
+#include "opus_pvq.h"
 
 #include "mdct15.h"
 #include "libavutil/float_dsp.h"
@@ -42,6 +43,8 @@
 #define CELT_EMPH_COEFF              0.85000610f
 #define CELT_POSTFILTER_MINPERIOD    15
 #define CELT_ENERGY_SILENCE          (-28.0f)
+
+typedef struct CeltPVQ CeltPVQ;
 
 enum CeltSpread {
     CELT_SPREAD_NONE,
@@ -67,16 +70,13 @@ typedef struct CeltBlock {
 
     uint8_t collapse_masks[CELT_MAX_BANDS];
 
-    int band_bins[CELT_MAX_BANDS]; /* MDCT bins per band */
-    float *band_coeffs[CELT_MAX_BANDS];
-
     /* buffer for mdct output + postfilter */
     DECLARE_ALIGNED(32, float, buf)[2048];
     DECLARE_ALIGNED(32, float, coeffs)[CELT_MAX_FRAME_SIZE];
 
     /* Used by the encoder */
-    DECLARE_ALIGNED(32, float, overlap)[120];
-    DECLARE_ALIGNED(32, float, samples)[CELT_MAX_FRAME_SIZE];
+    DECLARE_ALIGNED(32, float, overlap)[FFALIGN(CELT_OVERLAP, 16)];
+    DECLARE_ALIGNED(32, float, samples)[FFALIGN(CELT_MAX_FRAME_SIZE, 16)];
 
     /* postfilter parameters */
     int   pf_period_new;
@@ -95,6 +95,7 @@ struct CeltFrame {
     MDCT15Context       *imdct[4];
     AVFloatDSPContext   *dsp;
     CeltBlock           block[2];
+    CeltPVQ             *pvq;
     int channels;
     int output_channels;
 
@@ -103,7 +104,6 @@ struct CeltFrame {
     int end_band;
     int coded_bands;
     int transient;
-    int intra;
     int pfilter;
     int skip_band_floor;
     int tf_select;
@@ -120,6 +120,12 @@ struct CeltFrame {
     uint32_t seed;
     enum CeltSpread spread;
 
+    /* Encoder PF coeffs */
+    int pf_octave;
+    int pf_period;
+    int pf_tapset;
+    float pf_gain;
+
     /* Bit allocation */
     int framebits;
     int remaining;
@@ -129,8 +135,6 @@ struct CeltFrame {
     int fine_priority[CELT_MAX_BANDS];
     int pulses       [CELT_MAX_BANDS];
     int tf_change    [CELT_MAX_BANDS];
-
-    DECLARE_ALIGNED(32, float, scratch)[22 * 8]; // MAX(ff_celt_freq_range) * 1<<CELT_MAX_LOG_BLOCKS
 };
 
 /* LCG for noise generation */

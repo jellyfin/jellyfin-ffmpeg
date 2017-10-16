@@ -1498,9 +1498,9 @@ static int select_cur_seq_no(HLSContext *c, struct playlist *pls)
 static int save_avio_options(AVFormatContext *s)
 {
     HLSContext *c = s->priv_data;
-    static const char *opts[] = {
+    static const char * const opts[] = {
         "headers", "http_proxy", "user_agent", "user-agent", "cookies", NULL };
-    const char **opt = opts;
+    const char * const * opt = opts;
     uint8_t *buf;
     int ret = 0;
 
@@ -1786,7 +1786,7 @@ static int hls_read_header(AVFormatContext *s)
         }
         pls->ctx->pb       = &pls->pb;
         pls->ctx->io_open  = nested_io_open;
-        pls->ctx->flags   |= s->flags;
+        pls->ctx->flags   |= s->flags & ~AVFMT_FLAG_CUSTOM_IO;
 
         if ((ret = ff_copy_whiteblacklists(pls->ctx, s)) < 0)
             goto fail;

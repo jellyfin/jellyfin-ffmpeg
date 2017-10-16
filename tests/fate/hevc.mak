@@ -225,6 +225,9 @@ $(foreach N,$(HEVC_SAMPLES_444_12BIT),$(eval $(call FATE_HEVC_TEST_444_12BIT,$(N
 fate-hevc-paramchange-yuv420p-yuv420p10: CMD = framecrc -vsync 0 -i $(TARGET_SAMPLES)/hevc/paramchange_yuv420p_yuv420p10.hevc -sws_flags area+accurate_rnd+bitexact
 FATE_HEVC += fate-hevc-paramchange-yuv420p-yuv420p10
 
+fate-hevc-paired-fields: CMD = probeframes -show_entries frame=interlaced_frame,top_field_first $(TARGET_SAMPLES)/hevc/paired_fields.hevc
+FATE_HEVC_FFPROBE-$(call DEMDEC, HEVC, HEVC) += fate-hevc-paired-fields
+
 tests/data/hevc-mp4.mov: TAG = GEN
 tests/data/hevc-mp4.mov: ffmpeg$(PROGSSUF)$(EXESUF) | tests/data
 	$(M)$(TARGET_EXEC) $(TARGET_PATH)/$< \
@@ -232,7 +235,7 @@ tests/data/hevc-mp4.mov: ffmpeg$(PROGSSUF)$(EXESUF) | tests/data
 
 FATE_HEVC-$(call ALLYES, HEVC_DEMUXER MOV_DEMUXER HEVC_MP4TOANNEXB_BSF MOV_MUXER HEVC_MUXER) += fate-hevc-bsf-mp4toannexb
 fate-hevc-bsf-mp4toannexb: tests/data/hevc-mp4.mov
-fate-hevc-bsf-mp4toannexb: CMD = md5 -i $(TARGET_PATH)/tests/data/hevc-mp4.mov -vcodec copy -fflags +bitexact -f hevc
+fate-hevc-bsf-mp4toannexb: CMD = md5 -i $(TARGET_PATH)/tests/data/hevc-mp4.mov -c:v copy -fflags +bitexact -f hevc
 fate-hevc-bsf-mp4toannexb: CMP = oneline
 fate-hevc-bsf-mp4toannexb: REF = 1873662a3af1848c37e4eb25722c8df9
 
@@ -244,5 +247,6 @@ FATE_HEVC-$(call DEMDEC, MOV, HEVC) += fate-hevc-extradata-reload
 fate-hevc-extradata-reload: CMD = framemd5 -i $(TARGET_SAMPLES)/hevc/extradata-reload-multi-stsd.mov -sws_flags bitexact
 
 FATE_SAMPLES_AVCONV += $(FATE_HEVC-yes)
+FATE_SAMPLES_FFPROBE += $(FATE_HEVC_FFPROBE-yes)
 
-fate-hevc: $(FATE_HEVC-yes)
+fate-hevc: $(FATE_HEVC-yes) $(FATE_HEVC_FFPROBE-yes)

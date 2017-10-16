@@ -1267,11 +1267,10 @@ static int dirac_unpack_idwt_params(DiracContext *s)
         if (get_bits1(gb)) {
             av_log(s->avctx,AV_LOG_DEBUG,"Low Delay: Has Custom Quantization Matrix!\n");
             /* custom quantization matrix */
-            s->lowdelay.quant[0][0] = get_interleaved_ue_golomb(gb);
             for (level = 0; level < s->wavelet_depth; level++) {
-                s->lowdelay.quant[level][1] = get_interleaved_ue_golomb(gb);
-                s->lowdelay.quant[level][2] = get_interleaved_ue_golomb(gb);
-                s->lowdelay.quant[level][3] = get_interleaved_ue_golomb(gb);
+                for (i = !!level; i < 4; i++) {
+                    s->lowdelay.quant[level][i] = get_interleaved_ue_golomb(gb);
+                }
             }
         } else {
             if (s->wavelet_depth > 4) {
@@ -2101,7 +2100,10 @@ static int dirac_decode_data_unit(AVCodecContext *avctx, const uint8_t *buf, int
             return ret;
         }
 
-        ret = ff_set_dimensions(avctx, dsh->width, dsh->height);
+        if (CALC_PADDING((int64_t)dsh->width, MAX_DWT_LEVELS) * CALC_PADDING((int64_t)dsh->height, MAX_DWT_LEVELS) > avctx->max_pixels)
+            ret = AVERROR(ERANGE);
+        if (ret >= 0)
+            ret = ff_set_dimensions(avctx, dsh->width, dsh->height);
         if (ret < 0) {
             av_freep(&dsh);
             return ret;

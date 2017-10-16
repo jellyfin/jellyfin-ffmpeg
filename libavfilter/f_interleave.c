@@ -37,7 +37,7 @@
 #include "audio.h"
 #include "video.h"
 
-typedef struct {
+typedef struct InterleaveContext {
     const AVClass *class;
     int nb_inputs;
     struct FFBufQueue *queues;
@@ -110,7 +110,7 @@ static av_cold int init(AVFilterContext *ctx)
 {
     InterleaveContext *s = ctx->priv;
     const AVFilterPad *outpad = &ctx->filter->outputs[0];
-    int i;
+    int i, ret;
 
     s->queues = av_calloc(s->nb_inputs, sizeof(s->queues[0]));
     if (!s->queues)
@@ -133,7 +133,10 @@ static av_cold int init(AVFilterContext *ctx)
         default:
             av_assert0(0);
         }
-        ff_insert_inpad(ctx, i, &inpad);
+        if ((ret = ff_insert_inpad(ctx, i, &inpad)) < 0) {
+            av_freep(&inpad.name);
+            return ret;
+        }
     }
 
     return 0;

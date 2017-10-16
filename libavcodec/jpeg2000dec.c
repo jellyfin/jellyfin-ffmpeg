@@ -26,6 +26,7 @@
  */
 
 #include <inttypes.h>
+#include <math.h>
 
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
@@ -106,6 +107,7 @@ typedef struct Jpeg2000DecoderContext {
     int             tile_width, tile_height;
     unsigned        numXtiles, numYtiles;
     int             maxtilelen;
+    AVRational      sar;
 
     Jpeg2000CodingStyle codsty[4];
     Jpeg2000QuantStyle  qntsty[4];
@@ -1996,6 +1998,7 @@ static int jp2_find_codestream(Jpeg2000DecoderContext *s)
                 atom2_end  = bytestream2_tell(&s->g) + atom2_size - 8;
                 if (atom2_size < 8 || atom2_end > atom_end || atom2_end < atom2_size)
                     break;
+                atom2_size -= 8;
                 if (atom2 == JP2_CODESTREAM) {
                     return 1;
                 } else if (atom2 == MKBETAG('c','o','l','r') && atom2_size >= 7) {
@@ -2057,6 +2060,39 @@ static int jp2_find_codestream(Jpeg2000DecoderContext *s)
                         if (cn < 4 && asoc < 4)
                             s->cdef[cn] = asoc;
                     }
+                } else if (atom2 == MKBETAG('r','e','s',' ') && atom2_size >= 18) {
+                    int64_t vnum, vden, hnum, hden, vexp, hexp;
+                    uint32_t resx;
+                    bytestream2_skip(&s->g, 4);
+                    resx = bytestream2_get_be32u(&s->g);
+                    if (resx != MKBETAG('r','e','s','c') && resx != MKBETAG('r','e','s','d')) {
+                        bytestream2_seek(&s->g, atom2_end, SEEK_SET);
+                        continue;
+                    }
+                    vnum = bytestream2_get_be16u(&s->g);
+                    vden = bytestream2_get_be16u(&s->g);
+                    hnum = bytestream2_get_be16u(&s->g);
+                    hden = bytestream2_get_be16u(&s->g);
+                    vexp = bytestream2_get_byteu(&s->g);
+                    hexp = bytestream2_get_byteu(&s->g);
+                    if (!vnum || !vden || !hnum || !hden) {
+                        bytestream2_seek(&s->g, atom2_end, SEEK_SET);
+                        av_log(s->avctx, AV_LOG_WARNING, "RES box invalid\n");
+                        continue;
+                    }
+                    if (vexp > hexp) {
+                        vexp -= hexp;
+                        hexp = 0;
+                    } else {
+                        hexp -= vexp;
+                        vexp = 0;
+                    }
+                    if (   INT64_MAX / (hnum * vden) > pow(10, hexp)
+                        && INT64_MAX / (vnum * hden) > pow(10, vexp))
+                        av_reduce(&s->sar.den, &s->sar.num,
+                                  hnum * vden * pow(10, hexp),
+                                  vnum * hden * pow(10, vexp),
+                                  INT32_MAX);
                 }
                 bytestream2_seek(&s->g, atom2_end, SEEK_SET);
             } while (atom_end - atom2_end >= 8);
@@ -2139,6 +2175,9 @@ static int jpeg2000_decode_frame(AVCodecContext *avctx, void *data,
 
     if (s->avctx->pix_fmt == AV_PIX_FMT_PAL8)
         memcpy(picture->data[1], s->palette, 256 * sizeof(uint32_t));
+    if (s->sar.num && s->sar.den)
+        avctx->sample_aspect_ratio = s->sar;
+    s->sar.num = s->sar.den = 0;
 
     return bytestream2_tell(&s->g);
 

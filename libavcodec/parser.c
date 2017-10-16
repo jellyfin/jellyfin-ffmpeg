@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -283,6 +284,8 @@ int ff_combine_frame(ParseContext *pc, int next,
         pc->index += *buf_size;
         return -1;
     }
+
+    av_assert0(next >= 0 || pc->buffer);
 
     *buf_size          =
     pc->overread_index = pc->index + next;

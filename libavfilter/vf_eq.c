@@ -254,13 +254,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVFilterLink *outlink = inlink->dst->outputs[0];
     EQContext *eq = ctx->priv;
     AVFrame *out;
-    int64_t pos = av_frame_get_pkt_pos(in);
+    int64_t pos = in->pkt_pos;
     const AVPixFmtDescriptor *desc;
     int i;
 
     out = ff_get_video_buffer(outlink, inlink->w, inlink->h);
-    if (!out)
+    if (!out) {
+        av_frame_free(&in);
         return AVERROR(ENOMEM);
+    }
 
     av_frame_copy_props(out, in);
     desc = av_pix_fmt_desc_get(inlink->format);

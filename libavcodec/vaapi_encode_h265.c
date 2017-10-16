@@ -149,7 +149,6 @@ typedef struct VAAPIEncodeH265MiscSequenceParams {
 typedef struct VAAPIEncodeH265MiscSliceParams {
     // Slice segments.
     char first_slice_segment_in_pic_flag;
-    unsigned int slice_segment_address;
 
     // Short-term reference picture sets.
     char short_term_ref_pic_set_sps_flag;
@@ -586,7 +585,7 @@ static void vaapi_encode_h265_write_slice_header2(PutBitContext *pbc,
         if (vpic->pic_fields.bits.dependent_slice_segments_enabled_flag)
             u(1, vslice_field(dependent_slice_segment_flag));
         u(av_log2((priv->ctu_width * priv->ctu_height) - 1) + 1,
-          mslice_var(slice_segment_address));
+          vslice_var(slice_segment_address));
     }
     if (!vslice->slice_fields.bits.dependent_slice_segment_flag) {
         for (i = 0; i < mseq->num_extra_slice_header_bits; i++)
@@ -832,8 +831,8 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
             vseq->vui_time_scale        = avctx->time_base.den;
         }
 
-        vseq->intra_period     = ctx->p_per_i * (ctx->b_per_p + 1);
-        vseq->intra_idr_period = vseq->intra_period;
+        vseq->intra_period     = avctx->gop_size;
+        vseq->intra_idr_period = avctx->gop_size;
         vseq->ip_period        = ctx->b_per_p + 1;
     }
 
@@ -1186,13 +1185,15 @@ static av_cold int vaapi_encode_h265_configure(AVCodecContext *avctx)
                "%d / %d / %d for IDR- / P- / B-frames.\n",
                priv->fixed_qp_idr, priv->fixed_qp_p, priv->fixed_qp_b);
 
-    } else if (ctx->va_rc_mode == VA_RC_CBR) {
+    } else if (ctx->va_rc_mode == VA_RC_CBR ||
+               ctx->va_rc_mode == VA_RC_VBR) {
         // These still need to be  set for pic_init_qp/slice_qp_delta.
         priv->fixed_qp_idr = 30;
         priv->fixed_qp_p   = 30;
         priv->fixed_qp_b   = 30;
 
-        av_log(avctx, AV_LOG_DEBUG, "Using constant-bitrate = %"PRId64" bps.\n",
+        av_log(avctx, AV_LOG_DEBUG, "Using %s-bitrate = %"PRId64" bps.\n",
+               ctx->va_rc_mode == VA_RC_CBR ? "constant" : "variable",
                avctx->bit_rate);
 
     } else {
@@ -1252,9 +1253,12 @@ static av_cold int vaapi_encode_h265_init(AVCodecContext *avctx)
     }
     ctx->va_entrypoint = VAEntrypointEncSlice;
 
-    if (avctx->bit_rate > 0)
-        ctx->va_rc_mode = VA_RC_CBR;
-    else
+    if (avctx->bit_rate > 0) {
+        if (avctx->rc_max_rate == avctx->bit_rate)
+            ctx->va_rc_mode = VA_RC_CBR;
+        else
+            ctx->va_rc_mode = VA_RC_VBR;
+    } else
         ctx->va_rc_mode = VA_RC_CQP;
 
     ctx->va_packed_headers =

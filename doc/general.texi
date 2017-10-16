@@ -101,6 +101,14 @@ Go to @url{http://www.wavpack.com/} and follow the instructions for
 installing the library. Then pass @code{--enable-libwavpack} to configure to
 enable it.
 
+@section libxavs
+
+FFmpeg can make use of the libxavs library for Xavs encoding.
+
+Go to @url{http://xavs.sf.net/} and follow the instructions for
+installing the library. Then pass @code{--enable-libxavs} to configure to
+enable it.
+
 @section OpenH264
 
 FFmpeg can make use of the OpenH264 library for H.264 encoding and decoding.
@@ -333,6 +341,7 @@ library:
 @item FunCom ISS                @tab   @tab X
     @tab Audio format used in various games from FunCom like The Longest Journey.
 @item G.723.1                   @tab X @tab X
+@item G.726                     @tab   @tab X @tab Both left- and right-justified.
 @item G.729 BIT                 @tab X @tab X
 @item G.729 raw                 @tab   @tab X
 @item GENH                      @tab   @tab X
@@ -512,6 +521,7 @@ library:
     @tab Multimedia format used by many games.
 @item SMJPEG                    @tab X @tab X
     @tab Used in certain Loki game ports.
+@item SMPTE 337M encapsulation  @tab   @tab X
 @item Smush                     @tab   @tab X
     @tab Multimedia format used in some LucasArts games.
 @item Sony OpenMG (OMA)         @tab X @tab X
@@ -520,7 +530,7 @@ library:
 @item Sony Wave64 (W64)         @tab X @tab X
 @item SoX native format         @tab X @tab X
 @item SUN AU format             @tab X @tab X
-@item SUP raw PGS subtitles     @tab   @tab X
+@item SUP raw PGS subtitles     @tab X @tab X
 @item SVAG                      @tab   @tab X
     @tab Audio format used in Konami PS2 games.
 @item TDSC                      @tab   @tab X
@@ -583,6 +593,8 @@ following image formats are supported:
     @tab Digital Picture Exchange
 @item EXR          @tab   @tab X
     @tab OpenEXR
+@item FITS         @tab X @tab X
+    @tab Flexible Image Transport System
 @item JPEG         @tab X @tab X
     @tab Progressive JPEG is not supported.
 @item JPEG 2000    @tab X @tab X
@@ -703,7 +715,7 @@ following image formats are supported:
 @item DFA                    @tab     @tab  X
     @tab Codec used in Chronomaster game.
 @item Dirac                  @tab  E  @tab  X
-    @tab supported through external library libschroedinger
+    @tab supported though the native vc2 (Dirac Pro) encoder
 @item Deluxe Paint Animation @tab     @tab  X
 @item DNxHD                  @tab   X @tab  X
     @tab aka SMPTE VC3
@@ -781,6 +793,7 @@ following image formats are supported:
     @tab Used in LucasArts games / SMUSH animations.
 @item lossless MJPEG         @tab  X  @tab  X
 @item MagicYUV Video         @tab     @tab  X
+@item Mandsoft Screen Capture Codec  @tab     @tab  X
 @item Microsoft ATC Screen   @tab     @tab  X
     @tab Also known as Microsoft Screen 3.
 @item Microsoft Expression Encoder Screen  @tab     @tab  X
@@ -848,6 +861,7 @@ following image formats are supported:
     @tab used in some games by Entertainment Software Partners
 @item ScreenPressor          @tab     @tab  X
 @item Screenpresso           @tab     @tab  X
+@item Screen Recorder Gold Codec  @tab     @tab  X
 @item Sierra VMD video       @tab     @tab  X
     @tab Used in Sierra VMD files.
 @item Silicon Graphics Motion Video Compressor 1 (MVC1)  @tab     @tab  X
@@ -991,6 +1005,7 @@ following image formats are supported:
     @tab All versions except 5.1 are supported.
 @item DCA (DTS Coherent Acoustics)  @tab  X  @tab  X
     @tab supported extensions: XCh, XXCH, X96, XBR, XLL, LBR (partially)
+@item Dolby E  @tab     @tab  X
 @item DPCM id RoQ            @tab  X  @tab  X
     @tab Used in Quake III, Jedi Knight 2 and other computer games.
 @item DPCM Interplay         @tab     @tab  X

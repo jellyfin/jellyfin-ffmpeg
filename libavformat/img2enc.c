@@ -62,6 +62,8 @@ static int write_header(AVFormatContext *s)
 
     if (st->codecpar->codec_id == AV_CODEC_ID_GIF) {
         img->muxer = "gif";
+    } else if (st->codecpar->codec_id == AV_CODEC_ID_FITS) {
+        img->muxer = "fits";
     } else if (st->codecpar->codec_id == AV_CODEC_ID_RAWVIDEO) {
         const char *str = strrchr(img->path, '.');
         img->split_planes =     str
@@ -159,8 +161,7 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
         st->id = pkt->stream_index;
 
         fmt->pb = pb[0];
-        if ((ret = av_copy_packet(&pkt2, pkt))                            < 0 ||
-            (ret = av_dup_packet(&pkt2))                                  < 0 ||
+        if ((ret = av_packet_ref(&pkt2, pkt))                             < 0 ||
             (ret = avcodec_parameters_copy(st->codecpar, s->streams[0]->codecpar)) < 0 ||
             (ret = avformat_write_header(fmt, NULL))                      < 0 ||
             (ret = av_interleaved_write_frame(fmt, &pkt2))                < 0 ||

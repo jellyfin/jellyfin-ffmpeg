@@ -42,7 +42,7 @@
 #include "qsvdec.h"
 
 static int qsv_init_session(AVCodecContext *avctx, QSVContext *q, mfxSession session,
-                            AVBufferRef *hw_frames_ref)
+                            AVBufferRef *hw_frames_ref, AVBufferRef *hw_device_ref)
 {
     int ret;
 
@@ -59,13 +59,25 @@ static int qsv_init_session(AVCodecContext *avctx, QSVContext *q, mfxSession ses
         if (!q->frames_ctx.hw_frames_ctx)
             return AVERROR(ENOMEM);
 
-        ret = ff_qsv_init_session_hwcontext(avctx, &q->internal_session,
-                                            &q->frames_ctx, q->load_plugins,
-                                            q->iopattern == MFX_IOPATTERN_OUT_OPAQUE_MEMORY);
+        ret = ff_qsv_init_session_frames(avctx, &q->internal_session,
+                                         &q->frames_ctx, q->load_plugins,
+                                         q->iopattern == MFX_IOPATTERN_OUT_OPAQUE_MEMORY);
         if (ret < 0) {
             av_buffer_unref(&q->frames_ctx.hw_frames_ctx);
             return ret;
         }
+
+        q->session = q->internal_session;
+    } else if (hw_device_ref) {
+        if (q->internal_session) {
+            MFXClose(q->internal_session);
+            q->internal_session = NULL;
+        }
+
+        ret = ff_qsv_init_session_device(avctx, &q->internal_session,
+                                         hw_device_ref, q->load_plugins);
+        if (ret < 0)
+            return ret;
 
         q->session = q->internal_session;
     } else {
@@ -133,7 +145,7 @@ static int qsv_decode_init(AVCodecContext *avctx, QSVContext *q)
         iopattern = MFX_IOPATTERN_OUT_SYSTEM_MEMORY;
     q->iopattern = iopattern;
 
-    ret = qsv_init_session(avctx, q, session, avctx->hw_frames_ctx);
+    ret = qsv_init_session(avctx, q, session, avctx->hw_frames_ctx, avctx->hw_device_ctx);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Error initializing an MFX session\n");
         return ret;
@@ -363,9 +375,11 @@ static int qsv_decode(AVCodecContext *avctx, QSVContext *q,
         av_fifo_generic_read(q->async_fifo, &sync,      sizeof(sync),      NULL);
         out_frame->queued = 0;
 
-        do {
-            ret = MFXVideoCORE_SyncOperation(q->session, *sync, 1000);
-        } while (ret == MFX_WRN_IN_EXECUTION);
+        if (avctx->pix_fmt != AV_PIX_FMT_QSV) {
+            do {
+                ret = MFXVideoCORE_SyncOperation(q->session, *sync, 1000);
+            } while (ret == MFX_WRN_IN_EXECUTION);
+        }
 
         av_freep(&sync);
 

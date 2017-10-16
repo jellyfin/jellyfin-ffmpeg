@@ -145,6 +145,11 @@ struct AVFormatInternal {
      * ID3v2 tag useful for MP3 demuxing
      */
     AVDictionary *id3v2_meta;
+
+    /*
+     * Prefer the codec framerate for avg_frame_rate computation.
+     */
+    int prefer_codec_framerate;
 };
 
 struct AVStreamInternal {
@@ -177,6 +182,15 @@ struct AVStreamInternal {
     int avctx_inited;
 
     enum AVCodecID orig_codec_id;
+
+    /* the context for extracting extradata in find_stream_info()
+     * inited=1/bsf=NULL signals that extracting is not possible (codec not
+     * supported) */
+    struct {
+        AVBSFContext *bsf;
+        AVPacket     *pkt;
+        int inited;
+    } extract_extradata;
 
     /**
      * Whether the internal avctx needs to be updated from codecpar (after a late change to codecpar)

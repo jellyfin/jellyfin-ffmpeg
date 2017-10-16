@@ -91,7 +91,7 @@ static uint32_t softfloat_mul(uint32_t x, uint64_t mantissa)
     uint64_t h = x * (mantissa >> 32);
     h += l >> 32;
     l &= 0xffffffff;
-    l += 1 << av_log2(h >> 21);
+    l += 1LL << av_log2(h >> 21);
     h += l >> 32;
     return h >> 20;
 }
@@ -455,10 +455,12 @@ static int lag_decode_arith_plane(LagarithContext *l, uint8_t *dst,
             return -1;
 
         ff_lag_rac_init(&rac, &gb, length - stride);
-
-        for (i = 0; i < height; i++)
+        for (i = 0; i < height; i++) {
+            if (rac.overread > MAX_OVERREAD)
+                return AVERROR_INVALIDDATA;
             read += lag_decode_line(l, &rac, dst + (i * stride), width,
                                     stride, esc_count);
+        }
 
         if (read > length)
             av_log(l->avctx, AV_LOG_WARNING,

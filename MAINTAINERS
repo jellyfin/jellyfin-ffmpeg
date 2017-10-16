@@ -159,8 +159,10 @@ Codecs:
   crystalhd.c                           Philip Langdale
   cscd.c                                Reimar Doeffinger
   cuvid.c                               Timo Rothenpieler
+  dca*                                  foo86
   dirac*                                Rostislav Pehlivanov
   dnxhd*                                Baptiste Coudurier
+  dolby_e*                              foo86
   dpcm.c                                Mike Melanson
   dss_sp.c                              Oleksij Rempel
   dv.c                                  Roman Shaposhnik
@@ -192,7 +194,6 @@ Codecs:
   libkvazaar.c                          Arttu Ylä-Outinen
   libopenjpeg.c                         Jaikrishnan Menon
   libopenjpegenc.c                      Michael Bradshaw
-  libschroedinger*                      David Conrad
   libtheoraenc.c                        David Conrad
   libvorbis.c                           David Conrad
   libvpx*                               James Zern
@@ -232,6 +233,7 @@ Codecs:
   smvjpegdec.c                          Ash Hughes
   snow*                                 Michael Niedermayer, Loren Merritt
   sonic.c                               Alex Beregszaszi
+  speedhq.c                             Steinar H. Gunderson
   srt*                                  Aurelien Jacobs
   sunrast.c                             Ivo van Poorten
   svq3.c                                Michael Niedermayer
@@ -280,7 +282,7 @@ libavdevice
 
 
   avfoundation.m                        Thilo Borgmann
-  decklink*                             Deti Fliegl
+  decklink*                             Marton Balint
   dshow.c                               Roger Pack (CC rogerdpack@gmail.com)
   fbdev_enc.c                           Lukasz Marek
   gdigrab.c                             Roger Pack (CC rogerdpack@gmail.com)
@@ -289,7 +291,6 @@ libavdevice
   libdc1394.c                           Roman Shaposhnik
   opengl_enc.c                          Lukasz Marek
   pulse_audio_enc.c                     Lukasz Marek
-  qtkit.m                               Thilo Borgmann
   sdl                                   Stefano Sabatini
   sdl2.c                                Josh de Kock
   v4l2.c                                Giorgio Vazzana
@@ -328,6 +329,7 @@ Filters:
   avf_avectorscope.c                    Paul B Mahol
   avf_showcqt.c                         Muhammad Faiz
   vf_blend.c                            Paul B Mahol
+  vf_bwdif                              Thomas Mundt (CC <thomas.mundt@hr.de>)
   vf_chromakey.c                        Timo Rothenpieler
   vf_colorchannelmixer.c                Paul B Mahol
   vf_colorbalance.c                     Paul B Mahol
@@ -343,6 +345,7 @@ Filters:
   vf_hqx.c                              Clément Bœsch
   vf_idet.c                             Pascal Massimino
   vf_il.c                               Paul B Mahol
+  vf_(t)interlace                       Thomas Mundt (CC <thomas.mundt@hr.de>)
   vf_lenscorrection.c                   Daniel Oberhoff
   vf_mergeplanes.c                      Paul B Mahol
   vf_mestimate.c                        Davinder Singh
@@ -393,8 +396,10 @@ Muxers/Demuxers:
   caf*                                  Peter Ross
   cdxl.c                                Paul B Mahol
   crc.c                                 Michael Niedermayer
+  dashdec.c                             Steven Liu
   daud.c                                Reimar Doeffinger
   dss.c                                 Oleksij Rempel
+  dtsdec.c                              foo86
   dtshddec.c                            Paul B Mahol
   dv.c                                  Roman Shaposhnik
   electronicarts.c                      Peter Ross
@@ -406,7 +411,7 @@ Muxers/Demuxers:
   gxf.c                                 Reimar Doeffinger
   gxfenc.c                              Baptiste Coudurier
   hls.c                                 Anssi Hannula
-  hls encryption (hlsenc.c)             Christian Suloway, Steven Liu
+  hlsenc.c                              Christian Suloway, Steven Liu
   idcin.c                               Mike Melanson
   idroqdec.c                            Mike Melanson
   iff.c                                 Jaikrishnan Menon
@@ -416,7 +421,6 @@ Muxers/Demuxers:
   iss.c                                 Stefan Gehrer
   jvdec.c                               Peter Ross
   libmodplug.c                          Clément Bœsch
-  libnut.c                              Oded Shimon
   libopenmpt.c                          Josh de Kock
   lmlm4.c                               Ivo van Poorten
   lvfdec.c                              Paul B Mahol
@@ -439,7 +443,6 @@ Muxers/Demuxers:
   msnwc_tcp.c                           Ramiro Polla
   mtv.c                                 Reynaldo H. Verdejo Pinochet
   mxf*                                  Baptiste Coudurier
-  mxfdec.c                              Tomas Härdin
   nistspheredec.c                       Paul B Mahol
   nsvdec.c                              Francois Revol
   nut*                                  Michael Niedermayer
@@ -468,6 +471,7 @@ Muxers/Demuxers:
   rtpdec_vc2hq.*, rtpenc_vc2hq.*        Thomas Volkert
   rtpdec_vp9.c                          Thomas Volkert
   rtpenc_mpv.*, rtpenc_aac.*            Martin Storsjo
+  s337m.c                               foo86
   sbgdec.c                              Nicolas George
   sdp.c                                 Martin Storsjo
   segafilm.c                            Mike Melanson
@@ -517,7 +521,7 @@ Operating systems / CPU architectures
 =====================================
 
 Alpha                                   Falk Hueffner
-MIPS                                    Nedeljko Babic
+MIPS                                    Manojkumar Bhosale
 Mac OS X / PowerPC                      Romain Dolbeau, Guillaume Poirier
 Amiga / PowerPC                         Colin Ward
 Windows MinGW                           Alex Beregszaszi, Ramiro Polla
@@ -543,6 +547,7 @@ Ganesh Ajjanagadde
 Henrik Gramner
 Ivan Uskov
 James Darnley
+Jan Ekström
 Joakim Plate
 Kieran Kunhya
 Kirill Gavrilov
@@ -597,6 +602,7 @@ Reynaldo H. Verdejo Pinochet  6E27 CD34 170C C78E 4D4F 5F40 C18E 077F 3114 452A
 Robert Swain                  EE7A 56EA 4A81 A7B5 2001 A521 67FA 362D A2FC 3E71
 Sascha Sommer                 38A0 F88B 868E 9D3A 97D4 D6A0 E823 706F 1E07 0D3C
 Stefano Sabatini              0D0B AD6B 5330 BBAD D3D6 6A0C 719C 2839 FC43 2D5F
+Steinar H. Gunderson          C2E9 004F F028 C18E 4EAD DB83 7F61 7561 7797 8F76
 Stephan Hilb                  4F38 0B3A 5F39 B99B F505 E562 8D5C 5554 4E17 8863
 Tiancheng "Timothy" Gu        9456 AFC0 814A 8139 E994 8351 7FE6 B095 B582 B0D4
 Tim Nicholson                 38CF DB09 3ED0 F607 8B67 6CED 0C0B FC44 8B0B FC83
