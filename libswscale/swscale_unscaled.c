@@ -1292,6 +1292,23 @@ static rgbConvFn findRgbConvFn(SwsContext *c)
               || CONV_IS(BGR48LE, RGB48BE)
               || CONV_IS(RGB48BE, BGR48LE)
               || CONV_IS(BGR48BE, RGB48LE)) conv = rgb48tobgr48_bswap;
+    } else if (isRGB48(srcFormat) && isRGBA64(dstFormat)) {
+        if      (CONV_IS(RGB48LE, BGRA64LE)
+              || CONV_IS(BGR48LE, RGBA64LE)
+              || CONV_IS(RGB48BE, BGRA64BE)
+              || CONV_IS(BGR48BE, RGBA64BE)) conv = rgb48tobgr64_nobswap;
+        else if (CONV_IS(RGB48LE, BGRA64BE)
+              || CONV_IS(BGR48LE, RGBA64BE)
+              || CONV_IS(RGB48BE, BGRA64LE)
+              || CONV_IS(BGR48BE, RGBA64LE)) conv = rgb48tobgr64_bswap;
+        if      (CONV_IS(RGB48LE, RGBA64LE)
+              || CONV_IS(BGR48LE, BGRA64LE)
+              || CONV_IS(RGB48BE, RGBA64BE)
+              || CONV_IS(BGR48BE, BGRA64BE)) conv = rgb48to64_nobswap;
+        else if (CONV_IS(RGB48LE, RGBA64BE)
+              || CONV_IS(BGR48LE, BGRA64BE)
+              || CONV_IS(RGB48BE, RGBA64LE)
+              || CONV_IS(BGR48BE, BGRA64LE)) conv = rgb48to64_bswap;
     } else if (isRGBA64(srcFormat) && isRGB48(dstFormat)) {
         if      (CONV_IS(RGBA64LE, BGR48LE)
               || CONV_IS(BGRA64LE, RGB48LE)
@@ -1796,6 +1813,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_BGR555) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_BGR565) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_BGRA64) ||
+        IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GRAY9)  ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GRAY10) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GRAY12) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GRAY16) ||

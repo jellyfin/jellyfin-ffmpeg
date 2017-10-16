@@ -189,8 +189,8 @@ static inline int decode_block(CLVContext *ctx, int16_t *blk, int has_ac,
     const int t7 = ((blk[0 * step] - blk[4 * step]) * (1 << dshift)) + bias;  \
     const int t8 = t0 + t2;                                             \
     const int t9 = t0 - t2;                                             \
-    const int tA = 181 * (t9 + (t1 - t3)) + 0x80 >> 8;                  \
-    const int tB = 181 * (t9 - (t1 - t3)) + 0x80 >> 8;                  \
+    const int tA = (int)(181U * (t9 + (t1 - t3)) + 0x80) >> 8;          \
+    const int tB = (int)(181U * (t9 - (t1 - t3)) + 0x80) >> 8;          \
     const int tC = t1 + t3;                                             \
                                                                         \
     blk[0 * step] = (t6 + t5 + t8) >> shift;                            \
@@ -290,17 +290,18 @@ static int clv_decode_frame(AVCodecContext *avctx, void *data,
     }
 
     frame_type = bytestream2_get_byte(&gb);
-    if ((ret = ff_reget_buffer(avctx, c->pic)) < 0)
-        return ret;
-
-    c->pic->key_frame = frame_type & 0x20 ? 1 : 0;
-    c->pic->pict_type = frame_type & 0x20 ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
     if (frame_type & 0x2) {
         if (buf_size < c->mb_width * c->mb_height) {
             av_log(avctx, AV_LOG_ERROR, "Packet too small\n");
             return AVERROR_INVALIDDATA;
         }
+
+        if ((ret = ff_reget_buffer(avctx, c->pic)) < 0)
+            return ret;
+
+        c->pic->key_frame = frame_type & 0x20 ? 1 : 0;
+        c->pic->pict_type = frame_type & 0x20 ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
         bytestream2_get_be32(&gb); // frame size;
         c->ac_quant        = bytestream2_get_byte(&gb);
@@ -323,13 +324,13 @@ static int clv_decode_frame(AVCodecContext *avctx, void *data,
                     mb_ret = ret;
             }
         }
+
+        if ((ret = av_frame_ref(data, c->pic)) < 0)
+            return ret;
+
+        *got_frame = 1;
     } else {
     }
-
-    if ((ret = av_frame_ref(data, c->pic)) < 0)
-        return ret;
-
-    *got_frame = 1;
 
     return mb_ret < 0 ? mb_ret : buf_size;
 }

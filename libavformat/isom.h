@@ -27,6 +27,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "libavutil/mastering_display_metadata.h"
 #include "libavutil/spherical.h"
 #include "libavutil/stereo3d.h"
 
@@ -51,7 +52,7 @@ struct AVAESCTR;
  */
 
 typedef struct MOVStts {
-    int count;
+    unsigned int count;
     int duration;
 } MOVStts;
 
@@ -136,10 +137,11 @@ typedef struct MOVStreamContext {
     unsigned int stts_count;
     MOVStts *stts_data;
     unsigned int ctts_count;
+    unsigned int ctts_allocated_size;
     MOVStts *ctts_data;
     unsigned int stsc_count;
     MOVStsc *stsc_data;
-    int stsc_index;
+    unsigned int stsc_index;
     int stsc_sample;
     unsigned int stps_count;
     unsigned *stps_data;  ///< partial sync sample for mpeg-2 open gop
@@ -194,6 +196,9 @@ typedef struct MOVStreamContext {
     AVStereo3D *stereo3d;
     AVSphericalMapping *spherical;
     size_t spherical_size;
+    AVMasteringDisplayMetadata *mastering;
+    AVContentLightMetadata *coll;
+    size_t coll_size;
 
     uint32_t format;
 

@@ -154,20 +154,14 @@ typedef struct VAAPIEncodeH264Context {
 
     // Rate control configuration.
     int send_timing_sei;
-
-#if VA_CHECK_VERSION(0, 36, 0)
-    // Speed-quality tradeoff setting.
-    struct {
-        VAEncMiscParameterBuffer misc;
-        VAEncMiscParameterBufferQualityLevel quality;
-    } quality_params;
-#endif
 } VAAPIEncodeH264Context;
 
 typedef struct VAAPIEncodeH264Options {
     int qp;
     int quality;
     int low_power;
+    // Entropy encoder type.
+    int coder;
 } VAAPIEncodeH264Options;
 
 
@@ -650,18 +644,18 @@ static void vaapi_encode_h264_write_sei(PutBitContext *pbc,
 
     for (payload_type = 0; payload_type < 64; payload_type++) {
         switch (payload_type) {
-        case SEI_TYPE_BUFFERING_PERIOD:
+        case H264_SEI_TYPE_BUFFERING_PERIOD:
             if (!priv->send_timing_sei ||
                 pic->type != PICTURE_TYPE_IDR)
                 continue;
             write_payload = &vaapi_encode_h264_write_buffering_period;
             break;
-        case SEI_TYPE_PIC_TIMING:
+        case H264_SEI_TYPE_PIC_TIMING:
             if (!priv->send_timing_sei)
                 continue;
             write_payload = &vaapi_encode_h264_write_pic_timing;
             break;
-        case SEI_TYPE_USER_DATA_UNREGISTERED:
+        case H264_SEI_TYPE_USER_DATA_UNREGISTERED:
             if (pic->encode_order != 0)
                 continue;
             write_payload = &vaapi_encode_h264_write_identifier;
@@ -783,6 +777,8 @@ static int vaapi_encode_h264_init_sequence_params(AVCodecContext *avctx)
     VAEncPictureParameterBufferH264   *vpic = ctx->codec_picture_params;
     VAAPIEncodeH264Context            *priv = ctx->priv_data;
     VAAPIEncodeH264MiscSequenceParams *mseq = &priv->misc_sequence_params;
+    VAAPIEncodeH264Options             *opt =
+        (VAAPIEncodeH264Options*)ctx->codec_options_data;
     int i;
 
     {
@@ -905,8 +901,8 @@ static int vaapi_encode_h264_init_sequence_params(AVCodecContext *avctx)
             mseq->nal_hrd_parameters_present_flag = 0;
         }
 
-        vseq->intra_period     = ctx->p_per_i * (ctx->b_per_p + 1);
-        vseq->intra_idr_period = vseq->intra_period;
+        vseq->intra_period     = avctx->gop_size;
+        vseq->intra_idr_period = avctx->gop_size;
         vseq->ip_period        = ctx->b_per_p + 1;
     }
 
@@ -928,7 +924,7 @@ static int vaapi_encode_h264_init_sequence_params(AVCodecContext *avctx)
         vpic->num_ref_idx_l1_active_minus1 = 0;
 
         vpic->pic_fields.bits.entropy_coding_mode_flag =
-            ((avctx->profile & 0xff) != 66);
+            opt->coder ? ((avctx->profile & 0xff) != 66) : 0;
         vpic->pic_fields.bits.weighted_pred_flag = 0;
         vpic->pic_fields.bits.weighted_bipred_idc = 0;
         vpic->pic_fields.bits.transform_8x8_mode_flag =
@@ -1141,21 +1137,8 @@ static av_cold int vaapi_encode_h264_configure(AVCodecContext *avctx)
         av_assert0(0 && "Invalid RC mode.");
     }
 
-    if (opt->quality > 0) {
-#if VA_CHECK_VERSION(0, 36, 0)
-        priv->quality_params.misc.type =
-            VAEncMiscParameterTypeQualityLevel;
-        priv->quality_params.quality.quality_level = opt->quality;
-
-        ctx->global_params[ctx->nb_global_params] =
-            &priv->quality_params.misc;
-        ctx->global_params_size[ctx->nb_global_params++] =
-            sizeof(priv->quality_params);
-#else
-        av_log(avctx, AV_LOG_WARNING, "The encode quality option is not "
-               "supported with this VAAPI version.\n");
-#endif
-    }
+    if (avctx->compression_level == FF_COMPRESSION_DEFAULT)
+        avctx->compression_level = opt->quality;
 
     return 0;
 }
@@ -1192,19 +1175,15 @@ static av_cold int vaapi_encode_h264_init(AVCodecContext *avctx)
     ctx->codec = &vaapi_encode_type_h264;
 
     switch (avctx->profile) {
+    case FF_PROFILE_H264_BASELINE:
+        av_log(avctx, AV_LOG_WARNING, "H.264 baseline profile is not "
+               "supported, using constrained baseline profile instead.\n");
+        avctx->profile = FF_PROFILE_H264_CONSTRAINED_BASELINE;
     case FF_PROFILE_H264_CONSTRAINED_BASELINE:
         ctx->va_profile = VAProfileH264ConstrainedBaseline;
         if (avctx->max_b_frames != 0) {
             avctx->max_b_frames = 0;
             av_log(avctx, AV_LOG_WARNING, "H.264 constrained baseline profile "
-                   "doesn't support encoding with B frames, disabling them.\n");
-        }
-        break;
-    case FF_PROFILE_H264_BASELINE:
-        ctx->va_profile = VAProfileH264Baseline;
-        if (avctx->max_b_frames != 0) {
-            avctx->max_b_frames = 0;
-            av_log(avctx, AV_LOG_WARNING, "H.264 baseline profile "
                    "doesn't support encoding with B frames, disabling them.\n");
         }
         break;
@@ -1283,6 +1262,12 @@ static const AVOption vaapi_encode_h264_options[] = {
     { "low_power", "Use low-power encoding mode (experimental: only supported "
       "on some platforms, does not support all features)",
       OFFSET(low_power), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS },
+    { "coder", "Entropy coder type",
+      OFFSET(coder), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, FLAGS, "coder" },
+        { "cavlc", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, INT_MIN, INT_MAX, FLAGS, "coder" },
+        { "cabac", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, INT_MIN, INT_MAX, FLAGS, "coder" },
+        { "vlc",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, INT_MIN, INT_MAX, FLAGS, "coder" },
+        { "ac",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, INT_MIN, INT_MAX, FLAGS, "coder" },
     { NULL },
 };
 

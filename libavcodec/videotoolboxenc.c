@@ -73,11 +73,11 @@ static struct{
 
 #define GET_SYM(symbol, defaultVal)                                     \
 do{                                                                     \
-    CFStringRef cfstr = *(CFStringRef*)dlsym(RTLD_DEFAULT, #symbol);    \
-    if(!cfstr)                                                          \
+    CFStringRef* handle = (CFStringRef*)dlsym(RTLD_DEFAULT, #symbol);   \
+    if(!handle)                                                         \
         compat_keys.symbol = CFSTR(defaultVal);                         \
     else                                                                \
-        compat_keys.symbol = cfstr;                                     \
+        compat_keys.symbol = *handle;                                   \
 }while(0)
 
 static pthread_once_t once_ctrl = PTHREAD_ONCE_INIT;
@@ -1285,7 +1285,7 @@ static av_cold int vtenc_init(AVCodecContext *avctx)
                                    kCFAllocatorDefault,
                                    &has_b_frames_cfbool);
 
-    if (!status) {
+    if (!status && has_b_frames_cfbool) {
         //Some devices don't output B-frames for main profile, even if requested.
         vtctx->has_b_frames = CFBooleanGetValue(has_b_frames_cfbool);
         CFRelease(has_b_frames_cfbool);
@@ -1599,7 +1599,7 @@ static int copy_replace_length_codes(
             remaining_dst_size--;
 
             wrote_bytes = write_sei(sei,
-                                    SEI_TYPE_USER_DATA_REGISTERED,
+                                    H264_SEI_TYPE_USER_DATA_REGISTERED,
                                     dst_data,
                                     remaining_dst_size);
 
@@ -1655,7 +1655,7 @@ static int copy_replace_length_codes(
                 return status;
 
             wrote_bytes = write_sei(sei,
-                                    SEI_TYPE_USER_DATA_REGISTERED,
+                                    H264_SEI_TYPE_USER_DATA_REGISTERED,
                                     new_sei,
                                     remaining_dst_size - old_sei_length);
             if (wrote_bytes < 0)
@@ -1751,7 +1751,7 @@ static int vtenc_cm_to_avpacket(
 
     if (sei) {
         size_t msg_size = get_sei_msg_bytes(sei,
-                                            SEI_TYPE_USER_DATA_REGISTERED);
+                                            H264_SEI_TYPE_USER_DATA_REGISTERED);
 
         sei_nalu_size = sizeof(start_code) + 1 + msg_size + 1;
     }
@@ -1826,7 +1826,7 @@ static int get_cv_pixel_info(
 {
     VTEncContext *vtctx = avctx->priv_data;
     int av_format       = frame->format;
-    int av_color_range  = av_frame_get_color_range(frame);
+    int av_color_range  = frame->color_range;
     int i;
     int range_guessed;
     int status;
@@ -2073,7 +2073,7 @@ static int create_cv_pixel_buffer(AVCodecContext   *avctx,
             AV_LOG_ERROR,
             "Error: Cannot convert format %d color_range %d: %d\n",
             frame->format,
-            av_frame_get_color_range(frame),
+            frame->color_range,
             status
         );
 
@@ -2341,8 +2341,8 @@ static int vtenc_populate_extradata(AVCodecContext   *avctx,
     frame->format          = avctx->pix_fmt;
     frame->width           = avctx->width;
     frame->height          = avctx->height;
-    av_frame_set_colorspace(frame, avctx->colorspace);
-    av_frame_set_color_range(frame, avctx->color_range);
+    frame->colorspace      = avctx->colorspace;
+    frame->color_range     = avctx->color_range;
     frame->color_trc       = avctx->color_trc;
     frame->color_primaries = avctx->color_primaries;
 

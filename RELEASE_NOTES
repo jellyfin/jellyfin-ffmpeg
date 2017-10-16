@@ -1,10 +1,10 @@
 
-              ┌────────────────────────────────────────┐
-              │ RELEASE NOTES for FFmpeg 3.3 "Hilbert" │
-              └────────────────────────────────────────┘
+              ┌───────────────────────────────────────┐
+              │ RELEASE NOTES for FFmpeg 3.4 "Cantor" │
+              └───────────────────────────────────────┘
 
-   The FFmpeg Project proudly presents FFmpeg 3.3 "Hilbert", about 5
-   months after the release of FFmpeg 3.2.
+   The FFmpeg Project proudly presents FFmpeg 3.4 "Cantor", about 6
+   months after the release of FFmpeg 3.3.
 
    A complete Changelog is available at the root of the project, and the
    complete Git history on http://source.ffmpeg.org.

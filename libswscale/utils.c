@@ -131,6 +131,8 @@ static const FormatEntry format_entries[AV_PIX_FMT_NB] = {
     [AV_PIX_FMT_RGB0]        = { 1, 1 },
     [AV_PIX_FMT_0BGR]        = { 1, 1 },
     [AV_PIX_FMT_BGR0]        = { 1, 1 },
+    [AV_PIX_FMT_GRAY9BE]     = { 1, 1 },
+    [AV_PIX_FMT_GRAY9LE]     = { 1, 1 },
     [AV_PIX_FMT_GRAY10BE]    = { 1, 1 },
     [AV_PIX_FMT_GRAY10LE]    = { 1, 1 },
     [AV_PIX_FMT_GRAY12BE]    = { 1, 1 },
@@ -1016,6 +1018,12 @@ static int handle_jpeg(enum AVPixelFormat *format)
         return 1;
     case AV_PIX_FMT_GRAY8:
     case AV_PIX_FMT_YA8:
+    case AV_PIX_FMT_GRAY9LE:
+    case AV_PIX_FMT_GRAY9BE:
+    case AV_PIX_FMT_GRAY10LE:
+    case AV_PIX_FMT_GRAY10BE:
+    case AV_PIX_FMT_GRAY12LE:
+    case AV_PIX_FMT_GRAY12BE:
     case AV_PIX_FMT_GRAY16LE:
     case AV_PIX_FMT_GRAY16BE:
     case AV_PIX_FMT_YA16BE:
@@ -1566,7 +1574,11 @@ av_cold int sws_init_context(SwsContext *c, SwsFilter *srcFilter,
         }
     }
 
-#define USE_MMAP (HAVE_MMAP && HAVE_MPROTECT && defined MAP_ANONYMOUS)
+#if HAVE_MMAP && HAVE_MPROTECT && defined(MAP_ANONYMOUS)
+#define USE_MMAP 1
+#else
+#define USE_MMAP 0
+#endif
 
     /* precalculate horizontal scaler filter coefficients */
     {

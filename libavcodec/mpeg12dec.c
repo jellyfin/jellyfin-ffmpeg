@@ -1159,6 +1159,7 @@ static const enum AVPixelFormat mpeg2_hwaccel_pixfmt_list_420[] = {
 #endif
 #if CONFIG_MPEG2_D3D11VA_HWACCEL
     AV_PIX_FMT_D3D11VA_VLD,
+    AV_PIX_FMT_D3D11,
 #endif
 #if CONFIG_MPEG2_VAAPI_HWACCEL
     AV_PIX_FMT_VAAPI,
@@ -1216,7 +1217,7 @@ static void setup_hwaccel_for_pixfmt(AVCodecContext *avctx)
 #endif
         )
         if (avctx->idct_algo == FF_IDCT_AUTO)
-            avctx->idct_algo = FF_IDCT_SIMPLE;
+            avctx->idct_algo = FF_IDCT_NONE;
 
     if (avctx->hwaccel && avctx->pix_fmt == AV_PIX_FMT_XVMC) {
         Mpeg1Context *s1 = avctx->priv_data;
@@ -1867,7 +1868,7 @@ static int mpeg_decode_slice(MpegEncContext *s, int mb_y,
         s->dest[1] +=(16 >> lowres) >> s->chroma_x_shift;
         s->dest[2] +=(16 >> lowres) >> s->chroma_x_shift;
 
-        ff_mpv_decode_mb(s, s->block);
+        ff_mpv_reconstruct_mb(s, s->block);
 
         if (++s->mb_x >= s->mb_width) {
             const int mb_size = 16 >> s->avctx->lowres;

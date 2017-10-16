@@ -220,19 +220,30 @@ ffmpeg -i INPUT.avi -codec copy -bsf:v mpeg4_unpack_bframes OUTPUT.avi
 
 @section noise
 
-Damages the contents of packets without damaging the container. Can be
-used for fuzzing or testing error resilience/concealment.
+Damages the contents of packets or simply drops them without damaging the
+container. Can be used for fuzzing or testing error resilience/concealment.
 
 Parameters:
+@table @option
+@item amount
 A numeral string, whose value is related to how often output bytes will
 be modified. Therefore, values below or equal to 0 are forbidden, and
 the lower the more frequent bytes will be modified, with 1 meaning
 every byte is modified.
+@item dropamount
+A numeral string, whose value is related to how often packets will be dropped.
+Therefore, values below or equal to 0 are forbidden, and the lower the more
+frequent packets will be dropped, with 1 meaning every packet is dropped.
+@end table
 
+The following example applies the modification to every byte but does not drop
+any packets.
 @example
 ffmpeg -i INPUT -c copy -bsf noise[=1] output.mkv
 @end example
-applies the modification to every byte.
+
+@section null
+This bitstream filter passes the packets through unchanged.
 
 @section remove_extra
 
@@ -269,5 +280,14 @@ See also the @ref{mov2textsub} filter.
 Merge VP9 invisible (alt-ref) frames back into VP9 superframes. This
 fixes merging of split/segmented VP9 streams where the alt-ref frame
 was split from its visible counterpart.
+
+@section vp9_superframe_split
+
+Split VP9 superframes into single frames.
+
+@section vp9_raw_reorder
+
+Given a VP9 stream with correct timestamps but possibly out of order,
+insert additional show-existing-frame packets to correct the ordering.
 
 @c man end BITSTREAM FILTERS

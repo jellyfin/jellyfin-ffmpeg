@@ -358,7 +358,7 @@ static double find_peak_magnitude(AVFrame *frame, int channel)
     int c, i;
 
     if (channel == -1) {
-        for (c = 0; c < av_frame_get_channels(frame); c++) {
+        for (c = 0; c < frame->channels; c++) {
             double *data_ptr = (double *)frame->extended_data[c];
 
             for (i = 0; i < frame->nb_samples; i++)
@@ -380,7 +380,7 @@ static double compute_frame_rms(AVFrame *frame, int channel)
     int c, i;
 
     if (channel == -1) {
-        for (c = 0; c < av_frame_get_channels(frame); c++) {
+        for (c = 0; c < frame->channels; c++) {
             const double *data_ptr = (double *)frame->extended_data[c];
 
             for (i = 0; i < frame->nb_samples; i++) {
@@ -388,7 +388,7 @@ static double compute_frame_rms(AVFrame *frame, int channel)
             }
         }
 
-        rms_value /= frame->nb_samples * av_frame_get_channels(frame);
+        rms_value /= frame->nb_samples * frame->channels;
     } else {
         const double *data_ptr = (double *)frame->extended_data[channel];
         for (i = 0; i < frame->nb_samples; i++) {
@@ -460,7 +460,8 @@ static void update_gain_history(DynamicAudioNormalizerContext *s, int channel,
             int input = pre_fill_size;
 
             while (cqueue_size(s->gain_history_minimum[channel]) < pre_fill_size) {
-                initial_value = FFMIN(initial_value, cqueue_peek(s->gain_history_original[channel], ++input));
+                input++;
+                initial_value = FFMIN(initial_value, cqueue_peek(s->gain_history_original[channel], input));
                 cqueue_enqueue(s->gain_history_minimum[channel], initial_value);
             }
         }

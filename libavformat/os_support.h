@@ -76,7 +76,7 @@ static inline int is_dos_path(const char *path)
     return 0;
 }
 
-#if defined(__OS2__) || defined(__Plan9__)
+#if defined(__OS2__)
 #define SHUT_RD 0
 #define SHUT_WR 1
 #define SHUT_RDWR 2
@@ -145,18 +145,6 @@ int ff_poll(struct pollfd *fds, nfds_t numfds, int timeout);
 #include <stdio.h>
 #include <windows.h>
 #include "libavutil/wchar_filename.h"
-
-#ifdef WINAPI_FAMILY
-#include <winapifamily.h>
-// If a WINAPI_FAMILY is defined, check that the desktop API subset
-// is enabled
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-#define USE_MOVEFILEEXA
-#endif
-#else
-// If no WINAPI_FAMILY is defined, assume the full API subset
-#define USE_MOVEFILEEXA
-#endif
 
 #define DEF_FS_FUNCTION(name, wfunc, afunc)               \
 static inline int win32_##name(const char *filename_utf8) \
@@ -232,7 +220,7 @@ static inline int win32_rename(const char *src_utf8, const char *dest_utf8)
 
 fallback:
     /* filename may be be in CP_ACP */
-#ifdef USE_MOVEFILEEXA
+#if !HAVE_WINRT
     ret = MoveFileExA(src_utf8, dest_utf8, MOVEFILE_REPLACE_EXISTING);
     if (ret)
         errno = EPERM;

@@ -161,7 +161,7 @@ static int get_freq(RangeCoder *rc, unsigned total_freq, unsigned *freq)
 
 static int decode0(GetByteContext *gb, RangeCoder *rc, unsigned cumFreq, unsigned freq, unsigned total_freq)
 {
-    int t;
+    unsigned t;
 
     if (total_freq == 0)
         return AVERROR_INVALIDDATA;
@@ -582,6 +582,8 @@ static int decompress_p(AVCodecContext *avctx,
 
                 for (; by < y * 16 + sy2 && by < avctx->height;) {
                     ret = decode_value(s, s->op_model[ptype], 6, 1000, &ptype);
+                    if (ret < 0)
+                        return ret;
                     if (ptype == 0) {
                         ret = decode_unit(s, &s->pixel_model[0][cx + cx1], 400, &r);
                         if (ret < 0)

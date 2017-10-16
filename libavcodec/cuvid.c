@@ -31,6 +31,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
+#include "decode.h"
 #include "internal.h"
 
 typedef struct CuvidContext
@@ -75,6 +76,8 @@ typedef struct CuvidContext
     cudaVideoCodec codec_type;
     cudaVideoChromaFormat chroma_format;
 
+    CUVIDDECODECAPS caps8, caps10, caps12;
+
     CUVIDPARSERPARAMS cuparseinfo;
     CUVIDEOFORMATEX cuparse_ext;
 
@@ -118,6 +121,7 @@ static int CUDAAPI cuvid_handle_video_sequence(void *opaque, CUVIDEOFORMAT* form
     AVCodecContext *avctx = opaque;
     CuvidContext *ctx = avctx->priv_data;
     AVHWFramesContext *hwframe_ctx = (AVHWFramesContext*)ctx->hwframe->data;
+    CUVIDDECODECAPS *caps = NULL;
     CUVIDDECODECREATEINFO cuinfo;
     int surface_fmt;
 
@@ -165,19 +169,27 @@ static int CUDAAPI cuvid_handle_video_sequence(void *opaque, CUVIDEOFORMAT* form
     switch (format->bit_depth_luma_minus8) {
     case 0: // 8-bit
         pix_fmts[1] = AV_PIX_FMT_NV12;
+        caps = &ctx->caps8;
         break;
     case 2: // 10-bit
         pix_fmts[1] = AV_PIX_FMT_P010;
+        caps = &ctx->caps10;
         break;
     case 4: // 12-bit
         pix_fmts[1] = AV_PIX_FMT_P016;
+        caps = &ctx->caps12;
         break;
     default:
+        break;
+    }
+
+    if (!caps || !caps->bIsSupported) {
         av_log(avctx, AV_LOG_ERROR, "unsupported bit depth: %d\n",
                format->bit_depth_luma_minus8 + 8);
         ctx->internal_error = AVERROR(EINVAL);
         return 0;
     }
+
     surface_fmt = ff_get_format(avctx, pix_fmts);
     if (surface_fmt < 0) {
         av_log(avctx, AV_LOG_ERROR, "ff_get_format failed: %d\n", surface_fmt);
@@ -357,6 +369,13 @@ static int CUDAAPI cuvid_handle_picture_display(void *opaque, CUVIDPARSERDISPINF
     return 1;
 }
 
+static int cuvid_is_buffer_full(AVCodecContext *avctx)
+{
+    CuvidContext *ctx = avctx->priv_data;
+
+    return (av_fifo_size(ctx->frame_queue) / sizeof(CuvidParsedFrame)) + 2 > ctx->nb_surfaces;
+}
+
 static int cuvid_decode_packet(AVCodecContext *avctx, const AVPacket *avpkt)
 {
     CuvidContext *ctx = avctx->priv_data;
@@ -373,7 +392,7 @@ static int cuvid_decode_packet(AVCodecContext *avctx, const AVPacket *avpkt)
     if (is_flush && avpkt && avpkt->size)
         return AVERROR_EOF;
 
-    if ((av_fifo_size(ctx->frame_queue) / sizeof(CuvidParsedFrame)) + 2 > ctx->nb_surfaces && avpkt && avpkt->size)
+    if (cuvid_is_buffer_full(avctx) && avpkt && avpkt->size)
         return AVERROR(EAGAIN);
 
     if (ctx->bsf && avpkt && avpkt->size) {
@@ -460,6 +479,20 @@ static int cuvid_output_frame(AVCodecContext *avctx, AVFrame *frame)
 
     if (ctx->decoder_flushing) {
         ret = cuvid_decode_packet(avctx, NULL);
+        if (ret < 0 && ret != AVERROR_EOF)
+            return ret;
+    }
+
+    if (!cuvid_is_buffer_full(avctx)) {
+        AVPacket pkt = {0};
+        ret = ff_decode_get_packet(avctx, &pkt);
+        if (ret < 0 && ret != AVERROR_EOF)
+            return ret;
+        ret = cuvid_decode_packet(avctx, &pkt);
+        av_packet_unref(&pkt);
+        // cuvid_is_buffer_full() should avoid this.
+        if (ret == AVERROR(EAGAIN))
+            ret = AVERROR_EXTERNAL;
         if (ret < 0 && ret != AVERROR_EOF)
             return ret;
     }
@@ -582,9 +615,9 @@ FF_DISABLE_DEPRECATION_WARNINGS
         frame->pkt_pts = frame->pts;
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
-        av_frame_set_pkt_pos(frame, -1);
-        av_frame_set_pkt_duration(frame, 0);
-        av_frame_set_pkt_size(frame, -1);
+        frame->pkt_pos = -1;
+        frame->pkt_duration = 0;
+        frame->pkt_size = -1;
 
         frame->interlaced_frame = !parsed_frame.is_deinterlacing && !parsed_frame.dispinfo.progressive_frame;
 
@@ -664,46 +697,90 @@ static av_cold int cuvid_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-static int cuvid_test_dummy_decoder(AVCodecContext *avctx,
-                                    const CUVIDPARSERPARAMS *cuparseinfo,
-                                    int probed_width,
-                                    int probed_height)
+static int cuvid_test_capabilities(AVCodecContext *avctx,
+                                   const CUVIDPARSERPARAMS *cuparseinfo,
+                                   int probed_width,
+                                   int probed_height,
+                                   int bit_depth)
 {
     CuvidContext *ctx = avctx->priv_data;
-    CUVIDDECODECREATEINFO cuinfo;
-    CUvideodecoder cudec = 0;
-    int ret = 0;
+    CUVIDDECODECAPS *caps;
+    int res8 = 0, res10 = 0, res12 = 0;
 
-    memset(&cuinfo, 0, sizeof(cuinfo));
+    if (!ctx->cvdl->cuvidGetDecoderCaps) {
+        av_log(avctx, AV_LOG_WARNING, "Used Nvidia driver is too old to perform a capability check.\n");
+        av_log(avctx, AV_LOG_WARNING, "The minimum required version is "
+#if defined(_WIN32) || defined(__CYGWIN__)
+            "378.66"
+#else
+            "378.13"
+#endif
+            ". Continuing blind.\n");
+        ctx->caps8.bIsSupported = ctx->caps10.bIsSupported = 1;
+        // 12 bit was not supported before the capability check was introduced, so disable it.
+        ctx->caps12.bIsSupported = 0;
+        return 0;
+    }
 
-    cuinfo.CodecType = cuparseinfo->CodecType;
-    cuinfo.ChromaFormat = cudaVideoChromaFormat_420;
-    cuinfo.OutputFormat = cudaVideoSurfaceFormat_NV12;
+    ctx->caps8.eCodecType = ctx->caps10.eCodecType = ctx->caps12.eCodecType
+        = cuparseinfo->CodecType;
+    ctx->caps8.eChromaFormat = ctx->caps10.eChromaFormat = ctx->caps12.eChromaFormat
+        = cudaVideoChromaFormat_420;
 
-    cuinfo.ulWidth = probed_width;
-    cuinfo.ulHeight = probed_height;
-    cuinfo.ulTargetWidth = cuinfo.ulWidth;
-    cuinfo.ulTargetHeight = cuinfo.ulHeight;
+    ctx->caps8.nBitDepthMinus8 = 0;
+    ctx->caps10.nBitDepthMinus8 = 2;
+    ctx->caps12.nBitDepthMinus8 = 4;
 
-    cuinfo.target_rect.left = 0;
-    cuinfo.target_rect.top = 0;
-    cuinfo.target_rect.right = cuinfo.ulWidth;
-    cuinfo.target_rect.bottom = cuinfo.ulHeight;
+    res8 = CHECK_CU(ctx->cvdl->cuvidGetDecoderCaps(&ctx->caps8));
+    res10 = CHECK_CU(ctx->cvdl->cuvidGetDecoderCaps(&ctx->caps10));
+    res12 = CHECK_CU(ctx->cvdl->cuvidGetDecoderCaps(&ctx->caps12));
 
-    cuinfo.ulNumDecodeSurfaces = ctx->nb_surfaces;
-    cuinfo.ulNumOutputSurfaces = 1;
-    cuinfo.ulCreationFlags = cudaVideoCreate_PreferCUVID;
-    cuinfo.bitDepthMinus8 = 0;
+    av_log(avctx, AV_LOG_VERBOSE, "CUVID capabilities for %s:\n", avctx->codec->name);
+    av_log(avctx, AV_LOG_VERBOSE, "8 bit: supported: %d, min_width: %d, max_width: %d, min_height: %d, max_height: %d\n",
+           ctx->caps8.bIsSupported, ctx->caps8.nMinWidth, ctx->caps8.nMaxWidth, ctx->caps8.nMinHeight, ctx->caps8.nMaxHeight);
+    av_log(avctx, AV_LOG_VERBOSE, "10 bit: supported: %d, min_width: %d, max_width: %d, min_height: %d, max_height: %d\n",
+           ctx->caps10.bIsSupported, ctx->caps10.nMinWidth, ctx->caps10.nMaxWidth, ctx->caps10.nMinHeight, ctx->caps10.nMaxHeight);
+    av_log(avctx, AV_LOG_VERBOSE, "12 bit: supported: %d, min_width: %d, max_width: %d, min_height: %d, max_height: %d\n",
+           ctx->caps12.bIsSupported, ctx->caps12.nMinWidth, ctx->caps12.nMaxWidth, ctx->caps12.nMinHeight, ctx->caps12.nMaxHeight);
 
-    cuinfo.DeinterlaceMode = cudaVideoDeinterlaceMode_Weave;
+    switch (bit_depth) {
+    case 10:
+        caps = &ctx->caps10;
+        if (res10 < 0)
+            return res10;
+        break;
+    case 12:
+        caps = &ctx->caps12;
+        if (res12 < 0)
+            return res12;
+        break;
+    default:
+        caps = &ctx->caps8;
+        if (res8 < 0)
+            return res8;
+    }
 
-    ret = CHECK_CU(ctx->cvdl->cuvidCreateDecoder(&cudec, &cuinfo));
-    if (ret < 0)
-        return ret;
+    if (!ctx->caps8.bIsSupported) {
+        av_log(avctx, AV_LOG_ERROR, "Codec %s is not supported.\n", avctx->codec->name);
+        return AVERROR(EINVAL);
+    }
 
-    ret = CHECK_CU(ctx->cvdl->cuvidDestroyDecoder(cudec));
-    if (ret < 0)
-        return ret;
+    if (!caps->bIsSupported) {
+        av_log(avctx, AV_LOG_ERROR, "Bit depth %d is not supported.\n", bit_depth);
+        return AVERROR(EINVAL);
+    }
+
+    if (probed_width > caps->nMaxWidth || probed_width < caps->nMinWidth) {
+        av_log(avctx, AV_LOG_ERROR, "Video width %d not within range from %d to %d\n",
+               probed_width, caps->nMinWidth, caps->nMaxWidth);
+        return AVERROR(EINVAL);
+    }
+
+    if (probed_height > caps->nMaxHeight || probed_height < caps->nMinHeight) {
+        av_log(avctx, AV_LOG_ERROR, "Video height %d not within range from %d to %d\n",
+               probed_height, caps->nMinHeight, caps->nMaxHeight);
+        return AVERROR(EINVAL);
+    }
 
     return 0;
 }
@@ -726,6 +803,11 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
 
     int probed_width = avctx->coded_width ? avctx->coded_width : 1280;
     int probed_height = avctx->coded_height ? avctx->coded_height : 720;
+    int probed_bit_depth = 8;
+
+    const AVPixFmtDescriptor *probe_desc = av_pix_fmt_desc_get(avctx->pix_fmt);
+    if (probe_desc && probe_desc->nb_components)
+        probed_bit_depth = probe_desc->comp[0].depth;
 
     // Accelerated transcoding scenarios with 'ffmpeg' require that the
     // pix_fmt be set to AV_PIX_FMT_CUDA early. The sw_pix_fmt, and the
@@ -780,9 +862,17 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
             goto error;
         }
     } else {
-        ret = av_hwdevice_ctx_create(&ctx->hwdevice, AV_HWDEVICE_TYPE_CUDA, ctx->cu_gpu, NULL, 0);
-        if (ret < 0)
-            goto error;
+        if (avctx->hw_device_ctx) {
+            ctx->hwdevice = av_buffer_ref(avctx->hw_device_ctx);
+            if (!ctx->hwdevice) {
+                ret = AVERROR(ENOMEM);
+                goto error;
+            }
+        } else {
+            ret = av_hwdevice_ctx_create(&ctx->hwdevice, AV_HWDEVICE_TYPE_CUDA, ctx->cu_gpu, NULL, 0);
+            if (ret < 0)
+                goto error;
+        }
 
         ctx->hwframe = av_hwframe_ctx_alloc(ctx->hwdevice);
         if (!ctx->hwframe) {
@@ -897,9 +987,10 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
     if (ret < 0)
         goto error;
 
-    ret = cuvid_test_dummy_decoder(avctx, &ctx->cuparseinfo,
-                                   probed_width,
-                                   probed_height);
+    ret = cuvid_test_capabilities(avctx, &ctx->cuparseinfo,
+                                  probed_width,
+                                  probed_height,
+                                  probed_bit_depth);
     if (ret < 0)
         goto error;
 
@@ -1026,7 +1117,6 @@ static const AVOption options[] = {
         .init           = cuvid_decode_init, \
         .close          = cuvid_decode_end, \
         .decode         = cuvid_decode_frame, \
-        .send_packet    = cuvid_decode_packet, \
         .receive_frame  = cuvid_output_frame, \
         .flush          = cuvid_flush, \
         .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING, \

@@ -1,5 +1,4 @@
 Files without standard license headers:
-cmdutils_common_opts.h
 compat/avisynth/windowsPorts/basicDataTypeConversions.h
 compat/avisynth/windowsPorts/windows2linux.h
 libavcodec/file_open.c
@@ -7,6 +6,7 @@ libavcodec/interplayacm.c
 libavcodec/log2_tab.c
 libavcodec/reverse.c
 libavdevice/file_open.c
+libavdevice/reverse.c
 libavfilter/log2_tab.c
 libavformat/file_open.c
 libavformat/golomb_tab.c
@@ -16,7 +16,6 @@ libswscale/log2_tab.c
 tools/uncoded_frame.c
 tools/yuvcmp.c
 Headers without standard inclusion guards:
-cmdutils_common_opts.h
 compat/avisynth/avisynth_c.h
 compat/avisynth/avs/capi.h
 compat/avisynth/avs/config.h

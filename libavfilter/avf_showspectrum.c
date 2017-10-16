@@ -48,7 +48,7 @@ enum ColorMode    { CHANNEL, INTENSITY, RAINBOW, MORELAND, NEBULAE, FIRE, FIERY,
 enum SlideMode    { REPLACE, SCROLL, FULLFRAME, RSCROLL, NB_SLIDES };
 enum Orientation  { VERTICAL, HORIZONTAL, NB_ORIENTATIONS };
 
-typedef struct {
+typedef struct ShowSpectrumContext {
     const AVClass *class;
     int w, h;
     AVFrame *outpicref;
@@ -299,11 +299,14 @@ static int config_output(AVFilterLink *outlink)
     int i, fft_bits, h, w;
     float overlap;
 
+    s->pts = AV_NOPTS_VALUE;
+
     if (!strcmp(ctx->filter->name, "showspectrumpic"))
         s->single_pic = 1;
 
     outlink->w = s->w;
     outlink->h = s->h;
+    outlink->sample_aspect_ratio = (AVRational){1,1};
 
     if (s->legend) {
         s->start_x = log10(inlink->sample_rate) * 25;
@@ -400,7 +403,7 @@ static int config_output(AVFilterLink *outlink)
                          sizeof(*s->window_func_lut));
         if (!s->window_func_lut)
             return AVERROR(ENOMEM);
-        ff_generate_window_func(s->window_func_lut, s->win_size, s->win_func, &overlap);
+        generate_window_func(s->window_func_lut, s->win_size, s->win_func, &overlap);
         if (s->overlap == 1)
             s->overlap = overlap;
         s->hop_size = (1. - s->overlap) * s->win_size;
@@ -420,13 +423,13 @@ static int config_output(AVFilterLink *outlink)
             ff_get_video_buffer(outlink, outlink->w, outlink->h);
         if (!outpicref)
             return AVERROR(ENOMEM);
-        outlink->sample_aspect_ratio = (AVRational){1,1};
+        outpicref->sample_aspect_ratio = (AVRational){1,1};
         for (i = 0; i < outlink->h; i++) {
             memset(outpicref->data[0] + i * outpicref->linesize[0],   0, outlink->w);
             memset(outpicref->data[1] + i * outpicref->linesize[1], 128, outlink->w);
             memset(outpicref->data[2] + i * outpicref->linesize[2], 128, outlink->w);
         }
-        av_frame_set_color_range(outpicref, AVCOL_RANGE_JPEG);
+        outpicref->color_range = AVCOL_RANGE_JPEG;
     }
 
     if ((s->orientation == VERTICAL   && s->xpos >= s->w) ||

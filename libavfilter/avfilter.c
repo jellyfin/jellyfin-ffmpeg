@@ -53,7 +53,7 @@ void ff_tlog_ref(void *ctx, AVFrame *ref, int end)
             "ref[%p buf:%p data:%p linesize[%d, %d, %d, %d] pts:%"PRId64" pos:%"PRId64,
             ref, ref->buf, ref->data[0],
             ref->linesize[0], ref->linesize[1], ref->linesize[2], ref->linesize[3],
-            ref->pts, av_frame_get_pkt_pos(ref));
+            ref->pts, ref->pkt_pos);
 
     if (ref->width) {
         ff_tlog(ctx, " a:%d/%d s:%dx%d i:%c iskey:%d type:%c",
@@ -427,6 +427,24 @@ int ff_request_frame(AVFilterLink *link)
     return 0;
 }
 
+static int64_t guess_status_pts(AVFilterContext *ctx, int status, AVRational link_time_base)
+{
+    unsigned i;
+    int64_t r = INT64_MAX;
+
+    for (i = 0; i < ctx->nb_inputs; i++)
+        if (ctx->inputs[i]->status_out == status)
+            r = FFMIN(r, av_rescale_q(ctx->inputs[i]->current_pts, ctx->inputs[i]->time_base, link_time_base));
+    if (r < INT64_MAX)
+        return r;
+    av_log(ctx, AV_LOG_WARNING, "EOF timestamp not reliable\n");
+    for (i = 0; i < ctx->nb_inputs; i++)
+        r = FFMIN(r, av_rescale_q(ctx->inputs[i]->status_in_pts, ctx->inputs[i]->time_base, link_time_base));
+    if (r < INT64_MAX)
+        return r;
+    return AV_NOPTS_VALUE;
+}
+
 static int ff_request_frame_to_filter(AVFilterLink *link)
 {
     int ret = -1;
@@ -440,7 +458,7 @@ static int ff_request_frame_to_filter(AVFilterLink *link)
         ret = ff_request_frame(link->src->inputs[0]);
     if (ret < 0) {
         if (ret != AVERROR(EAGAIN) && ret != link->status_in)
-            ff_avfilter_link_set_in_status(link, ret, AV_NOPTS_VALUE);
+            ff_avfilter_link_set_in_status(link, ret, guess_status_pts(link->src, ret, link->time_base));
         if (ret == AVERROR_EOF)
             ret = 0;
     }
@@ -692,6 +710,7 @@ static int default_execute(AVFilterContext *ctx, avfilter_action_func *func, voi
 AVFilterContext *ff_filter_alloc(const AVFilter *filter, const char *inst_name)
 {
     AVFilterContext *ret;
+    int preinited = 0;
 
     if (!filter)
         return NULL;
@@ -707,6 +726,11 @@ AVFilterContext *ff_filter_alloc(const AVFilter *filter, const char *inst_name)
         ret->priv     = av_mallocz(filter->priv_size);
         if (!ret->priv)
             goto err;
+    }
+    if (filter->preinit) {
+        if (filter->preinit(ret) < 0)
+            goto err;
+        preinited = 1;
     }
 
     av_opt_set_defaults(ret);
@@ -745,6 +769,8 @@ AVFilterContext *ff_filter_alloc(const AVFilter *filter, const char *inst_name)
     return ret;
 
 err:
+    if (preinited)
+        filter->uninit(ret);
     av_freep(&ret->inputs);
     av_freep(&ret->input_pads);
     ret->nb_inputs = 0;
@@ -889,7 +915,7 @@ static int process_options(AVFilterContext *ctx, AVDictionary **options,
             }
         } else {
         av_dict_set(options, key, value, 0);
-        if ((ret = av_opt_set(ctx->priv, key, value, 0)) < 0) {
+        if ((ret = av_opt_set(ctx->priv, key, value, AV_OPT_SEARCH_CHILDREN)) < 0) {
             if (!av_opt_find(ctx->priv, key, NULL, 0, AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ)) {
             if (ret == AVERROR_OPTION_NOT_FOUND)
                 av_log(ctx, AV_LOG_ERROR, "Option '%s' not found\n", key);
@@ -940,7 +966,7 @@ int avfilter_init_dict(AVFilterContext *ctx, AVDictionary **options)
     }
 
     if (ctx->filter->priv_class) {
-        ret = av_opt_set_dict(ctx->priv, options);
+        ret = av_opt_set_dict2(ctx->priv, options, AV_OPT_SEARCH_CHILDREN);
         if (ret < 0) {
             av_log(ctx, AV_LOG_ERROR, "Error applying options to the filter.\n");
             return ret;
@@ -1143,7 +1169,7 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
             av_log(link->dst, AV_LOG_ERROR, "Format change is not supported\n");
             goto error;
         }
-        if (av_frame_get_channels(frame) != link->channels) {
+        if (frame->channels != link->channels) {
             av_log(link->dst, AV_LOG_ERROR, "Channel count change is not supported\n");
             goto error;
         }
@@ -1303,8 +1329,6 @@ static int forward_status_change(AVFilterContext *filter, AVFilterLink *in)
     ff_filter_set_ready(filter, 200);
     return 0;
 }
-
-#define FFERROR_NOT_READY FFERRTAG('N','R','D','Y')
 
 static int ff_filter_activate_default(AVFilterContext *filter)
 {
@@ -1591,7 +1615,7 @@ int ff_inlink_make_frame_writable(AVFilterLink *link, AVFrame **rframe)
     case AVMEDIA_TYPE_AUDIO:
         av_samples_copy(out->extended_data, frame->extended_data,
                         0, 0, frame->nb_samples,
-                        av_frame_get_channels(frame),
+                        frame->channels,
                         frame->format);
         break;
     default:
@@ -1622,7 +1646,7 @@ int ff_inlink_evaluate_timeline_at_frame(AVFilterLink *link, const AVFrame *fram
 {
     AVFilterContext *dstctx = link->dst;
     int64_t pts = frame->pts;
-    int64_t pos = av_frame_get_pkt_pos(frame);
+    int64_t pos = frame->pkt_pos;
 
     if (!dstctx->enable_str)
         return 1;
@@ -1642,6 +1666,26 @@ void ff_inlink_request_frame(AVFilterLink *link)
     av_assert1(!link->status_out);
     link->frame_wanted_out = 1;
     ff_filter_set_ready(link->src, 100);
+}
+
+void ff_inlink_set_status(AVFilterLink *link, int status)
+{
+    if (link->status_out)
+        return;
+    link->frame_wanted_out = 0;
+    link->frame_blocked_in = 0;
+    ff_avfilter_link_set_out_status(link, status, AV_NOPTS_VALUE);
+    while (ff_framequeue_queued_frames(&link->fifo)) {
+           AVFrame *frame = ff_framequeue_take(&link->fifo);
+           av_frame_free(&frame);
+    }
+    if (!link->status_in)
+        link->status_in = status;
+}
+
+int ff_outlink_get_status(AVFilterLink *link)
+{
+    return link->status_in;
 }
 
 const AVClass *avfilter_get_class(void)

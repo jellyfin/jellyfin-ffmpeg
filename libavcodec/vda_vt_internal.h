@@ -40,6 +40,13 @@ typedef struct VTContext {
 
     // The core video buffer
     CVImageBufferRef            frame;
+
+    // Current dummy frames context (depends on exact CVImageBufferRef params).
+    struct AVBufferRef         *cached_hw_frames_ctx;
+
+    // Non-NULL if the new hwaccel API is used. This is only a separate struct
+    // to ease compatibility with the old API.
+    struct AVVideotoolboxContext *vt_ctx;
 } VTContext;
 
 int ff_videotoolbox_alloc_frame(AVCodecContext *avctx, AVFrame *frame);
@@ -52,4 +59,5 @@ int ff_videotoolbox_h264_decode_slice(AVCodecContext *avctx,
                                       const uint8_t *buffer,
                                       uint32_t size);
 CFDataRef ff_videotoolbox_avcc_extradata_create(AVCodecContext *avctx);
+CFDataRef ff_videotoolbox_hvcc_extradata_create(AVCodecContext *avctx);
 #endif /* AVCODEC_VDA_VT_INTERNAL_H */

@@ -314,6 +314,8 @@ static inline int get_ur_golomb_jpegls(GetBitContext *gb, int k, int limit,
 
     log = av_log2(buf);
 
+    av_assert2(k <= 31);
+
     if (log - k >= 32 - MIN_CACHE_BITS + (MIN_CACHE_BITS == 32) &&
         32 - log < limit) {
         buf >>= log - k;
@@ -350,7 +352,7 @@ static inline int get_ur_golomb_jpegls(GetBitContext *gb, int k, int limit,
                 buf = 0;
             }
 
-            buf += (i << k);
+            buf += ((SUINT)i << k);
         } else if (i == limit - 1) {
             buf = SHOW_UBITS(re, gb, esc_len);
             LAST_SKIP_BITS(re, gb, esc_len);
@@ -456,17 +458,33 @@ static inline int get_te(GetBitContext *s, int r, char *file, const char *func,
 #endif /* TRACE */
 
 /**
- * write unsigned exp golomb code.
+ * write unsigned exp golomb code. 2^16 - 2 at most
  */
 static inline void set_ue_golomb(PutBitContext *pb, int i)
 {
     av_assert2(i >= 0);
+    av_assert2(i <= 0xFFFE);
 
     if (i < 256)
         put_bits(pb, ff_ue_golomb_len[i], i + 1);
     else {
         int e = av_log2(i + 1);
         put_bits(pb, 2 * e + 1, i + 1);
+    }
+}
+
+/**
+ * write unsigned exp golomb code. 2^32-2 at most.
+ */
+static inline void set_ue_golomb_long(PutBitContext *pb, uint32_t i)
+{
+    av_assert2(i <= (UINT32_MAX - 1));
+
+    if (i < 256)
+        put_bits(pb, ff_ue_golomb_len[i], i + 1);
+    else {
+        int e = av_log2(i + 1);
+        put_bits64(pb, 2 * e + 1, i + 1);
     }
 }
 

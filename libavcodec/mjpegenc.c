@@ -39,7 +39,6 @@
 #include "mjpeg.h"
 #include "mjpegenc.h"
 
-
 static int alloc_huffman(MpegEncContext *s)
 {
     MJpegContext *m = s->mjpeg_ctx;
@@ -127,54 +126,6 @@ av_cold void ff_mjpeg_encode_close(MpegEncContext *s)
 {
     av_freep(&s->mjpeg_ctx->huff_buffer);
     av_freep(&s->mjpeg_ctx);
-}
-
-/**
- * Encodes and outputs the entire frame in the JPEG format.
- *
- * @param s The MpegEncContext.
- */
-void ff_mjpeg_encode_picture_frame(MpegEncContext *s)
-{
-    int i, nbits, code, table_id;
-    MJpegContext *m = s->mjpeg_ctx;
-    uint8_t *huff_size[4] = {m->huff_size_dc_luminance,
-                             m->huff_size_dc_chrominance,
-                             m->huff_size_ac_luminance,
-                             m->huff_size_ac_chrominance};
-    uint16_t *huff_code[4] = {m->huff_code_dc_luminance,
-                              m->huff_code_dc_chrominance,
-                              m->huff_code_ac_luminance,
-                              m->huff_code_ac_chrominance};
-    size_t total_bits = 0;
-    size_t bytes_needed;
-
-    s->header_bits = get_bits_diff(s);
-    // Estimate the total size first
-    for (i = 0; i < m->huff_ncode; i++) {
-        table_id = m->huff_buffer[i].table_id;
-        code = m->huff_buffer[i].code;
-        nbits = code & 0xf;
-
-        total_bits += huff_size[table_id][code] + nbits;
-    }
-
-    bytes_needed = (total_bits + 7) / 8;
-    ff_mpv_reallocate_putbitbuffer(s, bytes_needed, bytes_needed);
-
-    for (i = 0; i < m->huff_ncode; i++) {
-        table_id = m->huff_buffer[i].table_id;
-        code = m->huff_buffer[i].code;
-        nbits = code & 0xf;
-
-        put_bits(&s->pb, huff_size[table_id][code], huff_code[table_id][code]);
-        if (nbits != 0) {
-            put_sbits(&s->pb, nbits, m->huff_buffer[i].mant);
-        }
-    }
-
-    m->huff_ncode = 0;
-    s->i_tex_bits = get_bits_diff(s);
 }
 
 /**
@@ -394,11 +345,11 @@ void ff_mjpeg_encode_mb(MpegEncContext *s, int16_t block[12][64])
     }
 }
 
+#if CONFIG_AMV_ENCODER
 // maximum over s->mjpeg_vsample[i]
 #define V_MAX 2
 static int amv_encode_picture(AVCodecContext *avctx, AVPacket *pkt,
                               const AVFrame *pic_arg, int *got_packet)
-
 {
     MpegEncContext *s = avctx->priv_data;
     AVFrame *pic;
@@ -435,6 +386,7 @@ static int amv_encode_picture(AVCodecContext *avctx, AVPacket *pkt,
     av_frame_free(&pic);
     return ret;
 }
+#endif
 
 #define OFFSET(x) offsetof(MpegEncContext, x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
@@ -444,14 +396,13 @@ FF_MPV_COMMON_OPTS
     { "left",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, INT_MIN, INT_MAX, VE, "pred" },
     { "plane",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, INT_MIN, INT_MAX, VE, "pred" },
     { "median", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 3 }, INT_MIN, INT_MAX, VE, "pred" },
-{ "huffman", "Huffman table strategy", OFFSET(huffman), AV_OPT_TYPE_INT, { .i64 = HUFFMAN_TABLE_DEFAULT }, 0, NB_HUFFMAN_TABLE_OPTION - 1, VE, "huffman" },
+{ "huffman", "Huffman table strategy", OFFSET(huffman), AV_OPT_TYPE_INT, { .i64 = HUFFMAN_TABLE_OPTIMAL }, 0, NB_HUFFMAN_TABLE_OPTION - 1, VE, "huffman" },
     { "default", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = HUFFMAN_TABLE_DEFAULT }, INT_MIN, INT_MAX, VE, "huffman" },
     { "optimal", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = HUFFMAN_TABLE_OPTIMAL }, INT_MIN, INT_MAX, VE, "huffman" },
 { NULL},
 };
 
 #if CONFIG_MJPEG_ENCODER
-
 static const AVClass mjpeg_class = {
     .class_name = "mjpeg encoder",
     .item_name  = av_default_item_name,
@@ -469,12 +420,13 @@ AVCodec ff_mjpeg_encoder = {
     .encode2        = ff_mpv_encode_picture,
     .close          = ff_mpv_encode_end,
     .capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_INTRA_ONLY,
-    .pix_fmts       = (const enum AVPixelFormat[]){
+    .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_NONE
     },
     .priv_class     = &mjpeg_class,
 };
 #endif
+
 #if CONFIG_AMV_ENCODER
 static const AVClass amv_class = {
     .class_name = "amv encoder",
@@ -492,7 +444,7 @@ AVCodec ff_amv_encoder = {
     .init           = ff_mpv_encode_init,
     .encode2        = amv_encode_picture,
     .close          = ff_mpv_encode_end,
-    .pix_fmts       = (const enum AVPixelFormat[]){
+    .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_NONE
     },
     .priv_class     = &amv_class,

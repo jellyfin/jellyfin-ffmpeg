@@ -343,6 +343,14 @@ static void dump_mastering_display_metadata(void *ctx, AVPacketSideData* sd) {
            av_q2d(metadata->min_luminance), av_q2d(metadata->max_luminance));
 }
 
+static void dump_content_light_metadata(void *ctx, AVPacketSideData* sd)
+{
+    AVContentLightMetadata* metadata = (AVContentLightMetadata*)sd->data;
+    av_log(ctx, AV_LOG_INFO, "Content Light Level Metadata, "
+           "MaxCLL=%d, MaxFALL=%d",
+           metadata->MaxCLL, metadata->MaxFALL);
+}
+
 static void dump_spherical(void *ctx, AVCodecParameters *par, AVPacketSideData *sd)
 {
     AVSphericalMapping *spherical = (AVSphericalMapping *)sd->data;
@@ -425,6 +433,9 @@ static void dump_sidedata(void *ctx, AVStream *st, const char *indent)
         case AV_PKT_DATA_SPHERICAL:
             av_log(ctx, AV_LOG_INFO, "spherical: ");
             dump_spherical(ctx, st->codecpar, &sd);
+            break;
+        case AV_PKT_DATA_CONTENT_LIGHT_LEVEL:
+            dump_content_light_metadata(ctx, &sd);
             break;
         default:
             av_log(ctx, AV_LOG_INFO,
@@ -584,7 +595,7 @@ void av_dump_format(AVFormatContext *ic, int index,
         }
         av_log(NULL, AV_LOG_INFO, ", bitrate: ");
         if (ic->bit_rate)
-            av_log(NULL, AV_LOG_INFO, "%"PRId64" kb/s", (int64_t)ic->bit_rate / 1000);
+            av_log(NULL, AV_LOG_INFO, "%"PRId64" kb/s", ic->bit_rate / 1000);
         else
             av_log(NULL, AV_LOG_INFO, "N/A");
         av_log(NULL, AV_LOG_INFO, "\n");

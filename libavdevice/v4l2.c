@@ -492,6 +492,7 @@ static int mmap_read_frame(AVFormatContext *ctx, AVPacket *pkt)
         .type   = V4L2_BUF_TYPE_VIDEO_CAPTURE,
         .memory = V4L2_MEMORY_MMAP
     };
+    struct timeval buf_ts;
     int res;
 
     pkt->size = 0;
@@ -507,6 +508,8 @@ static int mmap_read_frame(AVFormatContext *ctx, AVPacket *pkt)
                av_err2str(res));
         return res;
     }
+
+    buf_ts = buf.timestamp;
 
     if (buf.index >= s->buffers) {
         av_log(ctx, AV_LOG_ERROR, "Invalid buffer index received.\n");
@@ -583,7 +586,7 @@ static int mmap_read_frame(AVFormatContext *ctx, AVPacket *pkt)
             return AVERROR(ENOMEM);
         }
     }
-    pkt->pts = buf.timestamp.tv_sec * INT64_C(1000000) + buf.timestamp.tv_usec;
+    pkt->pts = buf_ts.tv_sec * INT64_C(1000000) + buf_ts.tv_usec;
     convert_timestamp(ctx, &pkt->pts);
 
     return pkt->size;
@@ -884,14 +887,14 @@ static int v4l2_read_header(AVFormatContext *ctx)
     avpriv_set_pts_info(st, 64, 1, 1000000); /* 64 bits pts in us */
 
     if (s->pixel_format) {
-        AVCodec *codec = avcodec_find_decoder_by_name(s->pixel_format);
+        const AVCodecDescriptor *desc = avcodec_descriptor_get_by_name(s->pixel_format);
 
-        if (codec)
-            ctx->video_codec_id = codec->id;
+        if (desc)
+            ctx->video_codec_id = desc->id;
 
         pix_fmt = av_get_pix_fmt(s->pixel_format);
 
-        if (pix_fmt == AV_PIX_FMT_NONE && !codec) {
+        if (pix_fmt == AV_PIX_FMT_NONE && !desc) {
             av_log(ctx, AV_LOG_ERROR, "No such input format: %s.\n",
                    s->pixel_format);
 
