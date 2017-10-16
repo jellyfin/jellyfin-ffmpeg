@@ -1,5 +1,1 @@
-0001-sws-tests-pixdesc_query-save-every-pix-fmts-in-a-lis.patch
-0002-sws-tests-pixdesc_query-sort-pixel-formats.patch
-0003-sws-tests-pixdesc_query-replace-rgb-based-pix-fmts-w.patch
-0004-Add-support-for-LibOpenJPEG-v2.2-git.patch
-0005-arm-thumb2-blx.patch
+0001-arm-thumb2-blx.patch
