@@ -1,3 +1,9 @@
+ffmpeg (7:3.4-1) UNRELEASED; urgency=medium
+
+  *
+
+ -- James Cowgill <jcowgill@debian.org>  Mon, 16 Oct 2017 18:22:46 +0100
+
 ffmpeg (7:3.3.4-2) unstable; urgency=medium
 
   * debian/patches/0004-Add-support-for-LibOpenJPEG-v2.2-git.patch:
