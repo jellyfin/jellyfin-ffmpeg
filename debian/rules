@@ -24,23 +24,20 @@ FLAVORS = standard extra static
 # The following flags are not added, because the necessary libraries are not in Debian:
 #   --enable-decklink
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
-#   --enable-libdcadec
 #   --enable-libilbc                (see #675959 for the RFP bug)
 #   --enable-libkvazaar
 #   --enable-libmfx
-#   --enable-libmodplug             (see #849840: replaced with libopenmpt)
-#   --enable-libnut
 #   --enable-libopenh264
-#   --enable-libschroedinger        (see #845037: removal due to security issues)
-#   --enable-libutvideo
 #   --enable-libvidstab             (see #709193 for the RFP bug)
+#   --enable-libvmaf
 #   --enable-libxavs
 #   --enable-libzimg
 # The following flags are not added for various reasons:
-#   * --enable-librtmp:             ffmpeg has better built-in RTMP support with listen mode.
-#   * --enable-libv4l2 [!hurd-any]: This is only needed for very old devices and may cause problems for others.
+#   --enable-librtmp                ffmpeg has better built-in RTMP support with listen mode.
+#   --enable-libmodplug             see #849840: replaced with libopenmpt
+#   --enable-libv4l2                This is only needed for very old devices and may cause problems for others.
 #                                   Should anyone need it, using LD_PRELOAD pointing on libv4l2 has the same effect.
-#   * --enable-opencl [!hurd-any]:  This is considered an experimental API.
+#   --enable-opencl                 This is considered an experimental API.
 CONFIG := --prefix=/usr \
 	--extra-version="$(DEB_REVISION)" \
 	--toolchain=hardened \
@@ -64,11 +61,13 @@ CONFIG := --prefix=/usr \
 	--enable-libgme \
 	--enable-libgsm \
 	--enable-libmp3lame \
+	--enable-libmysofa \
 	--enable-libopenjpeg \
 	--enable-libopenmpt \
 	--enable-libopus \
 	--enable-libpulse \
 	--enable-librubberband \
+	--enable-librsvg \
 	--enable-libshine \
 	--enable-libsnappy \
 	--enable-libsoxr \
@@ -81,6 +80,7 @@ CONFIG := --prefix=/usr \
 	--enable-libwavpack \
 	--enable-libwebp \
 	--enable-libx265 \
+	--enable-libxml2 \
 	--enable-libxvid \
 	--enable-libzmq \
 	--enable-libzvbi \
@@ -124,12 +124,8 @@ endif
 # Some libraries are built only on linux.
 ifeq ($(DEB_HOST_ARCH_OS),linux)
 	CONFIG += --enable-libdc1394 \
+		--enable-libdrm \
 		--enable-libiec61883
-endif
-
-# Some build-dependencies are not installable on some architectures.
-ifeq (,$(filter $(DEB_HOST_ARCH),powerpcspe))
-	CONFIG_extra += --enable-netcdf
 endif
 
 # ffmpeg is involed in build-dependency cycles with opencv, x264 and chromaprint, so disable them in stage one.
