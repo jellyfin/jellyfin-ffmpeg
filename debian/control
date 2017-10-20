@@ -241,7 +241,6 @@ Description: FFmpeg library with de/encoders for audio/video codecs - runtime fi
 Package: libavcodec-extra57
 Architecture: any
 Section: libs
-Priority: extra
 Multi-Arch: same
 Conflicts: libavcodec57
 Provides: libavcodec-extra
@@ -278,7 +277,6 @@ Description: FFmpeg library with additional de/encoders for audio/video codecs
 Package: libavcodec-extra
 Architecture: all
 Section: metapackages
-Priority: extra
 Multi-Arch: foreign
 Depends:
  libavcodec-extra57,
@@ -390,7 +388,6 @@ Description: FFmpeg library containing media filters - runtime files
 Package: libavfilter-extra6
 Architecture: any
 Section: libs
-Priority: extra
 Multi-Arch: same
 Conflicts: libavfilter6
 Provides: libavfilter-extra
@@ -421,7 +418,6 @@ Description: FFmpeg library with extra media filters - runtime files
 Package: libavfilter-extra
 Architecture: all
 Section: metapackages
-Priority: extra
 Multi-Arch: foreign
 Depends:
  libavfilter-extra6,
@@ -761,7 +757,6 @@ Description: FFmpeg library for image scaling and various conversions - developm
 Package: libav-tools
 Architecture: all
 Section: oldlibs
-Priority: extra
 Multi-Arch: foreign
 Breaks: libav-tools-links (<< 7:2.7.2-2~)
 Replaces: libav-tools-links (<< 7:2.7.2-2~)
