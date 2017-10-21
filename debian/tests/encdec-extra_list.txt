@@ -4,7 +4,7 @@ amr; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
 asf; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
 avi; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
 caf; a=amr_nb:libopencore_amrnb|1
-ffm; a=amr_nb:libopencore_amrnb|0 a=amr_wb:libvo_amrwbenc|0
+ffm; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
 matroska; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
 mov; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
 nut; a=amr_nb:libopencore_amrnb|1 a=amr_wb:libvo_amrwbenc|1
