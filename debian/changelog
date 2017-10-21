@@ -1,8 +1,21 @@
-ffmpeg (7:3.4-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.4-1) experimental; urgency=medium
 
-  *
+  * New upstream release.
 
- -- James Cowgill <jcowgill@debian.org>  Mon, 16 Oct 2017 18:22:46 +0100
+  * debian/control:
+    - Bump standards version to 4.1.1.
+    - Remove "Priority: extra" which is deprecated in policy 4.0.1.
+  * debian/copyright:
+    - Update debian/copyright using decopy.
+  * debian/patches:
+    - Drop patches applied upstream.
+  * debian/rules:
+    - Update build options and enabled libraries.
+  * debian/tests:
+    - Fix examples package test by using new build target.
+    - Update autopkgtest encdec lists.
+
+ -- James Cowgill <jcowgill@debian.org>  Sat, 21 Oct 2017 19:35:10 +0100
 
 ffmpeg (7:3.3.4-2) unstable; urgency=medium
 
