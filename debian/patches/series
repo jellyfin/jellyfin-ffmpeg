@@ -1,1 +1,2 @@
 0001-arm-thumb2-blx.patch
+0002-arm-Check-for-have_vfp_vm-instead-of-have_vfpv3.patch
