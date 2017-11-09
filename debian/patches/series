@@ -1,2 +1,3 @@
 0001-arm-thumb2-blx.patch
 0002-arm-Check-for-have_vfp_vm-instead-of-have_vfpv3.patch
+0003-lavc-reset-codec-on-receiving-packet-after-EOF-in-co.patch
