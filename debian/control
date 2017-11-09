@@ -7,6 +7,7 @@ Uploaders: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>,
  Reinhard Tartler <siretart@tauware.de>,
  Balint Reczey <balint@balintreczey.hu>,
  James Cowgill <jcowgill@debian.org>
+Rules-Requires-Root: no
 Homepage: https://ffmpeg.org/
 Standards-Version: 4.1.1
 Vcs-Git: https://anonscm.debian.org/git/pkg-multimedia/ffmpeg.git
