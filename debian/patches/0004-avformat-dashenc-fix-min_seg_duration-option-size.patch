@@ -1,0 +1,31 @@
+From 7dff5e53fe875d847edfc82f18ba8e72ec90992c Mon Sep 17 00:00:00 2001
+From: James Cowgill <jcowgill@debian.org>
+Date: Sat, 18 Nov 2017 14:49:31 +0000
+Subject: [PATCH] avformat/dashenc: fix min_seg_duration option size
+
+In the DASHContext structure, min_seg_duration is declared as an int,
+but the AVOption list claimed it was an INT64. Change the option list
+to use the correct size, which should fix some initialization errors
+seen on big-endian platforms.
+
+Signed-off-by: James Cowgill <jcowgill@debian.org>
+---
+ libavformat/dashenc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavformat/dashenc.c b/libavformat/dashenc.c
+index d5554d1df0..ddad3351fd 100644
+--- a/libavformat/dashenc.c
++++ b/libavformat/dashenc.c
+@@ -1181,7 +1181,7 @@ static const AVOption options[] = {
+     { "adaptation_sets", "Adaptation sets. Syntax: id=0,streams=0,1,2 id=1,streams=3,4 and so on", OFFSET(adaptation_sets), AV_OPT_TYPE_STRING, { 0 }, 0, 0, AV_OPT_FLAG_ENCODING_PARAM },
+     { "window_size", "number of segments kept in the manifest", OFFSET(window_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
+     { "extra_window_size", "number of segments kept outside of the manifest before removing from disk", OFFSET(extra_window_size), AV_OPT_TYPE_INT, { .i64 = 5 }, 0, INT_MAX, E },
+-    { "min_seg_duration", "minimum segment duration (in microseconds)", OFFSET(min_seg_duration), AV_OPT_TYPE_INT64, { .i64 = 5000000 }, 0, INT_MAX, E },
++    { "min_seg_duration", "minimum segment duration (in microseconds)", OFFSET(min_seg_duration), AV_OPT_TYPE_INT, { .i64 = 5000000 }, 0, INT_MAX, E },
+     { "remove_at_exit", "remove all segments when finished", OFFSET(remove_at_exit), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
+     { "use_template", "Use SegmentTemplate instead of SegmentList", OFFSET(use_template), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, E },
+     { "use_timeline", "Use SegmentTimeline in SegmentTemplate", OFFSET(use_timeline), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, E },
+-- 
+2.15.0
+
