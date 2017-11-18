@@ -1,8 +1,9 @@
-ffmpeg (7:3.4-3) UNRELEASED; urgency=medium
+ffmpeg (7:3.4-3) unstable; urgency=medium
 
-  *
+  * debian/patches:
+    - Add patch to fix dash muxer autopkgtest errors on big-endian.
 
- -- James Cowgill <jcowgill@debian.org>  Sat, 18 Nov 2017 15:36:22 +0000
+ -- James Cowgill <jcowgill@debian.org>  Sat, 18 Nov 2017 15:45:03 +0000
 
 ffmpeg (7:3.4-2) unstable; urgency=medium
 
