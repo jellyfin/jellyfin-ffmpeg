@@ -2,3 +2,4 @@
 0002-arm-Check-for-have_vfp_vm-instead-of-have_vfpv3.patch
 0003-lavc-reset-codec-on-receiving-packet-after-EOF-in-co.patch
 0004-avformat-dashenc-fix-min_seg_duration-option-size.patch
+0005-float-dsp-i386.patch
