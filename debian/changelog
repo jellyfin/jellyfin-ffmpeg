@@ -1,3 +1,9 @@
+ffmpeg (7:3.4-4) UNRELEASED; urgency=medium
+
+  *
+
+ -- James Cowgill <jcowgill@debian.org>  Sat, 18 Nov 2017 19:32:58 +0000
+
 ffmpeg (7:3.4-3) unstable; urgency=medium
 
   * debian/patches:
