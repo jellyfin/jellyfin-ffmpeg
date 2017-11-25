@@ -551,6 +551,11 @@ Pre-Depends:
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
+Breaks:
+ libavcodec57 (<< 7:3.4),
+ libavcodec-extra57 (<< 7:3.4),
+ libavfilter6 (<< 7:3.4),
+ libavfilter-extra6 (<< 7:3.4)
 Description: FFmpeg library with functions for simplifying programming - runtime files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and
