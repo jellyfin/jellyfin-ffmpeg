@@ -1,8 +1,12 @@
-ffmpeg (7:3.4-4) UNRELEASED; urgency=medium
+ffmpeg (7:3.4-4) unstable; urgency=medium
 
-  *
+  * debian/control:
+    - Require 3.4 avcodec/avfilter when 3.4 avutil is in use. (Closes: #882598)
+  * debian/patches:
+    - Add patch to fix random FTBFS on i386 caused by float precision issues.
+      (Closes: #882075)
 
- -- James Cowgill <jcowgill@debian.org>  Sat, 18 Nov 2017 19:32:58 +0000
+ -- James Cowgill <jcowgill@debian.org>  Sat, 25 Nov 2017 10:49:41 +0000
 
 ffmpeg (7:3.4-3) unstable; urgency=medium
 
