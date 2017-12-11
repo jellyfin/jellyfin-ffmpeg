@@ -1,8 +1,14 @@
-ffmpeg (7:3.4.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:3.4.1-1) unstable; urgency=medium
 
-  *
+  * New upstream release.
+    - Fixes CVE-2017-16840, CVE-2017-17081.
 
- -- James Cowgill <jcowgill@debian.org>  Mon, 11 Dec 2017 17:07:36 +0000
+  * debian/control:
+    - Bump standards version to 4.1.2.
+  * debian/patches:
+    - Drop patches applied upstream.
+
+ -- James Cowgill <jcowgill@debian.org>  Mon, 11 Dec 2017 17:31:16 +0000
 
 ffmpeg (7:3.4-4) unstable; urgency=medium
 
