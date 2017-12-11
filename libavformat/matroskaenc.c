@@ -1858,6 +1858,13 @@ static int mkv_write_header(AVFormatContext *s)
         av_dict_get(s->metadata, "alpha_mode", NULL, 0))
         version = 4;
 
+    if (s->nb_streams > MAX_TRACKS) {
+        av_log(s, AV_LOG_ERROR,
+               "At most %d streams are supported for muxing in Matroska\n",
+               MAX_TRACKS);
+        return AVERROR(EINVAL);
+    }
+
     for (i = 0; i < s->nb_streams; i++) {
         if (s->streams[i]->codecpar->codec_id == AV_CODEC_ID_ATRAC3 ||
             s->streams[i]->codecpar->codec_id == AV_CODEC_ID_COOK ||
@@ -1975,6 +1982,10 @@ static int mkv_write_header(AVFormatContext *s)
     // initialize stream_duration fields
     mkv->stream_durations = av_mallocz(s->nb_streams * sizeof(int64_t));
     mkv->stream_duration_offsets = av_mallocz(s->nb_streams * sizeof(int64_t));
+    if (!mkv->stream_durations || !mkv->stream_duration_offsets) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
 
     ret = mkv_write_tracks(s);
     if (ret < 0)
