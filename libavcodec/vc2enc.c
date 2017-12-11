@@ -1171,7 +1171,7 @@ static av_cold int vc2_encode_init(AVCodecContext *avctx)
         p->dwt_width  = w = FFALIGN(p->width,  (1 << s->wavelet_depth));
         p->dwt_height = h = FFALIGN(p->height, (1 << s->wavelet_depth));
         p->coef_stride = FFALIGN(p->dwt_width, 32);
-        p->coef_buf = av_malloc(p->coef_stride*p->dwt_height*sizeof(dwtcoef));
+        p->coef_buf = av_mallocz(p->coef_stride*p->dwt_height*sizeof(dwtcoef));
         if (!p->coef_buf)
             goto alloc_fail;
         for (level = s->wavelet_depth-1; level >= 0; level--) {
@@ -1190,7 +1190,8 @@ static av_cold int vc2_encode_init(AVCodecContext *avctx)
         /* DWT init */
         if (ff_vc2enc_init_transforms(&s->transform_args[i].t,
                                       s->plane[i].coef_stride,
-                                      s->plane[i].dwt_height))
+                                      s->plane[i].dwt_height,
+                                      s->slice_width, s->slice_height))
             goto alloc_fail;
     }
 
