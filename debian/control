@@ -72,8 +72,6 @@ Build-Depends:
  libjack-jackd2-dev,
 # --enable-lv2
  liblilv-dev,
-# missing dependency of libtesseract-dev #836849
- libleptonica-dev,
 # autodetected for the tiff decoder
  liblzma-dev,
 # --enable-libmp3lame
