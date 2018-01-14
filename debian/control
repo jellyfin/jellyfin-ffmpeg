@@ -70,6 +70,8 @@ Build-Depends:
  libavc1394-dev [linux-any],
 # --enable-libjack
  libjack-jackd2-dev,
+# --enable-lv2
+ liblilv-dev,
 # missing dependency of libtesseract-dev #836849
  libleptonica-dev,
 # autodetected for the tiff decoder

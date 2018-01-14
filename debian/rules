@@ -85,6 +85,7 @@ CONFIG := --prefix=/usr \
 	--enable-libxvid \
 	--enable-libzmq \
 	--enable-libzvbi \
+	--enable-lv2 \
 	--enable-omx \
 	--enable-openal \
 	--enable-opengl \
