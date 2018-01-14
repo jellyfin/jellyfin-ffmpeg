@@ -238,6 +238,8 @@ This sets the input video format to the format given by the FourCC. To see
 the supported values of your device(s) use @option{list_formats}.
 Note that there is a FourCC @option{'pal '} that can also be used
 as @option{pal} (3 letters).
+Default behavior is autodetection of the input video format, if the hardware
+supports it.
 
 @item bm_v210
 This is a deprecated option, you can use @option{raw_format} instead.
@@ -310,6 +312,10 @@ Defaults to @samp{true}.
 Sets maximum input buffer size in bytes. If the buffering reaches this value,
 incoming frames will be dropped.
 Defaults to @samp{1073741824}.
+
+@item audio_depth
+Sets the audio sample bit depth. Must be @samp{16} or @samp{32}.
+Defaults to @samp{16}.
 
 @end table
 

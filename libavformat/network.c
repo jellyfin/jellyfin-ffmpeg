@@ -29,24 +29,28 @@
 
 int ff_tls_init(void)
 {
-#if CONFIG_TLS_OPENSSL_PROTOCOL
+#if CONFIG_TLS_PROTOCOL
+#if CONFIG_OPENSSL
     int ret;
     if ((ret = ff_openssl_init()) < 0)
         return ret;
 #endif
-#if CONFIG_TLS_GNUTLS_PROTOCOL
+#if CONFIG_GNUTLS
     ff_gnutls_init();
+#endif
 #endif
     return 0;
 }
 
 void ff_tls_deinit(void)
 {
-#if CONFIG_TLS_OPENSSL_PROTOCOL
+#if CONFIG_TLS_PROTOCOL
+#if CONFIG_OPENSSL
     ff_openssl_deinit();
 #endif
-#if CONFIG_TLS_GNUTLS_PROTOCOL
+#if CONFIG_GNUTLS
     ff_gnutls_deinit();
+#endif
 #endif
 }
 
@@ -96,6 +100,24 @@ int ff_network_wait_fd_timeout(int fd, int write, int64_t timeout, AVIOInterrupt
             else if (av_gettime_relative() - wait_start > timeout)
                 return AVERROR(ETIMEDOUT);
         }
+    }
+}
+
+int ff_network_sleep_interruptible(int64_t timeout, AVIOInterruptCB *int_cb)
+{
+    int64_t wait_start = av_gettime_relative();
+
+    while (1) {
+        int64_t time_left;
+
+        if (ff_check_interrupt(int_cb))
+            return AVERROR_EXIT;
+
+        time_left = timeout - (av_gettime_relative() - wait_start);
+        if (time_left <= 0)
+            return AVERROR(ETIMEDOUT);
+
+        av_usleep(FFMIN(time_left, POLLING_TIME * 1000));
     }
 }
 

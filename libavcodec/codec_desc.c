@@ -46,15 +46,6 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER,
         .profiles  = NULL_IF_CONFIG_SMALL(ff_mpeg2_video_profiles),
     },
-#if FF_API_XVMC
-    {
-        .id        = AV_CODEC_ID_MPEG2VIDEO_XVMC,
-        .type      = AVMEDIA_TYPE_VIDEO,
-        .name      = "mpegvideo_xvmc",
-        .long_name = NULL_IF_CONFIG_SMALL("MPEG-1/2 video XvMC (X-Video Motion Compensation)"),
-        .props     = AV_CODEC_PROP_LOSSY,
-    },
-#endif /* FF_API_XVMC */
     {
         .id        = AV_CODEC_ID_H261,
         .type      = AVMEDIA_TYPE_VIDEO,
@@ -2499,15 +2490,6 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("ATRAC3 (Adaptive TRansform Acoustic Coding 3)"),
         .props     = AV_CODEC_PROP_LOSSY,
     },
-#if FF_API_VOXWARE
-    {
-        .id        = AV_CODEC_ID_VOXWARE,
-        .type      = AVMEDIA_TYPE_AUDIO,
-        .name      = "voxware",
-        .long_name = NULL_IF_CONFIG_SMALL("Voxware RT29 Metasound"),
-        .props     = AV_CODEC_PROP_LOSSY,
-    },
-#endif
     {
         .id        = AV_CODEC_ID_APE,
         .type      = AVMEDIA_TYPE_AUDIO,
@@ -2875,6 +2857,13 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .type      = AVMEDIA_TYPE_AUDIO,
         .name      = "adpcm_mtaf",
         .long_name = NULL_IF_CONFIG_SMALL("ADPCM MTAF"),
+        .props     = AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_APTX,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "aptx",
+        .long_name = NULL_IF_CONFIG_SMALL("aptX (Audio Processing Technology for Bluetooth)"),
         .props     = AV_CODEC_PROP_LOSSY,
     },
 

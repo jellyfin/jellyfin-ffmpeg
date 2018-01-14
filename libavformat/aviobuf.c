@@ -364,13 +364,6 @@ int avio_feof(AVIOContext *s)
     return s->eof_reached;
 }
 
-#if FF_API_URL_FEOF
-int url_feof(AVIOContext *s)
-{
-    return avio_feof(s);
-}
-#endif
-
 void avio_wl32(AVIOContext *s, unsigned int val)
 {
     avio_w8(s, (uint8_t) val       );
@@ -531,6 +524,24 @@ void avio_write_marker(AVIOContext *s, int64_t time, enum AVIODataMarkerType typ
     s->last_time = time;
 }
 
+static int read_packet_wrapper(AVIOContext *s, uint8_t *buf, int size)
+{
+    int ret;
+
+    if (!s->read_packet)
+        return AVERROR(EINVAL);
+    ret = s->read_packet(s->opaque, buf, size);
+#if FF_API_OLD_AVIO_EOF_0
+    if (!ret && !s->max_packet_size) {
+        av_log(NULL, AV_LOG_WARNING, "Invalid return value 0 for stream protocol\n");
+        ret = AVERROR_EOF;
+    }
+#else
+    av_assert2(ret || s->max_packet_size);
+#endif
+    return ret;
+}
+
 /* Input stream */
 
 static void fill_buffer(AVIOContext *s)
@@ -569,16 +580,14 @@ static void fill_buffer(AVIOContext *s)
         len = s->orig_buffer_size;
     }
 
-    if (s->read_packet)
-        len = s->read_packet(s->opaque, dst, len);
-    else
-        len = 0;
-    if (len <= 0) {
+    len = read_packet_wrapper(s, dst, len);
+    if (len == AVERROR_EOF) {
         /* do not modify buffer if EOF reached so that a seek back can
            be done without rereading data */
         s->eof_reached = 1;
-        if (len < 0)
-            s->error = len;
+    } else if (len < 0) {
+        s->eof_reached = 1;
+        s->error= len;
     } else {
         s->pos += len;
         s->buf_ptr = dst;
@@ -644,15 +653,15 @@ int avio_read(AVIOContext *s, unsigned char *buf, int size)
         if (len == 0 || s->write_flag) {
             if((s->direct || size > s->buffer_size) && !s->update_checksum) {
                 // bypass the buffer and read data directly into buf
-                if(s->read_packet)
-                    len = s->read_packet(s->opaque, buf, size);
-
-                if (len <= 0) {
+                len = read_packet_wrapper(s, buf, size);
+                if (len == AVERROR_EOF) {
                     /* do not modify buffer if EOF reached so that a seek back can
                     be done without rereading data */
                     s->eof_reached = 1;
-                    if(len<0)
-                        s->error= len;
+                    break;
+                } else if (len < 0) {
+                    s->eof_reached = 1;
+                    s->error= len;
                     break;
                 } else {
                     s->pos += len;
@@ -711,7 +720,7 @@ int avio_read_partial(AVIOContext *s, unsigned char *buf, int size)
         return -1;
 
     if (s->read_packet && s->write_flag) {
-        len = s->read_packet(s->opaque, buf, size);
+        len = read_packet_wrapper(s, buf, size);
         if (len > 0)
             s->pos += len;
         return len;
@@ -969,6 +978,19 @@ fail:
     av_freep(&internal);
     av_freep(&buffer);
     return AVERROR(ENOMEM);
+}
+
+URLContext* ffio_geturlcontext(AVIOContext *s)
+{
+    AVIOInternal *internal;
+    if (!s)
+        return NULL;
+
+    internal = s->opaque;
+    if (internal && s->read_packet == io_read_packet)
+        return internal->h;
+    else
+        return NULL;
 }
 
 int ffio_ensure_seekback(AVIOContext *s, int64_t buf_size)
