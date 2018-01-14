@@ -6,4 +6,3 @@ ffmpeg: manpage-has-errors-from-man usr/share/man/man1/ffmpeg-all.1.gz * can't b
 ffmpeg: manpage-has-errors-from-man usr/share/man/man1/ffmpeg-filters.1.gz * can't break line
 ffmpeg: manpage-has-errors-from-man usr/share/man/man1/ffplay-all.1.gz * can't break line
 ffmpeg: manpage-has-errors-from-man usr/share/man/man1/ffprobe-all.1.gz * can't break line
-ffmpeg: manpage-has-errors-from-man usr/share/man/man1/ffserver-all.1.gz * can't break line
