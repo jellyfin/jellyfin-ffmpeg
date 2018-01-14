@@ -1,4 +1,5 @@
 usr/bin/ff*
 usr/share/man/man1
 usr/share/ffmpeg/*.ffpreset
+usr/share/ffmpeg/*.xsd
 debian/standard/tools/qt-faststart	usr/bin
