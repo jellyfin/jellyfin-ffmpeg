@@ -12,7 +12,7 @@ cd examples
 
 echo "building the examples..."
 ret=0
-make -k examples 2>&1
+make -k all 2>&1
 ret=$?
 echo "done!"
 
