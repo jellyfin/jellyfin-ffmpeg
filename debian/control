@@ -21,7 +21,7 @@ Build-Depends-Indep:
  node-less
 Build-Depends:
 # needed for dh
- debhelper (>= 10),
+ debhelper (>= 11~),
 # for build-profile support
  dpkg-dev (>= 1.17.14),
 # --enable-libflite
