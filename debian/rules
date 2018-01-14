@@ -164,7 +164,7 @@ ifneq (,$(filter $(DEB_HOST_ARCH),x32))
 endif
 
 # Disable some optimizations on mips*, because they are not always available on these architectures
-ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel mips64 mips64el))
+ifneq (,$(filter mips%, $(DEB_HOST_ARCH)))
 	CONFIG += --disable-mipsdsp \
 		--disable-mipsdspr2 \
 		--disable-loongson2 \
