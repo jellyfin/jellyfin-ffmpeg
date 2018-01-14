@@ -4,7 +4,4 @@
 # Upstream's hand-written assembler optimizations are not position independent
 # on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f84
-libavcodec-extra57 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavcodec.so.*
-
-# This is intentional, because this package provides an alternative variant with the same soname.
-libavcodec-extra57: package-name-doesnt-match-sonames libavcodec*
+libavutil56 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavutil.so.*

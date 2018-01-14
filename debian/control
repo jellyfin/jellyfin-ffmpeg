@@ -214,7 +214,7 @@ Description: Documentation of the FFmpeg multimedia framework
  framework including the API documentation created by doxygen and the manpages
  for the libraries.
 
-Package: libavcodec57
+Package: libavcodec58
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -239,11 +239,11 @@ Description: FFmpeg library with de/encoders for audio/video codecs - runtime fi
  .
  This package contains the runtime files.
 
-Package: libavcodec-extra57
+Package: libavcodec-extra58
 Architecture: any
 Section: libs
 Multi-Arch: same
-Conflicts: libavcodec57
+Conflicts: libavcodec58
 Provides: libavcodec-extra
 Pre-Depends:
  ${misc:Pre-Depends}
@@ -264,7 +264,7 @@ Description: FFmpeg library with additional de/encoders for audio/video codecs
  to DSP optimizations, and makes it suitable for implementing robust and fast
  codecs as well as for experimentation.
  .
- This package replaces the libavcodec57 package and contains the
+ This package replaces the libavcodec58 package and contains the
  following additional codecs:
  .
   * OpenCORE Adaptive Multi-Rate (AMR) Narrow-Band (Encoder/Decoder)
@@ -280,7 +280,7 @@ Architecture: all
 Section: metapackages
 Multi-Arch: foreign
 Depends:
- libavcodec-extra57,
+ libavcodec-extra58,
  ${misc:Depends}
 Description: FFmpeg library with extra codecs (metapackage)
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -298,7 +298,7 @@ Architecture: any
 Section: libdevel
 Multi-Arch: same
 Depends:
- libavcodec57 (= ${binary:Version}) | libavcodec-extra57 (= ${binary:Version}),
+ libavcodec58 (= ${binary:Version}) | libavcodec-extra58 (= ${binary:Version}),
  libavutil-dev (= ${binary:Version}),
  libswresample-dev (= ${binary:Version}),
  ${misc:Depends}
@@ -318,7 +318,7 @@ Description: FFmpeg library with de/encoders for audio/video codecs - developmen
  .
  This package contains the development files.
 
-Package: libavdevice57
+Package: libavdevice58
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -345,7 +345,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavcodec-dev (= ${binary:Version}),
- libavdevice57 (= ${binary:Version}),
+ libavdevice58 (= ${binary:Version}),
  libavfilter-dev (= ${binary:Version}),
  libavformat-dev (= ${binary:Version}),
  libavresample-dev (= ${binary:Version}),
@@ -366,7 +366,7 @@ Description: FFmpeg library for handling input and output devices - development 
  .
  This package contains the development files.
 
-Package: libavfilter6
+Package: libavfilter7
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -386,11 +386,11 @@ Description: FFmpeg library containing media filters - runtime files
  .
  This package contains the runtime files.
 
-Package: libavfilter-extra6
+Package: libavfilter-extra7
 Architecture: any
 Section: libs
 Multi-Arch: same
-Conflicts: libavfilter6
+Conflicts: libavfilter7
 Provides: libavfilter-extra
 Pre-Depends:
  ${misc:Pre-Depends}
@@ -421,7 +421,7 @@ Architecture: all
 Section: metapackages
 Multi-Arch: foreign
 Depends:
- libavfilter-extra6,
+ libavfilter-extra7,
  ${misc:Depends}
 Description: FFmpeg library with extra filters (metapackage)
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -439,7 +439,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavcodec-dev (= ${binary:Version}),
- libavfilter6 (= ${binary:Version}) | libavfilter-extra6 (= ${binary:Version}),
+ libavfilter7 (= ${binary:Version}) | libavfilter-extra7 (= ${binary:Version}),
  libavformat-dev (= ${binary:Version}),
  libavresample-dev (= ${binary:Version}),
  libavutil-dev (= ${binary:Version}),
@@ -458,7 +458,7 @@ Description: FFmpeg library containing media filters - development files
  .
  This package contains the development files.
 
-Package: libavformat57
+Package: libavformat58
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -486,7 +486,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavcodec-dev (= ${binary:Version}),
- libavformat57 (= ${binary:Version}),
+ libavformat58 (= ${binary:Version}),
  libavutil-dev (= ${binary:Version}),
  libswresample-dev (= ${binary:Version}),
  ${misc:Depends}
@@ -503,7 +503,7 @@ Description: FFmpeg library with (de)muxers for multimedia containers - developm
  .
  This package contains the development files.
 
-Package: libavresample3
+Package: libavresample4
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -529,7 +529,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavutil-dev (= ${binary:Version}),
- libavresample3 (= ${binary:Version}),
+ libavresample4 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg compatibility library for resampling - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -542,7 +542,7 @@ Description: FFmpeg compatibility library for resampling - development files
  .
  This package contains the development files.
 
-Package: libavutil55
+Package: libavutil56
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -576,7 +576,7 @@ Architecture: any
 Section: libdevel
 Multi-Arch: same
 Depends:
- libavutil55 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library with functions for simplifying programming - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -593,7 +593,7 @@ Description: FFmpeg library with functions for simplifying programming - develop
  .
  This package contains the development files.
 
-Package: libpostproc54
+Package: libpostproc55
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -618,7 +618,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavutil-dev (= ${binary:Version}),
- libpostproc54 (= ${binary:Version}),
+ libpostproc55 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for post processing - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -630,7 +630,7 @@ Description: FFmpeg library for post processing - development files
  .
  This package contains the development files.
 
-Package: libswresample2
+Package: libswresample3
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -672,7 +672,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavutil-dev (= ${binary:Version}),
- libswresample2 (= ${binary:Version}),
+ libswresample3 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for audio resampling, rematrixing etc. - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
@@ -701,7 +701,7 @@ Description: FFmpeg library for audio resampling, rematrixing etc. - development
  .
  This package contains the development files.
 
-Package: libswscale4
+Package: libswscale5
 Architecture: any
 Section: libs
 Multi-Arch: same
@@ -737,7 +737,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavutil-dev (= ${binary:Version}),
- libswscale4 (= ${binary:Version}),
+ libswscale5 (= ${binary:Version}),
  ${misc:Depends}
 Description: FFmpeg library for image scaling and various conversions - development files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,

@@ -4,4 +4,4 @@
 # Upstream's hand-written assembler optimizations are not position independent
 # on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f84
-libavcodec57 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavcodec.so.*
+libswscale5 [i386]: shlib-with-non-pic-code usr/lib/i386*/libswscale.so.*
