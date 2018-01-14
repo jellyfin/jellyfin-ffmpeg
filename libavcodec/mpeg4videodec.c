@@ -25,6 +25,7 @@
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "error_resilience.h"
+#include "hwaccel.h"
 #include "idctdsp.h"
 #include "internal.h"
 #include "mpegutils.h"
@@ -187,6 +188,10 @@ static int mpeg4_decode_sprite_trajectory(Mpeg4DecContext *ctx, GetBitContext *g
     int d[4][2]             = { { 0, 0 }, { 0, 0 }, { 0, 0 }, { 0, 0 } };
 
     if (w <= 0 || h <= 0)
+        return AVERROR_INVALIDDATA;
+
+    /* the decoder was not properly initialized and we cannot continue */
+    if (sprite_trajectory.table == NULL)
         return AVERROR_INVALIDDATA;
 
     for (i = 0; i < ctx->num_sprite_warping_points; i++) {
@@ -1749,6 +1754,38 @@ static int mpeg4_decode_profile_level(MpegEncContext *s, GetBitContext *gb)
     return 0;
 }
 
+static int mpeg4_decode_visual_object(MpegEncContext *s, GetBitContext *gb)
+{
+    int visual_object_type;
+    int is_visual_object_identifier = get_bits1(gb);
+
+    if (is_visual_object_identifier) {
+        skip_bits(gb, 4+3);
+    }
+    visual_object_type = get_bits(gb, 4);
+
+    if (visual_object_type == VOT_VIDEO_ID ||
+        visual_object_type == VOT_STILL_TEXTURE_ID) {
+        int video_signal_type = get_bits1(gb);
+        if (video_signal_type) {
+            int video_range, color_description;
+            skip_bits(gb, 3); // video_format
+            video_range = get_bits1(gb);
+            color_description = get_bits1(gb);
+
+            s->avctx->color_range = video_range ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+
+            if (color_description) {
+                s->avctx->color_primaries = get_bits(gb, 8);
+                s->avctx->color_trc       = get_bits(gb, 8);
+                s->avctx->colorspace      = get_bits(gb, 8);
+            }
+        }
+    }
+
+    return 0;
+}
+
 static int decode_vol_header(Mpeg4DecContext *ctx, GetBitContext *gb)
 {
     MpegEncContext *s = &ctx->m;
@@ -2149,8 +2186,15 @@ static int decode_user_data(Mpeg4DecContext *ctx, GetBitContext *gb)
         e = sscanf(buf, "FFmpeg v%d.%d.%d / libavcodec build: %d", &ver, &ver2, &ver3, &build);
     if (e != 4) {
         e = sscanf(buf, "Lavc%d.%d.%d", &ver, &ver2, &ver3) + 1;
-        if (e > 1)
-            build = (ver << 16) + (ver2 << 8) + ver3;
+        if (e > 1) {
+            if (ver > 0xFFU || ver2 > 0xFFU || ver3 > 0xFFU) {
+                av_log(s->avctx, AV_LOG_WARNING,
+                     "Unknown Lavc version string encountered, %d.%d.%d; "
+                     "clamping sub-version values to 8-bits.\n",
+                     ver, ver2, ver3);
+            }
+            build = ((ver & 0xFF) << 16) + ((ver2 & 0xFF) << 8) + (ver3 & 0xFF);
+        }
     }
     if (e != 4) {
         if (strcmp(buf, "ffmpeg") == 0)
@@ -2672,6 +2716,8 @@ int ff_mpeg4_decode_picture_header(Mpeg4DecContext *ctx, GetBitContext *gb)
             mpeg4_decode_gop_header(s, gb);
         } else if (startcode == VOS_STARTCODE) {
             mpeg4_decode_profile_level(s, gb);
+        } else if (startcode == VISUAL_OBJ_STARTCODE) {
+            mpeg4_decode_visual_object(s, gb);
         } else if (startcode == VOP_STARTCODE) {
             break;
         }
@@ -2819,10 +2865,10 @@ static const AVOption mpeg4_options[] = {
 };
 
 static const AVClass mpeg4_class = {
-    "MPEG4 Video Decoder",
-    av_default_item_name,
-    mpeg4_options,
-    LIBAVUTIL_VERSION_INT,
+    .class_name = "MPEG4 Video Decoder",
+    .item_name  = av_default_item_name,
+    .option     = mpeg4_options,
+    .version    = LIBAVUTIL_VERSION_INT,
 };
 
 AVCodec ff_mpeg4_decoder = {
@@ -2844,30 +2890,19 @@ AVCodec ff_mpeg4_decoder = {
     .profiles              = NULL_IF_CONFIG_SMALL(ff_mpeg4_video_profiles),
     .update_thread_context = ONLY_IF_THREADS_ENABLED(mpeg4_update_thread_context),
     .priv_class = &mpeg4_class,
-};
-
-
-#if CONFIG_MPEG4_VDPAU_DECODER && FF_API_VDPAU
-static const AVClass mpeg4_vdpau_class = {
-    "MPEG4 Video VDPAU Decoder",
-    av_default_item_name,
-    mpeg4_options,
-    LIBAVUTIL_VERSION_INT,
-};
-
-AVCodec ff_mpeg4_vdpau_decoder = {
-    .name           = "mpeg4_vdpau",
-    .long_name      = NULL_IF_CONFIG_SMALL("MPEG-4 part 2 (VDPAU)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MPEG4,
-    .priv_data_size = sizeof(Mpeg4DecContext),
-    .init           = decode_init,
-    .close          = ff_h263_decode_end,
-    .decode         = ff_h263_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_TRUNCATED | AV_CODEC_CAP_DELAY |
-                      AV_CODEC_CAP_HWACCEL_VDPAU,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_VDPAU_MPEG4,
-                                                  AV_PIX_FMT_NONE },
-    .priv_class     = &mpeg4_vdpau_class,
-};
+    .hw_configs            = (const AVCodecHWConfigInternal*[]) {
+#if CONFIG_MPEG4_NVDEC_HWACCEL
+                               HWACCEL_NVDEC(mpeg4),
 #endif
+#if CONFIG_MPEG4_VAAPI_HWACCEL
+                               HWACCEL_VAAPI(mpeg4),
+#endif
+#if CONFIG_MPEG4_VDPAU_HWACCEL
+                               HWACCEL_VDPAU(mpeg4),
+#endif
+#if CONFIG_MPEG4_VIDEOTOOLBOX_HWACCEL
+                               HWACCEL_VIDEOTOOLBOX(mpeg4),
+#endif
+                               NULL
+                           },
+};

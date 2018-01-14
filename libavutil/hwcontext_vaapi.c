@@ -101,7 +101,9 @@ static const struct {
     MAP(NV12, YUV420,  NV12),
     MAP(YV12, YUV420,  YUV420P), // With U/V planes swapped.
     MAP(IYUV, YUV420,  YUV420P),
-  //MAP(I420, YUV420,  YUV420P), // Not in libva but used by Intel driver.
+#ifdef VA_FOURCC_I420
+    MAP(I420, YUV420,  YUV420P),
+#endif
 #ifdef VA_FOURCC_YV16
     MAP(YV16, YUV422,  YUV422P), // With U/V planes swapped.
 #endif
@@ -625,24 +627,31 @@ static int vaapi_transfer_get_formats(AVHWFramesContext *hwfc,
                                       enum AVPixelFormat **formats)
 {
     VAAPIDeviceContext *ctx = hwfc->device_ctx->internal->priv;
-    enum AVPixelFormat *pix_fmts, preferred_format;
-    int i, k;
+    enum AVPixelFormat *pix_fmts;
+    int i, k, sw_format_available;
 
-    preferred_format = hwfc->sw_format;
+    sw_format_available = 0;
+    for (i = 0; i < ctx->nb_formats; i++) {
+        if (ctx->formats[i].pix_fmt == hwfc->sw_format)
+            sw_format_available = 1;
+    }
 
     pix_fmts = av_malloc((ctx->nb_formats + 1) * sizeof(*pix_fmts));
     if (!pix_fmts)
         return AVERROR(ENOMEM);
 
-    pix_fmts[0] = preferred_format;
-    k = 1;
+    if (sw_format_available) {
+        pix_fmts[0] = hwfc->sw_format;
+        k = 1;
+    } else {
+        k = 0;
+    }
     for (i = 0; i < ctx->nb_formats; i++) {
-        if (ctx->formats[i].pix_fmt == preferred_format)
+        if (ctx->formats[i].pix_fmt == hwfc->sw_format)
             continue;
         av_assert0(k < ctx->nb_formats);
         pix_fmts[k++] = ctx->formats[i].pix_fmt;
     }
-    av_assert0(k == ctx->nb_formats);
     pix_fmts[k] = AV_PIX_FMT_NONE;
 
     *formats = pix_fmts;
@@ -1076,11 +1085,80 @@ static void vaapi_unmap_to_drm(AVHWFramesContext *dst_fc,
 static int vaapi_map_to_drm(AVHWFramesContext *hwfc, AVFrame *dst,
                             const AVFrame *src, int flags)
 {
+#if VA_CHECK_VERSION(1, 1, 0)
+    AVVAAPIDeviceContext *hwctx = hwfc->device_ctx->hwctx;
+    VASurfaceID surface_id;
+    VAStatus vas;
+    VADRMPRIMESurfaceDescriptor va_desc;
+    AVDRMFrameDescriptor *drm_desc = NULL;
+    int err, i, j;
+
+    surface_id = (VASurfaceID)(uintptr_t)src->data[3];
+
+    vas = vaExportSurfaceHandle(hwctx->display, surface_id,
+                                VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2,
+                                VA_EXPORT_SURFACE_READ_ONLY |
+                                VA_EXPORT_SURFACE_SEPARATE_LAYERS,
+                                &va_desc);
+    if (vas != VA_STATUS_SUCCESS) {
+        if (vas == VA_STATUS_ERROR_UNIMPLEMENTED)
+            return AVERROR(ENOSYS);
+        av_log(hwfc, AV_LOG_ERROR, "Failed to export surface %#x: "
+               "%d (%s).\n", surface_id, vas, vaErrorStr(vas));
+        return AVERROR(EIO);
+    }
+
+    drm_desc = av_mallocz(sizeof(*drm_desc));
+    if (!drm_desc) {
+        err = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    // By some bizarre coincidence, these structures are very similar...
+    drm_desc->nb_objects = va_desc.num_objects;
+    for (i = 0; i < va_desc.num_objects; i++) {
+        drm_desc->objects[i].fd   = va_desc.objects[i].fd;
+        drm_desc->objects[i].size = va_desc.objects[i].size;
+        drm_desc->objects[i].format_modifier =
+            va_desc.objects[i].drm_format_modifier;
+    }
+    drm_desc->nb_layers = va_desc.num_layers;
+    for (i = 0; i < va_desc.num_layers; i++) {
+        drm_desc->layers[i].format    = va_desc.layers[i].drm_format;
+        drm_desc->layers[i].nb_planes = va_desc.layers[i].num_planes;
+        for (j = 0; j < va_desc.layers[i].num_planes; j++) {
+            drm_desc->layers[i].planes[j].object_index =
+                va_desc.layers[i].object_index[j];
+            drm_desc->layers[i].planes[j].offset =
+                va_desc.layers[i].offset[j];
+            drm_desc->layers[i].planes[j].pitch =
+                va_desc.layers[i].pitch[j];
+        }
+    }
+
+    err = ff_hwframe_map_create(src->hw_frames_ctx, dst, src,
+                                &vaapi_unmap_to_drm, drm_desc);
+    if (err < 0)
+        goto fail;
+
+    dst->width   = src->width;
+    dst->height  = src->height;
+    dst->data[0] = (uint8_t*)drm_desc;
+
+    return 0;
+
+fail:
+    for (i = 0; i < va_desc.num_objects; i++)
+        close(va_desc.objects[i].fd);
+    av_freep(&drm_desc);
+    return err;
+#else
     // Older versions without vaExportSurfaceHandle() are not supported -
     // in theory this is possible with a combination of vaDeriveImage()
     // and vaAcquireBufferHandle(), but it doesn't carry enough metadata
     // to actually use the result in a generic way.
     return AVERROR(ENOSYS);
+#endif
 }
 #endif
 

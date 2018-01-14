@@ -204,7 +204,7 @@ static int v4l2_prepare_encoder(V4L2m2mContext *s)
             v4l2_set_ext_ctrl(s, MPEG_CID(MPEG4_PROFILE), val, "mpeg4 profile");
         qmin_cid = MPEG_CID(MPEG4_MIN_QP);
         qmax_cid = MPEG_CID(MPEG4_MAX_QP);
-        if (avctx->flags & CODEC_FLAG_QPEL)
+        if (avctx->flags & AV_CODEC_FLAG_QPEL)
             v4l2_set_ext_ctrl(s, MPEG_CID(MPEG4_QPEL), 1, "qpel");
         qmin = 1;
         qmax = 31;
@@ -335,6 +335,8 @@ AVCodec ff_ ## NAME ## _v4l2m2m_encoder = { \
     .send_frame     = v4l2_send_frame,\
     .receive_packet = v4l2_receive_packet,\
     .close          = ff_v4l2_m2m_codec_end,\
+    .capabilities   = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY, \
+    .wrapper_name   = "v4l2m2m", \
 };
 
 M2MENC(mpeg4,"MPEG4", AV_CODEC_ID_MPEG4);

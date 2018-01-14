@@ -517,8 +517,8 @@ static int decode_slice_thread(AVCodecContext *avctx, void *arg, int jobnr, int 
     int luma_stride, chroma_stride;
     int y_data_size, u_data_size, v_data_size, a_data_size;
     uint8_t *dest_y, *dest_u, *dest_v, *dest_a;
-    int16_t qmat_luma_scaled[64];
-    int16_t qmat_chroma_scaled[64];
+    LOCAL_ALIGNED_16(int16_t, qmat_luma_scaled,  [64]);
+    LOCAL_ALIGNED_16(int16_t, qmat_chroma_scaled,[64]);
     int mb_x_shift;
     int ret;
 
@@ -598,8 +598,9 @@ static int decode_slice_thread(AVCodecContext *avctx, void *arg, int jobnr, int 
     }
     else {
         size_t mb_max_x = slice->mb_count << (mb_x_shift - 1);
-        for (size_t i = 0; i < 16; ++i)
-            for (size_t j = 0; j < mb_max_x; ++j) {
+        size_t i, j;
+        for (i = 0; i < 16; ++i)
+            for (j = 0; j < mb_max_x; ++j) {
                 *(uint16_t*)(dest_u + (i * chroma_stride) + (j << 1)) = 511;
                 *(uint16_t*)(dest_v + (i * chroma_stride) + (j << 1)) = 511;
             }

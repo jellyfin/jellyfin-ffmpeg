@@ -1989,18 +1989,25 @@ static int mkv_parse_video_projection(AVStream *st, const MatroskaTrack *track) 
             return AVERROR_INVALIDDATA;
         }
         break;
+    case MATROSKA_VIDEO_PROJECTION_TYPE_RECTANGULAR:
+        /* No Spherical metadata */
+        return 0;
     default:
+        av_log(NULL, AV_LOG_WARNING,
+               "Unknown spherical metadata type %"PRIu64"\n",
+               track->video.projection.type);
         return 0;
     }
 
     spherical = av_spherical_alloc(&spherical_size);
     if (!spherical)
         return AVERROR(ENOMEM);
+
     spherical->projection = projection;
 
-    spherical->yaw   = (int32_t)(track->video.projection.yaw   * (1 << 16));
-    spherical->pitch = (int32_t)(track->video.projection.pitch * (1 << 16));
-    spherical->roll  = (int32_t)(track->video.projection.roll  * (1 << 16));
+    spherical->yaw   = (int32_t) (track->video.projection.yaw   * (1 << 16));
+    spherical->pitch = (int32_t) (track->video.projection.pitch * (1 << 16));
+    spherical->roll  = (int32_t) (track->video.projection.roll  * (1 << 16));
 
     spherical->padding = padding;
 
