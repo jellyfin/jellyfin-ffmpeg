@@ -45,7 +45,7 @@ CONFIG := --prefix=/usr \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
 	--enable-gpl \
 	--disable-stripping \
-	--enable-avresample \
+	--enable-avresample --disable-filter=resample \
 	--enable-avisynth \
 	--enable-gnutls \
 	--enable-ladspa \
