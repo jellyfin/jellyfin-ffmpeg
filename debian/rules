@@ -257,6 +257,9 @@ override_dh_install:
 	dh_install $(addprefix -p,$(EXTRA_PKGS)) --sourcedir=debian/tmp/extra
 	dh_install --remaining-packages
 
+override_dh_missing:
+	dh_missing --list-missing
+
 override_dh_makeshlibs:
 	set -e && for pkg in $(shell dh_listpackages -a) ; do \
 		case $$pkg in \
