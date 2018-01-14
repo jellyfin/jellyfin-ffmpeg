@@ -60,6 +60,7 @@ CONFIG := --prefix=/usr \
 	--enable-libfribidi \
 	--enable-libgme \
 	--enable-libgsm \
+	--enable-libjack \
 	--enable-libmp3lame \
 	--enable-libmysofa \
 	--enable-libopenjpeg \

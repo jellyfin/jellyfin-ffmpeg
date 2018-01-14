@@ -68,7 +68,7 @@ Build-Depends:
 # --enable-libiec61883
  libiec61883-dev [linux-any],
  libavc1394-dev [linux-any],
-# autodetected: indev 'jack'
+# --enable-libjack
  libjack-jackd2-dev,
 # missing dependency of libtesseract-dev #836849
  libleptonica-dev,
