@@ -1,3 +1,9 @@
+ffmpeg (7:3.5~git20180113-1) UNRELEASED; urgency=medium
+
+  *
+
+ -- James Cowgill <jcowgill@debian.org>  Sun, 14 Jan 2018 00:28:57 +0000
+
 ffmpeg (7:3.4.1-1) unstable; urgency=medium
 
   * New upstream release.
