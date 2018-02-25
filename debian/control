@@ -752,24 +752,3 @@ Description: FFmpeg library for image scaling and various conversions - developm
     source and destination colorspaces differ.
  .
  This package contains the development files.
-
-Package: libav-tools
-Architecture: all
-Section: oldlibs
-Multi-Arch: foreign
-Breaks: libav-tools-links (<< 7:2.7.2-2~)
-Replaces: libav-tools-links (<< 7:2.7.2-2~)
-Depends:
- ffmpeg,
- ${misc:Depends}
-Description: Compatibility links for libav-tools (transitional package)
- FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
- mux, demux, stream, filter and play pretty much anything that humans and
- machines have created. It supports the most obscure ancient formats up to the
- cutting edge.
- .
- This is a transitional package that provides the following links:
-  * avconv  -> ffmpeg
-  * avplay  -> ffplay
-  * avprobe -> ffprobe
- This package can be removed, when nothing uses the av* program names anymore.
