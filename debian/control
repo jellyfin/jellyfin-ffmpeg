@@ -27,7 +27,7 @@ Build-Depends:
 # --enable-libflite
  flite1-dev,
 # --enable-frei0r
- frei0r-plugins-dev <!stage1>,
+ frei0r-plugins-dev <!pkg.ffmpeg.stage1>,
 # --enable-ladspa
  ladspa-sdk,
 # --enable-libass
@@ -43,7 +43,7 @@ Build-Depends:
 # --enable-libcdio
  libcdio-paranoia-dev,
 # --enable-libchromaprint
- libchromaprint-dev <!stage1>,
+ libchromaprint-dev <!pkg.ffmpeg.stage1>,
 # autodetected 'crystalhd'
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394
@@ -87,7 +87,7 @@ Build-Depends:
 # --enable-libopencore_amrwb
  libopencore-amrwb-dev,
 # --enable-libopencv
- libopencv-imgproc-dev <!stage1>,
+ libopencv-imgproc-dev <!pkg.ffmpeg.stage1>,
 # --enable-libopenjpeg
  libopenjp2-7-dev,
 # --enable-libopenmpt
@@ -138,7 +138,7 @@ Build-Depends:
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
- libx264-dev <!stage1>,
+ libx264-dev <!pkg.ffmpeg.stage1>,
 # --enable-libx265
  libx265-dev (>= 1.8),
 # autodetected libxcb-shape
