@@ -206,7 +206,11 @@ override_dh_auto_clean:
 override_dh_auto_build-indep:
 	dh_auto_build -i --sourcedirectory=debian/standard -- apidoc
 	# Create the minified CSS files.
-	lessc debian/missing-sources/ffmpeg-web/src/less/style.less | cleancss > debian/standard/doc/style.min.css
+	#  Due to https://github.com/nodejs/node/issues/14752 where nodejs will
+	#  leave set O_NONBLOCK on stderr, we pipe stderr through cat which will
+	#  create a temporary pipe so this doesn't break the rest of the build.
+	#  See: #895154
+	(lessc debian/missing-sources/ffmpeg-web/src/less/style.less | cleancss > debian/standard/doc/style.min.css) 2>&1 | cat >&2
 
 override_dh_auto_build-arch:
 	# Copy built object files to avoid building them again for the extra flavor.
