@@ -254,6 +254,9 @@ Use persistent HTTP connections. Applicable only for HTTP output.
 @item -hls_playlist @var{hls_playlist}
 Generate HLS playlist files as well. The master playlist is generated with the filename master.m3u8.
 One media playlist file is generated for each stream with filenames media_0.m3u8, media_1.m3u8, etc.
+@item -streaming @var{streaming}
+Enable (1) or disable (0) chunk streaming mode of output. In chunk streaming
+mode, each frame will be a moof fragment which forms a chunk.
 @item -adaptation_sets @var{adaptation_sets}
 Assign streams to AdaptationSets. Syntax is "id=x,streams=a,b,c id=y,streams=d,e" with x and y being the IDs
 of the adaptation sets and a,b,c,d and e are the indices of the mapped streams.
@@ -261,6 +264,8 @@ of the adaptation sets and a,b,c,d and e are the indices of the mapped streams.
 To map all video (or audio) streams to an AdaptationSet, "v" (or "a") can be used as stream identifier instead of IDs.
 
 When no assignment is defined, this defaults to an AdaptationSet for each stream.
+@item -timeout @var{timeout}
+Set timeout for socket I/O operations. Applicable only for HTTP output.
 @end table
 
 @anchor{framecrc}
@@ -507,6 +512,12 @@ Segment will be cut on the next key frame after this time has passed.
 @item hls_list_size @var{size}
 Set the maximum number of playlist entries. If set to 0 the list file
 will contain all the segments. Default value is 5.
+
+@item hls_delete_threshold @var{size}
+Set the number of unreferenced segments to keep on disk before @code{hls_flags delete_segments}
+deletes them. Increase this to allow continue clients to download segments which
+were recently referenced in the playlist. Default value is 1, meaning segments older than
+@code{hls_list_size+1} will be deleted.
 
 @item hls_ts_options @var{options_list}
 Set output format options using a :-separated list of key=value
@@ -901,6 +912,43 @@ and they are mapped to the two video only variant streams with audio group names
 
 By default, a single hls variant containing all the encoded streams is created.
 
+@item cc_stream_map
+Map string which specifies different closed captions groups and their
+attributes. The closed captions stream groups are separated by space.
+Expected string format is like this
+"ccgroup:<group name>,instreamid:<INSTREAM-ID>,language:<language code> ....".
+'ccgroup' and 'instreamid' are mandatory attributes. 'language' is an optional
+attribute.
+The closed captions groups configured using this option are mapped to different
+variant streams by providing the same 'ccgroup' name in the
+@code{var_stream_map} string. If @code{var_stream_map} is not set, then the
+first available ccgroup in @code{cc_stream_map} is mapped to the output variant
+stream. The examples for these two use cases are given below.
+
+@example
+ffmpeg -re -i in.ts -b:v 1000k -b:a 64k -a53cc 1 -f hls \
+  -cc_stream_map "ccgroup:cc,instreamid:CC1,language:en" \
+  -master_pl_name master.m3u8 \
+  http://example.com/live/out.m3u8
+@end example
+This example adds @code{#EXT-X-MEDIA} tag with @code{TYPE=CLOSED-CAPTIONS} in
+the master playlist with group name 'cc', langauge 'en' (english) and
+INSTREAM-ID 'CC1'. Also, it adds @code{CLOSED-CAPTIONS} attribute with group
+name 'cc' for the output variant stream.
+@example
+ffmpeg -re -i in.ts -b:v:0 1000k -b:v:1 256k -b:a:0 64k -b:a:1 32k \
+  -a53cc:0 1 -a53cc:1 1\
+  -map 0:v -map 0:a -map 0:v -map 0:a -f hls \
+  -cc_stream_map "ccgroup:cc,instreamid:CC1,language:en ccgroup:cc,instreamid:CC2,language:sp" \
+  -var_stream_map "v:0,a:0,ccgroup:cc v:1,a:1,ccgroup:cc" \
+  -master_pl_name master.m3u8 \
+  http://example.com/live/out_%v.m3u8
+@end example
+This example adds two @code{#EXT-X-MEDIA} tags with @code{TYPE=CLOSED-CAPTIONS} in
+the master playlist for the INSTREAM-IDs 'CC1' and 'CC2'. Also, it adds
+@code{CLOSED-CAPTIONS} attribute with group name 'cc' for the two output variant
+streams.
+
 @item master_pl_name
 Create HLS master playlist with the given name.
 
@@ -923,6 +971,9 @@ publishing it repeatedly every after 30 segments i.e. every after 60s.
 
 @item http_persistent
 Use persistent HTTP connections. Applicable only for HTTP output.
+
+@item timeout
+Set timeout for socket I/O operations. Applicable only for HTTP output.
 
 @end table
 

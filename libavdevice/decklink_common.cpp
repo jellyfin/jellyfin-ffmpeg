@@ -29,7 +29,18 @@ extern "C" {
 #ifdef _WIN32
 #include <DeckLinkAPI_i.c>
 #else
+/* The file provided by the SDK is known to be missing prototypes, which doesn't
+   cause issues with GCC since the warning doesn't apply to C++ files.  However
+   Clang does complain (and warnings are treated as errors), so suppress the
+   warning just for this one file */
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#endif
 #include <DeckLinkAPIDispatch.cpp>
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 #endif
 
 extern "C" {
@@ -311,21 +322,14 @@ int ff_decklink_list_devices(AVFormatContext *avctx,
                 ret = AVERROR(ENOMEM);
                 goto next;
             }
+
             new_device->device_name = av_strdup(displayName);
-            if (!new_device->device_name) {
-                ret = AVERROR(ENOMEM);
-                goto next;
-            }
-
             new_device->device_description = av_strdup(displayName);
-            if (!new_device->device_description) {
-                av_freep(&new_device->device_name);
-                ret = AVERROR(ENOMEM);
-                goto next;
-            }
 
-            if ((ret = av_dynarray_add_nofree(&device_list->devices,
-                                              &device_list->nb_devices, new_device)) < 0) {
+            if (!new_device->device_name ||
+                !new_device->device_description ||
+                av_dynarray_add_nofree(&device_list->devices, &device_list->nb_devices, new_device) < 0) {
+                ret = AVERROR(ENOMEM);
                 av_freep(&new_device->device_name);
                 av_freep(&new_device->device_description);
                 av_freep(&new_device);
@@ -393,7 +397,7 @@ int ff_decklink_list_formats(AVFormatContext *avctx, decklink_direction_t direct
     }
 
     av_log(avctx, AV_LOG_INFO, "Supported formats for '%s':\n\tformat_code\tdescription",
-               avctx->filename);
+               avctx->url);
     while (itermode->Next(&mode) == S_OK) {
         BMDTimeValue tb_num, tb_den;
         mode->GetFrameRate(&tb_num, &tb_den);

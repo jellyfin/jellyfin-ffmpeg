@@ -32,9 +32,9 @@ typedef struct CodedBitstreamType {
 
     // Split frag->data into coded bitstream units, creating the
     // frag->units array.  Fill data but not content on each unit.
-    // header is set if the fragment came from a header block, which
-    // may require different parsing for some codecs (e.g. the AVCC
-    // header in H.264).
+    // The header argument should be set if the fragment came from
+    // a header block, which may require different parsing for some
+    // codecs (e.g. the AVCC header in H.264).
     int (*split_fragment)(CodedBitstreamContext *ctx,
                           CodedBitstreamFragment *frag,
                           int header);
@@ -52,9 +52,6 @@ typedef struct CodedBitstreamType {
     // a bitstream for the whole fragment.
     int (*assemble_fragment)(CodedBitstreamContext *ctx,
                              CodedBitstreamFragment *frag);
-
-    // Free the content and data of a single unit.
-    void (*free_unit)(CodedBitstreamUnit *unit);
 
     // Free the codec internal state.
     void (*close)(CodedBitstreamContext *ctx);
@@ -81,6 +78,10 @@ int ff_cbs_read_unsigned(CodedBitstreamContext *ctx, GetBitContext *gbc,
 int ff_cbs_write_unsigned(CodedBitstreamContext *ctx, PutBitContext *pbc,
                           int width, const char *name, uint32_t value,
                           uint32_t range_min, uint32_t range_max);
+
+// The largest value representable in N bits, suitable for use as
+// range_max in the above functions.
+#define MAX_UINT_BITS(length) ((UINT64_C(1) << (length)) - 1)
 
 
 extern const CodedBitstreamType ff_cbs_type_h264;

@@ -1,6 +1,7 @@
 /*
  * MPEG-DASH ISO BMFF segmenter
  * Copyright (c) 2014 Martin Storsjo
+ * Copyright (c) 2018 Akamai Technologies, Inc.
  *
  * This file is part of FFmpeg.
  *
@@ -80,6 +81,10 @@ typedef struct OutputStream {
     char bandwidth_str[64];
 
     char codec_str[100];
+    int written_len;
+    char filename[1024];
+    char full_path[1024];
+    char temp_path[1024];
 } OutputStream;
 
 typedef struct DASHContext {
@@ -104,12 +109,15 @@ typedef struct DASHContext {
     const char *init_seg_name;
     const char *media_seg_name;
     const char *utc_timing_url;
+    const char *method;
     const char *user_agent;
     int hls_playlist;
     int http_persistent;
     int master_playlist_created;
     AVIOContext *mpd_out;
     AVIOContext *m3u8_out;
+    int streaming;
+    int64_t timeout;
 } DASHContext;
 
 static struct codec_string {
@@ -148,7 +156,10 @@ static void dashenc_io_close(AVFormatContext *s, AVIOContext **pb, char *filenam
         ff_format_io_close(s, pb);
 #if CONFIG_HTTP_PROTOCOL
     } else {
+        URLContext *http_url_context = ffio_geturlcontext(*pb);
+        av_assert0(http_url_context);
         avio_flush(*pb);
+        ffurl_shutdown(http_url_context, AVIO_FLAG_WRITE);
 #endif
     }
 }
@@ -243,7 +254,8 @@ static int flush_dynbuf(OutputStream *os, int *range_length)
     // write out to file
     *range_length = avio_close_dyn_buf(os->ctx->pb, &buffer);
     os->ctx->pb = NULL;
-    avio_write(os->out, buffer, *range_length);
+    avio_write(os->out, buffer + os->written_len, *range_length - os->written_len);
+    os->written_len = 0;
     av_free(buffer);
 
     // re-open buffer
@@ -252,10 +264,14 @@ static int flush_dynbuf(OutputStream *os, int *range_length)
 
 static void set_http_options(AVDictionary **options, DASHContext *c)
 {
+    if (c->method)
+        av_dict_set(options, "method", c->method, 0);
     if (c->user_agent)
         av_dict_set(options, "user_agent", c->user_agent, 0);
     if (c->http_persistent)
         av_dict_set_int(options, "multiple_requests", 1, 0);
+    if (c->timeout >= 0)
+        av_dict_set_int(options, "timeout", c->timeout, 0);
 }
 
 static void get_hls_playlist_name(char *playlist_name, int string_size,
@@ -309,6 +325,9 @@ static void dash_free(AVFormatContext *s)
         av_free(os->segments);
     }
     av_freep(&c->streams);
+
+    ff_format_io_close(s, &c->mpd_out);
+    ff_format_io_close(s, &c->m3u8_out);
 }
 
 static void output_segment_list(OutputStream *os, AVIOContext *out, AVFormatContext *s,
@@ -685,7 +704,7 @@ static int write_manifest(AVFormatContext *s, int final)
     AVIOContext *out;
     char temp_filename[1024];
     int ret, i;
-    const char *proto = avio_find_protocol_name(s->filename);
+    const char *proto = avio_find_protocol_name(s->url);
     int use_rename = proto && !strcmp(proto, "file");
     static unsigned int warned_non_file = 0;
     AVDictionaryEntry *title = av_dict_get(s->metadata, "title", NULL, 0);
@@ -694,7 +713,7 @@ static int write_manifest(AVFormatContext *s, int final)
     if (!use_rename && !warned_non_file++)
         av_log(s, AV_LOG_ERROR, "Cannot use rename on non file protocol, this may lead to races and temporary partial files\n");
 
-    snprintf(temp_filename, sizeof(temp_filename), use_rename ? "%s.tmp" : "%s", s->filename);
+    snprintf(temp_filename, sizeof(temp_filename), use_rename ? "%s.tmp" : "%s", s->url);
     set_http_options(&opts, c);
     ret = dashenc_io_open(s, &c->mpd_out, temp_filename, &opts);
     if (ret < 0) {
@@ -771,7 +790,7 @@ static int write_manifest(AVFormatContext *s, int final)
     dashenc_io_close(s, &c->mpd_out, temp_filename);
 
     if (use_rename) {
-        if ((ret = avpriv_io_move(temp_filename, s->filename)) < 0)
+        if ((ret = avpriv_io_move(temp_filename, s->url)) < 0)
             return ret;
     }
 
@@ -820,7 +839,7 @@ static int write_manifest(AVFormatContext *s, int final)
                 stream_bitrate += max_audio_bitrate;
             }
             get_hls_playlist_name(playlist_file, sizeof(playlist_file), NULL, i);
-            ff_hls_write_stream_info(st, out, stream_bitrate, playlist_file, agroup);
+            ff_hls_write_stream_info(st, out, stream_bitrate, playlist_file, agroup, NULL, NULL);
         }
         avio_close(out);
         if (use_rename)
@@ -852,14 +871,14 @@ static int dash_init(AVFormatContext *s)
     if (c->single_file)
         c->use_template = 0;
 
-    av_strlcpy(c->dirname, s->filename, sizeof(c->dirname));
+    av_strlcpy(c->dirname, s->url, sizeof(c->dirname));
     ptr = strrchr(c->dirname, '/');
     if (ptr) {
         av_strlcpy(basename, &ptr[1], sizeof(basename));
         ptr[1] = '\0';
     } else {
         c->dirname[0] = '\0';
-        av_strlcpy(basename, s->filename, sizeof(basename));
+        av_strlcpy(basename, s->url, sizeof(basename));
     }
 
     ptr = strrchr(basename, '.');
@@ -950,7 +969,10 @@ static int dash_init(AVFormatContext *s)
         os->init_start_pos = 0;
 
         if (!strcmp(os->format_name, "mp4")) {
-            av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov", 0);
+            if (c->streaming)
+                av_dict_set(&opts, "movflags", "frag_every_frame+dash+delay_moov", 0);
+            else
+                av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov", 0);
         } else {
             av_dict_set_int(&opts, "cluster_time_limit", c->min_seg_duration / 1000, 0);
             av_dict_set_int(&opts, "cluster_size_limit", 5 * 1024 * 1024, 0); // set a large cluster size limit
@@ -1011,14 +1033,12 @@ static int dash_write_header(AVFormatContext *s)
     int i, ret;
     for (i = 0; i < s->nb_streams; i++) {
         OutputStream *os = &c->streams[i];
-        if ((ret = avformat_write_header(os->ctx, NULL)) < 0) {
-            dash_free(s);
+        if ((ret = avformat_write_header(os->ctx, NULL)) < 0)
             return ret;
-        }
     }
     ret = write_manifest(s, 0);
     if (!ret)
-        av_log(s, AV_LOG_VERBOSE, "Manifest written to: %s\n", s->filename);
+        av_log(s, AV_LOG_VERBOSE, "Manifest written to: %s\n", s->url);
     return ret;
 }
 
@@ -1112,12 +1132,34 @@ static int update_stream_extradata(AVFormatContext *s, OutputStream *os,
     return 0;
 }
 
+static void dashenc_delete_file(AVFormatContext *s, char *filename) {
+    DASHContext *c = s->priv_data;
+    int http_base_proto = ff_is_http_proto(filename);
+
+    if (http_base_proto) {
+        AVIOContext *out = NULL;
+        AVDictionary *http_opts = NULL;
+
+        set_http_options(&http_opts, c);
+        av_dict_set(&http_opts, "method", "DELETE", 0);
+
+        if (dashenc_io_open(s, &out, filename, &http_opts) < 0) {
+            av_log(s, AV_LOG_ERROR, "failed to delete %s\n", filename);
+        }
+
+        av_dict_free(&http_opts);
+        dashenc_io_close(s, &out, filename);
+    } else if (unlink(filename) < 0) {
+        av_log(s, AV_LOG_ERROR, "failed to delete %s: %s\n", filename, strerror(errno));
+    }
+}
+
 static int dash_flush(AVFormatContext *s, int final, int stream)
 {
     DASHContext *c = s->priv_data;
     int i, ret = 0;
 
-    const char *proto = avio_find_protocol_name(s->filename);
+    const char *proto = avio_find_protocol_name(s->url);
     int use_rename = proto && !strcmp(proto, "file");
 
     int cur_flush_segment_index = 0;
@@ -1127,7 +1169,6 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
     for (i = 0; i < s->nb_streams; i++) {
         OutputStream *os = &c->streams[i];
         AVStream *st = s->streams[i];
-        char filename[1024] = "", full_path[1024], temp_path[1024];
         int range_length, index_length = 0;
 
         if (!os->packets_written)
@@ -1145,24 +1186,11 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
                 continue;
         }
 
-        if (!os->init_range_length) {
-            flush_init_segment(s, os);
-        }
-
         if (!c->single_file) {
-            AVDictionary *opts = NULL;
-            ff_dash_fill_tmpl_params(filename, sizeof(filename), c->media_seg_name, i, os->segment_index, os->bit_rate, os->start_pts);
-            snprintf(full_path, sizeof(full_path), "%s%s", c->dirname, filename);
-            snprintf(temp_path, sizeof(temp_path), use_rename ? "%s.tmp" : "%s", full_path);
-            set_http_options(&opts, c);
-            ret = dashenc_io_open(s, &os->out, temp_path, &opts);
-            if (ret < 0)
-                break;
-            av_dict_free(&opts);
-            if (!strcmp(os->format_name, "mp4"))
+            if (!strcmp(os->format_name, "mp4") && !os->written_len)
                 write_styp(os->ctx->pb);
         } else {
-            snprintf(full_path, sizeof(full_path), "%s%s", c->dirname, os->initfile);
+            snprintf(os->full_path, sizeof(os->full_path), "%s%s", c->dirname, os->initfile);
         }
 
         ret = flush_dynbuf(os, &range_length);
@@ -1171,12 +1199,12 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
         os->packets_written = 0;
 
         if (c->single_file) {
-            find_index_range(s, full_path, os->pos, &index_length);
+            find_index_range(s, os->full_path, os->pos, &index_length);
         } else {
-            dashenc_io_close(s, &os->out, temp_path);
+            dashenc_io_close(s, &os->out, os->temp_path);
 
             if (use_rename) {
-                ret = avpriv_io_move(temp_path, full_path);
+                ret = avpriv_io_move(os->temp_path, os->full_path);
                 if (ret < 0)
                     break;
             }
@@ -1193,8 +1221,8 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
                      " bandwidth=\"%d\"", os->bit_rate);
             }
         }
-        add_segment(os, filename, os->start_pts, os->max_pts - os->start_pts, os->pos, range_length, index_length);
-        av_log(s, AV_LOG_VERBOSE, "Representation %d media segment %d written to: %s\n", i, os->segment_index, full_path);
+        add_segment(os, os->filename, os->start_pts, os->max_pts - os->start_pts, os->pos, range_length, index_length);
+        av_log(s, AV_LOG_VERBOSE, "Representation %d media segment %d written to: %s\n", i, os->segment_index, os->full_path);
 
         os->pos += range_length;
     }
@@ -1210,7 +1238,7 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
                 for (j = 0; j < remove; j++) {
                     char filename[1024];
                     snprintf(filename, sizeof(filename), "%s%s", c->dirname, os->segments[j]->file);
-                    unlink(filename);
+                    dashenc_delete_file(s, filename);
                     av_free(os->segments[j]);
                 }
                 os->nb_segments -= remove;
@@ -1296,7 +1324,46 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     else
         os->max_pts = FFMAX(os->max_pts, pkt->pts + pkt->duration);
     os->packets_written++;
-    return ff_write_chained(os->ctx, 0, pkt, s, 0);
+    if ((ret = ff_write_chained(os->ctx, 0, pkt, s, 0)) < 0)
+        return ret;
+
+    if (!os->init_range_length)
+        flush_init_segment(s, os);
+
+    //open the output context when the first frame of a segment is ready
+    if (!c->single_file && os->packets_written == 1) {
+        AVDictionary *opts = NULL;
+        const char *proto = avio_find_protocol_name(s->url);
+        int use_rename = proto && !strcmp(proto, "file");
+        os->filename[0] = os->full_path[0] = os->temp_path[0] = '\0';
+        ff_dash_fill_tmpl_params(os->filename, sizeof(os->filename),
+                                 c->media_seg_name, pkt->stream_index,
+                                 os->segment_index, os->bit_rate, os->start_pts);
+        snprintf(os->full_path, sizeof(os->full_path), "%s%s", c->dirname,
+                 os->filename);
+        snprintf(os->temp_path, sizeof(os->temp_path),
+                 use_rename ? "%s.tmp" : "%s", os->full_path);
+        set_http_options(&opts, c);
+        ret = dashenc_io_open(s, &os->out, os->temp_path, &opts);
+        if (ret < 0)
+            return ret;
+        av_dict_free(&opts);
+    }
+
+    //write out the data immediately in streaming mode
+    if (c->streaming && !strcmp(os->format_name, "mp4")) {
+        int len = 0;
+        uint8_t *buf = NULL;
+        if (!os->written_len)
+            write_styp(os->ctx->pb);
+        avio_flush(os->ctx->pb);
+        len = avio_get_dyn_buf (os->ctx->pb, &buf);
+        avio_write(os->out, buf + os->written_len, len - os->written_len);
+        os->written_len = len;
+        avio_flush(os->out);
+    }
+
+    return ret;
 }
 
 static int dash_write_trailer(AVFormatContext *s)
@@ -1323,9 +1390,9 @@ static int dash_write_trailer(AVFormatContext *s)
         for (i = 0; i < s->nb_streams; i++) {
             OutputStream *os = &c->streams[i];
             snprintf(filename, sizeof(filename), "%s%s", c->dirname, os->initfile);
-            unlink(filename);
+            dashenc_delete_file(s, filename);
         }
-        unlink(s->filename);
+        dashenc_delete_file(s, s->url);
     }
 
     return 0;
@@ -1369,9 +1436,12 @@ static const AVOption options[] = {
     { "init_seg_name", "DASH-templated name to used for the initialization segment", OFFSET(init_seg_name), AV_OPT_TYPE_STRING, {.str = "init-stream$RepresentationID$.m4s"}, 0, 0, E },
     { "media_seg_name", "DASH-templated name to used for the media segments", OFFSET(media_seg_name), AV_OPT_TYPE_STRING, {.str = "chunk-stream$RepresentationID$-$Number%05d$.m4s"}, 0, 0, E },
     { "utc_timing_url", "URL of the page that will return the UTC timestamp in ISO format", OFFSET(utc_timing_url), AV_OPT_TYPE_STRING, { 0 }, 0, 0, E },
+    { "method", "set the HTTP method", OFFSET(method), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, E },
     { "http_user_agent", "override User-Agent field in HTTP header", OFFSET(user_agent), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, E},
     { "http_persistent", "Use persistent HTTP connections", OFFSET(http_persistent), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, E },
     { "hls_playlist", "Generate HLS playlist files(master.m3u8, media_%d.m3u8)", OFFSET(hls_playlist), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
+    { "streaming", "Enable/Disable streaming mode of output. Each frame will be moof fragment", OFFSET(streaming), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
+    { "timeout", "set timeout for socket I/O operations", OFFSET(timeout), AV_OPT_TYPE_DURATION, { .i64 = -1 }, -1, INT_MAX, .flags = E },
     { NULL },
 };
 

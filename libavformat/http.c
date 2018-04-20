@@ -76,6 +76,7 @@ typedef struct HTTPContext {
     char *mime_type;
     char *http_version;
     char *user_agent;
+    char *referer;
 #if FF_API_HTTP_USER_AGENT
     char *user_agent_deprecated;
 #endif
@@ -138,6 +139,7 @@ static const AVOption options[] = {
     { "headers", "set custom HTTP headers, can override built in default headers", OFFSET(headers), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "content_type", "set a specific content type for the POST messages", OFFSET(content_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "user_agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
+    { "referer", "override referer header", OFFSET(referer), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D },
 #if FF_API_HTTP_USER_AGENT
     { "user-agent", "override User-Agent header", OFFSET(user_agent_deprecated), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
 #endif
@@ -574,7 +576,11 @@ static int http_accept(URLContext *s, URLContext **c)
         goto fail;
     cc->hd = cl;
     cc->is_multi_client = 1;
+    return 0;
 fail:
+    if (c) {
+        ffurl_closep(c);
+    }
     return ret;
 }
 
@@ -748,6 +754,9 @@ static int parse_set_cookie(const char *set_cookie, AVDictionary **dict)
 {
     char *param, *next_param, *cstr, *back;
 
+    if (!set_cookie[0])
+        return 0;
+
     if (!(cstr = av_strdup(set_cookie)))
         return AVERROR(EINVAL);
 
@@ -755,6 +764,8 @@ static int parse_set_cookie(const char *set_cookie, AVDictionary **dict)
     back = &cstr[strlen(cstr)-1];
     while (strchr(WHITESPACES, *back)) {
         *back='\0';
+        if (back == cstr)
+            break;
         back--;
     }
 
@@ -800,7 +811,7 @@ static int parse_cookie(HTTPContext *s, const char *p, AVDictionary **cookies)
             // if the cookie has already expired ignore it
             if (av_timegm(&new_tm) < av_gettime() / 1000000) {
                 av_dict_free(&new_params);
-                return -1;
+                return 0;
             }
 
             // only replace an older cookie with the same name
@@ -1198,6 +1209,12 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
     if (!has_header(s->headers, "\r\nUser-Agent: "))
         len += av_strlcatf(headers + len, sizeof(headers) - len,
                            "User-Agent: %s\r\n", s->user_agent);
+    if (s->referer) {
+        /* set default headers if needed */
+        if (!has_header(s->headers, "\r\nReferer: "))
+            len += av_strlcatf(headers + len, sizeof(headers) - len,
+                               "Referer: %s\r\n", s->referer);
+    }
     if (!has_header(s->headers, "\r\nAccept: "))
         len += av_strlcpy(headers + len, "Accept: */*\r\n",
                           sizeof(headers) - len);
@@ -1449,12 +1466,18 @@ static int http_read_stream(URLContext *h, uint8_t *buf, int size)
         return http_buf_read_compressed(h, buf, size);
 #endif /* CONFIG_ZLIB */
     read_ret = http_buf_read(h, buf, size);
-    while ((read_ret  < 0           && s->reconnect        && (!h->is_streamed || s->reconnect_streamed) && s->filesize > 0 && s->off < s->filesize)
-        || (read_ret == AVERROR_EOF && s->reconnect_at_eof && (!h->is_streamed || s->reconnect_streamed))) {
+    while (read_ret < 0) {
         uint64_t target = h->is_streamed ? 0 : s->off;
 
         if (read_ret == AVERROR_EXIT)
-            return read_ret;
+            break;
+
+        if (h->is_streamed && !s->reconnect_streamed)
+            break;
+
+        if (!(s->reconnect && s->filesize > 0 && s->off < s->filesize) &&
+            !(s->reconnect_at_eof && read_ret == AVERROR_EOF))
+            break;
 
         if (reconnect_delay > s->reconnect_delay_max)
             return AVERROR(EIO);

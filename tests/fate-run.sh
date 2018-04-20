@@ -88,6 +88,10 @@ probefmt(){
     run ffprobe${PROGSUF} -show_entries format=format_name -print_format default=nw=1:nk=1 -v 0 "$@"
 }
 
+probetags(){
+    run ffprobe${PROGSUF} -show_entries format_tags -v 0 "$@"
+}
+
 runlocal(){
     test "${V:-0}" -gt 0 && echo ${base}/"$@" ${base} >&3
     ${base}/"$@" ${base}
@@ -218,6 +222,22 @@ transcode(){
         -f $enc_fmt -y $tencfile || return
     do_md5sum $encfile
     echo $(wc -c $encfile)
+    ffmpeg $DEC_OPTS -i $encfile $ENC_OPTS $FLAGS $final_decode \
+        -f framecrc - || return
+}
+
+stream_remux(){
+    src_fmt=$1
+    srcfile=$2
+    enc_fmt=$3
+    stream_maps=$4
+    final_decode=$5
+    encfile="${outdir}/${test}.${enc_fmt}"
+    test "$7" = -keep || cleanfiles="$cleanfiles $encfile"
+    tsrcfile=$(target_path $srcfile)
+    tencfile=$(target_path $encfile)
+    ffmpeg -f $src_fmt -i $tsrcfile $stream_maps -codec copy $FLAGS \
+        -f $enc_fmt -y $tencfile || return
     ffmpeg $DEC_OPTS -i $encfile $ENC_OPTS $FLAGS $final_decode \
         -f framecrc - || return
 }
