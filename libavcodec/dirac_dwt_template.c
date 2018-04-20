@@ -49,7 +49,7 @@ static void RENAME(vertical_compose53iL0)(uint8_t *_b0, uint8_t *_b1, uint8_t *_
     TYPE *b1 = (TYPE *)_b1;
     TYPE *b2 = (TYPE *)_b2;
     for (i = 0; i < width; i++)
-        b1[i] -= (int)(b0[i] + (unsigned)b2[i] + 2) >> 2;
+        b1[i] -= (unsigned)((int)(b0[i] + (unsigned)b2[i] + 2) >> 2);
 }
 
 static av_always_inline void RENAME(interleave)(TYPE *dst, TYPE *src0, TYPE *src1, int w2,
@@ -95,8 +95,8 @@ static void RENAME(horizontal_compose_dd97i)(uint8_t *_b, uint8_t *_tmp, int w)
     tmp[w2+1] = tmp[w2] = tmp[w2-1];
 
     for (x = 0; x < w2; x++) {
-        b[2*x  ] = (tmp[x] + 1)>>1;
-        b[2*x+1] = (COMPOSE_DD97iH0(tmp[x-1], tmp[x], b[x+w2], tmp[x+1], tmp[x+2]) + 1)>>1;
+        b[2*x  ] = ((int)(tmp[x] + 1U))>>1;
+        b[2*x+1] = ((int)(COMPOSE_DD97iH0(tmp[x-1], tmp[x], b[x+w2], tmp[x+1], tmp[x+2]) + 1U))>>1;
     }
 }
 
@@ -118,8 +118,8 @@ static void RENAME(horizontal_compose_dd137i)(uint8_t *_b, uint8_t *_tmp, int w)
     tmp[w2+1] = tmp[w2] = tmp[w2-1];
 
     for (x = 0; x < w2; x++) {
-        b[2*x  ] = (tmp[x] + 1)>>1;
-        b[2*x+1] = (COMPOSE_DD97iH0(tmp[x-1], tmp[x], b[x+w2], tmp[x+1], tmp[x+2]) + 1)>>1;
+        b[2*x  ] = ((int)(tmp[x] + 1U))>>1;
+        b[2*x+1] = ((int)(COMPOSE_DD97iH0(tmp[x-1], tmp[x], b[x+w2], tmp[x+1], tmp[x+2]) + 1U))>>1;
     }
 }
 

@@ -149,6 +149,17 @@ static void extract_luma_from_v210(uint16_t *dst, const uint8_t *src, int width)
     }
 }
 
+static void unpack_v210(uint16_t *dst, const uint8_t *src, int width)
+{
+    int i;
+    for (i = 0; i < width * 2 / 3; i++) {
+        *dst++ =  src[0]       + ((src[1] & 3)  << 8);
+        *dst++ = (src[1] >> 2) + ((src[2] & 15) << 6);
+        *dst++ = (src[2] >> 4) + ((src[3] & 63) << 4);
+        src += 4;
+    }
+}
+
 static uint8_t calc_parity_and_line_offset(int line)
 {
     uint8_t ret = (line < 313) << 5;
@@ -453,24 +464,22 @@ static unsigned long long avpacket_queue_size(AVPacketQueue *q)
 static int avpacket_queue_put(AVPacketQueue *q, AVPacket *pkt)
 {
     AVPacketList *pkt1;
-    int ret;
 
     // Drop Packet if queue size is > maximum queue size
     if (avpacket_queue_size(q) > (uint64_t)q->max_q_size) {
         av_log(q->avctx, AV_LOG_WARNING,  "Decklink input buffer overrun!\n");
         return -1;
     }
+    /* ensure the packet is reference counted */
+    if (av_packet_make_refcounted(pkt) < 0) {
+        return -1;
+    }
 
-    pkt1 = (AVPacketList *)av_mallocz(sizeof(AVPacketList));
+    pkt1 = (AVPacketList *)av_malloc(sizeof(AVPacketList));
     if (!pkt1) {
         return -1;
     }
-    ret = av_packet_ref(&pkt1->pkt, pkt);
-    av_packet_unref(pkt);
-    if (ret < 0) {
-        av_free(pkt1);
-        return -1;
-    }
+    av_packet_move_ref(&pkt1->pkt, pkt);
     pkt1->next = NULL;
 
     pthread_mutex_lock(&q->mutex);
@@ -585,8 +594,10 @@ ULONG decklink_input_callback::Release(void)
 static int64_t get_pkt_pts(IDeckLinkVideoInputFrame *videoFrame,
                            IDeckLinkAudioInputPacket *audioFrame,
                            int64_t wallclock,
+                           int64_t abs_wallclock,
                            DecklinkPtsSource pts_src,
-                           AVRational time_base, int64_t *initial_pts)
+                           AVRational time_base, int64_t *initial_pts,
+                           int copyts)
 {
     int64_t pts = AV_NOPTS_VALUE;
     BMDTimeValue bmd_pts;
@@ -606,23 +617,30 @@ static int64_t get_pkt_pts(IDeckLinkVideoInputFrame *videoFrame,
                 res = videoFrame->GetHardwareReferenceTimestamp(time_base.den, &bmd_pts, &bmd_duration);
             break;
         case PTS_SRC_WALLCLOCK:
+            /* fall through */
+        case PTS_SRC_ABS_WALLCLOCK:
         {
             /* MSVC does not support compound literals like AV_TIME_BASE_Q
              * in C++ code (compiler error C4576) */
             AVRational timebase;
             timebase.num = 1;
             timebase.den = AV_TIME_BASE;
-            pts = av_rescale_q(wallclock, timebase, time_base);
+            if (pts_src == PTS_SRC_WALLCLOCK)
+                pts = av_rescale_q(wallclock, timebase, time_base);
+            else
+                pts = av_rescale_q(abs_wallclock, timebase, time_base);
             break;
         }
     }
     if (res == S_OK)
         pts = bmd_pts / time_base.num;
 
-    if (pts != AV_NOPTS_VALUE && *initial_pts == AV_NOPTS_VALUE)
-        *initial_pts = pts;
-    if (*initial_pts != AV_NOPTS_VALUE)
-        pts -= *initial_pts;
+    if (!copyts) {
+        if (pts != AV_NOPTS_VALUE && *initial_pts == AV_NOPTS_VALUE)
+            *initial_pts = pts;
+        if (*initial_pts != AV_NOPTS_VALUE)
+            pts -= *initial_pts;
+    }
 
     return pts;
 }
@@ -634,7 +652,8 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
     void *audioFrameBytes;
     BMDTimeValue frameTime;
     BMDTimeValue frameDuration;
-    int64_t wallclock = 0;
+    int64_t wallclock = 0, abs_wallclock = 0;
+    struct decklink_cctx *cctx = (struct decklink_cctx *) avctx->priv_data;
 
     if (ctx->autodetect) {
         if (videoFrame && !(videoFrame->GetFlags() & bmdFrameHasNoInputSource) &&
@@ -648,6 +667,8 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
     ctx->frameCount++;
     if (ctx->audio_pts_source == PTS_SRC_WALLCLOCK || ctx->video_pts_source == PTS_SRC_WALLCLOCK)
         wallclock = av_gettime_relative();
+    if (ctx->audio_pts_source == PTS_SRC_ABS_WALLCLOCK || ctx->video_pts_source == PTS_SRC_ABS_WALLCLOCK)
+        abs_wallclock = av_gettime();
 
     // Handle Video Frame
     if (videoFrame) {
@@ -694,7 +715,7 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
             no_video = 0;
         }
 
-        pkt.pts = get_pkt_pts(videoFrame, audioFrame, wallclock, ctx->video_pts_source, ctx->video_st->time_base, &initial_video_pts);
+        pkt.pts = get_pkt_pts(videoFrame, audioFrame, wallclock, abs_wallclock, ctx->video_pts_source, ctx->video_st->time_base, &initial_video_pts, cctx->copyts);
         pkt.dts = pkt.pts;
 
         pkt.duration = frameDuration;
@@ -740,9 +761,15 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
                     for (i = vanc_line_numbers[idx].vanc_start; i <= vanc_line_numbers[idx].vanc_end; i++) {
                         uint8_t *buf;
                         if (vanc->GetBufferForVerticalBlankingLine(i, (void**)&buf) == S_OK) {
-                            uint16_t luma_vanc[MAX_WIDTH_VANC];
-                            extract_luma_from_v210(luma_vanc, buf, videoFrame->GetWidth());
-                            txt_buf = get_metadata(avctx, luma_vanc, videoFrame->GetWidth(),
+                            uint16_t vanc[MAX_WIDTH_VANC];
+                            size_t vanc_size = videoFrame->GetWidth();
+                            if (ctx->bmd_mode == bmdModeNTSC && videoFrame->GetWidth() * 2 <= MAX_WIDTH_VANC) {
+                                vanc_size = vanc_size * 2;
+                                unpack_v210(vanc, buf, videoFrame->GetWidth());
+                            } else {
+                                extract_luma_from_v210(vanc, buf, videoFrame->GetWidth());
+                            }
+                            txt_buf = get_metadata(avctx, vanc, vanc_size,
                                                    txt_buf, sizeof(txt_buf0) - (txt_buf - txt_buf0), &pkt);
                         }
                         if (i == vanc_line_numbers[idx].field0_vanc_end)
@@ -785,7 +812,7 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
         pkt.size = audioFrame->GetSampleFrameCount() * ctx->audio_st->codecpar->channels * (ctx->audio_depth / 8);
         audioFrame->GetBytes(&audioFrameBytes);
         audioFrame->GetPacketTime(&audio_pts, ctx->audio_st->time_base.den);
-        pkt.pts = get_pkt_pts(videoFrame, audioFrame, wallclock, ctx->audio_pts_source, ctx->audio_st->time_base, &initial_audio_pts);
+        pkt.pts = get_pkt_pts(videoFrame, audioFrame, wallclock, abs_wallclock, ctx->audio_pts_source, ctx->audio_st->time_base, &initial_audio_pts, cctx->copyts);
         pkt.dts = pkt.pts;
 
         //fprintf(stderr,"Audio Frame size %d ts %d\n", pkt.size, pkt.pts);
@@ -939,7 +966,7 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
         cctx->raw_format = MKBETAG('v','2','1','0');
     }
 
-    strcpy (fname, avctx->filename);
+    av_strlcpy(fname, avctx->url, sizeof(fname));
     tmp=strchr (fname, '@');
     if (tmp != NULL) {
         av_log(avctx, AV_LOG_WARNING, "The @mode syntax is deprecated and will be removed. Please use the -format_code option.\n");
@@ -954,7 +981,7 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
     /* Get input device. */
     if (ctx->dl->QueryInterface(IID_IDeckLinkInput, (void **) &ctx->dli) != S_OK) {
         av_log(avctx, AV_LOG_ERROR, "Could not open input device from '%s'\n",
-               avctx->filename);
+               avctx->url);
         ret = AVERROR(EIO);
         goto error;
     }
@@ -1041,7 +1068,7 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
         break;
     case bmdFormat8BitARGB:
         st->codecpar->codec_id    = AV_CODEC_ID_RAWVIDEO;
-        st->codecpar->codec_tag   = avcodec_pix_fmt_to_codec_tag((enum AVPixelFormat)st->codecpar->format);;
+        st->codecpar->codec_tag   = avcodec_pix_fmt_to_codec_tag((enum AVPixelFormat)st->codecpar->format);
         st->codecpar->format      = AV_PIX_FMT_0RGB;
         st->codecpar->bit_rate    = av_rescale(ctx->bmd_width * ctx->bmd_height * 32, st->time_base.den, st->time_base.num);
         break;

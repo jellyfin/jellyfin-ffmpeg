@@ -342,8 +342,8 @@ static int FUNC(sps_extension)(CodedBitstreamContext *ctx, RWContext *rw,
         flag(alpha_incr_flag);
 
         bits = current->bit_depth_aux_minus8 + 9;
-        u(bits, alpha_opaque_value,      0, (1 << bits) - 1);
-        u(bits, alpha_transparent_value, 0, (1 << bits) - 1);
+        u(bits, alpha_opaque_value,      0, MAX_UINT_BITS(bits));
+        u(bits, alpha_transparent_value, 0, MAX_UINT_BITS(bits));
     }
 
     flag(additional_extension_flag);
@@ -404,6 +404,9 @@ static int FUNC(pps)(CodedBitstreamContext *ctx, RWContext *rw,
             ue(slice_group_change_rate_minus1, 0, pic_size - 1);
         } else if (current->slice_group_map_type == 6) {
             ue(pic_size_in_map_units_minus1, pic_size - 1, pic_size - 1);
+
+            allocate(current->slice_group_id,
+                     current->pic_size_in_map_units_minus1 + 1);
             for (i = 0; i <= current->pic_size_in_map_units_minus1; i++)
                 u(av_log2(2 * current->num_slice_groups_minus1 + 1),
                   slice_group_id[i], 0, current->num_slice_groups_minus1);
@@ -480,10 +483,10 @@ static int FUNC(sei_buffering_period)(CodedBitstreamContext *ctx, RWContext *rw,
             length = sps->vui.nal_hrd_parameters.initial_cpb_removal_delay_length_minus1 + 1;
             xu(length, initial_cpb_removal_delay[SchedSelIdx],
                current->nal.initial_cpb_removal_delay[i],
-               0, (1 << (uint64_t)length) - 1);
+               1, MAX_UINT_BITS(length));
             xu(length, initial_cpb_removal_delay_offset[SchedSelIdx],
                current->nal.initial_cpb_removal_delay_offset[i],
-               0, (1 << (uint64_t)length) - 1);
+               0, MAX_UINT_BITS(length));
         }
     }
 
@@ -492,10 +495,10 @@ static int FUNC(sei_buffering_period)(CodedBitstreamContext *ctx, RWContext *rw,
             length = sps->vui.vcl_hrd_parameters.initial_cpb_removal_delay_length_minus1 + 1;
             xu(length, initial_cpb_removal_delay[SchedSelIdx],
                current->vcl.initial_cpb_removal_delay[i],
-               0, (1 << (uint64_t)length) - 1);
+               1, MAX_UINT_BITS(length));
             xu(length, initial_cpb_removal_delay_offset[SchedSelIdx],
                current->vcl.initial_cpb_removal_delay_offset[i],
-               0, (1 << (uint64_t)length) - 1);
+               0, MAX_UINT_BITS(length));
         }
     }
 
@@ -545,7 +548,7 @@ static int FUNC(sei_pic_timestamp)(CodedBitstreamContext *ctx, RWContext *rw,
 
     if (time_offset_length > 0)
         u(time_offset_length, time_offset,
-          0, (1 << (uint64_t)time_offset_length) - 1);
+          0, MAX_UINT_BITS(time_offset_length));
     else
         infer(time_offset, 0);
 
@@ -560,6 +563,22 @@ static int FUNC(sei_pic_timing)(CodedBitstreamContext *ctx, RWContext *rw,
     int err;
 
     sps = h264->active_sps;
+    if (!sps) {
+        // If there is exactly one possible SPS but it is not yet active
+        // then just assume that it should be the active one.
+        int i, k = -1;
+        for (i = 0; i < H264_MAX_SPS_COUNT; i++) {
+            if (h264->sps[i]) {
+                if (k >= 0) {
+                    k = -1;
+                    break;
+                }
+                k = i;
+            }
+        }
+        if (k >= 0)
+            sps = h264->sps[k];
+    }
     if (!sps) {
         av_log(ctx->log_ctx, AV_LOG_ERROR,
                "No active SPS for pic_timing.\n");
@@ -581,9 +600,9 @@ static int FUNC(sei_pic_timing)(CodedBitstreamContext *ctx, RWContext *rw,
         }
 
         u(hrd->cpb_removal_delay_length_minus1 + 1, cpb_removal_delay,
-          0, (1 << (uint64_t)hrd->cpb_removal_delay_length_minus1) + 1);
+          0, MAX_UINT_BITS(hrd->cpb_removal_delay_length_minus1 + 1));
         u(hrd->dpb_output_delay_length_minus1 + 1, dpb_output_delay,
-          0, (1 << (uint64_t)hrd->dpb_output_delay_length_minus1) + 1);
+          0, MAX_UINT_BITS(hrd->dpb_output_delay_length_minus1 + 1));
     }
 
     if (sps->vui.pic_struct_present_flag) {
@@ -1104,7 +1123,7 @@ static int FUNC(slice_header)(CodedBitstreamContext *ctx, RWContext *rw,
         u(2, colour_plane_id, 0, 2);
 
     u(sps->log2_max_frame_num_minus4 + 4, frame_num,
-      0, (1 << (sps->log2_max_frame_num_minus4 + 4)) - 1);
+      0, MAX_UINT_BITS(sps->log2_max_frame_num_minus4 + 4));
 
     if (!sps->frame_mbs_only_flag) {
         flag(field_pic_flag);
@@ -1122,7 +1141,7 @@ static int FUNC(slice_header)(CodedBitstreamContext *ctx, RWContext *rw,
 
     if (sps->pic_order_cnt_type == 0) {
         u(sps->log2_max_pic_order_cnt_lsb_minus4 + 4, pic_order_cnt_lsb,
-          0, (1 << (sps->log2_max_pic_order_cnt_lsb_minus4 + 4)) - 1);
+          0, MAX_UINT_BITS(sps->log2_max_pic_order_cnt_lsb_minus4 + 4));
         if (pps->bottom_field_pic_order_in_frame_present_flag &&
             !current->field_pic_flag)
             se(delta_pic_order_cnt_bottom, INT32_MIN + 1, INT32_MAX);
@@ -1225,6 +1244,35 @@ static int FUNC(slice_header)(CodedBitstreamContext *ctx, RWContext *rw,
         while (byte_alignment(rw))
             xu(1, cabac_alignment_one_bit, one, 1, 1);
     }
+
+    return 0;
+}
+
+static int FUNC(filler)(CodedBitstreamContext *ctx, RWContext *rw,
+                        H264RawFiller *current)
+{
+    av_unused int ff_byte = 0xff;
+    int err;
+
+    HEADER("Filler Data");
+
+    CHECK(FUNC(nal_unit_header)(ctx, rw, &current->nal_unit_header,
+                                1 << H264_NAL_FILLER_DATA));
+
+#ifdef READ
+    while (show_bits(rw, 8) == 0xff) {
+        xu(8, ff_byte, ff_byte, 0xff, 0xff);
+        ++current->filler_size;
+    }
+#else
+    {
+        uint32_t i;
+        for (i = 0; i < current->filler_size; i++)
+            xu(8, ff_byte, ff_byte, 0xff, 0xff);
+    }
+#endif
+
+    CHECK(FUNC(rbsp_trailing_bits)(ctx, rw));
 
     return 0;
 }
