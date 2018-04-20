@@ -8,7 +8,7 @@ SCRIPT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 TEST_NAME="$1"
 [ ! -z $TEST_NAME ] || TEST_NAME=${BASH_SOURCE[0]##*/}
 ENCDECLIST="$SCRIPT_DIR/${TEST_NAME}"_list.txt
-TEST_DIR="$ADTTMP/test"
+TEST_DIR="$AUTOPKGTEST_TMP/test"
 
 encode_file() {
     test=$1
@@ -237,7 +237,7 @@ read_tests() {
 }
 
 echo "TEST: $TEST_NAME"
-echo -e "ADTTMP directory: $ADTTMP\n\n"
+echo -e "ADTTMP directory: $AUTOPKGTEST_TMP\n\n"
 
 mkdir -p "$TEST_DIR"
 
