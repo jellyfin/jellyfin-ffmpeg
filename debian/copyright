@@ -31,11 +31,11 @@ Copyright:
   1997-1999, H. Dietz
   1997-1999, R. Fisher
   1998-2009, Conifer Software
-  1999, Intel Corporation
   1999, Nick Bailey
   1999, Roger Hardiman
   1999-2000, Sebastien Rougeaux <sebastien.rougeaux@anu.edu.au>
   1999-2001, Chris Bagwell <cbagwell@sprynet.com>
+  1999-2013, Intel Corporation
   2000, Chris Ausbrooks <weed@bucket.pp.ualr.edu>
   2000, Fabien COELHO <fabien@coelho.net>
   2000, John Walker
@@ -88,18 +88,20 @@ Copyright:
   2003-2007, Michel Bardiaux <mbardiaux@mediaxim.be>
   2003-2007, Mike Melanson <melanson@pcisys.net>
   2003-2011, Sascha Sommer <saschasommer@freenet.de>
-  2003-2011, x264 project
   2003-2014, Loren Merritt <lorenm@u.washington.edu>
   2003-2014, Pascal Massimino <skal@planet-d.net> <pascal.massimino@gmail.com>
+  2003-2018, x264 project
   2004, AGAWA Koji <i@atty.jp>
   2004, Adam Thayer <krevnik@comcast.net>
   2004, Gildas Bazin <gbazin@videolan.org>
   2004, Maarten Daniels
   2004-2005, Denes Balatoni <dbalatoni@programozo.hu>
+  2004-2005, Henryk Ploetz <henryk@ploetzli.ch>
   2004-2006, Lennart Poettering
   2004-2007, Benjamin Zores <ben@geexbox.org>
   2004-2007, Eric Lasota
   2004-2007, Marc Hoffman <marc.hoffman@analog.com>
+  2004-2010, Marcel Holtmann <marcel@holtmann.org>
   2004-2014, Konstantin Shishkov <kostya.shishkov@gmail.com>
   2005, Alban Bedel <albeu@free.fr>
   2005, Anonymous
@@ -114,6 +116,7 @@ Copyright:
   2005, Vidar Madsen
   2005, Wim Taymans
   2005, Zoltan Hidvegi <hzoli@hzoli.com>
+  2005-2006, Brad Midgley <bmidgley@xmission.com>
   2005-2006, Oded Shimon <ods15@ods15.dyndns.org>
   2005-2006, Robert Edele <yartrebo@earthlink.net>
   2005-2007, Wolfram Gloger
@@ -153,7 +156,6 @@ Copyright:
   2007, Clemens Fruhwirth <clemens@endorphin.org>
   2007, Kamil Nowosad
   2007, Nicholas Tung
-  2007, Nokia Corporation
   2007, Philippe Kalaf
   2007, Richard Spindler
   2007, Ulion
@@ -166,6 +168,7 @@ Copyright:
   2007-2009, Björn Axelsson
   2007-2010, Bobby Bingham
   2007-2010, David Conrad <lessen42@gmail.com>
+  2007-2010, Nokia Corporation
   2007-2011, Vitor Sessak <vitor1001@gmail.com>
   2007-2011, Vladimir Voroshilov
   2007-2013, Anssi Hannula <anssi.hannula@gmail.com> <anssi.hannula@iki.fi>
@@ -201,7 +204,6 @@ Copyright:
   2009, Jimmy Christensen
   2009, Joshua Warner
   2009, Kenan Gillet
-  2009, Kostya Shishkov
   2009, Michael Tison
   2009, Naotoshi Nojiri
   2009, Nicolas Martin <martinic@iro.umontreal.ca>
@@ -223,6 +225,7 @@ Copyright:
   2009-2015, James Darnley <james.darnley@gmail.com>
   2009-2015, Martin Storsjo
   2009-2016, Thilo Borgmann <thilo.borgmann@mail.de>
+  2009-2018, Kostya Shishkov
   2010, Adrian Daerr
   2010, Amanda, Y.N. Wu <amanda11192003@gmail.com>
   2010, Brandon Mintern
@@ -243,7 +246,6 @@ Copyright:
   2010, Romain Degez
   2010, S.N. Hemanth Meenakshisundaram <smeenaks@ucsd.edu>
   2010, Sebastian Vater <cdgs.basty@googlemail.com>
-  2010, Tomas Härdin
   2010-2011, Anatoly Nenashev
   2010-2011, Elvis Presley
   2010-2012, Rafaël Carré <funman@videolan.org>
@@ -254,6 +256,7 @@ Copyright:
   2010-2017, Anton Khirnov <anton@khirnov.net>
   2010-2017, Google, Inc
   2010-2017, Philip Langdale <ffmpeg.philipl@overt.org> <philipl@overt.org>
+  2010-2017, Tomas Härdin
   2011, Anatoliy Wasserman
   2011, Andreas Öman
   2011, Jordi Ortiz
@@ -309,13 +312,11 @@ Copyright:
   2012-2016, James Almer <jamrial@gmail.com>
   2013, Anand Meher Kotra
   2013, Ash Hughes
-  2013, Calvin Walton <calvin.walton@kepstin.ca>
   2013, Darryl Wallace <wallacdj@gmail.com>
   2013, Dirk Farin <dirk.farin@gmail.com>
   2013, Jeff Moguillansky
   2013, Lenny Wang <lwanghpc@gmail.com>
   2013, MIPS Technologies, Inc., California
-  2013, Marton Balint
   2013, Matthew Heaney
   2013, Rl, Aetey Global Technologies AB
   2013, Vadim Kalinsky <vadim@kalinsky.ru>
@@ -335,7 +336,9 @@ Copyright:
   2013-2015, Tiancheng "Timothy" Gu <timothygu99@gmail.com>
   2013-2015, Wolfgang Hrauda
   2013-2016, Vittorio Giovara <vittorio.giovara@gmail.com>
-  2013-2017, Andreas Unterweger
+  2013-2018, Andreas Unterweger
+  2013-2018, Calvin Walton <calvin.walton@kepstin.ca>
+  2013-2018, Marton Balint
   2014, Aman Gupta <ffmpeg@tmm1.net>
   2014, Daniel Oberhoff
   2014, Dave Rice @dericed
@@ -363,7 +366,6 @@ Copyright:
   2015, Donny Yang
   2015, Eran Kornblau <erankor@gmail.com>
   2015, Gilles Chanteperdrix <gch@xenomai.org>
-  2015, Henrik Gramner <henrik@gramner.com>
   2015, Himangi Saraogi <himangi774@gmail.com>
   2015, Imagination Technologies Ltd
   2015, Kevin Wheatley <kevin.j.wheatley@gmail.com>
@@ -393,6 +395,7 @@ Copyright:
   2015-2017, Manojkumar Bhosale <Manojkumar.Bhosale@imgtec.com>
   2015-2017, Matthieu Bouron <matthieu.bouron@stupeflix.com>
   2015-2017, Rostislav Pehlivanov <atomnuker@gmail.com>
+  2015-2018, Henrik Gramner <henrik@gramner.com>
   2016, Davinder Singh (DSM_) <ds.mudhar<@gmail.com>
   2016, Floris Sluiter
   2016, Jan Sebechlebsky
@@ -407,11 +410,17 @@ Copyright:
   2016, William Ma, Sofia Kim, Dustin Woo
   2016, foo86
   2016-2017, Jokyo Images
-  2017, Akamai Technologies, Inc.
+  2017, Felix Matouschek
+  2017, Meng Wang <wangmeng.kids@bytedance.com>
   2017, Paras Chadha
   2017, Richard Ling
   2017, sfan5 <sfan5@live.de>
   2017, Steinar H. Gunderson
+  2017-2018, Akamai Technologies, Inc.
+  2018, Dylan Fernando
+  2018, Danil Iashchenko
+  2018, Misty De Meo
+  2018, Yingming Fan <yingmingfan@gmail.com>
 License: LGPL-2.1+
 Comment:
  You should have received a copy of the GNU Lesser General Public
@@ -669,8 +678,7 @@ Comment:
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 Files:
-  compat/cuda/*
-  compat/nvenc/*
+  compat/cuda/ptx2c.sh
   doc/bootstrap.min.css
   doc/examples/avio_dir_cmd.c
   doc/examples/avio_reading.c
