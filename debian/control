@@ -44,6 +44,8 @@ Build-Depends:
  libcdio-paranoia-dev,
 # --enable-libchromaprint
  libchromaprint-dev <!pkg.ffmpeg.stage1>,
+# --enable-libcodec2
+ libcodec2-dev,
 # autodetected 'crystalhd'
  libcrystalhd-dev [amd64 i386],
 # --enable-libdc1394

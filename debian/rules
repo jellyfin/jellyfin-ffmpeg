@@ -23,15 +23,17 @@ FLAVORS = standard extra static
 #   --enable-libsmbclient           (libsmbclient-dev [!hurd-i386 !m68k !sparc64])
 # The following flags are not added, because the necessary libraries are not in Debian:
 #   --enable-decklink
+#   --enable-libaom
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
 #   --enable-libilbc                (see #675959 for the RFP bug)
 #   --enable-libkvazaar
 #   --enable-libmfx
 #   --enable-libopenh264
+#   --enable-libsrt
 #   --enable-libvidstab             (see #709193 for the RFP bug)
 #   --enable-libvmaf
 #   --enable-libxavs
-#   --enable-libzimg
+#   --enable-libzimg                (see #864888 for the RFP bug)
 # The following flags are not added for various reasons:
 #   --enable-librtmp                ffmpeg has better built-in RTMP support with listen mode.
 #   --enable-libmodplug             see #849840: replaced with libopenmpt
@@ -54,6 +56,7 @@ CONFIG := --prefix=/usr \
 	--enable-libbs2b \
 	--enable-libcaca \
 	--enable-libcdio \
+	--enable-libcodec2 \
 	--enable-libflite \
 	--enable-libfontconfig \
 	--enable-libfreetype \
@@ -67,8 +70,8 @@ CONFIG := --prefix=/usr \
 	--enable-libopenmpt \
 	--enable-libopus \
 	--enable-libpulse \
-	--enable-librubberband \
 	--enable-librsvg \
+	--enable-librubberband \
 	--enable-libshine \
 	--enable-libsnappy \
 	--enable-libsoxr \
