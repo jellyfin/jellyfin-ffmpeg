@@ -15,7 +15,7 @@ include /usr/share/dpkg/architecture.mk
 export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
 
 # Package name for the extra flavor.
-EXTRA_PKGS = $(shell dh_listpackages -a | grep '-extra[0-9]')
+EXTRA_PKGS := $(shell sed -nr 's/^Package:[[:space:]]*(.*extra[0-9]+)[[:space:]]*$$/\1/p' debian/control)
 FLAVORS = standard extra static
 
 # Enable as many features as possible, as long as the result is still GPLv2+ (a GPLv3+ variant is built as libavcodec-extra/libavfilter-extra flavor).
