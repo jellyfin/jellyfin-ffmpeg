@@ -1,8 +1,29 @@
-ffmpeg (7:4.0-1) UNRELEASED; urgency=medium
+ffmpeg (7:4.0-1) experimental; urgency=medium
 
-  *
+  * New upstream release.
 
- -- James Cowgill <jcowgill@debian.org>  Sun, 08 Apr 2018 13:48:20 +0100
+  [ James Cowgill ]
+  * debian/control:
+    - Set maintainer to debian-multimedia@lists.d.o.
+    - Remove mention of ffserver.
+  * debian/copyright: Update for 4.0.
+  * debian/ffmpeg.install:
+    - Restore RELEASE_NOTES file.
+  * debian/rules:
+    - Fix FTBFS caused by nodejs setting O_NONBLOCK on the build log pipe.
+      (Closes: #895154)
+    - Use dh_listpackages to calculate EXTRA_PKGS variable.
+    - Rename stage1 build profile to pkg.ffmpeg.stage1.
+    - Enable libcodec2.
+  * debian/tests: Update encdec_list.txt.
+
+  [ Sebastian Ramacher ]
+  * Drop libav-tools. (Closes: #873182)
+
+  [ Ondřej Nový ]
+  * d/tests: Use AUTOPKGTEST_TMP instead of ADTTMP.
+
+ -- James Cowgill <jcowgill@debian.org>  Sun, 22 Apr 2018 22:42:50 +0100
 
 ffmpeg (7:3.5~git20180113-1) experimental; urgency=medium
 
