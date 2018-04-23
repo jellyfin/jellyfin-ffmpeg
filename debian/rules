@@ -199,7 +199,7 @@ endif
 # Add configuration options:
 override_dh_auto_configure:
 	$(foreach flavor,$(FLAVORS),mkdir -p debian/$(flavor);)
-	$(foreach flavor,$(FLAVORS),set -e; echo " *** $(flavor) ***"; cd debian/$(flavor); ../../configure $(CONFIG) $(CONFIG_$(flavor)) || (cat config.log && exit 1); cd ../.. ;)
+	$(foreach flavor,$(FLAVORS),set -e; echo " *** $(flavor) ***"; cd debian/$(flavor); ../../configure $(CONFIG) $(CONFIG_$(flavor)) || (cat ffbuild/config.log && exit 1); cd ../.. ;)
 
 # Remove the subdirectories generated for the flavors.
 override_dh_auto_clean:
