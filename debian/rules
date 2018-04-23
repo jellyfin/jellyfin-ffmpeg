@@ -207,7 +207,7 @@ override_dh_auto_clean:
 
 # Create doxygen documentation:
 override_dh_auto_build-indep:
-	dh_auto_build -i --sourcedirectory=debian/standard -- apidoc
+	dh_auto_build -i --sourcedirectory=debian/standard -- apidoc documentation
 	# Create the minified CSS files.
 	#  Due to https://github.com/nodejs/node/issues/14752 where nodejs will
 	#  leave set O_NONBLOCK on stderr, we pipe stderr through cat which will
@@ -258,7 +258,7 @@ endif
 	install -m 644 debian/static/*/lib*.a debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)
 
 override_dh_auto_install-indep:
-	dh_auto_install -i --sourcedirectory=debian/standard
+	$(MAKE) -C debian/standard DESTDIR=$(CURDIR)/debian/tmp install-doc install-examples
 
 override_dh_install:
 	dh_install $(addprefix -p,$(EXTRA_PKGS)) --sourcedir=debian/tmp/extra
