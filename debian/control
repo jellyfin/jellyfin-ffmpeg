@@ -91,7 +91,7 @@ Build-Depends:
 # --enable-libopencv
  libopencv-imgproc-dev <!pkg.ffmpeg.stage1>,
 # --enable-libopenjpeg
- libopenjp2-7-dev,
+ libopenjp2-7-dev (>= 2.1),
 # --enable-libopenmpt
  libopenmpt-dev,
 # --enable-libopus
