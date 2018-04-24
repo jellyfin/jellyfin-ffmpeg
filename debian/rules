@@ -184,6 +184,11 @@ ifneq (,$(filter $(DEB_HOST_ARCH),mips mipsel))
 	CONFIG += --disable-mipsfpu
 endif
 
+# Disable some tests which fail when FLT_EVAL_METHOD != 0 (found on i386, m68k and s390x)
+ifneq (,$(filter $(DEB_HOST_ARCH_CPU),i386 m68k s390x))
+	CONFIG += --ignore-tests=hapenc-hap-none,hapenc-hapa-none,hapenc-hapq-none
+endif
+
 # Set cross-build prefix for compiler, pkg-config...
 # Cross-building also requires to manually set architecture/OS.
 ifneq ($(DEB_BUILD_GNU_TYPE),$(DEB_HOST_GNU_TYPE))
