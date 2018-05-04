@@ -1,0 +1,45 @@
+From b32f8659695303bc816a44ca9aefc3a839d69dca Mon Sep 17 00:00:00 2001
+From: Rodger Combs <rodger.combs@gmail.com>
+Date: Fri, 27 Apr 2018 03:51:35 +0300
+Subject: [PATCH] lavf/dashenc: don't call flush_init_segment before
+ avformat_write_header
+
+Fixes crash when muxing MKV-in-DASH
+---
+ libavformat/dashenc.c | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/libavformat/dashenc.c b/libavformat/dashenc.c
+index bdf8c8d560..7b43612f2b 100644
+--- a/libavformat/dashenc.c
++++ b/libavformat/dashenc.c
+@@ -988,13 +988,6 @@ static int dash_init(AVFormatContext *s)
+ 
+         av_log(s, AV_LOG_VERBOSE, "Representation %d init segment will be written to: %s\n", i, filename);
+ 
+-        // Flush init segment
+-        // except for mp4, since delay_moov is set and the init segment
+-        // is then flushed after the first packets
+-        if (strcmp(os->format_name, "mp4")) {
+-            flush_init_segment(s, os);
+-        }
+-
+         s->streams[i]->time_base = st->time_base;
+         // If the muxer wants to shift timestamps, request to have them shifted
+         // already before being handed to this muxer, so we don't have mismatches
+@@ -1035,6 +1028,12 @@ static int dash_write_header(AVFormatContext *s)
+         OutputStream *os = &c->streams[i];
+         if ((ret = avformat_write_header(os->ctx, NULL)) < 0)
+             return ret;
++        // Flush init segment
++        // Only for WebM segment, since for mp4 delay_moov is set and
++        // the init segment is thus flushed after the first packets.
++        if (strcmp(os->format_name, "mp4") &&
++            (ret = flush_init_segment(s, os)) < 0)
++            return ret;
+     }
+     ret = write_manifest(s, 0);
+     if (!ret)
+-- 
+2.17.0
+
