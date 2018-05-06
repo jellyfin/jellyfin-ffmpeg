@@ -1,8 +1,21 @@
-ffmpeg (7:4.0-2) UNRELEASED; urgency=medium
+ffmpeg (7:4.0-2) experimental; urgency=medium
 
-  *
+  * debian/control:
+    - Add version constraint to libopenjp2-7-dev build dependency.
+  * debian/libavfilter7.lintian-overrides:
+    - Fix override which was not updated as part of the library rename in
+      7:4.0-1.
+  * debian/patches:
+    - Add upstream patch to fix segfault in dash encoder.
+  * debian/rules:
+    - Revert "Use dh_listpackages to calculate EXTRA_PKGS variable".
+    - Only install documentation in arch indep install target.
+    - Read config.log from ffbuild/ directory.
+    - Ignore hapenc tests on i386, m68k and s390x.
+  * debian/tests:
+    - Disable encdec test for mov;vp8.
 
- -- James Cowgill <jcowgill@debian.org>  Sun, 22 Apr 2018 23:43:31 +0100
+ -- James Cowgill <jcowgill@debian.org>  Sun, 06 May 2018 22:39:20 +0100
 
 ffmpeg (7:4.0-1) experimental; urgency=medium
 
