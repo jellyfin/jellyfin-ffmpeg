@@ -45,6 +45,8 @@ CONFIG := --prefix=/usr \
 	--toolchain=hardened \
 	--libdir=/usr/lib/$(DEB_HOST_MULTIARCH) \
 	--incdir=/usr/include/$(DEB_HOST_MULTIARCH) \
+	--arch=$(DEB_HOST_ARCH_CPU) \
+	--target-os=$(DEB_HOST_ARCH_OS) \
 	--enable-gpl \
 	--disable-stripping \
 	--enable-avresample --disable-filter=resample \
@@ -190,11 +192,8 @@ ifneq (,$(filter $(DEB_HOST_ARCH_CPU),i386 m68k s390x))
 endif
 
 # Set cross-build prefix for compiler, pkg-config...
-# Cross-building also requires to manually set architecture/OS.
 ifneq ($(DEB_BUILD_GNU_TYPE),$(DEB_HOST_GNU_TYPE))
-	CONFIG += --cross-prefix=$(DEB_HOST_GNU_TYPE)- \
-		--arch=$(DEB_HOST_ARCH) \
-		--target-os=$(DEB_HOST_ARCH_OS)
+	CONFIG += --cross-prefix=$(DEB_HOST_GNU_TYPE)-
 endif
 
 # Use the default debhelper scripts, where possible.
