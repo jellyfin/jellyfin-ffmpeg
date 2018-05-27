@@ -177,6 +177,15 @@ Package: ffmpeg
 Architecture: any
 Multi-Arch: foreign
 Depends:
+ libavcodec58 (= ${binary:Version}) | libavcodec-extra58 (= ${binary:Version}),
+ libavdevice58 (= ${binary:Version}),
+ libavfilter7 (= ${binary:Version}) | libavfilter-extra7 (= ${binary:Version}),
+ libavformat58 (= ${binary:Version}),
+ libavresample4 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
+ libpostproc55 (= ${binary:Version}),
+ libswresample3 (= ${binary:Version}),
+ libswscale5 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Suggests:
@@ -222,6 +231,8 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libswresample3 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library with de/encoders for audio/video codecs - runtime files
@@ -249,6 +260,8 @@ Provides: libavcodec-extra
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libswresample3 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library with additional de/encoders for audio/video codecs
@@ -326,6 +339,10 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavcodec58 (= ${binary:Version}) | libavcodec-extra58 (= ${binary:Version}),
+ libavfilter7 (= ${binary:Version}) | libavfilter-extra7 (= ${binary:Version}),
+ libavformat58 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library for handling input and output devices - runtime files
@@ -373,6 +390,12 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavcodec58 (= ${binary:Version}) | libavcodec-extra58 (= ${binary:Version}),
+ libavformat58 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
+ libpostproc55 (= ${binary:Version}),
+ libswresample3 (= ${binary:Version}),
+ libswscale5 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library containing media filters - runtime files
@@ -395,6 +418,12 @@ Provides: libavfilter-extra
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavcodec58 (= ${binary:Version}) | libavcodec-extra58 (= ${binary:Version}),
+ libavformat58 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
+ libpostproc55 (= ${binary:Version}),
+ libswresample3 (= ${binary:Version}),
+ libswscale5 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library with extra media filters - runtime files
@@ -464,6 +493,8 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavcodec58 (= ${binary:Version}) | libavcodec-extra58 (= ${binary:Version}),
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library with (de)muxers for multimedia containers - runtime files
@@ -509,6 +540,7 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg compatibility library for resampling - runtime files
@@ -594,6 +626,7 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library for post processing - runtime files
@@ -631,6 +664,7 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library for audio resampling, rematrixing etc. - runtime files
@@ -702,6 +736,7 @@ Multi-Arch: same
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
+ libavutil56 (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends}
 Description: FFmpeg library for image scaling and various conversions - runtime files
