@@ -8,3 +8,6 @@ libavfilter-extra7 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavfilter.so.
 
 # This is intentional, because this package provides an alternative variant with the same soname.
 libavfilter-extra7: package-name-doesnt-match-sonames libavfilter*
+
+# This is intentional - both libraries provide the same ABI
+libavfilter-extra7: symbols-declares-dependency-on-other-package libavfilter*

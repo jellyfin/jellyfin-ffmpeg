@@ -271,26 +271,6 @@ override_dh_install:
 override_dh_missing:
 	dh_missing --list-missing
 
-override_dh_makeshlibs:
-	set -e && for pkg in $(shell dh_listpackages -a) ; do \
-		case $$pkg in \
-			ffmpeg|*-dev) \
-				continue \
-				;; \
-			*avcodec*) \
-				soversion=$$(echo $$pkg | sed -nr 's/^[^0-9]*([0-9]+)$$/\1/p'); \
-				dh_makeshlibs -p $$pkg -V"libavcodec$$soversion (>= ${DEB_VERSION_EPOCH_UPSTREAM}) | libavcodec-extra$$soversion (>= ${DEB_VERSION_EPOCH_UPSTREAM})" \
-				;; \
-			*avfilter*) \
-				soversion=$$(echo $$pkg | sed -nr 's/^[^0-9]*([0-9]+)$$/\1/p'); \
-				dh_makeshlibs -p $$pkg -V"libavfilter$$soversion (>= ${DEB_VERSION_EPOCH_UPSTREAM}) | libavfilter-extra$$soversion (>= ${DEB_VERSION_EPOCH_UPSTREAM})" \
-				;; \
-			*) \
-				dh_makeshlibs -p $$pkg -V \
-				;; \
-		esac \
-	done
-
 # Don't compress the example source code files.
 override_dh_compress:
 	dh_compress -Xexamples

@@ -5,3 +5,6 @@
 # on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f84
 libavcodec58 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavcodec.so.*
+
+# This is intentional - both libraries provide the same ABI
+libavcodec58: symbols-declares-dependency-on-other-package libavcodec*
