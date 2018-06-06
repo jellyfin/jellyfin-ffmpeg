@@ -1,8 +1,13 @@
-ffmpeg (7:4.0-3) UNRELEASED; urgency=medium
+ffmpeg (7:4.0-3) experimental; urgency=medium
 
-  *
+  * debian/control:
+    - Tighten inter-library dependencies.
+  * debian/rules:
+    - Unconditionally pass --arch and --target-os.
+  * debian/*.symbols:
+    - Add symbols files.
 
- -- James Cowgill <jcowgill@debian.org>  Thu, 24 May 2018 11:41:00 +0100
+ -- James Cowgill <jcowgill@debian.org>  Wed, 06 Jun 2018 14:40:56 +0100
 
 ffmpeg (7:4.0-2) experimental; urgency=medium
 
