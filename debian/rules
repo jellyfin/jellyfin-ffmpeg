@@ -15,6 +15,7 @@ include /usr/share/dpkg/architecture.mk
 export DEB_LDFLAGS_MAINT_STRIP=-Wl,-Bsymbolic-functions
 
 # Package name for the extra flavor.
+SHLIB_PKGS := $(shell sed -nr '/extra/! s/^Package:[[:space:]]*(lib.*[0-9]+)[[:space:]]*$$/\1/p' debian/control)
 EXTRA_PKGS := $(shell sed -nr 's/^Package:[[:space:]]*(.*extra[0-9]+)[[:space:]]*$$/\1/p' debian/control)
 FLAVORS = standard extra static
 
@@ -208,6 +209,17 @@ override_dh_auto_configure:
 # Remove the subdirectories generated for the flavors.
 override_dh_auto_clean:
 	$(foreach flavor,$(FLAVORS),[ ! -d debian/$(flavor) ] || rm -r debian/$(flavor);)
+
+override_dh_shlibdeps:
+	$(RM) debian/shlibs.local
+	set -e && for pkg in $(SHLIB_PKGS); do \
+		lib=`echo $$pkg | sed 's/\([a-z]*\)\([0-9]\)/\1/'`; \
+		abi=`echo $$pkg | sed 's/\([a-z]*\)\([0-9]\)/\2/'`; \
+		epk=`echo $$pkg | sed 's/\([a-z]*\)\([0-9]\)/\1-extra\2/'`; \
+		ver=${DEB_VERSION}; \
+		echo "$$lib $$abi $$pkg (= $$ver) | $$epk (= $$ver)" >> debian/shlibs.local; \
+	done
+	dh_shlibdeps
 
 # Create doxygen documentation:
 override_dh_auto_build-indep:
