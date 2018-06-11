@@ -217,7 +217,10 @@ override_dh_shlibdeps:
 		abi=`echo $$pkg | sed 's/\([a-z]*\)\([0-9]*\)/\2/'`; \
 		epk=`echo $$pkg | sed 's/\([a-z]*\)\([0-9]*\)/\1-extra\2/'`; \
 		ver=${DEB_VERSION}; \
-		echo "$$lib $$abi $$pkg (= $$ver) | $$epk (= $$ver)" >> debian/shlibs.local; \
+		if echo ${EXTRA_PKGS} | grep -q $$lib > /dev/null; \
+		then echo "$$lib $$abi $$pkg (= $$ver) | $$epk (= $$ver)" >> debian/shlibs.local; \
+		else echo "$$lib $$abi $$pkg (= $$ver)" >> debian/shlibs.local; \
+		fi; \
 	done
 	dh_shlibdeps
 
