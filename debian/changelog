@@ -1,5 +1,6 @@
-ffmpeg (7:4.0.1-1) UNRELEASED; urgency=medium
+ffmpeg (7:4.0.1-1) experimental; urgency=medium
 
+  * Team upload.
   * New upstream release.
     - avcodec/mpeg4videodec: Clear bits_per_raw_sample if it has originated
       from a previous instance. (CVE-2018-12459)
@@ -7,8 +8,10 @@ ffmpeg (7:4.0.1-1) UNRELEASED; urgency=medium
       AVCodecContext profile. (CVE-2018-12460)
     - avcodec/mpeg4videoenc: Use 64 bit for times in
       mpeg4_encode_gop_header(). (CVE-2018-12458)
+  * debian/control: Bump Standards-Version.
+  * debian/patches: Remove patches integrated upstream.
 
- -- Sebastian Ramacher <sramacher@debian.org>  Wed, 11 Jul 2018 19:14:14 +0200
+ -- Sebastian Ramacher <sramacher@debian.org>  Wed, 11 Jul 2018 19:25:32 +0200
 
 ffmpeg (7:4.0-3) experimental; urgency=medium
 
