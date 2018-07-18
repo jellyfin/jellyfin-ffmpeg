@@ -1,3 +1,9 @@
+ffmpeg (7:4.0.1-2) unstable; urgency=medium
+
+  * Upload to unstable.
+
+ -- James Cowgill <jcowgill@debian.org>  Wed, 18 Jul 2018 11:49:42 +0100
+
 ffmpeg (7:4.0.1-1) experimental; urgency=medium
 
   * Team upload.
