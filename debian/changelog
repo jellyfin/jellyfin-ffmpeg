@@ -1,8 +1,31 @@
-ffmpeg (7:4.0.2-1) UNRELEASED; urgency=medium
+ffmpeg (7:4.0.2-1) unstable; urgency=medium
 
-  *
+  [ James Cowgill ]
+  * New upstream release.
+    - avformat/movenc: Do not pass AVCodecParameters in avpriv_request_sample.
+      (CVE-2018-13300)
+    - avcodec/mpeg4videodec: Check read profile before setting it.
+      (CVE-2018-13301)
+    - avformat/movenc: Check that frame_types other than
+      EAC3_FRAME_TYPE_INDEPENDENT have a supported substream id.
+      (CVE-2018-13302)
+    - avcodec/ac3_parser: Check init_get_bits8() for failure.
+      (CVE-2018-13303)
+    - avcodec/mpeg4videodec: Remove use of FF_PROFILE_MPEG4_SIMPLE_STUDIO as
+      indicator of studio profile. (CVE-2018-13304)
+    - avformat/movenc: Check input sample count. (CVE-2018-14394)
+    - avformat/movenc: Write version 2 of audio atom if channels is not known.
+      (CVE-2018-14395)
 
- -- James Cowgill <jcowgill@debian.org>  Sat, 21 Jul 2018 14:34:01 +0100
+  * debian/control:
+    - Add winff Breaks. (See: #904141)
+  * debian/rules:
+    - Only pass --target-os when cross compiling. (Closes: #904052)
+
+  [ YunQiang Su ]
+  * debian/rules: Fix FTBFS with MIPS R6. (Closes: #904178)
+
+ -- James Cowgill <jcowgill@debian.org>  Sat, 21 Jul 2018 19:45:52 +0100
 
 ffmpeg (7:4.0.1-2) unstable; urgency=medium
 
