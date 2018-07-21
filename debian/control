@@ -191,7 +191,8 @@ Depends:
 Suggests:
  ffmpeg-doc
 Breaks: libav-tools (<< 6:12~~),
- qt-faststart (<< 7:2.7.1-3~)
+ qt-faststart (<< 7:2.7.1-3~),
+ winff (<< 1.5.5-5~),
 Replaces: libav-tools (<< 6:12~~),
  qt-faststart (<< 7:2.7.1-3~)
 Description: Tools for transcoding, streaming and playing of multimedia files
