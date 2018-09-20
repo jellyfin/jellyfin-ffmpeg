@@ -23,7 +23,6 @@ FLAVORS = standard extra static
 #   --enable-libsmbclient           (libsmbclient-dev [!hurd-i386 !m68k !sparc64])
 # The following flags are not added, because the necessary libraries are not in Debian:
 #   --enable-decklink
-#   --enable-libaom
 #   --enable-libcelt                (see #676592: removed from Debian as abandoned upstream, replaced by opus)
 #   --enable-libilbc                (see #675959 for the RFP bug)
 #   --enable-libkvazaar
@@ -52,6 +51,7 @@ CONFIG := --prefix=/usr \
 	--enable-avisynth \
 	--enable-gnutls \
 	--enable-ladspa \
+	--enable-libaom \
 	--enable-libass \
 	--enable-libbluray \
 	--enable-libbs2b \

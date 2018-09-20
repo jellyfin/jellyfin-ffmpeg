@@ -30,6 +30,8 @@ Build-Depends:
  frei0r-plugins-dev <!pkg.ffmpeg.stage1>,
 # --enable-ladspa
  ladspa-sdk,
+# --enable-libaom
+ libaom-dev,
 # --enable-libass
  libass-dev,
 # --enable-libbluray
