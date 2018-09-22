@@ -1,4 +1,4 @@
-libavfilter.so.7 libavfilter7 #MINVER# | libavfilter-extra7 #MINVER#
+libavfilter.so.7 libavfilter7 #MINVER#
  LIBAVFILTER_7@LIBAVFILTER_7 7:4.0
  av_abuffersink_params_alloc@LIBAVFILTER_7 7:4.0
  av_buffersink_get_channel_layout@LIBAVFILTER_7 7:4.0

@@ -5,6 +5,3 @@
 # on i386.
 # 1: https://www.debian.org/doc/debian-policy/footnotes.html#f84
 libavfilter7 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavfilter.so.*
-
-# This is intentional - both libraries provide the same ABI
-libavfilter7: symbols-declares-dependency-on-other-package libavfilter*

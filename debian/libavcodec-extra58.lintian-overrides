@@ -8,6 +8,3 @@ libavcodec-extra58 [i386]: shlib-with-non-pic-code usr/lib/i386*/libavcodec.so.*
 
 # This is intentional, because this package provides an alternative variant with the same soname.
 libavcodec-extra58: package-name-doesnt-match-sonames libavcodec*
-
-# This is intentional - both libraries provide the same ABI
-libavcodec-extra58: symbols-declares-dependency-on-other-package libavcodec*

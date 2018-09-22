@@ -248,7 +248,9 @@ Architecture: any
 Section: libs
 Multi-Arch: same
 Conflicts: libavcodec58
-Provides: libavcodec-extra
+Provides:
+ libavcodec58 (= ${binary:Version}),
+ libavcodec-extra
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
@@ -302,7 +304,7 @@ Architecture: any
 Section: libdevel
 Multi-Arch: same
 Depends:
- libavcodec58 (= ${binary:Version}) | libavcodec-extra58 (= ${binary:Version}),
+ libavcodec58 (= ${binary:Version}),
  libavutil-dev (= ${binary:Version}),
  libswresample-dev (= ${binary:Version}),
  ${misc:Depends}
@@ -394,7 +396,9 @@ Architecture: any
 Section: libs
 Multi-Arch: same
 Conflicts: libavfilter7
-Provides: libavfilter-extra
+Provides:
+ libavfilter7 (= ${binary:Version}),
+ libavfilter-extra
 Pre-Depends:
  ${misc:Pre-Depends}
 Depends:
@@ -442,7 +446,7 @@ Section: libdevel
 Multi-Arch: same
 Depends:
  libavcodec-dev (= ${binary:Version}),
- libavfilter7 (= ${binary:Version}) | libavfilter-extra7 (= ${binary:Version}),
+ libavfilter7 (= ${binary:Version}),
  libavformat-dev (= ${binary:Version}),
  libavutil-dev (= ${binary:Version}),
  libpostproc-dev (= ${binary:Version}),
