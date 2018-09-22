@@ -1,8 +1,16 @@
-ffmpeg (7:4.0.2-2) UNRELEASED; urgency=medium
+ffmpeg (7:4.0.2-2) unstable; urgency=medium
 
-  *
+  [ James Cowgill ]
+  * Enable libaom. (Closes: #907032)
+    - d/tests: Enable libaom-av1 codec tests in encdec_list.
+  * Use versioned Provides instead of alternatives for -extra package
+    dependencies.  (Closes: #904163)
 
- -- James Cowgill <jcowgill@debian.org>  Thu, 20 Sep 2018 20:37:55 +0100
+  [ Fabian Greffrath ]
+  * Handle internal library dependencies by generating a
+    debian/shlibs.local file.
+
+ -- James Cowgill <jcowgill@debian.org>  Sat, 22 Sep 2018 14:52:46 +0100
 
 ffmpeg (7:4.0.2-1) unstable; urgency=medium
 
