@@ -1,4 +1,5 @@
 libpostproc.so.55 libpostproc55 #MINVER#
+* Build-Depends-Package: libpostproc-dev
  LIBPOSTPROC_55@LIBPOSTPROC_55 7:4.0
  postproc_configuration@LIBPOSTPROC_55 7:4.0
  postproc_ffversion@LIBPOSTPROC_55 7:4.0

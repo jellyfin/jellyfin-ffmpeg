@@ -1,4 +1,5 @@
 libavformat.so.58 libavformat58 #MINVER#
+* Build-Depends-Package: libavformat-dev
  LIBAVFORMAT_58@LIBAVFORMAT_58 7:4.0
  av_add_index_entry@LIBAVFORMAT_58 7:4.0
  av_append_packet@LIBAVFORMAT_58 7:4.0

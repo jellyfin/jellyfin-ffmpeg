@@ -1,4 +1,5 @@
 libswresample.so.3 libswresample3 #MINVER#
+* Build-Depends-Package: libswresample-dev
  LIBSWRESAMPLE_3@LIBSWRESAMPLE_3 7:4.0
  swr_alloc@LIBSWRESAMPLE_3 7:4.0
  swr_alloc_set_opts@LIBSWRESAMPLE_3 7:4.0

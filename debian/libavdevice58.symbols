@@ -1,4 +1,5 @@
 libavdevice.so.58 libavdevice58 #MINVER#
+* Build-Depends-Package: libavdevice-dev
  LIBAVDEVICE_58@LIBAVDEVICE_58 7:4.0
  av_device_capabilities@LIBAVDEVICE_58 7:4.0
  av_device_ffversion@LIBAVDEVICE_58 7:4.0

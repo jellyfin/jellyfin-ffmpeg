@@ -1,4 +1,5 @@
 libswscale.so.5 libswscale5 #MINVER#
+* Build-Depends-Package: libswscale-dev
  LIBSWSCALE_5@LIBSWSCALE_5 7:4.0
  sws_addVec@LIBSWSCALE_5 7:4.0
  sws_allocVec@LIBSWSCALE_5 7:4.0

@@ -1,4 +1,5 @@
 libavresample.so.4 libavresample4 #MINVER#
+* Build-Depends-Package: libavresample-dev
  LIBAVRESAMPLE_4@LIBAVRESAMPLE_4 7:4.0
  avresample_alloc_context@LIBAVRESAMPLE_4 7:4.0
  avresample_available@LIBAVRESAMPLE_4 7:4.0
