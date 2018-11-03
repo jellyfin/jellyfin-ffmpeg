@@ -131,6 +131,8 @@ Build-Depends:
  libva-dev [!hurd-any],
 # autodetected: hwaccels 'h263_vdpau, mpeg2_vdpau, vc1_vdpau, h264_vdpau, mpeg4_vdpau, wmv3_vdpau, mpeg1_vdpau', decoders 'h264_vdpau, mpeg1_vdpau, mpeg4_vdpau, mpeg_vdpau, vc1_vdpau, wmv3_vdpau'
  libvdpau-dev,
+# --enable-libvidstab
+ libvidstab-dev,
 # --enable-libvo_amrwbenc
  libvo-amrwbenc-dev,
 # --enable-libvorbis

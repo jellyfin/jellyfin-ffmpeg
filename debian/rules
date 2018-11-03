@@ -30,7 +30,6 @@ FLAVORS = standard extra static
 #   --enable-libmfx
 #   --enable-libopenh264
 #   --enable-libsrt
-#   --enable-libvidstab             (see #709193 for the RFP bug)
 #   --enable-libvmaf
 #   --enable-libxavs
 #   --enable-libzimg                (see #864888 for the RFP bug)
@@ -81,6 +80,7 @@ CONFIG := --prefix=/usr \
 	--enable-libssh \
 	--enable-libtheora \
 	--enable-libtwolame \
+	--enable-libvidstab \
 	--enable-libvorbis \
 	--enable-libvpx \
 	--enable-libwavpack \
