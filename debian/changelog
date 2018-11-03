@@ -1,8 +1,13 @@
-ffmpeg (7:4.0.3-1) UNRELEASED; urgency=medium
+ffmpeg (7:4.0.3-1) unstable; urgency=medium
 
-  *
+  * New upstream release.
+    - avformat/flvenc: Check audio packet size. (CVE-2018-15822)
 
- -- James Cowgill <jcowgill@debian.org>  Sat, 03 Nov 2018 19:25:20 +0000
+  * d/control: Bump standards to 4.2.1.
+  * d/*.symbols: Add missing Build-Depends-Package fields.
+  * d/rules: Enable libvidstab. (Closes: #781938)
+
+ -- James Cowgill <jcowgill@debian.org>  Sat, 03 Nov 2018 20:36:20 +0000
 
 ffmpeg (7:4.0.2-2) unstable; urgency=medium
 
