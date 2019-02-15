@@ -2,8 +2,8 @@
 
 export V=1
 
-CONFIG := --prefix=/usr \
-	--toolchain=hardened \
+CONFIG := --toolchain=hardened \
+	--prefix=/usr \
 	--arch=$(DEB_HOST_ARCH_CPU) \
 	--enable-gpl \
 	--disable-ffplay \
@@ -70,14 +70,18 @@ CONFIG := --prefix=/usr \
 	--enable-frei0r \
 	--enable-libopencv \
 
-# Use the default debhelper scripts, where possible.
 %:
 	dh $@
 
-# Add configuration options:                                               
 override_dh_auto_configure:
 	./configure $(CONFIG)
 
-# Remove the subdirectories generated for the flavors.
-override_dh_auto_clean:                                                                                                           
-	$(foreach flavor,$(FLAVORS),[ ! -d debian/$(flavor) ] || rm -r debian/$(flavor);)
+override_dh_auto_clean:
+	dh_auto_clean || true
+	git clean -fd
+
+override_dh_auto_install:
+	make -j1 install-data DESTDIR=/srv/build/ffmpeg/jellyfin-ffmpeg/debian/jellyfin-ffmpeg AM_UPDATE_INFO_DIR=no 
+
+override_dh_usrlocal:
+
