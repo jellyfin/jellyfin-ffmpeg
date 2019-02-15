@@ -183,8 +183,6 @@ Multi-Arch: foreign
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
-Suggests:
- jellyfin-ffmpeg-doc
 Breaks: libav-tools (<< 6:12~~),
  qt-faststart (<< 7:2.7.1-3~),
  winff (<< 1.5.5-5~),
@@ -201,23 +199,3 @@ Description: Tools for transcoding, streaming and playing of multimedia files
   * ffmpeg: a command line tool to convert multimedia files between formats
   * ffplay: a simple media player based on SDL and the FFmpeg libraries
   * ffprobe: a simple multimedia stream analyzer
-
-Package: jellyfin-ffmpeg-doc
-Section: doc
-Architecture: all
-Multi-Arch: foreign
-Depends:
- libjs-jquery,
- libjs-bootstrap,
- ${misc:Depends}
-Conflicts: ffmpeg-doc
-Description: Documentation of the FFmpeg multimedia framework
- FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
- mux, demux, stream, filter and play pretty much anything that humans and
- machines have created. It supports the most obscure ancient formats up to the
- cutting edge.
- .
- This package contains the HTML documentation for the FFmpeg multimedia
- framework including the API documentation created by doxygen and the manpages
- for the libraries.
-
