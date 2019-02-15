@@ -177,7 +177,7 @@ Build-Depends:
 # autodetected zlib
  zlib1g-dev
 
-Package: ffmpeg
+Package: jellyfin-ffmpeg
 Architecture: any
 Multi-Arch: foreign
 Depends:
@@ -202,7 +202,7 @@ Description: Tools for transcoding, streaming and playing of multimedia files
   * ffprobe: a simple multimedia stream analyzer
   * qt-faststart: a utility to rearrange Quicktime files
 
-Package: ffmpeg-doc
+Package: jellyfin-ffmpeg-doc
 Section: doc
 Architecture: all
 Multi-Arch: foreign
