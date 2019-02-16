@@ -1,17 +1,13 @@
-Source: ffmpeg
+Source: jellyfin-ffmpeg
 Section: video
 Priority: optional
-Maintainer: Debian Multimedia Maintainers <debian-multimedia@lists.debian.org>
-Uploaders: Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>,
- Alexander Strasser <eclipse7@gmx.net>,
- Reinhard Tartler <siretart@tauware.de>,
- Balint Reczey <balint@balintreczey.hu>,
- James Cowgill <jcowgill@debian.org>
+Maintainer: Jellyfin Team <team@jellyfin.org>
+Uploaders: Jellyfin Team <team@jellyfin.org>
 Rules-Requires-Root: no
 Homepage: https://ffmpeg.org/
 Standards-Version: 4.2.1
-Vcs-Git: https://salsa.debian.org/multimedia-team/ffmpeg.git
-Vcs-Browser: https://salsa.debian.org/multimedia-team/ffmpeg
+Vcs-Git: https://github.com/jellyfin/jellyfin-ffmpeg.git
+Vcs-Browser: https://github.com/jellyfin/jellyfin-ffmpeg
 Build-Depends-Indep:
 # needed to minify the CSS files
  cleancss,
@@ -195,7 +191,9 @@ Description: Tools for transcoding, streaming and playing of multimedia files
  machines have created. It supports the most obscure ancient formats up to the
  cutting edge.
  .
- This package contains:
+ This package contains a static build compatible with all Debian/Ubuntu
+ releases, designed to facilitate Jellyfin on systems with a repository ffmpeg
+ version of 4.1 or newer, which we do not yet support. Included files are:
   * ffmpeg: a command line tool to convert multimedia files between formats
   * ffplay: a simple media player based on SDL and the FFmpeg libraries
   * ffprobe: a simple multimedia stream analyzer
