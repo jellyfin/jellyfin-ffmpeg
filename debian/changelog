@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.0.3-1) unstable; urgency=medium
+
+  * Static binary build for Jellyfin purposes
+
+ -- Joshua Boniface <joshua@boniface.me>  Fri, 15 Feb 2019 20:12:52 -0500
+
 ffmpeg (7:4.0.3-1) unstable; urgency=medium
 
   * New upstream release.
