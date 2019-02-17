@@ -185,6 +185,7 @@ Breaks: libav-tools (<< 6:12~~),
 Replaces: libav-tools (<< 6:12~~),
  qt-faststart (<< 7:2.7.1-3~)
 Conflicts: ffmpeg
+Provides: ffmpeg
 Description: Tools for transcoding, streaming and playing of multimedia files
  FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
  mux, demux, stream, filter and play pretty much anything that humans and

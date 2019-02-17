@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.0.3-2) unstable; urgency=medium
+
+  * Use 'Provides: ffmpeg' to avoid breaking other packages
+
+ -- Joshua Boniface <joshua@boniface.me>  Sun, 17 Feb 2019 01:03:32 -0500
+
 jellyfin-ffmpeg (4.0.3-1) unstable; urgency=medium
 
   * Static binary build for Jellyfin purposes
