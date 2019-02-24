@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.0.3-3) unstable; urgency=medium
+
+  * Move binaries to /usr/share to keep compat with system ffmpeg
+
+ -- Joshua Boniface <joshua@boniface.me>  Fri, 22 Feb 2019 23:31:07 -0500
+
 jellyfin-ffmpeg (4.0.3-2) unstable; urgency=medium
 
   * Use 'Provides: ffmpeg' to avoid breaking other packages

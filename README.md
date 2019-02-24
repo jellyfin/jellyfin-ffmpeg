@@ -4,6 +4,31 @@ FFmpeg README
 FFmpeg is a collection of libraries and tools to process multimedia content
 such as audio, video, subtitles and related metadata.
 
+## For Jellyfin
+
+This particular repository is designed to support building a static, portable,
+FFMPEG release of 4.0.3 for the [Jellyfin project](https://github.com/jellyfin).
+
+To build packages, use `./build <release> <arch>`, where `release` is one of:
+  * `stretch` (Debian 9.X "Stretch")
+  * `buster` (Debian 10.X "Buster")
+  * `xenial` (Ubuntu 16.04 "Xenial Xerus")
+  * `bionic` (Ubuntu 18.04 "Bionic Beaver")
+  * `cosmic` (Ubuntu 18.10 "Cosmic Cuttlefish")
+
+And `arch` is one of:
+  * `amd64` (Standard 64-bit x86)
+  * `armhf` (ARMv6, Raspberry Pi)
+
+The build setup requires `docker` support and may use a significant amount of
+disk space. Binary releases are available in the [repository](https://repo.jellyfin.org/releases/server).
+
+For older Ubuntu releases in between these officially supported versions, the
+oldest should generally be compatible.
+
+The build setup will attempt to generate both `amd64` and `armhf` binary packages
+if the release supports it.
+
 ## Libraries
 
 * `libavcodec` provides implementation of a wider range of codecs.
