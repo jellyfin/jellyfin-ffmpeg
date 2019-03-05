@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.0.3-4) unstable; urgency=medium
+
+  * Clean up flags to match Emby builds and remove superfluous dependencies
+
+ -- Joshua Boniface <joshua@boniface.me>  Tue, 05 Mar 2019 09:15:04 -0500
+
 jellyfin-ffmpeg (4.0.3-3) unstable; urgency=medium
 
   * Move binaries to /usr/share to keep compat with system ffmpeg

@@ -20,19 +20,20 @@ CONFIG := --toolchain=hardened \
 	--prefix=/usr \
 	--target-os=linux \
 	--enable-cross-compile \
+	--extra-cflags='--static' \
+	--enable-gpl \
+	--enable-static \
+    --disable-doc \
 	--disable-ffplay \
 	--disable-shared \
-	--disable-vdpau \
 	--disable-libxcb \
 	--disable-sdl2 \
 	--disable-xlib \
-	--enable-gpl \
-	--enable-static \
-	--extra-cflags='--static' \
 	--enable-fontconfig \
 	--enable-gmp \
 	--enable-gnutls \
 	--enable-libass \
+	--enable-libbluray \
 	--enable-libdrm \
 	--enable-libfreetype \
 	--enable-libfribidi \
@@ -44,42 +45,11 @@ CONFIG := --toolchain=hardened \
 	--enable-libx264 \
 	--enable-libx265 \
 	--enable-libzvbi \
-	--enable-version3 \
-	--enable-vaapi \
-	--enable-avresample --disable-filter=resample \
-	--enable-avisynth \
-	--enable-ladspa \
-	--enable-libbluray \
-	--enable-libbs2b \
-	--enable-libcaca \
-	--enable-libcodec2 \
-	--enable-libflite \
-	--enable-libfontconfig \
-	--enable-libgme \
-	--enable-libgsm \
-	--enable-libjack \
-	--enable-libopenjpeg \
-	--enable-libpulse \
-	--enable-librsvg \
-	--enable-librubberband \
-	--enable-libshine \
-	--enable-libsnappy \
-	--enable-libsoxr \
-	--enable-libspeex \
-	--enable-libssh \
-	--enable-libtwolame \
-	--enable-libvpx \
-	--enable-libwavpack \
-	--enable-libxml2 \
-	--enable-libxvid \
-	--enable-libzmq \
 	--enable-omx \
 	--enable-omx-rpi \
-	--enable-openal \
-	--enable-opengl \
-	--enable-sdl2 \
-	--enable-frei0r \
-	--enable-libopencv
+	--enable-version3 \
+	--enable-vaapi \
+	--enable-vdpau \
 
 CONFIG_ARM := --enable-cross-compile \
 	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \

@@ -13,150 +13,40 @@ Build-Depends:
  debhelper,
 # for build-profile support
  dpkg-dev,
-# --enable-libflite
- flite1-dev,
-# --enable-frei0r
- frei0r-plugins-dev,
-# --enable-ladspa
- ladspa-sdk,
-# --enable-libaom
-# libaom-dev,
+# --enable-gnutls
+ libgnutls28-dev | libgnutls-dev,
 # --enable-libass
  libass-dev,
 # --enable-libbluray
  libbluray-dev,
-# --enable-libbs2b
- libbs2b-dev,
-# autodetected: external library 'bzlib'
- libbz2-dev,
-# --enable-libcaca
- libcaca-dev,
-# --enable-libcdio
- libcdio-paranoia-dev,
-# --enable-libchromaprint
- libchromaprint-dev,
-# --enable-libcodec2
- libcodec2-dev,
-# autodetected 'crystalhd'
-# libcrystalhd-dev,
-# --enable-libdc1394
- libdc1394-22-dev,
 # --enable-libdrm
  libdrm-dev,
-# --enable-libfontconfig
- libfontconfig1-dev,
 # --enable-libfreetype
  libfreetype6-dev,
 # --enable-fribidi
  libfribidi-dev,
-# --enable-opengl
- libgl1-mesa-dev,
-# --enable-libgme
- libgme-dev,
-# --enable-gnutls
- libgnutls28-dev | libgnutls-dev,
-# --enable-libgsm
- libgsm1-dev,
-# Fails to be detected by configure script, if not also libavc1394-dev is installed.
-# --enable-libiec61883
- libiec61883-dev,
- libavc1394-dev,
-# --enable-libjack
- libjack-jackd2-dev,
-# --enable-lv2
-# liblilv-dev,
-# autodetected for the tiff decoder
- liblzma-dev,
 # --enable-libmp3lame
  libmp3lame-dev,
-# --enable-libmysofa
-# libmysofa-dev,
-# --enable-openal
- libopenal-dev,
-# --enable-omx
- libomxil-bellagio-dev,
-# --enable-libopencore_amrnb
- libopencore-amrnb-dev,
-# --enable-libopencore_amrwb
- libopencore-amrwb-dev,
-# --enable-libopencv
- libopencv-imgproc-dev,
-# --enable-libopenjpeg
- libopenjp2-7-dev,
-# --enable-libopenmpt
-# libopenmpt-dev,
 # --enable-libopus
  libopus-dev,
-# --enable-libpulse
- libpulse-dev,
-# --enable-librubberband
- librubberband-dev,
-# --enable-librsvg
- librsvg2-dev,
-# autodetected: protocol 'sctp'
- libsctp-dev,
-# --enable-sdl2
- libsdl2-dev,
-# --enable-libshine
- libshine-dev,
-# --enable-libsnappy
- libsnappy-dev,
-# --enable-libsoxr
- libsoxr-dev,
-# --enable-libspeex
- libspeex-dev,
-# --enable-libssh
- libssh-gcrypt-dev,
-# --enable-libtesseract (used only in -extra flavor)
- libtesseract-dev,
 # --enable-libtheora
  libtheora-dev,
-# --enable-libtwolame
- libtwolame-dev,
-# This is not necessary, see explanation in debian/rules.
-# # --enable-libv4l2
-# libv4l-dev [!hurd-any],
-# autodetected: hwaccels 'h263_vaapi, mpeg2_vaapi, vc1_vaapi, h264_vaapi, mpeg4_vaapi, wmv3_vaapi'
- libva-dev,
-# autodetected: hwaccels 'h263_vdpau, mpeg2_vdpau, vc1_vdpau, h264_vdpau, mpeg4_vdpau, wmv3_vdpau, mpeg1_vdpau', decoders 'h264_vdpau, mpeg1_vdpau, mpeg4_vdpau, mpeg_vdpau, vc1_vdpau, wmv3_vdpau'
- libvdpau-dev,
-# --enable-libvidstab
-# libvidstab-dev,
-# --enable-libvo_amrwbenc
- libvo-amrwbenc-dev,
 # --enable-libvorbis
  libvorbis-dev,
-# --enable-libvpx
- libvpx-dev,
-# --enable-libwavpack
- libwavpack-dev,
 # --enable-libwebp
  libwebp-dev,
 # --enable-libx264
  libx264-dev,
 # --enable-libx265
  libx265-dev,
-# autodetected libxcb-shape
- libxcb-shape0-dev,
-# autodetected libxcb-shm
- libxcb-shm0-dev,
-# autodetected libxcb-xfixes
- libxcb-xfixes0-dev,
-# --enable-libxml2
- libxml2-dev,
-# autodetected xlib
- libxv-dev,
-# --enable-libxvid
- libxvidcore-dev,
-# autodetected: decoder 'mpeg_xvmc'; outdev 'xv'
- libxvmc-dev,
-# --enable-libzmq
- libzmq3-dev,
 # --enable-libzvbi
  libzvbi-dev,
-# The opencl API is considered experimental.
-# # --enable-opencl
-# ocl-icd-opencl-dev [!hurd-any] | opencl-dev [!hurd-any],
+# --enable-omx
+ libomxil-bellagio-dev,
+# --enable-vaapi
+ libva-dev,
+# --enable-vdpau
+ libvdpau-dev,
 # used to detect libraries
  pkg-config,
 # HTML documentation
