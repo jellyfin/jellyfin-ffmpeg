@@ -47,6 +47,10 @@ Build-Depends:
  libva-dev,
 # --enable-vdpau
  libvdpau-dev,
+# --enable-nvenc/--enable-nvdec
+# [!armhf] is needed otherwise mk-build-deps creates an invalid build
+# dep list, targeting armhf specifically when the packge is any.
+ nv-codec-headers [!armhf],
 # used to detect libraries
  pkg-config,
 # HTML documentation

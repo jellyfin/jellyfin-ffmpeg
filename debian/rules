@@ -3,16 +3,10 @@
 export V=1
 
 ORIG_VERSION := $(shell dpkg-parsechangelog -S version)
-ifeq ($(shell grep -q 'ID=ubuntu' /etc/os-release && echo yes),yes)
-	# Is Ubuntu
-	VERSION_SUFFIX := $(shell grep '^UBUNTU_CODENAME=' /etc/os-release | sed -nr 's/UBUNTU_CODENAME=//p')
-else
-	# Is Debian
-	VERSION_SUFFIX := deb$(shell grep '^VERSION=' /etc/os-release | sed 's/VERSION="//g' | cut -d' ' -f1)
-	ifeq ($(VERSION_SUFFIX),deb)
-		# Buster is broken because fuck standards, amirite?
-		VERSION_SUFFIX := deb10
-	endif
+VERSION_SUFFIX := $(shell lsb_release -c -s)
+# Set the current "testing" explicitly to "buster"
+ifeq ($(VERSION_SUFFIX),testing)
+    VERSION_SUFFIX := buster
 endif
 PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
@@ -55,7 +49,8 @@ CONFIG_ARM := --enable-cross-compile \
 	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
 	--arch=armhf
 
-CONFIG_x86 := --arch=amd64
+CONFIG_x86 := --arch=amd64 \
+    --enable-nvenc --enable-nvdec
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}

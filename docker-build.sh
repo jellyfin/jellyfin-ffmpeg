@@ -1,5 +1,7 @@
 #!/bin/bash
 
+NVCH_VERSION="8.2.15.8-dmo1"
+
 # Builds the DEB inside the Docker container
 
 set -o errexit
@@ -35,6 +37,11 @@ case ${ARCH} in
         BUILD_ARCH_OPT="-aarmhf"
     ;;
 esac
+
+# Download and install the nvidia headers from deb-multimedia
+wget -O nv-codec-headers.deb https://www.deb-multimedia.org/pool/main/n/nv-codec-headers-dmo/nv-codec-headers_${NVCH_VERSION}_all.deb
+dpkg -i nv-codec-headers.deb
+apt -f install
 
 # Move to source directory
 pushd ${SOURCE_DIR}
