@@ -28,7 +28,7 @@ case ${cli_release} in
     ;;
     'xenial')
         release="ubuntu:xenial"
-        gcc_version="6"
+        gcc_version="5"
     ;;
     'bionic')
         release="ubuntu:bionic"
@@ -87,5 +87,5 @@ chown -R "${current_user}" "${package_temporary_dir}" &>/dev/null \
   || sudo chown -R "${current_user}" "${package_temporary_dir}" &>/dev/null
 # Move the APKs to the parent directory
 mkdir ../bin &>/dev/null || true
-mv "${package_temporary_dir}"/deb/*.deb ../bin/
+mmv "${package_temporary_dir}/deb/*.deb" "../bin/#1.deb"
 mmv "${package_temporary_dir}/deb/*_${arch}.*" "../bin/#1-${cli_release}_${arch}.#2"

@@ -9,16 +9,36 @@ set -o xtrace
 
 # Prepare the cross-toolchain
 prepare_crossbuild_env() {
+    # Prepare the Ubuntu-specific cross-build requirements
+    if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
+        CODENAME="$( lsb_release -c -s )"
+        # Remove the default sources.list
+        rm /etc/apt/sources.list
+        # Add arch-specific list files
+        cat <<EOF > /etc/apt/sources.list.d/amd64.list
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-security main restricted universe multiverse
+EOF
+        cat <<EOF > /etc/apt/sources.list.d/armhf.list
+deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME} main restricted universe multiverse
+deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME}-updates main restricted universe multiverse
+deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME}-backports main restricted universe multiverse
+deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME}-security main restricted universe multiverse
+EOF
+    fi
     # Add armhf architecture
     dpkg --add-architecture armhf
     # Update and install cross-gcc-dev
     apt-get update
-    apt-get install -y cross-gcc-dev
+    yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="armhf" cross-gcc-gensource ${GCC_VER}
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-armhf
-    apt-get install -y gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libcloog-isl-dev libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
+    ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
+    yes | apt-get install -y gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
     popd
 }
 
@@ -41,7 +61,7 @@ esac
 # Download and install the nvidia headers from deb-multimedia
 wget -O nv-codec-headers.deb https://www.deb-multimedia.org/pool/main/n/nv-codec-headers-dmo/nv-codec-headers_${NVCH_VERSION}_all.deb
 dpkg -i nv-codec-headers.deb
-apt -f install
+apt -yf install
 
 # Move to source directory
 pushd ${SOURCE_DIR}

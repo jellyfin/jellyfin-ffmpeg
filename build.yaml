@@ -9,4 +9,6 @@ packages:
   - buster-armhf
   - xenial-amd64
   - bionic-amd64
+  - bionic-armhf
   - cosmic-amd64
+  - cosmic-armhf
