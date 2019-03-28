@@ -1,6 +1,7 @@
 jellyfin-ffmpeg (4.0.3-5) unstable; urgency=medium
 
   * Add support for nvenv/nvdec transcoding on amd64
+  * Move output binaries to /usr/lib
 
  -- Joshua Boniface <joshua@boniface.me>  Tue, 19 Mar 2019 09:14:31 -0400
 

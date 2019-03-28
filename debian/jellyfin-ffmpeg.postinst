@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Symlink our old locations to the new locations
+# to aid in transitioning around the 10.3.0 release
+ln -s /usr/lib/jellyfin-ffmpeg /usr/share/jellyfin-ffmpeg
