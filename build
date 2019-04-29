@@ -6,9 +6,10 @@ usage() {
     echo -e "Releases:          Arches:"
     echo -e " * stretch          * amd64"
     echo -e " * buster           * armhf"
-    echo -e " * xenial"
+    echo -e " * xenial           * arm64"
     echo -e " * bionic"
     echo -e " * cosmic"
+    echo -e " * disco"
 }
 
 if [[ -z ${1} ]]; then
@@ -38,6 +39,10 @@ case ${cli_release} in
         release="ubuntu:cosmic"
         gcc_version="7"
     ;;
+    'disco')
+        release="ubuntu:disco"
+        gcc_version="7"
+    ;;
     *)
         echo "Invalid release."
         usage
@@ -52,6 +57,9 @@ case ${cli_arch} in
     ;;
     'armhf')
         arch="armhf"
+    ;;
+    'arm64')
+        arch="arm64"
     ;;
     *)
         echo "Invalid architecture."

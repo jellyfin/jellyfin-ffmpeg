@@ -1,3 +1,10 @@
+jellyfin-ffmpeg (4.0.3-6) unstable; urgency=medium
+
+  * Add Ubuntu Disco support
+  * Add arm64 support
+
+ -- Joshua Boniface <joshua@boniface.me>  Mon, 29 Apr 2019 10:51:22 -0400
+
 jellyfin-ffmpeg (4.0.3-5) unstable; urgency=medium
 
   * Add support for nvenv/nvdec transcoding on amd64

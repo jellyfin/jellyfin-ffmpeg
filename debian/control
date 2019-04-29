@@ -51,7 +51,7 @@ Build-Depends:
 # [!armhf] is needed otherwise mk-build-deps creates an invalid build
 # dep list, targeting armhf specifically when the packge is any.
 # The docker build guarantees this is installed for armhf crossbuild.
- nv-codec-headers [!armhf],
+ nv-codec-headers [!armhf !arm64],
 # used to detect libraries
  pkg-config,
 # HTML documentation
@@ -62,7 +62,7 @@ Build-Depends:
  zlib1g-dev
 
 Package: jellyfin-ffmpeg
-Architecture: amd64 armhf
+Architecture: amd64 armhf arm64
 Multi-Arch: foreign
 Depends:
  ${shlibs:Depends},

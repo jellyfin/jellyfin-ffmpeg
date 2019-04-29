@@ -49,23 +49,26 @@ CONFIG_ARM := --enable-cross-compile \
 	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
 	--arch=armhf
 
+CONFIG_ARM64 := --enable-cross-compile \
+	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
+	--arch=arm64
+
 CONFIG_x86 := --arch=amd64 \
     --enable-nvenc --enable-nvdec
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
-ifeq ($(HOST_ARCH),x86_64)
-	ifeq ($(BUILD_ARCH),arm-linux-gnueabihf)
-		# Cross-building ARM on AMD64
-		CONFIG += $(CONFIG_ARM)
-	else
-		# Building AMD64
-		CONFIG += $(CONFIG_x86)
-	endif
+ifeq ($(BUILD_ARCH),x86_64)
+    # Native amd64 build
+    CONFIG += $(CONFIG_x86)
 endif
-ifeq ($(HOST_ARCH),armv7l)
-	# Building ARM
-	CONFIG += $(CONFIG_ARM)
+ifeq ($(BUILD_ARCH),arm-linux-gnueabihf)
+    # Cross-building ARM on AMD64
+    CONFIG += $(CONFIG_ARM)
+endif
+ifeq ($(BUILD_ARCH),aarch64-linux-gnu)
+    # Cross-building ARM64 on AMD64
+    CONFIG += $(CONFIG_ARM64)
 endif
 
 %:
