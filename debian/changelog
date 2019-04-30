@@ -1,9 +1,10 @@
-jellyfin-ffmpeg (4.0.3-6) unstable; urgency=medium
+jellyfin-ffmpeg (4.0.4-1) unstable; urgency=medium
 
+  * New upstream version 4.0.4
   * Add Ubuntu Disco support
   * Add arm64 support
 
- -- Joshua Boniface <joshua@boniface.me>  Mon, 29 Apr 2019 10:51:22 -0400
+ -- Joshua Boniface <joshua@boniface.me>  Mon, 29 Apr 2019 23:20:37 -0400
 
 jellyfin-ffmpeg (4.0.3-5) unstable; urgency=medium
 

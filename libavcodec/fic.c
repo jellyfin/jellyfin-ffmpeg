@@ -139,6 +139,9 @@ static int fic_decode_block(FICContext *ctx, GetBitContext *gb,
 {
     int i, num_coeff;
 
+    if (get_bits_left(gb) < 8)
+        return AVERROR_INVALIDDATA;
+
     /* Is it a skip block? */
     if (get_bits1(gb)) {
         *is_p = 1;
@@ -380,6 +383,8 @@ static int fic_decode_frame(AVCodecContext *avctx, void *data,
             slice_h      = FFALIGN(avctx->height - ctx->slice_h * (nslices - 1), 16);
         } else {
             slice_size = AV_RB32(src + tsize + FIC_HEADER_SIZE + slice * 4 + 4);
+            if (slice_size < slice_off)
+                return AVERROR_INVALIDDATA;
         }
 
         if (slice_size < slice_off || slice_size > msize)
