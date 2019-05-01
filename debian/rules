@@ -58,7 +58,7 @@ CONFIG_x86 := --arch=amd64 \
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
-ifeq ($(BUILD_ARCH),x86_64)
+ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
     # Native amd64 build
     CONFIG += $(CONFIG_x86)
 endif
