@@ -1,6 +1,7 @@
 #!/bin/bash
 
-NVCH_VERSION="8.2.15.8-dmo1"
+#NVCH_VERSION="8.2.15.8-dmo1"
+NVCH_VERSION="9.0.18.1-dmo1"
 
 # Builds the DEB inside the Docker container
 
@@ -115,3 +116,4 @@ popd
 # Move the artifacts out
 mkdir -p ${ARTIFACT_DIR}/deb
 mv /jellyfin-ffmpeg_* ${ARTIFACT_DIR}/deb/
+chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

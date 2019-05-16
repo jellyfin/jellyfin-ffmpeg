@@ -1,3 +1,10 @@
+jellyfin-ffmpeg (4.0.4-3) unstable; urgency=medium
+
+  * Use libfontconfig to allow baked-in subtitle support
+  * Upgrade nVidia headers to 9.0.18.1
+
+ -- Joshua Boniface <joshua@boniface.me>  Tue, 14 May 2019 23:24:39 -0400
+
 jellyfin-ffmpeg (4.0.4-2) unstable; urgency=medium
 
   * Correct build bug and reenable nvenc/nvdec

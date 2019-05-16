@@ -21,6 +21,8 @@ Build-Depends:
  libbluray-dev,
 # --enable-libdrm
  libdrm-dev,
+# --enable-libfontconfig
+ libfontconfig-dev,
 # --enable-libfreetype
  libfreetype6-dev,
 # --enable-fribidi

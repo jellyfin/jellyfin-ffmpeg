@@ -6,7 +6,7 @@ ORIG_VERSION := $(shell dpkg-parsechangelog -S version)
 VERSION_SUFFIX := $(shell lsb_release -c -s)
 # Set the current "testing" explicitly to "buster"
 ifeq ($(VERSION_SUFFIX),testing)
-    VERSION_SUFFIX := buster
+	VERSION_SUFFIX := buster
 endif
 PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
@@ -17,12 +17,13 @@ CONFIG := --toolchain=hardened \
 	--extra-cflags='--static' \
 	--enable-gpl \
 	--enable-static \
-    --disable-doc \
+	--disable-doc \
 	--disable-ffplay \
 	--disable-shared \
 	--disable-libxcb \
 	--disable-sdl2 \
 	--disable-xlib \
+	--enable-libfontconfig \
 	--enable-fontconfig \
 	--enable-gmp \
 	--enable-gnutls \
@@ -54,21 +55,21 @@ CONFIG_ARM64 := --enable-cross-compile \
 	--arch=arm64
 
 CONFIG_x86 := --arch=amd64 \
-    --enable-nvenc --enable-nvdec
+	--enable-nvenc --enable-nvdec
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
 ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
-    # Native amd64 build
-    CONFIG += $(CONFIG_x86)
+	# Native amd64 build
+	CONFIG += $(CONFIG_x86)
 endif
 ifeq ($(BUILD_ARCH),arm-linux-gnueabihf)
-    # Cross-building ARM on AMD64
-    CONFIG += $(CONFIG_ARM)
+	# Cross-building ARM on AMD64
+	CONFIG += $(CONFIG_ARM)
 endif
 ifeq ($(BUILD_ARCH),aarch64-linux-gnu)
-    # Cross-building ARM64 on AMD64
-    CONFIG += $(CONFIG_ARM64)
+	# Cross-building ARM64 on AMD64
+	CONFIG += $(CONFIG_ARM64)
 endif
 
 %:

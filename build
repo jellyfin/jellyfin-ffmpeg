@@ -90,9 +90,6 @@ make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_version} ARCH=${arch}
 docker build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}
 docker run --rm -e "RELEASE=${release}" -v "${package_temporary_dir}:/dist" "${image_name}"
-# Correct ownership on the APKs (as current user, then as root if that fails)
-chown -R "${current_user}" "${package_temporary_dir}" &>/dev/null \
-  || sudo chown -R "${current_user}" "${package_temporary_dir}" &>/dev/null
 # Move the APKs to the parent directory
 mkdir ../bin &>/dev/null || true
 mmv "${package_temporary_dir}/deb/*.deb" "../bin/#1.deb"
