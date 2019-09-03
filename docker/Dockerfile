@@ -22,17 +22,17 @@ ARG        PREFIX=/opt/ffmpeg
 ARG        MAKEFLAGS="-j2"
 ARG        SRC=/usr/local
 
-ARG         FFMPEG_VERSION=4.0.4
-ARG         LAME_VERSION=3.99.5
+ARG         FFMPEG_VERSION=4.2
+ARG         LAME_VERSION=3.100
 ARG         OPENCOREAMR_VERSION=0.1.5
 ARG         OPENJPEG_VERSION=2.1.2
 ARG         VPX_VERSION=1.8.0
 ARG         X264_VERSION=20190219-2245-stable
-ARG         X265_VERSION=3.0
+ARG         X265_VERSION=3.1.1
 ARG         FONTCONFIG_VERSION=2.12.4
 ARG         KVAZAAR_VERSION=1.2.0
 ARG         AOM_VERSION=v1.0.0
-ARG         NVCODECHEADERS_VERSION=n8.2.15.7
+ARG         NVCODECHEADERS_VERSION=n9.0.18.1
 
 ARG         OGG_VERSION=1.3.2
 ARG         OGG_SHA256SUM="e19ee34711d7af328cb26287f4137e70630e7261b17cbe3cd41011d73a654692  libogg-1.3.2.tar.gz"
@@ -89,7 +89,7 @@ RUN \
         DIR=/tmp/opencore-amr && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://kent.dl.sourceforge.net/project/opencore-amr/opencore-amr/opencore-amr-${OPENCOREAMR_VERSION}.tar.gz | \
+        curl -sL https://versaweb.dl.sourceforge.net/project/opencore-amr/opencore-amr/opencore-amr-${OPENCOREAMR_VERSION}.tar.gz | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --enable-shared  && \
         make && \
@@ -185,7 +185,7 @@ RUN \
         DIR=/tmp/lame && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://kent.dl.sourceforge.net/project/lame/lame/$(echo ${LAME_VERSION} | sed -e 's/[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)/\1.\2/')/lame-${LAME_VERSION}.tar.gz | \
+        curl -sL https://versaweb.dl.sourceforge.net/project/lame/lame/$(echo ${LAME_VERSION} | sed -e 's/[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)/\1.\2/')/lame-${LAME_VERSION}.tar.gz | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --bindir="${PREFIX}/bin" --enable-shared --enable-nasm --enable-pic --disable-frontend && \
         make && \
