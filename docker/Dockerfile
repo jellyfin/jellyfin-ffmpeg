@@ -22,7 +22,7 @@ ARG        PREFIX=/opt/ffmpeg
 ARG        MAKEFLAGS="-j2"
 ARG        SRC=/usr/local
 
-ARG         FFMPEG_VERSION=4.2
+ARG         FFMPEG_VERSION=4.2.1
 ARG         LAME_VERSION=3.100
 ARG         OPENCOREAMR_VERSION=0.1.5
 ARG         OPENJPEG_VERSION=2.1.2
