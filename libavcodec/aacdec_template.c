@@ -1673,25 +1673,24 @@ static int decode_spectrum_and_dequant(AACContext *ac, INTFLOAT coef[1024],
                 }
             } else if (cbt_m1 == NOISE_BT - 1) {
                 for (group = 0; group < (AAC_SIGNE)g_len; group++, cfo+=128) {
-#if !USE_FIXED
-                    float scale;
-#endif /* !USE_FIXED */
                     INTFLOAT band_energy;
-
+#if USE_FIXED
                     for (k = 0; k < off_len; k++) {
                         ac->random_state  = lcg_random(ac->random_state);
-#if USE_FIXED
                         cfo[k] = ac->random_state >> 3;
-#else
-                        cfo[k] = ac->random_state;
-#endif /* USE_FIXED */
                     }
 
-#if USE_FIXED
                     band_energy = ac->fdsp->scalarproduct_fixed(cfo, cfo, off_len);
                     band_energy = fixed_sqrt(band_energy, 31);
                     noise_scale(cfo, sf[idx], band_energy, off_len);
 #else
+                    float scale;
+
+                    for (k = 0; k < off_len; k++) {
+                        ac->random_state  = lcg_random(ac->random_state);
+                        cfo[k] = ac->random_state;
+                    }
+
                     band_energy = ac->fdsp->scalarproduct_float(cfo, cfo, off_len);
                     scale = sf[idx] / sqrtf(band_energy);
                     ac->fdsp->vector_fmul_scalar(cfo, cfo, scale, off_len);
@@ -1927,7 +1926,7 @@ static int decode_spectrum_and_dequant(AACContext *ac, INTFLOAT coef[1024],
             if (cbt_m1 < NOISE_BT - 1) {
                 for (group = 0; group < (int)g_len; group++, cfo+=128) {
                     ac->vector_pow43(cfo, off_len);
-                    ac->subband_scale(cfo, cfo, sf[idx], 34, off_len);
+                    ac->subband_scale(cfo, cfo, sf[idx], 34, off_len, ac->avctx);
                 }
             }
         }
@@ -2158,7 +2157,7 @@ static void apply_intensity_stereo(AACContext *ac,
                                       coef0 + group * 128 + offsets[i],
                                       scale,
                                       23,
-                                      offsets[i + 1] - offsets[i]);
+                                      offsets[i + 1] - offsets[i] ,ac->avctx);
 #else
                         ac->fdsp->vector_fmul_scalar(coef1 + group * 128 + offsets[i],
                                                     coef0 + group * 128 + offsets[i],
@@ -2493,6 +2492,9 @@ static void apply_tns(INTFLOAT coef_param[1024], TemporalNoiseShaping *tns,
     INTFLOAT tmp[TNS_MAX_ORDER+1];
     UINTFLOAT *coef = coef_param;
 
+    if(!mmm)
+        return;
+
     for (w = 0; w < ics->num_windows; w++) {
         bottom = ics->num_swb;
         for (filt = 0; filt < tns->n_filt[w]; filt++) {
@@ -2657,7 +2659,7 @@ static void imdct_and_windowing(AACContext *ac, SingleChannelElement *sce)
         ac->mdct.imdct_half(&ac->mdct, buf, in);
 #if USE_FIXED
         for (i=0; i<1024; i++)
-          buf[i] = (buf[i] + 4) >> 3;
+          buf[i] = (buf[i] + 4LL) >> 3;
 #endif /* USE_FIXED */
     }
 
@@ -3122,6 +3124,7 @@ static int aac_decode_frame_int(AVCodecContext *avctx, void *data,
     int samples = 0, multiplier, audio_found = 0, pce_found = 0;
     int is_dmono, sce_count = 0;
     int payload_alignment;
+    uint8_t che_presence[4][MAX_ELEM_ID] = {{0}};
 
     ac->frame = data;
 
@@ -3159,6 +3162,17 @@ static int aac_decode_frame_int(AVCodecContext *avctx, void *data,
         }
 
         if (elem_type < TYPE_DSE) {
+            if (che_presence[elem_type][elem_id]) {
+                int error = che_presence[elem_type][elem_id] > 1;
+                av_log(ac->avctx, error ? AV_LOG_ERROR : AV_LOG_DEBUG, "channel element %d.%d duplicate\n",
+                       elem_type, elem_id);
+                if (error) {
+                    err = AVERROR_INVALIDDATA;
+                    goto fail;
+                }
+            }
+            che_presence[elem_type][elem_id]++;
+
             if (!(che=get_che(ac, elem_type, elem_id))) {
                 av_log(ac->avctx, AV_LOG_ERROR, "channel element %d.%d is not allocated\n",
                        elem_type, elem_id);
@@ -3324,20 +3338,14 @@ static int aac_decode_frame(AVCodecContext *avctx, void *data,
                                        AV_PKT_DATA_JP_DUALMONO,
                                        &jp_dualmono_size);
 
-    if (new_extradata && 0) {
-        av_free(avctx->extradata);
-        avctx->extradata = av_mallocz(new_extradata_size +
-                                      AV_INPUT_BUFFER_PADDING_SIZE);
-        if (!avctx->extradata)
-            return AVERROR(ENOMEM);
-        avctx->extradata_size = new_extradata_size;
-        memcpy(avctx->extradata, new_extradata, new_extradata_size);
-        push_output_configuration(ac);
-        if (decode_audio_specific_config(ac, ac->avctx, &ac->oc[1].m4ac,
-                                         avctx->extradata,
-                                         avctx->extradata_size*8LL, 1) < 0) {
-            pop_output_configuration(ac);
-            return AVERROR_INVALIDDATA;
+    if (new_extradata) {
+        /* discard previous configuration */
+        ac->oc[1].status = OC_NONE;
+        err = decode_audio_specific_config(ac, ac->avctx, &ac->oc[1].m4ac,
+                                           new_extradata,
+                                           new_extradata_size * 8LL, 1);
+        if (err < 0) {
+            return err;
         }
     }
 

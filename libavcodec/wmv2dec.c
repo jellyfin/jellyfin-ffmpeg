@@ -33,6 +33,7 @@
 static int parse_mb_skip(Wmv2Context *w)
 {
     int mb_x, mb_y;
+    int coded_mb_count = 0;
     MpegEncContext *const s = &w->s;
     uint32_t *const mb_type = s->current_picture_ptr->mb_type;
 
@@ -83,6 +84,14 @@ static int parse_mb_skip(Wmv2Context *w)
         }
         break;
     }
+
+    for (mb_y = 0; mb_y < s->mb_height; mb_y++)
+        for (mb_x = 0; mb_x < s->mb_width; mb_x++)
+            coded_mb_count += !IS_SKIP(mb_type[mb_y * s->mb_stride + mb_x]);
+
+    if (coded_mb_count > get_bits_left(&s->gb))
+        return AVERROR_INVALIDDATA;
+
     return 0;
 }
 
@@ -140,6 +149,21 @@ int ff_wmv2_decode_picture_header(MpegEncContext *s)
     s->chroma_qscale = s->qscale = get_bits(&s->gb, 5);
     if (s->qscale <= 0)
         return AVERROR_INVALIDDATA;
+
+    if (s->pict_type != AV_PICTURE_TYPE_I && show_bits(&s->gb, 1)) {
+        GetBitContext gb = s->gb;
+        int skip_type = get_bits(&gb, 2);
+        int run = skip_type == SKIP_TYPE_COL ? s->mb_width : s->mb_height;
+
+        while (run > 0) {
+            int block = FFMIN(run, 25);
+            if (get_bits(&gb, block) + 1 != 1<<block)
+                break;
+            run -= block;
+        }
+        if (!run)
+            return FRAME_SKIPPED;
+    }
 
     return 0;
 }
@@ -214,6 +238,9 @@ int ff_wmv2_decode_secondary_picture_header(MpegEncContext *s)
             s->rl_table_index        = decode012(&s->gb);
             s->rl_chroma_table_index = s->rl_table_index;
         }
+
+        if (get_bits_left(&s->gb) < 2)
+            return AVERROR_INVALIDDATA;
 
         s->dc_table_index   = get_bits1(&s->gb);
         s->mv_table_index   = get_bits1(&s->gb);

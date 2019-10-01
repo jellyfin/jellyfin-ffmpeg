@@ -1024,18 +1024,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
     if (ff_rate_control_init(s) < 0)
         return -1;
 
-    if ((s->avctx->flags & AV_CODEC_FLAG_PASS2) && s->rc_strategy == MPV_RC_STRATEGY_XVID) {
-#if CONFIG_LIBXVID
-        ret = ff_xvid_rate_control_init(s);
-#else
-        ret = AVERROR(ENOSYS);
-        av_log(s->avctx, AV_LOG_ERROR,
-               "Xvid ratecontrol requires libavcodec compiled with Xvid support.\n");
-#endif
-        if (ret < 0)
-            return ret;
-    }
-
 #if FF_API_PRIVATE_OPT
     FF_DISABLE_DEPRECATION_WARNINGS
     if (avctx->brd_scale)
@@ -1082,10 +1070,6 @@ av_cold int ff_mpv_encode_end(AVCodecContext *avctx)
     int i;
 
     ff_rate_control_uninit(s);
-#if CONFIG_LIBXVID
-    if ((avctx->flags & AV_CODEC_FLAG_PASS2) && s->rc_strategy == MPV_RC_STRATEGY_XVID)
-        ff_xvid_rate_control_uninit(s);
-#endif
 
     ff_mpv_common_end(s);
     if (CONFIG_MJPEG_ENCODER &&
@@ -2021,7 +2005,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 av_log(s->avctx, AV_LOG_ERROR,
                        "Internal error, negative bits\n");
 
-            assert(s->repeat_first_field == 0);
+            av_assert1(s->repeat_first_field == 0);
 
             vbv_delay = bits * 90000 / s->avctx->rc_max_rate;
             min_delay = (minbits * 90000LL + s->avctx->rc_max_rate - 1) /
@@ -3072,7 +3056,7 @@ static int encode_thread(AVCodecContext *c, void *arg){
                         if(r % d == 0){
                             current_packet_size=0;
                             s->pb.buf_ptr= s->ptr_lastgob;
-                            assert(put_bits_ptr(&s->pb) == s->ptr_lastgob);
+                            av_assert1(put_bits_ptr(&s->pb) == s->ptr_lastgob);
                         }
                     }
 
@@ -3608,8 +3592,8 @@ static void merge_context_after_encode(MpegEncContext *dst, MpegEncContext *src)
         }
     }
 
-    assert(put_bits_count(&src->pb) % 8 ==0);
-    assert(put_bits_count(&dst->pb) % 8 ==0);
+    av_assert1(put_bits_count(&src->pb) % 8 ==0);
+    av_assert1(put_bits_count(&dst->pb) % 8 ==0);
     avpriv_copy_bits(&dst->pb, src->pb.buf, put_bits_count(&src->pb));
     flush_put_bits(&dst->pb);
 }
@@ -3620,13 +3604,7 @@ static int estimate_qp(MpegEncContext *s, int dry_run){
         s->current_picture.f->quality = s->next_lambda;
         if(!dry_run) s->next_lambda= 0;
     } else if (!s->fixed_qscale) {
-        int quality;
-#if CONFIG_LIBXVID
-        if ((s->avctx->flags & AV_CODEC_FLAG_PASS2) && s->rc_strategy == MPV_RC_STRATEGY_XVID)
-            quality = ff_xvid_rate_estimate_qscale(s, dry_run);
-        else
-#endif
-        quality = ff_rate_estimate_qscale(s, dry_run);
+        int quality = ff_rate_estimate_qscale(s, dry_run);
         s->current_picture_ptr->f->quality =
         s->current_picture.f->quality = quality;
         if (s->current_picture.f->quality < 0)
@@ -3664,11 +3642,11 @@ static void set_frame_distances(MpegEncContext * s){
 
     if(s->pict_type==AV_PICTURE_TYPE_B){
         s->pb_time= s->pp_time - (s->last_non_b_time - s->time);
-        assert(s->pb_time > 0 && s->pb_time < s->pp_time);
+        av_assert1(s->pb_time > 0 && s->pb_time < s->pp_time);
     }else{
         s->pp_time= s->time - s->last_non_b_time;
         s->last_non_b_time= s->time;
-        assert(s->picture_number==0 || s->pp_time > 0);
+        av_assert1(s->picture_number==0 || s->pp_time > 0);
     }
 }
 

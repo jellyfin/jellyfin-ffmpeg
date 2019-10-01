@@ -37,6 +37,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/opt.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "faxcompr.h"
@@ -46,11 +47,18 @@
 #include "tiff.h"
 #include "tiff_data.h"
 #include "thread.h"
+#include "get_bits.h"
 
 typedef struct TiffContext {
+    AVClass *class;
     AVCodecContext *avctx;
     GetByteContext gb;
 
+    int get_subimage;
+    uint16_t get_page;
+    int get_thumbnail;
+
+    enum TiffType tiff_type;
     int width, height;
     unsigned int bpp, bppcount;
     uint32_t palette[256];
@@ -64,6 +72,14 @@ typedef struct TiffContext {
     int predictor;
     int fill_order;
     uint32_t res[4];
+    int is_thumbnail;
+
+    int is_bayer;
+    uint8_t pattern[4];
+    unsigned white_level;
+
+    uint32_t sub_ifd;
+    uint16_t cur_page;
 
     int strips, rps, sstype;
     int sot;
@@ -80,6 +96,11 @@ typedef struct TiffContext {
     int geotag_count;
     TiffGeoTag *geotags;
 } TiffContext;
+
+static void tiff_set_type(TiffContext *s, enum TiffType tiff_type) {
+    if (s->tiff_type < tiff_type) // Prioritize higher-valued entries
+        s->tiff_type = tiff_type;
+}
 
 static void free_geotags(TiffContext *const s)
 {
@@ -236,7 +257,8 @@ static int add_metadata(int count, int type,
     };
 }
 
-static void av_always_inline horizontal_fill(unsigned int bpp, uint8_t* dst,
+static void av_always_inline horizontal_fill(TiffContext *s,
+                                             unsigned int bpp, uint8_t* dst,
                                              int usePtr, const uint8_t *src,
                                              uint8_t c, int width, int offset)
 {
@@ -267,6 +289,15 @@ static void av_always_inline horizontal_fill(unsigned int bpp, uint8_t* dst,
             dst[(width+offset)*2+0] = (usePtr ? src[width] : c) >> 4;
         }
         break;
+    case 12: {
+                 uint16_t *dst16 = (uint16_t *)dst;
+                 GetBitContext gb;
+                 init_get_bits8(&gb, src, width);
+                 for (int i = 0; i < s->width; i++) {
+                     dst16[i] = get_bits(&gb, 12) << 4;
+                 }
+             }
+        break;
     default:
         if (usePtr) {
             memcpy(dst + offset, src, width);
@@ -287,6 +318,19 @@ static int deinvert_buffer(TiffContext *s, const uint8_t *src, int size)
         s->deinvert_buf[i] = ff_reverse[src[i]];
 
     return 0;
+}
+
+static void unpack_gray(TiffContext *s, AVFrame *p,
+                       const uint8_t *src, int lnum, int width, int bpp)
+{
+    GetBitContext gb;
+    uint16_t *dst = (uint16_t *)(p->data[0] + lnum * p->linesize[0]);
+
+    init_get_bits8(&gb, src, width);
+
+    for (int i = 0; i < s->width; i++) {
+        dst[i] = get_bits(&gb, bpp);
+    }
 }
 
 static void unpack_yuv(TiffContext *s, AVFrame *p,
@@ -368,7 +412,7 @@ static int tiff_unpack_zlib(TiffContext *s, AVFrame *p, uint8_t *dst, int stride
     src = zbuf;
     for (line = 0; line < lines; line++) {
         if (s->bpp < 8 && s->avctx->pix_fmt == AV_PIX_FMT_PAL8) {
-            horizontal_fill(s->bpp, dst, 1, src, 0, width, 0);
+            horizontal_fill(s, s->bpp, dst, 1, src, 0, width, 0);
         } else {
             memcpy(dst, src, width);
         }
@@ -433,7 +477,7 @@ static int tiff_unpack_lzma(TiffContext *s, AVFrame *p, uint8_t *dst, int stride
     src = buf;
     for (line = 0; line < lines; line++) {
         if (s->bpp < 8 && s->avctx->pix_fmt == AV_PIX_FMT_PAL8) {
-            horizontal_fill(s->bpp, dst, 1, src, 0, width, 0);
+            horizontal_fill(s, s->bpp, dst, 1, src, 0, width, 0);
         } else {
             memcpy(dst, src, width);
         }
@@ -476,7 +520,7 @@ static int tiff_unpack_fax(TiffContext *s, uint8_t *dst, int stride,
                           s->compr, s->fax_opts);
     if (s->bpp < 8 && s->avctx->pix_fmt == AV_PIX_FMT_PAL8)
         for (line = 0; line < lines; line++) {
-            horizontal_fill(s->bpp, dst, 1, dst, 0, width, 0);
+            horizontal_fill(s, s->bpp, dst, 1, dst, 0, width, 0);
             dst += stride;
         }
     return ret;
@@ -515,6 +559,18 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
         width = width * s->subsampling[0] * s->subsampling[1] + 2*width;
         av_assert0(width <= bytes_per_row);
         av_assert0(s->bpp == 24);
+    }
+    if (s->is_bayer) {
+        width = (s->bpp * s->width + 7) >> 3;
+    }
+    if (p->format == AV_PIX_FMT_GRAY12) {
+        av_fast_padded_malloc(&s->yuv_line, &s->yuv_line_size, width);
+        if (s->yuv_line == NULL) {
+            av_log(s->avctx, AV_LOG_ERROR, "Not enough memory\n");
+            return AVERROR(ENOMEM);
+        }
+        dst = s->yuv_line;
+        stride = 0;
     }
 
     if (s->compr == TIFF_DEFLATE || s->compr == TIFF_ADOBE_DEFLATE) {
@@ -559,10 +615,12 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
                 return AVERROR_INVALIDDATA;
             }
             if (s->bpp < 8 && s->avctx->pix_fmt == AV_PIX_FMT_PAL8)
-                horizontal_fill(s->bpp, dst, 1, dst, 0, width, 0);
+                horizontal_fill(s, s->bpp, dst, 1, dst, 0, width, 0);
             if (is_yuv) {
                 unpack_yuv(s, p, dst, strip_start + line);
                 line += s->subsampling[1] - 1;
+            } else if (p->format == AV_PIX_FMT_GRAY12) {
+                unpack_gray(s, p, dst, strip_start + line, width, s->bpp);
             }
             dst += stride;
         }
@@ -595,7 +653,7 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
                 return AVERROR_INVALIDDATA;
 
             if (!s->fill_order) {
-                horizontal_fill(s->bpp * (s->avctx->pix_fmt == AV_PIX_FMT_PAL8),
+                horizontal_fill(s, s->bpp * (s->avctx->pix_fmt == AV_PIX_FMT_PAL8 || s->is_bayer),
                                 dst, 1, src, 0, width, 0);
             } else {
                 int i;
@@ -619,7 +677,7 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
                                "Copy went out of bounds\n");
                         return AVERROR_INVALIDDATA;
                     }
-                    horizontal_fill(s->bpp * (s->avctx->pix_fmt == AV_PIX_FMT_PAL8),
+                    horizontal_fill(s, s->bpp * (s->avctx->pix_fmt == AV_PIX_FMT_PAL8),
                                     dst, 1, src, 0, code, pixels);
                     src    += code;
                     pixels += code;
@@ -631,7 +689,7 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
                         return AVERROR_INVALIDDATA;
                     }
                     c = *src++;
-                    horizontal_fill(s->bpp * (s->avctx->pix_fmt == AV_PIX_FMT_PAL8),
+                    horizontal_fill(s, s->bpp * (s->avctx->pix_fmt == AV_PIX_FMT_PAL8),
                                     dst, 0, NULL, c, code, pixels);
                     pixels += code;
                 }
@@ -646,6 +704,8 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
         if (is_yuv) {
             unpack_yuv(s, p, dst, strip_start + line);
             line += s->subsampling[1] - 1;
+        } else if (p->format == AV_PIX_FMT_GRAY12) {
+            unpack_gray(s, p, dst, strip_start + line, width, s->bpp);
         }
         dst += stride;
     }
@@ -665,7 +725,7 @@ static int init_image(TiffContext *s, ThreadFrame *frame)
         return AVERROR_INVALIDDATA;
     }
 
-    switch (s->planar * 1000 + s->bpp * 10 + s->bppcount) {
+    switch (s->planar * 1000 + s->bpp * 10 + s->bppcount + s->is_bayer * 10000) {
     case 11:
         if (!s->palette_is_set) {
             s->avctx->pix_fmt = AV_PIX_FMT_MONOBLACK;
@@ -680,6 +740,69 @@ static int init_image(TiffContext *s, ThreadFrame *frame)
         break;
     case 81:
         s->avctx->pix_fmt = s->palette_is_set ? AV_PIX_FMT_PAL8 : AV_PIX_FMT_GRAY8;
+        break;
+    case 121:
+        s->avctx->pix_fmt = AV_PIX_FMT_GRAY12;
+        break;
+    case 10081:
+        switch (AV_RL32(s->pattern)) {
+        case 0x02010100:
+            s->avctx->pix_fmt = AV_PIX_FMT_BAYER_RGGB8;
+            break;
+        case 0x00010102:
+            s->avctx->pix_fmt = AV_PIX_FMT_BAYER_BGGR8;
+            break;
+        case 0x01000201:
+            s->avctx->pix_fmt = AV_PIX_FMT_BAYER_GBRG8;
+            break;
+        case 0x01020001:
+            s->avctx->pix_fmt = AV_PIX_FMT_BAYER_GRBG8;
+            break;
+        default:
+            av_log(s->avctx, AV_LOG_ERROR, "Unsupported Bayer pattern: 0x%X\n",
+                   AV_RL32(s->pattern));
+            return AVERROR_PATCHWELCOME;
+        }
+        break;
+    case 10121:
+        switch (AV_RL32(s->pattern)) {
+        case 0x02010100:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_RGGB16LE : AV_PIX_FMT_BAYER_RGGB16BE;
+            break;
+        case 0x00010102:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_BGGR16LE : AV_PIX_FMT_BAYER_BGGR16BE;
+            break;
+        case 0x01000201:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_GBRG16LE : AV_PIX_FMT_BAYER_GBRG16BE;
+            break;
+        case 0x01020001:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_GRBG16LE : AV_PIX_FMT_BAYER_GRBG16BE;
+            break;
+        default:
+            av_log(s->avctx, AV_LOG_ERROR, "Unsupported Bayer pattern: 0x%X\n",
+                   AV_RL32(s->pattern));
+            return AVERROR_PATCHWELCOME;
+        }
+        break;
+    case 10161:
+        switch (AV_RL32(s->pattern)) {
+        case 0x02010100:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_RGGB16LE : AV_PIX_FMT_BAYER_RGGB16BE;
+            break;
+        case 0x00010102:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_BGGR16LE : AV_PIX_FMT_BAYER_BGGR16BE;
+            break;
+        case 0x01000201:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_GBRG16LE : AV_PIX_FMT_BAYER_GBRG16BE;
+            break;
+        case 0x01020001:
+            s->avctx->pix_fmt = s->le ? AV_PIX_FMT_BAYER_GRBG16LE : AV_PIX_FMT_BAYER_GRBG16BE;
+            break;
+        default:
+            av_log(s->avctx, AV_LOG_ERROR, "Unsupported Bayer pattern: 0x%X\n",
+                   AV_RL32(s->pattern));
+            return AVERROR_PATCHWELCOME;
+        }
         break;
     case 243:
         if (s->photometric == TIFF_PHOTOMETRIC_YCBCR) {
@@ -712,7 +835,16 @@ static int init_image(TiffContext *s, ThreadFrame *frame)
         s->avctx->pix_fmt = s->le ? AV_PIX_FMT_YA16LE : AV_PIX_FMT_YA16BE;
         break;
     case 324:
-        s->avctx->pix_fmt = AV_PIX_FMT_RGBA;
+        s->avctx->pix_fmt = s->photometric == TIFF_PHOTOMETRIC_SEPARATED ? AV_PIX_FMT_RGB0 : AV_PIX_FMT_RGBA;
+        break;
+    case 405:
+        if (s->photometric == TIFF_PHOTOMETRIC_SEPARATED)
+            s->avctx->pix_fmt = AV_PIX_FMT_RGBA;
+        else {
+            av_log(s->avctx, AV_LOG_ERROR,
+                "bpp=40 without PHOTOMETRIC_SEPARATED is unsupported\n");
+            return AVERROR_PATCHWELCOME;
+        }
         break;
     case 483:
         s->avctx->pix_fmt = s->le ? AV_PIX_FMT_RGB48LE  : AV_PIX_FMT_RGB48BE;
@@ -824,6 +956,8 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
     }
 
     switch (tag) {
+    case TIFF_SUBFILE:
+        s->is_thumbnail = (value != 0);
     case TIFF_WIDTH:
         s->width = value;
         break;
@@ -831,7 +965,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         s->height = value;
         break;
     case TIFF_BPP:
-        if (count > 4U) {
+        if (count > 5U) {
             av_log(s->avctx, AV_LOG_ERROR,
                    "This format is not supported (bpp=%d, %d components)\n",
                    value, count);
@@ -862,7 +996,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
                    "Samples per pixel requires a single value, many provided\n");
             return AVERROR_INVALIDDATA;
         }
-        if (value > 4U) {
+        if (value > 5U) {
             av_log(s->avctx, AV_LOG_ERROR,
                    "Samples per pixel %d is too large\n", value);
             return AVERROR_INVALIDDATA;
@@ -961,21 +1095,44 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
     case TIFF_PREDICTOR:
         s->predictor = value;
         break;
+    case TIFF_SUB_IFDS:
+        if (count == 1)
+            s->sub_ifd = value;
+        else if (count > 1)
+            s->sub_ifd = ff_tget(&s->gb, TIFF_LONG, s->le); /** Only get the first SubIFD */
+        break;
+    case DNG_WHITE_LEVEL:
+        s->white_level = value;
+        break;
+    case TIFF_CFA_PATTERN_DIM:
+        if (count != 2 || (ff_tget(&s->gb, type, s->le) != 2 &&
+                           ff_tget(&s->gb, type, s->le) != 2)) {
+            av_log(s->avctx, AV_LOG_ERROR, "CFA Pattern dimensions are not 2x2\n");
+            return AVERROR_INVALIDDATA;
+        }
+        break;
+    case TIFF_CFA_PATTERN:
+        s->is_bayer = 1;
+        s->pattern[0] = ff_tget(&s->gb, type, s->le);
+        s->pattern[1] = ff_tget(&s->gb, type, s->le);
+        s->pattern[2] = ff_tget(&s->gb, type, s->le);
+        s->pattern[3] = ff_tget(&s->gb, type, s->le);
+        break;
     case TIFF_PHOTOMETRIC:
         switch (value) {
         case TIFF_PHOTOMETRIC_WHITE_IS_ZERO:
         case TIFF_PHOTOMETRIC_BLACK_IS_ZERO:
         case TIFF_PHOTOMETRIC_RGB:
         case TIFF_PHOTOMETRIC_PALETTE:
+        case TIFF_PHOTOMETRIC_SEPARATED:
         case TIFF_PHOTOMETRIC_YCBCR:
+        case TIFF_PHOTOMETRIC_CFA:
             s->photometric = value;
             break;
         case TIFF_PHOTOMETRIC_ALPHA_MASK:
-        case TIFF_PHOTOMETRIC_SEPARATED:
         case TIFF_PHOTOMETRIC_CIE_LAB:
         case TIFF_PHOTOMETRIC_ICC_LAB:
         case TIFF_PHOTOMETRIC_ITU_LAB:
-        case TIFF_PHOTOMETRIC_CFA:
         case TIFF_PHOTOMETRIC_LOG_L:
         case TIFF_PHOTOMETRIC_LOG_LUV:
         case TIFF_PHOTOMETRIC_LINEAR_RAW:
@@ -1185,14 +1342,41 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         break;
     case TIFF_PAGE_NUMBER:
         ADD_METADATA(count, "page_number", " / ");
+        // need to seek back to re-read the page number
+        bytestream2_seek(&s->gb, -count * sizeof(uint16_t), SEEK_CUR);
+        // read the page number
+        s->cur_page = ff_tget(&s->gb, TIFF_SHORT, s->le);
+        // get back to where we were before the previous seek
+        bytestream2_seek(&s->gb, count * sizeof(uint16_t) - sizeof(uint16_t), SEEK_CUR);
         break;
     case TIFF_SOFTWARE_NAME:
         ADD_METADATA(count, "software", NULL);
         break;
+    case DNG_VERSION:
+        if (count == 4) {
+            unsigned int ver[4];
+            ver[0] = ff_tget(&s->gb, type, s->le);
+            ver[1] = ff_tget(&s->gb, type, s->le);
+            ver[2] = ff_tget(&s->gb, type, s->le);
+            ver[3] = ff_tget(&s->gb, type, s->le);
+
+            av_log(s->avctx, AV_LOG_DEBUG, "DNG file, version %u.%u.%u.%u\n",
+                ver[0], ver[1], ver[2], ver[3]);
+
+            tiff_set_type(s, TIFF_TYPE_DNG);
+        }
+        break;
+    case CINEMADNG_TIME_CODES:
+    case CINEMADNG_FRAME_RATE:
+    case CINEMADNG_T_STOP:
+    case CINEMADNG_REEL_NAME:
+    case CINEMADNG_CAMERA_LABEL:
+        tiff_set_type(s, TIFF_TYPE_CINEMADNG);
+        break;
     default:
         if (s->avctx->err_recognition & AV_EF_EXPLODE) {
             av_log(s->avctx, AV_LOG_ERROR,
-                   "Unknown or unsupported tag %d/0X%0X\n",
+                   "Unknown or unsupported tag %d/0x%0X\n",
                    tag, tag);
             return AVERROR_INVALIDDATA;
         }
@@ -1215,13 +1399,14 @@ static int decode_frame(AVCodecContext *avctx,
     TiffContext *const s = avctx->priv_data;
     AVFrame *const p = data;
     ThreadFrame frame = { .f = data };
-    unsigned off;
+    unsigned off, last_off;
     int le, ret, plane, planes;
     int i, j, entries, stride;
     unsigned soff, ssize;
     uint8_t *dst;
     GetByteContext stripsizes;
     GetByteContext stripdata;
+    int retry_for_subifd, retry_for_page;
 
     bytestream2_init(&s->gb, avpkt->data, avpkt->size);
 
@@ -1235,10 +1420,16 @@ static int decode_frame(AVCodecContext *avctx,
     }
     s->le          = le;
     // TIFF_BPP is not a required tag and defaults to 1
+again:
+    s->is_thumbnail = 0;
     s->bppcount    = s->bpp = 1;
     s->photometric = TIFF_PHOTOMETRIC_NONE;
     s->compr       = TIFF_RAW;
     s->fill_order  = 0;
+    s->white_level = 0;
+    s->is_bayer    = 0;
+    s->cur_page    = 0;
+    s->tiff_type   = TIFF_TYPE_TIFF;
     free_geotags(s);
 
     // Reset these offsets so we can tell if they were set this frame
@@ -1251,6 +1442,42 @@ static int decode_frame(AVCodecContext *avctx,
     for (i = 0; i < entries; i++) {
         if ((ret = tiff_decode_tag(s, p)) < 0)
             return ret;
+    }
+
+    if (s->get_thumbnail && !s->is_thumbnail) {
+        av_log(avctx, AV_LOG_INFO, "No embedded thumbnail present\n");
+        return AVERROR_EOF;
+    }
+
+    /** whether we should process this IFD's SubIFD */
+    retry_for_subifd = s->sub_ifd && (s->get_subimage || (!s->get_thumbnail && s->is_thumbnail));
+    /** whether we should process this multi-page IFD's next page */
+    retry_for_page = s->get_page && s->cur_page + 1 < s->get_page;  // get_page is 1-indexed
+
+    last_off = off;
+    if (retry_for_page) {
+        // set offset to the next IFD
+        off = ff_tget_long(&s->gb, le);
+    } else if (retry_for_subifd) {
+        // set offset to the SubIFD
+        off = s->sub_ifd;
+    }
+
+    if (retry_for_subifd || retry_for_page) {
+        if (!off) {
+            av_log(avctx, AV_LOG_ERROR, "Requested entry not found\n");
+            return AVERROR_INVALIDDATA;
+        }
+        if (off <= last_off) {
+            avpriv_request_sample(s->avctx, "non increasing IFD offset\n");
+            return AVERROR_INVALIDDATA;
+        }
+        if (off >= UINT_MAX - 14 || avpkt->size < off + 14) {
+            av_log(avctx, AV_LOG_ERROR, "IFD offset is greater than image size\n");
+            return AVERROR_INVALIDDATA;
+        }
+        s->sub_ifd = 0;
+        goto again;
     }
 
     for (i = 0; i<s->geotag_count; i++) {
@@ -1303,8 +1530,19 @@ static int decode_frame(AVCodecContext *avctx,
 
     planes = s->planar ? s->bppcount : 1;
     for (plane = 0; plane < planes; plane++) {
+        uint8_t *five_planes = NULL;
+        int remaining = avpkt->size;
+        int decoded_height;
         stride = p->linesize[plane];
         dst = p->data[plane];
+        if (s->photometric == TIFF_PHOTOMETRIC_SEPARATED &&
+            s->avctx->pix_fmt == AV_PIX_FMT_RGBA) {
+            stride = stride * 5 / 4;
+            five_planes =
+            dst = av_malloc(stride * s->height);
+            if (!dst)
+                return AVERROR(ENOMEM);
+        }
         for (i = 0; i < s->height; i += s->rps) {
             if (i)
                 dst += s->rps * stride;
@@ -1318,23 +1556,29 @@ static int decode_frame(AVCodecContext *avctx,
             else
                 soff = s->stripoff;
 
-            if (soff > avpkt->size || ssize > avpkt->size - soff) {
+            if (soff > avpkt->size || ssize > avpkt->size - soff || ssize > remaining) {
                 av_log(avctx, AV_LOG_ERROR, "Invalid strip size/offset\n");
+                av_freep(&five_planes);
                 return AVERROR_INVALIDDATA;
             }
+            remaining -= ssize;
             if ((ret = tiff_unpack_strip(s, p, dst, stride, avpkt->data + soff, ssize, i,
                                          FFMIN(s->rps, s->height - i))) < 0) {
-                if (avctx->err_recognition & AV_EF_EXPLODE)
+                if (avctx->err_recognition & AV_EF_EXPLODE) {
+                    av_freep(&five_planes);
                     return ret;
+                }
                 break;
             }
         }
+        decoded_height = FFMIN(i, s->height);
+
         if (s->predictor == 2) {
             if (s->photometric == TIFF_PHOTOMETRIC_YCBCR) {
                 av_log(s->avctx, AV_LOG_ERROR, "predictor == 2 with YUV is unsupported");
                 return AVERROR_PATCHWELCOME;
             }
-            dst   = p->data[plane];
+            dst   = five_planes ? five_planes : p->data[plane];
             soff  = s->bpp >> 3;
             if (s->planar)
                 soff  = FFMAX(soff / s->bppcount, 1);
@@ -1345,7 +1589,7 @@ static int decode_frame(AVCodecContext *avctx,
                 s->avctx->pix_fmt == AV_PIX_FMT_YA16LE ||
                 s->avctx->pix_fmt == AV_PIX_FMT_GBRP16LE ||
                 s->avctx->pix_fmt == AV_PIX_FMT_GBRAP16LE) {
-                for (i = 0; i < s->height; i++) {
+                for (i = 0; i < decoded_height; i++) {
                     for (j = soff; j < ssize; j += 2)
                         AV_WL16(dst + j, AV_RL16(dst + j) + AV_RL16(dst + j - soff));
                     dst += stride;
@@ -1356,13 +1600,13 @@ static int decode_frame(AVCodecContext *avctx,
                        s->avctx->pix_fmt == AV_PIX_FMT_YA16BE ||
                        s->avctx->pix_fmt == AV_PIX_FMT_GBRP16BE ||
                        s->avctx->pix_fmt == AV_PIX_FMT_GBRAP16BE) {
-                for (i = 0; i < s->height; i++) {
+                for (i = 0; i < decoded_height; i++) {
                     for (j = soff; j < ssize; j += 2)
                         AV_WB16(dst + j, AV_RB16(dst + j) + AV_RB16(dst + j - soff));
                     dst += stride;
                 }
             } else {
-                for (i = 0; i < s->height; i++) {
+                for (i = 0; i < decoded_height; i++) {
                     for (j = soff; j < ssize; j++)
                         dst[j] += dst[j - soff];
                     dst += stride;
@@ -1379,6 +1623,44 @@ static int decode_frame(AVCodecContext *avctx,
                 dst += stride;
             }
         }
+
+        if (s->photometric == TIFF_PHOTOMETRIC_SEPARATED &&
+            (s->avctx->pix_fmt == AV_PIX_FMT_RGB0 || s->avctx->pix_fmt == AV_PIX_FMT_RGBA)) {
+            int x = s->avctx->pix_fmt == AV_PIX_FMT_RGB0 ? 4 : 5;
+            uint8_t *src = five_planes ? five_planes : p->data[plane];
+            dst = p->data[plane];
+            for (i = 0; i < s->height; i++) {
+                for (j = 0; j < s->width; j++) {
+                    int k =  255 - src[x * j + 3];
+                    int r = (255 - src[x * j    ]) * k;
+                    int g = (255 - src[x * j + 1]) * k;
+                    int b = (255 - src[x * j + 2]) * k;
+                    dst[4 * j    ] = r * 257 >> 16;
+                    dst[4 * j + 1] = g * 257 >> 16;
+                    dst[4 * j + 2] = b * 257 >> 16;
+                    dst[4 * j + 3] = s->avctx->pix_fmt == AV_PIX_FMT_RGBA ? src[x * j + 4] : 255;
+                }
+                src += stride;
+                dst += p->linesize[plane];
+            }
+            av_freep(&five_planes);
+        } else if (s->photometric == TIFF_PHOTOMETRIC_SEPARATED &&
+            s->avctx->pix_fmt == AV_PIX_FMT_RGBA64BE) {
+            dst = p->data[plane];
+            for (i = 0; i < s->height; i++) {
+                for (j = 0; j < s->width; j++) {
+                    uint64_t k =  65535 - AV_RB16(dst + 8 * j + 6);
+                    uint64_t r = (65535 - AV_RB16(dst + 8 * j    )) * k;
+                    uint64_t g = (65535 - AV_RB16(dst + 8 * j + 2)) * k;
+                    uint64_t b = (65535 - AV_RB16(dst + 8 * j + 4)) * k;
+                    AV_WB16(dst + 8 * j    , r * 65537 >> 32);
+                    AV_WB16(dst + 8 * j + 2, g * 65537 >> 32);
+                    AV_WB16(dst + 8 * j + 4, b * 65537 >> 32);
+                    AV_WB16(dst + 8 * j + 6, 65535);
+                }
+                dst += p->linesize[plane];
+            }
+        }
     }
 
     if (s->planar && s->bppcount > 2) {
@@ -1386,6 +1668,15 @@ static int decode_frame(AVCodecContext *avctx,
         FFSWAP(int,      p->linesize[0], p->linesize[2]);
         FFSWAP(uint8_t*, p->data[0],     p->data[1]);
         FFSWAP(int,      p->linesize[0], p->linesize[1]);
+    }
+
+    if (s->is_bayer && s->white_level && s->bpp == 16) {
+        uint16_t *dst = (uint16_t *)p->data[0];
+        for (i = 0; i < s->height; i++) {
+            for (j = 0; j < s->width; j++)
+                dst[j] = FFMIN((dst[j] / (float)s->white_level) * 65535, 65535);
+            dst += stride / 2;
+        }
     }
 
     *got_frame = 1;
@@ -1403,6 +1694,8 @@ static av_cold int tiff_init(AVCodecContext *avctx)
     s->subsampling[1] = 1;
     s->avctx  = avctx;
     ff_lzw_decode_open(&s->lzw);
+    if (!s->lzw)
+        return AVERROR(ENOMEM);
     ff_ccitt_unpack_init();
 
     return 0;
@@ -1417,10 +1710,27 @@ static av_cold int tiff_end(AVCodecContext *avctx)
     ff_lzw_decode_close(&s->lzw);
     av_freep(&s->deinvert_buf);
     s->deinvert_buf_size = 0;
+    av_freep(&s->yuv_line);
+    s->yuv_line_size = 0;
     av_freep(&s->fax_buffer);
     s->fax_buffer_size = 0;
     return 0;
 }
+
+#define OFFSET(x) offsetof(TiffContext, x)
+static const AVOption tiff_options[] = {
+    { "subimage", "decode subimage instead if available", OFFSET(get_subimage), AV_OPT_TYPE_BOOL, {.i64=0},  0, 1, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_VIDEO_PARAM },
+    { "thumbnail", "decode embedded thumbnail subimage instead if available", OFFSET(get_thumbnail), AV_OPT_TYPE_BOOL, {.i64=0},  0, 1, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_VIDEO_PARAM },
+    { "page", "page number of multi-page image to decode (starting from 1)", OFFSET(get_page), AV_OPT_TYPE_INT, {.i64=0}, 0, UINT16_MAX, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_VIDEO_PARAM },
+    { NULL },
+};
+
+static const AVClass tiff_decoder_class = {
+    .class_name = "TIFF decoder",
+    .item_name  = av_default_item_name,
+    .option     = tiff_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
 
 AVCodec ff_tiff_decoder = {
     .name           = "tiff",
@@ -1433,4 +1743,5 @@ AVCodec ff_tiff_decoder = {
     .decode         = decode_frame,
     .init_thread_copy = ONLY_IF_THREADS_ENABLED(tiff_init),
     .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .priv_class     = &tiff_decoder_class,
 };

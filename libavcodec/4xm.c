@@ -145,7 +145,7 @@ typedef struct FourXContext {
     int mv[256];
     VLC pre_vlc;
     int last_dc;
-    DECLARE_ALIGNED(16, int16_t, block)[6][64];
+    DECLARE_ALIGNED(32, int16_t, block)[6][64];
     void *bitstream_buffer;
     unsigned int bitstream_buffer_size;
     int version;
@@ -158,7 +158,7 @@ typedef struct FourXContext {
 #define FIX_1_847759065 121095
 #define FIX_2_613125930 171254
 
-#define MULTIPLY(var, const) (((var) * (const)) >> 16)
+#define MULTIPLY(var, const) ((int)((var) * (unsigned)(const)) >> 16)
 
 static void idct(int16_t block[64])
 {
@@ -351,6 +351,8 @@ static int decode_p_block(FourXContext *f, uint16_t *dst, const uint16_t *src,
     index = size2index[log2h][log2w];
     av_assert0(index >= 0);
 
+    if (get_bits_left(&f->gb) < 1)
+        return AVERROR_INVALIDDATA;
     h     = 1 << log2h;
     code  = get_vlc2(&f->gb, block_type_vlc[1 - (f->version > 1)][index].table,
                      BLOCK_TYPE_VLC_BITS, 1);
@@ -697,6 +699,7 @@ static const uint8_t *read_huffman_tables(FourXContext *f,
         len_tab[j]  = len;
     }
 
+    ff_free_vlc(&f->pre_vlc);
     if (init_vlc(&f->pre_vlc, ACDC_VLC_BITS, 257, len_tab, 1, 1,
                  bits_tab, 4, 4, 0))
         return NULL;

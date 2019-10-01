@@ -312,7 +312,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     av_log(avctx, AV_LOG_TRACE,
             "Frame: width=%d stride=%d height=%d slice-height=%d "
-            "crop-top=%d crop-bottom=%d crop-left=%d crop-right=%d encoder=%s\n"
+            "crop-top=%d crop-bottom=%d crop-left=%d crop-right=%d encoder=%s "
             "destination linesizes=%d,%d,%d\n" ,
             avctx->width, s->stride, avctx->height, s->slice_height,
             s->crop_top, s->crop_bottom, s->crop_left, s->crop_right, s->codec_name,
@@ -631,21 +631,21 @@ int ff_mediacodec_dec_send(AVCodecContext *avctx, MediaCodecDecContext *s,
                    "Queued input buffer %zd size=%zd ts=%"PRIi64"\n", index, size, pts);
 
             s->draining = 1;
-            break;
-        } else {
-            size = FFMIN(pkt->size - offset, size);
-            memcpy(data, pkt->data + offset, size);
-            offset += size;
-
-            status = ff_AMediaCodec_queueInputBuffer(codec, index, 0, size, pts, 0);
-            if (status < 0) {
-                av_log(avctx, AV_LOG_ERROR, "Failed to queue input buffer (status = %d)\n", status);
-                return AVERROR_EXTERNAL;
-            }
-
-            av_log(avctx, AV_LOG_TRACE,
-                   "Queued input buffer %zd size=%zd ts=%"PRIi64"\n", index, size, pts);
+            return 0;
         }
+
+        size = FFMIN(pkt->size - offset, size);
+        memcpy(data, pkt->data + offset, size);
+        offset += size;
+
+        status = ff_AMediaCodec_queueInputBuffer(codec, index, 0, size, pts, 0);
+        if (status < 0) {
+            av_log(avctx, AV_LOG_ERROR, "Failed to queue input buffer (status = %d)\n", status);
+            return AVERROR_EXTERNAL;
+        }
+
+        av_log(avctx, AV_LOG_TRACE,
+               "Queued input buffer %zd size=%zd ts=%"PRIi64"\n", index, size, pts);
     }
 
     if (offset == 0)

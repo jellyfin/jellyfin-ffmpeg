@@ -31,6 +31,8 @@
 #define SEEKPOINT_SIZE 18
 
 typedef struct FLACDecContext {
+    AVClass *class;
+    int raw_packet_size;
     int found_seektable;
 } FLACDecContext;
 
@@ -211,7 +213,7 @@ fail:
     return ret;
 }
 
-static int raw_flac_probe(AVProbeData *p)
+static int raw_flac_probe(const AVProbeData *p)
 {
     if ((p->buf[2] & 0xF0) == 0)    // blocksize code invalid
         return 0;
@@ -227,7 +229,7 @@ static int raw_flac_probe(AVProbeData *p)
     return AVPROBE_SCORE_EXTENSION / 4 + 1;
 }
 
-static int flac_probe(AVProbeData *p)
+static int flac_probe(const AVProbeData *p)
 {
     if ((AV_RB16(p->buf) & 0xFFFE) == 0xFFF8)
         return raw_flac_probe(p);
@@ -327,6 +329,7 @@ static int flac_seek(AVFormatContext *s, int stream_index, int64_t timestamp, in
     return -1;
 }
 
+FF_RAW_DEMUXER_CLASS(flac)
 AVInputFormat ff_flac_demuxer = {
     .name           = "flac",
     .long_name      = NULL_IF_CONFIG_SMALL("raw FLAC"),
@@ -339,4 +342,5 @@ AVInputFormat ff_flac_demuxer = {
     .extensions     = "flac",
     .raw_codec_id   = AV_CODEC_ID_FLAC,
     .priv_data_size = sizeof(FLACDecContext),
+    .priv_class     = &flac_demuxer_class,
 };

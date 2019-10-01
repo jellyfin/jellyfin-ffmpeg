@@ -183,7 +183,7 @@ static int vp5_parse_coeff(VP56Context *s)
     int b, i, cg, idx, ctx, ctx_last;
     int pt = 0;    /* plane type (0 for Y, 1 for U or V) */
 
-    if (c->end <= c->buffer && c->bits >= 0) {
+    if (vpX_rac_is_end(c)) {
         av_log(s->avctx, AV_LOG_ERROR, "End of AC stream reached in vp5_parse_coeff\n");
         return AVERROR_INVALIDDATA;
     }
@@ -252,6 +252,7 @@ static int vp5_parse_coeff(VP56Context *s)
             for (i=coeff_idx; i<=ctx_last; i++)
                 s->coeff_ctx[ff_vp56_b6to4[b]][i] = 5;
         s->above_blocks[s->above_block_idx[b]].not_null_dc = s->coeff_ctx[ff_vp56_b6to4[b]][0];
+        s->idct_selector[b] = 63;
     }
     return 0;
 }

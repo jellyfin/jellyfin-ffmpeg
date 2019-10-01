@@ -132,7 +132,6 @@ static av_cold int flashsv_decode_init(AVCodecContext *avctx)
 
     s->frame = av_frame_alloc();
     if (!s->frame) {
-        flashsv_decode_end(avctx);
         return AVERROR(ENOMEM);
     }
 
@@ -518,6 +517,7 @@ AVCodec ff_flashsv_decoder = {
     .close          = flashsv_decode_end,
     .decode         = flashsv_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_BGR24, AV_PIX_FMT_NONE },
 };
 #endif /* CONFIG_FLASHSV_DECODER */
@@ -551,7 +551,11 @@ static const uint32_t ff_flashsv2_default_palette[128] = {
 static av_cold int flashsv2_decode_init(AVCodecContext *avctx)
 {
     FlashSVContext *s = avctx->priv_data;
-    flashsv_decode_init(avctx);
+    int ret;
+
+    ret = flashsv_decode_init(avctx);
+    if (ret < 0)
+        return ret;
     s->pal = ff_flashsv2_default_palette;
     s->ver = 2;
 
@@ -581,6 +585,7 @@ AVCodec ff_flashsv2_decoder = {
     .close          = flashsv2_decode_end,
     .decode         = flashsv_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_BGR24, AV_PIX_FMT_NONE },
 };
 #endif /* CONFIG_FLASHSV2_DECODER */

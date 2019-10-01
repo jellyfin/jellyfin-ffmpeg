@@ -72,7 +72,7 @@ typedef struct HWAccel {
 } HWAccel;
 
 typedef struct HWDevice {
-    char *name;
+    const char *name;
     enum AVHWDeviceType type;
     AVBufferRef *device_ref;
 } HWDevice;
@@ -484,6 +484,7 @@ typedef struct OutputStream {
     AVRational frame_aspect_ratio;
 
     /* forced key frames */
+    int64_t forced_kf_ref_pts;
     int64_t *forced_kf_pts;
     int forced_kf_count;
     int forced_kf_index;

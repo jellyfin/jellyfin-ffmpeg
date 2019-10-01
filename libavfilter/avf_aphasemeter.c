@@ -106,7 +106,7 @@ static int config_input(AVFilterLink *inlink)
     int nb_samples;
 
     if (s->do_video) {
-        nb_samples = FFMAX(1024, ((double)inlink->sample_rate / av_q2d(s->frame_rate)) + 0.5);
+        nb_samples = FFMAX(1, av_rescale(inlink->sample_rate, s->frame_rate.den, s->frame_rate.num));
         inlink->partial_buf_size =
         inlink->min_samples =
         inlink->max_samples = nb_samples;
@@ -233,6 +233,7 @@ static av_cold int init(AVFilterContext *ctx)
 {
     AudioPhaseMeterContext *s = ctx->priv;
     AVFilterPad pad;
+    int ret;
 
     pad = (AVFilterPad){
         .name         = av_strdup("out0"),
@@ -240,7 +241,11 @@ static av_cold int init(AVFilterContext *ctx)
     };
     if (!pad.name)
         return AVERROR(ENOMEM);
-    ff_insert_outpad(ctx, 0, &pad);
+    ret = ff_insert_outpad(ctx, 0, &pad);
+    if (ret < 0) {
+        av_freep(&pad.name);
+        return ret;
+    }
 
     if (s->do_video) {
         pad = (AVFilterPad){
@@ -250,7 +255,11 @@ static av_cold int init(AVFilterContext *ctx)
         };
         if (!pad.name)
             return AVERROR(ENOMEM);
-        ff_insert_outpad(ctx, 1, &pad);
+        ret = ff_insert_outpad(ctx, 1, &pad);
+        if (ret < 0) {
+            av_freep(&pad.name);
+            return ret;
+        }
     }
 
     return 0;

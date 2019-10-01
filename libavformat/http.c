@@ -113,6 +113,7 @@ typedef struct HTTPContext {
     uint8_t *inflate_buffer;
 #endif /* CONFIG_ZLIB */
     AVDictionary *chained_options;
+    /* -1 = try to send if applicable, 0 = always disabled, 1 = always enabled */
     int send_expect_100;
     char *method;
     int reconnect;
@@ -141,7 +142,7 @@ static const AVOption options[] = {
     { "user_agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
     { "referer", "override referer header", OFFSET(referer), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D },
 #if FF_API_HTTP_USER_AGENT
-    { "user-agent", "override User-Agent header", OFFSET(user_agent_deprecated), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
+    { "user-agent", "use the \"user_agent\" option instead", OFFSET(user_agent_deprecated), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D|AV_OPT_FLAG_DEPRECATED },
 #endif
     { "multiple_requests", "use persistent connections", OFFSET(multiple_requests), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D | E },
     { "post_data", "set custom HTTP post data", OFFSET(post_data), AV_OPT_TYPE_BINARY, .flags = D | E },
@@ -155,7 +156,7 @@ static const AVOption options[] = {
     { "auth_type", "HTTP authentication type", OFFSET(auth_state.auth_type), AV_OPT_TYPE_INT, { .i64 = HTTP_AUTH_NONE }, HTTP_AUTH_NONE, HTTP_AUTH_BASIC, D | E, "auth_type"},
     { "none", "No auth method set, autodetect", 0, AV_OPT_TYPE_CONST, { .i64 = HTTP_AUTH_NONE }, 0, 0, D | E, "auth_type"},
     { "basic", "HTTP basic authentication", 0, AV_OPT_TYPE_CONST, { .i64 = HTTP_AUTH_BASIC }, 0, 0, D | E, "auth_type"},
-    { "send_expect_100", "Force sending an Expect: 100-continue header for POST", OFFSET(send_expect_100), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, E },
+    { "send_expect_100", "Force sending an Expect: 100-continue header for POST", OFFSET(send_expect_100), AV_OPT_TYPE_BOOL, { .i64 = -1 }, -1, 1, E },
     { "location", "The actual location of the data received", OFFSET(location), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "offset", "initial byte offset", OFFSET(off), AV_OPT_TYPE_INT64, { .i64 = 0 }, 0, INT64_MAX, D },
     { "end_offset", "try to limit the request to bytes preceding this offset", OFFSET(end_off), AV_OPT_TYPE_INT64, { .i64 = 0 }, 0, INT64_MAX, D },
@@ -541,7 +542,7 @@ static int http_open(URLContext *h, const char *uri, int flags,
         int len = strlen(s->headers);
         if (len < 2 || strcmp("\r\n", s->headers + len - 2)) {
             av_log(h, AV_LOG_WARNING,
-                   "No trailing CRLF found in HTTP header.\n");
+                   "No trailing CRLF found in HTTP header. Adding it.\n");
             ret = av_reallocp(&s->headers, len + 3);
             if (ret < 0)
                 return ret;
@@ -1019,7 +1020,8 @@ static int process_line(URLContext *h, char *line, int line_count,
 /**
  * Create a string containing cookie values for use as a HTTP cookie header
  * field value for a particular path and domain from the cookie values stored in
- * the HTTP protocol context. The cookie string is stored in *cookies.
+ * the HTTP protocol context. The cookie string is stored in *cookies, and may
+ * be NULL if there are no valid cookies.
  *
  * @return a negative value if an error condition occurred, 0 otherwise
  */
@@ -1029,15 +1031,20 @@ static int get_cookies(HTTPContext *s, char **cookies, const char *path,
     // cookie strings will look like Set-Cookie header field values.  Multiple
     // Set-Cookie fields will result in multiple values delimited by a newline
     int ret = 0;
-    char *cookie, *set_cookies = av_strdup(s->cookies), *next = set_cookies;
-
-    if (!set_cookies) return AVERROR(EINVAL);
+    char *cookie, *set_cookies, *next;
 
     // destroy any cookies in the dictionary.
     av_dict_free(&s->cookie_dict);
 
+    if (!s->cookies)
+        return 0;
+
+    next = set_cookies = av_strdup(s->cookies);
+    if (!next)
+        return AVERROR(ENOMEM);
+
     *cookies = NULL;
-    while ((cookie = av_strtok(next, "\n", &next))) {
+    while ((cookie = av_strtok(next, "\n", &next)) && !ret) {
         AVDictionary *cookie_params = NULL;
         AVDictionaryEntry *cookie_entry, *e;
 
@@ -1047,23 +1054,19 @@ static int get_cookies(HTTPContext *s, char **cookies, const char *path,
 
         // continue on to the next cookie if this one cannot be parsed
         if (parse_set_cookie(cookie, &cookie_params))
-            continue;
+            goto skip_cookie;
 
         // if the cookie has no value, skip it
         cookie_entry = av_dict_get(cookie_params, "", NULL, AV_DICT_IGNORE_SUFFIX);
-        if (!cookie_entry || !cookie_entry->value) {
-            av_dict_free(&cookie_params);
-            continue;
-        }
+        if (!cookie_entry || !cookie_entry->value)
+            goto skip_cookie;
 
         // if the cookie has expired, don't add it
         if ((e = av_dict_get(cookie_params, "expires", NULL, 0)) && e->value) {
             struct tm tm_buf = {0};
             if (!parse_set_cookie_expiry_time(e->value, &tm_buf)) {
-                if (av_timegm(&tm_buf) < av_gettime() / 1000000) {
-                    av_dict_free(&cookie_params);
-                    continue;
-                }
+                if (av_timegm(&tm_buf) < av_gettime() / 1000000)
+                    goto skip_cookie;
             }
         }
 
@@ -1071,42 +1074,32 @@ static int get_cookies(HTTPContext *s, char **cookies, const char *path,
         if ((e = av_dict_get(cookie_params, "domain", NULL, 0)) && e->value) {
             // find the offset comparison is on the min domain (b.com, not a.b.com)
             int domain_offset = strlen(domain) - strlen(e->value);
-            if (domain_offset < 0) {
-                av_dict_free(&cookie_params);
-                continue;
-            }
+            if (domain_offset < 0)
+                goto skip_cookie;
 
             // match the cookie domain
-            if (av_strcasecmp(&domain[domain_offset], e->value)) {
-                av_dict_free(&cookie_params);
-                continue;
-            }
+            if (av_strcasecmp(&domain[domain_offset], e->value))
+                goto skip_cookie;
         }
 
         // ensure this cookie matches the path
         e = av_dict_get(cookie_params, "path", NULL, 0);
-        if (!e || av_strncasecmp(path, e->value, strlen(e->value))) {
-            av_dict_free(&cookie_params);
-            continue;
-        }
+        if (!e || av_strncasecmp(path, e->value, strlen(e->value)))
+            goto skip_cookie;
 
         // cookie parameters match, so copy the value
         if (!*cookies) {
-            if (!(*cookies = av_asprintf("%s=%s", cookie_entry->key, cookie_entry->value))) {
-                ret = AVERROR(ENOMEM);
-                break;
-            }
+            *cookies = av_asprintf("%s=%s", cookie_entry->key, cookie_entry->value);
         } else {
             char *tmp = *cookies;
-            size_t str_size = strlen(cookie_entry->key) + strlen(cookie_entry->value) + strlen(*cookies) + 4;
-            if (!(*cookies = av_malloc(str_size))) {
-                ret = AVERROR(ENOMEM);
-                av_free(tmp);
-                break;
-            }
-            snprintf(*cookies, str_size, "%s; %s=%s", tmp, cookie_entry->key, cookie_entry->value);
+            *cookies = av_asprintf("%s; %s=%s", tmp, cookie_entry->key, cookie_entry->value);
             av_free(tmp);
         }
+        if (!*cookies)
+            ret = AVERROR(ENOMEM);
+
+    skip_cookie:
+        av_dict_free(&cookie_params);
     }
 
     av_free(set_cookies);
@@ -1187,21 +1180,25 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
                                                 local_path, method);
     proxyauthstr = ff_http_auth_create_response(&s->proxy_auth_state, proxyauth,
                                                 local_path, method);
-    if (post && !s->post_data) {
-        send_expect_100 = s->send_expect_100;
-        /* The user has supplied authentication but we don't know the auth type,
-         * send Expect: 100-continue to get the 401 response including the
-         * WWW-Authenticate header, or an 100 continue if no auth actually
-         * is needed. */
-        if (auth && *auth &&
-            s->auth_state.auth_type == HTTP_AUTH_NONE &&
-            s->http_code != 401)
-            send_expect_100 = 1;
+
+     if (post && !s->post_data) {
+        if (s->send_expect_100 != -1) {
+            send_expect_100 = s->send_expect_100;
+        } else {
+            send_expect_100 = 0;
+            /* The user has supplied authentication but we don't know the auth type,
+             * send Expect: 100-continue to get the 401 response including the
+             * WWW-Authenticate header, or an 100 continue if no auth actually
+             * is needed. */
+            if (auth && *auth &&
+                s->auth_state.auth_type == HTTP_AUTH_NONE &&
+                s->http_code != 401)
+                send_expect_100 = 1;
+        }
     }
 
 #if FF_API_HTTP_USER_AGENT
     if (strcmp(s->user_agent_deprecated, DEFAULT_USER_AGENT)) {
-        av_log(s, AV_LOG_WARNING, "the user-agent option is deprecated, please use user_agent option\n");
         s->user_agent = av_strdup(s->user_agent_deprecated);
     }
 #endif
@@ -1513,12 +1510,13 @@ static int http_read_stream_all(URLContext *h, uint8_t *buf, int size)
     return pos;
 }
 
-static void update_metadata(HTTPContext *s, char *data)
+static void update_metadata(URLContext *h, char *data)
 {
     char *key;
     char *val;
     char *end;
     char *next = data;
+    HTTPContext *s = h->priv_data;
 
     while (*next) {
         key = next;
@@ -1534,6 +1532,7 @@ static void update_metadata(HTTPContext *s, char *data)
         val += 2;
 
         av_dict_set(&s->metadata, key, val, 0);
+        av_log(h, AV_LOG_VERBOSE, "Metadata update for %s: %s\n", key, val);
 
         next = end + 2;
     }
@@ -1568,7 +1567,7 @@ static int store_icy(URLContext *h, int size)
             data[len + 1] = 0;
             if ((ret = av_opt_set(s, "icy_metadata_packet", data, 0)) < 0)
                 return ret;
-            update_metadata(s, data);
+            update_metadata(h, data);
         }
         s->icy_data_read = 0;
         remaining        = s->icy_metaint;
@@ -1631,6 +1630,18 @@ static int http_shutdown(URLContext *h, int flags)
         ((flags & AVIO_FLAG_READ) && s->chunked_post && s->listen)) {
         ret = ffurl_write(s->hd, footer, sizeof(footer) - 1);
         ret = ret > 0 ? 0 : ret;
+        /* flush the receive buffer when it is write only mode */
+        if (!(flags & AVIO_FLAG_READ)) {
+            char buf[1024];
+            int read_ret;
+            s->hd->flags |= AVIO_FLAG_NONBLOCK;
+            read_ret = ffurl_read(s->hd, buf, sizeof(buf));
+            s->hd->flags &= ~AVIO_FLAG_NONBLOCK;
+            if (read_ret < 0 && read_ret != AVERROR(EAGAIN)) {
+                av_log(h, AV_LOG_ERROR, "URL read error: %s\n", av_err2str(read_ret));
+                ret = read_ret;
+            }
+        }
         s->end_chunked_post = 1;
     }
 
@@ -1647,7 +1658,7 @@ static int http_close(URLContext *h)
     av_freep(&s->inflate_buffer);
 #endif /* CONFIG_ZLIB */
 
-    if (!s->end_chunked_post)
+    if (s->hd && !s->end_chunked_post)
         /* Close the write direction by sending the end of chunked encoding. */
         ret = http_shutdown(h, h->flags);
 
@@ -1687,6 +1698,13 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
 
     if (s->off && h->is_streamed)
         return AVERROR(ENOSYS);
+
+    /* do not try to make a new connection if seeking past the end of the file */
+    if (s->end_off || s->filesize != UINT64_MAX) {
+        uint64_t end_pos = s->end_off ? s->end_off : s->filesize;
+        if (s->off >= end_pos)
+            return s->off;
+    }
 
     /* we save the old context in case the seek fails */
     old_buf_size = s->buf_end - s->buf_ptr;

@@ -160,7 +160,7 @@ release:
 
 static int have_alpha_planar(AVFilterLink *link)
 {
-    enum AVPixelFormat pix_fmt;
+    enum AVPixelFormat pix_fmt = link->format;
     const AVPixFmtDescriptor *desc;
     AVHWFramesContext *fctx;
 
@@ -345,7 +345,7 @@ static int overlay_qsv_init(AVFilterContext *ctx)
     return 0;
 }
 
-static void overlay_qsv_uninit(AVFilterContext *ctx)
+static av_cold void overlay_qsv_uninit(AVFilterContext *ctx)
 {
     QSVOverlayContext *vpp = ctx->priv;
 

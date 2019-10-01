@@ -5,7 +5,10 @@ TOOLS-$(CONFIG_ZLIB) += cws2fws
 tools/target_dec_%_fuzzer.o: tools/target_dec_fuzzer.c
 	$(COMPILE_C) -DFFMPEG_DECODER=$*
 
-OBJDIRS += tools
+tools/target_dem_fuzzer.o: tools/target_dem_fuzzer.c
+	$(COMPILE_C)
+
+OUTDIRS += tools
 
 clean::
 	$(RM) $(CLEANSUFFIXES:%=tools/%)

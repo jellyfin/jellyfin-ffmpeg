@@ -136,6 +136,9 @@ static const struct {
     #if CONFIG_UTVIDEO_DECODER
         { "utvideodsp", checkasm_check_utvideodsp },
     #endif
+    #if CONFIG_V210_DECODER
+        { "v210dec", checkasm_check_v210dec },
+    #endif
     #if CONFIG_V210_ENCODER
         { "v210enc", checkasm_check_v210enc },
     #endif
@@ -150,14 +153,23 @@ static const struct {
     #endif
 #endif
 #if CONFIG_AVFILTER
+    #if CONFIG_AFIR_FILTER
+        { "af_afir", checkasm_check_afir },
+    #endif
     #if CONFIG_BLEND_FILTER
         { "vf_blend", checkasm_check_blend },
     #endif
     #if CONFIG_COLORSPACE_FILTER
         { "vf_colorspace", checkasm_check_colorspace },
     #endif
+    #if CONFIG_GBLUR_FILTER
+        { "vf_gblur", checkasm_check_vf_gblur },
+    #endif
     #if CONFIG_HFLIP_FILTER
         { "vf_hflip", checkasm_check_vf_hflip },
+    #endif
+    #if CONFIG_NLMEANS_FILTER
+        { "vf_nlmeans", checkasm_check_nlmeans },
     #endif
     #if CONFIG_THRESHOLD_FILTER
         { "vf_threshold", checkasm_check_vf_threshold },
@@ -606,6 +618,7 @@ static int bench_init_linux(void)
 }
 #endif
 
+#if !CONFIG_LINUX_PERF
 static int bench_init_ffmpeg(void)
 {
 #ifdef AV_READ_TIME
@@ -616,6 +629,7 @@ static int bench_init_ffmpeg(void)
     return -1;
 #endif
 }
+#endif
 
 static int bench_init(void)
 {

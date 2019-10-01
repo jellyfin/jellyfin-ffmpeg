@@ -145,7 +145,7 @@ enum AVChromaLocation ff_choose_chroma_location(AVFormatContext *s, AVStream *st
 
 }
 
-int avformat_alloc_output_context2(AVFormatContext **avctx, AVOutputFormat *oformat,
+int avformat_alloc_output_context2(AVFormatContext **avctx, ff_const59 AVOutputFormat *oformat,
                                    const char *format, const char *filename)
 {
     AVFormatContext *s = avformat_alloc_context();
@@ -246,7 +246,7 @@ static int init_muxer(AVFormatContext *s, AVDictionary **options)
     AVStream *st;
     AVDictionary *tmp = NULL;
     AVCodecParameters *par = NULL;
-    AVOutputFormat *of = s->oformat;
+    const AVOutputFormat *of = s->oformat;
     const AVCodecDescriptor *desc;
     AVDictionaryEntry *e;
 
@@ -571,7 +571,7 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
     }
 
     if (s->debug & FF_FDEBUG_TS)
-        av_log(s, AV_LOG_TRACE, "compute_muxer_pkt_fields: pts:%s dts:%s cur_dts:%s b:%d size:%d st:%d\n",
+        av_log(s, AV_LOG_DEBUG, "compute_muxer_pkt_fields: pts:%s dts:%s cur_dts:%s b:%d size:%d st:%d\n",
             av_ts2str(pkt->pts), av_ts2str(pkt->dts), av_ts2str(st->cur_dts), delay, pkt->size, pkt->stream_index);
 
     if (pkt->duration < 0 && st->codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE) {
@@ -633,7 +633,7 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
     }
 
     if (s->debug & FF_FDEBUG_TS)
-        av_log(s, AV_LOG_TRACE, "av_write_frame: pts2:%s dts2:%s\n",
+        av_log(s, AV_LOG_DEBUG, "av_write_frame: pts2:%s dts2:%s\n",
             av_ts2str(pkt->pts), av_ts2str(pkt->dts));
 
     st->cur_dts = pkt->dts;
@@ -865,7 +865,7 @@ static int do_packet_auto_bsf(AVFormatContext *s, AVPacket *pkt) {
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
                 return 0;
             av_log(ctx, AV_LOG_ERROR,
-                    "Failed to send packet to filter %s for stream %d\n",
+                    "Failed to receive packet from filter %s for stream %d\n",
                     ctx->filter->name, pkt->stream_index);
             if (s->error_recognition & AV_EF_EXPLODE)
                 return ret;
@@ -1001,15 +1001,22 @@ static int interleave_compare_dts(AVFormatContext *s, AVPacket *next,
     AVStream *st2 = s->streams[next->stream_index];
     int comp      = av_compare_ts(next->dts, st2->time_base, pkt->dts,
                                   st->time_base);
-    if (s->audio_preload && ((st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) != (st2->codecpar->codec_type == AVMEDIA_TYPE_AUDIO))) {
-        int64_t ts = av_rescale_q(pkt ->dts, st ->time_base, AV_TIME_BASE_Q) - s->audio_preload*(st ->codecpar->codec_type == AVMEDIA_TYPE_AUDIO);
-        int64_t ts2= av_rescale_q(next->dts, st2->time_base, AV_TIME_BASE_Q) - s->audio_preload*(st2->codecpar->codec_type == AVMEDIA_TYPE_AUDIO);
-        if (ts == ts2) {
-            ts= ( pkt ->dts* st->time_base.num*AV_TIME_BASE - s->audio_preload*(int64_t)(st ->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)* st->time_base.den)*st2->time_base.den
-               -( next->dts*st2->time_base.num*AV_TIME_BASE - s->audio_preload*(int64_t)(st2->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)*st2->time_base.den)* st->time_base.den;
-            ts2=0;
+    if (s->audio_preload) {
+        int preload  = st ->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
+        int preload2 = st2->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
+        if (preload != preload2) {
+            int64_t ts, ts2;
+            preload  *= s->audio_preload;
+            preload2 *= s->audio_preload;
+            ts = av_rescale_q(pkt ->dts, st ->time_base, AV_TIME_BASE_Q) - preload;
+            ts2= av_rescale_q(next->dts, st2->time_base, AV_TIME_BASE_Q) - preload2;
+            if (ts == ts2) {
+                ts  = ((uint64_t)pkt ->dts*st ->time_base.num*AV_TIME_BASE - (uint64_t)preload *st ->time_base.den)*st2->time_base.den
+                    - ((uint64_t)next->dts*st2->time_base.num*AV_TIME_BASE - (uint64_t)preload2*st2->time_base.den)*st ->time_base.den;
+                ts2 = 0;
+            }
+            comp = (ts2 > ts) - (ts2 < ts);
         }
-        comp= (ts>ts2) - (ts<ts2);
     }
 
     if (comp == 0)
@@ -1200,7 +1207,7 @@ int av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt)
             goto fail;
 
         if (s->debug & FF_FDEBUG_TS)
-            av_log(s, AV_LOG_TRACE, "av_interleaved_write_frame size:%d dts:%s pts:%s\n",
+            av_log(s, AV_LOG_DEBUG, "av_interleaved_write_frame size:%d dts:%s pts:%s\n",
                 pkt->size, av_ts2str(pkt->dts), av_ts2str(pkt->pts));
 
 #if FF_API_COMPUTE_PKT_FIELDS2 && FF_API_LAVF_AVCTX

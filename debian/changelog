@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.2.1-1) unstable; urgency=medium
+
+  * New upstream version 4.2.1
+
+ -- Joshua Boniface <joshua@boniface.me>  Fri, 27 Sep 2019 20:13:25 -0400
+
 jellyfin-ffmpeg (4.0.4-3) unstable; urgency=medium
 
   * Use libfontconfig to allow baked-in subtitle support

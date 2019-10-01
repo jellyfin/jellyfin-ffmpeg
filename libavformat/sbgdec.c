@@ -197,7 +197,7 @@ static int str_to_time(const char *str, int64_t *rtime)
         if (end > cur + 1)
             cur = end;
     }
-    *rtime = (hours * 3600 + minutes * 60 + seconds) * AV_TIME_BASE;
+    *rtime = (hours * 3600LL + minutes * 60LL + seconds) * AV_TIME_BASE;
     return cur - str;
 }
 
@@ -1367,7 +1367,7 @@ static int encode_intervals(struct sbg_script *s, AVCodecParameters *par,
     return 0;
 }
 
-static av_cold int sbg_read_probe(AVProbeData *p)
+static av_cold int sbg_read_probe(const AVProbeData *p)
 {
     int r, score;
     struct sbg_script script = { 0 };

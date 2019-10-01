@@ -253,7 +253,7 @@ static av_cold int qdmc_decode_init(AVCodecContext *avctx)
 {
     static AVOnce init_static_once = AV_ONCE_INIT;
     QDMCContext *s = avctx->priv_data;
-    int fft_size, fft_order, size, g, j, x;
+    int ret, fft_size, fft_order, size, g, j, x;
     GetByteContext b;
 
     ff_thread_once(&init_static_once, qdmc_init_static_data);
@@ -338,7 +338,9 @@ static av_cold int qdmc_decode_init(AVCodecContext *avctx)
         return AVERROR_INVALIDDATA;
     }
 
-    ff_fft_init(&s->fft_ctx, fft_order, 1);
+    ret = ff_fft_init(&s->fft_ctx, fft_order, 1);
+    if (ret < 0)
+        return ret;
 
     avctx->sample_fmt = AV_SAMPLE_FMT_S16;
 
@@ -575,9 +577,9 @@ static void add_noise(QDMCContext *s, int ch, int current_subframe)
     for (j = 2; j < s->subframe_size - 1; j++) {
         float rnd_re, rnd_im;
 
-        s->rndval = 214013 * s->rndval + 2531011;
+        s->rndval = 214013U * s->rndval + 2531011;
         rnd_im = ((s->rndval & 0x7FFF) - 16384.0f) * 0.000030517578f * s->noise2_buffer[j];
-        s->rndval = 214013 * s->rndval + 2531011;
+        s->rndval = 214013U * s->rndval + 2531011;
         rnd_re = ((s->rndval & 0x7FFF) - 16384.0f) * 0.000030517578f * s->noise2_buffer[j];
         im[j  ] += rnd_im;
         re[j  ] += rnd_re;

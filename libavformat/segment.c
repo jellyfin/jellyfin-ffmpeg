@@ -72,7 +72,7 @@ typedef struct SegmentContext {
     int segment_idx_wrap;  ///< number after which the index wraps
     int segment_idx_wrap_nb;  ///< number of time the index has wraped
     int segment_count;     ///< number of segment files already written
-    AVOutputFormat *oformat;
+    ff_const59 AVOutputFormat *oformat;
     AVFormatContext *avf;
     char *format;              ///< format to use for output segment files
     char *format_options_str;  ///< format options to use for output segment files
@@ -180,6 +180,13 @@ static int segment_mux_init(AVFormatContext *s)
         }
         st->sample_aspect_ratio = s->streams[i]->sample_aspect_ratio;
         st->time_base = s->streams[i]->time_base;
+        st->avg_frame_rate = s->streams[i]->avg_frame_rate;
+#if FF_API_LAVF_AVCTX
+FF_DISABLE_DEPRECATION_WARNINGS
+        if (s->streams[i]->codecpar->codec_tag == MKTAG('t','m','c','d'))
+            st->codec->time_base = s->streams[i]->codec->time_base;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         av_dict_copy(&st->metadata, s->streams[i]->metadata, 0);
     }
 
@@ -421,7 +428,7 @@ static int segment_end(AVFormatContext *s, int write_trailer, int is_last)
                     rate = s->streams[i]->avg_frame_rate;/* Get fps from the video stream */
                     err = av_timecode_init_from_string(&tc, rate, tcr->value, s);
                     if (err < 0) {
-                        av_log(s, AV_LOG_WARNING, "Could not increment timecode, error occurred during timecode creation.");
+                        av_log(s, AV_LOG_WARNING, "Could not increment global timecode, error occurred during timecode creation.\n");
                         break;
                     }
                     tc.start += (int)((seg->cur_entry.end_time - seg->cur_entry.start_time) * av_q2d(rate));/* increment timecode */
@@ -431,7 +438,23 @@ static int segment_end(AVFormatContext *s, int write_trailer, int is_last)
                 }
             }
         } else {
-            av_log(s, AV_LOG_WARNING, "Could not increment timecode, no timecode metadata found");
+            av_log(s, AV_LOG_WARNING, "Could not increment global timecode, no global timecode metadata found.\n");
+        }
+        for (i = 0; i < s->nb_streams; i++) {
+            if (s->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                char st_buf[AV_TIMECODE_STR_SIZE];
+                AVTimecode st_tc;
+                AVRational st_rate = s->streams[i]->avg_frame_rate;
+                AVDictionaryEntry *st_tcr = av_dict_get(s->streams[i]->metadata, "timecode", NULL, 0);
+                if (st_tcr) {
+                    if ((av_timecode_init_from_string(&st_tc, st_rate, st_tcr->value, s) < 0)) {
+                        av_log(s, AV_LOG_WARNING, "Could not increment stream %d timecode, error occurred during timecode creation.\n", i);
+                        continue;
+                    }
+                st_tc.start += (int)((seg->cur_entry.end_time - seg->cur_entry.start_time) * av_q2d(st_rate));    // increment timecode
+                av_dict_set(&s->streams[i]->metadata, "timecode", av_timecode_make_string(&st_tc, st_buf, 0), 0);
+                }
+            }
         }
     }
 
@@ -859,6 +882,20 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
     if (!seg->avf || !seg->avf->pb)
         return AVERROR(EINVAL);
 
+    if (!st->codecpar->extradata_size) {
+        int pkt_extradata_size = 0;
+        uint8_t *pkt_extradata = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, &pkt_extradata_size);
+        if (pkt_extradata && pkt_extradata_size > 0) {
+            ret = ff_alloc_extradata(st->codecpar, pkt_extradata_size);
+            if (ret < 0) {
+                av_log(s, AV_LOG_WARNING, "Unable to add extradata to stream. Output segments may be invalid.\n");
+                goto calc_times;
+            }
+            memcpy(st->codecpar->extradata, pkt_extradata, pkt_extradata_size);
+            st->codecpar->extradata_size = pkt_extradata_size;
+        }
+    }
+
 calc_times:
     if (seg->times) {
         end_pts = seg->segment_count < seg->nb_times ?
@@ -1045,7 +1082,7 @@ static const AVOption options[] = {
     { "segment_clocktime_offset", "set segment clocktime offset",        OFFSET(clocktime_offset), AV_OPT_TYPE_DURATION, {.i64 = 0}, 0, 86400000000LL, E},
     { "segment_clocktime_wrap_duration", "set segment clocktime wrapping duration", OFFSET(clocktime_wrap_duration), AV_OPT_TYPE_DURATION, {.i64 = INT64_MAX}, 0, INT64_MAX, E},
     { "segment_time",      "set segment duration",                       OFFSET(time_str),AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E },
-    { "segment_time_delta","set approximation value used for the segment times", OFFSET(time_delta), AV_OPT_TYPE_DURATION, {.i64 = 0}, 0, 0, E },
+    { "segment_time_delta","set approximation value used for the segment times", OFFSET(time_delta), AV_OPT_TYPE_DURATION, {.i64 = 0}, 0, INT64_MAX, E },
     { "segment_times",     "set segment split time points",              OFFSET(times_str),AV_OPT_TYPE_STRING,{.str = NULL},  0, 0,       E },
     { "segment_frames",    "set segment split frame numbers",            OFFSET(frames_str),AV_OPT_TYPE_STRING,{.str = NULL},  0, 0,       E },
     { "segment_wrap",      "set number after which the index wraps",     OFFSET(segment_idx_wrap), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, E },

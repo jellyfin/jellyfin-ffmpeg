@@ -211,6 +211,14 @@ do {\
 
 struct tm *ff_brktimegm(time_t secs, struct tm *tm);
 
+/**
+ * Automatically create sub-directories
+ *
+ * @param path will create sub-directories by path
+ * @return 0, or < 0 on error
+ */
+int ff_mkdir_p(const char *path);
+
 char *ff_data_to_hex(char *buf, const uint8_t *src, int size, int lowercase);
 
 /**
@@ -238,6 +246,14 @@ void ff_read_frame_flush(AVFormatContext *s);
 
 /** Get the current time since NTP epoch in microseconds. */
 uint64_t ff_ntp_time(void);
+
+/**
+ * Get the NTP time stamp formatted as per the RFC-5905.
+ *
+ * @param ntp_time NTP time in micro seconds (since NTP epoch)
+ * @return the formatted NTP time stamp
+ */
+uint64_t ff_get_formatted_ntp_time(uint64_t ntp_time_us);
 
 /**
  * Append the media-specific SDP fragment for the media stream c
@@ -633,9 +649,6 @@ enum AVWriteUncodedFrameFlags {
  * Copies the whilelists from one context to the other
  */
 int ff_copy_whiteblacklists(AVFormatContext *dst, const AVFormatContext *src);
-
-int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *url, int flags,
-                       const AVIOInterruptCB *int_cb, AVDictionary **options);
 
 /**
  * Returned by demuxers to indicate that data was consumed but discarded

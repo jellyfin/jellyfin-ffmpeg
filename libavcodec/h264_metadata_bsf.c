@@ -25,6 +25,7 @@
 #include "cbs.h"
 #include "cbs_h264.h"
 #include "h264.h"
+#include "h264_levels.h"
 #include "h264_sei.h"
 
 enum {
@@ -37,6 +38,11 @@ enum {
 enum {
     FLIP_HORIZONTAL = 1,
     FLIP_VERTICAL   = 2,
+};
+
+enum {
+    LEVEL_UNSET = -2,
+    LEVEL_AUTO  = -1,
 };
 
 typedef struct H264MetadataContext {
@@ -74,6 +80,8 @@ typedef struct H264MetadataContext {
     int display_orientation;
     double rotate;
     int flip;
+
+    int level;
 } H264MetadataContext;
 
 
@@ -208,26 +216,85 @@ static int h264_metadata_update_sps(AVBSFContext *bsf,
     CROP(bottom, crop_unit_y);
 #undef CROP
 
+    if (ctx->level != LEVEL_UNSET) {
+        int level_idc;
+
+        if (ctx->level == LEVEL_AUTO) {
+            const H264LevelDescriptor *desc;
+            int64_t bit_rate;
+            int width, height, dpb_frames;
+            int framerate;
+
+            if (sps->vui.nal_hrd_parameters_present_flag) {
+                bit_rate = (sps->vui.nal_hrd_parameters.bit_rate_value_minus1[0] + 1) *
+                    (INT64_C(1) << (sps->vui.nal_hrd_parameters.bit_rate_scale + 6));
+            } else if (sps->vui.vcl_hrd_parameters_present_flag) {
+                bit_rate = (sps->vui.vcl_hrd_parameters.bit_rate_value_minus1[0] + 1) *
+                    (INT64_C(1) << (sps->vui.vcl_hrd_parameters.bit_rate_scale + 6));
+                // Adjust for VCL vs. NAL limits.
+                bit_rate = bit_rate * 6 / 5;
+            } else {
+                bit_rate = 0;
+            }
+
+            // Don't use max_dec_frame_buffering if it is only inferred.
+            dpb_frames = sps->vui.bitstream_restriction_flag ?
+                sps->vui.max_dec_frame_buffering : H264_MAX_DPB_FRAMES;
+
+            width  = 16 * (sps->pic_width_in_mbs_minus1 + 1);
+            height = 16 * (sps->pic_height_in_map_units_minus1 + 1) *
+                (2 - sps->frame_mbs_only_flag);
+
+            if (sps->vui.timing_info_present_flag)
+                framerate = sps->vui.time_scale / sps->vui.num_units_in_tick / 2;
+            else
+                framerate = 0;
+
+            desc = ff_h264_guess_level(sps->profile_idc, bit_rate, framerate,
+                                       width, height, dpb_frames);
+            if (desc) {
+                level_idc = desc->level_idc;
+            } else {
+                av_log(bsf, AV_LOG_WARNING, "Stream does not appear to "
+                       "conform to any level: using level 6.2.\n");
+                level_idc = 62;
+            }
+        } else {
+            level_idc = ctx->level;
+        }
+
+        if (level_idc == 9) {
+            if (sps->profile_idc == 66 ||
+                sps->profile_idc == 77 ||
+                sps->profile_idc == 88) {
+                sps->level_idc = 11;
+                sps->constraint_set3_flag = 1;
+            } else {
+                sps->level_idc = 9;
+            }
+        } else {
+            sps->level_idc = level_idc;
+        }
+    }
+
     if (need_vui)
         sps->vui_parameters_present_flag = 1;
 
     return 0;
 }
 
-static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
+static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
 {
     H264MetadataContext *ctx = bsf->priv_data;
-    AVPacket *in = NULL;
     CodedBitstreamFragment *au = &ctx->access_unit;
     int err, i, j, has_sps;
-    uint8_t *displaymatrix_side_data = NULL;
-    size_t displaymatrix_side_data_size = 0;
+    H264RawAUD aud;
 
-    err = ff_bsf_get_packet(bsf, &in);
+    err = ff_bsf_get_packet_ref(bsf, pkt);
     if (err < 0)
         return err;
 
-    err = ff_cbs_read_packet(ctx->cbc, au, in);
+    err = ff_cbs_read_packet(ctx->cbc, au, pkt);
     if (err < 0) {
         av_log(bsf, AV_LOG_ERROR, "Failed to read packet.\n");
         goto fail;
@@ -256,9 +323,6 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
                 0x3ff, // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
             };
             int primary_pic_type_mask = 0xff;
-            H264RawAUD aud = {
-                .nal_unit_header.nal_unit_type = H264_NAL_AUD,
-            };
 
             for (i = 0; i < au->nb_units; i++) {
                 if (au->units[i].type == H264_NAL_SLICE ||
@@ -281,7 +345,10 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
                 goto fail;
             }
 
-            aud.primary_pic_type = j;
+            aud = (H264RawAUD) {
+                .nal_unit_header.nal_unit_type = H264_NAL_AUD,
+                .primary_pic_type = j,
+            };
 
             err = ff_cbs_insert_unit_content(ctx->cbc, au,
                                              0, H264_NAL_AUD, &aud, NULL);
@@ -341,8 +408,6 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
             udu->data_length = len + 1;
             memcpy(udu->data, ctx->sei_user_data + i + 1, len + 1);
 
-            payload.payload_size = 16 + udu->data_length;
-
             err = ff_cbs_h264_add_sei_message(ctx->cbc, au, &payload);
             if (err < 0) {
                 av_log(bsf, AV_LOG_ERROR, "Failed to add user data SEI "
@@ -360,16 +425,9 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
     }
 
     if (ctx->delete_filler) {
-        for (i = 0; i < au->nb_units; i++) {
+        for (i = au->nb_units - 1; i >= 0; i--) {
             if (au->units[i].type == H264_NAL_FILLER_DATA) {
-                // Filler NAL units.
-                err = ff_cbs_delete_unit(ctx->cbc, au, i);
-                if (err < 0) {
-                    av_log(bsf, AV_LOG_ERROR, "Failed to delete "
-                           "filler NAL.\n");
-                    goto fail;
-                }
-                --i;
+                ff_cbs_delete_unit(ctx->cbc, au, i);
                 continue;
             }
 
@@ -377,34 +435,24 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
                 // Filler SEI messages.
                 H264RawSEI *sei = au->units[i].content;
 
-                for (j = 0; j < sei->payload_count; j++) {
+                for (j = sei->payload_count - 1; j >= 0; j--) {
                     if (sei->payload[j].payload_type ==
-                        H264_SEI_TYPE_FILLER_PAYLOAD) {
-                        err = ff_cbs_h264_delete_sei_message(ctx->cbc, au,
-                                                             &au->units[i], j);
-                        if (err < 0) {
-                            av_log(bsf, AV_LOG_ERROR, "Failed to delete "
-                                   "filler SEI message.\n");
-                            goto fail;
-                        }
-                        // Renumbering might have happened, start again at
-                        // the same NAL unit position.
-                        --i;
-                        break;
-                    }
+                        H264_SEI_TYPE_FILLER_PAYLOAD)
+                        ff_cbs_h264_delete_sei_message(ctx->cbc, au,
+                                                       &au->units[i], j);
                 }
             }
         }
     }
 
     if (ctx->display_orientation != PASS) {
-        for (i = 0; i < au->nb_units; i++) {
+        for (i = au->nb_units - 1; i >= 0; i--) {
             H264RawSEI *sei;
             if (au->units[i].type != H264_NAL_SEI)
                 continue;
             sei = au->units[i].content;
 
-            for (j = 0; j < sei->payload_count; j++) {
+            for (j = sei->payload_count - 1; j >= 0; j--) {
                 H264RawSEIDisplayOrientation *disp;
                 int32_t *matrix;
 
@@ -415,18 +463,12 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
 
                 if (ctx->display_orientation == REMOVE ||
                     ctx->display_orientation == INSERT) {
-                    err = ff_cbs_h264_delete_sei_message(ctx->cbc, au,
-                                                         &au->units[i], j);
-                    if (err < 0) {
-                        av_log(bsf, AV_LOG_ERROR, "Failed to delete "
-                               "display orientation SEI message.\n");
-                        goto fail;
-                    }
-                    --i;
-                    break;
+                    ff_cbs_h264_delete_sei_message(ctx->cbc, au,
+                                                   &au->units[i], j);
+                    continue;
                 }
 
-                matrix = av_mallocz(9 * sizeof(int32_t));
+                matrix = av_malloc(9 * sizeof(int32_t));
                 if (!matrix) {
                     err = AVERROR(ENOMEM);
                     goto fail;
@@ -438,11 +480,17 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
                 av_display_matrix_flip(matrix, disp->hor_flip, disp->ver_flip);
 
                 // If there are multiple display orientation messages in an
-                // access unit then ignore all but the last one.
-                av_freep(&displaymatrix_side_data);
-
-                displaymatrix_side_data      = (uint8_t*)matrix;
-                displaymatrix_side_data_size = 9 * sizeof(int32_t);
+                // access unit, then the last one added to the packet (i.e.
+                // the first one in the access unit) will prevail.
+                err = av_packet_add_side_data(pkt, AV_PKT_DATA_DISPLAYMATRIX,
+                                              (uint8_t*)matrix,
+                                              9 * sizeof(int32_t));
+                if (err < 0) {
+                    av_log(bsf, AV_LOG_ERROR, "Failed to attach extracted "
+                           "displaymatrix side data to packet.\n");
+                    av_freep(matrix);
+                    goto fail;
+                }
             }
         }
     }
@@ -456,7 +504,7 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
         int size;
         int write = 0;
 
-        data = av_packet_get_side_data(in, AV_PKT_DATA_DISPLAYMATRIX, &size);
+        data = av_packet_get_side_data(pkt, AV_PKT_DATA_DISPLAYMATRIX, &size);
         if (data && size >= 9 * sizeof(int32_t)) {
             int32_t matrix[9];
             int hflip, vflip;
@@ -516,38 +564,20 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *out)
         }
     }
 
-    err = ff_cbs_write_packet(ctx->cbc, out, au);
+    err = ff_cbs_write_packet(ctx->cbc, pkt, au);
     if (err < 0) {
         av_log(bsf, AV_LOG_ERROR, "Failed to write packet.\n");
         goto fail;
-    }
-
-    err = av_packet_copy_props(out, in);
-    if (err < 0)
-        goto fail;
-
-    if (displaymatrix_side_data) {
-        err = av_packet_add_side_data(out, AV_PKT_DATA_DISPLAYMATRIX,
-                                      displaymatrix_side_data,
-                                      displaymatrix_side_data_size);
-        if (err) {
-            av_log(bsf, AV_LOG_ERROR, "Failed to attach extracted "
-                   "displaymatrix side data to packet.\n");
-            goto fail;
-        }
-        displaymatrix_side_data = NULL;
     }
 
     ctx->done_first_au = 1;
 
     err = 0;
 fail:
-    ff_cbs_fragment_uninit(ctx->cbc, au);
-    av_freep(&displaymatrix_side_data);
+    ff_cbs_fragment_reset(ctx->cbc, au);
 
     if (err < 0)
-        av_packet_unref(out);
-    av_packet_free(&in);
+        av_packet_unref(pkt);
 
     return err;
 }
@@ -586,13 +616,15 @@ static int h264_metadata_init(AVBSFContext *bsf)
 
     err = 0;
 fail:
-    ff_cbs_fragment_uninit(ctx->cbc, au);
+    ff_cbs_fragment_reset(ctx->cbc, au);
     return err;
 }
 
 static void h264_metadata_close(AVBSFContext *bsf)
 {
     H264MetadataContext *ctx = bsf->priv_data;
+
+    ff_cbs_fragment_free(ctx->cbc, &ctx->access_unit);
     ff_cbs_close(&ctx->cbc);
 }
 
@@ -683,6 +715,36 @@ static const AVOption h264_metadata_options[] = {
     { "vertical",   "Set ver_flip",
         0, AV_OPT_TYPE_CONST,
         { .i64 = FLIP_VERTICAL },   .flags = FLAGS, .unit = "flip" },
+
+    { "level", "Set level (table A-1)",
+        OFFSET(level), AV_OPT_TYPE_INT,
+        { .i64 = LEVEL_UNSET }, LEVEL_UNSET, 0xff, FLAGS, "level" },
+    { "auto", "Attempt to guess level from stream properties",
+        0, AV_OPT_TYPE_CONST,
+        { .i64 = LEVEL_AUTO }, .flags = FLAGS, .unit = "level" },
+#define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, \
+        { .i64 = value },      .flags = FLAGS, .unit = "level"
+    { LEVEL("1",   10) },
+    { LEVEL("1b",   9) },
+    { LEVEL("1.1", 11) },
+    { LEVEL("1.2", 12) },
+    { LEVEL("1.3", 13) },
+    { LEVEL("2",   20) },
+    { LEVEL("2.1", 21) },
+    { LEVEL("2.2", 22) },
+    { LEVEL("3",   30) },
+    { LEVEL("3.1", 31) },
+    { LEVEL("3.2", 32) },
+    { LEVEL("4",   40) },
+    { LEVEL("4.1", 41) },
+    { LEVEL("4.2", 42) },
+    { LEVEL("5",   50) },
+    { LEVEL("5.1", 51) },
+    { LEVEL("5.2", 52) },
+    { LEVEL("6",   60) },
+    { LEVEL("6.1", 61) },
+    { LEVEL("6.2", 62) },
+#undef LEVEL
 
     { NULL }
 };

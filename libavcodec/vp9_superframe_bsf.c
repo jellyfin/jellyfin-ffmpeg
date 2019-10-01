@@ -133,7 +133,7 @@ static int vp9_superframe_filter(AVBSFContext *ctx, AVPacket *out)
 
     if (uses_superframe_syntax && s->n_cache > 0) {
         av_log(ctx, AV_LOG_ERROR,
-               "Mixing of superframe syntax and naked VP9 frames not supported");
+               "Mixing of superframe syntax and naked VP9 frames not supported\n");
         res = AVERROR(ENOSYS);
         goto done;
     } else if ((!invisible || uses_superframe_syntax) && !s->n_cache) {
@@ -142,7 +142,7 @@ static int vp9_superframe_filter(AVBSFContext *ctx, AVPacket *out)
         goto done;
     } else if (s->n_cache + 1 >= MAX_CACHE) {
         av_log(ctx, AV_LOG_ERROR,
-               "Too many invisible frames");
+               "Too many invisible frames\n");
         res = AVERROR_INVALIDDATA;
         goto done;
     }
@@ -189,6 +189,17 @@ static int vp9_superframe_init(AVBSFContext *ctx)
     return 0;
 }
 
+static void vp9_superframe_flush(AVBSFContext *ctx)
+{
+    VP9BSFContext *s = ctx->priv_data;
+    int n;
+
+    // unref cached data
+    for (n = 0; n < s->n_cache; n++)
+        av_packet_unref(s->cache[n]);
+    s->n_cache = 0;
+}
+
 static void vp9_superframe_close(AVBSFContext *ctx)
 {
     VP9BSFContext *s = ctx->priv_data;
@@ -208,6 +219,7 @@ const AVBitStreamFilter ff_vp9_superframe_bsf = {
     .priv_data_size = sizeof(VP9BSFContext),
     .filter         = vp9_superframe_filter,
     .init           = vp9_superframe_init,
+    .flush          = vp9_superframe_flush,
     .close          = vp9_superframe_close,
     .codec_ids      = codec_ids,
 };

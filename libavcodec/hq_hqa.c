@@ -248,13 +248,18 @@ static int hqa_decode_frame(HQContext *ctx, AVFrame *pic, size_t data_size)
     int width, height, quant;
     const uint8_t *src = ctx->gbc.buffer;
 
+    if (bytestream2_get_bytes_left(&ctx->gbc) < 8 + 4*(num_slices + 1))
+        return AVERROR_INVALIDDATA;
+
     width  = bytestream2_get_be16(&ctx->gbc);
     height = bytestream2_get_be16(&ctx->gbc);
 
+    ret = ff_set_dimensions(ctx->avctx, width, height);
+    if (ret < 0)
+        return ret;
+
     ctx->avctx->coded_width         = FFALIGN(width,  16);
     ctx->avctx->coded_height        = FFALIGN(height, 16);
-    ctx->avctx->width               = width;
-    ctx->avctx->height              = height;
     ctx->avctx->bits_per_raw_sample = 8;
     ctx->avctx->pix_fmt             = AV_PIX_FMT_YUVA422P;
 
