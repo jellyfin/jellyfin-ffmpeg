@@ -316,8 +316,14 @@ RUN  \
         curl -sLO https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 && \
         tar -jx --strip-components=1 -f ffmpeg-${FFMPEG_VERSION}.tar.bz2
 
+COPY debian/patches/*.patch /tmp/ffmpeg/
+
 RUN \
         DIR=/tmp/ffmpeg && mkdir -p ${DIR} && cd ${DIR} && \
+        for patch in *.patch; do \
+            filename="$( grep '+++' ${patch} | awk '{ print $2 }' | sed 's|jellyfin-ffmpeg/||' )"; \
+            patch --verbose ${filename} ${patch}; \
+        done && \
         ./configure \
         --disable-debug \
         --disable-doc \
