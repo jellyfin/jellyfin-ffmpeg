@@ -107,6 +107,12 @@ apt -yf install
 # Move to source directory
 pushd ${SOURCE_DIR}
 
+# Apply Jellyfin-specific patches
+for patchname in jf-patches/*.patch
+do
+    git apply "$patchname"
+done
+
 # Install dependencies and build the deb
 yes | mk-build-deps -i ${DEP_ARCH_OPT}
 dpkg-buildpackage -b -rfakeroot -us -uc ${BUILD_ARCH_OPT}
