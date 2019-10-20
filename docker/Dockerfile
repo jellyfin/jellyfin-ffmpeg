@@ -377,4 +377,6 @@ COPY --from=build /opt/ffmpeg /opt/ffmpeg/
 RUN \
     apt-get update -y && \
     apt-get install -y --no-install-recommends libva-drm2 libva2 i965-va-driver && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    ln -s /opt/ffmpeg/bin/ffmpeg /usr/local/bin && \
+    ln -s /opt/ffmpeg/bin/ffprobe /usr/local/bin
