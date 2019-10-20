@@ -353,6 +353,7 @@ RUN \
         --enable-cuvid \
         --enable-nvenc \
         --enable-version3 \
+        --enable-rpath \
         --extra-cflags="-I${PREFIX}/include" \
         --extra-ldflags="-L${PREFIX}/lib" \
         --extra-libs=-ldl \
@@ -365,21 +366,13 @@ RUN \
         make qt-faststart && \
         cp qt-faststart ${PREFIX}/bin
 
-## cleanup
-RUN \
-        ldd ${PREFIX}/bin/ffmpeg | grep opt/ffmpeg | cut -d ' ' -f 3 | xargs -i cp {} /usr/local/lib/ && \
-        cp ${PREFIX}/bin/* /usr/local/bin/ && \
-        cp -r ${PREFIX}/share/ffmpeg /usr/local/share/ && \
-        LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf
-
 FROM        base AS release
 LABEL maintainer="team@jellyfin.org"
 
 CMD         ["--help"]
 ENTRYPOINT  ["ffmpeg"]
-ENV         LD_LIBRARY_PATH=/usr/local/lib
 
-COPY --from=build /usr/local /usr/local/
+COPY --from=build /opt/ffmpeg /opt/ffmpeg/
 
 RUN \
     apt-get update -y && \
