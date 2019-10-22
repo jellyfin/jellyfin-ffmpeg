@@ -10,6 +10,7 @@ usage() {
     echo -e " * bionic"
     echo -e " * cosmic"
     echo -e " * disco"
+    echo -e " * eoan"
 }
 
 if [[ -z ${1} ]]; then
@@ -41,6 +42,10 @@ case ${cli_release} in
     ;;
     'disco')
         release="ubuntu:disco"
+        gcc_version="7"
+    ;;
+    'eoan')
+        release="ubuntu:eoan"
         gcc_version="7"
     ;;
     *)
