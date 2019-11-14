@@ -46,7 +46,8 @@ CONFIG := --toolchain=hardened \
 	--enable-vaapi \
 	--enable-vdpau \
 
-CONFIG_ARM := --enable-cross-compile \
+CONFIG_ARM := --enable-mmal \
+	--enable-cross-compile \
 	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
 	--arch=armhf
 

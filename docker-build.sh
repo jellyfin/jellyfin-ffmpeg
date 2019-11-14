@@ -41,6 +41,15 @@ EOF
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
     yes | apt-get install -y gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
     popd
+
+    # Fetch RasPi headers to build MMAL support
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://github.com/raspberrypi/firmware mmalheaders
+    git clone --depth=1 https://github.com/raspberrypi/userland piuserland
+    cp -a mmalheaders/opt/vc/include/* /usr/include/
+    cp -a mmalheaders/opt/vc/lib/* /usr/lib/
+    cp -a piuserland/interface/* /usr/include/
+    popd
 }
 prepare_crossbuild_env_arm64() {
     # Prepare the Ubuntu-specific cross-build requirements
