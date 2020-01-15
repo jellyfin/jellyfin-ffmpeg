@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #NVCH_VERSION="8.2.15.8-dmo1"
-NVCH_VERSION="9.0.18.1-dmo1"
+NVCH_VERSION="9.0.18.3-dmo1"
 
 # Builds the DEB inside the Docker container
 
@@ -112,6 +112,13 @@ esac
 wget -O nv-codec-headers.deb https://www.deb-multimedia.org/pool/main/n/nv-codec-headers-dmo/nv-codec-headers_${NVCH_VERSION}_all.deb
 dpkg -i nv-codec-headers.deb
 apt -yf install
+
+# Download and setup AMD AMF headers from AMD official github repo
+# https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
+wget -O amf_headers.zip https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/master.zip
+unzip amf_headers.zip -d amf_headers
+cd "amf_headers/AMF-master/amf/public/include/"
+mkdir -p "/usr/include/AMF/" && cp -r * "/usr/include/AMF/"
 
 # Move to source directory
 pushd ${SOURCE_DIR}
