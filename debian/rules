@@ -45,6 +45,7 @@ CONFIG := --toolchain=hardened \
 	--enable-version3 \
 	--enable-vaapi \
 	--enable-vdpau \
+	--enable-amf \
 
 CONFIG_ARM := --enable-mmal \
 	--enable-cross-compile \
