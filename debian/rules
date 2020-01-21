@@ -56,7 +56,7 @@ CONFIG_ARM64 := --enable-cross-compile \
 	--arch=arm64
 
 CONFIG_x86 := --arch=amd64 \
-	--enable-nvenc --enable-nvdec
+	--enable-nvenc --enable-nvdec --enable-amf
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
