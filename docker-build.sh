@@ -1,8 +1,5 @@
 #!/bin/bash
 
-#NVCH_VERSION="8.2.15.8-dmo1"
-NVCH_VERSION="9.0.18.3-dmo1"
-
 # Builds the DEB inside the Docker container
 
 set -o errexit
@@ -109,9 +106,8 @@ case ${ARCH} in
 esac
 
 # Download and install the nvidia headers from deb-multimedia
-wget -O nv-codec-headers.deb https://www.deb-multimedia.org/pool/main/n/nv-codec-headers-dmo/nv-codec-headers_${NVCH_VERSION}_all.deb
-dpkg -i nv-codec-headers.deb
-apt -yf install
+git clone --depth=1 https://github.com/FFmpeg/nv-codec-headers nvidia-headers
+cp -a nvidia-headers/include/* /usr/include/
 
 # Download and setup AMD AMF headers from AMD official github repo
 # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
