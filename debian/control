@@ -53,7 +53,9 @@ Build-Depends:
 # [!armhf] is needed otherwise mk-build-deps creates an invalid build
 # dep list, targeting armhf specifically when the packge is any.
 # The docker build guarantees this is installed for armhf crossbuild.
- nv-codec-headers [!armhf !arm64],
+# Disabled entirely as the install now happens via Git inside the
+# Docker build environment.
+# nv-codec-headers [!armhf !arm64],
 # used to detect libraries
  pkg-config,
 # HTML documentation
