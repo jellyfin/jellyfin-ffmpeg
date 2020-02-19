@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.2.1-5) unstable; urgency=medium
+
+  * Add support for Debian Bullseye (testing)
+
+ -- Joshua Boniface <joshua@boniface.me>  Wed, 19 Feb 2020 11:39:13 -0400
+
 jellyfin-ffmpeg (4.2.1-4) unstable; urgency=medium
 
   * Add support for AMD AMF encoding on amd64
