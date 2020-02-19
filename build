@@ -81,6 +81,11 @@ esac
 set -o xtrace
 set -o errexit
 
+# Check for dependencies
+for dep in docker make mmv; do
+    which $dep || { echo "The command 'make' is required."; exit 1; }
+done
+
 image_name="jellyfin-ffmpeg-build-${cli_release}"
 package_temporary_dir="$( mktemp -d )"
 current_user="$( whoami )"
