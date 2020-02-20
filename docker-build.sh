@@ -106,8 +106,11 @@ case ${ARCH} in
 esac
 
 # Download and install the nvidia headers from deb-multimedia
-git clone --depth=1 https://github.com/FFmpeg/nv-codec-headers nvidia-headers
-cp -a nvidia-headers/include/* /usr/include/
+git clone --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+pushd nv-codec-headers
+make
+make install
+popd
 
 # Download and setup AMD AMF headers from AMD official github repo
 # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
