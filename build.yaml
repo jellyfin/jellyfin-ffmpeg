@@ -16,9 +16,6 @@ packages:
   - bionic-amd64
   - bionic-armhf
   - bionic-arm64
-  - cosmic-amd64
-  - cosmic-armhf
-  - cosmic-arm64
   - disco-amd64
   - disco-armhf
   - disco-arm64
