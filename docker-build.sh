@@ -1,8 +1,5 @@
 #!/bin/bash
 
-#NVCH_VERSION="8.2.15.8-dmo1"
-NVCH_VERSION="9.0.18.3-dmo1"
-
 # Builds the DEB inside the Docker container
 
 set -o errexit
@@ -39,7 +36,7 @@ EOF
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-armhf
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
+    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
     popd
 
     # Fetch RasPi headers to build MMAL support
@@ -81,7 +78,7 @@ EOF
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-arm64
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y gcc-${GCC_VER}-source libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 liblttng-ust0:arm64 libstdc++6:arm64
+    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 liblttng-ust0:arm64 libstdc++6:arm64
     popd
 }
 
@@ -109,9 +106,11 @@ case ${ARCH} in
 esac
 
 # Download and install the nvidia headers from deb-multimedia
-wget -O nv-codec-headers.deb https://www.deb-multimedia.org/pool/main/n/nv-codec-headers-dmo/nv-codec-headers_${NVCH_VERSION}_all.deb
-dpkg -i nv-codec-headers.deb
-apt -yf install
+git clone --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+pushd nv-codec-headers
+make
+make install
+popd
 
 # Download and setup AMD AMF headers from AMD official github repo
 # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE

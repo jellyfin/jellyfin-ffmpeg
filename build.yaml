@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "4.2.1-2"
+version: "4.2.1-4"
 packages:
   - stretch-amd64
   - stretch-armhf
@@ -9,13 +9,13 @@ packages:
   - buster-amd64
   - buster-armhf
   - buster-arm64
+  - bullseye-amd64
+  - bullseye-armhf
+  - bullseye-arm64
   - xenial-amd64
   - bionic-amd64
   - bionic-armhf
   - bionic-arm64
-  - cosmic-amd64
-  - cosmic-armhf
-  - cosmic-arm64
   - disco-amd64
   - disco-armhf
   - disco-arm64

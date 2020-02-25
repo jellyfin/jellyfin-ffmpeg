@@ -6,7 +6,8 @@ usage() {
     echo -e "Releases:          Arches:"
     echo -e " * stretch          * amd64"
     echo -e " * buster           * armhf"
-    echo -e " * xenial           * arm64"
+    echo -e " * bullseye         * arm64"
+    echo -e " * xenial"
     echo -e " * bionic"
     echo -e " * cosmic"
     echo -e " * disco"
@@ -27,6 +28,10 @@ case ${cli_release} in
     'buster')
         release="debian:buster"
         gcc_version="7"
+    ;;
+    'bullseye')
+        release="debian:bullseye"
+        gcc_version="8"
     ;;
     'xenial')
         release="ubuntu:xenial"
@@ -75,6 +80,11 @@ esac
 
 set -o xtrace
 set -o errexit
+
+# Check for dependencies
+for dep in docker make mmv; do
+    command -v ${dep} &>/dev/null || { echo "The command '${dep}' is required."; exit 1; }
+done
 
 image_name="jellyfin-ffmpeg-build-${cli_release}"
 package_temporary_dir="$( mktemp -d )"

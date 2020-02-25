@@ -28,7 +28,7 @@ ARG         OPENCOREAMR_VERSION=0.1.5
 ARG         OPENJPEG_VERSION=2.1.2
 ARG         VPX_VERSION=1.8.0
 ARG         X264_VERSION=20190219-2245-stable
-ARG         X265_VERSION=3.1.1
+ARG         X265_VERSION=3.2.1
 ARG         FONTCONFIG_VERSION=2.12.4
 ARG         KVAZAAR_VERSION=1.2.0
 ARG         AOM_VERSION=v1.0.0
@@ -116,6 +116,14 @@ RUN \
         cd x265_${X265_VERSION}/build/linux && \
         sed -i "/-DEXTRA_LIB/ s/$/ -DCMAKE_INSTALL_PREFIX=\${PREFIX}/" multilib.sh && \
         sed -i "/^cmake/ s/$/ -DENABLE_CLI=OFF/" multilib.sh && \
+
+        # arm* specifics
+        case "$(uname -m)" in \
+            arm*) \
+                sed -i "/^cmake/ s/$/ -DENABLE_ASSEMBLY=OFF/" multilib.sh \
+                ;; \
+        esac && \
+
         ./multilib.sh && \
         make -C 8bit install && \
         rm -rf ${DIR}
@@ -324,6 +332,19 @@ RUN \
             filename="$( grep '+++' ${patch} | awk '{ print $2 }' | sed 's|jellyfin-ffmpeg/||' )"; \
             patch --verbose ${filename} ${patch}; \
         done && \
+
+        # architecture configuration
+        export PLATFORM_ARGS="" && \
+        case "$(uname -m)" in \
+            arm*) \
+                # ENABLE_ASSEMBLY=OFF breaks configure
+                sed -i 's/ require_pkg_config libx265 x265 x265.h x265_api_get &&//' configure \
+                ;; \
+            x86*) \
+                PLATFORM_ARGS="--enable-libaom --enable-cuvid --enable-nvenc" \
+                ;; \
+        esac && \
+
         ./configure \
         --disable-debug \
         --disable-doc \
@@ -348,16 +369,15 @@ RUN \
         --enable-libxvid \
         --enable-libx264 \
         --enable-libkvazaar \
-        --enable-libaom --extra-libs=-lpthread \
+        --extra-libs=-lpthread \
         --enable-postproc \
-        --enable-cuvid \
-        --enable-nvenc \
         --enable-version3 \
         --enable-rpath \
         --extra-cflags="-I${PREFIX}/include" \
         --extra-ldflags="-L${PREFIX}/lib" \
         --extra-libs=-ldl \
-        --prefix="${PREFIX}" && \
+        --prefix="${PREFIX}" \
+        ${PLATFORM_ARGS} && \
         make && \
         make install && \
         make distclean && \
@@ -376,7 +396,15 @@ COPY --from=build /opt/ffmpeg /opt/ffmpeg/
 
 RUN \
     apt-get update -y && \
-    apt-get install -y --no-install-recommends libva-drm2 libva2 i965-va-driver && \
+    apt-get install -y --no-install-recommends libva-drm2 libva2 && \
+
+    # x86* specifics
+    case "$(uname -m)" in \
+        x86*) \
+            apt-get install -y --no-install-recommends i965-va-driver \
+            ;; \
+    esac && \
+
     rm -rf /var/lib/apt/lists/* && \
     ln -s /opt/ffmpeg/bin/ffmpeg /usr/local/bin && \
     ln -s /opt/ffmpeg/bin/ffprobe /usr/local/bin
