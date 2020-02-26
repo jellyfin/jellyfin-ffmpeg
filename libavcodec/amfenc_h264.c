@@ -366,7 +366,6 @@ static const AVCodecDefault defaults[] = {
     { "b",          "2M"  },
     { "g",          "250" },
     { "slices",     "1"   },
-    { "flags",      "+loop"},
     { NULL                },
 };
 
