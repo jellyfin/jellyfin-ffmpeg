@@ -114,10 +114,12 @@ popd
 
 # Download and setup AMD AMF headers from AMD official github repo
 # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
-wget -O amf_headers.zip https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/master.zip
-unzip amf_headers.zip -d amf_headers
-cd "amf_headers/AMF-master/amf/public/include/"
-mkdir -p "/usr/include/AMF/" && cp -r * "/usr/include/AMF/"
+apt-get update
+yes | apt-get install subversion
+svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include
+pushd include
+mkdir -p /usr/include/AMF && mv * /usr/include/AMF
+popd
 
 # Move to source directory
 pushd ${SOURCE_DIR}
