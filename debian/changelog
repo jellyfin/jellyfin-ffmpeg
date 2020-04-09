@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.2.1-7) unstable; urgency=medium
+
+  * Integrate free libva and intel-vaapi-driver with MIT license in the deb package.
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 9 Apr 2020 12:54:22 +0800
+
 jellyfin-ffmpeg (4.2.1-6) unstable; urgency=medium
 
   * Update AMD AMF files to support Linux

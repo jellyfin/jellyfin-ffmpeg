@@ -3,15 +3,23 @@ FROM DISTRO
 ARG SOURCE_DIR=/ffmpeg
 ARG ARTIFACT_DIR=/dist
 # Docker run environment
+ENV DEB_BUILD_OPTIONS=noddebs
+ENV DEBIAN_FRONTEND=noninteractive
 ENV ARCH=BUILD_ARCHITECTURE
 ENV GCC_VER=GCC_RELEASE_VERSION
 ENV SOURCE_DIR=/ffmpeg
 ENV ARTIFACT_DIR=/dist
-ENV DEB_BUILD_OPTIONS=noddebs
+ENV TARGET_DIR=/usr/lib/jellyfin-ffmpeg
+ENV PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig:$PKG_CONFIG_PATH
+ENV LD_LIBRARY_PATH=${TARGET_DIR}/lib:${TARGET_DIR}/lib/mfx:${TARGET_DIR}/lib/xorg:${LD_LIBRARY_PATH}
+ENV LDFLAGS=-Wl,-rpath=${TARGET_DIR}/lib
+ENV CXXFLAGS="-I${TARGET_DIR}/include $CXXFLAGS"
+ENV CPPFLAGS="-I${TARGET_DIR}/include $CPPFLAGS"
+ENV CFLAGS="-I${TARGET_DIR}/include $CFLAGS"
 
 # Prepare Debian build environment
 RUN apt-get update \
- && yes | apt-get install -y apt-transport-https debhelper gnupg wget devscripts mmv equivs git
+ && yes | apt-get install -y apt-transport-https debhelper gnupg wget devscripts mmv equivs git cmake pkg-config subversion dh-autoreconf libdrm-dev libpciaccess-dev
 
 # Link to docker-build script
 RUN ln -sf ${SOURCE_DIR}/docker-build.sh /docker-build.sh

@@ -12,6 +12,7 @@ usage() {
     echo -e " * cosmic"
     echo -e " * disco"
     echo -e " * eoan"
+    echo -e " * focal"
 }
 
 if [[ -z ${1} ]]; then
@@ -52,6 +53,10 @@ case ${cli_release} in
     'eoan')
         release="ubuntu:eoan"
         gcc_version="7"
+    ;;
+    'focal')
+        release="ubuntu:focal"
+        gcc_version="9"
     ;;
     *)
         echo "Invalid release."
