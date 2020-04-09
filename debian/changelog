@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.2.1-6) unstable; urgency=medium
+
+  * Update AMD AMF files to support Linux
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 25 Feb 2020 17:33:28 +0800
+
 jellyfin-ffmpeg (4.2.1-5) unstable; urgency=medium
 
   * Add support for Debian Bullseye (testing)
