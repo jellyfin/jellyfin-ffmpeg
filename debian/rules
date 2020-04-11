@@ -40,20 +40,17 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libx265 \
 	--enable-libzvbi \
 
+CONFIG_ARM_COMMON := --toolchain=hardened \
+	--enable-cross-compile \
+	--enable-omx \
+	--enable-omx-rpi \
+
 CONFIG_ARM := --arch=armhf \
 	--enable-mmal \
-	--enable-omx \
-	--enable-omx-rpi \
-	--enable-cross-compile \
-	--toolchain=hardened \
-	--cross-prefix=/usr/bin/arm-linux-gnueabihf-
+	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
 
 CONFIG_ARM64 := --arch=arm64 \
-	--enable-omx \
-	--enable-omx-rpi \
-	--enable-cross-compile \
-	--toolchain=hardened \
-	--cross-prefix=/usr/bin/aarch64-linux-gnu-
+	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
 
 CONFIG_x86 := --arch=amd64 \
 	--enable-amf \
@@ -70,10 +67,12 @@ ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
 endif
 ifeq ($(BUILD_ARCH),arm-linux-gnueabihf)
 	# Cross-building ARM on AMD64
+	CONFIG += $(CONFIG_ARM_COMMON)
 	CONFIG += $(CONFIG_ARM)
 endif
 ifeq ($(BUILD_ARCH),aarch64-linux-gnu)
 	# Cross-building ARM64 on AMD64
+	CONFIG += $(CONFIG_ARM_COMMON)
 	CONFIG += $(CONFIG_ARM64)
 endif
 

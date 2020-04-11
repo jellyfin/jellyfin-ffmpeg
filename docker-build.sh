@@ -5,8 +5,8 @@
 set -o errexit
 set -o xtrace
 
-ARCHIVE_ADDR=https://archive.ubuntu.com/ubuntu/
-PORTS_ADDR=https://ports.ubuntu.com/
+ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
+PORTS_ADDR=http://ports.ubuntu.com/
 
 # Prepare HWA headers, libs and drivers for x86_64-linux-gnu
 prepare_hwa_amd64() {
