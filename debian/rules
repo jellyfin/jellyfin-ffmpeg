@@ -45,11 +45,13 @@ CONFIG_ARM_COMMON := --toolchain=hardened \
 	--enable-omx \
 	--enable-omx-rpi \
 
-CONFIG_ARM := --arch=armhf \
+CONFIG_ARM := ${CONFIG_ARM_COMMON} \
 	--enable-mmal \
+	--arch=armhf \
 	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
 
-CONFIG_ARM64 := --arch=arm64 \
+CONFIG_ARM64 := ${CONFIG_ARM_COMMON} \
+	--arch=arm64 \
 	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
 
 CONFIG_x86 := --arch=amd64 \
@@ -67,12 +69,10 @@ ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
 endif
 ifeq ($(BUILD_ARCH),arm-linux-gnueabihf)
 	# Cross-building ARM on AMD64
-	CONFIG += $(CONFIG_ARM_COMMON)
 	CONFIG += $(CONFIG_ARM)
 endif
 ifeq ($(BUILD_ARCH),aarch64-linux-gnu)
 	# Cross-building ARM64 on AMD64
-	CONFIG += $(CONFIG_ARM_COMMON)
 	CONFIG += $(CONFIG_ARM64)
 endif
 

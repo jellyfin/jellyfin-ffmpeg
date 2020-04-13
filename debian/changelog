@@ -1,6 +1,8 @@
 jellyfin-ffmpeg (4.2.1-7) unstable; urgency=medium
 
-  * Integrate free libva and intel-vaapi-driver with MIT license in the deb package.
+  * Integrate free libva and intel-vaapi-driver with MIT license in the deb
+    package to enable full features of VAAPI transcoding without proprietary
+    drivers (see https://github.com/jellyfin/jellyfin-ffmpeg/pull/33).
 
  -- nyanmisaka <nst799610810@gmail.com>  Thu, 9 Apr 2020 12:54:22 +0800
 
