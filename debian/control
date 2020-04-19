@@ -1,0 +1,93 @@
+Source: jellyfin-ffmpeg
+Section: video
+Priority: optional
+Maintainer: Jellyfin Packaging Team <packaging@jellyfin.org>
+Uploaders: Jellyfin Packaging Team <packaging@jellyfin.org>
+Rules-Requires-Root: no
+Homepage: https://ffmpeg.org/
+Standards-Version: 4.2.1
+Vcs-Git: https://github.com/jellyfin/jellyfin-ffmpeg.git
+Vcs-Browser: https://github.com/jellyfin/jellyfin-ffmpeg
+Build-Depends:
+# needed for dh
+ debhelper,
+# for build-profile support
+ dpkg-dev,
+# --enable-gnutls
+ libgnutls28-dev | libgnutls-dev,
+# --enable-libass
+ libass-dev,
+# --enable-libbluray
+ libbluray-dev,
+# --enable-libdrm
+ libdrm-dev,
+# --enable-libfontconfig
+ libfontconfig-dev,
+# --enable-libfreetype
+ libfreetype6-dev,
+# --enable-fribidi
+ libfribidi-dev,
+# --enable-libmp3lame
+ libmp3lame-dev,
+# --enable-libopus
+ libopus-dev,
+# --enable-libtheora
+ libtheora-dev,
+# --enable-libvorbis
+ libvorbis-dev,
+# --enable-libwebp
+ libwebp-dev,
+# --enable-libx264
+ libx264-dev,
+# --enable-libx265
+ libx265-dev,
+# --enable-libzvbi
+ libzvbi-dev,
+# --enable-omx
+ libomxil-bellagio-dev,
+# omx headers are fully included in raspberrypi/firmware.
+# libomxil-bellagio-dev is missing some functions required in ffmpeg 4.3+.
+# Drop this package when building ffmpeg 4.3+.
+#
+# --enable-vaapi
+# libva-dev is replaced by the libva build from source,
+# which will be shipped with jellyfin-ffmpeg package.
+# Vaapi currently only supports Intel and AMD gfx
+# and the drivers they provide only support x86/x64.
+# libva-dev [!armhf !arm64],
+#
+# --enable-nvenc/--enable-nvdec
+# [!armhf] is needed otherwise mk-build-deps creates an invalid build
+# dep list, targeting armhf specifically when the packge is any.
+# The docker build guarantees this is installed for armhf crossbuild.
+# Disabled entirely as the install now happens via Git inside the
+# Docker build environment.
+# nv-codec-headers [!armhf !arm64],
+#
+# used to detect libraries
+ pkg-config,
+# HTML documentation
+ texinfo,
+# assembler optimizations
+ nasm,
+# autodetected zlib
+ zlib1g-dev
+
+Package: jellyfin-ffmpeg
+Architecture: amd64 armhf arm64
+Multi-Arch: foreign
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends}
+Description: Tools for transcoding, streaming and playing of multimedia files
+ FFmpeg is the leading multimedia framework, able to decode, encode, transcode,
+ mux, demux, stream, filter and play pretty much anything that humans and
+ machines have created. It supports the most obscure ancient formats up to the
+ cutting edge.
+ .
+ This package contains a static build compatible with all Debian/Ubuntu
+ releases, designed to facilitate Jellyfin on systems with a repository ffmpeg
+ version of 4.1 or newer, which we do not yet support. Included files are:
+  * ffmpeg: a command line tool to convert multimedia files between formats
+  * ffplay: a simple media player based on SDL and the FFmpeg libraries
+  * ffprobe: a simple multimedia stream analyzer

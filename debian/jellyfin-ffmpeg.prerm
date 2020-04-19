@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Remove our transitional symlink
+rm -f /usr/share/jellyfin-ffmpeg

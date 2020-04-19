@@ -1,0 +1,2 @@
+ffmpeg usr/lib/jellyfin-ffmpeg
+ffprobe usr/lib/jellyfin-ffmpeg

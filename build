@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+
+usage() {
+    echo -e "Build Jellyfin FFMPEG packages"
+    echo -e " $0 <release> <arch>"
+    echo -e "Releases:          Arches:"
+    echo -e " * stretch          * amd64"
+    echo -e " * buster           * armhf"
+    echo -e " * bullseye         * arm64"
+    echo -e " * xenial"
+    echo -e " * bionic"
+    echo -e " * cosmic"
+    echo -e " * disco"
+    echo -e " * eoan"
+    echo -e " * focal"
+}
+
+if [[ -z ${1} ]]; then
+    usage
+    exit 1
+fi
+
+cli_release="${1}"
+case ${cli_release} in
+    'stretch')
+        release="debian:stretch"
+        gcc_version="6"
+    ;;
+    'buster')
+        release="debian:buster"
+        gcc_version="7"
+    ;;
+    'bullseye')
+        release="debian:bullseye"
+        gcc_version="8"
+    ;;
+    'xenial')
+        release="ubuntu:xenial"
+        gcc_version="5"
+    ;;
+    'bionic')
+        release="ubuntu:bionic"
+        gcc_version="7"
+    ;;
+    'cosmic')
+        release="ubuntu:cosmic"
+        gcc_version="7"
+    ;;
+    'disco')
+        release="ubuntu:disco"
+        gcc_version="7"
+    ;;
+    'eoan')
+        release="ubuntu:eoan"
+        gcc_version="7"
+    ;;
+    'focal')
+        release="ubuntu:focal"
+        gcc_version="9"
+    ;;
+    *)
+        echo "Invalid release."
+        usage
+        exit 1
+    ;;
+esac
+
+cli_arch="${2}"
+case ${cli_arch} in
+    'amd64')
+        arch="amd64"
+    ;;
+    'armhf')
+        arch="armhf"
+    ;;
+    'arm64')
+        arch="arm64"
+    ;;
+    *)
+        echo "Invalid architecture."
+        usage
+        exit 1
+    ;;
+esac
+
+set -o xtrace
+set -o errexit
+
+# Check for dependencies
+for dep in docker make mmv; do
+    command -v ${dep} &>/dev/null || { echo "The command '${dep}' is required."; exit 1; }
+done
+
+image_name="jellyfin-ffmpeg-build-${cli_release}"
+package_temporary_dir="$( mktemp -d )"
+current_user="$( whoami )"
+
+# Trap cleanup for latter sections
+cleanup() {
+    # Clean up the Dockerfile
+    make -f Dockerfile.make clean
+    # Remove tempdir
+    rm -rf "${package_temporary_dir}"
+}
+trap cleanup EXIT INT
+
+# Generate Dockerfile
+make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_version} ARCH=${arch}
+# Set up the build environment docker image
+docker build . -t "${image_name}"
+# Build the APKs and copy out to ${package_temporary_dir}
+docker run --rm -e "RELEASE=${release}" -v "${package_temporary_dir}:/dist" "${image_name}"
+# Move the APKs to the parent directory
+mkdir ../bin &>/dev/null || true
+mmv "${package_temporary_dir}/deb/*.deb" "../bin/#1.deb"
+mmv "${package_temporary_dir}/deb/*_${arch}.*" "../bin/#1-${cli_release}_${arch}.#2"
