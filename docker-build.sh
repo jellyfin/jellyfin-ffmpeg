@@ -5,6 +5,107 @@
 set -o errexit
 set -o xtrace
 
+ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
+PORTS_ADDR=http://ports.ubuntu.com/
+
+# Prepare HWA headers, libs and drivers for x86_64-linux-gnu
+prepare_hwa_amd64() {
+    # Download and install the nvidia headers
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+    pushd nv-codec-headers
+    make
+    make install
+    popd
+    popd
+
+    # Download and setup AMD AMF headers
+    # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
+    svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include
+    pushd include
+    mkdir -p /usr/include/AMF
+    mv * /usr/include/AMF
+    popd
+
+    # Download and install libva
+    pushd ${SOURCE_DIR}
+    git clone -b v2.6-branch --depth=1 https://github.com/intel/libva
+    pushd libva
+    sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
+    sed -i 's|getenv("LIBVA_DRIVER_NAME")|NULL|g' va/va.c
+    ./autogen.sh
+    ./configure --prefix=${TARGET_DIR}
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    echo "intel${TARGET_DIR}/lib/libva.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/libva-drm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+
+    # Download and install intel-vaapi-driver
+    pushd ${SOURCE_DIR}
+    git clone -b v2.4-branch --depth=1 https://github.com/intel/intel-vaapi-driver
+    pushd intel-vaapi-driver
+    ./autogen.sh
+    ./configure LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri
+    make -j$(nproc) && make install
+    mkdir -p ${SOURCE_DIR}/intel/dri
+    cp ${TARGET_DIR}/lib/dri/i965*.so ${SOURCE_DIR}/intel/dri
+    echo "intel/dri/i965*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+
+    # Uncomment for non-free QSV
+    # Download and install gmmlib
+    #pushd ${SOURCE_DIR}
+    #git clone -b intel-gmmlib-19.3.4.x --depth=1 https://github.com/intel/gmmlib
+    #pushd gmmlib
+    #mkdir build && pushd build
+    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    #make install
+    #echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    #popd
+    #popd
+    #popd
+
+    # Uncomment for non-free QSV
+    # Download and install media-driver
+    # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
+    # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
+    #pushd ${SOURCE_DIR}
+    #git clone -b intel-media-19.4 --depth=1 https://github.com/intel/media-driver
+    #pushd media-driver
+    #mkdir build && pushd build
+    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+    #      -DENABLE_KERNELS=ON \
+    #      -DENABLE_NONFREE_KERNELS=ON \
+    #      LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri \
+    #      ..
+    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    #echo "intel${TARGET_DIR}/lib/libigfxcmrt.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    #mkdir -p ${SOURCE_DIR}/intel/dri
+    #cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
+    #echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    #popd
+    #popd
+    #popd
+
+    # Uncomment for non-free QSV
+    # Download and install MediaSDK
+    #pushd ${SOURCE_DIR}
+    #git clone -b intel-mediasdk-19.4 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    #pushd MediaSDK
+    #sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
+    #mkdir build && pushd build
+    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    #echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    #echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    #echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    #popd
+    #popd
+    #popd
+}
 # Prepare the cross-toolchain
 prepare_crossbuild_env_armhf() {
     # Prepare the Ubuntu-specific cross-build requirements
@@ -14,16 +115,16 @@ prepare_crossbuild_env_armhf() {
         rm /etc/apt/sources.list
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME} main restricted universe multiverse
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-updates main restricted universe multiverse
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-backports main restricted universe multiverse
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-security main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
         cat <<EOF > /etc/apt/sources.list.d/armhf.list
-deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME} main restricted universe multiverse
-deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME}-updates main restricted universe multiverse
-deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME}-backports main restricted universe multiverse
-deb [arch=armhf] http://ports.ubuntu.com/ ${CODENAME}-security main restricted universe multiverse
+deb [arch=armhf] ${PORTS_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
     fi
     # Add armhf architecture
@@ -56,16 +157,16 @@ prepare_crossbuild_env_arm64() {
         rm /etc/apt/sources.list
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME} main restricted universe multiverse
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-updates main restricted universe multiverse
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-backports main restricted universe multiverse
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ ${CODENAME}-security main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
         cat <<EOF > /etc/apt/sources.list.d/arm64.list
-deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME} main restricted universe multiverse
-deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME}-updates main restricted universe multiverse
-deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME}-backports main restricted universe multiverse
-deb [arch=arm64] http://ports.ubuntu.com/ ${CODENAME}-security main restricted universe multiverse
+deb [arch=arm64] ${PORTS_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
     fi
     # Add armhf architecture
@@ -85,6 +186,7 @@ EOF
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
+        prepare_hwa_amd64
         CONFIG_SITE=""
         DEP_ARCH_OPT=""
         BUILD_ARCH_OPT=""
@@ -104,22 +206,6 @@ case ${ARCH} in
         BUILD_ARCH_OPT="-aarm64"
     ;;
 esac
-
-# Download and install the nvidia headers from deb-multimedia
-git clone --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
-pushd nv-codec-headers
-make
-make install
-popd
-
-# Download and setup AMD AMF headers from AMD official github repo
-# https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
-apt-get update
-yes | apt-get install subversion
-svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include
-pushd include
-mkdir -p /usr/include/AMF && mv * /usr/include/AMF
-popd
 
 # Move to source directory
 pushd ${SOURCE_DIR}

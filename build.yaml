@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "4.2.1-4"
+version: "4.2.1-7"
 packages:
   - stretch-amd64
   - stretch-armhf
@@ -22,3 +22,6 @@ packages:
   - eoan-amd64
   - eoan-armhf
   - eoan-arm64
+  - focal-amd64
+  - focal-armhf
+  - focal-arm64
