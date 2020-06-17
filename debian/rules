@@ -39,6 +39,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libx264 \
 	--enable-libx265 \
 	--enable-libzvbi \
+	--enable-libdav1d
 
 CONFIG_ARM_COMMON := --toolchain=hardened \
 	--enable-cross-compile \
