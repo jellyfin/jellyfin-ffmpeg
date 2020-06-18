@@ -25,7 +25,7 @@ prepare_hwa_amd64() {
     pushd dav1d
     mkdir build
     pushd build
-    meson --prefix=${TARGET_DIR} ..
+    meson -Ddefault_library=static --prefix=${TARGET_DIR} ..
     ninja
     popd
     popd
