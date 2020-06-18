@@ -25,9 +25,8 @@ prepare_hwa_amd64() {
     pushd dav1d
     mkdir build
     pushd build
-    meson ..
+    meson --prefix=${TARGET_DIR} ..
     ninja
-    meson install
     popd
     popd
     popd
