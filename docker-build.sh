@@ -19,6 +19,20 @@ prepare_hwa_amd64() {
     popd
     popd
 
+    # Download and install dav1d
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://code.videolan.org/videolan/dav1d.git && \
+    pushd dav1d
+    mkdir build
+    pushd build
+    meson ..
+    ninja
+    meson install
+    popd
+    popd
+    popd
+
+
     # Download and setup AMD AMF headers
     # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
     svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include

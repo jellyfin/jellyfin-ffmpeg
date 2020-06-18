@@ -19,7 +19,7 @@ ENV CFLAGS="-I${TARGET_DIR}/include $CFLAGS"
 
 # Prepare Debian build environment
 RUN apt-get update \
- && yes | apt-get install -y apt-transport-https debhelper gnupg wget devscripts mmv equivs git cmake pkg-config subversion dh-autoreconf libdrm-dev libpciaccess-dev
+ && yes | apt-get install -y apt-transport-https meson ninja-build debhelper gnupg wget devscripts mmv equivs git nasm cmake pkg-config subversion dh-autoreconf libdrm-dev libpciaccess-dev
 
 # Link to docker-build script
 RUN ln -sf ${SOURCE_DIR}/docker-build.sh /docker-build.sh
