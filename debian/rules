@@ -11,8 +11,6 @@ endif
 PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
 CONFIG := --prefix=${TARGET_DIR} \
-	--extra-cflags="-I${TARGET_DIR}/include"
-	--extra-ldflags="-static -L${TARGET_DIR}/lib -Wl,-Bynamic"
 	--target-os=linux \
 	--disable-doc \
 	--disable-ffplay \

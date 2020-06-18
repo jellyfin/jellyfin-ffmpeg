@@ -25,8 +25,14 @@ prepare_hwa_amd64() {
     pushd dav1d
     mkdir build
     pushd build
-    meson -Ddefault_library=static --prefix=${TARGET_DIR} ..
+    meson -Ddefault_library=shared --prefix=${TARGET_DIR} ..
     ninja
+    meson install
+    echo ${LD_LIBRARY_PATH}
+    echo $(find ${TARGET_DIR}/lib/x86_64-linux-gnu)
+    cp ${TARGET_DIR}/lib/x86_64-linux-gnu/pkgconfig/dav1d.pc  /usr/lib/pkgconfig/
+    cp ${TARGET_DIR}/lib/x86_64-linux-gnu/*dav1d* ${SOURCE_DIR}/dav1d
+    echo "dav1d/*dav1d* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
     popd
     popd
     popd
