@@ -23,6 +23,7 @@
 #include "libavutil/log.h"
 
 #include "bsf.h"
+#include "bsf_internal.h"
 #include "cbs.h"
 
 

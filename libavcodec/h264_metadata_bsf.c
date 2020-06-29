@@ -22,6 +22,7 @@
 #include "libavutil/opt.h"
 
 #include "bsf.h"
+#include "bsf_internal.h"
 #include "cbs.h"
 #include "cbs_h264.h"
 #include "h264.h"
@@ -56,6 +57,8 @@ typedef struct H264MetadataContext {
     int aud;
 
     AVRational sample_aspect_ratio;
+
+    int overscan_appropriate_flag;
 
     int video_format;
     int video_full_range_flag;
@@ -122,13 +125,17 @@ static int h264_metadata_update_sps(AVBSFContext *bsf,
         need_vui = 1;
     }
 
-#define SET_OR_INFER(field, value, present_flag, infer) do { \
-        if (value >= 0) { \
-            field = value; \
+#define SET_VUI_FIELD(field) do { \
+        if (ctx->field >= 0) { \
+            sps->vui.field = ctx->field; \
             need_vui = 1; \
-        } else if (!present_flag) \
-            field = infer; \
+        } \
     } while (0)
+
+    if (ctx->overscan_appropriate_flag >= 0) {
+        SET_VUI_FIELD(overscan_appropriate_flag);
+        sps->vui.overscan_info_present_flag = 1;
+    }
 
     if (ctx->video_format             >= 0 ||
         ctx->video_full_range_flag    >= 0 ||
@@ -136,33 +143,21 @@ static int h264_metadata_update_sps(AVBSFContext *bsf,
         ctx->transfer_characteristics >= 0 ||
         ctx->matrix_coefficients      >= 0) {
 
-        SET_OR_INFER(sps->vui.video_format, ctx->video_format,
-                     sps->vui.video_signal_type_present_flag, 5);
+        SET_VUI_FIELD(video_format);
 
-        SET_OR_INFER(sps->vui.video_full_range_flag,
-                     ctx->video_full_range_flag,
-                     sps->vui.video_signal_type_present_flag, 0);
+        SET_VUI_FIELD(video_full_range_flag);
 
         if (ctx->colour_primaries         >= 0 ||
             ctx->transfer_characteristics >= 0 ||
             ctx->matrix_coefficients      >= 0) {
 
-            SET_OR_INFER(sps->vui.colour_primaries,
-                         ctx->colour_primaries,
-                         sps->vui.colour_description_present_flag, 2);
-
-            SET_OR_INFER(sps->vui.transfer_characteristics,
-                         ctx->transfer_characteristics,
-                         sps->vui.colour_description_present_flag, 2);
-
-            SET_OR_INFER(sps->vui.matrix_coefficients,
-                         ctx->matrix_coefficients,
-                         sps->vui.colour_description_present_flag, 2);
+            SET_VUI_FIELD(colour_primaries);
+            SET_VUI_FIELD(transfer_characteristics);
+            SET_VUI_FIELD(matrix_coefficients);
 
             sps->vui.colour_description_present_flag = 1;
         }
         sps->vui.video_signal_type_present_flag = 1;
-        need_vui = 1;
     }
 
     if (ctx->chroma_sample_loc_type >= 0) {
@@ -186,9 +181,7 @@ static int h264_metadata_update_sps(AVBSFContext *bsf,
         sps->vui.timing_info_present_flag = 1;
         need_vui = 1;
     }
-    SET_OR_INFER(sps->vui.fixed_frame_rate_flag,
-                 ctx->fixed_frame_rate_flag,
-                 sps->vui.timing_info_present_flag, 0);
+    SET_VUI_FIELD(fixed_frame_rate_flag);
 
     if (sps->separate_colour_plane_flag || sps->chroma_format_idc == 0) {
         crop_unit_x = 1;
@@ -283,6 +276,49 @@ static int h264_metadata_update_sps(AVBSFContext *bsf,
     return 0;
 }
 
+static int h264_metadata_update_side_data(AVBSFContext *bsf, AVPacket *pkt)
+{
+    H264MetadataContext *ctx = bsf->priv_data;
+    CodedBitstreamFragment *au = &ctx->access_unit;
+    uint8_t *side_data;
+    int side_data_size;
+    int err, i;
+
+    side_data = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
+                                        &side_data_size);
+    if (!side_data_size)
+        return 0;
+
+    err = ff_cbs_read(ctx->cbc, au, side_data, side_data_size);
+    if (err < 0) {
+        av_log(bsf, AV_LOG_ERROR, "Failed to read extradata from packet side data.\n");
+        return err;
+    }
+
+    for (i = 0; i < au->nb_units; i++) {
+        if (au->units[i].type == H264_NAL_SPS) {
+            err = h264_metadata_update_sps(bsf, au->units[i].content);
+            if (err < 0)
+                return err;
+        }
+    }
+
+    err = ff_cbs_write_fragment_data(ctx->cbc, au);
+    if (err < 0) {
+        av_log(bsf, AV_LOG_ERROR, "Failed to write extradata into packet side data.\n");
+        return err;
+    }
+
+    side_data = av_packet_new_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, au->data_size);
+    if (!side_data)
+        return AVERROR(ENOMEM);
+    memcpy(side_data, au->data, au->data_size);
+
+    ff_cbs_fragment_reset(ctx->cbc, au);
+
+    return 0;
+}
+
 static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
 {
     H264MetadataContext *ctx = bsf->priv_data;
@@ -293,6 +329,10 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
     err = ff_bsf_get_packet_ref(bsf, pkt);
     if (err < 0)
         return err;
+
+    err = h264_metadata_update_side_data(bsf, pkt);
+    if (err < 0)
+        goto fail;
 
     err = ff_cbs_read_packet(ctx->cbc, au, pkt);
     if (err < 0) {
@@ -389,7 +429,7 @@ static int h264_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
             } else {
                 goto invalid_user_data;
             }
-            if (i & 1)
+            if (j & 1)
                 udu->uuid_iso_iec_11578[j / 2] |= v;
             else
                 udu->uuid_iso_iec_11578[j / 2] = v << 4;
@@ -644,6 +684,10 @@ static const AVOption h264_metadata_options[] = {
     { "sample_aspect_ratio", "Set sample aspect ratio (table E-1)",
         OFFSET(sample_aspect_ratio), AV_OPT_TYPE_RATIONAL,
         { .dbl = 0.0 }, 0, 65535, FLAGS },
+
+    { "overscan_appropriate_flag", "Set VUI overscan appropriate flag",
+        OFFSET(overscan_appropriate_flag), AV_OPT_TYPE_INT,
+        { .i64 = -1 }, -1, 1, FLAGS },
 
     { "video_format", "Set video format (table E-2)",
         OFFSET(video_format), AV_OPT_TYPE_INT,

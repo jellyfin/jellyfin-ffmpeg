@@ -29,7 +29,7 @@ prepare_hwa_amd64() {
 
     # Download and install libva
     pushd ${SOURCE_DIR}
-    git clone -b v2.6-branch --depth=1 https://github.com/intel/libva
+    git clone -b v2.7-branch --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|NULL|g' va/va.c
@@ -140,13 +140,13 @@ EOF
     yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
     popd
 
-    # Fetch RasPi headers to build MMAL support
+    # Fetch RasPi headers to build MMAL and OMX-RPI support
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/raspberrypi/firmware mmalheaders
-    git clone --depth=1 https://github.com/raspberrypi/userland piuserland
-    cp -a mmalheaders/opt/vc/include/* /usr/include/
-    cp -a mmalheaders/opt/vc/lib/* /usr/lib/
-    cp -a piuserland/interface/* /usr/include/
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/include rpi/include
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/lib rpi/lib
+    cp -a rpi/include/* /usr/include
+    cp -a rpi/include/IL/* /usr/include
+    cp -a rpi/lib/* /usr/lib
     popd
 }
 prepare_crossbuild_env_arm64() {
@@ -180,6 +180,15 @@ EOF
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-arm64
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
     yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 liblttng-ust0:arm64 libstdc++6:arm64
+    popd
+
+    # Fetch RasPi headers to build MMAL and OMX-RPI support
+    pushd ${SOURCE_DIR}
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/include rpi/include
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/lib rpi/lib
+    cp -a rpi/include/* /usr/include
+    cp -a rpi/include/IL/* /usr/include
+    cp -a rpi/lib/* /usr/lib
     popd
 }
 

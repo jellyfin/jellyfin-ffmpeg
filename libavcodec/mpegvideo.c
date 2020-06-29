@@ -32,7 +32,6 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/motion_vector.h"
-#include "libavutil/timer.h"
 #include "avcodec.h"
 #include "blockdsp.h"
 #include "h264chroma.h"
@@ -347,9 +346,9 @@ av_cold void ff_mpv_idct_init(MpegEncContext *s)
     ff_init_scantable(s->idsp.idct_permutation, &s->intra_v_scantable, ff_alternate_vertical_scan);
 }
 
-static int alloc_picture(MpegEncContext *s, Picture *pic, int shared)
+static int alloc_picture(MpegEncContext *s, Picture *pic)
 {
-    return ff_alloc_picture(s->avctx, pic, &s->me, &s->sc, shared, 0,
+    return ff_alloc_picture(s->avctx, pic, &s->me, &s->sc, 0, 0,
                             s->chroma_x_shift, s->chroma_y_shift, s->out_format,
                             s->mb_stride, s->mb_width, s->mb_height, s->b8_stride,
                             &s->linesize, &s->uvlinesize);
@@ -409,7 +408,7 @@ static int init_duplicate_context(MpegEncContext *s)
 
     return 0;
 fail:
-    return -1; // free() through ff_mpv_common_end()
+    return AVERROR(ENOMEM); // free() through ff_mpv_common_end()
 }
 
 static void free_duplicate_context(MpegEncContext *s)
@@ -469,7 +468,6 @@ int ff_update_duplicate_context(MpegEncContext *dst, MpegEncContext *src)
     MpegEncContext bak;
     int i, ret;
     // FIXME copy only needed parts
-    // START_TIMER
     backup_duplicate_context(&bak, dst);
     memcpy(dst, src, sizeof(MpegEncContext));
     backup_duplicate_context(dst, &bak);
@@ -487,8 +485,6 @@ int ff_update_duplicate_context(MpegEncContext *dst, MpegEncContext *src)
                "scratch buffers.\n");
         return ret;
     }
-    // STOP_TIMER("update_duplicate_context")
-    // about 10k cycles / 0.01 sec for  1000frames on 1ghz with 2 threads
     return 0;
 }
 
@@ -911,7 +907,7 @@ av_cold int ff_mpv_common_init(MpegEncContext *s)
     if (s->avctx->pix_fmt == AV_PIX_FMT_NONE) {
         av_log(s->avctx, AV_LOG_ERROR,
                "decoding to AV_PIX_FMT_NONE is not supported.\n");
-        return -1;
+        return AVERROR(EINVAL);
     }
 
     if (nb_slices > MAX_THREADS || (nb_slices > s->mb_height && s->mb_height)) {
@@ -927,7 +923,7 @@ av_cold int ff_mpv_common_init(MpegEncContext *s)
 
     if ((s->width || s->height) &&
         av_image_check_size(s->width, s->height, 0, s->avctx))
-        return -1;
+        return AVERROR(EINVAL);
 
     dct_init(s);
 
@@ -939,27 +935,27 @@ av_cold int ff_mpv_common_init(MpegEncContext *s)
         return ret;
 
     FF_ALLOCZ_OR_GOTO(s->avctx, s->picture,
-                      MAX_PICTURE_COUNT * sizeof(Picture), fail);
+                      MAX_PICTURE_COUNT * sizeof(Picture), fail_nomem);
     for (i = 0; i < MAX_PICTURE_COUNT; i++) {
         s->picture[i].f = av_frame_alloc();
         if (!s->picture[i].f)
-            goto fail;
+            goto fail_nomem;
     }
     s->next_picture.f = av_frame_alloc();
     if (!s->next_picture.f)
-        goto fail;
+        goto fail_nomem;
     s->last_picture.f = av_frame_alloc();
     if (!s->last_picture.f)
-        goto fail;
+        goto fail_nomem;
     s->current_picture.f = av_frame_alloc();
     if (!s->current_picture.f)
-        goto fail;
+        goto fail_nomem;
     s->new_picture.f = av_frame_alloc();
     if (!s->new_picture.f)
-        goto fail;
+        goto fail_nomem;
 
-    if (init_context_frame(s))
-        goto fail;
+    if ((ret = init_context_frame(s)))
+        goto fail_nomem;
 
     s->parse_context.state = -1;
 
@@ -973,9 +969,9 @@ av_cold int ff_mpv_common_init(MpegEncContext *s)
             if (i) {
                 s->thread_context[i] = av_memdup(s, sizeof(MpegEncContext));
                 if (!s->thread_context[i])
-                    goto fail;
+                    goto fail_nomem;
             }
-            if (init_duplicate_context(s->thread_context[i]) < 0)
+            if ((ret = init_duplicate_context(s->thread_context[i])) < 0)
                 goto fail;
             s->thread_context[i]->start_mb_y =
                 (s->mb_height * (i) + nb_slices / 2) / nb_slices;
@@ -983,7 +979,7 @@ av_cold int ff_mpv_common_init(MpegEncContext *s)
                 (s->mb_height * (i + 1) + nb_slices / 2) / nb_slices;
         }
     } else {
-        if (init_duplicate_context(s) < 0)
+        if ((ret = init_duplicate_context(s)) < 0)
             goto fail;
         s->start_mb_y = 0;
         s->end_mb_y   = s->mb_height;
@@ -992,9 +988,11 @@ av_cold int ff_mpv_common_init(MpegEncContext *s)
 //     }
 
     return 0;
+ fail_nomem:
+    ret = AVERROR(ENOMEM);
  fail:
     ff_mpv_common_end(s);
-    return -1;
+    return ret;
 }
 
 /**
@@ -1263,7 +1261,7 @@ int ff_mpv_frame_start(MpegEncContext *s, AVCodecContext *avctx)
 
     pic->f->coded_picture_number = s->coded_picture_number++;
 
-    if (alloc_picture(s, pic, 0) < 0)
+    if (alloc_picture(s, pic) < 0)
         return -1;
 
     s->current_picture_ptr = pic;
@@ -1324,7 +1322,7 @@ int ff_mpv_frame_start(MpegEncContext *s, AVCodecContext *avctx)
         s->last_picture_ptr->f->key_frame = 0;
         s->last_picture_ptr->f->pict_type = AV_PICTURE_TYPE_P;
 
-        if (alloc_picture(s, s->last_picture_ptr, 0) < 0) {
+        if (alloc_picture(s, s->last_picture_ptr) < 0) {
             s->last_picture_ptr = NULL;
             return -1;
         }
@@ -1365,7 +1363,7 @@ int ff_mpv_frame_start(MpegEncContext *s, AVCodecContext *avctx)
         s->next_picture_ptr->f->key_frame = 0;
         s->next_picture_ptr->f->pict_type = AV_PICTURE_TYPE_P;
 
-        if (alloc_picture(s, s->next_picture_ptr, 0) < 0) {
+        if (alloc_picture(s, s->next_picture_ptr) < 0) {
             s->next_picture_ptr = NULL;
             return -1;
         }

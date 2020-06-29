@@ -96,7 +96,9 @@ static const AVOption options[] = {
     { "forced-idr",   "If forcing keyframes, force them as IDR frames.",
                                                             OFFSET(forced_idr),   AV_OPT_TYPE_BOOL,  { .i64 = 0 }, -1, 1, VE },
     { "spatial_aq",   "set to 1 to enable Spatial AQ",      OFFSET(aq),           AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
+    { "spatial-aq",   "set to 1 to enable Spatial AQ",      OFFSET(aq),           AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
     { "temporal_aq",  "set to 1 to enable Temporal AQ",     OFFSET(temporal_aq),  AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
+    { "temporal-aq",  "set to 1 to enable Temporal AQ",     OFFSET(temporal_aq),  AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
     { "zerolatency",  "Set 1 to indicate zero latency operation (no reordering delay)",
                                                             OFFSET(zerolatency),  AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
     { "nonref_p",     "Set this to 1 to enable automatic insertion of non-reference P-frames",
@@ -127,6 +129,8 @@ static const AVOption options[] = {
     { "each",         "",                                   0,                    AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0,       VE, "b_ref_mode" },
     { "middle",       "",                                   0,                    AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0,       VE, "b_ref_mode" },
 #endif
+    { "dpb_size",     "Specifies the DPB size used for encoding (0 means automatic)",
+                                                            OFFSET(dpb_size),     AV_OPT_TYPE_INT,   { .i64 = 0 }, 0, INT_MAX, VE },
     { NULL }
 };
 
@@ -172,9 +176,11 @@ AVCodec ff_nvenc_hevc_encoder = {
     .priv_class     = &nvenc_hevc_class,
     .defaults       = defaults,
     .pix_fmts       = ff_nvenc_pix_fmts,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE,
+    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+                      AV_CODEC_CAP_ENCODER_FLUSH,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .wrapper_name   = "nvenc",
+    .hw_configs     = ff_nvenc_hw_configs,
 };
 
 #endif
@@ -196,11 +202,14 @@ AVCodec ff_hevc_nvenc_encoder = {
     .receive_packet = ff_nvenc_receive_packet,
     .encode2        = ff_nvenc_encode_frame,
     .close          = ff_nvenc_encode_close,
+    .flush          = ff_nvenc_encode_flush,
     .priv_data_size = sizeof(NvencContext),
     .priv_class     = &hevc_nvenc_class,
     .defaults       = defaults,
     .pix_fmts       = ff_nvenc_pix_fmts,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE,
+    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+                      AV_CODEC_CAP_ENCODER_FLUSH,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .wrapper_name   = "nvenc",
+    .hw_configs     = ff_nvenc_hw_configs,
 };

@@ -86,7 +86,7 @@ const char *swscale_configuration(void)
 const char *swscale_license(void)
 {
 #define LICENSE_PREFIX "libswscale license: "
-    return LICENSE_PREFIX FFMPEG_LICENSE + sizeof(LICENSE_PREFIX) - 1;
+    return &LICENSE_PREFIX FFMPEG_LICENSE[sizeof(LICENSE_PREFIX) - 1];
 }
 
 typedef struct FormatEntry {
@@ -95,7 +95,7 @@ typedef struct FormatEntry {
     uint8_t is_supported_endianness :1;
 } FormatEntry;
 
-static const FormatEntry format_entries[AV_PIX_FMT_NB] = {
+static const FormatEntry format_entries[] = {
     [AV_PIX_FMT_YUV420P]     = { 1, 1 },
     [AV_PIX_FMT_YUYV422]     = { 1, 1 },
     [AV_PIX_FMT_RGB24]       = { 1, 1 },
@@ -236,6 +236,10 @@ static const FormatEntry format_entries[AV_PIX_FMT_NB] = {
     [AV_PIX_FMT_GBRP14BE]    = { 1, 1 },
     [AV_PIX_FMT_GBRP16LE]    = { 1, 1 },
     [AV_PIX_FMT_GBRP16BE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRPF32LE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRPF32BE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRAPF32LE]  = { 1, 1 },
+    [AV_PIX_FMT_GBRAPF32BE]  = { 1, 1 },
     [AV_PIX_FMT_GBRAP]       = { 1, 1 },
     [AV_PIX_FMT_GBRAP16LE]   = { 1, 1 },
     [AV_PIX_FMT_GBRAP16BE]   = { 1, 1 },
@@ -266,23 +270,24 @@ static const FormatEntry format_entries[AV_PIX_FMT_NB] = {
     [AV_PIX_FMT_YUVA444P12LE] = { 1, 1 },
     [AV_PIX_FMT_NV24]        = { 1, 1 },
     [AV_PIX_FMT_NV42]        = { 1, 1 },
+    [AV_PIX_FMT_Y210LE]      = { 1, 0 },
 };
 
 int sws_isSupportedInput(enum AVPixelFormat pix_fmt)
 {
-    return (unsigned)pix_fmt < AV_PIX_FMT_NB ?
+    return (unsigned)pix_fmt < FF_ARRAY_ELEMS(format_entries) ?
            format_entries[pix_fmt].is_supported_in : 0;
 }
 
 int sws_isSupportedOutput(enum AVPixelFormat pix_fmt)
 {
-    return (unsigned)pix_fmt < AV_PIX_FMT_NB ?
+    return (unsigned)pix_fmt < FF_ARRAY_ELEMS(format_entries) ?
            format_entries[pix_fmt].is_supported_out : 0;
 }
 
 int sws_isSupportedEndiannessConversion(enum AVPixelFormat pix_fmt)
 {
-    return (unsigned)pix_fmt < AV_PIX_FMT_NB ?
+    return (unsigned)pix_fmt < FF_ARRAY_ELEMS(format_entries) ?
            format_entries[pix_fmt].is_supported_endianness : 0;
 }
 
@@ -390,7 +395,7 @@ static av_cold int initFilter(int16_t **outFilter, int32_t **filterPos,
             (*filterPos)[i] = xx;
             // bilinear upscale / linear interpolate / area averaging
             for (j = 0; j < filterSize; j++) {
-                int64_t coeff= fone - FFABS(((int64_t)xx<<16) - xDstInSrc)*(fone>>16);
+                int64_t coeff = fone - FFABS((int64_t)xx * (1 << 16) - xDstInSrc) * (fone >> 16);
                 if (coeff < 0)
                     coeff = 0;
                 filter[i * filterSize + j] = coeff;
@@ -1400,6 +1405,8 @@ av_cold int sws_init_context(SwsContext *c, SwsFilter *srcFilter,
         srcFormat != AV_PIX_FMT_GBRP14BE  && srcFormat != AV_PIX_FMT_GBRP14LE &&
         srcFormat != AV_PIX_FMT_GBRP16BE  && srcFormat != AV_PIX_FMT_GBRP16LE &&
         srcFormat != AV_PIX_FMT_GBRAP16BE  && srcFormat != AV_PIX_FMT_GBRAP16LE &&
+        srcFormat != AV_PIX_FMT_GBRPF32BE  && srcFormat != AV_PIX_FMT_GBRPF32LE &&
+        srcFormat != AV_PIX_FMT_GBRAPF32BE && srcFormat != AV_PIX_FMT_GBRAPF32LE &&
         ((dstW >> c->chrDstHSubSample) <= (srcW >> 1) ||
          (flags & SWS_FAST_BILINEAR)))
         c->chrSrcHSubSample = 1;
@@ -1502,6 +1509,7 @@ av_cold int sws_init_context(SwsContext *c, SwsFilter *srcFilter,
         ff_free_filters(c2);
         if (ff_init_filters(c2) < 0) {
             sws_freeContext(c2);
+            c->cascaded_context[1] = NULL;
             return -1;
         }
 

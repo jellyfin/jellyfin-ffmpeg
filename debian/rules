@@ -59,6 +59,7 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-nvenc \
 	--enable-nvdec \
 	--enable-vaapi \
+	--enable-opencl \
 #	--enable-libmfx # uncomment for non-free QSV
 
 HOST_ARCH := $(shell arch)
