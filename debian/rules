@@ -10,19 +10,18 @@ ifeq ($(VERSION_SUFFIX),testing)
 endif
 PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
-CONFIG := --toolchain=hardened \
-	--prefix=/usr \
+CONFIG := --prefix=${TARGET_DIR} \
 	--target-os=linux \
-	--enable-cross-compile \
-	--extra-cflags='--static' \
-	--enable-gpl \
-	--enable-static \
 	--disable-doc \
 	--disable-ffplay \
 	--disable-shared \
 	--disable-libxcb \
+	--disable-vdpau \
 	--disable-sdl2 \
 	--disable-xlib \
+	--enable-gpl \
+	--enable-version3 \
+	--enable-static \
 	--enable-libfontconfig \
 	--enable-fontconfig \
 	--enable-gmp \
@@ -40,23 +39,27 @@ CONFIG := --toolchain=hardened \
 	--enable-libx264 \
 	--enable-libx265 \
 	--enable-libzvbi \
+
+CONFIG_ARM_COMMON := --toolchain=hardened \
+	--enable-cross-compile \
 	--enable-omx \
 	--enable-omx-rpi \
-	--enable-version3 \
-	--enable-vaapi \
-	--enable-vdpau \
 
-CONFIG_ARM := --enable-mmal \
-	--enable-cross-compile \
+CONFIG_ARM := ${CONFIG_ARM_COMMON} \
+	--enable-mmal \
+	--arch=armhf \
 	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
-	--arch=armhf
 
-CONFIG_ARM64 := --enable-cross-compile \
+CONFIG_ARM64 := ${CONFIG_ARM_COMMON} \
+	--arch=arm64 \
 	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
-	--arch=arm64
 
 CONFIG_x86 := --arch=amd64 \
-	--enable-nvenc --enable-nvdec --enable-amf
+	--enable-amf \
+	--enable-nvenc \
+	--enable-nvdec \
+	--enable-vaapi \
+#	--enable-libmfx # uncomment for non-free QSV
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
