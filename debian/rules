@@ -39,7 +39,6 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libx264 \
 	--enable-libx265 \
 	--enable-libzvbi \
-	--enable-libdav1d
 
 CONFIG_ARM_COMMON := --toolchain=hardened \
 	--enable-cross-compile \
@@ -60,6 +59,7 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-nvenc \
 	--enable-nvdec \
 	--enable-vaapi \
+	--enable-libdav1d
 #	--enable-libmfx # uncomment for non-free QSV
 
 HOST_ARCH := $(shell arch)
