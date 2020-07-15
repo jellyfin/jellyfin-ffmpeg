@@ -43,8 +43,12 @@ Build-Depends:
  libx265-dev,
 # --enable-libzvbi
  libzvbi-dev,
+# --enable-cuda-llvm
+ clang [!armhf !arm64],
+# --enable-opencl
+ ocl-icd-opencl-dev [!armhf !arm64],
 # --enable-omx
- libomxil-bellagio-dev,
+# libomxil-bellagio-dev
 # omx headers are fully included in raspberrypi/firmware.
 # libomxil-bellagio-dev is missing some functions required in ffmpeg 4.3+.
 # Drop this package when building ffmpeg 4.3+.
