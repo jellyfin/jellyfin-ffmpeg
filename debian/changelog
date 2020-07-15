@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.3.1-1) unstable; urgency=medium
+
+  * New upstream version 4.3.1
+
+ -- nyanmisaka <nst799610810@gmail.com>  Wed, 15 Jul 2020 18:24:21 +0800
+
 jellyfin-ffmpeg (4.2.1-7) unstable; urgency=medium
 
   * Integrate free libva and intel-vaapi-driver with MIT license in the deb

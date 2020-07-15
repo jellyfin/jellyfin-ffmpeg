@@ -33,6 +33,7 @@ typedef void ID3D11Device;
 #include "compat/cuda/dynlink_loader.h"
 #include "libavutil/fifo.h"
 #include "libavutil/opt.h"
+#include "hwconfig.h"
 
 #include "avcodec.h"
 
@@ -52,6 +53,13 @@ typedef void ID3D11Device;
 // SDK 9.0 compile time feature checks
 #if NVENCAPI_CHECK_VERSION(9, 0)
 #define NVENC_HAVE_HEVC_BFRAME_REF_MODE
+#endif
+
+// SDK 9.1 compile time feature checks
+#if NVENCAPI_CHECK_VERSION(9, 1)
+#define NVENC_HAVE_MULTIPLE_REF_FRAMES
+#define NVENC_HAVE_CUSTREAM_PTR
+#define NVENC_HAVE_GETLASTERRORSTRING
 #endif
 
 typedef struct NvencSurface
@@ -127,6 +135,7 @@ typedef struct NvencContext
     NV_ENC_CONFIG encode_config;
     CUcontext cu_context;
     CUcontext cu_context_internal;
+    CUstream cu_stream;
     ID3D11Device *d3d11_device;
 
     int nb_surfaces;
@@ -151,11 +160,6 @@ typedef struct NvencContext
     /* the actual data pixel format, different from
      * AVCodecContext.pix_fmt when using hwaccel frames on input */
     enum AVPixelFormat data_pix_fmt;
-
-    /* timestamps of the first two frames, for computing the first dts
-     * when B-frames are present */
-    int64_t initial_pts[2];
-    int first_packet_output;
 
     int support_dyn_bitrate;
 
@@ -192,6 +196,7 @@ typedef struct NvencContext
     int coder;
     int b_ref_mode;
     int a53_cc;
+    int dpb_size;
 } NvencContext;
 
 int ff_nvenc_encode_init(AVCodecContext *avctx);
@@ -205,6 +210,9 @@ int ff_nvenc_receive_packet(AVCodecContext *avctx, AVPacket *pkt);
 int ff_nvenc_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                           const AVFrame *frame, int *got_packet);
 
+void ff_nvenc_encode_flush(AVCodecContext *avctx);
+
 extern const enum AVPixelFormat ff_nvenc_pix_fmts[];
+extern const AVCodecHWConfigInternal *ff_nvenc_hw_configs[];
 
 #endif /* AVCODEC_NVENC_H */

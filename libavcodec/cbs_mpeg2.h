@@ -114,6 +114,12 @@ typedef struct MPEG2RawGroupOfPicturesHeader {
     uint8_t broken_link;
 } MPEG2RawGroupOfPicturesHeader;
 
+typedef struct MPEG2RawExtraInformation {
+    uint8_t     *extra_information;
+    AVBufferRef *extra_information_ref;
+    size_t       extra_information_length;
+} MPEG2RawExtraInformation;
+
 typedef struct MPEG2RawPictureHeader {
     uint8_t picture_start_code;
 
@@ -126,7 +132,7 @@ typedef struct MPEG2RawPictureHeader {
     uint8_t full_pel_backward_vector;
     uint8_t backward_f_code;
 
-    uint8_t extra_bit_picture;
+    MPEG2RawExtraInformation extra_information_picture;
 } MPEG2RawPictureHeader;
 
 typedef struct MPEG2RawPictureCodingExtension {
@@ -194,11 +200,7 @@ typedef struct MPEG2RawSliceHeader {
     uint8_t slice_picture_id_enable;
     uint8_t slice_picture_id;
 
-    uint8_t extra_bit_slice;
-
-    size_t extra_information_length;
-    uint8_t *extra_information;
-    AVBufferRef *extra_information_ref;
+    MPEG2RawExtraInformation extra_information_slice;
 } MPEG2RawSliceHeader;
 
 typedef struct MPEG2RawSlice {
@@ -210,6 +212,10 @@ typedef struct MPEG2RawSlice {
     AVBufferRef *data_ref;
 } MPEG2RawSlice;
 
+typedef struct MPEG2RawSequenceEnd {
+    uint8_t sequence_end_code;
+} MPEG2RawSequenceEnd;
+
 
 typedef struct CodedBitstreamMPEG2Context {
     // Elements stored in headers which are required for other decoding.
@@ -219,10 +225,6 @@ typedef struct CodedBitstreamMPEG2Context {
     uint8_t scalable_mode;
     uint8_t progressive_sequence;
     uint8_t number_of_frame_centre_offsets;
-
-    // Write buffer.
-    uint8_t *write_buffer;
-    size_t write_buffer_size;
 } CodedBitstreamMPEG2Context;
 
 

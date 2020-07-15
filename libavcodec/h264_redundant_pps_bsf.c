@@ -22,6 +22,7 @@
 #include "libavutil/mem.h"
 
 #include "bsf.h"
+#include "bsf_internal.h"
 #include "cbs.h"
 #include "cbs_h264.h"
 #include "h264.h"

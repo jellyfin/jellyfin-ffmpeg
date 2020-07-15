@@ -70,11 +70,6 @@ int ff_alloc_packet2(AVCodecContext *avctx, AVPacket *avpkt, int64_t size, int64
     }
 }
 
-int ff_alloc_packet(AVPacket *avpkt, int size)
-{
-    return ff_alloc_packet2(NULL, avpkt, size, 0);
-}
-
 /**
  * Pad last frame with silence.
  */
@@ -90,7 +85,7 @@ static int pad_last_frame(AVCodecContext *s, AVFrame **dst, const AVFrame *src)
     frame->channel_layout = src->channel_layout;
     frame->channels       = src->channels;
     frame->nb_samples     = s->frame_size;
-    ret = av_frame_get_buffer(frame, 32);
+    ret = av_frame_get_buffer(frame, 0);
     if (ret < 0)
         goto fail;
 
@@ -174,8 +169,14 @@ int attribute_align_arg avcodec_encode_audio2(AVCodecContext *avctx,
                 goto end;
             }
         } else if (!(avctx->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)) {
-            if (frame->nb_samples < avctx->frame_size &&
-                !avctx->internal->last_audio_frame) {
+            /* if we already got an undersized frame, that must have been the last */
+            if (avctx->internal->last_audio_frame) {
+                av_log(avctx, AV_LOG_ERROR, "frame_size (%d) was not respected for a non-last frame (avcodec_encode_audio2)\n", avctx->frame_size);
+                ret = AVERROR(EINVAL);
+                goto end;
+            }
+
+            if (frame->nb_samples < avctx->frame_size) {
                 ret = pad_last_frame(avctx, &padded_frame, frame);
                 if (ret < 0)
                     goto end;
@@ -271,14 +272,12 @@ int attribute_align_arg avcodec_encode_video2(AVCodecContext *avctx,
         return AVERROR(ENOSYS);
     }
 
-    if(CONFIG_FRAME_THREAD_ENCODER &&
-       avctx->internal->frame_thread_encoder && (avctx->active_thread_type&FF_THREAD_FRAME))
-        return ff_thread_video_encode_frame(avctx, avpkt, frame, got_packet_ptr);
-
     if ((avctx->flags&AV_CODEC_FLAG_PASS1) && avctx->stats_out)
         avctx->stats_out[0] = '\0';
 
-    if (!(avctx->codec->capabilities & AV_CODEC_CAP_DELAY) && !frame) {
+    if (!frame &&
+        !(avctx->codec->capabilities & AV_CODEC_CAP_DELAY ||
+          (avctx->internal->frame_thread_encoder && avctx->active_thread_type & FF_THREAD_FRAME))) {
         av_packet_unref(avpkt);
         return 0;
     }
@@ -293,7 +292,15 @@ int attribute_align_arg avcodec_encode_video2(AVCodecContext *avctx,
 
     av_assert0(avctx->codec->encode2);
 
-    ret = avctx->codec->encode2(avctx, avpkt, frame, got_packet_ptr);
+
+    if (CONFIG_FRAME_THREAD_ENCODER &&
+        avctx->internal->frame_thread_encoder && (avctx->active_thread_type & FF_THREAD_FRAME))
+        ret = ff_thread_video_encode_frame(avctx, avpkt, frame, got_packet_ptr);
+    else {
+        ret = avctx->codec->encode2(avctx, avpkt, frame, got_packet_ptr);
+        if (*got_packet_ptr && !(avctx->codec->capabilities & AV_CODEC_CAP_DELAY))
+            avpkt->pts = avpkt->dts = frame->pts;
+    }
     av_assert0(ret <= 0);
 
     emms_c();
@@ -320,8 +327,6 @@ int attribute_align_arg avcodec_encode_video2(AVCodecContext *avctx,
     if (!ret) {
         if (!*got_packet_ptr)
             avpkt->size = 0;
-        else if (!(avctx->codec->capabilities & AV_CODEC_CAP_DELAY))
-            avpkt->pts = avpkt->dts = frame->pts;
 
         if (needs_realloc && avpkt->data) {
             ret = av_buffer_realloc(&avpkt->buf, avpkt->size + AV_INPUT_BUFFER_PADDING_SIZE);
@@ -422,9 +427,15 @@ int attribute_align_arg avcodec_receive_packet(AVCodecContext *avctx, AVPacket *
         return AVERROR(EINVAL);
 
     if (avctx->codec->receive_packet) {
+        int ret;
         if (avctx->internal->draining && !(avctx->codec->capabilities & AV_CODEC_CAP_DELAY))
             return AVERROR_EOF;
-        return avctx->codec->receive_packet(avctx, avpkt);
+        ret = avctx->codec->receive_packet(avctx, avpkt);
+        if (!ret)
+            // Encoders must always return ref-counted buffers.
+            // Side-data only packets have no data and can be not ref-counted.
+            av_assert0(!avpkt->data || avpkt->buf);
+        return ret;
     }
 
     // Emulation via old API.

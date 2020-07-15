@@ -1,73 +1,123 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
-version 4.2.1:
-- avformat/vividas: check for tiny blocks using alignment
-- avcodec/vc1_pred: Fix refdist in scaleforopp()
-- avcodec/vorbisdec: fix FASTDIV usage for vr_type == 2
-- avcodec/iff: Check for overlap in cmap_read_palette()
-- avcodec/apedec: Fix 32bit int overflow in do_apply_filter()
-- lavf/rawenc: Only accept the appropriate stream type for raw muxers.
-- avformat/matroskadec: use av_fast_realloc to reallocate ebml list arrays
-- avformat/matroskadec: use proper types for some EbmlSyntax fields
-- avcodec/ralf: fix undefined shift in extend_code()
-- avcodec/ralf: fix undefined shift
-- avcodec/bgmc: Check input space in ff_bgmc_decode_init()
-- avcodec/vp3: Check for end of input in 2 places of vp4_unpack_macroblocks()
-- avcodec/truemotion2: Fix multiple integer overflows in tm2_null_res_block()
-- avcodec/vc1_block: Check the return code from vc1_decode_p_block()
-- avcodec/vc1dec: Require res_sprite for wmv3images
-- avcodec/vc1_block: Check for double escapes
-- avcodec/vorbisdec: Check get_vlc2() failure
-- avcodec/tta: Fix integer overflow in prediction
-- avcodec/vb: Check input packet size to be large enough to contain flags
-- avcodec/cavsdec: Limit the number of access units per packet to 2
-- avcodec/atrac9dec: Check block_align
-- avcodec/alac: Check for bps of 0
-- avcodec/alac: Fix multiple integer overflows in lpc_prediction()
-- avcodec/rl2: set dimensions
-- avcodec/aacdec: Add FF_CODEC_CAP_INIT_CLEANUP
-- avcodec/idcinvideo: Add 320x240 default maximum resolution
-- avformat/realtextdec: free queue on error
-- avcodec/vp5/6/8: use vpX_rac_is_end()
-- avformat/vividas: Check av_xiphlacing() return value before use
-- avcodec/alsdec: Fix integer overflow in decode_var_block_data()
-- avcodec/alsdec: Limit maximum channels to 512
-- avcodec/anm: Check input size for a frame with just a stop code
-- avcodec/flicvideo: Optimize and Simplify FLI_COPY in flic_decode_frame_24BPP() by using bytestream2_get_buffer()
-- avcodec/loco: Check left column value
-- avcodec/ffwavesynth: Fixes invalid shift with pink noise seeking
-- avcodec/ffwavesynth: Fix integer overflow for some corner case values
-- avcodec/indeo2: Check remaining input more often
-- avcodec/diracdec: Check that slices are fewer than pixels
-- avcodec/vp56: Consider the alpha start as end of the prior header
-- avcodec/4xm: Check for end of input in decode_p_block()
-- avcodec/hevcdec: Check delta_luma_weight_l0/1
-- avcodec/hnm4video: Optimize postprocess_current_frame()
-- avcodec/hevc_refs: Optimize 16bit generate_missing_ref()
-- avcodec/scpr: Use av_memcpy_backptr() in type 17 and 33
-- avcodec/tiff: Enforce increasing offsets
-- avcodec/dds: Use ff_set_dimensions()
-- avformat/vividas: Fix another infinite loop
-- avformat/vividas: Fix infinite loop in header parser
-- avcodec/mpc8: Fix 32bit mask/enum
-- avcodec/alsdec: Fix integer overflows of raw_samples in decode_var_block_data()
-- avcodec/alsdec: Fix integer overflow of raw_samples in decode_blocks()
-- avcodec/alsdec: fix mantisse shift
-- avcodec/pngdec: consider chunk size in minimal size check
-- avcodec/vc1_block: Fix invalid shifts in vc1_decode_i_blocks()
-- avcodec/vc1_block: fix invalid shift in vc1_decode_p_mb()
-- avcodec/aacdec_template: fix integer overflow in imdct_and_windowing()
-- avformat/mpegts: Check if ready on SCTE reception
-- avcodec/omx: fix xFramerate calculation
-- avformat/avidec: add support for recognizing HEVC fourcc when demuxing
-- avformat/mpegts: fix teletext PTS when selecting teletext streams only
-- avcodec/h2645_parse: zero initialize the rbsp buffer
-- avcodec/omx: Fix handling of fragmented buffers
-- avcodec/omx: ensure zerocopy mode can be disabled on rpi builds
-- avformat/mxfdec: do not ignore bad size errors
-- avformat/matroskadec: Fix seeking
-- ffplay: properly detect all window size changes
+version 4.3.1:
+ avcodec/tiff: Check input space in dng_decode_jpeg()
+ avcodec/mjpeg_parser: Adjust size rejection threshold
+ avcodec/cbs_jpeg: Fix uninitialized end index in cbs_jpeg_split_fragment()
+ avformat/sdp: Fix potential write beyond end of buffer
+ avformat/mm: Check for existence of audio stream
+ avformat/mov: Fix unaligned read of uint32_t and endian-dependance in mov_read_default
+ avcodec/apedec: Fix undefined integer overflow with 24bit
+ avcodec/loco: Fix integer overflow with large values from loco_get_rice()
+ avformat/smjpegdec: Check the existence of referred streams
+ avcodec/tiff: Check frame parameters before blit for DNG
+ avcodec/mjpegdec: Limit bayer to single plane outputting format
+ avcodec/pnmdec: Fix misaligned reads
+ avcodec/mv30: Fix integer overflows in idct2_1d()
+ avcodec/hcadec: Check total_band_count against imdct_in size
+ avcodec/scpr3: Fix out of array access with dectab
+ avcodec/tiff: Do not overrun the array ends in dng_blit()
+ avcodec/dstdec: Replace AC overread check by sample rate check
+ dnn_backend_native: Add overflow check for length calculation.
+ avcodec/h264_metadata_bsf: Fix invalid av_freep
+ avcodec/cbs_h265: set default VUI parameters when vui_parameters_present_flag is false
+ avcodec/av1_parser: initialize avctx->pix_fmt
+ avcodec/av1_parser: add missing parsing for RGB pixel format signaling
+ avcodec/av1_parser: set context values outside the OBU parsing loop
+ avutil/avsscanf: Add () to avoid integer overflow in scanexp()
+ avformat/utils: reorder duration computation to avoid overflow
+ avcodec/pngdec: Check for fctl after idat
+ avformat/hls: Pass a copy of the URL for probing
+ avutil/common: Fix integer overflow in av_ceil_log2_c()
+ avcodec/wmalosslessdec: fix overflow with pred in revert_cdlms
+ avformat/mvdec: Fix integer overflow with billions of channels
+ avformat/microdvddec: skip malformed lines without frame number.
+ dnn_backend_native: check operand index
+ dnn_backend_native.c: refine code for fail case
+ avformat/mov: fix memleaks
+ libavformat/mov: Fix memleaks when demuxing DV audio
+ avcodec/cbs_av1: Fix writing uvlc numbers >= INT_MAX
+ avformat/avc, mxfenc: Avoid allocation of H264 SPS structure, fix memleak
+ avcodec/bitstream: Don't check for undefined behaviour after it happened
+ avformat/aviobuf: Also return truncated buffer in avio_get_dyn_buf()
+ avformat/aviobuf: Don't check for overflow after it happened
+
+version 4.3:
+- v360 filter
+- Intel QSV-accelerated MJPEG decoding
+- Intel QSV-accelerated VP9 decoding
+- Support for TrueHD in mp4
+- Support AMD AMF encoder on Linux (via Vulkan)
+- IMM5 video decoder
+- ZeroMQ protocol
+- support Sipro ACELP.KELVIN decoding
+- streamhash muxer
+- sierpinski video source
+- scroll video filter
+- photosensitivity filter
+- anlms filter
+- arnndn filter
+- bilateral filter
+- maskedmin and maskedmax filters
+- VDPAU VP9 hwaccel
+- median filter
+- QSV-accelerated VP9 encoding
+- AV1 encoding support via librav1e
+- AV1 frame merge bitstream filter
+- AV1 Annex B demuxer
+- axcorrelate filter
+- mvdv decoder
+- mvha decoder
+- MPEG-H 3D Audio support in mp4
+- thistogram filter
+- freezeframes filter
+- Argonaut Games ADPCM decoder
+- Argonaut Games ASF demuxer
+- xfade video filter
+- xfade_opencl filter
+- afirsrc audio filter source
+- pad_opencl filter
+- Simon & Schuster Interactive ADPCM decoder
+- Real War KVAG demuxer
+- CDToons video decoder
+- siren audio decoder
+- Rayman 2 ADPCM decoder
+- Rayman 2 APM demuxer
+- cas video filter
+- High Voltage Software ADPCM decoder
+- LEGO Racers ALP (.tun & .pcm) demuxer
+- AMQP 0-9-1 protocol (RabbitMQ)
+- Vulkan support
+- avgblur_vulkan, overlay_vulkan, scale_vulkan and chromaber_vulkan filters
+- ADPCM IMA MTF decoder
+- FWSE demuxer
+- DERF DPCM decoder
+- DERF demuxer
+- CRI HCA decoder
+- CRI HCA demuxer
+- overlay_cuda filter
+- switch from AvxSynth to AviSynth+ on Linux
+- mv30 decoder
+- Expanded styling support for 3GPP Timed Text Subtitles (movtext)
+- WebP parser
+- tmedian filter
+- maskedthreshold filter
+- Support for muxing pcm and pgs in m2ts
+- Cunning Developments ADPCM decoder
+- asubboost filter
+- Pro Pinball Series Soundbank demuxer
+- pcm_rechunk bitstream filter
+- scdet filter
+- NotchLC decoder
+- gradients source video filter
+- MediaFoundation encoder wrapper
+- untile filter
+- Simon & Schuster Interactive ADPCM encoder
+- PFM decoder
+- dblur video filter
+- Real War KVAG muxer
+
 
 version 4.2:
 - tpad filter
