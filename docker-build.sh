@@ -40,7 +40,7 @@ prepare_extra_amd64() {
 
     # Download and install libva
     pushd ${SOURCE_DIR}
-    git clone -b v2.7-branch --depth=1 https://github.com/intel/libva
+    git clone -b v2.8-branch --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|NULL|g' va/va.c
@@ -65,26 +65,40 @@ prepare_extra_amd64() {
     popd
     popd
 
-    # Uncomment for non-free QSV
     # Download and install gmmlib
-    #pushd ${SOURCE_DIR}
-    #git clone -b intel-gmmlib-19.3.4.x --depth=1 https://github.com/intel/gmmlib
-    #pushd gmmlib
-    #mkdir build && pushd build
-    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
-    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    #make install
-    #echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #popd
-    #popd
-    #popd
+    pushd ${SOURCE_DIR}
+    git clone -b intel-gmmlib-20.2.2 --depth=1 https://github.com/intel/gmmlib
+    pushd gmmlib
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    make install
+    echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
 
-    # Uncomment for non-free QSV
+    # Download and install MediaSDK
+    pushd ${SOURCE_DIR}
+    git clone -b intel-mediasdk-20.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    pushd MediaSDK
+    sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
+
+    # Uncomment for non-free QSV driver
     # Download and install media-driver
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     #pushd ${SOURCE_DIR}
-    #git clone -b intel-media-19.4 --depth=1 https://github.com/intel/media-driver
+    #git clone -b intel-media-20.2 --depth=1 https://github.com/intel/media-driver
     #pushd media-driver
     #mkdir build && pushd build
     #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -97,22 +111,6 @@ prepare_extra_amd64() {
     #mkdir -p ${SOURCE_DIR}/intel/dri
     #cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
     #echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #popd
-    #popd
-    #popd
-
-    # Uncomment for non-free QSV
-    # Download and install MediaSDK
-    #pushd ${SOURCE_DIR}
-    #git clone -b intel-mediasdk-19.4 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
-    #pushd MediaSDK
-    #sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
-    #mkdir build && pushd build
-    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
-    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    #echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
     #popd
     #popd
     #popd

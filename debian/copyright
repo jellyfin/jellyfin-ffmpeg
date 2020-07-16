@@ -1021,6 +1021,24 @@ License: Expat
 Comment:
   VA-API (Video Acceleration API) user mode driver for Intel GEN Graphics family.
 
+Files: gmmlib/*
+Copyright: 2017, Intel Corporation
+License: Expat
+Comment:
+  The Intel(R) Graphics Memory Management Library provides device specific and buffer management
+  for the Intel(R) Graphics Compute Runtime for OpenCL(TM) and the Intel(R) Media Driver for VAAPI.
+
+Files: gmmlib/Source/GmmLib/Utility/GmmLog/spdlog/*
+Copyright: 2016, Gabi Melman
+License: Expat
+
+Files: MediaSDK/*
+Copyright: 2017, Intel Corporation
+License: Expat
+Comment:
+  Intel® Media SDK provides a plain C API to access hardware-accelerated video decode, encode and filtering
+  on Intel® Gen graphics hardware platforms. Implementation written in C++ 11 with parts in C-for-Media (CM).
+
 Files: debian/*
 Copyright:
   2014-2017, Andreas Cadhalpun <Andreas.Cadhalpun@googlemail.com>
