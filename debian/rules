@@ -59,6 +59,7 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-nvenc \
 	--enable-nvdec \
 	--enable-vaapi \
+	--enable-libdav1d
 #	--enable-libmfx # uncomment for non-free QSV
 
 HOST_ARCH := $(shell arch)
@@ -84,6 +85,9 @@ override_dh_gencontrol:
 
 override_dh_auto_configure:
 	./configure $(CONFIG)
+
+override_dh_shlibdeps:
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
 
 override_dh_auto_clean:
 	dh_auto_clean || true

@@ -19,6 +19,30 @@ prepare_hwa_amd64() {
     popd
     popd
 
+    # Download and install dav1d
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://code.videolan.org/videolan/dav1d.git && \
+    pushd dav1d
+    mkdir build
+    pushd build
+    nasmver="$(nasm -v | cut -d ' ' -f3)"
+    nasmavx512ver="2.14.0"
+    if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then 
+	    avx512=true
+    else
+	    avx512=false
+    fi
+    meson -Denable_asm=true -Denable_avx512=$avx512 -Ddefault_library=shared --prefix=${TARGET_DIR} ..
+    ninja
+    meson install
+    cp ${TARGET_DIR}/lib/x86_64-linux-gnu/pkgconfig/dav1d.pc  /usr/lib/pkgconfig/
+    cp ${TARGET_DIR}/lib/x86_64-linux-gnu/*dav1d* ${SOURCE_DIR}/dav1d
+    echo "dav1d/*dav1d* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
+
+
     # Download and setup AMD AMF headers
     # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
     svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include

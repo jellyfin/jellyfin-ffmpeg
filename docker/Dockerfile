@@ -75,15 +75,32 @@ RUN      buildDeps="autoconf \
                     libtool \
                     make \
                     nasm \
+		    ninja-build \
                     perl \
                     pkg-config \
                     python \
+		    python3-setuptools \
+                    python3-pip \
                     libgnutls28-dev \
                     yasm \
                     libva-dev \
                     zlib1g-dev" && \
         apt-get -yqq update && \
         apt-get install -yq --no-install-recommends ${buildDeps}
+## dav1d https://code.videolan.org/videolan/dav1d
+RUN \ 
+	pip3 install meson && \
+	DIR=/tmp/dav1d && \
+	mkdir -p ${DIR} && \
+	cd ${DIR} && \
+	git clone --depth=1 https://code.videolan.org/videolan/dav1d.git && \
+	cd dav1d && \
+        mkdir build && \
+        cd build && \
+        meson -Denable_asm=true -Denable_avx512=false -Ddefault_library=shared --prefix=${PREFIX} .. && \
+    	ninja && \
+    	meson install
+
 ## opencore-amr https://sourceforge.net/projects/opencore-amr/
 RUN \
         DIR=/tmp/opencore-amr && \
@@ -373,6 +390,7 @@ RUN \
         --enable-postproc \
         --enable-version3 \
         --enable-rpath \
+	--enable-libdav1d \ 
         --extra-cflags="-I${PREFIX}/include" \
         --extra-ldflags="-L${PREFIX}/lib" \
         --extra-libs=-ldl \
