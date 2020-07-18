@@ -16,7 +16,6 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--disable-ffplay \
 	--disable-shared \
 	--disable-libxcb \
-	--disable-vdpau \
 	--disable-sdl2 \
 	--disable-xlib \
 	--enable-gpl \
@@ -60,6 +59,7 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-vaapi \
 	--enable-amf \
 	--enable-libmfx \
+	--enable-vdpau \
 	--enable-cuda \
 	--enable-cuda-llvm \
 	--enable-cuvid \

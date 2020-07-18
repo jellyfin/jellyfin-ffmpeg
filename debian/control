@@ -43,6 +43,8 @@ Build-Depends:
  libx265-dev,
 # --enable-libzvbi
  libzvbi-dev,
+# --enable-vdpau
+ libvdpau-dev,
 # --enable-cuda-llvm
  clang [!armhf !arm64],
 # --enable-opencl
