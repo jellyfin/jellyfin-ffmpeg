@@ -16,7 +16,6 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--disable-ffplay \
 	--disable-shared \
 	--disable-libxcb \
-	--disable-vdpau \
 	--disable-sdl2 \
 	--disable-xlib \
 	--enable-gpl \
@@ -55,12 +54,19 @@ CONFIG_ARM64 := ${CONFIG_ARM_COMMON} \
 	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
 
 CONFIG_x86 := --arch=amd64 \
+	--enable-libzimg \
+	--enable-opencl \
+	--enable-vaapi \
 	--enable-amf \
+	--enable-libmfx \
+	--enable-vdpau \
+	--enable-cuda \
+	--enable-cuda-llvm \
+	--enable-cuvid \
 	--enable-nvenc \
 	--enable-nvdec \
-	--enable-vaapi \
+	--enable-ffnvcodec \
 	--enable-libdav1d
-#	--enable-libmfx # uncomment for non-free QSV
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}

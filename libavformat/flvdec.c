@@ -32,7 +32,6 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/time_internal.h"
 #include "libavcodec/bytestream.h"
-#include "libavcodec/mpeg4audio.h"
 #include "avformat.h"
 #include "internal.h"
 #include "avio_internal.h"
@@ -796,12 +795,12 @@ static int flv_read_close(AVFormatContext *s)
 
 static int flv_get_extradata(AVFormatContext *s, AVStream *st, int size)
 {
+    int ret;
     if (!size)
         return 0;
 
-    av_freep(&st->codecpar->extradata);
-    if (ff_get_extradata(s, st->codecpar, s->pb, size) < 0)
-        return AVERROR(ENOMEM);
+    if ((ret = ff_get_extradata(s, st->codecpar, s->pb, size)) < 0)
+        return ret;
     st->internal->need_context_update = 1;
     return 0;
 }
@@ -1265,22 +1264,6 @@ retry_duration:
             if (st->codecpar->codec_id == AV_CODEC_ID_AAC && t && !strcmp(t->value, "Omnia A/XE"))
                 st->codecpar->extradata_size = 2;
 
-            if (st->codecpar->codec_id == AV_CODEC_ID_AAC && 0) {
-                MPEG4AudioConfig cfg;
-
-                if (avpriv_mpeg4audio_get_config(&cfg, st->codecpar->extradata,
-                                                 st->codecpar->extradata_size * 8, 1) >= 0) {
-                st->codecpar->channels       = cfg.channels;
-                st->codecpar->channel_layout = 0;
-                if (cfg.ext_sample_rate)
-                    st->codecpar->sample_rate = cfg.ext_sample_rate;
-                else
-                    st->codecpar->sample_rate = cfg.sample_rate;
-                av_log(s, AV_LOG_TRACE, "mp4a config channels %d sample rate %d\n",
-                        st->codecpar->channels, st->codecpar->sample_rate);
-                }
-            }
-
             ret = FFERROR_REDO;
             goto leave;
         }
@@ -1300,12 +1283,11 @@ retry_duration:
     pkt->stream_index = st->index;
     pkt->pos          = pos;
     if (flv->new_extradata[stream_type]) {
-        uint8_t *side = av_packet_new_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
-                                                flv->new_extradata_size[stream_type]);
-        if (side) {
-            memcpy(side, flv->new_extradata[stream_type],
-                   flv->new_extradata_size[stream_type]);
-            av_freep(&flv->new_extradata[stream_type]);
+        int ret = av_packet_add_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
+                                          flv->new_extradata[stream_type],
+                                          flv->new_extradata_size[stream_type]);
+        if (ret >= 0) {
+            flv->new_extradata[stream_type]      = NULL;
             flv->new_extradata_size[stream_type] = 0;
         }
     }

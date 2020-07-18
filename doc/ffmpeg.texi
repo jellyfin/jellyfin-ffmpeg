@@ -879,12 +879,19 @@ Deprecated see -bsf
 
 @item -force_key_frames[:@var{stream_specifier}] @var{time}[,@var{time}...] (@emph{output,per-stream})
 @item -force_key_frames[:@var{stream_specifier}] expr:@var{expr} (@emph{output,per-stream})
-Force key frames at the specified timestamps, more precisely at the first
-frames after each specified time.
+@item -force_key_frames[:@var{stream_specifier}] source (@emph{output,per-stream})
 
-If the argument is prefixed with @code{expr:}, the string @var{expr}
-is interpreted like an expression and is evaluated for each frame. A
-key frame is forced in case the evaluation is non-zero.
+@var{force_key_frames} can take arguments of the following form:
+
+@table @option
+
+@item @var{time}[,@var{time}...]
+If the argument consists of timestamps, ffmpeg will round the specified times to the nearest
+output timestamp as per the encoder time base and force a keyframe at the first frame having
+timestamp equal or greater than the computed timestamp. Note that if the encoder time base is too
+coarse, then the keyframes may be forced on frames with timestamps lower than the specified time.
+The default encoder time base is the inverse of the output framerate but may be set otherwise
+via @code{-enc_time_base}.
 
 If one of the times is "@code{chapters}[@var{delta}]", it is expanded into
 the time of the beginning of all chapters in the file, shifted by
@@ -897,6 +904,11 @@ before the beginning of every chapter:
 @example
 -force_key_frames 0:05:00,chapters-0.1
 @end example
+
+@item expr:@var{expr}
+If the argument is prefixed with @code{expr:}, the string @var{expr}
+is interpreted like an expression and is evaluated for each frame. A
+key frame is forced in case the evaluation is non-zero.
 
 The expression in @var{expr} can contain the following constants:
 @table @option
@@ -924,6 +936,12 @@ starting from second 13:
 @example
 -force_key_frames expr:if(isnan(prev_forced_t),gte(t,13),gte(t,prev_forced_t+5))
 @end example
+
+@item source
+If the argument is @code{source}, ffmpeg will force a key frame if
+the current frame being encoded is marked as a key frame in its source.
+
+@end table
 
 Note that forcing too many keyframes is very harmful for the lookahead
 algorithms of certain encoders: using fixed-GOP options or similar
@@ -1009,6 +1027,35 @@ Choose the device with a name containing the string @emph{Foo9000}.
 @item -init_hw_device opencl:1,device_type=gpu,device_extensions=cl_khr_fp16
 Choose the GPU device on the second platform supporting the @emph{cl_khr_fp16}
 extension.
+@end table
+
+@item vulkan
+If @var{device} is an integer, it selects the device by its index in a
+system-dependent list of devices.  If @var{device} is any other string, it
+selects the first device with a name containing that string as a substring.
+
+The following options are recognized:
+@table @option
+@item debug
+If set to 1, enables the validation layer, if installed.
+@item linear_images
+If set to 1, images allocated by the hwcontext will be linear and locally mappable.
+@item instance_extensions
+A plus separated list of additional instance extensions to enable.
+@item device_extensions
+A plus separated list of additional device extensions to enable.
+@end table
+
+Examples:
+@table @emph
+@item -init_hw_device vulkan:1
+Choose the second device on the system.
+
+@item -init_hw_device vulkan:RADV
+Choose the first device with a name containing the string @emph{RADV}.
+
+@item -init_hw_device vulkan:0,instance_extensions=VK_KHR_wayland_surface+VK_KHR_xcb_surface
+Choose the first device and enable the Wayland and XCB instance extensions.
 @end table
 
 @end table
@@ -1383,7 +1430,7 @@ it will usually display as 0 if not supported.
 Show benchmarking information during the encode.
 Shows real, system and user time used in various steps (audio/video encode/decode).
 @item -timelimit @var{duration} (@emph{global})
-Exit after ffmpeg has been running for @var{duration} seconds.
+Exit after ffmpeg has been running for @var{duration} seconds in CPU user time.
 @item -dump (@emph{global})
 Dump each input packet to stderr.
 @item -hex (@emph{global})
@@ -1515,6 +1562,10 @@ Enable bitexact mode for (de)muxer and (de/en)coder
 Finish encoding when the shortest input stream ends.
 @item -dts_delta_threshold
 Timestamp discontinuity delta threshold.
+@item -dts_error_threshold @var{seconds}
+Timestamp error delta threshold. This threshold use to discard crazy/damaged
+timestamps and the default is 30 hours which is arbitrarily picked and quite
+conservative.
 @item -muxdelay @var{seconds} (@emph{output})
 Set the maximum demux-decode delay.
 @item -muxpreload @var{seconds} (@emph{output})
@@ -1670,6 +1721,8 @@ Stop and abort on various conditions. The following flags are available:
 @table @option
 @item empty_output
 No packets were passed to the muxer, the output is empty.
+@item empty_output_stream
+No packets were passed to the muxer in some of the output streams.
 @end table
 
 @item -xerror (@emph{global})

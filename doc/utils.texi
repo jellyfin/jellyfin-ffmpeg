@@ -126,6 +126,15 @@ The following examples are all valid time duration:
 @item 55
 55 seconds
 
+@item 0.2
+0.2 seconds
+
+@item 200ms
+200 milliseconds, that's 0.2s
+
+@item 200000us
+200000 microseconds, that's 0.2s
+
 @item 12:03:45
 12 hours, 03 minutes and 45 seconds
 
@@ -704,6 +713,8 @@ FL+FR+FC+LFE+BL+BR+FLC+FRC
 FL+FR+FC+LFE+FLC+FRC+SL+SR
 @item octagonal
 FL+FR+FC+BL+BR+BC+SL+SR
+@item hexadecagonal
+FL+FR+FC+BL+BR+BC+SL+SR+WL+WR+TBL+TBR+TBC+TFC+TFL+TFR
 @item downmix
 DL+DR
 @end table
@@ -919,6 +930,9 @@ corresponding input value will be returned.
 
 @item round(expr)
 Round the value of expression @var{expr} to the nearest integer. For example, "round(1.5)" is "2.0".
+
+@item sgn(x)
+Compute sign of @var{x}.
 
 @item sin(x)
 Compute sine of @var{x}.

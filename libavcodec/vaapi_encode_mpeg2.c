@@ -552,6 +552,8 @@ static av_cold int vaapi_encode_mpeg2_configure(AVCodecContext *avctx)
     ctx->nb_slices  = ctx->slice_block_rows;
     ctx->slice_size = 1;
 
+    ctx->roi_quant_range = 31;
+
     return 0;
 }
 
@@ -700,10 +702,12 @@ AVCodec ff_mpeg2_vaapi_encoder = {
     .close          = &vaapi_encode_mpeg2_close,
     .priv_class     = &vaapi_encode_mpeg2_class,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_mpeg2_defaults,
     .pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,
         AV_PIX_FMT_NONE,
     },
+    .hw_configs     = ff_vaapi_encode_hw_configs,
     .wrapper_name   = "vaapi",
 };

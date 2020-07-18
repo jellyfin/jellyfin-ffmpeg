@@ -22,9 +22,10 @@
 #include "libavutil/log.h"
 
 #include "avcodec.h"
-#include "bsf.h"
+#include "bsf_internal.h"
 
 extern const AVBitStreamFilter ff_aac_adtstoasc_bsf;
+extern const AVBitStreamFilter ff_av1_frame_merge_bsf;
 extern const AVBitStreamFilter ff_av1_frame_split_bsf;
 extern const AVBitStreamFilter ff_av1_metadata_bsf;
 extern const AVBitStreamFilter ff_chomp_bsf;
@@ -48,6 +49,8 @@ extern const AVBitStreamFilter ff_mpeg4_unpack_bframes_bsf;
 extern const AVBitStreamFilter ff_mov2textsub_bsf;
 extern const AVBitStreamFilter ff_noise_bsf;
 extern const AVBitStreamFilter ff_null_bsf;
+extern const AVBitStreamFilter ff_opus_metadata_bsf;
+extern const AVBitStreamFilter ff_pcm_rechunk_bsf;
 extern const AVBitStreamFilter ff_prores_metadata_bsf;
 extern const AVBitStreamFilter ff_remove_extradata_bsf;
 extern const AVBitStreamFilter ff_text2movsub_bsf;

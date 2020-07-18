@@ -99,14 +99,9 @@ static int64_t ism_seek(void *opaque, int64_t offset, int whence)
     if (whence != SEEK_SET)
         return AVERROR(ENOSYS);
     if (os->tail_out) {
-        if (os->out) {
-            ffurl_close(os->out);
-        }
-        if (os->out2) {
-            ffurl_close(os->out2);
-        }
+        ffurl_closep(&os->out);
+        ffurl_closep(&os->out2);
         os->out = os->tail_out;
-        os->out2 = NULL;
         os->tail_out = NULL;
     }
     if (offset >= os->cur_start_pos) {
@@ -175,16 +170,14 @@ static void ism_free(AVFormatContext *s)
         return;
     for (i = 0; i < s->nb_streams; i++) {
         OutputStream *os = &c->streams[i];
-        ffurl_close(os->out);
-        ffurl_close(os->out2);
-        ffurl_close(os->tail_out);
-        os->out = os->out2 = os->tail_out = NULL;
+        ffurl_closep(&os->out);
+        ffurl_closep(&os->out2);
+        ffurl_closep(&os->tail_out);
         if (os->ctx && os->ctx_inited)
             av_write_trailer(os->ctx);
         if (os->ctx && os->ctx->pb)
             avio_context_free(&os->ctx->pb);
-        if (os->ctx)
-            avformat_free_context(os->ctx);
+        avformat_free_context(os->ctx);
         av_freep(&os->private_str);
         for (j = 0; j < os->nb_fragments; j++)
             av_freep(&os->fragments[j]);
@@ -333,12 +326,11 @@ static int ism_write_header(AVFormatContext *s)
             goto fail;
         }
 
-        ctx = avformat_alloc_context();
+        os->ctx = ctx = avformat_alloc_context();
         if (!ctx || ff_copy_whiteblacklists(ctx, s) < 0) {
             ret = AVERROR(ENOMEM);
             goto fail;
         }
-        os->ctx = ctx;
         ctx->oformat = oformat;
         ctx->interrupt_callback = s->interrupt_callback;
 
@@ -358,12 +350,13 @@ static int ism_write_header(AVFormatContext *s)
 
         av_dict_set_int(&opts, "ism_lookahead", c->lookahead_count, 0);
         av_dict_set(&opts, "movflags", "frag_custom", 0);
-        if ((ret = avformat_write_header(ctx, &opts)) < 0) {
+        ret = avformat_write_header(ctx, &opts);
+        av_dict_free(&opts);
+        if (ret < 0) {
              goto fail;
         }
         os->ctx_inited = 1;
         avio_flush(ctx->pb);
-        av_dict_free(&opts);
         s->streams[i]->time_base = st->time_base;
         if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             c->has_video = 1;
@@ -465,7 +458,7 @@ static int add_fragment(OutputStream *os, const char *file, const char *infofile
     Fragment *frag;
     if (os->nb_fragments >= os->fragments_size) {
         os->fragments_size = (os->fragments_size + 1) * 2;
-        if ((err = av_reallocp(&os->fragments, sizeof(*os->fragments) *
+        if ((err = av_reallocp_array(&os->fragments, sizeof(*os->fragments),
                                os->fragments_size)) < 0) {
             os->fragments_size = 0;
             os->nb_fragments = 0;
@@ -538,8 +531,7 @@ static int ism_flush(AVFormatContext *s, int final)
         if (!os->out || os->tail_out)
             return AVERROR(EIO);
 
-        ffurl_close(os->out);
-        os->out = NULL;
+        ffurl_closep(&os->out);
         size = os->tail_pos - os->cur_start_pos;
         if ((ret = parse_fragment(s, filename, &start_ts, &duration, &moof_size, size)) < 0)
             break;

@@ -34,7 +34,7 @@
 #define SUBSCRIPTS(subs, ...) (subs > 0 ? ((int[subs + 1]){ subs, __VA_ARGS__ }) : NULL)
 
 #define u(width, name, range_min, range_max) \
-    xu(width, name, range_min, range_max, 0)
+    xu(width, name, range_min, range_max, 0, )
 #define us(width, name, sub, range_min, range_max) \
     xu(width, name, range_min, range_max, 1, sub)
 
@@ -45,7 +45,7 @@
 #define FUNC(name) cbs_jpeg_read_ ## name
 
 #define xu(width, name, range_min, range_max, subs, ...) do { \
-        uint32_t value = range_min; \
+        uint32_t value; \
         CHECK(ff_cbs_read_unsigned(ctx, rw, width, #name, \
                                    SUBSCRIPTS(subs, __VA_ARGS__), \
                                    &value, range_min, range_max)); \
@@ -82,21 +82,21 @@
 #undef xu
 
 
-static void cbs_jpeg_free_application_data(void *unit, uint8_t *content)
+static void cbs_jpeg_free_application_data(void *opaque, uint8_t *content)
 {
     JPEGRawApplicationData *ad = (JPEGRawApplicationData*)content;
     av_buffer_unref(&ad->Ap_ref);
     av_freep(&content);
 }
 
-static void cbs_jpeg_free_comment(void *unit, uint8_t *content)
+static void cbs_jpeg_free_comment(void *opaque, uint8_t *content)
 {
     JPEGRawComment *comment = (JPEGRawComment*)content;
     av_buffer_unref(&comment->Cm_ref);
     av_freep(&content);
 }
 
-static void cbs_jpeg_free_scan(void *unit, uint8_t *content)
+static void cbs_jpeg_free_scan(void *opaque, uint8_t *content)
 {
     JPEGRawScan *scan = (JPEGRawScan*)content;
     av_buffer_unref(&scan->data_ref);
@@ -148,15 +148,15 @@ static int cbs_jpeg_split_fragment(CodedBitstreamContext *ctx,
         if (marker == JPEG_MARKER_EOI) {
             break;
         } else if (marker == JPEG_MARKER_SOS) {
+            next_marker = -1;
+            end = start;
             for (i = start; i + 1 < frag->data_size; i++) {
                 if (frag->data[i] != 0xff)
                     continue;
                 end = i;
                 for (++i; i + 1 < frag->data_size &&
                           frag->data[i] == 0xff; i++);
-                if (i + 1 >= frag->data_size) {
-                    next_marker = -1;
-                } else {
+                if (i + 1 < frag->data_size) {
                     if (frag->data[i] == 0x00)
                         continue;
                     next_marker = frag->data[i];
@@ -197,6 +197,9 @@ static int cbs_jpeg_split_fragment(CodedBitstreamContext *ctx,
         if (marker == JPEG_MARKER_SOS) {
             length = AV_RB16(frag->data + start);
 
+            if (length > end - start)
+                return AVERROR_INVALIDDATA;
+
             data_ref = NULL;
             data     = av_malloc(end - start +
                                  AV_INPUT_BUFFER_PADDING_SIZE);
@@ -225,11 +228,8 @@ static int cbs_jpeg_split_fragment(CodedBitstreamContext *ctx,
 
         err = ff_cbs_insert_unit_data(ctx, frag, unit, marker,
                                       data, data_size, data_ref);
-        if (err < 0) {
-            if (!data_ref)
-                av_freep(&data);
+        if (err < 0)
             return err;
-        }
 
         if (next_marker == -1)
             break;
@@ -330,7 +330,7 @@ static int cbs_jpeg_write_scan(CodedBitstreamContext *ctx,
                                PutBitContext *pbc)
 {
     JPEGRawScan *scan = unit->content;
-    int i, err;
+    int err;
 
     err = cbs_jpeg_write_scan_header(ctx, pbc, &scan->header);
     if (err < 0)
@@ -340,8 +340,12 @@ static int cbs_jpeg_write_scan(CodedBitstreamContext *ctx,
         if (scan->data_size * 8 > put_bits_left(pbc))
             return AVERROR(ENOSPC);
 
-        for (i = 0; i < scan->data_size; i++)
-            put_bits(pbc, 8, scan->data[i]);
+        av_assert0(put_bits_count(pbc) % 8 == 0);
+
+        flush_put_bits(pbc);
+
+        memcpy(put_bits_ptr(pbc), scan->data, scan->data_size);
+        skip_put_bytes(pbc, scan->data_size);
     }
 
     return 0;
@@ -377,58 +381,13 @@ static int cbs_jpeg_write_segment(CodedBitstreamContext *ctx,
 }
 
 static int cbs_jpeg_write_unit(CodedBitstreamContext *ctx,
-                                CodedBitstreamUnit *unit)
+                               CodedBitstreamUnit *unit,
+                               PutBitContext *pbc)
 {
-    CodedBitstreamJPEGContext *priv = ctx->priv_data;
-    PutBitContext pbc;
-    int err;
-
-    if (!priv->write_buffer) {
-        // Initial write buffer size is 1MB.
-        priv->write_buffer_size = 1024 * 1024;
-
-    reallocate_and_try_again:
-        err = av_reallocp(&priv->write_buffer, priv->write_buffer_size);
-        if (err < 0) {
-            av_log(ctx->log_ctx, AV_LOG_ERROR, "Unable to allocate a "
-                   "sufficiently large write buffer (last attempt "
-                   "%"SIZE_SPECIFIER" bytes).\n", priv->write_buffer_size);
-            return err;
-        }
-    }
-
-    init_put_bits(&pbc, priv->write_buffer, priv->write_buffer_size);
-
     if (unit->type == JPEG_MARKER_SOS)
-        err = cbs_jpeg_write_scan(ctx, unit, &pbc);
+        return cbs_jpeg_write_scan   (ctx, unit, pbc);
     else
-        err = cbs_jpeg_write_segment(ctx, unit, &pbc);
-
-    if (err == AVERROR(ENOSPC)) {
-        // Overflow.
-        priv->write_buffer_size *= 2;
-        goto reallocate_and_try_again;
-    }
-    if (err < 0) {
-        // Write failed for some other reason.
-        return err;
-    }
-
-    if (put_bits_count(&pbc) % 8)
-        unit->data_bit_padding = 8 - put_bits_count(&pbc) % 8;
-    else
-        unit->data_bit_padding = 0;
-
-    unit->data_size = (put_bits_count(&pbc) + 7) / 8;
-    flush_put_bits(&pbc);
-
-    err = ff_cbs_alloc_unit_data(ctx, unit, unit->data_size);
-    if (err < 0)
-        return err;
-
-    memcpy(unit->data, priv->write_buffer, unit->data_size);
-
-    return 0;
+        return cbs_jpeg_write_segment(ctx, unit, pbc);
 }
 
 static int cbs_jpeg_assemble_fragment(CodedBitstreamContext *ctx,
@@ -499,22 +458,11 @@ static int cbs_jpeg_assemble_fragment(CodedBitstreamContext *ctx,
     return 0;
 }
 
-static void cbs_jpeg_close(CodedBitstreamContext *ctx)
-{
-    CodedBitstreamJPEGContext *priv = ctx->priv_data;
-
-    av_freep(&priv->write_buffer);
-}
-
 const CodedBitstreamType ff_cbs_type_jpeg = {
     .codec_id          = AV_CODEC_ID_MJPEG,
-
-    .priv_data_size    = sizeof(CodedBitstreamJPEGContext),
 
     .split_fragment    = &cbs_jpeg_split_fragment,
     .read_unit         = &cbs_jpeg_read_unit,
     .write_unit        = &cbs_jpeg_write_unit,
     .assemble_fragment = &cbs_jpeg_assemble_fragment,
-
-    .close             = &cbs_jpeg_close,
 };

@@ -215,20 +215,20 @@ static void lpc_prediction(int32_t *error_buffer, uint32_t *buffer_out,
         /* LPC prediction */
         for (j = 0; j < lpc_order; j++)
             val += (pred[j] - d) * lpc_coefs[j];
-        val = (val + (1 << (lpc_quant - 1))) >> lpc_quant;
+        val = (val + (1LL << (lpc_quant - 1))) >> lpc_quant;
         val += d + error_val;
         buffer_out[i] = sign_extend(val, bps);
 
         /* adapt LPC coefficients */
         error_sign = sign_only(error_val);
         if (error_sign) {
-            for (j = 0; j < lpc_order && (int)error_val * error_sign > 0; j++) {
+            for (j = 0; j < lpc_order && (int)(error_val * error_sign) > 0; j++) {
                 int sign;
                 val  = d - pred[j];
                 sign = sign_only(val) * error_sign;
                 lpc_coefs[j] -= sign;
-                val *= sign;
-                error_val -= (val >> lpc_quant) * (j + 1);
+                val *= (unsigned)sign;
+                error_val -= (val >> lpc_quant) * (j + 1U);
             }
         }
     }
@@ -397,13 +397,13 @@ static int decode_element(AVCodecContext *avctx, AVFrame *frame, int ch_index,
     case 20: {
         for (ch = 0; ch < channels; ch++) {
             for (i = 0; i < alac->nb_samples; i++)
-                alac->output_samples_buffer[ch][i] <<= 12;
+                alac->output_samples_buffer[ch][i] *= 1U << 12;
         }}
         break;
     case 24: {
         for (ch = 0; ch < channels; ch++) {
             for (i = 0; i < alac->nb_samples; i++)
-                alac->output_samples_buffer[ch][i] <<= 8;
+                alac->output_samples_buffer[ch][i] *= 1U << 8;
         }}
         break;
     }
@@ -601,15 +601,6 @@ static av_cold int alac_decode_init(AVCodecContext * avctx)
     return 0;
 }
 
-#if HAVE_THREADS
-static int init_thread_copy(AVCodecContext *avctx)
-{
-    ALACContext *alac = avctx->priv_data;
-    alac->avctx = avctx;
-    return allocate_buffers(alac);
-}
-#endif
-
 static const AVOption options[] = {
     { "extra_bits_bug", "Force non-standard decoding process",
       offsetof(ALACContext, extra_bit_bug), AV_OPT_TYPE_BOOL, { .i64 = 0 },
@@ -633,7 +624,6 @@ AVCodec ff_alac_decoder = {
     .init           = alac_decode_init,
     .close          = alac_decode_close,
     .decode         = alac_decode_frame,
-    .init_thread_copy = ONLY_IF_THREADS_ENABLED(init_thread_copy),
     .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .priv_class     = &alac_class
 };

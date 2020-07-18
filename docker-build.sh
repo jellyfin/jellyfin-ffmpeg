@@ -8,11 +8,22 @@ set -o xtrace
 ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
 PORTS_ADDR=http://ports.ubuntu.com/
 
-# Prepare HWA headers, libs and drivers for x86_64-linux-gnu
-prepare_hwa_amd64() {
+# Prepare extra headers, libs and drivers for x86_64-linux-gnu
+prepare_extra_amd64() {
+    # Download and install zimg for zscale filter
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://github.com/sekrit-twc/zimg
+    pushd zimg
+    ./autogen.sh
+    ./configure --prefix=${TARGET_DIR}
+    make -j $(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/zimg
+    echo "zimg${TARGET_DIR}/lib/libzimg.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+
     # Download and install the nvidia headers
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+    git clone -b n9.0.18.3 --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
     pushd nv-codec-headers
     make
     make install
@@ -53,7 +64,7 @@ prepare_hwa_amd64() {
 
     # Download and install libva
     pushd ${SOURCE_DIR}
-    git clone -b v2.6-branch --depth=1 https://github.com/intel/libva
+    git clone -b v2.8-branch --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|NULL|g' va/va.c
@@ -78,26 +89,40 @@ prepare_hwa_amd64() {
     popd
     popd
 
-    # Uncomment for non-free QSV
     # Download and install gmmlib
-    #pushd ${SOURCE_DIR}
-    #git clone -b intel-gmmlib-19.3.4.x --depth=1 https://github.com/intel/gmmlib
-    #pushd gmmlib
-    #mkdir build && pushd build
-    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
-    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    #make install
-    #echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #popd
-    #popd
-    #popd
+    pushd ${SOURCE_DIR}
+    git clone -b intel-gmmlib-20.2.2 --depth=1 https://github.com/intel/gmmlib
+    pushd gmmlib
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    make install
+    echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
 
-    # Uncomment for non-free QSV
+    # Download and install MediaSDK
+    pushd ${SOURCE_DIR}
+    git clone -b intel-mediasdk-20.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    pushd MediaSDK
+    sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
+
+    # Uncomment for non-free QSV driver
     # Download and install media-driver
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     #pushd ${SOURCE_DIR}
-    #git clone -b intel-media-19.4 --depth=1 https://github.com/intel/media-driver
+    #git clone -b intel-media-20.2 --depth=1 https://github.com/intel/media-driver
     #pushd media-driver
     #mkdir build && pushd build
     #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -110,22 +135,6 @@ prepare_hwa_amd64() {
     #mkdir -p ${SOURCE_DIR}/intel/dri
     #cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
     #echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #popd
-    #popd
-    #popd
-
-    # Uncomment for non-free QSV
-    # Download and install MediaSDK
-    #pushd ${SOURCE_DIR}
-    #git clone -b intel-mediasdk-19.4 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
-    #pushd MediaSDK
-    #sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
-    #mkdir build && pushd build
-    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
-    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    #echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
     #popd
     #popd
     #popd
@@ -164,13 +173,13 @@ EOF
     yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
     popd
 
-    # Fetch RasPi headers to build MMAL support
+    # Fetch RasPi headers to build MMAL and OMX-RPI support
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/raspberrypi/firmware mmalheaders
-    git clone --depth=1 https://github.com/raspberrypi/userland piuserland
-    cp -a mmalheaders/opt/vc/include/* /usr/include/
-    cp -a mmalheaders/opt/vc/lib/* /usr/lib/
-    cp -a piuserland/interface/* /usr/include/
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/include rpi/include
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/lib rpi/lib
+    cp -a rpi/include/* /usr/include
+    cp -a rpi/include/IL/* /usr/include
+    cp -a rpi/lib/* /usr/lib
     popd
 }
 prepare_crossbuild_env_arm64() {
@@ -205,12 +214,21 @@ EOF
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
     yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 liblttng-ust0:arm64 libstdc++6:arm64
     popd
+
+    # Fetch RasPi headers to build MMAL and OMX-RPI support
+    pushd ${SOURCE_DIR}
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/include rpi/include
+    svn checkout https://github.com/raspberrypi/firmware/trunk/opt/vc/lib rpi/lib
+    cp -a rpi/include/* /usr/include
+    cp -a rpi/include/IL/* /usr/include
+    cp -a rpi/lib/* /usr/lib
+    popd
 }
 
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
-        prepare_hwa_amd64
+        prepare_extra_amd64
         CONFIG_SITE=""
         DEP_ARCH_OPT=""
         BUILD_ARCH_OPT=""

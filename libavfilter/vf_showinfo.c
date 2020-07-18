@@ -24,6 +24,7 @@
 
 #include <inttypes.h>
 
+#include "libavutil/bswap.h"
 #include "libavutil/adler32.h"
 #include "libavutil/display.h"
 #include "libavutil/imgutils.h"
@@ -34,6 +35,8 @@
 #include "libavutil/stereo3d.h"
 #include "libavutil/timestamp.h"
 #include "libavutil/timecode.h"
+#include "libavutil/mastering_display_metadata.h"
+#include "libavutil/video_enc_params.h"
 
 #include "avfilter.h"
 #include "internal.h"
@@ -61,7 +64,7 @@ static void dump_spherical(AVFilterContext *ctx, AVFrame *frame, AVFrameSideData
 
     av_log(ctx, AV_LOG_INFO, "spherical information: ");
     if (sd->size < sizeof(*spherical)) {
-        av_log(ctx, AV_LOG_INFO, "invalid data");
+        av_log(ctx, AV_LOG_ERROR, "invalid data");
         return;
     }
 
@@ -99,7 +102,7 @@ static void dump_stereo3d(AVFilterContext *ctx, AVFrameSideData *sd)
 
     av_log(ctx, AV_LOG_INFO, "stereoscopic information: ");
     if (sd->size < sizeof(*stereo)) {
-        av_log(ctx, AV_LOG_INFO, "invalid data");
+        av_log(ctx, AV_LOG_ERROR, "invalid data");
         return;
     }
 
@@ -120,7 +123,7 @@ static void dump_roi(AVFilterContext *ctx, AVFrameSideData *sd)
     roi = (const AVRegionOfInterest *)sd->data;
     roi_size = roi->self_size;
     if (!roi_size || sd->size % roi_size != 0) {
-        av_log(ctx, AV_LOG_ERROR, "Invalid AVRegionOfInterest.self_size.\n");
+        av_log(ctx, AV_LOG_ERROR, "Invalid AVRegionOfInterest.self_size.");
         return;
     }
     nb_rois = sd->size / roi_size;
@@ -131,6 +134,60 @@ static void dump_roi(AVFilterContext *ctx, AVFrameSideData *sd)
         av_log(ctx, AV_LOG_INFO, "index: %d, region: (%d, %d)/(%d, %d), qp offset: %d/%d.\n",
                i, roi->left, roi->top, roi->right, roi->bottom, roi->qoffset.num, roi->qoffset.den);
     }
+}
+
+static void dump_mastering_display(AVFilterContext *ctx, AVFrameSideData *sd)
+{
+    AVMasteringDisplayMetadata *mastering_display;
+
+    av_log(ctx, AV_LOG_INFO, "mastering display: ");
+    if (sd->size < sizeof(*mastering_display)) {
+        av_log(ctx, AV_LOG_ERROR, "invalid data");
+        return;
+    }
+
+    mastering_display = (AVMasteringDisplayMetadata *)sd->data;
+
+    av_log(ctx, AV_LOG_INFO, "has_primaries:%d has_luminance:%d "
+           "r(%5.4f,%5.4f) g(%5.4f,%5.4f) b(%5.4f %5.4f) wp(%5.4f, %5.4f) "
+           "min_luminance=%f, max_luminance=%f",
+           mastering_display->has_primaries, mastering_display->has_luminance,
+           av_q2d(mastering_display->display_primaries[0][0]),
+           av_q2d(mastering_display->display_primaries[0][1]),
+           av_q2d(mastering_display->display_primaries[1][0]),
+           av_q2d(mastering_display->display_primaries[1][1]),
+           av_q2d(mastering_display->display_primaries[2][0]),
+           av_q2d(mastering_display->display_primaries[2][1]),
+           av_q2d(mastering_display->white_point[0]), av_q2d(mastering_display->white_point[1]),
+           av_q2d(mastering_display->min_luminance), av_q2d(mastering_display->max_luminance));
+}
+
+static void dump_content_light_metadata(AVFilterContext *ctx, AVFrameSideData *sd)
+{
+    AVContentLightMetadata* metadata = (AVContentLightMetadata*)sd->data;
+
+    av_log(ctx, AV_LOG_INFO, "Content Light Level information: "
+           "MaxCLL=%d, MaxFALL=%d",
+           metadata->MaxCLL, metadata->MaxFALL);
+}
+
+static void dump_video_enc_params(AVFilterContext *ctx, AVFrameSideData *sd)
+{
+    AVVideoEncParams *par = (AVVideoEncParams*)sd->data;
+    int plane, acdc;
+
+    av_log(ctx, AV_LOG_INFO, "video encoding parameters: type %d; ", par->type);
+    if (par->qp)
+        av_log(ctx, AV_LOG_INFO, "qp=%d; ", par->qp);
+    for (plane = 0; plane < FF_ARRAY_ELEMS(par->delta_qp); plane++)
+        for (acdc = 0; acdc < FF_ARRAY_ELEMS(par->delta_qp[plane]); acdc++) {
+            int delta_qp = par->delta_qp[plane][acdc];
+            if (delta_qp)
+                av_log(ctx, AV_LOG_INFO, "delta_qp[%d][%d]=%d; ",
+                       plane, acdc, delta_qp);
+        }
+    if (par->nb_blocks)
+        av_log(ctx, AV_LOG_INFO, "%u blocks; ", par->nb_blocks);
 }
 
 static void dump_color_property(AVFilterContext *ctx, AVFrame *frame)
@@ -166,7 +223,7 @@ static void dump_color_property(AVFilterContext *ctx, AVFrame *frame)
     av_log(ctx, AV_LOG_INFO, "\n");
 }
 
-static void update_sample_stats(const uint8_t *src, int len, int64_t *sum, int64_t *sum2)
+static void update_sample_stats_8(const uint8_t *src, int len, int64_t *sum, int64_t *sum2)
 {
     int i;
 
@@ -174,6 +231,30 @@ static void update_sample_stats(const uint8_t *src, int len, int64_t *sum, int64
         *sum += src[i];
         *sum2 += src[i] * src[i];
     }
+}
+
+static void update_sample_stats_16(int be, const uint8_t *src, int len, int64_t *sum, int64_t *sum2)
+{
+    const uint16_t *src1 = (const uint16_t *)src;
+    int i;
+
+    for (i = 0; i < len / 2; i++) {
+        if ((HAVE_BIGENDIAN && !be) || (!HAVE_BIGENDIAN && be)) {
+            *sum += av_bswap16(src1[i]);
+            *sum2 += (uint32_t)av_bswap16(src1[i]) * (uint32_t)av_bswap16(src1[i]);
+        } else {
+            *sum += src1[i];
+            *sum2 += (uint32_t)src1[i] * (uint32_t)src1[i];
+        }
+    }
+}
+
+static void update_sample_stats(int depth, int be, const uint8_t *src, int len, int64_t *sum, int64_t *sum2)
+{
+    if (depth <= 8)
+        update_sample_stats_8(src, len, sum, sum2);
+    else
+        update_sample_stats_16(be, src, len, sum, sum2);
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
@@ -184,12 +265,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     uint32_t plane_checksum[4] = {0}, checksum = 0;
     int64_t sum[4] = {0}, sum2[4] = {0};
     int32_t pixelcount[4] = {0};
+    int bitdepth = desc->comp[0].depth;
+    int be = desc->flags & AV_PIX_FMT_FLAG_BE;
     int i, plane, vsub = desc->log2_chroma_h;
 
     for (plane = 0; plane < 4 && s->calculate_checksums && frame->data[plane] && frame->linesize[plane]; plane++) {
         uint8_t *data = frame->data[plane];
         int h = plane == 1 || plane == 2 ? AV_CEIL_RSHIFT(inlink->h, vsub) : inlink->h;
         int linesize = av_image_get_linesize(frame->format, frame->width, plane);
+        int width = linesize >> (bitdepth > 8);
 
         if (linesize < 0)
             return linesize;
@@ -198,8 +282,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             plane_checksum[plane] = av_adler32_update(plane_checksum[plane], data, linesize);
             checksum = av_adler32_update(checksum, data, linesize);
 
-            update_sample_stats(data, linesize, sum+plane, sum2+plane);
-            pixelcount[plane] += linesize;
+            update_sample_stats(bitdepth, be, data, linesize, sum+plane, sum2+plane);
+            pixelcount[plane] += width;
             data += frame->linesize[plane];
         }
     }
@@ -254,10 +338,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             break;
         case AV_FRAME_DATA_S12M_TIMECODE: {
             uint32_t *tc = (uint32_t*)sd->data;
-            for (int j = 1; j <= tc[0]; j++) {
+            int m = FFMIN(tc[0],3);
+            if (sd->size != 16) {
+                av_log(ctx, AV_LOG_ERROR, "invalid data");
+                break;
+            }
+            for (int j = 1; j <= m; j++) {
                 char tcbuf[AV_TIMECODE_STR_SIZE];
                 av_timecode_make_smpte_tc_string(tcbuf, tc[j], 0);
-                av_log(ctx, AV_LOG_INFO, "timecode - %s%s", tcbuf, j != tc[0] ? ", " : "");
+                av_log(ctx, AV_LOG_INFO, "timecode - %s%s", tcbuf, j != m ? ", " : "");
             }
             break;
         }
@@ -270,6 +359,21 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             break;
         case AV_FRAME_DATA_REGIONS_OF_INTEREST:
             dump_roi(ctx, sd);
+            break;
+        case AV_FRAME_DATA_MASTERING_DISPLAY_METADATA:
+            dump_mastering_display(ctx, sd);
+            break;
+        case AV_FRAME_DATA_CONTENT_LIGHT_LEVEL:
+            dump_content_light_metadata(ctx, sd);
+            break;
+        case AV_FRAME_DATA_GOP_TIMECODE: {
+            char tcbuf[AV_TIMECODE_STR_SIZE];
+            av_timecode_make_mpeg_tc_string(tcbuf, *(int64_t *)(sd->data));
+            av_log(ctx, AV_LOG_INFO, "GOP timecode - %s", tcbuf);
+            break;
+        }
+        case AV_FRAME_DATA_VIDEO_ENC_PARAMS:
+            dump_video_enc_params(ctx, sd);
             break;
         default:
             av_log(ctx, AV_LOG_WARNING, "unknown side data type %d (%d bytes)",
