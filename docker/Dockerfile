@@ -75,11 +75,11 @@ RUN      buildDeps="autoconf \
                     libtool \
                     make \
                     nasm \
-		    ninja-build \
+                    ninja-build \
                     perl \
                     pkg-config \
                     python \
-		    python3-setuptools \
+                    python3-setuptools \
                     python3-pip \
                     libgnutls28-dev \
                     yasm \
@@ -88,19 +88,22 @@ RUN      buildDeps="autoconf \
         apt-get -yqq update && \
         apt-get install -yq --no-install-recommends ${buildDeps}
 ## dav1d https://code.videolan.org/videolan/dav1d
-RUN \ 
-	pip3 install meson && \
-	DIR=/tmp/dav1d && \
-	mkdir -p ${DIR} && \
-	cd ${DIR} && \
-	git clone --depth=1 https://code.videolan.org/videolan/dav1d.git && \
-	cd dav1d && \
+RUN \
+        pip3 install meson && \
+        DIR=/tmp/dav1d && \
+        mkdir -p ${DIR} && \
+        cd ${DIR} && \
+        git clone --depth=1 https://code.videolan.org/videolan/dav1d.git && \
+        cd dav1d && \
         mkdir build && \
         cd build && \
         meson -Denable_asm=true -Denable_avx512=false -Ddefault_library=shared --prefix=${PREFIX} .. && \
-    	ninja && \
-    	meson install
-
+        ninja && \
+        meson install && \
+        mkdir -p ${PREFIX}/lib/pkgconfig/ && \
+        mv ${PREFIX}/lib/x86_64-linux-gnu/libdav1d* ${PREFIX}/lib/ && \
+        mv ${PREFIX}/lib/x86_64-linux-gnu/pkgconfig/dav1d.pc ${PREFIX}/lib/pkgconfig/ && \
+        rm -rf ${DIR} ${PREFIX}/lib/x86_64-linux-gnu
 ## opencore-amr https://sourceforge.net/projects/opencore-amr/
 RUN \
         DIR=/tmp/opencore-amr && \
@@ -332,7 +335,7 @@ RUN \
     DIR=/tmp/ffnvcodec && \
         git clone --branch ${NVCODECHEADERS_VERSION} --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git ${DIR} ; \
         cd ${DIR} ; \
-        make install PREFEX=${PREFIX} ; \
+        make install PREFIX=${PREFIX} ; \
         rm -rf ${DIR}
 
 ## ffmpeg https://ffmpeg.org/
@@ -358,10 +361,9 @@ RUN \
                 sed -i 's/ require_pkg_config libx265 x265 x265.h x265_api_get &&//' configure \
                 ;; \
             x86*) \
-                PLATFORM_ARGS="--enable-libaom --enable-cuvid --enable-nvenc" \
+                PLATFORM_ARGS="--enable-libaom --enable-cuvid --enable-nvenc --enable-libdav1d" \
                 ;; \
         esac && \
-
         ./configure \
         --disable-debug \
         --disable-doc \
@@ -390,7 +392,6 @@ RUN \
         --enable-postproc \
         --enable-version3 \
         --enable-rpath \
-	--enable-libdav1d \ 
         --extra-cflags="-I${PREFIX}/include" \
         --extra-ldflags="-L${PREFIX}/lib" \
         --extra-libs=-ldl \
