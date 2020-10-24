@@ -29,11 +29,11 @@ case ${cli_release} in
     ;;
     'buster')
         release="debian:buster"
-        gcc_version="7"
+        gcc_version="8"
     ;;
     'bullseye')
         release="debian:bullseye"
-        gcc_version="8"
+        gcc_version="9"
     ;;
     'xenial')
         release="ubuntu:xenial"
