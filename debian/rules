@@ -35,6 +35,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libtheora \
 	--enable-libvorbis \
 	--enable-libwebp \
+	--enable-libvpx \
 	--enable-libx264 \
 	--enable-libx265 \
 	--enable-libzvbi \
@@ -55,6 +56,7 @@ CONFIG_ARM64 := ${CONFIG_ARM_COMMON} \
 
 CONFIG_x86 := --arch=amd64 \
 	--enable-libzimg \
+	--enable-libdav1d \
 	--enable-opencl \
 	--enable-vaapi \
 	--enable-amf \
@@ -66,7 +68,6 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-nvenc \
 	--enable-nvdec \
 	--enable-ffnvcodec \
-	--enable-libdav1d
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}

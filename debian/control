@@ -37,6 +37,8 @@ Build-Depends:
  libvorbis-dev,
 # --enable-libwebp
  libwebp-dev,
+# --enable-libvpx
+ libvpx-dev,
 # --enable-libx264
  libx264-dev,
 # --enable-libx265

@@ -13,6 +13,7 @@ usage() {
     echo -e " * disco"
     echo -e " * eoan"
     echo -e " * focal"
+    echo -e " * groovy"
 }
 
 if [[ -z ${1} ]]; then
@@ -57,6 +58,10 @@ case ${cli_release} in
     'focal')
         release="ubuntu:focal"
         gcc_version="9"
+    ;;
+    'groovy')
+        release="ubuntu:groovy"
+        gcc_version="10"
     ;;
     *)
         echo "Invalid release."
