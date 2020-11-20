@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.3.1-2) unstable; urgency=medium
+  
+  * Add support for Ubuntu Groovy (20.10)
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sat, 24 Oct 2020 16:24:19 +0800
+
 jellyfin-ffmpeg (4.3.1-1) unstable; urgency=medium
 
   * New upstream version 4.3.1

@@ -8,6 +8,47 @@ set -o xtrace
 ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
 PORTS_ADDR=http://ports.ubuntu.com/
 
+# Prepare common extra libs for amd64, armhf and arm64
+prepare_extra_common() {
+    # Download and install dav1d
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://code.videolan.org/videolan/dav1d.git
+    pushd dav1d
+    mkdir build
+    pushd build
+    nasmver="$(nasm -v | cut -d ' ' -f3)"
+    nasmavx512ver="2.14.0"
+    if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then
+        avx512=true
+    else
+        avx512=false
+    fi
+    if [ "${ARCH}" = "amd64" ]; then
+        meson -Denable_asm=true \
+              -Denable_avx512=$avx512 \
+              -Ddefault_library=shared \
+              --prefix=${TARGET_DIR} ..
+        ninja
+        meson install
+        cp ${TARGET_DIR}/lib/x86_64-linux-gnu/pkgconfig/dav1d.pc  /usr/lib/pkgconfig
+        cp ${TARGET_DIR}/lib/x86_64-linux-gnu/*dav1d* ${SOURCE_DIR}/dav1d
+    else
+        meson -Denable_asm=true \
+              -Denable_avx512=false \
+              -Ddefault_library=shared \
+              --cross-file=${SOURCE_DIR}/cross-${ARCH}.meson \
+              --prefix=${TARGET_DIR} ..
+        ninja
+        meson install
+        cp ${TARGET_DIR}/lib/pkgconfig/dav1d.pc  /usr/lib/pkgconfig
+        cp ${TARGET_DIR}/lib/*dav1d* ${SOURCE_DIR}/dav1d
+    fi
+    echo "dav1d/*dav1d* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
+}
+
 # Prepare extra headers, libs and drivers for x86_64-linux-gnu
 prepare_extra_amd64() {
     # Download and install zimg for zscale filter
@@ -30,30 +71,6 @@ prepare_extra_amd64() {
     popd
     popd
 
-    # Download and install dav1d
-    pushd ${SOURCE_DIR}
-    git clone --depth=1 https://code.videolan.org/videolan/dav1d.git && \
-    pushd dav1d
-    mkdir build
-    pushd build
-    nasmver="$(nasm -v | cut -d ' ' -f3)"
-    nasmavx512ver="2.14.0"
-    if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then 
-	    avx512=true
-    else
-	    avx512=false
-    fi
-    meson -Denable_asm=true -Denable_avx512=$avx512 -Ddefault_library=shared --prefix=${TARGET_DIR} ..
-    ninja
-    meson install
-    cp ${TARGET_DIR}/lib/x86_64-linux-gnu/pkgconfig/dav1d.pc  /usr/lib/pkgconfig/
-    cp ${TARGET_DIR}/lib/x86_64-linux-gnu/*dav1d* ${SOURCE_DIR}/dav1d
-    echo "dav1d/*dav1d* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    popd
-    popd
-    popd
-
-
     # Download and setup AMD AMF headers
     # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
     svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include
@@ -64,7 +81,7 @@ prepare_extra_amd64() {
 
     # Download and install libva
     pushd ${SOURCE_DIR}
-    git clone -b v2.8-branch --depth=1 https://github.com/intel/libva
+    git clone -b v2.9-branch --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|NULL|g' va/va.c
@@ -91,7 +108,7 @@ prepare_extra_amd64() {
 
     # Download and install gmmlib
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-20.2.2 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-20.3.2 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -104,7 +121,7 @@ prepare_extra_amd64() {
 
     # Download and install MediaSDK
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-20.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-20.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -122,7 +139,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     #pushd ${SOURCE_DIR}
-    #git clone -b intel-media-20.2 --depth=1 https://github.com/intel/media-driver
+    #git clone -b intel-media-20.3 --depth=1 https://github.com/intel/media-driver
     #pushd media-driver
     #mkdir build && pushd build
     #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -170,7 +187,7 @@ EOF
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-armhf
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
+    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-arm-linux-gnueabihf g++-${GCC_VER}-arm-linux-gnueabihf libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf liblttng-ust0:armhf libstdc++6:armhf
     popd
 
     # Fetch RasPi headers to build MMAL and OMX-RPI support
@@ -212,7 +229,7 @@ EOF
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-arm64
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 liblttng-ust0:arm64 libstdc++6:arm64
+    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 liblttng-ust0:arm64 libstdc++6:arm64
     popd
 
     # Fetch RasPi headers to build MMAL and OMX-RPI support
@@ -228,6 +245,7 @@ EOF
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
+        prepare_extra_common
         prepare_extra_amd64
         CONFIG_SITE=""
         DEP_ARCH_OPT=""
@@ -235,14 +253,20 @@ case ${ARCH} in
     ;;
     'armhf')
         prepare_crossbuild_env_armhf
-        ln -s /usr/bin/arm-linux-gnueabihf-gcc-6 /usr/bin/arm-linux-gnueabihf-gcc
+        ln -s /usr/bin/arm-linux-gnueabihf-gcc-${GCC_VER} /usr/bin/arm-linux-gnueabihf-gcc
+        ln -s /usr/bin/arm-linux-gnueabihf-gcc-ar-${GCC_VER} /usr/bin/arm-linux-gnueabihf-gcc-ar
+        ln -s /usr/bin/arm-linux-gnueabihf-g++-${GCC_VER} /usr/bin/arm-linux-gnueabihf-g++
+        prepare_extra_common
         CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
         DEP_ARCH_OPT="--host-arch armhf"
         BUILD_ARCH_OPT="-aarmhf"
     ;;
     'arm64')
         prepare_crossbuild_env_arm64
-        #ln -s /usr/bin/arm-linux-gnueabihf-gcc-6 /usr/bin/arm-linux-gnueabihf-gcc
+        ln -s /usr/bin/aarch64-linux-gnu-gcc-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc
+        ln -s /usr/bin/aarch64-linux-gnu-gcc-ar-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc-ar
+        ln -s /usr/bin/aarch64-linux-gnu-g++-${GCC_VER} /usr/bin/aarch64-linux-gnu-g++
+        prepare_extra_common
         CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
         DEP_ARCH_OPT="--host-arch arm64"
         BUILD_ARCH_OPT="-aarm64"

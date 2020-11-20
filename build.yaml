@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "4.3.1-1"
+version: "4.3.1-2"
 packages:
   - stretch-amd64
   - stretch-armhf
@@ -25,3 +25,6 @@ packages:
   - focal-amd64
   - focal-armhf
   - focal-arm64
+  - groovy-amd64
+  - groovy-armhf
+  - groovy-arm64
