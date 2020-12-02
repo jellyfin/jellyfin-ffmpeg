@@ -10,6 +10,28 @@ PORTS_ADDR=http://ports.ubuntu.com/
 
 # Prepare common extra libs for amd64, armhf and arm64
 prepare_extra_common() {
+    # Download and install zimg for zscale filter
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://github.com/sekrit-twc/zimg
+    pushd zimg
+    case ${ARCH} in
+        'amd64')
+            CROSS_OPT=""
+        ;;
+        'armhf')
+            CROSS_OPT="--host=arm-linux-gnueabihf CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++"
+        ;;
+        'arm64')
+            CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
+        ;;
+    esac
+    ./autogen.sh
+    ./configure --prefix=${TARGET_DIR} ${CROSS_OPT}
+    make -j $(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/zimg
+    echo "zimg${TARGET_DIR}/lib/libzimg.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+
     # Download and install dav1d
     pushd ${SOURCE_DIR}
     git clone --depth=1 https://code.videolan.org/videolan/dav1d.git
@@ -51,17 +73,6 @@ prepare_extra_common() {
 
 # Prepare extra headers, libs and drivers for x86_64-linux-gnu
 prepare_extra_amd64() {
-    # Download and install zimg for zscale filter
-    pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/sekrit-twc/zimg
-    pushd zimg
-    ./autogen.sh
-    ./configure --prefix=${TARGET_DIR}
-    make -j $(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/zimg
-    echo "zimg${TARGET_DIR}/lib/libzimg.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    popd
-    popd
-
     # Download and install the nvidia headers
     pushd ${SOURCE_DIR}
     git clone -b n9.0.18.3 --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
