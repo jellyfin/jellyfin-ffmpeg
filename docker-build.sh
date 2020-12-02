@@ -19,7 +19,7 @@ prepare_extra_common() {
             CROSS_OPT=""
         ;;
         'armhf')
-            CROSS_OPT="--host=arm-linux-gnueabihf CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++"
+            CROSS_OPT="--host=armv7-linux-gnueabihf CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++"
         ;;
         'arm64')
             CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
