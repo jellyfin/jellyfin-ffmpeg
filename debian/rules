@@ -40,7 +40,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libx264 \
 	--enable-libx265 \
 	--enable-libzvbi \
-        --enable-libzimg \
+	--enable-libzimg \
 
 CONFIG_ARM_COMMON := --toolchain=hardened \
 	--enable-cross-compile \
