@@ -1,1 +1,2 @@
 0001_fix-segment-muxer.patch
+0002-lavfi-add-a-filter-for-uploading-normal-frames-to-VAAPI.patch

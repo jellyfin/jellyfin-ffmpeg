@@ -92,7 +92,7 @@ prepare_extra_amd64() {
 
     # Download and install libva
     pushd ${SOURCE_DIR}
-    git clone -b v2.9-branch --depth=1 https://github.com/intel/libva
+    git clone -b v2.10-branch --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|NULL|g' va/va.c
@@ -119,7 +119,7 @@ prepare_extra_amd64() {
 
     # Download and install gmmlib
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-20.3.2 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-20.4.1 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -132,7 +132,7 @@ prepare_extra_amd64() {
 
     # Download and install MediaSDK
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-20.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-20.5 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -150,7 +150,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     #pushd ${SOURCE_DIR}
-    #git clone -b intel-media-20.3 --depth=1 https://github.com/intel/media-driver
+    #git clone -b intel-media-20.4 --depth=1 https://github.com/intel/media-driver
     #pushd media-driver
     #mkdir build && pushd build
     #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
