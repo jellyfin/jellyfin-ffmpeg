@@ -69,6 +69,17 @@ prepare_extra_common() {
     popd
     popd
     popd
+
+    # Download and install libfdk-aac-free
+    pushd ${SOURCE_DIR}
+    git clone -b stripped4 --depth=1 git://people.freedesktop.org/~wtay/fdk-aac
+    pushd fdk-aac
+    ./autogen.sh
+	./configure --disable-silent-rules --disable-static --prefix=${TARGET_DIR} ${CROSS_OPT}
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/fdk-aac
+    echo "fdk-aac${TARGET_DIR}/lib/libfdk-aac.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
 }
 
 # Prepare extra headers, libs and drivers for x86_64-linux-gnu
