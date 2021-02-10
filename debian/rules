@@ -12,6 +12,7 @@ PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
 CONFIG := --prefix=${TARGET_DIR} \
 	--target-os=linux \
+	--extra-version=Jellyfin \
 	--disable-doc \
 	--disable-ffplay \
 	--disable-shared \

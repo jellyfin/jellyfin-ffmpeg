@@ -1,1 +1,4 @@
 0001_fix-segment-muxer.patch
+0002-lavfi-add-a-filter-for-uploading-normal-frames-to-VAAPI.patch
+0003-fix-for-the-broken-tonemap_vaapi-filter.patch
+0004-cuda-format-converter-impl.patch
