@@ -25,7 +25,6 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libfontconfig \
 	--enable-fontconfig \
 	--enable-gmp \
-	--enable-gnutls \
 	--enable-libass \
 	--enable-libbluray \
 	--enable-libdrm \

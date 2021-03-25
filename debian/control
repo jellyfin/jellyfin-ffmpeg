@@ -13,8 +13,6 @@ Build-Depends:
  debhelper,
 # for build-profile support
  dpkg-dev,
-# --enable-gnutls
- libgnutls28-dev | libgnutls-dev,
 # --enable-libass
  libass-dev,
 # --enable-libbluray
