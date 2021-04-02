@@ -120,6 +120,8 @@ static int get_aiff_header(AVFormatContext *s, int size,
     else
         sample_rate = (val + (1ULL<<(-exp-1))) >> -exp;
     par->sample_rate = sample_rate;
+    if (size < 18)
+        return AVERROR_INVALIDDATA;
     size -= 18;
 
     /* get codec id for AIFF-C */
@@ -406,6 +408,8 @@ static int aiff_read_packet(AVFormatContext *s,
         break;
     default:
         size = st->codecpar->block_align ? (MAX_SIZE / st->codecpar->block_align) * st->codecpar->block_align : MAX_SIZE;
+        if (!size)
+            return AVERROR_INVALIDDATA;
     }
     size = FFMIN(max_size, size);
     res = av_get_packet(s->pb, pkt, size);

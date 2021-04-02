@@ -125,7 +125,7 @@ static inline int get_duration(AVIStream *ast, int len)
     if (ast->sample_size)
         return len;
     else if (ast->dshow_block_align)
-        return (len + ast->dshow_block_align - 1) / ast->dshow_block_align;
+        return (len + (int64_t)ast->dshow_block_align - 1) / ast->dshow_block_align;
     else
         return 1;
 }
@@ -439,7 +439,7 @@ static int calculate_bitrate(AVFormatContext *s)
         maxpos = FFMAX(maxpos, st->index_entries[j-1].pos);
         lensum += len;
     }
-    if (maxpos < avi->io_fsize*9/10) // index does not cover the whole file
+    if (maxpos < av_rescale(avi->io_fsize, 9, 10)) // index does not cover the whole file
         return 0;
     if (lensum*9/10 > maxpos || lensum < maxpos*9/10) // frame sum and filesize mismatch
         return 0;
@@ -1422,6 +1422,7 @@ resync:
     if (avi->stream_index >= 0) {
         AVStream *st   = s->streams[avi->stream_index];
         AVIStream *ast = st->priv_data;
+        int dv_demux = CONFIG_DV_DEMUXER && avi->dv_demux;
         int size, err;
 
         if (get_subtitle_pkt(s, st, pkt))
@@ -1444,7 +1445,7 @@ resync:
             return err;
         size = err;
 
-        if (ast->has_pal && pkt->size < (unsigned)INT_MAX / 2) {
+        if (ast->has_pal && pkt->size < (unsigned)INT_MAX / 2 && !dv_demux) {
             uint8_t *pal;
             pal = av_packet_new_side_data(pkt,
                                           AV_PKT_DATA_PALETTE,
@@ -1458,7 +1459,7 @@ resync:
             }
         }
 
-        if (CONFIG_DV_DEMUXER && avi->dv_demux) {
+        if (dv_demux) {
             AVBufferRef *avbuf = pkt->buf;
             size = avpriv_dv_produce_packet(avi->dv_demux, pkt,
                                             pkt->data, pkt->size, pkt->pos);

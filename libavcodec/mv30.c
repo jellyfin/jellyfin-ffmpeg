@@ -102,25 +102,25 @@ static void get_qtable(int16_t *table, int quant, const uint8_t *quant_tab)
     }
 }
 
-static inline void idct_1d(int *blk, int step)
+static inline void idct_1d(unsigned *blk, int step)
 {
-    const int t0 = blk[0 * step] + blk[4 * step];
-    const int t1 = blk[0 * step] - blk[4 * step];
-    const int t2 = blk[2 * step] + blk[6 * step];
-    const int t3 = ((int)((blk[2 * step] - blk[6 * step]) * 362U) >> 8) - t2;
-    const int t4 = t0 + t2;
-    const int t5 = t0 - t2;
-    const int t6 = t1 + t3;
-    const int t7 = t1 - t3;
-    const int t8 = blk[5 * step] + blk[3 * step];
-    const int t9 = blk[5 * step] - blk[3 * step];
-    const int tA = blk[1 * step] + blk[7 * step];
-    const int tB = blk[1 * step] - blk[7 * step];
-    const int tC = t8 + tA;
-    const int tD = (int)((tB + t9) * 473U) >> 8;
-    const int tE = (((int)(t9 * -669U) >> 8) - tC) + tD;
-    const int tF = ((int)((tA - t8) * 362U) >> 8) - tE;
-    const int t10 = (((int)(tB * 277U) >> 8) - tD) + tF;
+    const unsigned t0 = blk[0 * step] + blk[4 * step];
+    const unsigned t1 = blk[0 * step] - blk[4 * step];
+    const unsigned t2 = blk[2 * step] + blk[6 * step];
+    const unsigned t3 = ((int)((blk[2 * step] - blk[6 * step]) * 362U) >> 8) - t2;
+    const unsigned t4 = t0 + t2;
+    const unsigned t5 = t0 - t2;
+    const unsigned t6 = t1 + t3;
+    const unsigned t7 = t1 - t3;
+    const unsigned t8 = blk[5 * step] + blk[3 * step];
+    const unsigned t9 = blk[5 * step] - blk[3 * step];
+    const unsigned tA = blk[1 * step] + blk[7 * step];
+    const unsigned tB = blk[1 * step] - blk[7 * step];
+    const unsigned tC = t8 + tA;
+    const unsigned tD = (int)((tB + t9) * 473U) >> 8;
+    const unsigned tE = (((int)(t9 * -669U) >> 8) - tC) + tD;
+    const unsigned tF = ((int)((tA - t8) * 362U) >> 8) - tE;
+    const unsigned t10 = (((int)(tB * 277U) >> 8) - tD) + tF;
 
     blk[0 * step] = t4 + tC;
     blk[1 * step] = t6 + tE;
@@ -198,12 +198,12 @@ static void idct_add(uint8_t *dst, int stride,
 
 static inline void idct2_1d(int *blk, int step)
 {
-    const int t0 = blk[0 * step];
-    const int t1 = blk[1 * step];
-    const int t2 = (int)(t1 * 473U) >> 8;
-    const int t3 = t2 - t1;
-    const int t4 =  ((int)(t1 * 362U) >> 8) - t3;
-    const int t5 = (((int)(t1 * 277U) >> 8) - t2) + t4;
+    const unsigned int  t0 = blk[0 * step];
+    const unsigned int t1 = blk[1 * step];
+    const unsigned int t2 = (int)(t1 * 473U) >> 8;
+    const unsigned int t3 = t2 - t1;
+    const unsigned int t4 =  ((int)(t1 * 362U) >> 8) - t3;
+    const unsigned int t5 = (((int)(t1 * 277U) >> 8) - t2) + t4;
 
     blk[0 * step] = t1 + t0;
     blk[1 * step] = t0 + t3;
@@ -305,14 +305,14 @@ static int decode_intra_block(AVCodecContext *avctx, int mode,
     case 1:
         fill = sign_extend(bytestream2_get_ne16(gbyte), 16);
         pfill[0] += fill;
-        block[0] = ((pfill[0] * qtab[0]) >> 5) + 128;
+        block[0] = ((int)((unsigned)pfill[0] * qtab[0]) >> 5) + 128;
         s->bdsp.fill_block_tab[1](dst, block[0], linesize, 8);
         break;
     case 2:
         memset(block, 0, sizeof(*block) * 64);
         fill = sign_extend(bytestream2_get_ne16(gbyte), 16);
         pfill[0] += fill;
-        block[0] = pfill[0] * qtab[0];
+        block[0] = (unsigned)pfill[0] * qtab[0];
         block[1] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[1];
         block[8] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[8];
         block[9] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[9];
@@ -321,7 +321,7 @@ static int decode_intra_block(AVCodecContext *avctx, int mode,
     case 3:
         fill = sign_extend(bytestream2_get_ne16(gbyte), 16);
         pfill[0] += fill;
-        block[0] = pfill[0] * qtab[0];
+        block[0] = (unsigned)pfill[0] * qtab[0];
         for (int i = 1; i < 64; i++)
             block[zigzag[i]] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[zigzag[i]];
         idct_put(dst, linesize, block);
@@ -346,14 +346,14 @@ static int decode_inter_block(AVCodecContext *avctx, int mode,
     case 1:
         fill = sign_extend(bytestream2_get_ne16(gbyte), 16);
         pfill[0] += fill;
-        block[0] = (pfill[0] * qtab[0]) >> 5;
+        block[0] = (int)((unsigned)pfill[0] * qtab[0]) >> 5;
         update_inter_block(dst, linesize, src, in_linesize, block[0]);
         break;
     case 2:
         memset(block, 0, sizeof(*block) * 64);
         fill = sign_extend(bytestream2_get_ne16(gbyte), 16);
         pfill[0] += fill;
-        block[0] = pfill[0] * qtab[0];
+        block[0] = (unsigned)pfill[0] * qtab[0];
         block[1] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[1];
         block[8] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[8];
         block[9] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[9];
@@ -362,7 +362,7 @@ static int decode_inter_block(AVCodecContext *avctx, int mode,
     case 3:
         fill = sign_extend(bytestream2_get_ne16(gbyte), 16);
         pfill[0] += fill;
-        block[0] = pfill[0] * qtab[0];
+        block[0] = (unsigned)pfill[0] * qtab[0];
         for (int i = 1; i < 64; i++)
             block[zigzag[i]] = sign_extend(bytestream2_get_ne16(gbyte), 16) * qtab[zigzag[i]];
         idct_add(dst, linesize, src, in_linesize, block);
@@ -531,8 +531,13 @@ static int decode_inter(AVCodecContext *avctx, GetBitContext *gb,
         for (int x = 0; x < avctx->width; x += 16) {
             if (cnt >= 4)
                 cnt = 0;
-            if (cnt == 0)
+            if (cnt == 0) {
+                if (get_bits_left(&mask) < 8) {
+                    ret = AVERROR_INVALIDDATA;
+                    goto fail;
+                }
                 flags = get_bits(&mask, 8);
+            }
 
             dst[0] = frame->data[0] + linesize[0] * y + x;
             dst[1] = frame->data[0] + linesize[0] * y + x + 8;

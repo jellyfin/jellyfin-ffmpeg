@@ -173,12 +173,12 @@ static int read_chunk(AVFormatContext *s)
     if (avio_feof(s->pb))
         return AVERROR_EOF;
 
-    if (avio_rl32(s->pb) != MKTAG('D','H','A','V')) {
+    if (avio_rl32(s->pb) != MKTAG('D','H','A','V') && dhav->last_good_pos < INT64_MAX - 0x8000) {
         dhav->last_good_pos += 0x8000;
         avio_seek(s->pb, dhav->last_good_pos, SEEK_SET);
 
         while (avio_rl32(s->pb) != MKTAG('D','H','A','V')) {
-            if (avio_feof(s->pb))
+            if (avio_feof(s->pb) || dhav->last_good_pos >= INT64_MAX - 0x8000)
                 return AVERROR_EOF;
             dhav->last_good_pos += 0x8000;
             ret = avio_skip(s->pb, 0x8000 - 4);
@@ -290,6 +290,8 @@ static int dhav_read_header(AVFormatContext *s)
                 int seek_back;
 
                 seek_back = avio_rl32(s->pb) + 8;
+                if (seek_back < 9)
+                    break;
                 dhav->last_good_pos = avio_tell(s->pb);
                 avio_seek(s->pb, -seek_back, SEEK_CUR);
             }

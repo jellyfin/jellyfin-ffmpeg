@@ -53,6 +53,7 @@ enum SRTMode {
 typedef struct SRTContext {
     const AVClass *class;
     int fd;
+    int listen_fd;
     int eid;
     int64_t rw_timeout;
     int64_t listen_timeout;
@@ -313,8 +314,12 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
         (s->pbkeylen >= 0 && libsrt_setsockopt(h, fd, SRTO_PBKEYLEN, "SRTO_PBKEYLEN", &s->pbkeylen, sizeof(s->pbkeylen)) < 0) ||
         (s->passphrase && libsrt_setsockopt(h, fd, SRTO_PASSPHRASE, "SRTO_PASSPHRASE", s->passphrase, strlen(s->passphrase)) < 0) ||
 #if SRT_VERSION_VALUE >= 0x010302
+#if SRT_VERSION_VALUE >= 0x010401
+        (s->enforced_encryption >= 0 && libsrt_setsockopt(h, fd, SRTO_ENFORCEDENCRYPTION, "SRTO_ENFORCEDENCRYPTION", &s->enforced_encryption, sizeof(s->enforced_encryption)) < 0) ||
+#else
         /* SRTO_STRICTENC == SRTO_ENFORCEDENCRYPTION (53), but for compatibility, we used SRTO_STRICTENC */
         (s->enforced_encryption >= 0 && libsrt_setsockopt(h, fd, SRTO_STRICTENC, "SRTO_STRICTENC", &s->enforced_encryption, sizeof(s->enforced_encryption)) < 0) ||
+#endif
         (s->kmrefreshrate >= 0 && libsrt_setsockopt(h, fd, SRTO_KMREFRESHRATE, "SRTO_KMREFRESHRATE", &s->kmrefreshrate, sizeof(s->kmrefreshrate)) < 0) ||
         (s->kmpreannounce >= 0 && libsrt_setsockopt(h, fd, SRTO_KMPREANNOUNCE, "SRTO_KMPREANNOUNCE", &s->kmpreannounce, sizeof(s->kmpreannounce)) < 0) ||
 #endif
@@ -333,7 +338,11 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
         (s->lossmaxttl >= 0 && libsrt_setsockopt(h, fd, SRTO_LOSSMAXTTL, "SRTO_LOSSMAXTTL", &s->lossmaxttl, sizeof(s->lossmaxttl)) < 0) ||
         (s->minversion >= 0 && libsrt_setsockopt(h, fd, SRTO_MINVERSION, "SRTO_MINVERSION", &s->minversion, sizeof(s->minversion)) < 0) ||
         (s->streamid && libsrt_setsockopt(h, fd, SRTO_STREAMID, "SRTO_STREAMID", s->streamid, strlen(s->streamid)) < 0) ||
+#if SRT_VERSION_VALUE >= 0x010401
+        (s->smoother && libsrt_setsockopt(h, fd, SRTO_CONGESTION, "SRTO_CONGESTION", s->smoother, strlen(s->smoother)) < 0) ||
+#else
         (s->smoother && libsrt_setsockopt(h, fd, SRTO_SMOOTHER, "SRTO_SMOOTHER", s->smoother, strlen(s->smoother)) < 0) ||
+#endif
         (s->messageapi >= 0 && libsrt_setsockopt(h, fd, SRTO_MESSAGEAPI, "SRTO_MESSAGEAPI", &s->messageapi, sizeof(s->messageapi)) < 0) ||
         (s->payload_size >= 0 && libsrt_setsockopt(h, fd, SRTO_PAYLOADSIZE, "SRTO_PAYLOADSIZE", &s->payload_size, sizeof(s->payload_size)) < 0) ||
         ((h->flags & AVIO_FLAG_WRITE) && libsrt_setsockopt(h, fd, SRTO_SENDER, "SRTO_SENDER", &yes, sizeof(yes)) < 0)) {
@@ -354,7 +363,7 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
 static int libsrt_setup(URLContext *h, const char *uri, int flags)
 {
     struct addrinfo hints = { 0 }, *ai, *cur_ai;
-    int port, fd = -1;
+    int port, fd = -1, listen_fd = -1;
     SRTContext *s = h->priv_data;
     const char *p;
     char buf[256];
@@ -363,11 +372,6 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
     char portstr[10];
     int64_t open_timeout = 0;
     int eid;
-
-    eid = srt_epoll_create();
-    if (eid < 0)
-        return libsrt_neterrno(h);
-    s->eid = eid;
 
     av_url_split(proto, sizeof(proto), NULL, 0, hostname, sizeof(hostname),
         &port, path, sizeof(path), uri);
@@ -404,6 +408,11 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
 
     cur_ai = ai;
 
+    eid = srt_epoll_create();
+    if (eid < 0)
+        return libsrt_neterrno(h);
+    s->eid = eid;
+
  restart:
 
     fd = srt_socket(cur_ai->ai_family, cur_ai->ai_socktype, 0);
@@ -431,6 +440,7 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
         // multi-client
         if ((ret = libsrt_listen(s->eid, fd, cur_ai->ai_addr, cur_ai->ai_addrlen, h, s->listen_timeout)) < 0)
             goto fail1;
+        listen_fd = fd;
         fd = ret;
     } else {
         if (s->mode == SRT_MODE_RENDEZVOUS) {
@@ -463,6 +473,7 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
 
     h->is_streamed = 1;
     s->fd = fd;
+    s->listen_fd = listen_fd;
 
     freeaddrinfo(ai);
     return 0;
@@ -473,13 +484,18 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
         cur_ai = cur_ai->ai_next;
         if (fd >= 0)
             srt_close(fd);
+        if (listen_fd >= 0)
+            srt_close(listen_fd);
         ret = 0;
         goto restart;
     }
  fail1:
     if (fd >= 0)
         srt_close(fd);
+    if (listen_fd >= 0)
+        srt_close(listen_fd);
     freeaddrinfo(ai);
+    srt_epoll_release(s->eid);
     return ret;
 }
 
@@ -569,7 +585,8 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
             } else if (!strcmp(buf, "rendezvous")) {
                 s->mode = SRT_MODE_RENDEZVOUS;
             } else {
-                return AVERROR(EIO);
+                ret = AVERROR(EINVAL);
+                goto err;
             }
         }
         if (av_find_info_tag(buf, sizeof(buf), "sndbuf", p)) {
@@ -617,10 +634,15 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
             s->linger = strtol(buf, NULL, 10);
         }
     }
-    return libsrt_setup(h, uri, flags);
+    ret = libsrt_setup(h, uri, flags);
+    if (ret < 0)
+        goto err;
+    return 0;
+
 err:
     av_freep(&s->smoother);
     av_freep(&s->streamid);
+    srt_cleanup();
     return ret;
 }
 
@@ -667,6 +689,9 @@ static int libsrt_close(URLContext *h)
     SRTContext *s = h->priv_data;
 
     srt_close(s->fd);
+
+    if (s->listen_fd >= 0)
+        srt_close(s->listen_fd);
 
     srt_epoll_release(s->eid);
 
