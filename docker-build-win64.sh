@@ -511,6 +511,7 @@ fi
     --disable-debug \
     --disable-doc \
     --enable-shared \
+    --enable-lto \
     --enable-gpl \
     --enable-version3 \
     --enable-schannel \
