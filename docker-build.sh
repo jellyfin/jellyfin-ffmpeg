@@ -48,6 +48,7 @@ prepare_extra_common() {
     if [ "${ARCH}" = "amd64" ]; then
         meson -Denable_asm=true \
               -Denable_avx512=$avx512 \
+              -Denable_tests=false \
               -Ddefault_library=shared \
               --prefix=${TARGET_DIR} ..
         ninja
@@ -58,6 +59,7 @@ prepare_extra_common() {
         meson -Denable_asm=true \
               -Denable_avx512=false \
               -Ddefault_library=shared \
+              -Denable_tests=false \
               --cross-file=${SOURCE_DIR}/cross-${ARCH}.meson \
               --prefix=${TARGET_DIR} ..
         ninja
