@@ -9,6 +9,10 @@ on:
     branches:
       - jellyfin
 
+  release: 
+    types:
+      - released
+
   workflow_dispatch:
 
 jobs:
@@ -49,3 +53,38 @@ jobs:
         with:
           name: ${{ matrix.release }} ${{ matrix.arch }} package
           path: dist
+
+  publish:
+    if: github.event_name == 'release' && github.event.action == 'released'
+    needs: build
+    name: Push artifacts to repo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R
+
+      - name: Push files to repo
+        uses: appleboy/scp-action@v0.1.1
+        with:
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          password: ${{ secrets.REPO_PASSWORD }}
+          port: 22
+          source: "artifacts/*"
+          target: "/srv/repository/incoming/ffmpeg/${{ github.event.release.tag_name }}"
+          strip_components: 2
+          
+      - name: Collect new version
+        uses: appleboy/ssh-action@v0.1.4
+        with:
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          password: ${{ secrets.REPO_PASSWORD }}
+          port: 22
+          script: /srv/repository/collect-ffmpeg.sh
