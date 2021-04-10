@@ -2,9 +2,12 @@ name: Build Linux
 
 on:
   push:
-    branches: [ jellyfin ]
+    branches:
+      - jellyfin
+
   pull_request:
-    branches: [ jellyfin ]
+    branches:
+      - jellyfin
 
   workflow_dispatch:
 
@@ -12,12 +15,22 @@ jobs:
   build:
     name: Build ${{ matrix.release }} ${{ matrix.arch }}
     runs-on: ubuntu-latest
-    
+
     strategy:
       fail-fast: false
       matrix:
-        release: ['bullseye', 'buster', 'stretch', 'groovy', 'focal', 'bionic']
-        arch: ['amd64', 'arm64', 'armhf']
+        release:
+          - bullseye
+          - buster
+          - stretch
+          - groovy
+          - focal
+          - bionic
+
+        arch:
+          - amd64
+          - arm64
+          - armhf
 
     steps:
       - uses: actions/checkout@v2
