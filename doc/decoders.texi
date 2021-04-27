@@ -25,6 +25,19 @@ enabled decoders.
 A description of some of the currently available video decoders
 follows.
 
+@section av1
+
+AOMedia Video 1 (AV1) decoder.
+
+@subsection Options
+
+@table @option
+
+@item operating_point
+Select an operating point of a scalable AV1 bitstream (0 - 31). Default is 0.
+
+@end table
+
 @section rawvideo
 
 Raw video decoder.
@@ -88,6 +101,27 @@ This decoder allows libavcodec to decode AVS2 streams with davs2 library.
 
 @c man end VIDEO DECODERS
 
+@section libuavs3d
+
+AVS3-P2/IEEE1857.10 video decoder.
+
+libuavs3d allows libavcodec to decode AVS3 streams.
+Requires the presence of the libuavs3d headers and library during configuration.
+You need to explicitly configure the build with @code{--enable-libuavs3d}.
+
+@subsection Options
+
+The following option is supported by the libuavs3d wrapper.
+
+@table @option
+
+@item frame_threads
+Set amount of frame threads to use during decoding. The default value is 0 (autodetect).
+
+@end table
+
+@c man end VIDEO DECODERS
+
 @chapter Audio Decoders
 @c man begin AUDIO DECODERS
 
@@ -107,7 +141,7 @@ the undocumented RealAudio 3 (a.k.a. dnet).
 
 @item -drc_scale @var{value}
 Dynamic Range Scale Factor. The factor to apply to dynamic range values
-from the AC-3 stream. This factor is applied exponentially.
+from the AC-3 stream. This factor is applied exponentially. The default value is 1.
 There are 3 notable scale factor ranges:
 @table @option
 @item drc_scale == 0

@@ -107,16 +107,23 @@ Print detailed information about the muxer named @var{muxer_name}. Use the
 @option{-formats} option to get a list of all muxers and demuxers.
 
 @item filter=@var{filter_name}
-Print detailed information about the filter name @var{filter_name}. Use the
+Print detailed information about the filter named @var{filter_name}. Use the
 @option{-filters} option to get a list of all filters.
 
 @item bsf=@var{bitstream_filter_name}
-Print detailed information about the bitstream filter name @var{bitstream_filter_name}.
+Print detailed information about the bitstream filter named @var{bitstream_filter_name}.
 Use the @option{-bsfs} option to get a list of all bitstream filters.
+
+@item protocol=@var{protocol_name}
+Print detailed information about the protocol named @var{protocol_name}.
+Use the @option{-protocols} option to get a list of all protocols.
 @end table
 
 @item -version
 Show version.
+
+@item -buildconf
+Show the build configuration, one option per line.
 
 @item -formats
 Show available formats (including devices).
@@ -345,6 +352,12 @@ Possible flags for this option are:
 @item k8
 @end table
 @end table
+
+@item -max_alloc @var{bytes}
+Set the maximum size limit for allocating a block on the heap by ffmpeg's
+family of malloc functions. Exercise @strong{extreme caution} when using
+this option. Don't use if you do not understand the full consequence of doing so.
+Default is INT_MAX.
 @end table
 
 @section AVOptions

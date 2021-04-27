@@ -29,6 +29,7 @@
 
 #include "../dnn_interface.h"
 #include "libavformat/avio.h"
+#include "libavutil/opt.h"
 
 /**
  * the enum value of DNNLayerType should not be changed,
@@ -43,10 +44,14 @@ typedef enum {
     DLT_MAXIMUM = 4,
     DLT_MATH_BINARY = 5,
     DLT_MATH_UNARY = 6,
+    DLT_AVG_POOL = 7,
+    DLT_DENSE = 8,
     DLT_COUNT
 } DNNLayerType;
 
 typedef enum {DOT_INPUT = 1, DOT_OUTPUT = 2, DOT_INTERMEDIATE = DOT_INPUT | DOT_OUTPUT} DNNOperandType;
+typedef enum {VALID, SAME, SAME_CLAMP_TO_EDGE} DNNPaddingParam;
+typedef enum {RELU, TANH, SIGMOID, NONE, LEAKY_RELU} DNNActivationFunc;
 
 typedef struct Layer{
     DNNLayerType type;
@@ -104,24 +109,34 @@ typedef struct InputParams{
     int height, width, channels;
 } InputParams;
 
+typedef struct NativeOptions{
+    uint32_t conv2d_threads;
+} NativeOptions;
+
+typedef struct NativeContext {
+    const AVClass *class;
+    NativeOptions options;
+} NativeContext;
+
 // Represents simple feed-forward convolutional network.
-typedef struct ConvolutionalNetwork{
+typedef struct NativeModel{
+    NativeContext ctx;
+    DNNModel *model;
     Layer *layers;
     int32_t layers_num;
     DnnOperand *operands;
     int32_t operands_num;
-    int32_t *output_indexes;
-    uint32_t nb_output;
-} ConvolutionalNetwork;
+} NativeModel;
 
-DNNModel *ff_dnn_load_model_native(const char *model_filename);
+DNNModel *ff_dnn_load_model_native(const char *model_filename, DNNFunctionType func_type, const char *options, AVFilterContext *filter_ctx);
 
-DNNReturnType ff_dnn_execute_model_native(const DNNModel *model, DNNData *outputs, uint32_t nb_output);
+DNNReturnType ff_dnn_execute_model_native(const DNNModel *model, const char *input_name, AVFrame *in_frame,
+                                          const char **output_names, uint32_t nb_output, AVFrame *out_frame);
 
 void ff_dnn_free_model_native(DNNModel **model);
 
 // NOTE: User must check for error (return value <= 0) to handle
 // case like integer overflow.
-int32_t calculate_operand_data_length(const DnnOperand *oprd);
-int32_t calculate_operand_dims_count(const DnnOperand *oprd);
+int32_t ff_calculate_operand_data_length(const DnnOperand *oprd);
+int32_t ff_calculate_operand_dims_count(const DnnOperand *oprd);
 #endif

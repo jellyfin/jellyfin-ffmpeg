@@ -183,10 +183,11 @@ static int preload_sofa(AVFilterContext *ctx, char *filename, int *samplingrate)
     return 0;
 }
 
-static int parse_channel_name(char **arg, int *rchannel, char *buf)
+static int parse_channel_name(AVFilterContext *ctx, char **arg, int *rchannel)
 {
     int len, i, channel_id = 0;
     int64_t layout, layout0;
+    char buf[8] = {0};
 
     /* try to parse a channel name, e.g. "FL" */
     if (av_sscanf(*arg, "%7[A-Z]%n", buf, &len)) {
@@ -199,8 +200,18 @@ static int parse_channel_name(char **arg, int *rchannel, char *buf)
             }
         }
         /* reject layouts that are not a single channel */
-        if (channel_id >= 64 || layout0 != 1LL << channel_id)
+        if (channel_id >= 64 || layout0 != 1LL << channel_id) {
+            av_log(ctx, AV_LOG_WARNING, "Failed to parse \'%s\' as channel name.\n", buf);
             return AVERROR(EINVAL);
+        }
+        *rchannel = channel_id;
+        *arg += len;
+        return 0;
+    } else if (av_sscanf(*arg, "%d%n", &channel_id, &len) == 1) {
+        if (channel_id < 0 || channel_id >= 64) {
+            av_log(ctx, AV_LOG_WARNING, "Failed to parse \'%d\' as channel number.\n", channel_id);
+            return AVERROR(EINVAL);
+        }
         *rchannel = channel_id;
         *arg += len;
         return 0;
@@ -218,13 +229,11 @@ static void parse_speaker_pos(AVFilterContext *ctx, int64_t in_channel_layout)
     p = args;
 
     while ((arg = av_strtok(p, "|", &tokenizer))) {
-        char buf[8];
         float azim, elev;
         int out_ch_id;
 
         p = NULL;
-        if (parse_channel_name(&arg, &out_ch_id, buf)) {
-            av_log(ctx, AV_LOG_WARNING, "Failed to parse \'%s\' as channel name.\n", buf);
+        if (parse_channel_name(ctx, &arg, &out_ch_id)) {
             continue;
         }
         if (av_sscanf(arg, "%f %f", &azim, &elev) == 2) {
@@ -246,11 +255,11 @@ static int get_speaker_pos(AVFilterContext *ctx,
 {
     struct SOFAlizerContext *s = ctx->priv;
     uint64_t channels_layout = ctx->inputs[0]->channel_layout;
-    float azim[16] = { 0 };
-    float elev[16] = { 0 };
+    float azim[64] = { 0 };
+    float elev[64] = { 0 };
     int m, ch, n_conv = ctx->inputs[0]->channels; /* get no. input channels */
 
-    if (n_conv > 16)
+    if (n_conv < 0 || n_conv > 64)
         return AVERROR(EINVAL);
 
     s->lfe_channel = -1;
@@ -351,7 +360,7 @@ static int sofalizer_convolute(AVFilterContext *ctx, void *arg, int jobnr, int n
     const int buffer_length = s->buffer_length;
     /* -1 for AND instead of MODULO (applied to powers of 2): */
     const uint32_t modulo = (uint32_t)buffer_length - 1;
-    float *buffer[16]; /* holds ringbuffer for each input channel */
+    float *buffer[64]; /* holds ringbuffer for each input channel */
     int wr = *write;
     int read;
     int i, l;
@@ -652,7 +661,7 @@ static int query_formats(AVFilterContext *ctx)
     if (!layouts)
         return AVERROR(ENOMEM);
 
-    ret = ff_channel_layouts_ref(layouts, &ctx->inputs[0]->out_channel_layouts);
+    ret = ff_channel_layouts_ref(layouts, &ctx->inputs[0]->outcfg.channel_layouts);
     if (ret)
         return ret;
 
@@ -661,7 +670,7 @@ static int query_formats(AVFilterContext *ctx)
     if (ret)
         return ret;
 
-    ret = ff_channel_layouts_ref(layouts, &ctx->outputs[0]->in_channel_layouts);
+    ret = ff_channel_layouts_ref(layouts, &ctx->outputs[0]->incfg.channel_layouts);
     if (ret)
         return ret;
 

@@ -72,8 +72,8 @@ static int get_second_size(char *codec_name)
 static int aa_read_header(AVFormatContext *s)
 {
     int i, j, idx, largest_idx = -1;
-    uint32_t nkey, nval, toc_size, npairs, header_seed = 0, start;
-    char key[128], val[128], codec_name[64] = {0};
+    uint32_t toc_size, npairs, header_seed = 0, start;
+    char codec_name[64] = {0};
     uint8_t output[24], dst[8], src[8];
     int64_t largest_size = -1, current_size = -1, chapter_pos;
     struct toc_entry {
@@ -104,8 +104,9 @@ static int aa_read_header(AVFormatContext *s)
     if (npairs > MAX_DICTIONARY_ENTRIES)
         return AVERROR_INVALIDDATA;
     for (i = 0; i < npairs; i++) {
-        memset(val, 0, sizeof(val));
-        memset(key, 0, sizeof(key));
+        char key[128], val[128];
+        uint32_t nkey, nval;
+
         avio_skip(pb, 1); // unidentified integer
         nkey = avio_rb32(pb); // key string length
         nval = avio_rb32(pb); // value string length
@@ -113,7 +114,7 @@ static int aa_read_header(AVFormatContext *s)
         avio_get_str(pb, nval, val, sizeof(val));
         if (!strcmp(key, "codec")) {
             av_log(s, AV_LOG_DEBUG, "Codec is <%s>\n", val);
-            strncpy(codec_name, val, sizeof(codec_name) - 1);
+            av_strlcpy(codec_name, val, sizeof(codec_name));
         } else if (!strcmp(key, "HeaderSeed")) {
             av_log(s, AV_LOG_DEBUG, "HeaderSeed is <%s>\n", val);
             header_seed = atoi(val);
@@ -221,14 +222,18 @@ static int aa_read_header(AVFormatContext *s)
     c->content_end = start + largest_size;
 
     while ((chapter_pos = avio_tell(pb)) >= 0 && chapter_pos < c->content_end) {
-        int chapter_idx = s->nb_chapters;
+        unsigned chapter_idx = s->nb_chapters;
         uint32_t chapter_size = avio_rb32(pb);
-        if (chapter_size == 0) break;
+        if (chapter_size == 0 || avio_feof(pb))
+            break;
         chapter_pos -= start + CHAPTER_HEADER_SIZE * chapter_idx;
         avio_skip(pb, 4 + chapter_size);
         if (!avpriv_new_chapter(s, chapter_idx, st->time_base,
-            chapter_pos * TIMEPREC, (chapter_pos + chapter_size) * TIMEPREC, NULL))
-                return AVERROR(ENOMEM);
+                                chapter_pos * TIMEPREC,
+                                (chapter_pos + chapter_size) * TIMEPREC, NULL)) {
+            av_freep(&c->tea_ctx);
+            return AVERROR(ENOMEM);
+        }
     }
 
     st->duration = (largest_size - CHAPTER_HEADER_SIZE * s->nb_chapters) * TIMEPREC;

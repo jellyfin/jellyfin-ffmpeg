@@ -40,8 +40,7 @@ typedef struct Pair {
 typedef struct BiquadContext {
     double a[3];
     double b[3];
-    double i1, i2;
-    double o1, o2;
+    double w1, w2;
 } BiquadContext;
 
 typedef struct IIRChannel {
@@ -49,6 +48,7 @@ typedef struct IIRChannel {
     double *ab[2];
     double g;
     double *cache[2];
+    double fir;
     BiquadContext *biquads;
     int clippings;
 } IIRChannel;
@@ -95,7 +95,7 @@ static int query_formats(AVFilterContext *ctx)
         AVFilterLink *videolink = ctx->outputs[1];
 
         formats = ff_make_format_list(pix_fmts);
-        if ((ret = ff_formats_ref(formats, &videolink->in_formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &videolink->incfg.formats)) < 0)
             return ret;
     }
 
@@ -176,13 +176,15 @@ IIR_CH(s32p, int32_t, INT32_MIN, INT32_MAX, 1)
 IIR_CH(fltp, float,         -1.,        1., 0)
 IIR_CH(dblp, double,        -1.,        1., 0)
 
-#define SERIAL_IIR_CH(name, type, min, max, need_clipping)                  \
-static int iir_ch_serial_## name(AVFilterContext *ctx, void *arg, int ch, int nb_jobs)  \
+#define SERIAL_IIR_CH(name, type, min, max, need_clipping)              \
+static int iir_ch_serial_## name(AVFilterContext *ctx, void *arg,       \
+                                 int ch, int nb_jobs)                   \
 {                                                                       \
     AudioIIRContext *s = ctx->priv;                                     \
     const double ig = s->dry_gain;                                      \
     const double og = s->wet_gain;                                      \
     const double mix = s->mix;                                          \
+    const double imix = 1. - mix;                                       \
     ThreadData *td = arg;                                               \
     AVFrame *in = td->in, *out = td->out;                               \
     const type *src = (const type *)in->extended_data[ch];              \
@@ -193,28 +195,24 @@ static int iir_ch_serial_## name(AVFilterContext *ctx, void *arg, int ch, int nb
     int nb_biquads = (FFMAX(iir->nb_ab[0], iir->nb_ab[1]) + 1) / 2;     \
     int n, i;                                                           \
                                                                         \
-    for (i = 0; i < nb_biquads; i++) {                                  \
+    for (i = nb_biquads - 1; i >= 0; i--) {                             \
         const double a1 = -iir->biquads[i].a[1];                        \
         const double a2 = -iir->biquads[i].a[2];                        \
         const double b0 = iir->biquads[i].b[0];                         \
         const double b1 = iir->biquads[i].b[1];                         \
         const double b2 = iir->biquads[i].b[2];                         \
-        double i1 = iir->biquads[i].i1;                                 \
-        double i2 = iir->biquads[i].i2;                                 \
-        double o1 = iir->biquads[i].o1;                                 \
-        double o2 = iir->biquads[i].o2;                                 \
+        double w1 = iir->biquads[i].w1;                                 \
+        double w2 = iir->biquads[i].w2;                                 \
                                                                         \
         for (n = 0; n < in->nb_samples; n++) {                          \
-            double sample = ig * (i ? dst[n] : src[n]);                 \
-            double o0 = sample * b0 + i1 * b1 + i2 * b2 + o1 * a1 + o2 * a2; \
+            double i0 = ig * (i ? dst[n] : src[n]);                     \
+            double o0 = i0 * b0 + w1;                                   \
                                                                         \
-            i2 = i1;                                                    \
-            i1 = src[n];                                                \
-            o2 = o1;                                                    \
-            o1 = o0;                                                    \
+            w1 = b1 * i0 + w2 + a1 * o0;                                \
+            w2 = b2 * i0 + a2 * o0;                                     \
             o0 *= og * g;                                               \
                                                                         \
-            o0 = o0 * mix + (1. - mix) * sample;                        \
+            o0 = o0 * mix + imix * i0;                                  \
             if (need_clipping && o0 < min) {                            \
                 (*clippings)++;                                         \
                 dst[n] = min;                                           \
@@ -225,10 +223,8 @@ static int iir_ch_serial_## name(AVFilterContext *ctx, void *arg, int ch, int nb
                 dst[n] = o0;                                            \
             }                                                           \
         }                                                               \
-        iir->biquads[i].i1 = i1;                                        \
-        iir->biquads[i].i2 = i2;                                        \
-        iir->biquads[i].o1 = o1;                                        \
-        iir->biquads[i].o2 = o2;                                        \
+        iir->biquads[i].w1 = w1;                                        \
+        iir->biquads[i].w2 = w2;                                        \
     }                                                                   \
                                                                         \
     return 0;                                                           \
@@ -238,6 +234,127 @@ SERIAL_IIR_CH(s16p, int16_t, INT16_MIN, INT16_MAX, 1)
 SERIAL_IIR_CH(s32p, int32_t, INT32_MIN, INT32_MAX, 1)
 SERIAL_IIR_CH(fltp, float,         -1.,        1., 0)
 SERIAL_IIR_CH(dblp, double,        -1.,        1., 0)
+
+#define PARALLEL_IIR_CH(name, type, min, max, need_clipping)            \
+static int iir_ch_parallel_## name(AVFilterContext *ctx, void *arg,     \
+                                   int ch, int nb_jobs)                 \
+{                                                                       \
+    AudioIIRContext *s = ctx->priv;                                     \
+    const double ig = s->dry_gain;                                      \
+    const double og = s->wet_gain;                                      \
+    const double mix = s->mix;                                          \
+    const double imix = 1. - mix;                                       \
+    ThreadData *td = arg;                                               \
+    AVFrame *in = td->in, *out = td->out;                               \
+    const type *src = (const type *)in->extended_data[ch];              \
+    type *dst = (type *)out->extended_data[ch];                         \
+    IIRChannel *iir = &s->iir[ch];                                      \
+    const double g = iir->g;                                            \
+    const double fir = iir->fir;                                        \
+    int *clippings = &iir->clippings;                                   \
+    int nb_biquads = (FFMAX(iir->nb_ab[0], iir->nb_ab[1]) + 1) / 2;     \
+    int n, i;                                                           \
+                                                                        \
+    for (i = 0; i < nb_biquads; i++) {                                  \
+        const double a1 = -iir->biquads[i].a[1];                        \
+        const double a2 = -iir->biquads[i].a[2];                        \
+        const double b1 = iir->biquads[i].b[1];                         \
+        const double b2 = iir->biquads[i].b[2];                         \
+        double w1 = iir->biquads[i].w1;                                 \
+        double w2 = iir->biquads[i].w2;                                 \
+                                                                        \
+        for (n = 0; n < in->nb_samples; n++) {                          \
+            double i0 = ig * src[n];                                    \
+            double o0 = w1;                                             \
+                                                                        \
+            w1 = b1 * i0 + w2 + a1 * o0;                                \
+            w2 = b2 * i0 + a2 * o0;                                     \
+            o0 *= og * g;                                               \
+            o0 += dst[n];                                               \
+                                                                        \
+            if (need_clipping && o0 < min) {                            \
+                (*clippings)++;                                         \
+                dst[n] = min;                                           \
+            } else if (need_clipping && o0 > max) {                     \
+                (*clippings)++;                                         \
+                dst[n] = max;                                           \
+            } else {                                                    \
+                dst[n] = o0;                                            \
+            }                                                           \
+        }                                                               \
+        iir->biquads[i].w1 = w1;                                        \
+        iir->biquads[i].w2 = w2;                                        \
+    }                                                                   \
+                                                                        \
+    for (n = 0; n < in->nb_samples; n++) {                              \
+        dst[n] += fir * src[n];                                         \
+        dst[n] = dst[n] * mix + imix * src[n];                          \
+    }                                                                   \
+                                                                        \
+    return 0;                                                           \
+}
+
+PARALLEL_IIR_CH(s16p, int16_t, INT16_MIN, INT16_MAX, 1)
+PARALLEL_IIR_CH(s32p, int32_t, INT32_MIN, INT32_MAX, 1)
+PARALLEL_IIR_CH(fltp, float,         -1.,        1., 0)
+PARALLEL_IIR_CH(dblp, double,        -1.,        1., 0)
+
+#define LATTICE_IIR_CH(name, type, min, max, need_clipping)             \
+static int iir_ch_lattice_## name(AVFilterContext *ctx, void *arg,      \
+                                  int ch, int nb_jobs)                  \
+{                                                                       \
+    AudioIIRContext *s = ctx->priv;                                     \
+    const double ig = s->dry_gain;                                      \
+    const double og = s->wet_gain;                                      \
+    const double mix = s->mix;                                          \
+    ThreadData *td = arg;                                               \
+    AVFrame *in = td->in, *out = td->out;                               \
+    const type *src = (const type *)in->extended_data[ch];              \
+    double n0, n1, p0, *x = (double *)s->iir[ch].cache[0];              \
+    const int nb_stages = s->iir[ch].nb_ab[1];                          \
+    const double *v = s->iir[ch].ab[0];                                 \
+    const double *k = s->iir[ch].ab[1];                                 \
+    const double g = s->iir[ch].g;                                      \
+    int *clippings = &s->iir[ch].clippings;                             \
+    type *dst = (type *)out->extended_data[ch];                         \
+    int n;                                                              \
+                                                                        \
+    for (n = 0; n < in->nb_samples; n++) {                              \
+        const double in = src[n] * ig;                                  \
+        double out = 0.;                                                \
+                                                                        \
+        n1 = in;                                                        \
+        for (int i = nb_stages - 1; i >= 0; i--) {                      \
+            n0 = n1 - k[i] * x[i];                                      \
+            p0 = n0 * k[i] + x[i];                                      \
+            out += p0 * v[i+1];                                         \
+            x[i] = p0;                                                  \
+            n1 = n0;                                                    \
+        }                                                               \
+                                                                        \
+        out += n1 * v[0];                                               \
+        memmove(&x[1], &x[0], nb_stages * sizeof(*x));                  \
+        x[0] = n1;                                                      \
+        out *= og * g;                                                  \
+        out = out * mix + in * (1. - mix);                              \
+        if (need_clipping && out < min) {                               \
+            (*clippings)++;                                             \
+            dst[n] = min;                                               \
+        } else if (need_clipping && out > max) {                        \
+            (*clippings)++;                                             \
+            dst[n] = max;                                               \
+        } else {                                                        \
+            dst[n] = out;                                               \
+        }                                                               \
+    }                                                                   \
+                                                                        \
+    return 0;                                                           \
+}
+
+LATTICE_IIR_CH(s16p, int16_t, INT16_MIN, INT16_MAX, 1)
+LATTICE_IIR_CH(s32p, int32_t, INT32_MIN, INT32_MAX, 1)
+LATTICE_IIR_CH(fltp, float,         -1.,        1., 0)
+LATTICE_IIR_CH(dblp, double,        -1.,        1., 0)
 
 static void count_coefficients(char *item_str, int *nb_items)
 {
@@ -272,7 +389,7 @@ static int read_gains(AVFilterContext *ctx, char *item_str, int nb_items)
         }
 
         p = NULL;
-        if (sscanf(arg, "%lf", &s->iir[i].g) != 1) {
+        if (av_sscanf(arg, "%lf", &s->iir[i].g) != 1) {
             av_log(ctx, AV_LOG_ERROR, "Invalid gains supplied: %s\n", arg);
             av_freep(&old_str);
             return AVERROR(EINVAL);
@@ -299,7 +416,7 @@ static int read_tf_coefficients(AVFilterContext *ctx, char *item_str, int nb_ite
             break;
 
         p = NULL;
-        if (sscanf(arg, "%lf", &dst[i]) != 1) {
+        if (av_sscanf(arg, "%lf", &dst[i]) != 1) {
             av_log(ctx, AV_LOG_ERROR, "Invalid coefficients supplied: %s\n", arg);
             av_freep(&old_str);
             return AVERROR(EINVAL);
@@ -324,7 +441,7 @@ static int read_zp_coefficients(AVFilterContext *ctx, char *item_str, int nb_ite
             break;
 
         p = NULL;
-        if (sscanf(arg, format, &dst[i*2], &dst[i*2+1]) != 2) {
+        if (av_sscanf(arg, format, &dst[i*2], &dst[i*2+1]) != 2) {
             av_log(ctx, AV_LOG_ERROR, "Invalid coefficients supplied: %s\n", arg);
             av_freep(&old_str);
             return AVERROR(EINVAL);
@@ -336,7 +453,7 @@ static int read_zp_coefficients(AVFilterContext *ctx, char *item_str, int nb_ite
     return 0;
 }
 
-static const char *format[] = { "%lf", "%lf %lfi", "%lf %lfr", "%lf %lfd", "%lf %lfi" };
+static const char *const format[] = { "%lf", "%lf %lfi", "%lf %lfr", "%lf %lfd", "%lf %lfi" };
 
 static int read_channels(AVFilterContext *ctx, int channels, uint8_t *item_str, int ab)
 {
@@ -368,7 +485,7 @@ static int read_channels(AVFilterContext *ctx, int channels, uint8_t *item_str, 
             return AVERROR(ENOMEM);
         }
 
-        if (s->format) {
+        if (s->format > 0) {
             ret = read_zp_coefficients(ctx, arg, iir->nb_ab[ab], iir->ab[ab], format[s->format]);
         } else {
             ret = read_tf_coefficients(ctx, arg, iir->nb_ab[ab], iir->ab[ab]);
@@ -656,6 +773,128 @@ static int decompose_zp2biquads(AVFilterContext *ctx, int channels)
     return 0;
 }
 
+static void biquad_process(double *x, double *y, int length,
+                           double b0, double b1, double b2,
+                           double a1, double a2)
+{
+    double w1 = 0., w2 = 0.;
+
+    a1 = -a1;
+    a2 = -a2;
+
+    for (int n = 0; n < length; n++) {
+        double out, in = x[n];
+
+        y[n] = out = in * b0 + w1;
+        w1 = b1 * in + w2 + a1 * out;
+        w2 = b2 * in + a2 * out;
+    }
+}
+
+static void solve(double *matrix, double *vector, int n, double *y, double *x, double *lu)
+{
+    double sum = 0.;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = i; j < n; j++) {
+            sum = 0.;
+            for (int k = 0; k < i; k++)
+                sum += lu[i * n + k] * lu[k * n + j];
+            lu[i * n + j] = matrix[j * n + i] - sum;
+        }
+        for (int j = i + 1; j < n; j++) {
+            sum = 0.;
+            for (int k = 0; k < i; k++)
+                sum += lu[j * n + k] * lu[k * n + i];
+            lu[j * n + i] = (1. / lu[i * n + i]) * (matrix[i * n + j] - sum);
+        }
+    }
+
+    for (int i = 0; i < n; i++) {
+        sum = 0.;
+        for (int k = 0; k < i; k++)
+            sum += lu[i * n + k] * y[k];
+        y[i] = vector[i] - sum;
+    }
+
+    for (int i = n - 1; i >= 0; i--) {
+        sum = 0.;
+        for (int k = i + 1; k < n; k++)
+            sum += lu[i * n + k] * x[k];
+        x[i] = (1 / lu[i * n + i]) * (y[i] - sum);
+    }
+}
+
+static int convert_serial2parallel(AVFilterContext *ctx, int channels)
+{
+    AudioIIRContext *s = ctx->priv;
+    int ret = 0;
+
+    for (int ch = 0; ch < channels; ch++) {
+        IIRChannel *iir = &s->iir[ch];
+        int nb_biquads = (FFMAX(iir->nb_ab[0], iir->nb_ab[1]) + 1) / 2;
+        int length = nb_biquads * 2 + 1;
+        double *impulse = av_calloc(length, sizeof(*impulse));
+        double *y = av_calloc(length, sizeof(*y));
+        double *resp = av_calloc(length, sizeof(*resp));
+        double *M = av_calloc((length - 1) * 2 * nb_biquads, sizeof(*M));
+        double *W = av_calloc((length - 1) * 2 * nb_biquads, sizeof(*W));
+
+        if (!impulse || !y || !resp || !M) {
+            av_free(impulse);
+            av_free(y);
+            av_free(resp);
+            av_free(M);
+            av_free(W);
+            return AVERROR(ENOMEM);
+        }
+
+        impulse[0] = 1.;
+
+        for (int n = 0; n < nb_biquads; n++) {
+            BiquadContext *biquad = &iir->biquads[n];
+
+            biquad_process(n ? y : impulse, y, length,
+                           biquad->b[0], biquad->b[1], biquad->b[2],
+                           biquad->a[1], biquad->a[2]);
+        }
+
+        for (int n = 0; n < nb_biquads; n++) {
+            BiquadContext *biquad = &iir->biquads[n];
+
+            biquad_process(impulse, resp, length - 1,
+                           1., 0., 0., biquad->a[1], biquad->a[2]);
+
+            memcpy(M + n * 2 * (length - 1), resp, sizeof(*resp) * (length - 1));
+            memcpy(M + n * 2 * (length - 1) + length, resp, sizeof(*resp) * (length - 2));
+            memset(resp, 0, length * sizeof(*resp));
+        }
+
+        solve(M, &y[1], length - 1, &impulse[1], resp, W);
+
+        iir->fir = y[0];
+
+        for (int n = 0; n < nb_biquads; n++) {
+            BiquadContext *biquad = &iir->biquads[n];
+
+            biquad->b[0] = 0.;
+            biquad->b[1] = resp[n * 2 + 0];
+            biquad->b[2] = resp[n * 2 + 1];
+        }
+
+        av_free(impulse);
+        av_free(y);
+        av_free(resp);
+        av_free(M);
+        av_free(W);
+
+        if (ret < 0)
+            return ret;
+    }
+
+    return 0;
+}
+
 static void convert_pr2zp(AVFilterContext *ctx, int channels)
 {
     AudioIIRContext *s = ctx->priv;
@@ -695,24 +934,72 @@ static void convert_sp2zp(AVFilterContext *ctx, int channels)
         for (n = 0; n < iir->nb_ab[0]; n++) {
             double sr = iir->ab[0][2*n];
             double si = iir->ab[0][2*n+1];
-            double snr = 1. + sr;
-            double sdr = 1. - sr;
-            double div = sdr * sdr + si * si;
 
-            iir->ab[0][2*n]   = (snr * sdr - si * si) / div;
-            iir->ab[0][2*n+1] = (sdr * si + snr * si) / div;
+            iir->ab[0][2*n]   = exp(sr) * cos(si);
+            iir->ab[0][2*n+1] = exp(sr) * sin(si);
         }
 
         for (n = 0; n < iir->nb_ab[1]; n++) {
             double sr = iir->ab[1][2*n];
             double si = iir->ab[1][2*n+1];
-            double snr = 1. + sr;
-            double sdr = 1. - sr;
-            double div = sdr * sdr + si * si;
 
-            iir->ab[1][2*n]   = (snr * sdr - si * si) / div;
-            iir->ab[1][2*n+1] = (sdr * si + snr * si) / div;
+            iir->ab[1][2*n]   = exp(sr) * cos(si);
+            iir->ab[1][2*n+1] = exp(sr) * sin(si);
         }
+    }
+}
+
+static double fact(double i)
+{
+    if (i <= 0.)
+        return 1.;
+    return i * fact(i - 1.);
+}
+
+static double coef_sf2zf(double *a, int N, int n)
+{
+    double z = 0.;
+
+    for (int i = 0; i <= N; i++) {
+        double acc = 0.;
+
+        for (int k = FFMAX(n - N + i, 0); k <= FFMIN(i, n); k++) {
+            acc += ((fact(i) * fact(N - i)) /
+                    (fact(k) * fact(i - k) * fact(n - k) * fact(N - i - n + k))) *
+                   ((k & 1) ? -1. : 1.);
+        }
+
+        z += a[i] * pow(2., i) * acc;
+    }
+
+    return z;
+}
+
+static void convert_sf2tf(AVFilterContext *ctx, int channels)
+{
+    AudioIIRContext *s = ctx->priv;
+    int ch;
+
+    for (ch = 0; ch < channels; ch++) {
+        IIRChannel *iir = &s->iir[ch];
+        double *temp0 = av_calloc(iir->nb_ab[0], sizeof(*temp0));
+        double *temp1 = av_calloc(iir->nb_ab[1], sizeof(*temp1));
+
+        if (!temp0 || !temp1)
+            goto next;
+
+        memcpy(temp0, iir->ab[0], iir->nb_ab[0] * sizeof(*temp0));
+        memcpy(temp1, iir->ab[1], iir->nb_ab[1] * sizeof(*temp1));
+
+        for (int n = 0; n < iir->nb_ab[0]; n++)
+            iir->ab[0][n] = coef_sf2zf(temp0, iir->nb_ab[0] - 1, n);
+
+        for (int n = 0; n < iir->nb_ab[1]; n++)
+            iir->ab[1][n] = coef_sf2zf(temp1, iir->nb_ab[1] - 1, n);
+
+next:
+        av_free(temp0);
+        av_free(temp1);
     }
 }
 
@@ -1004,7 +1291,10 @@ static int config_output(AVFilterLink *outlink)
     if (ret < 0)
         return ret;
 
-    if (s->format == 2) {
+    if (s->format == -1) {
+        convert_sf2tf(ctx, inlink->channels);
+        s->format = 0;
+    } else if (s->format == 2) {
         convert_pr2zp(ctx, inlink->channels);
     } else if (s->format == 3) {
         convert_pd2zp(ctx, inlink->channels);
@@ -1025,7 +1315,7 @@ static int config_output(AVFilterLink *outlink)
     }
 
     if (s->format == 0)
-        av_log(ctx, AV_LOG_WARNING, "tf coefficients format is not recommended for too high number of zeros/poles.\n");
+        av_log(ctx, AV_LOG_WARNING, "transfer function coefficients format is not recommended for too high number of zeros/poles.\n");
 
     if (s->format > 0 && s->process == 0) {
         av_log(ctx, AV_LOG_WARNING, "Direct processsing is not recommended for zp coefficients format.\n");
@@ -1033,16 +1323,37 @@ static int config_output(AVFilterLink *outlink)
         ret = convert_zp2tf(ctx, inlink->channels);
         if (ret < 0)
             return ret;
-    } else if (s->format == 0 && s->process == 1) {
-        av_log(ctx, AV_LOG_ERROR, "Serial cascading is not implemented for transfer function.\n");
+    } else if (s->format == -2 && s->process > 0) {
+        av_log(ctx, AV_LOG_ERROR, "Only direct processing is implemented for lattice-ladder function.\n");
+        return AVERROR_PATCHWELCOME;
+    } else if (s->format <= 0 && s->process == 1) {
+        av_log(ctx, AV_LOG_ERROR, "Serial processing is not implemented for transfer function.\n");
+        return AVERROR_PATCHWELCOME;
+    } else if (s->format <= 0 && s->process == 2) {
+        av_log(ctx, AV_LOG_ERROR, "Parallel processing is not implemented for transfer function.\n");
         return AVERROR_PATCHWELCOME;
     } else if (s->format > 0 && s->process == 1) {
-        if (inlink->format == AV_SAMPLE_FMT_S16P)
-            av_log(ctx, AV_LOG_WARNING, "Serial cascading is not recommended for i16 precision.\n");
-
         ret = decompose_zp2biquads(ctx, inlink->channels);
         if (ret < 0)
             return ret;
+    } else if (s->format > 0 && s->process == 2) {
+        if (s->precision > 1)
+            av_log(ctx, AV_LOG_WARNING, "Parallel processing is not recommended for fixed-point precisions.\n");
+        ret = decompose_zp2biquads(ctx, inlink->channels);
+        if (ret < 0)
+            return ret;
+        ret = convert_serial2parallel(ctx, inlink->channels);
+        if (ret < 0)
+            return ret;
+    }
+
+    for (ch = 0; s->format == -2 && ch < inlink->channels; ch++) {
+        IIRChannel *iir = &s->iir[ch];
+
+        if (iir->nb_ab[0] != iir->nb_ab[1] + 1) {
+            av_log(ctx, AV_LOG_ERROR, "Number of ladder coefficients must be one more than number of reflection coefficients.\n");
+            return AVERROR(EINVAL);
+        }
     }
 
     for (ch = 0; s->format == 0 && ch < inlink->channels; ch++) {
@@ -1061,10 +1372,19 @@ static int config_output(AVFilterLink *outlink)
     }
 
     switch (inlink->format) {
-    case AV_SAMPLE_FMT_DBLP: s->iir_channel = s->process == 1 ? iir_ch_serial_dblp : iir_ch_dblp; break;
-    case AV_SAMPLE_FMT_FLTP: s->iir_channel = s->process == 1 ? iir_ch_serial_fltp : iir_ch_fltp; break;
-    case AV_SAMPLE_FMT_S32P: s->iir_channel = s->process == 1 ? iir_ch_serial_s32p : iir_ch_s32p; break;
-    case AV_SAMPLE_FMT_S16P: s->iir_channel = s->process == 1 ? iir_ch_serial_s16p : iir_ch_s16p; break;
+    case AV_SAMPLE_FMT_DBLP: s->iir_channel = s->process == 2 ? iir_ch_parallel_dblp : s->process == 1 ? iir_ch_serial_dblp : iir_ch_dblp; break;
+    case AV_SAMPLE_FMT_FLTP: s->iir_channel = s->process == 2 ? iir_ch_parallel_fltp : s->process == 1 ? iir_ch_serial_fltp : iir_ch_fltp; break;
+    case AV_SAMPLE_FMT_S32P: s->iir_channel = s->process == 2 ? iir_ch_parallel_s32p : s->process == 1 ? iir_ch_serial_s32p : iir_ch_s32p; break;
+    case AV_SAMPLE_FMT_S16P: s->iir_channel = s->process == 2 ? iir_ch_parallel_s16p : s->process == 1 ? iir_ch_serial_s16p : iir_ch_s16p; break;
+    }
+
+    if (s->format == -2) {
+        switch (inlink->format) {
+        case AV_SAMPLE_FMT_DBLP: s->iir_channel = iir_ch_lattice_dblp; break;
+        case AV_SAMPLE_FMT_FLTP: s->iir_channel = iir_ch_lattice_fltp; break;
+        case AV_SAMPLE_FMT_S32P: s->iir_channel = iir_ch_lattice_s32p; break;
+        case AV_SAMPLE_FMT_S16P: s->iir_channel = iir_ch_lattice_s16p; break;
+        }
     }
 
     return 0;
@@ -1079,7 +1399,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVFrame *out;
     int ch, ret;
 
-    if (av_frame_is_writable(in)) {
+    if (av_frame_is_writable(in) && s->process != 2) {
         out = in;
     } else {
         out = ff_get_audio_buffer(outlink, in->nb_samples);
@@ -1159,13 +1479,10 @@ static av_cold int init(AVFilterContext *ctx)
     }
 
     pad = (AVFilterPad){
-        .name         = av_strdup("default"),
+        .name         = "default",
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_output,
     };
-
-    if (!pad.name)
-        return AVERROR(ENOMEM);
 
     ret = ff_insert_outpad(ctx, 0, &pad);
     if (ret < 0)
@@ -1173,12 +1490,10 @@ static av_cold int init(AVFilterContext *ctx)
 
     if (s->response) {
         vpad = (AVFilterPad){
-            .name         = av_strdup("filter_response"),
+            .name         = "filter_response",
             .type         = AVMEDIA_TYPE_VIDEO,
             .config_props = config_video,
         };
-        if (!vpad.name)
-            return AVERROR(ENOMEM);
 
         ret = ff_insert_outpad(ctx, 1, &vpad);
         if (ret < 0)
@@ -1205,9 +1520,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     }
     av_freep(&s->iir);
 
-    av_freep(&ctx->output_pads[0].name);
-    if (s->response)
-        av_freep(&ctx->output_pads[1].name);
     av_frame_free(&s->video);
 }
 
@@ -1225,25 +1537,28 @@ static const AVFilterPad inputs[] = {
 #define VF AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 
 static const AVOption aiir_options[] = {
-    { "zeros", "set B/numerator/zeros coefficients", OFFSET(b_str),  AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
-    { "z", "set B/numerator/zeros coefficients",   OFFSET(b_str),    AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
-    { "poles", "set A/denominator/poles coefficients", OFFSET(a_str),AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
-    { "p", "set A/denominator/poles coefficients", OFFSET(a_str),    AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
+    { "zeros", "set B/numerator/zeros/reflection coefficients", OFFSET(b_str), AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
+    { "z", "set B/numerator/zeros/reflection coefficients",     OFFSET(b_str), AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
+    { "poles", "set A/denominator/poles/ladder coefficients",   OFFSET(a_str), AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
+    { "p", "set A/denominator/poles/ladder coefficients",       OFFSET(a_str), AV_OPT_TYPE_STRING, {.str="1+0i 1-0i"}, 0, 0, AF },
     { "gains", "set channels gains",               OFFSET(g_str),    AV_OPT_TYPE_STRING, {.str="1|1"}, 0, 0, AF },
     { "k", "set channels gains",                   OFFSET(g_str),    AV_OPT_TYPE_STRING, {.str="1|1"}, 0, 0, AF },
     { "dry", "set dry gain",                       OFFSET(dry_gain), AV_OPT_TYPE_DOUBLE, {.dbl=1},     0, 1, AF },
     { "wet", "set wet gain",                       OFFSET(wet_gain), AV_OPT_TYPE_DOUBLE, {.dbl=1},     0, 1, AF },
-    { "format", "set coefficients format",         OFFSET(format),   AV_OPT_TYPE_INT,    {.i64=1},     0, 4, AF, "format" },
-    { "f", "set coefficients format",              OFFSET(format),   AV_OPT_TYPE_INT,    {.i64=1},     0, 4, AF, "format" },
+    { "format", "set coefficients format",         OFFSET(format),   AV_OPT_TYPE_INT,    {.i64=1},    -2, 4, AF, "format" },
+    { "f", "set coefficients format",              OFFSET(format),   AV_OPT_TYPE_INT,    {.i64=1},    -2, 4, AF, "format" },
+    { "ll", "lattice-ladder function",             0,                AV_OPT_TYPE_CONST,  {.i64=-2},    0, 0, AF, "format" },
+    { "sf", "analog transfer function",            0,                AV_OPT_TYPE_CONST,  {.i64=-1},    0, 0, AF, "format" },
     { "tf", "digital transfer function",           0,                AV_OPT_TYPE_CONST,  {.i64=0},     0, 0, AF, "format" },
     { "zp", "Z-plane zeros/poles",                 0,                AV_OPT_TYPE_CONST,  {.i64=1},     0, 0, AF, "format" },
     { "pr", "Z-plane zeros/poles (polar radians)", 0,                AV_OPT_TYPE_CONST,  {.i64=2},     0, 0, AF, "format" },
     { "pd", "Z-plane zeros/poles (polar degrees)", 0,                AV_OPT_TYPE_CONST,  {.i64=3},     0, 0, AF, "format" },
     { "sp", "S-plane zeros/poles",                 0,                AV_OPT_TYPE_CONST,  {.i64=4},     0, 0, AF, "format" },
-    { "process", "set kind of processing",         OFFSET(process),  AV_OPT_TYPE_INT,    {.i64=1},     0, 1, AF, "process" },
-    { "r", "set kind of processing",               OFFSET(process),  AV_OPT_TYPE_INT,    {.i64=1},     0, 1, AF, "process" },
+    { "process", "set kind of processing",         OFFSET(process),  AV_OPT_TYPE_INT,    {.i64=1},     0, 2, AF, "process" },
+    { "r", "set kind of processing",               OFFSET(process),  AV_OPT_TYPE_INT,    {.i64=1},     0, 2, AF, "process" },
     { "d", "direct",                               0,                AV_OPT_TYPE_CONST,  {.i64=0},     0, 0, AF, "process" },
-    { "s", "serial cascading",                     0,                AV_OPT_TYPE_CONST,  {.i64=1},     0, 0, AF, "process" },
+    { "s", "serial",                               0,                AV_OPT_TYPE_CONST,  {.i64=1},     0, 0, AF, "process" },
+    { "p", "parallel",                             0,                AV_OPT_TYPE_CONST,  {.i64=2},     0, 0, AF, "process" },
     { "precision", "set filtering precision",      OFFSET(precision),AV_OPT_TYPE_INT,    {.i64=0},     0, 3, AF, "precision" },
     { "e", "set precision",                        OFFSET(precision),AV_OPT_TYPE_INT,    {.i64=0},     0, 3, AF, "precision" },
     { "dbl", "double-precision floating-point",    0,                AV_OPT_TYPE_CONST,  {.i64=0},     0, 0, AF, "precision" },

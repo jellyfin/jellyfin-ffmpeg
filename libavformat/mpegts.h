@@ -137,6 +137,23 @@
 #define STREAM_TYPE_AUDIO_TRUEHD    0x83
 #define STREAM_TYPE_AUDIO_EAC3      0x87
 
+/* ISO/IEC 13818-1 Table 2-22 */
+#define STREAM_ID_PRIVATE_STREAM_1   0xbd
+#define STREAM_ID_AUDIO_STREAM_0     0xc0
+#define STREAM_ID_VIDEO_STREAM_0     0xe0
+#define STREAM_ID_METADATA_STREAM    0xfc
+#define STREAM_ID_EXTENDED_STREAM_ID 0xfd
+
+/* ISO/IEC 13818-1 Table 2-45 */
+#define VIDEO_STREAM_DESCRIPTOR      0x02
+#define REGISTRATION_DESCRIPTOR      0x05
+#define ISO_639_LANGUAGE_DESCRIPTOR  0x0a
+#define IOD_DESCRIPTOR               0x1d
+#define SL_DESCRIPTOR                0x1e
+#define FMC_DESCRIPTOR               0x1f
+#define METADATA_DESCRIPTOR          0x26
+#define METADATA_STD_DESCRIPTOR      0x27
+
 typedef struct MpegTSContext MpegTSContext;
 
 MpegTSContext *avpriv_mpegts_parse_open(AVFormatContext *s);
@@ -167,6 +184,22 @@ typedef struct Mp4Descr {
     uint8_t *dec_config_descr;
     SLConfigDescr sl;
 } Mp4Descr;
+
+/*
+ * ETSI 300 468 descriptor 0x6A(AC-3)
+ * Refer to: ETSI EN 300 468 V1.11.1 (2010-04) (SI in DVB systems)
+ */
+typedef struct DVBAC3Descriptor {
+    uint8_t  component_type_flag;
+    uint8_t  bsid_flag;
+    uint8_t  mainid_flag;
+    uint8_t  asvc_flag;
+    uint8_t  reserved_flags;
+    uint8_t  component_type;
+    uint8_t  bsid;
+    uint8_t  mainid;
+    uint8_t  asvc;
+} DVBAC3Descriptor;
 
 /**
  * Parse an MPEG-2 descriptor

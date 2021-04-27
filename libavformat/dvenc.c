@@ -29,6 +29,7 @@
  */
 #include <time.h>
 
+#include "libavutil/time_internal.h"
 #include "avformat.h"
 #include "internal.h"
 #include "libavcodec/dv_profile.h"
@@ -71,6 +72,14 @@ static const int dv_aaux_packs_dist[12][9] = {
     { 0xff, 0xff, 0xff, 0x50, 0x51, 0x52, 0x53, 0xff, 0xff },
     { 0x50, 0x51, 0x52, 0x53, 0xff, 0xff, 0xff, 0xff, 0xff },
 };
+
+static void brktimegm(time_t secs, struct tm *tm)
+{
+    tm = gmtime_r(&secs, tm);
+
+    tm->tm_year += 1900; /* unlike gmtime_r we store complete year here */
+    tm->tm_mon  += 1;    /* unlike gmtime_r tm_mon is from 1 to 12 */
+}
 
 static int dv_audio_frame_size(const AVDVProfile* sys, int frame, int sample_rate)
 {
@@ -143,7 +152,7 @@ static int dv_write_pack(enum dv_pack_type pack_id, DVMuxContext *c, uint8_t* bu
     case dv_video_recdate:  /* VAUX recording date */
         ct = c->start_time + av_rescale_rnd(c->frames, c->sys->time_base.num,
                                             c->sys->time_base.den, AV_ROUND_DOWN);
-        ff_brktimegm(ct, &tc);
+        brktimegm(ct, &tc);
         buf[1] = 0xff; /* ds, tm, tens of time zone, units of time zone */
                        /* 0xff is very likely to be "unknown" */
         buf[2] = (3 << 6) | /* reserved -- always 1 */
@@ -159,7 +168,7 @@ static int dv_write_pack(enum dv_pack_type pack_id, DVMuxContext *c, uint8_t* bu
     case dv_video_rectime:  /* VAUX recording time */
         ct = c->start_time + av_rescale_rnd(c->frames, c->sys->time_base.num,
                                                        c->sys->time_base.den, AV_ROUND_DOWN);
-        ff_brktimegm(ct, &tc);
+        brktimegm(ct, &tc);
         buf[1] = (3 << 6) | /* reserved -- always 1 */
                  0x3f; /* tens of frame, units of frame: 0x3f - "unknown" ? */
         buf[2] = (1 << 7) | /* reserved -- always 1 */
@@ -307,34 +316,34 @@ static DVMuxContext* dv_init_mux(AVFormatContext* s)
 
     /* We have to sort out where audio and where video stream is */
     for (i=0; i<s->nb_streams; i++) {
-        switch (s->streams[i]->codecpar->codec_type) {
+        AVStream *st = s->streams[i];
+        switch (st->codecpar->codec_type) {
         case AVMEDIA_TYPE_VIDEO:
             if (vst) return NULL;
-            vst = s->streams[i];
+            if (st->codecpar->codec_id != AV_CODEC_ID_DVVIDEO)
+                goto bail_out;
+            vst = st;
             break;
         case AVMEDIA_TYPE_AUDIO:
             if (c->n_ast > 1) return NULL;
-            c->ast[c->n_ast++] = s->streams[i];
+            /* Some checks -- DV format is very picky about its incoming streams */
+            if(st->codecpar->codec_id    != AV_CODEC_ID_PCM_S16LE ||
+               st->codecpar->channels    != 2)
+                goto bail_out;
+            if (st->codecpar->sample_rate != 48000 &&
+                st->codecpar->sample_rate != 44100 &&
+                st->codecpar->sample_rate != 32000    )
+                goto bail_out;
+            c->ast[c->n_ast++] = st;
             break;
         default:
             goto bail_out;
         }
     }
 
-    /* Some checks -- DV format is very picky about its incoming streams */
-    if (!vst || vst->codecpar->codec_id != AV_CODEC_ID_DVVIDEO)
+    if (!vst)
         goto bail_out;
-    for (i=0; i<c->n_ast; i++) {
-        if (c->ast[i]) {
-            if(c->ast[i]->codecpar->codec_id    != AV_CODEC_ID_PCM_S16LE ||
-               c->ast[i]->codecpar->channels    != 2)
-                goto bail_out;
-            if (c->ast[i]->codecpar->sample_rate != 48000 &&
-                c->ast[i]->codecpar->sample_rate != 44100 &&
-                c->ast[i]->codecpar->sample_rate != 32000    )
-                goto bail_out;
-        }
-    }
+
     c->sys = av_dv_codec_profile2(vst->codecpar->width, vst->codecpar->height,
                                   vst->codecpar->format, vst->time_base);
     if (!c->sys)
@@ -406,9 +415,10 @@ static int dv_write_packet(struct AVFormatContext *s, AVPacket *pkt)
 
     fsize = dv_assemble_frame(s, s->priv_data, s->streams[pkt->stream_index],
                               pkt->data, pkt->size, &frame);
-    if (fsize > 0) {
-        avio_write(s->pb, frame, fsize);
+    if (fsize < 0) {
+        return fsize;
     }
+    avio_write(s->pb, frame, fsize);
     return 0;
 }
 

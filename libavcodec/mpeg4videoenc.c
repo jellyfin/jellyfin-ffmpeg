@@ -961,9 +961,6 @@ static void mpeg4_encode_vol_header(MpegEncContext *s,
 {
     int vo_ver_id;
 
-    if (!CONFIG_MPEG4_ENCODER)
-        return;
-
     if (s->max_b_frames || s->quarter_sample) {
         vo_ver_id  = 5;
         s->vo_type = ADV_SIMPLE_VO_TYPE;
@@ -1054,7 +1051,7 @@ static void mpeg4_encode_vol_header(MpegEncContext *s,
     if (!(s->avctx->flags & AV_CODEC_FLAG_BITEXACT)) {
         put_bits(&s->pb, 16, 0);
         put_bits(&s->pb, 16, 0x1B2);    /* user_data */
-        avpriv_put_string(&s->pb, LIBAVCODEC_IDENT, 0);
+        ff_put_string(&s->pb, LIBAVCODEC_IDENT, 0);
     }
 }
 
@@ -1307,6 +1304,8 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
     if (s->avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
         s->avctx->extradata = av_malloc(1024);
+        if (!s->avctx->extradata)
+            return AVERROR(ENOMEM);
         init_put_bits(&s->pb, s->avctx->extradata, 1024);
 
         if (!(s->workaround_bugs & FF_BUG_MS))
@@ -1354,8 +1353,8 @@ void ff_mpeg4_merge_partitions(MpegEncContext *s)
     flush_put_bits(&s->tex_pb);
 
     set_put_bits_buffer_size(&s->pb, s->pb2.buf_end - s->pb.buf);
-    avpriv_copy_bits(&s->pb, s->pb2.buf, pb2_len);
-    avpriv_copy_bits(&s->pb, s->tex_pb.buf, tex_pb_len);
+    ff_copy_bits(&s->pb, s->pb2.buf, pb2_len);
+    ff_copy_bits(&s->pb, s->tex_pb.buf, tex_pb_len);
     s->last_bits = put_bits_count(&s->pb);
 }
 

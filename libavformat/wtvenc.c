@@ -241,7 +241,7 @@ static void put_videoinfoheader2(AVIOContext *pb, AVStream *st)
     avio_wl32(pb, 0);
     avio_wl32(pb, 0);
 
-    ff_put_bmp_header(pb, st->codecpar, 0, 1);
+    ff_put_bmp_header(pb, st->codecpar, 0, 1, 0);
 
     if (st->codecpar->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
         int padding = (st->codecpar->extradata_size & 3) ? 4 - (st->codecpar->extradata_size & 3) : 0;
@@ -839,6 +839,5 @@ AVOutputFormat ff_wtv_muxer = {
     .write_header   = write_header,
     .write_packet   = write_packet,
     .write_trailer  = write_trailer,
-    .codec_tag      = (const AVCodecTag* const []){ ff_codec_bmp_tags,
-                                                    ff_codec_wav_tags, 0 },
+    .codec_tag      = ff_riff_codec_tags_list,
 };

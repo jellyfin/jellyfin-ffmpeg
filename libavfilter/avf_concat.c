@@ -87,25 +87,25 @@ static int query_formats(AVFilterContext *ctx)
 
             /* Set the output formats */
             formats = ff_all_formats(type);
-            if ((ret = ff_formats_ref(formats, &ctx->outputs[idx]->in_formats)) < 0)
+            if ((ret = ff_formats_ref(formats, &ctx->outputs[idx]->incfg.formats)) < 0)
                 return ret;
 
             if (type == AVMEDIA_TYPE_AUDIO) {
                 rates = ff_all_samplerates();
-                if ((ret = ff_formats_ref(rates, &ctx->outputs[idx]->in_samplerates)) < 0)
+                if ((ret = ff_formats_ref(rates, &ctx->outputs[idx]->incfg.samplerates)) < 0)
                     return ret;
                 layouts = ff_all_channel_layouts();
-                if ((ret = ff_channel_layouts_ref(layouts, &ctx->outputs[idx]->in_channel_layouts)) < 0)
+                if ((ret = ff_channel_layouts_ref(layouts, &ctx->outputs[idx]->incfg.channel_layouts)) < 0)
                     return ret;
             }
 
             /* Set the same formats for each corresponding input */
             for (seg = 0; seg < cat->nb_segments; seg++) {
-                if ((ret = ff_formats_ref(formats, &ctx->inputs[idx]->out_formats)) < 0)
+                if ((ret = ff_formats_ref(formats, &ctx->inputs[idx]->outcfg.formats)) < 0)
                     return ret;
                 if (type == AVMEDIA_TYPE_AUDIO) {
-                    if ((ret = ff_formats_ref(rates, &ctx->inputs[idx]->out_samplerates)) < 0 ||
-                        (ret = ff_channel_layouts_ref(layouts, &ctx->inputs[idx]->out_channel_layouts)) < 0)
+                    if ((ret = ff_formats_ref(rates, &ctx->inputs[idx]->outcfg.samplerates)) < 0 ||
+                        (ret = ff_channel_layouts_ref(layouts, &ctx->inputs[idx]->outcfg.channel_layouts)) < 0)
                         return ret;
                 }
                 idx += ctx->nb_outputs;
@@ -251,6 +251,10 @@ static int send_silence(AVFilterContext *ctx, unsigned in_no, unsigned out_no,
 
     if (!rate_tb.den)
         return AVERROR_BUG;
+    if (cat->in[in_no].pts < INT64_MIN + seg_delta)
+        return AVERROR_INVALIDDATA;
+    if (seg_delta < cat->in[in_no].pts)
+        return AVERROR_INVALIDDATA;
     nb_samples = av_rescale_q(seg_delta - cat->in[in_no].pts,
                               outlink->time_base, rate_tb);
     frame_nb_samples = FFMAX(9600, rate_tb.den / 5); /* arbitrary */

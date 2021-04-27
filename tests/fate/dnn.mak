@@ -8,6 +8,11 @@ fate-dnn-layer-conv2d: $(DNNTESTSDIR)/dnn-layer-conv2d-test$(EXESUF)
 fate-dnn-layer-conv2d: CMD = run $(DNNTESTSDIR)/dnn-layer-conv2d-test$(EXESUF)
 fate-dnn-layer-conv2d: CMP = null
 
+FATE_DNN += fate-dnn-layer-dense
+fate-dnn-layer-dense: $(DNNTESTSDIR)/dnn-layer-dense-test$(EXESUF)
+fate-dnn-layer-dense: CMD = run $(DNNTESTSDIR)/dnn-layer-dense-test$(EXESUF)
+fate-dnn-layer-dense: CMP = null
+
 FATE_DNN += fate-dnn-layer-depth2space
 fate-dnn-layer-depth2space: $(DNNTESTSDIR)/dnn-layer-depth2space-test$(EXESUF)
 fate-dnn-layer-depth2space: CMD = run $(DNNTESTSDIR)/dnn-layer-depth2space-test$(EXESUF)
@@ -28,6 +33,11 @@ fate-dnn-layer-mathunary: $(DNNTESTSDIR)/dnn-layer-mathunary-test$(EXESUF)
 fate-dnn-layer-mathunary: CMD = run $(DNNTESTSDIR)/dnn-layer-mathunary-test$(EXESUF)
 fate-dnn-layer-mathunary: CMP = null
 
-FATE-yes += $(FATE_DNN)
+FATE_DNN += fate-dnn-layer-avgpool
+fate-dnn-layer-avgpool: $(DNNTESTSDIR)/dnn-layer-avgpool-test$(EXESUF)
+fate-dnn-layer-avgpool: CMD = run $(DNNTESTSDIR)/dnn-layer-avgpool-test$(EXESUF)
+fate-dnn-layer-avgpool: CMP = null
+
+FATE-$(CONFIG_DNN) += $(FATE_DNN)
 
 fate-dnn: $(FATE_DNN)

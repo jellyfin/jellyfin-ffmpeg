@@ -204,15 +204,20 @@ static int read_pakt_chunk(AVFormatContext *s, int64_t size)
     st->nb_frames += avio_rb32(pb); /* priming frames */
     st->nb_frames += avio_rb32(pb); /* remainder frames */
 
-    st->duration = 0;
-    for (i = 0; i < num_packets; i++) {
-        if (avio_feof(pb))
-            return AVERROR_INVALIDDATA;
-        ret = av_add_index_entry(s->streams[0], pos, st->duration, 0, 0, AVINDEX_KEYFRAME);
-        if (ret < 0)
-            return ret;
-        pos += caf->bytes_per_packet ? caf->bytes_per_packet : ff_mp4_read_descr_len(pb);
-        st->duration += caf->frames_per_packet ? caf->frames_per_packet : ff_mp4_read_descr_len(pb);
+    if (caf->bytes_per_packet > 0 && caf->frames_per_packet > 0) {
+        st->duration = caf->frames_per_packet * num_packets;
+        pos          = caf-> bytes_per_packet * num_packets;
+    } else {
+        st->duration = 0;
+        for (i = 0; i < num_packets; i++) {
+            if (avio_feof(pb))
+                return AVERROR_INVALIDDATA;
+            ret = av_add_index_entry(s->streams[0], pos, st->duration, 0, 0, AVINDEX_KEYFRAME);
+            if (ret < 0)
+                return ret;
+            pos += caf->bytes_per_packet ? caf->bytes_per_packet : ff_mp4_read_descr_len(pb);
+            st->duration += caf->frames_per_packet ? caf->frames_per_packet : ff_mp4_read_descr_len(pb);
+        }
     }
 
     if (avio_tell(pb) - ccount > size) {
@@ -460,5 +465,5 @@ AVInputFormat ff_caf_demuxer = {
     .read_header    = read_header,
     .read_packet    = read_packet,
     .read_seek      = read_seek,
-    .codec_tag      = (const AVCodecTag* const []){ ff_codec_caf_tags, 0 },
+    .codec_tag      = ff_caf_codec_tags_list,
 };

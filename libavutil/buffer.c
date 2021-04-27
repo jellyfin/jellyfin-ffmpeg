@@ -26,7 +26,7 @@
 #include "mem.h"
 #include "thread.h"
 
-AVBufferRef *av_buffer_create(uint8_t *data, int size,
+AVBufferRef *av_buffer_create(uint8_t *data, buffer_size_t size,
                               void (*free)(void *opaque, uint8_t *data),
                               void *opaque, int flags)
 {
@@ -64,7 +64,7 @@ void av_buffer_default_free(void *opaque, uint8_t *data)
     av_free(data);
 }
 
-AVBufferRef *av_buffer_alloc(int size)
+AVBufferRef *av_buffer_alloc(buffer_size_t size)
 {
     AVBufferRef *ret = NULL;
     uint8_t    *data = NULL;
@@ -80,7 +80,7 @@ AVBufferRef *av_buffer_alloc(int size)
     return ret;
 }
 
-AVBufferRef *av_buffer_allocz(int size)
+AVBufferRef *av_buffer_allocz(buffer_size_t size)
 {
     AVBufferRef *ret = av_buffer_alloc(size);
     if (!ret)
@@ -166,10 +166,11 @@ int av_buffer_make_writable(AVBufferRef **pbuf)
     return 0;
 }
 
-int av_buffer_realloc(AVBufferRef **pbuf, int size)
+int av_buffer_realloc(AVBufferRef **pbuf, buffer_size_t size)
 {
     AVBufferRef *buf = *pbuf;
     uint8_t *tmp;
+    int ret;
 
     if (!buf) {
         /* allocate a new buffer with av_realloc(), so it will be reallocatable
@@ -196,9 +197,9 @@ int av_buffer_realloc(AVBufferRef **pbuf, int size)
         /* cannot realloc, allocate a new reallocable buffer and copy data */
         AVBufferRef *new = NULL;
 
-        av_buffer_realloc(&new, size);
-        if (!new)
-            return AVERROR(ENOMEM);
+        ret = av_buffer_realloc(&new, size);
+        if (ret < 0)
+            return ret;
 
         memcpy(new->data, buf->data, FFMIN(size, buf->size));
 
@@ -215,8 +216,34 @@ int av_buffer_realloc(AVBufferRef **pbuf, int size)
     return 0;
 }
 
-AVBufferPool *av_buffer_pool_init2(int size, void *opaque,
-                                   AVBufferRef* (*alloc)(void *opaque, int size),
+int av_buffer_replace(AVBufferRef **pdst, AVBufferRef *src)
+{
+    AVBufferRef *dst = *pdst;
+    AVBufferRef *tmp;
+
+    if (!src) {
+        av_buffer_unref(pdst);
+        return 0;
+    }
+
+    if (dst && dst->buffer == src->buffer) {
+        /* make sure the data pointers match */
+        dst->data = src->data;
+        dst->size = src->size;
+        return 0;
+    }
+
+    tmp = av_buffer_ref(src);
+    if (!tmp)
+        return AVERROR(ENOMEM);
+
+    av_buffer_unref(pdst);
+    *pdst = tmp;
+    return 0;
+}
+
+AVBufferPool *av_buffer_pool_init2(buffer_size_t size, void *opaque,
+                                   AVBufferRef* (*alloc)(void *opaque, buffer_size_t size),
                                    void (*pool_free)(void *opaque))
 {
     AVBufferPool *pool = av_mallocz(sizeof(*pool));
@@ -236,7 +263,7 @@ AVBufferPool *av_buffer_pool_init2(int size, void *opaque,
     return pool;
 }
 
-AVBufferPool *av_buffer_pool_init(int size, AVBufferRef* (*alloc)(int size))
+AVBufferPool *av_buffer_pool_init(buffer_size_t size, AVBufferRef* (*alloc)(buffer_size_t size))
 {
     AVBufferPool *pool = av_mallocz(sizeof(*pool));
     if (!pool)
@@ -252,11 +279,7 @@ AVBufferPool *av_buffer_pool_init(int size, AVBufferRef* (*alloc)(int size))
     return pool;
 }
 
-/*
- * This function gets called when the pool has been uninited and
- * all the buffers returned to it.
- */
-static void buffer_pool_free(AVBufferPool *pool)
+static void buffer_pool_flush(AVBufferPool *pool)
 {
     while (pool->pool) {
         BufferPoolEntry *buf = pool->pool;
@@ -265,6 +288,15 @@ static void buffer_pool_free(AVBufferPool *pool)
         buf->free(buf->opaque, buf->data);
         av_freep(&buf);
     }
+}
+
+/*
+ * This function gets called when the pool has been uninited and
+ * all the buffers returned to it.
+ */
+static void buffer_pool_free(AVBufferPool *pool)
+{
+    buffer_pool_flush(pool);
     ff_mutex_destroy(&pool->mutex);
 
     if (pool->pool_free)
@@ -281,6 +313,10 @@ void av_buffer_pool_uninit(AVBufferPool **ppool)
         return;
     pool   = *ppool;
     *ppool = NULL;
+
+    ff_mutex_lock(&pool->mutex);
+    buffer_pool_flush(pool);
+    ff_mutex_unlock(&pool->mutex);
 
     if (atomic_fetch_sub_explicit(&pool->refcount, 1, memory_order_acq_rel) == 1)
         buffer_pool_free(pool);

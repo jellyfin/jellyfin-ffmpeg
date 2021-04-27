@@ -41,14 +41,6 @@
 
 #define DITHER1XBPP // only for MMX
 
-/* hope these constant values are cache line aligned */
-DECLARE_ASM_CONST(8, uint64_t, mmx_00ffw)   = 0x00ff00ff00ff00ffULL;
-DECLARE_ASM_CONST(8, uint64_t, mmx_redmask) = 0xf8f8f8f8f8f8f8f8ULL;
-DECLARE_ASM_CONST(8, uint64_t, mmx_grnmask) = 0xfcfcfcfcfcfcfcfcULL;
-DECLARE_ASM_CONST(8, uint64_t, pb_e0) = 0xe0e0e0e0e0e0e0e0ULL;
-DECLARE_ASM_CONST(8, uint64_t, pb_03) = 0x0303030303030303ULL;
-DECLARE_ASM_CONST(8, uint64_t, pb_07) = 0x0707070707070707ULL;
-
 //MMX versions
 #if HAVE_MMX
 #undef RENAME
@@ -59,22 +51,18 @@ DECLARE_ASM_CONST(8, uint64_t, pb_07) = 0x0707070707070707ULL;
 #endif /* HAVE_MMX */
 
 // MMXEXT versions
-#if HAVE_MMXEXT
 #undef RENAME
 #undef COMPILE_TEMPLATE_MMXEXT
 #define COMPILE_TEMPLATE_MMXEXT 1
 #define RENAME(a) a ## _mmxext
 #include "yuv2rgb_template.c"
-#endif /* HAVE_MMXEXT */
 
 //SSSE3 versions
-#if HAVE_SSSE3
 #undef RENAME
 #undef COMPILE_TEMPLATE_MMXEXT
 #define COMPILE_TEMPLATE_MMXEXT 0
 #define RENAME(a) a ## _ssse3
 #include "yuv2rgb_template.c"
-#endif
 
 #endif /* HAVE_X86ASM */
 

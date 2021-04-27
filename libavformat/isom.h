@@ -286,11 +286,17 @@ typedef struct MOVContext {
     int activation_bytes_size;
     void *audible_fixed_key;
     int audible_fixed_key_size;
+    void *audible_key;
+    int audible_key_size;
+    void *audible_iv;
+    int audible_iv_size;
     struct AVAES *aes_decrypt;
     uint8_t *decryption_key;
     int decryption_key_len;
     int enable_drefs;
     int32_t movie_display_matrix[3][3]; ///< display matrix from mvhd
+    int have_read_mfra_size;
+    uint32_t mfra_size;
 } MOVContext;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);

@@ -149,6 +149,18 @@ int ff_url_decompose(URLComponents *uc, const char *url, const char *end)
     return 0;
 }
 
+static int is_fq_dos_path(const char *path)
+{
+    if ((path[0] >= 'a' && path[0] <= 'z' || path[0] >= 'A' && path[0] <= 'Z') &&
+         path[1] == ':' &&
+        (path[2] == '/' || path[2] == '\\'))
+        return 1;
+    if ((path[0] == '/' || path[0] == '\\') &&
+        (path[1] == '/' || path[1] == '\\'))
+        return 1;
+    return 0;
+}
+
 static int append_path(char *root, char *out_end, char **rout,
                        const char *in, const char *in_end)
 {
@@ -178,13 +190,14 @@ static int append_path(char *root, char *out_end, char **rout,
     return 0;
 }
 
-int ff_make_absolute_url(char *buf, int size, const char *base,
-                          const char *rel)
+int ff_make_absolute_url2(char *buf, int size, const char *base,
+                          const char *rel, int handle_dos_paths)
 {
     URLComponents ub, uc;
     char *out, *out_end, *path;
     const char *keep, *base_path_end;
     int use_base_path, simplify_path = 0, ret;
+    const char *base_separators = "/";
 
     /* This is tricky.
        For HTTP, http://server/site/page + ../media/file
@@ -211,6 +224,15 @@ int ff_make_absolute_url(char *buf, int size, const char *base,
 
     if (!base)
         base = "";
+    if (handle_dos_paths) {
+        if ((ret = ff_url_decompose(&ub, base, NULL)) < 0)
+            goto error;
+        if (is_fq_dos_path(base) || av_strstart(base, "file:", NULL) || ub.path == ub.url) {
+            base_separators = "/\\";
+            if (is_fq_dos_path(rel))
+                base = "";
+        }
+    }
     if ((ret = ff_url_decompose(&ub, base, NULL)) < 0 ||
         (ret = ff_url_decompose(&uc, rel,  NULL)) < 0)
         goto error;
@@ -249,7 +271,7 @@ int ff_make_absolute_url(char *buf, int size, const char *base,
     if (use_base_path) {
         base_path_end = ub.url_component_end_path;
         if (URL_COMPONENT_HAVE(uc, path))
-            while (base_path_end > ub.path && base_path_end[-1] != '/')
+            while (base_path_end > ub.path && !strchr(base_separators, base_path_end[-1]))
                 base_path_end--;
     }
     if (keep > ub.path)
@@ -292,6 +314,12 @@ error:
              ret == AVERROR(ENOMEM) ? "truncated" :
              ret == AVERROR(EINVAL) ? "syntax_error" : "");
     return ret;
+}
+
+int ff_make_absolute_url(char *buf, int size, const char *base,
+                         const char *rel)
+{
+    return ff_make_absolute_url2(buf, size, base, rel, HAVE_DOS_PATHS);
 }
 
 AVIODirEntry *ff_alloc_dir_entry(void)

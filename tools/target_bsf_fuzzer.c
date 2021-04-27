@@ -18,6 +18,7 @@
 
 #include "config.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/opt.h"
 
 #include "libavcodec/avcodec.h"
 #include "libavcodec/bsf_internal.h"
@@ -41,8 +42,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     const uint8_t *last = data;
     const uint8_t *end = data + size;
     AVBSFContext *bsf = NULL;
-    AVPacket in, out;
+    AVPacket *in, *out;
     uint64_t keyframes = 0;
+    uint64_t flushpattern = -1;
     int res;
 
     if (!f) {
@@ -65,6 +67,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if (size > 1024) {
         GetByteContext gbc;
         int extradata_size;
+        int flags;
         size -= 1024;
         bytestream2_init(&gbc, data + size, 1024);
         bsf->par_in->width                      = bytestream2_get_le32(&gbc);
@@ -86,6 +89,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         bsf->par_in->channels                   = (unsigned)bytestream2_get_le32(&gbc) % FF_SANE_NB_CHANNELS;
         bsf->par_in->block_align                = bytestream2_get_le32(&gbc);
         keyframes                               = bytestream2_get_le64(&gbc);
+        flushpattern                            = bytestream2_get_le64(&gbc);
+        flags                                   = bytestream2_get_byte(&gbc);
+
+        if (flags & 0x20) {
+            if (!strcmp(f->name, "av1_metadata"))
+                av_opt_set_int(bsf->priv_data, "td", bytestream2_get_byte(&gbc) % 3, 0);
+            else if (!strcmp(f->name, "h264_metadata") || !strcmp(f->name, "h265_metadata"))
+                av_opt_set_int(bsf->priv_data, "aud", bytestream2_get_byte(&gbc) % 3, 0);
+            else if (!strcmp(f->name, "extract_extradata"))
+                av_opt_set_int(bsf->priv_data, "remove", bytestream2_get_byte(&gbc) & 1, 0);
+        }
 
         if (extradata_size < size) {
             bsf->par_in->extradata = av_mallocz(extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
@@ -105,10 +119,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         return 0; // Failure of av_bsf_init() does not imply that a issue was found
     }
 
-    av_init_packet(&in);
-    av_init_packet(&out);
-    out.data = NULL;
-    out.size = 0;
+    in = av_packet_alloc();
+    out = av_packet_alloc();
+    if (!in || !out)
+        error("Failed memory allocation");
+
     while (data < end) {
         // Search for the TAG
         while (data + sizeof(fuzz_tag) < end) {
@@ -119,35 +134,41 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         if (data + sizeof(fuzz_tag) > end)
             data = end;
 
-        res = av_new_packet(&in, data - last);
+        res = av_new_packet(in, data - last);
         if (res < 0)
             error("Failed memory allocation");
-        memcpy(in.data, last, data - last);
-        in.flags = (keyframes & 1) * AV_PKT_FLAG_DISCARD + (!!(keyframes & 2)) * AV_PKT_FLAG_KEY;
+        memcpy(in->data, last, data - last);
+        in->flags = (keyframes & 1) * AV_PKT_FLAG_DISCARD + (!!(keyframes & 2)) * AV_PKT_FLAG_KEY;
         keyframes = (keyframes >> 2) + (keyframes<<62);
         data += sizeof(fuzz_tag);
         last = data;
 
-        while (in.size) {
-            res = av_bsf_send_packet(bsf, &in);
+        if (!(flushpattern & 7))
+            av_bsf_flush(bsf);
+        flushpattern = (flushpattern >> 3) + (flushpattern << 61);
+
+        while (in->size) {
+            res = av_bsf_send_packet(bsf, in);
             if (res < 0 && res != AVERROR(EAGAIN))
                 break;
-            res = av_bsf_receive_packet(bsf, &out);
+            res = av_bsf_receive_packet(bsf, out);
             if (res < 0)
                 break;
-            av_packet_unref(&out);
+            av_packet_unref(out);
         }
-        av_packet_unref(&in);
+        av_packet_unref(in);
     }
 
     res = av_bsf_send_packet(bsf, NULL);
     while (!res) {
-        res = av_bsf_receive_packet(bsf, &out);
+        res = av_bsf_receive_packet(bsf, out);
         if (res < 0)
             break;
-        av_packet_unref(&out);
+        av_packet_unref(out);
     }
 
+    av_packet_free(&in);
+    av_packet_free(&out);
     av_bsf_free(&bsf);
     return 0;
 }

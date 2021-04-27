@@ -21,13 +21,15 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/common.h"
+#include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/pixdesc.h"
 
 #include "vaapi_encode.h"
+#include "encode.h"
 #include "avcodec.h"
 
-const AVCodecHWConfigInternal *ff_vaapi_encode_hw_configs[] = {
+const AVCodecHWConfigInternal *const ff_vaapi_encode_hw_configs[] = {
     HW_CONFIG_ENCODER_FRAMES(VAAPI, VAAPI),
     NULL,
 };
@@ -159,6 +161,88 @@ static int vaapi_encode_wait(AVCodecContext *avctx,
     av_frame_free(&pic->input_image);
 
     pic->encode_complete = 1;
+    return 0;
+}
+
+static int vaapi_encode_make_row_slice(AVCodecContext *avctx,
+                                       VAAPIEncodePicture *pic)
+{
+    VAAPIEncodeContext *ctx = avctx->priv_data;
+    VAAPIEncodeSlice *slice;
+    int i, rounding;
+
+    for (i = 0; i < pic->nb_slices; i++)
+        pic->slices[i].row_size = ctx->slice_size;
+
+    rounding = ctx->slice_block_rows - ctx->nb_slices * ctx->slice_size;
+    if (rounding > 0) {
+        // Place rounding error at top and bottom of frame.
+        av_assert0(rounding < pic->nb_slices);
+        // Some Intel drivers contain a bug where the encoder will fail
+        // if the last slice is smaller than the one before it.  Since
+        // that's straightforward to avoid here, just do so.
+        if (rounding <= 2) {
+            for (i = 0; i < rounding; i++)
+                ++pic->slices[i].row_size;
+        } else {
+            for (i = 0; i < (rounding + 1) / 2; i++)
+                ++pic->slices[pic->nb_slices - i - 1].row_size;
+            for (i = 0; i < rounding / 2; i++)
+                ++pic->slices[i].row_size;
+        }
+    } else if (rounding < 0) {
+        // Remove rounding error from last slice only.
+        av_assert0(rounding < ctx->slice_size);
+        pic->slices[pic->nb_slices - 1].row_size += rounding;
+    }
+
+    for (i = 0; i < pic->nb_slices; i++) {
+        slice = &pic->slices[i];
+        slice->index = i;
+        if (i == 0) {
+            slice->row_start   = 0;
+            slice->block_start = 0;
+        } else {
+            const VAAPIEncodeSlice *prev = &pic->slices[i - 1];
+            slice->row_start   = prev->row_start   + prev->row_size;
+            slice->block_start = prev->block_start + prev->block_size;
+        }
+        slice->block_size  = slice->row_size * ctx->slice_block_cols;
+
+        av_log(avctx, AV_LOG_DEBUG, "Slice %d: %d-%d (%d rows), "
+               "%d-%d (%d blocks).\n", i, slice->row_start,
+               slice->row_start + slice->row_size - 1, slice->row_size,
+               slice->block_start, slice->block_start + slice->block_size - 1,
+               slice->block_size);
+    }
+
+    return 0;
+}
+
+static int vaapi_encode_make_tile_slice(AVCodecContext *avctx,
+                                        VAAPIEncodePicture *pic)
+{
+    VAAPIEncodeContext *ctx = avctx->priv_data;
+    VAAPIEncodeSlice *slice;
+    int i, j, index;
+
+    for (i = 0; i < ctx->tile_cols; i++) {
+        for (j = 0; j < ctx->tile_rows; j++) {
+            index        = j * ctx->tile_cols + i;
+            slice        = &pic->slices[index];
+            slice->index = index;
+
+            pic->slices[index].block_start = ctx->col_bd[i] +
+                                             ctx->row_bd[j] * ctx->slice_block_cols;
+            pic->slices[index].block_size  = ctx->row_height[j] * ctx->col_width[i];
+
+            av_log(avctx, AV_LOG_DEBUG, "Slice %2d: (%2d, %2d) start at: %4d "
+               "width:%2d height:%2d (%d blocks).\n", index, ctx->col_bd[i],
+               ctx->row_bd[j], slice->block_start, ctx->col_width[i],
+               ctx->row_height[j], slice->block_size);
+        }
+    }
+
     return 0;
 }
 
@@ -345,57 +429,20 @@ static int vaapi_encode_issue(AVCodecContext *avctx,
     if (pic->nb_slices == 0)
         pic->nb_slices = ctx->nb_slices;
     if (pic->nb_slices > 0) {
-        int rounding;
-
         pic->slices = av_mallocz_array(pic->nb_slices, sizeof(*pic->slices));
         if (!pic->slices) {
             err = AVERROR(ENOMEM);
             goto fail;
         }
 
-        for (i = 0; i < pic->nb_slices; i++)
-            pic->slices[i].row_size = ctx->slice_size;
-
-        rounding = ctx->slice_block_rows - ctx->nb_slices * ctx->slice_size;
-        if (rounding > 0) {
-            // Place rounding error at top and bottom of frame.
-            av_assert0(rounding < pic->nb_slices);
-            // Some Intel drivers contain a bug where the encoder will fail
-            // if the last slice is smaller than the one before it.  Since
-            // that's straightforward to avoid here, just do so.
-            if (rounding <= 2) {
-                for (i = 0; i < rounding; i++)
-                    ++pic->slices[i].row_size;
-            } else {
-                for (i = 0; i < (rounding + 1) / 2; i++)
-                    ++pic->slices[pic->nb_slices - i - 1].row_size;
-                for (i = 0; i < rounding / 2; i++)
-                    ++pic->slices[i].row_size;
-            }
-        } else if (rounding < 0) {
-            // Remove rounding error from last slice only.
-            av_assert0(rounding < ctx->slice_size);
-            pic->slices[pic->nb_slices - 1].row_size += rounding;
-        }
+        if (ctx->tile_rows && ctx->tile_cols)
+            vaapi_encode_make_tile_slice(avctx, pic);
+        else
+            vaapi_encode_make_row_slice(avctx, pic);
     }
+
     for (i = 0; i < pic->nb_slices; i++) {
         slice = &pic->slices[i];
-        slice->index = i;
-        if (i == 0) {
-            slice->row_start   = 0;
-            slice->block_start = 0;
-        } else {
-            const VAAPIEncodeSlice *prev = &pic->slices[i - 1];
-            slice->row_start   = prev->row_start   + prev->row_size;
-            slice->block_start = prev->block_start + prev->block_size;
-        }
-        slice->block_size  = slice->row_size * ctx->slice_block_cols;
-
-        av_log(avctx, AV_LOG_DEBUG, "Slice %d: %d-%d (%d rows), "
-               "%d-%d (%d blocks).\n", i, slice->row_start,
-               slice->row_start + slice->row_size - 1, slice->row_size,
-               slice->block_start, slice->block_start + slice->block_size - 1,
-               slice->block_size);
 
         if (ctx->codec->slice_params_size > 0) {
             slice->codec_slice_params = av_mallocz(ctx->codec->slice_params_size);
@@ -561,11 +608,9 @@ fail_with_picture:
 fail:
     for(i = 0; i < pic->nb_param_buffers; i++)
         vaDestroyBuffer(ctx->hwctx->display, pic->param_buffers[i]);
-    for (i = 0; i < pic->nb_slices; i++) {
-        if (pic->slices) {
-            av_freep(&pic->slices[i].priv_data);
+    if (pic->slices) {
+        for (i = 0; i < pic->nb_slices; i++)
             av_freep(&pic->slices[i].codec_slice_params);
-        }
     }
 fail_at_end:
     av_freep(&pic->codec_picture_params);
@@ -605,7 +650,7 @@ static int vaapi_encode_output(AVCodecContext *avctx,
     for (buf = buf_list; buf; buf = buf->next)
         total_size += buf->size;
 
-    err = av_new_packet(pkt, total_size);
+    err = ff_get_encode_buffer(avctx, pkt, total_size, 0);
     ptr = pkt->data;
 
     if (err < 0)
@@ -696,11 +741,9 @@ static int vaapi_encode_free(AVCodecContext *avctx,
     if (pic->encode_issued)
         vaapi_encode_discard(avctx, pic);
 
-    for (i = 0; i < pic->nb_slices; i++) {
-        if (pic->slices) {
-            av_freep(&pic->slices[i].priv_data);
+    if (pic->slices) {
+        for (i = 0; i < pic->nb_slices; i++)
             av_freep(&pic->slices[i].codec_slice_params);
-        }
     }
     av_freep(&pic->codec_picture_params);
 
@@ -1043,7 +1086,7 @@ static int vaapi_encode_check_frame(AVCodecContext *avctx,
     return 0;
 }
 
-int ff_vaapi_encode_send_frame(AVCodecContext *avctx, const AVFrame *frame)
+static int vaapi_encode_send_frame(AVCodecContext *avctx, AVFrame *frame)
 {
     VAAPIEncodeContext *ctx = avctx->priv_data;
     VAAPIEncodePicture *pic;
@@ -1066,15 +1109,14 @@ int ff_vaapi_encode_send_frame(AVCodecContext *avctx, const AVFrame *frame)
             err = AVERROR(ENOMEM);
             goto fail;
         }
-        err = av_frame_ref(pic->input_image, frame);
-        if (err < 0)
-            goto fail;
 
         if (ctx->input_order == 0 || frame->pict_type == AV_PICTURE_TYPE_I)
             pic->force_idr = 1;
 
         pic->input_surface = (VASurfaceID)(uintptr_t)frame->data[3];
         pic->pts = frame->pts;
+
+        av_frame_move_ref(pic->input_image, frame);
 
         if (ctx->input_order == 0)
             ctx->first_pts = pic->pts;
@@ -1114,7 +1156,19 @@ int ff_vaapi_encode_receive_packet(AVCodecContext *avctx, AVPacket *pkt)
 {
     VAAPIEncodeContext *ctx = avctx->priv_data;
     VAAPIEncodePicture *pic;
+    AVFrame *frame = ctx->frame;
     int err;
+
+    err = ff_encode_get_frame(avctx, frame);
+    if (err < 0 && err != AVERROR_EOF)
+        return err;
+
+    if (err == AVERROR_EOF)
+        frame = NULL;
+
+    err = vaapi_encode_send_frame(avctx, frame);
+    if (err < 0)
+        return err;
 
     if (!ctx->pic_start) {
         if (ctx->end_of_stream)
@@ -1191,6 +1245,9 @@ static const VAAPIEncodeRTFormat vaapi_encode_rt_formats[] = {
     { "YUV400",    VA_RT_FORMAT_YUV400,        8, 1,      },
     { "YUV420",    VA_RT_FORMAT_YUV420,        8, 3, 1, 1 },
     { "YUV422",    VA_RT_FORMAT_YUV422,        8, 3, 1, 0 },
+#if VA_CHECK_VERSION(1, 2, 0)
+    { "YUV422_10", VA_RT_FORMAT_YUV422_10,    10, 3, 1, 0 },
+#endif
     { "YUV444",    VA_RT_FORMAT_YUV444,        8, 3, 0, 0 },
     { "YUV411",    VA_RT_FORMAT_YUV411,        8, 3, 2, 0 },
 #if VA_CHECK_VERSION(0, 38, 1)
@@ -1828,51 +1885,11 @@ static av_cold int vaapi_encode_init_gop_structure(AVCodecContext *avctx)
     return 0;
 }
 
-static av_cold int vaapi_encode_init_slice_structure(AVCodecContext *avctx)
+static av_cold int vaapi_encode_init_row_slice_structure(AVCodecContext *avctx,
+                                                         uint32_t slice_structure)
 {
     VAAPIEncodeContext *ctx = avctx->priv_data;
-    VAConfigAttrib attr[2] = { { VAConfigAttribEncMaxSlices },
-                               { VAConfigAttribEncSliceStructure } };
-    VAStatus vas;
-    uint32_t max_slices, slice_structure;
     int req_slices;
-
-    if (!(ctx->codec->flags & FLAG_SLICE_CONTROL)) {
-        if (avctx->slices > 0) {
-            av_log(avctx, AV_LOG_WARNING, "Multiple slices were requested "
-                   "but this codec does not support controlling slices.\n");
-        }
-        return 0;
-    }
-
-    ctx->slice_block_rows = (avctx->height + ctx->slice_block_height - 1) /
-                             ctx->slice_block_height;
-    ctx->slice_block_cols = (avctx->width  + ctx->slice_block_width  - 1) /
-                             ctx->slice_block_width;
-
-    if (avctx->slices <= 1) {
-        ctx->nb_slices  = 1;
-        ctx->slice_size = ctx->slice_block_rows;
-        return 0;
-    }
-
-    vas = vaGetConfigAttributes(ctx->hwctx->display,
-                                ctx->va_profile,
-                                ctx->va_entrypoint,
-                                attr, FF_ARRAY_ELEMS(attr));
-    if (vas != VA_STATUS_SUCCESS) {
-        av_log(avctx, AV_LOG_ERROR, "Failed to query slice "
-               "attributes: %d (%s).\n", vas, vaErrorStr(vas));
-        return AVERROR_EXTERNAL;
-    }
-    max_slices      = attr[0].value;
-    slice_structure = attr[1].value;
-    if (max_slices      == VA_ATTRIB_NOT_SUPPORTED ||
-        slice_structure == VA_ATTRIB_NOT_SUPPORTED) {
-        av_log(avctx, AV_LOG_ERROR, "Driver does not support encoding "
-               "pictures as multiple slices.\n.");
-        return AVERROR(EINVAL);
-    }
 
     // For fixed-size slices currently we only support whole rows, making
     // rectangular slices.  This could be extended to arbitrary runs of
@@ -1910,6 +1927,142 @@ static av_cold int vaapi_encode_init_slice_structure(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
+    return 0;
+}
+
+static av_cold int vaapi_encode_init_tile_slice_structure(AVCodecContext *avctx,
+                                                          uint32_t slice_structure)
+{
+    VAAPIEncodeContext *ctx = avctx->priv_data;
+    int i, req_tiles;
+
+    if (!(slice_structure & VA_ENC_SLICE_STRUCTURE_ARBITRARY_MACROBLOCKS ||
+         (slice_structure & VA_ENC_SLICE_STRUCTURE_ARBITRARY_ROWS &&
+          ctx->tile_cols == 1))) {
+        av_log(avctx, AV_LOG_ERROR, "Supported slice structure (%#x) doesn't work for "
+               "current tile requirement.\n", slice_structure);
+        return AVERROR(EINVAL);
+    }
+
+    if (ctx->tile_rows > ctx->slice_block_rows ||
+        ctx->tile_cols > ctx->slice_block_cols) {
+        av_log(avctx, AV_LOG_WARNING, "Not enough block rows/cols (%d x %d) "
+               "for configured number of tile (%d x %d); ",
+               ctx->slice_block_rows, ctx->slice_block_cols,
+               ctx->tile_rows, ctx->tile_cols);
+        ctx->tile_rows = ctx->tile_rows > ctx->slice_block_rows ?
+                                          ctx->slice_block_rows : ctx->tile_rows;
+        ctx->tile_cols = ctx->tile_cols > ctx->slice_block_cols ?
+                                          ctx->slice_block_cols : ctx->tile_cols;
+        av_log(avctx, AV_LOG_WARNING, "using allowed maximum (%d x %d).\n",
+               ctx->tile_rows, ctx->tile_cols);
+    }
+
+    req_tiles = ctx->tile_rows * ctx->tile_cols;
+
+    // Tile slice is not allowed to cross the boundary of a tile due to
+    // the constraints of media-driver. Currently we support one slice
+    // per tile. This could be extended to multiple slices per tile.
+    if (avctx->slices != req_tiles)
+        av_log(avctx, AV_LOG_WARNING, "The number of requested slices "
+               "mismatches with configured number of tile (%d != %d); "
+               "using requested tile number for slice.\n",
+               avctx->slices, req_tiles);
+
+    ctx->nb_slices = req_tiles;
+
+    // Default in uniform spacing
+    // 6-3, 6-5
+    for (i = 0; i < ctx->tile_cols; i++) {
+        ctx->col_width[i] = ( i + 1 ) * ctx->slice_block_cols / ctx->tile_cols -
+                                    i * ctx->slice_block_cols / ctx->tile_cols;
+        ctx->col_bd[i + 1]  = ctx->col_bd[i] + ctx->col_width[i];
+    }
+    // 6-4, 6-6
+    for (i = 0; i < ctx->tile_rows; i++) {
+        ctx->row_height[i] = ( i + 1 ) * ctx->slice_block_rows / ctx->tile_rows -
+                                     i * ctx->slice_block_rows / ctx->tile_rows;
+        ctx->row_bd[i + 1] = ctx->row_bd[i] + ctx->row_height[i];
+    }
+
+    av_log(avctx, AV_LOG_VERBOSE, "Encoding pictures with %d x %d tile.\n",
+           ctx->tile_rows, ctx->tile_cols);
+
+    return 0;
+}
+
+static av_cold int vaapi_encode_init_slice_structure(AVCodecContext *avctx)
+{
+    VAAPIEncodeContext *ctx = avctx->priv_data;
+    VAConfigAttrib attr[3] = { { VAConfigAttribEncMaxSlices },
+                               { VAConfigAttribEncSliceStructure },
+#if VA_CHECK_VERSION(1, 1, 0)
+                               { VAConfigAttribEncTileSupport },
+#endif
+                             };
+    VAStatus vas;
+    uint32_t max_slices, slice_structure;
+    int ret;
+
+    if (!(ctx->codec->flags & FLAG_SLICE_CONTROL)) {
+        if (avctx->slices > 0) {
+            av_log(avctx, AV_LOG_WARNING, "Multiple slices were requested "
+                   "but this codec does not support controlling slices.\n");
+        }
+        return 0;
+    }
+
+    ctx->slice_block_rows = (avctx->height + ctx->slice_block_height - 1) /
+                             ctx->slice_block_height;
+    ctx->slice_block_cols = (avctx->width  + ctx->slice_block_width  - 1) /
+                             ctx->slice_block_width;
+
+    if (avctx->slices <= 1 && !ctx->tile_rows && !ctx->tile_cols) {
+        ctx->nb_slices  = 1;
+        ctx->slice_size = ctx->slice_block_rows;
+        return 0;
+    }
+
+    vas = vaGetConfigAttributes(ctx->hwctx->display,
+                                ctx->va_profile,
+                                ctx->va_entrypoint,
+                                attr, FF_ARRAY_ELEMS(attr));
+    if (vas != VA_STATUS_SUCCESS) {
+        av_log(avctx, AV_LOG_ERROR, "Failed to query slice "
+               "attributes: %d (%s).\n", vas, vaErrorStr(vas));
+        return AVERROR_EXTERNAL;
+    }
+    max_slices      = attr[0].value;
+    slice_structure = attr[1].value;
+    if (max_slices      == VA_ATTRIB_NOT_SUPPORTED ||
+        slice_structure == VA_ATTRIB_NOT_SUPPORTED) {
+        av_log(avctx, AV_LOG_ERROR, "Driver does not support encoding "
+               "pictures as multiple slices.\n.");
+        return AVERROR(EINVAL);
+    }
+
+    if (ctx->tile_rows && ctx->tile_cols) {
+#if VA_CHECK_VERSION(1, 1, 0)
+        uint32_t tile_support = attr[2].value;
+        if (tile_support == VA_ATTRIB_NOT_SUPPORTED) {
+            av_log(avctx, AV_LOG_ERROR, "Driver does not support encoding "
+                   "pictures as multiple tiles.\n.");
+            return AVERROR(EINVAL);
+        }
+#else
+        av_log(avctx, AV_LOG_ERROR, "Tile encoding option is "
+            "not supported with this VAAPI version.\n");
+        return AVERROR(EINVAL);
+#endif
+    }
+
+    if (ctx->tile_rows && ctx->tile_cols)
+        ret = vaapi_encode_init_tile_slice_structure(avctx, slice_structure);
+    else
+        ret = vaapi_encode_init_row_slice_structure(avctx, slice_structure);
+    if (ret < 0)
+        return ret;
+
     if (ctx->nb_slices > avctx->slices) {
         av_log(avctx, AV_LOG_WARNING, "Slice count rounded up to "
                "%d (from %d) due to driver constraints on slice "
@@ -1922,9 +2075,8 @@ static av_cold int vaapi_encode_init_slice_structure(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
-    av_log(avctx, AV_LOG_VERBOSE, "Encoding pictures with %d slices "
-           "(default size %d block rows).\n",
-           ctx->nb_slices, ctx->slice_size);
+    av_log(avctx, AV_LOG_VERBOSE, "Encoding pictures with %d slices.\n",
+           ctx->nb_slices);
     return 0;
 }
 
@@ -2083,7 +2235,7 @@ static void vaapi_encode_free_output_buffer(void *opaque,
 }
 
 static AVBufferRef *vaapi_encode_alloc_output_buffer(void *opaque,
-                                                     int size)
+                                                     buffer_size_t size)
 {
     AVCodecContext   *avctx = opaque;
     VAAPIEncodeContext *ctx = avctx->priv_data;
@@ -2213,6 +2365,11 @@ av_cold int ff_vaapi_encode_init(AVCodecContext *avctx)
     AVVAAPIFramesContext *recon_hwctx = NULL;
     VAStatus vas;
     int err;
+
+    ctx->frame = av_frame_alloc();
+    if (!ctx->frame) {
+        return AVERROR(ENOMEM);
+    }
 
     if (!avctx->hw_frames_ctx) {
         av_log(avctx, AV_LOG_ERROR, "A hardware frames reference is "
@@ -2390,6 +2547,8 @@ av_cold int ff_vaapi_encode_close(AVCodecContext *avctx)
         vaDestroyConfig(ctx->hwctx->display, ctx->va_config);
         ctx->va_config = VA_INVALID_ID;
     }
+
+    av_frame_free(&ctx->frame);
 
     av_freep(&ctx->codec_sequence_params);
     av_freep(&ctx->codec_picture_params);

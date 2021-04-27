@@ -34,6 +34,7 @@ typedef struct HistogramContext {
     const AVClass *class;               ///< AVClass context for log and options purpose
     int            thistogram;
     int            envelope;
+    int            slide;
     unsigned       histogram[256*256];
     int            histogram_size;
     int            width;
@@ -155,15 +156,15 @@ static int query_formats(AVFilterContext *ctx)
     int rgb, i, bits;
     int ret;
 
-    if (!ctx->inputs[0]->in_formats ||
-        !ctx->inputs[0]->in_formats->nb_formats) {
+    if (!ctx->inputs[0]->incfg.formats ||
+        !ctx->inputs[0]->incfg.formats->nb_formats) {
         return AVERROR(EAGAIN);
     }
 
-    if (!ctx->inputs[0]->out_formats)
-        if ((ret = ff_formats_ref(ff_make_format_list(levels_in_pix_fmts), &ctx->inputs[0]->out_formats)) < 0)
+    if (!ctx->inputs[0]->outcfg.formats)
+        if ((ret = ff_formats_ref(ff_make_format_list(levels_in_pix_fmts), &ctx->inputs[0]->outcfg.formats)) < 0)
             return ret;
-    avff = ctx->inputs[0]->in_formats;
+    avff = ctx->inputs[0]->incfg.formats;
     desc = av_pix_fmt_desc_get(avff->formats[0]);
     rgb = desc->flags & AV_PIX_FMT_FLAG_RGB;
     bits = desc->comp[0].depth;
@@ -192,7 +193,7 @@ static int query_formats(AVFilterContext *ctx)
         out_pix_fmts = levels_out_yuv12_pix_fmts;
     else
         return AVERROR(EAGAIN);
-    if ((ret = ff_formats_ref(ff_make_format_list(out_pix_fmts), &ctx->outputs[0]->in_formats)) < 0)
+    if ((ret = ff_formats_ref(ff_make_format_list(out_pix_fmts), &ctx->outputs[0]->incfg.formats)) < 0)
         return ret;
 
     return 0;
@@ -354,7 +355,24 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         max_hval_log = log2(max_hval + 1);
 
         if (s->thistogram) {
+            const int bpp = 1 + (s->histogram_size > 256);
             int minh = s->histogram_size - 1, maxh = 0;
+
+            if (s->slide == 2) {
+                s->x_pos = out->width - 1;
+                for (j = 0; j < outlink->h; j++) {
+                    memmove(out->data[p] + j * out->linesize[p] ,
+                            out->data[p] + j * out->linesize[p] + bpp,
+                            (outlink->w - 1) * bpp);
+                }
+            } else if (s->slide == 3) {
+                s->x_pos = 0;
+                for (j = 0; j < outlink->h; j++) {
+                    memmove(out->data[p] + j * out->linesize[p] + bpp,
+                            out->data[p] + j * out->linesize[p],
+                            (outlink->w - 1) * bpp);
+                }
+            }
 
             for (int i = 0; i < s->histogram_size; i++) {
                 int idx = s->histogram_size - i - 1;
@@ -443,8 +461,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     out->pts = in->pts;
     av_frame_free(&in);
     s->x_pos++;
-    if (s->x_pos >= s->width)
+    if (s->x_pos >= s->width) {
         s->x_pos = 0;
+        if (s->thistogram && (s->slide == 4 || s->slide == 0)) {
+            s->out = NULL;
+            goto end;
+        }
+    } else if (s->thistogram && s->slide == 4) {
+        return 0;
+    }
 
     if (s->thistogram) {
         AVFrame *clone = av_frame_clone(out);
@@ -453,6 +478,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             return AVERROR(ENOMEM);
         return ff_filter_frame(outlink, clone);
     }
+end:
     return ff_filter_frame(outlink, out);
 }
 
@@ -491,6 +517,13 @@ AVFilter ff_vf_histogram = {
 
 #if CONFIG_THISTOGRAM_FILTER
 
+static av_cold void uninit(AVFilterContext *ctx)
+{
+    HistogramContext *s = ctx->priv;
+
+    av_frame_free(&s->out);
+}
+
 static const AVOption thistogram_options[] = {
     { "width", "set width", OFFSET(width), AV_OPT_TYPE_INT, {.i64=0}, 0, 8192, FLAGS},
     { "w",     "set width", OFFSET(width), AV_OPT_TYPE_INT, {.i64=0}, 0, 8192, FLAGS},
@@ -501,6 +534,12 @@ static const AVOption thistogram_options[] = {
     { "e",        "display envelope", OFFSET(envelope), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "ecolor", "set envelope color", OFFSET(envelope_rgba), AV_OPT_TYPE_COLOR, {.str="gold"}, 0, 0, FLAGS },
     { "ec",     "set envelope color", OFFSET(envelope_rgba), AV_OPT_TYPE_COLOR, {.str="gold"}, 0, 0, FLAGS },
+    { "slide", "set slide mode",                     OFFSET(slide), AV_OPT_TYPE_INT,   {.i64=1}, 0, 4, FLAGS, "slide" },
+        {"frame",   "draw new frames",               OFFSET(slide), AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "slide"},
+        {"replace", "replace old columns with new",  OFFSET(slide), AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "slide"},
+        {"scroll",  "scroll from right to left",     OFFSET(slide), AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGS, "slide"},
+        {"rscroll", "scroll from left to right",     OFFSET(slide), AV_OPT_TYPE_CONST, {.i64=3}, 0, 0, FLAGS, "slide"},
+        {"picture", "display graph in single frame", OFFSET(slide), AV_OPT_TYPE_CONST, {.i64=4}, 0, 0, FLAGS, "slide"},
     { NULL }
 };
 
@@ -513,6 +552,7 @@ AVFilter ff_vf_thistogram = {
     .query_formats = query_formats,
     .inputs        = inputs,
     .outputs       = outputs,
+    .uninit        = uninit,
     .priv_class    = &thistogram_class,
 };
 
