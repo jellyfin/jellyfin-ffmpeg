@@ -77,7 +77,7 @@ prepare_extra_common() {
 prepare_extra_amd64() {
     # Download and install the nvidia headers
     pushd ${SOURCE_DIR}
-    git clone -b n9.0.18.3 --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+    git clone -b n11.0.10.1 --depth=1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
     pushd nv-codec-headers
     make
     make install
