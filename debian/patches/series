@@ -5,3 +5,4 @@
 0005-cuda-tonemap-impl.patch
 0006-bt2390-and-fix-for-peak-detection-in-opencl-tonemap.patch
 0007-fix-for-fmp4-in-hlsenc.patch
+0008-fix-nvdec-exceeded-32-surfaces-error.patch
