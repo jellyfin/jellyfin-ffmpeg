@@ -1245,6 +1245,7 @@ static void opt_list(void *obj, void *av_log_obj, const char *unit,
         av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_READONLY)       ? 'R' : '.');
         av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_BSF_PARAM)      ? 'B' : '.');
         av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_RUNTIME_PARAM)  ? 'T' : '.');
+        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_DEPRECATED)     ? 'P' : '.');
 
         if (opt->help)
             av_log(av_log_obj, AV_LOG_INFO, " %s", opt->help);
@@ -1679,8 +1680,9 @@ const AVOption *av_opt_find2(void *obj, const char *name, const char *unit,
 
     if (search_flags & AV_OPT_SEARCH_CHILDREN) {
         if (search_flags & AV_OPT_SEARCH_FAKE_OBJ) {
-            const AVClass *child = NULL;
-            while (child = av_opt_child_class_next(c, child))
+            void *iter = NULL;
+            const AVClass *child;
+            while (child = av_opt_child_class_iterate(c, &iter))
                 if (o = av_opt_find2(&child, name, unit, opt_flags, search_flags, NULL))
                     return o;
         } else {
@@ -1715,10 +1717,29 @@ void *av_opt_child_next(void *obj, void *prev)
     return NULL;
 }
 
+#if FF_API_CHILD_CLASS_NEXT
+FF_DISABLE_DEPRECATION_WARNINGS
 const AVClass *av_opt_child_class_next(const AVClass *parent, const AVClass *prev)
 {
     if (parent->child_class_next)
         return parent->child_class_next(prev);
+    return NULL;
+}
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
+const AVClass *av_opt_child_class_iterate(const AVClass *parent, void **iter)
+{
+    if (parent->child_class_iterate)
+        return parent->child_class_iterate(iter);
+#if FF_API_CHILD_CLASS_NEXT
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (parent->child_class_next) {
+        *iter = parent->child_class_next(*iter);
+        return *iter;
+    }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     return NULL;
 }
 
@@ -2100,6 +2121,8 @@ int av_opt_serialize(void *obj, int opt_flags, int flags, char **buffer,
             av_freep(&buf);
         }
     }
-    av_bprint_finalize(&bprint, buffer);
+    ret = av_bprint_finalize(&bprint, buffer);
+    if (ret < 0)
+        return ret;
     return 0;
 }

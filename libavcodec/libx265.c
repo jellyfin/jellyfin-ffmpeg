@@ -310,8 +310,8 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
     if (!cpb_props)
         return AVERROR(ENOMEM);
     cpb_props->buffer_size = ctx->params->rc.vbvBufferSize * 1000;
-    cpb_props->max_bitrate = ctx->params->rc.vbvMaxBitrate * 1000;
-    cpb_props->avg_bitrate = ctx->params->rc.bitrate       * 1000;
+    cpb_props->max_bitrate = ctx->params->rc.vbvMaxBitrate * 1000LL;
+    cpb_props->avg_bitrate = ctx->params->rc.bitrate       * 1000LL;
 
     if (!(avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER))
         ctx->params->bRepeatHeaders = 1;
@@ -700,7 +700,8 @@ AVCodec ff_libx265_encoder = {
     .priv_data_size   = sizeof(libx265Context),
     .priv_class       = &class,
     .defaults         = x265_defaults,
-    .capabilities     = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AUTO_THREADS |
+    .capabilities     = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS |
                         AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal    = FF_CODEC_CAP_AUTO_THREADS,
     .wrapper_name     = "libx265",
 };

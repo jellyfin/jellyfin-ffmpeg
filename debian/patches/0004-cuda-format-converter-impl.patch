@@ -1,46 +1,275 @@
-# CUDA format converter impl
-
 Index: jellyfin-ffmpeg/compat/cuda/cuda_runtime.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/compat/cuda/cuda_runtime.h
 +++ jellyfin-ffmpeg/compat/cuda/cuda_runtime.h
-@@ -68,7 +68,7 @@ typedef struct __device_builtin__ __alig
+@@ -49,16 +49,6 @@ typedef struct __device_builtin__ __alig
+     unsigned short x, y;
+ } ushort2;
  
- typedef struct __device_builtin__ __align__(8) ushort4
+-typedef struct __device_builtin__ __align__(8) float2
+-{
+-    float x, y;
+-} float2;
+-
+-typedef struct __device_builtin__ __align__(8) int2
+-{
+-    int x, y;
+-} int2;
+-
+ typedef struct __device_builtin__ uint3
  {
--    unsigned char x, y, z, w;
-+    unsigned short x, y, z, w;
- } ushort4;
+     unsigned int x, y, z;
+@@ -66,6 +56,11 @@ typedef struct __device_builtin__ uint3
  
- typedef struct __device_builtin__ __align__(16) int4
-@@ -110,10 +110,10 @@ GET(getThreadIdx, tid)
+ typedef struct uint3 dim3;
+ 
++typedef struct __device_builtin__ __align__(8) int2
++{
++    int x, y;
++} int2;
++
+ typedef struct __device_builtin__ __align__(4) uchar4
+ {
+     unsigned char x, y, z, w;
+@@ -81,11 +76,6 @@ typedef struct __device_builtin__ __alig
+     int x, y, z, w;
+ } int4;
+ 
+-typedef struct __device_builtin__ __align__(16) float4
+-{
+-    float x, y, z, w;
+-} float4;
+-
+ // Accessors for special registers
+ #define GETCOMP(reg, comp) \
+     asm("mov.u32 %0, %%" #reg "." #comp ";" : "=r"(tmp)); \
+@@ -110,31 +100,24 @@ GET(getThreadIdx, tid)
+ #define threadIdx (getThreadIdx())
+ 
+ // Basic initializers (simple macros rather than inline functions)
+-#define make_int2(a, b) ((int2){.x = a, .y = b})
+ #define make_uchar2(a, b) ((uchar2){.x = a, .y = b})
+ #define make_ushort2(a, b) ((ushort2){.x = a, .y = b})
+-#define make_float2(a, b) ((float2){.x = a, .y = b})
+-#define make_int4(a, b, c, d) ((int4){.x = a, .y = b, .z = c, .w = d})
+ #define make_uchar4(a, b, c, d) ((uchar4){.x = a, .y = b, .z = c, .w = d})
+ #define make_ushort4(a, b, c, d) ((ushort4){.x = a, .y = b, .z = c, .w = d})
+-#define make_float4(a, b, c, d) ((float4){.x = a, .y = b, .z = c, .w = d})
+ 
+ // Conversions from the tex instruction's 4-register output to various types
+ #define TEX2D(type, ret) static inline __device__ void conv(type* out, unsigned a, unsigned b, unsigned c, unsigned d) {*out = (ret);}
  
  TEX2D(unsigned char, a & 0xFF)
  TEX2D(unsigned short, a & 0xFFFF)
+-TEX2D(float, a)
 -TEX2D(uchar2, make_uchar2(a & 0xFF, b & 0xFF))
 -TEX2D(ushort2, make_ushort2(a & 0xFFFF, b & 0xFFFF))
+-TEX2D(float2, make_float2(a, b))
 -TEX2D(uchar4, make_uchar4(a & 0xFF, b & 0xFF, c & 0xFF, d & 0xFF))
 -TEX2D(ushort4, make_ushort4(a & 0xFFFF, b & 0xFFFF, c & 0xFFFF, d & 0xFFFF))
+-TEX2D(float4, make_float4(a, b, c, d))
 +TEX2D(uchar2, make_uchar2((unsigned char)a, (unsigned char)b))
 +TEX2D(ushort2, make_ushort2((unsigned short)a, (unsigned short)b))
 +TEX2D(uchar4, make_uchar4((unsigned char)a, (unsigned char)b, (unsigned char)c, (unsigned char)d))
 +TEX2D(ushort4, make_ushort4((unsigned short)a, (unsigned short)b, (unsigned short)c, (unsigned short)d))
  
  // Template calling tex instruction and converting the output to the selected type
- template <class T>
+-template<typename T>
+-inline __device__ T tex2D(cudaTextureObject_t texObject, float x, float y)
++template <class T>
++static inline __device__ T tex2D(cudaTextureObject_t texObject, float x, float y)
+ {
+   T ret;
+   unsigned ret1, ret2, ret3, ret4;
+@@ -145,44 +128,4 @@ inline __device__ T tex2D(cudaTextureObj
+   return ret;
+ }
+ 
+-template<>
+-inline __device__ float4 tex2D<float4>(cudaTextureObject_t texObject, float x, float y)
+-{
+-    float4 ret;
+-    asm("tex.2d.v4.f32.f32 {%0, %1, %2, %3}, [%4, {%5, %6}];" :
+-        "=r"(ret.x), "=r"(ret.y), "=r"(ret.z), "=r"(ret.w) :
+-        "l"(texObject), "f"(x), "f"(y));
+-    return ret;
+-}
+-
+-template<>
+-inline __device__ float tex2D<float>(cudaTextureObject_t texObject, float x, float y)
+-{
+-    return tex2D<float4>(texObject, x, y).x;
+-}
+-
+-template<>
+-inline __device__ float2 tex2D<float2>(cudaTextureObject_t texObject, float x, float y)
+-{
+-    float4 ret = tex2D<float4>(texObject, x, y);
+-    return make_float2(ret.x, ret.y);
+-}
+-
+-// Math helper functions
+-static inline __device__ float floorf(float a) { return __builtin_floorf(a); }
+-static inline __device__ float floor(float a) { return __builtin_floorf(a); }
+-static inline __device__ double floor(double a) { return __builtin_floor(a); }
+-static inline __device__ float ceilf(float a) { return __builtin_ceilf(a); }
+-static inline __device__ float ceil(float a) { return __builtin_ceilf(a); }
+-static inline __device__ double ceil(double a) { return __builtin_ceil(a); }
+-static inline __device__ float truncf(float a) { return __builtin_truncf(a); }
+-static inline __device__ float trunc(float a) { return __builtin_truncf(a); }
+-static inline __device__ double trunc(double a) { return __builtin_trunc(a); }
+-static inline __device__ float fabsf(float a) { return __builtin_fabsf(a); }
+-static inline __device__ float fabs(float a) { return __builtin_fabsf(a); }
+-static inline __device__ double fabs(double a) { return __builtin_fabs(a); }
+-
+-static inline __device__ float __sinf(float a) { return __nvvm_sin_approx_f(a); }
+-static inline __device__ float __cosf(float a) { return __nvvm_cos_approx_f(a); }
+-
+ #endif /* COMPAT_CUDA_CUDA_RUNTIME_H */
 Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -6192,7 +6192,7 @@ fi
+@@ -6250,7 +6250,7 @@ fi
  if enabled cuda_nvcc; then
      nvccflags="$nvccflags -ptx"
  else
--    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -include ${source_link}/compat/cuda/cuda_runtime.h"
-+    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -std=c++14 -include ${source_link}/compat/cuda/cuda_runtime.h"
+-    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -Wno-c++11-narrowing -include ${source_link}/compat/cuda/cuda_runtime.h"
++    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -Wno-c++11-narrowing -std=c++14 -include ${source_link}/compat/cuda/cuda_runtime.h"
      check_nvcc cuda_llvm
  fi
  
+Index: jellyfin-ffmpeg/libavfilter/Makefile
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/Makefile
++++ jellyfin-ffmpeg/libavfilter/Makefile
+@@ -392,8 +392,7 @@ OBJS-$(CONFIG_ROBERTS_OPENCL_FILTER)
+ OBJS-$(CONFIG_ROTATE_FILTER)                 += vf_rotate.o
+ OBJS-$(CONFIG_SAB_FILTER)                    += vf_sab.o
+ OBJS-$(CONFIG_SCALE_FILTER)                  += vf_scale.o scale_eval.o
+-OBJS-$(CONFIG_SCALE_CUDA_FILTER)             += vf_scale_cuda.o scale_eval.o \
+-                                                vf_scale_cuda.ptx.o vf_scale_cuda_bicubic.ptx.o
++OBJS-$(CONFIG_SCALE_CUDA_FILTER)             += vf_scale_cuda.o vf_scale_cuda.ptx.o scale_eval.o
+ OBJS-$(CONFIG_SCALE_NPP_FILTER)              += vf_scale_npp.o scale_eval.o
+ OBJS-$(CONFIG_SCALE_QSV_FILTER)              += vf_scale_qsv.o
+ OBJS-$(CONFIG_SCALE_VAAPI_FILTER)            += vf_scale_vaapi.o scale_eval.o vaapi_vpp.o
+Index: jellyfin-ffmpeg/libavfilter/cuda/vector_helpers.cuh
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/cuda/vector_helpers.cuh
++++ /dev/null
+@@ -1,112 +0,0 @@
+-/*
+- * This file is part of FFmpeg.
+- *
+- * Permission is hereby granted, free of charge, to any person obtaining a
+- * copy of this software and associated documentation files (the "Software"),
+- * to deal in the Software without restriction, including without limitation
+- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+- * and/or sell copies of the Software, and to permit persons to whom the
+- * Software is furnished to do so, subject to the following conditions:
+- *
+- * The above copyright notice and this permission notice shall be included in
+- * all copies or substantial portions of the Software.
+- *
+- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+- * DEALINGS IN THE SOFTWARE.
+- */
+-
+-#ifndef AVFILTER_CUDA_VECTORHELPERS_H
+-#define AVFILTER_CUDA_VECTORHELPERS_H
+-
+-typedef unsigned char uchar;
+-typedef unsigned short ushort;
+-
+-template<typename T> struct vector_helper { };
+-template<> struct vector_helper<uchar>   { typedef float  ftype; typedef int  itype; };
+-template<> struct vector_helper<uchar2>  { typedef float2 ftype; typedef int2 itype; };
+-template<> struct vector_helper<uchar4>  { typedef float4 ftype; typedef int4 itype; };
+-template<> struct vector_helper<ushort>  { typedef float  ftype; typedef int  itype; };
+-template<> struct vector_helper<ushort2> { typedef float2 ftype; typedef int2 itype; };
+-template<> struct vector_helper<ushort4> { typedef float4 ftype; typedef int4 itype; };
+-template<> struct vector_helper<int>     { typedef float  ftype; typedef int  itype; };
+-template<> struct vector_helper<int2>    { typedef float2 ftype; typedef int2 itype; };
+-template<> struct vector_helper<int4>    { typedef float4 ftype; typedef int4 itype; };
+-
+-#define floatT typename vector_helper<T>::ftype
+-#define intT typename vector_helper<T>::itype
+-
+-template<typename T, typename V> inline __device__ V to_floatN(const T &a) { return (V)a; }
+-template<typename T, typename V> inline __device__ T from_floatN(const V &a) { return (T)a; }
+-
+-#define OPERATORS2(T) \
+-    template<typename V> inline __device__ T operator+(const T &a, const V &b) { return make_ ## T (a.x + b.x, a.y + b.y); } \
+-    template<typename V> inline __device__ T operator-(const T &a, const V &b) { return make_ ## T (a.x - b.x, a.y - b.y); } \
+-    template<typename V> inline __device__ T operator*(const T &a, V b) { return make_ ## T (a.x * b, a.y * b); } \
+-    template<typename V> inline __device__ T operator/(const T &a, V b) { return make_ ## T (a.x / b, a.y / b); } \
+-    template<typename V> inline __device__ T operator>>(const T &a, V b) { return make_ ## T (a.x >> b, a.y >> b); } \
+-    template<typename V> inline __device__ T operator<<(const T &a, V b) { return make_ ## T (a.x << b, a.y << b); } \
+-    template<typename V> inline __device__ T &operator+=(T &a, const V &b) { a.x += b.x; a.y += b.y; return a; } \
+-    template<typename V> inline __device__ void vec_set(T &a, const V &b) { a.x = b.x; a.y = b.y; } \
+-    template<typename V> inline __device__ void vec_set_scalar(T &a, V b) { a.x = b; a.y = b; } \
+-    template<> inline __device__ float2 to_floatN<T, float2>(const T &a) { return make_float2(a.x, a.y); } \
+-    template<> inline __device__ T from_floatN<T, float2>(const float2 &a) { return make_ ## T(a.x, a.y); }
+-#define OPERATORS4(T) \
+-    template<typename V> inline __device__ T operator+(const T &a, const V &b) { return make_ ## T (a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w); } \
+-    template<typename V> inline __device__ T operator-(const T &a, const V &b) { return make_ ## T (a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w); } \
+-    template<typename V> inline __device__ T operator*(const T &a, V b) { return make_ ## T (a.x * b, a.y * b, a.z * b, a.w * b); } \
+-    template<typename V> inline __device__ T operator/(const T &a, V b) { return make_ ## T (a.x / b, a.y / b, a.z / b, a.w / b); } \
+-    template<typename V> inline __device__ T operator>>(const T &a, V b) { return make_ ## T (a.x >> b, a.y >> b, a.z >> b, a.w >> b); } \
+-    template<typename V> inline __device__ T operator<<(const T &a, V b) { return make_ ## T (a.x << b, a.y << b, a.z << b, a.w << b); } \
+-    template<typename V> inline __device__ T &operator+=(T &a, const V &b) { a.x += b.x; a.y += b.y; a.z += b.z; a.w += b.w; return a; } \
+-    template<typename V> inline __device__ void vec_set(T &a, const V &b) { a.x = b.x; a.y = b.y; a.z = b.z; a.w = b.w; } \
+-    template<typename V> inline __device__ void vec_set_scalar(T &a, V b) { a.x = b; a.y = b; a.z = b; a.w = b; } \
+-    template<> inline __device__ float4 to_floatN<T, float4>(const T &a) { return make_float4(a.x, a.y, a.z, a.w); } \
+-    template<> inline __device__ T from_floatN<T, float4>(const float4 &a) { return make_ ## T(a.x, a.y, a.z, a.w); }
+-
+-OPERATORS2(int2)
+-OPERATORS2(uchar2)
+-OPERATORS2(ushort2)
+-OPERATORS2(float2)
+-OPERATORS4(int4)
+-OPERATORS4(uchar4)
+-OPERATORS4(ushort4)
+-OPERATORS4(float4)
+-
+-template<typename V> inline __device__ void vec_set(int &a, V b) { a = b; }
+-template<typename V> inline __device__ void vec_set(float &a, V b) { a = b; }
+-template<typename V> inline __device__ void vec_set(uchar &a, V b) { a = b; }
+-template<typename V> inline __device__ void vec_set(ushort &a, V b) { a = b; }
+-template<typename V> inline __device__ void vec_set_scalar(int &a, V b) { a = b; }
+-template<typename V> inline __device__ void vec_set_scalar(float &a, V b) { a = b; }
+-template<typename V> inline __device__ void vec_set_scalar(uchar &a, V b) { a = b; }
+-template<typename V> inline __device__ void vec_set_scalar(ushort &a, V b) { a = b; }
+-
+-template<typename T>
+-inline __device__ T lerp_scalar(T v0, T v1, float t) {
+-    return t*v1 + (1.0f - t)*v0;
+-}
+-
+-template<>
+-inline __device__ float2 lerp_scalar<float2>(float2 v0, float2 v1, float t) {
+-    return make_float2(
+-        lerp_scalar(v0.x, v1.x, t),
+-        lerp_scalar(v0.y, v1.y, t)
+-    );
+-}
+-
+-template<>
+-inline __device__ float4 lerp_scalar<float4>(float4 v0, float4 v1, float t) {
+-    return make_float4(
+-        lerp_scalar(v0.x, v1.x, t),
+-        lerp_scalar(v0.y, v1.y, t),
+-        lerp_scalar(v0.z, v1.z, t),
+-        lerp_scalar(v0.w, v1.w, t)
+-    );
+-}
+-
+-#endif
 Index: jellyfin-ffmpeg/libavfilter/dither_matrix.h
 ===================================================================
 --- /dev/null
@@ -133,7 +362,11 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
-@@ -23,6 +26,7 @@
+@@ -20,10 +23,10 @@
+ * DEALINGS IN THE SOFTWARE.
+ */
+ 
+-#include <float.h>
  #include <stdio.h>
  #include <string.h>
  
@@ -141,7 +374,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
  #include "libavutil/avstring.h"
  #include "libavutil/common.h"
  #include "libavutil/hwcontext.h"
-@@ -33,6 +37,7 @@
+@@ -34,13 +37,12 @@
  #include "libavutil/pixdesc.h"
  
  #include "avfilter.h"
@@ -149,7 +382,41 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
  #include "formats.h"
  #include "internal.h"
  #include "scale_eval.h"
-@@ -78,6 +83,7 @@ typedef struct CUDAScaleContext {
+ #include "video.h"
+ 
+-#include "vf_scale_cuda.h"
+-
+ static const enum AVPixelFormat supported_formats[] = {
+     AV_PIX_FMT_YUV420P,
+     AV_PIX_FMT_NV12,
+@@ -48,8 +50,6 @@ static const enum AVPixelFormat supporte
+     AV_PIX_FMT_P010,
+     AV_PIX_FMT_P016,
+     AV_PIX_FMT_YUV444P16,
+-    AV_PIX_FMT_0RGB32,
+-    AV_PIX_FMT_0BGR32,
+ };
+ 
+ #define DIV_UP(a, b) ( ((a) + (b) - 1) / (b) )
+@@ -58,17 +58,6 @@ static const enum AVPixelFormat supporte
+ 
+ #define CHECK_CU(x) FF_CUDA_CHECK_DL(ctx, s->hwctx->internal->cuda_dl, x)
+ 
+-enum {
+-    INTERP_ALGO_DEFAULT,
+-
+-    INTERP_ALGO_NEAREST,
+-    INTERP_ALGO_BILINEAR,
+-    INTERP_ALGO_BICUBIC,
+-    INTERP_ALGO_LANCZOS,
+-
+-    INTERP_ALGO_COUNT
+-};
+-
+ typedef struct CUDAScaleContext {
+     const AVClass *class;
+ 
+@@ -87,6 +76,7 @@ typedef struct CUDAScaleContext {
       * Output sw format. AV_PIX_FMT_NONE for no conversion.
       */
      enum AVPixelFormat format;
@@ -157,7 +424,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
  
      char *w_expr;               ///< width  expression string
      char *h_expr;               ///< height expression string
-@@ -87,24 +93,56 @@ typedef struct CUDAScaleContext {
+@@ -96,30 +86,56 @@ typedef struct CUDAScaleContext {
  
      CUcontext   cu_ctx;
      CUmodule    cu_module;
@@ -195,10 +462,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
      CUdeviceptr srcBuffer;
      CUdeviceptr dstBuffer;
      int         tex_alignment;
-+
+ 
+-    int interp_algo;
+-    int interp_use_linear;
+-    int interp_as_integer;
 +    const AVPixFmtDescriptor *in_desc, *out_desc;
 +    int         in_planes, out_planes;
-+
+ 
+-    float param;
 +    CUdeviceptr ditherBuffer;
 +    CUtexObject ditherTex;
  } CUDAScaleContext;
@@ -221,12 +492,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
      s->frame = av_frame_alloc();
      if (!s->frame)
          return AVERROR(ENOMEM);
-@@ -120,6 +158,25 @@ static av_cold void cudascale_uninit(AVF
+@@ -135,13 +151,22 @@ static av_cold void cudascale_uninit(AVF
  {
      CUDAScaleContext *s = ctx->priv;
  
+-    if (s->hwctx && s->cu_module) {
 +    if (s->hwctx) {
-+        CudaFunctions *cu = s->hwctx->internal->cuda_dl;
+         CudaFunctions *cu = s->hwctx->internal->cuda_dl;
+-        CUcontext dummy;
 +        CUcontext dummy, cuda_ctx = s->hwctx->cuda_ctx;
 +
 +        CHECK_CU(cu->cuCtxPushCurrent(cuda_ctx));
@@ -240,23 +513,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
 +            CHECK_CU(cu->cuMemFree(s->ditherBuffer));
 +            s->ditherBuffer = 0;
 +        }
-+
-+        CHECK_CU(cu->cuCtxPopCurrent(&dummy));
-+    }
-+
-     av_frame_free(&s->frame);
-     av_buffer_unref(&s->frames_ctx);
-     av_frame_free(&s->tmp_frame);
-@@ -228,7 +285,7 @@ static av_cold int init_processing_chain
-         return AVERROR(ENOSYS);
+ 
+-        CHECK_CU(cu->cuCtxPushCurrent(s->hwctx->cuda_ctx));
+-        CHECK_CU(cu->cuModuleUnload(s->cu_module));
+-        s->cu_module = NULL;
+         CHECK_CU(cu->cuCtxPopCurrent(&dummy));
      }
  
--    if (in_width == out_width && in_height == out_height)
-+    if (in_width == out_width && in_height == out_height && in_format == out_format)
-         s->passthrough = 1;
- 
-     s->in_fmt = in_format;
-@@ -250,6 +307,63 @@ static av_cold int init_processing_chain
+@@ -262,6 +287,63 @@ static av_cold int init_processing_chain
      return 0;
  }
  
@@ -320,42 +584,93 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
  static av_cold int cudascale_config_props(AVFilterLink *outlink)
  {
      AVFilterContext *ctx = outlink->src;
-@@ -260,6 +374,7 @@ static av_cold int cudascale_config_prop
+@@ -271,46 +353,11 @@ static av_cold int cudascale_config_prop
+     AVCUDADeviceContext *device_hwctx = frames_ctx->device_ctx->hwctx;
      CUcontext dummy, cuda_ctx = device_hwctx->cuda_ctx;
      CudaFunctions *cu = device_hwctx->internal->cuda_dl;
+-    char buf[64];
      int w, h;
 +    int i;
      int ret;
  
+-    char *scaler_ptx;
+-    const char *function_infix = "";
+-
      extern char vf_scale_cuda_ptx[];
-@@ -275,30 +390,26 @@ static av_cold int cudascale_config_prop
+-    extern char vf_scale_cuda_bicubic_ptx[];
+-
+-    switch(s->interp_algo) {
+-    case INTERP_ALGO_NEAREST:
+-        scaler_ptx = vf_scale_cuda_ptx;
+-        function_infix = "_Nearest";
+-        s->interp_use_linear = 0;
+-        s->interp_as_integer = 1;
+-        break;
+-    case INTERP_ALGO_BILINEAR:
+-        scaler_ptx = vf_scale_cuda_ptx;
+-        function_infix = "_Bilinear";
+-        s->interp_use_linear = 1;
+-        s->interp_as_integer = 1;
+-        break;
+-    case INTERP_ALGO_DEFAULT:
+-    case INTERP_ALGO_BICUBIC:
+-        scaler_ptx = vf_scale_cuda_bicubic_ptx;
+-        function_infix = "_Bicubic";
+-        s->interp_use_linear = 0;
+-        s->interp_as_integer = 0;
+-        break;
+-    case INTERP_ALGO_LANCZOS:
+-        scaler_ptx = vf_scale_cuda_bicubic_ptx;
+-        function_infix = "_Lanczos";
+-        s->interp_use_linear = 0;
+-        s->interp_as_integer = 0;
+-        break;
+-    default:
+-        av_log(ctx, AV_LOG_ERROR, "Unknown interpolation algorithm\n");
+-        return AVERROR_BUG;
+-    }
+ 
+     s->hwctx = device_hwctx;
+     s->cu_stream = s->hwctx->stream;
+@@ -319,40 +366,30 @@ static av_cold int cudascale_config_prop
      if (ret < 0)
          goto fail;
  
--    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_uchar, s->cu_module, "Subsample_Bilinear_uchar"));
+-    ret = CHECK_CU(cu->cuModuleLoadData(&s->cu_module, scaler_ptx));
 -    if (ret < 0)
 -        goto fail;
 -
--    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_uchar2, s->cu_module, "Subsample_Bilinear_uchar2"));
+-    snprintf(buf, sizeof(buf), "Subsample%s_uchar", function_infix);
+-    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_uchar, s->cu_module, buf));
 -    if (ret < 0)
 -        goto fail;
 -
--    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_uchar4, s->cu_module, "Subsample_Bilinear_uchar4"));
+-    snprintf(buf, sizeof(buf), "Subsample%s_uchar2", function_infix);
+-    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_uchar2, s->cu_module, buf));
 -    if (ret < 0)
 -        goto fail;
 -
--    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_ushort, s->cu_module, "Subsample_Bilinear_ushort"));
+-    snprintf(buf, sizeof(buf), "Subsample%s_uchar4", function_infix);
+-    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_uchar4, s->cu_module, buf));
 -    if (ret < 0)
 -        goto fail;
 -
--    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_ushort2, s->cu_module, "Subsample_Bilinear_ushort2"));
+-    snprintf(buf, sizeof(buf), "Subsample%s_ushort", function_infix);
+-    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_ushort, s->cu_module, buf));
 -    if (ret < 0)
 -        goto fail;
 -
--    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_ushort4, s->cu_module, "Subsample_Bilinear_ushort4"));
+-    snprintf(buf, sizeof(buf), "Subsample%s_ushort2", function_infix);
+-    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_ushort2, s->cu_module, buf));
 -    if (ret < 0)
 -        goto fail;
 -
+-    snprintf(buf, sizeof(buf), "Subsample%s_ushort4", function_infix);
+-    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_ushort4, s->cu_module, buf));
++    ret = CHECK_CU(cu->cuModuleLoadData(&s->cu_module, vf_scale_cuda_ptx));
+     if (ret < 0)
+         goto fail;
+ 
 +#define VARIANT(NAME) \
 +    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_ ## NAME, s->cu_module, "Subsample_Bilinear_" #NAME)); \
 +    if (ret < 0) \
@@ -379,7 +694,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
  
      CHECK_CU(cu->cuCtxPopCurrent(&dummy));
  
-@@ -322,6 +433,53 @@ static av_cold int cudascale_config_prop
+@@ -376,6 +413,53 @@ static av_cold int cudascale_config_prop
      if (ret < 0)
          return ret;
  
@@ -430,28 +745,47 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
 +            goto fail;
 +    }
 +
-     av_log(ctx, AV_LOG_VERBOSE, "w:%d h:%d -> w:%d h:%d\n",
-            inlink->w, inlink->h, outlink->w, outlink->h);
+     av_log(ctx, AV_LOG_VERBOSE, "w:%d h:%d -> w:%d h:%d%s\n",
+            inlink->w, inlink->h, outlink->w, outlink->h, s->passthrough ? " (passthrough)" : "");
  
-@@ -348,7 +506,7 @@ static int call_resize_kernel(AVFilterCo
+@@ -396,21 +480,18 @@ fail:
+ static int call_resize_kernel(AVFilterContext *ctx, CUfunction func, int channels,
+                               uint8_t *src_dptr, int src_width, int src_height, int src_pitch,
+                               uint8_t *dst_dptr, int dst_width, int dst_height, int dst_pitch,
+-                              int pixel_size, int bit_depth)
++                              int pixel_size)
+ {
+     CUDAScaleContext *s = ctx->priv;
      CudaFunctions *cu = s->hwctx->internal->cuda_dl;
      CUdeviceptr dst_devptr = (CUdeviceptr)dst_dptr;
      CUtexObject tex = 0;
--    void *args_uchar[] = { &tex, &dst_devptr, &dst_width, &dst_height, &dst_pitch, &src_width, &src_height };
+-    void *args_uchar[] = { &tex, &dst_devptr, &dst_width, &dst_height, &dst_pitch,
+-                           &src_width, &src_height, &bit_depth, &s->param };
 +    void *args_uchar[] = { &tex, &dst_devptr, &dst_width, &dst_height, &dst_pitch, &src_width, &src_height, &s->ditherTex };
      int ret;
  
      CUDA_TEXTURE_DESC tex_desc = {
-@@ -364,7 +522,7 @@ static int call_resize_kernel(AVFilterCo
-         .res.pitch2D.numChannels = channels,
-         .res.pitch2D.width = src_width,
-         .res.pitch2D.height = src_height,
--        .res.pitch2D.pitchInBytes = src_pitch * pixel_size,
-+        .res.pitch2D.pitchInBytes = src_pitch,
+-        .filterMode = s->interp_use_linear ?
+-                      CU_TR_FILTER_MODE_LINEAR :
+-                      CU_TR_FILTER_MODE_POINT,
+-        .flags = s->interp_as_integer ? CU_TRSF_READ_AS_INTEGER : 0,
++        .filterMode = CU_TR_FILTER_MODE_LINEAR,
++        .flags = CU_TRSF_READ_AS_INTEGER,
+     };
+ 
+     CUDA_RESOURCE_DESC res_desc = {
+@@ -425,10 +506,6 @@ static int call_resize_kernel(AVFilterCo
          .res.pitch2D.devPtr = (CUdeviceptr)src_dptr,
      };
  
-@@ -386,84 +544,37 @@ exit:
+-    // Handling of channels is done via vector-types in cuda, so their size is implicitly part of the pitch
+-    // Same for pixel_size, which is represented via datatypes on the cuda side of things.
+-    dst_pitch /= channels * pixel_size;
+-
+     ret = CHECK_CU(cu->cuTexObjectCreate(&tex, &res_desc, &tex_desc, NULL));
+     if (ret < 0)
+         goto exit;
+@@ -447,91 +524,37 @@ exit:
  static int scalecuda_resize(AVFilterContext *ctx,
                              AVFrame *out, AVFrame *in)
  {
@@ -463,73 +797,80 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
 -        call_resize_kernel(ctx, s->cu_func_uchar, 1,
 -                           in->data[0], in->width, in->height, in->linesize[0],
 -                           out->data[0], out->width, out->height, out->linesize[0],
--                           1);
+-                           1, 8);
 -        call_resize_kernel(ctx, s->cu_func_uchar, 1,
--                           in->data[1], in->width/2, in->height/2, in->linesize[0]/2,
--                           out->data[1], out->width/2, out->height/2, out->linesize[0]/2,
--                           1);
+-                           in->data[1], in->width / 2, in->height / 2, in->linesize[1],
+-                           out->data[1], out->width / 2, out->height / 2, out->linesize[1],
+-                           1, 8);
 -        call_resize_kernel(ctx, s->cu_func_uchar, 1,
--                           in->data[2], in->width/2, in->height/2, in->linesize[0]/2,
--                           out->data[2], out->width/2, out->height/2, out->linesize[0]/2,
--                           1);
+-                           in->data[2], in->width / 2, in->height / 2, in->linesize[2],
+-                           out->data[2], out->width / 2, out->height / 2, out->linesize[2],
+-                           1, 8);
 -        break;
 -    case AV_PIX_FMT_YUV444P:
 -        call_resize_kernel(ctx, s->cu_func_uchar, 1,
 -                           in->data[0], in->width, in->height, in->linesize[0],
 -                           out->data[0], out->width, out->height, out->linesize[0],
--                           1);
+-                           1, 8);
 -        call_resize_kernel(ctx, s->cu_func_uchar, 1,
--                           in->data[1], in->width, in->height, in->linesize[0],
--                           out->data[1], out->width, out->height, out->linesize[0],
--                           1);
+-                           in->data[1], in->width, in->height, in->linesize[1],
+-                           out->data[1], out->width, out->height, out->linesize[1],
+-                           1, 8);
 -        call_resize_kernel(ctx, s->cu_func_uchar, 1,
--                           in->data[2], in->width, in->height, in->linesize[0],
--                           out->data[2], out->width, out->height, out->linesize[0],
--                           1);
+-                           in->data[2], in->width, in->height, in->linesize[2],
+-                           out->data[2], out->width, out->height, out->linesize[2],
+-                           1, 8);
 -        break;
 -    case AV_PIX_FMT_YUV444P16:
 -        call_resize_kernel(ctx, s->cu_func_ushort, 1,
--                           in->data[0], in->width, in->height, in->linesize[0] / 2,
--                           out->data[0], out->width, out->height, out->linesize[0] / 2,
--                           2);
+-                           in->data[0], in->width, in->height, in->linesize[0],
+-                           out->data[0], out->width, out->height, out->linesize[0],
+-                           2, 16);
 -        call_resize_kernel(ctx, s->cu_func_ushort, 1,
--                           in->data[1], in->width, in->height, in->linesize[1] / 2,
--                           out->data[1], out->width, out->height, out->linesize[1] / 2,
--                           2);
+-                           in->data[1], in->width, in->height, in->linesize[1],
+-                           out->data[1], out->width, out->height, out->linesize[1],
+-                           2, 16);
 -        call_resize_kernel(ctx, s->cu_func_ushort, 1,
--                           in->data[2], in->width, in->height, in->linesize[2] / 2,
--                           out->data[2], out->width, out->height, out->linesize[2] / 2,
--                           2);
+-                           in->data[2], in->width, in->height, in->linesize[2],
+-                           out->data[2], out->width, out->height, out->linesize[2],
+-                           2, 16);
 -        break;
 -    case AV_PIX_FMT_NV12:
 -        call_resize_kernel(ctx, s->cu_func_uchar, 1,
 -                           in->data[0], in->width, in->height, in->linesize[0],
 -                           out->data[0], out->width, out->height, out->linesize[0],
--                           1);
+-                           1, 8);
 -        call_resize_kernel(ctx, s->cu_func_uchar2, 2,
--                           in->data[1], in->width/2, in->height/2, in->linesize[1],
--                           out->data[1], out->width/2, out->height/2, out->linesize[1]/2,
--                           1);
+-                           in->data[1], in->width / 2, in->height / 2, in->linesize[1],
+-                           out->data[1], out->width / 2, out->height / 2, out->linesize[1],
+-                           1, 8);
 -        break;
 -    case AV_PIX_FMT_P010LE:
 -        call_resize_kernel(ctx, s->cu_func_ushort, 1,
--                           in->data[0], in->width, in->height, in->linesize[0]/2,
--                           out->data[0], out->width, out->height, out->linesize[0]/2,
--                           2);
+-                           in->data[0], in->width, in->height, in->linesize[0],
+-                           out->data[0], out->width, out->height, out->linesize[0],
+-                           2, 10);
 -        call_resize_kernel(ctx, s->cu_func_ushort2, 2,
--                           in->data[1], in->width / 2, in->height / 2, in->linesize[1]/2,
--                           out->data[1], out->width / 2, out->height / 2, out->linesize[1] / 4,
--                           2);
+-                           in->data[1], in->width / 2, in->height / 2, in->linesize[1],
+-                           out->data[1], out->width / 2, out->height / 2, out->linesize[1],
+-                           2, 10);
 -        break;
 -    case AV_PIX_FMT_P016LE:
 -        call_resize_kernel(ctx, s->cu_func_ushort, 1,
--                           in->data[0], in->width, in->height, in->linesize[0] / 2,
--                           out->data[0], out->width, out->height, out->linesize[0] / 2,
--                           2);
+-                           in->data[0], in->width, in->height, in->linesize[0],
+-                           out->data[0], out->width, out->height, out->linesize[0],
+-                           2, 16);
 -        call_resize_kernel(ctx, s->cu_func_ushort2, 2,
--                           in->data[1], in->width / 2, in->height / 2, in->linesize[1] / 2,
--                           out->data[1], out->width / 2, out->height / 2, out->linesize[1] / 4,
--                           2);
+-                           in->data[1], in->width / 2, in->height / 2, in->linesize[1],
+-                           out->data[1], out->width / 2, out->height / 2, out->linesize[1],
+-                           2, 16);
+-        break;
+-    case AV_PIX_FMT_0RGB32:
+-    case AV_PIX_FMT_0BGR32:
+-        call_resize_kernel(ctx, s->cu_func_uchar4, 4,
+-                           in->data[0], in->width, in->height, in->linesize[0],
+-                           out->data[0], out->width, out->height, out->linesize[0],
+-                           1, 8);
 -        break;
 -    default:
 -        return AVERROR_BUG;
@@ -565,33 +906,56 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.c
      }
  
      return 0;
-@@ -542,6 +653,7 @@ fail:
+@@ -621,20 +644,15 @@ static AVFrame *cudascale_get_video_buff
+ #define OFFSET(x) offsetof(CUDAScaleContext, x)
+ #define FLAGS (AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM)
  static const AVOption options[] = {
-     { "w",      "Output video width",  OFFSET(w_expr),     AV_OPT_TYPE_STRING, { .str = "iw"   }, .flags = FLAGS },
-     { "h",      "Output video height", OFFSET(h_expr),     AV_OPT_TYPE_STRING, { .str = "ih"   }, .flags = FLAGS },
+-    { "w", "Output video width",  OFFSET(w_expr), AV_OPT_TYPE_STRING, { .str = "iw" }, .flags = FLAGS },
+-    { "h", "Output video height", OFFSET(h_expr), AV_OPT_TYPE_STRING, { .str = "ih" }, .flags = FLAGS },
+-    { "interp_algo", "Interpolation algorithm used for resizing", OFFSET(interp_algo), AV_OPT_TYPE_INT, { .i64 = INTERP_ALGO_DEFAULT }, 0, INTERP_ALGO_COUNT - 1, FLAGS, "interp_algo" },
+-        { "nearest",  "nearest neighbour", 0, AV_OPT_TYPE_CONST, { .i64 = INTERP_ALGO_NEAREST }, 0, 0, FLAGS, "interp_algo" },
+-        { "bilinear", "bilinear", 0, AV_OPT_TYPE_CONST, { .i64 = INTERP_ALGO_BILINEAR }, 0, 0, FLAGS, "interp_algo" },
+-        { "bicubic",  "bicubic",  0, AV_OPT_TYPE_CONST, { .i64 = INTERP_ALGO_BICUBIC  }, 0, 0, FLAGS, "interp_algo" },
+-        { "lanczos",  "lanczos",  0, AV_OPT_TYPE_CONST, { .i64 = INTERP_ALGO_LANCZOS  }, 0, 0, FLAGS, "interp_algo" },
++    { "w",      "Output video width",  OFFSET(w_expr),     AV_OPT_TYPE_STRING, { .str = "iw"   }, .flags = FLAGS },
++    { "h",      "Output video height", OFFSET(h_expr),     AV_OPT_TYPE_STRING, { .str = "ih"   }, .flags = FLAGS },
 +    { "format", "Output format",       OFFSET(format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
-     { "force_original_aspect_ratio", "decrease or increase w/h if necessary to keep the original AR", OFFSET(force_original_aspect_ratio), AV_OPT_TYPE_INT, { .i64 = 0}, 0, 2, FLAGS, "force_oar" },
-     { "disable",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 0 }, 0, 0, FLAGS, "force_oar" },
-     { "decrease", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 1 }, 0, 0, FLAGS, "force_oar" },
+     { "passthrough", "Do not process frames at all if parameters match", OFFSET(passthrough), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
+-    { "param", "Algorithm-Specific parameter", OFFSET(param), AV_OPT_TYPE_FLOAT, { .dbl = SCALE_CUDA_PARAM_DEFAULT }, -FLT_MAX, FLT_MAX, FLAGS },
+-    { "force_original_aspect_ratio", "decrease or increase w/h if necessary to keep the original AR", OFFSET(force_original_aspect_ratio), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, FLAGS, "force_oar" },
+-        { "disable",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 0 }, 0, 0, FLAGS, "force_oar" },
+-        { "decrease", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 1 }, 0, 0, FLAGS, "force_oar" },
+-        { "increase", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 2 }, 0, 0, FLAGS, "force_oar" },
+-    { "force_divisible_by", "enforce that the output resolution is divisible by a defined integer when force_original_aspect_ratio is used", OFFSET(force_divisible_by), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS },
++    { "force_original_aspect_ratio", "decrease or increase w/h if necessary to keep the original AR", OFFSET(force_original_aspect_ratio), AV_OPT_TYPE_INT, { .i64 = 0}, 0, 2, FLAGS, "force_oar" },
++    { "disable",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 0 }, 0, 0, FLAGS, "force_oar" },
++    { "decrease", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 1 }, 0, 0, FLAGS, "force_oar" },
++    { "increase", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 2 }, 0, 0, FLAGS, "force_oar" },
++    { "force_divisible_by", "enforce that the output resolution is divisible by a defined integer when force_original_aspect_ratio is used", OFFSET(force_divisible_by), AV_OPT_TYPE_INT, { .i64 = 1}, 1, 256, FLAGS },
+     { NULL },
+ };
+ 
 Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_scale_cuda.cu
 +++ jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
-@@ -20,164 +20,115 @@
+@@ -20,35 +20,115 @@
   * DEALINGS IN THE SOFTWARE.
   */
  
--extern "C" {
+-#include "cuda/vector_helpers.cuh"
 +typedef unsigned char uchar;
 +typedef unsigned short ushort;
-+
+ 
+-template<typename T>
+-__device__ inline void Subsample_Nearest(cudaTextureObject_t tex,
+-                                         T *dst,
+-                                         int dst_width, int dst_height, int dst_pitch,
+-                                         int src_width, int src_height,
+-                                         int bit_depth)
 +#define SHIFTDOWN(val) (dstbase)(val >> abs(2 + shift))
 +#define SHIFTUP(val)   (dstbase)(val << abs(-shift - 2))
- 
--__global__ void Subsample_Bilinear_uchar(cudaTextureObject_t uchar_tex,
--                                    unsigned char *dst,
--                                    int dst_width, int dst_height, int dst_pitch,
--                                    int src_width, int src_height)
++
 +template<class SRC, class DST, int shift, int dither> struct add_conv_shift1_d
  {
 -    int xo = blockIdx.x * blockDim.x + threadIdx.x;
@@ -605,19 +969,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
 -        float vscale = (float)src_height / (float)dst_height;
 -        float xi = (xo + 0.5f) * hscale;
 -        float yi = (yo + 0.5f) * vscale;
--        // 3-tap filter weights are {wh,1.0,wh} and {wv,1.0,wv}
--        float wh = min(max(0.5f * (hscale - 1.0f), 0.0f), 1.0f);
--        float wv = min(max(0.5f * (vscale - 1.0f), 0.0f), 1.0f);
--        // Convert weights to two bilinear weights -> {wh,1.0,wh} -> {wh,0.5,0} + {0,0.5,wh}
--        float dx = wh / (0.5f + wh);
--        float dy = wv / (0.5f + wv);
--        int y0 = tex2D<unsigned char>(uchar_tex, xi-dx, yi-dy);
--        int y1 = tex2D<unsigned char>(uchar_tex, xi+dx, yi-dy);
--        int y2 = tex2D<unsigned char>(uchar_tex, xi-dx, yi+dy);
--        int y3 = tex2D<unsigned char>(uchar_tex, xi+dx, yi+dy);
--        dst[yo*dst_pitch+xo] = (unsigned char)((y0+y1+y2+y3+2) >> 2);
 +        unsigned ret = (unsigned)i1 + (unsigned)i2 + (unsigned)i3 + (unsigned)i4 + ((1 + d) >> (sizeof(SRC) * 8 - dither + 3));
-+
+ 
+-        dst[yo*dst_pitch+xo] = tex2D<T>(tex, xi, yi);
 +        if (shift > -2)
 +            return SHIFTDOWN(ret);
 +        else
@@ -625,82 +979,34 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
      }
 -}
 +};
- 
--__global__ void Subsample_Bilinear_uchar2(cudaTextureObject_t uchar2_tex,
--                                    uchar2 *dst,
--                                    int dst_width, int dst_height, int dst_pitch2,
--                                    int src_width, int src_height)
++
 +template<class SRC, class DST, int shift, int dither> struct add_conv_shift1
- {
--    int xo = blockIdx.x * blockDim.x + threadIdx.x;
--    int yo = blockIdx.y * blockDim.y + threadIdx.y;
++{
 +    typedef DST dstbase;
  
--    if (yo < dst_height && xo < dst_width)
+-template<typename T>
+-__device__ inline void Subsample_Bilinear(cudaTextureObject_t tex,
+-                                          T *dst,
+-                                          int dst_width, int dst_height, int dst_pitch,
+-                                          int src_width, int src_height,
+-                                          int bit_depth)
 +    __inline__ __device__ DST operator()(SRC i1, SRC i2, SRC i3, SRC i4, ushort d)
-     {
--        float hscale = (float)src_width / (float)dst_width;
--        float vscale = (float)src_height / (float)dst_height;
--        float xi = (xo + 0.5f) * hscale;
--        float yi = (yo + 0.5f) * vscale;
--        // 3-tap filter weights are {wh,1.0,wh} and {wv,1.0,wv}
--        float wh = min(max(0.5f * (hscale - 1.0f), 0.0f), 1.0f);
--        float wv = min(max(0.5f * (vscale - 1.0f), 0.0f), 1.0f);
--        // Convert weights to two bilinear weights -> {wh,1.0,wh} -> {wh,0.5,0} + {0,0.5,wh}
--        float dx = wh / (0.5f + wh);
--        float dy = wv / (0.5f + wv);
--        uchar2 c0 = tex2D<uchar2>(uchar2_tex, xi-dx, yi-dy);
--        uchar2 c1 = tex2D<uchar2>(uchar2_tex, xi+dx, yi-dy);
--        uchar2 c2 = tex2D<uchar2>(uchar2_tex, xi-dx, yi+dy);
--        uchar2 c3 = tex2D<uchar2>(uchar2_tex, xi+dx, yi+dy);
--        int2 uv;
--        uv.x = ((int)c0.x+(int)c1.x+(int)c2.x+(int)c3.x+2) >> 2;
--        uv.y = ((int)c0.y+(int)c1.y+(int)c2.y+(int)c3.y+2) >> 2;
--        dst[yo*dst_pitch2+xo] = make_uchar2((unsigned char)uv.x, (unsigned char)uv.y);
++    {
 +        unsigned ret = (unsigned)i1 + (unsigned)i2 + (unsigned)i3 + (unsigned)i4 + 2;
 +
 +        if (shift > -2)
 +            return SHIFTDOWN(ret);
 +        else
 +            return SHIFTUP(ret);
-     }
--}
++    }
 +};
- 
--__global__ void Subsample_Bilinear_uchar4(cudaTextureObject_t uchar4_tex,
--                                    uchar4 *dst,
--                                    int dst_width, int dst_height, int dst_pitch,
--                                    int src_width, int src_height)
++
 +template<class SRC, class DST, int shift, int dither> struct add_conv_shift2
- {
--    int xo = blockIdx.x * blockDim.x + threadIdx.x;
--    int yo = blockIdx.y * blockDim.y + threadIdx.y;
++{
 +    typedef decltype(DST::x) dstbase;
- 
--    if (yo < dst_height && xo < dst_width)
++
 +    __inline__ __device__ DST operator()(SRC i1, SRC i2, SRC i3, SRC i4, ushort d)
-     {
--        float hscale = (float)src_width / (float)dst_width;
--        float vscale = (float)src_height / (float)dst_height;
--        float xi = (xo + 0.5f) * hscale;
--        float yi = (yo + 0.5f) * vscale;
--        // 3-tap filter weights are {wh,1.0,wh} and {wv,1.0,wv}
--        float wh = min(max(0.5f * (hscale - 1.0f), 0.0f), 1.0f);
--        float wv = min(max(0.5f * (vscale - 1.0f), 0.0f), 1.0f);
--        // Convert weights to two bilinear weights -> {wh,1.0,wh} -> {wh,0.5,0} + {0,0.5,wh}
--        float dx = wh / (0.5f + wh);
--        float dy = wv / (0.5f + wv);
--        uchar4 c0 = tex2D<uchar4>(uchar4_tex, xi-dx, yi-dy);
--        uchar4 c1 = tex2D<uchar4>(uchar4_tex, xi+dx, yi-dy);
--        uchar4 c2 = tex2D<uchar4>(uchar4_tex, xi-dx, yi+dy);
--        uchar4 c3 = tex2D<uchar4>(uchar4_tex, xi+dx, yi+dy);
--        int4 res;
--        res.x =  ((int)c0.x+(int)c1.x+(int)c2.x+(int)c3.x+2) >> 2;
--        res.y =  ((int)c0.y+(int)c1.y+(int)c2.y+(int)c3.y+2) >> 2;
--        res.z =  ((int)c0.z+(int)c1.z+(int)c2.z+(int)c3.z+2) >> 2;
--        res.w =  ((int)c0.w+(int)c1.w+(int)c2.w+(int)c3.w+2) >> 2;
--        dst[yo*dst_pitch+xo] = make_uchar4(
--            (unsigned char)res.x, (unsigned char)res.y, (unsigned char)res.z, (unsigned char)res.w);
++    {
 +        unsigned retx = (unsigned)i1.x + (unsigned)i2.x + (unsigned)i3.x + (unsigned)i4.x + 2;
 +        unsigned rety = (unsigned)i1.y + (unsigned)i2.y + (unsigned)i3.y + (unsigned)i4.y + 2;
 +
@@ -708,80 +1014,31 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
 +            return { SHIFTDOWN(retx), SHIFTDOWN(rety) };
 +        else
 +            return { SHIFTUP(retx),   SHIFTUP(rety)   };
-     }
--}
++    }
 +};
- 
--__global__ void Subsample_Bilinear_ushort(cudaTextureObject_t ushort_tex,
--                                    unsigned short *dst,
--                                    int dst_width, int dst_height, int dst_pitch,
--                                    int src_width, int src_height)
++
 +template<class SRC, class DST, int shift, int dither> struct add_conv_shift2_x
- {
--    int xo = blockIdx.x * blockDim.x + threadIdx.x;
--    int yo = blockIdx.y * blockDim.y + threadIdx.y;
++{
 +    __inline__ __device__ DST operator()(SRC i1, SRC i2, SRC i3, SRC i4, ushort d)
 +    {
 +        return add_conv_shift1<unsigned, DST, shift, dither>()(i1.x, i2.x, i3.x, i4.x, d);
 +    }
 +};
- 
--    if (yo < dst_height && xo < dst_width)
++
 +template<class SRC, class DST, int shift, int dither> struct add_conv_shift2_y
 +{
 +    __inline__ __device__ DST operator()(SRC i1, SRC i2, SRC i3, SRC i4, ushort d)
-     {
--        float hscale = (float)src_width / (float)dst_width;
--        float vscale = (float)src_height / (float)dst_height;
--        float xi = (xo + 0.5f) * hscale;
--        float yi = (yo + 0.5f) * vscale;
--        // 3-tap filter weights are {wh,1.0,wh} and {wv,1.0,wv}
--        float wh = min(max(0.5f * (hscale - 1.0f), 0.0f), 1.0f);
--        float wv = min(max(0.5f * (vscale - 1.0f), 0.0f), 1.0f);
--        // Convert weights to two bilinear weights -> {wh,1.0,wh} -> {wh,0.5,0} + {0,0.5,wh}
--        float dx = wh / (0.5f + wh);
--        float dy = wv / (0.5f + wv);
--        int y0 = tex2D<unsigned short>(ushort_tex, xi-dx, yi-dy);
--        int y1 = tex2D<unsigned short>(ushort_tex, xi+dx, yi-dy);
--        int y2 = tex2D<unsigned short>(ushort_tex, xi-dx, yi+dy);
--        int y3 = tex2D<unsigned short>(ushort_tex, xi+dx, yi+dy);
--        dst[yo*dst_pitch+xo] = (unsigned short)((y0+y1+y2+y3+2) >> 2);
++    {
 +        return add_conv_shift1<unsigned, DST, shift, dither>()(i1.y, i2.y, i3.y, i4.y, d);
-     }
--}
++    }
 +};
- 
--__global__ void Subsample_Bilinear_ushort2(cudaTextureObject_t ushort2_tex,
--                                    ushort2 *dst,
--                                    int dst_width, int dst_height, int dst_pitch2,
--                                    int src_width, int src_height)
++
 +template<class SRC, class DST, int shift, int dither> struct add_conv_shift3
- {
--    int xo = blockIdx.x * blockDim.x + threadIdx.x;
--    int yo = blockIdx.y * blockDim.y + threadIdx.y;
++{
 +    typedef decltype(DST::x) dstbase;
- 
--    if (yo < dst_height && xo < dst_width)
++
 +    __inline__ __device__ DST operator()(SRC i1, SRC i2, SRC i3, SRC i4, ushort d)
-     {
--        float hscale = (float)src_width / (float)dst_width;
--        float vscale = (float)src_height / (float)dst_height;
--        float xi = (xo + 0.5f) * hscale;
--        float yi = (yo + 0.5f) * vscale;
--        // 3-tap filter weights are {wh,1.0,wh} and {wv,1.0,wv}
--        float wh = min(max(0.5f * (hscale - 1.0f), 0.0f), 1.0f);
--        float wv = min(max(0.5f * (vscale - 1.0f), 0.0f), 1.0f);
--        // Convert weights to two bilinear weights -> {wh,1.0,wh} -> {wh,0.5,0} + {0,0.5,wh}
--        float dx = wh / (0.5f + wh);
--        float dy = wv / (0.5f + wv);
--        ushort2 c0 = tex2D<ushort2>(ushort2_tex, xi-dx, yi-dy);
--        ushort2 c1 = tex2D<ushort2>(ushort2_tex, xi+dx, yi-dy);
--        ushort2 c2 = tex2D<ushort2>(ushort2_tex, xi-dx, yi+dy);
--        ushort2 c3 = tex2D<ushort2>(ushort2_tex, xi+dx, yi+dy);
--        int2 uv;
--        uv.x = ((int)c0.x+(int)c1.x+(int)c2.x+(int)c3.x+2) >> 2;
--        uv.y = ((int)c0.y+(int)c1.y+(int)c2.y+(int)c3.y+2) >> 2;
--        dst[yo*dst_pitch2+xo] = make_ushort2((unsigned short)uv.x, (unsigned short)uv.y);
++    {
 +        unsigned retx = (unsigned)i1.x + (unsigned)i2.x + (unsigned)i3.x + (unsigned)i4.x + 2;
 +        unsigned rety = (unsigned)i1.y + (unsigned)i2.y + (unsigned)i3.y + (unsigned)i4.y + 2;
 +        unsigned retz = (unsigned)i1.z + (unsigned)i2.z + (unsigned)i3.z + (unsigned)i4.z + 2;
@@ -790,8 +1047,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
 +            return { SHIFTDOWN(retx), SHIFTDOWN(rety), SHIFTDOWN(retz) };
 +        else
 +            return { SHIFTUP(retx),   SHIFTUP(rety),   SHIFTUP(retz)   };
-     }
--}
++    }
 +};
 +
 +template<class SRC, class DST, int shift, int dither> struct add_conv_shift4
@@ -804,11 +1060,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
 +        unsigned rety = (unsigned)i1.y + (unsigned)i2.y + (unsigned)i3.y + (unsigned)i4.y + 2;
 +        unsigned retz = (unsigned)i1.z + (unsigned)i2.z + (unsigned)i3.z + (unsigned)i4.z + 2;
 +        unsigned retw = (unsigned)i1.w + (unsigned)i2.w + (unsigned)i3.w + (unsigned)i4.w + 2;
- 
--__global__ void Subsample_Bilinear_ushort4(cudaTextureObject_t ushort4_tex,
--                                    ushort4 *dst,
--                                    int dst_width, int dst_height, int dst_pitch,
--                                    int src_width, int src_height)
++
 +        if (shift > -2)
 +            return { SHIFTDOWN(retx), SHIFTDOWN(rety), SHIFTDOWN(retz), SHIFTDOWN(retw) };
 +        else
@@ -825,22 +1077,17 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
  {
      int xo = blockIdx.x * blockDim.x + threadIdx.x;
      int yo = blockIdx.y * blockDim.y + threadIdx.y;
-@@ -194,18 +145,49 @@ __global__ void Subsample_Bilinear_ushor
-         // Convert weights to two bilinear weights -> {wh,1.0,wh} -> {wh,0.5,0} + {0,0.5,wh}
+@@ -66,58 +146,48 @@ __device__ inline void Subsample_Bilinea
          float dx = wh / (0.5f + wh);
          float dy = wv / (0.5f + wv);
--        ushort4 c0 = tex2D<ushort4>(ushort4_tex, xi-dx, yi-dy);
--        ushort4 c1 = tex2D<ushort4>(ushort4_tex, xi+dx, yi-dy);
--        ushort4 c2 = tex2D<ushort4>(ushort4_tex, xi-dx, yi+dy);
--        ushort4 c3 = tex2D<ushort4>(ushort4_tex, xi+dx, yi+dy);
--        int4 res;
--        res.x =  ((int)c0.x+(int)c1.x+(int)c2.x+(int)c3.x+2) >> 2;
--        res.y =  ((int)c0.y+(int)c1.y+(int)c2.y+(int)c3.y+2) >> 2;
--        res.z =  ((int)c0.z+(int)c1.z+(int)c2.z+(int)c3.z+2) >> 2;
--        res.w =  ((int)c0.w+(int)c1.w+(int)c2.w+(int)c3.w+2) >> 2;
--        dst[yo*dst_pitch+xo] = make_ushort4(
--            (unsigned short)res.x, (unsigned short)res.y, (unsigned short)res.z, (unsigned short)res.w);
-+
+ 
+-        intT r = { 0 };
+-        vec_set_scalar(r, 2);
+-        r += tex2D<T>(tex, xi - dx, yi - dy);
+-        r += tex2D<T>(tex, xi + dx, yi - dy);
+-        r += tex2D<T>(tex, xi - dx, yi + dy);
+-        r += tex2D<T>(tex, xi + dx, yi + dy);
+-        vec_set(dst[yo*dst_pitch+xo], r >> 2);
 +        SRC i0 = tex2D<SRC>(tex, xi-dx, yi-dy);
 +        SRC i1 = tex2D<SRC>(tex, xi+dx, yi-dy);
 +        SRC i2 = tex2D<SRC>(tex, xi-dx, yi+dy);
@@ -852,8 +1099,49 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
      }
  }
  
-+extern "C" {
-+
+ extern "C" {
+ 
+-#define NEAREST_KERNEL(T) \
+-    __global__ void Subsample_Nearest_ ## T(cudaTextureObject_t src_tex,                  \
+-                                            T *dst,                                       \
+-                                            int dst_width, int dst_height, int dst_pitch, \
+-                                            int src_width, int src_height,                \
+-                                            int bit_depth)                                \
+-    {                                                                                     \
+-        Subsample_Nearest<T>(src_tex, dst,                                                \
+-                              dst_width, dst_height, dst_pitch,                           \
+-                              src_width, src_height,                                      \
+-                              bit_depth);                                                 \
+-    }
+-
+-NEAREST_KERNEL(uchar)
+-NEAREST_KERNEL(uchar2)
+-NEAREST_KERNEL(uchar4)
+-
+-NEAREST_KERNEL(ushort)
+-NEAREST_KERNEL(ushort2)
+-NEAREST_KERNEL(ushort4)
+-
+-#define BILINEAR_KERNEL(T) \
+-    __global__ void Subsample_Bilinear_ ## T(cudaTextureObject_t src_tex,                  \
+-                                             T *dst,                                       \
+-                                             int dst_width, int dst_height, int dst_pitch, \
+-                                             int src_width, int src_height,                \
+-                                             int bit_depth)                                \
+-    {                                                                                      \
+-        Subsample_Bilinear<T>(src_tex, dst,                                                \
+-                              dst_width, dst_height, dst_pitch,                            \
+-                              src_width, src_height,                                       \
+-                              bit_depth);                                                  \
+-    }
+-
+-BILINEAR_KERNEL(uchar)
+-BILINEAR_KERNEL(uchar2)
+-BILINEAR_KERNEL(uchar4)
+-
+-BILINEAR_KERNEL(ushort)
+-BILINEAR_KERNEL(ushort2)
+-BILINEAR_KERNEL(ushort4)
 +#define VARIANT(SRC, DST, CONV, SHIFT, PITCH, DITHER, NAME) \
 +__global__ void Subsample_Bilinear_ ## NAME(cudaTextureObject_t tex, \
 +                                    DST *dst, \
@@ -884,5 +1172,267 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.cu
 +// Conversion between 8- and 16-bit
 +VARIANTSET(uchar,  ushort, 8,  16)
 +VARIANTSET(ushort, uchar,  16, 8)
-+
+ 
  }
+Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/vf_scale_cuda.h
++++ /dev/null
+@@ -1,28 +0,0 @@
+-/*
+- * This file is part of FFmpeg.
+- *
+- * Permission is hereby granted, free of charge, to any person obtaining a
+- * copy of this software and associated documentation files (the "Software"),
+- * to deal in the Software without restriction, including without limitation
+- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+- * and/or sell copies of the Software, and to permit persons to whom the
+- * Software is furnished to do so, subject to the following conditions:
+- *
+- * The above copyright notice and this permission notice shall be included in
+- * all copies or substantial portions of the Software.
+- *
+- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+- * DEALINGS IN THE SOFTWARE.
+- */
+-
+-#ifndef AVFILTER_SCALE_CUDA_H
+-#define AVFILTER_SCALE_CUDA_H
+-
+-#define SCALE_CUDA_PARAM_DEFAULT 999999.0f
+-
+-#endif
+Index: jellyfin-ffmpeg/libavfilter/vf_scale_cuda_bicubic.cu
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/vf_scale_cuda_bicubic.cu
++++ /dev/null
+@@ -1,224 +0,0 @@
+-/*
+- * This file is part of FFmpeg.
+- *
+- * Permission is hereby granted, free of charge, to any person obtaining a
+- * copy of this software and associated documentation files (the "Software"),
+- * to deal in the Software without restriction, including without limitation
+- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+- * and/or sell copies of the Software, and to permit persons to whom the
+- * Software is furnished to do so, subject to the following conditions:
+- *
+- * The above copyright notice and this permission notice shall be included in
+- * all copies or substantial portions of the Software.
+- *
+- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+- * DEALINGS IN THE SOFTWARE.
+- */
+-
+-#include "cuda/vector_helpers.cuh"
+-#include "vf_scale_cuda.h"
+-
+-typedef float4 (*coeffs_function_t)(float, float);
+-
+-__device__ inline float4 lanczos_coeffs(float x, float param)
+-{
+-    const float pi = 3.141592654f;
+-
+-    float4 res = make_float4(
+-        pi * (x + 1),
+-        pi * x,
+-        pi * (x - 1),
+-        pi * (x - 2));
+-
+-    res.x = res.x == 0.0f ? 1.0f :
+-        __sinf(res.x) * __sinf(res.x / 2.0f) / (res.x * res.x / 2.0f);
+-    res.y = res.y == 0.0f ? 1.0f :
+-        __sinf(res.y) * __sinf(res.y / 2.0f) / (res.y * res.y / 2.0f);
+-    res.z = res.z == 0.0f ? 1.0f :
+-        __sinf(res.z) * __sinf(res.z / 2.0f) / (res.z * res.z / 2.0f);
+-    res.w = res.w == 0.0f ? 1.0f :
+-        __sinf(res.w) * __sinf(res.w / 2.0f) / (res.w * res.w / 2.0f);
+-
+-    return res / (res.x + res.y + res.z + res.w);
+-}
+-
+-__device__ inline float4 bicubic_coeffs(float x, float param)
+-{
+-    const float A = param == SCALE_CUDA_PARAM_DEFAULT ? 0.0f : -param;
+-
+-    float4 res;
+-    res.x = ((A * (x + 1) - 5 * A) * (x + 1) + 8 * A) * (x + 1) - 4 * A;
+-    res.y = ((A + 2) * x - (A + 3)) * x * x + 1;
+-    res.z = ((A + 2) * (1 - x) - (A + 3)) * (1 - x) * (1 - x) + 1;
+-    res.w = 1.0f - res.x - res.y - res.z;
+-
+-    return res;
+-}
+-
+-__device__ inline void derived_fast_coeffs(float4 coeffs, float x, float *h0, float *h1, float *s)
+-{
+-    float g0 = coeffs.x + coeffs.y;
+-    float g1 = coeffs.z + coeffs.w;
+-
+-    *h0 = coeffs.y / g0 - 0.5f;
+-    *h1 = coeffs.w / g1 + 1.5f;
+-    *s  = g0 / (g0 + g1);
+-}
+-
+-template<typename V>
+-__device__ inline V apply_coeffs(float4 coeffs, V c0, V c1, V c2, V c3)
+-{
+-    V res = c0 * coeffs.x;
+-    res  += c1 * coeffs.y;
+-    res  += c2 * coeffs.z;
+-    res  += c3 * coeffs.w;
+-
+-    return res;
+-}
+-
+-template<typename T>
+-__device__ inline void Subsample_Bicubic(coeffs_function_t coeffs_function,
+-                                         cudaTextureObject_t src_tex,
+-                                         T *dst,
+-                                         int dst_width, int dst_height, int dst_pitch,
+-                                         int src_width, int src_height,
+-                                         int bit_depth, float param)
+-{
+-    int xo = blockIdx.x * blockDim.x + threadIdx.x;
+-    int yo = blockIdx.y * blockDim.y + threadIdx.y;
+-
+-    if (yo < dst_height && xo < dst_width)
+-    {
+-        float hscale = (float)src_width / (float)dst_width;
+-        float vscale = (float)src_height / (float)dst_height;
+-        float xi = (xo + 0.5f) * hscale - 0.5f;
+-        float yi = (yo + 0.5f) * vscale - 0.5f;
+-        float px = floor(xi);
+-        float py = floor(yi);
+-        float fx = xi - px;
+-        float fy = yi - py;
+-
+-        float factor = bit_depth > 8 ? 0xFFFF : 0xFF;
+-
+-        float4 coeffsX = coeffs_function(fx, param);
+-        float4 coeffsY = coeffs_function(fy, param);
+-
+-#define PIX(x, y) tex2D<floatT>(src_tex, (x), (y))
+-
+-        dst[yo * dst_pitch + xo] = from_floatN<T, floatT>(
+-            apply_coeffs<floatT>(coeffsY,
+-                apply_coeffs<floatT>(coeffsX, PIX(px - 1, py - 1), PIX(px, py - 1), PIX(px + 1, py - 1), PIX(px + 2, py - 1)),
+-                apply_coeffs<floatT>(coeffsX, PIX(px - 1, py    ), PIX(px, py    ), PIX(px + 1, py    ), PIX(px + 2, py    )),
+-                apply_coeffs<floatT>(coeffsX, PIX(px - 1, py + 1), PIX(px, py + 1), PIX(px + 1, py + 1), PIX(px + 2, py + 1)),
+-                apply_coeffs<floatT>(coeffsX, PIX(px - 1, py + 2), PIX(px, py + 2), PIX(px + 1, py + 2), PIX(px + 2, py + 2))
+-            ) * factor
+-        );
+-
+-#undef PIX
+-    }
+-}
+-
+-/* This does not yield correct results. Most likely because of low internal precision in tex2D linear interpolation */
+-template<typename T>
+-__device__ inline void Subsample_FastBicubic(coeffs_function_t coeffs_function,
+-                                             cudaTextureObject_t src_tex,
+-                                             T *dst,
+-                                             int dst_width, int dst_height, int dst_pitch,
+-                                             int src_width, int src_height,
+-                                             int bit_depth, float param)
+-{
+-    int xo = blockIdx.x * blockDim.x + threadIdx.x;
+-    int yo = blockIdx.y * blockDim.y + threadIdx.y;
+-
+-    if (yo < dst_height && xo < dst_width)
+-    {
+-        float hscale = (float)src_width / (float)dst_width;
+-        float vscale = (float)src_height / (float)dst_height;
+-        float xi = (xo + 0.5f) * hscale - 0.5f;
+-        float yi = (yo + 0.5f) * vscale - 0.5f;
+-        float px = floor(xi);
+-        float py = floor(yi);
+-        float fx = xi - px;
+-        float fy = yi - py;
+-
+-        float factor = bit_depth > 8 ? 0xFFFF : 0xFF;
+-
+-        float4 coeffsX = coeffs_function(fx, param);
+-        float4 coeffsY = coeffs_function(fy, param);
+-
+-        float h0x, h1x, sx;
+-        float h0y, h1y, sy;
+-        derived_fast_coeffs(coeffsX, fx, &h0x, &h1x, &sx);
+-        derived_fast_coeffs(coeffsY, fy, &h0y, &h1y, &sy);
+-
+-#define PIX(x, y) tex2D<floatT>(src_tex, (x), (y))
+-
+-        floatT pix[4] = {
+-            PIX(px + h0x, py + h0y),
+-            PIX(px + h1x, py + h0y),
+-            PIX(px + h0x, py + h1y),
+-            PIX(px + h1x, py + h1y)
+-        };
+-
+-#undef PIX
+-
+-        dst[yo * dst_pitch + xo] = from_floatN<T, floatT>(
+-            lerp_scalar(
+-                lerp_scalar(pix[3], pix[2], sx),
+-                lerp_scalar(pix[1], pix[0], sx),
+-                sy) * factor
+-        );
+-    }
+-}
+-
+-extern "C" {
+-
+-#define BICUBIC_KERNEL(T) \
+-    __global__ void Subsample_Bicubic_ ## T(cudaTextureObject_t src_tex,                  \
+-                                            T *dst,                                       \
+-                                            int dst_width, int dst_height, int dst_pitch, \
+-                                            int src_width, int src_height,                \
+-                                            int bit_depth, float param)                   \
+-    {                                                                                     \
+-        Subsample_Bicubic<T>(&bicubic_coeffs, src_tex, dst,                               \
+-                             dst_width, dst_height, dst_pitch,                            \
+-                             src_width, src_height,                                       \
+-                             bit_depth, param);                                           \
+-    }
+-
+-BICUBIC_KERNEL(uchar)
+-BICUBIC_KERNEL(uchar2)
+-BICUBIC_KERNEL(uchar4)
+-
+-BICUBIC_KERNEL(ushort)
+-BICUBIC_KERNEL(ushort2)
+-BICUBIC_KERNEL(ushort4)
+-
+-
+-#define LANCZOS_KERNEL(T) \
+-    __global__ void Subsample_Lanczos_ ## T(cudaTextureObject_t src_tex,                  \
+-                                            T *dst,                                       \
+-                                            int dst_width, int dst_height, int dst_pitch, \
+-                                            int src_width, int src_height,                \
+-                                            int bit_depth, float param)                   \
+-    {                                                                                     \
+-        Subsample_Bicubic<T>(&lanczos_coeffs, src_tex, dst,                               \
+-                             dst_width, dst_height, dst_pitch,                            \
+-                             src_width, src_height,                                       \
+-                             bit_depth, param);                                           \
+-    }
+-
+-LANCZOS_KERNEL(uchar)
+-LANCZOS_KERNEL(uchar2)
+-LANCZOS_KERNEL(uchar4)
+-
+-LANCZOS_KERNEL(ushort)
+-LANCZOS_KERNEL(ushort2)
+-LANCZOS_KERNEL(ushort4)
+-
+-}

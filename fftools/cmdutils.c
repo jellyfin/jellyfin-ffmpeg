@@ -202,23 +202,22 @@ void show_help_options(const OptionDef *options, const char *msg, int req_flags,
 
 void show_help_children(const AVClass *class, int flags)
 {
-    const AVClass *child = NULL;
+    void *iter = NULL;
+    const AVClass *child;
     if (class->option) {
         av_opt_show2(&class, NULL, flags, 0);
         printf("\n");
     }
 
-    while (child = av_opt_child_class_next(class, child))
+    while (child = av_opt_child_class_iterate(class, &iter))
         show_help_children(child, flags);
 }
 
 static const OptionDef *find_option(const OptionDef *po, const char *name)
 {
-    const char *p = strchr(name, ':');
-    int len = p ? p - name : strlen(name);
-
     while (po->name) {
-        if (!strncmp(name, po->name, len) && strlen(po->name) == len)
+        const char *end;
+        if (av_strstart(name, po->name, &end) && (!*end || *end == ':'))
             break;
         po++;
     }
@@ -1164,13 +1163,13 @@ static void print_buildconf(int flags, int level)
     // Change all the ' --' strings to '~--' so that
     // they can be identified as tokens.
     while ((conflist = strstr(str, " --")) != NULL) {
-        strncpy(conflist, "~--", 3);
+        conflist[0] = '~';
     }
 
     // Compensate for the weirdness this would cause
     // when passing 'pkg-config --static'.
     while ((remove_tilde = strstr(str, "pkg-config~")) != NULL) {
-        strncpy(remove_tilde, "pkg-config ", 11);
+        remove_tilde[sizeof("pkg-config~") - 2] = ' ';
     }
 
     splitconf = strtok(str, "~");
@@ -1416,7 +1415,7 @@ static void print_codec(const AVCodec *c)
         printf("variable ");
     if (c->capabilities & (AV_CODEC_CAP_FRAME_THREADS |
                            AV_CODEC_CAP_SLICE_THREADS |
-                           AV_CODEC_CAP_AUTO_THREADS))
+                           AV_CODEC_CAP_OTHER_THREADS))
         printf("threads ");
     if (c->capabilities & AV_CODEC_CAP_AVOID_PROBING)
         printf("avoidprobe ");
@@ -1433,12 +1432,12 @@ static void print_codec(const AVCodec *c)
         printf("    Threading capabilities: ");
         switch (c->capabilities & (AV_CODEC_CAP_FRAME_THREADS |
                                    AV_CODEC_CAP_SLICE_THREADS |
-                                   AV_CODEC_CAP_AUTO_THREADS)) {
+                                   AV_CODEC_CAP_OTHER_THREADS)) {
         case AV_CODEC_CAP_FRAME_THREADS |
              AV_CODEC_CAP_SLICE_THREADS: printf("frame and slice"); break;
         case AV_CODEC_CAP_FRAME_THREADS: printf("frame");           break;
         case AV_CODEC_CAP_SLICE_THREADS: printf("slice");           break;
-        case AV_CODEC_CAP_AUTO_THREADS : printf("auto");            break;
+        case AV_CODEC_CAP_OTHER_THREADS: printf("other");           break;
         default:                         printf("none");            break;
         }
         printf("\n");
@@ -2102,7 +2101,7 @@ int check_stream_specifier(AVFormatContext *s, AVStream *st, const char *spec)
 }
 
 AVDictionary *filter_codec_opts(AVDictionary *opts, enum AVCodecID codec_id,
-                                AVFormatContext *s, AVStream *st, AVCodec *codec)
+                                AVFormatContext *s, AVStream *st, const AVCodec *codec)
 {
     AVDictionary    *ret = NULL;
     AVDictionaryEntry *t = NULL;
@@ -2131,6 +2130,7 @@ AVDictionary *filter_codec_opts(AVDictionary *opts, enum AVCodecID codec_id,
     }
 
     while (t = av_dict_get(opts, "", t, AV_DICT_IGNORE_SUFFIX)) {
+        const AVClass *priv_class;
         char *p = strchr(t->key, ':');
 
         /* check stream specification in opt name */
@@ -2143,8 +2143,8 @@ AVDictionary *filter_codec_opts(AVDictionary *opts, enum AVCodecID codec_id,
 
         if (av_opt_find(&cc, t->key, NULL, flags, AV_OPT_SEARCH_FAKE_OBJ) ||
             !codec ||
-            (codec->priv_class &&
-             av_opt_find(&codec->priv_class, t->key, NULL, flags,
+            ((priv_class = codec->priv_class) &&
+             av_opt_find(&priv_class, t->key, NULL, flags,
                          AV_OPT_SEARCH_FAKE_OBJ)))
             av_dict_set(&ret, t->key, t->value, 0);
         else if (t->key[0] == prefix &&
@@ -2307,7 +2307,7 @@ int show_sources(void *optctx, const char *opt, const char *arg)
     int ret = 0;
     int error_level = av_log_get_level();
 
-    av_log_set_level(AV_LOG_ERROR);
+    av_log_set_level(AV_LOG_WARNING);
 
     if ((ret = show_sinks_sources_parse_arg(arg, &dev, &opts)) < 0)
         goto fail;
@@ -2345,7 +2345,7 @@ int show_sinks(void *optctx, const char *opt, const char *arg)
     int ret = 0;
     int error_level = av_log_get_level();
 
-    av_log_set_level(AV_LOG_ERROR);
+    av_log_set_level(AV_LOG_WARNING);
 
     if ((ret = show_sinks_sources_parse_arg(arg, &dev, &opts)) < 0)
         goto fail;

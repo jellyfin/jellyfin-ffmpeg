@@ -258,7 +258,7 @@ static int query_formats(AVFilterContext *ctx)
     if (ret < 0)
         return ret;
 
-    layouts = avfilter_make_format64_list(chlayouts);
+    layouts = ff_make_format64_list(chlayouts);
     if (!layouts)
         return AVERROR(ENOMEM);
     ret = ff_set_common_channel_layouts(ctx, layouts);
@@ -362,7 +362,7 @@ static int aeval_query_formats(AVFilterContext *ctx)
 
     // inlink supports any channel layout
     layouts = ff_all_channel_counts();
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->out_channel_layouts)) < 0)
+    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0)
         return ret;
 
     if (eval->same_chlayout) {
@@ -376,7 +376,7 @@ static int aeval_query_formats(AVFilterContext *ctx)
                               eval->out_channel_layout ? eval->out_channel_layout :
                               FF_COUNT2LAYOUT(eval->nb_channels))) < 0)
             return ret;
-        if ((ret = ff_channel_layouts_ref(layouts, &outlink->in_channel_layouts)) < 0)
+        if ((ret = ff_channel_layouts_ref(layouts, &outlink->incfg.channel_layouts)) < 0)
             return ret;
     }
 
@@ -415,8 +415,6 @@ static int aeval_config_output(AVFilterLink *outlink)
 
     return 0;
 }
-
-#define TS2T(ts, tb) ((ts) == AV_NOPTS_VALUE ? NAN : (double)(ts)*av_q2d(tb))
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
@@ -485,6 +483,7 @@ AVFilter ff_af_aeval = {
     .inputs        = aeval_inputs,
     .outputs       = aeval_outputs,
     .priv_class    = &aeval_class,
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };
 
 #endif /* CONFIG_AEVAL_FILTER */

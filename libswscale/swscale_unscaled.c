@@ -30,6 +30,7 @@
 #include "libavutil/cpu.h"
 #include "libavutil/avutil.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mem_internal.h"
 #include "libavutil/bswap.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/avassert.h"
@@ -1326,6 +1327,55 @@ static int bayer_to_rgb24_wrapper(SwsContext *c, const uint8_t* src[], int srcSt
     return srcSliceH;
 }
 
+static int bayer_to_rgb48_wrapper(SwsContext *c, const uint8_t* src[], int srcStride[], int srcSliceY,
+                                  int srcSliceH, uint8_t* dst[], int dstStride[])
+{
+    uint8_t *dstPtr= dst[0] + srcSliceY * dstStride[0];
+    const uint8_t *srcPtr= src[0];
+    int i;
+    void (*copy)       (const uint8_t *src, int src_stride, uint8_t *dst, int dst_stride, int width);
+    void (*interpolate)(const uint8_t *src, int src_stride, uint8_t *dst, int dst_stride, int width);
+
+    switch(c->srcFormat) {
+#define CASE(pixfmt, prefix) \
+    case pixfmt: copy        = bayer_##prefix##_to_rgb48_copy; \
+                 interpolate = bayer_##prefix##_to_rgb48_interpolate; \
+                 break;
+    CASE(AV_PIX_FMT_BAYER_BGGR8,    bggr8)
+    CASE(AV_PIX_FMT_BAYER_BGGR16LE, bggr16le)
+    CASE(AV_PIX_FMT_BAYER_BGGR16BE, bggr16be)
+    CASE(AV_PIX_FMT_BAYER_RGGB8,    rggb8)
+    CASE(AV_PIX_FMT_BAYER_RGGB16LE, rggb16le)
+    CASE(AV_PIX_FMT_BAYER_RGGB16BE, rggb16be)
+    CASE(AV_PIX_FMT_BAYER_GBRG8,    gbrg8)
+    CASE(AV_PIX_FMT_BAYER_GBRG16LE, gbrg16le)
+    CASE(AV_PIX_FMT_BAYER_GBRG16BE, gbrg16be)
+    CASE(AV_PIX_FMT_BAYER_GRBG8,    grbg8)
+    CASE(AV_PIX_FMT_BAYER_GRBG16LE, grbg16le)
+    CASE(AV_PIX_FMT_BAYER_GRBG16BE, grbg16be)
+#undef CASE
+    default: return 0;
+    }
+
+    av_assert0(srcSliceH > 1);
+
+    copy(srcPtr, srcStride[0], dstPtr, dstStride[0], c->srcW);
+    srcPtr += 2 * srcStride[0];
+    dstPtr += 2 * dstStride[0];
+
+    for (i = 2; i < srcSliceH - 2; i += 2) {
+        interpolate(srcPtr, srcStride[0], dstPtr, dstStride[0], c->srcW);
+        srcPtr += 2 * srcStride[0];
+        dstPtr += 2 * dstStride[0];
+    }
+
+    if (i + 1 == srcSliceH) {
+        copy(srcPtr, -srcStride[0], dstPtr, -dstStride[0], c->srcW);
+    } else if (i < srcSliceH)
+        copy(srcPtr, srcStride[0], dstPtr, dstStride[0], c->srcW);
+    return srcSliceH;
+}
+
 static int bayer_to_yv12_wrapper(SwsContext *c, const uint8_t* src[], int srcStride[], int srcSliceY,
                                  int srcSliceH, uint8_t* dst[], int dstStride[])
 {
@@ -1756,7 +1806,7 @@ static int planarCopyWrapper(SwsContext *c, const uint8_t *src[],
     const AVPixFmtDescriptor *desc_src = av_pix_fmt_desc_get(c->srcFormat);
     const AVPixFmtDescriptor *desc_dst = av_pix_fmt_desc_get(c->dstFormat);
     int plane, i, j;
-    for (plane = 0; plane < 4; plane++) {
+    for (plane = 0; plane < 4 && dst[plane] != NULL; plane++) {
         int length = (plane == 0 || plane == 3) ? c->srcW  : AV_CEIL_RSHIFT(c->srcW,   c->chrDstHSubSample);
         int y =      (plane == 0 || plane == 3) ? srcSliceY: AV_CEIL_RSHIFT(srcSliceY, c->chrDstVSubSample);
         int height = (plane == 0 || plane == 3) ? srcSliceH: AV_CEIL_RSHIFT(srcSliceH, c->chrDstVSubSample);
@@ -1764,8 +1814,6 @@ static int planarCopyWrapper(SwsContext *c, const uint8_t *src[],
         uint8_t *dstPtr = dst[plane] + dstStride[plane] * y;
         int shiftonly = plane == 1 || plane == 2 || (!c->srcRange && plane == 0);
 
-        if (!dst[plane])
-            continue;
         // ignore palette for GRAY8
         if (plane == 1 && !dst[2]) continue;
         if (!src[plane] || (plane == 1 && !src[2])) {
@@ -2047,6 +2095,8 @@ void ff_get_unscaled_swscale(SwsContext *c)
     if (isBayer(srcFormat)) {
         if (dstFormat == AV_PIX_FMT_RGB24)
             c->swscale = bayer_to_rgb24_wrapper;
+        else if (dstFormat == AV_PIX_FMT_RGB48)
+            c->swscale = bayer_to_rgb48_wrapper;
         else if (dstFormat == AV_PIX_FMT_YUV420P)
             c->swscale = bayer_to_yv12_wrapper;
         else if (!isBayer(dstFormat)) {

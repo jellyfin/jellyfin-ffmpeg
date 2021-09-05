@@ -36,6 +36,7 @@
 #include <string.h>
 
 #include "avcodec.h"
+#include "decode.h"
 #include "bytestream.h"
 #include "internal.h"
 
@@ -539,7 +540,7 @@ static int qtrle_decode_frame(AVCodecContext *avctx,
     }
 
     if(has_palette) {
-        int size;
+        buffer_size_t size;
         const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
 
         if (pal && size == AVPALETTE_SIZE) {

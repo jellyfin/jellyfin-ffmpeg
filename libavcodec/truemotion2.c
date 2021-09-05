@@ -81,7 +81,7 @@ typedef struct TM2Context {
     int *clast;
 
     /* data for current and previous frame */
-    int *Y1_base, *U1_base, *V1_base, *Y2_base, *U2_base, *V2_base;
+    int *Y_base, *UV_base;
     int *Y1, *U1, *V1, *Y2, *U2, *V2;
     int y_stride, uv_stride;
     int cur;
@@ -108,15 +108,14 @@ typedef struct TM2Huff {
     int num; ///< current number filled
     int max_num; ///< total number of codes
     int *nums; ///< literals
-    uint32_t *bits; ///< codes
-    int *lens; ///< codelengths
+    uint8_t *lens; ///< codelengths
 } TM2Huff;
 
 /**
  *
  * @returns the length of the longest code or an AVERROR code
  */
-static int tm2_read_tree(TM2Context *ctx, uint32_t prefix, int length, TM2Huff *huff)
+static int tm2_read_tree(TM2Context *ctx, int length, TM2Huff *huff)
 {
     int ret, ret2;
     if (length > huff->max_bits) {
@@ -134,14 +133,13 @@ static int tm2_read_tree(TM2Context *ctx, uint32_t prefix, int length, TM2Huff *
             return AVERROR_INVALIDDATA;
         }
         huff->nums[huff->num] = get_bits_long(&ctx->gb, huff->val_bits);
-        huff->bits[huff->num] = prefix;
         huff->lens[huff->num] = length;
         huff->num++;
         return length;
     } else { /* non-terminal node */
-        if ((ret2 = tm2_read_tree(ctx, prefix << 1, length + 1, huff)) < 0)
+        if ((ret2 = tm2_read_tree(ctx, length + 1, huff)) < 0)
             return ret2;
-        if ((ret = tm2_read_tree(ctx, (prefix << 1) | 1, length + 1, huff)) < 0)
+        if ((ret = tm2_read_tree(ctx, length + 1, huff)) < 0)
             return ret;
     }
     return FFMAX(ret, ret2);
@@ -177,15 +175,14 @@ static int tm2_build_huff_table(TM2Context *ctx, TM2Codes *code)
     /* allocate space for codes - it is exactly ceil(nodes / 2) entries */
     huff.max_num = (huff.nodes + 1) >> 1;
     huff.nums    = av_calloc(huff.max_num, sizeof(int));
-    huff.bits    = av_calloc(huff.max_num, sizeof(uint32_t));
-    huff.lens    = av_calloc(huff.max_num, sizeof(int));
+    huff.lens    = av_mallocz(huff.max_num);
 
-    if (!huff.nums || !huff.bits || !huff.lens) {
+    if (!huff.nums || !huff.lens) {
         res = AVERROR(ENOMEM);
         goto out;
     }
 
-    res = tm2_read_tree(ctx, 0, 0, &huff);
+    res = tm2_read_tree(ctx, 0, &huff);
 
     if (res >= 0 && res != huff.max_bits) {
         av_log(ctx->avctx, AV_LOG_ERROR, "Got less bits than expected: %i of %i\n",
@@ -200,30 +197,22 @@ static int tm2_build_huff_table(TM2Context *ctx, TM2Codes *code)
 
     /* convert codes to vlc_table */
     if (res >= 0) {
-        int i;
-
-        res = init_vlc(&code->vlc, huff.max_bits, huff.max_num,
-                       huff.lens, sizeof(int), sizeof(int),
-                       huff.bits, sizeof(uint32_t), sizeof(uint32_t), 0);
+        res = ff_init_vlc_from_lengths(&code->vlc, huff.max_bits, huff.max_num,
+                                       huff.lens, sizeof(huff.lens[0]),
+                                       NULL, 0, 0, 0, 0, ctx->avctx);
         if (res < 0)
             av_log(ctx->avctx, AV_LOG_ERROR, "Cannot build VLC table\n");
         else {
             code->bits = huff.max_bits;
             code->length = huff.max_num;
-            code->recode = av_malloc_array(code->length, sizeof(int));
-            if (!code->recode) {
-                res = AVERROR(ENOMEM);
-                goto out;
-            }
-            for (i = 0; i < code->length; i++)
-                code->recode[i] = huff.nums[i];
+            code->recode = huff.nums;
+            huff.nums = NULL;
         }
     }
 
 out:
     /* free allocated memory */
     av_free(huff.nums);
-    av_free(huff.bits);
     av_free(huff.lens);
 
     return res;
@@ -957,7 +946,7 @@ static int decode_frame(AVCodecContext *avctx,
 static av_cold int decode_init(AVCodecContext *avctx)
 {
     TM2Context * const l = avctx->priv_data;
-    int i, w = avctx->width, h = avctx->height;
+    int w = avctx->width, h = avctx->height;
 
     if ((avctx->width & 3) || (avctx->height & 3)) {
         av_log(avctx, AV_LOG_ERROR, "Width and height must be multiple of 4\n");
@@ -973,47 +962,29 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     ff_bswapdsp_init(&l->bdsp);
 
-    l->last  = av_malloc_array(w >> 2, 4 * sizeof(*l->last) );
-    l->clast = av_malloc_array(w >> 2, 4 * sizeof(*l->clast));
-
-    for (i = 0; i < TM2_NUM_STREAMS; i++) {
-        l->tokens[i] = NULL;
-        l->tok_lens[i] = 0;
-    }
+    l->last  = av_malloc_array(w, 2 * sizeof(*l->last));
+    if (!l->last)
+        return AVERROR(ENOMEM);
+    l->clast = l->last + w;
 
     w += 8;
     h += 8;
-    l->Y1_base = av_calloc(w * h, sizeof(*l->Y1_base));
-    l->Y2_base = av_calloc(w * h, sizeof(*l->Y2_base));
+    l->Y_base = av_calloc(w * h, 2 * sizeof(*l->Y_base));
+    if (!l->Y_base)
+        return AVERROR(ENOMEM);
     l->y_stride = w;
+    l->Y1 = l->Y_base + l->y_stride * 4 + 4;
+    l->Y2 = l->Y1 + w * h;
     w = (w + 1) >> 1;
     h = (h + 1) >> 1;
-    l->U1_base = av_calloc(w * h, sizeof(*l->U1_base));
-    l->V1_base = av_calloc(w * h, sizeof(*l->V1_base));
-    l->U2_base = av_calloc(w * h, sizeof(*l->U2_base));
-    l->V2_base = av_calloc(w * h, sizeof(*l->V1_base));
-    l->uv_stride = w;
-    l->cur = 0;
-    if (!l->Y1_base || !l->Y2_base || !l->U1_base ||
-        !l->V1_base || !l->U2_base || !l->V2_base ||
-        !l->last    || !l->clast) {
-        av_freep(&l->Y1_base);
-        av_freep(&l->Y2_base);
-        av_freep(&l->U1_base);
-        av_freep(&l->U2_base);
-        av_freep(&l->V1_base);
-        av_freep(&l->V2_base);
-        av_freep(&l->last);
-        av_freep(&l->clast);
-        av_frame_free(&l->pic);
+    l->UV_base = av_calloc(w * h, 4 * sizeof(*l->UV_base));
+    if (!l->UV_base)
         return AVERROR(ENOMEM);
-    }
-    l->Y1 = l->Y1_base + l->y_stride  * 4 + 4;
-    l->Y2 = l->Y2_base + l->y_stride  * 4 + 4;
-    l->U1 = l->U1_base + l->uv_stride * 2 + 2;
-    l->U2 = l->U2_base + l->uv_stride * 2 + 2;
-    l->V1 = l->V1_base + l->uv_stride * 2 + 2;
-    l->V2 = l->V2_base + l->uv_stride * 2 + 2;
+    l->uv_stride = w;
+    l->U1 = l->UV_base + l->uv_stride * 2 + 2;
+    l->U2 = l->U1 + w * h;
+    l->V1 = l->U2 + w * h;
+    l->V2 = l->V1 + w * h;
 
     return 0;
 }
@@ -1023,18 +994,12 @@ static av_cold int decode_end(AVCodecContext *avctx)
     TM2Context * const l = avctx->priv_data;
     int i;
 
-    av_free(l->last);
-    av_free(l->clast);
+    av_freep(&l->last);
     for (i = 0; i < TM2_NUM_STREAMS; i++)
         av_freep(&l->tokens[i]);
-    if (l->Y1) {
-        av_freep(&l->Y1_base);
-        av_freep(&l->U1_base);
-        av_freep(&l->V1_base);
-        av_freep(&l->Y2_base);
-        av_freep(&l->U2_base);
-        av_freep(&l->V2_base);
-    }
+
+    av_freep(&l->Y_base);
+    av_freep(&l->UV_base);
     av_freep(&l->buffer);
     l->buffer_size = 0;
 
@@ -1053,4 +1018,5 @@ AVCodec ff_truemotion2_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
 };

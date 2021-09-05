@@ -2,4 +2,8 @@
 0002-lavfi-add-a-filter-for-uploading-normal-frames-to-VAAPI.patch
 0003-fix-for-the-broken-tonemap_vaapi-filter.patch
 0004-cuda-format-converter-impl.patch
-0005-lavfi-fix-framesync-with-embedded-PGS-subtitle.patch
+0005-cuda-tonemap-impl.patch
+0006-bt2390-and-fix-for-peak-detection-in-opencl-tonemap.patch
+0007-fix-for-fmp4-in-hlsenc.patch
+0008-fix-nvdec-exceeded-32-surfaces-error.patch
+0009-fix-for-nvenc-from-upstream.patch

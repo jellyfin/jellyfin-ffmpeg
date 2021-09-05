@@ -23,6 +23,7 @@
 
 #include "libavutil/tx.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
 #include "get_bits.h"
@@ -352,6 +353,7 @@ static const float noise_category6[21] = {
 };
 
 #define FRAME_SIZE 320
+#define REGION_SIZE 20
 
 typedef struct SirenContext {
     GetBitContext gb;
@@ -361,7 +363,6 @@ typedef struct SirenContext {
     int number_of_regions;
     int scale_factor;
     int sample_rate_bits;
-    int region_size;
 
     unsigned dw1, dw2, dw3, dw4;
 
@@ -402,7 +403,6 @@ static av_cold int siren_init(AVCodecContext *avctx)
     s->esf_adjustment = 7;
     s->number_of_regions = 14;
     s->scale_factor = 22;
-    s->region_size = 20;
     s->dw1 = s->dw2 = s->dw3 = s->dw4 = 1;
 
     for (i = 0; i < 64; i++) {
@@ -574,7 +574,7 @@ static int decode_vector(SirenContext *s, int number_of_regions,
 
     for (region = 0; region < number_of_regions; region++) {
         category = power_categories[region];
-        coefs_ptr = coefs + (region * s->region_size);
+        coefs_ptr = coefs + (region * REGION_SIZE);
 
         if (category >= 0 && category < 7) {
             decoder_tree = decoder_tables[category];
@@ -623,32 +623,27 @@ static int decode_vector(SirenContext *s, int number_of_regions,
             }
         }
 
-        coefs_ptr = coefs + (region * s->region_size);
+        coefs_ptr = coefs + (region * REGION_SIZE);
 
-        if (category == 5) {
+        if (category == 5 || category == 6) {
             i = 0;
-            for (j = 0; j < s->region_size; j++) {
+            for (j = 0; j < REGION_SIZE; j++) {
                 if (*coefs_ptr != 0)
                     i++;
                 coefs_ptr++;
             }
 
-            noise = decoder_standard_deviation[region] * noise_category5[i];
-        } else if (category == 6) {
-            i = 0;
-            for (j = 0; j < s->region_size; j++) {
-                if (*coefs_ptr++ != 0)
-                    i++;
-            }
-
-            noise = decoder_standard_deviation[region] * noise_category6[i];
+            if (category == 5) {
+                noise = decoder_standard_deviation[region] * noise_category5[i];
+            } else
+                noise = decoder_standard_deviation[region] * noise_category6[i];
         } else if (category == 7) {
             noise = decoder_standard_deviation[region] * 0.70711f;
         } else {
             noise = 0;
         }
 
-        coefs_ptr = coefs + (region * s->region_size);
+        coefs_ptr = coefs + (region * REGION_SIZE);
 
         if (category == 5 || category == 6 || category == 7) {
             dw1 = get_dw(s);
@@ -774,7 +769,8 @@ AVCodec ff_siren_decoder = {
     .close          = siren_close,
     .decode         = siren_decode,
     .flush          = siren_flush,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_CHANNEL_CONF |
+                      AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
 };

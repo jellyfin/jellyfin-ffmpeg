@@ -136,6 +136,10 @@ static int read_header(AVFormatContext *s)
     p->start_offset   = avio_rl32(pb);
     p->max_video_blks = avio_rl32(pb);
     p->max_audio_blks = avio_rl32(pb);
+
+    if (avio_feof(pb))
+        return AVERROR_INVALIDDATA;
+
     if (p->buffer_size    < 175  ||
         p->max_audio_blks < 2    ||
         p->max_video_blks < 1    ||
@@ -149,11 +153,11 @@ static int read_header(AVFormatContext *s)
         p->frame_blks     > INT_MAX / sizeof(uint32_t))
         return AVERROR_INVALIDDATA;
 
-    p->blocks_count_table  = av_mallocz(p->nb_frames *
+    p->blocks_count_table  = av_malloc_array(p->nb_frames,
                                         sizeof(*p->blocks_count_table));
-    p->frames_offset_table = av_mallocz(p->nb_frames *
+    p->frames_offset_table = av_malloc_array(p->nb_frames,
                                         sizeof(*p->frames_offset_table));
-    p->blocks_offset_table = av_mallocz(p->frame_blks *
+    p->blocks_offset_table = av_malloc_array(p->frame_blks,
                                         sizeof(*p->blocks_offset_table));
 
     p->video_size  = p->max_video_blks * p->buffer_size;

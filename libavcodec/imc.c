@@ -38,6 +38,9 @@
 #include "libavutil/ffmath.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/internal.h"
+#include "libavutil/mem_internal.h"
+#include "libavutil/thread.h"
+
 #include "avcodec.h"
 #include "bswapdsp.h"
 #include "get_bits.h"
@@ -95,7 +98,7 @@ typedef struct IMCContext {
     GetBitContext gb;
 
     BswapDSPContext bdsp;
-    AVFloatDSPContext *fdsp;
+    void (*butterflies_float)(float *av_restrict v1, float *av_restrict v2, int len);
     FFTContext fft;
     DECLARE_ALIGNED(32, FFTComplex, samples)[COEFFS / 2];
     float *out_samples;
@@ -110,12 +113,8 @@ typedef struct IMCContext {
 
 static VLC huffman_vlc[4][4];
 
+#define IMC_VLC_BITS 9
 #define VLC_TABLES_SIZE 9512
-
-static const int vlc_offsets[17] = {
-    0,     640, 1156, 1732, 2308, 2852, 3396, 3924,
-    4452, 5220, 5860, 6628, 7268, 7908, 8424, 8936, VLC_TABLES_SIZE
-};
 
 static VLC_TYPE vlc_tables[VLC_TABLES_SIZE][2];
 
@@ -175,10 +174,28 @@ static av_cold void iac_generate_tabs(IMCContext *q, int sampling_rate)
     }
 }
 
+static av_cold void imc_init_static(void)
+{
+    /* initialize the VLC tables */
+    for (int i = 0, offset = 0; i < 4 ; i++) {
+        for (int j = 0; j < 4; j++) {
+            huffman_vlc[i][j].table           = &vlc_tables[offset];
+            huffman_vlc[i][j].table_allocated = VLC_TABLES_SIZE - offset;
+            ff_init_vlc_from_lengths(&huffman_vlc[i][j], IMC_VLC_BITS, imc_huffman_sizes[i],
+                                     imc_huffman_lens[i][j], 1,
+                                     imc_huffman_syms[i][j], 1, 1,
+                                     0, INIT_VLC_STATIC_OVERLONG, NULL);
+            offset += huffman_vlc[i][j].table_size;
+        }
+    }
+}
+
 static av_cold int imc_decode_init(AVCodecContext *avctx)
 {
     int i, j, ret;
     IMCContext *q = avctx->priv_data;
+    static AVOnce init_static_once = AV_ONCE_INIT;
+    AVFloatDSPContext *fdsp;
     double r1, r2;
 
     if (avctx->codec_id == AV_CODEC_ID_IAC && avctx->sample_rate > 96000) {
@@ -232,17 +249,6 @@ static av_cold int imc_decode_init(AVCodecContext *avctx)
     for (i = 0; i < 30; i++)
         q->sqrt_tab[i] = sqrt(i);
 
-    /* initialize the VLC tables */
-    for (i = 0; i < 4 ; i++) {
-        for (j = 0; j < 4; j++) {
-            huffman_vlc[i][j].table = &vlc_tables[vlc_offsets[i * 4 + j]];
-            huffman_vlc[i][j].table_allocated = vlc_offsets[i * 4 + j + 1] - vlc_offsets[i * 4 + j];
-            init_vlc(&huffman_vlc[i][j], 9, imc_huffman_sizes[i],
-                     imc_huffman_lens[i][j], 1, 1,
-                     imc_huffman_bits[i][j], 2, 2, INIT_VLC_USE_NEW_STATIC);
-        }
-    }
-
     if (avctx->codec_id == AV_CODEC_ID_IAC) {
         iac_generate_tabs(q, avctx->sample_rate);
     } else {
@@ -252,21 +258,22 @@ static av_cold int imc_decode_init(AVCodecContext *avctx)
         memcpy(q->weights2, imc_weights2, sizeof(imc_weights2));
     }
 
+    fdsp = avpriv_float_dsp_alloc(avctx->flags & AV_CODEC_FLAG_BITEXACT);
+    if (!fdsp)
+        return AVERROR(ENOMEM);
+    q->butterflies_float = fdsp->butterflies_float;
+    av_free(fdsp);
     if ((ret = ff_fft_init(&q->fft, 7, 1))) {
         av_log(avctx, AV_LOG_INFO, "FFT init failed\n");
         return ret;
     }
     ff_bswapdsp_init(&q->bdsp);
-    q->fdsp = avpriv_float_dsp_alloc(avctx->flags & AV_CODEC_FLAG_BITEXACT);
-    if (!q->fdsp) {
-        ff_fft_end(&q->fft);
-
-        return AVERROR(ENOMEM);
-    }
 
     avctx->sample_fmt     = AV_SAMPLE_FMT_FLTP;
     avctx->channel_layout = avctx->channels == 1 ? AV_CH_LAYOUT_MONO
                                                  : AV_CH_LAYOUT_STEREO;
+
+    ff_thread_once(&init_static_once, imc_init_static);
 
     return 0;
 }
@@ -348,7 +355,7 @@ static void imc_read_level_coeffs(IMCContext *q, int stream_format_code,
         levlCoeffs[0] = get_bits(&q->gb, 7);
     for (i = start; i < BANDS; i++) {
         levlCoeffs[i] = get_vlc2(&q->gb, hufftab[cb_sel[i]]->table,
-                                 hufftab[cb_sel[i]]->bits, 2);
+                                 IMC_VLC_BITS, 2);
         if (levlCoeffs[i] == 17)
             levlCoeffs[i] += get_bits(&q->gb, 4);
     }
@@ -1050,8 +1057,8 @@ static int imc_decode_frame(AVCodecContext *avctx, void *data,
     }
 
     if (avctx->channels == 2) {
-        q->fdsp->butterflies_float((float *)frame->extended_data[0],
-                                  (float *)frame->extended_data[1], COEFFS);
+        q->butterflies_float((float *)frame->extended_data[0],
+                             (float *)frame->extended_data[1], COEFFS);
     }
 
     *got_frame_ptr = 1;
@@ -1064,7 +1071,6 @@ static av_cold int imc_decode_close(AVCodecContext * avctx)
     IMCContext *q = avctx->priv_data;
 
     ff_fft_end(&q->fft);
-    av_freep(&q->fdsp);
 
     return 0;
 }
@@ -1088,9 +1094,10 @@ AVCodec ff_imc_decoder = {
     .close          = imc_decode_close,
     .decode         = imc_decode_frame,
     .flush          = flush,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 #if CONFIG_IAC_DECODER
@@ -1107,5 +1114,6 @@ AVCodec ff_iac_decoder = {
     .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

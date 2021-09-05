@@ -476,6 +476,8 @@ static int parse_timestamp(struct sbg_parser *p,
     while (lex_char(p, '+')) {
         if (!lex_time(p, &dt))
             return AVERROR_INVALIDDATA;
+        if (av_sat_add64(rel, dt) - dt != rel)
+            return AVERROR_INVALIDDATA;
         rel += dt;
         r = 1;
     }
@@ -889,7 +891,7 @@ fail:
     return size;
 }
 
-static void expand_timestamps(void *log, struct sbg_script *s)
+static int expand_timestamps(void *log, struct sbg_script *s)
 {
     int i, nb_rel = 0;
     int64_t now, cur_ts, delta = 0;
@@ -937,10 +939,13 @@ static void expand_timestamps(void *log, struct sbg_script *s)
                 AV_NOPTS_VALUE; /* may be overridden later by -E option */
     cur_ts = now;
     for (i = 0; i < s->nb_tseq; i++) {
+        if (av_sat_add64(s->tseq[i].ts.t, delta) != s->tseq[i].ts.t + (uint64_t)delta)
+            return AVERROR_INVALIDDATA;
         if (s->tseq[i].ts.t + delta < cur_ts)
             delta += DAY_TS;
         cur_ts = s->tseq[i].ts.t += delta;
     }
+    return 0;
 }
 
 static int expand_tseq(void *log, struct sbg_script *s, int *nb_ev_max,
@@ -993,7 +998,9 @@ static int expand_script(void *log, struct sbg_script *s)
 {
     int i, r, nb_events_max = 0;
 
-    expand_timestamps(log, s);
+    r = expand_timestamps(log, s);
+    if (r < 0)
+        return r;
     for (i = 0; i < s->nb_tseq; i++) {
         r = expand_tseq(log, s, &nb_events_max, 0, &s->tseq[i]);
         if (r < 0)

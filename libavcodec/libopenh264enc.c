@@ -156,7 +156,16 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
 
     (*s->encoder)->GetDefaultParams(s->encoder, &param);
 
-    param.fMaxFrameRate              = 1/av_q2d(avctx->time_base);
+    if (avctx->framerate.num > 0 && avctx->framerate.den > 0) {
+        param.fMaxFrameRate = av_q2d(avctx->framerate);
+    } else {
+        if (avctx->ticks_per_frame > INT_MAX / avctx->time_base.num) {
+            av_log(avctx, AV_LOG_ERROR,
+                   "Could not set framerate for libopenh264enc: integer overflow\n");
+            return AVERROR(EINVAL);
+        }
+        param.fMaxFrameRate = 1.0 / av_q2d(avctx->time_base) / FFMAX(avctx->ticks_per_frame, 1);
+    }
     param.iPicWidth                  = avctx->width;
     param.iPicHeight                 = avctx->height;
     param.iTargetBitrate             = avctx->bit_rate > 0 ? avctx->bit_rate : TARGET_BITRATE_DEFAULT;
@@ -438,8 +447,9 @@ AVCodec ff_libopenh264_encoder = {
     .init           = svc_encode_init,
     .encode2        = svc_encode_frame,
     .close          = svc_encode_close,
-    .capabilities   = AV_CODEC_CAP_AUTO_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .capabilities   = AV_CODEC_CAP_OTHER_THREADS,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+                      FF_CODEC_CAP_AUTO_THREADS,
     .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P,
                                                     AV_PIX_FMT_NONE },
     .defaults       = svc_enc_defaults,

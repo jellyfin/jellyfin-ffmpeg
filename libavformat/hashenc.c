@@ -42,8 +42,8 @@ struct HashContext {
 #define FORMAT_VERSION_OPT \
     { "format_version", "file format version", OFFSET(format_version), AV_OPT_TYPE_INT, {.i64 = 2}, 1, 2, ENC }
 
-#if CONFIG_HASH_MUXER
-static const AVOption hash_options[] = {
+#if CONFIG_HASH_MUXER || CONFIG_STREAMHASH_MUXER
+static const AVOption hash_streamhash_options[] = {
     HASH_OPT("sha256"),
     { NULL },
 };
@@ -53,13 +53,6 @@ static const AVOption hash_options[] = {
 static const AVOption framehash_options[] = {
     HASH_OPT("sha256"),
     FORMAT_VERSION_OPT,
-    { NULL },
-};
-#endif
-
-#if CONFIG_STREAMHASH_MUXER
-static const AVOption streamhash_options[] = {
-    HASH_OPT("sha256"),
     { NULL },
 };
 #endif
@@ -156,6 +149,7 @@ static int hash_write_trailer(struct AVFormatContext *s)
 
     return 0;
 }
+#endif
 
 static void hash_free(struct AVFormatContext *s)
 {
@@ -168,13 +162,12 @@ static void hash_free(struct AVFormatContext *s)
     }
     av_freep(&c->hashes);
 }
-#endif
 
 #if CONFIG_HASH_MUXER
 static const AVClass hashenc_class = {
     .class_name = "hash muxer",
     .item_name  = av_default_item_name,
-    .option     = hash_options,
+    .option     = hash_streamhash_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
@@ -222,7 +215,7 @@ AVOutputFormat ff_md5_muxer = {
 static const AVClass streamhashenc_class = {
     .class_name = "stream hash muxer",
     .item_name  = av_default_item_name,
-    .option     = streamhash_options,
+    .option     = hash_streamhash_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
@@ -326,14 +319,6 @@ static int framehash_write_packet(struct AVFormatContext *s, AVPacket *pkt)
     avio_printf(s->pb, "\n");
     return 0;
 }
-
-static void framehash_free(struct AVFormatContext *s)
-{
-    struct HashContext *c = s->priv_data;
-    if (c->hashes)
-        av_hash_freep(&c->hashes[0]);
-    av_freep(&c->hashes);
-}
 #endif
 
 #if CONFIG_FRAMEHASH_MUXER
@@ -353,7 +338,7 @@ AVOutputFormat ff_framehash_muxer = {
     .init              = framehash_init,
     .write_header      = framehash_write_header,
     .write_packet      = framehash_write_packet,
-    .deinit            = framehash_free,
+    .deinit            = hash_free,
     .flags             = AVFMT_VARIABLE_FPS | AVFMT_TS_NONSTRICT |
                          AVFMT_TS_NEGATIVE,
     .priv_class        = &framehash_class,
@@ -377,7 +362,7 @@ AVOutputFormat ff_framemd5_muxer = {
     .init              = framehash_init,
     .write_header      = framehash_write_header,
     .write_packet      = framehash_write_packet,
-    .deinit            = framehash_free,
+    .deinit            = hash_free,
     .flags             = AVFMT_VARIABLE_FPS | AVFMT_TS_NONSTRICT |
                          AVFMT_TS_NEGATIVE,
     .priv_class        = &framemd5_class,

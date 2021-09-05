@@ -31,7 +31,9 @@
 #include "libavutil/attributes.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
+#include "libavutil/mem_internal.h"
 #include "libavutil/stereo3d.h"
+#include "libavutil/video_enc_params.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
@@ -50,6 +52,8 @@
 #include "version.h"
 #include "xvmc_internal.h"
 
+#define A53_MAX_CC_COUNT 2000
+
 typedef struct Mpeg1Context {
     MpegEncContext mpeg_enc_ctx;
     int mpeg_enc_ctx_allocated; /* true if decoding context allocated */
@@ -57,8 +61,7 @@ typedef struct Mpeg1Context {
     AVPanScan pan_scan;         /* some temporary storage for the panscan */
     AVStereo3D stereo3d;
     int has_stereo3d;
-    uint8_t *a53_caption;
-    int a53_caption_size;
+    AVBufferRef *a53_buf_ref;
     uint8_t afd;
     int has_afd;
     int slice_count;
@@ -491,8 +494,6 @@ static inline int mpeg2_decode_block_intra(MpegEncContext *s,
         component    = (n & 1) + 1;
     }
     diff = decode_dc(&s->gb, component);
-    if (diff >= 0xffff)
-        return AVERROR_INVALIDDATA;
     dc  = s->last_dc[component];
     dc += diff;
     s->last_dc[component] = dc;
@@ -527,10 +528,9 @@ static inline int mpeg2_decode_block_intra(MpegEncContext *s,
             } else {
                 /* escape */
                 run = SHOW_UBITS(re, &s->gb, 6) + 1;
-                LAST_SKIP_BITS(re, &s->gb, 6);
-                UPDATE_CACHE(re, &s->gb);
+                SKIP_BITS(re, &s->gb, 6);
                 level = SHOW_SBITS(re, &s->gb, 12);
-                SKIP_BITS(re, &s->gb, 12);
+                LAST_SKIP_BITS(re, &s->gb, 12);
                 i += run;
                 if (i > MAX_INDEX)
                     break;
@@ -579,8 +579,6 @@ static inline int mpeg2_fast_decode_block_intra(MpegEncContext *s,
         component    = (n & 1) + 1;
     }
     diff = decode_dc(&s->gb, component);
-    if (diff >= 0xffff)
-        return AVERROR_INVALIDDATA;
     dc = s->last_dc[component];
     dc += diff;
     s->last_dc[component] = dc;
@@ -611,10 +609,9 @@ static inline int mpeg2_fast_decode_block_intra(MpegEncContext *s,
             } else {
                 /* escape */
                 run = SHOW_UBITS(re, &s->gb, 6) + 1;
-                LAST_SKIP_BITS(re, &s->gb, 6);
-                UPDATE_CACHE(re, &s->gb);
+                SKIP_BITS(re, &s->gb, 6);
                 level = SHOW_SBITS(re, &s->gb, 12);
-                SKIP_BITS(re, &s->gb, 12);
+                LAST_SKIP_BITS(re, &s->gb, 12);
                 i += run;
                 j = scantable[i];
                 if (level < 0) {
@@ -1055,14 +1052,10 @@ static av_cold int mpeg_decode_init(AVCodecContext *avctx)
     Mpeg1Context *s    = avctx->priv_data;
     MpegEncContext *s2 = &s->mpeg_enc_ctx;
 
-    ff_mpv_decode_defaults(s2);
-
     if (   avctx->codec_tag != AV_RL32("VCR2")
         && avctx->codec_tag != AV_RL32("BW10"))
         avctx->coded_width = avctx->coded_height = 0; // do not trust dimensions from input
     ff_mpv_decode_init(s2, avctx);
-
-    s->mpeg_enc_ctx.avctx  = avctx;
 
     /* we need some permutation to store matrices,
      * until the decoder sets the real permutation. */
@@ -1635,13 +1628,13 @@ static int mpeg_field_start(MpegEncContext *s, const uint8_t *buf, int buf_size)
             return AVERROR(ENOMEM);
         memcpy(pan_scan->data, &s1->pan_scan, sizeof(s1->pan_scan));
 
-        if (s1->a53_caption) {
-            AVFrameSideData *sd = av_frame_new_side_data(
+        if (s1->a53_buf_ref) {
+            AVFrameSideData *sd = av_frame_new_side_data_from_buf(
                 s->current_picture_ptr->f, AV_FRAME_DATA_A53_CC,
-                s1->a53_caption_size);
-            if (sd)
-                memcpy(sd->data, s1->a53_caption, s1->a53_caption_size);
-            av_freep(&s1->a53_caption);
+                s1->a53_buf_ref);
+            if (!sd)
+                av_buffer_unref(&s1->a53_buf_ref);
+            s1->a53_buf_ref = NULL;
         }
 
         if (s1->has_stereo3d) {
@@ -2242,14 +2235,18 @@ static int mpeg_decode_a53_cc(AVCodecContext *avctx,
         /* extract A53 Part 4 CC data */
         int cc_count = p[5] & 0x1f;
         if (cc_count > 0 && buf_size >= 7 + cc_count * 3) {
-            av_freep(&s1->a53_caption);
-            s1->a53_caption_size = cc_count * 3;
-            s1->a53_caption      = av_malloc(s1->a53_caption_size);
-            if (!s1->a53_caption) {
-                s1->a53_caption_size = 0;
-            } else {
-                memcpy(s1->a53_caption, p + 7, s1->a53_caption_size);
-            }
+            int old_size = s1->a53_buf_ref ? s1->a53_buf_ref->size : 0;
+            const uint64_t new_size = (old_size + cc_count
+                                            * UINT64_C(3));
+            int ret;
+
+            if (new_size > 3*A53_MAX_CC_COUNT)
+                return AVERROR(EINVAL);
+
+            ret = av_buffer_realloc(&s1->a53_buf_ref, new_size);
+            if (ret >= 0)
+                memcpy(s1->a53_buf_ref->data + old_size, p + 7, cc_count * UINT64_C(3));
+
             avctx->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
         }
         return 1;
@@ -2258,19 +2255,23 @@ static int mpeg_decode_a53_cc(AVCodecContext *avctx,
         /* extract SCTE-20 CC data */
         GetBitContext gb;
         int cc_count = 0;
-        int i;
+        int i, ret;
 
         init_get_bits(&gb, p + 2, buf_size - 2);
         cc_count = get_bits(&gb, 5);
         if (cc_count > 0) {
-            av_freep(&s1->a53_caption);
-            s1->a53_caption_size = cc_count * 3;
-            s1->a53_caption      = av_mallocz(s1->a53_caption_size);
-            if (!s1->a53_caption) {
-                s1->a53_caption_size = 0;
-            } else {
+            int old_size = s1->a53_buf_ref ? s1->a53_buf_ref->size : 0;
+            const uint64_t new_size = (old_size + cc_count
+                                            * UINT64_C(3));
+            if (new_size > 3*A53_MAX_CC_COUNT)
+                return AVERROR(EINVAL);
+
+            ret = av_buffer_realloc(&s1->a53_buf_ref, new_size);
+            if (ret >= 0) {
                 uint8_t field, cc1, cc2;
-                uint8_t *cap = s1->a53_caption;
+                uint8_t *cap = s1->a53_buf_ref->data;
+
+                memset(s1->a53_buf_ref->data + old_size, 0, cc_count * 3);
                 for (i = 0; i < cc_count && get_bits_left(&gb) >= 26; i++) {
                     skip_bits(&gb, 2); // priority
                     field = get_bits(&gb, 2);
@@ -2322,21 +2323,23 @@ static int mpeg_decode_a53_cc(AVCodecContext *avctx,
          * on the even field. There also exist DVDs in the wild that encode an odd field count and the
          * caption_extra_field_added/caption_odd_field_first bits change per packet to allow that. */
         int cc_count = 0;
-        int i;
+        int i, ret;
         // There is a caption count field in the data, but it is often
         // incorrect.  So count the number of captions present.
         for (i = 5; i + 6 <= buf_size && ((p[i] & 0xfe) == 0xfe); i += 6)
             cc_count++;
         // Transform the DVD format into A53 Part 4 format
         if (cc_count > 0) {
-            av_freep(&s1->a53_caption);
-            s1->a53_caption_size = cc_count * 6;
-            s1->a53_caption      = av_malloc(s1->a53_caption_size);
-            if (!s1->a53_caption) {
-                s1->a53_caption_size = 0;
-            } else {
+            int old_size = s1->a53_buf_ref ? s1->a53_buf_ref->size : 0;
+            const uint64_t new_size = (old_size + cc_count
+                                            * UINT64_C(6));
+            if (new_size > 3*A53_MAX_CC_COUNT)
+                return AVERROR(EINVAL);
+
+            ret = av_buffer_realloc(&s1->a53_buf_ref, new_size);
+            if (ret >= 0) {
                 uint8_t field1 = !!(p[4] & 0x80);
-                uint8_t *cap = s1->a53_caption;
+                uint8_t *cap = s1->a53_buf_ref->data;
                 p += 5;
                 for (i = 0; i < cc_count; i++) {
                     cap[0] = (p[0] == 0xff && field1) ? 0xfc : 0xfd;
@@ -2846,12 +2849,16 @@ static int mpeg_decode_frame(AVCodecContext *avctx, void *data,
         s2->current_picture_ptr = NULL;
 
         if (s2->timecode_frame_start != -1 && *got_output) {
+            char tcbuf[AV_TIMECODE_STR_SIZE];
             AVFrameSideData *tcside = av_frame_new_side_data(picture,
                                                              AV_FRAME_DATA_GOP_TIMECODE,
                                                              sizeof(int64_t));
             if (!tcside)
                 return AVERROR(ENOMEM);
             memcpy(tcside->data, &s2->timecode_frame_start, sizeof(int64_t));
+
+            av_timecode_make_mpeg_tc_string(tcbuf, s2->timecode_frame_start);
+            av_dict_set(&picture->metadata, "timecode", tcbuf, 0);
 
             s2->timecode_frame_start = -1;
         }
@@ -2875,7 +2882,7 @@ static av_cold int mpeg_decode_end(AVCodecContext *avctx)
 
     if (s->mpeg_enc_ctx_allocated)
         ff_mpv_common_end(&s->mpeg_enc_ctx);
-    av_freep(&s->a53_caption);
+    av_buffer_unref(&s->a53_buf_ref);
     return 0;
 }
 
@@ -2891,11 +2898,12 @@ AVCodec ff_mpeg1video_decoder = {
     .capabilities          = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
                              AV_CODEC_CAP_TRUNCATED | AV_CODEC_CAP_DELAY |
                              AV_CODEC_CAP_SLICE_THREADS,
-    .caps_internal         = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE |
+                             FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
     .flush                 = flush,
     .max_lowres            = 3,
     .update_thread_context = ONLY_IF_THREADS_ENABLED(mpeg_decode_update_thread_context),
-    .hw_configs            = (const AVCodecHWConfigInternal*[]) {
+    .hw_configs            = (const AVCodecHWConfigInternal *const []) {
 #if CONFIG_MPEG1_NVDEC_HWACCEL
                                HWACCEL_NVDEC(mpeg1),
 #endif
@@ -2924,11 +2932,12 @@ AVCodec ff_mpeg2video_decoder = {
     .capabilities   = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
                       AV_CODEC_CAP_TRUNCATED | AV_CODEC_CAP_DELAY |
                       AV_CODEC_CAP_SLICE_THREADS,
-    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
     .flush          = flush,
     .max_lowres     = 3,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_mpeg2_video_profiles),
-    .hw_configs     = (const AVCodecHWConfigInternal*[]) {
+    .hw_configs     = (const AVCodecHWConfigInternal *const []) {
 #if CONFIG_MPEG2_DXVA2_HWACCEL
                         HWACCEL_DXVA2(mpeg2),
 #endif
@@ -2968,7 +2977,167 @@ AVCodec ff_mpegvideo_decoder = {
     .close          = mpeg_decode_end,
     .decode         = mpeg_decode_frame,
     .capabilities   = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_TRUNCATED | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SLICE_THREADS,
-    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
     .flush          = flush,
     .max_lowres     = 3,
+};
+
+typedef struct IPUContext {
+    MpegEncContext m;
+
+    int flags;
+    DECLARE_ALIGNED(32, int16_t, block)[6][64];
+} IPUContext;
+
+static int ipu_decode_frame(AVCodecContext *avctx, void *data,
+                            int *got_frame, AVPacket *avpkt)
+{
+    IPUContext *s = avctx->priv_data;
+    MpegEncContext *m = &s->m;
+    GetBitContext *gb = &m->gb;
+    AVFrame * const frame = data;
+    int ret;
+
+    ret = ff_get_buffer(avctx, frame, 0);
+    if (ret < 0)
+        return ret;
+
+    ret = init_get_bits8(gb, avpkt->data, avpkt->size);
+    if (ret < 0)
+        return ret;
+
+    s->flags = get_bits(gb, 8);
+    m->intra_dc_precision = s->flags & 3;
+    m->q_scale_type = !!(s->flags & 0x40);
+    m->intra_vlc_format = !!(s->flags & 0x20);
+    m->alternate_scan = !!(s->flags & 0x10);
+
+    if (s->flags & 0x10) {
+        ff_init_scantable(m->idsp.idct_permutation, &m->inter_scantable, ff_alternate_vertical_scan);
+        ff_init_scantable(m->idsp.idct_permutation, &m->intra_scantable, ff_alternate_vertical_scan);
+    } else {
+        ff_init_scantable(m->idsp.idct_permutation, &m->inter_scantable, ff_zigzag_direct);
+        ff_init_scantable(m->idsp.idct_permutation, &m->intra_scantable, ff_zigzag_direct);
+    }
+
+    m->last_dc[0] = m->last_dc[1] = m->last_dc[2] = 1 << (7 + (s->flags & 3));
+    m->qscale = 1;
+
+    for (int y = 0; y < avctx->height; y += 16) {
+        int intraquant;
+
+        for (int x = 0; x < avctx->width; x += 16) {
+            if (x || y) {
+                if (!get_bits1(gb))
+                    return AVERROR_INVALIDDATA;
+            }
+            if (get_bits1(gb)) {
+                intraquant = 0;
+            } else {
+                if (!get_bits1(gb))
+                    return AVERROR_INVALIDDATA;
+                intraquant = 1;
+            }
+
+            if (s->flags & 4)
+                skip_bits1(gb);
+
+            if (intraquant)
+                m->qscale = mpeg_get_qscale(m);
+
+            memset(s->block, 0, sizeof(s->block));
+
+            for (int n = 0; n < 6; n++) {
+                if (s->flags & 0x80) {
+                    ret = ff_mpeg1_decode_block_intra(&m->gb,
+                                                      m->intra_matrix,
+                                                      m->intra_scantable.permutated,
+                                                      m->last_dc, s->block[n],
+                                                      n, m->qscale);
+                    if (ret >= 0)
+                        m->block_last_index[n] = ret;
+                } else {
+                    ret = mpeg2_decode_block_intra(m, s->block[n], n);
+                }
+
+                if (ret < 0)
+                    return ret;
+            }
+
+            m->idsp.idct_put(frame->data[0] + y * frame->linesize[0] + x,
+                             frame->linesize[0], s->block[0]);
+            m->idsp.idct_put(frame->data[0] + y * frame->linesize[0] + x + 8,
+                             frame->linesize[0], s->block[1]);
+            m->idsp.idct_put(frame->data[0] + (y + 8) * frame->linesize[0] + x,
+                             frame->linesize[0], s->block[2]);
+            m->idsp.idct_put(frame->data[0] + (y + 8) * frame->linesize[0] + x + 8,
+                             frame->linesize[0], s->block[3]);
+            m->idsp.idct_put(frame->data[1] + (y >> 1) * frame->linesize[1] + (x >> 1),
+                             frame->linesize[1], s->block[4]);
+            m->idsp.idct_put(frame->data[2] + (y >> 1) * frame->linesize[2] + (x >> 1),
+                             frame->linesize[2], s->block[5]);
+        }
+    }
+
+    align_get_bits(gb);
+    if (get_bits_left(gb) != 32)
+        return AVERROR_INVALIDDATA;
+
+    frame->pict_type = AV_PICTURE_TYPE_I;
+    frame->key_frame = 1;
+    *got_frame = 1;
+
+    return avpkt->size;
+}
+
+static av_cold int ipu_decode_init(AVCodecContext *avctx)
+{
+    IPUContext *s = avctx->priv_data;
+    MpegEncContext *m = &s->m;
+
+    avctx->pix_fmt = AV_PIX_FMT_YUV420P;
+
+    ff_mpv_decode_init(m, avctx);
+    ff_mpv_idct_init(m);
+    ff_mpeg12_common_init(m);
+    ff_mpeg12_init_vlcs();
+
+    for (int i = 0; i < 64; i++) {
+        int j = m->idsp.idct_permutation[i];
+        int v = ff_mpeg1_default_intra_matrix[i];
+        m->intra_matrix[j]        = v;
+        m->chroma_intra_matrix[j] = v;
+    }
+
+    for (int i = 0; i < 64; i++) {
+        int j = m->idsp.idct_permutation[i];
+        int v = ff_mpeg1_default_non_intra_matrix[i];
+        m->inter_matrix[j]        = v;
+        m->chroma_inter_matrix[j] = v;
+    }
+
+    return 0;
+}
+
+static av_cold int ipu_decode_end(AVCodecContext *avctx)
+{
+    IPUContext *s = avctx->priv_data;
+
+    ff_mpv_common_end(&s->m);
+
+    return 0;
+}
+
+AVCodec ff_ipu_decoder = {
+    .name           = "ipu",
+    .long_name      = NULL_IF_CONFIG_SMALL("IPU Video"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_IPU,
+    .priv_data_size = sizeof(IPUContext),
+    .init           = ipu_decode_init,
+    .decode         = ipu_decode_frame,
+    .close          = ipu_decode_end,
+    .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

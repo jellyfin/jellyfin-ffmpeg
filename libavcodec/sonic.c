@@ -458,8 +458,8 @@ static void predictor_init_state(int *k, int *state, int order)
 
         for (j = 0, p = i+1; p < order; j++,p++)
             {
-            int tmp = x + shift_down(k[j] * state[p], LATTICE_SHIFT);
-            state[p] += shift_down(k[j]*x, LATTICE_SHIFT);
+            int tmp = x + shift_down(k[j] * (unsigned)state[p], LATTICE_SHIFT);
+            state[p] += shift_down(k[j]* (unsigned)x, LATTICE_SHIFT);
             x = tmp;
         }
     }
@@ -467,7 +467,7 @@ static void predictor_init_state(int *k, int *state, int order)
 
 static int predictor_calc_error(int *k, int *state, int order, int error)
 {
-    int i, x = error - shift_down(k[order-1] * state[order-1], LATTICE_SHIFT);
+    int i, x = error - shift_down(k[order-1] *  (unsigned)state[order-1], LATTICE_SHIFT);
 
 #if 1
     int *k_ptr = &(k[order-2]),
@@ -475,13 +475,13 @@ static int predictor_calc_error(int *k, int *state, int order, int error)
     for (i = order-2; i >= 0; i--, k_ptr--, state_ptr--)
     {
         int k_value = *k_ptr, state_value = *state_ptr;
-        x -= shift_down(k_value * (unsigned)state_value, LATTICE_SHIFT);
+        x -= (unsigned)shift_down(k_value * (unsigned)state_value, LATTICE_SHIFT);
         state_ptr[1] = state_value + shift_down(k_value * (unsigned)x, LATTICE_SHIFT);
     }
 #else
     for (i = order-2; i >= 0; i--)
     {
-        x -= shift_down(k[i] * state[i], LATTICE_SHIFT);
+        x -= (unsigned)shift_down(k[i] * state[i], LATTICE_SHIFT);
         state[i+1] = state[i] + shift_down(k[i] * x, LATTICE_SHIFT);
     }
 #endif
@@ -500,16 +500,13 @@ static int predictor_calc_error(int *k, int *state, int order, int error)
 // copes better with quantization, and calculates the
 // actual whitened result as it goes.
 
-static int modified_levinson_durbin(int *window, int window_entries,
+static void modified_levinson_durbin(int *window, int window_entries,
         int *out, int out_entries, int channels, int *tap_quant)
 {
     int i;
-    int *state = av_calloc(window_entries, sizeof(*state));
+    int *state = window + window_entries;
 
-    if (!state)
-        return AVERROR(ENOMEM);
-
-    memcpy(state, window, 4* window_entries);
+    memcpy(state, window, window_entries * sizeof(*state));
 
     for (i = 0; i < out_entries; i++)
     {
@@ -571,9 +568,6 @@ static int modified_levinson_durbin(int *window, int window_entries,
         }
 #endif
     }
-
-    av_free(state);
-    return 0;
 }
 
 static inline int code_samplerate(int samplerate)
@@ -596,6 +590,7 @@ static inline int code_samplerate(int samplerate)
 static av_cold int sonic_encode_init(AVCodecContext *avctx)
 {
     SonicContext *s = avctx->priv_data;
+    int *coded_samples;
     PutBitContext pb;
     int i;
 
@@ -655,17 +650,16 @@ static av_cold int sonic_encode_init(AVCodecContext *avctx)
     if (!s->predictor_k)
         return AVERROR(ENOMEM);
 
-    for (i = 0; i < s->channels; i++)
-    {
-        s->coded_samples[i] = av_calloc(s->block_align, sizeof(**s->coded_samples));
-        if (!s->coded_samples[i])
-            return AVERROR(ENOMEM);
-    }
+    coded_samples = av_calloc(s->block_align, s->channels * sizeof(**s->coded_samples));
+    if (!coded_samples)
+        return AVERROR(ENOMEM);
+    for (i = 0; i < s->channels; i++, coded_samples += s->block_align)
+        s->coded_samples[i] = coded_samples;
 
     s->int_samples = av_calloc(s->frame_size, sizeof(*s->int_samples));
 
     s->window_size = ((2*s->tail_size)+s->frame_size);
-    s->window = av_calloc(s->window_size, sizeof(*s->window));
+    s->window = av_calloc(s->window_size, 2 * sizeof(*s->window));
     if (!s->window || !s->int_samples)
         return AVERROR(ENOMEM);
 
@@ -706,11 +700,8 @@ static av_cold int sonic_encode_init(AVCodecContext *avctx)
 static av_cold int sonic_encode_close(AVCodecContext *avctx)
 {
     SonicContext *s = avctx->priv_data;
-    int i;
 
-    for (i = 0; i < s->channels; i++)
-        av_freep(&s->coded_samples[i]);
-
+    av_freep(&s->coded_samples[0]);
     av_freep(&s->predictor_k);
     av_freep(&s->tail);
     av_freep(&s->tap_quant);
@@ -764,7 +755,7 @@ static int sonic_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
             break;
     }
 
-    memset(s->window, 0, 4* s->window_size);
+    memset(s->window, 0, s->window_size * sizeof(*s->window));
 
     for (i = 0; i < s->tail_size; i++)
         s->window[x++] = s->tail[i];
@@ -779,10 +770,8 @@ static int sonic_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         s->tail[i] = s->int_samples[s->frame_size - s->tail_size + i];
 
     // generate taps
-    ret = modified_levinson_durbin(s->window, s->window_size,
+    modified_levinson_durbin(s->window, s->window_size,
                 s->predictor_k, s->num_taps, s->channels, s->tap_quant);
-    if (ret < 0)
-        return ret;
 
     if ((ret = intlist_write(&c, state, s->predictor_k, s->num_taps, 0)) < 0)
         return ret;
@@ -859,6 +848,7 @@ static const int samplerate_table[] =
 static av_cold int sonic_decode_init(AVCodecContext *avctx)
 {
     SonicContext *s = avctx->priv_data;
+    int *tmp;
     GetBitContext gb;
     int i;
     int ret;
@@ -951,19 +941,18 @@ static av_cold int sonic_decode_init(AVCodecContext *avctx)
 
     s->predictor_k = av_calloc(s->num_taps, sizeof(*s->predictor_k));
 
-    for (i = 0; i < s->channels; i++)
-    {
-        s->predictor_state[i] = av_calloc(s->num_taps, sizeof(**s->predictor_state));
-        if (!s->predictor_state[i])
-            return AVERROR(ENOMEM);
-    }
+    tmp = av_calloc(s->num_taps, s->channels * sizeof(**s->predictor_state));
+    if (!tmp)
+        return AVERROR(ENOMEM);
+    for (i = 0; i < s->channels; i++, tmp += s->num_taps)
+        s->predictor_state[i] = tmp;
 
-    for (i = 0; i < s->channels; i++)
-    {
-        s->coded_samples[i] = av_calloc(s->block_align, sizeof(**s->coded_samples));
-        if (!s->coded_samples[i])
-            return AVERROR(ENOMEM);
-    }
+    tmp = av_calloc(s->block_align, s->channels * sizeof(**s->coded_samples));
+    if (!tmp)
+        return AVERROR(ENOMEM);
+    for (i = 0; i < s->channels; i++, tmp += s->block_align)
+        s->coded_samples[i]   = tmp;
+
     s->int_samples = av_calloc(s->frame_size, sizeof(*s->int_samples));
     if (!s->int_samples)
         return AVERROR(ENOMEM);
@@ -975,15 +964,12 @@ static av_cold int sonic_decode_init(AVCodecContext *avctx)
 static av_cold int sonic_decode_close(AVCodecContext *avctx)
 {
     SonicContext *s = avctx->priv_data;
-    int i;
 
     av_freep(&s->int_samples);
     av_freep(&s->tap_quant);
     av_freep(&s->predictor_k);
-    for (i = 0; i < MAX_CHANNELS; i++) {
-        av_freep(&s->predictor_state[i]);
-        av_freep(&s->coded_samples[i]);
-    }
+    av_freep(&s->predictor_state[0]);
+    av_freep(&s->coded_samples[0]);
 
     return 0;
 }
@@ -1095,7 +1081,8 @@ AVCodec ff_sonic_decoder = {
     .init           = sonic_decode_init,
     .close          = sonic_decode_close,
     .decode         = sonic_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_EXPERIMENTAL,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_EXPERIMENTAL | AV_CODEC_CAP_CHANNEL_CONF,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif /* CONFIG_SONIC_DECODER */
 
@@ -1110,6 +1097,7 @@ AVCodec ff_sonic_encoder = {
     .encode2        = sonic_encode_frame,
     .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE },
     .capabilities   = AV_CODEC_CAP_EXPERIMENTAL,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .close          = sonic_encode_close,
 };
 #endif
@@ -1125,6 +1113,7 @@ AVCodec ff_sonic_ls_encoder = {
     .encode2        = sonic_encode_frame,
     .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE },
     .capabilities   = AV_CODEC_CAP_EXPERIMENTAL,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .close          = sonic_encode_close,
 };
 #endif

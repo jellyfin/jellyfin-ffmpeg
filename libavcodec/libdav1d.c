@@ -22,11 +22,14 @@
 #include <dav1d/dav1d.h>
 
 #include "libavutil/avassert.h"
+#include "libavutil/film_grain_params.h"
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 
+#include "atsc_a53.h"
 #include "avcodec.h"
+#include "bytestream.h"
 #include "decode.h"
 #include "internal.h"
 
@@ -66,12 +69,11 @@ static int libdav1d_picture_allocator(Dav1dPicture *p, void *cookie)
 {
     Libdav1dContext *dav1d = cookie;
     enum AVPixelFormat format = pix_fmt[p->p.layout][p->seq_hdr->hbd];
-    int ret, linesize[4], h = FFALIGN(p->p.h, 128);
+    int ret, linesize[4], h = FFALIGN(p->p.h, 128), w = FFALIGN(p->p.w, 128);
     uint8_t *aligned_ptr, *data[4];
     AVBufferRef *buf;
 
-    ret = av_image_fill_arrays(data, linesize, NULL, format, FFALIGN(p->p.w, 128),
-                               h, DAV1D_PICTURE_ALIGNMENT);
+    ret = av_image_get_buffer_size(format, w, h, DAV1D_PICTURE_ALIGNMENT);
     if (ret < 0)
         return ret;
 
@@ -94,7 +96,8 @@ static int libdav1d_picture_allocator(Dav1dPicture *p, void *cookie)
     // Use the extra DAV1D_PICTURE_ALIGNMENT padding bytes in the buffer to align it
     // if required.
     aligned_ptr = (uint8_t *)FFALIGN((uintptr_t)buf->data, DAV1D_PICTURE_ALIGNMENT);
-    ret = av_image_fill_pointers(data, format, h, aligned_ptr, linesize);
+    ret = av_image_fill_arrays(data, linesize, aligned_ptr, format, w, h,
+                               DAV1D_PICTURE_ALIGNMENT);
     if (ret < 0) {
         av_buffer_unref(&buf);
         return ret;
@@ -135,6 +138,8 @@ static av_cold int libdav1d_init(AVCodecContext *c)
     s.frame_size_limit = c->max_pixels;
     if (dav1d->apply_grain >= 0)
         s.apply_grain = dav1d->apply_grain;
+    else if (c->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN)
+        s.apply_grain = 0;
 
     s.all_layers = dav1d->all_layers;
     if (dav1d->operating_point >= 0)
@@ -272,6 +277,7 @@ static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
               frame->height * (int64_t)p->frame_hdr->render_width,
               frame->width  * (int64_t)p->frame_hdr->render_height,
               INT_MAX);
+    ff_set_sar(c, frame->sample_aspect_ratio);
 
     switch (p->seq_hdr->chr) {
     case DAV1D_CHR_VERTICAL:
@@ -307,7 +313,7 @@ static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
     }
 
     // match timestamps and packet size
-    frame->pts = frame->best_effort_timestamp = p->m.timestamp;
+    frame->pts = p->m.timestamp;
 #if FF_API_PKT_PTS
 FF_DISABLE_DEPRECATION_WARNINGS
     frame->pkt_pts = p->m.timestamp;
@@ -364,6 +370,72 @@ FF_ENABLE_DEPRECATION_WARNINGS
         light->MaxCLL = p->content_light->max_content_light_level;
         light->MaxFALL = p->content_light->max_frame_average_light_level;
     }
+    if (p->itut_t35) {
+        GetByteContext gb;
+        unsigned int user_identifier;
+
+        bytestream2_init(&gb, p->itut_t35->payload, p->itut_t35->payload_size);
+        bytestream2_skip(&gb, 1); // terminal provider code
+        bytestream2_skip(&gb, 1); // terminal provider oriented code
+        user_identifier = bytestream2_get_be32(&gb);
+        switch (user_identifier) {
+        case MKBETAG('G', 'A', '9', '4'): { // closed captions
+            AVBufferRef *buf = NULL;
+
+            res = ff_parse_a53_cc(&buf, gb.buffer, bytestream2_get_bytes_left(&gb));
+            if (res < 0)
+                goto fail;
+            if (!res)
+                break;
+
+            if (!av_frame_new_side_data_from_buf(frame, AV_FRAME_DATA_A53_CC, buf))
+                av_buffer_unref(&buf);
+
+            c->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
+            break;
+        }
+        default: // ignore unsupported identifiers
+            break;
+        }
+    }
+    if (p->frame_hdr->film_grain.present && (!dav1d->apply_grain ||
+        (c->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN))) {
+        AVFilmGrainParams *fgp = av_film_grain_params_create_side_data(frame);
+        if (!fgp) {
+            res = AVERROR(ENOMEM);
+            goto fail;
+        }
+
+        fgp->type = AV_FILM_GRAIN_PARAMS_AV1;
+        fgp->seed = p->frame_hdr->film_grain.data.seed;
+        fgp->codec.aom.num_y_points = p->frame_hdr->film_grain.data.num_y_points;
+        fgp->codec.aom.chroma_scaling_from_luma = p->frame_hdr->film_grain.data.chroma_scaling_from_luma;
+        fgp->codec.aom.scaling_shift = p->frame_hdr->film_grain.data.scaling_shift;
+        fgp->codec.aom.ar_coeff_lag = p->frame_hdr->film_grain.data.ar_coeff_lag;
+        fgp->codec.aom.ar_coeff_shift = p->frame_hdr->film_grain.data.ar_coeff_shift;
+        fgp->codec.aom.grain_scale_shift = p->frame_hdr->film_grain.data.grain_scale_shift;
+        fgp->codec.aom.overlap_flag = p->frame_hdr->film_grain.data.overlap_flag;
+        fgp->codec.aom.limit_output_range = p->frame_hdr->film_grain.data.clip_to_restricted_range;
+
+        memcpy(&fgp->codec.aom.y_points, &p->frame_hdr->film_grain.data.y_points,
+               sizeof(fgp->codec.aom.y_points));
+        memcpy(&fgp->codec.aom.num_uv_points, &p->frame_hdr->film_grain.data.num_uv_points,
+               sizeof(fgp->codec.aom.num_uv_points));
+        memcpy(&fgp->codec.aom.uv_points, &p->frame_hdr->film_grain.data.uv_points,
+               sizeof(fgp->codec.aom.uv_points));
+        memcpy(&fgp->codec.aom.ar_coeffs_y, &p->frame_hdr->film_grain.data.ar_coeffs_y,
+               sizeof(fgp->codec.aom.ar_coeffs_y));
+        memcpy(&fgp->codec.aom.ar_coeffs_uv[0], &p->frame_hdr->film_grain.data.ar_coeffs_uv[0],
+               sizeof(fgp->codec.aom.ar_coeffs_uv[0]));
+        memcpy(&fgp->codec.aom.ar_coeffs_uv[1], &p->frame_hdr->film_grain.data.ar_coeffs_uv[1],
+               sizeof(fgp->codec.aom.ar_coeffs_uv[1]));
+        memcpy(&fgp->codec.aom.uv_mult, &p->frame_hdr->film_grain.data.uv_mult,
+               sizeof(fgp->codec.aom.uv_mult));
+        memcpy(&fgp->codec.aom.uv_mult_luma, &p->frame_hdr->film_grain.data.uv_luma_mult,
+               sizeof(fgp->codec.aom.uv_mult_luma));
+        memcpy(&fgp->codec.aom.uv_offset, &p->frame_hdr->film_grain.data.uv_offset,
+               sizeof(fgp->codec.aom.uv_offset));
+    }
 
     res = 0;
 fail:
@@ -389,7 +461,7 @@ static av_cold int libdav1d_close(AVCodecContext *c)
 static const AVOption libdav1d_options[] = {
     { "tilethreads", "Tile threads", OFFSET(tile_threads), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, DAV1D_MAX_TILE_THREADS, VD },
     { "framethreads", "Frame threads", OFFSET(frame_threads), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, DAV1D_MAX_FRAME_THREADS, VD },
-    { "filmgrain", "Apply Film Grain", OFFSET(apply_grain), AV_OPT_TYPE_BOOL, { .i64 = -1 }, -1, 1, VD },
+    { "filmgrain", "Apply Film Grain", OFFSET(apply_grain), AV_OPT_TYPE_BOOL, { .i64 = -1 }, -1, 1, VD | AV_OPT_FLAG_DEPRECATED },
     { "oppoint",  "Select an operating point of the scalable bitstream", OFFSET(operating_point), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 31, VD },
     { "alllayers", "Output all spatial layers", OFFSET(all_layers), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VD },
     { NULL }
@@ -412,8 +484,9 @@ AVCodec ff_libdav1d_decoder = {
     .close          = libdav1d_close,
     .flush          = libdav1d_flush,
     .receive_frame  = libdav1d_receive_frame,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AUTO_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_SETS_PKT_DTS,
+    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_SETS_PKT_DTS |
+                      FF_CODEC_CAP_AUTO_THREADS,
     .priv_class     = &libdav1d_class,
     .wrapper_name   = "libdav1d",
 };

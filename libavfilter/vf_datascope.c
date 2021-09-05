@@ -37,6 +37,7 @@ typedef struct DatascopeContext {
     int mode;
     int dformat;
     int axis;
+    int components;
     float opacity;
 
     int nb_planes;
@@ -60,17 +61,18 @@ typedef struct DatascopeContext {
 static const AVOption datascope_options[] = {
     { "size", "set output size", OFFSET(ow),   AV_OPT_TYPE_IMAGE_SIZE, {.str="hd720"}, 0, 0, FLAGS },
     { "s",    "set output size", OFFSET(ow),   AV_OPT_TYPE_IMAGE_SIZE, {.str="hd720"}, 0, 0, FLAGS },
-    { "x",    "set x offset", OFFSET(x),    AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGS },
-    { "y",    "set y offset", OFFSET(y),    AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGS },
-    { "mode", "set scope mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 2, FLAGS, "mode" },
-    {   "mono",   NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "mode" },
-    {   "color",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "mode" },
-    {   "color2", NULL, 0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGS, "mode" },
-    { "axis",    "draw column/row numbers", OFFSET(axis), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
-    { "opacity", "set background opacity", OFFSET(opacity), AV_OPT_TYPE_FLOAT, {.dbl=0.75}, 0, 1, FLAGS },
-    { "format", "set display number format", OFFSET(dformat), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS, "format" },
-    {   "hex",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "format" },
-    {   "dec",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "format" },
+    { "x",    "set x offset", OFFSET(x),    AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGSR },
+    { "y",    "set y offset", OFFSET(y),    AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGSR },
+    { "mode", "set scope mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 2, FLAGSR, "mode" },
+    {   "mono",   NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGSR, "mode" },
+    {   "color",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGSR, "mode" },
+    {   "color2", NULL, 0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGSR, "mode" },
+    { "axis",    "draw column/row numbers", OFFSET(axis), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGSR },
+    { "opacity", "set background opacity", OFFSET(opacity), AV_OPT_TYPE_FLOAT, {.dbl=0.75}, 0, 1, FLAGSR },
+    { "format", "set display number format", OFFSET(dformat), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGSR, "format" },
+    {   "hex",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGSR, "format" },
+    {   "dec",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGSR, "format" },
+    { "components", "set components to display", OFFSET(components), AV_OPT_TYPE_INT, {.i64=15}, 1, 15, FLAGSR },
     { NULL }
 };
 
@@ -169,7 +171,7 @@ static void reverse_color16(FFDrawContext *draw, FFDrawColor *color, FFDrawColor
 
 typedef struct ThreadData {
     AVFrame *in, *out;
-    int xoff, yoff;
+    int xoff, yoff, PP;
 } ThreadData;
 
 static int filter_color2(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
@@ -180,13 +182,14 @@ static int filter_color2(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
     ThreadData *td = arg;
     AVFrame *in = td->in;
     AVFrame *out = td->out;
+    const int PP = td->PP;
     const int xoff = td->xoff;
     const int yoff = td->yoff;
     const int P = FFMAX(s->nb_planes, s->nb_comps);
     const int C = s->chars;
     const int D = ((s->chars - s->dformat) >> 2) + s->dformat * 2;
     const int W = (outlink->w - xoff) / (C * 10);
-    const int H = (outlink->h - yoff) / (P * 12);
+    const int H = (outlink->h - yoff) / (PP * 12);
     const char *format[4] = {"%02X\n", "%04X\n", "%03d\n", "%05d\n"};
     const int slice_start = (W * jobnr) / nb_jobs;
     const int slice_end = (W * (jobnr+1)) / nb_jobs;
@@ -196,18 +199,21 @@ static int filter_color2(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
         for (x = slice_start; x < slice_end && (x + s->x < inlink->w); x++) {
             FFDrawColor color = { { 0 } };
             FFDrawColor reverse = { { 0 } };
-            int value[4] = { 0 };
+            int value[4] = { 0 }, pp = 0;
 
             s->pick_color(&s->draw, &color, in, x + s->x, y + s->y, value);
             s->reverse_color(&s->draw, &color, &reverse);
             ff_fill_rectangle(&s->draw, &color, out->data, out->linesize,
-                              xoff + x * C * 10, yoff + y * P * 12, C * 10, P * 12);
+                              xoff + x * C * 10, yoff + y * PP * 12, C * 10, PP * 12);
 
             for (p = 0; p < P; p++) {
                 char text[256];
 
+                if (!(s->components & (1 << p)))
+                    continue;
                 snprintf(text, sizeof(text), format[D], value[p]);
-                draw_text(&s->draw, out, &reverse, xoff + x * C * 10 + 2, yoff + y * P * 12 + p * 10 + 2, text, 0);
+                draw_text(&s->draw, out, &reverse, xoff + x * C * 10 + 2, yoff + y * PP * 12 + pp * 10 + 2, text, 0);
+                pp++;
             }
         }
     }
@@ -223,13 +229,14 @@ static int filter_color(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     ThreadData *td = arg;
     AVFrame *in = td->in;
     AVFrame *out = td->out;
+    const int PP = td->PP;
     const int xoff = td->xoff;
     const int yoff = td->yoff;
     const int P = FFMAX(s->nb_planes, s->nb_comps);
     const int C = s->chars;
     const int D = ((s->chars - s->dformat) >> 2) + s->dformat * 2;
     const int W = (outlink->w - xoff) / (C * 10);
-    const int H = (outlink->h - yoff) / (P * 12);
+    const int H = (outlink->h - yoff) / (PP * 12);
     const char *format[4] = {"%02X\n", "%04X\n", "%03d\n", "%05d\n"};
     const int slice_start = (W * jobnr) / nb_jobs;
     const int slice_end = (W * (jobnr+1)) / nb_jobs;
@@ -238,15 +245,18 @@ static int filter_color(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     for (y = 0; y < H && (y + s->y < inlink->h); y++) {
         for (x = slice_start; x < slice_end && (x + s->x < inlink->w); x++) {
             FFDrawColor color = { { 0 } };
-            int value[4] = { 0 };
+            int value[4] = { 0 }, pp = 0;
 
             s->pick_color(&s->draw, &color, in, x + s->x, y + s->y, value);
 
             for (p = 0; p < P; p++) {
                 char text[256];
 
+                if (!(s->components & (1 << p)))
+                    continue;
                 snprintf(text, sizeof(text), format[D], value[p]);
-                draw_text(&s->draw, out, &color, xoff + x * C * 10 + 2, yoff + y * P * 12 + p * 10 + 2, text, 0);
+                draw_text(&s->draw, out, &color, xoff + x * C * 10 + 2, yoff + y * PP * 12 + pp * 10 + 2, text, 0);
+                pp++;
             }
         }
     }
@@ -262,13 +272,14 @@ static int filter_mono(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     ThreadData *td = arg;
     AVFrame *in = td->in;
     AVFrame *out = td->out;
+    const int PP = td->PP;
     const int xoff = td->xoff;
     const int yoff = td->yoff;
     const int P = FFMAX(s->nb_planes, s->nb_comps);
     const int C = s->chars;
     const int D = ((s->chars - s->dformat) >> 2) + s->dformat * 2;
     const int W = (outlink->w - xoff) / (C * 10);
-    const int H = (outlink->h - yoff) / (P * 12);
+    const int H = (outlink->h - yoff) / (PP * 12);
     const char *format[4] = {"%02X\n", "%04X\n", "%03d\n", "%05d\n"};
     const int slice_start = (W * jobnr) / nb_jobs;
     const int slice_end = (W * (jobnr+1)) / nb_jobs;
@@ -277,14 +288,17 @@ static int filter_mono(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     for (y = 0; y < H && (y + s->y < inlink->h); y++) {
         for (x = slice_start; x < slice_end && (x + s->x < inlink->w); x++) {
             FFDrawColor color = { { 0 } };
-            int value[4] = { 0 };
+            int value[4] = { 0 }, pp = 0;
 
             s->pick_color(&s->draw, &color, in, x + s->x, y + s->y, value);
             for (p = 0; p < P; p++) {
                 char text[256];
 
+                if (!(s->components & (1 << p)))
+                    continue;
                 snprintf(text, sizeof(text), format[D], value[p]);
-                draw_text(&s->draw, out, &s->white, xoff + x * C * 10 + 2, yoff + y * P * 12 + p * 10 + 2, text, 0);
+                draw_text(&s->draw, out, &s->white, xoff + x * C * 10 + 2, yoff + y * PP * 12 + pp * 10 + 2, text, 0);
+                pp++;
             }
         }
     }
@@ -297,9 +311,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVFilterContext *ctx  = inlink->dst;
     DatascopeContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
+    const int P = FFMAX(s->nb_planes, s->nb_comps);
     ThreadData td = { 0 };
     int ymaxlen = 0;
     int xmaxlen = 0;
+    int PP = 0;
     AVFrame *out;
 
     out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
@@ -312,10 +328,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     ff_fill_rectangle(&s->draw, &s->black, out->data, out->linesize,
                       0, 0, outlink->w, outlink->h);
 
+    for (int p = 0; p < P; p++) {
+        if (s->components & (1 << p))
+            PP++;
+    }
+    PP = FFMAX(PP, 1);
+
     if (s->axis) {
-        const int P = FFMAX(s->nb_planes, s->nb_comps);
         const int C = s->chars;
-        int Y = outlink->h / (P * 12);
+        int Y = outlink->h / (PP * 12);
         int X = outlink->w / (C * 10);
         char text[256] = { 0 };
         int x, y;
@@ -327,16 +348,16 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         xmaxlen = strlen(text);
         xmaxlen *= 10;
 
-        Y = (outlink->h - xmaxlen) / (P * 12);
+        Y = (outlink->h - xmaxlen) / (PP * 12);
         X = (outlink->w - ymaxlen) / (C * 10);
 
         for (y = 0; y < Y; y++) {
             snprintf(text, sizeof(text), "%d", s->y + y);
 
             ff_fill_rectangle(&s->draw, &s->gray, out->data, out->linesize,
-                              0, xmaxlen + y * P * 12 + (P + 1) * P - 2, ymaxlen, 10);
+                              0, xmaxlen + y * PP * 12 + (PP + 1) * PP - 2, ymaxlen, 10);
 
-            draw_text(&s->draw, out, &s->yellow, 2, xmaxlen + y * P * 12 + (P + 1) * P, text, 0);
+            draw_text(&s->draw, out, &s->yellow, 2, xmaxlen + y * PP * 12 + (PP + 1) * PP, text, 0);
         }
 
         for (x = 0; x < X; x++) {
@@ -349,7 +370,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         }
     }
 
-    td.in = in; td.out = out, td.yoff = xmaxlen, td.xoff = ymaxlen;
+    td.in = in; td.out = out, td.yoff = xmaxlen, td.xoff = ymaxlen, td.PP = PP;
     ctx->internal->execute(ctx, s->filter, &td, NULL, FFMIN(ff_filter_get_nb_threads(ctx), FFMAX(outlink->w / 20, 1)));
 
     av_frame_free(&in);
@@ -398,6 +419,18 @@ static int config_output(AVFilterLink *outlink)
     return 0;
 }
 
+static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,
+                           char *res, int res_len, int flags)
+{
+    int ret;
+
+    ret = ff_filter_process_command(ctx, cmd, args, res, res_len, flags);
+    if (ret < 0)
+        return ret;
+
+    return config_input(ctx->inputs[0]);
+}
+
 static const AVFilterPad inputs[] = {
     {
         .name         = "default",
@@ -426,6 +459,7 @@ AVFilter ff_vf_datascope = {
     .inputs        = inputs,
     .outputs       = outputs,
     .flags         = AVFILTER_FLAG_SLICE_THREADS,
+    .process_command = process_command,
 };
 
 typedef struct PixscopeContext {
@@ -460,13 +494,13 @@ typedef struct PixscopeContext {
 #define POFFSET(x) offsetof(PixscopeContext, x)
 
 static const AVOption pixscope_options[] = {
-    { "x",  "set scope x offset",  POFFSET(xpos), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0,  1, FLAGS },
-    { "y",  "set scope y offset",  POFFSET(ypos), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0,  1, FLAGS },
-    { "w",  "set scope width",     POFFSET(w),    AV_OPT_TYPE_INT,   {.i64=7},   1, 80, FLAGS },
-    { "h",  "set scope height",    POFFSET(h),    AV_OPT_TYPE_INT,   {.i64=7},   1, 80, FLAGS },
-    { "o",  "set window opacity",  POFFSET(o),    AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0,  1, FLAGS },
-    { "wx", "set window x offset", POFFSET(wx),   AV_OPT_TYPE_FLOAT, {.dbl=-1}, -1,  1, FLAGS },
-    { "wy", "set window y offset", POFFSET(wy),   AV_OPT_TYPE_FLOAT, {.dbl=-1}, -1,  1, FLAGS },
+    { "x",  "set scope x offset",  POFFSET(xpos), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0,  1, FLAGSR },
+    { "y",  "set scope y offset",  POFFSET(ypos), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0,  1, FLAGSR },
+    { "w",  "set scope width",     POFFSET(w),    AV_OPT_TYPE_INT,   {.i64=7},   1, 80, FLAGSR },
+    { "h",  "set scope height",    POFFSET(h),    AV_OPT_TYPE_INT,   {.i64=7},   1, 80, FLAGSR },
+    { "o",  "set window opacity",  POFFSET(o),    AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0,  1, FLAGSR },
+    { "wx", "set window x offset", POFFSET(wx),   AV_OPT_TYPE_FLOAT, {.dbl=-1}, -1,  1, FLAGSR },
+    { "wy", "set window y offset", POFFSET(wy),   AV_OPT_TYPE_FLOAT, {.dbl=-1}, -1,  1, FLAGSR },
     { NULL }
 };
 
@@ -675,6 +709,18 @@ static int pixscope_filter_frame(AVFilterLink *inlink, AVFrame *in)
     return ff_filter_frame(outlink, out);
 }
 
+static int pixscope_process_command(AVFilterContext *ctx, const char *cmd, const char *args,
+                                    char *res, int res_len, int flags)
+{
+    int ret;
+
+    ret = ff_filter_process_command(ctx, cmd, args, res, res_len, flags);
+    if (ret < 0)
+        return ret;
+
+    return pixscope_config_input(ctx->inputs[0]);
+}
+
 static const AVFilterPad pixscope_inputs[] = {
     {
         .name           = "default",
@@ -702,6 +748,7 @@ AVFilter ff_vf_pixscope = {
     .inputs        = pixscope_inputs,
     .outputs       = pixscope_outputs,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    .process_command = pixscope_process_command,
 };
 
 typedef struct PixelValues {
@@ -791,7 +838,7 @@ static void draw_line(FFDrawContext *draw, int x0, int y0, int x1, int y1,
             for (p = 0; p < draw->nb_planes; p++) {
                 if (draw->desc->comp[p].depth == 8) {
                     if (draw->nb_planes == 1) {
-                        for (i = 0; i < 4; i++) {
+                        for (i = 0; i < draw->desc->nb_components; i++) {
                             out->data[0][y0 * out->linesize[0] + x0 * draw->pixelstep[0] + i] = color->comp[0].u8[i];
                         }
                     } else {
@@ -799,8 +846,8 @@ static void draw_line(FFDrawContext *draw, int x0, int y0, int x1, int y1,
                     }
                 } else {
                     if (draw->nb_planes == 1) {
-                        for (i = 0; i < 4; i++) {
-                            AV_WN16(out->data[0] + y0 * out->linesize[0] + 2 * (x0 * draw->pixelstep[0] + i), color->comp[0].u16[i]);
+                        for (i = 0; i < draw->desc->nb_components; i++) {
+                            AV_WN16(out->data[0] + y0 * out->linesize[0] + (x0 * draw->pixelstep[0] + i), color->comp[0].u16[i]);
                         }
                     } else {
                         AV_WN16(out->data[p] + out->linesize[p] * (y0 >> draw->vsub[p]) + (x0 >> draw->hsub[p]) * 2, color->comp[p].u16[0]);
@@ -965,7 +1012,7 @@ static void draw_scope(OscilloscopeContext *s, int x0, int y0, int x1, int y1,
                     if (s->draw.nb_planes == 1) {
                         int i;
 
-                        for (i = 0; i < s->draw.pixelstep[0]; i++)
+                        for (i = 0; i < s->nb_comps; i++)
                             out->data[0][out->linesize[0] * y0 + x0 * s->draw.pixelstep[0] + i] = 255 * ((s->nb_values + state) & 1);
                     } else {
                         out->data[0][out->linesize[0] * y0 + x0] = 255 * ((s->nb_values + state) & 1);
@@ -974,8 +1021,8 @@ static void draw_scope(OscilloscopeContext *s, int x0, int y0, int x1, int y1,
                     if (s->draw.nb_planes == 1) {
                         int i;
 
-                        for (i = 0; i < s->draw.pixelstep[0]; i++)
-                            AV_WN16(out->data[0] + out->linesize[0] * y0 + 2 * x0 * (s->draw.pixelstep[0] + i), (s->max - 1) * ((s->nb_values + state) & 1));
+                        for (i = 0; i < s->nb_comps; i++)
+                            AV_WN16(out->data[0] + out->linesize[0] * y0 + x0 * s->draw.pixelstep[0] + i, (s->max - 1) * ((s->nb_values + state) & 1));
                     } else {
                         AV_WN16(out->data[0] + out->linesize[0] * y0 + 2 * x0, (s->max - 1) * ((s->nb_values + state) & 1));
                     }

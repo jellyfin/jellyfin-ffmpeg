@@ -73,11 +73,10 @@ typedef struct VAAPIEncodeH265Context {
     H265RawVPS   raw_vps;
     H265RawSPS   raw_sps;
     H265RawPPS   raw_pps;
-    H265RawSEI   raw_sei;
     H265RawSlice raw_slice;
 
-    H265RawSEIMasteringDisplayColourVolume sei_mastering_display;
-    H265RawSEIContentLightLevelInfo        sei_content_light_level;
+    SEIRawMasteringDisplayColourVolume sei_mastering_display;
+    SEIRawContentLightLevelInfo        sei_content_light_level;
 
     CodedBitstreamContext *cbc;
     CodedBitstreamFragment current_access_unit;
@@ -116,11 +115,10 @@ static int vaapi_encode_h265_add_nal(AVCodecContext *avctx,
                                      CodedBitstreamFragment *au,
                                      void *nal_unit)
 {
-    VAAPIEncodeH265Context *priv = avctx->priv_data;
     H265RawNALUnitHeader *header = nal_unit;
     int err;
 
-    err = ff_cbs_insert_unit_content(priv->cbc, au, -1,
+    err = ff_cbs_insert_unit_content(au, -1,
                                      header->nal_unit_type, nal_unit, NULL);
     if (err < 0) {
         av_log(avctx, AV_LOG_ERROR, "Failed to add NAL unit: "
@@ -159,7 +157,7 @@ static int vaapi_encode_h265_write_sequence_header(AVCodecContext *avctx,
 
     err = vaapi_encode_h265_write_access_unit(avctx, data, data_len, au);
 fail:
-    ff_cbs_fragment_reset(priv->cbc, au);
+    ff_cbs_fragment_reset(au);
     return err;
 }
 
@@ -185,7 +183,7 @@ static int vaapi_encode_h265_write_slice_header(AVCodecContext *avctx,
 
     err = vaapi_encode_h265_write_access_unit(avctx, data, data_len, au);
 fail:
-    ff_cbs_fragment_reset(priv->cbc, au);
+    ff_cbs_fragment_reset(au);
     return err;
 }
 
@@ -196,11 +194,9 @@ static int vaapi_encode_h265_write_extra_header(AVCodecContext *avctx,
 {
     VAAPIEncodeH265Context *priv = avctx->priv_data;
     CodedBitstreamFragment   *au = &priv->current_access_unit;
-    int err, i;
+    int err;
 
     if (priv->sei_needed) {
-        H265RawSEI *sei = &priv->raw_sei;
-
         if (priv->aud_needed) {
             err = vaapi_encode_h265_add_nal(avctx, au, &priv->aud);
             if (err < 0)
@@ -208,41 +204,29 @@ static int vaapi_encode_h265_write_extra_header(AVCodecContext *avctx,
             priv->aud_needed = 0;
         }
 
-        *sei = (H265RawSEI) {
-            .nal_unit_header = {
-                .nal_unit_type         = HEVC_NAL_SEI_PREFIX,
-                .nuh_layer_id          = 0,
-                .nuh_temporal_id_plus1 = 1,
-            },
-        };
-
-        i = 0;
-
         if (priv->sei_needed & SEI_MASTERING_DISPLAY) {
-            sei->payload[i].payload_type = HEVC_SEI_TYPE_MASTERING_DISPLAY_INFO;
-            sei->payload[i].payload.mastering_display = priv->sei_mastering_display;
-            ++i;
+            err = ff_cbs_sei_add_message(priv->cbc, au, 1,
+                                         SEI_TYPE_MASTERING_DISPLAY_COLOUR_VOLUME,
+                                         &priv->sei_mastering_display, NULL);
+            if (err < 0)
+                goto fail;
         }
 
         if (priv->sei_needed & SEI_CONTENT_LIGHT_LEVEL) {
-            sei->payload[i].payload_type = HEVC_SEI_TYPE_CONTENT_LIGHT_LEVEL_INFO;
-            sei->payload[i].payload.content_light_level = priv->sei_content_light_level;
-            ++i;
+            err = ff_cbs_sei_add_message(priv->cbc, au, 1,
+                                         SEI_TYPE_CONTENT_LIGHT_LEVEL_INFO,
+                                         &priv->sei_content_light_level, NULL);
+            if (err < 0)
+                goto fail;
         }
 
-        sei->payload_count = i;
-        av_assert0(sei->payload_count > 0);
-
-        err = vaapi_encode_h265_add_nal(avctx, au, sei);
-        if (err < 0)
-            goto fail;
         priv->sei_needed = 0;
 
         err = vaapi_encode_h265_write_access_unit(avctx, data, data_len, au);
         if (err < 0)
             goto fail;
 
-        ff_cbs_fragment_reset(priv->cbc, au);
+        ff_cbs_fragment_reset(au);
 
         *type = VAEncPackedHeaderRawData;
         return 0;
@@ -251,7 +235,7 @@ static int vaapi_encode_h265_write_extra_header(AVCodecContext *avctx,
     }
 
 fail:
-    ff_cbs_fragment_reset(priv->cbc, au);
+    ff_cbs_fragment_reset(au);
     return err;
 }
 
@@ -345,7 +329,7 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
 
         level = ff_h265_guess_level(ptl, avctx->bit_rate,
                                     ctx->surface_width, ctx->surface_height,
-                                    ctx->nb_slices, 1, 1,
+                                    ctx->nb_slices, ctx->tile_rows, ctx->tile_cols,
                                     (ctx->b_per_p > 0) + 1);
         if (level) {
             av_log(avctx, AV_LOG_VERBOSE, "Using level %s.\n", level->name);
@@ -489,30 +473,20 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
         vui->aspect_ratio_info_present_flag = 1;
     }
 
-    if (avctx->color_range     != AVCOL_RANGE_UNSPECIFIED ||
-        avctx->color_primaries != AVCOL_PRI_UNSPECIFIED ||
+    // Unspecified video format, from table E-2.
+    vui->video_format             = 5;
+    vui->video_full_range_flag    =
+        avctx->color_range == AVCOL_RANGE_JPEG;
+    vui->colour_primaries         = avctx->color_primaries;
+    vui->transfer_characteristics = avctx->color_trc;
+    vui->matrix_coefficients      = avctx->colorspace;
+    if (avctx->color_primaries != AVCOL_PRI_UNSPECIFIED ||
         avctx->color_trc       != AVCOL_TRC_UNSPECIFIED ||
-        avctx->colorspace      != AVCOL_SPC_UNSPECIFIED) {
+        avctx->colorspace      != AVCOL_SPC_UNSPECIFIED)
+        vui->colour_description_present_flag = 1;
+    if (avctx->color_range     != AVCOL_RANGE_UNSPECIFIED ||
+        vui->colour_description_present_flag)
         vui->video_signal_type_present_flag = 1;
-        vui->video_format      = 5; // Unspecified.
-        vui->video_full_range_flag =
-            avctx->color_range == AVCOL_RANGE_JPEG;
-
-        if (avctx->color_primaries != AVCOL_PRI_UNSPECIFIED ||
-            avctx->color_trc       != AVCOL_TRC_UNSPECIFIED ||
-            avctx->colorspace      != AVCOL_SPC_UNSPECIFIED) {
-            vui->colour_description_present_flag = 1;
-            vui->colour_primaries         = avctx->color_primaries;
-            vui->transfer_characteristics = avctx->color_trc;
-            vui->matrix_coefficients      = avctx->colorspace;
-        }
-    } else {
-        vui->video_format             = 5;
-        vui->video_full_range_flag    = 0;
-        vui->colour_primaries         = avctx->color_primaries;
-        vui->transfer_characteristics = avctx->color_trc;
-        vui->matrix_coefficients      = avctx->colorspace;
-    }
 
     if (avctx->chroma_sample_location != AVCHROMA_LOC_UNSPECIFIED) {
         vui->chroma_loc_info_present_flag = 1;
@@ -556,8 +530,41 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
     pps->cu_qp_delta_enabled_flag = (ctx->va_rc_mode != VA_RC_CQP);
     pps->diff_cu_qp_delta_depth   = 0;
 
-    pps->pps_loop_filter_across_slices_enabled_flag = 1;
+    if (ctx->tile_rows && ctx->tile_cols) {
+        int uniform_spacing;
 
+        pps->tiles_enabled_flag      = 1;
+        pps->num_tile_columns_minus1 = ctx->tile_cols - 1;
+        pps->num_tile_rows_minus1    = ctx->tile_rows - 1;
+
+        // Test whether the spacing provided matches the H.265 uniform
+        // spacing, and set the flag if it does.
+        uniform_spacing = 1;
+        for (i = 0; i <= pps->num_tile_columns_minus1 &&
+                    uniform_spacing; i++) {
+            if (ctx->col_width[i] !=
+                (i + 1) * ctx->slice_block_cols / ctx->tile_cols -
+                 i      * ctx->slice_block_cols / ctx->tile_cols)
+                uniform_spacing = 0;
+        }
+        for (i = 0; i <= pps->num_tile_rows_minus1 &&
+                    uniform_spacing; i++) {
+            if (ctx->row_height[i] !=
+                (i + 1) * ctx->slice_block_rows / ctx->tile_rows -
+                 i      * ctx->slice_block_rows / ctx->tile_rows)
+                uniform_spacing = 0;
+        }
+        pps->uniform_spacing_flag = uniform_spacing;
+
+        for (i = 0; i <= pps->num_tile_columns_minus1; i++)
+            pps->column_width_minus1[i] = ctx->col_width[i] - 1;
+        for (i = 0; i <= pps->num_tile_rows_minus1; i++)
+            pps->row_height_minus1[i]   = ctx->row_height[i] - 1;
+
+        pps->loop_filter_across_tiles_enabled_flag = 1;
+    }
+
+    pps->pps_loop_filter_across_slices_enabled_flag = 1;
 
     // Fill VAAPI parameter buffers.
 
@@ -666,6 +673,13 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
         },
     };
 
+    if (pps->tiles_enabled_flag) {
+        for (i = 0; i <= vpic->num_tile_rows_minus1; i++)
+            vpic->row_height_minus1[i]   = pps->row_height_minus1[i];
+        for (i = 0; i <= vpic->num_tile_columns_minus1; i++)
+            vpic->column_width_minus1[i] = pps->column_width_minus1[i];
+    }
+
     return 0;
 }
 
@@ -752,7 +766,7 @@ static int vaapi_encode_h265_init_picture_params(AVCodecContext *avctx,
 
             // SEI is needed when both the primaries and luminance are set
             if (mdm->has_primaries && mdm->has_luminance) {
-                H265RawSEIMasteringDisplayColourVolume *mdcv =
+                SEIRawMasteringDisplayColourVolume *mdcv =
                     &priv->sei_mastering_display;
                 const int mapping[3] = {1, 2, 0};
                 const int chroma_den = 50000;
@@ -797,7 +811,7 @@ static int vaapi_encode_h265_init_picture_params(AVCodecContext *avctx,
         if (sd) {
             AVContentLightMetadata *clm =
                 (AVContentLightMetadata *)sd->data;
-            H265RawSEIContentLightLevelInfo *clli =
+            SEIRawContentLightLevelInfo *clli =
                 &priv->sei_content_light_level;
 
             clli->max_content_light_level     = FFMIN(clm->MaxCLL,  65535);
@@ -1114,6 +1128,10 @@ static const VAAPIEncodeProfile vaapi_encode_h265_profiles[] = {
     { FF_PROFILE_HEVC_MAIN_10, 10, 3, 1, 1, VAProfileHEVCMain10     },
     { FF_PROFILE_HEVC_REXT,    10, 3, 1, 1, VAProfileHEVCMain10     },
 #endif
+#if VA_CHECK_VERSION(1, 2, 0)
+    { FF_PROFILE_HEVC_REXT,     8, 3, 1, 0, VAProfileHEVCMain422_10 },
+    { FF_PROFILE_HEVC_REXT,    10, 3, 1, 0, VAProfileHEVCMain422_10 },
+#endif
     { FF_PROFILE_UNKNOWN }
 };
 
@@ -1188,7 +1206,7 @@ static av_cold int vaapi_encode_h265_close(AVCodecContext *avctx)
 {
     VAAPIEncodeH265Context *priv = avctx->priv_data;
 
-    ff_cbs_fragment_free(priv->cbc, &priv->current_access_unit);
+    ff_cbs_fragment_free(&priv->current_access_unit);
     ff_cbs_close(&priv->cbc);
 
     return ff_vaapi_encode_close(avctx);
@@ -1257,6 +1275,10 @@ static const AVOption vaapi_encode_h265_options[] = {
       { .i64 = SEI_MASTERING_DISPLAY | SEI_CONTENT_LIGHT_LEVEL },
       INT_MIN, INT_MAX, FLAGS, "sei" },
 
+    { "tiles", "Tile columns x rows",
+      OFFSET(common.tile_cols), AV_OPT_TYPE_IMAGE_SIZE,
+      { .str = NULL }, 0, 0, FLAGS },
+
     { NULL },
 };
 
@@ -1287,11 +1309,11 @@ AVCodec ff_hevc_vaapi_encoder = {
     .id             = AV_CODEC_ID_HEVC,
     .priv_data_size = sizeof(VAAPIEncodeH265Context),
     .init           = &vaapi_encode_h265_init,
-    .send_frame     = &ff_vaapi_encode_send_frame,
     .receive_packet = &ff_vaapi_encode_receive_packet,
     .close          = &vaapi_encode_h265_close,
     .priv_class     = &vaapi_encode_h265_class,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE,
+    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+                      AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_h265_defaults,
     .pix_fmts = (const enum AVPixelFormat[]) {

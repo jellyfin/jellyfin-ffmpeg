@@ -63,7 +63,7 @@ typedef struct AudioGateContext {
 } AudioGateContext;
 
 #define OFFSET(x) offsetof(AudioGateContext, x)
-#define A AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
+#define A AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption options[] = {
     { "level_in",  "set input level",        OFFSET(level_in),  AV_OPT_TYPE_DOUBLE, {.dbl=1},           0.015625,   64, A },
@@ -268,6 +268,8 @@ AVFilter ff_af_agate = {
     .priv_class     = &agate_class,
     .inputs         = inputs,
     .outputs        = outputs,
+    .process_command = ff_filter_process_command,
+    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };
 
 #endif /* CONFIG_AGATE_FILTER */
@@ -353,20 +355,20 @@ static int scquery_formats(AVFilterContext *ctx)
     };
     int ret, i;
 
-    if (!ctx->inputs[0]->in_channel_layouts ||
-        !ctx->inputs[0]->in_channel_layouts->nb_channel_layouts) {
+    if (!ctx->inputs[0]->incfg.channel_layouts ||
+        !ctx->inputs[0]->incfg.channel_layouts->nb_channel_layouts) {
         av_log(ctx, AV_LOG_WARNING,
                "No channel layout for input 1\n");
             return AVERROR(EAGAIN);
     }
 
-    if ((ret = ff_add_channel_layout(&layouts, ctx->inputs[0]->in_channel_layouts->channel_layouts[0])) < 0 ||
-        (ret = ff_channel_layouts_ref(layouts, &ctx->outputs[0]->in_channel_layouts)) < 0)
+    if ((ret = ff_add_channel_layout(&layouts, ctx->inputs[0]->incfg.channel_layouts->channel_layouts[0])) < 0 ||
+        (ret = ff_channel_layouts_ref(layouts, &ctx->outputs[0]->incfg.channel_layouts)) < 0)
         return ret;
 
     for (i = 0; i < 2; i++) {
         layouts = ff_all_channel_counts();
-        if ((ret = ff_channel_layouts_ref(layouts, &ctx->inputs[i]->out_channel_layouts)) < 0)
+        if ((ret = ff_channel_layouts_ref(layouts, &ctx->inputs[i]->outcfg.channel_layouts)) < 0)
             return ret;
     }
 
@@ -445,5 +447,7 @@ AVFilter ff_af_sidechaingate = {
     .uninit         = uninit,
     .inputs         = sidechaingate_inputs,
     .outputs        = sidechaingate_outputs,
+    .process_command = ff_filter_process_command,
+    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };
 #endif  /* CONFIG_SIDECHAINGATE_FILTER */

@@ -116,6 +116,16 @@ static const struct {
     #if CONFIG_HEVC_DECODER
         { "hevc_add_res", checkasm_check_hevc_add_res },
         { "hevc_idct", checkasm_check_hevc_idct },
+        { "hevc_qpel", checkasm_check_hevc_qpel },
+        { "hevc_qpel_uni", checkasm_check_hevc_qpel_uni },
+        { "hevc_qpel_uni_w", checkasm_check_hevc_qpel_uni_w },
+        { "hevc_qpel_bi", checkasm_check_hevc_qpel_bi },
+        { "hevc_qpel_bi_w", checkasm_check_hevc_qpel_bi_w },
+        { "hevc_epel", checkasm_check_hevc_epel },
+        { "hevc_epel_uni", checkasm_check_hevc_epel_uni },
+        { "hevc_epel_uni_w", checkasm_check_hevc_epel_uni_w },
+        { "hevc_epel_bi", checkasm_check_hevc_epel_bi },
+        { "hevc_epel_bi_w", checkasm_check_hevc_epel_bi_w },
         { "hevc_sao", checkasm_check_hevc_sao },
     #endif
     #if CONFIG_HUFFYUV_DECODER
@@ -213,6 +223,9 @@ static const struct {
     { "ALTIVEC",  "altivec",  AV_CPU_FLAG_ALTIVEC },
     { "VSX",      "vsx",      AV_CPU_FLAG_VSX },
     { "POWER8",   "power8",   AV_CPU_FLAG_POWER8 },
+#elif ARCH_MIPS
+    { "MMI",      "mmi",      AV_CPU_FLAG_MMI },
+    { "MSA",      "msa",      AV_CPU_FLAG_MSA },
 #elif ARCH_X86
     { "MMX",      "mmx",      AV_CPU_FLAG_MMX|AV_CPU_FLAG_CMOV },
     { "MMXEXT",   "mmxext",   AV_CPU_FLAG_MMXEXT },

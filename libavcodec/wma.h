@@ -23,6 +23,7 @@
 #define AVCODEC_WMA_H
 
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
 #include "fft.h"
@@ -139,8 +140,7 @@ typedef struct WMACodecContext {
 #endif /* TRACE */
 } WMACodecContext;
 
-extern const uint16_t ff_wma_hgain_huffcodes[37];
-extern const uint8_t ff_wma_hgain_huffbits[37];
+extern const uint8_t ff_wma_hgain_hufftab[37][2];
 extern const float ff_wma_lsp_codebook[NB_LSP_COEFS][16];
 extern const uint32_t ff_aac_scalefactor_code[121];
 extern const uint8_t  ff_aac_scalefactor_bits[121];

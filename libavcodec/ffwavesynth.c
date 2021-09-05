@@ -188,7 +188,7 @@ static uint64_t frac64(uint64_t a, uint64_t b)
 
 static uint64_t phi_at(struct ws_interval *in, int64_t ts)
 {
-    uint64_t dt = ts - in->ts_start;
+    uint64_t dt = ts - (uint64_t)in->ts_start;
     uint64_t dt2 = dt & 1 ? /* dt * (dt - 1) / 2 without overflow */
                    dt * ((dt - 1) >> 1) : (dt >> 1) * (dt - 1);
     return in->phi0 + dt * in->dphi0 + dt2 * in->ddphi;
@@ -323,13 +323,11 @@ static av_cold int wavesynth_init(AVCodecContext *avc)
     r = wavesynth_parse_extradata(avc);
     if (r < 0) {
         av_log(avc, AV_LOG_ERROR, "Invalid intervals definitions.\n");
-        goto fail;
+        return r;
     }
     ws->sin = av_malloc(sizeof(*ws->sin) << SIN_BITS);
-    if (!ws->sin) {
-        r = AVERROR(ENOMEM);
-        goto fail;
-    }
+    if (!ws->sin)
+        return AVERROR(ENOMEM);
     for (i = 0; i < 1 << SIN_BITS; i++)
         ws->sin[i] = floor(32767 * sin(2 * M_PI * i / (1 << SIN_BITS)));
     ws->dither_state = MKTAG('D','I','T','H');
@@ -340,11 +338,6 @@ static av_cold int wavesynth_init(AVCodecContext *avc)
     wavesynth_seek(ws, 0);
     avc->sample_fmt = AV_SAMPLE_FMT_S16;
     return 0;
-
-fail:
-    av_freep(&ws->inter);
-    av_freep(&ws->sin);
-    return r;
 }
 
 static void wavesynth_synth_sample(struct wavesynth_context *ws, int64_t ts,
@@ -476,4 +469,5 @@ AVCodec ff_ffwavesynth_decoder = {
     .close          = wavesynth_close,
     .decode         = wavesynth_decode,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

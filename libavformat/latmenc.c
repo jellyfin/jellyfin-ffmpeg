@@ -101,6 +101,17 @@ static int latm_write_header(AVFormatContext *s)
     return 0;
 }
 
+static void copy_bits(PutBitContext *pb, const uint8_t *src, int length)
+{
+    int words = length >> 4;
+    int bits  = length & 15;
+    int i;
+    for (i = 0; i < words; i++)
+        put_bits(pb, 16, AV_RB16(src + 2 * i));
+    if (bits)
+        put_bits(pb, bits, AV_RB16(src + 2 * words) >> (16 - bits));
+}
+
 static void latm_write_frame_header(AVFormatContext *s, PutBitContext *bs)
 {
     LATMContext *ctx = s->priv_data;
@@ -120,12 +131,12 @@ static void latm_write_frame_header(AVFormatContext *s, PutBitContext *bs)
 
         /* AudioSpecificConfig */
         if (ctx->object_type == AOT_ALS) {
-            header_size = par->extradata_size-(ctx->off >> 3);
-            avpriv_copy_bits(bs, &par->extradata[ctx->off >> 3], header_size);
+            header_size = (par->extradata_size - (ctx->off >> 3)) * 8;
+            copy_bits(bs, &par->extradata[ctx->off >> 3], header_size);
         } else {
             // + 3 assumes not scalable and dependsOnCoreCoder == 0,
             // see decode_ga_specific_config in libavcodec/aacdec.c
-            avpriv_copy_bits(bs, par->extradata, ctx->off + 3);
+            copy_bits(bs, par->extradata, ctx->off + 3);
 
             if (!ctx->channel_conf) {
                 GetBitContext gb;
@@ -165,7 +176,8 @@ static int latm_write_packet(AVFormatContext *s, AVPacket *pkt)
             return ff_raw_write_packet(s, pkt);
         else {
             uint8_t *side_data;
-            int side_data_size = 0, ret;
+            buffer_size_t side_data_size;
+            int ret;
 
             side_data = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
                                                 &side_data_size);
@@ -207,11 +219,10 @@ static int latm_write_packet(AVFormatContext *s, AVPacket *pkt)
         // This allows us to remux our FATE AAC samples into latm
         // files that are still playable with minimal effort.
         put_bits(&bs, 8, pkt->data[0] & 0xfe);
-        avpriv_copy_bits(&bs, pkt->data + 1, 8*pkt->size - 8);
+        copy_bits(&bs, pkt->data + 1, 8*pkt->size - 8);
     } else
-        avpriv_copy_bits(&bs, pkt->data, 8*pkt->size);
+        copy_bits(&bs, pkt->data, 8*pkt->size);
 
-    avpriv_align_put_bits(&bs);
     flush_put_bits(&bs);
 
     len = put_bits_count(&bs) >> 3;

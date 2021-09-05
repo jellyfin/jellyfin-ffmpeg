@@ -29,9 +29,10 @@
 
 #include "../dnn_interface.h"
 
-DNNModel *ff_dnn_load_model_tf(const char *model_filename);
+DNNModel *ff_dnn_load_model_tf(const char *model_filename, DNNFunctionType func_type, const char *options, AVFilterContext *filter_ctx);
 
-DNNReturnType ff_dnn_execute_model_tf(const DNNModel *model, DNNData *outputs, uint32_t nb_output);
+DNNReturnType ff_dnn_execute_model_tf(const DNNModel *model, const char *input_name, AVFrame *in_frame,
+                                      const char **output_names, uint32_t nb_output, AVFrame *out_frame);
 
 void ff_dnn_free_model_tf(DNNModel **model);
 

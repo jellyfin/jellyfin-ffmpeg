@@ -107,13 +107,16 @@ static void render_charset(AVCodecContext *avctx, uint8_t *charset,
     uint8_t pix;
     int lowdiff, highdiff;
     int *best_cb = c->mc_best_cb;
-    static uint8_t index1[256];
-    static uint8_t index2[256];
-    static uint8_t dither[256];
+    uint8_t index1[256];
+    uint8_t index2[256];
+    uint8_t dither[256];
     int i;
     int distance;
 
-    /* generate lookup-tables for dither and index before looping */
+    /* Generate lookup-tables for dither and index before looping.
+     * This code relies on c->mc_luma_vals[c->mc_pal_size - 1] being
+     * the maximum of all the mc_luma_vals values and on the minimum
+     * being zero; this ensures that dither is properly initialized. */
     i = 0;
     for (a=0; a < 256; a++) {
         if(i < c->mc_pal_size -1 && a == c->mc_luma_vals[i + 1]) {
@@ -407,6 +410,7 @@ AVCodec ff_a64multi_encoder = {
     .close          = a64multi_close_encoder,
     .pix_fmts       = (const enum AVPixelFormat[]) {AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE},
     .capabilities   = AV_CODEC_CAP_DELAY,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 #if CONFIG_A64MULTI5_ENCODER
@@ -421,5 +425,6 @@ AVCodec ff_a64multi5_encoder = {
     .close          = a64multi_close_encoder,
     .pix_fmts       = (const enum AVPixelFormat[]) {AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE},
     .capabilities   = AV_CODEC_CAP_DELAY,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

@@ -527,30 +527,22 @@ static av_cold int init(AVFilterContext *ctx)
     /* insert output pads */
     if (ebur128->do_video) {
         pad = (AVFilterPad){
-            .name         = av_strdup("out0"),
+            .name         = "out0",
             .type         = AVMEDIA_TYPE_VIDEO,
             .config_props = config_video_output,
         };
-        if (!pad.name)
-            return AVERROR(ENOMEM);
         ret = ff_insert_outpad(ctx, 0, &pad);
-        if (ret < 0) {
-            av_freep(&pad.name);
+        if (ret < 0)
             return ret;
-        }
     }
     pad = (AVFilterPad){
-        .name         = av_asprintf("out%d", ebur128->do_video),
+        .name         = ebur128->do_video ? "out1" : "out0",
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_audio_output,
     };
-    if (!pad.name)
-        return AVERROR(ENOMEM);
     ret = ff_insert_outpad(ctx, ebur128->do_video, &pad);
-    if (ret < 0) {
-        av_freep(&pad.name);
+    if (ret < 0)
         return ret;
-    }
 
     /* summary */
     av_log(ctx, AV_LOG_VERBOSE, "EBU +%d scale\n", ebur128->meter);
@@ -910,7 +902,7 @@ static int query_formats(AVFilterContext *ctx)
     /* set optional output video format */
     if (ebur128->do_video) {
         formats = ff_make_format_list(pix_fmts);
-        if ((ret = ff_formats_ref(formats, &outlink->in_formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
             return ret;
         outlink = ctx->outputs[1];
     }
@@ -919,18 +911,18 @@ static int query_formats(AVFilterContext *ctx)
      * Note: ff_set_common_* functions are not used because they affect all the
      * links, and thus break the video format negotiation */
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref(formats, &inlink->out_formats)) < 0 ||
-        (ret = ff_formats_ref(formats, &outlink->in_formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0 ||
+        (ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
         return ret;
 
     layouts = ff_all_channel_layouts();
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->out_channel_layouts)) < 0 ||
-        (ret = ff_channel_layouts_ref(layouts, &outlink->in_channel_layouts)) < 0)
+    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0 ||
+        (ret = ff_channel_layouts_ref(layouts, &outlink->incfg.channel_layouts)) < 0)
         return ret;
 
     formats = ff_make_format_list(input_srate);
-    if ((ret = ff_formats_ref(formats, &inlink->out_samplerates)) < 0 ||
-        (ret = ff_formats_ref(formats, &outlink->in_samplerates)) < 0)
+    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0 ||
+        (ret = ff_formats_ref(formats, &outlink->incfg.samplerates)) < 0)
         return ret;
 
     return 0;
@@ -990,8 +982,6 @@ static av_cold void uninit(AVFilterContext *ctx)
         av_freep(&ebur128->i400.cache[i]);
         av_freep(&ebur128->i3000.cache[i]);
     }
-    for (i = 0; i < ctx->nb_outputs; i++)
-        av_freep(&ctx->output_pads[i].name);
     av_frame_free(&ebur128->outpicref);
 #if CONFIG_SWRESAMPLE
     av_freep(&ebur128->swr_buf);

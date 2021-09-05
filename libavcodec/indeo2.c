@@ -25,6 +25,7 @@
  */
 
 #include "libavutil/attributes.h"
+#include "libavutil/thread.h"
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
@@ -46,7 +47,7 @@ static VLC ir2_vlc;
 /* Indeo 2 codes are in range 0x01..0x7F and 0x81..0x90 */
 static inline int ir2_get_code(GetBitContext *gb)
 {
-    return get_vlc2(gb, ir2_vlc.table, CODE_VLC_BITS, 1) + 1;
+    return get_vlc2(gb, ir2_vlc.table, CODE_VLC_BITS, 1);
 }
 
 static int ir2_decode_plane(Ir2Context *ctx, int width, int height, uint8_t *dst,
@@ -174,10 +175,6 @@ static int ir2_decode_frame(AVCodecContext *avctx,
     s->decode_delta = buf[18];
 
     /* decide whether frame uses deltas or not */
-#ifndef BITSTREAM_READER_LE
-    for (i = 0; i < buf_size; i++)
-        buf[i] = ff_reverse[buf[i]];
-#endif
 
     if ((ret = init_get_bits8(&s->gb, buf + start, buf_size - start)) < 0)
         return ret;
@@ -229,10 +226,17 @@ static int ir2_decode_frame(AVCodecContext *avctx,
     return buf_size;
 }
 
+static av_cold void ir2_init_static(void)
+{
+    INIT_VLC_STATIC_FROM_LENGTHS(&ir2_vlc, CODE_VLC_BITS, IR2_CODES,
+                                 &ir2_tab[0][1], 2, &ir2_tab[0][0], 2, 1,
+                                 0, INIT_VLC_OUTPUT_LE, 1 << CODE_VLC_BITS);
+}
+
 static av_cold int ir2_decode_init(AVCodecContext *avctx)
 {
+    static AVOnce init_static_once = AV_ONCE_INIT;
     Ir2Context * const ic = avctx->priv_data;
-    static VLC_TYPE vlc_tables[1 << CODE_VLC_BITS][2];
 
     ic->avctx = avctx;
 
@@ -242,17 +246,7 @@ static av_cold int ir2_decode_init(AVCodecContext *avctx)
     if (!ic->picture)
         return AVERROR(ENOMEM);
 
-    ir2_vlc.table = vlc_tables;
-    ir2_vlc.table_allocated = 1 << CODE_VLC_BITS;
-#ifdef BITSTREAM_READER_LE
-        init_vlc(&ir2_vlc, CODE_VLC_BITS, IR2_CODES,
-                 &ir2_codes[0][1], 4, 2,
-                 &ir2_codes[0][0], 4, 2, INIT_VLC_USE_NEW_STATIC | INIT_VLC_LE);
-#else
-        init_vlc(&ir2_vlc, CODE_VLC_BITS, IR2_CODES,
-                 &ir2_codes[0][1], 4, 2,
-                 &ir2_codes[0][0], 4, 2, INIT_VLC_USE_NEW_STATIC);
-#endif
+    ff_thread_once(&init_static_once, ir2_init_static);
 
     return 0;
 }
@@ -276,4 +270,5 @@ AVCodec ff_indeo2_decoder = {
     .close          = ir2_decode_end,
     .decode         = ir2_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

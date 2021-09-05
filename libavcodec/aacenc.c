@@ -30,14 +30,12 @@
  ***********************************/
 
 #include "libavutil/libm.h"
-#include "libavutil/thread.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "put_bits.h"
 #include "internal.h"
 #include "mpeg4audio.h"
-#include "kbdwin.h"
 #include "sinewin.h"
 #include "profiles.h"
 
@@ -48,8 +46,6 @@
 #include "aacenc_utils.h"
 
 #include "psymodel.h"
-
-static AVOnce aac_table_init = AV_ONCE_INIT;
 
 static void put_pce(PutBitContext *pb, AVCodecContext *avctx)
 {
@@ -83,9 +79,9 @@ static void put_pce(PutBitContext *pb, AVCodecContext *avctx)
         }
     }
 
-    avpriv_align_put_bits(pb);
+    align_put_bits(pb);
     put_bits(pb, 8, strlen(aux_data));
-    avpriv_put_string(pb, aux_data, 0);
+    ff_put_string(pb, aux_data, 0);
 }
 
 /**
@@ -522,7 +518,7 @@ static void put_bitstream_info(AACEncContext *s, const char *name)
         put_bits(&s->pb, 8, namelen - 14);
     put_bits(&s->pb, 4, 0); //extension type - filler
     padbits = -put_bits_count(&s->pb) & 7;
-    avpriv_align_put_bits(&s->pb);
+    align_put_bits(&s->pb);
     for (i = 0; i < namelen - 2; i++)
         put_bits(&s->pb, 8, name[i]);
     put_bits(&s->pb, 12 - padbits, 0);
@@ -925,10 +921,7 @@ static av_cold int dsp_init(AVCodecContext *avctx, AACEncContext *s)
         return AVERROR(ENOMEM);
 
     // window init
-    ff_kbd_window_init(ff_aac_kbd_long_1024, 4.0, 1024);
-    ff_kbd_window_init(ff_aac_kbd_short_128, 6.0, 128);
-    ff_init_ff_sine_windows(10);
-    ff_init_ff_sine_windows(7);
+    ff_aac_float_common_init();
 
     if ((ret = ff_mdct_init(&s->mdct1024, 11, 0, 32768.0)) < 0)
         return ret;
@@ -941,20 +934,14 @@ static av_cold int dsp_init(AVCodecContext *avctx, AACEncContext *s)
 static av_cold int alloc_buffers(AVCodecContext *avctx, AACEncContext *s)
 {
     int ch;
-    FF_ALLOCZ_ARRAY_OR_GOTO(avctx, s->buffer.samples, s->channels, 3 * 1024 * sizeof(s->buffer.samples[0]), alloc_fail);
-    FF_ALLOCZ_ARRAY_OR_GOTO(avctx, s->cpe, s->chan_map[0], sizeof(ChannelElement), alloc_fail);
+    if (!FF_ALLOCZ_TYPED_ARRAY(s->buffer.samples, s->channels * 3 * 1024) ||
+        !FF_ALLOCZ_TYPED_ARRAY(s->cpe,            s->chan_map[0]))
+        return AVERROR(ENOMEM);
 
     for(ch = 0; ch < s->channels; ch++)
         s->planar_samples[ch] = s->buffer.samples + 3 * 1024 * ch;
 
     return 0;
-alloc_fail:
-    return AVERROR(ENOMEM);
-}
-
-static av_cold void aac_encode_init_tables(void)
-{
-    ff_aac_tableinit();
 }
 
 static av_cold int aac_encode_init(AVCodecContext *avctx)
@@ -1078,13 +1065,13 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         s->options.mid_side = 0;
 
     if ((ret = dsp_init(avctx, s)) < 0)
-        goto fail;
+        return ret;
 
     if ((ret = alloc_buffers(avctx, s)) < 0)
-        goto fail;
+        return ret;
 
     if ((ret = put_audio_specific_config(avctx)))
-        goto fail;
+        return ret;
 
     sizes[0]   = ff_aac_swb_size_1024[s->samplerate_index];
     sizes[1]   = ff_aac_swb_size_128[s->samplerate_index];
@@ -1094,7 +1081,7 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         grouping[i] = s->chan_map[i + 1] == TYPE_CPE;
     if ((ret = ff_psy_init(&s->psy, avctx, 2, sizes, lengths,
                            s->chan_map[0], grouping)) < 0)
-        goto fail;
+        return ret;
     s->psypp = ff_psy_preprocess_init(avctx);
     ff_lpc_init(&s->lpc, 2*avctx->frame_size, TNS_MAX_ORDER, FF_LPC_TYPE_LEVINSON);
     s->random_state = 0x1f2e3d4c;
@@ -1108,15 +1095,10 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     if (HAVE_MIPSDSP)
         ff_aac_coder_init_mips(s);
 
-    if ((ret = ff_thread_once(&aac_table_init, &aac_encode_init_tables)) != 0)
-        return AVERROR_UNKNOWN;
-
     ff_af_queue_init(avctx, &s->afq);
+    ff_aac_tableinit();
 
     return 0;
-fail:
-    aac_encode_end(avctx);
-    return ret;
 }
 
 #define AACENC_FLAGS AV_OPT_FLAG_ENCODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM
@@ -1159,7 +1141,7 @@ AVCodec ff_aac_encoder = {
     .close          = aac_encode_end,
     .defaults       = aac_encode_defaults,
     .supported_samplerates = mpeg4audio_sample_rates,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .capabilities   = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY,
     .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
                                                      AV_SAMPLE_FMT_NONE },

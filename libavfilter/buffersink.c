@@ -62,6 +62,29 @@ typedef struct BufferSinkContext {
 
 #define NB_ITEMS(list) (list ## _size / sizeof(*list))
 
+static void cleanup_redundant_layouts(AVFilterContext *ctx)
+{
+    BufferSinkContext *buf = ctx->priv;
+    int nb_layouts = NB_ITEMS(buf->channel_layouts);
+    int nb_counts = NB_ITEMS(buf->channel_counts);
+    uint64_t counts = 0;
+    int i, lc, n;
+
+    for (i = 0; i < nb_counts; i++)
+        if (buf->channel_counts[i] < 64)
+            counts |= (uint64_t)1 << buf->channel_counts[i];
+    for (i = lc = 0; i < nb_layouts; i++) {
+        n = av_get_channel_layout_nb_channels(buf->channel_layouts[i]);
+        if (n < 64 && (counts & ((uint64_t)1 << n)))
+            av_log(ctx, AV_LOG_WARNING,
+                   "Removing channel layout 0x%"PRIx64", redundant with %d channels\n",
+                   buf->channel_layouts[i], n);
+        else
+            buf->channel_layouts[lc++] = buf->channel_layouts[i];
+    }
+    buf->channel_layouts_size = lc * sizeof(*buf->channel_layouts);
+}
+
 int attribute_align_arg av_buffersink_get_frame(AVFilterContext *ctx, AVFrame *frame)
 {
     return av_buffersink_get_frame_flags(ctx, frame, 0);
@@ -125,7 +148,7 @@ int attribute_align_arg av_buffersink_get_samples(AVFilterContext *ctx,
     return get_frame_internal(ctx, frame, 0, nb_samples);
 }
 
-#if FF_API_NEXT
+#if FF_API_BUFFERSINK_ALLOC
 AVBufferSinkParams *av_buffersink_params_alloc(void)
 {
     static const int pixel_fmts[] = { AV_PIX_FMT_NONE };
@@ -253,6 +276,7 @@ static int asink_query_formats(AVFilterContext *ctx)
 
     if (buf->channel_layouts_size || buf->channel_counts_size ||
         buf->all_channel_counts) {
+        cleanup_redundant_layouts(ctx);
         for (i = 0; i < NB_ITEMS(buf->channel_layouts); i++)
             if ((ret = ff_add_channel_layout(&layouts, buf->channel_layouts[i])) < 0)
                 return ret;

@@ -130,6 +130,38 @@ typedef struct AV1RawSequenceHeader {
     uint8_t film_grain_params_present;
 } AV1RawSequenceHeader;
 
+typedef struct AV1RawFilmGrainParams {
+    uint8_t  apply_grain;
+    uint16_t grain_seed;
+    uint8_t  update_grain;
+    uint8_t  film_grain_params_ref_idx;
+    uint8_t  num_y_points;
+    uint8_t  point_y_value[14];
+    uint8_t  point_y_scaling[14];
+    uint8_t  chroma_scaling_from_luma;
+    uint8_t  num_cb_points;
+    uint8_t  point_cb_value[10];
+    uint8_t  point_cb_scaling[10];
+    uint8_t  num_cr_points;
+    uint8_t  point_cr_value[10];
+    uint8_t  point_cr_scaling[10];
+    uint8_t  grain_scaling_minus_8;
+    uint8_t  ar_coeff_lag;
+    uint8_t  ar_coeffs_y_plus_128[24];
+    uint8_t  ar_coeffs_cb_plus_128[25];
+    uint8_t  ar_coeffs_cr_plus_128[25];
+    uint8_t  ar_coeff_shift_minus_6;
+    uint8_t  grain_scale_shift;
+    uint8_t  cb_mult;
+    uint8_t  cb_luma_mult;
+    uint16_t cb_offset;
+    uint8_t  cr_mult;
+    uint8_t  cr_luma_mult;
+    uint16_t cr_offset;
+    uint8_t  overlap_flag;
+    uint8_t  clip_to_restricted_range;
+} AV1RawFilmGrainParams;
+
 typedef struct AV1RawFrameHeader {
     uint8_t  show_existing_frame;
     uint8_t  frame_to_show_map_idx;
@@ -251,41 +283,13 @@ typedef struct AV1RawFrameHeader {
     //AV1RawSubexp gm_params[AV1_TOTAL_REFS_PER_FRAME][6];
     uint32_t gm_params[AV1_TOTAL_REFS_PER_FRAME][6];
 
-    uint8_t  apply_grain;
-    uint16_t grain_seed;
-    uint8_t  update_grain;
-    uint8_t  film_grain_params_ref_idx;
-    uint8_t  num_y_points;
-    uint8_t  point_y_value[14];
-    uint8_t  point_y_scaling[14];
-    uint8_t  chroma_scaling_from_luma;
-    uint8_t  num_cb_points;
-    uint8_t  point_cb_value[10];
-    uint8_t  point_cb_scaling[10];
-    uint8_t  num_cr_points;
-    uint8_t  point_cr_value[10];
-    uint8_t  point_cr_scaling[10];
-    uint8_t  grain_scaling_minus_8;
-    uint8_t  ar_coeff_lag;
-    uint8_t  ar_coeffs_y_plus_128[24];
-    uint8_t  ar_coeffs_cb_plus_128[25];
-    uint8_t  ar_coeffs_cr_plus_128[25];
-    uint8_t  ar_coeff_shift_minus_6;
-    uint8_t  grain_scale_shift;
-    uint8_t  cb_mult;
-    uint8_t  cb_luma_mult;
-    uint16_t cb_offset;
-    uint8_t  cr_mult;
-    uint8_t  cr_luma_mult;
-    uint16_t cr_offset;
-    uint8_t  overlap_flag;
-    uint8_t  clip_to_restricted_range;
+    AV1RawFilmGrainParams film_grain;
 } AV1RawFrameHeader;
 
 typedef struct AV1RawTileData {
     uint8_t     *data;
-    size_t       data_size;
     AVBufferRef *data_ref;
+    size_t       data_size;
 } AV1RawTileData;
 
 typedef struct AV1RawTileGroup {
@@ -346,8 +350,8 @@ typedef struct AV1RawMetadataITUTT35 {
     uint8_t itu_t_t35_country_code_extension_byte;
 
     uint8_t     *payload;
-    size_t       payload_size;
     AVBufferRef *payload_ref;
+    size_t       payload_size;
 } AV1RawMetadataITUTT35;
 
 typedef struct AV1RawMetadataTimecode {
@@ -379,8 +383,8 @@ typedef struct AV1RawMetadata {
 
 typedef struct AV1RawPadding {
     uint8_t     *payload;
-    size_t       payload_size;
     AVBufferRef *payload_ref;
+    size_t       payload_size;
 } AV1RawPadding;
 
 
@@ -413,9 +417,16 @@ typedef struct AV1ReferenceFrameState {
     int subsampling_y;  // RefSubsamplingY
     int bit_depth;      // RefBitDepth
     int order_hint;     // RefOrderHint
+
+    int8_t  loop_filter_ref_deltas[AV1_TOTAL_REFS_PER_FRAME];
+    int8_t  loop_filter_mode_deltas[2];
+    uint8_t feature_enabled[AV1_MAX_SEGMENTS][AV1_SEG_LVL_MAX];
+    int16_t feature_value[AV1_MAX_SEGMENTS][AV1_SEG_LVL_MAX];
 } AV1ReferenceFrameState;
 
 typedef struct CodedBitstreamAV1Context {
+    const AVClass *class;
+
     AV1RawSequenceHeader *sequence_header;
     AVBufferRef          *sequence_header_ref;
 
@@ -441,10 +452,12 @@ typedef struct CodedBitstreamAV1Context {
     int all_lossless;
     int tile_cols;
     int tile_rows;
+    int tile_num;
 
-    AV1ReferenceFrameState *ref;
-    AV1ReferenceFrameState read_ref[AV1_NUM_REF_FRAMES];
-    AV1ReferenceFrameState write_ref[AV1_NUM_REF_FRAMES];
+    AV1ReferenceFrameState ref[AV1_NUM_REF_FRAMES];
+
+    // AVOptions
+    int operating_point;
 } CodedBitstreamAV1Context;
 
 
