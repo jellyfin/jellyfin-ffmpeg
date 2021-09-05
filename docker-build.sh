@@ -34,7 +34,7 @@ prepare_extra_common() {
 
     # Download and install dav1d
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 0.9.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
     pushd dav1d
     mkdir build
     pushd build
