@@ -35,7 +35,6 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libopus \
 	--enable-libtheora \
 	--enable-libvorbis \
-	--enable-libdav1d \
 	--enable-libwebp \
 	--enable-libvpx \
 	--enable-libx264 \
@@ -45,6 +44,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 
 CONFIG_ARM_COMMON := --toolchain=hardened \
 	--enable-cross-compile \
+	--enable-libdav1d \
 	--enable-omx \
 	--enable-omx-rpi \
 
@@ -70,8 +70,14 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-nvdec \
 	--enable-ffnvcodec \
 
+CONFIG_DAV1D := --enable-libdav1d \
+
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
+
+ifeq ($(ENABLE_X86_DAV1D),true)
+	CONFIG_x86 += $(CONFIG_DAV1D)
+endif
 ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
 	# Native amd64 build
 	CONFIG += $(CONFIG_x86)
