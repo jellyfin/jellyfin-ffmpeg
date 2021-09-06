@@ -9,10 +9,6 @@ on:
     branches:
       - jellyfin
 
-  release: 
-    types:
-      - released
-
   workflow_dispatch:
 
 jobs:
@@ -50,34 +46,3 @@ jobs:
         with:
           name: ${{ matrix.release }} ${{ matrix.arch }} package
           path: dist
-
-  publish:
-    if: ${{ github.event_name == 'release' && github.event.action == 'released' }}
-    needs: build
-    name: Push artifacts to repo
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v2
-        with:
-          path: artifacts
-
-      - name: Upload to repo.jellyfin.org
-        uses: burnett01/rsync-deployments@4.1
-        with:
-          switches: -vrptz
-          path: artifacts
-          remote_path: /srv/repository/incoming/ffmpeg/${{ github.event.release.tag_name }}
-          remote_host: ${{ secrets.DEPLOY_HOST }}
-          remote_user: ${{ secrets.DEPLOY_USER }}
-          remote_key: ${{ secrets.DEPLOY_KEY }}
-          
-      - name: Collect new version
-        uses: appleboy/ssh-action@v0.1.4
-        with:
-          host: ${{ secrets.DEPLOY_HOST  }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: 22
-          script: /srv/repository/collect-ffmpeg.sh
