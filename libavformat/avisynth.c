@@ -42,6 +42,13 @@
   #define AVISYNTH_LIB AVISYNTH_NAME SLIBSUF
 #endif
 
+/* Endianness guards for audio */
+#if HAVE_BIGENDIAN
+    #define PCM(format) (AV_CODEC_ID_PCM_ ## format ## BE)
+#else
+    #define PCM(format) (AV_CODEC_ID_PCM_ ## format ## LE)
+#endif
+
 #include <avisynth/avisynth_c.h>
 
 typedef struct AviSynthLibrary {
@@ -57,6 +64,7 @@ typedef struct AviSynthLibrary {
     AVSC_DECLARE_FUNC(avs_get_version);
     AVSC_DECLARE_FUNC(avs_get_video_info);
     AVSC_DECLARE_FUNC(avs_invoke);
+    AVSC_DECLARE_FUNC(avs_is_color_space);
     AVSC_DECLARE_FUNC(avs_release_clip);
     AVSC_DECLARE_FUNC(avs_release_value);
     AVSC_DECLARE_FUNC(avs_release_video_frame);
@@ -133,6 +141,7 @@ static av_cold int avisynth_load_library(void)
     LOAD_AVS_FUNC(avs_get_version, 0);
     LOAD_AVS_FUNC(avs_get_video_info, 0);
     LOAD_AVS_FUNC(avs_invoke, 0);
+    LOAD_AVS_FUNC(avs_is_color_space, 1);
     LOAD_AVS_FUNC(avs_release_clip, 0);
     LOAD_AVS_FUNC(avs_release_value, 0);
     LOAD_AVS_FUNC(avs_release_video_frame, 0);
@@ -240,6 +249,23 @@ static int avisynth_create_stream_video(AVFormatContext *s, AVStream *st)
     st->duration          = avs->vi->num_frames;
     st->nb_frames         = avs->vi->num_frames;
     avpriv_set_pts_info(st, 32, avs->vi->fps_denominator, avs->vi->fps_numerator);
+
+    av_log(s, AV_LOG_TRACE, "avs_is_field_based: %d\n", avs_is_field_based(avs->vi));
+    av_log(s, AV_LOG_TRACE, "avs_is_parity_known: %d\n", avs_is_parity_known(avs->vi));
+
+    /* The following typically only works when assumetff (-bff) and
+     * assumefieldbased is used in-script. Additional
+     * logic using GetParity() could deliver more accurate results
+     * but also decodes a frame which we want to avoid. */
+    st->codecpar->field_order = AV_FIELD_UNKNOWN;
+    if (avs_is_field_based(avs->vi)) {
+        if (avs_is_tff(avs->vi)) {
+            st->codecpar->field_order = AV_FIELD_TT;
+        }
+        else if (avs_is_bff(avs->vi)) {
+            st->codecpar->field_order = AV_FIELD_BB;
+        }
+    }
 
     switch (avs->vi->pixel_type) {
     /* 10~16-bit YUV pix_fmts (AviSynth+) */
@@ -494,16 +520,16 @@ static int avisynth_create_stream_audio(AVFormatContext *s, AVStream *st)
         st->codecpar->codec_id = AV_CODEC_ID_PCM_U8;
         break;
     case AVS_SAMPLE_INT16:
-        st->codecpar->codec_id = AV_CODEC_ID_PCM_S16LE;
+        st->codecpar->codec_id = PCM(S16);
         break;
     case AVS_SAMPLE_INT24:
-        st->codecpar->codec_id = AV_CODEC_ID_PCM_S24LE;
+        st->codecpar->codec_id = PCM(S24);
         break;
     case AVS_SAMPLE_INT32:
-        st->codecpar->codec_id = AV_CODEC_ID_PCM_S32LE;
+        st->codecpar->codec_id = PCM(S32);
         break;
     case AVS_SAMPLE_FLOAT:
-        st->codecpar->codec_id = AV_CODEC_ID_PCM_F32LE;
+        st->codecpar->codec_id = PCM(F32);
         break;
     default:
         av_log(s, AV_LOG_ERROR,
@@ -628,7 +654,6 @@ static int avisynth_read_packet_video(AVFormatContext *s, AVPacket *pkt,
     const unsigned char *src_p;
     int n, i, plane, rowsize, planeheight, pitch, bits, ret;
     const char *error;
-    int avsplus av_unused;
 
     if (avs->curr_frame >= avs->vi->num_frames)
         return AVERROR_EOF;
@@ -637,19 +662,6 @@ static int avisynth_read_packet_video(AVFormatContext *s, AVPacket *pkt,
     n = avs->curr_frame++;
     if (discard)
         return 0;
-
-#ifdef _WIN32
-    /* Detect whether we're using AviSynth 2.6 or AviSynth+ by
-     * looking for whether avs_is_planar_rgb exists. */
-    if (GetProcAddress(avs_library.library, "avs_is_planar_rgb") == NULL)
-        avsplus = 0;
-    else
-        avsplus = 1;
-#else
-    /* AviSynth+ is now the only variant of AviSynth we support
-     * on Linux and macOS. */
-    avsplus = 1;
-#endif
 
     bits = avs_library.avs_bits_per_pixel(avs->vi);
 
@@ -687,14 +699,9 @@ static int avisynth_read_packet_video(AVFormatContext *s, AVPacket *pkt,
         planeheight = avs_library.avs_get_height_p(frame, plane);
 
         /* Flip RGB video. */
-        if (avs_is_rgb24(avs->vi) || avs_is_rgb(avs->vi)) {
-            src_p = src_p + (planeheight - 1) * pitch;
-            pitch = -pitch;
-        }
-
-        /* Flip Planar RGB video */
-        if (avsplus && (avs_library.avs_is_planar_rgb(avs->vi) ||
-                        avs_library.avs_is_planar_rgba(avs->vi))) {
+        if (avs_library.avs_is_color_space(avs->vi, AVS_CS_BGR)   ||
+            avs_library.avs_is_color_space(avs->vi, AVS_CS_BGR48) ||
+            avs_library.avs_is_color_space(avs->vi, AVS_CS_BGR64)) {
             src_p = src_p + (planeheight - 1) * pitch;
             pitch = -pitch;
         }

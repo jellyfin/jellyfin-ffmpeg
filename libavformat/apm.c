@@ -1,5 +1,5 @@
 /*
- * Rayman 2 APM Demuxer
+ * Rayman 2 APM (De)muxer
  *
  * Copyright (C) 2020 Zane van Iperen (zane@zanevaniperen.com)
  *
@@ -21,14 +21,18 @@
  */
 #include "avformat.h"
 #include "internal.h"
-#include "riff.h"
+#include "rawenc.h"
+#include "libavutil/avassert.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 
 #define APM_FILE_HEADER_SIZE    20
-#define APM_VS12_CHUNK_SIZE     76
+#define APM_FILE_EXTRADATA_SIZE 80
+#define APM_EXTRADATA_SIZE      28
+
 #define APM_MAX_READ_SIZE       4096
 
+#define APM_TAG_CODEC           0x2000
 #define APM_TAG_VS12            MKTAG('v', 's', '1', '2')
 #define APM_TAG_DATA            MKTAG('D', 'A', 'T', 'A')
 
@@ -42,38 +46,45 @@ typedef struct APMState {
     int32_t     saved_l;
 } APMState;
 
-typedef struct APMVS12Chunk {
+typedef struct APMExtraData {
     uint32_t    magic;
     uint32_t    file_size;
     uint32_t    data_size;
     uint32_t    unk1;
     uint32_t    unk2;
     APMState    state;
-    uint32_t    pad[7];
-} APMVS12Chunk;
+    uint32_t    unk3[7];
+    uint32_t    data;
+} APMExtraData;
 
-static void apm_parse_vs12(APMVS12Chunk *vs12, const uint8_t *buf)
+#if CONFIG_APM_DEMUXER
+static void apm_parse_extradata(APMExtraData *ext, const uint8_t *buf)
 {
-    vs12->magic                 = AV_RL32(buf + 0);
-    vs12->file_size             = AV_RL32(buf + 4);
-    vs12->data_size             = AV_RL32(buf + 8);
-    vs12->unk1                  = AV_RL32(buf + 12);
-    vs12->unk2                  = AV_RL32(buf + 16);
+    ext->magic              = AV_RL32(buf + 0);
+    ext->file_size          = AV_RL32(buf + 4);
+    ext->data_size          = AV_RL32(buf + 8);
+    ext->unk1               = AV_RL32(buf + 12);
+    ext->unk2               = AV_RL32(buf + 16);
 
-    vs12->state.has_saved       = AV_RL32(buf + 20);
-    vs12->state.predictor_r     = AV_RL32(buf + 24);
-    vs12->state.step_index_r    = AV_RL32(buf + 28);
-    vs12->state.saved_r         = AV_RL32(buf + 32);
-    vs12->state.predictor_l     = AV_RL32(buf + 36);
-    vs12->state.step_index_l    = AV_RL32(buf + 40);
-    vs12->state.saved_l         = AV_RL32(buf + 44);
+    ext->state.has_saved    = AV_RL32(buf + 20);
+    ext->state.predictor_r  = AV_RL32(buf + 24);
+    ext->state.step_index_r = AV_RL32(buf + 28);
+    ext->state.saved_r      = AV_RL32(buf + 32);
+    ext->state.predictor_l  = AV_RL32(buf + 36);
+    ext->state.step_index_l = AV_RL32(buf + 40);
+    ext->state.saved_l      = AV_RL32(buf + 44);
 
-    for (int i = 0; i < FF_ARRAY_ELEMS(vs12->pad); i++)
-        vs12->pad[i]            = AV_RL32(buf + 48 + (i * 4));
+    for (int i = 0; i < FF_ARRAY_ELEMS(ext->unk3); i++)
+        ext->unk3[i]        = AV_RL32(buf + 48 + (i * 4));
+
+    ext->data               = AV_RL32(buf + 76);
 }
 
 static int apm_probe(const AVProbeData *p)
 {
+    if (AV_RL16(p->buf) != APM_TAG_CODEC)
+        return 0;
+
     if (p->buf_size < 100)
         return 0;
 
@@ -90,71 +101,82 @@ static int apm_read_header(AVFormatContext *s)
 {
     int64_t ret;
     AVStream *st;
-    APMVS12Chunk vs12;
-    uint8_t buf[APM_VS12_CHUNK_SIZE];
+    APMExtraData extradata;
+    AVCodecParameters *par;
+    uint8_t buf[APM_FILE_EXTRADATA_SIZE];
 
     if (!(st = avformat_new_stream(s, NULL)))
         return AVERROR(ENOMEM);
 
-    /* The header starts with a WAVEFORMATEX */
-    if ((ret = ff_get_wav_header(s, s->pb, st->codecpar, APM_FILE_HEADER_SIZE, 0)) < 0)
+    /*
+     * This is 98% a WAVEFORMATEX, but there's something screwy with the extradata
+     * that ff_get_wav_header() can't (and shouldn't) handle properly.
+     */
+    if (avio_rl16(s->pb) != APM_TAG_CODEC)
+        return AVERROR_INVALIDDATA;
+
+    par = st->codecpar;
+    par->channels              = avio_rl16(s->pb);
+    par->sample_rate           = avio_rl32(s->pb);
+
+    /* Skip the bitrate, it's usually wrong anyway. */
+    if ((ret = avio_skip(s->pb, 4)) < 0)
         return ret;
 
-    if (st->codecpar->bits_per_coded_sample != 4)
+    par->block_align           = avio_rl16(s->pb);
+    par->bits_per_coded_sample = avio_rl16(s->pb);
+
+    if (avio_rl32(s->pb) != APM_FILE_EXTRADATA_SIZE)
         return AVERROR_INVALIDDATA;
 
-    if (st->codecpar->codec_tag != 0x2000)
+    /* 8 = bits per sample * max channels */
+    if (par->sample_rate > (INT_MAX / 8))
         return AVERROR_INVALIDDATA;
 
-    /* ff_get_wav_header() does most of the work, but we need to fix a few things. */
-    st->codecpar->codec_id              = AV_CODEC_ID_ADPCM_IMA_APM;
-    st->codecpar->codec_tag             = 0;
+    if (par->bits_per_coded_sample != 4)
+        return AVERROR_INVALIDDATA;
 
-    if (st->codecpar->channels == 2)
-        st->codecpar->channel_layout    = AV_CH_LAYOUT_STEREO;
-    else if (st->codecpar->channels == 1)
-        st->codecpar->channel_layout    = AV_CH_LAYOUT_MONO;
+    if (par->channels == 2)
+        par->channel_layout    = AV_CH_LAYOUT_STEREO;
+    else if (par->channels == 1)
+        par->channel_layout    = AV_CH_LAYOUT_MONO;
     else
         return AVERROR_INVALIDDATA;
 
-    st->codecpar->format                = AV_SAMPLE_FMT_S16;
-    st->codecpar->bits_per_raw_sample   = 16;
-    st->codecpar->bit_rate              = st->codecpar->channels *
-                                          st->codecpar->sample_rate *
-                                          st->codecpar->bits_per_coded_sample;
+    par->codec_type            = AVMEDIA_TYPE_AUDIO;
+    par->codec_id              = AV_CODEC_ID_ADPCM_IMA_APM;
+    par->format                = AV_SAMPLE_FMT_S16;
+    par->bits_per_raw_sample   = 16;
+    par->bit_rate              = par->channels *
+                                 par->sample_rate *
+                                 par->bits_per_coded_sample;
 
-    if ((ret = avio_read(s->pb, buf, APM_VS12_CHUNK_SIZE)) < 0)
+    if ((ret = avio_read(s->pb, buf, APM_FILE_EXTRADATA_SIZE)) < 0)
         return ret;
-    else if (ret != APM_VS12_CHUNK_SIZE)
+    else if (ret != APM_FILE_EXTRADATA_SIZE)
         return AVERROR(EIO);
 
-    apm_parse_vs12(&vs12, buf);
+    apm_parse_extradata(&extradata, buf);
 
-    if (vs12.magic != APM_TAG_VS12) {
+    if (extradata.magic != APM_TAG_VS12 || extradata.data != APM_TAG_DATA)
         return AVERROR_INVALIDDATA;
-    }
 
-    if (vs12.state.has_saved) {
+    if (extradata.state.has_saved) {
         avpriv_request_sample(s, "Saved Samples");
         return AVERROR_PATCHWELCOME;
     }
 
-    if (avio_rl32(s->pb) != APM_TAG_DATA)
-        return AVERROR_INVALIDDATA;
-
-    if ((ret = ff_alloc_extradata(st->codecpar, 16)) < 0)
+    if ((ret = ff_alloc_extradata(par, APM_EXTRADATA_SIZE)) < 0)
         return ret;
 
-    AV_WL32(st->codecpar->extradata +  0, vs12.state.predictor_l);
-    AV_WL32(st->codecpar->extradata +  4, vs12.state.step_index_l);
-    AV_WL32(st->codecpar->extradata +  8, vs12.state.predictor_r);
-    AV_WL32(st->codecpar->extradata + 12, vs12.state.step_index_r);
+    /* Use the entire state as extradata. */
+    memcpy(par->extradata, buf + 20, APM_EXTRADATA_SIZE);
 
-    avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
+    avpriv_set_pts_info(st, 64, 1, par->sample_rate);
     st->start_time  = 0;
-    st->duration    = vs12.data_size *
-                      (8 / st->codecpar->bits_per_coded_sample) /
-                      st->codecpar->channels;
+    st->duration    = extradata.data_size *
+                      (8 / par->bits_per_coded_sample) /
+                      par->channels;
     return 0;
 }
 
@@ -186,3 +208,110 @@ AVInputFormat ff_apm_demuxer = {
     .read_header    = apm_read_header,
     .read_packet    = apm_read_packet
 };
+#endif
+
+#if CONFIG_APM_MUXER
+static int apm_write_init(AVFormatContext *s)
+{
+    AVCodecParameters *par;
+
+    if (s->nb_streams != 1) {
+        av_log(s, AV_LOG_ERROR, "APM files have exactly one stream\n");
+        return AVERROR(EINVAL);
+    }
+
+    par = s->streams[0]->codecpar;
+
+    if (par->codec_id != AV_CODEC_ID_ADPCM_IMA_APM) {
+        av_log(s, AV_LOG_ERROR, "%s codec not supported\n",
+               avcodec_get_name(par->codec_id));
+        return AVERROR(EINVAL);
+    }
+
+    if (par->channels > 2) {
+        av_log(s, AV_LOG_ERROR, "APM files only support up to 2 channels\n");
+        return AVERROR(EINVAL);
+    }
+
+    if (par->sample_rate > (INT_MAX / 8)) {
+        av_log(s, AV_LOG_ERROR, "Sample rate too large\n");
+        return AVERROR(EINVAL);
+    }
+
+    if (par->extradata_size != APM_EXTRADATA_SIZE) {
+        av_log(s, AV_LOG_ERROR, "Invalid/missing extradata\n");
+        return AVERROR(EINVAL);
+    }
+
+    if (!(s->pb->seekable & AVIO_SEEKABLE_NORMAL)) {
+        av_log(s, AV_LOG_ERROR, "Stream not seekable, unable to write output file\n");
+        return AVERROR(EINVAL);
+    }
+
+    return 0;
+}
+
+static int apm_write_header(AVFormatContext *s)
+{
+    uint8_t buf[APM_FILE_EXTRADATA_SIZE] = { 0 };
+    AVCodecParameters *par = s->streams[0]->codecpar;
+
+    /*
+     * Bodge a WAVEFORMATEX manually, ff_put_wav_header() can't
+     * be used because of the extra 2 bytes.
+     */
+    avio_wl16(s->pb, APM_TAG_CODEC);
+    avio_wl16(s->pb, par->channels);
+    avio_wl32(s->pb, par->sample_rate);
+    /* This is the wrong calculation, but it's what the orginal files have. */
+    avio_wl32(s->pb, par->sample_rate * par->channels * 2);
+    avio_wl16(s->pb, par->block_align);
+    avio_wl16(s->pb, par->bits_per_coded_sample);
+    avio_wl32(s->pb, APM_FILE_EXTRADATA_SIZE);
+
+    /*
+     * Build the extradata. Assume the codec's given us correct data.
+     * File and data sizes are fixed later.
+     */
+    AV_WL32(buf +  0, APM_TAG_VS12); /* magic */
+    AV_WL32(buf + 12, 0xFFFFFFFF);   /* unk1  */
+    memcpy( buf + 20, par->extradata, APM_EXTRADATA_SIZE);
+    AV_WL32(buf + 76, APM_TAG_DATA); /* data */
+
+    avio_write(s->pb, buf, APM_FILE_EXTRADATA_SIZE);
+    return 0;
+}
+
+static int apm_write_trailer(AVFormatContext *s)
+{
+    int64_t file_size, data_size;
+
+    file_size = avio_tell(s->pb);
+    data_size = file_size - (APM_FILE_HEADER_SIZE + APM_FILE_EXTRADATA_SIZE);
+
+    if (file_size >= UINT32_MAX) {
+        av_log(s, AV_LOG_ERROR,
+               "Filesize %"PRId64" invalid for APM, output file will be broken\n",
+               file_size);
+        return AVERROR(ERANGE);
+    }
+
+    avio_seek(s->pb, 24, SEEK_SET);
+    avio_wl32(s->pb, (uint32_t)file_size);
+    avio_wl32(s->pb, (uint32_t)data_size);
+
+    return 0;
+}
+
+AVOutputFormat ff_apm_muxer = {
+    .name           = "apm",
+    .long_name      = NULL_IF_CONFIG_SMALL("Ubisoft Rayman 2 APM"),
+    .extensions     = "apm",
+    .audio_codec    = AV_CODEC_ID_ADPCM_IMA_APM,
+    .video_codec    = AV_CODEC_ID_NONE,
+    .init           = apm_write_init,
+    .write_header   = apm_write_header,
+    .write_packet   = ff_raw_write_packet,
+    .write_trailer  = apm_write_trailer
+};
+#endif

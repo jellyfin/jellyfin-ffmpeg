@@ -91,7 +91,7 @@ int ff_tx_gen_compound_mapping(AVTXContext *s)
     return 0;
 }
 
-int ff_tx_gen_ptwo_revtab(AVTXContext *s)
+int ff_tx_gen_ptwo_revtab(AVTXContext *s, int invert_lookup)
 {
     const int m = s->m, inv = s->inv;
 
@@ -101,8 +101,44 @@ int ff_tx_gen_ptwo_revtab(AVTXContext *s)
     /* Default */
     for (int i = 0; i < m; i++) {
         int k = -split_radix_permutation(i, m, inv) & (m - 1);
-        s->revtab[k] = i;
+        if (invert_lookup)
+            s->revtab[i] = k;
+        else
+            s->revtab[k] = i;
     }
+
+    return 0;
+}
+
+int ff_tx_gen_ptwo_inplace_revtab_idx(AVTXContext *s)
+{
+    int nb_inplace_idx = 0;
+
+    if (!(s->inplace_idx = av_malloc(s->m*sizeof(*s->inplace_idx))))
+        return AVERROR(ENOMEM);
+
+    for (int src = 1; src < s->m; src++) {
+        int dst = s->revtab[src];
+        int found = 0;
+
+        if (dst <= src)
+            continue;
+
+        do {
+            for (int j = 0; j < nb_inplace_idx; j++) {
+                if (dst == s->inplace_idx[j]) {
+                    found = 1;
+                    break;
+                }
+            }
+            dst = s->revtab[dst];
+        } while (dst != src && !found);
+
+        if (!found)
+            s->inplace_idx[nb_inplace_idx++] = src;
+    }
+
+    s->inplace_idx[nb_inplace_idx++] = 0;
 
     return 0;
 }
@@ -115,6 +151,7 @@ av_cold void av_tx_uninit(AVTXContext **ctx)
     av_free((*ctx)->pfatab);
     av_free((*ctx)->exptab);
     av_free((*ctx)->revtab);
+    av_free((*ctx)->inplace_idx);
     av_free((*ctx)->tmp);
 
     av_freep(ctx);

@@ -19,6 +19,7 @@
 #include "libavutil/crc.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem_internal.h"
 #include "libavutil/tx.h"
 
 #include "avcodec.h"
@@ -267,7 +268,7 @@ static void apply_intensity_stereo(HCAContext *s, ChannelContext *ch1, ChannelCo
                                    int index, unsigned band_count, unsigned base_band_count,
                                    unsigned stereo_band_count)
 {
-    float ratio_l = intensity_ratio_table[ch1->intensity[index]];
+    float ratio_l = intensity_ratio_table[ch2->intensity[index]];
     float ratio_r = ratio_l - 2.0f;
     float *c1 = &ch1->imdct_in[base_band_count];
     float *c2 = &ch2->imdct_in[base_band_count];
@@ -291,7 +292,8 @@ static void reconstruct_hfr(HCAContext *s, ChannelContext *ch,
 
     for (int i = 0, k = start_band, l = start_band - 1; i < hfr_group_count; i++){
         for (int j = 0; j < bands_per_hfr_group && k < total_band_count && l >= 0; j++, k++, l--){
-            ch->imdct_in[k] = scale_conversion_table[ (ch->hfr_scale[i] - ch->scale_factors[l]) & 63 ] * ch->imdct_in[l];
+            ch->imdct_in[k] = scale_conversion_table[ scale_conv_bias +
+                av_clip_intp2(ch->hfr_scale[i] - ch->scale_factors[l], 6) ] * ch->imdct_in[l];
         }
     }
 

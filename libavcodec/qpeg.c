@@ -101,8 +101,11 @@ static void qpeg_decode_intra(QpegContext *qctx, uint8_t *dst,
         } else {
             if (bytestream2_get_bytes_left(&qctx->buffer) < copy)
                 copy = bytestream2_get_bytes_left(&qctx->buffer);
-            for(i = 0; i < copy; i++) {
-                dst[filled++] = bytestream2_get_byte(&qctx->buffer);
+            while (copy > 0) {
+                int step = FFMIN(copy, width - filled);
+                bytestream2_get_bufferu(&qctx->buffer, dst + filled, step);
+                filled += step;
+                copy -= step;
                 if (filled >= width) {
                     filled = 0;
                     dst -= stride;
@@ -115,9 +118,9 @@ static void qpeg_decode_intra(QpegContext *qctx, uint8_t *dst,
     }
 }
 
-static const int qpeg_table_h[16] =
+static const uint8_t qpeg_table_h[16] =
  { 0x00, 0x20, 0x20, 0x20, 0x18, 0x10, 0x10, 0x20, 0x10, 0x08, 0x18, 0x08, 0x08, 0x18, 0x10, 0x04};
-static const int qpeg_table_w[16] =
+static const uint8_t qpeg_table_w[16] =
  { 0x00, 0x20, 0x18, 0x08, 0x18, 0x10, 0x20, 0x10, 0x08, 0x10, 0x20, 0x20, 0x08, 0x10, 0x18, 0x04};
 
 /* Decodes delta frames */
@@ -271,7 +274,7 @@ static int decode_frame(AVCodecContext *avctx,
     AVFrame * const ref = a->ref;
     uint8_t* outdata;
     int delta, intra, ret;
-    int pal_size;
+    buffer_size_t pal_size;
     const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &pal_size);
 
     if (avpkt->size < 0x86) {

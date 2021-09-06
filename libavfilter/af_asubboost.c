@@ -37,10 +37,10 @@ typedef struct ASubBoostContext {
     double a0, a1, a2;
     double b0, b1, b2;
 
-    int write_pos;
+    int *write_pos;
     int buffer_samples;
 
-    AVFrame *i, *o;
+    AVFrame *w;
     AVFrame *buffer;
 } ASubBoostContext;
 
@@ -104,21 +104,69 @@ static int config_input(AVFilterLink *inlink)
     ASubBoostContext *s = ctx->priv;
 
     s->buffer = ff_get_audio_buffer(inlink, inlink->sample_rate / 10);
-    s->i = ff_get_audio_buffer(inlink, 2);
-    s->o = ff_get_audio_buffer(inlink, 2);
-    if (!s->buffer || !s->i || !s->o)
+    s->w = ff_get_audio_buffer(inlink, 2);
+    s->write_pos = av_calloc(inlink->channels, sizeof(*s->write_pos));
+    if (!s->buffer || !s->w || !s->write_pos)
         return AVERROR(ENOMEM);
 
     return get_coeffs(ctx);
+}
+
+typedef struct ThreadData {
+    AVFrame *in, *out;
+} ThreadData;
+
+static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+{
+    ASubBoostContext *s = ctx->priv;
+    ThreadData *td = arg;
+    AVFrame *out = td->out;
+    AVFrame *in = td->in;
+    const double mix = ctx->is_disabled ? 0. : 1.;
+    const double wet = ctx->is_disabled ? 1. : s->wet_gain;
+    const double dry = ctx->is_disabled ? 1. : s->dry_gain;
+    const double feedback = s->feedback, decay = s->decay;
+    const double b0 = s->b0;
+    const double b1 = s->b1;
+    const double b2 = s->b2;
+    const double a1 = -s->a1;
+    const double a2 = -s->a2;
+    const int start = (in->channels * jobnr) / nb_jobs;
+    const int end = (in->channels * (jobnr+1)) / nb_jobs;
+    const int buffer_samples = s->buffer_samples;
+
+    for (int ch = start; ch < end; ch++) {
+        const double *src = (const double *)in->extended_data[ch];
+        double *dst = (double *)out->extended_data[ch];
+        double *buffer = (double *)s->buffer->extended_data[ch];
+        double *w = (double *)s->w->extended_data[ch];
+        int write_pos = s->write_pos[ch];
+
+        for (int n = 0; n < in->nb_samples; n++) {
+            double out_sample;
+
+            out_sample = src[n] * b0 + w[0];
+            w[0] = b1 * src[n] + w[1] + a1 * out_sample;
+            w[1] = b2 * src[n] + a2 * out_sample;
+
+            buffer[write_pos] = buffer[write_pos] * decay + out_sample * feedback;
+            dst[n] = (src[n] * dry + buffer[write_pos] * mix) * wet;
+
+            if (++write_pos >= buffer_samples)
+                write_pos = 0;
+        }
+
+        s->write_pos[ch] = write_pos;
+    }
+
+    return 0;
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
-    ASubBoostContext *s = ctx->priv;
-    const float wet = s->wet_gain, dry = s->dry_gain, feedback = s->feedback, decay = s->decay;
-    int write_pos;
+    ThreadData td;
     AVFrame *out;
 
     if (av_frame_is_writable(in)) {
@@ -132,32 +180,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_copy_props(out, in);
     }
 
-    for (int ch = 0; ch < in->channels; ch++) {
-        const double *src = (const double *)in->extended_data[ch];
-        double *dst = (double *)out->extended_data[ch];
-        double *buffer = (double *)s->buffer->extended_data[ch];
-        double *ix = (double *)s->i->extended_data[ch];
-        double *ox = (double *)s->o->extended_data[ch];
-
-        write_pos = s->write_pos;
-        for (int n = 0; n < in->nb_samples; n++) {
-            double out_sample;
-
-            out_sample = src[n] * s->b0 + ix[0] * s->b1 + ix[1] * s->b2 - ox[0] * s->a1 - ox[1] * s->a2;
-            ix[1] = ix[0];
-            ix[0] = src[n];
-            ox[1] = ox[0];
-            ox[0] = out_sample;
-
-            buffer[write_pos] = buffer[write_pos] * decay + out_sample * feedback;
-            dst[n] = src[n] * dry + buffer[write_pos] * wet;
-
-            if (++write_pos >= s->buffer_samples)
-                write_pos = 0;
-        }
-    }
-
-    s->write_pos = write_pos;
+    td.in = in; td.out = out;
+    ctx->internal->execute(ctx, filter_channels, &td, NULL, FFMIN(inlink->channels,
+                                                            ff_filter_get_nb_threads(ctx)));
 
     if (out != in)
         av_frame_free(&in);
@@ -169,8 +194,8 @@ static av_cold void uninit(AVFilterContext *ctx)
     ASubBoostContext *s = ctx->priv;
 
     av_frame_free(&s->buffer);
-    av_frame_free(&s->i);
-    av_frame_free(&s->o);
+    av_frame_free(&s->w);
+    av_freep(&s->write_pos);
 }
 
 static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,
@@ -189,10 +214,10 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 #define FLAGS AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption asubboost_options[] = {
-    { "dry",      "set dry gain", OFFSET(dry_gain), AV_OPT_TYPE_DOUBLE, {.dbl=0.5},      0,   1, FLAGS },
-    { "wet",      "set wet gain", OFFSET(wet_gain), AV_OPT_TYPE_DOUBLE, {.dbl=0.8},      0,   1, FLAGS },
+    { "dry",      "set dry gain", OFFSET(dry_gain), AV_OPT_TYPE_DOUBLE, {.dbl=0.7},      0,   1, FLAGS },
+    { "wet",      "set wet gain", OFFSET(wet_gain), AV_OPT_TYPE_DOUBLE, {.dbl=0.7},      0,   1, FLAGS },
     { "decay",    "set decay",    OFFSET(decay),    AV_OPT_TYPE_DOUBLE, {.dbl=0.7},      0,   1, FLAGS },
-    { "feedback", "set feedback", OFFSET(feedback), AV_OPT_TYPE_DOUBLE, {.dbl=0.5},      0,   1, FLAGS },
+    { "feedback", "set feedback", OFFSET(feedback), AV_OPT_TYPE_DOUBLE, {.dbl=0.9},      0,   1, FLAGS },
     { "cutoff",   "set cutoff",   OFFSET(cutoff),   AV_OPT_TYPE_DOUBLE, {.dbl=100},     50, 900, FLAGS },
     { "slope",    "set slope",    OFFSET(slope),    AV_OPT_TYPE_DOUBLE, {.dbl=0.5}, 0.0001,   1, FLAGS },
     { "delay",    "set delay",    OFFSET(delay),    AV_OPT_TYPE_DOUBLE, {.dbl=20},       1, 100, FLAGS },
@@ -229,4 +254,6 @@ AVFilter ff_af_asubboost = {
     .inputs         = inputs,
     .outputs        = outputs,
     .process_command = process_command,
+    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                       AVFILTER_FLAG_SLICE_THREADS,
 };

@@ -26,6 +26,7 @@
 
 #include "avcodec.h"
 #include "bswapdsp.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "raw.h"
@@ -366,7 +367,7 @@ static int raw_decode(AVCodecContext *avctx, void *data, int *got_frame,
     }
 
     if (avctx->pix_fmt == AV_PIX_FMT_PAL8) {
-        int pal_size;
+        buffer_size_t pal_size;
         const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE,
                                                      &pal_size);
         int ret;
@@ -492,6 +493,7 @@ static av_cold int raw_close_decoder(AVCodecContext *avctx)
     RawVideoContext *context = avctx->priv_data;
 
     av_buffer_unref(&context->palette);
+    av_freep(&context->bitstream_buf);
     return 0;
 }
 

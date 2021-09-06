@@ -183,3 +183,49 @@ HORIZ_SLICE
 INIT_XMM avx2
 HORIZ_SLICE
 %endif
+
+%macro POSTSCALE_SLICE 0
+cglobal postscale_slice, 2, 2, 4, ptr, length, postscale, min, max
+    shl lengthd, 2
+    add ptrq, lengthq
+    neg lengthq
+%if ARCH_X86_32
+    VBROADCASTSS m0, postscalem
+    VBROADCASTSS m1, minm
+    VBROADCASTSS m2, maxm
+%elif WIN64
+    SWAP 0, 2
+    SWAP 1, 3
+    VBROADCASTSS m0, xm0
+    VBROADCASTSS m1, xm1
+    VBROADCASTSS m2, maxm
+%else ; UNIX64
+    VBROADCASTSS m0, xm0
+    VBROADCASTSS m1, xm1
+    VBROADCASTSS m2, xm2
+%endif
+
+    .loop:
+%if cpuflag(avx2)
+    mulps         m3, m0, [ptrq + lengthq]
+%else
+    movu          m3, [ptrq + lengthq]
+    mulps         m3, m0
+%endif
+    maxps         m3, m1
+    minps         m3, m2
+    movu   [ptrq+lengthq], m3
+
+    add lengthq, mmsize
+    jl .loop
+
+    RET
+%endmacro
+
+INIT_XMM sse
+POSTSCALE_SLICE
+
+%if HAVE_AVX2_EXTERNAL
+INIT_YMM avx2
+POSTSCALE_SLICE
+%endif

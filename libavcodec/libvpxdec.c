@@ -32,6 +32,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
+#include "decode.h"
 #include "internal.h"
 #include "libvpx.h"
 #include "profiles.h"
@@ -220,7 +221,7 @@ static int vpx_decode(AVCodecContext *avctx,
     struct vpx_image *img, *img_alpha;
     int ret;
     uint8_t *side_data = NULL;
-    int side_data_size = 0;
+    buffer_size_t side_data_size;
 
     ret = decode_frame(avctx, &ctx->decoder, avpkt->data, avpkt->size);
     if (ret)
@@ -360,7 +361,8 @@ AVCodec ff_libvpx_vp8_decoder = {
     .init           = vp8_init,
     .close          = vpx_free,
     .decode         = vpx_decode,
-    .capabilities   = AV_CODEC_CAP_AUTO_THREADS | AV_CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_OTHER_THREADS | AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .wrapper_name   = "libvpx",
 };
 #endif /* CONFIG_LIBVPX_VP8_DECODER */
@@ -381,7 +383,8 @@ AVCodec ff_libvpx_vp9_decoder = {
     .init           = vp9_init,
     .close          = vpx_free,
     .decode         = vpx_decode,
-    .capabilities   = AV_CODEC_CAP_AUTO_THREADS,
+    .capabilities   = AV_CODEC_CAP_OTHER_THREADS,
+    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .init_static_data = ff_vp9_init_static,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_vp9_profiles),
     .wrapper_name   = "libvpx",

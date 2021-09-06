@@ -66,12 +66,14 @@ typedef struct AVIIndex {
 
 typedef struct AVIContext {
     const AVClass *class;
+    AVPacket *empty_packet;
     int64_t riff_start, movi_list, odml_list;
     int64_t frames_hdr_all;
     int riff_id;
     int reserve_index_space;
     int master_index_max_size;
     int write_channel_mask;
+    int flipped_raw_rgb;
 } AVIContext;
 
 typedef struct AVIStream {
@@ -273,6 +275,10 @@ static int avi_write_header(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
+    avi->empty_packet = av_packet_alloc();
+    if (!avi->empty_packet)
+        return AVERROR(ENOMEM);
+
     for (n = 0; n < s->nb_streams; n++) {
         s->streams[n]->priv_data = av_mallocz(sizeof(AVIStream));
         if (!s->streams[n]->priv_data)
@@ -449,7 +455,7 @@ static int avi_write_header(AVFormatContext *s)
                     && par->bits_per_coded_sample == 15)
                     par->bits_per_coded_sample = 16;
                 avist->pal_offset = avio_tell(pb) + 40;
-                ff_put_bmp_header(pb, par, 0, 0);
+                ff_put_bmp_header(pb, par, 0, 0, avi->flipped_raw_rgb);
                 pix_fmt = avpriv_find_pix_fmt(avpriv_pix_fmt_bps_avi,
                                               par->bits_per_coded_sample);
                 if (   !par->codec_tag
@@ -738,24 +744,21 @@ static int avi_write_idx1(AVFormatContext *s)
 
 static int write_skip_frames(AVFormatContext *s, int stream_index, int64_t dts)
 {
+    AVIContext *avi = s->priv_data;
     AVIStream *avist    = s->streams[stream_index]->priv_data;
     AVCodecParameters *par = s->streams[stream_index]->codecpar;
 
     ff_dlog(s, "dts:%s packet_count:%d stream_index:%d\n", av_ts2str(dts), avist->packet_count, stream_index);
     while (par->block_align == 0 && dts != AV_NOPTS_VALUE &&
            dts > avist->packet_count && par->codec_id != AV_CODEC_ID_XSUB && avist->packet_count) {
-        AVPacket empty_packet;
 
         if (dts - avist->packet_count > 60000) {
             av_log(s, AV_LOG_ERROR, "Too large number of skipped frames %"PRId64" > 60000\n", dts - avist->packet_count);
             return AVERROR(EINVAL);
         }
 
-        av_init_packet(&empty_packet);
-        empty_packet.size         = 0;
-        empty_packet.data         = NULL;
-        empty_packet.stream_index = stream_index;
-        avi_write_packet_internal(s, &empty_packet);
+        avi->empty_packet->stream_index = stream_index;
+        avi_write_packet_internal(s, avi->empty_packet);
         ff_dlog(s, "dup dts:%s packet_count:%d\n", av_ts2str(dts), avist->packet_count);
     }
 
@@ -977,6 +980,10 @@ static int avi_write_trailer(AVFormatContext *s)
 
 static void avi_deinit(AVFormatContext *s)
 {
+    AVIContext *avi = s->priv_data;
+
+    av_packet_free(&avi->empty_packet);
+
     for (int i = 0; i < s->nb_streams; i++) {
         AVIStream *avist = s->streams[i]->priv_data;
         if (!avist)
@@ -993,6 +1000,7 @@ static void avi_deinit(AVFormatContext *s)
 static const AVOption options[] = {
     { "reserve_index_space", "reserve space (in bytes) at the beginning of the file for each stream index", OFFSET(reserve_index_space), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, ENC },
     { "write_channel_mask", "write channel mask into wave format header", OFFSET(write_channel_mask), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, ENC },
+    { "flipped_raw_rgb", "Raw RGB bitmaps are stored bottom-up", OFFSET(flipped_raw_rgb), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, ENC },
     { NULL },
 };
 
@@ -1016,8 +1024,6 @@ AVOutputFormat ff_avi_muxer = {
     .write_header   = avi_write_header,
     .write_packet   = avi_write_packet,
     .write_trailer  = avi_write_trailer,
-    .codec_tag      = (const AVCodecTag * const []) {
-        ff_codec_bmp_tags, ff_codec_wav_tags, 0
-    },
+    .codec_tag      = ff_riff_codec_tags_list,
     .priv_class     = &avi_muxer_class,
 };

@@ -63,16 +63,17 @@ After starting the broker, an FFmpeg client may stream data to the broker using
 the command:
 
 @example
-ffmpeg -re -i input -f mpegts amqp://[[user]:[password]@@]hostname[:port]
+ffmpeg -re -i input -f mpegts amqp://[[user]:[password]@@]hostname[:port][/vhost]
 @end example
 
 Where hostname and port (default is 5672) is the address of the broker. The
 client may also set a user/password for authentication. The default for both
-fields is "guest".
+fields is "guest". Name of virtual host on broker can be set with vhost. The
+default value is "/".
 
 Muliple subscribers may stream from the broker using the command:
 @example
-ffplay amqp://[[user]:[password]@@]hostname[:port]
+ffplay amqp://[[user]:[password]@@]hostname[:port][/vhost]
 @end example
 
 In RabbitMQ all data published to the broker flows through a specific exchange,
@@ -108,6 +109,21 @@ the received message may be truncated causing decoding errors.
 @item connection_timeout
 The timeout in seconds during the initial connection to the broker. The
 default value is rw_timeout, or 5 seconds if rw_timeout is not set.
+
+@item delivery_mode @var{mode}
+Sets the delivery mode of each message sent to broker.
+The following values are accepted:
+@table @samp
+@item persistent
+Delivery mode set to "persistent" (2). This is the default value.
+Messages may be written to the broker's disk depending on its setup.
+
+@item non-persistent
+Delivery mode set to "non-persistent" (1).
+Messages will stay in broker's memory unless the broker is under memory
+pressure.
+
+@end table
 
 @end table
 
@@ -159,6 +175,16 @@ Caching wrapper for input stream.
 
 Cache the input stream to temporary file. It brings seeking capability to live streams.
 
+The accepted options are:
+@table @option
+
+@item read_ahead_limit
+Amount in bytes that may be read ahead when seeking isn't supported. Range is -1 to INT_MAX.
+-1 for unlimited. Default is 65536.
+
+@end table
+
+URL Syntax is
 @example
 cache:@var{URL}
 @end example
@@ -315,6 +341,12 @@ operation. ff* tools may produce incomplete content due to server limitations.
 
 Gopher protocol.
 
+@section gophers
+
+Gophers protocol.
+
+The Gopher protocol with TLS encapsulation.
+
 @section hls
 
 Read Apple HTTP Live Streaming compliant segmented stream as
@@ -377,17 +409,19 @@ string describing the libavformat build. ("Lavf/<version>")
 @item user-agent
 This is a deprecated option, you can use user_agent instead it.
 
-@item timeout
-Set timeout in microseconds of socket I/O operations used by the underlying low level
-operation. By default it is set to -1, which means that the timeout is
-not specified.
-
 @item reconnect_at_eof
 If set then eof is treated like an error and causes reconnection, this is useful
 for live / endless streams.
 
 @item reconnect_streamed
 If set then even streamed/non seekable streams will be reconnected on errors.
+
+@item reconnect_on_network_error
+Reconnect automatically in case of TCP/TLS errors during connect.
+
+@item reconnect_on_http_error
+A comma separated list of HTTP status codes to reconnect on. The list can
+include specific status codes (e.g. '503') or the strings '4xx' / '5xx'.
 
 @item reconnect_delay_max
 Sets the maximum delay in seconds after which to give up reconnecting
@@ -466,6 +500,28 @@ Send an Expect: 100-continue header for POST. If set to 1 it will send, if set
 to 0 it won't, if set to -1 it will try to send if it is applicable. Default
 value is -1.
 
+@item auth_type
+
+Set HTTP authentication type. No option for Digest, since this method requires
+getting nonce parameters from the server first and can't be used straight away like
+Basic.
+
+@table @option
+@item none
+Choose the HTTP authentication type automatically. This is the default.
+@item basic
+
+Choose the HTTP basic authentication.
+
+Basic authentication sends a Base64-encoded string that contains a user name and password
+for the client. Base64 is not a form of encryption and should be considered the same as
+sending the user name and password in clear text (Base64 is a reversible encoding).
+If a resource needs to be protected, strongly consider using an authentication scheme
+other than basic authentication. HTTPS/TLS should be used with basic authentication.
+Without these additional security enhancements, basic authentication should not be used
+to protect sensitive or valuable information.
+@end table
+
 @end table
 
 @subsection HTTP Cookies
@@ -519,6 +575,9 @@ audio/mpeg.
 @item legacy_icecast
 This enables support for Icecast versions < 2.4.0, that do not support the
 HTTP PUT method but the SOURCE method.
+
+@item tls
+Establish a TLS (HTTPS) connection to Icecast.
 
 @end table
 
@@ -636,6 +695,42 @@ Example usage:
 @example
 -f rtp_mpegts -fec prompeg=l=8:d=4 rtp://@var{hostname}:@var{port}
 @end example
+
+@section rist
+
+Reliable Internet Streaming Transport protocol
+
+The accepted options are:
+@table @option
+@item rist_profile
+Supported values:
+@table @samp
+@item simple
+@item main
+This one is default.
+@item advanced
+@end table
+
+@item buffer_size
+Set internal RIST buffer size in milliseconds for retransmission of data.
+Default value is 0 which means the librist default (1 sec). Maximum value is 30
+seconds.
+
+@item pkt_size
+Set maximum packet size for sending data. 1316 by default.
+
+@item log_level
+Set loglevel for RIST logging messages. You only need to set this if you
+explicitly want to enable debug level messages or packet loss simulation,
+otherwise the regular loglevel is respected.
+
+@item secret
+Set override of encryption secret, by default is unset.
+
+@item encryption
+Set encryption type, by default is disabled.
+Acceptable values are 128 and 256.
+@end table
 
 @section rtmp
 
@@ -938,6 +1033,9 @@ Set the local RTCP port to @var{n}.
 @item pkt_size=@var{n}
 Set max packet size (in bytes) to @var{n}.
 
+@item buffer_size=@var{size}
+Set the maximum UDP socket buffer size in bytes.
+
 @item connect=0|1
 Do a @code{connect()} on the UDP socket (if set to 1) or not (if set
 to 0).
@@ -954,6 +1052,9 @@ set to 1) or to a default remote address (if set to 0).
 
 @item localport=@var{n}
 Set the local RTP port to @var{n}.
+
+@item timeout=@var{n}
+Set timeout (in microseconds) of socket I/O operations to @var{n}.
 
 This is a deprecated option. Instead, @option{localrtpport} should be
 used.
@@ -1596,8 +1697,9 @@ tcp://@var{hostname}:@var{port}[?@var{options}]
 The list of supported options follows.
 
 @table @option
-@item listen=@var{1|0}
-Listen for an incoming connection. Default value is 0.
+@item listen=@var{2|1|0}
+Listen for an incoming connection. 0 disables listen, 1 enables listen in
+single client mode, 2 enables listen in multi-client mode. Default value is 0.
 
 @item timeout=@var{microseconds}
 Set raise error timeout, expressed in microseconds.
@@ -1672,6 +1774,10 @@ A file containing the private key for the certificate.
 @item listen=@var{1|0}
 If enabled, listen for connections on the provided port, and assume
 the server role in the handshake instead of the client role.
+
+@item http_proxy
+The HTTP proxy to tunnel through, e.g. @code{http://example.com:1234}.
+The proxy must support the CONNECT method.
 
 @end table
 

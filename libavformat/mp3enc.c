@@ -28,6 +28,7 @@
 #include "libavcodec/mpegaudio.h"
 #include "libavcodec/mpegaudiodata.h"
 #include "libavcodec/mpegaudiodecheader.h"
+#include "libavcodec/packet_internal.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/dict.h"
@@ -131,7 +132,7 @@ typedef struct MP3Context {
     int pics_to_write;
 
     /* audio packets are queued here until we get all the attached pictures */
-    AVPacketList *queue, *queue_end;
+    PacketList *queue, *queue_end;
 } MP3Context;
 
 static const uint8_t xing_offtbl[2][2] = {{32, 17}, {17, 9}};
@@ -354,7 +355,7 @@ static int mp3_write_audio_packet(AVFormatContext *s, AVPacket *pkt)
 
         if (mp3->xing_offset) {
             uint8_t *side_data = NULL;
-            int side_data_size = 0;
+            buffer_size_t side_data_size;
 
             mp3_xing_add_frame(mp3, pkt);
             mp3->audio_size += pkt->size;
@@ -387,7 +388,7 @@ static int mp3_queue_flush(AVFormatContext *s)
     mp3_write_xing(s);
 
     while (mp3->queue) {
-        ff_packet_list_get(&mp3->queue, &mp3->queue_end, &pkt);
+        avpriv_packet_list_get(&mp3->queue, &mp3->queue_end, &pkt);
         if (write && (ret = mp3_write_audio_packet(s, &pkt)) < 0)
             write = 0;
         av_packet_unref(&pkt);
@@ -401,7 +402,8 @@ static void mp3_update_xing(AVFormatContext *s)
     AVReplayGain *rg;
     uint16_t tag_crc;
     uint8_t *toc;
-    int i, rg_size;
+    buffer_size_t rg_size;
+    int i;
     int64_t old_pos = avio_tell(s->pb);
 
     /* replace "Xing" identification string with "Info" for CBR files. */
@@ -522,7 +524,7 @@ static int mp3_write_packet(AVFormatContext *s, AVPacket *pkt)
     if (pkt->stream_index == mp3->audio_stream_idx) {
         if (mp3->pics_to_write) {
             /* buffer audio packets until we get all the pictures */
-            int ret = ff_packet_list_put(&mp3->queue, &mp3->queue_end, pkt, FF_PACKETLIST_FLAG_REF_PACKET);
+            int ret = avpriv_packet_list_put(&mp3->queue, &mp3->queue_end, pkt, av_packet_ref, 0);
 
             if (ret < 0) {
                 av_log(s, AV_LOG_WARNING, "Not enough memory to buffer audio. Skipping picture streams\n");
@@ -630,7 +632,7 @@ static void mp3_deinit(struct AVFormatContext *s)
 {
     MP3Context *mp3 = s->priv_data;
 
-    ff_packet_list_free(&mp3->queue, &mp3->queue_end);
+    avpriv_packet_list_free(&mp3->queue, &mp3->queue_end);
     av_freep(&mp3->xing_frame);
 }
 

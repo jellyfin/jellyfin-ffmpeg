@@ -53,6 +53,7 @@
 
 #include "libavcodec/aac.h"
 #include "libavcodec/aacsbr.h"
+#include "libavutil/mem_internal.h"
 #include "libavutil/mips/asmdefs.h"
 
 #define ENVELOPE_ADJUSTMENT_OFFSET 2
@@ -333,7 +334,7 @@ static void sbr_hf_assemble_mips(float Y1[38][64][2],
     int indexnoise = ch_data->f_indexnoise;
     int indexsine  = ch_data->f_indexsine;
     float *g_temp1, *q_temp1, *pok, *pok1;
-    float temp1, temp2, temp3, temp4;
+    uint32_t temp1, temp2, temp3, temp4;
     int size = m_max;
 
     if (sbr->reset) {

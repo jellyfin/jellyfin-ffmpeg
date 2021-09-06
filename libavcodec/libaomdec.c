@@ -197,6 +197,14 @@ static int aom_decode(AVCodecContext *avctx, void *data, int *got_frame,
         }
         if ((ret = ff_get_buffer(avctx, picture, 0)) < 0)
             return ret;
+
+        av_reduce(&picture->sample_aspect_ratio.num,
+                  &picture->sample_aspect_ratio.den,
+                  picture->height * img->r_w,
+                  picture->width * img->r_h,
+                  INT_MAX);
+        ff_set_sar(avctx, picture->sample_aspect_ratio);
+
         if ((img->fmt & AOM_IMG_FMT_HIGHBITDEPTH) && img->bit_depth == 8)
             image_copy_16_to_8(picture, img);
         else
@@ -228,7 +236,8 @@ AVCodec ff_libaom_av1_decoder = {
     .init           = av1_init,
     .close          = aom_free,
     .decode         = aom_decode,
-    .capabilities   = AV_CODEC_CAP_AUTO_THREADS | AV_CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_OTHER_THREADS | AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_av1_profiles),
     .wrapper_name   = "libaom",
 };

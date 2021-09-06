@@ -29,6 +29,8 @@
 #include "libavutil/common.h"
 #include "ass_split.h"
 #include "ass.h"
+#include "bytestream.h"
+#include "internal.h"
 
 #define STYLE_FLAG_BOLD         (1<<0)
 #define STYLE_FLAG_ITALIC       (1<<1)
@@ -45,7 +47,7 @@
 #define DEFAULT_STYLE_COLOR    0xffffffff
 #define DEFAULT_STYLE_FLAG     0x00
 
-#define BGR_TO_RGB(c) (((c) & 0xff) << 16 | ((c) & 0xff00) | (((c) >> 16) & 0xff))
+#define BGR_TO_RGB(c) (((c) & 0xff) << 16 | ((c) & 0xff00) | (((uint32_t)(c) >> 16) & 0xff))
 #define FONTSIZE_SCALE(s,fs) ((fs) * (s)->font_scale_factor + 0.5)
 #define av_bprint_append_any(buf, data, size)   av_bprint_append_data(buf, ((const char*)data), size)
 
@@ -73,108 +75,92 @@ typedef struct {
 
     ASSSplitContext *ass_ctx;
     ASSStyle *ass_dialog_style;
+    StyleBox *style_attributes;
+    unsigned  count;
+    unsigned  style_attributes_bytes_allocated;
+    StyleBox  style_attributes_temp;
     AVBPrint buffer;
-    StyleBox **style_attributes;
-    StyleBox *style_attributes_temp;
     HighlightBox hlit;
     HilightcolorBox hclr;
-    int count;
     uint8_t box_flags;
     StyleBox d;
     uint16_t text_pos;
     uint16_t byte_count;
-    char ** fonts;
+    char **fonts;
     int font_count;
     double font_scale_factor;
     int frame_height;
 } MovTextContext;
 
 typedef struct {
-    uint32_t type;
-    void (*encode)(MovTextContext *s, uint32_t tsmb_type);
+    void (*encode)(MovTextContext *s);
 } Box;
 
 static void mov_text_cleanup(MovTextContext *s)
 {
-    int j;
-    if (s->box_flags & STYL_BOX) {
-        for (j = 0; j < s->count; j++) {
-            av_freep(&s->style_attributes[j]);
-        }
-        av_freep(&s->style_attributes);
-    }
-    if (s->style_attributes_temp) {
-        *s->style_attributes_temp = s->d;
-    }
+    s->count = 0;
+    s->style_attributes_temp = s->d;
 }
 
-static void encode_styl(MovTextContext *s, uint32_t tsmb_type)
+static void encode_styl(MovTextContext *s)
 {
-    int j;
-    uint32_t tsmb_size;
-    uint16_t style_entries;
     if ((s->box_flags & STYL_BOX) && s->count) {
-        tsmb_size = s->count * STYLE_RECORD_SIZE + SIZE_ADD;
-        tsmb_size = AV_RB32(&tsmb_size);
-        style_entries = AV_RB16(&s->count);
+        uint8_t buf[12], *p = buf;
+
+        bytestream_put_be32(&p, s->count * STYLE_RECORD_SIZE + SIZE_ADD);
+        bytestream_put_be32(&p, MKBETAG('s','t','y','l'));
+        bytestream_put_be16(&p, s->count);
         /*The above three attributes are hard coded for now
         but will come from ASS style in the future*/
-        av_bprint_append_any(&s->buffer, &tsmb_size, 4);
-        av_bprint_append_any(&s->buffer, &tsmb_type, 4);
-        av_bprint_append_any(&s->buffer, &style_entries, 2);
-        for (j = 0; j < s->count; j++) {
-            uint16_t style_start, style_end, style_fontID;
-            uint32_t style_color;
+        av_bprint_append_any(&s->buffer, buf, 10);
+        for (unsigned j = 0; j < s->count; j++) {
+            const StyleBox *style = &s->style_attributes[j];
 
-            style_start  = AV_RB16(&s->style_attributes[j]->style_start);
-            style_end    = AV_RB16(&s->style_attributes[j]->style_end);
-            style_color  = AV_RB32(&s->style_attributes[j]->style_color);
-            style_fontID = AV_RB16(&s->style_attributes[j]->style_fontID);
+            p = buf;
+            bytestream_put_be16(&p, style->style_start);
+            bytestream_put_be16(&p, style->style_end);
+            bytestream_put_be16(&p, style->style_fontID);
+            bytestream_put_byte(&p, style->style_flag);
+            bytestream_put_byte(&p, style->style_fontsize);
+            bytestream_put_be32(&p, style->style_color);
 
-            av_bprint_append_any(&s->buffer, &style_start, 2);
-            av_bprint_append_any(&s->buffer, &style_end, 2);
-            av_bprint_append_any(&s->buffer, &style_fontID, 2);
-            av_bprint_append_any(&s->buffer, &s->style_attributes[j]->style_flag, 1);
-            av_bprint_append_any(&s->buffer, &s->style_attributes[j]->style_fontsize, 1);
-            av_bprint_append_any(&s->buffer, &style_color, 4);
+            av_bprint_append_any(&s->buffer, buf, 12);
         }
     }
     mov_text_cleanup(s);
 }
 
-static void encode_hlit(MovTextContext *s, uint32_t tsmb_type)
+static void encode_hlit(MovTextContext *s)
 {
-    uint32_t tsmb_size;
-    uint16_t start, end;
     if (s->box_flags & HLIT_BOX) {
-        tsmb_size = 12;
-        tsmb_size = AV_RB32(&tsmb_size);
-        start     = AV_RB16(&s->hlit.start);
-        end       = AV_RB16(&s->hlit.end);
-        av_bprint_append_any(&s->buffer, &tsmb_size, 4);
-        av_bprint_append_any(&s->buffer, &tsmb_type, 4);
-        av_bprint_append_any(&s->buffer, &start, 2);
-        av_bprint_append_any(&s->buffer, &end, 2);
+        uint8_t buf[12], *p = buf;
+
+        bytestream_put_be32(&p, 12);
+        bytestream_put_be32(&p, MKBETAG('h','l','i','t'));
+        bytestream_put_be16(&p, s->hlit.start);
+        bytestream_put_be16(&p, s->hlit.end);
+
+        av_bprint_append_any(&s->buffer, buf, 12);
     }
 }
 
-static void encode_hclr(MovTextContext *s, uint32_t tsmb_type)
+static void encode_hclr(MovTextContext *s)
 {
-    uint32_t tsmb_size, color;
     if (s->box_flags & HCLR_BOX) {
-        tsmb_size = 12;
-        tsmb_size = AV_RB32(&tsmb_size);
-        color     = AV_RB32(&s->hclr.color);
-        av_bprint_append_any(&s->buffer, &tsmb_size, 4);
-        av_bprint_append_any(&s->buffer, &tsmb_type, 4);
-        av_bprint_append_any(&s->buffer, &color, 4);
+        uint8_t buf[12], *p = buf;
+
+        bytestream_put_be32(&p, 12);
+        bytestream_put_be32(&p, MKBETAG('h','c','l','r'));
+        bytestream_put_be32(&p, s->hclr.color);
+
+        av_bprint_append_any(&s->buffer, buf, 12);
     }
 }
 
 static const Box box_types[] = {
-    { MKTAG('s','t','y','l'), encode_styl },
-    { MKTAG('h','l','i','t'), encode_hlit },
-    { MKTAG('h','c','l','r'), encode_hclr },
+    { encode_styl },
+    { encode_hlit },
+    { encode_hclr },
 };
 
 const static size_t box_count = FF_ARRAY_ELEMS(box_types);
@@ -182,45 +168,34 @@ const static size_t box_count = FF_ARRAY_ELEMS(box_types);
 static int mov_text_encode_close(AVCodecContext *avctx)
 {
     MovTextContext *s = avctx->priv_data;
-    int i;
 
     ff_ass_split_free(s->ass_ctx);
-    if (s->style_attributes) {
-        for (i = 0; i < s->count; i++) {
-            av_freep(&s->style_attributes[i]);
-        }
-        av_freep(&s->style_attributes);
-    }
+    av_freep(&s->style_attributes);
     av_freep(&s->fonts);
-    av_freep(&s->style_attributes_temp);
     av_bprint_finalize(&s->buffer, NULL);
     return 0;
 }
 
 static int encode_sample_description(AVCodecContext *avctx)
 {
-    ASS * ass;
-    ASSStyle * style;
+    ASS *ass;
+    ASSStyle *style;
     int i, j;
-    uint32_t tsmb_size, tsmb_type, back_color, style_color;
-    uint16_t style_start, style_end, fontID, count;
+    uint32_t back_color = 0;
     int font_names_total_len = 0;
     MovTextContext *s = avctx->priv_data;
+    uint8_t buf[30], *p = buf;
 
-    static const uint8_t display_and_justification[] = {
-        0x00, 0x00, 0x00, 0x00, // uint32_t displayFlags
-        0x01,                   // int8_t horizontal-justification
-        0xFF,                   // int8_t vertical-justification
-    };
+    //  0x00, 0x00, 0x00, 0x00, // uint32_t displayFlags
+    //  0x01,                   // int8_t horizontal-justification
+    //  0xFF,                   // int8_t vertical-justification
     //  0x00, 0x00, 0x00, 0x00, // uint8_t background-color-rgba[4]
-    static const uint8_t box_record[] = {
     //     BoxRecord {
-        0x00, 0x00,             // int16_t top
-        0x00, 0x00,             // int16_t left
-        0x00, 0x00,             // int16_t bottom
-        0x00, 0x00,             // int16_t right
+    //  0x00, 0x00,             // int16_t top
+    //  0x00, 0x00,             // int16_t left
+    //  0x00, 0x00,             // int16_t bottom
+    //  0x00, 0x00,             // int16_t right
     //     };
-    };
     //     StyleRecord {
     //  0x00, 0x00,             // uint16_t startChar
     //  0x00, 0x00,             // uint16_t endChar
@@ -268,25 +243,19 @@ static int encode_sample_description(AVCodecContext *avctx)
                      (255 - ((uint32_t)style->back_color >> 24));
     }
 
-    av_bprint_append_any(&s->buffer, display_and_justification,
-                                     sizeof(display_and_justification));
-    back_color = AV_RB32(&back_color);
-    av_bprint_append_any(&s->buffer, &back_color, 4);
-    //     BoxRecord {
-    av_bprint_append_any(&s->buffer, box_record, sizeof(box_record));
-    //     };
+    bytestream_put_be32(&p, 0); // displayFlags
+    bytestream_put_be16(&p, 0x01FF); // horizontal/vertical justification (2x int8_t)
+    bytestream_put_be32(&p, back_color);
+    bytestream_put_be64(&p, 0); // BoxRecord - 4xint16_t: top, left, bottom, right
     //     StyleRecord {
-    style_start  = AV_RB16(&s->d.style_start);
-    style_end    = AV_RB16(&s->d.style_end);
-    fontID = AV_RB16(&s->d.style_fontID);
-    style_color  = AV_RB32(&s->d.style_color);
-    av_bprint_append_any(&s->buffer, &style_start, 2);
-    av_bprint_append_any(&s->buffer, &style_end, 2);
-    av_bprint_append_any(&s->buffer, &fontID, 2);
-    av_bprint_append_any(&s->buffer, &s->d.style_flag, 1);
-    av_bprint_append_any(&s->buffer, &s->d.style_fontsize, 1);
-    av_bprint_append_any(&s->buffer, &style_color, 4);
+    bytestream_put_be16(&p, s->d.style_start);
+    bytestream_put_be16(&p, s->d.style_end);
+    bytestream_put_be16(&p, s->d.style_fontID);
+    bytestream_put_byte(&p, s->d.style_flag);
+    bytestream_put_byte(&p, s->d.style_fontsize);
+    bytestream_put_be32(&p, s->d.style_color);
     //     };
+    av_bprint_append_any(&s->buffer, buf, 30);
 
     // Build font table
     // We can't build a complete font table since that would require
@@ -294,10 +263,14 @@ static int encode_sample_description(AVCodecContext *avctx)
     // is avaiable in the ASS header
     if (style && ass->styles_count) {
         // Find unique font names
-        av_dynarray_add(&s->fonts, &s->font_count, style->font_name);
-        font_names_total_len += strlen(style->font_name);
+        if (style->font_name) {
+            av_dynarray_add(&s->fonts, &s->font_count, style->font_name);
+            font_names_total_len += strlen(style->font_name);
+        }
         for (i = 0; i < ass->styles_count; i++) {
             int found = 0;
+            if (!ass->styles[i].font_name)
+                continue;
             for (j = 0; j < s->font_count; j++) {
                 if (!strcmp(s->fonts[j], ass->styles[i].font_name)) {
                     found = 1;
@@ -314,21 +287,21 @@ static int encode_sample_description(AVCodecContext *avctx)
         av_dynarray_add(&s->fonts, &s->font_count, (char*)"Serif");
 
     //     FontTableBox {
-    tsmb_size = SIZE_ADD + 3 * s->font_count + font_names_total_len;
-    tsmb_size = AV_RB32(&tsmb_size);
-    tsmb_type = MKTAG('f','t','a','b');
-    count = AV_RB16(&s->font_count);
-    av_bprint_append_any(&s->buffer, &tsmb_size, 4);
-    av_bprint_append_any(&s->buffer, &tsmb_type, 4);
-    av_bprint_append_any(&s->buffer, &count, 2);
+    p = buf;
+    bytestream_put_be32(&p, SIZE_ADD + 3 * s->font_count + font_names_total_len); // Size
+    bytestream_put_be32(&p, MKBETAG('f','t','a','b'));
+    bytestream_put_be16(&p, s->font_count);
+
+    av_bprint_append_any(&s->buffer, buf, 10);
     //     FontRecord {
     for (i = 0; i < s->font_count; i++) {
-        int len;
-        fontID = i + 1;
-        fontID = AV_RB16(&fontID);
-        av_bprint_append_any(&s->buffer, &fontID, 2);
-        len = strlen(s->fonts[i]);
-        av_bprint_append_any(&s->buffer, &len, 1);
+        size_t len = strlen(s->fonts[i]);
+
+        p = buf;
+        bytestream_put_be16(&p, i + 1); //fontID
+        bytestream_put_byte(&p, len);
+
+        av_bprint_append_any(&s->buffer, buf, 3);
         av_bprint_append_any(&s->buffer, s->fonts[i], len);
     }
     //     };
@@ -358,56 +331,48 @@ static av_cold int mov_text_encode_init(AVCodecContext *avctx)
 
     av_bprint_init(&s->buffer, 0, AV_BPRINT_SIZE_UNLIMITED);
 
-    s->style_attributes_temp = av_mallocz(sizeof(*s->style_attributes_temp));
-    if (!s->style_attributes_temp) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
     s->ass_ctx = ff_ass_split(avctx->subtitle_header);
-    if (!s->ass_ctx) {
-        ret = AVERROR_INVALIDDATA;
-        goto fail;
-    }
+    if (!s->ass_ctx)
+        return AVERROR_INVALIDDATA;
     ret = encode_sample_description(avctx);
     if (ret < 0)
-        goto fail;
+        return ret;
 
     return 0;
-
-fail:
-    mov_text_encode_close(avctx);
-    return ret;
 }
 
 // Start a new style box if needed
 static int mov_text_style_start(MovTextContext *s)
 {
     // there's an existing style entry
-    if (s->style_attributes_temp->style_start == s->text_pos)
+    if (s->style_attributes_temp.style_start == s->text_pos)
         // Still at same text pos, use same entry
         return 1;
-    if (s->style_attributes_temp->style_flag     != s->d.style_flag   ||
-        s->style_attributes_temp->style_color    != s->d.style_color  ||
-        s->style_attributes_temp->style_fontID   != s->d.style_fontID ||
-        s->style_attributes_temp->style_fontsize != s->d.style_fontsize) {
+    if (s->style_attributes_temp.style_flag     != s->d.style_flag   ||
+        s->style_attributes_temp.style_color    != s->d.style_color  ||
+        s->style_attributes_temp.style_fontID   != s->d.style_fontID ||
+        s->style_attributes_temp.style_fontsize != s->d.style_fontsize) {
+        StyleBox *tmp;
+
         // last style != defaults, end the style entry and start a new one
-        s->box_flags |= STYL_BOX;
-        s->style_attributes_temp->style_end = s->text_pos;
-        av_dynarray_add(&s->style_attributes, &s->count, s->style_attributes_temp);
-        s->style_attributes_temp = av_malloc(sizeof(*s->style_attributes_temp));
-        if (!s->style_attributes_temp) {
+        if (s->count + 1 > FFMIN(SIZE_MAX / sizeof(*s->style_attributes), UINT16_MAX) ||
+            !(tmp = av_fast_realloc(s->style_attributes,
+                                    &s->style_attributes_bytes_allocated,
+                                    (s->count + 1) * sizeof(*s->style_attributes)))) {
             mov_text_cleanup(s);
             av_bprint_clear(&s->buffer);
             s->box_flags &= ~STYL_BOX;
             return 0;
         }
-
-        *s->style_attributes_temp = s->d;
-        s->style_attributes_temp->style_start = s->text_pos;
+        s->style_attributes = tmp;
+        s->style_attributes_temp.style_end = s->text_pos;
+        s->style_attributes[s->count++] = s->style_attributes_temp;
+        s->box_flags |= STYL_BOX;
+        s->style_attributes_temp = s->d;
+        s->style_attributes_temp.style_start = s->text_pos;
     } else { // style entry matches defaults, drop entry
-        *s->style_attributes_temp = s->d;
-        s->style_attributes_temp->style_start = s->text_pos;
+        s->style_attributes_temp = s->d;
+        s->style_attributes_temp.style_start = s->text_pos;
     }
     return 1;
 }
@@ -432,13 +397,12 @@ static uint8_t mov_text_style_to_flag(const char style)
 
 static void mov_text_style_set(MovTextContext *s, uint8_t style_flags)
 {
-    if (!s->style_attributes_temp ||
-        !((s->style_attributes_temp->style_flag & style_flags) ^ style_flags)) {
+    if (!((s->style_attributes_temp.style_flag & style_flags) ^ style_flags)) {
         // setting flags that that are already set
         return;
     }
     if (mov_text_style_start(s))
-        s->style_attributes_temp->style_flag |= style_flags;
+        s->style_attributes_temp.style_flag |= style_flags;
 }
 
 static void mov_text_style_cb(void *priv, const char style, int close)
@@ -446,29 +410,27 @@ static void mov_text_style_cb(void *priv, const char style, int close)
     MovTextContext *s = priv;
     uint8_t style_flag = mov_text_style_to_flag(style);
 
-    if (!s->style_attributes_temp ||
-        !!(s->style_attributes_temp->style_flag & style_flag) != close) {
+    if (!!(s->style_attributes_temp.style_flag & style_flag) != close) {
         // setting flag that is already set
         return;
     }
     if (mov_text_style_start(s)) {
         if (!close)
-            s->style_attributes_temp->style_flag |= style_flag;
+            s->style_attributes_temp.style_flag |= style_flag;
         else
-            s->style_attributes_temp->style_flag &= ~style_flag;
+            s->style_attributes_temp.style_flag &= ~style_flag;
     }
 }
 
 static void mov_text_color_set(MovTextContext *s, uint32_t color)
 {
-    if (!s->style_attributes_temp ||
-        (s->style_attributes_temp->style_color & 0xffffff00) == color) {
+    if ((s->style_attributes_temp.style_color & 0xffffff00) == color) {
         // color hasn't changed
         return;
     }
     if (mov_text_style_start(s))
-        s->style_attributes_temp->style_color = (color & 0xffffff00) |
-                            (s->style_attributes_temp->style_color & 0xff);
+        s->style_attributes_temp.style_color = (color & 0xffffff00) |
+                            (s->style_attributes_temp.style_color & 0xff);
 }
 
 static void mov_text_color_cb(void *priv, unsigned int color, unsigned int color_id)
@@ -481,7 +443,7 @@ static void mov_text_color_cb(void *priv, unsigned int color, unsigned int color
     } else if (color_id == 2) {    //secondary color changes
         if (!(s->box_flags & HCLR_BOX))
             // Highlight alpha not set yet, use current primary alpha
-            s->hclr.color = s->style_attributes_temp->style_color;
+            s->hclr.color = s->style_attributes_temp.style_color;
         if (!(s->box_flags & HLIT_BOX) || s->hlit.start == s->text_pos) {
             s->box_flags |= HCLR_BOX;
             s->box_flags |= HLIT_BOX;
@@ -500,14 +462,13 @@ static void mov_text_color_cb(void *priv, unsigned int color, unsigned int color
 
 static void mov_text_alpha_set(MovTextContext *s, uint8_t alpha)
 {
-    if (!s->style_attributes_temp ||
-        (s->style_attributes_temp->style_color & 0xff) == alpha) {
+    if ((s->style_attributes_temp.style_color & 0xff) == alpha) {
         // color hasn't changed
         return;
     }
     if (mov_text_style_start(s))
-        s->style_attributes_temp->style_color =
-                (s->style_attributes_temp->style_color & 0xffffff00) | alpha;
+        s->style_attributes_temp.style_color =
+                (s->style_attributes_temp.style_color & 0xffffff00) | alpha;
 }
 
 static void mov_text_alpha_cb(void *priv, int alpha, int alpha_id)
@@ -520,7 +481,7 @@ static void mov_text_alpha_cb(void *priv, int alpha, int alpha_id)
     else if (alpha_id == 2) {    //secondary alpha changes
         if (!(s->box_flags & HCLR_BOX))
             // Highlight color not set yet, use current primary color
-            s->hclr.color = s->style_attributes_temp->style_color;
+            s->hclr.color = s->style_attributes_temp.style_color;
         if (!(s->box_flags & HLIT_BOX) || s->hlit.start == s->text_pos) {
             s->box_flags |= HCLR_BOX;
             s->box_flags |= HLIT_BOX;
@@ -533,7 +494,7 @@ static void mov_text_alpha_cb(void *priv, int alpha, int alpha_id)
     // Movtext does not support changes to other alpha_id (outline, background)
 }
 
-static uint16_t find_font_id(MovTextContext * s, const char * name)
+static uint16_t find_font_id(MovTextContext *s, const char *name)
 {
     int i;
     for (i = 0; i < s->font_count; i++) {
@@ -546,13 +507,12 @@ static uint16_t find_font_id(MovTextContext * s, const char * name)
 static void mov_text_font_name_set(MovTextContext *s, const char *name)
 {
     int fontID = find_font_id(s, name);
-    if (!s->style_attributes_temp ||
-        s->style_attributes_temp->style_fontID == fontID) {
+    if (s->style_attributes_temp.style_fontID == fontID) {
         // color hasn't changed
         return;
     }
     if (mov_text_style_start(s))
-        s->style_attributes_temp->style_fontID = fontID;
+        s->style_attributes_temp.style_fontID = fontID;
 }
 
 static void mov_text_font_name_cb(void *priv, const char *name)
@@ -563,13 +523,12 @@ static void mov_text_font_name_cb(void *priv, const char *name)
 static void mov_text_font_size_set(MovTextContext *s, int size)
 {
     size = FONTSIZE_SCALE(s, size);
-    if (!s->style_attributes_temp ||
-        s->style_attributes_temp->style_fontsize == size) {
+    if (s->style_attributes_temp.style_fontsize == size) {
         // color hasn't changed
         return;
     }
     if (mov_text_style_start(s))
-        s->style_attributes_temp->style_fontsize = size;
+        s->style_attributes_temp.style_fontsize = size;
 }
 
 static void mov_text_font_size_cb(void *priv, int size)
@@ -607,16 +566,16 @@ static void mov_text_ass_style_set(MovTextContext *s, ASSStyle *style)
 
 static void mov_text_dialog(MovTextContext *s, ASSDialog *dialog)
 {
-    ASSStyle * style = ff_ass_style_get(s->ass_ctx, dialog->style);
+    ASSStyle *style = ff_ass_style_get(s->ass_ctx, dialog->style);
 
     s->ass_dialog_style = style;
     mov_text_ass_style_set(s, style);
 }
 
-static void mov_text_cancel_overrides_cb(void *priv, const char * style_name)
+static void mov_text_cancel_overrides_cb(void *priv, const char *style_name)
 {
     MovTextContext *s = priv;
-    ASSStyle * style;
+    ASSStyle *style;
 
     if (!style_name || !*style_name)
         style = s->ass_dialog_style;
@@ -717,7 +676,7 @@ static int mov_text_encode_frame(AVCodecContext *avctx, unsigned char *buf,
 #endif
 
         for (j = 0; j < box_count; j++) {
-            box_types[j].encode(s, box_types[j].type);
+            box_types[j].encode(s);
         }
     }
 
@@ -772,4 +731,5 @@ AVCodec ff_movtext_encoder = {
     .init           = mov_text_encode_init,
     .encode_sub     = mov_text_encode_frame,
     .close          = mov_text_encode_close,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -142,25 +142,20 @@ static int query_formats(AVFilterContext *ctx)
     static const enum AVPixelFormat inpal_fmts[] = {AV_PIX_FMT_RGB32, AV_PIX_FMT_NONE};
     static const enum AVPixelFormat out_fmts[]   = {AV_PIX_FMT_PAL8,  AV_PIX_FMT_NONE};
     int ret;
-    AVFilterFormats *in    = ff_make_format_list(in_fmts);
-    AVFilterFormats *inpal = ff_make_format_list(inpal_fmts);
-    AVFilterFormats *out   = ff_make_format_list(out_fmts);
-    if (!in || !inpal || !out) {
-        av_freep(&in);
-        av_freep(&inpal);
-        av_freep(&out);
-        return AVERROR(ENOMEM);
-    }
-    if ((ret = ff_formats_ref(in   , &ctx->inputs[0]->out_formats)) < 0 ||
-        (ret = ff_formats_ref(inpal, &ctx->inputs[1]->out_formats)) < 0 ||
-        (ret = ff_formats_ref(out  , &ctx->outputs[0]->in_formats)) < 0)
+    if ((ret = ff_formats_ref(ff_make_format_list(in_fmts),
+                              &ctx->inputs[0]->outcfg.formats)) < 0 ||
+        (ret = ff_formats_ref(ff_make_format_list(inpal_fmts),
+                              &ctx->inputs[1]->outcfg.formats)) < 0 ||
+        (ret = ff_formats_ref(ff_make_format_list(out_fmts),
+                              &ctx->outputs[0]->incfg.formats)) < 0)
         return ret;
     return 0;
 }
 
-static av_always_inline int dither_color(uint32_t px, int er, int eg, int eb, int scale, int shift)
+static av_always_inline uint32_t dither_color(uint32_t px, int er, int eg,
+                                              int eb, int scale, int shift)
 {
-    return av_clip_uint8( px >> 24                                      ) << 24
+    return                px >> 24                                        << 24
          | av_clip_uint8((px >> 16 & 0xff) + ((er * scale) / (1<<shift))) << 16
          | av_clip_uint8((px >>  8 & 0xff) + ((eg * scale) / (1<<shift))) <<  8
          | av_clip_uint8((px       & 0xff) + ((eb * scale) / (1<<shift)));

@@ -22,12 +22,77 @@
 #include "config.h"
 
 #include "libavutil/common.h"
+#include "libavutil/fifo.h"
 #include "libavutil/opt.h"
 #include "libavcodec/av1_parse.h"
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
 
+//return < 0 if we need more data
+static int get_score(int type, int *seq)
+{
+    switch (type) {
+    case AV1_OBU_SEQUENCE_HEADER:
+        *seq = 1;
+        return -1;
+    case AV1_OBU_FRAME:
+    case AV1_OBU_FRAME_HEADER:
+        return *seq ? AVPROBE_SCORE_EXTENSION + 1 : 0;
+    case AV1_OBU_METADATA:
+    case AV1_OBU_PADDING:
+        return -1;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static int read_header(AVFormatContext *s, const AVRational *framerate, AVBSFContext **bsf, void *logctx)
+{
+    const AVBitStreamFilter *filter = av_bsf_get_by_name("av1_frame_merge");
+    AVStream *st;
+    int ret;
+
+    if (!filter) {
+        av_log(logctx, AV_LOG_ERROR, "av1_frame_merge bitstream filter "
+               "not found. This is a bug, please report it.\n");
+        return AVERROR_BUG;
+    }
+
+    st = avformat_new_stream(s, NULL);
+    if (!st)
+        return AVERROR(ENOMEM);
+
+    st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+    st->codecpar->codec_id = AV_CODEC_ID_AV1;
+    st->need_parsing = AVSTREAM_PARSE_HEADERS;
+
+    st->internal->avctx->framerate = *framerate;
+    // taken from rawvideo demuxers
+    avpriv_set_pts_info(st, 64, 1, 1200000);
+
+    ret = av_bsf_alloc(filter, bsf);
+    if (ret < 0)
+        return ret;
+
+    ret = avcodec_parameters_copy((*bsf)->par_in, st->codecpar);
+    if (ret < 0) {
+        av_bsf_free(bsf);
+        return ret;
+    }
+
+    ret = av_bsf_init(*bsf);
+    if (ret < 0)
+        av_bsf_free(bsf);
+
+    return ret;
+
+}
+
+#define DEC AV_OPT_FLAG_DECODING_PARAM
+
+#if CONFIG_AV1_DEMUXER
 typedef struct AnnexBContext {
     const AVClass *class;
     AVBSFContext *bsf;
@@ -89,13 +154,11 @@ static int annexb_probe(const AVProbeData *p)
     if (ret < 0 || ((int64_t)frame_unit_size + ret) > temporal_unit_size)
         return 0;
     cnt += ret;
-    temporal_unit_size -= ret;
     ret = leb(&pb, &obu_unit_size);
     if (ret < 0 || ((int64_t)obu_unit_size + ret) >= frame_unit_size)
         return 0;
     cnt += ret;
 
-    temporal_unit_size -= obu_unit_size + ret;
     frame_unit_size -= obu_unit_size + ret;
 
     avio_skip(&pb, obu_unit_size);
@@ -123,21 +186,10 @@ static int annexb_probe(const AVProbeData *p)
             return 0;
         cnt += obu_unit_size;
 
-        switch (type) {
-        case AV1_OBU_SEQUENCE_HEADER:
-            seq = 1;
-            break;
-        case AV1_OBU_FRAME:
-        case AV1_OBU_FRAME_HEADER:
-            return seq ? AVPROBE_SCORE_EXTENSION + 1 : 0;
-        case AV1_OBU_TILE_GROUP:
-        case AV1_OBU_TEMPORAL_DELIMITER:
-            return 0;
-        default:
-            break;
-        }
+        ret = get_score(type, &seq);
+        if (ret >= 0)
+            return ret;
 
-        temporal_unit_size -= obu_unit_size + ret;
         frame_unit_size -= obu_unit_size + ret;
     } while (frame_unit_size);
 
@@ -147,43 +199,7 @@ static int annexb_probe(const AVProbeData *p)
 static int annexb_read_header(AVFormatContext *s)
 {
     AnnexBContext *c = s->priv_data;
-    const AVBitStreamFilter *filter = av_bsf_get_by_name("av1_frame_merge");
-    AVStream *st;
-    int ret;
-
-    if (!filter) {
-        av_log(c, AV_LOG_ERROR, "av1_frame_merge bitstream filter "
-               "not found. This is a bug, please report it.\n");
-        return AVERROR_BUG;
-    }
-
-    st = avformat_new_stream(s, NULL);
-    if (!st)
-        return AVERROR(ENOMEM);
-
-    st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
-    st->codecpar->codec_id = AV_CODEC_ID_AV1;
-    st->need_parsing = AVSTREAM_PARSE_HEADERS;
-
-    st->internal->avctx->framerate = c->framerate;
-    // taken from rawvideo demuxers
-    avpriv_set_pts_info(st, 64, 1, 1200000);
-
-    ret = av_bsf_alloc(filter, &c->bsf);
-    if (ret < 0)
-        return ret;
-
-    ret = avcodec_parameters_copy(c->bsf->par_in, st->codecpar);
-    if (ret < 0) {
-        av_bsf_free(&c->bsf);
-        return ret;
-    }
-
-    ret = av_bsf_init(c->bsf);
-    if (ret < 0)
-        av_bsf_free(&c->bsf);
-
-    return ret;
+    return read_header(s, &c->framerate, &c->bsf, c);
 }
 
 static int annexb_read_packet(AVFormatContext *s, AVPacket *pkt)
@@ -252,11 +268,11 @@ static int annexb_read_close(AVFormatContext *s)
 }
 
 #define OFFSET(x) offsetof(AnnexBContext, x)
-#define DEC AV_OPT_FLAG_DECODING_PARAM
 static const AVOption annexb_options[] = {
     { "framerate", "", OFFSET(framerate), AV_OPT_TYPE_VIDEO_RATE, {.str = "25"}, 0, INT_MAX, DEC},
     { NULL },
 };
+#undef OFFSET
 
 static const AVClass annexb_demuxer_class = {
     .class_name = "AV1 Annex B demuxer",
@@ -277,3 +293,191 @@ AVInputFormat ff_av1_demuxer = {
     .flags          = AVFMT_GENERIC_INDEX,
     .priv_class     = &annexb_demuxer_class,
 };
+#endif
+
+#if CONFIG_OBU_DEMUXER
+typedef struct ObuContext {
+    const AVClass *class;
+    AVBSFContext *bsf;
+    AVRational framerate;
+    AVFifoBuffer *fifo;
+} ObuContext;
+
+//For low overhead obu, we can't foresee the obu size before we parsed the header.
+//So, we can't use parse_obu_header here, since it will check size <= buf_size
+//see c27c7b49dc for more details
+static int read_obu_with_size(const uint8_t *buf, int buf_size, int64_t *obu_size, int *type)
+{
+    GetBitContext gb;
+    int ret, extension_flag, start_pos;
+    int64_t size;
+
+    ret = init_get_bits8(&gb, buf, FFMIN(buf_size, MAX_OBU_HEADER_SIZE));
+    if (ret < 0)
+        return ret;
+
+    if (get_bits1(&gb) != 0) // obu_forbidden_bit
+        return AVERROR_INVALIDDATA;
+
+    *type      = get_bits(&gb, 4);
+    extension_flag = get_bits1(&gb);
+    if (!get_bits1(&gb))    // has_size_flag
+        return AVERROR_INVALIDDATA;
+    skip_bits1(&gb);        // obu_reserved_1bit
+
+    if (extension_flag) {
+        get_bits(&gb, 3);   // temporal_id
+        get_bits(&gb, 2);   // spatial_id
+        skip_bits(&gb, 3);  // extension_header_reserved_3bits
+    }
+
+    *obu_size  = leb128(&gb);
+    if (*obu_size > INT_MAX)
+        return AVERROR_INVALIDDATA;
+
+    if (get_bits_left(&gb) < 0)
+        return AVERROR_INVALIDDATA;
+
+    start_pos = get_bits_count(&gb) / 8;
+
+    size = *obu_size + start_pos;
+    if (size > INT_MAX)
+        return AVERROR_INVALIDDATA;
+    return size;
+}
+
+static int obu_probe(const AVProbeData *p)
+{
+    int64_t obu_size;
+    int seq = 0;
+    int ret, type, cnt;
+
+    // Check that the first OBU is a Temporal Delimiter.
+    cnt = read_obu_with_size(p->buf, p->buf_size, &obu_size, &type);
+    if (cnt < 0 || type != AV1_OBU_TEMPORAL_DELIMITER || obu_size != 0)
+        return 0;
+
+    while (1) {
+        ret = read_obu_with_size(p->buf + cnt, p->buf_size - cnt, &obu_size, &type);
+        if (ret < 0 || obu_size <= 0)
+            return 0;
+        cnt += FFMIN(ret, p->buf_size - cnt);
+
+        ret = get_score(type, &seq);
+        if (ret >= 0)
+            return ret;
+    }
+    return 0;
+}
+
+static int obu_read_header(AVFormatContext *s)
+{
+    ObuContext *c = s->priv_data;
+    c->fifo = av_fifo_alloc(MAX_OBU_HEADER_SIZE);
+    if (!c->fifo)
+        return AVERROR(ENOMEM);
+    return read_header(s, &c->framerate, &c->bsf, c);
+}
+
+static int obu_get_packet(AVFormatContext *s, AVPacket *pkt)
+{
+    ObuContext *c = s->priv_data;
+    uint8_t header[MAX_OBU_HEADER_SIZE + AV_INPUT_BUFFER_PADDING_SIZE];
+    int64_t obu_size;
+    int size = av_fifo_space(c->fifo);
+    int ret, len, type;
+
+    av_fifo_generic_write(c->fifo, s->pb, size,
+                          (int (*)(void*, void*, int))avio_read);
+    size = av_fifo_size(c->fifo);
+    if (!size)
+        return 0;
+
+    av_fifo_generic_peek(c->fifo, header, size, NULL);
+
+    len = read_obu_with_size(header, size, &obu_size, &type);
+    if (len < 0) {
+        av_log(c, AV_LOG_ERROR, "Failed to read obu\n");
+        return len;
+    }
+
+    ret = av_new_packet(pkt, len);
+    if (ret < 0) {
+        av_log(c, AV_LOG_ERROR, "Failed to allocate packet for obu\n");
+        return ret;
+    }
+    size = FFMIN(size, len);
+    av_fifo_generic_read(c->fifo, pkt->data, size, NULL);
+    len -= size;
+    if (len > 0) {
+        ret = avio_read(s->pb, pkt->data + size, len);
+        if (ret != len) {
+            av_log(c, AV_LOG_ERROR, "Failed to read %d frome file\n", len);
+            return ret < 0 ? ret : AVERROR_INVALIDDATA;
+        }
+    }
+    return 0;
+}
+
+static int obu_read_packet(AVFormatContext *s, AVPacket *pkt)
+{
+    ObuContext *c = s->priv_data;
+    int ret;
+
+    while (1) {
+        ret = obu_get_packet(s, pkt);
+        if (ret < 0)
+            return ret;
+        ret = av_bsf_send_packet(c->bsf, pkt);
+        if (ret < 0) {
+            av_log(s, AV_LOG_ERROR, "Failed to send packet to "
+                                    "av1_frame_merge filter\n");
+            return ret;
+        }
+        ret = av_bsf_receive_packet(c->bsf, pkt);
+        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
+            av_log(s, AV_LOG_ERROR, "av1_frame_merge filter failed to "
+                                    "send output packet\n");
+        if (ret != AVERROR(EAGAIN))
+            break;
+    }
+
+    return ret;
+}
+
+static int obu_read_close(AVFormatContext *s)
+{
+    ObuContext *c = s->priv_data;
+
+    av_fifo_freep(&c->fifo);
+    av_bsf_free(&c->bsf);
+    return 0;
+}
+
+#define OFFSET(x) offsetof(ObuContext, x)
+static const AVOption obu_options[] = {
+    { "framerate", "", OFFSET(framerate), AV_OPT_TYPE_VIDEO_RATE, {.str = "25"}, 0, INT_MAX, DEC},
+    { NULL },
+};
+#undef OFFSET
+
+static const AVClass obu_demuxer_class = {
+    .class_name = "AV1 low overhead OBU demuxer",
+    .item_name  = av_default_item_name,
+    .option     = obu_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
+AVInputFormat ff_obu_demuxer = {
+    .name           = "obu",
+    .long_name      = NULL_IF_CONFIG_SMALL("AV1 low overhead OBU"),
+    .priv_data_size = sizeof(ObuContext),
+    .read_probe     = obu_probe,
+    .read_header    = obu_read_header,
+    .read_packet    = obu_read_packet,
+    .read_close     = obu_read_close,
+    .extensions     = "obu",
+    .flags          = AVFMT_GENERIC_INDEX,
+    .priv_class     = &obu_demuxer_class,
+};
+#endif

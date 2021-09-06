@@ -36,6 +36,7 @@
 #include "internal.h"
 #include "window_func.h"
 
+enum DataMode       { MAGNITUDE, PHASE, DELAY, NB_DATA };
 enum DisplayMode    { LINE, BAR, DOT, NB_MODES };
 enum ChannelMode    { COMBINED, SEPARATE, NB_CMODES };
 enum FrequencyScale { FS_LINEAR, FS_LOG, FS_RLOG, NB_FSCALES };
@@ -45,6 +46,7 @@ typedef struct ShowFreqsContext {
     const AVClass *class;
     int w, h;
     int mode;
+    int data_mode;
     int cmode;
     int fft_size;
     int fft_bits;
@@ -115,6 +117,10 @@ static const AVOption showfreqs_options[] = {
         { "combined", "show all channels in same window",  0, AV_OPT_TYPE_CONST, {.i64=COMBINED}, 0, 0, FLAGS, "cmode" },
         { "separate", "show each channel in own window",   0, AV_OPT_TYPE_CONST, {.i64=SEPARATE}, 0, 0, FLAGS, "cmode" },
     { "minamp",  "set minimum amplitude", OFFSET(minamp), AV_OPT_TYPE_FLOAT, {.dbl=1e-6}, FLT_MIN, 1e-6, FLAGS },
+    { "data", "set data mode", OFFSET(data_mode), AV_OPT_TYPE_INT, {.i64=MAGNITUDE}, 0, NB_DATA-1, FLAGS, "data" },
+        { "magnitude", "show magnitude",  0, AV_OPT_TYPE_CONST, {.i64=MAGNITUDE}, 0, 0, FLAGS, "data" },
+        { "phase",     "show phase",      0, AV_OPT_TYPE_CONST, {.i64=PHASE},     0, 0, FLAGS, "data" },
+        { "delay",     "show group delay",0, AV_OPT_TYPE_CONST, {.i64=DELAY},     0, 0, FLAGS, "data" },
     { NULL }
 };
 
@@ -132,20 +138,20 @@ static int query_formats(AVFilterContext *ctx)
 
     /* set input audio formats */
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref(formats, &inlink->out_formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0)
         return ret;
 
     layouts = ff_all_channel_layouts();
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->out_channel_layouts)) < 0)
+    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0)
         return ret;
 
     formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->out_samplerates)) < 0)
+    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0)
         return ret;
 
     /* set output video format */
     formats = ff_make_format_list(pix_fmts);
-    if ((ret = ff_formats_ref(formats, &outlink->in_formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
         return ret;
 
     return 0;
@@ -397,6 +403,7 @@ static int plot_freqs(AVFilterLink *inlink, AVFrame *in)
 #define RE(x, ch) s->fft_data[ch][x].re
 #define IM(x, ch) s->fft_data[ch][x].im
 #define M(a, b) (sqrt((a) * (a) + (b) * (b)))
+#define P(a, b) (atan2((b), (a)))
 
     colors = av_strdup(s->colors);
     if (!colors) {
@@ -413,13 +420,37 @@ static int plot_freqs(AVFilterLink *inlink, AVFrame *in)
         if (color)
             av_parse_color(fg, color, -1, ctx);
 
-        a = av_clipd(M(RE(0, ch), 0) / s->scale, 0, 1);
-        plot_freq(s, ch, a, 0, fg, &prev_y, out, outlink);
+        switch (s->data_mode) {
+        case MAGNITUDE:
+            a = av_clipd(M(RE(0, ch), 0) / s->scale, 0, 1);
+            plot_freq(s, ch, a, 0, fg, &prev_y, out, outlink);
 
-        for (f = 1; f < s->nb_freq; f++) {
-            a = av_clipd(M(RE(f, ch), IM(f, ch)) / s->scale, 0, 1);
+            for (f = 1; f < s->nb_freq; f++) {
+                a = av_clipd(M(RE(f, ch), IM(f, ch)) / s->scale, 0, 1);
 
-            plot_freq(s, ch, a, f, fg, &prev_y, out, outlink);
+                plot_freq(s, ch, a, f, fg, &prev_y, out, outlink);
+            }
+            break;
+        case PHASE:
+            a = av_clipd((M_PI + P(RE(0, ch), 0)) / (2. * M_PI), 0, 1);
+            plot_freq(s, ch, a, 0, fg, &prev_y, out, outlink);
+
+            for (f = 1; f < s->nb_freq; f++) {
+                a = av_clipd((M_PI + P(RE(f, ch), IM(f, ch))) / (2. * M_PI), 0, 1);
+
+                plot_freq(s, ch, a, f, fg, &prev_y, out, outlink);
+            }
+            break;
+        case DELAY:
+            plot_freq(s, ch, 0, 0, fg, &prev_y, out, outlink);
+
+            for (f = 1; f < s->nb_freq; f++) {
+                a = av_clipd((M_PI - P(IM(f, ch) * RE(f-1, ch) - IM(f-1, ch) * RE(f, ch),
+                                       RE(f, ch) * RE(f-1, ch) + IM(f, ch) * IM(f-1, ch))) / (2. * M_PI), 0, 1);
+
+                plot_freq(s, ch, a, f, fg, &prev_y, out, outlink);
+            }
+            break;
         }
     }
 

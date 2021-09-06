@@ -11,10 +11,10 @@ FATE_MSS2 += fate-mss2-pals
 fate-mss2-pals: CMD = framecrc -i $(TARGET_SAMPLES)/mss2/rlepals.wmv
 
 FATE_MSS2 += fate-mss2-rgb555
-fate-mss2-rgb555: CMD = framecrc -i $(TARGET_SAMPLES)/mss2/rle555.wmv -pix_fmt rgb555le
+fate-mss2-rgb555: CMD = framecrc -i $(TARGET_SAMPLES)/mss2/rle555.wmv -pix_fmt rgb555le -vf scale
 
 FATE_MSS2 += fate-mss2-rgb555s
-fate-mss2-rgb555s: CMD = framecrc -i $(TARGET_SAMPLES)/mss2/rle555s.wmv -pix_fmt rgb555le
+fate-mss2-rgb555s: CMD = framecrc -i $(TARGET_SAMPLES)/mss2/rle555s.wmv -pix_fmt rgb555le -vf scale
 
 FATE_MSS2 += fate-mss2-wmv
 fate-mss2-wmv: CMD = framecrc -i $(TARGET_SAMPLES)/mss2/msscreencodec.wmv -an -frames 100
@@ -29,10 +29,10 @@ FATE_SAMPLES_AVCONV-$(call DEMDEC, ASF, MTS2) += $(FATE_MTS2)
 fate-mts2: $(FATE_MTS2)
 
 FATE_MSVIDEO1 += fate-msvideo1-8bit
-fate-msvideo1-8bit: CMD = framecrc -i $(TARGET_SAMPLES)/cram/skating.avi -t 1 -pix_fmt rgb24
+fate-msvideo1-8bit: CMD = framecrc -i $(TARGET_SAMPLES)/cram/skating.avi -t 1 -pix_fmt rgb24 -vf scale
 
 FATE_MSVIDEO1 += fate-msvideo1-16bit
-fate-msvideo1-16bit: CMD = framecrc -i $(TARGET_SAMPLES)/cram/clock-cram16.avi -pix_fmt rgb24
+fate-msvideo1-16bit: CMD = framecrc -i $(TARGET_SAMPLES)/cram/clock-cram16.avi -pix_fmt rgb24 -vf scale
 
 FATE_MICROSOFT-$(call DEMDEC, AVI, MSVIDEO1) += $(FATE_MSVIDEO1)
 fate-msvideo1: $(FATE_MSVIDEO1)

@@ -531,7 +531,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Unsupported sample rate %d. Supported "
                             "sample rates are 44100, 88200, 176400, 48000, "
                             "96000, and 192000.\n", avctx->sample_rate);
-        return -1;
+        return AVERROR(EINVAL);
     }
     ctx->coded_sample_rate[1] = -1 & 0xf;
 
@@ -564,7 +564,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
     default:
         av_log(avctx, AV_LOG_ERROR, "Sample format not supported. "
                "Only 16- and 24-bit samples are supported.\n");
-        return -1;
+        return AVERROR(EINVAL);
     }
     ctx->coded_sample_fmt[1] = -1 & 0xf;
 
@@ -638,7 +638,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
             ctx->channel_arrangement = 12; break;
         default:
             av_log(avctx, AV_LOG_ERROR, "Unsupported channel arrangement\n");
-            return -1;
+            return AVERROR(EINVAL);
         }
         ctx->flags = FLAGS_DVDA;
         ctx->channel_occupancy = ff_mlp_ch_info[ctx->channel_arrangement].channel_occupancy;
@@ -666,7 +666,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
             break;
         default:
             av_log(avctx, AV_LOG_ERROR, "Unsupported channel arrangement\n");
-            return -1;
+            return AVERROR(EINVAL);
         }
         ctx->flags = 0;
         ctx->channel_occupancy = 0;
@@ -1190,7 +1190,7 @@ static unsigned int write_access_unit(MLPEncodeContext *ctx, uint8_t *buf,
     int total_length;
 
     if (buf_size < 4)
-        return -1;
+        return AVERROR(EINVAL);
 
     /* Frame header will be written at the end. */
     buf      += 4;
@@ -1198,7 +1198,7 @@ static unsigned int write_access_unit(MLPEncodeContext *ctx, uint8_t *buf,
 
     if (restart_frame) {
         if (buf_size < 28)
-            return -1;
+            return AVERROR(EINVAL);
         write_major_sync(ctx, buf, buf_size);
         buf      += 28;
         buf_size -= 28;
@@ -1820,7 +1820,8 @@ static int apply_filter(MLPEncodeContext *ctx, unsigned int channel)
         if (!filter_state_buffer[i]) {
             av_log(ctx->avctx, AV_LOG_ERROR,
                    "Not enough memory for applying filters.\n");
-            return -1;
+            ret = AVERROR(ENOMEM);
+            goto free_and_return;
         }
     }
 
@@ -1848,7 +1849,7 @@ static int apply_filter(MLPEncodeContext *ctx, unsigned int channel)
         residual = sample - (accum & mask);
 
         if (residual < SAMPLE_MIN(24) || residual > SAMPLE_MAX(24)) {
-            ret = -1;
+            ret = AVERROR_INVALIDDATA;
             goto free_and_return;
         }
 
@@ -1946,24 +1947,16 @@ static void rematrix_channels(MLPEncodeContext *ctx)
  ****************************************************************************/
 
 typedef struct {
-    char    path[MAJOR_HEADER_INTERVAL + 3];
+    char    path[MAJOR_HEADER_INTERVAL + 2];
+    int     cur_idx;
     int     bitcount;
 } PathCounter;
 
-static const char *path_counter_codebook[] = { "0", "1", "2", "3", };
-
-#define ZERO_PATH               '0'
 #define CODEBOOK_CHANGE_BITS    21
 
 static void clear_path_counter(PathCounter *path_counter)
 {
-    unsigned int i;
-
-    for (i = 0; i < NUM_CODEBOOKS + 1; i++) {
-        path_counter[i].path[0]  = ZERO_PATH;
-        path_counter[i].path[1]  =      0x00;
-        path_counter[i].bitcount =         0;
-    }
+    memset(path_counter, 0, (NUM_CODEBOOKS + 1) * sizeof(*path_counter));
 }
 
 static int compare_best_offset(BestOffset *prev, BestOffset *cur)
@@ -1977,18 +1970,11 @@ static int compare_best_offset(BestOffset *prev, BestOffset *cur)
 static int best_codebook_path_cost(MLPEncodeContext *ctx, unsigned int channel,
                                    PathCounter *src, int cur_codebook)
 {
-    BestOffset *cur_bo, *prev_bo = restart_best_offset;
+    int idx = src->cur_idx;
+    BestOffset *cur_bo = ctx->best_offset[idx][channel],
+              *prev_bo = idx ? ctx->best_offset[idx - 1][channel] : restart_best_offset;
     int bitcount = src->bitcount;
-    char *path = src->path + 1;
-    int prev_codebook;
-    int i;
-
-    for (i = 0; path[i]; i++)
-        prev_bo = ctx->best_offset[i][channel];
-
-    prev_codebook = path[i - 1] - ZERO_PATH;
-
-    cur_bo = ctx->best_offset[i][channel];
+    int prev_codebook = src->path[idx];
 
     bitcount += cur_bo[cur_codebook].bitcount;
 
@@ -2051,7 +2037,8 @@ static void set_best_codebook(MLPEncodeContext *ctx)
                         prev_best_bitcount = temp_bitcount;
                         if (src_path != dst_path)
                             memcpy(dst_path, src_path, sizeof(PathCounter));
-                        av_strlcat(dst_path->path, path_counter_codebook[codebook], sizeof(dst_path->path));
+                        if (dst_path->cur_idx < FF_ARRAY_ELEMS(dst_path->path) - 1)
+                            dst_path->path[++dst_path->cur_idx] = codebook;
                         dst_path->bitcount = temp_bitcount;
                     }
                 }
@@ -2068,7 +2055,7 @@ static void set_best_codebook(MLPEncodeContext *ctx)
         for (index = 0; index < ctx->number_of_subblocks; index++) {
             ChannelParams *cp = ctx->seq_channel_params + index*(ctx->avctx->channels) + channel;
 
-            best_codebook = *best_path++ - ZERO_PATH;
+            best_codebook = *best_path++;
             cur_bo = &ctx->best_offset[index][channel][best_codebook];
 
             cp->huff_offset      = cur_bo->offset;
@@ -2226,9 +2213,6 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     if ((ret = ff_alloc_packet2(avctx, avpkt, 87500 * avctx->channels, 0)) < 0)
         return ret;
 
-    if (!frame)
-        return 1;
-
     /* add current frame to queue */
     if ((ret = ff_af_queue_add(&ctx->afq, frame)) < 0)
         return ret;
@@ -2267,7 +2251,7 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     if (ctx->frame_size[ctx->frame_index] > MAX_BLOCKSIZE) {
         av_log(avctx, AV_LOG_ERROR, "Invalid frame size (%d > %d)\n",
                ctx->frame_size[ctx->frame_index], MAX_BLOCKSIZE);
-        return -1;
+        return AVERROR_INVALIDDATA;
     }
 
     restart_frame = !ctx->frame_index;
@@ -2389,10 +2373,11 @@ AVCodec ff_mlp_encoder = {
     .init                   = mlp_encode_init,
     .encode2                = mlp_encode_frame,
     .close                  = mlp_encode_close,
-    .capabilities           = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
+    .capabilities           = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_EXPERIMENTAL,
     .sample_fmts            = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE},
     .supported_samplerates  = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
     .channel_layouts        = ff_mlp_channel_layouts,
+    .caps_internal          = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 #if CONFIG_TRUEHD_ENCODER
@@ -2405,9 +2390,10 @@ AVCodec ff_truehd_encoder = {
     .init                   = mlp_encode_init,
     .encode2                = mlp_encode_frame,
     .close                  = mlp_encode_close,
-    .capabilities           = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
+    .capabilities           = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_EXPERIMENTAL,
     .sample_fmts            = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE},
     .supported_samplerates  = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
     .channel_layouts        = (const uint64_t[]) {AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_5POINT0_BACK, AV_CH_LAYOUT_5POINT1_BACK, 0},
+    .caps_internal          = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

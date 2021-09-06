@@ -253,9 +253,11 @@ static int cbs_h265_payload_extension_present(GetBitContext *gbc, uint32_t paylo
             return err; \
     } while (0)
 
-#define FUNC_NAME(rw, codec, name) cbs_ ## codec ## _ ## rw ## _ ## name
-#define FUNC_H264(rw, name) FUNC_NAME(rw, h264, name)
-#define FUNC_H265(rw, name) FUNC_NAME(rw, h265, name)
+#define FUNC_NAME2(rw, codec, name) cbs_ ## codec ## _ ## rw ## _ ## name
+#define FUNC_NAME1(rw, codec, name) FUNC_NAME2(rw, codec, name)
+#define FUNC_H264(name) FUNC_NAME1(READWRITE, h264, name)
+#define FUNC_H265(name) FUNC_NAME1(READWRITE, h265, name)
+#define FUNC_SEI(name)  FUNC_NAME1(READWRITE, sei,  name)
 
 #define SUBSCRIPTS(subs, ...) (subs > 0 ? ((int[subs + 1]){ subs, __VA_ARGS__ }) : NULL)
 
@@ -346,6 +348,7 @@ static int cbs_h2645_read_more_rbsp_data(GetBitContext *gbc)
 
 #define more_rbsp_data(var) ((var) = cbs_h2645_read_more_rbsp_data(rw))
 
+#define bit_position(rw)   (get_bits_count(rw))
 #define byte_alignment(rw) (get_bits_count(rw) % 8)
 
 #define allocate(name, size) do { \
@@ -356,11 +359,15 @@ static int cbs_h2645_read_more_rbsp_data(GetBitContext *gbc)
         name = name ## _ref->data; \
     } while (0)
 
-#define FUNC(name) FUNC_H264(READWRITE, name)
+#define FUNC(name) FUNC_SEI(name)
+#include "cbs_sei_syntax_template.c"
+#undef FUNC
+
+#define FUNC(name) FUNC_H264(name)
 #include "cbs_h264_syntax_template.c"
 #undef FUNC
 
-#define FUNC(name) FUNC_H265(READWRITE, name)
+#define FUNC(name) FUNC_H265(name)
 #include "cbs_h265_syntax_template.c"
 #undef FUNC
 
@@ -373,6 +380,7 @@ static int cbs_h2645_read_more_rbsp_data(GetBitContext *gbc)
 #undef xse
 #undef infer
 #undef more_rbsp_data
+#undef bit_position
 #undef byte_alignment
 #undef allocate
 
@@ -418,6 +426,7 @@ static int cbs_h2645_read_more_rbsp_data(GetBitContext *gbc)
 
 #define more_rbsp_data(var) (var)
 
+#define bit_position(rw)   (put_bits_count(rw))
 #define byte_alignment(rw) (put_bits_count(rw) % 8)
 
 #define allocate(name, size) do { \
@@ -428,11 +437,15 @@ static int cbs_h2645_read_more_rbsp_data(GetBitContext *gbc)
         } \
     } while (0)
 
-#define FUNC(name) FUNC_H264(READWRITE, name)
+#define FUNC(name) FUNC_SEI(name)
+#include "cbs_sei_syntax_template.c"
+#undef FUNC
+
+#define FUNC(name) FUNC_H264(name)
 #include "cbs_h264_syntax_template.c"
 #undef FUNC
 
-#define FUNC(name) FUNC_H265(READWRITE, name)
+#define FUNC(name) FUNC_H265(name)
 #include "cbs_h265_syntax_template.c"
 #undef FUNC
 
@@ -450,121 +463,10 @@ static int cbs_h2645_read_more_rbsp_data(GetBitContext *gbc)
 #undef se
 #undef infer
 #undef more_rbsp_data
+#undef bit_position
 #undef byte_alignment
 #undef allocate
 
-
-static void cbs_h264_free_pps(void *opaque, uint8_t *content)
-{
-    H264RawPPS *pps = (H264RawPPS*)content;
-    av_buffer_unref(&pps->slice_group_id_ref);
-    av_freep(&content);
-}
-
-static void cbs_h264_free_sei_payload(H264RawSEIPayload *payload)
-{
-    switch (payload->payload_type) {
-    case H264_SEI_TYPE_BUFFERING_PERIOD:
-    case H264_SEI_TYPE_PIC_TIMING:
-    case H264_SEI_TYPE_PAN_SCAN_RECT:
-    case H264_SEI_TYPE_RECOVERY_POINT:
-    case H264_SEI_TYPE_DISPLAY_ORIENTATION:
-    case H264_SEI_TYPE_MASTERING_DISPLAY_COLOUR_VOLUME:
-    case H264_SEI_TYPE_ALTERNATIVE_TRANSFER:
-        break;
-    case H264_SEI_TYPE_USER_DATA_REGISTERED:
-        av_buffer_unref(&payload->payload.user_data_registered.data_ref);
-        break;
-    case H264_SEI_TYPE_USER_DATA_UNREGISTERED:
-        av_buffer_unref(&payload->payload.user_data_unregistered.data_ref);
-        break;
-    default:
-        av_buffer_unref(&payload->payload.other.data_ref);
-        break;
-    }
-}
-
-static void cbs_h264_free_sei(void *opaque, uint8_t *content)
-{
-    H264RawSEI *sei = (H264RawSEI*)content;
-    int i;
-    for (i = 0; i < sei->payload_count; i++)
-        cbs_h264_free_sei_payload(&sei->payload[i]);
-    av_freep(&content);
-}
-
-static void cbs_h264_free_slice(void *opaque, uint8_t *content)
-{
-    H264RawSlice *slice = (H264RawSlice*)content;
-    av_buffer_unref(&slice->data_ref);
-    av_freep(&content);
-}
-
-static void cbs_h265_free_vps(void *opaque, uint8_t *content)
-{
-    H265RawVPS *vps = (H265RawVPS*)content;
-    av_buffer_unref(&vps->extension_data.data_ref);
-    av_freep(&content);
-}
-
-static void cbs_h265_free_sps(void *opaque, uint8_t *content)
-{
-    H265RawSPS *sps = (H265RawSPS*)content;
-    av_buffer_unref(&sps->extension_data.data_ref);
-    av_freep(&content);
-}
-
-static void cbs_h265_free_pps(void *opaque, uint8_t *content)
-{
-    H265RawPPS *pps = (H265RawPPS*)content;
-    av_buffer_unref(&pps->extension_data.data_ref);
-    av_freep(&content);
-}
-
-static void cbs_h265_free_slice(void *opaque, uint8_t *content)
-{
-    H265RawSlice *slice = (H265RawSlice*)content;
-    av_buffer_unref(&slice->data_ref);
-    av_freep(&content);
-}
-
-static void cbs_h265_free_sei_payload(H265RawSEIPayload *payload)
-{
-    switch (payload->payload_type) {
-    case HEVC_SEI_TYPE_BUFFERING_PERIOD:
-    case HEVC_SEI_TYPE_PICTURE_TIMING:
-    case HEVC_SEI_TYPE_PAN_SCAN_RECT:
-    case HEVC_SEI_TYPE_RECOVERY_POINT:
-    case HEVC_SEI_TYPE_DISPLAY_ORIENTATION:
-    case HEVC_SEI_TYPE_ACTIVE_PARAMETER_SETS:
-    case HEVC_SEI_TYPE_DECODED_PICTURE_HASH:
-    case HEVC_SEI_TYPE_TIME_CODE:
-    case HEVC_SEI_TYPE_MASTERING_DISPLAY_INFO:
-    case HEVC_SEI_TYPE_CONTENT_LIGHT_LEVEL_INFO:
-    case HEVC_SEI_TYPE_ALTERNATIVE_TRANSFER_CHARACTERISTICS:
-    case HEVC_SEI_TYPE_ALPHA_CHANNEL_INFO:
-        break;
-    case HEVC_SEI_TYPE_USER_DATA_REGISTERED_ITU_T_T35:
-        av_buffer_unref(&payload->payload.user_data_registered.data_ref);
-        break;
-    case HEVC_SEI_TYPE_USER_DATA_UNREGISTERED:
-        av_buffer_unref(&payload->payload.user_data_unregistered.data_ref);
-        break;
-    default:
-        av_buffer_unref(&payload->payload.other.data_ref);
-        break;
-    }
-    av_buffer_unref(&payload->extension_data.data_ref);
-}
-
-static void cbs_h265_free_sei(void *opaque, uint8_t *content)
-{
-    H265RawSEI *sei = (H265RawSEI*)content;
-    int i;
-    for (i = 0; i < sei->payload_count; i++)
-        cbs_h265_free_sei_payload(&sei->payload[i]);
-    av_freep(&content);
-}
 
 static int cbs_h2645_fragment_add_nals(CodedBitstreamContext *ctx,
                                        CodedBitstreamFragment *frag,
@@ -591,7 +493,7 @@ static int cbs_h2645_fragment_add_nals(CodedBitstreamContext *ctx,
         ref = (nal->data == nal->raw_data) ? frag->data_ref
                                            : packet->rbsp.rbsp_buffer_ref;
 
-        err = ff_cbs_insert_unit_data(ctx, frag, -1, nal->type,
+        err = ff_cbs_insert_unit_data(frag, -1, nal->type,
                             (uint8_t*)nal->data, size, ref);
         if (err < 0)
             return err;
@@ -766,23 +668,23 @@ static int cbs_h26 ## h26n ## _replace_ ## ps_var(CodedBitstreamContext *ctx, \
     CodedBitstreamH26 ## h26n ## Context *priv = ctx->priv_data; \
     H26 ## h26n ## Raw ## ps_name *ps_var = unit->content; \
     unsigned int id = ps_var->id_element; \
+    int err; \
     if (id >= FF_ARRAY_ELEMS(priv->ps_var)) { \
         av_log(ctx->log_ctx, AV_LOG_ERROR, "Invalid " #ps_name \
                " id : %d.\n", id); \
         return AVERROR_INVALIDDATA; \
     } \
+    err = ff_cbs_make_unit_refcounted(ctx, unit); \
+    if (err < 0) \
+        return err; \
     if (priv->ps_var[id] == priv->active_ ## ps_var) \
         priv->active_ ## ps_var = NULL ; \
     av_buffer_unref(&priv->ps_var ## _ref[id]); \
-    if (unit->content_ref) \
-        priv->ps_var ## _ref[id] = av_buffer_ref(unit->content_ref); \
-    else \
-        priv->ps_var ## _ref[id] = av_buffer_alloc(sizeof(*ps_var)); \
+    av_assert0(unit->content_ref); \
+    priv->ps_var ## _ref[id] = av_buffer_ref(unit->content_ref); \
     if (!priv->ps_var ## _ref[id]) \
         return AVERROR(ENOMEM); \
     priv->ps_var[id] = (H26 ## h26n ## Raw ## ps_name *)priv->ps_var ## _ref[id]->data; \
-    if (!unit->content_ref) \
-        memcpy(priv->ps_var[id], ps_var, sizeof(*ps_var)); \
     return 0; \
 }
 
@@ -802,15 +704,14 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
     if (err < 0)
         return err;
 
+    err = ff_cbs_alloc_unit_content2(ctx, unit);
+    if (err < 0)
+        return err;
+
     switch (unit->type) {
     case H264_NAL_SPS:
         {
-            H264RawSPS *sps;
-
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(*sps), NULL);
-            if (err < 0)
-                return err;
-            sps = unit->content;
+            H264RawSPS *sps = unit->content;
 
             err = cbs_h264_read_sps(ctx, &gbc, sps);
             if (err < 0)
@@ -824,12 +725,6 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
 
     case H264_NAL_SPS_EXT:
         {
-            err = ff_cbs_alloc_unit_content(ctx, unit,
-                                            sizeof(H264RawSPSExtension),
-                                            NULL);
-            if (err < 0)
-                return err;
-
             err = cbs_h264_read_sps_extension(ctx, &gbc, unit->content);
             if (err < 0)
                 return err;
@@ -838,13 +733,7 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
 
     case H264_NAL_PPS:
         {
-            H264RawPPS *pps;
-
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(*pps),
-                                            &cbs_h264_free_pps);
-            if (err < 0)
-                return err;
-            pps = unit->content;
+            H264RawPPS *pps = unit->content;
 
             err = cbs_h264_read_pps(ctx, &gbc, pps);
             if (err < 0)
@@ -860,14 +749,8 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
     case H264_NAL_IDR_SLICE:
     case H264_NAL_AUXILIARY_SLICE:
         {
-            H264RawSlice *slice;
+            H264RawSlice *slice = unit->content;
             int pos, len;
-
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(*slice),
-                                            &cbs_h264_free_slice);
-            if (err < 0)
-                return err;
-            slice = unit->content;
 
             err = cbs_h264_read_slice_header(ctx, &gbc, &slice->header);
             if (err < 0)
@@ -890,11 +773,6 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
 
     case H264_NAL_AUD:
         {
-            err = ff_cbs_alloc_unit_content(ctx, unit,
-                                            sizeof(H264RawAUD), NULL);
-            if (err < 0)
-                return err;
-
             err = cbs_h264_read_aud(ctx, &gbc, unit->content);
             if (err < 0)
                 return err;
@@ -903,11 +781,6 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
 
     case H264_NAL_SEI:
         {
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(H264RawSEI),
-                                            &cbs_h264_free_sei);
-            if (err < 0)
-                return err;
-
             err = cbs_h264_read_sei(ctx, &gbc, unit->content);
             if (err < 0)
                 return err;
@@ -916,11 +789,6 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
 
     case H264_NAL_FILLER_DATA:
         {
-            err = ff_cbs_alloc_unit_content(ctx, unit,
-                                            sizeof(H264RawFiller), NULL);
-            if (err < 0)
-                return err;
-
             err = cbs_h264_read_filler(ctx, &gbc, unit->content);
             if (err < 0)
                 return err;
@@ -930,12 +798,6 @@ static int cbs_h264_read_nal_unit(CodedBitstreamContext *ctx,
     case H264_NAL_END_SEQUENCE:
     case H264_NAL_END_STREAM:
         {
-            err = ff_cbs_alloc_unit_content(ctx, unit,
-                                            sizeof(H264RawNALUnitHeader),
-                                            NULL);
-            if (err < 0)
-                return err;
-
             err = (unit->type == H264_NAL_END_SEQUENCE ?
                    cbs_h264_read_end_of_sequence :
                    cbs_h264_read_end_of_stream)(ctx, &gbc, unit->content);
@@ -961,16 +823,14 @@ static int cbs_h265_read_nal_unit(CodedBitstreamContext *ctx,
     if (err < 0)
         return err;
 
+    err = ff_cbs_alloc_unit_content2(ctx, unit);
+    if (err < 0)
+        return err;
+
     switch (unit->type) {
     case HEVC_NAL_VPS:
         {
-            H265RawVPS *vps;
-
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(*vps),
-                                            &cbs_h265_free_vps);
-            if (err < 0)
-                return err;
-            vps = unit->content;
+            H265RawVPS *vps = unit->content;
 
             err = cbs_h265_read_vps(ctx, &gbc, vps);
             if (err < 0)
@@ -983,13 +843,7 @@ static int cbs_h265_read_nal_unit(CodedBitstreamContext *ctx,
         break;
     case HEVC_NAL_SPS:
         {
-            H265RawSPS *sps;
-
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(*sps),
-                                            &cbs_h265_free_sps);
-            if (err < 0)
-                return err;
-            sps = unit->content;
+            H265RawSPS *sps = unit->content;
 
             err = cbs_h265_read_sps(ctx, &gbc, sps);
             if (err < 0)
@@ -1003,13 +857,7 @@ static int cbs_h265_read_nal_unit(CodedBitstreamContext *ctx,
 
     case HEVC_NAL_PPS:
         {
-            H265RawPPS *pps;
-
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(*pps),
-                                            &cbs_h265_free_pps);
-            if (err < 0)
-                return err;
-            pps = unit->content;
+            H265RawPPS *pps = unit->content;
 
             err = cbs_h265_read_pps(ctx, &gbc, pps);
             if (err < 0)
@@ -1038,14 +886,8 @@ static int cbs_h265_read_nal_unit(CodedBitstreamContext *ctx,
     case HEVC_NAL_IDR_N_LP:
     case HEVC_NAL_CRA_NUT:
         {
-            H265RawSlice *slice;
+            H265RawSlice *slice = unit->content;
             int pos, len;
-
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(*slice),
-                                            &cbs_h265_free_slice);
-            if (err < 0)
-                return err;
-            slice = unit->content;
 
             err = cbs_h265_read_slice_segment_header(ctx, &gbc, &slice->header);
             if (err < 0)
@@ -1068,11 +910,6 @@ static int cbs_h265_read_nal_unit(CodedBitstreamContext *ctx,
 
     case HEVC_NAL_AUD:
         {
-            err = ff_cbs_alloc_unit_content(ctx, unit,
-                                            sizeof(H265RawAUD), NULL);
-            if (err < 0)
-                return err;
-
             err = cbs_h265_read_aud(ctx, &gbc, unit->content);
             if (err < 0)
                 return err;
@@ -1082,12 +919,6 @@ static int cbs_h265_read_nal_unit(CodedBitstreamContext *ctx,
     case HEVC_NAL_SEI_PREFIX:
     case HEVC_NAL_SEI_SUFFIX:
         {
-            err = ff_cbs_alloc_unit_content(ctx, unit, sizeof(H265RawSEI),
-                                            &cbs_h265_free_sei);
-
-            if (err < 0)
-                return err;
-
             err = cbs_h265_read_sei(ctx, &gbc, unit->content,
                                     unit->type == HEVC_NAL_SEI_PREFIX);
 
@@ -1390,6 +1221,22 @@ static int cbs_h265_write_nal_unit(CodedBitstreamContext *ctx,
     return 0;
 }
 
+static int cbs_h2645_unit_requires_zero_byte(enum AVCodecID codec_id,
+                                             CodedBitstreamUnitType type,
+                                             int nal_unit_index)
+{
+    // Section B.1.2 in H.264, section B.2.2 in H.265.
+    if (nal_unit_index == 0) {
+        // Assume that this is the first NAL unit in an access unit.
+        return 1;
+    }
+    if (codec_id == AV_CODEC_ID_H264)
+        return type == H264_NAL_SPS || type == H264_NAL_PPS;
+    if (codec_id == AV_CODEC_ID_HEVC)
+        return type == HEVC_NAL_VPS || type == HEVC_NAL_SPS || type == HEVC_NAL_PPS;
+    return 0;
+}
+
 static int cbs_h2645_assemble_fragment(CodedBitstreamContext *ctx,
                                        CodedBitstreamFragment *frag)
 {
@@ -1424,14 +1271,7 @@ static int cbs_h2645_assemble_fragment(CodedBitstreamContext *ctx,
                 frag->data_bit_padding = unit->data_bit_padding;
         }
 
-        if ((ctx->codec->codec_id == AV_CODEC_ID_H264 &&
-             (unit->type == H264_NAL_SPS ||
-              unit->type == H264_NAL_PPS)) ||
-            (ctx->codec->codec_id == AV_CODEC_ID_HEVC &&
-             (unit->type == HEVC_NAL_VPS ||
-              unit->type == HEVC_NAL_SPS ||
-              unit->type == HEVC_NAL_PPS)) ||
-            i == 0 /* (Assume this is the start of an access unit.) */) {
+        if (cbs_h2645_unit_requires_zero_byte(ctx->codec->codec_id, unit->type, i)) {
             // zero_byte
             data[dp++] = 0;
         }
@@ -1477,6 +1317,24 @@ static int cbs_h2645_assemble_fragment(CodedBitstreamContext *ctx,
     return 0;
 }
 
+static void cbs_h264_flush(CodedBitstreamContext *ctx)
+{
+    CodedBitstreamH264Context *h264 = ctx->priv_data;
+
+    for (int i = 0; i < FF_ARRAY_ELEMS(h264->sps); i++) {
+        av_buffer_unref(&h264->sps_ref[i]);
+        h264->sps[i] = NULL;
+    }
+    for (int i = 0; i < FF_ARRAY_ELEMS(h264->pps); i++) {
+        av_buffer_unref(&h264->pps_ref[i]);
+        h264->pps[i] = NULL;
+    }
+
+    h264->active_sps = NULL;
+    h264->active_pps = NULL;
+    h264->last_slice_nal_unit_type = 0;
+}
+
 static void cbs_h264_close(CodedBitstreamContext *ctx)
 {
     CodedBitstreamH264Context *h264 = ctx->priv_data;
@@ -1488,6 +1346,28 @@ static void cbs_h264_close(CodedBitstreamContext *ctx)
         av_buffer_unref(&h264->sps_ref[i]);
     for (i = 0; i < FF_ARRAY_ELEMS(h264->pps); i++)
         av_buffer_unref(&h264->pps_ref[i]);
+}
+
+static void cbs_h265_flush(CodedBitstreamContext *ctx)
+{
+    CodedBitstreamH265Context *h265 = ctx->priv_data;
+
+    for (int i = 0; i < FF_ARRAY_ELEMS(h265->vps); i++) {
+        av_buffer_unref(&h265->vps_ref[i]);
+        h265->vps[i] = NULL;
+    }
+    for (int i = 0; i < FF_ARRAY_ELEMS(h265->sps); i++) {
+        av_buffer_unref(&h265->sps_ref[i]);
+        h265->sps[i] = NULL;
+    }
+    for (int i = 0; i < FF_ARRAY_ELEMS(h265->pps); i++) {
+        av_buffer_unref(&h265->pps_ref[i]);
+        h265->pps[i] = NULL;
+    }
+
+    h265->active_vps = NULL;
+    h265->active_sps = NULL;
+    h265->active_pps = NULL;
 }
 
 static void cbs_h265_close(CodedBitstreamContext *ctx)
@@ -1505,16 +1385,107 @@ static void cbs_h265_close(CodedBitstreamContext *ctx)
         av_buffer_unref(&h265->pps_ref[i]);
 }
 
+static void cbs_h264_free_sei(void *opaque, uint8_t *content)
+{
+    H264RawSEI *sei = (H264RawSEI*)content;
+    ff_cbs_sei_free_message_list(&sei->message_list);
+    av_free(content);
+}
+
+static const CodedBitstreamUnitTypeDescriptor cbs_h264_unit_types[] = {
+    CBS_UNIT_TYPE_POD(H264_NAL_SPS,     H264RawSPS),
+    CBS_UNIT_TYPE_POD(H264_NAL_SPS_EXT, H264RawSPSExtension),
+
+    CBS_UNIT_TYPE_INTERNAL_REF(H264_NAL_PPS, H264RawPPS, slice_group_id),
+
+    {
+        .nb_unit_types  = 3,
+        .unit_types     = {
+            H264_NAL_IDR_SLICE,
+            H264_NAL_SLICE,
+            H264_NAL_AUXILIARY_SLICE,
+        },
+        .content_type   = CBS_CONTENT_TYPE_INTERNAL_REFS,
+        .content_size   = sizeof(H264RawSlice),
+        .nb_ref_offsets = 1,
+        .ref_offsets    = { offsetof(H264RawSlice, data) },
+    },
+
+    CBS_UNIT_TYPE_POD(H264_NAL_AUD,          H264RawAUD),
+    CBS_UNIT_TYPE_POD(H264_NAL_FILLER_DATA,  H264RawFiller),
+    CBS_UNIT_TYPE_POD(H264_NAL_END_SEQUENCE, H264RawNALUnitHeader),
+    CBS_UNIT_TYPE_POD(H264_NAL_END_STREAM,   H264RawNALUnitHeader),
+
+    CBS_UNIT_TYPE_COMPLEX(H264_NAL_SEI, H264RawSEI, &cbs_h264_free_sei),
+
+    CBS_UNIT_TYPE_END_OF_LIST
+};
+
+static void cbs_h265_free_sei(void *opaque, uint8_t *content)
+{
+    H265RawSEI *sei = (H265RawSEI*)content;
+    ff_cbs_sei_free_message_list(&sei->message_list);
+    av_free(content);
+}
+
+static const CodedBitstreamUnitTypeDescriptor cbs_h265_unit_types[] = {
+    CBS_UNIT_TYPE_INTERNAL_REF(HEVC_NAL_VPS, H265RawVPS, extension_data.data),
+    CBS_UNIT_TYPE_INTERNAL_REF(HEVC_NAL_SPS, H265RawSPS, extension_data.data),
+    CBS_UNIT_TYPE_INTERNAL_REF(HEVC_NAL_PPS, H265RawPPS, extension_data.data),
+
+    CBS_UNIT_TYPE_POD(HEVC_NAL_AUD, H265RawAUD),
+
+    {
+        // Slices of non-IRAP pictures.
+        .nb_unit_types         = CBS_UNIT_TYPE_RANGE,
+        .unit_type_range_start = HEVC_NAL_TRAIL_N,
+        .unit_type_range_end   = HEVC_NAL_RASL_R,
+
+        .content_type   = CBS_CONTENT_TYPE_INTERNAL_REFS,
+        .content_size   = sizeof(H265RawSlice),
+        .nb_ref_offsets = 1,
+        .ref_offsets    = { offsetof(H265RawSlice, data) },
+    },
+
+    {
+        // Slices of IRAP pictures.
+        .nb_unit_types         = CBS_UNIT_TYPE_RANGE,
+        .unit_type_range_start = HEVC_NAL_BLA_W_LP,
+        .unit_type_range_end   = HEVC_NAL_CRA_NUT,
+
+        .content_type   = CBS_CONTENT_TYPE_INTERNAL_REFS,
+        .content_size   = sizeof(H265RawSlice),
+        .nb_ref_offsets = 1,
+        .ref_offsets    = { offsetof(H265RawSlice, data) },
+    },
+
+    {
+        .nb_unit_types  = 2,
+        .unit_types     = {
+            HEVC_NAL_SEI_PREFIX,
+            HEVC_NAL_SEI_SUFFIX
+        },
+        .content_type   = CBS_CONTENT_TYPE_COMPLEX,
+        .content_size   = sizeof(H265RawSEI),
+        .content_free   = &cbs_h265_free_sei,
+    },
+
+    CBS_UNIT_TYPE_END_OF_LIST
+};
+
 const CodedBitstreamType ff_cbs_type_h264 = {
     .codec_id          = AV_CODEC_ID_H264,
 
     .priv_data_size    = sizeof(CodedBitstreamH264Context),
+
+    .unit_types        = cbs_h264_unit_types,
 
     .split_fragment    = &cbs_h2645_split_fragment,
     .read_unit         = &cbs_h264_read_nal_unit,
     .write_unit        = &cbs_h264_write_nal_unit,
     .assemble_fragment = &cbs_h2645_assemble_fragment,
 
+    .flush             = &cbs_h264_flush,
     .close             = &cbs_h264_close,
 };
 
@@ -1523,102 +1494,175 @@ const CodedBitstreamType ff_cbs_type_h265 = {
 
     .priv_data_size    = sizeof(CodedBitstreamH265Context),
 
+    .unit_types        = cbs_h265_unit_types,
+
     .split_fragment    = &cbs_h2645_split_fragment,
     .read_unit         = &cbs_h265_read_nal_unit,
     .write_unit        = &cbs_h265_write_nal_unit,
     .assemble_fragment = &cbs_h2645_assemble_fragment,
 
+    .flush             = &cbs_h265_flush,
     .close             = &cbs_h265_close,
 };
 
-int ff_cbs_h264_add_sei_message(CodedBitstreamContext *ctx,
-                                CodedBitstreamFragment *au,
-                                H264RawSEIPayload *payload)
+static const SEIMessageTypeDescriptor cbs_sei_common_types[] = {
+    {
+        SEI_TYPE_FILLER_PAYLOAD,
+        1, 1,
+        sizeof(SEIRawFillerPayload),
+        SEI_MESSAGE_RW(sei, filler_payload),
+    },
+    {
+        SEI_TYPE_USER_DATA_REGISTERED_ITU_T_T35,
+        1, 1,
+        sizeof(SEIRawUserDataRegistered),
+        SEI_MESSAGE_RW(sei, user_data_registered),
+    },
+    {
+        SEI_TYPE_USER_DATA_UNREGISTERED,
+        1, 1,
+        sizeof(SEIRawUserDataUnregistered),
+        SEI_MESSAGE_RW(sei, user_data_unregistered),
+    },
+    {
+        SEI_TYPE_MASTERING_DISPLAY_COLOUR_VOLUME,
+        1, 0,
+        sizeof(SEIRawMasteringDisplayColourVolume),
+        SEI_MESSAGE_RW(sei, mastering_display_colour_volume),
+    },
+    {
+        SEI_TYPE_CONTENT_LIGHT_LEVEL_INFO,
+        1, 0,
+        sizeof(SEIRawContentLightLevelInfo),
+        SEI_MESSAGE_RW(sei, content_light_level_info),
+    },
+    {
+        SEI_TYPE_ALTERNATIVE_TRANSFER_CHARACTERISTICS,
+        1, 0,
+        sizeof(SEIRawAlternativeTransferCharacteristics),
+        SEI_MESSAGE_RW(sei, alternative_transfer_characteristics),
+    },
+    SEI_MESSAGE_TYPE_END,
+};
+
+static const SEIMessageTypeDescriptor cbs_sei_h264_types[] = {
+    {
+        SEI_TYPE_BUFFERING_PERIOD,
+        1, 0,
+        sizeof(H264RawSEIBufferingPeriod),
+        SEI_MESSAGE_RW(h264, sei_buffering_period),
+    },
+    {
+        SEI_TYPE_PIC_TIMING,
+        1, 0,
+        sizeof(H264RawSEIPicTiming),
+        SEI_MESSAGE_RW(h264, sei_pic_timing),
+    },
+    {
+        SEI_TYPE_PAN_SCAN_RECT,
+        1, 0,
+        sizeof(H264RawSEIPanScanRect),
+        SEI_MESSAGE_RW(h264, sei_pan_scan_rect),
+    },
+    {
+        SEI_TYPE_RECOVERY_POINT,
+        1, 0,
+        sizeof(H264RawSEIRecoveryPoint),
+        SEI_MESSAGE_RW(h264, sei_recovery_point),
+    },
+    {
+        SEI_TYPE_DISPLAY_ORIENTATION,
+        1, 0,
+        sizeof(H264RawSEIDisplayOrientation),
+        SEI_MESSAGE_RW(h264, sei_display_orientation),
+    },
+    SEI_MESSAGE_TYPE_END
+};
+
+static const SEIMessageTypeDescriptor cbs_sei_h265_types[] = {
+    {
+        SEI_TYPE_BUFFERING_PERIOD,
+        1, 0,
+        sizeof(H265RawSEIBufferingPeriod),
+        SEI_MESSAGE_RW(h265, sei_buffering_period),
+    },
+    {
+        SEI_TYPE_PIC_TIMING,
+        1, 0,
+        sizeof(H265RawSEIPicTiming),
+        SEI_MESSAGE_RW(h265, sei_pic_timing),
+    },
+    {
+        SEI_TYPE_PAN_SCAN_RECT,
+        1, 0,
+        sizeof(H265RawSEIPanScanRect),
+        SEI_MESSAGE_RW(h265, sei_pan_scan_rect),
+    },
+    {
+        SEI_TYPE_RECOVERY_POINT,
+        1, 0,
+        sizeof(H265RawSEIRecoveryPoint),
+        SEI_MESSAGE_RW(h265, sei_recovery_point),
+    },
+    {
+        SEI_TYPE_DISPLAY_ORIENTATION,
+        1, 0,
+        sizeof(H265RawSEIDisplayOrientation),
+        SEI_MESSAGE_RW(h265, sei_display_orientation),
+    },
+    {
+        SEI_TYPE_ACTIVE_PARAMETER_SETS,
+        1, 0,
+        sizeof(H265RawSEIActiveParameterSets),
+        SEI_MESSAGE_RW(h265, sei_active_parameter_sets),
+    },
+    {
+        SEI_TYPE_DECODED_PICTURE_HASH,
+        0, 1,
+        sizeof(H265RawSEIDecodedPictureHash),
+        SEI_MESSAGE_RW(h265, sei_decoded_picture_hash),
+    },
+    {
+        SEI_TYPE_TIME_CODE,
+        1, 0,
+        sizeof(H265RawSEITimeCode),
+        SEI_MESSAGE_RW(h265, sei_time_code),
+    },
+    {
+        SEI_TYPE_ALPHA_CHANNEL_INFO,
+        1, 0,
+        sizeof(H265RawSEIAlphaChannelInfo),
+        SEI_MESSAGE_RW(h265, sei_alpha_channel_info),
+    },
+    SEI_MESSAGE_TYPE_END
+};
+
+const SEIMessageTypeDescriptor *ff_cbs_sei_find_type(CodedBitstreamContext *ctx,
+                                                     int payload_type)
 {
-    H264RawSEI *sei = NULL;
-    int err, i;
+    const SEIMessageTypeDescriptor *codec_list;
+    int i;
 
-    // Find an existing SEI NAL unit to add to.
-    for (i = 0; i < au->nb_units; i++) {
-        if (au->units[i].type == H264_NAL_SEI) {
-            sei = au->units[i].content;
-            if (sei->payload_count < H264_MAX_SEI_PAYLOADS)
-                break;
-
-            sei = NULL;
-        }
+    for (i = 0; cbs_sei_common_types[i].type >= 0; i++) {
+        if (cbs_sei_common_types[i].type == payload_type)
+            return &cbs_sei_common_types[i];
     }
 
-    if (!sei) {
-        // Need to make a new SEI NAL unit.  Insert it before the first
-        // slice data NAL unit; if no slice data, add at the end.
-        AVBufferRef *sei_ref;
-
-        sei = av_mallocz(sizeof(*sei));
-        if (!sei) {
-            err = AVERROR(ENOMEM);
-            goto fail;
-        }
-
-        sei->nal_unit_header.nal_unit_type = H264_NAL_SEI;
-        sei->nal_unit_header.nal_ref_idc   = 0;
-
-        sei_ref = av_buffer_create((uint8_t*)sei, sizeof(*sei),
-                                   &cbs_h264_free_sei, NULL, 0);
-        if (!sei_ref) {
-            av_freep(&sei);
-            err = AVERROR(ENOMEM);
-            goto fail;
-        }
-
-        for (i = 0; i < au->nb_units; i++) {
-            if (au->units[i].type == H264_NAL_SLICE ||
-                au->units[i].type == H264_NAL_IDR_SLICE)
-                break;
-        }
-
-        err = ff_cbs_insert_unit_content(ctx, au, i, H264_NAL_SEI,
-                                         sei, sei_ref);
-        av_buffer_unref(&sei_ref);
-        if (err < 0)
-            goto fail;
+    switch (ctx->codec->codec_id) {
+    case AV_CODEC_ID_H264:
+        codec_list = cbs_sei_h264_types;
+        break;
+    case AV_CODEC_ID_H265:
+        codec_list = cbs_sei_h265_types;
+        break;
+    default:
+        return NULL;
     }
 
-    memcpy(&sei->payload[sei->payload_count], payload, sizeof(*payload));
-    ++sei->payload_count;
-
-    return 0;
-fail:
-    cbs_h264_free_sei_payload(payload);
-    return err;
-}
-
-void ff_cbs_h264_delete_sei_message(CodedBitstreamContext *ctx,
-                                    CodedBitstreamFragment *au,
-                                    CodedBitstreamUnit *nal,
-                                    int position)
-{
-    H264RawSEI *sei = nal->content;
-
-    av_assert0(nal->type == H264_NAL_SEI);
-    av_assert0(position >= 0 && position < sei->payload_count);
-
-    if (position == 0 && sei->payload_count == 1) {
-        // Deleting NAL unit entirely.
-        int i;
-
-        for (i = 0; i < au->nb_units; i++) {
-            if (&au->units[i] == nal)
-                break;
-        }
-
-        ff_cbs_delete_unit(ctx, au, i);
-    } else {
-        cbs_h264_free_sei_payload(&sei->payload[position]);
-
-        --sei->payload_count;
-        memmove(sei->payload + position,
-                sei->payload + position + 1,
-                (sei->payload_count - position) * sizeof(*sei->payload));
+    for (i = 0; codec_list[i].type >= 0; i++) {
+        if (codec_list[i].type == payload_type)
+            return &codec_list[i];
     }
+
+    return NULL;
 }

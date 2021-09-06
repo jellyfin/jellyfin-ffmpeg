@@ -151,10 +151,9 @@ the undocumented RealAudio 3 (a.k.a. dnet).
 The @var{ac3} encoder uses floating-point math, while the @var{ac3_fixed}
 encoder only uses fixed-point integer math. This does not mean that one is
 always faster, just that one or the other may be better suited to a
-particular system. The floating-point encoder will generally produce better
-quality audio for a given bitrate. The @var{ac3_fixed} encoder is not the
-default codec for any of the output formats, so it must be specified explicitly
-using the option @code{-acodec ac3_fixed} in order to use it.
+particular system. The @var{ac3_fixed} encoder is not the default codec for
+any of the output formats, so it must be specified explicitly using the option
+@code{-acodec ac3_fixed} in order to use it.
 
 @subsection AC-3 Metadata
 
@@ -953,6 +952,11 @@ The default is 20ms.
 @item packet_loss (@emph{expect-loss})
 Set expected packet loss percentage. The default is 0.
 
+@item fec (@emph{n/a})
+Enable inband forward error correction. @option{packet_loss} must be non-zero
+to take advantage - frequency of FEC 'side-data' is proportional to expected packet loss.
+Default is disabled.
+
 @item application (N.A.)
 Set intended application type. Valid options are listed below:
 
@@ -1180,53 +1184,6 @@ transient response is a higher bitrate.
 
 @end table
 
-@anchor{libwavpack}
-@section libwavpack
-
-A wrapper providing WavPack encoding through libwavpack.
-
-Only lossless mode using 32-bit integer samples is supported currently.
-
-Requires the presence of the libwavpack headers and library during
-configuration. You need to explicitly configure the build with
-@code{--enable-libwavpack}.
-
-Note that a libavcodec-native encoder for the WavPack codec exists so users can
-encode audios with this codec without using this encoder. See @ref{wavpackenc}.
-
-@subsection Options
-
-@command{wavpack} command line utility's corresponding options are listed in
-parentheses, if any.
-
-@table @option
-@item frame_size (@emph{--blocksize})
-Default is 32768.
-
-@item compression_level
-Set speed vs. compression tradeoff. Acceptable arguments are listed below:
-
-@table @samp
-@item 0 (@emph{-f})
-Fast mode.
-
-@item 1
-Normal (default) settings.
-
-@item 2 (@emph{-h})
-High quality.
-
-@item 3 (@emph{-hh})
-Very high quality.
-
-@item 4-8 (@emph{-hh -x}@var{EXTRAPROC})
-Same as @samp{3}, but with extra processing enabled.
-
-@samp{4} is the same as @option{-x2} and @samp{8} is the same as @option{-x6}.
-
-@end table
-@end table
-
 @anchor{mjpegenc}
 @section mjpeg
 
@@ -1253,11 +1210,6 @@ Compute and use optimal huffman tables.
 
 WavPack lossless audio encoder.
 
-This is a libavcodec-native WavPack encoder. There is also an encoder based on
-libwavpack, but there is virtually no reason to use that encoder.
-
-See also @ref{libwavpack}.
-
 @subsection Options
 
 The equivalent options for @command{wavpack} command line utility are listed in
@@ -1278,7 +1230,6 @@ For the complete formula of calculating default, see
 @file{libavcodec/wavpackenc.c}.
 
 @item compression_level (@emph{-f}, @emph{-h}, @emph{-hh}, and @emph{-x})
-This option's syntax is consistent with @ref{libwavpack}'s.
 @end table
 
 @subsubsection Private options
@@ -1316,6 +1267,44 @@ disabled
 
 A description of some of the currently available video encoders
 follows.
+
+@section GIF
+
+GIF image/animation encoder.
+
+@subsection Options
+
+@table @option
+@item gifflags @var{integer}
+Sets the flags used for GIF encoding.
+
+@table @option
+@item offsetting
+Enables picture offsetting.
+
+Default is enabled.
+
+@item transdiff
+Enables transparency detection between frames.
+
+Default is enabled.
+
+@end table
+
+@item gifimage @var{integer}
+Enables encoding one full GIF image per frame, rather than an animated GIF.
+
+Default value is @option{0}.
+
+@item global_palette @var{integer}
+Writes a palette to the global GIF header where feasible.
+
+If disabled, every frame will always have a palette written, even if there
+is a global palette supplied.
+
+Default value is @option{1}.
+
+@end table
 
 @section Hap
 
@@ -1365,9 +1354,57 @@ can be selected with @code{-pred 1}.
 @subsection Options
 
 @table @option
-@item format
+@item format @var{integer}
 Can be set to either @code{j2k} or @code{jp2} (the default) that
 makes it possible to store non-rgb pix_fmts.
+
+@item tile_width @var{integer}
+Sets tile width. Range is 1 to 1073741824. Default is 256.
+
+@item tile_height @var{integer}
+Sets tile height. Range is 1 to 1073741824. Default is 256.
+
+@item pred @var{integer}
+Allows setting the discrete wavelet transform (DWT) type
+@table @option
+@item dwt97int (Lossy)
+@item dwt53 (Lossless)
+@end table
+Default is @code{dwt97int}
+
+@item sop @var{boolean}
+Enable this to add SOP marker at the start of each packet. Disabled by default.
+
+@item eph @var{boolean}
+Enable this to add EPH marker at the end of each packet header. Disabled by default.
+
+@item prog @var{integer}
+Sets the progression order to be used by the encoder.
+Possible values are:
+@table @option
+@item lrcp
+@item rlcp
+@item rpcl
+@item pcrl
+@item cprl
+@end table
+Set to @code{lrcp} by default.
+
+@item layer_rates @var{string}
+By default, when this option is not used, compression is done using the quality metric.
+This option allows for compression using compression ratio. The compression ratio for each
+level could be specified. The compression ratio of a layer @code{l} species the what ratio of
+total file size is contained in the first @code{l} layers.
+
+Example usage:
+
+@example
+ffmpeg -i input.bmp -c:v jpeg2000 -layer_rates "100,10,1" output.j2k
+@end example
+
+This would compress the image to contain 3 layers, where the data contained in the
+first layer would be compressed by 1000 times, compressed by 100 in the first two layers,
+and shall contain all data while using all 3 layers.
 
 @end table
 
@@ -1598,6 +1635,165 @@ Enable the use of global motion for block prediction. Default is true.
 @item enable-intrabc (@emph{boolean})
 Enable block copy mode for intra block prediction. This mode is
 useful for screen content. Default is true.
+
+@item enable-rect-partitions (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable rectangular partitions. Default is true.
+
+@item enable-1to4-partitions (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable 1:4/4:1 partitions. Default is true.
+
+@item enable-ab-partitions (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable AB shape partitions. Default is true.
+
+@item enable-angle-delta (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable angle delta intra prediction. Default is true.
+
+@item enable-cfl-intra (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable chroma predicted from luma intra prediction. Default is true.
+
+@item enable-filter-intra (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable filter intra predictor. Default is true.
+
+@item enable-intra-edge-filter (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable intra edge filter. Default is true.
+
+@item enable-smooth-intra (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable smooth intra prediction mode. Default is true.
+
+@item enable-paeth-intra (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable paeth predictor in intra prediction. Default is true.
+
+@item enable-palette (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable palette prediction mode. Default is true.
+
+@item enable-flip-idtx (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable extended transform type, including FLIPADST_DCT, DCT_FLIPADST,
+FLIPADST_FLIPADST, ADST_FLIPADST, FLIPADST_ADST, IDTX, V_DCT, H_DCT,
+V_ADST, H_ADST, V_FLIPADST, H_FLIPADST. Default is true.
+
+@item enable-tx64 (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable 64-pt transform. Default is true.
+
+@item reduced-tx-type-set (@emph{boolean}) (Requires libaom >= v2.0.0)
+Use reduced set of transform types. Default is false.
+
+@item use-intra-dct-only (@emph{boolean}) (Requires libaom >= v2.0.0)
+Use DCT only for INTRA modes. Default is false.
+
+@item use-inter-dct-only (@emph{boolean}) (Requires libaom >= v2.0.0)
+Use DCT only for INTER modes. Default is false.
+
+@item use-intra-default-tx-only (@emph{boolean}) (Requires libaom >= v2.0.0)
+Use Default-transform only for INTRA modes. Default is false.
+
+@item enable-ref-frame-mvs (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable temporal mv prediction. Default is true.
+
+@item enable-reduced-reference-set (@emph{boolean}) (Requires libaom >= v2.0.0)
+Use reduced set of single and compound references. Default is false.
+
+@item enable-obmc (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable obmc. Default is true.
+
+@item enable-dual-filter (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable dual filter. Default is true.
+
+@item enable-diff-wtd-comp (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable difference-weighted compound. Default is true.
+
+@item enable-dist-wtd-comp (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable distance-weighted compound. Default is true.
+
+@item enable-onesided-comp (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable one sided compound. Default is true.
+
+@item enable-interinter-wedge (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable interinter wedge compound. Default is true.
+
+@item enable-interintra-wedge (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable interintra wedge compound. Default is true.
+
+@item enable-masked-comp (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable masked compound. Default is true.
+
+@item enable-interintra-comp (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable interintra compound. Default is true.
+
+@item enable-smooth-interintra (@emph{boolean}) (Requires libaom >= v2.0.0)
+Enable smooth interintra mode. Default is true.
+
+@item aom-params
+Set libaom options using a list of @var{key}=@var{value} pairs separated
+by ":". For a list of supported options, see @command{aomenc --help} under the
+section "AV1 Specific Options".
+
+For example to specify libaom encoding options with @option{-aom-params}:
+
+@example
+ffmpeg -i input -c:v libaom-av1 -b:v 500K -aom-params tune=psnr:enable-tpl-model=1 output.mp4
+@end example
+
+@end table
+
+@section libsvtav1
+
+SVT-AV1 encoder wrapper.
+
+Requires the presence of the SVT-AV1 headers and library during configuration.
+You need to explicitly configure the build with @code{--enable-libsvtav1}.
+
+@subsection Options
+
+@table @option
+@item profile
+Set the encoding profile.
+
+@item level
+Set the operating point level.
+
+@item tier
+Set the operating point tier.
+
+@item rc
+Set the rate control mode to use.
+
+Possible modes:
+@table @option
+@item cqp
+Constant quantizer: use fixed values of qindex (dependent on the frame type)
+throughout the stream.  This mode is the default.
+
+@item vbr
+Variable bitrate: use a target bitrate for the whole stream.
+
+@item cvbr
+Constrained variable bitrate: use a target bitrate for each GOP.
+@end table
+
+@item qmax
+Set the maximum quantizer to use when using a bitrate mode.
+
+@item qmin
+Set the minimum quantizer to use when using a bitrate mode.
+
+@item qp
+Set the quantizer used in cqp rate control mode (0-63).
+
+@item sc_detection
+Enable scene change detection.
+
+@item la_depth
+Set number of frames to look ahead (0-120).
+
+@item preset
+Set the quality-speed tradeoff, in the range 0 to 8.  Higher values are
+faster but lower quality.  Defaults to 8 (highest speed).
+
+@item tile_rows
+Set log2 of the number of rows of tiles to use (0-6).
+
+@item tile_columns
+Set log2 of the number of columns of tiles to use (0-4).
 
 @end table
 
@@ -1981,6 +2177,38 @@ midpoint is passed in rather than calculated for a specific clip or chunk.
 The valid range is [0, 10000]. 0 (default) uses standard VBR.
 @item enable-tpl @var{boolean}
 Enable temporal dependency model.
+@item ref-frame-config
+Using per-frame metadata, set members of the structure @code{vpx_svc_ref_frame_config_t} in @code{vpx/vp8cx.h} to fine-control referencing schemes and frame buffer management.
+@*Use a :-separated list of key=value pairs.
+For example,
+@example
+av_dict_set(&av_frame->metadata, "ref-frame-config", \
+"rfc_update_buffer_slot=7:rfc_lst_fb_idx=0:rfc_gld_fb_idx=1:rfc_alt_fb_idx=2:rfc_reference_last=0:rfc_reference_golden=0:rfc_reference_alt_ref=0");
+@end example
+@table @option
+@item rfc_update_buffer_slot
+Indicates the buffer slot number to update
+@item rfc_update_last
+Indicates whether to update the LAST frame
+@item rfc_update_golden
+Indicates whether to update GOLDEN frame
+@item rfc_update_alt_ref
+Indicates whether to update ALT_REF frame
+@item rfc_lst_fb_idx
+LAST frame buffer index
+@item rfc_gld_fb_idx
+GOLDEN frame buffer index
+@item rfc_alt_fb_idx
+ALT_REF frame buffer index
+@item rfc_reference_last
+Indicates whether to reference LAST frame
+@item rfc_reference_golden
+Indicates whether to reference GOLDEN frame
+@item rfc_reference_alt_ref
+Indicates whether to reference ALT_REF frame
+@item rfc_reference_duration
+Indicates frame duration
+@end table
 @end table
 
 @end table
@@ -2077,9 +2305,7 @@ pixel formats as input instead of YUV.
 @subsection Supported Pixel Formats
 
 x264 supports 8- to 10-bit color spaces. The exact bit depth is controlled at
-x264's configure time. FFmpeg only supports one bit depth in one particular
-build. In other words, it is not possible to build one FFmpeg with multiple
-versions of x264 with different bit depths.
+x264's configure time.
 
 @subsection Options
 
@@ -2740,18 +2966,28 @@ MPEG-2 video encoder.
 @subsection Options
 
 @table @option
-@item profile @var{integer}
+@item profile
 Select the mpeg2 profile to encode:
 
 @table @samp
 @item 422
-@item main
+@item high
 @item ss
 Spatially Scalable
 @item snr
 SNR Scalable
-@item high
+@item main
 @item simple
+@end table
+
+@item level
+Select the mpeg2 level to encode:
+
+@table @samp
+@item high
+@item high1440
+@item main
+@item low
 @end table
 
 @item seq_disp_ext @var{integer}
@@ -3114,6 +3350,11 @@ Include HDR metadata if the input frames have it
 (@emph{mastering_display_colour_volume} and @emph{content_light_level}
 messages).
 @end table
+
+@item tiles
+Set the number of tiles to encode the input video with, as columns x rows.
+Larger numbers allow greater parallelism in both encoding and decoding, but
+may decrease coding efficiency.
 
 @end table
 

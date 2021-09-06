@@ -115,16 +115,22 @@ AVFILTER_DEFINE_CLASS(extractplanes);
         AV_PIX_FMT_YUV422P14##suf,                             \
         AV_PIX_FMT_YUV444P14##suf
 
+#define FLOAT_FORMATS(suf)                                     \
+        AV_PIX_FMT_GRAYF32##suf,                               \
+        AV_PIX_FMT_GBRPF32##suf, AV_PIX_FMT_GBRAPF32##suf      \
+
 static int query_formats(AVFilterContext *ctx)
 {
     static const enum AVPixelFormat in_pixfmts_le[] = {
         EIGHTBIT_FORMATS,
         HIGHDEPTH_FORMATS(LE),
+        FLOAT_FORMATS(LE),
         AV_PIX_FMT_NONE,
     };
     static const enum AVPixelFormat in_pixfmts_be[] = {
         EIGHTBIT_FORMATS,
         HIGHDEPTH_FORMATS(BE),
+        FLOAT_FORMATS(BE),
         AV_PIX_FMT_NONE,
     };
     static const enum AVPixelFormat out8_pixfmts[] = { AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE };
@@ -138,17 +144,19 @@ static int query_formats(AVFilterContext *ctx)
     static const enum AVPixelFormat out14be_pixfmts[] = { AV_PIX_FMT_GRAY14BE, AV_PIX_FMT_NONE };
     static const enum AVPixelFormat out16le_pixfmts[] = { AV_PIX_FMT_GRAY16LE, AV_PIX_FMT_NONE };
     static const enum AVPixelFormat out16be_pixfmts[] = { AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_NONE };
+    static const enum AVPixelFormat out32le_pixfmts[] = { AV_PIX_FMT_GRAYF32LE, AV_PIX_FMT_NONE };
+    static const enum AVPixelFormat out32be_pixfmts[] = { AV_PIX_FMT_GRAYF32BE, AV_PIX_FMT_NONE };
     const enum AVPixelFormat *out_pixfmts, *in_pixfmts;
     const AVPixFmtDescriptor *desc;
     AVFilterFormats *avff;
     int i, ret, depth = 0, be = 0;
 
-    if (!ctx->inputs[0]->in_formats ||
-        !ctx->inputs[0]->in_formats->nb_formats) {
+    if (!ctx->inputs[0]->incfg.formats ||
+        !ctx->inputs[0]->incfg.formats->nb_formats) {
         return AVERROR(EAGAIN);
     }
 
-    avff = ctx->inputs[0]->in_formats;
+    avff = ctx->inputs[0]->incfg.formats;
     desc = av_pix_fmt_desc_get(avff->formats[0]);
     depth = desc->comp[0].depth;
     be = desc->flags & AV_PIX_FMT_FLAG_BE;
@@ -157,8 +165,8 @@ static int query_formats(AVFilterContext *ctx)
     } else {
         in_pixfmts = in_pixfmts_le;
     }
-    if (!ctx->inputs[0]->out_formats)
-        if ((ret = ff_formats_ref(ff_make_format_list(in_pixfmts), &ctx->inputs[0]->out_formats)) < 0)
+    if (!ctx->inputs[0]->outcfg.formats)
+        if ((ret = ff_formats_ref(ff_make_format_list(in_pixfmts), &ctx->inputs[0]->outcfg.formats)) < 0)
             return ret;
 
     for (i = 1; i < avff->nb_formats; i++) {
@@ -187,13 +195,17 @@ static int query_formats(AVFilterContext *ctx)
         out_pixfmts = out14le_pixfmts;
     else if (be && depth == 14)
         out_pixfmts = out14be_pixfmts;
-    else if (be)
+    else if (be && depth == 16)
         out_pixfmts = out16be_pixfmts;
-    else
+    else if (!be && depth == 16)
         out_pixfmts = out16le_pixfmts;
+    else if (be && depth == 32)
+        out_pixfmts = out32be_pixfmts;
+    else
+        out_pixfmts = out32le_pixfmts;
 
     for (i = 0; i < ctx->nb_outputs; i++)
-        if ((ret = ff_formats_ref(ff_make_format_list(out_pixfmts), &ctx->outputs[i]->in_formats)) < 0)
+        if ((ret = ff_formats_ref(ff_make_format_list(out_pixfmts), &ctx->outputs[i]->incfg.formats)) < 0)
             return ret;
     return 0;
 }

@@ -296,15 +296,30 @@ supports it.
 Set the pixel format of the captured video.
 Available values are:
 @table @samp
+@item auto
+
+This is the default which means 8-bit YUV 422 or 8-bit ARGB if format
+autodetection is used, 8-bit YUV 422 otherwise.
+
 @item uyvy422
+
+8-bit YUV 422.
 
 @item yuv422p10
 
+10-bit YUV 422.
+
 @item argb
+
+8-bit RGB.
 
 @item bgra
 
+8-bit RGB.
+
 @item rgb10
+
+10-bit RGB.
 
 @end table
 
@@ -335,8 +350,13 @@ Defaults to @samp{unset}.
 @item timecode_format
 Timecode type to include in the frame and video stream metadata. Must be
 @samp{none}, @samp{rp188vitc}, @samp{rp188vitc2}, @samp{rp188ltc},
-@samp{rp188any}, @samp{vitc}, @samp{vitc2}, or @samp{serial}. Defaults to
-@samp{none} (not included).
+@samp{rp188hfr}, @samp{rp188any}, @samp{vitc}, @samp{vitc2}, or @samp{serial}.
+Defaults to @samp{none} (not included).
+
+In order to properly support 50/60 fps timecodes, the ordering of the queried
+timecode types for @samp{rp188any} is HFR, VITC1, VITC2 and LTC for >30 fps
+content. Note that this is slightly different to the ordering used by the
+DeckLink API, which is HFR, VITC1, LTC, VITC2.
 
 @item video_input
 Sets the video input source. Must be @samp{unset}, @samp{sdi}, @samp{hdmi},
@@ -396,6 +416,12 @@ isn't received with the first input frame. If that happens, the stored stream
 timecode will be inaccurate. If this option is set to @option{true}, input frames
 are dropped till a frame with timecode is received.
 Option @var{timecode_format} must be specified.
+Defaults to @option{false}.
+
+@item enable_klv(@emph{bool})
+If set to @option{true}, extracts KLV data from VANC and outputs KLV packets.
+KLV VANC packets are joined based on MID and PSC fields and aggregated into
+one KLV packet.
 Defaults to @option{false}.
 
 @end table
@@ -883,11 +909,15 @@ If you don't understand what all of that means, you probably don't want this.  L
 DRM device to capture on.  Defaults to @option{/dev/dri/card0}.
 
 @item format
-Pixel format of the framebuffer.  Defaults to @option{bgr0}.
+Pixel format of the framebuffer.  This can be autodetected if you are running Linux 5.7
+or later, but needs to be provided for earlier versions.  Defaults to @option{bgr0},
+which is the most common format used by the Linux console and Xorg X server.
 
 @item format_modifier
 Format modifier to signal on output frames.  This is necessary to import correctly into
-some APIs, but can't be autodetected.  See the libdrm documentation for possible values.
+some APIs.  It can be autodetected if you are running Linux 5.7 or later, but will need
+to be provided explicitly when needed in earlier versions.  See the libdrm documentation
+for possible values.
 
 @item crtc_id
 KMS CRTC ID to define the capture source.  The first active plane on the given CRTC
@@ -1478,6 +1508,14 @@ ffmpeg -f x11grab -framerate 25 -video_size cif -i :0.0+10,20 out.mpg
 @subsection Options
 
 @table @option
+@item select_region
+Specify whether to select the grabbing area graphically using the pointer.
+A value of @code{1} prompts the user to select the grabbing area graphically
+by clicking and dragging. A single click with no dragging will select the
+whole screen. A region with zero width or height will also select the whole
+screen. This option overwrites the @var{video_size}, @var{grab_x}, and
+@var{grab_y} options. Default value is @code{0}.
+
 @item draw_mouse
 Specify whether to draw the mouse pointer. A value of @code{0} specifies
 not to draw the pointer. Default value is @code{1}.
@@ -1526,8 +1564,21 @@ With @var{follow_mouse}:
 ffmpeg -f x11grab -follow_mouse centered -show_region 1 -framerate 25 -video_size cif -i :0.0 out.mpg
 @end example
 
+@item window_id
+Grab this window, instead of the whole screen. Default value is 0, which maps to
+the whole screen (root window).
+
+The id of a window can be found using the @command{xwininfo} program, possibly with options -tree and
+-root.
+
+If the window is later enlarged, the new area is not recorded. Video ends when
+the window is closed, unmapped (i.e., iconified) or shrunk beyond the video
+size (which defaults to the initial window size).
+
+This option disables options @option{follow_mouse} and @option{select_region}.
+
 @item video_size
-Set the video frame size. Default is the full desktop.
+Set the video frame size. Default is the full desktop or window.
 
 @item grab_x
 @item grab_y

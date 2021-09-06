@@ -110,9 +110,9 @@ static av_cold int wma_decode_init(AVCodecContext *avctx)
         ff_mdct_init(&s->mdct_ctx[i], s->frame_len_bits - i + 1, 1, 1.0 / 32768.0);
 
     if (s->use_noise_coding) {
-        init_vlc(&s->hgain_vlc, HGAINVLCBITS, sizeof(ff_wma_hgain_huffbits),
-                 ff_wma_hgain_huffbits, 1, 1,
-                 ff_wma_hgain_huffcodes, 2, 2, 0);
+        ff_init_vlc_from_lengths(&s->hgain_vlc, HGAINVLCBITS, FF_ARRAY_ELEMS(ff_wma_hgain_hufftab),
+                                 &ff_wma_hgain_hufftab[0][1], 2,
+                                 &ff_wma_hgain_hufftab[0][0], 2, 1, -18, 0, avctx);
     }
 
     if (s->use_exp_vlc)
@@ -345,10 +345,6 @@ static int decode_exp_vlc(WMACodecContext *s, int ch)
 
     while (q < q_end) {
         code = get_vlc2(&s->gb, s->exp_vlc.table, EXPVLCBITS, EXPMAX);
-        if (code < 0) {
-            av_log(s->avctx, AV_LOG_ERROR, "Exponent vlc invalid\n");
-            return -1;
-        }
         /* NOTE: this offset is the same as MPEG-4 AAC! */
         last_exp += code - 60;
         if ((unsigned) last_exp + 60 >= FF_ARRAY_ELEMS(pow_tab)) {
@@ -549,7 +545,7 @@ static int wma_decode_block(WMACodecContext *s)
         }
         for (ch = 0; ch < s->avctx->channels; ch++) {
             if (s->channel_coded[ch]) {
-                int i, n, val, code;
+                int i, n, val;
 
                 n   = s->exponent_high_sizes[bsize];
                 val = (int) 0x80000000;
@@ -558,14 +554,8 @@ static int wma_decode_block(WMACodecContext *s)
                         if (val == (int) 0x80000000) {
                             val = get_bits(&s->gb, 7) - 19;
                         } else {
-                            code = get_vlc2(&s->gb, s->hgain_vlc.table,
+                            val += get_vlc2(&s->gb, s->hgain_vlc.table,
                                             HGAINVLCBITS, HGAINMAX);
-                            if (code < 0) {
-                                av_log(s->avctx, AV_LOG_ERROR,
-                                       "hgain vlc invalid\n");
-                                return -1;
-                            }
-                            val += code - 18;
                         }
                         s->high_band_values[ch][i] = val;
                     }

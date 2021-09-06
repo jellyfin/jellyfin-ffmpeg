@@ -223,6 +223,12 @@ static int xavs2_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         pkt->pts = cae->packet.pts;
         pkt->dts = cae->packet.dts;
 
+        if (cae->packet.type == XAVS2_TYPE_IDR ||
+            cae->packet.type == XAVS2_TYPE_I ||
+            cae->packet.type == XAVS2_TYPE_KEYFRAME) {
+            pkt->flags |= AV_PKT_FLAG_KEY;
+        }
+
         memcpy(pkt->data, cae->packet.stream, cae->packet.len);
         pkt->size = cae->packet.len;
 
@@ -288,7 +294,8 @@ AVCodec ff_libxavs2_encoder = {
     .init           = xavs2_init,
     .encode2        = xavs2_encode_frame,
     .close          = xavs2_close,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AUTO_THREADS,
+    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
+    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
     .priv_class     = &libxavs2,

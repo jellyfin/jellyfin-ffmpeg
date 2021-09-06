@@ -73,8 +73,8 @@ struct AVFormatInternal {
      * not decoded, for example to get the codec parameters in MPEG
      * streams.
      */
-    struct AVPacketList *packet_buffer;
-    struct AVPacketList *packet_buffer_end;
+    struct PacketList *packet_buffer;
+    struct PacketList *packet_buffer_end;
 
     /* av_seek_frame() support */
     int64_t data_offset; /**< offset of the first packet */
@@ -85,13 +85,19 @@ struct AVFormatInternal {
      * be identified, as parsing cannot be done without knowing the
      * codec.
      */
-    struct AVPacketList *raw_packet_buffer;
-    struct AVPacketList *raw_packet_buffer_end;
+    struct PacketList *raw_packet_buffer;
+    struct PacketList *raw_packet_buffer_end;
     /**
      * Packets split by the parser get queued here.
      */
-    struct AVPacketList *parse_queue;
-    struct AVPacketList *parse_queue_end;
+    AVPacket *parse_pkt;
+    struct PacketList *parse_queue;
+    struct PacketList *parse_queue_end;
+
+    /**
+     * Used to hold temporary packets.
+     */
+    AVPacket *pkt;
     /**
      * Remaining size available for raw_packet_buffer, in bytes.
      */
@@ -142,6 +148,11 @@ struct AVFormatInternal {
      * Prefer the codec framerate for avg_frame_rate computation.
      */
     int prefer_codec_framerate;
+
+    /**
+     * Set if chapter ids are strictly monotonic.
+     */
+    int chapter_ids_monotonic;
 };
 
 struct AVStreamInternal {
@@ -191,6 +202,153 @@ struct AVStreamInternal {
     int is_intra_only;
 
     FFFrac *priv_pts;
+
+#define MAX_STD_TIMEBASES (30*12+30+3+6)
+    /**
+     * Stream information used internally by avformat_find_stream_info()
+     */
+    struct {
+        int64_t last_dts;
+        int64_t duration_gcd;
+        int duration_count;
+        int64_t rfps_duration_sum;
+        double (*duration_error)[2][MAX_STD_TIMEBASES];
+        int64_t codec_info_duration;
+        int64_t codec_info_duration_fields;
+        int frame_delay_evidence;
+
+        /**
+         * 0  -> decoder has not been searched for yet.
+         * >0 -> decoder found
+         * <0 -> decoder with codec_id == -found_decoder has not been found
+         */
+        int found_decoder;
+
+        int64_t last_duration;
+
+        /**
+         * Those are used for average framerate estimation.
+         */
+        int64_t fps_first_dts;
+        int     fps_first_dts_idx;
+        int64_t fps_last_dts;
+        int     fps_last_dts_idx;
+
+    } *info;
+
+    int64_t interleaver_chunk_size;
+    int64_t interleaver_chunk_duration;
+
+    /**
+     * stream probing state
+     * -1   -> probing finished
+     *  0   -> no probing requested
+     * rest -> perform probing with request_probe being the minimum score to accept.
+     */
+    int request_probe;
+    /**
+     * Indicates that everything up to the next keyframe
+     * should be discarded.
+     */
+    int skip_to_keyframe;
+
+    /**
+     * Number of samples to skip at the start of the frame decoded from the next packet.
+     */
+    int skip_samples;
+
+    /**
+     * If not 0, the number of samples that should be skipped from the start of
+     * the stream (the samples are removed from packets with pts==0, which also
+     * assumes negative timestamps do not happen).
+     * Intended for use with formats such as mp3 with ad-hoc gapless audio
+     * support.
+     */
+    int64_t start_skip_samples;
+
+    /**
+     * If not 0, the first audio sample that should be discarded from the stream.
+     * This is broken by design (needs global sample count), but can't be
+     * avoided for broken by design formats such as mp3 with ad-hoc gapless
+     * audio support.
+     */
+    int64_t first_discard_sample;
+
+    /**
+     * The sample after last sample that is intended to be discarded after
+     * first_discard_sample. Works on frame boundaries only. Used to prevent
+     * early EOF if the gapless info is broken (considered concatenated mp3s).
+     */
+    int64_t last_discard_sample;
+
+    /**
+     * Number of internally decoded frames, used internally in libavformat, do not access
+     * its lifetime differs from info which is why it is not in that structure.
+     */
+    int nb_decoded_frames;
+
+    /**
+     * Timestamp offset added to timestamps before muxing
+     */
+    int64_t mux_ts_offset;
+
+    /**
+     * Internal data to check for wrapping of the time stamp
+     */
+    int64_t pts_wrap_reference;
+
+    /**
+     * Options for behavior, when a wrap is detected.
+     *
+     * Defined by AV_PTS_WRAP_ values.
+     *
+     * If correction is enabled, there are two possibilities:
+     * If the first time stamp is near the wrap point, the wrap offset
+     * will be subtracted, which will create negative time stamps.
+     * Otherwise the offset will be added.
+     */
+    int pts_wrap_behavior;
+
+    /**
+     * Internal data to prevent doing update_initial_durations() twice
+     */
+    int update_initial_durations_done;
+
+#define MAX_REORDER_DELAY 16
+
+    /**
+     * Internal data to generate dts from pts
+     */
+    int64_t pts_reorder_error[MAX_REORDER_DELAY+1];
+    uint8_t pts_reorder_error_count[MAX_REORDER_DELAY+1];
+
+    int64_t pts_buffer[MAX_REORDER_DELAY+1];
+
+    /**
+     * Internal data to analyze DTS and detect faulty mpeg streams
+     */
+    int64_t last_dts_for_order_check;
+    uint8_t dts_ordered;
+    uint8_t dts_misordered;
+
+    /**
+     * Internal data to inject global side data
+     */
+    int inject_global_side_data;
+
+    /**
+     * display aspect ratio (0 if unknown)
+     * - encoding: unused
+     * - decoding: Set by libavformat to calculate sample_aspect_ratio internally
+     */
+    AVRational display_aspect_ratio;
+
+    AVProbeData probe_data;
+
+    /**
+     * last packet in packet_buffer for this stream when muxing.
+     */
+    struct PacketList *last_in_packet_buffer;
 };
 
 #ifdef __GNUC__
@@ -207,8 +365,6 @@ do {\
     av_dynarray_add((tab), nb_ptr, (elem));\
 } while(0)
 #endif
-
-struct tm *ff_brktimegm(time_t secs, struct tm *tm);
 
 /**
  * Automatically create sub-directories
@@ -399,7 +555,11 @@ void ff_configure_buffers_for_index(AVFormatContext *s, int64_t time_tolerance);
  *
  * @return AVChapter or NULL on error
  */
+#if FF_API_CHAPTER_ID_INT
 AVChapter *avpriv_new_chapter(AVFormatContext *s, int id, AVRational time_base,
+#else
+AVChapter *avpriv_new_chapter(AVFormatContext *s, int64_t id, AVRational time_base,
+#endif
                               int64_t start, int64_t end, const char *title);
 
 /**
@@ -710,15 +870,12 @@ int ff_bprint_to_codecpar_extradata(AVCodecParameters *par, struct AVBPrint *buf
 
 /**
  * Find the next packet in the interleaving queue for the given stream.
- * The pkt parameter is filled in with the queued packet, including
- * references to the data (which the caller is not allowed to keep or
- * modify).
  *
- * @return 0 if a packet was found, a negative value if no packet was found
+ * @return a pointer to a packet if one was found, NULL otherwise.
  */
-int ff_interleaved_peek(AVFormatContext *s, int stream,
-                        AVPacket *pkt, int add_offset);
+const AVPacket *ff_interleaved_peek(AVFormatContext *s, int stream);
 
+int ff_get_muxer_ts_offset(AVFormatContext *s, int stream_index, int64_t *offset);
 
 int ff_lock_avformat(void);
 int ff_unlock_avformat(void);
@@ -729,48 +886,6 @@ int ff_unlock_avformat(void);
  * set the legacy filename field to the same string which was provided in url.
  */
 void ff_format_set_url(AVFormatContext *s, char *url);
-
-#define FF_PACKETLIST_FLAG_REF_PACKET (1 << 0) /**< Create a new reference for the packet instead of
-                                                    transferring the ownership of the existing one to the
-                                                    list. */
-
-/**
- * Append an AVPacket to the list.
- *
- * @param head  List head element
- * @param tail  List tail element
- * @param pkt   The packet being appended. The data described in it will
- *              be made reference counted if it isn't already.
- * @param flags Any combination of FF_PACKETLIST_FLAG_* flags
- * @return 0 on success, negative AVERROR value on failure. On failure,
-           the list is unchanged
- */
-int ff_packet_list_put(AVPacketList **head, AVPacketList **tail,
-                       AVPacket *pkt, int flags);
-
-/**
- * Remove the oldest AVPacket in the list and return it.
- * The behaviour is undefined if the packet list is empty.
- *
- * @note The pkt will be overwritten completely. The caller owns the
- *       packet and must unref it by itself.
- *
- * @param head List head element
- * @param tail List tail element
- * @param pkt  Pointer to an AVPacket struct
- * @return 0 on success. Success is guaranteed
- *         if the packet list is not empty.
- */
-int ff_packet_list_get(AVPacketList **head, AVPacketList **tail,
-                       AVPacket *pkt);
-
-/**
- * Wipe the list and unref all the packets in it.
- *
- * @param head List head element
- * @param tail List tail element
- */
-void ff_packet_list_free(AVPacketList **head, AVPacketList **tail);
 
 void avpriv_register_devices(const AVOutputFormat * const o[], const AVInputFormat * const i[]);
 

@@ -1,0 +1,1716 @@
+Index: jellyfin-ffmpeg/Changelog
+===================================================================
+--- jellyfin-ffmpeg.orig/Changelog
++++ jellyfin-ffmpeg/Changelog
+@@ -1,7 +1,7 @@
+ Entries are sorted chronologically from oldest to youngest within each release,
+ releases are sorted from youngest to oldest.
+ 
+-version <next>:
++version 4.4:
+ - AudioToolbox output device
+ - MacCaption demuxer
+ - PGX decoder
+Index: jellyfin-ffmpeg/RELEASE_NOTES
+===================================================================
+--- jellyfin-ffmpeg.orig/RELEASE_NOTES
++++ jellyfin-ffmpeg/RELEASE_NOTES
+@@ -11,5 +11,5 @@
+ 
+    We hope you will like this release as much as we enjoyed working on it, and
+    as usual, if you have any questions about it, or any FFmpeg related topic,
+-   feel free to join us on the #ffmpeg IRC channel (on irc.freenode.net) or ask
++   feel free to join us on the #ffmpeg IRC channel (on irc.libera.chat) or ask
+    on the mailing-lists.
+Index: jellyfin-ffmpeg/configure
+===================================================================
+--- jellyfin-ffmpeg.orig/configure
++++ jellyfin-ffmpeg/configure
+@@ -536,7 +536,7 @@ die(){
+ 
+ If you think configure made a mistake, make sure you are using the latest
+ version from Git.  If the latest version fails, report the problem to the
+-ffmpeg-user@ffmpeg.org mailing list or IRC #ffmpeg on irc.freenode.net.
++ffmpeg-user@ffmpeg.org mailing list or IRC #ffmpeg on irc.libera.chat.
+ EOF
+     if disabled logging; then
+         cat <<EOF
+@@ -2761,6 +2761,7 @@ indeo3_decoder_select="hpeldsp"
+ indeo4_decoder_select="ividsp"
+ indeo5_decoder_select="ividsp"
+ interplay_video_decoder_select="hpeldsp"
++ipu_decoder_select="mpegvideo"
+ jpegls_decoder_select="mjpeg_decoder"
+ jv_decoder_select="blockdsp"
+ lagarith_decoder_select="llviddsp"
+@@ -7501,7 +7502,6 @@ LD_LIB=$LD_LIB
+ LD_PATH=$LD_PATH
+ DLLTOOL=$dlltool
+ WINDRES=$windres
+-DEPWINDRES=$dep_cc
+ DOXYGEN=$doxygen
+ LDFLAGS=$LDFLAGS
+ LDEXEFLAGS=$LDEXEFLAGS
+Index: jellyfin-ffmpeg/doc/writing_filters.txt
+===================================================================
+--- jellyfin-ffmpeg.orig/doc/writing_filters.txt
++++ jellyfin-ffmpeg/doc/writing_filters.txt
+@@ -418,4 +418,4 @@ done:
+ 
+ When all of this is done, you can submit your patch to the ffmpeg-devel
+ mailing-list for review.  If you need any help, feel free to come on our IRC
+-channel, #ffmpeg-devel on irc.freenode.net.
++channel, #ffmpeg-devel on irc.libera.chat.
+Index: jellyfin-ffmpeg/ffbuild/common.mak
+===================================================================
+--- jellyfin-ffmpeg.orig/ffbuild/common.mak
++++ jellyfin-ffmpeg/ffbuild/common.mak
+@@ -90,7 +90,7 @@ COMPILE_MSA = $(call COMPILE,CC,MSAFLAGS
+ 	-$(if $(ASMSTRIPFLAGS), $(STRIP) $(ASMSTRIPFLAGS) $@)
+ 
+ %.o: %.rc
+-	$(WINDRES) $(IFLAGS) --preprocessor "$(DEPWINDRES) -E -xc-header -DRC_INVOKED $(CC_DEPFLAGS)" -o $@ $<
++	$(WINDRES) $(IFLAGS) $(foreach ARG,$(CC_DEPFLAGS),--preprocessor-arg "$(ARG)") -o $@ $<
+ 
+ %.i: %.c
+ 	$(CC) $(CCFLAGS) $(CC_E) $<
+Index: jellyfin-ffmpeg/fftools/ffmpeg.c
+===================================================================
+--- jellyfin-ffmpeg.orig/fftools/ffmpeg.c
++++ jellyfin-ffmpeg/fftools/ffmpeg.c
+@@ -3950,7 +3950,7 @@ static OutputStream *choose_output(void)
+                 ost->st->index, ost->st->id, ost->initialized, ost->inputs_done, ost->finished);
+ 
+         if (!ost->initialized && !ost->inputs_done)
+-            return ost;
++            return ost->unavailable ? NULL : ost;
+ 
+         if (!ost->finished && opts < opts_min) {
+             opts_min = opts;
+Index: jellyfin-ffmpeg/libavcodec/aacenc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/aacenc.c
++++ jellyfin-ffmpeg/libavcodec/aacenc.c
+@@ -28,6 +28,7 @@
+  *              TODOs:
+  * add sane pulse detection
+  ***********************************/
++#include <float.h>
+ 
+ #include "libavutil/libm.h"
+ #include "libavutil/float_dsp.h"
+@@ -852,7 +853,7 @@ static int aac_encode_frame(AVCodecConte
+                 /* Not so fast though */
+                 ratio = sqrtf(ratio);
+             }
+-            s->lambda = FFMIN(s->lambda * ratio, 65536.f);
++            s->lambda = av_clipf(s->lambda * ratio, FLT_EPSILON, 65536.f);
+ 
+             /* Keep iterating if we must reduce and lambda is in the sky */
+             if (ratio > 0.9f && ratio < 1.1f) {
+@@ -897,7 +898,7 @@ static av_cold int aac_encode_end(AVCode
+ {
+     AACEncContext *s = avctx->priv_data;
+ 
+-    av_log(avctx, AV_LOG_INFO, "Qavg: %.3f\n", s->lambda_sum / s->lambda_count);
++    av_log(avctx, AV_LOG_INFO, "Qavg: %.3f\n", s->lambda_count ? s->lambda_sum / s->lambda_count : NAN);
+ 
+     ff_mdct_end(&s->mdct1024);
+     ff_mdct_end(&s->mdct128);
+Index: jellyfin-ffmpeg/libavcodec/aacpsy.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/aacpsy.c
++++ jellyfin-ffmpeg/libavcodec/aacpsy.c
+@@ -308,6 +308,9 @@ static av_cold int psy_3gpp_init(FFPsyCo
+     const int bandwidth    = ctx->cutoff ? ctx->cutoff : AAC_CUTOFF(ctx->avctx);
+     const float num_bark   = calc_bark((float)bandwidth);
+ 
++    if (bandwidth <= 0)
++        return AVERROR(EINVAL);
++
+     ctx->model_priv_data = av_mallocz(sizeof(AacPsyContext));
+     if (!ctx->model_priv_data)
+         return AVERROR(ENOMEM);
+@@ -794,7 +797,7 @@ static void psy_3gpp_analyze_channel(FFP
+ 
+         if (pe < 1.15f * desired_pe) {
+             /* 6.6.1.3.6 "Final threshold modification by linearization" */
+-            norm_fac = 1.0f / norm_fac;
++            norm_fac = norm_fac ? 1.0f / norm_fac : 0;
+             for (w = 0; w < wi->num_windows*16; w += 16) {
+                 for (g = 0; g < num_bands; g++) {
+                     AacPsyBand *band = &pch->band[w+g];
+Index: jellyfin-ffmpeg/libavcodec/aarch64/hevcdsp_idct_neon.S
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/aarch64/hevcdsp_idct_neon.S
++++ jellyfin-ffmpeg/libavcodec/aarch64/hevcdsp_idct_neon.S
+@@ -573,14 +573,13 @@ idct_16x16 10
+ // void ff_hevc_idct_NxN_dc_DEPTH_neon(int16_t *coeffs)
+ .macro idct_dc size, bitdepth
+ function ff_hevc_idct_\size\()x\size\()_dc_\bitdepth\()_neon, export=1
+-        movi          v1.8h,  #((1 << (14 - \bitdepth))+1)
+         ld1r         {v4.8h}, [x0]
+-        add           v4.8h,  v4.8h,  v1.8h
+-        sshr          v0.8h,  v4.8h,  #(15 - \bitdepth)
+-        sshr          v1.8h,  v4.8h,  #(15 - \bitdepth)
++        srshr         v4.8h,  v4.8h,  #1
++        srshr         v0.8h,  v4.8h,  #(14 - \bitdepth)
++        srshr         v1.8h,  v4.8h,  #(14 - \bitdepth)
+ .if \size > 4
+-        sshr          v2.8h,  v4.8h,  #(15 - \bitdepth)
+-        sshr          v3.8h,  v4.8h,  #(15 - \bitdepth)
++        srshr         v2.8h,  v4.8h,  #(14 - \bitdepth)
++        srshr         v3.8h,  v4.8h,  #(14 - \bitdepth)
+ .if \size > 16 /* dc 32x32 */
+         mov              x2,  #4
+ 1:
+Index: jellyfin-ffmpeg/libavcodec/alsdec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/alsdec.c
++++ jellyfin-ffmpeg/libavcodec/alsdec.c
+@@ -1632,7 +1632,7 @@ static int read_frame_data(ALSDecContext
+     AVCodecContext *avctx    = ctx->avctx;
+     GetBitContext *gb = &ctx->gb;
+     unsigned int div_blocks[32];                ///< block sizes.
+-    unsigned int c;
++    int c;
+     unsigned int js_blocks[2];
+     uint32_t bs_info = 0;
+     int ret;
+@@ -1810,14 +1810,17 @@ static int decode_frame(AVCodecContext *
+     else
+         ctx->cur_frame_length = sconf->frame_length;
+ 
+-    ctx->highest_decoded_channel = 0;
++    ctx->highest_decoded_channel = -1;
+     // decode the frame data
+     if ((invalid_frame = read_frame_data(ctx, ra_frame)) < 0)
+         av_log(ctx->avctx, AV_LOG_WARNING,
+                "Reading frame data failed. Skipping RA unit.\n");
+ 
+-    if (ctx->highest_decoded_channel == 0)
++    if (ctx->highest_decoded_channel == -1) {
++        av_log(ctx->avctx, AV_LOG_WARNING,
++               "No channel data decoded.\n");
+         return AVERROR_INVALIDDATA;
++    }
+ 
+     ctx->frame_id++;
+ 
+Index: jellyfin-ffmpeg/libavcodec/av1_metadata_bsf.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/av1_metadata_bsf.c
++++ jellyfin-ffmpeg/libavcodec/av1_metadata_bsf.c
+@@ -28,6 +28,7 @@ typedef struct AV1MetadataContext {
+     CBSBSFContext common;
+ 
+     int td;
++    AV1RawOBU td_obu;
+ 
+     int color_primaries;
+     int transfer_characteristics;
+@@ -107,12 +108,11 @@ static int av1_metadata_update_fragment(
+                                         CodedBitstreamFragment *frag)
+ {
+     AV1MetadataContext *ctx = bsf->priv_data;
+-    AV1RawOBU td, *obu;
+     int err, i;
+ 
+     for (i = 0; i < frag->nb_units; i++) {
+         if (frag->units[i].type == AV1_OBU_SEQUENCE_HEADER) {
+-            obu = frag->units[i].content;
++            AV1RawOBU *obu = frag->units[i].content;
+             err = av1_metadata_update_sequence_header(bsf, &obu->obu.sequence_header);
+             if (err < 0)
+                 return err;
+@@ -124,12 +124,8 @@ static int av1_metadata_update_fragment(
+         if (ctx->td == BSF_ELEMENT_REMOVE)
+             ff_cbs_delete_unit(frag, 0);
+     } else if (pkt && ctx->td == BSF_ELEMENT_INSERT) {
+-        td = (AV1RawOBU) {
+-            .header.obu_type = AV1_OBU_TEMPORAL_DELIMITER,
+-        };
+-
+         err = ff_cbs_insert_unit_content(frag, 0, AV1_OBU_TEMPORAL_DELIMITER,
+-                                         &td, NULL);
++                                         &ctx->td_obu, NULL);
+         if (err < 0) {
+             av_log(bsf, AV_LOG_ERROR, "Failed to insert Temporal Delimiter.\n");
+             return err;
+@@ -155,6 +151,12 @@ static const CBSBSFType av1_metadata_typ
+ 
+ static int av1_metadata_init(AVBSFContext *bsf)
+ {
++    AV1MetadataContext *ctx = bsf->priv_data;
++
++    ctx->td_obu = (AV1RawOBU) {
++        .header.obu_type = AV1_OBU_TEMPORAL_DELIMITER,
++    };
++
+     return ff_cbs_bsf_generic_init(bsf, &av1_metadata_type);
+ }
+ 
+Index: jellyfin-ffmpeg/libavcodec/clearvideo.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/clearvideo.c
++++ jellyfin-ffmpeg/libavcodec/clearvideo.c
+@@ -722,8 +722,8 @@ static av_cold int clv_decode_init(AVCod
+     }
+ 
+     c->tile_shift = av_log2(c->tile_size);
+-    if (1U << c->tile_shift != c->tile_size) {
+-        av_log(avctx, AV_LOG_ERROR, "Tile size: %d, is not power of 2.\n", c->tile_size);
++    if (1U << c->tile_shift != c->tile_size || c->tile_shift < 1) {
++        av_log(avctx, AV_LOG_ERROR, "Tile size: %d, is not power of 2 > 1\n", c->tile_size);
+         return AVERROR_INVALIDDATA;
+     }
+ 
+Index: jellyfin-ffmpeg/libavcodec/crystalhd.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/crystalhd.c
++++ jellyfin-ffmpeg/libavcodec/crystalhd.c
+@@ -785,6 +785,7 @@ static int crystalhd_receive_frame(AVCod
+         .flush          = flush, \
+         .bsfs           = bsf_name, \
+         .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
++        .caps_internal  = FF_CODEC_CAP_SETS_FRAME_PROPS, \
+         .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUYV422, AV_PIX_FMT_NONE}, \
+         .wrapper_name   = "crystalhd", \
+     };
+Index: jellyfin-ffmpeg/libavcodec/cuviddec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/cuviddec.c
++++ jellyfin-ffmpeg/libavcodec/cuviddec.c
+@@ -1150,6 +1150,7 @@ static const AVCodecHWConfigInternal *co
+         .flush          = cuvid_flush, \
+         .bsfs           = bsf_name, \
+         .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
++        .caps_internal  = FF_CODEC_CAP_SETS_FRAME_PROPS, \
+         .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_CUDA, \
+                                                         AV_PIX_FMT_NV12, \
+                                                         AV_PIX_FMT_P010, \
+Index: jellyfin-ffmpeg/libavcodec/decode.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/decode.c
++++ jellyfin-ffmpeg/libavcodec/decode.c
+@@ -233,9 +233,11 @@ int ff_decode_get_packet(AVCodecContext
+     if (ret < 0)
+         return ret;
+ 
+-    ret = extract_packet_props(avctx->internal, pkt);
+-    if (ret < 0)
+-        goto finish;
++    if (!(avctx->codec->caps_internal & FF_CODEC_CAP_SETS_FRAME_PROPS)) {
++        ret = extract_packet_props(avctx->internal, pkt);
++        if (ret < 0)
++            goto finish;
++    }
+ 
+     ret = apply_param_change(avctx, pkt);
+     if (ret < 0)
+@@ -502,11 +504,13 @@ FF_ENABLE_DEPRECATION_WARNINGS
+ 
+         pkt->data                += consumed;
+         pkt->size                -= consumed;
+-        avci->last_pkt_props->size -= consumed; // See extract_packet_props() comment.
+         pkt->pts                  = AV_NOPTS_VALUE;
+         pkt->dts                  = AV_NOPTS_VALUE;
+-        avci->last_pkt_props->pts = AV_NOPTS_VALUE;
+-        avci->last_pkt_props->dts = AV_NOPTS_VALUE;
++        if (!(avctx->codec->caps_internal & FF_CODEC_CAP_SETS_FRAME_PROPS)) {
++            avci->last_pkt_props->size -= consumed; // See extract_packet_props() comment.
++            avci->last_pkt_props->pts = AV_NOPTS_VALUE;
++            avci->last_pkt_props->dts = AV_NOPTS_VALUE;
++        }
+     }
+ 
+     if (got_frame)
+@@ -548,6 +552,11 @@ static int decode_receive_frame_internal
+     if (ret == AVERROR_EOF)
+         avci->draining_done = 1;
+ 
++    if (!(avctx->codec->caps_internal & FF_CODEC_CAP_SETS_FRAME_PROPS) &&
++        IS_EMPTY(avci->last_pkt_props) && av_fifo_size(avci->pkt_props) >= sizeof(*avci->last_pkt_props))
++        av_fifo_generic_read(avci->pkt_props,
++                             avci->last_pkt_props, sizeof(*avci->last_pkt_props), NULL);
++
+     if (!ret) {
+         frame->best_effort_timestamp = guess_correct_pts(avctx,
+                                                          frame->pts,
+@@ -1738,39 +1747,37 @@ int ff_decode_frame_props(AVCodecContext
+         { AV_PKT_DATA_S12M_TIMECODE,              AV_FRAME_DATA_S12M_TIMECODE },
+     };
+ 
+-    if (IS_EMPTY(pkt) && av_fifo_size(avctx->internal->pkt_props) >= sizeof(*pkt))
+-        av_fifo_generic_read(avctx->internal->pkt_props,
+-                             pkt, sizeof(*pkt), NULL);
+-
+-    frame->pts = pkt->pts;
++    if (!(avctx->codec->caps_internal & FF_CODEC_CAP_SETS_FRAME_PROPS)) {
++        frame->pts = pkt->pts;
+ #if FF_API_PKT_PTS
+ FF_DISABLE_DEPRECATION_WARNINGS
+-    frame->pkt_pts = pkt->pts;
++        frame->pkt_pts = pkt->pts;
+ FF_ENABLE_DEPRECATION_WARNINGS
+ #endif
+-    frame->pkt_pos      = pkt->pos;
+-    frame->pkt_duration = pkt->duration;
+-    frame->pkt_size     = pkt->size;
+-
+-    for (int i = 0; i < FF_ARRAY_ELEMS(sd); i++) {
+-        buffer_size_t size;
+-        uint8_t *packet_sd = av_packet_get_side_data(pkt, sd[i].packet, &size);
+-        if (packet_sd) {
+-            AVFrameSideData *frame_sd = av_frame_new_side_data(frame,
+-                                                               sd[i].frame,
+-                                                               size);
+-            if (!frame_sd)
+-                return AVERROR(ENOMEM);
++        frame->pkt_pos      = pkt->pos;
++        frame->pkt_duration = pkt->duration;
++        frame->pkt_size     = pkt->size;
++
++        for (int i = 0; i < FF_ARRAY_ELEMS(sd); i++) {
++            buffer_size_t size;
++            uint8_t *packet_sd = av_packet_get_side_data(pkt, sd[i].packet, &size);
++            if (packet_sd) {
++                AVFrameSideData *frame_sd = av_frame_new_side_data(frame,
++                                                                   sd[i].frame,
++                                                                   size);
++                if (!frame_sd)
++                    return AVERROR(ENOMEM);
+ 
+-            memcpy(frame_sd->data, packet_sd, size);
++                memcpy(frame_sd->data, packet_sd, size);
++            }
+         }
+-    }
+-    add_metadata_from_side_data(pkt, frame);
++        add_metadata_from_side_data(pkt, frame);
+ 
+-    if (pkt->flags & AV_PKT_FLAG_DISCARD) {
+-        frame->flags |= AV_FRAME_FLAG_DISCARD;
+-    } else {
+-        frame->flags = (frame->flags & ~AV_FRAME_FLAG_DISCARD);
++        if (pkt->flags & AV_PKT_FLAG_DISCARD) {
++            frame->flags |= AV_FRAME_FLAG_DISCARD;
++        } else {
++            frame->flags = (frame->flags & ~AV_FRAME_FLAG_DISCARD);
++        }
+     }
+     frame->reordered_opaque = avctx->reordered_opaque;
+ 
+Index: jellyfin-ffmpeg/libavcodec/dpx.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/dpx.c
++++ jellyfin-ffmpeg/libavcodec/dpx.c
+@@ -242,6 +242,9 @@ static int decode_frame(AVCodecContext *
+         return AVERROR_PATCHWELCOME;
+     }
+ 
++    if (bits_per_color > 31)
++        return AVERROR_INVALIDDATA;
++
+     buf += 820;
+     avctx->sample_aspect_ratio.num = read32(&buf, endian);
+     avctx->sample_aspect_ratio.den = read32(&buf, endian);
+@@ -316,7 +319,7 @@ static int decode_frame(AVCodecContext *
+             minCV = av_int2float(i);
+             maxCV = av_int2float(j);
+             if (bits_per_color >= 1 &&
+-                minCV == 0.0f && maxCV == ((1<<bits_per_color) - 1)) {
++                minCV == 0.0f && maxCV == ((1U<<bits_per_color) - 1)) {
+                 avctx->color_range = AVCOL_RANGE_JPEG;
+             } else if (bits_per_color >= 8 &&
+                        minCV == (1  <<(bits_per_color - 4)) &&
+Index: jellyfin-ffmpeg/libavcodec/exr.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/exr.c
++++ jellyfin-ffmpeg/libavcodec/exr.c
+@@ -418,7 +418,7 @@ static int huf_decode(VLC *vlc, GetByteC
+ 
+     init_get_bits(&gbit, gb->buffer, nbits);
+     while (get_bits_left(&gbit) > 0 && oe < no) {
+-        uint16_t x = get_vlc2(&gbit, vlc->table, 12, 2);
++        uint16_t x = get_vlc2(&gbit, vlc->table, 12, 3);
+ 
+         if (x == run_sym) {
+             int run = get_bits(&gbit, 8);
+@@ -1059,11 +1059,11 @@ static int dwa_uncompress(EXRContext *s,
+         bytestream2_skip(&gb, ac_size);
+     }
+ 
+-    if (dc_size > 0) {
++    {
+         unsigned long dest_len = dc_count * 2LL;
+         GetByteContext agb = gb;
+ 
+-        if (dc_count > (6LL * td->xsize * td->ysize + 63) / 64)
++        if (dc_count != dc_w * dc_h * 3)
+             return AVERROR_INVALIDDATA;
+ 
+         av_fast_padded_malloc(&td->dc_data, &td->dc_size, FFALIGN(dest_len, 64) * 2);
+@@ -1795,6 +1795,7 @@ static int decode_header(EXRContext *s,
+             ymax   = bytestream2_get_le32(gb);
+ 
+             if (xmin > xmax || ymin > ymax ||
++                ymax == INT_MAX || xmax == INT_MAX ||
+                 (unsigned)xmax - xmin >= INT_MAX ||
+                 (unsigned)ymax - ymin >= INT_MAX) {
+                 ret = AVERROR_INVALIDDATA;
+Index: jellyfin-ffmpeg/libavcodec/faxcompr.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/faxcompr.c
++++ jellyfin-ffmpeg/libavcodec/faxcompr.c
+@@ -144,6 +144,8 @@ static int decode_uncompressed(AVCodecCo
+                 return AVERROR_INVALIDDATA;
+             }
+             cwi = 10 - av_log2(cwi);
++            if (get_bits_left(gb) < cwi + 1)
++                return AVERROR_INVALIDDATA;
+             skip_bits(gb, cwi + 1);
+             if (cwi > 5) {
+                 newmode = get_bits1(gb);
+@@ -209,6 +211,8 @@ static int decode_group3_1d_line(AVCodec
+     unsigned int run = 0;
+     unsigned int t;
+     for (;;) {
++        if (get_bits_left(gb) <= 0)
++            return AVERROR_INVALIDDATA;
+         t    = get_vlc2(gb, ccitt_vlc[mode].table, 9, 2);
+         run += t;
+         if (t < 64) {
+@@ -227,7 +231,7 @@ static int decode_group3_1d_line(AVCodec
+             run       = 0;
+             mode      = !mode;
+         } else if ((int)t == -1) {
+-            if (show_bits(gb, 12) == 15) {
++            if (get_bits_left(gb) > 12 && show_bits(gb, 12) == 15) {
+                 int ret;
+                 skip_bits(gb, 12);
+                 ret = decode_uncompressed(avctx, gb, &pix_left, &runs, runend, &mode);
+@@ -254,7 +258,10 @@ static int decode_group3_2d_line(AVCodec
+     unsigned int offs = 0, run = 0;
+ 
+     while (offs < width) {
+-        int cmode = get_vlc2(gb, ccitt_group3_2d_vlc.table, 9, 1);
++        int cmode;
++        if (get_bits_left(gb) <= 0)
++            return AVERROR_INVALIDDATA;
++        cmode = get_vlc2(gb, ccitt_group3_2d_vlc.table, 9, 1);
+         if (cmode == -1) {
+             av_log(avctx, AV_LOG_ERROR, "Incorrect mode VLC\n");
+             return AVERROR_INVALIDDATA;
+@@ -299,7 +306,10 @@ static int decode_group3_2d_line(AVCodec
+                 mode = !mode;
+             }
+         } else if (cmode == 9 || cmode == 10) {
+-            int xxx = get_bits(gb, 3);
++            int xxx;
++            if (get_bits_left(gb) < 3)
++                return AVERROR_INVALIDDATA;
++            xxx = get_bits(gb, 3);
+             if (cmode == 9 && xxx == 7) {
+                 int ret;
+                 int pix_left = width - offs;
+Index: jellyfin-ffmpeg/libavcodec/h263.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/h263.c
++++ jellyfin-ffmpeg/libavcodec/h263.c
+@@ -29,6 +29,7 @@
+ 
+ #include <limits.h>
+ 
++#include "libavutil/thread.h"
+ #include "avcodec.h"
+ #include "mpegvideo.h"
+ #include "h263.h"
+@@ -38,6 +39,17 @@
+ #include "flv.h"
+ #include "mpeg4video.h"
+ 
++static av_cold void h263_init_rl_inter(void)
++{
++    static uint8_t h263_rl_inter_table[2][2 * MAX_RUN + MAX_LEVEL + 3];
++    ff_rl_init(&ff_h263_rl_inter, h263_rl_inter_table);
++}
++
++av_cold void ff_h263_init_rl_inter(void)
++{
++    static AVOnce init_static_once = AV_ONCE_INIT;
++    ff_thread_once(&init_static_once, h263_init_rl_inter);
++}
+ 
+ void ff_h263_update_motion_val(MpegEncContext * s){
+     const int mb_xy = s->mb_y * s->mb_stride + s->mb_x;
+Index: jellyfin-ffmpeg/libavcodec/h263.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/h263.h
++++ jellyfin-ffmpeg/libavcodec/h263.h
+@@ -66,6 +66,7 @@ int16_t *ff_h263_pred_motion(MpegEncCont
+                              int *px, int *py);
+ void ff_h263_encode_init(MpegEncContext *s);
+ void ff_h263_decode_init_vlc(void);
++void ff_h263_init_rl_inter(void);
+ int ff_h263_decode_picture_header(MpegEncContext *s);
+ int ff_h263_decode_gob_header(MpegEncContext *s);
+ void ff_h263_update_motion_val(MpegEncContext * s);
+Index: jellyfin-ffmpeg/libavcodec/h263data.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/h263data.c
++++ jellyfin-ffmpeg/libavcodec/h263data.c
+@@ -25,8 +25,6 @@
+ 
+ #include <stdint.h>
+ 
+-#include "libavutil/thread.h"
+-
+ #include "h263data.h"
+ #include "mpegvideo.h"
+ 
+@@ -290,15 +288,3 @@ const AVRational ff_h263_pixel_aspect[16
+     {  0,  1 },
+     {  0,  1 },
+ };
+-
+-static av_cold void h263_init_rl_inter(void)
+-{
+-    static uint8_t h263_rl_inter_table[2][2 * MAX_RUN + MAX_LEVEL + 3];
+-    ff_rl_init(&ff_h263_rl_inter, h263_rl_inter_table);
+-}
+-
+-av_cold void ff_h263_init_rl_inter(void)
+-{
+-    static AVOnce init_static_once = AV_ONCE_INIT;
+-    ff_thread_once(&init_static_once, h263_init_rl_inter);
+-}
+Index: jellyfin-ffmpeg/libavcodec/h263data.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/h263data.h
++++ jellyfin-ffmpeg/libavcodec/h263data.h
+@@ -61,7 +61,6 @@ extern const int8_t ff_inter_run[102];
+ 
+ extern RLTable ff_h263_rl_inter;
+ extern RLTable ff_rl_intra_aic;
+-void ff_h263_init_rl_inter(void);
+ 
+ extern const uint16_t ff_h263_format[8][2];
+ 
+Index: jellyfin-ffmpeg/libavcodec/internal.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/internal.h
++++ jellyfin-ffmpeg/libavcodec/internal.h
+@@ -78,6 +78,11 @@
+  * Codec handles avctx->thread_count == 0 (auto) internally.
+  */
+ #define FF_CODEC_CAP_AUTO_THREADS           (1 << 7)
++/**
++ * Codec handles output frame properties internally instead of letting the
++ * internal logic derive them from AVCodecInternal.last_pkt_props.
++ */
++#define FF_CODEC_CAP_SETS_FRAME_PROPS       (1 << 8)
+ 
+ /**
+  * AVCodec.codec_tags termination value
+Index: jellyfin-ffmpeg/libavcodec/jpeglsdec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/jpeglsdec.c
++++ jellyfin-ffmpeg/libavcodec/jpeglsdec.c
+@@ -122,7 +122,7 @@ int ff_jpegls_decode_lse(MJpegDecodeCont
+             s->avctx->pix_fmt = AV_PIX_FMT_PAL8;
+             for (i=s->palette_index; i<=maxtab; i++) {
+                 uint8_t k = i << shift;
+-                pal[k] = 0;
++                pal[k] = wt < 4 ? 0xFF000000 : 0;
+                 for (j=0; j<wt; j++) {
+                     pal[k] |= get_bits(&s->gb, 8) << (8*(wt-j-1));
+                 }
+Index: jellyfin-ffmpeg/libavcodec/lpc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/lpc.c
++++ jellyfin-ffmpeg/libavcodec/lpc.c
+@@ -189,7 +189,7 @@ double ff_lpc_calc_ref_coefs_f(LPCContex
+     compute_ref_coefs(autoc, order, ref, error);
+     for (i = 0; i < order; i++)
+         avg_err = (avg_err + error[i])/2.0f;
+-    return signal/avg_err;
++    return avg_err ? signal/avg_err : NAN;
+ }
+ 
+ /**
+Index: jellyfin-ffmpeg/libavcodec/mpegvideo_enc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/mpegvideo_enc.c
++++ jellyfin-ffmpeg/libavcodec/mpegvideo_enc.c
+@@ -2016,6 +2016,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
+             break;
+             default:
+                 av_log(avctx, AV_LOG_ERROR, "vbv buffer overflow\n");
++                s->stuffing_bits = 0;
+             }
+             flush_put_bits(&s->pb);
+             s->frame_bits  = put_bits_count(&s->pb);
+Index: jellyfin-ffmpeg/libavcodec/nellymoserenc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/nellymoserenc.c
++++ jellyfin-ffmpeg/libavcodec/nellymoserenc.c
+@@ -138,10 +138,8 @@ static av_cold int encode_end(AVCodecCon
+ 
+     ff_mdct_end(&s->mdct_ctx);
+ 
+-    if (s->avctx->trellis) {
+-        av_freep(&s->opt);
+-        av_freep(&s->path);
+-    }
++    av_freep(&s->opt);
++    av_freep(&s->path);
+     ff_af_queue_close(&s->afq);
+     av_freep(&s->fdsp);
+ 
+Index: jellyfin-ffmpeg/libavcodec/nvenc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/nvenc.c
++++ jellyfin-ffmpeg/libavcodec/nvenc.c
+@@ -144,6 +144,70 @@ static int nvenc_print_error(AVCodecCont
+     return ret;
+ }
+ 
++typedef struct GUIDTuple {
++    const GUID guid;
++    int flags;
++} GUIDTuple;
++
++#define PRESET_ALIAS(alias, name, ...) \
++    [PRESET_ ## alias] = { NV_ENC_PRESET_ ## name ## _GUID, __VA_ARGS__ }
++
++#define PRESET(name, ...) PRESET_ALIAS(name, name, __VA_ARGS__)
++
++static void nvenc_map_preset(NvencContext *ctx)
++{
++    GUIDTuple presets[] = {
++#ifdef NVENC_HAVE_NEW_PRESETS
++        PRESET(P1),
++        PRESET(P2),
++        PRESET(P3),
++        PRESET(P4),
++        PRESET(P5),
++        PRESET(P6),
++        PRESET(P7),
++        PRESET_ALIAS(SLOW,   P7, NVENC_TWO_PASSES),
++        PRESET_ALIAS(MEDIUM, P4, NVENC_ONE_PASS),
++        PRESET_ALIAS(FAST,   P1, NVENC_ONE_PASS),
++        // Compat aliases
++        PRESET_ALIAS(DEFAULT,             P4, NVENC_DEPRECATED_PRESET),
++        PRESET_ALIAS(HP,                  P1, NVENC_DEPRECATED_PRESET),
++        PRESET_ALIAS(HQ,                  P7, NVENC_DEPRECATED_PRESET),
++        PRESET_ALIAS(BD,                  P5, NVENC_DEPRECATED_PRESET),
++        PRESET_ALIAS(LOW_LATENCY_DEFAULT, P4, NVENC_DEPRECATED_PRESET | NVENC_LOWLATENCY),
++        PRESET_ALIAS(LOW_LATENCY_HP,      P1, NVENC_DEPRECATED_PRESET | NVENC_LOWLATENCY),
++        PRESET_ALIAS(LOW_LATENCY_HQ,      P7, NVENC_DEPRECATED_PRESET | NVENC_LOWLATENCY),
++        PRESET_ALIAS(LOSSLESS_DEFAULT,    P4, NVENC_DEPRECATED_PRESET | NVENC_LOSSLESS),
++        PRESET_ALIAS(LOSSLESS_HP,         P1, NVENC_DEPRECATED_PRESET | NVENC_LOSSLESS),
++#else
++        PRESET(DEFAULT),
++        PRESET(HP),
++        PRESET(HQ),
++        PRESET(BD),
++        PRESET_ALIAS(SLOW,   HQ,    NVENC_TWO_PASSES),
++        PRESET_ALIAS(MEDIUM, HQ,    NVENC_ONE_PASS),
++        PRESET_ALIAS(FAST,   HP,    NVENC_ONE_PASS),
++        PRESET(LOW_LATENCY_DEFAULT, NVENC_LOWLATENCY),
++        PRESET(LOW_LATENCY_HP,      NVENC_LOWLATENCY),
++        PRESET(LOW_LATENCY_HQ,      NVENC_LOWLATENCY),
++        PRESET(LOSSLESS_DEFAULT,    NVENC_LOSSLESS),
++        PRESET(LOSSLESS_HP,         NVENC_LOSSLESS),
++#endif
++    };
++
++    GUIDTuple *t = &presets[ctx->preset];
++
++    ctx->init_encode_params.presetGUID = t->guid;
++    ctx->flags = t->flags;
++
++#ifdef NVENC_HAVE_NEW_PRESETS
++    if (ctx->tuning_info == NV_ENC_TUNING_INFO_LOSSLESS)
++        ctx->flags |= NVENC_LOSSLESS;
++#endif
++}
++
++#undef PRESET
++#undef PRESET_ALIAS
++
+ static void nvenc_print_driver_requirement(AVCodecContext *avctx, int level)
+ {
+ #if NVENCAPI_CHECK_VERSION(11, 1)
+@@ -358,7 +422,7 @@ static int nvenc_check_capabilities(AVCo
+     }
+ 
+     ret = nvenc_check_cap(avctx, NV_ENC_CAPS_SUPPORT_LOSSLESS_ENCODE);
+-    if (ctx->preset >= PRESET_LOSSLESS_DEFAULT && ret <= 0) {
++    if (ctx->flags & NVENC_LOSSLESS && ret <= 0) {
+         av_log(avctx, AV_LOG_WARNING, "Lossless encoding not supported\n");
+         return AVERROR(ENOSYS);
+     }
+@@ -548,6 +612,11 @@ static av_cold int nvenc_setup_device(AV
+         return AVERROR_BUG;
+     }
+ 
++    nvenc_map_preset(ctx);
++
++    if (ctx->flags & NVENC_DEPRECATED_PRESET)
++        av_log(avctx, AV_LOG_WARNING, "The selected preset is deprecated. Use p1 to p7 + -tune or fast/medium/slow.\n");
++
+     if (avctx->pix_fmt == AV_PIX_FMT_CUDA || avctx->pix_fmt == AV_PIX_FMT_D3D11 || avctx->hw_frames_ctx || avctx->hw_device_ctx) {
+         AVHWFramesContext   *frames_ctx;
+         AVHWDeviceContext   *hwdev_ctx;
+@@ -638,65 +707,6 @@ static av_cold int nvenc_setup_device(AV
+     return 0;
+ }
+ 
+-typedef struct GUIDTuple {
+-    const GUID guid;
+-    int flags;
+-} GUIDTuple;
+-
+-#define PRESET_ALIAS(alias, name, ...) \
+-    [PRESET_ ## alias] = { NV_ENC_PRESET_ ## name ## _GUID, __VA_ARGS__ }
+-
+-#define PRESET(name, ...) PRESET_ALIAS(name, name, __VA_ARGS__)
+-
+-static void nvenc_map_preset(NvencContext *ctx)
+-{
+-    GUIDTuple presets[] = {
+-#ifdef NVENC_HAVE_NEW_PRESETS
+-        PRESET(P1),
+-        PRESET(P2),
+-        PRESET(P3),
+-        PRESET(P4),
+-        PRESET(P5),
+-        PRESET(P6),
+-        PRESET(P7),
+-        PRESET_ALIAS(SLOW,   P7, NVENC_TWO_PASSES),
+-        PRESET_ALIAS(MEDIUM, P4, NVENC_ONE_PASS),
+-        PRESET_ALIAS(FAST,   P1, NVENC_ONE_PASS),
+-        // Compat aliases
+-        PRESET_ALIAS(DEFAULT,             P4, NVENC_DEPRECATED_PRESET),
+-        PRESET_ALIAS(HP,                  P1, NVENC_DEPRECATED_PRESET),
+-        PRESET_ALIAS(HQ,                  P7, NVENC_DEPRECATED_PRESET),
+-        PRESET_ALIAS(BD,                  P5, NVENC_DEPRECATED_PRESET),
+-        PRESET_ALIAS(LOW_LATENCY_DEFAULT, P4, NVENC_DEPRECATED_PRESET | NVENC_LOWLATENCY),
+-        PRESET_ALIAS(LOW_LATENCY_HP,      P1, NVENC_DEPRECATED_PRESET | NVENC_LOWLATENCY),
+-        PRESET_ALIAS(LOW_LATENCY_HQ,      P7, NVENC_DEPRECATED_PRESET | NVENC_LOWLATENCY),
+-        PRESET_ALIAS(LOSSLESS_DEFAULT,    P4, NVENC_DEPRECATED_PRESET | NVENC_LOSSLESS),
+-        PRESET_ALIAS(LOSSLESS_HP,         P1, NVENC_DEPRECATED_PRESET | NVENC_LOSSLESS),
+-#else
+-        PRESET(DEFAULT),
+-        PRESET(HP),
+-        PRESET(HQ),
+-        PRESET(BD),
+-        PRESET_ALIAS(SLOW,   HQ,    NVENC_TWO_PASSES),
+-        PRESET_ALIAS(MEDIUM, HQ,    NVENC_ONE_PASS),
+-        PRESET_ALIAS(FAST,   HP,    NVENC_ONE_PASS),
+-        PRESET(LOW_LATENCY_DEFAULT, NVENC_LOWLATENCY),
+-        PRESET(LOW_LATENCY_HP,      NVENC_LOWLATENCY),
+-        PRESET(LOW_LATENCY_HQ,      NVENC_LOWLATENCY),
+-        PRESET(LOSSLESS_DEFAULT,    NVENC_LOSSLESS),
+-        PRESET(LOSSLESS_HP,         NVENC_LOSSLESS),
+-#endif
+-    };
+-
+-    GUIDTuple *t = &presets[ctx->preset];
+-
+-    ctx->init_encode_params.presetGUID = t->guid;
+-    ctx->flags = t->flags;
+-}
+-
+-#undef PRESET
+-#undef PRESET_ALIAS
+-
+ static av_cold void set_constqp(AVCodecContext *avctx)
+ {
+     NvencContext *ctx = avctx->priv_data;
+@@ -1254,18 +1264,15 @@ static av_cold int nvenc_setup_encoder(A
+ 
+     ctx->init_encode_params.encodeConfig = &ctx->encode_config;
+ 
+-    nvenc_map_preset(ctx);
+-
+-    if (ctx->flags & NVENC_DEPRECATED_PRESET)
+-        av_log(avctx, AV_LOG_WARNING, "The selected preset is deprecated. Use p1 to p7 + -tune or fast/medium/slow.\n");
+-
+     preset_config.version = NV_ENC_PRESET_CONFIG_VER;
+     preset_config.presetCfg.version = NV_ENC_CONFIG_VER;
+ 
+ #ifdef NVENC_HAVE_NEW_PRESETS
+     ctx->init_encode_params.tuningInfo = ctx->tuning_info;
+ 
+-    if (ctx->flags & NVENC_LOWLATENCY)
++    if (ctx->flags & NVENC_LOSSLESS)
++        ctx->init_encode_params.tuningInfo = NV_ENC_TUNING_INFO_LOSSLESS;
++    else if (ctx->flags & NVENC_LOWLATENCY)
+         ctx->init_encode_params.tuningInfo = NV_ENC_TUNING_INFO_LOW_LATENCY;
+ 
+     nv_status = p_nvenc->nvEncGetEncodePresetConfigEx(ctx->nvencoder,
+@@ -1307,9 +1314,6 @@ static av_cold int nvenc_setup_encoder(A
+      * */
+     if (ctx->rc_lookahead == 0 && ctx->encode_config.rcParams.enableLookahead)
+         ctx->rc_lookahead = ctx->encode_config.rcParams.lookaheadDepth;
+-
+-    if (ctx->init_encode_params.tuningInfo == NV_ENC_TUNING_INFO_LOSSLESS)
+-        ctx->flags |= NVENC_LOSSLESS;
+ #endif
+ 
+     if (ctx->weighted_pred == 1)
+Index: jellyfin-ffmpeg/libavcodec/nvenc.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/nvenc.h
++++ jellyfin-ffmpeg/libavcodec/nvenc.h
+@@ -103,7 +103,7 @@ enum {
+     PRESET_LOW_LATENCY_DEFAULT ,
+     PRESET_LOW_LATENCY_HQ ,
+     PRESET_LOW_LATENCY_HP,
+-    PRESET_LOSSLESS_DEFAULT, // lossless presets must be the last ones
++    PRESET_LOSSLESS_DEFAULT,
+     PRESET_LOSSLESS_HP,
+ #ifdef NVENC_HAVE_NEW_PRESETS
+     PRESET_P1,
+Index: jellyfin-ffmpeg/libavcodec/nvenc_hevc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/nvenc_hevc.c
++++ jellyfin-ffmpeg/libavcodec/nvenc_hevc.c
+@@ -148,7 +148,7 @@ static const AVOption options[] = {
+     { "middle",       "",                                   0,                    AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0,       VE, "b_ref_mode" },
+ #endif
+     { "a53cc",        "Use A53 Closed Captions (if available)", OFFSET(a53_cc),   AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1,       VE },
+-    { "s12m_tc",      "Use timecode (if available)",        OFFSET(s12m_tc),      AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1,       VE },
++    { "s12m_tc",      "Use timecode (if available)",        OFFSET(s12m_tc),      AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1,       VE },
+     { "dpb_size",     "Specifies the DPB size used for encoding (0 means automatic)",
+                                                             OFFSET(dpb_size),     AV_OPT_TYPE_INT,   { .i64 = 0 }, 0, INT_MAX, VE },
+ #ifdef NVENC_HAVE_MULTIPASS
+Index: jellyfin-ffmpeg/libavcodec/pngdec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/pngdec.c
++++ jellyfin-ffmpeg/libavcodec/pngdec.c
+@@ -1644,7 +1644,7 @@ static int decode_frame_apng(AVCodecCont
+     if (!(avctx->active_thread_type & FF_THREAD_FRAME)) {
+         if (s->dispose_op == APNG_DISPOSE_OP_PREVIOUS) {
+             ff_thread_release_buffer(avctx, &s->picture);
+-        } else if (s->dispose_op == APNG_DISPOSE_OP_NONE) {
++        } else {
+             ff_thread_release_buffer(avctx, &s->last_picture);
+             FFSWAP(ThreadFrame, s->picture, s->last_picture);
+         }
+@@ -1693,8 +1693,8 @@ static int update_thread_context(AVCodec
+         pdst->hdr_state |= psrc->hdr_state;
+     }
+ 
+-    src_frame = psrc->dispose_op == APNG_DISPOSE_OP_NONE ?
+-                &psrc->picture : &psrc->last_picture;
++    src_frame = psrc->dispose_op == APNG_DISPOSE_OP_PREVIOUS ?
++                &psrc->last_picture : &psrc->picture;
+ 
+     ff_thread_release_buffer(dst, &pdst->last_picture);
+     if (src_frame && src_frame->f->data[0]) {
+Index: jellyfin-ffmpeg/libavcodec/rv10.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/rv10.c
++++ jellyfin-ffmpeg/libavcodec/rv10.c
+@@ -154,7 +154,7 @@ static int rv10_decode_picture_header(Mp
+     return mb_count;
+ }
+ 
+-static int rv20_decode_picture_header(RVDecContext *rv)
++static int rv20_decode_picture_header(RVDecContext *rv, int whole_size)
+ {
+     MpegEncContext *s = &rv->m;
+     int seq, mb_pos, i, ret;
+@@ -232,6 +232,10 @@ static int rv20_decode_picture_header(RV
+                    "attempting to change resolution to %dx%d\n", new_w, new_h);
+             if (av_image_check_size(new_w, new_h, 0, s->avctx) < 0)
+                 return AVERROR_INVALIDDATA;
++
++            if (whole_size < (new_w + 15)/16 * ((new_h + 15)/16) / 8)
++                return AVERROR_INVALIDDATA;
++
+             ff_mpv_common_end(s);
+ 
+             // attempt to keep aspect during typical resolution switches
+@@ -447,7 +451,7 @@ static int rv10_decode_packet(AVCodecCon
+     if (s->codec_id == AV_CODEC_ID_RV10)
+         mb_count = rv10_decode_picture_header(s);
+     else
+-        mb_count = rv20_decode_picture_header(rv);
++        mb_count = rv20_decode_picture_header(rv, whole_size);
+     if (mb_count < 0) {
+         if (mb_count != ERROR_SKIP_FRAME)
+             av_log(s->avctx, AV_LOG_ERROR, "HEADER ERROR\n");
+Index: jellyfin-ffmpeg/libavcodec/svq1enc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/svq1enc.c
++++ jellyfin-ffmpeg/libavcodec/svq1enc.c
+@@ -487,9 +487,10 @@ static av_cold int svq1_encode_end(AVCod
+     SVQ1EncContext *const s = avctx->priv_data;
+     int i;
+ 
+-    av_log(avctx, AV_LOG_DEBUG, "RD: %f\n",
+-           s->rd_total / (double)(avctx->width * avctx->height *
+-                                  avctx->frame_number));
++    if (avctx->frame_number)
++        av_log(avctx, AV_LOG_DEBUG, "RD: %f\n",
++               s->rd_total / (double)(avctx->width * avctx->height *
++                                      avctx->frame_number));
+ 
+     s->m.mb_type = NULL;
+     ff_mpv_common_end(&s->m);
+Index: jellyfin-ffmpeg/libavcodec/ttadata.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/ttadata.c
++++ jellyfin-ffmpeg/libavcodec/ttadata.c
+@@ -30,7 +30,8 @@ const uint32_t ff_tta_shift_1[] = {
+     0x01000000, 0x02000000, 0x04000000, 0x08000000,
+     0x10000000, 0x20000000, 0x40000000, 0x80000000,
+     0x80000000, 0x80000000, 0x80000000, 0x80000000,
+-    0x80000000, 0x80000000, 0x80000000, 0x80000000
++    0x80000000, 0x80000000, 0x80000000, 0x80000000,
++    0xFFFFFFFF
+ };
+ 
+ const uint32_t * const ff_tta_shift_16 = ff_tta_shift_1 + 4;
+Index: jellyfin-ffmpeg/libavcodec/ttmlenc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/ttmlenc.c
++++ jellyfin-ffmpeg/libavcodec/ttmlenc.c
+@@ -206,5 +206,5 @@ AVCodec ff_ttml_encoder = {
+     .init           = ttml_encode_init,
+     .encode_sub     = ttml_encode_frame,
+     .close          = ttml_encode_close,
+-    .capabilities   = FF_CODEC_CAP_INIT_CLEANUP,
++    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+ };
+Index: jellyfin-ffmpeg/libavcodec/utils.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/utils.c
++++ jellyfin-ffmpeg/libavcodec/utils.c
+@@ -272,6 +272,16 @@ void avcodec_align_dimensions2(AVCodecCo
+             w_align = 8;
+             h_align = 8;
+         }
++        if (s->codec_id == AV_CODEC_ID_MJPEG   ||
++            s->codec_id == AV_CODEC_ID_MJPEGB  ||
++            s->codec_id == AV_CODEC_ID_LJPEG   ||
++            s->codec_id == AV_CODEC_ID_SMVJPEG ||
++            s->codec_id == AV_CODEC_ID_AMV     ||
++            s->codec_id == AV_CODEC_ID_SP5X    ||
++            s->codec_id == AV_CODEC_ID_JPEGLS) {
++            w_align =   8;
++            h_align = 2*8;
++        }
+         break;
+     case AV_PIX_FMT_BGR24:
+         if ((s->codec_id == AV_CODEC_ID_MSZH) ||
+@@ -773,21 +783,33 @@ static int get_audio_frame_duration(enum
+             if (ba > 0) {
+                 /* calc from frame_bytes, channels, and block_align */
+                 int blocks = frame_bytes / ba;
++                int64_t tmp = 0;
+                 switch (id) {
+                 case AV_CODEC_ID_ADPCM_IMA_WAV:
+                     if (bps < 2 || bps > 5)
+                         return 0;
+-                    return blocks * (1 + (ba - 4 * ch) / (bps * ch) * 8);
++                    tmp = blocks * (1LL + (ba - 4 * ch) / (bps * ch) * 8);
++                    break;
+                 case AV_CODEC_ID_ADPCM_IMA_DK3:
+-                    return blocks * (((ba - 16) * 2 / 3 * 4) / ch);
++                    tmp = blocks * (((ba - 16LL) * 2 / 3 * 4) / ch);
++                    break;
+                 case AV_CODEC_ID_ADPCM_IMA_DK4:
+-                    return blocks * (1 + (ba - 4 * ch) * 2 / ch);
++                    tmp = blocks * (1 + (ba - 4LL * ch) * 2 / ch);
++                    break;
+                 case AV_CODEC_ID_ADPCM_IMA_RAD:
+-                    return blocks * ((ba - 4 * ch) * 2 / ch);
++                    tmp = blocks * ((ba - 4LL * ch) * 2 / ch);
++                    break;
+                 case AV_CODEC_ID_ADPCM_MS:
+-                    return blocks * (2 + (ba - 7 * ch) * 2LL / ch);
++                    tmp = blocks * (2 + (ba - 7LL * ch) * 2LL / ch);
++                    break;
+                 case AV_CODEC_ID_ADPCM_MTAF:
+-                    return blocks * (ba - 16) * 2 / ch;
++                    tmp = blocks * (ba - 16LL) * 2 / ch;
++                    break;
++                }
++                if (tmp) {
++                    if (tmp != (int)tmp)
++                        return 0;
++                    return tmp;
+                 }
+             }
+ 
+Index: jellyfin-ffmpeg/libavcodec/vaapi_av1.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/vaapi_av1.c
++++ jellyfin-ffmpeg/libavcodec/vaapi_av1.c
+@@ -292,7 +292,7 @@ static int vaapi_av1_decode_slice(AVCode
+         err = ff_vaapi_decode_make_slice_buffer(avctx, pic, &slice_param,
+                                                 sizeof(VASliceParameterBufferAV1),
+                                                 buffer,
+-                                                s->tile_group_info[i].tile_size);
++                                                size);
+         if (err) {
+             ff_vaapi_decode_cancel(avctx, pic);
+             return err;
+Index: jellyfin-ffmpeg/libavcodec/vc1.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/vc1.c
++++ jellyfin-ffmpeg/libavcodec/vc1.c
+@@ -672,6 +672,8 @@ int ff_vc1_parse_frame_header(VC1Context
+     if (v->s.pict_type == AV_PICTURE_TYPE_P)
+         v->rnd ^= 1;
+ 
++    if (get_bits_left(gb) < 5)
++        return AVERROR_INVALIDDATA;
+     /* Quantizer stuff */
+     pqindex = get_bits(gb, 5);
+     if (!pqindex)
+@@ -764,6 +766,9 @@ int ff_vc1_parse_frame_header(VC1Context
+         av_log(v->s.avctx, AV_LOG_DEBUG, "MB Skip plane encoding: "
+                "Imode: %i, Invert: %i\n", status>>1, status&1);
+ 
++        if (get_bits_left(gb) < 4)
++            return AVERROR_INVALIDDATA;
++
+         /* Hopefully this is correct for P-frames */
+         v->s.mv_table_index = get_bits(gb, 2); //but using ff_vc1_ tables
+         v->cbptab = get_bits(gb, 2);
+Index: jellyfin-ffmpeg/libavcodec/vc2enc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/vc2enc.c
++++ jellyfin-ffmpeg/libavcodec/vc2enc.c
+@@ -982,6 +982,8 @@ static av_cold int vc2_encode_frame(AVCo
+     }
+ 
+     s->slice_min_bytes = s->slice_max_bytes - s->slice_max_bytes*(s->tolerance/100.0f);
++    if (s->slice_min_bytes < 0)
++        return AVERROR(EINVAL);
+ 
+     ret = encode_frame(s, avpkt, frame, aux_data, header_size, s->interlaced);
+     if (ret)
+Index: jellyfin-ffmpeg/libavfilter/f_metadata.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/f_metadata.c
++++ jellyfin-ffmpeg/libavfilter/f_metadata.c
+@@ -304,9 +304,6 @@ static int filter_frame(AVFilterLink *in
+     AVDictionary **metadata = &frame->metadata;
+     AVDictionaryEntry *e;
+ 
+-    if (!*metadata && s->mode != METADATA_ADD)
+-        return ff_filter_frame(outlink, frame);
+-
+     e = av_dict_get(*metadata, !s->key ? "" : s->key, NULL,
+                     !s->key ? AV_DICT_IGNORE_SUFFIX: 0);
+ 
+Index: jellyfin-ffmpeg/libavfilter/vf_dctdnoiz.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/vf_dctdnoiz.c
++++ jellyfin-ffmpeg/libavfilter/vf_dctdnoiz.c
+@@ -564,6 +564,9 @@ static int config_input(AVFilterLink *in
+                inlink->h - s->pr_height);
+ 
+     max_slice_h = s->pr_height / ((s->bsize - 1) * 2);
++    if (max_slice_h == 0)
++        return AVERROR(EINVAL);
++
+     s->nb_threads = FFMIN3(MAX_THREADS, ff_filter_get_nb_threads(ctx), max_slice_h);
+     av_log(ctx, AV_LOG_DEBUG, "threads: [max=%d hmax=%d user=%d] => %d\n",
+            MAX_THREADS, max_slice_h, ff_filter_get_nb_threads(ctx), s->nb_threads);
+Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/vf_overlay_cuda.c
++++ jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
+@@ -63,6 +63,7 @@ typedef struct OverlayCUDAContext {
+     enum AVPixelFormat in_format_overlay;
+     enum AVPixelFormat in_format_main;
+ 
++    AVBufferRef *hw_device_ctx;
+     AVCUDADeviceContext *hwctx;
+ 
+     CUcontext cu_ctx;
+@@ -256,6 +257,9 @@ static av_cold void overlay_cuda_uninit(
+         CHECK_CU(cu->cuModuleUnload(ctx->cu_module));
+         CHECK_CU(cu->cuCtxPopCurrent(&dummy));
+     }
++
++    av_buffer_unref(&ctx->hw_device_ctx);
++    ctx->hwctx = NULL;
+ }
+ 
+ /**
+@@ -341,13 +345,19 @@ static int overlay_cuda_config_output(AV
+ 
+     // initialize
+ 
+-    ctx->hwctx = frames_ctx->device_ctx->hwctx;
++    ctx->hw_device_ctx = av_buffer_ref(frames_ctx->device_ref);
++    if (!ctx->hw_device_ctx)
++        return AVERROR(ENOMEM);
++    ctx->hwctx = ((AVHWDeviceContext*)ctx->hw_device_ctx->data)->hwctx;
++
+     cuda_ctx = ctx->hwctx->cuda_ctx;
+     ctx->fs.time_base = inlink->time_base;
+ 
+     ctx->cu_stream = ctx->hwctx->stream;
+ 
+     outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
++    if (!outlink->hw_frames_ctx)
++        return AVERROR(ENOMEM);
+ 
+     // load functions
+ 
+Index: jellyfin-ffmpeg/libavfilter/vf_vmafmotion.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/vf_vmafmotion.c
++++ jellyfin-ffmpeg/libavfilter/vf_vmafmotion.c
+@@ -238,6 +238,9 @@ int ff_vmafmotion_init(VMAFMotionData *s
+     int i;
+     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
+ 
++    if (w < 3 || h < 3)
++        return AVERROR(EINVAL);
++
+     s->width = w;
+     s->height = h;
+     s->stride = FFALIGN(w * sizeof(uint16_t), 32);
+Index: jellyfin-ffmpeg/libavfilter/vf_yadif.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/vf_yadif.c
++++ jellyfin-ffmpeg/libavfilter/vf_yadif.c
+@@ -123,20 +123,22 @@ static void filter_edges(void *dst1, voi
+     uint8_t *next2 = parity ? cur  : next;
+ 
+     const int edge = MAX_ALIGN - 1;
++    int offset = FFMAX(w - edge, 3);
+ 
+     /* Only edge pixels need to be processed here.  A constant value of false
+      * for is_not_edge should let the compiler ignore the whole branch. */
+-    FILTER(0, 3, 0)
++    FILTER(0, FFMIN(3, w), 0)
+ 
+-    dst  = (uint8_t*)dst1  + w - edge;
+-    prev = (uint8_t*)prev1 + w - edge;
+-    cur  = (uint8_t*)cur1  + w - edge;
+-    next = (uint8_t*)next1 + w - edge;
++    dst  = (uint8_t*)dst1  + offset;
++    prev = (uint8_t*)prev1 + offset;
++    cur  = (uint8_t*)cur1  + offset;
++    next = (uint8_t*)next1 + offset;
+     prev2 = (uint8_t*)(parity ? prev : cur);
+     next2 = (uint8_t*)(parity ? cur  : next);
+ 
+-    FILTER(w - edge, w - 3, 1)
+-    FILTER(w - 3, w, 0)
++    FILTER(offset, w - 3, 1)
++    offset = FFMAX(offset, w - 3);
++    FILTER(offset, w, 0)
+ }
+ 
+ 
+@@ -170,21 +172,23 @@ static void filter_edges_16bit(void *dst
+     uint16_t *next2 = parity ? cur  : next;
+ 
+     const int edge = MAX_ALIGN / 2 - 1;
++    int offset = FFMAX(w - edge, 3);
+ 
+     mrefs /= 2;
+     prefs /= 2;
+ 
+-    FILTER(0, 3, 0)
++    FILTER(0,  FFMIN(3, w), 0)
+ 
+-    dst   = (uint16_t*)dst1  + w - edge;
+-    prev  = (uint16_t*)prev1 + w - edge;
+-    cur   = (uint16_t*)cur1  + w - edge;
+-    next  = (uint16_t*)next1 + w - edge;
++    dst   = (uint16_t*)dst1  + offset;
++    prev  = (uint16_t*)prev1 + offset;
++    cur   = (uint16_t*)cur1  + offset;
++    next  = (uint16_t*)next1 + offset;
+     prev2 = (uint16_t*)(parity ? prev : cur);
+     next2 = (uint16_t*)(parity ? cur  : next);
+ 
+-    FILTER(w - edge, w - 3, 1)
+-    FILTER(w - 3, w, 0)
++    FILTER(offset, w - 3, 1)
++    offset = FFMAX(offset, w - 3);
++    FILTER(offset, w, 0)
+ }
+ 
+ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+Index: jellyfin-ffmpeg/libavformat/asfdec_o.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/asfdec_o.c
++++ jellyfin-ffmpeg/libavformat/asfdec_o.c
+@@ -685,7 +685,7 @@ static int asf_read_properties(AVFormatC
+     return 0;
+ }
+ 
+-static int parse_video_info(AVIOContext *pb, AVStream *st)
++static int parse_video_info(AVFormatContext *avfmt, AVIOContext *pb, AVStream *st)
+ {
+     uint16_t size_asf; // ASF-specific Format Data size
+     uint32_t size_bmp; // BMP_HEADER-specific Format Data size
+@@ -700,19 +700,10 @@ static int parse_video_info(AVIOContext
+     st->codecpar->codec_id  = ff_codec_get_id(ff_codec_bmp_tags, tag);
+     size_bmp = FFMAX(size_asf, size_bmp);
+ 
+-    if (size_bmp > BMP_HEADER_SIZE &&
+-        size_bmp < INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE) {
+-        int ret;
+-        st->codecpar->extradata_size  = size_bmp - BMP_HEADER_SIZE;
+-        if (!(st->codecpar->extradata = av_malloc(st->codecpar->extradata_size +
+-                                               AV_INPUT_BUFFER_PADDING_SIZE))) {
+-            st->codecpar->extradata_size = 0;
+-            return AVERROR(ENOMEM);
+-        }
+-        memset(st->codecpar->extradata + st->codecpar->extradata_size , 0,
+-               AV_INPUT_BUFFER_PADDING_SIZE);
+-        if ((ret = avio_read(pb, st->codecpar->extradata,
+-                             st->codecpar->extradata_size)) < 0)
++    if (size_bmp > BMP_HEADER_SIZE) {
++        int ret = ff_get_extradata(avfmt, st->codecpar, pb, size_bmp - BMP_HEADER_SIZE);
++
++        if (ret < 0)
+             return ret;
+     }
+     return 0;
+@@ -795,7 +786,7 @@ static int asf_read_stream_properties(AV
+         break;
+     case AVMEDIA_TYPE_VIDEO:
+         asf_st->type = AVMEDIA_TYPE_VIDEO;
+-        if ((ret = parse_video_info(pb, st)) < 0)
++        if ((ret = parse_video_info(s, pb, st)) < 0)
+             return ret;
+         break;
+     default:
+Index: jellyfin-ffmpeg/libavformat/avio.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/avio.c
++++ jellyfin-ffmpeg/libavformat/avio.c
+@@ -316,8 +316,11 @@ int ffurl_open_whitelist(URLContext **pu
+     int ret = ffurl_alloc(puc, filename, flags, int_cb);
+     if (ret < 0)
+         return ret;
+-    if (parent)
+-        av_opt_copy(*puc, parent);
++    if (parent) {
++        ret = av_opt_copy(*puc, parent);
++        if (ret < 0)
++            goto fail;
++    }
+     if (options &&
+         (ret = av_opt_set_dict(*puc, options)) < 0)
+         goto fail;
+Index: jellyfin-ffmpeg/libavformat/cafdec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/cafdec.c
++++ jellyfin-ffmpeg/libavformat/cafdec.c
+@@ -79,7 +79,7 @@ static int read_desc_chunk(AVFormatConte
+     st->codecpar->channels    = avio_rb32(pb);
+     st->codecpar->bits_per_coded_sample = avio_rb32(pb);
+ 
+-    if (caf->bytes_per_packet < 0 || caf->frames_per_packet < 0)
++    if (caf->bytes_per_packet < 0 || caf->frames_per_packet < 0 || st->codecpar->channels < 0)
+         return AVERROR_INVALIDDATA;
+ 
+     /* calculate bit rate for constant size packets */
+Index: jellyfin-ffmpeg/libavformat/fifo.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/fifo.c
++++ jellyfin-ffmpeg/libavformat/fifo.c
+@@ -593,7 +593,7 @@ static int fifo_write_packet(AVFormatCon
+         goto fail;
+     }
+ 
+-    if (fifo->timeshift && pkt->dts != AV_NOPTS_VALUE)
++    if (fifo->timeshift && pkt && pkt->dts != AV_NOPTS_VALUE)
+         atomic_fetch_add_explicit(&fifo->queue_duration, next_duration(avf, pkt, &fifo->last_sent_dts), memory_order_relaxed);
+ 
+     return ret;
+Index: jellyfin-ffmpeg/libavformat/id3v2.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/id3v2.c
++++ jellyfin-ffmpeg/libavformat/id3v2.c
+@@ -816,7 +816,7 @@ static void id3v2_parse(AVIOContext *pb,
+     int isv34, unsync;
+     unsigned tlen;
+     char tag[5];
+-    int64_t next, end = avio_tell(pb) + len;
++    int64_t next, end = avio_tell(pb);
+     int taghdrlen;
+     const char *reason = NULL;
+     AVIOContext pb_local;
+@@ -828,6 +828,10 @@ static void id3v2_parse(AVIOContext *pb,
+     av_unused int uncompressed_buffer_size = 0;
+     const char *comm_frame;
+ 
++    if (end > INT64_MAX - len - 10)
++        return;
++    end += len;
++
+     av_log(s, AV_LOG_DEBUG, "id3v2 ver:%d flags:%02X len:%d\n", version, flags, len);
+ 
+     switch (version) {
+Index: jellyfin-ffmpeg/libavformat/matroskaenc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/matroskaenc.c
++++ jellyfin-ffmpeg/libavformat/matroskaenc.c
+@@ -1768,6 +1768,7 @@ static int mkv_write_attachments(AVForma
+             put_ebml_string(dyn_cp, MATROSKA_ID_FILEDESC, t->value);
+         if (!(t = av_dict_get(st->metadata, "filename", NULL, 0))) {
+             av_log(s, AV_LOG_ERROR, "Attachment stream %d has no filename tag.\n", i);
++            ffio_free_dyn_buf(&dyn_cp);
+             return AVERROR(EINVAL);
+         }
+         put_ebml_string(dyn_cp, MATROSKA_ID_FILENAME, t->value);
+Index: jellyfin-ffmpeg/libavformat/moflex.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/moflex.c
++++ jellyfin-ffmpeg/libavformat/moflex.c
+@@ -172,7 +172,6 @@ static int moflex_read_sync(AVFormatCont
+         unsigned type, ssize, codec_id = 0;
+         unsigned codec_type, width = 0, height = 0, sample_rate = 0, channels = 0;
+         int stream_index = -1;
+-        int format;
+         AVRational fps;
+ 
+         read_var_byte(s, &type);
+@@ -213,7 +212,6 @@ static int moflex_read_sync(AVFormatCont
+             fps.den = avio_rb16(pb);
+             width = avio_rb16(pb);
+             height = avio_rb16(pb);
+-            format = AV_PIX_FMT_YUV420P;
+             avio_skip(pb, type == 3 ? 3 : 2);
+             break;
+         case 4:
+@@ -235,7 +233,6 @@ static int moflex_read_sync(AVFormatCont
+             st->codecpar->height     = height;
+             st->codecpar->sample_rate= sample_rate;
+             st->codecpar->channels   = channels;
+-            st->codecpar->format     = format;
+             st->priv_data            = av_packet_alloc();
+             if (!st->priv_data)
+                 return AVERROR(ENOMEM);
+Index: jellyfin-ffmpeg/libavformat/mov.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/mov.c
++++ jellyfin-ffmpeg/libavformat/mov.c
+@@ -4700,6 +4700,8 @@ static int mov_read_chap(MOVContext *c,
+     for (i = 0; i < num && !pb->eof_reached; i++)
+         c->chapter_tracks[i] = avio_rb32(pb);
+ 
++    c->nb_chapter_tracks = i;
++
+     return 0;
+ }
+ 
+@@ -5124,7 +5126,9 @@ static int mov_read_sidx(MOVContext *c,
+         if (frag_stream_info)
+             frag_stream_info->sidx_pts = timestamp;
+ 
+-        if (av_sat_add64(offset, size) != offset + size)
++        if (av_sat_add64(offset, size) != offset + size ||
++            av_sat_add64(pts, duration) != pts + (uint64_t)duration
++        )
+             return AVERROR_INVALIDDATA;
+         offset += size;
+         pts += duration;
+@@ -5464,7 +5468,7 @@ static int mov_read_mdcv(MOVContext *c,
+ 
+     sc = c->fc->streams[c->fc->nb_streams - 1]->priv_data;
+ 
+-    if (atom.size < 24) {
++    if (atom.size < 24 || sc->mastering) {
+         av_log(c->fc, AV_LOG_ERROR, "Invalid Mastering Display Color Volume box\n");
+         return AVERROR_INVALIDDATA;
+     }
+@@ -5512,6 +5516,11 @@ static int mov_read_coll(MOVContext *c,
+     }
+     avio_skip(pb, 3); /* flags */
+ 
++    if (sc->coll){
++        av_log(c->fc, AV_LOG_WARNING, "Ignoring duplicate COLL\n");
++        return 0;
++    }
++
+     sc->coll = av_content_light_metadata_alloc(&sc->coll_size);
+     if (!sc->coll)
+         return AVERROR(ENOMEM);
+Index: jellyfin-ffmpeg/libavformat/movenc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/movenc.c
++++ jellyfin-ffmpeg/libavformat/movenc.c
+@@ -797,6 +797,7 @@ static int mov_write_dfla_tag(AVIOContex
+ static int mov_write_dops_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *track)
+ {
+     int64_t pos = avio_tell(pb);
++    int channels, channel_map;
+     avio_wb32(pb, 0);
+     ffio_wfourcc(pb, "dOps");
+     avio_w8(pb, 0); /* Version */
+@@ -807,12 +808,22 @@ static int mov_write_dops_tag(AVFormatCo
+     /* extradata contains an Ogg OpusHead, other than byte-ordering and
+        OpusHead's preceeding magic/version, OpusSpecificBox is currently
+        identical. */
+-    avio_w8(pb, AV_RB8(track->par->extradata + 9)); /* OuputChannelCount */
++    channels = AV_RB8(track->par->extradata + 9);
++    channel_map = AV_RB8(track->par->extradata + 18);
++
++    avio_w8(pb, channels); /* OuputChannelCount */
+     avio_wb16(pb, AV_RL16(track->par->extradata + 10)); /* PreSkip */
+     avio_wb32(pb, AV_RL32(track->par->extradata + 12)); /* InputSampleRate */
+     avio_wb16(pb, AV_RL16(track->par->extradata + 16)); /* OutputGain */
++    avio_w8(pb, channel_map); /* ChannelMappingFamily */
+     /* Write the rest of the header out without byte-swapping. */
+-    avio_write(pb, track->par->extradata + 18, track->par->extradata_size - 18);
++    if (channel_map) {
++        if (track->par->extradata_size < 21 + channels) {
++            av_log(s, AV_LOG_ERROR, "invalid extradata size\n");
++            return AVERROR_INVALIDDATA;
++        }
++        avio_write(pb, track->par->extradata + 19, 2 + channels); /* ChannelMappingTable */
++    }
+ 
+     return update_size(pb, pos);
+ }
+@@ -2166,11 +2177,13 @@ static int mov_write_video_tag(AVFormatC
+         avio_wb16(pb, 0x18); /* Reserved */
+ 
+     if (track->mode == MODE_MOV && track->par->format == AV_PIX_FMT_PAL8) {
+-        int pal_size = 1 << track->par->bits_per_coded_sample;
+-        int i;
++        int pal_size, i;
+         avio_wb16(pb, 0);             /* Color table ID */
+         avio_wb32(pb, 0);             /* Color table seed */
+         avio_wb16(pb, 0x8000);        /* Color table flags */
++        if (track->par->bits_per_coded_sample < 0 || track->par->bits_per_coded_sample > 8)
++            return AVERROR(EINVAL);
++        pal_size = 1 << track->par->bits_per_coded_sample;
+         avio_wb16(pb, pal_size - 1);  /* Color table size (zero-relative) */
+         for (i = 0; i < pal_size; i++) {
+             uint32_t rgb = track->palette[i];
+Index: jellyfin-ffmpeg/libavformat/mpegts.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/mpegts.c
++++ jellyfin-ffmpeg/libavformat/mpegts.c
+@@ -2026,6 +2026,7 @@ int ff_parse_mpeg2_descriptor(AVFormatCo
+                     return AVERROR_INVALIDDATA;
+                 if (channel_config_code <= 0x8) {
+                     st->codecpar->extradata[9]  = channels = channel_config_code ? channel_config_code : 2;
++                    AV_WL32(&st->codecpar->extradata[12], 48000);
+                     st->codecpar->extradata[18] = channel_config_code ? (channels > 2) : /* Dual Mono */ 255;
+                     st->codecpar->extradata[19] = opus_stream_cnt[channel_config_code];
+                     st->codecpar->extradata[20] = opus_coupled_stream_cnt[channel_config_code];
+Index: jellyfin-ffmpeg/libavformat/mvdec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/mvdec.c
++++ jellyfin-ffmpeg/libavformat/mvdec.c
+@@ -157,6 +157,8 @@ static int parse_audio_var(AVFormatConte
+         return set_channels(avctx, st, var_read_int(pb, size));
+     } else if (!strcmp(name, "SAMPLE_RATE")) {
+         st->codecpar->sample_rate = var_read_int(pb, size);
++        if (st->codecpar->sample_rate <= 0)
++            return AVERROR_INVALIDDATA;
+         avpriv_set_pts_info(st, 33, 1, st->codecpar->sample_rate);
+     } else if (!strcmp(name, "SAMPLE_WIDTH")) {
+         uint64_t bpc = var_read_int(pb, size) * (uint64_t)8;
+Index: jellyfin-ffmpeg/libavformat/mvi.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/mvi.c
++++ jellyfin-ffmpeg/libavformat/mvi.c
+@@ -32,7 +32,6 @@
+ 
+ typedef struct MviDemuxContext {
+     unsigned int (*get_int)(AVIOContext *);
+-    uint32_t audio_data_size;
+     uint64_t audio_size_counter;
+     uint64_t audio_frame_size;
+     int audio_size_left;
+@@ -46,6 +45,7 @@ static int read_header(AVFormatContext *
+     AVStream *ast, *vst;
+     unsigned int version, frames_count, msecs_per_frame, player_version;
+     int ret;
++    int audio_data_size;
+ 
+     ast = avformat_new_stream(s, NULL);
+     if (!ast)
+@@ -67,13 +67,13 @@ static int read_header(AVFormatContext *
+     vst->codecpar->height       = avio_rl16(pb);
+     avio_r8(pb);
+     ast->codecpar->sample_rate  = avio_rl16(pb);
+-    mvi->audio_data_size     = avio_rl32(pb);
++    audio_data_size             = avio_rl32(pb);
+     avio_r8(pb);
+     player_version           = avio_rl32(pb);
+     avio_rl16(pb);
+     avio_r8(pb);
+ 
+-    if (frames_count == 0 || mvi->audio_data_size == 0)
++    if (frames_count == 0 || audio_data_size <= 0)
+         return AVERROR_INVALIDDATA;
+ 
+     if (version != 7 || player_version > 213) {
+@@ -96,16 +96,16 @@ static int read_header(AVFormatContext *
+ 
+     mvi->get_int = (vst->codecpar->width * (int64_t)vst->codecpar->height < (1 << 16)) ? avio_rl16 : avio_rl24;
+ 
+-    mvi->audio_frame_size   = ((uint64_t)mvi->audio_data_size << MVI_FRAC_BITS) / frames_count;
++    mvi->audio_frame_size   = ((uint64_t)audio_data_size << MVI_FRAC_BITS) / frames_count;
+     if (mvi->audio_frame_size <= 1 << MVI_FRAC_BITS - 1) {
+         av_log(s, AV_LOG_ERROR,
+-               "Invalid audio_data_size (%"PRIu32") or frames_count (%u)\n",
+-               mvi->audio_data_size, frames_count);
++               "Invalid audio_data_size (%d) or frames_count (%u)\n",
++               audio_data_size, frames_count);
+         return AVERROR_INVALIDDATA;
+     }
+ 
+     mvi->audio_size_counter = (ast->codecpar->sample_rate * 830 / mvi->audio_frame_size - 1) * mvi->audio_frame_size;
+-    mvi->audio_size_left    = mvi->audio_data_size;
++    mvi->audio_size_left    = audio_data_size;
+ 
+     return 0;
+ }
+Index: jellyfin-ffmpeg/libavformat/mxfdec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/mxfdec.c
++++ jellyfin-ffmpeg/libavformat/mxfdec.c
+@@ -2903,7 +2903,7 @@ static int mxf_read_local_tags(MXFContex
+         meta = NULL;
+         ctx  = mxf;
+     }
+-    while (avio_tell(pb) + 4 < klv_end && !avio_feof(pb)) {
++    while (avio_tell(pb) + 4ULL < klv_end && !avio_feof(pb)) {
+         int ret;
+         int tag = avio_rb16(pb);
+         int size = avio_rb16(pb); /* KLV specified by 0x53 */
+Index: jellyfin-ffmpeg/libavformat/rpl.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/rpl.c
++++ jellyfin-ffmpeg/libavformat/rpl.c
+@@ -103,7 +103,7 @@ static AVRational read_fps(const char* l
+         // Truncate any numerator too large to fit into an int64_t
+         if (num > (INT64_MAX - 9) / 10 || den > INT64_MAX / 10)
+             break;
+-        num  = 10 * num + *line - '0';
++        num  = 10 * num + (*line - '0');
+         den *= 10;
+     }
+     if (!num)
+@@ -207,8 +207,10 @@ static int rpl_read_header(AVFormatConte
+             ast->codecpar->bits_per_coded_sample = 4;
+ 
+         ast->codecpar->bit_rate = ast->codecpar->sample_rate *
+-                                  ast->codecpar->bits_per_coded_sample *
+-                                  ast->codecpar->channels;
++                                  (int64_t)ast->codecpar->channels;
++        if (ast->codecpar->bit_rate > INT64_MAX / ast->codecpar->bits_per_coded_sample)
++            return AVERROR_INVALIDDATA;
++        ast->codecpar->bit_rate *= ast->codecpar->bits_per_coded_sample;
+ 
+         ast->codecpar->codec_id = AV_CODEC_ID_NONE;
+         switch (audio_format) {
+@@ -334,7 +336,7 @@ static int rpl_read_packet(AVFormatConte
+ 
+         avio_skip(pb, 4); /* flags */
+         frame_size = avio_rl32(pb);
+-        if (avio_seek(pb, -8, SEEK_CUR) < 0)
++        if (avio_feof(pb) || avio_seek(pb, -8, SEEK_CUR) < 0 || !frame_size)
+             return AVERROR(EIO);
+ 
+         ret = av_get_packet(pb, pkt, frame_size);
+Index: jellyfin-ffmpeg/libavformat/utils.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/utils.c
++++ jellyfin-ffmpeg/libavformat/utils.c
+@@ -1208,7 +1208,9 @@ static void update_initial_durations(AVF
+             (pktl->pkt.dts == AV_NOPTS_VALUE ||
+              pktl->pkt.dts == st->first_dts ||
+              pktl->pkt.dts == RELATIVE_TS_BASE) &&
+-            !pktl->pkt.duration) {
++            !pktl->pkt.duration &&
++            av_sat_add64(cur_dts, duration) == cur_dts + (uint64_t)duration
++        ) {
+             pktl->pkt.dts = cur_dts;
+             if (!st->internal->avctx->has_b_frames)
+                 pktl->pkt.pts = cur_dts;
+@@ -3913,7 +3915,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
+                 break;
+             }
+             if (pkt->duration) {
+-                if (avctx->codec_type == AVMEDIA_TYPE_SUBTITLE && pkt->pts != AV_NOPTS_VALUE && st->start_time != AV_NOPTS_VALUE && pkt->pts >= st->start_time) {
++                if (avctx->codec_type == AVMEDIA_TYPE_SUBTITLE && pkt->pts != AV_NOPTS_VALUE && st->start_time != AV_NOPTS_VALUE && pkt->pts >= st->start_time
++                    && (uint64_t)pkt->pts - st->start_time < INT64_MAX
++                ) {
+                     st->internal->info->codec_info_duration = FFMIN(pkt->pts - st->start_time, st->internal->info->codec_info_duration + pkt->duration);
+                 } else
+                     st->internal->info->codec_info_duration += pkt->duration;
+@@ -4059,7 +4063,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
+ 
+             if (!st->r_frame_rate.num) {
+                 if (    avctx->time_base.den * (int64_t) st->time_base.num
+-                    <= avctx->time_base.num * avctx->ticks_per_frame * (uint64_t) st->time_base.den) {
++                    <= avctx->time_base.num * (uint64_t)avctx->ticks_per_frame * st->time_base.den) {
+                     av_reduce(&st->r_frame_rate.num, &st->r_frame_rate.den,
+                               avctx->time_base.den, (int64_t)avctx->time_base.num * avctx->ticks_per_frame, INT_MAX);
+                 } else {
+Index: jellyfin-ffmpeg/libavformat/wtvdec.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/wtvdec.c
++++ jellyfin-ffmpeg/libavformat/wtvdec.c
+@@ -817,7 +817,7 @@ static int parse_chunks(AVFormatContext
+                 avio_skip(pb, 12);
+                 ff_get_guid(pb, &formattype);
+                 size = avio_rl32(pb);
+-                if (size < 0 || size > INT_MAX - 92)
++                if (size < 0 || size > INT_MAX - 92 - consumed)
+                     return AVERROR_INVALIDDATA;
+                 parse_media_type(s, 0, sid, mediatype, subtype, formattype, size);
+                 consumed += 92 + size;
+@@ -833,7 +833,7 @@ static int parse_chunks(AVFormatContext
+                 avio_skip(pb, 12);
+                 ff_get_guid(pb, &formattype);
+                 size = avio_rl32(pb);
+-                if (size < 0 || size > INT_MAX - 76)
++                if (size < 0 || size > INT_MAX - 76 - consumed)
+                     return AVERROR_INVALIDDATA;
+                 parse_media_type(s, s->streams[stream_index], sid, mediatype, subtype, formattype, size);
+                 consumed += 76 + size;
+Index: jellyfin-ffmpeg/libavutil/cpu.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/cpu.c
++++ jellyfin-ffmpeg/libavutil/cpu.c
+@@ -291,6 +291,12 @@ int av_cpu_count(void)
+     DWORD_PTR proc_aff, sys_aff;
+     if (GetProcessAffinityMask(GetCurrentProcess(), &proc_aff, &sys_aff))
+         nb_cpus = av_popcount64(proc_aff);
++#elif HAVE_SYSCTL && defined(HW_NCPUONLINE)
++    int mib[2] = { CTL_HW, HW_NCPUONLINE };
++    size_t len = sizeof(nb_cpus);
++
++    if (sysctl(mib, 2, &nb_cpus, &len, NULL, 0) == -1)
++        nb_cpus = 0;
+ #elif HAVE_SYSCTL && defined(HW_NCPU)
+     int mib[2] = { CTL_HW, HW_NCPU };
+     size_t len = sizeof(nb_cpus);
+Index: jellyfin-ffmpeg/tests/ref/fate/ts-opus-demux
+===================================================================
+--- jellyfin-ffmpeg.orig/tests/ref/fate/ts-opus-demux
++++ jellyfin-ffmpeg/tests/ref/fate/ts-opus-demux
+@@ -1,4 +1,4 @@
+-#extradata 0:       30, 0x53be0347
++#extradata 0:       30, 0x69290482
+ #tb 0: 1/90000
+ #media_type 0: audio
+ #codec_id 0: opus
