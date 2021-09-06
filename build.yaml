@@ -3,9 +3,6 @@
 name: "jellyfin-ffmpeg"
 version: "4.4-1"
 packages:
-  - stretch-amd64
-  - stretch-armhf
-  - stretch-arm64
   - buster-amd64
   - buster-armhf
   - buster-arm64
