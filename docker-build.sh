@@ -39,13 +39,19 @@ prepare_extra_common() {
     mkdir build
     pushd build
     nasmver="$(nasm -v | cut -d ' ' -f3)"
+    nasmminver="2.13.02"
     nasmavx512ver="2.14.0"
-    if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then
-        avx512=true
+    if [ "$(printf '%s\n' "$nasmminver" "$nasmver" | sort -V | head -n1)" = "$nasmminver" ]; then
+        export ENABLE_X86_DAV1D=true
+        if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then
+            avx512=true
+        else
+            avx512=false
+        fi
     else
-        avx512=false
+        export ENABLE_X86_DAV1D=false
     fi
-    if [ "${ARCH}" = "amd64" ]; then
+    if [ "${ENABLE_X86_DAV1D}" = "true" ] && [ "${ARCH}" = "amd64" ]; then
         meson -Denable_asm=true \
               -Denable_avx512=$avx512 \
               -Denable_tests=false \
@@ -55,7 +61,9 @@ prepare_extra_common() {
         meson install
         cp ${TARGET_DIR}/lib/x86_64-linux-gnu/pkgconfig/dav1d.pc  /usr/lib/pkgconfig
         cp ${TARGET_DIR}/lib/x86_64-linux-gnu/*dav1d* ${SOURCE_DIR}/dav1d
-    else
+        echo "dav1d/*dav1d* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    fi
+    if [ "${ARCH}" = "armhf" ] || [ "${ARCH}" = "arm64" ]; then
         meson -Denable_asm=true \
               -Denable_avx512=false \
               -Ddefault_library=shared \
@@ -66,8 +74,8 @@ prepare_extra_common() {
         meson install
         cp ${TARGET_DIR}/lib/pkgconfig/dav1d.pc  /usr/lib/pkgconfig
         cp ${TARGET_DIR}/lib/*dav1d* ${SOURCE_DIR}/dav1d
+        echo "dav1d/*dav1d* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
     fi
-    echo "dav1d/*dav1d* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
     popd
     popd
     popd
