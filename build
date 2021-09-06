@@ -120,7 +120,12 @@ make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_version} ARCH=${arch}
 docker build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}
 docker run --rm -e "RELEASE=${release}" -v "${package_temporary_dir}:/dist" "${image_name}"
-# Move the APKs to the parent directory
-mkdir ../bin &>/dev/null || true
-mmv "${package_temporary_dir}/deb/*.deb" "../bin/#1.deb"
-mmv "${package_temporary_dir}/deb/*_${arch}.*" "../bin/#1-${cli_release}_${arch}.#2"
+# If no 3rd parameter was specified, move APKs to parent directory
+if [[ -z ${3} ]]; then
+    path="../bin"
+else
+    path="${3}"
+fi
+mkdir ${path} &>/dev/null || true
+mmv "${package_temporary_dir}/deb/*.deb" "${path}/#1.deb"
+mmv "${package_temporary_dir}/deb/*_${arch}.*" "${path}/#1-${cli_release}_${arch}.#2"

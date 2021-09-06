@@ -1,0 +1,48 @@
+name: Build Linux
+
+on:
+  push:
+    branches:
+      - jellyfin
+
+  pull_request:
+    branches:
+      - jellyfin
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.release }} ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        release:
+          - bullseye
+          - buster
+          - stretch
+          - groovy
+          - focal
+          - bionic
+
+        arch:
+          - amd64
+          - arm64
+          - armhf
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install make and mmv
+        run: sudo apt-get install make mmv
+
+      - name: Build
+        run: ./build ${{ matrix.release }} ${{ matrix.arch }} dist
+
+      - name: Upload Packages
+        uses: actions/upload-artifact@v2.2.3
+        with:
+          name: ${{ matrix.release }} ${{ matrix.arch }} package
+          path: dist
