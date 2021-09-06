@@ -42,9 +42,6 @@ jobs:
       - name: Install make and mmv
         run: sudo apt-get install make mmv
 
-      - name: Install Docker
-        uses: docker-practice/actions-setup-docker@v1
-
       - name: Build
         run: ./build ${{ matrix.release }} ${{ matrix.arch }} dist
 
