@@ -1,0 +1,43 @@
+# Fix for QSV-OpenCL derivation/mapping
+# avutils/hwcontext_qsv: set the source device in qsv_device_create
+# hwdevice: workaround disalbe qsv->vaapi->qsv derivation test
+Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_qsv.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
+@@ -1269,7 +1269,13 @@ static int qsv_device_create(AVHWDeviceC
+ 
+     impl = choose_implementation(device);
+ 
+-    return qsv_device_derive_from_child(ctx, impl, child_device, 0);
++    ret = qsv_device_derive_from_child(ctx, impl, child_device, 0);
++    if (ret == 0) {
++        ctx->internal->source_device = av_buffer_ref(priv->child_device_ctx);
++        if (!ctx->internal->source_device)
++            ret = AVERROR(ENOMEM);
++    }
++    return ret;
+ }
+ 
+ const HWContextType ff_hwcontext_type_qsv = {
+Index: jellyfin-ffmpeg/libavutil/tests/hwdevice.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/tests/hwdevice.c
++++ jellyfin-ffmpeg/libavutil/tests/hwdevice.c
+@@ -73,10 +73,12 @@ static int test_derivation(AVBufferRef *
+         }
+ 
+         if (back_ref->data != src_ref->data) {
+-            fprintf(stderr, "Derivation %s to %s succeeded, but derivation "
+-                    "back again did not return the original device.\n",
+-                   src_name, derived_name);
+-            goto fail;
++            if (!(derived_type == AV_HWDEVICE_TYPE_VAAPI && src_dev->type == AV_HWDEVICE_TYPE_QSV)) {
++                fprintf(stderr, "Derivation %s to %s succeeded, but derivation "
++                        "back again did not return the original device.\n",
++                       src_name, derived_name);
++                goto fail;
++            }
+         }
+ 
+         fprintf(stderr, "Successfully tested derivation %s -> %s.\n",

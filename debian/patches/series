@@ -7,3 +7,4 @@
 0007-fix-for-fmp4-in-hlsenc.patch
 0008-fix-nvdec-exceeded-32-surfaces-error.patch
 0009-fix-for-nvenc-from-upstream.patch
+0010-fix-for-qsv-opencl-derivation-mapping.patch
