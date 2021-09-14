@@ -8,3 +8,4 @@
 0008-fix-nvdec-exceeded-32-surfaces-error.patch
 0009-fix-for-nvenc-from-upstream.patch
 0010-fix-for-qsv-opencl-derivation-mapping.patch
+0011-fix-for-frame-mapping-in-hwcontext_opencl.patch

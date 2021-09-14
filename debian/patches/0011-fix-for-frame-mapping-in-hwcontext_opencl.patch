@@ -1,0 +1,32 @@
+Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_opencl.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
+@@ -2004,7 +2004,8 @@ static int opencl_map_frame(AVHWFramesCo
+             goto fail;
+         }
+ 
+-        dst->data[p] = map->address[p];
++        dst->data[p]     = map->address[p];
++        dst->linesize[p] = row_pitch;
+ 
+         av_log(hwfc, AV_LOG_DEBUG, "Map plane %d (%p -> %p).\n",
+                p, src->data[p], dst->data[p]);
+@@ -2329,7 +2330,7 @@ static void opencl_unmap_from_dxva2(AVHW
+ {
+     AVOpenCLFrameDescriptor    *desc = hwmap->priv;
+     OpenCLDeviceContext *device_priv = dst_fc->device_ctx->internal->priv;
+-    OpenCLFramesContext *frames_priv = dst_fc->device_ctx->internal->priv;
++    OpenCLFramesContext *frames_priv = dst_fc->internal->priv;
+     cl_event event;
+     cl_int cle;
+ 
+@@ -2493,7 +2494,7 @@ static void opencl_unmap_from_d3d11(AVHW
+ {
+     AVOpenCLFrameDescriptor    *desc = hwmap->priv;
+     OpenCLDeviceContext *device_priv = dst_fc->device_ctx->internal->priv;
+-    OpenCLFramesContext *frames_priv = dst_fc->device_ctx->internal->priv;
++    OpenCLFramesContext *frames_priv = dst_fc->internal->priv;
+     cl_event event;
+     cl_int cle;
+ 
