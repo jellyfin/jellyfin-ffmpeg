@@ -42,17 +42,18 @@ prepare_extra_common() {
     nasmminver="2.13.02"
     nasmavx512ver="2.14.0"
     if [ "$(printf '%s\n' "$nasmminver" "$nasmver" | sort -V | head -n1)" = "$nasmminver" ]; then
-        export ENABLE_X86_DAV1D=true
+        x86asm=true
         if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then
             avx512=true
         else
             avx512=false
         fi
     else
-        export ENABLE_X86_DAV1D=false
+        x86asm=false
+        avx512=false
     fi
-    if [ "${ENABLE_X86_DAV1D}" = "true" ] && [ "${ARCH}" = "amd64" ]; then
-        meson -Denable_asm=true \
+    if [ "${ARCH}" = "amd64" ]; then
+        meson -Denable_asm=$x86asm \
               -Denable_avx512=$avx512 \
               -Denable_tests=false \
               -Ddefault_library=shared \
