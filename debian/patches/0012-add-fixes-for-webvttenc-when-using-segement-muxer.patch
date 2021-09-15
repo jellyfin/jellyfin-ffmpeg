@@ -1,0 +1,36 @@
+# libavformat/webvttenc: Allow (but discard) additional streams
+
+# This allows having a video stream as reference stream  when using the segment muxer:
+
+# The video stream serves as a kind of 'heartbeat' to ensure that VTT segments are generated regularly, even when there aren't any subtitle packets for a while.
+
+# Example:
+# ffmpeg -i INPUT -map 0:3 -c:0 webvtt -map 0:0 -c:v:0 copy -f segment -segment_format webvtt -segment_time 6 -write_empty_segments 1 -y "sub_segment3%d.vtt"
+
+# Co-authored-by: SoftWorkz <softworkz@hotmail.com>
+
+Index: jellyfin-ffmpeg/libavformat/webvttenc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/webvttenc.c
++++ jellyfin-ffmpeg/libavformat/webvttenc.c
+@@ -49,8 +49,8 @@ static int webvtt_write_header(AVFormatC
+     AVCodecParameters *par = ctx->streams[0]->codecpar;
+     AVIOContext *pb = ctx->pb;
+ 
+-    if (ctx->nb_streams != 1 || par->codec_id != AV_CODEC_ID_WEBVTT) {
+-        av_log(ctx, AV_LOG_ERROR, "Exactly one WebVTT stream is needed.\n");
++    if (par->codec_id != AV_CODEC_ID_WEBVTT) {
++        av_log(ctx, AV_LOG_ERROR, "First stream must be WebVTT.\n");
+         return AVERROR(EINVAL);
+     }
+ 
+@@ -67,6 +67,9 @@ static int webvtt_write_packet(AVFormatC
+     buffer_size_t id_size, settings_size;
+     uint8_t *id, *settings;
+ 
++    if (pkt->stream_index != 0)
++        return 0;
++
+     avio_printf(pb, "\n");
+ 
+     id = av_packet_get_side_data(pkt, AV_PKT_DATA_WEBVTT_IDENTIFIER,
