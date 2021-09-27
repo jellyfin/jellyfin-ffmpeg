@@ -1,0 +1,556 @@
+Index: jellyfin-ffmpeg/libavfilter/opencl/colorspace_common.cl
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/opencl/colorspace_common.cl
++++ jellyfin-ffmpeg/libavfilter/opencl/colorspace_common.cl
+@@ -62,58 +62,52 @@ float3 get_chroma_sample(float3 a, float
+ 
+ // linearizer for PQ/ST2084
+ float eotf_st2084(float x) {
+-    if (x > 0.0f) {
+-        float xpow = powr(x, 1.0f / ST2084_M2);
+-        float num = max(xpow - ST2084_C1, 0.0f);
+-        float den = max(ST2084_C2 - ST2084_C3 * xpow, FLOAT_EPS);
+-        x = powr(num / den, 1.0f / ST2084_M1);
+-        return x * ST2084_MAX_LUMINANCE / REFERENCE_WHITE;
+-    } else {
+-        return 0.0f;
+-    }
++    x = max(x, 0.0f);
++    float xpow = native_powr(x, 1.0f / ST2084_M2);
++    float num = max(xpow - ST2084_C1, 0.0f);
++    float den = max(ST2084_C2 - ST2084_C3 * xpow, FLOAT_EPS);
++    x = native_powr(num / den, 1.0f / ST2084_M1);
++    return x * ST2084_MAX_LUMINANCE / REFERENCE_WHITE;
+ }
+ 
+ // delinearizer for PQ/ST2084
+ float inverse_eotf_st2084(float x) {
+-    if (x > 0.0f) {
+-        x *= REFERENCE_WHITE / ST2084_MAX_LUMINANCE;
+-        float xpow = powr(x, ST2084_M1);
++    x = max(x, 0.0f);
++    x *= REFERENCE_WHITE / ST2084_MAX_LUMINANCE;
++    float xpow = native_powr(x, ST2084_M1);
+ #if 0
+-        // Original formulation from SMPTE ST 2084:2014 publication.
+-        float num = ST2084_C1 + ST2084_C2 * xpow;
+-        float den = 1.0f + ST2084_C3 * xpow;
+-        return powr(num / den, ST2084_M2);
++    // Original formulation from SMPTE ST 2084:2014 publication.
++    float num = ST2084_C1 + ST2084_C2 * xpow;
++    float den = 1.0f + ST2084_C3 * xpow;
++    return native_powr(num / den, ST2084_M2);
+ #else
+-        // More stable arrangement that avoids some cancellation error.
+-        float num = (ST2084_C1 - 1.0f) + (ST2084_C2 - ST2084_C3) * xpow;
+-        float den = 1.0f + ST2084_C3 * xpow;
+-        return powr(1.0f + num / den, ST2084_M2);
++    // More stable arrangement that avoids some cancellation error.
++    float num = (ST2084_C1 - 1.0f) + (ST2084_C2 - ST2084_C3) * xpow;
++    float den = 1.0f + ST2084_C3 * xpow;
++    return native_powr(1.0f + num / den, ST2084_M2);
+ #endif
+-    } else {
+-        return 0.0f;
+-    }
+ }
+ 
+ float ootf_1_2(float x) {
+-    return x < 0.0f ? x : powr(x, 1.2f);
++    return x < 0.0f ? x : native_powr(x, 1.2f);
+ }
+ 
+ float inverse_ootf_1_2(float x) {
+-    return x < 0.0f ? x : powr(x, 1.0f / 1.2f);
++    return x < 0.0f ? x : native_powr(x, 1.0f / 1.2f);
+ }
+ 
+ float oetf_arib_b67(float x) {
+     x = max(x, 0.0f);
+     return x <= (1.0f / 12.0f)
+-           ? sqrt(3.0f * x)
+-           : (ARIB_B67_A * log(12.0f * x - ARIB_B67_B) + ARIB_B67_C);
++           ? native_sqrt(3.0f * x)
++           : (ARIB_B67_A * native_log(12.0f * x - ARIB_B67_B) + ARIB_B67_C);
+ }
+ 
+ float inverse_oetf_arib_b67(float x) {
+     x = max(x, 0.0f);
+     return x <= 0.5f
+            ? (x * x) * (1.0f / 3.0f)
+-           : (exp((x - ARIB_B67_C) / ARIB_B67_A) + ARIB_B67_B) * (1.0f / 12.0f);
++           : (native_exp((x - ARIB_B67_C) / ARIB_B67_A) + ARIB_B67_B) * (1.0f / 12.0f);
+ }
+ 
+ // linearizer for HLG/ARIB-B67
+@@ -126,21 +120,52 @@ float inverse_eotf_arib_b67(float x) {
+     return oetf_arib_b67(inverse_ootf_1_2(x));
+ }
+ 
++// delinearizer for BT709, BT2020-10
+ float inverse_eotf_bt1886(float x) {
+-    return x < 0.0f ? 0.0f : powr(x, 1.0f / 2.4f);
++    return x < 0.0f ? 0.0f : native_powr(x, 1.0f / 2.4f);
+ }
+ 
+ float oetf_bt709(float x) {
+-    x = max(0.0f, x);
++    x = max(x, 0.0f);
+     return x < BT709_BETA
+            ? (x * 4.5f)
+-           : (BT709_ALPHA * powr(x, 0.45f) - (BT709_ALPHA - 1.0f));
++           : (BT709_ALPHA * native_powr(x, 0.45f) - (BT709_ALPHA - 1.0f));
+ }
+ 
+ float inverse_oetf_bt709(float x) {
+     return x < (4.5f * BT709_BETA)
+            ? (x / 4.5f)
+-           : (powr((x + (BT709_ALPHA - 1.0f)) / BT709_ALPHA, 1.0f / 0.45f));
++           : (native_powr((x + (BT709_ALPHA - 1.0f)) / BT709_ALPHA, 1.0f / 0.45f));
++}
++
++#ifdef TRC_LUT
++float linearize_lut(float x) {
++    return lin_lut[clamp(convert_int(x * 1023.0f), 0, 1024)];
++}
++
++float delinearize_lut(float x) {
++    return delin_lut[clamp(convert_int(x * 1023.0f), 0, 1024)];
++}
++#endif
++
++float linearize_pq(float x) {
++#ifdef TRC_LUT_PQ
++    return pqlin_lut[clamp(convert_int(x * 1023.0f), 0, 1024)];
++#elif defined(TRC_LUT)
++    return linearize_lut(x);
++#else
++    return eotf_st2084(x);
++#endif
++}
++
++float delinearize_pq(float x) {
++#ifdef TRC_LUT_PQ
++    return pqdelin_lut[clamp(convert_int(x * 1023.0f), 0, 1024)];
++#elif defined(TRC_LUT)
++    return delinearize_lut(x);
++#else
++    return inverse_eotf_st2084(x);
++#endif
+ }
+ 
+ float3 yuv2rgb(float y, float u, float v) {
+Index: jellyfin-ffmpeg/libavfilter/opencl/tonemap.cl
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/opencl/tonemap.cl
++++ jellyfin-ffmpeg/libavfilter/opencl/tonemap.cl
+@@ -22,12 +22,19 @@ extern float3 lrgb2yuv(float3);
+ extern float  lrgb2y(float3);
+ extern float3 yuv2lrgb(float3);
+ extern float3 lrgb2lrgb(float3);
++extern float  linearize_pq(float);
++extern float  delinearize_pq(float);
++extern float  inverse_eotf_st2084(float);
+ extern float  get_luma_src(float3);
+ extern float  get_luma_dst(float3);
+-extern float  eotf_st2084(float);
+-extern float  inverse_eotf_st2084(float);
+ extern float3 get_chroma_sample(float3, float3, float3, float3);
+ 
++#ifdef TONEMAP_LUT
++float tonemapping_lut(float x) {
++    return tonemap_lut[clamp(convert_int(x * 1023.0f), 0, 1024)];
++}
++#endif
++
+ float hable_f(float in) {
+     float a = 0.15f, b = 0.50f, c = 0.10f, d = 0.20f, e = 0.02f, f = 0.30f;
+     return (in * (in * a + b * c) + d * e) / (in * (in * a + b) + d * f) - e / f;
+@@ -43,7 +50,7 @@ float linear(float s, float peak, float
+ 
+ float gamma(float s, float peak, float target_peak) {
+     float p = s > 0.05f ? s / peak : 0.05f / peak;
+-    float v = powr(p, 1.0f / tone_param);
++    float v = native_powr(p, 1.0f / tone_param);
+     return s > 0.05f ? v : (s * v / 0.05f);
+ }
+ 
+@@ -74,21 +81,23 @@ float mobius(float s, float peak, float
+ 
+ float bt2390(float s, float peak, float target_peak) {
+     float peak_pq = inverse_eotf_st2084(peak);
+-    float scale = 1.0f / peak_pq;
+-
+-    float s_pq = inverse_eotf_st2084(s) * scale;
+-    float maxLum = inverse_eotf_st2084(target_peak) * scale;
++    float s_pq = peak_pq > 0.0f
++                 ? (inverse_eotf_st2084(s) / peak_pq)
++                 : inverse_eotf_st2084(s);
++    float max_lum = peak_pq > 0.0f
++                    ? (inverse_eotf_st2084(target_peak) / peak_pq)
++                    : inverse_eotf_st2084(target_peak);
+ 
+-    float ks = 1.5f * maxLum - 0.5f;
++    float ks = 1.5f * max_lum - 0.5f;
+     float tb = (s_pq - ks) / (1.0f - ks);
+     float tb2 = tb * tb;
+     float tb3 = tb2 * tb;
+     float pb = (2.0f * tb3 - 3.0f * tb2 + 1.0f) * ks +
+                (tb3 - 2.0f * tb2 + tb) * (1.0f - ks) +
+-               (-2.0f * tb3 + 3.0f * tb2) * maxLum;
+-    float sig = (s_pq < ks) ? s_pq : pb;
++               (-2.0f * tb3 + 3.0f * tb2) * max_lum;
++    float sig = mix(pb, s_pq, s_pq < ks);
+ 
+-    return eotf_st2084(sig * peak_pq);
++    return linearize_pq(sig * peak_pq);
+ }
+ 
+ float3 map_one_pixel_rgb(float3 rgb, float peak) {
+@@ -108,19 +117,19 @@ float3 map_one_pixel_rgb(float3 rgb, flo
+     if (desat_param > 0.0f) {
+         float luma = get_luma_dst(rgb);
+         float coeff = max(sig - 0.18f, FLOAT_EPS) / max(sig, FLOAT_EPS);
+-        coeff = powr(coeff, 10.0f / desat_param);
++        coeff = native_powr(coeff, 10.0f / desat_param);
+         rgb = mix(rgb, (float3)luma, (float3)coeff);
+     }
+ 
+     sig = TONE_FUNC(sig, peak, target_peak);
+-
+     sig = min(sig, 1.0f);
+     rgb *= (sig / sig_old);
++
+     return rgb;
+ }
+ 
+ // Map from source space YUV to destination space RGB
+-float3 map_to_dst_space_from_yuv(float3 yuv, float peak) {
++float3 map_to_dst_space_from_yuv(float3 yuv) {
+     float3 c = yuv2lrgb(yuv);
+     c = lrgb2lrgb(c);
+     return c;
+@@ -162,16 +171,10 @@ __kernel void tonemap(__write_only image
+         float2 uv = read_imagef(src2, sampler, (int2)(xi, yi)).xy;
+ #endif
+ 
+-        float3 c0 = map_to_dst_space_from_yuv((float3)(y0, uv.x, uv.y), peak);
+-        float3 c1 = map_to_dst_space_from_yuv((float3)(y1, uv.x, uv.y), peak);
+-        float3 c2 = map_to_dst_space_from_yuv((float3)(y2, uv.x, uv.y), peak);
+-        float3 c3 = map_to_dst_space_from_yuv((float3)(y3, uv.x, uv.y), peak);
+-
+-        float sig0 = max(c0.x, max(c0.y, c0.z));
+-        float sig1 = max(c1.x, max(c1.y, c1.z));
+-        float sig2 = max(c2.x, max(c2.y, c2.z));
+-        float sig3 = max(c3.x, max(c3.y, c3.z));
+-        float sig = max(sig0, max(sig1, max(sig2, sig3)));
++        float3 c0 = map_to_dst_space_from_yuv((float3)(y0, uv.x, uv.y));
++        float3 c1 = map_to_dst_space_from_yuv((float3)(y1, uv.x, uv.y));
++        float3 c2 = map_to_dst_space_from_yuv((float3)(y2, uv.x, uv.y));
++        float3 c3 = map_to_dst_space_from_yuv((float3)(y3, uv.x, uv.y));
+ 
+         c0 = map_one_pixel_rgb(c0, peak);
+         c1 = map_one_pixel_rgb(c1, peak);
+Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/vf_tonemap_opencl.c
++++ jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
+@@ -34,6 +34,22 @@
+ 
+ #define OPENCL_SOURCE_NB 3
+ 
++#define FLOAT_EPS 1.175494351e-38f
++
++#undef REFERENCE_WHITE
++#define REFERENCE_WHITE 203.0f
++#define ST2084_MAX_LUMINANCE 10000.0f
++
++#define ST2084_M1 0.1593017578125f
++#define ST2084_M2 78.84375f
++#define ST2084_C1 0.8359375f
++#define ST2084_C2 18.8515625f
++#define ST2084_C3 18.6875f
++
++#define ARIB_B67_A 0.17883277f
++#define ARIB_B67_B 0.28466892f
++#define ARIB_B67_C 0.55991073f
++
+ static const enum AVPixelFormat supported_formats[] = {
+     AV_PIX_FMT_YUV420P,
+     AV_PIX_FMT_YUV420P16,
+@@ -66,6 +82,9 @@ typedef struct TonemapOpenCLContext {
+     const AVPixFmtDescriptor *in_desc, *out_desc;
+     int in_planes, out_planes;
+ 
++    float *lin_lut, *delin_lut;
++    float *pqlin_lut, *pqdelin_lut;
++
+     enum TonemapAlgorithm tonemap;
+     enum AVPixelFormat    format;
+     double                peak;
+@@ -73,6 +92,7 @@ typedef struct TonemapOpenCLContext {
+     double                desat_param;
+     double                target_peak;
+     double                scene_threshold;
++    int                   lut_trc;
+     int                   initialised;
+     cl_kernel             kernel;
+     cl_command_queue      command_queue;
+@@ -109,6 +129,158 @@ static const char *const tonemap_func[TO
+     [TONEMAP_BT2390]   = "bt2390",
+ };
+ 
++// linearizer for PQ/ST2084
++static float eotf_st2084(float x)
++{
++    x = FFMAX(x, 0.0f);
++    float xpow = powf(x, 1.0f / ST2084_M2);
++    float num = FFMAX(xpow - ST2084_C1, 0.0f);
++    float den = FFMAX(ST2084_C2 - ST2084_C3 * xpow, FLOAT_EPS);
++    x = powf(num / den, 1.0f / ST2084_M1);
++    return x * ST2084_MAX_LUMINANCE / REFERENCE_WHITE;
++}
++
++// delinearizer for PQ/ST2084
++static float inverse_eotf_st2084(float x)
++{
++    x = FFMAX(x, 0.0f);
++    x *= REFERENCE_WHITE / ST2084_MAX_LUMINANCE;
++    float xpow = powf(x, ST2084_M1);
++#if 0
++    // Original formulation from SMPTE ST 2084:2014 publication.
++    float num = ST2084_C1 + ST2084_C2 * xpow;
++    float den = 1.0f + ST2084_C3 * xpow;
++    return powf(num / den, ST2084_M2);
++#else
++    // More stable arrangement that avoids some cancellation error.
++    float num = (ST2084_C1 - 1.0f) + (ST2084_C2 - ST2084_C3) * xpow;
++    float den = 1.0f + ST2084_C3 * xpow;
++    return powf(1.0f + num / den, ST2084_M2);
++#endif
++}
++
++static float ootf_1_2(float x) {
++    return x > 0.0f ? powf(x, 1.2f) : x;
++}
++
++static float inverse_ootf_1_2(float x) {
++    return x > 0.0f ? powf(x, 1.0f / 1.2f) : x;
++}
++
++static float oetf_arib_b67(float x) {
++    x = FFMAX(x, 0.0f);
++    return x <= (1.0f / 12.0f)
++           ? sqrtf(3.0f * x)
++           : (ARIB_B67_A * logf(12.0f * x - ARIB_B67_B) + ARIB_B67_C);
++}
++
++static float inverse_oetf_arib_b67(float x) {
++    x = FFMAX(x, 0.0f);
++    return x <= 0.5f
++           ? (x * x) * (1.0f / 3.0f)
++           : (expf((x - ARIB_B67_C) / ARIB_B67_A) + ARIB_B67_B) * (1.0f / 12.0f);
++}
++
++// linearizer for HLG/ARIB-B67
++static float eotf_arib_b67(float x) {
++    return ootf_1_2(inverse_oetf_arib_b67(x));
++}
++
++// delinearizer for HLG/ARIB-B67
++static float inverse_eotf_arib_b67(float x) {
++    return oetf_arib_b67(inverse_ootf_1_2(x));
++}
++
++// delinearizer for BT709, BT2020-10
++static float inverse_eotf_bt1886(float x) {
++    return x < 0.0f ? 0.0f : powf(x, 1.0f / 2.4f);
++}
++
++static float linearize(float x, enum AVColorTransferCharacteristic trc_in)
++{
++    if (trc_in == AVCOL_TRC_SMPTE2084)
++        return eotf_st2084(x);
++    else if (trc_in == AVCOL_TRC_ARIB_STD_B67)
++        return eotf_arib_b67(x);
++    else
++        return x;
++}
++
++static float delinearize(float x, enum AVColorTransferCharacteristic trc_out)
++{
++    if (trc_out == AVCOL_TRC_BT709 || trc_out == AVCOL_TRC_BT2020_10)
++        return inverse_eotf_bt1886(x);
++    if (trc_out == AVCOL_TRC_SMPTE2084)
++        return inverse_eotf_st2084(x);
++    else
++        return x;
++}
++
++static int compute_trc_luts(AVFilterContext *avctx)
++{
++    TonemapOpenCLContext *ctx = avctx->priv;
++    int lut_pq = ctx->tonemap == TONEMAP_BT2390 && ctx->trc_in != AVCOL_TRC_SMPTE2084;
++    int i;
++
++    if (!ctx->lin_lut && !(ctx->lin_lut = av_calloc(1024, sizeof(float))))
++        return AVERROR(ENOMEM);
++    if (!ctx->delin_lut && !(ctx->delin_lut = av_calloc(1024, sizeof(float))))
++        return AVERROR(ENOMEM);
++    if (lut_pq) {
++        if (!ctx->pqlin_lut && !(ctx->pqlin_lut = av_calloc(1024, sizeof(float))))
++            return AVERROR(ENOMEM);
++        if (!ctx->pqdelin_lut && !(ctx->pqdelin_lut = av_calloc(1024, sizeof(float))))
++            return AVERROR(ENOMEM);
++    }
++
++    for (i = 0; i < 1024; i++) {
++        float x = i / 1023.0f;
++        ctx->lin_lut[i] = FFMAX(linearize(x, ctx->trc_in), 0.0f);
++        ctx->delin_lut[i] = FFMAX(delinearize(x, ctx->trc_out), 0.0f);
++        if (lut_pq) {
++            ctx->pqlin_lut[i] = FFMAX(linearize(x, AVCOL_TRC_SMPTE2084), 0.0f);
++            ctx->pqdelin_lut[i] = FFMAX(delinearize(x, AVCOL_TRC_SMPTE2084), 0.0f);
++        }
++    }
++
++    return 0;
++}
++
++static void print_opencl_const_trc_luts(AVFilterContext *avctx, AVBPrint *buf)
++{
++    TonemapOpenCLContext *ctx = avctx->priv;
++    int i;
++
++    if (ctx->lin_lut) {
++        av_bprintf(buf, "__constant float lin_lut[1024] = {\n");
++        for (i = 0; i < 1024; i++) {
++            av_bprintf(buf, " %.5ff,", ctx->lin_lut[i]);
++        }
++        av_bprintf(buf, "};\n");
++    }
++    if (ctx->delin_lut) {
++        av_bprintf(buf, "__constant float delin_lut[1024] = {\n");
++        for (i = 0; i < 1024; i++) {
++            av_bprintf(buf, " %.5ff,", ctx->delin_lut[i]);
++        }
++        av_bprintf(buf, "};\n");
++    }
++    if (ctx->pqlin_lut) {
++        av_bprintf(buf, "__constant float pqlin_lut[1024] = {\n");
++        for (i = 0; i < 1024; i++) {
++            av_bprintf(buf, " %.5ff,", ctx->pqlin_lut[i]);
++        }
++        av_bprintf(buf, "};\n");
++    }
++    if (ctx->pqdelin_lut) {
++        av_bprintf(buf, "__constant float pqdelin_lut[1024] = {\n");
++        for (i = 0; i < 1024; i++) {
++            av_bprintf(buf, " %.5ff,", ctx->pqdelin_lut[i]);
++        }
++        av_bprintf(buf, "};\n");
++    }
++}
++
+ static void get_rgb2rgb_matrix(enum AVColorPrimaries in, enum AVColorPrimaries out,
+                                double rgb2rgb[3][3]) {
+     double rgb2xyz[3][3], xyz2rgb[3][3];
+@@ -128,6 +300,7 @@ static int tonemap_opencl_init(AVFilterC
+     double rgb2rgb[3][3], rgb2yuv[3][3], yuv2rgb[3][3];
+     const struct LumaCoefficients *luma_src, *luma_dst;
+     cl_int cle;
++    int lut_pq = ctx->tonemap == TONEMAP_BT2390 && ctx->trc_in != AVCOL_TRC_SMPTE2084;
+     int err;
+ 
+     switch(ctx->tonemap) {
+@@ -192,12 +365,6 @@ static int tonemap_opencl_init(AVFilterC
+     if (ctx->out_planes > 2)
+         av_bprintf(&header, "#define NON_SEMI_PLANAR_OUT\n");
+ 
+-    av_bprintf(&header, "#define powr native_powr\n");
+-    av_bprintf(&header, "#define exp native_exp\n");
+-    av_bprintf(&header, "#define log native_log\n");
+-    av_bprintf(&header, "#define log10 native_log10\n");
+-    av_bprintf(&header, "#define sqrt native_sqrt\n");
+-
+     if (ctx->primaries_out != ctx->primaries_in) {
+         get_rgb2rgb_matrix(ctx->primaries_in, ctx->primaries_out, rgb2rgb);
+         rgb2rgb_passthrough = 0;
+@@ -244,10 +411,22 @@ static int tonemap_opencl_init(AVFilterC
+     av_bprintf(&header, "__constant float3 luma_dst = {%.4ff, %.4ff, %.4ff};\n",
+                luma_dst->cr, luma_dst->cg, luma_dst->cb);
+ 
+-    av_bprintf(&header, "#define linearize %s\n",
+-               linearize_funcs[ctx->trc_in]);
+-    av_bprintf(&header, "#define delinearize %s\n",
+-               delinearize_funcs[ctx->trc_out]);
++    if (ctx->lut_trc) {
++        if (!ctx->lin_lut || !ctx->delin_lut) {
++            err = compute_trc_luts(avctx);
++            if (err < 0)
++                goto fail;
++        }
++        print_opencl_const_trc_luts(avctx, &header);
++        if (lut_pq)
++            av_bprintf(&header, "#define TRC_LUT_PQ\n");
++        av_bprintf(&header, "#define TRC_LUT\n");
++        av_bprintf(&header, "#define linearize %s\n", "linearize_lut");
++        av_bprintf(&header, "#define delinearize %s\n", "delinearize_lut");
++    } else {
++        av_bprintf(&header, "#define linearize %s\n", linearize_funcs[ctx->trc_in]);
++        av_bprintf(&header, "#define delinearize %s\n", delinearize_funcs[ctx->trc_out]);
++    }
+ 
+     av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
+     opencl_sources[0] = header.str;
+@@ -277,6 +456,14 @@ fail:
+         clReleaseCommandQueue(ctx->command_queue);
+     if (ctx->kernel)
+         clReleaseKernel(ctx->kernel);
++    if (ctx->lin_lut)
++        av_freep(&ctx->lin_lut);
++    if (ctx->delin_lut)
++        av_freep(&ctx->delin_lut);
++    if (ctx->pqlin_lut)
++        av_freep(&ctx->pqlin_lut);
++    if (ctx->pqdelin_lut)
++        av_freep(&ctx->pqdelin_lut);
+     return err;
+ }
+ 
+@@ -420,8 +607,10 @@ static int tonemap_opencl_filter_frame(A
+     if (err < 0)
+         goto fail;
+ 
+-    if (!ctx->peak)
++    if (!ctx->peak) {
+         ctx->peak = ff_determine_signal_peak(input);
++        av_log(ctx, AV_LOG_DEBUG, "Computed signal peak: %f\n", ctx->peak);
++    }
+ 
+     if (ctx->trc != -1)
+         output->color_trc = ctx->trc;
+@@ -499,6 +688,15 @@ static av_cold void tonemap_opencl_unini
+                    "command queue: %d.\n", cle);
+     }
+ 
++    if (ctx->lin_lut)
++        av_freep(&ctx->lin_lut);
++    if (ctx->delin_lut)
++        av_freep(&ctx->delin_lut);
++    if (ctx->pqlin_lut)
++        av_freep(&ctx->pqlin_lut);
++    if (ctx->pqdelin_lut)
++        av_freep(&ctx->pqdelin_lut);
++
+     ff_opencl_filter_uninit(avctx);
+ }
+ 
+@@ -537,6 +735,7 @@ static const AVOption tonemap_opencl_opt
+     { "param",     "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, { .dbl = NAN }, DBL_MIN, DBL_MAX, FLAGS },
+     { "desat",     "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, { .dbl = 0.5}, 0, DBL_MAX, FLAGS },
+     { "threshold", "Scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, { .dbl = 0.2 }, 0, DBL_MAX, FLAGS },
++    { "luttrc",    "Enable LUT for de/linearize",   OFFSET(lut_trc), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
+     { NULL }
+ };
+ 
