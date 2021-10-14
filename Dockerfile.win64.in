@@ -1,0 +1,45 @@
+FROM DISTRO
+
+# Docker build arguments
+ARG SOURCE_DIR=/ffmpeg
+ARG ARTIFACT_DIR=/dist
+
+# Docker run environment
+ENV DEBIAN_FRONTEND=noninteractive \
+    SOURCE_DIR=/ffmpeg \
+    ARTIFACT_DIR=/dist \
+    FF_REV=FFMPEG_REV \
+    FF_PREFIX=/opt/ffmpeg \
+    FF_DEPS_PREFIX=/opt/ffdeps \
+    FF_TOOLCHAIN=x86_64-w64-mingw32 \
+    FF_CROSS_PREFIX=x86_64-w64-mingw32- \
+    FF_CMAKE_TOOLCHAIN=${SOURCE_DIR}/toolchain-win64.cmake \
+    FF_MESON_TOOLCHAIN=${SOURCE_DIR}/cross-win64.meson \
+    FF_TARGET_FLAGS="--arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- --pkg-config=pkg-config --pkg-config-flags=--static" \
+    PKG_CONFIG=pkg-config \
+    PKG_CONFIG_LIBDIR=/opt/ffdeps/lib/pkgconfig:/opt/ffdeps/share/pkgconfig \
+    CFLAGS="-static-libgcc -static-libstdc++ -I/opt/ffdeps/include -mtune=generic -O2 -pipe -D_FORTIFY_SOURCE=0" \
+    CXXFLAGS="-static-libgcc -static-libstdc++ -I/opt/ffdeps/include -mtune=generic -O2 -pipe -D_FORTIFY_SOURCE=0" \
+    LDFLAGS="-static-libgcc -static-libstdc++ -L/opt/ffdeps/lib -O2 -pipe" \
+    DLLTOOL="x86_64-w64-mingw32-dlltool"
+
+# Prepare Debian and mingw-w64 build environment
+RUN \
+    apt-get -y update && \
+    apt-get -y install build-essential yasm nasm xxd pkgconf git curl wget unzip subversion autoconf automake libtool libtool-bin autopoint cmake clang texinfo texi2html help2man flex bison gperf gettext itstool ragel libc6-dev libssl-dev gtk-doc-tools gobject-introspection gawk meson ninja-build p7zip-full python3-distutils python3-apt python-is-python3 zip quilt binutils-mingw-w64-x86-64 gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 gfortran-mingw-w64-x86-64 && \
+    rm /usr/lib/gcc/*-w64-mingw32/*/libstdc++*.dll* && \
+    rm /usr/lib/gcc/*-w64-mingw32/*/libgcc_s* && \
+    rm /usr/lib/gcc/*-w64-mingw32/*/*.dll.a && \
+    rm /usr/*-w64-mingw32/lib/*.dll.a
+
+# Prepare build script and patches
+RUN \
+    mkdir -p /opt/ffmpeg /opt/ffdeps ${SOURCE_DIR} && \
+    ln -sf ${SOURCE_DIR}/debian/patches ${SOURCE_DIR} && \
+    ln -sf ${SOURCE_DIR}/docker-build-win64.sh /docker-build-win64.sh
+
+VOLUME ${ARTIFACT_DIR}/
+
+COPY . ${SOURCE_DIR}/
+
+ENTRYPOINT ["/docker-build-win64.sh"]
