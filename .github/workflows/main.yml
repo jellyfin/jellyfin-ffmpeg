@@ -1,4 +1,4 @@
-name: Build Linux
+name: Build jellyfin-ffmpeg
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build_linux:
     name: Build ${{ matrix.release }} ${{ matrix.arch }}
     runs-on: ubuntu-latest
 
@@ -45,4 +45,25 @@ jobs:
         uses: actions/upload-artifact@v2.2.3
         with:
           name: ${{ matrix.release }} ${{ matrix.arch }} package
+          path: dist
+  build_win64:
+    name: Build windows win64
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install make
+        run: sudo apt-get install make
+
+      - name: Build
+        run: ./build-win64 dist
+
+      - name: Upload Packages
+        uses: actions/upload-artifact@v2.2.3
+        with:
+          name: windows win64 package
           path: dist
