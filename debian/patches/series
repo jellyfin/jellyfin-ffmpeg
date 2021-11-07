@@ -19,3 +19,4 @@
 0019-add-miscellaneous-fixes-for-QSV-from-upstream.patch
 0020-add-miscellaneous-fixes-for-NV-from-upstream.patch
 0021-add-qsv-dec-support-for-yuv444-8-10bit.patch
+0022-add-fixes-for-warning-on-overlay-filters.patch
