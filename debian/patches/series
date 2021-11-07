@@ -20,3 +20,4 @@
 0020-add-miscellaneous-fixes-for-NV-from-upstream.patch
 0021-add-qsv-dec-support-for-yuv444-8-10bit.patch
 0022-add-fixes-for-warning-on-overlay-filters.patch
+0023-add-fixes-for-HEVC-10-bit-HDR-decoding-in-bsf.patch
