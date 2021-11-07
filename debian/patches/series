@@ -11,3 +11,4 @@
 0011-add-d3d11-support-for-QSV.patch
 0012-add-hw_device_ctx-support-for-qsvdec.patch
 0013-add-qsv-d3d11-opencl-interop.patch
+0014-add-vendor-opts-to-d3d11va-and-bgra-fmt-to-d3d11-dxv.patch
