@@ -27,7 +27,6 @@ jobs:
           - bionic
           - impish
           - hirsute
-          - groovy
 
         arch:
           - amd64

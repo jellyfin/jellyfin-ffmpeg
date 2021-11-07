@@ -9,11 +9,7 @@ usage() {
     echo -e " * bullseye         * arm64"
     echo -e " * xenial"
     echo -e " * bionic"
-    echo -e " * cosmic"
-    echo -e " * disco"
-    echo -e " * eoan"
     echo -e " * focal"
-    echo -e " * groovy"
     echo -e " * hirsute"
     echo -e " * impish"
 }
