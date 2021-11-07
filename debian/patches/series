@@ -7,3 +7,4 @@
 0007-add-pgs-subtitle-support-and-code-refactor-to-opencl.patch
 0008-add-d3d11-opencl-interop-for-AMD.patch
 0009-add-a-hack-for-opencl-reverse-mapping.patch
+0010-add-fixes-for-ffmpeg_hw.patch
