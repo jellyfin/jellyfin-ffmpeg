@@ -63,6 +63,7 @@ typedef struct OverlayCUDAContext {
     enum AVPixelFormat in_format_overlay;
     enum AVPixelFormat in_format_main;
 
+    AVBufferRef *hw_device_ctx;
     AVCUDADeviceContext *hwctx;
 
     CUcontext cu_ctx;
@@ -256,6 +257,9 @@ static av_cold void overlay_cuda_uninit(AVFilterContext *avctx)
         CHECK_CU(cu->cuModuleUnload(ctx->cu_module));
         CHECK_CU(cu->cuCtxPopCurrent(&dummy));
     }
+
+    av_buffer_unref(&ctx->hw_device_ctx);
+    ctx->hwctx = NULL;
 }
 
 /**
@@ -341,13 +345,19 @@ static int overlay_cuda_config_output(AVFilterLink *outlink)
 
     // initialize
 
-    ctx->hwctx = frames_ctx->device_ctx->hwctx;
+    ctx->hw_device_ctx = av_buffer_ref(frames_ctx->device_ref);
+    if (!ctx->hw_device_ctx)
+        return AVERROR(ENOMEM);
+    ctx->hwctx = ((AVHWDeviceContext*)ctx->hw_device_ctx->data)->hwctx;
+
     cuda_ctx = ctx->hwctx->cuda_ctx;
     ctx->fs.time_base = inlink->time_base;
 
     ctx->cu_stream = ctx->hwctx->stream;
 
     outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
+    if (!outlink->hw_frames_ctx)
+        return AVERROR(ENOMEM);
 
     // load functions
 

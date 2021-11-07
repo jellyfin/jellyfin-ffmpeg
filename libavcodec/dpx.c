@@ -242,6 +242,9 @@ static int decode_frame(AVCodecContext *avctx,
         return AVERROR_PATCHWELCOME;
     }
 
+    if (bits_per_color > 31)
+        return AVERROR_INVALIDDATA;
+
     buf += 820;
     avctx->sample_aspect_ratio.num = read32(&buf, endian);
     avctx->sample_aspect_ratio.den = read32(&buf, endian);
@@ -316,7 +319,7 @@ static int decode_frame(AVCodecContext *avctx,
             minCV = av_int2float(i);
             maxCV = av_int2float(j);
             if (bits_per_color >= 1 &&
-                minCV == 0.0f && maxCV == ((1<<bits_per_color) - 1)) {
+                minCV == 0.0f && maxCV == ((1U<<bits_per_color) - 1)) {
                 avctx->color_range = AVCOL_RANGE_JPEG;
             } else if (bits_per_color >= 8 &&
                        minCV == (1  <<(bits_per_color - 4)) &&
