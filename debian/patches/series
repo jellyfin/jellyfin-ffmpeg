@@ -9,3 +9,4 @@
 0009-add-a-hack-for-opencl-reverse-mapping.patch
 0010-add-fixes-for-ffmpeg_hw.patch
 0011-add-d3d11-support-for-QSV.patch
+0012-add-hw_device_ctx-support-for-qsvdec.patch
