@@ -15,3 +15,4 @@
 0015-add-a-vaapi-hwupload-filter.patch
 0016-add-fixes-for-the-broken-vaapi-tonemap.patch
 0017-add-fixes-for-webvttenc-when-using-segement-muxer.patch
+0018-add-fixes-for-nvdec-exceed-32-surfaces-error.patch
