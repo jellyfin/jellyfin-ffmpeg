@@ -8,3 +8,4 @@
 0008-add-d3d11-opencl-interop-for-AMD.patch
 0009-add-a-hack-for-opencl-reverse-mapping.patch
 0010-add-fixes-for-ffmpeg_hw.patch
+0011-add-d3d11-support-for-QSV.patch
