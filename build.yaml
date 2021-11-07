@@ -31,3 +31,6 @@ packages:
   - hirsute-amd64
   - hirsute-armhf
   - hirsute-arm64
+  - impish-amd64
+  - impish-armhf
+  - impish-arm64

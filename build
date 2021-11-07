@@ -15,6 +15,7 @@ usage() {
     echo -e " * focal"
     echo -e " * groovy"
     echo -e " * hirsute"
+    echo -e " * impish"
 }
 
 if [[ -z ${1} ]]; then
@@ -34,7 +35,7 @@ case ${cli_release} in
     ;;
     'bullseye')
         release="debian:bullseye"
-        gcc_version="9"
+        gcc_version="10"
     ;;
     'xenial')
         release="ubuntu:xenial"
@@ -67,6 +68,10 @@ case ${cli_release} in
     'hirsute')
         release="ubuntu:hirsute"
         gcc_version="10"
+    ;;
+    'impish')
+        release="ubuntu:impish"
+        gcc_version="11"
     ;;
     *)
         echo "Invalid release."
