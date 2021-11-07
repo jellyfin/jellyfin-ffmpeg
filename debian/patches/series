@@ -12,3 +12,4 @@
 0012-add-hw_device_ctx-support-for-qsvdec.patch
 0013-add-qsv-d3d11-opencl-interop.patch
 0014-add-vendor-opts-to-d3d11va-and-bgra-fmt-to-d3d11-dxv.patch
+0015-add-a-vaapi-hwupload-filter.patch
