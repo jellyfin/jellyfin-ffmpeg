@@ -22,3 +22,4 @@
 0022-add-fixes-for-warning-on-overlay-filters.patch
 0023-add-fixes-for-HEVC-10-bit-HDR-decoding-in-bsf.patch
 0024-add-sub2video-option-to-subtitles-filter.patch
+0025-add-alphasrc-source-video-filter.patch
