@@ -24,3 +24,4 @@
 0024-add-sub2video-option-to-subtitles-filter.patch
 0025-add-alphasrc-source-video-filter.patch
 0026-add-fixes-for-armhf-build-with-gcc-11.patch
+0027-add-fixes-to-improve-the-performance-of-vaapi-encode.patch
