@@ -5,3 +5,4 @@
 0005-add-opencl-scaler-and-pixfmt-converter-impl.patch
 0006-add-bt2390-eetf-and-code-refactor-to-opencl-tonemap.patch
 0007-add-pgs-subtitle-support-and-code-refactor-to-opencl.patch
+0008-add-d3d11-opencl-interop-for-AMD.patch
