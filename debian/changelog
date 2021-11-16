@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (4.4.1-2) unstable; urgency=medium
+
+  * Remove OMX and MMAL from ARM builds
+
+ -- ferferga <ferferga@hotmail.com>  Sun, 26 Dec 2021 19:58:10 +0100
+ 
 jellyfin-ffmpeg (4.4.1-1) unstable; urgency=medium
 
   * New upstream version 4.4.1
