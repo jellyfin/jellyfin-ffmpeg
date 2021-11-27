@@ -27,3 +27,4 @@
 0027-add-fixes-to-improve-the-performance-of-vaapi-encode.patch
 0028-add-fixes-for-alignment-issue-when-upload-to-qsv.patch
 0029-add-fixes-for-qsv-overlay-to-allow-external-pgssubs.patch
+0030-add-fixes-for-a-vaapi-qsv-mapping-error.patch
