@@ -22,15 +22,14 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-gpl \
 	--enable-version3 \
 	--enable-static \
-	--enable-libfontconfig \
-	--enable-fontconfig \
 	--enable-gmp \
 	--enable-gnutls \
-	--enable-libass \
-	--enable-libbluray \
 	--enable-libdrm \
+	--enable-libass \
 	--enable-libfreetype \
 	--enable-libfribidi \
+	--enable-libfontconfig \
+	--enable-libbluray \
 	--enable-libmp3lame \
 	--enable-libopus \
 	--enable-libtheora \
@@ -63,12 +62,12 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-amf \
 	--enable-libmfx \
 	--enable-vdpau \
+	--enable-ffnvcodec \
 	--enable-cuda \
 	--enable-cuda-llvm \
 	--enable-cuvid \
-	--enable-nvenc \
 	--enable-nvdec \
-	--enable-ffnvcodec \
+	--enable-nvenc \
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
