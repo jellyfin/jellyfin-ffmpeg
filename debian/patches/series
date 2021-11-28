@@ -28,3 +28,4 @@
 0028-add-fixes-for-alignment-issue-when-upload-to-qsv.patch
 0029-add-fixes-for-qsv-overlay-to-allow-external-pgssubs.patch
 0030-add-fixes-for-a-vaapi-qsv-mapping-error.patch
+0031-add-a-vaapi-overlay-filter.patch
