@@ -26,3 +26,4 @@
 0026-add-fixes-for-armhf-build-with-gcc-11.patch
 0027-add-fixes-to-improve-the-performance-of-vaapi-encode.patch
 0028-add-fixes-for-alignment-issue-when-upload-to-qsv.patch
+0029-add-fixes-for-qsv-overlay-to-allow-external-pgssubs.patch
