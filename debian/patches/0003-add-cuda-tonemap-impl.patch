@@ -1,189 +1,8 @@
-Index: jellyfin-ffmpeg/compat/cuda/cuda_runtime.h
-===================================================================
---- jellyfin-ffmpeg.orig/compat/cuda/cuda_runtime.h
-+++ jellyfin-ffmpeg/compat/cuda/cuda_runtime.h
-@@ -33,55 +33,69 @@
- #define max(a, b) ((a) > (b) ? (a) : (b))
- #define min(a, b) ((a) < (b) ? (a) : (b))
- #define abs(x) ((x) < 0 ? -(x) : (x))
-+#define clamp(a, b, c) min(max((a), (b)), (c))
- 
- #define atomicAdd(a, b) (__atomic_fetch_add(a, b, __ATOMIC_SEQ_CST))
- 
- // Basic typedefs
- typedef __device_builtin__ unsigned long long cudaTextureObject_t;
- 
--typedef struct __device_builtin__ __align__(2) uchar2
--{
--    unsigned char x, y;
--} uchar2;
--
--typedef struct __device_builtin__ __align__(4) ushort2
--{
--    unsigned short x, y;
--} ushort2;
--
--typedef struct __device_builtin__ uint3
--{
--    unsigned int x, y, z;
--} uint3;
--
--typedef struct uint3 dim3;
--
--typedef struct __device_builtin__ __align__(8) int2
--{
--    int x, y;
--} int2;
-+#define MAKE_VECTORS(type, base) \
-+typedef struct __device_builtin__ type##1 { \
-+    base x; \
-+} type##1; \
-+static __inline__ __device__ type##1 make_##type##1(base x) { \
-+    type##1 ret; \
-+    ret.x = x; \
-+    return ret; \
-+} \
-+typedef struct __device_builtin__ __align__(sizeof(base) * 2) type##2 { \
-+    base x, y; \
-+} type##2; \
-+static __inline__ __device__ type##2 make_##type##2(base x, base y) { \
-+    type##2 ret; \
-+    ret.x = x; \
-+    ret.y = y; \
-+    return ret; \
-+} \
-+typedef struct __device_builtin__ type##3 { \
-+    base x, y, z; \
-+} type##3; \
-+static __inline__ __device__ type##3 make_##type##3(base x, base y, base z) { \
-+    type##3 ret; \
-+    ret.x = x; \
-+    ret.y = y; \
-+    ret.z = z; \
-+    return ret; \
-+} \
-+typedef struct __device_builtin__ __align__(sizeof(base) * 4) type##4 { \
-+    base x, y, z, w; \
-+} type##4; \
-+static __inline__ __device__ type##4 make_##type##4(base x, base y, base z, base w) { \
-+    type##4 ret; \
-+    ret.x = x; \
-+    ret.y = y; \
-+    ret.z = z; \
-+    ret.w = w; \
-+    return ret; \
-+}
- 
--typedef struct __device_builtin__ __align__(4) uchar4
--{
--    unsigned char x, y, z, w;
--} uchar4;
-+#define MAKE_TYPE
- 
--typedef struct __device_builtin__ __align__(8) ushort4
--{
--    unsigned short x, y, z, w;
--} ushort4;
-+MAKE_VECTORS(uchar, unsigned char)
-+MAKE_VECTORS(ushort, unsigned short)
-+MAKE_VECTORS(int, int)
-+MAKE_VECTORS(uint, unsigned int)
-+MAKE_VECTORS(float, float)
- 
--typedef struct __device_builtin__ __align__(16) int4
--{
--    int x, y, z, w;
--} int4;
-+typedef struct __device_builtin__ uint3 dim3;
- 
- // Accessors for special registers
- #define GETCOMP(reg, comp) \
-     asm("mov.u32 %0, %%" #reg "." #comp ";" : "=r"(tmp)); \
-     ret.comp = tmp;
- 
--#define GET(name, reg) static inline __device__ uint3 name() {\
-+#define GET(name, reg) static __inline__ __device__ uint3 name() {\
-     uint3 ret; \
-     unsigned tmp; \
-     GETCOMP(reg, x) \
-@@ -99,14 +113,8 @@ GET(getThreadIdx, tid)
- #define blockDim (getBlockDim())
- #define threadIdx (getThreadIdx())
- 
--// Basic initializers (simple macros rather than inline functions)
--#define make_uchar2(a, b) ((uchar2){.x = a, .y = b})
--#define make_ushort2(a, b) ((ushort2){.x = a, .y = b})
--#define make_uchar4(a, b, c, d) ((uchar4){.x = a, .y = b, .z = c, .w = d})
--#define make_ushort4(a, b, c, d) ((ushort4){.x = a, .y = b, .z = c, .w = d})
--
- // Conversions from the tex instruction's 4-register output to various types
--#define TEX2D(type, ret) static inline __device__ void conv(type* out, unsigned a, unsigned b, unsigned c, unsigned d) {*out = (ret);}
-+#define TEX2D(type, ret) static __inline__ __device__ void conv(type* out, unsigned a, unsigned b, unsigned c, unsigned d) {*out = (ret);}
- 
- TEX2D(unsigned char, a & 0xFF)
- TEX2D(unsigned short, a & 0xFFFF)
-@@ -117,15 +125,47 @@ TEX2D(ushort4, make_ushort4((unsigned sh
- 
- // Template calling tex instruction and converting the output to the selected type
- template <class T>
--static inline __device__ T tex2D(cudaTextureObject_t texObject, float x, float y)
-+static __inline__ __device__ T tex2D(cudaTextureObject_t texObject, float x, float y)
-+{
-+    T ret;
-+    unsigned ret1, ret2, ret3, ret4;
-+    asm("tex.2d.v4.u32.f32 {%0, %1, %2, %3}, [%4, {%5, %6}];" :
-+        "=r"(ret1), "=r"(ret2), "=r"(ret3), "=r"(ret4) :
-+        "l"(texObject), "f"(x), "f"(y));
-+    conv(&ret, ret1, ret2, ret3, ret4);
-+    return ret;
-+}
-+
-+static __inline__ __device__ float __exp2f(float x)
-+{
-+    float ret;
-+    asm("ex2.approx.f32 %0, %1;" : "=f"(ret) : "f"(x));
-+    return ret;
-+}
-+
-+#define __expf(x) (__exp2f((x) * 1.4427f))
-+
-+static __inline__ __device__ float __log2f(float x)
- {
--  T ret;
--  unsigned ret1, ret2, ret3, ret4;
--  asm("tex.2d.v4.u32.f32 {%0, %1, %2, %3}, [%4, {%5, %6}];" :
--      "=r"(ret1), "=r"(ret2), "=r"(ret3), "=r"(ret4) :
--      "l"(texObject), "f"(x), "f"(y));
--  conv(&ret, ret1, ret2, ret3, ret4);
--  return ret;
-+    float ret;
-+    asm("lg2.approx.f32 %0, %1;" : "=f"(ret) : "f"(x));
-+    return ret;
- }
- 
--#endif /* COMPAT_CUDA_CUDA_RUNTIME_H */
-+#define __logf(x) (__log2f((x)) * 0.693147f)
-+#define __log10f(x) (__log2f((x)) * 0.30103f)
-+
-+static __inline__ __device__ float __powf(float x, float y)
-+{
-+    return __exp2f(y * __log2f(x));
-+}
-+
-+static __inline__ __device__ float __sqrtf(float x)
-+{
-+    float ret;
-+    asm("sqrtf.approx.f32 %0, %1;" : "=f"(ret) : "f"(x));
-+    return ret;
-+}
-+
-+#endif
-+
 Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -3057,6 +3057,8 @@ scale_cuda_filter_deps="ffnvcodec"
+@@ -3058,6 +3058,8 @@ scale_cuda_filter_deps="ffnvcodec"
  scale_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
  thumbnail_cuda_filter_deps="ffnvcodec"
  thumbnail_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
@@ -192,6 +11,15 @@ Index: jellyfin-ffmpeg/configure
  transpose_npp_filter_deps="ffnvcodec libnpp"
  overlay_cuda_filter_deps="ffnvcodec"
  overlay_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
+@@ -6251,7 +6253,7 @@ fi
+ if enabled cuda_nvcc; then
+     nvccflags="$nvccflags -ptx"
+ else
+-    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -Wno-c++11-narrowing -include ${source_link}/compat/cuda/cuda_runtime.h"
++    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -Wno-c++11-narrowing -std=c++14 -include ${source_link}/compat/cuda/cuda_runtime.h"
+     check_nvcc cuda_llvm
+ fi
+ 
 Index: jellyfin-ffmpeg/ffbuild/common.mak
 ===================================================================
 --- jellyfin-ffmpeg.orig/ffbuild/common.mak
@@ -208,7 +36,7 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -449,6 +449,8 @@ OBJS-$(CONFIG_TMEDIAN_FILTER)
+@@ -448,6 +448,8 @@ OBJS-$(CONFIG_TMEDIAN_FILTER)
  OBJS-$(CONFIG_TMIDEQUALIZER_FILTER)          += vf_tmidequalizer.o
  OBJS-$(CONFIG_TMIX_FILTER)                   += vf_mix.o framesync.o
  OBJS-$(CONFIG_TONEMAP_FILTER)                += vf_tonemap.o colorspace.o
@@ -221,7 +49,7 @@ Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -430,6 +430,7 @@ extern AVFilter ff_vf_tmedian;
+@@ -429,6 +429,7 @@ extern AVFilter ff_vf_tmedian;
  extern AVFilter ff_vf_tmidequalizer;
  extern AVFilter ff_vf_tmix;
  extern AVFilter ff_vf_tonemap;
@@ -233,7 +61,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
-@@ -0,0 +1,240 @@
+@@ -0,0 +1,219 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -258,11 +86,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +#include "util.h"
 +#include "libavutil/pixfmt.h"
 +
-+#define BT709_ALPHA 1.09929682680944f
-+#define BT709_BETA  0.018053968510807f
-+
 +#define ST2084_MAX_LUMINANCE 10000.0f
-+#define REFERENCE_WHITE      203.0f
 +
 +#define ST2084_M1 0.1593017578125f
 +#define ST2084_M2 78.84375f
@@ -276,13 +100,14 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +
 +#define FLOAT_EPS 1.175494351e-38f
 +
-+extern const float3 luma_src, luma_dst;
-+extern const enum AVColorTransferCharacteristic trc_src, trc_dst;
-+extern const enum AVColorRange range_src, range_dst;
-+extern const enum AVChromaLocation chroma_loc_src, chroma_loc_dst;
-+extern const bool rgb2rgb_passthrough;
-+extern const float rgb2rgb_matrix[9];
-+extern const float yuv_matrix[9], rgb_matrix[9];
++extern __constant__ const float ref_white;
++extern __constant__ const float3 luma_src, luma_dst;
++extern __constant__ const enum AVColorTransferCharacteristic trc_src, trc_dst;
++extern __constant__ const enum AVColorRange range_src, range_dst;
++extern __constant__ const enum AVChromaLocation chroma_loc_src, chroma_loc_dst;
++extern __constant__ const bool rgb2rgb_passthrough;
++extern __constant__ const float rgb2rgb_matrix[9];
++extern __constant__ const float yuv_matrix[9], rgb_matrix[9];
 +
 +static __inline__ __device__ float get_luma_dst(float3 c, const float3& luma_dst) {
 +    return luma_dst.x * c.x + luma_dst.y * c.y + luma_dst.z * c.z;
@@ -313,44 +138,38 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +
 +// linearizer for PQ/ST2084
 +static __inline__ __device__ float eotf_st2084(float x) {
-+    if (x > 0.0f) {
-+        float xpow = __powf(x, 1.0f / ST2084_M2);
-+        float num = max(xpow - ST2084_C1, 0.0f);
-+        float den = max(ST2084_C2 - ST2084_C3 * xpow, FLOAT_EPS);
-+        x = __powf(num / den, 1.0f / ST2084_M1);
-+        return x * ST2084_MAX_LUMINANCE / REFERENCE_WHITE;
-+    } else {
-+        return 0.0f;
-+    }
++    x = max(x, 0.0f);
++    float xpow = __powf(x, 1.0f / ST2084_M2);
++    float num = max(xpow - ST2084_C1, 0.0f);
++    float den = max(ST2084_C2 - ST2084_C3 * xpow, FLOAT_EPS);
++    x = __powf(num / den, 1.0f / ST2084_M1);
++    return x * ST2084_MAX_LUMINANCE / ref_white;
 +}
 +
 +// delinearizer for PQ/ST2084
 +static __inline__ __device__ float inverse_eotf_st2084(float x) {
-+    if (x > 0.0f) {
-+        x *= REFERENCE_WHITE / ST2084_MAX_LUMINANCE;
-+        float xpow = __powf(x, ST2084_M1);
++    x = max(x, 0.0f);
++    x *= ref_white / ST2084_MAX_LUMINANCE;
++    float xpow = __powf(x, ST2084_M1);
 +#if 0
-+        // Original formulation from SMPTE ST 2084:2014 publication.
-+        float num = ST2084_C1 + ST2084_C2 * xpow;
-+        float den = 1.0f + ST2084_C3 * xpow;
-+        return __powf(num / den, ST2084_M2);
++    // Original formulation from SMPTE ST 2084:2014 publication.
++    float num = ST2084_C1 + ST2084_C2 * xpow;
++    float den = 1.0f + ST2084_C3 * xpow;
++    return __powf(num / den, ST2084_M2);
 +#else
-+        // More stable arrangement that avoids some cancellation error.
-+        float num = (ST2084_C1 - 1.0f) + (ST2084_C2 - ST2084_C3) * xpow;
-+        float den = 1.0f + ST2084_C3 * xpow;
-+        return __powf(1.0f + num / den, ST2084_M2);
++    // More stable arrangement that avoids some cancellation error.
++    float num = (ST2084_C1 - 1.0f) + (ST2084_C2 - ST2084_C3) * xpow;
++    float den = 1.0f + ST2084_C3 * xpow;
++    return __powf(1.0f + num / den, ST2084_M2);
 +#endif
-+    } else {
-+        return 0.0f;
-+    }
 +}
 +
 +static __inline__ __device__ float ootf_1_2(float x) {
-+    return x < 0.0f ? x : __powf(x, 1.2f);
++    return x > 0.0f ? __powf(x, 1.2f) : x;
 +}
 +
 +static __inline__ __device__ float inverse_ootf_1_2(float x) {
-+    return x < 0.0f ? x : __powf(x, 1.0f / 1.2f);
++    return x > 0.0f ? __powf(x, 1.0f / 1.2f) : x;
 +}
 +
 +static __inline__ __device__ float oetf_arib_b67(float x) {
@@ -377,21 +196,9 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +    return oetf_arib_b67(inverse_ootf_1_2(x));
 +}
 +
++// delinearizer for BT709, BT2020-10
 +static __inline__ __device__ float inverse_eotf_bt1886(float x) {
-+    return x < 0.0f ? 0.0f : __powf(x, 1.0f / 2.4f);
-+}
-+
-+static __inline__ __device__ float oetf_bt709(float x) {
-+    x = max(0.0f, x);
-+    return x < BT709_BETA
-+           ? (x * 4.5f)
-+           : (BT709_ALPHA * __powf(x, 0.45f) - (BT709_ALPHA - 1.0f));
-+}
-+
-+static __inline__ __device__ float inverse_oetf_bt709(float x) {
-+    return x < (4.5f * BT709_BETA)
-+           ? (x / 4.5f)
-+           : (__powf((x + (BT709_ALPHA - 1.0f)) / BT709_ALPHA, 1.0f / 0.45f));
++    return x > 0.0f ? __powf(x, 1.0f / 2.4f) : 0.0f;
 +}
 +
 +static __inline__ __device__ float linearize(float x)
@@ -576,8 +383,8 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/pixfmt.h
 +
 +#include "shared.h"
 +
-+extern const enum AVPixelFormat fmt_src, fmt_dst;
-+extern const int depth_src, depth_dst;
++extern __constant__ const enum AVPixelFormat fmt_src, fmt_dst;
++extern __constant__ const int depth_src, depth_dst;
 +
 +// Single-sample read function
 +template<class T, int p>
@@ -827,9 +634,9 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +#include "tonemap.h"
 +#include "util.h"
 +
-+extern const enum TonemapAlgorithm tonemap_func;
-+extern const float tone_param;
-+extern const float desat_param;
++extern __constant__ const enum TonemapAlgorithm tonemap_func;
++extern __constant__ const float tone_param;
++extern __constant__ const float desat_param;
 +
 +#define mix(x, y, a) ((x) + ((y) - (x)) * (a))
 +
@@ -888,19 +695,19 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +static __inline__ __device__
 +float bt2390(float s, float peak, float dst_peak) {
 +    float peak_pq = inverse_eotf_st2084(peak);
-+    float scale = 1.0f / peak_pq;
++    float scale = peak_pq > 0.0f ? (1.0f / peak_pq) : 1.0f;
 +
 +    float s_pq = inverse_eotf_st2084(s) * scale;
-+    float maxLum = inverse_eotf_st2084(dst_peak) * scale;
++    float max_lum = inverse_eotf_st2084(dst_peak) * scale;
 +
-+    float ks = 1.5f * maxLum - 0.5f;
++    float ks = 1.5f * max_lum - 0.5f;
 +    float tb = (s_pq - ks) / (1.0f - ks);
 +    float tb2 = tb * tb;
 +    float tb3 = tb2 * tb;
 +    float pb = (2.0f * tb3 - 3.0f * tb2 + 1.0f) * ks +
 +               (tb3 - 2.0f * tb2 + tb) * (1.0f - ks) +
-+               (-2.0f * tb3 + 3.0f * tb2) * maxLum;
-+    float sig = (s_pq < ks) ? s_pq : pb;
++               (-2.0f * tb3 + 3.0f * tb2) * max_lum;
++    float sig = mix(pb, s_pq, s_pq < ks);
 +
 +    return eotf_st2084(sig * peak_pq);
 +}
@@ -962,7 +769,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +
 +// Map from source space YUV to destination space RGB
 +static __inline__ __device__
-+float3 map_to_dst_space_from_yuv(float3 yuv, float peak) {
++float3 map_to_dst_space_from_yuv(float3 yuv) {
 +    float3 c = yuv2lrgb(yuv);
 +    c = lrgb2lrgb(c);
 +    return c;
@@ -985,10 +792,10 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +        float3 yuv2 = read_px_flt(src, x,     y + 1);
 +        float3 yuv3 = read_px_flt(src, x + 1, y + 1);
 +
-+        float3 c0 = map_to_dst_space_from_yuv(yuv0, src.peak);
-+        float3 c1 = map_to_dst_space_from_yuv(yuv1, src.peak);
-+        float3 c2 = map_to_dst_space_from_yuv(yuv2, src.peak);
-+        float3 c3 = map_to_dst_space_from_yuv(yuv3, src.peak);
++        float3 c0 = map_to_dst_space_from_yuv(yuv0);
++        float3 c1 = map_to_dst_space_from_yuv(yuv1);
++        float3 c2 = map_to_dst_space_from_yuv(yuv2);
++        float3 c3 = map_to_dst_space_from_yuv(yuv3);
 +
 +        c0 = map_one_pixel_rgb(c0, src, dst);
 +        c1 = map_one_pixel_rgb(c1, src, dst);
@@ -1109,7 +916,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,712 @@
+@@ -0,0 +1,720 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1160,6 +967,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    AV_PIX_FMT_P016
 +};
 +
++#define REF_WHITE_BT2390 203.0f
++#define REF_WHITE_DEFAULT 100.0f
++
 +#define DIV_UP(a, b) ( ((a) + (b) - 1) / (b) )
 +#define ALIGN_UP(a, b) (((a) + (b) - 1) & ~((b) - 1))
 +#define NUM_BUFFERS 2
@@ -1201,6 +1011,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CUdeviceptr dstBuffer;
 +
 +    enum TonemapAlgorithm tonemap;
++    double ref_white;
 +    double param;
 +    double desat_param;
 +    double peak;
@@ -1436,6 +1247,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    if (isnan(s->param))
 +        s->param = 1.0f;
 +
++    s->ref_white = s->tonemap == TONEMAP_BT2390 ? REF_WHITE_BT2390
++                                                : REF_WHITE_DEFAULT;
++
 +    s->dst_peak = 1.0f;
 +
 +    if (in_trc == AVCOL_TRC_UNSPECIFIED)
@@ -1514,6 +1328,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CONSTANT(".u32 chroma_loc_src = %i", (int)s->in_chroma_loc);
 +    CONSTANT(".u32 chroma_loc_dst = %i", (int)s->out_chroma_loc);
 +    CONSTANT(".u32 tonemap_func   = %i", (int)s->tonemap);
++    CONSTANT(".f32 ref_white      = %f", s->ref_white);
 +    CONSTANT(".f32 tone_param     = %f", s->param);
 +    CONSTANT(".f32 desat_param    = %f", s->desat_param);
 +    CONSTANT_M("rgb_matrix", rgb_matrix);

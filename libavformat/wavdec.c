@@ -498,6 +498,8 @@ static int wav_read_header(AVFormatContext *s)
             wav->smv_data_ofs = avio_tell(pb) + (size - 5) * 3;
             avio_rl24(pb);
             wav->smv_block_size = avio_rl24(pb);
+            if (!wav->smv_block_size)
+                return AVERROR_INVALIDDATA;
             avpriv_set_pts_info(vst, 32, 1, avio_rl24(pb));
             vst->duration = avio_rl24(pb);
             avio_rl24(pb);
@@ -718,7 +720,7 @@ smv_retry:
         if (wav->smv_last_stream) {
             uint64_t old_pos = avio_tell(s->pb);
             uint64_t new_pos = wav->smv_data_ofs +
-                wav->smv_block * wav->smv_block_size;
+                wav->smv_block * (int64_t)wav->smv_block_size;
             if (avio_seek(s->pb, new_pos, SEEK_SET) < 0) {
                 ret = AVERROR_EOF;
                 goto smv_out;

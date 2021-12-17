@@ -144,6 +144,8 @@ static int decode_uncompressed(AVCodecContext *avctx, GetBitContext *gb,
                 return AVERROR_INVALIDDATA;
             }
             cwi = 10 - av_log2(cwi);
+            if (get_bits_left(gb) < cwi + 1)
+                return AVERROR_INVALIDDATA;
             skip_bits(gb, cwi + 1);
             if (cwi > 5) {
                 newmode = get_bits1(gb);
@@ -209,6 +211,8 @@ static int decode_group3_1d_line(AVCodecContext *avctx, GetBitContext *gb,
     unsigned int run = 0;
     unsigned int t;
     for (;;) {
+        if (get_bits_left(gb) <= 0)
+            return AVERROR_INVALIDDATA;
         t    = get_vlc2(gb, ccitt_vlc[mode].table, 9, 2);
         run += t;
         if (t < 64) {
@@ -227,7 +231,7 @@ static int decode_group3_1d_line(AVCodecContext *avctx, GetBitContext *gb,
             run       = 0;
             mode      = !mode;
         } else if ((int)t == -1) {
-            if (show_bits(gb, 12) == 15) {
+            if (get_bits_left(gb) > 12 && show_bits(gb, 12) == 15) {
                 int ret;
                 skip_bits(gb, 12);
                 ret = decode_uncompressed(avctx, gb, &pix_left, &runs, runend, &mode);
@@ -254,7 +258,10 @@ static int decode_group3_2d_line(AVCodecContext *avctx, GetBitContext *gb,
     unsigned int offs = 0, run = 0;
 
     while (offs < width) {
-        int cmode = get_vlc2(gb, ccitt_group3_2d_vlc.table, 9, 1);
+        int cmode;
+        if (get_bits_left(gb) <= 0)
+            return AVERROR_INVALIDDATA;
+        cmode = get_vlc2(gb, ccitt_group3_2d_vlc.table, 9, 1);
         if (cmode == -1) {
             av_log(avctx, AV_LOG_ERROR, "Incorrect mode VLC\n");
             return AVERROR_INVALIDDATA;
@@ -276,6 +283,8 @@ static int decode_group3_2d_line(AVCodecContext *avctx, GetBitContext *gb,
             for (k = 0; k < 2; k++) {
                 run = 0;
                 for (;;) {
+                    if (get_bits_left(gb) <= 0)
+                        return AVERROR_INVALIDDATA;
                     t = get_vlc2(gb, ccitt_vlc[mode].table, 9, 2);
                     if (t == -1) {
                         av_log(avctx, AV_LOG_ERROR, "Incorrect code\n");
@@ -299,7 +308,10 @@ static int decode_group3_2d_line(AVCodecContext *avctx, GetBitContext *gb,
                 mode = !mode;
             }
         } else if (cmode == 9 || cmode == 10) {
-            int xxx = get_bits(gb, 3);
+            int xxx;
+            if (get_bits_left(gb) < 3)
+                return AVERROR_INVALIDDATA;
+            xxx = get_bits(gb, 3);
             if (cmode == 9 && xxx == 7) {
                 int ret;
                 int pix_left = width - offs;

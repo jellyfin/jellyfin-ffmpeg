@@ -1,12 +1,8 @@
-#From c1fb9225a1b8e26875cb9b4e2b3ae2f4d68c5630 Mon Sep 17 00:00:00 2001
-#From: nyanmisaka <nst799610810@gmail.com>
-#Date: Sun, 24 Jan 2021 19:58:04 +0800
-#Subject: [PATCH] lavfi: add a filter for uploading normal frames to VAAPI
 Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -3577,6 +3577,7 @@ fspp_filter_deps="gpl"
+@@ -3579,6 +3579,7 @@ fspp_filter_deps="gpl"
  headphone_filter_select="fft"
  histeq_filter_deps="gpl"
  hqdn3d_filter_deps="gpl"

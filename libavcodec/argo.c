@@ -59,7 +59,7 @@ static int decode_pal8(AVCodecContext *avctx, uint32_t *pal)
         return AVERROR_INVALIDDATA;
 
     for (int i = 0; i < count; i++)
-        pal[start + i] = (0xFF << 24U) | bytestream2_get_be24u(gb);
+        pal[start + i] = (0xFFU << 24) | bytestream2_get_be24u(gb);
 
     return 0;
 }
@@ -683,6 +683,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
              avctx->pix_fmt = AV_PIX_FMT_BGR0; break;
     default: avpriv_request_sample(s, "depth == %u", avctx->bits_per_raw_sample);
              return AVERROR_PATCHWELCOME;
+    }
+
+    if (avctx->width % 2 || avctx->height % 2) {
+        avpriv_request_sample(s, "Odd dimensions\n");
+        return AVERROR_PATCHWELCOME;
     }
 
     s->frame = av_frame_alloc();

@@ -2026,6 +2026,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                     return AVERROR_INVALIDDATA;
                 if (channel_config_code <= 0x8) {
                     st->codecpar->extradata[9]  = channels = channel_config_code ? channel_config_code : 2;
+                    AV_WL32(&st->codecpar->extradata[12], 48000);
                     st->codecpar->extradata[18] = channel_config_code ? (channels > 2) : /* Dual Mono */ 255;
                     st->codecpar->extradata[19] = opus_stream_cnt[channel_config_code];
                     st->codecpar->extradata[20] = opus_coupled_stream_cnt[channel_config_code];
@@ -2861,8 +2862,8 @@ static int mpegts_resync(AVFormatContext *s, int seekback, const uint8_t *curren
     int64_t back = FFMIN(seekback, pos);
 
     //Special case for files like 01c56b0dc1.ts
-    if (current_packet[0] == 0x80 && current_packet[12] == 0x47) {
-        avio_seek(pb, 12 - back, SEEK_CUR);
+    if (current_packet[0] == 0x80 && current_packet[12] == 0x47 && pos >= TS_PACKET_SIZE) {
+        avio_seek(pb, 12 - TS_PACKET_SIZE, SEEK_CUR);
         return 0;
     }
 

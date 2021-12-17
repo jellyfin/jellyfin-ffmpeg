@@ -165,7 +165,7 @@ static int get_riff(AVFormatContext *s, AVIOContext *pb)
     return 0;
 }
 
-static int read_odml_index(AVFormatContext *s, int frame_num)
+static int read_odml_index(AVFormatContext *s, int64_t frame_num)
 {
     AVIContext *avi     = s->priv_data;
     AVIOContext *pb     = s->pb;
@@ -185,7 +185,7 @@ static int read_odml_index(AVFormatContext *s, int frame_num)
 
     av_log(s, AV_LOG_TRACE,
             "longs_per_entry:%d index_type:%d entries_in_use:%d "
-            "chunk_id:%X base:%16"PRIX64" frame_num:%d\n",
+            "chunk_id:%X base:%16"PRIX64" frame_num:%"PRId64"\n",
             longs_per_entry,
             index_type,
             entries_in_use,
@@ -245,7 +245,7 @@ static int read_odml_index(AVFormatContext *s, int frame_num)
             avio_rl32(pb);       /* size */
             duration = avio_rl32(pb);
 
-            if (avio_feof(pb))
+            if (avio_feof(pb) || offset > INT64_MAX - 8)
                 return AVERROR_INVALIDDATA;
 
             pos = avio_tell(pb);
@@ -1783,7 +1783,10 @@ static int avi_load_index(AVFormatContext *s)
         size = avio_rl32(pb);
         if (avio_feof(pb))
             break;
-        next = avio_tell(pb) + size + (size & 1);
+        next = avio_tell(pb);
+        if (next < 0 || next > INT64_MAX - size - (size & 1))
+            break;
+        next += size + (size & 1LL);
 
         if (tag == MKTAG('i', 'd', 'x', '1') &&
             avi_read_idx1(s, size) >= 0) {

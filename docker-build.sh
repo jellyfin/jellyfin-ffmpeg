@@ -34,7 +34,7 @@ prepare_extra_common() {
 
     # Download and install dav1d
     pushd ${SOURCE_DIR}
-    git clone -b 0.9.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 0.9.2 --depth=1 https://code.videolan.org/videolan/dav1d.git
     pushd dav1d
     mkdir build
     pushd build
@@ -42,17 +42,18 @@ prepare_extra_common() {
     nasmminver="2.13.02"
     nasmavx512ver="2.14.0"
     if [ "$(printf '%s\n' "$nasmminver" "$nasmver" | sort -V | head -n1)" = "$nasmminver" ]; then
-        export ENABLE_X86_DAV1D=true
+        x86asm=true
         if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then
             avx512=true
         else
             avx512=false
         fi
     else
-        export ENABLE_X86_DAV1D=false
+        x86asm=false
+        avx512=false
     fi
-    if [ "${ENABLE_X86_DAV1D}" = "true" ] && [ "${ARCH}" = "amd64" ]; then
-        meson -Denable_asm=true \
+    if [ "${ARCH}" = "amd64" ]; then
+        meson -Denable_asm=$x86asm \
               -Denable_avx512=$avx512 \
               -Denable_tests=false \
               -Ddefault_library=shared \
@@ -102,7 +103,7 @@ prepare_extra_amd64() {
 
     # Download and install libva
     pushd ${SOURCE_DIR}
-    git clone -b v2.12-branch --depth=1 https://github.com/intel/libva
+    git clone --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|NULL|g' va/va.c
@@ -116,7 +117,7 @@ prepare_extra_amd64() {
 
     # Download and install intel-vaapi-driver
     pushd ${SOURCE_DIR}
-    git clone -b v2.4-branch --depth=1 https://github.com/intel/intel-vaapi-driver
+    git clone --depth=1 https://github.com/intel/intel-vaapi-driver
     pushd intel-vaapi-driver
     ./autogen.sh
     ./configure LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri
@@ -129,7 +130,7 @@ prepare_extra_amd64() {
 
     # Download and install gmmlib
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-21.2.1 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-21.3.5 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -142,11 +143,13 @@ prepare_extra_amd64() {
 
     # Download and install MediaSDK
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-21.2.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-21.4.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
-    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+          -DBUILD_SAMPLES=OFF \
+          ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
     echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
@@ -160,7 +163,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     #pushd ${SOURCE_DIR}
-    #git clone -b intel-media-21.2.3 --depth=1 https://github.com/intel/media-driver
+    #git clone -b intel-media-21.4.3 --depth=1 https://github.com/intel/media-driver
     #pushd media-driver
     #mkdir build && pushd build
     #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
