@@ -95,8 +95,8 @@ prepare_extra_amd64() {
 
     # Download and setup AMD AMF headers
     # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
-    svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include
-    pushd include
+    git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+    pushd AMF/amf/public/include
     mkdir -p /usr/include/AMF
     mv * /usr/include/AMF
     popd
