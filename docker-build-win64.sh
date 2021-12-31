@@ -431,8 +431,8 @@ popd
 popd
 
 # OpenCL headers
-svn checkout https://github.com/KhronosGroup/OpenCL-Headers/trunk/CL
-pushd CL
+git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers
+pushd OpenCL-Headers/CL
 mkdir -p ${FF_DEPS_PREFIX}/include/CL
 mv * ${FF_DEPS_PREFIX}/include/CL
 popd
@@ -477,8 +477,8 @@ make PREFIX=${FF_DEPS_PREFIX} install
 popd
 
 # AMF
-svn checkout https://github.com/GPUOpen-LibrariesAndSDKs/AMF/trunk/amf/public/include
-pushd include
+git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+pushd AMF/amf/public/include
 mkdir -p ${FF_DEPS_PREFIX}/include/AMF
 mv * ${FF_DEPS_PREFIX}/include/AMF
 popd

@@ -45,11 +45,8 @@ CONFIG := --prefix=${TARGET_DIR} \
 
 CONFIG_ARM_COMMON := --toolchain=hardened \
 	--enable-cross-compile \
-	--enable-omx \
-	--enable-omx-rpi \
 
 CONFIG_ARM := ${CONFIG_ARM_COMMON} \
-	--enable-mmal \
 	--arch=armhf \
 	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
 

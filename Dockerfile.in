@@ -19,10 +19,12 @@ ENV CFLAGS="-I${TARGET_DIR}/include $CFLAGS"
 
 # Prepare Debian build environment
 RUN apt-get update \
- && yes | apt-get install -y apt-transport-https ninja-build debhelper gnupg wget devscripts mmv equivs git nasm cmake pkg-config subversion dh-autoreconf libdrm-dev libpciaccess-dev python3-pip
+ && yes | apt-get install -y apt-transport-https curl ninja-build debhelper gnupg wget devscripts mmv equivs git nasm cmake pkg-config subversion dh-autoreconf libdrm-dev libpciaccess-dev python3-pip
 
 #Install meson
 RUN pip3 install meson
+# Avoids timeouts when using git
+RUN git config --global http.postbuffer 524288000
 # Link to docker-build script
 RUN ln -sf ${SOURCE_DIR}/docker-build.sh /docker-build.sh
 
