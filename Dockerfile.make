@@ -1,6 +1,6 @@
 #!/usr/bin/make
-DISTRO=stretch
-GCC_VER=6
+DISTRO=bullseye
+GCC_VER=10
 ARCH=amd64
 .PHONY: Dockerfile
 Dockerfile: Dockerfile.in
