@@ -22,7 +22,6 @@ jobs:
         release:
           - bullseye
           - buster
-          - stretch
           - focal
           - bionic
           - impish
