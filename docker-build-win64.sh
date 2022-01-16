@@ -438,23 +438,21 @@ mv * ${FF_DEPS_PREFIX}/include/CL
 popd
 
 # OpenCL ICD loader
-git clone -b v2021.06.30 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+git clone -b v2022.01.04 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 pushd OpenCL-ICD-Loader
-sed -i 's|VERSION "1.2" SOVERSION "1"|PREFIX ""|g' CMakeLists.txt
 mkdir build
 pushd build
 cmake \
     -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
     -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=ON \
+    -DBUILD_SHARED_LIBS=OFF \
     -DOPENCL_ICD_LOADER_HEADERS_DIR=${FF_DEPS_PREFIX}/include \
     -DOPENCL_ICD_LOADER_{PIC,DISABLE_OPENCLON12}=ON \
     -DOPENCL_ICD_LOADER_{BUILD_TESTING,REQUIRE_WDK}=OFF \
     ..
 make -j$(nproc)
 make install
-mv ${FF_DEPS_PREFIX}/lib/libOpenCL.dll.a ${FF_DEPS_PREFIX}/lib/libOpenCL.a
 popd
 mkdir -p ${FF_DEPS_PREFIX}/lib/pkgconfig
 cat > ${FF_DEPS_PREFIX}/lib/pkgconfig/OpenCL.pc << EOF
@@ -467,6 +465,7 @@ Description: OpenCL ICD Loader
 Version: 3.0
 Libs: -L\${libdir} -lOpenCL
 Cflags: -I\${includedir}
+Libs.private: -lole32 -lshlwapi -lcfgmgr32
 EOF
 popd
 
