@@ -130,7 +130,7 @@ prepare_extra_amd64() {
 
     # Download and install gmmlib
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-21.3.5 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.0.2 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -143,7 +143,7 @@ prepare_extra_amd64() {
 
     # Download and install MediaSDK
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-21.4.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-22.1.0 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -162,23 +162,23 @@ prepare_extra_amd64() {
     # Download and install media-driver
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
-    #pushd ${SOURCE_DIR}
-    #git clone -b intel-media-21.4.3 --depth=1 https://github.com/intel/media-driver
-    #pushd media-driver
-    #mkdir build && pushd build
-    #cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
-    #      -DENABLE_KERNELS=ON \
-    #      -DENABLE_NONFREE_KERNELS=ON \
-    #      LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri \
-    #      ..
-    #make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    #echo "intel${TARGET_DIR}/lib/libigfxcmrt.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #mkdir -p ${SOURCE_DIR}/intel/dri
-    #cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
-    #echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    #popd
-    #popd
-    #popd
+    pushd ${SOURCE_DIR}
+    git clone -b intel-media-22.1.1 --depth=1 https://github.com/intel/media-driver
+    pushd media-driver
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+          -DENABLE_KERNELS=ON \
+          -DENABLE_NONFREE_KERNELS=ON \
+          LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri \
+          ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    echo "intel${TARGET_DIR}/lib/libigfxcmrt.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    mkdir -p ${SOURCE_DIR}/intel/dri
+    cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
+    echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
 }
 # Prepare the cross-toolchain
 prepare_crossbuild_env_armhf() {
