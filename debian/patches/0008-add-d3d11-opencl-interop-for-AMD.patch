@@ -55,7 +55,44 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  static void CL_CALLBACK opencl_error_callback(const char *errinfo,
                                                const void *private_info,
                                                size_t cb,
-@@ -820,17 +835,25 @@ static int opencl_device_init(AVHWDevice
+@@ -491,8 +506,10 @@ static int opencl_device_create_internal
+     cl_uint      nb_platforms;
+     cl_platform_id *platforms = NULL;
+     cl_platform_id  platform_id;
++    cl_platform_id  platform_id_default;
+     cl_uint      nb_devices;
+     cl_device_id   *devices = NULL;
++    cl_device_id    device_id_default;
+     AVOpenCLDeviceContext *hwctx = hwdev->hwctx;
+     cl_int cle;
+     cl_context_properties default_props[3];
+@@ -571,6 +588,11 @@ static int opencl_device_create_internal
+             ++found;
+             platform_id      = platforms[p];
+             hwctx->device_id = devices[d];
++
++            if (p == 0 && d == 0) {
++                platform_id_default = platforms[0];
++                device_id_default   = devices[0];
++            }
+         }
+ 
+         av_freep(&devices);
+@@ -582,9 +604,10 @@ static int opencl_device_create_internal
+         goto fail;
+     }
+     if (found > 1) {
+-        av_log(hwdev, AV_LOG_ERROR, "More than one matching device found.\n");
+-        err = AVERROR(ENODEV);
+-        goto fail;
++        av_log(hwdev, AV_LOG_WARNING, "More than one matching device found. "
++               "Default to the first one.\n");
++        platform_id      = platform_id_default;
++        hwctx->device_id = device_id_default;
+     }
+ 
+     if (!props) {
+@@ -820,17 +843,25 @@ static int opencl_device_init(AVHWDevice
  #if HAVE_OPENCL_D3D11
      {
          const char *d3d11_ext = "cl_khr_d3d11_sharing";
@@ -86,7 +123,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
          }
  
          CL_FUNC(clCreateFromD3D11Texture2DKHR,
-@@ -840,6 +863,13 @@ static int opencl_device_init(AVHWDevice
+@@ -840,6 +871,13 @@ static int opencl_device_init(AVHWDevice
          CL_FUNC(clEnqueueReleaseD3D11ObjectsKHR,
                  "D3D11 in OpenCL release");
  
@@ -100,7 +137,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
          if (fail) {
              av_log(hwdev, AV_LOG_WARNING, "D3D11 to OpenCL mapping "
                     "not usable.\n");
-@@ -1242,7 +1272,7 @@ static int opencl_device_derive(AVHWDevi
+@@ -1242,7 +1280,7 @@ static int opencl_device_derive(AVHWDevi
                  CL_CONTEXT_VA_API_DISPLAY_INTEL,
                  (intptr_t)src_hwctx->display,
                  CL_CONTEXT_INTEROP_USER_SYNC,
@@ -109,7 +146,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
                  0,
              };
              OpenCLDeviceSelector selector = {
-@@ -1281,11 +1311,13 @@ static int opencl_device_derive(AVHWDevi
+@@ -1281,11 +1319,13 @@ static int opencl_device_derive(AVHWDevi
                                                      device_handle,
                                                      &device, FALSE);
              if (SUCCEEDED(hr)) {
@@ -124,7 +161,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
                      0,
                  };
                  OpenCLDeviceSelector selector = {
-@@ -1318,11 +1350,13 @@ static int opencl_device_derive(AVHWDevi
+@@ -1318,11 +1358,13 @@ static int opencl_device_derive(AVHWDevi
      case AV_HWDEVICE_TYPE_D3D11VA:
          {
              AVD3D11VADeviceContext *src_hwctx = src_ctx->hwctx;
@@ -139,7 +176,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
                  0,
              };
              OpenCLDeviceSelector selector = {
-@@ -2004,7 +2038,8 @@ static int opencl_map_frame(AVHWFramesCo
+@@ -2004,7 +2046,8 @@ static int opencl_map_frame(AVHWFramesCo
              goto fail;
          }
  
@@ -149,7 +186,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  
          av_log(hwfc, AV_LOG_DEBUG, "Map plane %d (%p -> %p).\n",
                 p, src->data[p], dst->data[p]);
-@@ -2329,7 +2364,7 @@ static void opencl_unmap_from_dxva2(AVHW
+@@ -2329,7 +2372,7 @@ static void opencl_unmap_from_dxva2(AVHW
  {
      AVOpenCLFrameDescriptor    *desc = hwmap->priv;
      OpenCLDeviceContext *device_priv = dst_fc->device_ctx->internal->priv;
@@ -158,7 +195,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      cl_event event;
      cl_int cle;
  
-@@ -2421,11 +2456,13 @@ static int opencl_frames_derive_from_dxv
+@@ -2421,11 +2464,13 @@ static int opencl_frames_derive_from_dxv
      cl_int cle;
      int err, i, p, nb_planes;
  
@@ -174,7 +211,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      nb_planes = 2;
  
      if (src_fc->initial_pool_size == 0) {
-@@ -2493,7 +2530,7 @@ static void opencl_unmap_from_d3d11(AVHW
+@@ -2493,7 +2538,7 @@ static void opencl_unmap_from_d3d11(AVHW
  {
      AVOpenCLFrameDescriptor    *desc = hwmap->priv;
      OpenCLDeviceContext *device_priv = dst_fc->device_ctx->internal->priv;
@@ -183,7 +220,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      cl_event event;
      cl_int cle;
  
-@@ -2501,7 +2538,7 @@ static void opencl_unmap_from_d3d11(AVHW
+@@ -2501,7 +2546,7 @@ static void opencl_unmap_from_d3d11(AVHW
          frames_priv->command_queue, desc->nb_planes, desc->planes,
          0, NULL, &event);
      if (cle != CL_SUCCESS) {
@@ -192,7 +229,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
                 "handle: %d.\n", cle);
      }
  
-@@ -2516,7 +2553,7 @@ static int opencl_map_from_d3d11(AVHWFra
+@@ -2516,7 +2561,7 @@ static int opencl_map_from_d3d11(AVHWFra
      AVOpenCLFrameDescriptor *desc;
      cl_event event;
      cl_int cle;
@@ -201,7 +238,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  
      index = (intptr_t)src->data[1];
      if (index >= frames_priv->nb_mapped_frames) {
-@@ -2530,20 +2567,36 @@ static int opencl_map_from_d3d11(AVHWFra
+@@ -2530,20 +2575,36 @@ static int opencl_map_from_d3d11(AVHWFra
  
      desc = &frames_priv->mapped_frames[index];
  
@@ -246,7 +283,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
          dst->data[i] = (uint8_t*)desc->planes[i];
  
      err = ff_hwframe_map_create(dst->hw_frames_ctx, dst, src,
-@@ -2572,16 +2625,26 @@ static int opencl_frames_derive_from_d3d
+@@ -2572,16 +2633,26 @@ static int opencl_frames_derive_from_d3d
      AVD3D11VAFramesContext *src_hwctx = src_fc->hwctx;
      OpenCLDeviceContext  *device_priv = dst_fc->device_ctx->internal->priv;
      OpenCLFramesContext  *frames_priv = dst_fc->internal->priv;
@@ -278,7 +315,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  
      if (src_fc->initial_pool_size == 0) {
          av_log(dst_fc, AV_LOG_ERROR, "Only fixed-size pools are supported "
-@@ -2604,27 +2667,94 @@ static int opencl_frames_derive_from_d3d
+@@ -2604,27 +2675,94 @@ static int opencl_frames_derive_from_d3d
      for (i = 0; i < frames_priv->nb_mapped_frames; i++) {
          AVOpenCLFrameDescriptor *desc = &frames_priv->mapped_frames[i];
          desc->nb_planes = nb_planes;
