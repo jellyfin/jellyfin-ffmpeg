@@ -2511,3 +2511,16 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      .wrapper_name   = "amf",
      .hw_configs     = ff_amfenc_hw_configs,
  };
+Index: jellyfin-ffmpeg/configure
+===================================================================
+--- jellyfin-ffmpeg.orig/configure
++++ jellyfin-ffmpeg/configure
+@@ -6787,7 +6787,7 @@ fi
+ 
+ enabled amf &&
+     check_cpp_condition amf "AMF/core/Version.h" \
+-        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400090000"
++        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400170000"
+ 
+ # Funny iconv installations are not unusual, so check it after all flags have been set
+ if enabled libc_iconv; then
