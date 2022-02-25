@@ -2,6 +2,7 @@ jellyfin-ffmpeg (4.4.1-2) unstable; urgency=medium
 
   * Fix the OpenCL dynamic linking issue on Win64 (#82)
   * Enable Intel media driver building (#89)
+  * Add libva-utils (#93)
 
  -- nyanmisaka <nst799610810@gmail.com>  Mon, 21 Feb 2022 13:26:03 +0800
 
