@@ -1,0 +1,99 @@
+on:
+  workflow_call:
+    inputs:
+      distro:
+        required: true
+        default: 'debian'
+        type: string
+      codenames:
+        description: 'Stringified JSON object listing target distro codenames'
+        required: false
+        default: "[\"bullseye\"]"
+        type: string
+      architectures:
+        description: 'Stringified JSON object listing target architectures'
+        required: false
+        default: "[\"amd64\"]"
+        type: string
+      release:
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    name: 'Build FFmpeg'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{fromJson(inputs.codenames)}}
+        arch: ${{fromJson(inputs.architectures)}}
+  
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install make and mmv
+        run: sudo apt-get install make mmv
+
+      - name: Build Linux
+        if: ${{ contains(inputs.distro, 'debian') || contains(inputs.distro, 'ubuntu') }}
+        run: ./build ${{ matrix.release }} ${{ matrix.arch }} dist
+
+      - name: Build Windows
+        if: ${{ contains(inputs.distro, 'windows') }}
+        run: ./build-win64 dist
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v2
+        if: ${{ contains(inputs.distro, 'debian') || contains(inputs.distro, 'ubuntu') }}
+        with:
+          name: ${{ inputs.distro }} ${{ matrix.release }} ${{ matrix.arch }} package
+          path: dist
+      
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v2
+        if: ${{ contains(inputs.distro, 'windows') }}
+        with:
+          name: ${{ inputs.distro }} ${{ matrix.arch }} package
+          path: dist
+
+  publish:
+    name: Publish Release
+    if: ${{ inputs.release }}
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{fromJson(inputs.codenames)}}
+        arch: ${{fromJson(inputs.architectures)}}
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2.1.0
+
+      - name: Prepare GH Release Assets
+        run: |-
+          for file in ./*; do
+            md5sum ${file#./} >> ${file%.*}.md5
+            sha256sum ${file#./} >> ${file%.*}.sha256
+          done
+          ls -l
+          
+      - name: Upload GH Release Assets
+        uses: shogo82148/actions-upload-release-asset@v1.5.0
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./*
+
+      - name: Upload Assets
+        uses: burnett01/rsync-deployments@5.2
+        with:
+          switches: -vrptz
+          path: ./*
+          remote_path: /srv/repository/releases/server/${inputs.distro}/versions/jellyfin-ffmpeg/${github.release.tag_name}/
+          remote_host: ${{ secrets.deploy-host }}
+          remote_user: ${{ secrets.deploy-user }}
+          remote_key: ${{ secrets.deploy-key }}
