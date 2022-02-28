@@ -1,36 +1,33 @@
-name: '🏗️ Build and Publish jellyfin-ffmpeg'
+name: '🚀 Build and Publish jellyfin-ffmpeg'
 
 on:
   release:
     types:
-      - published
+      - released
 
 jobs:
   build_publish_debian:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
-    if: ${{ !github.event.release.prerelease }}
     with:
       distro: 'debian'
-      codenames: "[\"buster\", \"bullseye\"]"
-      architectures: "[\"amd64\", \"arm64\", \"armhf\"]"
+      codenames: '["buster", "bullseye"]'
+      architectures: '["amd64", "arm64", "armhf"]'
       release: true
 
   build_publish_ubuntu:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
-    if: ${{ !github.event.release.prerelease }}
     with:
       distro: 'ubuntu'
-      codenames: "[\"focal\", \"bionic\", \"impish\", \"hirsute\"]"
-      architectures: "[\"amd64\", \"arm64\", \"armhf\"]"
+      codenames: '["focal", "bionic", "impish", "hirsute"]'
+      architectures: '["amd64", "arm64", "armhf"]'
       release: true
 
   build_publish_windows:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
-    if: ${{ !github.event.release.prerelease }}
     with:
       distro: 'windows'
-      codenames: "[\"Windows 10\"]"
-      architectures: "[\"win64\"]"
+      codenames: '["Windows 10"]'
+      architectures: '["win64"]'
       release: true
 
   maintain_repository:
@@ -44,35 +41,41 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro:
-          - debian
-          - ubuntu
-          - windows
+        arrays: [
+          {distro: 'debian', codename: 'buster'},
+          {distro: 'debian', codename: 'bullseye'},
+          {distro: 'ubuntu', codename: 'focal'},
+          {distro: 'ubuntu', codename: 'bionic'},
+          {distro: 'ubuntu', codename: 'impish'},
+          {distro: 'ubuntu', codename: 'hirsute'},
+          {distro: 'windows', codename: 'windows'},
+        ]
     steps:
       - name: Sync mirrors and update symlinks
         uses: appleboy/ssh-action@v0.1.4
-        env:
-          DISTRO: ${{ matrix.distro }}
-          RELEASE: ${{ github.release.tag_name }}
         with:
           host: ${{ secrets.deploy-host }}
           username: ${{ secrets.deploy-user }}
           key: ${{ secrets.deploy-key }}
           script_stop: true
-          envs: DISTRO, RELEASE
           script: |-
-            if [ "${DISTRO}" != "windows" ]; then
-              sudo find /srv/repository/releases/server/${DISTRO}/ -type l -name "jellyfin-ffmpeg_*" -exec rm {} \;
-              reprepro -b /srv/repository/${DISTRO} deleteunreferenced
-              reprepro -b /srv/repository/${DISTRO} export
-              find "/srv/repository/${DISTRO}" -name "*.deb" | while read file; do
-                sha256sum ${file#./} > ${file%.*}.sha256
-                reprepro -b /srv/repository/${DISTRO} --export=never --keepunreferencedfiles includedeb ${RELEASE} ${file}
+            version="${github.release.tag_name#v}"
+            basename="jellyfin-ffmpeg_${version}-${matrix.arrays.codename}"
+            if [ "${matrix.distro}" != "windows" ]; then
+              sudo find /srv/repository/releases/server/${matrix.arrays.distro}/ -type l -name "jellyfin-ffmpeg_*" -exec rm {} \;
+              find /srv/repository/releases/server/${matrix.arrays.distro}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
+                reprepro -b /srv/repository/${matrix.distro} --export=never --keepunreferencedfiles includedeb ${matrix.arrays.codename} ${file}
               done
+              sudo find /srv/repository/releases/server/${matrix.distro}/ -type l -name "${basename}_*" -exec rm {} \;
+              reprepro -b /srv/repository/${matrix.distro} deleteunreferenced
+              reprepro -b /srv/repository/${matrix.distro} export
+              sudo rm -f /srv/repository/releases/server/${matrix.distro}/{stable,stable-pre,unstable}/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/stable/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/stable-pre/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/unstable/ffmpeg
+            else
+              sudo rm -f /srv/repository/releases/server/${matrix.distro}/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/ffmpeg
             fi
-            sudo rm -f /srv/repository/releases/server/${DISTRO}/{stable,stable-pre,unstable}/ffmpeg
-            sudo ln -fs /srv/repository/releases/server/${DISTRO}/versions/jellyfin-ffmpeg/${RELEASE} /srv/repository/releases/server/${DISTRO}/stable/ffmpeg
-            sudo ln -fs /srv/repository/releases/server/${DISTRO}/versions/jellyfin-ffmpeg/${RELEASE} /srv/repository/releases/server/${DISTRO}/stable-pre/ffmpeg
-            sudo ln -fs /srv/repository/releases/server/${DISTRO}/versions/jellyfin-ffmpeg/${RELEASE} /srv/repository/releases/server/${DISTRO}/unstable/ffmpeg
-            sudo chown -R root:adm /srv/repository/${DISTRO}
-            sudo chmod -R g+w /srv/repository/${DISTRO}
+            sudo chown -R root:adm /srv/repository/${matrix.distro}
+            sudo chmod -R g+w /srv/repository/${matrix.distro}

@@ -22,22 +22,22 @@ jobs:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
     with:
       distro: 'debian'
-      codenames: "[\"buster\", \"bullseye\"]"
-      architectures: "[\"amd64\", \"arm64\", \"armhf\"]"
+      codenames: '["buster", "bullseye"]'
+      architectures: '["amd64", "arm64", "armhf"]'
       release: false
 
   build_ubuntu:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
     with:
       distro: 'ubuntu'
-      codenames: "[\"focal\", \"bionic\", \"impish\", \"hirsute\"]"
-      architectures: "[\"amd64\", \"arm64\", \"armhf\"]"
+      codenames: '["focal", "bionic", "impish", "hirsute"]'
+      architectures: '["amd64", "arm64", "armhf"]'
       release: false
 
   build_windows:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
     with:
       distro: 'windows'
-      codenames: "[\"Windows 10\"]"
-      architectures: "[\"win64\"]"
+      codenames: '["windows"]'
+      architectures: '["win64"]'
       release: false
