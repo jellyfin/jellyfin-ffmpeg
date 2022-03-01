@@ -19,7 +19,7 @@ on:
 
 jobs:
   build_debian:
-    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
+    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
     with:
       distro: 'debian'
       codenames: '["buster", "bullseye"]'
@@ -27,7 +27,7 @@ jobs:
       release: false
 
   build_ubuntu:
-    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
+    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
     with:
       distro: 'ubuntu'
       codenames: '["focal", "bionic", "impish", "hirsute"]'
@@ -35,7 +35,7 @@ jobs:
       release: false
 
   build_windows:
-    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@master
+    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
     with:
       distro: 'windows'
       codenames: '["windows"]'
