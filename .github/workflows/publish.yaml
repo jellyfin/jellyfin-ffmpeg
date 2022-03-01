@@ -26,13 +26,12 @@ jobs:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
     with:
       distro: 'windows'
-      codenames: '["Windows 10"]'
+      codenames: '["windows"]'
       architectures: '["win64"]'
       release: true
 
   maintain_repository:
     name: Maintain Repository
-    if: ${{ !github.event.release.prerelease && inputs.release }}
     runs-on: ubuntu-latest
     needs:
       - build_publish_debian
@@ -59,23 +58,24 @@ jobs:
           key: ${{ secrets.deploy-key }}
           script_stop: true
           script: |-
-            version="${github.release.tag_name#v}"
-            basename="jellyfin-ffmpeg_${version}-${matrix.arrays.codename}"
-            if [ "${matrix.distro}" != "windows" ]; then
-              sudo find /srv/repository/releases/server/${matrix.arrays.distro}/ -type l -name "jellyfin-ffmpeg_*" -exec rm {} \;
-              find /srv/repository/releases/server/${matrix.arrays.distro}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
-                reprepro -b /srv/repository/${matrix.distro} --export=never --keepunreferencedfiles includedeb ${matrix.arrays.codename} ${file}
+            tag="${{ github.release.tag_name }}"
+            version="${tag#v}"
+            basename="jellyfin-ffmpeg_${version}-${{ matrix.arrays.codename }}"
+            if [ "${{ matrix.arrays.distro }}" != "windows" ]; then
+              sudo find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg_*" -exec rm {} \;
+              find /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
+                reprepro -b /srv/repository/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
               done
-              sudo find /srv/repository/releases/server/${matrix.distro}/ -type l -name "${basename}_*" -exec rm {} \;
-              reprepro -b /srv/repository/${matrix.distro} deleteunreferenced
-              reprepro -b /srv/repository/${matrix.distro} export
-              sudo rm -f /srv/repository/releases/server/${matrix.distro}/{stable,stable-pre,unstable}/ffmpeg
-              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/stable/ffmpeg
-              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/stable-pre/ffmpeg
-              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/unstable/ffmpeg
+              sudo find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "${basename}_*" -exec rm {} \;
+              reprepro -b /srv/repository/${{ matrix.arrays.distro }} deleteunreferenced
+              reprepro -b /srv/repository/${{ matrix.arrays.distro }} export
+              sudo rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable-pre/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg
             else
-              sudo rm -f /srv/repository/releases/server/${matrix.distro}/ffmpeg
-              sudo ln -fs /srv/repository/releases/server/${matrix.distro}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${matrix.distro}/ffmpeg
+              sudo rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
+              sudo ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
             fi
-            sudo chown -R root:adm /srv/repository/${matrix.distro}
-            sudo chmod -R g+w /srv/repository/${matrix.distro}
+            sudo chown -R root:adm /srv/repository/${{ matrix.arrays.distro }}
+            sudo chmod -R g+w /srv/repository/${{ matrix.arrays.distro }}
