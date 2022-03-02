@@ -20,21 +20,22 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
 -    if (vas != VA_STATUS_SUCCESS) {
 -        av_log(avctx, AV_LOG_ERROR, "Failed to sync to picture completion: "
 -               "%d (%s).\n", vas, vaErrorStr(vas));
+-        return AVERROR(EIO);
 +#if VA_CHECK_VERSION(1, 9, 0)
-+    // Try vaSyncBuffer.
-+    vas = vaSyncBuffer(ctx->hwctx->display,
-+                       pic->output_buffer,
-+                       wait ? VA_TIMEOUT_INFINITE : 0);
-+    if (vas == VA_STATUS_ERROR_TIMEDOUT) {
-+        return AVERROR(EAGAIN);
-+    } else if (vas != VA_STATUS_SUCCESS && vas != VA_STATUS_ERROR_UNIMPLEMENTED) {
-+        av_log(avctx, AV_LOG_ERROR, "Failed to sync to output buffer completion: "
++    if (ctx->has_sync_buffer_func) {
++        vas = vaSyncBuffer(ctx->hwctx->display,
++                           pic->output_buffer,
++                           wait ? VA_TIMEOUT_INFINITE : 0);
++        if (vas == VA_STATUS_ERROR_TIMEDOUT) {
++            return AVERROR(EAGAIN);
++        } else if (vas != VA_STATUS_SUCCESS) {
++            av_log(avctx, AV_LOG_ERROR, "Failed to sync to output buffer completion: "
 +                "%d (%s).\n", vas, vaErrorStr(vas));
-         return AVERROR(EIO);
-+    } else if (vas == VA_STATUS_ERROR_UNIMPLEMENTED)
-+    // If vaSyncBuffer is not implemented, try old version API.
++            return AVERROR(EIO);
++        }
++    } else
 +#endif
-+    {
++    { // If vaSyncBuffer is not implemented, try old version API.
 +        if (!wait) {
 +            VASurfaceStatus surface_status;
 +            vas = vaQuerySurfaceStatus(ctx->hwctx->display,
@@ -159,10 +160,18 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
      }
      av_log(avctx, AV_LOG_DEBUG, "Output packet: pts %"PRId64" dts %"PRId64".\n",
             pkt->pts, pkt->dts);
-@@ -2520,6 +2576,11 @@ av_cold int ff_vaapi_encode_init(AVCodec
+@@ -2520,6 +2576,19 @@ av_cold int ff_vaapi_encode_init(AVCodec
          }
      }
  
++#if VA_CHECK_VERSION(1, 9, 0)
++    // Check vaSyncBuffer function.
++    vas = vaSyncBuffer(ctx->hwctx->display, VA_INVALID_ID, 0);
++    if (vas != VA_STATUS_ERROR_UNIMPLEMENTED) {
++        ctx->has_sync_buffer_func = 1;
++    }
++#endif
++
 +    ctx->encode_fifo = av_fifo_alloc(MAX_ASYNC_DEPTH *
 +                                     sizeof(VAAPIEncodePicture *));
 +    if (!ctx->encode_fifo)
@@ -171,7 +180,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
      return 0;
  
  fail:
-@@ -2552,6 +2613,7 @@ av_cold int ff_vaapi_encode_close(AVCode
+@@ -2552,6 +2621,7 @@ av_cold int ff_vaapi_encode_close(AVCode
  
      av_freep(&ctx->codec_sequence_params);
      av_freep(&ctx->codec_picture_params);
@@ -209,25 +218,29 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.h
  
      // Slice structure.
      int slice_block_rows;
-@@ -345,6 +348,10 @@ typedef struct VAAPIEncodeContext {
+@@ -345,6 +348,13 @@ typedef struct VAAPIEncodeContext {
      int             roi_warned;
  
      AVFrame         *frame;
 +
++    // Whether the driver support vaSyncBuffer.
++    int             has_sync_buffer_func;
++    // Store buffered pic.
 +    AVFifoBuffer *encode_fifo;
-+
++    // Max number of frame buffered in encoder.
 +    int async_depth;
  } VAAPIEncodeContext;
  
  enum {
-@@ -455,7 +462,11 @@ int ff_vaapi_encode_close(AVCodecContext
+@@ -455,7 +465,12 @@ int ff_vaapi_encode_close(AVCodecContext
      { "b_depth", \
        "Maximum B-frame reference depth", \
        OFFSET(common.desired_b_depth), AV_OPT_TYPE_INT, \
 -      { .i64 = 1 }, 1, INT_MAX, FLAGS }
 +      { .i64 = 1 }, 1, INT_MAX, FLAGS }, \
 +    { "async_depth", "Maximum processing parallelism. " \
-+      "Increase this to improve single channel performance", \
++      "Increase this to improve single channel performance. This option " \
++      "doesn't work if driver doesn't implement vaSyncBuffer function.", \
 +      OFFSET(common.async_depth), AV_OPT_TYPE_INT, \
 +      { .i64 = 4 }, 0, MAX_ASYNC_DEPTH, FLAGS }
  
