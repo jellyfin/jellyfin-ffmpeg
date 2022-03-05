@@ -141,7 +141,7 @@ prepare_extra_amd64() {
 
     # Download and install gmmlib
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.0.2 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.0.3 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -153,13 +153,16 @@ prepare_extra_amd64() {
     popd
 
     # Download and install MediaSDK
+    # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
+    # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-22.1.0 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-22.2.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DBUILD_SAMPLES=OFF \
+          -DBUILD_TUTORIALS=OFF \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
@@ -169,11 +172,25 @@ prepare_extra_amd64() {
     popd
     popd
 
+    # Download and install oneVPL-intel-gpu
+    # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
+    # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
+    pushd ${SOURCE_DIR}
+    git clone -b intel-onevpl-22.2.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    pushd oneVPL-intel-gpu
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    echo "intel${TARGET_DIR}/lib/libmfx-gen.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
+    popd
+
     # Download and install media-driver
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-22.1.1 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-22.2.2 --depth=1 https://github.com/intel/media-driver
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \

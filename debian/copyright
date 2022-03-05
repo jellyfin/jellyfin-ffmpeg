@@ -1039,6 +1039,13 @@ Comment:
   Intel® Media SDK provides a plain C API to access hardware-accelerated video decode, encode and filtering
   on Intel® Gen graphics hardware platforms. Implementation written in C++ 11 with parts in C-for-Media (CM).
 
+Files: oneVPL-intel-gpu/*
+Copyright: 2021, Intel Corporation
+License: Expat
+Comment:
+  Intel® oneVPL GPU Runtime is a Runtime implementation of oneVPL API for Intel Gen GPUs. Runtime provides
+  access to hardware-accelerated video decode, encode and filtering.
+
 Files: media-driver/*
 Copyright: 2007-2008, Dave Airlie
            2007-2019, Intel Corporation
