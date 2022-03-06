@@ -19,6 +19,13 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      deploy-host:
+        required: false
+      deploy-user:
+        required: false
+      deploy-key:
+        required: false
 
 jobs:
   build:
