@@ -92,7 +92,7 @@ jobs:
       - name: Prepare Release Assets
         run: |-
           pushd artifact
-          for file in *.deb *.zip; do
+          find * -type f \( -name "*.deb" -o -name "*.zip" \) | while read file; do
             sha256sum "${file}" | tee "${file}.sha256sum"
           done
           popd
@@ -101,7 +101,10 @@ jobs:
         uses: shogo82148/actions-upload-release-asset@v1.5.0
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./artifact/*
+          asset_path: |
+            ./artifact/*.zip'
+            ./artifact/*.deb'
+            ./artifact/*.sha256sum'
 
       - name: Make Sure Release Directory Exists
         uses: appleboy/ssh-action@v0.1.4
