@@ -7,12 +7,12 @@ on:
         type: string
       codenames:
         description: 'Stringified JSON object listing target distro codenames'
-        required: false
+        required: true
         default: '["bullseye"]'
         type: string
       architectures:
         description: 'Stringified JSON object listing target architectures'
-        required: false
+        required: true
         default: '["amd64"]'
         type: string
       release:
@@ -51,18 +51,10 @@ jobs:
         if: ${{ contains(inputs.distro, 'windows') }}
         run: ./build-win64 dist
 
-      - name: Upload Linux Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v2.3.1
-        if: ${{ contains(inputs.distro, 'debian') || contains(inputs.distro, 'ubuntu') }}
         with:
-          name: ${{ inputs.distro }} ${{ matrix.release }} ${{ matrix.arch }} package
-          path: dist
-      
-      - name: Upload Windows Artifacts
-        uses: actions/upload-artifact@v2.3.1
-        if: ${{ contains(inputs.distro, 'windows') }}
-        with:
-          name: ${{ inputs.distro }} ${{ matrix.arch }} package
+          name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: dist
 
   publish:
@@ -93,6 +85,9 @@ jobs:
 
       - name: Download Artifacts
         uses: actions/download-artifact@v2.1.0
+        with:
+          name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
+          path: artifact
 
       - name: Prepare Release Assets
         run: |-
