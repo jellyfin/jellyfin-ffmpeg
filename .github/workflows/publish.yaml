@@ -13,6 +13,10 @@ jobs:
       codenames: '["buster", "bullseye"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
+    secrets:
+      deploy-host: ${{ secrets.DEPLOY_HOST }}
+      deploy-user: ${{ secrets.DEPLOY_USER }}
+      deploy-key: ${{ secrets.DEPLOY_KEY }}
 
   build_publish_ubuntu:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
@@ -21,6 +25,10 @@ jobs:
       codenames: '["focal", "bionic", "impish", "hirsute"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
+    secrets:
+      deploy-host: ${{ secrets.DEPLOY_HOST }}
+      deploy-user: ${{ secrets.DEPLOY_USER }}
+      deploy-key: ${{ secrets.DEPLOY_KEY }}
 
   build_publish_windows:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
@@ -29,6 +37,10 @@ jobs:
       codenames: '["windows"]'
       architectures: '["win64"]'
       release: true
+    secrets:
+      deploy-host: ${{ secrets.DEPLOY_HOST }}
+      deploy-user: ${{ secrets.DEPLOY_USER }}
+      deploy-key: ${{ secrets.DEPLOY_KEY }}
 
   maintain_repository:
     name: Maintain Repository
@@ -53,9 +65,9 @@ jobs:
       - name: Sync mirrors and update symlinks
         uses: appleboy/ssh-action@v0.1.4
         with:
-          host: ${{ secrets.deploy-host }}
-          username: ${{ secrets.deploy-user }}
-          key: ${{ secrets.deploy-key }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
           script_stop: true
           script: |-
             tag="${{ github.release.tag_name }}"
