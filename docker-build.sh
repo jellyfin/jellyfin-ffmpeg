@@ -141,7 +141,7 @@ prepare_extra_amd64() {
 
     # Download and install gmmlib
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.0.3 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.0.2 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
