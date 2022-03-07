@@ -52,7 +52,7 @@ jobs:
         run: ./build-win64 dist
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v2.3.1
+        uses: actions/upload-artifact@v3.0.0
         with:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: dist
@@ -84,7 +84,7 @@ jobs:
             core.setOutput('no-dash', no_dash)
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v2.1.0
+        uses: actions/download-artifact@v3.0.0
         with:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: artifact
