@@ -106,14 +106,16 @@ jobs:
             ./artifact/**/*.deb
             ./artifact/**/*.sha256sum
 
-      - name: Make Sure Release Directory Exists
+      - name: Make Sure Release Directory Exists And Has Correct Permissions
         uses: appleboy/ssh-action@v0.1.4
         with:
           host: ${{ secrets.deploy-host }}
           username: ${{ secrets.deploy-user }}
           key: ${{ secrets.deploy-key }}
           script_stop: true
-          script: mkdir -p /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
+          script: |-
+            sudo mkdir -p /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
+            sudo chown $(id -u):$(id -g) -R /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
 
       - name: Upload Release Assets
         uses: burnett01/rsync-deployments@5.2
