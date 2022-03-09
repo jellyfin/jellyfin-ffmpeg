@@ -32,7 +32,7 @@ jobs:
     name: 'Build FFmpeg'
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         release: ${{fromJson(inputs.codenames)}}
         arch: ${{fromJson(inputs.architectures)}}
@@ -64,7 +64,7 @@ jobs:
     needs:
       - build
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         release: ${{fromJson(inputs.codenames)}}
         arch: ${{fromJson(inputs.architectures)}}
@@ -101,6 +101,7 @@ jobs:
         uses: shogo82148/actions-upload-release-asset@v1.5.0
         with:
           upload_url: ${{ github.event.release.upload_url }}
+          overwrite: true
           asset_path: |
             ./artifact/**/*.zip
             ./artifact/**/*.deb
