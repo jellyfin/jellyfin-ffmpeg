@@ -50,7 +50,7 @@ jobs:
       - build_publish_ubuntu
       - build_publish_windows
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         arrays: [
           {distro: 'debian', codename: 'buster'},
