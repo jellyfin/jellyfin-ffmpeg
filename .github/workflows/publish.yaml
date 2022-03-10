@@ -51,6 +51,7 @@ jobs:
       - build_publish_windows
     strategy:
       fail-fast: true
+      max-parallel: 1
       matrix:
         arrays: [
           {distro: 'debian', codename: 'buster'},
