@@ -6,11 +6,10 @@ usage() {
     echo -e "Releases:          Arches:"
     echo -e " * buster           * amd64"
     echo -e " * bullseye         * armhf"
-    echo -e " * xenial           * arm64"
-    echo -e " * bionic"
+    echo -e " * bionic           * arm64"
     echo -e " * focal"
-    echo -e " * hirsute"
     echo -e " * impish"
+    echo -e " * jammy"
 }
 
 if [[ -z ${1} ]]; then
@@ -28,40 +27,20 @@ case ${cli_release} in
         release="debian:bullseye"
         gcc_version="10"
     ;;
-    'xenial')
-        release="ubuntu:xenial"
-        gcc_version="5"
-    ;;
     'bionic')
         release="ubuntu:bionic"
-        gcc_version="7"
-    ;;
-    'cosmic')
-        release="ubuntu:cosmic"
-        gcc_version="7"
-    ;;
-    'disco')
-        release="ubuntu:disco"
-        gcc_version="7"
-    ;;
-    'eoan')
-        release="ubuntu:eoan"
         gcc_version="7"
     ;;
     'focal')
         release="ubuntu:focal"
         gcc_version="9"
     ;;
-    'groovy')
-        release="ubuntu:groovy"
-        gcc_version="10"
-    ;;
-    'hirsute')
-        release="ubuntu:hirsute"
-        gcc_version="10"
-    ;;
     'impish')
         release="ubuntu:impish"
+        gcc_version="11"
+    ;;
+    'jammy')
+        release="ubuntu:jammy"
         gcc_version="11"
     ;;
     *)

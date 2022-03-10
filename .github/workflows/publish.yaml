@@ -22,7 +22,7 @@ jobs:
     uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
     with:
       distro: 'ubuntu'
-      codenames: '["focal", "bionic", "impish", "hirsute"]'
+      codenames: '["jammy", "focal", "bionic", "impish"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -55,10 +55,10 @@ jobs:
         arrays: [
           {distro: 'debian', codename: 'buster'},
           {distro: 'debian', codename: 'bullseye'},
+          {distro: 'ubuntu', codename: 'jammy'},
           {distro: 'ubuntu', codename: 'focal'},
           {distro: 'ubuntu', codename: 'bionic'},
           {distro: 'ubuntu', codename: 'impish'},
-          {distro: 'ubuntu', codename: 'hirsute'},
           {distro: 'windows', codename: 'windows'},
         ]
     steps:

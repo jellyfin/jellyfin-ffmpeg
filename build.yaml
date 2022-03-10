@@ -9,16 +9,15 @@ packages:
   - bullseye-amd64
   - bullseye-armhf
   - bullseye-arm64
-  - xenial-amd64
   - bionic-amd64
   - bionic-armhf
   - bionic-arm64
   - focal-amd64
   - focal-armhf
   - focal-arm64
-  - hirsute-amd64
-  - hirsute-armhf
-  - hirsute-arm64
   - impish-amd64
   - impish-armhf
   - impish-arm64
+  - jammy-amd64
+  - jammy-armhf
+  - jammy-arm64
