@@ -34,28 +34,20 @@ prepare_extra_common() {
 
     # Download and install dav1d
     pushd ${SOURCE_DIR}
-    git clone -b 0.9.2 --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
     pushd dav1d
     mkdir build
     pushd build
     nasmver="$(nasm -v | cut -d ' ' -f3)"
-    nasmminver="2.13.02"
-    nasmavx512ver="2.14.0"
+    nasmminver="2.14.0"
     if [ "$(printf '%s\n' "$nasmminver" "$nasmver" | sort -V | head -n1)" = "$nasmminver" ]; then
         x86asm=true
-        if [ "$(printf '%s\n' "$nasmavx512ver" "$nasmver" | sort -V | head -n1)" = "$nasmavx512ver" ]; then
-            avx512=true
-        else
-            avx512=false
-        fi
     else
         x86asm=false
-        avx512=false
     fi
     if [ "${ARCH}" = "amd64" ]; then
         meson -Denable_asm=$x86asm \
-              -Denable_avx512=$avx512 \
-              -Denable_tests=false \
+              -Denable_{tools,tests,examples}=false \
               -Ddefault_library=shared \
               --prefix=${TARGET_DIR} ..
         ninja
@@ -66,9 +58,8 @@ prepare_extra_common() {
     fi
     if [ "${ARCH}" = "armhf" ] || [ "${ARCH}" = "arm64" ]; then
         meson -Denable_asm=true \
-              -Denable_avx512=false \
+              -Denable_{tools,tests,examples}=false \
               -Ddefault_library=shared \
-              -Denable_tests=false \
               --cross-file=${SOURCE_DIR}/cross-${ARCH}.meson \
               --prefix=${TARGET_DIR} ..
         ninja
@@ -156,7 +147,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-22.2.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-22.3.0 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -176,7 +167,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-22.2.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-22.3.0 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -190,7 +181,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-22.2.2 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-22.3.0 --depth=1 https://github.com/intel/media-driver
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \

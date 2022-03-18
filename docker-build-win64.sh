@@ -413,7 +413,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 0.9.2 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build
@@ -422,8 +422,8 @@ meson \
     --cross-file=${FF_MESON_TOOLCHAIN} \
     --buildtype=release \
     --default-library=static \
-    -Denable_{asm,avx512}=true \
-    -Denable_{tests,examples}=false \
+    -Denable_asm=true \
+    -Denable_{tools,tests,examples}=false \
     ..
 ninja -j$(nproc)
 meson install
