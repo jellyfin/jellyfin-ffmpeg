@@ -62,7 +62,7 @@ popd
 # FREETYPE
 mkdir freetype
 pushd freetype
-ft_ver="2.11.0"
+ft_ver="2.11.1"
 ft_link="https://sourceforge.net/projects/freetype/files/freetype2/${ft_ver}/freetype-${ft_ver}.tar.xz/download"
 wget ${ft_link} -O ft.tar.gz
 tar xaf ft.tar.gz
@@ -136,7 +136,7 @@ popd
 # SDL2
 mkdir sdl2
 pushd sdl2
-sdl2_ver="2.0.16"
+sdl2_ver="2.0.20"
 sdl2_link="https://libsdl.org/release/SDL2-${sdl2_ver}.tar.gz"
 wget ${sdl2_link} -O sdl2.tar.gz
 tar xaf sdl2.tar.gz
@@ -155,7 +155,7 @@ popd
 # FONTCONFIG
 mkdir fontconfig
 pushd fontconfig
-fc_ver="2.13.94"
+fc_ver="2.13.96"
 fc_link="https://www.freedesktop.org/software/fontconfig/release/fontconfig-${fc_ver}.tar.xz"
 wget ${fc_link} -O fc.tar.gz
 tar xaf fc.tar.gz
