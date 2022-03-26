@@ -7,7 +7,7 @@ on:
 
 jobs:
   build_publish_debian:
-    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
+    uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
       codenames: '["buster", "bullseye"]'
@@ -19,7 +19,7 @@ jobs:
       deploy-key: ${{ secrets.DEPLOY_KEY }}
 
   build_publish_ubuntu:
-    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
+    uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
       codenames: '["jammy", "focal", "bionic", "impish"]'
@@ -31,7 +31,7 @@ jobs:
       deploy-key: ${{ secrets.DEPLOY_KEY }}
 
   build_publish_windows:
-    uses: jellyfin/jellyfin-ffmpeg/.github/workflows/_meta.yaml@jellyfin
+    uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'windows'
       codenames: '["windows"]'
