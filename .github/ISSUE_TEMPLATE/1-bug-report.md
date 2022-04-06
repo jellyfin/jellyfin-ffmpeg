@@ -26,7 +26,7 @@ assignees: ''
 - **Jellyfin Version:** [e.g. 10.7.7]
 - **Jellyfin-FFmpeg Version:** [e.g. 4.4.1-2]
 - **Hardware Acceleration:** [e.g. QSV, Nvidia, VAAPI, AMD AMF]
-- **CPU & GPU Model**: [e.g. i7-1135G7, UHD 630, GTX 1650, VEGA 64]
+- **CPU & GPU Model**: [e.g. i7-1165G7, UHD 630, GTX 1650, VEGA 64]
 
 **MediaInfo**
 <!-- Paste the Media Info of the file. Please use code blocks. -->
