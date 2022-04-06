@@ -17,6 +17,13 @@ make -j$(nproc)
 make install
 popd
 
+# mingw-std-threads
+git clone --depth=1 https://github.com/meganz/mingw-std-threads.git
+pushd mingw-std-threads
+mkdir -p ${FF_DEPS_PREFIX}/include
+mv *.h ${FF_DEPS_PREFIX}/include
+popd
+
 # ICONV
 mkdir iconv
 pushd iconv
@@ -509,6 +516,8 @@ fi
     --disable-ffplay \
     --disable-debug \
     --disable-doc \
+    --disable-w32threads \
+    --enable-pthreads \
     --enable-shared \
     --enable-lto \
     --enable-gpl \
