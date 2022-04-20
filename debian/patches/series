@@ -32,3 +32,4 @@
 0032-add-async-support-for-qsv-vpp.patch
 0033-add-fixes-for-corrupted-hevc-vaapi-on-tgl.patch
 0034-add-webp-support-for-id3v2.patch
+0035-remove-fdk-aac-from-nonfree.patch
