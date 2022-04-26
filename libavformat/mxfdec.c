@@ -875,15 +875,27 @@ static int mxf_read_cryptographic_context(void *arg, AVIOContext *pb, int tag, i
 
 static int mxf_read_strong_ref_array(AVIOContext *pb, UID **refs, int *count)
 {
-    *count = avio_rb32(pb);
+    int64_t ret;
+    unsigned c = avio_rb32(pb);
+
+    //avio_read() used int
+    if (c > INT_MAX / sizeof(UID))
+        return AVERROR_PATCHWELCOME;
+    *count = c;
+
     av_free(*refs);
-    *refs = av_calloc(*count, sizeof(UID));
+    *refs = av_malloc_array(*count, sizeof(UID));
     if (!*refs) {
         *count = 0;
         return AVERROR(ENOMEM);
     }
     avio_skip(pb, 4); /* useless size of objects, always 16 according to specs */
-    avio_read(pb, (uint8_t *)*refs, *count * sizeof(UID));
+    ret = avio_read(pb, (uint8_t *)*refs, *count * sizeof(UID));
+    if (ret != *count * sizeof(UID)) {
+        *count = ret < 0 ? 0   : ret / sizeof(UID);
+        return   ret < 0 ? ret : AVERROR_INVALIDDATA;
+    }
+
     return 0;
 }
 
@@ -1091,6 +1103,9 @@ static int mxf_read_essence_container_data(void *arg, AVIOContext *pb, int tag, 
 static int mxf_read_index_entry_array(AVIOContext *pb, MXFIndexTableSegment *segment)
 {
     int i, length;
+
+    if (segment->temporal_offset_entries)
+        return AVERROR_INVALIDDATA;
 
     segment->nb_index_entries = avio_rb32(pb);
 
@@ -2253,12 +2268,12 @@ static enum AVColorRange mxf_get_color_range(MXFContext *mxf, MXFDescriptor *des
         /* CDCI range metadata */
         if (!descriptor->component_depth)
             return AVCOL_RANGE_UNSPECIFIED;
-        if (descriptor->black_ref_level == 0 &&
+        if (descriptor->black_ref_level == 0 && descriptor->component_depth < 31 &&
             descriptor->white_ref_level == ((1<<descriptor->component_depth) - 1) &&
             (descriptor->color_range    == (1<<descriptor->component_depth) ||
              descriptor->color_range    == ((1<<descriptor->component_depth) - 1)))
             return AVCOL_RANGE_JPEG;
-        if (descriptor->component_depth >= 8 &&
+        if (descriptor->component_depth >= 8 && descriptor->component_depth < 31 &&
             descriptor->black_ref_level == (1  <<(descriptor->component_depth - 4)) &&
             descriptor->white_ref_level == (235<<(descriptor->component_depth - 8)) &&
             descriptor->color_range     == ((14<<(descriptor->component_depth - 4)) + 1))

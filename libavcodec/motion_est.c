@@ -1614,7 +1614,7 @@ int ff_get_best_fcode(MpegEncContext * s, int16_t (*mv_table)[2], int type)
         for(y=0; y<s->mb_height; y++){
             int x;
             int xy= y*s->mb_stride;
-            for(x=0; x<s->mb_width; x++){
+            for(x=0; x<s->mb_width; x++, xy++){
                 if(s->mb_type[xy] & type){
                     int mx= mv_table[xy][0];
                     int my= mv_table[xy][1];
@@ -1622,16 +1622,15 @@ int ff_get_best_fcode(MpegEncContext * s, int16_t (*mv_table)[2], int type)
                                      fcode_tab[my + MAX_MV]);
                     int j;
 
-                        if(mx >= range || mx < -range ||
-                           my >= range || my < -range)
-                            continue;
+                    if (mx >= range || mx < -range ||
+                        my >= range || my < -range)
+                        continue;
 
                     for(j=0; j<fcode && j<8; j++){
                         if(s->pict_type==AV_PICTURE_TYPE_B || s->current_picture.mc_mb_var[xy] < s->current_picture.mb_var[xy])
                             score[j]-= 170;
                     }
                 }
-                xy++;
             }
         }
 
