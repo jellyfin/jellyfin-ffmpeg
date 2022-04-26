@@ -71,6 +71,17 @@ prepare_extra_common() {
     popd
     popd
     popd
+
+    # Download and install fdk-aac-stripped
+    pushd ${SOURCE_DIR}
+    git clone -b stripped4 --depth=1 https://gitlab.freedesktop.org/wtaymans/fdk-aac-stripped.git
+    pushd fdk-aac-stripped
+    ./autogen.sh
+    ./configure --disable-silent-rules --disable-static --prefix=${TARGET_DIR} CFLAGS="-O3 -DNDEBUG" CXXFLAGS="-O3 -DNDEBUG" ${CROSS_OPT}
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/fdk-aac-stripped
+    echo "fdk-aac-stripped${TARGET_DIR}/lib/libfdk-aac.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    popd
+    popd
 }
 
 # Prepare extra headers, libs and drivers for x86_64-linux-gnu
