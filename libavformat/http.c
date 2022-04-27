@@ -69,7 +69,9 @@ typedef struct HTTPContext {
     uint64_t chunksize;
     int chunkend;
     uint64_t off, end_off, filesize;
+    char *uri;
     char *location;
+    int cache_redirect;
     HTTPAuthState auth_state;
     HTTPAuthState proxy_auth_state;
     char *http_proxy;
@@ -126,6 +128,7 @@ typedef struct HTTPContext {
     int is_multi_client;
     HandshakeState handshake_step;
     int is_connected_server;
+    int short_seek_size;
 } HTTPContext;
 
 #define OFFSET(x) offsetof(HTTPContext, x)
@@ -141,9 +144,6 @@ static const AVOption options[] = {
     { "content_type", "set a specific content type for the POST messages", OFFSET(content_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
     { "user_agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
     { "referer", "override referer header", OFFSET(referer), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D },
-#if FF_API_HTTP_USER_AGENT
-    { "user-agent", "use the \"user_agent\" option instead", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D|AV_OPT_FLAG_DEPRECATED },
-#endif
     { "multiple_requests", "use persistent connections", OFFSET(multiple_requests), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D | E },
     { "post_data", "set custom HTTP post data", OFFSET(post_data), AV_OPT_TYPE_BINARY, .flags = D | E },
     { "mime_type", "export the MIME type", OFFSET(mime_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, AV_OPT_FLAG_EXPORT | AV_OPT_FLAG_READONLY },
@@ -170,6 +170,8 @@ static const AVOption options[] = {
     { "listen", "listen on HTTP", OFFSET(listen), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, D | E },
     { "resource", "The resource requested by a client", OFFSET(resource), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, E },
     { "reply_code", "The http status code to return to a client", OFFSET(reply_code), AV_OPT_TYPE_INT, { .i64 = 200}, INT_MIN, 599, E},
+    { "short_seek_size", "Threshold to favor readahead over seek.", OFFSET(short_seek_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, D },
+    { "cache_redirect", "Save redirected URL for subsequent seek operations", OFFSET(cache_redirect), AV_OPT_TYPE_BOOL, { .i64 = FF_HTTP_CACHE_REDIRECT_DEFAULT }, 0, 1, D },
     { NULL }
 };
 
@@ -195,7 +197,7 @@ static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
     char *hashmark;
     char hostname[1024], hoststr[1024], proto[10];
     char auth[1024], proxyauth[1024] = "";
-    char path1[MAX_URL_SIZE], sanitized_path[MAX_URL_SIZE];
+    char path1[MAX_URL_SIZE], sanitized_path[MAX_URL_SIZE + 1];
     char buf[1024], urlbuf[MAX_URL_SIZE];
     int port, use_proxy, err, location_changed = 0;
     HTTPContext *s = h->priv_data;
@@ -433,9 +435,15 @@ int ff_http_do_new_request2(URLContext *h, const char *uri, AVDictionary **opts)
     s->chunkend      = 0;
     s->off           = 0;
     s->icy_data_read = 0;
+
     av_free(s->location);
     s->location = av_strdup(uri);
     if (!s->location)
+        return AVERROR(ENOMEM);
+
+    av_free(s->uri);
+    s->uri = av_strdup(uri);
+    if (!s->uri)
         return AVERROR(ENOMEM);
 
     if ((ret = av_opt_set_dict(s, opts)) < 0)
@@ -608,6 +616,7 @@ static int http_listen(URLContext *h, const char *uri, int flags,
     }
 fail:
     av_dict_free(&s->chained_options);
+    av_dict_free(&s->cookie_dict);
     return ret;
 }
 
@@ -623,9 +632,15 @@ static int http_open(URLContext *h, const char *uri, int flags,
         h->is_streamed = 1;
 
     s->filesize = UINT64_MAX;
+
     s->location = av_strdup(uri);
     if (!s->location)
         return AVERROR(ENOMEM);
+
+    s->uri = av_strdup(uri);
+    if (!s->uri)
+        return AVERROR(ENOMEM);
+
     if (options)
         av_dict_copy(&s->chained_options, *options, 0);
 
@@ -648,8 +663,11 @@ static int http_open(URLContext *h, const char *uri, int flags,
     }
     ret = http_open_cnx(h, options);
 bail_out:
-    if (ret < 0)
+    if (ret < 0) {
         av_dict_free(&s->chained_options);
+        av_dict_free(&s->cookie_dict);
+        av_freep(&s->uri);
+    }
     return ret;
 }
 
@@ -1766,6 +1784,8 @@ static int http_close(URLContext *h)
     if (s->hd)
         ffurl_closep(&s->hd);
     av_dict_free(&s->chained_options);
+    av_dict_free(&s->cookie_dict);
+    av_freep(&s->uri);
     return ret;
 }
 
@@ -1807,6 +1827,16 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
             return s->off;
     }
 
+    /* if redirect caching is disabled, revert to the original uri */
+    if (!s->cache_redirect && strcmp(s->uri, s->location)) {
+        char *new_uri;
+        new_uri = av_strdup(s->uri);
+        if (!new_uri)
+            return AVERROR(ENOMEM);
+        av_free(s->location);
+        s->location = new_uri;
+    }
+
     /* we save the old context in case the seek fails */
     old_buf_size = s->buf_end - s->buf_ptr;
     memcpy(old_buf, s->buf_ptr, old_buf_size);
@@ -1841,6 +1871,8 @@ static int http_get_file_handle(URLContext *h)
 static int http_get_short_seek(URLContext *h)
 {
     HTTPContext *s = h->priv_data;
+    if (s->short_seek_size >= 1)
+        return s->short_seek_size;
     return ffurl_get_short_seek(s->hd);
 }
 

@@ -20,7 +20,7 @@
 
 /**
  * @file
- * Caculate the Identity between two input videos.
+ * Calculate the Identity between two input videos.
  */
 
 #include "libavutil/avstring.h"
@@ -196,7 +196,8 @@ static int do_identity(FFFrameSync *fs)
         td.planeheight[c] = s->planeheight[c];
     }
 
-    ctx->internal->execute(ctx, s->filter_slice, &td, NULL, FFMIN(s->planeheight[1], s->nb_threads));
+    ff_filter_execute(ctx, s->filter_slice, &td, NULL,
+                      FFMIN(s->planeheight[1], s->nb_threads));
 
     for (int j = 0; j < s->nb_threads; j++) {
         for (int c = 0; c < s->nb_components; c++)
@@ -240,28 +241,20 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
 #define PF_NOALPHA(suf) AV_PIX_FMT_YUV420##suf,  AV_PIX_FMT_YUV422##suf,  AV_PIX_FMT_YUV444##suf
 #define PF_ALPHA(suf)   AV_PIX_FMT_YUVA420##suf, AV_PIX_FMT_YUVA422##suf, AV_PIX_FMT_YUVA444##suf
 #define PF(suf)         PF_NOALPHA(suf), PF_ALPHA(suf)
-        PF(P), PF(P9), PF(P10), PF_NOALPHA(P12), PF_NOALPHA(P14), PF(P16),
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
-        AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+    PF(P), PF(P9), PF(P10), PF_NOALPHA(P12), PF_NOALPHA(P14), PF(P16),
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
+    AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_NONE
+};
 
 static int config_input_ref(AVFilterLink *inlink)
 {
@@ -274,10 +267,6 @@ static int config_input_ref(AVFilterLink *inlink)
     if (ctx->inputs[0]->w != ctx->inputs[1]->w ||
         ctx->inputs[0]->h != ctx->inputs[1]->h) {
         av_log(ctx, AV_LOG_ERROR, "Width and height of input videos must be same.\n");
-        return AVERROR(EINVAL);
-    }
-    if (ctx->inputs[0]->format != ctx->inputs[1]->format) {
-        av_log(ctx, AV_LOG_ERROR, "Inputs must be of same pixel format.\n");
         return AVERROR(EINVAL);
     }
 
@@ -296,7 +285,7 @@ static int config_input_ref(AVFilterLink *inlink)
     if (!s->scores)
         return AVERROR(ENOMEM);
 
-    for (int t = 0; t < s->nb_threads && s->scores; t++) {
+    for (int t = 0; t < s->nb_threads; t++) {
         s->scores[t] = av_calloc(s->nb_components, sizeof(*s->scores[0]));
         if (!s->scores[t])
             return AVERROR(ENOMEM);
@@ -392,7 +381,6 @@ static const AVFilterPad identity_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_input_ref,
     },
-    { NULL }
 };
 
 static const AVFilterPad identity_outputs[] = {
@@ -401,7 +389,6 @@ static const AVFilterPad identity_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
 static const AVOption options[] = {
@@ -413,19 +400,21 @@ static const AVOption options[] = {
 #define identity_options options
 FRAMESYNC_DEFINE_CLASS(identity, IdentityContext, fs);
 
-AVFilter ff_vf_identity = {
+const AVFilter ff_vf_identity = {
     .name          = "identity",
     .description   = NULL_IF_CONFIG_SMALL("Calculate the Identity between two video streams."),
     .preinit       = identity_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
     .priv_size     = sizeof(IdentityContext),
     .priv_class    = &identity_class,
-    .inputs        = identity_inputs,
-    .outputs       = identity_outputs,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_INPUTS(identity_inputs),
+    FILTER_OUTPUTS(identity_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS             |
+                     AVFILTER_FLAG_METADATA_ONLY,
 };
 
 #endif /* CONFIG_IDENTITY_FILTER */
@@ -435,19 +424,21 @@ AVFilter ff_vf_identity = {
 #define msad_options options
 FRAMESYNC_DEFINE_CLASS(msad, IdentityContext, fs);
 
-AVFilter ff_vf_msad = {
+const AVFilter ff_vf_msad = {
     .name          = "msad",
     .description   = NULL_IF_CONFIG_SMALL("Calculate the MSAD between two video streams."),
     .preinit       = msad_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
     .priv_size     = sizeof(IdentityContext),
     .priv_class    = &msad_class,
-    .inputs        = identity_inputs,
-    .outputs       = identity_outputs,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_INPUTS(identity_inputs),
+    FILTER_OUTPUTS(identity_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS             |
+                     AVFILTER_FLAG_METADATA_ONLY,
 };
 
 #endif /* CONFIG_MSAD_FILTER */

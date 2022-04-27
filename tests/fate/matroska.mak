@@ -65,7 +65,7 @@ fate-webm-dash-chapters: CMD = transcode ogg $(TARGET_SAMPLES)/vorbis/vorbis_cha
 # It furthermore tests correct propagation of the description tag.
 FATE_MATROSKA_FFMPEG_FFPROBE-$(call DEMMUX, MATROSKA, MATROSKA) \
                                += fate-matroska-zero-length-block
-fate-matroska-zero-length-block: CMD = transcode matroska $(TARGET_SAMPLES)/mkv/zero_length_block.mks matroska "-c:s copy -dash 1 -dash_track_number 2000000000 -reserve_index_space 62 -metadata_header_padding 1" "-c:s copy" "" "-show_entries stream_tags=description"
+fate-matroska-zero-length-block: CMD = transcode matroska $(TARGET_SAMPLES)/mkv/zero_length_block.mks matroska "-c:s copy -dash 1 -dash_track_number 2000000000 -reserve_index_space 62 -metadata_header_padding 1 -default_mode infer_no_subs" "-c:s copy" "" "-show_entries stream_tags=description"
 
 # This test the following features of the Matroska muxer: Writing projection
 # stream side-data; not setting any track to default if the user requested it;
@@ -88,7 +88,24 @@ FATE_MATROSKA_FFMPEG_FFPROBE-$(call ALLYES, FILE_PROTOCOL MXF_DEMUXER        \
                                             MATROSKA_MUXER MATROSKA_DEMUXER  \
                                             FRAMECRC_MUXER PIPE_PROTOCOL)    \
                                += fate-matroska-mastering-display-metadata
-fate-matroska-mastering-display-metadata: CMD = transcode mxf $(TARGET_SAMPLES)/mxf/Meridian-Apple_ProResProxy-HDR10.mxf matroska "-map 0 -map 0:0 -c:v:0 copy -c:v:1 ffv1 -c:a:0 copy -bsf:a:0 noise=amount=3 -filter:a:1 aresample -c:a:1 pcm_s16be -bsf:a:1 noise=dropamount=4" "-map 0 -c copy" "" "-show_entries stream_side_data_list:stream=index,codec_name"
+fate-matroska-mastering-display-metadata: CMD = transcode mxf $(TARGET_SAMPLES)/mxf/Meridian-Apple_ProResProxy-HDR10.mxf matroska "-map 0 -map 0:0 -c:v:0 copy -c:v:1 ffv1 -c:a:0 copy -bsf:a:0 noise=amount=3 -filter:a:1 aresample -c:a:1 pcm_s16be -bsf:a:1 noise=amount=-1:drop=-4" "-map 0 -c copy" "" "-show_entries stream_side_data_list:stream=index,codec_name"
+
+# This test tests remuxing annex B H.264 into Matroska. It also tests writing
+# the correct interlaced flags and overriding the sample aspect ratio, leading
+# to anamorphic video. Given that the input file has lots of filler material,
+# the h264_metadata filter is used to remove it as well as the H.264 AUD.
+# The video is decoded twice to show that this did not change the decoded
+# output. Furthermore, this also tests writing PCM with bitdepth 32.
+FATE_MATROSKA_FFMPEG_FFPROBE-$(call ALLYES, FILE_PROTOCOL MPEGTS_DEMUXER       \
+                                            H264_PARSER MPEGAUDIO_PARSER       \
+                                            EXTRACT_EXTRADATA_BSF MP2_DECODER  \
+                                            H264_METADATA_BSF ARESAMPLE_FILTER \
+                                            RAWVIDEO_ENCODER PCM_S32LE_ENCODER \
+                                            PCM_S32BE_ENCODER MATROSKA_MUXER   \
+                                            MATROSKA_DEMUXER H264_DECODER      \
+                                            FRAMECRC_MUXER PIPE_PROTOCOL)      \
+                               += fate-matroska-h264-remux
+fate-matroska-h264-remux: CMD = transcode mpegts $(TARGET_SAMPLES)/h264/h264_intra_first-small.ts matroska "-map 0:0 -map 0 -c:v copy -sar:0 3:4 -bsf:v:1 h264_metadata=aud=remove:delete_filler=1 -disposition:v +hearing_impaired -af aresample -c:a:0 pcm_s32le -c:a:1 pcm_s32be -disposition:a:0 original -metadata:s:a:0 title=swedish_silence -metadata:s:a:1 title=norwegian_silence -disposition:a:1 dub" "-map 0:v" "" "-show_entries stream=index,codec_name:stream_tags=title,language"
 
 # Tests writing BlockAdditional and BlockGroups with ReferenceBlock elements;
 # it also tests setting a track as suitable for hearing impaired.
@@ -106,10 +123,20 @@ FATE_MATROSKA_FFMPEG_FFPROBE-$(call ALLYES, FILE_PROTOCOL MPEGTS_DEMUXER    \
                                             MATROSKA_DEMUXER FRAMECRC_MUXER \
                                             PIPE_PROTOCOL)                  \
                                += fate-matroska-mpegts-remux
-fate-matroska-mpegts-remux: CMD = transcode mpegts $(TARGET_SAMPLES)/mpegts/pmtchange.ts matroska "-map 0:2 -map 0:2 -c copy -disposition:a:1 -visual_impaired+hearing_impaired" "-map 0 -c copy" "" "-show_entries stream_disposition:stream=index"
+fate-matroska-mpegts-remux: CMD = transcode mpegts $(TARGET_SAMPLES)/mpegts/pmtchange.ts matroska "-map 0:2 -map 0:2 -c copy -disposition:a:1 -visual_impaired+hearing_impaired -default_mode infer" "-map 0 -c copy" "" "-show_entries stream_disposition:stream=index"
 
 FATE_MATROSKA_FFPROBE-$(call ALLYES, MATROSKA_DEMUXER) += fate-matroska-spherical-mono
 fate-matroska-spherical-mono: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_entries stream_side_data_list -select_streams v -v 0 $(TARGET_SAMPLES)/mkv/spherical.mkv
+
+# The following test tests the various flavours of WebVTT in WebM.
+# It also tests that dispositions not supported by WebM are not written
+# (and therefore lost). It moreover tests that the muxer writes CuePoints
+# with multiple CueTrackPositions if the timestamps coincide.
+FATE_MATROSKA_FFMPEG_FFPROBE-$(call ALLYES, FILE_PROTOCOL WEBVTT_DEMUXER  \
+                                            WEBM_MUXER MATROSKA_DEMUXER   \
+                                            FRAMECRC_MUXER PIPE_PROTOCOL) \
+                               += fate-webm-webvtt-remux
+fate-webm-webvtt-remux: CMD = transcode webvtt $(TARGET_SAMPLES)/sub/WebVTT_capability_tester.vtt webm "-map 0 -map 0 -map 0 -map 0 -c:s copy -disposition:0 original+descriptions+hearing_impaired -disposition:1 lyrics+default+metadata -disposition:2 comment+forced -disposition:3 karaoke+captions+dub" "-map 0:0 -map 0:1 -c copy" "" "-show_entries stream_disposition:stream=index,codec_name:packet=stream_index,pts:packet_side_data_list -show_data_hash CRC32"
 
 FATE_SAMPLES_AVCONV += $(FATE_MATROSKA-yes)
 FATE_SAMPLES_FFPROBE += $(FATE_MATROSKA_FFPROBE-yes)

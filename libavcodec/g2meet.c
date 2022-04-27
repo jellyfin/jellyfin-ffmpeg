@@ -164,20 +164,20 @@ static av_cold int jpg_init(AVCodecContext *avctx, JPGContext *c)
 {
     int ret;
 
-    ret = ff_mjpeg_build_vlc(&c->dc_vlc[0], avpriv_mjpeg_bits_dc_luminance,
-                             avpriv_mjpeg_val_dc, 0, avctx);
+    ret = ff_mjpeg_build_vlc(&c->dc_vlc[0], ff_mjpeg_bits_dc_luminance,
+                             ff_mjpeg_val_dc, 0, avctx);
     if (ret)
         return ret;
-    ret = ff_mjpeg_build_vlc(&c->dc_vlc[1], avpriv_mjpeg_bits_dc_chrominance,
-                             avpriv_mjpeg_val_dc, 0, avctx);
+    ret = ff_mjpeg_build_vlc(&c->dc_vlc[1], ff_mjpeg_bits_dc_chrominance,
+                             ff_mjpeg_val_dc, 0, avctx);
     if (ret)
         return ret;
-    ret = ff_mjpeg_build_vlc(&c->ac_vlc[0], avpriv_mjpeg_bits_ac_luminance,
-                             avpriv_mjpeg_val_ac_luminance, 1, avctx);
+    ret = ff_mjpeg_build_vlc(&c->ac_vlc[0], ff_mjpeg_bits_ac_luminance,
+                             ff_mjpeg_val_ac_luminance, 1, avctx);
     if (ret)
         return ret;
-    ret = ff_mjpeg_build_vlc(&c->ac_vlc[1], avpriv_mjpeg_bits_ac_chrominance,
-                             avpriv_mjpeg_val_ac_chrominance, 1, avctx);
+    ret = ff_mjpeg_build_vlc(&c->ac_vlc[1], ff_mjpeg_bits_ac_chrominance,
+                             ff_mjpeg_val_ac_chrominance, 1, avctx);
     if (ret)
         return ret;
 
@@ -1164,7 +1164,7 @@ static int g2m_init_buffers(G2MContext *c)
         c->framebuf_stride = FFALIGN(c->width + 15, 16) * 3;
         aligned_height     = c->height + 15;
         av_free(c->framebuf);
-        c->framebuf = av_mallocz_array(c->framebuf_stride, aligned_height);
+        c->framebuf = av_calloc(c->framebuf_stride, aligned_height);
         if (!c->framebuf)
             return AVERROR(ENOMEM);
     }
@@ -1623,7 +1623,7 @@ static av_cold int g2m_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_g2m_decoder = {
+const AVCodec ff_g2m_decoder = {
     .name           = "g2m",
     .long_name      = NULL_IF_CONFIG_SMALL("Go2Meeting"),
     .type           = AVMEDIA_TYPE_VIDEO,

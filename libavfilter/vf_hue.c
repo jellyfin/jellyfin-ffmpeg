@@ -248,26 +248,19 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_expr_free(hue->saturation_pexpr);
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P,      AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV420P,      AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_YUV410P,      AV_PIX_FMT_YUV440P,
-        AV_PIX_FMT_YUVA444P,     AV_PIX_FMT_YUVA422P,
-        AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_YUV444P10,      AV_PIX_FMT_YUV422P10,
-        AV_PIX_FMT_YUV420P10,
-        AV_PIX_FMT_YUV440P10,
-        AV_PIX_FMT_YUVA444P10,     AV_PIX_FMT_YUVA422P10,
-        AV_PIX_FMT_YUVA420P10,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV444P,      AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV420P,      AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_YUV410P,      AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUVA444P,     AV_PIX_FMT_YUVA422P,
+    AV_PIX_FMT_YUVA420P,
+    AV_PIX_FMT_YUV444P10,      AV_PIX_FMT_YUV422P10,
+    AV_PIX_FMT_YUV420P10,
+    AV_PIX_FMT_YUV440P10,
+    AV_PIX_FMT_YUVA444P10,     AV_PIX_FMT_YUVA422P10,
+    AV_PIX_FMT_YUVA420P10,
+    AV_PIX_FMT_NONE
+};
 
 static int config_props(AVFilterLink *inlink)
 {
@@ -505,7 +498,6 @@ static const AVFilterPad hue_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_props,
     },
-    { NULL }
 };
 
 static const AVFilterPad hue_outputs[] = {
@@ -513,19 +505,18 @@ static const AVFilterPad hue_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_hue = {
+const AVFilter ff_vf_hue = {
     .name            = "hue",
     .description     = NULL_IF_CONFIG_SMALL("Adjust the hue and saturation of the input video."),
     .priv_size       = sizeof(HueContext),
     .init            = init,
     .uninit          = uninit,
-    .query_formats   = query_formats,
     .process_command = process_command,
-    .inputs          = hue_inputs,
-    .outputs         = hue_outputs,
+    FILTER_INPUTS(hue_inputs),
+    FILTER_OUTPUTS(hue_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class      = &hue_class,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

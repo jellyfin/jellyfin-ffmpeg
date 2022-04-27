@@ -284,7 +284,7 @@ static int mace_decode_frame(AVCodecContext *avctx, void *data,
     return buf_size;
 }
 
-AVCodec ff_mace3_decoder = {
+const AVCodec ff_mace3_decoder = {
     .name           = "mace3",
     .long_name      = NULL_IF_CONFIG_SMALL("MACE (Macintosh Audio Compression/Expansion) 3:1"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -295,9 +295,10 @@ AVCodec ff_mace3_decoder = {
     .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 
-AVCodec ff_mace6_decoder = {
+const AVCodec ff_mace6_decoder = {
     .name           = "mace6",
     .long_name      = NULL_IF_CONFIG_SMALL("MACE (Macintosh Audio Compression/Expansion) 6:1"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -308,4 +309,5 @@ AVCodec ff_mace6_decoder = {
     .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

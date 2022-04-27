@@ -36,6 +36,8 @@
 #include "avcodec.h"
 #include "qsv_internal.h"
 
+#define MFX_IMPL_VIA_MASK(impl) (0x0f00 & (impl))
+
 #if QSV_VERSION_ATLEAST(1, 12)
 #include "mfx/mfxvp8.h"
 #endif
@@ -74,19 +76,6 @@ int ff_qsv_codec_id_to_mfx(enum AVCodecID codec_id)
     }
 
     return AVERROR(ENOSYS);
-}
-
-int ff_qsv_level_to_mfx(enum AVCodecID codec_id, int level)
-{
-    if (level == FF_LEVEL_UNKNOWN)
-        return MFX_LEVEL_UNKNOWN;
-
-    switch (codec_id) {
-    case AV_CODEC_ID_HEVC:
-        return level / 3;
-    default:
-        return level;
-    }
 }
 
 static const struct {
@@ -158,7 +147,10 @@ static const struct {
     { MFX_WRN_INCOMPATIBLE_AUDIO_PARAM, 0,               "incompatible audio parameters"        },
 };
 
-int ff_qsv_map_error(mfxStatus mfx_err, const char **desc)
+/**
+ * Convert a libmfx error code into an FFmpeg error code.
+ */
+static int qsv_map_error(mfxStatus mfx_err, const char **desc)
 {
     int i;
     for (i = 0; i < FF_ARRAY_ELEMS(qsv_errors); i++) {
@@ -177,8 +169,7 @@ int ff_qsv_print_error(void *log_ctx, mfxStatus err,
                        const char *error_string)
 {
     const char *desc;
-    int ret;
-    ret = ff_qsv_map_error(err, &desc);
+    int ret = qsv_map_error(err, &desc);
     av_log(log_ctx, AV_LOG_ERROR, "%s: %s (%d)\n", error_string, desc, err);
     return ret;
 }
@@ -187,8 +178,7 @@ int ff_qsv_print_warning(void *log_ctx, mfxStatus err,
                          const char *warning_string)
 {
     const char *desc;
-    int ret;
-    ret = ff_qsv_map_error(err, &desc);
+    int ret = qsv_map_error(err, &desc);
     av_log(log_ctx, AV_LOG_WARNING, "%s: %s (%d)\n", warning_string, desc, err);
     return ret;
 }
@@ -243,7 +233,9 @@ int ff_qsv_find_surface_idx(QSVFramesContext *ctx, QSVFrame *frame)
     int i;
     for (i = 0; i < ctx->nb_mids; i++) {
         QSVMid *mid = &ctx->mids[i];
-        if (mid->handle == frame->surface.Data.MemId)
+        mfxHDLPair *pair = (mfxHDLPair*)frame->surface.Data.MemId;
+        if ((mid->handle_pair->first == pair->first) &&
+            (mid->handle_pair->second == pair->second))
             return i;
     }
     return AVERROR_BUG;
@@ -383,7 +375,11 @@ static int ff_qsv_set_display_handle(AVCodecContext *avctx, QSVSession *qs)
 int ff_qsv_init_internal_session(AVCodecContext *avctx, QSVSession *qs,
                                  const char *load_plugins, int gpu_copy)
 {
+#if CONFIG_D3D11VA
+    mfxIMPL          impl = MFX_IMPL_AUTO_ANY | MFX_IMPL_VIA_D3D11;
+#else
     mfxIMPL          impl = MFX_IMPL_AUTO_ANY;
+#endif
     mfxVersion        ver = { { QSV_VERSION_MINOR, QSV_VERSION_MAJOR } };
     mfxInitParam init_par = { MFX_IMPL_AUTO_ANY };
 
@@ -456,7 +452,7 @@ static AVBufferRef *qsv_create_mids(AVBufferRef *hw_frames_ref)
     if (!hw_frames_ref1)
         return NULL;
 
-    mids = av_mallocz_array(nb_surfaces, sizeof(*mids));
+    mids = av_calloc(nb_surfaces, sizeof(*mids));
     if (!mids) {
         av_buffer_unref(&hw_frames_ref1);
         return NULL;
@@ -472,7 +468,7 @@ static AVBufferRef *qsv_create_mids(AVBufferRef *hw_frames_ref)
 
     for (i = 0; i < nb_surfaces; i++) {
         QSVMid *mid = &mids[i];
-        mid->handle        = frames_hwctx->surfaces[i].Data.MemId;
+        mid->handle_pair   = (mfxHDLPair*)frames_hwctx->surfaces[i].Data.MemId;
         mid->hw_frames_ref = hw_frames_ref1;
     }
 
@@ -491,7 +487,7 @@ static int qsv_setup_mids(mfxFrameAllocResponse *resp, AVBufferRef *hw_frames_re
     // the allocated size of the array is two larger than the number of
     // surfaces, we store the references to the frames context and the
     // QSVMid array there
-    resp->mids = av_mallocz_array(nb_surfaces + 2, sizeof(*resp->mids));
+    resp->mids = av_calloc(nb_surfaces + 2, sizeof(*resp->mids));
     if (!resp->mids)
         return AVERROR(ENOMEM);
 
@@ -649,7 +645,7 @@ static mfxStatus qsv_frame_lock(mfxHDL pthis, mfxMemId mid, mfxFrameData *ptr)
         goto fail;
 
     qsv_mid->surf.Info = hw_frames_hwctx->surfaces[0].Info;
-    qsv_mid->surf.Data.MemId = qsv_mid->handle;
+    qsv_mid->surf.Data.MemId = qsv_mid->handle_pair;
 
     /* map the data to the system memory */
     ret = av_hwframe_map(qsv_mid->locked_frame, qsv_mid->hw_frame,
@@ -682,7 +678,13 @@ static mfxStatus qsv_frame_unlock(mfxHDL pthis, mfxMemId mid, mfxFrameData *ptr)
 static mfxStatus qsv_frame_get_hdl(mfxHDL pthis, mfxMemId mid, mfxHDL *hdl)
 {
     QSVMid *qsv_mid = (QSVMid*)mid;
-    *hdl = qsv_mid->handle;
+    mfxHDLPair *pair_dst = (mfxHDLPair*)hdl;
+    mfxHDLPair *pair_src = (mfxHDLPair*)qsv_mid->handle_pair;
+
+    pair_dst->first = pair_src->first;
+
+    if (pair_src->second != (mfxMemId)MFX_INFINITE)
+        pair_dst->second = pair_src->second;
     return MFX_ERR_NONE;
 }
 
@@ -690,24 +692,19 @@ int ff_qsv_init_session_device(AVCodecContext *avctx, mfxSession *psession,
                                AVBufferRef *device_ref, const char *load_plugins,
                                int gpu_copy)
 {
-    static const mfxHandleType handle_types[] = {
-        MFX_HANDLE_VA_DISPLAY,
-        MFX_HANDLE_D3D9_DEVICE_MANAGER,
-        MFX_HANDLE_D3D11_DEVICE,
-    };
     AVHWDeviceContext    *device_ctx = (AVHWDeviceContext*)device_ref->data;
     AVQSVDeviceContext *device_hwctx = device_ctx->hwctx;
     mfxSession        parent_session = device_hwctx->session;
     mfxInitParam            init_par = { MFX_IMPL_AUTO_ANY };
     mfxHDL                    handle = NULL;
+    int          hw_handle_supported = 0;
 
     mfxSession    session;
     mfxVersion    ver;
     mfxIMPL       impl;
     mfxHandleType handle_type;
     mfxStatus err;
-
-    int i, ret;
+    int ret;
 
     err = MFXQueryIMPL(parent_session, &impl);
     if (err == MFX_ERR_NONE)
@@ -716,13 +713,23 @@ int ff_qsv_init_session_device(AVCodecContext *avctx, mfxSession *psession,
         return ff_qsv_print_error(avctx, err,
                                   "Error querying the session attributes");
 
-    for (i = 0; i < FF_ARRAY_ELEMS(handle_types); i++) {
-        err = MFXVideoCORE_GetHandle(parent_session, handle_types[i], &handle);
-        if (err == MFX_ERR_NONE) {
-            handle_type = handle_types[i];
-            break;
+    if (MFX_IMPL_VIA_VAAPI == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_VA_DISPLAY;
+        hw_handle_supported = 1;
+    } else if (MFX_IMPL_VIA_D3D11 == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_D3D11_DEVICE;
+        hw_handle_supported = 1;
+    } else if (MFX_IMPL_VIA_D3D9 == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_D3D9_DEVICE_MANAGER;
+        hw_handle_supported = 1;
+    }
+
+    if (hw_handle_supported) {
+        err = MFXVideoCORE_GetHandle(parent_session, handle_type, &handle);
+        if (err != MFX_ERR_NONE) {
+            return ff_qsv_print_error(avctx, err,
+                                  "Error getting handle session");
         }
-        handle = NULL;
     }
     if (!handle) {
         av_log(avctx, AV_LOG_VERBOSE, "No supported hw handle could be retrieved "

@@ -28,6 +28,7 @@
 #include <float.h>
 
 #include "libavutil/avassert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 
 #define FF_BUFQUEUE_SIZE (1024)
@@ -83,7 +84,7 @@ typedef struct SpeechNormalizerContext {
     void (*analyze_channel)(AVFilterContext *ctx, ChannelContext *cc,
                             const uint8_t *srcp, int nb_samples);
     void (*filter_channels[2])(AVFilterContext *ctx,
-                               AVFrame *in, int nb_samples);
+                               AVFrame *in, AVFrame *out, int nb_samples);
 } SpeechNormalizerContext;
 
 #define OFFSET(x) offsetof(SpeechNormalizerContext, x)
@@ -112,36 +113,6 @@ static const AVOption speechnorm_options[] = {
 };
 
 AVFILTER_DEFINE_CLASS(speechnorm);
-
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
-}
 
 static int get_pi_samples(PeriodItem *pi, int start, int end, int remain)
 {
@@ -248,7 +219,7 @@ static double min_gain(AVFilterContext *ctx, ChannelContext *cc, int max_size)
     return min_gain;
 }
 
-#define ANALYZE_CHANNEL(name, ptype, zero)                                                 \
+#define ANALYZE_CHANNEL(name, ptype, zero, min_peak)                                       \
 static void analyze_channel_## name (AVFilterContext *ctx, ChannelContext *cc,             \
                                      const uint8_t *srcp, int nb_samples)                  \
 {                                                                                          \
@@ -262,11 +233,11 @@ static void analyze_channel_## name (AVFilterContext *ctx, ChannelContext *cc,  
     while (n < nb_samples) {                                                               \
         if ((cc->state != (src[n] >= zero)) ||                                             \
             (cc->pi[cc->pi_end].size > s->max_period)) {                                   \
-            double max_peak = cc->pi[cc->pi_end].max_peak;                                 \
+            ptype max_peak = cc->pi[cc->pi_end].max_peak;                                  \
             int state = cc->state;                                                         \
             cc->state = src[n] >= zero;                                                    \
             av_assert0(cc->pi[cc->pi_end].size > 0);                                       \
-            if (cc->pi[cc->pi_end].max_peak >= MIN_PEAK ||                                 \
+            if (max_peak >= min_peak ||                                                    \
                 cc->pi[cc->pi_end].size > s->max_period) {                                 \
                 cc->pi[cc->pi_end].type = 1;                                               \
                 cc->pi_end++;                                                              \
@@ -302,19 +273,20 @@ static void analyze_channel_## name (AVFilterContext *ctx, ChannelContext *cc,  
     }                                                                                      \
 }
 
-ANALYZE_CHANNEL(dbl, double, 0.0)
-ANALYZE_CHANNEL(flt, float,  0.f)
+ANALYZE_CHANNEL(dbl, double, 0.0, MIN_PEAK)
+ANALYZE_CHANNEL(flt, float,  0.f, (float)MIN_PEAK)
 
 #define FILTER_CHANNELS(name, ptype)                                            \
 static void filter_channels_## name (AVFilterContext *ctx,                      \
-                                     AVFrame *in, int nb_samples)               \
+                                     AVFrame *in, AVFrame *out, int nb_samples) \
 {                                                                               \
     SpeechNormalizerContext *s = ctx->priv;                                     \
     AVFilterLink *inlink = ctx->inputs[0];                                      \
                                                                                 \
     for (int ch = 0; ch < inlink->channels; ch++) {                             \
         ChannelContext *cc = &s->cc[ch];                                        \
-        ptype *dst = (ptype *)in->extended_data[ch];                            \
+        const ptype *src = (const ptype *)in->extended_data[ch];                \
+        ptype *dst = (ptype *)out->extended_data[ch];                           \
         const int bypass = !(av_channel_layout_extract_channel(inlink->channel_layout, ch) & s->channels); \
         int n = 0;                                                              \
                                                                                 \
@@ -327,8 +299,8 @@ static void filter_channels_## name (AVFilterContext *ctx,                      
             av_assert0(size > 0);                                               \
             gain = cc->gain_state;                                              \
             consume_pi(cc, size);                                               \
-            for (int i = n; i < n + size; i++)                                  \
-                dst[i] *= gain;                                                 \
+            for (int i = n; !ctx->is_disabled && i < n + size; i++)             \
+                dst[i] = src[i] * gain;                                         \
             n += size;                                                          \
         }                                                                       \
     }                                                                           \
@@ -337,14 +309,20 @@ static void filter_channels_## name (AVFilterContext *ctx,                      
 FILTER_CHANNELS(dbl, double)
 FILTER_CHANNELS(flt, float)
 
-static double lerp(double min, double max, double mix)
+static double dlerp(double min, double max, double mix)
 {
     return min + (max - min) * mix;
 }
 
-#define FILTER_LINK_CHANNELS(name, ptype)                                       \
+static float flerp(float min, float max, float mix)
+{
+    return min + (max - min) * mix;
+}
+
+#define FILTER_LINK_CHANNELS(name, ptype, tlerp)                                \
 static void filter_link_channels_## name (AVFilterContext *ctx,                 \
-                                          AVFrame *in, int nb_samples)          \
+                                          AVFrame *in, AVFrame *out,            \
+                                          int nb_samples)                       \
 {                                                                               \
     SpeechNormalizerContext *s = ctx->priv;                                     \
     AVFilterLink *inlink = ctx->inputs[0];                                      \
@@ -376,15 +354,16 @@ static void filter_link_channels_## name (AVFilterContext *ctx,                 
                                                                                 \
         for (int ch = 0; ch < inlink->channels; ch++) {                         \
             ChannelContext *cc = &s->cc[ch];                                    \
-            ptype *dst = (ptype *)in->extended_data[ch];                        \
+            const ptype *src = (const ptype *)in->extended_data[ch];            \
+            ptype *dst = (ptype *)out->extended_data[ch];                       \
                                                                                 \
             consume_pi(cc, min_size);                                           \
             if (cc->bypass)                                                     \
                 continue;                                                       \
                                                                                 \
-            for (int i = n; i < n + min_size; i++) {                            \
-                ptype g = lerp(s->prev_gain, gain, (i - n) / (double)min_size); \
-                dst[i] *= g;                                                    \
+            for (int i = n; !ctx->is_disabled && i < n + min_size; i++) {       \
+                ptype g = tlerp(s->prev_gain, gain, (i - n) / (ptype)min_size); \
+                dst[i] = src[i] * g;                                            \
             }                                                                   \
         }                                                                       \
                                                                                 \
@@ -393,8 +372,8 @@ static void filter_link_channels_## name (AVFilterContext *ctx,                 
     }                                                                           \
 }
 
-FILTER_LINK_CHANNELS(dbl, double)
-FILTER_LINK_CHANNELS(flt, float)
+FILTER_LINK_CHANNELS(dbl, double, dlerp)
+FILTER_LINK_CHANNELS(flt, float, flerp)
 
 static int filter_frame(AVFilterContext *ctx)
 {
@@ -405,7 +384,7 @@ static int filter_frame(AVFilterContext *ctx)
 
     while (s->queue.available > 0) {
         int min_pi_nb_samples;
-        AVFrame *in;
+        AVFrame *in, *out;
 
         in = ff_bufqueue_peek(&s->queue, 0);
         if (!in)
@@ -417,13 +396,25 @@ static int filter_frame(AVFilterContext *ctx)
 
         in = ff_bufqueue_get(&s->queue);
 
-        av_frame_make_writable(in);
+        if (av_frame_is_writable(in)) {
+            out = in;
+        } else {
+            out = ff_get_audio_buffer(outlink, in->nb_samples);
+            if (!out) {
+                av_frame_free(&in);
+                return AVERROR(ENOMEM);
+            }
+            av_frame_copy_props(out, in);
+        }
 
-        s->filter_channels[s->link](ctx, in, in->nb_samples);
+        s->filter_channels[s->link](ctx, in, out, in->nb_samples);
 
-        s->pts = in->pts + in->nb_samples;
+        s->pts = in->pts + av_rescale_q(in->nb_samples, av_make_q(1, outlink->sample_rate),
+                                        outlink->time_base);
 
-        return ff_filter_frame(outlink, in);
+        if (out != in)
+            av_frame_free(&in);
+        return ff_filter_frame(outlink, out);
     }
 
     for (int f = 0; f < ff_inlink_queued_frames(inlink); f++) {
@@ -554,7 +545,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -562,18 +552,18 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_speechnorm = {
+const AVFilter ff_af_speechnorm = {
     .name            = "speechnorm",
     .description     = NULL_IF_CONFIG_SMALL("Speech Normalizer."),
-    .query_formats   = query_formats,
     .priv_size       = sizeof(SpeechNormalizerContext),
     .priv_class      = &speechnorm_class,
     .activate        = activate,
     .uninit          = uninit,
-    .inputs          = inputs,
-    .outputs         = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
+    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = process_command,
 };

@@ -49,7 +49,6 @@
 
 #define FFT_FLOAT 0
 #define USE_FIXED 1
-#define FFT_FIXED_32 1
 #include "ac3dec.h"
 
 
@@ -168,7 +167,7 @@ static const AVClass ac3_decoder_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_ac3_fixed_decoder = {
+const AVCodec ff_ac3_fixed_decoder = {
     .name           = "ac3_fixed",
     .type           = AVMEDIA_TYPE_AUDIO,
     .id             = AV_CODEC_ID_AC3,

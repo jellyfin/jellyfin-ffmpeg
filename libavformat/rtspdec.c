@@ -172,7 +172,7 @@ static int rtsp_read_announce(AVFormatContext *s)
 {
     RTSPState *rt             = s->priv_data;
     RTSPMessageHeader request = { 0 };
-    char sdp[SDP_MAX_SIZE];
+    char *sdp;
     int  ret;
 
     ret = rtsp_read_request(s, &request, "ANNOUNCE");
@@ -185,18 +185,24 @@ static int rtsp_read_announce(AVFormatContext *s)
         rtsp_send_reply(s, RTSP_STATUS_SERVICE, NULL, request.seq);
         return AVERROR_OPTION_NOT_FOUND;
     }
-    if (request.content_length && request.content_length < sizeof(sdp) - 1) {
+    if (request.content_length) {
+        sdp = av_malloc(request.content_length + 1);
+        if (!sdp)
+            return AVERROR(ENOMEM);
+
         /* Read SDP */
         if (ffurl_read_complete(rt->rtsp_hd, sdp, request.content_length)
             < request.content_length) {
             av_log(s, AV_LOG_ERROR,
                    "Unable to get complete SDP Description in ANNOUNCE\n");
             rtsp_send_reply(s, RTSP_STATUS_INTERNAL, NULL, request.seq);
+            av_free(sdp);
             return AVERROR(EIO);
         }
         sdp[request.content_length] = '\0';
         av_log(s, AV_LOG_VERBOSE, "SDP: %s\n", sdp);
         ret = ff_sdp_parse(s, sdp);
+        av_free(sdp);
         if (ret)
             return ret;
         rtsp_send_reply(s, RTSP_STATUS_OK, NULL, request.seq);
@@ -748,7 +754,7 @@ static int rtsp_read_header(AVFormatContext *s)
             return ret;
 
         rt->real_setup_cache = !s->nb_streams ? NULL :
-            av_mallocz_array(s->nb_streams, 2 * sizeof(*rt->real_setup_cache));
+            av_calloc(s->nb_streams, 2 * sizeof(*rt->real_setup_cache));
         if (!rt->real_setup_cache && s->nb_streams) {
             ret = AVERROR(ENOMEM);
             goto fail;
@@ -983,7 +989,7 @@ static const AVClass rtsp_demuxer_class = {
     .version        = LIBAVUTIL_VERSION_INT,
 };
 
-AVInputFormat ff_rtsp_demuxer = {
+const AVInputFormat ff_rtsp_demuxer = {
     .name           = "rtsp",
     .long_name      = NULL_IF_CONFIG_SMALL("RTSP input"),
     .priv_data_size = sizeof(RTSPState),

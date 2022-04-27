@@ -270,37 +270,26 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     kelvin2rgb(s->temperature, s->color);
 
-    ctx->internal->execute(ctx, s->do_slice, frame, NULL,
-                           FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, s->do_slice, frame, NULL,
+                      FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
 
     return ff_filter_frame(ctx->outputs[0], frame);
 }
 
-static av_cold int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_RGBA, AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_0RGB, AV_PIX_FMT_0BGR,
-        AV_PIX_FMT_RGB0, AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRP12,
-        AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_RGB48,  AV_PIX_FMT_BGR48,
-        AV_PIX_FMT_RGBA64, AV_PIX_FMT_BGRA64,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *formats = NULL;
-
-    formats = ff_make_format_list(pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-
-    return ff_set_common_formats(ctx, formats);
-}
+static const enum AVPixelFormat pixel_fmts[] = {
+    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
+    AV_PIX_FMT_RGBA, AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR,
+    AV_PIX_FMT_0RGB, AV_PIX_FMT_0BGR,
+    AV_PIX_FMT_RGB0, AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRP12,
+    AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_RGB48,  AV_PIX_FMT_BGR48,
+    AV_PIX_FMT_RGBA64, AV_PIX_FMT_BGRA64,
+    AV_PIX_FMT_NONE
+};
 
 static av_cold int config_input(AVFilterLink *inlink)
 {
@@ -330,11 +319,10 @@ static const AVFilterPad inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .filter_frame   = filter_frame,
         .config_props   = config_input,
-        .needs_writable = 1,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -342,7 +330,6 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(ColorTemperatureContext, x)
@@ -357,14 +344,14 @@ static const AVOption colortemperature_options[] = {
 
 AVFILTER_DEFINE_CLASS(colortemperature);
 
-AVFilter ff_vf_colortemperature = {
+const AVFilter ff_vf_colortemperature = {
     .name          = "colortemperature",
     .description   = NULL_IF_CONFIG_SMALL("Adjust color temperature of video."),
     .priv_size     = sizeof(ColorTemperatureContext),
     .priv_class    = &colortemperature_class,
-    .query_formats = query_formats,
-    .inputs        = inputs,
-    .outputs       = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

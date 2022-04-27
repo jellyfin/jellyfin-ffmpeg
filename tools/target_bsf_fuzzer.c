@@ -21,6 +21,7 @@
 #include "libavutil/opt.h"
 
 #include "libavcodec/avcodec.h"
+#include "libavcodec/bsf.h"
 #include "libavcodec/bsf_internal.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/internal.h"
@@ -33,7 +34,7 @@ static void error(const char *err)
     exit(1);
 }
 
-static AVBitStreamFilter *f = NULL;
+static const AVBitStreamFilter *f = NULL;
 
 static const uint64_t FUZZ_TAG = 0x4741542D5A5A5546ULL;
 
@@ -51,18 +52,16 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 #ifdef FFMPEG_BSF
 #define BSF_SYMBOL0(BSF) ff_##BSF##_bsf
 #define BSF_SYMBOL(BSF) BSF_SYMBOL0(BSF)
-        extern AVBitStreamFilter BSF_SYMBOL(FFMPEG_BSF);
+        extern const AVBitStreamFilter BSF_SYMBOL(FFMPEG_BSF);
         f = &BSF_SYMBOL(FFMPEG_BSF);
-#else
-        extern AVBitStreamFilter ff_null_bsf;
-        f = &ff_null_bsf;
 #endif
         av_log_set_level(AV_LOG_PANIC);
     }
 
-    res = av_bsf_alloc(f, &bsf);
+    res = f ? av_bsf_alloc(f, &bsf) : av_bsf_get_null_filter(&bsf);
     if (res < 0)
         error("Failed memory allocation");
+    f = bsf->filter;
 
     if (size > 1024) {
         GetByteContext gbc;

@@ -27,7 +27,6 @@
 #include "libavutil/avutil.h"
 #include "libavutil/avassert.h"
 #include "libavutil/bswap.h"
-#include "libavutil/cpu.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/mem_internal.h"
@@ -181,17 +180,18 @@ yuv2planeX_16_c_template(const int16_t *filter, int filterSize,
     }
 }
 
-static void yuv2p016cX_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
+static av_always_inline void
+yuv2nv12cX_16_c_template(int big_endian, const uint8_t *chrDither,
                          const int16_t *chrFilter, int chrFilterSize,
                          const int16_t **chrUSrc, const int16_t **chrVSrc,
-                         uint8_t *dest8, int chrDstW)
+                         uint8_t *dest8, int chrDstW, int output_bits)
 {
     uint16_t *dest = (uint16_t*)dest8;
     const int32_t **uSrc = (const int32_t **)chrUSrc;
     const int32_t **vSrc = (const int32_t **)chrVSrc;
     int shift = 15;
-    int big_endian = dstFormat == AV_PIX_FMT_P016BE;
     int i, j;
+    av_assert0(output_bits == 16);
 
     for (i = 0; i < chrDstW; i++) {
         int u = 1 << (shift - 1);
@@ -368,6 +368,7 @@ static void yuv2planeX_ ## bits ## BE_LE ## _c(const int16_t *filter, int filter
                          filterSize, (const typeX_t **) src, \
                          (uint16_t *) dest, dstW, is_be, bits); \
 }
+
 yuv2NBPS( 9, BE, 1, 10, int16_t)
 yuv2NBPS( 9, LE, 0, 10, int16_t)
 yuv2NBPS(10, BE, 1, 10, int16_t)
@@ -378,6 +379,23 @@ yuv2NBPS(14, BE, 1, 10, int16_t)
 yuv2NBPS(14, LE, 0, 10, int16_t)
 yuv2NBPS(16, BE, 1, 16, int32_t)
 yuv2NBPS(16, LE, 0, 16, int32_t)
+
+
+static void yuv2nv12cX_16LE_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
+                              const int16_t *chrFilter, int chrFilterSize,
+                              const int16_t **chrUSrc, const int16_t **chrVSrc,
+                              uint8_t *dest8, int chrDstW)
+{
+    yuv2nv12cX_16_c_template(0, chrDither, chrFilter, chrFilterSize, chrUSrc, chrVSrc, dest8, chrDstW, 16);
+}
+
+static void yuv2nv12cX_16BE_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
+                              const int16_t *chrFilter, int chrFilterSize,
+                              const int16_t **chrUSrc, const int16_t **chrVSrc,
+                              uint8_t *dest8, int chrDstW)
+{
+    yuv2nv12cX_16_c_template(1, chrDither, chrFilter, chrFilterSize, chrUSrc, chrVSrc, dest8, chrDstW, 16);
+}
 
 static void yuv2planeX_8_c(const int16_t *filter, int filterSize,
                            const int16_t **src, uint8_t *dest, int dstW,
@@ -411,8 +429,7 @@ static void yuv2nv12cX_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
 {
     int i;
 
-    if (dstFormat == AV_PIX_FMT_NV12 ||
-        dstFormat == AV_PIX_FMT_NV24)
+    if (!isSwappedChroma(dstFormat))
         for (i=0; i<chrDstW; i++) {
             int u = chrDither[i & 7] << 12;
             int v = chrDither[(i + 3) & 7] << 12;
@@ -478,14 +495,13 @@ static void yuv2p010lX_c(const int16_t *filter, int filterSize,
     }
 }
 
-static void yuv2p010cX_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
+static void yuv2p010cX_c(int big_endian, const uint8_t *chrDither,
                          const int16_t *chrFilter, int chrFilterSize,
                          const int16_t **chrUSrc, const int16_t **chrVSrc,
                          uint8_t *dest8, int chrDstW)
 {
     uint16_t *dest = (uint16_t*)dest8;
     int shift = 17;
-    int big_endian = dstFormat == AV_PIX_FMT_P010BE;
     int i, j;
 
     for (i = 0; i < chrDstW; i++) {
@@ -528,6 +544,22 @@ static void yuv2p010lX_BE_c(const int16_t *filter, int filterSize,
                             const uint8_t *dither, int offset)
 {
     yuv2p010lX_c(filter, filterSize, src, (uint16_t*)dest, dstW, 1);
+}
+
+static void yuv2p010cX_LE_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
+                            const int16_t *chrFilter, int chrFilterSize,
+                            const int16_t **chrUSrc, const int16_t **chrVSrc,
+                            uint8_t *dest8, int chrDstW)
+{
+    yuv2p010cX_c(0, chrDither, chrFilter, chrFilterSize, chrUSrc, chrVSrc, dest8, chrDstW);
+}
+
+static void yuv2p010cX_BE_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
+                            const int16_t *chrFilter, int chrFilterSize,
+                            const int16_t **chrUSrc, const int16_t **chrVSrc,
+                            uint8_t *dest8, int chrDstW)
+{
+    yuv2p010cX_c(1, chrDither, chrFilter, chrFilterSize, chrUSrc, chrVSrc, dest8, chrDstW);
 }
 
 #undef output_pixel
@@ -1604,7 +1636,7 @@ yuv2rgb_write(uint8_t *_dest, int i, int Y1, int Y2,
 
         dest[i * 2 + 0] = r[Y1 + dr1] + g[Y1 + dg1] + b[Y1 + db1];
         dest[i * 2 + 1] = r[Y2 + dr2] + g[Y2 + dg2] + b[Y2 + db2];
-    } else if (target == AV_PIX_FMT_X2RGB10) {
+    } else if (target == AV_PIX_FMT_X2RGB10 || target == AV_PIX_FMT_X2BGR10) {
         uint32_t *dest = (uint32_t *) _dest;
         const uint32_t *r = (const uint32_t *) _r;
         const uint32_t *g = (const uint32_t *) _g;
@@ -1849,6 +1881,7 @@ YUV2RGBWRAPPER(yuv2rgb,,   8,    AV_PIX_FMT_RGB8,      0)
 YUV2RGBWRAPPER(yuv2rgb,,   4,    AV_PIX_FMT_RGB4,      0)
 YUV2RGBWRAPPER(yuv2rgb,,   4b,   AV_PIX_FMT_RGB4_BYTE, 0)
 YUV2RGBWRAPPER(yuv2, rgb, x2rgb10, AV_PIX_FMT_X2RGB10, 0)
+YUV2RGBWRAPPER(yuv2, rgb, x2bgr10, AV_PIX_FMT_X2BGR10, 0)
 
 static av_always_inline void yuv2rgb_write_full(SwsContext *c,
     uint8_t *dest, int i, int Y, int A, int U, int V,
@@ -1912,6 +1945,17 @@ static av_always_inline void yuv2rgb_write_full(SwsContext *c,
         int r,g,b;
 
         switch (c->dither) {
+        case SWS_DITHER_NONE:
+            if (isrgb8) {
+                r = av_clip_uintp2(R >> 27, 3);
+                g = av_clip_uintp2(G >> 27, 3);
+                b = av_clip_uintp2(B >> 28, 2);
+            } else {
+                r = av_clip_uintp2(R >> 29, 1);
+                g = av_clip_uintp2(G >> 28, 2);
+                b = av_clip_uintp2(B >> 29, 1);
+            }
+            break;
         default:
         case SWS_DITHER_AUTO:
         case SWS_DITHER_ED:
@@ -2552,15 +2596,16 @@ av_cold void ff_sws_init_output_funcs(SwsContext *c,
     enum AVPixelFormat dstFormat = c->dstFormat;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(dstFormat);
 
-    if (dstFormat == AV_PIX_FMT_P010LE || dstFormat == AV_PIX_FMT_P010BE) {
+    if (isSemiPlanarYUV(dstFormat) && isDataInHighBits(dstFormat)) {
+        av_assert0(desc->comp[0].depth == 10);
         *yuv2plane1 = isBE(dstFormat) ? yuv2p010l1_BE_c : yuv2p010l1_LE_c;
         *yuv2planeX = isBE(dstFormat) ? yuv2p010lX_BE_c : yuv2p010lX_LE_c;
-        *yuv2nv12cX = yuv2p010cX_c;
+        *yuv2nv12cX = isBE(dstFormat) ? yuv2p010cX_BE_c : yuv2p010cX_LE_c;
     } else if (is16BPS(dstFormat)) {
         *yuv2planeX = isBE(dstFormat) ? yuv2planeX_16BE_c  : yuv2planeX_16LE_c;
         *yuv2plane1 = isBE(dstFormat) ? yuv2plane1_16BE_c  : yuv2plane1_16LE_c;
-        if (dstFormat == AV_PIX_FMT_P016LE || dstFormat == AV_PIX_FMT_P016BE) {
-          *yuv2nv12cX = yuv2p016cX_c;
+        if (isSemiPlanarYUV(dstFormat)) {
+          *yuv2nv12cX = isBE(dstFormat) ? yuv2nv12cX_16BE_c : yuv2nv12cX_16LE_c;
         }
     } else if (isNBPS(dstFormat)) {
         if (desc->comp[0].depth == 9) {
@@ -2586,8 +2631,7 @@ av_cold void ff_sws_init_output_funcs(SwsContext *c,
     } else {
         *yuv2plane1 = yuv2plane1_8_c;
         *yuv2planeX = yuv2planeX_8_c;
-        if (dstFormat == AV_PIX_FMT_NV12 || dstFormat == AV_PIX_FMT_NV21 ||
-            dstFormat == AV_PIX_FMT_NV24 || dstFormat == AV_PIX_FMT_NV42)
+        if (isSemiPlanarYUV(dstFormat))
             *yuv2nv12cX = yuv2nv12cX_c;
     }
 
@@ -2989,6 +3033,12 @@ av_cold void ff_sws_init_output_funcs(SwsContext *c,
             *yuv2packed1 = yuv2x2rgb10_1_c;
             *yuv2packed2 = yuv2x2rgb10_2_c;
             *yuv2packedX = yuv2x2rgb10_X_c;
+            break;
+        case AV_PIX_FMT_X2BGR10LE:
+        case AV_PIX_FMT_X2BGR10BE:
+            *yuv2packed1 = yuv2x2bgr10_1_c;
+            *yuv2packed2 = yuv2x2bgr10_2_c;
+            *yuv2packedX = yuv2x2bgr10_X_c;
             break;
         }
     }

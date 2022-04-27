@@ -10,6 +10,7 @@ height=720
 coded_width=1280
 coded_height=720
 closed_captions=0
+film_grain=0
 has_b_frames=0
 sample_aspect_ratio=1:1
 display_aspect_ratio=16:9
@@ -48,6 +49,11 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:captions=0
+DISPOSITION:descriptions=0
+DISPOSITION:metadata=0
+DISPOSITION:dependent=0
+DISPOSITION:still_image=0
 TAG:file_package_umid=0x060A2B340101010501010D201300000040ECCE167353449C92D6F2693A9F1D75
 [SIDE_DATA]
 side_data_type=Mastering display metadata
@@ -106,6 +112,11 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:captions=0
+DISPOSITION:descriptions=0
+DISPOSITION:metadata=0
+DISPOSITION:dependent=0
+DISPOSITION:still_image=0
 TAG:file_package_umid=0x060A2B340101010501010D201300000040ECCE167353449C92D6F2693A9F1D75
 [/STREAM]
 [STREAM]
@@ -146,6 +157,11 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:captions=0
+DISPOSITION:descriptions=0
+DISPOSITION:metadata=0
+DISPOSITION:dependent=0
+DISPOSITION:still_image=0
 TAG:file_package_umid=0x060A2B340101010501010D201300000040ECCE167353449C92D6F2693A9F1D75
 [/STREAM]
 [FORMAT]

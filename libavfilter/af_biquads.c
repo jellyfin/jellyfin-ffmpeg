@@ -63,6 +63,7 @@
  */
 
 #include "libavutil/avassert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/ffmath.h"
 #include "libavutil/opt.h"
 #include "audio.h"
@@ -98,6 +99,7 @@ enum TransformType {
     DII,
     TDII,
     LATT,
+    SVF,
     NB_TTYPE,
 };
 
@@ -145,8 +147,6 @@ typedef struct BiquadsContext {
 static int query_formats(AVFilterContext *ctx)
 {
     BiquadsContext *s = ctx->priv;
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
     static const enum AVSampleFormat auto_sample_fmts[] = {
         AV_SAMPLE_FMT_S16P,
         AV_SAMPLE_FMT_S32P,
@@ -158,46 +158,33 @@ static int query_formats(AVFilterContext *ctx)
         AV_SAMPLE_FMT_S16P,
         AV_SAMPLE_FMT_NONE
     };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
+    const enum AVSampleFormat *sample_fmts_list = sample_fmts;
+    int ret = ff_set_common_all_channel_counts(ctx);
     if (ret < 0)
         return ret;
 
     switch (s->precision) {
     case 0:
         sample_fmts[0] = AV_SAMPLE_FMT_S16P;
-        formats = ff_make_format_list(sample_fmts);
         break;
     case 1:
         sample_fmts[0] = AV_SAMPLE_FMT_S32P;
-        formats = ff_make_format_list(sample_fmts);
         break;
     case 2:
         sample_fmts[0] = AV_SAMPLE_FMT_FLTP;
-        formats = ff_make_format_list(sample_fmts);
         break;
     case 3:
         sample_fmts[0] = AV_SAMPLE_FMT_DBLP;
-        formats = ff_make_format_list(sample_fmts);
         break;
     default:
-        formats = ff_make_format_list(auto_sample_fmts);
+        sample_fmts_list = auto_sample_fmts;
         break;
     }
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
+    ret = ff_set_common_formats_from_list(ctx, sample_fmts_list);
     if (ret < 0)
         return ret;
 
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
+    return ff_set_common_all_samplerates(ctx);
 }
 
 #define BIQUAD_FILTER(name, type, min, max, need_clipping)                    \
@@ -433,6 +420,54 @@ BIQUAD_LATT_FILTER(s32, int32_t, INT32_MIN, INT32_MAX, 1)
 BIQUAD_LATT_FILTER(flt, float,   -1., 1., 0)
 BIQUAD_LATT_FILTER(dbl, double,  -1., 1., 0)
 
+#define BIQUAD_SVF_FILTER(name, type, min, max, need_clipping)                \
+static void biquad_svf_## name (BiquadsContext *s,                            \
+                           const void *input, void *output, int len,          \
+                           double *y0, double *y1,                            \
+                           double *unused1, double *unused2,                  \
+                           double b0, double b1, double b2,                   \
+                           double a1, double a2, int *clippings,              \
+                           int disabled)                                      \
+{                                                                             \
+    const type *ibuf = input;                                                 \
+    type *obuf = output;                                                      \
+    double s0 = *y0;                                                          \
+    double s1 = *y1;                                                          \
+    double wet = s->mix;                                                      \
+    double dry = 1. - wet;                                                    \
+    double in, out;                                                           \
+    double t0, t1;                                                            \
+                                                                              \
+    for (int i = 0; i < len; i++) {                                           \
+        in   = ibuf[i];                                                       \
+        out  = b2 * in + s0;                                                  \
+        t0   = b0 * in + a1 * s0 + s1;                                        \
+        t1   = b1 * in + a2 * s0;                                             \
+        s0   = t0;                                                            \
+        s1   = t1;                                                            \
+                                                                              \
+        out = out * wet + in * dry;                                           \
+        if (disabled) {                                                       \
+            obuf[i] = in;                                                     \
+        } else if (need_clipping && out < min) {                              \
+            (*clippings)++;                                                   \
+            obuf[i] = min;                                                    \
+        } else if (need_clipping && out > max) {                              \
+            (*clippings)++;                                                   \
+            obuf[i] = max;                                                    \
+        } else {                                                              \
+            obuf[i] = out;                                                    \
+        }                                                                     \
+    }                                                                         \
+    *y0 = s0;                                                                 \
+    *y1 = s1;                                                                 \
+}
+
+BIQUAD_SVF_FILTER(s16, int16_t, INT16_MIN, INT16_MAX, 1)
+BIQUAD_SVF_FILTER(s32, int32_t, INT32_MIN, INT32_MAX, 1)
+BIQUAD_SVF_FILTER(flt, float,   -1., 1., 0)
+BIQUAD_SVF_FILTER(dbl, double,  -1., 1., 0)
+
 static void convert_dir2latt(BiquadsContext *s)
 {
     double k0, k1, v0, v1, v2;
@@ -448,6 +483,24 @@ static void convert_dir2latt(BiquadsContext *s)
     s->b0 = v0;
     s->b1 = v1;
     s->b2 = v2;
+}
+
+static void convert_dir2svf(BiquadsContext *s)
+{
+    double a[2];
+    double b[3];
+
+    a[0] = -s->a1;
+    a[1] = -s->a2;
+    b[0] = s->b1 - s->a1 * s->b0;
+    b[1] = s->b2 - s->a2 * s->b0;
+    b[2] = s->b0;
+
+    s->a1 = a[0];
+    s->a2 = a[1];
+    s->b0 = b[0];
+    s->b1 = b[1];
+    s->b2 = b[2];
 }
 
 static int config_filter(AVFilterLink *outlink, int reset)
@@ -738,6 +791,23 @@ static int config_filter(AVFilterLink *outlink, int reset)
         default: av_assert0(0);
         }
         break;
+    case SVF:
+        switch (inlink->format) {
+        case AV_SAMPLE_FMT_S16P:
+            s->filter = biquad_svf_s16;
+            break;
+        case AV_SAMPLE_FMT_S32P:
+            s->filter = biquad_svf_s32;
+            break;
+        case AV_SAMPLE_FMT_FLTP:
+            s->filter = biquad_svf_flt;
+            break;
+        case AV_SAMPLE_FMT_DBLP:
+            s->filter = biquad_svf_dbl;
+            break;
+        default: av_assert0(0);
+        }
+        break;
     default:
         av_assert0(0);
      }
@@ -746,6 +816,8 @@ static int config_filter(AVFilterLink *outlink, int reset)
 
      if (s->transform_type == LATT)
          convert_dir2latt(s);
+     else if (s->transform_type == SVF)
+         convert_dir2svf(s);
 
     return 0;
 }
@@ -811,7 +883,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 
     td.in = buf;
     td.out = out_buf;
-    ctx->internal->execute(ctx, filter_channel, &td, NULL, FFMIN(outlink->channels, ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, filter_channel, &td, NULL,
+                      FFMIN(outlink->channels, ff_filter_get_nb_threads(ctx)));
 
     for (ch = 0; ch < outlink->channels; ch++) {
         if (s->cache[ch].clippings > 0)
@@ -852,7 +925,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -861,15 +933,13 @@ static const AVFilterPad outputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_output,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(BiquadsContext, x)
 #define FLAGS AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 #define AF AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 
-#define DEFINE_BIQUAD_FILTER(name_, description_)                       \
-AVFILTER_DEFINE_CLASS(name_);                                           \
+#define DEFINE_BIQUAD_FILTER_2(name_, description_, priv_class_)        \
 static av_cold int name_##_init(AVFilterContext *ctx)                   \
 {                                                                       \
     BiquadsContext *s = ctx->priv;                                      \
@@ -877,19 +947,23 @@ static av_cold int name_##_init(AVFilterContext *ctx)                   \
     return 0;                                                           \
 }                                                                       \
                                                          \
-AVFilter ff_af_##name_ = {                               \
+const AVFilter ff_af_##name_ = {                               \
     .name          = #name_,                             \
     .description   = NULL_IF_CONFIG_SMALL(description_), \
+    .priv_class    = &priv_class_##_class,               \
     .priv_size     = sizeof(BiquadsContext),             \
     .init          = name_##_init,                       \
     .uninit        = uninit,                             \
-    .query_formats = query_formats,                      \
-    .inputs        = inputs,                             \
-    .outputs       = outputs,                            \
-    .priv_class    = &name_##_class,                     \
+    FILTER_INPUTS(inputs),                               \
+    FILTER_OUTPUTS(outputs),                             \
+    FILTER_QUERY_FUNC(query_formats),                    \
     .process_command = process_command,                  \
     .flags         = AVFILTER_FLAG_SLICE_THREADS | AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL, \
 }
+
+#define DEFINE_BIQUAD_FILTER(name, description)                         \
+    AVFILTER_DEFINE_CLASS(name);                                        \
+    DEFINE_BIQUAD_FILTER_2(name, description, name)
 
 #if CONFIG_EQUALIZER_FILTER
 static const AVOption equalizer_options[] = {
@@ -918,6 +992,7 @@ static const AVOption equalizer_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -959,6 +1034,7 @@ static const AVOption bass_lowshelf_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -969,14 +1045,13 @@ static const AVOption bass_lowshelf_options[] = {
     {NULL}
 };
 
+AVFILTER_DEFINE_CLASS_EXT(bass_lowshelf, "bass/lowshelf", bass_lowshelf_options);
 #if CONFIG_BASS_FILTER
-#define bass_options bass_lowshelf_options
-DEFINE_BIQUAD_FILTER(bass, "Boost or cut lower frequencies.");
+DEFINE_BIQUAD_FILTER_2(bass, "Boost or cut lower frequencies.", bass_lowshelf);
 #endif  /* CONFIG_BASS_FILTER */
 
 #if CONFIG_LOWSHELF_FILTER
-#define lowshelf_options bass_lowshelf_options
-DEFINE_BIQUAD_FILTER(lowshelf, "Apply a low shelf filter.");
+DEFINE_BIQUAD_FILTER_2(lowshelf, "Apply a low shelf filter.", bass_lowshelf);
 #endif  /* CONFIG_LOWSHELF_FILTER */
 #endif  /* CONFIG_BASS_FILTER || CONFIG LOWSHELF_FILTER */
 #if CONFIG_TREBLE_FILTER || CONFIG_HIGHSHELF_FILTER
@@ -1008,6 +1083,7 @@ static const AVOption treble_highshelf_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -1018,14 +1094,15 @@ static const AVOption treble_highshelf_options[] = {
     {NULL}
 };
 
+AVFILTER_DEFINE_CLASS_EXT(treble_highshelf, "treble/highshelf",
+                          treble_highshelf_options);
+
 #if CONFIG_TREBLE_FILTER
-#define treble_options treble_highshelf_options
-DEFINE_BIQUAD_FILTER(treble, "Boost or cut upper frequencies.");
+DEFINE_BIQUAD_FILTER_2(treble, "Boost or cut upper frequencies.", treble_highshelf);
 #endif  /* CONFIG_TREBLE_FILTER */
 
 #if CONFIG_HIGHSHELF_FILTER
-#define highshelf_options treble_highshelf_options
-DEFINE_BIQUAD_FILTER(highshelf, "Apply a high shelf filter.");
+DEFINE_BIQUAD_FILTER_2(highshelf, "Apply a high shelf filter.", treble_highshelf);
 #endif  /* CONFIG_HIGHSHELF_FILTER */
 #endif  /* CONFIG_TREBLE_FILTER || CONFIG_HIGHSHELF_FILTER */
 #if CONFIG_BANDPASS_FILTER
@@ -1054,6 +1131,7 @@ static const AVOption bandpass_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -1091,6 +1169,7 @@ static const AVOption bandreject_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -1130,6 +1209,7 @@ static const AVOption lowpass_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -1169,6 +1249,7 @@ static const AVOption highpass_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -1208,6 +1289,7 @@ static const AVOption allpass_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},
@@ -1240,6 +1322,7 @@ static const AVOption biquad_options[] = {
     {"dii",  "direct form II", 0, AV_OPT_TYPE_CONST, {.i64=DII}, 0, 0, AF, "transform_type"},
     {"tdii", "transposed direct form II", 0, AV_OPT_TYPE_CONST, {.i64=TDII}, 0, 0, AF, "transform_type"},
     {"latt", "lattice-ladder form", 0, AV_OPT_TYPE_CONST, {.i64=LATT}, 0, 0, AF, "transform_type"},
+    {"svf",  "state variable filter form", 0, AV_OPT_TYPE_CONST, {.i64=SVF}, 0, 0, AF, "transform_type"},
     {"precision", "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"r",         "set filtering precision", OFFSET(precision), AV_OPT_TYPE_INT, {.i64=-1}, -1, 3, AF, "precision"},
     {"auto", "automatic",            0, AV_OPT_TYPE_CONST, {.i64=-1}, 0, 0, AF, "precision"},

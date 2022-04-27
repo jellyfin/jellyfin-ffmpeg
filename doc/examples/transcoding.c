@@ -32,6 +32,7 @@
 #include <libavformat/avformat.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
+#include <libavutil/channel_layout.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 
@@ -71,13 +72,13 @@ static int open_input_file(const char *filename)
         return ret;
     }
 
-    stream_ctx = av_mallocz_array(ifmt_ctx->nb_streams, sizeof(*stream_ctx));
+    stream_ctx = av_calloc(ifmt_ctx->nb_streams, sizeof(*stream_ctx));
     if (!stream_ctx)
         return AVERROR(ENOMEM);
 
     for (i = 0; i < ifmt_ctx->nb_streams; i++) {
         AVStream *stream = ifmt_ctx->streams[i];
-        AVCodec *dec = avcodec_find_decoder(stream->codecpar->codec_id);
+        const AVCodec *dec = avcodec_find_decoder(stream->codecpar->codec_id);
         AVCodecContext *codec_ctx;
         if (!dec) {
             av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for stream #%u\n", i);
@@ -122,7 +123,7 @@ static int open_output_file(const char *filename)
     AVStream *out_stream;
     AVStream *in_stream;
     AVCodecContext *dec_ctx, *enc_ctx;
-    AVCodec *encoder;
+    const AVCodec *encoder;
     int ret;
     unsigned int i;
 

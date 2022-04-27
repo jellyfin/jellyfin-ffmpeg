@@ -28,10 +28,21 @@
  * bitstream api.
  */
 
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "config.h"
 #include "libavutil/avassert.h"
+#include "libavutil/bswap.h"
+#include "libavutil/common.h"
+#include "libavutil/error.h"
+#include "libavutil/internal.h"
+#include "libavutil/intreadwrite.h"
+#include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/qsort.h"
-#include "avcodec.h"
-#include "internal.h"
 #include "mathops.h"
 #include "put_bits.h"
 #include "vlc.h"
@@ -44,17 +55,6 @@ const uint8_t ff_log2_run[41]={
 16,17,18,19,20,21,22,23,
 24,
 };
-
-#if FF_API_AVPRIV_PUT_BITS
-void avpriv_align_put_bits(PutBitContext *s)
-{
-    align_put_bits(s);
-}
-void avpriv_copy_bits(PutBitContext *pb, const uint8_t *src, int length)
-{
-    ff_copy_bits(pb, src, length);
-}
-#endif
 
 void ff_put_string(PutBitContext *pb, const char *string, int terminate_string)
 {

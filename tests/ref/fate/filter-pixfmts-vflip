@@ -63,6 +63,14 @@ p010be              06e9354b6e0e38ba41736352cedc0bd5
 p010le              fd18d322bffbf5816902c13102872e22
 p016be              06e9354b6e0e38ba41736352cedc0bd5
 p016le              fd18d322bffbf5816902c13102872e22
+p210be              ca886ab2b3ea5c153f1954b3709f7249
+p210le              d71c2d4e483030ffd87fa6a68c83fce0
+p216be              7f268f755ed02592b3a49fd5f7bd48bb
+p216le              2c0a660762527706799c4705ca50a9c5
+p410be              4c603e4464ed3f34cc432b4d1f912082
+p410le              849308a1cdf41e055019cf311d1b2201
+p416be              7e7657ab40cf953351a14ea76e296519
+p416le              0991d7fff4e2caf36be219ecdd9619d4
 pal8                450b0155d0f2d5628bf95a442db5f817
 rgb0                56a7ea69541bcd27bef6a5615784722b
 rgb24               195e6dae1c3a488b9d3ceb7560d25d85
@@ -80,7 +88,8 @@ rgba                c1a5908572737f2ae1e5d8218af65f4b
 rgba64be            17e6273323b5779b5f3f775f150c1011
 rgba64le            48f45b10503b7dd140329c3dd0d54c98
 uyvy422             3a237e8376264e0cfa78f8a3fdadec8a
-x2rgb10le           332a6f5f5012008a562cb031836da028
+x2bgr10le           795b66a5fc83cd2cf300aae51c230f80
+x2rgb10le           262c502230cf3724f8e2cf4737f18a42
 xyz12be             810644e008deb231850d779aaa27cc7e
 xyz12le             829701db461b43533cf9241e0743bc61
 ya16be              55b1dbbe4d56ed0d22461685ce85520d

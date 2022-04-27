@@ -22,6 +22,7 @@
  */
 
 #include <libavutil/motion_vector.h>
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
 static AVFormatContext *fmt_ctx = NULL;
@@ -78,7 +79,7 @@ static int open_codec_context(AVFormatContext *fmt_ctx, enum AVMediaType type)
     int ret;
     AVStream *st;
     AVCodecContext *dec_ctx = NULL;
-    AVCodec *dec = NULL;
+    const AVCodec *dec = NULL;
     AVDictionary *opts = NULL;
 
     ret = av_find_best_stream(fmt_ctx, type, -1, -1, &dec, 0);
@@ -104,7 +105,9 @@ static int open_codec_context(AVFormatContext *fmt_ctx, enum AVMediaType type)
 
         /* Init the video decoder */
         av_dict_set(&opts, "flags2", "+export_mvs", 0);
-        if ((ret = avcodec_open2(dec_ctx, dec, &opts)) < 0) {
+        ret = avcodec_open2(dec_ctx, dec, &opts);
+        av_dict_free(&opts);
+        if (ret < 0) {
             fprintf(stderr, "Failed to open %s codec\n",
                     av_get_media_type_string(type));
             return ret;
@@ -121,7 +124,7 @@ static int open_codec_context(AVFormatContext *fmt_ctx, enum AVMediaType type)
 int main(int argc, char **argv)
 {
     int ret = 0;
-    AVPacket pkt = { 0 };
+    AVPacket *pkt = NULL;
 
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <video>\n", argv[0]);
@@ -156,13 +159,20 @@ int main(int argc, char **argv)
         goto end;
     }
 
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        fprintf(stderr, "Could not allocate AVPacket\n");
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
+
     printf("framenum,source,blockw,blockh,srcx,srcy,dstx,dsty,flags\n");
 
     /* read frames from the file */
-    while (av_read_frame(fmt_ctx, &pkt) >= 0) {
-        if (pkt.stream_index == video_stream_idx)
-            ret = decode_packet(&pkt);
-        av_packet_unref(&pkt);
+    while (av_read_frame(fmt_ctx, pkt) >= 0) {
+        if (pkt->stream_index == video_stream_idx)
+            ret = decode_packet(pkt);
+        av_packet_unref(pkt);
         if (ret < 0)
             break;
     }
@@ -174,5 +184,6 @@ end:
     avcodec_free_context(&video_dec_ctx);
     avformat_close_input(&fmt_ctx);
     av_frame_free(&frame);
+    av_packet_free(&pkt);
     return ret < 0;
 }

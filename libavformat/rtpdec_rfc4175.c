@@ -25,9 +25,11 @@
 #include "rtpdec_formats.h"
 #include "libavutil/avstring.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/parseutils.h"
 
 struct PayloadContext {
     char *sampling;
+    AVRational framerate;
     int depth;
     int width;
     int height;
@@ -42,9 +44,9 @@ struct PayloadContext {
 
 static int rfc4175_parse_format(AVStream *stream, PayloadContext *data)
 {
-    enum AVPixelFormat pixfmt = AV_PIX_FMT_NONE;
-    int bits_per_sample = 0;
-    int tag = 0;
+    enum AVPixelFormat pixfmt;
+    int tag;
+    const AVPixFmtDescriptor *desc;
 
     if (!strncmp(data->sampling, "YCbCr-4:2:2", 11)) {
         tag = MKTAG('U', 'Y', 'V', 'Y');
@@ -52,12 +54,43 @@ static int rfc4175_parse_format(AVStream *stream, PayloadContext *data)
 
         if (data->depth == 8) {
             data->pgroup = 4;
-            bits_per_sample = 16;
             pixfmt = AV_PIX_FMT_UYVY422;
+            stream->codecpar->codec_id = AV_CODEC_ID_RAWVIDEO;
         } else if (data->depth == 10) {
             data->pgroup = 5;
-            bits_per_sample = 20;
             pixfmt = AV_PIX_FMT_YUV422P10;
+            stream->codecpar->codec_id = AV_CODEC_ID_BITPACKED;
+        } else {
+            return AVERROR_INVALIDDATA;
+        }
+    } else if (!strncmp(data->sampling, "YCbCr-4:2:0", 11)) {
+        tag = MKTAG('I', '4', '2', '0');
+        data->xinc = 4;
+
+        if (data->depth == 8) {
+            data->pgroup = 6;
+            pixfmt = AV_PIX_FMT_YUV420P;
+            stream->codecpar->codec_id = AV_CODEC_ID_RAWVIDEO;
+        } else {
+            return AVERROR_INVALIDDATA;
+        }
+    } else if (!strncmp(data->sampling, "RGB", 3)) {
+        tag = MKTAG('R', 'G', 'B', 24);
+        if (data->depth == 8) {
+            data->xinc = 1;
+            data->pgroup = 3;
+            pixfmt = AV_PIX_FMT_RGB24;
+            stream->codecpar->codec_id = AV_CODEC_ID_RAWVIDEO;
+        } else {
+            return AVERROR_INVALIDDATA;
+        }
+    } else if (!strncmp(data->sampling, "BGR", 3)) {
+        tag = MKTAG('B', 'G', 'R', 24);
+        if (data->depth == 8) {
+            data->xinc = 1;
+            data->pgroup = 3;
+            pixfmt = AV_PIX_FMT_BGR24;
+            stream->codecpar->codec_id = AV_CODEC_ID_RAWVIDEO;
         } else {
             return AVERROR_INVALIDDATA;
         }
@@ -65,10 +98,16 @@ static int rfc4175_parse_format(AVStream *stream, PayloadContext *data)
         return AVERROR_INVALIDDATA;
     }
 
+    desc = av_pix_fmt_desc_get(pixfmt);
     stream->codecpar->format = pixfmt;
     stream->codecpar->codec_tag = tag;
-    stream->codecpar->bits_per_coded_sample = bits_per_sample;
+    stream->codecpar->bits_per_coded_sample = av_get_bits_per_pixel(desc);
     data->frame_size = data->width * data->height * data->pgroup / data->xinc;
+
+    if (data->framerate.den > 0) {
+        stream->avg_frame_rate = data->framerate;
+        stream->codecpar->bit_rate = data->frame_size * av_q2d(data->framerate) * 8;
+    }
 
     return 0;
 }
@@ -85,6 +124,39 @@ static int rfc4175_parse_fmtp(AVFormatContext *s, AVStream *stream,
         data->sampling = av_strdup(value);
     else if (!strncmp(attr, "depth", 5))
         data->depth = atoi(value);
+    else if (!strncmp(attr, "exactframerate", 14)) {
+        if (av_parse_video_rate(&data->framerate, value) < 0)
+            return AVERROR(EINVAL);
+    } else if (!strncmp(attr, "TCS", 3)) {
+        if (!strncmp(value, "SDR", 3))
+            stream->codecpar->color_trc = AVCOL_TRC_BT709;
+        else if (!strncmp(value, "PQ", 2))
+            stream->codecpar->color_trc = AVCOL_TRC_SMPTE2084;
+        else if (!strncmp(value, "HLG", 3))
+            stream->codecpar->color_trc = AVCOL_TRC_ARIB_STD_B67;
+        else if (!strncmp(value, "LINEAR", 6))
+            stream->codecpar->color_trc = AVCOL_TRC_LINEAR;
+        else if (!strncmp(value, "ST428-1", 7))
+            stream->codecpar->color_trc = AVCOL_TRC_SMPTEST428_1;
+        else
+            stream->codecpar->color_trc = AVCOL_TRC_UNSPECIFIED;
+    } else if (!strncmp(attr, "colorimetry", 11)) {
+        if (!strncmp(value, "BT601", 5)) {
+            stream->codecpar->color_primaries = AVCOL_PRI_BT470BG;
+            stream->codecpar->color_space     = AVCOL_SPC_BT470BG;
+        } else if (!strncmp(value, "BT709", 5)) {
+            stream->codecpar->color_primaries = AVCOL_PRI_BT709;
+            stream->codecpar->color_space     = AVCOL_SPC_BT709;
+        } else if (!strncmp(value, "BT2020", 6)) {
+            stream->codecpar->color_primaries = AVCOL_PRI_BT2020;
+            stream->codecpar->color_space     = AVCOL_SPC_BT2020_NCL;
+        }
+    } else if (!strncmp(attr, "RANGE", 5)) {
+        if (!strncmp(value, "NARROW", 6))
+            stream->codecpar->color_range = AVCOL_RANGE_MPEG;
+        else if (!strncmp(value, "FULL", 4))
+            stream->codecpar->color_range = AVCOL_RANGE_JPEG;
+    }
 
     return 0;
 }
@@ -106,7 +178,7 @@ static int rfc4175_parse_sdp_line(AVFormatContext *s, int st_index,
 
 
         if (!data->sampling || !data->depth || !data->width || !data->height)
-            return -1;
+            return AVERROR(EINVAL);
 
         stream->codecpar->width = data->width;
         stream->codecpar->height = data->height;
@@ -123,17 +195,17 @@ static int rfc4175_parse_sdp_line(AVFormatContext *s, int st_index,
 static int rfc4175_finalize_packet(PayloadContext *data, AVPacket *pkt,
                                    int stream_index)
 {
-   int ret;
+    int ret;
 
-   pkt->stream_index = stream_index;
-   ret = av_packet_from_data(pkt, data->frame, data->frame_size);
-   if (ret < 0) {
-       av_freep(&data->frame);
-   }
+    pkt->stream_index = stream_index;
+    ret = av_packet_from_data(pkt, data->frame, data->frame_size);
+    if (ret < 0) {
+        av_freep(&data->frame);
+    }
 
-   data->frame = NULL;
+    data->frame = NULL;
 
-   return ret;
+    return ret;
 }
 
 static int rfc4175_handle_packet(AVFormatContext *ctx, PayloadContext *data,
@@ -199,7 +271,7 @@ static int rfc4175_handle_packet(AVFormatContext *ctx, PayloadContext *data,
         cont = headers[4] & 0x80;
         headers += 6;
 
-        if (length % data->pgroup)
+        if (!data->pgroup || length % data->pgroup)
             return AVERROR_INVALIDDATA;
 
         if (length > payload_len)
@@ -229,7 +301,7 @@ static int rfc4175_handle_packet(AVFormatContext *ctx, PayloadContext *data,
 const RTPDynamicProtocolHandler ff_rfc4175_rtp_handler = {
     .enc_name           = "raw",
     .codec_type         = AVMEDIA_TYPE_VIDEO,
-    .codec_id           = AV_CODEC_ID_BITPACKED,
+    .codec_id           = AV_CODEC_ID_NONE,
     .priv_data_size     = sizeof(PayloadContext),
     .parse_sdp_a_line   = rfc4175_parse_sdp_line,
     .parse_packet       = rfc4175_handle_packet,

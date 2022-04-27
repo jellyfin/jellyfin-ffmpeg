@@ -19,7 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavcodec/avcodec.h"
+#include "libavcodec/codec_id.h"
+#include "libavcodec/codec_par.h"
 #include "libavcodec/bytestream.h"
 #include "avformat.h"
 #include "rawenc.h"
@@ -58,7 +59,7 @@ static int a64_write_header(AVFormatContext *s)
     return 0;
 }
 
-AVOutputFormat ff_a64_muxer = {
+const AVOutputFormat ff_a64_muxer = {
     .name           = "a64",
     .long_name      = NULL_IF_CONFIG_SMALL("a64 - video for Commodore 64"),
     .extensions     = "a64, A64",

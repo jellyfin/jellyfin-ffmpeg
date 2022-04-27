@@ -101,7 +101,6 @@ static int query_formats(AVFilterContext *ctx)
     static const enum AVPixelFormat wires_pix_fmts[] = {AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE};
     static const enum AVPixelFormat canny_pix_fmts[] = {AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_GBRP, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE};
     static const enum AVPixelFormat colormix_pix_fmts[] = {AV_PIX_FMT_GBRP, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE};
-    AVFilterFormats *fmts_list;
     const enum AVPixelFormat *pix_fmts = NULL;
 
     if (edgedetect->mode == MODE_WIRES) {
@@ -113,10 +112,7 @@ static int query_formats(AVFilterContext *ctx)
     } else {
         av_assert0(0);
     }
-    fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
+    return ff_set_common_formats_from_list(ctx, pix_fmts);
 }
 
 static int config_props(AVFilterLink *inlink)
@@ -420,7 +416,6 @@ static const AVFilterPad edgedetect_inputs[] = {
         .config_props = config_props,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad edgedetect_outputs[] = {
@@ -428,18 +423,17 @@ static const AVFilterPad edgedetect_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_edgedetect = {
+const AVFilter ff_vf_edgedetect = {
     .name          = "edgedetect",
     .description   = NULL_IF_CONFIG_SMALL("Detect and draw edge."),
     .priv_size     = sizeof(EdgeDetectContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = edgedetect_inputs,
-    .outputs       = edgedetect_outputs,
+    FILTER_INPUTS(edgedetect_inputs),
+    FILTER_OUTPUTS(edgedetect_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &edgedetect_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

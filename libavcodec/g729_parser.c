@@ -25,7 +25,6 @@
  * Splits packets into individual blocks.
  */
 
-#include "libavutil/avassert.h"
 #include "parser.h"
 #include "g729.h"
 
@@ -85,7 +84,7 @@ static int g729_parse(AVCodecParserContext *s1, AVCodecContext *avctx,
     return next;
 }
 
-AVCodecParser ff_g729_parser = {
+const AVCodecParser ff_g729_parser = {
     .codec_ids      = { AV_CODEC_ID_G729, AV_CODEC_ID_ACELP_KELVIN },
     .priv_data_size = sizeof(G729ParseContext),
     .parser_parse   = g729_parse,

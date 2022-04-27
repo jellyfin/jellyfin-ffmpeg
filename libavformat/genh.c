@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "libavcodec/internal.h"
 #include "avformat.h"
@@ -189,7 +190,7 @@ static int genh_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-AVInputFormat ff_genh_demuxer = {
+const AVInputFormat ff_genh_demuxer = {
     .name           = "genh",
     .long_name      = NULL_IF_CONFIG_SMALL("GENeric Header"),
     .priv_data_size = sizeof(GENHDemuxContext),

@@ -19,6 +19,33 @@ enabled demuxers and muxers.
 
 A description of some of the currently available muxers follows.
 
+@anchor{a64}
+@section a64
+
+A64 muxer for Commodore 64 video. Accepts a single @code{a64_multi} or @code{a64_multi5} codec video stream.
+
+@anchor{adts}
+@section adts
+
+Audio Data Transport Stream muxer. It accepts a single AAC stream.
+
+@subsection Options
+
+It accepts the following options:
+
+@table @option
+
+@item write_id3v2 @var{bool}
+Enable to write ID3v2.4 tags at the start of the stream. Default is disabled.
+
+@item write_apetag @var{bool}
+Enable to write APE tags at the end of the stream. Default is disabled.
+
+@item write_mpeg2 @var{bool}
+Enable to set MPEG version bit in the ADTS frame header to 1 which indicates MPEG-2. Default is 0, which indicates MPEG-4.
+
+@end table
+
 @anchor{aiff}
 @section aiff
 
@@ -35,6 +62,37 @@ Enable ID3v2 tags writing when set to 1. Default is 0 (disabled).
 @item id3v2_version
 Select ID3v2 version to write. Currently only version 3 and 4 (aka.
 ID3v2.3 and ID3v2.4) are supported. The default is version 4.
+
+@end table
+
+@anchor{alp}
+@section alp
+
+Muxer for audio of High Voltage Software's Lego Racers game. It accepts a single ADPCM_IMA_ALP stream
+with no more than 2 channels nor a sample rate greater than 44100 Hz.
+
+Extensions: tun, pcm
+
+@subsection Options
+
+It accepts the following options:
+
+@table @option
+
+@item type @var{type}
+Set file type.
+
+@table @samp
+@item tun
+Set file type as music. Must have a sample rate of 22050 Hz.
+
+@item pcm
+Set file type as sfx.
+
+@item auto
+Set file type as per output file extension. @code{.pcm} results in type @code{pcm} else type @code{tun} is set. @var{(default)}
+
+@end table
 
 @end table
 
@@ -173,37 +231,6 @@ and the input video converted to MPEG-2 video, use the command:
 ffmpeg -i INPUT -c:a pcm_u8 -c:v mpeg2video -f crc -
 @end example
 
-@section flv
-
-Adobe Flash Video Format muxer.
-
-This muxer accepts the following options:
-
-@table @option
-
-@item flvflags @var{flags}
-Possible values:
-
-@table @samp
-
-@item aac_seq_header_detect
-Place AAC sequence header based on audio stream data.
-
-@item no_sequence_end
-Disable sequence end tag.
-
-@item no_metadata
-Disable metadata tag.
-
-@item no_duration_filesize
-Disable duration and filesize in metadata when they are equal to zero
-at the end of stream. (Be used to non-seekable living stream).
-
-@item add_keyframe_index
-Used to facilitate seeking; particularly for HTTP pseudo streaming.
-@end table
-@end table
-
 @anchor{dash}
 @section dash
 
@@ -237,8 +264,6 @@ ffmpeg -re -i <input> -map 0 -map 0 -c:a libfdk_aac -c:v libx264 \
 @end example
 
 @table @option
-@item min_seg_duration @var{microseconds}
-This is a deprecated option to set the segment length in microseconds, use @var{seg_duration} instead.
 @item seg_duration @var{duration}
 Set the segment length in seconds (fractional value can be set). The value is
 treated as average segment duration when @var{use_template} is enabled and
@@ -337,11 +362,12 @@ Ignore IO errors during open and write. Useful for long-duration runs with netwo
 
 @item lhls @var{lhls}
 Enable Low-latency HLS(LHLS). Adds #EXT-X-PREFETCH tag with current segment's URI.
-Apple doesn't have an official spec for LHLS. Meanwhile hls.js player folks are
-trying to standardize a open LHLS spec. The draft spec is available in https://github.com/video-dev/hlsjs-rfcs/blob/lhls-spec/proposals/0001-lhls.md
-This option will also try to comply with the above open spec, till Apple's spec officially supports it.
-Applicable only when @var{streaming} and @var{hls_playlist} options are enabled.
+hls.js player folks are trying to standardize an open LHLS spec. The draft spec is available in https://github.com/video-dev/hlsjs-rfcs/blob/lhls-spec/proposals/0001-lhls.md
+This option tries to comply with the above open spec.
+It enables @var{streaming} and @var{hls_playlist} options automatically.
 This is an experimental feature.
+
+Note: This is not Apple's version LHLS. See @url{https://datatracker.ietf.org/doc/html/draft-pantos-hls-rfc8216bis}
 
 @item ldash @var{ldash}
 Enable Low-latency Dash by constraining the presence and values of some elements.
@@ -378,6 +404,137 @@ adjusting playback latency and buffer occupancy during normal playback by client
  Set the mpd update period ,for dynamic content.
  The unit is second.
 
+@end table
+
+@anchor{fifo}
+@section fifo
+
+The fifo pseudo-muxer allows the separation of encoding and muxing by using
+first-in-first-out queue and running the actual muxer in a separate thread. This
+is especially useful in combination with the @ref{tee} muxer and can be used to
+send data to several destinations with different reliability/writing speed/latency.
+
+API users should be aware that callback functions (interrupt_callback,
+io_open and io_close) used within its AVFormatContext must be thread-safe.
+
+The behavior of the fifo muxer if the queue fills up or if the output fails is
+selectable,
+
+@itemize @bullet
+
+@item
+output can be transparently restarted with configurable delay between retries
+based on real time or time of the processed stream.
+
+@item
+encoding can be blocked during temporary failure, or continue transparently
+dropping packets in case fifo queue fills up.
+
+@end itemize
+
+@table @option
+
+@item fifo_format
+Specify the format name. Useful if it cannot be guessed from the
+output name suffix.
+
+@item queue_size
+Specify size of the queue (number of packets). Default value is 60.
+
+@item format_opts
+Specify format options for the underlying muxer. Muxer options can be specified
+as a list of @var{key}=@var{value} pairs separated by ':'.
+
+@item drop_pkts_on_overflow @var{bool}
+If set to 1 (true), in case the fifo queue fills up, packets will be dropped
+rather than blocking the encoder. This makes it possible to continue streaming without
+delaying the input, at the cost of omitting part of the stream. By default
+this option is set to 0 (false), so in such cases the encoder will be blocked
+until the muxer processes some of the packets and none of them is lost.
+
+@item attempt_recovery @var{bool}
+If failure occurs, attempt to recover the output. This is especially useful
+when used with network output, since it makes it possible to restart streaming transparently.
+By default this option is set to 0 (false).
+
+@item max_recovery_attempts
+Sets maximum number of successive unsuccessful recovery attempts after which
+the output fails permanently. By default this option is set to 0 (unlimited).
+
+@item recovery_wait_time @var{duration}
+Waiting time before the next recovery attempt after previous unsuccessful
+recovery attempt. Default value is 5 seconds.
+
+@item recovery_wait_streamtime @var{bool}
+If set to 0 (false), the real time is used when waiting for the recovery
+attempt (i.e. the recovery will be attempted after at least
+recovery_wait_time seconds).
+If set to 1 (true), the time of the processed stream is taken into account
+instead (i.e. the recovery will be attempted after at least @var{recovery_wait_time}
+seconds of the stream is omitted).
+By default, this option is set to 0 (false).
+
+@item recover_any_error @var{bool}
+If set to 1 (true), recovery will be attempted regardless of type of the error
+causing the failure. By default this option is set to 0 (false) and in case of
+certain (usually permanent) errors the recovery is not attempted even when
+@var{attempt_recovery} is set to 1.
+
+@item restart_with_keyframe @var{bool}
+Specify whether to wait for the keyframe after recovering from
+queue overflow or failure. This option is set to 0 (false) by default.
+
+@item timeshift @var{duration}
+Buffer the specified amount of packets and delay writing the output. Note that
+@var{queue_size} must be big enough to store the packets for timeshift. At the
+end of the input the fifo buffer is flushed at realtime speed.
+
+@end table
+
+@subsection Examples
+
+@itemize
+
+@item
+Stream something to rtmp server, continue processing the stream at real-time
+rate even in case of temporary failure (network outage) and attempt to recover
+streaming every second indefinitely.
+@example
+ffmpeg -re -i ... -c:v libx264 -c:a aac -f fifo -fifo_format flv -map 0:v -map 0:a
+  -drop_pkts_on_overflow 1 -attempt_recovery 1 -recovery_wait_time 1 rtmp://example.com/live/stream_name
+@end example
+
+@end itemize
+
+@section flv
+
+Adobe Flash Video Format muxer.
+
+This muxer accepts the following options:
+
+@table @option
+
+@item flvflags @var{flags}
+Possible values:
+
+@table @samp
+
+@item aac_seq_header_detect
+Place AAC sequence header based on audio stream data.
+
+@item no_sequence_end
+Disable sequence end tag.
+
+@item no_metadata
+Disable metadata tag.
+
+@item no_duration_filesize
+Disable duration and filesize in metadata when they are equal to zero
+at the end of stream. (Be used to non-seekable living stream).
+
+@item add_keyframe_index
+Used to facilitate seeking; particularly for HTTP pseudo streaming.
+@end table
 @end table
 
 @anchor{framecrc}
@@ -642,15 +799,7 @@ were recently referenced in the playlist. Default value is 1, meaning segments o
 Set output format options using a :-separated list of key=value
 parameters. Values containing @code{:} special characters must be
 escaped.
-
-@item hls_wrap @var{wrap}
-This is a deprecated option, you can use @code{hls_list_size}
-and @code{hls_flags delete_segments} instead it
-
-This option is useful to avoid to fill the disk with many segment
-files, and limits the maximum number of segment files written to disk
-to @var{wrap}.
-
+@code{hls_ts_options} is deprecated, use hls_segment_options instead of it..
 
 @item hls_start_number_source
 Start the playlist sequence number (@code{#EXT-X-MEDIA-SEQUENCE}) according to the specified source.
@@ -737,9 +886,6 @@ This example will produce the playlists segment file sets:
 @file{vs0/file_000.ts}, @file{vs0/file_001.ts}, @file{vs0/file_002.ts}, etc. and
 @file{vs1/file_000.ts}, @file{vs1/file_001.ts}, @file{vs1/file_002.ts}, etc.
 
-@item use_localtime
-Same as strftime option, will be deprecated.
-
 @item strftime
 Use strftime() on @var{filename} to expand the segment filename with localtime.
 The segment number is also available in this mode, but to use it, you need to specify second_level_segment_index
@@ -756,9 +902,6 @@ ffmpeg -i in.nut -strftime 1 -hls_flags second_level_segment_index -hls_segment_
 @end example
 This example will produce the playlist, @file{out.m3u8}, and segment files:
 @file{file-20160215-0001.ts}, @file{file-20160215-0002.ts}, etc.
-
-@item use_localtime_mkdir
-Same as strftime_mkdir option, will be deprecated .
 
 @item strftime_mkdir
 Used together with -strftime_mkdir, it will create all subdirectories which
@@ -777,6 +920,10 @@ This example will create a directory hierarchy 2016/02/15 (if any of them do not
 produce the playlist, @file{out.m3u8}, and segment files:
 @file{2016/02/15/file-20160215-1455569023.ts}, @file{2016/02/15/file-20160215-1455569024.ts}, etc.
 
+@item hls_segment_options @var{options_list}
+Set output format options using a :-separated list of key=value
+parameters. Values containing @code{:} special characters must be
+escaped.
 
 @item hls_key_info_file @var{key_info_file}
 Use the information in @var{key_info_file} for segment encryption. The first
@@ -1278,6 +1425,10 @@ overwritten with new images. Default value is 0.
 If set to 1, expand the filename with date and time information from
 @code{strftime()}. Default value is 0.
 
+@item atomic_writing
+Write output to a temporary file, which is renamed to target filename once
+writing is completed. Default is disabled.
+
 @item protocol_opts @var{options_list}
 Set protocol options as a :-separated list of key=value parameters. Values
 containing the @code{:} special character must be escaped.
@@ -1419,15 +1570,15 @@ have no effect if it is not.
 @item default_mode
 This option controls how the FlagDefault of the output tracks will be set.
 It influences which tracks players should play by default. The default mode
-is @samp{infer}.
+is @samp{passthrough}.
 @table @samp
 @item infer
-In this mode, for each type of track (audio, video or subtitle), if there is
-a track with disposition default of this type, then the first such track
-(i.e. the one with the lowest index) will be marked as default; if no such
-track exists, the first track of this type will be marked as default instead
-(if existing). This ensures that the default flag is set in a sensible way even
-if the input originated from containers that lack the concept of default tracks.
+Every track with disposition default will have the FlagDefault set.
+Additionally, for each type of track (audio, video or subtitle), if no track
+with disposition default of this type exists, then the first track of this type
+will be marked as default (if existing). This ensures that the default flag
+is set in a sensible way even if the input originated from containers that
+lack the concept of default tracks.
 @item infer_no_subs
 This mode is the same as infer except that if no subtitle track with
 disposition default exists, no subtitle track will be marked as default.
@@ -1581,6 +1732,11 @@ Setting value to @samp{pts} is applicable only for a live encoding use case,
 where PTS values are set as as wallclock time at the source. For example, an
 encoding use case with decklink capture source where @option{video_pts} and
 @option{audio_pts} are set to @samp{abs_wallclock}.
+
+@item -movie_timescale @var{scale}
+Set the timescale written in the movie header box (@code{mvhd}).
+Range is 1 to INT_MAX. Default is 1000.
+
 @end table
 
 @subsection Example
@@ -1730,6 +1886,8 @@ Reemit PAT and PMT at each video frame.
 Conform to System B (DVB) instead of System A (ATSC).
 @item initial_discontinuity
 Mark the initial packet of each stream as discontinuity.
+@item nit
+Emit NIT table.
 @end table
 
 @item mpegts_copyts @var{boolean}
@@ -1751,8 +1909,11 @@ Maximum time in seconds between PAT/PMT tables. Default is @code{0.1}.
 @item sdt_period @var{duration}
 Maximum time in seconds between SDT tables. Default is @code{0.5}.
 
+@item nit_period @var{duration}
+Maximum time in seconds between NIT tables. Default is @code{0.5}.
+
 @item tables_version @var{integer}
-Set PAT, PMT and SDT version (default @code{0}, valid values are from 0 to 31, inclusively).
+Set PAT, PMT, SDT and NIT version (default @code{0}, valid values are from 0 to 31, inclusively).
 This option allows updating stream structure so that standard consumer may
 detect the change. To do so, reopen output @code{AVFormatContext} (in case of API
 usage) or restart @command{ffmpeg} instance, cyclically changing
@@ -1863,6 +2024,182 @@ Setting it to different and sufficiently large values ensures that the produced
 ogg files can be safely chained.
 
 @end table
+
+@anchor{raw muxers}
+@section raw muxers
+
+Raw muxers accept a single stream matching the designated codec. They do not store timestamps or metadata.
+The recognized extension is the same as the muxer name unless indicated otherwise.
+
+@subsection ac3
+
+Dolby Digital, also known as AC-3, audio.
+
+@subsection adx
+
+CRI Middleware ADX audio.
+
+This muxer will write out the total sample count near the start of the first packet
+when the output is seekable and the count can be stored in 32 bits.
+
+@subsection aptx
+
+aptX (Audio Processing Technology for Bluetooth) audio.
+
+@subsection aptx_hd
+
+aptX HD (Audio Processing Technology for Bluetooth) audio.
+
+Extensions: aptxhd
+
+@subsection avs2
+
+AVS2-P2/IEEE1857.4 video.
+
+Extensions: avs, avs2
+
+@subsection cavsvideo
+
+Chinese AVS (Audio Video Standard) video.
+
+Extensions: cavs
+
+@subsection codec2raw
+
+Codec 2 audio.
+
+No extension is registered so format name has to be supplied e.g. with the ffmpeg CLI tool @code{-f codec2raw}.
+
+@subsection data
+
+Data muxer accepts a single stream with any codec of any type.
+The input stream has to be selected using the @code{-map} option with the ffmpeg CLI tool.
+
+No extension is registered so format name has to be supplied e.g. with the ffmpeg CLI tool @code{-f data}.
+
+@subsection dirac
+
+BBC Dirac video. The Dirac Pro codec is a subset and is standardized as SMPTE VC-2.
+
+Extensions: drc, vc2
+
+@subsection dnxhd
+
+Avid DNxHD video. It is standardized as SMPTE VC-3. Accepts DNxHR streams.
+
+Extensions: dnxhd, dnxhr
+
+@subsection dts
+
+DTS Coherent Acoustics (DCA) audio.
+
+@subsection eac3
+
+Dolby Digital Plus, also known as Enhanced AC-3, audio.
+
+@subsection g722
+
+ITU-T G.722 audio.
+
+@subsection g723_1
+
+ITU-T G.723.1 audio.
+
+Extensions: tco, rco
+
+@subsection g726
+
+ITU-T G.726 big-endian ("left-justified") audio.
+
+No extension is registered so format name has to be supplied e.g. with the ffmpeg CLI tool @code{-f g726}.
+
+@subsection g726le
+
+ITU-T G.726 little-endian ("right-justified") audio.
+
+No extension is registered so format name has to be supplied e.g. with the ffmpeg CLI tool @code{-f g726le}.
+
+@subsection gsm
+
+Global System for Mobile Communications audio.
+
+@subsection h261
+
+ITU-T H.261 video.
+
+@subsection h263
+
+ITU-T H.263 / H.263-1996, H.263+ / H.263-1998 / H.263 version 2 video.
+
+@subsection h264
+
+ITU-T H.264 / MPEG-4 Part 10 AVC video. Bitstream shall be converted to Annex B syntax if it's in length-prefixed mode.
+
+Extensions: h264, 264
+
+@subsection hevc
+
+ITU-T H.265 / MPEG-H Part 2 HEVC video. Bitstream shall be converted to Annex B syntax if it's in length-prefixed mode.
+
+Extensions: hevc, h265, 265
+
+@subsection m4v
+
+MPEG-4 Part 2 video.
+
+@subsection mjpeg
+
+Motion JPEG video.
+
+Extensions: mjpg, mjpeg
+
+@subsection mlp
+
+Meridian Lossless Packing, also known as Packed PCM, audio.
+
+@subsection mp2
+
+MPEG-1 Audio Layer II audio.
+
+Extensions: mp2, m2a, mpa
+
+@subsection mpeg1video
+
+MPEG-1 Part 2 video.
+
+Extensions: mpg, mpeg, m1v
+
+@subsection mpeg2video
+
+ITU-T H.262 / MPEG-2 Part 2 video.
+
+Extensions: m2v
+
+@subsection obu
+
+AV1 low overhead Open Bitstream Units muxer. Temporal delimiter OBUs will be inserted in all temporal units of the stream.
+
+@subsection rawvideo
+
+Raw uncompressed video.
+
+Extensions: yuv, rgb
+
+@subsection sbc
+
+Bluetooth SIG low-complexity subband codec audio.
+
+Extensions: sbc, msbc
+
+@subsection truehd
+
+Dolby TrueHD audio.
+
+Extensions: thd
+
+@subsection vc1
+
+SMPTE 421M / VC-1 video.
 
 @anchor{segment}
 @section segment, stream_segment, ssegment
@@ -2232,106 +2569,6 @@ ffmpeg -i INPUT -f streamhash -hash md5 -
 
 See also the @ref{hash} and @ref{framehash} muxers.
 
-@anchor{fifo}
-@section fifo
-
-The fifo pseudo-muxer allows the separation of encoding and muxing by using
-first-in-first-out queue and running the actual muxer in a separate thread. This
-is especially useful in combination with the @ref{tee} muxer and can be used to
-send data to several destinations with different reliability/writing speed/latency.
-
-API users should be aware that callback functions (interrupt_callback,
-io_open and io_close) used within its AVFormatContext must be thread-safe.
-
-The behavior of the fifo muxer if the queue fills up or if the output fails is
-selectable,
-
-@itemize @bullet
-
-@item
-output can be transparently restarted with configurable delay between retries
-based on real time or time of the processed stream.
-
-@item
-encoding can be blocked during temporary failure, or continue transparently
-dropping packets in case fifo queue fills up.
-
-@end itemize
-
-@table @option
-
-@item fifo_format
-Specify the format name. Useful if it cannot be guessed from the
-output name suffix.
-
-@item queue_size
-Specify size of the queue (number of packets). Default value is 60.
-
-@item format_opts
-Specify format options for the underlying muxer. Muxer options can be specified
-as a list of @var{key}=@var{value} pairs separated by ':'.
-
-@item drop_pkts_on_overflow @var{bool}
-If set to 1 (true), in case the fifo queue fills up, packets will be dropped
-rather than blocking the encoder. This makes it possible to continue streaming without
-delaying the input, at the cost of omitting part of the stream. By default
-this option is set to 0 (false), so in such cases the encoder will be blocked
-until the muxer processes some of the packets and none of them is lost.
-
-@item attempt_recovery @var{bool}
-If failure occurs, attempt to recover the output. This is especially useful
-when used with network output, since it makes it possible to restart streaming transparently.
-By default this option is set to 0 (false).
-
-@item max_recovery_attempts
-Sets maximum number of successive unsuccessful recovery attempts after which
-the output fails permanently. By default this option is set to 0 (unlimited).
-
-@item recovery_wait_time @var{duration}
-Waiting time before the next recovery attempt after previous unsuccessful
-recovery attempt. Default value is 5 seconds.
-
-@item recovery_wait_streamtime @var{bool}
-If set to 0 (false), the real time is used when waiting for the recovery
-attempt (i.e. the recovery will be attempted after at least
-recovery_wait_time seconds).
-If set to 1 (true), the time of the processed stream is taken into account
-instead (i.e. the recovery will be attempted after at least @var{recovery_wait_time}
-seconds of the stream is omitted).
-By default, this option is set to 0 (false).
-
-@item recover_any_error @var{bool}
-If set to 1 (true), recovery will be attempted regardless of type of the error
-causing the failure. By default this option is set to 0 (false) and in case of
-certain (usually permanent) errors the recovery is not attempted even when
-@var{attempt_recovery} is set to 1.
-
-@item restart_with_keyframe @var{bool}
-Specify whether to wait for the keyframe after recovering from
-queue overflow or failure. This option is set to 0 (false) by default.
-
-@item timeshift @var{duration}
-Buffer the specified amount of packets and delay writing the output. Note that
-@var{queue_size} must be big enough to store the packets for timeshift. At the
-end of the input the fifo buffer is flushed at realtime speed.
-
-@end table
-
-@subsection Examples
-
-@itemize
-
-@item
-Stream something to rtmp server, continue processing the stream at real-time
-rate even in case of temporary failure (network outage) and attempt to recover
-streaming every second indefinitely.
-@example
-ffmpeg -re -i ... -c:v libx264 -c:a aac -f fifo -fifo_format flv -map 0:v -map 0:a
-  -drop_pkts_on_overflow 1 -attempt_recovery 1 -recovery_wait_time 1 rtmp://example.com/live/stream_name
-@end example
-
-@end itemize
-
 @anchor{tee}
 @section tee
 
@@ -2464,6 +2701,49 @@ ffmpeg -i ... -map 0 -flags +global_header -c:v libx264 -c:a aac
 @end example
 @end itemize
 
+@section webm_chunk
+
+WebM Live Chunk Muxer.
+
+This muxer writes out WebM headers and chunks as separate files which can be
+consumed by clients that support WebM Live streams via DASH.
+
+@subsection Options
+
+This muxer supports the following options:
+
+@table @option
+@item chunk_start_index
+Index of the first chunk (defaults to 0).
+
+@item header
+Filename of the header where the initialization data will be written.
+
+@item audio_chunk_duration
+Duration of each audio chunk in milliseconds (defaults to 5000).
+@end table
+
+@subsection Example
+@example
+ffmpeg -f v4l2 -i /dev/video0 \
+       -f alsa -i hw:0 \
+       -map 0:0 \
+       -c:v libvpx-vp9 \
+       -s 640x360 -keyint_min 30 -g 30 \
+       -f webm_chunk \
+       -header webm_live_video_360.hdr \
+       -chunk_start_index 1 \
+       webm_live_video_360_%d.chk \
+       -map 1:0 \
+       -c:a libvorbis \
+       -b:a 128k \
+       -f webm_chunk \
+       -header webm_live_audio_128.hdr \
+       -chunk_start_index 1 \
+       -audio_chunk_duration 1000 \
+       webm_live_audio_128_%d.chk
+@end example
+
 @section webm_dash_manifest
 
 WebM DASH Manifest muxer.
@@ -2528,49 +2808,6 @@ ffmpeg -f webm_dash_manifest -i video1.webm \
        -f webm_dash_manifest \
        -adaptation_sets "id=0,streams=0,1 id=1,streams=2,3" \
        manifest.xml
-@end example
-
-@section webm_chunk
-
-WebM Live Chunk Muxer.
-
-This muxer writes out WebM headers and chunks as separate files which can be
-consumed by clients that support WebM Live streams via DASH.
-
-@subsection Options
-
-This muxer supports the following options:
-
-@table @option
-@item chunk_start_index
-Index of the first chunk (defaults to 0).
-
-@item header
-Filename of the header where the initialization data will be written.
-
-@item audio_chunk_duration
-Duration of each audio chunk in milliseconds (defaults to 5000).
-@end table
-
-@subsection Example
-@example
-ffmpeg -f v4l2 -i /dev/video0 \
-       -f alsa -i hw:0 \
-       -map 0:0 \
-       -c:v libvpx-vp9 \
-       -s 640x360 -keyint_min 30 -g 30 \
-       -f webm_chunk \
-       -header webm_live_video_360.hdr \
-       -chunk_start_index 1 \
-       webm_live_video_360_%d.chk \
-       -map 1:0 \
-       -c:a libvorbis \
-       -b:a 128k \
-       -f webm_chunk \
-       -header webm_live_audio_128.hdr \
-       -chunk_start_index 1 \
-       -audio_chunk_duration 1000 \
-       webm_live_audio_128_%d.chk
 @end example
 
 @c man end MUXERS

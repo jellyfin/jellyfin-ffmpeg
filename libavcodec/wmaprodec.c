@@ -88,11 +88,13 @@
 
 #include <inttypes.h>
 
+#include "libavutil/audio_fifo.h"
 #include "libavutil/ffmath.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem_internal.h"
+#include "libavutil/thread.h"
 
 #include "avcodec.h"
 #include "internal.h"
@@ -191,6 +193,8 @@ typedef struct WMAProDecodeCtx {
     uint8_t          dynamic_range_compression;     ///< frame contains DRC data
     uint8_t          bits_per_sample;               ///< integer audio sample size for the unscaled IMDCT output (used to scale to [-1.0, 1.0])
     uint16_t         samples_per_frame;             ///< number of samples to output
+    uint16_t         trim_start;                    ///< number of samples to skip at start
+    uint16_t         trim_end;                      ///< number of samples to skip at end
     uint16_t         log2_frame_size;
     int8_t           lfe_channel;                   ///< lfe channel index
     uint8_t          max_num_subframes;
@@ -245,9 +249,10 @@ typedef struct XMADecodeCtx {
     AVFrame *frames[XMA_MAX_STREAMS];
     int current_stream;
     int num_streams;
-    float samples[XMA_MAX_CHANNELS][512 * 64];
-    int offset[XMA_MAX_STREAMS];
+    AVAudioFifo *samples[2][XMA_MAX_STREAMS];
     int start_channel[XMA_MAX_STREAMS];
+    int trim_start, trim_end;
+    int flushed;
 } XMADecodeCtx;
 
 /**
@@ -309,6 +314,38 @@ static av_cold int get_rate(AVCodecContext *avctx)
     return avctx->sample_rate;
 }
 
+static av_cold void decode_init_static(void)
+{
+    INIT_VLC_STATIC(&sf_vlc, SCALEVLCBITS, HUFF_SCALE_SIZE,
+                    scale_huffbits, 1, 1,
+                    scale_huffcodes, 2, 2, 616);
+    INIT_VLC_STATIC(&sf_rl_vlc, VLCBITS, HUFF_SCALE_RL_SIZE,
+                    scale_rl_huffbits, 1, 1,
+                    scale_rl_huffcodes, 4, 4, 1406);
+    INIT_VLC_STATIC(&coef_vlc[0], VLCBITS, HUFF_COEF0_SIZE,
+                    coef0_huffbits, 1, 1,
+                    coef0_huffcodes, 4, 4, 2108);
+    INIT_VLC_STATIC(&coef_vlc[1], VLCBITS, HUFF_COEF1_SIZE,
+                    coef1_huffbits, 1, 1,
+                    coef1_huffcodes, 4, 4, 3912);
+    INIT_VLC_STATIC(&vec4_vlc, VLCBITS, HUFF_VEC4_SIZE,
+                    vec4_huffbits, 1, 1,
+                    vec4_huffcodes, 2, 2, 604);
+    INIT_VLC_STATIC(&vec2_vlc, VLCBITS, HUFF_VEC2_SIZE,
+                    vec2_huffbits, 1, 1,
+                    vec2_huffcodes, 2, 2, 562);
+    INIT_VLC_STATIC(&vec1_vlc, VLCBITS, HUFF_VEC1_SIZE,
+                    vec1_huffbits, 1, 1,
+                    vec1_huffcodes, 2, 2, 562);
+
+    /** calculate sine values for the decorrelation matrix */
+    for (int i = 0; i < 33; i++)
+        sin64[i] = sin(i * M_PI / 64.0);
+
+    for (int i = WMAPRO_BLOCK_MIN_BITS; i <= WMAPRO_BLOCK_MAX_BITS; i++)
+        ff_init_ff_sine_windows(i);
+}
+
 /**
  *@brief Initialize the decoder.
  *@param avctx codec context
@@ -316,9 +353,10 @@ static av_cold int get_rate(AVCodecContext *avctx)
  */
 static av_cold int decode_init(WMAProDecodeCtx *s, AVCodecContext *avctx, int num_stream)
 {
+    static AVOnce init_static_once = AV_ONCE_INIT;
     uint8_t *edata_ptr = avctx->extradata;
     unsigned int channel_mask;
-    int i, bits;
+    int i, bits, ret;
     int log2_max_num_subframes;
     int num_possible_block_sizes;
 
@@ -383,10 +421,7 @@ static av_cold int decode_init(WMAProDecodeCtx *s, AVCodecContext *avctx, int nu
     }
 
     /** frame info */
-    if (avctx->codec_id != AV_CODEC_ID_WMAPRO)
-        s->skip_frame = 0;
-    else
-        s->skip_frame = 1; /* skip first frame */
+    s->skip_frame = 1; /* skip first frame */
 
     s->packet_loss = 1;
     s->len_prefix  = (s->decode_flags & 0x40);
@@ -460,34 +495,6 @@ static av_cold int decode_init(WMAProDecodeCtx *s, AVCodecContext *avctx, int nu
         }
     }
 
-    INIT_VLC_STATIC(&sf_vlc, SCALEVLCBITS, HUFF_SCALE_SIZE,
-                    scale_huffbits, 1, 1,
-                    scale_huffcodes, 2, 2, 616);
-
-    INIT_VLC_STATIC(&sf_rl_vlc, VLCBITS, HUFF_SCALE_RL_SIZE,
-                    scale_rl_huffbits, 1, 1,
-                    scale_rl_huffcodes, 4, 4, 1406);
-
-    INIT_VLC_STATIC(&coef_vlc[0], VLCBITS, HUFF_COEF0_SIZE,
-                    coef0_huffbits, 1, 1,
-                    coef0_huffcodes, 4, 4, 2108);
-
-    INIT_VLC_STATIC(&coef_vlc[1], VLCBITS, HUFF_COEF1_SIZE,
-                    coef1_huffbits, 1, 1,
-                    coef1_huffcodes, 4, 4, 3912);
-
-    INIT_VLC_STATIC(&vec4_vlc, VLCBITS, HUFF_VEC4_SIZE,
-                    vec4_huffbits, 1, 1,
-                    vec4_huffcodes, 2, 2, 604);
-
-    INIT_VLC_STATIC(&vec2_vlc, VLCBITS, HUFF_VEC2_SIZE,
-                    vec2_huffbits, 1, 1,
-                    vec2_huffcodes, 2, 2, 562);
-
-    INIT_VLC_STATIC(&vec1_vlc, VLCBITS, HUFF_VEC1_SIZE,
-                    vec1_huffbits, 1, 1,
-                    vec1_huffcodes, 2, 2, 562);
-
     /** calculate number of scale factor bands and their offsets
         for every possible block size */
     for (i = 0; i < num_possible_block_sizes; i++) {
@@ -543,15 +550,17 @@ static av_cold int decode_init(WMAProDecodeCtx *s, AVCodecContext *avctx, int nu
         return AVERROR(ENOMEM);
 
     /** init MDCT, FIXME: only init needed sizes */
-    for (i = 0; i < WMAPRO_BLOCK_SIZES; i++)
-        ff_mdct_init(&s->mdct_ctx[i], WMAPRO_BLOCK_MIN_BITS+1+i, 1,
-                     1.0 / (1 << (WMAPRO_BLOCK_MIN_BITS + i - 1))
-                     / (1ll << (s->bits_per_sample - 1)));
+    for (int i = 0; i < WMAPRO_BLOCK_SIZES; i++) {
+        ret = ff_mdct_init(&s->mdct_ctx[i], WMAPRO_BLOCK_MIN_BITS + 1 + i, 1,
+                           1.0 / (1 << (WMAPRO_BLOCK_MIN_BITS + i - 1))
+                           / (1ll << (s->bits_per_sample - 1)));
+        if (ret < 0)
+            return ret;
+    }
 
     /** init MDCT windows: simple sine window */
     for (i = 0; i < WMAPRO_BLOCK_SIZES; i++) {
         const int win_idx = WMAPRO_BLOCK_MAX_BITS - i;
-        ff_init_ff_sine_windows(win_idx);
         s->windows[WMAPRO_BLOCK_SIZES - i - 1] = ff_sine_windows[win_idx];
     }
 
@@ -563,14 +572,13 @@ static av_cold int decode_init(WMAProDecodeCtx *s, AVCodecContext *avctx, int nu
         s->subwoofer_cutoffs[i] = av_clip(cutoff, 4, block_size);
     }
 
-    /** calculate sine values for the decorrelation matrix */
-    for (i = 0; i < 33; i++)
-        sin64[i] = sin(i*M_PI / 64.0);
-
     if (avctx->debug & FF_DEBUG_BITSTREAM)
         dump_context(s);
 
-    avctx->channel_layout = channel_mask;
+    if (avctx->codec_id == AV_CODEC_ID_WMAPRO)
+        avctx->channel_layout = channel_mask;
+
+    ff_thread_once(&init_static_once, decode_init_static);
 
     return 0;
 }
@@ -1456,23 +1464,14 @@ static int decode_frame(WMAProDecodeCtx *s, AVFrame *frame, int *got_frame_ptr)
         ff_dlog(s->avctx, "drc_gain %i\n", s->drc_gain);
     }
 
-    /** no idea what these are for, might be the number of samples
-        that need to be skipped at the beginning or end of a stream */
     if (get_bits1(gb)) {
-        int av_unused skip;
+        if (get_bits1(gb))
+            s->trim_start = get_bits(gb, av_log2(s->samples_per_frame * 2));
 
-        /** usually true for the first frame */
-        if (get_bits1(gb)) {
-            skip = get_bits(gb, av_log2(s->samples_per_frame * 2));
-            ff_dlog(s->avctx, "start skip: %i\n", skip);
-        }
-
-        /** sometimes true for the last frame */
-        if (get_bits1(gb)) {
-            skip = get_bits(gb, av_log2(s->samples_per_frame * 2));
-            ff_dlog(s->avctx, "end skip: %i\n", skip);
-        }
-
+        if (get_bits1(gb))
+            s->trim_end = get_bits(gb, av_log2(s->samples_per_frame * 2));
+    } else {
+        s->trim_start = s->trim_end = 0;
     }
 
     ff_dlog(s->avctx, "BITSTREAM: frame header length was %i\n",
@@ -1612,6 +1611,7 @@ static int decode_packet(AVCodecContext *avctx, WMAProDecodeCtx *s,
     int buf_size       = avpkt->size;
     int num_bits_prev_frame;
     int packet_sequence_number;
+    int ret;
 
     *got_frame_ptr = 0;
 
@@ -1633,9 +1633,6 @@ static int decode_packet(AVCodecContext *avctx, WMAProDecodeCtx *s,
             memcpy(frame->extended_data[i], s->channel[i].out,
                    s->samples_per_frame * sizeof(*s->channel[i].out) >> 1);
         }
-
-        /* TODO: XMA should output 128 samples only (instead of 512) and WMAPRO
-         * maybe 768 (with 2048), XMA needs changes in multi-stream handling though. */
 
         s->eof_done = 1;
         s->packet_done = 1;
@@ -1663,7 +1660,9 @@ static int decode_packet(AVCodecContext *avctx, WMAProDecodeCtx *s,
         s->buf_bit_size = buf_size << 3;
 
         /** parse packet header */
-        init_get_bits(gb, buf, s->buf_bit_size);
+        ret = init_get_bits8(gb, buf, buf_size);
+        if (ret < 0)
+            return ret;
         if (avctx->codec_id != AV_CODEC_ID_XMA2) {
             packet_sequence_number = get_bits(gb, 4);
             skip_bits(gb, 2);
@@ -1731,7 +1730,9 @@ static int decode_packet(AVCodecContext *avctx, WMAProDecodeCtx *s,
         }
 
         s->buf_bit_size = (avpkt->size - s->next_packet_start) << 3;
-        init_get_bits(gb, avpkt->data, s->buf_bit_size);
+        ret = init_get_bits8(gb, avpkt->data, avpkt->size - s->next_packet_start);
+        if (ret < 0)
+            return ret;
         skip_bits(gb, s->packet_offset);
         if (s->len_prefix && remaining_bits(s, gb) > s->log2_frame_size &&
             (frame_size = show_bits(gb, s->log2_frame_size)) &&
@@ -1770,6 +1771,33 @@ static int decode_packet(AVCodecContext *avctx, WMAProDecodeCtx *s,
     if (s->packet_loss)
         return AVERROR_INVALIDDATA;
 
+    if (s->trim_start && avctx->codec_id == AV_CODEC_ID_WMAPRO) {
+        AVFrame *frame = data;
+
+        if (s->trim_start < frame->nb_samples) {
+            for (int ch = 0; ch < frame->channels; ch++)
+                frame->extended_data[ch] += s->trim_start * 4;
+
+            frame->nb_samples -= s->trim_start;
+        } else {
+            *got_frame_ptr = 0;
+        }
+
+        s->trim_start = 0;
+    }
+
+    if (s->trim_end && avctx->codec_id == AV_CODEC_ID_WMAPRO) {
+        AVFrame *frame = data;
+
+        if (s->trim_end < frame->nb_samples) {
+            frame->nb_samples -= s->trim_end;
+        } else {
+            *got_frame_ptr = 0;
+        }
+
+        s->trim_end = 0;
+    }
+
     return get_bits_count(gb) >> 3;
 }
 
@@ -1803,34 +1831,54 @@ static int xma_decode_packet(AVCodecContext *avctx, void *data,
     XMADecodeCtx *s = avctx->priv_data;
     int got_stream_frame_ptr = 0;
     AVFrame *frame = data;
-    int i, ret, offset = INT_MAX;
+    int i, ret = 0, eof = 0;
 
     if (!s->frames[s->current_stream]->data[0]) {
+        avctx->internal->skip_samples = 64;
         s->frames[s->current_stream]->nb_samples = 512;
-        if ((ret = ff_get_buffer(avctx, s->frames[s->current_stream], 0)) < 0) {
+        if ((ret = ff_get_buffer(avctx, s->frames[s->current_stream], 0)) < 0)
             return ret;
-        }
+    } else if (s->frames[s->current_stream]->nb_samples != 512) {
+        avctx->internal->skip_samples = 64;
+        av_frame_unref(s->frames[s->current_stream]);
+        s->frames[s->current_stream]->nb_samples = 512;
+        if ((ret = ff_get_buffer(avctx, s->frames[s->current_stream], 0)) < 0)
+            return ret;
     }
     /* decode current stream packet */
-    ret = decode_packet(avctx, &s->xma[s->current_stream], s->frames[s->current_stream],
-                        &got_stream_frame_ptr, avpkt);
-
-    if (got_stream_frame_ptr && s->offset[s->current_stream] >= 64) {
-        got_stream_frame_ptr = 0;
-        ret = AVERROR_INVALIDDATA;
+    if (!s->xma[s->current_stream].eof_done) {
+        ret = decode_packet(avctx, &s->xma[s->current_stream], s->frames[s->current_stream],
+                            &got_stream_frame_ptr, avpkt);
     }
+
+    if (!avpkt->size) {
+        eof = 1;
+
+        for (i = 0; i < s->num_streams; i++) {
+            if (!s->xma[i].eof_done && s->frames[i]->data[0]) {
+                ret = decode_packet(avctx, &s->xma[i], s->frames[i],
+                                    &got_stream_frame_ptr, avpkt);
+            }
+
+            eof &= s->xma[i].eof_done;
+        }
+    }
+
+    if (s->xma[0].trim_start)
+        s->trim_start = s->xma[0].trim_start;
+    if (s->xma[0].trim_end)
+        s->trim_end = s->xma[0].trim_end;
 
     /* copy stream samples (1/2ch) to sample buffer (Nch) */
     if (got_stream_frame_ptr) {
-        int start_ch = s->start_channel[s->current_stream];
-        memcpy(&s->samples[start_ch + 0][s->offset[s->current_stream] * 512],
-               s->frames[s->current_stream]->extended_data[0], 512 * 4);
+        const int nb_samples = s->frames[s->current_stream]->nb_samples;
+        void *left[1] = { s->frames[s->current_stream]->extended_data[0] };
+        void *right[1] = { s->frames[s->current_stream]->extended_data[1] };
+
+        av_audio_fifo_write(s->samples[0][s->current_stream], left, nb_samples);
         if (s->xma[s->current_stream].nb_channels > 1)
-            memcpy(&s->samples[start_ch + 1][s->offset[s->current_stream] * 512],
-                   s->frames[s->current_stream]->extended_data[1], 512 * 4);
-        s->offset[s->current_stream]++;
+            av_audio_fifo_write(s->samples[1][s->current_stream], right, nb_samples);
     } else if (ret < 0) {
-        memset(s->offset, 0, sizeof(s->offset));
         s->current_stream = 0;
         return ret;
     }
@@ -1840,6 +1888,7 @@ static int xma_decode_packet(AVCodecContext *avctx, void *data,
      * (at start there is one packet per stream, then interleave non-linearly). */
     if (s->xma[s->current_stream].packet_done ||
         s->xma[s->current_stream].packet_loss) {
+        int nb_samples = INT_MAX;
 
         /* select stream with 0 skip_packets (= uses next packet) */
         if (s->xma[s->current_stream].skip_packets != 0) {
@@ -1861,35 +1910,37 @@ static int xma_decode_packet(AVCodecContext *avctx, void *data,
         /* all other streams skip next packet */
         for (i = 0; i < s->num_streams; i++) {
             s->xma[i].skip_packets = FFMAX(0, s->xma[i].skip_packets - 1);
+            nb_samples = FFMIN(nb_samples, av_audio_fifo_size(s->samples[0][i]));
         }
+
+        if (!eof && avpkt->size)
+            nb_samples -= FFMIN(nb_samples, 4096);
 
         /* copy samples from buffer to output if possible */
-        for (i = 0; i < s->num_streams; i++) {
-            offset = FFMIN(offset, s->offset[i]);
-        }
-        if (offset > 0) {
+        if ((nb_samples > 0 || eof || !avpkt->size) && !s->flushed) {
             int bret;
 
-            frame->nb_samples = 512 * offset;
+            if (eof) {
+                nb_samples -= av_clip(s->trim_end + s->trim_start - 128 - 64, 0, nb_samples);
+                s->flushed = 1;
+            }
+
+            frame->nb_samples = nb_samples;
             if ((bret = ff_get_buffer(avctx, frame, 0)) < 0)
                 return bret;
 
-            /* copy samples buffer (Nch) to frame samples (Nch), move unconsumed samples */
             for (i = 0; i < s->num_streams; i++) {
-                int start_ch = s->start_channel[i];
-                memcpy(frame->extended_data[start_ch + 0], s->samples[start_ch + 0], frame->nb_samples * 4);
-                if (s->xma[i].nb_channels > 1)
-                    memcpy(frame->extended_data[start_ch + 1], s->samples[start_ch + 1], frame->nb_samples * 4);
+                const int start_ch = s->start_channel[i];
+                void *left[1] = { frame->extended_data[start_ch + 0] };
 
-                s->offset[i] -= offset;
-                if (s->offset[i]) {
-                    memmove(s->samples[start_ch + 0], s->samples[start_ch + 0] + frame->nb_samples, s->offset[i] * 4 * 512);
-                    if (s->xma[i].nb_channels > 1)
-                        memmove(s->samples[start_ch + 1], s->samples[start_ch + 1] + frame->nb_samples, s->offset[i] * 4 * 512);
+                av_audio_fifo_read(s->samples[0][i], left, nb_samples);
+                if (s->xma[i].nb_channels > 1) {
+                    void *right[1] = { frame->extended_data[start_ch + 1] };
+                    av_audio_fifo_read(s->samples[1][i], right, nb_samples);
                 }
             }
 
-            *got_frame_ptr = 1;
+            *got_frame_ptr = nb_samples > 0;
         }
     }
 
@@ -1906,7 +1957,8 @@ static av_cold int xma_decode_init(AVCodecContext *avctx)
 
     /* get stream config */
     if (avctx->codec_id == AV_CODEC_ID_XMA2 && avctx->extradata_size == 34) { /* XMA2WAVEFORMATEX */
-        s->num_streams = (avctx->channels + 1) / 2;
+        s->num_streams = AV_RL16(avctx->extradata);
+        avctx->channel_layout = AV_RL32(avctx->extradata + 2);
     } else if (avctx->codec_id == AV_CODEC_ID_XMA2 && avctx->extradata_size >= 2) { /* XMA2WAVEFORMAT */
         s->num_streams = avctx->extradata[1];
         if (avctx->extradata_size != (32 + ((avctx->extradata[0]==3)?0:8) + 4*s->num_streams)) {
@@ -1950,6 +2002,13 @@ static av_cold int xma_decode_init(AVCodecContext *avctx)
     if (start_channels != avctx->channels)
         return AVERROR_INVALIDDATA;
 
+    for (int i = 0; i < XMA_MAX_STREAMS; i++) {
+        s->samples[0][i] = av_audio_fifo_alloc(avctx->sample_fmt, 1, 64 * 512);
+        s->samples[1][i] = av_audio_fifo_alloc(avctx->sample_fmt, 1, 64 * 512);
+        if (!s->samples[0][i] || !s->samples[1][i])
+            return AVERROR(ENOMEM);
+    }
+
     return ret;
 }
 
@@ -1963,6 +2022,11 @@ static av_cold int xma_decode_end(AVCodecContext *avctx)
         av_frame_free(&s->frames[i]);
     }
     s->num_streams = 0;
+
+    for (i = 0; i < XMA_MAX_STREAMS; i++) {
+        av_audio_fifo_free(s->samples[0][i]);
+        av_audio_fifo_free(s->samples[1][i]);
+    }
 
     return 0;
 }
@@ -1978,8 +2042,8 @@ static void flush(WMAProDecodeCtx *s)
     s->packet_loss = 1;
     s->skip_packets = 0;
     s->eof_done = 0;
+    s->skip_frame = 1;
 }
-
 
 /**
  *@brief Clear decoder buffers (for seeking).
@@ -1997,18 +2061,22 @@ static void xma_flush(AVCodecContext *avctx)
     XMADecodeCtx *s = avctx->priv_data;
     int i;
 
+    for (i = 0; i < XMA_MAX_STREAMS; i++) {
+        av_audio_fifo_reset(s->samples[0][i]);
+        av_audio_fifo_reset(s->samples[1][i]);
+    }
+
     for (i = 0; i < s->num_streams; i++)
         flush(&s->xma[i]);
 
-    memset(s->offset, 0, sizeof(s->offset));
     s->current_stream = 0;
+    s->flushed = 0;
 }
-
 
 /**
  *@brief wmapro decoder
  */
-AVCodec ff_wmapro_decoder = {
+const AVCodec ff_wmapro_decoder = {
     .name           = "wmapro",
     .long_name      = NULL_IF_CONFIG_SMALL("Windows Media Audio 9 Professional"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -2018,13 +2086,13 @@ AVCodec ff_wmapro_decoder = {
     .close          = wmapro_decode_end,
     .decode         = wmapro_decode_packet,
     .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .flush          = wmapro_flush,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 
-AVCodec ff_xma1_decoder = {
+const AVCodec ff_xma1_decoder = {
     .name           = "xma1",
     .long_name      = NULL_IF_CONFIG_SMALL("Xbox Media Audio 1"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -2034,12 +2102,12 @@ AVCodec ff_xma1_decoder = {
     .close          = xma_decode_end,
     .decode         = xma_decode_packet,
     .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 
-AVCodec ff_xma2_decoder = {
+const AVCodec ff_xma2_decoder = {
     .name           = "xma2",
     .long_name      = NULL_IF_CONFIG_SMALL("Xbox Media Audio 2"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -2050,7 +2118,7 @@ AVCodec ff_xma2_decoder = {
     .decode         = xma_decode_packet,
     .flush          = xma_flush,
     .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

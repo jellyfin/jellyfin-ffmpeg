@@ -23,7 +23,8 @@
 #ifndef AVFORMAT_RTPDEC_H
 #define AVFORMAT_RTPDEC_H
 
-#include "libavcodec/avcodec.h"
+#include "libavcodec/codec_id.h"
+#include "libavcodec/packet.h"
 #include "avformat.h"
 #include "rtp.h"
 #include "url.h"
@@ -189,16 +190,6 @@ struct RTPDemuxContext {
     PayloadContext *dynamic_protocol_context;
 };
 
-/**
- * Iterate over all registered rtp dynamic protocol handlers.
- *
- * @param opaque a pointer where libavformat will store the iteration state. Must
- *               point to NULL to start the iteration.
- *
- * @return the next registered rtp dynamic protocol handler or NULL when the iteration is
- *         finished
- */
-const RTPDynamicProtocolHandler *ff_rtp_handler_iterate(void **opaque);
 /**
  * Find a registered rtp dynamic protocol handler with the specified name.
  *

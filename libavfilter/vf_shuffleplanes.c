@@ -151,7 +151,6 @@ static const AVFilterPad shuffleplanes_inputs[] = {
         .config_props     = shuffleplanes_config_input,
         .filter_frame     = shuffleplanes_filter_frame,
     },
-    { NULL },
 };
 
 static const AVFilterPad shuffleplanes_outputs[] = {
@@ -159,16 +158,15 @@ static const AVFilterPad shuffleplanes_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL },
 };
 
-AVFilter ff_vf_shuffleplanes = {
+const AVFilter ff_vf_shuffleplanes = {
     .name         = "shuffleplanes",
     .description  = NULL_IF_CONFIG_SMALL("Shuffle video planes."),
     .priv_size    = sizeof(ShufflePlanesContext),
     .priv_class   = &shuffleplanes_class,
-    .query_formats = query_formats,
-    .inputs       = shuffleplanes_inputs,
-    .outputs      = shuffleplanes_outputs,
+    FILTER_INPUTS(shuffleplanes_inputs),
+    FILTER_OUTPUTS(shuffleplanes_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

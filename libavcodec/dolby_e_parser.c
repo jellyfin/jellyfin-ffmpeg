@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
+#include "avcodec.h"
 #include "dolby_e.h"
 #include "get_bits.h"
 #include "put_bits.h"
@@ -62,7 +64,7 @@ end:
     return buf_size;
 }
 
-AVCodecParser ff_dolby_e_parser = {
+const AVCodecParser ff_dolby_e_parser = {
     .codec_ids      = { AV_CODEC_ID_DOLBY_E },
     .priv_data_size = sizeof(DBEParseContext),
     .parser_parse   = dolby_e_parse,

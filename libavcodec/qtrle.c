@@ -540,15 +540,7 @@ static int qtrle_decode_frame(AVCodecContext *avctx,
     }
 
     if(has_palette) {
-        buffer_size_t size;
-        const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
-
-        if (pal && size == AVPALETTE_SIZE) {
-            s->frame->palette_has_changed = 1;
-            memcpy(s->pal, pal, AVPALETTE_SIZE);
-        } else if (pal) {
-            av_log(avctx, AV_LOG_ERROR, "Palette size %d is wrong\n", size);
-        }
+        s->frame->palette_has_changed = ff_copy_palette(s->pal, avpkt, avctx);
 
         /* make the palette available on the way out */
         memcpy(s->frame->data[1], s->pal, AVPALETTE_SIZE);
@@ -589,7 +581,7 @@ static av_cold int qtrle_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_qtrle_decoder = {
+const AVCodec ff_qtrle_decoder = {
     .name           = "qtrle",
     .long_name      = NULL_IF_CONFIG_SMALL("QuickTime Animation (RLE) video"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -600,4 +592,5 @@ AVCodec ff_qtrle_decoder = {
     .decode         = qtrle_decode_frame,
     .flush          = qtrle_decode_flush,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

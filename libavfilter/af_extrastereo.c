@@ -53,8 +53,7 @@ static int query_formats(AVFilterContext *ctx)
         (ret = ff_set_common_channel_layouts (ctx     , layout             )) < 0)
         return ret;
 
-    formats = ff_all_samplerates();
-    return ff_set_common_samplerates(ctx, formats);
+    return ff_set_common_all_samplerates(ctx);
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
@@ -109,7 +108,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -117,17 +115,16 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_extrastereo = {
+const AVFilter ff_af_extrastereo = {
     .name           = "extrastereo",
     .description    = NULL_IF_CONFIG_SMALL("Increase difference between stereo audio channels."),
-    .query_formats  = query_formats,
     .priv_size      = sizeof(ExtraStereoContext),
     .priv_class     = &extrastereo_class,
-    .inputs         = inputs,
-    .outputs        = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = ff_filter_process_command,
 };

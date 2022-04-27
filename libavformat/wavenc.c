@@ -174,8 +174,8 @@ static av_cold int peak_init_writer(AVFormatContext *s)
         return AVERROR(ERANGE);
     wav->size_increment = par->channels * wav->peak_bps * wav->peak_ppv;
 
-    wav->peak_maxpos = av_mallocz_array(par->channels, sizeof(*wav->peak_maxpos));
-    wav->peak_maxneg = av_mallocz_array(par->channels, sizeof(*wav->peak_maxneg));
+    wav->peak_maxpos = av_calloc(par->channels, sizeof(*wav->peak_maxpos));
+    wav->peak_maxneg = av_calloc(par->channels, sizeof(*wav->peak_maxneg));
     if (!wav->peak_maxpos || !wav->peak_maxneg)
         goto nomem;
 
@@ -504,7 +504,7 @@ static const AVClass wav_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_wav_muxer = {
+const AVOutputFormat ff_wav_muxer = {
     .name              = "wav",
     .long_name         = NULL_IF_CONFIG_SMALL("WAV / WAVE (Waveform Audio)"),
     .mime_type         = "audio/x-wav",
@@ -603,7 +603,7 @@ static int w64_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-AVOutputFormat ff_w64_muxer = {
+const AVOutputFormat ff_w64_muxer = {
     .name              = "w64",
     .long_name         = NULL_IF_CONFIG_SMALL("Sony Wave64"),
     .extensions        = "w64",

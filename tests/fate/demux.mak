@@ -29,9 +29,6 @@ fate-bcstm: CMD = crc -i $(TARGET_SAMPLES)/bfstm/loz-mm-mikau.bcstm -c:a copy
 FATE_SAMPLES_DEMUX-$(CONFIG_BRSTM_DEMUXER) += fate-brstm
 fate-brstm: CMD = crc -i $(TARGET_SAMPLES)/brstm/lozswd_partial.brstm -c:a copy
 
-FATE_SAMPLES_DEMUX-$(CONFIG_CAF_DEMUXER) += fate-caf
-fate-caf: CMD = crc -i $(TARGET_SAMPLES)/caf/caf-pcm16.caf -c copy
-
 FATE_SAMPLES_DEMUX-$(CONFIG_CDXL_DEMUXER) += fate-cdxl-demux
 fate-cdxl-demux: CMD = framecrc -i $(TARGET_SAMPLES)/cdxl/mirage.cdxl -c:v copy -c:a copy
 
@@ -48,8 +45,8 @@ FATE_SAMPLES_DEMUX-$(call ALLYES, GIF_DEMUXER FITS_DEMUXER GIF_DECODER FITS_ENCO
 fate-fits-demux: tests/data/fits-multi.fits
 fate-fits-demux: CMD = framecrc -i $(TARGET_PATH)/tests/data/fits-multi.fits -c:v copy
 
-FATE_SAMPLES_DEMUX-$(CONFIG_FLV_DEMUXER) += fate-flv-demux
-fate-flv-demux: CMD = framecrc -i $(TARGET_SAMPLES)/flv/Enigma_Principles_of_Lust-part.flv -codec copy
+FATE_FFPROBE_DEMUX-$(CONFIG_FLV_DEMUXER) += fate-flv-demux
+fate-flv-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/flv/Enigma_Principles_of_Lust-part.flv
 
 FATE_SAMPLES_DEMUX-$(CONFIG_GIF_DEMUXER) += fate-gif-demux
 fate-gif-demux: CMD = framecrc -i $(TARGET_SAMPLES)/gif/Newtons_cradle_animation_book_2.gif -c:v copy
@@ -79,11 +76,11 @@ fate-mlv-demux: CMD = crc -i $(TARGET_SAMPLES)/mlv/M19-0333-cut.MLV -c copy
 FATE_SAMPLES_DEMUX-$(CONFIG_MOV_DEMUXER) += fate-mov-mp3-demux
 fate-mov-mp3-demux: CMD = framecrc -i $(TARGET_SAMPLES)/mpegaudio/packed_maindata.mp3.mp4 -c copy
 
-FATE_SAMPLES_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-opus-demux
-fate-ts-opus-demux: CMD = framecrc -i $(TARGET_SAMPLES)/opus/test-8-7.1.opus-small.ts -c copy
+FATE_FFPROBE_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-opus-demux
+fate-ts-opus-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/opus/test-8-7.1.opus-small.ts
 
-FATE_SAMPLES_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-small-demux
-fate-ts-small-demux: CMD = framecrc -i $(TARGET_SAMPLES)/mpegts/h264small.ts -c copy
+FATE_FFPROBE_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-small-demux
+fate-ts-small-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/mpegts/h264small.ts
 
 FATE_SAMPLES_DEMUX-$(CONFIG_MTV_DEMUXER) += fate-mtv
 fate-mtv: CMD = framecrc -i $(TARGET_SAMPLES)/mtv/comedian_auto-partial.mtv -c copy
@@ -100,14 +97,11 @@ fate-nistsphere-demux: CMD = crc -i $(TARGET_SAMPLES)/nistsphere/nist-ulaw.nist 
 FATE_SAMPLES_DEMUX-$(CONFIG_NSV_DEMUXER) += fate-nsv-demux
 fate-nsv-demux: CMD = framecrc -i $(TARGET_SAMPLES)/nsv/witchblade-51kbps.nsv -t 6 -c:v copy -c:a copy
 
-FATE_SAMPLES_DEMUX-$(CONFIG_OGG_DEMUXER) += fate-oggopus-demux
-fate-oggopus-demux: CMD = framecrc -i $(TARGET_SAMPLES)/ogg/intro-partial.opus -c:a copy
+FATE_FFPROBE_DEMUX-$(CONFIG_OGG_DEMUXER) += fate-oggopus-demux
+fate-oggopus-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/ogg/intro-partial.opus
 
 FATE_SAMPLES_DEMUX-$(CONFIG_OGG_DEMUXER) += fate-oggvp8-demux
 fate-oggvp8-demux: CMD = framecrc -i $(TARGET_SAMPLES)/ogg/videotest.ogv -c:v copy
-
-FATE_SAMPLES_DEMUX-$(CONFIG_OMA_DEMUXER) += fate-oma-demux
-fate-oma-demux: CMD = crc -i $(TARGET_SAMPLES)/oma/01-Untitled-partial.oma -c:a copy
 
 FATE_SAMPLES_DEMUX-$(CONFIG_PAF_DEMUXER) += fate-paf-demux
 fate-paf-demux: CMD = framecrc -i $(TARGET_SAMPLES)/paf/hod1-partial.paf -c:v copy -c:a copy
@@ -133,6 +127,9 @@ fate-qcp-demux: CMD = crc -i $(TARGET_SAMPLES)/qcp/0036580847.QCP -c:a copy
 FATE_SAMPLES_DEMUX-$(CONFIG_R3D_DEMUXER) += fate-redcode-demux
 fate-redcode-demux: CMD = framecrc -i $(TARGET_SAMPLES)/r3d/4MB-sample.r3d -c:v copy -c:a copy
 
+FATE_SAMPLES_DEMUX-$(call ALLYES, S337M_DEMUXER DOLBY_E_PARSER FRAMECRC_MUXER) += fate-s337m-demux
+fate-s337m-demux: CMD = framecrc -i $(TARGET_SAMPLES)/dolby_e/16-11 -c copy -ss 2 -t 1
+
 FATE_SAMPLES_DEMUX-$(CONFIG_SIFF_DEMUXER) += fate-siff-demux
 fate-siff-demux: CMD = framecrc -i $(TARGET_SAMPLES)/SIFF/INTRO_B.VB -c copy
 
@@ -154,9 +151,11 @@ fate-xmv-demux: CMD = framecrc -i $(TARGET_SAMPLES)/xmv/logos1p.fmv -c:v copy -c
 FATE_SAMPLES_DEMUX-$(CONFIG_XWMA_DEMUXER) += fate-xwma-demux
 fate-xwma-demux: CMD = crc -i $(TARGET_SAMPLES)/xwma/ergon.xwma -c:a copy
 
-FATE_SAMPLES_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-demux
-fate-ts-demux: CMD = framecrc -i $(TARGET_SAMPLES)/ac3/mp3ac325-4864-small.ts -codec copy
+FATE_FFPROBE_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-demux
+fate-ts-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/ac3/mp3ac325-4864-small.ts
 
 FATE_SAMPLES_DEMUX += $(FATE_SAMPLES_DEMUX-yes)
 FATE_SAMPLES_FFMPEG += $(FATE_SAMPLES_DEMUX)
-fate-demux: $(FATE_SAMPLES_DEMUX)
+FATE_FFPROBE_DEMUX   += $(FATE_FFPROBE_DEMUX-yes)
+FATE_SAMPLES_FFPROBE += $(FATE_FFPROBE_DEMUX)
+fate-demux: $(FATE_SAMPLES_DEMUX) $(FATE_FFPROBE_DEMUX)

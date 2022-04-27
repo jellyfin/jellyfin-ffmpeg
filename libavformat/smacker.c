@@ -374,7 +374,7 @@ static int smacker_read_seek(AVFormatContext *s, int stream_index,
         return AVERROR(EINVAL);
     }
 
-    if ((ret = avio_seek(s->pb, s->internal->data_offset, SEEK_SET)) < 0)
+    if ((ret = avio_seek(s->pb, ffformatcontext(s)->data_offset, SEEK_SET)) < 0)
         return ret;
 
     smk->cur_frame = 0;
@@ -386,7 +386,7 @@ static int smacker_read_seek(AVFormatContext *s, int stream_index,
     return 0;
 }
 
-AVInputFormat ff_smacker_demuxer = {
+const AVInputFormat ff_smacker_demuxer = {
     .name           = "smk",
     .long_name      = NULL_IF_CONFIG_SMALL("Smacker"),
     .priv_data_size = sizeof(SmackerContext),

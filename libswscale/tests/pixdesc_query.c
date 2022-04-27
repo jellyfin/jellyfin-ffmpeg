@@ -45,6 +45,8 @@ static const struct {
     {"PackedRGB",   isPackedRGB},
     {"PlanarRGB",   isPlanarRGB},
     {"usePal",      usePal},
+    {"DataInHighBits", isDataInHighBits},
+    {"SwappedChroma", isSwappedChroma},
 };
 
 static int cmp_str(const void *a, const void *b)

@@ -135,7 +135,16 @@ static const RTPDynamicProtocolHandler *const rtp_dynamic_protocol_handler_list[
     NULL,
 };
 
-const RTPDynamicProtocolHandler *ff_rtp_handler_iterate(void **opaque)
+/**
+ * Iterate over all registered rtp dynamic protocol handlers.
+ *
+ * @param opaque a pointer where libavformat will store the iteration state.
+ *               Must point to NULL to start the iteration.
+ *
+ * @return the next registered rtp dynamic protocol handler
+ *         or NULL when the iteration is finished
+ */
+static const RTPDynamicProtocolHandler *rtp_handler_iterate(void **opaque)
 {
     uintptr_t i = (uintptr_t)*opaque;
     const RTPDynamicProtocolHandler *r = rtp_dynamic_protocol_handler_list[i];
@@ -151,7 +160,7 @@ const RTPDynamicProtocolHandler *ff_rtp_handler_find_by_name(const char *name,
 {
     void *i = 0;
     const RTPDynamicProtocolHandler *handler;
-    while (handler = ff_rtp_handler_iterate(&i)) {
+    while (handler = rtp_handler_iterate(&i)) {
         if (handler->enc_name &&
             !av_strcasecmp(name, handler->enc_name) &&
             codec_type == handler->codec_type)
@@ -165,7 +174,7 @@ const RTPDynamicProtocolHandler *ff_rtp_handler_find_by_id(int id,
 {
     void *i = 0;
     const RTPDynamicProtocolHandler *handler;
-    while (handler = ff_rtp_handler_iterate(&i)) {
+    while (handler = rtp_handler_iterate(&i)) {
         if (handler->static_payload_id && handler->static_payload_id == id &&
             codec_type == handler->codec_type)
             return handler;
@@ -622,6 +631,24 @@ void ff_rtp_parse_set_crypto(RTPDemuxContext *s, const char *suite,
         s->srtp_enabled = 1;
 }
 
+static int rtp_set_prft(RTPDemuxContext *s, AVPacket *pkt, uint32_t timestamp) {
+    int64_t rtcp_time, delta_timestamp, delta_time;
+
+    AVProducerReferenceTime *prft =
+        (AVProducerReferenceTime *) av_packet_new_side_data(
+            pkt, AV_PKT_DATA_PRFT, sizeof(AVProducerReferenceTime));
+    if (!prft)
+        return AVERROR(ENOMEM);
+
+    rtcp_time = ff_parse_ntp_time(s->last_rtcp_ntp_time) - NTP_OFFSET_US;
+    delta_timestamp = (int64_t)timestamp - (int64_t)s->last_rtcp_timestamp;
+    delta_time = av_rescale_q(delta_timestamp, s->st->time_base, AV_TIME_BASE_Q);
+
+    prft->wallclock = rtcp_time + delta_time;
+    prft->flags = 24;
+    return 0;
+}
+
 /**
  * This was the second switch in rtp_parse packet.
  * Normalizes time, if required, sets stream_index, etc.
@@ -632,6 +659,12 @@ static void finalize_packet(RTPDemuxContext *s, AVPacket *pkt, uint32_t timestam
         return; /* Timestamp already set by depacketizer */
     if (timestamp == RTP_NOTS_VALUE)
         return;
+
+    if (s->last_rtcp_ntp_time != AV_NOPTS_VALUE) {
+        if (rtp_set_prft(s, pkt, timestamp) < 0) {
+            av_log(s->ic, AV_LOG_WARNING, "rtpdec: failed to set prft");
+        }
+    }
 
     if (s->last_rtcp_ntp_time != AV_NOPTS_VALUE && s->ic->nb_streams > 1) {
         int64_t addend;

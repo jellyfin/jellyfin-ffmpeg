@@ -567,10 +567,11 @@ static av_cold int rv40_decode_init(AVCodecContext *avctx)
     r->loop_filter        = rv40_loop_filter;
     r->luma_dc_quant_i = rv40_luma_dc_quant[0];
     r->luma_dc_quant_p = rv40_luma_dc_quant[1];
+    ff_rv40dsp_init(&r->rdsp);
     return 0;
 }
 
-AVCodec ff_rv40_decoder = {
+const AVCodec ff_rv40_decoder = {
     .name                  = "rv40",
     .long_name             = NULL_IF_CONFIG_SMALL("RealVideo 4.0"),
     .type                  = AVMEDIA_TYPE_VIDEO,

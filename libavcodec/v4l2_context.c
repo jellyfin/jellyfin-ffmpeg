@@ -153,6 +153,21 @@ static inline void v4l2_save_to_context(V4L2Context* ctx, struct v4l2_format_upd
     }
 }
 
+static int v4l2_start_decode(V4L2Context *ctx)
+{
+    struct v4l2_decoder_cmd cmd = {
+        .cmd = V4L2_DEC_CMD_START,
+        .flags = 0,
+    };
+    int ret;
+
+    ret = ioctl(ctx_to_m2mctx(ctx)->fd, VIDIOC_DECODER_CMD, &cmd);
+    if (ret)
+        return AVERROR(errno);
+
+    return 0;
+}
+
 /**
  * handle resolution change event and end of stream event
  * returns 1 if reinit was successful, negative if it failed
@@ -162,9 +177,8 @@ static int v4l2_handle_event(V4L2Context *ctx)
 {
     V4L2m2mContext *s = ctx_to_m2mctx(ctx);
     struct v4l2_format cap_fmt = s->capture.format;
-    struct v4l2_format out_fmt = s->output.format;
     struct v4l2_event evt = { 0 };
-    int full_reinit, reinit, ret;
+    int reinit, ret;
 
     ret = ioctl(s->fd, VIDIOC_DQEVENT, &evt);
     if (ret < 0) {
@@ -180,23 +194,10 @@ static int v4l2_handle_event(V4L2Context *ctx)
     if (evt.type != V4L2_EVENT_SOURCE_CHANGE)
         return 0;
 
-    ret = ioctl(s->fd, VIDIOC_G_FMT, &out_fmt);
-    if (ret) {
-        av_log(logger(ctx), AV_LOG_ERROR, "%s VIDIOC_G_FMT\n", s->output.name);
-        return 0;
-    }
-
     ret = ioctl(s->fd, VIDIOC_G_FMT, &cap_fmt);
     if (ret) {
         av_log(logger(ctx), AV_LOG_ERROR, "%s VIDIOC_G_FMT\n", s->capture.name);
         return 0;
-    }
-
-    full_reinit = v4l2_resolution_changed(&s->output, &out_fmt);
-    if (full_reinit) {
-        s->output.height = v4l2_get_height(&out_fmt);
-        s->output.width = v4l2_get_width(&out_fmt);
-        s->output.sample_aspect_ratio = v4l2_get_sar(&s->output);
     }
 
     reinit = v4l2_resolution_changed(&s->capture, &cap_fmt);
@@ -204,19 +205,13 @@ static int v4l2_handle_event(V4L2Context *ctx)
         s->capture.height = v4l2_get_height(&cap_fmt);
         s->capture.width = v4l2_get_width(&cap_fmt);
         s->capture.sample_aspect_ratio = v4l2_get_sar(&s->capture);
+    } else {
+        v4l2_start_decode(ctx);
+        return 0;
     }
 
-    if (full_reinit || reinit)
+    if (reinit)
         s->reinit = 1;
-
-    if (full_reinit) {
-        ret = ff_v4l2_m2m_codec_full_reinit(s);
-        if (ret) {
-            av_log(logger(ctx), AV_LOG_ERROR, "v4l2_m2m_codec_full_reinit\n");
-            return AVERROR(EINVAL);
-        }
-        goto reinit_run;
-    }
 
     if (reinit) {
         if (s->avctx)

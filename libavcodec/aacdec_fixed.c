@@ -59,7 +59,6 @@
  */
 
 #define FFT_FLOAT 0
-#define FFT_FIXED_32 1
 #define USE_FIXED 1
 
 #include "libavutil/fixed_dsp.h"
@@ -451,7 +450,7 @@ static void apply_independent_coupling_fixed(AACContext *ac,
 
 #include "aacdec_template.c"
 
-AVCodec ff_aac_fixed_decoder = {
+const AVCodec ff_aac_fixed_decoder = {
     .name            = "aac_fixed",
     .long_name       = NULL_IF_CONFIG_SMALL("AAC (Advanced Audio Coding)"),
     .type            = AVMEDIA_TYPE_AUDIO,

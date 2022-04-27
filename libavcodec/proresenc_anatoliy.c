@@ -31,6 +31,7 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "dct.h"
+#include "encode.h"
 #include "internal.h"
 #include "profiles.h"
 #include "proresdata.h"
@@ -460,7 +461,7 @@ static av_always_inline int encode_alpha_slice_data(AVCodecContext *avctx, int8_
     if (run)
         put_alpha_run(&pb, run);
     flush_put_bits(&pb);
-    *a_data_size = put_bits_count(&pb) >> 3;
+    *a_data_size = put_bytes_output(&pb);
 
     if (put_bits_left(&pb) < 0) {
         av_log(avctx, AV_LOG_ERROR,
@@ -727,7 +728,7 @@ static int prores_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int frame_size = FFALIGN(avctx->width, 16) * FFALIGN(avctx->height, 16)*16 + 500 + AV_INPUT_BUFFER_MIN_SIZE; //FIXME choose tighter limit
 
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, frame_size + AV_INPUT_BUFFER_MIN_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, frame_size + AV_INPUT_BUFFER_MIN_SIZE)) < 0)
         return ret;
 
     buf = pkt->data;
@@ -794,7 +795,6 @@ static int prores_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     AV_WB32(pkt->data, compress_frame_size);/* update frame size */
-    pkt->flags |= AV_PKT_FLAG_KEY;
     pkt->size = compress_frame_size;
     *got_packet = 1;
 
@@ -852,9 +852,6 @@ static av_cold int prores_encode_init(AVCodecContext *avctx)
             avctx->profile = FF_PROFILE_PRORES_4444;
             av_log(avctx, AV_LOG_INFO,
                    "encoding with ProRes 4444+ (ap4h) profile\n");
-        } else {
-            av_log(avctx, AV_LOG_ERROR, "Unknown pixel format\n");
-            return AVERROR(EINVAL);
         }
     } else if (avctx->profile < FF_PROFILE_PRORES_PROXY
             || avctx->profile > FF_PROFILE_PRORES_XQ) {
@@ -930,13 +927,6 @@ static const AVOption options[] = {
     { NULL }
 };
 
-static const AVClass proresaw_enc_class = {
-    .class_name = "ProResAw encoder",
-    .item_name  = av_default_item_name,
-    .option     = options,
-    .version    = LIBAVUTIL_VERSION_INT,
-};
-
 static const AVClass prores_enc_class = {
     .class_name = "ProRes encoder",
     .item_name  = av_default_item_name,
@@ -944,34 +934,39 @@ static const AVClass prores_enc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_prores_aw_encoder = {
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE
+};
+
+const AVCodec ff_prores_aw_encoder = {
     .name           = "prores_aw",
     .long_name      = NULL_IF_CONFIG_SMALL("Apple ProRes"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PRORES,
+    .pix_fmts       = pix_fmts,
     .priv_data_size = sizeof(ProresContext),
     .init           = prores_encode_init,
     .close          = prores_encode_close,
     .encode2        = prores_encode_frame,
-    .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE},
     .capabilities   = AV_CODEC_CAP_FRAME_THREADS,
-    .priv_class     = &proresaw_enc_class,
+    .priv_class     = &prores_enc_class,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 
-AVCodec ff_prores_encoder = {
+const AVCodec ff_prores_encoder = {
     .name           = "prores",
     .long_name      = NULL_IF_CONFIG_SMALL("Apple ProRes"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PRORES,
+    .pix_fmts       = pix_fmts,
     .priv_data_size = sizeof(ProresContext),
     .init           = prores_encode_init,
     .close          = prores_encode_close,
     .encode2        = prores_encode_frame,
-    .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE},
     .capabilities   = AV_CODEC_CAP_FRAME_THREADS,
     .priv_class     = &prores_enc_class,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

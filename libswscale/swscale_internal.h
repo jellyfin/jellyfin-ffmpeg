@@ -21,17 +21,21 @@
 #ifndef SWSCALE_SWSCALE_INTERNAL_H
 #define SWSCALE_SWSCALE_INTERNAL_H
 
+#include <stdatomic.h>
+
 #include "config.h"
 #include "version.h"
 
 #include "libavutil/avassert.h"
 #include "libavutil/avutil.h"
 #include "libavutil/common.h"
+#include "libavutil/frame.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/slicethread.h"
 #include "libavutil/ppc/util_altivec.h"
 
 #define STR(s) AV_TOSTRING(s) // AV_STRINGIFY is too long
@@ -79,6 +83,19 @@ typedef enum SwsAlphaBlend {
     SWS_ALPHA_BLEND_CHECKERBOARD,
     SWS_ALPHA_BLEND_NB,
 } SwsAlphaBlend;
+
+typedef struct Range {
+    unsigned int start;
+    unsigned int len;
+} Range;
+
+typedef struct RangeList {
+    Range          *ranges;
+    unsigned int nb_ranges;
+    int             ranges_allocated;
+} RangeList;
+
+int ff_range_add(RangeList *r, unsigned int start, unsigned int len);
 
 typedef int (*SwsFunc)(struct SwsContext *context, const uint8_t *src[],
                        int srcStride[], int srcSliceY, int srcSliceH,
@@ -286,11 +303,22 @@ typedef struct SwsContext {
      */
     const AVClass *av_class;
 
+    struct SwsContext *parent;
+
+    AVSliceThread      *slicethread;
+    struct SwsContext **slice_ctx;
+    int                *slice_err;
+    int              nb_slice_ctx;
+
+    // values passed to current sws_receive_slice() call
+    int dst_slice_start;
+    int dst_slice_height;
+
     /**
      * Note that src, dst, srcStride, dstStride will be copied in the
      * sws_scale() wrapper so they can be freely modified here.
      */
-    SwsFunc swscale;
+    SwsFunc convert_unscaled;
     int srcW;                     ///< Width  of source      luma/alpha planes.
     int srcH;                     ///< Height of source      luma/alpha planes.
     int dstH;                     ///< Height of destination luma/alpha planes.
@@ -311,7 +339,13 @@ typedef struct SwsContext {
     int chrDstVSubSample;         ///< Binary logarithm of vertical   subsampling factor between luma/alpha and chroma planes in destination image.
     int vChrDrop;                 ///< Binary logarithm of extra vertical subsampling factor in source image chroma planes specified by user.
     int sliceDir;                 ///< Direction that slices are fed to the scaler (1 = top-to-bottom, -1 = bottom-to-top).
+    int nb_threads;               ///< Number of threads used for scaling
     double param[2];              ///< Input parameters for scaling algorithms that need them.
+
+    AVFrame *frame_src;
+    AVFrame *frame_dst;
+
+    RangeList src_ranges;
 
     /* The cascaded_* fields allow spliting a scaler task into multiple
      * sequential steps, this is for example used to limit the maximum
@@ -626,6 +660,22 @@ typedef struct SwsContext {
     SwsDither dither;
 
     SwsAlphaBlend alphablend;
+
+    // scratch buffer for converting packed rgb0 sources
+    // filled with a copy of the input frame + fully opaque alpha,
+    // then passed as input to further conversion
+    uint8_t     *rgb0_scratch;
+    unsigned int rgb0_scratch_allocated;
+
+    // scratch buffer for converting XYZ sources
+    // filled with the input converted to rgb48
+    // then passed as input to further conversion
+    uint8_t     *xyz_scratch;
+    unsigned int xyz_scratch_allocated;
+
+    unsigned int dst_slice_align;
+    atomic_int   stride_unaligned_warned;
+    atomic_int   data_unaligned_warned;
 } SwsContext;
 //FIXME check init (where 0)
 
@@ -842,6 +892,44 @@ static av_always_inline int usePal(enum AVPixelFormat pix_fmt)
     }
 }
 
+/*
+ * Identity formats where the data is in the high bits, and the low bits are shifted away.
+ */
+static av_always_inline int isDataInHighBits(enum AVPixelFormat pix_fmt)
+{
+    int i;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
+    av_assert0(desc);
+    if (desc->flags & (AV_PIX_FMT_FLAG_BITSTREAM | AV_PIX_FMT_FLAG_HWACCEL))
+        return 0;
+    for (i = 0; i < desc->nb_components; i++) {
+        if (!desc->comp[i].shift)
+            return 0;
+        if ((desc->comp[i].shift + desc->comp[i].depth) & 0x7)
+            return 0;
+    }
+    return 1;
+}
+
+/*
+ * Identity formats where the chroma planes are swapped (CrCb order).
+ */
+static av_always_inline int isSwappedChroma(enum AVPixelFormat pix_fmt)
+{
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
+    av_assert0(desc);
+    if (!isYUV(pix_fmt))
+        return 0;
+    if ((desc->flags & AV_PIX_FMT_FLAG_ALPHA) && desc->nb_components < 4)
+        return 0;
+    if (desc->nb_components < 3)
+        return 0;
+    if (!isPlanarYUV(pix_fmt) || isSemiPlanarYUV(pix_fmt))
+        return desc->comp[1].offset > desc->comp[2].offset;
+    else
+        return desc->comp[1].plane > desc->comp[2].plane;
+}
+
 extern const uint64_t ff_dither4[2];
 extern const uint64_t ff_dither8[2];
 
@@ -858,19 +946,15 @@ extern const int32_t ff_yuv2rgb_coeffs[11][4];
 extern const AVClass ff_sws_context_class;
 
 /**
- * Set c->swscale to an unscaled converter if one exists for the specific
- * source and destination formats, bit depths, flags, etc.
+ * Set c->convert_unscaled to an unscaled converter if one exists for the
+ * specific source and destination formats, bit depths, flags, etc.
  */
 void ff_get_unscaled_swscale(SwsContext *c);
 void ff_get_unscaled_swscale_ppc(SwsContext *c);
 void ff_get_unscaled_swscale_arm(SwsContext *c);
 void ff_get_unscaled_swscale_aarch64(SwsContext *c);
 
-/**
- * Return function pointer to fastest main scaler path function depending
- * on architecture and available optimizations.
- */
-SwsFunc ff_getSwsFunc(SwsContext *c);
+void ff_sws_init_scale(SwsContext *c);
 
 void ff_sws_init_input_funcs(SwsContext *c);
 void ff_sws_init_output_funcs(SwsContext *c,
@@ -1053,7 +1137,12 @@ void ff_init_vscale_pfn(SwsContext *c, yuv2planar1_fn yuv2plane1, yuv2planarX_fn
     yuv2interleavedX_fn yuv2nv12cX, yuv2packed1_fn yuv2packed1, yuv2packed2_fn yuv2packed2,
     yuv2packedX_fn yuv2packedX, yuv2anyX_fn yuv2anyX, int use_mmx);
 
+void ff_sws_slice_worker(void *priv, int jobnr, int threadnr,
+                         int nb_jobs, int nb_threads);
+
 //number of extra lines to process
 #define MAX_LINES_AHEAD 4
 
+//shuffle filter and filterPos for hyScale and hcScale filters in avx2
+void ff_shuffle_filter_coefficients(SwsContext *c, int* filterPos, int filterSize, int16_t *filter, int dstW);
 #endif /* SWSCALE_SWSCALE_INTERNAL_H */

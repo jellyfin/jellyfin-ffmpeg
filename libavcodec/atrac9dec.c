@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/thread.h"
 
 #include "internal.h"
@@ -986,7 +987,7 @@ static av_cold int atrac9_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_atrac9_decoder = {
+const AVCodec ff_atrac9_decoder = {
     .name           = "atrac9",
     .long_name      = NULL_IF_CONFIG_SMALL("ATRAC9 (Adaptive TRansform Acoustic Coding 9)"),
     .type           = AVMEDIA_TYPE_AUDIO,

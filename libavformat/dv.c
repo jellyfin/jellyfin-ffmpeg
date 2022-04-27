@@ -40,12 +40,23 @@
 #include "dv.h"
 #include "libavutil/avassert.h"
 
+// Must be kept in sync with AVPacket
+struct DVPacket {
+    int64_t  pts;
+    uint8_t *data;
+    int      size;
+    int      stream_index;
+    int      flags;
+    int64_t  pos;
+    int64_t  duration;
+};
+
 struct DVDemuxContext {
     const AVDVProfile*  sys;    /* Current DV profile. E.g.: 525/60, 625/50 */
     AVFormatContext*  fctx;
     AVStream*         vst;
     AVStream*         ast[4];
-    AVPacket          audio_pkt[4];
+    struct DVPacket   audio_pkt[4];
     uint8_t           audio_buf[4][8192];
     int               ach;
     int               frames;
@@ -261,11 +272,13 @@ static int dv_extract_audio_info(DVDemuxContext *c, const uint8_t *frame)
             c->ast[i]->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
             c->ast[i]->codecpar->codec_id   = AV_CODEC_ID_PCM_S16LE;
 
-            av_init_packet(&c->audio_pkt[i]);
             c->audio_pkt[i].size         = 0;
             c->audio_pkt[i].data         = c->audio_buf[i];
             c->audio_pkt[i].stream_index = c->ast[i]->index;
             c->audio_pkt[i].flags       |= AV_PKT_FLAG_KEY;
+            c->audio_pkt[i].pts          = AV_NOPTS_VALUE;
+            c->audio_pkt[i].duration     = 0;
+            c->audio_pkt[i].pos          = -1;
         }
         c->ast[i]->codecpar->sample_rate    = dv_audio_frequency[freq];
         c->ast[i]->codecpar->channels       = 2;
@@ -332,6 +345,9 @@ static int dv_init_demux(AVFormatContext *s, DVDemuxContext *c)
     c->vst->codecpar->bit_rate   = 25000000;
     c->vst->start_time        = 0;
 
+    /* Audio streams are added later as they are encountered. */
+    s->ctx_flags |= AVFMTCTX_NOHEADER;
+
     return 0;
 }
 
@@ -358,7 +374,14 @@ int avpriv_dv_get_packet(DVDemuxContext *c, AVPacket *pkt)
 
     for (i = 0; i < c->ach; i++) {
         if (c->ast[i] && c->audio_pkt[i].size) {
-            *pkt                 = c->audio_pkt[i];
+            pkt->size         = c->audio_pkt[i].size;
+            pkt->data         = c->audio_pkt[i].data;
+            pkt->stream_index = c->audio_pkt[i].stream_index;
+            pkt->flags        = c->audio_pkt[i].flags;
+            pkt->pts          = c->audio_pkt[i].pts;
+            pkt->duration     = c->audio_pkt[i].duration;
+            pkt->pos          = c->audio_pkt[i].pos;
+
             c->audio_pkt[i].size = 0;
             size                 = pkt->size;
             break;
@@ -387,6 +410,7 @@ int avpriv_dv_produce_packet(DVDemuxContext *c, AVPacket *pkt,
         c->audio_pkt[i].pos  = pos;
         c->audio_pkt[i].size = size;
         c->audio_pkt[i].pts  = (c->sys->height == 720) ? (c->frames & ~1) : c->frames;
+        c->audio_pkt[i].duration = 1;
         ppcm[i] = c->audio_buf[i];
     }
     if (c->ach)
@@ -404,7 +428,6 @@ int avpriv_dv_produce_packet(DVDemuxContext *c, AVPacket *pkt,
 
     /* Now it's time to return video packet */
     size = dv_extract_video_info(c, buf);
-    av_init_packet(pkt);
     pkt->data         = buf;
     pkt->pos          = pos;
     pkt->size         = size;
@@ -421,9 +444,10 @@ static int64_t dv_frame_offset(AVFormatContext *s, DVDemuxContext *c,
                                int64_t timestamp, int flags)
 {
     // FIXME: sys may be wrong if last dv_read_packet() failed (buffer is junk)
+    FFFormatContext *const si = ffformatcontext(s);
     const int frame_size = c->sys->frame_size;
     int64_t offset;
-    int64_t size       = avio_size(s->pb) - s->internal->data_offset;
+    int64_t size       = avio_size(s->pb) - si->data_offset;
     int64_t max_offset = ((size - 1) / frame_size) * frame_size;
 
     offset = frame_size * timestamp;
@@ -433,7 +457,7 @@ static int64_t dv_frame_offset(AVFormatContext *s, DVDemuxContext *c,
     else if (offset < 0)
         offset = 0;
 
-    return offset + s->internal->data_offset;
+    return offset + si->data_offset;
 }
 
 void ff_dv_offset_reset(DVDemuxContext *c, int64_t frame_offset)
@@ -614,7 +638,7 @@ static int dv_probe(const AVProbeData *p)
     return 0;
 }
 
-AVInputFormat ff_dv_demuxer = {
+const AVInputFormat ff_dv_demuxer = {
     .name           = "dv",
     .long_name      = NULL_IF_CONFIG_SMALL("DV (Digital Video)"),
     .priv_data_size = sizeof(RawDVContext),

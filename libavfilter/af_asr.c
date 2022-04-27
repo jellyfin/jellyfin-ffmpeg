@@ -20,7 +20,6 @@
 
 #include <pocketsphinx/pocketsphinx.h>
 
-#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
@@ -134,7 +133,7 @@ static int query_formats(AVFilterContext *ctx)
         (ret = ff_set_common_formats         (ctx     , formats                           )) < 0 ||
         (ret = ff_add_channel_layout         (&layout , AV_CH_LAYOUT_MONO                 )) < 0 ||
         (ret = ff_set_common_channel_layouts (ctx     , layout                            )) < 0 ||
-        (ret = ff_set_common_samplerates     (ctx     , ff_make_format_list(sample_rates) )) < 0)
+        (ret = ff_set_common_samplerates_from_list(ctx, sample_rates     )) < 0)
         return ret;
 
     return 0;
@@ -157,7 +156,6 @@ static const AVFilterPad asr_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad asr_outputs[] = {
@@ -165,17 +163,17 @@ static const AVFilterPad asr_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_asr = {
+const AVFilter ff_af_asr = {
     .name          = "asr",
     .description   = NULL_IF_CONFIG_SMALL("Automatic Speech Recognition."),
     .priv_size     = sizeof(ASRContext),
     .priv_class    = &asr_class,
     .init          = asr_init,
     .uninit        = asr_uninit,
-    .query_formats = query_formats,
-    .inputs        = asr_inputs,
-    .outputs       = asr_outputs,
+    .flags         = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(asr_inputs),
+    FILTER_OUTPUTS(asr_outputs),
+    FILTER_QUERY_FUNC(query_formats),
 };

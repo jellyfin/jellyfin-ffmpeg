@@ -26,6 +26,7 @@
 
 #include <time.h>
 #include "ass.h"
+#include "internal.h"
 #include "jacosub.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
@@ -193,7 +194,7 @@ end:
     return avpkt->size;
 }
 
-AVCodec ff_jacosub_decoder = {
+const AVCodec ff_jacosub_decoder = {
     .name           = "jacosub",
     .long_name      = NULL_IF_CONFIG_SMALL("JACOsub subtitle"),
     .type           = AVMEDIA_TYPE_SUBTITLE,
@@ -202,4 +203,5 @@ AVCodec ff_jacosub_decoder = {
     .decode         = jacosub_decode_frame,
     .flush          = ff_ass_decoder_flush,
     .priv_data_size = sizeof(FFASSDecoderContext),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

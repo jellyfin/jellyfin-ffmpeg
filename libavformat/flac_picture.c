@@ -29,12 +29,14 @@
 
 #define MAX_TRUNC_PICTURE_SIZE (500 * 1024 * 1024)
 
-int ff_flac_parse_picture(AVFormatContext *s, uint8_t *buf, int buf_size, int truncate_workaround)
+int ff_flac_parse_picture(AVFormatContext *s, uint8_t **bufp, int buf_size,
+                          int truncate_workaround)
 {
     const CodecMime *mime = ff_id3v2_mime_tags;
     enum AVCodecID id = AV_CODEC_ID_NONE;
     AVBufferRef *data = NULL;
-    uint8_t mimetype[64], *desc = NULL;
+    uint8_t mimetype[64], *buf = *bufp;
+    const uint8_t *desc = NULL;
     GetByteContext g;
     AVStream *st;
     int width, height, ret = 0;
@@ -102,16 +104,13 @@ int ff_flac_parse_picture(AVFormatContext *s, uint8_t *buf, int buf_size, int tr
         return 0;
     }
     if (len > 0) {
-        if (!(desc = av_malloc(len + 1))) {
-            return AVERROR(ENOMEM);
-        }
-
-        bytestream2_get_bufferu(&g, desc, len);
-        desc[len] = 0;
+        desc = g.buffer;
+        bytestream2_skipu(&g, len);
     }
 
     /* picture metadata */
     width  = bytestream2_get_be32u(&g);
+    ((uint8_t*)g.buffer)[-4] = '\0';   // NUL-terminate desc.
     height = bytestream2_get_be32u(&g);
     bytestream2_skipu(&g, 8);
 
@@ -123,8 +122,8 @@ int ff_flac_parse_picture(AVFormatContext *s, uint8_t *buf, int buf_size, int tr
         if (len > MAX_TRUNC_PICTURE_SIZE || len >= INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE) {
             av_log(s, AV_LOG_ERROR, "Attached picture metadata block too big %u\n", len);
             if (s->error_recognition & AV_EF_EXPLODE)
-                ret = AVERROR_INVALIDDATA;
-            goto fail;
+                return AVERROR_INVALIDDATA;
+            return 0;
         }
 
         // Workaround bug for flac muxers that writs truncated metadata picture block size if
@@ -138,54 +137,53 @@ int ff_flac_parse_picture(AVFormatContext *s, uint8_t *buf, int buf_size, int tr
         } else {
             av_log(s, AV_LOG_ERROR, "Attached picture metadata block too short\n");
             if (s->error_recognition & AV_EF_EXPLODE)
-                ret = AVERROR_INVALIDDATA;
-            goto fail;
+                return AVERROR_INVALIDDATA;
+            return 0;
         }
     }
-    if (!(data = av_buffer_alloc(len + AV_INPUT_BUFFER_PADDING_SIZE))) {
-        RETURN_ERROR(AVERROR(ENOMEM));
-    }
-
-    if (trunclen == 0) {
-        bytestream2_get_bufferu(&g, data->data, len);
+    if (trunclen == 0 && len >= buf_size - (buf_size >> 4)) {
+        data = av_buffer_create(buf, buf_size + AV_INPUT_BUFFER_PADDING_SIZE,
+                                av_buffer_default_free, NULL, 0);
+        if (!data)
+            return AVERROR(ENOMEM);
+        *bufp = NULL;
+        data->data += bytestream2_tell(&g);
+        data->size  = len + AV_INPUT_BUFFER_PADDING_SIZE;
     } else {
-        // If truncation was detected copy all data from block and read missing bytes
-        // not included in the block size
-        bytestream2_get_bufferu(&g, data->data, left);
-        if (avio_read(s->pb, data->data + len - trunclen, trunclen) < trunclen)
-            RETURN_ERROR(AVERROR_INVALIDDATA);
+        if (!(data = av_buffer_alloc(len + AV_INPUT_BUFFER_PADDING_SIZE)))
+            return AVERROR(ENOMEM);
+
+        if (trunclen == 0) {
+            bytestream2_get_bufferu(&g, data->data, len);
+        } else {
+            // If truncation was detected copy all data from block and
+            // read missing bytes not included in the block size.
+            bytestream2_get_bufferu(&g, data->data, left);
+            if (avio_read(s->pb, data->data + len - trunclen, trunclen) < trunclen)
+                RETURN_ERROR(AVERROR_INVALIDDATA);
+        }
     }
     memset(data->data + len, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
     if (AV_RB64(data->data) == PNGSIG)
         id = AV_CODEC_ID_PNG;
 
-    st = avformat_new_stream(s, NULL);
-    if (!st) {
-        RETURN_ERROR(AVERROR(ENOMEM));
-    }
+    ret = ff_add_attached_pic(s, NULL, NULL, &data, 0);
+    if (ret < 0)
+        RETURN_ERROR(ret);
 
-    av_packet_unref(&st->attached_pic);
-    st->attached_pic.buf          = data;
-    st->attached_pic.data         = data->data;
-    st->attached_pic.size         = len;
-    st->attached_pic.stream_index = st->index;
-    st->attached_pic.flags       |= AV_PKT_FLAG_KEY;
-
-    st->disposition      |= AV_DISPOSITION_ATTACHED_PIC;
-    st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+    st = s->streams[s->nb_streams - 1];
     st->codecpar->codec_id   = id;
     st->codecpar->width      = width;
     st->codecpar->height     = height;
     av_dict_set(&st->metadata, "comment", ff_id3v2_picture_types[type], 0);
     if (desc)
-        av_dict_set(&st->metadata, "title", desc, AV_DICT_DONT_STRDUP_VAL);
+        av_dict_set(&st->metadata, "title", desc, 0);
 
     return 0;
 
 fail:
     av_buffer_unref(&data);
-    av_freep(&desc);
 
     return ret;
 }

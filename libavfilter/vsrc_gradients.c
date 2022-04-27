@@ -83,20 +83,6 @@ static const AVOption gradients_options[] = {
 
 AVFILTER_DEFINE_CLASS(gradients);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_RGBA,
-        AV_PIX_FMT_RGBA64,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
 static uint32_t lerp_color(uint8_t c0[4], uint8_t c1[4], float x)
 {
     const float y = 1.f - x;
@@ -280,8 +266,8 @@ static int activate(AVFilterContext *ctx)
         frame->sample_aspect_ratio = (AVRational) {1, 1};
         frame->pts = s->pts++;
 
-        ctx->internal->execute(ctx, s->draw_slice, frame, NULL,
-                               FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, s->draw_slice, frame, NULL,
+                          FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
 
         return ff_filter_frame(outlink, frame);
     }
@@ -295,17 +281,16 @@ static const AVFilterPad gradients_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_gradients = {
+const AVFilter ff_vsrc_gradients = {
     .name          = "gradients",
     .description   = NULL_IF_CONFIG_SMALL("Draw a gradients."),
     .priv_size     = sizeof(GradientsContext),
     .priv_class    = &gradients_class,
-    .query_formats = query_formats,
     .inputs        = NULL,
-    .outputs       = gradients_outputs,
+    FILTER_OUTPUTS(gradients_outputs),
+    FILTER_PIXFMTS(AV_PIX_FMT_RGBA, AV_PIX_FMT_RGBA64),
     .activate      = activate,
     .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

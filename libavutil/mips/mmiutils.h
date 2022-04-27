@@ -29,74 +29,103 @@
 #include "libavutil/mem_internal.h"
 #include "libavutil/mips/asmdefs.h"
 
+/*
+ * These were used to define temporary registers for MMI marcos
+ * however now we're using $at. They're theoretically unnecessary
+ * but just leave them here to avoid mess.
+ */
+#define DECLARE_VAR_LOW32
+#define RESTRICT_ASM_LOW32
+#define DECLARE_VAR_ALL64
+#define RESTRICT_ASM_ALL64
+#define DECLARE_VAR_ADDRT
+#define RESTRICT_ASM_ADDRT
+
 #if HAVE_LOONGSON2
 
-#define DECLARE_VAR_LOW32       int32_t low32
-#define RESTRICT_ASM_LOW32      [low32]"=&r"(low32),
-#define DECLARE_VAR_ALL64       int64_t all64
-#define RESTRICT_ASM_ALL64      [all64]"=&r"(all64),
-#define DECLARE_VAR_ADDRT       mips_reg addrt
-#define RESTRICT_ASM_ADDRT      [addrt]"=&r"(addrt),
-
 #define MMI_LWX(reg, addr, stride, bias)                                    \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    "lw         "#reg",     "#bias"(%[addrt])                       \n\t"
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    "lw         "#reg",     "#bias"($at)                       \n\t"   \
+    ".set at                                                   \n\t"
 
 #define MMI_SWX(reg, addr, stride, bias)                                    \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    "sw         "#reg",     "#bias"(%[addrt])                       \n\t"
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    "sw         "#reg",     "#bias"($at)                       \n\t"   \
+    ".set at                                                   \n\t"
 
 #define MMI_LDX(reg, addr, stride, bias)                                    \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    "ld         "#reg",     "#bias"(%[addrt])                       \n\t"
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    "ld         "#reg",     "#bias"($at)                       \n\t"   \
+    ".set at                                                   \n\t"
 
 #define MMI_SDX(reg, addr, stride, bias)                                    \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    "sd         "#reg",     "#bias"(%[addrt])                       \n\t"
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    "sd         "#reg",     "#bias"($at)                       \n\t"   \
+    ".set at                                                   \n\t"
 
 #define MMI_LWC1(fp, addr, bias)                                            \
     "lwc1       "#fp",      "#bias"("#addr")                        \n\t"
 
 #define MMI_ULWC1(fp, addr, bias)                                           \
-    "ulw        %[low32],   "#bias"("#addr")                        \n\t"   \
-    "mtc1       %[low32],   "#fp"                                   \n\t"
+    ".set noat                                                      \n\t"   \
+    "ulw        $at,   "#bias"("#addr")                             \n\t"   \
+    "mtc1       $at,   "#fp"                                        \n\t"   \
+    ".set at                                                        \n\t"
 
 #define MMI_LWXC1(fp, addr, stride, bias)                                   \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    MMI_LWC1(fp, %[addrt], bias)
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    MMI_LWC1(fp, $at, bias)                                            \
+    ".set at                                                   \n\t"
 
 #define MMI_SWC1(fp, addr, bias)                                            \
     "swc1       "#fp",      "#bias"("#addr")                        \n\t"
 
 #define MMI_USWC1(fp, addr, bias)                                           \
-    "mfc1       %[low32],   "#fp"                                   \n\t"   \
-    "usw        %[low32],   "#bias"("#addr")                        \n\t"
+    ".set noat                                                      \n\t"   \
+    "mfc1       $at,   "#fp"                                        \n\t"   \
+    "usw        $at,   "#bias"("#addr")                             \n\t"   \
+    ".set at                                                        \n\t"
 
 #define MMI_SWXC1(fp, addr, stride, bias)                                   \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    MMI_SWC1(fp, %[addrt], bias)
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    MMI_SWC1(fp, $at, bias)                                           \
+    ".set at                                                   \n\t"
 
 #define MMI_LDC1(fp, addr, bias)                                            \
     "ldc1       "#fp",      "#bias"("#addr")                        \n\t"
 
 #define MMI_ULDC1(fp, addr, bias)                                           \
-    "uld        %[all64],   "#bias"("#addr")                        \n\t"   \
-    "dmtc1      %[all64],   "#fp"                                   \n\t"
+    ".set noat                                                      \n\t"   \
+    "uld        $at,   "#bias"("#addr")                             \n\t"   \
+    "dmtc1      $at,   "#fp"                                        \n\t"   \
+    ".set at                                                        \n\t"
 
 #define MMI_LDXC1(fp, addr, stride, bias)                                   \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    MMI_LDC1(fp, %[addrt], bias)
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    MMI_LDC1(fp, $at, bias)                                           \
+    ".set at                                                   \n\t"
 
 #define MMI_SDC1(fp, addr, bias)                                            \
     "sdc1       "#fp",      "#bias"("#addr")                        \n\t"
 
 #define MMI_USDC1(fp, addr, bias)                                           \
-    "dmfc1      %[all64],   "#fp"                                   \n\t"   \
-    "usd        %[all64],   "#bias"("#addr")                        \n\t"
+    ".set noat                                                      \n\t"   \
+    "dmfc1      $at,   "#fp"                                        \n\t"   \
+    "usd        $at,   "#bias"("#addr")                             \n\t"   \
+    ".set at                                                        \n\t"
 
 #define MMI_SDXC1(fp, addr, stride, bias)                                   \
-    PTR_ADDU    "%[addrt],  "#addr",    "#stride"                   \n\t"   \
-    MMI_SDC1(fp, %[addrt], bias)
+    ".set noat                                                 \n\t"   \
+    PTR_ADDU    "$at,  "#addr",    "#stride"                   \n\t"   \
+    MMI_SDC1(fp, $at, bias)                                            \
+    ".set at                                                   \n\t"
 
 #define MMI_LQ(reg1, reg2, addr, bias)                                      \
     "ld         "#reg1",    "#bias"("#addr")                        \n\t"   \
@@ -116,11 +145,6 @@
 
 #elif HAVE_LOONGSON3 /* !HAVE_LOONGSON2 */
 
-#define DECLARE_VAR_ALL64
-#define RESTRICT_ASM_ALL64
-#define DECLARE_VAR_ADDRT
-#define RESTRICT_ASM_ADDRT
-
 #define MMI_LWX(reg, addr, stride, bias)                                    \
     "gslwx      "#reg",     "#bias"("#addr", "#stride")             \n\t"
 
@@ -138,12 +162,12 @@
 
 #if _MIPS_SIM == _ABIO32 /* workaround for 3A2000 gslwlc1 bug */
 
-#define DECLARE_VAR_LOW32       int32_t low32
-#define RESTRICT_ASM_LOW32      [low32]"=&r"(low32),
-
-#define MMI_ULWC1(fp, addr, bias)                                           \
-    "ulw        %[low32],   "#bias"("#addr")                        \n\t"   \
-    "mtc1       %[low32],   "#fp"                                   \n\t"
+#define MMI_LWLRC1(fp, addr, bias, off)                                     \
+    ".set noat                                                 \n\t"   \
+    "lwl        $at,   "#bias"+"#off"("#addr")                 \n\t"   \
+    "lwr        $at,   "#bias"("#addr")                        \n\t"   \
+    "mtc1       $at,   "#fp"                                   \n\t"   \
+    ".set at                                                   \n\t"
 
 #else /* _MIPS_SIM != _ABIO32 */
 
@@ -204,25 +228,27 @@
 #endif /* HAVE_LOONGSON2 */
 
 /**
- * backup register
+ * Backup saved registers
+ * We're not using compiler's clobber list as it's not smart enough
+ * to take advantage of quad word load/store.
  */
 #define BACKUP_REG \
   LOCAL_ALIGNED_16(double, temp_backup_reg, [8]);               \
   if (_MIPS_SIM == _ABI64)                                      \
     __asm__ volatile (                                          \
-      "gssqc1       $f25,      $f24,       0x00(%[temp])  \n\t" \
-      "gssqc1       $f27,      $f26,       0x10(%[temp])  \n\t" \
-      "gssqc1       $f29,      $f28,       0x20(%[temp])  \n\t" \
-      "gssqc1       $f31,      $f30,       0x30(%[temp])  \n\t" \
+      MMI_SQC1($f25, $f24, %[temp], 0x00)                       \
+      MMI_SQC1($f27, $f26, %[temp], 0x10)                       \
+      MMI_SQC1($f29, $f28, %[temp], 0x20)                       \
+      MMI_SQC1($f31, $f30, %[temp], 0x30)                       \
       :                                                         \
       : [temp]"r"(temp_backup_reg)                              \
       : "memory"                                                \
     );                                                          \
   else                                                          \
     __asm__ volatile (                                          \
-      "gssqc1       $f22,      $f20,       0x00(%[temp])  \n\t" \
-      "gssqc1       $f26,      $f24,       0x10(%[temp])  \n\t" \
-      "gssqc1       $f30,      $f28,       0x20(%[temp])  \n\t" \
+      MMI_SQC1($f22, $f20, %[temp], 0x10)                       \
+      MMI_SQC1($f26, $f24, %[temp], 0x10)                       \
+      MMI_SQC1($f30, $f28, %[temp], 0x20)                       \
       :                                                         \
       : [temp]"r"(temp_backup_reg)                              \
       : "memory"                                                \
@@ -234,19 +260,19 @@
 #define RECOVER_REG \
   if (_MIPS_SIM == _ABI64)                                      \
     __asm__ volatile (                                          \
-      "gslqc1       $f25,      $f24,       0x00(%[temp])  \n\t" \
-      "gslqc1       $f27,      $f26,       0x10(%[temp])  \n\t" \
-      "gslqc1       $f29,      $f28,       0x20(%[temp])  \n\t" \
-      "gslqc1       $f31,      $f30,       0x30(%[temp])  \n\t" \
+      MMI_LQC1($f25, $f24, %[temp], 0x00)                       \
+      MMI_LQC1($f27, $f26, %[temp], 0x10)                       \
+      MMI_LQC1($f29, $f28, %[temp], 0x20)                       \
+      MMI_LQC1($f31, $f30, %[temp], 0x30)                       \
       :                                                         \
       : [temp]"r"(temp_backup_reg)                              \
       : "memory"                                                \
     );                                                          \
   else                                                          \
     __asm__ volatile (                                          \
-      "gslqc1       $f22,      $f20,       0x00(%[temp])  \n\t" \
-      "gslqc1       $f26,      $f24,       0x10(%[temp])  \n\t" \
-      "gslqc1       $f30,      $f28,       0x20(%[temp])  \n\t" \
+      MMI_LQC1($f22, $f20, %[temp], 0x10)                       \
+      MMI_LQC1($f26, $f24, %[temp], 0x10)                       \
+      MMI_LQC1($f30, $f28, %[temp], 0x20)                       \
       :                                                         \
       : [temp]"r"(temp_backup_reg)                              \
       : "memory"                                                \

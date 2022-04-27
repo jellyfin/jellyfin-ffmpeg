@@ -70,19 +70,6 @@ static const AVOption photosensitivity_options[] = {
 
 AVFILTER_DEFINE_CLASS(photosensitivity);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_RGB24,
-        AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *formats = ff_make_format_list(pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, formats);
-}
-
 typedef struct ThreadData_convert_frame
 {
     AVFrame *in;
@@ -146,7 +133,8 @@ static void convert_frame(AVFilterContext *ctx, AVFrame *in, PhotosensitivityFra
     td.in = in;
     td.out = out;
     td.skip = skip;
-    ctx->internal->execute(ctx, convert_frame_partial, &td, NULL, FFMIN(NUM_CELLS, ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, convert_frame_partial, &td, NULL,
+                      FFMIN(NUM_CELLS, ff_filter_get_nb_threads(ctx)));
 }
 
 typedef struct ThreadData_blend_frame
@@ -185,7 +173,8 @@ static void blend_frame(AVFilterContext *ctx, AVFrame *target, AVFrame *source, 
     td.target = target;
     td.source = source;
     td.s_mul = (uint16_t)(factor * 0x100);
-    ctx->internal->execute(ctx, blend_frame_partial, &td, NULL, FFMIN(ctx->outputs[0]->h, ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, blend_frame_partial, &td, NULL,
+                      FFMIN(ctx->outputs[0]->h, ff_filter_get_nb_threads(ctx)));
 }
 
 static int get_badness(PhotosensitivityFrame *a, PhotosensitivityFrame *b)
@@ -318,7 +307,6 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -326,16 +314,15 @@ static const AVFilterPad outputs[] = {
         .name          = "default",
         .type          = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_photosensitivity = {
+const AVFilter ff_vf_photosensitivity = {
     .name          = "photosensitivity",
     .description   = NULL_IF_CONFIG_SMALL("Filter out photosensitive epilepsy seizure-inducing flashes."),
     .priv_size     = sizeof(PhotosensitivityContext),
     .priv_class    = &photosensitivity_class,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = inputs,
-    .outputs       = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_PIXFMTS(AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24),
 };

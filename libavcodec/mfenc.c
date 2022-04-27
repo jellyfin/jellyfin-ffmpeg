@@ -100,8 +100,6 @@ static int mf_wait_events(AVCodecContext *avctx)
 
 static AVRational mf_get_tb(AVCodecContext *avctx)
 {
-    if (avctx->pkt_timebase.num > 0 && avctx->pkt_timebase.den > 0)
-        return avctx->pkt_timebase;
     if (avctx->time_base.num > 0 && avctx->time_base.den > 0)
         return avctx->time_base;
     return MF_TIMEBASE;
@@ -1152,7 +1150,7 @@ static int mf_close(AVCodecContext *avctx)
         .option     = OPTS,                                                    \
         .version    = LIBAVUTIL_VERSION_INT,                                   \
     };                                                                         \
-    AVCodec ff_ ## NAME ## _mf_encoder = {                                     \
+    const AVCodec ff_ ## NAME ## _mf_encoder = {                               \
         .priv_class     = &ff_ ## NAME ## _mf_encoder_class,                   \
         .name           = #NAME "_mf",                                         \
         .long_name      = NULL_IF_CONFIG_SMALL(#ID " via MediaFoundation"),    \

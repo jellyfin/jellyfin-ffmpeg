@@ -25,7 +25,6 @@
  * @author Ronald S. Bultje <rbultje@ronald.bitfreak.net>
  */
 
-#include "libavutil/avassert.h"
 #include "libavutil/base64.h"
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
@@ -88,25 +87,25 @@ static int packetizer_read(void *opaque, uint8_t *buf, int buf_size)
     return AVERROR(EAGAIN);
 }
 
-static void init_packetizer(AVIOContext *pb, uint8_t *buf, int len)
+static void init_packetizer(FFIOContext *pb, uint8_t *buf, int len)
 {
     ffio_init_context(pb, buf, len, 0, NULL, packetizer_read, NULL, NULL);
 
     /* this "fills" the buffer with its current content */
-    pb->pos     = len;
-    pb->buf_end = buf + len;
+    pb->pub.pos     = len;
+    pb->pub.buf_end = buf + len;
 }
 
 int ff_wms_parse_sdp_a_line(AVFormatContext *s, const char *p)
 {
     int ret = 0;
     if (av_strstart(p, "pgmpu:data:application/vnd.ms.wms-hdr.asfv1;base64,", &p)) {
-        AVIOContext pb = { 0 };
+        FFIOContext pb;
         RTSPState *rt = s->priv_data;
         AVDictionary *opts = NULL;
         int len = strlen(p) * 6 / 8;
         char *buf = av_mallocz(len);
-        ff_const59 AVInputFormat *iformat;
+        const AVInputFormat *iformat;
 
         if (!buf)
             return AVERROR(ENOMEM);
@@ -128,7 +127,7 @@ int ff_wms_parse_sdp_a_line(AVFormatContext *s, const char *p)
             av_free(buf);
             return AVERROR(ENOMEM);
         }
-        rt->asf_ctx->pb      = &pb;
+        rt->asf_ctx->pb      = &pb.pub;
         av_dict_set(&opts, "no_resync_search", "1", 0);
 
         if ((ret = ff_copy_whiteblacklists(rt->asf_ctx, s)) < 0) {
@@ -139,12 +138,12 @@ int ff_wms_parse_sdp_a_line(AVFormatContext *s, const char *p)
         ret = avformat_open_input(&rt->asf_ctx, "", iformat, &opts);
         av_dict_free(&opts);
         if (ret < 0) {
-            av_free(pb.buffer);
+            av_free(pb.pub.buffer);
             return ret;
         }
         av_dict_copy(&s->metadata, rt->asf_ctx->metadata, 0);
-        rt->asf_pb_pos = avio_tell(&pb);
-        av_free(pb.buffer);
+        rt->asf_pb_pos = avio_tell(&pb.pub);
+        av_free(pb.pub.buffer);
         rt->asf_ctx->pb = NULL;
     }
     return ret;
@@ -167,8 +166,8 @@ static int asfrtp_parse_sdp_line(AVFormatContext *s, int stream_index,
                 if (s->streams[stream_index]->id == rt->asf_ctx->streams[i]->id) {
                     avcodec_parameters_copy(s->streams[stream_index]->codecpar,
                                             rt->asf_ctx->streams[i]->codecpar);
-                    s->streams[stream_index]->need_parsing =
-                        rt->asf_ctx->streams[i]->need_parsing;
+                    ffstream(s->streams[stream_index])->need_parsing =
+                        ffstream(rt->asf_ctx->streams[i])->need_parsing;
                     avpriv_set_pts_info(s->streams[stream_index], 32, 1, 1000);
                 }
            }
@@ -179,7 +178,8 @@ static int asfrtp_parse_sdp_line(AVFormatContext *s, int stream_index,
 }
 
 struct PayloadContext {
-    AVIOContext *pktbuf, pb;
+    FFIOContext pb;
+    AVIOContext *pktbuf;
     uint8_t *buf;
 };
 
@@ -194,7 +194,8 @@ static int asfrtp_parse_packet(AVFormatContext *s, PayloadContext *asf,
                                const uint8_t *buf, int len, uint16_t seq,
                                int flags)
 {
-    AVIOContext *pb = &asf->pb;
+    FFIOContext *const pb0 = &asf->pb;
+    AVIOContext *const pb  = &pb0->pub;
     int res, mflags, len_off;
     RTSPState *rt = s->priv_data;
 
@@ -209,7 +210,7 @@ static int asfrtp_parse_packet(AVFormatContext *s, PayloadContext *asf,
 
         av_freep(&asf->buf);
 
-        ffio_init_context(pb, (uint8_t *)buf, len, 0, NULL, NULL, NULL, NULL);
+        ffio_init_context(pb0, (uint8_t *)buf, len, 0, NULL, NULL, NULL, NULL);
 
         while (avio_tell(pb) + 4 < len) {
             int start_off = avio_tell(pb);
@@ -268,7 +269,7 @@ static int asfrtp_parse_packet(AVFormatContext *s, PayloadContext *asf,
             }
         }
 
-        init_packetizer(pb, asf->buf, out_len);
+        init_packetizer(pb0, asf->buf, out_len);
         pb->pos += rt->asf_pb_pos;
         pb->eof_reached = 0;
         rt->asf_ctx->pb = pb;

@@ -279,20 +279,6 @@ static int encode_dvd_subtitles(AVCodecContext *avctx,
             break;
         }
 
-#if FF_API_AVPICTURE
-FF_DISABLE_DEPRECATION_WARNINGS
-    for (i = 0; i < rects; i++)
-        if (!h->rects[i]->data[0]) {
-            AVSubtitleRect *rect = h->rects[i];
-            int j;
-            for (j = 0; j < 4; j++) {
-                rect->data[j] = rect->pict.data[j];
-                rect->linesize[j] = rect->pict.linesize[j];
-            }
-        }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     vrect = *h->rects[0];
 
     if (rects > 1) {
@@ -507,7 +493,7 @@ static const AVClass dvdsubenc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_dvdsub_encoder = {
+const AVCodec ff_dvdsub_encoder = {
     .name           = "dvdsub",
     .long_name      = NULL_IF_CONFIG_SMALL("DVD subtitles"),
     .type           = AVMEDIA_TYPE_SUBTITLE,
@@ -516,4 +502,5 @@ AVCodec ff_dvdsub_encoder = {
     .encode_sub     = dvdsub_encode,
     .priv_class     = &dvdsubenc_class,
     .priv_data_size = sizeof(DVDSubtitleContext),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -52,43 +52,6 @@ typedef struct ChromaShiftContext {
     int (*filter_slice)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } ChromaShiftContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat yuv_pix_fmts[] = {
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ422P,AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ411P,
-        AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUV440P10,
-        AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
-        AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV420P14,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_NONE
-    };
-    static const enum AVPixelFormat rgb_pix_fmts[] = {
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRP9,
-        AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRP12,
-        AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_NONE
-    };
-    const enum AVPixelFormat *pix_fmts;
-    AVFilterFormats *fmts_list;
-
-    if (!strcmp(ctx->filter->name, "rgbashift"))
-        pix_fmts = rgb_pix_fmts;
-    else
-        pix_fmts = yuv_pix_fmts;
-
-    fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
 #define DEFINE_SMEAR(depth, type, div)                                                    \
 static int smear_slice ## depth(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)  \
 {                                                                                         \
@@ -363,10 +326,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                             in->data[0], in->linesize[0],
                             s->linesize[0], s->height[0]);
     }
-    ctx->internal->execute(ctx, s->filter_slice, out, NULL,
-                           FFMIN3(s->height[1],
-                                  s->height[2],
-                                  ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, s->filter_slice, out, NULL,
+                      FFMIN3(s->height[1],
+                             s->height[2],
+                             ff_filter_get_nb_threads(ctx)));
     s->in = NULL;
     av_frame_free(&in);
     return ff_filter_frame(outlink, out);
@@ -433,7 +396,6 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -441,21 +403,43 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
+};
+
+static const enum AVPixelFormat yuv_pix_fmts[] = {
+    AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ422P,AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ411P,
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUV440P10,
+    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
+    AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV420P14,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_NONE
 };
 
 AVFILTER_DEFINE_CLASS(chromashift);
 
-AVFilter ff_vf_chromashift = {
+const AVFilter ff_vf_chromashift = {
     .name          = "chromashift",
     .description   = NULL_IF_CONFIG_SMALL("Shift chroma."),
     .priv_size     = sizeof(ChromaShiftContext),
     .priv_class    = &chromashift_class,
-    .query_formats = query_formats,
-    .outputs       = outputs,
-    .inputs        = inputs,
+    FILTER_OUTPUTS(outputs),
+    FILTER_INPUTS(inputs),
+    FILTER_PIXFMTS_ARRAY(yuv_pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
+};
+
+static const enum AVPixelFormat rgb_pix_fmts[] = {
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRP9,
+    AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRP12,
+    AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_NONE
 };
 
 static const AVOption rgbashift_options[] = {
@@ -475,14 +459,14 @@ static const AVOption rgbashift_options[] = {
 
 AVFILTER_DEFINE_CLASS(rgbashift);
 
-AVFilter ff_vf_rgbashift = {
+const AVFilter ff_vf_rgbashift = {
     .name          = "rgbashift",
     .description   = NULL_IF_CONFIG_SMALL("Shift RGBA."),
     .priv_size     = sizeof(ChromaShiftContext),
     .priv_class    = &rgbashift_class,
-    .query_formats = query_formats,
-    .outputs       = outputs,
-    .inputs        = inputs,
+    FILTER_OUTPUTS(outputs),
+    FILTER_INPUTS(inputs),
+    FILTER_PIXFMTS_ARRAY(rgb_pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };

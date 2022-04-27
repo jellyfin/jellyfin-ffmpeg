@@ -404,7 +404,7 @@ typedef struct RTSPState {
     /**
      * timeout of socket i/o operations.
      */
-    int stimeout;
+    int64_t stimeout;
 
     /**
      * Size of RTP packet reordering queue.
@@ -419,6 +419,7 @@ typedef struct RTSPState {
     char default_lang[4];
     int buffer_size;
     int pkt_size;
+    char *localaddr;
 } RTSPState;
 
 #define RTSP_FLAG_FILTER_SRC  0x1    /**< Filter incoming UDP packets -
@@ -559,8 +560,10 @@ int ff_rtsp_read_reply(AVFormatContext *s, RTSPMessageHeader *reply,
 
 /**
  * Skip a RTP/TCP interleaved packet.
+ *
+ * @return 0 on success, < 0 on failure.
  */
-void ff_rtsp_skip_packet(AVFormatContext *s);
+int ff_rtsp_skip_packet(AVFormatContext *s);
 
 /**
  * Connect to the RTSP server and set up the individual media streams.

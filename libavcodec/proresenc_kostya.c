@@ -27,6 +27,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "fdctdsp.h"
 #include "put_bits.h"
 #include "profiles.h"
@@ -464,23 +465,17 @@ static void encode_acs(PutBitContext *pb, int16_t *blocks,
     }
 }
 
-static int encode_slice_plane(ProresContext *ctx, PutBitContext *pb,
+static void encode_slice_plane(ProresContext *ctx, PutBitContext *pb,
                               const uint16_t *src, ptrdiff_t linesize,
                               int mbs_per_slice, int16_t *blocks,
                               int blocks_per_mb, int plane_size_factor,
                               const int16_t *qmat)
 {
-    int blocks_per_slice, saved_pos;
-
-    saved_pos = put_bits_count(pb);
-    blocks_per_slice = mbs_per_slice * blocks_per_mb;
+    int blocks_per_slice = mbs_per_slice * blocks_per_mb;
 
     encode_dcs(pb, blocks, blocks_per_slice, qmat[0]);
     encode_acs(pb, blocks, blocks_per_slice, plane_size_factor,
                ctx->scantable, qmat);
-    flush_put_bits(pb);
-
-    return (put_bits_count(pb) - saved_pos) >> 3;
 }
 
 static void put_alpha_diff(PutBitContext *pb, int cur, int prev, int abits)
@@ -516,14 +511,13 @@ static void put_alpha_run(PutBitContext *pb, int run)
 }
 
 // todo alpha quantisation for high quants
-static int encode_alpha_plane(ProresContext *ctx, PutBitContext *pb,
+static void encode_alpha_plane(ProresContext *ctx, PutBitContext *pb,
                               int mbs_per_slice, uint16_t *blocks,
                               int quant)
 {
     const int abits = ctx->alpha_bits;
     const int mask  = (1 << abits) - 1;
     const int num_coeffs = mbs_per_slice * 256;
-    int saved_pos = put_bits_count(pb);
     int prev = mask, cur;
     int idx = 0;
     int run = 0;
@@ -544,8 +538,6 @@ static int encode_alpha_plane(ProresContext *ctx, PutBitContext *pb,
     } while (idx < num_coeffs);
     if (run)
         put_alpha_run(pb, run);
-    flush_put_bits(pb);
-    return (put_bits_count(pb) - saved_pos) >> 3;
 }
 
 static int encode_slice(AVCodecContext *avctx, const AVFrame *pic,
@@ -611,29 +603,23 @@ static int encode_slice(AVCodecContext *avctx, const AVFrame *pic,
                            ctx->blocks[0], ctx->emu_buf,
                            mbs_per_slice, num_cblocks, is_chroma);
             if (!is_chroma) {/* luma quant */
-                sizes[i] = encode_slice_plane(ctx, pb, src, linesize,
-                                              mbs_per_slice, ctx->blocks[0],
-                                              num_cblocks, plane_factor,
-                                              qmat);
+                encode_slice_plane(ctx, pb, src, linesize,
+                                   mbs_per_slice, ctx->blocks[0],
+                                   num_cblocks, plane_factor, qmat);
             } else { /* chroma plane */
-                sizes[i] = encode_slice_plane(ctx, pb, src, linesize,
-                                              mbs_per_slice, ctx->blocks[0],
-                                              num_cblocks, plane_factor,
-                                              qmat_chroma);
+                encode_slice_plane(ctx, pb, src, linesize,
+                                   mbs_per_slice, ctx->blocks[0],
+                                   num_cblocks, plane_factor, qmat_chroma);
             }
         } else {
             get_alpha_data(ctx, src, linesize, xp, yp,
                            pwidth, avctx->height / ctx->pictures_per_frame,
                            ctx->blocks[0], mbs_per_slice, ctx->alpha_bits);
-            sizes[i] = encode_alpha_plane(ctx, pb, mbs_per_slice,
-                                          ctx->blocks[0], quant);
+            encode_alpha_plane(ctx, pb, mbs_per_slice, ctx->blocks[0], quant);
         }
-        total_size += sizes[i];
-        if (put_bits_left(pb) < 0) {
-            av_log(avctx, AV_LOG_ERROR,
-                   "Underestimated required buffer size.\n");
-            return AVERROR_BUG;
-        }
+        flush_put_bits(pb);
+        sizes[i]   = put_bytes_output(pb) - total_size;
+        total_size = put_bytes_output(pb);
     }
     return total_size;
 }
@@ -1013,7 +999,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     ctx->pic = pic;
     pkt_size = ctx->frame_size_upper_bound;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, pkt_size + AV_INPUT_BUFFER_MIN_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, pkt_size + AV_INPUT_BUFFER_MIN_SIZE)) < 0)
         return ret;
 
     orig_buf = pkt->data;
@@ -1150,7 +1136,6 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_be32(&orig_buf, frame_size);
 
     pkt->size   = frame_size;
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -1194,12 +1179,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
     int interlaced = !!(avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT);
 
     avctx->bits_per_raw_sample = 10;
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     ctx->fdct      = prores_fdct;
     ctx->scantable = interlaced ? ff_prores_interlaced_scan
@@ -1420,7 +1399,7 @@ static const AVClass proresenc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_prores_ks_encoder = {
+const AVCodec ff_prores_ks_encoder = {
     .name           = "prores_ks",
     .long_name      = NULL_IF_CONFIG_SMALL("Apple ProRes (iCodec Pro)"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -1436,4 +1415,5 @@ AVCodec ff_prores_ks_encoder = {
                       },
     .priv_class     = &proresenc_class,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

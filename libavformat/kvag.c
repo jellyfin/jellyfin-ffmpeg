@@ -19,7 +19,10 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
+#include "libavutil/channel_layout.h"
 #include "avformat.h"
+#include "avio_internal.h"
 #include "internal.h"
 #include "rawenc.h"
 #include "libavutil/intreadwrite.h"
@@ -55,10 +58,8 @@ static int kvag_read_header(AVFormatContext *s)
     if (!(st = avformat_new_stream(s, NULL)))
         return AVERROR(ENOMEM);
 
-    if ((ret = avio_read(s->pb, buf, KVAG_HEADER_SIZE)) < 0)
+    if ((ret = ffio_read_size(s->pb, buf, KVAG_HEADER_SIZE)) < 0)
         return ret;
-    else if (ret != KVAG_HEADER_SIZE)
-        return AVERROR(EIO);
 
     hdr.magic                   = AV_RL32(buf +  0);
     hdr.data_size               = AV_RL32(buf +  4);
@@ -80,7 +81,6 @@ static int kvag_read_header(AVFormatContext *s)
 
     par->sample_rate            = hdr.sample_rate;
     par->bits_per_coded_sample  = 4;
-    par->bits_per_raw_sample    = 16;
     par->block_align            = 1;
     par->bit_rate               = par->channels *
                                   (uint64_t)par->sample_rate *
@@ -119,7 +119,7 @@ static int kvag_seek(AVFormatContext *s, int stream_index,
     return avio_seek(s->pb, KVAG_HEADER_SIZE, SEEK_SET);
 }
 
-AVInputFormat ff_kvag_demuxer = {
+const AVInputFormat ff_kvag_demuxer = {
     .name           = "kvag",
     .long_name      = NULL_IF_CONFIG_SMALL("Simon & Schuster Interactive VAG"),
     .read_probe     = kvag_probe,
@@ -193,7 +193,7 @@ static int kvag_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-AVOutputFormat ff_kvag_muxer = {
+const AVOutputFormat ff_kvag_muxer = {
     .name           = "kvag",
     .long_name      = NULL_IF_CONFIG_SMALL("Simon & Schuster Interactive VAG"),
     .extensions     = "vag",

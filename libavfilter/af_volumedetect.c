@@ -33,30 +33,6 @@ typedef struct VolDetectContext {
     uint64_t histogram[0x10001];
 } VolDetectContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_S16,
-        AV_SAMPLE_FMT_S16P,
-        AV_SAMPLE_FMT_NONE
-    };
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    int ret;
-
-    if (!(formats = ff_make_format_list(sample_fmts)))
-        return AVERROR(ENOMEM);
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    return ff_set_common_formats(ctx, formats);
-}
-
 static int filter_frame(AVFilterLink *inlink, AVFrame *samples)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -144,7 +120,6 @@ static const AVFilterPad volumedetect_inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad volumedetect_outputs[] = {
@@ -152,15 +127,15 @@ static const AVFilterPad volumedetect_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_volumedetect = {
+const AVFilter ff_af_volumedetect = {
     .name          = "volumedetect",
     .description   = NULL_IF_CONFIG_SMALL("Detect audio volume."),
     .priv_size     = sizeof(VolDetectContext),
-    .query_formats = query_formats,
     .uninit        = uninit,
-    .inputs        = volumedetect_inputs,
-    .outputs       = volumedetect_outputs,
+    .flags         = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(volumedetect_inputs),
+    FILTER_OUTPUTS(volumedetect_outputs),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S16P),
 };

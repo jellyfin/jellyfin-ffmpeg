@@ -110,10 +110,8 @@ static int mpl2_read_header(AVFormatContext *s)
             AVPacket *sub;
 
             sub = ff_subtitles_queue_insert(&mpl2->q, p, strlen(p), 0);
-            if (!sub) {
-                ff_subtitles_queue_clean(&mpl2->q);
+            if (!sub)
                 return AVERROR(ENOMEM);
-            }
             sub->pos = pos;
             sub->pts = pts_start;
             sub->duration = duration;
@@ -124,35 +122,15 @@ static int mpl2_read_header(AVFormatContext *s)
     return 0;
 }
 
-static int mpl2_read_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    MPL2Context *mpl2 = s->priv_data;
-    return ff_subtitles_queue_read_packet(&mpl2->q, pkt);
-}
-
-static int mpl2_read_seek(AVFormatContext *s, int stream_index,
-                          int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
-{
-    MPL2Context *mpl2 = s->priv_data;
-    return ff_subtitles_queue_seek(&mpl2->q, s, stream_index,
-                                   min_ts, ts, max_ts, flags);
-}
-
-static int mpl2_read_close(AVFormatContext *s)
-{
-    MPL2Context *mpl2 = s->priv_data;
-    ff_subtitles_queue_clean(&mpl2->q);
-    return 0;
-}
-
-AVInputFormat ff_mpl2_demuxer = {
+const AVInputFormat ff_mpl2_demuxer = {
     .name           = "mpl2",
     .long_name      = NULL_IF_CONFIG_SMALL("MPL2 subtitles"),
     .priv_data_size = sizeof(MPL2Context),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = mpl2_probe,
     .read_header    = mpl2_read_header,
-    .read_packet    = mpl2_read_packet,
-    .read_seek2     = mpl2_read_seek,
-    .read_close     = mpl2_read_close,
     .extensions     = "txt,mpl2",
+    .read_packet    = ff_subtitles_read_packet,
+    .read_seek2     = ff_subtitles_read_seek,
+    .read_close     = ff_subtitles_read_close,
 };

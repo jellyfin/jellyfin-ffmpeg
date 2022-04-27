@@ -23,6 +23,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 
 typedef struct DPXContext {
@@ -67,9 +68,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
         if (avctx->bits_per_raw_sample)
             s->bits_per_component = avctx->bits_per_raw_sample;
         break;
-    default:
-        av_log(avctx, AV_LOG_INFO, "unsupported pixel format\n");
-        return -1;
     }
 
     return 0;
@@ -142,7 +140,7 @@ static void encode_gbrp10(AVCodecContext *avctx, const AVFrame *pic, uint8_t *ds
     }
 }
 
-static void encode_gbrp12(AVCodecContext *avctx, const AVFrame *pic, uint16_t *dst)
+static void encode_gbrp12(AVCodecContext *avctx, const AVFrame *pic, uint8_t *dst)
 {
     DPXContext *s = avctx->priv_data;
     const uint16_t *src[3] = {(uint16_t*)pic->data[0],
@@ -163,11 +161,11 @@ static void encode_gbrp12(AVCodecContext *avctx, const AVFrame *pic, uint16_t *d
                 value[2] = AV_RL16(src[1] + x) << 4;
                 value[0] = AV_RL16(src[2] + x) << 4;
             }
-            for (i = 0; i < 3; i++)
-                write16(dst++, value[i]);
+            for (i = 0; i < 3; i++, dst += 2)
+                write16(dst, value[i]);
         }
-        for (i = 0; i < pad; i++)
-            *dst++ = 0;
+        for (i = 0; i < pad; i++, dst += 2)
+            AV_WN16(dst, 0);
         for (i = 0; i < 3; i++)
             src[i] += pic->linesize[i]/2;
     }
@@ -196,7 +194,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         need_align = size - len;
         size *= avctx->height;
     }
-    if ((ret = ff_alloc_packet2(avctx, pkt, size + HEADER_SIZE, 0)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, pkt, size + HEADER_SIZE, 0)) < 0)
         return ret;
     buf = pkt->data;
 
@@ -259,7 +257,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             encode_rgb48_10bit(avctx, frame, buf + HEADER_SIZE);
         break;
     case 12:
-        encode_gbrp12(avctx, frame, (uint16_t*)(buf + HEADER_SIZE));
+        encode_gbrp12(avctx, frame, buf + HEADER_SIZE);
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Unsupported bit depth: %d\n", s->bits_per_component);
@@ -270,17 +268,17 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     write32(buf + 16, size); /* file size */
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
 }
 
-AVCodec ff_dpx_encoder = {
+const AVCodec ff_dpx_encoder = {
     .name           = "dpx",
     .long_name      = NULL_IF_CONFIG_SMALL("DPX (Digital Picture Exchange) image"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_DPX,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .priv_data_size = sizeof(DPXContext),
     .init           = encode_init,
     .encode2        = encode_frame,
@@ -293,4 +291,5 @@ AVCodec ff_dpx_encoder = {
         AV_PIX_FMT_GBRP10LE, AV_PIX_FMT_GBRP10BE,
         AV_PIX_FMT_GBRP12LE, AV_PIX_FMT_GBRP12BE,
         AV_PIX_FMT_NONE},
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

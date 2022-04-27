@@ -31,6 +31,7 @@
 #include "libavutil/eval.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/parseutils.h"
+#include "libavutil/detection_bbox.h"
 #include "avfilter.h"
 #include "formats.h"
 #include "internal.h"
@@ -79,16 +80,93 @@ typedef struct DrawBoxContext {
     char *x_expr, *y_expr; ///< expression for x and y
     char *w_expr, *h_expr; ///< expression for width and height
     char *t_expr;          ///< expression for thickness
+    char *box_source_string; ///< string for box data source
     int have_alpha;
     int replace;
+    enum AVFrameSideDataType box_source;
 } DrawBoxContext;
 
 static const int NUM_EXPR_EVALS = 5;
+
+typedef int (*PixelBelongsToRegion)(DrawBoxContext *s, int x, int y);
+
+#define ASSIGN_THREE_CHANNELS                                        \
+    row[0] = frame->data[0] +  y               * frame->linesize[0]; \
+    row[1] = frame->data[1] + (y >> ctx->vsub) * frame->linesize[1]; \
+    row[2] = frame->data[2] + (y >> ctx->vsub) * frame->linesize[2];
+
+#define ASSIGN_FOUR_CHANNELS                          \
+    ASSIGN_THREE_CHANNELS                             \
+    row[3] = frame->data[3] + y * frame->linesize[3];
+
+static void draw_region(AVFrame *frame, DrawBoxContext *ctx, int left, int top, int right, int down,
+                        PixelBelongsToRegion pixel_belongs_to_region)
+{
+    unsigned char *row[4];
+    int x, y;
+    if (ctx->have_alpha && ctx->replace) {
+        for (y = top; y < down; y++) {
+            ASSIGN_FOUR_CHANNELS
+            if (ctx->invert_color) {
+                for (x = left; x < right; x++)
+                    if (pixel_belongs_to_region(ctx, x, y))
+                        row[0][x] = 0xff - row[0][x];
+            } else {
+                for (x = left; x < right; x++) {
+                    if (pixel_belongs_to_region(ctx, x, y)) {
+                        row[0][x             ] = ctx->yuv_color[Y];
+                        row[1][x >> ctx->hsub] = ctx->yuv_color[U];
+                        row[2][x >> ctx->hsub] = ctx->yuv_color[V];
+                        row[3][x             ] = ctx->yuv_color[A];
+                    }
+                }
+            }
+        }
+    } else {
+        for (y = top; y < down; y++) {
+            ASSIGN_THREE_CHANNELS
+            if (ctx->invert_color) {
+                for (x = left; x < right; x++)
+                    if (pixel_belongs_to_region(ctx, x, y))
+                        row[0][x] = 0xff - row[0][x];
+            } else {
+                for (x = left; x < right; x++) {
+                    double alpha = (double)ctx->yuv_color[A] / 255;
+
+                    if (pixel_belongs_to_region(ctx, x, y)) {
+                        row[0][x             ] = (1 - alpha) * row[0][x             ] + alpha * ctx->yuv_color[Y];
+                        row[1][x >> ctx->hsub] = (1 - alpha) * row[1][x >> ctx->hsub] + alpha * ctx->yuv_color[U];
+                        row[2][x >> ctx->hsub] = (1 - alpha) * row[2][x >> ctx->hsub] + alpha * ctx->yuv_color[V];
+                    }
+                }
+            }
+        }
+    }
+}
+
+static enum AVFrameSideDataType box_source_string_parse(const char *box_source_string)
+{
+    av_assert0(box_source_string);
+    if (!strcmp(box_source_string, "side_data_detection_bboxes")) {
+        return AV_FRAME_DATA_DETECTION_BBOXES;
+    } else {
+        // will support side_data_regions_of_interest next
+        return AVERROR(EINVAL);
+    }
+}
 
 static av_cold int init(AVFilterContext *ctx)
 {
     DrawBoxContext *s = ctx->priv;
     uint8_t rgba_color[4];
+
+    if (s->box_source_string) {
+        s->box_source = box_source_string_parse(s->box_source_string);
+        if ((int)s->box_source < 0) {
+            av_log(ctx, AV_LOG_ERROR, "Error box source: %s\n",s->box_source_string);
+            return AVERROR(EINVAL);
+        }
+    }
 
     if (!strcmp(s->color_str, "invert"))
         s->invert_color = 1;
@@ -105,21 +183,14 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUV440P,  AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUV440P,  AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_NONE
+};
 
 static int config_input(AVFilterLink *inlink)
 {
@@ -217,57 +288,33 @@ static av_pure av_always_inline int pixel_belongs_to_box(DrawBoxContext *s, int 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     DrawBoxContext *s = inlink->dst->priv;
-    int plane, x, y, xb = s->x, yb = s->y;
-    unsigned char *row[4];
+    const AVDetectionBBoxHeader *header = NULL;
+    const AVDetectionBBox *bbox;
+    AVFrameSideData *sd;
+    int loop = 1;
 
-    if (s->have_alpha && s->replace) {
-        for (y = FFMAX(yb, 0); y < frame->height && y < (yb + s->h); y++) {
-            row[0] = frame->data[0] + y * frame->linesize[0];
-            row[3] = frame->data[3] + y * frame->linesize[3];
-
-            for (plane = 1; plane < 3; plane++)
-                row[plane] = frame->data[plane] +
-                     frame->linesize[plane] * (y >> s->vsub);
-
-            if (s->invert_color) {
-                for (x = FFMAX(xb, 0); x < xb + s->w && x < frame->width; x++)
-                    if (pixel_belongs_to_box(s, x, y))
-                        row[0][x] = 0xff - row[0][x];
-            } else {
-                for (x = FFMAX(xb, 0); x < xb + s->w && x < frame->width; x++) {
-                    if (pixel_belongs_to_box(s, x, y)) {
-                        row[0][x           ] = s->yuv_color[Y];
-                        row[1][x >> s->hsub] = s->yuv_color[U];
-                        row[2][x >> s->hsub] = s->yuv_color[V];
-                        row[3][x           ] = s->yuv_color[A];
-                    }
-                }
-            }
+    if (s->box_source == AV_FRAME_DATA_DETECTION_BBOXES) {
+        sd = av_frame_get_side_data(frame, AV_FRAME_DATA_DETECTION_BBOXES);
+        if (sd) {
+            header = (AVDetectionBBoxHeader *)sd->data;
+            loop = header->nb_bboxes;
+        } else {
+            av_log(s, AV_LOG_WARNING, "No detection bboxes.\n");
+            return ff_filter_frame(inlink->dst->outputs[0], frame);
         }
-    } else {
-        for (y = FFMAX(yb, 0); y < frame->height && y < (yb + s->h); y++) {
-            row[0] = frame->data[0] + y * frame->linesize[0];
+    }
 
-            for (plane = 1; plane < 3; plane++)
-                row[plane] = frame->data[plane] +
-                     frame->linesize[plane] * (y >> s->vsub);
-
-            if (s->invert_color) {
-                for (x = FFMAX(xb, 0); x < xb + s->w && x < frame->width; x++)
-                    if (pixel_belongs_to_box(s, x, y))
-                        row[0][x] = 0xff - row[0][x];
-            } else {
-                for (x = FFMAX(xb, 0); x < xb + s->w && x < frame->width; x++) {
-                    double alpha = (double)s->yuv_color[A] / 255;
-
-                    if (pixel_belongs_to_box(s, x, y)) {
-                        row[0][x                 ] = (1 - alpha) * row[0][x                 ] + alpha * s->yuv_color[Y];
-                        row[1][x >> s->hsub] = (1 - alpha) * row[1][x >> s->hsub] + alpha * s->yuv_color[U];
-                        row[2][x >> s->hsub] = (1 - alpha) * row[2][x >> s->hsub] + alpha * s->yuv_color[V];
-                    }
-                }
-            }
+    for (int i = 0; i < loop; i++) {
+        if (header) {
+            bbox = av_get_detection_bbox(header, i);
+            s->y = bbox->y;
+            s->x = bbox->x;
+            s->h = bbox->h;
+            s->w = bbox->w;
         }
+
+        draw_region(frame, s, FFMAX(s->x, 0), FFMAX(s->y, 0), FFMIN(s->x + s->w, frame->width),
+                    FFMIN(s->y + s->h, frame->height), pixel_belongs_to_box);
     }
 
     return ff_filter_frame(inlink->dst->outputs[0], frame);
@@ -323,6 +370,7 @@ static const AVOption drawbox_options[] = {
     { "thickness", "set the box thickness",                        OFFSET(t_expr),    AV_OPT_TYPE_STRING, { .str="3" },       0, 0, FLAGS },
     { "t",         "set the box thickness",                        OFFSET(t_expr),    AV_OPT_TYPE_STRING, { .str="3" },       0, 0, FLAGS },
     { "replace",   "replace color & alpha",                        OFFSET(replace),   AV_OPT_TYPE_BOOL,   { .i64=0   },       0, 1, FLAGS },
+    { "box_source", "use datas from bounding box in side data",    OFFSET(box_source_string), AV_OPT_TYPE_STRING, { .str=NULL }, 0, 1, FLAGS },
     { NULL }
 };
 
@@ -332,11 +380,10 @@ static const AVFilterPad drawbox_inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .config_props   = config_input,
         .filter_frame   = filter_frame,
-        .needs_writable = 1,
     },
-    { NULL }
 };
 
 static const AVFilterPad drawbox_outputs[] = {
@@ -344,18 +391,17 @@ static const AVFilterPad drawbox_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_drawbox = {
+const AVFilter ff_vf_drawbox = {
     .name          = "drawbox",
     .description   = NULL_IF_CONFIG_SMALL("Draw a colored box on the input video."),
     .priv_size     = sizeof(DrawBoxContext),
     .priv_class    = &drawbox_class,
     .init          = init,
-    .query_formats = query_formats,
-    .inputs        = drawbox_inputs,
-    .outputs       = drawbox_outputs,
+    FILTER_INPUTS(drawbox_inputs),
+    FILTER_OUTPUTS(drawbox_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .process_command = process_command,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };
@@ -389,58 +435,8 @@ static av_pure av_always_inline int pixel_belongs_to_grid(DrawBoxContext *drawgr
 static int drawgrid_filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     DrawBoxContext *drawgrid = inlink->dst->priv;
-    int plane, x, y;
-    uint8_t *row[4];
 
-    if (drawgrid->have_alpha && drawgrid->replace) {
-        for (y = 0; y < frame->height; y++) {
-            row[0] = frame->data[0] + y * frame->linesize[0];
-            row[3] = frame->data[3] + y * frame->linesize[3];
-
-            for (plane = 1; plane < 3; plane++)
-                row[plane] = frame->data[plane] +
-                     frame->linesize[plane] * (y >> drawgrid->vsub);
-
-            if (drawgrid->invert_color) {
-                for (x = 0; x < frame->width; x++)
-                    if (pixel_belongs_to_grid(drawgrid, x, y))
-                        row[0][x] = 0xff - row[0][x];
-            } else {
-                for (x = 0; x < frame->width; x++) {
-                    if (pixel_belongs_to_grid(drawgrid, x, y)) {
-                        row[0][x                  ] = drawgrid->yuv_color[Y];
-                        row[1][x >> drawgrid->hsub] = drawgrid->yuv_color[U];
-                        row[2][x >> drawgrid->hsub] = drawgrid->yuv_color[V];
-                        row[3][x                  ] = drawgrid->yuv_color[A];
-                    }
-                }
-            }
-        }
-    } else {
-        for (y = 0; y < frame->height; y++) {
-            row[0] = frame->data[0] + y * frame->linesize[0];
-
-            for (plane = 1; plane < 3; plane++)
-                row[plane] = frame->data[plane] +
-                     frame->linesize[plane] * (y >> drawgrid->vsub);
-
-            if (drawgrid->invert_color) {
-                for (x = 0; x < frame->width; x++)
-                    if (pixel_belongs_to_grid(drawgrid, x, y))
-                        row[0][x] = 0xff - row[0][x];
-            } else {
-                for (x = 0; x < frame->width; x++) {
-                    double alpha = (double)drawgrid->yuv_color[A] / 255;
-
-                    if (pixel_belongs_to_grid(drawgrid, x, y)) {
-                        row[0][x                  ] = (1 - alpha) * row[0][x                  ] + alpha * drawgrid->yuv_color[Y];
-                        row[1][x >> drawgrid->hsub] = (1 - alpha) * row[1][x >> drawgrid->hsub] + alpha * drawgrid->yuv_color[U];
-                        row[2][x >> drawgrid->hsub] = (1 - alpha) * row[2][x >> drawgrid->hsub] + alpha * drawgrid->yuv_color[V];
-                    }
-                }
-            }
-        }
-    }
+    draw_region(frame, drawgrid, 0, 0, frame->width, frame->height, pixel_belongs_to_grid);
 
     return ff_filter_frame(inlink->dst->outputs[0], frame);
 }
@@ -466,11 +462,10 @@ static const AVFilterPad drawgrid_inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .config_props   = config_input,
         .filter_frame   = drawgrid_filter_frame,
-        .needs_writable = 1,
     },
-    { NULL }
 };
 
 static const AVFilterPad drawgrid_outputs[] = {
@@ -478,18 +473,17 @@ static const AVFilterPad drawgrid_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_drawgrid = {
+const AVFilter ff_vf_drawgrid = {
     .name          = "drawgrid",
     .description   = NULL_IF_CONFIG_SMALL("Draw a colored grid on the input video."),
     .priv_size     = sizeof(DrawBoxContext),
     .priv_class    = &drawgrid_class,
     .init          = init,
-    .query_formats = query_formats,
-    .inputs        = drawgrid_inputs,
-    .outputs       = drawgrid_outputs,
+    FILTER_INPUTS(drawgrid_inputs),
+    FILTER_OUTPUTS(drawgrid_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = process_command,
 };

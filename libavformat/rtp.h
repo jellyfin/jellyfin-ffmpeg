@@ -21,9 +21,11 @@
 #ifndef AVFORMAT_RTP_H
 #define AVFORMAT_RTP_H
 
+#include <stdint.h>
+#include "libavutil/avutil.h"
+#include "libavcodec/codec_id.h"
+#include "libavcodec/codec_par.h"
 #include "libavformat/avformat.h"
-#include "libavcodec/avcodec.h"
-#include "libavutil/mathematics.h"
 
 /**
  * Return the payload type for a given stream used in the given format context.
@@ -36,8 +38,8 @@
  * @param idx   The stream index
  * @return The payload type (the 'PT' field in the RTP header).
  */
-int ff_rtp_get_payload_type(AVFormatContext *fmt, AVCodecParameters *par,
-                            int idx);
+int ff_rtp_get_payload_type(const AVFormatContext *fmt,
+                            const AVCodecParameters *par, int idx);
 
 /**
  * Initialize a codec context based on the payload type.

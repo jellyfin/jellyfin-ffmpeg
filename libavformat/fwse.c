@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "internal.h"
@@ -78,7 +79,7 @@ static int fwse_read_header(AVFormatContext *s)
     return 0;
 }
 
-AVInputFormat ff_fwse_demuxer = {
+const AVInputFormat ff_fwse_demuxer = {
     .name           = "fwse",
     .long_name      = NULL_IF_CONFIG_SMALL("Capcom's MT Framework sound"),
     .read_probe     = fwse_probe,

@@ -30,7 +30,7 @@ int ff_tx_type_is_mdct(enum AVTXType type)
     }
 }
 
-/* Calculates the modular multiplicative inverse, not fast, replace */
+/* Calculates the modular multiplicative inverse */
 static av_always_inline int mulinv(int n, int m)
 {
     n = n % m;
@@ -38,6 +38,7 @@ static av_always_inline int mulinv(int n, int m)
         if (((n * x) % m) == 1)
             return x;
     av_assert0(0); /* Never reached */
+    return 0;
 }
 
 /* Guaranteed to work for any n, m where gcd(n, m) == 1 */
@@ -91,39 +92,56 @@ int ff_tx_gen_compound_mapping(AVTXContext *s)
     return 0;
 }
 
+static inline int split_radix_permutation(int i, int m, int inverse)
+{
+    m >>= 1;
+    if (m <= 1)
+        return i & 1;
+    if (!(i & m))
+        return split_radix_permutation(i, m, inverse) * 2;
+    m >>= 1;
+    return split_radix_permutation(i, m, inverse) * 4 + 1 - 2*(!(i & m) ^ inverse);
+}
+
 int ff_tx_gen_ptwo_revtab(AVTXContext *s, int invert_lookup)
 {
     const int m = s->m, inv = s->inv;
 
-    if (!(s->revtab = av_malloc(m*sizeof(*s->revtab))))
+    if (!(s->revtab = av_malloc(s->m*sizeof(*s->revtab))))
+        return AVERROR(ENOMEM);
+    if (!(s->revtab_c = av_malloc(m*sizeof(*s->revtab_c))))
         return AVERROR(ENOMEM);
 
     /* Default */
     for (int i = 0; i < m; i++) {
         int k = -split_radix_permutation(i, m, inv) & (m - 1);
         if (invert_lookup)
-            s->revtab[i] = k;
+            s->revtab[i] = s->revtab_c[i] = k;
         else
-            s->revtab[k] = i;
+            s->revtab[i] = s->revtab_c[k] = i;
     }
 
     return 0;
 }
 
-int ff_tx_gen_ptwo_inplace_revtab_idx(AVTXContext *s)
+int ff_tx_gen_ptwo_inplace_revtab_idx(AVTXContext *s, int *revtab)
 {
     int nb_inplace_idx = 0;
 
     if (!(s->inplace_idx = av_malloc(s->m*sizeof(*s->inplace_idx))))
         return AVERROR(ENOMEM);
 
+    /* The first coefficient is always already in-place */
     for (int src = 1; src < s->m; src++) {
-        int dst = s->revtab[src];
+        int dst = revtab[src];
         int found = 0;
 
         if (dst <= src)
             continue;
 
+        /* This just checks if a closed loop has been encountered before,
+         * and if so, skips it, since to fully permute a loop we must only
+         * enter it once. */
         do {
             for (int j = 0; j < nb_inplace_idx; j++) {
                 if (dst == s->inplace_idx[j]) {
@@ -131,7 +149,7 @@ int ff_tx_gen_ptwo_inplace_revtab_idx(AVTXContext *s)
                     break;
                 }
             }
-            dst = s->revtab[dst];
+            dst = revtab[dst];
         } while (dst != src && !found);
 
         if (!found)
@@ -143,6 +161,55 @@ int ff_tx_gen_ptwo_inplace_revtab_idx(AVTXContext *s)
     return 0;
 }
 
+static void parity_revtab_generator(int *revtab, int n, int inv, int offset,
+                                    int is_dual, int dual_high, int len,
+                                    int basis, int dual_stride)
+{
+    len >>= 1;
+
+    if (len <= basis) {
+        int k1, k2, *even, *odd, stride;
+
+        is_dual = is_dual && dual_stride;
+        dual_high = is_dual & dual_high;
+        stride = is_dual ? FFMIN(dual_stride, len) : 0;
+
+        even = &revtab[offset + dual_high*(stride - 2*len)];
+        odd  = &even[len + (is_dual && !dual_high)*len + dual_high*len];
+
+        for (int i = 0; i < len; i++) {
+            k1 = -split_radix_permutation(offset + i*2 + 0, n, inv) & (n - 1);
+            k2 = -split_radix_permutation(offset + i*2 + 1, n, inv) & (n - 1);
+            *even++ = k1;
+            *odd++  = k2;
+            if (stride && !((i + 1) % stride)) {
+                even += stride;
+                odd  += stride;
+            }
+        }
+
+        return;
+    }
+
+    parity_revtab_generator(revtab, n, inv, offset,
+                            0, 0, len >> 0, basis, dual_stride);
+    parity_revtab_generator(revtab, n, inv, offset + (len >> 0),
+                            1, 0, len >> 1, basis, dual_stride);
+    parity_revtab_generator(revtab, n, inv, offset + (len >> 0) + (len >> 1),
+                            1, 1, len >> 1, basis, dual_stride);
+}
+
+void ff_tx_gen_split_radix_parity_revtab(int *revtab, int len, int inv,
+                                         int basis, int dual_stride)
+{
+    basis >>= 1;
+    if (len < basis)
+        return;
+    av_assert0(!dual_stride || !(dual_stride & (dual_stride - 1)));
+    av_assert0(dual_stride <= basis);
+    parity_revtab_generator(revtab, len, inv, 0, 0, 0, len, basis, dual_stride);
+}
+
 av_cold void av_tx_uninit(AVTXContext **ctx)
 {
     if (!(*ctx))
@@ -151,6 +218,7 @@ av_cold void av_tx_uninit(AVTXContext **ctx)
     av_free((*ctx)->pfatab);
     av_free((*ctx)->exptab);
     av_free((*ctx)->revtab);
+    av_free((*ctx)->revtab_c);
     av_free((*ctx)->inplace_idx);
     av_free((*ctx)->tmp);
 
@@ -170,6 +238,8 @@ av_cold int av_tx_init(AVTXContext **ctx, av_tx_fn *tx, enum AVTXType type,
     case AV_TX_FLOAT_MDCT:
         if ((err = ff_tx_init_mdct_fft_float(s, tx, type, inv, len, scale, flags)))
             goto fail;
+        if (ARCH_X86)
+            ff_tx_init_float_x86(s, tx);
         break;
     case AV_TX_DOUBLE_FFT:
     case AV_TX_DOUBLE_MDCT:

@@ -30,10 +30,12 @@
  ***********************************/
 #include <float.h>
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/libm.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "put_bits.h"
 #include "internal.h"
 #include "mpeg4audio.h"
@@ -116,7 +118,7 @@ static int put_audio_specific_config(AVCodecContext *avctx)
     put_bits(&pb, 5,  AOT_SBR);
     put_bits(&pb, 1,  0);
     flush_put_bits(&pb);
-    avctx->extradata_size = put_bits_count(&pb) >> 3;
+    avctx->extradata_size = put_bytes_output(&pb);
 
     return 0;
 }
@@ -676,7 +678,7 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         }
         start_ch += chans;
     }
-    if ((ret = ff_alloc_packet2(avctx, avpkt, 8192 * s->channels, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, avpkt, 8192 * s->channels)) < 0)
         return ret;
     frame_bits = its = 0;
     do {
@@ -882,6 +884,7 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     flush_put_bits(&s->pb);
 
     s->last_frame_pb_count = put_bits_count(&s->pb);
+    avpkt->size            = put_bytes_output(&s->pb);
 
     s->lambda_sum += s->lambda;
     s->lambda_count++;
@@ -889,7 +892,6 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     ff_af_queue_remove(&s->afq, avctx->frame_size, &avpkt->pts,
                        &avpkt->duration);
 
-    avpkt->size = put_bits_count(&s->pb) >> 3;
     *got_packet_ptr = 1;
     return 0;
 }
@@ -996,7 +998,7 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
 
     /* Samplerate */
     for (i = 0; i < 16; i++)
-        if (avctx->sample_rate == avpriv_mpeg4audio_sample_rates[i])
+        if (avctx->sample_rate == ff_mpeg4audio_sample_rates[i])
             break;
     s->samplerate_index = i;
     ERROR_IF(s->samplerate_index == 16 ||
@@ -1104,7 +1106,7 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
 
 #define AACENC_FLAGS AV_OPT_FLAG_ENCODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM
 static const AVOption aacenc_options[] = {
-    {"aac_coder", "Coding algorithm", offsetof(AACEncContext, options.coder), AV_OPT_TYPE_INT, {.i64 = AAC_CODER_FAST}, 0, AAC_CODER_NB-1, AACENC_FLAGS, "coder"},
+    {"aac_coder", "Coding algorithm", offsetof(AACEncContext, options.coder), AV_OPT_TYPE_INT, {.i64 = AAC_CODER_TWOLOOP}, 0, AAC_CODER_NB-1, AACENC_FLAGS, "coder"},
         {"anmr",     "ANMR method",               0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_ANMR},    INT_MIN, INT_MAX, AACENC_FLAGS, "coder"},
         {"twoloop",  "Two loop searching method", 0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_TWOLOOP}, INT_MIN, INT_MAX, AACENC_FLAGS, "coder"},
         {"fast",     "Default fast search",       0, AV_OPT_TYPE_CONST, {.i64 = AAC_CODER_FAST},    INT_MIN, INT_MAX, AACENC_FLAGS, "coder"},
@@ -1131,7 +1133,7 @@ static const AVCodecDefault aac_encode_defaults[] = {
     { NULL }
 };
 
-AVCodec ff_aac_encoder = {
+const AVCodec ff_aac_encoder = {
     .name           = "aac",
     .long_name      = NULL_IF_CONFIG_SMALL("AAC (Advanced Audio Coding)"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -1141,7 +1143,7 @@ AVCodec ff_aac_encoder = {
     .encode2        = aac_encode_frame,
     .close          = aac_encode_end,
     .defaults       = aac_encode_defaults,
-    .supported_samplerates = mpeg4audio_sample_rates,
+    .supported_samplerates = ff_mpeg4audio_sample_rates,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .capabilities   = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY,
     .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,

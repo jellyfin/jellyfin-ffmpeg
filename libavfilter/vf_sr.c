@@ -54,7 +54,7 @@ static const AVOption sr_options[] = {
     { "scale_factor", "scale factor for SRCNN model", OFFSET(scale_factor), AV_OPT_TYPE_INT, { .i64 = 2 }, 2, 4, FLAGS },
     { "model", "path to model file specifying network architecture and its parameters", OFFSET(dnnctx.model_filename), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
     { "input",       "input name of the model",     OFFSET(dnnctx.model_inputname),  AV_OPT_TYPE_STRING,    { .str = "x" },  0, 0, FLAGS },
-    { "output",      "output name of the model",    OFFSET(dnnctx.model_outputname), AV_OPT_TYPE_STRING,    { .str = "y" },  0, 0, FLAGS },
+    { "output",      "output name of the model",    OFFSET(dnnctx.model_outputnames_string), AV_OPT_TYPE_STRING,    { .str = "y" },  0, 0, FLAGS },
     { NULL }
 };
 
@@ -66,21 +66,11 @@ static av_cold int init(AVFilterContext *context)
     return ff_dnn_init(&sr_context->dnnctx, DFT_PROCESS_FRAME, context);
 }
 
-static int query_formats(AVFilterContext *context)
-{
-    const enum AVPixelFormat pixel_formats[] = {AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P,
-                                                AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_GRAY8,
-                                                AV_PIX_FMT_NONE};
-    AVFilterFormats *formats_list;
-
-    formats_list = ff_make_format_list(pixel_formats);
-    if (!formats_list){
-        av_log(context, AV_LOG_ERROR, "could not create formats list\n");
-        return AVERROR(ENOMEM);
-    }
-
-    return ff_set_common_formats(context, formats_list);
-}
+static const enum AVPixelFormat pixel_formats[] = {
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_GRAY8,
+    AV_PIX_FMT_NONE
+};
 
 static int config_output(AVFilterLink *outlink)
 {
@@ -126,6 +116,7 @@ static int config_output(AVFilterLink *outlink)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
+    DNNAsyncStatusType async_state = 0;
     AVFilterContext *context = inlink->dst;
     SRContext *ctx = context->priv;
     AVFilterLink *outlink = context->outputs[0];
@@ -155,6 +146,13 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         return AVERROR(EIO);
     }
 
+    do {
+        async_state = ff_dnn_get_result(&ctx->dnnctx, &in, &out);
+    } while (async_state == DAST_NOT_READY);
+
+    if (async_state != DAST_SUCCESS)
+        return AVERROR(EINVAL);
+
     if (ctx->sws_uv_scale) {
         sws_scale(ctx->sws_uv_scale, (const uint8_t **)(in->data + 1), in->linesize + 1,
                   0, ctx->sws_uv_height, out->data + 1, out->linesize + 1);
@@ -181,7 +179,6 @@ static const AVFilterPad sr_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad sr_outputs[] = {
@@ -190,17 +187,16 @@ static const AVFilterPad sr_outputs[] = {
         .config_props = config_output,
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_sr = {
+const AVFilter ff_vf_sr = {
     .name          = "sr",
     .description   = NULL_IF_CONFIG_SMALL("Apply DNN-based image super resolution to the input."),
     .priv_size     = sizeof(SRContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = sr_inputs,
-    .outputs       = sr_outputs,
+    FILTER_INPUTS(sr_inputs),
+    FILTER_OUTPUTS(sr_outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_formats),
     .priv_class    = &sr_class,
 };

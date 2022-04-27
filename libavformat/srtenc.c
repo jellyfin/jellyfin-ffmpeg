@@ -61,7 +61,7 @@ static int srt_write_packet(AVFormatContext *avf, AVPacket *pkt)
     SRTContext *srt = avf->priv_data;
 
     int64_t s = pkt->pts, e, d = pkt->duration;
-    buffer_size_t size;
+    size_t size;
     int x1 = -1, y1 = -1, x2 = -1, y2 = -1;
     const uint8_t *p;
 
@@ -73,13 +73,6 @@ static int srt_write_packet(AVFormatContext *avf, AVPacket *pkt)
         y2 = AV_RL32(p + 12);
     }
 
-#if FF_API_CONVERGENCE_DURATION
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (d <= 0)
-        /* For backward compatibility, fallback to convergence_duration. */
-        d = pkt->convergence_duration;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     if (s == AV_NOPTS_VALUE || d < 0) {
         av_log(avf, AV_LOG_WARNING,
                "Insufficient timestamps in event number %d.\n", srt->index);
@@ -103,7 +96,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return 0;
 }
 
-AVOutputFormat ff_srt_muxer = {
+const AVOutputFormat ff_srt_muxer = {
     .name           = "srt",
     .long_name      = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
     .mime_type      = "application/x-subrip",

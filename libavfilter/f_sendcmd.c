@@ -572,10 +572,9 @@ end:
     return AVERROR(ENOSYS);
 }
 
-#if CONFIG_SENDCMD_FILTER
+AVFILTER_DEFINE_CLASS_EXT(sendcmd, "(a)sendcmd", options);
 
-#define sendcmd_options options
-AVFILTER_DEFINE_CLASS(sendcmd);
+#if CONFIG_SENDCMD_FILTER
 
 static const AVFilterPad sendcmd_inputs[] = {
     {
@@ -583,7 +582,6 @@ static const AVFilterPad sendcmd_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad sendcmd_outputs[] = {
@@ -591,17 +589,17 @@ static const AVFilterPad sendcmd_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_sendcmd = {
+const AVFilter ff_vf_sendcmd = {
     .name        = "sendcmd",
     .description = NULL_IF_CONFIG_SMALL("Send commands to filters."),
     .init        = init,
     .uninit      = uninit,
     .priv_size   = sizeof(SendCmdContext),
-    .inputs      = sendcmd_inputs,
-    .outputs     = sendcmd_outputs,
+    .flags       = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(sendcmd_inputs),
+    FILTER_OUTPUTS(sendcmd_outputs),
     .priv_class  = &sendcmd_class,
 };
 
@@ -609,16 +607,12 @@ AVFilter ff_vf_sendcmd = {
 
 #if CONFIG_ASENDCMD_FILTER
 
-#define asendcmd_options options
-AVFILTER_DEFINE_CLASS(asendcmd);
-
 static const AVFilterPad asendcmd_inputs[] = {
     {
         .name         = "default",
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad asendcmd_outputs[] = {
@@ -626,18 +620,18 @@ static const AVFilterPad asendcmd_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_asendcmd = {
+const AVFilter ff_af_asendcmd = {
     .name        = "asendcmd",
     .description = NULL_IF_CONFIG_SMALL("Send commands to filters."),
+    .priv_class  = &sendcmd_class,
     .init        = init,
     .uninit      = uninit,
     .priv_size   = sizeof(SendCmdContext),
-    .inputs      = asendcmd_inputs,
-    .outputs     = asendcmd_outputs,
-    .priv_class  = &asendcmd_class,
+    .flags       = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(asendcmd_inputs),
+    FILTER_OUTPUTS(asendcmd_outputs),
 };
 
 #endif

@@ -72,7 +72,7 @@ static int v308_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-AVCodec ff_v308_decoder = {
+const AVCodec ff_v308_decoder = {
     .name         = "v308",
     .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed packed 4:4:4"),
     .type         = AVMEDIA_TYPE_VIDEO,
@@ -80,4 +80,5 @@ AVCodec ff_v308_decoder = {
     .init         = v308_decode_init,
     .decode       = v308_decode_frame,
     .capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

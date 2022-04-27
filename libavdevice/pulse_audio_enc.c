@@ -23,6 +23,7 @@
 #include <pulse/error.h>
 #include "libavformat/avformat.h"
 #include "libavformat/internal.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
@@ -778,7 +779,7 @@ static const AVClass pulse_muxer_class = {
     .category       = AV_CLASS_CATEGORY_DEVICE_AUDIO_OUTPUT,
 };
 
-AVOutputFormat ff_pulse_muxer = {
+const AVOutputFormat ff_pulse_muxer = {
     .name                 = "pulse",
     .long_name            = NULL_IF_CONFIG_SMALL("Pulse audio output"),
     .priv_data_size       = sizeof(PulseData),

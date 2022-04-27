@@ -25,7 +25,6 @@
 #include <linux/fb.h>
 #include "libavutil/pixdesc.h"
 #include "libavutil/log.h"
-#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavformat/avformat.h"
 #include "fbdev_common.h"
@@ -205,7 +204,7 @@ static const AVClass fbdev_class = {
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_OUTPUT,
 };
 
-AVOutputFormat ff_fbdev_muxer = {
+const AVOutputFormat ff_fbdev_muxer = {
     .name           = "fbdev",
     .long_name      = NULL_IF_CONFIG_SMALL("Linux framebuffer"),
     .priv_data_size = sizeof(FBDevContext),

@@ -25,9 +25,9 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/internal.h"
-#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 
 #define MAX_PACKET_SIZE  (1 + (477 + 7) / 8)
@@ -118,7 +118,7 @@ static int amr_wb_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     const int16_t *samples = (const int16_t *)frame->data[0];
     int size, ret;
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, MAX_PACKET_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, avpkt, MAX_PACKET_SIZE)) < 0)
         return ret;
 
     if (s->last_bitrate != avctx->bit_rate) {
@@ -139,7 +139,7 @@ static int amr_wb_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     return 0;
 }
 
-AVCodec ff_libvo_amrwbenc_encoder = {
+const AVCodec ff_libvo_amrwbenc_encoder = {
     .name           = "libvo_amrwbenc",
     .long_name      = NULL_IF_CONFIG_SMALL("Android VisualOn AMR-WB "
                                            "(Adaptive Multi-Rate Wide-Band)"),

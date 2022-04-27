@@ -87,13 +87,6 @@ int ff_intel_h263_decode_picture_header(MpegEncContext *s);
 int ff_h263_decode_mb(MpegEncContext *s,
                       int16_t block[6][64]);
 
-/**
- * Return the value of the 3-bit "source format" syntax element.
- * This represents some standard picture dimensions or indicates that
- * width&height are explicitly stored later.
- */
-int av_const h263_get_picture_format(int width, int height);
-
 void ff_clean_h263_qscales(MpegEncContext *s);
 int ff_h263_resync(MpegEncContext *s);
 void ff_h263_encode_motion(PutBitContext *pb, int val, int f_code);
@@ -103,7 +96,7 @@ static inline int h263_get_motion_length(int val, int f_code){
     int bit_size, code, sign;
 
     if (val == 0) {
-        return ff_mvtab[0][1];
+        return 1; /* ff_mvtab[0][1] */
     } else {
         bit_size = f_code - 1;
         /* modulo encoding */

@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 #include "libavutil/eval.h"
 #include "libavutil/avassert.h"
@@ -177,36 +178,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     common_uninit(s);
     av_freep(&s->gain_cmd);
     av_freep(&s->gain_entry_cmd);
-}
-
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterChannelLayouts *layouts;
-    AVFilterFormats *formats;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_FLTP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
 }
 
 static void fast_convolute(FIREqualizerContext *av_restrict s, const float *av_restrict kernel_buf, float *av_restrict conv_buf,
@@ -836,7 +807,7 @@ static int config_input(AVFilterLink *inlink)
            inlink->sample_rate, inlink->channels, s->analysis_rdft_len, s->rdft_len, s->fir_len, s->nsamples_max);
 
     if (s->fixed)
-        inlink->min_samples = inlink->max_samples = inlink->partial_buf_size = s->nsamples_max;
+        inlink->min_samples = inlink->max_samples = s->nsamples_max;
 
     return generate_kernel(ctx, SELECT_GAIN(s), SELECT_GAIN_ENTRY(s));
 }
@@ -951,12 +922,11 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 static const AVFilterPad firequalizer_inputs[] = {
     {
         .name           = "default",
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .config_props   = config_input,
         .filter_frame   = filter_frame,
         .type           = AVMEDIA_TYPE_AUDIO,
-        .needs_writable = 1,
     },
-    { NULL }
 };
 
 static const AVFilterPad firequalizer_outputs[] = {
@@ -965,17 +935,16 @@ static const AVFilterPad firequalizer_outputs[] = {
         .request_frame  = request_frame,
         .type           = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_firequalizer = {
+const AVFilter ff_af_firequalizer = {
     .name               = "firequalizer",
     .description        = NULL_IF_CONFIG_SMALL("Finite Impulse Response Equalizer."),
     .uninit             = uninit,
-    .query_formats      = query_formats,
     .process_command    = process_command,
     .priv_size          = sizeof(FIREqualizerContext),
-    .inputs             = firequalizer_inputs,
-    .outputs            = firequalizer_outputs,
+    FILTER_INPUTS(firequalizer_inputs),
+    FILTER_OUTPUTS(firequalizer_outputs),
+    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .priv_class         = &firequalizer_class,
 };

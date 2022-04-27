@@ -634,7 +634,7 @@ static av_cold int opus_decode_init(AVCodecContext *avctx)
         return ret;
 
     /* allocate and init each independent decoder */
-    c->streams = av_mallocz_array(c->nb_streams, sizeof(*c->streams));
+    c->streams = av_calloc(c->nb_streams, sizeof(*c->streams));
     if (!c->streams) {
         c->nb_streams = 0;
         return AVERROR(ENOMEM);
@@ -704,7 +704,7 @@ static const AVClass opus_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_opus_decoder = {
+const AVCodec ff_opus_decoder = {
     .name            = "opus",
     .long_name       = NULL_IF_CONFIG_SMALL("Opus"),
     .priv_class      = &opus_class,

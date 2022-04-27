@@ -21,9 +21,11 @@
 
 #include <shine/layer3.h>
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "audio_frame_queue.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "mpegaudio.h"
 #include "mpegaudiodecheader.h"
@@ -102,7 +104,7 @@ static int libshine_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     len = hdr.frame_size;
     if (len <= s->buffer_index) {
-        if ((ret = ff_alloc_packet2(avctx, avpkt, len, 0)))
+        if ((ret = ff_get_encode_buffer(avctx, avpkt, len, 0)))
             return ret;
         memcpy(avpkt->data, s->buffer, len);
         s->buffer_index -= len;
@@ -111,7 +113,6 @@ static int libshine_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         ff_af_queue_remove(&s->afq, avctx->frame_size, &avpkt->pts,
                            &avpkt->duration);
 
-        avpkt->size = len;
         *got_packet_ptr = 1;
     }
     return 0;
@@ -130,16 +131,16 @@ static const int libshine_sample_rates[] = {
     44100, 48000, 32000, 0
 };
 
-AVCodec ff_libshine_encoder = {
+const AVCodec ff_libshine_encoder = {
     .name                  = "libshine",
     .long_name             = NULL_IF_CONFIG_SMALL("libshine MP3 (MPEG audio layer 3)"),
     .type                  = AVMEDIA_TYPE_AUDIO,
     .id                    = AV_CODEC_ID_MP3,
+    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .priv_data_size        = sizeof(SHINEContext),
     .init                  = libshine_encode_init,
     .encode2               = libshine_encode_frame,
     .close                 = libshine_encode_close,
-    .capabilities          = AV_CODEC_CAP_DELAY,
     .sample_fmts           = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16P,
                                                             AV_SAMPLE_FMT_NONE },
     .supported_samplerates = libshine_sample_rates,

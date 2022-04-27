@@ -18,6 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "avfilter.h"
@@ -89,29 +90,15 @@ static av_cold int query_formats(AVFilterContext *ctx)
         AV_SAMPLE_FMT_DBL,
         AV_SAMPLE_FMT_NONE
     };
-
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    int ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats (ctx, formats);
+    int ret = ff_set_common_formats_from_list(ctx, sample_fmts);
     if (ret < 0)
         return ret;
 
-    layouts = ff_make_format64_list(chlayouts);
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
+    ret = ff_set_common_channel_layouts_from_list(ctx, chlayouts);
     if (ret < 0)
         return ret;
 
-    formats = ff_make_format_list(sample_rates);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
+    return ff_set_common_samplerates_from_list(ctx, sample_rates);
 }
 
 static double white_filter(double white, double *buf, double ha)
@@ -243,16 +230,15 @@ static const AVFilterPad anoisesrc_outputs[] = {
         .type          = AVMEDIA_TYPE_AUDIO,
         .config_props  = config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_asrc_anoisesrc = {
+const AVFilter ff_asrc_anoisesrc = {
     .name          = "anoisesrc",
     .description   = NULL_IF_CONFIG_SMALL("Generate a noise audio signal."),
-    .query_formats = query_formats,
     .priv_size     = sizeof(ANoiseSrcContext),
     .inputs        = NULL,
     .activate      = activate,
-    .outputs       = anoisesrc_outputs,
+    FILTER_OUTPUTS(anoisesrc_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &anoisesrc_class,
 };

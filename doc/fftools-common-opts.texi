@@ -167,6 +167,9 @@ Show available sample formats.
 @item -layouts
 Show channel names and standard channel layouts.
 
+@item -dispositions
+Show stream dispositions.
+
 @item -colors
 Show recognized color names.
 
@@ -352,6 +355,13 @@ Possible flags for this option are:
 @item k8
 @end table
 @end table
+
+@item -cpucount @var{count} (@emph{global})
+Override detection of CPU count. This option is intended
+for testing. Do not use it unless you know what you're doing.
+@example
+ffmpeg -cpucount 2
+@end example
 
 @item -max_alloc @var{bytes}
 Set the maximum size limit for allocating a block on the heap by ffmpeg's

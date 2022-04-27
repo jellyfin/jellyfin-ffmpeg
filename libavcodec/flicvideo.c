@@ -1104,7 +1104,7 @@ static av_cold int flic_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_flic_decoder = {
+const AVCodec ff_flic_decoder = {
     .name           = "flic",
     .long_name      = NULL_IF_CONFIG_SMALL("Autodesk Animator Flic video"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -1114,4 +1114,5 @@ AVCodec ff_flic_decoder = {
     .close          = flic_decode_end,
     .decode         = flic_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

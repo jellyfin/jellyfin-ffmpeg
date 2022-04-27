@@ -370,7 +370,7 @@ static av_cold int psy_3gpp_init(FFPsyContext *ctx) {
         }
     }
 
-    pctx->ch = av_mallocz_array(ctx->avctx->channels, sizeof(AacPsyChannel));
+    pctx->ch = av_calloc(ctx->avctx->channels, sizeof(*pctx->ch));
     if (!pctx->ch) {
         av_freep(&ctx->model_priv_data);
         return AVERROR(ENOMEM);
@@ -858,7 +858,8 @@ static void psy_3gpp_analyze(FFPsyContext *ctx, int channel,
 static av_cold void psy_3gpp_end(FFPsyContext *apc)
 {
     AacPsyContext *pctx = (AacPsyContext*) apc->model_priv_data;
-    av_freep(&pctx->ch);
+    if (pctx)
+        av_freep(&pctx->ch);
     av_freep(&apc->model_priv_data);
 }
 

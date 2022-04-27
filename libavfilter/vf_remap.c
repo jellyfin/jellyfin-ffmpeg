@@ -283,11 +283,7 @@ static int process_frame(FFFrameSync *fs)
         (ret = ff_framesync_get_frame(&s->fs, 2, &ypic, 0)) < 0)
         return ret;
 
-    if (ctx->is_disabled) {
-        out = av_frame_clone(in);
-        if (!out)
-            return AVERROR(ENOMEM);
-    } else {
+    {
         ThreadData td;
 
         out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
@@ -302,7 +298,8 @@ static int process_frame(FFFrameSync *fs)
         td.nb_planes = s->nb_planes;
         td.nb_components = s->nb_components;
         td.step = s->step;
-        ctx->internal->execute(ctx, s->remap_slice, &td, NULL, FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, s->remap_slice, &td, NULL,
+                          FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
     }
     out->pts = av_rescale_q(s->fs.pts, s->fs.time_base, outlink->time_base);
 
@@ -386,7 +383,6 @@ static const AVFilterPad remap_inputs[] = {
         .name         = "ymap",
         .type         = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 static const AVFilterPad remap_outputs[] = {
@@ -395,18 +391,17 @@ static const AVFilterPad remap_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_remap = {
+const AVFilter ff_vf_remap = {
     .name          = "remap",
     .description   = NULL_IF_CONFIG_SMALL("Remap pixels."),
     .priv_size     = sizeof(RemapContext),
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
-    .inputs        = remap_inputs,
-    .outputs       = remap_outputs,
+    FILTER_INPUTS(remap_inputs),
+    FILTER_OUTPUTS(remap_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &remap_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
+    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

@@ -1617,7 +1617,7 @@ static void opencl_pool_free(void *opaque, uint8_t *data)
     av_free(desc);
 }
 
-static AVBufferRef *opencl_pool_alloc(void *opaque, buffer_size_t size)
+static AVBufferRef *opencl_pool_alloc(void *opaque, size_t size)
 {
     AVHWFramesContext      *hwfc = opaque;
     AVOpenCLDeviceContext *hwctx = hwfc->device_ctx->hwctx;
@@ -2441,8 +2441,8 @@ static int opencl_frames_derive_from_dxva2(AVHWFramesContext *dst_fc,
     frames_priv->nb_mapped_frames = src_hwctx->nb_surfaces;
 
     frames_priv->mapped_frames =
-        av_mallocz_array(frames_priv->nb_mapped_frames,
-                         sizeof(*frames_priv->mapped_frames));
+        av_calloc(frames_priv->nb_mapped_frames,
+                  sizeof(*frames_priv->mapped_frames));
     if (!frames_priv->mapped_frames)
         return AVERROR(ENOMEM);
 
@@ -2596,8 +2596,8 @@ static int opencl_frames_derive_from_d3d11(AVHWFramesContext *dst_fc,
     frames_priv->nb_mapped_frames = src_fc->initial_pool_size;
 
     frames_priv->mapped_frames =
-        av_mallocz_array(frames_priv->nb_mapped_frames,
-                         sizeof(*frames_priv->mapped_frames));
+        av_calloc(frames_priv->nb_mapped_frames,
+                  sizeof(*frames_priv->mapped_frames));
     if (!frames_priv->mapped_frames)
         return AVERROR(ENOMEM);
 

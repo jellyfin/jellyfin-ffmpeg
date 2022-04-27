@@ -313,7 +313,7 @@ static void construct_cc(AVFormatContext *avctx, struct decklink_ctx *ctx,
     uint16_t *cdp_words;
     uint16_t len;
     uint8_t cc_count;
-    buffer_size_t size;
+    size_t size;
     int ret, i;
 
     const uint8_t *data = av_packet_get_side_data(pkt, AV_PKT_DATA_A53_CC, &size);
@@ -559,6 +559,8 @@ av_cold int ff_decklink_write_header(AVFormatContext *avctx)
     ctx->list_formats = cctx->list_formats;
     ctx->preroll      = cctx->preroll;
     ctx->duplex_mode  = cctx->duplex_mode;
+    if (cctx->link > 0 && (unsigned int)cctx->link < FF_ARRAY_ELEMS(decklink_link_conf_map))
+        ctx->link = decklink_link_conf_map[cctx->link];
     cctx->ctx = ctx;
 #if CONFIG_LIBKLVANC
     if (klvanc_context_create(&ctx->vanc_ctx) < 0) {

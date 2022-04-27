@@ -61,12 +61,12 @@ static av_cold int cng_decode_init(AVCodecContext *avctx)
 
     p->order            = 12;
     avctx->frame_size   = 640;
-    p->refl_coef        = av_mallocz_array(p->order, sizeof(*p->refl_coef));
-    p->target_refl_coef = av_mallocz_array(p->order, sizeof(*p->target_refl_coef));
-    p->lpc_coef         = av_mallocz_array(p->order, sizeof(*p->lpc_coef));
-    p->filter_out       = av_mallocz_array(avctx->frame_size + p->order,
+    p->refl_coef        = av_calloc(p->order, sizeof(*p->refl_coef));
+    p->target_refl_coef = av_calloc(p->order, sizeof(*p->target_refl_coef));
+    p->lpc_coef         = av_calloc(p->order, sizeof(*p->lpc_coef));
+    p->filter_out       = av_calloc(avctx->frame_size + p->order,
                                      sizeof(*p->filter_out));
-    p->excitation       = av_mallocz_array(avctx->frame_size, sizeof(*p->excitation));
+    p->excitation       = av_calloc(avctx->frame_size, sizeof(*p->excitation));
     if (!p->refl_coef || !p->target_refl_coef || !p->lpc_coef ||
         !p->filter_out || !p->excitation) {
         return AVERROR(ENOMEM);
@@ -161,7 +161,7 @@ static int cng_decode_frame(AVCodecContext *avctx, void *data,
     return buf_size;
 }
 
-AVCodec ff_comfortnoise_decoder = {
+const AVCodec ff_comfortnoise_decoder = {
     .name           = "comfortnoise",
     .long_name      = NULL_IF_CONFIG_SMALL("RFC 3389 comfort noise generator"),
     .type           = AVMEDIA_TYPE_AUDIO,

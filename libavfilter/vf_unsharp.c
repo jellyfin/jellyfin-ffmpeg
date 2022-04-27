@@ -164,7 +164,8 @@ static int apply_unsharp_c(AVFilterContext *ctx, AVFrame *in, AVFrame *out)
         td.height = plane_h[i];
         td.dst_stride = out->linesize[i];
         td.src_stride = in->linesize[i];
-        ctx->internal->execute(ctx, s->unsharp_slice, &td, NULL, FFMIN(plane_h[i], s->nb_threads));
+        ff_filter_execute(ctx, s->unsharp_slice, &td, NULL,
+                          FFMIN(plane_h[i], s->nb_threads));
     }
     return 0;
 }
@@ -196,23 +197,15 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV420P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV440P,  AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUV440P10,
-        AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV420P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV440P,  AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUV440P10,
+    AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_NONE
+};
 
 static int init_filter_param(AVFilterContext *ctx, UnsharpFilterParam *fp, const char *effect_type, int width)
 {
@@ -231,7 +224,7 @@ static int init_filter_param(AVFilterContext *ctx, UnsharpFilterParam *fp, const
            effect, effect_type, fp->msize_x, fp->msize_y, fp->amount / 65535.0);
 
     fp->sr = av_malloc_array((MAX_MATRIX_SIZE - 1) * s->nb_threads, sizeof(uint32_t));
-    fp->sc = av_mallocz_array(2 * fp->steps_y * s->nb_threads, sizeof(uint32_t *));
+    fp->sc = av_calloc(fp->steps_y * s->nb_threads, 2 * sizeof(*fp->sc));
     if (!fp->sr || !fp->sc)
         return AVERROR(ENOMEM);
 
@@ -345,7 +338,6 @@ static const AVFilterPad avfilter_vf_unsharp_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad avfilter_vf_unsharp_outputs[] = {
@@ -353,18 +345,17 @@ static const AVFilterPad avfilter_vf_unsharp_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_unsharp = {
+const AVFilter ff_vf_unsharp = {
     .name          = "unsharp",
     .description   = NULL_IF_CONFIG_SMALL("Sharpen or blur the input video."),
     .priv_size     = sizeof(UnsharpContext),
     .priv_class    = &unsharp_class,
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = avfilter_vf_unsharp_inputs,
-    .outputs       = avfilter_vf_unsharp_outputs,
+    FILTER_INPUTS(avfilter_vf_unsharp_inputs),
+    FILTER_OUTPUTS(avfilter_vf_unsharp_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

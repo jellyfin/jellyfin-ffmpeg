@@ -48,7 +48,7 @@ struct FFFramePool {
 
 };
 
-FFFramePool *ff_frame_pool_video_init(AVBufferRef* (*alloc)(buffer_size_t size),
+FFFramePool *ff_frame_pool_video_init(AVBufferRef* (*alloc)(size_t size),
                                       int width,
                                       int height,
                                       enum AVPixelFormat format,
@@ -102,8 +102,7 @@ FFFramePool *ff_frame_pool_video_init(AVBufferRef* (*alloc)(buffer_size_t size),
             goto fail;
     }
 
-    if (desc->flags & AV_PIX_FMT_FLAG_PAL ||
-        desc->flags & FF_PSEUDOPAL) {
+    if (desc->flags & AV_PIX_FMT_FLAG_PAL) {
         pool->pools[1] = av_buffer_pool_init(AVPALETTE_SIZE, alloc);
         if (!pool->pools[1])
             goto fail;
@@ -116,7 +115,7 @@ fail:
     return NULL;
 }
 
-FFFramePool *ff_frame_pool_audio_init(AVBufferRef* (*alloc)(buffer_size_t size),
+FFFramePool *ff_frame_pool_audio_init(AVBufferRef* (*alloc)(size_t size),
                                       int channels,
                                       int nb_samples,
                                       enum AVSampleFormat format,
@@ -226,8 +225,7 @@ AVFrame *ff_frame_pool_get(FFFramePool *pool)
             frame->data[i] = frame->buf[i]->data;
         }
 
-        if (desc->flags & AV_PIX_FMT_FLAG_PAL ||
-            desc->flags & FF_PSEUDOPAL) {
+        if (desc->flags & AV_PIX_FMT_FLAG_PAL) {
             enum AVPixelFormat format =
                 pool->format == AV_PIX_FMT_PAL8 ? AV_PIX_FMT_BGR8 : pool->format;
 
@@ -245,11 +243,11 @@ AVFrame *ff_frame_pool_get(FFFramePool *pool)
         frame->linesize[0] = pool->linesize[0];
 
         if (pool->planes > AV_NUM_DATA_POINTERS) {
-            frame->extended_data = av_mallocz_array(pool->planes,
-                                                    sizeof(*frame->extended_data));
+            frame->extended_data = av_calloc(pool->planes,
+                                             sizeof(*frame->extended_data));
             frame->nb_extended_buf = pool->planes - AV_NUM_DATA_POINTERS;
-            frame->extended_buf = av_mallocz_array(frame->nb_extended_buf,
-                                                   sizeof(*frame->extended_buf));
+            frame->extended_buf  = av_calloc(frame->nb_extended_buf,
+                                             sizeof(*frame->extended_buf));
             if (!frame->extended_data || !frame->extended_buf)
                 goto fail;
         } else {

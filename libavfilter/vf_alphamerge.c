@@ -170,7 +170,6 @@ static const AVFilterPad alphamerge_inputs[] = {
         .name             = "alpha",
         .type             = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 static const AVFilterPad alphamerge_outputs[] = {
@@ -179,7 +178,6 @@ static const AVFilterPad alphamerge_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
 static const AVOption alphamerge_options[] = {
@@ -188,7 +186,7 @@ static const AVOption alphamerge_options[] = {
 
 FRAMESYNC_DEFINE_CLASS(alphamerge, AlphaMergeContext, fs);
 
-AVFilter ff_vf_alphamerge = {
+const AVFilter ff_vf_alphamerge = {
     .name           = "alphamerge",
     .description    = NULL_IF_CONFIG_SMALL("Copy the luma value of the second "
                       "input into the alpha channel of the first input."),
@@ -196,9 +194,9 @@ AVFilter ff_vf_alphamerge = {
     .priv_size      = sizeof(AlphaMergeContext),
     .priv_class     = &alphamerge_class,
     .init           = init,
-    .query_formats  = query_formats,
-    .inputs         = alphamerge_inputs,
-    .outputs        = alphamerge_outputs,
+    FILTER_INPUTS(alphamerge_inputs),
+    FILTER_OUTPUTS(alphamerge_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .uninit         = uninit,
     .activate       = activate,
     .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,

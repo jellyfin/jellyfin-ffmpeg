@@ -244,29 +244,22 @@ static int config_props(AVFilterLink *inlink)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_RGBA,  AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_RGB0,  AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_ABGR,  AV_PIX_FMT_ARGB,
-        AV_PIX_FMT_0BGR,  AV_PIX_FMT_0RGB,
-        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
-        AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
-        AV_PIX_FMT_YUVJ411P,
-        AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
+    AV_PIX_FMT_RGBA,  AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_RGB0,  AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_ABGR,  AV_PIX_FMT_ARGB,
+    AV_PIX_FMT_0BGR,  AV_PIX_FMT_0RGB,
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
+    AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
+    AV_PIX_FMT_YUVJ411P,
+    AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_NONE
+};
 
 static const AVFilterPad thumbnail_inputs[] = {
     {
@@ -275,7 +268,6 @@ static const AVFilterPad thumbnail_inputs[] = {
         .config_props = config_props,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad thumbnail_outputs[] = {
@@ -284,18 +276,17 @@ static const AVFilterPad thumbnail_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .request_frame = request_frame,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_thumbnail = {
+const AVFilter ff_vf_thumbnail = {
     .name          = "thumbnail",
     .description   = NULL_IF_CONFIG_SMALL("Select the most representative frame in a given sequence of consecutive frames."),
     .priv_size     = sizeof(ThumbContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = thumbnail_inputs,
-    .outputs       = thumbnail_outputs,
+    FILTER_INPUTS(thumbnail_inputs),
+    FILTER_OUTPUTS(thumbnail_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &thumbnail_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

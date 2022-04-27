@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "internal.h"
@@ -68,7 +69,7 @@ static int derf_read_header(AVFormatContext *s)
     return 0;
 }
 
-AVInputFormat ff_derf_demuxer = {
+const AVInputFormat ff_derf_demuxer = {
     .name           = "derf",
     .long_name      = NULL_IF_CONFIG_SMALL("Xilam DERF"),
     .read_probe     = derf_probe,

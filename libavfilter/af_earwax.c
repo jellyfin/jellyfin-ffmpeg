@@ -90,7 +90,7 @@ static int query_formats(AVFilterContext *ctx)
         (ret = ff_set_common_formats         (ctx     , formats                           )) < 0 ||
         (ret = ff_add_channel_layout         (&layout , AV_CH_LAYOUT_STEREO               )) < 0 ||
         (ret = ff_set_common_channel_layouts (ctx     , layout                            )) < 0 ||
-        (ret = ff_set_common_samplerates     (ctx     , ff_make_format_list(sample_rates) )) < 0)
+        (ret = ff_set_common_samplerates_from_list(ctx, sample_rates)) < 0)
         return ret;
 
     return 0;
@@ -220,7 +220,6 @@ static const AVFilterPad earwax_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad earwax_outputs[] = {
@@ -228,15 +227,14 @@ static const AVFilterPad earwax_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_earwax = {
+const AVFilter ff_af_earwax = {
     .name           = "earwax",
     .description    = NULL_IF_CONFIG_SMALL("Widen the stereo image."),
-    .query_formats  = query_formats,
     .priv_size      = sizeof(EarwaxContext),
     .uninit         = uninit,
-    .inputs         = earwax_inputs,
-    .outputs        = earwax_outputs,
+    FILTER_INPUTS(earwax_inputs),
+    FILTER_OUTPUTS(earwax_outputs),
+    FILTER_QUERY_FUNC(query_formats),
 };

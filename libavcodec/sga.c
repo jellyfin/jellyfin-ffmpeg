@@ -18,7 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avassert.h"
 #include "libavutil/common.h"
 #include "avcodec.h"
 #include "get_bits.h"
@@ -520,7 +519,7 @@ static av_cold int sga_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_sga_decoder = {
+const AVCodec ff_sga_decoder = {
     .name           = "sga",
     .long_name      = NULL_IF_CONFIG_SMALL("Digital Pictures SGA Video"),
     .type           = AVMEDIA_TYPE_VIDEO,

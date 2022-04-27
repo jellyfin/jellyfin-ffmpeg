@@ -23,6 +23,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "encode.h"
 #include "internal.h"
 #include "sgi.h"
 #include "rle.h"
@@ -100,20 +101,6 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     unsigned int width, height, depth, dimension;
     unsigned int bytes_per_channel, pixmax, put_be;
 
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
-#if FF_API_CODER_TYPE
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (avctx->coder_type == FF_CODER_TYPE_RAW)
-        s->rle = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     width  = avctx->width;
     height = avctx->height;
     bytes_per_channel = 1;
@@ -168,7 +155,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     else // assume sgi_rle_encode() produces at most 2x size of input
         length += tablesize * 2 + depth * height * (2 * width + 1);
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, bytes_per_channel * length, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, bytes_per_channel * length)) < 0)
         return ret;
 
     bytestream2_init_writer(&pbc, pkt->data, pkt->size);
@@ -263,7 +250,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     /* total length */
     pkt->size   = bytestream2_tell_p(&pbc);
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -284,7 +270,7 @@ static const AVClass sgi_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_sgi_encoder = {
+const AVCodec ff_sgi_encoder = {
     .name      = "sgi",
     .long_name = NULL_IF_CONFIG_SMALL("SGI image"),
     .type      = AVMEDIA_TYPE_VIDEO,

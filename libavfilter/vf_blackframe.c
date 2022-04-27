@@ -46,19 +46,11 @@ typedef struct BlackFrameContext {
     unsigned int last_keyframe; ///< frame number of the last received key-frame
 } BlackFrameContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV420P, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NV12,
-        AV_PIX_FMT_NV21, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV420P, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NV12,
+    AV_PIX_FMT_NV21, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_NONE
+};
 
 #define SET_META(key, format, value) \
     snprintf(buf, sizeof(buf), format, value);  \
@@ -121,7 +113,6 @@ static const AVFilterPad avfilter_vf_blackframe_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad avfilter_vf_blackframe_outputs[] = {
@@ -129,15 +120,15 @@ static const AVFilterPad avfilter_vf_blackframe_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO
     },
-    { NULL }
 };
 
-AVFilter ff_vf_blackframe = {
+const AVFilter ff_vf_blackframe = {
     .name          = "blackframe",
     .description   = NULL_IF_CONFIG_SMALL("Detect frames that are (almost) black."),
     .priv_size     = sizeof(BlackFrameContext),
     .priv_class    = &blackframe_class,
-    .query_formats = query_formats,
-    .inputs        = avfilter_vf_blackframe_inputs,
-    .outputs       = avfilter_vf_blackframe_outputs,
+    .flags         = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(avfilter_vf_blackframe_inputs),
+    FILTER_OUTPUTS(avfilter_vf_blackframe_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

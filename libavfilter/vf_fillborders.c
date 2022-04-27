@@ -32,7 +32,7 @@
 enum { Y, U, V, A };
 enum { R, G, B };
 
-enum FillMode { FM_SMEAR, FM_MIRROR, FM_FIXED, FM_REFLECT, FM_WRAP, FM_FADE, FM_NB_MODES };
+enum FillMode { FM_SMEAR, FM_MIRROR, FM_FIXED, FM_REFLECT, FM_WRAP, FM_FADE, FM_MARGINS, FM_NB_MODES };
 
 typedef struct Borders {
     int left, right, top, bottom;
@@ -55,34 +55,27 @@ typedef struct FillBordersContext {
     void (*fillborders)(struct FillBordersContext *s, AVFrame *frame);
 } FillBordersContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
-        AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
-        AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
+    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
+    AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_NONE
+};
 
 static void smear_borders8(FillBordersContext *s, AVFrame *frame)
 {
@@ -495,6 +488,99 @@ static void fade_borders16(FillBordersContext *s, AVFrame *frame)
     }
 }
 
+static void margins_borders8(FillBordersContext *s, AVFrame *frame)
+{
+    for (int p = 0; p < s->nb_planes; p++) {
+        uint8_t *ptr = (uint8_t *)frame->data[p];
+        const int linesize = frame->linesize[p];
+        const int left = s->borders[p].left;
+        const int right = s->borders[p].right;
+        const int top = s->borders[p].top;
+        const int bottom = s->borders[p].bottom;
+        const int width = s->planewidth[p];
+        const int height = s->planeheight[p];
+
+        for (int y = top; y < height - bottom; y++) {
+            memset(ptr + linesize * y, ptr[linesize * y + left], left);
+            memset(ptr + linesize * y + width - right, (ptr + linesize * y + width - right)[-1], right);
+        }
+
+        for (int y = top - 1; y >= 0; y--) {
+            ptr[linesize * y] = ptr[linesize * (y + 1)];
+            memcpy(ptr + linesize * y + width - 8, ptr + linesize * (y + 1) + width - 8, 8);
+
+            for (int x = 1; x < width - 8; x++) {
+                int prev = ptr[linesize * (y + 1) + x - 1];
+                int cur  = ptr[linesize * (y + 1) + x];
+                int next = ptr[linesize * (y + 1) + x + 1];
+
+                ptr[linesize * y + x] = (3 * prev + 2 * cur + 3 * next + 4) >> 3;
+            }
+        }
+
+        for (int y = height - bottom; y < height; y++) {
+            ptr[linesize * y] = ptr[linesize * (y - 1)];
+            memcpy(ptr + linesize * y + width - 8, ptr + linesize * (y - 1) + width - 8, 8);
+
+            for (int x = 1; x < width - 8; x++) {
+                int prev = ptr[linesize * (y - 1) + x - 1];
+                int cur  = ptr[linesize * (y - 1) + x];
+                int next = ptr[linesize * (y - 1) + x + 1];
+
+                ptr[linesize * y + x] = (3 * prev + 2 * cur + 3 * next + 4) >> 3;
+            }
+        }
+    }
+}
+
+static void margins_borders16(FillBordersContext *s, AVFrame *frame)
+{
+    for (int p = 0; p < s->nb_planes; p++) {
+        uint16_t *ptr = (uint16_t *)frame->data[p];
+        const int linesize = frame->linesize[p] / 2;
+        const int left = s->borders[p].left;
+        const int right = s->borders[p].right;
+        const int top = s->borders[p].top;
+        const int bottom = s->borders[p].bottom;
+        const int width = s->planewidth[p];
+        const int height = s->planeheight[p];
+
+        for (int y = top; y < height - bottom; y++) {
+            for (int x = 0; x < left; x++)
+                ptr[linesize * y + x] = ptr[linesize * y + left];
+
+            for (int x = 0; x < right; x++)
+                ptr[linesize * y + width - right + x] = ptr[linesize * y + width - right - 1];
+        }
+
+        for (int y = top - 1; y >= 0; y--) {
+            ptr[linesize * y] = ptr[linesize * (y + 1)];
+            memcpy(ptr + linesize * y + width - 8, ptr + linesize * (y + 1) + width - 8, 16);
+
+            for (int x = 1; x < width - 8; x++) {
+                int prev = ptr[linesize * (y + 1) + x - 1];
+                int cur  = ptr[linesize * (y + 1) + x];
+                int next = ptr[linesize * (y + 1) + x + 1];
+
+                ptr[linesize * y + x] = (3 * prev + 2 * cur + 3 * next + 4) >> 3;
+            }
+        }
+
+        for (int y = height - bottom; y < height; y++) {
+            ptr[linesize * y] = ptr[linesize * (y - 1)];
+            memcpy(ptr + linesize * y + width - 8, ptr + linesize * (y - 1) + width - 8, 16);
+
+            for (int x = 1; x < width - 8; x++) {
+                int prev = ptr[linesize * (y - 1) + x - 1];
+                int cur  = ptr[linesize * (y - 1) + x];
+                int next = ptr[linesize * (y - 1) + x + 1];
+
+                ptr[linesize * y + x] = (3 * prev + 2 * cur + 3 * next + 4) >> 3;
+            }
+        }
+    }
+}
+
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     FillBordersContext *s = inlink->dst->priv;
@@ -554,6 +640,7 @@ static int config_input(AVFilterLink *inlink)
     case FM_REFLECT:s->fillborders = s->depth <= 8 ? reflect_borders8: reflect_borders16;break;
     case FM_WRAP:   s->fillborders = s->depth <= 8 ? wrap_borders8   : wrap_borders16;   break;
     case FM_FADE:   s->fillborders = s->depth <= 8 ? fade_borders8   : fade_borders16;   break;
+    case FM_MARGINS:s->fillborders = s->depth <= 8 ? margins_borders8: margins_borders16;break;
     default: av_assert0(0);
     }
 
@@ -603,6 +690,7 @@ static const AVOption fillborders_options[] = {
         { "reflect",NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_REFLECT},0, 0, FLAGS, "mode" },
         { "wrap",   NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_WRAP},   0, 0, FLAGS, "mode" },
         { "fade",   NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_FADE},   0, 0, FLAGS, "mode" },
+        { "margins",NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_MARGINS},0, 0, FLAGS, "mode" },
     { "color",  "set the color for the fixed/fade mode", OFFSET(rgba_color), AV_OPT_TYPE_COLOR, {.str = "black"}, .flags = FLAGS },
     { NULL }
 };
@@ -613,11 +701,10 @@ static const AVFilterPad fillborders_inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .config_props   = config_input,
         .filter_frame   = filter_frame,
-        .needs_writable = 1,
     },
-    { NULL }
 };
 
 static const AVFilterPad fillborders_outputs[] = {
@@ -625,17 +712,16 @@ static const AVFilterPad fillborders_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_fillborders = {
+const AVFilter ff_vf_fillborders = {
     .name          = "fillborders",
     .description   = NULL_IF_CONFIG_SMALL("Fill borders of the input video."),
     .priv_size     = sizeof(FillBordersContext),
     .priv_class    = &fillborders_class,
-    .query_formats = query_formats,
-    .inputs        = fillborders_inputs,
-    .outputs       = fillborders_outputs,
+    FILTER_INPUTS(fillborders_inputs),
+    FILTER_OUTPUTS(fillborders_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = process_command,
 };

@@ -230,7 +230,7 @@ static av_cold int cmv_decode_end(AVCodecContext *avctx){
     return 0;
 }
 
-AVCodec ff_eacmv_decoder = {
+const AVCodec ff_eacmv_decoder = {
     .name           = "eacmv",
     .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts CMV video"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -240,5 +240,5 @@ AVCodec ff_eacmv_decoder = {
     .close          = cmv_decode_end,
     .decode         = cmv_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

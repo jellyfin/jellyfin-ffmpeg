@@ -33,6 +33,7 @@
 #include <string.h>
 
 #include "avcodec.h"
+#include "decode.h"
 #include "internal.h"
 #include "msrledec.h"
 #include "libavutil/imgutils.h"
@@ -97,15 +98,8 @@ static int msrle_decode_frame(AVCodecContext *avctx,
         return ret;
 
     if (avctx->bits_per_coded_sample > 1 && avctx->bits_per_coded_sample <= 8) {
-        buffer_size_t size;
-        const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
+        s->frame->palette_has_changed = ff_copy_palette(s->pal, avpkt, avctx);
 
-        if (pal && size == AVPALETTE_SIZE) {
-            s->frame->palette_has_changed = 1;
-            memcpy(s->pal, pal, AVPALETTE_SIZE);
-        } else if (pal) {
-            av_log(avctx, AV_LOG_ERROR, "Palette size %d is wrong\n", size);
-        }
         /* make the palette available */
         memcpy(s->frame->data[1], s->pal, AVPALETTE_SIZE);
     }
@@ -165,7 +159,7 @@ static av_cold int msrle_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_msrle_decoder = {
+const AVCodec ff_msrle_decoder = {
     .name           = "msrle",
     .long_name      = NULL_IF_CONFIG_SMALL("Microsoft RLE"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -176,4 +170,5 @@ AVCodec ff_msrle_decoder = {
     .decode         = msrle_decode_frame,
     .flush          = msrle_decode_flush,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

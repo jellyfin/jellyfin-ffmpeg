@@ -83,39 +83,6 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_DBL, AV_SAMPLE_FMT_DBLP,
-        AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_FLTP,
-        AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_S32P,
-        AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S16P,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
-}
-
 #define MOD(a, b) (((a) >= (b)) ? (a) - (b) : (a))
 
 #define PHASER_PLANAR(name, type)                                      \
@@ -278,7 +245,6 @@ static const AVFilterPad aphaser_inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad aphaser_outputs[] = {
@@ -287,17 +253,19 @@ static const AVFilterPad aphaser_outputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_af_aphaser = {
+const AVFilter ff_af_aphaser = {
     .name          = "aphaser",
     .description   = NULL_IF_CONFIG_SMALL("Add a phasing effect to the audio."),
-    .query_formats = query_formats,
     .priv_size     = sizeof(AudioPhaserContext),
     .init          = init,
     .uninit        = uninit,
-    .inputs        = aphaser_inputs,
-    .outputs       = aphaser_outputs,
+    FILTER_INPUTS(aphaser_inputs),
+    FILTER_OUTPUTS(aphaser_outputs),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_DBL, AV_SAMPLE_FMT_DBLP,
+                      AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_FLTP,
+                      AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_S32P,
+                      AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S16P),
     .priv_class    = &aphaser_class,
 };

@@ -135,10 +135,8 @@ static int filter_frame(AVFilterLink *link, AVFrame *frame)
     ColorkeyContext *ctx = avctx->priv;
     int res;
 
-    if (res = av_frame_make_writable(frame))
-        return res;
-
-    if (res = avctx->internal->execute(avctx, ctx->do_slice, frame, NULL, FFMIN(frame->height, ff_filter_get_nb_threads(avctx))))
+    if (res = ff_filter_execute(avctx, ctx->do_slice, frame, NULL,
+                                FFMIN(frame->height, ff_filter_get_nb_threads(avctx))))
         return res;
 
     return ff_filter_frame(avctx->outputs[0], frame);
@@ -161,32 +159,21 @@ static av_cold int config_output(AVFilterLink *outlink)
     return 0;
 }
 
-static av_cold int query_formats(AVFilterContext *avctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_ARGB,
-        AV_PIX_FMT_RGBA,
-        AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *formats = NULL;
-
-    formats = ff_make_format_list(pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-
-    return ff_set_common_formats(avctx, formats);
-}
+static const enum AVPixelFormat pixel_fmts[] = {
+    AV_PIX_FMT_ARGB,
+    AV_PIX_FMT_RGBA,
+    AV_PIX_FMT_ABGR,
+    AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_NONE
+};
 
 static const AVFilterPad colorkey_inputs[] = {
     {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
+        .flags        = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad colorkey_outputs[] = {
@@ -195,7 +182,6 @@ static const AVFilterPad colorkey_outputs[] = {
         .type = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(ColorkeyContext, x)
@@ -212,15 +198,15 @@ static const AVOption colorkey_options[] = {
 
 AVFILTER_DEFINE_CLASS(colorkey);
 
-AVFilter ff_vf_colorkey = {
+const AVFilter ff_vf_colorkey = {
     .name          = "colorkey",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color into transparency. Operates on RGB colors."),
     .priv_size     = sizeof(ColorkeyContext),
     .priv_class    = &colorkey_class,
-    .query_formats = query_formats,
     .init          = init_filter,
-    .inputs        = colorkey_inputs,
-    .outputs       = colorkey_outputs,
+    FILTER_INPUTS(colorkey_inputs),
+    FILTER_OUTPUTS(colorkey_outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };
@@ -237,15 +223,15 @@ static const AVOption colorhold_options[] = {
 
 AVFILTER_DEFINE_CLASS(colorhold);
 
-AVFilter ff_vf_colorhold = {
+const AVFilter ff_vf_colorhold = {
     .name          = "colorhold",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color range into gray. Operates on RGB colors."),
     .priv_size     = sizeof(ColorkeyContext),
     .priv_class    = &colorhold_class,
-    .query_formats = query_formats,
     .init          = init_filter,
-    .inputs        = colorkey_inputs,
-    .outputs       = colorkey_outputs,
+    FILTER_INPUTS(colorkey_inputs),
+    FILTER_OUTPUTS(colorkey_outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

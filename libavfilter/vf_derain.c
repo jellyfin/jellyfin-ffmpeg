@@ -50,27 +50,15 @@ static const AVOption derain_options[] = {
 #endif
     { "model",       "path to model file",          OFFSET(dnnctx.model_filename),   AV_OPT_TYPE_STRING,    { .str = NULL }, 0, 0, FLAGS },
     { "input",       "input name of the model",     OFFSET(dnnctx.model_inputname),  AV_OPT_TYPE_STRING,    { .str = "x" },  0, 0, FLAGS },
-    { "output",      "output name of the model",    OFFSET(dnnctx.model_outputname), AV_OPT_TYPE_STRING,    { .str = "y" },  0, 0, FLAGS },
+    { "output",      "output name of the model",    OFFSET(dnnctx.model_outputnames_string), AV_OPT_TYPE_STRING,    { .str = "y" },  0, 0, FLAGS },
     { NULL }
 };
 
 AVFILTER_DEFINE_CLASS(derain);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats;
-    const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_RGB24,
-        AV_PIX_FMT_NONE
-    };
-
-    formats = ff_make_format_list(pixel_fmts);
-
-    return ff_set_common_formats(ctx, formats);
-}
-
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
+    DNNAsyncStatusType async_state = 0;
     AVFilterContext *ctx  = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     DRContext *dr_context = ctx->priv;
@@ -91,6 +79,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_free(&in);
         return AVERROR(EIO);
     }
+    do {
+        async_state = ff_dnn_get_result(&dr_context->dnnctx, &in, &out);
+    } while (async_state == DAST_NOT_READY);
+
+    if (async_state != DAST_SUCCESS)
+        return AVERROR(EINVAL);
 
     av_frame_free(&in);
 
@@ -115,7 +109,6 @@ static const AVFilterPad derain_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad derain_outputs[] = {
@@ -123,18 +116,17 @@ static const AVFilterPad derain_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_derain = {
+const AVFilter ff_vf_derain = {
     .name          = "derain",
     .description   = NULL_IF_CONFIG_SMALL("Apply derain filter to the input."),
     .priv_size     = sizeof(DRContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = derain_inputs,
-    .outputs       = derain_outputs,
+    FILTER_INPUTS(derain_inputs),
+    FILTER_OUTPUTS(derain_outputs),
+    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_RGB24),
     .priv_class    = &derain_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

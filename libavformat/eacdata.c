@@ -28,6 +28,7 @@
  *  http://wiki.multimedia.cx/index.php?title=EA_Command_And_Conquer_3_Audio_Codec
  */
 
+#include "libavutil/channel_layout.h"
 #include "avformat.h"
 #include "internal.h"
 
@@ -94,7 +95,7 @@ static int cdata_read_packet(AVFormatContext *s, AVPacket *pkt)
     return 0;
 }
 
-AVInputFormat ff_ea_cdata_demuxer = {
+const AVInputFormat ff_ea_cdata_demuxer = {
     .name           = "ea_cdata",
     .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts cdata"),
     .priv_data_size = sizeof(CdataDemuxContext),

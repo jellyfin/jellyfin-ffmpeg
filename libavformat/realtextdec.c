@@ -124,40 +124,18 @@ static int realtext_read_header(AVFormatContext *s)
 
 end:
     av_bprint_finalize(&buf, NULL);
-    if (res < 0)
-        ff_subtitles_queue_clean(&rt->q);
     return res;
 }
 
-static int realtext_read_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    RealTextContext *rt = s->priv_data;
-    return ff_subtitles_queue_read_packet(&rt->q, pkt);
-}
-
-static int realtext_read_seek(AVFormatContext *s, int stream_index,
-                             int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
-{
-    RealTextContext *rt = s->priv_data;
-    return ff_subtitles_queue_seek(&rt->q, s, stream_index,
-                                   min_ts, ts, max_ts, flags);
-}
-
-static int realtext_read_close(AVFormatContext *s)
-{
-    RealTextContext *rt = s->priv_data;
-    ff_subtitles_queue_clean(&rt->q);
-    return 0;
-}
-
-AVInputFormat ff_realtext_demuxer = {
+const AVInputFormat ff_realtext_demuxer = {
     .name           = "realtext",
     .long_name      = NULL_IF_CONFIG_SMALL("RealText subtitle format"),
     .priv_data_size = sizeof(RealTextContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = realtext_probe,
     .read_header    = realtext_read_header,
-    .read_packet    = realtext_read_packet,
-    .read_seek2     = realtext_read_seek,
-    .read_close     = realtext_read_close,
     .extensions     = "rt",
+    .read_packet    = ff_subtitles_read_packet,
+    .read_seek2     = ff_subtitles_read_seek,
+    .read_close     = ff_subtitles_read_close,
 };

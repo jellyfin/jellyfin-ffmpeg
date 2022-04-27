@@ -329,10 +329,6 @@ int ff_make_absolute_url(char *buf, int size, const char *base,
  */
 AVIODirEntry *ff_alloc_dir_entry(void);
 
-#if FF_API_CHILD_CLASS_NEXT
-const AVClass *ff_urlcontext_child_class_next(const AVClass *prev);
-#endif
-
 const AVClass *ff_urlcontext_child_class_iterate(void **iter);
 
 /**
@@ -391,5 +387,24 @@ typedef struct URLComponents {
  *          malformed.
  */
 int ff_url_decompose(URLComponents *uc, const char *url, const char *end);
+
+/**
+ * Move or rename a resource.
+ *
+ * @note url_src and url_dst should share the same protocol and authority.
+ *
+ * @param url_src url to resource to be moved
+ * @param url_dst new url to resource if the operation succeeded
+ * @return >=0 on success or negative on error.
+ */
+int ffurl_move(const char *url_src, const char *url_dst);
+
+/**
+ * Delete a resource.
+ *
+ * @param url resource to be deleted.
+ * @return >=0 on success or negative on error.
+ */
+int ffurl_delete(const char *url);
 
 #endif /* AVFORMAT_URL_H */

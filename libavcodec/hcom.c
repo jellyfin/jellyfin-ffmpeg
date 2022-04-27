@@ -134,7 +134,7 @@ static av_cold int hcom_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_hcom_decoder = {
+const AVCodec ff_hcom_decoder = {
     .name           = "hcom",
     .long_name      = NULL_IF_CONFIG_SMALL("HCOM Audio"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -144,5 +144,5 @@ AVCodec ff_hcom_decoder = {
     .close          = hcom_close,
     .decode         = hcom_decode,
     .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

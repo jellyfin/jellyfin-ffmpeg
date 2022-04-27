@@ -84,6 +84,8 @@ static int is_supported(enum AVCodecID id)
     case AV_CODEC_ID_MJPEG:
     case AV_CODEC_ID_SPEEX:
     case AV_CODEC_ID_OPUS:
+    case AV_CODEC_ID_RAWVIDEO:
+    case AV_CODEC_ID_BITPACKED:
         return 1;
     default:
         return 0;
@@ -589,7 +591,7 @@ static int rtp_write_packet(AVFormatContext *s1, AVPacket *pkt)
         break;
     case AV_CODEC_ID_H263:
         if (s->flags & FF_RTP_FLAG_RFC2190) {
-            buffer_size_t mb_info_size;
+            size_t mb_info_size;
             const uint8_t *mb_info =
                 av_packet_get_side_data(pkt, AV_PKT_DATA_H263_MB_INFO,
                                         &mb_info_size);
@@ -618,6 +620,10 @@ static int rtp_write_packet(AVFormatContext *s1, AVPacket *pkt)
         break;
     case AV_CODEC_ID_MJPEG:
         ff_rtp_send_jpeg(s1, pkt->data, size);
+        break;
+    case AV_CODEC_ID_BITPACKED:
+    case AV_CODEC_ID_RAWVIDEO:
+        ff_rtp_send_raw_rfc4175 (s1, pkt->data, size);
         break;
     case AV_CODEC_ID_OPUS:
         if (size > s->max_payload_size) {
@@ -648,7 +654,7 @@ static int rtp_write_trailer(AVFormatContext *s1)
     return 0;
 }
 
-AVOutputFormat ff_rtp_muxer = {
+const AVOutputFormat ff_rtp_muxer = {
     .name              = "rtp",
     .long_name         = NULL_IF_CONFIG_SMALL("RTP output"),
     .priv_data_size    = sizeof(RTPMuxContext),

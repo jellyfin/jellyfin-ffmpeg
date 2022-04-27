@@ -43,6 +43,7 @@
 #include "avcodec.h"
 #include "h264.h"
 #include "internal.h"
+#include "pthread_internal.h"
 
 #ifdef OMX_SKIP64BIT
 static OMX_TICKS to_omx_ticks(int64_t value)
@@ -218,7 +219,7 @@ typedef struct OMXCodecContext {
     OMX_STATETYPE state;
     OMX_ERRORTYPE error;
 
-    int mutex_cond_inited;
+    unsigned mutex_cond_inited_cnt;
 
     int eos_sent, got_eos;
 
@@ -228,6 +229,12 @@ typedef struct OMXCodecContext {
     int input_zerocopy;
     int profile;
 } OMXCodecContext;
+
+#define NB_MUTEX_CONDS 6
+#define OFF(field) offsetof(OMXCodecContext, field)
+DEFINE_OFFSET_ARRAY(OMXCodecContext, omx_codec_context, mutex_cond_inited_cnt,
+                    (OFF(input_mutex), OFF(output_mutex), OFF(state_mutex)),
+                    (OFF(input_cond),  OFF(output_cond),  OFF(state_cond)));
 
 static void append_buffer(pthread_mutex_t *mutex, pthread_cond_t *cond,
                           int* array_size, OMX_BUFFERHEADERTYPE **array,
@@ -353,7 +360,7 @@ static av_cold int find_component(OMXContext *omx_context, void *logctx,
         av_log(logctx, AV_LOG_WARNING, "No component for role %s found\n", role);
         return AVERROR_ENCODER_NOT_FOUND;
     }
-    components = av_mallocz_array(num, sizeof(*components));
+    components = av_calloc(num, sizeof(*components));
     if (!components)
         return AVERROR(ENOMEM);
     for (i = 0; i < num; i++) {
@@ -589,51 +596,47 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
 
 static av_cold void cleanup(OMXCodecContext *s)
 {
-    int i, executing;
+    int executing;
 
-    pthread_mutex_lock(&s->state_mutex);
-    executing = s->state == OMX_StateExecuting;
-    pthread_mutex_unlock(&s->state_mutex);
+    /* If the mutexes/condition variables have not been properly initialized,
+     * nothing has been initialized and locking the mutex might be unsafe. */
+    if (s->mutex_cond_inited_cnt == NB_MUTEX_CONDS) {
+        pthread_mutex_lock(&s->state_mutex);
+        executing = s->state == OMX_StateExecuting;
+        pthread_mutex_unlock(&s->state_mutex);
 
-    if (executing) {
-        OMX_SendCommand(s->handle, OMX_CommandStateSet, OMX_StateIdle, NULL);
-        wait_for_state(s, OMX_StateIdle);
-        OMX_SendCommand(s->handle, OMX_CommandStateSet, OMX_StateLoaded, NULL);
-        for (i = 0; i < s->num_in_buffers; i++) {
-            OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->input_mutex, &s->input_cond,
-                                                      &s->num_free_in_buffers, s->free_in_buffers, 1);
-            if (s->input_zerocopy)
-                buffer->pBuffer = NULL;
-            OMX_FreeBuffer(s->handle, s->in_port, buffer);
+        if (executing) {
+            OMX_SendCommand(s->handle, OMX_CommandStateSet, OMX_StateIdle, NULL);
+            wait_for_state(s, OMX_StateIdle);
+            OMX_SendCommand(s->handle, OMX_CommandStateSet, OMX_StateLoaded, NULL);
+            for (int i = 0; i < s->num_in_buffers; i++) {
+                OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->input_mutex, &s->input_cond,
+                                                        &s->num_free_in_buffers, s->free_in_buffers, 1);
+                if (s->input_zerocopy)
+                    buffer->pBuffer = NULL;
+                OMX_FreeBuffer(s->handle, s->in_port, buffer);
+            }
+            for (int i = 0; i < s->num_out_buffers; i++) {
+                OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->output_mutex, &s->output_cond,
+                                                        &s->num_done_out_buffers, s->done_out_buffers, 1);
+                OMX_FreeBuffer(s->handle, s->out_port, buffer);
+            }
+            wait_for_state(s, OMX_StateLoaded);
         }
-        for (i = 0; i < s->num_out_buffers; i++) {
-            OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->output_mutex, &s->output_cond,
-                                                      &s->num_done_out_buffers, s->done_out_buffers, 1);
-            OMX_FreeBuffer(s->handle, s->out_port, buffer);
+        if (s->handle) {
+            s->omx_context->ptr_FreeHandle(s->handle);
+            s->handle = NULL;
         }
-        wait_for_state(s, OMX_StateLoaded);
-    }
-    if (s->handle) {
-        s->omx_context->ptr_FreeHandle(s->handle);
-        s->handle = NULL;
-    }
 
-    omx_deinit(s->omx_context);
-    s->omx_context = NULL;
-    if (s->mutex_cond_inited) {
-        pthread_cond_destroy(&s->state_cond);
-        pthread_mutex_destroy(&s->state_mutex);
-        pthread_cond_destroy(&s->input_cond);
-        pthread_mutex_destroy(&s->input_mutex);
-        pthread_cond_destroy(&s->output_cond);
-        pthread_mutex_destroy(&s->output_mutex);
-        s->mutex_cond_inited = 0;
+        omx_deinit(s->omx_context);
+        s->omx_context = NULL;
+        av_freep(&s->in_buffer_headers);
+        av_freep(&s->out_buffer_headers);
+        av_freep(&s->free_in_buffers);
+        av_freep(&s->done_out_buffers);
+        av_freep(&s->output_buf);
     }
-    av_freep(&s->in_buffer_headers);
-    av_freep(&s->out_buffer_headers);
-    av_freep(&s->free_in_buffers);
-    av_freep(&s->done_out_buffers);
-    av_freep(&s->output_buf);
+    ff_pthread_free(s, omx_codec_context_offsets);
 }
 
 static av_cold int omx_encode_init(AVCodecContext *avctx)
@@ -644,17 +647,14 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
     OMX_BUFFERHEADERTYPE *buffer;
     OMX_ERRORTYPE err;
 
+    /* cleanup relies on the mutexes/conditions being initialized first. */
+    ret = ff_pthread_init(s, omx_codec_context_offsets);
+    if (ret < 0)
+        return ret;
     s->omx_context = omx_init(avctx, s->libname, s->libprefix);
     if (!s->omx_context)
         return AVERROR_ENCODER_NOT_FOUND;
 
-    pthread_mutex_init(&s->state_mutex, NULL);
-    pthread_cond_init(&s->state_cond, NULL);
-    pthread_mutex_init(&s->input_mutex, NULL);
-    pthread_cond_init(&s->input_cond, NULL);
-    pthread_mutex_init(&s->output_mutex, NULL);
-    pthread_cond_init(&s->output_cond, NULL);
-    s->mutex_cond_inited = 1;
     s->avctx = avctx;
     s->state = OMX_StateLoaded;
     s->error = OMX_ErrorNone;
@@ -863,41 +863,22 @@ static int omx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             avctx->extradata_size += buffer->nFilledLen;
             memset(avctx->extradata + avctx->extradata_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
         } else {
-            if (!(buffer->nFlags & OMX_BUFFERFLAG_ENDOFFRAME) || !pkt->data) {
-                // If the output packet isn't preallocated, just concatenate everything in our
-                // own buffer
-                int newsize = s->output_buf_size + buffer->nFilledLen + AV_INPUT_BUFFER_PADDING_SIZE;
-                if ((ret = av_reallocp(&s->output_buf, newsize)) < 0) {
-                    s->output_buf_size = 0;
-                    goto end;
-                }
-                memcpy(s->output_buf + s->output_buf_size, buffer->pBuffer + buffer->nOffset, buffer->nFilledLen);
-                s->output_buf_size += buffer->nFilledLen;
-                if (buffer->nFlags & OMX_BUFFERFLAG_ENDOFFRAME) {
-                    if ((ret = av_packet_from_data(pkt, s->output_buf, s->output_buf_size)) < 0) {
-                        av_freep(&s->output_buf);
-                        s->output_buf_size = 0;
-                        goto end;
-                    }
-                    s->output_buf = NULL;
-                    s->output_buf_size = 0;
-                }
-#if CONFIG_OMX_RPI
-                had_partial = 1;
-#endif
-            } else {
-                // End of frame, and the caller provided a preallocated frame
-                if ((ret = ff_alloc_packet2(avctx, pkt, s->output_buf_size + buffer->nFilledLen, 0)) < 0) {
-                    av_log(avctx, AV_LOG_ERROR, "Error getting output packet of size %d.\n",
-                           (int)(s->output_buf_size + buffer->nFilledLen));
-                    goto end;
-                }
-                memcpy(pkt->data, s->output_buf, s->output_buf_size);
-                memcpy(pkt->data + s->output_buf_size, buffer->pBuffer + buffer->nOffset, buffer->nFilledLen);
-                av_freep(&s->output_buf);
+            int newsize = s->output_buf_size + buffer->nFilledLen + AV_INPUT_BUFFER_PADDING_SIZE;
+            if ((ret = av_reallocp(&s->output_buf, newsize)) < 0) {
                 s->output_buf_size = 0;
+                goto end;
             }
+            memcpy(s->output_buf + s->output_buf_size, buffer->pBuffer + buffer->nOffset, buffer->nFilledLen);
+            s->output_buf_size += buffer->nFilledLen;
             if (buffer->nFlags & OMX_BUFFERFLAG_ENDOFFRAME) {
+                memset(s->output_buf + s->output_buf_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
+                if ((ret = av_packet_from_data(pkt, s->output_buf, s->output_buf_size)) < 0) {
+                    av_freep(&s->output_buf);
+                    s->output_buf_size = 0;
+                    goto end;
+                }
+                s->output_buf = NULL;
+                s->output_buf_size = 0;
                 pkt->pts = av_rescale_q(from_omx_ticks(buffer->nTimeStamp), AV_TIME_BASE_Q, avctx->time_base);
                 // We don't currently enable B-frames for the encoders, so set
                 // pkt->dts = pkt->pts. (The calling code behaves worse if the encoder
@@ -906,6 +887,10 @@ static int omx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                 if (buffer->nFlags & OMX_BUFFERFLAG_SYNCFRAME)
                     pkt->flags |= AV_PKT_FLAG_KEY;
                 *got_packet = 1;
+            } else {
+#if CONFIG_OMX_RPI
+                had_partial = 1;
+#endif
             }
         }
 end:
@@ -951,7 +936,7 @@ static const AVClass omx_mpeg4enc_class = {
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
-AVCodec ff_mpeg4_omx_encoder = {
+const AVCodec ff_mpeg4_omx_encoder = {
     .name             = "mpeg4_omx",
     .long_name        = NULL_IF_CONFIG_SMALL("OpenMAX IL MPEG-4 video encoder"),
     .type             = AVMEDIA_TYPE_VIDEO,
@@ -972,7 +957,7 @@ static const AVClass omx_h264enc_class = {
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
-AVCodec ff_h264_omx_encoder = {
+const AVCodec ff_h264_omx_encoder = {
     .name             = "h264_omx",
     .long_name        = NULL_IF_CONFIG_SMALL("OpenMAX IL H.264 video encoder"),
     .type             = AVMEDIA_TYPE_VIDEO,

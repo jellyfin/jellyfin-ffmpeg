@@ -141,7 +141,7 @@ int ff_ac3_parse_header(GetBitContext *gbc, AC3HeaderInfo *hdr)
                         (hdr->num_blocks * 256);
         hdr->channels = ff_ac3_channels_tab[hdr->channel_mode] + hdr->lfe_on;
     }
-    hdr->channel_layout = avpriv_ac3_channel_layout_tab[hdr->channel_mode];
+    hdr->channel_layout = ff_ac3_channel_layout_tab[hdr->channel_mode];
     if (hdr->lfe_on)
         hdr->channel_layout |= AV_CH_LOW_FREQUENCY;
 
@@ -240,7 +240,7 @@ static av_cold int ac3_parse_init(AVCodecParserContext *s1)
 }
 
 
-AVCodecParser ff_ac3_parser = {
+const AVCodecParser ff_ac3_parser = {
     .codec_ids      = { AV_CODEC_ID_AC3, AV_CODEC_ID_EAC3 },
     .priv_data_size = sizeof(AACAC3ParseContext),
     .parser_init    = ac3_parse_init,

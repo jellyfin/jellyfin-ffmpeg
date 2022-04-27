@@ -27,14 +27,21 @@
  * @see https://www.w3.org/TR/ttml-imsc/rec
  */
 
+#include "libavutil/avstring.h"
 #include "avformat.h"
 #include "internal.h"
+#include "ttmlenc.h"
 #include "libavcodec/ttmlenc.h"
 #include "libavutil/internal.h"
 
 enum TTMLPacketType {
     PACKET_TYPE_PARAGRAPH,
     PACKET_TYPE_DOCUMENT,
+};
+
+struct TTMLHeaderParameters {
+    const char *tt_element_params;
+    const char *pre_body_elements;
 };
 
 typedef struct TTMLMuxContext {
@@ -45,10 +52,9 @@ typedef struct TTMLMuxContext {
 static const char ttml_header_text[] =
 "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
 "<tt\n"
-"  xmlns=\"http://www.w3.org/ns/ttml\"\n"
-"  xmlns:ttm=\"http://www.w3.org/ns/ttml#metadata\"\n"
-"  xmlns:tts=\"http://www.w3.org/ns/ttml#styling\"\n"
+"%s"
 "  xml:lang=\"%s\">\n"
+"%s"
 "  <body>\n"
 "    <div>\n";
 
@@ -72,6 +78,48 @@ static void ttml_write_time(AVIOContext *pb, const char tag[],
                 tag, hour, min, sec, millisec);
 }
 
+static int ttml_set_header_values_from_extradata(
+    AVCodecParameters *par, struct TTMLHeaderParameters *header_params)
+{
+    size_t additional_data_size =
+        par->extradata_size - TTMLENC_EXTRADATA_SIGNATURE_SIZE;
+    char *value =
+        (char *)par->extradata + TTMLENC_EXTRADATA_SIGNATURE_SIZE;
+    size_t value_size = av_strnlen(value, additional_data_size);
+    struct TTMLHeaderParameters local_params = { 0 };
+
+    if (!additional_data_size) {
+        // simple case, we don't have to go through local_params and just
+        // set default fall-back values (for old extradata format).
+        header_params->tt_element_params = ttml_default_namespacing;
+        header_params->pre_body_elements = "";
+
+        return 0;
+    }
+
+    if (value_size == additional_data_size ||
+        value[value_size] != '\0')
+        return AVERROR_INVALIDDATA;
+
+    local_params.tt_element_params = value;
+
+    additional_data_size -= value_size + 1;
+    value += value_size + 1;
+    if (!additional_data_size)
+        return AVERROR_INVALIDDATA;
+
+    value_size = av_strnlen(value, additional_data_size);
+    if (value_size == additional_data_size ||
+        value[value_size] != '\0')
+        return AVERROR_INVALIDDATA;
+
+    local_params.pre_body_elements = value;
+
+    *header_params = local_params;
+
+    return 0;
+}
+
 static int ttml_write_header(AVFormatContext *ctx)
 {
     TTMLMuxContext *ttml_ctx = ctx->priv_data;
@@ -91,20 +139,28 @@ static int ttml_write_header(AVFormatContext *ctx)
                                               0);
         const char *printed_lang = (lang && lang->value) ? lang->value : "";
 
-        // Not perfect, but decide whether the packet is a document or not
-        // by the existence of the lavc ttmlenc extradata.
-        ttml_ctx->input_type = (st->codecpar->extradata &&
-                                st->codecpar->extradata_size >= TTMLENC_EXTRADATA_SIGNATURE_SIZE &&
-                                !memcmp(st->codecpar->extradata,
-                                        TTMLENC_EXTRADATA_SIGNATURE,
-                                        TTMLENC_EXTRADATA_SIGNATURE_SIZE)) ?
+        ttml_ctx->input_type = ff_is_ttml_stream_paragraph_based(st->codecpar) ?
                                PACKET_TYPE_PARAGRAPH :
                                PACKET_TYPE_DOCUMENT;
 
         avpriv_set_pts_info(st, 64, 1, 1000);
 
-        if (ttml_ctx->input_type == PACKET_TYPE_PARAGRAPH)
-            avio_printf(pb, ttml_header_text, printed_lang);
+        if (ttml_ctx->input_type == PACKET_TYPE_PARAGRAPH) {
+            struct TTMLHeaderParameters header_params;
+            int ret = ttml_set_header_values_from_extradata(
+                st->codecpar, &header_params);
+            if (ret < 0) {
+                av_log(ctx, AV_LOG_ERROR,
+                       "Failed to parse TTML header values from extradata: "
+                       "%s!\n", av_err2str(ret));
+                return ret;
+            }
+
+            avio_printf(pb, ttml_header_text,
+                        header_params.tt_element_params,
+                        printed_lang,
+                        header_params.pre_body_elements);
+        }
     }
 
     return 0;
@@ -159,7 +215,7 @@ static int ttml_write_trailer(AVFormatContext *ctx)
     return 0;
 }
 
-AVOutputFormat ff_ttml_muxer = {
+const AVOutputFormat ff_ttml_muxer = {
     .name              = "ttml",
     .long_name         = NULL_IF_CONFIG_SMALL("TTML subtitle"),
     .extensions        = "ttml",

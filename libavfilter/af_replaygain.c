@@ -359,7 +359,6 @@ static int config_input(AVFilterLink *inlink)
 
     s->yule_hist_i   = 20;
     s->butter_hist_i = 4;
-    inlink->partial_buf_size =
     inlink->min_samples =
     inlink->max_samples = inlink->sample_rate / 20;
 
@@ -429,7 +428,7 @@ static void butter_filter_stereo_samples(ReplayGainContext *s,
     // (slowing us down).
 
     for (j = -4; j < 0; ++j)
-        if (fabs(hist_a[i + j]) > 1e-10 || fabs(hist_b[i + j]) > 1e-10)
+        if (fabsf(hist_a[i + j]) > 1e-10f || fabsf(hist_b[i + j]) > 1e-10f)
             break;
 
     if (!j) {
@@ -478,7 +477,7 @@ static void yule_filter_stereo_samples(ReplayGainContext *s, const float *src,
     // (slowing us down).
 
     for (j = -20; j < 0; ++j)
-        if (fabs(hist_a[i + j]) > 1e-10 || fabs(hist_b[i + j]) > 1e-10)
+        if (fabsf(hist_a[i + j]) > 1e-10f || fabsf(hist_b[i + j]) > 1e-10f)
             break;
 
     if (!j) {
@@ -593,7 +592,6 @@ static const AVFilterPad replaygain_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad replaygain_outputs[] = {
@@ -601,15 +599,15 @@ static const AVFilterPad replaygain_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_replaygain = {
+const AVFilter ff_af_replaygain = {
     .name          = "replaygain",
     .description   = NULL_IF_CONFIG_SMALL("ReplayGain scanner."),
-    .query_formats = query_formats,
     .uninit        = uninit,
     .priv_size     = sizeof(ReplayGainContext),
-    .inputs        = replaygain_inputs,
-    .outputs       = replaygain_outputs,
+    .flags         = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(replaygain_inputs),
+    FILTER_OUTPUTS(replaygain_outputs),
+    FILTER_QUERY_FUNC(query_formats),
 };

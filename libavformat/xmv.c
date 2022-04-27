@@ -149,7 +149,6 @@ static int xmv_read_header(AVFormatContext *s)
     uint32_t file_version;
     uint32_t this_packet_size;
     uint16_t audio_track;
-    int ret;
 
     s->ctx_flags |= AVFMTCTX_NOHEADER;
 
@@ -176,11 +175,9 @@ static int xmv_read_header(AVFormatContext *s)
 
     avio_skip(pb, 2); /* Unknown (padding?) */
 
-    xmv->audio = av_mallocz_array(xmv->audio_track_count, sizeof(XMVAudioPacket));
-    if (!xmv->audio) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
+    xmv->audio = av_calloc(xmv->audio_track_count, sizeof(*xmv->audio));
+    if (!xmv->audio)
+        return AVERROR(ENOMEM);
 
     for (audio_track = 0; audio_track < xmv->audio_track_count; audio_track++) {
         XMVAudioPacket *packet = &xmv->audio[audio_track];
@@ -214,8 +211,7 @@ static int xmv_read_header(AVFormatContext *s)
              packet->channels >= UINT16_MAX / XMV_BLOCK_ALIGN_SIZE) {
             av_log(s, AV_LOG_ERROR, "Invalid parameters for audio track %"PRIu16".\n",
                    audio_track);
-            ret = AVERROR_INVALIDDATA;
-            goto fail;
+            return AVERROR_INVALIDDATA;
         }
     }
 
@@ -227,10 +223,6 @@ static int xmv_read_header(AVFormatContext *s)
     xmv->stream_count       = xmv->audio_track_count + 1;
 
     return 0;
-
-fail:
-    xmv_read_close(s);
-    return ret;
 }
 
 static void xmv_read_extradata(uint8_t *extradata, AVIOContext *pb)
@@ -583,11 +575,12 @@ static int xmv_read_packet(AVFormatContext *s,
     return 0;
 }
 
-AVInputFormat ff_xmv_demuxer = {
+const AVInputFormat ff_xmv_demuxer = {
     .name           = "xmv",
     .long_name      = NULL_IF_CONFIG_SMALL("Microsoft XMV"),
     .extensions     = "xmv",
     .priv_data_size = sizeof(XMVDemuxContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = xmv_probe,
     .read_header    = xmv_read_header,
     .read_packet    = xmv_read_packet,

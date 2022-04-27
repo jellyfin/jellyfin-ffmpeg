@@ -19,10 +19,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #define USE_FLOATS 1
 #include "mpegaudioenc_template.c"
 
-AVCodec ff_mp2_encoder = {
+const AVCodec ff_mp2_encoder = {
     .name                  = "mp2",
     .long_name             = NULL_IF_CONFIG_SMALL("MP2 (MPEG audio layer 2)"),
     .type                  = AVMEDIA_TYPE_AUDIO,
@@ -39,4 +40,5 @@ AVCodec ff_mp2_encoder = {
                                                  AV_CH_LAYOUT_STEREO,
                                                  0 },
     .defaults              = mp2_defaults,
+    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
 };

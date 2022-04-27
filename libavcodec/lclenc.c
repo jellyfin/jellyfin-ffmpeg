@@ -42,6 +42,7 @@
 
 #include "libavutil/avassert.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "lcl.h"
 #include "libavutil/internal.h"
@@ -70,7 +71,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int zret; // Zlib return code
     int max_size = deflateBound(&c->zstream, avctx->width * avctx->height * 3);
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, max_size, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, max_size)) < 0)
         return ret;
 
     if(avctx->pix_fmt != AV_PIX_FMT_BGR24){
@@ -102,7 +103,6 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     pkt->size   = c->zstream.total_out;
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -120,13 +120,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
     avctx->extradata = av_mallocz(8 + AV_INPUT_BUFFER_PADDING_SIZE);
     if (!avctx->extradata)
         return AVERROR(ENOMEM);
-
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     c->compression = avctx->compression_level == FF_COMPRESSION_DEFAULT ?
                             COMP_ZLIB_NORMAL :
@@ -161,13 +154,12 @@ static av_cold int encode_end(AVCodecContext *avctx)
 {
     LclEncContext *c = avctx->priv_data;
 
-    av_freep(&avctx->extradata);
     deflateEnd(&c->zstream);
 
     return 0;
 }
 
-AVCodec ff_zlib_encoder = {
+const AVCodec ff_zlib_encoder = {
     .name           = "zlib",
     .long_name      = NULL_IF_CONFIG_SMALL("LCL (LossLess Codec Library) ZLIB"),
     .type           = AVMEDIA_TYPE_VIDEO,

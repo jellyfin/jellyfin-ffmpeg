@@ -56,23 +56,16 @@ typedef struct ShufflePixelsContext {
     int (*shuffle_pixels)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } ShufflePixelsContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP16, AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_YUV444P9, AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV444P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_GBRAP16, AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_YUV444P9, AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV444P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_NONE
+};
 
 static void make_horizontal_map(AVFilterContext *ctx)
 {
@@ -377,6 +370,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     ThreadData td;
     int ret;
 
+    if (!out) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
     ret = av_frame_copy_props(out, in);
     if (ret < 0) {
         av_frame_free(&out);
@@ -385,7 +383,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     td.out = out;
     td.in = in;
-    ctx->internal->execute(ctx, s->shuffle_pixels, &td, NULL, FFMIN(s->planeheight[1], ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, s->shuffle_pixels, &td, NULL,
+                      FFMIN(s->planeheight[1], ff_filter_get_nb_threads(ctx)));
 
     av_frame_free(&in);
     return ff_filter_frame(ctx->outputs[0], out);
@@ -431,7 +430,6 @@ static const AVFilterPad shufflepixels_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL },
 };
 
 static const AVFilterPad shufflepixels_outputs[] = {
@@ -440,17 +438,16 @@ static const AVFilterPad shufflepixels_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL },
 };
 
-AVFilter ff_vf_shufflepixels = {
+const AVFilter ff_vf_shufflepixels = {
     .name          = "shufflepixels",
     .description   = NULL_IF_CONFIG_SMALL("Shuffle video pixels."),
     .priv_size     = sizeof(ShufflePixelsContext),
     .priv_class    = &shufflepixels_class,
-    .query_formats = query_formats,
     .uninit        = uninit,
-    .inputs        = shufflepixels_inputs,
-    .outputs       = shufflepixels_outputs,
+    FILTER_INPUTS(shufflepixels_inputs),
+    FILTER_OUTPUTS(shufflepixels_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

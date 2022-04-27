@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "internal.h"
@@ -121,7 +122,7 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     return s->block_size;
 }
 
-AVCodec ff_dvaudio_decoder = {
+const AVCodec ff_dvaudio_decoder = {
     .name           = "dvaudio",
     .long_name      = NULL_IF_CONFIG_SMALL("Ulead DV Audio"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -130,4 +131,5 @@ AVCodec ff_dvaudio_decoder = {
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
     .priv_data_size = sizeof(DVAudioContext),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

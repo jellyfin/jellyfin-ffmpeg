@@ -35,7 +35,6 @@
 #include "mpegvideo.h"
 #include "rectangle.h"
 #include "thread.h"
-#include "version.h"
 
 /**
  * @param stride the number of MVs to get to the next row
@@ -477,8 +476,6 @@ static void guess_mv(ERContext *s)
         none_left = 1;
         changed   = 1;
         for (pass = 0; (changed || pass < 2) && pass < 10; pass++) {
-            int score_sum = 0;
-
             changed = 0;
             for (blocklist_index = 0; blocklist_index < blocklist_length; blocklist_index++) {
                 const int mb_x = blocklist[blocklist_index][0];
@@ -669,7 +666,6 @@ skip_mean_and_median:
                         best_pred  = j;
                     }
                 }
-                score_sum += best_score;
                 s->mv[0][0][0] = mv_predictor[best_pred][0];
                 s->mv[0][0][1] = mv_predictor[best_pred][1];
 
@@ -917,19 +913,20 @@ void ff_er_frame_end(ERContext *s)
         return;
     }
     linesize = s->cur_pic.f->linesize;
-    for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
-        int status = s->error_status_table[mb_x + (s->mb_height - 1) * s->mb_stride];
-        if (status != 0x7F)
-            break;
-    }
 
-    if (   mb_x == s->mb_width
-        && s->avctx->codec_id == AV_CODEC_ID_MPEG2VIDEO
+    if (   s->avctx->codec_id == AV_CODEC_ID_MPEG2VIDEO
         && (FFALIGN(s->avctx->height, 16)&16)
-        && atomic_load(&s->error_count) == 3 * s->mb_width * (s->avctx->skip_top + s->avctx->skip_bottom + 1)
-    ) {
-        av_log(s->avctx, AV_LOG_DEBUG, "ignoring last missing slice\n");
-        return;
+        && atomic_load(&s->error_count) == 3 * s->mb_width * (s->avctx->skip_top + s->avctx->skip_bottom + 1)) {
+        for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+            int status = s->error_status_table[mb_x + (s->mb_height - 1) * s->mb_stride];
+            if (status != 0x7F)
+                break;
+        }
+
+        if (mb_x == s->mb_width) {
+            av_log(s->avctx, AV_LOG_DEBUG, "ignoring last missing slice\n");
+            return;
+        }
     }
 
     if (s->last_pic.f) {

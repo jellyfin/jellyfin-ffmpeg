@@ -26,10 +26,12 @@
 
 #include <twolame.h>
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "mpegaudio.h"
 
@@ -110,7 +112,7 @@ static int twolame_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     TWOLAMEContext *s = avctx->priv_data;
     int ret;
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, MPA_MAX_CODED_FRAME_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, avpkt, MPA_MAX_CODED_FRAME_SIZE)) < 0)
         return ret;
 
     if (frame) {
@@ -206,7 +208,7 @@ static const int twolame_samplerates[] = {
     16000, 22050, 24000, 32000, 44100, 48000, 0
 };
 
-AVCodec ff_libtwolame_encoder = {
+const AVCodec ff_libtwolame_encoder = {
     .name           = "libtwolame",
     .long_name      = NULL_IF_CONFIG_SMALL("libtwolame MP2 (MPEG audio layer 2)"),
     .type           = AVMEDIA_TYPE_AUDIO,

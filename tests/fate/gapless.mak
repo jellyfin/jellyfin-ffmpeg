@@ -1,6 +1,9 @@
 FATE_GAPLESS-$(CONFIG_MP3_DEMUXER) += fate-gapless-mp3
 fate-gapless-mp3: CMD = gapless $(TARGET_SAMPLES)/gapless/gapless.mp3 "-c:a mp3"
 
+FATE_GAPLESSINFO_PROBE-$(CONFIG_MP3_DEMUXER) += fate-gapless-mp3-side-data
+fate-gapless-mp3-side-data: CMD = ffprobe_demux $(TARGET_SAMPLES)/gapless/gapless.mp3
+
 FATE_GAPLESS-$(CONFIG_MP3_DEMUXER) += fate-audiomatch-square-mp3
 fate-audiomatch-square-mp3: CMD = audio_match $(TARGET_SAMPLES)/audiomatch/square3.mp3 $(SAMPLES)/audiomatch/square3.wav
 
@@ -119,7 +122,7 @@ FATE_GAPLESSENC-$(CONFIG_FFPROBE) = $(FATE_GAPLESSENC_PROBE-yes)
 FATE_GAPLESSENC = $(FATE_GAPLESSENC-yes)
 
 FATE_SAMPLES_AVCONV += $(FATE_GAPLESS)
-FATE_SAMPLES_AVCONV += $(FATE_GAPLESSINFO)
-FATE_SAMPLES_AVCONV += $(FATE_GAPLESSENC)
+FATE_SAMPLES_FFMPEG_FFPROBE += $(FATE_GAPLESSENC)
+FATE_SAMPLES_FFPROBE += $(FATE_GAPLESSINFO)
 
 fate-gapless: $(FATE_GAPLESS) $(FATE_GAPLESSINFO) $(FATE_GAPLESSENC)

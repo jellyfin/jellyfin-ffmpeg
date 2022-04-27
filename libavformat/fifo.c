@@ -129,7 +129,7 @@ static int fifo_thread_write_header(FifoThreadContext *ctx)
 
     ret = av_dict_copy(&format_options, fifo->format_options, 0);
     if (ret < 0)
-        return ret;
+        goto end;
 
     ret = ff_format_output_open(avf2, avf->url, &format_options);
     if (ret < 0) {
@@ -139,7 +139,7 @@ static int fifo_thread_write_header(FifoThreadContext *ctx)
     }
 
     for (i = 0;i < avf2->nb_streams; i++)
-        avf2->streams[i]->cur_dts = 0;
+        ffstream(avf2->streams[i])->cur_dts = 0;
 
     ret = avformat_write_header(avf2, &format_options);
     if (!ret)
@@ -183,6 +183,7 @@ static int fifo_thread_write_packet(FifoThreadContext *ctx, AVPacket *pkt)
     AVFormatContext *avf2 = fifo->avf;
     AVRational src_tb, dst_tb;
     int ret, s_idx;
+    int64_t orig_pts, orig_dts, orig_duration;
 
     if (fifo->timeshift && pkt->dts != AV_NOPTS_VALUE)
         atomic_fetch_sub_explicit(&fifo->queue_duration, next_duration(avf, pkt, &ctx->last_received_dts), memory_order_relaxed);
@@ -198,14 +199,23 @@ static int fifo_thread_write_packet(FifoThreadContext *ctx, AVPacket *pkt)
         }
     }
 
+    orig_pts = pkt->pts;
+    orig_dts = pkt->dts;
+    orig_duration = pkt->duration;
     s_idx = pkt->stream_index;
     src_tb = avf->streams[s_idx]->time_base;
     dst_tb = avf2->streams[s_idx]->time_base;
     av_packet_rescale_ts(pkt, src_tb, dst_tb);
 
     ret = av_write_frame(avf2, pkt);
-    if (ret >= 0)
+    if (ret >= 0) {
         av_packet_unref(pkt);
+    } else {
+        // avoid scaling twice
+        pkt->pts = orig_pts;
+        pkt->dts = orig_dts;
+        pkt->duration = orig_duration;
+    }
     return ret;
 }
 
@@ -469,7 +479,7 @@ static void *fifo_consumer_thread(void *data)
     return NULL;
 }
 
-static int fifo_mux_init(AVFormatContext *avf, ff_const59 AVOutputFormat *oformat,
+static int fifo_mux_init(AVFormatContext *avf, const AVOutputFormat *oformat,
                          const char *filename)
 {
     FifoContext *fifo = avf->priv_data;
@@ -489,6 +499,7 @@ static int fifo_mux_init(AVFormatContext *avf, ff_const59 AVOutputFormat *oforma
         return ret;
     avf2->opaque = avf->opaque;
     avf2->io_close = avf->io_close;
+    avf2->io_close2 = avf->io_close2;
     avf2->io_open = avf->io_open;
     avf2->flags = avf->flags;
 
@@ -508,7 +519,7 @@ static int fifo_mux_init(AVFormatContext *avf, ff_const59 AVOutputFormat *oforma
 static int fifo_init(AVFormatContext *avf)
 {
     FifoContext *fifo = avf->priv_data;
-    ff_const59 AVOutputFormat *oformat;
+    const AVOutputFormat *oformat;
     int ret = 0;
 
     if (fifo->recovery_wait_streamtime && !fifo->drop_pkts_on_overflow) {
@@ -697,7 +708,7 @@ static const AVClass fifo_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_fifo_muxer = {
+const AVOutputFormat ff_fifo_muxer = {
     .name           = "fifo",
     .long_name      = NULL_IF_CONFIG_SMALL("FIFO queue pseudo-muxer"),
     .priv_data_size = sizeof(FifoContext),

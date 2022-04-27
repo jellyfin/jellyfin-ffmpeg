@@ -25,6 +25,7 @@
  */
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "bytestream.h"
 #include "libavutil/lfg.h"
@@ -35,6 +36,7 @@
  */
 typedef struct Msvideo1EncContext {
     AVCodecContext *avctx;
+    struct ELBGContext *elbg;
     AVLFG rnd;
     uint8_t *prev;
 
@@ -76,7 +78,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int skips = 0;
     int quality = 24;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, avctx->width*avctx->height*9 + AV_INPUT_BUFFER_MIN_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, avctx->width*avctx->height*9 + AV_INPUT_BUFFER_MIN_SIZE)) < 0)
         return ret;
     dst= buf= pkt->data;
 
@@ -116,8 +118,10 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             }
             // try to find optimal value to fill whole 4x4 block
             score = 0;
-            avpriv_init_elbg(c->block, 3, 16, c->avg, 1, 1, c->output, &c->rnd);
-            avpriv_do_elbg  (c->block, 3, 16, c->avg, 1, 1, c->output, &c->rnd);
+            ret = avpriv_elbg_do(&c->elbg, c->block, 3, 16, c->avg,
+                                 1, 1, c->output, &c->rnd, 0);
+            if (ret < 0)
+                return ret;
             if(c->avg[0] == 1) // red component = 1 will be written as skip code
                 c->avg[0] = 0;
             for(j = 0; j < 4; j++){
@@ -136,8 +140,10 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             }
             // search for optimal filling of 2-color block
             score = 0;
-            avpriv_init_elbg(c->block, 3, 16, c->codebook, 2, 1, c->output, &c->rnd);
-            avpriv_do_elbg  (c->block, 3, 16, c->codebook, 2, 1, c->output, &c->rnd);
+            ret = avpriv_elbg_do(&c->elbg, c->block, 3, 16, c->codebook,
+                                 2, 1, c->output, &c->rnd, 0);
+            if (ret < 0)
+                return ret;
             // last output value should be always 1, swap codebooks if needed
             if(!c->output[15]){
                 for(i = 0; i < 3; i++)
@@ -162,8 +168,11 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             // search for optimal filling of 2-color 2x2 subblocks
             score = 0;
             for(i = 0; i < 4; i++){
-                avpriv_init_elbg(c->block2 + i*4*3, 3, 4, c->codebook2 + i*2*3, 2, 1, c->output2 + i*4, &c->rnd);
-                avpriv_do_elbg  (c->block2 + i*4*3, 3, 4, c->codebook2 + i*2*3, 2, 1, c->output2 + i*4, &c->rnd);
+                ret = avpriv_elbg_do(&c->elbg, c->block2 + i * 4 * 3, 3, 4,
+                                     c->codebook2 + i * 2 * 3, 2, 1,
+                                     c->output2 + i * 4, &c->rnd, 0);
+                if (ret < 0)
+                    return ret;
             }
             // last value should be always 1, swap codebooks if needed
             if(!c->output2[15]){
@@ -288,11 +297,12 @@ static av_cold int encode_end(AVCodecContext *avctx)
     Msvideo1EncContext * const c = avctx->priv_data;
 
     av_freep(&c->prev);
+    avpriv_elbg_free(&c->elbg);
 
     return 0;
 }
 
-AVCodec ff_msvideo1_encoder = {
+const AVCodec ff_msvideo1_encoder = {
     .name           = "msvideo1",
     .long_name = NULL_IF_CONFIG_SMALL("Microsoft Video-1"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -302,4 +312,5 @@ AVCodec ff_msvideo1_encoder = {
     .encode2        = encode_frame,
     .close          = encode_end,
     .pix_fmts = (const enum AVPixelFormat[]){AV_PIX_FMT_RGB555, AV_PIX_FMT_NONE},
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -376,7 +376,7 @@ static int escape124_decode_frame(AVCodecContext *avctx,
 }
 
 
-AVCodec ff_escape124_decoder = {
+const AVCodec ff_escape124_decoder = {
     .name           = "escape124",
     .long_name      = NULL_IF_CONFIG_SMALL("Escape 124"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -386,4 +386,5 @@ AVCodec ff_escape124_decoder = {
     .close          = escape124_decode_close,
     .decode         = escape124_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

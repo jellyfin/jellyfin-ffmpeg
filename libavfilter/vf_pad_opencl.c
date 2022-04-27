@@ -354,7 +354,6 @@ static const AVFilterPad pad_opencl_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = &ff_opencl_filter_config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad pad_opencl_outputs[] = {
@@ -363,7 +362,6 @@ static const AVFilterPad pad_opencl_outputs[] = {
         .type = AVMEDIA_TYPE_VIDEO,
         .config_props = &pad_opencl_config_output,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(PadOpenCLContext, x)
@@ -383,15 +381,15 @@ static const AVOption pad_opencl_options[] = {
 
 AVFILTER_DEFINE_CLASS(pad_opencl);
 
-AVFilter ff_vf_pad_opencl = {
+const AVFilter ff_vf_pad_opencl = {
     .name           = "pad_opencl",
     .description    = NULL_IF_CONFIG_SMALL("Pad the input video."),
     .priv_size      = sizeof(PadOpenCLContext),
     .priv_class     = &pad_opencl_class,
     .init           = &ff_opencl_filter_init,
     .uninit         = &pad_opencl_uninit,
-    .query_formats  = &ff_opencl_filter_query_formats,
-    .inputs         = pad_opencl_inputs,
-    .outputs        = pad_opencl_outputs,
+    FILTER_INPUTS(pad_opencl_inputs),
+    FILTER_OUTPUTS(pad_opencl_outputs),
+    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE
 };

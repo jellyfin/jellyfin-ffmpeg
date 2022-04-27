@@ -36,7 +36,6 @@
 
 #include "libavutil/internal.h"
 #include "libavutil/log.h"
-#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 #include "libavutil/parseutils.h"
@@ -232,7 +231,7 @@ static const AVClass fbdev_class = {
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_INPUT,
 };
 
-AVInputFormat ff_fbdev_demuxer = {
+const AVInputFormat ff_fbdev_demuxer = {
     .name           = "fbdev",
     .long_name      = NULL_IF_CONFIG_SMALL("Linux framebuffer"),
     .priv_data_size = sizeof(FBDevContext),

@@ -810,7 +810,7 @@ static int nut_read_header(AVFormatContext *s)
         pos = find_startcode(bc, MAIN_STARTCODE, pos) + 1;
         if (pos < 0 + 1) {
             av_log(s, AV_LOG_ERROR, "No main startcode found.\n");
-            goto fail;
+            return AVERROR_INVALIDDATA;
         }
     } while (decode_main_header(nut) < 0);
 
@@ -820,7 +820,7 @@ static int nut_read_header(AVFormatContext *s)
         pos = find_startcode(bc, STREAM_STARTCODE, pos) + 1;
         if (pos < 0 + 1) {
             av_log(s, AV_LOG_ERROR, "Not all stream headers found.\n");
-            goto fail;
+            return AVERROR_INVALIDDATA;
         }
         if (decode_stream_header(nut) >= 0)
             initialized_stream_count++;
@@ -834,7 +834,7 @@ static int nut_read_header(AVFormatContext *s)
 
         if (startcode == 0) {
             av_log(s, AV_LOG_ERROR, "EOF before video frames\n");
-            goto fail;
+            return AVERROR_INVALIDDATA;
         } else if (startcode == SYNCPOINT_STARTCODE) {
             nut->next_startcode = startcode;
             break;
@@ -845,7 +845,7 @@ static int nut_read_header(AVFormatContext *s)
         decode_info_header(nut);
     }
 
-    s->internal->data_offset = pos - 8;
+    ffformatcontext(s)->data_offset = pos - 8;
 
     if (bc->seekable & AVIO_SEEKABLE_NORMAL) {
         int64_t orig_pos = avio_tell(bc);
@@ -857,11 +857,6 @@ static int nut_read_header(AVFormatContext *s)
     ff_metadata_conv_ctx(s, NULL, ff_nut_metadata_conv);
 
     return 0;
-
-fail:
-    nut_read_close(s);
-
-    return AVERROR_INVALIDDATA;
 }
 
 static int read_sm_data(AVFormatContext *s, AVIOContext *bc, AVPacket *pkt, int is_meta, int64_t maxpos)
@@ -1091,7 +1086,7 @@ static int decode_frame(NUTContext *nut, AVPacket *pkt, int frame_code)
         stc->skip_until_key_frame = 0;
 
     discard     = s->streams[stream_id]->discard;
-    last_IP_pts = s->streams[stream_id]->last_IP_pts;
+    last_IP_pts = ffstream(s->streams[stream_id])->last_IP_pts;
     if ((discard >= AVDISCARD_NONKEY && !(stc->last_flags & FLAG_KEY)) ||
         (discard >= AVDISCARD_BIDIR  && last_IP_pts != AV_NOPTS_VALUE &&
          last_IP_pts > pts) ||
@@ -1230,6 +1225,7 @@ static int read_seek(AVFormatContext *s, int stream_index,
 {
     NUTContext *nut    = s->priv_data;
     AVStream *st       = s->streams[stream_index];
+    FFStream *const sti = ffstream(st);
     Syncpoint dummy    = { .ts = pts * av_q2d(st->time_base) * AV_TIME_BASE };
     Syncpoint nopts_sp = { .ts = AV_NOPTS_VALUE, .back_ptr = AV_NOPTS_VALUE };
     Syncpoint *sp, *next_node[2] = { &nopts_sp, &nopts_sp };
@@ -1240,15 +1236,15 @@ static int read_seek(AVFormatContext *s, int stream_index,
         return AVERROR(ENOSYS);
     }
 
-    if (st->index_entries) {
+    if (sti->index_entries) {
         int index = av_index_search_timestamp(st, pts, flags);
         if (index < 0)
             index = av_index_search_timestamp(st, pts, flags ^ AVSEEK_FLAG_BACKWARD);
         if (index < 0)
             return -1;
 
-        pos2 = st->index_entries[index].pos;
-        ts   = st->index_entries[index].timestamp;
+        pos2 = sti->index_entries[index].pos;
+        ts   = sti->index_entries[index].timestamp;
     } else {
         av_tree_find(nut->syncpoints, &dummy, ff_nut_sp_pts_cmp,
                      (void **) next_node);
@@ -1297,11 +1293,12 @@ static int read_seek(AVFormatContext *s, int stream_index,
     return 0;
 }
 
-AVInputFormat ff_nut_demuxer = {
+const AVInputFormat ff_nut_demuxer = {
     .name           = "nut",
     .long_name      = NULL_IF_CONFIG_SMALL("NUT"),
     .flags          = AVFMT_SEEK_TO_PTS,
     .priv_data_size = sizeof(NUTContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = nut_probe,
     .read_header    = nut_read_header,
     .read_packet    = nut_read_packet,

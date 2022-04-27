@@ -24,7 +24,6 @@
  */
 
 #include "libavutil/audio_fifo.h"
-#include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
@@ -87,6 +86,8 @@ static const AVOption options[] = {
     { NULL }
 };
 
+AVFILTER_DEFINE_CLASS_EXT(agate_sidechaingate, "agate/sidechaingate", options);
+
 static int agate_config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -143,6 +144,7 @@ static void gate(AudioGateContext *s,
                  int nb_samples, double level_in, double level_sc,
                  AVFilterLink *inlink, AVFilterLink *sclink)
 {
+    AVFilterContext *ctx = inlink->dst;
     const double makeup = s->makeup;
     const double attack_coeff = s->attack_coeff;
     const double release_coeff = s->release_coeff;
@@ -150,6 +152,7 @@ static void gate(AudioGateContext *s,
 
     for (n = 0; n < nb_samples; n++, src += inlink->channels, dst += inlink->channels, scsrc += sclink->channels) {
         double abs_sample = fabs(scsrc[0] * level_sc), gain = 1.0;
+        double factor;
         int detected;
 
         if (s->link == 1) {
@@ -177,41 +180,13 @@ static void gate(AudioGateContext *s,
                                s->knee, s->knee_start, s->knee_stop,
                                s->range, s->mode);
 
+        factor = ctx->is_disabled ? 1.f : level_in * gain * makeup;
         for (c = 0; c < inlink->channels; c++)
-            dst[c] = src[c] * level_in * gain * makeup;
+            dst[c] = src[c] * factor;
     }
 }
 
 #if CONFIG_AGATE_FILTER
-
-#define agate_options options
-AVFILTER_DEFINE_CLASS(agate);
-
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts;
-    int ret;
-
-    if ((ret = ff_add_format(&formats, AV_SAMPLE_FMT_DBL)) < 0)
-        return ret;
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-
-    return ff_set_common_samplerates(ctx, formats);
-}
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
@@ -249,7 +224,6 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = agate_config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -257,17 +231,16 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_agate = {
+const AVFilter ff_af_agate = {
     .name           = "agate",
     .description    = NULL_IF_CONFIG_SMALL("Audio gate."),
-    .query_formats  = query_formats,
+    .priv_class     = &agate_sidechaingate_class,
     .priv_size      = sizeof(AudioGateContext),
-    .priv_class     = &agate_class,
-    .inputs         = inputs,
-    .outputs        = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBL),
     .process_command = ff_filter_process_command,
     .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };
@@ -275,9 +248,6 @@ AVFilter ff_af_agate = {
 #endif /* CONFIG_AGATE_FILTER */
 
 #if CONFIG_SIDECHAINGATE_FILTER
-
-#define sidechaingate_options options
-AVFILTER_DEFINE_CLASS(sidechaingate);
 
 static int activate(AVFilterContext *ctx)
 {
@@ -347,37 +317,24 @@ static int activate(AVFilterContext *ctx)
 
 static int scquery_formats(AVFilterContext *ctx)
 {
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts = NULL;
     static const enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_DBL,
         AV_SAMPLE_FMT_NONE
     };
-    int ret, i;
-
-    if (!ctx->inputs[0]->incfg.channel_layouts ||
-        !ctx->inputs[0]->incfg.channel_layouts->nb_channel_layouts) {
-        av_log(ctx, AV_LOG_WARNING,
-               "No channel layout for input 1\n");
-            return AVERROR(EAGAIN);
-    }
-
-    if ((ret = ff_add_channel_layout(&layouts, ctx->inputs[0]->incfg.channel_layouts->channel_layouts[0])) < 0 ||
-        (ret = ff_channel_layouts_ref(layouts, &ctx->outputs[0]->incfg.channel_layouts)) < 0)
+    int ret = ff_channel_layouts_ref(ff_all_channel_counts(),
+                                     &ctx->inputs[1]->outcfg.channel_layouts);
+    if (ret < 0)
         return ret;
 
-    for (i = 0; i < 2; i++) {
-        layouts = ff_all_channel_counts();
-        if ((ret = ff_channel_layouts_ref(layouts, &ctx->inputs[i]->outcfg.channel_layouts)) < 0)
-            return ret;
-    }
-
-    formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_set_common_formats(ctx, formats)) < 0)
+    /* This will link the channel properties of the main input and the output;
+     * it won't touch the second input as its channel_layouts is already set. */
+    if ((ret = ff_set_common_all_channel_counts(ctx)) < 0)
         return ret;
 
-    formats = ff_all_samplerates();
-    return ff_set_common_samplerates(ctx, formats);
+    if ((ret = ff_set_common_formats_from_list(ctx, sample_fmts)) < 0)
+        return ret;
+
+    return ff_set_common_all_samplerates(ctx);
 }
 
 static int scconfig_output(AVFilterLink *outlink)
@@ -385,18 +342,7 @@ static int scconfig_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     AudioGateContext *s = ctx->priv;
 
-    if (ctx->inputs[0]->sample_rate != ctx->inputs[1]->sample_rate) {
-        av_log(ctx, AV_LOG_ERROR,
-               "Inputs must have the same sample rate "
-               "%d for in0 vs %d for in1\n",
-               ctx->inputs[0]->sample_rate, ctx->inputs[1]->sample_rate);
-        return AVERROR(EINVAL);
-    }
-
-    outlink->sample_rate = ctx->inputs[0]->sample_rate;
     outlink->time_base   = ctx->inputs[0]->time_base;
-    outlink->channel_layout = ctx->inputs[0]->channel_layout;
-    outlink->channels = ctx->inputs[0]->channels;
 
     s->fifo[0] = av_audio_fifo_alloc(ctx->inputs[0]->format, ctx->inputs[0]->channels, 1024);
     s->fifo[1] = av_audio_fifo_alloc(ctx->inputs[1]->format, ctx->inputs[1]->channels, 1024);
@@ -425,7 +371,6 @@ static const AVFilterPad sidechaingate_inputs[] = {
         .name           = "sidechain",
         .type           = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
 static const AVFilterPad sidechaingate_outputs[] = {
@@ -434,20 +379,19 @@ static const AVFilterPad sidechaingate_outputs[] = {
         .type          = AVMEDIA_TYPE_AUDIO,
         .config_props  = scconfig_output,
     },
-    { NULL }
 };
 
-AVFilter ff_af_sidechaingate = {
+const AVFilter ff_af_sidechaingate = {
     .name           = "sidechaingate",
     .description    = NULL_IF_CONFIG_SMALL("Audio sidechain gate."),
+    .priv_class     = &agate_sidechaingate_class,
     .priv_size      = sizeof(AudioGateContext),
-    .priv_class     = &sidechaingate_class,
-    .query_formats  = scquery_formats,
     .activate       = activate,
     .uninit         = uninit,
-    .inputs         = sidechaingate_inputs,
-    .outputs        = sidechaingate_outputs,
+    FILTER_INPUTS(sidechaingate_inputs),
+    FILTER_OUTPUTS(sidechaingate_outputs),
+    FILTER_QUERY_FUNC(scquery_formats),
     .process_command = ff_filter_process_command,
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };
 #endif  /* CONFIG_SIDECHAINGATE_FILTER */

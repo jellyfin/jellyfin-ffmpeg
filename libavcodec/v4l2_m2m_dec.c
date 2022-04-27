@@ -142,8 +142,12 @@ static int v4l2_receive_frame(AVCodecContext *avctx, AVFrame *frame)
 
     if (!s->buf_pkt.size) {
         ret = ff_decode_get_packet(avctx, &s->buf_pkt);
-        if (ret < 0 && ret != AVERROR_EOF)
-            return ret;
+        if (ret < 0) {
+            if (ret == AVERROR(EAGAIN))
+                return ff_v4l2_context_dequeue_frame(capture, frame, 0);
+            else if (ret != AVERROR_EOF)
+                return ret;
+        }
     }
 
     if (s->draining)
@@ -236,7 +240,7 @@ static const AVOption options[] = {
 
 #define M2MDEC(NAME, LONGNAME, CODEC, bsf_name) \
     M2MDEC_CLASS(NAME) \
-    AVCodec ff_ ## NAME ## _v4l2m2m_decoder = { \
+    const AVCodec ff_ ## NAME ## _v4l2m2m_decoder = { \
         .name           = #NAME "_v4l2m2m" , \
         .long_name      = NULL_IF_CONFIG_SMALL("V4L2 mem2mem " LONGNAME " decoder wrapper"), \
         .type           = AVMEDIA_TYPE_VIDEO, \

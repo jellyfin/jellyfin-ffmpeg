@@ -25,4 +25,10 @@
 #define TTMLENC_EXTRADATA_SIGNATURE "lavc-ttmlenc"
 #define TTMLENC_EXTRADATA_SIGNATURE_SIZE (sizeof(TTMLENC_EXTRADATA_SIGNATURE) - 1)
 
+static const char ttml_default_namespacing[] =
+"  xmlns=\"http://www.w3.org/ns/ttml\"\n"
+"  xmlns:ttm=\"http://www.w3.org/ns/ttml#metadata\"\n"
+"  xmlns:tts=\"http://www.w3.org/ns/ttml#styling\"\n"
+"  xmlns:ttp=\"http://www.w3.org/ns/ttml#parameter\"\n";
+
 #endif /* AVCODEC_TTMLENC_H */

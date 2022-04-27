@@ -38,10 +38,9 @@
 
 typedef struct vmd_frame {
   int stream_index;
-  int64_t frame_offset;
   unsigned int frame_size;
+  int64_t frame_offset;
   int64_t pts;
-  int keyframe;
   unsigned char frame_record[BYTES_PER_FRAME_RECORD];
 } vmd_frame;
 
@@ -186,10 +185,6 @@ static int vmd_read_header(AVFormatContext *s)
     vmd->frame_table = NULL;
     sound_buffers = AV_RL16(&vmd->vmd_header[808]);
     raw_frame_table_size = vmd->frame_count * 6;
-    if(vmd->frame_count * vmd->frames_per_block >= UINT_MAX / sizeof(vmd_frame) - sound_buffers){
-        av_log(s, AV_LOG_ERROR, "vmd->frame_count * vmd->frames_per_block too large\n");
-        return -1;
-    }
     raw_frame_table = av_malloc(raw_frame_table_size);
     vmd->frame_table = av_malloc_array(vmd->frame_count * vmd->frames_per_block + sound_buffers, sizeof(vmd_frame));
     if (!raw_frame_table || !vmd->frame_table) {
@@ -257,16 +252,13 @@ static int vmd_read_header(AVFormatContext *s)
         }
     }
 
-    av_free(raw_frame_table);
 
     vmd->current_frame = 0;
     vmd->frame_count = total_frames;
 
-    return 0;
-
+    ret = 0;
 error:
     av_freep(&raw_frame_table);
-    av_freep(&vmd->frame_table);
     return ret;
 }
 
@@ -322,10 +314,11 @@ static int vmd_read_close(AVFormatContext *s)
     return 0;
 }
 
-AVInputFormat ff_vmd_demuxer = {
+const AVInputFormat ff_vmd_demuxer = {
     .name           = "vmd",
     .long_name      = NULL_IF_CONFIG_SMALL("Sierra VMD"),
     .priv_data_size = sizeof(VmdDemuxContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = vmd_probe,
     .read_header    = vmd_read_header,
     .read_packet    = vmd_read_packet,

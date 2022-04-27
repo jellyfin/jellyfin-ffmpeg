@@ -29,6 +29,9 @@
 #define IDeckLinkProfileAttributes IDeckLinkAttributes
 #endif
 
+extern "C" {
+#include "libavcodec/packet_internal.h"
+}
 #include "libavutil/thread.h"
 #include "decklink_common_c.h"
 #if CONFIG_LIBKLVANC
@@ -75,7 +78,7 @@ class decklink_output_callback;
 class decklink_input_callback;
 
 typedef struct AVPacketQueue {
-    PacketList *first_pkt, *last_pkt;
+    PacketList pkt_list;
     int nb_packets;
     unsigned long long size;
     int abort_request;
@@ -131,6 +134,7 @@ struct decklink_ctx {
     int64_t teletext_lines;
     double preroll;
     int duplex_mode;
+    BMDLinkConfiguration link;
     DecklinkPtsSource audio_pts_source;
     DecklinkPtsSource video_pts_source;
     int draw_bars;
@@ -199,6 +203,24 @@ static const BMDTimecodeFormat decklink_timecode_format_map[] = {
     (BMDTimecodeFormat)0,
 #endif
 };
+
+static const BMDLinkConfiguration decklink_link_conf_map[] = {
+    (BMDLinkConfiguration)0,
+    bmdLinkConfigurationSingleLink,
+    bmdLinkConfigurationDualLink,
+    bmdLinkConfigurationQuadLink
+};
+
+#if BLACKMAGIC_DECKLINK_API_VERSION >= 0x0b000000
+static const BMDProfileID decklink_profile_id_map[] = {
+    (BMDProfileID)0,
+    bmdProfileTwoSubDevicesHalfDuplex,
+    bmdProfileOneSubDeviceFullDuplex,
+    bmdProfileOneSubDeviceHalfDuplex,
+    bmdProfileTwoSubDevicesFullDuplex,
+    bmdProfileFourSubDevicesHalfDuplex,
+};
+#endif
 
 int ff_decklink_set_configs(AVFormatContext *avctx, decklink_direction_t direction);
 int ff_decklink_set_format(AVFormatContext *avctx, int width, int height, int tb_num, int tb_den, enum AVFieldOrder field_order, decklink_direction_t direction = DIRECTION_OUT);

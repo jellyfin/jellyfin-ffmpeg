@@ -191,10 +191,8 @@ static av_cold int init(AVFilterContext *ctx)
             return AVERROR(ENOMEM);
         pad.name = name;
 
-        if ((ret = ff_insert_outpad(ctx, i, &pad)) < 0) {
-            av_freep(&pad.name);
+        if ((ret = ff_append_outpad_free_name(ctx, &pad)) < 0)
             return ret;
-        }
     }
 
     return ret;
@@ -301,36 +299,6 @@ static void calc_q_factors(int order, double *q)
 
     for (int i = 0; i < n / 2; i++)
         q[i] = 1. / (-2. * cos(M_PI * (2. * (i + 1) + n - 1.) / (2. * n)));
-}
-
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
 }
 
 #define BIQUAD_PROCESS(name, type)                             \
@@ -496,6 +464,7 @@ static int config_input(AVFilterLink *inlink)
     switch (inlink->format) {
     case AV_SAMPLE_FMT_FLTP: s->filter_channels = filter_channels_fltp; break;
     case AV_SAMPLE_FMT_DBLP: s->filter_channels = filter_channels_dblp; break;
+    default: return AVERROR_BUG;
     }
 
     s->xover = ff_get_audio_buffer(inlink, 2 * (ctx->nb_outputs * 10 + ctx->nb_outputs * 10 +
@@ -528,8 +497,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         goto fail;
 
     s->input_frame = in;
-    ctx->internal->execute(ctx, s->filter_channels, NULL, NULL, FFMIN(inlink->channels,
-                                                                      ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, s->filter_channels, NULL, NULL,
+                      FFMIN(inlink->channels, ff_filter_get_nb_threads(ctx)));
 
     for (i = 0; i < ctx->nb_outputs; i++) {
         ret = ff_filter_frame(ctx->outputs[i], frames[i]);
@@ -550,13 +519,9 @@ fail:
 static av_cold void uninit(AVFilterContext *ctx)
 {
     AudioCrossoverContext *s = ctx->priv;
-    int i;
 
     av_freep(&s->fdsp);
     av_frame_free(&s->xover);
-
-    for (i = 0; i < ctx->nb_outputs; i++)
-        av_freep(&ctx->output_pads[i].name);
 }
 
 static const AVFilterPad inputs[] = {
@@ -566,19 +531,18 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
-AVFilter ff_af_acrossover = {
+const AVFilter ff_af_acrossover = {
     .name           = "acrossover",
     .description    = NULL_IF_CONFIG_SMALL("Split audio into per-bands streams."),
     .priv_size      = sizeof(AudioCrossoverContext),
     .priv_class     = &acrossover_class,
     .init           = init,
     .uninit         = uninit,
-    .query_formats  = query_formats,
-    .inputs         = inputs,
+    FILTER_INPUTS(inputs),
     .outputs        = NULL,
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .flags          = AVFILTER_FLAG_DYNAMIC_OUTPUTS |
                       AVFILTER_FLAG_SLICE_THREADS,
 };

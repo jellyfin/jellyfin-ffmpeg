@@ -83,6 +83,7 @@ static const struct {
     { MKTAG('N', 'V', '1', '2'), AV_PIX_FMT_NV12 },
     { MKTAG('P', '0', '1', '0'), AV_PIX_FMT_P010 },
     { D3DFMT_P8,                 AV_PIX_FMT_PAL8 },
+    { D3DFMT_A8R8G8B8,           AV_PIX_FMT_BGRA },
 };
 
 DEFINE_GUID(video_decoder_service,   0xfc51a551, 0xd5e7, 0x11d9, 0xaf, 0x55, 0x00, 0x05, 0x4e, 0x43, 0xff, 0x02);
@@ -124,7 +125,7 @@ static void dxva2_pool_release_dummy(void *opaque, uint8_t *data)
     // released in dxva2_frames_uninit()
 }
 
-static AVBufferRef *dxva2_pool_alloc(void *opaque, buffer_size_t size)
+static AVBufferRef *dxva2_pool_alloc(void *opaque, size_t size)
 {
     AVHWFramesContext      *ctx = (AVHWFramesContext*)opaque;
     DXVA2FramesContext       *s = ctx->internal->priv;
@@ -179,8 +180,8 @@ static int dxva2_init_pool(AVHWFramesContext *ctx)
         return AVERROR(EINVAL);
     }
 
-    s->surfaces_internal = av_mallocz_array(ctx->initial_pool_size,
-                                            sizeof(*s->surfaces_internal));
+    s->surfaces_internal = av_calloc(ctx->initial_pool_size,
+                                     sizeof(*s->surfaces_internal));
     if (!s->surfaces_internal)
         return AVERROR(ENOMEM);
 

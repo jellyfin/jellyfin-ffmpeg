@@ -39,7 +39,7 @@ typedef struct XMedianContext {
     int planes;
     float percentile;
 
-    int tmedian;
+    int xmedian;
     int radius;
     int index;
     int depth;
@@ -55,55 +55,42 @@ typedef struct XMedianContext {
     int (*median_frames)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } XMedianContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_GRAY8,
-        AV_PIX_FMT_GRAY9,
-        AV_PIX_FMT_GRAY10,
-        AV_PIX_FMT_GRAY12,
-        AV_PIX_FMT_GRAY14,
-        AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
-        AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
-        AV_PIX_FMT_YUVJ411P,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV440P10,
-        AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV420P12,
-        AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV420P14,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_YUVA420P,  AV_PIX_FMT_YUVA422P,   AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA422P16,
-        AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA420P16,
-        AV_PIX_FMT_GBRAP,     AV_PIX_FMT_GBRAP10,    AV_PIX_FMT_GBRAP12,    AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *formats = ff_make_format_list(pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, formats);
-}
+static const enum AVPixelFormat pixel_fmts[] = {
+    AV_PIX_FMT_GRAY8,
+    AV_PIX_FMT_GRAY9,
+    AV_PIX_FMT_GRAY10,
+    AV_PIX_FMT_GRAY12,
+    AV_PIX_FMT_GRAY14,
+    AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
+    AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
+    AV_PIX_FMT_YUVJ411P,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV440P10,
+    AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV420P12,
+    AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV420P14,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_YUVA420P,  AV_PIX_FMT_YUVA422P,   AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA422P16,
+    AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA420P16,
+    AV_PIX_FMT_GBRAP,     AV_PIX_FMT_GBRAP10,    AV_PIX_FMT_GBRAP12,    AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_NONE
+};
 
 static av_cold int init(AVFilterContext *ctx)
 {
     XMedianContext *s = ctx->priv;
-    int ret;
 
-    s->tmedian = !strcmp(ctx->filter->name, "tmedian");
-
-    if (!s->tmedian) {
-        s->radius = s->nb_inputs / 2;
-    } else {
+    if (!s->xmedian)
         s->nb_inputs = s->radius * 2 + 1;
-    }
 
     if (s->nb_inputs & 1)
         s->index = s->radius * 2.f * s->percentile;
@@ -112,20 +99,6 @@ static av_cold int init(AVFilterContext *ctx)
     s->frames = av_calloc(s->nb_inputs, sizeof(*s->frames));
     if (!s->frames)
         return AVERROR(ENOMEM);
-
-    for (int i = 0; i < s->nb_inputs && !s->tmedian; i++) {
-        AVFilterPad pad = { 0 };
-
-        pad.type = AVMEDIA_TYPE_VIDEO;
-        pad.name = av_asprintf("input%d", i);
-        if (!pad.name)
-            return AVERROR(ENOMEM);
-
-        if ((ret = ff_insert_inpad(ctx, i, &pad)) < 0) {
-            av_freep(&pad.name);
-            return ret;
-        }
-    }
 
     return 0;
 }
@@ -256,7 +229,8 @@ static int process_frame(FFFrameSync *fs)
     if (!ctx->is_disabled) {
         td.in = in;
         td.out = out;
-        ctx->internal->execute(ctx, s->median_frames, &td, NULL, FFMIN(s->height[1], ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, s->median_frames, &td, NULL,
+                          FFMIN(s->height[1], ff_filter_get_nb_threads(ctx)));
     }
 
     return ff_filter_frame(outlink, out);
@@ -274,7 +248,7 @@ static int config_output(AVFilterLink *outlink)
     FFFrameSyncIn *in;
     int i, ret;
 
-    for (int i = 1; i < s->nb_inputs && !s->tmedian; i++) {
+    for (int i = 1; i < s->nb_inputs && s->xmedian; i++) {
         if (ctx->inputs[i]->h != height || ctx->inputs[i]->w != width) {
             av_log(ctx, AV_LOG_ERROR, "Input %d size (%dx%d) does not match input %d size (%dx%d).\n", i, ctx->inputs[i]->w, ctx->inputs[i]->h, 0, width, height);
             return AVERROR(EINVAL);
@@ -301,7 +275,7 @@ static int config_output(AVFilterLink *outlink)
     s->height[1] = s->height[2] = AV_CEIL_RSHIFT(inlink->h, s->desc->log2_chroma_h);
     s->height[0] = s->height[3] = inlink->h;
 
-    if (s->tmedian)
+    if (!s->xmedian)
         return 0;
 
     outlink->w          = width;
@@ -337,9 +311,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     ff_framesync_uninit(&s->fs);
 
-    for (int i = 0; i < ctx->nb_inputs && !s->tmedian; i++)
-        av_freep(&ctx->input_pads[i].name);
-    for (int i = 0; i < s->nb_frames && s->frames && s->tmedian; i++)
+    for (int i = 0; i < s->nb_frames && s->frames && !s->xmedian; i++)
         av_frame_free(&s->frames[i]);
     av_freep(&s->frames);
 }
@@ -368,6 +340,31 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
     return 0;
 }
 
+#if CONFIG_XMEDIAN_FILTER
+static av_cold int xmedian_init(AVFilterContext *ctx)
+{
+    XMedianContext *s = ctx->priv;
+    int ret;
+
+    s->xmedian = 1;
+
+    s->radius = s->nb_inputs / 2;
+
+    for (int i = 0; i < s->nb_inputs; i++) {
+        AVFilterPad pad = { 0 };
+
+        pad.type = AVMEDIA_TYPE_VIDEO;
+        pad.name = av_asprintf("input%d", i);
+        if (!pad.name)
+            return AVERROR(ENOMEM);
+
+        if ((ret = ff_append_inpad_free_name(ctx, &pad)) < 0)
+            return ret;
+    }
+
+    return init(ctx);
+}
+
 #define OFFSET(x) offsetof(XMedianContext, x)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM
 #define TFLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_RUNTIME_PARAM
@@ -385,21 +382,19 @@ static const AVFilterPad outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-#if CONFIG_XMEDIAN_FILTER
 FRAMESYNC_DEFINE_CLASS(xmedian, XMedianContext, fs);
 
-AVFilter ff_vf_xmedian = {
+const AVFilter ff_vf_xmedian = {
     .name          = "xmedian",
     .description   = NULL_IF_CONFIG_SMALL("Pick median pixels from several video inputs."),
     .priv_size     = sizeof(XMedianContext),
     .priv_class    = &xmedian_class,
-    .query_formats = query_formats,
-    .outputs       = outputs,
+    FILTER_OUTPUTS(outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .preinit       = xmedian_framesync_preinit,
-    .init          = init,
+    .init          = xmedian_init,
     .uninit        = uninit,
     .activate      = activate,
     .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_SLICE_THREADS |
@@ -443,7 +438,8 @@ static int tmedian_filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     td.out = out;
     td.in = s->frames;
-    ctx->internal->execute(ctx, s->median_frames, &td, NULL, FFMIN(s->height[0], ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, s->median_frames, &td, NULL,
+                      FFMIN(s->height[0], ff_filter_get_nb_threads(ctx)));
 
     return ff_filter_frame(outlink, out);
 }
@@ -461,7 +457,6 @@ static const AVFilterPad tmedian_inputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .filter_frame  = tmedian_filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad tmedian_outputs[] = {
@@ -470,19 +465,18 @@ static const AVFilterPad tmedian_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
 AVFILTER_DEFINE_CLASS(tmedian);
 
-AVFilter ff_vf_tmedian = {
+const AVFilter ff_vf_tmedian = {
     .name          = "tmedian",
     .description   = NULL_IF_CONFIG_SMALL("Pick median pixels from successive frames."),
     .priv_size     = sizeof(XMedianContext),
     .priv_class    = &tmedian_class,
-    .query_formats = query_formats,
-    .inputs        = tmedian_inputs,
-    .outputs       = tmedian_outputs,
+    FILTER_INPUTS(tmedian_inputs),
+    FILTER_OUTPUTS(tmedian_outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .init          = init,
     .uninit        = uninit,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,

@@ -29,7 +29,6 @@
 #include "rangecoder.h"
 #include "mathops.h"
 
-#include "mpegvideo.h"
 #include "h263.h"
 
 static av_always_inline void predict_slice_buffered(SnowContext *s, slice_buffer * sb, IDWTELEM * old_buffer, int plane_index, int add, int mb_y){
@@ -657,7 +656,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_snow_decoder = {
+const AVCodec ff_snow_decoder = {
     .name           = "snow",
     .long_name      = NULL_IF_CONFIG_SMALL("Snow"),
     .type           = AVMEDIA_TYPE_VIDEO,

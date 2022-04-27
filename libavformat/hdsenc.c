@@ -93,19 +93,17 @@ static int parse_header(OutputStream *os, const uint8_t *buf, int buf_size)
             if (os->nb_extra_packets >= FF_ARRAY_ELEMS(os->extra_packets))
                 return AVERROR_INVALIDDATA;
             os->extra_packet_sizes[os->nb_extra_packets] = size;
-            os->extra_packets[os->nb_extra_packets] = av_malloc(size);
+            os->extra_packets[os->nb_extra_packets] = av_memdup(buf, size);
             if (!os->extra_packets[os->nb_extra_packets])
                 return AVERROR(ENOMEM);
-            memcpy(os->extra_packets[os->nb_extra_packets], buf, size);
             os->nb_extra_packets++;
         } else if (type == 0x12) {
             if (os->metadata)
                 return AVERROR_INVALIDDATA;
             os->metadata_size = size - 11 - 4;
-            os->metadata      = av_malloc(os->metadata_size);
+            os->metadata      = av_memdup(buf + 11, os->metadata_size);
             if (!os->metadata)
                 return AVERROR(ENOMEM);
-            memcpy(os->metadata, buf + 11, os->metadata_size);
         }
         buf      += size;
         buf_size -= size;
@@ -313,8 +311,8 @@ static void close_file(AVFormatContext *s, OutputStream *os)
 static int hds_write_header(AVFormatContext *s)
 {
     HDSContext *c = s->priv_data;
+    const AVOutputFormat *oformat;
     int ret = 0, i;
-    ff_const59 AVOutputFormat *oformat;
 
     if (mkdir(s->url, 0777) == -1 && errno != EEXIST) {
         av_log(s, AV_LOG_ERROR , "Failed to create directory %s\n", s->url);
@@ -326,7 +324,7 @@ static int hds_write_header(AVFormatContext *s)
         return AVERROR_MUXER_NOT_FOUND;
     }
 
-    c->streams = av_mallocz_array(s->nb_streams, sizeof(*c->streams));
+    c->streams = av_calloc(s->nb_streams, sizeof(*c->streams));
     if (!c->streams) {
         return AVERROR(ENOMEM);
     }
@@ -370,7 +368,7 @@ static int hds_write_header(AVFormatContext *s)
             ctx->flags = s->flags;
 
             ctx->pb = avio_alloc_context(os->iobuf, sizeof(os->iobuf),
-                                         AVIO_FLAG_WRITE, os,
+                                         1, os,
                                          NULL, hds_write, NULL);
             if (!ctx->pb) {
                 return AVERROR(ENOMEM);
@@ -500,15 +498,16 @@ static int hds_write_packet(AVFormatContext *s, AVPacket *pkt)
 {
     HDSContext *c = s->priv_data;
     AVStream *st = s->streams[pkt->stream_index];
+    FFStream *const sti = ffstream(st);
     OutputStream *os = &c->streams[s->streams[pkt->stream_index]->id];
     int64_t end_dts = os->fragment_index * (int64_t)c->min_frag_duration;
     int ret;
 
-    if (st->first_dts == AV_NOPTS_VALUE)
-        st->first_dts = pkt->dts;
+    if (sti->first_dts == AV_NOPTS_VALUE)
+        sti->first_dts = pkt->dts;
 
     if ((!os->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) &&
-        av_compare_ts(pkt->dts - st->first_dts, st->time_base,
+        av_compare_ts(pkt->dts - sti->first_dts, st->time_base,
                       end_dts, AV_TIME_BASE_Q) >= 0 &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written) {
 
@@ -566,7 +565,7 @@ static const AVClass hds_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_hds_muxer = {
+const AVOutputFormat ff_hds_muxer = {
     .name           = "hds",
     .long_name      = NULL_IF_CONFIG_SMALL("HDS Muxer"),
     .priv_data_size = sizeof(HDSContext),

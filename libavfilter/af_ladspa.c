@@ -456,7 +456,7 @@ static av_cold int init(AVFilterContext *ctx)
     AVFilterPad pad = { NULL };
     char *p, *arg, *saveptr = NULL;
     unsigned long nb_ports;
-    int i, j = 0;
+    int i, j = 0, ret;
 
     if (!s->dl_name) {
         av_log(ctx, AV_LOG_ERROR, "No plugin name provided\n");
@@ -639,10 +639,8 @@ static av_cold int init(AVFilterContext *ctx)
 
         pad.filter_frame = filter_frame;
         pad.config_props = config_input;
-        if (ff_insert_inpad(ctx, ctx->nb_inputs, &pad) < 0) {
-            av_freep(&pad.name);
-            return AVERROR(ENOMEM);
-        }
+        if ((ret = ff_append_inpad_free_name(ctx, &pad)) < 0)
+            return ret;
     }
 
     av_log(ctx, AV_LOG_DEBUG, "ports: %lu\n", nb_ports);
@@ -657,42 +655,28 @@ static av_cold int init(AVFilterContext *ctx)
 static int query_formats(AVFilterContext *ctx)
 {
     LADSPAContext *s = ctx->priv;
-    AVFilterFormats *formats;
     AVFilterChannelLayouts *layouts;
     static const enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE };
-    int ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
+    int ret = ff_set_common_formats_from_list(ctx, sample_fmts);
     if (ret < 0)
         return ret;
 
     if (s->nb_inputs) {
-        formats = ff_all_samplerates();
-        if (!formats)
-            return AVERROR(ENOMEM);
-
-        ret = ff_set_common_samplerates(ctx, formats);
+        ret = ff_set_common_all_samplerates(ctx);
         if (ret < 0)
             return ret;
     } else {
         int sample_rates[] = { s->sample_rate, -1 };
 
-        ret = ff_set_common_samplerates(ctx, ff_make_format_list(sample_rates));
+        ret = ff_set_common_samplerates_from_list(ctx, sample_rates);
         if (ret < 0)
             return ret;
     }
 
     if (s->nb_inputs == 1 && s->nb_outputs == 1) {
         // We will instantiate multiple LADSPA_Handle, one over each channel
-        layouts = ff_all_channel_counts();
-        if (!layouts)
-            return AVERROR(ENOMEM);
-
-        ret = ff_set_common_channel_layouts(ctx, layouts);
+        ret = ff_set_common_all_channel_counts(ctx);
         if (ret < 0)
             return ret;
     } else if (s->nb_inputs == 2 && s->nb_outputs == 2) {
@@ -764,9 +748,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->octlv);
     av_freep(&s->handles);
     av_freep(&s->ctl_needs_value);
-
-    if (ctx->nb_inputs)
-        av_freep(&ctx->input_pads[0].name);
 }
 
 static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,
@@ -788,19 +769,18 @@ static const AVFilterPad ladspa_outputs[] = {
         .config_props  = config_output,
         .request_frame = request_frame,
     },
-    { NULL }
 };
 
-AVFilter ff_af_ladspa = {
+const AVFilter ff_af_ladspa = {
     .name          = "ladspa",
     .description   = NULL_IF_CONFIG_SMALL("Apply LADSPA effect."),
     .priv_size     = sizeof(LADSPAContext),
     .priv_class    = &ladspa_class,
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .process_command = process_command,
     .inputs        = 0,
-    .outputs       = ladspa_outputs,
+    FILTER_OUTPUTS(ladspa_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS,
 };

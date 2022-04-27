@@ -31,6 +31,72 @@ struct MpvParseContext {
     int width, height;
 };
 
+#if !FF_API_FLAG_TRUNCATED
+/**
+ * Find the end of the current frame in the bitstream.
+ * @return the position of the first byte of the next frame, or -1
+ */
+static int mpeg1_find_frame_end(ParseContext *pc, const uint8_t *buf,
+                                int buf_size, AVCodecParserContext *s)
+{
+    int i;
+    uint32_t state = pc->state;
+
+    /* EOF considered as end of frame */
+    if (buf_size == 0)
+        return 0;
+
+/*
+ 0  frame start         -> 1/4
+ 1  first_SEQEXT        -> 0/2
+ 2  first field start   -> 3/0
+ 3  second_SEQEXT       -> 2/0
+ 4  searching end
+*/
+
+    for (i = 0; i < buf_size; i++) {
+        av_assert1(pc->frame_start_found >= 0 && pc->frame_start_found <= 4);
+        if (pc->frame_start_found & 1) {
+            if (state == EXT_START_CODE && (buf[i] & 0xF0) != 0x80)
+                pc->frame_start_found--;
+            else if (state == EXT_START_CODE + 2) {
+                if ((buf[i] & 3) == 3)
+                    pc->frame_start_found = 0;
+                else
+                    pc->frame_start_found = (pc->frame_start_found + 1) & 3;
+            }
+            state++;
+        } else {
+            i = avpriv_find_start_code(buf + i, buf + buf_size, &state) - buf - 1;
+            if (pc->frame_start_found == 0 && state >= SLICE_MIN_START_CODE && state <= SLICE_MAX_START_CODE) {
+                i++;
+                pc->frame_start_found = 4;
+            }
+            if (state == SEQ_END_CODE) {
+                pc->frame_start_found = 0;
+                pc->state = -1;
+                return i + 1;
+            }
+            if (pc->frame_start_found == 2 && state == SEQ_START_CODE)
+                pc->frame_start_found = 0;
+            if (pc->frame_start_found  < 4 && state == EXT_START_CODE)
+                pc->frame_start_found++;
+            if (pc->frame_start_found == 4 && (state & 0xFFFFFF00) == 0x100) {
+                if (state < SLICE_MIN_START_CODE || state > SLICE_MAX_START_CODE) {
+                    pc->frame_start_found = 0;
+                    pc->state             = -1;
+                    return i - 3;
+                }
+            }
+            if (pc->frame_start_found == 0 && s && state == PICTURE_START_CODE) {
+                ff_fetch_timestamp(s, i - 3, 1, i > 3);
+            }
+        }
+    }
+    pc->state = state;
+    return END_NOT_FOUND;
+}
+#endif
 
 static void mpegvideo_extract_headers(AVCodecParserContext *s,
                                       AVCodecContext *avctx,
@@ -192,7 +258,11 @@ static int mpegvideo_parse(AVCodecParserContext *s,
     if(s->flags & PARSER_FLAG_COMPLETE_FRAMES){
         next= buf_size;
     }else{
+#if FF_API_FLAG_TRUNCATED
         next= ff_mpeg1_find_frame_end(pc, buf, buf_size, s);
+#else
+        next = mpeg1_find_frame_end(pc, buf, buf_size, s);
+#endif
 
         if (ff_combine_frame(pc, next, &buf, &buf_size) < 0) {
             *poutbuf = NULL;
@@ -213,34 +283,16 @@ static int mpegvideo_parse(AVCodecParserContext *s,
     return next;
 }
 
-static int mpegvideo_split(AVCodecContext *avctx,
-                           const uint8_t *buf, int buf_size)
-{
-    int i;
-    uint32_t state= -1;
-    int found=0;
-
-    for(i=0; i<buf_size; i++){
-        state= (state<<8) | buf[i];
-        if(state == 0x1B3){
-            found=1;
-        }else if(found && state != 0x1B5 && state < 0x200 && state >= 0x100)
-            return i-3;
-    }
-    return 0;
-}
-
 static int mpegvideo_parse_init(AVCodecParserContext *s)
 {
     s->pict_type = AV_PICTURE_TYPE_NONE; // first frame might be partial
     return 0;
 }
 
-AVCodecParser ff_mpegvideo_parser = {
+const AVCodecParser ff_mpegvideo_parser = {
     .codec_ids      = { AV_CODEC_ID_MPEG1VIDEO, AV_CODEC_ID_MPEG2VIDEO },
     .priv_data_size = sizeof(struct MpvParseContext),
     .parser_init    = mpegvideo_parse_init,
     .parser_parse   = mpegvideo_parse,
     .parser_close   = ff_parse_close,
-    .split          = mpegvideo_split,
 };

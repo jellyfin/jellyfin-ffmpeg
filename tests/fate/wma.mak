@@ -11,6 +11,7 @@ fate-wmapro-5.1: SIZE_TOLERANCE = 24576
 FATE_WMAPRO-$(call DEMDEC, MOV, WMAPRO) += fate-wmapro-ism
 fate-wmapro-ism: CMD = pcm -i $(TARGET_SAMPLES)/isom/vc1-wmapro.ism -vn
 fate-wmapro-ism: REF = $(SAMPLES)/isom/vc1-wmapro.pcm
+fate-wmapro-ism: SIZE_TOLERANCE = 4784
 
 $(FATE_WMAPRO-yes): CMP = oneoff
 
@@ -39,14 +40,14 @@ fate-wmavoice: $(FATE_WMAVOICE-yes)
 
 FATE_WMA_ENCODE-$(call ENCDEC, WMAV1, ASF) += fate-wmav1-encode
 fate-wmav1-encode: CMD = enc_dec_pcm asf wav s16le $(subst $(SAMPLES),$(TARGET_SAMPLES),$(REF)) -c:a wmav1 -b:a 128k
-fate-wmav1-encode: CMP_SHIFT = -8192
-fate-wmav1-encode: CMP_TARGET = 291.06
+fate-wmav1-encode: CMP_SHIFT = 8192
+fate-wmav1-encode: CMP_TARGET = 299.99
 fate-wmav1-encode: SIZE_TOLERANCE = 4632
 
 FATE_WMA_ENCODE-$(call ENCDEC, WMAV2, ASF) += fate-wmav2-encode
 fate-wmav2-encode: CMD = enc_dec_pcm asf wav s16le $(subst $(SAMPLES),$(TARGET_SAMPLES),$(REF)) -c:a wmav2 -b:a 128k
-fate-wmav2-encode: CMP_SHIFT = -8192
-fate-wmav2-encode: CMP_TARGET = 258.32
+fate-wmav2-encode: CMP_SHIFT = 8192
+fate-wmav2-encode: CMP_TARGET = 267.92
 fate-wmav2-encode: SIZE_TOLERANCE = 4632
 
 $(FATE_WMA_ENCODE-yes): CMP = stddev

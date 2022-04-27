@@ -25,7 +25,6 @@
  * ISO/IEC 14496-3 Part 3 Subpart 10: Technical description of lossless coding of oversampled audio
  */
 
-#include "libavutil/avassert.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem_internal.h"
 #include "internal.h"
@@ -379,7 +378,7 @@ dsd:
     return avpkt->size;
 }
 
-AVCodec ff_dst_decoder = {
+const AVCodec ff_dst_decoder = {
     .name           = "dst",
     .long_name      = NULL_IF_CONFIG_SMALL("DST (Digital Stream Transfer)"),
     .type           = AVMEDIA_TYPE_AUDIO,

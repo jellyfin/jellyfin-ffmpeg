@@ -82,7 +82,7 @@ static int msf_read_header(AVFormatContext *s)
             AV_WL16(st->codecpar->extradata+8, codec == 4 ? 1 : 0); /* joint stereo (repeat?) */
             AV_WL16(st->codecpar->extradata+10, 1);
             st->codecpar->codec_id = AV_CODEC_ID_ATRAC3;    break;
-    case 7: st->need_parsing = AVSTREAM_PARSE_FULL_RAW;
+    case 7: ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL_RAW;
             st->codecpar->codec_id = AV_CODEC_ID_MP3;       break;
     default:
             avpriv_request_sample(s, "Codec %d", codec);
@@ -102,7 +102,7 @@ static int msf_read_packet(AVFormatContext *s, AVPacket *pkt)
     return av_get_packet(s->pb, pkt, par->block_align ? par->block_align : 1024 * par->channels);
 }
 
-AVInputFormat ff_msf_demuxer = {
+const AVInputFormat ff_msf_demuxer = {
     .name           = "msf",
     .long_name      = NULL_IF_CONFIG_SMALL("Sony PS3 MSF"),
     .read_probe     = msf_probe,

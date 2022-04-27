@@ -28,6 +28,7 @@
 #ifndef AVCODEC_AACENCTAB_H
 #define AVCODEC_AACENCTAB_H
 
+#include "libavutil/channel_layout.h"
 #include "aac.h"
 
 /** Total number of usable codebooks **/
@@ -78,13 +79,6 @@ static const uint8_t aac_chan_maps[AAC_MAX_CHANNELS][AAC_MAX_CHANNELS] = {
     { 2, 0, 1, 4, 5, 3 },
     { 0 },
     { 2, 0, 1, 6, 7, 4, 5, 3 },
-};
-
-/* duplicated from avpriv_mpeg4audio_sample_rates to avoid shared build
- * failures */
-static const int mpeg4audio_sample_rates[16] = {
-    96000, 88200, 64000, 48000, 44100, 32000,
-    24000, 22050, 16000, 12000, 11025, 8000, 7350
 };
 
 /** bits needed to code codebook run value for long windows */

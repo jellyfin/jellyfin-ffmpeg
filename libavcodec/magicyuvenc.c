@@ -28,10 +28,13 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "encode.h"
 #include "put_bits.h"
 #include "internal.h"
 #include "thread.h"
 #include "lossless_videoencdsp.h"
+
+#define MAGICYUV_EXTRADATA_SIZE 32
 
 typedef enum Prediction {
     LEFT = 1,
@@ -186,10 +189,6 @@ static av_cold int magy_encode_init(AVCodecContext *avctx)
         avctx->codec_tag = MKTAG('M', '8', 'G', '0');
         s->format = 0x6b;
         break;
-    default:
-        av_log(avctx, AV_LOG_ERROR, "Unsupported pixel format: %d\n",
-               avctx->pix_fmt);
-        return AVERROR_INVALIDDATA;
     }
 
     ff_llvidencdsp_init(&s->llvidencdsp);
@@ -213,7 +212,7 @@ static av_cold int magy_encode_init(AVCodecContext *avctx)
     case MEDIAN:   s->predict = median_predict;   break;
     }
 
-    avctx->extradata_size = 32;
+    avctx->extradata_size = MAGICYUV_EXTRADATA_SIZE;
 
     avctx->extradata = av_mallocz(avctx->extradata_size +
                                   AV_INPUT_BUFFER_PADDING_SIZE);
@@ -223,7 +222,7 @@ static av_cold int magy_encode_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
     }
 
-    bytestream2_init_writer(&pb, avctx->extradata, avctx->extradata_size);
+    bytestream2_init_writer(&pb, avctx->extradata, MAGICYUV_EXTRADATA_SIZE);
     bytestream2_put_le32(&pb, MKTAG('M', 'A', 'G', 'Y'));
     bytestream2_put_le32(&pb, 32);
     bytestream2_put_byte(&pb, 7);
@@ -400,11 +399,9 @@ static int encode_slice(uint8_t *src, uint8_t *dst, int dst_size,
     if (count)
         put_bits(&pb, 32 - count, 0);
 
-    count = put_bits_count(&pb);
-
     flush_put_bits(&pb);
 
-    return count >> 3;
+    return put_bytes_output(&pb);
 }
 
 static int magy_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
@@ -415,8 +412,8 @@ static int magy_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     const int width = avctx->width, height = avctx->height;
     int pos, slice, i, j, ret = 0;
 
-    ret = ff_alloc_packet2(avctx, pkt, (256 + 4 * s->nb_slices + width * height) *
-                           s->planes + 256, 0);
+    ret = ff_alloc_packet(avctx, pkt, (256 + 4 * s->nb_slices + width * height) *
+                          s->planes + 256);
     if (ret < 0)
         return ret;
 
@@ -499,7 +496,7 @@ static int magy_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                      AV_CEIL_RSHIFT(frame->height, s->vshift[i]),
                      &s->pb, s->he[i]);
     }
-    s->tables_size = (put_bits_count(&s->pb) + 7) >> 3;
+    s->tables_size = put_bytes_count(&s->pb, 1);
     bytestream2_skip_p(&pb, s->tables_size);
 
     for (i = 0; i < s->planes; i++) {
@@ -523,7 +520,6 @@ static int magy_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream2_seek_p(&pb, pos, SEEK_SET);
 
     pkt->size   = bytestream2_tell_p(&pb);
-    pkt->flags |= AV_PKT_FLAG_KEY;
 
     *got_packet = 1;
 
@@ -558,7 +554,7 @@ static const AVClass magicyuv_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_magicyuv_encoder = {
+const AVCodec ff_magicyuv_encoder = {
     .name             = "magicyuv",
     .long_name        = NULL_IF_CONFIG_SMALL("MagicYUV video"),
     .type             = AVMEDIA_TYPE_VIDEO,
@@ -574,5 +570,5 @@ AVCodec ff_magicyuv_encoder = {
                           AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA444P, AV_PIX_FMT_GRAY8,
                           AV_PIX_FMT_NONE
                       },
-    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

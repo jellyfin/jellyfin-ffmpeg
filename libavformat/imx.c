@@ -23,7 +23,7 @@
 #include "avformat.h"
 #include "internal.h"
 #include "libavutil/intreadwrite.h"
-#include "libavutil/avassert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/internal.h"
 
 #define IMX_TAG MKTAG('I', 'M', 'A', 'X')
@@ -156,7 +156,7 @@ retry:
     return ret;
 }
 
-AVInputFormat ff_simbiosis_imx_demuxer = {
+const AVInputFormat ff_simbiosis_imx_demuxer = {
     .name           = "simbiosis_imx",
     .long_name      = NULL_IF_CONFIG_SMALL("Simbiosis Interactive IMX"),
     .priv_data_size = sizeof(SimbiosisIMXDemuxContext),

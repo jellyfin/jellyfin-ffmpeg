@@ -29,7 +29,6 @@
 
 static av_cold int oma_write_header(AVFormatContext *s)
 {
-    int i;
     AVCodecParameters *par;
     int srate_index;
     int isjointstereo;
@@ -55,8 +54,7 @@ static av_cold int oma_write_header(AVFormatContext *s)
     avio_w8(s->pb, EA3_HEADER_SIZE >> 7);
     avio_w8(s->pb, EA3_HEADER_SIZE & 0x7F);
     avio_wl16(s->pb, 0xFFFF);       /* not encrypted */
-    for (i = 0; i < 6; i++)
-        avio_wl32(s->pb, 0);        /* Padding + DRM id */
+    ffio_fill(s->pb, 0, 6 * 4);     /* Padding + DRM id */
 
     switch (par->codec_tag) {
     case OMA_CODECID_ATRAC3:
@@ -88,13 +86,12 @@ static av_cold int oma_write_header(AVFormatContext *s)
                av_fourcc2str(par->codec_tag));
         return AVERROR(EINVAL);
     }
-    for (i = 0; i < (EA3_HEADER_SIZE - 36)/4; i++)
-        avio_wl32(s->pb, 0);        /* Padding */
+    ffio_fill(s->pb, 0, EA3_HEADER_SIZE - 36);  /* Padding */
 
     return 0;
 }
 
-AVOutputFormat ff_oma_muxer = {
+const AVOutputFormat ff_oma_muxer = {
     .name              = "oma",
     .long_name         = NULL_IF_CONFIG_SMALL("Sony OpenMG audio"),
     .mime_type         = "audio/x-oma",

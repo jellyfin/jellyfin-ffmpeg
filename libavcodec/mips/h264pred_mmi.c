@@ -155,14 +155,14 @@ void ff_pred16x16_dc_8_mmi(uint8_t *src, ptrdiff_t stride)
 void ff_pred8x8l_top_dc_8_mmi(uint8_t *src, int has_topleft,
         int has_topright, ptrdiff_t stride)
 {
-    uint32_t dc;
     double ftmp[11];
     mips_reg tmp[3];
+    union av_intfloat64 dc;
     DECLARE_VAR_ALL64;
     DECLARE_VAR_ADDRT;
 
     __asm__ volatile (
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         MMI_ULDC1(%[ftmp10], %[srcA], 0x00)
         MMI_ULDC1(%[ftmp9], %[src0], 0x00)
         MMI_ULDC1(%[ftmp8], %[src1], 0x00)
@@ -209,12 +209,12 @@ void ff_pred8x8l_top_dc_8_mmi(uint8_t *src, int has_topleft,
           [ftmp10]"=&f"(ftmp[10]),
           [tmp0]"=&r"(tmp[0]),              [tmp1]"=&r"(tmp[1]),
           RESTRICT_ASM_ALL64
-          [dc]"=r"(dc)
+          [dc]"=r"(dc.i)
         : [srcA]"r"((mips_reg)(src-stride-1)),
           [src0]"r"((mips_reg)(src-stride)),
           [src1]"r"((mips_reg)(src-stride+1)),
           [has_topleft]"r"(has_topleft),    [has_topright]"r"(has_topright),
-          [ff_pb_1]"r"(ff_pb_1),            [ff_pw_2]"f"(ff_pw_2)
+          [ff_pb_1]"r"(ff_pb_1.i),          [ff_pw_2]"f"(ff_pw_2.f)
         : "memory"
     );
 
@@ -238,7 +238,7 @@ void ff_pred8x8l_top_dc_8_mmi(uint8_t *src, int has_topleft,
           RESTRICT_ASM_ALL64
           RESTRICT_ASM_ADDRT
           [src]"+&r"(src)
-        : [dc]"f"(dc),                      [stride]"r"((mips_reg)stride)
+        : [dc]"f"(dc.f),                    [stride]"r"((mips_reg)stride)
         : "memory"
     );
 }
@@ -246,9 +246,10 @@ void ff_pred8x8l_top_dc_8_mmi(uint8_t *src, int has_topleft,
 void ff_pred8x8l_dc_8_mmi(uint8_t *src, int has_topleft, int has_topright,
         ptrdiff_t stride)
 {
-    uint32_t dc, dc1, dc2;
+    uint32_t dc1, dc2;
     double ftmp[14];
     mips_reg tmp[1];
+    union av_intfloat64 dc;
 
     const int l0 = ((has_topleft ? src[-1+-1*stride] : src[-1+0*stride]) + 2*src[-1+0*stride] + src[-1+1*stride] + 2) >> 2;
     const int l1 = (src[-1+0*stride] + 2*src[-1+1*stride] + src[-1+2*stride] + 2) >> 2;
@@ -266,7 +267,7 @@ void ff_pred8x8l_dc_8_mmi(uint8_t *src, int has_topleft, int has_topright,
         MMI_ULDC1(%[ftmp4], %[srcA], 0x00)
         MMI_ULDC1(%[ftmp5], %[src0], 0x00)
         MMI_ULDC1(%[ftmp6], %[src1], 0x00)
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         "dli        %[tmp0],    0x03                                    \n\t"
         "punpcklbh  %[ftmp7],   %[ftmp4],       %[ftmp0]                \n\t"
         "punpckhbh  %[ftmp8],   %[ftmp4],       %[ftmp0]                \n\t"
@@ -322,7 +323,7 @@ void ff_pred8x8l_dc_8_mmi(uint8_t *src, int has_topleft, int has_topright,
     );
 
     dc1 = l0+l1+l2+l3+l4+l5+l6+l7;
-    dc = ((dc1+dc2+8)>>4)*0x01010101U;
+    dc.i = ((dc1+dc2+8)>>4)*0x01010101U;
 
     __asm__ volatile (
         "dli        %[tmp0],    0x02                                    \n\t"
@@ -344,7 +345,7 @@ void ff_pred8x8l_dc_8_mmi(uint8_t *src, int has_topleft, int has_topright,
           RESTRICT_ASM_ALL64
           RESTRICT_ASM_ADDRT
           [src]"+&r"(src)
-        : [dc]"f"(dc),                      [stride]"r"((mips_reg)stride)
+        : [dc]"f"(dc.f),                    [stride]"r"((mips_reg)stride)
         : "memory"
     );
 }
@@ -357,7 +358,7 @@ void ff_pred8x8l_vertical_8_mmi(uint8_t *src, int has_topleft,
     DECLARE_VAR_ALL64;
 
     __asm__ volatile (
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         MMI_LDC1(%[ftmp3], %[srcA], 0x00)
         MMI_LDC1(%[ftmp4], %[src0], 0x00)
         MMI_LDC1(%[ftmp5], %[src1], 0x00)
@@ -530,7 +531,7 @@ void ff_pred8x8_top_dc_8_mmi(uint8_t *src, ptrdiff_t stride)
 
     __asm__ volatile (
         "dli        %[tmp0],    0x02                                    \n\t"
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         PTR_SUBU   "%[addr0],   %[src],         %[stride]               \n\t"
         MMI_LDC1(%[ftmp1], %[addr0], 0x00)
         "punpcklbh  %[ftmp2],   %[ftmp1],       %[ftmp0]                \n\t"
@@ -640,7 +641,7 @@ void ff_pred8x8_dc_8_mmi(uint8_t *src, ptrdiff_t stride)
         PTR_SRL    "%[addr4],   0x02                                    \n\t"
         PTR_SRL    "%[addr1],   0x02                                    \n\t"
         PTR_SRL    "%[addr2],   0x03                                    \n\t"
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         "dmtc1      %[addr3],   %[ftmp1]                                \n\t"
         "pshufh     %[ftmp1],   %[ftmp1],       %[ftmp0]                \n\t"
         "dmtc1      %[addr4],   %[ftmp2]                                \n\t"
@@ -757,9 +758,9 @@ static inline void pred16x16_plane_compat_mmi(uint8_t *src, int stride,
         "dmtc1      %[tmp0],    %[ftmp4]                                \n\t"
         MMI_ULDC1(%[ftmp0], %[addr0], -0x01)
         MMI_ULDC1(%[ftmp2], %[addr0],  0x08)
-        "dsrl       %[ftmp1],   %[ftmp0],       %[ftmp4]                \n\t"
-        "dsrl       %[ftmp3],   %[ftmp2],       %[ftmp4]                \n\t"
-        "xor        %[ftmp4],   %[ftmp4],       %[ftmp4]                \n\t"
+        "ssrld      %[ftmp1],   %[ftmp0],       %[ftmp4]                \n\t"
+        "ssrld      %[ftmp3],   %[ftmp2],       %[ftmp4]                \n\t"
+        "pxor       %[ftmp4],   %[ftmp4],       %[ftmp4]                \n\t"
         "punpcklbh  %[ftmp0],   %[ftmp0],       %[ftmp4]                \n\t"
         "punpcklbh  %[ftmp1],   %[ftmp1],       %[ftmp4]                \n\t"
         "punpcklbh  %[ftmp2],   %[ftmp2],       %[ftmp4]                \n\t"
@@ -915,7 +916,7 @@ static inline void pred16x16_plane_compat_mmi(uint8_t *src, int stride,
         "dmul       %[tmp3],    %[tmp3],        %[tmp2]                 \n\t"
         "dsubu      %[tmp5],    %[tmp5],        %[tmp3]                 \n\t"
 
-        "xor        %[ftmp4],   %[ftmp4],       %[ftmp4]                \n\t"
+        "pxor       %[ftmp4],   %[ftmp4],       %[ftmp4]                \n\t"
         "dmtc1      %[tmp0],    %[ftmp0]                                \n\t"
         "pshufh     %[ftmp0],   %[ftmp0],       %[ftmp4]                \n\t"
         "dmtc1      %[tmp1],    %[ftmp5]                                \n\t"
@@ -965,10 +966,10 @@ static inline void pred16x16_plane_compat_mmi(uint8_t *src, int stride,
           [addr0]"=&r"(addr[0])
         : [src]"r"(src),                    [stride]"r"((mips_reg)stride),
           [svq3]"r"(svq3),                  [rv40]"r"(rv40),
-          [ff_pw_m8tom5]"f"(ff_pw_m8tom5),  [ff_pw_m4tom1]"f"(ff_pw_m4tom1),
-          [ff_pw_1to4]"f"(ff_pw_1to4),      [ff_pw_5to8]"f"(ff_pw_5to8),
-          [ff_pw_0to3]"f"(ff_pw_0to3),      [ff_pw_4to7]"r"(ff_pw_4to7),
-          [ff_pw_8tob]"r"(ff_pw_8tob),      [ff_pw_ctof]"r"(ff_pw_ctof)
+          [ff_pw_m8tom5]"f"(ff_pw_m8tom5.f),[ff_pw_m4tom1]"f"(ff_pw_m4tom1.f),
+          [ff_pw_1to4]"f"(ff_pw_1to4.f),    [ff_pw_5to8]"f"(ff_pw_5to8.f),
+          [ff_pw_0to3]"f"(ff_pw_0to3.f),    [ff_pw_4to7]"r"(ff_pw_4to7.i),
+          [ff_pw_8tob]"r"(ff_pw_8tob.i),    [ff_pw_ctof]"r"(ff_pw_ctof.i)
         : "memory"
     );
 }

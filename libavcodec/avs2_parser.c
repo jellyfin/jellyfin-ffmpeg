@@ -86,10 +86,9 @@ static int avs2_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-AVCodecParser ff_avs2_parser = {
+const AVCodecParser ff_avs2_parser = {
     .codec_ids      = { AV_CODEC_ID_AVS2 },
     .priv_data_size = sizeof(ParseContext),
     .parser_parse   = avs2_parse,
     .parser_close   = ff_parse_close,
-    .split          = ff_mpeg4video_split,
 };

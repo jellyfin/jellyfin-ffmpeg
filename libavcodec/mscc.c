@@ -152,7 +152,7 @@ static int decode_frame(AVCodecContext *avctx,
     }
 
     if (avctx->pix_fmt == AV_PIX_FMT_PAL8) {
-        buffer_size_t size;
+        size_t size;
         const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
 
         if (pal && size == AVPALETTE_SIZE) {
@@ -160,7 +160,8 @@ static int decode_frame(AVCodecContext *avctx,
             for (j = 0; j < 256; j++)
                 s->pal[j] = 0xFF000000 | AV_RL32(pal + j * 4);
         } else if (pal) {
-            av_log(avctx, AV_LOG_ERROR, "Palette size %d is wrong\n", size);
+            av_log(avctx, AV_LOG_ERROR,
+                   "Palette size %"SIZE_SPECIFIER" is wrong\n", size);
         }
         memcpy(frame->data[1], s->pal, AVPALETTE_SIZE);
     }
@@ -251,7 +252,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_mscc_decoder = {
+const AVCodec ff_mscc_decoder = {
     .name             = "mscc",
     .long_name        = NULL_IF_CONFIG_SMALL("Mandsoft Screen Capture Codec"),
     .type             = AVMEDIA_TYPE_VIDEO,
@@ -261,10 +262,10 @@ AVCodec ff_mscc_decoder = {
     .close            = decode_close,
     .decode           = decode_frame,
     .capabilities     = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 
-AVCodec ff_srgc_decoder = {
+const AVCodec ff_srgc_decoder = {
     .name             = "srgc",
     .long_name        = NULL_IF_CONFIG_SMALL("Screen Recorder Gold Codec"),
     .type             = AVMEDIA_TYPE_VIDEO,
@@ -274,5 +275,5 @@ AVCodec ff_srgc_decoder = {
     .close            = decode_close,
     .decode           = decode_frame,
     .capabilities     = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

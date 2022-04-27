@@ -37,7 +37,7 @@
 #include "libavutil/timestamp.h"
 #include "libavutil/samplefmt.h"
 
-#include "libavcodec/avcodec.h"
+#include "libavcodec/defs.h"
 
 #include "audio.h"
 #include "avfilter.h"
@@ -170,7 +170,8 @@ static void dump_audio_service_type(AVFilterContext *ctx, AVFrameSideData *sd)
 
 static void dump_unknown(AVFilterContext *ctx, AVFrameSideData *sd)
 {
-    av_log(ctx, AV_LOG_INFO, "unknown side data type: %d, size %d bytes", sd->type, sd->size);
+    av_log(ctx, AV_LOG_INFO, "unknown side data type: %d, size "
+           "%"SIZE_SPECIFIER" bytes", sd->type, sd->size);
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
@@ -242,7 +243,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -250,14 +250,14 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_ashowinfo = {
+const AVFilter ff_af_ashowinfo = {
     .name        = "ashowinfo",
     .description = NULL_IF_CONFIG_SMALL("Show textual information for each audio frame."),
     .priv_size   = sizeof(AShowInfoContext),
     .uninit      = uninit,
-    .inputs      = inputs,
-    .outputs     = outputs,
+    .flags       = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
 };

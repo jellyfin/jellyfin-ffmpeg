@@ -30,6 +30,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
+#include "bsf.h"
 #include "encode.h"
 #include "internal.h"
 
@@ -612,7 +613,7 @@ static const AVClass class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_librav1e_encoder = {
+const AVCodec ff_librav1e_encoder = {
     .name           = "librav1e",
     .long_name      = NULL_IF_CONFIG_SMALL("librav1e AV1"),
     .type           = AVMEDIA_TYPE_VIDEO,

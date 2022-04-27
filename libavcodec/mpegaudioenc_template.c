@@ -27,6 +27,7 @@
 #include "libavutil/channel_layout.h"
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "put_bits.h"
 
@@ -94,9 +95,9 @@ static av_cold int MPA_encode_init(AVCodecContext *avctx)
     /* encoding freq */
     s->lsf = 0;
     for(i=0;i<3;i++) {
-        if (avpriv_mpa_freq_tab[i] == freq)
+        if (ff_mpa_freq_tab[i] == freq)
             break;
-        if ((avpriv_mpa_freq_tab[i] / 2) == freq) {
+        if ((ff_mpa_freq_tab[i] / 2) == freq) {
             s->lsf = 1;
             break;
         }
@@ -109,12 +110,12 @@ static av_cold int MPA_encode_init(AVCodecContext *avctx)
 
     /* encoding bitrate & frequency */
     for(i=1;i<15;i++) {
-        if (avpriv_mpa_bitrate_tab[s->lsf][1][i] == bitrate)
+        if (ff_mpa_bitrate_tab[s->lsf][1][i] == bitrate)
             break;
     }
     if (i == 15 && !avctx->bit_rate) {
         i = 14;
-        bitrate = avpriv_mpa_bitrate_tab[s->lsf][1][i];
+        bitrate = ff_mpa_bitrate_tab[s->lsf][1][i];
         avctx->bit_rate = bitrate * 1000;
     }
     if (i == 15){
@@ -736,9 +737,6 @@ static void encode_frame(MpegAudioContext *s,
     /* padding */
     for(i=0;i<padding;i++)
         put_bits(p, 1, 0);
-
-    /* flush */
-    flush_put_bits(p);
 }
 
 static int MPA_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
@@ -763,17 +761,20 @@ static int MPA_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     }
     compute_bit_allocation(s, smr, bit_alloc, &padding);
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, MPA_MAX_CODED_FRAME_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, avpkt, MPA_MAX_CODED_FRAME_SIZE)) < 0)
         return ret;
 
     init_put_bits(&s->pb, avpkt->data, avpkt->size);
 
     encode_frame(s, bit_alloc, padding);
 
+    /* flush */
+    flush_put_bits(&s->pb);
+    avpkt->size = put_bytes_output(&s->pb);
+
     if (frame->pts != AV_NOPTS_VALUE)
         avpkt->pts = frame->pts - ff_samples_to_time_base(avctx, avctx->initial_padding);
 
-    avpkt->size = put_bits_count(&s->pb) / 8;
     *got_packet_ptr = 1;
     return 0;
 }

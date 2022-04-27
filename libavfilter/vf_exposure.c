@@ -69,26 +69,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     ExposureContext *s = ctx->priv;
 
     s->scale = 1.f / (exp2f(-s->exposure) - s->black);
-    ctx->internal->execute(ctx, s->do_slice, frame, NULL,
-                           FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, s->do_slice, frame, NULL,
+                      FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
 
     return ff_filter_frame(ctx->outputs[0], frame);
-}
-
-static av_cold int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *formats = NULL;
-
-    formats = ff_make_format_list(pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-
-    return ff_set_common_formats(ctx, formats);
 }
 
 static av_cold int config_input(AVFilterLink *inlink)
@@ -105,11 +89,10 @@ static const AVFilterPad exposure_inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
-        .needs_writable = 1,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .filter_frame   = filter_frame,
         .config_props   = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad exposure_outputs[] = {
@@ -117,7 +100,6 @@ static const AVFilterPad exposure_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(ExposureContext, x)
@@ -131,14 +113,14 @@ static const AVOption exposure_options[] = {
 
 AVFILTER_DEFINE_CLASS(exposure);
 
-AVFilter ff_vf_exposure = {
+const AVFilter ff_vf_exposure = {
     .name          = "exposure",
     .description   = NULL_IF_CONFIG_SMALL("Adjust exposure of the video stream."),
     .priv_size     = sizeof(ExposureContext),
     .priv_class    = &exposure_class,
-    .query_formats = query_formats,
-    .inputs        = exposure_inputs,
-    .outputs       = exposure_outputs,
+    FILTER_INPUTS(exposure_inputs),
+    FILTER_OUTPUTS(exposure_outputs),
+    FILTER_PIXFMTS(AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

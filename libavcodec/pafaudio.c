@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 
 #include "avcodec.h"
@@ -71,7 +72,7 @@ static int paf_audio_decode(AVCodecContext *avctx, void *data,
     return pkt->size;
 }
 
-AVCodec ff_paf_audio_decoder = {
+const AVCodec ff_paf_audio_decoder = {
     .name         = "paf_audio",
     .long_name    = NULL_IF_CONFIG_SMALL("Amazing Studio Packed Animation File Audio"),
     .type         = AVMEDIA_TYPE_AUDIO,

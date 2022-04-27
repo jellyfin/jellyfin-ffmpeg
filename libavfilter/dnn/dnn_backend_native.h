@@ -30,6 +30,7 @@
 #include "../dnn_interface.h"
 #include "libavformat/avio.h"
 #include "libavutil/opt.h"
+#include "queue.h"
 
 /**
  * the enum value of DNNLayerType should not be changed,
@@ -110,6 +111,7 @@ typedef struct InputParams{
 } InputParams;
 
 typedef struct NativeOptions{
+    uint8_t async;
     uint32_t conv2d_threads;
 } NativeOptions;
 
@@ -126,12 +128,17 @@ typedef struct NativeModel{
     int32_t layers_num;
     DnnOperand *operands;
     int32_t operands_num;
+    Queue *task_queue;
+    Queue *lltask_queue;
 } NativeModel;
 
 DNNModel *ff_dnn_load_model_native(const char *model_filename, DNNFunctionType func_type, const char *options, AVFilterContext *filter_ctx);
 
-DNNReturnType ff_dnn_execute_model_native(const DNNModel *model, const char *input_name, AVFrame *in_frame,
-                                          const char **output_names, uint32_t nb_output, AVFrame *out_frame);
+DNNReturnType ff_dnn_execute_model_native(const DNNModel *model, DNNExecBaseParams *exec_params);
+
+DNNAsyncStatusType ff_dnn_get_result_native(const DNNModel *model, AVFrame **in, AVFrame **out);
+
+DNNReturnType ff_dnn_flush_native(const DNNModel *model);
 
 void ff_dnn_free_model_native(DNNModel **model);
 
