@@ -5,7 +5,7 @@ Maintainer: Jellyfin Packaging Team <packaging@jellyfin.org>
 Uploaders: Jellyfin Packaging Team <packaging@jellyfin.org>
 Rules-Requires-Root: no
 Homepage: https://ffmpeg.org/
-Standards-Version: 4.4.2
+Standards-Version: 5.0.1
 Vcs-Git: https://github.com/jellyfin/jellyfin-ffmpeg.git
 Vcs-Browser: https://github.com/jellyfin/jellyfin-ffmpeg
 Build-Depends:

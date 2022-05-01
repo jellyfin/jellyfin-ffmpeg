@@ -531,6 +531,7 @@ fi
     --disable-ffplay \
     --disable-debug \
     --disable-doc \
+    --disable-ptx-compression \
     --disable-w32threads \
     --enable-pthreads \
     --enable-shared \

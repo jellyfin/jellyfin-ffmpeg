@@ -1,8 +1,8 @@
-jellyfin-ffmpeg (4.4.2-1) unstable; urgency=medium
+jellyfin-ffmpeg (5.0.1-1) unstable; urgency=medium
 
-  * New upstream version 4.4.2
+  * New upstream version 5.0.1
 
- -- knackebrot <knackebrot@tfwno.gf>  Fri, 22 Apr 2022 18:59:43 +0200
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 28 Apr 2022 18:37:31 +0800
 
 jellyfin-ffmpeg (4.4.1-4) unstable; urgency=medium
 

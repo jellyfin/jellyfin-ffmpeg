@@ -15,6 +15,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--extra-version=Jellyfin \
 	--disable-doc \
 	--disable-ffplay \
+	--disable-ptx-compression \
 	--disable-shared \
 	--disable-libxcb \
 	--disable-sdl2 \
