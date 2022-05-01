@@ -57,11 +57,13 @@ CONFIG_ARM64 := ${CONFIG_ARM_COMMON} \
 	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
 
 CONFIG_x86 := --arch=amd64 \
+	--enable-libshaderc \
+	--enable-libplacebo \
+	--enable-vulkan \
 	--enable-opencl \
 	--enable-vaapi \
 	--enable-amf \
 	--enable-libmfx \
-	--enable-vdpau \
 	--enable-ffnvcodec \
 	--enable-cuda \
 	--enable-cuda-llvm \

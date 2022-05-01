@@ -20,7 +20,7 @@ Build-Depends:
 # --enable-libbluray
  libbluray-dev,
 # --enable-libdrm
- libdrm-dev,
+ libdrm-dev [!amd64],
 # --enable-libfontconfig
  libfontconfig-dev,
 # --enable-libfreetype
@@ -45,8 +45,6 @@ Build-Depends:
  libx265-dev,
 # --enable-libzvbi
  libzvbi-dev,
-# --enable-vdpau
- libvdpau-dev,
 # --enable-cuda-llvm
  clang [!armhf !arm64],
 # --enable-opencl
