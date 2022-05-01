@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavfilter/avfilter.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/avfilter.h
 +++ jellyfin-ffmpeg/libavfilter/avfilter.h
-@@ -481,6 +481,7 @@ struct AVFilterLink {
+@@ -542,6 +542,7 @@ struct AVFilterLink {
      int w;                      ///< agreed upon image width
      int h;                      ///< agreed upon image height
      AVRational sample_aspect_ratio; ///< agreed upon sample aspect ratio
@@ -14,7 +14,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/opencl.c
 +++ jellyfin-ffmpeg/libavfilter/opencl.c
-@@ -60,6 +60,7 @@ static int opencl_filter_set_device(AVFi
+@@ -45,6 +45,7 @@ static int opencl_filter_set_device(AVFi
  int ff_opencl_filter_config_input(AVFilterLink *inlink)
  {
      AVFilterContext   *avctx = inlink->dst;
@@ -22,7 +22,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl.c
      OpenCLFilterContext *ctx = avctx->priv;
      AVHWFramesContext *input_frames;
      int err;
-@@ -90,12 +91,15 @@ int ff_opencl_filter_config_input(AVFilt
+@@ -75,12 +76,15 @@ int ff_opencl_filter_config_input(AVFilt
      if (!ctx->output_height)
          ctx->output_height = inlink->h;
  
@@ -38,7 +38,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl.c
      OpenCLFilterContext *ctx = avctx->priv;
      AVBufferRef       *output_frames_ref = NULL;
      AVHWFramesContext *output_frames;
-@@ -137,6 +141,7 @@ int ff_opencl_filter_config_output(AVFil
+@@ -122,6 +126,7 @@ int ff_opencl_filter_config_output(AVFil
      outlink->hw_frames_ctx = output_frames_ref;
      outlink->w = ctx->output_width;
      outlink->h = ctx->output_height;
@@ -101,7 +101,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
-@@ -190,7 +190,7 @@ static AVBufferRef *d3d11va_alloc_single
+@@ -199,7 +199,7 @@ static AVBufferRef *d3d11va_alloc_single
          .ArraySize  = 1,
          .Usage      = D3D11_USAGE_DEFAULT,
          .BindFlags  = hwctx->BindFlags,
@@ -110,7 +110,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
      };
  
      hr = ID3D11Device_CreateTexture2D(device_hwctx->device, &texDesc, NULL, &tex);
-@@ -254,9 +254,17 @@ static int d3d11va_frames_init(AVHWFrame
+@@ -263,9 +263,17 @@ static int d3d11va_frames_init(AVHWFrame
          .ArraySize  = ctx->initial_pool_size,
          .Usage      = D3D11_USAGE_DEFAULT,
          .BindFlags  = hwctx->BindFlags,

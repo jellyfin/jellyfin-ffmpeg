@@ -2,23 +2,15 @@ Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -3601,6 +3601,7 @@ openclsrc_filter_deps="opencl"
+@@ -3690,6 +3690,7 @@ openclsrc_filter_deps="opencl"
  overlay_opencl_filter_deps="opencl"
  overlay_qsv_filter_deps="libmfx"
  overlay_qsv_filter_select="qsvvpp"
-+overlay_vaapi_filter_deps="vaapi"
- overlay_vulkan_filter_deps="vulkan libglslang"
++overlay_vaapi_filter_deps="vaapi VAProcPipelineCaps_blend_flags"
+ overlay_vulkan_filter_deps="vulkan spirv_compiler"
  owdenoise_filter_deps="gpl"
  pad_opencl_filter_deps="opencl"
-@@ -3662,6 +3663,7 @@ tonemap_vaapi_filter_deps="vaapi VAProcF
- tonemap_opencl_filter_deps="opencl const_nan"
- transpose_opencl_filter_deps="opencl"
- transpose_vaapi_filter_deps="vaapi VAProcPipelineCaps_rotation_flags"
-+overlay_vaapi_filter_deps="vaapi VAProcPipelineCaps_blend_flags"
- unsharp_opencl_filter_deps="opencl"
- uspp_filter_deps="gpl avcodec"
- vaguedenoiser_filter_deps="gpl"
-@@ -6712,6 +6714,7 @@ if enabled vaapi; then
+@@ -6896,6 +6897,7 @@ if enabled vaapi; then
      check_struct "va/va.h" "VADecPictureParameterBufferAV1" bit_depth_idx
      check_type   "va/va.h va/va_vpp.h" "VAProcFilterParameterBufferHDRToneMapping"
      check_struct "va/va.h va/va_vpp.h" "VAProcPipelineCaps" rotation_flags
@@ -30,31 +22,31 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -353,6 +353,7 @@ OBJS-$(CONFIG_OVERLAY_CUDA_FILTER)
+@@ -376,6 +376,7 @@ OBJS-$(CONFIG_OVERLAY_CUDA_FILTER)
  OBJS-$(CONFIG_OVERLAY_OPENCL_FILTER)         += vf_overlay_opencl.o opencl.o \
                                                  opencl/overlay.o framesync.o
  OBJS-$(CONFIG_OVERLAY_QSV_FILTER)            += vf_overlay_qsv.o framesync.o
 +OBJS-$(CONFIG_OVERLAY_VAAPI_FILTER)          += vf_overlay_vaapi.o framesync.o vaapi_vpp.o
- OBJS-$(CONFIG_OVERLAY_VULKAN_FILTER)         += vf_overlay_vulkan.o vulkan.o
+ OBJS-$(CONFIG_OVERLAY_VULKAN_FILTER)         += vf_overlay_vulkan.o vulkan.o vulkan_filter.o
  OBJS-$(CONFIG_OWDENOISE_FILTER)              += vf_owdenoise.o
  OBJS-$(CONFIG_PAD_FILTER)                    += vf_pad.o
 Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -336,6 +336,7 @@ extern AVFilter ff_vf_oscilloscope;
- extern AVFilter ff_vf_overlay;
- extern AVFilter ff_vf_overlay_opencl;
- extern AVFilter ff_vf_overlay_qsv;
-+extern AVFilter ff_vf_overlay_vaapi;
- extern AVFilter ff_vf_overlay_vulkan;
- extern AVFilter ff_vf_overlay_cuda;
- extern AVFilter ff_vf_owdenoise;
+@@ -360,6 +360,7 @@ extern const AVFilter ff_vf_oscilloscope
+ extern const AVFilter ff_vf_overlay;
+ extern const AVFilter ff_vf_overlay_opencl;
+ extern const AVFilter ff_vf_overlay_qsv;
++extern const AVFilter ff_vf_overlay_vaapi;
+ extern const AVFilter ff_vf_overlay_vulkan;
+ extern const AVFilter ff_vf_overlay_cuda;
+ extern const AVFilter ff_vf_owdenoise;
 Index: jellyfin-ffmpeg/libavfilter/vf_overlay_vaapi.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_overlay_vaapi.c
-@@ -0,0 +1,468 @@
+@@ -0,0 +1,464 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -74,8 +66,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_vaapi.c
 + */
 +#include <string.h>
 +
-+#include "libavutil/avassert.h"
-+#include "libavutil/mem.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/pixdesc.h"
 +
@@ -490,15 +480,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_vaapi.c
 +    {
 +        .name             = "main",
 +        .type             = AVMEDIA_TYPE_VIDEO,
-+        .get_video_buffer = ff_default_get_video_buffer,
++        .get_buffer.video = ff_default_get_video_buffer,
 +        .config_props     = &ff_vaapi_vpp_config_input,
 +    },
 +    {
 +        .name             = "overlay",
 +        .type             = AVMEDIA_TYPE_VIDEO,
-+        .get_video_buffer = ff_default_get_video_buffer,
++        .get_buffer.video = ff_default_get_video_buffer,
 +    },
-+    { NULL }
 +};
 +
 +static const AVFilterPad overlay_vaapi_outputs[] = {
@@ -507,19 +496,18 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_vaapi.c
 +        .type          = AVMEDIA_TYPE_VIDEO,
 +        .config_props  = &overlay_vaapi_config_output,
 +    },
-+    { NULL }
 +};
 +
-+AVFilter ff_vf_overlay_vaapi = {
++const AVFilter ff_vf_overlay_vaapi = {
 +    .name            = "overlay_vaapi",
 +    .description     = NULL_IF_CONFIG_SMALL("Overlay one video on top of another"),
 +    .priv_size       = sizeof(OverlayVAAPIContext),
 +    .priv_class      = &overlay_vaapi_class,
 +    .init            = &overlay_vaapi_init,
 +    .uninit          = &overlay_vaapi_uninit,
-+    .query_formats   = &overlay_vaapi_query_formats,
 +    .activate        = &overlay_vaapi_activate,
-+    .inputs          = overlay_vaapi_inputs,
-+    .outputs         = overlay_vaapi_outputs,
++    FILTER_INPUTS(overlay_vaapi_inputs),
++    FILTER_OUTPUTS(overlay_vaapi_outputs),
++    FILTER_QUERY_FUNC(overlay_vaapi_query_formats),
 +    .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
 +};

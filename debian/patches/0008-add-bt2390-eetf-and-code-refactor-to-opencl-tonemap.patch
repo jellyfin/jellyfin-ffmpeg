@@ -573,7 +573,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  #include <float.h>
  
  #include "libavutil/avassert.h"
-@@ -31,12 +32,36 @@
+@@ -30,12 +31,36 @@
  #include "video.h"
  #include "colorspace.h"
  
@@ -615,7 +615,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
  enum TonemapAlgorithm {
      TONEMAP_NONE,
-@@ -46,6 +71,7 @@ enum TonemapAlgorithm {
+@@ -45,6 +70,7 @@ enum TonemapAlgorithm {
      TONEMAP_REINHARD,
      TONEMAP_HABLE,
      TONEMAP_MOBIUS,
@@ -623,7 +623,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      TONEMAP_MAX,
  };
  
-@@ -57,23 +83,30 @@ typedef struct TonemapOpenCLContext {
+@@ -56,23 +82,30 @@ typedef struct TonemapOpenCLContext {
      enum AVColorPrimaries primaries, primaries_in, primaries_out;
      enum AVColorRange range, range_in, range_out;
      enum AVChromaLocation chroma_loc;
@@ -657,7 +657,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  };
  
  static const char *const delinearize_funcs[AVCOL_TRC_NB] = {
-@@ -99,8 +132,161 @@ static const char *const tonemap_func[TO
+@@ -98,8 +131,161 @@ static const char *const tonemap_func[TO
      [TONEMAP_REINHARD] = "reinhard",
      [TONEMAP_HABLE]    = "hable",
      [TONEMAP_MOBIUS]   = "mobius",
@@ -819,7 +819,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  static void get_rgb2rgb_matrix(enum AVColorPrimaries in, enum AVColorPrimaries out,
                                 double rgb2rgb[3][3]) {
      double rgb2xyz[3][3], xyz2rgb[3][3];
-@@ -111,23 +297,17 @@ static void get_rgb2rgb_matrix(enum AVCo
+@@ -110,23 +296,17 @@ static void get_rgb2rgb_matrix(enum AVCo
      ff_matrix_mul_3x3(rgb2rgb, rgb2xyz, xyz2rgb);
  }
  
@@ -846,7 +846,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
      switch(ctx->tonemap) {
      case TONEMAP_GAMMA:
-@@ -147,22 +327,25 @@ static int tonemap_opencl_init(AVFilterC
+@@ -146,22 +326,25 @@ static int tonemap_opencl_init(AVFilterC
      if (isnan(ctx->param))
          ctx->param = 1.0f;
  
@@ -878,7 +878,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      av_assert0(ctx->trc_out == AVCOL_TRC_BT709 ||
                 ctx->trc_out == AVCOL_TRC_BT2020_10);
      av_assert0(ctx->trc_in == AVCOL_TRC_SMPTE2084||
-@@ -172,22 +355,30 @@ static int tonemap_opencl_init(AVFilterC
+@@ -171,22 +354,30 @@ static int tonemap_opencl_init(AVFilterC
      av_assert0(ctx->primaries_in == AVCOL_PRI_BT2020 ||
                 ctx->primaries_in == AVCOL_PRI_BT709);
  
@@ -915,7 +915,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      if (ctx->range_in == AVCOL_RANGE_JPEG)
          av_bprintf(&header, "#define FULL_RANGE_IN\n");
  
-@@ -201,11 +392,10 @@ static int tonemap_opencl_init(AVFilterC
+@@ -200,11 +391,10 @@ static int tonemap_opencl_init(AVFilterC
      else
          ff_opencl_print_const_matrix_3x3(&header, "rgb2rgb", rgb2rgb);
  
@@ -928,7 +928,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
                 ctx->colorspace_in, av_color_space_name(ctx->colorspace_in));
          goto fail;
      }
-@@ -213,7 +403,7 @@ static int tonemap_opencl_init(AVFilterC
+@@ -212,7 +402,7 @@ static int tonemap_opencl_init(AVFilterC
      luma_dst = ff_get_luma_coefficients(ctx->colorspace_out);
      if (!luma_dst) {
          err = AVERROR(EINVAL);
@@ -937,7 +937,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
                 ctx->colorspace_out, av_color_space_name(ctx->colorspace_out));
          goto fail;
      }
-@@ -225,20 +415,27 @@ static int tonemap_opencl_init(AVFilterC
+@@ -224,20 +414,27 @@ static int tonemap_opencl_init(AVFilterC
      ff_matrix_invert_3x3(rgb2yuv, yuv2rgb);
      ff_opencl_print_const_matrix_3x3(&header, "rgb_matrix", yuv2rgb);
  
@@ -976,7 +976,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
      opencl_sources[0] = header.str;
-@@ -259,43 +456,78 @@ static int tonemap_opencl_init(AVFilterC
+@@ -258,43 +455,78 @@ static int tonemap_opencl_init(AVFilterC
      ctx->kernel = clCreateKernel(ctx->ocf.program, "tonemap", &cle);
      CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create kernel %d.\n", cle);
  
@@ -1075,7 +1075,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      ret = ff_opencl_filter_config_output(outlink);
      if (ret < 0)
          return ret;
-@@ -310,13 +542,36 @@ static int launch_kernel(AVFilterContext
+@@ -309,13 +541,36 @@ static int launch_kernel(AVFilterContext
      size_t global_work[2];
      size_t local_work[2];
      cl_int cle;
@@ -1114,7 +1114,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
      local_work[0]  = 16;
      local_work[1]  = 16;
-@@ -343,10 +598,6 @@ static int tonemap_opencl_filter_frame(A
+@@ -342,10 +597,6 @@ static int tonemap_opencl_filter_frame(A
      AVFrame *output = NULL;
      cl_int cle;
      int err;
@@ -1125,7 +1125,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(ctx, AV_LOG_DEBUG, "Filter input: %s, %ux%u (%"PRId64").\n",
             av_get_pix_fmt_name(input->format),
-@@ -365,8 +616,10 @@ static int tonemap_opencl_filter_frame(A
+@@ -364,8 +615,10 @@ static int tonemap_opencl_filter_frame(A
      if (err < 0)
          goto fail;
  
@@ -1138,7 +1138,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
      if (ctx->trc != -1)
          output->color_trc = ctx->trc;
-@@ -390,13 +643,8 @@ static int tonemap_opencl_filter_frame(A
+@@ -389,13 +642,8 @@ static int tonemap_opencl_filter_frame(A
      if (!ctx->initialised) {
          if (!(input->color_trc == AVCOL_TRC_SMPTE2084 ||
              input->color_trc == AVCOL_TRC_ARIB_STD_B67)) {
@@ -1154,7 +1154,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
              err = AVERROR(ENOSYS);
              goto fail;
          }
-@@ -406,15 +654,9 @@ static int tonemap_opencl_filter_frame(A
+@@ -405,15 +653,9 @@ static int tonemap_opencl_filter_frame(A
              goto fail;
      }
  
@@ -1172,7 +1172,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
      cle = clFinish(ctx->command_queue);
      CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to finish command queue: %d.\n", cle);
-@@ -423,31 +665,9 @@ static int tonemap_opencl_filter_frame(A
+@@ -422,31 +664,9 @@ static int tonemap_opencl_filter_frame(A
  
      ff_update_hdr_metadata(output, ctx->target_peak);
  
@@ -1205,7 +1205,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
      return ff_filter_frame(outlink, output);
  
-@@ -463,8 +683,6 @@ static av_cold void tonemap_opencl_unini
+@@ -462,8 +682,6 @@ static av_cold void tonemap_opencl_unini
      TonemapOpenCLContext *ctx = avctx->priv;
      cl_int cle;
  
@@ -1214,7 +1214,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      if (ctx->kernel) {
          cle = clReleaseKernel(ctx->kernel);
          if (cle != CL_SUCCESS)
-@@ -479,43 +697,54 @@ static av_cold void tonemap_opencl_unini
+@@ -478,43 +696,54 @@ static av_cold void tonemap_opencl_unini
                     "command queue: %d.\n", cle);
      }
  

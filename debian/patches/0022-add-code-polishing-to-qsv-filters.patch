@@ -2,10 +2,10 @@ Index: jellyfin-ffmpeg/libavcodec/qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/qsv.c
 +++ jellyfin-ffmpeg/libavcodec/qsv.c
-@@ -191,7 +191,7 @@ int ff_qsv_print_warning(void *log_ctx,
+@@ -179,7 +179,7 @@ int ff_qsv_print_warning(void *log_ctx,
+ {
      const char *desc;
-     int ret;
-     ret = ff_qsv_map_error(err, &desc);
+     int ret = qsv_map_error(err, &desc);
 -    av_log(log_ctx, AV_LOG_WARNING, "%s: %s (%d)\n", warning_string, desc, err);
 +    av_log(log_ctx, AV_LOG_VERBOSE, "%s: %s (%d)\n", warning_string, desc, err);
      return ret;
@@ -15,7 +15,7 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -231,7 +231,7 @@ OBJS-$(CONFIG_DECONVOLVE_FILTER)
+@@ -240,7 +240,7 @@ OBJS-$(CONFIG_DECONVOLVE_FILTER)
  OBJS-$(CONFIG_DEDOT_FILTER)                  += vf_dedot.o
  OBJS-$(CONFIG_DEFLATE_FILTER)                += vf_neighbor.o
  OBJS-$(CONFIG_DEFLICKER_FILTER)              += vf_deflicker.o
@@ -24,59 +24,20 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
  OBJS-$(CONFIG_DEINTERLACE_VAAPI_FILTER)      += vf_deinterlace_vaapi.o vaapi_vpp.o
  OBJS-$(CONFIG_DEJUDDER_FILTER)               += vf_dejudder.o
  OBJS-$(CONFIG_DELOGO_FILTER)                 += vf_delogo.o
-@@ -397,7 +397,7 @@ OBJS-$(CONFIG_SCALE_FILTER)
- OBJS-$(CONFIG_SCALE_CUDA_FILTER)             += vf_scale_cuda.o vf_scale_cuda.ptx.o scale_eval.o
+@@ -421,7 +421,7 @@ OBJS-$(CONFIG_SCALE_CUDA_FILTER)
+                                                 vf_scale_cuda.ptx.o cuda/load_helper.o
  OBJS-$(CONFIG_SCALE_NPP_FILTER)              += vf_scale_npp.o scale_eval.o
  OBJS-$(CONFIG_SCALE_OPENCL_FILTER)           += vf_scale_opencl.o opencl.o opencl/scale.o scale_eval.o
 -OBJS-$(CONFIG_SCALE_QSV_FILTER)              += vf_scale_qsv.o
 +OBJS-$(CONFIG_SCALE_QSV_FILTER)              += vf_vpp_qsv.o
  OBJS-$(CONFIG_SCALE_VAAPI_FILTER)            += vf_scale_vaapi.o scale_eval.o vaapi_vpp.o
- OBJS-$(CONFIG_SCALE_VULKAN_FILTER)           += vf_scale_vulkan.o vulkan.o
+ OBJS-$(CONFIG_SCALE_VULKAN_FILTER)           += vf_scale_vulkan.o vulkan.o vulkan_filter.o
  OBJS-$(CONFIG_SCALE2REF_FILTER)              += vf_scale.o scale_eval.o
 Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/qsvvpp.c
 +++ jellyfin-ffmpeg/libavfilter/qsvvpp.c
-@@ -36,38 +36,6 @@
-                                         MFX_MEMTYPE_VIDEO_MEMORY_PROCESSOR_TARGET))
- #define IS_OPAQUE_MEMORY(mode) (mode & MFX_MEMTYPE_OPAQUE_FRAME)
- #define IS_SYSTEM_MEMORY(mode) (mode & MFX_MEMTYPE_SYSTEM_MEMORY)
--
--typedef struct QSVFrame {
--    AVFrame          *frame;
--    mfxFrameSurface1 *surface;
--    mfxFrameSurface1  surface_internal;  /* for system memory */
--    struct QSVFrame  *next;
--} QSVFrame;
--
--/* abstract struct for all QSV filters */
--struct QSVVPPContext {
--    mfxSession          session;
--    int (*filter_frame) (AVFilterLink *outlink, AVFrame *frame);/* callback */
--    enum AVPixelFormat  out_sw_format;   /* Real output format */
--    mfxVideoParam       vpp_param;
--    mfxFrameInfo       *frame_infos;     /* frame info for each input */
--
--    /* members related to the input/output surface */
--    int                 in_mem_mode;
--    int                 out_mem_mode;
--    QSVFrame           *in_frame_list;
--    QSVFrame           *out_frame_list;
--    int                 nb_surface_ptrs_in;
--    int                 nb_surface_ptrs_out;
--    mfxFrameSurface1  **surface_ptrs_in;
--    mfxFrameSurface1  **surface_ptrs_out;
--
--    /* MFXVPP extern parameters */
--    mfxExtOpaqueSurfaceAlloc opaque_alloc;
--    mfxExtBuffer      **ext_buffers;
--    int                 nb_ext_buffers;
--};
--
- #define MFX_IMPL_VIA_MASK(impl) (0x0f00 & (impl))
- 
- static const AVRational default_tb = { 1, 90000 };
-@@ -172,7 +140,7 @@ int ff_qsvvpp_print_warning(void *log_ct
+@@ -140,7 +140,7 @@ int ff_qsvvpp_print_warning(void *log_ct
      const char *desc;
      int ret;
      ret = qsv_map_error(err, &desc);
@@ -85,7 +46,7 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
      return ret;
  }
  
-@@ -329,6 +297,14 @@ static int fill_frameinfo_by_link(mfxFra
+@@ -297,6 +297,14 @@ static int fill_frameinfo_by_link(mfxFra
      frameinfo->CropH          = link->h;
      frameinfo->FrameRateExtN  = link->frame_rate.num;
      frameinfo->FrameRateExtD  = link->frame_rate.den;
@@ -100,131 +61,11 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
      frameinfo->AspectRatioW   = link->sample_aspect_ratio.num ? link->sample_aspect_ratio.num : 1;
      frameinfo->AspectRatioH   = link->sample_aspect_ratio.den ? link->sample_aspect_ratio.den : 1;
  
-@@ -338,9 +314,11 @@ static int fill_frameinfo_by_link(mfxFra
- static void clear_unused_frames(QSVFrame *list)
- {
-     while (list) {
--        if (list->surface && !list->surface->Data.Locked) {
--            list->surface = NULL;
-+        /* list->queued==1 means the frame is not cached in VPP
-+         * process any more, it can be released to pool. */
-+        if ((list->queued == 1) && !list->surface.Data.Locked) {
-             av_frame_free(&list->frame);
-+            list->queued = 0;
-         }
-         list = list->next;
-     }
-@@ -363,8 +341,10 @@ static QSVFrame *get_free_frame(QSVFrame
-     QSVFrame *out = *list;
- 
-     for (; out; out = out->next) {
--        if (!out->surface)
-+        if (!out->queued) {
-+            out->queued = 1;
-             break;
-+        }
-     }
- 
-     if (!out) {
-@@ -373,8 +353,9 @@ static QSVFrame *get_free_frame(QSVFrame
-             av_log(NULL, AV_LOG_ERROR, "Can't alloc new output frame.\n");
-             return NULL;
-         }
--        out->next  = *list;
--        *list      = out;
-+        out->queued = 1;
-+        out->next   = *list;
-+        *list       = out;
-     }
- 
-     return out;
-@@ -404,7 +385,7 @@ static QSVFrame *submit_frame(QSVVPPCont
-             return NULL;
-         }
-         qsv_frame->frame   = av_frame_clone(picref);
--        qsv_frame->surface = (mfxFrameSurface1 *)qsv_frame->frame->data[3];
-+        qsv_frame->surface = *(mfxFrameSurface1 *)qsv_frame->frame->data[3];
-     } else {
-         /* make a copy if the input is not padded as libmfx requires */
-         if (picref->height & 31 || picref->linesize[0] & 31) {
-@@ -427,27 +408,26 @@ static QSVFrame *submit_frame(QSVVPPCont
-             qsv_frame->frame = av_frame_clone(picref);
- 
-         if (map_frame_to_surface(qsv_frame->frame,
--                                &qsv_frame->surface_internal) < 0) {
-+                                 &qsv_frame->surface) < 0) {
-             av_log(ctx, AV_LOG_ERROR, "Unsupported frame.\n");
-             return NULL;
-         }
--        qsv_frame->surface = &qsv_frame->surface_internal;
-     }
- 
--    qsv_frame->surface->Info           = s->frame_infos[FF_INLINK_IDX(inlink)];
--    qsv_frame->surface->Data.TimeStamp = av_rescale_q(qsv_frame->frame->pts,
-+    qsv_frame->surface.Info           = s->frame_infos[FF_INLINK_IDX(inlink)];
-+    qsv_frame->surface.Data.TimeStamp = av_rescale_q(qsv_frame->frame->pts,
-                                                       inlink->time_base, default_tb);
- 
--    qsv_frame->surface->Info.PicStruct =
-+    qsv_frame->surface.Info.PicStruct =
-             !qsv_frame->frame->interlaced_frame ? MFX_PICSTRUCT_PROGRESSIVE :
-             (qsv_frame->frame->top_field_first ? MFX_PICSTRUCT_FIELD_TFF :
-                                                  MFX_PICSTRUCT_FIELD_BFF);
-     if (qsv_frame->frame->repeat_pict == 1)
--        qsv_frame->surface->Info.PicStruct |= MFX_PICSTRUCT_FIELD_REPEATED;
-+        qsv_frame->surface.Info.PicStruct |= MFX_PICSTRUCT_FIELD_REPEATED;
-     else if (qsv_frame->frame->repeat_pict == 2)
--        qsv_frame->surface->Info.PicStruct |= MFX_PICSTRUCT_FRAME_DOUBLING;
-+        qsv_frame->surface.Info.PicStruct |= MFX_PICSTRUCT_FRAME_DOUBLING;
-     else if (qsv_frame->frame->repeat_pict == 4)
--        qsv_frame->surface->Info.PicStruct |= MFX_PICSTRUCT_FRAME_TRIPLING;
-+        qsv_frame->surface.Info.PicStruct |= MFX_PICSTRUCT_FRAME_TRIPLING;
- 
-     return qsv_frame;
- }
-@@ -478,7 +458,7 @@ static QSVFrame *query_frame(QSVVPPConte
-             return NULL;
-         }
- 
--        out_frame->surface = (mfxFrameSurface1 *)out_frame->frame->data[3];
-+        out_frame->surface = *(mfxFrameSurface1 *)out_frame->frame->data[3];
-     } else {
-         /* Get a frame with aligned dimensions.
-          * Libmfx need system memory being 128x64 aligned */
-@@ -489,16 +469,14 @@ static QSVFrame *query_frame(QSVVPPConte
-             return NULL;
- 
-         ret = map_frame_to_surface(out_frame->frame,
--                                  &out_frame->surface_internal);
-+                                   &out_frame->surface);
-         if (ret < 0)
-             return NULL;
--
--        out_frame->surface = &out_frame->surface_internal;
-     }
- 
-     out_frame->frame->width  = outlink->w;
-     out_frame->frame->height = outlink->h;
--    out_frame->surface->Info = s->vpp_param.vpp.Out;
-+    out_frame->surface.Info = s->vpp_param.vpp.Out;
- 
-     return out_frame;
- }
-@@ -671,16 +649,23 @@ static int init_vpp_session(AVFilterCont
-     return 0;
+@@ -651,16 +659,13 @@ static unsigned int qsv_fifo_size(const
+     return  av_fifo_size(fifo)/qsv_fifo_item_size();
  }
  
 -int ff_qsvvpp_create(AVFilterContext *avctx, QSVVPPContext **vpp, QSVVPPParam *param)
-+static unsigned int qsv_fifo_item_size(void)
-+{
-+    return sizeof(mfxSyncPoint) + sizeof(QSVFrame*);
-+}
-+
-+static unsigned int qsv_fifo_size(const AVFifoBuffer* fifo)
-+{
-+    return  av_fifo_size(fifo)/qsv_fifo_item_size();
-+}
-+
 +int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param)
  {
      int i;
@@ -240,25 +81,24 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
      s->filter_frame  = param->filter_frame;
      if (!s->filter_frame)
          s->filter_frame = ff_filter_frame;
-@@ -743,7 +728,16 @@ int ff_qsvvpp_create(AVFilterContext *av
-         s->vpp_param.ExtParam    = param->ext_buf;
+@@ -726,14 +731,13 @@ int ff_qsvvpp_create(AVFilterContext *av
+     s->got_frame = 0;
+ 
+     /** keep fifo size at least 1. Even when async_depth is 0, fifo is used. */
+-    s->async_fifo  = av_fifo_alloc((param->async_depth + 1) * qsv_fifo_item_size());
+-    s->async_depth = param->async_depth;
++    s->async_fifo  = av_fifo_alloc((s->async_depth + 1) * qsv_fifo_item_size());
+     if (!s->async_fifo) {
+         ret = AVERROR(ENOMEM);
+         goto failed;
      }
  
--    s->vpp_param.AsyncDepth = 1;
-+    s->got_frame = 0;
-+
-+    /** keep fifo size at least 1. Even when async_depth is 0, fifo is used. */
-+    s->async_fifo  = av_fifo_alloc((s->async_depth + 1) * qsv_fifo_item_size());
-+    if (!s->async_fifo) {
-+        ret = AVERROR(ENOMEM);
-+        goto failed;
-+    }
-+
+-    s->vpp_param.AsyncDepth = param->async_depth;
 +    s->vpp_param.AsyncDepth = s->async_depth;
  
      if (IS_SYSTEM_MEMORY(s->in_mem_mode))
          s->vpp_param.IOPattern |= MFX_IOPATTERN_IN_SYSTEM_MEMORY;
-@@ -770,27 +764,26 @@ int ff_qsvvpp_create(AVFilterContext *av
+@@ -760,27 +764,26 @@ int ff_qsvvpp_create(AVFilterContext *av
      } else if (ret > 0)
          ff_qsvvpp_print_warning(avctx, ret, "Warning When creating qsvvpp");
  
@@ -292,64 +132,31 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
      /* release all the resources */
      clear_frame_list(&s->in_frame_list);
      clear_frame_list(&s->out_frame_list);
-@@ -798,7 +791,7 @@ int ff_qsvvpp_free(QSVVPPContext **vpp)
-     av_freep(&s->surface_ptrs_out);
+@@ -789,7 +792,6 @@ int ff_qsvvpp_free(QSVVPPContext **vpp)
      av_freep(&s->ext_buffers);
      av_freep(&s->frame_infos);
+     av_fifo_free(s->async_fifo);
 -    av_freep(vpp);
-+    av_fifo_free(s->async_fifo);
  
      return 0;
  }
-@@ -808,8 +801,29 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
-     AVFilterContext  *ctx     = inlink->dst;
+@@ -800,7 +802,8 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
      AVFilterLink     *outlink = ctx->outputs[0];
      mfxSyncPoint      sync;
--    QSVFrame         *in_frame, *out_frame;
+     QSVFrame         *in_frame, *out_frame, *tmp;
 -    int               ret, filter_ret;
-+    QSVFrame         *in_frame, *out_frame, *tmp;
 +    int               ret, ret1, filter_ret;
 +    int64_t           dpts = 0;
-+
-+    while (s->eof && qsv_fifo_size(s->async_fifo)) {
-+        av_fifo_generic_read(s->async_fifo, &tmp, sizeof(tmp), NULL);
-+        av_fifo_generic_read(s->async_fifo, &sync, sizeof(sync), NULL);
-+        if (MFXVideoCORE_SyncOperation(s->session, sync, 1000) < 0)
-+            av_log(ctx, AV_LOG_WARNING, "Sync failed.\n");
-+
-+        filter_ret = s->filter_frame(outlink, tmp->frame);
-+        if (filter_ret < 0) {
-+            av_frame_free(&tmp->frame);
-+            ret = filter_ret;
-+            break;
-+        }
-+        tmp->queued--;
-+        s->got_frame = 1;
-+        tmp->frame = NULL;
-+    };
-+
-+    if (!picref)
-+        return 0;
  
-     in_frame = submit_frame(s, inlink, picref);
-     if (!in_frame) {
-@@ -826,8 +840,8 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
-         }
- 
-         do {
--            ret = MFXVideoVPP_RunFrameVPPAsync(s->session, in_frame->surface,
--                                               out_frame->surface, NULL, &sync);
-+            ret = MFXVideoVPP_RunFrameVPPAsync(s->session, &in_frame->surface,
-+                                               &out_frame->surface, NULL, &sync);
-             if (ret == MFX_WRN_DEVICE_BUSY)
-                 av_usleep(500);
-         } while (ret == MFX_WRN_DEVICE_BUSY);
-@@ -839,20 +853,63 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
+     while (s->eof && qsv_fifo_size(s->async_fifo)) {
+         av_fifo_generic_read(s->async_fifo, &tmp, sizeof(tmp), NULL);
+@@ -848,21 +851,49 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
+                 return AVERROR(EAGAIN);
              break;
          }
- 
--        if (MFXVideoCORE_SyncOperation(s->session, sync, 1000) < 0)
--            av_log(ctx, AV_LOG_WARNING, "Sync failed.\n");
+-        out_frame->frame->pts = av_rescale_q(out_frame->surface.Data.TimeStamp,
+-                                             default_tb, outlink->time_base);
++
 +        if (in_frame->frame->color_primaries != -1)
 +            out_frame->frame->color_primaries = in_frame->frame->color_primaries;
 +        if (in_frame->frame->color_trc != -1)
@@ -358,18 +165,11 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
 +            out_frame->frame->colorspace = in_frame->frame->colorspace;
 +        if (in_frame->frame->color_range != -1)
 +            out_frame->frame->color_range = in_frame->frame->color_range;
- 
--        out_frame->frame->pts = av_rescale_q(out_frame->surface->Data.TimeStamp,
--                                             default_tb, outlink->time_base);
++
 +        ret = av_frame_copy_side_data(out_frame->frame, in_frame->frame, 0);
 +        if (ret < 0)
 +            return ret;
- 
--        filter_ret = s->filter_frame(outlink, out_frame->frame);
--        if (filter_ret < 0) {
--            av_frame_free(&out_frame->frame);
--            ret = filter_ret;
--            break;
++
 +        /* TODO: calculate the PTS for other cases */
 +        if (s->deinterlace_enabled &&
 +            s->last_in_pts != AV_NOPTS_VALUE &&
@@ -382,16 +182,19 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
 +        out_frame->frame->pts = av_rescale_q(in_frame->frame->pts - dpts,
 +                                             inlink->time_base,
 +                                             outlink->time_base);
-+
-+        out_frame->queued++;
-+        av_fifo_generic_write(s->async_fifo, &out_frame, sizeof(out_frame), NULL);
-+        av_fifo_generic_write(s->async_fifo, &sync, sizeof(sync), NULL);
-+
-+        if (qsv_fifo_size(s->async_fifo) > s->async_depth) {
-+            av_fifo_generic_read(s->async_fifo, &tmp, sizeof(tmp), NULL);
-+            av_fifo_generic_read(s->async_fifo, &sync, sizeof(sync), NULL);
-+
-+            do {
+ 
+         out_frame->queued++;
+         av_fifo_generic_write(s->async_fifo, &out_frame, sizeof(out_frame), NULL);
+         av_fifo_generic_write(s->async_fifo, &sync, sizeof(sync), NULL);
+ 
+-
+         if (qsv_fifo_size(s->async_fifo) > s->async_depth) {
+             av_fifo_generic_read(s->async_fifo, &tmp, sizeof(tmp), NULL);
+             av_fifo_generic_read(s->async_fifo, &sync, sizeof(sync), NULL);
+ 
+             do {
+-                ret = MFXVideoCORE_SyncOperation(s->session, sync, 1000);
+-            } while (ret == MFX_WRN_IN_EXECUTION);
 +                ret1 = MFXVideoCORE_SyncOperation(s->session, sync, 1000);
 +            } while (ret1 == MFX_WRN_IN_EXECUTION);
 +
@@ -399,87 +202,58 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
 +                ret = ret1;
 +                break;
 +            }
-+
-+            filter_ret = s->filter_frame(outlink, tmp->frame);
-+            if (filter_ret < 0) {
-+                av_frame_free(&tmp->frame);
-+                ret = filter_ret;
-+                break;
-+            }
-+
-+            tmp->queued--;
-+            s->got_frame = 1;
-+            tmp->frame = NULL;
+ 
+             filter_ret = s->filter_frame(outlink, tmp->frame);
+             if (filter_ret < 0) {
+@@ -874,12 +905,9 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
+             s->got_frame = 1;
+             tmp->frame = NULL;
          }
--        out_frame->frame = NULL;
 -    } while(ret == MFX_ERR_MORE_SURFACE);
 +    } while (ret == MFX_ERR_MORE_SURFACE);
-+
+ 
+-    if (ret < 0)
+-        return ff_qsvvpp_print_error(ctx, ret, "Error running VPP");
+-    else if (ret > 0)
+-        ff_qsvvpp_print_warning(ctx, ret, "Warning in running VPP");
 +    s->last_in_pts = in_frame->frame->pts;
  
-     return ret;
- }
+-    return 0;
+-}
++    return ret;
++}
+\ No newline at end of file
 Index: jellyfin-ffmpeg/libavfilter/qsvvpp.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/qsvvpp.h
 +++ jellyfin-ffmpeg/libavfilter/qsvvpp.h
-@@ -27,6 +27,7 @@
- #include <mfx/mfxvideo.h>
+@@ -48,6 +48,8 @@ typedef struct QSVFrame {
+ } QSVFrame;
  
- #include "avfilter.h"
-+#include "libavutil/fifo.h"
- 
- #define FF_INLINK_IDX(link)  ((int)((link)->dstpad - (link)->dst->input_pads))
- #define FF_OUTLINK_IDX(link) ((int)((link)->srcpad - (link)->src->output_pads))
-@@ -39,7 +40,46 @@
-     ((MFX_VERSION.Major > (MAJOR)) ||                           \
-     (MFX_VERSION.Major == (MAJOR) && MFX_VERSION.Minor >= (MINOR)))
- 
--typedef struct QSVVPPContext QSVVPPContext;
-+typedef struct QSVFrame {
-+    AVFrame          *frame;
-+    mfxFrameSurface1 surface;
-+    struct QSVFrame  *next;
-+    int queued;
-+} QSVFrame;
-+
-+typedef struct QSVVPPContext {
+ typedef struct QSVVPPContext {
 +    const AVClass      *class;
 +
-+    mfxSession          session;
-+    int (*filter_frame) (AVFilterLink *outlink, AVFrame *frame); /**< callback */
-+    enum AVPixelFormat  out_sw_format;   /**< Real output format */
-+    mfxVideoParam       vpp_param;
-+    mfxFrameInfo       *frame_infos;     /**< frame info for each input */
-+
-+    /** members related to the input/output surface */
-+    int                 in_mem_mode;
-+    int                 out_mem_mode;
-+    QSVFrame           *in_frame_list;
-+    QSVFrame           *out_frame_list;
-+    int                 nb_surface_ptrs_in;
-+    int                 nb_surface_ptrs_out;
-+    mfxFrameSurface1  **surface_ptrs_in;
-+    mfxFrameSurface1  **surface_ptrs_out;
-+
-+    /** MFXVPP extern parameters */
-+    mfxExtOpaqueSurfaceAlloc opaque_alloc;
-+    mfxExtBuffer      **ext_buffers;
-+    int                 nb_ext_buffers;
-+
-+    int got_frame;
-+    int async_depth;
-+    int eof;
+     mfxSession          session;
+     int (*filter_frame) (AVFilterLink *outlink, AVFrame *frame); /**< callback */
+     enum AVPixelFormat  out_sw_format;   /**< Real output format */
+@@ -72,8 +74,11 @@ typedef struct QSVVPPContext {
+     int got_frame;
+     int async_depth;
+     int eof;
 +    int deinterlace_enabled;
-+    /** order with frame_out, sync */
-+    AVFifoBuffer *async_fifo;
+     /** order with frame_out, sync */
+     AVFifoBuffer *async_fifo;
 +
 +    int64_t last_in_pts;
-+} QSVVPPContext;
+ } QSVVPPContext;
  
  typedef struct QSVVPPCrop {
-     int in_idx;        ///< Input index
-@@ -63,10 +103,10 @@ typedef struct QSVVPPParam {
+@@ -95,15 +100,13 @@ typedef struct QSVVPPParam {
+     /* Crop information for each input, if needed */
+     int num_crop;
+     QSVVPPCrop *crop;
+-
+-   int async_depth;
  } QSVVPPParam;
  
  /* create and initialize the QSV session */
@@ -492,11 +266,18 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.h
  
  /* vpp filter frame and call the cb if needed */
  int ff_qsvvpp_filter_frame(QSVVPPContext *vpp, AVFilterLink *inlink, AVFrame *frame);
+@@ -117,4 +120,4 @@ int ff_qsvvpp_print_error(void *log_ctx,
+ int ff_qsvvpp_print_warning(void *log_ctx, mfxStatus err,
+                             const char *warning_string);
+ 
+-#endif /* AVFILTER_QSVVPP_H */
++#endif /* AVFILTER_QSVVPP_H */
+\ No newline at end of file
 Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_deinterlace_qsv.c
 +++ /dev/null
-@@ -1,625 +0,0 @@
+@@ -1,601 +0,0 @@
 -/*
 - * This file is part of FFmpeg.
 - *
@@ -547,14 +328,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -    QSVDEINT_MORE_OUTPUT = 1,
 -    QSVDEINT_MORE_INPUT,
 -};
--
--typedef struct QSVFrame {
--    AVFrame *frame;
--    mfxFrameSurface1 surface;
--    int used;
--
--    struct QSVFrame *next;
--} QSVFrame;
 -
 -typedef struct QSVDeintContext {
 -    const AVClass *class;
@@ -608,20 +381,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -
 -    av_freep(&s->surface_ptrs);
 -    s->nb_surface_ptrs = 0;
--}
--
--static int qsvdeint_query_formats(AVFilterContext *ctx)
--{
--    static const enum AVPixelFormat pixel_formats[] = {
--        AV_PIX_FMT_QSV, AV_PIX_FMT_NONE,
--    };
--    AVFilterFormats *pix_fmts  = ff_make_format_list(pixel_formats);
--    int ret;
--
--    if ((ret = ff_set_common_formats(ctx, pix_fmts)) < 0)
--        return ret;
--
--    return 0;
 -}
 -
 -static mfxStatus frame_alloc(mfxHDL pthis, mfxFrameAllocRequest *req,
@@ -745,8 +504,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -    s->ext_buffers[s->num_ext_buffers++] = (mfxExtBuffer *)&s->deint_conf;
 -
 -    if (opaque) {
--        s->surface_ptrs = av_mallocz_array(hw_frames_hwctx->nb_surfaces,
--                                           sizeof(*s->surface_ptrs));
+-        s->surface_ptrs = av_calloc(hw_frames_hwctx->nb_surfaces,
+-                                    sizeof(*s->surface_ptrs));
 -        if (!s->surface_ptrs)
 -            return AVERROR(ENOMEM);
 -        for (i = 0; i < hw_frames_hwctx->nb_surfaces; i++)
@@ -775,8 +534,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -            .Free   = frame_free,
 -        };
 -
--        s->mem_ids = av_mallocz_array(hw_frames_hwctx->nb_surfaces,
--                                      sizeof(*s->mem_ids));
+-        s->mem_ids = av_calloc(hw_frames_hwctx->nb_surfaces,
+-                               sizeof(*s->mem_ids));
 -        if (!s->mem_ids)
 -            return AVERROR(ENOMEM);
 -        for (i = 0; i < hw_frames_hwctx->nb_surfaces; i++)
@@ -881,7 +640,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -    while (cur) {
 -        if (!cur->surface.Data.Locked) {
 -            av_frame_free(&cur->frame);
--            cur->used = 0;
+-            cur->queued = 0;
 -        }
 -        cur = cur->next;
 -    }
@@ -896,7 +655,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -    frame = s->work_frames;
 -    last  = &s->work_frames;
 -    while (frame) {
--        if (!frame->used) {
+-        if (!frame->queued) {
 -            *f = frame;
 -            return 0;
 -        }
@@ -958,7 +717,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -                                              (AVRational){1, 90000});
 -
 -    *surface = &qf->surface;
--    qf->used = 1;
+-    qf->queued = 1;
 -
 -    return 0;
 -}
@@ -1094,7 +853,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -        .type         = AVMEDIA_TYPE_VIDEO,
 -        .filter_frame = qsvdeint_filter_frame,
 -    },
--    { NULL }
 -};
 -
 -static const AVFilterPad qsvdeint_outputs[] = {
@@ -1104,21 +862,20 @@ Index: jellyfin-ffmpeg/libavfilter/vf_deinterlace_qsv.c
 -        .config_props  = qsvdeint_config_props,
 -        .request_frame = qsvdeint_request_frame,
 -    },
--    { NULL }
 -};
 -
--AVFilter ff_vf_deinterlace_qsv = {
+-const AVFilter ff_vf_deinterlace_qsv = {
 -    .name      = "deinterlace_qsv",
 -    .description = NULL_IF_CONFIG_SMALL("QuickSync video deinterlacing"),
 -
 -    .uninit        = qsvdeint_uninit,
--    .query_formats = qsvdeint_query_formats,
 -
 -    .priv_size = sizeof(QSVDeintContext),
 -    .priv_class = &qsvdeint_class,
 -
--    .inputs    = qsvdeint_inputs,
--    .outputs   = qsvdeint_outputs,
+-    FILTER_INPUTS(qsvdeint_inputs),
+-    FILTER_OUTPUTS(qsvdeint_outputs),
+-    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_QSV),
 -
 -    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 -};
@@ -1126,7 +883,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_overlay_qsv.c
 +++ jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
-@@ -58,10 +58,9 @@ enum var_name {
+@@ -57,10 +57,9 @@ enum var_name {
  };
  
  typedef struct QSVOverlayContext {
@@ -1138,37 +895,98 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
      QSVVPPParam        qsv_param;
      mfxExtVPPComposite comp_conf;
      double             var_values[VAR_VARS_NB];
-@@ -231,7 +230,7 @@ static int config_overlay_input(AVFilter
+@@ -229,40 +228,51 @@ static int config_overlay_input(AVFilter
+ 
  static int process_frame(FFFrameSync *fs)
  {
-     AVFilterContext *ctx = fs->parent;
--    QSVOverlayContext *s = fs->opaque;
+-    AVFilterContext  *ctx = fs->parent;
+-    QSVOverlayContext  *s = fs->opaque;
+-    AVFrame        *frame = NULL;
+-    int               ret = 0, i;
++    AVFilterContext *ctx = fs->parent;
 +    QSVVPPContext   *qsv = fs->opaque;
-     AVFilterLink    *in0 = ctx->inputs[0];
-     AVFilterLink    *in1 = ctx->inputs[1];
-     AVFrame        *main = NULL;
-@@ -249,14 +248,17 @@ static int process_frame(FFFrameSync *fs
-         return AVERROR_BUG;
++    AVFilterLink    *in0 = ctx->inputs[0];
++    AVFilterLink    *in1 = ctx->inputs[1];
++    AVFrame        *main = NULL;
++    AVFrame     *overlay = NULL;
++    int              ret = 0;
  
-     /* composite main frame */
--    ret = ff_qsvvpp_filter_frame(s->qsv, in0, main);
+-    for (i = 0; i < ctx->nb_inputs; i++) {
+-        ret = ff_framesync_get_frame(fs, i, &frame, 0);
+-        if (ret == 0)
+-            ret = ff_qsvvpp_filter_frame(s->qsv, ctx->inputs[i], frame);
+-        if (ret < 0 && ret != AVERROR(EAGAIN))
+-            break;
+-    }
++    ret = ff_framesync_get_frame(fs, 0, &main, 0);
++    if (ret < 0)
++        return ret;
++    ret = ff_framesync_get_frame(fs, 1, &overlay, 0);
++    if (ret < 0)
++        return ret;
+ 
+-    return ret;
++    if (!main)
++        return AVERROR_BUG;
++
++    /* composite main frame */
 +    ret = ff_qsvvpp_filter_frame(qsv, in0, main);
-     if (ret < 0 && ret != AVERROR(EAGAIN))
-         return ret;
- 
++    if (ret < 0 && ret != AVERROR(EAGAIN))
++        return ret;
++
 +    /* remove all side data of the overlay frame*/
 +    if (overlay)
 +        av_frame_remove_all_side_data(overlay);
 +
-     /* composite overlay frame */
-     /* or overwrite main frame again if the overlay frame isn't ready yet */
--    ret = ff_qsvvpp_filter_frame(s->qsv, overlay ? in1 : in0, overlay ? overlay : main);
--    return ret;
++    /* composite overlay frame */
++    /* or overwrite main frame again if the overlay frame isn't ready yet */
 +    return ff_qsvvpp_filter_frame(qsv, overlay ? in1 : in0, overlay ? overlay : main);
  }
  
  static int init_framesync(AVFilterContext *ctx)
-@@ -300,7 +302,7 @@ static int config_output(AVFilterLink *o
+ {
+-    QSVOverlayContext *s = ctx->priv;
+-    int ret, i;
++    QSVOverlayContext  *s = ctx->priv;
++    AVFilterLink *outlink = ctx->outputs[0];
++    int ret;
+ 
+-    s->fs.on_event = process_frame;
+-    s->fs.opaque   = s;
+-    ret = ff_framesync_init(&s->fs, ctx, ctx->nb_inputs);
++    ret = ff_framesync_init_dualinput(&s->fs, ctx);
+     if (ret < 0)
+         return ret;
+ 
+-    for (i = 0; i < ctx->nb_inputs; i++) {
+-        FFFrameSyncIn *in = &s->fs.in[i];
+-        in->before    = EXT_STOP;
+-        in->after     = EXT_INFINITY;
+-        in->sync      = i ? 1 : 2;
+-        in->time_base = ctx->inputs[i]->time_base;
+-    }
++    s->fs.time_base = outlink->time_base;
++    s->fs.on_event  = process_frame;
++    s->fs.opaque    = s;
+ 
+     return ff_framesync_configure(&s->fs);
+ }
+@@ -280,14 +290,6 @@ static int config_output(AVFilterLink *o
+         (in0->format != AV_PIX_FMT_QSV && in1->format == AV_PIX_FMT_QSV)) {
+         av_log(ctx, AV_LOG_ERROR, "Mixing hardware and software pixel formats is not supported.\n");
+         return AVERROR(EINVAL);
+-    } else if (in0->format == AV_PIX_FMT_QSV) {
+-        AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)in0->hw_frames_ctx->data;
+-        AVHWFramesContext *hw_frame1 = (AVHWFramesContext *)in1->hw_frames_ctx->data;
+-
+-        if (hw_frame0->device_ctx != hw_frame1->device_ctx) {
+-            av_log(ctx, AV_LOG_ERROR, "Inputs with different underlying QSV devices are forbidden.\n");
+-            return AVERROR(EINVAL);
+-        }
+     }
+ 
+     outlink->w          = vpp->var_values[VAR_MW];
+@@ -299,7 +301,7 @@ static int config_output(AVFilterLink *o
      if (ret < 0)
          return ret;
  
@@ -1177,7 +995,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
  }
  
  /*
-@@ -349,7 +351,7 @@ static av_cold void overlay_qsv_uninit(A
+@@ -348,7 +350,7 @@ static av_cold void overlay_qsv_uninit(A
  {
      QSVOverlayContext *vpp = ctx->priv;
  
@@ -1186,11 +1004,18 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
      ff_framesync_uninit(&vpp->fs);
      av_freep(&vpp->comp_conf.InputStream);
      av_freep(&vpp->qsv_param.ext_buf);
+@@ -426,4 +428,4 @@ const AVFilter ff_vf_overlay_qsv = {
+     FILTER_QUERY_FUNC(overlay_qsv_query_formats),
+     .priv_class     = &overlay_qsv_class,
+     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+-};
++};
+\ No newline at end of file
 Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_scale_qsv.c
 +++ /dev/null
-@@ -1,693 +0,0 @@
+@@ -1,675 +0,0 @@
 -/*
 - * This file is part of FFmpeg.
 - *
@@ -1349,20 +1174,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 -    s->nb_surface_ptrs_out = 0;
 -}
 -
--static int qsvscale_query_formats(AVFilterContext *ctx)
--{
--    static const enum AVPixelFormat pixel_formats[] = {
--        AV_PIX_FMT_QSV, AV_PIX_FMT_NONE,
--    };
--    AVFilterFormats *pix_fmts  = ff_make_format_list(pixel_formats);
--    int ret;
--
--    if ((ret = ff_set_common_formats(ctx, pix_fmts)) < 0)
--        return ret;
--
--    return 0;
--}
--
 -static int init_out_pool(AVFilterContext *ctx,
 -                         int out_width, int out_height)
 -{
@@ -1468,7 +1279,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 -    return MFX_ERR_NONE;
 -}
 -
--static int init_out_session(AVFilterContext *ctx, int in_width, int in_height)
+-static int init_out_session(AVFilterContext *ctx)
 -{
 -
 -    QSVScaleContext                   *s = ctx->priv;
@@ -1541,16 +1352,16 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 -    memset(&par, 0, sizeof(par));
 -
 -    if (opaque) {
--        s->surface_ptrs_in = av_mallocz_array(in_frames_hwctx->nb_surfaces,
--                                              sizeof(*s->surface_ptrs_in));
+-        s->surface_ptrs_in = av_calloc(in_frames_hwctx->nb_surfaces,
+-                                       sizeof(*s->surface_ptrs_in));
 -        if (!s->surface_ptrs_in)
 -            return AVERROR(ENOMEM);
 -        for (i = 0; i < in_frames_hwctx->nb_surfaces; i++)
 -            s->surface_ptrs_in[i] = in_frames_hwctx->surfaces + i;
 -        s->nb_surface_ptrs_in = in_frames_hwctx->nb_surfaces;
 -
--        s->surface_ptrs_out = av_mallocz_array(out_frames_hwctx->nb_surfaces,
--                                               sizeof(*s->surface_ptrs_out));
+-        s->surface_ptrs_out = av_calloc(out_frames_hwctx->nb_surfaces,
+-                                        sizeof(*s->surface_ptrs_out));
 -        if (!s->surface_ptrs_out)
 -            return AVERROR(ENOMEM);
 -        for (i = 0; i < out_frames_hwctx->nb_surfaces; i++)
@@ -1581,19 +1392,16 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 -            .Free   = frame_free,
 -        };
 -
--        s->mem_ids_in = av_mallocz_array(in_frames_hwctx->nb_surfaces,
--                                         sizeof(*s->mem_ids_in));
+-        s->mem_ids_in = av_calloc(in_frames_hwctx->nb_surfaces,
+-                                  sizeof(*s->mem_ids_in));
 -        if (!s->mem_ids_in)
 -            return AVERROR(ENOMEM);
--        for (i = 0; i < in_frames_hwctx->nb_surfaces; i++) {
+-        for (i = 0; i < in_frames_hwctx->nb_surfaces; i++)
 -            s->mem_ids_in[i] = in_frames_hwctx->surfaces[i].Data.MemId;
--            in_frames_hwctx->surfaces[i].Info.CropW = in_width;
--            in_frames_hwctx->surfaces[i].Info.CropH = in_height;
--        }
 -        s->nb_mem_ids_in = in_frames_hwctx->nb_surfaces;
 -
--        s->mem_ids_out = av_mallocz_array(out_frames_hwctx->nb_surfaces,
--                                          sizeof(*s->mem_ids_out));
+-        s->mem_ids_out = av_calloc(out_frames_hwctx->nb_surfaces,
+-                                   sizeof(*s->mem_ids_out));
 -        if (!s->mem_ids_out)
 -            return AVERROR(ENOMEM);
 -        for (i = 0; i < out_frames_hwctx->nb_surfaces; i++)
@@ -1661,7 +1469,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 -    if (ret < 0)
 -        return ret;
 -
--    ret = init_out_session(ctx, in_width, in_height);
+-    ret = init_out_session(ctx);
 -    if (ret < 0)
 -        return ret;
 -
@@ -1856,7 +1664,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 -        .type         = AVMEDIA_TYPE_VIDEO,
 -        .filter_frame = qsvscale_filter_frame,
 -    },
--    { NULL }
 -};
 -
 -static const AVFilterPad qsvscale_outputs[] = {
@@ -1865,22 +1672,22 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 -        .type         = AVMEDIA_TYPE_VIDEO,
 -        .config_props = qsvscale_config_props,
 -    },
--    { NULL }
 -};
 -
--AVFilter ff_vf_scale_qsv = {
+-const AVFilter ff_vf_scale_qsv = {
 -    .name      = "scale_qsv",
 -    .description = NULL_IF_CONFIG_SMALL("QuickSync video scaling and format conversion"),
 -
 -    .init          = qsvscale_init,
 -    .uninit        = qsvscale_uninit,
--    .query_formats = qsvscale_query_formats,
 -
 -    .priv_size = sizeof(QSVScaleContext),
 -    .priv_class = &qsvscale_class,
 -
--    .inputs    = qsvscale_inputs,
--    .outputs   = qsvscale_outputs,
+-    FILTER_INPUTS(qsvscale_inputs),
+-    FILTER_OUTPUTS(qsvscale_outputs),
+-
+-    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_QSV),
 -
 -    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 -};
@@ -1888,25 +1695,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_vpp_qsv.c
 +++ jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
-@@ -32,6 +32,7 @@
- #include "formats.h"
- #include "internal.h"
- #include "avfilter.h"
-+#include "filters.h"
- #include "libavcodec/avcodec.h"
- #include "libavformat/avformat.h"
- 
-@@ -42,14 +43,13 @@
- #define FLAGS (AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM)
- 
- /* number of video enhancement filters */
--#define ENH_FILTERS_COUNT (7)
--#define QSV_HAVE_ROTATION  QSV_VERSION_ATLEAST(1, 17)
--#define QSV_HAVE_MIRRORING QSV_VERSION_ATLEAST(1, 19)
-+#define ENH_FILTERS_COUNT (8)
-+#define QSV_HAVE_ROTATION       QSV_VERSION_ATLEAST(1, 17)
-+#define QSV_HAVE_MIRRORING      QSV_VERSION_ATLEAST(1, 19)
-+#define QSV_HAVE_SCALING_CONFIG QSV_VERSION_ATLEAST(1, 19)
+@@ -50,9 +50,7 @@
+ #define QSV_HAVE_SCALING_CONFIG QSV_VERSION_ATLEAST(1, 19)
  
  typedef struct VPPContext{
 -    const AVClass *class;
@@ -1916,13 +1706,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  
      /* Video Enhancement Algorithms */
      mfxExtVPPDeinterlacing  deinterlace_conf;
-@@ -59,7 +59,15 @@ typedef struct VPPContext{
-     mfxExtVPPProcAmp procamp_conf;
-     mfxExtVPPRotation rotation_conf;
-     mfxExtVPPMirroring mirroring_conf;
-+#ifdef QSV_HAVE_SCALING_CONFIG
-+    mfxExtVPPScaling scale_conf;
-+#endif
+@@ -66,6 +64,11 @@ typedef struct VPPContext{
+     mfxExtVPPScaling scale_conf;
+ #endif
  
 +    /**
 +     * New dimensions. Special values are:
@@ -1932,24 +1718,25 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      int out_width;
      int out_height;
      /**
-@@ -83,8 +91,10 @@ typedef struct VPPContext{
-     int rotate;                 /* rotate angle : [0, 90, 180, 270] */
-     int hflip;                  /* flip mode : 0 = off, 1 = HORIZONTAL flip */
+@@ -92,7 +95,7 @@ typedef struct VPPContext{
+     int scale_mode;             /* scale mode : 0 = auto, 1 = low power, 2 = high quality */
  
-+    int scale_mode;             /* scale mode : 0 = auto, 1 = low power, 2 = high quality */
-+
      /* param for the procamp */
 -    int    procamp;            /* enable procamp */
 +    int    procamp;             /* enable procamp */
      float  hue;
      float  saturation;
      float  contrast;
-@@ -93,44 +103,10 @@ typedef struct VPPContext{
-     char *cx, *cy, *cw, *ch;
+@@ -102,50 +105,10 @@ typedef struct VPPContext{
      char *ow, *oh;
      char *output_format_str;
--} VPPContext;
--
+ 
+-    int async_depth;
+-    int eof;
++    int has_passthrough;        /* apply pass through mode if possible */
++    int field_rate;             /* deinterlace mode */
+ } VPPContext;
+ 
 -static const AVOption options[] = {
 -    { "deinterlace", "deinterlace mode: 0=off, 1=bob, 2=advanced", OFFSET(deinterlace), AV_OPT_TYPE_INT,      { .i64 = 0 }, 0, MFX_DEINTERLACING_ADVANCED, .flags = FLAGS, "deinterlace" },
 -    { "bob",         "Bob deinterlace mode.",                      0,                   AV_OPT_TYPE_CONST,    { .i64 = MFX_DEINTERLACING_BOB },            .flags = FLAGS, "deinterlace" },
@@ -1963,7 +1750,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 -    { "saturation",  "ProcAmp saturation",           OFFSET(saturation),  AV_OPT_TYPE_FLOAT,    { .dbl = 1.0 }, 0.0, 10.0, .flags = FLAGS},
 -    { "contrast",    "ProcAmp contrast",             OFFSET(contrast),    AV_OPT_TYPE_FLOAT,    { .dbl = 1.0 }, 0.0, 10.0, .flags = FLAGS},
 -    { "brightness",  "ProcAmp brightness",           OFFSET(brightness),  AV_OPT_TYPE_FLOAT,    { .dbl = 0.0 }, -100.0, 100.0, .flags = FLAGS},
- 
+-
 -    { "transpose",  "set transpose direction",       OFFSET(transpose),   AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, 6, FLAGS, "transpose"},
 -        { "cclock_hflip",  "rotate counter-clockwise with horizontal flip",  0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK_FLIP }, .flags=FLAGS, .unit = "transpose" },
 -        { "clock",         "rotate clockwise",                               0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK       }, .flags=FLAGS, .unit = "transpose" },
@@ -1983,16 +1770,17 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 -    { "h",      "Output video height", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
 -    { "height", "Output video height", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
 -    { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
--
+-    { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(async_depth), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, .flags = FLAGS },
+-#ifdef QSV_HAVE_SCALING_CONFIG
+-    { "scale_mode", "scale mode: 0=auto, 1=low power, 2=high quality", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = MFX_SCALING_MODE_DEFAULT }, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, .flags = FLAGS, "scale mode" },
+-#endif
 -    { NULL }
 -};
-+    int has_passthrough;        /* apply pass through mode if possible */
-+    int field_rate;             /* deinterlace mode */
-+} VPPContext;
- 
+-
  static const char *const var_names[] = {
      "iw", "in_w",
-@@ -141,32 +117,41 @@ static const char *const var_names[] = {
+     "ih", "in_h",
+@@ -155,32 +118,41 @@ static const char *const var_names[] = {
      "ch",
      "cx",
      "cy",
@@ -2006,14 +1794,18 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 -    VAR_iH, VAR_IN_H,
 -    VAR_oW, VAR_OUT_W, VAR_W,
 -    VAR_oH, VAR_OUT_H, VAR_H,
+-    CW,
+-    CH,
+-    CX,
+-    CY,
 +    VAR_IW, VAR_IN_W,
 +    VAR_IH, VAR_IN_H,
 +    VAR_OW, VAR_OUT_W, VAR_W,
 +    VAR_OH, VAR_OUT_H, VAR_H,
-     CW,
-     CH,
-     CX,
-     CY,
++    VAR_CW,
++    VAR_CH,
++    VAR_CX,
++    VAR_CY,
 +    VAR_A, VAR_DAR,
 +    VAR_SAR,
      VAR_VARS_NB
@@ -2044,7 +1836,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  }
      VPPContext *vpp = ctx->priv;
      double  var_values[VAR_VARS_NB] = { NAN };
-@@ -184,39 +169,43 @@ static int eval_expr(AVFilterContext *ct
+@@ -198,39 +170,43 @@ static int eval_expr(AVFilterContext *ct
      PASS_EXPR(cx_expr, vpp->cx);
      PASS_EXPR(cy_expr, vpp->cy);
  
@@ -2064,47 +1856,47 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      /* crop params */
 -    CALC_EXPR(cw_expr, var_values[CW], vpp->crop_w);
 -    CALC_EXPR(ch_expr, var_values[CH], vpp->crop_h);
-+    CALC_EXPR(cw_expr, var_values[CW], vpp->crop_w, var_values[VAR_IW]);
-+    CALC_EXPR(ch_expr, var_values[CH], vpp->crop_h, var_values[VAR_IH]);
++    CALC_EXPR(cw_expr, var_values[VAR_CW], vpp->crop_w, var_values[VAR_IW]);
++    CALC_EXPR(ch_expr, var_values[VAR_CH], vpp->crop_h, var_values[VAR_IH]);
  
      /* calc again in case cw is relative to ch */
 -    CALC_EXPR(cw_expr, var_values[CW], vpp->crop_w);
-+    CALC_EXPR(cw_expr, var_values[CW], vpp->crop_w, var_values[VAR_IW]);
++    CALC_EXPR(cw_expr, var_values[VAR_CW], vpp->crop_w, var_values[VAR_IW]);
  
      CALC_EXPR(w_expr,
 -            var_values[VAR_OUT_W] = var_values[VAR_oW] = var_values[VAR_W],
 -            vpp->out_width);
 +            var_values[VAR_OUT_W] = var_values[VAR_OW] = var_values[VAR_W],
-+            vpp->out_width, var_values[CW]);
++            vpp->out_width, var_values[VAR_CW]);
      CALC_EXPR(h_expr,
 -            var_values[VAR_OUT_H] = var_values[VAR_oH] = var_values[VAR_H],
 -            vpp->out_height);
 +            var_values[VAR_OUT_H] = var_values[VAR_OH] = var_values[VAR_H],
-+            vpp->out_height, var_values[CH]);
++            vpp->out_height, var_values[VAR_CH]);
  
      /* calc again in case ow is relative to oh */
      CALC_EXPR(w_expr,
 -            var_values[VAR_OUT_W] = var_values[VAR_oW] = var_values[VAR_W],
 -            vpp->out_width);
 +            var_values[VAR_OUT_W] = var_values[VAR_OW] = var_values[VAR_W],
-+            vpp->out_width, var_values[CW]);
++            vpp->out_width, var_values[VAR_CW]);
  
 -
 -    CALC_EXPR(cx_expr, var_values[CX], vpp->crop_x);
 -    CALC_EXPR(cy_expr, var_values[CY], vpp->crop_y);
-+    CALC_EXPR(cx_expr, var_values[CX], vpp->crop_x, (var_values[VAR_IW] - var_values[VAR_OW]) / 2);
-+    CALC_EXPR(cy_expr, var_values[CY], vpp->crop_y, (var_values[VAR_IH] - var_values[VAR_OH]) / 2);
++    CALC_EXPR(cx_expr, var_values[VAR_CX], vpp->crop_x, (var_values[VAR_IW] - var_values[VAR_OW]) / 2);
++    CALC_EXPR(cy_expr, var_values[VAR_CY], vpp->crop_y, (var_values[VAR_IH] - var_values[VAR_OH]) / 2);
  
      /* calc again in case cx is relative to cy */
 -    CALC_EXPR(cx_expr, var_values[CX], vpp->crop_x);
-+    CALC_EXPR(cx_expr, var_values[CX], vpp->crop_x, (var_values[VAR_IW] - var_values[VAR_OW]) / 2);
++    CALC_EXPR(cx_expr, var_values[VAR_CX], vpp->crop_x, (var_values[VAR_IW] - var_values[VAR_OW]) / 2);
  
 -    if ((vpp->crop_w != var_values[VAR_iW]) || (vpp->crop_h != var_values[VAR_iH]))
 +    if ((vpp->crop_w != var_values[VAR_IW]) || (vpp->crop_h != var_values[VAR_IH]))
          vpp->use_crop = 1;
  
  release:
-@@ -232,11 +221,25 @@ release:
+@@ -246,11 +222,25 @@ release:
      return ret;
  }
  
@@ -2131,7 +1923,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          vpp->out_format = AV_PIX_FMT_NONE;
      } else {
          vpp->out_format = av_get_pix_fmt(vpp->output_format_str);
-@@ -254,11 +257,15 @@ static int config_input(AVFilterLink *in
+@@ -268,11 +258,15 @@ static int config_input(AVFilterLink *in
      AVFilterContext *ctx = inlink->dst;
      VPPContext      *vpp = ctx->priv;
      int              ret;
@@ -2148,7 +1940,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          vpp->use_frc = 1;
  
      ret = eval_expr(ctx);
-@@ -267,11 +274,38 @@ static int config_input(AVFilterLink *in
+@@ -281,11 +275,38 @@ static int config_input(AVFilterLink *in
          return ret;
      }
  
@@ -2190,16 +1982,15 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      if (vpp->use_crop) {
          vpp->crop_x = FFMAX(vpp->crop_x, 0);
          vpp->crop_y = FFMAX(vpp->crop_y, 0);
-@@ -298,7 +332,7 @@ static int config_output(AVFilterLink *o
-     outlink->w          = vpp->out_width;
-     outlink->h          = vpp->out_height;
-     outlink->frame_rate = vpp->framerate;
--    outlink->time_base  = av_inv_q(vpp->framerate);
-+    outlink->time_base  = inlink->time_base;
- 
+@@ -344,7 +365,6 @@ static int config_output(AVFilterLink *o
      param.filter_frame  = NULL;
      param.num_ext_buf   = 0;
-@@ -327,53 +361,46 @@ static int config_output(AVFilterLink *o
+     param.ext_buf       = ext_buf;
+-    param.async_depth   = vpp->async_depth;
+ 
+     if (get_mfx_version(ctx, &mfx_version) != MFX_ERR_NONE) {
+         av_log(ctx, AV_LOG_ERROR, "Failed to query mfx version.\n");
+@@ -374,53 +394,46 @@ static int config_output(AVFilterLink *o
          param.crop     = &crop;
      }
  
@@ -2219,10 +2010,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +#define SET_MFX_PARAM_FIELD(extbuf, field, value) do { \
 +        vpp->extbuf.field = value; \
 +    } while (0)
++
++    vpp->qsv.deinterlace_enabled = !!vpp->deinterlace;
  
 -        param.ext_buf[param.num_ext_buf++] = (mfxExtBuffer*)&vpp->deinterlace_conf;
-+    vpp->qsv.deinterlace_enabled = !!vpp->deinterlace;
-+
 +    if (vpp->deinterlace) {
 +        INIT_MFX_EXTBUF(deinterlace_conf, MFX_EXTBUFF_VPP_DEINTERLACING);
 +        SET_MFX_PARAM_FIELD(deinterlace_conf, Mode, (vpp->deinterlace == 1 ?
@@ -2280,7 +2071,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      }
  
      if (vpp->transpose >= 0) {
-@@ -420,18 +447,14 @@ static int config_output(AVFilterLink *o
+@@ -467,18 +480,14 @@ static int config_output(AVFilterLink *o
  
      if (vpp->rotate) {
  #ifdef QSV_HAVE_ROTATION
@@ -2301,7 +2092,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  #else
          av_log(ctx, AV_LOG_WARNING, "The QSV VPP rotate option is "
              "not supported with this MSDK version.\n");
-@@ -441,12 +464,8 @@ static int config_output(AVFilterLink *o
+@@ -488,12 +497,8 @@ static int config_output(AVFilterLink *o
  
      if (vpp->hflip) {
  #ifdef QSV_HAVE_MIRRORING
@@ -2316,20 +2107,24 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  #else
          av_log(ctx, AV_LOG_WARNING, "The QSV VPP hflip option is "
              "not supported with this MSDK version.\n");
-@@ -454,11 +473,26 @@ static int config_output(AVFilterLink *o
- #endif
+@@ -504,23 +509,24 @@ static int config_output(AVFilterLink *o
+ #ifdef QSV_HAVE_SCALING_CONFIG
+     if (inlink->w != outlink->w || inlink->h != outlink->h) {
+         if (QSV_RUNTIME_VERSION_ATLEAST(mfx_version, 1, 19)) {
+-            memset(&vpp->scale_conf, 0, sizeof(mfxExtVPPScaling));
+-            vpp->scale_conf.Header.BufferId    = MFX_EXTBUFF_VPP_SCALING;
+-            vpp->scale_conf.Header.BufferSz    = sizeof(mfxExtVPPScaling);
+-            vpp->scale_conf.ScalingMode        = vpp->scale_mode;
+-
+-            param.ext_buf[param.num_ext_buf++] = (mfxExtBuffer*)&vpp->scale_conf;
++            INIT_MFX_EXTBUF(scale_conf, MFX_EXTBUFF_VPP_SCALING);
++            SET_MFX_PARAM_FIELD(scale_conf, ScalingMode, vpp->scale_mode);
+         } else
+             av_log(ctx, AV_LOG_WARNING, "The QSV VPP Scale option is "
+                 "not supported with this MSDK version.\n");
      }
+ #endif
  
-+    if (inlink->w != outlink->w || inlink->h != outlink->h) {
-+#ifdef QSV_HAVE_SCALING_CONFIG
-+        INIT_MFX_EXTBUF(scale_conf, MFX_EXTBUFF_VPP_SCALING);
-+        SET_MFX_PARAM_FIELD(scale_conf, ScalingMode, vpp->scale_mode);
-+#else
-+        av_log(ctx, AV_LOG_WARNING, "The QSV VPP Scale option is "
-+            "not supported with this MSDK version.\n");
-+#endif
-+    }
-+
 +#undef INIT_MFX_EXTBUF
 +#undef SET_MFX_PARAM_FIELD
 +
@@ -2345,80 +2140,65 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          av_log(ctx, AV_LOG_VERBOSE, "qsv vpp pass through mode.\n");
          if (inlink->hw_frames_ctx)
              outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
-@@ -467,26 +501,161 @@ static int config_output(AVFilterLink *o
-     return 0;
- }
- 
--static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
-+static int activate(AVFilterContext *ctx)
+@@ -533,33 +539,31 @@ static int activate(AVFilterContext *ctx
  {
--    int              ret = 0;
--    AVFilterContext  *ctx = inlink->dst;
--    VPPContext       *vpp = inlink->dst->priv;
--    AVFilterLink     *outlink = ctx->outputs[0];
--
--    if (vpp->qsv) {
--        ret = ff_qsvvpp_filter_frame(vpp->qsv, inlink, picref);
--        av_frame_free(&picref);
-+    AVFilterLink *inlink = ctx->inputs[0];
-+    AVFilterLink *outlink = ctx->outputs[0];
+     AVFilterLink *inlink = ctx->inputs[0];
+     AVFilterLink *outlink = ctx->outputs[0];
+-    VPPContext *s =ctx->priv;
+-    QSVVPPContext *qsv = s->qsv;
 +    QSVVPPContext *qsv = ctx->priv;
-+    AVFrame *in = NULL;
-+    int ret, status = 0;
-+    int64_t pts = AV_NOPTS_VALUE;
-+
-+    FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
-+
+     AVFrame *in = NULL;
+     int ret, status = 0;
+     int64_t pts = AV_NOPTS_VALUE;
+ 
+     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
+ 
+-    if (!s->eof) {
 +    if (!qsv->eof) {
-+        ret = ff_inlink_consume_frame(inlink, &in);
-+        if (ret < 0)
-+            return ret;
-+
-+        if (ff_inlink_acknowledge_status(inlink, &status, &pts)) {
-+            if (status == AVERROR_EOF) {
+         ret = ff_inlink_consume_frame(inlink, &in);
+         if (ret < 0)
+             return ret;
+ 
+         if (ff_inlink_acknowledge_status(inlink, &status, &pts)) {
+             if (status == AVERROR_EOF) {
+-                s->eof = 1;
 +                qsv->eof = 1;
-+            }
-+        }
-+    }
-+
-+    if (qsv->session) {
-+        if (in || qsv->eof) {
-+            ret = ff_qsvvpp_filter_frame(qsv, inlink, in);
-+            av_frame_free(&in);
-+
-+            if (qsv->eof) {
-+                ff_outlink_set_status(outlink, status, pts);
-+                return 0;
-+            }
-+
-+            if (qsv->got_frame) {
-+                qsv->got_frame = 0;
-+                return ret;
-+            }
-+        }
-     } else {
--        if (picref->pts != AV_NOPTS_VALUE)
--            picref->pts = av_rescale_q(picref->pts, inlink->time_base, outlink->time_base);
--        ret = ff_filter_frame(outlink, picref);
-+        /* No MFX session is created in pass-through mode */
-+        if (in) {
-+            if (in->pts != AV_NOPTS_VALUE)
-+                in->pts = av_rescale_q(in->pts, inlink->time_base, outlink->time_base);
-+
-+            ret = ff_filter_frame(outlink, in);
-+            return ret;
-+        }
+             }
+         }
      }
  
--    return ret;
+-    if (qsv) {
+-        if (in || s->eof) {
+-            qsv->eof = s->eof;
++    if (qsv->session) {
++        if (in || qsv->eof) {
+             ret = ff_qsvvpp_filter_frame(qsv, inlink, in);
+             av_frame_free(&in);
+ 
+-            if (s->eof) {
++            if (qsv->eof) {
+                 ff_outlink_set_status(outlink, status, pts);
+                 return 0;
+             }
+@@ -570,6 +574,7 @@ static int activate(AVFilterContext *ctx
+             }
+         }
+     } else {
++        /* No MFX session is created in pass-through mode */
+         if (in) {
+             if (in->pts != AV_NOPTS_VALUE)
+                 in->pts = av_rescale_q(in->pts, inlink->time_base, outlink->time_base);
+@@ -579,7 +584,7 @@ static int activate(AVFilterContext *ctx
+         }
+     }
+ 
+-    if (s->eof) {
 +    if (qsv->eof) {
-+        ff_outlink_set_status(outlink, status, pts);
-+        return 0;
-+    } else {
-+        FF_FILTER_FORWARD_WANTED(outlink, inlink);
-+    }
-+
-+    return FFERROR_NOT_READY;
+         ff_outlink_set_status(outlink, status, pts);
+         return 0;
+     } else {
+@@ -589,7 +594,100 @@ static int activate(AVFilterContext *ctx
+     return FFERROR_NOT_READY;
  }
  
 -static int query_formats(AVFilterContext *ctx)
@@ -2433,7 +2213,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +        .type          = AVMEDIA_TYPE_VIDEO,
 +        .config_props  = config_input,
 +    },
-+    { NULL }
 +};
 +
 +static const AVFilterPad vpp_outputs[] = {
@@ -2442,10 +2221,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +        .type          = AVMEDIA_TYPE_VIDEO,
 +        .config_props  = config_output,
 +    },
-+    { NULL }
 +};
 +
-+#define DEFINE_QSV_FILTER(x, sn, ln) \
++#define DEFINE_QSV_FILTER(x, sn, ln, fmts) \
 +static const AVClass x##_class = { \
 +    .class_name = #sn "_qsv", \
 +    .item_name  = av_default_item_name, \
@@ -2460,9 +2238,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +    .uninit         = vpp_uninit, \
 +    .priv_size      = sizeof(VPPContext), \
 +    .priv_class     = &x##_class, \
-+    .inputs         = vpp_inputs, \
-+    .outputs        = vpp_outputs, \
-+    .query_formats  = x##_query_formats, \
++    FILTER_INPUTS(vpp_inputs), \
++    FILTER_OUTPUTS(vpp_outputs), \
++    fmts, \
 +    .activate       = activate, \
 +    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE, \
 +};
@@ -2521,24 +2299,20 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  {
      int ret;
      static const enum AVPixelFormat in_pix_fmts[] = {
-@@ -512,48 +681,92 @@ static int query_formats(AVFilterContext
+@@ -615,46 +713,81 @@ static int query_formats(AVFilterContext
                            &ctx->outputs[0]->incfg.formats);
  }
  
 -static av_cold void vpp_uninit(AVFilterContext *ctx)
-+DEFINE_QSV_FILTER(vpp, vpp, VPP);
++DEFINE_QSV_FILTER(vpp, vpp, VPP, FILTER_QUERY_FUNC(vpp_query_formats));
 +
-+static int default_query_formats(AVFilterContext *ctx)
++static av_cold int default_preinit(AVFilterContext *ctx)
  {
 -    VPPContext *vpp = ctx->priv;
-+    static const enum AVPixelFormat pixel_formats[] = {
-+        AV_PIX_FMT_QSV, AV_PIX_FMT_NONE,
-+    };
-+    AVFilterFormats *pix_fmts  = ff_make_format_list(pixel_formats);
-+    int ret;
++    VPPContext  *vpp  = ctx->priv;
 +
-+    if ((ret = ff_set_common_formats(ctx, pix_fmts)) < 0)
-+        return ret;
++    vpp_preinit(ctx);
++    vpp->has_passthrough = 0;
  
 -    ff_qsvvpp_free(&vpp->qsv);
 +    return 0;
@@ -2549,33 +2323,19 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 -    .item_name  = av_default_item_name,
 -    .option     = options,
 -    .version    = LIBAVUTIL_VERSION_INT,
--};
-+static av_cold int default_preinit(AVFilterContext *ctx)
-+{
-+    VPPContext  *vpp  = ctx->priv;
++static const enum AVPixelFormat qsvscale_pix_fmts[] = {
++    AV_PIX_FMT_NV12,
++    AV_PIX_FMT_P010,
++    AV_PIX_FMT_QSV,
++    AV_PIX_FMT_NONE,
+ };
  
 -static const AVFilterPad vpp_inputs[] = {
 -    {
 -        .name          = "default",
 -        .type          = AVMEDIA_TYPE_VIDEO,
 -        .config_props  = config_input,
--        .filter_frame  = filter_frame,
 -    },
--    { NULL }
--};
-+    vpp_preinit(ctx);
-+    vpp->has_passthrough = 0;
- 
--static const AVFilterPad vpp_outputs[] = {
--    {
--        .name          = "default",
--        .type          = AVMEDIA_TYPE_VIDEO,
--        .config_props  = config_output,
--    },
--    { NULL }
-+    return 0;
-+}
-+
 +static const AVOption qsvscale_options[] = {
 +    { "w",      "Output video width(0=input video width, -1=keep input video aspect)",  OFFSET(ow), AV_OPT_TYPE_STRING, { .str = "iw"   }, .flags = FLAGS },
 +    { "h",      "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str = "ih"   }, .flags = FLAGS },
@@ -2600,29 +2360,37 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +    { NULL },
  };
  
--AVFilter ff_vf_vpp_qsv = {
--    .name          = "vpp_qsv",
--    .description   = NULL_IF_CONFIG_SMALL("Quick Sync Video VPP."),
--    .priv_size     = sizeof(VPPContext),
--    .query_formats = query_formats,
--    .init          = vpp_init,
--    .uninit        = vpp_uninit,
--    .inputs        = vpp_inputs,
--    .outputs       = vpp_outputs,
--    .priv_class    = &vpp_class,
--    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-+static int qsvscale_query_formats(AVFilterContext *ctx)
-+{
-+    return default_query_formats(ctx);
-+}
-+
+-static const AVFilterPad vpp_outputs[] = {
+-    {
+-        .name          = "default",
+-        .type          = AVMEDIA_TYPE_VIDEO,
+-        .config_props  = config_output,
+-    },
 +static av_cold int qsvscale_preinit(AVFilterContext *ctx)
 +{
 +    return default_preinit(ctx);
 +}
 +
-+DEFINE_QSV_FILTER(qsvscale, scale, scaling and format conversion);
++DEFINE_QSV_FILTER(qsvscale, scale, scaling and format conversion, FILTER_PIXFMTS_ARRAY(qsvscale_pix_fmts));
 +
++static const enum AVPixelFormat qsvdeint_pix_fmts[] = {
++    AV_PIX_FMT_NV12,
++    AV_PIX_FMT_QSV,
++    AV_PIX_FMT_NONE,
+ };
+ 
+-const AVFilter ff_vf_vpp_qsv = {
+-    .name          = "vpp_qsv",
+-    .description   = NULL_IF_CONFIG_SMALL("Quick Sync Video VPP."),
+-    .priv_size     = sizeof(VPPContext),
+-    .init          = vpp_init,
+-    .uninit        = vpp_uninit,
+-    FILTER_INPUTS(vpp_inputs),
+-    FILTER_OUTPUTS(vpp_outputs),
+-    FILTER_QUERY_FUNC(query_formats),
+-    .activate      = activate,
+-    .priv_class    = &vpp_class,
+-    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 +static const AVOption qsvdeint_options[] = {
 +    { "mode", "set deinterlace mode", OFFSET(deinterlace),   AV_OPT_TYPE_INT, {.i64 = MFX_DEINTERLACING_ADVANCED}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, "mode"},
 +    { "bob",   "bob algorithm",                  0, AV_OPT_TYPE_CONST,      {.i64 = MFX_DEINTERLACING_BOB}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, "mode"},
@@ -2639,146 +2407,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +    { NULL },
  };
 +
-+static int qsvdeint_query_formats(AVFilterContext *ctx)
-+{
-+    return default_query_formats(ctx);
-+}
-+
 +static av_cold int qsvdeint_preinit(AVFilterContext *ctx)
 +{
 +    return default_preinit(ctx);
 +}
 +
-+DEFINE_QSV_FILTER(qsvdeint, deinterlace, deinterlacing);
-Index: jellyfin-ffmpeg/libavutil/frame.c
-===================================================================
---- jellyfin-ffmpeg.orig/libavutil/frame.c
-+++ jellyfin-ffmpeg/libavutil/frame.c
-@@ -347,6 +347,36 @@ int av_frame_get_buffer(AVFrame *frame,
-     return AVERROR(EINVAL);
- }
- 
-+int av_frame_copy_side_data(AVFrame* dst, const AVFrame* src, int flags)
-+{
-+    for (unsigned i = 0; i < src->nb_side_data; i++) {
-+        const AVFrameSideData *sd_src = src->side_data[i];
-+        AVFrameSideData *sd_dst;
-+        if (   sd_src->type == AV_FRAME_DATA_PANSCAN
-+            && (src->width != dst->width || src->height != dst->height))
-+            continue;
-+        if (flags & AV_FRAME_COPY_PROPS_FORCECOPY) {
-+            sd_dst = av_frame_new_side_data(dst, sd_src->type,
-+                                            sd_src->size);
-+            if (!sd_dst) {
-+                wipe_side_data(dst);
-+                return AVERROR(ENOMEM);
-+            }
-+            memcpy(sd_dst->data, sd_src->data, sd_src->size);
-+        } else {
-+            AVBufferRef *ref = av_buffer_ref(sd_src->buf);
-+            sd_dst = av_frame_new_side_data_from_buf(dst, sd_src->type, ref);
-+            if (!sd_dst) {
-+                av_buffer_unref(&ref);
-+                wipe_side_data(dst);
-+                return AVERROR(ENOMEM);
-+            }
-+        }
-+        av_dict_copy(&sd_dst->metadata, sd_src->metadata, 0);
-+    }
-+    return 0;
-+}
-+
- static int frame_copy_props(AVFrame *dst, const AVFrame *src, int force_copy)
- {
-     int ret, i;
-@@ -395,31 +425,9 @@ FF_DISABLE_DEPRECATION_WARNINGS
- FF_ENABLE_DEPRECATION_WARNINGS
- #endif
- 
--    for (i = 0; i < src->nb_side_data; i++) {
--        const AVFrameSideData *sd_src = src->side_data[i];
--        AVFrameSideData *sd_dst;
--        if (   sd_src->type == AV_FRAME_DATA_PANSCAN
--            && (src->width != dst->width || src->height != dst->height))
--            continue;
--        if (force_copy) {
--            sd_dst = av_frame_new_side_data(dst, sd_src->type,
--                                            sd_src->size);
--            if (!sd_dst) {
--                wipe_side_data(dst);
--                return AVERROR(ENOMEM);
--            }
--            memcpy(sd_dst->data, sd_src->data, sd_src->size);
--        } else {
--            AVBufferRef *ref = av_buffer_ref(sd_src->buf);
--            sd_dst = av_frame_new_side_data_from_buf(dst, sd_src->type, ref);
--            if (!sd_dst) {
--                av_buffer_unref(&ref);
--                wipe_side_data(dst);
--                return AVERROR(ENOMEM);
--            }
--        }
--        av_dict_copy(&sd_dst->metadata, sd_src->metadata, 0);
--    }
-+    if (ret = av_frame_copy_side_data(dst, src,
-+        force_copy ? AV_FRAME_COPY_PROPS_FORCECOPY : 0) < 0)
-+        return ret;
- 
- #if FF_API_FRAME_QP
- FF_DISABLE_DEPRECATION_WARNINGS
-@@ -823,6 +831,17 @@ void av_frame_remove_side_data(AVFrame *
-     }
- }
- 
-+void av_frame_remove_all_side_data(AVFrame *frame)
-+{
-+    int i;
-+
-+    for (i = frame->nb_side_data - 1; i >= 0; i--) {
-+        free_side_data(&frame->side_data[i]);
-+        frame->side_data[i] = frame->side_data[frame->nb_side_data - 1];
-+        frame->nb_side_data--;
-+    }
-+}
-+
- const char *av_frame_side_data_name(enum AVFrameSideDataType type)
- {
-     switch(type) {
-Index: jellyfin-ffmpeg/libavutil/frame.h
-===================================================================
---- jellyfin-ffmpeg.orig/libavutil/frame.h
-+++ jellyfin-ffmpeg/libavutil/frame.h
-@@ -897,6 +897,22 @@ int av_frame_copy(AVFrame *dst, const AV
- int av_frame_copy_props(AVFrame *dst, const AVFrame *src);
- 
- /**
-+ * Copy actual data buffers instead of references.
-+ */
-+#define AV_FRAME_COPY_PROPS_FORCECOPY  1
-+
-+/**
-+ * Copy only side-data from src to dst.
-+ *
-+ * @param dst a frame to which the side data should be copied.
-+ * @param src a frame from which to copy the side data.
-+ * @param flags flags of type AV_FRAME_COPY_PROPS_*, controlling copy behavior.
-+ *
-+ * @return >= 0 on success, a negative AVERROR on error.
-+ */
-+int av_frame_copy_side_data(AVFrame* dst, const AVFrame* src, int flags);
-+
-+/**
-  * Get the buffer reference a given data plane is stored in.
-  *
-  * @param plane index of the data plane of interest in frame->extended_data.
-@@ -951,6 +967,10 @@ AVFrameSideData *av_frame_get_side_data(
-  */
- void av_frame_remove_side_data(AVFrame *frame, enum AVFrameSideDataType type);
- 
-+/**
-+ * Remove and free all side data in this frame.
-+ */
-+void av_frame_remove_all_side_data(AVFrame *frame);
- 
- /**
-  * Flags for frame cropping.
++DEFINE_QSV_FILTER(qsvdeint, deinterlace, deinterlacing, FILTER_PIXFMTS_ARRAY(qsvdeint_pix_fmts));
+\ No newline at end of file

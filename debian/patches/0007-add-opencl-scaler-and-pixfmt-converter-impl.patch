@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -3619,6 +3619,7 @@ rubberband_filter_deps="librubberband"
+@@ -3708,6 +3708,7 @@ rubberband_filter_deps="librubberband"
  sab_filter_deps="gpl swscale"
  scale2ref_filter_deps="swscale"
  scale_filter_deps="swscale"
@@ -14,26 +14,26 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -394,6 +394,7 @@ OBJS-$(CONFIG_SAB_FILTER)
- OBJS-$(CONFIG_SCALE_FILTER)                  += vf_scale.o scale_eval.o
- OBJS-$(CONFIG_SCALE_CUDA_FILTER)             += vf_scale_cuda.o vf_scale_cuda.ptx.o scale_eval.o
+@@ -418,6 +418,7 @@ OBJS-$(CONFIG_SCALE_FILTER)
+ OBJS-$(CONFIG_SCALE_CUDA_FILTER)             += vf_scale_cuda.o scale_eval.o \
+                                                 vf_scale_cuda.ptx.o cuda/load_helper.o
  OBJS-$(CONFIG_SCALE_NPP_FILTER)              += vf_scale_npp.o scale_eval.o
 +OBJS-$(CONFIG_SCALE_OPENCL_FILTER)           += vf_scale_opencl.o opencl.o opencl/scale.o scale_eval.o
  OBJS-$(CONFIG_SCALE_QSV_FILTER)              += vf_scale_qsv.o
  OBJS-$(CONFIG_SCALE_VAAPI_FILTER)            += vf_scale_vaapi.o scale_eval.o vaapi_vpp.o
- OBJS-$(CONFIG_SCALE_VULKAN_FILTER)           += vf_scale_vulkan.o vulkan.o
+ OBJS-$(CONFIG_SCALE_VULKAN_FILTER)           += vf_scale_vulkan.o vulkan.o vulkan_filter.o
 Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -376,6 +376,7 @@ extern AVFilter ff_vf_sab;
- extern AVFilter ff_vf_scale;
- extern AVFilter ff_vf_scale_cuda;
- extern AVFilter ff_vf_scale_npp;
-+extern AVFilter ff_vf_scale_opencl;
- extern AVFilter ff_vf_scale_qsv;
- extern AVFilter ff_vf_scale_vaapi;
- extern AVFilter ff_vf_scale_vulkan;
+@@ -400,6 +400,7 @@ extern const AVFilter ff_vf_sab;
+ extern const AVFilter ff_vf_scale;
+ extern const AVFilter ff_vf_scale_cuda;
+ extern const AVFilter ff_vf_scale_npp;
++extern const AVFilter ff_vf_scale_opencl;
+ extern const AVFilter ff_vf_scale_qsv;
+ extern const AVFilter ff_vf_scale_vaapi;
+ extern const AVFilter ff_vf_scale_vulkan;
 Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 ===================================================================
 --- /dev/null
@@ -272,7 +272,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
-@@ -0,0 +1,710 @@
+@@ -0,0 +1,707 @@
 +/*
 + * Copyright (c) 2018 Gabriel Machado
 + * Copyright (c) 2021 NyanMisaka
@@ -296,7 +296,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +
 +#include "libavutil/common.h"
 +#include "libavutil/imgutils.h"
-+#include "libavutil/mem.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/pixdesc.h"
 +
@@ -956,10 +955,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +        .name             = "default",
 +        .type             = AVMEDIA_TYPE_VIDEO,
 +        .filter_frame     = &scale_opencl_filter_frame,
-+        .get_video_buffer = &scale_opencl_get_video_buffer,
++        .get_buffer.video = &scale_opencl_get_video_buffer,
 +        .config_props     = &ff_opencl_filter_config_input,
 +    },
-+    { NULL }
 +};
 +
 +static const AVFilterPad scale_opencl_outputs[] = {
@@ -968,18 +966,17 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +        .type         = AVMEDIA_TYPE_VIDEO,
 +        .config_props = &scale_opencl_config_output,
 +    },
-+    { NULL }
 +};
 +
-+AVFilter ff_vf_scale_opencl = {
++const AVFilter ff_vf_scale_opencl = {
 +    .name           = "scale_opencl",
 +    .description    = NULL_IF_CONFIG_SMALL("Scale the input video size through OpenCL."),
 +    .priv_size      = sizeof(ScaleOpenCLContext),
 +    .priv_class     = &scale_opencl_class,
 +    .init           = &ff_opencl_filter_init,
 +    .uninit         = &scale_opencl_uninit,
-+    .query_formats  = &ff_opencl_filter_query_formats,
-+    .inputs         = scale_opencl_inputs,
-+    .outputs        = scale_opencl_outputs,
++    FILTER_INPUTS(scale_opencl_inputs),
++    FILTER_OUTPUTS(scale_opencl_outputs),
++    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
 +    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 +};

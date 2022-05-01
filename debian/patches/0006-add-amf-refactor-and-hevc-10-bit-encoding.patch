@@ -1,17 +1,30 @@
+Index: jellyfin-ffmpeg/configure
+===================================================================
+--- jellyfin-ffmpeg.orig/configure
++++ jellyfin-ffmpeg/configure
+@@ -6975,7 +6975,7 @@ fi
+ 
+ enabled amf &&
+     check_cpp_condition amf "AMF/core/Version.h" \
+-        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400090000"
++        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400170000"
+ 
+ # Funny iconv installations are not unusual, so check it after all flags have been set
+ if enabled libc_iconv; then
 Index: jellyfin-ffmpeg/libavcodec/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/Makefile
 +++ jellyfin-ffmpeg/libavcodec/Makefile
-@@ -63,7 +63,7 @@ OBJS = ac3_parser.o
+@@ -61,7 +61,7 @@ OBJS = ac3_parser.o
  OBJS-$(CONFIG_AANDCTTABLES)            += aandcttab.o
  OBJS-$(CONFIG_AC3DSP)                  += ac3dsp.o ac3.o ac3tab.o
- OBJS-$(CONFIG_ADTS_HEADER)             += adts_header.o mpeg4audio.o
+ OBJS-$(CONFIG_ADTS_HEADER)             += adts_header.o mpeg4audio_sample_rates.o
 -OBJS-$(CONFIG_AMF)                     += amfenc.o
 +OBJS-$(CONFIG_AMF)                     += amfenc.o amf.o
  OBJS-$(CONFIG_AUDIO_FRAME_QUEUE)       += audio_frame_queue.o
  OBJS-$(CONFIG_ATSC_A53)                += atsc_a53.o
  OBJS-$(CONFIG_AUDIODSP)                += audiodsp.o
-@@ -1196,7 +1196,7 @@ SKIPHEADERS                            +
+@@ -1213,7 +1213,7 @@ SKIPHEADERS                            +
                                            aacenc_quantization_misc.h    \
                                            $(ARCH)/vp56_arith.h          \
  
@@ -2017,7 +2030,16 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  };
  
  static const AVClass h264_amf_class = {
-@@ -385,13 +435,13 @@ AVCodec ff_h264_amf_encoder = {
+@@ -377,7 +427,7 @@ static const AVClass h264_amf_class = {
+     .version = LIBAVUTIL_VERSION_INT,
+ };
+ 
+-const AVCodec ff_h264_amf_encoder = {
++AVCodec ff_h264_amf_encoder = {
+     .name           = "h264_amf",
+     .long_name      = NULL_IF_CONFIG_SMALL("AMD AMF H.264 Encoder"),
+     .type           = AVMEDIA_TYPE_VIDEO,
+@@ -385,13 +435,13 @@ const AVCodec ff_h264_amf_encoder = {
      .init           = amf_encode_init_h264,
      .receive_packet = ff_amf_receive_packet,
      .close          = ff_amf_encode_close,
@@ -2495,7 +2517,16 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
  static const AVCodecDefault defaults[] = {
      { "refs",       "-1"  },
      { "aspect",     "0"   },
-@@ -317,13 +391,13 @@ AVCodec ff_hevc_amf_encoder = {
+@@ -309,7 +383,7 @@ static const AVClass hevc_amf_class = {
+     .version = LIBAVUTIL_VERSION_INT,
+ };
+ 
+-const AVCodec ff_hevc_amf_encoder = {
++AVCodec ff_hevc_amf_encoder = {
+     .name           = "hevc_amf",
+     .long_name      = NULL_IF_CONFIG_SMALL("AMD AMF HEVC encoder"),
+     .type           = AVMEDIA_TYPE_VIDEO,
+@@ -317,13 +391,13 @@ const AVCodec ff_hevc_amf_encoder = {
      .init           = amf_encode_init_hevc,
      .receive_packet = ff_amf_receive_packet,
      .close          = ff_amf_encode_close,
@@ -2511,16 +2542,3 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      .wrapper_name   = "amf",
      .hw_configs     = ff_amfenc_hw_configs,
  };
-Index: jellyfin-ffmpeg/configure
-===================================================================
---- jellyfin-ffmpeg.orig/configure
-+++ jellyfin-ffmpeg/configure
-@@ -6787,7 +6787,7 @@ fi
- 
- enabled amf &&
-     check_cpp_condition amf "AMF/core/Version.h" \
--        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400090000"
-+        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400170000"
- 
- # Funny iconv installations are not unusual, so check it after all flags have been set
- if enabled libc_iconv; then

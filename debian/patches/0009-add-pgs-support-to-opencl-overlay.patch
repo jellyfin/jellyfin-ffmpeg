@@ -146,7 +146,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_overlay_opencl.c
 +++ jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
-@@ -28,72 +28,113 @@
+@@ -27,72 +27,113 @@
  #include "opencl_source.h"
  #include "video.h"
  
@@ -295,7 +295,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      if (err < 0)
          goto fail;
  
-@@ -103,10 +144,20 @@ static int overlay_opencl_load(AVFilterC
+@@ -102,10 +143,20 @@ static int overlay_opencl_load(AVFilterC
      CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create OpenCL "
                       "command queue %d.\n", cle);
  
@@ -317,7 +317,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      return 0;
  
  fail:
-@@ -114,21 +165,113 @@ fail:
+@@ -113,21 +164,113 @@ fail:
          clReleaseCommandQueue(ctx->command_queue);
      if (ctx->kernel)
          clReleaseKernel(ctx->kernel);
@@ -438,7 +438,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
  
      err = ff_framesync_get_frame(fs, 0, &input_main, 0);
      if (err < 0)
-@@ -137,14 +280,14 @@ static int overlay_opencl_blend(FFFrameS
+@@ -136,14 +279,14 @@ static int overlay_opencl_blend(FFFrameS
      if (err < 0)
          return err;
  
@@ -460,7 +460,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
          if (err < 0)
              return err;
      }
-@@ -155,54 +298,10 @@ static int overlay_opencl_blend(FFFrameS
+@@ -154,54 +297,10 @@ static int overlay_opencl_blend(FFFrameS
          goto fail;
      }
  
@@ -518,7 +518,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      }
  
      cle = clFinish(ctx->command_queue);
-@@ -217,6 +316,9 @@ static int overlay_opencl_blend(FFFrameS
+@@ -216,6 +315,9 @@ static int overlay_opencl_blend(FFFrameS
      return ff_filter_frame(outlink, output);
  
  fail:
@@ -528,7 +528,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      av_frame_free(&output);
      return err;
  }
-@@ -225,8 +327,49 @@ static int overlay_opencl_config_output(
+@@ -224,8 +326,49 @@ static int overlay_opencl_config_output(
  {
      AVFilterContext *avctx = outlink->src;
      OverlayOpenCLContext *ctx = avctx->priv;
@@ -578,7 +578,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      err = ff_opencl_filter_config_output(outlink);
      if (err < 0)
          return err;
-@@ -235,6 +378,11 @@ static int overlay_opencl_config_output(
+@@ -234,6 +377,11 @@ static int overlay_opencl_config_output(
      if (err < 0)
          return err;
  
@@ -590,7 +590,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      return ff_framesync_configure(&ctx->fs);
  }
  
-@@ -266,6 +414,20 @@ static av_cold void overlay_opencl_unini
+@@ -265,6 +413,20 @@ static av_cold void overlay_opencl_unini
                     "kernel: %d.\n", cle);
      }
  
@@ -611,7 +611,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      if (ctx->command_queue) {
          cle = clReleaseCommandQueue(ctx->command_queue);
          if (cle != CL_SUCCESS)
-@@ -280,11 +442,20 @@ static av_cold void overlay_opencl_unini
+@@ -279,11 +441,20 @@ static av_cold void overlay_opencl_unini
  
  #define OFFSET(x) offsetof(OverlayOpenCLContext, x)
  #define FLAGS (AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)

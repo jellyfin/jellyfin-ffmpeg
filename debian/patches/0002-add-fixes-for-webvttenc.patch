@@ -13,8 +13,8 @@ Index: jellyfin-ffmpeg/libavformat/webvttenc.c
          return AVERROR(EINVAL);
      }
  
-@@ -67,6 +67,9 @@ static int webvtt_write_packet(AVFormatC
-     buffer_size_t id_size, settings_size;
+@@ -68,6 +68,9 @@ static int webvtt_write_packet(AVFormatC
+     int id_size_int, settings_size_int;
      uint8_t *id, *settings;
  
 +    if (pkt->stream_index != 0)

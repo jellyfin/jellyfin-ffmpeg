@@ -12,7 +12,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  #include <CL/cl_d3d11.h>
  #include "hwcontext_d3d11va.h"
  
-@@ -122,6 +125,7 @@ typedef struct OpenCLDeviceContext {
+@@ -128,6 +131,7 @@ typedef struct OpenCLDeviceContext {
  
  #if HAVE_OPENCL_D3D11
      int d3d11_mapping_usable;
@@ -20,7 +20,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      int d3d11_map_amd;
      int d3d11_map_intel;
  
-@@ -876,6 +880,11 @@ static int opencl_device_init(AVHWDevice
+@@ -890,6 +894,11 @@ static int opencl_device_init(AVHWDevice
              priv->d3d11_mapping_usable = 0;
          } else {
              priv->d3d11_mapping_usable = 1;
@@ -32,7 +32,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
          }
      }
  #endif
-@@ -1746,18 +1755,20 @@ static void opencl_frames_uninit(AVHWFra
+@@ -1760,18 +1769,20 @@ static void opencl_frames_uninit(AVHWFra
  
  #if HAVE_OPENCL_DXVA2 || HAVE_OPENCL_D3D11
      int i, p;
@@ -62,7 +62,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  #endif
  
      if (priv->command_queue) {
-@@ -2526,6 +2537,225 @@ fail:
+@@ -2545,6 +2556,225 @@ fail:
  
  #if HAVE_OPENCL_D3D11
  
@@ -288,7 +288,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  static void opencl_unmap_from_d3d11(AVHWFramesContext *dst_fc,
                                      HWMapDescriptor *hwmap)
  {
-@@ -2966,6 +3196,11 @@ static int opencl_map_to(AVHWFramesConte
+@@ -2985,6 +3215,11 @@ static int opencl_map_to(AVHWFramesConte
              return opencl_map_from_dxva2(hwfc, dst, src, flags);
  #endif
  #if HAVE_OPENCL_D3D11
@@ -300,7 +300,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      case AV_PIX_FMT_D3D11:
          if (priv->d3d11_mapping_usable)
              return opencl_map_from_d3d11(hwfc, dst, src, flags);
-@@ -3016,6 +3251,18 @@ static int opencl_frames_derive_to(AVHWF
+@@ -3035,6 +3270,18 @@ static int opencl_frames_derive_to(AVHWF
          break;
  #endif
  #if HAVE_OPENCL_D3D11

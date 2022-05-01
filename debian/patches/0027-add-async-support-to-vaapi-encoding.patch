@@ -159,7 +159,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
      }
      av_log(avctx, AV_LOG_DEBUG, "Output packet: pts %"PRId64" dts %"PRId64".\n",
             pkt->pts, pkt->dts);
-@@ -2520,6 +2576,11 @@ av_cold int ff_vaapi_encode_init(AVCodec
+@@ -2527,6 +2583,11 @@ av_cold int ff_vaapi_encode_init(AVCodec
          }
      }
  
@@ -171,7 +171,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
      return 0;
  
  fail:
-@@ -2552,6 +2613,7 @@ av_cold int ff_vaapi_encode_close(AVCode
+@@ -2564,6 +2625,7 @@ av_cold int ff_vaapi_encode_close(AVCode
  
      av_freep(&ctx->codec_sequence_params);
      av_freep(&ctx->codec_picture_params);

@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavcodec/qsvenc_hevc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/qsvenc_hevc.c
 +++ jellyfin-ffmpeg/libavcodec/qsvenc_hevc.c
-@@ -260,9 +260,9 @@
+@@ -265,9 +265,9 @@ static const AVClass class = {
  static const AVCodecDefault qsv_enc_defaults[] = {
      { "b",         "1M"    },
      { "refs",      "0"     },
@@ -18,7 +18,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_decode.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/vaapi_decode.c
 +++ jellyfin-ffmpeg/libavcodec/vaapi_decode.c
-@@ -571,23 +571,24 @@
+@@ -595,23 +595,24 @@ static int vaapi_decode_make_config(AVCo
                                              *va_config, frames);
          if (err < 0)
              goto fail;
