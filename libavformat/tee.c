@@ -23,6 +23,7 @@
 #include "libavutil/avutil.h"
 #include "libavutil/avstring.h"
 #include "libavutil/opt.h"
+#include "libavcodec/bsf.h"
 #include "internal.h"
 #include "avformat.h"
 #include "avio_internal.h"
@@ -95,27 +96,23 @@ static inline int parse_slave_failure_policy_option(const char *opt, TeeSlave *t
     return AVERROR(EINVAL);
 }
 
-static int parse_slave_fifo_options(const char *use_fifo,
-                                    const char *fifo_options, TeeSlave *tee_slave)
+static int parse_slave_fifo_policy(const char *use_fifo, TeeSlave *tee_slave)
 {
-    int ret = 0;
-
-    if (use_fifo) {
-        /*TODO - change this to use proper function for parsing boolean
-         *       options when there is one */
-        if (av_match_name(use_fifo, "true,y,yes,enable,enabled,on,1")) {
-            tee_slave->use_fifo = 1;
-        } else if (av_match_name(use_fifo, "false,n,no,disable,disabled,off,0")) {
-            tee_slave->use_fifo = 0;
-        } else {
-            return AVERROR(EINVAL);
-        }
+    /*TODO - change this to use proper function for parsing boolean
+     *       options when there is one */
+    if (av_match_name(use_fifo, "true,y,yes,enable,enabled,on,1")) {
+        tee_slave->use_fifo = 1;
+    } else if (av_match_name(use_fifo, "false,n,no,disable,disabled,off,0")) {
+        tee_slave->use_fifo = 0;
+    } else {
+        return AVERROR(EINVAL);
     }
+    return 0;
+}
 
-    if (fifo_options)
-        ret = av_dict_parse_string(&tee_slave->fifo_options, fifo_options, "=", ":", 0);
-
-    return ret;
+static int parse_slave_fifo_options(const char *fifo_options, TeeSlave *tee_slave)
+{
+    return av_dict_parse_string(&tee_slave->fifo_options, fifo_options, "=", ":", 0);
 }
 
 static int close_slave(TeeSlave *tee_slave)
@@ -173,37 +170,36 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
     if ((ret = ff_tee_parse_slave_options(avf, slave, &options, &filename)) < 0)
         return ret;
 
-#define STEAL_OPTION(option, field) do {                                \
+#define CONSUME_OPTION(option, field, action) do {                      \
         if ((entry = av_dict_get(options, option, NULL, 0))) {          \
             field = entry->value;                                       \
-            entry->value = NULL; /* prevent it from being freed */      \
+            { action }                                                  \
             av_dict_set(&options, option, NULL, 0);                     \
         }                                                               \
     } while (0)
+#define STEAL_OPTION(option, field)                                     \
+    CONSUME_OPTION(option, field,                                       \
+                   entry->value = NULL; /* prevent it from being freed */)
+#define PROCESS_OPTION(option, field, function, on_error)               \
+    CONSUME_OPTION(option, field, if ((ret = function) < 0) { { on_error } goto end; })
 
     STEAL_OPTION("f", format);
     STEAL_OPTION("select", select);
-    STEAL_OPTION("onfail", on_fail);
-    STEAL_OPTION("use_fifo", use_fifo);
-    STEAL_OPTION("fifo_options", fifo_options_str);
+    PROCESS_OPTION("onfail", on_fail,
+                   parse_slave_failure_policy_option(on_fail, tee_slave),
+                   av_log(avf, AV_LOG_ERROR, "Invalid onfail option value, "
+                          "valid options are 'abort' and 'ignore'\n"););
+    PROCESS_OPTION("use_fifo", use_fifo,
+                   parse_slave_fifo_policy(use_fifo, tee_slave),
+                   av_log(avf, AV_LOG_ERROR, "Error parsing fifo options: %s\n",
+                          av_err2str(ret)););
+    PROCESS_OPTION("fifo_options", fifo_options_str,
+                   parse_slave_fifo_options(fifo_options_str, tee_slave), ;);
     entry = NULL;
     while ((entry = av_dict_get(options, "bsfs", entry, AV_DICT_IGNORE_SUFFIX))) {
         /* trim out strlen("bsfs") characters from key */
         av_dict_set(&bsf_options, entry->key + 4, entry->value, 0);
         av_dict_set(&options, entry->key, NULL, 0);
-    }
-
-    ret = parse_slave_failure_policy_option(on_fail, tee_slave);
-    if (ret < 0) {
-        av_log(avf, AV_LOG_ERROR,
-               "Invalid onfail option value, valid options are 'abort' and 'ignore'\n");
-        goto end;
-    }
-
-    ret = parse_slave_fifo_options(use_fifo, fifo_options_str, tee_slave);
-    if (ret < 0) {
-        av_log(avf, AV_LOG_ERROR, "Error parsing fifo options: %s\n", av_err2str(ret));
-        goto end;
     }
 
     if (tee_slave->use_fifo) {
@@ -241,6 +237,7 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
     avf2->opaque   = avf->opaque;
     avf2->io_open  = avf->io_open;
     avf2->io_close = avf->io_close;
+    avf2->io_close2 = avf->io_close2;
     avf2->interrupt_callback = avf->interrupt_callback;
     avf2->flags = avf->flags;
     avf2->strict_std_compliance = avf->strict_std_compliance;
@@ -404,9 +401,6 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
 end:
     av_free(format);
     av_free(select);
-    av_free(on_fail);
-    av_free(use_fifo);
-    av_free(fifo_options_str);
     av_dict_free(&options);
     av_dict_free(&bsf_options);
     av_freep(&tmp_select);
@@ -478,7 +472,7 @@ static int tee_write_header(AVFormatContext *avf)
             filename++;
     }
 
-    if (!(tee->slaves = av_mallocz_array(nb_slaves, sizeof(*tee->slaves)))) {
+    if (!FF_ALLOCZ_TYPED_ARRAY(tee->slaves, nb_slaves)) {
         ret = AVERROR(ENOMEM);
         goto fail;
     }
@@ -543,7 +537,7 @@ static int tee_write_packet(AVFormatContext *avf, AVPacket *pkt)
     TeeContext *tee = avf->priv_data;
     AVFormatContext *avf2;
     AVBSFContext *bsfs;
-    AVPacket pkt2;
+    AVPacket *const pkt2 = ffformatcontext(avf)->pkt;
     int ret_all = 0, ret;
     unsigned i, s;
     int s2;
@@ -568,16 +562,17 @@ static int tee_write_packet(AVFormatContext *avf, AVPacket *pkt)
         if (s2 < 0)
             continue;
 
-        if ((ret = av_packet_ref(&pkt2, pkt)) < 0)
-            if (!ret_all) {
+        if ((ret = av_packet_ref(pkt2, pkt)) < 0) {
+            if (!ret_all)
                 ret_all = ret;
-                continue;
-            }
+            continue;
+        }
         bsfs = tee->slaves[i].bsfs[s2];
-        pkt2.stream_index = s2;
+        pkt2->stream_index = s2;
 
-        ret = av_bsf_send_packet(bsfs, &pkt2);
+        ret = av_bsf_send_packet(bsfs, pkt2);
         if (ret < 0) {
+            av_packet_unref(pkt2);
             av_log(avf, AV_LOG_ERROR, "Error while sending packet to bitstream filter: %s\n",
                    av_err2str(ret));
             ret = tee_process_slave_failure(avf, i, ret);
@@ -586,7 +581,7 @@ static int tee_write_packet(AVFormatContext *avf, AVPacket *pkt)
         }
 
         while(1) {
-            ret = av_bsf_receive_packet(bsfs, &pkt2);
+            ret = av_bsf_receive_packet(bsfs, pkt2);
             if (ret == AVERROR(EAGAIN)) {
                 ret = 0;
                 break;
@@ -594,9 +589,9 @@ static int tee_write_packet(AVFormatContext *avf, AVPacket *pkt)
                 break;
             }
 
-            av_packet_rescale_ts(&pkt2, bsfs->time_base_out,
+            av_packet_rescale_ts(pkt2, bsfs->time_base_out,
                                  avf2->streams[s2]->time_base);
-            ret = av_interleaved_write_frame(avf2, &pkt2);
+            ret = av_interleaved_write_frame(avf2, pkt2);
             if (ret < 0)
                 break;
         };
@@ -610,7 +605,7 @@ static int tee_write_packet(AVFormatContext *avf, AVPacket *pkt)
     return ret_all;
 }
 
-AVOutputFormat ff_tee_muxer = {
+const AVOutputFormat ff_tee_muxer = {
     .name              = "tee",
     .long_name         = NULL_IF_CONFIG_SMALL("Multiple muxer tee"),
     .priv_data_size    = sizeof(TeeContext),

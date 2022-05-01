@@ -67,9 +67,6 @@ const AVClass ffurl_context_class = {
     .option           = options,
     .version          = LIBAVUTIL_VERSION_INT,
     .child_next       = urlcontext_child_next,
-#if FF_API_CHILD_CLASS_NEXT
-    .child_class_next = ff_urlcontext_child_class_next,
-#endif
     .child_class_iterate = ff_urlcontext_child_class_iterate,
 };
 /*@}*/
@@ -493,7 +490,7 @@ int avio_check(const char *url, int flags)
     return ret;
 }
 
-int avpriv_io_move(const char *url_src, const char *url_dst)
+int ffurl_move(const char *url_src, const char *url_dst)
 {
     URLContext *h_src, *h_dst;
     int ret = ffurl_alloc(&h_src, url_src, AVIO_FLAG_READ_WRITE, NULL);
@@ -515,7 +512,7 @@ int avpriv_io_move(const char *url_src, const char *url_dst)
     return ret;
 }
 
-int avpriv_io_delete(const char *url)
+int ffurl_delete(const char *url)
 {
     URLContext *h;
     int ret = ffurl_alloc(&h, url, AVIO_FLAG_WRITE, NULL);
@@ -667,7 +664,7 @@ int ff_check_interrupt(AVIOInterruptCB *cb)
 
 int ff_rename(const char *url_src, const char *url_dst, void *logctx)
 {
-    int ret = avpriv_io_move(url_src, url_dst);
+    int ret = ffurl_move(url_src, url_dst);
     if (ret < 0)
         av_log(logctx, AV_LOG_ERROR, "failed to rename file %s to %s: %s\n", url_src, url_dst, av_err2str(ret));
     return ret;

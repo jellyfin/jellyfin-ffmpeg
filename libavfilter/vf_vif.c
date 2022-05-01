@@ -35,8 +35,9 @@
 #include "drawutils.h"
 #include "formats.h"
 #include "internal.h"
-#include "vif.h"
 #include "video.h"
+
+#define NUM_DATA_BUFS 13
 
 typedef struct VIFContext {
     const AVClass *class;
@@ -46,7 +47,7 @@ typedef struct VIFContext {
     int height;
     int nb_threads;
     float factor;
-    float *data_buf[13];
+    float *data_buf[NUM_DATA_BUFS];
     float **temp;
     float *ref_data;
     float *main_data;
@@ -283,11 +284,11 @@ static int vif_filter1d(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     return 0;
 }
 
-int ff_compute_vif2(AVFilterContext *ctx,
-                    const float *ref, const float *main, int w, int h,
-                    int ref_stride, int main_stride, float *score,
-                    float *data_buf[14], float **temp,
-                    int gnb_threads)
+static int compute_vif2(AVFilterContext *ctx,
+                        const float *ref, const float *main, int w, int h,
+                        int ref_stride, int main_stride, float *score,
+                        float *const data_buf[NUM_DATA_BUFS], float **temp,
+                        int gnb_threads)
 {
     ThreadData td;
     float *ref_scale = data_buf[0];
@@ -330,12 +331,12 @@ int ff_compute_vif2(AVFilterContext *ctx,
             td.src_stride = curr_ref_stride;
             td.dst_stride = w;
             td.temp = temp;
-            ctx->internal->execute(ctx, vif_filter1d, &td, NULL, nb_threads);
+            ff_filter_execute(ctx, vif_filter1d, &td, NULL, nb_threads);
 
             td.src = curr_main_scale;
             td.dst = mu2;
             td.src_stride = curr_main_stride;
-            ctx->internal->execute(ctx, vif_filter1d, &td, NULL, nb_threads);
+            ff_filter_execute(ctx, vif_filter1d, &td, NULL, nb_threads);
 
             vif_dec2(mu1, ref_scale, buf_valid_w, buf_valid_h, w, w);
             vif_dec2(mu2, main_scale, buf_valid_w, buf_valid_h, w, w);
@@ -360,12 +361,12 @@ int ff_compute_vif2(AVFilterContext *ctx,
         td.src_stride = curr_ref_stride;
         td.dst_stride = w;
         td.temp = temp;
-        ctx->internal->execute(ctx, vif_filter1d, &td, NULL, nb_threads);
+        ff_filter_execute(ctx, vif_filter1d, &td, NULL, nb_threads);
 
         td.src = curr_main_scale;
         td.dst = mu2;
         td.src_stride = curr_main_stride;
-        ctx->internal->execute(ctx, vif_filter1d, &td, NULL, nb_threads);
+        ff_filter_execute(ctx, vif_filter1d, &td, NULL, nb_threads);
 
         vif_xx_yy_xy(mu1, mu2, mu1_sq, mu2_sq, mu1_mu2, w, h);
 
@@ -374,16 +375,16 @@ int ff_compute_vif2(AVFilterContext *ctx,
         td.src = ref_sq;
         td.dst = ref_sq_filt;
         td.src_stride = w;
-        ctx->internal->execute(ctx, vif_filter1d, &td, NULL, nb_threads);
+        ff_filter_execute(ctx, vif_filter1d, &td, NULL, nb_threads);
 
         td.src = main_sq;
         td.dst = main_sq_filt;
         td.src_stride = w;
-        ctx->internal->execute(ctx, vif_filter1d, &td, NULL, nb_threads);
+        ff_filter_execute(ctx, vif_filter1d, &td, NULL, nb_threads);
 
         td.src = ref_main;
         td.dst = ref_main_filt;
-        ctx->internal->execute(ctx, vif_filter1d, &td, NULL, nb_threads);
+        ff_filter_execute(ctx, vif_filter1d, &td, NULL, nb_threads);
 
         vif_statistic(mu1_sq, mu2_sq, mu1_mu2, ref_sq_filt, main_sq_filt,
                       ref_main_filt, &num, &den, w, h);
@@ -448,11 +449,9 @@ static AVFrame *do_vif(AVFilterContext *ctx, AVFrame *main, const AVFrame *ref)
         offset_16bit(s, ref, main, s->width);
     }
 
-    ff_compute_vif2(ctx,
-                    s->ref_data, s->main_data, s->width,
-                    s->height, s->width, s->width,
-                    score, s->data_buf, s->temp,
-                    s->nb_threads);
+    compute_vif2(ctx, s->ref_data, s->main_data,
+                 s->width, s->height, s->width, s->width,
+                 score, s->data_buf, s->temp, s->nb_threads);
 
     set_meta(metadata, "lavfi.vif.scale.0", score[0]);
     set_meta(metadata, "lavfi.vif.scale.1", score[1]);
@@ -470,25 +469,17 @@ static AVFrame *do_vif(AVFilterContext *ctx, AVFrame *main, const AVFrame *ref)
     return main;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10,
-        AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
-        AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10,
+    AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
+    AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
 #define PF(suf) AV_PIX_FMT_YUV420##suf,  AV_PIX_FMT_YUV422##suf,  AV_PIX_FMT_YUV444##suf
-        PF(P9), PF(P10), PF(P12), PF(P14), PF(P16),
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+    PF(P9), PF(P10), PF(P12), PF(P14), PF(P16),
+    AV_PIX_FMT_NONE
+};
 
 static int config_input_ref(AVFilterLink *inlink)
 {
@@ -498,10 +489,6 @@ static int config_input_ref(AVFilterLink *inlink)
     if (ctx->inputs[0]->w != ctx->inputs[1]->w ||
         ctx->inputs[0]->h != ctx->inputs[1]->h) {
         av_log(ctx, AV_LOG_ERROR, "Width and height of input videos must be same.\n");
-        return AVERROR(EINVAL);
-    }
-    if (ctx->inputs[0]->format != ctx->inputs[1]->format) {
-        av_log(ctx, AV_LOG_ERROR, "Inputs must be of same pixel format.\n");
         return AVERROR(EINVAL);
     }
 
@@ -515,7 +502,7 @@ static int config_input_ref(AVFilterLink *inlink)
         s->vif_max[i] = -DBL_MAX;
     }
 
-    for (int i = 0; i < 13; i++) {
+    for (int i = 0; i < NUM_DATA_BUFS; i++) {
         if (!(s->data_buf[i] = av_calloc(s->width, s->height * sizeof(float))))
             return AVERROR(ENOMEM);
     }
@@ -608,7 +595,7 @@ static av_cold void uninit(AVFilterContext *ctx)
                    i, s->vif_sum[i] / s->nb_frames, s->vif_min[i], s->vif_max[i]);
     }
 
-    for (int i = 0; i < 13; i++)
+    for (int i = 0; i < NUM_DATA_BUFS; i++)
         av_freep(&s->data_buf[i]);
 
     av_freep(&s->ref_data);
@@ -631,7 +618,6 @@ static const AVFilterPad vif_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_input_ref,
     },
-    { NULL }
 };
 
 static const AVFilterPad vif_outputs[] = {
@@ -640,18 +626,19 @@ static const AVFilterPad vif_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_vif = {
+const AVFilter ff_vf_vif = {
     .name          = "vif",
     .description   = NULL_IF_CONFIG_SMALL("Calculate the VIF between two video streams."),
     .uninit        = uninit,
-    .query_formats = query_formats,
     .priv_size     = sizeof(VIFContext),
     .priv_class    = &vif_class,
     .activate      = activate,
-    .inputs        = vif_inputs,
-    .outputs       = vif_outputs,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_INPUTS(vif_inputs),
+    FILTER_OUTPUTS(vif_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS             |
+                     AVFILTER_FLAG_METADATA_ONLY,
 };

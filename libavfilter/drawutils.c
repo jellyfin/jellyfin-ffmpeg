@@ -25,7 +25,6 @@
 #include "libavutil/avutil.h"
 #include "libavutil/colorspace.h"
 #include "libavutil/intreadwrite.h"
-#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "drawutils.h"
 #include "formats.h"
@@ -34,50 +33,46 @@ enum { RED = 0, GREEN, BLUE, ALPHA };
 
 int ff_fill_rgba_map(uint8_t *rgba_map, enum AVPixelFormat pix_fmt)
 {
-    switch (pix_fmt) {
-    case AV_PIX_FMT_0RGB:
-    case AV_PIX_FMT_ARGB:  rgba_map[ALPHA] = 0; rgba_map[RED  ] = 1; rgba_map[GREEN] = 2; rgba_map[BLUE ] = 3; break;
-    case AV_PIX_FMT_0BGR:
-    case AV_PIX_FMT_ABGR:  rgba_map[ALPHA] = 0; rgba_map[BLUE ] = 1; rgba_map[GREEN] = 2; rgba_map[RED  ] = 3; break;
-    case AV_PIX_FMT_RGB48LE:
-    case AV_PIX_FMT_RGB48BE:
-    case AV_PIX_FMT_RGBA64BE:
-    case AV_PIX_FMT_RGBA64LE:
-    case AV_PIX_FMT_RGB0:
-    case AV_PIX_FMT_RGBA:
-    case AV_PIX_FMT_RGB24: rgba_map[RED  ] = 0; rgba_map[GREEN] = 1; rgba_map[BLUE ] = 2; rgba_map[ALPHA] = 3; break;
-    case AV_PIX_FMT_BGR48LE:
-    case AV_PIX_FMT_BGR48BE:
-    case AV_PIX_FMT_BGRA64BE:
-    case AV_PIX_FMT_BGRA64LE:
-    case AV_PIX_FMT_BGRA:
-    case AV_PIX_FMT_BGR0:
-    case AV_PIX_FMT_BGR24: rgba_map[BLUE ] = 0; rgba_map[GREEN] = 1; rgba_map[RED  ] = 2; rgba_map[ALPHA] = 3; break;
-    case AV_PIX_FMT_GBRP9LE:
-    case AV_PIX_FMT_GBRP9BE:
-    case AV_PIX_FMT_GBRP10LE:
-    case AV_PIX_FMT_GBRP10BE:
-    case AV_PIX_FMT_GBRP12LE:
-    case AV_PIX_FMT_GBRP12BE:
-    case AV_PIX_FMT_GBRP14LE:
-    case AV_PIX_FMT_GBRP14BE:
-    case AV_PIX_FMT_GBRP16LE:
-    case AV_PIX_FMT_GBRP16BE:
-    case AV_PIX_FMT_GBRAP:
-    case AV_PIX_FMT_GBRAP10LE:
-    case AV_PIX_FMT_GBRAP10BE:
-    case AV_PIX_FMT_GBRAP12LE:
-    case AV_PIX_FMT_GBRAP12BE:
-    case AV_PIX_FMT_GBRAP16LE:
-    case AV_PIX_FMT_GBRAP16BE:
-    case AV_PIX_FMT_GBRPF32LE:
-    case AV_PIX_FMT_GBRPF32BE:
-    case AV_PIX_FMT_GBRAPF32LE:
-    case AV_PIX_FMT_GBRAPF32BE:
-    case AV_PIX_FMT_GBRP:  rgba_map[GREEN] = 0; rgba_map[BLUE ] = 1; rgba_map[RED  ] = 2; rgba_map[ALPHA] = 3; break;
-    default:                    /* unsupported */
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
+    if (!(desc->flags & AV_PIX_FMT_FLAG_RGB))
         return AVERROR(EINVAL);
+    if (desc->flags & AV_PIX_FMT_FLAG_BITSTREAM)
+        return AVERROR(EINVAL);
+    av_assert0(desc->nb_components == 3 + !!(desc->flags & AV_PIX_FMT_FLAG_ALPHA));
+    if (desc->flags & AV_PIX_FMT_FLAG_PLANAR) {
+        rgba_map[RED]   = desc->comp[0].plane;
+        rgba_map[GREEN] = desc->comp[1].plane;
+        rgba_map[BLUE]  = desc->comp[2].plane;
+        rgba_map[ALPHA] = (desc->flags & AV_PIX_FMT_FLAG_ALPHA) ? desc->comp[3].plane : 3;
+    } else {
+        int had0 = 0;
+        unsigned depthb = 0;
+        unsigned i;
+        for (i = 0; i < desc->nb_components; i++) {
+            /* all components must have same depth in bytes */
+            unsigned db = (desc->comp[i].depth + 7) / 8;
+            unsigned pos = desc->comp[i].offset / db;
+            if (depthb && (depthb != db))
+                return AVERROR(ENOSYS);
+
+            if (desc->comp[i].offset % db)
+                return AVERROR(ENOSYS);
+
+            had0 |= pos == 0;
+            rgba_map[i] = pos;
+        }
+
+        if (desc->nb_components == 3)
+            rgba_map[ALPHA] = had0 ? 3 : 0;
     }
+
+    av_assert0(rgba_map[RED]   != rgba_map[GREEN]);
+    av_assert0(rgba_map[GREEN] != rgba_map[BLUE]);
+    av_assert0(rgba_map[BLUE]  != rgba_map[RED]);
+    av_assert0(rgba_map[RED]   != rgba_map[ALPHA]);
+    av_assert0(rgba_map[GREEN] != rgba_map[ALPHA]);
+    av_assert0(rgba_map[BLUE]  != rgba_map[ALPHA]);
+
     return 0;
 }
 
@@ -88,24 +83,36 @@ int ff_draw_init(FFDrawContext *draw, enum AVPixelFormat format, unsigned flags)
     unsigned i, nb_planes = 0;
     int pixelstep[MAX_PLANES] = { 0 };
     int full_range = 0;
+    int depthb = 0;
 
     if (!desc || !desc->name)
         return AVERROR(EINVAL);
-    if (desc->flags & ~(AV_PIX_FMT_FLAG_PLANAR | AV_PIX_FMT_FLAG_RGB | FF_PSEUDOPAL | AV_PIX_FMT_FLAG_ALPHA))
+    if (desc->flags & AV_PIX_FMT_FLAG_BE)
         return AVERROR(ENOSYS);
-    if (format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P010BE || format == AV_PIX_FMT_P016LE || format == AV_PIX_FMT_P016BE)
+    if (desc->flags & ~(AV_PIX_FMT_FLAG_PLANAR | AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_ALPHA))
         return AVERROR(ENOSYS);
     if (format == AV_PIX_FMT_YUVJ420P || format == AV_PIX_FMT_YUVJ422P || format == AV_PIX_FMT_YUVJ444P ||
         format == AV_PIX_FMT_YUVJ411P || format == AV_PIX_FMT_YUVJ440P)
         full_range = 1;
     for (i = 0; i < desc->nb_components; i++) {
+        int db;
         c = &desc->comp[i];
         /* for now, only 8-16 bits formats */
         if (c->depth < 8 || c->depth > 16)
             return AVERROR(ENOSYS);
-        if (desc->flags & AV_PIX_FMT_FLAG_BE)
-            return AVERROR(ENOSYS);
         if (c->plane >= MAX_PLANES)
+            return AVERROR(ENOSYS);
+        /* data must either be in the high or low bits, never middle */
+        if (c->shift && ((c->shift + c->depth) & 0x7))
+            return AVERROR(ENOSYS);
+        /* mixed >8 and <=8 depth */
+        db = (c->depth + 7) / 8;
+        if (depthb && (depthb != db))
+            return AVERROR(ENOSYS);
+        depthb = db;
+        if (db * (c->offset + 1) > 16)
+            return AVERROR(ENOSYS);
+        if (c->offset % db)
             return AVERROR(ENOSYS);
         /* strange interleaving */
         if (pixelstep[c->plane] != 0 &&
@@ -128,66 +135,49 @@ int ff_draw_init(FFDrawContext *draw, enum AVPixelFormat format, unsigned flags)
     memcpy(draw->pixelstep, pixelstep, sizeof(draw->pixelstep));
     draw->hsub[1] = draw->hsub[2] = draw->hsub_max = desc->log2_chroma_w;
     draw->vsub[1] = draw->vsub[2] = draw->vsub_max = desc->log2_chroma_h;
-    for (i = 0; i < (desc->nb_components - !!(desc->flags & AV_PIX_FMT_FLAG_ALPHA && !(flags & FF_DRAW_PROCESS_ALPHA))); i++)
-        draw->comp_mask[desc->comp[i].plane] |=
-            1 << desc->comp[i].offset;
     return 0;
 }
 
 void ff_draw_color(FFDrawContext *draw, FFDrawColor *color, const uint8_t rgba[4])
 {
     unsigned i;
-    uint8_t rgba_map[4];
+    uint8_t tmp8[4];
+    const AVPixFmtDescriptor *desc = draw->desc;
 
     if (rgba != color->rgba)
         memcpy(color->rgba, rgba, sizeof(color->rgba));
-    if ((draw->desc->flags & AV_PIX_FMT_FLAG_RGB) &&
-        ff_fill_rgba_map(rgba_map, draw->format) >= 0) {
-        if (draw->nb_planes == 1) {
-            for (i = 0; i < 4; i++) {
-                color->comp[0].u8[rgba_map[i]] = rgba[i];
-                if (draw->desc->comp[rgba_map[i]].depth > 8) {
-                    color->comp[0].u16[rgba_map[i]] = color->comp[0].u8[rgba_map[i]] << 8;
-                }
-            }
-        } else {
-            for (i = 0; i < 4; i++) {
-                color->comp[rgba_map[i]].u8[0] = rgba[i];
-                if (draw->desc->comp[rgba_map[i]].depth > 8)
-                    color->comp[rgba_map[i]].u16[0] = color->comp[rgba_map[i]].u8[0] << (draw->desc->comp[rgba_map[i]].depth - 8);
-            }
-        }
+
+    memset(color->comp, 0, sizeof(color->comp));
+
+    if (draw->desc->flags & AV_PIX_FMT_FLAG_RGB) {
+        memcpy(tmp8, rgba, sizeof(tmp8));
     } else if (draw->nb_planes >= 2) {
         /* assume YUV */
-        const AVPixFmtDescriptor *desc = draw->desc;
-        color->comp[desc->comp[0].plane].u8[desc->comp[0].offset] = draw->full_range ? RGB_TO_Y_JPEG(rgba[0], rgba[1], rgba[2]) : RGB_TO_Y_CCIR(rgba[0], rgba[1], rgba[2]);
-        color->comp[desc->comp[1].plane].u8[desc->comp[1].offset] = draw->full_range ? RGB_TO_U_JPEG(rgba[0], rgba[1], rgba[2]) : RGB_TO_U_CCIR(rgba[0], rgba[1], rgba[2], 0);
-        color->comp[desc->comp[2].plane].u8[desc->comp[2].offset] = draw->full_range ? RGB_TO_V_JPEG(rgba[0], rgba[1], rgba[2]) : RGB_TO_V_CCIR(rgba[0], rgba[1], rgba[2], 0);
-        color->comp[3].u8[0] = rgba[3];
-#define EXPAND(compn) \
-        if (desc->comp[compn].depth > 8) \
-            color->comp[desc->comp[compn].plane].u16[desc->comp[compn].offset] = \
-            color->comp[desc->comp[compn].plane].u8[desc->comp[compn].offset] << \
-                (draw->desc->comp[compn].depth + draw->desc->comp[compn].shift - 8)
-        EXPAND(3);
-        EXPAND(2);
-        EXPAND(1);
-        EXPAND(0);
+        tmp8[0] = draw->full_range ? RGB_TO_Y_JPEG(rgba[0], rgba[1], rgba[2]) : RGB_TO_Y_CCIR(rgba[0], rgba[1], rgba[2]);
+        tmp8[1] = draw->full_range ? RGB_TO_U_JPEG(rgba[0], rgba[1], rgba[2]) : RGB_TO_U_CCIR(rgba[0], rgba[1], rgba[2], 0);
+        tmp8[2] = draw->full_range ? RGB_TO_V_JPEG(rgba[0], rgba[1], rgba[2]) : RGB_TO_V_CCIR(rgba[0], rgba[1], rgba[2], 0);
+        tmp8[3] = rgba[3];
     } else if (draw->format == AV_PIX_FMT_GRAY8 || draw->format == AV_PIX_FMT_GRAY8A ||
                draw->format == AV_PIX_FMT_GRAY16LE || draw->format == AV_PIX_FMT_YA16LE ||
                draw->format == AV_PIX_FMT_GRAY9LE  ||
                draw->format == AV_PIX_FMT_GRAY10LE ||
                draw->format == AV_PIX_FMT_GRAY12LE ||
                draw->format == AV_PIX_FMT_GRAY14LE) {
-        const AVPixFmtDescriptor *desc = draw->desc;
-        color->comp[0].u8[0] = RGB_TO_Y_CCIR(rgba[0], rgba[1], rgba[2]);
-        EXPAND(0);
-        color->comp[1].u8[0] = rgba[3];
-        EXPAND(1);
+        tmp8[0] = RGB_TO_Y_CCIR(rgba[0], rgba[1], rgba[2]);
+        tmp8[1] = rgba[3];
     } else {
         av_log(NULL, AV_LOG_WARNING,
                "Color conversion not implemented for %s\n", draw->desc->name);
         memset(color, 128, sizeof(*color));
+        return;
+    }
+
+    for (i = 0; i < desc->nb_components; i++) {
+        if (desc->comp[i].depth > 8)
+            color->comp[desc->comp[i].plane].u16[desc->comp[i].offset / 2] = tmp8[i] <<
+                (draw->desc->comp[i].depth + draw->desc->comp[i].shift - 8);
+        else
+            color->comp[desc->comp[i].plane].u8[desc->comp[i].offset] = tmp8[i];
     }
 }
 
@@ -293,11 +283,6 @@ static void subsampling_bounds(int sub, int *x, int *w, int *start, int *end)
     *w >>= sub;
 }
 
-static int component_used(FFDrawContext *draw, int plane, int comp)
-{
-    return (draw->comp_mask[plane] >> comp) & 1;
-}
-
 /* If alpha is in the [ 0 ; 0x1010101 ] range,
    then alpha * value is in the [ 0 ; 0xFFFFFFFF ] range,
    and >> 24 gives a correct rounding. */
@@ -357,6 +342,9 @@ void ff_blend_rectangle(FFDrawContext *draw, FFDrawColor *color,
     int w_sub, h_sub, x_sub, y_sub, left, right, top, bottom, y;
     uint8_t *p0, *p;
 
+    nb_comp = draw->desc->nb_components -
+        !!(draw->desc->flags & AV_PIX_FMT_FLAG_ALPHA && !(draw->flags & FF_DRAW_PROCESS_ALPHA));
+
     /* TODO optimize if alpha = 0xFF */
     clip_interval(dst_w, &x0, &w, NULL);
     clip_interval(dst_h, &y0, &h, NULL);
@@ -372,7 +360,6 @@ void ff_blend_rectangle(FFDrawContext *draw, FFDrawColor *color,
     nb_planes = draw->nb_planes - !!(draw->desc->flags & AV_PIX_FMT_FLAG_ALPHA && !(draw->flags & FF_DRAW_PROCESS_ALPHA));
     nb_planes += !nb_planes;
     for (plane = 0; plane < nb_planes; plane++) {
-        nb_comp = draw->pixelstep[plane];
         p0 = pointer_at(draw, dst, dst_linesize, plane, x0, y0);
         w_sub = w;
         h_sub = h;
@@ -382,17 +369,19 @@ void ff_blend_rectangle(FFDrawContext *draw, FFDrawColor *color,
         subsampling_bounds(draw->vsub[plane], &y_sub, &h_sub, &top, &bottom);
         for (comp = 0; comp < nb_comp; comp++) {
             const int depth = draw->desc->comp[comp].depth;
+            const int offset = draw->desc->comp[comp].offset;
+            const int index = offset / ((depth + 7) / 8);
 
-            if (!component_used(draw, plane, comp))
+            if (draw->desc->comp[comp].plane != plane)
                 continue;
-            p = p0 + comp;
+            p = p0 + offset;
             if (top) {
                 if (depth <= 8) {
-                    blend_line(p, color->comp[plane].u8[comp], alpha >> 1,
+                    blend_line(p, color->comp[plane].u8[index], alpha >> 1,
                                draw->pixelstep[plane], w_sub,
                                draw->hsub[plane], left, right);
                 } else {
-                    blend_line16(p, color->comp[plane].u16[comp], alpha >> 1,
+                    blend_line16(p, color->comp[plane].u16[index], alpha >> 1,
                                  draw->pixelstep[plane], w_sub,
                                  draw->hsub[plane], left, right);
                 }
@@ -400,14 +389,14 @@ void ff_blend_rectangle(FFDrawContext *draw, FFDrawColor *color,
             }
             if (depth <= 8) {
                 for (y = 0; y < h_sub; y++) {
-                    blend_line(p, color->comp[plane].u8[comp], alpha,
+                    blend_line(p, color->comp[plane].u8[index], alpha,
                                draw->pixelstep[plane], w_sub,
                                draw->hsub[plane], left, right);
                     p += dst_linesize[plane];
                 }
             } else {
                 for (y = 0; y < h_sub; y++) {
-                    blend_line16(p, color->comp[plane].u16[comp], alpha,
+                    blend_line16(p, color->comp[plane].u16[index], alpha,
                                  draw->pixelstep[plane], w_sub,
                                  draw->hsub[plane], left, right);
                     p += dst_linesize[plane];
@@ -415,11 +404,11 @@ void ff_blend_rectangle(FFDrawContext *draw, FFDrawColor *color,
             }
             if (bottom) {
                 if (depth <= 8) {
-                    blend_line(p, color->comp[plane].u8[comp], alpha >> 1,
+                    blend_line(p, color->comp[plane].u8[index], alpha >> 1,
                                draw->pixelstep[plane], w_sub,
                                draw->hsub[plane], left, right);
                 } else {
-                    blend_line16(p, color->comp[plane].u16[comp], alpha >> 1,
+                    blend_line16(p, color->comp[plane].u16[index], alpha >> 1,
                                  draw->pixelstep[plane], w_sub,
                                  draw->hsub[plane], left, right);
                 }
@@ -535,6 +524,9 @@ void ff_blend_mask(FFDrawContext *draw, FFDrawColor *color,
     uint8_t *p0, *p;
     const uint8_t *m;
 
+    nb_comp = draw->desc->nb_components -
+        !!(draw->desc->flags & AV_PIX_FMT_FLAG_ALPHA && !(draw->flags & FF_DRAW_PROCESS_ALPHA));
+
     clip_interval(dst_w, &x0, &mask_w, &xm0);
     clip_interval(dst_h, &y0, &mask_h, &ym0);
     mask += ym0 * mask_linesize;
@@ -550,7 +542,6 @@ void ff_blend_mask(FFDrawContext *draw, FFDrawColor *color,
     nb_planes = draw->nb_planes - !!(draw->desc->flags & AV_PIX_FMT_FLAG_ALPHA && !(draw->flags & FF_DRAW_PROCESS_ALPHA));
     nb_planes += !nb_planes;
     for (plane = 0; plane < nb_planes; plane++) {
-        nb_comp = draw->pixelstep[plane];
         p0 = pointer_at(draw, dst, dst_linesize, plane, x0, y0);
         w_sub = mask_w;
         h_sub = mask_h;
@@ -560,21 +551,23 @@ void ff_blend_mask(FFDrawContext *draw, FFDrawColor *color,
         subsampling_bounds(draw->vsub[plane], &y_sub, &h_sub, &top, &bottom);
         for (comp = 0; comp < nb_comp; comp++) {
             const int depth = draw->desc->comp[comp].depth;
+            const int offset = draw->desc->comp[comp].offset;
+            const int index = offset / ((depth + 7) / 8);
 
-            if (!component_used(draw, plane, comp))
+            if (draw->desc->comp[comp].plane != plane)
                 continue;
-            p = p0 + comp;
+            p = p0 + offset;
             m = mask;
             if (top) {
                 if (depth <= 8) {
                     blend_line_hv(p, draw->pixelstep[plane],
-                                  color->comp[plane].u8[comp], alpha,
+                                  color->comp[plane].u8[index], alpha,
                                   m, mask_linesize, l2depth, w_sub,
                                   draw->hsub[plane], draw->vsub[plane],
                                   xm0, left, right, top);
                 } else {
                     blend_line_hv16(p, draw->pixelstep[plane],
-                                    color->comp[plane].u16[comp], alpha,
+                                    color->comp[plane].u16[index], alpha,
                                     m, mask_linesize, l2depth, w_sub,
                                     draw->hsub[plane], draw->vsub[plane],
                                     xm0, left, right, top);
@@ -585,7 +578,7 @@ void ff_blend_mask(FFDrawContext *draw, FFDrawColor *color,
             if (depth <= 8) {
                 for (y = 0; y < h_sub; y++) {
                     blend_line_hv(p, draw->pixelstep[plane],
-                                  color->comp[plane].u8[comp], alpha,
+                                  color->comp[plane].u8[index], alpha,
                                   m, mask_linesize, l2depth, w_sub,
                                   draw->hsub[plane], draw->vsub[plane],
                                   xm0, left, right, 1 << draw->vsub[plane]);
@@ -595,7 +588,7 @@ void ff_blend_mask(FFDrawContext *draw, FFDrawColor *color,
             } else {
                 for (y = 0; y < h_sub; y++) {
                     blend_line_hv16(p, draw->pixelstep[plane],
-                                    color->comp[plane].u16[comp], alpha,
+                                    color->comp[plane].u16[index], alpha,
                                     m, mask_linesize, l2depth, w_sub,
                                     draw->hsub[plane], draw->vsub[plane],
                                     xm0, left, right, 1 << draw->vsub[plane]);
@@ -606,13 +599,13 @@ void ff_blend_mask(FFDrawContext *draw, FFDrawColor *color,
             if (bottom) {
                 if (depth <= 8) {
                     blend_line_hv(p, draw->pixelstep[plane],
-                                  color->comp[plane].u8[comp], alpha,
+                                  color->comp[plane].u8[index], alpha,
                                   m, mask_linesize, l2depth, w_sub,
                                   draw->hsub[plane], draw->vsub[plane],
                                   xm0, left, right, bottom);
                 } else {
                     blend_line_hv16(p, draw->pixelstep[plane],
-                                    color->comp[plane].u16[comp], alpha,
+                                    color->comp[plane].u16[index], alpha,
                                     m, mask_linesize, l2depth, w_sub,
                                     draw->hsub[plane], draw->vsub[plane],
                                     xm0, left, right, bottom);

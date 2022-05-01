@@ -751,9 +751,7 @@ static av_cold int wmv9_init(AVCodecContext *avctx)
 
     v->s.avctx    = avctx;
 
-    if ((ret = ff_vc1_init_common(v)) < 0)
-        return ret;
-    ff_vc1dsp_init(&v->vc1dsp);
+    ff_vc1_init_common(v);
 
     v->profile = PROFILE_MAIN;
 
@@ -847,7 +845,7 @@ static av_cold int mss2_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_mss2_decoder = {
+const AVCodec ff_mss2_decoder = {
     .name           = "mss2",
     .long_name      = NULL_IF_CONFIG_SMALL("MS Windows Media Video V9 Screen"),
     .type           = AVMEDIA_TYPE_VIDEO,

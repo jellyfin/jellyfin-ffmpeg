@@ -61,12 +61,16 @@ enum MetadataFunction {
 static const char *const var_names[] = {
     "VALUE1",
     "VALUE2",
+    "FRAMEVAL",
+    "USERVAL",
     NULL
 };
 
 enum var_name {
     VAR_VALUE1,
     VAR_VALUE2,
+    VAR_FRAMEVAL,
+    VAR_USERVAL,
     VAR_VARS_NB
 };
 
@@ -172,8 +176,8 @@ static int parse_expr(MetadataContext *s, const char *value1, const char *value2
     if (sscanf(value1, "%lf", &f1) + sscanf(value2, "%lf", &f2) != 2)
         return 0;
 
-    s->var_values[VAR_VALUE1] = f1;
-    s->var_values[VAR_VALUE2] = f2;
+    s->var_values[VAR_VALUE1] = s->var_values[VAR_FRAMEVAL] = f1;
+    s->var_values[VAR_VALUE2] = s->var_values[VAR_USERVAL]  = f2;
 
     return av_expr_eval(s->expr, s->var_values, NULL);
 }
@@ -369,7 +373,6 @@ static const AVFilterPad ainputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad aoutputs[] = {
@@ -377,19 +380,19 @@ static const AVFilterPad aoutputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_ametadata = {
+const AVFilter ff_af_ametadata = {
     .name          = "ametadata",
     .description   = NULL_IF_CONFIG_SMALL("Manipulate audio frame metadata."),
     .priv_size     = sizeof(MetadataContext),
     .priv_class    = &ametadata_class,
     .init          = init,
     .uninit        = uninit,
-    .inputs        = ainputs,
-    .outputs       = aoutputs,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    FILTER_INPUTS(ainputs),
+    FILTER_OUTPUTS(aoutputs),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
+                     AVFILTER_FLAG_METADATA_ONLY,
 };
 #endif /* CONFIG_AMETADATA_FILTER */
 
@@ -404,7 +407,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -412,18 +414,18 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_metadata = {
+const AVFilter ff_vf_metadata = {
     .name        = "metadata",
     .description = NULL_IF_CONFIG_SMALL("Manipulate video frame metadata."),
     .priv_size   = sizeof(MetadataContext),
     .priv_class  = &metadata_class,
     .init        = init,
     .uninit      = uninit,
-    .inputs      = inputs,
-    .outputs     = outputs,
-    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
+                   AVFILTER_FLAG_METADATA_ONLY,
 };
 #endif /* CONFIG_METADATA_FILTER */

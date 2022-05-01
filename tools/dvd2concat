@@ -37,7 +37,8 @@ normally contains a directory named B<VIDEO_TS>. It must not be encrypted
 with CSS.
 
 I<file.concat> is the output file. It can be used as an input to ffmpeg.
-It will require the B<-safe 0> option.
+It will require the B<-safe 0> and
+B<-protocol_whitelist file,subfile,concat> options.
 
 =cut
 
@@ -87,9 +88,40 @@ my $concat = "ffconcat version 1.0\n";
 $concat .= "\nstream\nexact_stream_id 0x1E0\n";
 for my $audio (@{$track->{audio}}) {
   $concat .= "\nstream\nexact_stream_id " . $audio->{streamid} . "\n";
+  $concat .= "stream_meta language " . $audio->{langcode} . "\n" if $audio->{langcode};
 }
 for my $subp (@{$track->{subp}}) {
   $concat .= "\nstream\nexact_stream_id " . $subp->{streamid} . "\n";
+  $concat .= "stream_codec dvd_subtitle\n";
+  $concat .= "stream_meta language " . $subp->{langcode} . "\n" if $subp->{langcode};
+  my $extradata = "";
+  if ($track->{width} && $track->{height}) {
+    $extradata .= "size: " . $track->{width} . "x" . $track->{height} . "\n";
+  }
+  if (my $pal = $track->{palette}) {
+    my @pal;
+    for my $c (@$pal) {
+      # Adapted from mplayer/sub/vobsub.c
+      my $y = ((hex($c) >> 16) & 0xFF);
+      my $u = ((hex($c) >>  8) & 0xFF) - 128;
+      my $v = ((hex($c) >>  0) & 0xFF) - 128;
+      my ($r, $g, $b) = map { int($_ < 0 ? 0 : $_ > 255 ? 255 : $_) }
+        $y + 1.4022 * $u,
+        $y - 0.3456 * $u - 0.7145 * $v,
+        $y               + 1.7710 * $v;
+      push @pal, sprintf "%06x", ($r << 16) | ($g << 8) | $b;
+    }
+    $extradata .= "palette: " . join(", ", @pal) . "\n";
+  }
+  if ($extradata ne "") {
+    $concat .= "stream_extradata " . unpack("H*", $extradata);
+  }
+}
+my $chap_time = 0;
+for my $chap (@{$track->{chapter}}) {
+  $concat .= sprintf "\nchapter %d %.3f %.3f\n",
+    $chap->{ix}, $chap_time, $chap_time + $chap->{length};
+  $chap_time += $chap->{length};
 }
 for my $cell (@{$track->{cell}}) {
   my $off = $cell->{first_sector};
@@ -116,10 +148,12 @@ for my $cell (@{$track->{cell}}) {
   my $file = @files == 1 ? $files[0] : "concat:" . join("|", @files);
   my $start = $off << 11;
   my $end = ($off + $size) << 11;
-  $file = "subfile,,start,${start},end,${end},,:$file";
 
   my $dur = int(1000 * $cell->{length});
-  $concat .= sprintf "\nfile '%s'\nduration %02d:%02d:%02d.%03d\n", $file,
+  $concat .= "\nfile 'subfile:$file'\n";
+  $concat .= "option start $start\n";
+  $concat .= "option end   $end\n";
+  $concat .= sprintf "duration %02d:%02d:%02d.%03d\n",
     int($dur / 3600000), int($dur / 60000) % 60, int($dur / 1000) % 60,
     $dur % 1000;
 }

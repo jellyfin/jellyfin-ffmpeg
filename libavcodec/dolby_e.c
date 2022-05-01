@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/thread.h"
 #include "libavutil/mem.h"
@@ -1256,7 +1257,7 @@ static av_cold int dolby_e_init(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_dolby_e_decoder = {
+const AVCodec ff_dolby_e_decoder = {
     .name           = "dolby_e",
     .long_name      = NULL_IF_CONFIG_SMALL("Dolby E"),
     .type           = AVMEDIA_TYPE_AUDIO,

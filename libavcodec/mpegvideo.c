@@ -658,12 +658,6 @@ do {\
     memcpy(&s->progressive_sequence, &s1->progressive_sequence,
            (char *) &s1->rtp_mode - (char *) &s1->progressive_sequence);
 
-    if (!s1->first_field) {
-        s->last_pict_type = s1->pict_type;
-        if (s1->current_picture_ptr)
-            s->last_lambda_for[s1->pict_type] = s1->current_picture_ptr->f->quality;
-    }
-
     return 0;
 }
 
@@ -707,7 +701,7 @@ void ff_mpv_decode_init(MpegEncContext *s, AVCodecContext *avctx)
     s->workaround_bugs = avctx->workaround_bugs;
 
     /* convert fourcc to upper case */
-    s->codec_tag          = avpriv_toupper4(avctx->codec_tag);
+    s->codec_tag       = ff_toupper4(avctx->codec_tag);
 }
 
 /**
@@ -774,29 +768,48 @@ static int init_context_frame(MpegEncContext *s)
             !FF_ALLOC_TYPED_ARRAY (s->cplx_tab,     mb_array_size) ||
             !FF_ALLOC_TYPED_ARRAY (s->bits_tab,     mb_array_size))
             return AVERROR(ENOMEM);
+
+#define ALLOCZ_ARRAYS(p, mult, numb) ((p) = av_calloc(numb, mult * sizeof(*(p))))
+        if (s->codec_id == AV_CODEC_ID_MPEG4 ||
+            (s->avctx->flags & AV_CODEC_FLAG_INTERLACED_ME)) {
+            int16_t (*tmp1)[2];
+            uint8_t *tmp2;
+            if (!(tmp1 = ALLOCZ_ARRAYS(s->b_field_mv_table_base, 8, mv_table_size)) ||
+                !(tmp2 = ALLOCZ_ARRAYS(s->b_field_select_table[0][0], 2 * 4, mv_table_size)) ||
+                !ALLOCZ_ARRAYS(s->p_field_select_table[0], 2 * 2, mv_table_size))
+                return AVERROR(ENOMEM);
+
+            s->p_field_select_table[1] = s->p_field_select_table[0] + 2 * mv_table_size;
+            tmp1 += s->mb_stride + 1;
+
+            for (int i = 0; i < 2; i++) {
+                for (int j = 0; j < 2; j++) {
+                    for (int k = 0; k < 2; k++) {
+                        s->b_field_mv_table[i][j][k] = tmp1;
+                        tmp1 += mv_table_size;
+                    }
+                    s->b_field_select_table[i][j] = tmp2;
+                    tmp2 += 2 * mv_table_size;
+                }
+            }
+        }
     }
 
     if (s->codec_id == AV_CODEC_ID_MPEG4 ||
         (s->avctx->flags & AV_CODEC_FLAG_INTERLACED_ME)) {
+        int16_t (*tmp)[2];
         /* interlaced direct mode decoding tables */
-        for (i = 0; i < 2; i++) {
-            int j, k;
-            for (j = 0; j < 2; j++) {
-                for (k = 0; k < 2; k++) {
-                    if (!FF_ALLOCZ_TYPED_ARRAY(s->b_field_mv_table_base[i][j][k], mv_table_size))
-                        return AVERROR(ENOMEM);
-                    s->b_field_mv_table[i][j][k] = s->b_field_mv_table_base[i][j][k] +
-                                                   s->mb_stride + 1;
-                }
-                if (!FF_ALLOCZ_TYPED_ARRAY(s->b_field_select_table [i][j], mv_table_size * 2) ||
-                    !FF_ALLOCZ_TYPED_ARRAY(s->p_field_mv_table_base[i][j], mv_table_size))
-                    return AVERROR(ENOMEM);
-                s->p_field_mv_table[i][j] = s->p_field_mv_table_base[i][j] + s->mb_stride + 1;
+        if (!(tmp = ALLOCZ_ARRAYS(s->p_field_mv_table_base, 4, mv_table_size)))
+            return AVERROR(ENOMEM);
+        tmp += s->mb_stride + 1;
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 2; j++) {
+                s->p_field_mv_table[i][j] = tmp;
+                tmp += mv_table_size;
             }
-            if (!FF_ALLOCZ_TYPED_ARRAY(s->p_field_select_table[i], mv_table_size * 2))
-                return AVERROR(ENOMEM);
         }
     }
+
     if (s->out_format == FMT_H263) {
         /* cbp values, cbp, ac_pred, pred_dir */
         if (!FF_ALLOCZ_TYPED_ARRAY(s->coded_block_base, y_size + (s->mb_height&1)*2*s->b8_stride) ||
@@ -876,14 +889,14 @@ static void clear_context(MpegEncContext *s)
     s->b_bidir_forw_mv_table = NULL;
     s->b_bidir_back_mv_table = NULL;
     s->b_direct_mv_table     = NULL;
+    s->b_field_mv_table_base = NULL;
+    s->p_field_mv_table_base = NULL;
     for (i = 0; i < 2; i++) {
         for (j = 0; j < 2; j++) {
             for (k = 0; k < 2; k++) {
-                s->b_field_mv_table_base[i][j][k] = NULL;
                 s->b_field_mv_table[i][j][k] = NULL;
             }
             s->b_field_select_table[i][j] = NULL;
-            s->p_field_mv_table_base[i][j] = NULL;
             s->p_field_mv_table[i][j] = NULL;
         }
         s->p_field_select_table[i] = NULL;
@@ -974,7 +987,9 @@ av_cold int ff_mpv_common_init(MpegEncContext *s)
     if ((ret = init_context_frame(s)))
         goto fail;
 
+#if FF_API_FLAG_TRUNCATED
     s->parse_context.state = -1;
+#endif
 
     s->context_initialized = 1;
     memset(s->thread_context, 0, sizeof(s->thread_context));
@@ -1020,17 +1035,19 @@ static void free_context_frame(MpegEncContext *s)
     s->b_bidir_forw_mv_table = NULL;
     s->b_bidir_back_mv_table = NULL;
     s->b_direct_mv_table     = NULL;
+    av_freep(&s->b_field_mv_table_base);
+    av_freep(&s->b_field_select_table[0][0]);
+    av_freep(&s->p_field_mv_table_base);
+    av_freep(&s->p_field_select_table[0]);
     for (i = 0; i < 2; i++) {
         for (j = 0; j < 2; j++) {
             for (k = 0; k < 2; k++) {
-                av_freep(&s->b_field_mv_table_base[i][j][k]);
                 s->b_field_mv_table[i][j][k] = NULL;
             }
-            av_freep(&s->b_field_select_table[i][j]);
-            av_freep(&s->p_field_mv_table_base[i][j]);
+            s->b_field_select_table[i][j] = NULL;
             s->p_field_mv_table[i][j] = NULL;
         }
-        av_freep(&s->p_field_select_table[i]);
+        s->p_field_select_table[i] = NULL;
     }
 
     av_freep(&s->dc_val_base);
@@ -1119,8 +1136,10 @@ void ff_mpv_common_end(MpegEncContext *s)
     if (s->slice_context_count > 1)
         s->slice_context_count = 1;
 
+#if FF_API_FLAG_TRUNCATED
     av_freep(&s->parse_context.buffer);
     s->parse_context.buffer_size = 0;
+#endif
 
     av_freep(&s->bitstream_buffer);
     s->allocated_bitstream_buffer_size = 0;
@@ -1413,7 +1432,7 @@ void ff_mpv_frame_end(MpegEncContext *s)
 void ff_print_debug_info(MpegEncContext *s, Picture *p, AVFrame *pict)
 {
     ff_print_debug_info2(s->avctx, pict, s->mbskip_table, p->mb_type,
-                         p->qscale_table, p->motion_val, &s->low_delay,
+                         p->qscale_table, p->motion_val,
                          s->mb_width, s->mb_height, s->mb_stride, s->quarter_sample);
 }
 
@@ -2313,14 +2332,15 @@ void ff_mpeg_flush(AVCodecContext *avctx){
     ff_mpeg_unref_picture(s->avctx, &s->next_picture);
 
     s->mb_x= s->mb_y= 0;
-    s->closed_gop= 0;
 
+#if FF_API_FLAG_TRUNCATED
     s->parse_context.state= -1;
     s->parse_context.frame_start_found= 0;
     s->parse_context.overread= 0;
     s->parse_context.overread_index= 0;
     s->parse_context.index= 0;
     s->parse_context.last_index= 0;
+#endif
     s->bitstream_buffer_size=0;
     s->pp_time=0;
 }

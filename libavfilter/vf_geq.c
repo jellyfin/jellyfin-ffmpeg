@@ -250,9 +250,7 @@ static av_cold int geq_init(AVFilterContext *ctx)
     }
 
     if (!geq->expr_str[A]) {
-        char bps_string[8];
-        snprintf(bps_string, sizeof(bps_string), "%d", (1<<geq->bps) - 1);
-        geq->expr_str[A] = av_strdup(bps_string);
+        geq->expr_str[A] = av_asprintf("%d", (1<<geq->bps) - 1);
     }
     if (!geq->expr_str[G])
         geq->expr_str[G] = av_strdup("g(X,Y)");
@@ -335,15 +333,9 @@ static int geq_query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_GBRP16, AV_PIX_FMT_GBRAP16,
         AV_PIX_FMT_NONE
     };
-    AVFilterFormats *fmts_list;
+    const enum AVPixelFormat *pix_fmts = geq->is_rgb ? rgb_pix_fmts : yuv_pix_fmts;
 
-    if (geq->is_rgb) {
-        fmts_list = ff_make_format_list(rgb_pix_fmts);
-    } else
-        fmts_list = ff_make_format_list(yuv_pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
+    return ff_set_common_formats_from_list(ctx, pix_fmts);
 }
 
 static int geq_config_props(AVFilterLink *inlink)
@@ -455,7 +447,8 @@ static int geq_filter_frame(AVFilterLink *inlink, AVFrame *in)
         if (geq->needs_sum[plane])
             calculate_sums(geq, plane, width, height);
 
-        ctx->internal->execute(ctx, slice_geq_filter, &td, NULL, FFMIN(height, nb_threads));
+        ff_filter_execute(ctx, slice_geq_filter, &td,
+                          NULL, FFMIN(height, nb_threads));
     }
 
     av_frame_free(&geq->picref);
@@ -481,7 +474,6 @@ static const AVFilterPad geq_inputs[] = {
         .config_props = geq_config_props,
         .filter_frame = geq_filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad geq_outputs[] = {
@@ -489,18 +481,17 @@ static const AVFilterPad geq_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_geq = {
+const AVFilter ff_vf_geq = {
     .name          = "geq",
     .description   = NULL_IF_CONFIG_SMALL("Apply generic equation to each pixel."),
     .priv_size     = sizeof(GEQContext),
     .init          = geq_init,
     .uninit        = geq_uninit,
-    .query_formats = geq_query_formats,
-    .inputs        = geq_inputs,
-    .outputs       = geq_outputs,
+    FILTER_INPUTS(geq_inputs),
+    FILTER_OUTPUTS(geq_outputs),
+    FILTER_QUERY_FUNC(geq_query_formats),
     .priv_class    = &geq_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

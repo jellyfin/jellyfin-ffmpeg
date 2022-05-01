@@ -34,6 +34,7 @@
 #include <libavformat/avformat.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
+#include <libavutil/channel_layout.h>
 #include <libavutil/opt.h>
 
 static const char *filter_descr = "aresample=8000,aformat=sample_fmts=s16:channel_layouts=mono";
@@ -48,8 +49,8 @@ static int audio_stream_index = -1;
 
 static int open_input_file(const char *filename)
 {
+    const AVCodec *dec;
     int ret;
-    AVCodec *dec;
 
     if ((ret = avformat_open_input(&fmt_ctx, filename, NULL, NULL)) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot open input file\n");
@@ -214,12 +215,12 @@ static void print_frame(const AVFrame *frame)
 int main(int argc, char **argv)
 {
     int ret;
-    AVPacket packet;
+    AVPacket *packet = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
     AVFrame *filt_frame = av_frame_alloc();
 
-    if (!frame || !filt_frame) {
-        perror("Could not allocate frame");
+    if (!packet || !frame || !filt_frame) {
+        fprintf(stderr, "Could not allocate frame or packet\n");
         exit(1);
     }
     if (argc != 2) {
@@ -234,11 +235,11 @@ int main(int argc, char **argv)
 
     /* read all packets */
     while (1) {
-        if ((ret = av_read_frame(fmt_ctx, &packet)) < 0)
+        if ((ret = av_read_frame(fmt_ctx, packet)) < 0)
             break;
 
-        if (packet.stream_index == audio_stream_index) {
-            ret = avcodec_send_packet(dec_ctx, &packet);
+        if (packet->stream_index == audio_stream_index) {
+            ret = avcodec_send_packet(dec_ctx, packet);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Error while sending a packet to the decoder\n");
                 break;
@@ -274,12 +275,13 @@ int main(int argc, char **argv)
                 }
             }
         }
-        av_packet_unref(&packet);
+        av_packet_unref(packet);
     }
 end:
     avfilter_graph_free(&filter_graph);
     avcodec_free_context(&dec_ctx);
     avformat_close_input(&fmt_ctx);
+    av_packet_free(&packet);
     av_frame_free(&frame);
     av_frame_free(&filt_frame);
 

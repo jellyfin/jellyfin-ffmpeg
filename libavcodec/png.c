@@ -18,7 +18,9 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include "avcodec.h"
+
+#include <stdint.h>
+#include "libavutil/mem.h"
 #include "png.h"
 
 /* Mask to determine which y pixels are valid in a pass */
@@ -38,7 +40,7 @@ static const uint8_t ff_png_pass_xshift[NB_PASSES] = {
 
 void *ff_png_zalloc(void *opaque, unsigned int items, unsigned int size)
 {
-    return av_mallocz_array(items, size);
+    return av_calloc(items, size);
 }
 
 void ff_png_zfree(void *opaque, void *ptr)

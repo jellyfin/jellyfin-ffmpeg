@@ -28,12 +28,13 @@
 void ff_dct_unquantize_h263_intra_mmi(MpegEncContext *s, int16_t *block,
         int n, int qscale)
 {
-    int64_t level, qmul, qadd, nCoeffs;
+    int64_t level, nCoeffs;
     double ftmp[6];
     mips_reg addr[1];
+    union mmi_intfloat64 qmul_u, qadd_u;
     DECLARE_VAR_ALL64;
 
-    qmul = qscale << 1;
+    qmul_u.i = qscale << 1;
     av_assert2(s->block_last_index[n]>=0 || s->h263_aic);
 
     if (!s->h263_aic) {
@@ -41,9 +42,9 @@ void ff_dct_unquantize_h263_intra_mmi(MpegEncContext *s, int16_t *block,
             level = block[0] * s->y_dc_scale;
         else
             level = block[0] * s->c_dc_scale;
-        qadd = (qscale-1) | 1;
+        qadd_u.i = (qscale-1) | 1;
     } else {
-        qadd = 0;
+        qadd_u.i = 0;
         level = block[0];
     }
 
@@ -53,13 +54,13 @@ void ff_dct_unquantize_h263_intra_mmi(MpegEncContext *s, int16_t *block,
         nCoeffs = s->inter_scantable.raster_end[s->block_last_index[n]];
 
     __asm__ volatile (
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         "packsswh   %[qmul],    %[qmul],        %[qmul]                 \n\t"
         "packsswh   %[qmul],    %[qmul],        %[qmul]                 \n\t"
         "packsswh   %[qadd],    %[qadd],        %[qadd]                 \n\t"
         "packsswh   %[qadd],    %[qadd],        %[qadd]                 \n\t"
         "psubh      %[ftmp0],   %[ftmp0],       %[qadd]                 \n\t"
-        "xor        %[ftmp5],   %[ftmp5],       %[ftmp5]                \n\t"
+        "pxor       %[ftmp5],   %[ftmp5],       %[ftmp5]                \n\t"
         ".p2align   4                                                   \n\t"
 
         "1:                                                             \n\t"
@@ -72,12 +73,12 @@ void ff_dct_unquantize_h263_intra_mmi(MpegEncContext *s, int16_t *block,
         "pmullh     %[ftmp2],   %[ftmp2],       %[qmul]                 \n\t"
         "pcmpgth    %[ftmp3],   %[ftmp3],       %[ftmp5]                \n\t"
         "pcmpgth    %[ftmp4],   %[ftmp4],       %[ftmp5]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp3]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp4]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp3]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp4]                \n\t"
         "paddh      %[ftmp1],   %[ftmp1],       %[ftmp0]                \n\t"
         "paddh      %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp1]                \n\t"
-        "xor        %[ftmp4],   %[ftmp4],       %[ftmp2]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp1]                \n\t"
+        "pxor       %[ftmp4],   %[ftmp4],       %[ftmp2]                \n\t"
         "pcmpeqh    %[ftmp1],   %[ftmp1],       %[ftmp0]                \n\t"
         "pcmpeqh    %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
         "pandn      %[ftmp1],   %[ftmp1],       %[ftmp3]                \n\t"
@@ -93,7 +94,7 @@ void ff_dct_unquantize_h263_intra_mmi(MpegEncContext *s, int16_t *block,
           [addr0]"=&r"(addr[0])
         : [block]"r"((mips_reg)(block+nCoeffs)),
           [nCoeffs]"r"((mips_reg)(2*(-nCoeffs))),
-          [qmul]"f"(qmul),                  [qadd]"f"(qadd)
+          [qmul]"f"(qmul_u.f),              [qadd]"f"(qadd_u.f)
         : "memory"
     );
 
@@ -103,24 +104,25 @@ void ff_dct_unquantize_h263_intra_mmi(MpegEncContext *s, int16_t *block,
 void ff_dct_unquantize_h263_inter_mmi(MpegEncContext *s, int16_t *block,
         int n, int qscale)
 {
-    int64_t qmul, qadd, nCoeffs;
+    int64_t nCoeffs;
     double ftmp[6];
     mips_reg addr[1];
+    union mmi_intfloat64 qmul_u, qadd_u;
     DECLARE_VAR_ALL64;
 
-    qmul = qscale << 1;
-    qadd = (qscale - 1) | 1;
+    qmul_u.i = qscale << 1;
+    qadd_u.i = (qscale - 1) | 1;
     av_assert2(s->block_last_index[n]>=0 || s->h263_aic);
     nCoeffs = s->inter_scantable.raster_end[s->block_last_index[n]];
 
     __asm__ volatile (
         "packsswh   %[qmul],    %[qmul],        %[qmul]                 \n\t"
         "packsswh   %[qmul],    %[qmul],        %[qmul]                 \n\t"
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         "packsswh   %[qadd],    %[qadd],        %[qadd]                 \n\t"
         "packsswh   %[qadd],    %[qadd],        %[qadd]                 \n\t"
         "psubh      %[ftmp0],   %[ftmp0],       %[qadd]                 \n\t"
-        "xor        %[ftmp5],   %[ftmp5],       %[ftmp5]                \n\t"
+        "pxor       %[ftmp5],   %[ftmp5],       %[ftmp5]                \n\t"
         ".p2align   4                                                   \n\t"
         "1:                                                             \n\t"
         PTR_ADDU   "%[addr0],   %[block],       %[nCoeffs]              \n\t"
@@ -132,12 +134,12 @@ void ff_dct_unquantize_h263_inter_mmi(MpegEncContext *s, int16_t *block,
         "pmullh     %[ftmp2],   %[ftmp2],       %[qmul]                 \n\t"
         "pcmpgth    %[ftmp3],   %[ftmp3],       %[ftmp5]                \n\t"
         "pcmpgth    %[ftmp4],   %[ftmp4],       %[ftmp5]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp3]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp4]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp3]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp4]                \n\t"
         "paddh      %[ftmp1],   %[ftmp1],       %[ftmp0]                \n\t"
         "paddh      %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp1]                \n\t"
-        "xor        %[ftmp4],   %[ftmp4],       %[ftmp2]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp1]                \n\t"
+        "pxor       %[ftmp4],   %[ftmp4],       %[ftmp2]                \n\t"
         "pcmpeqh    %[ftmp1],   %[ftmp1],       %[ftmp0]                \n\t"
         "pcmpeqh    %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
         "pandn      %[ftmp1],   %[ftmp1],       %[ftmp3]                \n\t"
@@ -153,7 +155,7 @@ void ff_dct_unquantize_h263_inter_mmi(MpegEncContext *s, int16_t *block,
           [addr0]"=&r"(addr[0])
         : [block]"r"((mips_reg)(block+nCoeffs)),
           [nCoeffs]"r"((mips_reg)(2*(-nCoeffs))),
-          [qmul]"f"(qmul),                  [qadd]"f"(qadd)
+          [qmul]"f"(qmul_u.f),              [qadd]"f"(qadd_u.f)
         : "memory"
     );
 }
@@ -201,18 +203,18 @@ void ff_dct_unquantize_mpeg1_intra_mmi(MpegEncContext *s, int16_t *block,
         MMI_LDXC1(%[ftmp7], %[addr0], %[quant], 0x08)
         "pmullh     %[ftmp6],   %[ftmp6],       %[ftmp1]                \n\t"
         "pmullh     %[ftmp7],   %[ftmp7],       %[ftmp1]                \n\t"
-        "xor        %[ftmp8],   %[ftmp8],       %[ftmp8]                \n\t"
-        "xor        %[ftmp9],   %[ftmp9],       %[ftmp9]                \n\t"
+        "pxor       %[ftmp8],   %[ftmp8],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp9],   %[ftmp9],       %[ftmp9]                \n\t"
         "pcmpgth    %[ftmp8],   %[ftmp8],       %[ftmp2]                \n\t"
         "pcmpgth    %[ftmp9],   %[ftmp9],       %[ftmp3]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "pmullh     %[ftmp2],   %[ftmp2],       %[ftmp6]                \n\t"
         "pmullh     %[ftmp3],   %[ftmp3],       %[ftmp7]                \n\t"
-        "xor        %[ftmp6],   %[ftmp6],       %[ftmp6]                \n\t"
-        "xor        %[ftmp7],   %[ftmp7],       %[ftmp7]                \n\t"
+        "pxor       %[ftmp6],   %[ftmp6],       %[ftmp6]                \n\t"
+        "pxor       %[ftmp7],   %[ftmp7],       %[ftmp7]                \n\t"
         "pcmpeqh    %[ftmp6],   %[ftmp6],       %[ftmp4]                \n\t"
         "dli        %[tmp0],    0x03                                    \n\t"
         "pcmpeqh    %[ftmp7],   %[ftmp7],       %[ftmp5]                \n\t"
@@ -221,10 +223,10 @@ void ff_dct_unquantize_mpeg1_intra_mmi(MpegEncContext *s, int16_t *block,
         "psrah      %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp0]                \n\t"
-        "or         %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
-        "or         %[ftmp3],   %[ftmp3],       %[ftmp0]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
+        "por        %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
+        "por        %[ftmp3],   %[ftmp3],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "pandn      %[ftmp6],   %[ftmp6],       %[ftmp2]                \n\t"
@@ -287,12 +289,12 @@ void ff_dct_unquantize_mpeg1_inter_mmi(MpegEncContext *s, int16_t *block,
         MMI_LDXC1(%[ftmp7], %[addr0], %[quant], 0x08)
         "pmullh     %[ftmp6],   %[ftmp6],       %[ftmp1]                \n\t"
         "pmullh     %[ftmp7],   %[ftmp7],       %[ftmp1]                \n\t"
-        "xor        %[ftmp8],   %[ftmp8],       %[ftmp8]                \n\t"
-        "xor        %[ftmp9],   %[ftmp9],       %[ftmp9]                \n\t"
+        "pxor       %[ftmp8],   %[ftmp8],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp9],   %[ftmp9],       %[ftmp9]                \n\t"
         "pcmpgth    %[ftmp8],   %[ftmp8],       %[ftmp2]                \n\t"
         "pcmpgth    %[ftmp9],   %[ftmp9],       %[ftmp3]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "paddh      %[ftmp2],   %[ftmp2],       %[ftmp2]                \n\t"
@@ -301,8 +303,8 @@ void ff_dct_unquantize_mpeg1_inter_mmi(MpegEncContext *s, int16_t *block,
         "paddh      %[ftmp3],   %[ftmp3],       %[ftmp0]                \n\t"
         "pmullh     %[ftmp2],   %[ftmp2],       %[ftmp6]                \n\t"
         "pmullh     %[ftmp3],   %[ftmp3],       %[ftmp7]                \n\t"
-        "xor        %[ftmp6],   %[ftmp6],       %[ftmp6]                \n\t"
-        "xor        %[ftmp7],   %[ftmp7],       %[ftmp7]                \n\t"
+        "pxor       %[ftmp6],   %[ftmp6],       %[ftmp6]                \n\t"
+        "pxor       %[ftmp7],   %[ftmp7],       %[ftmp7]                \n\t"
         "pcmpeqh    %[ftmp6],   %[ftmp6],       %[ftmp4]                \n\t"
         "dli        %[tmp0],    0x04                                    \n\t"
         "pcmpeqh    %[ftmp7],   %[ftmp7],       %[ftmp5]                \n\t"
@@ -311,10 +313,10 @@ void ff_dct_unquantize_mpeg1_inter_mmi(MpegEncContext *s, int16_t *block,
         "psrah      %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp0]                \n\t"
-        "or         %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
-        "or         %[ftmp3],   %[ftmp3],       %[ftmp0]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
+        "por        %[ftmp2],   %[ftmp2],       %[ftmp0]                \n\t"
+        "por        %[ftmp3],   %[ftmp3],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp9]                \n\t"
         "pandn      %[ftmp6],   %[ftmp6],       %[ftmp2]                \n\t"
@@ -386,26 +388,26 @@ void ff_dct_unquantize_mpeg2_intra_mmi(MpegEncContext *s, int16_t *block,
         MMI_LDXC1(%[ftmp6], %[addr0], %[quant], 0x08)
         "pmullh     %[ftmp5],   %[ftmp5],       %[ftmp9]                \n\t"
         "pmullh     %[ftmp6],   %[ftmp6],       %[ftmp9]                \n\t"
-        "xor        %[ftmp7],   %[ftmp7],       %[ftmp7]                \n\t"
-        "xor        %[ftmp8],   %[ftmp8],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp7],   %[ftmp7],       %[ftmp7]                \n\t"
+        "pxor       %[ftmp8],   %[ftmp8],       %[ftmp8]                \n\t"
         "pcmpgth    %[ftmp7],   %[ftmp7],       %[ftmp1]                \n\t"
         "pcmpgth    %[ftmp8],   %[ftmp8],       %[ftmp2]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp7]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp7]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "psubh      %[ftmp1],   %[ftmp1],       %[ftmp7]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "pmullh     %[ftmp1],   %[ftmp1],       %[ftmp5]                \n\t"
         "pmullh     %[ftmp2],   %[ftmp2],       %[ftmp6]                \n\t"
-        "xor        %[ftmp5],   %[ftmp5],       %[ftmp5]                \n\t"
-        "xor        %[ftmp6],   %[ftmp6],       %[ftmp6]                \n\t"
+        "pxor       %[ftmp5],   %[ftmp5],       %[ftmp5]                \n\t"
+        "pxor       %[ftmp6],   %[ftmp6],       %[ftmp6]                \n\t"
         "pcmpeqh    %[ftmp5],   %[ftmp5],       %[ftmp3]                \n\t"
         "dli        %[tmp0],    0x03                                    \n\t"
         "pcmpeqh    %[ftmp6] ,  %[ftmp6],       %[ftmp4]                \n\t"
         "mtc1       %[tmp0],    %[ftmp3]                                \n\t"
         "psrah      %[ftmp1],   %[ftmp1],       %[ftmp3]                \n\t"
         "psrah      %[ftmp2],   %[ftmp2],       %[ftmp3]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp7]                \n\t"
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp7]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "psubh      %[ftmp1],   %[ftmp1],       %[ftmp7]                \n\t"
         "psubh      %[ftmp2],   %[ftmp2],       %[ftmp8]                \n\t"
         "pandn      %[ftmp5],   %[ftmp5],       %[ftmp1]                \n\t"
@@ -445,16 +447,16 @@ void ff_denoise_dct_mmi(MpegEncContext *s, int16_t *block)
     s->dct_count[intra]++;
 
     __asm__ volatile(
-        "xor        %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
+        "pxor       %[ftmp0],   %[ftmp0],       %[ftmp0]                \n\t"
         "1:                                                             \n\t"
         MMI_LDC1(%[ftmp1], %[block], 0x00)
-        "xor        %[ftmp2],   %[ftmp2],       %[ftmp2]                \n\t"
+        "pxor       %[ftmp2],   %[ftmp2],       %[ftmp2]                \n\t"
         MMI_LDC1(%[ftmp3], %[block], 0x08)
-        "xor        %[ftmp4],   %[ftmp4],       %[ftmp4]                \n\t"
+        "pxor       %[ftmp4],   %[ftmp4],       %[ftmp4]                \n\t"
         "pcmpgth    %[ftmp2],   %[ftmp2],       %[ftmp1]                \n\t"
         "pcmpgth    %[ftmp4],   %[ftmp4],       %[ftmp3]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp2]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp2]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
         "psubh      %[ftmp1],   %[ftmp1],       %[ftmp2]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
         MMI_LDC1(%[ftmp6], %[offset], 0x00)
@@ -463,8 +465,8 @@ void ff_denoise_dct_mmi(MpegEncContext *s, int16_t *block)
         MMI_LDC1(%[ftmp6], %[offset], 0x08)
         "mov.d      %[ftmp7],   %[ftmp3]                                \n\t"
         "psubush    %[ftmp3],   %[ftmp3],       %[ftmp6]                \n\t"
-        "xor        %[ftmp1],   %[ftmp1],       %[ftmp2]                \n\t"
-        "xor        %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
+        "pxor       %[ftmp1],   %[ftmp1],       %[ftmp2]                \n\t"
+        "pxor       %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
         "psubh      %[ftmp1],   %[ftmp1],       %[ftmp2]                \n\t"
         "psubh      %[ftmp3],   %[ftmp3],       %[ftmp4]                \n\t"
         MMI_SDC1(%[ftmp1], %[block], 0x00)

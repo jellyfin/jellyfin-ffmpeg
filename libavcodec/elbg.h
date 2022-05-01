@@ -21,37 +21,37 @@
 #ifndef AVCODEC_ELBG_H
 #define AVCODEC_ELBG_H
 
+#include <stdint.h>
 #include "libavutil/lfg.h"
+
+struct ELBGContext;
 
 /**
  * Implementation of the Enhanced LBG Algorithm
  * Based on the paper "Neural Networks 14:1219-1237" that can be found in
  * http://citeseer.ist.psu.edu/patan01enhanced.html .
  *
+ * @param ctx  A pointer to a pointer to an already allocated ELBGContext
+ *             or a pointer to NULL. In the latter case, this function
+ *             will allocate an ELBGContext and put a pointer to it in `*ctx`.
  * @param points Input points.
  * @param dim Dimension of the points.
  * @param numpoints Num of points in **points.
  * @param codebook Pointer to the output codebook. Must be allocated.
- * @param numCB Number of points in the codebook.
+ * @param num_cb Number of points in the codebook.
  * @param num_steps The maximum number of steps. One step is already a good compromise between time and quality.
  * @param closest_cb Return the closest codebook to each point. Must be allocated.
  * @param rand_state A random number generator state. Should be already initialized by av_lfg_init().
+ * @param flags Currently unused; must be set to 0.
  * @return < 0 in case of error, 0 otherwise
  */
-int avpriv_do_elbg(int *points, int dim, int numpoints, int *codebook,
-               int numCB, int num_steps, int *closest_cb,
-               AVLFG *rand_state);
+int avpriv_elbg_do(struct ELBGContext **ctx, int *points, int dim,
+                   int numpoints, int *codebook, int num_cb, int num_steps,
+                   int *closest_cb, AVLFG *rand_state, uintptr_t flags);
 
 /**
- * Initialize the **codebook vector for the elbg algorithm. If you have already
- * a codebook and you want to refine it, you shouldn't call this function.
- * If numpoints < 8*numCB this function fills **codebook with random numbers.
- * If not, it calls avpriv_do_elbg for a (smaller) random sample of the points in
- * **points. Get the same parameters as avpriv_do_elbg.
- * @return < 0 in case of error, 0 otherwise
+ * Free an ELBGContext and reset the pointer to it.
  */
-int avpriv_init_elbg(int *points, int dim, int numpoints, int *codebook,
-                 int numCB, int num_steps, int *closest_cb,
-                 AVLFG *rand_state);
+void avpriv_elbg_free(struct ELBGContext **ctx);
 
 #endif /* AVCODEC_ELBG_H */

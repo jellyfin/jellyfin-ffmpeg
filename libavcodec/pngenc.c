@@ -20,6 +20,7 @@
  */
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "bytestream.h"
 #include "lossless_videoencdsp.h"
@@ -538,7 +539,7 @@ static int encode_png(AVCodecContext *avctx, AVPacket *pkt,
         );
     if (max_packet_size > INT_MAX)
         return AVERROR(ENOMEM);
-    ret = ff_alloc_packet2(avctx, pkt, max_packet_size, 0);
+    ret = ff_alloc_packet(avctx, pkt, max_packet_size);
     if (ret < 0)
         return ret;
 
@@ -847,7 +848,7 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
     size_t max_packet_size;
     APNGFctlChunk fctl_chunk = {0};
 
-    if (pict && avctx->codec_id == AV_CODEC_ID_APNG && s->color_type == PNG_COLOR_TYPE_PALETTE) {
+    if (pict && s->color_type == PNG_COLOR_TYPE_PALETTE) {
         uint32_t checksum = ~av_crc(av_crc_get_table(AV_CRC_32_IEEE_LE), ~0U, pict->data[1], 256 * sizeof(uint32_t));
 
         if (avctx->frame_number == 0) {
@@ -887,12 +888,11 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
         if (!s->last_frame_packet)
             return AVERROR(ENOMEM);
     } else if (s->last_frame) {
-        ret = ff_alloc_packet2(avctx, pkt, max_packet_size, 0);
+        ret = ff_get_encode_buffer(avctx, pkt, s->last_frame_packet_size, 0);
         if (ret < 0)
             return ret;
 
         memcpy(pkt->data, s->last_frame_packet, s->last_frame_packet_size);
-        pkt->size = s->last_frame_packet_size;
         pkt->pts = pkt->dts = s->last_frame->pts;
     }
 
@@ -1008,23 +1008,7 @@ static av_cold int png_enc_init(AVCodecContext *avctx)
         avctx->bits_per_coded_sample = 8;
     }
 
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     ff_llvidencdsp_init(&s->llvidencdsp);
-
-#if FF_API_PRIVATE_OPT
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (avctx->prediction_method)
-        s->filter_type = av_clip(avctx->prediction_method,
-                                 PNG_FILTER_VALUE_NONE,
-                                 PNG_FILTER_VALUE_MIXED);
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     if (avctx->pix_fmt == AV_PIX_FMT_MONOBLACK)
         s->filter_type = PNG_FILTER_VALUE_NONE;
@@ -1124,20 +1108,13 @@ static const AVOption options[] = {
 };
 
 static const AVClass pngenc_class = {
-    .class_name = "PNG encoder",
+    .class_name = "(A)PNG encoder",
     .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVClass apngenc_class = {
-    .class_name = "APNG encoder",
-    .item_name  = av_default_item_name,
-    .option     = options,
-    .version    = LIBAVUTIL_VERSION_INT,
-};
-
-AVCodec ff_png_encoder = {
+const AVCodec ff_png_encoder = {
     .name           = "png",
     .long_name      = NULL_IF_CONFIG_SMALL("PNG (Portable Network Graphics) image"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -1156,18 +1133,19 @@ AVCodec ff_png_encoder = {
         AV_PIX_FMT_MONOBLACK, AV_PIX_FMT_NONE
     },
     .priv_class     = &pngenc_class,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 
-AVCodec ff_apng_encoder = {
+const AVCodec ff_apng_encoder = {
     .name           = "apng",
     .long_name      = NULL_IF_CONFIG_SMALL("APNG (Animated Portable Network Graphics) image"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_APNG,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .priv_data_size = sizeof(PNGEncContext),
     .init           = png_enc_init,
     .close          = png_enc_close,
     .encode2        = encode_apng,
-    .capabilities   = AV_CODEC_CAP_DELAY,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,
@@ -1176,5 +1154,6 @@ AVCodec ff_apng_encoder = {
         AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE,
         AV_PIX_FMT_NONE
     },
-    .priv_class     = &apngenc_class,
+    .priv_class     = &pngenc_class,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -63,23 +63,18 @@ static const AVOption displace_options[] = {
 
 AVFILTER_DEFINE_CLASS(displace);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_RGBA, AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_0RGB, AV_PIX_FMT_0BGR, AV_PIX_FMT_RGB0, AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
-    };
-
-    return ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
+    AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_RGBA, AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_0RGB, AV_PIX_FMT_0BGR, AV_PIX_FMT_RGB0, AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+};
 
 static void displace_planar(DisplaceContext *s, const AVFrame *in,
                             const AVFrame *xpic, const AVFrame *ypic,
@@ -311,11 +306,6 @@ static int config_output(AVFilterLink *outlink)
     FFFrameSyncIn *in;
     int ret;
 
-    if (srclink->format != xlink->format ||
-        srclink->format != ylink->format) {
-        av_log(ctx, AV_LOG_ERROR, "inputs must be of same pixel format\n");
-        return AVERROR(EINVAL);
-    }
     if (srclink->w != xlink->w ||
         srclink->h != xlink->h ||
         srclink->w != ylink->w ||
@@ -388,7 +378,6 @@ static const AVFilterPad displace_inputs[] = {
         .name         = "ymap",
         .type         = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 static const AVFilterPad displace_outputs[] = {
@@ -397,18 +386,17 @@ static const AVFilterPad displace_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_displace = {
+const AVFilter ff_vf_displace = {
     .name          = "displace",
     .description   = NULL_IF_CONFIG_SMALL("Displace pixels."),
     .priv_size     = sizeof(DisplaceContext),
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
-    .inputs        = displace_inputs,
-    .outputs       = displace_outputs,
+    FILTER_INPUTS(displace_inputs),
+    FILTER_OUTPUTS(displace_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &displace_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

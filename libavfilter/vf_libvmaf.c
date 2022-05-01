@@ -248,20 +248,11 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUV422P10LE, AV_PIX_FMT_YUV420P10LE,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUV422P10LE, AV_PIX_FMT_YUV420P10LE,
+    AV_PIX_FMT_NONE
+};
 
 static int config_input_ref(AVFilterLink *inlink)
 {
@@ -272,10 +263,6 @@ static int config_input_ref(AVFilterLink *inlink)
     if (ctx->inputs[0]->w != ctx->inputs[1]->w ||
         ctx->inputs[0]->h != ctx->inputs[1]->h) {
         av_log(ctx, AV_LOG_ERROR, "Width and height of input videos must be same.\n");
-        return AVERROR(EINVAL);
-    }
-    if (ctx->inputs[0]->format != ctx->inputs[1]->format) {
-        av_log(ctx, AV_LOG_ERROR, "Inputs must be of same pixel format.\n");
         return AVERROR(EINVAL);
     }
 
@@ -353,7 +340,6 @@ static const AVFilterPad libvmaf_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_input_ref,
     },
-    { NULL }
 };
 
 static const AVFilterPad libvmaf_outputs[] = {
@@ -362,19 +348,18 @@ static const AVFilterPad libvmaf_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_libvmaf = {
+const AVFilter ff_vf_libvmaf = {
     .name          = "libvmaf",
     .description   = NULL_IF_CONFIG_SMALL("Calculate the VMAF between two video streams."),
     .preinit       = libvmaf_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
     .priv_size     = sizeof(LIBVMAFContext),
     .priv_class    = &libvmaf_class,
-    .inputs        = libvmaf_inputs,
-    .outputs       = libvmaf_outputs,
+    FILTER_INPUTS(libvmaf_inputs),
+    FILTER_OUTPUTS(libvmaf_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

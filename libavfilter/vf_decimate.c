@@ -310,13 +310,13 @@ static av_cold int decimate_init(AVFilterContext *ctx)
     };
     int ret;
 
-    if ((ret = ff_insert_inpad(ctx, INPUT_MAIN, &pad)) < 0)
+    if ((ret = ff_append_inpad(ctx, &pad)) < 0)
         return ret;
 
     if (dm->ppsrc) {
         pad.name = "clean_src";
         pad.config_props = NULL;
-        if ((ret = ff_insert_inpad(ctx, INPUT_CLEANSRC, &pad)) < 0)
+        if ((ret = ff_append_inpad(ctx, &pad)) < 0)
             return ret;
     }
 
@@ -350,26 +350,19 @@ static av_cold void decimate_uninit(AVFilterContext *ctx)
     av_freep(&dm->clean_src);
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
+static const enum AVPixelFormat pix_fmts[] = {
 #define PF_NOALPHA(suf) AV_PIX_FMT_YUV420##suf,  AV_PIX_FMT_YUV422##suf,  AV_PIX_FMT_YUV444##suf
 #define PF_ALPHA(suf)   AV_PIX_FMT_YUVA420##suf, AV_PIX_FMT_YUVA422##suf, AV_PIX_FMT_YUVA444##suf
 #define PF(suf)         PF_NOALPHA(suf), PF_ALPHA(suf)
-        PF(P), PF(P9), PF(P10), PF_NOALPHA(P12), PF_NOALPHA(P14), PF(P16),
-        AV_PIX_FMT_YUV440P10, AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ411P,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14,
-        AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+    PF(P), PF(P9), PF(P10), PF_NOALPHA(P12), PF_NOALPHA(P14), PF(P16),
+    AV_PIX_FMT_YUV440P10, AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ411P,
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14,
+    AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_NONE
+};
 
 static int config_output(AVFilterLink *outlink)
 {
@@ -431,18 +424,17 @@ static const AVFilterPad decimate_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_decimate = {
+const AVFilter ff_vf_decimate = {
     .name          = "decimate",
     .description   = NULL_IF_CONFIG_SMALL("Decimate frames (post field matching filter)."),
     .init          = decimate_init,
     .activate      = activate,
     .uninit        = decimate_uninit,
     .priv_size     = sizeof(DecimateContext),
-    .query_formats = query_formats,
-    .outputs       = decimate_outputs,
+    FILTER_OUTPUTS(decimate_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &decimate_class,
     .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS,
 };

@@ -22,7 +22,7 @@
 #include "avformat.h"
 #include "internal.h"
 #include "rawenc.h"
-#include "libavutil/avassert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 
@@ -146,7 +146,6 @@ static int apm_read_header(AVFormatContext *s)
     par->codec_type            = AVMEDIA_TYPE_AUDIO;
     par->codec_id              = AV_CODEC_ID_ADPCM_IMA_APM;
     par->format                = AV_SAMPLE_FMT_S16;
-    par->bits_per_raw_sample   = 16;
     par->bit_rate              = par->channels *
                                  par->sample_rate *
                                  par->bits_per_coded_sample;
@@ -201,7 +200,7 @@ static int apm_read_packet(AVFormatContext *s, AVPacket *pkt)
     return 0;
 }
 
-AVInputFormat ff_apm_demuxer = {
+const AVInputFormat ff_apm_demuxer = {
     .name           = "apm",
     .long_name      = NULL_IF_CONFIG_SMALL("Ubisoft Rayman 2 APM"),
     .read_probe     = apm_probe,
@@ -303,7 +302,7 @@ static int apm_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-AVOutputFormat ff_apm_muxer = {
+const AVOutputFormat ff_apm_muxer = {
     .name           = "apm",
     .long_name      = NULL_IF_CONFIG_SMALL("Ubisoft Rayman 2 APM"),
     .extensions     = "apm",

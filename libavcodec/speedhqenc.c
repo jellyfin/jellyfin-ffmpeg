@@ -38,8 +38,13 @@
 extern RLTable ff_rl_speedhq;
 static uint8_t speedhq_static_rl_table_store[2][2*MAX_RUN + MAX_LEVEL + 3];
 
-static uint16_t mpeg12_vlc_dc_lum_code_reversed[12];
-static uint16_t mpeg12_vlc_dc_chroma_code_reversed[12];
+/* Exactly the same as MPEG-2, except little-endian. */
+static const uint16_t mpeg12_vlc_dc_lum_code_reversed[12] = {
+    0x1, 0x0, 0x2, 0x5, 0x3, 0x7, 0xF, 0x1F, 0x3F, 0x7F, 0xFF, 0x1FF
+};
+static const uint16_t mpeg12_vlc_dc_chroma_code_reversed[12] = {
+    0x0, 0x2, 0x1, 0x3, 0x7, 0xF, 0x1F, 0x3F, 0x7F, 0xFF, 0x1FF, 0x3FF
+};
 
 /* simple include everything table for dc, first byte is bits
  * number next 3 are code */
@@ -48,30 +53,8 @@ static uint32_t speedhq_chr_dc_uni[512];
 
 static uint8_t uni_speedhq_ac_vlc_len[64 * 64 * 2];
 
-static uint32_t reverse(uint32_t num, int bits)
-{
-    return bitswap_32(num) >> (32 - bits);
-}
-
-static void reverse_code(const uint16_t *code, const uint8_t *bits,
-                         uint16_t *reversed_code, int num_entries)
-{
-    for (int i = 0; i < num_entries; i++)
-        reversed_code[i] = reverse(code[i], bits[i]);
-}
-
 static av_cold void speedhq_init_static_data(void)
 {
-    /* Exactly the same as MPEG-2, except little-endian. */
-    reverse_code(ff_mpeg12_vlc_dc_lum_code,
-                 ff_mpeg12_vlc_dc_lum_bits,
-                 mpeg12_vlc_dc_lum_code_reversed,
-                 12);
-    reverse_code(ff_mpeg12_vlc_dc_chroma_code,
-                 ff_mpeg12_vlc_dc_chroma_bits,
-                 mpeg12_vlc_dc_chroma_code_reversed,
-                 12);
-
     ff_rl_init(&ff_rl_speedhq, speedhq_static_rl_table_store);
 
     /* build unified dc encoding tables */
@@ -282,27 +265,20 @@ int ff_speedhq_mb_y_order_to_mb(int mb_y_order, int mb_height, int *first_in_sli
 }
 
 #if CONFIG_SPEEDHQ_ENCODER
-static const AVClass speedhq_class = {
-    .class_name = "speedhq encoder",
-    .item_name  = av_default_item_name,
-    .option     = ff_mpv_generic_options,
-    .version    = LIBAVUTIL_VERSION_INT,
-};
-
-AVCodec ff_speedhq_encoder = {
+const AVCodec ff_speedhq_encoder = {
     .name           = "speedhq",
     .long_name      = NULL_IF_CONFIG_SMALL("NewTek SpeedHQ"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_SPEEDHQ,
+    .priv_class     = &ff_mpv_enc_class,
     .priv_data_size = sizeof(MpegEncContext),
     .init           = ff_mpv_encode_init,
     .encode2        = ff_mpv_encode_picture,
     .close          = ff_mpv_encode_end,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P,
         AV_PIX_FMT_NONE
     },
-    .priv_class     = &speedhq_class,
 };
 #endif

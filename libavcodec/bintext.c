@@ -215,7 +215,7 @@ static int decode_frame(AVCodecContext *avctx,
 }
 
 #if CONFIG_BINTEXT_DECODER
-AVCodec ff_bintext_decoder = {
+const AVCodec ff_bintext_decoder = {
     .name           = "bintext",
     .long_name      = NULL_IF_CONFIG_SMALL("Binary text"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -224,10 +224,11 @@ AVCodec ff_bintext_decoder = {
     .init           = decode_init,
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 #if CONFIG_XBIN_DECODER
-AVCodec ff_xbin_decoder = {
+const AVCodec ff_xbin_decoder = {
     .name           = "xbin",
     .long_name      = NULL_IF_CONFIG_SMALL("eXtended BINary text"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -236,10 +237,11 @@ AVCodec ff_xbin_decoder = {
     .init           = decode_init,
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 #if CONFIG_IDF_DECODER
-AVCodec ff_idf_decoder = {
+const AVCodec ff_idf_decoder = {
     .name           = "idf",
     .long_name      = NULL_IF_CONFIG_SMALL("iCEDraw text"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -248,5 +250,6 @@ AVCodec ff_idf_decoder = {
     .init           = decode_init,
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

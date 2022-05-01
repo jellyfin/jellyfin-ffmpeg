@@ -27,6 +27,7 @@
 #include "libavcodec/mpeg4audio.h"
 #include "libavcodec/mpegaudiodata.h"
 #include "libavutil/avstring.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 
 /* http://www.mp4ra.org */
@@ -329,22 +330,12 @@ static const AVCodecTag mp4_audio_types[] = {
 int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext *pb)
 {
     enum AVCodecID codec_id;
-    unsigned v;
     int len, tag;
     int ret;
     int object_type_id = avio_r8(pb);
     avio_r8(pb); /* stream type */
     avio_rb24(pb); /* buffer size db */
-
-    v = avio_rb32(pb);
-
-    // TODO: fix this with codecpar
-#if FF_API_LAVF_AVCTX
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (v < INT32_MAX)
-        st->codec->rc_max_rate = v;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
+    avio_rb32(pb); /* rc_max_rate */
 
     st->codecpar->bit_rate = avio_rb32(pb); /* avg bitrate */
 
@@ -371,7 +362,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 return ret;
             st->codecpar->channels = cfg.channels;
             if (cfg.object_type == 29 && cfg.sampling_index < 3) // old mp3on4
-                st->codecpar->sample_rate = avpriv_mpa_freq_tab[cfg.sampling_index];
+                st->codecpar->sample_rate = ff_mpa_freq_tab[cfg.sampling_index];
             else if (cfg.ext_sample_rate)
                 st->codecpar->sample_rate = cfg.ext_sample_rate;
             else
@@ -439,3 +430,22 @@ void ff_mov_write_chan(AVIOContext *pb, int64_t channel_layout)
     }
     avio_wb32(pb, 0);              // mNumberChannelDescriptions
 }
+
+static const struct MP4TrackKindValueMapping dash_role_map[] = {
+    { AV_DISPOSITION_HEARING_IMPAIRED|AV_DISPOSITION_CAPTIONS,
+        "caption" },
+    { AV_DISPOSITION_COMMENT,
+        "commentary" },
+    { AV_DISPOSITION_VISUAL_IMPAIRED|AV_DISPOSITION_DESCRIPTIONS,
+        "description" },
+    { AV_DISPOSITION_DUB,
+        "dub" },
+    { AV_DISPOSITION_FORCED,
+        "forced-subtitle" },
+    { 0, NULL }
+};
+
+const struct MP4TrackKindMapping ff_mov_track_kind_table[] = {
+    { "urn:mpeg:dash:role:2011", dash_role_map },
+    { 0, NULL }
+};

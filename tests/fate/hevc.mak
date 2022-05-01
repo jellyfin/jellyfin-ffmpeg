@@ -239,12 +239,12 @@ $(foreach N,$(HEVC_SAMPLES_444_8BIT),$(eval $(call FATE_HEVC_TEST_444_8BIT,$(N))
 $(foreach N,$(HEVC_SAMPLES_444_12BIT),$(eval $(call FATE_HEVC_TEST_444_12BIT,$(N))))
 $(foreach N,$(HEVC_SAMPLES_444_12BIT_LARGE),$(eval $(call FATE_HEVC_TEST_444_12BIT_LARGE,$(N))))
 
-fate-hevc-paramchange-yuv420p-yuv420p10: CMD = framecrc -vsync 0 -i $(TARGET_SAMPLES)/hevc/paramchange_yuv420p_yuv420p10.hevc -sws_flags area+accurate_rnd+bitexact
+fate-hevc-paramchange-yuv420p-yuv420p10: CMD = framecrc -vsync passthrough -i $(TARGET_SAMPLES)/hevc/paramchange_yuv420p_yuv420p10.hevc -sws_flags area+accurate_rnd+bitexact
 FATE_HEVC_LARGE += fate-hevc-paramchange-yuv420p-yuv420p10
 
 tests/data/hevc-mp4.mov: TAG = GEN
 tests/data/hevc-mp4.mov: ffmpeg$(PROGSSUF)$(EXESUF) | tests/data
-	$(M)$(TARGET_EXEC) $(TARGET_PATH)/$< \
+	$(M)$(TARGET_EXEC) $(TARGET_PATH)/$< -nostdin \
 	-i $(TARGET_SAMPLES)/hevc-conformance/WPP_A_ericsson_MAIN10_2.bit -c copy -flags +bitexact $(TARGET_PATH)/$@ -y 2>/dev/null
 
 FATE_HEVC-$(call ALLYES, HEVC_DEMUXER MOV_DEMUXER HEVC_MP4TOANNEXB_BSF MOV_MUXER HEVC_MUXER) += fate-hevc-bsf-mp4toannexb
@@ -272,6 +272,9 @@ FATE_HEVC_FFPROBE-$(call DEMDEC, HEVC, HEVC) += fate-hevc-monochrome-crop
 
 fate-hevc-hdr10-plus-metadata: CMD = probeframes -show_entries frame=side_data_list $(TARGET_SAMPLES)/hevc/hdr10_plus_h265_sample.hevc
 FATE_HEVC_FFPROBE-$(call DEMDEC, HEVC, HEVC) += fate-hevc-hdr10-plus-metadata
+
+fate-hevc-dv-rpu: CMD = probeframes -show_entries frame=side_data_list -select_streams 0 -read_intervals "%+\#2" $(TARGET_SAMPLES)/hevc/dv84.mov
+FATE_HEVC_FFPROBE-$(call DEMDEC, HEVC, HEVC) += fate-hevc-dv-rpu
 
 fate-hevc-two-first-slice: CMD = threads=2 framemd5 -i $(TARGET_SAMPLES)/hevc/two_first_slice.mp4 -sws_flags bitexact -t 00:02.00 -an
 FATE_HEVC-$(call DEMDEC, MOV, HEVC) += fate-hevc-two-first-slice

@@ -19,12 +19,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/avassert.h"
 #include "libavutil/dict.h"
 #include "libavutil/error.h"
+#include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
-#include "libavutil/mathematics.h"
-#include "libavcodec/avcodec.h"
-#include "libavcodec/bytestream.h"
 #include "avformat.h"
 #include "avio_internal.h"
 #include "riff.h"
@@ -33,10 +32,10 @@ int ff_get_guid(AVIOContext *s, ff_asf_guid *g)
 {
     int ret;
     av_assert0(sizeof(*g) == 16); //compiler will optimize this out
-    ret = avio_read(s, *g, sizeof(*g));
-    if (ret < (int)sizeof(*g)) {
+    ret = ffio_read_size(s, *g, sizeof(*g));
+    if (ret < 0) {
         memset(*g, 0, sizeof(*g));
-        return ret < 0 ? ret : AVERROR_INVALIDDATA;
+        return ret;
     }
     return 0;
 }

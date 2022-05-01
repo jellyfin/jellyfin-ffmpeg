@@ -77,6 +77,10 @@ static const struct {
     { AV_CPU_FLAG_BMI2,      "bmi2"       },
     { AV_CPU_FLAG_AESNI,     "aesni"      },
     { AV_CPU_FLAG_AVX512,    "avx512"     },
+    { AV_CPU_FLAG_SLOW_GATHER, "slowgather" },
+#elif ARCH_LOONGARCH
+    { AV_CPU_FLAG_LSX,       "lsx"        },
+    { AV_CPU_FLAG_LASX,      "lasx"       },
 #endif
     { 0 }
 };

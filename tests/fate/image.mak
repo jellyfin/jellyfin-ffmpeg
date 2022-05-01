@@ -1,10 +1,13 @@
 FATE_ALIASPIX += fate-aliaspix-bgr
-fate-aliaspix-bgr: CMD = framecrc -i $(TARGET_SAMPLES)/aliaspix/first.pix -pix_fmt bgr24
+fate-aliaspix-bgr: CMD = transcode alias_pix $(TARGET_SAMPLES)/aliaspix/first.pix image2 "-c alias_pix" "-map 0 -map 0 -pix_fmt:0 bgr24 -c:v:1 copy"
 
 FATE_ALIASPIX += fate-aliaspix-gray
-fate-aliaspix-gray: CMD = framecrc -i $(TARGET_SAMPLES)/aliaspix/firstgray.pix -pix_fmt gray
+fate-aliaspix-gray: CMD = transcode alias_pix $(TARGET_SAMPLES)/aliaspix/firstgray.pix image2 "-c alias_pix" "-map 0 -map 0 -pix_fmt:0 gray -c:v:1 copy"
 
-FATE_ALIASPIX-$(call DEMDEC, IMAGE2, ALIAS_PIX) += $(FATE_ALIASPIX)
+FATE_ALIASPIX-$(call ALLYES, FILE_PROTOCOL IMAGE2_ALIAS_PIX_DEMUXER \
+                             ALIAS_PIX_DECODER ALIAS_PIX_ENCODER    \
+                             IMAGE2_MUXER RAWVIDEO_ENCODER          \
+                             FRAMECRC_MUXER PIPE_PROTOCOL) += $(FATE_ALIASPIX)
 FATE_IMAGE += $(FATE_ALIASPIX-yes)
 fate-aliaspix: $(FATE_ALIASPIX-yes)
 
@@ -338,6 +341,22 @@ FATE_JPG-$(call DEMDEC, IMAGE2, MJPEG) += $(FATE_JPG)
 FATE_IMAGE += $(FATE_JPG-yes)
 fate-jpg: $(FATE_JPG-yes)
 
+FATE_JPEGLS += fate-jpegls-2bpc
+fate-jpegls-2bpc: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/4.jls
+
+FATE_JPEGLS += fate-jpegls-3bpc
+fate-jpegls-3bpc: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/8.jls
+
+FATE_JPEGLS += fate-jpegls-5bpc
+fate-jpegls-5bpc: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/32.jls
+
+FATE_JPEGLS += fate-jpegls-7bpc
+fate-jpegls-7bpc: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/128.jls
+
+FATE_JPEGLS-$(call DEMDEC, IMAGE2, JPEGLS) += $(FATE_JPEGLS)
+FATE_IMAGE += $(FATE_JPEGLS-yes)
+fate-jpegls: $(FATE_JPEGLS-yes)
+
 FATE_IMAGE-$(call DEMDEC, IMAGE2, QDRAW) += fate-pict
 fate-pict: CMD = framecrc -i $(TARGET_SAMPLES)/quickdraw/TRU256.PCT -pix_fmt rgb24
 
@@ -358,9 +377,19 @@ $(foreach CLSP,$(PNG_COLORSPACES),$(eval $(call FATE_IMGSUITE_PNG,$(CLSP))))
 FATE_PNG += fate-png-int-rgb24
 fate-png-int-rgb24: CMD = framecrc -i $(TARGET_SAMPLES)/png1/lena-int_rgb24.png -sws_flags +accurate_rnd+bitexact
 
+FATE_PNG_PROBE += fate-png-frame-metadata
+fate-png-frame-metadata: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_entries frame_tags \
+    -i $(TARGET_SAMPLES)/filter/pixelart0.png
+
+FATE_PNG_PROBE += fate-png-side-data
+fate-png-side-data: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_frames \
+    -i $(TARGET_SAMPLES)/png1/lena-int_rgb24.png
+
 FATE_PNG-$(call DEMDEC, IMAGE2, PNG) += $(FATE_PNG)
+FATE_PNG_PROBE-$(call DEMDEC, IMAGE2, PNG) += $(FATE_PNG_PROBE)
 FATE_IMAGE += $(FATE_PNG-yes)
-fate-png: $(FATE_PNG-yes)
+FATE_IMAGE_PROBE += $(FATE_PNG_PROBE-yes)
+fate-png: $(FATE_PNG-yes) $(FATE_PNG_PROBE-yes)
 
 FATE_IMAGE-$(call DEMDEC, IMAGE2, PTX) += fate-ptx
 fate-ptx: CMD = framecrc -i $(TARGET_SAMPLES)/ptx/_113kw_pic.ptx -pix_fmt rgb24 -vf scale
@@ -492,6 +521,10 @@ fate-webp-rgb-lena-lossless-rgb24: CMD = framecrc -i $(TARGET_SAMPLES)/webp/rgb_
 
 FATE_WEBP += fate-webp-rgba-lossless
 fate-webp-rgba-lossless: CMD = framecrc -i $(TARGET_SAMPLES)/webp/rgba_lossless.webp
+
+# TODO(https://trac.ffmpeg.org/ticket/9368): enable after sample is uploaded
+# FATE_WEBP += fate-webp-rgb-lossless-palette-predictor
+# fate-webp-rgb-lossless-palette-predictor: CMD = framecrc -i $(TARGET_SAMPLES)/webp/dual_transform.webp
 
 FATE_WEBP += fate-webp-rgb-lossy-q80
 fate-webp-rgb-lossy-q80: CMD = framecrc -i $(TARGET_SAMPLES)/webp/rgb_q80.webp

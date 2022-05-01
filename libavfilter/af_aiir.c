@@ -20,7 +20,6 @@
 
 #include <float.h>
 
-#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
@@ -80,7 +79,6 @@ static int query_formats(AVFilterContext *ctx)
 {
     AudioIIRContext *s = ctx->priv;
     AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
     enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_DBLP,
         AV_SAMPLE_FMT_NONE
@@ -99,25 +97,16 @@ static int query_formats(AVFilterContext *ctx)
             return ret;
     }
 
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
+    ret = ff_set_common_all_channel_counts(ctx);
     if (ret < 0)
         return ret;
 
     sample_fmts[0] = s->sample_format;
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
+    ret = ff_set_common_formats_from_list(ctx, sample_fmts);
     if (ret < 0)
         return ret;
 
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
+    return ff_set_common_all_samplerates(ctx);
 }
 
 #define IIR_CH(name, type, min, max, need_clipping)                     \
@@ -1412,7 +1401,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     td.in  = in;
     td.out = out;
-    ctx->internal->execute(ctx, s->iir_channel, &td, NULL, outlink->channels);
+    ff_filter_execute(ctx, s->iir_channel, &td, NULL, outlink->channels);
 
     for (ch = 0; ch < outlink->channels; ch++) {
         if (s->iir[ch].clippings > 0)
@@ -1484,7 +1473,7 @@ static av_cold int init(AVFilterContext *ctx)
         .config_props = config_output,
     };
 
-    ret = ff_insert_outpad(ctx, 0, &pad);
+    ret = ff_append_outpad(ctx, &pad);
     if (ret < 0)
         return ret;
 
@@ -1495,7 +1484,7 @@ static av_cold int init(AVFilterContext *ctx)
             .config_props = config_video,
         };
 
-        ret = ff_insert_outpad(ctx, 1, &vpad);
+        ret = ff_append_outpad(ctx, &vpad);
         if (ret < 0)
             return ret;
     }
@@ -1529,7 +1518,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(AudioIIRContext, x)
@@ -1577,15 +1565,15 @@ static const AVOption aiir_options[] = {
 
 AVFILTER_DEFINE_CLASS(aiir);
 
-AVFilter ff_af_aiir = {
+const AVFilter ff_af_aiir = {
     .name          = "aiir",
     .description   = NULL_IF_CONFIG_SMALL("Apply Infinite Impulse Response filter with supplied coefficients."),
     .priv_size     = sizeof(AudioIIRContext),
     .priv_class    = &aiir_class,
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = inputs,
+    FILTER_INPUTS(inputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS |
                      AVFILTER_FLAG_SLICE_THREADS,
 };

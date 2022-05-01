@@ -20,7 +20,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "aptx.h"
+#include "encode.h"
 
 /*
  * Half-band QMF analysis filter realized with a polyphase FIR filter.
@@ -214,7 +216,7 @@ static int aptx_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         return ret;
 
     output_size = s->block_size * frame->nb_samples/4;
-    if ((ret = ff_alloc_packet2(avctx, avpkt, output_size, 0)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, avpkt, output_size, 0)) < 0)
         return ret;
 
     for (pos = 0, ipos = 0; pos < output_size; pos += s->block_size, ipos += 4) {
@@ -240,16 +242,16 @@ static av_cold int aptx_close(AVCodecContext *avctx)
 }
 
 #if CONFIG_APTX_ENCODER
-AVCodec ff_aptx_encoder = {
+const AVCodec ff_aptx_encoder = {
     .name                  = "aptx",
     .long_name             = NULL_IF_CONFIG_SMALL("aptX (Audio Processing Technology for Bluetooth)"),
     .type                  = AVMEDIA_TYPE_AUDIO,
     .id                    = AV_CODEC_ID_APTX,
+    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .priv_data_size        = sizeof(AptXContext),
     .init                  = ff_aptx_init,
     .encode2               = aptx_encode_frame,
     .close                 = aptx_close,
-    .capabilities          = AV_CODEC_CAP_SMALL_LAST_FRAME,
     .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
     .channel_layouts       = (const uint64_t[]) { AV_CH_LAYOUT_STEREO, 0},
     .sample_fmts           = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
@@ -259,16 +261,16 @@ AVCodec ff_aptx_encoder = {
 #endif
 
 #if CONFIG_APTX_HD_ENCODER
-AVCodec ff_aptx_hd_encoder = {
+const AVCodec ff_aptx_hd_encoder = {
     .name                  = "aptx_hd",
     .long_name             = NULL_IF_CONFIG_SMALL("aptX HD (Audio Processing Technology for Bluetooth)"),
     .type                  = AVMEDIA_TYPE_AUDIO,
     .id                    = AV_CODEC_ID_APTX_HD,
+    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .priv_data_size        = sizeof(AptXContext),
     .init                  = ff_aptx_init,
     .encode2               = aptx_encode_frame,
     .close                 = aptx_close,
-    .capabilities          = AV_CODEC_CAP_SMALL_LAST_FRAME,
     .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
     .channel_layouts       = (const uint64_t[]) { AV_CH_LAYOUT_STEREO, 0},
     .sample_fmts           = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,

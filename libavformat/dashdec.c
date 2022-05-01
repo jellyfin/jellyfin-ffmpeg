@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #include <libxml/parser.h>
+#include "libavutil/bprint.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
@@ -76,7 +77,7 @@ struct timeline {
  */
 struct representation {
     char *url_template;
-    AVIOContext pb;
+    FFIOContext pb;
     AVIOContext *input;
     AVFormatContext *parent;
     AVFormatContext *ctx;
@@ -352,7 +353,7 @@ static void free_representation(struct representation *pls)
     free_fragment(&pls->cur_seg);
     free_fragment(&pls->init_section);
     av_freep(&pls->init_sec_buf);
-    av_freep(&pls->pb.buffer);
+    av_freep(&pls->pb.pub.buffer);
     ff_format_io_close(pls->parent, &pls->input);
     if (pls->ctx) {
         pls->ctx->pb = NULL;
@@ -1445,7 +1446,7 @@ static int64_t calc_max_seg_no(struct representation *pls, DASHContext *c)
     } else if (c->is_live && pls->fragment_duration) {
         num = pls->first_seq_no + (((get_current_time_in_sec() - c->availability_start_time)) * pls->fragment_timescale)  / pls->fragment_duration;
     } else if (pls->fragment_duration) {
-        num = pls->first_seq_no + (c->media_presentation_duration * pls->fragment_timescale) / pls->fragment_duration;
+        num = pls->first_seq_no + av_rescale_rnd(1, c->media_presentation_duration * pls->fragment_timescale, pls->fragment_duration, AV_ROUND_UP);
     }
 
     return num;
@@ -1832,31 +1833,6 @@ end:
     return ret;
 }
 
-static int save_avio_options(AVFormatContext *s)
-{
-    DASHContext *c = s->priv_data;
-    const char *opts[] = {
-        "headers", "user_agent", "cookies", "http_proxy", "referer", "rw_timeout", "icy", NULL };
-    const char **opt = opts;
-    uint8_t *buf = NULL;
-    int ret = 0;
-
-    while (*opt) {
-        if (av_opt_get(s->pb, *opt, AV_OPT_SEARCH_CHILDREN, &buf) >= 0) {
-            if (buf[0] != '\0') {
-                ret = av_dict_set(&c->avio_opts, *opt, buf, AV_DICT_DONT_STRDUP_VAL);
-                if (ret < 0)
-                    return ret;
-            } else {
-                av_freep(&buf);
-            }
-        }
-        opt++;
-    }
-
-    return ret;
-}
-
 static int nested_io_open(AVFormatContext *s, AVIOContext **pb, const char *url,
                           int flags, AVDictionary **opts)
 {
@@ -1870,8 +1846,8 @@ static int nested_io_open(AVFormatContext *s, AVIOContext **pb, const char *url,
 static void close_demux_for_component(struct representation *pls)
 {
     /* note: the internal buffer could have changed */
-    av_freep(&pls->pb.buffer);
-    memset(&pls->pb, 0x00, sizeof(AVIOContext));
+    av_freep(&pls->pb.pub.buffer);
+    memset(&pls->pb, 0x00, sizeof(pls->pb));
     pls->ctx->pb = NULL;
     avformat_close_input(&pls->ctx);
 }
@@ -1879,7 +1855,7 @@ static void close_demux_for_component(struct representation *pls)
 static int reopen_demux_for_component(AVFormatContext *s, struct representation *pls)
 {
     DASHContext *c = s->priv_data;
-    ff_const59 AVInputFormat *in_fmt = NULL;
+    const AVInputFormat *in_fmt = NULL;
     AVDictionary  *in_fmt_opts = NULL;
     uint8_t *avio_ctx_buffer  = NULL;
     int ret = 0, i;
@@ -1907,7 +1883,7 @@ static int reopen_demux_for_component(AVFormatContext *s, struct representation 
     }
     ffio_init_context(&pls->pb, avio_ctx_buffer, INITIAL_BUFFER_SIZE, 0,
                       pls, read_data, NULL, c->is_live ? NULL : seek_data);
-    pls->pb.seekable = 0;
+    pls->pb.pub.seekable = 0;
 
     if ((ret = ff_copy_whiteblacklists(pls->ctx, s)) < 0)
         goto fail;
@@ -1916,7 +1892,7 @@ static int reopen_demux_for_component(AVFormatContext *s, struct representation 
     pls->ctx->probesize = s->probesize > 0 ? s->probesize : 1024 * 4;
     pls->ctx->max_analyze_duration = s->max_analyze_duration > 0 ? s->max_analyze_duration : 4 * AV_TIME_BASE;
     pls->ctx->interrupt_callback = s->interrupt_callback;
-    ret = av_probe_input_buffer(&pls->pb, &in_fmt, "", NULL, 0, 0);
+    ret = av_probe_input_buffer(&pls->pb.pub, &in_fmt, "", NULL, 0, 0);
     if (ret < 0) {
         av_log(s, AV_LOG_ERROR, "Error when loading first fragment of playlist\n");
         avformat_free_context(pls->ctx);
@@ -1924,7 +1900,7 @@ static int reopen_demux_for_component(AVFormatContext *s, struct representation 
         goto fail;
     }
 
-    pls->ctx->pb = &pls->pb;
+    pls->ctx->pb = &pls->pb.pub;
     pls->ctx->io_open  = nested_io_open;
 
     // provide additional information from mpd if available
@@ -2037,8 +2013,6 @@ static int copy_init_section(struct representation *rep_dest, struct representat
     return 0;
 }
 
-static int dash_close(AVFormatContext *s);
-
 static void move_metadata(AVStream *st, const char *key, char **value)
 {
     if (*value) {
@@ -2058,11 +2032,11 @@ static int dash_read_header(AVFormatContext *s)
 
     c->interrupt_callback = &s->interrupt_callback;
 
-    if ((ret = save_avio_options(s)) < 0)
-        goto fail;
+    if ((ret = ffio_copy_url_options(s->pb, &c->avio_opts)) < 0)
+        return ret;
 
     if ((ret = parse_manifest(s, s->url, s->pb)) < 0)
-        goto fail;
+        return ret;
 
     /* If this isn't a live stream, fill the total duration of the
      * stream. */
@@ -2081,12 +2055,12 @@ static int dash_read_header(AVFormatContext *s)
         if (i > 0 && c->is_init_section_common_video) {
             ret = copy_init_section(rep, c->videos[0]);
             if (ret < 0)
-                goto fail;
+                return ret;
         }
         ret = open_demux_for_component(s, rep);
 
         if (ret)
-            goto fail;
+            return ret;
         rep->stream_index = stream_index;
         ++stream_index;
     }
@@ -2099,12 +2073,12 @@ static int dash_read_header(AVFormatContext *s)
         if (i > 0 && c->is_init_section_common_audio) {
             ret = copy_init_section(rep, c->audios[0]);
             if (ret < 0)
-                goto fail;
+                return ret;
         }
         ret = open_demux_for_component(s, rep);
 
         if (ret)
-            goto fail;
+            return ret;
         rep->stream_index = stream_index;
         ++stream_index;
     }
@@ -2117,27 +2091,23 @@ static int dash_read_header(AVFormatContext *s)
         if (i > 0 && c->is_init_section_common_subtitle) {
             ret = copy_init_section(rep, c->subtitles[0]);
             if (ret < 0)
-                goto fail;
+                return ret;
         }
         ret = open_demux_for_component(s, rep);
 
         if (ret)
-            goto fail;
+            return ret;
         rep->stream_index = stream_index;
         ++stream_index;
     }
 
-    if (!stream_index) {
-        ret = AVERROR_INVALIDDATA;
-        goto fail;
-    }
+    if (!stream_index)
+        return AVERROR_INVALIDDATA;
 
     /* Create a program */
     program = av_new_program(s, 0);
-    if (!program) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
+    if (!program)
+        return AVERROR(ENOMEM);
 
     for (i = 0; i < c->n_videos; i++) {
         rep = c->videos[i];
@@ -2165,9 +2135,6 @@ static int dash_read_header(AVFormatContext *s)
     }
 
     return 0;
-fail:
-    dash_close(s);
-    return ret;
 }
 
 static void recheck_discard_flags(AVFormatContext *s, struct representation **p, int n)
@@ -2397,11 +2364,12 @@ static const AVClass dash_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVInputFormat ff_dash_demuxer = {
+const AVInputFormat ff_dash_demuxer = {
     .name           = "dash",
     .long_name      = NULL_IF_CONFIG_SMALL("Dynamic Adaptive Streaming over HTTP"),
     .priv_class     = &dash_class,
     .priv_data_size = sizeof(DASHContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = dash_probe,
     .read_header    = dash_read_header,
     .read_packet    = dash_read_packet,

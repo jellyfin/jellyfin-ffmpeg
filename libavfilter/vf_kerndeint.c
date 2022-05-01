@@ -66,23 +66,15 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&kerndeint->tmp_data[0]);
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUYV422,
-        AV_PIX_FMT_ARGB, AV_PIX_FMT_0RGB,
-        AV_PIX_FMT_ABGR, AV_PIX_FMT_0BGR,
-        AV_PIX_FMT_RGBA, AV_PIX_FMT_RGB0,
-        AV_PIX_FMT_BGRA, AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUYV422,
+    AV_PIX_FMT_ARGB, AV_PIX_FMT_0RGB,
+    AV_PIX_FMT_ABGR, AV_PIX_FMT_0BGR,
+    AV_PIX_FMT_RGBA, AV_PIX_FMT_RGB0,
+    AV_PIX_FMT_BGRA, AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_NONE
+};
 
 static int config_props(AVFilterLink *inlink)
 {
@@ -295,7 +287,6 @@ static const AVFilterPad kerndeint_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_props,
     },
-    { NULL }
 };
 
 static const AVFilterPad kerndeint_outputs[] = {
@@ -303,17 +294,16 @@ static const AVFilterPad kerndeint_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 
-AVFilter ff_vf_kerndeint = {
+const AVFilter ff_vf_kerndeint = {
     .name          = "kerndeint",
     .description   = NULL_IF_CONFIG_SMALL("Apply kernel deinterlacing to the input."),
     .priv_size     = sizeof(KerndeintContext),
     .priv_class    = &kerndeint_class,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = kerndeint_inputs,
-    .outputs       = kerndeint_outputs,
+    FILTER_INPUTS(kerndeint_inputs),
+    FILTER_OUTPUTS(kerndeint_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

@@ -36,6 +36,7 @@
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "packet_internal.h"
 
@@ -156,9 +157,6 @@ static av_cold int libkvazaar_close(AVCodecContext *avctx)
         ctx->api->config_destroy(ctx->config);
     }
 
-    if (avctx->extradata)
-        av_freep(&avctx->extradata);
-
     return 0;
 }
 
@@ -246,7 +244,7 @@ static int libkvazaar_encode(AVCodecContext *avctx,
         kvz_data_chunk *chunk = NULL;
         uint64_t written = 0;
 
-        retval = ff_alloc_packet2(avctx, avpkt, len_out, len_out);
+        retval = ff_get_encode_buffer(avctx, avpkt, len_out, 0);
         if (retval < 0) {
             av_log(avctx, AV_LOG_ERROR, "Failed to allocate output packet.\n");
             goto done;
@@ -282,19 +280,8 @@ static int libkvazaar_encode(AVCodecContext *avctx,
             av_log(avctx, AV_LOG_ERROR, "Unknown picture type encountered.\n");
             return AVERROR_EXTERNAL;
         }
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        avctx->coded_frame->pict_type = pict_type;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
         ff_side_data_set_encoder_stats(avpkt, frame_info.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
-
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        avctx->coded_frame->quality = frame_info.qp * FF_QP2LAMBDA;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
         *got_packet_ptr = 1;
     }
@@ -331,12 +318,13 @@ static const AVCodecDefault defaults[] = {
     { NULL },
 };
 
-AVCodec ff_libkvazaar_encoder = {
+const AVCodec ff_libkvazaar_encoder = {
     .name             = "libkvazaar",
     .long_name        = NULL_IF_CONFIG_SMALL("libkvazaar H.265 / HEVC"),
     .type             = AVMEDIA_TYPE_VIDEO,
     .id               = AV_CODEC_ID_HEVC,
-    .capabilities     = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
+    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                        AV_CODEC_CAP_OTHER_THREADS,
     .pix_fmts         = pix_fmts,
 
     .priv_class       = &class,

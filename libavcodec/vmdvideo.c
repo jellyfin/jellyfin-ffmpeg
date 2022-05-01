@@ -423,10 +423,8 @@ static av_cold int vmdvideo_decode_init(AVCodecContext *avctx)
     }
 
     s->prev_frame = av_frame_alloc();
-    if (!s->prev_frame) {
-        vmdvideo_decode_end(avctx);
+    if (!s->prev_frame)
         return AVERROR(ENOMEM);
-    }
 
     return 0;
 }
@@ -467,7 +465,7 @@ static int vmdvideo_decode_frame(AVCodecContext *avctx,
     return buf_size;
 }
 
-AVCodec ff_vmdvideo_decoder = {
+const AVCodec ff_vmdvideo_decoder = {
     .name           = "vmdvideo",
     .long_name      = NULL_IF_CONFIG_SMALL("Sierra VMD video"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -477,4 +475,5 @@ AVCodec ff_vmdvideo_decoder = {
     .close          = vmdvideo_decode_end,
     .decode         = vmdvideo_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

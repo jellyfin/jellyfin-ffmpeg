@@ -262,9 +262,12 @@ static int set_string_number(void *obj, void *target_obj, const AVOption *o, con
             const char * const_names[64];
             int search_flags = (o->flags & AV_OPT_FLAG_CHILD_CONSTS) ? AV_OPT_SEARCH_CHILDREN : 0;
             const AVOption *o_named = av_opt_find(target_obj, i ? buf : val, o->unit, 0, search_flags);
-            if (o_named && o_named->type == AV_OPT_TYPE_CONST)
+            if (o_named && o_named->type == AV_OPT_TYPE_CONST) {
                 d = DEFAULT_NUMVAL(o_named);
-            else {
+                if (o_named->flags & AV_OPT_FLAG_DEPRECATED)
+                    av_log(obj, AV_LOG_WARNING, "The \"%s\" option is deprecated: %s\n",
+                           o_named->name, o_named->help);
+            } else {
                 if (o->unit) {
                     for (o_named = NULL; o_named = av_opt_next(target_obj, o_named); ) {
                         if (o_named->type == AV_OPT_TYPE_CONST &&
@@ -917,7 +920,10 @@ int av_opt_get_int(void *obj, const char *name, int search_flags, int64_t *out_v
 
     if ((ret = get_number(obj, name, NULL, &num, &den, &intnum, search_flags)) < 0)
         return ret;
-    *out_val = num * intnum / den;
+    if (num == den)
+        *out_val = intnum;
+    else
+        *out_val = num * intnum / den;
     return 0;
 }
 
@@ -1167,7 +1173,7 @@ static void opt_list(void *obj, void *av_log_obj, const char *unit,
             av_log(av_log_obj, AV_LOG_INFO, "     %-15s ", opt->name);
         else
             av_log(av_log_obj, AV_LOG_INFO, "  %s%-17s ",
-                   (opt->flags & AV_OPT_FLAG_FILTERING_PARAM) ? "" : "-",
+                   (opt->flags & AV_OPT_FLAG_FILTERING_PARAM) ? " " : "-",
                    opt->name);
 
         switch (opt->type) {
@@ -1632,7 +1638,7 @@ int av_opt_set_dict2(void *obj, AVDictionary **options, int search_flags)
 {
     AVDictionaryEntry *t = NULL;
     AVDictionary    *tmp = NULL;
-    int ret = 0;
+    int ret;
 
     if (!options)
         return 0;
@@ -1646,11 +1652,10 @@ int av_opt_set_dict2(void *obj, AVDictionary **options, int search_flags)
             av_dict_free(&tmp);
             return ret;
         }
-        ret = 0;
     }
     av_dict_free(options);
     *options = tmp;
-    return ret;
+    return 0;
 }
 
 int av_opt_set_dict(void *obj, AVDictionary **options)
@@ -1717,29 +1722,10 @@ void *av_opt_child_next(void *obj, void *prev)
     return NULL;
 }
 
-#if FF_API_CHILD_CLASS_NEXT
-FF_DISABLE_DEPRECATION_WARNINGS
-const AVClass *av_opt_child_class_next(const AVClass *parent, const AVClass *prev)
-{
-    if (parent->child_class_next)
-        return parent->child_class_next(prev);
-    return NULL;
-}
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
 const AVClass *av_opt_child_class_iterate(const AVClass *parent, void **iter)
 {
     if (parent->child_class_iterate)
         return parent->child_class_iterate(iter);
-#if FF_API_CHILD_CLASS_NEXT
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (parent->child_class_next) {
-        *iter = parent->child_class_next(*iter);
-        return *iter;
-    }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     return NULL;
 }
 
@@ -1826,12 +1812,13 @@ int av_opt_copy(void *dst, const void *src)
         } else if (o->type == AV_OPT_TYPE_DICT) {
             AVDictionary **sdict = (AVDictionary **) field_src;
             AVDictionary **ddict = (AVDictionary **) field_dst;
+            int ret2;
             if (*sdict != *ddict)
                 av_dict_free(ddict);
             *ddict = NULL;
-            av_dict_copy(ddict, *sdict, 0);
-            if (av_dict_count(*sdict) != av_dict_count(*ddict))
-                ret = AVERROR(ENOMEM);
+            ret2 = av_dict_copy(ddict, *sdict, 0);
+            if (ret2 < 0)
+                ret = ret2;
         } else {
             int size = opt_size(o->type);
             if (size < 0)
@@ -1847,10 +1834,7 @@ int av_opt_query_ranges(AVOptionRanges **ranges_arg, void *obj, const char *key,
 {
     int ret;
     const AVClass *c = *(AVClass**)obj;
-    int (*callback)(AVOptionRanges **, void *obj, const char *key, int flags) = NULL;
-
-    if (c->version > (52 << 16 | 11 << 8))
-        callback = c->query_ranges;
+    int (*callback)(AVOptionRanges **, void *obj, const char *key, int flags) = c->query_ranges;
 
     if (!callback)
         callback = av_opt_query_ranges_default;

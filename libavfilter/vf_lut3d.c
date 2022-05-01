@@ -31,72 +31,17 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/avassert.h"
-#include "libavutil/pixdesc.h"
 #include "libavutil/avstring.h"
-#include "avfilter.h"
 #include "drawutils.h"
 #include "formats.h"
-#include "framesync.h"
 #include "internal.h"
 #include "video.h"
+#include "lut3d.h"
 
 #define R 0
 #define G 1
 #define B 2
 #define A 3
-
-enum interp_mode {
-    INTERPOLATE_NEAREST,
-    INTERPOLATE_TRILINEAR,
-    INTERPOLATE_TETRAHEDRAL,
-    INTERPOLATE_PYRAMID,
-    INTERPOLATE_PRISM,
-    NB_INTERP_MODE
-};
-
-struct rgbvec {
-    float r, g, b;
-};
-
-/* 3D LUT don't often go up to level 32, but it is common to have a Hald CLUT
- * of 512x512 (64x64x64) */
-#define MAX_LEVEL 256
-#define PRELUT_SIZE 65536
-
-typedef struct Lut3DPreLut {
-    int size;
-    float min[3];
-    float max[3];
-    float scale[3];
-    float* lut[3];
-} Lut3DPreLut;
-
-typedef struct LUT3DContext {
-    const AVClass *class;
-    int interpolation;          ///<interp_mode
-    char *file;
-    uint8_t rgba_map[4];
-    int step;
-    avfilter_action_func *interp;
-    struct rgbvec scale;
-    struct rgbvec *lut;
-    int lutsize;
-    int lutsize2;
-    Lut3DPreLut prelut;
-#if CONFIG_HALDCLUT_FILTER
-    uint8_t clut_rgba_map[4];
-    int clut_step;
-    int clut_bits;
-    int clut_planar;
-    int clut_float;
-    int clut_width;
-    FFFrameSync fs;
-#endif
-} LUT3DContext;
-
-typedef struct ThreadData {
-    AVFrame *in, *out;
-} ThreadData;
 
 #define OFFSET(x) offsetof(LUT3DContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
@@ -1147,30 +1092,23 @@ static int set_identity_matrix(AVFilterContext *ctx, int size)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_RGB24,  AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_RGBA,   AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_ARGB,   AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_0RGB,   AV_PIX_FMT_0BGR,
-        AV_PIX_FMT_RGB0,   AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_RGB48,  AV_PIX_FMT_BGR48,
-        AV_PIX_FMT_RGBA64, AV_PIX_FMT_BGRA64,
-        AV_PIX_FMT_GBRP,   AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_GBRP9,
-        AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12,
-        AV_PIX_FMT_GBRP14,
-        AV_PIX_FMT_GBRP16,  AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_RGB24,  AV_PIX_FMT_BGR24,
+    AV_PIX_FMT_RGBA,   AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_ARGB,   AV_PIX_FMT_ABGR,
+    AV_PIX_FMT_0RGB,   AV_PIX_FMT_0BGR,
+    AV_PIX_FMT_RGB0,   AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_RGB48,  AV_PIX_FMT_BGR48,
+    AV_PIX_FMT_RGBA64, AV_PIX_FMT_BGRA64,
+    AV_PIX_FMT_GBRP,   AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_GBRP9,
+    AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12,
+    AV_PIX_FMT_GBRP14,
+    AV_PIX_FMT_GBRP16,  AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32,
+    AV_PIX_FMT_NONE
+};
 
 static int config_input(AVFilterLink *inlink)
 {
@@ -1210,6 +1148,10 @@ static int config_input(AVFilterLink *inlink)
         av_assert0(0);
     }
 
+    if (ARCH_X86) {
+        ff_lut3d_init_x86(lut3d, desc);
+    }
+
     return 0;
 }
 
@@ -1234,7 +1176,8 @@ static AVFrame *apply_lut(AVFilterLink *inlink, AVFrame *in)
 
     td.in  = in;
     td.out = out;
-    ctx->internal->execute(ctx, lut3d->interp, &td, NULL, FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, lut3d->interp, &td, NULL,
+                      FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
 
     if (out != in)
         av_frame_free(&in);
@@ -1263,13 +1206,22 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
     return config_input(ctx->inputs[0]);
 }
 
+#if CONFIG_LUT3D_FILTER || CONFIG_HALDCLUT_FILTER
+
+/* These options are shared between several filters;
+ * &lut3d_haldclut_options[COMMON_OPTIONS_OFFSET] must always
+ * point to the first of the COMMON_OPTIONS. */
+#define COMMON_OPTIONS_OFFSET CONFIG_LUT3D_FILTER
+static const AVOption lut3d_haldclut_options[] = {
 #if CONFIG_LUT3D_FILTER
-static const AVOption lut3d_options[] = {
     { "file", "set 3D LUT file name", OFFSET(file), AV_OPT_TYPE_STRING, {.str=NULL}, .flags = FLAGS },
+#endif
     COMMON_OPTIONS
 };
 
-AVFILTER_DEFINE_CLASS(lut3d);
+#if CONFIG_LUT3D_FILTER
+
+AVFILTER_DEFINE_CLASS_EXT(lut3d, "lut3d", lut3d_haldclut_options);
 
 static av_cold int lut3d_init(AVFilterContext *ctx)
 {
@@ -1342,7 +1294,6 @@ static const AVFilterPad lut3d_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad lut3d_outputs[] = {
@@ -1350,18 +1301,17 @@ static const AVFilterPad lut3d_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_lut3d = {
+const AVFilter ff_vf_lut3d = {
     .name          = "lut3d",
     .description   = NULL_IF_CONFIG_SMALL("Adjust colors using a 3D LUT."),
     .priv_size     = sizeof(LUT3DContext),
     .init          = lut3d_init,
     .uninit        = lut3d_uninit,
-    .query_formats = query_formats,
-    .inputs        = lut3d_inputs,
-    .outputs       = lut3d_outputs,
+    FILTER_INPUTS(lut3d_inputs),
+    FILTER_OUTPUTS(lut3d_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &lut3d_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
@@ -1592,11 +1542,8 @@ static av_cold void haldclut_uninit(AVFilterContext *ctx)
     av_freep(&lut3d->lut);
 }
 
-static const AVOption haldclut_options[] = {
-    COMMON_OPTIONS
-};
-
-FRAMESYNC_DEFINE_CLASS(haldclut, LUT3DContext, fs);
+FRAMESYNC_DEFINE_CLASS_EXT(haldclut, LUT3DContext, fs,
+                           &lut3d_haldclut_options[COMMON_OPTIONS_OFFSET]);
 
 static const AVFilterPad haldclut_inputs[] = {
     {
@@ -1608,7 +1555,6 @@ static const AVFilterPad haldclut_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_clut,
     },
-    { NULL }
 };
 
 static const AVFilterPad haldclut_outputs[] = {
@@ -1617,25 +1563,26 @@ static const AVFilterPad haldclut_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_haldclut = {
+const AVFilter ff_vf_haldclut = {
     .name          = "haldclut",
     .description   = NULL_IF_CONFIG_SMALL("Adjust colors using a Hald CLUT."),
     .priv_size     = sizeof(LUT3DContext),
     .preinit       = haldclut_framesync_preinit,
     .init          = haldclut_init,
     .uninit        = haldclut_uninit,
-    .query_formats = query_formats,
     .activate      = activate,
-    .inputs        = haldclut_inputs,
-    .outputs       = haldclut_outputs,
+    FILTER_INPUTS(haldclut_inputs),
+    FILTER_OUTPUTS(haldclut_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &haldclut_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };
 #endif
+
+#endif /* CONFIG_LUT3D_FILTER || CONFIG_HALDCLUT_FILTER */
 
 #if CONFIG_LUT1D_FILTER
 
@@ -2232,7 +2179,8 @@ static AVFrame *apply_1d_lut(AVFilterLink *inlink, AVFrame *in)
 
     td.in  = in;
     td.out = out;
-    ctx->internal->execute(ctx, lut1d->interp, &td, NULL, FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, lut1d->interp, &td, NULL,
+                      FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
 
     if (out != in)
         av_frame_free(&in);
@@ -2274,7 +2222,6 @@ static const AVFilterPad lut1d_inputs[] = {
         .filter_frame = filter_frame_1d,
         .config_props = config_input_1d,
     },
-    { NULL }
 };
 
 static const AVFilterPad lut1d_outputs[] = {
@@ -2282,17 +2229,16 @@ static const AVFilterPad lut1d_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_lut1d = {
+const AVFilter ff_vf_lut1d = {
     .name          = "lut1d",
     .description   = NULL_IF_CONFIG_SMALL("Adjust colors using a 1D LUT."),
     .priv_size     = sizeof(LUT1DContext),
     .init          = lut1d_init,
-    .query_formats = query_formats,
-    .inputs        = lut1d_inputs,
-    .outputs       = lut1d_outputs,
+    FILTER_INPUTS(lut1d_inputs),
+    FILTER_OUTPUTS(lut1d_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &lut1d_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = lut1d_process_command,

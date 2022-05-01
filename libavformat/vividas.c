@@ -283,9 +283,10 @@ static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *
     int64_t off;
     int val_1;
     int num_video;
-    AVIOContext pb0, *pb = &pb0;
+    FFIOContext pb0;
+    AVIOContext *const pb = &pb0.pub;
 
-    ffio_init_context(pb, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
 
     ffio_read_varlen(pb); // track_header_len
     avio_r8(pb); // '1'
@@ -436,12 +437,13 @@ static int track_index(VividasDemuxContext *viv, AVFormatContext *s, uint8_t *bu
     int64_t off;
     int64_t poff;
     int maxnp=0;
-    AVIOContext pb0, *pb = &pb0;
+    FFIOContext pb0;
+    AVIOContext *const pb = &pb0.pub;
     int i;
     int64_t filesize = avio_size(s->pb);
     uint64_t n_sb_blocks_tmp;
 
-    ffio_init_context(pb, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
 
     ffio_read_varlen(pb); // track_index_len
     avio_r8(pb); // 'c'
@@ -613,7 +615,7 @@ static int viv_read_header(AVFormatContext *s)
     ret = track_index(viv, s, buf, v);
     av_free(buf);
     if (ret < 0)
-        goto fail;
+        return ret;
 
     viv->sb_offset = avio_tell(pb);
     if (viv->n_sb_blocks > 0) {
@@ -624,9 +626,6 @@ static int viv_read_header(AVFormatContext *s)
     }
 
     return 0;
-fail:
-    av_freep(&viv->sb_blocks);
-    return ret;
 }
 
 static int viv_read_packet(AVFormatContext *s,
@@ -781,10 +780,11 @@ static int viv_read_seek(AVFormatContext *s, int stream_index, int64_t timestamp
     return 0;
 }
 
-AVInputFormat ff_vividas_demuxer = {
+const AVInputFormat ff_vividas_demuxer = {
     .name           = "vividas",
     .long_name      = NULL_IF_CONFIG_SMALL("Vividas VIV"),
     .priv_data_size = sizeof(VividasDemuxContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = viv_probe,
     .read_header    = viv_read_header,
     .read_packet    = viv_read_packet,

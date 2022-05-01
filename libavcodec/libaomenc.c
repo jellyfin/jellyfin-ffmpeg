@@ -30,12 +30,15 @@
 #include "libavutil/avassert.h"
 #include "libavutil/base64.h"
 #include "libavutil/common.h"
+#include "libavutil/cpu.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "av1.h"
 #include "avcodec.h"
+#include "bsf.h"
+#include "encode.h"
 #include "internal.h"
 #include "packet_internal.h"
 #include "profiles.h"
@@ -208,10 +211,10 @@ static av_cold void log_encoder_error(AVCodecContext *avctx, const char *desc)
 }
 
 static av_cold void dump_enc_cfg(AVCodecContext *avctx,
-                                 const struct aom_codec_enc_cfg *cfg)
+                                 const struct aom_codec_enc_cfg *cfg,
+                                 int level)
 {
     int width = -30;
-    int level = AV_LOG_DEBUG;
 
     av_log(avctx, level, "aom_codec_enc_cfg\n");
     av_log(avctx, level, "generic settings\n"
@@ -596,7 +599,7 @@ static av_cold int aom_init(AVCodecContext *avctx,
     av_log(avctx, AV_LOG_INFO, "%s\n", aom_codec_version_str());
     av_log(avctx, AV_LOG_VERBOSE, "%s\n", aom_codec_build_config());
 
-    if ((res = aom_codec_enc_config_default(iface, &enccfg, 0)) != AOM_CODEC_OK) {
+    if ((res = aom_codec_enc_config_default(iface, &enccfg, ctx->usage)) != AOM_CODEC_OK) {
         av_log(avctx, AV_LOG_ERROR, "Failed to get config: %s\n",
                aom_codec_err_to_string(res));
         return AVERROR(EINVAL);
@@ -611,7 +614,7 @@ static av_cold int aom_init(AVCodecContext *avctx,
             return AVERROR(EINVAL);
         }
 
-    dump_enc_cfg(avctx, &enccfg);
+    dump_enc_cfg(avctx, &enccfg, AV_LOG_DEBUG);
 
     enccfg.g_w            = avctx->width;
     enccfg.g_h            = avctx->height;
@@ -619,8 +622,6 @@ static av_cold int aom_init(AVCodecContext *avctx,
     enccfg.g_timebase.den = avctx->time_base.den;
     enccfg.g_threads      =
         FFMIN(avctx->thread_count ? avctx->thread_count : av_cpu_count(), 64);
-
-    enccfg.g_usage        = ctx->usage;
 
     if (ctx->lag_in_frames >= 0)
         enccfg.g_lag_in_frames = ctx->lag_in_frames;
@@ -654,8 +655,11 @@ static av_cold int aom_init(AVCodecContext *avctx,
 
     if (avctx->qmin >= 0)
         enccfg.rc_min_quantizer = avctx->qmin;
-    if (avctx->qmax >= 0)
+    if (avctx->qmax >= 0) {
         enccfg.rc_max_quantizer = avctx->qmax;
+    } else if (!ctx->crf) {
+        enccfg.rc_max_quantizer = 0;
+    }
 
     if (enccfg.rc_end_usage == AOM_CQ || enccfg.rc_end_usage == AOM_Q) {
         if (ctx->crf < enccfg.rc_min_quantizer || ctx->crf > enccfg.rc_max_quantizer) {
@@ -742,13 +746,14 @@ static av_cold int aom_init(AVCodecContext *avctx,
     if (res < 0)
         return res;
 
-    dump_enc_cfg(avctx, &enccfg);
     /* Construct Encoder Context */
     res = aom_codec_enc_init(&ctx->encoder, iface, &enccfg, flags);
     if (res != AOM_CODEC_OK) {
+        dump_enc_cfg(avctx, &enccfg, AV_LOG_WARNING);
         log_encoder_error(avctx, "Failed to initialize encoder");
         return AVERROR(EINVAL);
     }
+    dump_enc_cfg(avctx, &enccfg, AV_LOG_DEBUG);
 
     // codec control failures are currently treated only as warnings
     av_log(avctx, AV_LOG_DEBUG, "aom_codec_control\n");
@@ -943,7 +948,6 @@ static inline void cx_pktcpy(AOMContext *ctx,
     dst->sz       = src->data.frame.sz;
     dst->buf      = src->data.frame.buf;
 #ifdef AOM_FRAME_IS_INTRAONLY
-    dst->have_sse = 0;
     dst->frame_number = ++ctx->frame_number;
     dst->have_sse = ctx->have_sse;
     if (ctx->have_sse) {
@@ -967,7 +971,7 @@ static int storeframe(AVCodecContext *avctx, struct FrameListData *cx_frame,
 {
     AOMContext *ctx = avctx->priv_data;
     int av_unused pict_type;
-    int ret = ff_alloc_packet2(avctx, pkt, cx_frame->sz, 0);
+    int ret = ff_get_encode_buffer(avctx, pkt, cx_frame->sz, 0);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR,
                "Error getting output packet of size %"SIZE_SPECIFIER".\n", cx_frame->sz);
@@ -1341,11 +1345,12 @@ AVCodec ff_libaom_av1_encoder = {
     .long_name      = NULL_IF_CONFIG_SMALL("libaom AV1"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_AV1,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                      AV_CODEC_CAP_OTHER_THREADS,
     .priv_data_size = sizeof(AOMContext),
     .init           = av1_init,
     .encode2        = aom_encode,
     .close          = aom_free,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
     .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_av1_profiles),
     .priv_class     = &class_aom,

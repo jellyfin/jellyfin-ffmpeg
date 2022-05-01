@@ -87,7 +87,7 @@ static int xvag_read_header(AVFormatContext *s)
     if (avio_rb16(s->pb) == 0xFFFB) {
         st->codecpar->codec_id    = AV_CODEC_ID_MP3;
         st->codecpar->block_align = 0x1000;
-        st->need_parsing       = AVSTREAM_PARSE_FULL_RAW;
+        ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL_RAW;
     }
 
     avio_skip(s->pb, -2);
@@ -103,7 +103,7 @@ static int xvag_read_packet(AVFormatContext *s, AVPacket *pkt)
     return av_get_packet(s->pb, pkt, par->block_align);
 }
 
-AVInputFormat ff_xvag_demuxer = {
+const AVInputFormat ff_xvag_demuxer = {
     .name           = "xvag",
     .long_name      = NULL_IF_CONFIG_SMALL("Sony PS3 XVAG"),
     .read_probe     = xvag_probe,

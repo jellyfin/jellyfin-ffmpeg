@@ -42,11 +42,11 @@ typedef struct FloodfillContext {
     int back, front;
     Points *points;
 
-    int (*is_same)(AVFrame *frame, int x, int y,
+    int (*is_same)(const AVFrame *frame, int x, int y,
                    unsigned s0, unsigned s1, unsigned s2, unsigned s3);
     void (*set_pixel)(AVFrame *frame, int x, int y,
                       unsigned d0, unsigned d1, unsigned d2, unsigned d3);
-    void (*pick_pixel)(AVFrame *frame, int x, int y,
+    void (*pick_pixel)(const AVFrame *frame, int x, int y,
                        int *s0, int *s1, int *s2, int *s3);
 } FloodfillContext;
 
@@ -57,7 +57,7 @@ static int is_inside(int x, int y, int w, int h)
     return 0;
 }
 
-static int is_same4(AVFrame *frame, int x, int y,
+static int is_same4(const AVFrame *frame, int x, int y,
                     unsigned s0, unsigned s1, unsigned s2, unsigned s3)
 {
     unsigned c0 = frame->data[0][y * frame->linesize[0] + x];
@@ -70,7 +70,7 @@ static int is_same4(AVFrame *frame, int x, int y,
     return 0;
 }
 
-static int is_same4_16(AVFrame *frame, int x, int y,
+static int is_same4_16(const AVFrame *frame, int x, int y,
                        unsigned s0, unsigned s1, unsigned s2, unsigned s3)
 {
     unsigned c0 = AV_RN16(frame->data[0] + y * frame->linesize[0] + 2 * x);
@@ -83,7 +83,7 @@ static int is_same4_16(AVFrame *frame, int x, int y,
     return 0;
 }
 
-static int is_same3(AVFrame *frame, int x, int y,
+static int is_same3(const AVFrame *frame, int x, int y,
                     unsigned s0, unsigned s1, unsigned s2, unsigned s3)
 {
     unsigned c0 = frame->data[0][y * frame->linesize[0] + x];
@@ -95,7 +95,7 @@ static int is_same3(AVFrame *frame, int x, int y,
     return 0;
 }
 
-static int is_same3_16(AVFrame *frame, int x, int y,
+static int is_same3_16(const AVFrame *frame, int x, int y,
                        unsigned s0, unsigned s1, unsigned s2, unsigned s3)
 {
     unsigned c0 = AV_RN16(frame->data[0] + y * frame->linesize[0] + 2 * x);
@@ -107,7 +107,7 @@ static int is_same3_16(AVFrame *frame, int x, int y,
     return 0;
 }
 
-static int is_same1(AVFrame *frame, int x, int y,
+static int is_same1(const AVFrame *frame, int x, int y,
                     unsigned s0, unsigned s1, unsigned s2, unsigned s3)
 {
     unsigned c0 = frame->data[0][y * frame->linesize[0] + x];
@@ -117,7 +117,7 @@ static int is_same1(AVFrame *frame, int x, int y,
     return 0;
 }
 
-static int is_same1_16(AVFrame *frame, int x, int y,
+static int is_same1_16(const AVFrame *frame, int x, int y,
                        unsigned s0, unsigned s1, unsigned s2, unsigned s3)
 {
     unsigned c0 = AV_RN16(frame->data[0] + y * frame->linesize[0] + 2 * x);
@@ -173,21 +173,21 @@ static void set_pixel4_16(AVFrame *frame, int x, int y,
     AV_WN16(frame->data[3] + y * frame->linesize[3] + 2 * x, d3);
 }
 
-static void pick_pixel1(AVFrame *frame, int x, int y,
+static void pick_pixel1(const AVFrame *frame, int x, int y,
                         int *s0, int *s1, int *s2, int *s3)
 {
     if (*s0 < 0)
         *s0 = frame->data[0][y * frame->linesize[0] + x];
 }
 
-static void pick_pixel1_16(AVFrame *frame, int x, int y,
+static void pick_pixel1_16(const AVFrame *frame, int x, int y,
                            int *s0, int *s1, int *s2, int *s3)
 {
     if (*s0 < 0)
         *s0 = AV_RN16(frame->data[0] + y * frame->linesize[0] + 2 * x);
 }
 
-static void pick_pixel3(AVFrame *frame, int x, int y,
+static void pick_pixel3(const AVFrame *frame, int x, int y,
                         int *s0, int *s1, int *s2, int *s3)
 {
     if (*s0 < 0)
@@ -198,7 +198,7 @@ static void pick_pixel3(AVFrame *frame, int x, int y,
         *s2 = frame->data[2][y * frame->linesize[2] + x];
 }
 
-static void pick_pixel3_16(AVFrame *frame, int x, int y,
+static void pick_pixel3_16(const AVFrame *frame, int x, int y,
                            int *s0, int *s1, int *s2, int *s3)
 {
     if (*s0 < 0)
@@ -209,7 +209,7 @@ static void pick_pixel3_16(AVFrame *frame, int x, int y,
         *s2 = AV_RN16(frame->data[2] + y * frame->linesize[2] + 2 * x);
 }
 
-static void pick_pixel4(AVFrame *frame, int x, int y,
+static void pick_pixel4(const AVFrame *frame, int x, int y,
                         int *s0, int *s1, int *s2, int *s3)
 {
     if (*s0 < 0)
@@ -222,7 +222,7 @@ static void pick_pixel4(AVFrame *frame, int x, int y,
         *s3 = frame->data[3][y * frame->linesize[3] + x];
 }
 
-static void pick_pixel4_16(AVFrame *frame, int x, int y,
+static void pick_pixel4_16(const AVFrame *frame, int x, int y,
                            int *s0, int *s1, int *s2, int *s3)
 {
     if (*s0 < 0)
@@ -355,26 +355,16 @@ end:
     return ff_filter_frame(ctx->outputs[0], frame);
 }
 
-static av_cold int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP16, AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_YUV444P9, AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV444P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *formats;
-
-    formats = ff_make_format_list(pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-
-    return ff_set_common_formats(ctx, formats);
-}
+static const enum AVPixelFormat pixel_fmts[] = {
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_GBRAP16, AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_YUV444P9, AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV444P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_NONE
+};
 
 static av_cold void uninit(AVFilterContext *ctx)
 {
@@ -390,7 +380,6 @@ static const AVFilterPad floodfill_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad floodfill_outputs[] = {
@@ -398,7 +387,6 @@ static const AVFilterPad floodfill_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(FloodfillContext, x)
@@ -420,14 +408,14 @@ static const AVOption floodfill_options[] = {
 
 AVFILTER_DEFINE_CLASS(floodfill);
 
-AVFilter ff_vf_floodfill = {
+const AVFilter ff_vf_floodfill = {
     .name          = "floodfill",
     .description   = NULL_IF_CONFIG_SMALL("Fill area with same color with another color."),
     .priv_size     = sizeof(FloodfillContext),
     .priv_class    = &floodfill_class,
-    .query_formats = query_formats,
     .uninit        = uninit,
-    .inputs        = floodfill_inputs,
-    .outputs       = floodfill_outputs,
+    FILTER_INPUTS(floodfill_inputs),
+    FILTER_OUTPUTS(floodfill_outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

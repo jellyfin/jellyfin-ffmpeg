@@ -19,6 +19,8 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
+#include "libavutil/channel_layout.h"
 #include "avformat.h"
 #include "internal.h"
 #include "rawenc.h"
@@ -127,7 +129,6 @@ static int alp_read_header(AVFormatContext *s)
         return AVERROR_INVALIDDATA;
 
     par->bits_per_coded_sample  = 4;
-    par->bits_per_raw_sample    = 16;
     par->block_align            = 1;
     par->bit_rate               = par->channels *
                                   par->sample_rate *
@@ -163,7 +164,7 @@ static int alp_seek(AVFormatContext *s, int stream_index,
     return avio_seek(s->pb, hdr->header_size + 8, SEEK_SET);
 }
 
-AVInputFormat ff_alp_demuxer = {
+const AVInputFormat ff_alp_demuxer = {
     .name           = "alp",
     .long_name      = NULL_IF_CONFIG_SMALL("LEGO Racers ALP"),
     .priv_data_size = sizeof(ALPHeader),
@@ -291,7 +292,7 @@ static const AVClass alp_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT
 };
 
-AVOutputFormat ff_alp_muxer = {
+const AVOutputFormat ff_alp_muxer = {
     .name           = "alp",
     .long_name      = NULL_IF_CONFIG_SMALL("LEGO Racers ALP"),
     .extensions     = "tun,pcm",

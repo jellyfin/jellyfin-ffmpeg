@@ -43,6 +43,7 @@
 #include "h264dsp.h"
 #include "h264pred.h"
 #include "h264qpel.h"
+#include "h274.h"
 #include "internal.h"
 #include "mpegutils.h"
 #include "parser.h"
@@ -130,6 +131,9 @@ typedef struct H264Picture {
     AVFrame *f;
     ThreadFrame tf;
 
+    AVFrame *f_grain;
+    ThreadFrame tf_grain;
+
     AVBufferRef *qscale_table_buf;
     int8_t *qscale_table;
 
@@ -162,6 +166,7 @@ typedef struct H264Picture {
     int recovered;          ///< picture at IDR or recovery point + recovery count
     int invalid_gap;
     int sei_recovery_frame_cnt;
+    int needs_fg;           ///< whether picture needs film grain synthesis (see `f_grain`)
 
     AVBufferRef *pps_buf;
     const PPS   *pps;
@@ -331,6 +336,7 @@ typedef struct H264SliceContext {
     int explicit_ref_marking;
 
     int frame_num;
+    int idr_pic_id;
     int poc_lsb;
     int delta_poc_bottom;
     int delta_poc[2];
@@ -348,6 +354,7 @@ typedef struct H264Context {
     H264DSPContext h264dsp;
     H264ChromaContext h264chroma;
     H264QpelContext h264qpel;
+    H274FilmGrainDatabase h274db;
 
     H264Picture DPB[H264_MAX_PICTURE_COUNT];
     H264Picture *cur_pic_ptr;
@@ -383,6 +390,11 @@ typedef struct H264Context {
      * Set to 1 when the current picture is IDR, 0 otherwise.
      */
     int picture_idr;
+
+    /*
+     * Set to 1 when the current picture contains only I slices, 0 otherwise.
+     */
+    int picture_intra_only;
 
     int crop_left;
     int crop_right;
@@ -473,6 +485,7 @@ typedef struct H264Context {
     int last_pocs[MAX_DELAYED_PIC_COUNT];
     H264Picture *next_output_pic;
     int next_outputed_poc;
+    int poc_offset;         ///< PicOrderCnt_offset from SMPTE RDD-2006
 
     /**
      * memory management control operations buffer.
@@ -833,6 +846,7 @@ static inline int find_start_code(const uint8_t *buf, int buf_size,
 int ff_h264_field_end(H264Context *h, H264SliceContext *sl, int in_setup);
 
 int ff_h264_ref_picture(H264Context *h, H264Picture *dst, H264Picture *src);
+int ff_h264_replace_picture(H264Context *h, H264Picture *dst, const H264Picture *src);
 void ff_h264_unref_picture(H264Context *h, H264Picture *pic);
 
 int ff_h264_slice_context_init(H264Context *h, H264SliceContext *sl);
@@ -849,6 +863,8 @@ int ff_h264_queue_decode_slice(H264Context *h, const H2645NAL *nal);
 int ff_h264_execute_decode_slices(H264Context *h);
 int ff_h264_update_thread_context(AVCodecContext *dst,
                                   const AVCodecContext *src);
+int ff_h264_update_thread_context_for_user(AVCodecContext *dst,
+                                           const AVCodecContext *src);
 
 void ff_h264_flush_change(H264Context *h);
 

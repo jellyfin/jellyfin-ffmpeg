@@ -19,7 +19,6 @@
 #include "libavutil/avassert.h"
 #include "libavutil/samplefmt.h"
 #include "libavutil/pixfmt.h"
-#include "libavcodec/avcodec.h"
 #include "avdevice.h"
 #include "internal.h"
 #include "config.h"
@@ -120,7 +119,7 @@ static int list_devices_for_context(AVFormatContext *s, AVDictionary *options,
     return ret;
 }
 
-int avdevice_list_input_sources(AVInputFormat *device, const char *device_name,
+int avdevice_list_input_sources(const AVInputFormat *device, const char *device_name,
                                 AVDictionary *device_options, AVDeviceInfoList **device_list)
 {
     AVFormatContext *s = NULL;
@@ -131,7 +130,7 @@ int avdevice_list_input_sources(AVInputFormat *device, const char *device_name,
     return list_devices_for_context(s, device_options, device_list);
 }
 
-int avdevice_list_output_sinks(AVOutputFormat *device, const char *device_name,
+int avdevice_list_output_sinks(const AVOutputFormat *device, const char *device_name,
                                AVDictionary *device_options, AVDeviceInfoList **device_list)
 {
     AVFormatContext *s = NULL;
@@ -158,6 +157,7 @@ void avdevice_free_list_devices(AVDeviceInfoList **device_list)
         if (dev) {
             av_freep(&dev->device_name);
             av_freep(&dev->device_description);
+            av_freep(&dev->media_types);
             av_free(dev);
         }
     }

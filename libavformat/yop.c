@@ -187,7 +187,7 @@ static int yop_read_seek(AVFormatContext *s, int stream_index,
     if (!stream_index)
         return -1;
 
-    pos_min        = s->internal->data_offset;
+    pos_min        = ffformatcontext(s)->data_offset;
     pos_max        = avio_size(s->pb) - yop->frame_size;
     frame_count    = (pos_max - pos_min) / yop->frame_size;
 
@@ -204,7 +204,7 @@ static int yop_read_seek(AVFormatContext *s, int stream_index,
     return 0;
 }
 
-AVInputFormat ff_yop_demuxer = {
+const AVInputFormat ff_yop_demuxer = {
     .name           = "yop",
     .long_name      = NULL_IF_CONFIG_SMALL("Psygnosis YOP"),
     .priv_data_size = sizeof(YopDecContext),

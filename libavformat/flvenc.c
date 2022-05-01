@@ -24,6 +24,7 @@
 #include "libavutil/intfloat.h"
 #include "libavutil/avassert.h"
 #include "libavutil/mathematics.h"
+#include "libavcodec/mpeg4audio.h"
 #include "avio_internal.h"
 #include "avio.h"
 #include "avc.h"
@@ -33,7 +34,6 @@
 #include "metadata.h"
 #include "libavutil/opt.h"
 #include "libavcodec/put_bits.h"
-#include "libavcodec/aacenctab.h"
 
 
 static const AVCodecTag flv_video_codec_ids[] = {
@@ -284,8 +284,8 @@ static void write_metadata(AVFormatContext *s, unsigned int ts)
     avio_w8(pb, FLV_TAG_TYPE_META);            // tag type META
     flv->metadata_size_pos = avio_tell(pb);
     avio_wb24(pb, 0);           // size of data part (sum of all parts below)
-    avio_wb24(pb, ts);          // timestamp
-    avio_wb32(pb, 0);           // reserved
+    put_timestamp(pb, ts);      // timestamp
+    avio_wb24(pb, 0);           // reserved
 
     /* now data of data_size size */
 
@@ -514,7 +514,7 @@ static void flv_write_codec_header(AVFormatContext* s, AVCodecParameters* par, i
                 for (samplerate_index = 0; samplerate_index < 16;
                         samplerate_index++)
                     if (flv->audio_par->sample_rate
-                            == mpeg4audio_sample_rates[samplerate_index])
+                            == ff_mpeg4audio_sample_rates[samplerate_index])
                         break;
 
                 init_put_bits(&pbc, data, sizeof(data));
@@ -576,15 +576,9 @@ static int flv_append_keyframe_info(AVFormatContext *s, FLVContext *flv, double 
 
 static int shift_data(AVFormatContext *s)
 {
-    int ret = 0;
-    int n = 0;
+    int ret;
     int64_t metadata_size = 0;
     FLVContext *flv = s->priv_data;
-    int64_t pos, pos_end = avio_tell(s->pb); /* Save the pre-shift size. */
-    uint8_t *buf, *read_buf[2];
-    int read_buf_id = 0;
-    int read_size[2];
-    AVIOContext *read_pb;
 
     metadata_size = flv->filepositions_count * 9 * 2 + 10; /* filepositions and times value */
     metadata_size += 2 + 13; /* filepositions String */
@@ -596,58 +590,17 @@ static int shift_data(AVFormatContext *s)
     if (metadata_size < 0)
         return metadata_size;
 
-    buf = av_malloc_array(metadata_size, 2);
-    if (!buf) {
-        return AVERROR(ENOMEM);
-    }
-    read_buf[0] = buf;
-    read_buf[1] = buf + metadata_size;
+    ret = ff_format_shift_data(s, flv->keyframes_info_offset, metadata_size);
+    if (ret < 0)
+        return ret;
 
     avio_seek(s->pb, flv->metadata_size_pos, SEEK_SET);
     avio_wb24(s->pb, flv->metadata_totalsize + metadata_size);
 
-    avio_seek(s->pb, flv->metadata_totalsize_pos, SEEK_SET);
+    avio_seek(s->pb, flv->metadata_totalsize_pos + metadata_size, SEEK_SET);
     avio_wb32(s->pb, flv->metadata_totalsize + 11 + metadata_size);
 
-    /* Shift the data: the AVIO context of the output can only be used for
-     * writing, so we re-open the same output, but for reading. It also avoids
-     * a read/seek/write/seek back and forth. */
-    avio_flush(s->pb);
-    ret = s->io_open(s, &read_pb, s->url, AVIO_FLAG_READ, NULL);
-    if (ret < 0) {
-        av_log(s, AV_LOG_ERROR, "Unable to re-open %s output file for "
-               "the second pass (add_keyframe_index)\n", s->url);
-        goto end;
-    }
-
-    /* Get ready for writing. */
-    avio_seek(s->pb, flv->keyframes_info_offset + metadata_size, SEEK_SET);
-
-    /* start reading at where the keyframe index information will be placed */
-    avio_seek(read_pb, flv->keyframes_info_offset, SEEK_SET);
-    pos = avio_tell(read_pb);
-
-#define READ_BLOCK do {                                                             \
-    read_size[read_buf_id] = avio_read(read_pb, read_buf[read_buf_id], metadata_size);  \
-    read_buf_id ^= 1;                                                               \
-} while (0)
-
-    /* shift data by chunk of at most keyframe *filepositions* and *times* size */
-    READ_BLOCK;
-    do {
-        READ_BLOCK;
-        n = read_size[read_buf_id];
-        if (n < 0)
-            break;
-        avio_write(s->pb, read_buf[read_buf_id], n);
-        pos += n;
-    } while (pos <= pos_end);
-
-    ff_format_io_close(s, &read_pb);
-
-end:
-    av_free(buf);
-    return ret;
+    return 0;
 }
 
 static int flv_init(struct AVFormatContext *s)
@@ -902,7 +855,7 @@ static int flv_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     if (par->codec_id == AV_CODEC_ID_AAC || par->codec_id == AV_CODEC_ID_H264
             || par->codec_id == AV_CODEC_ID_MPEG4) {
-        buffer_size_t side_size;
+        size_t side_size;
         uint8_t *side = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, &side_size);
         if (side && side_size > 0 && (side_size != par->extradata_size || memcmp(side, par->extradata, side_size))) {
             ret = ff_alloc_extradata(par, side_size);
@@ -1083,10 +1036,10 @@ fail:
     return ret;
 }
 
-static int flv_check_bitstream(struct AVFormatContext *s, const AVPacket *pkt)
+static int flv_check_bitstream(AVFormatContext *s, AVStream *st,
+                               const AVPacket *pkt)
 {
     int ret = 1;
-    AVStream *st = s->streams[pkt->stream_index];
 
     if (st->codecpar->codec_id == AV_CODEC_ID_AAC) {
         if (pkt->size > 2 && (AV_RB16(pkt->data) & 0xfff0) == 0xfff0)
@@ -1112,7 +1065,7 @@ static const AVClass flv_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_flv_muxer = {
+const AVOutputFormat ff_flv_muxer = {
     .name           = "flv",
     .long_name      = NULL_IF_CONFIG_SMALL("FLV (Flash Video)"),
     .mime_type      = "video/x-flv",

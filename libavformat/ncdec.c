@@ -53,7 +53,7 @@ static int nc_read_header(AVFormatContext *s)
 
     st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
     st->codecpar->codec_id   = AV_CODEC_ID_MPEG4;
-    st->need_parsing      = AVSTREAM_PARSE_FULL;
+    ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL;
 
     avpriv_set_pts_info(st, 64, 1, 100);
 
@@ -90,7 +90,7 @@ static int nc_read_packet(AVFormatContext *s, AVPacket *pkt)
     return size;
 }
 
-AVInputFormat ff_nc_demuxer = {
+const AVInputFormat ff_nc_demuxer = {
     .name           = "nc",
     .long_name      = NULL_IF_CONFIG_SMALL("NC camera feed"),
     .read_probe     = nc_probe,

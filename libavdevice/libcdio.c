@@ -34,7 +34,6 @@
 #endif
 
 #include "libavutil/log.h"
-#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #include "libavformat/avformat.h"
@@ -118,9 +117,6 @@ static int read_packet(AVFormatContext *ctx, AVPacket *pkt)
     uint16_t *buf;
     char *err = NULL;
 
-    if (ctx->streams[0]->cur_dts > s->last_sector)
-        return AVERROR_EOF;
-
     buf = cdio_paranoia_read(s->paranoia, NULL);
     if (!buf)
         return AVERROR_EOF;
@@ -157,7 +153,7 @@ static int read_seek(AVFormatContext *ctx, int stream_index, int64_t timestamp,
     AVStream *st = ctx->streams[0];
 
     cdio_paranoia_seek(s->paranoia, timestamp, SEEK_SET);
-    st->cur_dts = timestamp;
+    avpriv_update_cur_dts(ctx, st, timestamp);
     return 0;
 }
 
@@ -182,7 +178,7 @@ static const AVClass libcdio_class = {
     .category   = AV_CLASS_CATEGORY_DEVICE_AUDIO_INPUT,
 };
 
-AVInputFormat ff_libcdio_demuxer = {
+const AVInputFormat ff_libcdio_demuxer = {
     .name           = "libcdio",
     .read_header    = read_header,
     .read_packet    = read_packet,

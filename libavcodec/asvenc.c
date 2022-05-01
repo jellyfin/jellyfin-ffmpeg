@@ -30,6 +30,7 @@
 #include "asv.h"
 #include "avcodec.h"
 #include "dct.h"
+#include "encode.h"
 #include "fdctdsp.h"
 #include "internal.h"
 #include "mpeg12data.h"
@@ -167,7 +168,7 @@ static inline int encode_mb(ASV1Context *a, int16_t block[6][64])
 {
     int i;
 
-    av_assert0(a->pb.buf_end - a->pb.buf - (put_bits_count(&a->pb) >> 3) >= MAX_MB_SIZE);
+    av_assert0(put_bytes_left(&a->pb, 0) >= MAX_MB_SIZE);
 
     if (a->avctx->codec_id == AV_CODEC_ID_ASV1) {
         for (i = 0; i < 6; i++)
@@ -255,8 +256,8 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         return ret;
     }
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, a->mb_height * a->mb_width * MAX_MB_SIZE +
-                                AV_INPUT_BUFFER_MIN_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, a->mb_height * a->mb_width * MAX_MB_SIZE +
+                               AV_INPUT_BUFFER_MIN_SIZE)) < 0)
         return ret;
 
     init_put_bits(&a->pb, pkt->data, pkt->size);
@@ -290,7 +291,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     else
         flush_put_bits_le(&a->pb);
     AV_WN32(put_bits_ptr(&a->pb), 0);
-    size = (put_bits_count(&a->pb) + 31) / 32;
+    size = (put_bytes_output(&a->pb) + 3) / 4;
 
     if (avctx->codec_id == AV_CODEC_ID_ASV1) {
         a->bbdsp.bswap_buf((uint32_t *) pkt->data,
@@ -298,7 +299,6 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     pkt->size   = size * 4;
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -341,7 +341,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
 }
 
 #if CONFIG_ASV1_ENCODER
-AVCodec ff_asv1_encoder = {
+const AVCodec ff_asv1_encoder = {
     .name           = "asv1",
     .long_name      = NULL_IF_CONFIG_SMALL("ASUS V1"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -356,7 +356,7 @@ AVCodec ff_asv1_encoder = {
 #endif
 
 #if CONFIG_ASV2_ENCODER
-AVCodec ff_asv2_encoder = {
+const AVCodec ff_asv2_encoder = {
     .name           = "asv2",
     .long_name      = NULL_IF_CONFIG_SMALL("ASUS V2"),
     .type           = AVMEDIA_TYPE_VIDEO,

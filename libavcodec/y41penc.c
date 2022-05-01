@@ -21,6 +21,7 @@
  */
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 
 static av_cold int y41p_encode_init(AVCodecContext *avctx)
@@ -43,7 +44,8 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *y, *u, *v;
     int i, j, ret;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, avctx->width * avctx->height * 1.5, 0)) < 0)
+    ret = ff_get_encode_buffer(avctx, pkt, avctx->width * avctx->height * 1.5, 0);
+    if (ret < 0)
         return ret;
 
     dst = pkt->data;
@@ -70,16 +72,16 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
     }
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
     return 0;
 }
 
-AVCodec ff_y41p_encoder = {
+const AVCodec ff_y41p_encoder = {
     .name         = "y41p",
     .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed YUV 4:1:1 12-bit"),
     .type         = AVMEDIA_TYPE_VIDEO,
     .id           = AV_CODEC_ID_Y41P,
+    .capabilities = AV_CODEC_CAP_DR1,
     .init         = y41p_encode_init,
     .encode2      = y41p_encode_frame,
     .pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV411P,

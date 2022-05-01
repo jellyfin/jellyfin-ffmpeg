@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/error.h"
 #include "libavutil/ffmath.h"
 
@@ -399,7 +400,7 @@ av_cold int ff_opus_parse_extradata(AVCodecContext *avctx,
         return AVERROR_PATCHWELCOME;
     }
 
-    s->channel_maps = av_mallocz_array(channels, sizeof(*s->channel_maps));
+    s->channel_maps = av_calloc(channels, sizeof(*s->channel_maps));
     if (!s->channel_maps)
         return AVERROR(ENOMEM);
 

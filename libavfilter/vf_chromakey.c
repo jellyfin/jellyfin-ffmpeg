@@ -197,7 +197,7 @@ static int do_chromahold_slice(AVFilterContext *avctx, void *arg, int jobnr, int
             du = u - ctx->chromakey_uv[0];
             dv = v - ctx->chromakey_uv[1];
 
-            diff = sqrt((du * du + dv * dv) / (255.0 * 255.0));
+            diff = sqrt((du * du + dv * dv) / (255.0 * 255.0 * 2.0));
 
             alpha = diff > ctx->similarity;
             if (ctx->blend > 0.0001) {
@@ -236,7 +236,7 @@ static int do_chromahold16_slice(AVFilterContext *avctx, void *arg, int jobnr, i
             du = u - ctx->chromakey_uv[0];
             dv = v - ctx->chromakey_uv[1];
 
-            diff = sqrt((du * du + dv * dv) / (max * max));
+            diff = sqrt((du * du + dv * dv) / (max * max * 2.0));
 
             alpha = diff > ctx->similarity;
             if (ctx->blend > 0.0001) {
@@ -260,7 +260,8 @@ static int filter_frame(AVFilterLink *link, AVFrame *frame)
     ChromakeyContext *ctx = avctx->priv;
     int res;
 
-    if (res = avctx->internal->execute(avctx, ctx->do_slice, frame, NULL, FFMIN(frame->height, ff_filter_get_nb_threads(avctx))))
+    if (res = ff_filter_execute(avctx, ctx->do_slice, frame, NULL,
+                                FFMIN(frame->height, ff_filter_get_nb_threads(avctx))))
         return res;
 
     return ff_filter_frame(avctx->outputs[0], frame);
@@ -300,47 +301,6 @@ static av_cold int config_output(AVFilterLink *outlink)
     return 0;
 }
 
-static av_cold int query_formats(AVFilterContext *avctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_YUVA422P,
-        AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_YUVA420P9,  AV_PIX_FMT_YUVA422P9,  AV_PIX_FMT_YUVA444P9,
-        AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
-        AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_NONE
-    };
-
-    static const enum AVPixelFormat hold_pixel_fmts[] = {
-        AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_YUVA422P,
-        AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_YUV420P9,   AV_PIX_FMT_YUV422P9,   AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10,  AV_PIX_FMT_YUV422P10,  AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV444P12,  AV_PIX_FMT_YUV422P12,  AV_PIX_FMT_YUV420P12,
-        AV_PIX_FMT_YUV444P14,  AV_PIX_FMT_YUV422P14,  AV_PIX_FMT_YUV420P14,
-        AV_PIX_FMT_YUV420P16,  AV_PIX_FMT_YUV422P16,  AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_YUVA420P9,  AV_PIX_FMT_YUVA422P9,  AV_PIX_FMT_YUVA444P9,
-        AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
-        AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *formats = NULL;
-
-    formats = ff_make_format_list(!strcmp(avctx->filter->name, "chromahold") ? hold_pixel_fmts : pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-
-    return ff_set_common_formats(avctx, formats);
-}
-
 static av_cold int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *avctx = inlink->dst;
@@ -369,11 +329,10 @@ static const AVFilterPad chromakey_inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
-        .needs_writable = 1,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .filter_frame   = filter_frame,
         .config_props   = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad chromakey_outputs[] = {
@@ -382,7 +341,6 @@ static const AVFilterPad chromakey_outputs[] = {
         .type           = AVMEDIA_TYPE_VIDEO,
         .config_props   = config_output,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(ChromakeyContext, x)
@@ -396,16 +354,27 @@ static const AVOption chromakey_options[] = {
     { NULL }
 };
 
+static const enum AVPixelFormat chromakey_fmts[] = {
+    AV_PIX_FMT_YUVA420P,
+    AV_PIX_FMT_YUVA422P,
+    AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_YUVA420P9,  AV_PIX_FMT_YUVA422P9,  AV_PIX_FMT_YUVA444P9,
+    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
+    AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_NONE
+};
+
 AVFILTER_DEFINE_CLASS(chromakey);
 
-AVFilter ff_vf_chromakey = {
+const AVFilter ff_vf_chromakey = {
     .name          = "chromakey",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color into transparency. Operates on YUV colors."),
     .priv_size     = sizeof(ChromakeyContext),
     .priv_class    = &chromakey_class,
-    .query_formats = query_formats,
-    .inputs        = chromakey_inputs,
-    .outputs       = chromakey_outputs,
+    FILTER_INPUTS(chromakey_inputs),
+    FILTER_OUTPUTS(chromakey_outputs),
+    FILTER_PIXFMTS_ARRAY(chromakey_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };
@@ -422,11 +391,10 @@ static const AVFilterPad chromahold_inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
-        .needs_writable = 1,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .filter_frame   = filter_frame,
         .config_props   = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad chromahold_outputs[] = {
@@ -435,19 +403,37 @@ static const AVFilterPad chromahold_outputs[] = {
         .type           = AVMEDIA_TYPE_VIDEO,
         .config_props   = config_output,
     },
-    { NULL }
+};
+
+static const enum AVPixelFormat hold_pixel_fmts[] = {
+    AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUVA420P,
+    AV_PIX_FMT_YUVA422P,
+    AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_YUV420P9,   AV_PIX_FMT_YUV422P9,   AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10,  AV_PIX_FMT_YUV422P10,  AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV444P12,  AV_PIX_FMT_YUV422P12,  AV_PIX_FMT_YUV420P12,
+    AV_PIX_FMT_YUV444P14,  AV_PIX_FMT_YUV422P14,  AV_PIX_FMT_YUV420P14,
+    AV_PIX_FMT_YUV420P16,  AV_PIX_FMT_YUV422P16,  AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_YUVA420P9,  AV_PIX_FMT_YUVA422P9,  AV_PIX_FMT_YUVA444P9,
+    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
+    AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_NONE
 };
 
 AVFILTER_DEFINE_CLASS(chromahold);
 
-AVFilter ff_vf_chromahold = {
+const AVFilter ff_vf_chromahold = {
     .name          = "chromahold",
     .description   = NULL_IF_CONFIG_SMALL("Turns a certain color range into gray."),
     .priv_size     = sizeof(ChromakeyContext),
     .priv_class    = &chromahold_class,
-    .query_formats = query_formats,
-    .inputs        = chromahold_inputs,
-    .outputs       = chromahold_outputs,
+    FILTER_INPUTS(chromahold_inputs),
+    FILTER_OUTPUTS(chromahold_outputs),
+    FILTER_PIXFMTS_ARRAY(hold_pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };

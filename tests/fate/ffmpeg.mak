@@ -32,7 +32,7 @@ fate-ffmpeg-filter_complex_audio: CMD = framecrc -auto_conversion_filters -filte
 
 # Ticket 6375, use case of NoX
 FATE_SAMPLES_FFMPEG-$(call ALLYES, MOV_DEMUXER PNG_DECODER ALAC_DECODER PCM_S16LE_ENCODER RAWVIDEO_ENCODER) += fate-ffmpeg-attached_pics
-fate-ffmpeg-attached_pics: CMD = threads=2 framecrc -i $(TARGET_SAMPLES)/lossless-audio/inside.m4a -c:a pcm_s16le -max_muxing_queue_size 16 -af aresample
+fate-ffmpeg-attached_pics: CMD = threads=2 framecrc -i $(TARGET_SAMPLES)/lossless-audio/inside.m4a -c:a pcm_s16le -threads 1 -max_muxing_queue_size 16 -af aresample
 
 FATE_SAMPLES_FFMPEG-$(CONFIG_COLORKEY_FILTER) += fate-ffmpeg-filter_colorkey
 fate-ffmpeg-filter_colorkey: tests/data/filtergraphs/colorkey
@@ -54,7 +54,7 @@ fate-sub2video: CMD = framecrc -auto_conversion_filters \
   -f rawvideo -r 5 -s 352x288 -pix_fmt yuv420p -i $(TARGET_PATH)/tests/data/vsynth_lena.yuv \
   -ss 132 -i $(TARGET_SAMPLES)/sub/vobsub.idx \
   -filter_complex "sws_flags=+accurate_rnd+bitexact\;[0:0]scale=720:480[v]\;[v][1:0]overlay[v2]" \
-  -map "[v2]" -c:v rawvideo -map 1:s -c:s dvdsub
+  -map "[v2]" -c:v rawvideo -threads 1 -map 1:s -c:s dvdsub
 
 # Very basic sub2video example, decode and convert to AVFrame with sub2video.
 # Attempt to not touch timestamps.
@@ -63,7 +63,7 @@ fate-sub2video_basic: CMD = framecrc -auto_conversion_filters \
   -i $(TARGET_SAMPLES)/sub/vobsub.idx \
   -vsync passthrough -copyts \
   -filter_complex "sws_flags=+accurate_rnd+bitexact\;[0:s:0]scale" \
-  -c:v rawvideo
+  -c:v rawvideo -threads 1
 
 # Time-limited run with a sample that doesn't require seeking and
 # contains samples within the initial period.
@@ -73,7 +73,7 @@ fate-sub2video_time_limited: CMD = framecrc -auto_conversion_filters \
   -vsync passthrough -copyts \
   -t 15 \
   -filter_complex "sws_flags=+accurate_rnd+bitexact\;[0:s:0]scale" \
-  -c:v rawvideo
+  -c:v rawvideo -threads 1
 
 FATE_FFMPEG-$(call ALLYES, PCM_S16LE_DEMUXER PCM_S16LE_MUXER PCM_S16LE_DECODER PCM_S16LE_ENCODER) += fate-unknown_layout-pcm
 fate-unknown_layout-pcm: $(AREF)
@@ -86,6 +86,13 @@ fate-unknown_layout-ac3: CMD = md5 -auto_conversion_filters \
   -guess_layout_max 0 -f s32le -ac 1 -ar 44100 -i $(TARGET_PATH)/$(AREF) \
   -f ac3 -flags +bitexact -c ac3_fixed
 
+FATE_SAMPLES_FFMPEG-$(call ALLYES, FILE_PROTOCOL LAVFI_INDEV RAWVIDEO_DEMUXER \
+                           SINE_FILTER PCM_S16LE_DECODER RAWVIDEO_DECODER  \
+                           ARESAMPLE_FILTER AMIX_FILTER MPEG4_ENCODER      \
+                           AC3_FIXED_ENCODER FRAMECRC_MUXER PIPE_PROTOCOL) \
+                           += fate-shortest
+fate-shortest: tests/data/vsynth_lena.yuv
+fate-shortest: CMD = framecrc -auto_conversion_filters -f lavfi -i "sine=3000:d=10" -f lavfi -i "sine=1000:d=1" -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -idct simple -f rawvideo -s 352x288 -pix_fmt yuv420p -i $(TARGET_PATH)/tests/data/vsynth_lena.yuv -filter_complex "[0:a:0][1:a:0]amix=inputs=2[audio]" -map 2:v:0 -map "[audio]" -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -idct simple -dct fastint -qscale 10 -threads 1 -c:v mpeg4 -c:a ac3_fixed -shortest
 
 FATE_STREAMCOPY-$(call ALLYES, EAC3_DEMUXER MOV_MUXER) += fate-copy-trac3074
 fate-copy-trac3074: $(SAMPLES)/eac3/csi_miami_stereo_128_spx.eac3
@@ -131,12 +138,39 @@ FATE_STREAMCOPY-$(CONFIG_FLV_DEMUXER) += fate-ffmpeg-streamloop
 fate-ffmpeg-streamloop: $(SAMPLES)/flv/streamloop.flv
 fate-ffmpeg-streamloop: CMD = framemd5 -stream_loop 2 -i $(TARGET_SAMPLES)/flv/streamloop.flv -c copy
 
+tests/data/audio_shorter_than_video.nut: TAG = GEN
+tests/data/audio_shorter_than_video.nut: tests/data/vsynth_lena.yuv
+tests/data/audio_shorter_than_video.nut: ffmpeg$(PROGSSUF)$(EXESUF) | tests/data
+	$(M)$(TARGET_EXEC) $(TARGET_PATH)/$< -nostdin \
+        -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -idct simple -f rawvideo -s 352x288 -pix_fmt yuv420p -i $(TARGET_PATH)/tests/data/vsynth_lena.yuv \
+        -f lavfi -i "sine=1000:d=1" \
+        -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -idct simple -dct fastint -qscale 10 -c:v mpeg4 -threads 1 -c:a pcm_s16le -bitexact \
+        -y $(TARGET_PATH)/tests/data/audio_shorter_than_video.nut 2>/dev/null
+
+FATE_STREAMCOPY-$(call ALLYES, FILE_PROTOCOL RAWVIDEO_DEMUXER LAVFI_INDEV \
+                               RAWVIDEO_DECODER PCM_S16LE_DECODER MPEG4_ENCODER \
+                               PCM_S16LE_ENCODER SINE_FILTER NUT_DEMUXER  \
+                               MPEG4_DECODER ARESAMPLE_FILTER AMIX_FILTER \
+                               NUT_MUXER AC3_FIXED_ENCODER PIPE_PROTOCOL) \
+                               += fate-copy-shortest1
+fate-copy-shortest1: tests/data/audio_shorter_than_video.nut
+fate-copy-shortest1: CMD = framemd5 -auto_conversion_filters -fflags +bitexact -flags +bitexact -f lavfi -i "sine=3000:d=10" -f lavfi -i "sine=1000:d=1" -i $(TARGET_PATH)/tests/data/audio_shorter_than_video.nut -filter_complex "[0:a:0][1:a:0]amix=inputs=2[audio]" -map 2:v:0 -map "[audio]" -fflags +bitexact -flags +bitexact -c:v copy -c:a ac3_fixed -shortest
+
+FATE_STREAMCOPY-$(call ALLYES, FILE_PROTOCOL RAWVIDEO_DEMUXER LAVFI_INDEV \
+                               RAWVIDEO_DECODER PCM_S16LE_DECODER MPEG4_ENCODER \
+                               PCM_S16LE_ENCODER SINE_FILTER NUT_DEMUXER  \
+                               MPEG4_DECODER ARESAMPLE_FILTER AMIX_FILTER \
+                               NUT_MUXER AC3_FIXED_ENCODER PIPE_PROTOCOL) \
+                               += fate-copy-shortest2
+fate-copy-shortest2: tests/data/audio_shorter_than_video.nut
+fate-copy-shortest2: CMD = framemd5 -auto_conversion_filters -fflags +bitexact -flags +bitexact -f lavfi -i "sine=3000:d=10" -i $(TARGET_PATH)/tests/data/audio_shorter_than_video.nut -filter_complex "[0:a:0][1:a:0]amix=inputs=2[audio]" -map 1:v:0 -map "[audio]" -fflags +bitexact -flags +bitexact -c:v copy -c:a ac3_fixed -shortest
+
 fate-streamcopy: $(FATE_STREAMCOPY-yes)
 
 FATE_SAMPLES_FFMPEG-$(call ALLYES, MOV_DEMUXER MATROSKA_MUXER) += fate-rgb24-mkv
 fate-rgb24-mkv: $(SAMPLES)/qtrle/aletrek-rle.mov
 fate-rgb24-mkv: CMD = transcode "mov" $(TARGET_SAMPLES)/qtrle/aletrek-rle.mov\
-                      matroska "-c:v rawvideo -pix_fmt rgb24 -allow_raw_vfw 1 -frames:v 1"
+                      matroska "-c:v rawvideo -threads 1 -pix_fmt rgb24 -allow_raw_vfw 1 -frames:v 1"
 
 FATE_SAMPLES_FFMPEG-$(call ALLYES, AAC_DEMUXER MOV_MUXER) += fate-adtstoasc_ticket3715
 fate-adtstoasc_ticket3715: $(SAMPLES)/aac/foo.aac

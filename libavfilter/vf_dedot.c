@@ -56,30 +56,23 @@ typedef struct DedotContext {
     int (*derainbow)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } DedotContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pixel_fmts[] = {
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
-        AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
-        AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *formats = ff_make_format_list(pixel_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, formats);
-}
+static const enum AVPixelFormat pixel_fmts[] = {
+    AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
+    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
+    AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_NONE
+};
 
 #define DEFINE_DEDOTCRAWL(name, type, div)                       \
 static int dedotcrawl##name(AVFilterContext *ctx, void *arg,     \
@@ -299,19 +292,19 @@ static int activate(AVFilterContext *ctx)
                 ret = av_frame_make_writable(out);
                 if (ret >= 0) {
                     if (s->m & 1)
-                        ctx->internal->execute(ctx, s->dedotcrawl, out, NULL,
-                                               FFMIN(s->planeheight[0],
-                                               ff_filter_get_nb_threads(ctx)));
+                        ff_filter_execute(ctx, s->dedotcrawl, out, NULL,
+                                          FFMIN(ff_filter_get_nb_threads(ctx),
+                                                s->planeheight[0]));
                     if (s->m & 2) {
                         ThreadData td;
                         td.out = out; td.plane = 1;
-                        ctx->internal->execute(ctx, s->derainbow, &td, NULL,
-                                               FFMIN(s->planeheight[1],
-                                               ff_filter_get_nb_threads(ctx)));
+                        ff_filter_execute(ctx, s->derainbow, &td, NULL,
+                                          FFMIN(ff_filter_get_nb_threads(ctx),
+                                                s->planeheight[1]));
                         td.plane = 2;
-                        ctx->internal->execute(ctx, s->derainbow, &td, NULL,
-                                               FFMIN(s->planeheight[2],
-                                               ff_filter_get_nb_threads(ctx)));
+                        ff_filter_execute(ctx, s->derainbow, &td, NULL,
+                                          FFMIN(ff_filter_get_nb_threads(ctx),
+                                                s->planeheight[2]));
                     }
                 } else
                     av_frame_free(&out);
@@ -387,7 +380,6 @@ static const AVFilterPad inputs[] = {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -396,20 +388,19 @@ static const AVFilterPad outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
 AVFILTER_DEFINE_CLASS(dedot);
 
-AVFilter ff_vf_dedot = {
+const AVFilter ff_vf_dedot = {
     .name          = "dedot",
     .description   = NULL_IF_CONFIG_SMALL("Reduce cross-luminance and cross-color."),
     .priv_size     = sizeof(DedotContext),
     .priv_class    = &dedot_class,
-    .query_formats = query_formats,
     .activate      = activate,
     .uninit        = uninit,
-    .inputs        = inputs,
-    .outputs       = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
 };

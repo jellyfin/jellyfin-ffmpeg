@@ -22,12 +22,12 @@
  * frei0r wrapper
  */
 
-#include <dlfcn.h>
 #include <frei0r.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "config.h"
+#include "compat/w32dlfcn.h"
 #include "libavutil/avstring.h"
 #include "libavutil/common.h"
 #include "libavutil/eval.h"
@@ -402,7 +402,6 @@ static const AVFilterPad avfilter_vf_frei0r_inputs[] = {
         .config_props = config_input_props,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad avfilter_vf_frei0r_outputs[] = {
@@ -410,19 +409,18 @@ static const AVFilterPad avfilter_vf_frei0r_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_frei0r = {
+const AVFilter ff_vf_frei0r = {
     .name          = "frei0r",
     .description   = NULL_IF_CONFIG_SMALL("Apply a frei0r effect."),
-    .query_formats = query_formats,
     .init          = filter_init,
     .uninit        = uninit,
     .priv_size     = sizeof(Frei0rContext),
     .priv_class    = &frei0r_class,
-    .inputs        = avfilter_vf_frei0r_inputs,
-    .outputs       = avfilter_vf_frei0r_outputs,
+    FILTER_INPUTS(avfilter_vf_frei0r_inputs),
+    FILTER_OUTPUTS(avfilter_vf_frei0r_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .process_command = process_command,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };
@@ -498,17 +496,16 @@ static const AVFilterPad avfilter_vsrc_frei0r_src_outputs[] = {
         .request_frame = source_request_frame,
         .config_props  = source_config_props
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_frei0r_src = {
+const AVFilter ff_vsrc_frei0r_src = {
     .name          = "frei0r_src",
     .description   = NULL_IF_CONFIG_SMALL("Generate a frei0r source."),
     .priv_size     = sizeof(Frei0rContext),
     .priv_class    = &frei0r_src_class,
     .init          = source_init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .inputs        = NULL,
-    .outputs       = avfilter_vsrc_frei0r_src_outputs,
+    FILTER_OUTPUTS(avfilter_vsrc_frei0r_src_outputs),
+    FILTER_QUERY_FUNC(query_formats),
 };

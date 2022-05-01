@@ -19,7 +19,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "avcodec.h"
+#include "libavutil/common.h"
+#include "libavutil/error.h"
+#include "libavutil/mem.h"
 #include "ass_split.h"
 
 typedef enum {
@@ -410,25 +412,6 @@ static void free_section(ASSSplitContext *ctx, const ASSSection *section)
         av_freep((uint8_t *)&ctx->ass + section->offset);
 }
 
-ASSDialog *ff_ass_split_dialog(ASSSplitContext *ctx, const char *buf,
-                               int cache, int *number)
-{
-    ASSDialog *dialog = NULL;
-    int i, count;
-    if (!cache)
-        for (i=0; i<FF_ARRAY_ELEMS(ass_sections); i++)
-            if (!strcmp(ass_sections[i].section, "Events")) {
-                free_section(ctx, &ass_sections[i]);
-                break;
-            }
-    count = ctx->ass.dialogs_count;
-    if (ass_split(ctx, buf) == 0)
-        dialog = ctx->ass.dialogs + count;
-    if (number)
-        *number = ctx->ass.dialogs_count - count;
-    return dialog;
-}
-
 void ff_ass_free_dialog(ASSDialog **dialogp)
 {
     ASSDialog *dialog = *dialogp;
@@ -441,7 +424,7 @@ void ff_ass_free_dialog(ASSDialog **dialogp)
     av_freep(dialogp);
 }
 
-ASSDialog *ff_ass_split_dialog2(ASSSplitContext *ctx, const char *buf)
+ASSDialog *ff_ass_split_dialog(ASSSplitContext *ctx, const char *buf)
 {
     int i;
     static const ASSFields fields[] = {

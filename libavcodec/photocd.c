@@ -31,7 +31,6 @@
 
 #define CACHED_BITSTREAM_READER !ARCH_X86_32
 
-#include "libavutil/avassert.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
@@ -458,7 +457,7 @@ static const AVClass photocd_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_photocd_decoder = {
+const AVCodec ff_photocd_decoder = {
     .name           = "photocd",
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PHOTOCD,

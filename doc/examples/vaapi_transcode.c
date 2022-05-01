@@ -62,7 +62,7 @@ static enum AVPixelFormat get_vaapi_format(AVCodecContext *ctx,
 static int open_input_file(const char *filename)
 {
     int ret;
-    AVCodec *decoder = NULL;
+    const AVCodec *decoder = NULL;
     AVStream *video = NULL;
 
     if ((ret = avformat_open_input(&ifmt_ctx, filename, NULL, NULL)) < 0) {
@@ -142,7 +142,7 @@ end:
     return ret;
 }
 
-static int dec_enc(AVPacket *pkt, AVCodec *enc_codec)
+static int dec_enc(AVPacket *pkt, const AVCodec *enc_codec)
 {
     AVFrame *frame;
     int ret = 0;
@@ -226,9 +226,9 @@ fail:
 
 int main(int argc, char **argv)
 {
+    const AVCodec *enc_codec;
     int ret = 0;
     AVPacket *dec_pkt;
-    AVCodec *enc_codec;
 
     if (argc != 4) {
         fprintf(stderr, "Usage: %s <input file> <encode codec> <output file>\n"

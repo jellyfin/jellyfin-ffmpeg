@@ -50,7 +50,7 @@ typedef struct WebMChunkContext {
 static int webm_chunk_init(AVFormatContext *s)
 {
     WebMChunkContext *wc = s->priv_data;
-    ff_const59 AVOutputFormat *oformat;
+    const AVOutputFormat *oformat;
     AVFormatContext *oc;
     AVStream *st, *ost = s->streams[0];
     AVDictionary *dict = NULL;
@@ -93,14 +93,8 @@ static int webm_chunk_init(AVFormatContext *s)
     if (!(st = avformat_new_stream(oc, NULL)))
         return AVERROR(ENOMEM);
 
-    if ((ret = avcodec_parameters_copy(st->codecpar, ost->codecpar)) < 0 ||
-        (ret = av_dict_copy(&st->metadata, ost->metadata, 0))        < 0)
+    if ((ret = ff_stream_encode_params_copy(st, ost)) < 0)
         return ret;
-
-    st->sample_aspect_ratio = ost->sample_aspect_ratio;
-    st->disposition         = ost->disposition;
-    avpriv_set_pts_info(st, ost->pts_wrap_bits, ost->time_base.num,
-                                                ost->time_base.den);
 
     if (wc->http_method)
         if ((ret = av_dict_set(&dict, "method", wc->http_method, 0)) < 0)
@@ -131,8 +125,8 @@ fail:
     // This ensures that the timestamps will already be properly shifted
     // when the packets arrive here, so we don't need to shift again.
     s->avoid_negative_ts  = oc->avoid_negative_ts;
-    s->internal->avoid_negative_ts_use_pts =
-        oc->internal->avoid_negative_ts_use_pts;
+    ffformatcontext(s)->avoid_negative_ts_use_pts =
+        ffformatcontext(oc)->avoid_negative_ts_use_pts;
     oc->avoid_negative_ts = 0;
 
     return 0;
@@ -295,7 +289,7 @@ static const AVClass webm_chunk_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_webm_chunk_muxer = {
+const AVOutputFormat ff_webm_chunk_muxer = {
     .name           = "webm_chunk",
     .long_name      = NULL_IF_CONFIG_SMALL("WebM Chunk Muxer"),
     .mime_type      = "video/webm",

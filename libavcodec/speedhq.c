@@ -155,8 +155,6 @@ static const uint8_t unscaled_quant_matrix[64] = {
     27, 29, 35, 38, 46, 56, 69, 83
 };
 
-static uint8_t speedhq_static_rl_table_store[2][2*MAX_RUN + MAX_LEVEL + 3];
-
 static VLC dc_lum_vlc_le;
 static VLC dc_chroma_vlc_le;
 static VLC dc_alpha_run_vlc_le;
@@ -297,7 +295,8 @@ static int decode_speedhq_border(const SHQContext *s, GetBitContext *gb, AVFrame
         if (s->subsampling == SHQ_SUBSAMPLING_420) {
             dest_cb = frame->data[1] + frame->linesize[1] * (y/2 + field_number) + x / 2;
             dest_cr = frame->data[2] + frame->linesize[2] * (y/2 + field_number) + x / 2;
-        } else if (s->subsampling == SHQ_SUBSAMPLING_422) {
+        } else {
+            av_assert2(s->subsampling == SHQ_SUBSAMPLING_422);
             dest_cb = frame->data[1] + frame->linesize[1] * (y + field_number) + x / 2;
             dest_cr = frame->data[2] + frame->linesize[2] * (y + field_number) + x / 2;
         }
@@ -648,7 +647,6 @@ static av_cold void speedhq_static_init(void)
                            ff_mpeg12_vlc_dc_chroma_code, 2, 2,
                            INIT_VLC_OUTPUT_LE, 514);
 
-    ff_rl_init(&ff_rl_speedhq, speedhq_static_rl_table_store);
     INIT_2D_VLC_RL(ff_rl_speedhq, 674, INIT_VLC_LE);
 
     compute_alpha_vlcs();
@@ -724,7 +722,7 @@ static av_cold int speedhq_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_speedhq_decoder = {
+const AVCodec ff_speedhq_decoder = {
     .name           = "speedhq",
     .long_name      = NULL_IF_CONFIG_SMALL("NewTek SpeedHQ"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -733,5 +731,6 @@ AVCodec ff_speedhq_decoder = {
     .init           = speedhq_decode_init,
     .decode         = speedhq_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif /* CONFIG_SPEEDHQ_DECODER */

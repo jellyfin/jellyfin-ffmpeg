@@ -24,16 +24,16 @@
 #include <stdint.h>
 
 #include "libavutil/buffer.h"
-#include "avcodec.h"
+#include "libavutil/error.h"
+#include "libavutil/log.h"
+#include "codec_id.h"
 #include "get_bits.h"
 
 #define MAX_MBPAIR_SIZE (256*1024) // a tighter bound could be calculated if someone cares about a few bytes
 
 typedef struct H2645NAL {
-    uint8_t *rbsp_buffer;
-
-    int size;
     const uint8_t *data;
+    int size;
 
     /**
      * Size, in bits, of just the data, excluding the stop bit and any trailing
@@ -52,6 +52,11 @@ typedef struct H2645NAL {
     int type;
 
     /**
+     * H.264 only, nal_ref_idc
+     */
+    int ref_idc;
+
+    /**
      * HEVC only, nuh_temporal_id_plus_1 - 1
      */
     int temporal_id;
@@ -64,10 +69,6 @@ typedef struct H2645NAL {
     int skipped_bytes;
     int skipped_bytes_pos_size;
     int *skipped_bytes_pos;
-    /**
-     * H.264 only, nal_ref_idc
-     */
-    int ref_idc;
 } H2645NAL;
 
 typedef struct H2645RBSP {

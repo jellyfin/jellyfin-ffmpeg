@@ -110,7 +110,7 @@ static int ser_read_packet(AVFormatContext *s, AVPacket *pkt)
         return AVERROR_EOF;
 
     ret = av_get_packet(s->pb, pkt, s->packet_size);
-    pkt->pts = pkt->dts = (pkt->pos - s->internal->data_offset) / s->packet_size;
+    pkt->pts = pkt->dts = (pkt->pos - ffformatcontext(s)->data_offset) / s->packet_size;
 
     pkt->stream_index = 0;
     if (ret < 0)
@@ -132,7 +132,7 @@ static const AVClass ser_demuxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVInputFormat ff_ser_demuxer = {
+const AVInputFormat ff_ser_demuxer = {
     .name           = "ser",
     .long_name      = NULL_IF_CONFIG_SMALL("SER (Simple uncompressed video format for astronomical capturing)"),
     .priv_data_size = sizeof(SERDemuxerContext),

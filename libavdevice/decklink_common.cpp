@@ -182,7 +182,11 @@ int ff_decklink_set_configs(AVFormatContext *avctx,
         if (duplex_supported) {
 #if BLACKMAGIC_DECKLINK_API_VERSION >= 0x0b000000
             IDeckLinkProfile *profile = NULL;
-            BMDProfileID bmd_profile_id = ctx->duplex_mode == 2 ? bmdProfileOneSubDeviceFullDuplex : bmdProfileTwoSubDevicesHalfDuplex;
+            BMDProfileID bmd_profile_id;
+
+            if (ctx->duplex_mode < 0 || ctx->duplex_mode >= FF_ARRAY_ELEMS(decklink_profile_id_map))
+                return EINVAL;
+            bmd_profile_id = decklink_profile_id_map[ctx->duplex_mode];
             res = manager->GetProfile(bmd_profile_id, &profile);
             if (res == S_OK) {
                 res = profile->SetActive();
@@ -195,7 +199,7 @@ int ff_decklink_set_configs(AVFormatContext *avctx,
             if (res != S_OK)
                 av_log(avctx, AV_LOG_WARNING, "Setting duplex mode failed.\n");
             else
-                av_log(avctx, AV_LOG_VERBOSE, "Successfully set duplex mode to %s duplex.\n", ctx->duplex_mode == 2 ? "full" : "half");
+                av_log(avctx, AV_LOG_VERBOSE, "Successfully set duplex mode to %s duplex.\n", ctx->duplex_mode == 2 || ctx->duplex_mode == 4 ? "full" : "half");
         } else {
             av_log(avctx, AV_LOG_WARNING, "Unable to set duplex mode, because it is not supported.\n");
         }
@@ -214,6 +218,39 @@ int ff_decklink_set_configs(AVFormatContext *avctx,
         if (res != S_OK)
             av_log(avctx, AV_LOG_WARNING, "Setting timing offset failed.\n");
     }
+
+    if (direction == DIRECTION_OUT && ctx->link > 0) {
+        res = ctx->cfg->SetInt(bmdDeckLinkConfigSDIOutputLinkConfiguration, ctx->link);
+        if (res != S_OK)
+            av_log(avctx, AV_LOG_WARNING, "Setting link configuration failed.\n");
+        else
+            av_log(avctx, AV_LOG_VERBOSE, "Successfully set link configuration: 0x%x.\n", ctx->link);
+        if (ctx->link == bmdLinkConfigurationQuadLink && cctx->sqd >= 0) {
+            res = ctx->cfg->SetFlag(bmdDeckLinkConfigQuadLinkSDIVideoOutputSquareDivisionSplit, cctx->sqd);
+            if (res != S_OK)
+                av_log(avctx, AV_LOG_WARNING, "Setting SquareDivisionSplit failed.\n");
+            else
+                av_log(avctx, AV_LOG_VERBOSE, "Successfully set SquareDivisionSplit.\n");
+        }
+    }
+
+    if (direction == DIRECTION_OUT && cctx->level_a >= 0) {
+        DECKLINK_BOOL level_a_supported = false;
+
+        if (ctx->attr->GetFlag(BMDDeckLinkSupportsSMPTELevelAOutput, &level_a_supported) != S_OK)
+            level_a_supported = false;
+
+        if (level_a_supported) {
+            res = ctx->cfg->SetFlag(bmdDeckLinkConfigSMPTELevelAOutput, cctx->level_a);
+            if (res != S_OK)
+                av_log(avctx, AV_LOG_WARNING, "Setting SMPTE levelA failed.\n");
+            else
+                av_log(avctx, AV_LOG_VERBOSE, "Successfully set SMPTE levelA.\n");
+        } else {
+            av_log(avctx, AV_LOG_WARNING, "Unable to set SMPTE levelA mode, because it is not supported.\n");
+        }
+    }
+
     return 0;
 }
 

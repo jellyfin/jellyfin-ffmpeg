@@ -23,7 +23,6 @@
 
 #include "avformat.h"
 #include "internal.h"
-#include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
@@ -203,7 +202,7 @@ static const AVClass gif_muxer_class = {
     .option     = options,
 };
 
-AVOutputFormat ff_gif_muxer = {
+const AVOutputFormat ff_gif_muxer = {
     .name           = "gif",
     .long_name      = NULL_IF_CONFIG_SMALL("CompuServe Graphics Interchange Format (GIF)"),
     .mime_type      = "image/gif",

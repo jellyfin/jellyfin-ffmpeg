@@ -33,6 +33,7 @@
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "encode.h"
 #include "internal.h"
 #include "float2half.h"
 
@@ -352,7 +353,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                                avctx->width,
                                                avctx->height, 64) * 3LL / 2;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, out_size, out_size)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, pkt, out_size, 0)) < 0)
         return ret;
 
     bytestream2_init_writer(pb, pkt->data, pkt->size);
@@ -506,7 +507,6 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     av_shrink_packet(pkt, bytestream2_tell_p(pb));
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -534,19 +534,20 @@ static const AVClass exr_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_exr_encoder = {
+const AVCodec ff_exr_encoder = {
     .name           = "exr",
     .long_name      = NULL_IF_CONFIG_SMALL("OpenEXR image"),
     .priv_data_size = sizeof(EXRContext),
     .priv_class     = &exr_class,
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_EXR,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .init           = encode_init,
     .encode2        = encode_frame,
     .close          = encode_close,
-    .capabilities   = AV_CODEC_CAP_FRAME_THREADS,
     .pix_fmts       = (const enum AVPixelFormat[]) {
                                                  AV_PIX_FMT_GBRPF32,
                                                  AV_PIX_FMT_GBRAPF32,
                                                  AV_PIX_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

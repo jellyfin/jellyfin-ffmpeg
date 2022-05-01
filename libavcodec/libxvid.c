@@ -30,7 +30,6 @@
 #include <xvid.h>
 
 #include "libavutil/avassert.h"
-#include "libavutil/cpu.h"
 #include "libavutil/file.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
@@ -39,6 +38,7 @@
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "mpegutils.h"
 #include "packet_internal.h"
@@ -617,13 +617,6 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
     x->intra_matrix =
     x->inter_matrix = NULL;
 
-#if FF_API_PRIVATE_OPT
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (avctx->mpeg_quant)
-        x->mpeg_quant = avctx->mpeg_quant;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     if (x->mpeg_quant)
         x->vol_flags |= XVID_VOL_MPEGQUANT;
     if ((avctx->intra_matrix || avctx->inter_matrix)) {
@@ -738,7 +731,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 static int xvid_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *picture, int *got_packet)
 {
-    int xerr, i, ret, user_packet = !!pkt->data;
+    int xerr, i, ret;
     struct xvid_context *x = avctx->priv_data;
     int mb_width  = (avctx->width  + 15) / 16;
     int mb_height = (avctx->height + 15) / 16;
@@ -747,7 +740,7 @@ static int xvid_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     xvid_enc_frame_t xvid_enc_frame = { 0 };
     xvid_enc_stats_t xvid_enc_stats = { 0 };
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, mb_width*(int64_t)mb_height*MAX_MB_BYTES + AV_INPUT_BUFFER_MIN_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, mb_width*(int64_t)mb_height*MAX_MB_BYTES + AV_INPUT_BUFFER_MIN_SIZE)) < 0)
         return ret;
 
     /* Start setting up the frame */
@@ -835,39 +828,19 @@ static int xvid_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         else
             pict_type = AV_PICTURE_TYPE_I;
 
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        avctx->coded_frame->pict_type = pict_type;
-        avctx->coded_frame->quality = xvid_enc_stats.quant * FF_QP2LAMBDA;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
         ff_side_data_set_encoder_stats(pkt, xvid_enc_stats.quant * FF_QP2LAMBDA, NULL, 0, pict_type);
 
         if (xvid_enc_frame.out_flags & XVID_KEYFRAME) {
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-            avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
             pkt->flags  |= AV_PKT_FLAG_KEY;
             if (x->quicktime_format)
                 return xvid_strip_vol_header(avctx, pkt,
                                              xvid_enc_stats.hlength, xerr);
-        } else {
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-            avctx->coded_frame->key_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         }
 
         pkt->size = xerr;
 
         return 0;
     } else {
-        if (!user_packet)
-            av_packet_unref(pkt);
         if (!xerr)
             return 0;
         av_log(avctx, AV_LOG_ERROR,
@@ -885,7 +858,6 @@ static av_cold int xvid_encode_close(AVCodecContext *avctx)
         x->encoder_handle = NULL;
     }
 
-    av_freep(&avctx->extradata);
     if (x->twopassbuffer) {
         av_freep(&x->twopassbuffer);
         av_freep(&x->old_twopassbuffer);
@@ -926,7 +898,7 @@ static const AVClass xvid_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_libxvid_encoder = {
+const AVCodec ff_libxvid_encoder = {
     .name           = "libxvid",
     .long_name      = NULL_IF_CONFIG_SMALL("libxvidcore MPEG-4 part 2"),
     .type           = AVMEDIA_TYPE_VIDEO,

@@ -121,24 +121,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     vsTransformationsCleanup(&tc->trans);
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    // If you add something here also add it in vidstabutils.c
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_YUV440P,  AV_PIX_FMT_GRAY8,
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_RGBA,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
-
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -297,7 +279,6 @@ static const AVFilterPad avfilter_vf_vidstabtransform_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad avfilter_vf_vidstabtransform_outputs[] = {
@@ -305,10 +286,9 @@ static const AVFilterPad avfilter_vf_vidstabtransform_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_vidstabtransform = {
+const AVFilter ff_vf_vidstabtransform = {
     .name          = "vidstabtransform",
     .description   = NULL_IF_CONFIG_SMALL("Transform the frames, "
                                           "pass 2 of 2 for stabilization "
@@ -316,8 +296,8 @@ AVFilter ff_vf_vidstabtransform = {
     .priv_size     = sizeof(TransformContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = avfilter_vf_vidstabtransform_inputs,
-    .outputs       = avfilter_vf_vidstabtransform_outputs,
+    FILTER_INPUTS(avfilter_vf_vidstabtransform_inputs),
+    FILTER_OUTPUTS(avfilter_vf_vidstabtransform_outputs),
+    FILTER_PIXFMTS_ARRAY(ff_vidstab_pix_fmts),
     .priv_class    = &vidstabtransform_class,
 };

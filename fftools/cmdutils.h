@@ -48,7 +48,7 @@ extern AVCodecContext *avcodec_opts[AVMEDIA_TYPE_NB];
 extern AVFormatContext *avformat_opts;
 extern AVDictionary *sws_dict;
 extern AVDictionary *swr_opts;
-extern AVDictionary *format_opts, *codec_opts, *resample_opts;
+extern AVDictionary *format_opts, *codec_opts;
 extern int hide_banner;
 
 /**
@@ -87,6 +87,11 @@ void log_callback_help(void* ptr, int level, const char* fmt, va_list vl);
  * Override the cpuflags.
  */
 int opt_cpuflags(void *optctx, const char *opt, const char *arg);
+
+/**
+ * Override the cpucount.
+ */
+int opt_cpucount(void *optctx, const char *opt, const char *arg);
 
 /**
  * Fallback for options that are not explicitly handled, these will be
@@ -233,12 +238,14 @@ void show_help_options(const OptionDef *options, const char *msg, int req_flags,
     { "pix_fmts",    OPT_EXIT,             { .func_arg = show_pix_fmts },    "show available pixel formats" },          \
     { "layouts",     OPT_EXIT,             { .func_arg = show_layouts },     "show standard channel layouts" },         \
     { "sample_fmts", OPT_EXIT,             { .func_arg = show_sample_fmts }, "show available audio sample formats" },   \
+    { "dispositions", OPT_EXIT,            { .func_arg = show_dispositions}, "show available stream dispositions" },    \
     { "colors",      OPT_EXIT,             { .func_arg = show_colors },      "show available color names" },            \
     { "loglevel",    HAS_ARG,              { .func_arg = opt_loglevel },     "set logging level", "loglevel" },         \
     { "v",           HAS_ARG,              { .func_arg = opt_loglevel },     "set logging level", "loglevel" },         \
     { "report",      0,                    { .func_arg = opt_report },       "generate a report" },                     \
     { "max_alloc",   HAS_ARG,              { .func_arg = opt_max_alloc },    "set maximum size of a single allocated block", "bytes" }, \
     { "cpuflags",    HAS_ARG | OPT_EXPERT, { .func_arg = opt_cpuflags },     "force specific cpu flags", "flags" },     \
+    { "cpucount",    HAS_ARG | OPT_EXPERT, { .func_arg = opt_cpucount },     "force specific cpu count", "count" },     \
     { "hide_banner", OPT_BOOL | OPT_EXPERT, {&hide_banner},     "do not show program banner", "hide_banner" },          \
     CMDUTILS_COMMON_OPTIONS_AVDEVICE                                                                                    \
 
@@ -317,7 +324,6 @@ typedef struct OptionGroup {
 
     AVDictionary *codec_opts;
     AVDictionary *format_opts;
-    AVDictionary *resample_opts;
     AVDictionary *sws_dict;
     AVDictionary *swr_opts;
 } OptionGroup;
@@ -424,8 +430,8 @@ AVDictionary *filter_codec_opts(AVDictionary *opts, enum AVCodecID codec_id,
  * Each dictionary will contain the options from codec_opts which can
  * be applied to the corresponding stream codec context.
  *
- * @return pointer to the created array of dictionaries, NULL if it
- * cannot be created
+ * @return pointer to the created array of dictionaries.
+ * Calls exit() on failure.
  */
 AVDictionary **setup_find_stream_info_opts(AVFormatContext *s,
                                            AVDictionary *codec_opts);
@@ -573,6 +579,11 @@ int show_layouts(void *optctx, const char *opt, const char *arg);
 int show_sample_fmts(void *optctx, const char *opt, const char *arg);
 
 /**
+ * Print a listing containing all supported stream dispositions.
+ */
+int show_dispositions(void *optctx, const char *opt, const char *arg);
+
+/**
  * Print a listing containing all the color names and values recognized
  * by the program.
  */
@@ -617,10 +628,27 @@ FILE *get_preset_file(char *filename, size_t filename_size,
  */
 void *grow_array(void *array, int elem_size, int *size, int new_size);
 
+/**
+ * Atomically add a new element to an array of pointers, i.e. allocate
+ * a new entry, reallocate the array of pointers and make the new last
+ * member of this array point to the newly allocated buffer.
+ * Calls exit() on failure.
+ *
+ * @param array     array of pointers to reallocate
+ * @param elem_size size of the new element to allocate
+ * @param nb_elems  pointer to the number of elements of the array array;
+ *                  *nb_elems will be incremented by one by this function.
+ * @return pointer to the newly allocated entry
+ */
+void *allocate_array_elem(void *array, size_t elem_size, int *nb_elems);
+
 #define media_type_string av_get_media_type_string
 
 #define GROW_ARRAY(array, nb_elems)\
     array = grow_array(array, sizeof(*array), &nb_elems, nb_elems + 1)
+
+#define ALLOC_ARRAY_ELEM(array, nb_elems)\
+    allocate_array_elem(&array, sizeof(*array[0]), &nb_elems)
 
 #define GET_PIX_FMT_NAME(pix_fmt)\
     const char *name = av_get_pix_fmt_name(pix_fmt);
@@ -643,6 +671,6 @@ void *grow_array(void *array, int elem_size, int *size, int new_size);
     char name[128];\
     av_get_channel_layout_string(name, sizeof(name), 0, ch_layout);
 
-double get_rotation(AVStream *st);
+double get_rotation(int32_t *displaymatrix);
 
 #endif /* FFTOOLS_CMDUTILS_H */

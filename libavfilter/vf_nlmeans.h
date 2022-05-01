@@ -27,9 +27,20 @@ typedef struct NLMeansDSPContext {
                                             const uint8_t *s1, ptrdiff_t linesize1,
                                             const uint8_t *s2, ptrdiff_t linesize2,
                                             int w, int h);
+    void (*compute_weights_line)(const uint32_t *const iia,
+                                 const uint32_t *const iib,
+                                 const uint32_t *const iid,
+                                 const uint32_t *const iie,
+                                 const uint8_t *const src,
+                                 float *total_weight,
+                                 float *sum,
+                                 const float *const weight_lut,
+                                 int max_meaningful_diff,
+                                 int startx, int endx);
 } NLMeansDSPContext;
 
 void ff_nlmeans_init(NLMeansDSPContext *dsp);
 void ff_nlmeans_init_aarch64(NLMeansDSPContext *dsp);
+void ff_nlmeans_init_x86(NLMeansDSPContext *dsp);
 
 #endif /* AVFILTER_NLMEANS_H */

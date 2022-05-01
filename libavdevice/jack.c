@@ -167,7 +167,7 @@ static int start_jack(AVFormatContext *context)
 
     /* Register JACK ports */
     for (i = 0; i < self->nports; i++) {
-        char str[16];
+        char str[32];
         snprintf(str, sizeof(str), "input_%d", i + 1);
         self->ports[i] = jack_port_register(self->client, str,
                                             JACK_DEFAULT_AUDIO_TYPE,
@@ -342,7 +342,7 @@ static const AVClass jack_indev_class = {
     .category       = AV_CLASS_CATEGORY_DEVICE_AUDIO_INPUT,
 };
 
-AVInputFormat ff_jack_demuxer = {
+const AVInputFormat ff_jack_demuxer = {
     .name           = "jack",
     .long_name      = NULL_IF_CONFIG_SMALL("JACK Audio Connection Kit"),
     .priv_data_size = sizeof(JackData),

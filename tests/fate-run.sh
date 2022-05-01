@@ -90,7 +90,7 @@ probefmt(){
 }
 
 probeaudiostream(){
-    run ffprobe${PROGSUF}${EXECSUF} -show_entries stream=codec_name,codec_time_base,sample_fmt,channels,channel_layout "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -show_entries stream=codec_name,codec_time_base,sample_fmt,channels,channel_layout:side_data "$@"
 }
 
 probetags(){
@@ -120,7 +120,7 @@ probegaplessinfo(){
     run ffprobe${PROGSUF}${EXECSUF} -bitexact -select_streams a -of compact -count_packets -show_entries packet=pts,dts,duration,flags:stream=nb_read_packets "$filename" "$@" > "$pktfile1"
     head -n 8 "$pktfile1"
     tail -n 9 "$pktfile1"
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -select_streams a -of compact -count_frames -show_entries frame=pkt_pts,pkt_dts,best_effort_timestamp,pkt_duration,nb_samples:stream=nb_read_frames "$filename" "$@" > "$framefile1"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -select_streams a -of compact -count_frames -show_entries frame=pts,pkt_dts,best_effort_timestamp,pkt_duration,nb_samples:stream=nb_read_frames "$filename" "$@" > "$framefile1"
     head -n 8 "$framefile1"
     tail -n 9 "$framefile1"
 }
@@ -133,6 +133,15 @@ ffmpeg(){
         ffmpeg_args="${ffmpeg_args} ${arg}"
     done
     run ffmpeg${PROGSUF}${EXECSUF} ${ffmpeg_args}
+}
+
+ffprobe_demux(){
+    filename=$1
+    shift
+    print_filename=$(basename "$filename")
+    run ffprobe${PROGSUF}${EXECSUF} -print_filename "${print_filename}" \
+        -of compact -bitexact -show_format -show_streams -show_packets  \
+        -show_data_hash CRC32 "$filename" "$@"
 }
 
 framecrc(){
@@ -169,7 +178,7 @@ pcm(){
 fmtstdout(){
     fmt=$1
     shift 1
-    ffmpeg -bitexact "$@" -f $fmt -
+    ffmpeg -bitexact "$@" -bitexact -f $fmt -
 }
 
 enc_dec_pcm(){
@@ -223,12 +232,14 @@ transcode(){
     enc_opt=$4
     final_decode=$5
     ffprobe_opts=$7
+    additional_input=$8
+    test -z "$additional_input" || additional_input="$DEC_OPTS $additional_input"
     encfile="${outdir}/${test}.${enc_fmt}"
     test "$6" = -keep || cleanfiles="$cleanfiles $encfile"
     tsrcfile=$(target_path $srcfile)
     tencfile=$(target_path $encfile)
-    ffmpeg -f $src_fmt $DEC_OPTS -i $tsrcfile $ENC_OPTS $enc_opt $FLAGS \
-        -f $enc_fmt -y $tencfile || return
+    ffmpeg -f $src_fmt $DEC_OPTS -i $tsrcfile $additional_input \
+           $ENC_OPTS $enc_opt $FLAGS -f $enc_fmt -y $tencfile || return
     do_md5sum $encfile
     echo $(wc -c $encfile)
     ffmpeg $DEC_OPTS -i $tencfile $ENC_OPTS $FLAGS $final_decode \
@@ -270,7 +281,7 @@ echov(){
     echo "$@" >&3
 }
 
-AVCONV_OPTS="-nostdin -nostats -noauto_conversion_filters -y -cpuflags $cpuflags"
+AVCONV_OPTS="-nostdin -nostats -noauto_conversion_filters -y -cpuflags $cpuflags -filter_threads $threads"
 COMMON_OPTS="-flags +bitexact -idct simple -sws_flags +accurate_rnd+bitexact -fflags +bitexact"
 DEC_OPTS="$COMMON_OPTS -threads $threads"
 ENC_OPTS="$COMMON_OPTS -threads 1 -dct fastint"

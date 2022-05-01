@@ -65,7 +65,7 @@ static int dtshd_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id   = AV_CODEC_ID_DTS;
-    st->need_parsing         = AVSTREAM_PARSE_FULL_RAW;
+    ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL_RAW;
 
     for (;;) {
         chunk_type = avio_rb64(pb);
@@ -159,7 +159,7 @@ static int raw_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-AVInputFormat ff_dtshd_demuxer = {
+const AVInputFormat ff_dtshd_demuxer = {
     .name           = "dtshd",
     .long_name      = NULL_IF_CONFIG_SMALL("raw DTS-HD"),
     .priv_data_size = sizeof(DTSHDDemuxContext),

@@ -404,10 +404,9 @@ static const AVFilterPad hwmap_inputs[] = {
     {
         .name             = "default",
         .type             = AVMEDIA_TYPE_VIDEO,
-        .get_video_buffer = hwmap_get_buffer,
+        .get_buffer.video = hwmap_get_buffer,
         .filter_frame     = hwmap_filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad hwmap_outputs[] = {
@@ -416,17 +415,16 @@ static const AVFilterPad hwmap_outputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = hwmap_config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_hwmap = {
+const AVFilter ff_vf_hwmap = {
     .name           = "hwmap",
     .description    = NULL_IF_CONFIG_SMALL("Map hardware frames"),
     .uninit         = hwmap_uninit,
     .priv_size      = sizeof(HWMapContext),
     .priv_class     = &hwmap_class,
-    .query_formats  = hwmap_query_formats,
-    .inputs         = hwmap_inputs,
-    .outputs        = hwmap_outputs,
+    FILTER_INPUTS(hwmap_inputs),
+    FILTER_OUTPUTS(hwmap_outputs),
+    FILTER_QUERY_FUNC(hwmap_query_formats),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

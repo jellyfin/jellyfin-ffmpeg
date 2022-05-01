@@ -5,7 +5,7 @@ Maintainer: Jellyfin Packaging Team <packaging@jellyfin.org>
 Uploaders: Jellyfin Packaging Team <packaging@jellyfin.org>
 Rules-Requires-Root: no
 Homepage: https://ffmpeg.org/
-Standards-Version: 4.4.2
+Standards-Version: 5.0.1
 Vcs-Git: https://github.com/jellyfin/jellyfin-ffmpeg.git
 Vcs-Browser: https://github.com/jellyfin/jellyfin-ffmpeg
 Build-Depends:
@@ -20,7 +20,7 @@ Build-Depends:
 # --enable-libbluray
  libbluray-dev,
 # --enable-libdrm
- libdrm-dev,
+ libdrm-dev [!amd64],
 # --enable-libfontconfig
  libfontconfig-dev,
 # --enable-libfreetype
@@ -45,8 +45,6 @@ Build-Depends:
  libx265-dev,
 # --enable-libzvbi
  libzvbi-dev,
-# --enable-vdpau
- libvdpau-dev,
 # --enable-cuda-llvm
  clang [!armhf !arm64],
 # --enable-opencl

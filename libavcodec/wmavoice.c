@@ -1882,7 +1882,7 @@ static void copy_bits(PutBitContext *pb,
     rmn_bits = rmn_bytes = get_bits_left(gb);
     if (rmn_bits < nbits)
         return;
-    if (nbits > pb->size_in_bits - put_bits_count(pb))
+    if (nbits > put_bits_left(pb))
         return;
     rmn_bits &= 7; rmn_bytes >>= 3;
     if ((rmn_bits = FFMIN(rmn_bits, nbits)) > 0)
@@ -1997,7 +1997,7 @@ static av_cold int wmavoice_decode_end(AVCodecContext *ctx)
     return 0;
 }
 
-AVCodec ff_wmavoice_decoder = {
+const AVCodec ff_wmavoice_decoder = {
     .name             = "wmavoice",
     .long_name        = NULL_IF_CONFIG_SMALL("Windows Media Audio Voice"),
     .type             = AVMEDIA_TYPE_AUDIO,
@@ -2007,6 +2007,6 @@ AVCodec ff_wmavoice_decoder = {
     .close            = wmavoice_decode_end,
     .decode           = wmavoice_decode_packet,
     .capabilities     = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
-    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .flush            = wmavoice_flush,
 };

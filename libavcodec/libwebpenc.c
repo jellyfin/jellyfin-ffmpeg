@@ -24,6 +24,7 @@
  * WebP encoder using libwebp (WebPEncode API)
  */
 
+#include "encode.h"
 #include "libwebpenc_common.h"
 
 typedef LibWebPContextCommon LibWebPContext;
@@ -57,12 +58,11 @@ static int libwebp_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         goto end;
     }
 
-    ret = ff_alloc_packet2(avctx, pkt, mw.size, mw.size);
+    ret = ff_get_encode_buffer(avctx, pkt, mw.size, 0);
     if (ret < 0)
         goto end;
     memcpy(pkt->data, mw.mem, mw.size);
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
 end:
@@ -86,28 +86,18 @@ static int libwebp_encode_close(AVCodecContext *avctx)
     return 0;
 }
 
-static const AVClass class = {
-    .class_name = "libwebp",
-    .item_name  = av_default_item_name,
-    .option     = options,
-    .version    = LIBAVUTIL_VERSION_INT,
-};
-
-AVCodec ff_libwebp_encoder = {
+const AVCodec ff_libwebp_encoder = {
     .name           = "libwebp",
     .long_name      = NULL_IF_CONFIG_SMALL("libwebp WebP image"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_WEBP,
+    .capabilities   = AV_CODEC_CAP_DR1,
+    .pix_fmts       = ff_libwebpenc_pix_fmts,
+    .priv_class     = &ff_libwebpenc_class,
     .priv_data_size = sizeof(LibWebPContext),
+    .defaults       = ff_libwebp_defaults,
     .init           = libwebp_encode_init,
     .encode2        = libwebp_encode_frame,
     .close          = libwebp_encode_close,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_RGB32,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_NONE
-    },
-    .priv_class     = &class,
-    .defaults       = libwebp_defaults,
     .wrapper_name   = "libwebp",
 };

@@ -42,7 +42,6 @@
 #include "libavutil/parseutils.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/imgutils.h"
-#include "libavutil/avassert.h"
 
 #define ZIMG_ALIGNMENT 32
 
@@ -129,7 +128,7 @@ typedef struct ZScaleContext {
     enum AVChromaLocation in_chromal, out_chromal;
 } ZScaleContext;
 
-static av_cold int init_dict(AVFilterContext *ctx, AVDictionary **opts)
+static av_cold int init(AVFilterContext *ctx)
 {
     ZScaleContext *s = ctx->priv;
     int ret;
@@ -461,6 +460,17 @@ static int convert_range(enum AVColorRange color_range)
     return ZIMG_RANGE_LIMITED;
 }
 
+static enum AVColorRange convert_range_from_zimg(enum zimg_pixel_range_e color_range)
+{
+    switch (color_range) {
+    case ZIMG_RANGE_LIMITED:
+        return AVCOL_RANGE_MPEG;
+    case ZIMG_RANGE_FULL:
+        return AVCOL_RANGE_JPEG;
+    }
+    return AVCOL_RANGE_UNSPECIFIED;
+}
+
 static void format_init(zimg_image_format *format, AVFrame *frame, const AVPixFmtDescriptor *desc,
                         int colorspace, int primaries, int transfer, int range, int location)
 {
@@ -544,6 +554,24 @@ fail:
     return ret;
 }
 
+static void update_output_color_information(ZScaleContext *s, AVFrame *frame)
+{
+    if (s->colorspace != -1)
+        frame->colorspace = (int)s->dst_format.matrix_coefficients;
+
+    if (s->primaries != -1)
+        frame->color_primaries = (int)s->dst_format.color_primaries;
+
+    if (s->range != -1)
+        frame->color_range = convert_range_from_zimg(s->dst_format.pixel_range);
+
+    if (s->trc != -1)
+        frame->color_trc = (int)s->dst_format.transfer_characteristics;
+
+    if (s->chromal != -1)
+        frame->chroma_location = (int)s->dst_format.chroma_location + 1;
+}
+
 static int filter_frame(AVFilterLink *link, AVFrame *in)
 {
     ZScaleContext *s = link->dst->priv;
@@ -611,20 +639,7 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
         format_init(&s->dst_format, out, odesc, s->colorspace,
                     s->primaries, s->trc, s->range, s->chromal);
 
-        if (s->colorspace != -1)
-            out->colorspace = (int)s->dst_format.matrix_coefficients;
-
-        if (s->primaries != -1)
-            out->color_primaries = (int)s->dst_format.color_primaries;
-
-        if (s->range != -1)
-            out->color_range = (int)s->dst_format.pixel_range + 1;
-
-        if (s->trc != -1)
-            out->color_trc = (int)s->dst_format.transfer_characteristics;
-
-        if (s->chromal != -1)
-            out->chroma_location = (int)s->dst_format.chroma_location - 1;
+        update_output_color_information(s, out);
 
         ret = graph_build(&s->graph, &s->params, &s->src_format, &s->dst_format,
                           &s->tmp, &s->tmp_size);
@@ -670,17 +685,7 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
         }
     }
 
-    if (s->colorspace != -1)
-        out->colorspace = (int)s->dst_format.matrix_coefficients;
-
-    if (s->primaries != -1)
-        out->color_primaries = (int)s->dst_format.color_primaries;
-
-    if (s->range != -1)
-        out->color_range = (int)s->dst_format.pixel_range;
-
-    if (s->trc != -1)
-        out->color_trc = (int)s->dst_format.transfer_characteristics;
+    update_output_color_information(s, out);
 
     av_reduce(&out->sample_aspect_ratio.num, &out->sample_aspect_ratio.den,
               (int64_t)in->sample_aspect_ratio.num * outlink->h * link->w,
@@ -915,7 +920,6 @@ static const AVFilterPad avfilter_vf_zscale_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad avfilter_vf_zscale_outputs[] = {
@@ -924,18 +928,17 @@ static const AVFilterPad avfilter_vf_zscale_outputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_zscale = {
+const AVFilter ff_vf_zscale = {
     .name            = "zscale",
     .description     = NULL_IF_CONFIG_SMALL("Apply resizing, colorspace and bit depth conversion."),
-    .init_dict       = init_dict,
-    .query_formats   = query_formats,
+    .init            = init,
     .priv_size       = sizeof(ZScaleContext),
     .priv_class      = &zscale_class,
     .uninit          = uninit,
-    .inputs          = avfilter_vf_zscale_inputs,
-    .outputs         = avfilter_vf_zscale_outputs,
+    FILTER_INPUTS(avfilter_vf_zscale_inputs),
+    FILTER_OUTPUTS(avfilter_vf_zscale_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .process_command = process_command,
 };

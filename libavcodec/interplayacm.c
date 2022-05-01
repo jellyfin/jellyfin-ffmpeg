@@ -19,6 +19,7 @@
  */
 
 #include "libavutil/intreadwrite.h"
+#include "libavutil/thread.h"
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
@@ -38,6 +39,7 @@ typedef struct InterplayACMContext {
     GetBitContext gb;
     uint8_t *bitstream;
     int max_framesize;
+    uint64_t max_samples;
     int bitstream_size;
     int bitstream_index;
 
@@ -54,10 +56,25 @@ typedef struct InterplayACMContext {
     int *midbuf;
 } InterplayACMContext;
 
+static av_cold void decode_init_static(void)
+{
+    for (int x3 = 0; x3 < 3; x3++)
+        for (int x2 = 0; x2 < 3; x2++)
+            for (int x1 = 0; x1 < 3; x1++)
+                mul_3x3[x1 + x2 * 3 + x3 * 3 * 3] = x1 + (x2 << 4) + (x3 << 8);
+    for (int x3 = 0; x3 < 5; x3++)
+        for (int x2 = 0; x2 < 5; x2++)
+            for (int x1 = 0; x1 < 5; x1++)
+                mul_3x5[x1 + x2 * 5 + x3 * 5 * 5] = x1 + (x2 << 4) + (x3 << 8);
+    for (int x2 = 0; x2 < 11; x2++)
+        for (int x1 = 0; x1 < 11; x1++)
+            mul_2x11[x1 + x2 * 11] = x1 + (x2 << 4);
+}
+
 static av_cold int decode_init(AVCodecContext *avctx)
 {
+    static AVOnce init_static_once = AV_ONCE_INIT;
     InterplayACMContext *s = avctx->priv_data;
-    int x1, x2, x3;
 
     if (avctx->extradata_size < 14)
         return AVERROR_INVALIDDATA;
@@ -67,6 +84,9 @@ static av_cold int decode_init(AVCodecContext *avctx)
         return AVERROR_INVALIDDATA;
     }
 
+    s->max_samples = AV_RL32(avctx->extradata + 4) / avctx->channels;
+    if (s->max_samples == 0)
+        s->max_samples = UINT64_MAX;
     s->level = AV_RL16(avctx->extradata + 12) & 0xf;
     s->rows  = AV_RL16(avctx->extradata + 12) >>  4;
     s->cols  = 1 << s->level;
@@ -84,17 +104,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     s->midbuf  = s->ampbuf + 0x8000;
     avctx->sample_fmt = AV_SAMPLE_FMT_S16;
 
-    for (x3 = 0; x3 < 3; x3++)
-        for (x2 = 0; x2 < 3; x2++)
-            for (x1 = 0; x1 < 3; x1++)
-                mul_3x3[x1 + x2 * 3 + x3* 3 * 3] = x1 + (x2 << 4) + (x3 << 8);
-    for (x3 = 0; x3 < 5; x3++)
-        for (x2 = 0; x2 < 5; x2++)
-            for (x1 = 0; x1 < 5; x1++)
-                mul_3x5[x1 + x2 * 5 + x3 * 5 * 5] = x1 + (x2 << 4) + (x3 << 8);
-    for (x2 = 0; x2 < 11; x2++)
-        for (x1 = 0; x1 < 11; x1++)
-            mul_2x11[x1 + x2 * 11] = x1 + (x2 << 4);
+    ff_thread_once(&init_static_once, decode_init_static);
 
     return 0;
 }
@@ -575,7 +585,8 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     if ((ret = init_get_bits8(gb, buf, buf_size)) < 0)
         return ret;
 
-    frame->nb_samples = s->block_len / avctx->channels;
+    frame->nb_samples = FFMIN(s->block_len / avctx->channels, s->max_samples);
+    s->max_samples -= FFMIN(frame->nb_samples, s->max_samples);
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
@@ -600,9 +611,9 @@ static int decode_frame(AVCodecContext *avctx, void *data,
         return AVERROR_INVALIDDATA;
     }
 
-    if (s->bitstream_size) {
+    if (s->bitstream_size > 0) {
         s->bitstream_index += n;
-        s->bitstream_size  -= n;
+        s->bitstream_size  -= FFMIN(s->bitstream_size, n);
         return input_buf_size;
     }
     return n;
@@ -621,7 +632,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_interplay_acm_decoder = {
+const AVCodec ff_interplay_acm_decoder = {
     .name           = "interplayacm",
     .long_name      = NULL_IF_CONFIG_SMALL("Interplay ACM"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -630,6 +641,6 @@ AVCodec ff_interplay_acm_decoder = {
     .close          = decode_close,
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .priv_data_size = sizeof(InterplayACMContext),
 };

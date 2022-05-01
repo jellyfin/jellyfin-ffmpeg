@@ -145,11 +145,6 @@ static int svc_decode_frame(AVCodecContext *avctx, void *data,
 
     avframe->pts     = info.uiOutYuvTimeStamp;
     avframe->pkt_dts = AV_NOPTS_VALUE;
-#if FF_API_PKT_PTS
-FF_DISABLE_DEPRECATION_WARNINGS
-    avframe->pkt_pts = avpkt->pts;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 #if OPENH264_VER_AT_LEAST(1, 7)
     (*s->decoder)->GetOption(s->decoder, DECODER_OPTION_PROFILE, &opt);
     avctx->profile = opt;
@@ -161,7 +156,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return avpkt->size;
 }
 
-AVCodec ff_libopenh264_decoder = {
+const AVCodec ff_libopenh264_decoder = {
     .name           = "libopenh264",
     .long_name      = NULL_IF_CONFIG_SMALL("OpenH264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
     .type           = AVMEDIA_TYPE_VIDEO,

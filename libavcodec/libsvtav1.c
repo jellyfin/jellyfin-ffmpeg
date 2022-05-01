@@ -205,12 +205,14 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
         param->frame_rate_denominator = avctx->time_base.num * avctx->ticks_per_frame;
     }
 
+    param->enable_tpl_la = !!param->rate_control_mode;
     if (param->rate_control_mode) {
         param->max_qp_allowed       = avctx->qmax;
         param->min_qp_allowed       = avctx->qmin;
     }
 
-    param->intra_refresh_type       = 2; /* Real keyframes only */
+    /* 2 = IDR, closed GOP, 1 = CRA, open GOP */
+    param->intra_refresh_type = avctx->flags & AV_CODEC_FLAG_CLOSED_GOP ? 2 : 1;
 
     if (svt_enc->la_depth >= 0)
         param->look_ahead_distance  = svt_enc->la_depth;
@@ -519,7 +521,7 @@ static const AVOption options[] = {
 #undef LEVEL
 
     { "rc", "Bit rate control mode", OFFSET(rc_mode),
-      AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 3, VE , "rc"},
+      AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, VE , "rc"},
         { "cqp", "Constant quantizer", 0, AV_OPT_TYPE_CONST, { .i64 = 0 },  INT_MIN, INT_MAX, VE, "rc" },
         { "vbr", "Variable Bit Rate, use a target bitrate for the entire stream", 0, AV_OPT_TYPE_CONST, { .i64 = 1 },  INT_MIN, INT_MAX, VE, "rc" },
         { "cvbr", "Constrained Variable Bit Rate, use a target bitrate for each GOP", 0, AV_OPT_TYPE_CONST,{ .i64 = 2 },  INT_MIN, INT_MAX, VE, "rc" },
@@ -545,13 +547,14 @@ static const AVClass class = {
 
 static const AVCodecDefault eb_enc_defaults[] = {
     { "b",         "7M"    },
+    { "flags",     "+cgop" },
     { "g",         "-1"    },
     { "qmin",      "0"     },
     { "qmax",      "63"    },
     { NULL },
 };
 
-AVCodec ff_libsvtav1_encoder = {
+const AVCodec ff_libsvtav1_encoder = {
     .name           = "libsvtav1",
     .long_name      = NULL_IF_CONFIG_SMALL("SVT-AV1(Scalable Video Technology for AV1) encoder"),
     .priv_data_size = sizeof(SvtContext),
@@ -561,12 +564,11 @@ AVCodec ff_libsvtav1_encoder = {
     .receive_packet = eb_receive_packet,
     .close          = eb_enc_close,
     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
-    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
+    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS | FF_CODEC_CAP_INIT_CLEANUP,
     .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P,
                                                     AV_PIX_FMT_YUV420P10,
                                                     AV_PIX_FMT_NONE },
     .priv_class     = &class,
     .defaults       = eb_enc_defaults,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .wrapper_name   = "libsvtav1",
 };

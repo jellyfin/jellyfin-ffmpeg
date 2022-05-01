@@ -123,6 +123,7 @@ typedef struct RTMPContext {
     int           listen_timeout;             ///< listen timeout to wait for new connections
     int           nb_streamid;                ///< The next stream id to return on createStream calls
     double        duration;                   ///< Duration of the stream in seconds as returned by the server (only valid if non-zero)
+    int           tcp_nodelay;                ///< Use TCP_NODELAY to disable Nagle's algorithm if set to 1
     char          username[50];
     char          password[50];
     char          auth_params[500];
@@ -1662,7 +1663,6 @@ static int do_llnw_auth(RTMPContext *rt, const char *user, const char *nonce)
     av_md5_update(md5, rt->password, strlen(rt->password));
     av_md5_final(md5, hash);
     ff_data_to_hex(hashstr1, hash, 16, 1);
-    hashstr1[32] = '\0';
 
     av_md5_init(md5);
     av_md5_update(md5, method, strlen(method));
@@ -1672,7 +1672,6 @@ static int do_llnw_auth(RTMPContext *rt, const char *user, const char *nonce)
         av_md5_update(md5, "/_definst_", strlen("/_definst_"));
     av_md5_final(md5, hash);
     ff_data_to_hex(hashstr2, hash, 16, 1);
-    hashstr2[32] = '\0';
 
     av_md5_init(md5);
     av_md5_update(md5, hashstr1, strlen(hashstr1));
@@ -2653,10 +2652,10 @@ static int rtmp_open(URLContext *s, const char *uri, int flags, AVDictionary **o
             port = RTMP_DEFAULT_PORT;
         if (rt->listen)
             ff_url_join(buf, sizeof(buf), "tcp", NULL, hostname, port,
-                        "?listen&listen_timeout=%d",
-                        rt->listen_timeout * 1000);
+                        "?listen&listen_timeout=%d&tcp_nodelay=%d",
+                        rt->listen_timeout * 1000, rt->tcp_nodelay);
         else
-            ff_url_join(buf, sizeof(buf), "tcp", NULL, hostname, port, NULL);
+            ff_url_join(buf, sizeof(buf), "tcp", NULL, hostname, port, "?tcp_nodelay=%d", rt->tcp_nodelay);
     }
 
 reconnect:
@@ -3115,6 +3114,7 @@ static const AVOption rtmp_options[] = {
     {"rtmp_tcurl", "URL of the target stream. Defaults to proto://host[:port]/app.", OFFSET(tcurl), AV_OPT_TYPE_STRING, {.str = NULL }, 0, 0, DEC|ENC},
     {"rtmp_listen", "Listen for incoming rtmp connections", OFFSET(listen), AV_OPT_TYPE_INT, {.i64 = 0}, INT_MIN, INT_MAX, DEC, "rtmp_listen" },
     {"listen",      "Listen for incoming rtmp connections", OFFSET(listen), AV_OPT_TYPE_INT, {.i64 = 0}, INT_MIN, INT_MAX, DEC, "rtmp_listen" },
+    {"tcp_nodelay", "Use TCP_NODELAY to disable Nagle's algorithm", OFFSET(tcp_nodelay), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, DEC|ENC},
     {"timeout", "Maximum timeout (in seconds) to wait for incoming connections. -1 is infinite. Implies -rtmp_listen 1",  OFFSET(listen_timeout), AV_OPT_TYPE_INT, {.i64 = -1}, INT_MIN, INT_MAX, DEC, "rtmp_listen" },
     { NULL },
 };

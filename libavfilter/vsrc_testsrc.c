@@ -70,6 +70,9 @@ typedef struct TestSourceContext {
     /* only used by testsrc2 */
     int alpha;
 
+    /* only used by colorspectrum */
+    int type;
+
     /* only used by color */
     FFDrawContext draw;
     FFDrawColor color;
@@ -263,10 +266,9 @@ static const AVFilterPad color_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = color_config_props,
     },
-    {  NULL }
 };
 
-AVFilter ff_vsrc_color = {
+const AVFilter ff_vsrc_color = {
     .name            = "color",
     .description     = NULL_IF_CONFIG_SMALL("Provide an uniformly colored input."),
     .priv_class      = &color_class,
@@ -274,9 +276,9 @@ AVFilter ff_vsrc_color = {
     .init            = color_init,
     .uninit          = uninit,
     .activate        = activate,
-    .query_formats   = color_query_formats,
     .inputs          = NULL,
-    .outputs         = color_outputs,
+    FILTER_OUTPUTS(color_outputs),
+    FILTER_QUERY_FUNC(color_query_formats),
     .process_command = color_process_command,
 };
 
@@ -304,30 +306,20 @@ static void haldclutsrc_fill_picture(AVFilterContext *ctx, AVFrame *frame)
     const uint8_t *data = frame->data[0];
     const int linesize  = frame->linesize[0];
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
+    const int depth = desc->comp[0].depth;
+    const int planar = desc->flags & AV_PIX_FMT_FLAG_PLANAR;
+    const int planes = av_pix_fmt_count_planes(frame->format);
     uint8_t rgba_map[4];
 
     av_assert0(w == h && w == level*level*level);
 
     ff_fill_rgba_map(rgba_map, frame->format);
 
-    switch (frame->format) {
-    case AV_PIX_FMT_RGB48:
-    case AV_PIX_FMT_BGR48:
-    case AV_PIX_FMT_RGBA64:
-    case AV_PIX_FMT_BGRA64:
-        is16bit = 1;
-        alpha = 0xffff;
-        break;
-    case AV_PIX_FMT_RGBA:
-    case AV_PIX_FMT_BGRA:
-    case AV_PIX_FMT_ARGB:
-    case AV_PIX_FMT_ABGR:
-        alpha = 0xff;
-        break;
-    }
+    alpha = (1 << depth) - 1;
+    is16bit = depth > 8;
 
     step  = av_get_padded_bits_per_pixel(desc) >> (3 + is16bit);
-    scale = ((float)(1 << (8*(is16bit+1))) - 1) / (level*level - 1);
+    scale = ((float)alpha) / (level*level - 1);
 
 #define LOAD_CLUT(nbits) do {                                                   \
     uint##nbits##_t *dst = ((uint##nbits##_t *)(data + y*linesize)) + x*step;   \
@@ -338,14 +330,38 @@ static void haldclutsrc_fill_picture(AVFilterContext *ctx, AVFrame *frame)
         dst[rgba_map[3]] = alpha;                                               \
 } while (0)
 
+#define LOAD_CLUT_PLANAR(type, nbits) do {                                      \
+    type *dst = ((type *)(frame->data[2] + y*frame->linesize[2])) + x;          \
+    dst[0] = av_clip_uintp2(i * scale, nbits);                                  \
+    dst = ((type *)(frame->data[0] + y*frame->linesize[0])) + x;                \
+    dst[0] = av_clip_uintp2(j * scale, nbits);                                  \
+    dst = ((type *)(frame->data[1] + y*frame->linesize[1])) + x;                \
+    dst[0] = av_clip_uintp2(k * scale, nbits);                                  \
+    if (planes == 4) {                                                          \
+        dst = ((type *)(frame->data[3] + y*linesize)) + x;                      \
+        dst[0] = alpha;                                                         \
+    }                                                                           \
+} while (0)
+
     level *= level;
     for (k = 0; k < level; k++) {
         for (j = 0; j < level; j++) {
             for (i = 0; i < level; i++) {
-                if (!is16bit)
-                    LOAD_CLUT(8);
-                else
-                    LOAD_CLUT(16);
+                if (!planar) {
+                    if (!is16bit)
+                        LOAD_CLUT(8);
+                    else
+                        LOAD_CLUT(16);
+                } else {
+                    switch (depth) {
+                    case  8: LOAD_CLUT_PLANAR(uint8_t,  8); break;
+                    case  9: LOAD_CLUT_PLANAR(uint16_t, 9); break;
+                    case 10: LOAD_CLUT_PLANAR(uint16_t,10); break;
+                    case 12: LOAD_CLUT_PLANAR(uint16_t,12); break;
+                    case 14: LOAD_CLUT_PLANAR(uint16_t,14); break;
+                    case 16: LOAD_CLUT_PLANAR(uint16_t,16); break;
+                    }
+                }
                 if (++x == w) {
                     x = 0;
                     y++;
@@ -363,24 +379,22 @@ static av_cold int haldclutsrc_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-static int haldclutsrc_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_RGB24,  AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_RGBA,   AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_ARGB,   AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_0RGB,   AV_PIX_FMT_0BGR,
-        AV_PIX_FMT_RGB0,   AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_RGB48,  AV_PIX_FMT_BGR48,
-        AV_PIX_FMT_RGBA64, AV_PIX_FMT_BGRA64,
-        AV_PIX_FMT_NONE,
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat haldclutsrc_pix_fmts[] = {
+    AV_PIX_FMT_RGB24,  AV_PIX_FMT_BGR24,
+    AV_PIX_FMT_RGBA,   AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_ARGB,   AV_PIX_FMT_ABGR,
+    AV_PIX_FMT_0RGB,   AV_PIX_FMT_0BGR,
+    AV_PIX_FMT_RGB0,   AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_RGB48,  AV_PIX_FMT_BGR48,
+    AV_PIX_FMT_RGBA64, AV_PIX_FMT_BGRA64,
+    AV_PIX_FMT_GBRP,   AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_GBRP9,
+    AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12,
+    AV_PIX_FMT_GBRP14,
+    AV_PIX_FMT_GBRP16, AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_NONE,
+};
 
 static int haldclutsrc_config_props(AVFilterLink *outlink)
 {
@@ -397,27 +411,25 @@ static const AVFilterPad haldclutsrc_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = haldclutsrc_config_props,
     },
-    {  NULL }
 };
 
-AVFilter ff_vsrc_haldclutsrc = {
+const AVFilter ff_vsrc_haldclutsrc = {
     .name          = "haldclutsrc",
     .description   = NULL_IF_CONFIG_SMALL("Provide an identity Hald CLUT."),
     .priv_class    = &haldclutsrc_class,
     .priv_size     = sizeof(TestSourceContext),
     .init          = haldclutsrc_init,
     .uninit        = uninit,
-    .query_formats = haldclutsrc_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = haldclutsrc_outputs,
+    FILTER_OUTPUTS(haldclutsrc_outputs),
+    FILTER_PIXFMTS_ARRAY(haldclutsrc_pix_fmts),
 };
 #endif /* CONFIG_HALDCLUTSRC_FILTER */
 
-#if CONFIG_NULLSRC_FILTER
+AVFILTER_DEFINE_CLASS_EXT(nullsrc_yuvtestsrc, "nullsrc/yuvtestsrc", options);
 
-#define nullsrc_options options
-AVFILTER_DEFINE_CLASS(nullsrc);
+#if CONFIG_NULLSRC_FILTER
 
 static void nullsrc_fill_picture(AVFilterContext *ctx, AVFrame *picref) { }
 
@@ -435,19 +447,18 @@ static const AVFilterPad nullsrc_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_props,
     },
-    { NULL },
 };
 
-AVFilter ff_vsrc_nullsrc = {
+const AVFilter ff_vsrc_nullsrc = {
     .name        = "nullsrc",
     .description = NULL_IF_CONFIG_SMALL("Null video source, return unprocessed video frames."),
+    .priv_class  = &nullsrc_yuvtestsrc_class,
     .init        = nullsrc_init,
     .uninit      = uninit,
     .activate    = activate,
     .priv_size   = sizeof(TestSourceContext),
-    .priv_class  = &nullsrc_class,
     .inputs      = NULL,
-    .outputs     = nullsrc_outputs,
+    FILTER_OUTPUTS(nullsrc_outputs),
 };
 
 #endif /* CONFIG_NULLSRC_FILTER */
@@ -653,38 +664,25 @@ static av_cold int test_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-static int test_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
 static const AVFilterPad avfilter_vsrc_testsrc_outputs[] = {
     {
         .name          = "default",
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_testsrc = {
+const AVFilter ff_vsrc_testsrc = {
     .name          = "testsrc",
     .description   = NULL_IF_CONFIG_SMALL("Generate test pattern."),
     .priv_size     = sizeof(TestSourceContext),
     .priv_class    = &testsrc_class,
     .init          = test_init,
     .uninit        = uninit,
-    .query_formats = test_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = avfilter_vsrc_testsrc_outputs,
+    FILTER_OUTPUTS(avfilter_vsrc_testsrc_outputs),
+    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_RGB24),
 };
 
 #endif /* CONFIG_TESTSRC_FILTER */
@@ -718,8 +716,8 @@ static uint32_t color_gradient(unsigned index)
     case 3: return 0x0000FF + (sd <<  8);
     case 4: return 0x0000FF + (si << 16);
     case 5: return 0xFF0000 + (sd <<  0);
+    default: av_assert0(0); return 0;
     }
-    av_assert0(0);
 }
 
 static void draw_text(TestSourceContext *s, AVFrame *frame, FFDrawColor *color,
@@ -944,20 +942,19 @@ static const AVFilterPad avfilter_vsrc_testsrc2_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = test2_config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_testsrc2 = {
+const AVFilter ff_vsrc_testsrc2 = {
     .name          = "testsrc2",
     .description   = NULL_IF_CONFIG_SMALL("Generate another test pattern."),
     .priv_size     = sizeof(TestSourceContext),
     .priv_class    = &testsrc2_class,
     .init          = test2_init,
     .uninit        = uninit,
-    .query_formats = test2_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = avfilter_vsrc_testsrc2_outputs,
+    FILTER_OUTPUTS(avfilter_vsrc_testsrc2_outputs),
+    FILTER_QUERY_FUNC(test2_query_formats),
 };
 
 #endif /* CONFIG_TESTSRC2_FILTER */
@@ -1084,9 +1081,7 @@ static av_cold int rgbtest_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-static int rgbtest_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
+static const enum AVPixelFormat rgbtest_pix_fmts[] = {
         AV_PIX_FMT_RGBA, AV_PIX_FMT_ARGB, AV_PIX_FMT_BGRA, AV_PIX_FMT_ABGR,
         AV_PIX_FMT_BGR24, AV_PIX_FMT_RGB24,
         AV_PIX_FMT_RGB444, AV_PIX_FMT_BGR444,
@@ -1096,12 +1091,6 @@ static int rgbtest_query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
         AV_PIX_FMT_NONE
     };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
 
 static int rgbtest_config_props(AVFilterLink *outlink)
 {
@@ -1119,28 +1108,24 @@ static const AVFilterPad avfilter_vsrc_rgbtestsrc_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = rgbtest_config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_rgbtestsrc = {
+const AVFilter ff_vsrc_rgbtestsrc = {
     .name          = "rgbtestsrc",
     .description   = NULL_IF_CONFIG_SMALL("Generate RGB test pattern."),
     .priv_size     = sizeof(TestSourceContext),
     .priv_class    = &rgbtestsrc_class,
     .init          = rgbtest_init,
     .uninit        = uninit,
-    .query_formats = rgbtest_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = avfilter_vsrc_rgbtestsrc_outputs,
+    FILTER_OUTPUTS(avfilter_vsrc_rgbtestsrc_outputs),
+    FILTER_PIXFMTS_ARRAY(rgbtest_pix_fmts),
 };
 
 #endif /* CONFIG_RGBTESTSRC_FILTER */
 
 #if CONFIG_YUVTESTSRC_FILTER
-
-#define yuvtestsrc_options options
-AVFILTER_DEFINE_CLASS(yuvtestsrc);
 
 static void yuvtest_fill_picture8(AVFilterContext *ctx, AVFrame *frame)
 {
@@ -1264,21 +1249,13 @@ static av_cold int yuvtest_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-static int yuvtest_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVJ444P,
-        AV_PIX_FMT_YUV444P9, AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV444P14,
-        AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat yuvtest_pix_fmts[] = {
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVJ444P,
+    AV_PIX_FMT_YUV444P9, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV444P14,
+    AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_NONE
+};
 
 static int yuvtest_config_props(AVFilterLink *outlink)
 {
@@ -1295,20 +1272,19 @@ static const AVFilterPad avfilter_vsrc_yuvtestsrc_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = yuvtest_config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_yuvtestsrc = {
+const AVFilter ff_vsrc_yuvtestsrc = {
     .name          = "yuvtestsrc",
     .description   = NULL_IF_CONFIG_SMALL("Generate YUV test pattern."),
     .priv_size     = sizeof(TestSourceContext),
-    .priv_class    = &yuvtestsrc_class,
+    .priv_class    = &nullsrc_yuvtestsrc_class,
     .init          = yuvtest_init,
     .uninit        = uninit,
-    .query_formats = yuvtest_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = avfilter_vsrc_yuvtestsrc_outputs,
+    FILTER_OUTPUTS(avfilter_vsrc_yuvtestsrc_outputs),
+    FILTER_PIXFMTS_ARRAY(yuvtest_pix_fmts),
 };
 
 #endif /* CONFIG_YUVTESTSRC_FILTER */
@@ -1417,20 +1393,12 @@ static void draw_bar(TestSourceContext *test, const uint8_t color[4],
     }
 }
 
-static int smptebars_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_NONE,
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat smptebars_pix_fmts[] = {
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_NONE,
+};
 
 static const AVFilterPad smptebars_outputs[] = {
     {
@@ -1438,13 +1406,11 @@ static const AVFilterPad smptebars_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_props,
     },
-    { NULL }
 };
 
-#if CONFIG_PAL75BARS_FILTER
+AVFILTER_DEFINE_CLASS_EXT(palbars, "pal(75|100)bars", options);
 
-#define pal75bars_options options
-AVFILTER_DEFINE_CLASS(pal75bars);
+#if CONFIG_PAL75BARS_FILTER
 
 static void pal75bars_fill_picture(AVFilterContext *ctx, AVFrame *picref)
 {
@@ -1475,25 +1441,22 @@ static av_cold int pal75bars_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-AVFilter ff_vsrc_pal75bars = {
+const AVFilter ff_vsrc_pal75bars = {
     .name          = "pal75bars",
     .description   = NULL_IF_CONFIG_SMALL("Generate PAL 75% color bars."),
+    .priv_class    = &palbars_class,
     .priv_size     = sizeof(TestSourceContext),
-    .priv_class    = &pal75bars_class,
     .init          = pal75bars_init,
     .uninit        = uninit,
-    .query_formats = smptebars_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = smptebars_outputs,
+    FILTER_OUTPUTS(smptebars_outputs),
+    FILTER_PIXFMTS_ARRAY(smptebars_pix_fmts),
 };
 
 #endif  /* CONFIG_PAL75BARS_FILTER */
 
 #if CONFIG_PAL100BARS_FILTER
-
-#define pal100bars_options options
-AVFILTER_DEFINE_CLASS(pal100bars);
 
 static void pal100bars_fill_picture(AVFilterContext *ctx, AVFrame *picref)
 {
@@ -1522,25 +1485,24 @@ static av_cold int pal100bars_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-AVFilter ff_vsrc_pal100bars = {
+const AVFilter ff_vsrc_pal100bars = {
     .name          = "pal100bars",
     .description   = NULL_IF_CONFIG_SMALL("Generate PAL 100% color bars."),
+    .priv_class    = &palbars_class,
     .priv_size     = sizeof(TestSourceContext),
-    .priv_class    = &pal100bars_class,
     .init          = pal100bars_init,
     .uninit        = uninit,
-    .query_formats = smptebars_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = smptebars_outputs,
+    FILTER_OUTPUTS(smptebars_outputs),
+    FILTER_PIXFMTS_ARRAY(smptebars_pix_fmts),
 };
 
 #endif  /* CONFIG_PAL100BARS_FILTER */
 
-#if CONFIG_SMPTEBARS_FILTER
+AVFILTER_DEFINE_CLASS_EXT(smptebars, "smpte(hd)bars", options);
 
-#define smptebars_options options
-AVFILTER_DEFINE_CLASS(smptebars);
+#if CONFIG_SMPTEBARS_FILTER
 
 static void smptebars_fill_picture(AVFilterContext *ctx, AVFrame *picref)
 {
@@ -1590,25 +1552,22 @@ static av_cold int smptebars_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-AVFilter ff_vsrc_smptebars = {
+const AVFilter ff_vsrc_smptebars = {
     .name          = "smptebars",
     .description   = NULL_IF_CONFIG_SMALL("Generate SMPTE color bars."),
     .priv_size     = sizeof(TestSourceContext),
     .priv_class    = &smptebars_class,
     .init          = smptebars_init,
     .uninit        = uninit,
-    .query_formats = smptebars_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = smptebars_outputs,
+    FILTER_OUTPUTS(smptebars_outputs),
+    FILTER_PIXFMTS_ARRAY(smptebars_pix_fmts),
 };
 
 #endif  /* CONFIG_SMPTEBARS_FILTER */
 
 #if CONFIG_SMPTEHDBARS_FILTER
-
-#define smptehdbars_options options
-AVFILTER_DEFINE_CLASS(smptehdbars);
 
 static void smptehdbars_fill_picture(AVFilterContext *ctx, AVFrame *picref)
 {
@@ -1696,26 +1655,26 @@ static av_cold int smptehdbars_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-AVFilter ff_vsrc_smptehdbars = {
+const AVFilter ff_vsrc_smptehdbars = {
     .name          = "smptehdbars",
     .description   = NULL_IF_CONFIG_SMALL("Generate SMPTE HD color bars."),
+    .priv_class    = &smptebars_class,
     .priv_size     = sizeof(TestSourceContext),
-    .priv_class    = &smptehdbars_class,
     .init          = smptehdbars_init,
     .uninit        = uninit,
-    .query_formats = smptebars_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = smptebars_outputs,
+    FILTER_OUTPUTS(smptebars_outputs),
+    FILTER_PIXFMTS_ARRAY(smptebars_pix_fmts),
 };
 
 #endif  /* CONFIG_SMPTEHDBARS_FILTER */
 #endif  /* CONFIG_SMPTEBARS_FILTER || CONFIG_SMPTEHDBARS_FILTER */
 
-#if CONFIG_ALLYUV_FILTER
+AVFILTER_DEFINE_CLASS_EXT(allyuv_allrgb, "allyuv/allrgb",
+                          &options[NOSIZE_OPTIONS_OFFSET]);
 
-#define allyuv_options &options[NOSIZE_OPTIONS_OFFSET]
-AVFILTER_DEFINE_CLASS(allyuv);
+#if CONFIG_ALLYUV_FILTER
 
 static void allyuv_fill_picture(AVFilterContext *ctx, AVFrame *frame)
 {
@@ -1752,47 +1711,30 @@ static av_cold int allyuv_init(AVFilterContext *ctx)
     return init(ctx);
 }
 
-static int allyuv_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P, AV_PIX_FMT_GBRP,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
 static const AVFilterPad avfilter_vsrc_allyuv_outputs[] = {
     {
         .name          = "default",
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_allyuv = {
+const AVFilter ff_vsrc_allyuv = {
     .name          = "allyuv",
     .description   = NULL_IF_CONFIG_SMALL("Generate all yuv colors."),
     .priv_size     = sizeof(TestSourceContext),
-    .priv_class    = &allyuv_class,
+    .priv_class    = &allyuv_allrgb_class,
     .init          = allyuv_init,
     .uninit        = uninit,
-    .query_formats = allyuv_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = avfilter_vsrc_allyuv_outputs,
+    FILTER_OUTPUTS(avfilter_vsrc_allyuv_outputs),
+    FILTER_PIXFMTS(AV_PIX_FMT_YUV444P, AV_PIX_FMT_GBRP),
 };
 
 #endif /* CONFIG_ALLYUV_FILTER */
 
 #if CONFIG_ALLRGB_FILTER
-
-#define allrgb_options &options[NOSIZE_OPTIONS_OFFSET]
-AVFILTER_DEFINE_CLASS(allrgb);
 
 static void allrgb_fill_picture(AVFilterContext *ctx, AVFrame *frame)
 {
@@ -1830,38 +1772,114 @@ static int allrgb_config_props(AVFilterLink *outlink)
     return config_props(outlink);
 }
 
-static int allrgb_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
 static const AVFilterPad avfilter_vsrc_allrgb_outputs[] = {
     {
         .name          = "default",
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = allrgb_config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vsrc_allrgb = {
+const AVFilter ff_vsrc_allrgb = {
     .name          = "allrgb",
     .description   = NULL_IF_CONFIG_SMALL("Generate all RGB colors."),
     .priv_size     = sizeof(TestSourceContext),
-    .priv_class    = &allrgb_class,
+    .priv_class    = &allyuv_allrgb_class,
     .init          = allrgb_init,
     .uninit        = uninit,
-    .query_formats = allrgb_query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = avfilter_vsrc_allrgb_outputs,
+    FILTER_OUTPUTS(avfilter_vsrc_allrgb_outputs),
+    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_RGB24),
 };
 
 #endif /* CONFIG_ALLRGB_FILTER */
+
+#if CONFIG_COLORSPECTRUM_FILTER
+
+static const AVOption colorspectrum_options[] = {
+    COMMON_OPTIONS
+    { "type", "set the color spectrum type", OFFSET(type), AV_OPT_TYPE_INT, {.i64=0}, 0, 2, FLAGS, "type" },
+    { "black","fade to black",               0,            AV_OPT_TYPE_CONST,{.i64=0},0, 0, FLAGS, "type" },
+    { "white","fade to white",               0,            AV_OPT_TYPE_CONST,{.i64=1},0, 0, FLAGS, "type" },
+    { "all",  "white to black",              0,            AV_OPT_TYPE_CONST,{.i64=2},0, 0, FLAGS, "type" },
+    { NULL }
+};
+
+AVFILTER_DEFINE_CLASS(colorspectrum);
+
+static inline float mix(float a, float b, float mix)
+{
+    return a * mix + b * (1.f - mix);
+}
+
+static void hsb2rgb(const float *c, float *rgb)
+{
+    rgb[0] = av_clipf(fabsf(fmodf(c[0] * 6.f + 0.f, 6.f) - 3.f) - 1.f, 0.f, 1.f);
+    rgb[1] = av_clipf(fabsf(fmodf(c[0] * 6.f + 4.f, 6.f) - 3.f) - 1.f, 0.f, 1.f);
+    rgb[2] = av_clipf(fabsf(fmodf(c[0] * 6.f + 2.f, 6.f) - 3.f) - 1.f, 0.f, 1.f);
+    rgb[0] = mix(c[3], (rgb[0] * rgb[0] * (3.f - 2.f * rgb[0])), c[1]) * c[2];
+    rgb[1] = mix(c[3], (rgb[1] * rgb[1] * (3.f - 2.f * rgb[1])), c[1]) * c[2];
+    rgb[2] = mix(c[3], (rgb[2] * rgb[2] * (3.f - 2.f * rgb[2])), c[1]) * c[2];
+}
+
+static void colorspectrum_fill_picture(AVFilterContext *ctx, AVFrame *frame)
+{
+    TestSourceContext *test = ctx->priv;
+    const float w = frame->width - 1.f;
+    const float h = frame->height - 1.f;
+    float c[4];
+
+    for (int y = 0; y < frame->height; y++) {
+        float *r = (float *)(frame->data[2] + y * frame->linesize[2]);
+        float *g = (float *)(frame->data[0] + y * frame->linesize[0]);
+        float *b = (float *)(frame->data[1] + y * frame->linesize[1]);
+        const float yh = y / h;
+
+        c[1] = test->type == 2 ? yh > 0.5f ? 2.f * (yh - 0.5f) : 1.f - 2.f * yh : test->type == 1 ? 1.f - yh : yh;
+        c[2] = 1.f;
+        c[3] = test->type == 1 ? 1.f : test->type == 2 ? (yh > 0.5f ? 0.f : 1.f): 0.f;
+        for (int x = 0; x < frame->width; x++) {
+            float rgb[3];
+
+            c[0] = x / w;
+            hsb2rgb(c, rgb);
+
+            r[x] = rgb[0];
+            g[x] = rgb[1];
+            b[x] = rgb[2];
+        }
+    }
+}
+
+static av_cold int colorspectrum_init(AVFilterContext *ctx)
+{
+    TestSourceContext *test = ctx->priv;
+
+    test->draw_once = 1;
+    test->fill_picture_fn = colorspectrum_fill_picture;
+    return init(ctx);
+}
+
+static const AVFilterPad avfilter_vsrc_colorspectrum_outputs[] = {
+    {
+        .name          = "default",
+        .type          = AVMEDIA_TYPE_VIDEO,
+        .config_props  = config_props,
+    },
+};
+
+const AVFilter ff_vsrc_colorspectrum = {
+    .name          = "colorspectrum",
+    .description   = NULL_IF_CONFIG_SMALL("Generate colors spectrum."),
+    .priv_size     = sizeof(TestSourceContext),
+    .priv_class    = &colorspectrum_class,
+    .init          = colorspectrum_init,
+    .uninit        = uninit,
+    .activate      = activate,
+    .inputs        = NULL,
+    FILTER_OUTPUTS(avfilter_vsrc_colorspectrum_outputs),
+    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_GBRPF32),
+};
+
+#endif /* CONFIG_COLORSPECTRUM_FILTER */

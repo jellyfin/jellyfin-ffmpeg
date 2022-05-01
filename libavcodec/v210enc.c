@@ -23,6 +23,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "encode.h"
 #include "internal.h"
 #include "v210enc.h"
 
@@ -101,12 +102,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     ff_v210enc_init(s);
 
     avctx->bits_per_coded_sample = 20;
@@ -124,7 +119,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int ret;
     uint8_t *dst;
 
-    ret = ff_alloc_packet2(avctx, pkt, avctx->height * stride, avctx->height * stride);
+    ret = ff_get_encode_buffer(avctx, pkt, avctx->height * stride, 0);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Error getting output packet.\n");
         return ret;
@@ -152,18 +147,19 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         memcpy(buf, side_data->data, side_data->size);
     }
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
     return 0;
 }
 
-AVCodec ff_v210_encoder = {
+const AVCodec ff_v210_encoder = {
     .name           = "v210",
     .long_name      = NULL_IF_CONFIG_SMALL("Uncompressed 4:2:2 10-bit"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_V210,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .priv_data_size = sizeof(V210EncContext),
     .init           = encode_init,
     .encode2        = encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV422P, AV_PIX_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

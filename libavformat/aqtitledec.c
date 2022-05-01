@@ -82,11 +82,11 @@ static int aqt_read_header(AVFormatContext *s)
             if (!new_event) {
                 sub = ff_subtitles_queue_insert(&aqt->q, "\n", 1, 1);
                 if (!sub)
-                    goto fail;
+                    return AVERROR(ENOMEM);
             }
             sub = ff_subtitles_queue_insert(&aqt->q, line, strlen(line), !new_event);
             if (!sub)
-                goto fail;
+                return AVERROR(ENOMEM);
             if (new_event) {
                 sub->pts = frame;
                 sub->duration = -1;
@@ -98,9 +98,6 @@ static int aqt_read_header(AVFormatContext *s)
 
     ff_subtitles_queue_finalize(s, &aqt->q);
     return 0;
-fail:
-    ff_subtitles_queue_clean(&aqt->q);
-    return AVERROR(ENOMEM);
 }
 
 static int aqt_read_packet(AVFormatContext *s, AVPacket *pkt)
@@ -138,10 +135,11 @@ static const AVClass aqt_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVInputFormat ff_aqtitle_demuxer = {
+const AVInputFormat ff_aqtitle_demuxer = {
     .name           = "aqtitle",
     .long_name      = NULL_IF_CONFIG_SMALL("AQTitle subtitles"),
     .priv_data_size = sizeof(AQTitleContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = aqt_probe,
     .read_header    = aqt_read_header,
     .read_packet    = aqt_read_packet,

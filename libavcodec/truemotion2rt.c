@@ -25,7 +25,6 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
-#include "libavutil/mem.h"
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
@@ -220,7 +219,7 @@ static av_cold int truemotion2rt_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_truemotion2rt_decoder = {
+const AVCodec ff_truemotion2rt_decoder = {
     .name           = "truemotion2rt",
     .long_name      = NULL_IF_CONFIG_SMALL("Duck TrueMotion 2.0 Real Time"),
     .type           = AVMEDIA_TYPE_VIDEO,

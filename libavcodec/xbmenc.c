@@ -21,6 +21,7 @@
  */
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "mathops.h"
 
@@ -43,7 +44,7 @@ static int xbm_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     size     = rowsout * (lineout * 6 + 1) + 106;
-    if ((ret = ff_alloc_packet2(avctx, pkt, size, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, size)) < 0)
         return ret;
 
     buf = pkt->data;
@@ -70,12 +71,11 @@ static int xbm_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     buf += snprintf(buf, 5, " };\n");
 
     pkt->size   = buf - pkt->data;
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
     return 0;
 }
 
-AVCodec ff_xbm_encoder = {
+const AVCodec ff_xbm_encoder = {
     .name         = "xbm",
     .long_name    = NULL_IF_CONFIG_SMALL("XBM (X BitMap) image"),
     .type         = AVMEDIA_TYPE_VIDEO,

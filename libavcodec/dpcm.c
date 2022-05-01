@@ -410,7 +410,7 @@ static int dpcm_decode_frame(AVCodecContext *avctx, void *data,
 }
 
 #define DPCM_DECODER(id_, name_, long_name_)                \
-AVCodec ff_ ## name_ ## _decoder = {                        \
+const AVCodec ff_ ## name_ ## _decoder = {                        \
     .name           = #name_,                               \
     .long_name      = NULL_IF_CONFIG_SMALL(long_name_),     \
     .type           = AVMEDIA_TYPE_AUDIO,                   \
@@ -419,6 +419,7 @@ AVCodec ff_ ## name_ ## _decoder = {                        \
     .init           = dpcm_decode_init,                     \
     .decode         = dpcm_decode_frame,                    \
     .capabilities   = AV_CODEC_CAP_DR1,                     \
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,         \
 }
 
 DPCM_DECODER(AV_CODEC_ID_DERF_DPCM,      derf_dpcm,      "DPCM Xilam DERF");

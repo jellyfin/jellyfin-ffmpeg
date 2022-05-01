@@ -503,7 +503,7 @@ static int init_video_stream(AVFormatContext *s, VideoProperties *video)
     st->codecpar->codec_id    = video->codec;
     // parsing is necessary to make FFmpeg generate correct timestamps
     if (st->codecpar->codec_id == AV_CODEC_ID_MPEG2VIDEO)
-        st->need_parsing = AVSTREAM_PARSE_HEADERS;
+        ffstream(st)->need_parsing = AVSTREAM_PARSE_HEADERS;
     st->codecpar->codec_tag   = 0; /* no fourcc */
     st->codecpar->width       = video->width;
     st->codecpar->height      = video->height;
@@ -752,7 +752,7 @@ get_video_packet:
     return ret;
 }
 
-AVInputFormat ff_ea_demuxer = {
+const AVInputFormat ff_ea_demuxer = {
     .name           = "ea",
     .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts Multimedia"),
     .priv_data_size = sizeof(EaDemuxContext),

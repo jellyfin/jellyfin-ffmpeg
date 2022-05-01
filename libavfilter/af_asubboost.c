@@ -44,35 +44,6 @@ typedef struct ASubBoostContext {
     AVFrame *buffer;
 } ASubBoostContext;
 
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts = NULL;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_DBLP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    return ff_set_common_samplerates(ctx, formats);
-}
-
 static int get_coeffs(AVFilterContext *ctx)
 {
     ASubBoostContext *s = ctx->priv;
@@ -181,8 +152,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     }
 
     td.in = in; td.out = out;
-    ctx->internal->execute(ctx, filter_channels, &td, NULL, FFMIN(inlink->channels,
-                                                            ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, filter_channels, &td, NULL,
+                      FFMIN(inlink->channels, ff_filter_get_nb_threads(ctx)));
 
     if (out != in)
         av_frame_free(&in);
@@ -233,7 +204,6 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -241,18 +211,17 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_asubboost = {
+const AVFilter ff_af_asubboost = {
     .name           = "asubboost",
     .description    = NULL_IF_CONFIG_SMALL("Boost subwoofer frequencies."),
-    .query_formats  = query_formats,
     .priv_size      = sizeof(ASubBoostContext),
     .priv_class     = &asubboost_class,
     .uninit         = uninit,
-    .inputs         = inputs,
-    .outputs        = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                        AVFILTER_FLAG_SLICE_THREADS,

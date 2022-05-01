@@ -18,7 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
@@ -126,6 +125,7 @@ static int activate(AVFilterContext *ctx)
 
     if (!s->eof && ff_inlink_acknowledge_status(inlink, &status, &pts)) {
         if (status == AVERROR_EOF) {
+            pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
             if (!s->pad_stop) {
                 ff_outlink_set_status(outlink, status, pts);
                 return 0;
@@ -194,7 +194,6 @@ static const AVFilterPad tpad_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad tpad_outputs[] = {
@@ -202,17 +201,16 @@ static const AVFilterPad tpad_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_tpad = {
+const AVFilter ff_vf_tpad = {
     .name          = "tpad",
     .description   = NULL_IF_CONFIG_SMALL("Temporarily pad video frames."),
     .priv_size     = sizeof(TPadContext),
     .priv_class    = &tpad_class,
-    .query_formats = query_formats,
     .activate      = activate,
     .uninit        = uninit,
-    .inputs        = tpad_inputs,
-    .outputs       = tpad_outputs,
+    FILTER_INPUTS(tpad_inputs),
+    FILTER_OUTPUTS(tpad_outputs),
+    FILTER_QUERY_FUNC(query_formats),
 };

@@ -20,7 +20,6 @@
  */
 
 #include "avformat.h"
-#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
 #include "network.h"
@@ -36,7 +35,7 @@
 struct SAPState {
     URLContext *ann_fd;
     AVFormatContext *sdp_ctx;
-    AVIOContext sdp_pb;
+    FFIOContext sdp_pb;
     uint16_t hash;
     char *sdp;
     int eof;
@@ -65,9 +64,9 @@ static int sap_read_header(AVFormatContext *s)
     struct SAPState *sap = s->priv_data;
     char host[1024], path[1024], url[1024];
     uint8_t recvbuf[RTP_MAX_PACKET_LENGTH];
+    const AVInputFormat *infmt;
     int port;
     int ret, i;
-    ff_const59 AVInputFormat* infmt;
 
     if (!ff_network_init())
         return AVERROR(EIO);
@@ -161,7 +160,7 @@ static int sap_read_header(AVFormatContext *s)
         goto fail;
     }
     sap->sdp_ctx->max_delay = s->max_delay;
-    sap->sdp_ctx->pb        = &sap->sdp_pb;
+    sap->sdp_ctx->pb        = &sap->sdp_pb.pub;
     sap->sdp_ctx->interrupt_callback = s->interrupt_callback;
 
     if ((ret = ff_copy_whiteblacklists(sap->sdp_ctx, s)) < 0)
@@ -234,7 +233,7 @@ static int sap_fetch_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-AVInputFormat ff_sap_demuxer = {
+const AVInputFormat ff_sap_demuxer = {
     .name           = "sap",
     .long_name      = NULL_IF_CONFIG_SMALL("SAP input"),
     .priv_data_size = sizeof(struct SAPState),

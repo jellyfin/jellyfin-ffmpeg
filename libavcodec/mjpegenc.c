@@ -65,6 +65,7 @@ static av_cold void init_uni_ac_vlc(const uint8_t huff_size_ac[256],
     }
 }
 
+#if CONFIG_MJPEG_ENCODER
 /**
  * Encodes and outputs the entire frame in the JPEG format.
  *
@@ -171,6 +172,7 @@ static void mjpeg_build_optimal_huffman(MJpegContext *m)
                                  m->bits_ac_chrominance,
                                  m->val_ac_chrominance);
 }
+#endif
 
 /**
  * Writes the complete JPEG frame when optimal huffman tables are enabled,
@@ -186,11 +188,11 @@ int ff_mjpeg_encode_stuffing(MpegEncContext *s)
     PutBitContext *pbc = &s->pb;
     int mb_y = s->mb_y - !s->mb_x;
     int ret;
-    MJpegContext *m;
 
-    m = s->mjpeg_ctx;
-
+#if CONFIG_MJPEG_ENCODER
     if (s->huffman == HUFFMAN_TABLE_OPTIMAL) {
+        MJpegContext *m = s->mjpeg_ctx;
+
         mjpeg_build_optimal_huffman(m);
 
         // Replace the VLCs with the optimal ones.
@@ -206,6 +208,7 @@ int ff_mjpeg_encode_stuffing(MpegEncContext *s)
                                        s->pred, s->intra_matrix, s->chroma_intra_matrix);
         mjpeg_encode_picture_frame(s);
     }
+#endif
 
     ret = ff_mpv_reallocate_putbitbuffer(s, put_bits_count(&s->pb) / 8 + 100,
                                             put_bits_count(&s->pb) / 4 + 1000);
@@ -218,7 +221,7 @@ int ff_mjpeg_encode_stuffing(MpegEncContext *s)
 
     if ((s->avctx->active_thread_type & FF_THREAD_SLICE) && mb_y < s->mb_height - 1)
         put_marker(pbc, RST0 + (mb_y&7));
-    s->esc_pos = put_bits_count(pbc) >> 3;
+    s->esc_pos = put_bytes_count(pbc, 0);
 
 fail:
     for (int i = 0; i < 3; i++)
@@ -258,8 +261,15 @@ static int alloc_huffman(MpegEncContext *s)
 av_cold int ff_mjpeg_encode_init(MpegEncContext *s)
 {
     MJpegContext *m;
+    int ret;
 
     av_assert0(s->slice_context_count == 1);
+
+    /* The following check is automatically true for AMV,
+     * but it doesn't hurt either. */
+    ret = ff_mjpeg_encode_check_pix_fmt(s->avctx);
+    if (ret < 0)
+        return ret;
 
     if (s->width > 65500 || s->height > 65500) {
         av_log(s, AV_LOG_ERROR, "JPEG does not support resolutions above 65500x65500\n");
@@ -278,20 +288,20 @@ av_cold int ff_mjpeg_encode_init(MpegEncContext *s)
     // they are needed at least right now for some processes like trellis.
     ff_mjpeg_build_huffman_codes(m->huff_size_dc_luminance,
                                  m->huff_code_dc_luminance,
-                                 avpriv_mjpeg_bits_dc_luminance,
-                                 avpriv_mjpeg_val_dc);
+                                 ff_mjpeg_bits_dc_luminance,
+                                 ff_mjpeg_val_dc);
     ff_mjpeg_build_huffman_codes(m->huff_size_dc_chrominance,
                                  m->huff_code_dc_chrominance,
-                                 avpriv_mjpeg_bits_dc_chrominance,
-                                 avpriv_mjpeg_val_dc);
+                                 ff_mjpeg_bits_dc_chrominance,
+                                 ff_mjpeg_val_dc);
     ff_mjpeg_build_huffman_codes(m->huff_size_ac_luminance,
                                  m->huff_code_ac_luminance,
-                                 avpriv_mjpeg_bits_ac_luminance,
-                                 avpriv_mjpeg_val_ac_luminance);
+                                 ff_mjpeg_bits_ac_luminance,
+                                 ff_mjpeg_val_ac_luminance);
     ff_mjpeg_build_huffman_codes(m->huff_size_ac_chrominance,
                                  m->huff_code_ac_chrominance,
-                                 avpriv_mjpeg_bits_ac_chrominance,
-                                 avpriv_mjpeg_val_ac_chrominance);
+                                 ff_mjpeg_bits_ac_chrominance,
+                                 ff_mjpeg_val_ac_chrominance);
 
     init_uni_ac_vlc(m->huff_size_ac_luminance,   m->uni_ac_vlc_len);
     init_uni_ac_vlc(m->huff_size_ac_chrominance, m->uni_chroma_ac_vlc_len);
@@ -583,6 +593,12 @@ FF_MPV_COMMON_OPTS
 { "huffman", "Huffman table strategy", OFFSET(huffman), AV_OPT_TYPE_INT, { .i64 = HUFFMAN_TABLE_OPTIMAL }, 0, NB_HUFFMAN_TABLE_OPTION - 1, VE, "huffman" },
     { "default", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = HUFFMAN_TABLE_DEFAULT }, INT_MIN, INT_MAX, VE, "huffman" },
     { "optimal", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = HUFFMAN_TABLE_OPTIMAL }, INT_MIN, INT_MAX, VE, "huffman" },
+{ "force_duplicated_matrix", "Always write luma and chroma matrix for mjpeg, useful for rtp streaming.", OFFSET(force_duplicated_matrix), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, VE },
+#if FF_API_MPEGVIDEO_OPTS
+FF_MPV_DEPRECATED_MPEG_QUANT_OPT
+FF_MPV_DEPRECATED_A53_CC_OPT
+FF_MPV_DEPRECATED_BFRAME_OPTS
+#endif
 { NULL},
 };
 
@@ -594,7 +610,7 @@ static const AVClass mjpeg_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_mjpeg_encoder = {
+const AVCodec ff_mjpeg_encoder = {
     .name           = "mjpeg",
     .long_name      = NULL_IF_CONFIG_SMALL("MJPEG (Motion JPEG)"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -606,7 +622,9 @@ AVCodec ff_mjpeg_encoder = {
     .capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .pix_fmts       = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_NONE
+        AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ444P,
+        AV_PIX_FMT_YUV420P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV444P,
+        AV_PIX_FMT_NONE
     },
     .priv_class     = &mjpeg_class,
     .profiles       = NULL_IF_CONFIG_SMALL(ff_mjpeg_profiles),
@@ -621,7 +639,7 @@ static const AVClass amv_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_amv_encoder = {
+const AVCodec ff_amv_encoder = {
     .name           = "amv",
     .long_name      = NULL_IF_CONFIG_SMALL("AMV Video"),
     .type           = AVMEDIA_TYPE_VIDEO,

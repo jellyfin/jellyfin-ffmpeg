@@ -22,7 +22,6 @@
 #include <stdarg.h>
 #include "avcodec.h"
 #include "libavutil/opt.h"
-#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem.h"
@@ -85,7 +84,6 @@ typedef struct {
     uint8_t box_flags;
     StyleBox d;
     uint16_t text_pos;
-    unsigned byte_count;
     char **fonts;
     int font_count;
     double font_scale_factor;
@@ -496,8 +494,10 @@ static void mov_text_alpha_cb(void *priv, int alpha, int alpha_id)
 
 static uint16_t find_font_id(MovTextContext *s, const char *name)
 {
-    int i;
-    for (i = 0; i < s->font_count; i++) {
+    if (!name)
+        return 1;
+
+    for (int i = 0; i < s->font_count; i++) {
         if (!strcmp(name, s->fonts[i]))
             return i + 1;
     }
@@ -612,15 +612,13 @@ static void mov_text_text_cb(void *priv, const char *text, int len)
     av_bprint_append_data(&s->buffer, text, len);
     // If it's not utf-8, just use the byte length
     s->text_pos += utf8_len ? utf8_len : len;
-    s->byte_count += len;
 }
 
 static void mov_text_new_line_cb(void *priv, int forced)
 {
     MovTextContext *s = priv;
-    av_bprint_append_data(&s->buffer, "\n", 1);
     s->text_pos += 1;
-    s->byte_count += 1;
+    av_bprint_chars(&s->buffer, '\n', 1);
 }
 
 static const ASSCodesCallbacks mov_text_callbacks = {
@@ -641,12 +639,11 @@ static int mov_text_encode_frame(AVCodecContext *avctx, unsigned char *buf,
     MovTextContext *s = avctx->priv_data;
     ASSDialog *dialog;
     int i, length;
-    size_t j;
 
-    s->byte_count = 0;
     s->text_pos = 0;
     s->count = 0;
     s->box_flags = 0;
+    av_bprint_clear(&s->buffer);
     for (i = 0; i < sub->num_rects; i++) {
         const char *ass = sub->rects[i]->ass;
 
@@ -655,55 +652,36 @@ static int mov_text_encode_frame(AVCodecContext *avctx, unsigned char *buf,
             return AVERROR(EINVAL);
         }
 
-#if FF_API_ASS_TIMING
-        if (!strncmp(ass, "Dialogue: ", 10)) {
-            int num;
-            dialog = ff_ass_split_dialog(s->ass_ctx, ass, 0, &num);
-            for (; dialog && num--; dialog++) {
-                mov_text_dialog(s, dialog);
-                ff_ass_split_override_codes(&mov_text_callbacks, s, dialog->text);
-            }
-        } else {
-#endif
-            dialog = ff_ass_split_dialog2(s->ass_ctx, ass);
-            if (!dialog)
-                return AVERROR(ENOMEM);
-            mov_text_dialog(s, dialog);
-            ff_ass_split_override_codes(&mov_text_callbacks, s, dialog->text);
-            ff_ass_free_dialog(&dialog);
-#if FF_API_ASS_TIMING
-        }
-#endif
-
-        for (j = 0; j < box_count; j++) {
-            box_types[j].encode(s);
-        }
+        dialog = ff_ass_split_dialog(s->ass_ctx, ass);
+        if (!dialog)
+            return AVERROR(ENOMEM);
+        mov_text_dialog(s, dialog);
+        ff_ass_split_override_codes(&mov_text_callbacks, s, dialog->text);
+        ff_ass_free_dialog(&dialog);
     }
 
-    AV_WB16(buf, s->byte_count);
+    if (s->buffer.len > UINT16_MAX)
+        return AVERROR(ERANGE);
+    AV_WB16(buf, s->buffer.len);
     buf += 2;
 
-    if (!av_bprint_is_complete(&s->buffer)) {
-        length = AVERROR(ENOMEM);
-        goto exit;
-    }
+    for (size_t j = 0; j < box_count; j++)
+        box_types[j].encode(s);
 
-    if (!s->buffer.len) {
-        length = 0;
-        goto exit;
-    }
+    if (!av_bprint_is_complete(&s->buffer))
+        return AVERROR(ENOMEM);
+
+    if (!s->buffer.len)
+        return 0;
 
     if (s->buffer.len > bufsize - 3) {
         av_log(avctx, AV_LOG_ERROR, "Buffer too small for ASS event.\n");
-        length = AVERROR_BUFFER_TOO_SMALL;
-        goto exit;
+        return AVERROR_BUFFER_TOO_SMALL;
     }
 
     memcpy(buf, s->buffer.str, s->buffer.len);
     length = s->buffer.len + 2;
 
-exit:
-    av_bprint_clear(&s->buffer);
     return length;
 }
 
@@ -721,7 +699,7 @@ static const AVClass mov_text_encoder_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_movtext_encoder = {
+const AVCodec ff_movtext_encoder = {
     .name           = "mov_text",
     .long_name      = NULL_IF_CONFIG_SMALL("3GPP Timed Text subtitle"),
     .type           = AVMEDIA_TYPE_SUBTITLE,
@@ -731,5 +709,5 @@ AVCodec ff_movtext_encoder = {
     .init           = mov_text_encode_init,
     .encode_sub     = mov_text_encode_frame,
     .close          = mov_text_encode_close,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -132,7 +132,7 @@ typedef struct MP3Context {
     int pics_to_write;
 
     /* audio packets are queued here until we get all the attached pictures */
-    PacketList *queue, *queue_end;
+    PacketList queue;
 } MP3Context;
 
 static const uint8_t xing_offtbl[2][2] = {{32, 17}, {17, 9}};
@@ -159,8 +159,8 @@ static int mp3_write_xing(AVFormatContext *s)
     if (!(s->pb->seekable & AVIO_SEEKABLE_NORMAL) || !mp3->write_xing)
         return 0;
 
-    for (i = 0; i < FF_ARRAY_ELEMS(avpriv_mpa_freq_tab); i++) {
-        const uint16_t base_freq = avpriv_mpa_freq_tab[i];
+    for (i = 0; i < FF_ARRAY_ELEMS(ff_mpa_freq_tab); i++) {
+        const uint16_t base_freq = ff_mpa_freq_tab[i];
 
         if      (par->sample_rate == base_freq)     ver = 0x3; // MPEG 1
         else if (par->sample_rate == base_freq / 2) ver = 0x2; // MPEG 2
@@ -170,7 +170,7 @@ static int mp3_write_xing(AVFormatContext *s)
         srate_idx = i;
         break;
     }
-    if (i == FF_ARRAY_ELEMS(avpriv_mpa_freq_tab)) {
+    if (i == FF_ARRAY_ELEMS(ff_mpa_freq_tab)) {
         av_log(s, AV_LOG_WARNING, "Unsupported sample rate, not writing Xing header.\n");
         return -1;
     }
@@ -190,7 +190,7 @@ static int mp3_write_xing(AVFormatContext *s)
     header |= channels << 6;
 
     for (bitrate_idx = 1; bitrate_idx < 15; bitrate_idx++) {
-        int bit_rate = 1000 * avpriv_mpa_bitrate_tab[ver != 3][3 - 1][bitrate_idx];
+        int bit_rate = 1000 * ff_mpa_bitrate_tab[ver != 3][3 - 1][bitrate_idx];
         int error    = FFABS(bit_rate - par->bit_rate);
 
         if (error < best_bitrate_error) {
@@ -355,7 +355,7 @@ static int mp3_write_audio_packet(AVFormatContext *s, AVPacket *pkt)
 
         if (mp3->xing_offset) {
             uint8_t *side_data = NULL;
-            buffer_size_t side_data_size;
+            size_t side_data_size;
 
             mp3_xing_add_frame(mp3, pkt);
             mp3->audio_size += pkt->size;
@@ -381,17 +381,17 @@ static int mp3_write_audio_packet(AVFormatContext *s, AVPacket *pkt)
 static int mp3_queue_flush(AVFormatContext *s)
 {
     MP3Context *mp3 = s->priv_data;
-    AVPacket pkt;
+    AVPacket *const pkt = ffformatcontext(s)->pkt;
     int ret = 0, write = 1;
 
     ff_id3v2_finish(&mp3->id3, s->pb, s->metadata_header_padding);
     mp3_write_xing(s);
 
-    while (mp3->queue) {
-        avpriv_packet_list_get(&mp3->queue, &mp3->queue_end, &pkt);
-        if (write && (ret = mp3_write_audio_packet(s, &pkt)) < 0)
+    while (mp3->queue.head) {
+        avpriv_packet_list_get(&mp3->queue, pkt);
+        if (write && (ret = mp3_write_audio_packet(s, pkt)) < 0)
             write = 0;
-        av_packet_unref(&pkt);
+        av_packet_unref(pkt);
     }
     return ret;
 }
@@ -402,7 +402,7 @@ static void mp3_update_xing(AVFormatContext *s)
     AVReplayGain *rg;
     uint16_t tag_crc;
     uint8_t *toc;
-    buffer_size_t rg_size;
+    size_t rg_size;
     int i;
     int64_t old_pos = avio_tell(s->pb);
 
@@ -524,7 +524,7 @@ static int mp3_write_packet(AVFormatContext *s, AVPacket *pkt)
     if (pkt->stream_index == mp3->audio_stream_idx) {
         if (mp3->pics_to_write) {
             /* buffer audio packets until we get all the pictures */
-            int ret = avpriv_packet_list_put(&mp3->queue, &mp3->queue_end, pkt, av_packet_ref, 0);
+            int ret = avpriv_packet_list_put(&mp3->queue, pkt, NULL, 0);
 
             if (ret < 0) {
                 av_log(s, AV_LOG_WARNING, "Not enough memory to buffer audio. Skipping picture streams\n");
@@ -632,11 +632,11 @@ static void mp3_deinit(struct AVFormatContext *s)
 {
     MP3Context *mp3 = s->priv_data;
 
-    avpriv_packet_list_free(&mp3->queue, &mp3->queue_end);
+    avpriv_packet_list_free(&mp3->queue);
     av_freep(&mp3->xing_frame);
 }
 
-AVOutputFormat ff_mp3_muxer = {
+const AVOutputFormat ff_mp3_muxer = {
     .name              = "mp3",
     .long_name         = NULL_IF_CONFIG_SMALL("MP3 (MPEG audio layer 3)"),
     .mime_type         = "audio/mpeg",

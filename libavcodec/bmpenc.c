@@ -20,11 +20,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
+
 #include "libavutil/imgutils.h"
 #include "libavutil/avassert.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "bmp.h"
+#include "encode.h"
 #include "internal.h"
 
 static const uint32_t monoblack_pal[] = { 0x000000, 0xFFFFFF };
@@ -55,9 +58,6 @@ static av_cold int bmp_encode_init(AVCodecContext *avctx){
     case AV_PIX_FMT_MONOBLACK:
         avctx->bits_per_coded_sample = 1;
         break;
-    default:
-        av_log(avctx, AV_LOG_INFO, "unsupported pixel format\n");
-        return AVERROR(EINVAL);
     }
 
     return 0;
@@ -74,12 +74,6 @@ static int bmp_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int bit_count = avctx->bits_per_coded_sample;
     uint8_t *ptr, *buf;
 
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     switch (avctx->pix_fmt) {
     case AV_PIX_FMT_RGB444:
         compression = BMP_BITFIELDS;
@@ -118,7 +112,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 #define SIZE_BITMAPINFOHEADER 40
     hsize = SIZE_BITMAPFILEHEADER + SIZE_BITMAPINFOHEADER + (pal_entries << 2);
     n_bytes = n_bytes_image + hsize;
-    if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, pkt, n_bytes, 0)) < 0)
         return ret;
     buf = pkt->data;
     bytestream_put_byte(&buf, 'B');                   // BITMAPFILEHEADER.bfType
@@ -144,11 +138,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
     ptr = p->data[0] + (avctx->height - 1) * p->linesize[0];
     buf = pkt->data + hsize;
     for(i = 0; i < avctx->height; i++) {
-        if (bit_count == 16) {
+        if (HAVE_BIGENDIAN && bit_count == 16) {
             const uint16_t *src = (const uint16_t *) ptr;
-            uint16_t *dst = (uint16_t *) buf;
             for(n = 0; n < avctx->width; n++)
-                AV_WL16(dst + n, src[n]);
+                AV_WL16(buf + 2 * n, src[n]);
         } else {
             memcpy(buf, ptr, n_bytes_per_row);
         }
@@ -158,16 +151,16 @@ FF_ENABLE_DEPRECATION_WARNINGS
         ptr -= p->linesize[0]; // ... and go back
     }
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
     return 0;
 }
 
-AVCodec ff_bmp_encoder = {
+const AVCodec ff_bmp_encoder = {
     .name           = "bmp",
     .long_name      = NULL_IF_CONFIG_SMALL("BMP (Windows and OS/2 bitmap)"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_BMP,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .init           = bmp_encode_init,
     .encode2        = bmp_encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]){
@@ -177,4 +170,5 @@ AVCodec ff_bmp_encoder = {
         AV_PIX_FMT_MONOBLACK,
         AV_PIX_FMT_NONE
     },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

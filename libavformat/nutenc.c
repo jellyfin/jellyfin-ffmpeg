@@ -70,11 +70,11 @@ static int find_expected_header(AVCodecParameters *p, int size, int key_frame,
         else if (sample_rate < (44100 + 48000) / 2) sample_rate_index = 0;
         else                                        sample_rate_index = 1;
 
-        sample_rate = avpriv_mpa_freq_tab[sample_rate_index] >> (lsf + mpeg25);
+        sample_rate = ff_mpa_freq_tab[sample_rate_index] >> (lsf + mpeg25);
 
         for (bitrate_index = 2; bitrate_index < 30; bitrate_index++) {
             frame_size =
-                avpriv_mpa_bitrate_tab[lsf][layer - 1][bitrate_index >> 1];
+                ff_mpa_bitrate_tab[lsf][layer - 1][bitrate_index >> 1];
             frame_size = (frame_size * 144000) / (sample_rate << lsf) +
                 (bitrate_index & 1);
 
@@ -1006,6 +1006,7 @@ static int nut_write_packet(AVFormatContext *s, AVPacket *pkt)
         ff_nut_reset_ts(nut, *nus->time_base, pkt->dts);
         for (i = 0; i < s->nb_streams; i++) {
             AVStream *st   = s->streams[i];
+            FFStream *const sti = ffstream(st);
             int64_t dts_tb = av_rescale_rnd(pkt->dts,
                 nus->time_base->num * (int64_t)nut->stream[i].time_base->den,
                 nus->time_base->den * (int64_t)nut->stream[i].time_base->num,
@@ -1013,12 +1014,12 @@ static int nut_write_packet(AVFormatContext *s, AVPacket *pkt)
             int index = av_index_search_timestamp(st, dts_tb,
                                                   AVSEEK_FLAG_BACKWARD);
             if (index >= 0) {
-                sp_pos = FFMIN(sp_pos, st->index_entries[index].pos);
-                if (!nut->write_index && 2*index > st->nb_index_entries) {
-                    memmove(st->index_entries,
-                            st->index_entries + index,
-                            sizeof(*st->index_entries) * (st->nb_index_entries - index));
-                    st->nb_index_entries -=  index;
+                sp_pos = FFMIN(sp_pos, sti->index_entries[index].pos);
+                if (!nut->write_index && 2*index > sti->nb_index_entries) {
+                    memmove(sti->index_entries,
+                            sti->index_entries + index,
+                            sizeof(*sti->index_entries) * (sti->nb_index_entries - index));
+                    sti->nb_index_entries -=  index;
                 }
             }
         }
@@ -1228,7 +1229,7 @@ static const AVClass class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_nut_muxer = {
+const AVOutputFormat ff_nut_muxer = {
     .name           = "nut",
     .long_name      = NULL_IF_CONFIG_SMALL("NUT"),
     .mime_type      = "video/x-nut",

@@ -263,7 +263,7 @@ to @file{./configure}.
 
 FFmpeg can make use of the Scalable Video Technology for AV1 library for AV1 encoding.
 
-Go to @url{https://github.com/OpenVisualCloud/SVT-AV1/} and follow the instructions
+Go to @url{https://gitlab.com/AOMediaCodec/SVT-AV1/} and follow the instructions
 for installing the library. Then pass @code{--enable-libsvtav1} to configure to
 enable it.
 
@@ -599,6 +599,7 @@ library:
 @item raw NULL                  @tab X @tab
 @item raw video                 @tab X @tab X
 @item raw id RoQ                @tab X @tab
+@item raw OBU                   @tab X @tab X
 @item raw SBC                   @tab X @tab X
 @item raw Shorten               @tab   @tab X
 @item raw TAK                   @tab   @tab X
@@ -695,7 +696,7 @@ library:
 @item Windows Televison (WTV)   @tab X @tab X
 @item Wing Commander III movie  @tab   @tab X
     @tab Multimedia format used in Origin's Wing Commander III computer game.
-@item Westwood Studios audio    @tab   @tab X
+@item Westwood Studios audio    @tab X @tab X
     @tab Multimedia format used in Westwood Studios games.
 @item Westwood Studios VQA      @tab   @tab X
     @tab Multimedia format used in Westwood Studios games.
@@ -740,6 +741,8 @@ following image formats are supported:
     @tab OpenEXR
 @item FITS         @tab X @tab X
     @tab Flexible Image Transport System
+@item IMG          @tab   @tab X
+    @tab GEM Raster image
 @item JPEG         @tab X @tab X
     @tab Progressive JPEG is not supported.
 @item JPEG 2000    @tab X @tab X
@@ -1018,7 +1021,7 @@ following image formats are supported:
 @item QuickTime 8BPS video   @tab     @tab  X
 @item QuickTime Animation (RLE) video  @tab  X  @tab  X
     @tab fourcc: 'rle '
-@item QuickTime Graphics (SMC)  @tab     @tab  X
+@item QuickTime Graphics (SMC)  @tab  X  @tab  X
     @tab fourcc: 'smc '
 @item QuickTime video (RPZA) @tab  X  @tab  X
     @tab fourcc: rpza
@@ -1126,6 +1129,7 @@ following image formats are supported:
 @item ADPCM Electronic Arts XAS @tab     @tab  X
 @item ADPCM G.722            @tab  X  @tab  X
 @item ADPCM G.726            @tab  X  @tab  X
+@item ADPCM IMA Acorn Replay @tab     @tab  X
 @item ADPCM IMA AMV          @tab  X  @tab  X
     @tab Used in AMV files
 @item ADPCM IMA Cunning Developments  @tab     @tab  X
@@ -1162,7 +1166,7 @@ following image formats are supported:
 @item ADPCM Sound Blaster Pro 4-bit  @tab     @tab  X
 @item ADPCM VIMA             @tab     @tab  X
     @tab Used in LucasArts SMUSH animations.
-@item ADPCM Westwood Studios IMA @tab     @tab  X
+@item ADPCM Westwood Studios IMA      @tab  X @tab  X
     @tab Used in Westwood Studios games like Command and Conquer.
 @item ADPCM Yamaha           @tab  X  @tab  X
 @item ADPCM Zork             @tab     @tab  X
@@ -1227,7 +1231,7 @@ following image formats are supported:
 @item GSM Microsoft variant  @tab  E  @tab  X
     @tab encoding supported through external library libgsm
 @item IAC (Indeo Audio Coder)  @tab     @tab  X
-@item iLBC (Internet Low Bitrate Codec) @tab  E  @tab  E
+@item iLBC (Internet Low Bitrate Codec) @tab  E  @tab  EX
     @tab encoding and decoding supported through external library libilbc
 @item IMC (Intel Music Coder)  @tab     @tab  X
 @item Interplay ACM            @tab     @tab  X
@@ -1299,7 +1303,7 @@ following image formats are supported:
     @tab experimental codec
 @item Sonic lossless         @tab  X  @tab  X
     @tab experimental codec
-@item Speex                  @tab  E  @tab  E
+@item Speex                  @tab  E  @tab  EX
     @tab supported through external library libspeex
 @item TAK (Tom's lossless Audio Kompressor)  @tab     @tab  X
 @item True Audio (TTA)       @tab  X  @tab  X

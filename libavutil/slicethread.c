@@ -17,6 +17,7 @@
  */
 
 #include <stdatomic.h>
+#include "cpu.h"
 #include "slicethread.h"
 #include "mem.h"
 #include "thread.h"
@@ -239,7 +240,7 @@ int avpriv_slicethread_create(AVSliceThread **pctx, void *priv,
                               int nb_threads)
 {
     *pctx = NULL;
-    return AVERROR(EINVAL);
+    return AVERROR(ENOSYS);
 }
 
 void avpriv_slicethread_execute(AVSliceThread *ctx, int nb_jobs, int execute_main)

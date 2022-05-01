@@ -99,16 +99,16 @@ static const AVOption pcm_options[] = {
     { "channels",    "", offsetof(PCMAudioDemuxerContext, channels),    AV_OPT_TYPE_INT, {.i64 = 1}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
     { NULL },
 };
+static const AVClass pcm_demuxer_class = {
+    .class_name = "pcm demuxer",
+    .item_name  = av_default_item_name,
+    .option     = pcm_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
 
 #define PCMDEF_0(name_, long_name_, ext, codec, ...)
 #define PCMDEF_1(name_, long_name_, ext, codec, ...)        \
-static const AVClass name_ ## _demuxer_class = {            \
-    .class_name = #name_ " demuxer",                        \
-    .item_name  = av_default_item_name,                     \
-    .option     = pcm_options,                              \
-    .version    = LIBAVUTIL_VERSION_INT,                    \
-};                                                          \
-AVInputFormat ff_pcm_ ## name_ ## _demuxer = {              \
+const AVInputFormat ff_pcm_ ## name_ ## _demuxer = {        \
     .name           = #name_,                               \
     .long_name      = NULL_IF_CONFIG_SMALL(long_name_),     \
     .priv_data_size = sizeof(PCMAudioDemuxerContext),       \
@@ -118,7 +118,7 @@ AVInputFormat ff_pcm_ ## name_ ## _demuxer = {              \
     .flags          = AVFMT_GENERIC_INDEX,                  \
     .extensions     = ext,                                  \
     .raw_codec_id   = codec,                                \
-    .priv_class     = &name_ ## _demuxer_class,             \
+    .priv_class     = &pcm_demuxer_class,                   \
     __VA_ARGS__                                             \
 };
 #define PCMDEF_2(name, long_name, ext, codec, enabled, ...) \
@@ -168,7 +168,7 @@ static const AVClass sln_demuxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVInputFormat ff_sln_demuxer = {
+const AVInputFormat ff_sln_demuxer = {
     .name           = "sln",
     .long_name      = NULL_IF_CONFIG_SMALL("Asterisk raw pcm"),
     .priv_data_size = sizeof(PCMAudioDemuxerContext),

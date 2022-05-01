@@ -1110,7 +1110,7 @@ static const AVClass g723_1dec_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_g723_1_decoder = {
+const AVCodec ff_g723_1_decoder = {
     .name           = "g723_1",
     .long_name      = NULL_IF_CONFIG_SMALL("G.723.1"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -1120,4 +1120,5 @@ AVCodec ff_g723_1_decoder = {
     .decode         = g723_1_decode_frame,
     .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
     .priv_class     = &g723_1dec_class,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

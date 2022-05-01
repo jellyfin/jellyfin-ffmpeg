@@ -39,6 +39,7 @@ typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4} DNNDataType;
 typedef enum {
     DCO_NONE,
     DCO_BGR,
+    DCO_RGB,
 } DNNColorOrder;
 
 typedef enum {
@@ -52,7 +53,7 @@ typedef enum {
     DFT_NONE,
     DFT_PROCESS_FRAME,      // process the whole frame
     DFT_ANALYTICS_DETECT,   // detect from the whole frame
-    // we can add more such as detect_from_crop, classify_from_bbox, etc.
+    DFT_ANALYTICS_CLASSIFY, // classify for each bounding box
 }DNNFunctionType;
 
 typedef struct DNNData{
@@ -62,6 +63,23 @@ typedef struct DNNData{
     DNNDataType dt;
     DNNColorOrder order;
 } DNNData;
+
+typedef struct DNNExecBaseParams {
+    const char *input_name;
+    const char **output_names;
+    uint32_t nb_output;
+    AVFrame *in_frame;
+    AVFrame *out_frame;
+} DNNExecBaseParams;
+
+typedef struct DNNExecClassificationParams {
+    DNNExecBaseParams base;
+    const char *target;
+} DNNExecClassificationParams;
+
+typedef int (*FramePrePostProc)(AVFrame *frame, DNNData *model, AVFilterContext *filter_ctx);
+typedef int (*DetectPostProc)(AVFrame *frame, DNNData *output, uint32_t nb, AVFilterContext *filter_ctx);
+typedef int (*ClassifyPostProc)(AVFrame *frame, DNNData *output, uint32_t bbox_index, AVFilterContext *filter_ctx);
 
 typedef struct DNNModel{
     // Stores model that can be different for different backends.
@@ -80,10 +98,14 @@ typedef struct DNNModel{
                                 const char *output_name, int *output_width, int *output_height);
     // set the pre process to transfer data from AVFrame to DNNData
     // the default implementation within DNN is used if it is not provided by the filter
-    int (*pre_proc)(AVFrame *frame_in, DNNData *model_input, AVFilterContext *filter_ctx);
+    FramePrePostProc frame_pre_proc;
     // set the post process to transfer data from DNNData to AVFrame
     // the default implementation within DNN is used if it is not provided by the filter
-    int (*post_proc)(AVFrame *frame_out, DNNData *model_output, AVFilterContext *filter_ctx);
+    FramePrePostProc frame_post_proc;
+    // set the post process to interpret detect result from DNNData
+    DetectPostProc detect_post_proc;
+    // set the post process to interpret classify result from DNNData
+    ClassifyPostProc classify_post_proc;
 } DNNModel;
 
 // Stores pointers to functions for loading, executing, freeing DNN models for one of the backends.
@@ -91,13 +113,9 @@ typedef struct DNNModule{
     // Loads model and parameters from given file. Returns NULL if it is not possible.
     DNNModel *(*load_model)(const char *model_filename, DNNFunctionType func_type, const char *options, AVFilterContext *filter_ctx);
     // Executes model with specified input and output. Returns DNN_ERROR otherwise.
-    DNNReturnType (*execute_model)(const DNNModel *model, const char *input_name, AVFrame *in_frame,
-                                   const char **output_names, uint32_t nb_output, AVFrame *out_frame);
-    // Executes model with specified input and output asynchronously. Returns DNN_ERROR otherwise.
-    DNNReturnType (*execute_model_async)(const DNNModel *model, const char *input_name, AVFrame *in_frame,
-                                         const char **output_names, uint32_t nb_output, AVFrame *out_frame);
+    DNNReturnType (*execute_model)(const DNNModel *model, DNNExecBaseParams *exec_params);
     // Retrieve inference result.
-    DNNAsyncStatusType (*get_async_result)(const DNNModel *model, AVFrame **in, AVFrame **out);
+    DNNAsyncStatusType (*get_result)(const DNNModel *model, AVFrame **in, AVFrame **out);
     // Flush all the pending tasks.
     DNNReturnType (*flush)(const DNNModel *model);
     // Frees memory allocated for model.

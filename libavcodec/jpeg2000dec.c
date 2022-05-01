@@ -34,7 +34,6 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "libavutil/thread.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "internal.h"
@@ -362,7 +361,7 @@ static int get_siz(Jpeg2000DecoderContext *s)
         return AVERROR(EINVAL);
     }
 
-    s->tile = av_mallocz_array(s->numXtiles * s->numYtiles, sizeof(*s->tile));
+    s->tile = av_calloc(s->numXtiles * s->numYtiles, sizeof(*s->tile));
     if (!s->tile) {
         s->numXtiles = s->numYtiles = 0;
         return AVERROR(ENOMEM);
@@ -1177,7 +1176,7 @@ static int jpeg2000_decode_packet(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile,
             cblk->nb_lengthinc = 0;
             cblk->nb_terminationsinc = 0;
             av_free(cblk->lengthinc);
-            cblk->lengthinc  = av_mallocz_array(newpasses    , sizeof(*cblk->lengthinc));
+            cblk->lengthinc = av_calloc(newpasses, sizeof(*cblk->lengthinc));
             if (!cblk->lengthinc)
                 return AVERROR(ENOMEM);
             tmp = av_realloc_array(cblk->data_start, cblk->nb_terminations + newpasses + 1, sizeof(*cblk->data_start));
@@ -2475,19 +2474,12 @@ static int jp2_find_codestream(Jpeg2000DecoderContext *s)
     return 0;
 }
 
-static av_cold void jpeg2000_init_static_data(void)
-{
-    ff_jpeg2000_init_tier1_luts();
-    ff_mqc_init_context_tables();
-}
-
 static av_cold int jpeg2000_decode_init(AVCodecContext *avctx)
 {
-    static AVOnce init_static_once = AV_ONCE_INIT;
     Jpeg2000DecoderContext *s = avctx->priv_data;
 
-    ff_thread_once(&init_static_once, jpeg2000_init_static_data);
     ff_jpeg2000dsp_init(&s->dsp);
+    ff_jpeg2000_init_tier1_luts();
 
     return 0;
 }
@@ -2580,7 +2572,7 @@ static const AVClass jpeg2000_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_jpeg2000_decoder = {
+const AVCodec ff_jpeg2000_decoder = {
     .name             = "jpeg2000",
     .long_name        = NULL_IF_CONFIG_SMALL("JPEG 2000"),
     .type             = AVMEDIA_TYPE_VIDEO,
@@ -2591,5 +2583,6 @@ AVCodec ff_jpeg2000_decoder = {
     .decode           = jpeg2000_decode_frame,
     .priv_class       = &jpeg2000_class,
     .max_lowres       = 5,
-    .profiles         = NULL_IF_CONFIG_SMALL(ff_jpeg2000_profiles)
+    .profiles         = NULL_IF_CONFIG_SMALL(ff_jpeg2000_profiles),
+    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/mips/cpu.h"
 #include "h264dsp_mips.h"
 
@@ -78,6 +79,8 @@ av_cold void ff_h264dsp_init_mips(H264DSPContext *c, const int bit_depth,
     }
 
     if (have_msa(cpu_flags)) {
+        if (chroma_format_idc <= 1)
+            c->h264_loop_filter_strength = ff_h264_loop_filter_strength_msa;
         if (bit_depth == 8) {
             c->h264_v_loop_filter_luma = ff_h264_v_lpf_luma_inter_msa;
             c->h264_h_loop_filter_luma = ff_h264_h_lpf_luma_inter_msa;

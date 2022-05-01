@@ -176,7 +176,7 @@ static int query_formats(AVFilterContext *ctx)
     int ret;
 
     if (s->tlut2 || !s->odepth)
-        return ff_set_common_formats(ctx, ff_make_format_list(all_pix_fmts));
+        return ff_set_common_formats_from_list(ctx, all_pix_fmts);
 
     ret = ff_formats_ref(ff_make_format_list(all_pix_fmts), &ctx->inputs[0]->outcfg.formats);
     if (ret < 0)
@@ -316,7 +316,8 @@ static int process_frame(FFFrameSync *fs)
         td.out  = out;
         td.srcx = srcx;
         td.srcy = srcy;
-        ctx->internal->execute(ctx, s->lut2, &td, NULL, FFMIN(s->heightx[1], ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, s->lut2, &td, NULL,
+                          FFMIN(s->heightx[1], ff_filter_get_nb_threads(ctx)));
     }
 
     out->pts = av_rescale_q(s->fs.pts, s->fs.time_base, outlink->time_base);
@@ -533,7 +534,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_inputy,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -542,7 +542,6 @@ static const AVFilterPad outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = lut2_config_output,
     },
-    { NULL }
 };
 
 static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,
@@ -560,17 +559,17 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 
 FRAMESYNC_DEFINE_CLASS(lut2, LUT2Context, fs);
 
-AVFilter ff_vf_lut2 = {
+const AVFilter ff_vf_lut2 = {
     .name          = "lut2",
     .description   = NULL_IF_CONFIG_SMALL("Compute and apply a lookup table from two video inputs."),
     .preinit       = lut2_framesync_preinit,
     .priv_size     = sizeof(LUT2Context),
     .priv_class    = &lut2_class,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
-    .inputs        = inputs,
-    .outputs       = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
@@ -613,7 +612,8 @@ static int tlut2_filter_frame(AVFilterLink *inlink, AVFrame *frame)
             td.out  = out;
             td.srcx = frame;
             td.srcy = s->prev_frame;
-            ctx->internal->execute(ctx, s->lut2, &td, NULL, FFMIN(s->heightx[1], ff_filter_get_nb_threads(ctx)));
+            ff_filter_execute(ctx, s->lut2, &td, NULL,
+                              FFMIN(s->heightx[1], ff_filter_get_nb_threads(ctx)));
         }
         av_frame_free(&s->prev_frame);
         s->prev_frame = frame;
@@ -640,7 +640,6 @@ static const AVFilterPad tlut2_inputs[] = {
         .filter_frame  = tlut2_filter_frame,
         .config_props  = config_inputx,
     },
-    { NULL }
 };
 
 static const AVFilterPad tlut2_outputs[] = {
@@ -649,19 +648,18 @@ static const AVFilterPad tlut2_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_tlut2 = {
+const AVFilter ff_vf_tlut2 = {
     .name          = "tlut2",
     .description   = NULL_IF_CONFIG_SMALL("Compute and apply a lookup table from two successive frames."),
     .priv_size     = sizeof(LUT2Context),
     .priv_class    = &tlut2_class,
-    .query_formats = query_formats,
     .init          = init,
     .uninit        = uninit,
-    .inputs        = tlut2_inputs,
-    .outputs       = tlut2_outputs,
+    FILTER_INPUTS(tlut2_inputs),
+    FILTER_OUTPUTS(tlut2_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,

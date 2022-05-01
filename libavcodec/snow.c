@@ -116,22 +116,13 @@ int ff_snow_alloc_blocks(SnowContext *s){
     s->b_height= h;
 
     av_free(s->block);
-    s->block= av_mallocz_array(w * h,  sizeof(BlockNode) << (s->block_max_depth*2));
+    s->block = av_calloc(w * h,  sizeof(*s->block) << (s->block_max_depth*2));
     if (!s->block)
         return AVERROR(ENOMEM);
 
     return 0;
 }
 
-static av_cold void init_qexp(void){
-    int i;
-    double v=128;
-
-    for(i=0; i<QROOT; i++){
-        ff_qexp[i]= lrintf(v);
-        v *= pow(2, 1.0 / QROOT);
-    }
-}
 static void mc_block(Plane *p, uint8_t *dst, const uint8_t *src, int stride, int b_w, int b_h, int dx, int dy){
     static const uint8_t weight[64]={
     8,7,6,5,4,3,2,1,
@@ -433,7 +424,6 @@ static av_cold void snow_static_init(void)
     for (int i = 0; i < MAX_REF_FRAMES; i++)
         for (int j = 0; j < MAX_REF_FRAMES; j++)
             ff_scale_mv_ref[i][j] = 256 * (i + 1) / (j + 1);
-    init_qexp();
 }
 
 av_cold int ff_snow_common_init(AVCodecContext *avctx){
@@ -577,7 +567,8 @@ int ff_snow_common_init_after_header(AVCodecContext *avctx) {
                     b->parent= &s->plane[plane_index].band[level-1][orientation];
                 //FIXME avoid this realloc
                 av_freep(&b->x_coeff);
-                b->x_coeff=av_mallocz_array(((b->width+1) * b->height+1), sizeof(x_and_coeff));
+                b->x_coeff = av_calloc((b->width + 1) * b->height + 1,
+                                       sizeof(*b->x_coeff));
                 if (!b->x_coeff)
                     return AVERROR(ENOMEM);
             }

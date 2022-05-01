@@ -21,10 +21,12 @@
 #include <vorbis/vorbisenc.h>
 
 #include "libavutil/avassert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/fifo.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "audio_frame_queue.h"
+#include "encode.h"
 #include "internal.h"
 #include "vorbis.h"
 #include "vorbis_parser.h"
@@ -196,7 +198,6 @@ static av_cold int libvorbis_encode_close(AVCodecContext *avctx)
 
     av_fifo_freep(&s->pkt_fifo);
     ff_af_queue_close(&s->afq);
-    av_freep(&avctx->extradata);
 
     av_vorbis_parse_free(&s->vp);
 
@@ -349,7 +350,7 @@ static int libvorbis_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     av_fifo_generic_read(s->pkt_fifo, &op, sizeof(ogg_packet), NULL);
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, op.bytes, 0)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, avpkt, op.bytes, 0)) < 0)
         return ret;
     av_fifo_generic_read(s->pkt_fifo, avpkt->data, op.bytes, NULL);
 
@@ -374,16 +375,17 @@ static int libvorbis_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     return 0;
 }
 
-AVCodec ff_libvorbis_encoder = {
+const AVCodec ff_libvorbis_encoder = {
     .name           = "libvorbis",
     .long_name      = NULL_IF_CONFIG_SMALL("libvorbis"),
     .type           = AVMEDIA_TYPE_AUDIO,
     .id             = AV_CODEC_ID_VORBIS,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                      AV_CODEC_CAP_SMALL_LAST_FRAME,
     .priv_data_size = sizeof(LibvorbisEncContext),
     .init           = libvorbis_encode_init,
     .encode2        = libvorbis_encode_frame,
     .close          = libvorbis_encode_close,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .priv_class     = &vorbis_class,

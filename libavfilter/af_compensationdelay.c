@@ -63,36 +63,6 @@ AVFILTER_DEFINE_CLASS(compensationdelay);
 // The maximum delay may be reached by this filter
 #define COMP_DELAY_MAX_DELAY               (COMP_DELAY_MAX_DISTANCE * COMP_DELAY_SOUND_FRONT_DELAY(50))
 
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterChannelLayouts *layouts;
-    AVFilterFormats *formats;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_DBLP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
-}
-
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -175,7 +145,6 @@ static const AVFilterPad compensationdelay_inputs[] = {
         .config_props = config_input,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad compensationdelay_outputs[] = {
@@ -183,16 +152,15 @@ static const AVFilterPad compensationdelay_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_compensationdelay = {
+const AVFilter ff_af_compensationdelay = {
     .name          = "compensationdelay",
     .description   = NULL_IF_CONFIG_SMALL("Audio Compensation Delay Line."),
-    .query_formats = query_formats,
     .priv_size     = sizeof(CompensationDelayContext),
     .priv_class    = &compensationdelay_class,
     .uninit        = uninit,
-    .inputs        = compensationdelay_inputs,
-    .outputs       = compensationdelay_outputs,
+    FILTER_INPUTS(compensationdelay_inputs),
+    FILTER_OUTPUTS(compensationdelay_outputs),
+    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
 };

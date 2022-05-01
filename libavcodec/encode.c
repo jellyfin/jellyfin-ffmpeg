@@ -20,6 +20,7 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/frame.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
@@ -30,7 +31,7 @@
 #include "frame_thread_encoder.h"
 #include "internal.h"
 
-int ff_alloc_packet2(AVCodecContext *avctx, AVPacket *avpkt, int64_t size, int64_t min_size)
+int ff_alloc_packet(AVCodecContext *avctx, AVPacket *avpkt, int64_t size)
 {
     if (size < 0 || size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE) {
         av_log(avctx, AV_LOG_ERROR, "Invalid minimum required packet size %"PRId64" (max allowed is %d)\n",
@@ -40,18 +41,14 @@ int ff_alloc_packet2(AVCodecContext *avctx, AVPacket *avpkt, int64_t size, int64
 
     av_assert0(!avpkt->data);
 
-    if (avctx && 2*min_size < size) { // FIXME The factor needs to be finetuned
-        av_fast_padded_malloc(&avctx->internal->byte_buffer, &avctx->internal->byte_buffer_size, size);
-        avpkt->data = avctx->internal->byte_buffer;
-        avpkt->size = size;
-    }
-
+    av_fast_padded_malloc(&avctx->internal->byte_buffer,
+                          &avctx->internal->byte_buffer_size, size);
+    avpkt->data = avctx->internal->byte_buffer;
     if (!avpkt->data) {
-        int ret = av_new_packet(avpkt, size);
-        if (ret < 0)
-            av_log(avctx, AV_LOG_ERROR, "Failed to allocate packet of size %"PRId64"\n", size);
-        return ret;
+        av_log(avctx, AV_LOG_ERROR, "Failed to allocate packet of size %"PRId64"\n", size);
+        return AVERROR(ENOMEM);
     }
+    avpkt->size = size;
 
     return 0;
 }
@@ -74,7 +71,6 @@ int avcodec_default_get_encode_buffer(AVCodecContext *avctx, AVPacket *avpkt, in
         return ret;
     }
     avpkt->data = avpkt->buf->data;
-    memset(avpkt->data + avpkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
     return 0;
 }
@@ -98,6 +94,7 @@ int ff_get_encode_buffer(AVCodecContext *avctx, AVPacket *avpkt, int64_t size, i
         ret = AVERROR(EINVAL);
         goto fail;
     }
+    memset(avpkt->data + avpkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
     ret = 0;
 fail:
@@ -238,12 +235,9 @@ static int encode_simple_internal(AVCodecContext *avctx, AVPacket *avpkt)
             }
         }
         if (avctx->codec->type == AVMEDIA_TYPE_AUDIO) {
-            /* NOTE: if we add any audio encoders which output non-keyframe packets,
-             *       this needs to be moved to the encoders, but for now we can do it
-             *       here to simplify things */
-            avpkt->flags |= AV_PKT_FLAG_KEY;
             avpkt->dts = avpkt->pts;
         }
+        avpkt->flags |= avci->intra_only_flag;
     }
 
     if (avci->draining && !got_packet)
@@ -253,11 +247,8 @@ end:
     if (ret < 0 || !got_packet)
         av_packet_unref(avpkt);
 
-    if (frame) {
-        if (!ret)
-            avctx->frame_number++;
+    if (frame)
         av_frame_unref(frame);
-    }
 
     if (got_packet)
         // Encoders must always return ref-counted buffers.
@@ -372,7 +363,7 @@ int attribute_align_arg avcodec_send_frame(AVCodecContext *avctx, const AVFrame 
     if (avci->draining)
         return AVERROR_EOF;
 
-    if (avci->buffer_frame->data[0])
+    if (avci->buffer_frame->buf[0])
         return AVERROR(EAGAIN);
 
     if (!frame) {
@@ -388,6 +379,8 @@ int attribute_align_arg avcodec_send_frame(AVCodecContext *avctx, const AVFrame 
         if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
             return ret;
     }
+
+    avctx->frame_number++;
 
     return 0;
 }
@@ -413,128 +406,9 @@ int attribute_align_arg avcodec_receive_packet(AVCodecContext *avctx, AVPacket *
     return 0;
 }
 
-#if FF_API_OLD_ENCDEC
-static int compat_encode(AVCodecContext *avctx, AVPacket *avpkt,
-                         int *got_packet, const AVFrame *frame)
-{
-    AVCodecInternal *avci = avctx->internal;
-    AVPacket user_pkt;
-    int ret;
-
-    *got_packet = 0;
-
-    if (frame && avctx->codec->type == AVMEDIA_TYPE_VIDEO) {
-        if (frame->format == AV_PIX_FMT_NONE)
-            av_log(avctx, AV_LOG_WARNING, "AVFrame.format is not set\n");
-        if (frame->width == 0 || frame->height == 0)
-            av_log(avctx, AV_LOG_WARNING, "AVFrame.width or height is not set\n");
-    }
-
-    if (avctx->codec->capabilities & AV_CODEC_CAP_DR1) {
-        av_log(avctx, AV_LOG_WARNING, "The deprecated avcodec_encode_* API does not support "
-                                      "AV_CODEC_CAP_DR1 encoders\n");
-        return AVERROR(ENOSYS);
-    }
-
-    ret = avcodec_send_frame(avctx, frame);
-    if (ret == AVERROR_EOF)
-        ret = 0;
-    else if (ret == AVERROR(EAGAIN)) {
-        /* we fully drain all the output in each encode call, so this should not
-         * ever happen */
-        return AVERROR_BUG;
-    } else if (ret < 0)
-        return ret;
-
-    av_packet_move_ref(&user_pkt, avpkt);
-    while (ret >= 0) {
-        ret = avcodec_receive_packet(avctx, avpkt);
-        if (ret < 0) {
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                ret = 0;
-            goto finish;
-        }
-
-        if (avpkt != avci->compat_encode_packet) {
-            if (avpkt->data && user_pkt.data) {
-                if (user_pkt.size >= avpkt->size) {
-                    memcpy(user_pkt.data, avpkt->data, avpkt->size);
-                    av_buffer_unref(&avpkt->buf);
-                    avpkt->buf  = user_pkt.buf;
-                    avpkt->data = user_pkt.data;
-FF_DISABLE_DEPRECATION_WARNINGS
-                    av_init_packet(&user_pkt);
-FF_ENABLE_DEPRECATION_WARNINGS
-                } else {
-                    av_log(avctx, AV_LOG_ERROR, "Provided packet is too small, needs to be %d\n", avpkt->size);
-                    av_packet_unref(avpkt);
-                    ret = AVERROR(EINVAL);
-                    goto finish;
-                }
-            }
-
-            *got_packet = 1;
-            avpkt = avci->compat_encode_packet;
-        } else {
-            if (!avci->compat_decode_warned) {
-                av_log(avctx, AV_LOG_WARNING, "The deprecated avcodec_encode_* "
-                       "API cannot return all the packets for this encoder. "
-                       "Some packets will be dropped. Update your code to the "
-                       "new encoding API to fix this.\n");
-                avci->compat_decode_warned = 1;
-                av_packet_unref(avpkt);
-            }
-        }
-
-        if (avci->draining)
-            break;
-    }
-
-finish:
-    if (ret < 0)
-        av_packet_unref(&user_pkt);
-
-    return ret;
-}
-
-int attribute_align_arg avcodec_encode_audio2(AVCodecContext *avctx,
-                                              AVPacket *avpkt,
-                                              const AVFrame *frame,
-                                              int *got_packet_ptr)
-{
-    int ret = compat_encode(avctx, avpkt, got_packet_ptr, frame);
-
-    if (ret < 0)
-        av_packet_unref(avpkt);
-
-    return ret;
-}
-
-int attribute_align_arg avcodec_encode_video2(AVCodecContext *avctx,
-                                              AVPacket *avpkt,
-                                              const AVFrame *frame,
-                                              int *got_packet_ptr)
-{
-    int ret = compat_encode(avctx, avpkt, got_packet_ptr, frame);
-
-    if (ret < 0)
-        av_packet_unref(avpkt);
-
-    return ret;
-}
-#endif
-
 int ff_encode_preinit(AVCodecContext *avctx)
 {
     int i;
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame) {
-        return AVERROR(ENOMEM);
-    }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     if (avctx->time_base.num <= 0 || avctx->time_base.den <= 0) {
         av_log(avctx, AV_LOG_ERROR, "The encoder timebase is not set.\n");
@@ -564,9 +438,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         for (i = 0; avctx->codec->pix_fmts[i] != AV_PIX_FMT_NONE; i++)
             if (avctx->pix_fmt == avctx->codec->pix_fmts[i])
                 break;
-        if (avctx->codec->pix_fmts[i] == AV_PIX_FMT_NONE
-            && !(avctx->codec_id == AV_CODEC_ID_MJPEG
-                 && avctx->strict_std_compliance <= FF_COMPLIANCE_UNOFFICIAL)) {
+        if (avctx->codec->pix_fmts[i] == AV_PIX_FMT_NONE) {
             char buf[128];
             snprintf(buf, sizeof(buf), "%d", avctx->pix_fmt);
             av_log(avctx, AV_LOG_ERROR, "Specified pixel format %s is invalid or not supported\n",
@@ -677,6 +549,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
         }
         avctx->sw_pix_fmt = frames_ctx->sw_format;
     }
+    if (avctx->codec_descriptor->props & AV_CODEC_PROP_INTRA_ONLY)
+        avctx->internal->intra_only_flag = AV_PKT_FLAG_KEY;
 
     return 0;
 }

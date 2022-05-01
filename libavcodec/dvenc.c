@@ -33,11 +33,13 @@
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/thread.h"
 
 #include "avcodec.h"
 #include "dv.h"
 #include "dv_profile_internal.h"
 #include "dv_tablegen.h"
+#include "encode.h"
 #include "fdctdsp.h"
 #include "internal.h"
 #include "mathops.h"
@@ -68,8 +70,6 @@ static av_cold int dvvideo_encode_init(AVCodecContext *avctx)
         return ret;
     }
 
-    dv_vlc_map_tableinit();
-
     memset(&fdsp,0, sizeof(fdsp));
     memset(&mecc,0, sizeof(mecc));
     memset(&pdsp,0, sizeof(pdsp));
@@ -83,6 +83,13 @@ static av_cold int dvvideo_encode_init(AVCodecContext *avctx)
 
     s->fdct[0]    = fdsp.fdct;
     s->fdct[1]    = fdsp.fdct248;
+
+#if !CONFIG_HARDCODED_TABLES
+    {
+        static AVOnce init_static_once = AV_ONCE_INIT;
+        ff_thread_once(&init_static_once, dv_vlc_map_tableinit);
+    }
+#endif
 
     return ff_dvvideo_init(avctx);
 }
@@ -976,16 +983,8 @@ static int dv_encode_video_segment(AVCodecContext *avctx, void *arg)
     }
 
     for (j = 0; j < 5 * s->sys->bpm; j++) {
-        int pos;
-        int size = pbs[j].size_in_bits >> 3;
         flush_put_bits(&pbs[j]);
-        pos = put_bits_count(&pbs[j]) >> 3;
-        if (pos > size) {
-            av_log(avctx, AV_LOG_ERROR,
-                   "bitstream written beyond buffer size\n");
-            return -1;
-        }
-        memset(pbs[j].buf + pos, 0xff, size - pos);
+        memset(put_bits_ptr(&pbs[j]), 0xff, put_bytes_left(&pbs[j], 0));
     }
 
     if (DV_PROFILE_IS_HD(s->sys))
@@ -1172,17 +1171,13 @@ static int dvvideo_encode_frame(AVCodecContext *c, AVPacket *pkt,
     DVVideoContext *s = c->priv_data;
     int ret;
 
-    if ((ret = ff_alloc_packet2(c, pkt, s->sys->frame_size, 0)) < 0)
+    if ((ret = ff_get_encode_buffer(c, pkt, s->sys->frame_size, 0)) < 0)
         return ret;
+    /* Fixme: Only zero the part that is not overwritten later. */
+    memset(pkt->data, 0, pkt->size);
 
     c->pix_fmt                = s->sys->pix_fmt;
     s->frame                  = frame;
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    c->coded_frame->key_frame = 1;
-    c->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     s->buf = pkt->data;
 
     dv_format_frame(s, pkt->data);
@@ -1192,7 +1187,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     emms_c();
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -1212,18 +1206,20 @@ static const AVClass dvvideo_encode_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_dvvideo_encoder = {
+const AVCodec ff_dvvideo_encoder = {
     .name           = "dvvideo",
     .long_name      = NULL_IF_CONFIG_SMALL("DV (Digital Video)"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_DVVIDEO,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_SLICE_THREADS,
     .priv_data_size = sizeof(DVVideoContext),
     .init           = dvvideo_encode_init,
     .encode2        = dvvideo_encode_frame,
-    .capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV422P,
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE
     },
     .priv_class     = &dvvideo_encode_class,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

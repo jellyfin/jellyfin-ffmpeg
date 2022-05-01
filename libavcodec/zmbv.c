@@ -56,6 +56,7 @@ enum ZmbvFormat {
 typedef struct ZmbvContext {
     AVCodecContext *avctx;
 
+    int zlib_init_ok;
     int bpp;
     int alloc_bpp;
     unsigned int decomp_size;
@@ -611,9 +612,6 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     c->bpp = avctx->bits_per_coded_sample;
 
-    // Needed if zlib unused or init aborted before inflateInit
-    memset(&c->zstream, 0, sizeof(z_stream));
-
     if ((avctx->width + 255ULL) * (avctx->height + 64ULL) > FFMIN(avctx->max_pixels, INT_MAX / 4) ) {
         av_log(avctx, AV_LOG_ERROR, "Internal buffer (decomp_size) larger than max_pixels or too large\n");
         return AVERROR_INVALIDDATA;
@@ -637,6 +635,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Inflate init error: %d\n", zret);
         return AVERROR_UNKNOWN;
     }
+    c->zlib_init_ok = 1;
 
     return 0;
 }
@@ -647,14 +646,15 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
     av_freep(&c->decomp_buf);
 
-    inflateEnd(&c->zstream);
     av_freep(&c->cur);
     av_freep(&c->prev);
+    if (c->zlib_init_ok)
+        inflateEnd(&c->zstream);
 
     return 0;
 }
 
-AVCodec ff_zmbv_decoder = {
+const AVCodec ff_zmbv_decoder = {
     .name           = "zmbv",
     .long_name      = NULL_IF_CONFIG_SMALL("Zip Motion Blocks Video"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -664,5 +664,5 @@ AVCodec ff_zmbv_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

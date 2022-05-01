@@ -33,6 +33,7 @@
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
+#include "decode.h"
 #include "internal.h"
 
 #define PALETTE_COUNT 256
@@ -314,15 +315,7 @@ static int msvideo1_decode_frame(AVCodecContext *avctx,
         return ret;
 
     if (s->mode_8bit) {
-        buffer_size_t size;
-        const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
-
-        if (pal && size == AVPALETTE_SIZE) {
-            memcpy(s->pal, pal, AVPALETTE_SIZE);
-            s->frame->palette_has_changed = 1;
-        } else if (pal) {
-            av_log(avctx, AV_LOG_ERROR, "Palette size %d is wrong\n", size);
-        }
+        s->frame->palette_has_changed = ff_copy_palette(s->pal, avpkt, avctx);
     }
 
     if (s->mode_8bit)
@@ -348,7 +341,7 @@ static av_cold int msvideo1_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_msvideo1_decoder = {
+const AVCodec ff_msvideo1_decoder = {
     .name           = "msvideo1",
     .long_name      = NULL_IF_CONFIG_SMALL("Microsoft Video 1"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -358,4 +351,5 @@ AVCodec ff_msvideo1_decoder = {
     .close          = msvideo1_decode_end,
     .decode         = msvideo1_decode_frame,
     .capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

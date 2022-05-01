@@ -209,11 +209,6 @@ typedef struct FFFrameSync {
 } FFFrameSync;
 
 /**
- * Get the class for the framesync object.
- */
-const AVClass *ff_framesync_get_class(void);
-
-/**
  * Pre-initialize a frame sync structure.
  *
  * It sets the class pointer and inits the options to their default values.
@@ -299,29 +294,38 @@ int ff_framesync_dualinput_get_writable(FFFrameSync *fs, AVFrame **f0, AVFrame *
 
 const AVClass *ff_framesync_child_class_iterate(void **iter);
 
-#define FRAMESYNC_DEFINE_CLASS(name, context, field) \
-static int name##_framesync_preinit(AVFilterContext *ctx) { \
+#define FRAMESYNC_DEFINE_PURE_CLASS(name, desc, func_prefix, options) \
+static const AVClass name##_class = {                                 \
+    .class_name          = desc,                                      \
+    .item_name           = av_default_item_name,                      \
+    .option              = options,                                   \
+    .version             = LIBAVUTIL_VERSION_INT,                     \
+    .category            = AV_CLASS_CATEGORY_FILTER,                  \
+    .child_class_iterate = ff_framesync_child_class_iterate,          \
+    .child_next          = func_prefix##_child_next,                  \
+}
+
+/* A filter that uses the *_child_next-function from this macro
+ * is required to initialize the FFFrameSync structure in AVFilter.preinit
+ * via the *_framesync_preinit function defined alongside it. */
+#define FRAMESYNC_AUXILIARY_FUNCS(func_prefix, context, field)        \
+static int func_prefix##_framesync_preinit(AVFilterContext *ctx)      \
+{                                                                     \
     context *s = ctx->priv; \
     ff_framesync_preinit(&s->field); \
     return 0; \
 } \
-static const AVClass *name##_child_class_next(const AVClass *prev) { \
-    return prev ? NULL : ff_framesync_get_class(); \
-} \
-static void *name##_child_next(void *obj, void *prev) { \
+static void *func_prefix##_child_next(void *obj, void *prev)          \
+{                                                                     \
     context *s = obj; \
-    s->fs.class = ff_framesync_get_class(); /* FIXME */ \
     return prev ? NULL : &s->field; \
-} \
-static const AVClass name##_class = { \
-    .class_name       = #name, \
-    .item_name        = av_default_item_name, \
-    .option           = name##_options, \
-    .version          = LIBAVUTIL_VERSION_INT, \
-    .category         = AV_CLASS_CATEGORY_FILTER, \
-    .child_class_next = name##_child_class_next, \
-    .child_class_iterate = ff_framesync_child_class_iterate, \
-    .child_next       = name##_child_next, \
 }
+
+#define FRAMESYNC_DEFINE_CLASS_EXT(name, context, field, options)     \
+FRAMESYNC_AUXILIARY_FUNCS(name, context, field)                       \
+FRAMESYNC_DEFINE_PURE_CLASS(name, #name, name, options)
+
+#define FRAMESYNC_DEFINE_CLASS(name, context, field)                  \
+FRAMESYNC_DEFINE_CLASS_EXT(name, context, field, name##_options)
 
 #endif /* AVFILTER_FRAMESYNC_H */

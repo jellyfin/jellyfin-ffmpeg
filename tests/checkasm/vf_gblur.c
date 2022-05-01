@@ -34,19 +34,35 @@
             tmp_buf[j] = (float)(rnd() & 0xFF); \
     } while (0)
 
-static void check_horiz_slice(float *dst_ref, float *dst_new)
+static void check_horiz_slice(float *dst_ref, float *dst_new, float *localbuf)
 {
     int steps = 2;
     float nu = 0.101f;
     float bscale = 1.112f;
 
-    declare_func(void, float *dst, int w, int h, int steps, float nu, float bscale);
-    call_ref(dst_ref, WIDTH, HEIGHT, steps, nu, bscale);
-    call_new(dst_new, WIDTH, HEIGHT, steps, nu, bscale);
+    declare_func(void, float *dst, int w, int h, int steps, float nu, float bscale, float *localbuf);
+    call_ref(dst_ref, WIDTH, HEIGHT, steps, nu, bscale, localbuf);
+    call_new(dst_new, WIDTH, HEIGHT, steps, nu, bscale, localbuf);
     if (!float_near_abs_eps_array(dst_ref, dst_new, 0.01f, PIXELS)) {
          fail();
     }
-    bench_new(dst_new, WIDTH, HEIGHT, 1, nu, bscale);
+    bench_new(dst_new, WIDTH, HEIGHT, 1, nu, bscale, localbuf);
+}
+
+static void check_verti_slice(float *dst_ref, float *dst_new)
+{
+    int steps = 2;
+    float nu = 0.101f;
+    float bscale = 1.112f;
+
+    declare_func(void, float *buffer, int width, int height, int column_begin,
+                int column_end, int steps, float nu, float bscale);
+    call_ref(dst_ref, WIDTH, HEIGHT, 0, WIDTH, steps, nu, bscale);
+    call_new(dst_new, WIDTH, HEIGHT, 0, WIDTH, steps, nu, bscale);
+    if (!float_near_abs_eps_array(dst_ref, dst_new, 0.01f, PIXELS)) {
+         fail();
+    }
+    bench_new(dst_new, WIDTH, HEIGHT, 0, WIDTH, 1, nu, bscale);
 }
 
 static void check_postscale_slice(float *dst_ref, float *dst_new)
@@ -71,10 +87,12 @@ void checkasm_check_vf_gblur(void)
     randomize_buffers(dst_ref, PIXELS);
     memcpy(dst_new, dst_ref, BUF_SIZE);
 
+    s.planewidth[0] = WIDTH;
+    s.planeheight[0] = HEIGHT;
     ff_gblur_init(&s);
 
     if (check_func(s.horiz_slice, "horiz_slice")) {
-        check_horiz_slice(dst_ref, dst_new);
+        check_horiz_slice(dst_ref, dst_new, s.localbuf);
     }
     report("horiz_slice");
 
@@ -84,6 +102,16 @@ void checkasm_check_vf_gblur(void)
         check_postscale_slice(dst_ref, dst_new);
     }
     report("postscale_slice");
+
+    randomize_buffers(dst_ref, PIXELS);
+    memcpy(dst_new, dst_ref, BUF_SIZE);
+    if (check_func(s.verti_slice, "verti_slice")) {
+        check_verti_slice(dst_ref, dst_new);
+    }
+    report("verti_slice");
+
+    if (s.localbuf)
+        av_free(s.localbuf);
 
     av_freep(&dst_ref);
     av_freep(&dst_new);

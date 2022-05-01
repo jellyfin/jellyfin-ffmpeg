@@ -23,6 +23,7 @@
 #include "libavutil/ffmath.h"
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "wma.h"
 #include "libavutil/avassert.h"
@@ -88,8 +89,11 @@ static av_cold int encode_init(AVCodecContext *avctx)
         return ret;
 
     /* init MDCT */
-    for (i = 0; i < s->nb_block_sizes; i++)
-        ff_mdct_init(&s->mdct_ctx[i], s->frame_len_bits - i + 1, 0, 1.0);
+    for (i = 0; i < s->nb_block_sizes; i++) {
+        ret = ff_mdct_init(&s->mdct_ctx[i], s->frame_len_bits - i + 1, 0, 1.0);
+        if (ret < 0)
+            return ret;
+    }
 
     block_align        = avctx->bit_rate * (int64_t) s->frame_len /
                          (avctx->sample_rate * 8);
@@ -389,7 +393,7 @@ static int encode_superframe(AVCodecContext *avctx, AVPacket *avpkt,
         }
     }
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, 2 * MAX_CODED_SUPERFRAME_SIZE, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, avpkt, 2 * MAX_CODED_SUPERFRAME_SIZE)) < 0)
         return ret;
 
     total_gain = 128;
@@ -408,7 +412,7 @@ static int encode_superframe(AVCodecContext *avctx, AVPacket *avpkt,
         return AVERROR(EINVAL);
     }
     av_assert0((put_bits_count(&s->pb) & 7) == 0);
-    i= avctx->block_align - (put_bits_count(&s->pb)+7)/8;
+    i = avctx->block_align - put_bytes_count(&s->pb, 0);
     av_assert0(i>=0);
     while(i--)
         put_bits(&s->pb, 8, 'N');
@@ -425,7 +429,7 @@ static int encode_superframe(AVCodecContext *avctx, AVPacket *avpkt,
 }
 
 #if CONFIG_WMAV1_ENCODER
-AVCodec ff_wmav1_encoder = {
+const AVCodec ff_wmav1_encoder = {
     .name           = "wmav1",
     .long_name      = NULL_IF_CONFIG_SMALL("Windows Media Audio 1"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -436,11 +440,11 @@ AVCodec ff_wmav1_encoder = {
     .close          = ff_wma_end,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 #if CONFIG_WMAV2_ENCODER
-AVCodec ff_wmav2_encoder = {
+const AVCodec ff_wmav2_encoder = {
     .name           = "wmav2",
     .long_name      = NULL_IF_CONFIG_SMALL("Windows Media Audio 2"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -451,6 +455,6 @@ AVCodec ff_wmav2_encoder = {
     .close          = ff_wma_end,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

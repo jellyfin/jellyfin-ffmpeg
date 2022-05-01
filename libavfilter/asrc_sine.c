@@ -26,6 +26,7 @@
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "internal.h"
 
 typedef struct SineContext {
@@ -183,28 +184,15 @@ static av_cold int query_formats(AVFilterContext *ctx)
     int sample_rates[] = { sine->sample_rate, -1 };
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_S16,
                                                        AV_SAMPLE_FMT_NONE };
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    int ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats (ctx, formats);
+    int ret = ff_set_common_formats_from_list(ctx, sample_fmts);
     if (ret < 0)
         return ret;
 
-    layouts = ff_make_format64_list(chlayouts);
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
+    ret = ff_set_common_channel_layouts_from_list(ctx, chlayouts);
     if (ret < 0)
         return ret;
 
-    formats = ff_make_format_list(sample_rates);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
+    return ff_set_common_samplerates_from_list(ctx, sample_rates);
 }
 
 static av_cold int config_props(AVFilterLink *outlink)
@@ -214,9 +202,10 @@ static av_cold int config_props(AVFilterLink *outlink)
     return 0;
 }
 
-static int request_frame(AVFilterLink *outlink)
+static int activate(AVFilterContext *ctx)
 {
-    SineContext *sine = outlink->src->priv;
+    AVFilterLink *outlink = ctx->outputs[0];
+    SineContext *sine = ctx->priv;
     AVFrame *frame;
     double values[VAR_VARS_NB] = {
         [VAR_N]   = outlink->frame_count_in,
@@ -227,6 +216,8 @@ static int request_frame(AVFilterLink *outlink)
     int i, nb_samples = lrint(av_expr_eval(sine->samples_per_frame_expr, values, sine));
     int16_t *samples;
 
+    if (!ff_outlink_frame_wanted(outlink))
+        return FFERROR_NOT_READY;
     if (nb_samples <= 0) {
         av_log(sine, AV_LOG_WARNING, "nb samples expression evaluated to %d, "
                "defaulting to 1024\n", nb_samples);
@@ -236,8 +227,10 @@ static int request_frame(AVFilterLink *outlink)
     if (sine->duration) {
         nb_samples = FFMIN(nb_samples, sine->duration - sine->pts);
         av_assert1(nb_samples >= 0);
-        if (!nb_samples)
-            return AVERROR_EOF;
+        if (!nb_samples) {
+            ff_outlink_set_status(outlink, AVERROR_EOF, sine->pts);
+            return 0;
+        }
     }
     if (!(frame = ff_get_audio_buffer(outlink, nb_samples)))
         return AVERROR(ENOMEM);
@@ -263,20 +256,19 @@ static const AVFilterPad sine_outputs[] = {
     {
         .name          = "default",
         .type          = AVMEDIA_TYPE_AUDIO,
-        .request_frame = request_frame,
         .config_props  = config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_asrc_sine = {
+const AVFilter ff_asrc_sine = {
     .name          = "sine",
     .description   = NULL_IF_CONFIG_SMALL("Generate sine wave audio signal."),
-    .query_formats = query_formats,
     .init          = init,
     .uninit        = uninit,
+    .activate      = activate,
     .priv_size     = sizeof(SineContext),
     .inputs        = NULL,
-    .outputs       = sine_outputs,
+    FILTER_OUTPUTS(sine_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &sine_class,
 };

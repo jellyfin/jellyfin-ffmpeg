@@ -67,14 +67,14 @@ static int lmlm4_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
     st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
     st->codecpar->codec_id   = AV_CODEC_ID_MPEG4;
-    st->need_parsing      = AVSTREAM_PARSE_HEADERS;
+    ffstream(st)->need_parsing = AVSTREAM_PARSE_HEADERS;
     avpriv_set_pts_info(st, 64, 1001, 30000);
 
     if (!(st = avformat_new_stream(s, NULL)))
         return AVERROR(ENOMEM);
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id   = AV_CODEC_ID_MP2;
-    st->need_parsing      = AVSTREAM_PARSE_HEADERS;
+    ffstream(st)->need_parsing = AVSTREAM_PARSE_HEADERS;
 
     /* the parameters will be extracted from the compressed bitstream */
     return 0;
@@ -121,7 +121,7 @@ static int lmlm4_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-AVInputFormat ff_lmlm4_demuxer = {
+const AVInputFormat ff_lmlm4_demuxer = {
     .name           = "lmlm4",
     .long_name      = NULL_IF_CONFIG_SMALL("raw lmlm4"),
     .read_probe     = lmlm4_probe,

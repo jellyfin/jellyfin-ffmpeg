@@ -127,7 +127,6 @@ static const AVFilterPad random_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad random_outputs[] = {
@@ -136,16 +135,15 @@ static const AVFilterPad random_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .request_frame = request_frame,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_random = {
+const AVFilter ff_vf_random = {
     .name        = "random",
     .description = NULL_IF_CONFIG_SMALL("Return random frames."),
     .priv_size   = sizeof(RandomContext),
     .priv_class  = &random_class,
     .init        = init,
     .uninit      = uninit,
-    .inputs      = random_inputs,
-    .outputs     = random_outputs,
+    FILTER_INPUTS(random_inputs),
+    FILTER_OUTPUTS(random_outputs),
 };

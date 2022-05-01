@@ -25,6 +25,7 @@
  */
 
 #include "avcodec.h"
+#include "encode.h"
 #include "raw.h"
 #include "internal.h"
 #include "libavutil/pixdesc.h"
@@ -36,11 +37,6 @@ static av_cold int raw_encode_init(AVCodecContext *avctx)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
 
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     avctx->bits_per_coded_sample = av_get_bits_per_pixel(desc);
     if(!avctx->codec_tag)
         avctx->codec_tag = avcodec_pix_fmt_to_codec_tag(avctx->pix_fmt);
@@ -58,7 +54,7 @@ static int raw_encode(AVCodecContext *avctx, AVPacket *pkt,
     if (ret < 0)
         return ret;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, ret, ret)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, pkt, ret, 0)) < 0)
         return ret;
     if ((ret = av_image_copy_to_buffer(pkt->data, pkt->size,
                                        (const uint8_t **)frame->data, frame->linesize,
@@ -80,16 +76,17 @@ static int raw_encode(AVCodecContext *avctx, AVPacket *pkt,
             AV_WB64(&pkt->data[8 * x], v << 48 | v >> 16);
         }
     }
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
     return 0;
 }
 
-AVCodec ff_rawvideo_encoder = {
+const AVCodec ff_rawvideo_encoder = {
     .name           = "rawvideo",
     .long_name      = NULL_IF_CONFIG_SMALL("raw video"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_RAWVIDEO,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .init           = raw_encode_init,
     .encode2        = raw_encode,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

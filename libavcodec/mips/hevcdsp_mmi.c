@@ -32,9 +32,10 @@ void ff_hevc_put_hevc_qpel_h##w##_8_mmi(int16_t *dst, uint8_t *_src,     \
     int x, y;                                                            \
     pixel *src = (pixel*)_src - 3;                                       \
     ptrdiff_t srcstride = _srcstride / sizeof(pixel);                    \
-    uint64_t ftmp[15];                                                   \
+    double ftmp[15];                                                     \
     uint64_t rtmp[1];                                                    \
     const int8_t *filter = ff_hevc_qpel_filters[mx - 1];                 \
+    DECLARE_VAR_ALL64;                                                   \
                                                                          \
     x = x_step;                                                          \
     y = height;                                                          \
@@ -46,18 +47,14 @@ void ff_hevc_put_hevc_qpel_h##w##_8_mmi(int16_t *dst, uint8_t *_src,     \
         "punpcklbh    %[ftmp1],      %[ftmp0],      %[ftmp1]    \n\t"    \
         "psrah        %[ftmp1],      %[ftmp1],      %[ftmp0]    \n\t"    \
         "psrah        %[ftmp2],      %[ftmp2],      %[ftmp0]    \n\t"    \
-        "xor          %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"    \
+        "pxor         %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"    \
                                                                          \
         "1:                                                     \n\t"    \
         "2:                                                     \n\t"    \
-        "gsldlc1      %[ftmp3],      0x07(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp3],      0x00(%[src])               \n\t"    \
-        "gsldlc1      %[ftmp4],      0x08(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp4],      0x01(%[src])               \n\t"    \
-        "gsldlc1      %[ftmp5],      0x09(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp5],      0x02(%[src])               \n\t"    \
-        "gsldlc1      %[ftmp6],      0x0a(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp6],      0x03(%[src])               \n\t"    \
+        MMI_ULDC1(%[ftmp3], %[src], 0x00)                                \
+        MMI_ULDC1(%[ftmp4], %[src], 0x01)                                \
+        MMI_ULDC1(%[ftmp5], %[src], 0x02)                                \
+        MMI_ULDC1(%[ftmp6], %[src], 0x03)                                \
         "punpcklbh    %[ftmp7],      %[ftmp3],      %[ftmp0]    \n\t"    \
         "punpckhbh    %[ftmp8],      %[ftmp3],      %[ftmp0]    \n\t"    \
         "pmullh       %[ftmp7],      %[ftmp7],      %[ftmp1]    \n\t"    \
@@ -83,8 +80,7 @@ void ff_hevc_put_hevc_qpel_h##w##_8_mmi(int16_t *dst, uint8_t *_src,     \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp4]    \n\t"    \
         "paddh        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"    \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"    \
-        "gssdlc1      %[ftmp3],      0x07(%[dst])               \n\t"    \
-        "gssdrc1      %[ftmp3],      0x00(%[dst])               \n\t"    \
+        MMI_ULDC1(%[ftmp3], %[dst], 0x00)                                \
                                                                          \
         "daddi        %[x],          %[x],         -0x01        \n\t"    \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"    \
@@ -98,7 +94,8 @@ void ff_hevc_put_hevc_qpel_h##w##_8_mmi(int16_t *dst, uint8_t *_src,     \
         PTR_ADDU     "%[src],        %[src],        %[stride]   \n\t"    \
         PTR_ADDIU    "%[dst],        %[dst],        0x80        \n\t"    \
         "bnez         %[y],          1b                         \n\t"    \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                  \
+        : RESTRICT_ASM_ALL64                                             \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                  \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                  \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                  \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                  \
@@ -132,8 +129,9 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
     ptrdiff_t srcstride = _srcstride / sizeof(pixel);                    \
     int16_t tmp_array[(MAX_PB_SIZE + QPEL_EXTRA) * MAX_PB_SIZE];         \
     int16_t *tmp = tmp_array;                                            \
-    uint64_t ftmp[15];                                                   \
+    double ftmp[15];                                                     \
     uint64_t rtmp[1];                                                    \
+    DECLARE_VAR_ALL64;                                                   \
                                                                          \
     src   -= (QPEL_EXTRA_BEFORE * srcstride + 3);                        \
     filter = ff_hevc_qpel_filters[mx - 1];                               \
@@ -147,18 +145,14 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
         "punpcklbh    %[ftmp1],      %[ftmp0],      %[ftmp1]    \n\t"    \
         "psrah        %[ftmp1],      %[ftmp1],      %[ftmp0]    \n\t"    \
         "psrah        %[ftmp2],      %[ftmp2],      %[ftmp0]    \n\t"    \
-        "xor          %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"    \
+        "pxor         %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"    \
                                                                          \
         "1:                                                     \n\t"    \
         "2:                                                     \n\t"    \
-        "gsldlc1      %[ftmp3],      0x07(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp3],      0x00(%[src])               \n\t"    \
-        "gsldlc1      %[ftmp4],      0x08(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp4],      0x01(%[src])               \n\t"    \
-        "gsldlc1      %[ftmp5],      0x09(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp5],      0x02(%[src])               \n\t"    \
-        "gsldlc1      %[ftmp6],      0x0a(%[src])               \n\t"    \
-        "gsldrc1      %[ftmp6],      0x03(%[src])               \n\t"    \
+        MMI_ULDC1(%[ftmp3], %[src], 0x00)                                \
+        MMI_ULDC1(%[ftmp4], %[src], 0x01)                                \
+        MMI_ULDC1(%[ftmp5], %[src], 0x02)                                \
+        MMI_ULDC1(%[ftmp6], %[src], 0x03)                                \
         "punpcklbh    %[ftmp7],      %[ftmp3],      %[ftmp0]    \n\t"    \
         "punpckhbh    %[ftmp8],      %[ftmp3],      %[ftmp0]    \n\t"    \
         "pmullh       %[ftmp7],      %[ftmp7],      %[ftmp1]    \n\t"    \
@@ -184,8 +178,7 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp4]    \n\t"    \
         "paddh        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"    \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"    \
-        "gssdlc1      %[ftmp3],      0x07(%[tmp])               \n\t"    \
-        "gssdrc1      %[ftmp3],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp3], %[tmp], 0x00)                                \
                                                                          \
         "daddi        %[x],          %[x],         -0x01        \n\t"    \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"    \
@@ -199,7 +192,8 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
         PTR_ADDU     "%[src],        %[src],        %[stride]   \n\t"    \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
         "bnez         %[y],          1b                         \n\t"    \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                  \
+        : RESTRICT_ASM_ALL64                                             \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                  \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                  \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                  \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                  \
@@ -228,29 +222,21 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
                                                                          \
         "1:                                                     \n\t"    \
         "2:                                                     \n\t"    \
-        "gsldlc1      %[ftmp3],      0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp3],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp3], %[tmp], 0x00)                                \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
-        "gsldlc1      %[ftmp4],      0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp4],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp4], %[tmp], 0x00)                                \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
-        "gsldlc1      %[ftmp5],      0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp5],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp5], %[tmp], 0x00)                                \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
-        "gsldlc1      %[ftmp6],      0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp6],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp6], %[tmp], 0x00)                                \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
-        "gsldlc1      %[ftmp7],      0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp7],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp7], %[tmp], 0x00)                                \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
-        "gsldlc1      %[ftmp8],      0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp8],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp8], %[tmp], 0x00)                                \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
-        "gsldlc1      %[ftmp9],      0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp9],      0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp9], %[tmp], 0x00)                                \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
-        "gsldlc1      %[ftmp10],     0x07(%[tmp])               \n\t"    \
-        "gsldrc1      %[ftmp10],     0x00(%[tmp])               \n\t"    \
+        MMI_ULDC1(%[ftmp10], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        -0x380      \n\t"    \
         TRANSPOSE_4H(%[ftmp3], %[ftmp4], %[ftmp5], %[ftmp6],             \
                      %[ftmp11], %[ftmp12], %[ftmp13], %[ftmp14])         \
@@ -275,8 +261,7 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
         "paddw        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"    \
         "psraw        %[ftmp5],      %[ftmp5],      %[ftmp0]    \n\t"    \
         "packsswh     %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"    \
-        "gssdlc1      %[ftmp3],      0x07(%[dst])               \n\t"    \
-        "gssdrc1      %[ftmp3],      0x00(%[dst])               \n\t"    \
+        MMI_USDC1(%[ftmp3], %[dst], 0x00)                               \
                                                                          \
         "daddi        %[x],          %[x],         -0x01        \n\t"    \
         PTR_ADDIU    "%[dst],        %[dst],        0x08        \n\t"    \
@@ -290,7 +275,8 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
         PTR_ADDIU    "%[dst],        %[dst],        0x80        \n\t"    \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"    \
         "bnez         %[y],          1b                         \n\t"    \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                  \
+        : RESTRICT_ASM_ALL64                                             \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                  \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                  \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                  \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                  \
@@ -329,10 +315,14 @@ void ff_hevc_put_hevc_qpel_bi_h##w##_8_mmi(uint8_t *_dst,               \
     pixel *dst          = (pixel *)_dst;                                \
     ptrdiff_t dststride = _dststride / sizeof(pixel);                   \
     const int8_t *filter    = ff_hevc_qpel_filters[mx - 1];             \
-    uint64_t ftmp[20];                                                  \
+    double ftmp[20];                                                    \
     uint64_t rtmp[1];                                                   \
-    int shift = 7;                                                      \
-    int offset = 64;                                                    \
+    union av_intfloat64 shift;                                          \
+    union av_intfloat64 offset;                                         \
+    DECLARE_VAR_ALL64;                                                  \
+    DECLARE_VAR_LOW32;                                                  \
+    shift.i = 7;                                                        \
+    offset.i = 64;                                                      \
                                                                         \
     x = width >> 2;                                                     \
     y = height;                                                         \
@@ -344,21 +334,17 @@ void ff_hevc_put_hevc_qpel_bi_h##w##_8_mmi(uint8_t *_dst,               \
         "punpcklbh    %[ftmp1],      %[ftmp0],      %[ftmp1]    \n\t"   \
         "psrah        %[ftmp1],      %[ftmp1],      %[ftmp0]    \n\t"   \
         "psrah        %[ftmp2],      %[ftmp2],      %[ftmp0]    \n\t"   \
-        "xor          %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
+        "pxor         %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
         "punpcklhw    %[offset],     %[offset],     %[offset]   \n\t"   \
         "punpcklwd    %[offset],     %[offset],     %[offset]   \n\t"   \
                                                                         \
         "1:                                                     \n\t"   \
         "li           %[x],        " #x_step "                  \n\t"   \
         "2:                                                     \n\t"   \
-        "gsldlc1      %[ftmp3],      0x07(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp3],      0x00(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp4],      0x08(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp4],      0x01(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp5],      0x09(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp5],      0x02(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp6],      0x0a(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp6],      0x03(%[src])               \n\t"   \
+        MMI_ULDC1(%[ftmp3], %[src], 0x00)                               \
+        MMI_ULDC1(%[ftmp4], %[src], 0x01)                               \
+        MMI_ULDC1(%[ftmp5], %[src], 0x02)                               \
+        MMI_ULDC1(%[ftmp6], %[src], 0x03)                               \
         "punpcklbh    %[ftmp7],      %[ftmp3],      %[ftmp0]    \n\t"   \
         "punpckhbh    %[ftmp8],      %[ftmp3],      %[ftmp0]    \n\t"   \
         "pmullh       %[ftmp7],      %[ftmp7],      %[ftmp1]    \n\t"   \
@@ -385,8 +371,7 @@ void ff_hevc_put_hevc_qpel_bi_h##w##_8_mmi(uint8_t *_dst,               \
         "paddh        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"   \
         "paddh        %[ftmp3],      %[ftmp3],      %[offset]   \n\t"   \
-        "gsldlc1      %[ftmp4],      0x07(%[src2])              \n\t"   \
-        "gsldrc1      %[ftmp4],      0x00(%[src2])              \n\t"   \
+        MMI_ULDC1(%[ftmp4], %[src2], 0x00)                              \
         "li           %[rtmp0],      0x10                       \n\t"   \
         "dmtc1        %[rtmp0],      %[ftmp8]                   \n\t"   \
         "punpcklhw    %[ftmp5],      %[ftmp0],      %[ftmp3]    \n\t"   \
@@ -403,10 +388,9 @@ void ff_hevc_put_hevc_qpel_bi_h##w##_8_mmi(uint8_t *_dst,               \
         "psraw        %[ftmp6],      %[ftmp6],      %[shift]    \n\t"   \
         "packsswh     %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "pcmpgth      %[ftmp7],      %[ftmp5],      %[ftmp0]    \n\t"   \
-        "and          %[ftmp3],      %[ftmp5],      %[ftmp7]    \n\t"   \
+        "pand         %[ftmp3],      %[ftmp5],      %[ftmp7]    \n\t"   \
         "packushb     %[ftmp3],      %[ftmp3],      %[ftmp3]    \n\t"   \
-        "gsswlc1      %[ftmp3],      0x03(%[dst])               \n\t"   \
-        "gsswrc1      %[ftmp3],      0x00(%[dst])               \n\t"   \
+        MMI_USWC1(%[ftmp3], %[dst], 0x00)                               \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"   \
@@ -422,7 +406,8 @@ void ff_hevc_put_hevc_qpel_bi_h##w##_8_mmi(uint8_t *_dst,               \
         PTR_ADDU     "%[dst],        %[dst],    %[dst_stride]   \n\t"   \
         PTR_ADDIU    "%[src2],       %[src2],       0x80        \n\t"   \
         "bnez         %[y],          1b                         \n\t"   \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
+        : RESTRICT_ASM_ALL64 RESTRICT_ASM_LOW32                         \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                 \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                 \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                 \
@@ -430,9 +415,9 @@ void ff_hevc_put_hevc_qpel_bi_h##w##_8_mmi(uint8_t *_dst,               \
           [ftmp10]"=&f"(ftmp[10]), [ftmp11]"=&f"(ftmp[11]),             \
           [ftmp12]"=&f"(ftmp[12]), [src2]"+&r"(src2),                   \
           [dst]"+&r"(dst), [src]"+&r"(src), [y]"+&r"(y), [x]"=&r"(x),   \
-          [offset]"+&f"(offset), [rtmp0]"=&r"(rtmp[0])                  \
+          [offset]"+&f"(offset.f), [rtmp0]"=&r"(rtmp[0])                \
         : [src_stride]"r"(srcstride), [dst_stride]"r"(dststride),       \
-          [filter]"r"(filter), [shift]"f"(shift)                        \
+          [filter]"r"(filter), [shift]"f"(shift.f)                      \
         : "memory"                                                      \
     );                                                                  \
 }
@@ -463,10 +448,14 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
     ptrdiff_t dststride = _dststride / sizeof(pixel);                   \
     int16_t tmp_array[(MAX_PB_SIZE + QPEL_EXTRA) * MAX_PB_SIZE];        \
     int16_t *tmp = tmp_array;                                           \
-    uint64_t ftmp[20];                                                  \
+    double ftmp[20];                                                    \
     uint64_t rtmp[1];                                                   \
-    int shift = 7;                                                      \
-    int offset = 64;                                                    \
+    union av_intfloat64 shift;                                          \
+    union av_intfloat64 offset;                                         \
+    DECLARE_VAR_ALL64;                                                  \
+    DECLARE_VAR_LOW32;                                                  \
+    shift.i = 7;                                                        \
+    offset.i = 64;                                                      \
                                                                         \
     src   -= (QPEL_EXTRA_BEFORE * srcstride + 3);                       \
     filter = ff_hevc_qpel_filters[mx - 1];                              \
@@ -480,18 +469,14 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "punpcklbh    %[ftmp1],      %[ftmp0],      %[ftmp1]    \n\t"   \
         "psrah        %[ftmp1],      %[ftmp1],      %[ftmp0]    \n\t"   \
         "psrah        %[ftmp2],      %[ftmp2],      %[ftmp0]    \n\t"   \
-        "xor          %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
+        "pxor         %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
                                                                         \
         "1:                                                     \n\t"   \
         "2:                                                     \n\t"   \
-        "gsldlc1      %[ftmp3],      0x07(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp3],      0x00(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp4],      0x08(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp4],      0x01(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp5],      0x09(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp5],      0x02(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp6],      0x0a(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp6],      0x03(%[src])               \n\t"   \
+        MMI_ULDC1(%[ftmp3], %[src], 0x00)                               \
+        MMI_ULDC1(%[ftmp4], %[src], 0x01)                               \
+        MMI_ULDC1(%[ftmp5], %[src], 0x02)                               \
+        MMI_ULDC1(%[ftmp6], %[src], 0x03)                               \
         "punpcklbh    %[ftmp7],      %[ftmp3],      %[ftmp0]    \n\t"   \
         "punpckhbh    %[ftmp8],      %[ftmp3],      %[ftmp0]    \n\t"   \
         "pmullh       %[ftmp7],      %[ftmp7],      %[ftmp1]    \n\t"   \
@@ -517,8 +502,7 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp4]    \n\t"   \
         "paddh        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"   \
-        "gssdlc1      %[ftmp3],      0x07(%[tmp])               \n\t"   \
-        "gssdrc1      %[ftmp3],      0x00(%[tmp])               \n\t"   \
+        MMI_USDC1(%[ftmp3], %[tmp], 0x00)                               \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"   \
@@ -532,7 +516,8 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         PTR_ADDU     "%[src],        %[src],        %[stride]   \n\t"   \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
         "bnez         %[y],          1b                         \n\t"   \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
+        : RESTRICT_ASM_ALL64                                            \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                 \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                 \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                 \
@@ -563,29 +548,21 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "1:                                                     \n\t"   \
         "li           %[x],        " #x_step "                  \n\t"   \
         "2:                                                     \n\t"   \
-        "gsldlc1      %[ftmp3],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp3],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp3], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp4],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp4],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp4], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp5],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp5],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp5], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp6],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp6],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp6], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp7],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp7],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp7], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp8],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp8],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp8], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp9],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp9],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp9], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp10],     0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp10],     0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp10], %[tmp], 0x00)                              \
         PTR_ADDIU    "%[tmp],        %[tmp],        -0x380      \n\t"   \
         TRANSPOSE_4H(%[ftmp3], %[ftmp4], %[ftmp5], %[ftmp6],            \
                      %[ftmp11], %[ftmp12], %[ftmp13], %[ftmp14])        \
@@ -610,9 +587,8 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "paddw        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "psraw        %[ftmp5],      %[ftmp5],      %[ftmp0]    \n\t"   \
         "packsswh     %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"   \
-        "gsldlc1      %[ftmp4],      0x07(%[src2])              \n\t"   \
-        "gsldrc1      %[ftmp4],      0x00(%[src2])              \n\t"   \
-        "xor          %[ftmp7],      %[ftmp7],      %[ftmp7]    \n\t"   \
+        MMI_ULDC1(%[ftmp4], %[src2], 0x00)                              \
+        "pxor         %[ftmp7],      %[ftmp7],      %[ftmp7]    \n\t"   \
         "li           %[rtmp0],      0x10                       \n\t"   \
         "dmtc1        %[rtmp0],      %[ftmp8]                   \n\t"   \
         "punpcklhw    %[ftmp5],      %[ftmp7],      %[ftmp3]    \n\t"   \
@@ -631,10 +607,9 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "psraw        %[ftmp6],      %[ftmp6],      %[shift]    \n\t"   \
         "packsswh     %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "pcmpgth      %[ftmp7],      %[ftmp5],      %[ftmp7]    \n\t"   \
-        "and          %[ftmp3],      %[ftmp5],      %[ftmp7]    \n\t"   \
+        "pand         %[ftmp3],      %[ftmp5],      %[ftmp7]    \n\t"   \
         "packushb     %[ftmp3],      %[ftmp3],      %[ftmp3]    \n\t"   \
-        "gsswlc1      %[ftmp3],      0x03(%[dst])               \n\t"   \
-        "gsswrc1      %[ftmp3],      0x00(%[dst])               \n\t"   \
+        MMI_USWC1(%[ftmp3], %[dst], 0x00)                               \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[src2],       %[src2],       0x08        \n\t"   \
@@ -650,7 +625,8 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         PTR_ADDU     "%[dst],        %[dst],        %[stride]   \n\t"   \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
         "bnez         %[y],          1b                         \n\t"   \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
+        : RESTRICT_ASM_ALL64 RESTRICT_ASM_LOW32                         \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                 \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                 \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                 \
@@ -659,9 +635,9 @@ void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
           [ftmp12]"=&f"(ftmp[12]), [ftmp13]"=&f"(ftmp[13]),             \
           [ftmp14]"=&f"(ftmp[14]), [src2]"+&r"(src2),                   \
           [dst]"+&r"(dst), [tmp]"+&r"(tmp), [y]"+&r"(y), [x]"=&r"(x),   \
-          [offset]"+&f"(offset), [rtmp0]"=&r"(rtmp[0])                  \
+          [offset]"+&f"(offset.f), [rtmp0]"=&r"(rtmp[0])                \
         : [filter]"r"(filter), [stride]"r"(dststride),                  \
-          [shift]"f"(shift)                                             \
+          [shift]"f"(shift.f)                                           \
         : "memory"                                                      \
     );                                                                  \
 }
@@ -692,10 +668,14 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
     const int8_t *filter = ff_hevc_epel_filters[mx - 1];                \
     int16_t tmp_array[(MAX_PB_SIZE + EPEL_EXTRA) * MAX_PB_SIZE];        \
     int16_t *tmp = tmp_array;                                           \
-    uint64_t ftmp[12];                                                  \
+    double  ftmp[12];                                                   \
     uint64_t rtmp[1];                                                   \
-    int shift = 7;                                                      \
-    int offset = 64;                                                    \
+    union av_intfloat64 shift;                                          \
+    union av_intfloat64 offset;                                         \
+    DECLARE_VAR_ALL64;                                                  \
+    DECLARE_VAR_LOW32;                                                  \
+    shift.i = 7;                                                        \
+    offset.i = 64;                                                      \
                                                                         \
     src -= (EPEL_EXTRA_BEFORE * srcstride + 1);                         \
     x = width >> 2;                                                     \
@@ -706,18 +686,14 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "dmtc1        %[rtmp0],      %[ftmp0]                   \n\t"   \
         "punpcklbh    %[ftmp1],      %[ftmp0],      %[ftmp1]    \n\t"   \
         "psrah        %[ftmp1],      %[ftmp1],      %[ftmp0]    \n\t"   \
-        "xor          %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
+        "pxor         %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
                                                                         \
         "1:                                                     \n\t"   \
         "2:                                                     \n\t"   \
-        "gslwlc1      %[ftmp2],      0x03(%[src])               \n\t"   \
-        "gslwrc1      %[ftmp2],      0x00(%[src])               \n\t"   \
-        "gslwlc1      %[ftmp3],      0x04(%[src])               \n\t"   \
-        "gslwrc1      %[ftmp3],      0x01(%[src])               \n\t"   \
-        "gslwlc1      %[ftmp4],      0x05(%[src])               \n\t"   \
-        "gslwrc1      %[ftmp4],      0x02(%[src])               \n\t"   \
-        "gslwlc1      %[ftmp5],      0x06(%[src])               \n\t"   \
-        "gslwrc1      %[ftmp5],      0x03(%[src])               \n\t"   \
+        MMI_ULDC1(%[ftmp3], %[src], 0x00)                               \
+        MMI_ULDC1(%[ftmp4], %[src], 0x01)                               \
+        MMI_ULDC1(%[ftmp5], %[src], 0x02)                               \
+        MMI_ULDC1(%[ftmp6], %[src], 0x03)                               \
         "punpcklbh    %[ftmp2],      %[ftmp2],      %[ftmp0]    \n\t"   \
         "pmullh       %[ftmp2],      %[ftmp2],      %[ftmp1]    \n\t"   \
         "punpcklbh    %[ftmp3],      %[ftmp3],      %[ftmp0]    \n\t"   \
@@ -731,8 +707,7 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "paddh        %[ftmp2],      %[ftmp2],      %[ftmp3]    \n\t"   \
         "paddh        %[ftmp4],      %[ftmp4],      %[ftmp5]    \n\t"   \
         "paddh        %[ftmp2],      %[ftmp2],      %[ftmp4]    \n\t"   \
-        "gssdlc1      %[ftmp2],      0x07(%[tmp])               \n\t"   \
-        "gssdrc1      %[ftmp2],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp2], %[tmp], 0x00)                               \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"   \
@@ -746,7 +721,8 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         PTR_ADDU     "%[src],        %[src],        %[stride]   \n\t"   \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
         "bnez         %[y],          1b                         \n\t"   \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
+        : RESTRICT_ASM_ALL64                                            \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                 \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                 \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                 \
@@ -771,22 +747,18 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "li           %[rtmp0],      0x06                       \n\t"   \
         "dmtc1        %[rtmp0],      %[ftmp0]                   \n\t"   \
         "punpcklwd    %[offset],     %[offset],     %[offset]   \n\t"   \
-        "xor          %[ftmp2],      %[ftmp2],      %[ftmp2]    \n\t"   \
+        "pxor         %[ftmp2],      %[ftmp2],      %[ftmp2]    \n\t"   \
                                                                         \
         "1:                                                     \n\t"   \
         "li           %[x],        " #x_step "                  \n\t"   \
         "2:                                                     \n\t"   \
-        "gsldlc1      %[ftmp3],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp3],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp3], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp4],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp4],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp4], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp5],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp5],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp5], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp6],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp6],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp6], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],       -0x180       \n\t"   \
         TRANSPOSE_4H(%[ftmp3], %[ftmp4], %[ftmp5], %[ftmp6],            \
                      %[ftmp7], %[ftmp8], %[ftmp9], %[ftmp10])           \
@@ -801,8 +773,7 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "paddw        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "psraw        %[ftmp5],      %[ftmp5],      %[ftmp0]    \n\t"   \
         "packsswh     %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"   \
-        "gsldlc1      %[ftmp4],      0x07(%[src2])              \n\t"   \
-        "gsldrc1      %[ftmp4],      0x00(%[src2])              \n\t"   \
+        MMI_ULDC1(%[ftmp4], %[tmp], 0x02)                               \
         "li           %[rtmp0],      0x10                       \n\t"   \
         "dmtc1        %[rtmp0],      %[ftmp8]                   \n\t"   \
         "punpcklhw    %[ftmp5],      %[ftmp2],      %[ftmp3]    \n\t"   \
@@ -821,10 +792,9 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "psraw        %[ftmp6],      %[ftmp6],      %[shift]    \n\t"   \
         "packsswh     %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "pcmpgth      %[ftmp7],      %[ftmp5],      %[ftmp2]    \n\t"   \
-        "and          %[ftmp3],      %[ftmp5],      %[ftmp7]    \n\t"   \
+        "pand         %[ftmp3],      %[ftmp5],      %[ftmp7]    \n\t"   \
         "packushb     %[ftmp3],      %[ftmp3],      %[ftmp3]    \n\t"   \
-        "gsswlc1      %[ftmp3],      0x03(%[dst])               \n\t"   \
-        "gsswrc1      %[ftmp3],      0x00(%[dst])               \n\t"   \
+        MMI_USWC1(%[ftmp3], %[dst], 0x0)                                \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[src2],       %[src2],       0x08        \n\t"   \
@@ -840,16 +810,17 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         PTR_ADDU     "%[dst],        %[dst],        %[stride]   \n\t"   \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
         "bnez         %[y],          1b                         \n\t"   \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
+        : RESTRICT_ASM_LOW32 RESTRICT_ASM_ALL64                         \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                 \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                 \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                 \
           [ftmp8]"=&f"(ftmp[8]), [ftmp9]"=&f"(ftmp[9]),                 \
           [ftmp10]"=&f"(ftmp[10]), [src2]"+&r"(src2),                   \
           [dst]"+&r"(dst), [tmp]"+&r"(tmp), [y]"+&r"(y), [x]"=&r"(x),   \
-          [offset]"+&f"(offset), [rtmp0]"=&r"(rtmp[0])                  \
+          [offset]"+&f"(offset.f), [rtmp0]"=&r"(rtmp[0])                \
         : [filter]"r"(filter), [stride]"r"(dststride),                  \
-          [shift]"f"(shift)                                             \
+          [shift]"f"(shift.f)                                           \
         : "memory"                                                      \
     );                                                                  \
 }
@@ -875,14 +846,16 @@ void ff_hevc_put_hevc_pel_bi_pixels##w##_8_mmi(uint8_t *_dst,             \
     ptrdiff_t srcstride = _srcstride / sizeof(pixel);                     \
     pixel *dst          = (pixel *)_dst;                                  \
     ptrdiff_t dststride = _dststride / sizeof(pixel);                     \
-    uint64_t ftmp[12];                                                    \
+    double  ftmp[12];                                                     \
     uint64_t rtmp[1];                                                     \
-    int shift = 7;                                                        \
+    union av_intfloat64 shift;                                            \
+    DECLARE_VAR_ALL64;                                                    \
+    shift.i = 7;                                                          \
                                                                           \
     y = height;                                                           \
     x = width >> 3;                                                       \
     __asm__ volatile(                                                     \
-        "xor          %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"     \
+        "pxor         %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"     \
         "li           %[rtmp0],      0x06                       \n\t"     \
         "dmtc1        %[rtmp0],      %[ftmp1]                   \n\t"     \
         "li           %[rtmp0],      0x10                       \n\t"     \
@@ -894,12 +867,9 @@ void ff_hevc_put_hevc_pel_bi_pixels##w##_8_mmi(uint8_t *_dst,             \
                                                                           \
         "1:                                                     \n\t"     \
         "2:                                                     \n\t"     \
-        "gsldlc1      %[ftmp5],      0x07(%[src])               \n\t"     \
-        "gsldrc1      %[ftmp5],      0x00(%[src])               \n\t"     \
-        "gsldlc1      %[ftmp2],      0x07(%[src2])              \n\t"     \
-        "gsldrc1      %[ftmp2],      0x00(%[src2])              \n\t"     \
-        "gsldlc1      %[ftmp3],      0x0f(%[src2])              \n\t"     \
-        "gsldrc1      %[ftmp3],      0x08(%[src2])              \n\t"     \
+        MMI_ULDC1(%[ftmp5], %[src], 0x00)                                 \
+        MMI_ULDC1(%[ftmp2], %[src2], 0x00)                                \
+        MMI_ULDC1(%[ftmp3], %[src2], 0x08)                                \
         "punpcklbh    %[ftmp4],      %[ftmp5],      %[ftmp0]    \n\t"     \
         "punpckhbh    %[ftmp5],      %[ftmp5],      %[ftmp0]    \n\t"     \
         "psllh        %[ftmp4],      %[ftmp4],      %[ftmp1]    \n\t"     \
@@ -930,11 +900,10 @@ void ff_hevc_put_hevc_pel_bi_pixels##w##_8_mmi(uint8_t *_dst,             \
         "packsswh     %[ftmp4],      %[ftmp4],      %[ftmp5]    \n\t"     \
         "pcmpgth      %[ftmp3],      %[ftmp2],      %[ftmp0]    \n\t"     \
         "pcmpgth      %[ftmp5],      %[ftmp4],      %[ftmp0]    \n\t"     \
-        "and          %[ftmp2],      %[ftmp2],      %[ftmp3]    \n\t"     \
-        "and          %[ftmp4],      %[ftmp4],      %[ftmp5]    \n\t"     \
+        "pand         %[ftmp2],      %[ftmp2],      %[ftmp3]    \n\t"     \
+        "pand         %[ftmp4],      %[ftmp4],      %[ftmp5]    \n\t"     \
         "packushb     %[ftmp2],      %[ftmp2],      %[ftmp4]    \n\t"     \
-        "gssdlc1      %[ftmp2],      0x07(%[dst])               \n\t"     \
-        "gssdrc1      %[ftmp2],      0x00(%[dst])               \n\t"     \
+        MMI_USDC1(%[ftmp2], %[dst], 0x0)                                  \
                                                                           \
         "daddi        %[x],          %[x],         -0x01        \n\t"     \
         PTR_ADDIU    "%[src],        %[src],        0x08        \n\t"     \
@@ -951,7 +920,8 @@ void ff_hevc_put_hevc_pel_bi_pixels##w##_8_mmi(uint8_t *_dst,             \
         PTR_ADDU     "%[dst],        %[dst],       %[dststride] \n\t"     \
         PTR_ADDIU    "%[src2],       %[src2],       0x80        \n\t"     \
         "bnez         %[y],          1b                         \n\t"     \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                   \
+        : RESTRICT_ASM_ALL64                                              \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                   \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                   \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                   \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                   \
@@ -959,7 +929,7 @@ void ff_hevc_put_hevc_pel_bi_pixels##w##_8_mmi(uint8_t *_dst,             \
           [ftmp10]"=&f"(ftmp[10]), [offset]"=&f"(ftmp[11]),               \
           [src2]"+&r"(src2), [dst]"+&r"(dst), [src]"+&r"(src),            \
           [x]"+&r"(x), [y]"+&r"(y), [rtmp0]"=&r"(rtmp[0])                 \
-        : [dststride]"r"(dststride), [shift]"f"(shift),                   \
+        : [dststride]"r"(dststride), [shift]"f"(shift.f),                 \
           [srcstride]"r"(srcstride)                                       \
         : "memory"                                                        \
     );                                                                    \
@@ -989,10 +959,14 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
     ptrdiff_t dststride = _dststride / sizeof(pixel);                   \
     int16_t tmp_array[(MAX_PB_SIZE + QPEL_EXTRA) * MAX_PB_SIZE];        \
     int16_t *tmp = tmp_array;                                           \
-    uint64_t ftmp[20];                                                  \
+    double ftmp[20];                                                    \
     uint64_t rtmp[1];                                                   \
-    int shift = 6;                                                      \
-    int offset = 32;                                                    \
+    union av_intfloat64 shift;                                          \
+    union av_intfloat64 offset;                                         \
+    DECLARE_VAR_ALL64;                                                  \
+    DECLARE_VAR_LOW32;                                                  \
+    shift.i = 6;                                                        \
+    offset.i = 32;                                                      \
                                                                         \
     src   -= (QPEL_EXTRA_BEFORE * srcstride + 3);                       \
     filter = ff_hevc_qpel_filters[mx - 1];                              \
@@ -1006,18 +980,14 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
         "punpcklbh    %[ftmp1],      %[ftmp0],      %[ftmp1]    \n\t"   \
         "psrah        %[ftmp1],      %[ftmp1],      %[ftmp0]    \n\t"   \
         "psrah        %[ftmp2],      %[ftmp2],      %[ftmp0]    \n\t"   \
-        "xor          %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
+        "pxor         %[ftmp0],      %[ftmp0],      %[ftmp0]    \n\t"   \
                                                                         \
         "1:                                                     \n\t"   \
         "2:                                                     \n\t"   \
-        "gsldlc1      %[ftmp3],      0x07(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp3],      0x00(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp4],      0x08(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp4],      0x01(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp5],      0x09(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp5],      0x02(%[src])               \n\t"   \
-        "gsldlc1      %[ftmp6],      0x0a(%[src])               \n\t"   \
-        "gsldrc1      %[ftmp6],      0x03(%[src])               \n\t"   \
+        MMI_ULDC1(%[ftmp3], %[src], 0x00)                               \
+        MMI_ULDC1(%[ftmp4], %[src], 0x01)                               \
+        MMI_ULDC1(%[ftmp5], %[src], 0x02)                               \
+        MMI_ULDC1(%[ftmp6], %[src], 0x03)                               \
         "punpcklbh    %[ftmp7],      %[ftmp3],      %[ftmp0]    \n\t"   \
         "punpckhbh    %[ftmp8],      %[ftmp3],      %[ftmp0]    \n\t"   \
         "pmullh       %[ftmp7],      %[ftmp7],      %[ftmp1]    \n\t"   \
@@ -1043,8 +1013,7 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp4]    \n\t"   \
         "paddh        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"   \
-        "gssdlc1      %[ftmp3],      0x07(%[tmp])               \n\t"   \
-        "gssdrc1      %[ftmp3],      0x00(%[tmp])               \n\t"   \
+        MMI_USDC1(%[ftmp3], %[tmp], 0x0)                                \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"   \
@@ -1058,7 +1027,8 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
         PTR_ADDU     "%[src],        %[src],        %[stride]   \n\t"   \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
         "bnez         %[y],          1b                         \n\t"   \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
+        : RESTRICT_ASM_ALL64                                            \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                 \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                 \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                 \
@@ -1090,29 +1060,21 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
         "1:                                                     \n\t"   \
         "li           %[x],        " #x_step "                  \n\t"   \
         "2:                                                     \n\t"   \
-        "gsldlc1      %[ftmp3],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp3],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp3], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp4],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp4],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp4], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp5],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp5],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp5], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp6],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp6],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp6], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp7],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp7],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp7], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp8],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp8],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp8], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp9],      0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp9],      0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp9], %[tmp], 0x00)                               \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
-        "gsldlc1      %[ftmp10],     0x07(%[tmp])               \n\t"   \
-        "gsldrc1      %[ftmp10],     0x00(%[tmp])               \n\t"   \
+        MMI_ULDC1(%[ftmp10], %[tmp], 0x00)                              \
         PTR_ADDIU    "%[tmp],        %[tmp],        -0x380      \n\t"   \
         TRANSPOSE_4H(%[ftmp3], %[ftmp4], %[ftmp5], %[ftmp6],            \
                      %[ftmp11], %[ftmp12], %[ftmp13], %[ftmp14])        \
@@ -1139,12 +1101,11 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
         "packsswh     %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"   \
         "paddh        %[ftmp3],      %[ftmp3],      %[offset]   \n\t"   \
         "psrah        %[ftmp3],      %[ftmp3],      %[shift]    \n\t"   \
-        "xor          %[ftmp7],      %[ftmp7],      %[ftmp7]    \n\t"   \
+        "pxor         %[ftmp7],      %[ftmp7],      %[ftmp7]    \n\t"   \
         "pcmpgth      %[ftmp7],      %[ftmp3],      %[ftmp7]    \n\t"   \
-        "and          %[ftmp3],      %[ftmp3],      %[ftmp7]    \n\t"   \
+        "pand         %[ftmp3],      %[ftmp3],      %[ftmp7]    \n\t"   \
         "packushb     %[ftmp3],      %[ftmp3],      %[ftmp3]    \n\t"   \
-        "gsswlc1      %[ftmp3],      0x03(%[dst])               \n\t"   \
-        "gsswrc1      %[ftmp3],      0x00(%[dst])               \n\t"   \
+        MMI_USWC1(%[ftmp3], %[dst], 0x00)                               \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x08        \n\t"   \
@@ -1157,7 +1118,8 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
         PTR_ADDU     "%[dst],        %[dst],        %[stride]   \n\t"   \
         PTR_ADDIU    "%[tmp],        %[tmp],        0x80        \n\t"   \
         "bnez         %[y],          1b                         \n\t"   \
-        : [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
+        : RESTRICT_ASM_ALL64 RESTRICT_ASM_LOW32                         \
+          [ftmp0]"=&f"(ftmp[0]), [ftmp1]"=&f"(ftmp[1]),                 \
           [ftmp2]"=&f"(ftmp[2]), [ftmp3]"=&f"(ftmp[3]),                 \
           [ftmp4]"=&f"(ftmp[4]), [ftmp5]"=&f"(ftmp[5]),                 \
           [ftmp6]"=&f"(ftmp[6]), [ftmp7]"=&f"(ftmp[7]),                 \
@@ -1166,9 +1128,9 @@ void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
           [ftmp12]"=&f"(ftmp[12]), [ftmp13]"=&f"(ftmp[13]),             \
           [ftmp14]"=&f"(ftmp[14]),                                      \
           [dst]"+&r"(dst), [tmp]"+&r"(tmp), [y]"+&r"(y), [x]"=&r"(x),   \
-          [offset]"+&f"(offset), [rtmp0]"=&r"(rtmp[0])                  \
+          [offset]"+&f"(offset.f), [rtmp0]"=&r"(rtmp[0])                \
         : [filter]"r"(filter), [stride]"r"(dststride),                  \
-          [shift]"f"(shift)                                             \
+          [shift]"f"(shift.f)                                           \
         : "memory"                                                      \
     );                                                                  \
 }

@@ -53,7 +53,7 @@ Set AAC encoder coding method. Possible values:
 
 @table @samp
 @item twoloop
-Two loop searching (TLS) method.
+Two loop searching (TLS) method. This is the default method.
 
 This method first sets quantizers depending on band thresholds and then tries
 to find an optimal combination by adding or subtracting a specific value from
@@ -75,7 +75,6 @@ Constant quantizer method.
 Uses a cheaper version of twoloop algorithm that doesn't try to do as many
 clever adjustments. Worse with low bitrates (less than 64kbps), but is better
 and much faster at higher bitrates.
-This is the default choice for a coder
 
 @end table
 
@@ -1268,6 +1267,10 @@ disabled
 A description of some of the currently available video encoders
 follows.
 
+@section a64_multi, a64_multi5
+
+A64 / Commodore 64 multicolor charset encoder. @code{a64_multi5} is extended with 5th color (colram).
+
 @section GIF
 
 GIF image/animation encoder.
@@ -1747,12 +1750,30 @@ You need to explicitly configure the build with @code{--enable-libsvtav1}.
 @table @option
 @item profile
 Set the encoding profile.
+@table @samp
+@item main
+@item high
+@item professional
+@end table
 
 @item level
-Set the operating point level.
+Set the operating point level. For example: '4.0'
+
+@item hielevel
+Set the Hierarchical prediction levels.
+@table @samp
+@item 3level
+@item 4level
+This is the default.
+@end table
 
 @item tier
 Set the operating point tier.
+@table @samp
+@item main
+This is the default.
+@item high
+@end table
 
 @item rc
 Set the rate control mode to use.
@@ -2639,6 +2660,9 @@ ffmpeg -i foo.mpg -c:v libx264 -x264opts keyint=123:min-keyint=20 -an out.mkv
 Import closed captions (which must be ATSC compatible format) into output.
 Only the mpeg2 and h264 decoders provide these. Default is 1 (on).
 
+@item udu_sei @var{boolean}
+Import user data unregistered SEI if available into output. Default is 0 (off).
+
 @item x264-params (N.A.)
 Override the x264 configuration using a :-separated list of key=value
 parameters.
@@ -2719,6 +2743,9 @@ Quantizer curve compression factor
 @item forced-idr
 Normally, when forcing a I-frame type, the encoder can select any type
 of I-frame. This option forces it to choose an IDR-frame.
+
+@item udu_sei @var{boolean}
+Import user data unregistered SEI if available into output. Default is 0 (off).
 
 @item x265-params
 Set x265 options using a list of @var{key}=@var{value} couples separated
@@ -3116,7 +3143,8 @@ also set (the @option{-qscale} ffmpeg option).
 @option{look_ahead} option is also set.
 
 @item
-@var{ICQ} -- intelligent constant quality otherwise.
+@var{ICQ} -- intelligent constant quality otherwise. For the ICQ modes, global
+quality range is 1 to 51, with 1 being the best quality.
 @end itemize
 
 @item

@@ -50,13 +50,6 @@ static int yuv4_write_header(AVFormatContext *s)
     if (aspectn == 0 && aspectd == 1)
         aspectd = 0;  // 0:0 means unknown
 
-#if FF_API_LAVF_AVCTX
-    FF_DISABLE_DEPRECATION_WARNINGS
-    if (field_order != st->codec->field_order && st->codec->field_order != AV_FIELD_UNKNOWN)
-        field_order = st->codec->field_order;
-    FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     switch(st->codecpar->color_range) {
     case AVCOL_RANGE_MPEG:
         colorrange = " XCOLORRANGE=LIMITED";
@@ -119,6 +112,9 @@ static int yuv4_write_header(AVFormatContext *s)
         break;
     case AV_PIX_FMT_YUV444P:
         colorspace = " C444 XYSCSS=444";
+        break;
+    case AV_PIX_FMT_YUVA444P:
+        colorspace = " C444alpha XYSCSS=444";
         break;
     case AV_PIX_FMT_YUV420P9:
         colorspace = " C420p9 XYSCSS=420P9";
@@ -185,9 +181,8 @@ static int yuv4_write_packet(AVFormatContext *s, AVPacket *pkt)
     AVStream *st = s->streams[pkt->stream_index];
     AVIOContext *pb = s->pb;
     const AVFrame *frame = (const AVFrame *)pkt->data;
-    int width, height, h_chroma_shift, v_chroma_shift;
-    int i;
-    const uint8_t *ptr, *ptr1, *ptr2;
+    int width, height;
+    const AVPixFmtDescriptor *desc;
 
     /* construct frame header */
 
@@ -195,71 +190,21 @@ static int yuv4_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     width  = st->codecpar->width;
     height = st->codecpar->height;
+    desc   = av_pix_fmt_desc_get(st->codecpar->format);
 
-    ptr = frame->data[0];
+    /* The following code presumes all planes to be non-interleaved. */
+    for (int k = 0; k < desc->nb_components; k++) {
+        int plane_height = height, plane_width = width * desc->comp[k].step;
+        const uint8_t *ptr = frame->data[k];
 
-    switch (st->codecpar->format) {
-    case AV_PIX_FMT_GRAY8:
-    case AV_PIX_FMT_YUV411P:
-    case AV_PIX_FMT_YUV420P:
-    case AV_PIX_FMT_YUV422P:
-    case AV_PIX_FMT_YUV444P:
-    // TODO: remove YUVJ pixel formats when they are completely removed from the codebase.
-    case AV_PIX_FMT_YUVJ420P:
-    case AV_PIX_FMT_YUVJ422P:
-    case AV_PIX_FMT_YUVJ444P:
-        break;
-    case AV_PIX_FMT_GRAY9:
-    case AV_PIX_FMT_GRAY10:
-    case AV_PIX_FMT_GRAY12:
-    case AV_PIX_FMT_GRAY16:
-    case AV_PIX_FMT_YUV420P9:
-    case AV_PIX_FMT_YUV422P9:
-    case AV_PIX_FMT_YUV444P9:
-    case AV_PIX_FMT_YUV420P10:
-    case AV_PIX_FMT_YUV422P10:
-    case AV_PIX_FMT_YUV444P10:
-    case AV_PIX_FMT_YUV420P12:
-    case AV_PIX_FMT_YUV422P12:
-    case AV_PIX_FMT_YUV444P12:
-    case AV_PIX_FMT_YUV420P14:
-    case AV_PIX_FMT_YUV422P14:
-    case AV_PIX_FMT_YUV444P14:
-    case AV_PIX_FMT_YUV420P16:
-    case AV_PIX_FMT_YUV422P16:
-    case AV_PIX_FMT_YUV444P16:
-        width *= 2;
-        break;
-    default:
-        av_log(s, AV_LOG_ERROR, "The pixel format '%s' is not supported.\n",
-               av_get_pix_fmt_name(st->codecpar->format));
-        return AVERROR(EINVAL);
-    }
-
-    for (i = 0; i < height; i++) {
-        avio_write(pb, ptr, width);
-        ptr += frame->linesize[0];
-    }
-
-    if (st->codecpar->format != AV_PIX_FMT_GRAY8 && st->codecpar->format != AV_PIX_FMT_GRAY9 &&
-        st->codecpar->format != AV_PIX_FMT_GRAY10 && st->codecpar->format != AV_PIX_FMT_GRAY12 &&
-        st->codecpar->format != AV_PIX_FMT_GRAY16) {
-        // Adjust for smaller Cb and Cr planes
-        av_pix_fmt_get_chroma_sub_sample(st->codecpar->format, &h_chroma_shift,
-                                         &v_chroma_shift);
-        // Shift right, rounding up
-        width  = AV_CEIL_RSHIFT(width,  h_chroma_shift);
-        height = AV_CEIL_RSHIFT(height, v_chroma_shift);
-
-        ptr1 = frame->data[1];
-        ptr2 = frame->data[2];
-        for (i = 0; i < height; i++) {     /* Cb */
-            avio_write(pb, ptr1, width);
-            ptr1 += frame->linesize[1];
+        if (desc->nb_components >= 3 && (k == 1 || k == 2)) { /* chroma? */
+            plane_width  = AV_CEIL_RSHIFT(plane_width,  desc->log2_chroma_w);
+            plane_height = AV_CEIL_RSHIFT(plane_height, desc->log2_chroma_h);
         }
-        for (i = 0; i < height; i++) {     /* Cr */
-            avio_write(pb, ptr2, width);
-            ptr2 += frame->linesize[2];
+
+        for (int i = 0; i < plane_height; i++) {
+            avio_write(pb, ptr, plane_width);
+            ptr += frame->linesize[k];
         }
     }
 
@@ -309,6 +254,7 @@ static int yuv4_init(AVFormatContext *s)
     case AV_PIX_FMT_YUV420P16:
     case AV_PIX_FMT_YUV422P16:
     case AV_PIX_FMT_YUV444P16:
+    case AV_PIX_FMT_YUVA444P:
         if (s->strict_std_compliance >= FF_COMPLIANCE_NORMAL) {
             av_log(s, AV_LOG_ERROR, "'%s' is not an official yuv4mpegpipe pixel format. "
                    "Use '-strict -1' to encode to this pixel format.\n",
@@ -326,6 +272,7 @@ static int yuv4_init(AVFormatContext *s)
                "yuv444p12, yuv422p12, yuv420p12, "
                "yuv444p14, yuv422p14, yuv420p14, "
                "yuv444p16, yuv422p16, yuv420p16, "
+               "yuva444p, "
                "gray9, gray10, gray12 "
                "and gray16 pixel formats. "
                "Use -pix_fmt to select one.\n");
@@ -335,7 +282,7 @@ static int yuv4_init(AVFormatContext *s)
     return 0;
 }
 
-AVOutputFormat ff_yuv4mpegpipe_muxer = {
+const AVOutputFormat ff_yuv4mpegpipe_muxer = {
     .name              = "yuv4mpegpipe",
     .long_name         = NULL_IF_CONFIG_SMALL("YUV4MPEG pipe"),
     .extensions        = "y4m",

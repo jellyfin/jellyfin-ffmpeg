@@ -21,7 +21,6 @@
 #include "avformat.h"
 #include "subtitles.h"
 #include "avio_internal.h"
-#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 
 void ff_text_init_avio(void *s, FFTextReader *r, AVIOContext *pb)
@@ -52,9 +51,8 @@ void ff_text_init_avio(void *s, FFTextReader *r, AVIOContext *pb)
 
 void ff_text_init_buf(FFTextReader *r, void *buf, size_t size)
 {
-    memset(&r->buf_pb, 0, sizeof(r->buf_pb));
     ffio_init_context(&r->buf_pb, buf, size, 0, NULL, NULL, NULL, NULL);
-    ff_text_init_avio(NULL, r, &r->buf_pb);
+    ff_text_init_avio(NULL, r, &r->buf_pb.pub);
 }
 
 int64_t ff_text_pos(FFTextReader *r)
@@ -312,6 +310,27 @@ void ff_subtitles_queue_clean(FFDemuxSubtitlesQueue *q)
         av_packet_free(&q->subs[i]);
     av_freep(&q->subs);
     q->nb_subs = q->allocated_size = q->current_sub_idx = 0;
+}
+
+int ff_subtitles_read_packet(AVFormatContext *s, AVPacket *pkt)
+{
+    FFDemuxSubtitlesQueue *q = s->priv_data;
+    return ff_subtitles_queue_read_packet(q, pkt);
+}
+
+int ff_subtitles_read_seek(AVFormatContext *s, int stream_index,
+                           int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
+{
+    FFDemuxSubtitlesQueue *q = s->priv_data;
+    return ff_subtitles_queue_seek(q, s, stream_index,
+                                   min_ts, ts, max_ts, flags);
+}
+
+int ff_subtitles_read_close(AVFormatContext *s)
+{
+    FFDemuxSubtitlesQueue *q = s->priv_data;
+    ff_subtitles_queue_clean(q);
+    return 0;
 }
 
 int ff_smil_extract_next_text_chunk(FFTextReader *tr, AVBPrint *buf, char *c)

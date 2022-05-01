@@ -89,6 +89,7 @@
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "audio_frame_queue.h"
 
@@ -294,7 +295,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     /* write output if all frames for the packet have been encoded */
     if (s->pkt_frame_count == s->frames_per_packet) {
         s->pkt_frame_count = 0;
-        if ((ret = ff_alloc_packet2(avctx, avpkt, speex_bits_nbytes(&s->bits), 0)) < 0)
+        if ((ret = ff_alloc_packet(avctx, avpkt, speex_bits_nbytes(&s->bits))) < 0)
             return ret;
         ret = speex_bits_write(&s->bits, avpkt->data, avpkt->size);
         speex_bits_reset(&s->bits);
@@ -318,7 +319,6 @@ static av_cold int encode_close(AVCodecContext *avctx)
     speex_encoder_destroy(s->enc_state);
 
     ff_af_queue_close(&s->afq);
-    av_freep(&avctx->extradata);
 
     return 0;
 }
@@ -347,7 +347,7 @@ static const AVCodecDefault defaults[] = {
     { NULL },
 };
 
-AVCodec ff_libspeex_encoder = {
+const AVCodec ff_libspeex_encoder = {
     .name           = "libspeex",
     .long_name      = NULL_IF_CONFIG_SMALL("libspeex Speex"),
     .type           = AVMEDIA_TYPE_AUDIO,

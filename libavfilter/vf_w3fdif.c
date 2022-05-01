@@ -73,39 +73,31 @@ static const AVOption w3fdif_options[] = {
 
 AVFILTER_DEFINE_CLASS(w3fdif);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ411P,
-        AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_GRAY8,
-        AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV440P10,
-        AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12,
-        AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA422P16,
-        AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA420P16,
-        AV_PIX_FMT_GBRAP10,   AV_PIX_FMT_GBRAP12,    AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ411P,
+    AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_GRAY8,
+    AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV440P10,
+    AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12,
+    AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA422P16,
+    AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA420P16,
+    AV_PIX_FMT_GBRAP10,   AV_PIX_FMT_GBRAP12,    AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_NONE
+};
 
 static void filter_simple_low(int32_t *work_line,
                               uint8_t *in_lines_cur[2],
@@ -335,10 +327,8 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterLink *inlink = outlink->src->inputs[0];
 
-    outlink->time_base.num = inlink->time_base.num;
-    outlink->time_base.den = inlink->time_base.den * 2;
-    outlink->frame_rate.num = inlink->frame_rate.num * 2;
-    outlink->frame_rate.den = inlink->frame_rate.den;
+    outlink->time_base = av_mul_q(inlink->time_base, (AVRational){1, 2});
+    outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
 
     return 0;
 }
@@ -510,7 +500,8 @@ static int filter(AVFilterContext *ctx, int is_second)
 
     adj = s->field ? s->next : s->prev;
     td.out = out; td.cur = s->cur; td.adj = adj;
-    ctx->internal->execute(ctx, deinterlace_slice, &td, NULL, FFMIN(s->planeheight[1], s->nb_threads));
+    ff_filter_execute(ctx, deinterlace_slice, &td, NULL,
+                      FFMIN(s->planeheight[1], s->nb_threads));
 
     if (s->mode)
         s->field = !s->field;
@@ -535,6 +526,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             return AVERROR(ENOMEM);
     }
 
+    if (!s->prev)
+        return 0;
+
     if ((s->deint && !s->cur->interlaced_frame) || ctx->is_disabled) {
         AVFrame *out = av_frame_clone(s->cur);
         if (!out)
@@ -545,9 +539,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             out->pts *= 2;
         return ff_filter_frame(ctx->outputs[0], out);
     }
-
-    if (!s->prev)
-        return 0;
 
     ret = filter(ctx, 0);
     if (ret < 0 || s->mode == 0)
@@ -603,7 +594,6 @@ static const AVFilterPad w3fdif_inputs[] = {
         .filter_frame  = filter_frame,
         .config_props  = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad w3fdif_outputs[] = {
@@ -613,18 +603,17 @@ static const AVFilterPad w3fdif_outputs[] = {
         .config_props  = config_output,
         .request_frame = request_frame,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_w3fdif = {
+const AVFilter ff_vf_w3fdif = {
     .name          = "w3fdif",
     .description   = NULL_IF_CONFIG_SMALL("Apply Martin Weston three field deinterlace."),
     .priv_size     = sizeof(W3FDIFContext),
     .priv_class    = &w3fdif_class,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = w3fdif_inputs,
-    .outputs       = w3fdif_outputs,
+    FILTER_INPUTS(w3fdif_inputs),
+    FILTER_OUTPUTS(w3fdif_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

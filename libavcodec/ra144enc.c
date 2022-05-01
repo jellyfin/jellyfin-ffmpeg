@@ -27,9 +27,11 @@
 
 #include <float.h>
 
+#include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #include "audio_frame_queue.h"
 #include "celp_filters.h"
+#include "encode.h"
 #include "internal.h"
 #include "mathops.h"
 #include "put_bits.h"
@@ -444,7 +446,7 @@ static int ra144_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     if (ractx->last_frame)
         return 0;
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, FRAME_SIZE, 0)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, avpkt, FRAME_SIZE, 0)) < 0)
         return ret;
 
     /**
@@ -533,24 +535,25 @@ static int ra144_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     ff_af_queue_remove(&ractx->afq, avctx->frame_size, &avpkt->pts,
                        &avpkt->duration);
 
-    avpkt->size = FRAME_SIZE;
     *got_packet_ptr = 1;
     return 0;
 }
 
 
-AVCodec ff_ra_144_encoder = {
+const AVCodec ff_ra_144_encoder = {
     .name           = "real_144",
     .long_name      = NULL_IF_CONFIG_SMALL("RealAudio 1.0 (14.4K)"),
     .type           = AVMEDIA_TYPE_AUDIO,
     .id             = AV_CODEC_ID_RA_144,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                      AV_CODEC_CAP_SMALL_LAST_FRAME,
     .priv_data_size = sizeof(RA144Context),
     .init           = ra144_encode_init,
     .encode2        = ra144_encode_frame,
     .close          = ra144_encode_close,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                      AV_SAMPLE_FMT_NONE },
     .supported_samplerates = (const int[]){ 8000, 0 },
     .channel_layouts = (const uint64_t[]) { AV_CH_LAYOUT_MONO, 0 },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

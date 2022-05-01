@@ -26,13 +26,15 @@
 #include "avfilter.h"
 #include "internal.h"
 
+#define BINS 32768
+
 typedef struct ChannelStats {
     uint64_t nb_samples;
     uint64_t blknum;
     float peak;
     float sum;
-    uint32_t peaks[10001];
-    uint32_t rms[10001];
+    uint32_t peaks[BINS+1];
+    uint32_t rms[BINS+1];
 } ChannelStats;
 
 typedef struct DRMeterContext {
@@ -52,36 +54,6 @@ static const AVOption drmeter_options[] = {
 };
 
 AVFILTER_DEFINE_CLASS(drmeter);
-
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_FLT,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
-}
 
 static int config_output(AVFilterLink *outlink)
 {
@@ -103,8 +75,8 @@ static void finish_block(ChannelStats *p)
 
     rms = sqrt(2 * p->sum / p->nb_samples);
     peak = p->peak;
-    rms_bin = av_clip(rms * 10000, 0, 10000);
-    peak_bin = av_clip(peak * 10000, 0, 10000);
+    rms_bin = av_clip(lrintf(rms * BINS), 0, BINS);
+    peak_bin = av_clip(lrintf(peak * BINS), 0, BINS);
     p->rms[rms_bin]++;
     p->peaks[peak_bin]++;
 
@@ -174,29 +146,29 @@ static void print_stats(AVFilterContext *ctx)
 
         finish_block(p);
 
-        for (i = 0; i <= 10000; i++) {
-            if (p->peaks[10000 - i]) {
+        for (i = 0; i <= BINS; i++) {
+            if (p->peaks[BINS - i]) {
                 if (first)
                     break;
                 first = 1;
             }
         }
 
-        secondpeak = (10000 - i) / 10000.;
+        secondpeak = (BINS - i) / (double)BINS;
 
-        for (i = 10000, j = 0; i >= 0 && j < 0.2 * p->blknum; i--) {
+        for (i = BINS, j = 0; i >= 0 && j < 0.2 * p->blknum; i--) {
             if (p->rms[i]) {
-                rmssum += SQR(i / 10000.) * p->rms[i];
+                rmssum += SQR(i / (double)BINS);
                 j += p->rms[i];
             }
         }
 
         chdr = 20 * log10(secondpeak / sqrt(rmssum / (0.2 * p->blknum)));
         dr += chdr;
-        av_log(ctx, AV_LOG_INFO, "Channel %d: DR: %.1f\n", ch + 1, chdr);
+        av_log(ctx, AV_LOG_INFO, "Channel %d: DR: %g\n", ch + 1, chdr);
     }
 
-    av_log(ctx, AV_LOG_INFO, "Overall DR: %.1f\n", dr / s->nb_channels);
+    av_log(ctx, AV_LOG_INFO, "Overall DR: %g\n", dr / s->nb_channels);
 }
 
 static av_cold void uninit(AVFilterContext *ctx)
@@ -214,7 +186,6 @@ static const AVFilterPad drmeter_inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad drmeter_outputs[] = {
@@ -223,16 +194,16 @@ static const AVFilterPad drmeter_outputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_af_drmeter = {
+const AVFilter ff_af_drmeter = {
     .name          = "drmeter",
     .description   = NULL_IF_CONFIG_SMALL("Measure audio dynamic range."),
-    .query_formats = query_formats,
     .priv_size     = sizeof(DRMeterContext),
     .priv_class    = &drmeter_class,
     .uninit        = uninit,
-    .inputs        = drmeter_inputs,
-    .outputs       = drmeter_outputs,
+    .flags         = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(drmeter_inputs),
+    FILTER_OUTPUTS(drmeter_outputs),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_FLT),
 };

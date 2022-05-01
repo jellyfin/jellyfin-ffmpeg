@@ -315,7 +315,6 @@ static int parse_dsd_prop(AVFormatContext *s, AVStream *st, uint64_t eof)
             break;
 
         case MKTAG('I','D','3',' '):
-            id3v2_extra_meta = NULL;
             ff_id3v2_read(s, ID3v2_DEFAULT_MAGIC, &id3v2_extra_meta, size);
             if (id3v2_extra_meta) {
                 if ((ret = ff_id3v2_parse_apic(s, id3v2_extra_meta)) < 0 ||
@@ -897,7 +896,7 @@ static int iff_read_packet(AVFormatContext *s,
     return ret;
 }
 
-AVInputFormat ff_iff_demuxer = {
+const AVInputFormat ff_iff_demuxer = {
     .name           = "iff",
     .long_name      = NULL_IF_CONFIG_SMALL("IFF (Interchange File Format)"),
     .priv_data_size = sizeof(IffDemuxContext),

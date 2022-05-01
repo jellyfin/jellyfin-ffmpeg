@@ -200,7 +200,7 @@ static MatchingInfo* get_matching_parameters(AVFilterContext *ctx, SignatureCont
     /* initialize houghspace */
     for (i = 0; i < MAX_FRAMERATE; i++) {
         hspace[i] = av_malloc_array(2 * HOUGH_MAX_OFFSET + 1, sizeof(hspace_elem));
-        for (j = 0; j < HOUGH_MAX_OFFSET; j++) {
+        for (j = 0; j < 2 * HOUGH_MAX_OFFSET + 1; j++) {
             hspace[i][j].score = 0;
             hspace[i][j].dist = 99999;
         }
@@ -244,9 +244,9 @@ static MatchingInfo* get_matching_parameters(AVFilterContext *ctx, SignatureCont
                     if (pairs[i].b[j] != pairs[k].b[l]) {
                         /* linear regression */
                         m = (pairs[k].b_pos[l]-pairs[i].b_pos[j]) / (k-i); /* good value between 0.0 - 2.0 */
-                        framerate = (int) m*30 + 0.5; /* round up to 0 - 60 */
+                        framerate = (int) (m*30 + 0.5); /* round up to 0 - 60 */
                         if (framerate>0 && framerate <= MAX_FRAMERATE) {
-                            offset = pairs[i].b_pos[j] - ((int) m*i + 0.5); /* only second part has to be rounded up */
+                            offset = pairs[i].b_pos[j] - ((int) (m*i + 0.5)); /* only second part has to be rounded up */
                             if (offset > -HOUGH_MAX_OFFSET && offset < HOUGH_MAX_OFFSET) {
                                 if (pairs[i].dist < pairs[k].dist) {
                                     if (pairs[i].dist < hspace[framerate-1][offset+HOUGH_MAX_OFFSET].dist) {
@@ -491,7 +491,7 @@ static MatchingInfo evaluate_parameters(AVFilterContext *ctx, SignatureContext *
         meandist = (double) goodfcount / (double) distsum;
 
         if (meandist < minmeandist ||
-                status == STATUS_END_REACHED | STATUS_BEGIN_REACHED ||
+                status == (STATUS_END_REACHED | STATUS_BEGIN_REACHED) ||
                 mode == MODE_FAST){
             minmeandist = meandist;
             /* bestcandidate in this iteration */

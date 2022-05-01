@@ -38,6 +38,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/thread.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "me_cmp.h"
 #include "put_bits.h"
@@ -122,6 +123,13 @@ const AVOption ff_ac3_enc_options[] = {
 {"cpl_start_band", "Coupling Start Band", OFFSET(cpl_start), AV_OPT_TYPE_INT, {.i64 = AC3ENC_OPT_AUTO }, AC3ENC_OPT_AUTO, 15, AC3ENC_PARAM, "cpl_start_band"},
     {"auto", "Selected by the Encoder", 0, AV_OPT_TYPE_CONST, {.i64 = AC3ENC_OPT_AUTO }, INT_MIN, INT_MAX, AC3ENC_PARAM, "cpl_start_band"},
 {NULL}
+};
+
+const AVClass ff_ac3enc_class = {
+    .class_name = "AC-3 Encoder",
+    .item_name  = av_default_item_name,
+    .option     = ff_ac3_enc_options,
+    .version    = LIBAVUTIL_VERSION_INT,
 };
 
 const AVCodecDefault ff_ac3_enc_defaults[] = {
@@ -784,6 +792,10 @@ static void count_frame_bits_fixed(AC3EncodeContext *s)
         if (s->eac3)
             frame_bits++;
 
+        /* coupling strategy exists: cplstre */
+        if (!s->eac3)
+            frame_bits++;
+
         if (!s->eac3) {
             /* exponent strategy */
             frame_bits += 2 * s->fbw_channels;
@@ -796,9 +808,8 @@ static void count_frame_bits_fixed(AC3EncodeContext *s)
                 frame_bits += 2 + 2 + 2 + 2 + 3;
         }
 
-        /* converter snr offset */
-        if (s->eac3)
-            frame_bits++;
+        /* snroffste for AC-3, convsnroffste for E-AC-3 */
+        frame_bits++;
 
         if (!s->eac3) {
             /* delta bit allocation */
@@ -904,7 +915,7 @@ static void count_frame_bits(AC3EncodeContext *s)
         /* coupling exponent strategy */
         if (s->cpl_on) {
             if (s->use_frame_exp_strategy) {
-                frame_bits += 5 * s->cpl_on;
+                frame_bits += 5;
             } else {
                 for (blk = 0; blk < s->num_blocks; blk++)
                     frame_bits += 2 * s->blocks[blk].cpl_in_use;
@@ -926,8 +937,6 @@ static void count_frame_bits(AC3EncodeContext *s)
         AC3Block *block = &s->blocks[blk];
 
         /* coupling strategy */
-        if (!s->eac3)
-            frame_bits++;
         if (block->new_cpl_strategy) {
             if (!s->eac3)
                 frame_bits++;
@@ -983,7 +992,6 @@ static void count_frame_bits(AC3EncodeContext *s)
 
         /* snr offsets and fast gain codes */
         if (!s->eac3) {
-            frame_bits++;
             if (block->new_snr_offsets)
                 frame_bits += 6 + (s->channels + block->cpl_in_use) * (4 + 3);
         }
@@ -1281,8 +1289,9 @@ static void quantize_mantissas_blk_ch(AC3Mant *s, int32_t *fixed_coef,
         int c = fixed_coef[i];
         int e = exp[i];
         int v = bap[i];
-        if (v)
         switch (v) {
+        case 0:
+            break;
         case 1:
             v = sym_quant(c, e, 3);
             switch (s->mant1_cnt) {
@@ -1439,8 +1448,8 @@ static void ac3_output_frame_header(AC3EncodeContext *s)
             put_bits(&s->pb, 9, 0);     /* xbsi2 and encinfo : reserved */
         }
     } else {
-    put_bits(&s->pb, 1, 0);         /* no time code 1 */
-    put_bits(&s->pb, 1, 0);         /* no time code 2 */
+        put_bits(&s->pb, 1, 0);     /* no time code 1 */
+        put_bits(&s->pb, 1, 0);     /* no time code 2 */
     }
     put_bits(&s->pb, 1, 0);         /* no additional bit stream info */
 }
@@ -1697,16 +1706,16 @@ static void output_frame_end(AC3EncodeContext *s)
         /* compute crc2 */
         crc2_partial = av_crc(crc_ctx, 0, frame + 2, s->frame_size - 5);
     } else {
-    /* compute crc1 */
-    /* this is not so easy because it is at the beginning of the data... */
-    crc1    = av_bswap16(av_crc(crc_ctx, 0, frame + 4, frame_size_58 - 4));
-    crc_inv = s->crc_inv[s->frame_size > s->frame_size_min];
-    crc1    = mul_poly(crc_inv, crc1, CRC16_POLY);
-    AV_WB16(frame + 2, crc1);
+        /* compute crc1 */
+        /* this is not so easy because it is at the beginning of the data... */
+        crc1    = av_bswap16(av_crc(crc_ctx, 0, frame + 4, frame_size_58 - 4));
+        crc_inv = s->crc_inv[s->frame_size > s->frame_size_min];
+        crc1    = mul_poly(crc_inv, crc1, CRC16_POLY);
+        AV_WB16(frame + 2, crc1);
 
-    /* compute crc2 */
-    crc2_partial = av_crc(crc_ctx, 0, frame + frame_size_58,
-                          s->frame_size - frame_size_58 - 3);
+        /* compute crc2 */
+        crc2_partial = av_crc(crc_ctx, 0, frame + frame_size_58,
+                              s->frame_size - frame_size_58 - 3);
     }
     crc2 = av_crc(crc_ctx, crc2_partial, frame + s->frame_size - 3, 1);
     /* ensure crc2 does not match sync word by flipping crcrsv bit if needed */
@@ -1759,7 +1768,8 @@ int ff_ac3_encode_frame_common_end(AVCodecContext *avctx, AVPacket *avpkt,
 
     ac3_quantize_mantissas(s);
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, s->frame_size, 0)) < 0)
+    ret = ff_get_encode_buffer(avctx, avpkt, s->frame_size, 0);
+    if (ret < 0)
         return ret;
     ac3_output_frame(s, avpkt->data);
 
@@ -1988,13 +1998,13 @@ int ff_ac3_validate_metadata(AC3EncodeContext *s)
     if (!s->eac3) {
         if (s->has_center) {
             validate_mix_level(avctx, "center_mix_level", &opt->center_mix_level,
-                            cmixlev_options, CMIXLEV_NUM_OPTIONS, 1, 0,
-                            &s->center_mix_level);
+                               cmixlev_options, CMIXLEV_NUM_OPTIONS, 1, 0,
+                               &s->center_mix_level);
         }
         if (s->has_surround) {
             validate_mix_level(avctx, "surround_mix_level", &opt->surround_mix_level,
-                            surmixlev_options, SURMIXLEV_NUM_OPTIONS, 1, 0,
-                            &s->surround_mix_level);
+                               surmixlev_options, SURMIXLEV_NUM_OPTIONS, 1, 0,
+                               &s->surround_mix_level);
         }
     }
 
@@ -2118,8 +2128,8 @@ av_cold int ff_ac3_encode_close(AVCodecContext *avctx)
     av_freep(&s->mdct_window);
     av_freep(&s->windowed_samples);
     if (s->planar_samples)
-    for (ch = 0; ch < s->channels; ch++)
-        av_freep(&s->planar_samples[ch]);
+        for (ch = 0; ch < s->channels; ch++)
+            av_freep(&s->planar_samples[ch]);
     av_freep(&s->planar_samples);
     av_freep(&s->bap_buffer);
     av_freep(&s->bap1_buffer);

@@ -81,7 +81,7 @@ Top-left position.
 @end table
 
 @item tick_rate
-Set the tick rate (@emph{num_units_in_display_tick / time_scale}) in
+Set the tick rate (@emph{time_scale / num_units_in_display_tick}) in
 the timing info in the sequence header.
 @item num_ticks_per_picture
 Set the number of ticks in each picture, to indicate that the stream
@@ -244,7 +244,7 @@ Set the chroma sample location in the stream (see H.264 section
 E.2.1 and figure E-1).
 
 @item tick_rate
-Set the tick rate (num_units_in_tick / time_scale) in the VUI
+Set the tick rate (time_scale / num_units_in_tick) in the VUI
 parameters.  This is the smallest time unit representable in the
 stream, and in many cases represents the field rate of the stream
 (double the frame rate).
@@ -253,6 +253,11 @@ Set whether the stream has fixed framerate - typically this indicates
 that the framerate is exactly half the tick rate, but the exact
 meaning is dependent on interlacing and the picture structure (see
 H.264 section E.2.1 and table E-6).
+@item zero_new_constraint_set_flags
+Zero constraint_set4_flag and constraint_set5_flag in the SPS. These
+bits were reserved in a previous version of the H.264 spec, and thus
+some hardware decoders require these to be zero. The result of zeroing
+this is still a valid bitstream.
 
 @item crop_left
 @item crop_right
@@ -347,8 +352,8 @@ Set the chroma sample location in the stream (see H.265 section
 E.3.1 and figure E.1).
 
 @item tick_rate
-Set the tick rate in the VPS and VUI parameters (num_units_in_tick /
-time_scale).  Combined with @option{num_ticks_poc_diff_one}, this can
+Set the tick rate in the VPS and VUI parameters (time_scale /
+num_units_in_tick). Combined with @option{num_ticks_poc_diff_one}, this can
 set a constant framerate in the stream.  Note that it is likely to be
 overridden by container parameters when the stream is in a container.
 
@@ -529,20 +534,67 @@ container. Can be used for fuzzing or testing error resilience/concealment.
 Parameters:
 @table @option
 @item amount
-A numeral string, whose value is related to how often output bytes will
-be modified. Therefore, values below or equal to 0 are forbidden, and
-the lower the more frequent bytes will be modified, with 1 meaning
-every byte is modified.
+Accepts an expression whose evaluation per-packet determines how often bytes in that
+packet will be modified. A value below 0 will result in a variable frequency.
+Default is 0 which results in no modification. However, if neither amount nor drop is specified,
+amount will be set to @var{-1}. See below for accepted variables.
+@item drop
+Accepts an expression evaluated per-packet whose value determines whether that packet is dropped.
+Evaluation to a positive value results in the packet being dropped. Evaluation to a negative
+value results in a variable chance of it being dropped, roughly inverse in proportion to the magnitude
+of the value. Default is 0 which results in no drops. See below for accepted variables.
 @item dropamount
-A numeral string, whose value is related to how often packets will be dropped.
-Therefore, values below or equal to 0 are forbidden, and the lower the more
-frequent packets will be dropped, with 1 meaning every packet is dropped.
+Accepts a non-negative integer, which assigns a variable chance of it being dropped, roughly inverse
+in proportion to the value. Default is 0 which results in no drops. This option is kept for backwards
+compatibility and is equivalent to setting drop to a negative value with the same magnitude
+i.e. @code{dropamount=4} is the same as @code{drop=-4}. Ignored if drop is also specified.
 @end table
 
-The following example applies the modification to every byte but does not drop
-any packets.
+Both @code{amount} and @code{drop} accept expressions containing the following variables:
+
+@table @samp
+@item n
+The index of the packet, starting from zero.
+@item tb
+The timebase for packet timestamps.
+@item pts
+Packet presentation timestamp.
+@item dts
+Packet decoding timestamp.
+@item nopts
+Constant representing AV_NOPTS_VALUE.
+@item startpts
+First non-AV_NOPTS_VALUE PTS seen in the stream.
+@item startdts
+First non-AV_NOPTS_VALUE DTS seen in the stream.
+@item duration
+@itemx d
+Packet duration, in timebase units.
+@item pos
+Packet position in input; may be -1 when unknown or not set.
+@item size
+Packet size, in bytes.
+@item key
+Whether packet is marked as a keyframe.
+@item state
+A pseudo random integer, primarily derived from the content of packet payload.
+@end table
+
+@subsection Examples
+Apply modification to every byte but don't drop any packets.
 @example
-ffmpeg -i INPUT -c copy -bsf noise[=1] output.mkv
+ffmpeg -i INPUT -c copy -bsf noise=1 output.mkv
+@end example
+
+Drop every video packet not marked as a keyframe after timestamp 30s but do not
+modify any of the remaining packets.
+@example
+ffmpeg -i INPUT -c copy -bsf:v noise=drop='gt(t\,30)*not(key)' output.mkv
+@end example
+
+Drop one second of audio every 10 seconds and add some random noise to the rest.
+@example
+ffmpeg -i INPUT -c copy -bsf:a noise=amount=-1:drop='between(mod(t\,10)\,9\,10)' output.mkv
 @end example
 
 @section null
@@ -730,6 +782,9 @@ The timebase of stream packet belongs.
 
 @item SR
 The sample rate of stream packet belongs.
+
+@item NOPTS
+The AV_NOPTS_VALUE constant.
 @end table
 
 @anchor{text2movsub}

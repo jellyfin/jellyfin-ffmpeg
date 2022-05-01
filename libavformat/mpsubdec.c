@@ -165,42 +165,19 @@ static int mpsub_read_header(AVFormatContext *s)
     ff_subtitles_queue_finalize(s, &mpsub->q);
 
 end:
-    if (res < 0)
-        ff_subtitles_queue_clean(&mpsub->q);
-
     av_bprint_finalize(&buf, NULL);
     return res;
 }
 
-static int mpsub_read_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    MPSubContext *mpsub = s->priv_data;
-    return ff_subtitles_queue_read_packet(&mpsub->q, pkt);
-}
-
-static int mpsub_read_seek(AVFormatContext *s, int stream_index,
-                           int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
-{
-    MPSubContext *mpsub = s->priv_data;
-    return ff_subtitles_queue_seek(&mpsub->q, s, stream_index,
-                                   min_ts, ts, max_ts, flags);
-}
-
-static int mpsub_read_close(AVFormatContext *s)
-{
-    MPSubContext *mpsub = s->priv_data;
-    ff_subtitles_queue_clean(&mpsub->q);
-    return 0;
-}
-
-AVInputFormat ff_mpsub_demuxer = {
+const AVInputFormat ff_mpsub_demuxer = {
     .name           = "mpsub",
     .long_name      = NULL_IF_CONFIG_SMALL("MPlayer subtitles"),
     .priv_data_size = sizeof(MPSubContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = mpsub_probe,
     .read_header    = mpsub_read_header,
-    .read_packet    = mpsub_read_packet,
-    .read_seek2     = mpsub_read_seek,
-    .read_close     = mpsub_read_close,
     .extensions     = "sub",
+    .read_packet    = ff_subtitles_read_packet,
+    .read_seek2     = ff_subtitles_read_seek,
+    .read_close     = ff_subtitles_read_close,
 };

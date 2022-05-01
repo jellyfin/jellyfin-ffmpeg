@@ -18,7 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avassert.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
@@ -371,7 +370,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     }
 
     td.in = in; td.out = out, td.yoff = xmaxlen, td.xoff = ymaxlen, td.PP = PP;
-    ctx->internal->execute(ctx, s->filter, &td, NULL, FFMIN(ff_filter_get_nb_threads(ctx), FFMAX(outlink->w / 20, 1)));
+    ff_filter_execute(ctx, s->filter, &td, NULL,
+                      FFMIN(ff_filter_get_nb_threads(ctx), FFMAX(outlink->w / 20, 1)));
 
     av_frame_free(&in);
     return ff_filter_frame(outlink, out);
@@ -438,7 +438,6 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -447,17 +446,16 @@ static const AVFilterPad outputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_datascope = {
+const AVFilter ff_vf_datascope = {
     .name          = "datascope",
     .description   = NULL_IF_CONFIG_SMALL("Video data analysis."),
     .priv_size     = sizeof(DatascopeContext),
     .priv_class    = &datascope_class,
-    .query_formats = query_formats,
-    .inputs        = inputs,
-    .outputs       = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };
@@ -728,7 +726,6 @@ static const AVFilterPad pixscope_inputs[] = {
         .filter_frame   = pixscope_filter_frame,
         .config_props   = pixscope_config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad pixscope_outputs[] = {
@@ -736,17 +733,16 @@ static const AVFilterPad pixscope_outputs[] = {
         .name         = "default",
         .type         = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_pixscope = {
+const AVFilter ff_vf_pixscope = {
     .name          = "pixscope",
     .description   = NULL_IF_CONFIG_SMALL("Pixel data analysis."),
     .priv_size     = sizeof(PixscopeContext),
     .priv_class    = &pixscope_class,
-    .query_formats = query_formats,
-    .inputs        = pixscope_inputs,
-    .outputs       = pixscope_outputs,
+    FILTER_INPUTS(pixscope_inputs),
+    FILTER_OUTPUTS(pixscope_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = pixscope_process_command,
 };
@@ -1130,11 +1126,10 @@ static const AVFilterPad oscilloscope_inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_VIDEO,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .filter_frame   = oscilloscope_filter_frame,
         .config_props   = oscilloscope_config_input,
-        .needs_writable = 1,
     },
-    { NULL }
 };
 
 static const AVFilterPad oscilloscope_outputs[] = {
@@ -1142,18 +1137,17 @@ static const AVFilterPad oscilloscope_outputs[] = {
         .name         = "default",
         .type         = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_oscilloscope = {
+const AVFilter ff_vf_oscilloscope = {
     .name          = "oscilloscope",
     .description   = NULL_IF_CONFIG_SMALL("2D Video Oscilloscope."),
     .priv_size     = sizeof(OscilloscopeContext),
     .priv_class    = &oscilloscope_class,
-    .query_formats = query_formats,
     .uninit        = oscilloscope_uninit,
-    .inputs        = oscilloscope_inputs,
-    .outputs       = oscilloscope_outputs,
+    FILTER_INPUTS(oscilloscope_inputs),
+    FILTER_OUTPUTS(oscilloscope_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = oscilloscope_process_command,
 };

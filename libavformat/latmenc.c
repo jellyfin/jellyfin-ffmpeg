@@ -21,7 +21,9 @@
 
 #include "libavcodec/get_bits.h"
 #include "libavcodec/put_bits.h"
-#include "libavcodec/avcodec.h"
+#include "libavcodec/codec_id.h"
+#include "libavcodec/codec_par.h"
+#include "libavcodec/packet.h"
 #include "libavcodec/mpeg4audio.h"
 #include "libavutil/opt.h"
 #include "avformat.h"
@@ -176,7 +178,7 @@ static int latm_write_packet(AVFormatContext *s, AVPacket *pkt)
             return ff_raw_write_packet(s, pkt);
         else {
             uint8_t *side_data;
-            buffer_size_t side_data_size;
+            size_t side_data_size;
             int ret;
 
             side_data = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
@@ -225,7 +227,7 @@ static int latm_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     flush_put_bits(&bs);
 
-    len = put_bits_count(&bs) >> 3;
+    len = put_bytes_output(&bs);
 
     if (len > 0x1fff)
         goto too_large;
@@ -243,10 +245,10 @@ too_large:
     return AVERROR_INVALIDDATA;
 }
 
-static int latm_check_bitstream(struct AVFormatContext *s, const AVPacket *pkt)
+static int latm_check_bitstream(AVFormatContext *s, AVStream *st,
+                                const AVPacket *pkt)
 {
     int ret = 1;
-    AVStream *st = s->streams[pkt->stream_index];
 
     if (st->codecpar->codec_id == AV_CODEC_ID_AAC) {
         if (pkt->size > 2 && (AV_RB16(pkt->data) & 0xfff0) == 0xfff0)
@@ -256,7 +258,7 @@ static int latm_check_bitstream(struct AVFormatContext *s, const AVPacket *pkt)
     return ret;
 }
 
-AVOutputFormat ff_latm_muxer = {
+const AVOutputFormat ff_latm_muxer = {
     .name           = "latm",
     .long_name      = NULL_IF_CONFIG_SMALL("LOAS/LATM"),
     .mime_type      = "audio/MP4A-LATM",

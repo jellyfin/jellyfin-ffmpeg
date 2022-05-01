@@ -330,40 +330,28 @@ static int rnnoise_model_from_file(FILE *f, RNNModel **rnn)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts = NULL;
     static const enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_FLTP,
         AV_SAMPLE_FMT_NONE
     };
     int ret, sample_rates[] = { 48000, -1 };
 
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
+    ret = ff_set_common_formats_from_list(ctx, sample_fmts);
     if (ret < 0)
         return ret;
 
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-
-    ret = ff_set_common_channel_layouts(ctx, layouts);
+    ret = ff_set_common_all_channel_counts(ctx);
     if (ret < 0)
         return ret;
 
-    formats = ff_make_format_list(sample_rates);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    return ff_set_common_samplerates(ctx, formats);
+    return ff_set_common_samplerates_from_list(ctx, sample_rates);
 }
 
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
     AudioRNNContext *s = ctx->priv;
-    int ret;
+    int ret = 0;
 
     s->channels = inlink->channels;
 
@@ -399,7 +387,7 @@ static int config_input(AVFilterLink *inlink)
             return ret;
     }
 
-    return 0;
+    return ret;
 }
 
 static void biquad(float *y, float mem[2], const float *x,
@@ -1453,8 +1441,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     out->pts = in->pts;
 
     td.in = in; td.out = out;
-    ctx->internal->execute(ctx, rnnoise_channels, &td, NULL, FFMIN(outlink->channels,
-                                                                   ff_filter_get_nb_threads(ctx)));
+    ff_filter_execute(ctx, rnnoise_channels, &td, NULL,
+                      FFMIN(outlink->channels, ff_filter_get_nb_threads(ctx)));
 
     av_frame_free(&in);
     return ff_filter_frame(outlink, out);
@@ -1596,7 +1584,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -1604,7 +1591,6 @@ static const AVFilterPad outputs[] = {
         .name          = "default",
         .type          = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
 #define OFFSET(x) offsetof(AudioRNNContext, x)
@@ -1619,17 +1605,17 @@ static const AVOption arnndn_options[] = {
 
 AVFILTER_DEFINE_CLASS(arnndn);
 
-AVFilter ff_af_arnndn = {
+const AVFilter ff_af_arnndn = {
     .name          = "arnndn",
     .description   = NULL_IF_CONFIG_SMALL("Reduce noise from speech using Recurrent Neural Networks."),
-    .query_formats = query_formats,
     .priv_size     = sizeof(AudioRNNContext),
     .priv_class    = &arnndn_class,
     .activate      = activate,
     .init          = init,
     .uninit        = uninit,
-    .inputs        = inputs,
-    .outputs       = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,

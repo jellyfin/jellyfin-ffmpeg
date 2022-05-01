@@ -1,10 +1,10 @@
 
-              ┌────────────────────────────────────┐
-              │ RELEASE NOTES for FFmpeg 4.4 "Rao" │
-              └────────────────────────────────────┘
+              ┌────────────────────────────────────────┐
+              │ RELEASE NOTES for FFmpeg 5.0 "Lorentz" │
+              └────────────────────────────────────────┘
 
-   The FFmpeg Project proudly presents FFmpeg 4.4 "Rao", about 10
-   months after the release of FFmpeg 4.3.
+   The FFmpeg Project proudly presents FFmpeg 5.0 "Lorentz", about 9
+   months after the release of FFmpeg 4.4.
 
    A complete Changelog is available at the root of the project, and the
    complete Git history on https://git.ffmpeg.org/gitweb/ffmpeg.git

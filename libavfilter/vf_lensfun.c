@@ -28,7 +28,6 @@
 #include <float.h>
 #include <math.h>
 
-#include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libswscale/swscale.h"
@@ -192,14 +191,6 @@ static av_cold int init(AVFilterContext *ctx)
 
     lf_db_destroy(db);
     return 0;
-}
-
-static int query_formats(AVFilterContext *ctx)
-{
-    // Some of the functions provided by lensfun require pixels in RGB format
-    static const enum AVPixelFormat fmts[] = {AV_PIX_FMT_RGB24, AV_PIX_FMT_NONE};
-    AVFilterFormats *fmts_list = ff_make_format_list(fmts);
-    return ff_set_common_formats(ctx, fmts_list);
 }
 
 static float lanczos_kernel(float x)
@@ -463,11 +454,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             .modifier = lensfun->modifier
         };
 
-        ctx->internal->execute(ctx,
-                               vignetting_filter_slice,
-                               &vignetting_thread_data,
-                               NULL,
-                               FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, vignetting_filter_slice,
+                          &vignetting_thread_data, NULL,
+                          FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
     }
 
     if (lensfun->mode & (GEOMETRY_DISTORTION | SUBPIXEL_DISTORTION)) {
@@ -491,11 +480,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             .interpolation_type = lensfun->interpolation_type
         };
 
-        ctx->internal->execute(ctx,
-                               distortion_correction_filter_slice,
-                               &distortion_correction_thread_data,
-                               NULL,
-                               FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, distortion_correction_filter_slice,
+                          &distortion_correction_thread_data, NULL,
+                          FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
 
         av_frame_free(&in);
         return ff_filter_frame(outlink, out);
@@ -525,7 +512,6 @@ static const AVFilterPad lensfun_inputs[] = {
         .config_props = config_props,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad lensfun_outputs[] = {
@@ -533,18 +519,17 @@ static const AVFilterPad lensfun_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_lensfun = {
+const AVFilter ff_vf_lensfun = {
     .name          = "lensfun",
     .description   = NULL_IF_CONFIG_SMALL("Apply correction to an image based on info derived from the lensfun database."),
     .priv_size     = sizeof(LensfunContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = lensfun_inputs,
-    .outputs       = lensfun_outputs,
+    FILTER_INPUTS(lensfun_inputs),
+    FILTER_OUTPUTS(lensfun_outputs),
+    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_RGB24),
     .priv_class    = &lensfun_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

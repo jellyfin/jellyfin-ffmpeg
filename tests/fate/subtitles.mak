@@ -16,11 +16,18 @@ fate-sub-ass-to-ass-transcode: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/1ede
 FATE_SUBTITLES_ASS-$(CONFIG_ASS_DEMUXER) += fate-sub-ssa-to-ass-remux
 fate-sub-ssa-to-ass-remux: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/a9-misc.ssa -c copy
 
-FATE_SUBTITLES-$(call ALLYES, ASS_DEMUXER, MATROSKA_MUXER) += fate-binsub-mksenc
+FATE_SUBTITLES-$(call ALLYES, ASS_DEMUXER MATROSKA_MUXER) += fate-binsub-mksenc
 fate-binsub-mksenc: CMD = md5pipe -i $(TARGET_SAMPLES)/sub/1ededcbd7b.ass -c copy -f matroska -flags +bitexact -fflags +bitexact
 
 FATE_SUBTITLES_ASS-$(call DEMDEC, JACOSUB, JACOSUB) += fate-sub-jacosub
 fate-sub-jacosub: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/JACOsub_capability_tester.jss
+
+FATE_SUBTITLES-$(call DEMMUX, JACOSUB, JACOSUB) += fate-sub-jacosub-remux
+fate-sub-jacosub-remux: CMD = transcode jacosub $(TARGET_SAMPLES)/sub/JACOsub_capability_tester.jss jacosub "-map 0 -c copy" "-map 0 -c copy"
+fate-sub-jacosub-remux: CMP = diff
+
+FATE_SUBTITLES-$(call DEMMUX, LRC, LRC) += fate-sub-lrc-remux
+fate-sub-lrc-remux: CMD = fmtstdout lrc -i $(TARGET_SAMPLES)/sub/test-lrc.lrc
 
 FATE_SUBTITLES_ASS-$(call DEMDEC, MICRODVD, MICRODVD) += fate-sub-microdvd
 fate-sub-microdvd: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/MicroDVD_capability_tester.sub
@@ -102,6 +109,9 @@ fate-sub-charenc: CMD = fmtstdout ass -sub_charenc cp1251 -i $(TARGET_SAMPLES)/s
 
 FATE_SUBTITLES-$(call DEMDEC, SCC, CCAPTION) += fate-sub-scc
 fate-sub-scc: CMD = fmtstdout ass -ss 57 -i $(TARGET_SAMPLES)/sub/witch.scc
+
+FATE_SUBTITLES-$(call DEMMUX, SCC, SCC) += fate-sub-scc-remux
+fate-sub-scc-remux: CMD = fmtstdout scc -i $(TARGET_SAMPLES)/sub/witch.scc -ss 4:00 -map 0 -c copy
 
 FATE_SUBTITLES-$(call ALLYES, MPEGTS_DEMUXER DVBSUB_DECODER DVBSUB_ENCODER) += fate-sub-dvb
 fate-sub-dvb: CMD = framecrc -i $(TARGET_SAMPLES)/sub/dvbsubtest_filter.ts -map s:0 -c dvbsub

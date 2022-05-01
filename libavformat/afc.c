@@ -57,10 +57,10 @@ static int afc_read_header(AVFormatContext *s)
 static int afc_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     AFCDemuxContext *c = s->priv_data;
-    int64_t size;
+    int64_t size = c->data_end - avio_tell(s->pb);
     int ret;
 
-    size = FFMIN(c->data_end - avio_tell(s->pb), 18 * 128);
+    size = FFMIN(size, 18 * 128);
     if (size <= 0)
         return AVERROR_EOF;
 
@@ -69,7 +69,7 @@ static int afc_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-AVInputFormat ff_afc_demuxer = {
+const AVInputFormat ff_afc_demuxer = {
     .name           = "afc",
     .long_name      = NULL_IF_CONFIG_SMALL("AFC"),
     .priv_data_size = sizeof(AFCDemuxContext),

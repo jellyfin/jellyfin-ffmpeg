@@ -42,18 +42,12 @@
 #include "internal.h"
 #include "video.h"
 
+#define MFX_IMPL_VIA_MASK(impl) (0x0f00 & (impl))
+
 enum {
     QSVDEINT_MORE_OUTPUT = 1,
     QSVDEINT_MORE_INPUT,
 };
-
-typedef struct QSVFrame {
-    AVFrame *frame;
-    mfxFrameSurface1 surface;
-    int used;
-
-    struct QSVFrame *next;
-} QSVFrame;
 
 typedef struct QSVDeintContext {
     const AVClass *class;
@@ -109,20 +103,6 @@ static av_cold void qsvdeint_uninit(AVFilterContext *ctx)
     s->nb_surface_ptrs = 0;
 }
 
-static int qsvdeint_query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pixel_formats[] = {
-        AV_PIX_FMT_QSV, AV_PIX_FMT_NONE,
-    };
-    AVFilterFormats *pix_fmts  = ff_make_format_list(pixel_formats);
-    int ret;
-
-    if ((ret = ff_set_common_formats(ctx, pix_fmts)) < 0)
-        return ret;
-
-    return 0;
-}
-
 static mfxStatus frame_alloc(mfxHDL pthis, mfxFrameAllocRequest *req,
                              mfxFrameAllocResponse *resp)
 {
@@ -157,15 +137,15 @@ static mfxStatus frame_unlock(mfxHDL pthis, mfxMemId mid, mfxFrameData *ptr)
 
 static mfxStatus frame_get_hdl(mfxHDL pthis, mfxMemId mid, mfxHDL *hdl)
 {
-    *hdl = mid;
+    mfxHDLPair *pair_dst = (mfxHDLPair*)hdl;
+    mfxHDLPair *pair_src = (mfxHDLPair*)mid;
+
+    pair_dst->first = pair_src->first;
+
+    if (pair_src->second != (mfxMemId)MFX_INFINITE)
+        pair_dst->second = pair_src->second;
     return MFX_ERR_NONE;
 }
-
-static const mfxHandleType handle_types[] = {
-    MFX_HANDLE_VA_DISPLAY,
-    MFX_HANDLE_D3D9_DEVICE_MANAGER,
-    MFX_HANDLE_D3D11_DEVICE,
-};
 
 static int init_out_session(AVFilterContext *ctx)
 {
@@ -194,14 +174,18 @@ static int init_out_session(AVFilterContext *ctx)
         return AVERROR_UNKNOWN;
     }
 
-    for (i = 0; i < FF_ARRAY_ELEMS(handle_types); i++) {
-        err = MFXVideoCORE_GetHandle(device_hwctx->session, handle_types[i], &handle);
-        if (err == MFX_ERR_NONE) {
-            handle_type = handle_types[i];
-            break;
-        }
+    if (MFX_IMPL_VIA_VAAPI == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_VA_DISPLAY;
+    } else if (MFX_IMPL_VIA_D3D11 == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_D3D11_DEVICE;
+    } else if (MFX_IMPL_VIA_D3D9 == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_D3D9_DEVICE_MANAGER;
+    } else {
+        av_log(ctx, AV_LOG_ERROR, "Error unsupported handle type\n");
+        return AVERROR_UNKNOWN;
     }
 
+    err = MFXVideoCORE_GetHandle(device_hwctx->session, handle_type, &handle);
     if (err < 0)
         return ff_qsvvpp_print_error(ctx, err, "Error getting the session handle");
     else if (err > 0) {
@@ -240,8 +224,8 @@ static int init_out_session(AVFilterContext *ctx)
     s->ext_buffers[s->num_ext_buffers++] = (mfxExtBuffer *)&s->deint_conf;
 
     if (opaque) {
-        s->surface_ptrs = av_mallocz_array(hw_frames_hwctx->nb_surfaces,
-                                           sizeof(*s->surface_ptrs));
+        s->surface_ptrs = av_calloc(hw_frames_hwctx->nb_surfaces,
+                                    sizeof(*s->surface_ptrs));
         if (!s->surface_ptrs)
             return AVERROR(ENOMEM);
         for (i = 0; i < hw_frames_hwctx->nb_surfaces; i++)
@@ -270,8 +254,8 @@ static int init_out_session(AVFilterContext *ctx)
             .Free   = frame_free,
         };
 
-        s->mem_ids = av_mallocz_array(hw_frames_hwctx->nb_surfaces,
-                                      sizeof(*s->mem_ids));
+        s->mem_ids = av_calloc(hw_frames_hwctx->nb_surfaces,
+                               sizeof(*s->mem_ids));
         if (!s->mem_ids)
             return AVERROR(ENOMEM);
         for (i = 0; i < hw_frames_hwctx->nb_surfaces; i++)
@@ -376,7 +360,7 @@ static void clear_unused_frames(QSVDeintContext *s)
     while (cur) {
         if (!cur->surface.Data.Locked) {
             av_frame_free(&cur->frame);
-            cur->used = 0;
+            cur->queued = 0;
         }
         cur = cur->next;
     }
@@ -391,7 +375,7 @@ static int get_free_frame(QSVDeintContext *s, QSVFrame **f)
     frame = s->work_frames;
     last  = &s->work_frames;
     while (frame) {
-        if (!frame->used) {
+        if (!frame->queued) {
             *f = frame;
             return 0;
         }
@@ -453,7 +437,7 @@ static int submit_frame(AVFilterContext *ctx, AVFrame *frame,
                                               (AVRational){1, 90000});
 
     *surface = &qf->surface;
-    qf->used = 1;
+    qf->queued = 1;
 
     return 0;
 }
@@ -589,7 +573,6 @@ static const AVFilterPad qsvdeint_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = qsvdeint_filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad qsvdeint_outputs[] = {
@@ -599,21 +582,20 @@ static const AVFilterPad qsvdeint_outputs[] = {
         .config_props  = qsvdeint_config_props,
         .request_frame = qsvdeint_request_frame,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_deinterlace_qsv = {
+const AVFilter ff_vf_deinterlace_qsv = {
     .name      = "deinterlace_qsv",
     .description = NULL_IF_CONFIG_SMALL("QuickSync video deinterlacing"),
 
     .uninit        = qsvdeint_uninit,
-    .query_formats = qsvdeint_query_formats,
 
     .priv_size = sizeof(QSVDeintContext),
     .priv_class = &qsvdeint_class,
 
-    .inputs    = qsvdeint_inputs,
-    .outputs   = qsvdeint_outputs,
+    FILTER_INPUTS(qsvdeint_inputs),
+    FILTER_OUTPUTS(qsvdeint_outputs),
+    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_QSV),
 
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

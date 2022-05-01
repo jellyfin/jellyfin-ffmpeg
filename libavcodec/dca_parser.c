@@ -267,7 +267,7 @@ static int dca_parse_params(DCAParseContext *pc1, const uint8_t *buf,
         return AVERROR_INVALIDDATA;
 
     *duration = h.npcmblocks * DCA_PCMBLOCK_SAMPLES;
-    *sample_rate = avpriv_dca_sample_rates[h.sr_code];
+    *sample_rate = ff_dca_sample_rates[h.sr_code];
     if (*profile != FF_PROFILE_UNKNOWN)
         return 0;
 
@@ -343,7 +343,7 @@ static int dca_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-AVCodecParser ff_dca_parser = {
+const AVCodecParser ff_dca_parser = {
     .codec_ids      = { AV_CODEC_ID_DTS },
     .priv_data_size = sizeof(DCAParseContext),
     .parser_init    = dca_parse_init,

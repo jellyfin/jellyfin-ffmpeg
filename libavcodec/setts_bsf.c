@@ -26,7 +26,6 @@
 #include "libavutil/opt.h"
 #include "libavutil/eval.h"
 
-#include "avcodec.h"
 #include "bsf.h"
 #include "bsf_internal.h"
 
@@ -44,6 +43,7 @@ static const char *const var_names[] = {
     "STARTDTS",    ///< DTS at start of movie
     "TB",          ///< timebase of the stream
     "SR",          ///< sample rate of the stream
+    "NOPTS",       ///< The AV_NOPTS_VALUE constant
     NULL
 };
 
@@ -61,6 +61,7 @@ enum var_name {
     VAR_STARTDTS,
     VAR_TB,
     VAR_SR,
+    VAR_NOPTS,
     VAR_VARS_NB
 };
 
@@ -121,6 +122,7 @@ static int setts_init(AVBSFContext *ctx)
     s->prev_indts  = AV_NOPTS_VALUE;
     s->prev_outpts = AV_NOPTS_VALUE;
     s->prev_outdts = AV_NOPTS_VALUE;
+    s->var_values[VAR_NOPTS] = AV_NOPTS_VALUE;
 
     return 0;
 }
@@ -171,10 +173,10 @@ static int setts_filter(AVBSFContext *ctx, AVPacket *pkt)
         new_dts = new_ts;
     }
 
-    s->var_values[VAR_PREV_INPTS]  = pkt->pts;
-    s->var_values[VAR_PREV_INDTS]  = pkt->dts;
-    s->var_values[VAR_PREV_OUTPTS] = new_pts;
-    s->var_values[VAR_PREV_OUTDTS] = new_dts;
+    s->prev_inpts  = pkt->pts;
+    s->prev_indts  = pkt->dts;
+    s->prev_outpts = new_pts;
+    s->prev_outdts = new_dts;
 
     pkt->pts = new_pts;
     pkt->dts = new_dts;

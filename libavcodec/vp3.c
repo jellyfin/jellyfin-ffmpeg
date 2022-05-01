@@ -2277,19 +2277,19 @@ static av_cold int allocate_tables(AVCodecContext *avctx)
 
     /* superblock_coding is used by unpack_superblocks (VP3/Theora) and vp4_unpack_macroblocks (VP4) */
     s->superblock_coding = av_mallocz(FFMAX(s->superblock_count, s->yuv_macroblock_count));
-    s->all_fragments     = av_mallocz_array(s->fragment_count, sizeof(Vp3Fragment));
+    s->all_fragments     = av_calloc(s->fragment_count, sizeof(*s->all_fragments));
 
-    s-> kf_coded_fragment_list = av_mallocz_array(s->fragment_count, sizeof(int));
-    s->nkf_coded_fragment_list = av_mallocz_array(s->fragment_count, sizeof(int));
+    s-> kf_coded_fragment_list = av_calloc(s->fragment_count, sizeof(int));
+    s->nkf_coded_fragment_list = av_calloc(s->fragment_count, sizeof(int));
     memset(s-> num_kf_coded_fragment, -1, sizeof(s-> num_kf_coded_fragment));
 
-    s->dct_tokens_base = av_mallocz_array(s->fragment_count,
-                                          64 * sizeof(*s->dct_tokens_base));
-    s->motion_val[0] = av_mallocz_array(y_fragment_count, sizeof(*s->motion_val[0]));
-    s->motion_val[1] = av_mallocz_array(c_fragment_count, sizeof(*s->motion_val[1]));
+    s->dct_tokens_base = av_calloc(s->fragment_count,
+                                   64 * sizeof(*s->dct_tokens_base));
+    s->motion_val[0] = av_calloc(y_fragment_count, sizeof(*s->motion_val[0]));
+    s->motion_val[1] = av_calloc(c_fragment_count, sizeof(*s->motion_val[1]));
 
     /* work out the block mapping tables */
-    s->superblock_fragments = av_mallocz_array(s->superblock_count, 16 * sizeof(int));
+    s->superblock_fragments = av_calloc(s->superblock_count, 16 * sizeof(int));
     s->macroblock_coding    = av_mallocz(s->macroblock_count + 1);
 
     s->dc_pred_row = av_malloc_array(s->y_superblock_width * 4, sizeof(*s->dc_pred_row));
@@ -2335,9 +2335,13 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
     if (ret < 0)
         return ret;
 
-    if (avctx->codec_tag == MKTAG('V', 'P', '4', '0'))
+    if (avctx->codec_tag == MKTAG('V', 'P', '4', '0')) {
         s->version = 3;
-    else if (avctx->codec_tag == MKTAG('V', 'P', '3', '0'))
+#if !CONFIG_VP4_DECODER
+        av_log(avctx, AV_LOG_ERROR, "This build does not support decoding VP4.\n");
+        return AVERROR_DECODER_NOT_FOUND;
+#endif
+    } else if (avctx->codec_tag == MKTAG('V', 'P', '3', '0'))
         s->version = 0;
     else
         s->version = 1;
@@ -2404,6 +2408,8 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
     s->fragment_start[2] = y_fragment_count + c_fragment_count;
 
     if (!s->theora_tables) {
+        const uint8_t (*bias_tabs)[32][2];
+
         for (i = 0; i < 64; i++) {
             s->coded_dc_scale_factor[0][i] = s->version < 2 ? vp31_dc_scale_factor[i] : vp4_y_dc_scale_factor[i];
             s->coded_dc_scale_factor[1][i] = s->version < 2 ? vp31_dc_scale_factor[i] : vp4_uv_dc_scale_factor[i];
@@ -2424,26 +2430,14 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
         }
 
         /* init VLC tables */
-        if (s->version < 2) {
-            for (i = 0; i < FF_ARRAY_ELEMS(s->coeff_vlc); i++) {
-                ret = ff_init_vlc_from_lengths(&s->coeff_vlc[i], 11, 32,
-                                               &vp3_bias[i][0][1], 2,
-                                               &vp3_bias[i][0][0], 2, 1,
-                                               0, 0, avctx);
-                if (ret < 0)
-                    return ret;
-            }
-#if CONFIG_VP4_DECODER
-        } else { /* version >= 2 */
-            for (i = 0; i < FF_ARRAY_ELEMS(s->coeff_vlc); i++) {
-                ret = ff_init_vlc_from_lengths(&s->coeff_vlc[i], 11, 32,
-                                               &vp4_bias[i][0][1], 2,
-                                               &vp4_bias[i][0][0], 2, 1,
-                                               0, 0, avctx);
-                if (ret < 0)
-                    return ret;
-            }
-#endif
+        bias_tabs = CONFIG_VP4_DECODER && s->version >= 2 ? vp4_bias : vp3_bias;
+        for (int i = 0; i < FF_ARRAY_ELEMS(s->coeff_vlc); i++) {
+            ret = ff_init_vlc_from_lengths(&s->coeff_vlc[i], 11, 32,
+                                           &bias_tabs[i][0][1], 2,
+                                           &bias_tabs[i][0][0], 2, 1,
+                                           0, 0, avctx);
+            if (ret < 0)
+                return ret;
         }
     } else {
         for (i = 0; i < FF_ARRAY_ELEMS(s->coeff_vlc); i++) {
@@ -3166,7 +3160,7 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
     return vp3_decode_init(avctx);
 }
 
-AVCodec ff_theora_decoder = {
+const AVCodec ff_theora_decoder = {
     .name                  = "theora",
     .long_name             = NULL_IF_CONFIG_SMALL("Theora"),
     .type                  = AVMEDIA_TYPE_VIDEO,
@@ -3179,12 +3173,12 @@ AVCodec ff_theora_decoder = {
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
     .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_EXPORTS_CROPPING | FF_CODEC_CAP_ALLOCATE_PROGRESS |
-                             FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+                             FF_CODEC_CAP_EXPORTS_CROPPING | FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 #endif
 
-AVCodec ff_vp3_decoder = {
+const AVCodec ff_vp3_decoder = {
     .name                  = "vp3",
     .long_name             = NULL_IF_CONFIG_SMALL("On2 VP3"),
     .type                  = AVMEDIA_TYPE_VIDEO,
@@ -3197,11 +3191,12 @@ AVCodec ff_vp3_decoder = {
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
     .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_ALLOCATE_PROGRESS | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+                             FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 
 #if CONFIG_VP4_DECODER
-AVCodec ff_vp4_decoder = {
+const AVCodec ff_vp4_decoder = {
     .name                  = "vp4",
     .long_name             = NULL_IF_CONFIG_SMALL("On2 VP4"),
     .type                  = AVMEDIA_TYPE_VIDEO,
@@ -3214,6 +3209,7 @@ AVCodec ff_vp4_decoder = {
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
     .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_ALLOCATE_PROGRESS | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+                             FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 #endif

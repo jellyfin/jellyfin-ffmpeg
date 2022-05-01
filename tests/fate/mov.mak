@@ -37,8 +37,6 @@ FATE_SAMPLES_AVCONV += $(FATE_MOV)
 FATE_SAMPLES_FFPROBE += $(FATE_MOV_FFPROBE)
 FATE_SAMPLES_FASTSTART += $(FATE_MOV_FASTSTART)
 
-fate-mov: $(FATE_MOV) $(FATE_MOV_FFPROBE) $(FATE_MOV_FASTSTART)
-
 # Make sure we handle edit lists correctly in normal cases.
 fate-mov-1elist-noctts: CMD = framemd5 -i $(TARGET_SAMPLES)/mov/mov-1elist-noctts.mov
 fate-mov-1elist-1ctts: CMD = framemd5 -i $(TARGET_SAMPLES)/mov/mov-1elist-1ctts.mov
@@ -96,8 +94,8 @@ fate-mov-neg-firstpts-discard: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_entri
 # with negative timestamps (skip_samples is not set for Vorbis, so ffmpeg computes start_time as negative if not specified by demuxer).
 fate-mov-neg-firstpts-discard-vorbis: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_entries stream=start_time -bitexact $(TARGET_SAMPLES)/mov/mov_neg_first_pts_discard_vorbis.mp4
 
-# Makes sure that expected frames are generated for mov_neg_first_pts_discard.mov with -vsync 1
-fate-mov-neg-firstpts-discard-frames: CMD = framemd5 -flags +bitexact -i $(TARGET_SAMPLES)/mov/mov_neg_first_pts_discard.mov -vsync 1
+# Makes sure that expected frames are generated for mov_neg_first_pts_discard.mov with -vsync cfr
+fate-mov-neg-firstpts-discard-frames: CMD = framemd5 -flags +bitexact -i $(TARGET_SAMPLES)/mov/mov_neg_first_pts_discard.mov -vsync cfr
 
 # Makes sure that no frame is dropped/duplicated with fps filter due to start_time / duration miscalculations.
 fate-mov-stream-shorter-than-movie: CMD = framemd5 -flags +bitexact -i $(TARGET_SAMPLES)/mov/mov_stream_shorter_than_movie.mov -vf fps=fps=24 -an
@@ -127,3 +125,26 @@ fate-mov-faststart-4gb-overflow: REF = bc875921f151871e787c4b4023269b29
 fate-mov-mp4-with-mov-in24-ver: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_entries stream=codec_name -select_streams 1 $(TARGET_SAMPLES)/mov/mp4-with-mov-in24-ver.mp4
 
 fate-mov-mp4-extended-atom: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_packets -print_format compact -select_streams v $(TARGET_SAMPLES)/mov/extended_atom_size_probe
+
+FATE_MOV_FFMPEG_FFPROBE-$(call ALLYES, FILE_PROTOCOL MOV_DEMUXER MJPEG_DECODER \
+                                       SCALE_FILTER PNG_ENCODER PNG_DECODER    \
+                                       MP4_MUXER FRAMECRC_MUXER PIPE_PROTOCOL) \
+                          += fate-mov-cover-image
+fate-mov-cover-image: CMD = transcode mov $(TARGET_SAMPLES)/cover_art/Owner-iTunes_9.0.3.15.m4a mp4 "-map 0 -map 0:v -c:a copy -c:v:0 copy -filter:v:1 scale -c:v:1 png" "-map 0 -t 0.1 -c copy" "" "-show_entries stream_disposition=attached_pic:stream=index,codec_name"
+
+FATE_MOV_FFMPEG_FFPROBE-$(call ALLYES, FILE_PROTOCOL SRT_DEMUXER MOV_DEMUXER SUBRIP_DECODER TTML_ENCODER TTML_MUXER MOV_MUXER) += fate-mov-mp4-ttml-stpp fate-mov-mp4-ttml-dfxp
+fate-mov-mp4-ttml-stpp: CMD = transcode srt $(TARGET_SAMPLES)/sub/SubRip_capability_tester.srt mp4 "-map 0:s -c:s ttml -time_base:s 1:1000" "-map 0 -c copy" "" "-of json -show_entries packet:stream=index,codec_type,codec_tag_string,codec_tag,codec_name,time_base,start_time,duration_ts,duration,nb_frames,nb_read_packets:stream_tags"
+fate-mov-mp4-ttml-dfxp: CMD = transcode srt $(TARGET_SAMPLES)/sub/SubRip_capability_tester.srt mp4 "-map 0:s -c:s ttml -time_base:s 1:1000 -tag:s dfxp -strict unofficial" "-map 0 -c copy" "" "-of json -show_entries packet:stream=index,codec_type,codec_tag_string,codec_tag,codec_name,time_base,start_time,duration_ts,duration,nb_frames,nb_read_packets:stream_tags"
+
+# Resulting remux should have:
+# 1. first audio stream with AV_DISPOSITION_HEARING_IMPAIRED
+# 2. second audio stream with AV_DISPOSITION_VISUAL_IMPAIRED | DESCRIPTIONS
+FATE_MOV_FFMPEG_FFPROBE-$(call ALLYES, FILE_PROTOCOL PIPE_PROTOCOL \
+                                       MPEGTS_DEMUXER MOV_DEMUXER AC3_DECODER \
+                                       MP4_MUXER FRAMECRC_MUXER ) \
+                          += fate-mov-mp4-disposition-mpegts-remux
+fate-mov-mp4-disposition-mpegts-remux: CMD = transcode mpegts $(TARGET_SAMPLES)/mpegts/pmtchange.ts mp4 "-map 0:1 -map 0:2 -c copy -disposition:a:0 +hearing_impaired" "-map 0 -c copy" "" "-of json -show_entries stream_disposition:stream=index"
+
+FATE_SAMPLES_FFMPEG_FFPROBE += $(FATE_MOV_FFMPEG_FFPROBE-yes)
+
+fate-mov: $(FATE_MOV) $(FATE_MOV_FFPROBE) $(FATE_MOV_FASTSTART) $(FATE_MOV_FFMPEG_FFPROBE-yes)

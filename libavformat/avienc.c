@@ -237,7 +237,6 @@ static void write_odml_master(AVFormatContext *s, int stream_index)
     AVCodecParameters *par = st->codecpar;
     AVIStream *avist = st->priv_data;
     unsigned char tag[5];
-    int j;
 
     /* Starting to lay out AVI OpenDML master index.
         * We want to make it JUNK entry for now, since we'd
@@ -250,10 +249,8 @@ static void write_odml_master(AVFormatContext *s, int stream_index)
     avio_wl32(pb, 0);   /* nEntriesInUse (will fill out later on) */
     ffio_wfourcc(pb, avi_stream2fourcc(tag, stream_index, par->codec_type));
                         /* dwChunkId */
-    avio_wl64(pb, 0);   /* dwReserved[3] */
-    avio_wl32(pb, 0);   /* Must be 0.    */
-    for (j = 0; j < avi->master_index_max_size * 2; j++)
-        avio_wl64(pb, 0);
+    ffio_fill(pb, 0, 3 * 4 /* dwReserved[3] */
+                     + 16LL * avi->master_index_max_size);
     ff_end_tag(pb, avist->indexes.indx_start);
 }
 
@@ -275,9 +272,7 @@ static int avi_write_header(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
-    avi->empty_packet = av_packet_alloc();
-    if (!avi->empty_packet)
-        return AVERROR(ENOMEM);
+    avi->empty_packet = ffformatcontext(s)->pkt;
 
     for (n = 0; n < s->nb_streams; n++) {
         s->streams[n]->priv_data = av_mallocz(sizeof(AVIStream));
@@ -351,10 +346,7 @@ static int avi_write_header(AVFormatContext *s)
         avio_wl32(pb, 0);
         avio_wl32(pb, 0);
     }
-    avio_wl32(pb, 0); /* reserved */
-    avio_wl32(pb, 0); /* reserved */
-    avio_wl32(pb, 0); /* reserved */
-    avio_wl32(pb, 0); /* reserved */
+    ffio_fill(pb, 0, 4 * 4); /* reserved */
 
     /* stream list */
     for (i = 0; i < n; i++) {
@@ -456,7 +448,7 @@ static int avi_write_header(AVFormatContext *s)
                     par->bits_per_coded_sample = 16;
                 avist->pal_offset = avio_tell(pb) + 40;
                 ff_put_bmp_header(pb, par, 0, 0, avi->flipped_raw_rgb);
-                pix_fmt = avpriv_find_pix_fmt(avpriv_pix_fmt_bps_avi,
+                pix_fmt = avpriv_pix_fmt_find(PIX_FMT_LIST_AVI,
                                               par->bits_per_coded_sample);
                 if (   !par->codec_tag
                     && par->codec_id == AV_CODEC_ID_RAWVIDEO
@@ -569,8 +561,7 @@ static int avi_write_header(AVFormatContext *s)
         ffio_wfourcc(pb, "odml");
         ffio_wfourcc(pb, "dmlh");
         avio_wl32(pb, 248);
-        for (i = 0; i < 248; i += 4)
-            avio_wl32(pb, 0);
+        ffio_fill(pb, 0, 248);
         ff_end_tag(pb, avi->odml_list);
     }
 
@@ -586,8 +577,7 @@ static int avi_write_header(AVFormatContext *s)
     /* some padding for easier tag editing */
     if (padding) {
         list2 = ff_start_tag(pb, "JUNK");
-        for (i = padding; i > 0; i -= 4)
-            avio_wl32(pb, 0);
+        ffio_fill(pb, 0, FFALIGN((uint32_t)padding, 4));
         ff_end_tag(pb, list2);
     }
 
@@ -980,10 +970,6 @@ static int avi_write_trailer(AVFormatContext *s)
 
 static void avi_deinit(AVFormatContext *s)
 {
-    AVIContext *avi = s->priv_data;
-
-    av_packet_free(&avi->empty_packet);
-
     for (int i = 0; i < s->nb_streams; i++) {
         AVIStream *avist = s->streams[i]->priv_data;
         if (!avist)
@@ -1011,7 +997,7 @@ static const AVClass avi_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_avi_muxer = {
+const AVOutputFormat ff_avi_muxer = {
     .name           = "avi",
     .long_name      = NULL_IF_CONFIG_SMALL("AVI (Audio Video Interleaved)"),
     .mime_type      = "video/x-msvideo",

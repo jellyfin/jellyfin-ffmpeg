@@ -32,7 +32,6 @@
 
 #include <float.h>
 
-#include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
@@ -161,39 +160,31 @@ static const AVOption bm3d_options[] = {
 
 AVFILTER_DEFINE_CLASS(bm3d);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10,
-        AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
-        AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
-        AV_PIX_FMT_YUVJ411P,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV440P10,
-        AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV420P12,
-        AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV420P14,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_YUVA420P,  AV_PIX_FMT_YUVA422P,   AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA422P16,
-        AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA420P16,
-        AV_PIX_FMT_GBRAP,     AV_PIX_FMT_GBRAP10,    AV_PIX_FMT_GBRAP12,    AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10,
+    AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P,
+    AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ444P,
+    AV_PIX_FMT_YUVJ411P,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV440P10,
+    AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV420P12,
+    AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV420P14,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_YUVA420P,  AV_PIX_FMT_YUVA422P,   AV_PIX_FMT_YUVA444P,
+    AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA422P16,
+    AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA420P16,
+    AV_PIX_FMT_GBRAP,     AV_PIX_FMT_GBRAP10,    AV_PIX_FMT_GBRAP12,    AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_NONE
+};
 
 static int do_search_boundary(int pos, int plane_boundary, int search_range, int search_step)
 {
@@ -767,7 +758,7 @@ static int filter_frame(AVFilterContext *ctx, AVFrame **out, AVFrame *in, AVFram
         td.ref = ref->data[p];
         td.ref_linesize = ref->linesize[p];
         td.plane = p;
-        ctx->internal->execute(ctx, filter_slice, &td, NULL, nb_jobs);
+        ff_filter_execute(ctx, filter_slice, &td, NULL, nb_jobs);
 
         s->do_output(s, (*out)->data[p], (*out)->linesize[p], p, nb_jobs);
     }
@@ -945,7 +936,7 @@ static av_cold int init(AVFilterContext *ctx)
     pad.name         = "source";
     pad.config_props = config_input;
 
-    if ((ret = ff_insert_inpad(ctx, 0, &pad)) < 0)
+    if ((ret = ff_append_inpad(ctx, &pad)) < 0)
         return ret;
 
     if (s->ref) {
@@ -953,7 +944,7 @@ static av_cold int init(AVFilterContext *ctx)
         pad.name         = "reference";
         pad.config_props = NULL;
 
-        if ((ret = ff_insert_inpad(ctx, 1, &pad)) < 0)
+        if ((ret = ff_append_inpad(ctx, &pad)) < 0)
             return ret;
     }
 
@@ -972,10 +963,6 @@ static int config_output(AVFilterLink *outlink)
     if (s->ref) {
         ref = ctx->inputs[1];
 
-        if (src->format != ref->format) {
-            av_log(ctx, AV_LOG_ERROR, "inputs must be of same pixel format\n");
-            return AVERROR(EINVAL);
-        }
         if (src->w                       != ref->w ||
             src->h                       != ref->h) {
             av_log(ctx, AV_LOG_ERROR, "First input link %s parameters "
@@ -1052,19 +1039,18 @@ static const AVFilterPad bm3d_outputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_bm3d = {
+const AVFilter ff_vf_bm3d = {
     .name          = "bm3d",
     .description   = NULL_IF_CONFIG_SMALL("Block-Matching 3D denoiser."),
     .priv_size     = sizeof(BM3DContext),
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
-    .query_formats = query_formats,
     .inputs        = NULL,
-    .outputs       = bm3d_outputs,
+    FILTER_OUTPUTS(bm3d_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &bm3d_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_DYNAMIC_INPUTS |

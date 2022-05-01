@@ -60,8 +60,7 @@ static const AVOption options[] = {
     { NULL }
 };
 
-#define premultiply_options options
-AVFILTER_DEFINE_CLASS(premultiply);
+AVFILTER_DEFINE_CLASS_EXT(premultiply, "(un)premultiply", options);
 
 static int query_formats(AVFilterContext *ctx)
 {
@@ -86,7 +85,7 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_NONE
     };
 
-    return ff_set_common_formats(ctx, ff_make_format_list(s->inplace ? alpha_pix_fmts : no_alpha_pix_fmts));
+    return ff_set_common_formats_from_list(ctx, s->inplace ? alpha_pix_fmts : no_alpha_pix_fmts);
 }
 
 static void premultiply8(const uint8_t *msrc, const uint8_t *asrc,
@@ -635,8 +634,8 @@ static int filter_frame(AVFilterContext *ctx,
         td.d = *out;
         td.a = alpha;
         td.m = base;
-        ctx->internal->execute(ctx, premultiply_slice, &td, NULL, FFMIN(s->height[0],
-                                                                        ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, premultiply_slice, &td, NULL,
+                          FFMIN(s->height[0], ff_filter_get_nb_threads(ctx)));
     }
 
     return 0;
@@ -701,10 +700,6 @@ static int config_output(AVFilterLink *outlink)
     if (!s->inplace) {
         alpha = ctx->inputs[1];
 
-        if (base->format != alpha->format) {
-            av_log(ctx, AV_LOG_ERROR, "inputs must be of same pixel format\n");
-            return AVERROR(EINVAL);
-        }
         if (base->w                       != alpha->w ||
             base->h                       != alpha->h) {
             av_log(ctx, AV_LOG_ERROR, "First input link %s parameters "
@@ -790,7 +785,7 @@ static av_cold int init(AVFilterContext *ctx)
     pad.name         = "main";
     pad.config_props = config_input;
 
-    if ((ret = ff_insert_inpad(ctx, 0, &pad)) < 0)
+    if ((ret = ff_append_inpad(ctx, &pad)) < 0)
         return ret;
 
     if (!s->inplace) {
@@ -798,7 +793,7 @@ static av_cold int init(AVFilterContext *ctx)
         pad.name         = "alpha";
         pad.config_props = NULL;
 
-        if ((ret = ff_insert_inpad(ctx, 1, &pad)) < 0)
+        if ((ret = ff_append_inpad(ctx, &pad)) < 0)
             return ret;
     }
 
@@ -819,21 +814,20 @@ static const AVFilterPad premultiply_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
 #if CONFIG_PREMULTIPLY_FILTER
 
-AVFilter ff_vf_premultiply = {
+const AVFilter ff_vf_premultiply = {
     .name          = "premultiply",
     .description   = NULL_IF_CONFIG_SMALL("PreMultiply first stream with first plane of second stream."),
     .priv_size     = sizeof(PreMultiplyContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = premultiply_outputs,
+    FILTER_OUTPUTS(premultiply_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &premultiply_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_DYNAMIC_INPUTS |
@@ -844,20 +838,17 @@ AVFilter ff_vf_premultiply = {
 
 #if CONFIG_UNPREMULTIPLY_FILTER
 
-#define unpremultiply_options options
-AVFILTER_DEFINE_CLASS(unpremultiply);
-
-AVFilter ff_vf_unpremultiply = {
+const AVFilter ff_vf_unpremultiply = {
     .name          = "unpremultiply",
     .description   = NULL_IF_CONFIG_SMALL("UnPreMultiply first stream with first plane of second stream."),
+    .priv_class    = &premultiply_class,
     .priv_size     = sizeof(PreMultiplyContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .activate      = activate,
     .inputs        = NULL,
-    .outputs       = premultiply_outputs,
-    .priv_class    = &unpremultiply_class,
+    FILTER_OUTPUTS(premultiply_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_DYNAMIC_INPUTS |
                      AVFILTER_FLAG_SLICE_THREADS,

@@ -750,7 +750,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_g729_decoder = {
+const AVCodec ff_g729_decoder = {
     .name           = "g729",
     .long_name      = NULL_IF_CONFIG_SMALL("G.729"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -760,9 +760,10 @@ AVCodec ff_g729_decoder = {
     .decode         = decode_frame,
     .close          = decode_close,
     .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 
-AVCodec ff_acelp_kelvin_decoder = {
+const AVCodec ff_acelp_kelvin_decoder = {
     .name           = "acelp.kelvin",
     .long_name      = NULL_IF_CONFIG_SMALL("Sipro ACELP.KELVIN"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -772,4 +773,5 @@ AVCodec ff_acelp_kelvin_decoder = {
     .decode         = decode_frame,
     .close          = decode_close,
     .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

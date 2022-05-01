@@ -73,7 +73,7 @@ static void parse_avs3_nal_units(AVCodecParserContext *s, const uint8_t *buf,
             GetBitContext gb;
             int profile, ratecode;
 
-            init_get_bits(&gb, buf + 4, buf_size - 4);
+            init_get_bits8(&gb, buf + 4, buf_size - 4);
 
             s->key_frame = 1;
             s->pict_type = AV_PICTURE_TYPE_I;
@@ -170,10 +170,9 @@ static int avs3_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-AVCodecParser ff_avs3_parser = {
+const AVCodecParser ff_avs3_parser = {
     .codec_ids      = { AV_CODEC_ID_AVS3 },
     .priv_data_size = sizeof(ParseContext),
     .parser_parse   = avs3_parse,
     .parser_close   = ff_parse_close,
-    .split          = ff_mpeg4video_split,
 };

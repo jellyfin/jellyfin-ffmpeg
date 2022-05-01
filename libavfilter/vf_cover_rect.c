@@ -22,7 +22,6 @@
  * @todo switch to dualinput
  */
 
-#include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "internal.h"
@@ -54,17 +53,6 @@ static const AVOption cover_rect_options[] = {
 };
 
 AVFILTER_DEFINE_CLASS(cover_rect);
-
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_NONE
-    };
-
-    return ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
-}
 
 static int config_input(AVFilterLink *inlink)
 {
@@ -237,7 +225,6 @@ static const AVFilterPad cover_rect_inputs[] = {
         .config_props = config_input,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad cover_rect_outputs[] = {
@@ -245,17 +232,16 @@ static const AVFilterPad cover_rect_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_cover_rect = {
+const AVFilter ff_vf_cover_rect = {
     .name            = "cover_rect",
     .description     = NULL_IF_CONFIG_SMALL("Find and cover a user specified object."),
     .priv_size       = sizeof(CoverContext),
     .init            = init,
     .uninit          = uninit,
-    .query_formats   = query_formats,
-    .inputs          = cover_rect_inputs,
-    .outputs         = cover_rect_outputs,
+    FILTER_INPUTS(cover_rect_inputs),
+    FILTER_OUTPUTS(cover_rect_outputs),
+    FILTER_PIXFMTS(AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVJ420P),
     .priv_class      = &cover_rect_class,
 };

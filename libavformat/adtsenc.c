@@ -22,7 +22,9 @@
 
 #include "libavcodec/get_bits.h"
 #include "libavcodec/put_bits.h"
-#include "libavcodec/avcodec.h"
+#include "libavcodec/codec_id.h"
+#include "libavcodec/codec_par.h"
+#include "libavcodec/packet.h"
 #include "libavcodec/mpeg4audio.h"
 #include "libavutil/opt.h"
 #include "avformat.h"
@@ -44,7 +46,7 @@ typedef struct ADTSContext {
     uint8_t pce_data[MAX_PCE_SIZE];
 } ADTSContext;
 
-#define ADTS_MAX_FRAME_BYTES ((1 << 13) - 1)
+#define ADTS_MAX_FRAME_BYTES ((1 << 14) - 1)
 
 static int adts_decode_extradata(AVFormatContext *s, ADTSContext *adts, const uint8_t *buf, int size)
 {
@@ -172,7 +174,7 @@ static int adts_write_packet(AVFormatContext *s, AVPacket *pkt)
         return 0;
     if (!par->extradata_size) {
         uint8_t *side_data;
-        buffer_size_t side_data_size;
+        size_t side_data_size;
         int ret;
 
         side_data = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
@@ -216,9 +218,9 @@ static int adts_write_trailer(AVFormatContext *s)
 #define ENC AV_OPT_FLAG_ENCODING_PARAM
 #define OFFSET(obj) offsetof(ADTSContext, obj)
 static const AVOption options[] = {
-    { "write_id3v2",  "Enable ID3v2 tag writing", OFFSET(id3v2tag), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, ENC},
-    { "write_apetag", "Enable APE tag writing",   OFFSET(apetag),   AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, ENC},
-    { "write_mpeg2",  "Use MPE2 ID when writing", OFFSET(mpeg_id),  AV_OPT_TYPE_BOOL,  {.i64 = 0}, 0, 1, ENC, "mpeg_id"},
+    { "write_id3v2",  "Enable ID3v2 tag writing",   OFFSET(id3v2tag), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, ENC},
+    { "write_apetag", "Enable APE tag writing",     OFFSET(apetag),   AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, ENC},
+    { "write_mpeg2",  "Set MPEG version to MPEG-2", OFFSET(mpeg_id),  AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, ENC},
     { NULL },
 };
 
@@ -229,7 +231,7 @@ static const AVClass adts_muxer_class = {
     .version        = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_adts_muxer = {
+const AVOutputFormat ff_adts_muxer = {
     .name              = "adts",
     .long_name         = NULL_IF_CONFIG_SMALL("ADTS AAC (Advanced Audio Coding)"),
     .mime_type         = "audio/aac",

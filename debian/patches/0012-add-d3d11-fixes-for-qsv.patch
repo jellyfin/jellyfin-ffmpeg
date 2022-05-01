@@ -1,0 +1,190 @@
+Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
+@@ -72,7 +72,6 @@ static av_cold void load_functions(void)
+ }
+ 
+ typedef struct D3D11VAFramesContext {
+-    int nb_surfaces;
+     int nb_surfaces_used;
+ 
+     DXGI_FORMAT format;
+@@ -295,7 +294,7 @@ static int d3d11va_frames_init(AVHWFrame
+     hwctx->texture_infos = av_calloc(ctx->initial_pool_size, sizeof(*hwctx->texture_infos));
+     if (!hwctx->texture_infos)
+         return AVERROR(ENOMEM);
+-    s->nb_surfaces = ctx->initial_pool_size;
++    hwctx->nb_surfaces = ctx->initial_pool_size;
+ 
+     ctx->internal->pool_internal = av_buffer_pool_init2(sizeof(AVD3D11FrameDescriptor),
+                                                         ctx, d3d11va_pool_alloc, NULL);
+Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.h
++++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.h
+@@ -173,6 +173,8 @@ typedef struct AVD3D11VAFramesContext {
+      * This field is ignored/invalid if a user-allocated texture is provided.
+     */
+     AVD3D11FrameDescriptor *texture_infos;
++
++    int nb_surfaces;
+ } AVD3D11VAFramesContext;
+ 
+ #endif /* AVUTIL_HWCONTEXT_D3D11VA_H */
+Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_opencl.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
+@@ -82,6 +82,12 @@ typedef CL_API_ENTRY cl_mem(CL_API_CALL
+ #include "hwcontext_drm.h"
+ #endif
+ 
++#if HAVE_OPENCL_VAAPI_INTEL_MEDIA && CONFIG_LIBMFX
++extern int ff_qsv_get_surface_base_handle(mfxFrameSurface1 *surf,
++                                          enum AVHWDeviceType base_dev_typ,
++                                          void **base_handle);
++#endif
++
+ typedef struct OpenCLDeviceContext {
+     // Default command queue to use for transfer/mapping operations on
+     // the device.  If the user supplies one, this is a reference to it.
+@@ -2291,8 +2297,14 @@ static int opencl_map_from_qsv(AVHWFrame
+ 
+ #if CONFIG_LIBMFX
+     if (src->format == AV_PIX_FMT_QSV) {
++        void *base_handle;
+         mfxFrameSurface1 *mfx_surface = (mfxFrameSurface1*)src->data[3];
+-        va_surface = *(VASurfaceID*)mfx_surface->Data.MemId;
++        err = ff_qsv_get_surface_base_handle(mfx_surface,
++                                             AV_HWDEVICE_TYPE_VAAPI,
++                                             &base_handle);
++        if (err < 0)
++            return err;
++        va_surface = *(VASurfaceID *)base_handle;
+     } else
+ #endif
+         if (src->format == AV_PIX_FMT_VAAPI) {
+Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_qsv.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
+@@ -112,6 +112,40 @@ static const struct {
+ #endif
+ };
+ 
++extern int ff_qsv_get_surface_base_handle(mfxFrameSurface1 *surf,
++                                          enum AVHWDeviceType base_dev_type,
++                                          void **base_handle);
++
++/**
++ * Caller needs to allocate enough space for base_handle pointer.
++ **/
++int ff_qsv_get_surface_base_handle(mfxFrameSurface1 *surf,
++                                   enum AVHWDeviceType base_dev_type,
++                                   void **base_handle)
++{
++    mfxHDLPair *handle_pair;
++    handle_pair = surf->Data.MemId;
++    switch (base_dev_type) {
++#if CONFIG_VAAPI
++    case AV_HWDEVICE_TYPE_VAAPI:
++        base_handle[0] = handle_pair->first;
++        return 0;
++#endif
++#if CONFIG_D3D11VA
++    case AV_HWDEVICE_TYPE_D3D11VA:
++        base_handle[0] = handle_pair->first;
++        base_handle[1] = handle_pair->second;
++        return 0;
++#endif
++#if CONFIG_DXVA2
++    case AV_HWDEVICE_TYPE_DXVA2:
++        base_handle[0] = handle_pair->first;
++        return 0;
++#endif
++    }
++    return AVERROR(EINVAL);
++}
++
+ static uint32_t qsv_fourcc_from_pix_fmt(enum AVPixelFormat pix_fmt)
+ {
+     int i;
+@@ -1191,7 +1225,7 @@ static int qsv_frames_derive_to(AVHWFram
+     case AV_HWDEVICE_TYPE_VAAPI:
+         {
+             AVVAAPIFramesContext *src_hwctx = src_ctx->hwctx;
+-            s->handle_pairs_internal = av_calloc(src_ctx->initial_pool_size,
++            s->handle_pairs_internal = av_calloc(src_hwctx->nb_surfaces,
+                                                  sizeof(*s->handle_pairs_internal));
+             if (!s->handle_pairs_internal)
+                 return AVERROR(ENOMEM);
+@@ -1214,15 +1248,15 @@ static int qsv_frames_derive_to(AVHWFram
+     case AV_HWDEVICE_TYPE_D3D11VA:
+         {
+             AVD3D11VAFramesContext *src_hwctx = src_ctx->hwctx;
+-            s->handle_pairs_internal = av_calloc(src_ctx->initial_pool_size,
++            s->handle_pairs_internal = av_calloc(src_hwctx->nb_surfaces,
+                                                  sizeof(*s->handle_pairs_internal));
+             if (!s->handle_pairs_internal)
+                 return AVERROR(ENOMEM);
+-            s->surfaces_internal = av_calloc(src_ctx->initial_pool_size,
++            s->surfaces_internal = av_calloc(src_hwctx->nb_surfaces,
+                                              sizeof(*s->surfaces_internal));
+             if (!s->surfaces_internal)
+                 return AVERROR(ENOMEM);
+-            for (i = 0; i < src_ctx->initial_pool_size; i++) {
++            for (i = 0; i < src_hwctx->nb_surfaces; i++) {
+                 qsv_init_surface(dst_ctx, &s->surfaces_internal[i]);
+                 s->handle_pairs_internal[i].first = (mfxMemId)src_hwctx->texture_infos[i].texture;
+                 if (src_hwctx->BindFlags & D3D11_BIND_RENDER_TARGET) {
+@@ -1232,7 +1266,7 @@ static int qsv_frames_derive_to(AVHWFram
+                 }
+                 s->surfaces_internal[i].Data.MemId = (mfxMemId)&s->handle_pairs_internal[i];
+             }
+-            dst_hwctx->nb_surfaces = src_ctx->initial_pool_size;
++            dst_hwctx->nb_surfaces = src_hwctx->nb_surfaces;
+             if (src_hwctx->BindFlags & D3D11_BIND_RENDER_TARGET) {
+                 dst_hwctx->frame_type |= MFX_MEMTYPE_VIDEO_MEMORY_PROCESSOR_TARGET;
+             } else {
+@@ -1245,7 +1279,7 @@ static int qsv_frames_derive_to(AVHWFram
+     case AV_HWDEVICE_TYPE_DXVA2:
+         {
+             AVDXVA2FramesContext *src_hwctx = src_ctx->hwctx;
+-            s->handle_pairs_internal = av_calloc(src_ctx->initial_pool_size,
++            s->handle_pairs_internal = av_calloc(src_hwctx->nb_surfaces,
+                                                  sizeof(*s->handle_pairs_internal));
+             if (!s->handle_pairs_internal)
+                 return AVERROR(ENOMEM);
+@@ -1541,14 +1575,10 @@ static int qsv_device_create(AVHWDeviceC
+         }
+     } else if (CONFIG_VAAPI) {
+         child_device_type = AV_HWDEVICE_TYPE_VAAPI;
+-    } else if (CONFIG_DXVA2) {
+-        av_log(NULL, AV_LOG_WARNING,
+-                "WARNING: defaulting child_device_type to AV_HWDEVICE_TYPE_DXVA2 for compatibility "
+-                "with old commandlines. This behaviour will be removed "
+-                "in the future. Please explicitly set device type via \"-init_hw_device\" option.\n");
+-        child_device_type = AV_HWDEVICE_TYPE_DXVA2;
+     } else if (CONFIG_D3D11VA) {
+         child_device_type = AV_HWDEVICE_TYPE_D3D11VA;
++    } else if (CONFIG_DXVA2) {
++        child_device_type = AV_HWDEVICE_TYPE_DXVA2;
+     } else {
+         av_log(ctx, AV_LOG_ERROR, "No supported child device type is enabled\n");
+         return AVERROR(ENOSYS);
+@@ -1597,7 +1627,13 @@ static int qsv_device_create(AVHWDeviceC
+ 
+     impl = choose_implementation(device, child_device_type);
+ 
+-    return qsv_device_derive_from_child(ctx, impl, child_device, 0);
++    ret = qsv_device_derive_from_child(ctx, impl, child_device, 0);
++    if (ret == 0) {
++        ctx->internal->source_device = av_buffer_ref(priv->child_device_ctx);
++        if (!ctx->internal->source_device)
++            ret = AVERROR(ENOMEM);
++    }
++    return ret;
+ }
+ 
+ const HWContextType ff_hwcontext_type_qsv = {

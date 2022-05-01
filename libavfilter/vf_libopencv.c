@@ -64,17 +64,6 @@ static void fill_frame_from_iplimage(AVFrame *frame, const IplImage *img, enum A
     frame->data[0]     = img->imageData;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
-
 typedef struct OCVContext {
     const AVClass *class;
     char *name;
@@ -175,7 +164,7 @@ static int read_shape_from_file(int *cols, int *rows, int **values, const char *
         ret = AVERROR_INVALIDDATA;
         goto end;
     }
-    if (!(*values = av_mallocz_array(sizeof(int) * *rows, *cols))) {
+    if (!(*values = av_calloc(sizeof(int) * *rows, *cols))) {
         ret = AVERROR(ENOMEM);
         goto end;
     }
@@ -416,7 +405,6 @@ static const AVFilterPad avfilter_vf_ocv_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad avfilter_vf_ocv_outputs[] = {
@@ -424,17 +412,16 @@ static const AVFilterPad avfilter_vf_ocv_outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_ocv = {
+const AVFilter ff_vf_ocv = {
     .name          = "ocv",
     .description   = NULL_IF_CONFIG_SMALL("Apply transform using libopencv."),
     .priv_size     = sizeof(OCVContext),
     .priv_class    = &ocv_class,
-    .query_formats = query_formats,
     .init          = init,
     .uninit        = uninit,
-    .inputs        = avfilter_vf_ocv_inputs,
-    .outputs       = avfilter_vf_ocv_outputs,
+    FILTER_INPUTS(avfilter_vf_ocv_inputs),
+    FILTER_OUTPUTS(avfilter_vf_ocv_outputs),
+    FILTER_PIXFMTS(AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_GRAY8),
 };

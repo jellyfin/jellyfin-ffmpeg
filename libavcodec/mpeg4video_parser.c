@@ -26,7 +26,10 @@
 #include "parser.h"
 #include "mpegvideo.h"
 #include "mpeg4video.h"
+#if FF_API_FLAG_TRUNCATED
+/* Nuke this header when removing FF_API_FLAG_TRUNCATED */
 #include "mpeg4video_parser.h"
+#endif
 
 struct Mp4vParseContext {
     ParseContext pc;
@@ -34,7 +37,15 @@ struct Mp4vParseContext {
     int first_picture;
 };
 
+#if FF_API_FLAG_TRUNCATED
 int ff_mpeg4_find_frame_end(ParseContext *pc, const uint8_t *buf, int buf_size)
+#else
+/**
+ * Find the end of the current frame in the bitstream.
+ * @return the position of the first byte of the next frame, or -1
+ */
+static int mpeg4_find_frame_end(ParseContext *pc, const uint8_t *buf, int buf_size)
+#endif
 {
     int vop_found, i;
     uint32_t state;
@@ -138,7 +149,11 @@ static int mpeg4video_parse(AVCodecParserContext *s,
     if (s->flags & PARSER_FLAG_COMPLETE_FRAMES) {
         next = buf_size;
     } else {
+#if FF_API_FLAG_TRUNCATED
         next = ff_mpeg4_find_frame_end(pc, buf, buf_size);
+#else
+        next = mpeg4_find_frame_end(pc, buf, buf_size);
+#endif
 
         if (ff_combine_frame(pc, next, &buf, &buf_size) < 0) {
             *poutbuf      = NULL;
@@ -153,11 +168,10 @@ static int mpeg4video_parse(AVCodecParserContext *s,
     return next;
 }
 
-AVCodecParser ff_mpeg4video_parser = {
+const AVCodecParser ff_mpeg4video_parser = {
     .codec_ids      = { AV_CODEC_ID_MPEG4 },
     .priv_data_size = sizeof(struct Mp4vParseContext),
     .parser_init    = mpeg4video_parse_init,
     .parser_parse   = mpeg4video_parse,
     .parser_close   = ff_parse_close,
-    .split          = ff_mpeg4video_split,
 };

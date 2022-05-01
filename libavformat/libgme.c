@@ -84,7 +84,8 @@ static int load_metadata(AVFormatContext *s, int64_t *duration)
 static int read_close_gme(AVFormatContext *s)
 {
     GMEContext *gme = s->priv_data;
-    gme_delete(gme->music_emu);
+    if (gme->music_emu)
+        gme_delete(gme->music_emu);
     return 0;
 }
 
@@ -121,28 +122,23 @@ static int read_header_gme(AVFormatContext *s)
     }
 
     if (gme_open_data(buf, sz, &gme->music_emu, gme->sample_rate)) {
+        gme->music_emu = NULL; /* Just for safety */
         av_freep(&buf);
         return AVERROR_INVALIDDATA;
     }
     av_freep(&buf);
 
     ret = load_metadata(s, &duration);
-    if (ret < 0) {
-        read_close_gme(s);
+    if (ret < 0)
         return ret;
-    }
-    if (gme_start_track(gme->music_emu, gme->track_index)) {
-        read_close_gme(s);
+    if (gme_start_track(gme->music_emu, gme->track_index))
         return AVERROR_UNKNOWN;
-    }
 
     st = avformat_new_stream(s, NULL);
-    if (!st) {
-        read_close_gme(s);
+    if (!st)
         return AVERROR(ENOMEM);
-    }
     avpriv_set_pts_info(st, 64, 1, 1000);
-    if (st->duration > 0)
+    if (duration > 0)
         st->duration = duration;
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id    = AV_NE(AV_CODEC_ID_PCM_S16BE, AV_CODEC_ID_PCM_S16LE);
@@ -166,7 +162,6 @@ static int read_packet_gme(AVFormatContext *s, AVPacket *pkt)
 
     if (gme_play(gme->music_emu, n_samples, (short *)pkt->data))
         return AVERROR_EXTERNAL;
-    pkt->size = AUDIO_PKT_SIZE;
 
     return 0;
 }
@@ -198,10 +193,11 @@ static const AVClass class_gme = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVInputFormat ff_libgme_demuxer = {
+const AVInputFormat ff_libgme_demuxer = {
     .name           = "libgme",
     .long_name      = NULL_IF_CONFIG_SMALL("Game Music Emu demuxer"),
     .priv_data_size = sizeof(GMEContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = probe_gme,
     .read_header    = read_header_gme,
     .read_packet    = read_packet_gme,

@@ -61,6 +61,7 @@ typedef struct H264MetadataContext {
 
     AVRational tick_rate;
     int fixed_frame_rate_flag;
+    int zero_new_constraint_set_flags;
 
     int crop_left;
     int crop_right;
@@ -228,6 +229,10 @@ static int h264_metadata_update_sps(AVBSFContext *bsf,
         need_vui = 1;
     }
     SET_VUI_FIELD(fixed_frame_rate_flag);
+    if (ctx->zero_new_constraint_set_flags) {
+        sps->constraint_set4_flag = 0;
+        sps->constraint_set5_flag = 0;
+    }
 
     if (sps->separate_colour_plane_flag || sps->chroma_format_idc == 0) {
         crop_unit_x = 1;
@@ -336,15 +341,24 @@ static int h264_metadata_handle_display_orientation(AVBSFContext *bsf,
                                    SEI_TYPE_DISPLAY_ORIENTATION,
                                    &message) == 0) {
         H264RawSEIDisplayOrientation *disp = message->payload;
+        double angle = disp->anticlockwise_rotation * 180.0 / 65536.0;
         int32_t *matrix;
 
         matrix = av_malloc(9 * sizeof(int32_t));
         if (!matrix)
             return AVERROR(ENOMEM);
 
-        av_display_rotation_set(matrix,
-                                disp->anticlockwise_rotation *
-                                180.0 / 65536.0);
+        /* av_display_rotation_set() expects the angle in the clockwise
+         * direction, hence the first minus.
+         * The below code applies the flips after the rotation, yet
+         * the H.2645 specs require flipping to be applied first.
+         * Because of R O(phi) = O(-phi) R (where R is flipping around
+         * an arbitatry axis and O(phi) is the proper rotation by phi)
+         * we can create display matrices as desired by negating
+         * the degree once for every flip applied. */
+        angle = -angle * (1 - 2 * !!disp->hor_flip) * (1 - 2 * !!disp->ver_flip);
+
+        av_display_rotation_set(matrix, angle);
         av_display_matrix_flip(matrix, disp->hor_flip, disp->ver_flip);
 
         // If there are multiple display orientation messages in an
@@ -371,7 +385,7 @@ static int h264_metadata_handle_display_orientation(AVBSFContext *bsf,
         H264RawSEIDisplayOrientation *disp =
             &ctx->display_orientation_payload;
         uint8_t *data;
-        buffer_size_t size;
+        size_t size;
         int write = 0;
 
         data = av_packet_get_side_data(pkt, AV_PKT_DATA_DISPLAYMATRIX, &size);
@@ -612,12 +626,15 @@ static const AVOption h264_metadata_options[] = {
         OFFSET(chroma_sample_loc_type), AV_OPT_TYPE_INT,
         { .i64 = -1 }, -1, 6, FLAGS },
 
-    { "tick_rate", "Set VUI tick rate (num_units_in_tick / time_scale)",
+    { "tick_rate", "Set VUI tick rate (time_scale / num_units_in_tick)",
         OFFSET(tick_rate), AV_OPT_TYPE_RATIONAL,
         { .dbl = 0.0 }, 0, UINT_MAX, FLAGS },
     { "fixed_frame_rate_flag", "Set VUI fixed frame rate flag",
         OFFSET(fixed_frame_rate_flag), AV_OPT_TYPE_INT,
         { .i64 = -1 }, -1, 1, FLAGS },
+    { "zero_new_constraint_set_flags", "Set constraint_set4_flag / constraint_set5_flag to zero",
+        OFFSET(zero_new_constraint_set_flags), AV_OPT_TYPE_BOOL,
+        { .i64 = 0 }, 0, 1, FLAGS },
 
     { "crop_left", "Set left border crop offset",
         OFFSET(crop_left), AV_OPT_TYPE_INT,

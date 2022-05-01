@@ -20,9 +20,11 @@
 
 #define BITSTREAM_WRITER_LE
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "put_bits.h"
 #include "bytestream.h"
@@ -2777,7 +2779,7 @@ static int wavpack_encode_block(WavPackEncodeContext *s,
     }
     encode_flush(s);
     flush_put_bits(&s->pb);
-    data_size = put_bits_count(&s->pb) >> 3;
+    data_size = put_bytes_output(&s->pb);
     bytestream2_put_le24(&pb, (data_size + 1) >> 1);
     bytestream2_skip_p(&pb, data_size);
     if (data_size & 1)
@@ -2791,7 +2793,7 @@ static int wavpack_encode_block(WavPackEncodeContext *s,
         else
             pack_int32(s, s->orig_l, s->orig_r, nb_samples);
         flush_put_bits(&s->pb);
-        data_size = put_bits_count(&s->pb) >> 3;
+        data_size = put_bytes_output(&s->pb);
         bytestream2_put_le24(&pb, (data_size + 5) >> 1);
         bytestream2_put_le32(&pb, s->crc_x);
         bytestream2_skip_p(&pb, data_size);
@@ -2869,7 +2871,7 @@ static int wavpack_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     buf_size = s->block_samples * avctx->channels * 8
              + 200 * avctx->channels /* for headers */;
-    if ((ret = ff_alloc_packet2(avctx, avpkt, buf_size, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, avpkt, buf_size)) < 0)
         return ret;
     buf = avpkt->data;
 
@@ -2957,7 +2959,7 @@ static const AVClass wavpack_encoder_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_wavpack_encoder = {
+const AVCodec ff_wavpack_encoder = {
     .name           = "wavpack",
     .long_name      = NULL_IF_CONFIG_SMALL("WavPack"),
     .type           = AVMEDIA_TYPE_AUDIO,
@@ -2973,4 +2975,5 @@ AVCodec ff_wavpack_encoder = {
                                                      AV_SAMPLE_FMT_S32P,
                                                      AV_SAMPLE_FMT_FLTP,
                                                      AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

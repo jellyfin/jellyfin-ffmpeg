@@ -21,6 +21,7 @@
  */
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "libavutil/intreadwrite.h"
 
@@ -62,7 +63,7 @@ static int avui_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         skip = 16;
     }
     size = 2 * avctx->width * (avctx->height + skip) + 8 * interlaced;
-    if ((ret = ff_alloc_packet2(avctx, pkt, size, size)) < 0)
+    if ((ret = ff_get_encode_buffer(avctx, pkt, size, 0)) < 0)
         return ret;
     dst = pkt->data;
     if (!interlaced) {
@@ -86,18 +87,18 @@ static int avui_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
     }
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
     return 0;
 }
 
-AVCodec ff_avui_encoder = {
+const AVCodec ff_avui_encoder = {
     .name         = "avui",
     .long_name    = NULL_IF_CONFIG_SMALL("Avid Meridien Uncompressed"),
     .type         = AVMEDIA_TYPE_VIDEO,
     .id           = AV_CODEC_ID_AVUI,
     .init         = avui_encode_init,
     .encode2      = avui_encode_frame,
-    .capabilities = AV_CODEC_CAP_EXPERIMENTAL,
+    .capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_EXPERIMENTAL,
     .pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_UYVY422, AV_PIX_FMT_NONE },
+    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

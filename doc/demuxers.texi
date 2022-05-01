@@ -25,6 +25,13 @@ Audible Format 2, 3, and 4 demuxer.
 
 This demuxer is used to demux Audible Format 2, 3, and 4 (.aa) files.
 
+@section aac
+
+Raw Audio Data Transport Stream AAC demuxer.
+
+This demuxer is used to demux an ADTS input containing a single AAC stream
+alongwith any ID3v1/2 or APE tags in it.
+
 @section apng
 
 Animated Portable Network Graphics demuxer.
@@ -37,12 +44,15 @@ between the last fcTL and IEND chunks.
 
 @table @option
 @item -ignore_loop @var{bool}
-Ignore the loop variable in the file if set.
+Ignore the loop variable in the file if set. Default is enabled.
+
 @item -max_fps @var{int}
-Maximum framerate in frames per second (0 for no limit).
+Maximum framerate in frames per second. Default of 0 imposes no limit.
+
 @item -default_fps @var{int}
 Default framerate in frames per second when none is specified in the file
-(0 meaning as fast as possible).
+(0 meaning as fast as possible). Default is 15.
+
 @end table
 
 @section asf
@@ -93,8 +103,7 @@ backslash or single quotes.
 All subsequent file-related directives apply to that file.
 
 @item @code{ffconcat version 1.0}
-Identify the script type and version. It also sets the @option{safe} option
-to 1 if it was -1.
+Identify the script type and version.
 
 To make FFmpeg recognize the format automatically, this directive must
 appear exactly as is (no extra space or byte-order-mark) on the very first
@@ -148,6 +157,16 @@ directive) will be reduced based on their specified Out point.
 Metadata of the packets of the file. The specified metadata will be set for
 each file packet. You can specify this directive multiple times to add multiple
 metadata entries.
+This directive is deprecated, use @code{file_packet_meta} instead.
+
+@item @code{file_packet_meta @var{key} @var{value}}
+Metadata of the packets of the file. The specified metadata will be set for
+each file packet. You can specify this directive multiple times to add multiple
+metadata entries.
+
+@item @code{option @var{key} @var{value}}
+Option to access, open and probe the file.
+Can be present multiple times.
 
 @item @code{stream}
 Introduce a stream in the virtual file.
@@ -165,6 +184,20 @@ subfiles will be used.
 This is especially useful for MPEG-PS (VOB) files, where the order of the
 streams is not reliable.
 
+@item @code{stream_meta @var{key} @var{value}}
+Metadata for the stream.
+Can be present multiple times.
+
+@item @code{stream_codec @var{value}}
+Codec for the stream.
+
+@item @code{stream_extradata @var{hex_string}}
+Extradata for the string, encoded in hexadecimal.
+
+@item @code{chapter @var{id} @var{start} @var{end}}
+Add a chapter. @var{id} is an unique identifier, possibly small and
+consecutive.
+
 @end table
 
 @subsection Options
@@ -174,7 +207,8 @@ This demuxer accepts the following option:
 @table @option
 
 @item safe
-If set to 1, reject unsafe file paths. A file path is considered safe if it
+If set to 1, reject unsafe file paths and directives.
+A file path is considered safe if it
 does not contain a protocol specification and is relative and all components
 only contain characters from the portable character set (letters, digits,
 period, underscore and hyphen) and have no period at the beginning of a
@@ -183,9 +217,6 @@ component.
 If set to 0, any file name is accepted.
 
 The default is 1.
-
--1 is equivalent to 1 if the format was automatically
-probed and 0 otherwise.
 
 @item auto_convert
 If set to 1, try to perform automatic conversions on packet data to make the
@@ -243,11 +274,18 @@ which streams to actually receive.
 Each stream mirrors the @code{id} and @code{bandwidth} properties from the
 @code{<Representation>} as metadata keys named "id" and "variant_bitrate" respectively.
 
-@section flv, live_flv
+@section imf
+
+Interoperable Master Format demuxer.
+
+This demuxer presents audio and video streams found in an IMF Composition.
+
+@section flv, live_flv, kux
 
 Adobe Flash Video Format demuxer.
 
 This demuxer is used to demux FLV files and RTMP network streams. In case of live network streams, if you force format, you may use live_flv option instead of flv to survive timestamp discontinuities.
+KUX is a flv variant used on the Youku platform.
 
 @example
 ffmpeg -f flv -i myfile.flv ...
@@ -346,6 +384,9 @@ Enabled by default for HTTP/1.1 servers.
 @item http_seekable
 Use HTTP partial requests for downloading HTTP segments.
 0 = disable, 1 = enable, -1 = auto, Default is auto.
+
+@item seg_format_options
+Set options for the demuxer of media segments using a list of key=value pairs separated by @code{:}.
 @end table
 
 @section image2
@@ -661,6 +702,12 @@ Set mfra timestamps as PTS
 Don't use mfra box to set timestamps
 @end table
 
+@item use_tfdt
+For fragmented input, set fragment's starting timestamp to @code{baseMediaDecodeTime} from the @code{tfdt} box.
+Default is enabled, which will prefer to use the @code{tfdt} box to set DTS. Disable to use the @code{earliest_presentation_time} from the @code{sidx} box.
+In either case, the timestamp from the @code{mfra} box will be used if it's available and @code{use_mfra_for} is
+set to pts or dts.
+
 @item export_all
 Export unrecognized boxes within the @var{udta} box as metadata entries. The first four
 characters of the box type are set as the key. Default is false.
@@ -679,6 +726,15 @@ specify.
 
 @item decryption_key
 16-byte key, in hex, to decrypt files encrypted using ISO Common Encryption (CENC/AES-128 CTR; ISO/IEC 23001-7).
+
+@item max_stts_delta
+Very high sample deltas written in a trak's stts box may occasionally be intended but usually they are written in
+error or used to store a negative value for dts correction when treated as signed 32-bit integers. This option lets
+the user set an upper limit, beyond which the delta is clamped to 1. Values greater than the limit if negative when
+cast to int32 are used to adjust onward dts.
+
+Unit is the track time scale. Range is 0 to UINT_MAX. Default is @code{UINT_MAX - 48000*10} which allows upto
+a 10 second dts correction for 48 kHz audio streams while accommodating 99.9% of @code{uint32} range.
 @end table
 
 @subsection Audible AAX

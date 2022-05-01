@@ -27,6 +27,7 @@
 #include <aom/aomdx.h>
 
 #include "libavutil/common.h"
+#include "libavutil/cpu.h"
 #include "libavutil/imgutils.h"
 
 #include "avcodec.h"
@@ -198,6 +199,22 @@ static int aom_decode(AVCodecContext *avctx, void *data, int *got_frame,
         if ((ret = ff_get_buffer(avctx, picture, 0)) < 0)
             return ret;
 
+#ifdef AOM_CTRL_AOMD_GET_FRAME_FLAGS
+        {
+            aom_codec_frame_flags_t flags;
+            ret = aom_codec_control(&ctx->decoder, AOMD_GET_FRAME_FLAGS, &flags);
+            if (ret == AOM_CODEC_OK) {
+                picture->key_frame = !!(flags & AOM_FRAME_IS_KEY);
+                if (flags & (AOM_FRAME_IS_KEY | AOM_FRAME_IS_INTRAONLY))
+                    picture->pict_type = AV_PICTURE_TYPE_I;
+                else if (flags & AOM_FRAME_IS_SWITCH)
+                    picture->pict_type = AV_PICTURE_TYPE_SP;
+                else
+                    picture->pict_type = AV_PICTURE_TYPE_P;
+            }
+        }
+#endif
+
         av_reduce(&picture->sample_aspect_ratio.num,
                   &picture->sample_aspect_ratio.den,
                   picture->height * img->r_w,
@@ -207,9 +224,13 @@ static int aom_decode(AVCodecContext *avctx, void *data, int *got_frame,
 
         if ((img->fmt & AOM_IMG_FMT_HIGHBITDEPTH) && img->bit_depth == 8)
             image_copy_16_to_8(picture, img);
-        else
-            av_image_copy(picture->data, picture->linesize, (const uint8_t **)img->planes,
-                          img->stride, avctx->pix_fmt, img->d_w, img->d_h);
+        else {
+            const uint8_t *planes[4] = { img->planes[0], img->planes[1], img->planes[2] };
+            const int      stride[4] = { img->stride[0], img->stride[1], img->stride[2] };
+
+            av_image_copy(picture->data, picture->linesize, planes,
+                          stride, avctx->pix_fmt, img->d_w, img->d_h);
+        }
         *got_frame = 1;
     }
     return avpkt->size;
@@ -224,10 +245,10 @@ static av_cold int aom_free(AVCodecContext *avctx)
 
 static av_cold int av1_init(AVCodecContext *avctx)
 {
-    return aom_init(avctx, &aom_codec_av1_dx_algo);
+    return aom_init(avctx, aom_codec_av1_dx());
 }
 
-AVCodec ff_libaom_av1_decoder = {
+const AVCodec ff_libaom_av1_decoder = {
     .name           = "libaom-av1",
     .long_name      = NULL_IF_CONFIG_SMALL("libaom AV1"),
     .type           = AVMEDIA_TYPE_VIDEO,

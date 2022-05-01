@@ -140,25 +140,6 @@ make install
 popd
 popd
 
-# SDL2
-mkdir sdl2
-pushd sdl2
-sdl2_ver="2.0.20"
-sdl2_link="https://libsdl.org/release/SDL2-${sdl2_ver}.tar.gz"
-wget ${sdl2_link} -O sdl2.tar.gz
-tar xaf sdl2.tar.gz
-pushd SDL2-${sdl2_ver}
-./autogen.sh
-./configure \
-    --prefix=${FF_DEPS_PREFIX} \
-    --host=${FF_TOOLCHAIN} \
-    --disable-shared \
-    --enable-static
-make -j$(nproc)
-make install
-popd
-popd
-
 # FONTCONFIG
 mkdir fontconfig
 pushd fontconfig
@@ -531,6 +512,8 @@ fi
     --disable-ffplay \
     --disable-debug \
     --disable-doc \
+    --disable-sdl2 \
+    --disable-ptx-compression \
     --disable-w32threads \
     --enable-pthreads \
     --enable-shared \
@@ -542,7 +525,6 @@ fi
     --enable-libxml2 \
     --enable-zlib \
     --enable-lzma \
-    --enable-sdl2 \
     --enable-gmp \
     --enable-libfreetype \
     --enable-libfribidi \

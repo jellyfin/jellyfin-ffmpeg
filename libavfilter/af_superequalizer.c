@@ -270,31 +270,6 @@ static av_cold int init(AVFilterContext *ctx)
     return equ_init(s, 14);
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats;
-    AVFilterChannelLayouts *layouts;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_FLTP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_set_common_formats(ctx, formats)) < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    return ff_set_common_samplerates(ctx, formats);
-}
-
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -335,7 +310,6 @@ static const AVFilterPad superequalizer_inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad superequalizer_outputs[] = {
@@ -344,7 +318,6 @@ static const AVFilterPad superequalizer_outputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_output,
     },
-    { NULL }
 };
 
 #define AF AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
@@ -374,15 +347,15 @@ static const AVOption superequalizer_options[] = {
 
 AVFILTER_DEFINE_CLASS(superequalizer);
 
-AVFilter ff_af_superequalizer = {
+const AVFilter ff_af_superequalizer = {
     .name          = "superequalizer",
     .description   = NULL_IF_CONFIG_SMALL("Apply 18 band equalization filter."),
     .priv_size     = sizeof(SuperEqualizerContext),
     .priv_class    = &superequalizer_class,
-    .query_formats = query_formats,
     .init          = init,
     .activate      = activate,
     .uninit        = uninit,
-    .inputs        = superequalizer_inputs,
-    .outputs       = superequalizer_outputs,
+    FILTER_INPUTS(superequalizer_inputs),
+    FILTER_OUTPUTS(superequalizer_outputs),
+    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
 };

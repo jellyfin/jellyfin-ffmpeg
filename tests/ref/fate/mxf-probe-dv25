@@ -10,6 +10,7 @@ height=576
 coded_width=720
 coded_height=576
 closed_captions=0
+film_grain=0
 has_b_frames=0
 sample_aspect_ratio=16:15
 display_aspect_ratio=4:3
@@ -48,6 +49,11 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:captions=0
+DISPOSITION:descriptions=0
+DISPOSITION:metadata=0
+DISPOSITION:dependent=0
+DISPOSITION:still_image=0
 TAG:file_package_umid=0x060A2B340101010501010D4313000000F2E2FCE98722F14F947F08DE1EF7A8DA
 [/STREAM]
 [STREAM]
@@ -88,6 +94,11 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:captions=0
+DISPOSITION:descriptions=0
+DISPOSITION:metadata=0
+DISPOSITION:dependent=0
+DISPOSITION:still_image=0
 TAG:file_package_umid=0x060A2B340101010501010D4313000000F2E2FCE98722F14F947F08DE1EF7A8DA
 [/STREAM]
 [STREAM]
@@ -128,6 +139,11 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:captions=0
+DISPOSITION:descriptions=0
+DISPOSITION:metadata=0
+DISPOSITION:dependent=0
+DISPOSITION:still_image=0
 TAG:file_package_umid=0x060A2B340101010501010D4313000000F2E2FCE98722F14F947F08DE1EF7A8DA
 [/STREAM]
 [FORMAT]

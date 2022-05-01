@@ -81,6 +81,9 @@ static const AVOption swscale_options[] = {
     { "uniform_color",   "blend onto a uniform color",    0,                 AV_OPT_TYPE_CONST,  { .i64  = SWS_ALPHA_BLEND_UNIFORM},INT_MIN, INT_MAX,     VE, "alphablend" },
     { "checkerboard",    "blend onto a checkerboard",     0,                 AV_OPT_TYPE_CONST,  { .i64  = SWS_ALPHA_BLEND_CHECKERBOARD},INT_MIN, INT_MAX,     VE, "alphablend" },
 
+    { "threads",         "number of threads",             OFFSET(nb_threads),   AV_OPT_TYPE_INT, {.i64 = 1 }, 0, INT_MAX, VE, "threads" },
+        { "auto",        NULL,                            0,                  AV_OPT_TYPE_CONST, {.i64 = 0 },    .flags = VE, "threads" },
+
     { NULL }
 };
 
@@ -88,6 +91,7 @@ const AVClass ff_sws_context_class = {
     .class_name = "SWScaler",
     .item_name  = sws_context_to_name,
     .option     = swscale_options,
+    .parent_log_context_offset = OFFSET(parent),
     .category   = AV_CLASS_CATEGORY_SWSCALER,
     .version    = LIBAVUTIL_VERSION_INT,
 };

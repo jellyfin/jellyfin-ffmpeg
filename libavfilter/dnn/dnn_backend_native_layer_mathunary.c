@@ -26,7 +26,6 @@
 #include <math.h>
 
 #include "dnn_backend_native.h"
-#include "libavutil/avassert.h"
 #include "dnn_backend_native_layer_mathunary.h"
 
 int ff_dnn_load_layer_math_unary(Layer *layer, AVIOContext *model_file_context, int file_size, int operands_num)
@@ -145,6 +144,10 @@ int ff_dnn_execute_layer_math_unary(DnnOperand *operands, const int32_t *input_o
     case DMUO_ROUND:
         for (int i = 0; i < dims_count; ++i)
             dst[i] = round(src[i]);
+        return 0;
+    case DMUO_EXP:
+        for (int i = 0; i < dims_count; ++i)
+            dst[i] = exp(src[i]);
         return 0;
     default:
         av_log(ctx, AV_LOG_ERROR, "Unmatch math unary operator\n");

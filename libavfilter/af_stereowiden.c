@@ -64,8 +64,7 @@ static int query_formats(AVFilterContext *ctx)
         (ret = ff_set_common_channel_layouts (ctx     , layout             )) < 0)
         return ret;
 
-    formats = ff_all_samplerates();
-    return ff_set_common_samplerates(ctx, formats);
+    return ff_set_common_all_samplerates(ctx);
 }
 
 static int config_input(AVFilterLink *inlink)
@@ -145,7 +144,6 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -153,18 +151,17 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_stereowiden = {
+const AVFilter ff_af_stereowiden = {
     .name           = "stereowiden",
     .description    = NULL_IF_CONFIG_SMALL("Apply stereo widening effect."),
-    .query_formats  = query_formats,
     .priv_size      = sizeof(StereoWidenContext),
     .priv_class     = &stereowiden_class,
     .uninit         = uninit,
-    .inputs         = inputs,
-    .outputs        = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = ff_filter_process_command,
 };

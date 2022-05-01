@@ -36,6 +36,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
+#include "encode.h"
 #include "idctdsp.h"
 #include "internal.h"
 #include "jpegtables.h"
@@ -72,13 +73,6 @@ static int ljpeg_encode_bgr(AVCodecContext *avctx, PutBitContext *pb,
     int left[4], top[4], topleft[4];
     int x, y, i;
 
-#if FF_API_PRIVATE_OPT
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (avctx->prediction_method)
-        s->pred = avctx->prediction_method + 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     for (i = 0; i < 4; i++)
         buffer[0][i] = 1 << (9 - 1);
 
@@ -86,7 +80,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         const int modified_predictor = y ? s->pred : 1;
         uint8_t *ptr = frame->data[0] + (linesize * y);
 
-        if (pb->buf_end - pb->buf - (put_bits_count(pb) >> 3) < width * 4 * 4) {
+        if (put_bytes_left(pb, 0) < width * 4 * 4) {
             av_log(avctx, AV_LOG_ERROR, "encoded frame too large\n");
             return -1;
         }
@@ -203,15 +197,8 @@ static int ljpeg_encode_yuv(AVCodecContext *avctx, PutBitContext *pb,
     const int mb_height = (avctx->height + s->vsample[0] - 1) / s->vsample[0];
     int mb_x, mb_y;
 
-#if FF_API_PRIVATE_OPT
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (avctx->prediction_method)
-        s->pred = avctx->prediction_method + 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     for (mb_y = 0; mb_y < mb_height; mb_y++) {
-        if (pb->buf_end - pb->buf - (put_bits_count(pb) >> 3) <
+        if (put_bytes_left(pb, 0) <
             mb_width * 4 * 3 * s->hsample[0] * s->vsample[0]) {
             av_log(avctx, AV_LOG_ERROR, "encoded frame too large\n");
             return -1;
@@ -246,7 +233,7 @@ static int ljpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                         * s->hsample[0] * s->vsample[0];
     }
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, max_pkt_size, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, max_pkt_size)) < 0)
         return ret;
 
     init_put_bits(&pb, pkt->data, pkt->size);
@@ -272,7 +259,6 @@ static int ljpeg_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     flush_put_bits(&pb);
     pkt->size   = put_bits_ptr(&pb) - pb.buf;
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -289,25 +275,11 @@ static av_cold int ljpeg_encode_close(AVCodecContext *avctx)
 
 static av_cold int ljpeg_encode_init(AVCodecContext *avctx)
 {
+    int ret = ff_mjpeg_encode_check_pix_fmt(avctx);
     LJpegEncContext *s = avctx->priv_data;
 
-    if ((avctx->pix_fmt == AV_PIX_FMT_YUV420P ||
-         avctx->pix_fmt == AV_PIX_FMT_YUV422P ||
-         avctx->pix_fmt == AV_PIX_FMT_YUV444P ||
-         avctx->color_range == AVCOL_RANGE_MPEG) &&
-        avctx->strict_std_compliance > FF_COMPLIANCE_UNOFFICIAL) {
-        av_log(avctx, AV_LOG_ERROR,
-               "Limited range YUV is non-standard, set strict_std_compliance to "
-               "at least unofficial to use it.\n");
-        return AVERROR(EINVAL);
-    }
-
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
+    if (ret < 0)
+        return ret;
 
     s->scratch = av_malloc_array(avctx->width + 1, sizeof(*s->scratch));
     if (!s->scratch)
@@ -321,12 +293,12 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     ff_mjpeg_build_huffman_codes(s->huff_size_dc_luminance,
                                  s->huff_code_dc_luminance,
-                                 avpriv_mjpeg_bits_dc_luminance,
-                                 avpriv_mjpeg_val_dc);
+                                 ff_mjpeg_bits_dc_luminance,
+                                 ff_mjpeg_val_dc);
     ff_mjpeg_build_huffman_codes(s->huff_size_dc_chrominance,
                                  s->huff_code_dc_chrominance,
-                                 avpriv_mjpeg_bits_dc_chrominance,
-                                 avpriv_mjpeg_val_dc);
+                                 ff_mjpeg_bits_dc_chrominance,
+                                 ff_mjpeg_val_dc);
 
     return 0;
 }
@@ -349,7 +321,7 @@ static const AVClass ljpeg_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_ljpeg_encoder = {
+const AVCodec ff_ljpeg_encoder = {
     .name           = "ljpeg",
     .long_name      = NULL_IF_CONFIG_SMALL("Lossless JPEG"),
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -365,4 +337,5 @@ AVCodec ff_ljpeg_encoder = {
         AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P,
         AV_PIX_FMT_YUV420P , AV_PIX_FMT_YUV444P , AV_PIX_FMT_YUV422P,
         AV_PIX_FMT_NONE},
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

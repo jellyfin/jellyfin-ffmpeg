@@ -42,36 +42,6 @@ static const AVOption acontrast_options[] = {
 
 AVFILTER_DEFINE_CLASS(acontrast);
 
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts = NULL;
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_FLTP,
-        AV_SAMPLE_FMT_DBL, AV_SAMPLE_FMT_DBLP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret;
-
-    formats = ff_make_format_list(sample_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret < 0)
-        return ret;
-
-    layouts = ff_all_channel_counts();
-    if (!layouts)
-        return AVERROR(ENOMEM);
-
-    ret = ff_set_common_channel_layouts(ctx, layouts);
-    if (ret < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    return ff_set_common_samplerates(ctx, formats);
-}
-
 static void filter_flt(void **d, const void **s,
                        int nb_samples, int channels,
                        float contrast)
@@ -197,7 +167,6 @@ static const AVFilterPad inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -205,15 +174,15 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_acontrast = {
+const AVFilter ff_af_acontrast = {
     .name           = "acontrast",
     .description    = NULL_IF_CONFIG_SMALL("Simple audio dynamic range compression/expansion filter."),
-    .query_formats  = query_formats,
     .priv_size      = sizeof(AudioContrastContext),
     .priv_class     = &acontrast_class,
-    .inputs         = inputs,
-    .outputs        = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_FLTP,
+                      AV_SAMPLE_FMT_DBL, AV_SAMPLE_FMT_DBLP),
 };

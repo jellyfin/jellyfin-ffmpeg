@@ -54,41 +54,6 @@ static void *format_child_next(void *obj, void *prev)
     return NULL;
 }
 
-#if FF_API_CHILD_CLASS_NEXT
-static const AVClass *format_child_class_next(const AVClass *prev)
-{
-    const AVInputFormat *ifmt = NULL;
-    const AVOutputFormat *ofmt = NULL;
-    void *ifmt_iter = NULL, *ofmt_iter = NULL;
-
-    if (!prev)
-        return &ff_avio_class;
-
-    while ((ifmt = av_demuxer_iterate(&ifmt_iter)))
-        if (ifmt->priv_class == prev)
-            break;
-
-    if (!ifmt) {
-        ifmt_iter = NULL;
-        while ((ofmt = av_muxer_iterate(&ofmt_iter)))
-            if (ofmt->priv_class == prev)
-                break;
-    }
-    if (!ofmt) {
-        ofmt_iter = NULL;
-        while ((ifmt = av_demuxer_iterate(&ifmt_iter)))
-            if (ifmt->priv_class)
-                return ifmt->priv_class;
-    }
-
-    while ((ofmt = av_muxer_iterate(&ofmt_iter)))
-        if (ofmt->priv_class)
-            return ofmt->priv_class;
-
-    return NULL;
-}
-#endif
-
 enum {
     CHILD_CLASS_ITER_AVIO = 0,
     CHILD_CLASS_ITER_MUX,
@@ -158,9 +123,6 @@ static const AVClass av_format_context_class = {
     .option         = avformat_options,
     .version        = LIBAVUTIL_VERSION_INT,
     .child_next     = format_child_next,
-#if FF_API_CHILD_CLASS_NEXT
-    .child_class_next = format_child_class_next,
-#endif
     .child_class_iterate = format_child_class_iterate,
     .category       = AV_CLASS_CATEGORY_MUXER,
     .get_category   = get_category,
@@ -181,61 +143,41 @@ static int io_open_default(AVFormatContext *s, AVIOContext **pb,
 
     av_log(s, loglevel, "Opening \'%s\' for %s\n", url, flags & AVIO_FLAG_WRITE ? "writing" : "reading");
 
-#if FF_API_OLD_OPEN_CALLBACKS
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (s->open_cb)
-        return s->open_cb(s, pb, url, flags, &s->interrupt_callback, options);
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     return ffio_open_whitelist(pb, url, flags, &s->interrupt_callback, options, s->protocol_whitelist, s->protocol_blacklist);
 }
 
-static void io_close_default(AVFormatContext *s, AVIOContext *pb)
+static int io_close2_default(AVFormatContext *s, AVIOContext *pb)
 {
-    avio_close(pb);
-}
-
-static void avformat_get_context_defaults(AVFormatContext *s)
-{
-    memset(s, 0, sizeof(AVFormatContext));
-
-    s->av_class = &av_format_context_class;
-
-    s->io_open  = io_open_default;
-    s->io_close = io_close_default;
-
-    av_opt_set_defaults(s);
+    return avio_close(pb);
 }
 
 AVFormatContext *avformat_alloc_context(void)
 {
-    AVFormatContext *ic;
-    AVFormatInternal *internal;
-    ic = av_malloc(sizeof(AVFormatContext));
-    if (!ic) return ic;
+    FFFormatContext *const si = av_mallocz(sizeof(*si));
+    AVFormatContext *s;
 
-    internal = av_mallocz(sizeof(*internal));
-    if (!internal) {
-        av_free(ic);
+    if (!si)
+        return NULL;
+
+    s = &si->pub;
+    s->av_class = &av_format_context_class;
+    s->io_open  = io_open_default;
+    s->io_close = ff_format_io_close_default;
+    s->io_close2= io_close2_default;
+
+    av_opt_set_defaults(s);
+
+    si->pkt = av_packet_alloc();
+    si->parse_pkt = av_packet_alloc();
+    if (!si->pkt || !si->parse_pkt) {
+        avformat_free_context(s);
         return NULL;
     }
-    internal->pkt = av_packet_alloc();
-    internal->parse_pkt = av_packet_alloc();
-    if (!internal->pkt || !internal->parse_pkt) {
-        av_packet_free(&internal->pkt);
-        av_packet_free(&internal->parse_pkt);
-        av_free(internal);
-        av_free(ic);
-        return NULL;
-    }
-    avformat_get_context_defaults(ic);
-    ic->internal = internal;
-    ic->internal->offset = AV_NOPTS_VALUE;
-    ic->internal->raw_packet_buffer_remaining_size = RAW_PACKET_BUFFER_SIZE;
-    ic->internal->shortest_end = AV_NOPTS_VALUE;
 
-    return ic;
+    si->offset = AV_NOPTS_VALUE;
+    si->shortest_end = AV_NOPTS_VALUE;
+
+    return s;
 }
 
 enum AVDurationEstimationMethod av_fmt_ctx_get_duration_estimation_method(const AVFormatContext* ctx)

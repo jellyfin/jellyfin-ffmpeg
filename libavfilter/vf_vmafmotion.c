@@ -347,7 +347,6 @@ static const AVFilterPad vmafmotion_inputs[] = {
         .filter_frame = filter_frame,
         .config_props = config_input_ref,
     },
-    { NULL }
 };
 
 static const AVFilterPad vmafmotion_outputs[] = {
@@ -355,17 +354,17 @@ static const AVFilterPad vmafmotion_outputs[] = {
         .name          = "default",
         .type          = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_vmafmotion = {
+const AVFilter ff_vf_vmafmotion = {
     .name          = "vmafmotion",
     .description   = NULL_IF_CONFIG_SMALL("Calculate the VMAF Motion score."),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .priv_size     = sizeof(VMAFMotionContext),
     .priv_class    = &vmafmotion_class,
-    .inputs        = vmafmotion_inputs,
-    .outputs       = vmafmotion_outputs,
+    .flags         = AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_INPUTS(vmafmotion_inputs),
+    FILTER_OUTPUTS(vmafmotion_outputs),
+    FILTER_QUERY_FUNC(query_formats),
 };

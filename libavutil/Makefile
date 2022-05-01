@@ -21,6 +21,7 @@ HEADERS = adler32.h                                                     \
           cpu.h                                                         \
           crc.h                                                         \
           des.h                                                         \
+          detection_bbox.h                                              \
           dict.h                                                        \
           display.h                                                     \
           dovi_meta.h                                                   \
@@ -113,6 +114,7 @@ OBJS = adler32.o                                                        \
        cpu.o                                                            \
        crc.o                                                            \
        des.o                                                            \
+       detection_bbox.o                                                 \
        dict.o                                                           \
        display.o                                                        \
        dovi_meta.o                                                      \
@@ -179,6 +181,7 @@ OBJS-$(CONFIG_D3D11VA)                  += hwcontext_d3d11va.o
 OBJS-$(CONFIG_DXVA2)                    += hwcontext_dxva2.o
 OBJS-$(CONFIG_LIBDRM)                   += hwcontext_drm.o
 OBJS-$(CONFIG_LZO)                      += lzo.o
+OBJS-$(CONFIG_MACOS_KPERF)              += macos_kperf.o
 OBJS-$(CONFIG_MEDIACODEC)               += hwcontext_mediacodec.o
 OBJS-$(CONFIG_OPENCL)                   += hwcontext_opencl.o
 OBJS-$(CONFIG_QSV)                      += hwcontext_qsv.o
@@ -192,6 +195,7 @@ OBJS += $(COMPAT_OBJS:%=../compat/%)
 # Windows resource file
 SLIBOBJS-$(HAVE_GNU_WINDRES)            += avutilres.o
 
+SKIPHEADERS                            += objc.h
 SKIPHEADERS-$(HAVE_CUDA_H)             += hwcontext_cuda.h
 SKIPHEADERS-$(CONFIG_CUDA)             += hwcontext_cuda_internal.h     \
                                           cuda_check.h
@@ -202,7 +206,9 @@ SKIPHEADERS-$(CONFIG_OPENCL)           += hwcontext_opencl.h
 SKIPHEADERS-$(CONFIG_VAAPI)            += hwcontext_vaapi.h
 SKIPHEADERS-$(CONFIG_VIDEOTOOLBOX)     += hwcontext_videotoolbox.h
 SKIPHEADERS-$(CONFIG_VDPAU)            += hwcontext_vdpau.h
-SKIPHEADERS-$(CONFIG_VULKAN)           += hwcontext_vulkan.h
+SKIPHEADERS-$(CONFIG_VULKAN)           += hwcontext_vulkan.h vulkan.h   \
+                                          vulkan_functions.h            \
+                                          vulkan_loader.h
 
 TESTPROGS = adler32                                                     \
             aes                                                         \
@@ -259,6 +265,6 @@ TESTPROGS-$(HAVE_LZO1X_999_COMPRESS) += lzo
 TOOLS = crypto_bench ffhash ffeval ffescape
 
 tools/crypto_bench$(EXESUF): ELIBS += $(if $(VERSUS),$(subst +, -l,+$(VERSUS)),)
-tools/crypto_bench$(EXESUF): CFLAGS += -DUSE_EXT_LIBS=0$(if $(VERSUS),$(subst +,+USE_,+$(VERSUS)),)
+tools/crypto_bench.o: CFLAGS += -DUSE_EXT_LIBS=0$(if $(VERSUS),$(subst +,+USE_,+$(VERSUS)),)
 
 $(SUBDIR)tests/lzo$(EXESUF): ELIBS = -llzo2
