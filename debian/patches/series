@@ -30,3 +30,4 @@
 0030-add-fixes-for-vulkan-and-libplacebo.patch
 0031-add-webp-support-for-id3v2.patch
 0032-remove-fdk-aac-from-nonfree.patch
+0033-add-fixes-for-vulkan-scale-and-overlay-filters.patch
