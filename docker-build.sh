@@ -278,13 +278,12 @@ prepare_extra_amd64() {
         -DENABLE_{GLSLANG_BINARIES,EXCEPTIONS}=ON \
         -DENABLE_CTEST=OFF \
         -DSPIRV_SKIP_EXECUTABLES=ON \
-        -DSPIRV_TOOLS_BUILD_STATIC=OFF \
-        -DBUILD_SHARED_LIBS=ON ..
+        -DSPIRV_TOOLS_BUILD_STATIC=ON \
+        -DBUILD_SHARED_LIBS=OFF ..
     ninja -j$(nproc)
     ninja install
-    cp ${TARGET_DIR}/lib/{libshaderc_shared,libSPIRV,libSPIRV-Tools,libSPIRV-Tools-opt}.so* ${SOURCE_DIR}/shaderc
+    cp ${TARGET_DIR}/lib/libshaderc_shared.so* ${SOURCE_DIR}/shaderc
     echo "shaderc/libshaderc_shared* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    echo "shaderc/libSPIRV* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
     popd
     popd
     popd
