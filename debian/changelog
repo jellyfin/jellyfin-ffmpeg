@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (5.0.1-2) unstable; urgency=medium
+
+  * Hotfix for shaderc loading issue on buster
+
+ -- nyanmisaka <nst799610810@gmail.com>  Wed, 4 May 2022 08:22:17 +0800
+
 jellyfin-ffmpeg (5.0.1-1) unstable; urgency=medium
 
   * New upstream version 5.0.1
