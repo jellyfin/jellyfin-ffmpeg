@@ -73,20 +73,19 @@ jobs:
           script: |-
             tag="${{ github.event.release.tag_name }}"
             version="${tag#v}"
-            basename="jellyfin-ffmpeg_${version}-${{ matrix.arrays.codename }}"
+            basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
+            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
             if [ "${{ matrix.arrays.distro }}" != "windows" ]; then
-              find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg_*" -exec rm {} \;
               find /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
                 reprepro -b /srv/repository/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
               done
               find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "${basename}_*" -exec rm {} \;
               reprepro -b /srv/repository/${{ matrix.arrays.distro }} deleteunreferenced
               reprepro -b /srv/repository/${{ matrix.arrays.distro }} export
-              rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
-              ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable/ffmpeg
-              ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable-pre/ffmpeg
-              ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg
-            else
-              rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
-              ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
             fi
+            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
+            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
+            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
+            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable/ffmpeg
+            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable-pre/ffmpeg
+            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg
