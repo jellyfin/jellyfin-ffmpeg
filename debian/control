@@ -82,6 +82,8 @@ Build-Depends:
 Package: jellyfin-ffmpeg5
 Architecture: amd64 armhf arm64
 Multi-Arch: foreign
+Replaces: jellyfin-ffmpeg
+Conflicts: jellyfin-ffmpeg
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
