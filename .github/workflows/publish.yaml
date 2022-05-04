@@ -73,8 +73,8 @@ jobs:
           script: |-
             tag="${{ github.event.release.tag_name }}"
             version="${tag#v}"
-            basename="jellyfin-ffmpeg_${version}-${{ matrix.arrays.codename }}"
-            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg_*" -exec rm {} \;
+            basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
+            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
             if [ "${{ matrix.arrays.distro }}" != "windows" ]; then
               find /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
                 reprepro -b /srv/repository/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
