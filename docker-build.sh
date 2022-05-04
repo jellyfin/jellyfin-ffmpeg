@@ -28,7 +28,7 @@ prepare_extra_common() {
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR} ${CROSS_OPT}
     make -j $(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/zimg
-    echo "zimg${TARGET_DIR}/lib/libzimg.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "zimg${TARGET_DIR}/lib/libzimg.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
 
@@ -52,7 +52,7 @@ prepare_extra_common() {
         meson configure dav1d_build
         ninja -C dav1d_build install
         cp ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
-        echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+        echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     fi
     if [ "${ARCH}" = "armhf" ] || [ "${ARCH}" = "arm64" ]; then
         meson setup dav1d dav1d_build \
@@ -66,7 +66,7 @@ prepare_extra_common() {
         meson configure dav1d_build
         ninja -C dav1d_build install
         cp ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
-        echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+        echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     fi
     popd
 
@@ -79,7 +79,7 @@ prepare_extra_common() {
         --disable-{static,silent-rules} \
         --prefix=${TARGET_DIR} CFLAGS="-O3 -DNDEBUG" CXXFLAGS="-O3 -DNDEBUG" ${CROSS_OPT}
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/fdk-aac-stripped
-    echo "fdk-aac-stripped${TARGET_DIR}/lib/libfdk-aac.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "fdk-aac-stripped${TARGET_DIR}/lib/libfdk-aac.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
 }
@@ -116,8 +116,8 @@ prepare_extra_amd64() {
     ninja -C drm_build install
     cp ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/drm
     cp ${TARGET_DIR}/share/libdrm/*.ids ${SOURCE_DIR}/drm
-    echo "drm/libdrm*.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    echo "drm/*.ids usr/lib/jellyfin-ffmpeg/share/libdrm" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "drm/libdrm*.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    echo "drm/*.ids usr/lib/jellyfin-ffmpeg/share/libdrm" >> ${DPKG_INSTALL_LIST}
     popd
 
     # LIBVA
@@ -132,8 +132,8 @@ prepare_extra_amd64() {
         --enable-drm \
         --disable-{glx,x11,wayland,docs}
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    echo "intel${TARGET_DIR}/lib/libva.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    echo "intel${TARGET_DIR}/lib/libva-drm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/libva.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    echo "intel${TARGET_DIR}/lib/libva-drm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
 
@@ -144,7 +144,7 @@ prepare_extra_amd64() {
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    echo "intel${TARGET_DIR}/bin/vainfo usr/lib/jellyfin-ffmpeg" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/bin/vainfo usr/lib/jellyfin-ffmpeg" >> ${DPKG_INSTALL_LIST}
     popd
     popd
 
@@ -157,7 +157,7 @@ prepare_extra_amd64() {
     make -j$(nproc) && make install
     mkdir -p ${SOURCE_DIR}/intel/dri
     cp ${TARGET_DIR}/lib/dri/i965*.so ${SOURCE_DIR}/intel/dri
-    echo "intel/dri/i965*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel/dri/i965*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
     popd
     popd
 
@@ -169,7 +169,7 @@ prepare_extra_amd64() {
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     make install
-    echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
@@ -187,9 +187,9 @@ prepare_extra_amd64() {
           -DBUILD_TUTORIALS=OFF \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-    echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${DPKG_INSTALL_LIST}
+    echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
@@ -203,7 +203,7 @@ prepare_extra_amd64() {
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    echo "intel${TARGET_DIR}/lib/libmfx-gen* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/libmfx-gen* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
@@ -222,10 +222,10 @@ prepare_extra_amd64() {
           LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    echo "intel${TARGET_DIR}/lib/libigfxcmrt.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel${TARGET_DIR}/lib/libigfxcmrt.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     mkdir -p ${SOURCE_DIR}/intel/dri
     cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
-    echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
@@ -259,7 +259,7 @@ prepare_extra_amd64() {
         -DBUILD_WSI_{XCB,XLIB,WAYLAND}_SUPPORT=ON ..
     make -j$(nproc) && make install
     cp ${TARGET_DIR}/lib/libvulkan.so* ${SOURCE_DIR}/Vulkan-Loader
-    echo "Vulkan-Loader/libvulkan.so* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "Vulkan-Loader/libvulkan.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
@@ -283,7 +283,7 @@ prepare_extra_amd64() {
     ninja -j$(nproc)
     ninja install
     cp ${TARGET_DIR}/lib/libshaderc_shared.so* ${SOURCE_DIR}/shaderc
-    echo "shaderc/libshaderc_shared* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "shaderc/libshaderc_shared* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
@@ -332,14 +332,14 @@ prepare_extra_amd64() {
         cp ${TARGET_DIR}/lib/libvulkan_*.so ${SOURCE_DIR}/mesa
         cp ${TARGET_DIR}/lib/libVkLayer_MESA*.so ${SOURCE_DIR}/mesa
         cp ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
-        echo "mesa/lib*.so usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-        echo "mesa/radeonsi_drv_video.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+        echo "mesa/lib*.so usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+        echo "mesa/radeonsi_drv_video.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
         cp ${TARGET_DIR}/share/drirc.d/*.conf ${SOURCE_DIR}/mesa
-        echo "mesa/*defaults.conf usr/lib/jellyfin-ffmpeg/share/drirc.d" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+        echo "mesa/*defaults.conf usr/lib/jellyfin-ffmpeg/share/drirc.d" >> ${DPKG_INSTALL_LIST}
         cp ${TARGET_DIR}/share/vulkan/{icd.d,explicit_layer.d,implicit_layer.d}/*.json ${SOURCE_DIR}/mesa
-        echo "mesa/*icd.x86_64.json usr/lib/jellyfin-ffmpeg/share/vulkan/icd.d" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-        echo "mesa/*overlay.json usr/lib/jellyfin-ffmpeg/share/vulkan/explicit_layer.d" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
-        echo "mesa/*device_select.json usr/lib/jellyfin-ffmpeg/share/vulkan/implicit_layer.d" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+        echo "mesa/*icd.x86_64.json usr/lib/jellyfin-ffmpeg/share/vulkan/icd.d" >> ${DPKG_INSTALL_LIST}
+        echo "mesa/*overlay.json usr/lib/jellyfin-ffmpeg/share/vulkan/explicit_layer.d" >> ${DPKG_INSTALL_LIST}
+        echo "mesa/*device_select.json usr/lib/jellyfin-ffmpeg/share/vulkan/implicit_layer.d" >> ${DPKG_INSTALL_LIST}
         popd
     fi
 
@@ -360,7 +360,7 @@ prepare_extra_amd64() {
     meson configure placebo_build
     ninja -C placebo_build install
     cp ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
-    echo "libplacebo/libplacebo* usr/lib/jellyfin-ffmpeg/lib" >> ${SOURCE_DIR}/debian/jellyfin-ffmpeg.install
+    echo "libplacebo/libplacebo* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 }
 
