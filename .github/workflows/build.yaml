@@ -7,13 +7,13 @@ concurrency:
 on:
   push:
     branches:
-      - jellyfin
+      - jellyfin-4.4
     paths-ignore:
       - '**/*.md'
 
   pull_request:
     branches:
-      - jellyfin
+      - jellyfin-4.4
     paths-ignore:
       - '**/*.md'
 
