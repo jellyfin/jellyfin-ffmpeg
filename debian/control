@@ -94,8 +94,8 @@ Description: Tools for transcoding, streaming and playing of multimedia files
  cutting edge.
  .
  This package contains a static build compatible with all Debian/Ubuntu
- releases, designed to facilitate Jellyfin on systems with a repository ffmpeg
- version of 4.1 or newer, which we do not yet support. Included files are:
+ releases, designed to facilitate Jellyfin on systems with an unpatched version
+ of ffmpeg in their repository. Included files are:
   * ffmpeg: a command line tool to convert multimedia files between formats
-  * ffplay: a simple media player based on SDL and the FFmpeg libraries
   * ffprobe: a simple multimedia stream analyzer
+  * vainfo: a command line tool to get information about local VA-API devices
