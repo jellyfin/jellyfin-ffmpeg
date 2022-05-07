@@ -82,6 +82,8 @@ jobs:
               find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "${basename}_*" -exec rm {} \;
               reprepro -b /srv/repository/${{ matrix.arrays.distro }} deleteunreferenced
               reprepro -b /srv/repository/${{ matrix.arrays.distro }} export
+            else
+              ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/${basename}_*.zip /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/jellyfin-ffmpeg.zip
             fi
             rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
             rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
