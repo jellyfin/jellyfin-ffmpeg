@@ -31,3 +31,4 @@
 0031-add-webp-support-for-id3v2.patch
 0032-remove-fdk-aac-from-nonfree.patch
 0033-add-fixes-for-vulkan-scale-and-overlay-filters.patch
+0034-add-hevc-dovi-sidedata-to-hlsenc.patch
