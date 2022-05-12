@@ -2030,15 +2030,6 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  };
  
  static const AVClass h264_amf_class = {
-@@ -377,7 +427,7 @@ static const AVClass h264_amf_class = {
-     .version = LIBAVUTIL_VERSION_INT,
- };
- 
--const AVCodec ff_h264_amf_encoder = {
-+AVCodec ff_h264_amf_encoder = {
-     .name           = "h264_amf",
-     .long_name      = NULL_IF_CONFIG_SMALL("AMD AMF H.264 Encoder"),
-     .type           = AVMEDIA_TYPE_VIDEO,
 @@ -385,13 +435,13 @@ const AVCodec ff_h264_amf_encoder = {
      .init           = amf_encode_init_h264,
      .receive_packet = ff_amf_receive_packet,
@@ -2517,15 +2508,6 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
  static const AVCodecDefault defaults[] = {
      { "refs",       "-1"  },
      { "aspect",     "0"   },
-@@ -309,7 +383,7 @@ static const AVClass hevc_amf_class = {
-     .version = LIBAVUTIL_VERSION_INT,
- };
- 
--const AVCodec ff_hevc_amf_encoder = {
-+AVCodec ff_hevc_amf_encoder = {
-     .name           = "hevc_amf",
-     .long_name      = NULL_IF_CONFIG_SMALL("AMD AMF HEVC encoder"),
-     .type           = AVMEDIA_TYPE_VIDEO,
 @@ -317,13 +391,13 @@ const AVCodec ff_hevc_amf_encoder = {
      .init           = amf_encode_init_hevc,
      .receive_packet = ff_amf_receive_packet,

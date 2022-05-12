@@ -32,3 +32,4 @@
 0032-remove-fdk-aac-from-nonfree.patch
 0033-add-fixes-for-vulkan-scale-and-overlay-filters.patch
 0034-add-hevc-dovi-sidedata-to-hlsenc.patch
+0035-add-windows-long-path-support-from-upstream.patch

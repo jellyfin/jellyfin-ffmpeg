@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (5.0.1-4) unstable; urgency=medium
+
+  * Add hevc dovi support for hlsenc.
+  * Add Windows long path support.
+  * Update dependencies.
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 12 May 2022 17:08:17 +0800
+
 jellyfin-ffmpeg (5.0.1-3) unstable; urgency=medium
 
   * Bump version to reflect the deb name has been changed to jellyfin-ffmpeg5.
