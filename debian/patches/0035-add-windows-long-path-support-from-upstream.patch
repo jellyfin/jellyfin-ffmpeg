@@ -1,0 +1,332 @@
+Index: jellyfin-ffmpeg/libavutil/wchar_filename.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/wchar_filename.h
++++ jellyfin-ffmpeg/libavutil/wchar_filename.h
+@@ -40,6 +40,57 @@ static inline int utf8towchar(const char
+     MultiByteToWideChar(CP_UTF8, 0, filename_utf8, -1, *filename_w, num_chars);
+     return 0;
+ }
++
++av_warn_unused_result
++static inline int wchartocp(unsigned int code_page, const wchar_t *filename_w,
++                            char **filename)
++{
++    DWORD flags = code_page == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0;
++    int num_chars = WideCharToMultiByte(code_page, flags, filename_w, -1,
++                                        NULL, 0, NULL, NULL);
++    if (num_chars <= 0) {
++        *filename = NULL;
++        return 0;
++    }
++    *filename = av_calloc(num_chars, sizeof(char));
++    if (!*filename) {
++        errno = ENOMEM;
++        return -1;
++    }
++    WideCharToMultiByte(code_page, flags, filename_w, -1,
++                        *filename, num_chars, NULL, NULL);
++    return 0;
++}
++
++av_warn_unused_result
++static inline int wchartoutf8(const wchar_t *filename_w, char **filename)
++{
++    return wchartocp(CP_UTF8, filename_w, filename);
++}
++
++av_warn_unused_result
++static inline int wchartoansi(const wchar_t *filename_w, char **filename)
++{
++    return wchartocp(CP_ACP, filename_w, filename);
++}
++
++av_warn_unused_result
++static inline int utf8toansi(const char *filename_utf8, char **filename)
++{
++    wchar_t *filename_w = NULL;
++    int ret = -1;
++    if (utf8towchar(filename_utf8, &filename_w))
++        return -1;
++
++    if (!filename_w) {
++        *filename = NULL;
++        return 0;
++    }
++
++    ret = wchartoansi(filename_w, filename);
++    av_free(filename_w);
++    return ret;
++}
+ #endif
+ 
+ #endif /* AVUTIL_WCHAR_FILENAME_H */
+Index: jellyfin-ffmpeg/libavformat/avisynth.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavformat/avisynth.c
++++ jellyfin-ffmpeg/libavformat/avisynth.c
+@@ -34,6 +34,7 @@
+ /* Platform-specific directives. */
+ #ifdef _WIN32
+   #include "compat/w32dlfcn.h"
++  #include "libavutil/wchar_filename.h"
+   #undef EXTERN_C
+   #define AVISYNTH_LIB "avisynth"
+ #else
+@@ -572,8 +573,7 @@ static int avisynth_open_file(AVFormatCo
+     AVS_Value arg, val;
+     int ret;
+ #ifdef _WIN32
+-    char filename_ansi[MAX_PATH * 4];
+-    wchar_t filename_wc[MAX_PATH * 4];
++    char *filename_ansi = NULL;
+ #endif
+ 
+     if (ret = avisynth_context_create(s))
+@@ -581,10 +581,12 @@ static int avisynth_open_file(AVFormatCo
+ 
+ #ifdef _WIN32
+     /* Convert UTF-8 to ANSI code page */
+-    MultiByteToWideChar(CP_UTF8, 0, s->url, -1, filename_wc, MAX_PATH * 4);
+-    WideCharToMultiByte(CP_THREAD_ACP, 0, filename_wc, -1, filename_ansi,
+-                        MAX_PATH * 4, NULL, NULL);
++    if (utf8toansi(s->url, &filename_ansi)) {
++        ret = AVERROR_UNKNOWN;
++        goto fail;
++    }
+     arg = avs_new_value_string(filename_ansi);
++    av_free(filename_ansi);
+ #else
+     arg = avs_new_value_string(s->url);
+ #endif
+Index: jellyfin-ffmpeg/compat/w32dlfcn.h
+===================================================================
+--- jellyfin-ffmpeg.orig/compat/w32dlfcn.h
++++ jellyfin-ffmpeg/compat/w32dlfcn.h
+@@ -25,6 +25,30 @@
+ #if (_WIN32_WINNT < 0x0602) || HAVE_WINRT
+ #include "libavutil/wchar_filename.h"
+ #endif
++
++static inline wchar_t *get_module_filename(HMODULE module)
++{
++    wchar_t *path = NULL, *new_path = NULL;
++    DWORD path_size = 0, path_len = 0;
++
++    do {
++        path_size = path_size ? 2 * path_size : MAX_PATH;
++        new_path = av_realloc_array(path, path_size, sizeof *path);
++        if (!new_path) {
++            av_free(path);
++            return NULL;
++        }
++        path = new_path;
++        path_len = GetModuleFileNameW(module, path, path_size);
++    } while (path_len && path_size <= 32768 && path_size <= path_len);
++
++    if (!path_len) {
++        av_free(path);
++        return NULL;
++    }
++    return path;
++}
++
+ /**
+  * Safe function used to open dynamic libs. This attempts to improve program security
+  * by removing the current directory from the dll search path. Only dll's found in the
+@@ -34,29 +58,53 @@
+  */
+ static inline HMODULE win32_dlopen(const char *name)
+ {
++    wchar_t *name_w = NULL;
++    if (utf8towchar(name, &name_w))
++        name_w = NULL;
+ #if _WIN32_WINNT < 0x0602
+     // Need to check if KB2533623 is available
+     if (!GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "SetDefaultDllDirectories")) {
+         HMODULE module = NULL;
+-        wchar_t *path = NULL, *name_w = NULL;
+-        DWORD pathlen;
+-        if (utf8towchar(name, &name_w))
++        wchar_t *path = NULL, *new_path = NULL;
++        DWORD pathlen, pathsize, namelen;
++        if (!name_w)
+             goto exit;
+-        path = (wchar_t *)av_calloc(MAX_PATH, sizeof(wchar_t));
++        namelen = wcslen(name_w);
+         // Try local directory first
+-        pathlen = GetModuleFileNameW(NULL, path, MAX_PATH);
+-        pathlen = wcsrchr(path, '\\') - path;
+-        if (pathlen == 0 || pathlen + wcslen(name_w) + 2 > MAX_PATH)
++        path = get_module_filename(NULL);
++        if (!path)
++            goto exit;
++        new_path = wcsrchr(path, '\\');
++        if (!new_path)
+             goto exit;
+-        path[pathlen] = '\\';
++        pathlen = new_path - path;
++        pathsize = pathlen + namelen + 2;
++        new_path = av_realloc_array(path, pathsize, sizeof *path);
++        if (!new_path)
++            goto exit;
++        path = new_path;
+         wcscpy(path + pathlen + 1, name_w);
+         module = LoadLibraryExW(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+         if (module == NULL) {
+             // Next try System32 directory
+-            pathlen = GetSystemDirectoryW(path, MAX_PATH);
+-            if (pathlen == 0 || pathlen + wcslen(name_w) + 2 > MAX_PATH)
++            pathlen = GetSystemDirectoryW(path, pathsize);
++            if (!pathlen)
+                 goto exit;
+-            path[pathlen] = '\\';
++            // Buffer is not enough in two cases:
++            // 1. system directory + \ + module name
++            // 2. system directory even without module name.
++            if (pathlen + namelen + 2 > pathsize) {
++                pathsize = pathlen + namelen + 2;
++                new_path = av_realloc_array(path, pathsize, sizeof *path);
++                if (!new_path)
++                    goto exit;
++                path = new_path;
++                // Query again to handle case #2.
++                pathlen = GetSystemDirectoryW(path, pathsize);
++                if (!pathlen)
++                    goto exit;
++            }
++            path[pathlen] = L'\\';
+             wcscpy(path + pathlen + 1, name_w);
+             module = LoadLibraryExW(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+         }
+@@ -73,15 +121,17 @@ exit:
+ #   define LOAD_LIBRARY_SEARCH_SYSTEM32        0x00000800
+ #endif
+ #if HAVE_WINRT
+-    wchar_t *name_w = NULL;
+     int ret;
+-    if (utf8towchar(name, &name_w))
++    if (!name_w)
+         return NULL;
+     ret = LoadPackagedLibrary(name_w, 0);
+     av_free(name_w);
+     return ret;
+ #else
+-    return LoadLibraryExA(name, NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
++    /* filename may be be in CP_ACP */
++    if (!name_w)
++        return LoadLibraryExA(name, NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
++    return LoadLibraryExW(name_w, NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+ #endif
+ }
+ #define dlopen(name, flags) win32_dlopen(name)
+Index: jellyfin-ffmpeg/fftools/cmdutils.c
+===================================================================
+--- jellyfin-ffmpeg.orig/fftools/cmdutils.c
++++ jellyfin-ffmpeg/fftools/cmdutils.c
+@@ -62,6 +62,7 @@
+ #endif
+ #ifdef _WIN32
+ #include <windows.h>
++#include "compat/w32dlfcn.h"
+ #endif
+ 
+ static int init_report(const char *env);
+@@ -2065,6 +2066,9 @@ FILE *get_preset_file(char *filename, si
+ {
+     FILE *f = NULL;
+     int i;
++#if HAVE_GETMODULEHANDLE && defined(_WIN32)
++    char *datadir = NULL;
++#endif
+     const char *base[3] = { getenv("FFMPEG_DATADIR"),
+                             getenv("HOME"),
+                             FFMPEG_DATADIR, };
+@@ -2074,19 +2078,31 @@ FILE *get_preset_file(char *filename, si
+         f = fopen(filename, "r");
+     } else {
+ #if HAVE_GETMODULEHANDLE && defined(_WIN32)
+-        char datadir[MAX_PATH], *ls;
++        wchar_t *datadir_w = get_module_filename(NULL);
+         base[2] = NULL;
+ 
+-        if (GetModuleFileNameA(GetModuleHandleA(NULL), datadir, sizeof(datadir) - 1))
++        if (wchartoansi(datadir_w, &datadir))
++            datadir = NULL;
++        av_free(datadir_w);
++
++        if (datadir)
+         {
+-            for (ls = datadir; ls < datadir + strlen(datadir); ls++)
++            char *ls;
++            for (ls = datadir; *ls; ls++)
+                 if (*ls == '\\') *ls = '/';
+ 
+             if (ls = strrchr(datadir, '/'))
+             {
+-                *ls = 0;
+-                strncat(datadir, "/ffpresets",  sizeof(datadir) - 1 - strlen(datadir));
+-                base[2] = datadir;
++                ptrdiff_t datadir_len = ls - datadir;
++                size_t desired_size = datadir_len + strlen("/ffpresets") + 1;
++                char *new_datadir = av_realloc_array(
++                    datadir, desired_size, sizeof *datadir);
++                if (new_datadir) {
++                    datadir = new_datadir;
++                    datadir[datadir_len] = 0;
++                    strncat(datadir, "/ffpresets",  desired_size - 1 - datadir_len);
++                    base[2] = datadir;
++                }
+             }
+         }
+ #endif
+@@ -2106,6 +2122,9 @@ FILE *get_preset_file(char *filename, si
+         }
+     }
+ 
++#if HAVE_GETMODULEHANDLE && defined(_WIN32)
++    av_free(datadir);
++#endif
+     return f;
+ }
+ 
+Index: jellyfin-ffmpeg/fftools/Makefile
+===================================================================
+--- jellyfin-ffmpeg.orig/fftools/Makefile
++++ jellyfin-ffmpeg/fftools/Makefile
+@@ -11,6 +11,11 @@ ALLAVPROGS_G = $(AVBASENAMES:%=%$(PROGSS
+ 
+ OBJS-ffmpeg                        += fftools/ffmpeg_opt.o fftools/ffmpeg_filter.o fftools/ffmpeg_hw.o
+ 
++# Windows resource files
++OBJS-ffmpeg-$(HAVE_GNU_WINDRES) += fftools/manifest.o
++OBJS-ffplay-$(HAVE_GNU_WINDRES) += fftools/manifest.o
++OBJS-ffprobe-$(HAVE_GNU_WINDRES) += fftools/manifest.o
++
+ define DOFFTOOL
+ OBJS-$(1) += fftools/cmdutils.o fftools/$(1).o $(OBJS-$(1)-yes)
+ $(1)$(PROGSSUF)_g$(EXESUF): $$(OBJS-$(1))
+Index: jellyfin-ffmpeg/fftools/fftools.manifest
+===================================================================
+--- /dev/null
++++ jellyfin-ffmpeg/fftools/fftools.manifest
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++
++<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
++  <assemblyIdentity type="win32" name="FFmpeg" version="1.0.0.0"/>
++  <application xmlns="urn:schemas-microsoft-com:asm.v3">
++    <windowsSettings xmlns:ws2016="http://schemas.microsoft.com/SMI/2016/WindowsSettings"
++                     xmlns:ws2019="http://schemas.microsoft.com/SMI/2019/WindowsSettings">
++      <ws2016:longPathAware>true</ws2016:longPathAware>
++      <ws2019:activeCodePage>UTF-8</ws2019:activeCodePage>
++    </windowsSettings>
++  </application>
++</assembly>
+Index: jellyfin-ffmpeg/fftools/manifest.rc
+===================================================================
+--- /dev/null
++++ jellyfin-ffmpeg/fftools/manifest.rc
+@@ -0,0 +1,3 @@
++#include <windows.h>
++
++CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "fftools.manifest"
