@@ -14,38 +14,26 @@ Index: jellyfin-ffmpeg/libavfilter/opencl.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/opencl.c
 +++ jellyfin-ffmpeg/libavfilter/opencl.c
-@@ -45,6 +45,7 @@ static int opencl_filter_set_device(AVFi
- int ff_opencl_filter_config_input(AVFilterLink *inlink)
- {
-     AVFilterContext   *avctx = inlink->dst;
-+    AVFilterLink    *outlink = avctx->outputs[0];
-     OpenCLFilterContext *ctx = avctx->priv;
-     AVHWFramesContext *input_frames;
-     int err;
-@@ -75,12 +76,15 @@ int ff_opencl_filter_config_input(AVFilt
+@@ -75,6 +75,9 @@ int ff_opencl_filter_config_input(AVFilt
      if (!ctx->output_height)
          ctx->output_height = inlink->h;
  
-+    outlink->fixed_pool_size = inlink->fixed_pool_size;
++    if (avctx->nb_outputs > 0)
++        avctx->outputs[0]->fixed_pool_size = inlink->fixed_pool_size;
 +
      return 0;
  }
  
- int ff_opencl_filter_config_output(AVFilterLink *outlink)
- {
-     AVFilterContext   *avctx = outlink->src;
-+    AVFilterLink     *inlink = avctx->inputs[0];
-     OpenCLFilterContext *ctx = avctx->priv;
-     AVBufferRef       *output_frames_ref = NULL;
-     AVHWFramesContext *output_frames;
-@@ -122,6 +126,7 @@ int ff_opencl_filter_config_output(AVFil
-     outlink->hw_frames_ctx = output_frames_ref;
+@@ -123,6 +126,9 @@ int ff_opencl_filter_config_output(AVFil
      outlink->w = ctx->output_width;
      outlink->h = ctx->output_height;
-+    outlink->fixed_pool_size = inlink->fixed_pool_size;
  
++    if (avctx->nb_inputs > 0)
++        outlink->fixed_pool_size = avctx->inputs[0]->fixed_pool_size;
++
      return 0;
  fail:
+     av_buffer_unref(&output_frames_ref);
 Index: jellyfin-ffmpeg/libavfilter/vf_hwmap.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_hwmap.c

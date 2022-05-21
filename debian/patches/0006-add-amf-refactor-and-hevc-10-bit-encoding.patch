@@ -1300,12 +1300,14 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
              ctx->hwsurfaces_in_queue++;
              frame_ref_storage_buffer->pVtbl->Release(frame_ref_storage_buffer);
          }
-@@ -690,13 +563,9 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -690,13 +563,11 @@ int ff_amf_receive_packet(AVCodecContext
  
          switch (avctx->codec->id) {
          case AV_CODEC_ID_H264:
 -            AMF_ASSIGN_PROPERTY_INT64(res, surface, AMF_VIDEO_ENCODER_INSERT_AUD, !!ctx->aud);
 -            break;
++            AMF_ASSIGN_PROPERTY_INT64(res, surface, AMF_VIDEO_ENCODER_INSERT_SPS, 1);
++            AMF_ASSIGN_PROPERTY_INT64(res, surface, AMF_VIDEO_ENCODER_INSERT_PPS, 1);
 +            AMF_ASSIGN_PROPERTY_INT64(res, surface, AMF_VIDEO_ENCODER_INSERT_AUD, !!ctx->aud); break;
          case AV_CODEC_ID_HEVC:
 -            AMF_ASSIGN_PROPERTY_INT64(res, surface, AMF_VIDEO_ENCODER_HEVC_INSERT_AUD, !!ctx->aud);
@@ -1316,7 +1318,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
          }
  
          // submit surface
-@@ -707,16 +576,14 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -707,16 +578,14 @@ int ff_amf_receive_packet(AVCodecContext
          } else {
              int64_t pts = frame->pts;
              surface->pVtbl->Release(surface);
@@ -1335,7 +1337,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
      do {
          block_and_wait = 0;
          // poll data
-@@ -733,14 +600,14 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -733,14 +602,14 @@ int ff_amf_receive_packet(AVCodecContext
              if (data->pVtbl->HasProperty(data, L"av_frame_ref")) {
                  AMFBuffer *frame_ref_storage_buffer;
                  res = amf_get_property_buffer(data, L"av_frame_ref", &frame_ref_storage_buffer);
@@ -1352,7 +1354,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
              if (ctx->delayed_surface != NULL) { // try to resubmit frame
                  res = ctx->encoder->pVtbl->SubmitInput(ctx->encoder, (AMFData*)ctx->delayed_surface);
-@@ -749,11 +616,10 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -749,11 +618,10 @@ int ff_amf_receive_packet(AVCodecContext
                      ctx->delayed_surface->pVtbl->Release(ctx->delayed_surface);
                      ctx->delayed_surface = NULL;
                      av_frame_unref(ctx->delayed_frame);
@@ -1366,7 +1368,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
                  } else {
                      av_log(avctx, AV_LOG_WARNING, "Data acquired but delayed frame submission got AMF_INPUT_FULL- should not happen\n");
                  }
-@@ -762,24 +628,26 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -762,24 +630,26 @@ int ff_amf_receive_packet(AVCodecContext
                  if (res != AMF_INPUT_FULL) {
                      ctx->delayed_drain = 0;
                      ctx->eof = 1; // drain started
