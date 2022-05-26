@@ -10,7 +10,7 @@ done
 
 # Use the latest distro for toolchains
 distro="ubuntu:jammy"
-ffrevison="4"
+ffrevison="5"
 image_name="jellyfin-ffmpeg-build-windows-win64"
 package_temporary_dir="$( mktemp -d )"
 current_user="$( whoami )"
