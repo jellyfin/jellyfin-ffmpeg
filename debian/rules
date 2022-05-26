@@ -12,6 +12,7 @@ PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
 CONFIG := --prefix=${TARGET_DIR} \
 	--target-os=linux \
+	--extra-libs='-lfftw3' \
 	--extra-version=Jellyfin \
 	--disable-doc \
 	--disable-ffplay \
@@ -26,6 +27,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-static \
 	--enable-gmp \
 	--enable-gnutls \
+	--enable-chromaprint \
 	--enable-libdrm \
 	--enable-libass \
 	--enable-libfreetype \

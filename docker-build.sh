@@ -10,21 +10,77 @@ PORTS_ADDR=http://ports.ubuntu.com/
 
 # Prepare common extra libs for amd64, armhf and arm64
 prepare_extra_common() {
+    case ${ARCH} in
+        'amd64')
+            CROSS_OPT=""
+            CMAKE_TOOLCHAIN_OPT=""
+            MESON_CROSS_OPT=""
+        ;;
+        'armhf')
+            CROSS_OPT="--host=armv7-linux-gnueabihf CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++"
+            CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
+            MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
+        ;;
+        'arm64')
+            CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
+            CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
+            MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
+        ;;
+    esac
+
+    # FFTW3
+    pushd ${SOURCE_DIR}
+    mkdir fftw3
+    pushd fftw3
+    fftw3_ver="3.3.10"
+    fftw3_link="https://fftw.org/fftw-${fftw3_ver}.tar.gz"
+    wget ${fftw3_link} -O fftw3.tar.gz
+    tar xaf fftw3.tar.gz
+    pushd fftw-${fftw3_ver}
+    if [ "${ARCH}" = "amd64" ]; then
+        fftw3_optimizations="--enable-sse2 --enable-avx --enable-avx-128-fma --enable-avx2 --enable-avx512"
+    else
+        fftw3_optimizations=""
+    fi
+    ./configure \
+        ${CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --disable-{static,doc} \
+        --enable-{shared,threads,fortran} \
+        $fftw3_optimizations \
+        --with-our-malloc \
+        --with-combined-threads \
+        --with-incoming-stack-boundary=2
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/fftw3
+    echo "fftw3${TARGET_DIR}/lib/libfftw3.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+    popd
+
+    # CHROMAPRINT
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://github.com/acoustid/chromaprint.git
+    pushd chromaprint
+    mkdir build
+    pushd build
+    cmake \
+        ${CMAKE_TOOLCHAIN_OPT} \
+        -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_{TOOLS,TESTS}=OFF \
+        -DFFT_LIB=fftw3 \
+        ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/chromaprint
+    echo "chromaprint${TARGET_DIR}/lib/libchromaprint.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+    popd
+
     # ZIMG
     pushd ${SOURCE_DIR}
     git clone --depth=1 https://github.com/sekrit-twc/zimg
     pushd zimg
-    case ${ARCH} in
-        'amd64')
-            CROSS_OPT=""
-        ;;
-        'armhf')
-            CROSS_OPT="--host=armv7-linux-gnueabihf CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++"
-        ;;
-        'arm64')
-            CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
-        ;;
-    esac
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR} ${CROSS_OPT}
     make -j $(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/zimg
@@ -35,39 +91,29 @@ prepare_extra_common() {
     # DAV1D
     pushd ${SOURCE_DIR}
     git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
-    nasmver="$(nasm -v | cut -d ' ' -f3)"
-    nasmminver="2.14.0"
-    if [ "$(printf '%s\n' "$nasmminver" "$nasmver" | sort -V | head -n1)" = "$nasmminver" ]; then
-        x86asm=true
-    else
-        x86asm=false
-    fi
     if [ "${ARCH}" = "amd64" ]; then
-        meson setup dav1d dav1d_build \
-            --prefix=${TARGET_DIR} \
-            --libdir=lib \
-            -Ddefault_library=shared \
-            -Denable_asm=$x86asm \
-            -Denable_{tools,tests,examples}=false
-        meson configure dav1d_build
-        ninja -C dav1d_build install
-        cp ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
-        echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+        nasmver="$(nasm -v | cut -d ' ' -f3)"
+        nasmminver="2.14.0"
+        if [ "$(printf '%s\n' "$nasmminver" "$nasmver" | sort -V | head -n1)" = "$nasmminver" ]; then
+            dav1d_asm=true
+        else
+            dav1d_asm=false
+        fi
+    else
+        dav1d_asm=true
     fi
-    if [ "${ARCH}" = "armhf" ] || [ "${ARCH}" = "arm64" ]; then
-        meson setup dav1d dav1d_build \
-            --cross-file=${SOURCE_DIR}/cross-${ARCH}.meson \
-            --prefix=${TARGET_DIR} \
-            --libdir=lib \
-            --buildtype=release \
-            -Ddefault_library=shared \
-            -Denable_asm=true \
-            -Denable_{tools,tests,examples}=false
-        meson configure dav1d_build
-        ninja -C dav1d_build install
-        cp ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
-        echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
-    fi
+    meson setup dav1d dav1d_build \
+        ${MESON_CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --libdir=lib \
+        --buildtype=release \
+        -Ddefault_library=shared \
+        -Denable_asm=$dav1d_asm \
+        -Denable_{tools,tests,examples}=false
+    meson configure dav1d_build
+    ninja -C dav1d_build install
+    cp ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
+    echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 
     # FDK-AAC-STRIPPED
