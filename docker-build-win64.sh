@@ -121,6 +121,48 @@ make install
 popd
 popd
 
+# FFTW3
+mkdir fftw3
+pushd fftw3
+fftw3_ver="3.3.10"
+fftw3_link="https://fftw.org/fftw-${fftw3_ver}.tar.gz"
+wget ${fftw3_link} -O fftw3.tar.gz
+tar xaf fftw3.tar.gz
+pushd fftw-${fftw3_ver}
+./configure \
+    --prefix=${FF_DEPS_PREFIX} \
+    --host=${FF_TOOLCHAIN} \
+    --disable-{shared,doc} \
+    --enable-{static,threads,fortran} \
+    --enable-{sse2,avx,avx-128-fma,avx2,avx512} \
+    --with-our-malloc \
+    --with-combined-threads \
+    --with-incoming-stack-boundary=2
+make -j$(nproc)
+make install
+popd
+popd
+
+# CHROMAPRINT
+git clone --depth=1 https://github.com/acoustid/chromaprint.git
+pushd chromaprint
+mkdir build
+pushd build
+cmake \
+    -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
+    -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_{TOOLS,TESTS}=OFF \
+    -DFFT_LIB=fftw3 \
+    ..
+make -j$(nproc)
+make install
+FF_EXTRA_LIBS="-lfftw3 -lstdc++${FF_EXTRA_LIBS}"
+FF_EXTRA_CFLAGS="-DCHROMAPRINT_NODLL${FF_EXTRA_CFLAGS}"
+popd
+popd
+
 # LZMA
 mkdir xz
 pushd xz
@@ -508,6 +550,8 @@ fi
 ./configure \
     --prefix=${FF_PREFIX} \
     ${FF_TARGET_FLAGS} \
+    --extra-libs="${FF_EXTRA_LIBS}" \
+    --extra-cflags="${FF_EXTRA_CFLAGS}" \
     --extra-version=Jellyfin \
     --disable-ffplay \
     --disable-debug \
@@ -526,6 +570,7 @@ fi
     --enable-zlib \
     --enable-lzma \
     --enable-gmp \
+    --enable-chromaprint \
     --enable-libfreetype \
     --enable-libfribidi \
     --enable-libfontconfig \
