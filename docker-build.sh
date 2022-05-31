@@ -134,7 +134,7 @@ prepare_extra_common() {
 prepare_extra_amd64() {
     # FFNVCODEC
     pushd ${SOURCE_DIR}
-    git clone -b n11.0.10.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers
+    git clone -b n11.1.5.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers
     pushd nv-codec-headers
     make
     make install
