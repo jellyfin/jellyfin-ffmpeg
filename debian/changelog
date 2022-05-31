@@ -3,6 +3,7 @@ jellyfin-ffmpeg (5.0.1-5) unstable; urgency=medium
   * Enable chromaprint.
   * Update dependencies.
   * Fix the issue that SPS/PPS are lost on AMD VCN H264 encoder.
+  * Add cuda/ocl tonemap support for DoVi profile 5 and 8.
 
  -- nyanmisaka <nst799610810@gmail.com>  Thu, 26 May 2022 20:13:31 +0800
 
