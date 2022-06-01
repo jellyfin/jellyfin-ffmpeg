@@ -57,11 +57,171 @@ Index: jellyfin-ffmpeg/libavfilter/allfilters.c
  extern const AVFilter ff_vf_tonemap_opencl;
  extern const AVFilter ff_vf_tonemap_vaapi;
  extern const AVFilter ff_vf_tpad;
+Index: jellyfin-ffmpeg/libavfilter/colorspace.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/colorspace.c
++++ jellyfin-ffmpeg/libavfilter/colorspace.c
+@@ -51,6 +51,18 @@ void ff_matrix_invert_3x3(const double i
+     }
+ }
+ 
++void ff_matrix_transpose_3x3(const double in[3][3], double out[3][3])
++{
++    int i, j;
++    double *out_p = &out[0][0];
++    const double *in_p = &in[0][0];
++
++    for (i = 0; i < 3; i++) {
++        for (j = 0; j < 3; j++)
++            out_p[i * 3 + j] = in_p[j * 3 + i];
++    }
++}
++
+ void ff_matrix_mul_3x3(double dst[3][3],
+                const double src1[3][3], const double src2[3][3])
+ {
+@@ -206,3 +218,80 @@ void ff_update_hdr_metadata(AVFrame *in,
+             metadata->max_luminance = av_d2q(peak * REFERENCE_WHITE, 10000);
+     }
+ }
++
++double ff_determine_dovi_signal_peak(const AVDOVIMetadata *data)
++{
++    float peak;
++    const AVDOVIColorMetadata *color;
++
++    // Fallback to the peak of 10000 if SMPTE ST.2084
++    if (!data)
++        return 100.0f;
++
++    color = av_dovi_get_color(data);
++    peak = color->source_max_pq / 4095.0f;
++    if (!peak)
++        return peak;
++
++    peak = powf(peak, 1.0f / ST2084_M2);
++    peak = fmaxf(peak - ST2084_C1, 0.0f) / (ST2084_C2 - ST2084_C3 * peak);
++    peak = powf(peak, 1.0f / ST2084_M1);
++    peak *= 10000.0f;
++    peak *= REFERENCE_WHITE_ALT;
++
++    return peak;
++}
++
++void ff_map_dovi_metadata(struct DoviMetadata *out, const AVDOVIMetadata *data)
++{
++    int c, i, j, k;
++    const AVDOVIRpuDataHeader *header;
++    const AVDOVIDataMapping *mapping;
++    const AVDOVIColorMetadata *color;
++
++    if (!data)
++        return;
++
++    header = av_dovi_get_header(data);
++    mapping = av_dovi_get_mapping(data);
++    color = av_dovi_get_color(data);
++
++    for (i = 0; i < 3; i++)
++        out->nonlinear_offset[i] = av_q2d(color->ycc_to_rgb_offset[i]);
++    for (i = 0; i < 9; i++) {
++        double *nonlinear = &out->nonlinear[0][0];
++        double *linear = &out->linear[0][0];
++        nonlinear[i] = av_q2d(color->ycc_to_rgb_matrix[i]);
++        linear[i] = av_q2d(color->rgb_to_lms_matrix[i]);
++    }
++    for (c = 0; c < 3; c++) {
++        const AVDOVIReshapingCurve *csrc = &mapping->curves[c];
++        struct ReshapeData *cdst = &out->comp[c];
++        cdst->num_pivots = csrc->num_pivots;
++        for (i = 0; i < csrc->num_pivots; i++) {
++            const float scale = 1.0f / ((1 << header->bl_bit_depth) - 1);
++            cdst->pivots[i] = scale * csrc->pivots[i];
++        }
++        for (i = 0; i < csrc->num_pivots - 1; i++) {
++            const float scale = 1.0f / (1 << header->coef_log2_denom);
++            cdst->method[i] = csrc->mapping_idc[i];
++            switch (csrc->mapping_idc[i]) {
++            case AV_DOVI_MAPPING_POLYNOMIAL:
++                for (k = 0; k < 3; k++) {
++                    cdst->poly_coeffs[i][k] = (k <= csrc->poly_order[i])
++                        ? scale * csrc->poly_coef[i][k]
++                        : 0.0f;
++                }
++                break;
++            case AV_DOVI_MAPPING_MMR:
++                cdst->mmr_order[i] = csrc->mmr_order[i];
++                cdst->mmr_constant[i] = scale * csrc->mmr_constant[i];
++                for (j = 0; j < csrc->mmr_order[i]; j++) {
++                    for (k = 0; k < 7; k++)
++                        cdst->mmr_coeffs[i][j][k] = scale * csrc->mmr_coef[i][j][k];
++                }
++                break;
++            }
++        }
++    }
++}
+Index: jellyfin-ffmpeg/libavfilter/colorspace.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavfilter/colorspace.h
++++ jellyfin-ffmpeg/libavfilter/colorspace.h
+@@ -22,8 +22,15 @@
+ 
+ #include "libavutil/common.h"
+ #include "libavutil/frame.h"
++#include "libavutil/dovi_meta.h"
+ 
+ #define REFERENCE_WHITE 100.0f
++#define REFERENCE_WHITE_ALT 203.0f
++#define ST2084_M1 0.1593017578125f
++#define ST2084_M2 78.84375f
++#define ST2084_C1 0.8359375f
++#define ST2084_C2 18.8515625f
++#define ST2084_C3 18.6875f
+ 
+ struct LumaCoefficients {
+     double cr, cg, cb;
+@@ -37,7 +44,27 @@ struct WhitepointCoefficients {
+     double xw, yw;
+ };
+ 
++// Parsed metadata from the Dolby Vision RPU
++struct DoviMetadata {
++    float nonlinear_offset[3];      // input offset ("ycc_to_rgb_offset")
++    double nonlinear[3][3];  // before PQ, also called "ycc_to_rgb"
++    double linear[3][3];     // after PQ, also called "rgb_to_lms"
++
++    // Reshape data, grouped by component
++    struct ReshapeData {
++        uint8_t num_pivots;
++        float pivots[9]; // normalized to [0.0, 1.0] based on BL bit depth
++        uint8_t method[8]; // 0 = polynomial, 1 = MMR
++        // Note: these must be normalized (divide by coefficient_log2_denom)
++        float poly_coeffs[8][3]; // x^0, x^1, x^2, unused must be 0
++        uint8_t mmr_order[8]; // 1, 2 or 3
++        float mmr_constant[8];
++        float mmr_coeffs[8][3 /* order */][7];
++    } comp[3];
++};
++
+ void ff_matrix_invert_3x3(const double in[3][3], double out[3][3]);
++void ff_matrix_transpose_3x3(const double in[3][3], double out[3][3]);
+ void ff_matrix_mul_3x3(double dst[3][3],
+                const double src1[3][3], const double src2[3][3]);
+ void ff_fill_rgb2xyz_table(const struct PrimaryCoefficients *coeffs,
+@@ -51,4 +78,7 @@ void ff_fill_rgb2yuv_table(const struct
+ double ff_determine_signal_peak(AVFrame *in);
+ void ff_update_hdr_metadata(AVFrame *in, double peak);
+ 
++double ff_determine_dovi_signal_peak(const AVDOVIMetadata *data);
++void ff_map_dovi_metadata(struct DoviMetadata *out, const AVDOVIMetadata *data);
++
+ #endif
 Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,258 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -101,21 +261,25 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +#define FLOAT_EPS 1.175494351e-38f
 +
 +extern __constant__ const float ref_white;
-+extern __constant__ const float3 luma_src, luma_dst;
++extern __constant__ const float3 luma_dst;
++extern __constant__ const float3 ycc2rgb_offset;
 +extern __constant__ const enum AVColorTransferCharacteristic trc_src, trc_dst;
 +extern __constant__ const enum AVColorRange range_src, range_dst;
 +extern __constant__ const enum AVChromaLocation chroma_loc_src, chroma_loc_dst;
 +extern __constant__ const bool rgb2rgb_passthrough;
 +extern __constant__ const float rgb2rgb_matrix[9];
++extern __constant__ const float lms2rgb_matrix[9];
 +extern __constant__ const float yuv_matrix[9], rgb_matrix[9];
 +
 +static __inline__ __device__ float get_luma_dst(float3 c, const float3& luma_dst) {
 +    return luma_dst.x * c.x + luma_dst.y * c.y + luma_dst.z * c.z;
 +}
 +
++/*
 +static __inline__ __device__ float get_luma_src(float3 c, const float3& luma_src) {
 +    return luma_src.x * c.x + luma_src.y * c.y + luma_src.z * c.z;
 +}
++*/
 +
 +static __inline__ __device__ float3 get_chroma_sample(float3 a, float3 b, float3 c, float3 d) {
 +    switch (chroma_loc_dst) {
@@ -137,19 +301,22 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +// linearizer for PQ/ST2084
-+static __inline__ __device__ float eotf_st2084(float x) {
++static __inline__ __device__ float eotf_st2084_common(float x) {
 +    x = max(x, 0.0f);
 +    float xpow = __powf(x, 1.0f / ST2084_M2);
 +    float num = max(xpow - ST2084_C1, 0.0f);
 +    float den = max(ST2084_C2 - ST2084_C3 * xpow, FLOAT_EPS);
 +    x = __powf(num / den, 1.0f / ST2084_M1);
-+    return x * ST2084_MAX_LUMINANCE / ref_white;
++    return x;
++}
++
++static __inline__ __device__ float eotf_st2084(float x) {
++    return eotf_st2084_common(x) * ST2084_MAX_LUMINANCE / ref_white;
 +}
 +
 +// delinearizer for PQ/ST2084
-+static __inline__ __device__ float inverse_eotf_st2084(float x) {
++static __inline__ __device__ float inverse_eotf_st2084_common(float x) {
 +    x = max(x, 0.0f);
-+    x *= ref_white / ST2084_MAX_LUMINANCE;
 +    float xpow = __powf(x, ST2084_M1);
 +#if 0
 +    // Original formulation from SMPTE ST 2084:2014 publication.
@@ -162,6 +329,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +    float den = 1.0f + ST2084_C3 * xpow;
 +    return __powf(1.0f + num / den, ST2084_M2);
 +#endif
++}
++
++static __inline__ __device__ float inverse_eotf_st2084(float x) {
++    x *= ref_white / ST2084_MAX_LUMINANCE;
++    return inverse_eotf_st2084_common(x);
 +}
 +
 +static __inline__ __device__ float ootf_1_2(float x) {
@@ -280,12 +452,39 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +    }
 +}
 +
++static __inline__ __device__ float3 rgb2lrgb(float3 c) {
++    float r = linearize(c.x);
++    float g = linearize(c.y);
++    float b = linearize(c.z);
++    return make_float3(r, g, b);
++}
++
++static __inline__ __device__ float3 ycc2rgb(float y, float cb, float cr) {
++    float r = y * rgb_matrix[0] + cb * rgb_matrix[1] + cr * rgb_matrix[2];
++    float g = y * rgb_matrix[3] + cb * rgb_matrix[4] + cr * rgb_matrix[5];
++    float b = y * rgb_matrix[6] + cb * rgb_matrix[7] + cr * rgb_matrix[8];
++    return make_float3(r, g, b) + ycc2rgb_offset;
++}
++
++static __inline__ __device__ float3 lms2rgb(float r, float g, float b) {
++    r = eotf_st2084_common(r);
++    g = eotf_st2084_common(g);
++    b = eotf_st2084_common(b);
++    float rr = r * lms2rgb_matrix[0] + g * lms2rgb_matrix[1] + b * lms2rgb_matrix[2];
++    float gg = r * lms2rgb_matrix[3] + g * lms2rgb_matrix[4] + b * lms2rgb_matrix[5];
++    float bb = r * lms2rgb_matrix[6] + g * lms2rgb_matrix[7] + b * lms2rgb_matrix[8];
++    rr = inverse_eotf_st2084_common(rr);
++    gg = inverse_eotf_st2084_common(gg);
++    bb = inverse_eotf_st2084_common(bb);
++    return make_float3(rr, gg, bb);
++}
++
 +#endif /* AVFILTER_CUDA_COLORSPACE_COMMON_H */
 Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/host_util.c
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,34 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -320,12 +519,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.c
 +
 +    return 0;
 +}
-+
 Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/host_util.h
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,28 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -354,12 +552,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.h
 +int ff_make_cuda_frame(FFCUDAFrame *dst, const AVFrame *src);
 +
 +#endif /* AVFILTER_CUDA_HOST_UTIL_H */
-+
 Index: jellyfin-ffmpeg/libavfilter/cuda/pixfmt.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/pixfmt.h
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,208 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -568,12 +765,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/pixfmt.h
 +}
 +
 +#endif /* AVFILTER_CUDA_PIXFMT_H */
-+
 Index: jellyfin-ffmpeg/libavfilter/cuda/shared.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/shared.h
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,31 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -605,12 +801,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/shared.h
 +} FFCUDAFrame;
 +
 +#endif /* AVFILTER_CUDA_SHARED_H */
-+
 Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,326 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -635,6 +830,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +#include "util.h"
 +
 +extern __constant__ const enum TonemapAlgorithm tonemap_func;
++extern __constant__ const int dovi_reshape;
 +extern __constant__ const float tone_param;
 +extern __constant__ const float desat_param;
 +
@@ -770,14 +966,131 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +// Map from source space YUV to destination space RGB
 +static __inline__ __device__
 +float3 map_to_dst_space_from_yuv(float3 yuv) {
-+    float3 c = yuv2lrgb(yuv);
-+    c = lrgb2lrgb(c);
++    float3 c;
++    if (dovi_reshape) {
++        c = ycc2rgb(yuv.x, yuv.y, yuv.z);
++        c = lms2rgb(c.x, c.y, c.z);
++        c = rgb2lrgb(c);
++    } else {
++        c = yuv2lrgb(yuv);
++        c = lrgb2lrgb(c);
++    }
 +    return c;
 +}
 +
++#define RESHAPE_POLY_FUNC \
++{ \
++    s = (coeffs.z * s + coeffs.y) * s + coeffs.x; \
++}
++
++#define RESHAPE_MMR_FUNC \
++{ \
++    int mmr_idx = dovi_mmr_single ? 0 : (int)coeffs.y; \
++    int order = (int)coeffs.w; \
++    float3 sigXxyz = make_float3(sig.x, sig.x, sig.y) * make_float3(sig.y, sig.z, sig.z); \
++    float4 sigX = make_float4(sigXxyz.x, sigXxyz.y, sigXxyz.z, sigX.x * sig.z); \
++    float4 mmr; \
++    s = coeffs.x; \
++    mmr = dovi_mmr[mmr_idx + 0]; \
++    s += dot3(make_float3(mmr.x, mmr.y, mmr.z), sig); \
++    mmr = dovi_mmr[mmr_idx + 1]; \
++    s += dot4(mmr, sigX); \
++    if (dovi_max_order >= 2) { \
++        if (dovi_min_order >= 2 || order >= 2) { \
++            float3 sig2 = sig * sig; \
++            float4 sigX2 = sigX * sigX; \
++            mmr = dovi_mmr[mmr_idx + 2]; \
++            s += dot3(make_float3(mmr.x, mmr.y, mmr.z), sig2); \
++            mmr = dovi_mmr[mmr_idx + 3]; \
++            s += dot4(mmr, sigX2); \
++            if (dovi_max_order == 3) { \
++                if (dovi_min_order == 3 || order >= 3) { \
++                    mmr = dovi_mmr[mmr_idx + 4]; \
++                    s += dot3(make_float3(mmr.x, mmr.y, mmr.z), sig2 * sig); \
++                    mmr = dovi_mmr[mmr_idx + 5]; \
++                    s += dot4(mmr, sigX2 * sigX); \
++                } \
++            } \
++        } \
++    } \
++}
++
++static __inline__ __device__
++float3 reshape_dovi_yuv(float3 yuv,
++                        float *src_dovi_params, float *src_dovi_pivots,
++                        float4 *src_dovi_coeffs, float4 *src_dovi_mmr)
++{
++    int i;
++    float s;
++    float3 sig = make_float3(clamp(yuv.x, 0.0f, 1.0f),
++                             clamp(yuv.y, 0.0f, 1.0f),
++                             clamp(yuv.z, 0.0f, 1.0f));
++    float sig_arr[3] = {sig.x, sig.y, sig.z};
++    float yuv_arr[3];
++    float4 coeffs;
++    float dovi_num_pivots, dovi_has_mmr, dovi_has_poly;
++    float dovi_mmr_single, dovi_min_order, dovi_max_order;
++    float dovi_lo, dovi_hi;
++    float *dovi_params;
++    float *dovi_pivots;
++    float4 *dovi_coeffs, *dovi_mmr;
++
++#pragma unroll
++    for (i = 0; i < 3; i++) {
++        dovi_params = src_dovi_params + i*8;
++        dovi_pivots = src_dovi_pivots + i*7;
++        dovi_coeffs = src_dovi_coeffs + i*8;
++        dovi_mmr = src_dovi_mmr + i*48;
++        dovi_num_pivots = dovi_params[0];
++        dovi_has_mmr = dovi_params[1];
++        dovi_has_poly = dovi_params[2];
++        dovi_mmr_single = dovi_params[3];
++        dovi_min_order = dovi_params[4];
++        dovi_max_order = dovi_params[5];
++        dovi_lo = dovi_params[6];
++        dovi_hi = dovi_params[7];
++
++        s = sig_arr[i];
++        if (dovi_num_pivots > 2) {
++            float t0 = s >= dovi_pivots[0], t1 = s >= dovi_pivots[1];
++            float t2 = s >= dovi_pivots[2], t3 = s >= dovi_pivots[3];
++            float t4 = s >= dovi_pivots[4], t5 = s >= dovi_pivots[5], t6 = s >= dovi_pivots[6];
++
++            coeffs = mix4(mix4(mix4(dovi_coeffs[0], dovi_coeffs[1], make_float4(t0, t0, t0, t0)),
++                               mix4(dovi_coeffs[2], dovi_coeffs[3], make_float4(t2, t2, t2, t2)),
++                               make_float4(t1, t1, t1, t1)),
++                          mix4(mix4(dovi_coeffs[4], dovi_coeffs[5], make_float4(t4, t4, t4, t4)),
++                               mix4(dovi_coeffs[6], dovi_coeffs[7], make_float4(t6, t6, t6, t6)),
++                               make_float4(t5, t5, t5, t5)),
++                          make_float4(t3, t3, t3, t3));
++        } else {
++            coeffs = dovi_coeffs[0];
++        }
++
++        if (dovi_has_mmr && dovi_has_poly) {
++            if (coeffs.w == 0.0f) {
++                RESHAPE_POLY_FUNC
++            } else {
++                RESHAPE_MMR_FUNC
++            }
++        } else if (dovi_has_poly) {
++            RESHAPE_POLY_FUNC
++        } else {
++            RESHAPE_MMR_FUNC
++        }
++        yuv_arr[i] = clamp(s, dovi_lo, dovi_hi);
++    }
++
++    return make_float3(yuv_arr[0], yuv_arr[1], yuv_arr[2]);
++}
++#undef RESHAPE_POLY_FUNC
++#undef RESHAPE_MMR_FUNC
++
 +extern "C" {
 +
-+__global__ void tonemap(FFCUDAFrame src, FFCUDAFrame dst)
++__global__ void tonemap(FFCUDAFrame src, FFCUDAFrame dst,
++                        float *dovi_params, float *dovi_pivots,
++                        float4 *dovi_coeffs, float4 *dovi_mmr)
 +{
 +    int xi = blockIdx.x * blockDim.x + threadIdx.x;
 +    int yi = blockIdx.y * blockDim.y + threadIdx.y;
@@ -791,6 +1104,13 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +        float3 yuv1 = read_px_flt(src, x + 1, y);
 +        float3 yuv2 = read_px_flt(src, x,     y + 1);
 +        float3 yuv3 = read_px_flt(src, x + 1, y + 1);
++
++        if (dovi_reshape) {
++            yuv0 = reshape_dovi_yuv(yuv0, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++            yuv1 = reshape_dovi_yuv(yuv1, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++            yuv2 = reshape_dovi_yuv(yuv2, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++            yuv3 = reshape_dovi_yuv(yuv3, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++        }
 +
 +        float3 c0 = map_to_dst_space_from_yuv(yuv0);
 +        float3 c1 = map_to_dst_space_from_yuv(yuv1);
@@ -816,7 +1136,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/tonemap.h
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,34 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -851,12 +1171,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.h
 +};
 +
 +#endif /* AVFILTER_CUDA_TONEMAP_H */
-+
 Index: jellyfin-ffmpeg/libavfilter/cuda/util.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/util.h
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,109 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -910,13 +1229,67 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/util.h
 +    return make_float3(a.x / b, a.y / b, a.z / b);
 +}
 +
-+#endif /* AVFILTER_CUDA_UTIL_H */
++static inline __device__ float4 operator+(const float4 &a, const float4 &b) {
++    return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
++}
 +
++static inline __device__ float4 operator+(const float4 &a, float b) {
++    return make_float4(a.x + b, a.y + b, a.z + b, a.w + b);
++}
++
++static inline __device__ float4 operator-(const float4 &a, const float4 &b) {
++    return make_float4(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w);
++}
++
++static inline __device__ float4 operator-(const float4 &a, float b) {
++    return make_float4(a.x - b, a.y - b, a.z - b, a.w - b);
++}
++
++static inline __device__ float4 operator*(const float4 &a, const float4 &b) {
++    return make_float4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
++}
++
++static inline __device__ float4 operator*(const float4 &a, float b) {
++    return make_float4(a.x * b, a.y * b, a.z * b, a.w * b);
++}
++
++static inline __device__ float4 operator/(const float4 &a, const float4 &b) {
++    return make_float4(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w);
++}
++
++static inline __device__ float4 operator/(const float4 &a, float b) {
++    return make_float4(a.x / b, a.y / b, a.z / b, a.w / b);
++}
++
++static inline __device__ float dot3(const float3 a, const float3 b) {
++    float3 r = a * b;
++    return r.x + r.y + r.z;
++}
++
++static inline __device__ float dot4(const float4 a, const float4 b) {
++    float4 r = a * b;
++    return r.x + r.y + r.z + r.w;
++}
++
++static inline __device__ float3 mix3(const float3 a, const float3 b, const float3 c) {
++    return make_float3(a.x + (b.x - a.x) * c.x,
++                       a.y + (b.y - a.y) * c.y,
++                       a.z + (b.z - a.z) * c.z);
++}
++
++static inline __device__ float4 mix4(const float4 a, const float4 b, const float4 c) {
++    return make_float4(a.x + (b.x - a.x) * c.x,
++                       a.y + (b.y - a.y) * c.y,
++                       a.z + (b.z - a.z) * c.z,
++                       a.w + (b.w - a.w) * c.w);
++}
++
++#endif /* AVFILTER_CUDA_UTIL_H */
 Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,710 @@
+@@ -0,0 +1,949 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1010,7 +1383,23 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CUdeviceptr srcBuffer;
 +    CUdeviceptr dstBuffer;
 +
++    CUdeviceptr dovi_params_buf;
++    CUdeviceptr dovi_pivots_buf;
++    CUdeviceptr dovi_coeffs_buf;
++    CUdeviceptr dovi_mmr_buf;
++
++#define dovi_params_size 8*sizeof(float)
++#define dovi_pivots_size 7*sizeof(float)
++#define dovi_coeffs_size 8*4*sizeof(float)
++#define dovi_mmr_size 8*6*4*sizeof(float)
++    struct DoviMetadata *dovi;
++    float *dovi_params;
++    float *dovi_pivots;
++    float *dovi_coeffs;
++    float *dovi_mmr;
++
 +    enum TonemapAlgorithm tonemap;
++    int apply_dovi;
 +    double ref_white;
 +    double param;
 +    double desat_param;
@@ -1043,6 +1432,12 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    if (!s->tmp_frame)
 +        return AVERROR(ENOMEM);
 +
++    s->dovi = NULL;
++    s->dovi_params_buf = NULL;
++    s->dovi_pivots_buf = NULL;
++    s->dovi_coeffs_buf = NULL;
++    s->dovi_mmr_buf = NULL;
++
 +    return 0;
 +}
 +
@@ -1056,6 +1451,22 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +        CHECK_CU(cu->cuCtxPushCurrent(cuda_ctx));
 +
++        if (s->dovi_params_buf) {
++            CHECK_CU(cu->cuMemFree(s->dovi_params_buf));
++            s->dovi_params_buf = 0;
++        }
++        if (s->dovi_pivots_buf) {
++            CHECK_CU(cu->cuMemFree(s->dovi_pivots_buf));
++            s->dovi_pivots_buf = 0;
++        }
++        if (s->dovi_coeffs_buf) {
++            CHECK_CU(cu->cuMemFree(s->dovi_coeffs_buf));
++            s->dovi_coeffs_buf = 0;
++        }
++        if (s->dovi_mmr_buf) {
++            CHECK_CU(cu->cuMemFree(s->dovi_mmr_buf));
++            s->dovi_mmr_buf = 0;
++        }
 +        if (s->cu_module) {
 +            CHECK_CU(cu->cuModuleUnload(s->cu_module));
 +            s->cu_func = NULL;
@@ -1064,6 +1475,17 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +        CHECK_CU(cu->cuCtxPopCurrent(&dummy));
 +    }
++
++    if (s->dovi)
++        av_free(s->dovi);
++    if (s->dovi_params)
++        av_free(s->dovi_params);
++    if (s->dovi_pivots)
++        av_free(s->dovi_pivots);
++    if (s->dovi_coeffs)
++        av_free(s->dovi_coeffs);
++    if (s->dovi_mmr)
++        av_free(s->dovi_mmr);
 +
 +    av_frame_free(&s->frame);
 +    av_buffer_unref(&s->frames_ctx);
@@ -1184,6 +1606,13 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    [AVCOL_PRI_BT2020] = { 0.3127, 0.3290 },
 +};
 +
++static const double dovi_lms2rgb_matrix[3][3] =
++{
++    { 3.06441879, -2.16597676,  0.10155818},
++    {-0.65612108,  1.78554118, -0.12943749},
++    { 0.01736321, -0.04725154,  1.03004253},
++};
++
 +static int get_rgb2rgb_matrix(enum AVColorPrimaries in, enum AVColorPrimaries out,
 +                              double rgb2rgb[3][3]) {
 +    double rgb2xyz[3][3], xyz2rgb[3][3];
@@ -1196,9 +1625,96 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    return 0;
 +}
 +
++static void update_dovi_params(AVFilterContext *ctx)
++{
++    TonemapCUDAContext *s = ctx->priv;
++    float coeffs_data[8][4] = {0};
++    float mmr_packed_data[8*6][4] = {0};
++    int c, i, j, k;
++
++    for (c = 0; c < 3; c++) {
++        int has_poly = 0, has_mmr = 0, mmr_single = 1;
++        int mmr_idx = 0, min_order = 3, max_order = 1;
++        const struct ReshapeData *comp = &s->dovi->comp[c];
++        if (!comp->num_pivots)
++            continue;
++        av_assert0(comp->num_pivots >= 2 && comp->num_pivots <= 9);
++
++        memset(coeffs_data, 0, sizeof(coeffs_data));
++        for (i = 0; i < comp->num_pivots - 1; i++) {
++            switch (comp->method[i]) {
++            case 0: // polynomial
++                has_poly = 1;
++                coeffs_data[i][3] = 0.0f; // order=0 signals polynomial
++                for (k = 0; k < 3; k++)
++                    coeffs_data[i][k] = comp->poly_coeffs[i][k];
++                break;
++            case 1:
++                min_order = FFMIN(min_order, comp->mmr_order[i]);
++                max_order = FFMAX(max_order, comp->mmr_order[i]);
++                mmr_single = !has_mmr;
++                has_mmr = 1;
++                coeffs_data[i][3] = (float)comp->mmr_order[i];
++                coeffs_data[i][0] = comp->mmr_constant[i];
++                coeffs_data[i][1] = (float)mmr_idx;
++                for (j = 0; j < comp->mmr_order[i]; j++) {
++                    // store weights per order as two packed vec4s
++                    float *mmr = &mmr_packed_data[mmr_idx][0];
++                    mmr[0] = comp->mmr_coeffs[i][j][0];
++                    mmr[1] = comp->mmr_coeffs[i][j][1];
++                    mmr[2] = comp->mmr_coeffs[i][j][2];
++                    mmr[3] = 0.0f; // unused
++                    mmr[4] = comp->mmr_coeffs[i][j][3];
++                    mmr[5] = comp->mmr_coeffs[i][j][4];
++                    mmr[6] = comp->mmr_coeffs[i][j][5];
++                    mmr[7] = comp->mmr_coeffs[i][j][6];
++                    mmr_idx += 2;
++                }
++                break;
++            default:
++                av_assert0(0);
++            }
++        }
++
++        av_assert0(has_poly || has_mmr);
++
++        if (has_mmr)
++            av_assert0(min_order <= max_order);
++
++        // dovi_params
++        {
++            float params[8] = {
++                comp->num_pivots, !!has_mmr, !!has_poly,
++                mmr_single, min_order, max_order,
++                comp->pivots[0], comp->pivots[comp->num_pivots - 1]
++            };
++            memcpy(s->dovi_params + c*8, params, dovi_params_size);
++        }
++
++        // dovi_pivots
++        if (comp->num_pivots > 2) {
++            // Skip the (irrelevant) lower and upper bounds
++            float pivots_data[7];
++            memcpy(pivots_data, comp->pivots + 1,
++                   (comp->num_pivots - 2) * sizeof(pivots_data[0]));
++            // Fill the remainder with a quasi-infinite sentinel pivot
++            for (i = comp->num_pivots - 2; i < FF_ARRAY_ELEMS(pivots_data); i++)
++                pivots_data[i] = 1e9f;
++            memcpy(s->dovi_pivots + c*7, pivots_data, dovi_pivots_size);
++        }
++
++        // dovi_coeffs
++        memcpy(s->dovi_coeffs + c*8*4, &coeffs_data[0], dovi_coeffs_size);
++
++        // dovi_mmr
++        if (has_mmr)
++            memcpy(s->dovi_mmr + c*8*6*4, &mmr_packed_data[0], dovi_mmr_size);
++    }
++}
++
 +static av_cold int compile(AVFilterLink *inlink)
 +{
-+    int ret = 0;
++    int i, j, ret = 0;
 +    AVFilterContext  *ctx = inlink->dst;
 +    TonemapCUDAContext *s = ctx->priv;
 +    CudaFunctions *cu = s->hwctx->internal->cuda_dl;
@@ -1207,6 +1723,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CUlinkState link_state;
 +    void *cubin;
 +    size_t cubin_size;
++    double ycc2rgb_offset[3] = {0};
++    double lms2rgb_matrix[3][3] = {0};
 +    double rgb_matrix[3][3], yuv_matrix[3][3], rgb2rgb_matrix[3][3];
 +    const struct LumaCoefficients *in_coeffs, *out_coeffs;
 +    enum AVColorTransferCharacteristic in_trc = s->in_trc, out_trc = s->out_trc;
@@ -1214,8 +1732,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    enum AVColorPrimaries in_pri = s->in_pri, out_pri = s->out_pri;
 +    enum AVColorRange in_range = s->in_range, out_range = s->out_range;
 +    char info_log[4096], error_log[4096];
-+    CUjit_option options[] = {CU_JIT_INFO_LOG_BUFFER, CU_JIT_ERROR_LOG_BUFFER, CU_JIT_INFO_LOG_BUFFER_SIZE_BYTES, CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES};
-+    void *option_values[]  = {&info_log, &error_log, (void*)(intptr_t)sizeof(info_log), (void*)(intptr_t)sizeof(error_log)};
++    CUjit_option options[] = { CU_JIT_INFO_LOG_BUFFER,
++                               CU_JIT_ERROR_LOG_BUFFER,
++                               CU_JIT_INFO_LOG_BUFFER_SIZE_BYTES,
++                               CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES };
++    void *option_values[]  = { &info_log,
++                               &error_log,
++                               (void*)(intptr_t)sizeof(info_log),
++                               (void*)(intptr_t)sizeof(error_log) };
 +
 +    extern const unsigned char ff_tonemap_ptx_data[];
 +    extern const unsigned int ff_tonemap_ptx_len;
@@ -1241,14 +1765,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    s->ref_white = s->tonemap == TONEMAP_BT2390 ? REF_WHITE_BT2390
 +                                                : REF_WHITE_DEFAULT;
 +
-+    s->dst_peak = 1.0f;
++    s->dst_peak = s->dst_peak ? s->dst_peak : 1.0f;
 +
 +    if (in_trc == AVCOL_TRC_UNSPECIFIED)
 +        in_trc = AVCOL_TRC_SMPTE2084;
 +    if (out_trc == AVCOL_TRC_UNSPECIFIED)
 +        out_trc = AVCOL_TRC_BT709;
 +
-+    if (in_spc == AVCOL_SPC_UNSPECIFIED)
++    if (!s->dovi && in_spc == AVCOL_SPC_UNSPECIFIED)
 +        in_spc = AVCOL_SPC_BT2020_NCL;
 +    if (out_spc == AVCOL_SPC_UNSPECIFIED)
 +        out_spc = AVCOL_SPC_BT709;
@@ -1267,7 +1791,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +           av_color_transfer_name(in_trc),
 +           av_color_transfer_name(out_trc));
 +    av_log(ctx, AV_LOG_DEBUG, "Mapping colorspace from %s to %s\n",
-+           av_color_space_name(in_spc),
++           s->dovi ? "dolby_vision" : av_color_space_name(in_spc),
 +           av_color_space_name(out_spc));
 +    av_log(ctx, AV_LOG_DEBUG, "Mapping primaries from %s to %s\n",
 +           av_color_primaries_name(in_pri),
@@ -1276,11 +1800,19 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +           av_color_range_name(in_range),
 +           av_color_range_name(out_range));
 +
-+    if (!(in_coeffs = ff_get_luma_coefficients(in_spc)))
-+        return AVERROR(EINVAL);
++    if (s->dovi) {
++        for (i = 0; i < 3; i++) {
++            for (j = 0; j < 3; j++)
++                ycc2rgb_offset[i] -= s->dovi->nonlinear[i][j] * s->dovi->nonlinear_offset[j];
++        }
++        ff_matrix_mul_3x3(lms2rgb_matrix, dovi_lms2rgb_matrix, s->dovi->linear);
++    } else {
++        if (!(in_coeffs = ff_get_luma_coefficients(in_spc)))
++            return AVERROR(EINVAL);
 +
-+    ff_fill_rgb2yuv_table(in_coeffs, yuv_matrix);
-+    ff_matrix_invert_3x3(yuv_matrix, rgb_matrix);
++        ff_fill_rgb2yuv_table(in_coeffs, yuv_matrix);
++        ff_matrix_invert_3x3(yuv_matrix, rgb_matrix);
++    }
 +
 +    if (!(out_coeffs = ff_get_luma_coefficients(out_spc)))
 +        return AVERROR(EINVAL);
@@ -1304,9 +1836,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +             b[0][0], b[0][1], b[0][2], \
 +             b[1][0], b[1][1], b[1][2], \
 +             b[2][0], b[2][1], b[2][2])
-+#define CONSTANT_C(a, b) \
++#define CONSTANT_C(a, b, c, d) \
 +    CONSTANT(".f32 " a "[] = {%f, %f, %f}", \
-+             b->cr, b->cg, b->cb)
++             b, c, d)
 +
 +    CONSTANT(".u32 depth_src      = %i", (int)s->in_desc->comp[0].depth);
 +    CONSTANT(".u32 depth_dst      = %i", (int)s->out_desc->comp[0].depth);
@@ -1319,19 +1851,41 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CONSTANT(".u32 chroma_loc_src = %i", (int)s->in_chroma_loc);
 +    CONSTANT(".u32 chroma_loc_dst = %i", (int)s->out_chroma_loc);
 +    CONSTANT(".u32 tonemap_func   = %i", (int)s->tonemap);
++    CONSTANT(".u32 dovi_reshape   = %i", (int)(!!s->dovi));
 +    CONSTANT(".f32 ref_white      = %f", s->ref_white);
 +    CONSTANT(".f32 tone_param     = %f", s->param);
 +    CONSTANT(".f32 desat_param    = %f", s->desat_param);
-+    CONSTANT_M("rgb_matrix", rgb_matrix);
++    CONSTANT_M("rgb_matrix", (s->dovi ? s->dovi->nonlinear : rgb_matrix));
 +    CONSTANT_M("yuv_matrix", yuv_matrix);
 +    CONSTANT_A(".u8 rgb2rgb_passthrough = %i", 1, in_pri == out_pri);
 +    CONSTANT_M("rgb2rgb_matrix", rgb2rgb_matrix);
-+    CONSTANT_C("luma_src", in_coeffs);
-+    CONSTANT_C("luma_dst", out_coeffs);
++    CONSTANT_M("lms2rgb_matrix", lms2rgb_matrix);
++    CONSTANT_C("luma_dst", out_coeffs->cr, out_coeffs->cg, out_coeffs->cb);
++    CONSTANT_C("ycc2rgb_offset", ycc2rgb_offset[0], ycc2rgb_offset[1], ycc2rgb_offset[2]);
 +
 +    ret = CHECK_CU(cu->cuCtxPushCurrent(cuda_ctx));
 +    if (ret < 0)
 +        return ret;
++
++    if (s->dovi) {
++        s->dovi_params = av_mallocz(3*dovi_params_size);
++        s->dovi_pivots = av_mallocz(3*dovi_pivots_size);
++        s->dovi_coeffs = av_mallocz(3*dovi_coeffs_size);
++        s->dovi_mmr = av_mallocz(3*dovi_mmr_size);
++
++        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_params_buf, 3*dovi_params_size));
++        if (ret < 0)
++            goto fail;
++        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_pivots_buf, 3*dovi_pivots_size));
++        if (ret < 0)
++            goto fail;
++        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_coeffs_buf, 3*dovi_coeffs_size));
++        if (ret < 0)
++            goto fail;
++        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_mmr_buf, 3*dovi_mmr_size));
++        if (ret < 0)
++            goto fail;
++    }
 +
 +    if (s->cu_module) {
 +        ret = CHECK_CU(cu->cuModuleUnload(s->cu_module));
@@ -1364,7 +1918,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    if (ret < 0)
 +        goto fail2;
 +
-+    CHECK_CU(cu->cuModuleGetFunction(&s->cu_func, s->cu_module, "tonemap"));
++    ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func, s->cu_module, "tonemap"));
 +    if (ret < 0)
 +        goto fail2;
 +
@@ -1414,7 +1968,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    TonemapCUDAContext *s = ctx->priv;
 +    CudaFunctions *cu = s->hwctx->internal->cuda_dl;
 +    FFCUDAFrame src, dst;
-+    void *args_uchar[] = { &src, &dst };
++    void *args[] = { &src, &dst,
++                     &s->dovi_params_buf, &s->dovi_pivots_buf,
++                     &s->dovi_coeffs_buf, &s->dovi_mmr_buf };
 +    int ret;
 +
 +    ret = ff_make_cuda_frame(&src, in);
@@ -1426,16 +1982,11 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        goto fail;
 +
 +    src.peak = s->peak;
-+    if (!src.peak) {
-+        src.peak = ff_determine_signal_peak(in);
-+        av_log(s, AV_LOG_DEBUG, "Computed signal peak: %f\n", src.peak);
-+    }
-+
 +    dst.peak = s->dst_peak;
 +
 +    ret = CHECK_CU(cu->cuLaunchKernel(s->cu_func,
 +                                      DIV_UP(src.width / 2, BLOCKX), DIV_UP(src.height / 2, BLOCKY), 1,
-+                                      BLOCKX, BLOCKY, 1, 0, s->hwctx->stream, args_uchar, NULL));
++                                      BLOCKX, BLOCKY, 1, 0, s->hwctx->stream, args, NULL));
 +
 +fail:
 +    return ret;
@@ -1489,6 +2040,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CudaFunctions          *cu = s->hwctx->internal->cuda_dl;
 +
 +    AVFrame *out = NULL;
++    AVFrameSideData *dovi_sd = NULL;
 +    CUcontext dummy;
 +    int ret = 0;
 +
@@ -1498,12 +2050,42 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        goto fail;
 +    }
 +
-+    if (!(in->color_trc == AVCOL_TRC_SMPTE2084 ||
-+        in->color_trc == AVCOL_TRC_ARIB_STD_B67)) {
-+        av_log(ctx, AV_LOG_ERROR, "Unsupported input transfer characteristic: %s\n",
-+               av_color_transfer_name(in->color_trc));
-+        ret = AVERROR(EINVAL);
-+        goto fail;
++    if (s->apply_dovi)
++        dovi_sd = av_frame_get_side_data(in, AV_FRAME_DATA_DOVI_METADATA);
++
++    // check DOVI->HDR10/HLG
++    if (!dovi_sd) {
++        if (in->color_trc != AVCOL_TRC_SMPTE2084 &&
++            in->color_trc != AVCOL_TRC_ARIB_STD_B67) {
++            av_log(ctx, AV_LOG_ERROR, "No DOVI metadata and "
++                   "unsupported input transfer characteristic: %s\n",
++                   av_color_transfer_name(in->color_trc));
++            ret = AVERROR(EINVAL);
++            goto fail;
++        }
++    }
++
++    if (!s->peak) {
++        if (dovi_sd) {
++            const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
++            s->peak = ff_determine_dovi_signal_peak(metadata);
++        } else {
++            s->peak = ff_determine_signal_peak(in);
++        }
++        av_log(ctx, AV_LOG_DEBUG, "Computed signal peak: %f\n", s->peak);
++    }
++
++    if (dovi_sd) {
++        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
++        struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
++        s->dovi = dovi;
++        if (!s->dovi)
++            goto fail;
++
++        ff_map_dovi_metadata(s->dovi, metadata);
++        in->color_trc = AVCOL_TRC_SMPTE2084;
++        in->colorspace = AVCOL_SPC_UNSPECIFIED;
++        in->color_primaries = AVCOL_PRI_BT2020;
 +    }
 +
 +    if (!s->cu_func ||
@@ -1532,18 +2114,46 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    if (ret < 0)
 +        goto fail;
 +
++    if (s->dovi) {
++        update_dovi_params(ctx);
++
++        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_params_buf, s->dovi_params,
++                                             3*dovi_params_size, s->hwctx->stream));
++        if (ret < 0)
++            goto fail;
++        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_pivots_buf, s->dovi_pivots,
++                                             3*dovi_pivots_size, s->hwctx->stream));
++        if (ret < 0)
++            goto fail;
++        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_coeffs_buf, s->dovi_coeffs,
++                                             3*dovi_coeffs_size, s->hwctx->stream));
++        if (ret < 0)
++            goto fail;
++        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_mmr_buf, s->dovi_mmr,
++                                             3*dovi_mmr_size, s->hwctx->stream));
++        if (ret < 0)
++            goto fail;
++
++        av_free(s->dovi);
++    }
++
 +    ret = do_tonemap(ctx, out, in);
 +
-+    CHECK_CU(cu->cuCtxPopCurrent(&dummy));
++    ret = CHECK_CU(cu->cuCtxPopCurrent(&dummy));
 +    if (ret < 0)
 +        goto fail;
 +
 +    av_frame_free(&in);
 +
-+    ff_update_hdr_metadata(out, s->dst_peak);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_DOVI_RPU_BUFFER);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_DOVI_METADATA);
 +
 +    return ff_filter_frame(outlink, out);
 +fail:
++    if (s->dovi)
++        av_free(s->dovi);
 +    av_frame_free(&in);
 +    av_frame_free(&out);
 +    return ret;
@@ -1552,7 +2162,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +#define OFFSET(x) offsetof(TonemapCUDAContext, x)
 +#define FLAGS (AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM)
 +static const AVOption options[] = {
-+    { "tonemap",      "tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, {.i64 = TONEMAP_NONE}, TONEMAP_NONE, TONEMAP_MAX - 1, FLAGS, "tonemap" },
++    { "tonemap",      "Tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, {.i64 = TONEMAP_NONE}, TONEMAP_NONE, TONEMAP_MAX - 1, FLAGS, "tonemap" },
 +    {     "none",     0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_NONE},              0, 0, FLAGS, "tonemap" },
 +    {     "linear",   0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_LINEAR},            0, 0, FLAGS, "tonemap" },
 +    {     "gamma",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_GAMMA},             0, 0, FLAGS, "tonemap" },
@@ -1561,29 +2171,31 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    {     "hable",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_HABLE},             0, 0, FLAGS, "tonemap" },
 +    {     "mobius",   0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MOBIUS},            0, 0, FLAGS, "tonemap" },
 +    {     "bt2390",   0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_BT2390},            0, 0, FLAGS, "tonemap" },
-+    { "transfer",     "set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
-+    { "t",            "set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
++    { "transfer",     "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
++    { "t",            "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
 +    {     "bt709",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT709},           0, 0, FLAGS, "transfer" },
 +    {     "bt2020",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT2020_10},       0, 0, FLAGS, "transfer" },
-+    { "matrix",       "set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
-+    { "m",            "set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
++    { "matrix",       "Set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
++    { "m",            "Set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
 +    {     "bt709",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT709},           0, 0, FLAGS, "matrix" },
 +    {     "bt2020",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT2020_NCL},      0, 0, FLAGS, "matrix" },
-+    { "primaries",    "set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
-+    { "p",            "set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
++    { "primaries",    "Set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
++    { "p",            "Set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
 +    {     "bt709",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT709},           0, 0, FLAGS, "primaries" },
 +    {     "bt2020",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT2020},          0, 0, FLAGS, "primaries" },
-+    { "range",        "set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
-+    { "r",            "set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
++    { "range",        "Set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
++    { "r",            "Set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
 +    {     "tv",       0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, "range" },
 +    {     "pc",       0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, "range" },
 +    {     "limited",  0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, "range" },
 +    {     "full",     0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, "range" },
 +    { "format",       "Output format",       OFFSET(format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
-+    { "peak",         "signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, {.dbl = 0}, 0, DBL_MAX, FLAGS },
-+    { "param",        "tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, {.dbl = NAN}, DBL_MIN, DBL_MAX, FLAGS },
-+    { "desat",        "desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, {.dbl = 0.5}, 0, DBL_MAX, FLAGS },
-+    { "threshold",    "scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, {.dbl = 0.2}, 0, DBL_MAX, FLAGS },
++    { "apply_dovi",   "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
++    { "peak",         "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, {.dbl = 0}, 0, DBL_MAX, FLAGS },
++    { "target_peak",  "Target signal peak override", OFFSET(dst_peak), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
++    { "param",        "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, {.dbl = NAN}, DBL_MIN, DBL_MAX, FLAGS },
++    { "desat",        "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, {.dbl = 0.5}, 0, DBL_MAX, FLAGS },
++    { "threshold",    "Scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, {.dbl = 0.2}, 0, DBL_MAX, FLAGS },
 +    { NULL },
 +};
 +
