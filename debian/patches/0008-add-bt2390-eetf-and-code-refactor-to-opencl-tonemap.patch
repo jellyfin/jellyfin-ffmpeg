@@ -1349,7 +1349,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
 +    if (ctx->dovi) {
 +        cle = tonemap_opencl_update_dovi_params(avctx);
 +        CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to update dovi params: %d.\n", cle);
-+        av_free(ctx->dovi);
++        av_freep(&ctx->dovi);
      }
  
 +    err = launch_kernel(avctx, ctx->kernel, output, input, ctx->peak);
@@ -1399,7 +1399,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  fail:
      clFinish(ctx->command_queue);
 +    if (ctx->dovi)
-+        av_free(ctx->dovi);
++        av_freep(&ctx->dovi);
      av_frame_free(&input);
      av_frame_free(&output);
      return err;
@@ -1410,7 +1410,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
 -    if (ctx->util_mem)
 -        clReleaseMemObject(ctx->util_mem);
 +    if (ctx->dovi)
-+        av_free(ctx->dovi);
++        av_freep(&ctx->dovi);
 +    if (ctx->dovi_params)
 +        clReleaseMemObject(ctx->dovi_params);
 +    if (ctx->dovi_pivots)

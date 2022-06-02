@@ -1477,15 +1477,15 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    }
 +
 +    if (s->dovi)
-+        av_free(s->dovi);
++        av_freep(&s->dovi);
 +    if (s->dovi_params)
-+        av_free(s->dovi_params);
++        av_freep(&s->dovi_params);
 +    if (s->dovi_pivots)
-+        av_free(s->dovi_pivots);
++        av_freep(&s->dovi_pivots);
 +    if (s->dovi_coeffs)
-+        av_free(s->dovi_coeffs);
++        av_freep(&s->dovi_coeffs);
 +    if (s->dovi_mmr)
-+        av_free(s->dovi_mmr);
++        av_freep(&s->dovi_mmr);
 +
 +    av_frame_free(&s->frame);
 +    av_buffer_unref(&s->frames_ctx);
@@ -2134,7 +2134,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        if (ret < 0)
 +            goto fail;
 +
-+        av_free(s->dovi);
++        av_freep(&s->dovi);
 +    }
 +
 +    ret = do_tonemap(ctx, out, in);
@@ -2153,7 +2153,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    return ff_filter_frame(outlink, out);
 +fail:
 +    if (s->dovi)
-+        av_free(s->dovi);
++        av_freep(&s->dovi);
 +    av_frame_free(&in);
 +    av_frame_free(&out);
 +    return ret;
