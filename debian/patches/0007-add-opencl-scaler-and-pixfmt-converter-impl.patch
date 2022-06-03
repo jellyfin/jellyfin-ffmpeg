@@ -102,7 +102,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +
 +#ifdef ENABLE_DITHER
 +    float2 ncoords = convert_float2((int2)(xi, yi)) *
-+        (float2)(native_recip(get_image_width(dither)), native_recip(get_image_height(dither)));
++        native_recip((float2)(get_image_width(dither), get_image_height(dither)));
 +#endif
 +
 +    if (xi < get_image_width(dst2) && yi < get_image_height(dst2)) {
@@ -158,7 +158,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +
 +#ifdef ENABLE_DITHER
 +    float2 ncoords = convert_float2((int2)(xi, yi)) *
-+        (float2)(native_recip(get_image_width(dither)), native_recip(get_image_height(dither)));
++        native_recip((float2)(get_image_width(dither), get_image_height(dither)));
 +#endif
 +
 +    int2 read_pos = clamp(src_pos, 0, src_size - 1);
@@ -228,7 +228,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +
 +#ifdef ENABLE_DITHER
 +    float2 ncoords = convert_float2((int2)(xi, yi)) *
-+        (float2)(native_recip(get_image_width(dither)), native_recip(get_image_height(dither)));
++        native_recip((float2)(get_image_width(dither), get_image_height(dither)));
 +#endif
 +
 +    int i, j;
@@ -653,8 +653,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +
 +    if (ctx->in_desc->comp[0].depth > ctx->out_desc->comp[0].depth) {
 +        av_bprintf(&header, "#define ENABLE_DITHER\n");
-+        av_bprintf(&header, "__constant float dither_size2 = %f;\n", (float)(ff_fruit_dither_size * ff_fruit_dither_size));
-+        av_bprintf(&header, "__constant float dither_quantization = %f;\n", (float)((1 << ctx->out_desc->comp[0].depth) - 1));
++        av_bprintf(&header, "__constant float dither_size2 = %.4ff;\n", (float)(ff_fruit_dither_size * ff_fruit_dither_size));
++        av_bprintf(&header, "__constant float dither_quantization = %.4ff;\n", (float)((1 << ctx->out_desc->comp[0].depth) - 1));
 +    }
 +
 +    av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
