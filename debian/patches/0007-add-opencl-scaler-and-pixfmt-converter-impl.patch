@@ -38,7 +38,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/opencl/scale.cl
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,276 @@
 +/*
 + * Copyright (c) 2018 Gabriel Machado
 + * Copyright (c) 2021 NyanMisaka
@@ -68,6 +68,16 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +                                 CLK_ADDRESS_NONE            |
 +                                 CLK_FILTER_NEAREST);
 +
++__constant sampler_t d_sampler = (CLK_NORMALIZED_COORDS_TRUE |
++                                  CLK_ADDRESS_REPEAT         |
++                                  CLK_FILTER_NEAREST);
++
++#ifdef ENABLE_DITHER
++float get_dithered_y(float y, float d) {
++    return floor(y * dither_quantization + d + 0.5f / dither_size2) * 1.0f / dither_quantization;
++}
++#endif
++
 +#ifdef CONV
 +__kernel void conv_yuv(__write_only image2d_t dst1,
 +                       __read_only  image2d_t src1,
@@ -79,6 +89,9 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +#ifdef NON_SEMI_PLANAR_IN
 +                      ,__read_only  image2d_t src3
 +#endif
++#ifdef ENABLE_DITHER
++                      ,__read_only  image2d_t dither
++#endif
 +                       )
 +{
 +    int xi = get_global_id(0);
@@ -86,6 +99,11 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +    // each work item process four pixels
 +    int x = 2 * xi;
 +    int y = 2 * yi;
++
++#ifdef ENABLE_DITHER
++    float2 ncoords = convert_float2((int2)(xi, yi)) *
++        (float2)(native_recip(get_image_width(dither)), native_recip(get_image_height(dither)));
++#endif
 +
 +    if (xi < get_image_width(dst2) && yi < get_image_height(dst2)) {
 +        float y0 = read_imagef(src1, sampler, (int2)(x,     y)).x;
@@ -100,7 +118,13 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +        float u = uv.x;
 +        float v = uv.y;
 +#endif
-+
++#ifdef ENABLE_DITHER
++        float d = read_imagef(dither, d_sampler, ncoords).x;
++        y0 = get_dithered_y(y0, d);
++        y1 = get_dithered_y(y1, d);
++        y2 = get_dithered_y(y2, d);
++        y3 = get_dithered_y(y3, d);
++#endif
 +        write_imagef(dst1, (int2)(x,     y), (float4)(y0, 0.0f, 0.0f, 1.0f));
 +        write_imagef(dst1, (int2)(x + 1, y), (float4)(y1, 0.0f, 0.0f, 1.0f));
 +        write_imagef(dst1, (int2)(x,     y + 1), (float4)(y2, 0.0f, 0.0f, 1.0f));
@@ -118,17 +142,34 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +#ifdef NEIGHBOR
 +__kernel void neighbor(__write_only image2d_t dst1,
 +                       __read_only  image2d_t src1,
++#ifdef ENABLE_DITHER
++                       __read_only  image2d_t dither,
++#endif
 +                                    int2      src_size)
 +{
-+    int2 dst_pos = { get_global_id(0), get_global_id(1) };
++    int xi = get_global_id(0);
++    int yi = get_global_id(1);
++
++    int2 dst_pos = { xi, yi };
 +    float2 dst_size = { get_global_size(0), get_global_size(1) };
 +
 +    float2 src_coord = (convert_float2(dst_pos) + 0.5f) * convert_float2(src_size) * native_recip(dst_size);
 +    int2 src_pos = convert_int2(floor(src_coord - 0.5f));
 +
++#ifdef ENABLE_DITHER
++    float2 ncoords = convert_float2((int2)(xi, yi)) *
++        (float2)(native_recip(get_image_width(dither)), native_recip(get_image_height(dither)));
++#endif
++
 +    int2 read_pos = clamp(src_pos, 0, src_size - 1);
-+    float4 c = read_imagef(src1, sampler2, read_pos);
-+    write_imagef(dst1, dst_pos, (float4)(c.x, 0.0f, 0.0f, 1.0f));
++    float y = read_imagef(src1, sampler2, read_pos).x;
++
++#ifdef ENABLE_DITHER
++    float d = read_imagef(dither, d_sampler, ncoords).x;
++    y = get_dithered_y(y, d);
++#endif
++
++    write_imagef(dst1, dst_pos, (float4)(y, 0.0f, 0.0f, 1.0f));
 +}
 +
 +__kernel void neighbor_uv(__write_only image2d_t dst2,
@@ -169,15 +210,26 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +#ifdef SCALE
 +__kernel void scale(__write_only image2d_t dst1,
 +                    __read_only  image2d_t src1,
++#ifdef ENABLE_DITHER
++                    __read_only  image2d_t dither,
++#endif
 +                    __constant   float    *cx,
 +                    __constant   float    *cy,
 +                                 int2      src_size)
 +{
-+    int2 dst_pos = { get_global_id(0), get_global_id(1) };
++    int xi = get_global_id(0);
++    int yi = get_global_id(1);
++
++    int2 dst_pos = { xi, yi };
 +    float2 dst_size = { get_global_size(0), get_global_size(1) };
 +
 +    float2 src_coord = (convert_float2(dst_pos) + 0.5f) * convert_float2(src_size) * native_recip(dst_size);
 +    int2 src_pos = convert_int2(floor(src_coord - 0.5f));
++
++#ifdef ENABLE_DITHER
++    float2 ncoords = convert_float2((int2)(xi, yi)) *
++        (float2)(native_recip(get_image_width(dither)), native_recip(get_image_height(dither)));
++#endif
 +
 +    int i, j;
 +    int filterw2 = filterw >> 1;
@@ -185,7 +237,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +    int2 src_size_edge = src_size - 1;
 +    float4 col1 = 0.0f, s1 = 0.0f;
 +
-+    #pragma unroll
++#pragma unroll
 +    for (i = 0; i < filterh; ++i, s1 = 0.0f) {
 +        #pragma unroll
 +        for (j = 0; j < filterw; ++j) {
@@ -195,7 +247,14 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +        }
 +        col1 += s1 * cy[dst_pos.y * filterh + i];
 +    }
-+    write_imagef(dst1, dst_pos, (float4)(col1.x, 0.0f, 0.0f, 1.0f));
++
++    float y = col1.x;
++#ifdef ENABLE_DITHER
++    float d = read_imagef(dither, d_sampler, ncoords).x;
++    y = get_dithered_y(y, d);
++#endif
++
++    write_imagef(dst1, dst_pos, (float4)(y, 0.0f, 0.0f, 1.0f));
 +}
 +
 +__kernel void scale_uv(__write_only image2d_t dst2,
@@ -222,7 +281,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/scale.cl
 +    int2 src_size_edge = src_size - 1;
 +    float4 col2 = 0.0f, col3 = 0.0f, s2 = 0.0f, s3 = 0.0f;
 +
-+    #pragma unroll
++#pragma unroll
 +    for (i = 0; i < filterh; ++i, s2 = s3 = 0.0f) {
 +        #pragma unroll
 +        for (j = 0; j < filterw; ++j) {
@@ -272,7 +331,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
-@@ -0,0 +1,707 @@
+@@ -0,0 +1,770 @@
 +/*
 + * Copyright (c) 2018 Gabriel Machado
 + * Copyright (c) 2021 NyanMisaka
@@ -294,6 +353,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
++#include "libavutil/avassert.h"
 +#include "libavutil/common.h"
 +#include "libavutil/imgutils.h"
 +#include "libavutil/opt.h"
@@ -305,6 +365,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +#include "opencl_source.h"
 +#include "scale_eval.h"
 +#include "video.h"
++#include "dither_matrix.h"
 +
 +#define OPENCL_SOURCE_NB 2
 +
@@ -345,6 +406,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +
 +    cl_command_queue command_queue;
 +    cl_mem           cx, cy;
++    cl_mem           dither_image;
 +    cl_kernel        kernel;
 +    cl_kernel        kernel_uv;
 +    const char      *kernel_name;
@@ -476,6 +538,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +    ScaleOpenCLContext *ctx = avctx->priv;
 +    AVBPrint header;
 +    const char *opencl_sources[OPENCL_SOURCE_NB];
++    size_t m_origin[3] = {0};
++    size_t m_region[3] = {ff_fruit_dither_size, ff_fruit_dither_size, 1};
++    size_t m_row_pitch = ff_fruit_dither_size * sizeof(ff_fruit_dither_matrix[0]);
++    cl_event event;
 +    cl_int cle;
 +    int i, j, err;
 +    float scalex, scaley;
@@ -585,6 +651,12 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +    if (ctx->out_planes > 2)
 +        av_bprintf(&header, "#define NON_SEMI_PLANAR_OUT\n");
 +
++    if (ctx->in_desc->comp[0].depth > ctx->out_desc->comp[0].depth) {
++        av_bprintf(&header, "#define ENABLE_DITHER\n");
++        av_bprintf(&header, "__constant float dither_size2 = %f;\n", (float)(ff_fruit_dither_size * ff_fruit_dither_size));
++        av_bprintf(&header, "__constant float dither_quantization = %f;\n", (float)((1 << ctx->out_desc->comp[0].depth) - 1));
++    }
++
 +    av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
 +    opencl_sources[0] = header.str;
 +    opencl_sources[1] = ff_opencl_source_scale;
@@ -601,6 +673,41 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +        av_log(avctx, AV_LOG_ERROR, "Failed to create OpenCL command queue: %d.\n", cle);
 +        err = AVERROR(EIO);
 +        goto fail;
++    }
++
++    if (ctx->in_desc->comp[0].depth > ctx->out_desc->comp[0].depth) {
++        av_assert0(sizeof(ff_fruit_dither_matrix) == sizeof(ff_fruit_dither_matrix[0]) * ff_fruit_dither_size * ff_fruit_dither_size);
++
++        cl_image_format image_format = {
++            .image_channel_data_type = CL_UNORM_INT16,
++            .image_channel_order     = CL_R,
++        };
++        cl_image_desc image_desc = {
++            .image_type      = CL_MEM_OBJECT_IMAGE2D,
++            .image_width     = ff_fruit_dither_size,
++            .image_height    = ff_fruit_dither_size,
++            .image_row_pitch = 0,
++        };
++
++        ctx->dither_image = clCreateImage(ctx->ocf.hwctx->context, CL_MEM_READ_WRITE,
++                                          &image_format, &image_desc, NULL, &cle);
++        if (!ctx->dither_image) {
++            av_log(avctx, AV_LOG_ERROR, "Failed to create image for "
++                   "dither matrix: %d.\n", cle);
++            err = AVERROR(EIO);
++            goto fail;
++        }
++
++        cle = clEnqueueWriteImage(ctx->command_queue,
++                                  ctx->dither_image,
++                                  CL_FALSE, m_origin, m_region,
++                                  m_row_pitch, 0,
++                                  ff_fruit_dither_matrix,
++                                  0, NULL, &event);
++        CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to enqueue write of dither matrix image: %d.\n", cle);
++
++        cle = clWaitForEvents(1, &event);
++        CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to wait for event completion: %d.\n", cle);
 +    }
 +
 +    ctx->kernel = clCreateKernel(ctx->ocf.program, ctx->kernel_name, &cle);
@@ -630,6 +737,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +        clReleaseKernel(ctx->kernel);
 +    if (ctx->kernel_uv)
 +        clReleaseKernel(ctx->kernel_uv);
++    if (event)
++        clReleaseEvent(event);
++    if (ctx->dither_image)
++        clReleaseMemObject(ctx->dither_image);
 +    if (ctx->cx)
 +        clReleaseMemObject(ctx->cx);
 +    if (ctx->cy)
@@ -799,6 +910,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +            CL_SET_KERNEL_ARG(ctx->kernel, idx_arg1++, cl_mem, &output->data[2]);
 +        if (ctx->in_planes > 2)
 +            CL_SET_KERNEL_ARG(ctx->kernel, idx_arg1++, cl_mem, &input->data[2]);
++        if (ctx->dither_image)
++            CL_SET_KERNEL_ARG(ctx->kernel, idx_arg1++, cl_mem, &ctx->dither_image);
 +
 +        // conv_yuv
 +        global_work[0] = output->width / x_subsample;
@@ -822,6 +935,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +            CL_SET_KERNEL_ARG(ctx->kernel_uv, idx_arg1++, cl_mem, &input->data[2]);
 +
 +        idx_arg2 = 2;
++        if (ctx->dither_image)
++            CL_SET_KERNEL_ARG(ctx->kernel, idx_arg2++, cl_mem, &ctx->dither_image);
 +        if (ctx->algorithm != F_NEIGHBOR) {
 +            CL_SET_KERNEL_ARG(ctx->kernel, idx_arg2++, cl_mem, &ctx->cx);
 +            CL_SET_KERNEL_ARG(ctx->kernel, idx_arg2++, cl_mem, &ctx->cy);
@@ -918,6 +1033,13 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +        if (cle != CL_SUCCESS)
 +            av_log(avctx, AV_LOG_ERROR, "Failed to release "
 +            "weights buffer: %d.\n", cle);
++    }
++
++    if (ctx->dither_image) {
++        cle = clReleaseMemObject(ctx->dither_image);
++        if (cle != CL_SUCCESS)
++            av_log(avctx, AV_LOG_ERROR, "Failed to release "
++            "dither image: %d.\n", cle);
 +    }
 +
 +    ff_opencl_filter_uninit(avctx);
