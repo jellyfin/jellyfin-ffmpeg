@@ -28,7 +28,7 @@
 0028-add-fixes-for-vaapi-mapping-error.patch
 0029-add-fixes-for-hevc-vaapi-encoding-on-tgl.patch
 0030-add-fixes-for-vulkan-and-libplacebo.patch
-0031-add-webp-support-for-id3v2.patch
+0031-add-multiple-values-tags-and-webp-support-for-id3v2.patch
 0032-remove-fdk-aac-from-nonfree.patch
 0033-add-fixes-for-vulkan-scale-and-overlay-filters.patch
 0034-add-hevc-dovi-sidedata-to-hlsenc.patch
