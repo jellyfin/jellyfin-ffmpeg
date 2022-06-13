@@ -359,6 +359,8 @@ prepare_extra_amd64() {
         sed -i 's|handleVAEncPackedHeaderDataBufferType(context, buf);||g' ${MESA_VA_PIC}
         sed -i 's|if (u_reduce_video_profile(ProfileToPipe(profile)) == PIPE_VIDEO_FORMAT_HEVC)||g' ${MESA_VA_CONF}
         sed -i 's|value \|= VA_ENC_PACKED_HEADER_SEQUENCE;||g' ${MESA_VA_CONF}
+        # Force reporting packed headers are supported
+        sed -i 's|value = VA_ENC_PACKED_HEADER_NONE;|value = 1;|g' ${MESA_VA_CONF}
         meson setup mesa-${mesa_ver} mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
