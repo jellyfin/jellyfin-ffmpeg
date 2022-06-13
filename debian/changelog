@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (5.0.1-6) unstable; urgency=medium
+
+  * Fix using hwupload with hwmap on d3d11va.
+  * Fix the unsupported subscripted access on nvidia.
+  * Update dependencies.
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 13 Jun 2022 22:50:13 +0800
+
 jellyfin-ffmpeg (5.0.1-5) unstable; urgency=medium
 
   * Enable chromaprint.
