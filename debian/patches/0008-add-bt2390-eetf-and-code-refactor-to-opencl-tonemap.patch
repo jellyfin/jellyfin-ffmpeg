@@ -469,7 +469,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/tonemap.cl
  
      // Rescale the variables in order to bring it into a representation where
      // 1.0 represents the dst_peak. This is because all of the tone mapping
-@@ -178,95 +114,231 @@ float3 map_one_pixel_rgb(float3 rgb, flo
+@@ -178,95 +114,232 @@ float3 map_one_pixel_rgb(float3 rgb, flo
  
      float sig_old = sig;
  
@@ -555,7 +555,9 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/tonemap.cl
 +{
 +    int i;
 +    float s;
-+    float3 sig;
++    float3 sig = clamp(yuv.xyz, 0.0f, 1.0f);
++    float sig_arr[3] = {sig.x, sig.y, sig.z};
++    float yuv_arr[3];
 +    float4 coeffs;
 +    float dovi_num_pivots, dovi_has_mmr, dovi_has_poly;
 +    float dovi_mmr_single, dovi_min_order, dovi_max_order;
@@ -564,7 +566,6 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/tonemap.cl
 +    __global float *dovi_pivots;
 +    __global float4 *dovi_coeffs, *dovi_mmr;
 +
-+    sig = clamp(yuv.xyz, 0.0f, 1.0f);
 +#pragma unroll
 +    for (i = 0; i < 3; i++) {
 +        dovi_params = src_dovi_params + i*8;
@@ -580,7 +581,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/tonemap.cl
 +        dovi_lo = dovi_params[6];
 +        dovi_hi = dovi_params[7];
 +
-+        s = sig[i];
++        s = sig_arr[i];
 +        if (dovi_num_pivots > 2) {
 +            coeffs = mix(mix(mix(dovi_coeffs[0], dovi_coeffs[1], (float4)(s >= dovi_pivots[0])),
 +                             mix(dovi_coeffs[2], dovi_coeffs[3], (float4)(s >= dovi_pivots[2])),
@@ -604,10 +605,10 @@ Index: jellyfin-ffmpeg/libavfilter/opencl/tonemap.cl
 +        } else {
 +            RESHAPE_MMR_FUNC
 +        }
-+        yuv[i] = clamp(s, dovi_lo, dovi_hi);
++        yuv_arr[i] = clamp(s, dovi_lo, dovi_hi);
 +    }
 +
-+    return yuv;
++    return (float3)(yuv_arr[0], yuv_arr[1], yuv_arr[2]);
 +}
 +#undef RESHAPE_POLY_FUNC
 +#undef RESHAPE_MMR_FUNC

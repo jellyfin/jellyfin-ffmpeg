@@ -71,6 +71,8 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           script_stop: true
           script: |-
+            set -o errexit
+            set -o xtrace
             tag="${{ github.event.release.tag_name }}"
             version="${tag#v}"
             basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"

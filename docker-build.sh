@@ -151,19 +151,25 @@ prepare_extra_amd64() {
 
     # LIBDRM
     pushd ${SOURCE_DIR}
-    git clone -b libdrm-2.4.110 --depth=1 https://gitlab.freedesktop.org/mesa/drm.git
-    meson setup drm drm_build \
+    mkdir libdrm
+    pushd libdrm
+    libdrm_ver="2.4.111"
+    libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
+    wget ${libdrm_link} -O libdrm.tar.xz
+    tar xaf libdrm.tar.xz
+    meson setup libdrm-${libdrm_ver} drm_build \
         --prefix=${TARGET_DIR} \
         --libdir=lib \
         --buildtype=release \
         -D{amdgpu,radeon,intel,udev}=true \
-        -D{libkms,valgrind,freedreno,vc4,vmwgfx,nouveau,man-pages}=false
+        -D{valgrind,freedreno,vc4,vmwgfx,nouveau,man-pages}=false
     meson configure drm_build
     ninja -C drm_build install
-    cp ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/drm
-    cp ${TARGET_DIR}/share/libdrm/*.ids ${SOURCE_DIR}/drm
-    echo "drm/libdrm*.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
-    echo "drm/*.ids usr/lib/jellyfin-ffmpeg/share/libdrm" >> ${DPKG_INSTALL_LIST}
+    cp ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/libdrm
+    cp ${TARGET_DIR}/share/libdrm/*.ids ${SOURCE_DIR}/libdrm
+    echo "libdrm/libdrm*.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    echo "libdrm/*.ids usr/lib/jellyfin-ffmpeg/share/libdrm" >> ${DPKG_INSTALL_LIST}
+    popd
     popd
 
     # LIBVA
@@ -224,7 +230,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-22.4.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-22.4.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -244,7 +250,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-22.4.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-22.4.3 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -258,7 +264,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-22.4.2 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-22.4.3 --depth=1 https://github.com/intel/media-driver
     pushd media-driver
     sed -i 's|find_package(X11)||g' media_softlet/media_top_cmake.cmake media_driver/media_top_cmake.cmake
     mkdir build && pushd build
@@ -278,7 +284,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.215 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.216 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -291,7 +297,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.215 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.216 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -340,15 +346,22 @@ prepare_extra_amd64() {
         # llvm >= 11
         apt-get install -y llvm-11-dev
         pushd ${SOURCE_DIR}
-        git clone -b mesa-22.0.4 --depth=1 https://gitlab.freedesktop.org/mesa/mesa.git
+        mkdir mesa
+        pushd mesa
+        mesa_ver="22.0.5"
+        mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
+        wget ${mesa_link} -O mesa.tar.xz
+        tar xaf mesa.tar.xz
         # disable the broken hevc packed header
-        MESA_VA_PIC=mesa/src/gallium/frontends/va/picture.c
-        MESA_VA_CONF=mesa/src/gallium/frontends/va/config.c
+        MESA_VA_PIC="mesa-${mesa_ver}/src/gallium/frontends/va/picture.c"
+        MESA_VA_CONF="mesa-${mesa_ver}/src/gallium/frontends/va/config.c"
         sed -i 's|handleVAEncPackedHeaderParameterBufferType(context, buf);||g' ${MESA_VA_PIC}
         sed -i 's|handleVAEncPackedHeaderDataBufferType(context, buf);||g' ${MESA_VA_PIC}
         sed -i 's|if (u_reduce_video_profile(ProfileToPipe(profile)) == PIPE_VIDEO_FORMAT_HEVC)||g' ${MESA_VA_CONF}
         sed -i 's|value \|= VA_ENC_PACKED_HEADER_SEQUENCE;||g' ${MESA_VA_CONF}
-        meson setup mesa mesa_build \
+        # Force reporting packed headers are supported
+        sed -i 's|value = VA_ENC_PACKED_HEADER_NONE;|value = 1;|g' ${MESA_VA_CONF}
+        meson setup mesa-${mesa_ver} mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
             --buildtype=release \
