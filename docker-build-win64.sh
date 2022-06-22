@@ -356,14 +356,13 @@ make install
 popd
 
 # ZIMG
-git clone --depth=1 https://github.com/sekrit-twc/zimg.git
+git clone -b release-3.0.4 --depth=1 https://github.com/sekrit-twc/zimg.git
 pushd zimg
 ./autogen.sh
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
     --disable-shared \
-    --enable-pic \
     --with-pic
 make -j$(nproc)
 make install

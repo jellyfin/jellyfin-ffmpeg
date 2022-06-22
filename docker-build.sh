@@ -79,7 +79,7 @@ prepare_extra_common() {
 
     # ZIMG
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/sekrit-twc/zimg
+    git clone -b release-3.0.4 --depth=1 https://github.com/sekrit-twc/zimg
     pushd zimg
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR} ${CROSS_OPT}
