@@ -456,7 +456,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +    float r = linearize(c.x);
 +    float g = linearize(c.y);
 +    float b = linearize(c.z);
-+    return make_float3(r, g, b);
++    return lrgb2lrgb(make_float3(r, g, b));
 +}
 +
 +static __inline__ __device__ float3 ycc2rgb(float y, float cb, float cr) {
