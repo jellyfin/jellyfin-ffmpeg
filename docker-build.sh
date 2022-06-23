@@ -40,19 +40,19 @@ prepare_extra_common() {
     if [ "${ARCH}" = "amd64" ]; then
         fftw3_optimizations="--enable-sse2 --enable-avx --enable-avx-128-fma --enable-avx2 --enable-avx512"
     else
-        fftw3_optimizations=""
+        fftw3_optimizations="--enable-neon"
     fi
     ./configure \
         ${CROSS_OPT} \
         --prefix=${TARGET_DIR} \
         --disable-{static,doc} \
-        --enable-{shared,threads,fortran} \
+        --enable-{shared,single,threads,fortran} \
         $fftw3_optimizations \
         --with-our-malloc \
         --with-combined-threads \
         --with-incoming-stack-boundary=2
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/fftw3
-    echo "fftw3${TARGET_DIR}/lib/libfftw3.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    echo "fftw3${TARGET_DIR}/lib/libfftw3f.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
@@ -69,7 +69,7 @@ prepare_extra_common() {
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DBUILD_{TOOLS,TESTS}=OFF \
-        -DFFT_LIB=fftw3 \
+        -DFFT_LIB=fftw3f \
         ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/chromaprint
     echo "chromaprint${TARGET_DIR}/lib/libchromaprint.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
