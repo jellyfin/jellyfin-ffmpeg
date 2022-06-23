@@ -12,7 +12,7 @@ PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
 CONFIG := --prefix=${TARGET_DIR} \
 	--target-os=linux \
-	--extra-libs='-lfftw3' \
+	--extra-libs='-lfftw3f' \
 	--extra-version=Jellyfin \
 	--disable-doc \
 	--disable-ffplay \

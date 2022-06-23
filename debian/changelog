@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (5.0.1-7) unstable; urgency=medium
+
+  * Switch to single precision fftw, enable neon for arm.
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 23 Jun 2022 19:19:17 +0800
+
 jellyfin-ffmpeg (5.0.1-6) unstable; urgency=medium
 
   * Fix using hwupload with hwmap on d3d11va.

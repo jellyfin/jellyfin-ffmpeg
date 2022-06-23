@@ -133,7 +133,7 @@ pushd fftw-${fftw3_ver}
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
     --disable-{shared,doc} \
-    --enable-{static,threads,fortran} \
+    --enable-{static,single,threads,fortran} \
     --enable-{sse2,avx,avx-128-fma,avx2,avx512} \
     --with-our-malloc \
     --with-combined-threads \
@@ -154,11 +154,11 @@ cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
     -DBUILD_{TOOLS,TESTS}=OFF \
-    -DFFT_LIB=fftw3 \
+    -DFFT_LIB=fftw3f \
     ..
 make -j$(nproc)
 make install
-FF_EXTRA_LIBS="-lfftw3 -lstdc++${FF_EXTRA_LIBS}"
+FF_EXTRA_LIBS="-lfftw3f -lstdc++${FF_EXTRA_LIBS}"
 FF_EXTRA_CFLAGS="-DCHROMAPRINT_NODLL${FF_EXTRA_CFLAGS}"
 popd
 popd
