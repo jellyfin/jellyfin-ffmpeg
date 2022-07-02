@@ -1,0 +1,136 @@
+Index: jellyfin-ffmpeg/fftools/ffmpeg.c
+===================================================================
+--- jellyfin-ffmpeg.orig/fftools/ffmpeg.c
++++ jellyfin-ffmpeg/fftools/ffmpeg.c
+@@ -130,6 +130,9 @@ static void do_video_stats(OutputStream
+ static BenchmarkTimeStamps get_benchmark_time_stamps(void);
+ static int64_t getmaxrss(void);
+ static int ifilter_has_all_input_formats(FilterGraph *fg);
++static int64_t gettime_relative_minus_pause(void);
++static void pause_transcoding(void);
++static void unpause_transcoding(void);
+ 
+ static int run_as_daemon  = 0;
+ static int nb_frames_dup = 0;
+@@ -158,6 +161,9 @@ int         nb_output_files   = 0;
+ FilterGraph **filtergraphs;
+ int        nb_filtergraphs;
+ 
++int64_t paused_start = 0;
++int64_t paused_time = 0;
++
+ #if HAVE_TERMIOS_H
+ 
+ /* init terminal so that we can grab keys */
+@@ -3840,12 +3846,28 @@ static void set_tty_echo(int on)
+ #endif
+ }
+ 
++static void pause_transcoding(void)
++{
++    if (!paused_start)
++        paused_start = av_gettime_relative();
++}
++
++static void unpause_transcoding(void)
++{
++    if (paused_start) {
++        paused_time += av_gettime_relative() - paused_start;
++        paused_start = 0;
++    }
++}
++
+ static int check_keyboard_interaction(int64_t cur_time)
+ {
+     int i, ret, key;
+     static int64_t last_time;
+-    if (received_nb_signals)
++    if (received_nb_signals) {
++        unpause_transcoding();
+         return AVERROR_EXIT;
++    }
+     /* read_key() returns 0 on EOF */
+     if(cur_time - last_time >= 100000 && !run_as_daemon){
+         key =  read_key();
+@@ -3868,6 +3890,11 @@ static int check_keyboard_interaction(in
+             do_pkt_dump = 1;
+         av_log_set_level(AV_LOG_DEBUG);
+     }
++    if (key == 'u' || key != -1) unpause_transcoding();
++    if (key == 'p'){
++        pause_transcoding();
++        fprintf(stderr, "\nTranscoding is paused. Press [u] to resume.\n");
++    }
+     if (key == 'c' || key == 'C'){
+         char buf[4096], target[64], command[256], arg[256] = {0};
+         double time;
+@@ -3948,7 +3975,9 @@ static int check_keyboard_interaction(in
+                         "C      Send/Queue command to all matching filters\n"
+                         "D      cycle through available debug modes\n"
+                         "h      dump packets/hex press to cycle through the 3 states\n"
++                        "p      pause transcoding\n"
+                         "q      quit\n"
++                        "u      unpause transcoding\n"
+                         "s      Show QP histogram\n"
+         );
+     }
+@@ -3964,6 +3993,11 @@ static void *input_thread(void *arg)
+     int ret = 0;
+ 
+     while (1) {
++        if (paused_start) {
++            av_usleep(1000); // Be more responsive to unpausing than main thread
++            continue;
++        }
++
+         ret = av_read_frame(f->ctx, pkt);
+ 
+         if (ret == AVERROR(EAGAIN)) {
+@@ -4553,6 +4587,11 @@ static int transcode_step(void)
+     InputStream  *ist = NULL;
+     int ret;
+ 
++    if (paused_start) {
++        av_usleep(10000);
++        return 0;
++    }
++
+     ost = choose_output();
+     if (!ost) {
+         if (got_eagain()) {
+@@ -4662,11 +4701,11 @@ static int transcode(void)
+ #endif
+ 
+     while (!received_sigterm) {
+-        int64_t cur_time= av_gettime_relative();
++        int64_t cur_time= gettime_relative_minus_pause();
+ 
+         /* if 'q' pressed, exits */
+         if (stdin_interaction)
+-            if (check_keyboard_interaction(cur_time) < 0)
++            if (check_keyboard_interaction(av_gettime_relative()) < 0)
+                 break;
+ 
+         /* check if there's any stream where output is still needed */
+@@ -4717,7 +4756,7 @@ static int transcode(void)
+     }
+ 
+     /* dump report by using the first video and audio streams */
+-    print_report(1, timer_start, av_gettime_relative());
++    print_report(1, timer_start, gettime_relative_minus_pause());
+ 
+     /* close the output files */
+     for (i = 0; i < nb_output_files; i++) {
+@@ -4792,6 +4831,12 @@ static int transcode(void)
+     return ret;
+ }
+ 
++static int64_t gettime_relative_minus_pause(void)
++{
++    return av_gettime_relative() - paused_time -
++            (paused_start ? av_gettime_relative() - paused_start : 0);
++}
++
+ static BenchmarkTimeStamps get_benchmark_time_stamps(void)
+ {
+     BenchmarkTimeStamps time_stamps = { av_gettime_relative() };
