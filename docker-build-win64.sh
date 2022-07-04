@@ -27,7 +27,7 @@ popd
 # ICONV
 mkdir iconv
 pushd iconv
-iconv_ver="1.16"
+iconv_ver="1.17"
 iconv_link="https://ftp.gnu.org/pub/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
 wget ${iconv_link} -O iconv.tar.gz
 tar xaf iconv.tar.gz
@@ -69,7 +69,7 @@ popd
 # FREETYPE
 mkdir freetype
 pushd freetype
-ft_ver="2.11.1"
+ft_ver="2.12.1"
 ft_link="https://sourceforge.net/projects/freetype/files/freetype2/${ft_ver}/freetype-${ft_ver}.tar.xz/download"
 wget ${ft_link} -O ft.tar.gz
 tar xaf ft.tar.gz
@@ -185,7 +185,7 @@ popd
 # FONTCONFIG
 mkdir fontconfig
 pushd fontconfig
-fc_ver="2.13.96"
+fc_ver="2.14.0"
 fc_link="https://www.freedesktop.org/software/fontconfig/release/fontconfig-${fc_ver}.tar.xz"
 wget ${fc_link} -O fc.tar.gz
 tar xaf fc.tar.gz
@@ -482,7 +482,7 @@ mv * ${FF_DEPS_PREFIX}/include/CL
 popd
 
 # OpenCL ICD loader
-git clone -b v2022.01.04 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+git clone -b v2022.05.18 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 pushd OpenCL-ICD-Loader
 mkdir build
 pushd build
@@ -490,10 +490,9 @@ cmake \
     -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
     -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
     -DOPENCL_ICD_LOADER_HEADERS_DIR=${FF_DEPS_PREFIX}/include \
     -DOPENCL_ICD_LOADER_{PIC,DISABLE_OPENCLON12}=ON \
-    -DOPENCL_ICD_LOADER_{BUILD_TESTING,REQUIRE_WDK}=OFF \
+    -DOPENCL_ICD_LOADER_{BUILD_SHARED_LIBS,BUILD_TESTING,REQUIRE_WDK}=OFF \
     ..
 make -j$(nproc)
 make install

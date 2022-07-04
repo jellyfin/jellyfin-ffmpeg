@@ -1,3 +1,12 @@
+jellyfin-ffmpeg (5.0.1-8) unstable; urgency=medium
+
+  * Add pause support for ffmpeg by using p key.
+  * Faster HDR/DoVi tonemap on low-power devices.
+  * Add simple anti-aliasing for ocl/cuda tonemap.
+  * Update dependencies.
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 1 Jul 2022 01:49:03 +0800
+
 jellyfin-ffmpeg (5.0.1-7) unstable; urgency=medium
 
   * Switch to single precision fftw, enable neon for arm.
