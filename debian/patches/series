@@ -34,3 +34,4 @@
 0034-add-hevc-dovi-sidedata-to-hlsenc.patch
 0035-add-windows-long-path-support-from-upstream.patch
 0036-add-pause-support-for-ffmpeg.patch
+0037-add-misc-fixes-for-nvidia-from-upstream.patch
