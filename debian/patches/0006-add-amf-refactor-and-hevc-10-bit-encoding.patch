@@ -1568,7 +1568,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/amfenc_h264.c
 +++ jellyfin-ffmpeg/libavcodec/amfenc_h264.c
-@@ -16,111 +16,102 @@
+@@ -16,111 +16,103 @@
   * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
   */
  
@@ -1674,6 +1674,8 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
 -
 -    { "me_half_pel",    "Enable ME Half Pixel",                 OFFSET(me_half_pel),   AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1, VE },
 -    { "me_quarter_pel", "Enable ME Quarter Pixel",              OFFSET(me_quarter_pel),AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1, VE },
+-
+-    { "aud",            "Inserts AU Delimiter NAL unit",        OFFSET(aud)          ,AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
 +static const enum AVPixelFormat ff_amfenc_h264_pix_fmts[] = {
 +    AV_PIX_FMT_NV12,
 +    AV_PIX_FMT_YUV420P,
@@ -1686,7 +1688,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
 +    AV_PIX_FMT_NONE
 +};
  
--    { "aud",            "Inserts AU Delimiter NAL unit",        OFFSET(aud)          ,AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
+-    { "log_to_dbg",     "Enable AMF logging to debug output",   OFFSET(log_to_dbg)    , AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
 +static const AVOption options[] = {
 +    { "usage",            "Encoder Usage",                                        OFFSET(usage),                AV_OPT_TYPE_INT,  { .i64 = AMF_VIDEO_ENCODER_USAGE_TRANSCODING }, AMF_VIDEO_ENCODER_USAGE_TRANSCODING, AMF_VIDEO_ENCODER_USAGE_LOW_LATENCY_HIGH_QUALITY, VE, "usage" },
 +        ENUM("transcoding",          "Transcoding, video editing",                AMF_VIDEO_ENCODER_USAGE_TRANSCODING,              "usage"),
@@ -1757,16 +1759,16 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
 +        ENUM("auto",                 "Automatic",                                 AMF_VIDEO_ENCODER_UNDEFINED, "coder"),
 +        ENUM("cavlc",                "Context Adaptive Variable-Length Coding",   AMF_VIDEO_ENCODER_CALV,      "coder"),
 +        ENUM("cabac",                "Context Adaptive Binary Arithmetic Coding", AMF_VIDEO_ENCODER_CABAC,     "coder"),
- 
--    { "log_to_dbg",     "Enable AMF logging to debug output",   OFFSET(log_to_dbg)    , AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
++
 +    { "me_half_pel",      "Enable ME Half Pixel",                                 OFFSET(me_half_pel),          AV_OPT_TYPE_BOOL, { .i64 = 1  },  0,   1, VE },
 +    { "me_quarter_pel",   "Enable ME Quarter Pixel",                              OFFSET(me_quarter_pel),       AV_OPT_TYPE_BOOL, { .i64 = 1  },  0,   1, VE },
++    { "aud",              "Inserts AU Delimiter NAL unit",                        OFFSET(aud),                  AV_OPT_TYPE_BOOL, { .i64 = 0  },  0,   1, VE },
  
 +    { "log_to_dbg",       "Enable AMF logging to debug output",                   OFFSET(log_to_dbg),           AV_OPT_TYPE_BOOL, { .i64 = 0  },  0,   1, VE },
      { NULL }
  };
  
-@@ -128,7 +119,7 @@ static av_cold int amf_encode_init_h264(
+@@ -128,7 +120,7 @@ static av_cold int amf_encode_init_h264(
  {
      int                              ret = 0;
      AMF_RESULT                       res = AMF_OK;
@@ -1775,7 +1777,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      AMFVariantStruct                 var = { 0 };
      amf_int64                        profile = 0;
      amf_int64                        profile_level = 0;
-@@ -136,13 +127,13 @@ static av_cold int amf_encode_init_h264(
+@@ -136,13 +128,13 @@ static av_cold int amf_encode_init_h264(
      AMFGuid                          guid;
      AMFRate                          framerate;
      AMFSize                          framesize = AMFConstructSize(avctx->width, avctx->height);
@@ -1792,7 +1794,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  
      if ((ret = ff_amf_encode_init(avctx)) != 0)
          return ret;
-@@ -171,62 +162,84 @@ static av_cold int amf_encode_init_h264(
+@@ -171,62 +163,84 @@ static av_cold int amf_encode_init_h264(
          profile = AMF_VIDEO_ENCODER_PROFILE_CONSTRAINED_HIGH;
          break;
      }
@@ -1886,8 +1888,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
 +        ctx->rate_control_mode = probed_rc_mode;
 +        av_log(ctx, AV_LOG_WARNING, "QVBR is not supported by this GPU, switch to auto detect rate control method\n");
 +    }
- 
--    /// VBV Buffer
++
 +    // High Motion Quality Boost mode
 +    if (ctx->rate_control_mode == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_QUALITY_VBR) {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_HIGH_MOTION_QUALITY_BOOST_ENABLE, 0);
@@ -1898,12 +1899,13 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
 +    } else {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_HIGH_MOTION_QUALITY_BOOST_ENABLE, !!ctx->enable_hmqb);
 +    }
-+
+ 
+-    /// VBV Buffer
 +    // VBV Buffer
      if (avctx->rc_buffer_size != 0) {
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_VBV_BUFFER_SIZE, avctx->rc_buffer_size);
          if (avctx->rc_initial_buffer_occupancy != 0) {
-@@ -236,7 +249,8 @@ static av_cold int amf_encode_init_h264(
+@@ -236,7 +250,8 @@ static av_cold int amf_encode_init_h264(
              AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_INITIAL_VBV_BUFFER_FULLNESS, amf_buffer_fullness);
          }
      }
@@ -1913,7 +1915,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MAX_AU_SIZE, ctx->max_au_size);
  
      if (ctx->max_au_size)
-@@ -246,7 +260,25 @@ static av_cold int amf_encode_init_h264(
+@@ -246,7 +261,25 @@ static av_cold int amf_encode_init_h264(
      if (ctx->rate_control_mode == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CONSTANT_QP) {
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MIN_QP, 0);
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MAX_QP, 51);
@@ -1939,7 +1941,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
          if (avctx->qmin != -1) {
              int qval = avctx->qmin > 51 ? 51 : avctx->qmin;
              AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MIN_QP, qval);
-@@ -266,31 +298,50 @@ static av_cold int amf_encode_init_h264(
+@@ -266,31 +299,50 @@ static av_cold int amf_encode_init_h264(
  
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_TARGET_BITRATE, avctx->bit_rate);
  
@@ -1953,15 +1955,15 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      } else if (ctx->rate_control_mode == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR) {
 -        av_log(ctx, AV_LOG_WARNING, "rate control mode is PEAK_CONSTRAINED_VBR but rc_max_rate is not set\n");
 +        av_log(ctx, AV_LOG_WARNING, "Rate control method is PEAK_CONSTRAINED_VBR but rc_max_rate is not set\n");
-+    }
-+
+     }
+ 
 +    // Color Range (Partial/TV/MPEG or Full/PC/JPEG)
 +    if (avctx->color_range == AVCOL_RANGE_JPEG) {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_FULL_RANGE_COLOR, 1);
 +    } else {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_FULL_RANGE_COLOR, 0);
-     }
- 
++    }
++
 +    // Set output color profile, transfer and primaries
 +    if (ctx->out_color_profile > AMF_VIDEO_CONVERTER_COLOR_PROFILE_UNKNOWN)
 +        AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_OUTPUT_COLOR_PROFILE, ctx->out_color_profile);
@@ -1996,7 +1998,15 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  
      // B-Frames
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_B_PIC_PATTERN, avctx->max_b_frames);
-@@ -338,9 +389,8 @@ static av_cold int amf_encode_init_h264(
+@@ -301,6 +353,7 @@ static av_cold int amf_encode_init_h264(
+         avctx->max_b_frames = (int)var.int64Value;
+     }
+     if (avctx->max_b_frames) {
++        AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MAX_CONSECUTIVE_BPICTURES, avctx->max_b_frames);
+         AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_B_PIC_DELTA_QP, ctx->b_frame_delta_qp);
+         AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_B_REFERENCE_ENABLE, !!ctx->b_frame_ref);
+         AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_REF_B_PIC_DELTA_QP, ctx->ref_b_frame_delta_qp);
+@@ -338,9 +391,8 @@ static av_cold int amf_encode_init_h264(
      guid = IID_AMFBuffer();
  
      res = var.pInterface->pVtbl->QueryInterface(var.pInterface, &guid, (void**)&buffer); // query for buffer interface
@@ -2007,7 +2017,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_BUG, "QueryInterface(IID_AMFBuffer) failed with error %d\n", res);
  
      avctx->extradata_size = (int)buffer->pVtbl->GetSize(buffer);
-@@ -359,15 +409,15 @@ static av_cold int amf_encode_init_h264(
+@@ -359,15 +411,15 @@ static av_cold int amf_encode_init_h264(
  }
  
  static const AVCodecDefault defaults[] = {
@@ -2032,7 +2042,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  };
  
  static const AVClass h264_amf_class = {
-@@ -385,13 +435,13 @@ const AVCodec ff_h264_amf_encoder = {
+@@ -385,13 +437,13 @@ const AVCodec ff_h264_amf_encoder = {
      .init           = amf_encode_init_h264,
      .receive_packet = ff_amf_receive_packet,
      .close          = ff_amf_encode_close,
@@ -2121,7 +2131,8 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
 -    { "me_half_pel",    "Enable ME Half Pixel",                     OFFSET(me_half_pel),   AV_OPT_TYPE_BOOL,{ .i64 = 1   },  0, 1, VE },
 -    { "me_quarter_pel", "Enable ME Quarter Pixel ",                 OFFSET(me_quarter_pel),AV_OPT_TYPE_BOOL,{ .i64 = 1   },  0, 1, VE },
 +#define ENUM(a, b, c, d) { a, b, 0, AV_OPT_TYPE_CONST, { .i64 = c }, 0, 0, VE, d }
-+
+ 
+-    { "aud",            "Inserts AU Delimiter NAL unit",            OFFSET(aud)           ,AV_OPT_TYPE_BOOL,{ .i64 = 0 }, 0, 1, VE },
 +static const enum AVPixelFormat ff_amfenc_hevc_pix_fmts[] = {
 +    AV_PIX_FMT_NV12,
 +    AV_PIX_FMT_YUV420P,
@@ -2135,7 +2146,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
 +    AV_PIX_FMT_NONE
 +};
  
--    { "aud",            "Inserts AU Delimiter NAL unit",            OFFSET(aud)           ,AV_OPT_TYPE_BOOL,{ .i64 = 0 }, 0, 1, VE },
+-    { "log_to_dbg",     "Enable AMF logging to debug output",   OFFSET(log_to_dbg), AV_OPT_TYPE_BOOL,{ .i64 = 0 }, 0, 1, VE },
 +static const AVOption options[] = {
 +    { "usage",                 "Encoder Usage",                                        OFFSET(usage),                 AV_OPT_TYPE_INT,  { .i64 = AMF_VIDEO_ENCODER_HEVC_USAGE_TRANSCODING }, AMF_VIDEO_ENCODER_HEVC_USAGE_TRANSCODING, AMF_VIDEO_ENCODER_HEVC_USAGE_LOW_LATENCY_HIGH_QUALITY, VE, "usage" },
 +        ENUM("transcoding",     "Transcoding, video editing",           AMF_VIDEO_ENCODER_HEVC_USAGE_TRANSCODING,              "usage"),
@@ -2202,8 +2213,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
 +    { "skip_frame",            "Rate Control Based Frame Skip",                        OFFSET(skip_frame),            AV_OPT_TYPE_BOOL, { .i64 = 0  },  0, 1, VE },
 +    { "me_half_pel",           "Enable ME Half Pixel",                                 OFFSET(me_half_pel),           AV_OPT_TYPE_BOOL, { .i64 = 1  },  0, 1, VE },
 +    { "me_quarter_pel",        "Enable ME Quarter Pixel",                              OFFSET(me_quarter_pel),        AV_OPT_TYPE_BOOL, { .i64 = 1  },  0, 1, VE },
- 
--    { "log_to_dbg",     "Enable AMF logging to debug output",   OFFSET(log_to_dbg), AV_OPT_TYPE_BOOL,{ .i64 = 0 }, 0, 1, VE },
++    { "aud",                   "Inserts AU Delimiter NAL unit",                        OFFSET(aud),                   AV_OPT_TYPE_BOOL, { .i64 = 0  },  0, 1, VE },
 +    { "log_to_dbg",            "Enable AMF logging to debug output",                   OFFSET(log_to_dbg),            AV_OPT_TYPE_BOOL, { .i64 = 0  },  0, 1, VE },
      { NULL }
  };
@@ -2370,16 +2380,16 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      } else if (ctx->rate_control_mode == AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR) {
 -        av_log(ctx, AV_LOG_WARNING, "rate control mode is PEAK_CONSTRAINED_VBR but rc_max_rate is not set\n");
 +        av_log(ctx, AV_LOG_WARNING, "Rate control method is PEAK_CONSTRAINED_VBR but rc_max_rate is not set\n");
-+    }
-+
+     }
+ 
+-    // init encoder
 +    // Color Range (Studio/Partial/TV/MPEG or Full/PC/JPEG)
 +    if (avctx->color_range == AVCOL_RANGE_JPEG) {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE_FULL);
 +    } else {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE_STUDIO);
-     }
- 
--    // init encoder
++    }
++
 +    // Output color profile, transfer and primaries
 +    if (ctx->out_color_profile > AMF_VIDEO_CONVERTER_COLOR_PROFILE_UNKNOWN)
 +        AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_OUTPUT_COLOR_PROFILE, ctx->out_color_profile);
