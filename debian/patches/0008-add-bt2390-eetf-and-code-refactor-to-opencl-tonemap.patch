@@ -1403,7 +1403,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
 +            .image_row_pitch = 0,
 +        };
 +
-+        ctx->dither_image = clCreateImage(ctx->ocf.hwctx->context, CL_MEM_READ_WRITE,
++        ctx->dither_image = clCreateImage(ctx->ocf.hwctx->context, CL_MEM_READ_ONLY,
 +                                          &image_format, &image_desc, NULL, &cle);
 +        if (!ctx->dither_image) {
 +            av_log(avctx, AV_LOG_ERROR, "Failed to create image for "
@@ -1433,10 +1433,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
 -                       NULL, &cle);
 -    CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create util buffer: %d.\n", cle);
 +    if (ctx->dovi) {
-+        CL_CREATE_BUFFER_FLAGS(ctx, dovi_params, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, 3*dovi_params_size, NULL);
-+        CL_CREATE_BUFFER_FLAGS(ctx, dovi_pivots, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, 3*dovi_pivots_size, NULL);
-+        CL_CREATE_BUFFER_FLAGS(ctx, dovi_coeffs, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, 3*dovi_coeffs_size, NULL);
-+        CL_CREATE_BUFFER_FLAGS(ctx, dovi_mmr, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR, 3*dovi_mmr_size, NULL);
++        CL_CREATE_BUFFER_FLAGS(ctx, dovi_params, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, 3*dovi_params_size, NULL);
++        CL_CREATE_BUFFER_FLAGS(ctx, dovi_pivots, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, 3*dovi_pivots_size, NULL);
++        CL_CREATE_BUFFER_FLAGS(ctx, dovi_coeffs, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, 3*dovi_coeffs_size, NULL);
++        CL_CREATE_BUFFER_FLAGS(ctx, dovi_mmr, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, 3*dovi_mmr_size, NULL);
 +    }
  
      ctx->initialised = 1;
