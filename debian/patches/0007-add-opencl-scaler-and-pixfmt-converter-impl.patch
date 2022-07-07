@@ -689,7 +689,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 +            .image_row_pitch = 0,
 +        };
 +
-+        ctx->dither_image = clCreateImage(ctx->ocf.hwctx->context, CL_MEM_READ_WRITE,
++        ctx->dither_image = clCreateImage(ctx->ocf.hwctx->context, CL_MEM_READ_ONLY,
 +                                          &image_format, &image_desc, NULL, &cle);
 +        if (!ctx->dither_image) {
 +            av_log(avctx, AV_LOG_ERROR, "Failed to create image for "
