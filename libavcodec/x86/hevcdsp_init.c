@@ -25,7 +25,6 @@
 #include "libavutil/mem_internal.h"
 #include "libavutil/x86/asm.h"
 #include "libavutil/x86/cpu.h"
-#include "libavcodec/get_bits.h" /* required for hevcdsp.h GetBitContext */
 #include "libavcodec/hevcdsp.h"
 #include "libavcodec/x86/hevcdsp.h"
 
@@ -65,7 +64,6 @@ void ff_hevc_idct_ ## W ## _dc_10_ ## opt(int16_t *coeffs); \
 void ff_hevc_idct_ ## W ## _dc_12_ ## opt(int16_t *coeffs)
 
 IDCT_DC_FUNCS(4x4,   mmxext);
-IDCT_DC_FUNCS(8x8,   mmxext);
 IDCT_DC_FUNCS(8x8,   sse2);
 IDCT_DC_FUNCS(16x16, sse2);
 IDCT_DC_FUNCS(32x32, sse2);
@@ -713,7 +711,6 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
     if (bit_depth == 8) {
         if (EXTERNAL_MMXEXT(cpu_flags)) {
             c->idct_dc[0] = ff_hevc_idct_4x4_dc_8_mmxext;
-            c->idct_dc[1] = ff_hevc_idct_8x8_dc_8_mmxext;
 
             c->add_residual[0] = ff_hevc_add_residual_4_8_mmxext;
         }
@@ -878,11 +875,18 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
 
             c->add_residual[3] = ff_hevc_add_residual_32_8_avx2;
         }
+        if (EXTERNAL_AVX512ICL(cpu_flags) && ARCH_X86_64) {
+            c->put_hevc_qpel[1][0][1] = ff_hevc_put_hevc_qpel_h4_8_avx512icl;
+            c->put_hevc_qpel[3][0][1] = ff_hevc_put_hevc_qpel_h8_8_avx512icl;
+            c->put_hevc_qpel[5][0][1] = ff_hevc_put_hevc_qpel_h16_8_avx512icl;
+            c->put_hevc_qpel[7][0][1] = ff_hevc_put_hevc_qpel_h32_8_avx512icl;
+            c->put_hevc_qpel[9][0][1] = ff_hevc_put_hevc_qpel_h64_8_avx512icl;
+            c->put_hevc_qpel[3][1][1] = ff_hevc_put_hevc_qpel_hv8_8_avx512icl;
+        }
     } else if (bit_depth == 10) {
         if (EXTERNAL_MMXEXT(cpu_flags)) {
             c->add_residual[0] = ff_hevc_add_residual_4_10_mmxext;
             c->idct_dc[0] = ff_hevc_idct_4x4_dc_10_mmxext;
-            c->idct_dc[1] = ff_hevc_idct_8x8_dc_10_mmxext;
         }
         if (EXTERNAL_SSE2(cpu_flags)) {
             c->hevc_v_loop_filter_chroma = ff_hevc_v_loop_filter_chroma_10_sse2;
@@ -1098,7 +1102,6 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
     } else if (bit_depth == 12) {
         if (EXTERNAL_MMXEXT(cpu_flags)) {
             c->idct_dc[0] = ff_hevc_idct_4x4_dc_12_mmxext;
-            c->idct_dc[1] = ff_hevc_idct_8x8_dc_12_mmxext;
         }
         if (EXTERNAL_SSE2(cpu_flags)) {
             c->hevc_v_loop_filter_chroma = ff_hevc_v_loop_filter_chroma_12_sse2;

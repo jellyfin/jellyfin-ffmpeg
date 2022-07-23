@@ -28,28 +28,29 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
+#include "zlib_wrapper.h"
 
 #include <zlib.h>
 
 typedef struct WCMVContext {
     int         bpp;
-    z_stream    zstream;
+    FFZStream   zstream;
     AVFrame    *prev_frame;
     uint8_t     block_data[65536*8];
 } WCMVContext;
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     WCMVContext *s = avctx->priv_data;
-    AVFrame *frame = data;
+    z_stream *const zstream = &s->zstream.zstream;
     int skip, blocks, zret, ret, intra = 0, flags = 0, bpp = s->bpp;
     GetByteContext gb;
     uint8_t *dst;
 
-    ret = inflateReset(&s->zstream);
+    ret = inflateReset(zstream);
     if (ret != Z_OK) {
         av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", ret);
         return AVERROR_EXTERNAL;
@@ -78,19 +79,19 @@ static int decode_frame(AVCodecContext *avctx,
         if (size > avpkt->size - skip)
             return AVERROR_INVALIDDATA;
 
-        s->zstream.next_in  = avpkt->data + skip;
-        s->zstream.avail_in = size;
-        s->zstream.next_out  = s->block_data;
-        s->zstream.avail_out = sizeof(s->block_data);
+        zstream->next_in   = avpkt->data + skip;
+        zstream->avail_in  = size;
+        zstream->next_out  = s->block_data;
+        zstream->avail_out = sizeof(s->block_data);
 
-        zret = inflate(&s->zstream, Z_FINISH);
+        zret = inflate(zstream, Z_FINISH);
         if (zret != Z_STREAM_END) {
             av_log(avctx, AV_LOG_ERROR,
                    "Inflate failed with return code: %d.\n", zret);
             return AVERROR_INVALIDDATA;
         }
 
-        ret = inflateReset(&s->zstream);
+        ret = inflateReset(zstream);
         if (ret != Z_OK) {
             av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", ret);
             return AVERROR_EXTERNAL;
@@ -119,8 +120,8 @@ static int decode_frame(AVCodecContext *avctx,
 
         skip = bytestream2_tell(&gb);
 
-        s->zstream.next_in  = avpkt->data + skip;
-        s->zstream.avail_in = avpkt->size - skip;
+        zstream->next_in  = avpkt->data + skip;
+        zstream->avail_in = avpkt->size - skip;
 
         bytestream2_init(&gb, s->block_data, blocks * 8);
     } else if (blocks) {
@@ -148,8 +149,8 @@ static int decode_frame(AVCodecContext *avctx,
 
         skip = bytestream2_tell(&gb);
 
-        s->zstream.next_in  = avpkt->data + skip;
-        s->zstream.avail_in = avpkt->size - skip;
+        zstream->next_in  = avpkt->data + skip;
+        zstream->avail_in = avpkt->size - skip;
 
         bytestream2_seek(&gb, 2, SEEK_SET);
     }
@@ -182,10 +183,10 @@ static int decode_frame(AVCodecContext *avctx,
 
         dst = s->prev_frame->data[0] + (avctx->height - y - 1) * s->prev_frame->linesize[0] + x * bpp;
         for (int i = 0; i < h; i++) {
-            s->zstream.next_out  = dst;
-            s->zstream.avail_out = w * bpp;
+            zstream->next_out  = dst;
+            zstream->avail_out = w * bpp;
 
-            zret = inflate(&s->zstream, Z_SYNC_FLUSH);
+            zret = inflate(zstream, Z_SYNC_FLUSH);
             if (zret != Z_OK && zret != Z_STREAM_END) {
                 av_log(avctx, AV_LOG_ERROR,
                        "Inflate failed with return code: %d.\n", zret);
@@ -210,7 +211,6 @@ static int decode_frame(AVCodecContext *avctx,
 static av_cold int decode_init(AVCodecContext *avctx)
 {
     WCMVContext *s = avctx->priv_data;
-    int zret;
 
     switch (avctx->bits_per_coded_sample) {
     case 16: avctx->pix_fmt = AV_PIX_FMT_RGB565LE; break;
@@ -223,20 +223,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     s->bpp = avctx->bits_per_coded_sample >> 3;
 
-    s->zstream.zalloc = Z_NULL;
-    s->zstream.zfree = Z_NULL;
-    s->zstream.opaque = Z_NULL;
-    zret = inflateInit(&s->zstream);
-    if (zret != Z_OK) {
-        av_log(avctx, AV_LOG_ERROR, "Inflate init error: %d\n", zret);
-        return AVERROR_EXTERNAL;
-    }
-
     s->prev_frame = av_frame_alloc();
     if (!s->prev_frame)
         return AVERROR(ENOMEM);
 
-    return 0;
+    return ff_inflate_init(&s->zstream, avctx);
 }
 
 static av_cold int decode_close(AVCodecContext *avctx)
@@ -244,21 +235,21 @@ static av_cold int decode_close(AVCodecContext *avctx)
     WCMVContext *s = avctx->priv_data;
 
     av_frame_free(&s->prev_frame);
-    inflateEnd(&s->zstream);
+    ff_inflate_end(&s->zstream);
 
     return 0;
 }
 
-const AVCodec ff_wcmv_decoder = {
-    .name             = "wcmv",
-    .long_name        = NULL_IF_CONFIG_SMALL("WinCAM Motion Video"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_WCMV,
+const FFCodec ff_wcmv_decoder = {
+    .p.name           = "wcmv",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("WinCAM Motion Video"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_WCMV,
     .priv_data_size   = sizeof(WCMVContext),
     .init             = decode_init,
     .close            = decode_close,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
                         FF_CODEC_CAP_INIT_CLEANUP,
 };

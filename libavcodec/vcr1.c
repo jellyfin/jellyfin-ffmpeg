@@ -25,6 +25,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "libavutil/avassert.h"
 #include "libavutil/internal.h"
@@ -46,11 +47,10 @@ static av_cold int vcr1_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int vcr1_decode_frame(AVCodecContext *avctx, void *data,
+static int vcr1_decode_frame(AVCodecContext *avctx, AVFrame *p,
                              int *got_frame, AVPacket *avpkt)
 {
     VCR1Context *const a      = avctx->priv_data;
-    AVFrame *const p          = data;
     const uint8_t *bytestream = avpkt->data;
     const uint8_t *bytestream_end = bytestream + avpkt->size;
     int i, x, y, ret;
@@ -121,14 +121,14 @@ static int vcr1_decode_frame(AVCodecContext *avctx, void *data,
     return bytestream - avpkt->data;
 }
 
-const AVCodec ff_vcr1_decoder = {
-    .name           = "vcr1",
-    .long_name      = NULL_IF_CONFIG_SMALL("ATI VCR1"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_VCR1,
+const FFCodec ff_vcr1_decoder = {
+    .p.name         = "vcr1",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("ATI VCR1"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_VCR1,
     .priv_data_size = sizeof(VCR1Context),
     .init           = vcr1_decode_init,
-    .decode         = vcr1_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(vcr1_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

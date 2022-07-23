@@ -19,10 +19,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <stdlib.h>
 #include <string.h>
 
-#include "libavutil/common.h"
 #include "libavutil/internal.h"
+#include "libavutil/macros.h"
 
 #include "codec_id.h"
 #include "codec_desc.h"
@@ -1862,6 +1863,36 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("GEM Raster image"),
         .props     = AV_CODEC_PROP_LOSSY,
     },
+    {
+        .id        = AV_CODEC_ID_VBN,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "vbn",
+        .long_name = NULL_IF_CONFIG_SMALL("Vizrt Binary Image"),
+        .props     = AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_JPEGXL,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "jpegxl",
+        .long_name = NULL_IF_CONFIG_SMALL("JPEG XL"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY |
+                     AV_CODEC_PROP_LOSSLESS,
+        .mime_types= MT("image/jxl"),
+    },
+    {
+        .id        = AV_CODEC_ID_QOI,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "qoi",
+        .long_name = NULL_IF_CONFIG_SMALL("QOI (Quite OK Image)"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_PHM,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "phm",
+        .long_name = NULL_IF_CONFIG_SMALL("PHM (Portable HalfFloatMap) image"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
 
     /* various PCM "codecs" */
     {
@@ -3235,6 +3266,13 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "msnsiren",
         .long_name = NULL_IF_CONFIG_SMALL("MSN Siren"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_DFPWM,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "dfpwm",
+        .long_name = NULL_IF_CONFIG_SMALL("DFPWM (Dynamic Filter Pulse Width Modulation)"),
+        .props     = AV_CODEC_PROP_LOSSY,
     },
 
     /* subtitle codecs */

@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/avstring.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
@@ -152,11 +154,7 @@ static int file_check(URLContext *h, int mask)
             ret |= AVIO_FLAG_WRITE;
 #else
     struct stat st;
-#   ifndef _WIN32
     ret = stat(filename, &st);
-#   else
-    ret = win32_stat(filename, &st);
-#   endif
     if (ret < 0)
         return AVERROR(errno);
 

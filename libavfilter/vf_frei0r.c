@@ -31,6 +31,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/common.h"
 #include "libavutil/eval.h"
+#include "libavutil/getenv_utf8.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/mathematics.h"
@@ -204,7 +205,7 @@ static av_cold int frei0r_init(AVFilterContext *ctx,
     }
 
     /* see: http://frei0r.dyne.org/codedoc/html/group__pluglocations.html */
-    if ((path = av_strdup(getenv("FREI0R_PATH")))) {
+    if (path = getenv_dup("FREI0R_PATH")) {
 #ifdef _WIN32
         const char *separator = ";";
 #else
@@ -231,12 +232,17 @@ static av_cold int frei0r_init(AVFilterContext *ctx,
         if (ret < 0)
             return ret;
     }
-    if (!s->dl_handle && (path = getenv("HOME"))) {
+    if (!s->dl_handle && (path = getenv_utf8("HOME"))) {
         char *prefix = av_asprintf("%s/.frei0r-1/lib/", path);
-        if (!prefix)
-            return AVERROR(ENOMEM);
+        if (!prefix) {
+            ret = AVERROR(ENOMEM);
+            goto home_path_end;
+        }
         ret = load_path(ctx, &s->dl_handle, prefix, dl_name);
         av_free(prefix);
+
+    home_path_end:
+        freeenv_utf8(path);
         if (ret < 0)
             return ret;
     }
@@ -353,14 +359,20 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     Frei0rContext *s = inlink->dst->priv;
     AVFilterLink *outlink = inlink->dst->outputs[0];
-    AVFrame *out;
+    AVFrame *out = ff_default_get_video_buffer2(outlink, outlink->w, outlink->h, 16);
+    if (!out)
+        goto fail;
 
-    out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
-    if (!out) {
-        av_frame_free(&in);
-        return AVERROR(ENOMEM);
-    }
     av_frame_copy_props(out, in);
+
+    if (in->linesize[0] != out->linesize[0]) {
+        AVFrame *in2 = ff_default_get_video_buffer2(outlink, outlink->w, outlink->h, 16);
+        if (!in2)
+            goto fail;
+        av_frame_copy(in2, in);
+        av_frame_free(&in);
+        in = in2;
+    }
 
     s->update(s->instance, in->pts * av_q2d(inlink->time_base) * 1000,
                    (const uint32_t *)in->data[0],
@@ -369,6 +381,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     av_frame_free(&in);
 
     return ff_filter_frame(outlink, out);
+fail:
+    av_frame_free(&in);
+    av_frame_free(&out);
+    return AVERROR(ENOMEM);
 }
 
 static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,
@@ -465,7 +481,7 @@ static int source_config_props(AVFilterLink *outlink)
 static int source_request_frame(AVFilterLink *outlink)
 {
     Frei0rContext *s = outlink->src->priv;
-    AVFrame *frame = ff_get_video_buffer(outlink, outlink->w, outlink->h);
+    AVFrame *frame = ff_default_get_video_buffer2(outlink, outlink->w, outlink->h, 16);
 
     if (!frame)
         return AVERROR(ENOMEM);

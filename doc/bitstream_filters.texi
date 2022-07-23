@@ -132,6 +132,36 @@ the header stored in extradata to the key packets:
 ffmpeg -i INPUT -map 0 -flags:v +global_header -c:v libx264 -bsf:v dump_extra out.ts
 @end example
 
+@section dv_error_marker
+
+Blocks in DV which are marked as damaged are replaced by blocks of the specified color.
+
+@table @option
+@item color
+The color to replace damaged blocks by
+@item sta
+A 16 bit mask which specifies which of the 16 possible error status values are
+to be replaced by colored blocks. 0xFFFE is the default which replaces all non 0
+error status values.
+@table @samp
+@item ok
+No error, no concealment
+@item err
+Error, No concealment
+@item res
+Reserved
+@item notok
+Error or concealment
+@item notres
+Not reserved
+@item Aa, Ba, Ca, Ab, Bb, Cb, A, B, C, a, b, erri, erru
+The specific error status code
+@end table
+see page 44-46 or section 5.5 of
+@url{http://web.archive.org/web/20060927044735/http://www.smpte.org/smpte_store/standards/pdf/s314m.pdf}
+
+@end table
+
 @section eac3_core
 
 Extract the core from a E-AC-3 stream, dropping extra channels.
@@ -217,12 +247,16 @@ Modify metadata embedded in an H.264 stream.
 Insert or remove AUD NAL units in all access units of the stream.
 
 @table @samp
+@item pass
 @item insert
 @item remove
 @end table
 
+Default is pass.
+
 @item sample_aspect_ratio
 Set the sample aspect ratio of the stream in the VUI parameters.
+See H.264 table E-1.
 
 @item overscan_appropriate_flag
 Set whether the stream is suitable for display using overscan
@@ -280,6 +314,37 @@ insert the string ``hello'' associated with the given UUID.
 
 @item delete_filler
 Deletes both filler NAL units and filler SEI messages.
+
+@item display_orientation
+Insert, extract or remove Display orientation SEI messages.
+See H.264 section D.1.27 and D.2.27 for syntax and semantics.
+
+@table @samp
+@item pass
+@item insert
+@item remove
+@item extract
+@end table
+
+Default is pass.
+
+Insert mode works in conjunction with @code{rotate} and @code{flip} options.
+Any pre-existing Display orientation messages will be removed in insert or remove mode.
+Extract mode attaches the display matrix to the packet as side data.
+
+@item rotate
+Set rotation in display orientation SEI (anticlockwise angle in degrees).
+Range is -360 to +360. Default is NaN.
+
+@item flip
+Set flip in display orientation SEI.
+
+@table @samp
+@item horizontal
+@item vertical
+@end table
+
+Default is unset.
 
 @item level
 Set the level in the SPS.  Refer to H.264 section A.3 and tables A-1
@@ -630,6 +695,14 @@ for NTSC frame rate using the @option{frame_rate} option.
 ffmpeg -f lavfi -i sine=r=48000:d=1 -c pcm_s16le -bsf pcm_rechunk=r=30000/1001 -f framecrc -
 @end example
 
+@section pgs_frame_merge
+
+Merge a sequence of PGS Subtitle segments ending with an "end of display set"
+segment into a single packet.
+
+This is required by some containers that support PGS subtitles
+(muxer @code{matroska}).
+
 @section prores_metadata
 
 Modify color property metadata embedded in prores stream.
@@ -736,6 +809,10 @@ It accepts the following parameters:
 @item pts
 @item dts
 Set expressions for PTS, DTS or both.
+@item duration
+Set expression for duration.
+@item time_base
+Set output time base.
 @end table
 
 The expressions are evaluated through the eval API and can contain the following
@@ -759,6 +836,9 @@ The demux timestamp in input.
 @item PTS
 The presentation timestamp in input.
 
+@item DURATION
+The duration in input.
+
 @item STARTDTS
 The DTS of the first packet.
 
@@ -771,14 +851,32 @@ The previous input DTS.
 @item PREV_INPTS
 The previous input PTS.
 
+@item PREV_INDURATION
+The previous input duration.
+
 @item PREV_OUTDTS
 The previous output DTS.
 
 @item PREV_OUTPTS
 The previous output PTS.
 
+@item PREV_OUTDURATION
+The previous output duration.
+
+@item NEXT_DTS
+The next input DTS.
+
+@item NEXT_PTS
+The next input PTS.
+
+@item NEXT_DURATION
+The next input duration.
+
 @item TB
 The timebase of stream packet belongs.
+
+@item TB_OUT
+The output timebase.
 
 @item SR
 The sample rate of stream packet belongs.

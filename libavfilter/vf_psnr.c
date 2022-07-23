@@ -280,7 +280,7 @@ static av_cold int init(AVFilterContext *ctx)
         if (!strcmp(s->stats_file_str, "-")) {
             s->stats_file = stdout;
         } else {
-            s->stats_file = fopen(s->stats_file_str, "w");
+            s->stats_file = avpriv_fopen_utf8(s->stats_file_str, "w");
             if (!s->stats_file) {
                 int err = AVERROR(errno);
                 char buf[128];
@@ -354,8 +354,9 @@ static int config_input_ref(AVFilterLink *inlink)
     s->average_max = lrint(average_max);
 
     s->dsp.sse_line = desc->comp[0].depth > 8 ? sse_line_16bit : sse_line_8bit;
-    if (ARCH_X86)
-        ff_psnr_init_x86(&s->dsp, desc->comp[0].depth);
+#if ARCH_X86
+    ff_psnr_init_x86(&s->dsp, desc->comp[0].depth);
+#endif
 
     s->score = av_calloc(s->nb_threads, sizeof(*s->score));
     if (!s->score)

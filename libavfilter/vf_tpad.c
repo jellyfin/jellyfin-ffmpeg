@@ -79,6 +79,18 @@ static int activate(AVFilterContext *ctx)
 
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
+    if (!s->eof && ff_inlink_acknowledge_status(inlink, &status, &pts)) {
+        if (status == AVERROR_EOF) {
+            pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
+            if (!s->pad_stop && !s->pad_start) {
+                ff_outlink_set_status(outlink, status, pts);
+                return 0;
+            }
+            s->eof = 1;
+            s->pts += pts;
+        }
+    }
+
     if (s->start_mode == 0 && s->pad_start > 0 && ff_outlink_frame_wanted(outlink)) {
         frame = ff_get_video_buffer(outlink, outlink->w, outlink->h);
         if (!frame)
@@ -93,7 +105,10 @@ static int activate(AVFilterContext *ctx)
     }
 
     if (s->start_mode == 1 && s->pad_start > 0) {
-        if (!s->cache_start && ff_inlink_queued_frames(inlink)) {
+        if (s->eof) {
+            ff_outlink_set_status(outlink, AVERROR_EOF, 0);
+            return 0;
+        } else if (!s->cache_start && ff_inlink_queued_frames(inlink)) {
             s->cache_start = ff_inlink_peek_frame(inlink, 0);
         } else if (!s->cache_start) {
             FF_FILTER_FORWARD_WANTED(outlink, inlink);
@@ -123,18 +138,6 @@ static int activate(AVFilterContext *ctx)
         }
     }
 
-    if (!s->eof && ff_inlink_acknowledge_status(inlink, &status, &pts)) {
-        if (status == AVERROR_EOF) {
-            pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
-            if (!s->pad_stop) {
-                ff_outlink_set_status(outlink, status, pts);
-                return 0;
-            }
-            s->eof = 1;
-            s->pts += pts;
-        }
-    }
-
     if (s->eof) {
         if (!s->pad_stop) {
             ff_outlink_set_status(outlink, AVERROR_EOF, s->pts);
@@ -148,6 +151,11 @@ static int activate(AVFilterContext *ctx)
                               frame->data, frame->linesize,
                               0, 0, frame->width, frame->height);
         } else if (s->stop_mode == 1) {
+            if (!s->cache_stop) {
+                s->pad_stop = 0;
+                ff_outlink_set_status(outlink, AVERROR_EOF, s->pts);
+                return 0;
+            }
             frame = av_frame_clone(s->cache_stop);
             if (!frame)
                 return AVERROR(ENOMEM);

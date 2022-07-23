@@ -21,6 +21,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 static av_cold int yuv4_decode_init(AVCodecContext *avctx)
@@ -30,10 +31,9 @@ static av_cold int yuv4_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int yuv4_decode_frame(AVCodecContext *avctx, void *data,
+static int yuv4_decode_frame(AVCodecContext *avctx, AVFrame *pic,
                              int *got_frame, AVPacket *avpkt)
 {
-    AVFrame *pic = data;
     const uint8_t *src = avpkt->data;
     uint8_t *y, *u, *v;
     int i, j, ret;
@@ -73,13 +73,13 @@ static int yuv4_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-const AVCodec ff_yuv4_decoder = {
-    .name         = "yuv4",
-    .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed packed 4:2:0"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_YUV4,
+const FFCodec ff_yuv4_decoder = {
+    .p.name       = "yuv4",
+    .p.long_name  = NULL_IF_CONFIG_SMALL("Uncompressed packed 4:2:0"),
+    .p.type       = AVMEDIA_TYPE_VIDEO,
+    .p.id         = AV_CODEC_ID_YUV4,
     .init         = yuv4_decode_init,
-    .decode       = yuv4_decode_frame,
-    .capabilities = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(yuv4_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

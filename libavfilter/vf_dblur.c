@@ -131,13 +131,23 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
     AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
     AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_GRAYF32, AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32,
     AV_PIX_FMT_NONE
 };
+
+static av_cold void uninit(AVFilterContext *ctx)
+{
+    DBlurContext *s = ctx->priv;
+
+    av_freep(&s->buffer);
+}
 
 static int config_input(AVFilterLink *inlink)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
     DBlurContext *s = inlink->dst->priv;
+
+    uninit(inlink->dst);
 
     s->depth = desc->comp[0].depth;
     s->planewidth[1] = s->planewidth[2] = AV_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
@@ -205,8 +215,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         float *bptr = s->buffer;
         const uint8_t *src = in->data[plane];
         const uint16_t *src16 = (const uint16_t *)in->data[plane];
+        const float *src32 = (const float *)in->data[plane];
         uint8_t *dst = out->data[plane];
         uint16_t *dst16 = (uint16_t *)out->data[plane];
+        float *dst32 = (float *)out->data[plane];
         int y, x;
 
         if (!(s->planes & (1 << plane))) {
@@ -225,13 +237,21 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 bptr += width;
                 src += in->linesize[plane];
             }
-        } else {
+        } else if (s->depth <= 16) {
             for (y = 0; y < height; y++) {
                 for (x = 0; x < width; x++) {
                     bptr[x] = src16[x];
                 }
                 bptr += width;
                 src16 += in->linesize[plane] / 2;
+            }
+        } else {
+            for (y = 0; y < height; y++) {
+                for (x = 0; x < width; x++) {
+                    memcpy(bptr, src32, width * sizeof(float));
+                }
+                bptr += width;
+                src32 += in->linesize[plane] / 4;
             }
         }
 
@@ -246,7 +266,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 bptr += width;
                 dst += out->linesize[plane];
             }
-        } else {
+        } else if (s->depth <= 16) {
             for (y = 0; y < height; y++) {
                 for (x = 0; x < width; x++) {
                     dst16[x] = av_clip_uintp2_c(lrintf(bptr[x]), s->depth);
@@ -254,19 +274,20 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 bptr += width;
                 dst16 += out->linesize[plane] / 2;
             }
+        } else {
+            for (y = 0; y < height; y++) {
+                for (x = 0; x < width; x++) {
+                    memcpy(dst32, bptr, width * sizeof(float));
+                }
+                bptr += width;
+                dst32 += out->linesize[plane] / 4;
+            }
         }
     }
 
     if (out != in)
         av_frame_free(&in);
     return ff_filter_frame(outlink, out);
-}
-
-static av_cold void uninit(AVFilterContext *ctx)
-{
-    DBlurContext *s = ctx->priv;
-
-    av_freep(&s->buffer);
 }
 
 static const AVFilterPad dblur_inputs[] = {

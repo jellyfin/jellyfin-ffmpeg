@@ -29,8 +29,8 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "libavutil/imgutils.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 
 static const uint32_t monoblack_pal[16] = { 0x000000, 0xFFFFFF };
 
@@ -192,13 +192,13 @@ static int pcx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     return 0;
 }
 
-const AVCodec ff_pcx_encoder = {
-    .name           = "pcx",
-    .long_name      = NULL_IF_CONFIG_SMALL("PC Paintbrush PCX image"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_PCX,
-    .encode2        = pcx_encode_frame,
-    .pix_fmts       = (const enum AVPixelFormat[]){
+const FFCodec ff_pcx_encoder = {
+    .p.name         = "pcx",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("PC Paintbrush PCX image"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_PCX,
+    FF_CODEC_ENCODE_CB(pcx_encode_frame),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_RGB24,
         AV_PIX_FMT_RGB8, AV_PIX_FMT_BGR8, AV_PIX_FMT_RGB4_BYTE, AV_PIX_FMT_BGR4_BYTE,
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_PAL8,

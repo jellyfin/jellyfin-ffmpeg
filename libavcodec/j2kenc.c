@@ -66,10 +66,11 @@
 
 #include <float.h>
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "bytestream.h"
 #include "jpeg2000.h"
+#include "version.h"
 #include "libavutil/common.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
@@ -287,13 +288,11 @@ static void tag_tree_code(Jpeg2000EncoderContext *s, Jpeg2000TgtNode *node, int 
 /** update the value in node */
 static void tag_tree_update(Jpeg2000TgtNode *node)
 {
-    int lev = 0;
     while (node->parent){
         if (node->parent->val <= node->val)
             break;
         node->parent->val = node->val;
         node = node->parent;
-        lev++;
     }
 }
 
@@ -1831,16 +1830,16 @@ static const AVClass j2k_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_jpeg2000_encoder = {
-    .name           = "jpeg2000",
-    .long_name      = NULL_IF_CONFIG_SMALL("JPEG 2000"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_JPEG2000,
+const FFCodec ff_jpeg2000_encoder = {
+    .p.name         = "jpeg2000",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("JPEG 2000"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_JPEG2000,
     .priv_data_size = sizeof(Jpeg2000EncoderContext),
     .init           = j2kenc_init,
-    .encode2        = encode_frame,
+    FF_CODEC_ENCODE_CB(encode_frame),
     .close          = j2kenc_destroy,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_YUV444P, AV_PIX_FMT_GRAY8,
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
         AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
@@ -1848,6 +1847,6 @@ const AVCodec ff_jpeg2000_encoder = {
         AV_PIX_FMT_RGB48, AV_PIX_FMT_GRAY16,
         AV_PIX_FMT_NONE
     },
-    .priv_class     = &j2k_class,
+    .p.priv_class   = &j2k_class,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

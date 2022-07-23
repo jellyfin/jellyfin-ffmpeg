@@ -18,12 +18,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <fcntl.h>
 #include "network.h"
 #include "tls.h"
 #include "url.h"
-#include "libavcodec/internal.h"
-#include "libavutil/avutil.h"
 #include "libavutil/avassert.h"
 #include "libavutil/mem.h"
 #include "libavutil/time.h"
@@ -180,7 +180,7 @@ static int ff_poll_interrupt(struct pollfd *p, nfds_t nfds, int timeout,
     return ret;
 }
 
-int ff_socket(int af, int type, int proto)
+int ff_socket(int af, int type, int proto, void *logctx)
 {
     int fd;
 
@@ -193,14 +193,14 @@ int ff_socket(int af, int type, int proto)
 #if HAVE_FCNTL
         if (fd != -1) {
             if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1)
-                av_log(NULL, AV_LOG_DEBUG, "Failed to set close on exec\n");
+                av_log(logctx, AV_LOG_DEBUG, "Failed to set close on exec\n");
         }
 #endif
     }
 #ifdef SO_NOSIGPIPE
     if (fd != -1) {
         if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &(int){1}, sizeof(int))) {
-             av_log(NULL, AV_LOG_WARNING, "setsockopt(SO_NOSIGPIPE) failed\n");
+             av_log(logctx, AV_LOG_WARNING, "setsockopt(SO_NOSIGPIPE) failed\n");
         }
     }
 #endif
@@ -208,12 +208,12 @@ int ff_socket(int af, int type, int proto)
 }
 
 int ff_listen(int fd, const struct sockaddr *addr,
-              socklen_t addrlen)
+              socklen_t addrlen, void *logctx)
 {
     int ret;
     int reuse = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse))) {
-        av_log(NULL, AV_LOG_WARNING, "setsockopt(SO_REUSEADDR) failed\n");
+        av_log(logctx, AV_LOG_WARNING, "setsockopt(SO_REUSEADDR) failed\n");
     }
     ret = bind(fd, addr, addrlen);
     if (ret)
@@ -247,7 +247,7 @@ int ff_listen_bind(int fd, const struct sockaddr *addr,
                    socklen_t addrlen, int timeout, URLContext *h)
 {
     int ret;
-    if ((ret = ff_listen(fd, addr, addrlen)) < 0)
+    if ((ret = ff_listen(fd, addr, addrlen, h)) < 0)
         return ret;
     if ((ret = ff_accept(fd, timeout, h)) < 0)
         return ret;
@@ -363,7 +363,7 @@ static int start_connect_attempt(struct ConnectionAttempt *attempt,
 
     *ptr = ai->ai_next;
 
-    attempt->fd = ff_socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+    attempt->fd = ff_socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol, h);
     if (attempt->fd < 0)
         return ff_neterrno();
     attempt->deadline_us = av_gettime_relative() + timeout_ms * 1000;

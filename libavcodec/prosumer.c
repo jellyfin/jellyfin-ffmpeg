@@ -30,6 +30,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct ProSumerContext {
@@ -143,11 +144,10 @@ static void vertical_predict(uint32_t *dst, int offset, const uint32_t *src, int
     }
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame, AVPacket *avpkt)
 {
     ProSumerContext *s = avctx->priv_data;
-    AVFrame * const frame = data;
     int ret;
 
     if (avpkt->size <= 32)
@@ -365,16 +365,16 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_prosumer_decoder = {
-    .name           = "prosumer",
-    .long_name      = NULL_IF_CONFIG_SMALL("Brooktree ProSumer Video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_PROSUMER,
+const FFCodec ff_prosumer_decoder = {
+    .p.name         = "prosumer",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Brooktree ProSumer Video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_PROSUMER,
     .priv_data_size = sizeof(ProSumerContext),
     .init           = decode_init,
-    .decode         = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .close          = decode_close,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
 };

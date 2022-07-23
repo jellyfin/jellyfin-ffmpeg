@@ -228,89 +228,61 @@ SECTION .text
     imul r2, 0x01010101
 %endmacro
 
-%macro VC1_LF 0
-cglobal vc1_v_loop_filter_internal
-    VC1_V_LOOP_FILTER 4, d
-    ret
-
-cglobal vc1_h_loop_filter_internal
-    VC1_H_LOOP_FILTER 4, r4
-    ret
-
-; void ff_vc1_v_loop_filter4_mmxext(uint8_t *src, int stride, int pq)
+; void ff_vc1_v_loop_filter4_mmxext(uint8_t *src, ptrdiff_t stride, int pq)
+INIT_MMX mmxext
 cglobal vc1_v_loop_filter4, 3,5,0
     START_V_FILTER
-    call vc1_v_loop_filter_internal
+    VC1_V_LOOP_FILTER 4, d
     RET
 
-; void ff_vc1_h_loop_filter4_mmxext(uint8_t *src, int stride, int pq)
+; void ff_vc1_h_loop_filter4_mmxext(uint8_t *src, ptrdiff_t stride, int pq)
+INIT_MMX mmxext
 cglobal vc1_h_loop_filter4, 3,5,0
     START_H_FILTER 4
-    call vc1_h_loop_filter_internal
+    VC1_H_LOOP_FILTER 4, r4
     RET
-
-; void ff_vc1_v_loop_filter8_mmxext(uint8_t *src, int stride, int pq)
-cglobal vc1_v_loop_filter8, 3,5,0
-    START_V_FILTER
-    call vc1_v_loop_filter_internal
-    add  r4, 4
-    add  r0, 4
-    call vc1_v_loop_filter_internal
-    RET
-
-; void ff_vc1_h_loop_filter8_mmxext(uint8_t *src, int stride, int pq)
-cglobal vc1_h_loop_filter8, 3,5,0
-    START_H_FILTER 4
-    call vc1_h_loop_filter_internal
-    lea  r0, [r0+4*r1]
-    call vc1_h_loop_filter_internal
-    RET
-%endmacro
-
-INIT_MMX mmxext
-VC1_LF
 
 INIT_XMM sse2
-; void ff_vc1_v_loop_filter8_sse2(uint8_t *src, int stride, int pq)
+; void ff_vc1_v_loop_filter8_sse2(uint8_t *src, ptrdiff_t stride, int pq)
 cglobal vc1_v_loop_filter8, 3,5,8
     START_V_FILTER
     VC1_V_LOOP_FILTER 8, q
     RET
 
-; void ff_vc1_h_loop_filter8_sse2(uint8_t *src, int stride, int pq)
+; void ff_vc1_h_loop_filter8_sse2(uint8_t *src, ptrdiff_t stride, int pq)
 cglobal vc1_h_loop_filter8, 3,6,8
     START_H_FILTER 8
     VC1_H_LOOP_FILTER 8, r5
     RET
 
 INIT_MMX ssse3
-; void ff_vc1_v_loop_filter4_ssse3(uint8_t *src, int stride, int pq)
+; void ff_vc1_v_loop_filter4_ssse3(uint8_t *src, ptrdiff_t stride, int pq)
 cglobal vc1_v_loop_filter4, 3,5,0
     START_V_FILTER
     VC1_V_LOOP_FILTER 4, d
     RET
 
-; void ff_vc1_h_loop_filter4_ssse3(uint8_t *src, int stride, int pq)
+; void ff_vc1_h_loop_filter4_ssse3(uint8_t *src, ptrdiff_t stride, int pq)
 cglobal vc1_h_loop_filter4, 3,5,0
     START_H_FILTER 4
     VC1_H_LOOP_FILTER 4, r4
     RET
 
 INIT_XMM ssse3
-; void ff_vc1_v_loop_filter8_ssse3(uint8_t *src, int stride, int pq)
+; void ff_vc1_v_loop_filter8_ssse3(uint8_t *src, ptrdiff_t stride, int pq)
 cglobal vc1_v_loop_filter8, 3,5,8
     START_V_FILTER
     VC1_V_LOOP_FILTER 8, q
     RET
 
-; void ff_vc1_h_loop_filter8_ssse3(uint8_t *src, int stride, int pq)
+; void ff_vc1_h_loop_filter8_ssse3(uint8_t *src, ptrdiff_t stride, int pq)
 cglobal vc1_h_loop_filter8, 3,6,8
     START_H_FILTER 8
     VC1_H_LOOP_FILTER 8, r5
     RET
 
 INIT_XMM sse4
-; void ff_vc1_h_loop_filter8_sse4(uint8_t *src, int stride, int pq)
+; void ff_vc1_h_loop_filter8_sse4(uint8_t *src, ptrdiff_t stride, int pq)
 cglobal vc1_h_loop_filter8, 3,5,8
     START_H_FILTER 8
     VC1_H_LOOP_FILTER 8

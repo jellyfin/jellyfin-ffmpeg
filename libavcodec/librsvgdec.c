@@ -20,6 +20,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "libavutil/opt.h"
 #include "librsvg-2.0/librsvg/rsvg.h"
@@ -32,11 +33,11 @@ typedef struct LibRSVGContext {
     int keep_ar;
 } LibRSVGContext;
 
-static int librsvg_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *pkt)
+static int librsvg_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                                int *got_frame, AVPacket *pkt)
 {
     int ret;
     LibRSVGContext *s = avctx->priv_data;
-    AVFrame *frame = data;
 
     RsvgHandle *handle;
     RsvgDimensionData unscaled_dimensions, dimensions;
@@ -117,14 +118,14 @@ static const AVClass librsvg_decoder_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_librsvg_decoder = {
-    .name           = "librsvg",
-    .long_name      = NULL_IF_CONFIG_SMALL("Librsvg rasterizer"),
-    .priv_class     = &librsvg_decoder_class,
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SVG,
-    .decode         = librsvg_decode_frame,
+const FFCodec ff_librsvg_decoder = {
+    .p.name         = "librsvg",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Librsvg rasterizer"),
+    .p.priv_class   = &librsvg_decoder_class,
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SVG,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.wrapper_name = "librsvg",
+    FF_CODEC_DECODE_CB(librsvg_decode_frame),
     .priv_data_size = sizeof(LibRSVGContext),
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .wrapper_name    = "librsvg",
 };

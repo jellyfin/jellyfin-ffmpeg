@@ -73,8 +73,8 @@ const enum AVCodecID ff_cbs_all_codec_ids[] = {
     AV_CODEC_ID_NONE
 };
 
-int ff_cbs_init(CodedBitstreamContext **ctx_ptr,
-                enum AVCodecID codec_id, void *log_ctx)
+av_cold int ff_cbs_init(CodedBitstreamContext **ctx_ptr,
+                        enum AVCodecID codec_id, void *log_ctx)
 {
     CodedBitstreamContext *ctx;
     const CodedBitstreamType *type;
@@ -118,13 +118,13 @@ int ff_cbs_init(CodedBitstreamContext **ctx_ptr,
     return 0;
 }
 
-void ff_cbs_flush(CodedBitstreamContext *ctx)
+av_cold void ff_cbs_flush(CodedBitstreamContext *ctx)
 {
     if (ctx->codec->flush)
         ctx->codec->flush(ctx);
 }
 
-void ff_cbs_close(CodedBitstreamContext **ctx_ptr)
+av_cold void ff_cbs_close(CodedBitstreamContext **ctx_ptr)
 {
     CodedBitstreamContext *ctx = *ctx_ptr;
 
@@ -168,7 +168,7 @@ void ff_cbs_fragment_reset(CodedBitstreamFragment *frag)
     frag->data_bit_padding = 0;
 }
 
-void ff_cbs_fragment_free(CodedBitstreamFragment *frag)
+av_cold void ff_cbs_fragment_free(CodedBitstreamFragment *frag)
 {
     ff_cbs_fragment_reset(frag);
 
@@ -789,18 +789,16 @@ int ff_cbs_insert_unit_content(CodedBitstreamFragment *frag,
     return 0;
 }
 
-int ff_cbs_insert_unit_data(CodedBitstreamFragment *frag,
-                            int position,
-                            CodedBitstreamUnitType type,
-                            uint8_t *data, size_t data_size,
-                            AVBufferRef *data_buf)
+static int cbs_insert_unit_data(CodedBitstreamFragment *frag,
+                                CodedBitstreamUnitType type,
+                                uint8_t *data, size_t data_size,
+                                AVBufferRef *data_buf,
+                                int position)
 {
     CodedBitstreamUnit *unit;
     AVBufferRef *data_ref;
     int err;
 
-    if (position == -1)
-        position = frag->nb_units;
     av_assert0(position >= 0 && position <= frag->nb_units);
 
     if (data_buf)
@@ -826,6 +824,16 @@ int ff_cbs_insert_unit_data(CodedBitstreamFragment *frag,
     unit->data_ref  = data_ref;
 
     return 0;
+}
+
+int ff_cbs_append_unit_data(CodedBitstreamFragment *frag,
+                            CodedBitstreamUnitType type,
+                            uint8_t *data, size_t data_size,
+                            AVBufferRef *data_buf)
+{
+    return cbs_insert_unit_data(frag, type,
+                                data, data_size, data_buf,
+                                frag->nb_units);
 }
 
 void ff_cbs_delete_unit(CodedBitstreamFragment *frag,

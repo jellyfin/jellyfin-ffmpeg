@@ -28,7 +28,6 @@
 #include <inttypes.h>
 
 #include "libavutil/imgutils.h"
-#include "internal.h"
 #include "mathops.h"
 #include "avcodec.h"
 #include "h264data.h"
@@ -352,6 +351,10 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
     }
     memcpy(sps->data, gb->buffer, sps->data_size);
 
+    // Re-add the removed stop bit (may be used by hwaccels).
+    if (!(gb->size_in_bits & 7) && sps->data_size < sizeof(sps->data))
+        sps->data[sps->data_size++] = 0x80;
+
     profile_idc           = get_bits(gb, 8);
     constraint_set_flags |= get_bits1(gb) << 0;   // constraint_set0_flag
     constraint_set_flags |= get_bits1(gb) << 1;   // constraint_set1_flag
@@ -485,7 +488,7 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
     sps->ref_frame_count = get_ue_golomb_31(gb);
     if (avctx->codec_tag == MKTAG('S', 'M', 'V', '2'))
         sps->ref_frame_count = FFMAX(2, sps->ref_frame_count);
-    if (sps->ref_frame_count > MAX_DELAYED_PIC_COUNT) {
+    if (sps->ref_frame_count > H264_MAX_DPB_FRAMES) {
         av_log(avctx, AV_LOG_ERROR,
                "too many reference frames %d\n", sps->ref_frame_count);
         goto fail;
@@ -517,11 +520,6 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
 
     sps->direct_8x8_inference_flag = get_bits1(gb);
 
-#ifndef ALLOW_INTERLACE
-    if (sps->mb_aff)
-        av_log(avctx, AV_LOG_ERROR,
-               "MBAFF support not included; enable it at compile-time.\n");
-#endif
     sps->crop = get_bits1(gb);
     if (sps->crop) {
         unsigned int crop_left   = get_ue_golomb(gb);
@@ -590,7 +588,7 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
      * level */
     if (!sps->bitstream_restriction_flag &&
         (sps->ref_frame_count || avctx->strict_std_compliance >= FF_COMPLIANCE_STRICT)) {
-        sps->num_reorder_frames = MAX_DELAYED_PIC_COUNT - 1;
+        sps->num_reorder_frames = H264_MAX_DPB_FRAMES - 1;
         for (i = 0; i < FF_ARRAY_ELEMS(level_max_dpb_mbs); i++) {
             if (level_max_dpb_mbs[i][0] == sps->level_idc) {
                 sps->num_reorder_frames = FFMIN(level_max_dpb_mbs[i][1] / (sps->mb_width * sps->mb_height),
@@ -780,6 +778,10 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
         pps->data_size = sizeof(pps->data);
     }
     memcpy(pps->data, gb->buffer, pps->data_size);
+
+    // Re-add the removed stop bit (may be used by hwaccels).
+    if (!(bit_length & 7) && pps->data_size < sizeof(pps->data))
+        pps->data[pps->data_size++] = 0x80;
 
     pps->sps_id = get_ue_golomb_31(gb);
     if ((unsigned)pps->sps_id >= MAX_SPS_COUNT ||

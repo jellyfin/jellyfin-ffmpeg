@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <stdint.h>
 
 #include "libavutil/crc.h"
@@ -31,6 +33,7 @@
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
+#include "version.h"
 #include "vorbiscomment.h"
 
 #define MAX_PAGE_SIZE 65025
@@ -194,13 +197,13 @@ static int ogg_buffer_page(AVFormatContext *s, OGGStreamContext *oggstream)
 }
 
 static int ogg_buffer_data(AVFormatContext *s, AVStream *st,
-                           uint8_t *data, unsigned size, int64_t granule,
+                           const uint8_t *data, unsigned size, int64_t granule,
                            int header)
 {
     OGGStreamContext *oggstream = st->priv_data;
     OGGContext *ogg = s->priv_data;
     int total_segments = size / 255 + 1;
-    uint8_t *p = data;
+    const uint8_t *p = data;
     int i, segments, len, flush = 0;
 
     // Handles VFR by flushing page because this frame needs to have a timestamp

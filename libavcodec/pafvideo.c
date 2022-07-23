@@ -24,6 +24,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "copy_block.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 
@@ -158,7 +159,7 @@ static void set_src_position(PAFVideoDecContext *c,
     *pend = c->frame[page] + c->frame_size;
 }
 
-static int decode_0(PAFVideoDecContext *c, uint8_t *pkt, uint8_t code)
+static int decode_0(PAFVideoDecContext *c, const uint8_t *pkt, uint8_t code)
 {
     uint32_t opcode_size, offset;
     uint8_t *dst, *dend, mask = 0, color = 0;
@@ -267,7 +268,7 @@ static int decode_0(PAFVideoDecContext *c, uint8_t *pkt, uint8_t code)
     return 0;
 }
 
-static int paf_video_decode(AVCodecContext *avctx, void *data,
+static int paf_video_decode(AVCodecContext *avctx, AVFrame *rframe,
                             int *got_frame, AVPacket *pkt)
 {
     PAFVideoDecContext *c = avctx->priv_data;
@@ -399,7 +400,7 @@ static int paf_video_decode(AVCodecContext *avctx, void *data,
                         c->width, c->height);
 
     c->current_frame = (c->current_frame + 1) & 3;
-    if ((ret = av_frame_ref(data, c->pic)) < 0)
+    if ((ret = av_frame_ref(rframe, c->pic)) < 0)
         return ret;
 
     *got_frame = 1;
@@ -407,15 +408,15 @@ static int paf_video_decode(AVCodecContext *avctx, void *data,
     return pkt->size;
 }
 
-const AVCodec ff_paf_video_decoder = {
-    .name           = "paf_video",
-    .long_name      = NULL_IF_CONFIG_SMALL("Amazing Studio Packed Animation File Video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_PAF_VIDEO,
+const FFCodec ff_paf_video_decoder = {
+    .p.name         = "paf_video",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Amazing Studio Packed Animation File Video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_PAF_VIDEO,
     .priv_data_size = sizeof(PAFVideoDecContext),
     .init           = paf_video_init,
     .close          = paf_video_close,
-    .decode         = paf_video_decode,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(paf_video_decode),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

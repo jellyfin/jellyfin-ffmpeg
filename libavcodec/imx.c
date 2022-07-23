@@ -21,6 +21,7 @@
 #include "libavutil/common.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "decode.h"
 #include "internal.h"
 
@@ -46,7 +47,7 @@ static av_cold int imx_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int imx_decode_frame(AVCodecContext *avctx, void *data,
+static int imx_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                             int *got_frame, AVPacket *avpkt)
 {
     SimbiosisIMXContext *imx = avctx->priv_data;
@@ -152,7 +153,7 @@ static int imx_decode_frame(AVCodecContext *avctx, void *data,
 
     frame->pict_type = frame->key_frame ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
-    if ((ret = av_frame_ref(data, frame)) < 0)
+    if ((ret = av_frame_ref(rframe, frame)) < 0)
         return ret;
 
     *got_frame = 1;
@@ -179,17 +180,17 @@ static int imx_decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_simbiosis_imx_decoder = {
-    .name           = "simbiosis_imx",
-    .long_name      = NULL_IF_CONFIG_SMALL("Simbiosis Interactive IMX Video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SIMBIOSIS_IMX,
+const FFCodec ff_simbiosis_imx_decoder = {
+    .p.name         = "simbiosis_imx",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Simbiosis Interactive IMX Video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SIMBIOSIS_IMX,
     .priv_data_size = sizeof(SimbiosisIMXContext),
     .init           = imx_decode_init,
-    .decode         = imx_decode_frame,
+    FF_CODEC_DECODE_CB(imx_decode_frame),
     .close          = imx_decode_close,
     .flush          = imx_decode_flush,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
 };

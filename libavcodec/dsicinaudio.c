@@ -28,6 +28,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "mathops.h"
 
@@ -80,16 +81,15 @@ static av_cold int cinaudio_decode_init(AVCodecContext *avctx)
     cin->initial_decode_frame = 1;
     cin->delta                = 0;
     avctx->sample_fmt         = AV_SAMPLE_FMT_S16;
-    avctx->channels           = 1;
-    avctx->channel_layout     = AV_CH_LAYOUT_MONO;
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout          = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
 
     return 0;
 }
 
-static int cinaudio_decode_frame(AVCodecContext *avctx, void *data,
+static int cinaudio_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                  int *got_frame_ptr, AVPacket *avpkt)
 {
-    AVFrame *frame         = data;
     const uint8_t *buf     = avpkt->data;
     CinAudioContext *cin   = avctx->priv_data;
     const uint8_t *buf_end = buf + avpkt->size;
@@ -121,14 +121,14 @@ static int cinaudio_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-const AVCodec ff_dsicinaudio_decoder = {
-    .name           = "dsicinaudio",
-    .long_name      = NULL_IF_CONFIG_SMALL("Delphine Software International CIN audio"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_DSICINAUDIO,
+const FFCodec ff_dsicinaudio_decoder = {
+    .p.name         = "dsicinaudio",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Delphine Software International CIN audio"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_DSICINAUDIO,
     .priv_data_size = sizeof(CinAudioContext),
     .init           = cinaudio_decode_init,
-    .decode         = cinaudio_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    FF_CODEC_DECODE_CB(cinaudio_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

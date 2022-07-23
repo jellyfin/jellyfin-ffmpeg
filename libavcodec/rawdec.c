@@ -26,6 +26,7 @@
 
 #include "avcodec.h"
 #include "bswapdsp.h"
+#include "codec_internal.h"
 #include "decode.h"
 #include "get_bits.h"
 #include "internal.h"
@@ -162,8 +163,8 @@ static void name(AVCodecContext *avctx, uint8_t * dst, const uint8_t *buf, int b
 MKSCALE16(scale16be, AV_RB16, AV_WB16)
 MKSCALE16(scale16le, AV_RL16, AV_WL16)
 
-static int raw_decode(AVCodecContext *avctx, void *data, int *got_frame,
-                      AVPacket *avpkt)
+static int raw_decode(AVCodecContext *avctx, AVFrame *frame,
+                      int *got_frame, AVPacket *avpkt)
 {
     const AVPixFmtDescriptor *desc;
     RawVideoContext *context       = avctx->priv_data;
@@ -173,8 +174,6 @@ static int raw_decode(AVCodecContext *avctx, void *data, int *got_frame,
     int stride;
     int res, len;
     int need_copy;
-
-    AVFrame   *frame   = data;
 
     if (avctx->width <= 0) {
         av_log(avctx, AV_LOG_ERROR, "width is not set\n");
@@ -481,16 +480,16 @@ static av_cold int raw_close_decoder(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_rawvideo_decoder = {
-    .name           = "rawvideo",
-    .long_name      = NULL_IF_CONFIG_SMALL("raw video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_RAWVIDEO,
+const FFCodec ff_rawvideo_decoder = {
+    .p.name         = "rawvideo",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("raw video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_RAWVIDEO,
     .priv_data_size = sizeof(RawVideoContext),
     .init           = raw_init_decoder,
     .close          = raw_close_decoder,
-    .decode         = raw_decode,
-    .priv_class     = &rawdec_class,
-    .capabilities   = AV_CODEC_CAP_PARAM_CHANGE,
+    FF_CODEC_DECODE_CB(raw_decode),
+    .p.priv_class   = &rawdec_class,
+    .p.capabilities = AV_CODEC_CAP_PARAM_CHANGE,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

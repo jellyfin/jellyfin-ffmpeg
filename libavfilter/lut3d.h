@@ -21,6 +21,8 @@
 #ifndef AVFILTER_LUT3D_H
 #define AVFILTER_LUT3D_H
 
+#include "config_components.h"
+
 #include "libavutil/pixdesc.h"
 #include "framesync.h"
 #include "avfilter.h"
@@ -64,6 +66,8 @@ typedef struct LUT3DContext {
     avfilter_action_func *interp;
     Lut3DPreLut prelut;
 #if CONFIG_HALDCLUT_FILTER
+    int clut;
+    int got_clut;
     uint8_t clut_rgba_map[4];
     int clut_step;
     int clut_bits;

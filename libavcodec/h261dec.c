@@ -28,10 +28,11 @@
 #include "libavutil/avassert.h"
 #include "libavutil/thread.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "mpeg_er.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
-#include "h263.h"
+#include "mpegvideodec.h"
 #include "h261.h"
 #include "internal.h"
 
@@ -47,6 +48,19 @@ static VLC h261_mba_vlc;
 static VLC h261_mtype_vlc;
 static VLC h261_mv_vlc;
 static VLC h261_cbp_vlc;
+
+typedef struct H261DecContext {
+    MpegEncContext s;
+
+    H261Context common;
+
+    int current_mba;
+    int mba_diff;
+    int current_mv_x;
+    int current_mv_y;
+    int gob_number;
+    int gob_start_code_skipped; // 1 if gob start code is already read before gob header is read
+} H261DecContext;
 
 static av_cold void h261_decode_init_static(void)
 {
@@ -68,9 +82,10 @@ static av_cold void h261_decode_init_static(void)
 static av_cold int h261_decode_init(AVCodecContext *avctx)
 {
     static AVOnce init_static_once = AV_ONCE_INIT;
-    H261Context *h          = avctx->priv_data;
+    H261DecContext *const h = avctx->priv_data;
     MpegEncContext *const s = &h->s;
 
+    s->private_ctx = &h->common;
     // set defaults
     ff_mpv_decode_init(s, avctx);
 
@@ -90,7 +105,7 @@ static av_cold int h261_decode_init(AVCodecContext *avctx)
  * Decode the group of blocks header or slice header.
  * @return <0 if an error occurred
  */
-static int h261_decode_gob_header(H261Context *h)
+static int h261_decode_gob_header(H261DecContext *h)
 {
     unsigned int val;
     MpegEncContext *const s = &h->s;
@@ -144,7 +159,7 @@ static int h261_decode_gob_header(H261Context *h)
  * Decode the group of blocks / video packet header.
  * @return <0 if no resync found
  */
-static int h261_resync(H261Context *h)
+static int h261_resync(H261DecContext *h)
 {
     MpegEncContext *const s = &h->s;
     int left, ret;
@@ -185,7 +200,7 @@ static int h261_resync(H261Context *h)
  * Decode skipped macroblocks.
  * @return 0
  */
-static int h261_decode_mb_skipped(H261Context *h, int mba1, int mba2)
+static int h261_decode_mb_skipped(H261DecContext *h, int mba1, int mba2)
 {
     MpegEncContext *const s = &h->s;
     int i;
@@ -210,7 +225,7 @@ static int h261_decode_mb_skipped(H261Context *h, int mba1, int mba2)
         s->mv[0][0][0]                 = 0;
         s->mv[0][0][1]                 = 0;
         s->mb_skipped                  = 1;
-        h->mtype                      &= ~MB_TYPE_H261_FIL;
+        h->common.mtype               &= ~MB_TYPE_H261_FIL;
 
         if (s->current_picture.motion_val[0]) {
             int b_stride = 2*s->mb_width + 1;
@@ -255,7 +270,7 @@ static int decode_mv_component(GetBitContext *gb, int v)
  * Decode a macroblock.
  * @return <0 if an error occurred
  */
-static int h261_decode_block(H261Context *h, int16_t *block, int n, int coded)
+static int h261_decode_block(H261DecContext *h, int16_t *block, int n, int coded)
 {
     MpegEncContext *const s = &h->s;
     int level, i, j, run;
@@ -347,9 +362,10 @@ static int h261_decode_block(H261Context *h, int16_t *block, int n, int coded)
     return 0;
 }
 
-static int h261_decode_mb(H261Context *h)
+static int h261_decode_mb(H261DecContext *h)
 {
     MpegEncContext *const s = &h->s;
+    H261Context *const com = &h->common;
     int i, cbp, xy;
 
     cbp = 63;
@@ -387,23 +403,23 @@ static int h261_decode_mb(H261Context *h)
     ff_update_block_index(s);
 
     // Read mtype
-    h->mtype = get_vlc2(&s->gb, h261_mtype_vlc.table, H261_MTYPE_VLC_BITS, 2);
-    if (h->mtype < 0) {
+    com->mtype = get_vlc2(&s->gb, h261_mtype_vlc.table, H261_MTYPE_VLC_BITS, 2);
+    if (com->mtype < 0) {
         av_log(s->avctx, AV_LOG_ERROR, "Invalid mtype index %d\n",
-               h->mtype);
+               com->mtype);
         return SLICE_ERROR;
     }
-    av_assert0(h->mtype < FF_ARRAY_ELEMS(ff_h261_mtype_map));
-    h->mtype = ff_h261_mtype_map[h->mtype];
+    av_assert0(com->mtype < FF_ARRAY_ELEMS(ff_h261_mtype_map));
+    com->mtype = ff_h261_mtype_map[com->mtype];
 
     // Read mquant
-    if (IS_QUANT(h->mtype))
+    if (IS_QUANT(com->mtype))
         ff_set_qscale(s, get_bits(&s->gb, 5));
 
-    s->mb_intra = IS_INTRA4x4(h->mtype);
+    s->mb_intra = IS_INTRA4x4(com->mtype);
 
     // Read mv
-    if (IS_16X16(h->mtype)) {
+    if (IS_16X16(com->mtype)) {
         /* Motion vector data is included for all MC macroblocks. MVD is
          * obtained from the macroblock vector by subtracting the vector
          * of the preceding macroblock. For this calculation the vector
@@ -426,7 +442,7 @@ static int h261_decode_mb(H261Context *h)
     }
 
     // Read cbp
-    if (HAS_CBP(h->mtype))
+    if (HAS_CBP(com->mtype))
         cbp = get_vlc2(&s->gb, h261_cbp_vlc.table, H261_CBP_VLC_BITS, 1) + 1;
 
     if (s->mb_intra) {
@@ -450,7 +466,7 @@ static int h261_decode_mb(H261Context *h)
 
 intra:
     /* decode each block */
-    if (s->mb_intra || HAS_CBP(h->mtype)) {
+    if (s->mb_intra || HAS_CBP(com->mtype)) {
         s->bdsp.clear_blocks(s->block[0]);
         for (i = 0; i < 6; i++) {
             if (h261_decode_block(h, s->block[i], i, cbp & 32) < 0)
@@ -471,7 +487,7 @@ intra:
  * Decode the H.261 picture header.
  * @return <0 if no startcode found
  */
-static int h261_decode_picture_header(H261Context *h)
+static int h261_decode_picture_header(H261DecContext *h)
 {
     MpegEncContext *const s = &h->s;
     int format, i;
@@ -535,7 +551,7 @@ static int h261_decode_picture_header(H261Context *h)
     return 0;
 }
 
-static int h261_decode_gob(H261Context *h)
+static int h261_decode_gob(H261DecContext *h)
 {
     MpegEncContext *const s = &h->s;
 
@@ -578,15 +594,14 @@ static int get_consumed_bytes(MpegEncContext *s, int buf_size)
     return pos;
 }
 
-static int h261_decode_frame(AVCodecContext *avctx, void *data,
+static int h261_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                              int *got_frame, AVPacket *avpkt)
 {
+    H261DecContext *const h = avctx->priv_data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
-    H261Context *h     = avctx->priv_data;
     MpegEncContext *s  = &h->s;
     int ret;
-    AVFrame *pict = data;
 
     ff_dlog(avctx, "*****frame %d size=%d\n", avctx->frame_number, buf_size);
     ff_dlog(avctx, "bytes=%x %x %x %x\n", buf[0], buf[1], buf[2], buf[3]);
@@ -658,23 +673,23 @@ retry:
 
 static av_cold int h261_decode_end(AVCodecContext *avctx)
 {
-    H261Context *h    = avctx->priv_data;
+    H261DecContext *const h = avctx->priv_data;
     MpegEncContext *s = &h->s;
 
     ff_mpv_common_end(s);
     return 0;
 }
 
-const AVCodec ff_h261_decoder = {
-    .name           = "h261",
-    .long_name      = NULL_IF_CONFIG_SMALL("H.261"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_H261,
-    .priv_data_size = sizeof(H261Context),
+const FFCodec ff_h261_decoder = {
+    .p.name         = "h261",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("H.261"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_H261,
+    .priv_data_size = sizeof(H261DecContext),
     .init           = h261_decode_init,
     .close          = h261_decode_end,
-    .decode         = h261_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(h261_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
-    .max_lowres     = 3,
+    .p.max_lowres   = 3,
 };

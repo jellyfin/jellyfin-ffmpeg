@@ -29,9 +29,9 @@
 #include "libavutil/float_dsp.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
-#include "internal.h"
 #include "bytestream.h"
 #include "audio_frame_queue.h"
+#include "codec_internal.h"
 
 typedef struct OpusEncContext {
     AVClass *av_class;
@@ -66,7 +66,7 @@ static void opus_write_extradata(AVCodecContext *avctx)
 
     bytestream_put_buffer(&bs, "OpusHead", 8);
     bytestream_put_byte  (&bs, 0x1);
-    bytestream_put_byte  (&bs, avctx->channels);
+    bytestream_put_byte  (&bs, avctx->ch_layout.nb_channels);
     bytestream_put_le16  (&bs, avctx->initial_padding);
     bytestream_put_le32  (&bs, avctx->sample_rate);
     bytestream_put_le16  (&bs, 0x0);
@@ -518,11 +518,16 @@ static void opus_packet_assembler(OpusEncContext *s, AVPacket *avpkt)
 static AVFrame *spawn_empty_frame(OpusEncContext *s)
 {
     AVFrame *f = av_frame_alloc();
+    int ret;
     if (!f)
         return NULL;
     f->format         = s->avctx->sample_fmt;
     f->nb_samples     = s->avctx->frame_size;
-    f->channel_layout = s->avctx->channel_layout;
+    ret = av_channel_layout_copy(&f->ch_layout, &s->avctx->ch_layout);
+    if (ret < 0) {
+        av_frame_free(&f);
+        return NULL;
+    }
     if (av_frame_get_buffer(f, 4)) {
         av_frame_free(&f);
         return NULL;
@@ -626,7 +631,7 @@ static av_cold int opus_encode_init(AVCodecContext *avctx)
     OpusEncContext *s = avctx->priv_data;
 
     s->avctx = avctx;
-    s->channels = avctx->channels;
+    s->channels = avctx->ch_layout.nb_channels;
 
     /* Opus allows us to change the framesize on each packet (and each packet may
      * have multiple frames in it) but we can't change the codec's frame size on
@@ -714,28 +719,32 @@ static const AVClass opusenc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault opusenc_defaults[] = {
+static const FFCodecDefault opusenc_defaults[] = {
     { "b", "0" },
     { "compression_level", "10" },
     { NULL },
 };
 
-const AVCodec ff_opus_encoder = {
-    .name           = "opus",
-    .long_name      = NULL_IF_CONFIG_SMALL("Opus"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_OPUS,
+const FFCodec ff_opus_encoder = {
+    .p.name         = "opus",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Opus"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_OPUS,
     .defaults       = opusenc_defaults,
-    .priv_class     = &opusenc_class,
+    .p.priv_class   = &opusenc_class,
     .priv_data_size = sizeof(OpusEncContext),
     .init           = opus_encode_init,
-    .encode2        = opus_encode_frame,
+    FF_CODEC_ENCODE_CB(opus_encode_frame),
     .close          = opus_encode_end,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .capabilities   = AV_CODEC_CAP_EXPERIMENTAL | AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY,
-    .supported_samplerates = (const int []){ 48000, 0 },
-    .channel_layouts = (const uint64_t []){ AV_CH_LAYOUT_MONO,
+    .p.capabilities = AV_CODEC_CAP_EXPERIMENTAL | AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY,
+    .p.supported_samplerates = (const int []){ 48000, 0 },
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts = (const uint64_t []){ AV_CH_LAYOUT_MONO,
                                             AV_CH_LAYOUT_STEREO, 0 },
-    .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
+#endif
+    .p.ch_layouts    = (const AVChannelLayout []){ AV_CHANNEL_LAYOUT_MONO,
+                                                   AV_CHANNEL_LAYOUT_STEREO, { 0 } },
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
                                                      AV_SAMPLE_FMT_NONE },
 };

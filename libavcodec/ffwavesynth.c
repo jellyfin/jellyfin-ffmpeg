@@ -22,6 +22,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 
@@ -314,7 +315,7 @@ static av_cold int wavesynth_init(AVCodecContext *avc)
     struct wavesynth_context *ws = avc->priv_data;
     int i, r;
 
-    if (avc->channels > WS_MAX_CHANNELS) {
+    if (avc->ch_layout.nb_channels > WS_MAX_CHANNELS) {
         av_log(avc, AV_LOG_ERROR,
                "This implementation is limited to %d channels.\n",
                WS_MAX_CHANNELS);
@@ -412,11 +413,10 @@ static void wavesynth_enter_intervals(struct wavesynth_context *ws, int64_t ts)
     *last = -1;
 }
 
-static int wavesynth_decode(AVCodecContext *avc, void *rframe, int *rgot_frame,
-                            AVPacket *packet)
+static int wavesynth_decode(AVCodecContext *avc, AVFrame *frame,
+                            int *rgot_frame, AVPacket *packet)
 {
     struct wavesynth_context *ws = avc->priv_data;
-    AVFrame *frame = rframe;
     int64_t ts;
     int duration;
     int s, c, r;
@@ -438,11 +438,11 @@ static int wavesynth_decode(AVCodecContext *avc, void *rframe, int *rgot_frame,
         return r;
     pcm = (int16_t *)frame->data[0];
     for (s = 0; s < duration; s++, ts+=(uint64_t)1) {
-        memset(channels, 0, avc->channels * sizeof(*channels));
+        memset(channels, 0, avc->ch_layout.nb_channels * sizeof(*channels));
         if (ts >= ws->next_ts)
             wavesynth_enter_intervals(ws, ts);
         wavesynth_synth_sample(ws, ts, channels);
-        for (c = 0; c < avc->channels; c++)
+        for (c = 0; c < avc->ch_layout.nb_channels; c++)
             *(pcm++) = channels[c] >> 16;
     }
     ws->cur_ts += (uint64_t)duration;
@@ -459,15 +459,15 @@ static av_cold int wavesynth_close(AVCodecContext *avc)
     return 0;
 }
 
-const AVCodec ff_ffwavesynth_decoder = {
-    .name           = "wavesynth",
-    .long_name      = NULL_IF_CONFIG_SMALL("Wave synthesis pseudo-codec"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_FFWAVESYNTH,
+const FFCodec ff_ffwavesynth_decoder = {
+    .p.name         = "wavesynth",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Wave synthesis pseudo-codec"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_FFWAVESYNTH,
     .priv_data_size = sizeof(struct wavesynth_context),
     .init           = wavesynth_init,
     .close          = wavesynth_close,
-    .decode         = wavesynth_decode,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(wavesynth_decode),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

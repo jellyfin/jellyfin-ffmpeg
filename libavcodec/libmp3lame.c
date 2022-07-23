@@ -34,8 +34,8 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "audio_frame_queue.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "mpegaudio.h"
 #include "mpegaudiodecheader.h"
 
@@ -101,8 +101,9 @@ static av_cold int mp3lame_encode_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
 
 
-    lame_set_num_channels(s->gfp, avctx->channels);
-    lame_set_mode(s->gfp, avctx->channels > 1 ? s->joint_stereo ? JOINT_STEREO : STEREO : MONO);
+    lame_set_num_channels(s->gfp, avctx->ch_layout.nb_channels);
+    lame_set_mode(s->gfp, avctx->ch_layout.nb_channels > 1 ?
+                          s->joint_stereo ? JOINT_STEREO : STEREO : MONO);
 
     /* sample rate */
     lame_set_in_samplerate (s->gfp, avctx->sample_rate);
@@ -138,7 +139,7 @@ static av_cold int mp3lame_encode_init(AVCodecContext *avctx)
 
     /* set specified parameters */
     if (lame_init_params(s->gfp) < 0) {
-        ret = -1;
+        ret = AVERROR_EXTERNAL;
         goto error;
     }
 
@@ -151,7 +152,7 @@ static av_cold int mp3lame_encode_init(AVCodecContext *avctx)
     /* allocate float sample buffers */
     if (avctx->sample_fmt == AV_SAMPLE_FMT_FLTP) {
         int ch;
-        for (ch = 0; ch < avctx->channels; ch++) {
+        for (ch = 0; ch < avctx->ch_layout.nb_channels; ch++) {
             s->samples_flt[ch] = av_malloc_array(avctx->frame_size,
                                            sizeof(*s->samples_flt[ch]));
             if (!s->samples_flt[ch]) {
@@ -208,7 +209,7 @@ static int mp3lame_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                 av_log(avctx, AV_LOG_ERROR, "inadequate AVFrame plane padding\n");
                 return AVERROR(EINVAL);
             }
-            for (ch = 0; ch < avctx->channels; ch++) {
+            for (ch = 0; ch < avctx->ch_layout.nb_channels; ch++) {
                 s->fdsp->vector_fmul_scalar(s->samples_flt[ch],
                                            (const float *)frame->data[ch],
                                            32768.0f,
@@ -231,7 +232,7 @@ static int mp3lame_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                    "lame: output buffer too small (buffer index: %d, free bytes: %d)\n",
                    s->buffer_index, s->buffer_size - s->buffer_index);
         }
-        return -1;
+        return AVERROR(ENOMEM);
     }
     s->buffer_index += lame_result;
     ret = realloc_buffer(s);
@@ -259,7 +260,7 @@ static int mp3lame_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         return AVERROR_BUG;
     } else if (ret) {
         av_log(avctx, AV_LOG_ERROR, "free format output not supported\n");
-        return -1;
+        return AVERROR_INVALIDDATA;
     }
     len = hdr.frame_size;
     ff_dlog(avctx, "in:%d packet-len:%d index:%d\n", avctx->frame_size, len,
@@ -318,7 +319,7 @@ static const AVClass libmp3lame_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault libmp3lame_defaults[] = {
+static const FFCodecDefault libmp3lame_defaults[] = {
     { "b",          "0" },
     { NULL },
 };
@@ -327,26 +328,32 @@ static const int libmp3lame_sample_rates[] = {
     44100, 48000,  32000, 22050, 24000, 16000, 11025, 12000, 8000, 0
 };
 
-const AVCodec ff_libmp3lame_encoder = {
-    .name                  = "libmp3lame",
-    .long_name             = NULL_IF_CONFIG_SMALL("libmp3lame MP3 (MPEG audio layer 3)"),
-    .type                  = AVMEDIA_TYPE_AUDIO,
-    .id                    = AV_CODEC_ID_MP3,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+const FFCodec ff_libmp3lame_encoder = {
+    .p.name                = "libmp3lame",
+    .p.long_name           = NULL_IF_CONFIG_SMALL("libmp3lame MP3 (MPEG audio layer 3)"),
+    .p.type                = AVMEDIA_TYPE_AUDIO,
+    .p.id                  = AV_CODEC_ID_MP3,
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                              AV_CODEC_CAP_SMALL_LAST_FRAME,
     .priv_data_size        = sizeof(LAMEContext),
     .init                  = mp3lame_encode_init,
-    .encode2               = mp3lame_encode_frame,
+    FF_CODEC_ENCODE_CB(mp3lame_encode_frame),
     .close                 = mp3lame_encode_close,
-    .sample_fmts           = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
+    .p.sample_fmts         = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
                                                              AV_SAMPLE_FMT_FLTP,
                                                              AV_SAMPLE_FMT_S16P,
                                                              AV_SAMPLE_FMT_NONE },
-    .supported_samplerates = libmp3lame_sample_rates,
-    .channel_layouts       = (const uint64_t[]) { AV_CH_LAYOUT_MONO,
+    .p.supported_samplerates = libmp3lame_sample_rates,
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts     = (const uint64_t[]) { AV_CH_LAYOUT_MONO,
                                                   AV_CH_LAYOUT_STEREO,
                                                   0 },
-    .priv_class            = &libmp3lame_class,
+#endif
+    .p.ch_layouts          = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO,
+                                                         AV_CHANNEL_LAYOUT_STEREO,
+                                                         { 0 },
+    },
+    .p.priv_class          = &libmp3lame_class,
     .defaults              = libmp3lame_defaults,
-    .wrapper_name          = "libmp3lame",
+    .p.wrapper_name        = "libmp3lame",
 };

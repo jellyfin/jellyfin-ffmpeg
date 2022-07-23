@@ -19,10 +19,9 @@
  */
 
 #include "libavutil/avassert.h"
-#include "libavutil/audio_fifo.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
-#include "libavcodec/avfft.h"
+#include "libavutil/tx.h"
 #include "avfilter.h"
 #include "audio.h"
 #include "filters.h"
@@ -92,23 +91,23 @@ typedef struct AudioSurroundContext {
     float lowcut;
     float highcut;
 
-    uint64_t out_channel_layout;
-    uint64_t in_channel_layout;
+    AVChannelLayout out_channel_layout;
+    AVChannelLayout in_channel_layout;
     int nb_in_channels;
     int nb_out_channels;
 
+    AVFrame *input_in;
     AVFrame *input;
     AVFrame *output;
+    AVFrame *output_out;
     AVFrame *overlap_buffer;
+    AVFrame *window;
 
     int buf_size;
     int hop_size;
-    AVAudioFifo *fifo;
-    RDFTContext **rdft, **irdft;
+    AVTXContext **rdft, **irdft;
+    av_tx_fn tx_fn, itx_fn;
     float *window_func_lut;
-
-    int64_t pts;
-    int eof;
 
     void (*filter)(AVFilterContext *ctx);
     void (*upmix_stereo)(AVFilterContext *ctx,
@@ -171,7 +170,7 @@ static int query_formats(AVFilterContext *ctx)
         return ret;
 
     layouts = NULL;
-    ret = ff_add_channel_layout(&layouts, s->out_channel_layout);
+    ret = ff_add_channel_layout(&layouts, &s->out_channel_layout);
     if (ret)
         return ret;
 
@@ -180,7 +179,7 @@ static int query_formats(AVFilterContext *ctx)
         return ret;
 
     layouts = NULL;
-    ret = ff_add_channel_layout(&layouts, s->in_channel_layout);
+    ret = ff_add_channel_layout(&layouts, &s->in_channel_layout);
     if (ret)
         return ret;
 
@@ -197,13 +196,15 @@ static int config_input(AVFilterLink *inlink)
     AudioSurroundContext *s = ctx->priv;
     int ch;
 
-    s->rdft = av_calloc(inlink->channels, sizeof(*s->rdft));
+    s->rdft = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->rdft));
     if (!s->rdft)
         return AVERROR(ENOMEM);
-    s->nb_in_channels = inlink->channels;
+    s->nb_in_channels = inlink->ch_layout.nb_channels;
 
-    for (ch = 0; ch < inlink->channels; ch++) {
-        s->rdft[ch]  = av_rdft_init(ff_log2(s->buf_size), DFT_R2C);
+    for (ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
+        float scale = 1.f;
+
+        av_tx_init(&s->rdft[ch], &s->tx_fn, AV_TX_FLOAT_RDFT, 0, s->buf_size, &scale, 0);
         if (!s->rdft[ch])
             return AVERROR(ENOMEM);
     }
@@ -212,40 +213,44 @@ static int config_input(AVFilterLink *inlink)
         return AVERROR(ENOMEM);
     for (ch = 0;  ch < s->nb_in_channels; ch++)
         s->input_levels[ch] = s->level_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_FRONT_CENTER);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_FRONT_CENTER);
     if (ch >= 0)
         s->input_levels[ch] *= s->fc_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_FRONT_LEFT);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_FRONT_LEFT);
     if (ch >= 0)
         s->input_levels[ch] *= s->fl_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_FRONT_RIGHT);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_FRONT_RIGHT);
     if (ch >= 0)
         s->input_levels[ch] *= s->fr_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_SIDE_LEFT);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_SIDE_LEFT);
     if (ch >= 0)
         s->input_levels[ch] *= s->sl_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_SIDE_RIGHT);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_SIDE_RIGHT);
     if (ch >= 0)
         s->input_levels[ch] *= s->sr_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_BACK_LEFT);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_BACK_LEFT);
     if (ch >= 0)
         s->input_levels[ch] *= s->bl_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_BACK_RIGHT);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_BACK_RIGHT);
     if (ch >= 0)
         s->input_levels[ch] *= s->br_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_BACK_CENTER);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_BACK_CENTER);
     if (ch >= 0)
         s->input_levels[ch] *= s->bc_in;
-    ch = av_get_channel_layout_channel_index(inlink->channel_layout, AV_CH_LOW_FREQUENCY);
+    ch = av_channel_layout_index_from_channel(&inlink->ch_layout, AV_CHAN_LOW_FREQUENCY);
     if (ch >= 0)
         s->input_levels[ch] *= s->lfe_in;
 
-    s->input = ff_get_audio_buffer(inlink, s->buf_size * 2);
-    if (!s->input)
+    s->window = ff_get_audio_buffer(inlink, s->buf_size * 2);
+    if (!s->window)
         return AVERROR(ENOMEM);
 
-    s->fifo = av_audio_fifo_alloc(inlink->format, inlink->channels, s->buf_size);
-    if (!s->fifo)
+    s->input_in = ff_get_audio_buffer(inlink, s->buf_size * 2);
+    if (!s->input_in)
+        return AVERROR(ENOMEM);
+
+    s->input = ff_get_audio_buffer(inlink, s->buf_size + 2);
+    if (!s->input)
         return AVERROR(ENOMEM);
 
     s->lowcut = 1.f * s->lowcutf / (inlink->sample_rate * 0.5) * (s->buf_size / 2);
@@ -260,13 +265,15 @@ static int config_output(AVFilterLink *outlink)
     AudioSurroundContext *s = ctx->priv;
     int ch;
 
-    s->irdft = av_calloc(outlink->channels, sizeof(*s->irdft));
+    s->irdft = av_calloc(outlink->ch_layout.nb_channels, sizeof(*s->irdft));
     if (!s->irdft)
         return AVERROR(ENOMEM);
-    s->nb_out_channels = outlink->channels;
+    s->nb_out_channels = outlink->ch_layout.nb_channels;
 
-    for (ch = 0; ch < outlink->channels; ch++) {
-        s->irdft[ch] = av_rdft_init(ff_log2(s->buf_size), IDFT_C2R);
+    for (ch = 0; ch < outlink->ch_layout.nb_channels; ch++) {
+        float iscale = 1.f;
+
+        av_tx_init(&s->irdft[ch], &s->itx_fn, AV_TX_FLOAT_RDFT, 1, s->buf_size, &iscale, 0);
         if (!s->irdft[ch])
             return AVERROR(ENOMEM);
     }
@@ -275,37 +282,38 @@ static int config_output(AVFilterLink *outlink)
         return AVERROR(ENOMEM);
     for (ch = 0;  ch < s->nb_out_channels; ch++)
         s->output_levels[ch] = s->level_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_FRONT_CENTER);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_FRONT_CENTER);
     if (ch >= 0)
         s->output_levels[ch] *= s->fc_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_FRONT_LEFT);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_FRONT_LEFT);
     if (ch >= 0)
         s->output_levels[ch] *= s->fl_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_FRONT_RIGHT);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_FRONT_RIGHT);
     if (ch >= 0)
         s->output_levels[ch] *= s->fr_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_SIDE_LEFT);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_SIDE_LEFT);
     if (ch >= 0)
         s->output_levels[ch] *= s->sl_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_SIDE_RIGHT);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_SIDE_RIGHT);
     if (ch >= 0)
         s->output_levels[ch] *= s->sr_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_BACK_LEFT);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_BACK_LEFT);
     if (ch >= 0)
         s->output_levels[ch] *= s->bl_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_BACK_RIGHT);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_BACK_RIGHT);
     if (ch >= 0)
         s->output_levels[ch] *= s->br_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_BACK_CENTER);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_BACK_CENTER);
     if (ch >= 0)
         s->output_levels[ch] *= s->bc_out;
-    ch = av_get_channel_layout_channel_index(outlink->channel_layout, AV_CH_LOW_FREQUENCY);
+    ch = av_channel_layout_index_from_channel(&outlink->ch_layout, AV_CHAN_LOW_FREQUENCY);
     if (ch >= 0)
         s->output_levels[ch] *= s->lfe_out;
 
-    s->output = ff_get_audio_buffer(outlink, s->buf_size * 2);
+    s->output_out = ff_get_audio_buffer(outlink, s->buf_size + 2);
+    s->output = ff_get_audio_buffer(outlink, s->buf_size + 2);
     s->overlap_buffer = ff_get_audio_buffer(outlink, s->buf_size * 2);
-    if (!s->overlap_buffer || !s->output)
+    if (!s->overlap_buffer || !s->output || !s->output_out)
         return AVERROR(ENOMEM);
 
     return 0;
@@ -327,16 +335,16 @@ static void stereo_transform(float *x, float *y, float angle)
     else
         a = M_PI + 2 * (-2 * M_PI + reference) * (M_PI - fabsf(a)) * FFDIFFSIGN(a, 0) / (3 * M_PI);
 
-    *x = av_clipf(sinf(a) * r, -1, 1);
-    *y = av_clipf(cosf(a) * r, -1, 1);
+    *x = av_clipf(sinf(a) * r, -1.f, 1.f);
+    *y = av_clipf(cosf(a) * r, -1.f, 1.f);
 }
 
 static void stereo_position(float a, float p, float *x, float *y)
 {
     av_assert2(a >= -1.f && a <= 1.f);
     av_assert2(p >= 0.f && p <= M_PI);
-    *x = av_clipf(a+a*FFMAX(0, p*p-M_PI_2), -1, 1);
-    *y = av_clipf(cosf(a*M_PI_2+M_PI)*cosf(M_PI_2-p/M_PI)*M_LN10+1, -1, 1);
+    *x = av_clipf(a+a*FFMAX(0, p*p-M_PI_2), -1.f, 1.f);
+    *y = av_clipf(cosf(a*M_PI_2+M_PI)*cosf(M_PI_2-p/M_PI)*M_LN10+1, -1.f, 1.f);
 }
 
 static inline void get_lfe(int output_lfe, int n, float lowcut, float highcut,
@@ -1099,7 +1107,7 @@ static void filter_stereo(AVFilterContext *ctx)
     srcl = (float *)s->input->extended_data[0];
     srcr = (float *)s->input->extended_data[1];
 
-    for (n = 0; n < s->buf_size; n++) {
+    for (n = 0; n < s->buf_size / 2 + 1; n++) {
         float l_re = srcl[2 * n], r_re = srcr[2 * n];
         float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
         float c_phase = atan2f(l_im + r_im, l_re + r_re);
@@ -1133,7 +1141,7 @@ static void filter_surround(AVFilterContext *ctx)
     srcr = (float *)s->input->extended_data[1];
     srcc = (float *)s->input->extended_data[2];
 
-    for (n = 0; n < s->buf_size; n++) {
+    for (n = 0; n < s->buf_size / 2 + 1; n++) {
         float l_re = srcl[2 * n], r_re = srcr[2 * n];
         float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
         float c_re = srcc[2 * n], c_im = srcc[2 * n + 1];
@@ -1169,7 +1177,7 @@ static void filter_2_1(AVFilterContext *ctx)
     srcr = (float *)s->input->extended_data[1];
     srclfe = (float *)s->input->extended_data[2];
 
-    for (n = 0; n < s->buf_size; n++) {
+    for (n = 0; n < s->buf_size / 2 + 1; n++) {
         float l_re = srcl[2 * n], r_re = srcr[2 * n];
         float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
         float lfe_re = srclfe[2 * n], lfe_im = srclfe[2 * n + 1];
@@ -1206,7 +1214,7 @@ static void filter_5_0_side(AVFilterContext *ctx)
     srcsl = (float *)s->input->extended_data[3];
     srcsr = (float *)s->input->extended_data[4];
 
-    for (n = 0; n < s->buf_size; n++) {
+    for (n = 0; n < s->buf_size / 2 + 1; n++) {
         float fl_re = srcl[2 * n], fr_re = srcr[2 * n];
         float fl_im = srcl[2 * n + 1], fr_im = srcr[2 * n + 1];
         float c_re = srcc[2 * n], c_im = srcc[2 * n + 1];
@@ -1264,7 +1272,7 @@ static void filter_5_1_side(AVFilterContext *ctx)
     srcsl = (float *)s->input->extended_data[4];
     srcsr = (float *)s->input->extended_data[5];
 
-    for (n = 0; n < s->buf_size; n++) {
+    for (n = 0; n < s->buf_size / 2 + 1; n++) {
         float fl_re = srcl[2 * n], fr_re = srcr[2 * n];
         float fl_im = srcl[2 * n + 1], fr_im = srcr[2 * n + 1];
         float c_re = srcc[2 * n], c_im = srcc[2 * n + 1];
@@ -1323,7 +1331,7 @@ static void filter_5_1_back(AVFilterContext *ctx)
     srcbl = (float *)s->input->extended_data[4];
     srcbr = (float *)s->input->extended_data[5];
 
-    for (n = 0; n < s->buf_size; n++) {
+    for (n = 0; n < s->buf_size / 2 + 1; n++) {
         float fl_re = srcl[2 * n], fr_re = srcr[2 * n];
         float fl_im = srcl[2 * n + 1], fr_im = srcr[2 * n + 1];
         float c_re = srcc[2 * n], c_im = srcc[2 * n + 1];
@@ -1373,15 +1381,16 @@ static av_cold int init(AVFilterContext *ctx)
 {
     AudioSurroundContext *s = ctx->priv;
     float overlap;
-    int i;
+    int64_t in_channel_layout, out_channel_layout;
+    int i, ret;
 
-    if (!(s->out_channel_layout = av_get_channel_layout(s->out_channel_layout_str))) {
+    if ((ret = av_channel_layout_from_string(&s->out_channel_layout, s->out_channel_layout_str)) < 0) {
         av_log(ctx, AV_LOG_ERROR, "Error parsing output channel layout '%s'.\n",
                s->out_channel_layout_str);
-        return AVERROR(EINVAL);
+        return ret;
     }
 
-    if (!(s->in_channel_layout = av_get_channel_layout(s->in_channel_layout_str))) {
+    if ((ret = av_channel_layout_from_string(&s->in_channel_layout, s->in_channel_layout_str)) < 0) {
         av_log(ctx, AV_LOG_ERROR, "Error parsing input channel layout '%s'.\n",
                s->in_channel_layout_str);
         return AVERROR(EINVAL);
@@ -1393,10 +1402,15 @@ static av_cold int init(AVFilterContext *ctx)
         return AVERROR(EINVAL);
     }
 
-    switch (s->in_channel_layout) {
+    in_channel_layout  = s->in_channel_layout.order == AV_CHANNEL_ORDER_NATIVE ?
+                         s->in_channel_layout.u.mask : 0;
+    out_channel_layout = s->out_channel_layout.order == AV_CHANNEL_ORDER_NATIVE ?
+                         s->out_channel_layout.u.mask : 0;
+
+    switch (in_channel_layout) {
     case AV_CH_LAYOUT_STEREO:
         s->filter = filter_stereo;
-        switch (s->out_channel_layout) {
+        switch (out_channel_layout) {
         case AV_CH_LAYOUT_MONO:
             s->upmix_stereo = upmix_1_0;
             break;
@@ -1442,7 +1456,7 @@ static av_cold int init(AVFilterContext *ctx)
         break;
     case AV_CH_LAYOUT_2POINT1:
         s->filter = filter_2_1;
-        switch (s->out_channel_layout) {
+        switch (out_channel_layout) {
         case AV_CH_LAYOUT_5POINT1_BACK:
             s->upmix_2_1 = upmix_5_1_back_2_1;
             break;
@@ -1452,7 +1466,7 @@ static av_cold int init(AVFilterContext *ctx)
         break;
     case AV_CH_LAYOUT_SURROUND:
         s->filter = filter_surround;
-        switch (s->out_channel_layout) {
+        switch (out_channel_layout) {
         case AV_CH_LAYOUT_3POINT1:
             s->upmix_3_0 = upmix_3_1_surround;
             break;
@@ -1465,7 +1479,7 @@ static av_cold int init(AVFilterContext *ctx)
         break;
     case AV_CH_LAYOUT_5POINT0:
         s->filter = filter_5_0_side;
-        switch (s->out_channel_layout) {
+        switch (out_channel_layout) {
         case AV_CH_LAYOUT_7POINT1:
             s->upmix_5_0 = upmix_7_1_5_0_side;
             break;
@@ -1475,7 +1489,7 @@ static av_cold int init(AVFilterContext *ctx)
         break;
     case AV_CH_LAYOUT_5POINT1:
         s->filter = filter_5_1_side;
-        switch (s->out_channel_layout) {
+        switch (out_channel_layout) {
         case AV_CH_LAYOUT_7POINT1:
             s->upmix_5_1 = upmix_7_1_5_1;
             break;
@@ -1485,7 +1499,7 @@ static av_cold int init(AVFilterContext *ctx)
         break;
     case AV_CH_LAYOUT_5POINT1_BACK:
         s->filter = filter_5_1_back;
-        switch (s->out_channel_layout) {
+        switch (out_channel_layout) {
         case AV_CH_LAYOUT_7POINT1:
             s->upmix_5_1 = upmix_7_1_5_1;
             break;
@@ -1501,7 +1515,6 @@ fail:
     }
 
     s->buf_size = 1 << av_log2(s->win_size);
-    s->pts = AV_NOPTS_VALUE;
 
     s->window_func_lut = av_calloc(s->buf_size, sizeof(*s->window_func_lut));
     if (!s->window_func_lut)
@@ -1528,18 +1541,21 @@ fail:
 static int fft_channel(AVFilterContext *ctx, void *arg, int ch, int nb_jobs)
 {
     AudioSurroundContext *s = ctx->priv;
+    float *src = (float *)s->input_in->extended_data[ch];
+    float *win = (float *)s->window->extended_data[ch];
+    const int offset = s->buf_size - s->hop_size;
     const float level_in = s->input_levels[ch];
-    float *dst;
-    int n;
+    AVFrame *in = arg;
 
-    memset(s->input->extended_data[ch] + s->buf_size * sizeof(float), 0, s->buf_size * sizeof(float));
+    memmove(src, &src[s->hop_size], offset * sizeof(float));
+    memcpy(&src[offset], in->extended_data[ch], in->nb_samples * sizeof(float));
+    memset(&src[offset + in->nb_samples], 0, (s->hop_size - in->nb_samples) * sizeof(float));
 
-    dst = (float *)s->input->extended_data[ch];
-    for (n = 0; n < s->buf_size; n++) {
-        dst[n] *= s->window_func_lut[n] * level_in;
+    for (int n = 0; n < s->buf_size; n++) {
+        win[n] = src[n] * s->window_func_lut[n] * level_in;
     }
 
-    av_rdft_calc(s->rdft[ch], (float *)s->input->extended_data[ch]);
+    s->tx_fn(s->rdft[ch], (float *)s->input->extended_data[ch], win, sizeof(float));
 
     return 0;
 }
@@ -1552,10 +1568,9 @@ static int ifft_channel(AVFilterContext *ctx, void *arg, int ch, int nb_jobs)
     float *dst, *ptr;
     int n;
 
-    av_rdft_calc(s->irdft[ch], (float *)s->output->extended_data[ch]);
-
-    dst = (float *)s->output->extended_data[ch];
+    dst = (float *)s->output_out->extended_data[ch];
     ptr = (float *)s->overlap_buffer->extended_data[ch];
+    s->itx_fn(s->irdft[ch], dst, (float *)s->output->extended_data[ch], sizeof(float));
 
     memmove(s->overlap_buffer->extended_data[ch],
             s->overlap_buffer->extended_data[ch] + s->hop_size * sizeof(float),
@@ -1574,19 +1589,14 @@ static int ifft_channel(AVFilterContext *ctx, void *arg, int ch, int nb_jobs)
     return 0;
 }
 
-static int filter_frame(AVFilterLink *inlink)
+static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     AudioSurroundContext *s = ctx->priv;
     AVFrame *out;
-    int ret;
 
-    ret = av_audio_fifo_peek(s->fifo, (void **)s->input->extended_data, s->buf_size);
-    if (ret < 0)
-        return ret;
-
-    ff_filter_execute(ctx, fft_channel, NULL, NULL, inlink->channels);
+    ff_filter_execute(ctx, fft_channel, in, NULL, inlink->ch_layout.nb_channels);
 
     s->filter(ctx);
 
@@ -1594,13 +1604,12 @@ static int filter_frame(AVFilterLink *inlink)
     if (!out)
         return AVERROR(ENOMEM);
 
-    ff_filter_execute(ctx, ifft_channel, out, NULL, outlink->channels);
+    ff_filter_execute(ctx, ifft_channel, out, NULL, outlink->ch_layout.nb_channels);
 
-    out->pts = s->pts;
-    if (s->pts != AV_NOPTS_VALUE)
-        s->pts += av_rescale_q(out->nb_samples, (AVRational){1, outlink->sample_rate}, outlink->time_base);
-    av_audio_fifo_drain(s->fifo, FFMIN(av_audio_fifo_size(s->fifo), s->hop_size));
+    out->pts = in->pts;
+    out->nb_samples = in->nb_samples;
 
+    av_frame_free(&in);
     return ff_filter_frame(outlink, out);
 }
 
@@ -1615,48 +1624,26 @@ static int activate(AVFilterContext *ctx)
 
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
-    if (!s->eof && av_audio_fifo_size(s->fifo) < s->buf_size) {
-        ret = ff_inlink_consume_frame(inlink, &in);
-        if (ret < 0)
-            return ret;
-
-        if (ret > 0) {
-            ret = av_audio_fifo_write(s->fifo, (void **)in->extended_data,
-                                      in->nb_samples);
-            if (ret >= 0 && s->pts == AV_NOPTS_VALUE)
-                s->pts = in->pts;
-
-            av_frame_free(&in);
-            if (ret < 0)
-                return ret;
-        }
-    }
-
-    if ((av_audio_fifo_size(s->fifo) >= s->buf_size) ||
-        (av_audio_fifo_size(s->fifo) > 0 && s->eof)) {
-        ret = filter_frame(inlink);
-        if (av_audio_fifo_size(s->fifo) >= s->buf_size)
-            ff_filter_set_ready(ctx, 100);
+    ret = ff_inlink_consume_samples(inlink, s->hop_size, s->hop_size, &in);
+    if (ret < 0)
         return ret;
-    }
 
-    if (!s->eof && ff_inlink_acknowledge_status(inlink, &status, &pts)) {
-        if (status == AVERROR_EOF) {
-            s->eof = 1;
-            if (av_audio_fifo_size(s->fifo) >= 0) {
-                ff_filter_set_ready(ctx, 100);
-                return 0;
-            }
-        }
-    }
+    if (ret > 0)
+        ret = filter_frame(inlink, in);
+    if (ret < 0)
+        return ret;
 
-    if (s->eof && av_audio_fifo_size(s->fifo) <= 0) {
-        ff_outlink_set_status(outlink, AVERROR_EOF, s->pts);
+    if (ff_inlink_queued_samples(inlink) >= s->hop_size) {
+        ff_filter_set_ready(ctx, 10);
         return 0;
     }
 
-    if (!s->eof)
-        FF_FILTER_FORWARD_WANTED(outlink, inlink);
+    if (ff_inlink_acknowledge_status(inlink, &status, &pts)) {
+        ff_outlink_set_status(outlink, status, pts);
+        return 0;
+    }
+
+    FF_FILTER_FORWARD_WANTED(outlink, inlink);
 
     return FFERROR_NOT_READY;
 }
@@ -1664,23 +1651,22 @@ static int activate(AVFilterContext *ctx)
 static av_cold void uninit(AVFilterContext *ctx)
 {
     AudioSurroundContext *s = ctx->priv;
-    int ch;
 
+    av_frame_free(&s->window);
+    av_frame_free(&s->input_in);
     av_frame_free(&s->input);
     av_frame_free(&s->output);
+    av_frame_free(&s->output_out);
     av_frame_free(&s->overlap_buffer);
 
-    for (ch = 0; ch < s->nb_in_channels; ch++) {
-        av_rdft_end(s->rdft[ch]);
-    }
-    for (ch = 0; ch < s->nb_out_channels; ch++) {
-        av_rdft_end(s->irdft[ch]);
-    }
+    for (int ch = 0; ch < s->nb_in_channels; ch++)
+        av_tx_uninit(&s->rdft[ch]);
+    for (int ch = 0; ch < s->nb_out_channels; ch++)
+        av_tx_uninit(&s->irdft[ch]);
     av_freep(&s->input_levels);
     av_freep(&s->output_levels);
     av_freep(&s->rdft);
     av_freep(&s->irdft);
-    av_audio_fifo_free(s->fifo);
     av_freep(&s->window_func_lut);
 }
 
@@ -1719,22 +1705,22 @@ static const AVOption surround_options[] = {
     { "lfe_out",   "set lfe channel output level", OFFSET(lfe_out),             AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  10, FLAGS },
     { "allx",      "set all channel's x spread",         OFFSET(all_x),         AV_OPT_TYPE_FLOAT,  {.dbl=-1},   -1,  15, FLAGS },
     { "ally",      "set all channel's y spread",         OFFSET(all_y),         AV_OPT_TYPE_FLOAT,  {.dbl=-1},   -1,  15, FLAGS },
-    { "fcx",       "set front center channel x spread",  OFFSET(fc_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "flx",       "set front left channel x spread",    OFFSET(fl_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "frx",       "set front right channel x spread",   OFFSET(fr_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "blx",       "set back left channel x spread",     OFFSET(bl_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "brx",       "set back right channel x spread",    OFFSET(br_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "slx",       "set side left channel x spread",     OFFSET(sl_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "srx",       "set side right channel x spread",    OFFSET(sr_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "bcx",       "set back center channel x spread",   OFFSET(bc_x),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "fcy",       "set front center channel y spread",  OFFSET(fc_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "fly",       "set front left channel y spread",    OFFSET(fl_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "fry",       "set front right channel y spread",   OFFSET(fr_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "bly",       "set back left channel y spread",     OFFSET(bl_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "bry",       "set back right channel y spread",    OFFSET(br_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "sly",       "set side left channel y spread",     OFFSET(sl_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "sry",       "set side right channel y spread",    OFFSET(sr_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
-    { "bcy",       "set back center channel y spread",   OFFSET(bc_y),          AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  15, FLAGS },
+    { "fcx",       "set front center channel x spread",  OFFSET(fc_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "flx",       "set front left channel x spread",    OFFSET(fl_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "frx",       "set front right channel x spread",   OFFSET(fr_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "blx",       "set back left channel x spread",     OFFSET(bl_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "brx",       "set back right channel x spread",    OFFSET(br_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "slx",       "set side left channel x spread",     OFFSET(sl_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "srx",       "set side right channel x spread",    OFFSET(sr_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "bcx",       "set back center channel x spread",   OFFSET(bc_x),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "fcy",       "set front center channel y spread",  OFFSET(fc_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "fly",       "set front left channel y spread",    OFFSET(fl_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "fry",       "set front right channel y spread",   OFFSET(fr_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "bly",       "set back left channel y spread",     OFFSET(bl_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "bry",       "set back right channel y spread",    OFFSET(br_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "sly",       "set side left channel y spread",     OFFSET(sl_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "sry",       "set side right channel y spread",    OFFSET(sr_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
+    { "bcy",       "set back center channel y spread",   OFFSET(bc_y),          AV_OPT_TYPE_FLOAT,  {.dbl=0.5}, .06,  15, FLAGS },
     { "win_size", "set window size", OFFSET(win_size), AV_OPT_TYPE_INT, {.i64 = 4096}, 1024, 65536, FLAGS },
     WIN_FUNC_OPTION("win_func", OFFSET(win_func), FLAGS, WFUNC_HANNING),
     { "overlap", "set window overlap", OFFSET(overlap), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0, 1, FLAGS },

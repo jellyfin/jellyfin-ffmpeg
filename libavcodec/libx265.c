@@ -32,6 +32,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
 #include "internal.h"
 #include "packet_internal.h"
@@ -239,39 +240,40 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
         }
     }
 
-    switch (avctx->pix_fmt) {
-    case AV_PIX_FMT_YUV420P:
-    case AV_PIX_FMT_YUV420P10:
-    case AV_PIX_FMT_YUV420P12:
-        ctx->params->internalCsp = X265_CSP_I420;
-        break;
-    case AV_PIX_FMT_YUV422P:
-    case AV_PIX_FMT_YUV422P10:
-    case AV_PIX_FMT_YUV422P12:
-        ctx->params->internalCsp = X265_CSP_I422;
-        break;
-    case AV_PIX_FMT_GBRP:
-    case AV_PIX_FMT_GBRP10:
-    case AV_PIX_FMT_GBRP12:
-        ctx->params->vui.matrixCoeffs = AVCOL_SPC_RGB;
-        ctx->params->vui.bEnableVideoSignalTypePresentFlag  = 1;
-        ctx->params->vui.bEnableColorDescriptionPresentFlag = 1;
-    case AV_PIX_FMT_YUV444P:
-    case AV_PIX_FMT_YUV444P10:
-    case AV_PIX_FMT_YUV444P12:
+    switch (desc->log2_chroma_w) {
+    // 4:4:4, RGB. gray
+    case 0:
+        // gray
+        if (desc->nb_components == 1) {
+            if (ctx->api->api_build_number < 85) {
+                av_log(avctx, AV_LOG_ERROR,
+                       "libx265 version is %d, must be at least 85 for gray encoding.\n",
+                       ctx->api->api_build_number);
+                return AVERROR_INVALIDDATA;
+            }
+            ctx->params->internalCsp = X265_CSP_I400;
+            break;
+        }
+
+        // set identity matrix for RGB
+        if (desc->flags & AV_PIX_FMT_FLAG_RGB) {
+            ctx->params->vui.matrixCoeffs = AVCOL_SPC_RGB;
+            ctx->params->vui.bEnableVideoSignalTypePresentFlag  = 1;
+            ctx->params->vui.bEnableColorDescriptionPresentFlag = 1;
+        }
+
         ctx->params->internalCsp = X265_CSP_I444;
         break;
-    case AV_PIX_FMT_GRAY8:
-    case AV_PIX_FMT_GRAY10:
-    case AV_PIX_FMT_GRAY12:
-        if (ctx->api->api_build_number < 85) {
-            av_log(avctx, AV_LOG_ERROR,
-                   "libx265 version is %d, must be at least 85 for gray encoding.\n",
-                   ctx->api->api_build_number);
-            return AVERROR_INVALIDDATA;
-        }
-        ctx->params->internalCsp = X265_CSP_I400;
+    // 4:2:0, 4:2:2
+    case 1:
+        ctx->params->internalCsp = desc->log2_chroma_h == 1 ?
+            X265_CSP_I420 : X265_CSP_I422;
         break;
+    default:
+        av_log(avctx, AV_LOG_ERROR,
+               "Pixel format '%s' cannot be mapped to a libx265 CSP!\n",
+               desc->name);
+        return AVERROR_BUG;
     }
 
     if (ctx->crf >= 0) {
@@ -692,14 +694,14 @@ static const enum AVPixelFormat x265_csp_twelve[] = {
     AV_PIX_FMT_NONE
 };
 
-static av_cold void libx265_encode_init_csp(AVCodec *codec)
+static av_cold void libx265_encode_init_csp(FFCodec *codec)
 {
     if (x265_api_get(12))
-        codec->pix_fmts = x265_csp_twelve;
+        codec->p.pix_fmts = x265_csp_twelve;
     else if (x265_api_get(10))
-        codec->pix_fmts = x265_csp_ten;
+        codec->p.pix_fmts = x265_csp_ten;
     else if (x265_api_get(8))
-        codec->pix_fmts = x265_csp_eight;
+        codec->p.pix_fmts = x265_csp_eight;
 }
 
 #define OFFSET(x) offsetof(libx265Context, x)
@@ -723,7 +725,7 @@ static const AVClass class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault x265_defaults[] = {
+static const FFCodecDefault x265_defaults[] = {
     { "b", "0" },
     { "bf", "-1" },
     { "g", "-1" },
@@ -739,21 +741,21 @@ static const AVCodecDefault x265_defaults[] = {
     { NULL },
 };
 
-AVCodec ff_libx265_encoder = {
-    .name             = "libx265",
-    .long_name        = NULL_IF_CONFIG_SMALL("libx265 H.265 / HEVC"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_HEVC,
-    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+FFCodec ff_libx265_encoder = {
+    .p.name           = "libx265",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("libx265 H.265 / HEVC"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_HEVC,
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                         AV_CODEC_CAP_OTHER_THREADS |
                         AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .p.priv_class     = &class,
+    .p.wrapper_name   = "libx265",
     .init             = libx265_encode_init,
     .init_static_data = libx265_encode_init_csp,
-    .encode2          = libx265_encode_frame,
+    FF_CODEC_ENCODE_CB(libx265_encode_frame),
     .close            = libx265_encode_close,
     .priv_data_size   = sizeof(libx265Context),
-    .priv_class       = &class,
     .defaults         = x265_defaults,
     .caps_internal    = FF_CODEC_CAP_AUTO_THREADS,
-    .wrapper_name     = "libx265",
 };

@@ -27,16 +27,13 @@
 av_cold void ff_rl_init(RLTable *rl,
                         uint8_t static_store[2][2 * MAX_RUN + MAX_LEVEL + 3])
 {
-    int8_t  max_level[MAX_RUN + 1], max_run[MAX_LEVEL + 1];
-    uint8_t index_run[MAX_RUN + 1];
     int last, run, level, start, end, i;
-
-    /* If rl->max_level[0] is set, this RLTable has already been initialized */
-    if (rl->max_level[0])
-        return;
 
     /* compute max_level[], max_run[] and index_run[] */
     for (last = 0; last < 2; last++) {
+        int8_t *max_level  = static_store[last];
+        int8_t *max_run    = static_store[last] + MAX_RUN + 1;
+        uint8_t *index_run = static_store[last] + MAX_RUN + 1 + MAX_LEVEL + 1;
         if (last == 0) {
             start = 0;
             end = rl->last;
@@ -45,8 +42,6 @@ av_cold void ff_rl_init(RLTable *rl,
             end = rl->n;
         }
 
-        memset(max_level, 0, MAX_RUN + 1);
-        memset(max_run, 0, MAX_LEVEL + 1);
         memset(index_run, rl->n, MAX_RUN + 1);
         for (i = start; i < end; i++) {
             run   = rl->table_run[i];
@@ -58,19 +53,16 @@ av_cold void ff_rl_init(RLTable *rl,
             if (run > max_run[level])
                 max_run[level] = run;
         }
-        rl->max_level[last] = static_store[last];
-        memcpy(rl->max_level[last], max_level, MAX_RUN + 1);
-        rl->max_run[last]   = static_store[last] + MAX_RUN + 1;
-        memcpy(rl->max_run[last], max_run, MAX_LEVEL + 1);
-        rl->index_run[last] = static_store[last] + MAX_RUN + MAX_LEVEL + 2;
-        memcpy(rl->index_run[last], index_run, MAX_RUN + 1);
+        rl->max_level[last] = max_level;
+        rl->max_run[last]   = max_run;
+        rl->index_run[last] = index_run;
     }
 }
 
 av_cold void ff_rl_init_vlc(RLTable *rl, unsigned static_size)
 {
     int i, q;
-    VLC_TYPE table[1500][2] = {{0}};
+    VLCElem table[1500] = { 0 };
     VLC vlc = { .table = table, .table_allocated = static_size };
     av_assert0(static_size <= FF_ARRAY_ELEMS(table));
     init_vlc(&vlc, 9, rl->n + 1, &rl->table_vlc[0][1], 4, 2, &rl->table_vlc[0][0], 4, 2, INIT_VLC_USE_NEW_STATIC);
@@ -87,8 +79,8 @@ av_cold void ff_rl_init_vlc(RLTable *rl, unsigned static_size)
             qadd = 0;
         }
         for (i = 0; i < vlc.table_size; i++) {
-            int code = vlc.table[i][0];
-            int len  = vlc.table[i][1];
+            int code = vlc.table[i].sym;
+            int len  = vlc.table[i].len;
             int level, run;
 
             if (len == 0) { // illegal code

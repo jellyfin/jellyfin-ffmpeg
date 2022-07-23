@@ -24,7 +24,7 @@
 #include "avcodec.h"
 #include "get_bits.h"
 #include "bytestream.h"
-#include "internal.h"
+#include "codec_internal.h"
 
 static av_cold int decode_init(AVCodecContext *avctx) {
     avctx->pix_fmt = AV_PIX_FMT_PAL8;
@@ -47,11 +47,11 @@ static int64_t parse_timecode(const uint8_t *buf, int64_t packet_time) {
     return ms - packet_time;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_sub_ptr,
-                        AVPacket *avpkt) {
+static int decode_frame(AVCodecContext *avctx, AVSubtitle *sub,
+                        int *got_sub_ptr, const AVPacket *avpkt)
+{
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
-    AVSubtitle *sub = data;
     AVSubtitleRect *rect;
     const uint8_t *buf_end = buf + buf_size;
     uint8_t *bitmap;
@@ -154,12 +154,12 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_sub_ptr,
     return buf_size;
 }
 
-const AVCodec ff_xsub_decoder = {
-    .name      = "xsub",
-    .long_name = NULL_IF_CONFIG_SMALL("XSUB"),
-    .type      = AVMEDIA_TYPE_SUBTITLE,
-    .id        = AV_CODEC_ID_XSUB,
+const FFCodec ff_xsub_decoder = {
+    .p.name    = "xsub",
+    .p.long_name = NULL_IF_CONFIG_SMALL("XSUB"),
+    .p.type    = AVMEDIA_TYPE_SUBTITLE,
+    .p.id      = AV_CODEC_ID_XSUB,
     .init      = decode_init,
-    .decode    = decode_frame,
+    FF_CODEC_DECODE_SUB_CB(decode_frame),
     .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

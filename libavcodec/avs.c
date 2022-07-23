@@ -20,6 +20,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -42,15 +43,13 @@ typedef enum {
 } AvsVideoSubType;
 
 
-static int
-avs_decode_frame(AVCodecContext * avctx,
-                 void *data, int *got_frame, AVPacket *avpkt)
+static int avs_decode_frame(AVCodecContext * avctx, AVFrame *picture,
+                            int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     const uint8_t *buf_end = avpkt->data + avpkt->size;
     int buf_size = avpkt->size;
     AvsContext *const avs = avctx->priv_data;
-    AVFrame *picture = data;
     AVFrame *const p =  avs->frame;
     const uint8_t *table, *vect;
     uint8_t *out;
@@ -176,15 +175,15 @@ static av_cold int avs_decode_end(AVCodecContext *avctx)
 }
 
 
-const AVCodec ff_avs_decoder = {
-    .name           = "avs",
-    .long_name      = NULL_IF_CONFIG_SMALL("AVS (Audio Video Standard) video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_AVS,
+const FFCodec ff_avs_decoder = {
+    .p.name         = "avs",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AVS (Audio Video Standard) video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_AVS,
     .priv_data_size = sizeof(AvsContext),
     .init           = avs_decode_init,
-    .decode         = avs_decode_frame,
+    FF_CODEC_DECODE_CB(avs_decode_frame),
     .close          = avs_decode_end,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

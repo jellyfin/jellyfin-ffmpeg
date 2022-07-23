@@ -1,5 +1,5 @@
-542ababe5c088ab925ee49373d8b8a85 *tests/data/fate/matroska-mastering-display-metadata.matroska
-1669695 tests/data/fate/matroska-mastering-display-metadata.matroska
+69a904789151abaee46033391a4fce46 *tests/data/fate/matroska-mastering-display-metadata.matroska
+1669555 tests/data/fate/matroska-mastering-display-metadata.matroska
 #extradata 0:        4, 0x040901a3
 #extradata 3:      200, 0x506463a8
 #tb 0: 1/1000
@@ -11,13 +11,11 @@
 #media_type 1: audio
 #codec_id 1: pcm_s24le
 #sample_rate 1: 48000
-#channel_layout 1: 4
 #channel_layout_name 1: mono
 #tb 2: 1/1000
 #media_type 2: audio
 #codec_id 2: pcm_s16be
 #sample_rate 2: 48000
-#channel_layout 2: 4
 #channel_layout_name 2: mono
 #tb 3: 1/1000
 #media_type 3: video

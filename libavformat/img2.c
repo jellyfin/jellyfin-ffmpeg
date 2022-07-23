@@ -41,6 +41,7 @@ const IdStrMap ff_img_tags[] = {
     { AV_CODEC_ID_PBM,        "pbm"      },
     { AV_CODEC_ID_PAM,        "pam"      },
     { AV_CODEC_ID_PFM,        "pfm"      },
+    { AV_CODEC_ID_PHM,        "phm"      },
     { AV_CODEC_ID_CRI,        "cri"      },
     { AV_CODEC_ID_ALIAS_PIX,  "pix"      },
     { AV_CODEC_ID_DDS,        "dds"      },
@@ -87,6 +88,9 @@ const IdStrMap ff_img_tags[] = {
     { AV_CODEC_ID_GEM,        "img"      },
     { AV_CODEC_ID_GEM,        "ximg"     },
     { AV_CODEC_ID_GEM,        "timg"     },
+    { AV_CODEC_ID_VBN,        "vbn"      },
+    { AV_CODEC_ID_JPEGXL,     "jxl"      },
+    { AV_CODEC_ID_QOI,        "qoi"      },
     { AV_CODEC_ID_NONE,       NULL       }
 };
 

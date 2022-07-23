@@ -35,6 +35,7 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "thread.h"
@@ -289,14 +290,12 @@ static av_noinline int decode_huff(AVCodecContext *avctx, AVFrame *frame,
     return 0;
 }
 
-static int photocd_decode_frame(AVCodecContext *avctx, void *data,
+static int photocd_decode_frame(AVCodecContext *avctx, AVFrame *p,
                                 int *got_frame, AVPacket *avpkt)
 {
     PhotoCDContext *s = avctx->priv_data;
-    ThreadFrame frame = { .f = data };
     const uint8_t *buf = avpkt->data;
     GetByteContext *gb = &s->gb;
-    AVFrame *p = data;
     uint8_t *ptr, *ptr1, *ptr2;
     int ret;
 
@@ -326,7 +325,7 @@ static int photocd_decode_frame(AVCodecContext *avctx, void *data,
     if (ret < 0)
         return ret;
 
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, p, 0)) < 0)
         return ret;
 
     p->pict_type = AV_PICTURE_TYPE_I;
@@ -457,16 +456,16 @@ static const AVClass photocd_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_photocd_decoder = {
-    .name           = "photocd",
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_PHOTOCD,
+const FFCodec ff_photocd_decoder = {
+    .p.name         = "photocd",
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_PHOTOCD,
     .priv_data_size = sizeof(PhotoCDContext),
-    .priv_class     = &photocd_class,
+    .p.priv_class   = &photocd_class,
     .init           = photocd_decode_init,
     .close          = photocd_decode_close,
-    .decode         = photocd_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .long_name      = NULL_IF_CONFIG_SMALL("Kodak Photo CD"),
+    FF_CODEC_DECODE_CB(photocd_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Kodak Photo CD"),
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

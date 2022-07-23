@@ -23,6 +23,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -47,14 +48,14 @@ typedef struct {
 } CpiaContext;
 
 
-static int cpia_decode_frame(AVCodecContext *avctx,
-                             void *data, int *got_frame, AVPacket* avpkt)
+static int cpia_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                             int *got_frame, AVPacket* avpkt)
 {
     CpiaContext* const cpia = avctx->priv_data;
     int i,j,ret;
 
-    uint8_t* const header = avpkt->data;
-    uint8_t* src;
+    const uint8_t *const header = avpkt->data;
+    const uint8_t *src;
     int src_size;
     uint16_t linelength;
     uint8_t skip;
@@ -184,7 +185,7 @@ static int cpia_decode_frame(AVCodecContext *avctx,
     }
 
     *got_frame = 1;
-    if ((ret = av_frame_ref(data, cpia->frame)) < 0)
+    if ((ret = av_frame_ref(rframe, cpia->frame)) < 0)
         return ret;
 
     return avpkt->size;
@@ -221,15 +222,15 @@ static av_cold int cpia_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_cpia_decoder = {
-    .name           = "cpia",
-    .long_name      = NULL_IF_CONFIG_SMALL("CPiA video format"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_CPIA,
+const FFCodec ff_cpia_decoder = {
+    .p.name         = "cpia",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("CPiA video format"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_CPIA,
     .priv_data_size = sizeof(CpiaContext),
     .init           = cpia_decode_init,
     .close          = cpia_decode_end,
-    .decode         = cpia_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(cpia_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

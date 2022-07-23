@@ -30,6 +30,7 @@
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 enum QuickdrawOpcodes {
@@ -287,11 +288,9 @@ static int check_header(const char *buf, int buf_size)
 }
 
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *p,
+                        int *got_frame, AVPacket *avpkt)
 {
-    AVFrame * const p      = data;
     GetByteContext gbc;
     int colors;
     int w, h, ret;
@@ -369,7 +368,7 @@ static int decode_frame(AVCodecContext *avctx,
             bytestream2_skip(&gbc, 18);
             colors = bytestream2_get_be16(&gbc);
 
-            if (colors < 0 || colors > 256) {
+            if (colors < 0 || colors > 255) {
                 av_log(avctx, AV_LOG_ERROR,
                        "Error color count - %i(0x%X)\n", colors, colors);
                 return AVERROR_INVALIDDATA;
@@ -514,11 +513,11 @@ static int decode_frame(AVCodecContext *avctx,
     }
 }
 
-const AVCodec ff_qdraw_decoder = {
-    .name           = "qdraw",
-    .long_name      = NULL_IF_CONFIG_SMALL("Apple QuickDraw"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_QDRAW,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+const FFCodec ff_qdraw_decoder = {
+    .p.name         = "qdraw",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Apple QuickDraw"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_QDRAW,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
 };

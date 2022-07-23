@@ -1060,6 +1060,8 @@ and remove the @code{#EXT-X-ENDLIST} from the old segment list.
 @item round_durations
 Round the duration info in the playlist file segment info to integer
 values, instead of using floating point.
+If there are no other features requiring higher HLS versions be used,
+then this will allow ffmpeg to output a HLS version 2 m3u8.
 
 @item discont_start
 Add the @code{#EXT-X-DISCONTINUITY} tag to the playlist, before the
@@ -1567,6 +1569,15 @@ A safe size for most use cases should be about 50kB per hour of video.
 
 Note that cues are only written if the output is seekable and this option will
 have no effect if it is not.
+
+@item cues_to_front
+If set, the muxer will write the index at the beginning of the file
+by shifting the main data if necessary. This can be combined with
+reserve_index_space in which case the data is only shifted if
+the initially reserved space turns out to be insufficient.
+
+This option is ignored if the output is unseekable.
+
 @item default_mode
 This option controls how the FlagDefault of the output tracks will be set.
 It influences which tracks players should play by default. The default mode
@@ -1722,6 +1733,14 @@ B-frames. Additionally, eases conformance with the DASH-IF interoperability
 guidelines.
 
 This option is implicitly set when writing ismv (Smooth Streaming) files.
+
+@item -write_btrt @var{bool}
+Force or disable writing bitrate box inside stsd box of a track.
+The box contains decoding buffer size (in bytes), maximum bitrate and
+average bitrate for the track. The box will be skipped if none of these values
+can be computed.
+Default is @code{-1} or @code{auto}, which will write the box only in MP4 mode.
+
 @item -write_prft
 Write producer time reference box (PRFT) with a specified time source for the
 NTP field in the PRFT box. Set value as @samp{wallclock} to specify timesource
@@ -1733,10 +1752,18 @@ where PTS values are set as as wallclock time at the source. For example, an
 encoding use case with decklink capture source where @option{video_pts} and
 @option{audio_pts} are set to @samp{abs_wallclock}.
 
+@item -empty_hdlr_name @var{bool}
+Enable to skip writing the name inside a @code{hdlr} box.
+Default is @code{false}.
+
 @item -movie_timescale @var{scale}
 Set the timescale written in the movie header box (@code{mvhd}).
 Range is 1 to INT_MAX. Default is 1000.
 
+@item -video_track_timescale @var{scale}
+Set the timescale used for video tracks. Range is 0 to INT_MAX.
+If set to @code{0}, the timescale is automatically set based on
+the native stream time base. Default is 0.
 @end table
 
 @subsection Example

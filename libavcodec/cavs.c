@@ -25,14 +25,10 @@
  * @author Stefan Gehrer <stefan.gehrer@gmx.de>
  */
 
-#include "libavutil/mem_internal.h"
-
 #include "avcodec.h"
-#include "get_bits.h"
 #include "golomb.h"
 #include "h264chroma.h"
 #include "idctdsp.h"
-#include "internal.h"
 #include "mathops.h"
 #include "qpeldsp.h"
 #include "cavs.h"
@@ -812,10 +808,8 @@ av_cold int ff_cavs_init(AVCodecContext *avctx)
     h->cur.f    = av_frame_alloc();
     h->DPB[0].f = av_frame_alloc();
     h->DPB[1].f = av_frame_alloc();
-    if (!h->cur.f || !h->DPB[0].f || !h->DPB[1].f) {
-        ff_cavs_end(avctx);
+    if (!h->cur.f || !h->DPB[0].f || !h->DPB[1].f)
         return AVERROR(ENOMEM);
-    }
 
     h->luma_scan[0]                     = 0;
     h->luma_scan[1]                     = 8;

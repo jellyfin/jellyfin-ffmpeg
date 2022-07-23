@@ -21,6 +21,7 @@
 #include "libavutil/intreadwrite.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -44,7 +45,7 @@ static av_cold int hcom_init(AVCodecContext *avctx)
 {
     HCOMContext *s = avctx->priv_data;
 
-    if (avctx->channels != 1) {
+    if (avctx->ch_layout.nb_channels != 1) {
         av_log(avctx, AV_LOG_ERROR, "invalid number of channels\n");
         return AVERROR_INVALIDDATA;
     }
@@ -79,11 +80,10 @@ static av_cold int hcom_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int hcom_decode(AVCodecContext *avctx, void *data,
+static int hcom_decode(AVCodecContext *avctx, AVFrame *frame,
                        int *got_frame, AVPacket *pkt)
 {
     HCOMContext *s = avctx->priv_data;
-    AVFrame *frame = data;
     GetBitContext gb;
     int ret, n = 0;
 
@@ -134,15 +134,15 @@ static av_cold int hcom_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_hcom_decoder = {
-    .name           = "hcom",
-    .long_name      = NULL_IF_CONFIG_SMALL("HCOM Audio"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_HCOM,
+const FFCodec ff_hcom_decoder = {
+    .p.name         = "hcom",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("HCOM Audio"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_HCOM,
     .priv_data_size = sizeof(HCOMContext),
     .init           = hcom_init,
     .close          = hcom_close,
-    .decode         = hcom_decode,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(hcom_decode),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

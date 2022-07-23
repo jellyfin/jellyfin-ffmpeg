@@ -24,12 +24,13 @@
  * @url{http://tools.ietf.org/id/draft-pantos-http-live-streaming}
  */
 
-#include <float.h>
+#include "config_components.h"
+
 #include <time.h>
 
 #include "avformat.h"
-#include "avio_internal.h"
 #include "internal.h"
+#include "mux.h"
 
 #include "libavutil/avassert.h"
 #include "libavutil/internal.h"

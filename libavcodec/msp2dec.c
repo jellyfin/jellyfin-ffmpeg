@@ -26,15 +26,14 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
-static int msp2_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int msp2_decode_frame(AVCodecContext *avctx, AVFrame *p,
+                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
-    AVFrame *p         = data;
     int ret;
     unsigned int x, y, width = (avctx->width + 7) / 8;
     GetByteContext idx, gb;
@@ -93,11 +92,11 @@ static int msp2_decode_frame(AVCodecContext *avctx,
     return buf_size;
 }
 
-const AVCodec ff_msp2_decoder = {
-    .name           = "msp2",
-    .long_name      = NULL_IF_CONFIG_SMALL("Microsoft Paint (MSP) version 2"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MSP2,
-    .decode         = msp2_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+const FFCodec ff_msp2_decoder = {
+    .p.name         = "msp2",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Microsoft Paint (MSP) version 2"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MSP2,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(msp2_decode_frame),
 };

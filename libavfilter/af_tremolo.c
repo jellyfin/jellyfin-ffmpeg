@@ -49,7 +49,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVFilterLink *outlink = ctx->outputs[0];
     TremoloContext *s = ctx->priv;
     const double *src = (const double *)in->data[0];
-    const int channels = inlink->channels;
+    const int channels = inlink->ch_layout.nb_channels;
     const int nb_samples = in->nb_samples;
     AVFrame *out;
     double *dst;
@@ -137,4 +137,5 @@ const AVFilter ff_af_tremolo = {
     FILTER_INPUTS(avfilter_af_tremolo_inputs),
     FILTER_OUTPUTS(avfilter_af_tremolo_outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBL),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

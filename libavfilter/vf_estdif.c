@@ -95,7 +95,7 @@ static const AVOption estdif_options[] = {
     CONST("interlaced", "only deinterlace frames marked as interlaced", 1, "deint"),
     { "rslope", "specify the search radius for edge slope tracing", OFFSET(rslope), AV_OPT_TYPE_INT, {.i64=1}, 1, MAX_R, FLAGS, },
     { "redge",  "specify the search radius for best edge matching", OFFSET(redge),  AV_OPT_TYPE_INT, {.i64=2}, 0, MAX_R, FLAGS, },
-    { "ecost",  "specify the edge cost for edge matching",          OFFSET(ecost),  AV_OPT_TYPE_FLOAT,{.dbl=0.03125},0,1,FLAGS, },
+    { "ecost",  "specify the edge cost for edge matching",          OFFSET(ecost),  AV_OPT_TYPE_FLOAT,{.dbl=1},0,9,FLAGS, },
     { "mcost",  "specify the middle cost for edge matching",        OFFSET(mcost),  AV_OPT_TYPE_FLOAT,{.dbl=0.5}, 0, 1,  FLAGS, },
     { "dcost",  "specify the distance cost for edge matching",      OFFSET(dcost),  AV_OPT_TYPE_FLOAT,{.dbl=0.5}, 0, 1,  FLAGS, },
     { "interp", "specify the type of interpolation",                OFFSET(interp), AV_OPT_TYPE_INT, {.i64=1}, 0, 2,     FLAGS, "interp" },
@@ -137,9 +137,11 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
+    ESTDIFContext *s = ctx->priv;
 
     outlink->time_base = av_mul_q(inlink->time_base, (AVRational){1, 2});
-    outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
+    if (s->mode)
+        outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
 
     return 0;
 }

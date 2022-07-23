@@ -30,6 +30,7 @@
 #include "libavutil/xga_font_data.h"
 #include "avcodec.h"
 #include "cga_data.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 #define ATTR_BOLD         0x01  /**< Bold/Bright-foreground (mode 1) */
@@ -353,12 +354,11 @@ static int execute_code(AVCodecContext * avctx, int c)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                        int *got_frame, AVPacket *avpkt)
 {
     AnsiContext *s = avctx->priv_data;
-    uint8_t *buf = avpkt->data;
+    const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     const uint8_t *buf_end   = buf+buf_size;
     int ret, i, count;
@@ -462,7 +462,7 @@ static int decode_frame(AVCodecContext *avctx,
     }
 
     *got_frame = 1;
-    if ((ret = av_frame_ref(data, s->frame)) < 0)
+    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
         return ret;
     return buf_size;
 }
@@ -475,21 +475,21 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-static const AVCodecDefault ansi_defaults[] = {
+static const FFCodecDefault ansi_defaults[] = {
     { "max_pixels", "640*480" },
     { NULL },
 };
 
-const AVCodec ff_ansi_decoder = {
-    .name           = "ansi",
-    .long_name      = NULL_IF_CONFIG_SMALL("ASCII/ANSI art"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_ANSI,
+const FFCodec ff_ansi_decoder = {
+    .p.name         = "ansi",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("ASCII/ANSI art"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_ANSI,
     .priv_data_size = sizeof(AnsiContext),
     .init           = decode_init,
     .close          = decode_close,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
     .defaults       = ansi_defaults,
 };

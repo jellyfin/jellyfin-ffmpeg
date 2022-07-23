@@ -1,16 +1,14 @@
-4e6253c1f5f96ff64ae855dea426547d *tests/data/fate/matroska-mpegts-remux.matroska
-6509 tests/data/fate/matroska-mpegts-remux.matroska
+acaf3ebe07afe9815e0a984921d3ab87 *tests/data/fate/matroska-mpegts-remux.matroska
+6494 tests/data/fate/matroska-mpegts-remux.matroska
 #tb 0: 1/1000
 #media_type 0: audio
 #codec_id 0: ac3
 #sample_rate 0: 48000
-#channel_layout 0: 3
 #channel_layout_name 0: stereo
 #tb 1: 1/1000
 #media_type 1: audio
 #codec_id 1: ac3
 #sample_rate 1: 48000
-#channel_layout 1: 3
 #channel_layout_name 1: stereo
 0,          0,          0,       32,      768, 0xa63778d4
 1,          0,          0,       32,      768, 0xa63778d4

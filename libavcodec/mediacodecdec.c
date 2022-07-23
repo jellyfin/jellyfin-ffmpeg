@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <stdint.h>
 #include <string.h>
 
@@ -31,8 +33,10 @@
 #include "libavutil/internal.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "decode.h"
 #include "h264_parse.h"
+#include "h264_ps.h"
 #include "hevc_parse.h"
 #include "hwconfig.h"
 #include "internal.h"
@@ -528,22 +532,22 @@ static const AVClass ff_##short_name##_mediacodec_dec_class = { \
 
 #define DECLARE_MEDIACODEC_VDEC(short_name, full_name, codec_id, bsf)                          \
 DECLARE_MEDIACODEC_VCLASS(short_name)                                                          \
-const AVCodec ff_ ## short_name ## _mediacodec_decoder = {                                     \
-    .name           = #short_name "_mediacodec",                                               \
-    .long_name      = NULL_IF_CONFIG_SMALL(full_name " Android MediaCodec decoder"),           \
-    .type           = AVMEDIA_TYPE_VIDEO,                                                      \
-    .id             = codec_id,                                                                \
-    .priv_class     = &ff_##short_name##_mediacodec_dec_class,                                 \
+const FFCodec ff_ ## short_name ## _mediacodec_decoder = {                                     \
+    .p.name         = #short_name "_mediacodec",                                               \
+    .p.long_name    = NULL_IF_CONFIG_SMALL(full_name " Android MediaCodec decoder"),           \
+    .p.type         = AVMEDIA_TYPE_VIDEO,                                                      \
+    .p.id           = codec_id,                                                                \
+    .p.priv_class   = &ff_##short_name##_mediacodec_dec_class,                                 \
     .priv_data_size = sizeof(MediaCodecH264DecContext),                                        \
     .init           = mediacodec_decode_init,                                                  \
-    .receive_frame  = mediacodec_receive_frame,                                                \
+    FF_CODEC_RECEIVE_FRAME_CB(mediacodec_receive_frame),                                       \
     .flush          = mediacodec_decode_flush,                                                 \
     .close          = mediacodec_decode_close,                                                 \
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
     .caps_internal  = FF_CODEC_CAP_SETS_PKT_DTS,                                               \
     .bsfs           = bsf,                                                                     \
     .hw_configs     = mediacodec_hw_configs,                                                   \
-    .wrapper_name   = "mediacodec",                                                            \
+    .p.wrapper_name = "mediacodec",                                                            \
 };                                                                                             \
 
 #if CONFIG_H264_MEDIACODEC_DECODER

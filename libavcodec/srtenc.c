@@ -19,13 +19,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <stdarg.h>
 #include "avcodec.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "ass_split.h"
 #include "ass.h"
-#include "internal.h"
+#include "codec_internal.h"
 
 
 #define SRT_STACK_SIZE 64
@@ -291,42 +293,42 @@ static int srt_encode_close(AVCodecContext *avctx)
 
 #if CONFIG_SRT_ENCODER
 /* deprecated encoder */
-const AVCodec ff_srt_encoder = {
-    .name           = "srt",
-    .long_name      = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
-    .type           = AVMEDIA_TYPE_SUBTITLE,
-    .id             = AV_CODEC_ID_SUBRIP,
+const FFCodec ff_srt_encoder = {
+    .p.name         = "srt",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
+    .p.type         = AVMEDIA_TYPE_SUBTITLE,
+    .p.id           = AV_CODEC_ID_SUBRIP,
     .priv_data_size = sizeof(SRTContext),
     .init           = srt_encode_init,
-    .encode_sub     = srt_encode_frame,
+    FF_CODEC_ENCODE_SUB_CB(srt_encode_frame),
     .close          = srt_encode_close,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 
 #if CONFIG_SUBRIP_ENCODER
-const AVCodec ff_subrip_encoder = {
-    .name           = "subrip",
-    .long_name      = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
-    .type           = AVMEDIA_TYPE_SUBTITLE,
-    .id             = AV_CODEC_ID_SUBRIP,
+const FFCodec ff_subrip_encoder = {
+    .p.name         = "subrip",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
+    .p.type         = AVMEDIA_TYPE_SUBTITLE,
+    .p.id           = AV_CODEC_ID_SUBRIP,
     .priv_data_size = sizeof(SRTContext),
     .init           = srt_encode_init,
-    .encode_sub     = srt_encode_frame,
+    FF_CODEC_ENCODE_SUB_CB(srt_encode_frame),
     .close          = srt_encode_close,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 
 #if CONFIG_TEXT_ENCODER
-const AVCodec ff_text_encoder = {
-    .name           = "text",
-    .long_name      = NULL_IF_CONFIG_SMALL("Raw text subtitle"),
-    .type           = AVMEDIA_TYPE_SUBTITLE,
-    .id             = AV_CODEC_ID_TEXT,
+const FFCodec ff_text_encoder = {
+    .p.name         = "text",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Raw text subtitle"),
+    .p.type         = AVMEDIA_TYPE_SUBTITLE,
+    .p.id           = AV_CODEC_ID_TEXT,
     .priv_data_size = sizeof(SRTContext),
     .init           = srt_encode_init,
-    .encode_sub     = text_encode_frame,
+    FF_CODEC_ENCODE_SUB_CB(text_encode_frame),
     .close          = srt_encode_close,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

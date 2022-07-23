@@ -21,6 +21,7 @@
  */
 
 #include "config.h"
+#include "config_components.h"
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -47,6 +48,7 @@
 #endif
 #include "internal.h"
 #include "isom.h"
+#include "mux.h"
 #include "os_support.h"
 #include "url.h"
 #include "vpcc.h"
@@ -859,7 +861,7 @@ static int write_adaptation_set(AVFormatContext *s, AVIOContext *out, int as_ind
             avio_printf(out, "\t\t\t<Representation id=\"%d\" mimeType=\"audio/%s\" codecs=\"%s\"%s audioSamplingRate=\"%d\">\n",
                 i, os->format_name, os->codec_str, bandwidth_str, s->streams[i]->codecpar->sample_rate);
             avio_printf(out, "\t\t\t\t<AudioChannelConfiguration schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\" value=\"%d\" />\n",
-                s->streams[i]->codecpar->channels);
+                s->streams[i]->codecpar->ch_layout.nb_channels);
         }
         if (!final && c->write_prft && os->producer_reference_time_str[0]) {
             avio_printf(out, "\t\t\t\t<ProducerReferenceTime id=\"%d\" inband=\"true\" type=\"%s\" wallClockTime=\"%s\" presentationTime=\"%"PRId64"\">\n",

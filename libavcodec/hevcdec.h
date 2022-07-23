@@ -26,7 +26,6 @@
 #include <stdatomic.h>
 
 #include "libavutil/buffer.h"
-#include "libavutil/md5.h"
 #include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
@@ -41,8 +40,7 @@
 #include "hevc_sei.h"
 #include "hevcdsp.h"
 #include "h274.h"
-#include "internal.h"
-#include "thread.h"
+#include "threadframe.h"
 #include "videodsp.h"
 
 #define SHIFT_CTB_WPP 2
@@ -396,7 +394,6 @@ typedef struct HEVCFrame {
     AVFrame *frame;
     AVFrame *frame_grain;
     ThreadFrame tf;
-    ThreadFrame tf_grain;
     int needs_fg; /* 1 if grain needs to be applied by the decoder */
     MvField *tab_mvf;
     RefPicList *refPicList;
@@ -566,7 +563,6 @@ typedef struct HEVCContext {
     // type of the first VCL NAL of the current frame
     enum HEVCNALUnitType first_nal_type;
 
-    uint8_t context_initialized;
     int is_nalff;           ///< this flag is != 0 if bitstream is encapsulated
                             ///< as a format defined in 14496-15
     int apply_defdispwin;
@@ -588,8 +584,8 @@ void ff_hevc_clear_refs(HEVCContext *s);
  */
 void ff_hevc_flush_dpb(HEVCContext *s);
 
-RefPicList *ff_hevc_get_ref_list(HEVCContext *s, HEVCFrame *frame,
-                                 int x0, int y0);
+const RefPicList *ff_hevc_get_ref_list(const HEVCContext *s, const HEVCFrame *frame,
+                                       int x0, int y0);
 
 /**
  * Construct the reference picture sets for the current frame.

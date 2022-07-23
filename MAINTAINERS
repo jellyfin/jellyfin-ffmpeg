@@ -161,6 +161,7 @@ Codecs:
   cscd.c                                Reimar Doeffinger
   cuviddec.c                            Timo Rothenpieler
   dca*                                  foo86
+  dfpwm*                                Jack Bruienne
   dirac*                                Rostislav Pehlivanov
   dnxhd*                                Baptiste Coudurier
   dolby_e*                              foo86
@@ -193,6 +194,7 @@ Codecs:
   libcodec2.c                           Tomas Härdin
   libdirac*                             David Conrad
   libdavs2.c                            Huiwen Ren
+  libjxl*.c, libjxl.h                   Leo Izen
   libgsm.c                              Michel Bardiaux
   libkvazaar.c                          Arttu Ylä-Outinen
   libopenh264enc.c                      Martin Storsjo, Linjie Fu
@@ -266,7 +268,6 @@ Codecs:
   xan.c                                 Mike Melanson
   xbm*                                  Paul B Mahol
   xface                                 Stefano Sabatini
-  xvmc.c                                Ivan Kalvachev
   xwd*                                  Paul B Mahol
 
 Hardware acceleration:
@@ -354,6 +355,7 @@ Filters:
   vf_il.c                               Paul B Mahol
   vf_(t)interlace                       Thomas Mundt (CC <thomas.mundt@hr.de>)
   vf_lenscorrection.c                   Daniel Oberhoff
+  vf_libplacebo.c                       Niklas Haas
   vf_mergeplanes.c                      Paul B Mahol
   vf_mestimate.c                        Davinder Singh
   vf_minterpolate.c                     Davinder Singh
@@ -416,6 +418,7 @@ Muxers/Demuxers:
   dashdec.c                             Steven Liu
   dashenc.c                             Karthick Jeyapal
   daud.c                                Reimar Doeffinger
+  dfpwmdec.c                            Jack Bruienne
   dss.c                                 Oleksij Rempel
   dtsdec.c                              foo86
   dtshddec.c                            Paul B Mahol
@@ -436,6 +439,7 @@ Muxers/Demuxers:
   ipmovie.c                             Mike Melanson
   ircam*                                Paul B Mahol
   iss.c                                 Stefan Gehrer
+  jpegxl_probe.*                        Leo Izen
   jvdec.c                               Peter Ross
   kvag.c                                Zane van Iperen
   libmodplug.c                          Clément Bœsch
@@ -515,6 +519,7 @@ Protocols:
   bluray.c                              Petri Hintukainen
   ftp.c                                 Lukasz Marek
   http.c                                Ronald S. Bultje
+  libsrt.c                              Zhao Zhili
   libssh.c                              Lukasz Marek
   libzmq.c                              Andriy Gelman
   mms*.c                                Ronald S. Bultje
@@ -541,6 +546,7 @@ Operating systems / CPU architectures
 
 Alpha                                   Falk Hueffner
 MIPS                                    Manojkumar Bhosale, Shiyou Yin
+LoongArch                               Shiyou Yin
 Mac OS X / PowerPC                      Romain Dolbeau, Guillaume Poirier
 Amiga / PowerPC                         Colin Ward
 Linux / PowerPC                         Lauri Kasanen
@@ -615,10 +621,12 @@ Haihao Xiang (haihao)         1F0C 31E8 B4FE F7A4 4DC1 DC99 E0F5 76D4 76FC 437F
 Jaikrishnan Menon             61A1 F09F 01C9 2D45 78E1 C862 25DC 8831 AF70 D368
 James Almer                   7751 2E8C FD94 A169 57E6 9A7A 1463 01AD 7376 59E0
 Jean Delvare                  7CA6 9F44 60F1 BDC4 1FD2 C858 A552 6B9B B3CD 4E6A
+Leo Izen (thebombzen)         B6FD 3CFC 7ACF 83FC 9137 6945 5A71 C331 FD2F A19A
 Loren Merritt                 ABD9 08F4 C920 3F65 D8BE 35D7 1540 DAA7 060F 56DE
 Lynne                         FE50 139C 6805 72CA FD52 1F8D A2FE A5F0 3F03 4464
 Michael Niedermayer           9FF2 128B 147E F673 0BAD F133 611E C787 040B 0FAB
 Nicolas George                24CE 01CE 9ACC 5CEB 74D8 8D9D B063 D997 36E5 4C93
+Niklas Haas (haasn)           1DDB 8076 B14D 5B48 32FC 99D9 EB52 DA9C 02BA 6FB4
 Nikolay Aleksandrov           8978 1D8C FB71 588E 4B27 EAA8 C4F0 B5FC E011 13B1
 Panagiotis Issaris            6571 13A3 33D9 3726 F728 AA98 F643 B12E ECF3 E029
 Peter Ross                    A907 E02F A6E5 0CD2 34CD 20D2 6760 79C5 AC40 DD6B

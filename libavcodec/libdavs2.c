@@ -24,7 +24,8 @@
 
 #include "libavutil/cpu.h"
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "avs2.h"
 #include "davs2.h"
 
 typedef struct DAVS2Context {
@@ -78,8 +79,15 @@ static int davs2_dump_frames(AVCodecContext *avctx, davs2_picture_t *pic, int *g
         avctx->height    = headerset->height;
         avctx->pix_fmt   = headerset->output_bit_depth == 10 ?
                            AV_PIX_FMT_YUV420P10 : AV_PIX_FMT_YUV420P;
+        /* It should be picture_reorder_delay, but libdavs2 doesn't export that
+         * info.
+         * Use FFMAX since has_b_frames could be set by AVS2 parser in theory,
+         * which doesn't do it yet.
+         */
+        avctx->has_b_frames = FFMAX(avctx->has_b_frames, !headerset->low_delay);
 
-        avctx->framerate = av_d2q(headerset->frame_rate,4096);
+        if (headerset->frame_rate_id < 16)
+            avctx->framerate = ff_avs2_frame_rate_tab[headerset->frame_rate_id];
         *got_frame = 0;
         return 0;
     }
@@ -169,6 +177,7 @@ static av_cold int davs2_end(AVCodecContext *avctx)
 
     /* close the decoder */
     if (cad->decoder) {
+        davs2_flush(avctx);
         davs2_decoder_close(cad->decoder);
         cad->decoder = NULL;
     }
@@ -176,13 +185,12 @@ static av_cold int davs2_end(AVCodecContext *avctx)
     return 0;
 }
 
-static int davs2_decode_frame(AVCodecContext *avctx, void *data,
+static int davs2_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                               int *got_frame, AVPacket *avpkt)
 {
     DAVS2Context *cad      = avctx->priv_data;
     int           buf_size = avpkt->size;
-    uint8_t      *buf_ptr  = avpkt->data;
-    AVFrame      *frame    = data;
+    const uint8_t *buf_ptr = avpkt->data;
     int           ret      = DAVS2_DEFAULT;
 
     /* end of stream, output what is still in the buffers */
@@ -213,19 +221,19 @@ static int davs2_decode_frame(AVCodecContext *avctx, void *data,
     return ret == 0 ? buf_size : ret;
 }
 
-const AVCodec ff_libdavs2_decoder = {
-    .name           = "libdavs2",
-    .long_name      = NULL_IF_CONFIG_SMALL("libdavs2 AVS2-P2/IEEE1857.4"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_AVS2,
+const FFCodec ff_libdavs2_decoder = {
+    .p.name         = "libdavs2",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("libdavs2 AVS2-P2/IEEE1857.4"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_AVS2,
     .priv_data_size = sizeof(DAVS2Context),
     .init           = davs2_init,
     .close          = davs2_end,
-    .decode         = davs2_decode_frame,
+    FF_CODEC_DECODE_CB(davs2_decode_frame),
     .flush          = davs2_flush,
-    .capabilities   =  AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
+    .p.capabilities =  AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
     .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
-    .wrapper_name   = "libdavs2",
+    .p.wrapper_name = "libdavs2",
 };

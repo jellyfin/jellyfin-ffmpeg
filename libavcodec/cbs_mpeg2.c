@@ -21,7 +21,7 @@
 #include "cbs.h"
 #include "cbs_internal.h"
 #include "cbs_mpeg2.h"
-#include "internal.h"
+#include "startcode.h"
 
 
 #define HEADER(name) do { \
@@ -144,11 +144,9 @@ static int cbs_mpeg2_split_fragment(CodedBitstreamContext *ctx,
                                     CodedBitstreamFragment *frag,
                                     int header)
 {
-    const uint8_t *start, *end;
-    CodedBitstreamUnitType unit_type;
+    const uint8_t *start;
     uint32_t start_code = -1;
-    size_t unit_size;
-    int err, i, final = 0;
+    int err;
 
     start = avpriv_find_start_code(frag->data, frag->data + frag->data_size,
                                    &start_code);
@@ -157,17 +155,16 @@ static int cbs_mpeg2_split_fragment(CodedBitstreamContext *ctx,
         return AVERROR_INVALIDDATA;
     }
 
-    for (i = 0;; i++) {
-        unit_type = start_code & 0xff;
+    do {
+        CodedBitstreamUnitType unit_type = start_code & 0xff;
+        const uint8_t *end;
+        size_t unit_size;
 
-        if (start == frag->data + frag->data_size) {
-            // The last four bytes form a start code which constitutes
-            // a unit of its own.  In this situation avpriv_find_start_code
-            // won't modify start_code at all so modify start_code so that
-            // the next unit will be treated as the last unit.
-            start_code = 0;
-        }
-
+        // Reset start_code to ensure that avpriv_find_start_code()
+        // really reads a new start code and does not reuse the old
+        // start code in any way (as e.g. happens when there is a
+        // Sequence End unit at the very end of a packet).
+        start_code = UINT32_MAX;
         end = avpriv_find_start_code(start--, frag->data + frag->data_size,
                                      &start_code);
 
@@ -182,19 +179,17 @@ static int cbs_mpeg2_split_fragment(CodedBitstreamContext *ctx,
         } else {
            // We didn't find a start code, so this is the final unit.
            unit_size = end - start;
-           final     = 1;
         }
 
-        err = ff_cbs_insert_unit_data(frag, i, unit_type, (uint8_t*)start,
+        err = ff_cbs_append_unit_data(frag, unit_type, (uint8_t*)start,
                                       unit_size, frag->data_ref);
         if (err < 0)
             return err;
 
-        if (final)
-            break;
-
         start = end;
-    }
+
+        // Do we have a further unit to add to the fragment?
+    } while ((start_code >> 8) == 0x000001);
 
     return 0;
 }

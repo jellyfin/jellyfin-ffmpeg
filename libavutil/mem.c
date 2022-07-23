@@ -37,10 +37,13 @@
 #include <malloc.h>
 #endif
 
-#include "avutil.h"
-#include "common.h"
+#include "attributes.h"
+#include "avassert.h"
 #include "dynarray.h"
+#include "error.h"
+#include "internal.h"
 #include "intreadwrite.h"
+#include "macros.h"
 #include "mem.h"
 
 #ifdef MALLOC_PREFIX
@@ -58,8 +61,6 @@ void *realloc(void *ptr, size_t size);
 void  free(void *ptr);
 
 #endif /* MALLOC_PREFIX */
-
-#include "mem_internal.h"
 
 #define ALIGN (HAVE_AVX512 ? 64 : (HAVE_AVX ? 32 : 16))
 
@@ -509,6 +510,8 @@ void *av_fast_realloc(void *ptr, unsigned int *size, size_t min_size)
         return ptr;
 
     max_size = atomic_load_explicit(&max_alloc_size, memory_order_relaxed);
+    /* *size is an unsigned, so the real maximum is <= UINT_MAX. */
+    max_size = FFMIN(max_size, UINT_MAX);
 
     if (min_size > max_size) {
         *size = 0;
@@ -541,6 +544,8 @@ static inline void fast_malloc(void *ptr, unsigned int *size, size_t min_size, i
     }
 
     max_size = atomic_load_explicit(&max_alloc_size, memory_order_relaxed);
+    /* *size is an unsigned, so the real maximum is <= UINT_MAX. */
+    max_size = FFMIN(max_size, UINT_MAX);
 
     if (min_size > max_size) {
         av_freep(ptr);

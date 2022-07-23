@@ -28,6 +28,7 @@
 
 #include "avcodec.h"
 #include "blockdsp.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "get_bits.h"
 #include "bytestream.h"
@@ -35,6 +36,7 @@
 #include "hpeldsp.h"
 #include "idctdsp.h"
 #include "thread.h"
+#include "threadframe.h"
 
 #define MIMIC_HEADER_SIZE   20
 #define MIMIC_VLC_BITS      11
@@ -111,7 +113,7 @@ static av_cold int mimic_decode_end(AVCodecContext *avctx)
 
     for (i = 0; i < FF_ARRAY_ELEMS(ctx->frames); i++) {
         if (ctx->frames[i].f)
-            ff_thread_release_buffer(avctx, &ctx->frames[i]);
+            ff_thread_release_ext_buffer(avctx, &ctx->frames[i]);
         av_frame_free(&ctx->frames[i].f);
     }
 
@@ -163,7 +165,7 @@ static int mimic_decode_update_thread_context(AVCodecContext *avctx, const AVCod
     dst->prev_index = src->next_prev_index;
 
     for (i = 0; i < FF_ARRAY_ELEMS(dst->frames); i++) {
-        ff_thread_release_buffer(avctx, &dst->frames[i]);
+        ff_thread_release_ext_buffer(avctx, &dst->frames[i]);
         if (i != src->next_cur_index && src->frames[i].f->data[0]) {
             ret = ff_thread_ref_frame(&dst->frames[i], &src->frames[i]);
             if (ret < 0)
@@ -337,7 +339,7 @@ static void flip_swap_frame(AVFrame *f)
         f->linesize[i] *= -1;
 }
 
-static int mimic_decode_frame(AVCodecContext *avctx, void *data,
+static int mimic_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                               int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -394,11 +396,11 @@ static int mimic_decode_frame(AVCodecContext *avctx, void *data,
         return AVERROR_INVALIDDATA;
     }
 
-    ff_thread_release_buffer(avctx, &ctx->frames[ctx->cur_index]);
+    ff_thread_release_ext_buffer(avctx, &ctx->frames[ctx->cur_index]);
     ctx->frames[ctx->cur_index].f->pict_type = is_pframe ? AV_PICTURE_TYPE_P :
                                                            AV_PICTURE_TYPE_I;
-    if ((res = ff_thread_get_buffer(avctx, &ctx->frames[ctx->cur_index],
-                                    AV_GET_BUFFER_FLAG_REF)) < 0)
+    if ((res = ff_thread_get_ext_buffer(avctx, &ctx->frames[ctx->cur_index],
+                                        AV_GET_BUFFER_FLAG_REF)) < 0)
         return res;
 
     ctx->next_prev_index = ctx->cur_index;
@@ -419,15 +421,15 @@ static int mimic_decode_frame(AVCodecContext *avctx, void *data,
     ff_thread_report_progress(&ctx->frames[ctx->cur_index], INT_MAX, 0);
     if (res < 0) {
         if (!(avctx->active_thread_type & FF_THREAD_FRAME))
-            ff_thread_release_buffer(avctx, &ctx->frames[ctx->cur_index]);
+            ff_thread_release_ext_buffer(avctx, &ctx->frames[ctx->cur_index]);
         return res;
     }
 
-    if ((res = av_frame_ref(data, ctx->frames[ctx->cur_index].f)) < 0)
+    if ((res = av_frame_ref(rframe, ctx->frames[ctx->cur_index].f)) < 0)
         return res;
     *got_frame      = 1;
 
-    flip_swap_frame(data);
+    flip_swap_frame(rframe);
 
     ctx->prev_index = ctx->next_prev_index;
     ctx->cur_index  = ctx->next_cur_index;
@@ -435,16 +437,16 @@ static int mimic_decode_frame(AVCodecContext *avctx, void *data,
     return buf_size;
 }
 
-const AVCodec ff_mimic_decoder = {
-    .name                  = "mimic",
-    .long_name             = NULL_IF_CONFIG_SMALL("Mimic"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_MIMIC,
+const FFCodec ff_mimic_decoder = {
+    .p.name                = "mimic",
+    .p.long_name           = NULL_IF_CONFIG_SMALL("Mimic"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_MIMIC,
     .priv_data_size        = sizeof(MimicContext),
     .init                  = mimic_decode_init,
     .close                 = mimic_decode_end,
-    .decode                = mimic_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    FF_CODEC_DECODE_CB(mimic_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .update_thread_context = ONLY_IF_THREADS_ENABLED(mimic_decode_update_thread_context),
     .caps_internal         = FF_CODEC_CAP_ALLOCATE_PROGRESS |
                              FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,

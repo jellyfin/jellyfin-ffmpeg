@@ -16,6 +16,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
+#include "libavutil/attributes.h"
 #include "opusdsp.h"
 
 static void postfilter_c(float *data, int period, float *gains, int len)
@@ -54,9 +56,9 @@ av_cold void ff_opus_dsp_init(OpusDSP *ctx)
     ctx->postfilter = postfilter_c;
     ctx->deemphasis = deemphasis_c;
 
-    if (ARCH_X86)
-        ff_opus_dsp_init_x86(ctx);
-
-    if (ARCH_AARCH64)
-        ff_opus_dsp_init_aarch64(ctx);
+#if ARCH_AARCH64
+    ff_opus_dsp_init_aarch64(ctx);
+#elif ARCH_X86
+    ff_opus_dsp_init_x86(ctx);
+#endif
 }

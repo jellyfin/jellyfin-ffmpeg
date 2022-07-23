@@ -28,7 +28,7 @@
  */
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/internal.h"
@@ -383,14 +383,14 @@ static av_cold int ttml_encode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_ttml_encoder = {
-    .name           = "ttml",
-    .long_name      = NULL_IF_CONFIG_SMALL("TTML subtitle"),
-    .type           = AVMEDIA_TYPE_SUBTITLE,
-    .id             = AV_CODEC_ID_TTML,
+const FFCodec ff_ttml_encoder = {
+    .p.name         = "ttml",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("TTML subtitle"),
+    .p.type         = AVMEDIA_TYPE_SUBTITLE,
+    .p.id           = AV_CODEC_ID_TTML,
     .priv_data_size = sizeof(TTMLContext),
     .init           = ttml_encode_init,
-    .encode_sub     = ttml_encode_frame,
+    FF_CODEC_ENCODE_SUB_CB(ttml_encode_frame),
     .close          = ttml_encode_close,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

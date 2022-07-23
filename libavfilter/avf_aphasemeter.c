@@ -101,7 +101,7 @@ static int query_formats(AVFilterContext *ctx)
     formats = ff_make_format_list(sample_fmts);
     if ((ret = ff_formats_ref         (formats, &inlink->outcfg.formats        )) < 0 ||
         (ret = ff_formats_ref         (formats, &outlink->incfg.formats        )) < 0 ||
-        (ret = ff_add_channel_layout  (&layout, AV_CH_LAYOUT_STEREO         )) < 0 ||
+        (ret = ff_add_channel_layout  (&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO )) < 0 ||
         (ret = ff_channel_layouts_ref (layout , &inlink->outcfg.channel_layouts)) < 0 ||
         (ret = ff_channel_layouts_ref (layout , &outlink->incfg.channel_layouts)) < 0)
         return ret;
@@ -266,6 +266,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             memset(out->data[0] + i * out->linesize[0], 0, outlink->w * 4);
     } else if (s->do_video) {
         out = s->out;
+        av_frame_make_writable(s->out);
         for (i = outlink->h - 1; i >= 10; i--)
             memmove(out->data[0] + (i  ) * out->linesize[0],
                     out->data[0] + (i-1) * out->linesize[0],

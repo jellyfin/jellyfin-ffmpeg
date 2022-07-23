@@ -27,10 +27,13 @@
 #include "config.h"
 
 #include "libavutil/imgutils.h"
+#include "libavutil/thread.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
+#include "mpegvideodec.h"
 #include "golomb.h"
 
 #include "rv34.h"
@@ -44,7 +47,7 @@ static VLC ptype_vlc[NUM_PTYPE_VLCS], btype_vlc[NUM_BTYPE_VLCS];
 static av_cold void rv40_init_table(VLC *vlc, unsigned *offset, int nb_bits,
                                     int nb_codes, const uint8_t (*tab)[2])
 {
-    static VLC_TYPE vlc_buf[11776][2];
+    static VLCElem vlc_buf[11776];
 
     vlc->table           = &vlc_buf[*offset];
     vlc->table_allocated = 1 << nb_bits;
@@ -61,7 +64,7 @@ static av_cold void rv40_init_table(VLC *vlc, unsigned *offset, int nb_bits,
 static av_cold void rv40_init_tables(void)
 {
     int i, offset = 0;
-    static VLC_TYPE aic_mode2_table[11814][2];
+    static VLCElem aic_mode2_table[11814];
 
     rv40_init_table(&aic_top_vlc, &offset, AIC_TOP_BITS, AIC_TOP_SIZE,
                     rv40_aic_top_vlc_tab);
@@ -553,14 +556,13 @@ static void rv40_loop_filter(RV34DecContext *r, int row)
  */
 static av_cold int rv40_decode_init(AVCodecContext *avctx)
 {
+    static AVOnce init_static_once = AV_ONCE_INIT;
     RV34DecContext *r = avctx->priv_data;
     int ret;
 
     r->rv30 = 0;
     if ((ret = ff_rv34_decode_init(avctx)) < 0)
         return ret;
-    if(!aic_top_vlc.bits)
-        rv40_init_tables();
     r->parse_slice_header = rv40_parse_slice_header;
     r->decode_intra_types = rv40_decode_intra_types;
     r->decode_mb_info     = rv40_decode_mb_info;
@@ -568,25 +570,27 @@ static av_cold int rv40_decode_init(AVCodecContext *avctx)
     r->luma_dc_quant_i = rv40_luma_dc_quant[0];
     r->luma_dc_quant_p = rv40_luma_dc_quant[1];
     ff_rv40dsp_init(&r->rdsp);
+    ff_thread_once(&init_static_once, rv40_init_tables);
     return 0;
 }
 
-const AVCodec ff_rv40_decoder = {
-    .name                  = "rv40",
-    .long_name             = NULL_IF_CONFIG_SMALL("RealVideo 4.0"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_RV40,
+const FFCodec ff_rv40_decoder = {
+    .p.name                = "rv40",
+    .p.long_name           = NULL_IF_CONFIG_SMALL("RealVideo 4.0"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_RV40,
     .priv_data_size        = sizeof(RV34DecContext),
     .init                  = rv40_decode_init,
     .close                 = ff_rv34_decode_end,
-    .decode                = ff_rv34_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+    FF_CODEC_DECODE_CB(ff_rv34_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = ff_mpeg_flush,
-    .pix_fmts              = (const enum AVPixelFormat[]) {
+    .p.pix_fmts            = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NONE
     },
     .update_thread_context = ONLY_IF_THREADS_ENABLED(ff_rv34_decode_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_ALLOCATE_PROGRESS,
+    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE |
+                             FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };

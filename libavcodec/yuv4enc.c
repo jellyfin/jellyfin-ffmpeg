@@ -21,8 +21,8 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 
 static int yuv4_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *pic, int *got_packet)
@@ -59,12 +59,12 @@ static int yuv4_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     return 0;
 }
 
-const AVCodec ff_yuv4_encoder = {
-    .name         = "yuv4",
-    .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed packed 4:2:0"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_YUV4,
-    .capabilities = AV_CODEC_CAP_DR1,
-    .encode2      = yuv4_encode_frame,
-    .pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
+const FFCodec ff_yuv4_encoder = {
+    .p.name         = "yuv4",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Uncompressed packed 4:2:0"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_YUV4,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
+    FF_CODEC_ENCODE_CB(yuv4_encode_frame),
 };

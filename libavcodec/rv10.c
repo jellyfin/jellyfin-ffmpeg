@@ -31,16 +31,19 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "error_resilience.h"
 #include "h263.h"
 #include "h263data.h"
+#include "h263dec.h"
 #include "internal.h"
 #include "mpeg_er.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
+#include "mpegvideodec.h"
 #include "mpeg4video.h"
 #include "mpegvideodata.h"
-#include "rv10.h"
+#include "rv10dec.h"
 
 #define RV_GET_MAJOR_VER(x)  ((x) >> 28)
 #define RV_GET_MINOR_VER(x) (((x) >> 20) & 0xFF)
@@ -149,7 +152,6 @@ static int rv10_decode_picture_header(MpegEncContext *s)
     }
     skip_bits(&s->gb, 3);   /* ignored */
     s->f_code          = 1;
-    s->unrestricted_mv = 1;
 
     return mb_count;
 }
@@ -298,7 +300,6 @@ static int rv20_decode_picture_header(RVDecContext *rv, int whole_size)
         skip_bits(&s->gb, 5);
 
     s->f_code          = 1;
-    s->unrestricted_mv = 1;
     s->h263_aic        = s->pict_type == AV_PICTURE_TYPE_I;
     s->modified_quant  = 1;
     if (!s->avctx->lowres)
@@ -339,7 +340,7 @@ static av_cold void rv10_build_vlc(VLC *vlc, const uint16_t len_count[15],
 
 static av_cold void rv10_init_static(void)
 {
-    static VLC_TYPE table[1472 + 992][2];
+    static VLCElem table[1472 + 992];
 
     rv_dc_lum.table             = table;
     rv_dc_lum.table_allocated   = 1472;
@@ -348,8 +349,8 @@ static av_cold void rv10_init_static(void)
     for (int i = 0; i < 1 << (DC_VLC_BITS - 7 /* Length of skip prefix */); i++) {
         /* All codes beginning with 0x7F have the same length and value.
          * Modifying the table directly saves us the useless subtables. */
-        rv_dc_lum.table[(0x7F << (DC_VLC_BITS - 7)) + i][0] = 255;
-        rv_dc_lum.table[(0x7F << (DC_VLC_BITS - 7)) + i][1] = 18;
+        rv_dc_lum.table[(0x7F << (DC_VLC_BITS - 7)) + i].sym = 255;
+        rv_dc_lum.table[(0x7F << (DC_VLC_BITS - 7)) + i].len = 18;
     }
     rv_dc_chrom.table           = &table[1472];
     rv_dc_chrom.table_allocated = 992;
@@ -357,8 +358,8 @@ static av_cold void rv10_init_static(void)
                    rv_sym_run_len, FF_ARRAY_ELEMS(rv_sym_run_len) - 2);
     for (int i = 0; i < 1 << (DC_VLC_BITS - 9 /* Length of skip prefix */); i++) {
         /* Same as above. */
-        rv_dc_chrom.table[(0x1FE << (DC_VLC_BITS - 9)) + i][0] = 255;
-        rv_dc_chrom.table[(0x1FE << (DC_VLC_BITS - 9)) + i][1] = 18;
+        rv_dc_chrom.table[(0x1FE << (DC_VLC_BITS - 9)) + i].sym = 255;
+        rv_dc_chrom.table[(0x1FE << (DC_VLC_BITS - 9)) + i].len = 18;
     }
     ff_h263_decode_init_vlc();
 }
@@ -592,13 +593,12 @@ static int get_slice_offset(AVCodecContext *avctx, const uint8_t *buf, int n)
         return AV_RL32(buf + n * 8);
 }
 
-static int rv10_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                             AVPacket *avpkt)
+static int rv10_decode_frame(AVCodecContext *avctx, AVFrame *pict,
+                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     MpegEncContext *s = avctx->priv_data;
-    AVFrame *pict = data;
     int i, ret;
     int slice_count;
     const uint8_t *slices_hdr = NULL;
@@ -662,12 +662,12 @@ static int rv10_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
             if ((ret = av_frame_ref(pict, s->current_picture_ptr->f)) < 0)
                 return ret;
             ff_print_debug_info(s, s->current_picture_ptr, pict);
-            ff_mpv_export_qp_table(s, pict, s->current_picture_ptr, FF_QSCALE_TYPE_MPEG1);
+            ff_mpv_export_qp_table(s, pict, s->current_picture_ptr, FF_MPV_QSCALE_TYPE_MPEG1);
         } else if (s->last_picture_ptr) {
             if ((ret = av_frame_ref(pict, s->last_picture_ptr->f)) < 0)
                 return ret;
             ff_print_debug_info(s, s->last_picture_ptr, pict);
-            ff_mpv_export_qp_table(s, pict,s->last_picture_ptr, FF_QSCALE_TYPE_MPEG1);
+            ff_mpv_export_qp_table(s, pict,s->last_picture_ptr, FF_MPV_QSCALE_TYPE_MPEG1);
         }
 
         if (s->last_picture_ptr || s->low_delay) {
@@ -681,36 +681,38 @@ static int rv10_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     return avpkt->size;
 }
 
-const AVCodec ff_rv10_decoder = {
-    .name           = "rv10",
-    .long_name      = NULL_IF_CONFIG_SMALL("RealVideo 1.0"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_RV10,
+const FFCodec ff_rv10_decoder = {
+    .p.name         = "rv10",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("RealVideo 1.0"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_RV10,
     .priv_data_size = sizeof(RVDecContext),
     .init           = rv10_decode_init,
     .close          = rv10_decode_end,
-    .decode         = rv10_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .max_lowres     = 3,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    FF_CODEC_DECODE_CB(rv10_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    .p.max_lowres   = 3,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NONE
     },
 };
 
-const AVCodec ff_rv20_decoder = {
-    .name           = "rv20",
-    .long_name      = NULL_IF_CONFIG_SMALL("RealVideo 2.0"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_RV20,
+const FFCodec ff_rv20_decoder = {
+    .p.name         = "rv20",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("RealVideo 2.0"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_RV20,
     .priv_data_size = sizeof(RVDecContext),
     .init           = rv10_decode_init,
     .close          = rv10_decode_end,
-    .decode         = rv10_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    FF_CODEC_DECODE_CB(rv10_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
     .flush          = ff_mpeg_flush,
-    .max_lowres     = 3,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    .p.max_lowres   = 3,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NONE
     },

@@ -23,6 +23,7 @@
 #include "libavutil/common.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 static const int bmv_aud_mults[16] = {
@@ -31,17 +32,16 @@ static const int bmv_aud_mults[16] = {
 
 static av_cold int bmv_aud_decode_init(AVCodecContext *avctx)
 {
-    avctx->channels       = 2;
-    avctx->channel_layout = AV_CH_LAYOUT_STEREO;
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout      = (AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO;
     avctx->sample_fmt     = AV_SAMPLE_FMT_S16;
 
     return 0;
 }
 
-static int bmv_aud_decode_frame(AVCodecContext *avctx, void *data,
+static int bmv_aud_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                 int *got_frame_ptr, AVPacket *avpkt)
 {
-    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     int blocks = 0, total_blocks, i;
@@ -78,13 +78,13 @@ static int bmv_aud_decode_frame(AVCodecContext *avctx, void *data,
     return buf_size;
 }
 
-const AVCodec ff_bmv_audio_decoder = {
-    .name           = "bmv_audio",
-    .long_name      = NULL_IF_CONFIG_SMALL("Discworld II BMV audio"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_BMV_AUDIO,
+const FFCodec ff_bmv_audio_decoder = {
+    .p.name         = "bmv_audio",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Discworld II BMV audio"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_BMV_AUDIO,
     .init           = bmv_aud_decode_init,
-    .decode         = bmv_aud_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    FF_CODEC_DECODE_CB(bmv_aud_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -25,8 +25,8 @@
 
 #include "avcodec.h"
 #include "canopus.h"
+#include "codec_internal.h"
 #include "get_bits.h"
-#include "internal.h"
 #include "thread.h"
 
 #include "hqx.h"
@@ -400,12 +400,11 @@ static int decode_slice_thread(AVCodecContext *avctx, void *arg,
     return decode_slice(ctx, slice_no);
 }
 
-static int hqx_decode_frame(AVCodecContext *avctx, void *data,
+static int hqx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                             int *got_picture_ptr, AVPacket *avpkt)
 {
     HQXContext *ctx = avctx->priv_data;
-    ThreadFrame frame = { .f = data };
-    uint8_t *src = avpkt->data;
+    const uint8_t *src = avpkt->data;
     uint32_t info_tag;
     int data_start;
     int i, ret;
@@ -433,7 +432,7 @@ static int hqx_decode_frame(AVCodecContext *avctx, void *data,
     data_start     = src - avpkt->data;
     ctx->data_size = avpkt->size - data_start;
     ctx->src       = src;
-    ctx->pic       = data;
+    ctx->pic       = frame;
 
     if (ctx->data_size < HQX_HEADER_SIZE) {
         av_log(avctx, AV_LOG_ERROR, "Frame too small.\n");
@@ -499,7 +498,7 @@ static int hqx_decode_frame(AVCodecContext *avctx, void *data,
         return AVERROR_INVALIDDATA;
     }
 
-    ret = ff_thread_get_buffer(avctx, &frame, 0);
+    ret = ff_thread_get_buffer(avctx, frame, 0);
     if (ret < 0)
         return ret;
 
@@ -535,16 +534,16 @@ static av_cold int hqx_decode_init(AVCodecContext *avctx)
     return ff_hqx_init_vlcs(ctx);
 }
 
-const AVCodec ff_hqx_decoder = {
-    .name           = "hqx",
-    .long_name      = NULL_IF_CONFIG_SMALL("Canopus HQX"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_HQX,
+const FFCodec ff_hqx_decoder = {
+    .p.name         = "hqx",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Canopus HQX"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_HQX,
     .priv_data_size = sizeof(HQXContext),
     .init           = hqx_decode_init,
-    .decode         = hqx_decode_frame,
+    FF_CODEC_DECODE_CB(hqx_decode_frame),
     .close          = hqx_decode_close,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS |
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS |
                       AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,

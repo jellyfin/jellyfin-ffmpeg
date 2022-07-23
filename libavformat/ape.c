@@ -42,8 +42,8 @@
 
 typedef struct APEFrame {
     int64_t pos;
+    int64_t size;
     int nblocks;
-    int size;
     int skip;
     int64_t pts;
 } APEFrame;
@@ -128,7 +128,7 @@ static void ape_dumpinfo(AVFormatContext * s, APEContext * ape_ctx)
 
     av_log(s, AV_LOG_DEBUG, "\nFrames\n\n");
     for (i = 0; i < ape_ctx->totalframes; i++)
-        av_log(s, AV_LOG_DEBUG, "%8d   %8"PRId64" %8d (%d samples)\n", i,
+        av_log(s, AV_LOG_DEBUG, "%8d   %8"PRId64" %8"PRId64" (%d samples)\n", i,
                ape_ctx->frames[i].pos, ape_ctx->frames[i].size,
                ape_ctx->frames[i].nblocks);
 
@@ -146,7 +146,8 @@ static int ape_read_header(AVFormatContext * s)
     AVStream *st;
     uint32_t tag;
     int i, ret;
-    int total_blocks, final_size = 0;
+    int total_blocks;
+    int64_t final_size = 0;
     int64_t pts, file_size;
 
     /* Skip any leading junk such as id3v2 tags */
@@ -331,7 +332,7 @@ static int ape_read_header(AVFormatContext * s)
     st->codecpar->codec_type      = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id        = AV_CODEC_ID_APE;
     st->codecpar->codec_tag       = MKTAG('A', 'P', 'E', ' ');
-    st->codecpar->channels        = ape->channels;
+    st->codecpar->ch_layout.nb_channels = ape->channels;
     st->codecpar->sample_rate     = ape->samplerate;
     st->codecpar->bits_per_coded_sample = ape->bps;
 
@@ -387,7 +388,7 @@ static int ape_read_packet(AVFormatContext * s, AVPacket * pkt)
 
     if (ape->frames[ape->currentframe].size <= 0 ||
         ape->frames[ape->currentframe].size > INT_MAX - extra_size) {
-        av_log(s, AV_LOG_ERROR, "invalid packet size: %d\n",
+        av_log(s, AV_LOG_ERROR, "invalid packet size: %8"PRId64"\n",
                ape->frames[ape->currentframe].size);
         ape->currentframe++;
         return AVERROR(EIO);

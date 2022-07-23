@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/channel_layout.h"
 #include "avformat.h"
 #include "avio_internal.h"
@@ -26,6 +28,7 @@
 #include "pcm.h"
 #include "rawenc.h"
 #include "riff.h"
+#include "version.h"
 
 typedef struct MMFContext {
     int64_t atrpos, atsqpos, awapos;
@@ -80,7 +83,7 @@ static int mmf_write_header(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
-    mmf->stereo = s->streams[0]->codecpar->channels > 1;
+    mmf->stereo = s->streams[0]->codecpar->ch_layout.nb_channels > 1;
     if (mmf->stereo &&
         s->strict_std_compliance > FF_COMPLIANCE_EXPERIMENTAL) {
         av_log(s, AV_LOG_ERROR, "Yamaha SMAF stereo is experimental, "
@@ -261,8 +264,7 @@ static int mmf_read_header(AVFormatContext *s)
     st->codecpar->codec_type            = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id              = AV_CODEC_ID_ADPCM_YAMAHA;
     st->codecpar->sample_rate           = rate;
-    st->codecpar->channels              = (params >> 7) + 1;
-    st->codecpar->channel_layout        = params >> 7 ? AV_CH_LAYOUT_STEREO : AV_CH_LAYOUT_MONO;
+    av_channel_layout_default(&st->codecpar->ch_layout, (params >> 7) + 1);
     st->codecpar->bits_per_coded_sample = 4;
     st->codecpar->bit_rate              = st->codecpar->sample_rate *
                                           st->codecpar->bits_per_coded_sample;

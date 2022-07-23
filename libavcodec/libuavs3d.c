@@ -1,5 +1,5 @@
 /*
- * RAW AVS3-P2/IEEE1857.10 video demuxer
+ * AVS3-P2/IEEE1857.10 video decoder (using the uavs3d library)
  * Copyright (c) 2020 Zhenyu Wang <wangzhenyu@pkusz.edu.cn>
  *                    Bingjie Han <hanbj@pkusz.edu.cn>
  *                    Huiwen Ren  <hwrenx@gmail.com>
@@ -29,6 +29,7 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "avs3.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "uavs3d.h"
 
@@ -83,12 +84,12 @@ static void uavs3d_output_callback(uavs3d_io_frm_t *dec_frame) {
     frm->coded_picture_number   = dec_frame->dtr;
     frm->display_picture_number = dec_frame->ptr;
 
-    if (dec_frame->type < 0 || dec_frame->type >= 4) {
+    if (dec_frame->type < 0 || dec_frame->type >= FF_ARRAY_ELEMS(ff_avs3_image_type)) {
         av_log(NULL, AV_LOG_WARNING, "Error frame type in uavs3d: %d.\n", dec_frame->type);
+    } else {
+        frm->pict_type = ff_avs3_image_type[dec_frame->type];
+        frm->key_frame = (frm->pict_type == AV_PICTURE_TYPE_I);
     }
-
-    frm->pict_type = ff_avs3_image_type[dec_frame->type];
-    frm->key_frame = (frm->pict_type == AV_PICTURE_TYPE_I);
 
     for (i = 0; i < 3; i++) {
         frm_out.width [i] = dec_frame->width[i];
@@ -141,14 +142,14 @@ static void libuavs3d_flush(AVCodecContext * avctx)
 }
 
 #define UAVS3D_CHECK_INVALID_RANGE(v, l, r) ((v)<(l)||(v)>(r))
-static int libuavs3d_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+static int libuavs3d_decode_frame(AVCodecContext *avctx, AVFrame *frm,
+                                  int *got_frame, AVPacket *avpkt)
 {
     uavs3d_context *h = avctx->priv_data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     const uint8_t *buf_end;
-    const uint8_t *buf_ptr;
-    AVFrame *frm = data;
+    const uint8_t *buf_ptr = buf;
     int left_bytes;
     int ret, finish = 0;
 
@@ -161,7 +162,7 @@ static int libuavs3d_decode_frame(AVCodecContext *avctx, void *data, int *got_fr
             if (!frm->data[0] && (ret = ff_get_buffer(avctx, frm, 0)) < 0) {
                 return ret;
             }
-            h->dec_frame.priv = data;   // AVFrame
+            h->dec_frame.priv = frm;   // AVFrame
         }
         do {
             ret = uavs3d_flush(h->dec_handle, &h->dec_frame);
@@ -169,7 +170,6 @@ static int libuavs3d_decode_frame(AVCodecContext *avctx, void *data, int *got_fr
     } else {
         uavs3d_io_frm_t *frm_dec = &h->dec_frame;
 
-        buf_ptr = buf;
         buf_end = buf + buf_size;
         frm_dec->pkt_pos  = avpkt->pos;
         frm_dec->pkt_size = avpkt->size;
@@ -181,7 +181,7 @@ static int libuavs3d_decode_frame(AVCodecContext *avctx, void *data, int *got_fr
                 if (!frm->data[0] && (ret = ff_get_buffer(avctx, frm, 0)) < 0) {
                     return ret;
                 }
-                h->dec_frame.priv = data;   // AVFrame
+                h->dec_frame.priv = frm;   // AVFrame
             }
 
             if (uavs3d_find_next_start_code(buf_ptr, buf_end - buf_ptr, &left_bytes)) {
@@ -206,7 +206,7 @@ static int libuavs3d_decode_frame(AVCodecContext *avctx, void *data, int *got_fr
                     avctx->framerate.num = ff_avs3_frame_rate_tab[seqh->frame_rate_code].num;
                     avctx->framerate.den = ff_avs3_frame_rate_tab[seqh->frame_rate_code].den;
                 }
-                avctx->has_b_frames  = !seqh->low_delay;
+                avctx->has_b_frames = seqh->output_reorder_delay;
                 avctx->pix_fmt = seqh->bit_depth_internal == 8 ? AV_PIX_FMT_YUV420P : AV_PIX_FMT_YUV420P10LE;
                 ret = ff_set_dimensions(avctx, seqh->horizontal_size, seqh->vertical_size);
                 if (ret < 0)
@@ -246,20 +246,20 @@ static int libuavs3d_decode_frame(AVCodecContext *avctx, void *data, int *got_fr
     return buf_ptr - buf;
 }
 
-const AVCodec ff_libuavs3d_decoder = {
-    .name           = "libuavs3d",
-    .long_name      = NULL_IF_CONFIG_SMALL("libuavs3d AVS3-P2/IEEE1857.10"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_AVS3,
+const FFCodec ff_libuavs3d_decoder = {
+    .p.name         = "libuavs3d",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("libuavs3d AVS3-P2/IEEE1857.10"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_AVS3,
     .priv_data_size = sizeof(uavs3d_context),
     .init           = libuavs3d_init,
     .close          = libuavs3d_end,
-    .decode         = libuavs3d_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
+    FF_CODEC_DECODE_CB(libuavs3d_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
     .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .flush          = libuavs3d_flush,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_YUV420P10LE,
                                                      AV_PIX_FMT_NONE },
-    .wrapper_name   = "libuavs3d",
+    .p.wrapper_name = "libuavs3d",
 };

@@ -30,6 +30,7 @@
 
 #include "adpcm_data.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -116,11 +117,10 @@ static av_cold int decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame_ptr, AVPacket *pkt)
 {
     GetBitContext gb;
-    AVFrame *frame = data;
     int16_t pcm_data[2];
     uint32_t samples;
     int8_t channel_hint[2];
@@ -147,9 +147,8 @@ static int decode_frame(AVCodecContext *avctx, void *data,
         channel_hint[0] = ~channel_hint[0];
         channels = 2;
     }
-    avctx->channels = channels;
-    avctx->channel_layout = (channels == 2) ? AV_CH_LAYOUT_STEREO
-                                            : AV_CH_LAYOUT_MONO;
+    av_channel_layout_uninit(&avctx->ch_layout);
+    av_channel_layout_default(&avctx->ch_layout, channels);
     pcm_data[0] = get_sbits(&gb, 16);
     if (channels > 1) {
         channel_hint[1] = get_sbits(&gb, 8);
@@ -208,13 +207,13 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     return pkt->size;
 }
 
-const AVCodec ff_adpcm_vima_decoder = {
-    .name         = "adpcm_vima",
-    .long_name    = NULL_IF_CONFIG_SMALL("LucasArts VIMA audio"),
-    .type         = AVMEDIA_TYPE_AUDIO,
-    .id           = AV_CODEC_ID_ADPCM_VIMA,
+const FFCodec ff_adpcm_vima_decoder = {
+    .p.name       = "adpcm_vima",
+    .p.long_name  = NULL_IF_CONFIG_SMALL("LucasArts VIMA audio"),
+    .p.type       = AVMEDIA_TYPE_AUDIO,
+    .p.id         = AV_CODEC_ID_ADPCM_VIMA,
     .init         = decode_init,
-    .decode       = decode_frame,
-    .capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

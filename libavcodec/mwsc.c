@@ -26,15 +26,17 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
+#include "zlib_wrapper.h"
 
 #include <zlib.h>
 
 typedef struct MWSCContext {
     unsigned int      decomp_size;
     uint8_t          *decomp_buf;
-    z_stream          zstream;
     AVFrame          *prev_frame;
+    FFZStream         zstream;
 } MWSCContext;
 
 static int rle_uncompress(GetByteContext *gb, PutByteContext *pb, GetByteContext *gbp,
@@ -85,29 +87,28 @@ static int rle_uncompress(GetByteContext *gb, PutByteContext *pb, GetByteContext
     return intra;
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     MWSCContext *s = avctx->priv_data;
-    AVFrame *frame = data;
-    uint8_t *buf = avpkt->data;
+    z_stream *const zstream = &s->zstream.zstream;
+    const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     GetByteContext gb;
     GetByteContext gbp;
     PutByteContext pb;
     int ret;
 
-    ret = inflateReset(&s->zstream);
+    ret = inflateReset(zstream);
     if (ret != Z_OK) {
         av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", ret);
         return AVERROR_EXTERNAL;
     }
-    s->zstream.next_in   = buf;
-    s->zstream.avail_in  = buf_size;
-    s->zstream.next_out  = s->decomp_buf;
-    s->zstream.avail_out = s->decomp_size;
-    ret = inflate(&s->zstream, Z_FINISH);
+    zstream->next_in   = buf;
+    zstream->avail_in  = buf_size;
+    zstream->next_out  = s->decomp_buf;
+    zstream->avail_out = s->decomp_size;
+    ret = inflate(zstream, Z_FINISH);
     if (ret != Z_STREAM_END) {
         av_log(avctx, AV_LOG_ERROR, "Inflate error: %d\n", ret);
         return AVERROR_EXTERNAL;
@@ -116,7 +117,7 @@ static int decode_frame(AVCodecContext *avctx,
     if ((ret = ff_get_buffer(avctx, frame, AV_GET_BUFFER_FLAG_REF)) < 0)
         return ret;
 
-    bytestream2_init(&gb, s->decomp_buf, s->zstream.total_out);
+    bytestream2_init(&gb, s->decomp_buf, zstream->total_out);
     bytestream2_init(&gbp, s->prev_frame->data[0], avctx->height * s->prev_frame->linesize[0]);
     bytestream2_init_writer(&pb, frame->data[0], avctx->height * frame->linesize[0]);
 
@@ -138,7 +139,6 @@ static av_cold int decode_init(AVCodecContext *avctx)
 {
     MWSCContext *s = avctx->priv_data;
     int64_t size;
-    int zret;
 
     avctx->pix_fmt = AV_PIX_FMT_BGR24;
 
@@ -149,20 +149,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
     if (!(s->decomp_buf = av_malloc(s->decomp_size)))
         return AVERROR(ENOMEM);
 
-    s->zstream.zalloc = Z_NULL;
-    s->zstream.zfree = Z_NULL;
-    s->zstream.opaque = Z_NULL;
-    zret = inflateInit(&s->zstream);
-    if (zret != Z_OK) {
-        av_log(avctx, AV_LOG_ERROR, "Inflate init error: %d\n", zret);
-        return AVERROR_EXTERNAL;
-    }
-
     s->prev_frame = av_frame_alloc();
     if (!s->prev_frame)
         return AVERROR(ENOMEM);
 
-    return 0;
+    return ff_inflate_init(&s->zstream, avctx);
 }
 
 static av_cold int decode_close(AVCodecContext *avctx)
@@ -172,21 +163,21 @@ static av_cold int decode_close(AVCodecContext *avctx)
     av_frame_free(&s->prev_frame);
     av_freep(&s->decomp_buf);
     s->decomp_size = 0;
-    inflateEnd(&s->zstream);
+    ff_inflate_end(&s->zstream);
 
     return 0;
 }
 
-const AVCodec ff_mwsc_decoder = {
-    .name             = "mwsc",
-    .long_name        = NULL_IF_CONFIG_SMALL("MatchWare Screen Capture Codec"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_MWSC,
+const FFCodec ff_mwsc_decoder = {
+    .p.name           = "mwsc",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("MatchWare Screen Capture Codec"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_MWSC,
     .priv_data_size   = sizeof(MWSCContext),
     .init             = decode_init,
     .close            = decode_close,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
                         FF_CODEC_CAP_INIT_CLEANUP,
 };

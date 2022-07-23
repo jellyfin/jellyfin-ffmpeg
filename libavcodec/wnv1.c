@@ -28,6 +28,7 @@
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -51,13 +52,11 @@ static inline int wnv1_get_code(GetBitContext *gb, int shift, int base_value)
         return base_value + v * (1 << shift);
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *p,
+                        int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf    = avpkt->data;
     int buf_size          = avpkt->size;
-    AVFrame * const p     = data;
     GetBitContext gb;
     unsigned char *Y,*U,*V;
     int i, j, ret, shift;
@@ -126,6 +125,9 @@ static av_cold int decode_init(AVCodecContext *avctx)
 {
     static AVOnce init_static_once = AV_ONCE_INIT;
 
+    if (avctx->width <= 1)
+        return AVERROR_INVALIDDATA;
+
     avctx->pix_fmt = AV_PIX_FMT_YUV422P;
 
     ff_thread_once(&init_static_once, wnv1_init_static);
@@ -133,13 +135,13 @@ static av_cold int decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_wnv1_decoder = {
-    .name           = "wnv1",
-    .long_name      = NULL_IF_CONFIG_SMALL("Winnov WNV1"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_WNV1,
+const FFCodec ff_wnv1_decoder = {
+    .p.name         = "wnv1",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Winnov WNV1"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_WNV1,
     .init           = decode_init,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

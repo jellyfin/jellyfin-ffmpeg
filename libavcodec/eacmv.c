@@ -32,6 +32,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct CmvContext {
@@ -168,15 +169,13 @@ static int cmv_process_header(CmvContext *s, const uint8_t *buf, const uint8_t *
 #define EA_PREAMBLE_SIZE 8
 #define MVIh_TAG MKTAG('M', 'V', 'I', 'h')
 
-static int cmv_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int cmv_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     CmvContext *s = avctx->priv_data;
     const uint8_t *buf_end = buf + buf_size;
-    AVFrame *frame = data;
     int ret;
 
     if (buf_end - buf < EA_PREAMBLE_SIZE)
@@ -230,15 +229,15 @@ static av_cold int cmv_decode_end(AVCodecContext *avctx){
     return 0;
 }
 
-const AVCodec ff_eacmv_decoder = {
-    .name           = "eacmv",
-    .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts CMV video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_CMV,
+const FFCodec ff_eacmv_decoder = {
+    .p.name         = "eacmv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Electronic Arts CMV video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_CMV,
     .priv_data_size = sizeof(CmvContext),
     .init           = cmv_decode_init,
     .close          = cmv_decode_end,
-    .decode         = cmv_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(cmv_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

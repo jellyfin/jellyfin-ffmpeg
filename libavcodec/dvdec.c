@@ -43,6 +43,7 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "dv.h"
 #include "dv_profile_internal.h"
 #include "dvdata.h"
@@ -136,7 +137,7 @@ static RL_VLC_ELEM dv_rl_vlc[1664];
 
 static void dv_init_static(void)
 {
-    VLC_TYPE vlc_buf[FF_ARRAY_ELEMS(dv_rl_vlc)][2] = { 0 };
+    VLCElem vlc_buf[FF_ARRAY_ELEMS(dv_rl_vlc)] = { 0 };
     VLC dv_vlc = { .table = vlc_buf, .table_allocated = FF_ARRAY_ELEMS(vlc_buf) };
     uint16_t  new_dv_vlc_bits[NB_DV_VLC * 2];
     uint8_t    new_dv_vlc_len[NB_DV_VLC * 2];
@@ -170,8 +171,8 @@ static void dv_init_static(void)
     av_assert1(dv_vlc.table_size == 1664);
 
     for (int i = 0; i < dv_vlc.table_size; i++) {
-        int code = dv_vlc.table[i][0];
-        int len  = dv_vlc.table[i][1];
+        int code = dv_vlc.table[i].sym;
+        int len  = dv_vlc.table[i].len;
         int level, run;
 
         if (len < 0) { // more bits needed
@@ -606,13 +607,12 @@ retry:
 
 /* NOTE: exactly one frame must be given (120000 bytes for NTSC,
  * 144000 bytes for PAL - or twice those for 50Mbps) */
-static int dvvideo_decode_frame(AVCodecContext *avctx, void *data,
+static int dvvideo_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                 int *got_frame, AVPacket *avpkt)
 {
     uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     DVVideoContext *s = avctx->priv_data;
-    ThreadFrame frame = { .f = data };
     const uint8_t *vsc_pack;
     int apt, is16_9, ret;
     const AVDVProfile *sys;
@@ -633,9 +633,9 @@ static int dvvideo_decode_frame(AVCodecContext *avctx, void *data,
         s->sys = sys;
     }
 
-    s->frame            = frame.f;
-    frame.f->key_frame  = 1;
-    frame.f->pict_type  = AV_PICTURE_TYPE_I;
+    s->frame            = frame;
+    frame->key_frame    = 1;
+    frame->pict_type    = AV_PICTURE_TYPE_I;
     avctx->pix_fmt      = s->sys->pix_fmt;
     avctx->framerate    = av_inv_q(s->sys->time_base);
 
@@ -652,20 +652,20 @@ static int dvvideo_decode_frame(AVCodecContext *avctx, void *data,
         ff_set_sar(avctx, s->sys->sar[is16_9]);
     }
 
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
     /* Determine the codec's field order from the packet */
     if ( *vsc_pack == dv_video_control ) {
         if (avctx->height == 720) {
-            frame.f->interlaced_frame = 0;
-            frame.f->top_field_first = 0;
+            frame->interlaced_frame = 0;
+            frame->top_field_first = 0;
         } else if (avctx->height == 1080) {
-            frame.f->interlaced_frame = 1;
-            frame.f->top_field_first = (vsc_pack[3] & 0x40) == 0x40;
+            frame->interlaced_frame = 1;
+            frame->top_field_first = (vsc_pack[3] & 0x40) == 0x40;
         } else {
-            frame.f->interlaced_frame = (vsc_pack[3] & 0x10) == 0x10;
-            frame.f->top_field_first = !(vsc_pack[3] & 0x40);
+            frame->interlaced_frame = (vsc_pack[3] & 0x10) == 0x10;
+            frame->top_field_first = !(vsc_pack[3] & 0x40);
         }
     }
 
@@ -681,15 +681,15 @@ static int dvvideo_decode_frame(AVCodecContext *avctx, void *data,
     return s->sys->frame_size;
 }
 
-const AVCodec ff_dvvideo_decoder = {
-    .name           = "dvvideo",
-    .long_name      = NULL_IF_CONFIG_SMALL("DV (Digital Video)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_DVVIDEO,
+const FFCodec ff_dvvideo_decoder = {
+    .p.name         = "dvvideo",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("DV (Digital Video)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_DVVIDEO,
     .priv_data_size = sizeof(DVVideoContext),
     .init           = dvvideo_decode_init,
-    .decode         = dvvideo_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_SLICE_THREADS,
-    .max_lowres     = 3,
+    FF_CODEC_DECODE_CB(dvvideo_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_SLICE_THREADS,
+    .p.max_lowres   = 3,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

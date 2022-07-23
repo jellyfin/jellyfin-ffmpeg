@@ -87,7 +87,7 @@ static void generate_hann_window(float *window, float *inv_window, int size)
 
         window[i] = value;
         // 1/window to calculate unwindowed peak.
-        inv_window[i] = value > 0.01f ? 1.f / value : 0.f;
+        inv_window[i] = value > 0.1f ? 1.f / value : 0.f;
     }
 }
 
@@ -186,7 +186,7 @@ static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
     AudioPsyClipContext *s = ctx->priv;
-    static const int points[][2] = { {0,14}, {125,14}, {250,16}, {500,18}, {1000,20}, {2000,20}, {4000,20}, {8000,15}, {16000,5}, {20000,-10} };
+    static const int points[][2] = { {0,14}, {125,14}, {250,16}, {500,18}, {1000,20}, {2000,20}, {4000,20}, {8000,17}, {16000,14}, {20000,-10} };
     static const int num_points = 10;
     float scale;
     int ret;
@@ -244,7 +244,7 @@ static int config_input(AVFilterLink *inlink)
 
     generate_spread_table(s);
 
-    s->channels = inlink->channels;
+    s->channels = inlink->ch_layout.nb_channels;
 
     s->tx_ctx = av_calloc(s->channels, sizeof(*s->tx_ctx));
     s->itx_ctx = av_calloc(s->channels, sizeof(*s->itx_ctx));
@@ -292,10 +292,9 @@ static void calculate_mask_curve(AudioPsyClipContext *s,
         if (i == 0) {
             magnitude = FFABS(spectrum[0]);
         } else if (i == s->fft_size / 2) {
-            magnitude = FFABS(spectrum[1]);
+            magnitude = FFABS(spectrum[s->fft_size]);
         } else {
-            // although the negative frequencies are omitted because they are redundant,
-            // the magnitude of the positive frequencies are not doubled.
+            // Because the input signal is real, the + and - frequencies are redundant.
             // Multiply the magnitude by 2 to simulate adding up the + and - frequencies.
             magnitude = hypotf(spectrum[2 * i], spectrum[2 * i + 1]) * 2;
         }
@@ -315,10 +314,9 @@ static void calculate_mask_curve(AudioPsyClipContext *s,
     for (int i = s->num_psy_bins; i < s->fft_size / 2 + 1; i++) {
         float magnitude;
         if (i == s->fft_size / 2) {
-            magnitude = FFABS(spectrum[1]);
+            magnitude = FFABS(spectrum[s->fft_size]);
         } else {
-            // although the negative frequencies are omitted because they are redundant,
-            // the magnitude of the positive frequencies are not doubled.
+            // Because the input signal is real, the + and - frequencies are redundant.
             // Multiply the magnitude by 2 to simulate adding up the + and - frequencies.
             magnitude = hypotf(spectrum[2 * i], spectrum[2 * i + 1]) * 2;
         }
@@ -360,19 +358,20 @@ static void limit_clip_spectrum(AudioPsyClipContext *s,
     for (int i = 1; i < s->fft_size / 2; i++) {
         float real = clip_spectrum[i * 2];
         float imag = clip_spectrum[i * 2 + 1];
-        // although the negative frequencies are omitted because they are redundant,
-        // the magnitude of the positive frequencies are not doubled.
+        // Because the input signal is real, the + and - frequencies are redundant.
         // Multiply the magnitude by 2 to simulate adding up the + and - frequencies.
         relative_distortion_level = hypotf(real, imag) * 2 / mask_curve[i];
         if (relative_distortion_level > 1.0) {
             clip_spectrum[i * 2] /= relative_distortion_level;
             clip_spectrum[i * 2 + 1] /= relative_distortion_level;
+            clip_spectrum[s->fft_size * 2 - i * 2] /= relative_distortion_level;
+            clip_spectrum[s->fft_size * 2 - i * 2 + 1] /= relative_distortion_level;
         }
     }
     // bin N/2
-    relative_distortion_level = FFABS(clip_spectrum[1]) / mask_curve[s->fft_size / 2];
+    relative_distortion_level = FFABS(clip_spectrum[s->fft_size]) / mask_curve[s->fft_size / 2];
     if (relative_distortion_level > 1.f)
-        clip_spectrum[1] /= relative_distortion_level;
+        clip_spectrum[s->fft_size] /= relative_distortion_level;
 }
 
 static void r2c(float *buffer, int size)
@@ -533,8 +532,8 @@ static int psy_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 {
     AudioPsyClipContext *s = ctx->priv;
     AVFrame *out = arg;
-    const int start = (out->channels * jobnr) / nb_jobs;
-    const int end = (out->channels * (jobnr+1)) / nb_jobs;
+    const int start = (out->ch_layout.nb_channels * jobnr) / nb_jobs;
+    const int end = (out->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
 
     for (int ch = start; ch < end; ch++)
         psy_channel(ctx, s->in, out, ch);
@@ -558,7 +557,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     s->in = in;
     ff_filter_execute(ctx, psy_channels, out, NULL,
-                      FFMIN(outlink->channels, ff_filter_get_nb_threads(ctx)));
+                      FFMIN(outlink->ch_layout.nb_channels, ff_filter_get_nb_threads(ctx)));
 
     out->pts = in->pts;
     out->nb_samples = in->nb_samples;

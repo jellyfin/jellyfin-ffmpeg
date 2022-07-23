@@ -25,10 +25,10 @@
  * Discrete wavelet transform
  */
 
-#include "libavutil/common.h"
+#include "libavutil/error.h"
+#include "libavutil/macros.h"
 #include "libavutil/mem.h"
 #include "jpeg2000dwt.h"
-#include "internal.h"
 
 /* Defines for 9/7 DWT lifting parameters.
  * Parameters are in float. */

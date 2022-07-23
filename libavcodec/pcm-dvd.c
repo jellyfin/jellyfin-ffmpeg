@@ -26,6 +26,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct PCMDVDContext {
@@ -55,6 +56,7 @@ static int pcm_dvd_parse_header(AVCodecContext *avctx, const uint8_t *header)
     static const uint32_t frequencies[4] = { 48000, 96000, 44100, 32000 };
     PCMDVDContext *s = avctx->priv_data;
     int header_int = (header[0] & 0xe0) | (header[1] << 8) | (header[2] << 16);
+    int channels;
 
     /* early exit if the header didn't change apart from the frame number */
     if (s->last_header == header_int)
@@ -89,9 +91,12 @@ static int pcm_dvd_parse_header(AVCodecContext *avctx, const uint8_t *header)
     avctx->sample_rate = frequencies[header[1] >> 4 & 3];
 
     /* get the number of channels */
-    avctx->channels = 1 + (header[1] & 7);
+    channels = 1 + (header[1] & 7);
+
+    av_channel_layout_uninit(&avctx->ch_layout);
+    av_channel_layout_default(&avctx->ch_layout, channels);
     /* calculate the bitrate */
-    avctx->bit_rate = avctx->channels *
+    avctx->bit_rate = channels *
                       avctx->sample_rate *
                       avctx->bits_per_coded_sample;
 
@@ -100,15 +105,15 @@ static int pcm_dvd_parse_header(AVCodecContext *avctx, const uint8_t *header)
      * needed to complete a set of samples for each channel. */
     if (avctx->bits_per_coded_sample == 16) {
         s->samples_per_block = 1;
-        s->block_size        = avctx->channels * 2;
+        s->block_size        = channels * 2;
     } else {
-        switch (avctx->channels) {
+        switch (channels) {
         case 1:
         case 2:
         case 4:
             /* one group has all the samples needed */
             s->block_size        = 4 * avctx->bits_per_coded_sample / 8;
-            s->samples_per_block = 4 / avctx->channels;
+            s->samples_per_block = 4 / channels;
             s->groups_per_block  = 1;
             break;
         case 8:
@@ -118,11 +123,11 @@ static int pcm_dvd_parse_header(AVCodecContext *avctx, const uint8_t *header)
             s->groups_per_block  = 2;
             break;
         default:
-            /* need avctx->channels groups */
-            s->block_size        = 4 * avctx->channels *
+            /* need channels groups */
+            s->block_size        = 4 * channels *
                                    avctx->bits_per_coded_sample / 8;
             s->samples_per_block = 4;
-            s->groups_per_block  = avctx->channels;
+            s->groups_per_block  = channels;
             break;
         }
     }
@@ -130,7 +135,7 @@ static int pcm_dvd_parse_header(AVCodecContext *avctx, const uint8_t *header)
     if (avctx->debug & FF_DEBUG_PICT_INFO)
         ff_dlog(avctx,
                 "pcm_dvd_parse_header: %d channels, %d bits per sample, %d Hz, %"PRId64" bit/s\n",
-                avctx->channels, avctx->bits_per_coded_sample,
+                avctx->ch_layout.nb_channels, avctx->bits_per_coded_sample,
                 avctx->sample_rate, avctx->bit_rate);
 
     s->last_header = header_int;
@@ -155,7 +160,7 @@ static void *pcm_dvd_decode_samples(AVCodecContext *avctx, const uint8_t *src,
         bytestream2_get_buffer(&gb, dst16, blocks * s->block_size);
         dst16 += blocks * s->block_size / 2;
 #else
-        int samples = blocks * avctx->channels;
+        int samples = blocks * avctx->ch_layout.nb_channels;
         do {
             *dst16++ = bytestream2_get_be16u(&gb);
         } while (--samples);
@@ -163,7 +168,7 @@ static void *pcm_dvd_decode_samples(AVCodecContext *avctx, const uint8_t *src,
         return dst16;
     }
     case 20:
-        if (avctx->channels == 1) {
+        if (avctx->ch_layout.nb_channels == 1) {
             do {
                 for (i = 2; i; i--) {
                     dst32[0] = bytestream2_get_be16u(&gb) << 16;
@@ -191,7 +196,7 @@ static void *pcm_dvd_decode_samples(AVCodecContext *avctx, const uint8_t *src,
         }
         return dst32;
     case 24:
-        if (avctx->channels == 1) {
+        if (avctx->ch_layout.nb_channels == 1) {
             do {
                 for (i = 2; i; i--) {
                     dst32[0] = bytestream2_get_be16u(&gb) << 16;
@@ -220,10 +225,9 @@ static void *pcm_dvd_decode_samples(AVCodecContext *avctx, const uint8_t *src,
     }
 }
 
-static int pcm_dvd_decode_frame(AVCodecContext *avctx, void *data,
+static int pcm_dvd_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                 int *got_frame_ptr, AVPacket *avpkt)
 {
-    AVFrame *frame     = data;
     const uint8_t *src = avpkt->data;
     int buf_size       = avpkt->size;
     PCMDVDContext *s   = avctx->priv_data;
@@ -291,17 +295,17 @@ static int pcm_dvd_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-const AVCodec ff_pcm_dvd_decoder = {
-    .name           = "pcm_dvd",
-    .long_name      = NULL_IF_CONFIG_SMALL("PCM signed 16|20|24-bit big-endian for DVD media"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_PCM_DVD,
+const FFCodec ff_pcm_dvd_decoder = {
+    .p.name         = "pcm_dvd",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("PCM signed 16|20|24-bit big-endian for DVD media"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_PCM_DVD,
     .priv_data_size = sizeof(PCMDVDContext),
     .init           = pcm_dvd_decode_init,
-    .decode         = pcm_dvd_decode_frame,
-    .capabilities   = AV_CODEC_CAP_CHANNEL_CONF |
+    FF_CODEC_DECODE_CB(pcm_dvd_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
-    .sample_fmts    = (const enum AVSampleFormat[]) {
+    .p.sample_fmts  = (const enum AVSampleFormat[]) {
         AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE
     },
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,

@@ -18,15 +18,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/film_grain_params.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "av1dec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "hwconfig.h"
 #include "internal.h"
 #include "profiles.h"
+#include "thread.h"
 
 /**< same with Div_Lut defined in spec 7.11.3.7 */
 static const uint16_t div_lut[AV1_DIV_LUT_NUM] = {
@@ -437,7 +441,8 @@ static int get_pixel_format(AVCodecContext *avctx)
 #define HWACCEL_MAX (CONFIG_AV1_DXVA2_HWACCEL + \
                      CONFIG_AV1_D3D11VA_HWACCEL * 2 + \
                      CONFIG_AV1_NVDEC_HWACCEL + \
-                     CONFIG_AV1_VAAPI_HWACCEL)
+                     CONFIG_AV1_VAAPI_HWACCEL + \
+                     CONFIG_AV1_VDPAU_HWACCEL)
     enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmtp = pix_fmts;
 
     if (seq->seq_profile == 2 && seq->color_config.high_bitdepth)
@@ -515,6 +520,9 @@ static int get_pixel_format(AVCodecContext *avctx)
 #if CONFIG_AV1_VAAPI_HWACCEL
         *fmtp++ = AV_PIX_FMT_VAAPI;
 #endif
+#if CONFIG_AV1_VDPAU_HWACCEL
+        *fmtp++ = AV_PIX_FMT_VDPAU;
+#endif
         break;
     case AV_PIX_FMT_YUV420P10:
 #if CONFIG_AV1_DXVA2_HWACCEL
@@ -529,6 +537,9 @@ static int get_pixel_format(AVCodecContext *avctx)
 #endif
 #if CONFIG_AV1_VAAPI_HWACCEL
         *fmtp++ = AV_PIX_FMT_VAAPI;
+#endif
+#if CONFIG_AV1_VDPAU_HWACCEL
+        *fmtp++ = AV_PIX_FMT_VDPAU;
 #endif
         break;
     case AV_PIX_FMT_GRAY8:
@@ -569,7 +580,7 @@ static int get_pixel_format(AVCodecContext *avctx)
 
 static void av1_frame_unref(AVCodecContext *avctx, AV1Frame *f)
 {
-    ff_thread_release_buffer(avctx, &f->tf);
+    ff_thread_release_buffer(avctx, f->f);
     av_buffer_unref(&f->hwaccel_priv_buf);
     f->hwaccel_picture_private = NULL;
     av_buffer_unref(&f->header_ref);
@@ -585,15 +596,18 @@ static int av1_frame_ref(AVCodecContext *avctx, AV1Frame *dst, const AV1Frame *s
 {
     int ret;
 
-    ret = ff_thread_ref_frame(&dst->tf, &src->tf);
+    ret = av_buffer_replace(&dst->header_ref, src->header_ref);
     if (ret < 0)
         return ret;
 
-    dst->header_ref = av_buffer_ref(src->header_ref);
-    if (!dst->header_ref)
-        goto fail;
-
     dst->raw_frame_header = src->raw_frame_header;
+
+    if (!src->f->buf[0])
+        return 0;
+
+    ret = av_frame_ref(dst->f, src->f);
+    if (ret < 0)
+        goto fail;
 
     if (src->hwaccel_picture_private) {
         dst->hwaccel_priv_buf = av_buffer_ref(src->hwaccel_priv_buf);
@@ -634,10 +648,10 @@ static av_cold int av1_decode_free(AVCodecContext *avctx)
 
     for (int i = 0; i < FF_ARRAY_ELEMS(s->ref); i++) {
         av1_frame_unref(avctx, &s->ref[i]);
-        av_frame_free(&s->ref[i].tf.f);
+        av_frame_free(&s->ref[i].f);
     }
     av1_frame_unref(avctx, &s->cur_frame);
-    av_frame_free(&s->cur_frame.tf.f);
+    av_frame_free(&s->cur_frame.f);
 
     av_buffer_unref(&s->seq_ref);
     av_buffer_unref(&s->header_ref);
@@ -738,16 +752,16 @@ static av_cold int av1_decode_init(AVCodecContext *avctx)
     s->pix_fmt = AV_PIX_FMT_NONE;
 
     for (int i = 0; i < FF_ARRAY_ELEMS(s->ref); i++) {
-        s->ref[i].tf.f = av_frame_alloc();
-        if (!s->ref[i].tf.f) {
+        s->ref[i].f = av_frame_alloc();
+        if (!s->ref[i].f) {
             av_log(avctx, AV_LOG_ERROR,
                    "Failed to allocate reference frame buffer %d.\n", i);
             return AVERROR(ENOMEM);
         }
     }
 
-    s->cur_frame.tf.f = av_frame_alloc();
-    if (!s->cur_frame.tf.f) {
+    s->cur_frame.f = av_frame_alloc();
+    if (!s->cur_frame.f) {
         av_log(avctx, AV_LOG_ERROR,
                "Failed to allocate current frame buffer.\n");
         return AVERROR(ENOMEM);
@@ -800,16 +814,10 @@ static int av1_frame_alloc(AVCodecContext *avctx, AV1Frame *f)
         return ret;
     }
 
-    f->header_ref = av_buffer_ref(s->header_ref);
-    if (!f->header_ref)
-        return AVERROR(ENOMEM);
-
-    f->raw_frame_header = s->raw_frame_header;
-
-    if ((ret = ff_thread_get_buffer(avctx, &f->tf, AV_GET_BUFFER_FLAG_REF)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, f->f, AV_GET_BUFFER_FLAG_REF)) < 0)
         goto fail;
 
-    frame = f->tf.f;
+    frame = f->f;
     frame->key_frame = header->frame_type == AV1_FRAME_KEY;
 
     switch (header->frame_type) {
@@ -908,7 +916,7 @@ static int set_output_frame(AVCodecContext *avctx, AVFrame *frame,
                             const AVPacket *pkt, int *got_frame)
 {
     AV1DecContext *s = avctx->priv_data;
-    const AVFrame *srcframe = s->cur_frame.tf.f;
+    const AVFrame *srcframe = s->cur_frame.f;
     int ret;
 
     // TODO: all layers
@@ -945,8 +953,7 @@ static int update_reference_list(AVCodecContext *avctx)
 
     for (int i = 0; i < AV1_NUM_REF_FRAMES; i++) {
         if (header->refresh_frame_flags & (1 << i)) {
-            if (s->ref[i].tf.f->buf[0])
-                av1_frame_unref(avctx, &s->ref[i]);
+            av1_frame_unref(avctx, &s->ref[i]);
             if ((ret = av1_frame_ref(avctx, &s->ref[i], &s->cur_frame)) < 0) {
                 av_log(avctx, AV_LOG_ERROR,
                        "Failed to update frame %d in reference list\n", i);
@@ -962,19 +969,32 @@ static int get_current_frame(AVCodecContext *avctx)
     AV1DecContext *s = avctx->priv_data;
     int ret;
 
-    if (s->cur_frame.tf.f->buf[0])
-        av1_frame_unref(avctx, &s->cur_frame);
+    av1_frame_unref(avctx, &s->cur_frame);
+
+    s->cur_frame.header_ref = av_buffer_ref(s->header_ref);
+    if (!s->cur_frame.header_ref)
+        return AVERROR(ENOMEM);
+
+    s->cur_frame.raw_frame_header = s->raw_frame_header;
+
+    ret = init_tile_data(s);
+    if (ret < 0) {
+        av_log(avctx, AV_LOG_ERROR, "Failed to init tile data.\n");
+        return ret;
+    }
+
+    if ((avctx->skip_frame >= AVDISCARD_NONINTRA &&
+            (s->raw_frame_header->frame_type != AV1_FRAME_KEY &&
+             s->raw_frame_header->frame_type != AV1_FRAME_INTRA_ONLY)) ||
+        (avctx->skip_frame >= AVDISCARD_NONKEY   &&
+             s->raw_frame_header->frame_type != AV1_FRAME_KEY) ||
+        avctx->skip_frame >= AVDISCARD_ALL)
+        return 0;
 
     ret = av1_frame_alloc(avctx, &s->cur_frame);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR,
                "Failed to allocate space for current frame.\n");
-        return ret;
-    }
-
-    ret = init_tile_data(s);
-    if (ret < 0) {
-        av_log(avctx, AV_LOG_ERROR, "Failed to init tile data.\n");
         return ret;
     }
 
@@ -986,7 +1006,7 @@ static int get_current_frame(AVCodecContext *avctx)
     return ret;
 }
 
-static int av1_decode_frame(AVCodecContext *avctx, void *frame,
+static int av1_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                             int *got_frame, AVPacket *pkt)
 {
     AV1DecContext *s = avctx->priv_data;
@@ -1077,8 +1097,7 @@ static int av1_decode_frame(AVCodecContext *avctx, void *frame,
                 s->raw_frame_header = &obu->obu.frame_header;
 
             if (s->raw_frame_header->show_existing_frame) {
-                if (s->cur_frame.tf.f->buf[0])
-                    av1_frame_unref(avctx, &s->cur_frame);
+                av1_frame_unref(avctx, &s->cur_frame);
 
                 ret = av1_frame_ref(avctx, &s->cur_frame,
                                     &s->ref[s->raw_frame_header->frame_to_show_map_idx]);
@@ -1093,9 +1112,11 @@ static int av1_decode_frame(AVCodecContext *avctx, void *frame,
                     goto end;
                 }
 
-                ret = set_output_frame(avctx, frame, pkt, got_frame);
-                if (ret < 0)
-                    av_log(avctx, AV_LOG_ERROR, "Set output frame error.\n");
+                if (s->cur_frame.f->buf[0]) {
+                    ret = set_output_frame(avctx, frame, pkt, got_frame);
+                    if (ret < 0)
+                        av_log(avctx, AV_LOG_ERROR, "Set output frame error.\n");
+                }
 
                 s->raw_frame_header = NULL;
 
@@ -1111,7 +1132,7 @@ static int av1_decode_frame(AVCodecContext *avctx, void *frame,
             s->cur_frame.spatial_id  = header->spatial_id;
             s->cur_frame.temporal_id = header->temporal_id;
 
-            if (avctx->hwaccel) {
+            if (avctx->hwaccel && s->cur_frame.f->buf[0]) {
                 ret = avctx->hwaccel->start_frame(avctx, unit->data,
                                                   unit->data_size);
                 if (ret < 0) {
@@ -1138,7 +1159,7 @@ static int av1_decode_frame(AVCodecContext *avctx, void *frame,
             if (ret < 0)
                 goto end;
 
-            if (avctx->hwaccel) {
+            if (avctx->hwaccel && s->cur_frame.f->buf[0]) {
                 ret = avctx->hwaccel->decode_slice(avctx,
                                                    raw_tile_group->tile_data.data,
                                                    raw_tile_group->tile_data.data_size);
@@ -1161,7 +1182,7 @@ static int av1_decode_frame(AVCodecContext *avctx, void *frame,
         }
 
         if (raw_tile_group && (s->tile_num == raw_tile_group->tg_end + 1)) {
-            if (avctx->hwaccel) {
+            if (avctx->hwaccel && s->cur_frame.f->buf[0]) {
                 ret = avctx->hwaccel->end_frame(avctx);
                 if (ret < 0) {
                     av_log(avctx, AV_LOG_ERROR, "HW accel end frame fail.\n");
@@ -1175,7 +1196,7 @@ static int av1_decode_frame(AVCodecContext *avctx, void *frame,
                 goto end;
             }
 
-            if (s->raw_frame_header->show_frame) {
+            if (s->raw_frame_header->show_frame && s->cur_frame.f->buf[0]) {
                 ret = set_output_frame(avctx, frame, pkt, got_frame);
                 if (ret < 0) {
                     av_log(avctx, AV_LOG_ERROR, "Set output frame error\n");
@@ -1224,22 +1245,22 @@ static const AVClass av1_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_av1_decoder = {
-    .name                  = "av1",
-    .long_name             = NULL_IF_CONFIG_SMALL("Alliance for Open Media AV1"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_AV1,
+const FFCodec ff_av1_decoder = {
+    .p.name                = "av1",
+    .p.long_name           = NULL_IF_CONFIG_SMALL("Alliance for Open Media AV1"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_AV1,
     .priv_data_size        = sizeof(AV1DecContext),
     .init                  = av1_decode_init,
     .close                 = av1_decode_free,
-    .decode                = av1_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_AVOID_PROBING,
+    FF_CODEC_DECODE_CB(av1_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_AVOID_PROBING,
     .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE |
                              FF_CODEC_CAP_INIT_CLEANUP |
                              FF_CODEC_CAP_SETS_PKT_DTS,
     .flush                 = av1_decode_flush,
-    .profiles              = NULL_IF_CONFIG_SMALL(ff_av1_profiles),
-    .priv_class            = &av1_class,
+    .p.profiles            = NULL_IF_CONFIG_SMALL(ff_av1_profiles),
+    .p.priv_class          = &av1_class,
     .bsfs                  = "av1_frame_split",
     .hw_configs            = (const AVCodecHWConfigInternal *const []) {
 #if CONFIG_AV1_DXVA2_HWACCEL
@@ -1257,6 +1278,10 @@ const AVCodec ff_av1_decoder = {
 #if CONFIG_AV1_VAAPI_HWACCEL
         HWACCEL_VAAPI(av1),
 #endif
+#if CONFIG_AV1_VDPAU_HWACCEL
+        HWACCEL_VDPAU(av1),
+#endif
+
         NULL
     },
 };

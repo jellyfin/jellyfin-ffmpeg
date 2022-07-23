@@ -24,6 +24,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 #include "libavutil/avassert.h"
@@ -336,11 +337,9 @@ static const char chunk_name[8][5] = {
     "COPY", "TSW1", "BDLT", "WDLT", "TDLT", "DSW1", "BLCK", "DDS1"
 };
 
-static int dfa_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int dfa_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame, AVPacket *avpkt)
 {
-    AVFrame *frame = data;
     DfaContext *s = avctx->priv_data;
     GetByteContext gb;
     const uint8_t *buf = avpkt->data;
@@ -385,19 +384,27 @@ static int dfa_decode_frame(AVCodecContext *avctx,
 
     buf = s->frame_buf;
     dst = frame->data[0];
-    for (i = 0; i < avctx->height; i++) {
-        if(version == 0x100) {
+    if (version == 0x100) {
+        for (i = 0; i < avctx->height; i++) {
             int j;
-            for(j = 0; j < avctx->width; j++) {
-                dst[j] = buf[ (i&3)*(avctx->width /4) + (j/4) +
-                             ((j&3)*(avctx->height/4) + (i/4))*avctx->width];
+            const uint8_t *buf1 = buf + (i&3)*(avctx->width/4) + (i/4)*avctx->width;
+            int stride = (avctx->height/4)*avctx->width;
+            for(j = 0; j < avctx->width/4; j++) {
+                dst[4*j+0] = buf1[j + 0*stride];
+                dst[4*j+1] = buf1[j + 1*stride];
+                dst[4*j+2] = buf1[j + 2*stride];
+                dst[4*j+3] = buf1[j + 3*stride];
             }
-        } else {
-            memcpy(dst, buf, avctx->width);
-            buf += avctx->width;
+            j *= 4;
+            for(; j < avctx->width; j++) {
+                dst[j] = buf1[(j/4) + (j&3)*stride];
+            }
+            dst += frame->linesize[0];
         }
-        dst += frame->linesize[0];
-    }
+    } else
+        av_image_copy_plane(dst, frame->linesize[0], buf, avctx->width,
+                            avctx->width, avctx->height);
+
     memcpy(frame->data[1], s->pal, sizeof(s->pal));
 
     *got_frame = 1;
@@ -414,15 +421,15 @@ static av_cold int dfa_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_dfa_decoder = {
-    .name           = "dfa",
-    .long_name      = NULL_IF_CONFIG_SMALL("Chronomaster DFA"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_DFA,
+const FFCodec ff_dfa_decoder = {
+    .p.name         = "dfa",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Chronomaster DFA"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_DFA,
     .priv_data_size = sizeof(DfaContext),
     .init           = dfa_decode_init,
     .close          = dfa_decode_end,
-    .decode         = dfa_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(dfa_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

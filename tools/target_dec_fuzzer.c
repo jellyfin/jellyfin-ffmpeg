@@ -47,12 +47,14 @@
 
 #include "config.h"
 #include "libavutil/avassert.h"
+#include "libavutil/avstring.h"
 #include "libavutil/cpu.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 
 #include "libavcodec/avcodec.h"
 #include "libavcodec/bytestream.h"
+#include "libavcodec/codec_internal.h"
 #include "libavformat/avformat.h"
 
 //For FF_SANE_NB_CHANNELS, so we dont waste energy testing things that will get instantly rejected
@@ -60,7 +62,7 @@
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
 
-extern const AVCodec * codec_list[];
+extern const FFCodec * codec_list[];
 
 static void error(const char *err)
 {
@@ -68,15 +70,15 @@ static void error(const char *err)
     exit(1);
 }
 
-static const AVCodec *c = NULL;
-static const AVCodec *AVCodecInitialize(enum AVCodecID codec_id)
+static const FFCodec *c = NULL;
+static const FFCodec *AVCodecInitialize(enum AVCodecID codec_id)
 {
     const AVCodec *res;
 
     res = avcodec_find_decoder(codec_id);
     if (!res)
         error("Failed to find decoder");
-    return res;
+    return ffcodec(res);
 }
 
 static int subtitle_handler(AVCodecContext *avctx, void *frame,
@@ -102,6 +104,60 @@ const uint32_t maxiteration = 8096;
 
 static const uint64_t FUZZ_TAG = 0x4741542D5A5A5546ULL;
 
+static int fuzz_video_get_buffer(AVCodecContext *ctx, AVFrame *frame)
+{
+    ptrdiff_t linesize1[4];
+    size_t size[4];
+    int linesize_align[AV_NUM_DATA_POINTERS];
+    int i, ret, w = frame->width, h = frame->height;
+
+    avcodec_align_dimensions2(ctx, &w, &h, linesize_align);
+    ret = av_image_fill_linesizes(frame->linesize, ctx->pix_fmt, w);
+    if (ret < 0)
+        return ret;
+
+    for (i = 0; i < 4 && frame->linesize[i]; i++)
+        linesize1[i] = frame->linesize[i] =
+            FFALIGN(frame->linesize[i], linesize_align[i]);
+    for (; i < 4; i++)
+        linesize1[i] = 0;
+
+    ret = av_image_fill_plane_sizes(size, ctx->pix_fmt, h, linesize1);
+    if (ret < 0)
+        return ret;
+
+    frame->extended_data = frame->data;
+    for (i = 0; i < 4 && size[i]; i++) {
+        frame->buf[i] = av_buffer_alloc(size[i]);
+        if (!frame->buf[i])
+            goto fail;
+        frame->data[i] = frame->buf[i]->data;
+    }
+    for (; i < AV_NUM_DATA_POINTERS; i++) {
+        frame->data[i] = NULL;
+        frame->linesize[i] = 0;
+    }
+
+    return 0;
+fail:
+    av_frame_unref(frame);
+    return AVERROR(ENOMEM);
+}
+
+static int fuzz_get_buffer2(AVCodecContext *ctx, AVFrame *frame, int flags)
+{
+    switch (ctx->codec_type) {
+    case AVMEDIA_TYPE_VIDEO:
+        return (ctx->codec->capabilities & AV_CODEC_CAP_DR1)
+               ? fuzz_video_get_buffer(ctx, frame)
+               : avcodec_default_get_buffer2(ctx, frame, flags);
+    case AVMEDIA_TYPE_AUDIO:
+        return avcodec_default_get_buffer2(ctx, frame, flags);
+    default:
+        return AVERROR(EINVAL);
+    }
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint64_t maxpixels_per_frame = 4096 * 4096;
     uint64_t maxpixels;
@@ -126,11 +182,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 #ifdef FFMPEG_DECODER
 #define DECODER_SYMBOL0(CODEC) ff_##CODEC##_decoder
 #define DECODER_SYMBOL(CODEC) DECODER_SYMBOL0(CODEC)
-        extern AVCodec DECODER_SYMBOL(FFMPEG_DECODER);
+        extern FFCodec DECODER_SYMBOL(FFMPEG_DECODER);
         codec_list[0] = &DECODER_SYMBOL(FFMPEG_DECODER);
 
 #if FFMPEG_DECODER == tiff || FFMPEG_DECODER == tdsc
-        extern AVCodec DECODER_SYMBOL(mjpeg);
+        extern FFCodec DECODER_SYMBOL(mjpeg);
         codec_list[1] = &DECODER_SYMBOL(mjpeg);
 #endif
 
@@ -141,29 +197,37 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         av_log_set_level(AV_LOG_PANIC);
     }
 
-    switch (c->type) {
+    switch (c->p.type) {
     case AVMEDIA_TYPE_AUDIO   :
     case AVMEDIA_TYPE_VIDEO   : decode_handler = audio_video_handler  ; break;
     case AVMEDIA_TYPE_SUBTITLE: decode_handler = subtitle_handler     ; break;
     }
-    switch (c->id) {
+    switch (c->p.id) {
     case AV_CODEC_ID_APE:       maxsamples_per_frame /= 256; break;
     }
     maxpixels = maxpixels_per_frame * maxiteration;
     maxsamples = maxsamples_per_frame * maxiteration;
-    switch (c->id) {
+    switch (c->p.id) {
+    case AV_CODEC_ID_AASC:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_AGM:         maxpixels  /= 1024;  break;
+    case AV_CODEC_ID_ANM:         maxpixels  /= 1024;  break;
     case AV_CODEC_ID_ARBC:        maxpixels  /= 1024;  break;
+    case AV_CODEC_ID_ARGO:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_BINKVIDEO:   maxpixels  /= 32;    break;
-    case AV_CODEC_ID_CFHD:        maxpixels  /= 128;   break;
+    case AV_CODEC_ID_CDTOONS:     maxpixels  /= 1024;  break;
+    case AV_CODEC_ID_CFHD:        maxpixels  /= 16384; break;
+    case AV_CODEC_ID_CINEPAK:     maxpixels  /= 128;   break;
     case AV_CODEC_ID_COOK:        maxsamples /= 1<<20; break;
+    case AV_CODEC_ID_DFA:         maxpixels  /= 1024;  break;
     case AV_CODEC_ID_DIRAC:       maxpixels  /= 8192;  break;
+    case AV_CODEC_ID_DSICINVIDEO: maxpixels  /= 1024;  break;
     case AV_CODEC_ID_DST:         maxsamples /= 1<<20; break;
     case AV_CODEC_ID_DVB_SUBTITLE: av_dict_set_int(&opts, "compute_clut", -2, 0); break;
     case AV_CODEC_ID_DXA:         maxpixels  /= 32;    break;
     case AV_CODEC_ID_DXV:         maxpixels  /= 32;    break;
     case AV_CODEC_ID_FFWAVESYNTH: maxsamples /= 16384; break;
     case AV_CODEC_ID_FLAC:        maxsamples /= 1024;  break;
+    case AV_CODEC_ID_FLIC:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_FLV1:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_G2M:         maxpixels  /= 1024;  break;
     case AV_CODEC_ID_GEM:         maxpixels  /= 512;   break;
@@ -179,14 +243,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     case AV_CODEC_ID_INTERPLAY_ACM: maxsamples /= 16384;  break;
     case AV_CODEC_ID_JPEG2000:    maxpixels  /= 16;    break;
     case AV_CODEC_ID_LAGARITH:    maxpixels  /= 1024;  break;
+    case AV_CODEC_ID_LOCO:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_VORBIS:      maxsamples /= 1024;  break;
     case AV_CODEC_ID_LSCR:        maxpixels  /= 16;    break;
+    case AV_CODEC_ID_MMVIDEO:     maxpixels  /= 256;   break;
     case AV_CODEC_ID_MOTIONPIXELS:maxpixels  /= 256;   break;
     case AV_CODEC_ID_MP4ALS:      maxsamples /= 65536; break;
     case AV_CODEC_ID_MSA1:        maxpixels  /= 16384; break;
     case AV_CODEC_ID_MSRLE:       maxpixels  /= 16;    break;
     case AV_CODEC_ID_MSS2:        maxpixels  /= 16384; break;
     case AV_CODEC_ID_MSZH:        maxpixels  /= 128;   break;
+    case AV_CODEC_ID_MVC2:        maxpixels  /= 128;   break;
     case AV_CODEC_ID_MXPEG:       maxpixels  /= 128;   break;
     case AV_CODEC_ID_OPUS:        maxsamples /= 16384; break;
     case AV_CODEC_ID_PNG:         maxpixels  /= 128;   break;
@@ -198,11 +265,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     case AV_CODEC_ID_SANM:        maxpixels  /= 16;    break;
     case AV_CODEC_ID_SCPR:        maxpixels  /= 32;    break;
     case AV_CODEC_ID_SCREENPRESSO:maxpixels  /= 64;    break;
+    case AV_CODEC_ID_SIMBIOSIS_IMX:maxpixels /= 16384; break;
+    case AV_CODEC_ID_SMACKAUDIO:  maxsamples /= 4096;  break;
     case AV_CODEC_ID_SMACKVIDEO:  maxpixels  /= 64;    break;
     case AV_CODEC_ID_SNOW:        maxpixels  /= 128;   break;
+    case AV_CODEC_ID_TARGA:       maxpixels  /= 128;   break;
     case AV_CODEC_ID_TAK:         maxsamples /= 1024;  break;
     case AV_CODEC_ID_TGV:         maxpixels  /= 32;    break;
     case AV_CODEC_ID_THEORA:      maxpixels  /= 16384; break;
+    case AV_CODEC_ID_TQI:         maxpixels  /= 1024;  break;
     case AV_CODEC_ID_TRUEMOTION2: maxpixels  /= 1024;  break;
     case AV_CODEC_ID_TSCC:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_VC1:         maxpixels  /= 8192;  break;
@@ -215,18 +286,20 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     case AV_CODEC_ID_VP7:         maxpixels  /= 256;   break;
     case AV_CODEC_ID_VP9:         maxpixels  /= 4096;  break;
     case AV_CODEC_ID_WAVPACK:     maxsamples /= 1024;  break;
+    case AV_CODEC_ID_WCMV:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_WMV3IMAGE:   maxpixels  /= 8192;  break;
     case AV_CODEC_ID_WMV2:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_WMV3:        maxpixels  /= 1024;  break;
     case AV_CODEC_ID_WS_VQA:      maxpixels  /= 16384; break;
     case AV_CODEC_ID_WMALOSSLESS: maxsamples /= 1024;  break;
+    case AV_CODEC_ID_YLC:         maxpixels  /= 1024;  break;
     case AV_CODEC_ID_ZEROCODEC:   maxpixels  /= 128;   break;
     }
 
     maxsamples_per_frame = FFMIN(maxsamples_per_frame, maxsamples);
     maxpixels_per_frame  = FFMIN(maxpixels_per_frame , maxpixels);
 
-    AVCodecContext* ctx = avcodec_alloc_context3(c);
+    AVCodecContext* ctx = avcodec_alloc_context3(&c->p);
     AVCodecContext* parser_avctx = avcodec_alloc_context3(NULL);
     if (!ctx || !parser_avctx)
         error("Failed memory allocation");
@@ -235,11 +308,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         ctx->max_pixels = maxpixels_per_frame; //To reduce false positive OOM and hangs
 
     ctx->max_samples = maxsamples_per_frame;
+    ctx->get_buffer2 = fuzz_get_buffer2;
 
     if (size > 1024) {
         GetByteContext gbc;
         int extradata_size;
         int flags;
+        uint64_t request_channel_layout;
         int64_t flags64;
 
         size -= 1024;
@@ -251,7 +326,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         // Try to initialize a parser for this codec, note, this may fail which just means we test without one
         flags = bytestream2_get_byte(&gbc);
         if (flags & 1)
-            parser = av_parser_init(c->id);
+            parser = av_parser_init(c->p.id);
         if (flags & 2)
             ctx->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
         if (flags & 4) {
@@ -259,7 +334,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             if (flags & 8)
                 ctx->err_recognition |= AV_EF_EXPLODE;
         }
-        if ((flags & 0x10) && c->id != AV_CODEC_ID_H264)
+        if ((flags & 0x10) && c->p.id != AV_CODEC_ID_H264)
             ctx->flags2 |= AV_CODEC_FLAG2_FAST;
         if (flags & 0x80)
             ctx->flags2 |= AV_CODEC_FLAG2_EXPORT_MVS;
@@ -270,7 +345,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         extradata_size = bytestream2_get_le32(&gbc);
 
         ctx->sample_rate                        = bytestream2_get_le32(&gbc) & 0x7FFFFFFF;
-        ctx->channels                           = (unsigned)bytestream2_get_le32(&gbc) % FF_SANE_NB_CHANNELS;
+        ctx->ch_layout.nb_channels              = (unsigned)bytestream2_get_le32(&gbc) % FF_SANE_NB_CHANNELS;
         ctx->block_align                        = bytestream2_get_le32(&gbc) & 0x7FFFFFFF;
         ctx->codec_tag                          = bytestream2_get_le32(&gbc);
         if (c->codec_tags) {
@@ -279,7 +354,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             ctx->codec_tag = c->codec_tags[ctx->codec_tag % n];
         }
         keyframes                               = bytestream2_get_le64(&gbc);
-        ctx->request_channel_layout             = bytestream2_get_le64(&gbc);
+        request_channel_layout                  = bytestream2_get_le64(&gbc);
 
         ctx->idct_algo                          = bytestream2_get_byte(&gbc) % 25;
         flushpattern                            = bytestream2_get_le64(&gbc);
@@ -294,6 +369,31 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                 av_dict_set_int(&opts, "heavy_compr",   bytestream2_get_byte(&gbc) & 1, 0);
                 av_dict_set_int(&opts, "target_level",  (int)(bytestream2_get_byte(&gbc) % 32) - 31, 0);
                 av_dict_set_int(&opts, "dmix_mode",     (int)(bytestream2_get_byte(&gbc) %  4) -  1, 0);
+                break;
+            }
+        }
+
+        // Keep the deprecated request_channel_layout behavior to ensure old fuzzing failures
+        // remain reproducible.
+        if (request_channel_layout) {
+            switch (ctx->codec_id) {
+            case AV_CODEC_ID_AC3:
+            case AV_CODEC_ID_EAC3:
+            case AV_CODEC_ID_MLP:
+            case AV_CODEC_ID_TRUEHD:
+            case AV_CODEC_ID_DTS:
+                if (request_channel_layout & ~INT64_MIN) {
+                    char *downmix_layout = av_mallocz(19);
+                    if (!downmix_layout)
+                        error("Failed memory allocation");
+                    av_strlcatf(downmix_layout, 19, "0x%"PRIx64, request_channel_layout & ~INT64_MIN);
+                    av_dict_set(&opts, "downmix", downmix_layout, AV_DICT_DONT_STRDUP_VAL);
+                }
+                if (ctx->codec_id != AV_CODEC_ID_DTS)
+                    break;
+            // fall-through
+            case AV_CODEC_ID_DOLBY_E:
+                av_dict_set_int(&opts, "channel_order", !!(request_channel_layout & INT64_MIN), 0);
                 break;
             }
         }
@@ -318,7 +418,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             ctx->width = ctx->height = 0;
     }
 
-    int res = avcodec_open2(ctx, c, &opts);
+    int res = avcodec_open2(ctx, &c->p, &opts);
     if (res < 0) {
         avcodec_free_context(&ctx);
         av_free(parser_avctx);

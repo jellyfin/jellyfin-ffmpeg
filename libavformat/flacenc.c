@@ -30,6 +30,7 @@
 #include "flacenc.h"
 #include "id3v2.h"
 #include "internal.h"
+#include "version.h"
 #include "vorbiscomment.h"
 
 
@@ -238,9 +239,9 @@ static int flac_init(struct AVFormatContext *s)
     }
 
     /* add the channel layout tag */
-    if (par->channel_layout &&
-        !(par->channel_layout & ~0x3ffffULL) &&
-        !ff_flac_is_native_layout(par->channel_layout)) {
+    if (par->ch_layout.order == AV_CHANNEL_ORDER_NATIVE &&
+        !(par->ch_layout.u.mask & ~0x3ffffULL) &&
+        !ff_flac_is_native_layout(par->ch_layout.u.mask)) {
         AVDictionaryEntry *chmask = av_dict_get(s->metadata, "WAVEFORMATEXTENSIBLE_CHANNEL_MASK",
                                                 NULL, 0);
 
@@ -249,7 +250,7 @@ static int flac_init(struct AVFormatContext *s)
                    "already present, this muxer will not overwrite it.\n");
         } else {
             uint8_t buf[32];
-            snprintf(buf, sizeof(buf), "0x%"PRIx64, par->channel_layout);
+            snprintf(buf, sizeof(buf), "0x%"PRIx64, par->ch_layout.u.mask);
             av_dict_set(&s->metadata, "WAVEFORMATEXTENSIBLE_CHANNEL_MASK", buf, 0);
         }
     }

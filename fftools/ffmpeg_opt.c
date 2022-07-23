@@ -1,4 +1,3 @@
-
 /*
  * ffmpeg option parsing
  *
@@ -19,10 +18,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
+
 #include <stdint.h>
 
+#if HAVE_SYS_RESOURCE_H
+#include <sys/time.h>
+#include <sys/resource.h>
+#endif
+
 #include "ffmpeg.h"
+#include "fopen_utf8.h"
 #include "cmdutils.h"
+#include "opt_common.h"
 
 #include "libavformat/avformat.h"
 
@@ -36,6 +44,7 @@
 #include "libavutil/avutil.h"
 #include "libavutil/bprint.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/getenv_utf8.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/fifo.h"
 #include "libavutil/mathematics.h"
@@ -55,6 +64,7 @@
 
 static const char *const opt_name_codec_names[]               = {"c", "codec", "acodec", "vcodec", "scodec", "dcodec", NULL};
 static const char *const opt_name_audio_channels[]            = {"ac", NULL};
+static const char *const opt_name_audio_ch_layouts[]          = {"channel_layout", "ch_layout", NULL};
 static const char *const opt_name_audio_sample_rate[]         = {"ar", NULL};
 static const char *const opt_name_frame_rates[]               = {"r", NULL};
 static const char *const opt_name_max_frame_rates[]           = {"fpsmax", NULL};
@@ -72,6 +82,7 @@ static const char *const opt_name_codec_tags[]                = {"tag", "atag", 
 static const char *const opt_name_sample_fmts[]               = {"sample_fmt", NULL};
 static const char *const opt_name_qscale[]                    = {"q", "qscale", NULL};
 static const char *const opt_name_forced_key_frames[]         = {"forced_key_frames", NULL};
+static const char *const opt_name_fps_mode[]                  = {"fps_mode", NULL};
 static const char *const opt_name_force_fps[]                 = {"force_fps", NULL};
 static const char *const opt_name_frame_aspect_ratios[]       = {"aspect", NULL};
 static const char *const opt_name_rc_overrides[]              = {"rc_override", NULL};
@@ -224,6 +235,7 @@ static void init_options(OptionsContext *o)
     o->chapters_input_file = INT_MAX;
     o->accurate_seek  = 1;
     o->thread_queue_size = -1;
+    o->input_sync_ref = -1;
 }
 
 static int show_hwaccels(void *optctx, const char *opt, const char *arg)
@@ -254,6 +266,78 @@ static AVDictionary *strip_specifiers(AVDictionary *dict)
             *p = ':';
     }
     return ret;
+}
+
+static int parse_and_set_vsync(const char *arg, int *vsync_var, int file_idx, int st_idx, int is_global)
+{
+    if      (!av_strcasecmp(arg, "cfr"))         *vsync_var = VSYNC_CFR;
+    else if (!av_strcasecmp(arg, "vfr"))         *vsync_var = VSYNC_VFR;
+    else if (!av_strcasecmp(arg, "passthrough")) *vsync_var = VSYNC_PASSTHROUGH;
+    else if (!av_strcasecmp(arg, "drop"))        *vsync_var = VSYNC_DROP;
+    else if (!is_global && !av_strcasecmp(arg, "auto"))  *vsync_var = VSYNC_AUTO;
+    else if (!is_global) {
+        av_log(NULL, AV_LOG_FATAL, "Invalid value %s specified for fps_mode of #%d:%d.\n", arg, file_idx, st_idx);
+        exit_program(1);
+    }
+
+    if (is_global && *vsync_var == VSYNC_AUTO) {
+        video_sync_method = parse_number_or_die("vsync", arg, OPT_INT, VSYNC_AUTO, VSYNC_VFR);
+        av_log(NULL, AV_LOG_WARNING, "Passing a number to -vsync is deprecated,"
+               " use a string argument as described in the manual.\n");
+    }
+    return 0;
+}
+
+static int apply_sync_offsets(void)
+{
+    for (int i = 0; i < nb_input_files; i++) {
+        InputFile *ref, *self = input_files[i];
+        int64_t adjustment;
+        int64_t self_start_time, ref_start_time, self_seek_start, ref_seek_start;
+        int start_times_set = 1;
+
+        if (self->input_sync_ref == -1 || self->input_sync_ref == i) continue;
+        if (self->input_sync_ref >= nb_input_files || self->input_sync_ref < -1) {
+            av_log(NULL, AV_LOG_FATAL, "-isync for input %d references non-existent input %d.\n", i, self->input_sync_ref);
+            exit_program(1);
+        }
+
+        if (copy_ts && !start_at_zero) {
+            av_log(NULL, AV_LOG_FATAL, "Use of -isync requires that start_at_zero be set if copyts is set.\n");
+            exit_program(1);
+        }
+
+        ref = input_files[self->input_sync_ref];
+        if (ref->input_sync_ref != -1 && ref->input_sync_ref != self->input_sync_ref) {
+            av_log(NULL, AV_LOG_ERROR, "-isync for input %d references a resynced input %d. Sync not set.\n", i, self->input_sync_ref);
+            continue;
+        }
+
+        if (self->ctx->start_time_realtime != AV_NOPTS_VALUE && ref->ctx->start_time_realtime != AV_NOPTS_VALUE) {
+            self_start_time = self->ctx->start_time_realtime;
+            ref_start_time  =  ref->ctx->start_time_realtime;
+        } else if (self->ctx->start_time != AV_NOPTS_VALUE && ref->ctx->start_time != AV_NOPTS_VALUE) {
+            self_start_time = self->ctx->start_time;
+            ref_start_time  =  ref->ctx->start_time;
+        } else {
+            start_times_set = 0;
+        }
+
+        if (start_times_set) {
+            self_seek_start = self->start_time == AV_NOPTS_VALUE ? 0 : self->start_time;
+            ref_seek_start  =  ref->start_time == AV_NOPTS_VALUE ? 0 :  ref->start_time;
+
+            adjustment = (self_start_time - ref_start_time) + !copy_ts*(self_seek_start - ref_seek_start) + ref->input_ts_offset;
+
+            self->ts_offset += adjustment;
+
+            av_log(NULL, AV_LOG_INFO, "Adjusted ts offset for Input #%d by %"PRId64" us to sync with Input #%d.\n", i, adjustment, self->input_sync_ref);
+        } else {
+            av_log(NULL, AV_LOG_INFO, "Unable to identify start times for Inputs #%d and %d both. No sync adjustment made.\n", i, self->input_sync_ref);
+        }
+    }
+
+    return 0;
 }
 
 static int opt_filter_threads(void *optctx, const char *opt, const char *arg)
@@ -507,7 +591,7 @@ static int opt_map_channel(void *optctx, const char *opt, const char *arg)
     /* allow trailing ? to map_channel */
     if (allow_unused = strchr(mapchan, '?'))
         *allow_unused = 0;
-    if (m->channel_idx < 0 || m->channel_idx >= st->codecpar->channels ||
+    if (m->channel_idx < 0 || m->channel_idx >= st->codecpar->ch_layout.nb_channels ||
         input_streams[input_files[m->file_idx]->ist_index + m->stream_idx]->user_set_discard == AVDISCARD_ALL) {
         if (allow_unused) {
             av_log(NULL, AV_LOG_VERBOSE, "mapchan: invalid audio channel #%d.%d.%d\n",
@@ -784,7 +868,7 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
     for (i = 0; i < ic->nb_streams; i++) {
         AVStream *st = ic->streams[i];
         AVCodecParameters *par = st->codecpar;
-        InputStream *ist = av_mallocz(sizeof(*ist));
+        InputStream *ist;
         char *framerate = NULL, *hwaccel_device = NULL;
         const char *hwaccel = NULL;
         char *hwaccel_output_format = NULL;
@@ -795,12 +879,7 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
         const AVOption *discard_opt = av_opt_find(&cc, "skip_frame", NULL,
                                                   0, AV_OPT_SEARCH_FAKE_OBJ);
 
-        if (!ist)
-            exit_program(1);
-
-        GROW_ARRAY(input_streams, nb_input_streams);
-        input_streams[nb_input_streams - 1] = ist;
-
+        ist = ALLOC_ARRAY_ELEM(input_streams, nb_input_streams);
         ist->st = st;
         ist->file_index = nb_input_files;
         ist->discard = 1;
@@ -1120,13 +1199,20 @@ static int open_input_file(OptionsContext *o, const char *filename)
     }
     if (o->nb_audio_channels) {
         const AVClass *priv_class;
-        /* because we set audio_channels based on both the "ac" and
-         * "channel_layout" options, we need to check that the specified
-         * demuxer actually has the "channels" option before setting it */
         if (file_iformat && (priv_class = file_iformat->priv_class) &&
-            av_opt_find(&priv_class, "channels", NULL, 0,
+            av_opt_find(&priv_class, "ch_layout", NULL, 0,
                         AV_OPT_SEARCH_FAKE_OBJ)) {
-            av_dict_set_int(&o->g->format_opts, "channels", o->audio_channels[o->nb_audio_channels - 1].u.i, 0);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%dC", o->audio_channels[o->nb_audio_channels - 1].u.i);
+            av_dict_set(&o->g->format_opts, "ch_layout", buf, 0);
+        }
+    }
+    if (o->nb_audio_ch_layouts) {
+        const AVClass *priv_class;
+        if (file_iformat && (priv_class = file_iformat->priv_class) &&
+            av_opt_find(&priv_class, "ch_layout", NULL, 0,
+                        AV_OPT_SEARCH_FAKE_OBJ)) {
+            av_dict_set(&o->g->format_opts, "ch_layout", o->audio_ch_layouts[o->nb_audio_ch_layouts - 1].u.str, 0);
         }
     }
     if (o->nb_frame_rates) {
@@ -1272,6 +1358,7 @@ static int open_input_file(OptionsContext *o, const char *filename)
     f->ist_index  = nb_input_streams - ic->nb_streams;
     f->start_time = o->start_time;
     f->recording_time = o->recording_time;
+    f->input_sync_ref = o->input_sync_ref;
     f->input_ts_offset = o->input_ts_offset;
     f->ts_offset  = o->input_ts_offset - (copy_ts ? (start_at_zero && ic->start_time != AV_NOPTS_VALUE ? ic->start_time : 0) : timestamp);
     f->nb_streams = ic->nb_streams;
@@ -1370,8 +1457,10 @@ static int get_preset_file_2(const char *preset_name, const char *codec_name, AV
 {
     int i, ret = -1;
     char filename[1000];
-    const char *base[3] = { getenv("AVCONV_DATADIR"),
-                            getenv("HOME"),
+    char *env_avconv_datadir = getenv_utf8("AVCONV_DATADIR");
+    char *env_home = getenv_utf8("HOME");
+    const char *base[3] = { env_avconv_datadir,
+                            env_home,
                             AVCONV_DATADIR,
                             };
 
@@ -1389,6 +1478,8 @@ static int get_preset_file_2(const char *preset_name, const char *codec_name, AV
             ret = avio_open2(s, filename, AVIO_FLAG_READ, &int_cb, NULL);
         }
     }
+    freeenv_utf8(env_home);
+    freeenv_utf8(env_avconv_datadir);
     return ret;
 }
 
@@ -1445,10 +1536,7 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
     if (oc->nb_streams - 1 < o->nb_streamid_map)
         st->id = o->streamid_map[oc->nb_streams - 1];
 
-    GROW_ARRAY(output_streams, nb_output_streams);
-    if (!(ost = av_mallocz(sizeof(*ost))))
-        exit_program(1);
-    output_streams[nb_output_streams - 1] = ost;
+    ost = ALLOC_ARRAY_ELEM(output_streams, nb_output_streams);
 
     ost->file_index = nb_output_files - 1;
     ost->index      = idx;
@@ -1589,8 +1677,6 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
 
     ost->max_muxing_queue_size = 128;
     MATCH_PER_STREAM_OPT(max_muxing_queue_size, i, ost->max_muxing_queue_size, oc, st);
-    ost->max_muxing_queue_size = FFMIN(ost->max_muxing_queue_size, INT_MAX / sizeof(ost->pkt));
-    ost->max_muxing_queue_size *= sizeof(ost->pkt);
 
     ost->muxing_queue_data_size = 0;
 
@@ -1617,9 +1703,12 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
     }
     ost->last_mux_dts = AV_NOPTS_VALUE;
 
-    ost->muxing_queue = av_fifo_alloc(8 * sizeof(AVPacket));
+    ost->muxing_queue = av_fifo_alloc2(8, sizeof(AVPacket*), 0);
     if (!ost->muxing_queue)
         exit_program(1);
+
+    MATCH_PER_STREAM_OPT(copy_initial_nonkeyframes, i,
+                         ost->copy_initial_nonkeyframes, oc, st);
 
     return ost;
 }
@@ -1859,7 +1948,7 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc, in
             snprintf(logfilename, sizeof(logfilename), "%s-%d.log",
                      ost->logfile_prefix ? ost->logfile_prefix :
                                            DEFAULT_PASS_LOGFILENAME_PREFIX,
-                     i);
+                     nb_output_streams - 1);
             if (!strcmp(ost->enc->name, "libx264")) {
                 av_dict_set(&ost->encoder_opts, "stats", logfilename, AV_DICT_DONT_OVERWRITE);
             } else {
@@ -1874,7 +1963,7 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc, in
                     video_enc->stats_in = logbuffer;
                 }
                 if (video_enc->flags & AV_CODEC_FLAG_PASS1) {
-                    f = av_fopen_utf8(logfilename, "wb");
+                    f = fopen_utf8(logfilename, "wb");
                     if (!f) {
                         av_log(NULL, AV_LOG_FATAL,
                                "Cannot write log file '%s' for pass-1 encoding: %s\n",
@@ -1896,6 +1985,10 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc, in
         MATCH_PER_STREAM_OPT(top_field_first, i, ost->top_field_first, oc, st);
 
         ost->vsync_method = video_sync_method;
+        MATCH_PER_STREAM_OPT(fps_mode, str, ost->fps_mode, oc, st);
+        if (ost->fps_mode)
+            parse_and_set_vsync(ost->fps_mode, &ost->vsync_method, ost->file_index, ost->index, 0);
+
         if (ost->vsync_method == VSYNC_AUTO) {
             if (!strcmp(oc->oformat->name, "avi")) {
                 ost->vsync_method = VSYNC_VFR;
@@ -1927,8 +2020,6 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc, in
         ost->last_frame = av_frame_alloc();
         if (!ost->last_frame)
             exit_program(1);
-    } else {
-        MATCH_PER_STREAM_OPT(copy_initial_nonkeyframes, i, ost->copy_initial_nonkeyframes, oc ,st);
     }
 
     if (ost->stream_copy)
@@ -1954,9 +2045,36 @@ static OutputStream *new_audio_stream(OptionsContext *o, AVFormatContext *oc, in
     MATCH_PER_STREAM_OPT(filters,        str, ost->filters,        oc, st);
 
     if (!ost->stream_copy) {
+        int channels = 0;
+        char *layout = NULL;
         char *sample_fmt = NULL;
 
-        MATCH_PER_STREAM_OPT(audio_channels, i, audio_enc->channels, oc, st);
+        MATCH_PER_STREAM_OPT(audio_channels, i, channels, oc, st);
+        if (channels) {
+            audio_enc->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
+            audio_enc->ch_layout.nb_channels = channels;
+        }
+
+        MATCH_PER_STREAM_OPT(audio_ch_layouts, str, layout, oc, st);
+        if (layout) {
+            if (av_channel_layout_from_string(&audio_enc->ch_layout, layout) < 0) {
+#if FF_API_OLD_CHANNEL_LAYOUT
+                uint64_t mask;
+                AV_NOWARN_DEPRECATED({
+                mask = av_get_channel_layout(layout);
+                })
+                if (!mask) {
+#endif
+                    av_log(NULL, AV_LOG_FATAL, "Unknown channel layout: %s\n", layout);
+                    exit_program(1);
+#if FF_API_OLD_CHANNEL_LAYOUT
+                }
+                av_log(NULL, AV_LOG_WARNING, "Channel layout '%s' uses a deprecated syntax.\n",
+                       layout);
+                av_channel_layout_from_mask(&audio_enc->ch_layout, mask);
+#endif
+            }
+        }
 
         MATCH_PER_STREAM_OPT(sample_fmts, str, sample_fmt, oc, st);
         if (sample_fmt &&
@@ -2056,8 +2174,6 @@ static OutputStream *new_subtitle_stream(OptionsContext *o, AVFormatContext *oc,
 
     subtitle_enc->codec_type = AVMEDIA_TYPE_SUBTITLE;
 
-    MATCH_PER_STREAM_OPT(copy_initial_nonkeyframes, i, ost->copy_initial_nonkeyframes, oc, st);
-
     if (!ost->stream_copy) {
         char *frame_size = NULL;
 
@@ -2094,10 +2210,10 @@ static int opt_streamid(void *optctx, const char *opt, const char *arg)
     return 0;
 }
 
-static int copy_chapters(InputFile *ifile, OutputFile *ofile, int copy_metadata)
+static int copy_chapters(InputFile *ifile, OutputFile *ofile, AVFormatContext *os,
+                         int copy_metadata)
 {
     AVFormatContext *is = ifile->ctx;
-    AVFormatContext *os = ofile->ctx;
     AVChapter **tmp;
     int i;
 
@@ -2137,14 +2253,14 @@ static int copy_chapters(InputFile *ifile, OutputFile *ofile, int copy_metadata)
     return 0;
 }
 
-static int set_dispositions(OutputFile *of)
+static int set_dispositions(OutputFile *of, AVFormatContext *ctx)
 {
     int nb_streams[AVMEDIA_TYPE_NB]   = { 0 };
     int have_default[AVMEDIA_TYPE_NB] = { 0 };
     int have_manual = 0;
 
     // first, copy the input dispositions
-    for (int i = 0; i< of->ctx->nb_streams; i++) {
+    for (int i = 0; i < ctx->nb_streams; i++) {
         OutputStream *ost = output_streams[of->ost_index + i];
 
         nb_streams[ost->st->codecpar->codec_type]++;
@@ -2161,7 +2277,7 @@ static int set_dispositions(OutputFile *of)
 
     if (have_manual) {
         // process manually set dispositions - they override the above copy
-        for (int i = 0; i< of->ctx->nb_streams; i++) {
+        for (int i = 0; i < ctx->nb_streams; i++) {
             OutputStream *ost = output_streams[of->ost_index + i];
             int ret;
 
@@ -2187,7 +2303,7 @@ static int set_dispositions(OutputFile *of)
         // For each media type with more than one stream, find a suitable stream to
         // mark as default, unless one is already marked default.
         // "Suitable" means the first of that type, skipping attached pictures.
-        for (int i = 0; i< of->ctx->nb_streams; i++) {
+        for (int i = 0; i < ctx->nb_streams; i++) {
             OutputStream *ost = output_streams[of->ost_index + i];
             enum AVMediaType type = ost->st->codecpar->codec_type;
 
@@ -2283,6 +2399,7 @@ static int open_output_file(OptionsContext *o, const char *filename)
 
     of = ALLOC_ARRAY_ELEM(output_files, nb_output_files);
 
+    of->index          = nb_output_files - 1;
     of->ost_index      = nb_output_streams;
     of->recording_time = o->recording_time;
     of->start_time     = o->start_time;
@@ -2300,6 +2417,7 @@ static int open_output_file(OptionsContext *o, const char *filename)
     }
 
     of->ctx = oc;
+    of->format = oc->oformat;
     if (o->recording_time != INT64_MAX)
         oc->duration = o->recording_time;
 
@@ -2378,7 +2496,7 @@ static int open_output_file(OptionsContext *o, const char *filename)
                 for (i = 0; i < ifile->nb_streams; i++) {
                     int score;
                     ist = input_streams[ifile->ist_index + i];
-                    score = ist->st->codecpar->channels
+                    score = ist->st->codecpar->ch_layout.nb_channels
                             + 100000000 * !!(ist->st->event_flags & AVSTREAM_EVENT_FLAG_NEW_PACKETS)
                             + 5000000*!!(ist->st->disposition & AV_DISPOSITION_DEFAULT);
                     if (ist->user_set_discard == AVDISCARD_ALL)
@@ -2612,6 +2730,7 @@ loop_end:
         if (ost->encoding_needed && ost->source_index >= 0) {
             InputStream *ist = input_streams[ost->source_index];
             ist->decoding_needed |= DECODING_FOR_OST;
+            ist->processing_needed = 1;
 
             if (ost->st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
                 ost->st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -2624,6 +2743,9 @@ loop_end:
                     exit_program(1);
                 }
             }
+        } else if (ost->stream_copy && ost->source_index >= 0) {
+            InputStream *ist = input_streams[ost->source_index];
+            ist->processing_needed = 1;
         }
 
         /* set the filter output constraints */
@@ -2651,10 +2773,10 @@ loop_end:
                 } else {
                     f->sample_rates = ost->enc->supported_samplerates;
                 }
-                if (ost->enc_ctx->channels) {
-                    f->channel_layout = av_get_default_channel_layout(ost->enc_ctx->channels);
-                } else {
-                    f->channel_layouts = ost->enc->channel_layouts;
+                if (ost->enc_ctx->ch_layout.nb_channels) {
+                    av_channel_layout_default(&f->ch_layout, ost->enc_ctx->ch_layout.nb_channels);
+                } else if (ost->enc->ch_layouts) {
+                    f->ch_layouts = ost->enc->ch_layouts;
                 }
                 break;
             }
@@ -2725,7 +2847,7 @@ loop_end:
         }
     }
     if (o->chapters_input_file >= 0)
-        copy_chapters(input_files[o->chapters_input_file], of,
+        copy_chapters(input_files[o->chapters_input_file], of, oc,
                       !o->metadata_chapters_manual);
 
     /* copy global metadata by default */
@@ -2878,7 +3000,7 @@ loop_end:
         }
     }
 
-    err = set_dispositions(of);
+    err = set_dispositions(of, oc);
     if (err < 0) {
         av_log(NULL, AV_LOG_FATAL, "Error setting output stream dispositions\n");
         exit_program(1);
@@ -3210,16 +3332,8 @@ static int opt_audio_filters(void *optctx, const char *opt, const char *arg)
 
 static int opt_vsync(void *optctx, const char *opt, const char *arg)
 {
-    if      (!av_strcasecmp(arg, "cfr"))         video_sync_method = VSYNC_CFR;
-    else if (!av_strcasecmp(arg, "vfr"))         video_sync_method = VSYNC_VFR;
-    else if (!av_strcasecmp(arg, "passthrough")) video_sync_method = VSYNC_PASSTHROUGH;
-    else if (!av_strcasecmp(arg, "drop"))        video_sync_method = VSYNC_DROP;
-
-    if (video_sync_method == VSYNC_AUTO) {
-        video_sync_method = parse_number_or_die("vsync", arg, OPT_INT, VSYNC_AUTO, VSYNC_VFR);
-        av_log(NULL, AV_LOG_WARNING, "Passing a number to -vsync is deprecated,"
-               " use a string argument as described in the manual.\n");
-    }
+    av_log(NULL, AV_LOG_WARNING, "-vsync is deprecated. Use -fps_mode\n");
+    parse_and_set_vsync(arg, &video_sync_method, -1, -1, 1);
     return 0;
 }
 
@@ -3237,42 +3351,6 @@ static int opt_timecode(void *optctx, const char *opt, const char *arg)
     return ret;
 }
 
-static int opt_channel_layout(void *optctx, const char *opt, const char *arg)
-{
-    OptionsContext *o = optctx;
-    char layout_str[32];
-    char *stream_str;
-    char *ac_str;
-    int ret, channels, ac_str_size;
-    uint64_t layout;
-
-    layout = av_get_channel_layout(arg);
-    if (!layout) {
-        av_log(NULL, AV_LOG_ERROR, "Unknown channel layout: %s\n", arg);
-        return AVERROR(EINVAL);
-    }
-    snprintf(layout_str, sizeof(layout_str), "%"PRIu64, layout);
-    ret = opt_default_new(o, opt, layout_str);
-    if (ret < 0)
-        return ret;
-
-    /* set 'ac' option based on channel layout */
-    channels = av_get_channel_layout_nb_channels(layout);
-    snprintf(layout_str, sizeof(layout_str), "%d", channels);
-    stream_str = strchr(opt, ':');
-    ac_str_size = 3 + (stream_str ? strlen(stream_str) : 0);
-    ac_str = av_mallocz(ac_str_size);
-    if (!ac_str)
-        return AVERROR(ENOMEM);
-    av_strlcpy(ac_str, "ac", 3);
-    if (stream_str)
-        av_strlcat(ac_str, stream_str, ac_str_size);
-    ret = parse_option(o, ac_str, layout_str, options);
-    av_free(ac_str);
-
-    return ret;
-}
-
 static int opt_audio_qscale(void *optctx, const char *opt, const char *arg)
 {
     OptionsContext *o = optctx;
@@ -3281,9 +3359,8 @@ static int opt_audio_qscale(void *optctx, const char *opt, const char *arg)
 
 static int opt_filter_complex(void *optctx, const char *opt, const char *arg)
 {
-    FilterGraph *fg;
-    ALLOC_ARRAY_ELEM(filtergraphs, nb_filtergraphs);
-    fg = filtergraphs[nb_filtergraphs - 1];
+    FilterGraph *fg = ALLOC_ARRAY_ELEM(filtergraphs, nb_filtergraphs);
+
     fg->index      = nb_filtergraphs - 1;
     fg->graph_desc = av_strdup(arg);
     if (!fg->graph_desc)
@@ -3466,6 +3543,8 @@ int ffmpeg_parse_options(int argc, char **argv)
         goto fail;
     }
 
+    apply_sync_offsets();
+
     /* create the complex filtergraphs */
     ret = init_complex_filters();
     if (ret < 0) {
@@ -3505,6 +3584,19 @@ static int opt_progress(void *optctx, const char *opt, const char *arg)
         return ret;
     }
     progress_avio = avio;
+    return 0;
+}
+
+int opt_timelimit(void *optctx, const char *opt, const char *arg)
+{
+#if HAVE_SETRLIMIT
+    int lim = parse_number_or_die(opt, arg, OPT_INT64, 0, INT_MAX);
+    struct rlimit rl = { lim, lim + 1 };
+    if (setrlimit(RLIMIT_CPU, &rl))
+        perror("setrlimit");
+#else
+    av_log(NULL, AV_LOG_WARNING, "-%s not implemented on this OS\n", opt);
+#endif
     return 0;
 }
 
@@ -3567,6 +3659,9 @@ const OptionDef options[] = {
     { "accurate_seek",  OPT_BOOL | OPT_OFFSET | OPT_EXPERT |
                         OPT_INPUT,                                   { .off = OFFSET(accurate_seek) },
         "enable/disable accurate seeking with -ss" },
+    { "isync",          HAS_ARG | OPT_INT | OPT_OFFSET |
+                        OPT_EXPERT | OPT_INPUT,                      { .off = OFFSET(input_sync_ref) },
+        "Indicate the input index for sync reference", "sync ref" },
     { "itsoffset",      HAS_ARG | OPT_TIME | OPT_OFFSET |
                         OPT_EXPERT | OPT_INPUT,                      { .off = OFFSET(input_ts_offset) },
         "set the input ts offset", "time_off" },
@@ -3606,7 +3701,7 @@ const OptionDef options[] = {
         "specify target file type (\"vcd\", \"svcd\", \"dvd\", \"dv\" or \"dv50\" "
         "with optional prefixes \"pal-\", \"ntsc-\" or \"film-\")", "type" },
     { "vsync",          HAS_ARG | OPT_EXPERT,                        { .func_arg = opt_vsync },
-        "video sync method", "" },
+        "set video sync method globally; deprecated, use -fps_mode", "" },
     { "frame_drop_threshold", HAS_ARG | OPT_FLOAT | OPT_EXPERT,      { &frame_drop_threshold },
         "frame drop threshold", "" },
     { "async",          HAS_ARG | OPT_INT | OPT_EXPERT,              { &audio_sync_method },
@@ -3763,6 +3858,9 @@ const OptionDef options[] = {
         "force video tag/fourcc", "fourcc/tag" },
     { "qphist",       OPT_VIDEO | OPT_BOOL | OPT_EXPERT ,                        { &qp_hist },
         "show QP histogram" },
+    { "fps_mode",     OPT_VIDEO | HAS_ARG | OPT_STRING | OPT_EXPERT |
+                      OPT_SPEC | OPT_OUTPUT,                                     { .off = OFFSET(fps_mode) },
+        "set framerate mode for matching video streams; overrides vsync" },
     { "force_fps",    OPT_VIDEO | OPT_BOOL | OPT_EXPERT  | OPT_SPEC |
                       OPT_OUTPUT,                                                { .off = OFFSET(force_fps) },
         "force the selected framerate, disable the best supported framerate selection" },
@@ -3818,8 +3916,11 @@ const OptionDef options[] = {
     { "sample_fmt",     OPT_AUDIO | HAS_ARG  | OPT_EXPERT | OPT_SPEC |
                         OPT_STRING | OPT_INPUT | OPT_OUTPUT,                       { .off = OFFSET(sample_fmts) },
         "set sample format", "format" },
-    { "channel_layout", OPT_AUDIO | HAS_ARG  | OPT_EXPERT | OPT_PERFILE |
-                        OPT_INPUT | OPT_OUTPUT,                                    { .func_arg = opt_channel_layout },
+    { "channel_layout", OPT_AUDIO | HAS_ARG  | OPT_EXPERT | OPT_SPEC |
+                        OPT_STRING | OPT_INPUT | OPT_OUTPUT,                       { .off = OFFSET(audio_ch_layouts) },
+        "set channel layout", "layout" },
+    { "ch_layout",      OPT_AUDIO | HAS_ARG  | OPT_EXPERT | OPT_SPEC |
+                        OPT_STRING | OPT_INPUT | OPT_OUTPUT,                       { .off = OFFSET(audio_ch_layouts) },
         "set channel layout", "layout" },
     { "af",             OPT_AUDIO | HAS_ARG  | OPT_PERFILE | OPT_OUTPUT,           { .func_arg = opt_audio_filters },
         "set audio filters", "filter_graph" },

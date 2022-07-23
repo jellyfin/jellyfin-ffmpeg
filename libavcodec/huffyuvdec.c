@@ -32,11 +32,13 @@
 
 #define UNCHECKED_BITSTREAM_READER 1
 
+#include "config_components.h"
+
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "huffyuv.h"
 #include "huffyuvdsp.h"
-#include "internal.h"
 #include "lossless_videodsp.h"
 #include "thread.h"
 #include "libavutil/imgutils.h"
@@ -564,24 +566,24 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
 /** Subset of GET_VLC for use in hand-roller VLC code */
 #define VLC_INTERN(dst, table, gb, name, bits, max_depth)   \
-    code = table[index][0];                                 \
-    n    = table[index][1];                                 \
+    code = table[index].sym;                                \
+    n    = table[index].len;                                \
     if (max_depth > 1 && n < 0) {                           \
         LAST_SKIP_BITS(name, gb, bits);                     \
         UPDATE_CACHE(name, gb);                             \
                                                             \
         nb_bits = -n;                                       \
         index   = SHOW_UBITS(name, gb, nb_bits) + code;     \
-        code    = table[index][0];                          \
-        n       = table[index][1];                          \
+        code    = table[index].sym;                         \
+        n       = table[index].len;                         \
         if (max_depth > 2 && n < 0) {                       \
             LAST_SKIP_BITS(name, gb, nb_bits);              \
             UPDATE_CACHE(name, gb);                         \
                                                             \
             nb_bits = -n;                                   \
             index   = SHOW_UBITS(name, gb, nb_bits) + code; \
-            code    = table[index][0];                      \
-            n       = table[index][1];                      \
+            code    = table[index].sym;                     \
+            n       = table[index].len;                     \
         }                                                   \
     }                                                       \
     dst = code;                                             \
@@ -592,7 +594,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
                      bits, max_depth, OP)                           \
     do {                                                            \
         unsigned int index = SHOW_UBITS(name, gb, bits);            \
-        int          code, n = dtable[index][1];                    \
+        int          code, n = dtable[index].len;                   \
                                                                     \
         if (n<=0) {                                                 \
             int nb_bits;                                            \
@@ -602,7 +604,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
             index = SHOW_UBITS(name, gb, bits);                     \
             VLC_INTERN(dst1, table2, gb, name, bits, max_depth);    \
         } else {                                                    \
-            code = dtable[index][0];                                \
+            code = dtable[index].sym;                               \
             OP(dst0, dst1, code);                                   \
             LAST_SKIP_BITS(name, gb, n);                            \
         }                                                           \
@@ -750,10 +752,10 @@ static av_always_inline void decode_bgr_1(HYuvContext *s, int count,
 
         UPDATE_CACHE(re, &s->gb);
         index = SHOW_UBITS(re, &s->gb, VLC_BITS);
-        n     = s->vlc[4].table[index][1];
+        n     = s->vlc[4].table[index].len;
 
         if (n>0) {
-            code  = s->vlc[4].table[index][0];
+            code  = s->vlc[4].table[index].sym;
             *(uint32_t *) &s->temp[0][4 * i] = s->pix_bgr_map[code];
             LAST_SKIP_BITS(re, &s->gb, n);
         } else {
@@ -1177,16 +1179,14 @@ static int decode_slice(AVCodecContext *avctx, AVFrame *p, int height,
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *p,
+                        int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     HYuvContext *s = avctx->priv_data;
     const int width  = s->width;
     const int height = s->height;
-    ThreadFrame frame = { .f = data };
-    AVFrame *const p = data;
     int slice, table_size = 0, ret, nb_slices;
     unsigned slices_info_offset;
     int slice_height;
@@ -1203,7 +1203,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     s->bdsp.bswap_buf((uint32_t *) s->bitstream_buffer,
                       (const uint32_t *) buf, buf_size / 4);
 
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, p, 0)) < 0)
         return ret;
 
     if (s->context) {
@@ -1262,47 +1262,47 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     return (get_bits_count(&s->gb) + 31) / 32 * 4 + table_size;
 }
 
-const AVCodec ff_huffyuv_decoder = {
-    .name             = "huffyuv",
-    .long_name        = NULL_IF_CONFIG_SMALL("Huffyuv / HuffYUV"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_HUFFYUV,
+const FFCodec ff_huffyuv_decoder = {
+    .p.name           = "huffyuv",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("Huffyuv / HuffYUV"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_HUFFYUV,
     .priv_data_size   = sizeof(HYuvContext),
     .init             = decode_init,
     .close            = decode_end,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                         AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 
 #if CONFIG_FFVHUFF_DECODER
-const AVCodec ff_ffvhuff_decoder = {
-    .name             = "ffvhuff",
-    .long_name        = NULL_IF_CONFIG_SMALL("Huffyuv FFmpeg variant"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_FFVHUFF,
+const FFCodec ff_ffvhuff_decoder = {
+    .p.name           = "ffvhuff",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("Huffyuv FFmpeg variant"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_FFVHUFF,
     .priv_data_size   = sizeof(HYuvContext),
     .init             = decode_init,
     .close            = decode_end,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                         AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif /* CONFIG_FFVHUFF_DECODER */
 
 #if CONFIG_HYMT_DECODER
-const AVCodec ff_hymt_decoder = {
-    .name             = "hymt",
-    .long_name        = NULL_IF_CONFIG_SMALL("HuffYUV MT"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_HYMT,
+const FFCodec ff_hymt_decoder = {
+    .p.name           = "hymt",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("HuffYUV MT"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_HYMT,
     .priv_data_size   = sizeof(HYuvContext),
     .init             = decode_init,
     .close            = decode_end,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                         AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

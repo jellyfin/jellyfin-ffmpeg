@@ -21,6 +21,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
 #include "internal.h"
 
@@ -76,15 +77,15 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     return 0;
 }
 
-const AVCodec ff_y41p_encoder = {
-    .name         = "y41p",
-    .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed YUV 4:1:1 12-bit"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_Y41P,
-    .capabilities = AV_CODEC_CAP_DR1,
+const FFCodec ff_y41p_encoder = {
+    .p.name       = "y41p",
+    .p.long_name  = NULL_IF_CONFIG_SMALL("Uncompressed YUV 4:1:1 12-bit"),
+    .p.type       = AVMEDIA_TYPE_VIDEO,
+    .p.id         = AV_CODEC_ID_Y41P,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .init         = y41p_encode_init,
-    .encode2      = y41p_encode_frame,
-    .pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV411P,
+    FF_CODEC_ENCODE_CB(y41p_encode_frame),
+    .p.pix_fmts   = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV411P,
                                                  AV_PIX_FMT_NONE },
     .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -35,12 +35,13 @@
 #include "libavutil/float_dsp.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
 #include "put_bits.h"
-#include "internal.h"
 #include "mpeg4audio.h"
 #include "sinewin.h"
 #include "profiles.h"
+#include "version.h"
 
 #include "aac.h"
 #include "aactab.h"
@@ -962,11 +963,11 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     s->lambda = avctx->global_quality > 0 ? avctx->global_quality : 120;
 
     /* Channel map and unspecified bitrate guessing */
-    s->channels = avctx->channels;
+    s->channels = avctx->ch_layout.nb_channels;
 
     s->needs_pce = 1;
     for (i = 0; i < FF_ARRAY_ELEMS(aac_normal_chan_layouts); i++) {
-        if (avctx->channel_layout == aac_normal_chan_layouts[i]) {
+        if (!av_channel_layout_compare(&avctx->ch_layout, &aac_normal_chan_layouts[i])) {
             s->needs_pce = s->options.pce;
             break;
         }
@@ -975,10 +976,13 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     if (s->needs_pce) {
         char buf[64];
         for (i = 0; i < FF_ARRAY_ELEMS(aac_pce_configs); i++)
-            if (avctx->channel_layout == aac_pce_configs[i].layout)
+            if (!av_channel_layout_compare(&avctx->ch_layout, &aac_pce_configs[i].layout))
                 break;
-        av_get_channel_layout_string(buf, sizeof(buf), -1, avctx->channel_layout);
-        ERROR_IF(i == FF_ARRAY_ELEMS(aac_pce_configs), "Unsupported channel layout \"%s\"\n", buf);
+        av_channel_layout_describe(&avctx->ch_layout, buf, sizeof(buf));
+        if (i == FF_ARRAY_ELEMS(aac_pce_configs)) {
+            av_log(avctx, AV_LOG_ERROR, "Unsupported channel layout \"%s\"\n", buf);
+            return AVERROR(EINVAL);
+        }
         av_log(avctx, AV_LOG_INFO, "Using a PCE to encode channel layout \"%s\"\n", buf);
         s->pce = aac_pce_configs[i];
         s->reorder_map = s->pce.reorder_map;
@@ -1092,11 +1096,13 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     s->abs_pow34   = abs_pow34_v;
     s->quant_bands = quantize_bands;
 
-    if (ARCH_X86)
-        ff_aac_dsp_init_x86(s);
+#if ARCH_X86
+    ff_aac_dsp_init_x86(s);
+#endif
 
-    if (HAVE_MIPSDSP)
-        ff_aac_coder_init_mips(s);
+#if HAVE_MIPSDSP
+    ff_aac_coder_init_mips(s);
+#endif
 
     ff_af_queue_init(avctx, &s->afq);
     ff_aac_tableinit();
@@ -1128,25 +1134,25 @@ static const AVClass aacenc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault aac_encode_defaults[] = {
+static const FFCodecDefault aac_encode_defaults[] = {
     { "b", "0" },
     { NULL }
 };
 
-const AVCodec ff_aac_encoder = {
-    .name           = "aac",
-    .long_name      = NULL_IF_CONFIG_SMALL("AAC (Advanced Audio Coding)"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_AAC,
+const FFCodec ff_aac_encoder = {
+    .p.name         = "aac",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AAC (Advanced Audio Coding)"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_AAC,
     .priv_data_size = sizeof(AACEncContext),
     .init           = aac_encode_init,
-    .encode2        = aac_encode_frame,
+    FF_CODEC_ENCODE_CB(aac_encode_frame),
     .close          = aac_encode_end,
     .defaults       = aac_encode_defaults,
-    .supported_samplerates = ff_mpeg4audio_sample_rates,
+    .p.supported_samplerates = ff_mpeg4audio_sample_rates,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .capabilities   = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY,
-    .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
+    .p.capabilities = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY,
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
                                                      AV_SAMPLE_FMT_NONE },
-    .priv_class     = &aacenc_class,
+    .p.priv_class   = &aacenc_class,
 };

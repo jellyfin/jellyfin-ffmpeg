@@ -72,6 +72,12 @@
 #include "hwcontext_drm.h"
 #endif
 
+#if HAVE_OPENCL_VAAPI_INTEL_MEDIA && CONFIG_LIBMFX
+extern int ff_qsv_get_surface_base_handle(mfxFrameSurface1 *surf,
+                                          enum AVHWDeviceType base_dev_typ,
+                                          void **base_handle);
+#endif
+
 
 typedef struct OpenCLDeviceContext {
     // Default command queue to use for transfer/mapping operations on
@@ -1405,7 +1411,8 @@ static int opencl_get_plane_format(enum AVPixelFormat pixfmt,
         // The bits in each component must be packed in the
         // most-significant-bits of the relevant bytes.
         if (comp->shift + comp->depth != 8 &&
-            comp->shift + comp->depth != 16)
+            comp->shift + comp->depth != 16 &&
+            comp->shift + comp->depth != 32)
             return AVERROR(EINVAL);
         // The depth must not vary between components.
         if (depth && comp->depth != depth)
@@ -1449,6 +1456,8 @@ static int opencl_get_plane_format(enum AVPixelFormat pixfmt,
     } else {
         if (depth <= 16)
             image_format->image_channel_data_type = CL_UNORM_INT16;
+        else if (depth == 32)
+            image_format->image_channel_data_type = CL_FLOAT;
         else
             return AVERROR(EINVAL);
     }
@@ -2146,6 +2155,7 @@ fail:
             clReleaseMemObject(mapping->frame.planes[p]);
     }
     av_free(mapping);
+    memset(dst->data, 0, sizeof(dst->data));
     return err;
 }
 
@@ -2248,8 +2258,14 @@ static int opencl_map_from_qsv(AVHWFramesContext *dst_fc, AVFrame *dst,
 
 #if CONFIG_LIBMFX
     if (src->format == AV_PIX_FMT_QSV) {
+        void *base_handle;
         mfxFrameSurface1 *mfx_surface = (mfxFrameSurface1*)src->data[3];
-        va_surface = *(VASurfaceID*)mfx_surface->Data.MemId;
+        err = ff_qsv_get_surface_base_handle(mfx_surface,
+                                             AV_HWDEVICE_TYPE_VAAPI,
+                                             &base_handle);
+        if (err < 0)
+            return err;
+        va_surface = *(VASurfaceID *)base_handle;
     } else
 #endif
         if (src->format == AV_PIX_FMT_VAAPI) {
@@ -2317,6 +2333,7 @@ fail:
         if (desc->planes[p])
             clReleaseMemObject(desc->planes[p]);
     av_freep(&desc);
+    memset(dst->data, 0, sizeof(dst->data));
     return err;
 }
 
@@ -2407,6 +2424,7 @@ fail:
         0, NULL, &event);
     if (cle == CL_SUCCESS)
         opencl_wait_events(dst_fc, &event, 1);
+    memset(dst->data, 0, sizeof(dst->data));
     return err;
 }
 
@@ -2562,6 +2580,7 @@ fail:
         0, NULL, &event);
     if (cle == CL_SUCCESS)
         opencl_wait_events(dst_fc, &event, 1);
+    memset(dst->data, 0, sizeof(dst->data));
     return err;
 }
 
@@ -2793,6 +2812,7 @@ fail:
             clReleaseMemObject(mapping->object_buffers[i]);
     }
     av_free(mapping);
+    memset(dst->data, 0, sizeof(dst->data));
     return err;
 }
 

@@ -20,9 +20,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "put_bits.h"
 #include "audio_frame_queue.h"
 #include "libavutil/channel_layout.h"
@@ -381,8 +383,8 @@ static void copy_restart_frame_params(MLPEncodeContext *ctx)
 
         copy_matrix_params(&dp->matrix_params, &ctx->cur_decoding_params->matrix_params);
 
-        for (unsigned int channel = 0; channel < ctx->avctx->channels; channel++) {
-            ChannelParams *cp = ctx->seq_channel_params + index*(ctx->avctx->channels) + channel;
+        for (unsigned int channel = 0; channel < ctx->avctx->ch_layout.nb_channels; channel++) {
+            ChannelParams *cp = ctx->seq_channel_params + index*(ctx->avctx->ch_layout.nb_channels) + channel;
 
             dp->quant_step_size[channel] = ctx->cur_decoding_params->quant_step_size[channel];
             dp->matrix_params.shift[channel] = ctx->cur_decoding_params->matrix_params.shift[channel];
@@ -528,13 +530,13 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
     ctx->coded_peak_bitrate = mlp_peak_bitrate(9600000, avctx->sample_rate);
 
     /* TODO support more channels. */
-    if (avctx->channels > 2) {
+    if (avctx->ch_layout.nb_channels > 2) {
         av_log(avctx, AV_LOG_WARNING,
                "Only mono and stereo are supported at the moment.\n");
     }
 
     ctx->substream_info |= SUBSTREAM_INFO_ALWAYS_SET;
-    if (avctx->channels <= 2) {
+    if (avctx->ch_layout.nb_channels <= 2) {
         ctx->substream_info |= SUBSTREAM_INFO_MAX_2_CHAN;
     }
 
@@ -559,7 +561,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
 
     ctx->dts = -avctx->frame_size;
 
-    ctx->num_channels = avctx->channels + 2; /* +2 noise channels */
+    ctx->num_channels = avctx->ch_layout.nb_channels + 2; /* +2 noise channels */
     ctx->one_sample_buffer_size = avctx->frame_size
                                 * ctx->num_channels;
     /* TODO Let user pass major header interval as parameter. */
@@ -588,59 +590,48 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
     ctx->num_substreams = 1; // TODO: change this after adding multi-channel support for TrueHD
 
     if (ctx->avctx->codec_id == AV_CODEC_ID_MLP) {
-        /* MLP */
-        switch(avctx->channel_layout) {
-        case AV_CH_LAYOUT_MONO:
-            ctx->channel_arrangement = 0; break;
-        case AV_CH_LAYOUT_STEREO:
-            ctx->channel_arrangement = 1; break;
-        case AV_CH_LAYOUT_2_1:
-            ctx->channel_arrangement = 2; break;
-        case AV_CH_LAYOUT_QUAD:
-            ctx->channel_arrangement = 3; break;
-        case AV_CH_LAYOUT_2POINT1:
-            ctx->channel_arrangement = 4; break;
-        case AV_CH_LAYOUT_SURROUND:
-            ctx->channel_arrangement = 7; break;
-        case AV_CH_LAYOUT_4POINT0:
-            ctx->channel_arrangement = 8; break;
-        case AV_CH_LAYOUT_5POINT0_BACK:
-            ctx->channel_arrangement = 9; break;
-        case AV_CH_LAYOUT_3POINT1:
-            ctx->channel_arrangement = 10; break;
-        case AV_CH_LAYOUT_4POINT1:
-            ctx->channel_arrangement = 11; break;
-        case AV_CH_LAYOUT_5POINT1_BACK:
-            ctx->channel_arrangement = 12; break;
-        default:
+        static const AVChannelLayout layout_arrangement[] = {
+            AV_CHANNEL_LAYOUT_MONO,         AV_CHANNEL_LAYOUT_STEREO,
+            AV_CHANNEL_LAYOUT_2_1,          AV_CHANNEL_LAYOUT_QUAD,
+            AV_CHANNEL_LAYOUT_2POINT1,      { 0 }, { 0 },
+            AV_CHANNEL_LAYOUT_SURROUND,     AV_CHANNEL_LAYOUT_4POINT0,
+            AV_CHANNEL_LAYOUT_5POINT0_BACK, AV_CHANNEL_LAYOUT_3POINT1,
+            AV_CHANNEL_LAYOUT_4POINT1,      AV_CHANNEL_LAYOUT_5POINT1_BACK,
+        };
+        int i;
+
+        for (i = 0; i < FF_ARRAY_ELEMS(layout_arrangement); i++)
+            if (!av_channel_layout_compare(&avctx->ch_layout, &layout_arrangement[i]))
+                break;
+        if (i == FF_ARRAY_ELEMS(layout_arrangement)) {
             av_log(avctx, AV_LOG_ERROR, "Unsupported channel arrangement\n");
             return AVERROR(EINVAL);
         }
+        ctx->channel_arrangement = i;
         ctx->flags = FLAGS_DVDA;
         ctx->channel_occupancy = ff_mlp_ch_info[ctx->channel_arrangement].channel_occupancy;
         ctx->summary_info      = ff_mlp_ch_info[ctx->channel_arrangement].summary_info     ;
     } else {
         /* TrueHD */
-        switch(avctx->channel_layout) {
-        case AV_CH_LAYOUT_STEREO:
+        if (!av_channel_layout_compare(&avctx->ch_layout,
+                                       &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO)) {
             ctx->ch_modifier_thd0    = 0;
             ctx->ch_modifier_thd1    = 0;
             ctx->ch_modifier_thd2    = 0;
             ctx->channel_arrangement = 1;
-            break;
-        case AV_CH_LAYOUT_5POINT0_BACK:
+        } else if (!av_channel_layout_compare(&avctx->ch_layout,
+                                              &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT0_BACK)) {
             ctx->ch_modifier_thd0    = 1;
             ctx->ch_modifier_thd1    = 1;
             ctx->ch_modifier_thd2    = 1;
             ctx->channel_arrangement = 11;
-            break;
-        case AV_CH_LAYOUT_5POINT1_BACK:
+        } else if (!av_channel_layout_compare(&avctx->ch_layout,
+                                              &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1_BACK)) {
             ctx->ch_modifier_thd0    = 2;
             ctx->ch_modifier_thd1    = 1;
             ctx->ch_modifier_thd2    = 2;
             ctx->channel_arrangement = 15;
-            break;
-        default:
+        } else {
             av_log(avctx, AV_LOG_ERROR, "Unsupported channel arrangement\n");
             return AVERROR(EINVAL);
         }
@@ -665,7 +656,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
         sum += ctx->seq_size[index];
     }
     ctx->sequence_size = sum;
-    size = ctx->restart_intervals * ctx->sequence_size * ctx->avctx->channels;
+    size = ctx->restart_intervals * ctx->sequence_size * ctx->avctx->ch_layout.nb_channels;
     ctx->channel_params = av_calloc(size, sizeof(*ctx->channel_params));
     if (!ctx->channel_params)
         return AVERROR(ENOMEM);
@@ -679,7 +670,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
     rh->noisegen_seed      = 0;
 
     rh->min_channel        = 0;
-    rh->max_channel        = avctx->channels - 1;
+    rh->max_channel        = avctx->ch_layout.nb_channels - 1;
     /* FIXME: this works for 1 and 2 channels, but check for more */
     rh->max_matrix_channel = rh->max_channel;
 
@@ -1174,6 +1165,7 @@ static int write_access_unit(MLPEncodeContext *ctx, uint8_t *buf,
  *  lossless_check_data that will be written to the restart header.
  */
 static void input_data_internal(MLPEncodeContext *ctx, const uint8_t *samples,
+                                int nb_samples,
                                 int is24)
 {
     int32_t *lossless_check_data = ctx->lossless_check_data;
@@ -1186,7 +1178,7 @@ static void input_data_internal(MLPEncodeContext *ctx, const uint8_t *samples,
 
     lossless_check_data += ctx->frame_index;
 
-    for (int i = 0; i < ctx->avctx->frame_size; i++) {
+    for (int i = 0; i < nb_samples; i++) {
         for (unsigned int channel = 0; channel <= rh->max_channel; channel++) {
             uint32_t abs_sample;
             int32_t sample;
@@ -1195,8 +1187,7 @@ static void input_data_internal(MLPEncodeContext *ctx, const uint8_t *samples,
 
             /* TODO Find out if number_sbits can be used for negative values. */
             abs_sample = FFABS(sample);
-            if (greatest < abs_sample)
-                greatest = abs_sample;
+            greatest = FFMAX(greatest, abs_sample);
 
             temp_lossless_check_data ^= (sample & 0x00ffffff) << channel;
             *sample_buffer++ = sample;
@@ -1211,12 +1202,9 @@ static void input_data_internal(MLPEncodeContext *ctx, const uint8_t *samples,
 }
 
 /** Wrapper function for inputting data in two different bit-depths. */
-static void input_data(MLPEncodeContext *ctx, void *samples)
+static void input_data(MLPEncodeContext *ctx, void *samples, int nb_samples)
 {
-    if (ctx->avctx->sample_fmt == AV_SAMPLE_FMT_S32)
-        input_data_internal(ctx, samples, 1);
-    else
-        input_data_internal(ctx, samples, 0);
+    input_data_internal(ctx, samples, nb_samples, ctx->avctx->sample_fmt == AV_SAMPLE_FMT_S32);
 }
 
 static void input_to_sample_buffer(MLPEncodeContext *ctx)
@@ -1228,7 +1216,7 @@ static void input_to_sample_buffer(MLPEncodeContext *ctx)
         int32_t *input_buffer = ctx->inout_buffer + cur_index * ctx->one_sample_buffer_size;
 
         for (unsigned int i = 0; i < ctx->avctx->frame_size; i++) {
-            for (unsigned int channel = 0; channel < ctx->avctx->channels; channel++)
+            for (unsigned int channel = 0; channel < ctx->avctx->ch_layout.nb_channels; channel++)
                 *sample_buffer++ = *input_buffer++;
             sample_buffer += 2; /* noise_channels */
             input_buffer += 2; /* noise_channels */
@@ -1947,7 +1935,7 @@ static void set_best_codebook(MLPEncodeContext *ctx)
 
         /* Update context. */
         for (unsigned int index = 0; index < ctx->number_of_subblocks; index++) {
-            ChannelParams *cp = ctx->seq_channel_params + index*(ctx->avctx->channels) + channel;
+            ChannelParams *cp = ctx->seq_channel_params + index*(ctx->avctx->ch_layout.nb_channels) + channel;
 
             best_codebook = *best_path++;
             cur_bo = &ctx->best_offset[index][channel][best_codebook];
@@ -1968,17 +1956,18 @@ static void set_major_params(MLPEncodeContext *ctx)
     RestartHeader *rh = ctx->cur_restart_header;
     uint8_t max_huff_lsbs = 0;
     uint8_t max_output_bits = 0;
-    DecodingParams *seq_dp = ctx->decoding_params + ctx->seq_offset[0] * ctx->avctx->channels;
-    ChannelParams *seq_cp = ctx->channel_params + ctx->seq_offset[0] * ctx->avctx->channels;
+    int channels = ctx->avctx->ch_layout.nb_channels;
+    DecodingParams *seq_dp = ctx->decoding_params + ctx->seq_offset[0] * channels;
+    ChannelParams *seq_cp = ctx->channel_params + ctx->seq_offset[0] * channels;
 
     for (unsigned int index = 0; index < ctx->seq_size[ctx->restart_intervals-1]; index++) {
         memcpy(&ctx->major_decoding_params[index], seq_dp + index, sizeof(DecodingParams));
-        for (unsigned int channel = 0; channel < ctx->avctx->channels; channel++) {
-            uint8_t huff_lsbs = (seq_cp + index*(ctx->avctx->channels) + channel)->huff_lsbs;
+        for (unsigned int channel = 0; channel < channels; channel++) {
+            uint8_t huff_lsbs = (seq_cp + index*(channels) + channel)->huff_lsbs;
             if (max_huff_lsbs < huff_lsbs)
                 max_huff_lsbs = huff_lsbs;
             memcpy(&ctx->major_channel_params[index][channel],
-                   (seq_cp + index*(ctx->avctx->channels) + channel),
+                   (seq_cp + index*(channels) + channel),
                    sizeof(ChannelParams));
         }
     }
@@ -2017,7 +2006,7 @@ static void analyze_sample_buffer(MLPEncodeContext *ctx)
 
     ctx->cur_restart_header = &ctx->restart_header;
     ctx->cur_decoding_params = seq_dp + 1;
-    ctx->cur_channel_params = seq_cp + ctx->avctx->channels;
+    ctx->cur_channel_params = seq_cp + ctx->avctx->ch_layout.nb_channels;
 
     determine_quant_step_size(ctx);
     generate_2_noise_channels(ctx);
@@ -2044,7 +2033,7 @@ static void analyze_sample_buffer(MLPEncodeContext *ctx)
 
     for (unsigned int index = 0; index < ctx->number_of_subblocks; index++) {
         ctx->cur_decoding_params = seq_dp + index;
-        ctx->cur_channel_params = seq_cp + index*(ctx->avctx->channels);
+        ctx->cur_channel_params = seq_cp + index*(ctx->avctx->ch_layout.nb_channels);
         ctx->cur_best_offset = ctx->best_offset[index];
         determine_bits(ctx);
         ctx->sample_buffer += ctx->cur_decoding_params->blocksize * ctx->num_channels;
@@ -2078,20 +2067,23 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 {
     MLPEncodeContext *ctx = avctx->priv_data;
     int bytes_written = 0;
+    int channels = avctx->ch_layout.nb_channels;
     int restart_frame, ret;
     uint8_t *data;
+
+    if (!frame && !ctx->last_frames)
+        ctx->last_frames = (ctx->afq.remaining_samples + avctx->frame_size - 1) / avctx->frame_size;
 
     if (!frame && !ctx->last_frames--)
         return 0;
 
-    if ((ret = ff_alloc_packet(avctx, avpkt, 87500 * avctx->channels)) < 0)
+    if ((ret = ff_alloc_packet(avctx, avpkt, 87500 * channels)) < 0)
         return ret;
 
     if (frame) {
         /* add current frame to queue */
         if ((ret = ff_af_queue_add(&ctx->afq, frame)) < 0)
             return ret;
-        ctx->last_frames = ctx->max_restart_interval;
     }
 
     data = frame ? frame->data[0] : NULL;
@@ -2130,12 +2122,13 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
 input_and_return:
 
-    if (frame)
+    if (frame) {
         ctx->shorten_by = avctx->frame_size - frame->nb_samples;
-    ctx->next_major_frame_size += avctx->frame_size;
-    ctx->next_major_number_of_frames++;
+        ctx->next_major_frame_size += avctx->frame_size;
+        ctx->next_major_number_of_frames++;
+    }
     if (data)
-        input_data(ctx, data);
+        input_data(ctx, data, frame->nb_samples);
 
     restart_frame = (ctx->frame_index + 1) % ctx->min_restart_interval;
 
@@ -2149,7 +2142,7 @@ input_and_return:
             ctx->number_of_frames = ctx->next_major_number_of_frames;
             ctx->number_of_subblocks = ctx->next_major_number_of_frames + 1;
 
-            ctx->seq_channel_params = ctx->channel_params + ctx->seq_offset[seq_index] * ctx->avctx->channels;
+            ctx->seq_channel_params = ctx->channel_params + ctx->seq_offset[seq_index] * channels;
 
             ctx->seq_decoding_params = ctx->decoding_params + ctx->seq_offset[seq_index];
 
@@ -2157,7 +2150,7 @@ input_and_return:
             ctx->number_of_samples = number_of_samples;
 
             for (unsigned int index = 0; index < ctx->seq_size[seq_index]; index++) {
-                clear_channel_params(ctx->seq_channel_params + index * ctx->avctx->channels, ctx->avctx->channels);
+                clear_channel_params(ctx->seq_channel_params + index * channels, channels);
                 default_decoding_params(ctx, ctx->seq_decoding_params + index);
             }
 
@@ -2174,11 +2167,13 @@ input_and_return:
         }
     }
 
-    if (!frame)
+    if (!frame && ctx->last_frames < ctx->max_restart_interval - 1)
         avctx->frame_number++;
 
     if (bytes_written > 0) {
-        ff_af_queue_remove(&ctx->afq, avctx->frame_size, &avpkt->pts,
+        ff_af_queue_remove(&ctx->afq,
+                           FFMIN(avctx->frame_size, ctx->afq.remaining_samples),
+                           &avpkt->pts,
                            &avpkt->duration);
 
         av_shrink_packet(avpkt, bytes_written);
@@ -2213,36 +2208,47 @@ static av_cold int mlp_encode_close(AVCodecContext *avctx)
 }
 
 #if CONFIG_MLP_ENCODER
-const AVCodec ff_mlp_encoder = {
-    .name                   ="mlp",
-    .long_name              = NULL_IF_CONFIG_SMALL("MLP (Meridian Lossless Packing)"),
-    .type                   = AVMEDIA_TYPE_AUDIO,
-    .id                     = AV_CODEC_ID_MLP,
+const FFCodec ff_mlp_encoder = {
+    .p.name                 ="mlp",
+    .p.long_name            = NULL_IF_CONFIG_SMALL("MLP (Meridian Lossless Packing)"),
+    .p.type                 = AVMEDIA_TYPE_AUDIO,
+    .p.id                   = AV_CODEC_ID_MLP,
     .priv_data_size         = sizeof(MLPEncodeContext),
     .init                   = mlp_encode_init,
-    .encode2                = mlp_encode_frame,
+    FF_CODEC_ENCODE_CB(mlp_encode_frame),
     .close                  = mlp_encode_close,
-    .capabilities           = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
-    .sample_fmts            = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE},
-    .supported_samplerates  = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-    .channel_layouts        = ff_mlp_channel_layouts,
+    .p.capabilities         = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
+    .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE},
+    .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts      = ff_mlp_channel_layouts,
+#endif
+    .p.ch_layouts           = ff_mlp_ch_layouts,
     .caps_internal          = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 #if CONFIG_TRUEHD_ENCODER
-const AVCodec ff_truehd_encoder = {
-    .name                   ="truehd",
-    .long_name              = NULL_IF_CONFIG_SMALL("TrueHD"),
-    .type                   = AVMEDIA_TYPE_AUDIO,
-    .id                     = AV_CODEC_ID_TRUEHD,
+const FFCodec ff_truehd_encoder = {
+    .p.name                 ="truehd",
+    .p.long_name            = NULL_IF_CONFIG_SMALL("TrueHD"),
+    .p.type                 = AVMEDIA_TYPE_AUDIO,
+    .p.id                   = AV_CODEC_ID_TRUEHD,
     .priv_data_size         = sizeof(MLPEncodeContext),
     .init                   = mlp_encode_init,
-    .encode2                = mlp_encode_frame,
+    FF_CODEC_ENCODE_CB(mlp_encode_frame),
     .close                  = mlp_encode_close,
-    .capabilities           = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
-    .sample_fmts            = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE},
-    .supported_samplerates  = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-    .channel_layouts        = (const uint64_t[]) {AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_5POINT0_BACK, AV_CH_LAYOUT_5POINT1_BACK, 0},
+    .p.capabilities         = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
+    .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE},
+    .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts      = (const uint64_t[]) {AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_5POINT0_BACK, AV_CH_LAYOUT_5POINT1_BACK, 0},
+#endif
+    .p.ch_layouts           = (const AVChannelLayout[]) {
+                                  AV_CHANNEL_LAYOUT_STEREO,
+                                  AV_CHANNEL_LAYOUT_5POINT0_BACK,
+                                  AV_CHANNEL_LAYOUT_5POINT1_BACK,
+                                  { 0 }
+                              },
     .caps_internal          = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

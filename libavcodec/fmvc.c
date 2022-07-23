@@ -26,6 +26,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 #define BLOCK_HEIGHT 112u
@@ -393,13 +394,12 @@ static int decode_type1(GetByteContext *gb, PutByteContext *pb)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame, AVPacket *avpkt)
 {
     FMVCContext *s = avctx->priv_data;
     GetByteContext *gb = &s->gb;
     PutByteContext *pb = &s->pb;
-    AVFrame *frame = data;
     int ret, y, x;
 
     if (avpkt->size < 8)
@@ -626,16 +626,16 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_fmvc_decoder = {
-    .name             = "fmvc",
-    .long_name        = NULL_IF_CONFIG_SMALL("FM Screen Capture Codec"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_FMVC,
+const FFCodec ff_fmvc_decoder = {
+    .p.name           = "fmvc",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("FM Screen Capture Codec"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_FMVC,
     .priv_data_size   = sizeof(FMVCContext),
     .init             = decode_init,
     .close            = decode_close,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
                         FF_CODEC_CAP_INIT_CLEANUP,
 };

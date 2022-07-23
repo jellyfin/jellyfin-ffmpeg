@@ -22,6 +22,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct OggVorbisDecContext {
@@ -112,7 +113,9 @@ static int oggvorbis_decode_init(AVCodecContext *avccontext) {
         }
     }
 
-    avccontext->channels = context->vi.channels;
+    av_channel_layout_uninit(&avccontext->ch_layout);
+    avccontext->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
+    avccontext->ch_layout.nb_channels = context->vi.channels;
     avccontext->sample_rate = context->vi.rate;
     avccontext->sample_fmt = AV_SAMPLE_FMT_S16;
     avccontext->time_base= (AVRational){1, avccontext->sample_rate};
@@ -146,11 +149,10 @@ static inline int conv(int samples, float **pcm, char *buf, int channels) {
     return 0 ;
 }
 
-static int oggvorbis_decode_frame(AVCodecContext *avccontext, void *data,
-                        int *got_frame_ptr, AVPacket *avpkt)
+static int oggvorbis_decode_frame(AVCodecContext *avccontext, AVFrame *frame,
+                                  int *got_frame_ptr, AVPacket *avpkt)
 {
     OggVorbisDecContext *context = avccontext->priv_data ;
-    AVFrame *frame = data;
     float **pcm ;
     ogg_packet *op= &context->op;
     int samples, total_samples, total_bytes;
@@ -208,14 +210,14 @@ static int oggvorbis_decode_close(AVCodecContext *avccontext) {
 }
 
 
-const AVCodec ff_libvorbis_decoder = {
-    .name           = "libvorbis",
-    .long_name      = NULL_IF_CONFIG_SMALL("libvorbis"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_VORBIS,
+const FFCodec ff_libvorbis_decoder = {
+    .p.name         = "libvorbis",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("libvorbis"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_VORBIS,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_CHANNEL_CONF,
     .priv_data_size = sizeof(OggVorbisDecContext),
     .init           = oggvorbis_decode_init,
-    .decode         = oggvorbis_decode_frame,
+    FF_CODEC_DECODE_CB(oggvorbis_decode_frame),
     .close          = oggvorbis_decode_close,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_CHANNEL_CONF,
 };

@@ -30,10 +30,10 @@
 #include "avcodec.h"
 #include "cbs.h"
 #include "cbs_h265.h"
+#include "codec_internal.h"
 #include "h265_profile_level.h"
 #include "hevc.h"
 #include "hevc_sei.h"
-#include "internal.h"
 #include "put_bits.h"
 #include "vaapi_encode.h"
 
@@ -54,6 +54,13 @@ typedef struct VAAPIEncodeH265Picture {
 
 typedef struct VAAPIEncodeH265Context {
     VAAPIEncodeContext common;
+
+    // Encoder features.
+    uint32_t va_features;
+    // Block size info.
+    uint32_t va_bs;
+    uint32_t ctu_size;
+    uint32_t min_cb_size;
 
     // User options.
     int qp;
@@ -299,17 +306,21 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
     ptl->general_profile_idc   = avctx->profile;
     ptl->general_tier_flag     = priv->tier;
 
-    if (chroma_format == 1) {
-        ptl->general_profile_compatibility_flag[1] = bit_depth ==  8;
-        ptl->general_profile_compatibility_flag[2] = bit_depth <= 10;
+    ptl->general_profile_compatibility_flag[ptl->general_profile_idc] = 1;
+
+    if (ptl->general_profile_compatibility_flag[1])
+        ptl->general_profile_compatibility_flag[2] = 1;
+    if (ptl->general_profile_compatibility_flag[3]) {
+        ptl->general_profile_compatibility_flag[1] = 1;
+        ptl->general_profile_compatibility_flag[2] = 1;
     }
-    ptl->general_profile_compatibility_flag[4] = 1;
 
     ptl->general_progressive_source_flag    = 1;
     ptl->general_interlaced_source_flag     = 0;
     ptl->general_non_packed_constraint_flag = 1;
     ptl->general_frame_only_constraint_flag = 1;
 
+    ptl->general_max_14bit_constraint_flag = bit_depth <= 14;
     ptl->general_max_12bit_constraint_flag = bit_depth <= 12;
     ptl->general_max_10bit_constraint_flag = bit_depth <= 10;
     ptl->general_max_8bit_constraint_flag  = bit_depth ==  8;
@@ -319,6 +330,7 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
     ptl->general_max_monochrome_constraint_flag = chroma_format == 0;
 
     ptl->general_intra_constraint_flag = ctx->gop_size == 1;
+    ptl->general_one_picture_only_constraint_flag = 0;
 
     ptl->general_lower_bit_rate_constraint_flag = 1;
 
@@ -418,9 +430,9 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
             vps->vps_max_latency_increase_plus1[i];
     }
 
-    // These have to come from the capabilities of the encoder.  We have no
-    // way to query them, so just hardcode parameters which work on the Intel
-    // driver.
+    // These values come from the capabilities of the first encoder
+    // implementation in the i965 driver on Intel Skylake.  They may
+    // fail badly with other platforms or drivers.
     // CTB size from 8x8 to 32x32.
     sps->log2_min_luma_coding_block_size_minus3   = 0;
     sps->log2_diff_max_min_luma_coding_block_size = 2;
@@ -437,6 +449,42 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
     sps->sps_temporal_mvp_enabled_flag       = 0;
 
     sps->pcm_enabled_flag = 0;
+
+// update sps setting according to queried result
+#if VA_CHECK_VERSION(1, 13, 0)
+    if (priv->va_features) {
+        VAConfigAttribValEncHEVCFeatures features = { .value = priv->va_features };
+
+        // Enable feature if get queried result is VA_FEATURE_SUPPORTED | VA_FEATURE_REQUIRED
+        sps->amp_enabled_flag =
+            !!features.bits.amp;
+        sps->sample_adaptive_offset_enabled_flag =
+            !!features.bits.sao;
+        sps->sps_temporal_mvp_enabled_flag =
+            !!features.bits.temporal_mvp;
+        sps->pcm_enabled_flag =
+            !!features.bits.pcm;
+    }
+
+    if (priv->va_bs) {
+        VAConfigAttribValEncHEVCBlockSizes bs = { .value = priv->va_bs };
+        sps->log2_min_luma_coding_block_size_minus3 =
+            ff_ctz(priv->min_cb_size) - 3;
+        sps->log2_diff_max_min_luma_coding_block_size =
+            ff_ctz(priv->ctu_size) - ff_ctz(priv->min_cb_size);
+
+        sps->log2_min_luma_transform_block_size_minus2 =
+            bs.bits.log2_min_luma_transform_block_size_minus2;
+        sps->log2_diff_max_min_luma_transform_block_size =
+            bs.bits.log2_max_luma_transform_block_size_minus2 -
+            bs.bits.log2_min_luma_transform_block_size_minus2;
+
+        sps->max_transform_hierarchy_depth_inter =
+            bs.bits.max_max_transform_hierarchy_depth_inter;
+        sps->max_transform_hierarchy_depth_intra =
+            bs.bits.max_max_transform_hierarchy_depth_intra;
+    }
+#endif
 
     // STRPSs should ideally be here rather than defined individually in
     // each slice, but the structure isn't completely fixed so for now
@@ -529,6 +577,23 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
 
     pps->cu_qp_delta_enabled_flag = (ctx->va_rc_mode != VA_RC_CQP);
     pps->diff_cu_qp_delta_depth   = 0;
+
+// update pps setting according to queried result
+#if VA_CHECK_VERSION(1, 13, 0)
+    if (priv->va_features) {
+        VAConfigAttribValEncHEVCFeatures features = { .value = priv->va_features };
+        if (ctx->va_rc_mode != VA_RC_CQP)
+            pps->cu_qp_delta_enabled_flag =
+                !!features.bits.cu_qp_delta;
+
+        pps->transform_skip_enabled_flag =
+            !!features.bits.transform_skip;
+        // set diff_cu_qp_delta_depth as its max value if cu_qp_delta enabled. Otherwise
+        // 0 will make cu_qp_delta invalid.
+        if (pps->cu_qp_delta_enabled_flag)
+            pps->diff_cu_qp_delta_depth = sps->log2_diff_max_min_luma_coding_block_size;
+    }
+#endif
 
     if (ctx->tile_rows && ctx->tile_cols) {
         int uniform_spacing;
@@ -631,8 +696,8 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
 
         .coded_buf = VA_INVALID_ID,
 
-        .collocated_ref_pic_index = 0xff,
-
+        .collocated_ref_pic_index = sps->sps_temporal_mvp_enabled_flag ?
+                                    0 : 0xff,
         .last_picture = 0,
 
         .pic_init_qp            = pps->init_qp_minus26 + 26,
@@ -665,6 +730,8 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
             .entropy_coding_sync_enabled_flag = pps->entropy_coding_sync_enabled_flag,
             .loop_filter_across_tiles_enabled_flag =
                 pps->loop_filter_across_tiles_enabled_flag,
+            .pps_loop_filter_across_slices_enabled_flag =
+                pps->pps_loop_filter_across_slices_enabled_flag,
             .scaling_list_data_present_flag = (sps->sps_scaling_list_data_present_flag |
                                                pps->pps_scaling_list_data_present_flag),
             .screen_content_flag            = 0,
@@ -886,6 +953,7 @@ static int vaapi_encode_h265_init_slice_params(AVCodecContext *avctx,
                                                VAAPIEncodePicture *pic,
                                                VAAPIEncodeSlice *slice)
 {
+    VAAPIEncodeContext                *ctx = avctx->priv_data;
     VAAPIEncodeH265Context           *priv = avctx->priv_data;
     VAAPIEncodeH265Picture           *hpic = pic->priv_data;
     const H265RawSPS                  *sps = &priv->raw_sps;
@@ -907,6 +975,9 @@ static int vaapi_encode_h265_init_slice_params(AVCodecContext *avctx,
     sh->slice_segment_address           = slice->block_start;
 
     sh->slice_type = hpic->slice_type;
+
+    if (sh->slice_type == HEVC_SLICE_P && ctx->p_to_gpb)
+        sh->slice_type = HEVC_SLICE_B;
 
     sh->slice_pic_order_cnt_lsb = hpic->pic_order_cnt &
         (1 << (sps->log2_max_pic_order_cnt_lsb_minus4 + 4)) - 1;
@@ -988,10 +1059,13 @@ static int vaapi_encode_h265_init_slice_params(AVCodecContext *avctx,
         sh->num_long_term_sps  = 0;
         sh->num_long_term_pics = 0;
 
+        // when this flag is not present, it is inerred to 1.
+        sh->collocated_from_l0_flag = 1;
         sh->slice_temporal_mvp_enabled_flag =
             sps->sps_temporal_mvp_enabled_flag;
         if (sh->slice_temporal_mvp_enabled_flag) {
-            sh->collocated_from_l0_flag = sh->slice_type == HEVC_SLICE_B;
+            if (sh->slice_type == HEVC_SLICE_B)
+                sh->collocated_from_l0_flag = 1;
             sh->collocated_ref_idx      = 0;
         }
 
@@ -1066,12 +1140,85 @@ static int vaapi_encode_h265_init_slice_params(AVCodecContext *avctx,
         av_assert0(pic->type == PICTURE_TYPE_P ||
                    pic->type == PICTURE_TYPE_B);
         vslice->ref_pic_list0[0] = vpic->reference_frames[0];
+        if (ctx->p_to_gpb && pic->type == PICTURE_TYPE_P)
+            // Reference for GPB B-frame, L0 == L1
+            vslice->ref_pic_list1[0] = vpic->reference_frames[0];
     }
     if (pic->nb_refs >= 2) {
         // Forward reference for B-frame.
         av_assert0(pic->type == PICTURE_TYPE_B);
         vslice->ref_pic_list1[0] = vpic->reference_frames[1];
     }
+
+    if (pic->type == PICTURE_TYPE_P && ctx->p_to_gpb) {
+        vslice->slice_type = HEVC_SLICE_B;
+        for (i = 0; i < FF_ARRAY_ELEMS(vslice->ref_pic_list0); i++) {
+            vslice->ref_pic_list1[i].picture_id = vslice->ref_pic_list0[i].picture_id;
+            vslice->ref_pic_list1[i].flags      = vslice->ref_pic_list0[i].flags;
+        }
+    }
+
+    return 0;
+}
+
+static av_cold int vaapi_encode_h265_get_encoder_caps(AVCodecContext *avctx)
+{
+    VAAPIEncodeContext      *ctx = avctx->priv_data;
+    VAAPIEncodeH265Context *priv = avctx->priv_data;
+
+#if VA_CHECK_VERSION(1, 13, 0)
+    {
+        VAConfigAttribValEncHEVCBlockSizes block_size;
+        VAConfigAttrib attr;
+        VAStatus vas;
+
+        attr.type = VAConfigAttribEncHEVCFeatures;
+        vas = vaGetConfigAttributes(ctx->hwctx->display, ctx->va_profile,
+                                    ctx->va_entrypoint, &attr, 1);
+        if (vas != VA_STATUS_SUCCESS) {
+            av_log(avctx, AV_LOG_ERROR, "Failed to query encoder "
+                   "features, using guessed defaults.\n");
+            return AVERROR_EXTERNAL;
+        } else if (attr.value == VA_ATTRIB_NOT_SUPPORTED) {
+            av_log(avctx, AV_LOG_WARNING, "Driver does not advertise "
+                   "encoder features, using guessed defaults.\n");
+        } else {
+            priv->va_features = attr.value;
+        }
+
+        attr.type = VAConfigAttribEncHEVCBlockSizes;
+        vas = vaGetConfigAttributes(ctx->hwctx->display, ctx->va_profile,
+                                    ctx->va_entrypoint, &attr, 1);
+        if (vas != VA_STATUS_SUCCESS) {
+            av_log(avctx, AV_LOG_ERROR, "Failed to query encoder "
+                   "block size, using guessed defaults.\n");
+            return AVERROR_EXTERNAL;
+        } else if (attr.value == VA_ATTRIB_NOT_SUPPORTED) {
+            av_log(avctx, AV_LOG_WARNING, "Driver does not advertise "
+                   "encoder block size, using guessed defaults.\n");
+        } else {
+            priv->va_bs = block_size.value = attr.value;
+
+            priv->ctu_size =
+                1 << block_size.bits.log2_max_coding_tree_block_size_minus3 + 3;
+            priv->min_cb_size =
+                1 << block_size.bits.log2_min_luma_coding_block_size_minus3 + 3;
+        }
+    }
+#endif
+
+    if (!priv->ctu_size) {
+        priv->ctu_size     = 32;
+        priv->min_cb_size  = 16;
+    }
+    av_log(avctx, AV_LOG_VERBOSE, "Using CTU size %dx%d, "
+           "min CB size %dx%d.\n", priv->ctu_size, priv->ctu_size,
+           priv->min_cb_size, priv->min_cb_size);
+
+    ctx->surface_width  = FFALIGN(avctx->width,  priv->min_cb_size);
+    ctx->surface_height = FFALIGN(avctx->height, priv->min_cb_size);
+
+    ctx->slice_block_width = ctx->slice_block_height = priv->ctu_size;
 
     return 0;
 }
@@ -1145,6 +1292,7 @@ static const VAAPIEncodeType vaapi_encode_type_h265 = {
 
     .default_quality       = 25,
 
+    .get_encoder_caps      = &vaapi_encode_h265_get_encoder_caps,
     .configure             = &vaapi_encode_h265_configure,
 
     .picture_priv_data_size = sizeof(VAAPIEncodeH265Picture),
@@ -1189,12 +1337,6 @@ static av_cold int vaapi_encode_h265_init(AVCodecContext *avctx)
         VA_ENC_PACKED_HEADER_SEQUENCE | // VPS, SPS and PPS.
         VA_ENC_PACKED_HEADER_SLICE    | // Slice headers.
         VA_ENC_PACKED_HEADER_MISC;      // SEI
-
-    ctx->surface_width  = FFALIGN(avctx->width,  16);
-    ctx->surface_height = FFALIGN(avctx->height, 16);
-
-    // CTU size is currently hard-coded to 32.
-    ctx->slice_block_width = ctx->slice_block_height = 32;
 
     if (priv->qp > 0)
         ctx->explicit_qp = priv->qp;
@@ -1282,7 +1424,7 @@ static const AVOption vaapi_encode_h265_options[] = {
     { NULL },
 };
 
-static const AVCodecDefault vaapi_encode_h265_defaults[] = {
+static const FFCodecDefault vaapi_encode_h265_defaults[] = {
     { "b",              "0"   },
     { "bf",             "2"   },
     { "g",              "120" },
@@ -1302,24 +1444,24 @@ static const AVClass vaapi_encode_h265_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_hevc_vaapi_encoder = {
-    .name           = "hevc_vaapi",
-    .long_name      = NULL_IF_CONFIG_SMALL("H.265/HEVC (VAAPI)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_HEVC,
+const FFCodec ff_hevc_vaapi_encoder = {
+    .p.name         = "hevc_vaapi",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("H.265/HEVC (VAAPI)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_HEVC,
     .priv_data_size = sizeof(VAAPIEncodeH265Context),
     .init           = &vaapi_encode_h265_init,
-    .receive_packet = &ff_vaapi_encode_receive_packet,
+    FF_CODEC_RECEIVE_PACKET_CB(&ff_vaapi_encode_receive_packet),
     .close          = &vaapi_encode_h265_close,
-    .priv_class     = &vaapi_encode_h265_class,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+    .p.priv_class   = &vaapi_encode_h265_class,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_h265_defaults,
-    .pix_fmts = (const enum AVPixelFormat[]) {
+    .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,
         AV_PIX_FMT_NONE,
     },
     .hw_configs     = ff_vaapi_encode_hw_configs,
-    .wrapper_name   = "vaapi",
+    .p.wrapper_name = "vaapi",
 };

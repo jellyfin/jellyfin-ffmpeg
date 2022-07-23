@@ -19,16 +19,33 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "h263.h"
 #include "mpegvideo.h"
+#include "mpegvideoenc.h"
 #include "msmpeg4.h"
+#include "msmpeg4enc.h"
 #include "msmpeg4data.h"
 #include "wmv2.h"
+#include "wmv2enc.h"
 
+typedef struct WMV2EncContext {
+    MSMPEG4EncContext msmpeg4;
+    WMV2Context common;
+    int j_type_bit;
+    int j_type;
+    int abt_flag;
+    int abt_type;
+    int per_mb_abt;
+    int mspel_bit;
+    int cbp_table_index;
+    int top_left_mv_flag;
+    int per_mb_rl_bit;
+} WMV2EncContext;
 
-static int encode_ext_header(Wmv2Context *w)
+static int encode_ext_header(WMV2EncContext *w)
 {
-    MpegEncContext *const s = &w->s;
+    MpegEncContext *const s = &w->msmpeg4.s;
     PutBitContext pb;
     int code;
 
@@ -54,12 +71,14 @@ static int encode_ext_header(Wmv2Context *w)
 
 static av_cold int wmv2_encode_init(AVCodecContext *avctx)
 {
-    Wmv2Context *const w = avctx->priv_data;
+    WMV2EncContext *const w = avctx->priv_data;
+    MpegEncContext *const s = &w->msmpeg4.s;
 
+    s->private_ctx = &w->common;
     if (ff_mpv_encode_init(avctx) < 0)
         return -1;
 
-    ff_wmv2_common_init(w);
+    ff_wmv2_common_init(s);
 
     avctx->extradata_size = 4;
     avctx->extradata      = av_mallocz(avctx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
@@ -73,7 +92,7 @@ static av_cold int wmv2_encode_init(AVCodecContext *avctx)
 
 int ff_wmv2_encode_picture_header(MpegEncContext *s, int picture_number)
 {
-    Wmv2Context *const w = (Wmv2Context *) s;
+    WMV2EncContext *const w = (WMV2EncContext *) s;
 
     put_bits(&s->pb, 1, s->pict_type - 1);
     if (s->pict_type == AV_PICTURE_TYPE_I)
@@ -147,7 +166,7 @@ int ff_wmv2_encode_picture_header(MpegEncContext *s, int picture_number)
 void ff_wmv2_encode_mb(MpegEncContext *s, int16_t block[6][64],
                        int motion_x, int motion_y)
 {
-    Wmv2Context *const w = (Wmv2Context *) s;
+    WMV2EncContext *const w = (WMV2EncContext *) s;
     int cbp, coded_cbp, i;
     int pred_x, pred_y;
     uint8_t *coded_block;
@@ -214,17 +233,17 @@ void ff_wmv2_encode_mb(MpegEncContext *s, int16_t block[6][64],
         s->p_tex_bits += get_bits_diff(s);
 }
 
-const AVCodec ff_wmv2_encoder = {
-    .name           = "wmv2",
-    .long_name      = NULL_IF_CONFIG_SMALL("Windows Media Video 8"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_WMV2,
-    .priv_class     = &ff_mpv_enc_class,
-    .priv_data_size = sizeof(Wmv2Context),
+const FFCodec ff_wmv2_encoder = {
+    .p.name         = "wmv2",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Windows Media Video 8"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_WMV2,
+    .p.priv_class   = &ff_mpv_enc_class,
+    .priv_data_size = sizeof(WMV2EncContext),
     .init           = wmv2_encode_init,
-    .encode2        = ff_mpv_encode_picture,
+    FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),
     .close          = ff_mpv_encode_end,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
 };
