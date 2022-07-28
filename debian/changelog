@@ -1,3 +1,10 @@
+jellyfin-ffmpeg (5.1-1) unstable; urgency=medium
+
+  * New upstream version 5.1
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 28 Jul 2022 12:05:31 +0800
+
 jellyfin-ffmpeg (5.0.1-8) unstable; urgency=medium
 
   * Add pause support for ffmpeg by using p key.
