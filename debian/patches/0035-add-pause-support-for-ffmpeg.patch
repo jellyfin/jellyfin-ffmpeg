@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/fftools/ffmpeg.c
 +++ jellyfin-ffmpeg/fftools/ffmpeg.c
-@@ -130,6 +130,9 @@ static void do_video_stats(OutputStream
+@@ -130,6 +130,9 @@ typedef struct BenchmarkTimeStamps {
  static BenchmarkTimeStamps get_benchmark_time_stamps(void);
  static int64_t getmaxrss(void);
  static int ifilter_has_all_input_formats(FilterGraph *fg);
@@ -10,9 +10,9 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
 +static void pause_transcoding(void);
 +static void unpause_transcoding(void);
  
- static int run_as_daemon  = 0;
- static int nb_frames_dup = 0;
-@@ -158,6 +161,9 @@ int         nb_output_files   = 0;
+ static int64_t nb_frames_dup = 0;
+ static uint64_t dup_warning = 1000;
+@@ -157,6 +160,9 @@ int         nb_output_files   = 0;
  FilterGraph **filtergraphs;
  int        nb_filtergraphs;
  
@@ -22,7 +22,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
  #if HAVE_TERMIOS_H
  
  /* init terminal so that we can grab keys */
-@@ -3840,12 +3846,28 @@ static void set_tty_echo(int on)
+@@ -3524,12 +3530,28 @@ static void set_tty_echo(int on)
  #endif
  }
  
@@ -50,9 +50,9 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
          return AVERROR_EXIT;
 +    }
      /* read_key() returns 0 on EOF */
-     if(cur_time - last_time >= 100000 && !run_as_daemon){
+     if (cur_time - last_time >= 100000) {
          key =  read_key();
-@@ -3868,6 +3890,11 @@ static int check_keyboard_interaction(in
+@@ -3552,6 +3574,11 @@ static int check_keyboard_interaction(in
              do_pkt_dump = 1;
          av_log_set_level(AV_LOG_DEBUG);
      }
@@ -64,7 +64,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
      if (key == 'c' || key == 'C'){
          char buf[4096], target[64], command[256], arg[256] = {0};
          double time;
-@@ -3948,7 +3975,9 @@ static int check_keyboard_interaction(in
+@@ -3632,7 +3659,9 @@ static int check_keyboard_interaction(in
                          "C      Send/Queue command to all matching filters\n"
                          "D      cycle through available debug modes\n"
                          "h      dump packets/hex press to cycle through the 3 states\n"
@@ -74,7 +74,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
                          "s      Show QP histogram\n"
          );
      }
-@@ -3964,6 +3993,11 @@ static void *input_thread(void *arg)
+@@ -3648,6 +3677,11 @@ static void *input_thread(void *arg)
      int ret = 0;
  
      while (1) {
@@ -86,7 +86,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
          ret = av_read_frame(f->ctx, pkt);
  
          if (ret == AVERROR(EAGAIN)) {
-@@ -4553,6 +4587,11 @@ static int transcode_step(void)
+@@ -4240,6 +4274,11 @@ static int transcode_step(void)
      InputStream  *ist = NULL;
      int ret;
  
@@ -98,7 +98,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
      ost = choose_output();
      if (!ost) {
          if (got_eagain()) {
-@@ -4662,11 +4701,11 @@ static int transcode(void)
+@@ -4349,11 +4388,11 @@ static int transcode(void)
  #endif
  
      while (!received_sigterm) {
@@ -112,7 +112,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
                  break;
  
          /* check if there's any stream where output is still needed */
-@@ -4717,7 +4756,7 @@ static int transcode(void)
+@@ -4394,7 +4433,7 @@ static int transcode(void)
      }
  
      /* dump report by using the first video and audio streams */
@@ -121,7 +121,7 @@ Index: jellyfin-ffmpeg/fftools/ffmpeg.c
  
      /* close the output files */
      for (i = 0; i < nb_output_files; i++) {
-@@ -4792,6 +4831,12 @@ static int transcode(void)
+@@ -4469,6 +4508,12 @@ static int transcode(void)
      return ret;
  }
  

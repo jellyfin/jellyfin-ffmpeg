@@ -325,8 +325,8 @@ Index: jellyfin-ffmpeg/libavfilter/opencl_source.h
  extern const char *ff_opencl_source_overlay;
 +extern const char *ff_opencl_source_scale;
  extern const char *ff_opencl_source_pad;
+ extern const char *ff_opencl_source_remap;
  extern const char *ff_opencl_source_tonemap;
- extern const char *ff_opencl_source_transpose;
 Index: jellyfin-ffmpeg/libavfilter/vf_scale_opencl.c
 ===================================================================
 --- /dev/null

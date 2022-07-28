@@ -13,7 +13,7 @@
 0013-add-d3d11-opencl-interop-for-qsv.patch
 0014-add-bgra-and-vendor-opt-to-d3d11.patch
 0015-add-vaapi-hwupload-filter.patch
-0016-add-vaapi-overlay-filter.patch
+0016-add-pgs-support-to-vaapi-overlay.patch
 0017-add-fixes-for-vaapi-tonemap.patch
 0018-add-fixes-for-nvdec-exceed-32-surfaces-error.patch
 0019-add-misc-fixes-for-qsv-from-upstream.patch
@@ -24,14 +24,13 @@
 0024-add-fixes-for-hevc-hdr-decoding-in-bsf.patch
 0025-add-sub2video-option-to-subtitles-filter.patch
 0026-add-alphasrc-source-video-filter.patch
-0027-add-async-support-to-vaapi-encoding.patch
+0027-improve-vaapi-encoding-speed-with-vulkan.patch
 0028-add-fixes-for-vaapi-mapping-error.patch
 0029-add-fixes-for-hevc-vaapi-encoding-on-tgl.patch
-0030-add-fixes-for-vulkan-and-libplacebo.patch
+0030-add-fixes-for-vulkan-vaapi-interop.patch
 0031-add-multiple-values-tags-and-webp-support-for-id3v2.patch
 0032-remove-fdk-aac-from-nonfree.patch
 0033-add-fixes-for-vulkan-scale-and-overlay-filters.patch
 0034-add-hevc-dovi-sidedata-to-hlsenc.patch
-0035-add-windows-long-path-support-from-upstream.patch
-0036-add-pause-support-for-ffmpeg.patch
-0037-add-misc-fixes-for-nvidia-from-upstream.patch
+0035-add-pause-support-for-ffmpeg.patch
+0036-enable-gcc-vectorization-and-lto-auto.patch

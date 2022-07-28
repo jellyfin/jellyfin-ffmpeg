@@ -2,26 +2,26 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -536,6 +536,7 @@ OBJS-$(CONFIG_ZSCALE_FILTER)
+@@ -556,6 +556,7 @@ OBJS-$(CONFIG_ZSCALE_FILTER)
  
  OBJS-$(CONFIG_ALLRGB_FILTER)                 += vsrc_testsrc.o
  OBJS-$(CONFIG_ALLYUV_FILTER)                 += vsrc_testsrc.o
 +OBJS-$(CONFIG_ALPHASRC_FILTER)               += vsrc_alphasrc.o
  OBJS-$(CONFIG_CELLAUTO_FILTER)               += vsrc_cellauto.o
  OBJS-$(CONFIG_COLOR_FILTER)                  += vsrc_testsrc.o
- OBJS-$(CONFIG_COLORSPECTRUM_FILTER)          += vsrc_testsrc.o
+ OBJS-$(CONFIG_COLORCHART_FILTER)             += vsrc_testsrc.o
 Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -509,6 +509,7 @@ extern const AVFilter ff_vf_zscale;
+@@ -522,6 +522,7 @@ extern const AVFilter ff_vf_zscale;
  
  extern const AVFilter ff_vsrc_allrgb;
  extern const AVFilter ff_vsrc_allyuv;
 +extern const AVFilter ff_vsrc_alphasrc;
  extern const AVFilter ff_vsrc_cellauto;
  extern const AVFilter ff_vsrc_color;
- extern const AVFilter ff_vsrc_colorspectrum;
+ extern const AVFilter ff_vsrc_colorchart;
 Index: jellyfin-ffmpeg/libavfilter/vsrc_alphasrc.c
 ===================================================================
 --- /dev/null
