@@ -21,6 +21,7 @@
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -195,13 +196,11 @@ static const uint16_t mask_matrix[] = {0x1,   0x2,   0x10,   0x20,
                                        0x100, 0x200, 0x1000, 0x2000,
                                        0x400, 0x800, 0x4000, 0x8000};
 
-static int escape124_decode_frame(AVCodecContext *avctx,
-                                  void *data, int *got_frame,
-                                  AVPacket *avpkt)
+static int escape124_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                                  int *got_frame, AVPacket *avpkt)
 {
     int buf_size = avpkt->size;
     Escape124Context *s = avctx->priv_data;
-    AVFrame *frame = data;
 
     GetBitContext gb;
     unsigned frame_flags, frame_size;
@@ -376,15 +375,15 @@ static int escape124_decode_frame(AVCodecContext *avctx,
 }
 
 
-const AVCodec ff_escape124_decoder = {
-    .name           = "escape124",
-    .long_name      = NULL_IF_CONFIG_SMALL("Escape 124"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_ESCAPE124,
+const FFCodec ff_escape124_decoder = {
+    .p.name         = "escape124",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Escape 124"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_ESCAPE124,
     .priv_data_size = sizeof(Escape124Context),
     .init           = escape124_decode_init,
     .close          = escape124_decode_close,
-    .decode         = escape124_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(escape124_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

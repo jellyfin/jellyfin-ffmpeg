@@ -34,6 +34,7 @@
 #include "avcodec.h"
 #include "celp_filters.h"
 #include "celp_math.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "g723_1.h"
@@ -117,12 +118,12 @@ static av_cold int g723_1_decode_init(AVCodecContext *avctx)
     G723_1_Context *s = avctx->priv_data;
 
     avctx->sample_fmt     = AV_SAMPLE_FMT_S16P;
-    if (avctx->channels < 1 || avctx->channels > 2) {
-        av_log(avctx, AV_LOG_ERROR, "Only mono and stereo are supported (requested channels: %d).\n", avctx->channels);
+    if (avctx->ch_layout.nb_channels < 1 || avctx->ch_layout.nb_channels > 2) {
+        av_log(avctx, AV_LOG_ERROR, "Only mono and stereo are supported (requested channels: %d).\n",
+               avctx->ch_layout.nb_channels);
         return AVERROR(EINVAL);
     }
-    avctx->channel_layout = avctx->channels == 1 ? AV_CH_LAYOUT_MONO : AV_CH_LAYOUT_STEREO;
-    for (int ch = 0; ch < avctx->channels; ch++) {
+    for (int ch = 0; ch < avctx->ch_layout.nb_channels; ch++) {
         G723_1_ChannelContext *p = &s->ch[ch];
 
         p->pf_gain = 1 << 12;
@@ -924,14 +925,14 @@ static void generate_noise(G723_1_ChannelContext *p)
            PITCH_MAX * sizeof(*p->excitation));
 }
 
-static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
+static int g723_1_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
     G723_1_Context *s  = avctx->priv_data;
-    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     int dec_mode       = buf[0] & 3;
+    int channels       = avctx->ch_layout.nb_channels;
 
     PPFParam ppf[SUBFRAMES];
     int16_t cur_lsp[LPC_ORDER];
@@ -940,7 +941,7 @@ static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
     int16_t *out;
     int bad_frame = 0, i, j, ret;
 
-    if (buf_size < frame_size[dec_mode] * avctx->channels) {
+    if (buf_size < frame_size[dec_mode] * channels) {
         if (buf_size)
             av_log(avctx, AV_LOG_WARNING,
                    "Expected %d bytes, got %d - skipping packet\n",
@@ -953,12 +954,12 @@ static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    for (int ch = 0; ch < avctx->channels; ch++) {
+    for (int ch = 0; ch < channels; ch++) {
         G723_1_ChannelContext *p = &s->ch[ch];
         int16_t *audio = p->audio;
 
-        if (unpack_bitstream(p, buf + ch * (buf_size / avctx->channels),
-                             buf_size / avctx->channels) < 0) {
+        if (unpack_bitstream(p, buf + ch * (buf_size / channels),
+                             buf_size / channels) < 0) {
             bad_frame = 1;
             if (p->past_frame_type == ACTIVE_FRAME)
                 p->cur_frame_type = ACTIVE_FRAME;
@@ -1090,7 +1091,7 @@ static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
 
     *got_frame_ptr = 1;
 
-    return frame_size[dec_mode] * avctx->channels;
+    return frame_size[dec_mode] * channels;
 }
 
 #define OFFSET(x) offsetof(G723_1_Context, x)
@@ -1110,15 +1111,15 @@ static const AVClass g723_1dec_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_g723_1_decoder = {
-    .name           = "g723_1",
-    .long_name      = NULL_IF_CONFIG_SMALL("G.723.1"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_G723_1,
+const FFCodec ff_g723_1_decoder = {
+    .p.name         = "g723_1",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("G.723.1"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_G723_1,
     .priv_data_size = sizeof(G723_1_Context),
     .init           = g723_1_decode_init,
-    .decode         = g723_1_decode_frame,
-    .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
-    .priv_class     = &g723_1dec_class,
+    FF_CODEC_DECODE_CB(g723_1_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .p.priv_class   = &g723_1dec_class,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

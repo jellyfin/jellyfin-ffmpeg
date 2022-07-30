@@ -36,6 +36,7 @@
 #include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "fft.h"
 #include "internal.h"
@@ -272,18 +273,18 @@ static void at1_subband_synthesis(AT1Ctx *q, AT1SUCtx* su, float *pOut)
 }
 
 
-static int atrac1_decode_frame(AVCodecContext *avctx, void *data,
+static int atrac1_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
-    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     AT1Ctx *q          = avctx->priv_data;
+    int channels       = avctx->ch_layout.nb_channels;
     int ch, ret;
     GetBitContext gb;
 
 
-    if (buf_size < 212 * avctx->channels) {
+    if (buf_size < 212 * channels) {
         av_log(avctx, AV_LOG_ERROR, "Not enough data to decode!\n");
         return AVERROR_INVALIDDATA;
     }
@@ -293,7 +294,7 @@ static int atrac1_decode_frame(AVCodecContext *avctx, void *data,
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    for (ch = 0; ch < avctx->channels; ch++) {
+    for (ch = 0; ch < channels; ch++) {
         AT1SUCtx* su = &q->SUs[ch];
 
         init_get_bits(&gb, &buf[212 * ch], 212 * 8);
@@ -335,13 +336,14 @@ static av_cold int atrac1_decode_init(AVCodecContext *avctx)
 {
     AT1Ctx *q = avctx->priv_data;
     AVFloatDSPContext *fdsp;
+    int channels = avctx->ch_layout.nb_channels;
     int ret;
 
     avctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
 
-    if (avctx->channels < 1 || avctx->channels > AT1_MAX_CHANNELS) {
+    if (channels < 1 || channels > AT1_MAX_CHANNELS) {
         av_log(avctx, AV_LOG_ERROR, "Unsupported number of channels: %d\n",
-               avctx->channels);
+               channels);
         return AVERROR(EINVAL);
     }
 
@@ -382,17 +384,17 @@ static av_cold int atrac1_decode_init(AVCodecContext *avctx)
 }
 
 
-const AVCodec ff_atrac1_decoder = {
-    .name           = "atrac1",
-    .long_name      = NULL_IF_CONFIG_SMALL("ATRAC1 (Adaptive TRansform Acoustic Coding)"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_ATRAC1,
+const FFCodec ff_atrac1_decoder = {
+    .p.name         = "atrac1",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("ATRAC1 (Adaptive TRansform Acoustic Coding)"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_ATRAC1,
     .priv_data_size = sizeof(AT1Ctx),
     .init           = atrac1_decode_init,
     .close          = atrac1_decode_end,
-    .decode         = atrac1_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+    FF_CODEC_DECODE_CB(atrac1_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

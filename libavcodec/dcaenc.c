@@ -30,6 +30,7 @@
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "dca.h"
 #include "dcaadpcm.h"
 #include "dcamath.h"
@@ -163,15 +164,15 @@ static void subband_bufer_free(DCAEncContext *c)
 static int encode_init(AVCodecContext *avctx)
 {
     DCAEncContext *c = avctx->priv_data;
-    uint64_t layout = avctx->channel_layout;
+    AVChannelLayout layout = avctx->ch_layout;
     int i, j, k, min_frame_bits;
     int ret;
 
     if ((ret = subband_bufer_alloc(c)) < 0)
         return ret;
 
-    c->fullband_channels = c->channels = avctx->channels;
-    c->lfe_channel = (avctx->channels == 3 || avctx->channels == 6);
+    c->fullband_channels = c->channels = layout.nb_channels;
+    c->lfe_channel = (c->channels == 3 || c->channels == 6);
     c->band_interpolation = c->band_interpolation_tab[1];
     c->band_spectrum = c->band_spectrum_tab[1];
     c->worst_quantization_noise = -2047;
@@ -181,19 +182,24 @@ static int encode_init(AVCodecContext *avctx)
     if (ff_dcaadpcm_init(&c->adpcm_ctx))
         return AVERROR(ENOMEM);
 
-    if (!layout) {
+    if (layout.order == AV_CHANNEL_ORDER_UNSPEC) {
         av_log(avctx, AV_LOG_WARNING, "No channel layout specified. The "
                                       "encoder will guess the layout, but it "
                                       "might be incorrect.\n");
-        layout = av_get_default_channel_layout(avctx->channels);
+        av_channel_layout_default(&layout, layout.nb_channels);
     }
-    switch (layout) {
-    case AV_CH_LAYOUT_MONO:         c->channel_config = 0; break;
-    case AV_CH_LAYOUT_STEREO:       c->channel_config = 2; break;
-    case AV_CH_LAYOUT_2_2:          c->channel_config = 8; break;
-    case AV_CH_LAYOUT_5POINT0:      c->channel_config = 9; break;
-    case AV_CH_LAYOUT_5POINT1:      c->channel_config = 9; break;
-    default:
+
+    if (!av_channel_layout_compare(&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_MONO))
+        c->channel_config = 0;
+    else if (!av_channel_layout_compare(&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO))
+        c->channel_config = 2;
+    else if (!av_channel_layout_compare(&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_2_2))
+        c->channel_config = 8;
+    else if (!av_channel_layout_compare(&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT0))
+        c->channel_config = 9;
+    else if (!av_channel_layout_compare(&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1))
+        c->channel_config = 9;
+    else {
         av_log(avctx, AV_LOG_ERROR, "Unsupported channel layout!\n");
         return AVERROR_PATCHWELCOME;
     }
@@ -1229,31 +1235,41 @@ static const AVClass dcaenc_class = {
     .version = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault defaults[] = {
+static const FFCodecDefault defaults[] = {
     { "b",          "1411200" },
     { NULL },
 };
 
-const AVCodec ff_dca_encoder = {
-    .name                  = "dca",
-    .long_name             = NULL_IF_CONFIG_SMALL("DCA (DTS Coherent Acoustics)"),
-    .type                  = AVMEDIA_TYPE_AUDIO,
-    .id                    = AV_CODEC_ID_DTS,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_EXPERIMENTAL,
+const FFCodec ff_dca_encoder = {
+    .p.name                = "dca",
+    .p.long_name           = NULL_IF_CONFIG_SMALL("DCA (DTS Coherent Acoustics)"),
+    .p.type                = AVMEDIA_TYPE_AUDIO,
+    .p.id                  = AV_CODEC_ID_DTS,
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_EXPERIMENTAL,
     .priv_data_size        = sizeof(DCAEncContext),
     .init                  = encode_init,
     .close                 = encode_close,
-    .encode2               = encode_frame,
+    FF_CODEC_ENCODE_CB(encode_frame),
     .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .sample_fmts           = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S32,
+    .p.sample_fmts         = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S32,
                                                             AV_SAMPLE_FMT_NONE },
-    .supported_samplerates = sample_rates,
-    .channel_layouts       = (const uint64_t[]) { AV_CH_LAYOUT_MONO,
+    .p.supported_samplerates = sample_rates,
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts     = (const uint64_t[]) { AV_CH_LAYOUT_MONO,
                                                   AV_CH_LAYOUT_STEREO,
                                                   AV_CH_LAYOUT_2_2,
                                                   AV_CH_LAYOUT_5POINT0,
                                                   AV_CH_LAYOUT_5POINT1,
                                                   0 },
+#endif
+    .p.ch_layouts     = (const AVChannelLayout[]){
+        AV_CHANNEL_LAYOUT_MONO,
+        AV_CHANNEL_LAYOUT_STEREO,
+        AV_CHANNEL_LAYOUT_2_2,
+        AV_CHANNEL_LAYOUT_5POINT0,
+        AV_CHANNEL_LAYOUT_5POINT1,
+        { 0 },
+    },
     .defaults              = defaults,
-    .priv_class            = &dcaenc_class,
+    .p.priv_class          = &dcaenc_class,
 };

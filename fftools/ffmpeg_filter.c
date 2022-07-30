@@ -153,8 +153,25 @@ DEF_CHOOSE_FORMAT(sample_fmts, enum AVSampleFormat, format, formats,
 DEF_CHOOSE_FORMAT(sample_rates, int, sample_rate, sample_rates, 0,
                   "%d", )
 
-DEF_CHOOSE_FORMAT(channel_layouts, uint64_t, channel_layout, channel_layouts, 0,
-                  "0x%"PRIx64, )
+static void choose_channel_layouts(OutputFilter *ofilter, AVBPrint *bprint)
+{
+    if (av_channel_layout_check(&ofilter->ch_layout)) {
+        av_bprintf(bprint, "channel_layouts=");
+        av_channel_layout_describe_bprint(&ofilter->ch_layout, bprint);
+    } else if (ofilter->ch_layouts) {
+        const AVChannelLayout *p;
+
+        av_bprintf(bprint, "channel_layouts=");
+        for (p = ofilter->ch_layouts; p->nb_channels; p++) {
+            av_channel_layout_describe_bprint(p, bprint);
+            av_bprintf(bprint, "|");
+        }
+        if (bprint->len > 0)
+            bprint->str[--bprint->len] = '\0';
+    } else
+        return;
+    av_bprint_chars(bprint, ':', 1);
+}
 
 int init_simple_filtergraph(InputStream *ist, OutputStream *ost)
 {
@@ -178,7 +195,7 @@ int init_simple_filtergraph(InputStream *ist, OutputStream *ost)
     ifilter->graph  = fg;
     ifilter->format = -1;
 
-    ifilter->frame_queue = av_fifo_alloc(8 * sizeof(AVFrame*));
+    ifilter->frame_queue = av_fifo_alloc2(8, sizeof(AVFrame*), AV_FIFO_FLAG_AUTO_GROW);
     if (!ifilter->frame_queue)
         exit_program(1);
 
@@ -277,6 +294,7 @@ static void init_input_filter(FilterGraph *fg, AVFilterInOut *in)
 
     ist->discard         = 0;
     ist->decoding_needed |= DECODING_FOR_FILTER;
+    ist->processing_needed = 1;
     ist->st->discard = AVDISCARD_NONE;
 
     ifilter = ALLOC_ARRAY_ELEM(fg->inputs, fg->nb_inputs);
@@ -286,7 +304,7 @@ static void init_input_filter(FilterGraph *fg, AVFilterInOut *in)
     ifilter->type   = ist->st->codecpar->codec_type;
     ifilter->name   = describe_filter_link(fg, in, 1);
 
-    ifilter->frame_queue = av_fifo_alloc(8 * sizeof(AVFrame*));
+    ifilter->frame_queue = av_fifo_alloc2(8, sizeof(AVFrame*), AV_FIFO_FLAG_AUTO_GROW);
     if (!ifilter->frame_queue)
         exit_program(1);
 
@@ -541,9 +559,10 @@ static int configure_output_audio_filter(FilterGraph *fg, OutputFilter *ofilter,
 } while (0)
     av_bprint_init(&args, 0, AV_BPRINT_SIZE_UNLIMITED);
     if (ost->audio_channels_mapped) {
+        AVChannelLayout mapped_layout = { 0 };
         int i;
-        av_bprintf(&args, "0x%"PRIx64,
-                   av_get_default_channel_layout(ost->audio_channels_mapped));
+        av_channel_layout_default(&mapped_layout, ost->audio_channels_mapped);
+        av_channel_layout_describe_bprint(&mapped_layout, &args);
         for (i = 0; i < ost->audio_channels_mapped; i++)
             if (ost->audio_channels_map[i] != -1)
                 av_bprintf(&args, "|c%d=c%d", i, ost->audio_channels_map[i]);
@@ -552,8 +571,8 @@ static int configure_output_audio_filter(FilterGraph *fg, OutputFilter *ofilter,
         av_bprint_clear(&args);
     }
 
-    if (codec->channels && !codec->channel_layout)
-        codec->channel_layout = av_get_default_channel_layout(codec->channels);
+    if (codec->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC)
+        av_channel_layout_default(&codec->ch_layout, codec->ch_layout.nb_channels);
 
     choose_sample_fmts(ofilter,     &args);
     choose_sample_rates(ofilter,    &args);
@@ -832,11 +851,12 @@ static int configure_input_audio_filter(FilterGraph *fg, InputFilter *ifilter,
              1, ifilter->sample_rate,
              ifilter->sample_rate,
              av_get_sample_fmt_name(ifilter->format));
-    if (ifilter->channel_layout)
-        av_bprintf(&args, ":channel_layout=0x%"PRIx64,
-                   ifilter->channel_layout);
-    else
-        av_bprintf(&args, ":channels=%d", ifilter->channels);
+    if (av_channel_layout_check(&ifilter->ch_layout) &&
+        ifilter->ch_layout.order != AV_CHANNEL_ORDER_UNSPEC) {
+        av_bprintf(&args, ":channel_layout=");
+        av_channel_layout_describe_bprint(&ifilter->ch_layout, &args);
+    } else
+        av_bprintf(&args, ":channels=%d", ifilter->ch_layout.nb_channels);
     snprintf(name, sizeof(name), "graph_%d_in_%d_%d", fg->index,
              ist->file_index, ist->st->index);
 
@@ -949,8 +969,8 @@ static void cleanup_filtergraph(FilterGraph *fg)
 static int filter_is_buffersrc(const AVFilterContext *f)
 {
     return f->nb_inputs == 0 &&
-           (!strcmp(f->filter->name, "buffersrc") ||
-            !strcmp(f->filter->name, "abuffersrc"));
+           (!strcmp(f->filter->name, "buffer") ||
+            !strcmp(f->filter->name, "abuffer"));
 }
 
 static int graph_is_meta(AVFilterGraph *graph)
@@ -1084,7 +1104,10 @@ int configure_filtergraph(FilterGraph *fg)
         ofilter->height = av_buffersink_get_h(sink);
 
         ofilter->sample_rate    = av_buffersink_get_sample_rate(sink);
-        ofilter->channel_layout = av_buffersink_get_channel_layout(sink);
+        av_channel_layout_uninit(&ofilter->ch_layout);
+        ret = av_buffersink_get_ch_layout(sink, &ofilter->ch_layout);
+        if (ret < 0)
+            goto fail;
     }
 
     fg->reconfiguration = 1;
@@ -1106,9 +1129,8 @@ int configure_filtergraph(FilterGraph *fg)
     }
 
     for (i = 0; i < fg->nb_inputs; i++) {
-        while (av_fifo_size(fg->inputs[i]->frame_queue)) {
-            AVFrame *tmp;
-            av_fifo_generic_read(fg->inputs[i]->frame_queue, &tmp, sizeof(tmp), NULL);
+        AVFrame *tmp;
+        while (av_fifo_read(fg->inputs[i]->frame_queue, &tmp, 1) >= 0) {
             ret = av_buffersrc_add_frame(fg->inputs[i]->filter, tmp);
             av_frame_free(&tmp);
             if (ret < 0)
@@ -1129,9 +1151,8 @@ int configure_filtergraph(FilterGraph *fg)
     for (i = 0; i < fg->nb_inputs; i++) {
         InputStream *ist = fg->inputs[i]->ist;
         if (ist->sub2video.sub_queue && ist->sub2video.frame) {
-            while (av_fifo_size(ist->sub2video.sub_queue)) {
-                AVSubtitle tmp;
-                av_fifo_generic_read(ist->sub2video.sub_queue, &tmp, sizeof(tmp), NULL);
+            AVSubtitle tmp;
+            while (av_fifo_read(ist->sub2video.sub_queue, &tmp, 1) >= 0) {
                 sub2video_update(ist, INT64_MIN, &tmp);
                 avsubtitle_free(&tmp);
             }
@@ -1148,6 +1169,7 @@ fail:
 int ifilter_parameters_from_frame(InputFilter *ifilter, const AVFrame *frame)
 {
     AVFrameSideData *sd;
+    int ret;
 
     av_buffer_unref(&ifilter->hw_frames_ctx);
 
@@ -1158,8 +1180,9 @@ int ifilter_parameters_from_frame(InputFilter *ifilter, const AVFrame *frame)
     ifilter->sample_aspect_ratio = frame->sample_aspect_ratio;
 
     ifilter->sample_rate         = frame->sample_rate;
-    ifilter->channels            = frame->channels;
-    ifilter->channel_layout      = frame->channel_layout;
+    ret = av_channel_layout_copy(&ifilter->ch_layout, &frame->ch_layout);
+    if (ret < 0)
+        return ret;
 
     av_freep(&ifilter->displaymatrix);
     sd = av_frame_get_side_data(frame, AV_FRAME_DATA_DISPLAYMATRIX);

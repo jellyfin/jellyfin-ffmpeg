@@ -44,6 +44,7 @@
 
 
 #include "libavformat/internal.h"
+#include "libavformat/mux.h"
 #include "avdevice.h"
 #include "alsa.h"
 
@@ -64,7 +65,7 @@ static av_cold int audio_write_header(AVFormatContext *s1)
     sample_rate = st->codecpar->sample_rate;
     codec_id    = st->codecpar->codec_id;
     res = ff_alsa_open(s1, SND_PCM_STREAM_PLAYBACK, &sample_rate,
-        st->codecpar->channels, &codec_id);
+        st->codecpar->ch_layout.nb_channels, &codec_id);
     if (sample_rate != st->codecpar->sample_rate) {
         av_log(s1, AV_LOG_ERROR,
                "sample rate %d not available, nearest is %d\n",
@@ -85,7 +86,7 @@ static int audio_write_packet(AVFormatContext *s1, AVPacket *pkt)
     AlsaData *s = s1->priv_data;
     int res;
     int size     = pkt->size;
-    uint8_t *buf = pkt->data;
+    const uint8_t *buf = pkt->data;
 
     size /= s->frame_size;
     if (pkt->dts != AV_NOPTS_VALUE)

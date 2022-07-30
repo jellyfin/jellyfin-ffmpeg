@@ -20,10 +20,12 @@
 #include <va/va_enc_mpeg2.h>
 
 #include "libavutil/avassert.h"
+#include "libavutil/opt.h"
 
 #include "avcodec.h"
 #include "cbs.h"
 #include "cbs_mpeg2.h"
+#include "codec_internal.h"
 #include "mpeg12.h"
 #include "vaapi_encode.h"
 
@@ -621,9 +623,6 @@ static av_cold int vaapi_encode_mpeg2_init(AVCodecContext *avctx)
     ctx->desired_packed_headers = VA_ENC_PACKED_HEADER_SEQUENCE |
                                   VA_ENC_PACKED_HEADER_PICTURE;
 
-    ctx->surface_width  = FFALIGN(avctx->width,  16);
-    ctx->surface_height = FFALIGN(avctx->height, 16);
-
     return ff_vaapi_encode_init(avctx);
 }
 
@@ -668,7 +667,7 @@ static const AVOption vaapi_encode_mpeg2_options[] = {
     { NULL },
 };
 
-static const AVCodecDefault vaapi_encode_mpeg2_defaults[] = {
+static const FFCodecDefault vaapi_encode_mpeg2_defaults[] = {
     { "b",              "0"   },
     { "bf",             "1"   },
     { "g",              "120" },
@@ -688,24 +687,24 @@ static const AVClass vaapi_encode_mpeg2_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_mpeg2_vaapi_encoder = {
-    .name           = "mpeg2_vaapi",
-    .long_name      = NULL_IF_CONFIG_SMALL("MPEG-2 (VAAPI)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MPEG2VIDEO,
+const FFCodec ff_mpeg2_vaapi_encoder = {
+    .p.name         = "mpeg2_vaapi",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MPEG-2 (VAAPI)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MPEG2VIDEO,
     .priv_data_size = sizeof(VAAPIEncodeMPEG2Context),
     .init           = &vaapi_encode_mpeg2_init,
-    .receive_packet = &ff_vaapi_encode_receive_packet,
+    FF_CODEC_RECEIVE_PACKET_CB(&ff_vaapi_encode_receive_packet),
     .close          = &vaapi_encode_mpeg2_close,
-    .priv_class     = &vaapi_encode_mpeg2_class,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+    .p.priv_class   = &vaapi_encode_mpeg2_class,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_mpeg2_defaults,
-    .pix_fmts = (const enum AVPixelFormat[]) {
+    .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,
         AV_PIX_FMT_NONE,
     },
     .hw_configs     = ff_vaapi_encode_hw_configs,
-    .wrapper_name   = "vaapi",
+    .p.wrapper_name = "vaapi",
 };

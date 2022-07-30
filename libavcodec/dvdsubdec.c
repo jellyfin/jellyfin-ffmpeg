@@ -20,6 +20,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -42,9 +43,6 @@ typedef struct DVDSubContext
   int      buf_size;
   int      forced_subs_only;
   uint8_t  used_color[256];
-#ifdef DEBUG
-  int sub_id;
-#endif
 } DVDSubContext;
 
 static void yuv_a_to_rgba(const uint8_t *ycbcr, const uint8_t *alpha, uint32_t *rgba, int num_values)
@@ -400,7 +398,7 @@ static int decode_dvd_subtitles(DVDSubContext *ctx, AVSubtitle *sub_header,
                 } else {
                     sub_header->rects[0]->nb_colors = 4;
                     guess_palette(ctx, (uint32_t*)sub_header->rects[0]->data[1],
-                                  0xffff00);
+                                  0xffffff);
                 }
                 sub_header->rects[0]->x = x1;
                 sub_header->rects[0]->y = y1;
@@ -498,38 +496,6 @@ static int find_smallest_bounding_rectangle(DVDSubContext *ctx, AVSubtitle *s)
     return 1;
 }
 
-#ifdef DEBUG
-#define ALPHA_MIX(A,BACK,FORE) (((255-(A)) * (BACK) + (A) * (FORE)) / 255)
-static void ppm_save(const char *filename, uint8_t *bitmap, int w, int h,
-                     uint32_t *rgba_palette)
-{
-    int x, y, alpha;
-    uint32_t v;
-    int back[3] = {0, 255, 0};  /* green background */
-    FILE *f;
-
-    f = fopen(filename, "w");
-    if (!f) {
-        perror(filename);
-        return;
-    }
-    fprintf(f, "P6\n"
-            "%d %d\n"
-            "%d\n",
-            w, h, 255);
-    for(y = 0; y < h; y++) {
-        for(x = 0; x < w; x++) {
-            v = rgba_palette[bitmap[y * w + x]];
-            alpha = v >> 24;
-            putc(ALPHA_MIX(alpha, back[0], (v >> 16) & 0xff), f);
-            putc(ALPHA_MIX(alpha, back[1], (v >> 8) & 0xff), f);
-            putc(ALPHA_MIX(alpha, back[2], (v >> 0) & 0xff), f);
-        }
-    }
-    fclose(f);
-}
-#endif
-
 static int append_to_cached_buf(AVCodecContext *avctx,
                                 const uint8_t *buf, int buf_size)
 {
@@ -547,14 +513,12 @@ static int append_to_cached_buf(AVCodecContext *avctx,
     return 0;
 }
 
-static int dvdsub_decode(AVCodecContext *avctx,
-                         void *data, int *data_size,
-                         AVPacket *avpkt)
+static int dvdsub_decode(AVCodecContext *avctx, AVSubtitle *sub,
+                         int *data_size, const AVPacket *avpkt)
 {
     DVDSubContext *ctx = avctx->priv_data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
-    AVSubtitle *sub = data;
     int appended = 0;
     int is_menu;
 
@@ -589,19 +553,6 @@ static int dvdsub_decode(AVCodecContext *avctx,
     if (ctx->forced_subs_only && !(sub->rects[0]->flags & AV_SUBTITLE_FLAG_FORCED))
         goto no_subtitle;
 
-#if defined(DEBUG)
-    {
-    char ppm_name[32];
-
-    snprintf(ppm_name, sizeof(ppm_name), "/tmp/%05d.ppm", ctx->sub_id++);
-    ff_dlog(NULL, "start=%d ms end =%d ms\n",
-            sub->start_display_time,
-            sub->end_display_time);
-    ppm_save(ppm_name, sub->rects[0]->data[0],
-             sub->rects[0]->w, sub->rects[0]->h, (uint32_t*) sub->rects[0]->data[1]);
-    }
-#endif
-
     ctx->buf_size = 0;
     *data_size = 1;
     return buf_size;
@@ -618,7 +569,7 @@ static int parse_ifo_palette(DVDSubContext *ctx, char *p)
     const uint8_t *cm = ff_crop_tab + MAX_NEG_CROP;
 
     ctx->has_palette = 0;
-    if ((ifo = fopen(p, "r")) == NULL) {
+    if ((ifo = avpriv_fopen_utf8(p, "r")) == NULL) {
         av_log(ctx, AV_LOG_WARNING, "Unable to open IFO file \"%s\": %s\n", p, av_err2str(AVERROR(errno)));
         return AVERROR_EOF;
     }
@@ -754,15 +705,15 @@ static const AVClass dvdsub_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_dvdsub_decoder = {
-    .name           = "dvdsub",
-    .long_name      = NULL_IF_CONFIG_SMALL("DVD subtitles"),
-    .type           = AVMEDIA_TYPE_SUBTITLE,
-    .id             = AV_CODEC_ID_DVD_SUBTITLE,
+const FFCodec ff_dvdsub_decoder = {
+    .p.name         = "dvdsub",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("DVD subtitles"),
+    .p.type         = AVMEDIA_TYPE_SUBTITLE,
+    .p.id           = AV_CODEC_ID_DVD_SUBTITLE,
     .priv_data_size = sizeof(DVDSubContext),
     .init           = dvdsub_init,
-    .decode         = dvdsub_decode,
+    FF_CODEC_DECODE_SUB_CB(dvdsub_decode),
     .flush          = dvdsub_flush,
-    .priv_class     = &dvdsub_class,
+    .p.priv_class   = &dvdsub_class,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

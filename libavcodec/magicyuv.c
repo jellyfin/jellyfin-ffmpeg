@@ -28,6 +28,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "huffyuvdsp.h"
 #include "internal.h"
@@ -427,12 +428,10 @@ static int build_huffman(AVCodecContext *avctx, const uint8_t *table,
     return 0;
 }
 
-static int magy_decode_frame(AVCodecContext *avctx, void *data,
+static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
                              int *got_frame, AVPacket *avpkt)
 {
     MagicYUVContext *s = avctx->priv_data;
-    ThreadFrame frame = { .f = data };
-    AVFrame *p = data;
     GetByteContext gb;
     uint32_t first_offset, offset, next_offset, header_size, slice_width;
     int width, height, format, version, table_size;
@@ -641,7 +640,7 @@ static int magy_decode_frame(AVCodecContext *avctx, void *data,
     p->pict_type = AV_PICTURE_TYPE_I;
     p->key_frame = 1;
 
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, p, 0)) < 0)
         return ret;
 
     s->buf = avpkt->data;
@@ -694,16 +693,16 @@ static av_cold int magy_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_magicyuv_decoder = {
-    .name             = "magicyuv",
-    .long_name        = NULL_IF_CONFIG_SMALL("MagicYUV video"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_MAGICYUV,
+const FFCodec ff_magicyuv_decoder = {
+    .p.name           = "magicyuv",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("MagicYUV video"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_MAGICYUV,
     .priv_data_size   = sizeof(MagicYUVContext),
     .init             = magy_decode_init,
     .close            = magy_decode_end,
-    .decode           = magy_decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1 |
+    FF_CODEC_DECODE_CB(magy_decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1 |
                         AV_CODEC_CAP_FRAME_THREADS |
                         AV_CODEC_CAP_SLICE_THREADS,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE,

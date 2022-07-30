@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "5.0.1-8"
+version: "5.1-1"
 packages:
   - buster-amd64
   - buster-armhf
@@ -15,9 +15,6 @@ packages:
   - focal-amd64
   - focal-armhf
   - focal-arm64
-  - impish-amd64
-  - impish-armhf
-  - impish-arm64
   - jammy-amd64
   - jammy-armhf
   - jammy-arm64

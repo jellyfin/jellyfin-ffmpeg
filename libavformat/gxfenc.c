@@ -21,13 +21,12 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/intfloat.h"
-#include "libavutil/opt.h"
 #include "libavutil/mathematics.h"
-#include "libavutil/timecode.h"
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
 #include "gxf.h"
+#include "mux.h"
 
 #define GXF_SAMPLES_PER_FRAME 32768
 #define GXF_AUDIO_PACKET_SIZE 65536
@@ -714,7 +713,7 @@ static int gxf_write_header(AVFormatContext *s)
                 av_log(s, AV_LOG_ERROR, "only 48000hz sampling rate is allowed\n");
                 return -1;
             }
-            if (st->codecpar->channels != 1) {
+            if (st->codecpar->ch_layout.nb_channels != 1) {
                 av_log(s, AV_LOG_ERROR, "only mono tracks are allowed\n");
                 return -1;
             }

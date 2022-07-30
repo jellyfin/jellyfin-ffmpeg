@@ -25,6 +25,7 @@
  * MxPEG decoder
  */
 
+#include "codec_internal.h"
 #include "internal.h"
 #include "mjpeg.h"
 #include "mjpegdec.h"
@@ -179,9 +180,8 @@ static int mxpeg_check_dimensions(MXpegDecodeContext *s, MJpegDecodeContext *jpg
     return 0;
 }
 
-static int mxpeg_decode_frame(AVCodecContext *avctx,
-                          void *data, int *got_frame,
-                          AVPacket *avpkt)
+static int mxpeg_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                              int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
@@ -323,7 +323,7 @@ static int mxpeg_decode_frame(AVCodecContext *avctx,
 
 the_end:
     if (jpg->got_picture) {
-        int ret = av_frame_ref(data, jpg->picture_ptr);
+        int ret = av_frame_ref(rframe, jpg->picture_ptr);
         if (ret < 0)
             return ret;
         *got_frame = 1;
@@ -342,16 +342,16 @@ the_end:
     return buf_ptr - buf;
 }
 
-const AVCodec ff_mxpeg_decoder = {
-    .name           = "mxpeg",
-    .long_name      = NULL_IF_CONFIG_SMALL("Mobotix MxPEG video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MXPEG,
+const FFCodec ff_mxpeg_decoder = {
+    .p.name         = "mxpeg",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Mobotix MxPEG video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MXPEG,
     .priv_data_size = sizeof(MXpegDecodeContext),
     .init           = mxpeg_decode_init,
     .close          = mxpeg_decode_end,
-    .decode         = mxpeg_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .max_lowres     = 3,
+    FF_CODEC_DECODE_CB(mxpeg_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.max_lowres   = 3,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

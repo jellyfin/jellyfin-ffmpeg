@@ -24,10 +24,12 @@
  */
 
 #include "libavutil/avassert.h"
+#include "codec_internal.h"
 #include "error_resilience.h"
 #include "internal.h"
 #include "mpeg_er.h"
-#include "msmpeg4.h"
+#include "mpegvideodec.h"
+#include "msmpeg4dec.h"
 #include "qpeldsp.h"
 #include "vc1.h"
 #include "wmv2data.h"
@@ -40,7 +42,6 @@ typedef struct MSS2Context {
     AVFrame       *last_pic;
     MSS12Context   c;
     MSS2DSPContext dsp;
-    QpelDSPContext qdsp;
     SliceContext   sc[2];
 } MSS2Context;
 
@@ -470,14 +471,13 @@ struct Rectangle {
 #define MAX_WMV9_RECTANGLES 20
 #define ARITH2_PADDING 2
 
-static int mss2_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                             AVPacket *avpkt)
+static int mss2_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     MSS2Context *ctx = avctx->priv_data;
     MSS12Context *c  = &ctx->c;
-    AVFrame *frame   = data;
     GetBitContext gb;
     GetByteContext gB;
     ArithCoder acoder;
@@ -836,7 +836,6 @@ static av_cold int mss2_decode_init(AVCodecContext *avctx)
         return ret;
     }
     ff_mss2dsp_init(&ctx->dsp);
-    ff_qpeldsp_init(&ctx->qdsp);
 
     avctx->pix_fmt = c->free_colours == 127 ? AV_PIX_FMT_RGB555
                                             : AV_PIX_FMT_RGB24;
@@ -845,14 +844,15 @@ static av_cold int mss2_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_mss2_decoder = {
-    .name           = "mss2",
-    .long_name      = NULL_IF_CONFIG_SMALL("MS Windows Media Video V9 Screen"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MSS2,
+const FFCodec ff_mss2_decoder = {
+    .p.name         = "mss2",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MS Windows Media Video V9 Screen"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MSS2,
     .priv_data_size = sizeof(MSS2Context),
     .init           = mss2_decode_init,
     .close          = mss2_decode_end,
-    .decode         = mss2_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(mss2_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

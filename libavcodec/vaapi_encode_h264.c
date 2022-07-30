@@ -29,11 +29,12 @@
 #include "avcodec.h"
 #include "cbs.h"
 #include "cbs_h264.h"
+#include "codec_internal.h"
 #include "h264.h"
 #include "h264_levels.h"
 #include "h264_sei.h"
-#include "internal.h"
 #include "vaapi_encode.h"
+#include "version.h"
 
 enum {
     SEI_TIMING         = 0x01,
@@ -1304,7 +1305,7 @@ static const AVOption vaapi_encode_h264_options[] = {
     { NULL },
 };
 
-static const AVCodecDefault vaapi_encode_h264_defaults[] = {
+static const FFCodecDefault vaapi_encode_h264_defaults[] = {
     { "b",              "0"   },
     { "bf",             "2"   },
     { "g",              "120" },
@@ -1324,24 +1325,24 @@ static const AVClass vaapi_encode_h264_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_h264_vaapi_encoder = {
-    .name           = "h264_vaapi",
-    .long_name      = NULL_IF_CONFIG_SMALL("H.264/AVC (VAAPI)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_H264,
+const FFCodec ff_h264_vaapi_encoder = {
+    .p.name         = "h264_vaapi",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("H.264/AVC (VAAPI)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_H264,
     .priv_data_size = sizeof(VAAPIEncodeH264Context),
     .init           = &vaapi_encode_h264_init,
-    .receive_packet = &ff_vaapi_encode_receive_packet,
+    FF_CODEC_RECEIVE_PACKET_CB(&ff_vaapi_encode_receive_packet),
     .close          = &vaapi_encode_h264_close,
-    .priv_class     = &vaapi_encode_h264_class,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+    .p.priv_class   = &vaapi_encode_h264_class,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_h264_defaults,
-    .pix_fmts = (const enum AVPixelFormat[]) {
+    .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,
         AV_PIX_FMT_NONE,
     },
     .hw_configs     = ff_vaapi_encode_hw_configs,
-    .wrapper_name   = "vaapi",
+    .p.wrapper_name = "vaapi",
 };

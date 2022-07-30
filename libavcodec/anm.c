@@ -26,6 +26,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct AnmContext {
@@ -107,9 +108,8 @@ exhausted:
     return 1;
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                        int *got_frame, AVPacket *avpkt)
 {
     AnmContext *s = avctx->priv_data;
     const int buf_size = avpkt->size;
@@ -175,7 +175,7 @@ static int decode_frame(AVCodecContext *avctx,
     memcpy(s->frame->data[1], s->palette, AVPALETTE_SIZE);
 
     *got_frame = 1;
-    if ((ret = av_frame_ref(data, s->frame)) < 0)
+    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
         return ret;
 
     return buf_size;
@@ -189,15 +189,15 @@ static av_cold int decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_anm_decoder = {
-    .name           = "anm",
-    .long_name      = NULL_IF_CONFIG_SMALL("Deluxe Paint Animation"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_ANM,
+const FFCodec ff_anm_decoder = {
+    .p.name         = "anm",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Deluxe Paint Animation"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_ANM,
     .priv_data_size = sizeof(AnmContext),
     .init           = decode_init,
     .close          = decode_end,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

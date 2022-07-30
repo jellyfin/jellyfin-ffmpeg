@@ -317,18 +317,22 @@ static int config_input(AVFilterLink *inlink)
         s->dsp.filter_scale        = filter16_scale;
     }
 
-    if (ARCH_X86)
-        ff_w3fdif_init_x86(&s->dsp, depth);
+#if ARCH_X86
+    ff_w3fdif_init_x86(&s->dsp, depth);
+#endif
 
     return 0;
 }
 
 static int config_output(AVFilterLink *outlink)
 {
-    AVFilterLink *inlink = outlink->src->inputs[0];
+    AVFilterContext *ctx = outlink->src;
+    AVFilterLink *inlink = ctx->inputs[0];
+    W3FDIFContext *s = ctx->priv;
 
     outlink->time_base = av_mul_q(inlink->time_base, (AVRational){1, 2});
-    outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
+    if (s->mode)
+        outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
 
     return 0;
 }

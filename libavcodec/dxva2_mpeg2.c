@@ -20,11 +20,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/log.h"
 
 #include "dxva2_internal.h"
 #include "mpegutils.h"
-#include "mpegvideo.h"
+#include "mpegvideodec.h"
 
 #define MAX_SLICES 1024
 struct dxva2_picture_context {

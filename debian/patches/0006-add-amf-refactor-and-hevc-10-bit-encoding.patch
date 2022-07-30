@@ -2,12 +2,12 @@ Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -6975,7 +6975,7 @@ fi
+@@ -6993,7 +6993,7 @@ fi
  
  enabled amf &&
      check_cpp_condition amf "AMF/core/Version.h" \
 -        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400090000"
-+        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400170000"
++        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400180000"
  
  # Funny iconv installations are not unusual, so check it after all flags have been set
  if enabled libc_iconv; then
@@ -15,7 +15,7 @@ Index: jellyfin-ffmpeg/libavcodec/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/Makefile
 +++ jellyfin-ffmpeg/libavcodec/Makefile
-@@ -61,7 +61,7 @@ OBJS = ac3_parser.o
+@@ -65,7 +65,7 @@ OBJS = ac3_parser.o
  OBJS-$(CONFIG_AANDCTTABLES)            += aandcttab.o
  OBJS-$(CONFIG_AC3DSP)                  += ac3dsp.o ac3.o ac3tab.o
  OBJS-$(CONFIG_ADTS_HEADER)             += adts_header.o mpeg4audio_sample_rates.o
@@ -24,7 +24,7 @@ Index: jellyfin-ffmpeg/libavcodec/Makefile
  OBJS-$(CONFIG_AUDIO_FRAME_QUEUE)       += audio_frame_queue.o
  OBJS-$(CONFIG_ATSC_A53)                += atsc_a53.o
  OBJS-$(CONFIG_AUDIODSP)                += audiodsp.o
-@@ -1213,7 +1213,7 @@ SKIPHEADERS                            +
+@@ -1233,7 +1233,7 @@ SKIPHEADERS                            +
                                            aacenc_quantization_misc.h    \
                                            $(ARCH)/vp56_arith.h          \
  
@@ -574,11 +574,12 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/amfenc.c
 +++ jellyfin-ffmpeg/libavcodec/amfenc.c
-@@ -16,227 +16,54 @@
+@@ -16,229 +16,56 @@
   * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
   */
  
 -#include "config.h"
+-#include "config_components.h"
 -
  #include "libavutil/avassert.h"
 -#include "libavutil/imgutils.h"
@@ -591,6 +592,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 -#include "libavutil/hwcontext_dxva2.h"
 -#endif
 +#include "libavutil/imgutils.h"
++#include "libavutil/mastering_display_metadata.h"
 +
  #include "libavutil/mem.h"
 -#include "libavutil/pixdesc.h"
@@ -691,18 +693,16 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
          return AVERROR(ENOMEM);
 -    }
 +
-     // hardcoded to current HW queue size - will realloc in timestamp_queue_enqueue() if too small
-     ctx->timestamp_list = av_fifo_alloc((avctx->max_b_frames + 16) * sizeof(int64_t));
+     // hardcoded to current HW queue size - will auto-realloc if too small
+     ctx->timestamp_list = av_fifo_alloc2(avctx->max_b_frames + 16, sizeof(int64_t),
+                                          AV_FIFO_FLAG_AUTO_GROW);
 -    if (!ctx->timestamp_list) {
 +    if (!ctx->timestamp_list)
          return AVERROR(ENOMEM);
 -    }
 -    ctx->dts_delay = 0;
- 
-+    amfctx = av_mallocz(sizeof(AVAMFContext));
-+    if (!amfctx)
-+        return AVERROR(ENOMEM);
- 
+-
+-
 -    ctx->library = dlopen(AMF_DLL_NAMEA, RTLD_NOW | RTLD_LOCAL);
 -    AMF_RETURN_IF_FALSE(ctx, ctx->library != NULL,
 -        AVERROR_UNKNOWN, "DLL %s failed to open\n", AMF_DLL_NAMEA);
@@ -723,7 +723,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 -    AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_UNKNOWN, "GetDebug() failed with error %d\n", res);
 -    return 0;
 -}
--
+ 
 -#if CONFIG_D3D11VA
 -static int amf_init_from_d3d11_device(AVCodecContext *avctx, AVD3D11VADeviceContext *hwctx)
 -{
@@ -767,7 +767,10 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 -        av_log(avctx, AV_LOG_ERROR, "Failed to lock device handle for Direct3D9 device: %lx.\n", (unsigned long)hr);
 -        ret = AVERROR_EXTERNAL;
 -    }
--
++    amfctx = av_mallocz(sizeof(AVAMFContext));
++    if (!amfctx)
++        return AVERROR(ENOMEM);
+ 
 -    IDirect3DDeviceManager9_CloseDeviceHandle(hwctx->devmgr, device_handle);
 +    ctx->amfctx = amfctx;
 +    amfctx->avclass = avctx;
@@ -825,7 +828,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
      // If a device was passed to the encoder, try to initialise from that.
      if (avctx->hw_frames_ctx) {
-@@ -251,16 +78,16 @@ static int amf_init_context(AVCodecConte
+@@ -253,16 +80,16 @@ static int amf_init_context(AVCodecConte
          switch (frames_ctx->device_ctx->type) {
  #if CONFIG_D3D11VA
          case AV_HWDEVICE_TYPE_D3D11VA:
@@ -848,7 +851,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
              break;
  #endif
          default:
-@@ -282,16 +109,16 @@ static int amf_init_context(AVCodecConte
+@@ -284,16 +111,16 @@ static int amf_init_context(AVCodecConte
          switch (device_ctx->type) {
  #if CONFIG_D3D11VA
          case AV_HWDEVICE_TYPE_D3D11VA:
@@ -871,7 +874,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
              break;
  #endif
          default:
-@@ -305,40 +132,57 @@ static int amf_init_context(AVCodecConte
+@@ -307,40 +134,57 @@ static int amf_init_context(AVCodecConte
              return AVERROR(ENOMEM);
  
      } else {
@@ -950,7 +953,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
      switch (avctx->codec->id) {
          case AV_CODEC_ID_H264:
-@@ -350,26 +194,70 @@ static int amf_init_encoder(AVCodecConte
+@@ -352,26 +196,70 @@ static int amf_init_encoder(AVCodecConte
          default:
              break;
      }
@@ -989,7 +992,9 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 +            return AVERROR(EINVAL);
 +        }
 +    }
-+
+ 
+-    res = ctx->factory->pVtbl->CreateComponent(ctx->factory, ctx->context, codec_id, &ctx->encoder);
+-    AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_ENCODER_NOT_FOUND, "CreateComponent(%ls) failed with error %d\n", codec_id, res);
 +    ctx->out_color_trc = amf_av_to_amf_color_trc(avctx->color_trc);
 +    ctx->out_color_prm = amf_av_to_amf_color_prm(avctx->color_primaries);
 +
@@ -1013,9 +1018,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 +            ctx->out_color_profile = AMF_VIDEO_CONVERTER_COLOR_PROFILE_UNKNOWN;
 +            break;
 +    }
- 
--    res = ctx->factory->pVtbl->CreateComponent(ctx->factory, ctx->context, codec_id, &ctx->encoder);
--    AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_ENCODER_NOT_FOUND, "CreateComponent(%ls) failed with error %d\n", codec_id, res);
++
 +    res = amfctx->factory->pVtbl->CreateComponent(amfctx->factory, amfctx->context, codec_id, &ctx->encoder);
 +    AMF_RETURN_IF_FALSE(avctx, res == AMF_OK,
 +        AVERROR_ENCODER_NOT_FOUND, "CreateComponent(%ls) failed with error %d\n", codec_id, res);
@@ -1032,7 +1035,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
      if (ctx->delayed_surface) {
          ctx->delayed_surface->pVtbl->Release(ctx->delayed_surface);
-@@ -382,34 +270,33 @@ int av_cold ff_amf_encode_close(AVCodecC
+@@ -384,34 +272,33 @@ int av_cold ff_amf_encode_close(AVCodecC
          ctx->encoder = NULL;
      }
  
@@ -1061,7 +1064,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 -    ctx->version = 0;
 -    ctx->delayed_drain = 0;
      av_frame_free(&ctx->delayed_frame);
-     av_fifo_freep(&ctx->timestamp_list);
+     av_fifo_freep2(&ctx->timestamp_list);
 -
      return 0;
  }
@@ -1086,7 +1089,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  {
      AMFPlane *plane;
      uint8_t  *dst_data[4];
-@@ -425,16 +312,16 @@ static int amf_copy_surface(AVCodecConte
+@@ -427,38 +314,37 @@ static int amf_copy_surface(AVCodecConte
          dst_data[i] = plane->pVtbl->GetNative(plane);
          dst_linesize[i] = plane->pVtbl->GetHPitch(plane);
      }
@@ -1095,17 +1098,6 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
          (const uint8_t**)frame->data, frame->linesize, frame->format,
          avctx->width, avctx->height);
 -
-     return 0;
- }
- 
- static inline int timestamp_queue_enqueue(AVCodecContext *avctx, int64_t timestamp)
- {
--    AmfContext         *ctx = avctx->priv_data;
-+    AMFEncContext *ctx = avctx->priv_data;
-     if (av_fifo_space(ctx->timestamp_list) < sizeof(timestamp)) {
-         if (av_fifo_grow(ctx->timestamp_list, sizeof(timestamp)) < 0) {
-             return AVERROR(ENOMEM);
-@@ -444,31 +331,30 @@ static inline int timestamp_queue_enqueu
      return 0;
  }
  
@@ -1145,37 +1137,26 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
              break;
          default:
              break;
-@@ -478,48 +364,33 @@ static int amf_copy_buffer(AVCodecContex
+@@ -468,44 +354,27 @@ static int amf_copy_buffer(AVCodecContex
  
      pkt->pts = var.int64Value; // original pts
  
 -
--    AMF_RETURN_IF_FALSE(ctx, av_fifo_size(ctx->timestamp_list) > 0, AVERROR_UNKNOWN, "timestamp_list is empty\n");
-+    AMF_RETURN_IF_FALSE(avctx, av_fifo_size(ctx->timestamp_list) > 0, AVERROR_UNKNOWN, "timestamp_list is empty\n");
- 
-     av_fifo_generic_read(ctx->timestamp_list, &timestamp, sizeof(timestamp), NULL);
+-    AMF_RETURN_IF_FALSE(ctx, av_fifo_read(ctx->timestamp_list, &timestamp, 1) >= 0,
+-                        AVERROR_UNKNOWN, "timestamp_list is empty\n");
++    AMF_RETURN_IF_FALSE(ctx, av_fifo_read(ctx->timestamp_list, &timestamp, 1) >= 0, AVERROR_UNKNOWN, "timestamp_list is empty\n");
  
      // calc dts shift if max_b_frames > 0
      if (avctx->max_b_frames > 0 && ctx->dts_delay == 0) {
          int64_t timestamp_last = AV_NOPTS_VALUE;
--        AMF_RETURN_IF_FALSE(ctx, av_fifo_size(ctx->timestamp_list) > 0, AVERROR_UNKNOWN,
+         size_t can_read = av_fifo_can_read(ctx->timestamp_list);
+ 
+-        AMF_RETURN_IF_FALSE(ctx, can_read > 0, AVERROR_UNKNOWN,
 -            "timestamp_list is empty while max_b_frames = %d\n", avctx->max_b_frames);
--        av_fifo_generic_peek_at(
--            ctx->timestamp_list,
--            &timestamp_last,
--            (av_fifo_size(ctx->timestamp_list) / sizeof(timestamp) - 1) * sizeof(timestamp_last),
--            sizeof(timestamp_last),
--            NULL);
++        AMF_RETURN_IF_FALSE(ctx, can_read > 0, AVERROR_UNKNOWN, AVERROR_UNKNOWN, "timestamp_list is empty while max_b_frames = %d\n", avctx->max_b_frames);
++
+         av_fifo_peek(ctx->timestamp_list, &timestamp_last, 1, can_read - 1);
 -        if (timestamp < 0 || timestamp_last < AV_NOPTS_VALUE) {
-+        AMF_RETURN_IF_FALSE(avctx, av_fifo_size(ctx->timestamp_list) > 0,
-+            AVERROR_UNKNOWN, "timestamp_list is empty while max_b_frames = %d\n", avctx->max_b_frames);
-+
-+        av_fifo_generic_peek_at(ctx->timestamp_list,
-+                                &timestamp_last,
-+                                (av_fifo_size(ctx->timestamp_list) / sizeof(timestamp) - 1) * sizeof(timestamp_last),
-+                                sizeof(timestamp_last),
-+                                NULL);
-+
 +        if (timestamp < 0 || timestamp_last < AV_NOPTS_VALUE)
              return AVERROR(ERANGE);
 -        }
@@ -1208,7 +1189,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  {
      AMF_RESULT res;
      AMFVariantStruct var;
-@@ -533,15 +404,16 @@ static AMF_RESULT amf_set_property_buffe
+@@ -519,15 +388,16 @@ static AMF_RESULT amf_set_property_buffe
              res = AMFVariantAssignInterface(&var, amf_interface);
              amf_interface->pVtbl->Release(amf_interface);
          }
@@ -1228,8 +1209,60 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  {
      AMF_RESULT res;
      AMFVariantStruct var;
-@@ -591,7 +463,8 @@ static void amf_release_buffer_with_fram
+@@ -575,9 +445,60 @@ static void amf_release_buffer_with_fram
+     frame_ref_storage_buffer->pVtbl->Release(frame_ref_storage_buffer);
+ }
  
++static int amf_save_hdr_metadata(AVCodecContext *avctx, const AVFrame *frame, AMFHDRMetadata *hdrmeta)
++{
++    AVFrameSideData            *sd_display;
++    AVFrameSideData            *sd_light;
++    AVMasteringDisplayMetadata *display_meta;
++    AVContentLightMetadata     *light_meta;
++
++    sd_display = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
++    if (sd_display) {
++        display_meta = (AVMasteringDisplayMetadata *)sd_display->data;
++        if (display_meta->has_luminance) {
++            const unsigned int luma_den = 10000;
++            hdrmeta->maxMasteringLuminance =
++                (amf_uint32)(luma_den * av_q2d(display_meta->max_luminance));
++            hdrmeta->minMasteringLuminance =
++                FFMIN((amf_uint32)(luma_den * av_q2d(display_meta->min_luminance)), hdrmeta->maxMasteringLuminance);
++        }
++        if (display_meta->has_primaries) {
++            const unsigned int chroma_den = 50000;
++            hdrmeta->redPrimary[0] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->display_primaries[0][0])), chroma_den);
++            hdrmeta->redPrimary[1] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->display_primaries[0][1])), chroma_den);
++            hdrmeta->greenPrimary[0] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->display_primaries[1][0])), chroma_den);
++            hdrmeta->greenPrimary[1] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->display_primaries[1][1])), chroma_den);
++            hdrmeta->bluePrimary[0] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->display_primaries[2][0])), chroma_den);
++            hdrmeta->bluePrimary[1] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->display_primaries[2][1])), chroma_den);
++            hdrmeta->whitePoint[0] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->white_point[0])), chroma_den);
++            hdrmeta->whitePoint[1] =
++                FFMIN((amf_uint16)(chroma_den * av_q2d(display_meta->white_point[1])), chroma_den);
++        }
++
++        sd_light = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++        if (sd_light) {
++            light_meta = (AVContentLightMetadata *)sd_light->data;
++            if (light_meta) {
++                hdrmeta->maxContentLightLevel = (amf_uint16)light_meta->MaxCLL;
++                hdrmeta->maxFrameAverageLightLevel = (amf_uint16)light_meta->MaxFALL;
++            }
++        }
++        return 0;
++    }
++    return 1;
++}
++
  int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
  {
 -    AmfContext *ctx = avctx->priv_data;
@@ -1238,7 +1271,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
      AMFSurface *surface;
      AMF_RESULT  res;
      int         ret;
-@@ -618,10 +491,9 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -604,10 +525,9 @@ int ff_amf_receive_packet(AVCodecContext
                  if (res == AMF_INPUT_FULL) {
                      ctx->delayed_drain = 1; // input queue is full: resubmit Drain() in ff_amf_receive_packet
                  } else {
@@ -1251,7 +1284,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
                  }
              }
          }
-@@ -642,8 +514,8 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -628,8 +548,8 @@ int ff_amf_receive_packet(AVCodecContext
  
                  texture->lpVtbl->SetPrivateData(texture, &AMFTextureArrayIndexGUID, sizeof(index), &index);
  
@@ -1262,7 +1295,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
                  hw_surface = 1;
              }
-@@ -654,8 +526,8 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -640,8 +560,8 @@ int ff_amf_receive_packet(AVCodecContext
              {
                  IDirect3DSurface9 *texture = (IDirect3DSurface9 *)frame->data[3]; // actual texture
  
@@ -1273,7 +1306,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
                  hw_surface = 1;
              }
-@@ -663,8 +535,8 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -649,8 +569,8 @@ int ff_amf_receive_packet(AVCodecContext
  #endif
          default:
              {
@@ -1284,7 +1317,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
                  amf_copy_surface(avctx, frame, surface);
              }
              break;
-@@ -676,11 +548,12 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -662,27 +582,46 @@ int ff_amf_receive_packet(AVCodecContext
              // input HW surfaces can be vertically aligned by 16; tell AMF the real size
              surface->pVtbl->SetCrop(surface, 0, 0, frame->width, frame->height);
  
@@ -1300,7 +1333,29 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
              ctx->hwsurfaces_in_queue++;
              frame_ref_storage_buffer->pVtbl->Release(frame_ref_storage_buffer);
          }
-@@ -690,13 +563,11 @@ int ff_amf_receive_packet(AVCodecContext
+ 
++        // HDR10 metadata
++        if (frame->color_trc == AVCOL_TRC_SMPTE2084) {
++            AMFBuffer *hdrmeta_buffer = NULL;
++            res = amfctx->context->pVtbl->AllocBuffer(amfctx->context, AMF_MEMORY_HOST, sizeof(AMFHDRMetadata), &hdrmeta_buffer);
++            if (res == AMF_OK) {
++                AMFHDRMetadata *hdrmeta = (AMFHDRMetadata*)hdrmeta_buffer->pVtbl->GetNative(hdrmeta_buffer);
++                if (amf_save_hdr_metadata(avctx, frame, hdrmeta) == 0) {
++                    switch (avctx->codec->id) {
++                    case AV_CODEC_ID_H264:
++                        AMF_ASSIGN_PROPERTY_INTERFACE(res, ctx->encoder, AMF_VIDEO_ENCODER_INPUT_HDR_METADATA, hdrmeta_buffer); break;
++                    case AV_CODEC_ID_HEVC:
++                        AMF_ASSIGN_PROPERTY_INTERFACE(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_INPUT_HDR_METADATA, hdrmeta_buffer); break;
++                    }
++                    res = amf_set_property_buffer(surface, L"av_frame_hdrmeta", hdrmeta_buffer);
++                    AMF_RETURN_IF_FALSE(avctx, res == AMF_OK, AVERROR_UNKNOWN, "SetProperty failed for \"av_frame_hdrmeta\" with error %d\n", res);
++                }
++                hdrmeta_buffer->pVtbl->Release(hdrmeta_buffer);
++            }
++        }
++
+         surface->pVtbl->SetPts(surface, frame->pts);
+         AMF_ASSIGN_PROPERTY_INT64(res, surface, PTS_PROP, frame->pts);
  
          switch (avctx->codec->id) {
          case AV_CODEC_ID_H264:
@@ -1318,7 +1373,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
          }
  
          // submit surface
-@@ -707,16 +578,14 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -693,7 +632,7 @@ int ff_amf_receive_packet(AVCodecContext
          } else {
              int64_t pts = frame->pts;
              surface->pVtbl->Release(surface);
@@ -1326,10 +1381,8 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 +            AMF_RETURN_IF_FALSE(avctx, res == AMF_OK, AVERROR_UNKNOWN, "SubmitInput() failed with error %d\n", res);
  
              av_frame_unref(frame);
--            if ((ret = timestamp_queue_enqueue(avctx, pts)) < 0) {
-+            if ((ret = timestamp_queue_enqueue(avctx, pts)) < 0)
-                 return ret;
--            }
+             ret = av_fifo_write(ctx->timestamp_list, &pts, 1);
+@@ -702,7 +641,6 @@ int ff_amf_receive_packet(AVCodecContext
          }
      }
  
@@ -1337,7 +1390,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
      do {
          block_and_wait = 0;
          // poll data
-@@ -733,14 +602,14 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -719,23 +657,35 @@ int ff_amf_receive_packet(AVCodecContext
              if (data->pVtbl->HasProperty(data, L"av_frame_ref")) {
                  AMFBuffer *frame_ref_storage_buffer;
                  res = amf_get_property_buffer(data, L"av_frame_ref", &frame_ref_storage_buffer);
@@ -1353,22 +1406,30 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 +            AMF_RETURN_IF_FALSE(avctx, ret >= 0, ret, "amf_copy_buffer() failed with error %d\n", ret);
  
              if (ctx->delayed_surface != NULL) { // try to resubmit frame
++                if (ctx->delayed_surface->pVtbl->HasProperty(ctx->delayed_surface, L"av_frame_hdrmeta")) {
++                    AMFBuffer *hdrmeta_buffer = NULL;
++                    res = amf_get_property_buffer((AMFData *)ctx->delayed_surface, L"av_frame_hdrmeta", &hdrmeta_buffer);
++                    AMF_RETURN_IF_FALSE(avctx, res == AMF_OK, AVERROR_UNKNOWN, "GetProperty failed for \"av_frame_hdrmeta\" with error %d\n", res);
++                    switch (avctx->codec->id) {
++                    case AV_CODEC_ID_H264:
++                        AMF_ASSIGN_PROPERTY_INTERFACE(res, ctx->encoder, AMF_VIDEO_ENCODER_INPUT_HDR_METADATA, hdrmeta_buffer); break;
++                    case AV_CODEC_ID_HEVC:
++                        AMF_ASSIGN_PROPERTY_INTERFACE(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_INPUT_HDR_METADATA, hdrmeta_buffer); break;
++                    }
++                    hdrmeta_buffer->pVtbl->Release(hdrmeta_buffer);
++                }
                  res = ctx->encoder->pVtbl->SubmitInput(ctx->encoder, (AMFData*)ctx->delayed_surface);
-@@ -749,11 +618,10 @@ int ff_amf_receive_packet(AVCodecContext
+                 if (res != AMF_INPUT_FULL) {
+                     int64_t pts = ctx->delayed_surface->pVtbl->GetPts(ctx->delayed_surface);
                      ctx->delayed_surface->pVtbl->Release(ctx->delayed_surface);
                      ctx->delayed_surface = NULL;
                      av_frame_unref(ctx->delayed_frame);
 -                    AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_UNKNOWN, "Repeated SubmitInput() failed with error %d\n", res);
 +                    AMF_RETURN_IF_FALSE(avctx, res == AMF_OK, AVERROR_UNKNOWN, "Repeated SubmitInput() failed with error %d\n", res);
  
--                    if ((ret = timestamp_queue_enqueue(avctx, pts)) < 0) {
-+                    if ((ret = timestamp_queue_enqueue(avctx, pts)) < 0)
-                         return ret;
--                    }
-                 } else {
-                     av_log(avctx, AV_LOG_WARNING, "Data acquired but delayed frame submission got AMF_INPUT_FULL- should not happen\n");
-                 }
-@@ -762,24 +630,26 @@ int ff_amf_receive_packet(AVCodecContext
+                     ret = av_fifo_write(ctx->timestamp_list, &pts, 1);
+                     if (ret < 0)
+@@ -748,24 +698,26 @@ int ff_amf_receive_packet(AVCodecContext
                  if (res != AMF_INPUT_FULL) {
                      ctx->delayed_drain = 0;
                      ctx->eof = 1; // drain started
@@ -1568,7 +1629,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/amfenc_h264.c
 +++ jellyfin-ffmpeg/libavcodec/amfenc_h264.c
-@@ -16,111 +16,103 @@
+@@ -16,112 +16,104 @@
   * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
   */
  
@@ -1576,6 +1637,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  #include "libavutil/internal.h"
  #include "libavutil/opt.h"
  #include "amfenc.h"
+ #include "codec_internal.h"
  #include "internal.h"
  
 -#define OFFSET(x) offsetof(AmfContext, x)
@@ -1768,7 +1830,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      { NULL }
  };
  
-@@ -128,7 +120,7 @@ static av_cold int amf_encode_init_h264(
+@@ -129,7 +121,7 @@ static av_cold int amf_encode_init_h264(
  {
      int                              ret = 0;
      AMF_RESULT                       res = AMF_OK;
@@ -1777,7 +1839,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      AMFVariantStruct                 var = { 0 };
      amf_int64                        profile = 0;
      amf_int64                        profile_level = 0;
-@@ -136,13 +128,13 @@ static av_cold int amf_encode_init_h264(
+@@ -137,13 +129,13 @@ static av_cold int amf_encode_init_h264(
      AMFGuid                          guid;
      AMFRate                          framerate;
      AMFSize                          framesize = AMFConstructSize(avctx->width, avctx->height);
@@ -1794,7 +1856,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  
      if ((ret = ff_amf_encode_init(avctx)) != 0)
          return ret;
-@@ -171,62 +163,84 @@ static av_cold int amf_encode_init_h264(
+@@ -172,62 +164,84 @@ static av_cold int amf_encode_init_h264(
          profile = AMF_VIDEO_ENCODER_PROFILE_CONSTRAINED_HIGH;
          break;
      }
@@ -1905,7 +1967,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      if (avctx->rc_buffer_size != 0) {
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_VBV_BUFFER_SIZE, avctx->rc_buffer_size);
          if (avctx->rc_initial_buffer_occupancy != 0) {
-@@ -236,7 +250,8 @@ static av_cold int amf_encode_init_h264(
+@@ -237,7 +251,8 @@ static av_cold int amf_encode_init_h264(
              AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_INITIAL_VBV_BUFFER_FULLNESS, amf_buffer_fullness);
          }
      }
@@ -1915,7 +1977,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MAX_AU_SIZE, ctx->max_au_size);
  
      if (ctx->max_au_size)
-@@ -246,7 +261,25 @@ static av_cold int amf_encode_init_h264(
+@@ -247,7 +262,25 @@ static av_cold int amf_encode_init_h264(
      if (ctx->rate_control_mode == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CONSTANT_QP) {
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MIN_QP, 0);
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MAX_QP, 51);
@@ -1941,7 +2003,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
          if (avctx->qmin != -1) {
              int qval = avctx->qmin > 51 ? 51 : avctx->qmin;
              AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_MIN_QP, qval);
-@@ -266,31 +299,50 @@ static av_cold int amf_encode_init_h264(
+@@ -267,31 +300,50 @@ static av_cold int amf_encode_init_h264(
  
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_TARGET_BITRATE, avctx->bit_rate);
  
@@ -1998,7 +2060,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  
      // B-Frames
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_B_PIC_PATTERN, avctx->max_b_frames);
-@@ -301,6 +353,7 @@ static av_cold int amf_encode_init_h264(
+@@ -302,6 +354,7 @@ static av_cold int amf_encode_init_h264(
          avctx->max_b_frames = (int)var.int64Value;
      }
      if (avctx->max_b_frames) {
@@ -2006,7 +2068,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_B_PIC_DELTA_QP, ctx->b_frame_delta_qp);
          AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_B_REFERENCE_ENABLE, !!ctx->b_frame_ref);
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_REF_B_PIC_DELTA_QP, ctx->ref_b_frame_delta_qp);
-@@ -338,9 +391,8 @@ static av_cold int amf_encode_init_h264(
+@@ -339,9 +392,8 @@ static av_cold int amf_encode_init_h264(
      guid = IID_AMFBuffer();
  
      res = var.pInterface->pVtbl->QueryInterface(var.pInterface, &guid, (void**)&buffer); // query for buffer interface
@@ -2017,10 +2079,10 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
      AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_BUG, "QueryInterface(IID_AMFBuffer) failed with error %d\n", res);
  
      avctx->extradata_size = (int)buffer->pVtbl->GetSize(buffer);
-@@ -359,15 +411,15 @@ static av_cold int amf_encode_init_h264(
+@@ -360,15 +412,15 @@ static av_cold int amf_encode_init_h264(
  }
  
- static const AVCodecDefault defaults[] = {
+ static const FFCodecDefault defaults[] = {
 -    { "refs",       "-1"  },
 -    { "aspect",     "0"   },
 -    { "qmin",       "-1"  },
@@ -2042,28 +2104,28 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_h264.c
  };
  
  static const AVClass h264_amf_class = {
-@@ -385,13 +437,13 @@ const AVCodec ff_h264_amf_encoder = {
+@@ -386,13 +438,13 @@ const FFCodec ff_h264_amf_encoder = {
      .init           = amf_encode_init_h264,
-     .receive_packet = ff_amf_receive_packet,
+     FF_CODEC_RECEIVE_PACKET_CB(ff_amf_receive_packet),
      .close          = ff_amf_encode_close,
 -    .priv_data_size = sizeof(AmfContext),
 +    .priv_data_size = sizeof(AMFEncContext),
-     .priv_class     = &h264_amf_class,
+     .p.priv_class   = &h264_amf_class,
      .defaults       = defaults,
-     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                        AV_CODEC_CAP_DR1,
      .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
--    .pix_fmts       = ff_amf_pix_fmts,
-+    .pix_fmts       = ff_amfenc_h264_pix_fmts,
-     .wrapper_name   = "amf",
+-    .p.pix_fmts     = ff_amf_pix_fmts,
++    .p.pix_fmts     = ff_amfenc_h264_pix_fmts,
+     .p.wrapper_name = "amf",
      .hw_configs     = ff_amfenc_hw_configs,
  };
 Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/amfenc_hevc.c
 +++ jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
-@@ -21,73 +21,91 @@
- #include "amfenc.h"
+@@ -22,73 +22,91 @@
+ #include "codec_internal.h"
  #include "internal.h"
  
 -#define OFFSET(x) offsetof(AmfContext, x)
@@ -2218,7 +2280,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      { NULL }
  };
  
-@@ -95,8 +113,8 @@ static av_cold int amf_encode_init_hevc(
+@@ -96,8 +114,8 @@ static av_cold int amf_encode_init_hevc(
  {
      int                 ret = 0;
      AMF_RESULT          res = AMF_OK;
@@ -2229,7 +2291,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      amf_int64           profile = 0;
      amf_int64           profile_level = 0;
      AMFBuffer          *buffer;
-@@ -105,16 +123,15 @@ static av_cold int amf_encode_init_hevc(
+@@ -106,16 +124,15 @@ static av_cold int amf_encode_init_hevc(
      AMFSize             framesize = AMFConstructSize(avctx->width, avctx->height);
      int                 deblocking_filter = (avctx->flags & AV_CODEC_FLAG_LOOP_FILTER) ? 1 : 0;
  
@@ -2249,7 +2311,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_USAGE, ctx->usage);
  
      AMF_ASSIGN_PROPERTY_SIZE(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_FRAMESIZE, framesize);
-@@ -125,28 +142,28 @@ static av_cold int amf_encode_init_hevc(
+@@ -126,28 +143,28 @@ static av_cold int amf_encode_init_hevc(
      case FF_PROFILE_HEVC_MAIN:
          profile = AMF_VIDEO_ENCODER_HEVC_PROFILE_MAIN;
          break;
@@ -2286,7 +2348,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      // Aspect Ratio
      if (avctx->sample_aspect_ratio.den && avctx->sample_aspect_ratio.num) {
          AMFRatio ratio = AMFConstructRatio(avctx->sample_aspect_ratio.num, avctx->sample_aspect_ratio.den);
-@@ -156,30 +173,28 @@ static av_cold int amf_encode_init_hevc(
+@@ -157,30 +174,28 @@ static av_cold int amf_encode_init_hevc(
      // Picture control properties
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_NUM_GOPS_PER_IDR, ctx->gops_per_idr);
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_GOP_SIZE, avctx->gop_size);
@@ -2323,7 +2385,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD, ctx->rate_control_mode);
      if (avctx->rc_buffer_size) {
          AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_VBV_BUFFER_SIZE, avctx->rc_buffer_size);
-@@ -191,20 +206,37 @@ static av_cold int amf_encode_init_hevc(
+@@ -192,20 +207,37 @@ static av_cold int amf_encode_init_hevc(
              AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_INITIAL_VBV_BUFFER_FULLNESS, amf_buffer_fullness);
          }
      }
@@ -2367,7 +2429,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      if (ctx->max_au_size)
          ctx->enforce_hrd = 1;
      AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_ENFORCE_HRD, ctx->enforce_hrd);
-@@ -212,57 +244,99 @@ static av_cold int amf_encode_init_hevc(
+@@ -213,57 +245,99 @@ static av_cold int amf_encode_init_hevc(
  
      AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_TARGET_BITRATE, avctx->bit_rate);
  
@@ -2380,16 +2442,16 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      } else if (ctx->rate_control_mode == AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR) {
 -        av_log(ctx, AV_LOG_WARNING, "rate control mode is PEAK_CONSTRAINED_VBR but rc_max_rate is not set\n");
 +        av_log(ctx, AV_LOG_WARNING, "Rate control method is PEAK_CONSTRAINED_VBR but rc_max_rate is not set\n");
-     }
- 
--    // init encoder
++    }
++
 +    // Color Range (Studio/Partial/TV/MPEG or Full/PC/JPEG)
 +    if (avctx->color_range == AVCOL_RANGE_JPEG) {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE_FULL);
 +    } else {
 +        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE, AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE_STUDIO);
-+    }
-+
+     }
+ 
+-    // init encoder
 +    // Output color profile, transfer and primaries
 +    if (ctx->out_color_profile > AMF_VIDEO_CONVERTER_COLOR_PROFILE_UNKNOWN)
 +        AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_HEVC_OUTPUT_COLOR_PROFILE, ctx->out_color_profile);
@@ -2501,7 +2563,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      res = AMFVariantInit(&var);
      AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_BUG, "AMFVariantInit() failed with error %d\n", res);
  
-@@ -273,9 +347,8 @@ static av_cold int amf_encode_init_hevc(
+@@ -274,9 +348,8 @@ static av_cold int amf_encode_init_hevc(
      guid = IID_AMFBuffer();
  
      res = var.pInterface->pVtbl->QueryInterface(var.pInterface, &guid, (void**)&buffer); // query for buffer interface
@@ -2512,27 +2574,35 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc_hevc.c
      AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_BUG, "QueryInterface(IID_AMFBuffer) failed with error %d\n", res);
  
      avctx->extradata_size = (int)buffer->pVtbl->GetSize(buffer);
-@@ -292,6 +365,7 @@ static av_cold int amf_encode_init_hevc(
+@@ -293,6 +366,7 @@ static av_cold int amf_encode_init_hevc(
  
      return 0;
  }
 +
- static const AVCodecDefault defaults[] = {
+ static const FFCodecDefault defaults[] = {
      { "refs",       "-1"  },
      { "aspect",     "0"   },
-@@ -317,13 +391,13 @@ const AVCodec ff_hevc_amf_encoder = {
+@@ -303,6 +377,7 @@ static const FFCodecDefault defaults[] =
+     { "qmax",       "-1"  },
+     { NULL                },
+ };
++
+ static const AVClass hevc_amf_class = {
+     .class_name = "hevc_amf",
+     .item_name = av_default_item_name,
+@@ -318,13 +393,13 @@ const FFCodec ff_hevc_amf_encoder = {
      .init           = amf_encode_init_hevc,
-     .receive_packet = ff_amf_receive_packet,
+     FF_CODEC_RECEIVE_PACKET_CB(ff_amf_receive_packet),
      .close          = ff_amf_encode_close,
 -    .priv_data_size = sizeof(AmfContext),
 +    .priv_data_size = sizeof(AMFEncContext),
-     .priv_class     = &hevc_amf_class,
+     .p.priv_class   = &hevc_amf_class,
      .defaults       = defaults,
-     .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                        AV_CODEC_CAP_DR1,
      .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
--    .pix_fmts       = ff_amf_pix_fmts,
-+    .pix_fmts       = ff_amfenc_hevc_pix_fmts,
-     .wrapper_name   = "amf",
+-    .p.pix_fmts     = ff_amf_pix_fmts,
++    .p.pix_fmts     = ff_amfenc_hevc_pix_fmts,
+     .p.wrapper_name = "amf",
      .hw_configs     = ff_amfenc_hw_configs,
  };

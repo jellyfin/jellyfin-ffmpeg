@@ -28,6 +28,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct KgvContext {
@@ -43,10 +44,9 @@ static void decode_flush(AVCodecContext *avctx)
     av_freep(&c->last_frame_buffer);
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
-    AVFrame *frame = data;
     const uint8_t *buf = avpkt->data;
     const uint8_t *buf_end = buf + avpkt->size;
     KgvContext * const c = avctx->priv_data;
@@ -176,16 +176,16 @@ static av_cold int decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_kgv1_decoder = {
-    .name           = "kgv1",
-    .long_name      = NULL_IF_CONFIG_SMALL("Kega Game Video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_KGV1,
+const FFCodec ff_kgv1_decoder = {
+    .p.name         = "kgv1",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Kega Game Video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_KGV1,
     .priv_data_size = sizeof(KgvContext),
     .init           = decode_init,
     .close          = decode_end,
-    .decode         = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .flush          = decode_flush,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

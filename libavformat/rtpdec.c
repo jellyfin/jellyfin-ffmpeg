@@ -538,7 +538,7 @@ static int opus_write_extradata(AVCodecParameters *codecpar)
      * This mapping family only supports mono and stereo layouts. And RFC7587
      * specifies that the number of channels in the SDP must be 2.
      */
-    if (codecpar->channels > 2) {
+    if (codecpar->ch_layout.nb_channels > 2) {
         return AVERROR_INVALIDDATA;
     }
 
@@ -553,7 +553,7 @@ static int opus_write_extradata(AVCodecParameters *codecpar)
     /* Version */
     bytestream_put_byte  (&bs, 0x1);
     /* Channel count */
-    bytestream_put_byte  (&bs, codecpar->channels);
+    bytestream_put_byte  (&bs, codecpar->ch_layout.nb_channels);
     /* Pre skip */
     bytestream_put_le16  (&bs, 0);
     /* Input sample rate */
@@ -835,9 +835,14 @@ static int rtp_parse_queued_packet(RTPDemuxContext *s, AVPacket *pkt)
     if (s->queue_len <= 0)
         return -1;
 
-    if (!has_next_packet(s))
+    if (!has_next_packet(s)) {
+        int pkt_missed  = s->queue->seq - s->seq - 1;
+
+        if (pkt_missed < 0)
+            pkt_missed += UINT16_MAX;
         av_log(s->ic, AV_LOG_WARNING,
-               "RTP: missed %d packets\n", s->queue->seq - s->seq - 1);
+               "RTP: missed %d packets\n", pkt_missed);
+    }
 
     /* Parse the first packet in the queue, and dequeue it */
     rv   = rtp_parse_packet_internal(s, pkt, s->queue->buf, s->queue->len);

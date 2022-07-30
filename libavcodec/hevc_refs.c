@@ -22,12 +22,11 @@
  */
 
 #include "libavutil/avassert.h"
-#include "libavutil/pixdesc.h"
 
-#include "internal.h"
 #include "thread.h"
 #include "hevc.h"
 #include "hevcdec.h"
+#include "threadframe.h"
 
 void ff_hevc_unref_frame(HEVCContext *s, HEVCFrame *frame, int flags)
 {
@@ -37,8 +36,8 @@ void ff_hevc_unref_frame(HEVCContext *s, HEVCFrame *frame, int flags)
 
     frame->flags &= ~flags;
     if (!frame->flags) {
-        ff_thread_release_buffer(s->avctx, &frame->tf);
-        ff_thread_release_buffer(s->avctx, &frame->tf_grain);
+        ff_thread_release_ext_buffer(s->avctx, &frame->tf);
+        ff_thread_release_buffer(s->avctx, frame->frame_grain);
         frame->needs_fg = 0;
 
         av_buffer_unref(&frame->tab_mvf_buf);
@@ -56,13 +55,14 @@ void ff_hevc_unref_frame(HEVCContext *s, HEVCFrame *frame, int flags)
     }
 }
 
-RefPicList *ff_hevc_get_ref_list(HEVCContext *s, HEVCFrame *ref, int x0, int y0)
+const RefPicList *ff_hevc_get_ref_list(const HEVCContext *s,
+                                       const HEVCFrame *ref, int x0, int y0)
 {
     int x_cb         = x0 >> s->ps.sps->log2_ctb_size;
     int y_cb         = y0 >> s->ps.sps->log2_ctb_size;
     int pic_width_cb = s->ps.sps->ctb_width;
     int ctb_addr_ts  = s->ps.pps->ctb_addr_rs_to_ts[y_cb * pic_width_cb + x_cb];
-    return (RefPicList *)ref->rpl_tab[ctb_addr_ts];
+    return &ref->rpl_tab[ctb_addr_ts]->refPicList[0];
 }
 
 void ff_hevc_clear_refs(HEVCContext *s)
@@ -89,8 +89,8 @@ static HEVCFrame *alloc_frame(HEVCContext *s)
         if (frame->frame->buf[0])
             continue;
 
-        ret = ff_thread_get_buffer(s->avctx, &frame->tf,
-                                   AV_GET_BUFFER_FLAG_REF);
+        ret = ff_thread_get_ext_buffer(s->avctx, &frame->tf,
+                                       AV_GET_BUFFER_FLAG_REF);
         if (ret < 0)
             return NULL;
 
@@ -402,9 +402,9 @@ static HEVCFrame *generate_missing_ref(HEVCContext *s, int poc)
 
     if (!s->avctx->hwaccel) {
         if (!s->ps.sps->pixel_shift) {
-            for (i = 0; frame->frame->buf[i]; i++)
-                memset(frame->frame->buf[i]->data, 1 << (s->ps.sps->bit_depth - 1),
-                       frame->frame->buf[i]->size);
+            for (i = 0; frame->frame->data[i]; i++)
+                memset(frame->frame->data[i], 1 << (s->ps.sps->bit_depth - 1),
+                       frame->frame->linesize[i] * AV_CEIL_RSHIFT(s->ps.sps->height, s->ps.sps->vshift[i]));
         } else {
             for (i = 0; frame->frame->data[i]; i++)
                 for (y = 0; y < (s->ps.sps->height >> s->ps.sps->vshift[i]); y++) {

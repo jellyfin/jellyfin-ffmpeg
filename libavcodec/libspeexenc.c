@@ -28,8 +28,8 @@
  * order to control various encoding parameters.
  *
  * Channels
- *     Speex only supports mono or stereo, so avctx->channels must be set to
- *     1 or 2.
+ *     Speex only supports mono or stereo, so avctx->ch_layout.nb_channels must
+ *     be set to 1 or 2.
  *
  * Sample Rate / Encoding Mode
  *     Speex has 3 modes, each of which uses a specific sample rate.
@@ -89,8 +89,8 @@
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "audio_frame_queue.h"
 
 /* TODO: Think about converting abr, vad, dtx and such flags to a bit field */
@@ -114,7 +114,7 @@ static av_cold void print_enc_params(AVCodecContext *avctx,
 {
     const char *mode_str = "unknown";
 
-    av_log(avctx, AV_LOG_DEBUG, "channels: %d\n", avctx->channels);
+    av_log(avctx, AV_LOG_DEBUG, "channels: %d\n", avctx->ch_layout.nb_channels);
     switch (s->header.mode) {
     case SPEEX_MODEID_NB:  mode_str = "narrowband";     break;
     case SPEEX_MODEID_WB:  mode_str = "wideband";       break;
@@ -146,15 +146,16 @@ static av_cold void print_enc_params(AVCodecContext *avctx,
 static av_cold int encode_init(AVCodecContext *avctx)
 {
     LibSpeexEncContext *s = avctx->priv_data;
+    int channels = avctx->ch_layout.nb_channels;
     const SpeexMode *mode;
     uint8_t *header_data;
     int header_size;
     int32_t complexity;
 
     /* channels */
-    if (avctx->channels < 1 || avctx->channels > 2) {
+    if (channels < 1 || channels > 2) {
         av_log(avctx, AV_LOG_ERROR, "Invalid channels (%d). Only stereo and "
-               "mono are supported\n", avctx->channels);
+               "mono are supported\n", channels);
         return AVERROR(EINVAL);
     }
 
@@ -175,7 +176,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Error initializing libspeex\n");
         return -1;
     }
-    speex_init_header(&s->header, avctx->sample_rate, avctx->channels, mode);
+    speex_init_header(&s->header, avctx->sample_rate, channels, mode);
 
     /* rate control method and parameters */
     if (avctx->flags & AV_CODEC_FLAG_QSCALE) {
@@ -210,7 +211,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
         }
         /* stereo side information adds about 800 bps to the base bitrate */
         /* TODO: this should be calculated exactly */
-        avctx->bit_rate = s->header.bitrate + (avctx->channels == 2 ? 800 : 0);
+        avctx->bit_rate = s->header.bitrate + (channels == 2 ? 800 : 0);
     }
 
     /* VAD is activated with VBR or can be turned on by itself */
@@ -275,7 +276,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     if (samples) {
         /* encode Speex frame */
-        if (avctx->channels == 2)
+        if (avctx->ch_layout.nb_channels == 2)
             speex_encode_stereo_int(samples, s->header.frame_size, &s->bits);
         speex_encode_int(s->enc_state, samples, &s->bits);
         s->pkt_frame_count++;
@@ -341,29 +342,35 @@ static const AVClass speex_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault defaults[] = {
+static const FFCodecDefault defaults[] = {
     { "b",                 "0" },
     { "compression_level", "3" },
     { NULL },
 };
 
-const AVCodec ff_libspeex_encoder = {
-    .name           = "libspeex",
-    .long_name      = NULL_IF_CONFIG_SMALL("libspeex Speex"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_SPEEX,
+const FFCodec ff_libspeex_encoder = {
+    .p.name         = "libspeex",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("libspeex Speex"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_SPEEX,
     .priv_data_size = sizeof(LibSpeexEncContext),
     .init           = encode_init,
-    .encode2        = encode_frame,
+    FF_CODEC_ENCODE_CB(encode_frame),
     .close          = encode_close,
-    .capabilities   = AV_CODEC_CAP_DELAY,
-    .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
+    .p.capabilities = AV_CODEC_CAP_DELAY,
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                      AV_SAMPLE_FMT_NONE },
-    .channel_layouts = (const uint64_t[]){ AV_CH_LAYOUT_MONO,
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts = (const uint64_t[]){ AV_CH_LAYOUT_MONO,
                                            AV_CH_LAYOUT_STEREO,
                                            0 },
-    .supported_samplerates = (const int[]){ 8000, 16000, 32000, 0 },
-    .priv_class     = &speex_class,
+#endif
+    .p.ch_layouts    = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO,
+                                                   AV_CHANNEL_LAYOUT_STEREO,
+                                                   { 0 },
+    },
+    .p.supported_samplerates = (const int[]){ 8000, 16000, 32000, 0 },
+    .p.priv_class   = &speex_class,
     .defaults       = defaults,
-    .wrapper_name   = "libspeex",
+    .p.wrapper_name = "libspeex",
 };

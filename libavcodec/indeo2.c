@@ -29,6 +29,7 @@
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "indeo2data.h"
 #include "internal.h"
@@ -150,14 +151,12 @@ static int ir2_decode_plane_inter(Ir2Context *ctx, int width, int height, uint8_
     return 0;
 }
 
-static int ir2_decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int ir2_decode_frame(AVCodecContext *avctx, AVFrame *picture,
+                            int *got_frame, AVPacket *avpkt)
 {
     Ir2Context * const s = avctx->priv_data;
     const uint8_t *buf   = avpkt->data;
     int buf_size         = avpkt->size;
-    AVFrame *picture     = data;
     AVFrame * const p    = s->picture;
     int start, ret;
     int ltab, ctab;
@@ -260,15 +259,15 @@ static av_cold int ir2_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_indeo2_decoder = {
-    .name           = "indeo2",
-    .long_name      = NULL_IF_CONFIG_SMALL("Intel Indeo 2"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_INDEO2,
+const FFCodec ff_indeo2_decoder = {
+    .p.name         = "indeo2",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Intel Indeo 2"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_INDEO2,
     .priv_data_size = sizeof(Ir2Context),
     .init           = ir2_decode_init,
     .close          = ir2_decode_end,
-    .decode         = ir2_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(ir2_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -29,9 +29,11 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "lossless_videodsp.h"
+#include "zlib_wrapper.h"
 
 #include <zlib.h>
 
@@ -43,7 +45,7 @@ typedef struct MVHAContext {
     uint32_t          prob[256];
     VLC               vlc;
 
-    z_stream          zstream;
+    FFZStream         zstream;
     LLVidDSPContext   llviddsp;
 } MVHAContext;
 
@@ -146,12 +148,10 @@ static int build_vlc(AVCodecContext *avctx, VLC *vlc)
     return ff_init_vlc_sparse(vlc, 12, pos, lens, 2, 2, bits, 4, 4, xlat, 1, 1, 0);
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     MVHAContext *s = avctx->priv_data;
-    AVFrame *frame = data;
     uint32_t type, size;
     int ret;
 
@@ -168,21 +168,22 @@ static int decode_frame(AVCodecContext *avctx,
         return ret;
 
     if (type == MKTAG('L','Z','Y','V')) {
-        ret = inflateReset(&s->zstream);
+        z_stream *const zstream = &s->zstream.zstream;
+        ret = inflateReset(zstream);
         if (ret != Z_OK) {
             av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", ret);
             return AVERROR_EXTERNAL;
         }
 
-        s->zstream.next_in  = avpkt->data + 8;
-        s->zstream.avail_in = avpkt->size - 8;
+        zstream->next_in  = avpkt->data + 8;
+        zstream->avail_in = avpkt->size - 8;
 
         for (int p = 0; p < 3; p++) {
             for (int y = 0; y < avctx->height; y++) {
-                s->zstream.next_out  = frame->data[p] + (avctx->height - y - 1) * frame->linesize[p];
-                s->zstream.avail_out = avctx->width >> (p > 0);
+                zstream->next_out  = frame->data[p] + (avctx->height - y - 1) * frame->linesize[p];
+                zstream->avail_out = avctx->width >> (p > 0);
 
-                ret = inflate(&s->zstream, Z_SYNC_FLUSH);
+                ret = inflate(zstream, Z_SYNC_FLUSH);
                 if (ret != Z_OK && ret != Z_STREAM_END) {
                     av_log(avctx, AV_LOG_ERROR, "Inflate error: %d\n", ret);
                     return AVERROR_EXTERNAL;
@@ -279,44 +280,34 @@ static int decode_frame(AVCodecContext *avctx,
 static av_cold int decode_init(AVCodecContext *avctx)
 {
     MVHAContext *s = avctx->priv_data;
-    int zret;
 
     avctx->pix_fmt = AV_PIX_FMT_YUV422P;
 
-    s->zstream.zalloc = Z_NULL;
-    s->zstream.zfree = Z_NULL;
-    s->zstream.opaque = Z_NULL;
-    zret = inflateInit(&s->zstream);
-    if (zret != Z_OK) {
-        av_log(avctx, AV_LOG_ERROR, "Inflate init error: %d\n", zret);
-        return AVERROR_EXTERNAL;
-    }
-
     ff_llviddsp_init(&s->llviddsp);
 
-    return 0;
+    return ff_inflate_init(&s->zstream, avctx);
 }
 
 static av_cold int decode_close(AVCodecContext *avctx)
 {
     MVHAContext *s = avctx->priv_data;
 
-    inflateEnd(&s->zstream);
+    ff_inflate_end(&s->zstream);
     ff_free_vlc(&s->vlc);
 
     return 0;
 }
 
-const AVCodec ff_mvha_decoder = {
-    .name             = "mvha",
-    .long_name        = NULL_IF_CONFIG_SMALL("MidiVid Archive Codec"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_MVHA,
+const FFCodec ff_mvha_decoder = {
+    .p.name           = "mvha",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("MidiVid Archive Codec"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_MVHA,
     .priv_data_size   = sizeof(MVHAContext),
     .init             = decode_init,
     .close            = decode_close,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
                         FF_CODEC_CAP_INIT_CLEANUP,
 };

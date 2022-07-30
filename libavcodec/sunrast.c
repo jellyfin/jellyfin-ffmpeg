@@ -23,15 +23,15 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "sunrast.h"
 
-static int sunrast_decode_frame(AVCodecContext *avctx, void *data,
+static int sunrast_decode_frame(AVCodecContext *avctx, AVFrame *p,
                                 int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf       = avpkt->data;
     const uint8_t *buf_end   = avpkt->data + avpkt->size;
-    AVFrame * const p        = data;
     unsigned int w, h, depth, type, maptype, maplength, stride, x, y, len, alen;
     uint8_t *ptr, *ptr2 = NULL;
     const uint8_t *bufstart = buf;
@@ -205,11 +205,11 @@ static int sunrast_decode_frame(AVCodecContext *avctx, void *data,
     return buf - bufstart;
 }
 
-const AVCodec ff_sunrast_decoder = {
-    .name           = "sunrast",
-    .long_name      = NULL_IF_CONFIG_SMALL("Sun Rasterfile image"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SUNRAST,
-    .decode         = sunrast_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+const FFCodec ff_sunrast_decoder = {
+    .p.name         = "sunrast",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Sun Rasterfile image"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SUNRAST,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(sunrast_decode_frame),
 };

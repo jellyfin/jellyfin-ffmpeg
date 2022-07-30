@@ -1325,7 +1325,8 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
         AV_PIX_FMT_YUV444P, AV_PIX_FMT_RGB24, AV_PIX_FMT_NONE
     };
-    static const int64_t channel_layouts[] = { AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_STEREO_DOWNMIX, -1 };
+    static const AVChannelLayout channel_layouts[] = { AV_CHANNEL_LAYOUT_STEREO,
+                                                       AV_CHANNEL_LAYOUT_STEREO_DOWNMIX, { 0 } };
     int ret;
 
     /* set input audio formats */
@@ -1333,7 +1334,7 @@ static int query_formats(AVFilterContext *ctx)
     if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0)
         return ret;
 
-    layouts = ff_make_format64_list(channel_layouts);
+    layouts = ff_make_channel_layout_list(channel_layouts);
     if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0)
         return ret;
 
@@ -1417,8 +1418,9 @@ static int config_output(AVFilterLink *outlink)
         s->update_sono = update_sono_yuv;
     }
 
-    if (ARCH_X86)
-        ff_showcqt_init_x86(s);
+#if ARCH_X86
+    ff_showcqt_init_x86(s);
+#endif
 
     if ((ret = init_cqt(s)) < 0)
         return ret;

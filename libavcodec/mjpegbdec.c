@@ -27,7 +27,7 @@
 #include <inttypes.h>
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "mjpeg.h"
 #include "mjpegdec.h"
 
@@ -40,9 +40,8 @@ static uint32_t read_offs(AVCodecContext *avctx, GetBitContext *gb, uint32_t siz
     return offs;
 }
 
-static int mjpegb_decode_frame(AVCodecContext *avctx,
-                              void *data, int *got_frame,
-                              AVPacket *avpkt)
+static int mjpegb_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                               int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
@@ -145,7 +144,7 @@ read_header:
         return buf_size;
     }
 
-    if ((ret = av_frame_ref(data, s->picture_ptr)) < 0)
+    if ((ret = av_frame_ref(rframe, s->picture_ptr)) < 0)
         return ret;
     *got_frame = 1;
 
@@ -157,16 +156,16 @@ read_header:
     return buf_size;
 }
 
-const AVCodec ff_mjpegb_decoder = {
-    .name           = "mjpegb",
-    .long_name      = NULL_IF_CONFIG_SMALL("Apple MJPEG-B"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MJPEGB,
+const FFCodec ff_mjpegb_decoder = {
+    .p.name         = "mjpegb",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Apple MJPEG-B"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MJPEGB,
     .priv_data_size = sizeof(MJpegDecodeContext),
     .init           = ff_mjpeg_decode_init,
     .close          = ff_mjpeg_decode_end,
-    .decode         = mjpegb_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .max_lowres     = 3,
+    FF_CODEC_DECODE_CB(mjpegb_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.max_lowres   = 3,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

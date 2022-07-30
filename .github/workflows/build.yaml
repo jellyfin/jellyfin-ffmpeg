@@ -30,7 +30,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["jammy", "focal", "bionic", "impish"]'
+      codenames: '["jammy", "focal", "bionic"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: false
 

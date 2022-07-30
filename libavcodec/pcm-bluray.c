@@ -27,6 +27,7 @@
 #include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 /*
@@ -54,14 +55,12 @@ static int pcm_bluray_parse_header(AVCodecContext *avctx,
                                    const uint8_t *header)
 {
     static const uint8_t bits_per_samples[4] = { 0, 16, 20, 24 };
-    static const uint32_t channel_layouts[16] = {
-        0, AV_CH_LAYOUT_MONO, 0, AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_SURROUND,
-        AV_CH_LAYOUT_2_1, AV_CH_LAYOUT_4POINT0, AV_CH_LAYOUT_2_2,
-        AV_CH_LAYOUT_5POINT0, AV_CH_LAYOUT_5POINT1, AV_CH_LAYOUT_7POINT0,
-        AV_CH_LAYOUT_7POINT1, 0, 0, 0, 0
-    };
-    static const uint8_t channels[16] = {
-        0, 1, 0, 2, 3, 3, 4, 4, 5, 6, 7, 8, 0, 0, 0, 0
+    static const AVChannelLayout channel_layouts[16] = {
+        { 0 },                     AV_CHANNEL_LAYOUT_MONO,     { 0 },
+        AV_CHANNEL_LAYOUT_STEREO,  AV_CHANNEL_LAYOUT_SURROUND, AV_CHANNEL_LAYOUT_2_1,
+        AV_CHANNEL_LAYOUT_4POINT0, AV_CHANNEL_LAYOUT_2_2,      AV_CHANNEL_LAYOUT_5POINT0,
+        AV_CHANNEL_LAYOUT_5POINT1, AV_CHANNEL_LAYOUT_7POINT0,  AV_CHANNEL_LAYOUT_7POINT1,
+        { 0 }, { 0 }, { 0 }, { 0 },
     };
     uint8_t channel_layout = header[2] >> 4;
 
@@ -104,29 +103,28 @@ static int pcm_bluray_parse_header(AVCodecContext *avctx,
      * differ from the actual meaningful number, e.g. mono audio still has two
      * channels, one being empty.
      */
-    avctx->channel_layout  = channel_layouts[channel_layout];
-    avctx->channels        =        channels[channel_layout];
-    if (!avctx->channels) {
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout = channel_layouts[channel_layout];
+    if (!avctx->ch_layout.nb_channels) {
         av_log(avctx, AV_LOG_ERROR, "reserved channel configuration (%d)\n",
                channel_layout);
         return AVERROR_INVALIDDATA;
     }
 
-    avctx->bit_rate = FFALIGN(avctx->channels, 2) * avctx->sample_rate *
+    avctx->bit_rate = FFALIGN(avctx->ch_layout.nb_channels, 2) * avctx->sample_rate *
                       avctx->bits_per_coded_sample;
 
     if (avctx->debug & FF_DEBUG_PICT_INFO)
         ff_dlog(avctx,
                 "pcm_bluray_parse_header: %d channels, %d bits per sample, %d Hz, %"PRId64" bit/s\n",
-                avctx->channels, avctx->bits_per_coded_sample,
+                avctx->ch_layout.nb_channels, avctx->bits_per_coded_sample,
                 avctx->sample_rate, avctx->bit_rate);
     return 0;
 }
 
-static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
+static int pcm_bluray_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                    int *got_frame_ptr, AVPacket *avpkt)
 {
-    AVFrame *frame     = data;
     const uint8_t *src = avpkt->data;
     int buf_size = avpkt->size;
     GetByteContext gb;
@@ -148,7 +146,7 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
     bytestream2_init(&gb, src, buf_size);
 
     /* There's always an even number of channels in the source */
-    num_source_channels = FFALIGN(avctx->channels, 2);
+    num_source_channels = FFALIGN(avctx->ch_layout.nb_channels, 2);
     sample_size = (num_source_channels *
                    (avctx->sample_fmt == AV_SAMPLE_FMT_S16 ? 16 : 24)) >> 3;
     samples = buf_size / sample_size;
@@ -161,7 +159,7 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
     dst32 = (int32_t *)frame->data[0];
 
     if (samples) {
-        switch (avctx->channel_layout) {
+        switch (avctx->ch_layout.u.mask) {
             /* cases with same number of source and coded channels */
         case AV_CH_LAYOUT_STEREO:
         case AV_CH_LAYOUT_4POINT0:
@@ -189,10 +187,10 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
             if (AV_SAMPLE_FMT_S16 == avctx->sample_fmt) {
                 do {
 #if HAVE_BIGENDIAN
-                    bytestream2_get_buffer(&gb, dst16, avctx->channels * 2);
-                    dst16 += avctx->channels;
+                    bytestream2_get_buffer(&gb, dst16, avctx->ch_layout.nb_channels * 2);
+                    dst16 += avctx->ch_layout.nb_channels;
 #else
-                    channel = avctx->channels;
+                    channel = avctx->ch_layout.nb_channels;
                     do {
                         *dst16++ = bytestream2_get_be16u(&gb);
                     } while (--channel);
@@ -201,7 +199,7 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
                 } while (--samples);
             } else {
                 do {
-                    channel = avctx->channels;
+                    channel = avctx->ch_layout.nb_channels;
                     do {
                         *dst32++ = bytestream2_get_be24u(&gb) << 8;
                     } while (--channel);
@@ -301,14 +299,14 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
     return retval + 4;
 }
 
-const AVCodec ff_pcm_bluray_decoder = {
-    .name           = "pcm_bluray",
-    .long_name      = NULL_IF_CONFIG_SMALL("PCM signed 16|20|24-bit big-endian for Blu-ray media"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_PCM_BLURAY,
-    .decode         = pcm_bluray_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .sample_fmts    = (const enum AVSampleFormat[]){
+const FFCodec ff_pcm_bluray_decoder = {
+    .p.name         = "pcm_bluray",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("PCM signed 16|20|24-bit big-endian for Blu-ray media"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_PCM_BLURAY,
+    FF_CODEC_DECODE_CB(pcm_bluray_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.sample_fmts  = (const enum AVSampleFormat[]){
         AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE
     },
 };

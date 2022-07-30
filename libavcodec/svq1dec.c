@@ -36,8 +36,9 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
-#include "h263.h"
+#include "h263data.h"
 #include "hpeldsp.h"
 #include "internal.h"
 #include "mathops.h"
@@ -616,13 +617,12 @@ static int svq1_decode_frame_header(AVCodecContext *avctx, AVFrame *frame)
     return 0;
 }
 
-static int svq1_decode_frame(AVCodecContext *avctx, void *data,
+static int svq1_decode_frame(AVCodecContext *avctx, AVFrame *cur,
                              int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     SVQ1Context     *s = avctx->priv_data;
-    AVFrame       *cur = data;
     uint8_t *current;
     int result, i, x, y, width, height;
     int ret;
@@ -777,7 +777,7 @@ static av_cold void svq1_static_init(void)
     for (int i = 0, offset = 0; i < 6; i++) {
         static const uint8_t sizes[2][6] = { { 14, 10, 14, 18, 16, 18 },
                                              { 10, 10, 14, 14, 14, 16 } };
-        static VLC_TYPE table[168][2];
+        static VLCElem table[168];
         svq1_intra_multistage[i].table           = &table[offset];
         svq1_intra_multistage[i].table_allocated = sizes[0][i];
         offset                                  += sizes[0][i];
@@ -843,18 +843,18 @@ static void svq1_flush(AVCodecContext *avctx)
     av_frame_unref(s->prev);
 }
 
-const AVCodec ff_svq1_decoder = {
-    .name           = "svq1",
-    .long_name      = NULL_IF_CONFIG_SMALL("Sorenson Vector Quantizer 1 / Sorenson Video 1 / SVQ1"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SVQ1,
+const FFCodec ff_svq1_decoder = {
+    .p.name         = "svq1",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Sorenson Vector Quantizer 1 / Sorenson Video 1 / SVQ1"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SVQ1,
     .priv_data_size = sizeof(SVQ1Context),
     .init           = svq1_decode_init,
     .close          = svq1_decode_end,
-    .decode         = svq1_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(svq1_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .flush          = svq1_flush,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV410P,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV410P,
                                                      AV_PIX_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

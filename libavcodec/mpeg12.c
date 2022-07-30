@@ -29,18 +29,15 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
-#include "libavutil/timecode.h"
 #include "libavutil/thread.h"
 
-#include "internal.h"
 #include "avcodec.h"
 #include "mpegvideo.h"
-#include "error_resilience.h"
 #include "mpeg12.h"
 #include "mpeg12data.h"
+#include "mpeg12dec.h"
 #include "mpegvideodata.h"
-#include "bytestream.h"
-#include "thread.h"
+#include "startcode.h"
 
 static const uint8_t table_mb_ptype[7][2] = {
     { 3, 5 }, // 0x01 MB_INTRA
@@ -69,14 +66,14 @@ static const uint8_t table_mb_btype[11][2] = {
 av_cold void ff_init_2d_vlc_rl(RLTable *rl, unsigned static_size, int flags)
 {
     int i;
-    VLC_TYPE table[680][2] = {{0}};
+    VLCElem table[680] = { 0 };
     VLC vlc = { .table = table, .table_allocated = static_size };
     av_assert0(static_size <= FF_ARRAY_ELEMS(table));
     init_vlc(&vlc, TEX_VLC_BITS, rl->n + 2, &rl->table_vlc[0][1], 4, 2, &rl->table_vlc[0][0], 4, 2, INIT_VLC_USE_NEW_STATIC | flags);
 
     for (i = 0; i < vlc.table_size; i++) {
-        int code = vlc.table[i][0];
-        int len  = vlc.table[i][1];
+        int code = vlc.table[i].sym;
+        int len  = vlc.table[i].len;
         int level, run;
 
         if (len == 0) { // illegal code
@@ -238,7 +235,7 @@ int ff_mpeg1_find_frame_end(ParseContext *pc, const uint8_t *buf, int buf_size, 
 
 int ff_mpeg1_decode_block_intra(GetBitContext *gb,
                                 const uint16_t *quant_matrix,
-                                uint8_t *const scantable, int last_dc[3],
+                                const uint8_t *scantable, int last_dc[3],
                                 int16_t *block, int index, int qscale)
 {
     int dc, diff, i = 0, component;

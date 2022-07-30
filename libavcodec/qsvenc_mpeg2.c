@@ -28,7 +28,7 @@
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "qsv.h"
 #include "qsv_internal.h"
 #include "qsvenc.h"
@@ -64,6 +64,7 @@ static av_cold int qsv_enc_close(AVCodecContext *avctx)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     QSV_COMMON_OPTS
+    QSV_OPTION_RDO
 
     { "profile", NULL, OFFSET(qsv.profile), AV_OPT_TYPE_INT, { .i64 = MFX_PROFILE_UNKNOWN }, 0, INT_MAX, VE, "profile" },
     { "unknown", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_UNKNOWN        }, INT_MIN, INT_MAX,     VE, "profile" },
@@ -81,7 +82,7 @@ static const AVClass class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault qsv_enc_defaults[] = {
+static const FFCodecDefault qsv_enc_defaults[] = {
     { "b",         "1M"    },
     { "refs",      "0"     },
     // same as the x264 default
@@ -92,22 +93,22 @@ static const AVCodecDefault qsv_enc_defaults[] = {
     { NULL },
 };
 
-const AVCodec ff_mpeg2_qsv_encoder = {
-    .name           = "mpeg2_qsv",
-    .long_name      = NULL_IF_CONFIG_SMALL("MPEG-2 video (Intel Quick Sync Video acceleration)"),
+const FFCodec ff_mpeg2_qsv_encoder = {
+    .p.name         = "mpeg2_qsv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MPEG-2 video (Intel Quick Sync Video acceleration)"),
     .priv_data_size = sizeof(QSVMpeg2EncContext),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MPEG2VIDEO,
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MPEG2VIDEO,
     .init           = qsv_enc_init,
-    .encode2        = qsv_enc_frame,
+    FF_CODEC_ENCODE_CB(qsv_enc_frame),
     .close          = qsv_enc_close,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
-    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
+    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
                                                     AV_PIX_FMT_QSV,
                                                     AV_PIX_FMT_NONE },
-    .priv_class     = &class,
+    .p.priv_class   = &class,
     .defaults       = qsv_enc_defaults,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
-    .wrapper_name   = "qsv",
+    .p.wrapper_name = "qsv",
     .hw_configs     = ff_qsv_enc_hw_configs,
 };

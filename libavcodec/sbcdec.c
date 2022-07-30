@@ -31,6 +31,7 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
@@ -336,12 +337,10 @@ static int sbc_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int sbc_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame_ptr,
-                            AVPacket *avpkt)
+static int sbc_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame_ptr, AVPacket *avpkt)
 {
     SBCDecContext *sbc = avctx->priv_data;
-    AVFrame *frame = data;
     int ret, frame_length;
 
     if (!sbc)
@@ -351,7 +350,9 @@ static int sbc_decode_frame(AVCodecContext *avctx,
     if (frame_length <= 0)
         return frame_length;
 
-    avctx->channels = sbc->frame.channels;
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
+    avctx->ch_layout.nb_channels = sbc->frame.channels;
 
     frame->nb_samples = sbc->frame.blocks * sbc->frame.subbands;
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
@@ -364,19 +365,24 @@ static int sbc_decode_frame(AVCodecContext *avctx,
     return frame_length;
 }
 
-const AVCodec ff_sbc_decoder = {
-    .name                  = "sbc",
-    .long_name             = NULL_IF_CONFIG_SMALL("SBC (low-complexity subband codec)"),
-    .type                  = AVMEDIA_TYPE_AUDIO,
-    .id                    = AV_CODEC_ID_SBC,
+const FFCodec ff_sbc_decoder = {
+    .p.name                = "sbc",
+    .p.long_name           = NULL_IF_CONFIG_SMALL("SBC (low-complexity subband codec)"),
+    .p.type                = AVMEDIA_TYPE_AUDIO,
+    .p.id                  = AV_CODEC_ID_SBC,
     .priv_data_size        = sizeof(SBCDecContext),
     .init                  = sbc_decode_init,
-    .decode                = sbc_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    FF_CODEC_DECODE_CB(sbc_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
-    .channel_layouts       = (const uint64_t[]) { AV_CH_LAYOUT_MONO,
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts     = (const uint64_t[]) { AV_CH_LAYOUT_MONO,
                                                   AV_CH_LAYOUT_STEREO, 0},
-    .sample_fmts           = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
+#endif
+    .p.ch_layouts          = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO,
+                                                         AV_CHANNEL_LAYOUT_STEREO,
+                                                         { 0 } },
+    .p.sample_fmts         = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                              AV_SAMPLE_FMT_NONE },
-    .supported_samplerates = (const int[]) { 16000, 32000, 44100, 48000, 0 },
+    .p.supported_samplerates = (const int[]) { 16000, 32000, 44100, 48000, 0 },
 };

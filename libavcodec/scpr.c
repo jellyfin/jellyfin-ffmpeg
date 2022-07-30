@@ -26,6 +26,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "scpr.h"
 #include "scpr3.h"
@@ -491,12 +492,11 @@ static int decompress_p(AVCodecContext *avctx,
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     SCPRContext *s = avctx->priv_data;
     GetByteContext *gb = &s->gb;
-    AVFrame *frame = data;
     int ret, type;
 
     if (avctx->bits_per_coded_sample == 16) {
@@ -581,7 +581,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         return AVERROR_INVALIDDATA;
 
     if (avctx->bits_per_coded_sample != 16) {
-        ret = av_frame_ref(data, s->current_frame);
+        ret = av_frame_ref(frame, s->current_frame);
         if (ret < 0)
             return ret;
     } else {
@@ -667,16 +667,16 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_scpr_decoder = {
-    .name             = "scpr",
-    .long_name        = NULL_IF_CONFIG_SMALL("ScreenPressor"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_SCPR,
+const FFCodec ff_scpr_decoder = {
+    .p.name           = "scpr",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("ScreenPressor"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_SCPR,
     .priv_data_size   = sizeof(SCPRContext),
     .init             = decode_init,
     .close            = decode_close,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
                         FF_CODEC_CAP_INIT_CLEANUP,
 };

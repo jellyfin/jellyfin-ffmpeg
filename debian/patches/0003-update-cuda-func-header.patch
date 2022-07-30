@@ -172,7 +172,7 @@ Index: jellyfin-ffmpeg/compat/cuda/cuda_runtime.h
  {
      float4 ret;
      asm("tex.2d.v4.f32.f32 {%0, %1, %2, %3}, [%4, {%5, %6}];" :
-@@ -156,34 +148,40 @@ inline __device__ float4 tex2D<float4>(c
+@@ -156,36 +148,41 @@ inline __device__ float4 tex2D<float4>(c
  }
  
  template<>
@@ -203,7 +203,9 @@ Index: jellyfin-ffmpeg/compat/cuda/cuda_runtime.h
 -static inline __device__ float fabsf(float a) { return __builtin_fabsf(a); }
 -static inline __device__ float fabs(float a) { return __builtin_fabsf(a); }
 -static inline __device__ double fabs(double a) { return __builtin_fabs(a); }
+-static inline __device__ float sqrtf(float a) { return __builtin_sqrtf(a); }
 -
+-static inline __device__ float __saturatef(float a) { return __nvvm_saturate_f(a); }
 -static inline __device__ float __sinf(float a) { return __nvvm_sin_approx_f(a); }
 -static inline __device__ float __cosf(float a) { return __nvvm_cos_approx_f(a); }
 -static inline __device__ float __expf(float a) { return __nvvm_ex2_approx_f(a * (float)__builtin_log2(__builtin_exp(1))); }
@@ -219,10 +221,11 @@ Index: jellyfin-ffmpeg/compat/cuda/cuda_runtime.h
 +static __inline__ __device__ float fabsf(float a) { return __builtin_fabsf(a); }
 +static __inline__ __device__ float fabs(float a) { return __builtin_fabsf(a); }
 +static __inline__ __device__ double fabs(double a) { return __builtin_fabs(a); }
++static __inline__ __device__ float sqrtf(float a) { return __builtin_sqrtf(a); }
 +
++static __inline__ __device__ float __saturatef(float a) { return __nvvm_saturate_f(a); }
 +static __inline__ __device__ float __sinf(float a) { return __nvvm_sin_approx_f(a); }
 +static __inline__ __device__ float __cosf(float a) { return __nvvm_cos_approx_f(a); }
-+static __inline__ __device__ float __sqrtf(float a) { return __nvvm_sqrt_approx_f(a); }
 +static __inline__ __device__ float __exp2f(float a) { return __nvvm_ex2_approx_f(a); }
 +static __inline__ __device__ float __expf(float a) { return __nvvm_ex2_approx_f(a * 1.4427f); }
 +static __inline__ __device__ float __log2f(float a) { return __nvvm_lg2_approx_f(a); }

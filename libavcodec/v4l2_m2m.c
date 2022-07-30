@@ -28,7 +28,6 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include "libavcodec/avcodec.h"
-#include "libavcodec/internal.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/pixfmt.h"
@@ -245,82 +244,6 @@ int ff_v4l2_m2m_codec_reinit(V4L2m2mContext *s)
     return 0;
 }
 
-int ff_v4l2_m2m_codec_full_reinit(V4L2m2mContext *s)
-{
-    void *log_ctx = s->avctx;
-    int ret;
-
-    av_log(log_ctx, AV_LOG_DEBUG, "%s full reinit\n", s->devname);
-
-    /* wait for pending buffer references */
-    if (atomic_load(&s->refcount))
-        while(sem_wait(&s->refsync) == -1 && errno == EINTR);
-
-    ret = ff_v4l2_context_set_status(&s->output, VIDIOC_STREAMOFF);
-    if (ret) {
-        av_log(log_ctx, AV_LOG_ERROR, "output VIDIOC_STREAMOFF\n");
-        goto error;
-    }
-
-    ret = ff_v4l2_context_set_status(&s->capture, VIDIOC_STREAMOFF);
-    if (ret) {
-        av_log(log_ctx, AV_LOG_ERROR, "capture VIDIOC_STREAMOFF\n");
-        goto error;
-    }
-
-    /* release and unmmap the buffers */
-    ff_v4l2_context_release(&s->output);
-    ff_v4l2_context_release(&s->capture);
-
-    /* start again now that we know the stream dimensions */
-    s->draining = 0;
-    s->reinit = 0;
-
-    ret = ff_v4l2_context_get_format(&s->output, 0);
-    if (ret) {
-        av_log(log_ctx, AV_LOG_DEBUG, "v4l2 output format not supported\n");
-        goto error;
-    }
-
-    ret = ff_v4l2_context_get_format(&s->capture, 0);
-    if (ret) {
-        av_log(log_ctx, AV_LOG_DEBUG, "v4l2 capture format not supported\n");
-        goto error;
-    }
-
-    ret = ff_v4l2_context_set_format(&s->output);
-    if (ret) {
-        av_log(log_ctx, AV_LOG_ERROR, "can't set v4l2 output format\n");
-        goto error;
-    }
-
-    ret = ff_v4l2_context_set_format(&s->capture);
-    if (ret) {
-        av_log(log_ctx, AV_LOG_ERROR, "can't to set v4l2 capture format\n");
-        goto error;
-    }
-
-    ret = ff_v4l2_context_init(&s->output);
-    if (ret) {
-        av_log(log_ctx, AV_LOG_ERROR, "no v4l2 output context's buffers\n");
-        goto error;
-    }
-
-    /* decoder's buffers need to be updated at a later stage */
-    if (s->avctx && !av_codec_is_decoder(s->avctx->codec)) {
-        ret = ff_v4l2_context_init(&s->capture);
-        if (ret) {
-            av_log(log_ctx, AV_LOG_ERROR, "no v4l2 capture context's buffers\n");
-            goto error;
-        }
-    }
-
-    return 0;
-
-error:
-    return ret;
-}
-
 static void v4l2_m2m_destroy_context(void *opaque, uint8_t *context)
 {
     V4L2m2mContext *s = (V4L2m2mContext*)context;
@@ -328,7 +251,8 @@ static void v4l2_m2m_destroy_context(void *opaque, uint8_t *context)
     ff_v4l2_context_release(&s->capture);
     sem_destroy(&s->refsync);
 
-    close(s->fd);
+    if (s->fd >= 0)
+        close(s->fd);
     av_frame_unref(s->frame);
     av_frame_free(&s->frame);
     av_packet_unref(&s->buf_pkt);

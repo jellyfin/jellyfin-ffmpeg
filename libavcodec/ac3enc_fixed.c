@@ -28,9 +28,9 @@
 
 #define AC3ENC_FLOAT 0
 #define FFT_FLOAT 0
-#include "internal.h"
 #include "audiodsp.h"
 #include "ac3enc.h"
+#include "codec_internal.h"
 #include "eac3enc.h"
 #include "kbdwin.h"
 
@@ -119,21 +119,26 @@ static av_cold int ac3_fixed_encode_init(AVCodecContext *avctx)
 }
 
 
-const AVCodec ff_ac3_fixed_encoder = {
-    .name            = "ac3_fixed",
-    .long_name       = NULL_IF_CONFIG_SMALL("ATSC A/52A (AC-3)"),
-    .type            = AVMEDIA_TYPE_AUDIO,
-    .id              = AV_CODEC_ID_AC3,
-    .capabilities    = AV_CODEC_CAP_DR1,
+FF_DISABLE_DEPRECATION_WARNINGS
+const FFCodec ff_ac3_fixed_encoder = {
+    .p.name          = "ac3_fixed",
+    .p.long_name     = NULL_IF_CONFIG_SMALL("ATSC A/52A (AC-3)"),
+    .p.type          = AVMEDIA_TYPE_AUDIO,
+    .p.id            = AV_CODEC_ID_AC3,
+    .p.capabilities  = AV_CODEC_CAP_DR1,
     .priv_data_size  = sizeof(AC3EncodeContext),
     .init            = ac3_fixed_encode_init,
-    .encode2         = ff_ac3_fixed_encode_frame,
+    FF_CODEC_ENCODE_CB(ff_ac3_fixed_encode_frame),
     .close           = ff_ac3_encode_close,
-    .sample_fmts     = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S32P,
+    .p.sample_fmts   = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S32P,
                                                       AV_SAMPLE_FMT_NONE },
-    .priv_class      = &ff_ac3enc_class,
+    .p.priv_class    = &ff_ac3enc_class,
     .caps_internal   = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .supported_samplerates = ff_ac3_sample_rate_tab,
-    .channel_layouts = ff_ac3_channel_layouts,
+    .p.supported_samplerates = ff_ac3_sample_rate_tab,
+#if FF_API_OLD_CHANNEL_LAYOUT
+    .p.channel_layouts = ff_ac3_channel_layouts,
+#endif
+    .p.ch_layouts    = ff_ac3_ch_layouts,
     .defaults        = ff_ac3_enc_defaults,
 };
+FF_ENABLE_DEPRECATION_WARNINGS

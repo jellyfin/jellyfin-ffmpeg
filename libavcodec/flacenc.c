@@ -28,9 +28,10 @@
 
 #include "avcodec.h"
 #include "bswapdsp.h"
+#include "codec_internal.h"
 #include "encode.h"
 #include "put_bits.h"
-#include "golomb.h"
+#include "put_golomb.h"
 #include "internal.h"
 #include "lpc.h"
 #include "flac.h"
@@ -241,7 +242,7 @@ static av_cold void dprint_compression_options(FlacEncodeContext *s)
 static av_cold int flac_encode_init(AVCodecContext *avctx)
 {
     int freq = avctx->sample_rate;
-    int channels = avctx->channels;
+    int channels = avctx->ch_layout.nb_channels;
     FlacEncodeContext *s = avctx->priv_data;
     int i, level, ret;
     uint8_t *streaminfo;
@@ -398,18 +399,18 @@ static av_cold int flac_encode_init(AVCodecContext *avctx)
     s->frame_count   = 0;
     s->min_framesize = s->max_framesize;
 
-    if (channels == 3 &&
-            avctx->channel_layout != (AV_CH_LAYOUT_STEREO|AV_CH_FRONT_CENTER) ||
-        channels == 4 &&
-            avctx->channel_layout != AV_CH_LAYOUT_2_2 &&
-            avctx->channel_layout != AV_CH_LAYOUT_QUAD ||
-        channels == 5 &&
-            avctx->channel_layout != AV_CH_LAYOUT_5POINT0 &&
-            avctx->channel_layout != AV_CH_LAYOUT_5POINT0_BACK ||
-        channels == 6 &&
-            avctx->channel_layout != AV_CH_LAYOUT_5POINT1 &&
-            avctx->channel_layout != AV_CH_LAYOUT_5POINT1_BACK) {
-        if (avctx->channel_layout) {
+    if ((channels == 3 &&
+         av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_SURROUND)) ||
+        (channels == 4 &&
+         av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_2_2) &&
+         av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_QUAD)) ||
+        (channels == 5 &&
+         av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT0) &&
+         av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT0_BACK)) ||
+        (channels == 6 &&
+         av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1) &&
+         av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1_BACK))) {
+        if (avctx->ch_layout.order != AV_CHANNEL_ORDER_UNSPEC) {
             av_log(avctx, AV_LOG_ERROR, "Channel layout not supported by Flac, "
                                              "output stream will have incorrect "
                                              "channel layout.\n");
@@ -1457,20 +1458,20 @@ static const AVClass flac_encoder_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_flac_encoder = {
-    .name           = "flac",
-    .long_name      = NULL_IF_CONFIG_SMALL("FLAC (Free Lossless Audio Codec)"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_FLAC,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+const FFCodec ff_flac_encoder = {
+    .p.name         = "flac",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("FLAC (Free Lossless Audio Codec)"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_FLAC,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                       AV_CODEC_CAP_SMALL_LAST_FRAME,
     .priv_data_size = sizeof(FlacEncodeContext),
     .init           = flac_encode_init,
-    .encode2        = flac_encode_frame,
+    FF_CODEC_ENCODE_CB(flac_encode_frame),
     .close          = flac_encode_close,
-    .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                      AV_SAMPLE_FMT_S32,
                                                      AV_SAMPLE_FMT_NONE },
-    .priv_class     = &flac_encoder_class,
+    .p.priv_class   = &flac_encoder_class,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

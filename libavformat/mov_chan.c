@@ -29,110 +29,6 @@
 #include "libavcodec/codec_id.h"
 #include "mov_chan.h"
 
-/**
- * Channel Layout Tag
- * This tells which channels are present in the audio stream and the order in
- * which they appear.
- *
- * @note We're using the channel layout tag to indicate channel order
- *       when the value is greater than 0x10000. The Apple documentation has
- *       some contradictions as to how this is actually supposed to be handled.
- *
- *       Core Audio File Format Spec:
- *           "The high 16 bits indicates a specific ordering of the channels."
- *       Core Audio Data Types Reference:
- *           "These identifiers specify the channels included in a layout but
- *            do not specify a particular ordering of those channels."
- */
-enum MovChannelLayoutTag {
-#define MOV_CH_LAYOUT_UNKNOWN             0xFFFF0000
-    MOV_CH_LAYOUT_USE_DESCRIPTIONS      = (  0 << 16) | 0,
-    MOV_CH_LAYOUT_USE_BITMAP            = (  1 << 16) | 0,
-    MOV_CH_LAYOUT_DISCRETEINORDER       = (147 << 16) | 0,
-    MOV_CH_LAYOUT_MONO                  = (100 << 16) | 1,
-    MOV_CH_LAYOUT_STEREO                = (101 << 16) | 2,
-    MOV_CH_LAYOUT_STEREOHEADPHONES      = (102 << 16) | 2,
-    MOV_CH_LAYOUT_MATRIXSTEREO          = (103 << 16) | 2,
-    MOV_CH_LAYOUT_MIDSIDE               = (104 << 16) | 2,
-    MOV_CH_LAYOUT_XY                    = (105 << 16) | 2,
-    MOV_CH_LAYOUT_BINAURAL              = (106 << 16) | 2,
-    MOV_CH_LAYOUT_AMBISONIC_B_FORMAT    = (107 << 16) | 4,
-    MOV_CH_LAYOUT_QUADRAPHONIC          = (108 << 16) | 4,
-    MOV_CH_LAYOUT_PENTAGONAL            = (109 << 16) | 5,
-    MOV_CH_LAYOUT_HEXAGONAL             = (110 << 16) | 6,
-    MOV_CH_LAYOUT_OCTAGONAL             = (111 << 16) | 8,
-    MOV_CH_LAYOUT_CUBE                  = (112 << 16) | 8,
-    MOV_CH_LAYOUT_MPEG_3_0_A            = (113 << 16) | 3,
-    MOV_CH_LAYOUT_MPEG_3_0_B            = (114 << 16) | 3,
-    MOV_CH_LAYOUT_MPEG_4_0_A            = (115 << 16) | 4,
-    MOV_CH_LAYOUT_MPEG_4_0_B            = (116 << 16) | 4,
-    MOV_CH_LAYOUT_MPEG_5_0_A            = (117 << 16) | 5,
-    MOV_CH_LAYOUT_MPEG_5_0_B            = (118 << 16) | 5,
-    MOV_CH_LAYOUT_MPEG_5_0_C            = (119 << 16) | 5,
-    MOV_CH_LAYOUT_MPEG_5_0_D            = (120 << 16) | 5,
-    MOV_CH_LAYOUT_MPEG_5_1_A            = (121 << 16) | 6,
-    MOV_CH_LAYOUT_MPEG_5_1_B            = (122 << 16) | 6,
-    MOV_CH_LAYOUT_MPEG_5_1_C            = (123 << 16) | 6,
-    MOV_CH_LAYOUT_MPEG_5_1_D            = (124 << 16) | 6,
-    MOV_CH_LAYOUT_MPEG_6_1_A            = (125 << 16) | 7,
-    MOV_CH_LAYOUT_MPEG_7_1_A            = (126 << 16) | 8,
-    MOV_CH_LAYOUT_MPEG_7_1_B            = (127 << 16) | 8,
-    MOV_CH_LAYOUT_MPEG_7_1_C            = (128 << 16) | 8,
-    MOV_CH_LAYOUT_EMAGIC_DEFAULT_7_1    = (129 << 16) | 8,
-    MOV_CH_LAYOUT_SMPTE_DTV             = (130 << 16) | 8,
-    MOV_CH_LAYOUT_ITU_2_1               = (131 << 16) | 3,
-    MOV_CH_LAYOUT_ITU_2_2               = (132 << 16) | 4,
-    MOV_CH_LAYOUT_DVD_4                 = (133 << 16) | 3,
-    MOV_CH_LAYOUT_DVD_5                 = (134 << 16) | 4,
-    MOV_CH_LAYOUT_DVD_6                 = (135 << 16) | 5,
-    MOV_CH_LAYOUT_DVD_10                = (136 << 16) | 4,
-    MOV_CH_LAYOUT_DVD_11                = (137 << 16) | 5,
-    MOV_CH_LAYOUT_DVD_18                = (138 << 16) | 5,
-    MOV_CH_LAYOUT_AUDIOUNIT_6_0         = (139 << 16) | 6,
-    MOV_CH_LAYOUT_AUDIOUNIT_7_0         = (140 << 16) | 7,
-    MOV_CH_LAYOUT_AUDIOUNIT_7_0_FRONT   = (148 << 16) | 7,
-    MOV_CH_LAYOUT_AAC_6_0               = (141 << 16) | 6,
-    MOV_CH_LAYOUT_AAC_6_1               = (142 << 16) | 7,
-    MOV_CH_LAYOUT_AAC_7_0               = (143 << 16) | 7,
-    MOV_CH_LAYOUT_AAC_OCTAGONAL         = (144 << 16) | 8,
-    MOV_CH_LAYOUT_TMH_10_2_STD          = (145 << 16) | 16,
-    MOV_CH_LAYOUT_TMH_10_2_FULL         = (146 << 16) | 21,
-    MOV_CH_LAYOUT_AC3_1_0_1             = (149 << 16) | 2,
-    MOV_CH_LAYOUT_AC3_3_0               = (150 << 16) | 3,
-    MOV_CH_LAYOUT_AC3_3_1               = (151 << 16) | 4,
-    MOV_CH_LAYOUT_AC3_3_0_1             = (152 << 16) | 4,
-    MOV_CH_LAYOUT_AC3_2_1_1             = (153 << 16) | 4,
-    MOV_CH_LAYOUT_AC3_3_1_1             = (154 << 16) | 5,
-    MOV_CH_LAYOUT_EAC3_6_0_A            = (155 << 16) | 6,
-    MOV_CH_LAYOUT_EAC3_7_0_A            = (156 << 16) | 7,
-    MOV_CH_LAYOUT_EAC3_6_1_A            = (157 << 16) | 7,
-    MOV_CH_LAYOUT_EAC3_6_1_B            = (158 << 16) | 7,
-    MOV_CH_LAYOUT_EAC3_6_1_C            = (159 << 16) | 7,
-    MOV_CH_LAYOUT_EAC3_7_1_A            = (160 << 16) | 8,
-    MOV_CH_LAYOUT_EAC3_7_1_B            = (161 << 16) | 8,
-    MOV_CH_LAYOUT_EAC3_7_1_C            = (162 << 16) | 8,
-    MOV_CH_LAYOUT_EAC3_7_1_D            = (163 << 16) | 8,
-    MOV_CH_LAYOUT_EAC3_7_1_E            = (164 << 16) | 8,
-    MOV_CH_LAYOUT_EAC3_7_1_F            = (165 << 16) | 8,
-    MOV_CH_LAYOUT_EAC3_7_1_G            = (166 << 16) | 8,
-    MOV_CH_LAYOUT_EAC3_7_1_H            = (167 << 16) | 8,
-    MOV_CH_LAYOUT_DTS_3_1               = (168 << 16) | 4,
-    MOV_CH_LAYOUT_DTS_4_1               = (169 << 16) | 5,
-    MOV_CH_LAYOUT_DTS_6_0_A             = (170 << 16) | 6,
-    MOV_CH_LAYOUT_DTS_6_0_B             = (171 << 16) | 6,
-    MOV_CH_LAYOUT_DTS_6_0_C             = (172 << 16) | 6,
-    MOV_CH_LAYOUT_DTS_6_1_A             = (173 << 16) | 7,
-    MOV_CH_LAYOUT_DTS_6_1_B             = (174 << 16) | 7,
-    MOV_CH_LAYOUT_DTS_6_1_C             = (175 << 16) | 7,
-    MOV_CH_LAYOUT_DTS_6_1_D             = (182 << 16) | 7,
-    MOV_CH_LAYOUT_DTS_7_0               = (176 << 16) | 7,
-    MOV_CH_LAYOUT_DTS_7_1               = (177 << 16) | 8,
-    MOV_CH_LAYOUT_DTS_8_0_A             = (178 << 16) | 8,
-    MOV_CH_LAYOUT_DTS_8_0_B             = (179 << 16) | 8,
-    MOV_CH_LAYOUT_DTS_8_1_A             = (180 << 16) | 9,
-    MOV_CH_LAYOUT_DTS_8_1_B             = (181 << 16) | 9,
-};
-
 struct MovChannelLayoutMap {
     uint32_t tag;
     uint64_t layout;
@@ -485,12 +381,18 @@ static uint64_t mov_get_channel_layout(uint32_t tag, uint32_t bitmap)
     return layout_map[i].layout;
 }
 
-static uint32_t mov_get_channel_label(uint32_t label)
+static uint64_t mov_get_channel_mask(uint32_t label)
 {
     if (label == 0)
         return 0;
     if (label <= 18)
         return 1U << (label - 1);
+    if (label == 35)
+        return AV_CH_WIDE_LEFT;
+    if (label == 36)
+        return AV_CH_WIDE_RIGHT;
+    if (label == 37)
+        return AV_CH_LOW_FREQUENCY_2;
     if (label == 38)
         return AV_CH_STEREO_LEFT;
     if (label == 39)
@@ -498,9 +400,29 @@ static uint32_t mov_get_channel_label(uint32_t label)
     return 0;
 }
 
-uint32_t ff_mov_get_channel_layout_tag(enum AVCodecID codec_id,
-                                       uint64_t channel_layout,
-                                       uint32_t *bitmap)
+static uint32_t mov_get_channel_label(enum AVChannel channel)
+{
+    if (channel < 0)
+        return 0;
+    if (channel <= AV_CHAN_TOP_BACK_RIGHT)
+        return channel + 1;
+    if (channel == AV_CHAN_WIDE_LEFT)
+        return 35;
+    if (channel == AV_CHAN_WIDE_RIGHT)
+        return 36;
+    if (channel == AV_CHAN_LOW_FREQUENCY_2)
+        return 37;
+    if (channel == AV_CHAN_STEREO_LEFT)
+        return 38;
+    if (channel == AV_CHAN_STEREO_RIGHT)
+        return 39;
+    return 0;
+}
+
+int ff_mov_get_channel_layout_tag(const AVCodecParameters *par,
+                                  uint32_t *layout,
+                                  uint32_t *bitmap,
+                                  uint32_t **pchannel_desc)
 {
     int i, j;
     uint32_t tag = 0;
@@ -508,7 +430,7 @@ uint32_t ff_mov_get_channel_layout_tag(enum AVCodecID codec_id,
 
     /* find the layout list for the specified codec */
     for (i = 0; mov_codec_ch_layouts[i].codec_id != AV_CODEC_ID_NONE; i++) {
-        if (mov_codec_ch_layouts[i].codec_id == codec_id)
+        if (mov_codec_ch_layouts[i].codec_id == par->codec_id)
             break;
     }
     if (mov_codec_ch_layouts[i].codec_id != AV_CODEC_ID_NONE)
@@ -519,7 +441,7 @@ uint32_t ff_mov_get_channel_layout_tag(enum AVCodecID codec_id,
         const struct MovChannelLayoutMap *layout_map;
 
         /* get the layout map based on the channel count */
-        channels = av_get_channel_layout_nb_channels(channel_layout);
+        channels = par->ch_layout.nb_channels;
         if (channels > 9)
             channels = 0;
         layout_map = mov_ch_layout_map[channels];
@@ -530,7 +452,8 @@ uint32_t ff_mov_get_channel_layout_tag(enum AVCodecID codec_id,
                 continue;
             for (j = 0; layout_map[j].tag != 0; j++) {
                 if (layout_map[j].tag    == layouts[i] &&
-                    layout_map[j].layout == channel_layout)
+                    (par->ch_layout.order == AV_CHANNEL_ORDER_NATIVE &&
+                     layout_map[j].layout == par->ch_layout.u.mask))
                     break;
             }
             if (layout_map[j].tag)
@@ -539,22 +462,46 @@ uint32_t ff_mov_get_channel_layout_tag(enum AVCodecID codec_id,
         tag = layouts[i];
     }
 
-    /* if no tag was found, use channel bitmap as a backup if possible */
-    if (tag == 0 && channel_layout > 0 && channel_layout < 0x40000) {
-        tag     = MOV_CH_LAYOUT_USE_BITMAP;
-        *bitmap = (uint32_t)channel_layout;
-    } else
-        *bitmap = 0;
+    *layout = tag;
+    *bitmap = 0;
+    *pchannel_desc = NULL;
 
-    /* TODO: set channel descriptions as a secondary backup */
+    /* if no tag was found, use channel bitmap or description as a backup if possible */
+    if (tag == 0) {
+        uint32_t *channel_desc;
+        if (par->ch_layout.order == AV_CHANNEL_ORDER_NATIVE &&
+            par->ch_layout.u.mask < 0x40000) {
+            *layout = MOV_CH_LAYOUT_USE_BITMAP;
+            *bitmap = (uint32_t)par->ch_layout.u.mask;
+            return 0;
+        } else if (par->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC)
+            return AVERROR(ENOSYS);
 
-    return tag;
+        channel_desc = av_malloc_array(par->ch_layout.nb_channels, sizeof(*channel_desc));
+        if (!channel_desc)
+            return AVERROR(ENOMEM);
+
+        for (i = 0; i < par->ch_layout.nb_channels; i++) {
+            channel_desc[i] =
+                mov_get_channel_label(av_channel_layout_channel_from_index(&par->ch_layout, i));
+
+            if (channel_desc[i] == 0) {
+                av_free(channel_desc);
+                return AVERROR(ENOSYS);
+            }
+        }
+
+        *pchannel_desc = channel_desc;
+    }
+
+    return 0;
 }
 
 int ff_mov_read_chan(AVFormatContext *s, AVIOContext *pb, AVStream *st,
                      int64_t size)
 {
-    uint32_t layout_tag, bitmap, num_descr, label_mask;
+    uint32_t layout_tag, bitmap, num_descr;
+    uint64_t label_mask, mask = 0;
     int i;
 
     if (size < 12)
@@ -564,7 +511,7 @@ int ff_mov_read_chan(AVFormatContext *s, AVIOContext *pb, AVStream *st,
     bitmap     = avio_rb32(pb);
     num_descr  = avio_rb32(pb);
 
-    av_log(s, AV_LOG_TRACE, "chan: layout=%"PRIu32" "
+    av_log(s, AV_LOG_DEBUG, "chan: layout=%"PRIu32" "
            "bitmap=%"PRIu32" num_descr=%"PRIu32"\n",
            layout_tag, bitmap, num_descr);
 
@@ -586,7 +533,7 @@ int ff_mov_read_chan(AVFormatContext *s, AVIOContext *pb, AVStream *st,
         avio_rl32(pb);                      // mCoordinates[2]
         size -= 20;
         if (layout_tag == 0) {
-            uint32_t mask_incr = mov_get_channel_label(label);
+            uint64_t mask_incr = mov_get_channel_mask(label);
             if (mask_incr == 0) {
                 label_mask = 0;
                 break;
@@ -596,9 +543,14 @@ int ff_mov_read_chan(AVFormatContext *s, AVIOContext *pb, AVStream *st,
     }
     if (layout_tag == 0) {
         if (label_mask)
-            st->codecpar->channel_layout = label_mask;
+            mask = label_mask;
     } else
-        st->codecpar->channel_layout = mov_get_channel_layout(layout_tag, bitmap);
+        mask = mov_get_channel_layout(layout_tag, bitmap);
+
+    if (mask) {
+        av_channel_layout_uninit(&st->codecpar->ch_layout);
+        av_channel_layout_from_mask(&st->codecpar->ch_layout, mask);
+    }
     avio_skip(pb, size - 12);
 
     return 0;

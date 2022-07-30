@@ -13,4 +13,4 @@ Index: jellyfin-ffmpeg/libavfilter/buffersrc.c
 +        av_log(s, AV_LOG_DEBUG, "Changing video frame properties on the fly is not supported by all filters.\n");\
      }
  
- #define CHECK_AUDIO_PARAM_CHANGE(s, c, srate, ch_layout, ch_count, format, pts)\
+ #define CHECK_AUDIO_PARAM_CHANGE(s, c, srate, layout, format, pts)\

@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/avassert.h"
 #include "libavutil/base64.h"
 #include "libavutil/bprint.h"
@@ -50,6 +52,7 @@
 #include "url.h"
 #include "rtpenc.h"
 #include "mpegts.h"
+#include "version.h"
 
 /* Default timeout values for read packet in seconds  */
 #define READ_PACKET_TIMEOUT_S 10
@@ -74,7 +77,7 @@
 #define COMMON_OPTS() \
     { "reorder_queue_size", "set number of packets to buffer for handling of reordered packets", OFFSET(reordering_queue_size), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, DEC }, \
     { "buffer_size",        "Underlying protocol send/receive buffer size",                  OFFSET(buffer_size),           AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, DEC|ENC }, \
-    { "pkt_size",           "Underlying protocol send packet size",                          OFFSET(pkt_size),              AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, ENC } \
+    { "pkt_size",           "Underlying protocol send packet size",                          OFFSET(pkt_size),              AV_OPT_TYPE_INT, { .i64 = 1472 }, -1, INT_MAX, ENC } \
 
 
 const AVOption ff_rtsp_options[] = {
@@ -323,19 +326,19 @@ static int sdp_parse_rtpmap(AVFormatContext *s,
     case AVMEDIA_TYPE_AUDIO:
         av_log(s, AV_LOG_DEBUG, "audio codec set to: %s\n", c_name);
         par->sample_rate = RTSP_DEFAULT_AUDIO_SAMPLERATE;
-        par->channels = RTSP_DEFAULT_NB_AUDIO_CHANNELS;
+        par->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
         if (i > 0) {
             par->sample_rate = i;
             avpriv_set_pts_info(st, 32, 1, par->sample_rate);
             get_word_sep(buf, sizeof(buf), "/", &p);
             i = atoi(buf);
             if (i > 0)
-                par->channels = i;
+                av_channel_layout_default(&par->ch_layout, i);
         }
         av_log(s, AV_LOG_DEBUG, "audio samplerate set to: %i\n",
                par->sample_rate);
         av_log(s, AV_LOG_DEBUG, "audio channels set to: %i\n",
-               par->channels);
+               par->ch_layout.nb_channels);
         break;
     case AVMEDIA_TYPE_VIDEO:
         av_log(s, AV_LOG_DEBUG, "video codec set to: %s\n", c_name);
@@ -840,7 +843,7 @@ int ff_rtsp_open_transport_ctx(AVFormatContext *s, RTSPStream *rtsp_st)
     if (CONFIG_RTSP_MUXER && s->oformat && st) {
         int ret = ff_rtp_chain_mux_open((AVFormatContext **)&rtsp_st->transport_priv,
                                         s, st, rtsp_st->rtp_handle,
-                                        RTSP_TCP_MAX_PACKET_SIZE,
+                                        rt->pkt_size,
                                         rtsp_st->stream_index);
         /* Ownership of rtp_handle is passed to the rtp mux context */
         rtsp_st->rtp_handle = NULL;
@@ -946,6 +949,8 @@ static void rtsp_parse_transport(AVFormatContext *s,
                              ";,", &p);
             }
             th->transport = RTSP_TRANSPORT_RAW;
+        } else {
+            break;
         }
         if (!av_strcasecmp(lower_transport, "TCP"))
             th->lower_transport = RTSP_LOWER_TRANSPORT_TCP;

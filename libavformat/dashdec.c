@@ -21,17 +21,15 @@
  */
 #include <libxml/parser.h>
 #include "libavutil/bprint.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 #include "libavutil/parseutils.h"
 #include "internal.h"
 #include "avio_internal.h"
 #include "dash.h"
+#include "demux.h"
 
 #define INITIAL_BUFFER_SIZE 32768
-#define MAX_BPRINT_READ_SIZE (UINT_MAX - 1)
-#define DEFAULT_MANIFEST_SIZE 8 * 1024
 
 struct fragment {
     int64_t url_offset;
@@ -152,6 +150,7 @@ typedef struct DASHContext {
     char *allowed_extensions;
     AVDictionary *avio_opts;
     int max_url_size;
+    char *cenc_decryption_key;
 
     /* Flags for init section*/
     int is_init_section_common_video;
@@ -405,6 +404,7 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
     DASHContext *c = s->priv_data;
     AVDictionary *tmp = NULL;
     const char *proto_name = NULL;
+    int proto_name_len;
     int ret;
 
     if (av_strstart(url, "crypto", NULL)) {
@@ -418,6 +418,7 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
     if (!proto_name)
         return AVERROR_INVALIDDATA;
 
+    proto_name_len = strlen(proto_name);
     // only http(s) & file are allowed
     if (av_strstart(proto_name, "file", NULL)) {
         if (strcmp(c->allowed_extensions, "ALL") && !av_match_ext(url, c->allowed_extensions)) {
@@ -432,9 +433,9 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
     } else
         return AVERROR_INVALIDDATA;
 
-    if (!strncmp(proto_name, url, strlen(proto_name)) && url[strlen(proto_name)] == ':')
+    if (!strncmp(proto_name, url, proto_name_len) && url[proto_name_len] == ':')
         ;
-    else if (av_strstart(url, "crypto", NULL) && !strncmp(proto_name, url + 7, strlen(proto_name)) && url[7 + strlen(proto_name)] == ':')
+    else if (av_strstart(url, "crypto", NULL) && !strncmp(proto_name, url + 7, proto_name_len) && url[7 + proto_name_len] == ':')
         ;
     else if (strcmp(proto_name, "file") || !strncmp(url, "file,", 5))
         return AVERROR_INVALIDDATA;
@@ -1195,7 +1196,6 @@ static int parse_manifest(AVFormatContext *s, const char *url, AVIOContext *in)
     DASHContext *c = s->priv_data;
     int ret = 0;
     int close_in = 0;
-    int64_t filesize = 0;
     AVBPrint buf;
     AVDictionary *opts = NULL;
     xmlDoc *doc = NULL;
@@ -1226,26 +1226,17 @@ static int parse_manifest(AVFormatContext *s, const char *url, AVIOContext *in)
     if (av_opt_get(in, "location", AV_OPT_SEARCH_CHILDREN, (uint8_t**)&c->base_url) < 0)
         c->base_url = av_strdup(url);
 
-    filesize = avio_size(in);
-    filesize = filesize > 0 ? filesize : DEFAULT_MANIFEST_SIZE;
+    av_bprint_init(&buf, 0, INT_MAX); // xmlReadMemory uses integer bufsize
 
-    if (filesize > MAX_BPRINT_READ_SIZE) {
-        av_log(s, AV_LOG_ERROR, "Manifest too large: %"PRId64"\n", filesize);
-        return AVERROR_INVALIDDATA;
-    }
-
-    av_bprint_init(&buf, filesize + 1, AV_BPRINT_SIZE_UNLIMITED);
-
-    if ((ret = avio_read_to_bprint(in, &buf, MAX_BPRINT_READ_SIZE)) < 0 ||
-        !avio_feof(in) ||
-        (filesize = buf.len) == 0) {
+    if ((ret = avio_read_to_bprint(in, &buf, SIZE_MAX)) < 0 ||
+        !avio_feof(in)) {
         av_log(s, AV_LOG_ERROR, "Unable to read to manifest '%s'\n", url);
         if (ret == 0)
             ret = AVERROR_INVALIDDATA;
     } else {
         LIBXML_TEST_VERSION
 
-        doc = xmlReadMemory(buf.str, filesize, c->base_url, NULL, 0);
+        doc = xmlReadMemory(buf.str, buf.len, c->base_url, NULL, 0);
         root_element = xmlDocGetRootElement(doc);
         node = root_element;
 
@@ -1903,6 +1894,9 @@ static int reopen_demux_for_component(AVFormatContext *s, struct representation 
     pls->ctx->pb = &pls->pb.pub;
     pls->ctx->io_open  = nested_io_open;
 
+    if (c->cenc_decryption_key)
+        av_dict_set(&in_fmt_opts, "decryption_key", c->cenc_decryption_key, 0);
+
     // provide additional information from mpd if available
     ret = avformat_open_input(&pls->ctx, "", in_fmt, &in_fmt_opts); //pls->init_section->url
     av_dict_free(&in_fmt_opts);
@@ -2354,6 +2348,7 @@ static const AVOption dash_options[] = {
         OFFSET(allowed_extensions), AV_OPT_TYPE_STRING,
         {.str = "aac,m4a,m4s,m4v,mov,mp4,webm,ts"},
         INT_MIN, INT_MAX, FLAGS},
+    { "cenc_decryption_key", "Media decryption key (hex)", OFFSET(cenc_decryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, INT_MIN, INT_MAX, .flags = FLAGS },
     {NULL}
 };
 

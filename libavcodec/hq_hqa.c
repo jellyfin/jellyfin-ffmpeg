@@ -25,6 +25,7 @@
 
 #include "avcodec.h"
 #include "canopus.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -300,11 +301,10 @@ static int hqa_decode_frame(HQContext *ctx, AVFrame *pic, size_t data_size)
     return 0;
 }
 
-static int hq_hqa_decode_frame(AVCodecContext *avctx, void *data,
+static int hq_hqa_decode_frame(AVCodecContext *avctx, AVFrame *pic,
                                int *got_frame, AVPacket *avpkt)
 {
     HQContext *ctx = avctx->priv_data;
-    AVFrame *pic = data;
     uint32_t info_tag;
     unsigned int data_size;
     int ret;
@@ -381,16 +381,16 @@ static av_cold int hq_hqa_decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_hq_hqa_decoder = {
-    .name           = "hq_hqa",
-    .long_name      = NULL_IF_CONFIG_SMALL("Canopus HQ/HQA"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_HQ_HQA,
+const FFCodec ff_hq_hqa_decoder = {
+    .p.name         = "hq_hqa",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Canopus HQ/HQA"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_HQ_HQA,
     .priv_data_size = sizeof(HQContext),
     .init           = hq_hqa_decode_init,
-    .decode         = hq_hqa_decode_frame,
+    FF_CODEC_DECODE_CB(hq_hqa_decode_frame),
     .close          = hq_hqa_decode_close,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
 };

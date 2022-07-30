@@ -32,8 +32,10 @@
 #include "avcodec.h"
 #include "blockdsp.h"
 #include "bswapdsp.h"
+#include "codec_internal.h"
 #include "idctdsp.h"
-#include "mpeg12.h"
+#include "mpeg12data.h"
+#include "mpeg12dec.h"
 #include "thread.h"
 
 typedef struct MDECContext {
@@ -41,7 +43,6 @@ typedef struct MDECContext {
     BlockDSPContext bdsp;
     BswapDSPContext bbdsp;
     IDCTDSPContext idsp;
-    ThreadFrame frame;
     GetBitContext gb;
     ScanTable scantable;
     int version;
@@ -166,20 +167,18 @@ static inline void idct_put(MDECContext *a, AVFrame *frame, int mb_x, int mb_y)
     }
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     MDECContext * const a = avctx->priv_data;
     const uint8_t *buf    = avpkt->data;
     int buf_size          = avpkt->size;
-    ThreadFrame frame     = { .f = data };
     int ret;
 
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
         return ret;
-    frame.f->pict_type = AV_PICTURE_TYPE_I;
-    frame.f->key_frame = 1;
+    frame->pict_type = AV_PICTURE_TYPE_I;
+    frame->key_frame = 1;
 
     av_fast_padded_malloc(&a->bitstream_buffer, &a->bitstream_buffer_size, buf_size);
     if (!a->bitstream_buffer)
@@ -201,7 +200,7 @@ static int decode_frame(AVCodecContext *avctx,
             if ((ret = decode_mb(a, a->block)) < 0)
                 return ret;
 
-            idct_put(a, frame.f, a->mb_x, a->mb_y);
+            idct_put(a, frame, a->mb_x, a->mb_y);
         }
     }
 
@@ -250,15 +249,15 @@ static av_cold int decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_mdec_decoder = {
-    .name             = "mdec",
-    .long_name        = NULL_IF_CONFIG_SMALL("Sony PlayStation MDEC (Motion DECoder)"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_MDEC,
+const FFCodec ff_mdec_decoder = {
+    .p.name           = "mdec",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("Sony PlayStation MDEC (Motion DECoder)"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_MDEC,
     .priv_data_size   = sizeof(MDECContext),
     .init             = decode_init,
     .close            = decode_end,
-    .decode           = decode_frame,
-    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE,
 };

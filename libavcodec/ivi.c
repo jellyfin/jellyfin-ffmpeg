@@ -161,7 +161,7 @@ static int ivi_create_huff_from_desc(const IVIHuffDesc *cb, VLC *vlc, int flag)
 static av_cold void ivi_init_static_vlc(void)
 {
     int i;
-    static VLC_TYPE table_data[8192 * 16][2];
+    static VLCElem table_data[8192 * 16];
 
     for (i = 0; i < 8; i++) {
         ivi_mb_vlc_tabs[i].table = table_data + i * 2 * 8192;
@@ -1065,12 +1065,11 @@ static int decode_band(IVI45DecContext *ctx,
     return result;
 }
 
-int ff_ivi_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                        AVPacket *avpkt)
+int ff_ivi_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     IVI45DecContext *ctx = avctx->priv_data;
     const uint8_t   *buf = avpkt->data;
-    AVFrame       *frame = data;
     int             buf_size = avpkt->size;
     int             result, p, b;
 
@@ -1091,7 +1090,7 @@ int ff_ivi_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
 
     if (ctx->is_indeo4 && ctx->frame_type == IVI4_FRAMETYPE_NULL_LAST) {
         if (ctx->got_p_frame) {
-            av_frame_move_ref(data, ctx->p_frame);
+            av_frame_move_ref(frame, ctx->p_frame);
             *got_frame = 1;
             ctx->got_p_frame = 0;
         } else {

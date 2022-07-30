@@ -31,6 +31,7 @@
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "mathops.h"
@@ -56,7 +57,7 @@ static av_cold void tscc2_init_vlc(VLC *vlc, int *offset, int nb_codes,
                                    const uint8_t *lens, const void *syms,
                                    int sym_length)
 {
-    static VLC_TYPE vlc_buf[15442][2];
+    static VLCElem vlc_buf[15442];
 
     vlc->table           = &vlc_buf[*offset];
     vlc->table_allocated = FF_ARRAY_ELEMS(vlc_buf) - *offset;
@@ -204,7 +205,7 @@ static int tscc2_decode_slice(TSCC2Context *c, int mb_y,
     return 0;
 }
 
-static int tscc2_decode_frame(AVCodecContext *avctx, void *data,
+static int tscc2_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                               int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -312,7 +313,7 @@ static int tscc2_decode_frame(AVCodecContext *avctx, void *data,
     }
 
     *got_frame      = 1;
-    if ((ret = av_frame_ref(data, c->pic)) < 0)
+    if ((ret = av_frame_ref(rframe, c->pic)) < 0)
         return ret;
 
     /* always report that the buffer was completely consumed */
@@ -355,15 +356,15 @@ static av_cold int tscc2_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_tscc2_decoder = {
-    .name           = "tscc2",
-    .long_name      = NULL_IF_CONFIG_SMALL("TechSmith Screen Codec 2"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_TSCC2,
+const FFCodec ff_tscc2_decoder = {
+    .p.name         = "tscc2",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("TechSmith Screen Codec 2"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_TSCC2,
     .priv_data_size = sizeof(TSCC2Context),
     .init           = tscc2_decode_init,
     .close          = tscc2_decode_end,
-    .decode         = tscc2_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(tscc2_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
 };

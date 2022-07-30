@@ -24,6 +24,7 @@
 #if HAVE_POLL_H
 #include <poll.h>
 #endif
+#include "mux.h"
 #include "network.h"
 #include "os_support.h"
 #include "rtsp.h"
@@ -174,7 +175,7 @@ int ff_rtsp_tcp_write_packet(AVFormatContext *s, RTSPStream *rtsp_st)
         size -= packet_len;
     }
     av_free(buf);
-    return ffio_open_dyn_packet_buf(&rtpctx->pb, RTSP_TCP_MAX_PACKET_SIZE);
+    return ffio_open_dyn_packet_buf(&rtpctx->pb, rt->pkt_size);
 }
 
 static int rtsp_write_packet(AVFormatContext *s, AVPacket *pkt)

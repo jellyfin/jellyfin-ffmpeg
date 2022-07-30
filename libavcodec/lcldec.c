@@ -37,6 +37,8 @@
  * Supports: BGR24 (RGB 24bpp)
  */
 
+#include "config_components.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -44,11 +46,12 @@
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
 #include "bytestream.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "lcl.h"
 #include "thread.h"
 
 #if CONFIG_ZLIB_DECODER
+#include "zlib_wrapper.h"
 #include <zlib.h>
 #endif
 
@@ -64,7 +67,7 @@ typedef struct LclDecContext {
     // Decompression buffer
     unsigned char* decomp_buf;
 #if CONFIG_ZLIB_DECODER
-    z_stream zstream;
+    FFZStream zstream;
 #endif
 } LclDecContext;
 
@@ -131,34 +134,34 @@ static unsigned int mszh_decomp(const unsigned char * srcptr, int srclen, unsign
 static int zlib_decomp(AVCodecContext *avctx, const uint8_t *src, int src_len, int offset, int expected)
 {
     LclDecContext *c = avctx->priv_data;
-    int zret = inflateReset(&c->zstream);
+    z_stream *const zstream = &c->zstream.zstream;
+    int zret = inflateReset(zstream);
     if (zret != Z_OK) {
         av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", zret);
         return AVERROR_UNKNOWN;
     }
-    c->zstream.next_in = src;
-    c->zstream.avail_in = src_len;
-    c->zstream.next_out = c->decomp_buf + offset;
-    c->zstream.avail_out = c->decomp_size - offset;
-    zret = inflate(&c->zstream, Z_FINISH);
+    zstream->next_in   = src;
+    zstream->avail_in  = src_len;
+    zstream->next_out  = c->decomp_buf + offset;
+    zstream->avail_out = c->decomp_size - offset;
+    zret = inflate(zstream, Z_FINISH);
     if (zret != Z_OK && zret != Z_STREAM_END) {
         av_log(avctx, AV_LOG_ERROR, "Inflate error: %d\n", zret);
         return AVERROR_UNKNOWN;
     }
-    if (expected != (unsigned int)c->zstream.total_out) {
+    if (expected != (unsigned int)zstream->total_out) {
         av_log(avctx, AV_LOG_ERROR, "Decoded size differs (%d != %lu)\n",
-               expected, c->zstream.total_out);
+               expected, zstream->total_out);
         return AVERROR_UNKNOWN;
     }
-    return c->zstream.total_out;
+    return zstream->total_out;
 }
 #endif
 
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
-    AVFrame *frame = data;
-    ThreadFrame tframe = { .f = data };
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     LclDecContext * const c = avctx->priv_data;
@@ -175,7 +178,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPac
     unsigned int len = buf_size;
     int linesize, offset;
 
-    if ((ret = ff_thread_get_buffer(avctx, &tframe, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
     outptr = frame->data[0]; // Output image pointer
@@ -607,18 +610,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     /* If needed init zlib */
 #if CONFIG_ZLIB_DECODER
-    if (avctx->codec_id == AV_CODEC_ID_ZLIB) {
-        int zret;
-        c->zstream.zalloc = Z_NULL;
-        c->zstream.zfree = Z_NULL;
-        c->zstream.opaque = Z_NULL;
-        zret = inflateInit(&c->zstream);
-        if (zret != Z_OK) {
-            av_log(avctx, AV_LOG_ERROR, "Inflate init error: %d\n", zret);
-            av_freep(&c->decomp_buf);
-            return AVERROR_UNKNOWN;
-        }
-    }
+    if (avctx->codec_id == AV_CODEC_ID_ZLIB)
+        return ff_inflate_init(&c->zstream, avctx);
 #endif
 
     return 0;
@@ -630,39 +623,38 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
     av_freep(&c->decomp_buf);
 #if CONFIG_ZLIB_DECODER
-    if (avctx->codec_id == AV_CODEC_ID_ZLIB)
-        inflateEnd(&c->zstream);
+    ff_inflate_end(&c->zstream);
 #endif
 
     return 0;
 }
 
 #if CONFIG_MSZH_DECODER
-const AVCodec ff_mszh_decoder = {
-    .name           = "mszh",
-    .long_name      = NULL_IF_CONFIG_SMALL("LCL (LossLess Codec Library) MSZH"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MSZH,
+const FFCodec ff_mszh_decoder = {
+    .p.name         = "mszh",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("LCL (LossLess Codec Library) MSZH"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MSZH,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .priv_data_size = sizeof(LclDecContext),
     .init           = decode_init,
     .close          = decode_end,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 
 #if CONFIG_ZLIB_DECODER
-const AVCodec ff_zlib_decoder = {
-    .name           = "zlib",
-    .long_name      = NULL_IF_CONFIG_SMALL("LCL (LossLess Codec Library) ZLIB"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_ZLIB,
+const FFCodec ff_zlib_decoder = {
+    .p.name         = "zlib",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("LCL (LossLess Codec Library) ZLIB"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_ZLIB,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .priv_data_size = sizeof(LclDecContext),
     .init           = decode_init,
     .close          = decode_end,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

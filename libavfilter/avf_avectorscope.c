@@ -207,7 +207,7 @@ static int query_formats(AVFilterContext *ctx)
 
     formats = ff_make_format_list(sample_fmts);
     if ((ret = ff_formats_ref         (formats, &inlink->outcfg.formats        )) < 0 ||
-        (ret = ff_add_channel_layout  (&layout, AV_CH_LAYOUT_STEREO         )) < 0 ||
+        (ret = ff_add_channel_layout  (&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO)) < 0 ||
         (ret = ff_channel_layouts_ref (layout , &inlink->outcfg.channel_layouts)) < 0)
         return ret;
 
@@ -240,6 +240,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = s->h;
     outlink->sample_aspect_ratio = (AVRational){1,1};
     outlink->frame_rate = s->frame_rate;
+    outlink->time_base = av_inv_q(outlink->frame_rate);
 
     s->prev_x = s->hw = s->w / 2;
     s->prev_y = s->hh = s->mode == POLAR ? s->h - 1 : s->h / 2;
@@ -273,8 +274,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
         for (i = 0; i < outlink->h; i++)
             memset(s->outpicref->data[0] + i * s->outpicref->linesize[0], 0, outlink->w * 4);
     }
-    s->outpicref->pts = insamples->pts;
+    s->outpicref->pts = av_rescale_q(insamples->pts, inlink->time_base, outlink->time_base);
 
+    av_frame_make_writable(s->outpicref);
     ff_filter_execute(ctx, fade, NULL, NULL, FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
 
     if (zoom < 1) {
@@ -411,6 +413,11 @@ static int activate(AVFilterContext *ctx)
         return ret;
     if (ret > 0)
         return filter_frame(inlink, in);
+
+    if (ff_inlink_queued_samples(inlink) >= s->nb_samples) {
+        ff_filter_set_ready(ctx, 10);
+        return 0;
+    }
 
     FF_FILTER_FORWARD_STATUS(inlink, outlink);
     FF_FILTER_FORWARD_WANTED(outlink, inlink);

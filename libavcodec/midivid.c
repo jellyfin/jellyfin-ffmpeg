@@ -32,6 +32,7 @@
 #include "avcodec.h"
 #include "get_bits.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct MidiVidContext {
@@ -187,7 +188,7 @@ static ptrdiff_t lzss_uncompress(MidiVidContext *s, GetByteContext *gb, uint8_t 
     return dst - dst_start;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                         int *got_frame, AVPacket *avpkt)
 {
     MidiVidContext *s = avctx->priv_data;
@@ -223,7 +224,7 @@ static int decode_frame(AVCodecContext *avctx, void *data,
         return ret;
     key = ret;
 
-    if ((ret = av_frame_ref(data, s->frame)) < 0)
+    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
         return ret;
 
     frame->pict_type = key ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
@@ -277,16 +278,16 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_mvdv_decoder = {
-    .name           = "mvdv",
-    .long_name      = NULL_IF_CONFIG_SMALL("MidiVid VQ"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MVDV,
+const FFCodec ff_mvdv_decoder = {
+    .p.name         = "mvdv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MidiVid VQ"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MVDV,
     .priv_data_size = sizeof(MidiVidContext),
     .init           = decode_init,
-    .decode         = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .flush          = decode_flush,
     .close          = decode_close,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

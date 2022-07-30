@@ -32,6 +32,7 @@
 #include "libavutil/internal.h"
 #include "libavutil/film_grain_params.h"
 #include "libavutil/hdr_dynamic_metadata.h"
+#include "libavutil/hdr_dynamic_vivid_metadata.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/spherical.h"
@@ -41,6 +42,7 @@
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/video_enc_params.h"
 #include "libavutil/detection_bbox.h"
+#include "libavutil/uuid.h"
 
 #include "avfilter.h"
 #include "internal.h"
@@ -307,6 +309,89 @@ static void dump_dynamic_hdr_plus(AVFilterContext *ctx, AVFrameSideData *sd)
     }
 }
 
+static void dump_dynamic_hdr_vivid(AVFilterContext *ctx, AVFrameSideData *sd)
+{
+    AVDynamicHDRVivid *hdr_vivid;
+
+    av_log(ctx, AV_LOG_INFO, "HDR Vivid metadata: ");
+    if (sd->size < sizeof(*hdr_vivid)) {
+        av_log(ctx, AV_LOG_ERROR, "invalid hdr vivid data\n");
+        return;
+    }
+
+    hdr_vivid = (AVDynamicHDRVivid *)sd->data;
+    av_log(ctx, AV_LOG_INFO, "system_start_code: %d, ", hdr_vivid->system_start_code);
+    av_log(ctx, AV_LOG_INFO, "num_windows: %d, ", hdr_vivid->num_windows);
+    for (int w = 0; w < hdr_vivid->num_windows; w++) {
+        const AVHDRVividColorTransformParams *params = &hdr_vivid->params[w];
+
+        av_log(ctx, AV_LOG_INFO, "minimum_maxrgb[%d]: %.4f, ", w, av_q2d(params->minimum_maxrgb));
+        av_log(ctx, AV_LOG_INFO, "average_maxrgb[%d]: %.4f, ", w, av_q2d(params->average_maxrgb));
+        av_log(ctx, AV_LOG_INFO, "variance_maxrgb[%d]:%.4f, ", w, av_q2d(params->variance_maxrgb));
+        av_log(ctx, AV_LOG_INFO, "maximum_maxrgb[%d]: %.4f, ", w, av_q2d(params->maximum_maxrgb));
+    }
+
+    for (int w = 0; w < hdr_vivid->num_windows; w++) {
+        const AVHDRVividColorTransformParams *params = &hdr_vivid->params[w];
+
+        av_log(ctx, AV_LOG_INFO, "tone_mapping_mode_flag[%d]: %d, ", w, params->tone_mapping_mode_flag);
+        av_log(ctx, AV_LOG_INFO, "tone_mapping_param_num[%d]: %d, ", w, params->tone_mapping_param_num);
+        if (params->tone_mapping_mode_flag) {
+            for (int i = 0; i < params->tone_mapping_param_num; i++) {
+                const AVHDRVividColorToneMappingParams *tm_params = &params->tm_params[i];
+
+                av_log(ctx, AV_LOG_INFO, "targeted_system_display_maximum_luminance[%d][%d]: %.4f, ",
+                       w, i, av_q2d(tm_params->targeted_system_display_maximum_luminance));
+                av_log(ctx, AV_LOG_INFO, "base_enable_flag[%d][%d]: %d, ",
+                       w, i, tm_params->base_enable_flag);
+                if (tm_params->base_enable_flag) {
+                    av_log(ctx, AV_LOG_INFO, "base_param_m_p[%d][%d]: %.4f, ", w, i, av_q2d(tm_params->base_param_m_p));
+                    av_log(ctx, AV_LOG_INFO, "base_param_m_m[%d][%d]: %.4f, ", w, i, av_q2d(tm_params->base_param_m_m));
+                    av_log(ctx, AV_LOG_INFO, "base_param_m_a[%d][%d]: %.4f, ", w, i, av_q2d(tm_params->base_param_m_a));
+                    av_log(ctx, AV_LOG_INFO, "base_param_m_b[%d][%d]: %.4f, ", w, i, av_q2d(tm_params->base_param_m_b));
+                    av_log(ctx, AV_LOG_INFO, "base_param_m_n[%d][%d]: %.4f, ", w, i, av_q2d(tm_params->base_param_m_n));
+                    av_log(ctx, AV_LOG_INFO, "base_param_k1[%d][%d]:  %d, ", w, i, tm_params->base_param_k1);
+                    av_log(ctx, AV_LOG_INFO, "base_param_k2[%d][%d]:  %d, ", w, i, tm_params->base_param_k2);
+                    av_log(ctx, AV_LOG_INFO, "base_param_k3[%d][%d]:  %d, ", w, i, tm_params->base_param_k3);
+                    av_log(ctx, AV_LOG_INFO, "base_param_Delta_enable_mode[%d][%d]: %d, ", w, i,
+                           tm_params->base_param_Delta_enable_mode);
+                    av_log(ctx, AV_LOG_INFO, "base_param_Delta[%d][%d]: %.4f, ", w, i, av_q2d(tm_params->base_param_Delta));
+                }
+                av_log(ctx, AV_LOG_INFO, "3Spline_enable_flag[%d][%d]: %d, ",
+                       w, i, tm_params->three_Spline_enable_flag);
+                if (tm_params->three_Spline_enable_flag) {
+                    av_log(ctx, AV_LOG_INFO, "3Spline_TH_mode[%d][%d]:  %d, ", w, i, tm_params->three_Spline_TH_mode);
+
+                    for (int j = 0; j < tm_params->three_Spline_num; j++) {
+                        av_log(ctx, AV_LOG_INFO, "3Spline_TH_enable_MB[%d][%d][%d]: %.4f, ",
+                                w, i, j, av_q2d(tm_params->three_Spline_TH_enable_MB));
+                        av_log(ctx, AV_LOG_INFO, "3Spline_TH_enable[%d][%d][%d]: %.4f, ",
+                                w, i, j, av_q2d(tm_params->three_Spline_TH_enable));
+                        av_log(ctx, AV_LOG_INFO, "3Spline_TH_Delta1[%d][%d][%d]: %.4f, ",
+                                w, i, j, av_q2d(tm_params->three_Spline_TH_Delta1));
+                        av_log(ctx, AV_LOG_INFO, "3Spline_TH_Delta2[%d][%d][%d]: %.4f, ",
+                                w, i, j, av_q2d(tm_params->three_Spline_TH_Delta2));
+                        av_log(ctx, AV_LOG_INFO, "3Spline_enable_Strength[%d][%d][%d]: %.4f, ",
+                                w, i, j, av_q2d(tm_params->three_Spline_enable_Strength));
+                    }
+                }
+            }
+        }
+
+        av_log(ctx, AV_LOG_INFO, "color_saturation_mapping_flag[%d]: %d",
+                w, params->color_saturation_mapping_flag);
+        if (params->color_saturation_mapping_flag) {
+            av_log(ctx, AV_LOG_INFO, ", color_saturation_num[%d]: %d",
+                   w, params->color_saturation_num);
+            for (int i = 0; i < params->color_saturation_num; i++) {
+                av_log(ctx, AV_LOG_INFO, ", color_saturation_gain[%d][%d]: %.4f",
+                       w, i, av_q2d(params->color_saturation_gain[i]));
+            }
+        }
+    }
+}
+
+
 static void dump_content_light_metadata(AVFilterContext *ctx, AVFrameSideData *sd)
 {
     const AVContentLightMetadata *metadata = (const AVContentLightMetadata *)sd->data;
@@ -337,29 +422,20 @@ static void dump_video_enc_params(AVFilterContext *ctx, const AVFrameSideData *s
 
 static void dump_sei_unregistered_metadata(AVFilterContext *ctx, const AVFrameSideData *sd)
 {
-    const int uuid_size = 16;
     const uint8_t *user_data = sd->data;
-    int i;
 
-    if (sd->size < uuid_size) {
+    if (sd->size < AV_UUID_LEN) {
         av_log(ctx, AV_LOG_ERROR, "invalid data(%"SIZE_SPECIFIER" < "
-               "UUID(%d-bytes))\n", sd->size, uuid_size);
+               "UUID(%d-bytes))\n", sd->size, AV_UUID_LEN);
         return;
     }
 
     av_log(ctx, AV_LOG_INFO, "User Data Unregistered:\n");
-    av_log(ctx, AV_LOG_INFO, "UUID=");
-    for (i = 0; i < uuid_size; i++) {
-        av_log(ctx, AV_LOG_INFO, "%02x", user_data[i]);
-        if (i == 3 || i == 5 || i == 7 || i == 9)
-            av_log(ctx, AV_LOG_INFO, "-");
-    }
-    av_log(ctx, AV_LOG_INFO, "\n");
+    av_log(ctx, AV_LOG_INFO, "UUID=" AV_PRI_UUID "\n", AV_UUID_ARG(user_data));
 
     av_log(ctx, AV_LOG_INFO, "User Data=");
-    for (; i < sd->size; i++) {
+    for (size_t i = 16; i < sd->size; i++)
         av_log(ctx, AV_LOG_INFO, "%02x", user_data[i]);
-    }
     av_log(ctx, AV_LOG_INFO, "\n");
 }
 
@@ -703,6 +779,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             break;
         case AV_FRAME_DATA_DYNAMIC_HDR_PLUS:
             dump_dynamic_hdr_plus(ctx, sd);
+            break;
+        case AV_FRAME_DATA_DYNAMIC_HDR_VIVID:
+            dump_dynamic_hdr_vivid(ctx, sd);
             break;
         case AV_FRAME_DATA_CONTENT_LIGHT_LEVEL:
             dump_content_light_metadata(ctx, sd);

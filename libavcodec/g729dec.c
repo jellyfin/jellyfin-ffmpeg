@@ -26,6 +26,7 @@
 #include "libavutil/avutil.h"
 #include "get_bits.h"
 #include "audiodsp.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 
@@ -350,10 +351,11 @@ static av_cold int decoder_init(AVCodecContext * avctx)
 {
     G729Context *s = avctx->priv_data;
     G729ChannelContext *ctx;
+    int channels = avctx->ch_layout.nb_channels;
     int c,i,k;
 
-    if (avctx->channels < 1 || avctx->channels > 2) {
-        av_log(avctx, AV_LOG_ERROR, "Only mono and stereo are supported (requested channels: %d).\n", avctx->channels);
+    if (channels < 1 || channels > 2) {
+        av_log(avctx, AV_LOG_ERROR, "Only mono and stereo are supported (requested channels: %d).\n", channels);
         return AVERROR(EINVAL);
     }
     avctx->sample_fmt = AV_SAMPLE_FMT_S16P;
@@ -362,11 +364,11 @@ static av_cold int decoder_init(AVCodecContext * avctx)
     avctx->frame_size = SUBFRAME_SIZE << 1;
 
     ctx =
-    s->channel_context = av_mallocz(sizeof(G729ChannelContext) * avctx->channels);
+    s->channel_context = av_mallocz(sizeof(G729ChannelContext) * channels);
     if (!ctx)
         return AVERROR(ENOMEM);
 
-    for (c = 0; c < avctx->channels; c++) {
+    for (c = 0; c < channels; c++) {
         ctx->gain_coeff = 16384; // 1.0 in (1.14)
 
         for (k = 0; k < MA_NP + 1; k++) {
@@ -399,8 +401,8 @@ static av_cold int decoder_init(AVCodecContext * avctx)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame_ptr, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
@@ -412,6 +414,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
     G729Formats packet_type;
     G729Context *s = avctx->priv_data;
     G729ChannelContext *ctx = s->channel_context;
+    int channels = avctx->ch_layout.nb_channels;
     int16_t lp[2][11];           // (3.12)
     uint8_t ma_predictor;     ///< switched MA predictor of LSP quantizer
     uint8_t quantizer_1st;    ///< first stage vector of quantizer
@@ -424,20 +427,19 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
     int16_t synth[SUBFRAME_SIZE+10]; // fixed-codebook vector
     int j, ret;
     int gain_before, gain_after;
-    AVFrame *frame = data;
 
     frame->nb_samples = SUBFRAME_SIZE<<1;
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    if (buf_size && buf_size % ((G729_8K_BLOCK_SIZE + (avctx->codec_id == AV_CODEC_ID_ACELP_KELVIN)) * avctx->channels) == 0) {
+    if (buf_size && buf_size % ((G729_8K_BLOCK_SIZE + (avctx->codec_id == AV_CODEC_ID_ACELP_KELVIN)) * channels) == 0) {
         packet_type = FORMAT_G729_8K;
         format = &format_g729_8k;
         //Reset voice decision
         ctx->onset = 0;
         ctx->voice_decision = DECISION_VOICE;
         av_log(avctx, AV_LOG_DEBUG, "Packet type: %s\n", "G.729 @ 8kbit/s");
-    } else if (buf_size == G729D_6K4_BLOCK_SIZE * avctx->channels && avctx->codec_id != AV_CODEC_ID_ACELP_KELVIN) {
+    } else if (buf_size == G729D_6K4_BLOCK_SIZE * channels && avctx->codec_id != AV_CODEC_ID_ACELP_KELVIN) {
         packet_type = FORMAT_G729D_6K4;
         format = &format_g729d_6k4;
         av_log(avctx, AV_LOG_DEBUG, "Packet type: %s\n", "G.729D @ 6.4kbit/s");
@@ -446,13 +448,13 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
         return AVERROR_INVALIDDATA;
     }
 
-    for (c = 0; c < avctx->channels; c++) {
+    for (c = 0; c < channels; c++) {
         int frame_erasure = 0; ///< frame erasure detected during decoding
         int bad_pitch = 0;     ///< parity check failed
         int is_periodic = 0;   ///< whether one of the subframes is declared as periodic or not
         out_frame = (int16_t*)frame->data[c];
         if (avctx->codec_id == AV_CODEC_ID_ACELP_KELVIN) {
-            if (*buf != ((avctx->channels - 1 - c) * 0x80 | 2))
+            if (*buf != ((avctx->ch_layout.nb_channels - 1 - c) * 0x80 | 2))
                 avpriv_request_sample(avctx, "First byte value %x for channel %d", *buf, c);
             buf++;
         }
@@ -739,7 +741,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
     }
 
     *got_frame_ptr = 1;
-    return (format->block_size + (avctx->codec_id == AV_CODEC_ID_ACELP_KELVIN)) * avctx->channels;
+    return (format->block_size + (avctx->codec_id == AV_CODEC_ID_ACELP_KELVIN)) * channels;
 }
 
 static av_cold int decode_close(AVCodecContext *avctx)
@@ -750,28 +752,28 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_g729_decoder = {
-    .name           = "g729",
-    .long_name      = NULL_IF_CONFIG_SMALL("G.729"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_G729,
+const FFCodec ff_g729_decoder = {
+    .p.name         = "g729",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("G.729"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_G729,
     .priv_data_size = sizeof(G729Context),
     .init           = decoder_init,
-    .decode         = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .close          = decode_close,
-    .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 
-const AVCodec ff_acelp_kelvin_decoder = {
-    .name           = "acelp.kelvin",
-    .long_name      = NULL_IF_CONFIG_SMALL("Sipro ACELP.KELVIN"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_ACELP_KELVIN,
+const FFCodec ff_acelp_kelvin_decoder = {
+    .p.name         = "acelp.kelvin",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Sipro ACELP.KELVIN"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_ACELP_KELVIN,
     .priv_data_size = sizeof(G729Context),
     .init           = decoder_init,
-    .decode         = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .close          = decode_close,
-    .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

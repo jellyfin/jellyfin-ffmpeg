@@ -29,7 +29,9 @@
 ;       replace some shuffles with vblends?
 ;       avx512 split-radix
 
-%include "x86util.asm"
+%include "libavutil/x86/x86util.asm"
+
+%define private_prefix ff_tx
 
 %if ARCH_X86_64
 %define ptr resq
@@ -39,25 +41,22 @@
 
 %assign i 16
 %rep 14
-cextern cos_ %+ i %+ _float ; ff_cos_i_float...
+cextern tab_ %+ i %+ _float ; ff_tab_i_float...
 %assign i (i << 1)
 %endrep
 
 struc AVTXContext
-    .n:           resd 1 ; Non-power-of-two part
-    .m:           resd 1 ; Power-of-two part
-    .inv:         resd 1 ; Is inverse
-    .type:        resd 1 ; Type
-    .flags:       resq 1 ; Flags
-    .scale:       resq 1 ; Scale
+    .len:          resd 1 ; Length
+    .inv           resd 1 ; Inverse flag
+    .map:           ptr 1 ; Lookup table(s)
+    .exp:           ptr 1 ; Exponentiation factors
+    .tmp:           ptr 1 ; Temporary data
 
-    .exptab:       ptr 1 ; MDCT exptab
-    .tmp:          ptr 1 ; Temporary buffer needed for all compound transforms
-    .pfatab:       ptr 1 ; Input/Output mapping for compound transforms
-    .revtab:       ptr 1 ; Input mapping for power of two transforms
-    .inplace_idx:  ptr 1 ; Required indices to revtab for in-place transforms
+    .sub:           ptr 1 ; Subcontexts
+    .fn:            ptr 4 ; Subcontext functions
+    .nb_sub:       resd 1 ; Subcontext count
 
-    .top_tx        ptr 1 ;  Used for transforms derived from other transforms
+    ; Everything else is inaccessible
 endstruc
 
 SECTION_RODATA 32
@@ -485,8 +484,8 @@ SECTION .text
     movaps [outq + 10*mmsize], tx1_o0
     movaps [outq + 14*mmsize], tx2_o0
 
-    movaps tw_e,           [cos_64_float + mmsize]
-    vperm2f128 tw_o, tw_o, [cos_64_float + 64 - 4*7 - mmsize], 0x23
+    movaps tw_e,           [tab_64_float + mmsize]
+    vperm2f128 tw_o, tw_o, [tab_64_float + 64 - 4*7 - mmsize], 0x23
 
     movaps m0, [outq +  1*mmsize]
     movaps m1, [outq +  3*mmsize]
@@ -708,14 +707,21 @@ cglobal fft4_ %+ %1 %+ _float, 4, 4, 3, ctx, out, in, stride
 FFT4 fwd, 0
 FFT4 inv, 1
 
+%macro FFT8_SSE_FN 2
 INIT_XMM sse3
-cglobal fft8_float, 4, 4, 6, ctx, out, in, tmp
-    mov ctxq, [ctxq + AVTXContext.revtab]
-
+cglobal fft8_ %+ %1, 4, 4, 6, ctx, out, in, tmp
+%if %2
+    mov ctxq, [ctxq + AVTXContext.map]
     LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq
     LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq
     LOAD64_LUT m2, inq, ctxq, (mmsize/2)*2, tmpq
     LOAD64_LUT m3, inq, ctxq, (mmsize/2)*3, tmpq
+%else
+    movaps m0, [inq + 0*mmsize]
+    movaps m1, [inq + 1*mmsize]
+    movaps m2, [inq + 2*mmsize]
+    movaps m3, [inq + 3*mmsize]
+%endif
 
     FFT8 m0, m1, m2, m3, m4, m5
 
@@ -730,13 +736,22 @@ cglobal fft8_float, 4, 4, 6, ctx, out, in, tmp
     movups [outq + 3*mmsize], m1
 
     RET
+%endmacro
 
+FFT8_SSE_FN float,    1
+FFT8_SSE_FN ns_float, 0
+
+%macro FFT8_AVX_FN 2
 INIT_YMM avx
-cglobal fft8_float, 4, 4, 4, ctx, out, in, tmp
-    mov ctxq, [ctxq + AVTXContext.revtab]
-
+cglobal fft8_ %+ %1, 4, 4, 4, ctx, out, in, tmp
+%if %2
+    mov ctxq, [ctxq + AVTXContext.map]
     LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq, m2
     LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq, m3
+%else
+    movaps m0, [inq + 0*mmsize]
+    movaps m1, [inq + 1*mmsize]
+%endif
 
     FFT8_AVX m0, m1, m2, m3
 
@@ -750,16 +765,26 @@ cglobal fft8_float, 4, 4, 4, ctx, out, in, tmp
     vextractf128 [outq + 16*3], m0, 1
 
     RET
+%endmacro
 
-%macro FFT16_FN 1
+FFT8_AVX_FN float,    1
+FFT8_AVX_FN ns_float, 0
+
+%macro FFT16_FN 3
 INIT_YMM %1
-cglobal fft16_float, 4, 4, 8, ctx, out, in, tmp
-    mov ctxq, [ctxq + AVTXContext.revtab]
-
+cglobal fft16_ %+ %2, 4, 4, 8, ctx, out, in, tmp
+%if %3
+    movaps m0, [inq + 0*mmsize]
+    movaps m1, [inq + 1*mmsize]
+    movaps m2, [inq + 2*mmsize]
+    movaps m3, [inq + 3*mmsize]
+%else
+    mov ctxq, [ctxq + AVTXContext.map]
     LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq, m4
     LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq, m5
     LOAD64_LUT m2, inq, ctxq, (mmsize/2)*2, tmpq, m6
     LOAD64_LUT m3, inq, ctxq, (mmsize/2)*3, tmpq, m7
+%endif
 
     FFT16 m0, m1, m2, m3, m4, m5, m6, m7
 
@@ -780,28 +805,43 @@ cglobal fft16_float, 4, 4, 8, ctx, out, in, tmp
     RET
 %endmacro
 
-FFT16_FN avx
-FFT16_FN fma3
+FFT16_FN avx,  float,    0
+FFT16_FN avx,  ns_float, 1
+FFT16_FN fma3, float,    0
+FFT16_FN fma3, ns_float, 1
 
-%macro FFT32_FN 1
+%macro FFT32_FN 3
 INIT_YMM %1
-cglobal fft32_float, 4, 4, 16, ctx, out, in, tmp
-    mov ctxq, [ctxq + AVTXContext.revtab]
-
-    LOAD64_LUT m4, inq, ctxq, (mmsize/2)*4, tmpq,  m8,  m9
-    LOAD64_LUT m5, inq, ctxq, (mmsize/2)*5, tmpq, m10, m11
-    LOAD64_LUT m6, inq, ctxq, (mmsize/2)*6, tmpq, m12, m13
-    LOAD64_LUT m7, inq, ctxq, (mmsize/2)*7, tmpq, m14, m15
+cglobal fft32_ %+ %2, 4, 4, 16, ctx, out, in, tmp
+%if %3
+    movaps m4, [inq + 4*mmsize]
+    movaps m5, [inq + 5*mmsize]
+    movaps m6, [inq + 6*mmsize]
+    movaps m7, [inq + 7*mmsize]
+%else
+    mov ctxq, [ctxq + AVTXContext.map]
+    LOAD64_LUT m4, inq, ctxq, (mmsize/2)*4, tmpq,  m8, m12
+    LOAD64_LUT m5, inq, ctxq, (mmsize/2)*5, tmpq,  m9, m13
+    LOAD64_LUT m6, inq, ctxq, (mmsize/2)*6, tmpq, m10, m14
+    LOAD64_LUT m7, inq, ctxq, (mmsize/2)*7, tmpq, m11, m15
+%endif
 
     FFT8 m4, m5, m6, m7, m8, m9
 
-    LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq,  m8,  m9
-    LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq, m10, m11
-    LOAD64_LUT m2, inq, ctxq, (mmsize/2)*2, tmpq, m12, m13
-    LOAD64_LUT m3, inq, ctxq, (mmsize/2)*3, tmpq, m14, m15
+%if %3
+    movaps m0, [inq + 0*mmsize]
+    movaps m1, [inq + 1*mmsize]
+    movaps m2, [inq + 2*mmsize]
+    movaps m3, [inq + 3*mmsize]
+%else
+    LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq,  m8, m12
+    LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq,  m9, m13
+    LOAD64_LUT m2, inq, ctxq, (mmsize/2)*2, tmpq, m10, m14
+    LOAD64_LUT m3, inq, ctxq, (mmsize/2)*3, tmpq, m11, m15
+%endif
 
-    movaps m8,         [cos_32_float]
-    vperm2f128 m9, m9, [cos_32_float + 4*8 - 4*7], 0x23
+    movaps m8,         [tab_32_float]
+    vperm2f128 m9, m9, [tab_32_float + 4*8 - 4*7], 0x23
 
     FFT16 m0, m1, m2, m3, m10, m11, m12, m13
 
@@ -839,8 +879,10 @@ cglobal fft32_float, 4, 4, 16, ctx, out, in, tmp
 %endmacro
 
 %if ARCH_X86_64
-FFT32_FN avx
-FFT32_FN fma3
+FFT32_FN avx,  float,    0
+FFT32_FN avx,  ns_float, 1
+FFT32_FN fma3, float,    0
+FFT32_FN fma3, ns_float, 1
 %endif
 
 %macro FFT_SPLIT_RADIX_DEF 1-2
@@ -858,8 +900,8 @@ ALIGN 16
     POP lenq
     sub outq, (%1*4) + (%1*2) + (%1/2)
 
-    lea rtabq, [cos_ %+ %1 %+ _float]
-    lea itabq, [cos_ %+ %1 %+ _float + %1 - 4*7]
+    lea rtabq, [tab_ %+ %1 %+ _float]
+    lea itabq, [tab_ %+ %1 %+ _float + %1 - 4*7]
 
 %if %0 > 1
     cmp tgtq, %1
@@ -881,30 +923,44 @@ ALIGN 16
 %endif
 %endmacro
 
-%macro FFT_SPLIT_RADIX_FN 1
+%macro FFT_SPLIT_RADIX_FN 3
 INIT_YMM %1
-cglobal split_radix_fft_float, 4, 8, 16, 272, lut, out, in, len, tmp, itab, rtab, tgt
-    movsxd lenq, dword [lutq + AVTXContext.m]
-    mov lutq, [lutq + AVTXContext.revtab]
+cglobal fft_sr_ %+ %2, 4, 8, 16, 272, lut, out, in, len, tmp, itab, rtab, tgt
+    movsxd lenq, dword [lutq + AVTXContext.len]
+    mov lutq, [lutq + AVTXContext.map]
     mov tgtq, lenq
 
 ; Bottom-most/32-point transform ===============================================
 ALIGN 16
 .32pt:
-    LOAD64_LUT m4, inq, lutq, (mmsize/2)*4, tmpq,  m8,  m9
-    LOAD64_LUT m5, inq, lutq, (mmsize/2)*5, tmpq, m10, m11
-    LOAD64_LUT m6, inq, lutq, (mmsize/2)*6, tmpq, m12, m13
-    LOAD64_LUT m7, inq, lutq, (mmsize/2)*7, tmpq, m14, m15
+%if %3
+    movaps m4, [inq + 4*mmsize]
+    movaps m5, [inq + 5*mmsize]
+    movaps m6, [inq + 6*mmsize]
+    movaps m7, [inq + 7*mmsize]
+%else
+    LOAD64_LUT m4, inq, lutq, (mmsize/2)*4, tmpq,  m8, m12
+    LOAD64_LUT m5, inq, lutq, (mmsize/2)*5, tmpq,  m9, m13
+    LOAD64_LUT m6, inq, lutq, (mmsize/2)*6, tmpq, m10, m14
+    LOAD64_LUT m7, inq, lutq, (mmsize/2)*7, tmpq, m11, m15
+%endif
 
     FFT8 m4, m5, m6, m7, m8, m9
 
-    LOAD64_LUT m0, inq, lutq, (mmsize/2)*0, tmpq,  m8,  m9
-    LOAD64_LUT m1, inq, lutq, (mmsize/2)*1, tmpq, m10, m11
-    LOAD64_LUT m2, inq, lutq, (mmsize/2)*2, tmpq, m12, m13
-    LOAD64_LUT m3, inq, lutq, (mmsize/2)*3, tmpq, m14, m15
+%if %3
+    movaps m0, [inq + 0*mmsize]
+    movaps m1, [inq + 1*mmsize]
+    movaps m2, [inq + 2*mmsize]
+    movaps m3, [inq + 3*mmsize]
+%else
+    LOAD64_LUT m0, inq, lutq, (mmsize/2)*0, tmpq,  m8, m12
+    LOAD64_LUT m1, inq, lutq, (mmsize/2)*1, tmpq,  m9, m13
+    LOAD64_LUT m2, inq, lutq, (mmsize/2)*2, tmpq, m10, m14
+    LOAD64_LUT m3, inq, lutq, (mmsize/2)*3, tmpq, m11, m15
+%endif
 
-    movaps m8,         [cos_32_float]
-    vperm2f128 m9, m9, [cos_32_float + 32 - 4*7], 0x23
+    movaps m8,         [tab_32_float]
+    vperm2f128 m9, m9, [tab_32_float + 32 - 4*7], 0x23
 
     FFT16 m0, m1, m2, m3, m10, m11, m12, m13
 
@@ -916,7 +972,11 @@ ALIGN 16
     movaps [outq + 5*mmsize], m5
     movaps [outq + 7*mmsize], m7
 
+%if %3
+    add inq, 8*mmsize
+%else
     add lutq, (mmsize/2)*8
+%endif
     cmp lenq, 32
     jg .64pt
 
@@ -947,24 +1007,42 @@ ALIGN 16
     SWAP m4, m1
     SWAP m6, m3
 
-    LOAD64_LUT tx1_e0, inq, lutq, (mmsize/2)*0, tmpq, tw_e, tw_o
-    LOAD64_LUT tx1_e1, inq, lutq, (mmsize/2)*1, tmpq, tmp1, tmp2
-    LOAD64_LUT tx1_o0, inq, lutq, (mmsize/2)*2, tmpq, tw_e, tw_o
-    LOAD64_LUT tx1_o1, inq, lutq, (mmsize/2)*3, tmpq, tmp1, tmp2
+%if %3
+    movaps tx1_e0, [inq + 0*mmsize]
+    movaps tx1_e1, [inq + 1*mmsize]
+    movaps tx1_o0, [inq + 2*mmsize]
+    movaps tx1_o1, [inq + 3*mmsize]
+%else
+    LOAD64_LUT tx1_e0, inq, lutq, (mmsize/2)*0, tmpq, tw_e, tmp1
+    LOAD64_LUT tx1_e1, inq, lutq, (mmsize/2)*1, tmpq, tw_o, tmp2
+    LOAD64_LUT tx1_o0, inq, lutq, (mmsize/2)*2, tmpq, tw_e, tmp1
+    LOAD64_LUT tx1_o1, inq, lutq, (mmsize/2)*3, tmpq, tw_o, tmp2
+%endif
 
     FFT16 tx1_e0, tx1_e1, tx1_o0, tx1_o1, tw_e, tw_o, tx2_o0, tx2_o1
 
-    LOAD64_LUT tx2_e0, inq, lutq, (mmsize/2)*4, tmpq, tmp1, tmp2
-    LOAD64_LUT tx2_e1, inq, lutq, (mmsize/2)*5, tmpq, tw_e, tw_o
-    LOAD64_LUT tx2_o0, inq, lutq, (mmsize/2)*6, tmpq, tmp1, tmp2
-    LOAD64_LUT tx2_o1, inq, lutq, (mmsize/2)*7, tmpq, tw_e, tw_o
+%if %3
+    movaps tx2_e0, [inq + 4*mmsize]
+    movaps tx2_e1, [inq + 5*mmsize]
+    movaps tx2_o0, [inq + 6*mmsize]
+    movaps tx2_o1, [inq + 7*mmsize]
+%else
+    LOAD64_LUT tx2_e0, inq, lutq, (mmsize/2)*4, tmpq, tw_e, tmp1
+    LOAD64_LUT tx2_e1, inq, lutq, (mmsize/2)*5, tmpq, tw_o, tmp2
+    LOAD64_LUT tx2_o0, inq, lutq, (mmsize/2)*6, tmpq, tw_e, tmp1
+    LOAD64_LUT tx2_o1, inq, lutq, (mmsize/2)*7, tmpq, tw_o, tmp2
+%endif
 
     FFT16 tx2_e0, tx2_e1, tx2_o0, tx2_o1, tmp1, tmp2, tw_e, tw_o
 
-    movaps tw_e,           [cos_64_float]
-    vperm2f128 tw_o, tw_o, [cos_64_float + 64 - 4*7], 0x23
+    movaps tw_e,           [tab_64_float]
+    vperm2f128 tw_o, tw_o, [tab_64_float + 64 - 4*7], 0x23
 
+%if %3
+    add inq, 8*mmsize
+%else
     add lutq, (mmsize/2)*8
+%endif
     cmp tgtq, 64
     je .deinterleave
 
@@ -989,8 +1067,8 @@ ALIGN 16
     POP lenq
     sub outq, 24*mmsize
 
-    lea rtabq, [cos_128_float]
-    lea itabq, [cos_128_float + 128 - 4*7]
+    lea rtabq, [tab_128_float]
+    lea itabq, [tab_128_float + 128 - 4*7]
 
     cmp tgtq, 128
     je .deinterleave
@@ -1016,8 +1094,8 @@ ALIGN 16
     POP lenq
     sub outq, 48*mmsize
 
-    lea rtabq, [cos_256_float]
-    lea itabq, [cos_256_float + 256 - 4*7]
+    lea rtabq, [tab_256_float]
+    lea itabq, [tab_256_float + 256 - 4*7]
 
     cmp tgtq, 256
     je .deinterleave
@@ -1044,8 +1122,8 @@ ALIGN 16
     POP lenq
     sub outq, 96*mmsize
 
-    lea rtabq, [cos_512_float]
-    lea itabq, [cos_512_float + 512 - 4*7]
+    lea rtabq, [tab_512_float]
+    lea itabq, [tab_512_float + 512 - 4*7]
 
     cmp tgtq, 512
     je .deinterleave
@@ -1079,8 +1157,8 @@ ALIGN 16
     POP lenq
     sub outq, 192*mmsize
 
-    lea rtabq, [cos_1024_float]
-    lea itabq, [cos_1024_float + 1024 - 4*7]
+    lea rtabq, [tab_1024_float]
+    lea itabq, [tab_1024_float + 1024 - 4*7]
 
     cmp tgtq, 1024
     je .deinterleave
@@ -1160,8 +1238,8 @@ FFT_SPLIT_RADIX_DEF 131072
     vextractf128 [outq + 13*mmsize +  0], tw_e,   1
     vextractf128 [outq + 13*mmsize + 16], tx2_e0, 1
 
-    movaps tw_e,           [cos_64_float + mmsize]
-    vperm2f128 tw_o, tw_o, [cos_64_float + 64 - 4*7 - mmsize], 0x23
+    movaps tw_e,           [tab_64_float + mmsize]
+    vperm2f128 tw_o, tw_o, [tab_64_float + 64 - 4*7 - mmsize], 0x23
 
     movaps m0, [outq +  1*mmsize]
     movaps m1, [outq +  3*mmsize]
@@ -1207,8 +1285,10 @@ FFT_SPLIT_RADIX_DEF 131072
 %endmacro
 
 %if ARCH_X86_64
-FFT_SPLIT_RADIX_FN avx
+FFT_SPLIT_RADIX_FN fma3, float,    0
+FFT_SPLIT_RADIX_FN fma3, ns_float, 1
 %if HAVE_AVX2_EXTERNAL
-FFT_SPLIT_RADIX_FN avx2
+FFT_SPLIT_RADIX_FN avx2, float,    0
+FFT_SPLIT_RADIX_FN avx2, ns_float, 1
 %endif
 %endif

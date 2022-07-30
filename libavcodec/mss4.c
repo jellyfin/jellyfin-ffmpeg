@@ -26,9 +26,11 @@
  */
 
 #include "libavutil/thread.h"
+#include "libavutil/imgutils.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "jpegtables.h"
@@ -99,7 +101,7 @@ static VLC vec_entry_vlc[2];
 static av_cold void mss4_init_vlc(VLC *vlc, unsigned *offset,
                                   const uint8_t *lens, const uint8_t *syms)
 {
-    static VLC_TYPE vlc_buf[2146][2];
+    static VLCElem vlc_buf[2146];
     uint8_t  bits[MAX_ENTRIES];
     int i, j;
     int idx = 0;
@@ -443,8 +445,8 @@ static inline void mss4_update_dc_cache(MSS4Context *c, int mb_x)
     }
 }
 
-static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                             AVPacket *avpkt)
+static int mss4_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
@@ -476,6 +478,9 @@ static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                width, height);
         return AVERROR_INVALIDDATA;
     }
+    if (av_image_check_size2(width, height, avctx->max_pixels, AV_PIX_FMT_NONE, 0, avctx) < 0)
+        return AVERROR_INVALIDDATA;
+
     if (quality < 1 || quality > 100) {
         av_log(avctx, AV_LOG_ERROR, "Invalid quality setting %d\n", quality);
         return AVERROR_INVALIDDATA;
@@ -503,7 +508,7 @@ static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                                                    : AV_PICTURE_TYPE_P;
     if (frame_type == SKIP_FRAME) {
         *got_frame      = 1;
-        if ((ret = av_frame_ref(data, c->pic)) < 0)
+        if ((ret = av_frame_ref(rframe, c->pic)) < 0)
             return ret;
 
         return buf_size;
@@ -558,7 +563,7 @@ static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         dst[2] += c->pic->linesize[2] * 16;
     }
 
-    if ((ret = av_frame_ref(data, c->pic)) < 0)
+    if ((ret = av_frame_ref(rframe, c->pic)) < 0)
         return ret;
 
     *got_frame      = 1;
@@ -604,15 +609,15 @@ static av_cold int mss4_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_mts2_decoder = {
-    .name           = "mts2",
-    .long_name      = NULL_IF_CONFIG_SMALL("MS Expression Encoder Screen"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MTS2,
+const FFCodec ff_mts2_decoder = {
+    .p.name         = "mts2",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MS Expression Encoder Screen"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MTS2,
     .priv_data_size = sizeof(MSS4Context),
     .init           = mss4_decode_init,
     .close          = mss4_decode_end,
-    .decode         = mss4_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(mss4_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
 };

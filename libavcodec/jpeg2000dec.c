@@ -36,6 +36,7 @@
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "thread.h"
 #include "jpeg2000.h"
@@ -2080,24 +2081,12 @@ static int jpeg2000_decode_tile(AVCodecContext *avctx, void *td,
     Jpeg2000DecoderContext *s = avctx->priv_data;
     AVFrame *picture = td;
     Jpeg2000Tile *tile = s->tile + jobnr;
-    int x;
 
     tile_codeblocks(s, tile);
 
     /* inverse MCT transformation */
     if (tile->codsty[0].mct)
         mct_decode(s, tile);
-
-    for (x = 0; x < s->ncomponents; x++) {
-        if (s->cdef[x] < 0) {
-            for (x = 0; x < s->ncomponents; x++) {
-                s->cdef[x] = x + 1;
-            }
-            if ((s->ncomponents & 1) == 0)
-                s->cdef[s->ncomponents-1] = 0;
-            break;
-        }
-    }
 
     if (s->precision <= 8) {
         write_frame_8(s, tile, picture, 8);
@@ -2484,12 +2473,10 @@ static av_cold int jpeg2000_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int jpeg2000_decode_frame(AVCodecContext *avctx, void *data,
+static int jpeg2000_decode_frame(AVCodecContext *avctx, AVFrame *picture,
                                  int *got_frame, AVPacket *avpkt)
 {
     Jpeg2000DecoderContext *s = avctx->priv_data;
-    ThreadFrame frame = { .f = data };
-    AVFrame *picture = data;
     int ret;
 
     s->avctx     = avctx;
@@ -2529,13 +2516,24 @@ static int jpeg2000_decode_frame(AVCodecContext *avctx, void *data,
         goto end;
 
     /* get picture buffer */
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, picture, 0)) < 0)
         goto end;
     picture->pict_type = AV_PICTURE_TYPE_I;
     picture->key_frame = 1;
 
     if (ret = jpeg2000_read_bitstream_packets(s))
         goto end;
+
+    for (int x = 0; x < s->ncomponents; x++) {
+        if (s->cdef[x] < 0) {
+            for (x = 0; x < s->ncomponents; x++) {
+                s->cdef[x] = x + 1;
+            }
+            if ((s->ncomponents & 1) == 0)
+                s->cdef[s->ncomponents-1] = 0;
+            break;
+        }
+    }
 
     avctx->execute2(avctx, jpeg2000_decode_tile, picture, NULL, s->numXtiles * s->numYtiles);
 
@@ -2572,17 +2570,17 @@ static const AVClass jpeg2000_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_jpeg2000_decoder = {
-    .name             = "jpeg2000",
-    .long_name        = NULL_IF_CONFIG_SMALL("JPEG 2000"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_JPEG2000,
-    .capabilities     = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_DR1,
+const FFCodec ff_jpeg2000_decoder = {
+    .p.name           = "jpeg2000",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("JPEG 2000"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_JPEG2000,
+    .p.capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_DR1,
     .priv_data_size   = sizeof(Jpeg2000DecoderContext),
     .init             = jpeg2000_decode_init,
-    .decode           = jpeg2000_decode_frame,
-    .priv_class       = &jpeg2000_class,
-    .max_lowres       = 5,
-    .profiles         = NULL_IF_CONFIG_SMALL(ff_jpeg2000_profiles),
+    FF_CODEC_DECODE_CB(jpeg2000_decode_frame),
+    .p.priv_class     = &jpeg2000_class,
+    .p.max_lowres     = 5,
+    .p.profiles       = NULL_IF_CONFIG_SMALL(ff_jpeg2000_profiles),
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE,
 };

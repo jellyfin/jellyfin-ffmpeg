@@ -21,7 +21,7 @@
 
 #include <stdint.h>
 
-#include "config.h"
+#include "config_components.h"
 
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
@@ -41,6 +41,7 @@
 
 #include "avformat.h"
 #include "avio_internal.h"
+#include "demux.h"
 #include "id3v2.h"
 #include "internal.h"
 #include "url.h"
@@ -193,6 +194,18 @@ static int update_stream_avctx(AVFormatContext *s)
             av_parser_close(sti->parser);
             sti->parser = NULL;
         }
+
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
+        if (st->codecpar->ch_layout.nb_channels &&
+            !st->codecpar->channels) {
+            st->codecpar->channels = st->codecpar->ch_layout.nb_channels;
+            st->codecpar->channel_layout = st->codecpar->ch_layout.order == AV_CHANNEL_ORDER_NATIVE ?
+                                           st->codecpar->ch_layout.u.mask : 0;
+
+        }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
         /* update internal codec context, for the parser */
         ret = avcodec_parameters_to_context(sti->avctx, st->codecpar);
@@ -1321,8 +1334,16 @@ static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
                 return ret;
             st->codecpar->sample_rate = sti->avctx->sample_rate;
             st->codecpar->bit_rate = sti->avctx->bit_rate;
-            st->codecpar->channels = sti->avctx->channels;
-            st->codecpar->channel_layout = sti->avctx->channel_layout;
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
+            st->codecpar->channels = sti->avctx->ch_layout.nb_channels;
+            st->codecpar->channel_layout = sti->avctx->ch_layout.order == AV_CHANNEL_ORDER_NATIVE ?
+                                           sti->avctx->ch_layout.u.mask : 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+            ret = av_channel_layout_copy(&st->codecpar->ch_layout, &sti->avctx->ch_layout);
+            if (ret < 0)
+                return ret;
             st->codecpar->codec_id = sti->avctx->codec_id;
         } else {
             /* free packet */
@@ -1346,7 +1367,7 @@ static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
         if (sti->first_discard_sample && pkt->pts != AV_NOPTS_VALUE) {
             int64_t pts = pkt->pts - (is_relative(pkt->pts) ? RELATIVE_TS_BASE : 0);
             int64_t sample = ts_to_samples(st, pts);
-            int duration = ts_to_samples(st, pkt->duration);
+            int64_t duration = ts_to_samples(st, pkt->duration);
             int64_t end_sample = sample + duration;
             if (duration > 0 && end_sample >= sti->first_discard_sample &&
                 sample < sti->last_discard_sample)
@@ -1354,12 +1375,14 @@ static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
         }
         if (sti->start_skip_samples && (pkt->pts == 0 || pkt->pts == RELATIVE_TS_BASE))
             sti->skip_samples = sti->start_skip_samples;
+        sti->skip_samples = FFMAX(0, sti->skip_samples);
         if (sti->skip_samples || discard_padding) {
             uint8_t *p = av_packet_new_side_data(pkt, AV_PKT_DATA_SKIP_SAMPLES, 10);
             if (p) {
                 AV_WL32(p, sti->skip_samples);
                 AV_WL32(p + 4, discard_padding);
-                av_log(s, AV_LOG_DEBUG, "demuxer injecting skip %d / discard %d\n", sti->skip_samples, discard_padding);
+                av_log(s, AV_LOG_DEBUG, "demuxer injecting skip %u / discard %u\n",
+                       (unsigned)sti->skip_samples, (unsigned)discard_padding);
             }
             sti->skip_samples = 0;
         }
@@ -1384,12 +1407,15 @@ static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
         }
     }
 
-    av_opt_get_dict_val(s, "metadata", AV_OPT_SEARCH_CHILDREN, &metadata);
-    if (metadata) {
-        s->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
-        av_dict_copy(&s->metadata, metadata, 0);
-        av_dict_free(&metadata);
-        av_opt_set_dict_val(s, "metadata", NULL, AV_OPT_SEARCH_CHILDREN);
+    if (!si->metafree) {
+        int metaret = av_opt_get_dict_val(s, "metadata", AV_OPT_SEARCH_CHILDREN, &metadata);
+        if (metadata) {
+            s->event_flags |= AVFMT_EVENT_FLAG_METADATA_UPDATED;
+            av_dict_copy(&s->metadata, metadata, 0);
+            av_dict_free(&metadata);
+            av_opt_set_dict_val(s, "metadata", NULL, AV_OPT_SEARCH_CHILDREN);
+        }
+        si->metafree = metaret == AVERROR_OPTION_NOT_FOUND;
     }
 
     if (s->debug & FF_FDEBUG_TS)
@@ -1586,7 +1612,7 @@ static void update_stream_timings(AVFormatContext *ic)
     else if (end_time < end_time_text)
         av_log(ic, AV_LOG_VERBOSE, "Ignoring outlier non primary stream endtime %f\n", end_time_text / (float)AV_TIME_BASE);
 
-     if (duration == INT64_MIN || (duration < duration_text && duration_text - duration < AV_TIME_BASE))
+     if (duration == INT64_MIN || (duration < duration_text && (uint64_t)duration_text - duration < AV_TIME_BASE))
          duration = duration_text;
      else if (duration < duration_text)
          av_log(ic, AV_LOG_VERBOSE, "Ignoring outlier non primary stream duration %f\n", duration_text / (float)AV_TIME_BASE);
@@ -1930,7 +1956,7 @@ static int has_codec_parameters(const AVStream *st, const char **errmsg_ptr)
             FAIL("unspecified sample format");
         if (!avctx->sample_rate)
             FAIL("unspecified sample rate");
-        if (!avctx->channels)
+        if (!avctx->ch_layout.nb_channels)
             FAIL("unspecified number of channels");
         if (sti->info->found_decoder >= 0 && !sti->nb_decoded_frames && avctx->codec_id == AV_CODEC_ID_DTS)
             FAIL("no decodable DTS frames");
@@ -2147,59 +2173,60 @@ static int tb_unreliable(AVCodecContext *c)
 int ff_rfps_add_frame(AVFormatContext *ic, AVStream *st, int64_t ts)
 {
     FFStream *const sti = ffstream(st);
-    int64_t last = sti->info->last_dts;
+    FFStreamInfo *info = sti->info;
+    int64_t last = info->last_dts;
 
     if (   ts != AV_NOPTS_VALUE && last != AV_NOPTS_VALUE && ts > last
        && ts - (uint64_t)last < INT64_MAX) {
         double dts = (is_relative(ts) ?  ts - RELATIVE_TS_BASE : ts) * av_q2d(st->time_base);
         int64_t duration = ts - last;
 
-        if (!sti->info->duration_error)
-            sti->info->duration_error = av_mallocz(sizeof(sti->info->duration_error[0])*2);
-        if (!sti->info->duration_error)
+        if (!info->duration_error)
+            info->duration_error = av_mallocz(sizeof(info->duration_error[0])*2);
+        if (!info->duration_error)
             return AVERROR(ENOMEM);
 
 //         if (st->codec->codec_type == AVMEDIA_TYPE_VIDEO)
 //             av_log(NULL, AV_LOG_ERROR, "%f\n", dts);
         for (int i = 0; i < MAX_STD_TIMEBASES; i++) {
-            if (sti->info->duration_error[0][1][i] < 1e10) {
+            if (info->duration_error[0][1][i] < 1e10) {
                 int framerate = get_std_framerate(i);
                 double sdts = dts*framerate/(1001*12);
                 for (int j = 0; j < 2; j++) {
                     int64_t ticks = llrint(sdts+j*0.5);
                     double error = sdts - ticks + j*0.5;
-                    sti->info->duration_error[j][0][i] += error;
-                    sti->info->duration_error[j][1][i] += error*error;
+                    info->duration_error[j][0][i] += error;
+                    info->duration_error[j][1][i] += error*error;
                 }
             }
         }
-        if (sti->info->rfps_duration_sum <= INT64_MAX - duration) {
-            sti->info->duration_count++;
-            sti->info->rfps_duration_sum += duration;
+        if (info->rfps_duration_sum <= INT64_MAX - duration) {
+            info->duration_count++;
+            info->rfps_duration_sum += duration;
         }
 
-        if (sti->info->duration_count % 10 == 0) {
-            int n = sti->info->duration_count;
+        if (info->duration_count % 10 == 0) {
+            int n = info->duration_count;
             for (int i = 0; i < MAX_STD_TIMEBASES; i++) {
-                if (sti->info->duration_error[0][1][i] < 1e10) {
-                    double a0     = sti->info->duration_error[0][0][i] / n;
-                    double error0 = sti->info->duration_error[0][1][i] / n - a0*a0;
-                    double a1     = sti->info->duration_error[1][0][i] / n;
-                    double error1 = sti->info->duration_error[1][1][i] / n - a1*a1;
+                if (info->duration_error[0][1][i] < 1e10) {
+                    double a0     = info->duration_error[0][0][i] / n;
+                    double error0 = info->duration_error[0][1][i] / n - a0*a0;
+                    double a1     = info->duration_error[1][0][i] / n;
+                    double error1 = info->duration_error[1][1][i] / n - a1*a1;
                     if (error0 > 0.04 && error1 > 0.04) {
-                        sti->info->duration_error[0][1][i] = 2e10;
-                        sti->info->duration_error[1][1][i] = 2e10;
+                        info->duration_error[0][1][i] = 2e10;
+                        info->duration_error[1][1][i] = 2e10;
                     }
                 }
             }
         }
 
         // ignore the first 4 values, they might have some random jitter
-        if (sti->info->duration_count > 3 && is_relative(ts) == is_relative(last))
-            sti->info->duration_gcd = av_gcd(sti->info->duration_gcd, duration);
+        if (info->duration_count > 3 && is_relative(ts) == is_relative(last))
+            info->duration_gcd = av_gcd(info->duration_gcd, duration);
     }
     if (ts != AV_NOPTS_VALUE)
-        sti->info->last_dts = ts;
+        info->last_dts = ts;
 
     return 0;
 }
@@ -2934,6 +2961,9 @@ find_stream_info_err:
             av_freep(&sti->info);
         }
         avcodec_close(sti->avctx);
+        // FIXME: avcodec_close() frees AVOption settable fields which includes ch_layout,
+        //        so we need to restore it.
+        av_channel_layout_copy(&sti->avctx->ch_layout, &st->codecpar->ch_layout);
         av_bsf_free(&sti->extract_extradata.bsf);
     }
     if (ic->pb) {

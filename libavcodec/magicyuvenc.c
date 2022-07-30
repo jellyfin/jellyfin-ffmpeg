@@ -28,9 +28,9 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "encode.h"
 #include "put_bits.h"
-#include "internal.h"
 #include "thread.h"
 #include "lossless_videoencdsp.h"
 
@@ -58,7 +58,6 @@ typedef struct MagicYUVContext {
     PutBitContext        pb;
     int                  planes;
     uint8_t              format;
-    AVFrame             *p;
     int                  slice_height;
     int                  nb_slices;
     int                  correlate;
@@ -67,14 +66,15 @@ typedef struct MagicYUVContext {
     uint8_t             *slices[4];
     unsigned             slice_pos[4];
     unsigned             tables_size;
+    uint8_t             *decorrelate_buf[2];
     HuffEntry            he[4][256];
     LLVidEncDSPContext   llvidencdsp;
-    void (*predict)(struct MagicYUVContext *s, uint8_t *src, uint8_t *dst,
+    void (*predict)(struct MagicYUVContext *s, const uint8_t *src, uint8_t *dst,
                     ptrdiff_t stride, int width, int height);
 } MagicYUVContext;
 
 static void left_predict(MagicYUVContext *s,
-                         uint8_t *src, uint8_t *dst, ptrdiff_t stride,
+                         const uint8_t *src, uint8_t *dst, ptrdiff_t stride,
                          int width, int height)
 {
     uint8_t prev = 0;
@@ -98,7 +98,7 @@ static void left_predict(MagicYUVContext *s,
 }
 
 static void gradient_predict(MagicYUVContext *s,
-                             uint8_t *src, uint8_t *dst, ptrdiff_t stride,
+                             const uint8_t *src, uint8_t *dst, ptrdiff_t stride,
                              int width, int height)
 {
     int left = 0, top, lefttop;
@@ -126,7 +126,7 @@ static void gradient_predict(MagicYUVContext *s,
 }
 
 static void median_predict(MagicYUVContext *s,
-                           uint8_t *src, uint8_t *dst, ptrdiff_t stride,
+                           const uint8_t *src, uint8_t *dst, ptrdiff_t stride,
                            int width, int height)
 {
     int left = 0, lefttop;
@@ -189,6 +189,12 @@ static av_cold int magy_encode_init(AVCodecContext *avctx)
         avctx->codec_tag = MKTAG('M', '8', 'G', '0');
         s->format = 0x6b;
         break;
+    }
+    if (s->correlate) {
+        s->decorrelate_buf[0] = av_calloc(2U * avctx->height, FFALIGN(avctx->width, 16));
+        if (!s->decorrelate_buf[0])
+            return AVERROR(ENOMEM);
+        s->decorrelate_buf[1] = s->decorrelate_buf[0] + avctx->height * FFALIGN(avctx->width, 16);
     }
 
     ff_llvidencdsp_init(&s->llvidencdsp);
@@ -452,32 +458,34 @@ static int magy_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     if (s->correlate) {
-        uint8_t *r, *g, *b;
-        AVFrame *p = av_frame_clone(frame);
+        uint8_t *r, *g, *b, *decorrelated[2] = { s->decorrelate_buf[0],
+                                                 s->decorrelate_buf[1] };
+        const int decorrelate_linesize = FFALIGN(width, 16);
+        const uint8_t *const data[4] = { decorrelated[0], frame->data[0],
+                                         decorrelated[1], frame->data[3] };
+        const int linesize[4]  = { decorrelate_linesize, frame->linesize[0],
+                                   decorrelate_linesize, frame->linesize[3] };
 
-        g = p->data[0];
-        b = p->data[1];
-        r = p->data[2];
+        g = frame->data[0];
+        b = frame->data[1];
+        r = frame->data[2];
 
         for (i = 0; i < height; i++) {
-            s->llvidencdsp.diff_bytes(b, b, g, width);
-            s->llvidencdsp.diff_bytes(r, r, g, width);
-            g += p->linesize[0];
-            b += p->linesize[1];
-            r += p->linesize[2];
+            s->llvidencdsp.diff_bytes(decorrelated[0], b, g, width);
+            s->llvidencdsp.diff_bytes(decorrelated[1], r, g, width);
+            g += frame->linesize[0];
+            b += frame->linesize[1];
+            r += frame->linesize[2];
+            decorrelated[0] += decorrelate_linesize;
+            decorrelated[1] += decorrelate_linesize;
         }
-
-        FFSWAP(uint8_t*, p->data[0], p->data[1]);
-        FFSWAP(int, p->linesize[0], p->linesize[1]);
 
         for (i = 0; i < s->planes; i++) {
             for (slice = 0; slice < s->nb_slices; slice++) {
-                s->predict(s, p->data[i], s->slices[i], p->linesize[i],
-                               p->width, p->height);
+                s->predict(s, data[i], s->slices[i], linesize[i],
+                           frame->width, frame->height);
             }
         }
-
-        av_frame_free(&p);
     } else {
         for (i = 0; i < s->planes; i++) {
             for (slice = 0; slice < s->nb_slices; slice++) {
@@ -533,6 +541,7 @@ static av_cold int magy_encode_close(AVCodecContext *avctx)
 
     for (i = 0; i < s->planes; i++)
         av_freep(&s->slices[i]);
+    av_freep(&s->decorrelate_buf);
 
     return 0;
 }
@@ -554,18 +563,18 @@ static const AVClass magicyuv_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_magicyuv_encoder = {
-    .name             = "magicyuv",
-    .long_name        = NULL_IF_CONFIG_SMALL("MagicYUV video"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_MAGICYUV,
+const FFCodec ff_magicyuv_encoder = {
+    .p.name           = "magicyuv",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("MagicYUV video"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_MAGICYUV,
     .priv_data_size   = sizeof(MagicYUVContext),
-    .priv_class       = &magicyuv_class,
+    .p.priv_class     = &magicyuv_class,
     .init             = magy_encode_init,
     .close            = magy_encode_close,
-    .encode2          = magy_encode_frame,
-    .capabilities     = AV_CODEC_CAP_FRAME_THREADS,
-    .pix_fmts         = (const enum AVPixelFormat[]) {
+    FF_CODEC_ENCODE_CB(magy_encode_frame),
+    .p.capabilities   = AV_CODEC_CAP_FRAME_THREADS,
+    .p.pix_fmts       = (const enum AVPixelFormat[]) {
                           AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP, AV_PIX_FMT_YUV422P,
                           AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA444P, AV_PIX_FMT_GRAY8,
                           AV_PIX_FMT_NONE

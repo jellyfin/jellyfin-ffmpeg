@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #include <sys/stat.h>
@@ -34,7 +36,9 @@
 #include "avio_internal.h"
 #include "internal.h"
 #include "img2.h"
+#include "jpegxl_probe.h"
 #include "libavcodec/mjpeg.h"
+#include "libavcodec/vbn.h"
 #include "libavcodec/xwd.h"
 #include "subtitles.h"
 
@@ -834,6 +838,24 @@ static int jpegls_probe(const AVProbeData *p)
     return 0;
 }
 
+static int jpegxl_probe(const AVProbeData *p)
+{
+    const uint8_t *b = p->buf;
+
+    /* ISOBMFF-based container */
+    /* 0x4a584c20 == "JXL " */
+    if (AV_RL64(b) == FF_JPEGXL_CONTAINER_SIGNATURE_LE)
+        return AVPROBE_SCORE_EXTENSION + 1;
+    /* Raw codestreams all start with 0xff0a */
+    if (AV_RL16(b) != FF_JPEGXL_CODESTREAM_SIGNATURE_LE)
+        return 0;
+#if CONFIG_IMAGE_JPEGXL_PIPE_DEMUXER
+    if (ff_jpegxl_verify_codestream_header(p->buf, p->buf_size) >= 0)
+        return AVPROBE_SCORE_MAX - 2;
+#endif
+    return 0;
+}
+
 static int pcx_probe(const AVProbeData *p)
 {
     const uint8_t *b = p->buf;
@@ -998,7 +1020,19 @@ static inline int pnm_probe(const AVProbeData *p)
 
 static int pbm_probe(const AVProbeData *p)
 {
-    return pnm_magic_check(p, 1) || pnm_magic_check(p, 4) || pnm_magic_check(p, 22) || pnm_magic_check(p, 54) ? pnm_probe(p) : 0;
+    return pnm_magic_check(p, 1) || pnm_magic_check(p, 4) ? pnm_probe(p) : 0;
+}
+
+static int pfm_probe(const AVProbeData *p)
+{
+    return pnm_magic_check(p, 'F' - '0') ||
+           pnm_magic_check(p, 'f' - '0') ? pnm_probe(p) : 0;
+}
+
+static int phm_probe(const AVProbeData *p)
+{
+    return pnm_magic_check(p, 'H' - '0') ||
+           pnm_magic_check(p, 'h' - '0') ? pnm_probe(p) : 0;
 }
 
 static inline int pgmx_probe(const AVProbeData *p)
@@ -1109,28 +1143,55 @@ static int photocd_probe(const AVProbeData *p)
     return AVPROBE_SCORE_MAX - 1;
 }
 
+static int qoi_probe(const AVProbeData *p)
+{
+    if (memcmp(p->buf, "qoif", 4))
+        return 0;
+
+    if (AV_RB32(p->buf + 4) == 0 || AV_RB32(p->buf + 8) == 0)
+        return 0;
+
+    if (p->buf[12] != 3 && p->buf[12] != 4)
+        return 0;
+
+    if (p->buf[13] > 1)
+        return 0;
+
+    return AVPROBE_SCORE_MAX - 1;
+}
+
 static int gem_probe(const AVProbeData *p)
 {
     const uint8_t *b = p->buf;
-    int ret = 0;
     if ( AV_RB16(b     ) >= 1 && AV_RB16(b    ) <= 3  &&
          AV_RB16(b +  2) >= 8 && AV_RB16(b + 2) <= 779 &&
-        (AV_RB16(b +  4) > 0  || AV_RB16(b + 4) <= 8) &&
-        (AV_RB16(b +  6) > 0  || AV_RB16(b + 6) <= 8) &&
+        (AV_RB16(b +  4) > 0  && AV_RB16(b + 4) <= 32) && /* planes */
+        (AV_RB16(b +  6) > 0  && AV_RB16(b + 6) <= 8) && /* pattern_size */
          AV_RB16(b +  8) &&
          AV_RB16(b + 10) &&
          AV_RB16(b + 12) &&
          AV_RB16(b + 14)) {
-        ret = AVPROBE_SCORE_EXTENSION / 4;
         if (AV_RN32(b + 16) == AV_RN32("STTT") ||
             AV_RN32(b + 16) == AV_RN32("TIMG") ||
             AV_RN32(b + 16) == AV_RN32("XIMG"))
-            ret += 1;
+            return AVPROBE_SCORE_EXTENSION + 1;
+        return AVPROBE_SCORE_EXTENSION / 4;
     }
-    return ret;
+    return 0;
 }
 
-#define IMAGEAUTO_DEMUXER(imgname, codecid)\
+static int vbn_probe(const AVProbeData *p)
+{
+    const uint8_t *b = p->buf;
+    if (AV_RL32(b    ) == VBN_MAGIC &&
+        AV_RL32(b + 4) == VBN_MAJOR &&
+        AV_RL32(b + 8) == VBN_MINOR)
+        return AVPROBE_SCORE_MAX - 1;
+    return 0;
+}
+
+#define IMAGEAUTO_DEMUXER_0(imgname, codecid)
+#define IMAGEAUTO_DEMUXER_1(imgname, codecid)\
 const AVInputFormat ff_image_ ## imgname ## _pipe_demuxer = {\
     .name           = AV_STRINGIFY(imgname) "_pipe",\
     .long_name      = NULL_IF_CONFIG_SMALL("piped " AV_STRINGIFY(imgname) " sequence"),\
@@ -1143,33 +1204,48 @@ const AVInputFormat ff_image_ ## imgname ## _pipe_demuxer = {\
     .raw_codec_id   = codecid,\
 };
 
-IMAGEAUTO_DEMUXER(bmp,     AV_CODEC_ID_BMP)
-IMAGEAUTO_DEMUXER(cri,     AV_CODEC_ID_CRI)
-IMAGEAUTO_DEMUXER(dds,     AV_CODEC_ID_DDS)
-IMAGEAUTO_DEMUXER(dpx,     AV_CODEC_ID_DPX)
-IMAGEAUTO_DEMUXER(exr,     AV_CODEC_ID_EXR)
-IMAGEAUTO_DEMUXER(gem,     AV_CODEC_ID_GEM)
-IMAGEAUTO_DEMUXER(gif,     AV_CODEC_ID_GIF)
-IMAGEAUTO_DEMUXER(j2k,     AV_CODEC_ID_JPEG2000)
-IMAGEAUTO_DEMUXER(jpeg,    AV_CODEC_ID_MJPEG)
-IMAGEAUTO_DEMUXER(jpegls,  AV_CODEC_ID_JPEGLS)
-IMAGEAUTO_DEMUXER(pam,     AV_CODEC_ID_PAM)
-IMAGEAUTO_DEMUXER(pbm,     AV_CODEC_ID_PBM)
-IMAGEAUTO_DEMUXER(pcx,     AV_CODEC_ID_PCX)
-IMAGEAUTO_DEMUXER(pgm,     AV_CODEC_ID_PGM)
-IMAGEAUTO_DEMUXER(pgmyuv,  AV_CODEC_ID_PGMYUV)
-IMAGEAUTO_DEMUXER(pgx,     AV_CODEC_ID_PGX)
-IMAGEAUTO_DEMUXER(photocd, AV_CODEC_ID_PHOTOCD)
-IMAGEAUTO_DEMUXER(pictor,  AV_CODEC_ID_PICTOR)
-IMAGEAUTO_DEMUXER(png,     AV_CODEC_ID_PNG)
-IMAGEAUTO_DEMUXER(ppm,     AV_CODEC_ID_PPM)
-IMAGEAUTO_DEMUXER(psd,     AV_CODEC_ID_PSD)
-IMAGEAUTO_DEMUXER(qdraw,   AV_CODEC_ID_QDRAW)
-IMAGEAUTO_DEMUXER(sgi,     AV_CODEC_ID_SGI)
-IMAGEAUTO_DEMUXER(sunrast, AV_CODEC_ID_SUNRAST)
-IMAGEAUTO_DEMUXER(svg,     AV_CODEC_ID_SVG)
-IMAGEAUTO_DEMUXER(tiff,    AV_CODEC_ID_TIFF)
-IMAGEAUTO_DEMUXER(webp,    AV_CODEC_ID_WEBP)
-IMAGEAUTO_DEMUXER(xbm,     AV_CODEC_ID_XBM)
-IMAGEAUTO_DEMUXER(xpm,     AV_CODEC_ID_XPM)
-IMAGEAUTO_DEMUXER(xwd,     AV_CODEC_ID_XWD)
+#define IMAGEAUTO_DEMUXER_2(imgname, codecid, enabled) \
+        IMAGEAUTO_DEMUXER_ ## enabled(imgname, codecid)
+#define IMAGEAUTO_DEMUXER_3(imgname, codecid, config) \
+        IMAGEAUTO_DEMUXER_2(imgname, codecid, config)
+#define IMAGEAUTO_DEMUXER_EXT(imgname, codecid, uppercase_name) \
+        IMAGEAUTO_DEMUXER_3(imgname, AV_CODEC_ID_ ## codecid,   \
+                            CONFIG_IMAGE_ ## uppercase_name ## _PIPE_DEMUXER)
+#define IMAGEAUTO_DEMUXER(imgname, codecid)                     \
+        IMAGEAUTO_DEMUXER_EXT(imgname, codecid, codecid)
+
+IMAGEAUTO_DEMUXER(bmp,       BMP)
+IMAGEAUTO_DEMUXER(cri,       CRI)
+IMAGEAUTO_DEMUXER(dds,       DDS)
+IMAGEAUTO_DEMUXER(dpx,       DPX)
+IMAGEAUTO_DEMUXER(exr,       EXR)
+IMAGEAUTO_DEMUXER(gem,       GEM)
+IMAGEAUTO_DEMUXER(gif,       GIF)
+IMAGEAUTO_DEMUXER_EXT(j2k,   JPEG2000, J2K)
+IMAGEAUTO_DEMUXER_EXT(jpeg,  MJPEG, JPEG)
+IMAGEAUTO_DEMUXER(jpegls,    JPEGLS)
+IMAGEAUTO_DEMUXER(jpegxl,    JPEGXL)
+IMAGEAUTO_DEMUXER(pam,       PAM)
+IMAGEAUTO_DEMUXER(pbm,       PBM)
+IMAGEAUTO_DEMUXER(pcx,       PCX)
+IMAGEAUTO_DEMUXER(pfm,       PFM)
+IMAGEAUTO_DEMUXER(pgm,       PGM)
+IMAGEAUTO_DEMUXER(pgmyuv,    PGMYUV)
+IMAGEAUTO_DEMUXER(pgx,       PGX)
+IMAGEAUTO_DEMUXER(phm,       PHM)
+IMAGEAUTO_DEMUXER(photocd,   PHOTOCD)
+IMAGEAUTO_DEMUXER(pictor,    PICTOR)
+IMAGEAUTO_DEMUXER(png,       PNG)
+IMAGEAUTO_DEMUXER(ppm,       PPM)
+IMAGEAUTO_DEMUXER(psd,       PSD)
+IMAGEAUTO_DEMUXER(qdraw,     QDRAW)
+IMAGEAUTO_DEMUXER(qoi,       QOI)
+IMAGEAUTO_DEMUXER(sgi,       SGI)
+IMAGEAUTO_DEMUXER(sunrast,   SUNRAST)
+IMAGEAUTO_DEMUXER(svg,       SVG)
+IMAGEAUTO_DEMUXER(tiff,      TIFF)
+IMAGEAUTO_DEMUXER(vbn,       VBN)
+IMAGEAUTO_DEMUXER(webp,      WEBP)
+IMAGEAUTO_DEMUXER(xbm,       XBM)
+IMAGEAUTO_DEMUXER(xpm,       XPM)
+IMAGEAUTO_DEMUXER(xwd,       XWD)

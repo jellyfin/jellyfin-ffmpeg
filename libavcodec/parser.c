@@ -25,10 +25,8 @@
 #include <string.h>
 
 #include "libavutil/avassert.h"
-#include "libavutil/internal.h"
 #include "libavutil/mem.h"
 
-#include "internal.h"
 #include "parser.h"
 
 AVCodecParserContext *av_parser_init(int codec_id)

@@ -26,6 +26,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 static const uint32_t gem_color_palette[16]={
@@ -84,14 +85,12 @@ static void put_lines_bytes(AVCodecContext *avctx, int planes, int row_width, in
     state->vdup = 1;
 }
 
-static int gem_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int gem_decode_frame(AVCodecContext *avctx, AVFrame *p,
+                            int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf     = avpkt->data;
     int buf_size           = avpkt->size;
     const uint8_t *buf_end = buf + buf_size;
-    AVFrame *p             = data;
     int header_size, planes, pattern_size, tag = 0, count_scalar = 1, ret;
     unsigned int x, count, v;
     GetByteContext gb;
@@ -351,12 +350,12 @@ static av_cold int gem_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_gem_decoder = {
-    .name           = "gem",
-    .long_name      = NULL_IF_CONFIG_SMALL("GEM Raster image"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_GEM,
-    .decode         = gem_decode_frame,
+const FFCodec ff_gem_decoder = {
+    .p.name         = "gem",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("GEM Raster image"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_GEM,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(gem_decode_frame),
     .close          = gem_close,
-    .capabilities   = AV_CODEC_CAP_DR1,
 };

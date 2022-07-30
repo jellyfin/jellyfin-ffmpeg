@@ -14,6 +14,92 @@ libavutil:     2021-04-27
 
 API changes, most recent first:
 
+-------- 8< --------- FFmpeg 5.1 was cut here -------- 8< ---------
+
+2022-06-12 - 7cae3d8b76 - lavf 59.25.100 - avio.h
+  Add avio_vprintf(), similar to avio_printf() but allow to use it
+  from within a function taking a variable argument list as input.
+
+2022-06-12 - ff59ecc4de - lavu 57.27.100 - uuid.h
+  Add UUID handling functions.
+  Add av_uuid_parse(), av_uuid_urn_parse(), av_uuid_parse_range(),
+  av_uuid_parse_range(), av_uuid_equal(), av_uuid_copy(), and av_uuid_nil().
+
+2022-06-01 - d42b410e05 - lavu 57.26.100 - csp.h
+  Add public API for colorspace structs.
+  Add av_csp_luma_coeffs_from_avcsp(), av_csp_primaries_desc_from_id(),
+  and av_csp_primaries_id_from_desc().
+
+2022-05-23 - 4cdc14aa95 - lavu 57.25.100 - avutil.h
+  Deprecate av_fopen_utf8() without replacement.
+
+2022-03-16 - f3a0e2ee2b - all libraries - version_major.h
+  Add lib<name>/version_major.h as new installed headers, which only
+  contain the major version number (and corresponding API deprecation
+  defines).
+
+2022-03-15 - cdba98bb80 - swr 4.5.100 - swresample.h
+  Add swr_alloc_set_opts2() and swr_build_matrix2().
+  Deprecate swr_alloc_set_opts() and swr_build_matrix().
+
+2022-03-15 - cdba98bb80 - lavfi 8.28.100 - avfilter.h buffersink.h buffersrc.h
+  Update AVFilterLink for the new channel layout API: add ch_layout,
+  deprecate channel_layout.
+
+  Update the buffersink filter sink for the new channel layout API:
+  add av_buffersink_get_ch_layout() and the ch_layouts option,
+  deprecate av_buffersink_get_channel_layout() and the channel_layouts option.
+
+  Update AVBufferSrcParameters for the new channel layout API:
+  add ch_layout, deprecate channel_layout.
+
+2022-03-15 - cdba98bb80 - lavf 59.19.100 - avformat.h
+  Add AV_DISPOSITION_NON_DIEGETIC.
+
+2022-03-15 - cdba98bb80 - lavc 59.24.100 - avcodec.h codec_par.h
+  Update AVCodecParameters for the new channel layout API: add ch_layout,
+  deprecate channels/channel_layout.
+
+  Update AVCodecContext for the new channel layout API: add ch_layout,
+  deprecate channels/channel_layout.
+
+  Update AVCodec for the new channel layout API: add ch_layouts,
+  deprecate channel_layouts.
+
+2022-03-15 - cdba98bb80 - lavu 57.24.100 - channel_layout.h frame.h opt.h
+  Add new channel layout API based on the AVChannelLayout struct.
+  Add support for Ambisonic audio.
+  Deprecate previous channel layout API based on uint64 bitmasks.
+
+  Add AV_OPT_TYPE_CHLAYOUT option type, deprecate AV_OPT_TYPE_CHANNEL_LAYOUT.
+  Update AVFrame for the new channel layout API: add ch_layout, deprecate
+  channels/channel_layout.
+
+2022-03-10 - f629ea2e18 - lavu 57.23.100 - cpu.h
+  Add AV_CPU_FLAG_AVX512ICL.
+
+2022-02-07 - a10f1aec1f - lavu 57.21.100 - fifo.h
+  Deprecate AVFifoBuffer and the API around it, namely av_fifo_alloc(),
+  av_fifo_alloc_array(), av_fifo_free(), av_fifo_freep(), av_fifo_reset(),
+  av_fifo_size(), av_fifo_space(), av_fifo_generic_peek_at(),
+  av_fifo_generic_peek(), av_fifo_generic_read(), av_fifo_generic_write(),
+  av_fifo_realloc2(), av_fifo_grow(), av_fifo_drain() and av_fifo_peek2().
+  Users should switch to the AVFifo-API.
+
+2022-02-07 - 7329b22c05 - lavu 57.20.100 - fifo.h
+  Add a new FIFO API, which allows setting a FIFO element size.
+  This API operates on these elements rather than on bytes.
+  Add av_fifo_alloc2(), av_fifo_elem_size(), av_fifo_can_read(),
+  av_fifo_can_write(), av_fifo_grow2(), av_fifo_drain2(), av_fifo_write(),
+  av_fifo_write_from_cb(), av_fifo_read(), av_fifo_read_to_cb(),
+  av_fifo_peek(), av_fifo_peek_to_cb(), av_fifo_drain2(), av_fifo_reset2(),
+  av_fifo_freep2(), av_fifo_auto_grow_limit().
+
+2022-01-26 - af94ab7c7c0 - lavu 57.19.100 - tx.h
+  Add AV_TX_FLOAT_RDFT, AV_TX_DOUBLE_RDFT and AV_TX_INT32_RDFT.
+
+-------- 8< --------- FFmpeg 5.0 was cut here -------- 8< ---------
+
 2022-01-04 - 78dc21b123e - lavu 57.16.100 - frame.h
   Add AV_FRAME_DATA_DOVI_METADATA.
 
@@ -1603,7 +1689,7 @@ API changes, most recent first:
 2014-04-15 - ef818d8 - lavf 55.37.101 - avformat.h
   Add av_format_inject_global_side_data()
 
-2014-04-12 - 4f698be - lavu 52.76.100 - log.h
+2014-04-12 - 4f698be8f - lavu 52.76.100 - log.h
   Add av_log_get_flags()
 
 2014-04-11 - 6db42a2b - lavd 55.12.100 - avdevice.h

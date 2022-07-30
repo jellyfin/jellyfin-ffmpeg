@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "avformat.h"
 #include "internal.h"
 #include "rawenc.h"
@@ -75,7 +77,7 @@ static int ilbc_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
     st->codecpar->codec_id = AV_CODEC_ID_ILBC;
     st->codecpar->sample_rate = 8000;
-    st->codecpar->channels = 1;
+    st->codecpar->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     st->start_time = 0;
     avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);

@@ -25,6 +25,7 @@
 
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 #define BLOCK_SIZE    18
@@ -56,12 +57,12 @@ static int adx_read_packet(AVFormatContext *s, AVPacket *pkt)
     if (avio_feof(s->pb))
         return AVERROR_EOF;
 
-    if (par->channels <= 0) {
-        av_log(s, AV_LOG_ERROR, "invalid number of channels %d\n", par->channels);
+    if (par->ch_layout.nb_channels <= 0) {
+        av_log(s, AV_LOG_ERROR, "invalid number of channels %d\n", par->ch_layout.nb_channels);
         return AVERROR_INVALIDDATA;
     }
 
-    size = BLOCK_SIZE * par->channels;
+    size = BLOCK_SIZE * par->ch_layout.nb_channels;
 
     pkt->pos = avio_tell(s->pb);
     pkt->stream_index = 0;
@@ -79,8 +80,8 @@ static int adx_read_packet(AVFormatContext *s, AVPacket *pkt)
         size = ret;
     }
 
-    pkt->duration = size / (BLOCK_SIZE * par->channels);
-    pkt->pts      = (pkt->pos - c->header_size) / (BLOCK_SIZE * par->channels);
+    pkt->duration = size / (BLOCK_SIZE * par->ch_layout.nb_channels);
+    pkt->pts      = (pkt->pos - c->header_size) / (BLOCK_SIZE * par->ch_layout.nb_channels);
 
     return 0;
 }
@@ -90,6 +91,8 @@ static int adx_read_header(AVFormatContext *s)
     ADXDemuxerContext *c = s->priv_data;
     AVCodecParameters *par;
     int ret;
+    int channels;
+
     AVStream *st = avformat_new_stream(s, NULL);
     if (!st)
         return AVERROR(ENOMEM);
@@ -107,11 +110,11 @@ static int adx_read_header(AVFormatContext *s)
         av_log(s, AV_LOG_ERROR, "Invalid extradata size.\n");
         return AVERROR_INVALIDDATA;
     }
-    par->channels    = AV_RB8 (par->extradata + 7);
+    channels = AV_RB8 (par->extradata + 7);
     par->sample_rate = AV_RB32(par->extradata + 8);
 
-    if (par->channels <= 0) {
-        av_log(s, AV_LOG_ERROR, "invalid number of channels %d\n", par->channels);
+    if (channels <= 0) {
+        av_log(s, AV_LOG_ERROR, "invalid number of channels %d\n", channels);
         return AVERROR_INVALIDDATA;
     }
 
@@ -120,9 +123,10 @@ static int adx_read_header(AVFormatContext *s)
         return AVERROR_INVALIDDATA;
     }
 
+    par->ch_layout.nb_channels = channels;
     par->codec_type  = AVMEDIA_TYPE_AUDIO;
     par->codec_id    = s->iformat->raw_codec_id;
-    par->bit_rate    = (int64_t)par->sample_rate * par->channels * BLOCK_SIZE * 8LL / BLOCK_SAMPLES;
+    par->bit_rate    = (int64_t)par->sample_rate * par->ch_layout.nb_channels * BLOCK_SIZE * 8LL / BLOCK_SAMPLES;
 
     avpriv_set_pts_info(st, 64, BLOCK_SAMPLES, par->sample_rate);
 

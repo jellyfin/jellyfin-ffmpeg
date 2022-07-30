@@ -27,7 +27,7 @@
  */
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "libavutil/imgutils.h"
 #include "thread.h"
@@ -65,12 +65,11 @@ static int bitpacked_decode_yuv422p10(AVCodecContext *avctx, AVFrame *frame,
 {
     uint64_t frame_size = (uint64_t)avctx->width * (uint64_t)avctx->height * 20;
     uint64_t packet_size = (uint64_t)avpkt->size * 8;
-    ThreadFrame tframe = { .f = frame };
     GetBitContext bc;
     uint16_t *y, *u, *v;
     int ret, i, j;
 
-    ret = ff_thread_get_buffer(avctx, &tframe, 0);
+    ret = ff_thread_get_buffer(avctx, frame, 0);
     if (ret < 0)
         return ret;
 
@@ -123,12 +122,11 @@ static av_cold int bitpacked_init_decoder(AVCodecContext *avctx)
     return 0;
 }
 
-static int bitpacked_decode(AVCodecContext *avctx, void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int bitpacked_decode(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame, AVPacket *avpkt)
 {
     struct BitpackedContext *bc = avctx->priv_data;
     int buf_size = avpkt->size;
-    AVFrame *frame = data;
     int res;
 
     res = bc->decode(avctx, frame, avpkt);
@@ -143,15 +141,15 @@ static int bitpacked_decode(AVCodecContext *avctx, void *data, int *got_frame,
 
 }
 
-const AVCodec ff_bitpacked_decoder = {
-    .name   = "bitpacked",
-    .long_name = NULL_IF_CONFIG_SMALL("Bitpacked"),
-    .type = AVMEDIA_TYPE_VIDEO,
-    .id = AV_CODEC_ID_BITPACKED,
+const FFCodec ff_bitpacked_decoder = {
+    .p.name          = "bitpacked",
+    .p.long_name     = NULL_IF_CONFIG_SMALL("Bitpacked"),
+    .p.type          = AVMEDIA_TYPE_VIDEO,
+    .p.id            = AV_CODEC_ID_BITPACKED,
+    .p.capabilities  = AV_CODEC_CAP_FRAME_THREADS,
     .priv_data_size        = sizeof(struct BitpackedContext),
     .init = bitpacked_init_decoder,
-    .decode = bitpacked_decode,
-    .capabilities   = AV_CODEC_CAP_FRAME_THREADS,
+    FF_CODEC_DECODE_CB(bitpacked_decode),
     .codec_tags     = (const uint32_t []){
         MKTAG('U', 'Y', 'V', 'Y'),
         FF_CODEC_TAGS_END,

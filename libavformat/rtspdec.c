@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
@@ -34,6 +36,7 @@
 #include "rdt.h"
 #include "tls.h"
 #include "url.h"
+#include "version.h"
 
 static const struct RTSPStatusMessage {
     enum RTSPStatusCode code;

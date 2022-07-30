@@ -30,16 +30,29 @@
  * MJPEG encoder.
  */
 
+#include "config_components.h"
+
 #include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "jpegtables.h"
 #include "mjpegenc_common.h"
 #include "mjpegenc_huffman.h"
 #include "mpegvideo.h"
 #include "mjpeg.h"
 #include "mjpegenc.h"
+#include "mpegvideoenc.h"
 #include "profiles.h"
+
+/* The following is the private context of MJPEG/AMV decoder.
+ * Note that when using slice threading only the main thread's
+ * MpegEncContext is followed by a MjpegContext; the other threads
+ * can access this shared context via MpegEncContext.mjpeg. */
+typedef struct MJPEGEncContext {
+    MpegEncContext mpeg;
+    MJpegContext   mjpeg;
+} MJPEGEncContext;
 
 static av_cold void init_uni_ac_vlc(const uint8_t huff_size_ac[256],
                                     uint8_t *uni_ac_vlc_len)
@@ -63,6 +76,27 @@ static av_cold void init_uni_ac_vlc(const uint8_t huff_size_ac[256],
             // We ignore EOB as its just a constant which does not change generally
         }
     }
+}
+
+static void mjpeg_encode_picture_header(MpegEncContext *s)
+{
+    ff_mjpeg_encode_picture_header(s->avctx, &s->pb, s->picture->f, s->mjpeg_ctx,
+                                   &s->intra_scantable, 0,
+                                   s->intra_matrix, s->chroma_intra_matrix,
+                                   s->slice_context_count > 1);
+
+    s->esc_pos = put_bytes_count(&s->pb, 0);
+    for (int i = 1; i < s->slice_context_count; i++)
+        s->thread_context[i]->esc_pos = 0;
+}
+
+void ff_mjpeg_amv_encode_picture_header(MpegEncContext *s)
+{
+    MJPEGEncContext *const m = (MJPEGEncContext*)s;
+    av_assert2(s->mjpeg_ctx == &m->mjpeg);
+    /* s->huffman == HUFFMAN_TABLE_OPTIMAL can only be true for MJPEG. */
+    if (!CONFIG_MJPEG_ENCODER || m->mjpeg.huffman != HUFFMAN_TABLE_OPTIMAL)
+        mjpeg_encode_picture_header(s);
 }
 
 #if CONFIG_MJPEG_ENCODER
@@ -185,13 +219,13 @@ static void mjpeg_build_optimal_huffman(MJpegContext *m)
  */
 int ff_mjpeg_encode_stuffing(MpegEncContext *s)
 {
+    MJpegContext *const m = s->mjpeg_ctx;
     PutBitContext *pbc = &s->pb;
     int mb_y = s->mb_y - !s->mb_x;
     int ret;
 
 #if CONFIG_MJPEG_ENCODER
-    if (s->huffman == HUFFMAN_TABLE_OPTIMAL) {
-        MJpegContext *m = s->mjpeg_ctx;
+    if (m->huffman == HUFFMAN_TABLE_OPTIMAL) {
 
         mjpeg_build_optimal_huffman(m);
 
@@ -204,8 +238,7 @@ int ff_mjpeg_encode_stuffing(MpegEncContext *s)
         s->intra_chroma_ac_vlc_length      =
         s->intra_chroma_ac_vlc_last_length = m->uni_chroma_ac_vlc_len;
 
-        ff_mjpeg_encode_picture_header(s->avctx, &s->pb, &s->intra_scantable,
-                                       s->pred, s->intra_matrix, s->chroma_intra_matrix);
+        mjpeg_encode_picture_header(s);
         mjpeg_encode_picture_frame(s);
     }
 #endif
@@ -219,7 +252,7 @@ int ff_mjpeg_encode_stuffing(MpegEncContext *s)
 
     ff_mjpeg_escape_FF(pbc, s->esc_pos);
 
-    if ((s->avctx->active_thread_type & FF_THREAD_SLICE) && mb_y < s->mb_height - 1)
+    if (s->slice_context_count > 1 && mb_y < s->mb_height - 1)
         put_marker(pbc, RST0 + (mb_y&7));
     s->esc_pos = put_bytes_count(pbc, 0);
 
@@ -260,10 +293,23 @@ static int alloc_huffman(MpegEncContext *s)
 
 av_cold int ff_mjpeg_encode_init(MpegEncContext *s)
 {
-    MJpegContext *m;
-    int ret;
+    MJpegContext *const m = &((MJPEGEncContext*)s)->mjpeg;
+    int ret, use_slices;
 
-    av_assert0(s->slice_context_count == 1);
+    s->mjpeg_ctx = m;
+    use_slices = s->avctx->slices > 0 ? s->avctx->slices > 1 :
+                 (s->avctx->active_thread_type & FF_THREAD_SLICE) &&
+                 s->avctx->thread_count > 1;
+
+    if (s->codec_id == AV_CODEC_ID_AMV || use_slices)
+        m->huffman = HUFFMAN_TABLE_DEFAULT;
+
+    if (s->mpv_flags & FF_MPV_FLAG_QP_RD) {
+        // Used to produce garbage with MJPEG.
+        av_log(s->avctx, AV_LOG_ERROR,
+               "QP RD is no longer compatible with MJPEG or AMV\n");
+        return AVERROR(EINVAL);
+    }
 
     /* The following check is automatically true for AMV,
      * but it doesn't hurt either. */
@@ -275,10 +321,6 @@ av_cold int ff_mjpeg_encode_init(MpegEncContext *s)
         av_log(s, AV_LOG_ERROR, "JPEG does not support resolutions above 65500x65500\n");
         return AVERROR(EINVAL);
     }
-
-    m = av_mallocz(sizeof(MJpegContext));
-    if (!m)
-        return AVERROR(ENOMEM);
 
     s->min_qcoeff=-1023;
     s->max_qcoeff= 1023;
@@ -312,20 +354,19 @@ av_cold int ff_mjpeg_encode_init(MpegEncContext *s)
 
     // Buffers start out empty.
     m->huff_ncode = 0;
-    s->mjpeg_ctx = m;
 
-    if(s->huffman == HUFFMAN_TABLE_OPTIMAL)
+    if (m->huffman == HUFFMAN_TABLE_OPTIMAL)
         return alloc_huffman(s);
 
     return 0;
 }
 
-av_cold void ff_mjpeg_encode_close(MpegEncContext *s)
+static av_cold int mjpeg_encode_close(AVCodecContext *avctx)
 {
-    if (s->mjpeg_ctx) {
-        av_freep(&s->mjpeg_ctx->huff_buffer);
-        av_freep(&s->mjpeg_ctx);
-    }
+    MJPEGEncContext *const mjpeg = avctx->priv_data;
+    av_freep(&mjpeg->mjpeg.huff_buffer);
+    ff_mpv_encode_end(avctx);
+    return 0;
 }
 
 /**
@@ -374,7 +415,7 @@ static void ff_mjpeg_encode_coef(MJpegContext *s, uint8_t table_id, int val, int
 /**
  * Add the block's data into the JPEG buffer.
  *
- * @param s The MJpegEncContext that contains the JPEG buffer.
+ * @param s The MpegEncContext that contains the JPEG buffer.
  * @param block The block.
  * @param n The block's index or number.
  */
@@ -482,7 +523,7 @@ static void encode_block(MpegEncContext *s, int16_t *block, int n)
 void ff_mjpeg_encode_mb(MpegEncContext *s, int16_t block[12][64])
 {
     int i;
-    if (s->huffman == HUFFMAN_TABLE_OPTIMAL) {
+    if (s->mjpeg_ctx->huffman == HUFFMAN_TABLE_OPTIMAL) {
         if (s->chroma_format == CHROMA_444) {
             record_block(s, block[0], 0);
             record_block(s, block[2], 2);
@@ -582,23 +623,14 @@ static int amv_encode_picture(AVCodecContext *avctx, AVPacket *pkt,
 }
 #endif
 
-#define OFFSET(x) offsetof(MpegEncContext, x)
+#define OFFSET(x) offsetof(MJPEGEncContext, mjpeg.x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
 FF_MPV_COMMON_OPTS
-{ "pred", "Prediction method", OFFSET(pred), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 3, VE, "pred" },
-    { "left",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, INT_MIN, INT_MAX, VE, "pred" },
-    { "plane",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, INT_MIN, INT_MAX, VE, "pred" },
-    { "median", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 3 }, INT_MIN, INT_MAX, VE, "pred" },
 { "huffman", "Huffman table strategy", OFFSET(huffman), AV_OPT_TYPE_INT, { .i64 = HUFFMAN_TABLE_OPTIMAL }, 0, NB_HUFFMAN_TABLE_OPTION - 1, VE, "huffman" },
     { "default", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = HUFFMAN_TABLE_DEFAULT }, INT_MIN, INT_MAX, VE, "huffman" },
     { "optimal", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = HUFFMAN_TABLE_OPTIMAL }, INT_MIN, INT_MAX, VE, "huffman" },
 { "force_duplicated_matrix", "Always write luma and chroma matrix for mjpeg, useful for rtp streaming.", OFFSET(force_duplicated_matrix), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, VE },
-#if FF_API_MPEGVIDEO_OPTS
-FF_MPV_DEPRECATED_MPEG_QUANT_OPT
-FF_MPV_DEPRECATED_A53_CC_OPT
-FF_MPV_DEPRECATED_BFRAME_OPTS
-#endif
 { NULL},
 };
 
@@ -610,24 +642,24 @@ static const AVClass mjpeg_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_mjpeg_encoder = {
-    .name           = "mjpeg",
-    .long_name      = NULL_IF_CONFIG_SMALL("MJPEG (Motion JPEG)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MJPEG,
-    .priv_data_size = sizeof(MpegEncContext),
+const FFCodec ff_mjpeg_encoder = {
+    .p.name         = "mjpeg",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MJPEG (Motion JPEG)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MJPEG,
+    .priv_data_size = sizeof(MJPEGEncContext),
     .init           = ff_mpv_encode_init,
-    .encode2        = ff_mpv_encode_picture,
-    .close          = ff_mpv_encode_end,
-    .capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
+    FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),
+    .close          = mjpeg_encode_close,
+    .p.capabilities = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ444P,
         AV_PIX_FMT_YUV420P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV444P,
         AV_PIX_FMT_NONE
     },
-    .priv_class     = &mjpeg_class,
-    .profiles       = NULL_IF_CONFIG_SMALL(ff_mjpeg_profiles),
+    .p.priv_class   = &mjpeg_class,
+    .p.profiles     = NULL_IF_CONFIG_SMALL(ff_mjpeg_profiles),
 };
 #endif
 
@@ -639,19 +671,19 @@ static const AVClass amv_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_amv_encoder = {
-    .name           = "amv",
-    .long_name      = NULL_IF_CONFIG_SMALL("AMV Video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_AMV,
-    .priv_data_size = sizeof(MpegEncContext),
+const FFCodec ff_amv_encoder = {
+    .p.name         = "amv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AMV Video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_AMV,
+    .priv_data_size = sizeof(MJPEGEncContext),
     .init           = ff_mpv_encode_init,
-    .encode2        = amv_encode_picture,
-    .close          = ff_mpv_encode_end,
+    FF_CODEC_ENCODE_CB(amv_encode_picture),
+    .close          = mjpeg_encode_close,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_NONE
     },
-    .priv_class     = &amv_class,
+    .p.priv_class   = &amv_class,
 };
 #endif

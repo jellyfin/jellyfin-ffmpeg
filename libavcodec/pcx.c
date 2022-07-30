@@ -25,6 +25,7 @@
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 
@@ -69,11 +70,10 @@ static void pcx_palette(GetByteContext *gb, uint32_t *dst, int pallen)
         memset(dst, 0, (256 - pallen) * sizeof(*dst));
 }
 
-static int pcx_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int pcx_decode_frame(AVCodecContext *avctx, AVFrame *p,
+                            int *got_frame, AVPacket *avpkt)
 {
     GetByteContext gb;
-    AVFrame * const p  = data;
     int compressed, xmin, ymin, xmax, ymax;
     int ret;
     unsigned int w, h, bits_per_pixel, bytes_per_line, nplanes, stride, y, x,
@@ -249,11 +249,11 @@ end:
     return ret;
 }
 
-const AVCodec ff_pcx_decoder = {
-    .name         = "pcx",
-    .long_name    = NULL_IF_CONFIG_SMALL("PC Paintbrush PCX image"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_PCX,
-    .decode       = pcx_decode_frame,
-    .capabilities = AV_CODEC_CAP_DR1,
+const FFCodec ff_pcx_decoder = {
+    .p.name       = "pcx",
+    .p.long_name  = NULL_IF_CONFIG_SMALL("PC Paintbrush PCX image"),
+    .p.type       = AVMEDIA_TYPE_VIDEO,
+    .p.id         = AV_CODEC_ID_PCX,
+    FF_CODEC_DECODE_CB(pcx_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };

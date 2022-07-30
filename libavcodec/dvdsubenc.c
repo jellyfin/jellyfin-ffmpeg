@@ -20,6 +20,7 @@
  */
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 #include "libavutil/avassert.h"
 #include "libavutil/bprint.h"
@@ -375,6 +376,12 @@ static int encode_dvd_subtitles(AVCodecContext *avctx,
     x2 = vrect.x + vrect.w - 1;
     y2 = vrect.y + vrect.h - 1;
 
+    if (x2 > avctx->width || y2 > avctx->height) {
+        av_log(avctx, AV_LOG_ERROR, "canvas_size(%d:%d) is too small(%d:%d) for render\n",
+               avctx->width, avctx->height, x2, y2);
+        ret = AVERROR(EINVAL);;
+        goto fail;
+    }
     *q++ = 0x05;
     // x1 x2 -> 6 nibbles
     *q++ = vrect.x >> 4;
@@ -493,14 +500,14 @@ static const AVClass dvdsubenc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_dvdsub_encoder = {
-    .name           = "dvdsub",
-    .long_name      = NULL_IF_CONFIG_SMALL("DVD subtitles"),
-    .type           = AVMEDIA_TYPE_SUBTITLE,
-    .id             = AV_CODEC_ID_DVD_SUBTITLE,
+const FFCodec ff_dvdsub_encoder = {
+    .p.name         = "dvdsub",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("DVD subtitles"),
+    .p.type         = AVMEDIA_TYPE_SUBTITLE,
+    .p.id           = AV_CODEC_ID_DVD_SUBTITLE,
     .init           = dvdsub_init,
-    .encode_sub     = dvdsub_encode,
-    .priv_class     = &dvdsubenc_class,
+    FF_CODEC_ENCODE_SUB_CB(dvdsub_encode),
+    .p.priv_class   = &dvdsubenc_class,
     .priv_data_size = sizeof(DVDSubtitleContext),
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

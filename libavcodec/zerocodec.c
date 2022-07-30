@@ -19,21 +19,22 @@
 #include <zlib.h>
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
+#include "zlib_wrapper.h"
 #include "libavutil/common.h"
 
 typedef struct ZeroCodecContext {
     AVFrame  *previous_frame;
-    z_stream zstream;
+    FFZStream zstream;
 } ZeroCodecContext;
 
-static int zerocodec_decode_frame(AVCodecContext *avctx, void *data,
+static int zerocodec_decode_frame(AVCodecContext *avctx, AVFrame *pic,
                                   int *got_frame, AVPacket *avpkt)
 {
     ZeroCodecContext *zc = avctx->priv_data;
-    AVFrame *pic         = data;
     AVFrame *prev_pic    = zc->previous_frame;
-    z_stream *zstream    = &zc->zstream;
+    z_stream *const zstream = &zc->zstream.zstream;
     uint8_t *prev        = prev_pic->data[0];
     uint8_t *dst;
     int i, j, zret, ret;
@@ -106,7 +107,7 @@ static av_cold int zerocodec_decode_close(AVCodecContext *avctx)
 
     av_frame_free(&zc->previous_frame);
 
-    inflateEnd(&zc->zstream);
+    ff_inflate_end(&zc->zstream);
 
     return 0;
 }
@@ -114,27 +115,15 @@ static av_cold int zerocodec_decode_close(AVCodecContext *avctx)
 static av_cold int zerocodec_decode_init(AVCodecContext *avctx)
 {
     ZeroCodecContext *zc = avctx->priv_data;
-    z_stream *zstream    = &zc->zstream;
-    int zret;
 
     avctx->pix_fmt             = AV_PIX_FMT_UYVY422;
     avctx->bits_per_raw_sample = 8;
-
-    zstream->zalloc = Z_NULL;
-    zstream->zfree  = Z_NULL;
-    zstream->opaque = Z_NULL;
-
-    zret = inflateInit(zstream);
-    if (zret != Z_OK) {
-        av_log(avctx, AV_LOG_ERROR, "Could not initialize inflate: %d.\n", zret);
-        return AVERROR(ENOMEM);
-    }
 
     zc->previous_frame = av_frame_alloc();
     if (!zc->previous_frame)
         return AVERROR(ENOMEM);
 
-    return 0;
+    return ff_inflate_init(&zc->zstream, avctx);
 }
 
 static void zerocodec_decode_flush(AVCodecContext *avctx)
@@ -144,17 +133,17 @@ static void zerocodec_decode_flush(AVCodecContext *avctx)
     av_frame_unref(zc->previous_frame);
 }
 
-const AVCodec ff_zerocodec_decoder = {
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .name           = "zerocodec",
-    .long_name      = NULL_IF_CONFIG_SMALL("ZeroCodec Lossless Video"),
-    .id             = AV_CODEC_ID_ZEROCODEC,
+const FFCodec ff_zerocodec_decoder = {
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.name         = "zerocodec",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("ZeroCodec Lossless Video"),
+    .p.id           = AV_CODEC_ID_ZEROCODEC,
     .priv_data_size = sizeof(ZeroCodecContext),
     .init           = zerocodec_decode_init,
-    .decode         = zerocodec_decode_frame,
+    FF_CODEC_DECODE_CB(zerocodec_decode_frame),
     .flush          = zerocodec_decode_flush,
     .close          = zerocodec_decode_close,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
 };

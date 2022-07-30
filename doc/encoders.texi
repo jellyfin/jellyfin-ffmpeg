@@ -1271,6 +1271,55 @@ follows.
 
 A64 / Commodore 64 multicolor charset encoder. @code{a64_multi5} is extended with 5th color (colram).
 
+@section Cinepak
+
+Cinepak aka CVID encoder.
+Compatible with Windows 3.1 and vintage MacOS.
+
+@subsection Options
+
+@table @option
+@item g @var{integer}
+Keyframe interval.
+A keyframe is inserted at least every @code{-g} frames, sometimes sooner.
+
+@item q:v @var{integer}
+Quality factor. Lower is better. Higher gives lower bitrate.
+The following table lists bitrates when encoding akiyo_cif.y4m for various values of @code{-q:v} with @code{-g 100}:
+
+@table @option
+@item @code{-q:v 1} 1918 kb/s
+@item @code{-q:v 2} 1735 kb/s
+@item @code{-q:v 4} 1500 kb/s
+@item @code{-q:v 10} 1041 kb/s
+@item @code{-q:v 20} 826 kb/s
+@item @code{-q:v 40} 553 kb/s
+@item @code{-q:v 100} 394 kb/s
+@item @code{-q:v 200} 312 kb/s
+@item @code{-q:v 400} 266 kb/s
+@item @code{-q:v 1000} 237 kb/s
+@end table
+
+@item max_extra_cb_iterations @var{integer}
+Max extra codebook recalculation passes, more is better and slower.
+
+@item skip_empty_cb @var{boolean}
+Avoid wasting bytes, ignore vintage MacOS decoder.
+
+@item max_strips @var{integer}
+@itemx min_strips @var{integer}
+The minimum and maximum number of strips to use.
+Wider range sometimes improves quality.
+More strips is generally better quality but costs more bits.
+Fewer strips tend to yield more keyframes.
+Vintage compatible is 1..3.
+
+@item strip_number_adaptivity @var{integer}
+How much number of strips is allowed to change between frames.
+Higher is better but slower.
+
+@end table
+
 @section GIF
 
 GIF image/animation encoder.
@@ -1775,27 +1824,14 @@ This is the default.
 @item high
 @end table
 
-@item rc
-Set the rate control mode to use.
-
-Possible modes:
-@table @option
-@item cqp
-Constant quantizer: use fixed values of qindex (dependent on the frame type)
-throughout the stream.  This mode is the default.
-
-@item vbr
-Variable bitrate: use a target bitrate for the whole stream.
-
-@item cvbr
-Constrained variable bitrate: use a target bitrate for each GOP.
-@end table
-
 @item qmax
 Set the maximum quantizer to use when using a bitrate mode.
 
 @item qmin
 Set the minimum quantizer to use when using a bitrate mode.
+
+@item crf
+Constant rate factor value used in crf rate control mode (0-63).
 
 @item qp
 Set the quantizer used in cqp rate control mode (0-63).
@@ -1807,14 +1843,53 @@ Enable scene change detection.
 Set number of frames to look ahead (0-120).
 
 @item preset
-Set the quality-speed tradeoff, in the range 0 to 8.  Higher values are
-faster but lower quality.  Defaults to 8 (highest speed).
+Set the quality-speed tradeoff, in the range 0 to 13.  Higher values are
+faster but lower quality.
 
 @item tile_rows
 Set log2 of the number of rows of tiles to use (0-6).
 
 @item tile_columns
 Set log2 of the number of columns of tiles to use (0-4).
+
+@item svtav1-params
+Set SVT-AV1 options using a list of @var{key}=@var{value} pairs separated
+by ":". See the SVT-AV1 encoder user guide for a list of accepted parameters.
+
+@end table
+
+@section libjxl
+
+libjxl JPEG XL encoder wrapper.
+
+Requires the presence of the libjxl headers and library during
+configuration. You need to explicitly configure the build with
+@code{--enable-libjxl}.
+
+@subsection Options
+
+The libjxl wrapper supports the following options:
+
+@table @option
+
+@item distance
+Set the target Butteraugli distance. This is a quality setting: lower
+distance yields higher quality, with distance=1.0 roughly comparable to
+libjpeg Quality 90 for photographic content. Setting distance=0.0 yields
+true lossless encoding. Valid values range between 0.0 and 15.0, and sane
+values rarely exceed 5.0. Setting distance=0.1 usually attains
+transparency for most input. The default is 1.0.
+
+@item effort
+Set the encoding effort used. Higher effort values produce more consistent
+quality and usually produces a better quality/bpp curve, at the cost of
+more CPU time required. Valid values range from 1 to 9, and the default is 7.
+
+@item modular
+Force the encoder to use Modular mode instead of choosing automatically. The
+default is to use VarDCT for lossy encoding and Modular for lossless. VarDCT
+is generally superior to Modular for lossy encoding but does not support
+lossless encoding.
 
 @end table
 
@@ -2005,8 +2080,11 @@ kilobits/s.
 @item keyint_min (@emph{kf-min-dist})
 
 @item qmin (@emph{min-q})
+Minimum (Best Quality) Quantizer.
 
 @item qmax (@emph{max-q})
+Maximum (Worst Quality) Quantizer.
+Can be changed per-frame.
 
 @item bufsize (@emph{buf-sz}, @emph{buf-optimal-sz})
 Set ratecontrol buffer size (in bits). Note @command{vpxenc}'s options are
@@ -2270,11 +2348,10 @@ and compression tools used, and varies the combination of these tools. This
 maps to the @var{method} option in libwebp. The valid range is 0 to 6.
 Default is 4.
 
-@item -qscale @var{float}
-For lossy encoding, this controls image quality, 0 to 100. For lossless
-encoding, this controls the effort and time spent at compressing more. The
-default value is 75. Note that for usage via libavcodec, this option is called
-@var{global_quality} and must be multiplied by @var{FF_QP2LAMBDA}.
+@item -quality @var{float}
+For lossy encoding, this controls image quality. For lossless encoding, this
+controls the effort and time spent in compression.
+Range is 0 to 100. Default is 75.
 
 @item -preset @var{type}
 Configuration preset. This does some automatic settings based on the general
@@ -3123,12 +3200,13 @@ Setting a higher @option{bits_per_mb} limit will improve the speed.
 For the fastest encoding speed set the @option{qscale} parameter (4 is the
 recommended value) and do not set a size constraint.
 
-@section QSV encoders
+@section QSV Encoders
 
-The family of Intel QuickSync Video encoders (MPEG-2, H.264, HEVC, JPEG/MJPEG and VP9)
+The family of Intel QuickSync Video encoders (MPEG-2, H.264, HEVC, JPEG/MJPEG
+and VP9)
 
+@subsection Ratecontrol Method
 The ratecontrol method is selected as follows:
-
 @itemize @bullet
 @item
 When @option{global_quality} is specified, a quality-based mode is used.
@@ -3176,6 +3254,7 @@ Note that depending on your system, a different mode than the one you specified
 may be selected by the encoder. Set the verbosity level to @var{verbose} or
 higher to see the actual settings used by the QSV runtime.
 
+@subsection Global Options -> MSDK Options
 Additional libavcodec global options are mapped to MSDK options as follows:
 
 @itemize
@@ -3211,6 +3290,389 @@ Setting the @option{coder} option to the value @var{vlc} will make the H.264
 encoder use CAVLC instead of CABAC.
 
 @end itemize
+
+@subsection Common Options
+Following options are used by all qsv encoders.
+
+@table @option
+@item @var{async_depth}
+Specifies how many asynchronous operations an application performs
+before the application explicitly synchronizes the result. If zero,
+the value is not specified.
+
+@item @var{avbr_accuracy}
+Accuracy of the AVBR ratecontrol (unit of tenth of percent).
+
+@item @var{avbr_convergence}
+Convergence of the AVBR ratecontrol (unit of 100 frames)
+
+The parameters @var{avbr_accuracy} and @var{avbr_convergence} are for the
+average variable bitrate control (AVBR) algorithm.
+The algorithm focuses on overall encoding quality while meeting the specified
+bitrate, @var{target_bitrate}, within the accuracy range @var{avbr_accuracy},
+after a @var{avbr_Convergence} period. This method does not follow HRD and the
+instant bitrate is not capped or padded.
+
+@item @var{preset}
+This option itemizes a range of choices from veryfast (best speed) to veryslow
+(best quality).
+@table @samp
+@item veryfast
+@item faster
+@item fast
+@item medium
+@item slow
+@item slower
+@item veryslow
+@end table
+
+@item @var{forced_idr}
+Forcing I frames as IDR frames.
+
+@item @var{low_power}
+For encoders set this flag to ON to reduce power consumption and GPU usage.
+@end table
+
+@subsection Runtime Options
+Following options can be used durning qsv encoding.
+
+@table @option
+@item @var{qsv_config_qp}
+Supported in h264_qsv and hevc_qsv.
+This option can be set in per-frame metadata. QP parameter can be dynamically
+changed when encoding in CQP mode.
+@end table
+
+@subsection H264 options
+These options are used by h264_qsv
+
+@table @option
+@item @var{extbrc}
+Extended bitrate control.
+
+@item @var{recovery_point_sei}
+Set this flag to insert the recovery point SEI message at the beginning of every
+intra refresh cycle.
+
+@item @var{rdo}
+Enable rate distortion optimization.
+
+@item @var{max_frame_size}
+Maximum encoded frame size in bytes.
+
+@item @var{max_frame_size_i}
+Maximum encoded frame size for I frames in bytes. If this value is set as larger
+than zero, then for I frames the value set by max_frame_size is ignored.
+
+@item @var{max_frame_size_p}
+Maximum encoded frame size for P frames in bytes. If this value is set as larger
+than zero, then for P frames the value set by max_frame_size is ignored.
+
+@item @var{max_slice_size}
+Maximum encoded slice size in bytes.
+
+@item @var{bitrate_limit}
+Toggle bitrate limitations.
+Modifies bitrate to be in the range imposed by the QSV encoder. Setting this
+flag off may lead to violation of HRD conformance. Mind that specifying bitrate
+below the QSV encoder range might significantly affect quality. If on this
+option takes effect in non CQP modes: if bitrate is not in the range imposed
+by the QSV encoder, it will be changed to be in the range.
+
+@item @var{mbbrc}
+Setting this flag enables macroblock level bitrate control that generally
+improves subjective visual quality. Enabling this flag may have negative impact
+on performance and objective visual quality metric.
+
+@item @var{low_delay_brc}
+Setting this flag turns on or off LowDelayBRC feautre in qsv plugin, which provides
+more accurate bitrate control to minimize the variance of bitstream size frame
+by frame. Value: -1-default 0-off 1-on
+
+@item @var{adaptive_i}
+This flag controls insertion of I frames by the QSV encoder. Turn ON this flag
+to allow changing of frame type from P and B to I.
+
+@item @var{adaptive_b}
+This flag controls changing of frame type from B to P.
+
+@item @var{p_strategy}
+Enable P-pyramid: 0-default 1-simple 2-pyramid(bf need to be set to 0).
+
+@item @var{b_strategy}
+This option controls usage of B frames as reference.
+
+@item @var{dblk_idc}
+This option disable deblocking. It has value in range 0~2.
+
+@item @var{cavlc}
+If set, CAVLC is used; if unset, CABAC is used for encoding.
+
+@item @var{vcm}
+Video conferencing mode, please see ratecontrol method.
+
+@item @var{idr_interval}
+Distance (in I-frames) between IDR frames.
+
+@item @var{pic_timing_sei}
+Insert picture timing SEI with pic_struct_syntax element.
+
+@item @var{single_sei_nal_unit}
+Put all the SEI messages into one NALU.
+
+@item @var{max_dec_frame_buffering}
+Maximum number of frames buffered in the DPB.
+
+@item @var{look_ahead}
+Use VBR algorithm with look ahead.
+
+@item @var{look_ahead_depth}
+Depth of look ahead in number frames.
+
+@item @var{look_ahead_downsampling}
+Downscaling factor for the frames saved for the lookahead analysis.
+@table @samp
+@item unknown
+@item auto
+@item off
+@item 2x
+@item 4x
+@end table
+
+@item @var{int_ref_type}
+Specifies intra refresh type. The major goal of intra refresh is improvement of
+error resilience without significant impact on encoded bitstream size caused by
+I frames. The SDK encoder achieves this by encoding part of each frame in
+refresh cycle using intra MBs. @var{none} means no refresh. @var{vertical} means
+vertical refresh, by column of MBs. To enable intra refresh, B frame should be
+set to 0.
+
+@item @var{int_ref_cycle_size}
+Specifies number of pictures within refresh cycle starting from 2. 0 and 1 are
+invalid values.
+
+@item @var{int_ref_qp_delta}
+Specifies QP difference for inserted intra MBs. This is signed value in
+[-51, 51] range if target encoding bit-depth for luma samples is 8 and this
+range is [-63, 63] for 10 bit-depth or [-75, 75] for 12 bit-depth respectively.
+
+@item @var{int_ref_cycle_dist}
+Distance between the beginnings of the intra-refresh cycles in frames.
+
+@item @var{profile}
+@table @samp
+@item unknown
+@item baseline
+@item main
+@item high
+@end table
+
+@item @var{a53cc}
+Use A53 Closed Captions (if available).
+
+@item @var{aud}
+Insert the Access Unit Delimiter NAL.
+
+@item @var{mfmode}
+Multi-Frame Mode.
+@table @samp
+@item off
+@item auto
+@end table
+
+@item @var{repeat_pps}
+Repeat pps for every frame.
+
+@item @var{max_qp_i}
+Maximum video quantizer scale for I frame.
+
+@item @var{min_qp_i}
+Minimum video quantizer scale for I frame.
+
+@item @var{max_qp_p}
+Maximum video quantizer scale for P frame.
+
+@item @var{min_qp_p}
+Minimum video quantizer scale for P frame.
+
+@item @var{max_qp_b}
+Maximum video quantizer scale for B frame.
+
+@item @var{min_qp_b}
+Minimum video quantizer scale for B frame.
+@end table
+
+@subsection HEVC Options
+These options are used by hevc_qsv
+
+@table @option
+@item @var{extbrc}
+Extended bitrate control.
+
+@item @var{recovery_point_sei}
+Set this flag to insert the recovery point SEI message at the beginning of every
+intra refresh cycle.
+
+@item @var{rdo}
+Enable rate distortion optimization.
+
+@item @var{max_frame_size}
+Maximum encoded frame size in bytes.
+
+@item @var{max_frame_size_i}
+Maximum encoded frame size for I frames in bytes. If this value is set as larger
+than zero, then for I frames the value set by max_frame_size is ignored.
+
+@item @var{max_frame_size_p}
+Maximum encoded frame size for P frames in bytes. If this value is set as larger
+than zero, then for P frames the value set by max_frame_size is ignored.
+
+@item @var{max_slice_size}
+Maximum encoded slice size in bytes.
+
+@item @var{mbbrc}
+Setting this flag enables macroblock level bitrate control that generally
+improves subjective visual quality. Enabling this flag may have negative impact
+on performance and objective visual quality metric.
+
+@item @var{low_delay_brc}
+Setting this flag turns on or off LowDelayBRC feautre in qsv plugin, which provides
+more accurate bitrate control to minimize the variance of bitstream size frame
+by frame. Value: -1-default 0-off 1-on
+
+@item @var{p_strategy}
+Enable P-pyramid: 0-default 1-simple 2-pyramid(bf need to be set to 0).
+
+@item @var{b_strategy}
+This option controls usage of B frames as reference.
+
+@item @var{dblk_idc}
+This option disable deblocking. It has value in range 0~2.
+
+@item @var{idr_interval}
+Distance (in I-frames) between IDR frames.
+@table @samp
+@item begin_only
+Output an IDR-frame only at the beginning of the stream.
+@end table
+
+@item @var{load_plugin}
+A user plugin to load in an internal session.
+@table @samp
+@item none
+@item hevc_sw
+@item hevc_hw
+@end table
+
+@item @var{load_plugins}
+A :-separate list of hexadecimal plugin UIDs to load in
+an internal session.
+
+@item @var{look_ahead_depth}
+Depth of look ahead in number frames, available when extbrc option is enabled.
+
+@item @var{profile}
+Set the encoding profile (scc requires libmfx >= 1.32).
+
+@table @samp
+@item unknown
+@item main
+@item main10
+@item mainsp
+@item rext
+@item scc
+@end table
+
+@item @var{gpb}
+1: GPB (generalized P/B frame)
+
+0: regular P frame.
+
+@item @var{tile_cols}
+Number of columns for tiled encoding.
+
+@item @var{tile_rows}
+Number of rows for tiled encoding.
+
+@item @var{aud}
+Insert the Access Unit Delimiter NAL.
+
+@item @var{pic_timing_sei}
+Insert picture timing SEI with pic_struct_syntax element.
+
+@item @var{transform_skip}
+Turn this option ON to enable transformskip. It is supported on platform equal
+or newer than ICL.
+
+@item @var{int_ref_type}
+Specifies intra refresh type. The major goal of intra refresh is improvement of
+error resilience without significant impact on encoded bitstream size caused by
+I frames. The SDK encoder achieves this by encoding part of each frame in
+refresh cycle using intra MBs. @var{none} means no refresh. @var{vertical} means
+vertical refresh, by column of MBs. To enable intra refresh, B frame should be
+set to 0.
+
+@item @var{int_ref_cycle_size}
+Specifies number of pictures within refresh cycle starting from 2. 0 and 1 are
+invalid values.
+
+@item @var{int_ref_qp_delta}
+Specifies QP difference for inserted intra MBs. This is signed value in
+[-51, 51] range if target encoding bit-depth for luma samples is 8 and this
+range is [-63, 63] for 10 bit-depth or [-75, 75] for 12 bit-depth respectively.
+
+@item @var{int_ref_cycle_dist}
+Distance between the beginnings of the intra-refresh cycles in frames.
+
+@item @var{max_qp_i}
+Maximum video quantizer scale for I frame.
+
+@item @var{min_qp_i}
+Minimum video quantizer scale for I frame.
+
+@item @var{max_qp_p}
+Maximum video quantizer scale for P frame.
+
+@item @var{min_qp_p}
+Minimum video quantizer scale for P frame.
+
+@item @var{max_qp_b}
+Maximum video quantizer scale for B frame.
+
+@item @var{min_qp_b}
+Minimum video quantizer scale for B frame.
+@end table
+
+@subsection MPEG2 Options
+These options are used by mpeg2_qsv
+@table @option
+@item @var{profile}
+@table @samp
+@item unknown
+@item simple
+@item main
+@item high
+@end table
+@end table
+
+@subsection VP9 Options
+These options are used by vp9_qsv
+@table @option
+@item @var{profile}
+@table @samp
+@item unknown
+@item profile0
+@item profile1
+@item profile2
+@item profile3
+@end table
+
+@item @var{tile_cols}
+Number of columns for tiled encoding (requires libmfx >= 1.29).
+
+@item @var{tile_rows}
+Number of rows for tiled encoding (requires libmfx  >= 1.29).
+@end table
 
 @section snow
 
@@ -3291,6 +3753,17 @@ Set the B-frame reference depth.  When set to one (the default), all B-frames
 will refer only to P- or I-frames.  When set to greater values multiple layers
 of B-frames will be present, frames in each layer only referring to frames in
 higher layers.
+
+@item async_depth
+Maximum processing parallelism. Increase this to improve single channel
+performance. This option doesn't work if driver doesn't implement vaSyncBuffer
+function. Please make sure there are enough hw_frames allocated if a large
+number of async_depth is used.
+
+@item max_frame_size
+Set the allowed max size in bytes for each frame. If the frame size exceeds
+the limitation, encoder will adjust the QP value to control the frame size.
+Invalid in CQP rate control mode.
 
 @item rc_mode
 Set the rate control mode to use.  A given driver may only support a subset of
@@ -3433,6 +3906,22 @@ bitstream filter to modify the output stream to display frames in the correct or
 Only normal frames are produced - the @option{vp9_superframe} bitstream filter may be
 required to produce a stream usable with all decoders.
 
+@end table
+
+@section vbn
+
+Vizrt Binary Image encoder.
+
+This format is used by the broadcast vendor Vizrt for quick texture streaming.
+Advanced features of the format such as LZW compression of texture data or
+generation of mipmaps are not supported.
+
+@subsection Options
+
+@table @option
+@item format @var{string}
+Sets the texture compression used by the VBN file. Can be @var{dxt1},
+@var{dxt5} or @var{raw}. Default is @var{dxt5}.
 @end table
 
 @section vc2

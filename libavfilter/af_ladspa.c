@@ -29,10 +29,16 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/fifo.h"
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "avfilter.h"
 #include "internal.h"
+
+typedef struct MetaItem {
+    int64_t pts;
+    int nb_samples;
+} MetaItem;
 
 typedef struct LADSPAContext {
     const AVClass *class;
@@ -62,11 +68,15 @@ typedef struct LADSPAContext {
 
     int sample_rate;
     int nb_samples;
+    int64_t next_in_pts;
+    int64_t next_out_pts;
     int64_t pts;
     int64_t duration;
     int in_trim;
     int out_pad;
     int latency;
+
+    AVFifo *fifo;
 } LADSPAContext;
 
 #define OFFSET(x) offsetof(LADSPAContext, x)
@@ -164,8 +174,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     LADSPAContext *s = ctx->priv;
     AVFrame *out;
     int i, h, p, new_out_samples;
+    int64_t out_duration;
+    int64_t in_duration;
+    int64_t in_pts;
+    MetaItem meta;
 
-    av_assert0(in->channels == (s->nb_inputs * s->nb_handles));
+    av_assert0(in->ch_layout.nb_channels == (s->nb_inputs * s->nb_handles));
 
     if (!s->nb_outputs ||
         (av_frame_is_writable(in) && s->nb_inputs == s->nb_outputs &&
@@ -181,7 +195,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_copy_props(out, in);
     }
 
-    av_assert0(!s->nb_outputs || out->channels == (s->nb_outputs * s->nb_handles));
+    av_assert0(!s->nb_outputs || out->ch_layout.nb_channels == (s->nb_outputs * s->nb_handles));
 
     for (h = 0; h < s->nb_handles; h++) {
         for (i = 0; i < s->nb_inputs; i++) {
@@ -205,6 +219,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     for (i = 0; i < s->nb_outputcontrols; i++)
         print_ctl_info(ctx, AV_LOG_VERBOSE, s, i, s->ocmap, s->octlv, 1);
 
+    meta = (MetaItem){ in->pts, in->nb_samples };
+    av_fifo_write(s->fifo, &meta, 1);
+
     if (out != in)
         av_frame_free(&in);
 
@@ -221,11 +238,26 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         return 0;
     } else if (new_out_samples < out->nb_samples) {
         int offset = out->nb_samples - new_out_samples;
-        for (int ch = 0; ch < out->channels; ch++)
+        for (int ch = 0; ch < out->ch_layout.nb_channels; ch++)
             memmove(out->extended_data[ch], out->extended_data[ch] + sizeof(float) * offset,
                     sizeof(float) * new_out_samples);
         out->nb_samples = new_out_samples;
     }
+
+    av_fifo_read(s->fifo, &meta, 1);
+
+    out_duration = av_rescale_q(out->nb_samples, inlink->time_base, av_make_q(1, out->sample_rate));
+    in_duration  = av_rescale_q(meta.nb_samples, inlink->time_base, av_make_q(1, out->sample_rate));
+    in_pts       = meta.pts;
+
+    if (s->next_out_pts != AV_NOPTS_VALUE && out->pts != s->next_out_pts &&
+        s->next_in_pts  != AV_NOPTS_VALUE && in_pts   == s->next_in_pts) {
+        out->pts = s->next_out_pts;
+    } else {
+        out->pts = in_pts;
+    }
+    s->next_in_pts  = in_pts   + in_duration;
+    s->next_out_pts = out->pts + out_duration;
 
     return ff_filter_frame(ctx->outputs[0], out);
 }
@@ -247,6 +279,7 @@ static int request_frame(AVFilterLink *outlink)
                 return AVERROR(ENOMEM);
 
             s->out_pad -= frame->nb_samples;
+            frame->pts = s->next_in_pts;
             return filter_frame(ctx->inputs[0], frame);
         }
         return ret;
@@ -318,7 +351,7 @@ static int connect_ports(AVFilterContext *ctx, AVFilterLink *link)
     LADSPAContext *s = ctx->priv;
     int i, j;
 
-    s->nb_handles = s->nb_inputs == 1 && s->nb_outputs == 1 ? link->channels : 1;
+    s->nb_handles = s->nb_inputs == 1 && s->nb_outputs == 1 ? link->ch_layout.nb_channels : 1;
     s->handles    = av_calloc(s->nb_handles, sizeof(*s->handles));
     if (!s->handles)
         return AVERROR(ENOMEM);
@@ -366,8 +399,13 @@ static int config_output(AVFilterLink *outlink)
         outlink->format      = inlink->format;
         outlink->sample_rate = inlink->sample_rate;
         if (s->nb_inputs == s->nb_outputs) {
+            if ((ret = av_channel_layout_copy(&outlink->ch_layout, &inlink->ch_layout)) < 0)
+                return ret;
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
             outlink->channel_layout = inlink->channel_layout;
-            outlink->channels = inlink->channels;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         }
 
         ret = 0;
@@ -649,6 +687,13 @@ static av_cold int init(AVFilterContext *ctx)
     av_log(ctx, AV_LOG_DEBUG, "input controls: %lu output controls: %lu\n",
                               s->nb_inputcontrols, s->nb_outputcontrols);
 
+    s->next_out_pts = AV_NOPTS_VALUE;
+    s->next_in_pts  = AV_NOPTS_VALUE;
+
+    s->fifo = av_fifo_alloc2(8, sizeof(MetaItem), AV_FIFO_FLAG_AUTO_GROW);
+    if (!s->fifo)
+        return AVERROR(ENOMEM);
+
     return 0;
 }
 
@@ -681,7 +726,7 @@ static int query_formats(AVFilterContext *ctx)
             return ret;
     } else if (s->nb_inputs == 2 && s->nb_outputs == 2) {
         layouts = NULL;
-        ret = ff_add_channel_layout(&layouts, AV_CH_LAYOUT_STEREO);
+        ret = ff_add_channel_layout(&layouts, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO);
         if (ret < 0)
             return ret;
         ret = ff_set_common_channel_layouts(ctx, layouts);
@@ -692,10 +737,10 @@ static int query_formats(AVFilterContext *ctx)
 
         if (s->nb_inputs >= 1) {
             AVFilterLink *inlink = ctx->inputs[0];
-            uint64_t inlayout = FF_COUNT2LAYOUT(s->nb_inputs);
+            AVChannelLayout inlayout = FF_COUNT2LAYOUT(s->nb_inputs);
 
             layouts = NULL;
-            ret = ff_add_channel_layout(&layouts, inlayout);
+            ret = ff_add_channel_layout(&layouts, &inlayout);
             if (ret < 0)
                 return ret;
             ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts);
@@ -710,10 +755,10 @@ static int query_formats(AVFilterContext *ctx)
         }
 
         if (s->nb_outputs >= 1) {
-            uint64_t outlayout = FF_COUNT2LAYOUT(s->nb_outputs);
+            AVChannelLayout outlayout = FF_COUNT2LAYOUT(s->nb_outputs);
 
             layouts = NULL;
-            ret = ff_add_channel_layout(&layouts, outlayout);
+            ret = ff_add_channel_layout(&layouts, &outlayout);
             if (ret < 0)
                 return ret;
             ret = ff_channel_layouts_ref(layouts, &outlink->incfg.channel_layouts);
@@ -748,6 +793,8 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->octlv);
     av_freep(&s->handles);
     av_freep(&s->ctl_needs_value);
+
+    av_fifo_freep2(&s->fifo);
 }
 
 static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,

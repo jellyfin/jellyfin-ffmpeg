@@ -29,6 +29,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "idctdsp.h"
 #include "internal.h"
@@ -83,7 +84,7 @@ typedef struct CLVContext {
 
 static VLC        dc_vlc, ac_vlc;
 static LevelCodes lev[4 + 3 + 3]; // 0..3: Y, 4..6: U, 7..9: V
-static VLC_TYPE   vlc_buf[16716][2];
+static VLCElem    vlc_buf[16716];
 
 static inline int decode_block(CLVContext *ctx, int16_t *blk, int has_ac,
                                int ac_quant)
@@ -498,7 +499,7 @@ static void extend_edges(AVFrame *buf, int tile_size)
     }
 }
 
-static int clv_decode_frame(AVCodecContext *avctx, void *data,
+static int clv_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -637,7 +638,7 @@ static int clv_decode_frame(AVCodecContext *avctx, void *data,
         c->pic->pict_type = AV_PICTURE_TYPE_P;
     }
 
-    if ((ret = av_frame_ref(data, c->pic)) < 0)
+    if ((ret = av_frame_ref(rframe, c->pic)) < 0)
         return ret;
 
     FFSWAP(AVFrame *, c->pic, c->prev);
@@ -766,15 +767,15 @@ static av_cold int clv_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_clearvideo_decoder = {
-    .name           = "clearvideo",
-    .long_name      = NULL_IF_CONFIG_SMALL("Iterated Systems ClearVideo"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_CLEARVIDEO,
+const FFCodec ff_clearvideo_decoder = {
+    .p.name         = "clearvideo",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Iterated Systems ClearVideo"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_CLEARVIDEO,
     .priv_data_size = sizeof(CLVContext),
     .init           = clv_decode_init,
     .close          = clv_decode_end,
-    .decode         = clv_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(clv_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

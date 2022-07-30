@@ -21,7 +21,7 @@
  */
 
 #include "config.h"
-#include <float.h>
+#include "config_components.h"
 #include <stdint.h>
 #if HAVE_UNISTD_H
 #include <unistd.h>
@@ -35,11 +35,9 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/mathematics.h"
-#include "libavutil/parseutils.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/intreadwrite.h"
-#include "libavutil/random_seed.h"
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
 #include "libavutil/time.h"
@@ -53,6 +51,7 @@
 #endif
 #include "hlsplaylist.h"
 #include "internal.h"
+#include "mux.h"
 #include "os_support.h"
 
 typedef enum {
@@ -316,8 +315,7 @@ static int hlsenc_io_close(AVFormatContext *s, AVIOContext **pb, char *filename)
         URLContext *http_url_context = ffio_geturlcontext(*pb);
         av_assert0(http_url_context);
         avio_flush(*pb);
-        ffurl_shutdown(http_url_context, AVIO_FLAG_WRITE);
-        ret = ff_http_get_shutdown_status(http_url_context);
+        ret = ffurl_shutdown(http_url_context, AVIO_FLAG_WRITE);
 #endif
     }
     return ret;
@@ -1288,8 +1286,10 @@ static int parse_playlist(AVFormatContext *s, const char *url, VariantStream *vs
                 new_start_pos = avio_tell(vs->avf->pb);
                 vs->size = new_start_pos - vs->start_pos;
                 ret = hls_append_segment(s, hls, vs, vs->duration, vs->start_pos, vs->size);
-                vs->last_segment->discont_program_date_time = discont_program_date_time;
-                discont_program_date_time += vs->duration;
+                if (discont_program_date_time) {
+                    vs->last_segment->discont_program_date_time = discont_program_date_time;
+                    discont_program_date_time += vs->duration;
+                }
                 if (ret < 0)
                     goto fail;
                 vs->start_pos = new_start_pos;
@@ -1550,7 +1550,11 @@ static int hls_window(AVFormatContext *s, int last, VariantStream *vs)
     double *prog_date_time_p = (hls->flags & HLS_PROGRAM_DATE_TIME) ? &prog_date_time : NULL;
     int byterange_mode = (hls->flags & HLS_SINGLE_FILE) || (hls->max_seg_size > 0);
 
-    hls->version = 3;
+    hls->version = 2;
+    if (!(hls->flags & HLS_ROUND_DURATIONS)) {
+        hls->version = 3;
+    }
+
     if (byterange_mode) {
         hls->version = 4;
         sequence = 0;
@@ -2631,6 +2635,9 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
             vs->start_pos += vs->size;
             if (hls->key_info_file || hls->encrypt)
                 ret = hls_start(s, vs);
+            if (hls->segment_type == SEGMENT_TYPE_MPEGTS && oc->oformat->priv_class && oc->priv_data) {
+                av_opt_set(oc->priv_data, "mpegts_flags", "resend_headers", 0);
+            }
         } else if (hls->max_seg_size > 0) {
             if (vs->size + vs->start_pos >= hls->max_seg_size) {
                 vs->sequence++;

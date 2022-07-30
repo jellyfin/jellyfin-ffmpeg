@@ -31,6 +31,7 @@
 #include "libavutil/display.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "thread.h"
@@ -169,16 +170,14 @@ static void unpack_10bit(GetByteContext *gb, uint16_t *dst, int shift,
     }
 }
 
-static int cri_decode_frame(AVCodecContext *avctx, void *data,
+static int cri_decode_frame(AVCodecContext *avctx, AVFrame *p,
                             int *got_frame, AVPacket *avpkt)
 {
     CRIContext *s = avctx->priv_data;
     GetByteContext *gb = &s->gb;
-    ThreadFrame frame = { .f = data };
     int ret, bps, hflip = 0, vflip = 0;
     AVFrameSideData *rotation;
     int compressed = 0;
-    AVFrame *p = data;
 
     s->data = NULL;
     s->data_size = 0;
@@ -318,7 +317,7 @@ skip:
     if (!s->data || !s->data_size)
         return AVERROR_INVALIDDATA;
 
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, p, 0)) < 0)
         return ret;
 
     avctx->bits_per_raw_sample = bps;
@@ -424,15 +423,15 @@ static av_cold int cri_decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_cri_decoder = {
-    .name           = "cri",
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_CRI,
+const FFCodec ff_cri_decoder = {
+    .p.name         = "cri",
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_CRI,
     .priv_data_size = sizeof(CRIContext),
     .init           = cri_decode_init,
-    .decode         = cri_decode_frame,
+    FF_CODEC_DECODE_CB(cri_decode_frame),
     .close          = cri_decode_close,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .long_name      = NULL_IF_CONFIG_SMALL("Cintel RAW"),
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Cintel RAW"),
 };

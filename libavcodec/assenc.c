@@ -19,11 +19,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <string.h>
 
 #include "avcodec.h"
 #include "ass.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "libavutil/avstring.h"
 #include "libavutil/internal.h"
 #include "libavutil/mem.h"
@@ -67,25 +69,25 @@ static int ass_encode_frame(AVCodecContext *avctx,
 }
 
 #if CONFIG_SSA_ENCODER
-const AVCodec ff_ssa_encoder = {
-    .name         = "ssa",
-    .long_name    = NULL_IF_CONFIG_SMALL("ASS (Advanced SubStation Alpha) subtitle"),
-    .type         = AVMEDIA_TYPE_SUBTITLE,
-    .id           = AV_CODEC_ID_ASS,
+const FFCodec ff_ssa_encoder = {
+    .p.name       = "ssa",
+    .p.long_name  = NULL_IF_CONFIG_SMALL("ASS (Advanced SubStation Alpha) subtitle"),
+    .p.type       = AVMEDIA_TYPE_SUBTITLE,
+    .p.id         = AV_CODEC_ID_ASS,
     .init         = ass_encode_init,
-    .encode_sub   = ass_encode_frame,
+    FF_CODEC_ENCODE_SUB_CB(ass_encode_frame),
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 
 #if CONFIG_ASS_ENCODER
-const AVCodec ff_ass_encoder = {
-    .name         = "ass",
-    .long_name    = NULL_IF_CONFIG_SMALL("ASS (Advanced SubStation Alpha) subtitle"),
-    .type         = AVMEDIA_TYPE_SUBTITLE,
-    .id           = AV_CODEC_ID_ASS,
+const FFCodec ff_ass_encoder = {
+    .p.name       = "ass",
+    .p.long_name  = NULL_IF_CONFIG_SMALL("ASS (Advanced SubStation Alpha) subtitle"),
+    .p.type       = AVMEDIA_TYPE_SUBTITLE,
+    .p.id         = AV_CODEC_ID_ASS,
     .init         = ass_encode_init,
-    .encode_sub   = ass_encode_frame,
+    FF_CODEC_ENCODE_SUB_CB(ass_encode_frame),
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

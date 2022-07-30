@@ -27,7 +27,6 @@
 
 #define UNCHECKED_BITSTREAM_READER 1
 
-#include <assert.h>
 #include <stdint.h>
 
 #include "libavutil/avutil.h"
@@ -40,12 +39,15 @@
 #include "get_bits.h"
 #include "golomb.h"
 #include "h264.h"
+#include "h264dsp.h"
+#include "h264_parse.h"
 #include "h264_sei.h"
 #include "h264_ps.h"
+#include "h2645_parse.h"
 #include "h264data.h"
-#include "internal.h"
 #include "mpegutils.h"
 #include "parser.h"
+#include "startcode.h"
 
 typedef struct H264ParseContext {
     ParseContext pc;
@@ -64,6 +66,15 @@ typedef struct H264ParseContext {
     int last_frame_num, last_picture_structure;
 } H264ParseContext;
 
+static int find_start_code(const uint8_t *buf, int buf_size,
+                                  int buf_index, int next_avc)
+{
+    uint32_t state = -1;
+
+    buf_index = avpriv_find_start_code(buf + buf_index, buf + next_avc + 1, &state) - buf - 1;
+
+    return FFMIN(buf_index, buf_size);
+}
 
 static int h264_find_frame_end(H264ParseContext *p, const uint8_t *buf,
                                int buf_size, void *logctx)
@@ -210,7 +221,7 @@ static int scan_mmco_reset(AVCodecParserContext *s, GetBitContext *gb,
 
     if (get_bits1(gb)) { // adaptive_ref_pic_marking_mode_flag
         int i;
-        for (i = 0; i < MAX_MMCO_COUNT; i++) {
+        for (i = 0; i < H264_MAX_MMCO_COUNT; i++) {
             MMCOOpcode opcode = get_ue_golomb_31(gb);
             if (opcode > (unsigned) MMCO_LONG) {
                 av_log(logctx, AV_LOG_ERROR,

@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "avformat.h"
@@ -182,8 +184,7 @@ static int argo_cvg_read_header(AVFormatContext *s)
         break;
     }
 
-    par->channels               = 1;
-    par->channel_layout         = AV_CH_LAYOUT_MONO;
+    par->ch_layout              = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
 
     par->bits_per_coded_sample  = 4;
     par->block_align            = ARGO_CVG_BLOCK_ALIGN;
@@ -275,7 +276,7 @@ static int argo_cvg_write_init(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
-    if (par->channels != 1) {
+    if (par->ch_layout.nb_channels != 1) {
         av_log(s, AV_LOG_ERROR, "CVG files only support 1 channel\n");
         return AVERROR(EINVAL);
     }
@@ -335,19 +336,14 @@ static int argo_cvg_write_trailer(AVFormatContext *s)
     ArgoCVGMuxContext *ctx = s->priv_data;
     int64_t ret;
 
+    ctx->checksum +=  (ctx->size      & 255)
+                   + ((ctx->size>> 8) & 255)
+                   + ((ctx->size>>16) & 255)
+                   +  (ctx->size>>24);
+
     av_log(s, AV_LOG_TRACE, "size     = %zu\n", ctx->size);
     av_log(s, AV_LOG_TRACE, "checksum = %u\n",  ctx->checksum);
 
-    /*
-     * NB: This is wrong. We're always slightly under the original.
-     *     Verified by remuxing. For reference (orig - remuxed):
-     *     - TCLD.CVG:     4706074 - 4705696 = 378
-     *     - DANLOOP1.CVG: 5684641 - 5684212 = 429
-     *     - CRYS.CVG:     2495499 - 2495367 = 132
-     *     - PICKUP88.CVG: 1348091 - 1347937 = 154
-     *     - SELECT1.CVG:   549987 - 549752  = 235
-     *     Also NB: it doesn't matter, the game doesn't check them.
-     */
     avio_wl32(s->pb, ctx->checksum);
 
     if ((ret = avio_seek(s->pb, 0, SEEK_SET)) < 0)

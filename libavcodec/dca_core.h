@@ -21,13 +21,11 @@
 #ifndef AVCODEC_DCA_CORE_H
 #define AVCODEC_DCA_CORE_H
 
-#include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/fixed_dsp.h"
 #include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
-#include "internal.h"
 #include "get_bits.h"
 #include "dca.h"
 #include "dca_exss.h"
@@ -247,8 +245,8 @@ static inline void ff_dca_core_dequantize(int32_t *output, const int32_t *input,
     }
 }
 
-int ff_dca_core_parse(DCACoreDecoder *s, uint8_t *data, int size);
-int ff_dca_core_parse_exss(DCACoreDecoder *s, uint8_t *data, DCAExssAsset *asset);
+int ff_dca_core_parse(DCACoreDecoder *s, const uint8_t *data, int size);
+int ff_dca_core_parse_exss(DCACoreDecoder *s, const uint8_t *data, DCAExssAsset *asset);
 int ff_dca_core_filter_fixed(DCACoreDecoder *s, int x96_synth);
 int ff_dca_core_filter_frame(DCACoreDecoder *s, AVFrame *frame);
 av_cold void ff_dca_core_flush(DCACoreDecoder *s);

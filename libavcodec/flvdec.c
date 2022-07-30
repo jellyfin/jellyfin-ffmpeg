@@ -20,8 +20,9 @@
 
 #include "libavutil/imgutils.h"
 
-#include "flv.h"
-#include "h263.h"
+#include "codec_internal.h"
+#include "flvdec.h"
+#include "h263dec.h"
 #include "mpegvideo.h"
 #include "mpegvideodata.h"
 
@@ -90,7 +91,6 @@ int ff_flv_decode_picture_header(MpegEncContext *s)
 
     s->h263_plus = 0;
 
-    s->unrestricted_mv   = 1;
     s->h263_long_vectors = 0;
 
     /* PEI */
@@ -113,18 +113,19 @@ int ff_flv_decode_picture_header(MpegEncContext *s)
     return 0;
 }
 
-const AVCodec ff_flv_decoder = {
-    .name           = "flv",
-    .long_name      = NULL_IF_CONFIG_SMALL("FLV / Sorenson Spark / Sorenson H.263 (Flash Video)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_FLV1,
+const FFCodec ff_flv_decoder = {
+    .p.name         = "flv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("FLV / Sorenson Spark / Sorenson H.263 (Flash Video)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_FLV1,
     .priv_data_size = sizeof(MpegEncContext),
     .init           = ff_h263_decode_init,
     .close          = ff_h263_decode_end,
-    .decode         = ff_h263_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
-    .max_lowres     = 3,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
+    FF_CODEC_DECODE_CB(ff_h263_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    .p.max_lowres   = 3,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
 };

@@ -12,7 +12,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  #include <CL/cl_d3d11.h>
  #include "hwcontext_d3d11va.h"
  
-@@ -128,6 +131,7 @@ typedef struct OpenCLDeviceContext {
+@@ -129,6 +132,7 @@ typedef struct OpenCLDeviceContext {
  
  #if HAVE_OPENCL_D3D11
      int d3d11_mapping_usable;
@@ -20,7 +20,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      int d3d11_map_amd;
      int d3d11_map_intel;
  
-@@ -890,6 +894,11 @@ static int opencl_device_init(AVHWDevice
+@@ -891,6 +895,11 @@ static int opencl_device_init(AVHWDevice
              priv->d3d11_mapping_usable = 0;
          } else {
              priv->d3d11_mapping_usable = 1;
@@ -32,7 +32,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
          }
      }
  #endif
-@@ -1760,18 +1769,20 @@ static void opencl_frames_uninit(AVHWFra
+@@ -1764,18 +1773,20 @@ static void opencl_frames_uninit(AVHWFra
  
  #if HAVE_OPENCL_DXVA2 || HAVE_OPENCL_D3D11
      int i, p;
@@ -62,7 +62,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  #endif
  
      if (priv->command_queue) {
-@@ -2545,6 +2556,225 @@ fail:
+@@ -2552,6 +2563,226 @@ fail:
  
  #if HAVE_OPENCL_D3D11
  
@@ -197,6 +197,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
 +        }
 +        av_freep(&desc);
 +    }
++    memset(dst->data, 0, sizeof(dst->data));
 +    return err;
 +}
 +
@@ -288,7 +289,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  static void opencl_unmap_from_d3d11(AVHWFramesContext *dst_fc,
                                      HWMapDescriptor *hwmap)
  {
-@@ -2985,6 +3215,11 @@ static int opencl_map_to(AVHWFramesConte
+@@ -2994,6 +3225,11 @@ static int opencl_map_to(AVHWFramesConte
              return opencl_map_from_dxva2(hwfc, dst, src, flags);
  #endif
  #if HAVE_OPENCL_D3D11
@@ -300,7 +301,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      case AV_PIX_FMT_D3D11:
          if (priv->d3d11_mapping_usable)
              return opencl_map_from_d3d11(hwfc, dst, src, flags);
-@@ -3035,6 +3270,18 @@ static int opencl_frames_derive_to(AVHWF
+@@ -3044,6 +3280,18 @@ static int opencl_frames_derive_to(AVHWF
          break;
  #endif
  #if HAVE_OPENCL_D3D11

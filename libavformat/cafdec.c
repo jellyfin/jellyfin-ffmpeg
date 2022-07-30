@@ -28,9 +28,11 @@
 #include <inttypes.h>
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "isom.h"
 #include "mov_chan.h"
+#include "libavcodec/flac.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/dict.h"
@@ -76,10 +78,10 @@ static int read_desc_chunk(AVFormatContext *s)
     caf->bytes_per_packet  = avio_rb32(pb);
     st->codecpar->block_align = caf->bytes_per_packet;
     caf->frames_per_packet = avio_rb32(pb);
-    st->codecpar->channels    = avio_rb32(pb);
+    st->codecpar->ch_layout.nb_channels = avio_rb32(pb);
     st->codecpar->bits_per_coded_sample = avio_rb32(pb);
 
-    if (caf->bytes_per_packet < 0 || caf->frames_per_packet < 0 || st->codecpar->channels < 0)
+    if (caf->bytes_per_packet < 0 || caf->frames_per_packet < 0 || st->codecpar->ch_layout.nb_channels < 0)
         return AVERROR_INVALIDDATA;
 
     /* calculate bit rate for constant size packets */
@@ -169,10 +171,53 @@ static int read_kuki_chunk(AVFormatContext *s, int64_t size)
             }
             avio_skip(pb, size - ALAC_NEW_KUKI);
         }
+    } else if (st->codecpar->codec_id == AV_CODEC_ID_FLAC) {
+        int last, type, flac_metadata_size;
+        uint8_t buf[4];
+        /* The magic cookie format for FLAC consists mostly of an mp4 dfLa atom. */
+        if (size < (16 + FLAC_STREAMINFO_SIZE)) {
+            av_log(s, AV_LOG_ERROR, "invalid FLAC magic cookie\n");
+            return AVERROR_INVALIDDATA;
+        }
+        /* Check cookie version. */
+        if (avio_r8(pb) != 0) {
+            av_log(s, AV_LOG_ERROR, "unknown FLAC magic cookie\n");
+            return AVERROR_INVALIDDATA;
+        }
+        avio_rb24(pb); /* Flags */
+        /* read dfLa fourcc */
+        if (avio_read(pb, buf, 4) != 4) {
+            av_log(s, AV_LOG_ERROR, "failed to read FLAC magic cookie\n");
+            return pb->error < 0 ? pb->error : AVERROR_INVALIDDATA;
+        }
+        if (memcmp(buf, "dfLa", 4)) {
+            av_log(s, AV_LOG_ERROR, "invalid FLAC magic cookie\n");
+            return AVERROR_INVALIDDATA;
+        }
+        /* Check dfLa version. */
+        if (avio_r8(pb) != 0) {
+            av_log(s, AV_LOG_ERROR, "unknown dfLa version\n");
+            return AVERROR_INVALIDDATA;
+        }
+        avio_rb24(pb); /* Flags */
+        if (avio_read(pb, buf, sizeof(buf)) != sizeof(buf)) {
+            av_log(s, AV_LOG_ERROR, "failed to read FLAC metadata block header\n");
+            return pb->error < 0 ? pb->error : AVERROR_INVALIDDATA;
+        }
+        flac_parse_block_header(buf, &last, &type, &flac_metadata_size);
+        if (type != FLAC_METADATA_TYPE_STREAMINFO || flac_metadata_size != FLAC_STREAMINFO_SIZE) {
+            av_log(s, AV_LOG_ERROR, "STREAMINFO must be first FLACMetadataBlock\n");
+            return AVERROR_INVALIDDATA;
+        }
+        ret = ff_get_extradata(s, st->codecpar, pb, FLAC_STREAMINFO_SIZE);
+        if (ret < 0)
+            return ret;
+        if (!last)
+            av_log(s, AV_LOG_WARNING, "non-STREAMINFO FLACMetadataBlock(s) ignored\n");
     } else if (st->codecpar->codec_id == AV_CODEC_ID_OPUS) {
         // The data layout for Opus is currently unknown, so we do not export
         // extradata at all. Multichannel streams are not supported.
-        if (st->codecpar->channels > 2) {
+        if (st->codecpar->ch_layout.nb_channels > 2) {
             avpriv_request_sample(s, "multichannel Opus in CAF");
             return AVERROR_PATCHWELCOME;
         }

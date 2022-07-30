@@ -21,12 +21,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <limits.h>
 
 #include "avcodec.h"
 #include "decode.h"
 #include "internal.h"
-#include "h264dec.h"
+#include "mpegvideodec.h"
 #include "vc1.h"
 #include "vdpau.h"
 #include "vdpau_internal.h"

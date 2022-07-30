@@ -1062,6 +1062,9 @@ int ffio_ensure_seekback(AVIOContext *s, int64_t buf_size)
     if (buf_size <= s->buf_end - s->buf_ptr)
         return 0;
 
+    if (buf_size > INT_MAX - max_buffer_size)
+        return AVERROR(EINVAL);
+
     buf_size += max_buffer_size - 1;
 
     if (buf_size + s->buf_ptr - s->buffer <= s->buffer_size || s->seekable || !s->read_packet)
@@ -1289,15 +1292,12 @@ int avio_closep(AVIOContext **s)
     return ret;
 }
 
-int avio_printf(AVIOContext *s, const char *fmt, ...)
+int avio_vprintf(AVIOContext *s, const char *fmt, va_list ap)
 {
-    va_list ap;
     AVBPrint bp;
 
     av_bprint_init(&bp, 0, INT_MAX);
-    va_start(ap, fmt);
     av_vbprintf(&bp, fmt, ap);
-    va_end(ap);
     if (!av_bprint_is_complete(&bp)) {
         av_bprint_finalize(&bp, NULL);
         s->error = AVERROR(ENOMEM);
@@ -1306,6 +1306,18 @@ int avio_printf(AVIOContext *s, const char *fmt, ...)
     avio_write(s, bp.str, bp.len);
     av_bprint_finalize(&bp, NULL);
     return bp.len;
+}
+
+int avio_printf(AVIOContext *s, const char *fmt, ...)
+{
+    va_list ap;
+    int ret;
+
+    va_start(ap, fmt);
+    ret = avio_vprintf(s, fmt, ap);
+    va_end(ap);
+
+    return ret;
 }
 
 void avio_print_string_array(AVIOContext *s, const char *strings[])

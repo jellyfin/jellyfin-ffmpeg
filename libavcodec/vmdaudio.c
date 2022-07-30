@@ -41,6 +41,7 @@
 #include "libavutil/intreadwrite.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 #define BLOCK_TYPE_AUDIO    1
@@ -71,20 +72,20 @@ static const uint16_t vmdaudio_table[128] = {
 static av_cold int vmdaudio_decode_init(AVCodecContext *avctx)
 {
     VmdAudioContext *s = avctx->priv_data;
+    int channels = avctx->ch_layout.nb_channels;
 
-    if (avctx->channels < 1 || avctx->channels > 2) {
+    if (channels < 1 || channels > 2) {
         av_log(avctx, AV_LOG_ERROR, "invalid number of channels\n");
         return AVERROR(EINVAL);
     }
-    if (avctx->block_align < 1 || avctx->block_align % avctx->channels ||
-        avctx->block_align > INT_MAX - avctx->channels
-    ) {
+    if (avctx->block_align < 1 || avctx->block_align % channels ||
+        avctx->block_align > INT_MAX - channels) {
         av_log(avctx, AV_LOG_ERROR, "invalid block align\n");
         return AVERROR(EINVAL);
     }
 
-    avctx->channel_layout = avctx->channels == 1 ? AV_CH_LAYOUT_MONO :
-                                                   AV_CH_LAYOUT_STEREO;
+    av_channel_layout_uninit(&avctx->ch_layout);
+    av_channel_layout_default(&avctx->ch_layout, channels);
 
     if (avctx->bits_per_coded_sample == 16)
         avctx->sample_fmt = AV_SAMPLE_FMT_S16;
@@ -92,11 +93,11 @@ static av_cold int vmdaudio_decode_init(AVCodecContext *avctx)
         avctx->sample_fmt = AV_SAMPLE_FMT_U8;
     s->out_bps = av_get_bytes_per_sample(avctx->sample_fmt);
 
-    s->chunk_size = avctx->block_align + avctx->channels * (s->out_bps == 2);
+    s->chunk_size = avctx->block_align + channels * (s->out_bps == 2);
 
     av_log(avctx, AV_LOG_DEBUG, "%d channels, %d bits/sample, "
            "block align = %d, sample rate = %d\n",
-           avctx->channels, avctx->bits_per_coded_sample, avctx->block_align,
+           channels, avctx->bits_per_coded_sample, avctx->block_align,
            avctx->sample_rate);
 
     return 0;
@@ -131,10 +132,9 @@ static void decode_audio_s16(int16_t *out, const uint8_t *buf, int buf_size,
     }
 }
 
-static int vmdaudio_decode_frame(AVCodecContext *avctx, void *data,
+static int vmdaudio_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                  int *got_frame_ptr, AVPacket *avpkt)
 {
-    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     const uint8_t *buf_end;
     int buf_size = avpkt->size;
@@ -143,6 +143,7 @@ static int vmdaudio_decode_frame(AVCodecContext *avctx, void *data,
     int ret;
     uint8_t *output_samples_u8;
     int16_t *output_samples_s16;
+    int channels = avctx->ch_layout.nb_channels;
 
     if (buf_size < 16) {
         av_log(avctx, AV_LOG_WARNING, "skipping small junk packet\n");
@@ -186,7 +187,7 @@ static int vmdaudio_decode_frame(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = ((silent_chunks + audio_chunks) * avctx->block_align) /
-                        avctx->channels;
+                        avctx->ch_layout.nb_channels;
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
     output_samples_u8  =            frame->data[0];
@@ -195,7 +196,7 @@ static int vmdaudio_decode_frame(AVCodecContext *avctx, void *data,
     /* decode silent chunks */
     if (silent_chunks > 0) {
         int silent_size = avctx->block_align * silent_chunks;
-        av_assert0(avctx->block_align * silent_chunks <= frame->nb_samples * avctx->channels);
+        av_assert0(avctx->block_align * silent_chunks <= frame->nb_samples * avctx->ch_layout.nb_channels);
 
         if (s->out_bps == 2) {
             memset(output_samples_s16, 0x00, silent_size * 2);
@@ -209,11 +210,10 @@ static int vmdaudio_decode_frame(AVCodecContext *avctx, void *data,
     /* decode audio chunks */
     if (audio_chunks > 0) {
         buf_end = buf + buf_size;
-        av_assert0((buf_size & (avctx->channels > 1)) == 0);
+        av_assert0((buf_size & (avctx->ch_layout.nb_channels > 1)) == 0);
         while (buf_end - buf >= s->chunk_size) {
             if (s->out_bps == 2) {
-                decode_audio_s16(output_samples_s16, buf, s->chunk_size,
-                                 avctx->channels);
+                decode_audio_s16(output_samples_s16, buf, s->chunk_size, channels);
                 output_samples_s16 += avctx->block_align;
             } else {
                 memcpy(output_samples_u8, buf, s->chunk_size);
@@ -228,14 +228,14 @@ static int vmdaudio_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-const AVCodec ff_vmdaudio_decoder = {
-    .name           = "vmdaudio",
-    .long_name      = NULL_IF_CONFIG_SMALL("Sierra VMD audio"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_VMDAUDIO,
+const FFCodec ff_vmdaudio_decoder = {
+    .p.name         = "vmdaudio",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Sierra VMD audio"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_VMDAUDIO,
     .priv_data_size = sizeof(VmdAudioContext),
     .init           = vmdaudio_decode_init,
-    .decode         = vmdaudio_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(vmdaudio_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

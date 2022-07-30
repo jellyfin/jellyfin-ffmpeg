@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "formats.h"
@@ -148,7 +150,7 @@ const AVFilter ff_vf_reverse = {
 
 static void reverse_samples_planar(AVFrame *out)
 {
-    for (int p = 0; p < out->channels; p++) {
+    for (int p = 0; p < out->ch_layout.nb_channels; p++) {
         switch (out->format) {
         case AV_SAMPLE_FMT_U8P: {
             uint8_t *dst = (uint8_t *)out->extended_data[p];
@@ -192,7 +194,7 @@ static void reverse_samples_planar(AVFrame *out)
 
 static void reverse_samples_packed(AVFrame *out)
 {
-    const int channels = out->channels;
+    const int channels = out->ch_layout.nb_channels;
 
     switch (out->format) {
     case AV_SAMPLE_FMT_U8: {

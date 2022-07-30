@@ -56,6 +56,7 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
     AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
     AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_GRAYF32, AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32,
     AV_PIX_FMT_NONE
 };
 
@@ -95,7 +96,7 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
                        base->linesize[p], overlay->linesize[p],
                        mask->linesize[p], out->linesize[p],
                        s->width[p], slice_end - slice_start,
-                       s->half, s->depth);
+                       s->half, s->max);
     }
 
     return 0;
@@ -137,51 +138,42 @@ static int process_frame(FFFrameSync *fs)
     return ff_filter_frame(outlink, out);
 }
 
-static void maskedmerge8(const uint8_t *bsrc, const uint8_t *osrc,
-                         const uint8_t *msrc, uint8_t *dst,
-                         ptrdiff_t blinesize, ptrdiff_t olinesize,
-                         ptrdiff_t mlinesize, ptrdiff_t dlinesize,
-                         int w, int h,
-                         int half, int shift)
-{
-    int x, y;
-
-    for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
-            dst[x] = bsrc[x] + ((msrc[x] * (osrc[x] - bsrc[x]) + 128) >> 8);
-        }
-
-        dst  += dlinesize;
-        bsrc += blinesize;
-        osrc += olinesize;
-        msrc += mlinesize;
-    }
+#define MASKEDMERGE(n, type, ctype, half, max, div)                    \
+static void maskedmerge##n(const uint8_t *bbsrc, const uint8_t *oosrc, \
+                           const uint8_t *mmsrc, uint8_t *ddst,        \
+                           ptrdiff_t blinesize, ptrdiff_t olinesize,   \
+                           ptrdiff_t mlinesize, ptrdiff_t dlinesize,   \
+                           int w, int h,                               \
+                           int hhalf, int mmax)                        \
+{                                                                      \
+    const type *bsrc = (const type *)bbsrc;                            \
+    const type *osrc = (const type *)oosrc;                            \
+    const type *msrc = (const type *)mmsrc;                            \
+    type *dst = (type *)ddst;                                          \
+                                                                       \
+    dlinesize /= sizeof(type);                                         \
+    blinesize /= sizeof(type);                                         \
+    olinesize /= sizeof(type);                                         \
+    mlinesize /= sizeof(type);                                         \
+                                                                       \
+    for (int y = 0; y < h; y++) {                                      \
+        for (int x = 0; x < w; x++) {                                  \
+            const type invm = max - msrc[x];                           \
+            const ctype r = ((ctype)(bsrc[x] * invm) +                 \
+                             (ctype)(msrc[x] * osrc[x] + half))  div;  \
+            dst[x] = r;                                                \
+        }                                                              \
+                                                                       \
+        dst  += dlinesize;                                             \
+        bsrc += blinesize;                                             \
+        osrc += olinesize;                                             \
+        msrc += mlinesize;                                             \
+    }                                                                  \
 }
 
-static void maskedmerge16(const uint8_t *bbsrc, const uint8_t *oosrc,
-                          const uint8_t *mmsrc, uint8_t *ddst,
-                          ptrdiff_t blinesize, ptrdiff_t olinesize,
-                          ptrdiff_t mlinesize, ptrdiff_t dlinesize,
-                          int w, int h,
-                          int half, int shift)
-{
-    const uint16_t *bsrc = (const uint16_t *)bbsrc;
-    const uint16_t *osrc = (const uint16_t *)oosrc;
-    const uint16_t *msrc = (const uint16_t *)mmsrc;
-    uint16_t *dst = (uint16_t *)ddst;
-    int x, y;
-
-    for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
-            dst[x] = bsrc[x] + ((msrc[x] * (osrc[x] - bsrc[x]) + half) >> shift);
-        }
-
-        dst  += dlinesize / 2;
-        bsrc += blinesize / 2;
-        osrc += olinesize / 2;
-        msrc += mlinesize / 2;
-    }
-}
+MASKEDMERGE(8,  uint8_t,  uint16_t,   127, 255,  / 255)
+MASKEDMERGE(16, uint16_t, uint32_t, hhalf, mmax, / mmax)
+MASKEDMERGE(32, float,    float,      0.f, 1.f,  + 0.f)
 
 static int config_input(AVFilterLink *inlink)
 {
@@ -200,15 +192,19 @@ static int config_input(AVFilterLink *inlink)
     s->width[0]  = s->width[3]  = inlink->w;
 
     s->depth = desc->comp[0].depth;
-    s->half = (1 << s->depth) / 2;
+    s->max  = (1 << s->depth) - 1;
+    s->half = s->max / 2;
 
-    if (desc->comp[0].depth == 8)
+    if (s->depth == 8)
         s->maskedmerge = maskedmerge8;
-    else
+    else if (s->depth <= 16)
         s->maskedmerge = maskedmerge16;
+    else
+        s->maskedmerge = maskedmerge32;
 
-    if (ARCH_X86)
-        ff_maskedmerge_init_x86(s);
+#if ARCH_X86
+    ff_maskedmerge_init_x86(s);
+#endif
 
     return 0;
 }

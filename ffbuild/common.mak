@@ -29,7 +29,8 @@ $(foreach VAR,$(SILENT),$(eval override $(VAR) = @$($(VAR))))
 $(eval INSTALL = @$(call ECHO,INSTALL,$$(^:$(SRC_DIR)/%=%)); $(INSTALL))
 endif
 
-ALLFFLIBS = avcodec avdevice avfilter avformat avutil postproc swscale swresample
+# Prepend to a recursively expanded variable without making it simply expanded.
+PREPEND = $(eval $(1) = $(patsubst %,$$(%), $(2)) $(value $(1)))
 
 # NASM requires -I path terminated with /
 IFLAGS     := -I. -I$(SRC_LINK)/
@@ -39,7 +40,9 @@ CCFLAGS     = $(CPPFLAGS) $(CFLAGS)
 OBJCFLAGS  += $(EOBJCFLAGS)
 OBJCCFLAGS  = $(CPPFLAGS) $(CFLAGS) $(OBJCFLAGS)
 ASFLAGS    := $(CPPFLAGS) $(ASFLAGS)
-CXXFLAGS   := $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS)
+# Use PREPEND here so that later (target-dependent) additions to CPPFLAGS
+# end up in CXXFLAGS.
+$(call PREPEND,CXXFLAGS, CPPFLAGS CFLAGS)
 X86ASMFLAGS += $(IFLAGS:%=%/) -I$(<D)/ -Pconfig.asm
 
 HOSTCCFLAGS = $(IFLAGS) $(HOSTCPPFLAGS) $(HOSTCFLAGS)

@@ -27,8 +27,9 @@
 #include "copy_block.h"
 #include "simple_idct.h"
 #include "me_cmp.h"
-#include "mpegvideo.h"
+#include "mpegvideoenc.h"
 #include "config.h"
+#include "config_components.h"
 
 /* (i - 256) * (i - 256) */
 const uint32_t ff_square_tab[512] = {
@@ -1060,16 +1061,19 @@ av_cold void ff_me_cmp_init(MECmpContext *c, AVCodecContext *avctx)
     ff_dsputil_init_dwt(c);
 #endif
 
-    if (ARCH_ALPHA)
-        ff_me_cmp_init_alpha(c, avctx);
-    if (ARCH_ARM)
-        ff_me_cmp_init_arm(c, avctx);
-    if (ARCH_PPC)
-        ff_me_cmp_init_ppc(c, avctx);
-    if (ARCH_X86)
-        ff_me_cmp_init_x86(c, avctx);
-    if (ARCH_MIPS)
-        ff_me_cmp_init_mips(c, avctx);
+#if ARCH_AARCH64
+    ff_me_cmp_init_aarch64(c, avctx);
+#elif ARCH_ALPHA
+    ff_me_cmp_init_alpha(c, avctx);
+#elif ARCH_ARM
+    ff_me_cmp_init_arm(c, avctx);
+#elif ARCH_PPC
+    ff_me_cmp_init_ppc(c, avctx);
+#elif ARCH_X86
+    ff_me_cmp_init_x86(c, avctx);
+#elif ARCH_MIPS
+    ff_me_cmp_init_mips(c, avctx);
+#endif
 
     c->median_sad[0] = pix_median_abs16_c;
     c->median_sad[1] = pix_median_abs8_c;

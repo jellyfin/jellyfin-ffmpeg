@@ -29,7 +29,6 @@
 #include "libavutil/float_dsp.h"
 #include "avcodec.h"
 #include "fft.h"
-#include "internal.h"
 
 enum TwinVQCodec {
     TWINVQ_CODEC_VQF,
@@ -195,9 +194,10 @@ static inline float twinvq_mulawinv(float y, float clip, float mu)
     return clip * FFSIGN(y) * (exp(log(1 + mu) * fabs(y)) - 1) / mu;
 }
 
-int ff_twinvq_decode_frame(AVCodecContext *avctx, void *data,
+int ff_twinvq_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                            int *got_frame_ptr, AVPacket *avpkt);
 int ff_twinvq_decode_close(AVCodecContext *avctx);
+/** Requires the caller to call ff_twinvq_decode_close() upon failure. */
 int ff_twinvq_decode_init(AVCodecContext *avctx);
 
 #endif /* AVCODEC_TWINVQ_H */

@@ -20,7 +20,7 @@
 #include "libavutil/attributes.h"
 #include "libavutil/cpu.h"
 #include "libavutil/x86/cpu.h"
-#include "libavfilter/af_afir.h"
+#include "libavfilter/af_afirdsp.h"
 
 void ff_fcmul_add_sse3(float *sum, const float *t, const float *c,
                        ptrdiff_t len);

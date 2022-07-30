@@ -38,7 +38,6 @@
  */
 
 #include <inttypes.h>
-#include <math.h>
 #include <time.h>
 
 #include "libavutil/opt.h"
@@ -48,18 +47,18 @@
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/time_internal.h"
-#include "libavcodec/bytestream.h"
-#include "libavcodec/dv_profile.h"
-#include "libavcodec/h264_ps.h"
 #include "libavcodec/golomb.h"
-#include "libavcodec/internal.h"
+#include "libavcodec/h264.h"
 #include "libavcodec/packet_internal.h"
+#include "libavcodec/startcode.h"
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
 #include "avc.h"
+#include "mux.h"
 #include "mxf.h"
 #include "config.h"
+#include "version.h"
 
 extern const AVOutputFormat ff_mxf_d10_muxer;
 extern const AVOutputFormat ff_mxf_opatom_muxer;
@@ -229,7 +228,8 @@ static const UID mxf_d10_container_uls[] = {
     { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x03,0x01,0x02,0x01,0x06,0x01 }, // D-10 525/50 NTSC 30mb/s
 };
 
-static const uint8_t uuid_base[]            = { 0xAD,0xAB,0x44,0x24,0x2f,0x25,0x4d,0xc7,0x92,0xff,0x29,0xbd };
+static const uint8_t product_uid[]          = { 0xAD,0xAB,0x44,0x24,0x2f,0x25,0x4d,0xc7,0x92,0xff,0x29,0xbd,0x00,0x0c,0x00,0x02};
+static const uint8_t uuid_base[]            = { 0xAD,0xAB,0x44,0x24,0x2f,0x25,0x4d,0xc7,0x92,0xff };
 static const uint8_t umid_ul[]              = { 0x06,0x0A,0x2B,0x34,0x01,0x01,0x01,0x05,0x01,0x01,0x0D,0x00,0x13 };
 
 /**
@@ -426,9 +426,9 @@ typedef struct MXFContext {
 
 static void mxf_write_uuid(AVIOContext *pb, enum MXFMetadataSetType type, int value)
 {
-    avio_write(pb, uuid_base, 12);
+    avio_write(pb, uuid_base, 10);
     avio_wb16(pb, type);
-    avio_wb16(pb, value);
+    avio_wb32(pb, value);
 }
 
 static void mxf_write_umid(AVFormatContext *s, int type)
@@ -799,7 +799,7 @@ static void mxf_write_identification(AVFormatContext *s)
 
     // write product uid
     mxf_write_local_tag(s, 16, 0x3C05);
-    mxf_write_uuid(pb, Identification, 2);
+    avio_write(pb, product_uid, 16);
 
     // modification date
     mxf_write_local_tag(s, 8, 0x3C06);
@@ -1455,17 +1455,19 @@ static int64_t mxf_write_generic_sound_common(AVFormatContext *s, AVStream *st, 
 
     mxf_write_local_tag(s, 4, 0x3D07);
     if (mxf->channel_count == -1) {
-        if (show_warnings && (s->oformat == &ff_mxf_d10_muxer) && (st->codecpar->channels != 4) && (st->codecpar->channels != 8))
+        if (show_warnings && (s->oformat == &ff_mxf_d10_muxer) &&
+            (st->codecpar->ch_layout.nb_channels != 4) &&
+            (st->codecpar->ch_layout.nb_channels != 8))
             av_log(s, AV_LOG_WARNING, "the number of audio channels shall be 4 or 8 : the output will not comply to MXF D-10 specs, use -d10_channelcount to fix this\n");
-        avio_wb32(pb, st->codecpar->channels);
+        avio_wb32(pb, st->codecpar->ch_layout.nb_channels);
     } else if (s->oformat == &ff_mxf_d10_muxer) {
-        if (show_warnings && (mxf->channel_count < st->codecpar->channels))
+        if (show_warnings && (mxf->channel_count < st->codecpar->ch_layout.nb_channels))
             av_log(s, AV_LOG_WARNING, "d10_channelcount < actual number of audio channels : some channels will be discarded\n");
         if (show_warnings && (mxf->channel_count != 4) && (mxf->channel_count != 8))
             av_log(s, AV_LOG_WARNING, "d10_channelcount shall be set to 4 or 8 : the output will not comply to MXF D-10 specs\n");
         avio_wb32(pb, mxf->channel_count);
     } else {
-        avio_wb32(pb, st->codecpar->channels);
+        avio_wb32(pb, st->codecpar->ch_layout.nb_channels);
     }
 
     mxf_write_local_tag(s, 4, 0x3D01);
@@ -1758,7 +1760,7 @@ static void mxf_write_index_table_segment(AVFormatContext *s)
 
     // instance id
     mxf_write_local_tag(s, 16, 0x3C0A);
-    mxf_write_uuid(pb, IndexTableSegment, 0);
+    mxf_write_uuid(pb, IndexTableSegment, mxf->last_indexed_edit_unit);
 
     // index edit rate
     mxf_write_local_tag(s, 8, 0x3F0B);
@@ -2137,7 +2139,7 @@ static int mxf_parse_dv_frame(AVFormatContext *s, AVStream *st, AVPacket *pkt)
 {
     MXFContext *mxf = s->priv_data;
     MXFStreamContext *sc = st->priv_data;
-    uint8_t *vs_pack, *vsc_pack;
+    const uint8_t *vs_pack, *vsc_pack;
     int apt, ul_index, stype, pal;
 
     if (mxf->header_written)
@@ -2494,6 +2496,35 @@ static int mxf_init_timecode(AVFormatContext *s, AVStream *st, AVRational tbc)
         return av_timecode_init(&mxf->tc, av_inv_q(tbc), 0, 0, s);
 }
 
+static enum AVChromaLocation choose_chroma_location(AVFormatContext *s, AVStream *st)
+{
+    AVCodecParameters *par = st->codecpar;
+    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(par->format);
+
+    if (par->chroma_location != AVCHROMA_LOC_UNSPECIFIED)
+        return par->chroma_location;
+
+    if (pix_desc) {
+        if (pix_desc->log2_chroma_h == 0) {
+            return AVCHROMA_LOC_TOPLEFT;
+        } else if (pix_desc->log2_chroma_w == 1 && pix_desc->log2_chroma_h == 1) {
+            if (par->field_order == AV_FIELD_UNKNOWN || par->field_order == AV_FIELD_PROGRESSIVE) {
+                switch (par->codec_id) {
+                case AV_CODEC_ID_MJPEG:
+                case AV_CODEC_ID_MPEG1VIDEO: return AVCHROMA_LOC_CENTER;
+                }
+            }
+            if (par->field_order == AV_FIELD_UNKNOWN || par->field_order != AV_FIELD_PROGRESSIVE) {
+                switch (par->codec_id) {
+                case AV_CODEC_ID_MPEG2VIDEO: return AVCHROMA_LOC_LEFT;
+                }
+            }
+        }
+    }
+
+    return AVCHROMA_LOC_UNSPECIFIED;
+}
+
 static int mxf_init(AVFormatContext *s)
 {
     MXFContext *mxf = s->priv_data;
@@ -2542,7 +2573,7 @@ static int mxf_init(AVFormatContext *s)
                 sc->h_chroma_sub_sample = 1 << pix_desc->log2_chroma_w;
                 sc->v_chroma_sub_sample = 1 << pix_desc->log2_chroma_h;
             }
-            switch (ff_choose_chroma_location(s, st)) {
+            switch (choose_chroma_location(s, st)) {
             case AVCHROMA_LOC_TOPLEFT: sc->color_siting = 0; break;
             case AVCHROMA_LOC_LEFT:    sc->color_siting = 6; break;
             case AVCHROMA_LOC_TOP:     sc->color_siting = 1; break;
@@ -2624,7 +2655,7 @@ static int mxf_init(AVFormatContext *s)
                     av_log(s, AV_LOG_ERROR, "Only pcm_s16le and pcm_s24le audio codecs are implemented\n");
                     return AVERROR_PATCHWELCOME;
                 }
-                if (st->codecpar->channels != 1) {
+                if (st->codecpar->ch_layout.nb_channels != 1) {
                     av_log(s, AV_LOG_ERROR, "MXF OPAtom only supports single channel audio\n");
                     return AVERROR(EINVAL);
                 }
@@ -2633,11 +2664,11 @@ static int mxf_init(AVFormatContext *s)
                 if((ret = mxf_init_timecode(s, st, tbc)) < 0)
                     return ret;
 
-                mxf->edit_unit_byte_count = (av_get_bits_per_sample(st->codecpar->codec_id) * st->codecpar->channels) >> 3;
+                mxf->edit_unit_byte_count = (av_get_bits_per_sample(st->codecpar->codec_id) * st->codecpar->ch_layout.nb_channels) >> 3;
                 sc->index = INDEX_WAV;
             } else {
                 mxf->slice_count = 1;
-                sc->frame_size = st->codecpar->channels *
+                sc->frame_size = st->codecpar->ch_layout.nb_channels *
                                  av_rescale_rnd(st->codecpar->sample_rate, mxf->time_base.num, mxf->time_base.den, AV_ROUND_UP) *
                                  av_get_bits_per_sample(st->codecpar->codec_id) / 8;
             }
@@ -2775,18 +2806,18 @@ static void mxf_write_d10_audio_packet(AVFormatContext *s, AVStream *st, AVPacke
     MXFContext *mxf = s->priv_data;
     AVIOContext *pb = s->pb;
     int frame_size = pkt->size / st->codecpar->block_align;
-    uint8_t *samples = pkt->data;
-    uint8_t *end = pkt->data + pkt->size;
+    const uint8_t *samples = pkt->data;
+    const uint8_t *const end = pkt->data + pkt->size;
     int i;
 
     klv_encode_ber4_length(pb, 4 + frame_size*4*8);
 
     avio_w8(pb, (frame_size == 1920 ? 0 : (mxf->edit_units_count-1) % 5 + 1));
     avio_wl16(pb, frame_size);
-    avio_w8(pb, (1<<st->codecpar->channels)-1);
+    avio_w8(pb, (1 << st->codecpar->ch_layout.nb_channels)-1);
 
     while (samples < end) {
-        for (i = 0; i < st->codecpar->channels; i++) {
+        for (i = 0; i < st->codecpar->ch_layout.nb_channels; i++) {
             uint32_t sample;
             if (st->codecpar->codec_id == AV_CODEC_ID_PCM_S24LE) {
                 sample = AV_RL24(samples)<< 4;

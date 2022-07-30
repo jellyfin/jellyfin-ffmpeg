@@ -27,6 +27,7 @@
 #include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "mathops.h"
@@ -398,8 +399,8 @@ static av_cold int siren_init(AVCodecContext *avctx)
     s->imdct_prev = s->imdct_buf[2];
     s->window     = s->imdct_buf[3];
 
-    avctx->channels       = 1;
-    avctx->channel_layout = AV_CH_LAYOUT_MONO;
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout      = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     avctx->sample_fmt     = AV_SAMPLE_FMT_FLT;
 
     s->rate_control_possibilities = 16;
@@ -702,12 +703,11 @@ static int decode_vector(SirenContext *s, int number_of_regions,
     return error == 1 ? AVERROR_INVALIDDATA : (get_bits_left(gb) - s->checksum_bits);
 }
 
-static int siren_decode(AVCodecContext *avctx, void *data,
+static int siren_decode(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame, AVPacket *avpkt)
 {
     SirenContext *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
-    AVFrame *frame = data;
     int ret, number_of_valid_coefs = REGION_SIZE * s->number_of_regions;
     int frame_error = 0, rate_control = 0;
     int bits_per_frame;
@@ -841,33 +841,33 @@ static av_cold int siren_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_siren_decoder = {
-    .name           = "siren",
-    .long_name      = NULL_IF_CONFIG_SMALL("Siren"),
+const FFCodec ff_siren_decoder = {
+    .p.name         = "siren",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Siren"),
     .priv_data_size = sizeof(SirenContext),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_SIREN,
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_SIREN,
     .init           = siren_init,
     .close          = siren_close,
-    .decode         = siren_decode,
+    FF_CODEC_DECODE_CB(siren_decode),
     .flush          = siren_flush,
-    .capabilities   = AV_CODEC_CAP_CHANNEL_CONF |
+    .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
 };
 
-const AVCodec ff_msnsiren_decoder = {
-    .name           = "msnsiren",
-    .long_name      = NULL_IF_CONFIG_SMALL("MSN Siren"),
+const FFCodec ff_msnsiren_decoder = {
+    .p.name         = "msnsiren",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MSN Siren"),
     .priv_data_size = sizeof(SirenContext),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_MSNSIREN,
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_MSNSIREN,
     .init           = siren_init,
     .close          = siren_close,
-    .decode         = siren_decode,
+    FF_CODEC_DECODE_CB(siren_decode),
     .flush          = siren_flush,
-    .capabilities   = AV_CODEC_CAP_CHANNEL_CONF |
+    .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,

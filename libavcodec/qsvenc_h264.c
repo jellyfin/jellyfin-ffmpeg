@@ -30,7 +30,7 @@
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "qsv.h"
 #include "qsv_internal.h"
 #include "qsvenc.h"
@@ -102,6 +102,19 @@ static av_cold int qsv_enc_close(AVCodecContext *avctx)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     QSV_COMMON_OPTS
+    QSV_OPTION_RDO
+    QSV_OPTION_MAX_FRAME_SIZE
+    QSV_OPTION_MAX_SLICE_SIZE
+    QSV_OPTION_BITRATE_LIMIT
+    QSV_OPTION_MBBRC
+    QSV_OPTION_EXTBRC
+    QSV_OPTION_ADAPTIVE_I
+    QSV_OPTION_ADAPTIVE_B
+    QSV_OPTION_P_STRATEGY
+    QSV_OPTION_B_STRATEGY
+    QSV_OPTION_DBLK_IDC
+    QSV_OPTION_LOW_DELAY_BRC
+    QSV_OPTION_MAX_MIN_QP
 
     { "cavlc",          "Enable CAVLC",                           OFFSET(qsv.cavlc),          AV_OPT_TYPE_BOOL, { .i64 = 0 },   0,          1, VE },
 #if QSV_HAVE_VCM
@@ -112,11 +125,8 @@ static const AVOption options[] = {
     { "single_sei_nal_unit",    "Put all the SEI messages into one NALU",        OFFSET(qsv.single_sei_nal_unit),     AV_OPT_TYPE_INT, { .i64 = -1 }, -1,          1, VE },
     { "max_dec_frame_buffering", "Maximum number of frames buffered in the DPB", OFFSET(qsv.max_dec_frame_buffering), AV_OPT_TYPE_INT, { .i64 = 0 },   0, UINT16_MAX, VE },
 
-#if QSV_HAVE_LA
     { "look_ahead",       "Use VBR algorithm with look ahead",    OFFSET(qsv.look_ahead),       AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "look_ahead_depth", "Depth of look ahead in number frames", OFFSET(qsv.look_ahead_depth), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 100, VE },
-#endif
-#if QSV_HAVE_LA_DS
     { "look_ahead_downsampling", "Downscaling factor for the frames saved for the lookahead analysis", OFFSET(qsv.look_ahead_downsampling),
                                           AV_OPT_TYPE_INT,   { .i64 = MFX_LOOKAHEAD_DS_UNKNOWN }, MFX_LOOKAHEAD_DS_UNKNOWN, MFX_LOOKAHEAD_DS_4x, VE, "look_ahead_downsampling" },
     { "unknown"                , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_LOOKAHEAD_DS_UNKNOWN }, INT_MIN, INT_MAX,     VE, "look_ahead_downsampling" },
@@ -124,15 +134,15 @@ static const AVOption options[] = {
     { "off"                    , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_LOOKAHEAD_DS_OFF     }, INT_MIN, INT_MAX,     VE, "look_ahead_downsampling" },
     { "2x"                     , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_LOOKAHEAD_DS_2x      }, INT_MIN, INT_MAX,     VE, "look_ahead_downsampling" },
     { "4x"                     , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_LOOKAHEAD_DS_4x      }, INT_MIN, INT_MAX,     VE, "look_ahead_downsampling" },
-#endif
 
-    { "int_ref_type", "Intra refresh type",                                      OFFSET(qsv.int_ref_type),            AV_OPT_TYPE_INT, { .i64 = -1 }, -1, UINT16_MAX, VE, "int_ref_type" },
+    { "int_ref_type", "Intra refresh type. B frames should be set to 0.",        OFFSET(qsv.int_ref_type),            AV_OPT_TYPE_INT, { .i64 = -1 }, -1, UINT16_MAX, VE, "int_ref_type" },
         { "none",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, .flags = VE, "int_ref_type" },
         { "vertical", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, .flags = VE, "int_ref_type" },
+        { "horizontal", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, .flags = VE, "int_ref_type" },
     { "int_ref_cycle_size", "Number of frames in the intra refresh cycle",       OFFSET(qsv.int_ref_cycle_size),      AV_OPT_TYPE_INT, { .i64 = -1 },               -1, UINT16_MAX, VE },
     { "int_ref_qp_delta",   "QP difference for the refresh MBs",                 OFFSET(qsv.int_ref_qp_delta),        AV_OPT_TYPE_INT, { .i64 = INT16_MIN }, INT16_MIN,  INT16_MAX, VE },
     { "recovery_point_sei", "Insert recovery point SEI messages",                OFFSET(qsv.recovery_point_sei),      AV_OPT_TYPE_INT, { .i64 = -1 },               -1,          1, VE },
-
+    { "int_ref_cycle_dist",   "Distance between the beginnings of the intra-refresh cycles in frames",  OFFSET(qsv.int_ref_cycle_dist),      AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT16_MAX, VE },
     { "profile", NULL, OFFSET(qsv.profile), AV_OPT_TYPE_INT, { .i64 = MFX_PROFILE_UNKNOWN }, 0, INT_MAX, VE, "profile" },
     { "unknown" , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_UNKNOWN      }, INT_MIN, INT_MAX,     VE, "profile" },
     { "baseline", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_AVC_BASELINE }, INT_MIN, INT_MAX,     VE, "profile" },
@@ -161,7 +171,7 @@ static const AVClass class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault qsv_enc_defaults[] = {
+static const FFCodecDefault qsv_enc_defaults[] = {
     { "b",         "1M"    },
     { "refs",      "0"     },
     // same as the x264 default
@@ -174,23 +184,23 @@ static const AVCodecDefault qsv_enc_defaults[] = {
     { NULL },
 };
 
-const AVCodec ff_h264_qsv_encoder = {
-    .name           = "h264_qsv",
-    .long_name      = NULL_IF_CONFIG_SMALL("H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (Intel Quick Sync Video acceleration)"),
+const FFCodec ff_h264_qsv_encoder = {
+    .p.name         = "h264_qsv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (Intel Quick Sync Video acceleration)"),
     .priv_data_size = sizeof(QSVH264EncContext),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_H264,
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_H264,
     .init           = qsv_enc_init,
-    .encode2        = qsv_enc_frame,
+    FF_CODEC_ENCODE_CB(qsv_enc_frame),
     .close          = qsv_enc_close,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
-    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
+    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
                                                     AV_PIX_FMT_P010,
                                                     AV_PIX_FMT_QSV,
                                                     AV_PIX_FMT_NONE },
-    .priv_class     = &class,
+    .p.priv_class   = &class,
     .defaults       = qsv_enc_defaults,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
-    .wrapper_name   = "qsv",
+    .p.wrapper_name = "qsv",
     .hw_configs     = ff_qsv_enc_hw_configs,
 };

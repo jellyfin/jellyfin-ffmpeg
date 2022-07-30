@@ -59,7 +59,7 @@ static int audio_read_header(AVFormatContext *s1)
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id = s->codec_id;
     st->codecpar->sample_rate = s->sample_rate;
-    st->codecpar->channels = s->channels;
+    st->codecpar->ch_layout.nb_channels = s->channels;
 
     avpriv_set_pts_info(st, 64, 1, 1000000);  /* 64 bits pts in us */
     return 0;
@@ -91,7 +91,7 @@ static int audio_read_packet(AVFormatContext *s1, AVPacket *pkt)
         bdelay += abufi.bytes;
     }
     /* subtract time represented by the number of bytes in the audio fifo */
-    cur_time -= (bdelay * 1000000LL) / (s->sample_rate * s->channels);
+    cur_time -= (bdelay * 1000000LL) / (s->sample_rate * s->sample_size * s->channels);
 
     /* convert to wanted units */
     pkt->pts = cur_time;

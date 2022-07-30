@@ -36,8 +36,8 @@
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "packet_internal.h"
 
 typedef struct LibkvazaarContext {
@@ -313,30 +313,30 @@ static const AVClass class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault defaults[] = {
+static const FFCodecDefault defaults[] = {
     { "b", "0" },
     { NULL },
 };
 
-const AVCodec ff_libkvazaar_encoder = {
-    .name             = "libkvazaar",
-    .long_name        = NULL_IF_CONFIG_SMALL("libkvazaar H.265 / HEVC"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_HEVC,
-    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+const FFCodec ff_libkvazaar_encoder = {
+    .p.name           = "libkvazaar",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("libkvazaar H.265 / HEVC"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_HEVC,
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                         AV_CODEC_CAP_OTHER_THREADS,
-    .pix_fmts         = pix_fmts,
+    .p.pix_fmts       = pix_fmts,
 
-    .priv_class       = &class,
+    .p.priv_class     = &class,
     .priv_data_size   = sizeof(LibkvazaarContext),
     .defaults         = defaults,
 
     .init             = libkvazaar_init,
-    .encode2          = libkvazaar_encode,
+    FF_CODEC_ENCODE_CB(libkvazaar_encode),
     .close            = libkvazaar_close,
 
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
                         FF_CODEC_CAP_AUTO_THREADS,
 
-    .wrapper_name     = "libkvazaar",
+    .p.wrapper_name   = "libkvazaar",
 };

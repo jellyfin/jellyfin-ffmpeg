@@ -565,8 +565,8 @@ static int vp56_size_changed(VP56Context *s)
 
 static int ff_vp56_decode_mbs(AVCodecContext *avctx, void *, int, int);
 
-int ff_vp56_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                         AVPacket *avpkt)
+int ff_vp56_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                         int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     VP56Context *s = avctx->priv_data;
@@ -649,7 +649,7 @@ int ff_vp56_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     if (s->discard_frame)
         return AVERROR_INVALIDDATA;
 
-    if ((res = av_frame_ref(data, p)) < 0)
+    if ((res = av_frame_ref(rframe, p)) < 0)
         return res;
     *got_frame = 1;
 
@@ -773,12 +773,6 @@ next:
     return 0;
 }
 
-av_cold int ff_vp56_init(AVCodecContext *avctx, int flip, int has_alpha)
-{
-    VP56Context *s = avctx->priv_data;
-    return ff_vp56_init_context(avctx, s, flip, has_alpha);
-}
-
 av_cold int ff_vp56_init_context(AVCodecContext *avctx, VP56Context *s,
                                   int flip, int has_alpha)
 {
@@ -800,10 +794,8 @@ av_cold int ff_vp56_init_context(AVCodecContext *avctx, VP56Context *s,
 
     for (i = 0; i < FF_ARRAY_ELEMS(s->frames); i++) {
         s->frames[i] = av_frame_alloc();
-        if (!s->frames[i]) {
-            ff_vp56_free(avctx);
+        if (!s->frames[i])
             return AVERROR(ENOMEM);
-        }
     }
     s->edge_emu_buffer_alloc = NULL;
 
@@ -830,12 +822,6 @@ av_cold int ff_vp56_init_context(AVCodecContext *avctx, VP56Context *s,
     }
 
     return 0;
-}
-
-av_cold int ff_vp56_free(AVCodecContext *avctx)
-{
-    VP56Context *s = avctx->priv_data;
-    return ff_vp56_free_context(s);
 }
 
 av_cold int ff_vp56_free_context(VP56Context *s)

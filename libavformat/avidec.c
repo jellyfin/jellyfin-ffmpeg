@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <inttypes.h>
 
 #include "libavutil/avassert.h"
@@ -30,13 +32,14 @@
 #include "libavutil/mathematics.h"
 #include "avformat.h"
 #include "avi.h"
+#include "demux.h"
 #include "dv.h"
 #include "internal.h"
 #include "isom.h"
 #include "riff.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/exif.h"
-#include "libavcodec/internal.h"
+#include "libavcodec/startcode.h"
 
 typedef struct AVIStream {
     int64_t frame_offset;   /* current frame (video) or byte (audio) counter
@@ -619,7 +622,7 @@ static int avi_read_header(AVFormatContext *s)
 
                 ast = s->streams[0]->priv_data;
                 st->priv_data = NULL;
-                ff_free_stream(s, st);
+                ff_remove_stream(s, st);
 
                 avi->dv_demux = avpriv_dv_init_demux(s);
                 if (!avi->dv_demux) {

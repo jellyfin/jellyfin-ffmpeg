@@ -30,6 +30,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 #include "ulti_cb.h"
@@ -213,9 +214,8 @@ static void ulti_grad(AVFrame *frame, int x, int y, uint8_t *Y, int chroma, int 
     ulti_convert_yuv(frame, x, y, Luma, chroma);
 }
 
-static int ulti_decode_frame(AVCodecContext *avctx,
-                             void *data, int *got_frame,
-                             AVPacket *avpkt)
+static int ulti_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
@@ -407,7 +407,7 @@ static int ulti_decode_frame(AVCodecContext *avctx,
     }
 
     *got_frame = 1;
-    if ((ret = av_frame_ref(data, s->frame)) < 0)
+    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
         return ret;
 
     return buf_size;
@@ -418,15 +418,15 @@ err:
     return AVERROR_INVALIDDATA;
 }
 
-const AVCodec ff_ulti_decoder = {
-    .name           = "ultimotion",
-    .long_name      = NULL_IF_CONFIG_SMALL("IBM UltiMotion"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_ULTI,
+const FFCodec ff_ulti_decoder = {
+    .p.name         = "ultimotion",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("IBM UltiMotion"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_ULTI,
     .priv_data_size = sizeof(UltimotionDecodeContext),
     .init           = ulti_decode_init,
     .close          = ulti_decode_end,
-    .decode         = ulti_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(ulti_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

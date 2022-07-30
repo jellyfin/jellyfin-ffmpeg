@@ -21,6 +21,7 @@
  */
 
 #include "aptx.h"
+#include "mathops.h"
 
 
 static const int32_t quantize_intervals_LF[65] = {
@@ -509,7 +510,7 @@ av_cold int ff_aptx_init(AVCodecContext *avctx)
     AptXContext *s = avctx->priv_data;
     int chan, subband;
 
-    if (avctx->channels != 2)
+    if (avctx->ch_layout.nb_channels != 2)
         return AVERROR_INVALIDDATA;
 
     s->hd = avctx->codec->id == AV_CODEC_ID_APTX_HD;

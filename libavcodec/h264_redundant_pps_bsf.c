@@ -16,16 +16,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <string.h>
+#include <inttypes.h>
 
-#include "libavutil/common.h"
+#include "libavutil/log.h"
 
 #include "bsf.h"
 #include "bsf_internal.h"
 #include "cbs.h"
 #include "cbs_bsf.h"
 #include "cbs_h264.h"
+#include "codec_id.h"
 #include "h264.h"
+#include "packet.h"
 
 #define NEW_GLOBAL_PIC_INIT_QP 26
 
@@ -125,11 +127,11 @@ static const enum AVCodecID h264_redundant_pps_codec_ids[] = {
     AV_CODEC_ID_H264, AV_CODEC_ID_NONE,
 };
 
-const AVBitStreamFilter ff_h264_redundant_pps_bsf = {
-    .name           = "h264_redundant_pps",
+const FFBitStreamFilter ff_h264_redundant_pps_bsf = {
+    .p.name         = "h264_redundant_pps",
+    .p.codec_ids    = h264_redundant_pps_codec_ids,
     .priv_data_size = sizeof(H264RedundantPPSContext),
     .init           = &h264_redundant_pps_init,
     .close          = &ff_cbs_bsf_generic_close,
     .filter         = &ff_cbs_bsf_generic_filter,
-    .codec_ids      = h264_redundant_pps_codec_ids,
 };

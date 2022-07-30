@@ -20,7 +20,6 @@
  */
 
 #include "libavutil/intreadwrite.h"
-#include "libavcodec/internal.h"
 #include "avformat.h"
 #include "internal.h"
 #include "pcm.h"
@@ -62,7 +61,7 @@ static int hcom_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
 
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
-    st->codecpar->channels    = 1;
+    st->codecpar->ch_layout.nb_channels = 1;
     st->codecpar->sample_rate = 22050 / divisor;
     st->codecpar->codec_id    = AV_CODEC_ID_HCOM;
     st->codecpar->bits_per_coded_sample = 8;

@@ -30,6 +30,7 @@
 #include <ass/ass.h>
 
 #include "config.h"
+#include "config_components.h"
 #if CONFIG_SUBTITLES_FILTER
 # include "libavcodec/avcodec.h"
 # include "libavformat/avformat.h"
@@ -274,6 +275,13 @@ static const AVOption subtitles_options[] = {
 };
 
 static const char * const font_mimetypes[] = {
+    "font/ttf",
+    "font/otf",
+    "font/sfnt",
+    "font/woff",
+    "font/woff2",
+    "application/font-sfnt",
+    "application/font-woff",
     "application/x-truetype-font",
     "application/vnd.ms-opentype",
     "application/x-font-ttf",

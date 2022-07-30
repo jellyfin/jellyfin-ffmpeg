@@ -21,6 +21,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 /**
@@ -239,7 +240,7 @@ static void cdg_scroll(CDGraphicsContext *cc, uint8_t *data,
     for (y = FFMAX(0, vinc); y < FFMIN(CDG_FULL_HEIGHT + vinc, CDG_FULL_HEIGHT); y++)
         memcpy(out + FFMAX(0, hinc) + stride * y,
                in + FFMAX(0, hinc) - hinc + (y - vinc) * stride,
-               FFMIN(stride + hinc, stride));
+               FFABS(stride) - FFABS(hinc));
 
     if (vinc > 0)
         cdg_fill_wrapper(0, 0, out,
@@ -261,15 +262,14 @@ static void cdg_scroll(CDGraphicsContext *cc, uint8_t *data,
 
 }
 
-static int cdg_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame, AVPacket *avpkt)
+static int cdg_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame, AVPacket *avpkt)
 {
     GetByteContext gb;
     int buf_size       = avpkt->size;
     int ret;
     uint8_t command, inst;
     uint8_t cdg_data[CDG_DATA_SIZE] = {0};
-    AVFrame *frame = data;
     CDGraphicsContext *cc = avctx->priv_data;
 
     if (buf_size < CDG_MINIMUM_PKT_SIZE) {
@@ -387,16 +387,16 @@ static av_cold int cdg_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_cdgraphics_decoder = {
-    .name           = "cdgraphics",
-    .long_name      = NULL_IF_CONFIG_SMALL("CD Graphics video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_CDGRAPHICS,
+const FFCodec ff_cdgraphics_decoder = {
+    .p.name         = "cdgraphics",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("CD Graphics video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_CDGRAPHICS,
     .priv_data_size = sizeof(CDGraphicsContext),
     .init           = cdg_decode_init,
     .close          = cdg_decode_end,
-    .decode         = cdg_decode_frame,
+    FF_CODEC_DECODE_CB(cdg_decode_frame),
     .flush          = cdg_decode_flush,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

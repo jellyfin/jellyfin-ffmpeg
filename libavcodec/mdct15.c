@@ -27,11 +27,12 @@
 #include <float.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "config.h"
 
 #include "libavutil/attributes.h"
-#include "libavutil/common.h"
+#include "libavutil/error.h"
 
 #include "mdct15.h"
 
@@ -316,8 +317,9 @@ av_cold int ff_mdct15_init(MDCT15Context **ps, int inverse, int N, double scale)
         s->exptab[20].im *= -1;
     }
 
-    if (ARCH_X86)
-        ff_mdct15_init_x86(s);
+#if ARCH_X86
+    ff_mdct15_init_x86(s);
+#endif
 
     *ps = s;
 

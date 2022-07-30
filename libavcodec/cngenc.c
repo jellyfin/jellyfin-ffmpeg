@@ -23,8 +23,8 @@
 
 #include "libavutil/common.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "lpc.h"
 
 typedef struct CNGContext {
@@ -47,11 +47,6 @@ static av_cold int cng_encode_init(AVCodecContext *avctx)
 {
     CNGContext *p = avctx->priv_data;
     int ret;
-
-    if (avctx->channels != 1) {
-        av_log(avctx, AV_LOG_ERROR, "Only mono supported\n");
-        return AVERROR(EINVAL);
-    }
 
     avctx->frame_size = 640;
     p->order = 10;
@@ -101,17 +96,18 @@ static int cng_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     return 0;
 }
 
-const AVCodec ff_comfortnoise_encoder = {
-    .name           = "comfortnoise",
-    .long_name      = NULL_IF_CONFIG_SMALL("RFC 3389 comfort noise generator"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_COMFORT_NOISE,
-    .capabilities   = AV_CODEC_CAP_DR1,
+const FFCodec ff_comfortnoise_encoder = {
+    .p.name         = "comfortnoise",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("RFC 3389 comfort noise generator"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_COMFORT_NOISE,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .priv_data_size = sizeof(CNGContext),
     .init           = cng_encode_init,
-    .encode2        = cng_encode_frame,
+    FF_CODEC_ENCODE_CB(cng_encode_frame),
     .close          = cng_encode_close,
-    .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                      AV_SAMPLE_FMT_NONE },
+    .p.ch_layouts   = (const AVChannelLayout[]){ AV_CHANNEL_LAYOUT_MONO, { 0 } },
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

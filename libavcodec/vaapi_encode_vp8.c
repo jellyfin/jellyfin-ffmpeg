@@ -26,7 +26,7 @@
 #include "libavutil/pixfmt.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "vaapi_encode.h"
 #include "vp8.h"
 
@@ -210,9 +210,6 @@ static av_cold int vaapi_encode_vp8_init(AVCodecContext *avctx)
     // adding them anyway.
     ctx->desired_packed_headers = 0;
 
-    ctx->surface_width  = FFALIGN(avctx->width,  16);
-    ctx->surface_height = FFALIGN(avctx->height, 16);
-
     return ff_vaapi_encode_init(avctx);
 }
 
@@ -229,7 +226,7 @@ static const AVOption vaapi_encode_vp8_options[] = {
     { NULL },
 };
 
-static const AVCodecDefault vaapi_encode_vp8_defaults[] = {
+static const FFCodecDefault vaapi_encode_vp8_defaults[] = {
     { "b",              "0"   },
     { "bf",             "0"   },
     { "g",              "120" },
@@ -245,24 +242,24 @@ static const AVClass vaapi_encode_vp8_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_vp8_vaapi_encoder = {
-    .name           = "vp8_vaapi",
-    .long_name      = NULL_IF_CONFIG_SMALL("VP8 (VAAPI)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_VP8,
+const FFCodec ff_vp8_vaapi_encoder = {
+    .p.name         = "vp8_vaapi",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("VP8 (VAAPI)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_VP8,
     .priv_data_size = sizeof(VAAPIEncodeVP8Context),
     .init           = &vaapi_encode_vp8_init,
-    .receive_packet = &ff_vaapi_encode_receive_packet,
+    FF_CODEC_RECEIVE_PACKET_CB(&ff_vaapi_encode_receive_packet),
     .close          = &ff_vaapi_encode_close,
-    .priv_class     = &vaapi_encode_vp8_class,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+    .p.priv_class   = &vaapi_encode_vp8_class,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_vp8_defaults,
-    .pix_fmts = (const enum AVPixelFormat[]) {
+    .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,
         AV_PIX_FMT_NONE,
     },
     .hw_configs     = ff_vaapi_encode_hw_configs,
-    .wrapper_name   = "vaapi",
+    .p.wrapper_name = "vaapi",
 };

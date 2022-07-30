@@ -23,7 +23,7 @@
 #include <stddef.h>
 
 #include "libavutil/avassert.h"
-#include "libavutil/common.h"
+#include "libavutil/macros.h"
 
 #include "dcahuff.h"
 #include "put_bits.h"
@@ -1264,7 +1264,7 @@ VLC     ff_dca_vlc_rsd;
 
 av_cold void ff_dca_init_vlcs(void)
 {
-    static VLC_TYPE dca_table[30214][2];
+    static VLCElem dca_table[30214];
     int i, j, k = 0;
 
 #define DCA_INIT_VLC(vlc, a, b, c, d)                                       \

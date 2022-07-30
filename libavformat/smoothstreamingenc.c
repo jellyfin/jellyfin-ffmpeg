@@ -20,24 +20,21 @@
  */
 
 #include "config.h"
-#include <float.h>
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
 #include "avformat.h"
-#include "avio_internal.h"
 #include "internal.h"
+#include "mux.h"
 #include "os_support.h"
 #include "avc.h"
 #include "url.h"
-#include "isom.h"
 
 #include "libavutil/opt.h"
 #include "libavutil/avstring.h"
-#include "libavutil/file.h"
 #include "libavutil/mathematics.h"
-#include "libavutil/intreadwrite.h"
+#include "libavutil/uuid.h"
 
 typedef struct Fragment {
     int64_t start_time, duration;
@@ -267,7 +264,9 @@ static int write_manifest(AVFormatContext *s, int final)
             if (s->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
                 continue;
             last = i;
-            avio_printf(out, "<QualityLevel Index=\"%d\" Bitrate=\"%"PRId64"\" FourCC=\"%s\" SamplingRate=\"%d\" Channels=\"%d\" BitsPerSample=\"16\" PacketSize=\"%d\" AudioTag=\"%d\" CodecPrivateData=\"%s\" />\n", index, s->streams[i]->codecpar->bit_rate, os->fourcc, s->streams[i]->codecpar->sample_rate, s->streams[i]->codecpar->channels, os->packet_size, os->audio_tag, os->private_str);
+            avio_printf(out, "<QualityLevel Index=\"%d\" Bitrate=\"%"PRId64"\" FourCC=\"%s\" SamplingRate=\"%d\" Channels=\"%d\" BitsPerSample=\"16\" PacketSize=\"%d\" AudioTag=\"%d\" CodecPrivateData=\"%s\" />\n",
+                        index, s->streams[i]->codecpar->bit_rate, os->fourcc, s->streams[i]->codecpar->sample_rate,
+                        s->streams[i]->codecpar->ch_layout.nb_channels, os->packet_size, os->audio_tag, os->private_str);
             index++;
         }
         output_chunk_list(&c->streams[last], out, final, c->lookahead_count, c->window_size);
@@ -418,13 +417,13 @@ static int parse_fragment(AVFormatContext *s, const char *filename, int64_t *sta
         if (len < 8 || len >= *moof_size)
             goto fail;
         if (tag == MKTAG('u','u','i','d')) {
-            static const uint8_t tfxd[] = {
+            static const AVUUID tfxd = {
                 0x6d, 0x1d, 0x9b, 0x05, 0x42, 0xd5, 0x44, 0xe6,
                 0x80, 0xe2, 0x14, 0x1d, 0xaf, 0xf7, 0x57, 0xb2
             };
-            uint8_t uuid[16];
+            AVUUID uuid;
             avio_read(in, uuid, 16);
-            if (!memcmp(uuid, tfxd, 16) && len >= 8 + 16 + 4 + 16) {
+            if (av_uuid_equal(uuid, tfxd) && len >= 8 + 16 + 4 + 16) {
                 avio_seek(in, 4, SEEK_CUR);
                 *start_ts = avio_rb64(in);
                 *duration = avio_rb64(in);

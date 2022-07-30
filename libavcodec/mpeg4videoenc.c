@@ -24,11 +24,17 @@
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 #include "libavutil/thread.h"
+#include "codec_internal.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "h263.h"
+#include "h263enc.h"
 #include "mpeg4video.h"
+#include "mpeg4videodata.h"
+#include "mpeg4videoenc.h"
+#include "mpegvideoenc.h"
 #include "profiles.h"
+#include "version.h"
 
 /* The uni_DCtab_* tables below contain unified bits+length tables to encode DC
  * differences in MPEG-4. Unified in the sense that the specification specifies
@@ -560,8 +566,6 @@ void ff_mpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
             if (!mb_type) {
                 av_assert2(s->mv_dir & MV_DIRECT);
                 ff_h263_encode_motion_vector(s, motion_x, motion_y, 1);
-                s->b_count++;
-                s->f_count++;
             } else {
                 av_assert2(mb_type > 0 && mb_type < 4);
                 if (s->mv_type != MV_TYPE_FIELD) {
@@ -574,7 +578,6 @@ void ff_mpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
                         s->last_mv[0][1][0] = s->mv[0][0][0];
                         s->last_mv[0][0][1] =
                         s->last_mv[0][1][1] = s->mv[0][0][1];
-                        s->f_count++;
                     }
                     if (s->mv_dir & MV_DIR_BACKWARD) {
                         ff_h263_encode_motion_vector(s,
@@ -585,7 +588,6 @@ void ff_mpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
                         s->last_mv[1][1][0] = s->mv[1][0][0];
                         s->last_mv[1][0][1] =
                         s->last_mv[1][1][1] = s->mv[1][0][1];
-                        s->b_count++;
                     }
                 } else {
                     if (s->mv_dir & MV_DIR_FORWARD) {
@@ -605,7 +607,6 @@ void ff_mpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
                             s->last_mv[0][i][0] = s->mv[0][i][0];
                             s->last_mv[0][i][1] = s->mv[0][i][1] * 2;
                         }
-                        s->f_count++;
                     }
                     if (s->mv_dir & MV_DIR_BACKWARD) {
                         for (i = 0; i < 2; i++) {
@@ -616,7 +617,6 @@ void ff_mpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
                             s->last_mv[1][i][0] = s->mv[1][i][0];
                             s->last_mv[1][i][1] = s->mv[1][i][1] * 2;
                         }
-                        s->b_count++;
                     }
                 }
             }
@@ -645,7 +645,7 @@ void ff_mpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
                     y = s->mb_y * 16;
 
                     offset = x + y * s->linesize;
-                    p_pic  = s->new_picture.f->data[0] + offset;
+                    p_pic  = s->new_picture->data[0] + offset;
 
                     s->mb_skipped = 1;
                     for (i = 0; i < s->max_b_frames; i++) {
@@ -792,8 +792,6 @@ void ff_mpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
 
             if (interleaved_stats)
                 s->p_tex_bits += get_bits_diff(s);
-
-            s->f_count++;
         }
     } else {
         int cbp;
@@ -960,14 +958,14 @@ static void mpeg4_encode_vol_header(MpegEncContext *s,
                                     int vo_number,
                                     int vol_number)
 {
-    int vo_ver_id;
+    int vo_ver_id, vo_type, aspect_ratio_info;
 
     if (s->max_b_frames || s->quarter_sample) {
         vo_ver_id  = 5;
-        s->vo_type = ADV_SIMPLE_VO_TYPE;
+        vo_type = ADV_SIMPLE_VO_TYPE;
     } else {
         vo_ver_id  = 1;
-        s->vo_type = SIMPLE_VO_TYPE;
+        vo_type = SIMPLE_VO_TYPE;
     }
 
     put_bits(&s->pb, 16, 0);
@@ -976,7 +974,7 @@ static void mpeg4_encode_vol_header(MpegEncContext *s,
     put_bits(&s->pb, 16, 0x120 + vol_number);       /* video obj layer */
 
     put_bits(&s->pb, 1, 0);             /* random access vol */
-    put_bits(&s->pb, 8, s->vo_type);    /* video obj type indication */
+    put_bits(&s->pb, 8, vo_type);       /* video obj type indication */
     if (s->workaround_bugs & FF_BUG_MS) {
         put_bits(&s->pb, 1, 0);         /* is obj layer id= no */
     } else {
@@ -985,10 +983,10 @@ static void mpeg4_encode_vol_header(MpegEncContext *s,
         put_bits(&s->pb, 3, 1);         /* is obj layer priority */
     }
 
-    s->aspect_ratio_info = ff_h263_aspect_to_info(s->avctx->sample_aspect_ratio);
+    aspect_ratio_info = ff_h263_aspect_to_info(s->avctx->sample_aspect_ratio);
 
-    put_bits(&s->pb, 4, s->aspect_ratio_info); /* aspect ratio info */
-    if (s->aspect_ratio_info == FF_ASPECT_EXTENDED) {
+    put_bits(&s->pb, 4, aspect_ratio_info); /* aspect ratio info */
+    if (aspect_ratio_info == FF_ASPECT_EXTENDED) {
         av_reduce(&s->avctx->sample_aspect_ratio.num, &s->avctx->sample_aspect_ratio.den,
                    s->avctx->sample_aspect_ratio.num,  s->avctx->sample_aspect_ratio.den, 255);
         put_bits(&s->pb, 8, s->avctx->sample_aspect_ratio.num);
@@ -1064,9 +1062,9 @@ int ff_mpeg4_encode_picture_header(MpegEncContext *s, int picture_number)
 
     if (s->pict_type == AV_PICTURE_TYPE_I) {
         if (!(s->avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)) {
-            if (s->strict_std_compliance < FF_COMPLIANCE_VERY_STRICT)  // HACK, the reference sw is buggy
+            if (s->avctx->strict_std_compliance < FF_COMPLIANCE_VERY_STRICT)  // HACK, the reference sw is buggy
                 mpeg4_encode_visual_object_header(s);
-            if (s->strict_std_compliance < FF_COMPLIANCE_VERY_STRICT || picture_number == 0)  // HACK, the reference sw is buggy
+            if (s->avctx->strict_std_compliance < FF_COMPLIANCE_VERY_STRICT || picture_number == 0)  // HACK, the reference sw is buggy
                 mpeg4_encode_vol_header(s, 0, 0);
         }
         if (!(s->workaround_bugs & FF_BUG_MS))
@@ -1381,10 +1379,7 @@ static const AVOption options[] = {
       OFFSET(mpeg_quant), AV_OPT_TYPE_INT, {.i64 = 0 }, 0, 1, VE },
     FF_MPV_COMMON_BFRAME_OPTS
     FF_MPV_COMMON_OPTS
-#if FF_API_MPEGVIDEO_OPTS
-    FF_MPV_DEPRECATED_A53_CC_OPT
-    FF_MPV_DEPRECATED_MATRIX_OPT
-#endif
+    FF_MPV_COMMON_MOTION_EST_OPTS
     FF_MPEG4_PROFILE_OPTS
     { NULL },
 };
@@ -1396,17 +1391,17 @@ static const AVClass mpeg4enc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_mpeg4_encoder = {
-    .name           = "mpeg4",
-    .long_name      = NULL_IF_CONFIG_SMALL("MPEG-4 part 2"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MPEG4,
+const FFCodec ff_mpeg4_encoder = {
+    .p.name         = "mpeg4",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MPEG-4 part 2"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MPEG4,
     .priv_data_size = sizeof(MpegEncContext),
     .init           = encode_init,
-    .encode2        = ff_mpv_encode_picture,
+    FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),
     .close          = ff_mpv_encode_end,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SLICE_THREADS,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SLICE_THREADS,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .priv_class     = &mpeg4enc_class,
+    .p.priv_class   = &mpeg4enc_class,
 };

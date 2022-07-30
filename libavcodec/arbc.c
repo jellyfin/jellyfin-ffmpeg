@@ -29,6 +29,7 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "internal.h"
 
 typedef struct ARBCContext {
@@ -115,11 +116,10 @@ static int fill_tileX(AVCodecContext *avctx, int tile_width, int tile_height,
     return pixels_overwritten;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame, AVPacket *avpkt)
 {
     ARBCContext *s = avctx->priv_data;
-    AVFrame *frame = data;
     int ret, nb_segments;
     int prev_pixels = avctx->width * avctx->height;
 
@@ -211,16 +211,16 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_arbc_decoder = {
-    .name           = "arbc",
-    .long_name      = NULL_IF_CONFIG_SMALL("Gryphon's Anim Compressor"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_ARBC,
+const FFCodec ff_arbc_decoder = {
+    .p.name         = "arbc",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Gryphon's Anim Compressor"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_ARBC,
     .priv_data_size = sizeof(ARBCContext),
     .init           = decode_init,
-    .decode         = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .flush          = decode_flush,
     .close          = decode_close,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

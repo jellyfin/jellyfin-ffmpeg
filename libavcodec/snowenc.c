@@ -24,8 +24,8 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "packet_internal.h"
 #include "snow_dwt.h"
 #include "snow.h"
@@ -34,7 +34,7 @@
 #include "mathops.h"
 
 #include "mpegvideo.h"
-#include "h263.h"
+#include "h263enc.h"
 
 static av_cold int encode_init(AVCodecContext *avctx)
 {
@@ -1647,7 +1647,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
         s->m.avctx= s->avctx;
         s->m.   last_picture.f = s->last_picture[0];
-        s->m.    new_picture.f = s->input_picture;
+        s->m.    new_picture   = s->input_picture;
         s->m.   last_picture_ptr= &s->m.   last_picture;
         s->m.linesize = stride;
         s->m.uvlinesize= s->current_picture->linesize[1];
@@ -1858,7 +1858,7 @@ redo_frame:
 
     ff_side_data_set_encoder_stats(pkt, s->current_picture->quality,
                                    s->encoding_error,
-                                   (s->avctx->flags&AV_CODEC_FLAG_PSNR) ? 4 : 0,
+                                   (s->avctx->flags&AV_CODEC_FLAG_PSNR) ? SNOW_MAX_PLANES : 0,
                                    s->current_picture->pict_type);
 
     pkt->size = ff_rac_terminate(c, 0);
@@ -1912,21 +1912,21 @@ static const AVClass snowenc_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_snow_encoder = {
-    .name           = "snow",
-    .long_name      = NULL_IF_CONFIG_SMALL("Snow"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SNOW,
+const FFCodec ff_snow_encoder = {
+    .p.name         = "snow",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Snow"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SNOW,
     .priv_data_size = sizeof(SnowContext),
     .init           = encode_init,
-    .encode2        = encode_frame,
+    FF_CODEC_ENCODE_CB(encode_frame),
     .close          = encode_end,
-    .pix_fmts       = (const enum AVPixelFormat[]){
+    .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV444P,
         AV_PIX_FMT_GRAY8,
         AV_PIX_FMT_NONE
     },
-    .priv_class     = &snowenc_class,
+    .p.priv_class   = &snowenc_class,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
 };

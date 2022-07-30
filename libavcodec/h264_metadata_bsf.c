@@ -22,6 +22,7 @@
 #include "libavutil/opt.h"
 
 #include "bsf.h"
+#include "bsf_internal.h"
 #include "cbs.h"
 #include "cbs_bsf.h"
 #include "cbs_h264.h"
@@ -624,7 +625,7 @@ static const AVOption h264_metadata_options[] = {
 
     { "chroma_sample_loc_type", "Set chroma sample location type (figure E-1)",
         OFFSET(chroma_sample_loc_type), AV_OPT_TYPE_INT,
-        { .i64 = -1 }, -1, 6, FLAGS },
+        { .i64 = -1 }, -1, 5, FLAGS },
 
     { "tick_rate", "Set VUI tick rate (time_scale / num_units_in_tick)",
         OFFSET(tick_rate), AV_OPT_TYPE_RATIONAL,
@@ -716,12 +717,12 @@ static const enum AVCodecID h264_metadata_codec_ids[] = {
     AV_CODEC_ID_H264, AV_CODEC_ID_NONE,
 };
 
-const AVBitStreamFilter ff_h264_metadata_bsf = {
-    .name           = "h264_metadata",
+const FFBitStreamFilter ff_h264_metadata_bsf = {
+    .p.name         = "h264_metadata",
+    .p.codec_ids    = h264_metadata_codec_ids,
+    .p.priv_class   = &h264_metadata_class,
     .priv_data_size = sizeof(H264MetadataContext),
-    .priv_class     = &h264_metadata_class,
     .init           = &h264_metadata_init,
     .close          = &ff_cbs_bsf_generic_close,
     .filter         = &ff_cbs_bsf_generic_filter,
-    .codec_ids      = h264_metadata_codec_ids,
 };

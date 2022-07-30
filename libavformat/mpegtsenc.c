@@ -28,12 +28,13 @@
 #include "libavutil/opt.h"
 
 #include "libavcodec/ac3_parser_internal.h"
-#include "libavcodec/internal.h"
+#include "libavcodec/startcode.h"
 
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
 #include "mpegts.h"
+#include "mux.h"
 
 #define PCR_TIME_BASE 27000000
 
@@ -466,7 +467,7 @@ static int get_m2ts_stream_type(AVFormatContext *s, AVStream *st)
         stream_type = 0x81;
         break;
     case AV_CODEC_ID_DTS:
-        stream_type = (st->codecpar->channels > 6) ? 0x85 : 0x82;
+        stream_type = (st->codecpar->ch_layout.nb_channels > 6) ? 0x85 : 0x82;
         break;
     case AV_CODEC_ID_TRUEHD:
         stream_type = 0x83;
@@ -592,6 +593,8 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
             if (codec_id == AV_CODEC_ID_S302M)
                 put_registration_descriptor(&q, MKTAG('B', 'S', 'S', 'D'));
             if (codec_id == AV_CODEC_ID_OPUS) {
+                int ch = st->codecpar->ch_layout.nb_channels;
+
                 /* 6 bytes registration descriptor, 4 bytes Opus audio descriptor */
                 if (q - data > SECTION_LENGTH - 6 - 4) {
                     err = 1;
@@ -605,11 +608,11 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                 *q++ = 0x80;
 
                 if (st->codecpar->extradata && st->codecpar->extradata_size >= 19) {
-                    if (st->codecpar->extradata[18] == 0 && st->codecpar->channels <= 2) {
+                    if (st->codecpar->extradata[18] == 0 && ch <= 2) {
                         /* RTP mapping family */
-                        *q++ = st->codecpar->channels;
-                    } else if (st->codecpar->extradata[18] == 1 && st->codecpar->channels <= 8 &&
-                               st->codecpar->extradata_size >= 21 + st->codecpar->channels) {
+                        *q++ = ch;
+                    } else if (st->codecpar->extradata[18] == 1 && ch <= 8 &&
+                               st->codecpar->extradata_size >= 21 + ch) {
                         static const uint8_t coupled_stream_counts[9] = {
                             1, 0, 1, 1, 2, 2, 2, 3, 3
                         };
@@ -635,14 +638,14 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                         };
                         /* Vorbis mapping family */
 
-                        if (st->codecpar->extradata[19] == st->codecpar->channels - coupled_stream_counts[st->codecpar->channels] &&
-                            st->codecpar->extradata[20] == coupled_stream_counts[st->codecpar->channels] &&
-                            memcmp(&st->codecpar->extradata[21], channel_map_a[st->codecpar->channels-1], st->codecpar->channels) == 0) {
-                            *q++ = st->codecpar->channels;
-                        } else if (st->codecpar->channels >= 2 && st->codecpar->extradata[19] == st->codecpar->channels &&
+                        if (st->codecpar->extradata[19] == ch - coupled_stream_counts[ch] &&
+                            st->codecpar->extradata[20] == coupled_stream_counts[ch] &&
+                            memcmp(&st->codecpar->extradata[21], channel_map_a[ch - 1], ch) == 0) {
+                            *q++ = ch;
+                        } else if (ch >= 2 && st->codecpar->extradata[19] == ch &&
                                    st->codecpar->extradata[20] == 0 &&
-                                   memcmp(&st->codecpar->extradata[21], channel_map_b[st->codecpar->channels-1], st->codecpar->channels) == 0) {
-                            *q++ = st->codecpar->channels | 0x80;
+                                   memcmp(&st->codecpar->extradata[21], channel_map_b[ch - 1], ch) == 0) {
+                            *q++ = ch | 0x80;
                         } else {
                             /* Unsupported, could write an extended descriptor here */
                             av_log(s, AV_LOG_ERROR, "Unsupported Opus Vorbis-style channel mapping");
@@ -653,9 +656,9 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                         av_log(s, AV_LOG_ERROR, "Unsupported Opus channel mapping for family %d", st->codecpar->extradata[18]);
                         *q++ = 0xff;
                     }
-                } else if (st->codecpar->channels <= 2) {
+                } else if (ch <= 2) {
                     /* Assume RTP mapping family */
-                    *q++ = st->codecpar->channels;
+                    *q++ = ch;
                 } else {
                     /* Unsupported */
                     av_log(s, AV_LOG_ERROR, "Unsupported Opus channel mapping");
@@ -1833,7 +1836,7 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
 {
     AVStream *st = s->streams[pkt->stream_index];
     int size = pkt->size;
-    uint8_t *buf = pkt->data;
+    const uint8_t *buf = pkt->data;
     uint8_t *data = NULL;
     MpegTSWrite *ts = s->priv_data;
     MpegTSWriteStream *ts_st = st->priv_data;
@@ -2097,6 +2100,10 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
             ts_st->dvb_ac3_desc = dvb_ac3_desc;
         }
         av_free(hdr);
+    } else if (st->codecpar->codec_id == AV_CODEC_ID_PCM_BLURAY && ts->m2ts_mode) {
+        mpegts_write_pes(s, st, buf, size, pts, dts,
+                         pkt->flags & AV_PKT_FLAG_KEY, stream_id);
+        return 0;
     }
 
     if (ts_st->payload_size && (ts_st->payload_size + size > ts->pes_payload_size ||

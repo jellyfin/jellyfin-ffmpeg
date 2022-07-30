@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -3143,6 +3143,8 @@ scale_cuda_filter_deps="ffnvcodec"
+@@ -3151,6 +3151,8 @@ scale_cuda_filter_deps="ffnvcodec"
  scale_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
  thumbnail_cuda_filter_deps="ffnvcodec"
  thumbnail_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
@@ -11,7 +11,16 @@ Index: jellyfin-ffmpeg/configure
  transpose_npp_filter_deps="ffnvcodec libnpp"
  overlay_cuda_filter_deps="ffnvcodec"
  overlay_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
-@@ -6409,7 +6411,7 @@ fi
+@@ -3895,7 +3897,7 @@ enable doc
+ enable faan faandct faanidct
+ enable large_tests
+ enable optimizations
+-enable ptx_compression
++disable ptx_compression
+ enable runtime_cpudetect
+ enable safe_bitstream_reader
+ enable static
+@@ -6415,7 +6417,7 @@ fi
  if enabled cuda_nvcc; then
      nvccflags="$nvccflags -ptx"
  else
@@ -24,9 +33,9 @@ Index: jellyfin-ffmpeg/ffbuild/common.mak
 ===================================================================
 --- jellyfin-ffmpeg.orig/ffbuild/common.mak
 +++ jellyfin-ffmpeg/ffbuild/common.mak
-@@ -41,6 +41,7 @@ OBJCCFLAGS  = $(CPPFLAGS) $(CFLAGS) $(OB
- ASFLAGS    := $(CPPFLAGS) $(ASFLAGS)
- CXXFLAGS   := $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS)
+@@ -44,6 +44,7 @@ ASFLAGS    := $(CPPFLAGS) $(ASFLAGS)
+ # end up in CXXFLAGS.
+ $(call PREPEND,CXXFLAGS, CPPFLAGS CFLAGS)
  X86ASMFLAGS += $(IFLAGS:%=%/) -I$(<D)/ -Pconfig.asm
 +NVCCFLAGS  += $(IFLAGS)
  
@@ -36,20 +45,20 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -477,6 +477,8 @@ OBJS-$(CONFIG_TMEDIAN_FILTER)
- OBJS-$(CONFIG_TMIDEQUALIZER_FILTER)          += vf_tmidequalizer.o
- OBJS-$(CONFIG_TMIX_FILTER)                   += vf_mix.o framesync.o
- OBJS-$(CONFIG_TONEMAP_FILTER)                += vf_tonemap.o colorspace.o
+@@ -500,6 +500,8 @@ OBJS-$(CONFIG_TMIX_FILTER)
+ OBJS-$(CONFIG_TONEMAP_FILTER)                += vf_tonemap.o
+ OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)         += vf_tonemap_opencl.o opencl.o \
+                                                 opencl/tonemap.o opencl/colorspace_common.o
 +OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)           += vf_tonemap_cuda.o cuda/tonemap.ptx.o \
 +                                                cuda/host_util.o
- OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)         += vf_tonemap_opencl.o colorspace.o opencl.o \
-                                                 opencl/tonemap.o opencl/colorspace_common.o
  OBJS-$(CONFIG_TONEMAP_VAAPI_FILTER)          += vf_tonemap_vaapi.o vaapi_vpp.o
+ OBJS-$(CONFIG_TPAD_FILTER)                   += vf_tpad.o
+ OBJS-$(CONFIG_TRANSPOSE_FILTER)              += vf_transpose.o
 Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -457,6 +457,7 @@ extern const AVFilter ff_vf_tmedian;
+@@ -471,6 +471,7 @@ extern const AVFilter ff_vf_tmedian;
  extern const AVFilter ff_vf_tmidequalizer;
  extern const AVFilter ff_vf_tmix;
  extern const AVFilter ff_vf_tonemap;
@@ -80,7 +89,7 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.c
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3])
  {
-@@ -206,3 +218,157 @@ void ff_update_hdr_metadata(AVFrame *in,
+@@ -191,3 +203,157 @@ void ff_update_hdr_metadata(AVFrame *in,
              metadata->max_luminance = av_d2q(peak * REFERENCE_WHITE, 10000);
      }
  }
@@ -242,10 +251,10 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/colorspace.h
 +++ jellyfin-ffmpeg/libavfilter/colorspace.h
-@@ -22,8 +22,20 @@
- 
- #include "libavutil/common.h"
+@@ -23,10 +23,42 @@
+ #include "libavutil/csp.h"
  #include "libavutil/frame.h"
+ #include "libavutil/pixfmt.h"
 +#include "libavutil/dovi_meta.h"
  
  #define REFERENCE_WHITE 100.0f
@@ -260,13 +269,7 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.h
 +#define ARIB_B67_B 0.28466892f
 +#define ARIB_B67_C 0.55991073f
 +#define FLOAT_EPS 1e-6f
- 
- struct LumaCoefficients {
-     double cr, cg, cb;
-@@ -37,7 +49,27 @@ struct WhitepointCoefficients {
-     double xw, yw;
- };
- 
++
 +// Parsed metadata from the Dolby Vision RPU
 +struct DoviMetadata {
 +    float nonlinear_offset[3];      // input offset ("ycc_to_rgb_offset")
@@ -285,13 +288,13 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.h
 +        float mmr_coeffs[8][3 /* order */][7];
 +    } comp[3];
 +};
-+
+ 
  void ff_matrix_invert_3x3(const double in[3][3], double out[3][3]);
 +void ff_matrix_transpose_3x3(const double in[3][3], double out[3][3]);
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3]);
- void ff_fill_rgb2xyz_table(const struct PrimaryCoefficients *coeffs,
-@@ -51,4 +83,19 @@ void ff_fill_rgb2yuv_table(const struct
+ void ff_matrix_mul_3x3_vec(double dst[3], const double vec[3], const double mat[3][3]);
+@@ -38,4 +70,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
  double ff_determine_signal_peak(AVFrame *in);
  void ff_update_hdr_metadata(AVFrame *in, double peak);
  
@@ -442,7 +445,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +static __inline__ __device__ float oetf_arib_b67(float x) {
 +    x = max(x, 0.0f);
 +    return x <= (1.0f / 12.0f)
-+           ? __sqrtf(3.0f * x)
++           ? sqrtf(3.0f * x)
 +           : (ARIB_B67_A * __logf(12.0f * x - ARIB_B67_B) + ARIB_B67_C);
 +}
 +
@@ -1515,7 +1518,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1036 @@
+@@ -0,0 +1,1032 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1893,16 +1896,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    return 0;
 +}
 +
-+static const struct PrimaryCoefficients primaries_table[AVCOL_PRI_NB] = {
-+    [AVCOL_PRI_BT709]  = { 0.640, 0.330, 0.300, 0.600, 0.150, 0.060 },
-+    [AVCOL_PRI_BT2020] = { 0.708, 0.292, 0.170, 0.797, 0.131, 0.046 },
-+};
-+
-+static const struct WhitepointCoefficients whitepoint_table[AVCOL_PRI_NB] = {
-+    [AVCOL_PRI_BT709]  = { 0.3127, 0.3290 },
-+    [AVCOL_PRI_BT2020] = { 0.3127, 0.3290 },
-+};
-+
 +static const double dovi_lms2rgb_matrix[3][3] =
 +{
 +    { 3.06441879, -2.16597676,  0.10155818},
@@ -1914,9 +1907,15 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +                              double rgb2rgb[3][3]) {
 +    double rgb2xyz[3][3], xyz2rgb[3][3];
 +
-+    ff_fill_rgb2xyz_table(&primaries_table[out], &whitepoint_table[out], rgb2xyz);
++    const AVColorPrimariesDesc *in_primaries = av_csp_primaries_desc_from_id(in);
++    const AVColorPrimariesDesc *out_primaries = av_csp_primaries_desc_from_id(out);
++
++    if (!in_primaries || !out_primaries)
++        return AVERROR(EINVAL);
++
++    ff_fill_rgb2xyz_table(&out_primaries->prim, &out_primaries->wp, rgb2xyz);
 +    ff_matrix_invert_3x3(rgb2xyz, xyz2rgb);
-+    ff_fill_rgb2xyz_table(&primaries_table[in], &whitepoint_table[in], rgb2xyz);
++    ff_fill_rgb2xyz_table(&in_primaries->prim, &in_primaries->wp, rgb2xyz);
 +    ff_matrix_mul_3x3(rgb2rgb, rgb2xyz, xyz2rgb);
 +
 +    return 0;
@@ -2023,7 +2022,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    double ycc2rgb_offset[3] = {0};
 +    double lms2rgb_matrix[3][3] = {0};
 +    double rgb_matrix[3][3], yuv_matrix[3][3], rgb2rgb_matrix[3][3];
-+    const struct LumaCoefficients *in_coeffs, *out_coeffs;
++    const AVLumaCoefficients *in_coeffs, *out_coeffs;
 +    enum AVColorTransferCharacteristic in_trc = s->in_trc, out_trc = s->out_trc;
 +    enum AVColorSpace in_spc = s->in_spc, out_spc = s->out_spc;
 +    enum AVColorPrimaries in_pri = s->in_pri, out_pri = s->out_pri;
@@ -2104,14 +2103,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        }
 +        ff_matrix_mul_3x3(lms2rgb_matrix, dovi_lms2rgb_matrix, s->dovi->linear);
 +    } else {
-+        if (!(in_coeffs = ff_get_luma_coefficients(in_spc)))
++        if (!(in_coeffs = av_csp_luma_coeffs_from_avcsp(in_spc)))
 +            return AVERROR(EINVAL);
 +
 +        ff_fill_rgb2yuv_table(in_coeffs, yuv_matrix);
 +        ff_matrix_invert_3x3(yuv_matrix, rgb_matrix);
 +    }
 +
-+    if (!(out_coeffs = ff_get_luma_coefficients(out_spc)))
++    if (!(out_coeffs = av_csp_luma_coeffs_from_avcsp(out_spc)))
 +        return AVERROR(EINVAL);
 +
 +    ff_fill_rgb2yuv_table(out_coeffs, yuv_matrix);
@@ -2162,7 +2161,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CONSTANT_A(".u8 dovi_perf_tradeoff = %i", 1, s->tradeoff == 1);
 +    CONSTANT_A(".u8 skip_aa = %i", 1, s->tradeoff == 1);
 +    CONSTANT_M("lms2rgb_matrix", lms2rgb_matrix);
-+    CONSTANT_C("luma_dst", out_coeffs->cr, out_coeffs->cg, out_coeffs->cb);
++    CONSTANT_C("luma_dst", av_q2d(out_coeffs->cr), av_q2d(out_coeffs->cg), av_q2d(out_coeffs->cb));
 +    CONSTANT_C("ycc2rgb_offset", ycc2rgb_offset[0], ycc2rgb_offset[1], ycc2rgb_offset[2]);
 +
 +    ret = CHECK_CU(cu->cuCtxPushCurrent(cuda_ctx));

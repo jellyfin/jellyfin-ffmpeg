@@ -23,6 +23,10 @@ fate-cast5: libavutil/tests/cast5$(EXESUF)
 fate-cast5: CMD = run libavutil/tests/cast5$(EXESUF)
 fate-cast5: CMP = null
 
+FATE_LIBAVUTIL += fate-channel_layout
+fate-channel_layout: libavutil/tests/channel_layout$(EXESUF)
+fate-channel_layout: CMD = run libavutil/tests/channel_layout$(EXESUF)
+
 FATE_LIBAVUTIL += fate-audio_fifo
 fate-audio_fifo: libavutil/tests/audio_fifo$(EXESUF)
 fate-audio_fifo: CMD = run libavutil/tests/audio_fifo$(EXESUF)
@@ -165,6 +169,11 @@ fate-tea: CMD = run libavutil/tests/tea$(EXESUF)
 FATE_LIBAVUTIL += fate-opt
 fate-opt: libavutil/tests/opt$(EXESUF)
 fate-opt: CMD = run libavutil/tests/opt$(EXESUF)
+
+FATE_LIBAVUTIL += fate-uuid
+fate-uuid: libavutil/tests/uuid$(EXESUF)
+fate-uuid: CMD = run libavutil/tests/uuid$(EXESUF)
+fate-uuid: CMP = null
 
 FATE_LIBAVUTIL += $(FATE_LIBAVUTIL-yes)
 FATE-$(CONFIG_AVUTIL) += $(FATE_LIBAVUTIL)

@@ -23,6 +23,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "opustab.h"
 #include "opus_pvq.h"
 
@@ -903,8 +905,9 @@ int av_cold ff_celt_pvq_init(CeltPVQ **pvq, int encode)
     s->pvq_search = ppp_pvq_search_c;
     s->quant_band = encode ? pvq_encode_band : pvq_decode_band;
 
-    if (CONFIG_OPUS_ENCODER && ARCH_X86)
-        ff_celt_pvq_init_x86(s);
+#if CONFIG_OPUS_ENCODER && ARCH_X86
+    ff_celt_pvq_init_x86(s);
+#endif
 
     *pvq = s;
 

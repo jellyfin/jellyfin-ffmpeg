@@ -22,7 +22,6 @@
 #include "avfilter.h"
 #include "audio.h"
 #include "formats.h"
-#include "hermite.h"
 
 typedef struct AudioDynamicEqualizerContext {
     const AVClass *class;
@@ -42,6 +41,7 @@ typedef struct AudioDynamicEqualizerContext {
     double attack_coef;
     double release_coef;
     int mode;
+    int type;
 
     AVFrame *state;
 } AudioDynamicEqualizerContext;
@@ -113,7 +113,7 @@ static double get_gain(double in, double srate, double makeup,
             if (Lyg >= state[2])
                 attslew = 1;
         }
-    } else if (2. * (Lxg-thresdb) > width) {
+    } else if (2. * (Lxg - thresdb) > width) {
         Lyg = thresdb + (Lxg - thresdb) * iratio;
     }
 
@@ -121,7 +121,7 @@ static double get_gain(double in, double srate, double makeup,
 
     Lxl = Lxg - Lyg;
 
-    Ly1 = fmaxf(Lxl, release_coeff * state[1] +(1. - release_coeff) * Lxl);
+    Ly1 = fmax(Lxl, release_coeff * state[1] +(1. - release_coeff) * Lxl);
     Lyl = attack_coeff * state[0] + (1. - attack_coeff) * Ly1;
 
     cdb = -Lyl;
@@ -150,16 +150,17 @@ static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
     const double range = s->range;
     const double dfrequency = fmin(s->dfrequency, sample_rate * 0.5);
     const double tfrequency = fmin(s->tfrequency, sample_rate * 0.5);
-    const double threshold = log(s->threshold + DBL_EPSILON);
+    const double threshold = to_dB(s->threshold + DBL_EPSILON);
     const double release = s->release_coef;
     const double attack = s->attack_coef;
     const double dqfactor = s->dqfactor;
     const double tqfactor = s->tqfactor;
     const double fg = tan(M_PI * tfrequency / sample_rate);
     const double dg = tan(M_PI * dfrequency / sample_rate);
-    const int start = (in->channels * jobnr) / nb_jobs;
-    const int end = (in->channels * (jobnr+1)) / nb_jobs;
+    const int start = (in->ch_layout.nb_channels * jobnr) / nb_jobs;
+    const int end = (in->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
     const int mode = s->mode;
+    const int type = s->type;
     const double knee = s->knee;
     const double slew = s->slew;
     const double aattack = exp(-1000. / ((s->attack + 2.0 * (slew - 1.)) * sample_rate));
@@ -186,6 +187,7 @@ static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
         for (int n = 0; n < out->nb_samples; n++) {
             double detect, gain, v, listen;
             double fa[3], fm[3];
+            double k, g;
 
             detect = listen = get_svf(src[n], dm, da, state);
             detect = fabs(detect);
@@ -194,8 +196,9 @@ static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
                             aattack, iratio, knee, range, threshold, slew,
                             &state[4], attack, release, nc);
 
-            {
-                double k = 1. / (tqfactor * gain);
+            switch (type) {
+            case 0:
+                k = 1. / (tqfactor * gain);
 
                 fa[0] = 1. / (1. + fg * (fg + k));
                 fa[1] = fg * fa[0];
@@ -204,6 +207,31 @@ static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
                 fm[0] = 1.;
                 fm[1] = k * (gain * gain - 1.);
                 fm[2] = 0.;
+                break;
+            case 1:
+                k = 1. / tqfactor;
+                g = fg / sqrt(gain);
+
+                fa[0] = 1. / (1. + g * (g + k));
+                fa[1] = g * fa[0];
+                fa[2] = g * fa[1];
+
+                fm[0] = 1.;
+                fm[1] = k * (gain - 1.);
+                fm[2] = gain * gain - 1.;
+                break;
+            case 2:
+                k = 1. / tqfactor;
+                g = fg / sqrt(gain);
+
+                fa[0] = 1. / (1. + g * (g + k));
+                fa[1] = g * fa[0];
+                fa[2] = g * fa[1];
+
+                fm[0] = gain * gain;
+                fm[1] = k * (1. - gain) * gain;
+                fm[2] = 1. - gain * gain;
+                break;
             }
 
             v = get_svf(src[n], fm, fa, &state[2]);
@@ -245,7 +273,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     td.in = in;
     td.out = out;
     ff_filter_execute(ctx, filter_channels, &td, NULL,
-                     FFMIN(outlink->channels, ff_filter_get_nb_threads(ctx)));
+                     FFMIN(outlink->ch_layout.nb_channels, ff_filter_get_nb_threads(ctx)));
 
     if (out != in)
         av_frame_free(&in);
@@ -279,6 +307,10 @@ static const AVOption adynamicequalizer_options[] = {
     {   "listen",   0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=-1},       0, 0,       FLAGS, "mode" },
     {   "cut",      0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, "mode" },
     {   "boost",    0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, "mode" },
+    { "tftype",     "set target filter type",  OFFSET(type),       AV_OPT_TYPE_INT,    {.i64=0},        0, 2,       FLAGS, "type" },
+    {   "bell",     0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, "type" },
+    {   "lowshelf", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, "type" },
+    {   "highshelf",0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=2},        0, 0,       FLAGS, "type" },
     { NULL }
 };
 

@@ -19,9 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/thread.h"
 #include "avfilter.h"
-#include "config.h"
 
 extern const AVFilter ff_af_abench;
 extern const AVFilter ff_af_acompressor;
@@ -117,6 +115,7 @@ extern const AVFilter ff_af_crossfeed;
 extern const AVFilter ff_af_crystalizer;
 extern const AVFilter ff_af_dcshift;
 extern const AVFilter ff_af_deesser;
+extern const AVFilter ff_af_dialoguenhance;
 extern const AVFilter ff_af_drmeter;
 extern const AVFilter ff_af_dynaudnorm;
 extern const AVFilter ff_af_earwax;
@@ -150,9 +149,11 @@ extern const AVFilter ff_af_stereotools;
 extern const AVFilter ff_af_stereowiden;
 extern const AVFilter ff_af_superequalizer;
 extern const AVFilter ff_af_surround;
+extern const AVFilter ff_af_tiltshelf;
 extern const AVFilter ff_af_treble;
 extern const AVFilter ff_af_tremolo;
 extern const AVFilter ff_af_vibrato;
+extern const AVFilter ff_af_virtualbass;
 extern const AVFilter ff_af_volume;
 extern const AVFilter ff_af_volumedetect;
 
@@ -183,6 +184,9 @@ extern const AVFilter ff_vf_bitplanenoise;
 extern const AVFilter ff_vf_blackdetect;
 extern const AVFilter ff_vf_blackframe;
 extern const AVFilter ff_vf_blend;
+extern const AVFilter ff_vf_blend_vulkan;
+extern const AVFilter ff_vf_blockdetect;
+extern const AVFilter ff_vf_blurdetect;
 extern const AVFilter ff_vf_bm3d;
 extern const AVFilter ff_vf_boxblur;
 extern const AVFilter ff_vf_boxblur_opencl;
@@ -191,6 +195,7 @@ extern const AVFilter ff_vf_cas;
 extern const AVFilter ff_vf_chromaber_vulkan;
 extern const AVFilter ff_vf_chromahold;
 extern const AVFilter ff_vf_chromakey;
+extern const AVFilter ff_vf_chromakey_cuda;
 extern const AVFilter ff_vf_chromanr;
 extern const AVFilter ff_vf_chromashift;
 extern const AVFilter ff_vf_ciescope;
@@ -204,6 +209,7 @@ extern const AVFilter ff_vf_colorkey;
 extern const AVFilter ff_vf_colorkey_opencl;
 extern const AVFilter ff_vf_colorhold;
 extern const AVFilter ff_vf_colorlevels;
+extern const AVFilter ff_vf_colormap;
 extern const AVFilter ff_vf_colormatrix;
 extern const AVFilter ff_vf_colorspace;
 extern const AVFilter ff_vf_colortemperature;
@@ -259,6 +265,7 @@ extern const AVFilter ff_vf_estdif;
 extern const AVFilter ff_vf_exposure;
 extern const AVFilter ff_vf_extractplanes;
 extern const AVFilter ff_vf_fade;
+extern const AVFilter ff_vf_feedback;
 extern const AVFilter ff_vf_fftdnoiz;
 extern const AVFilter ff_vf_fftfilt;
 extern const AVFilter ff_vf_field;
@@ -303,6 +310,8 @@ extern const AVFilter ff_vf_hwmap;
 extern const AVFilter ff_vf_hwupload;
 extern const AVFilter ff_vf_hwupload_cuda;
 extern const AVFilter ff_vf_hysteresis;
+extern const AVFilter ff_vf_iccdetect;
+extern const AVFilter ff_vf_iccgen;
 extern const AVFilter ff_vf_identity;
 extern const AVFilter ff_vf_idet;
 extern const AVFilter ff_vf_il;
@@ -345,6 +354,7 @@ extern const AVFilter ff_vf_monochrome;
 extern const AVFilter ff_vf_morpho;
 extern const AVFilter ff_vf_mpdecimate;
 extern const AVFilter ff_vf_msad;
+extern const AVFilter ff_vf_multiply;
 extern const AVFilter ff_vf_negate;
 extern const AVFilter ff_vf_nlmeans;
 extern const AVFilter ff_vf_nlmeans_opencl;
@@ -359,6 +369,7 @@ extern const AVFilter ff_vf_oscilloscope;
 extern const AVFilter ff_vf_overlay;
 extern const AVFilter ff_vf_overlay_opencl;
 extern const AVFilter ff_vf_overlay_qsv;
+extern const AVFilter ff_vf_overlay_vaapi;
 extern const AVFilter ff_vf_overlay_vulkan;
 extern const AVFilter ff_vf_overlay_cuda;
 extern const AVFilter ff_vf_owdenoise;
@@ -371,6 +382,7 @@ extern const AVFilter ff_vf_perspective;
 extern const AVFilter ff_vf_phase;
 extern const AVFilter ff_vf_photosensitivity;
 extern const AVFilter ff_vf_pixdesctest;
+extern const AVFilter ff_vf_pixelize;
 extern const AVFilter ff_vf_pixscope;
 extern const AVFilter ff_vf_pp;
 extern const AVFilter ff_vf_pp7;
@@ -388,6 +400,7 @@ extern const AVFilter ff_vf_readeia608;
 extern const AVFilter ff_vf_readvitc;
 extern const AVFilter ff_vf_realtime;
 extern const AVFilter ff_vf_remap;
+extern const AVFilter ff_vf_remap_opencl;
 extern const AVFilter ff_vf_removegrain;
 extern const AVFilter ff_vf_removelogo;
 extern const AVFilter ff_vf_repeatfields;
@@ -431,6 +444,7 @@ extern const AVFilter ff_vf_shuffleplanes;
 extern const AVFilter ff_vf_sidedata;
 extern const AVFilter ff_vf_signalstats;
 extern const AVFilter ff_vf_signature;
+extern const AVFilter ff_vf_siti;
 extern const AVFilter ff_vf_smartblur;
 extern const AVFilter ff_vf_sobel;
 extern const AVFilter ff_vf_sobel_opencl;
@@ -507,6 +521,7 @@ extern const AVFilter ff_vsrc_allrgb;
 extern const AVFilter ff_vsrc_allyuv;
 extern const AVFilter ff_vsrc_cellauto;
 extern const AVFilter ff_vsrc_color;
+extern const AVFilter ff_vsrc_colorchart;
 extern const AVFilter ff_vsrc_colorspectrum;
 extern const AVFilter ff_vsrc_coreimagesrc;
 extern const AVFilter ff_vsrc_frei0r_src;
@@ -548,6 +563,7 @@ extern const AVFilter ff_avf_showwavespic;
 extern const AVFilter ff_vaf_spectrumsynth;
 
 /* multimedia sources */
+extern const AVFilter ff_avsrc_avsynctest;
 extern const AVFilter ff_avsrc_amovie;
 extern const AVFilter ff_avsrc_movie;
 
