@@ -79,7 +79,7 @@ prepare_extra_common() {
 
     # ZIMG
     pushd ${SOURCE_DIR}
-    git clone -b release-3.0.4 --depth=1 https://github.com/sekrit-twc/zimg
+    git clone --recursive --depth=1 https://github.com/sekrit-twc/zimg
     pushd zimg
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR} ${CROSS_OPT}
@@ -411,7 +411,8 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/haasn/libplacebo
+    git clone --recursive --depth=1 https://github.com/haasn/libplacebo
+    sed -i 's|env: python_env,||g' libplacebo/src/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
         --libdir=lib \
