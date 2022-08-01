@@ -329,7 +329,7 @@ make install
 popd
 
 # LIBWEBP
-git clone --depth=1 https://chromium.googlesource.com/webm/libwebp
+git clone -b v1.2.3 --depth=1 https://chromium.googlesource.com/webm/libwebp
 pushd libwebp
 ./autogen.sh
 ./configure \
