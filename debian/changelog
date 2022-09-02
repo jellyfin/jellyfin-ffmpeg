@@ -1,3 +1,10 @@
+jellyfin-ffmpeg (5.1.1-1) unstable; urgency=medium
+
+  * New upstream version 5.1.1
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 2 Sep 2022 15:43:17 +0800
+
 jellyfin-ffmpeg (5.1-2) unstable; urgency=medium
 
   * Revert Mesa to the last release
