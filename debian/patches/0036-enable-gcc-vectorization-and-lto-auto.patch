@@ -26,11 +26,13 @@ Index: jellyfin-ffmpeg/libavcodec/x86/cabac.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/x86/cabac.h
 +++ jellyfin-ffmpeg/libavcodec/x86/cabac.h
-@@ -177,6 +177,7 @@
- 
- #if HAVE_7REGS && !BROKEN_COMPILER
- #define get_cabac_inline get_cabac_inline_x86
-+#pragma GCC optimize("no-tree-vectorize")
- static
- #if defined(_WIN32) && !defined(_WIN64) && defined(__clang__)
- av_noinline
+@@ -183,6 +183,9 @@ av_noinline
+ #else
+ av_always_inline
+ #endif
++#ifdef __GNUC__
++__attribute__((optimize("-fno-tree-vectorize")))
++#endif
+ int get_cabac_inline_x86(CABACContext *c, uint8_t *const state)
+ {
+     int bit, tmp;
