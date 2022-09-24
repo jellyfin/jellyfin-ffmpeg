@@ -34,3 +34,4 @@
 0034-add-hevc-dovi-sidedata-to-hlsenc.patch
 0035-add-pause-support-for-ffmpeg.patch
 0036-enable-gcc-vectorization-and-lto-auto.patch
+0037-add-fixes-for-vaapi-rendernode-enumeration.patch
