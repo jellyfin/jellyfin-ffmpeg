@@ -175,7 +175,7 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/intel/libva
+    git clone -b 2.15.0 --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
@@ -192,7 +192,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/intel/libva-utils
+    git clone -b 2.15.0 --depth=1 https://github.com/intel/libva-utils
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -216,7 +216,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.1.7 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.2.0 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -285,7 +285,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.226 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.229 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -298,7 +298,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.226 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.229 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -413,14 +413,14 @@ prepare_extra_amd64() {
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
     git clone --recursive --depth=1 https://github.com/haasn/libplacebo
-    sed -i 's|env: python_env,||g' libplacebo/src/meson.build
+    sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
         --libdir=lib \
         --buildtype=release \
         --default-library=shared \
         -Dvulkan=enabled \
-        -Dvulkan-link=false \
+        -Dvk-proc-addr=enabled \
         -Dvulkan-registry=${TARGET_DIR}/share/vulkan/registry/vk.xml \
         -Dshaderc=enabled \
         -Dglslang=disabled \
