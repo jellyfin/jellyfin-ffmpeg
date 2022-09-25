@@ -18,3 +18,6 @@ packages:
   - jammy-amd64
   - jammy-armhf
   - jammy-arm64
+  - kinetic-amd64
+  - kinetic-armhf
+  - kinetic-arm64

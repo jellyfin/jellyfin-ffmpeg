@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["jammy", "focal", "bionic"]'
+      codenames: '["kinetic", "jammy", "focal", "bionic"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -56,6 +56,7 @@ jobs:
         arrays: [
           {distro: 'debian', codename: 'buster'},
           {distro: 'debian', codename: 'bullseye'},
+          {distro: 'ubuntu', codename: 'kinetic'},
           {distro: 'ubuntu', codename: 'jammy'},
           {distro: 'ubuntu', codename: 'focal'},
           {distro: 'ubuntu', codename: 'bionic'},
