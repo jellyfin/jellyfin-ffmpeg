@@ -64,6 +64,7 @@
 #include "mxf.h"
 
 #define MXF_MAX_CHUNK_SIZE (32 << 20)
+#define RUN_IN_MAX (65535+1)  // S377m-2004 section 5.5 and S377-1-2009 section 6.5, the +1 is to be slightly more tolerant
 
 typedef enum {
     Header,
@@ -3632,6 +3633,7 @@ static int mxf_read_header(AVFormatContext *s)
     KLVPacket klv;
     int64_t essence_offset = 0;
     int ret;
+    int64_t run_in;
 
     mxf->last_forward_tell = INT64_MAX;
 
@@ -3641,7 +3643,10 @@ static int mxf_read_header(AVFormatContext *s)
     }
     avio_seek(s->pb, -14, SEEK_CUR);
     mxf->fc = s;
-    mxf->run_in = avio_tell(s->pb);
+    run_in = avio_tell(s->pb);
+    if (run_in < 0 || run_in > RUN_IN_MAX)
+        return AVERROR_INVALIDDATA;
+    mxf->run_in = run_in;
 
     mxf_read_random_index_pack(s);
 
@@ -4047,7 +4052,7 @@ static int mxf_read_close(AVFormatContext *s)
 
 static int mxf_probe(const AVProbeData *p) {
     const uint8_t *bufp = p->buf;
-    const uint8_t *end = p->buf + p->buf_size;
+    const uint8_t *end = p->buf + FFMIN(p->buf_size, RUN_IN_MAX + 1 + sizeof(mxf_header_partition_pack_key));
 
     if (p->buf_size < sizeof(mxf_header_partition_pack_key))
         return 0;
