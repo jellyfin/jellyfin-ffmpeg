@@ -441,6 +441,23 @@ make install
 popd
 popd
 
+# SVT-AV1
+git clone -b v1.2.1 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+pushd SVT-AV1
+mkdir build
+pushd build
+cmake \
+    -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
+    -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_AVX512=ON \
+    -DBUILD_{SHARED_LIBS,TESTING,APPS,DEC}=OFF \
+    ..
+make -j$(nproc)
+make install
+popd
+popd
+
 # DAV1D
 git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
@@ -583,6 +600,7 @@ fi
     --enable-libzimg \
     --enable-libx264 \
     --enable-libx265 \
+    --enable-libsvtav1 \
     --enable-libdav1d \
     --enable-libfdk-aac \
     --enable-opencl \

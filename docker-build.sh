@@ -5,8 +5,9 @@
 set -o errexit
 set -o xtrace
 
-ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
-PORTS_ADDR=http://ports.ubuntu.com/
+DEBIAN_ADDR=http://deb.debian.org/debian/
+UBUNTU_ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
+UBUNTU_PORTS_ADDR=http://ports.ubuntu.com/
 
 # Prepare common extra libs for amd64, armhf and arm64
 prepare_extra_common() {
@@ -132,6 +133,31 @@ prepare_extra_common() {
 
 # Prepare extra headers, libs and drivers for x86_64-linux-gnu
 prepare_extra_amd64() {
+    # SVT-AV1
+    NASM_PATH=/usr/bin/nasm
+    if [[ $( lsb_release -c -s ) == "bionic" ]]; then
+        # nasm >= 2.14
+        apt-get install -y nasm-mozilla
+        NASM_PATH=/usr/lib/nasm-mozilla/bin/nasm
+    fi
+    pushd ${SOURCE_DIR}
+    git clone -b v1.2.1 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    pushd SVT-AV1
+    mkdir build
+    pushd build
+    cmake \
+        -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+        -DCMAKE_ASM_NASM_COMPILER=${NASM_PATH} \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DENABLE_AVX512=ON \
+        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_{TESTING,APPS,DEC}=OFF \
+        ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/SVT-AV1
+    echo "SVT-AV1${TARGET_DIR}/lib/libSvtAv1Enc.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+
     # FFNVCODEC
     pushd ${SOURCE_DIR}
     git clone -b n11.1.5.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers
@@ -221,7 +247,6 @@ prepare_extra_amd64() {
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    make install
     echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -435,22 +460,27 @@ prepare_extra_amd64() {
 # Prepare the cross-toolchain
 prepare_crossbuild_env_armhf() {
     # Prepare the Ubuntu-specific cross-build requirements
+    if [[ $( lsb_release -i -s ) == "Debian" ]]; then
+        CODENAME="$( lsb_release -c -s )"
+        echo "deb [arch=amd64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+        echo "deb [arch=armhf] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+    fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
         # Remove the default sources.list
         rm /etc/apt/sources.list
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
         cat <<EOF > /etc/apt/sources.list.d/armhf.list
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
     fi
     # Add armhf architecture
@@ -468,22 +498,27 @@ EOF
 }
 prepare_crossbuild_env_arm64() {
     # Prepare the Ubuntu-specific cross-build requirements
+    if [[ $( lsb_release -i -s ) == "Debian" ]]; then
+        CODENAME="$( lsb_release -c -s )"
+        echo "deb [arch=amd64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+        echo "deb [arch=arm64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+    fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
         # Remove the default sources.list
         rm /etc/apt/sources.list
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
         cat <<EOF > /etc/apt/sources.list.d/arm64.list
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
     fi
     # Add armhf architecture
