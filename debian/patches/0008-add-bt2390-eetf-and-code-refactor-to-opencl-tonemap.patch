@@ -1611,7 +1611,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      if (ctx->trc != -1)
          output->color_trc = ctx->trc;
      if (ctx->primaries != -1)
-@@ -385,72 +783,80 @@ static int tonemap_opencl_filter_frame(A
+@@ -385,72 +783,84 @@ static int tonemap_opencl_filter_frame(A
      ctx->range_out = output->color_range;
      ctx->chroma_loc = output->chroma_location;
  
@@ -1650,15 +1650,19 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
  
 +    if (dovi_sd) {
 +        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
-+        struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
-+        ctx->dovi = dovi;
-+        if (!ctx->dovi)
-+            goto fail;
++        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
++        // only map dovi rpus that don't require an EL
++        if (rpu->disable_residual_flag) {
++            struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
++            ctx->dovi = dovi;
++            if (!ctx->dovi)
++                goto fail;
 +
-+        ff_map_dovi_metadata(ctx->dovi, metadata);
-+        ctx->trc_in = AVCOL_TRC_SMPTE2084;
-+        ctx->colorspace_in = AVCOL_SPC_UNSPECIFIED;
-+        ctx->primaries_in = AVCOL_PRI_BT2020;
++            ff_map_dovi_metadata(ctx->dovi, metadata);
++            ctx->trc_in = AVCOL_TRC_SMPTE2084;
++            ctx->colorspace_in = AVCOL_SPC_UNSPECIFIED;
++            ctx->primaries_in = AVCOL_PRI_BT2020;
++        }
 +    }
 +
 +    if (!ctx->initialised) {
@@ -1732,7 +1736,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      av_frame_free(&input);
      av_frame_free(&output);
      return err;
-@@ -461,8 +867,22 @@ static av_cold void tonemap_opencl_unini
+@@ -461,8 +871,22 @@ static av_cold void tonemap_opencl_unini
      TonemapOpenCLContext *ctx = avctx->priv;
      cl_int cle;
  
@@ -1757,7 +1761,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      if (ctx->kernel) {
          cle = clReleaseKernel(ctx->kernel);
          if (cle != CL_SUCCESS)
-@@ -470,6 +890,13 @@ static av_cold void tonemap_opencl_unini
+@@ -470,6 +894,13 @@ static av_cold void tonemap_opencl_unini
                     "kernel: %d.\n", cle);
      }
  
@@ -1771,7 +1775,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_opencl.c
      if (ctx->command_queue) {
          cle = clReleaseCommandQueue(ctx->command_queue);
          if (cle != CL_SUCCESS)
-@@ -483,37 +910,44 @@ static av_cold void tonemap_opencl_unini
+@@ -483,37 +914,44 @@ static av_cold void tonemap_opencl_unini
  #define OFFSET(x) offsetof(TonemapOpenCLContext, x)
  #define FLAGS (AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)
  static const AVOption tonemap_opencl_options[] = {

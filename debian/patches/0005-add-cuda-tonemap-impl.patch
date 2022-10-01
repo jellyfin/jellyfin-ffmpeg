@@ -1518,7 +1518,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1032 @@
+@@ -0,0 +1,1036 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2385,15 +2385,19 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +    if (dovi_sd) {
 +        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
-+        struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
-+        s->dovi = dovi;
-+        if (!s->dovi)
-+            goto fail;
++        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
++        // only map dovi rpus that don't require an EL
++        if (rpu->disable_residual_flag) {
++            struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
++            s->dovi = dovi;
++            if (!s->dovi)
++                goto fail;
 +
-+        ff_map_dovi_metadata(s->dovi, metadata);
-+        in->color_trc = AVCOL_TRC_SMPTE2084;
-+        in->colorspace = AVCOL_SPC_UNSPECIFIED;
-+        in->color_primaries = AVCOL_PRI_BT2020;
++            ff_map_dovi_metadata(s->dovi, metadata);
++            in->color_trc = AVCOL_TRC_SMPTE2084;
++            in->colorspace = AVCOL_SPC_UNSPECIFIED;
++            in->color_primaries = AVCOL_PRI_BT2020;
++        }
 +    }
 +
 +    if (!s->cu_func ||
