@@ -1035,7 +1035,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
      if (ctx->delayed_surface) {
          ctx->delayed_surface->pVtbl->Release(ctx->delayed_surface);
-@@ -384,34 +272,33 @@ int av_cold ff_amf_encode_close(AVCodecC
+@@ -384,34 +272,34 @@ int av_cold ff_amf_encode_close(AVCodecC
          ctx->encoder = NULL;
      }
  
@@ -1045,7 +1045,8 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
 -        ctx->context = NULL;
 -    }
 +    amf_unload_library(amfctx);
-+    av_freep(&amfctx);
++    if (amfctx)
++        av_freep(&amfctx);
 +
 +    ctx->delayed_drain = 0;
      av_buffer_unref(&ctx->hw_device_ctx);
@@ -1089,7 +1090,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  {
      AMFPlane *plane;
      uint8_t  *dst_data[4];
-@@ -427,38 +314,37 @@ static int amf_copy_surface(AVCodecConte
+@@ -427,38 +315,37 @@ static int amf_copy_surface(AVCodecConte
          dst_data[i] = plane->pVtbl->GetNative(plane);
          dst_linesize[i] = plane->pVtbl->GetHPitch(plane);
      }
@@ -1137,7 +1138,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
              break;
          default:
              break;
-@@ -468,44 +354,27 @@ static int amf_copy_buffer(AVCodecContex
+@@ -468,44 +355,27 @@ static int amf_copy_buffer(AVCodecContex
  
      pkt->pts = var.int64Value; // original pts
  
@@ -1189,7 +1190,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  {
      AMF_RESULT res;
      AMFVariantStruct var;
-@@ -519,15 +388,16 @@ static AMF_RESULT amf_set_property_buffe
+@@ -519,15 +389,16 @@ static AMF_RESULT amf_set_property_buffe
              res = AMFVariantAssignInterface(&var, amf_interface);
              amf_interface->pVtbl->Release(amf_interface);
          }
@@ -1209,7 +1210,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  {
      AMF_RESULT res;
      AMFVariantStruct var;
-@@ -575,9 +445,60 @@ static void amf_release_buffer_with_fram
+@@ -575,9 +446,60 @@ static void amf_release_buffer_with_fram
      frame_ref_storage_buffer->pVtbl->Release(frame_ref_storage_buffer);
  }
  
@@ -1271,7 +1272,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
      AMFSurface *surface;
      AMF_RESULT  res;
      int         ret;
-@@ -604,10 +525,9 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -604,10 +526,9 @@ int ff_amf_receive_packet(AVCodecContext
                  if (res == AMF_INPUT_FULL) {
                      ctx->delayed_drain = 1; // input queue is full: resubmit Drain() in ff_amf_receive_packet
                  } else {
@@ -1284,8 +1285,13 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
                  }
              }
          }
-@@ -628,8 +548,8 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -623,13 +544,10 @@ int ff_amf_receive_packet(AVCodecContext
+                 ID3D11Texture2D *texture = (ID3D11Texture2D*)frame->data[0]; // actual texture
+                 int index = (intptr_t)frame->data[1]; // index is a slice in texture array is - set to tell AMF which slice to use
  
+-                av_assert0(frame->hw_frames_ctx       && ctx->hw_frames_ctx &&
+-                           frame->hw_frames_ctx->data == ctx->hw_frames_ctx->data);
+-
                  texture->lpVtbl->SetPrivateData(texture, &AMFTextureArrayIndexGUID, sizeof(index), &index);
  
 -                res = ctx->context->pVtbl->CreateSurfaceFromDX11Native(ctx->context, texture, &surface, NULL); // wrap to AMF surface
@@ -1295,7 +1301,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
                  hw_surface = 1;
              }
-@@ -640,8 +560,8 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -640,8 +558,8 @@ int ff_amf_receive_packet(AVCodecContext
              {
                  IDirect3DSurface9 *texture = (IDirect3DSurface9 *)frame->data[3]; // actual texture
  
@@ -1306,7 +1312,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
                  hw_surface = 1;
              }
-@@ -649,8 +569,8 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -649,8 +567,8 @@ int ff_amf_receive_packet(AVCodecContext
  #endif
          default:
              {
@@ -1317,7 +1323,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
                  amf_copy_surface(avctx, frame, surface);
              }
              break;
-@@ -662,27 +582,46 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -662,27 +580,46 @@ int ff_amf_receive_packet(AVCodecContext
              // input HW surfaces can be vertically aligned by 16; tell AMF the real size
              surface->pVtbl->SetCrop(surface, 0, 0, frame->width, frame->height);
  
@@ -1373,7 +1379,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
          }
  
          // submit surface
-@@ -693,7 +632,7 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -693,7 +630,7 @@ int ff_amf_receive_packet(AVCodecContext
          } else {
              int64_t pts = frame->pts;
              surface->pVtbl->Release(surface);
@@ -1382,7 +1388,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
              av_frame_unref(frame);
              ret = av_fifo_write(ctx->timestamp_list, &pts, 1);
-@@ -702,7 +641,6 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -702,7 +639,6 @@ int ff_amf_receive_packet(AVCodecContext
          }
      }
  
@@ -1390,7 +1396,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
      do {
          block_and_wait = 0;
          // poll data
-@@ -719,23 +657,35 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -719,23 +655,35 @@ int ff_amf_receive_packet(AVCodecContext
              if (data->pVtbl->HasProperty(data, L"av_frame_ref")) {
                  AMFBuffer *frame_ref_storage_buffer;
                  res = amf_get_property_buffer(data, L"av_frame_ref", &frame_ref_storage_buffer);
@@ -1429,7 +1435,7 @@ Index: jellyfin-ffmpeg/libavcodec/amfenc.c
  
                      ret = av_fifo_write(ctx->timestamp_list, &pts, 1);
                      if (ret < 0)
-@@ -748,24 +698,26 @@ int ff_amf_receive_packet(AVCodecContext
+@@ -748,24 +696,26 @@ int ff_amf_receive_packet(AVCodecContext
                  if (res != AMF_INPUT_FULL) {
                      ctx->delayed_drain = 0;
                      ctx->eof = 1; // drain started
