@@ -1,3 +1,13 @@
+jellyfin-ffmpeg (5.1.2-1) unstable; urgency=medium
+
+  * New upstream version 5.1.2
+  * Enable SVT-AV1 encoder for amd64
+  * Remove unneeded assertion from AMF encoder
+  * Disable reshape if DOVI require an EL
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 30 Sep 2022 22:35:03 +0800
+
 jellyfin-ffmpeg (5.1.1-2) unstable; urgency=medium
 
   * Add fixes for VAAPI render node enumeration
