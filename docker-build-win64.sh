@@ -166,7 +166,7 @@ popd
 # LZMA
 mkdir xz
 pushd xz
-xz_ver="5.2.6"
+xz_ver="5.2.7"
 xz_link="https://sourceforge.net/projects/lzmautils/files/xz-${xz_ver}.tar.xz/download"
 wget ${xz_link} -O xz.tar.xz
 tar xaf xz.tar.xz
@@ -441,6 +441,23 @@ make install
 popd
 popd
 
+# SVT-AV1
+git clone -b v1.2.1 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+pushd SVT-AV1
+mkdir build
+pushd build
+cmake \
+    -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
+    -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_AVX512=ON \
+    -DBUILD_{SHARED_LIBS,TESTING,APPS,DEC}=OFF \
+    ..
+make -j$(nproc)
+make install
+popd
+popd
+
 # DAV1D
 git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
@@ -482,7 +499,7 @@ mv * ${FF_DEPS_PREFIX}/include/CL
 popd
 
 # OpenCL ICD loader
-git clone -b v2022.09.23 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+git clone -b v2022.09.30 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 pushd OpenCL-ICD-Loader
 mkdir build
 pushd build
@@ -583,6 +600,7 @@ fi
     --enable-libzimg \
     --enable-libx264 \
     --enable-libx265 \
+    --enable-libsvtav1 \
     --enable-libdav1d \
     --enable-libfdk-aac \
     --enable-opencl \

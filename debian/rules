@@ -59,6 +59,7 @@ CONFIG_ARM64 := ${CONFIG_ARM_COMMON} \
 	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
 
 CONFIG_x86 := --arch=amd64 \
+	--enable-libsvtav1 \
 	--enable-libshaderc \
 	--enable-libplacebo \
 	--enable-vulkan \
