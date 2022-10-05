@@ -166,7 +166,7 @@ popd
 # LZMA
 mkdir xz
 pushd xz
-xz_ver="5.2.6"
+xz_ver="5.2.7"
 xz_link="https://sourceforge.net/projects/lzmautils/files/xz-${xz_ver}.tar.xz/download"
 wget ${xz_link} -O xz.tar.xz
 tar xaf xz.tar.xz
@@ -499,7 +499,7 @@ mv * ${FF_DEPS_PREFIX}/include/CL
 popd
 
 # OpenCL ICD loader
-git clone -b v2022.09.23 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+git clone -b v2022.09.30 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 pushd OpenCL-ICD-Loader
 mkdir build
 pushd build
