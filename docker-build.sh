@@ -201,7 +201,7 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone -b 2.15.0 --depth=1 https://github.com/intel/libva
+    git clone -b 2.16.0 --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
@@ -218,7 +218,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone -b 2.15.0 --depth=1 https://github.com/intel/libva-utils
+    git clone -b 2.16.0 --depth=1 https://github.com/intel/libva-utils
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -242,7 +242,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.2.0 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.2.1 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -310,7 +310,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.230 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.231 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -323,7 +323,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.230 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.231 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -344,7 +344,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2022.2 --depth=1 https://github.com/google/shaderc
+    git clone -b v2022.3 --depth=1 https://github.com/google/shaderc
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -378,6 +378,9 @@ prepare_extra_amd64() {
         mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
         wget ${mesa_link} -O mesa.tar.xz
         tar xaf mesa.tar.xz
+        # fix the invalid modifier issue on amd apu
+        MESA_SI_TEX="mesa-${mesa_ver}/src/gallium/drivers/radeonsi/si_texture.c"
+	sed -i 's|(struct si_texture \*)screen->resource_create(screen, \&templ)|(struct si_texture\*)((tex->surface.modifier==DRM_FORMAT_MOD_INVALID\|\|!screen->resource_create_with_modifiers)?screen->resource_create(screen,\&templ):screen->resource_create_with_modifiers(screen,\&templ,\&tex->surface.modifier,1))|g' ${MESA_SI_TEX}
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa-${mesa_ver}/src/gallium/frontends/va/picture.c"
         MESA_VA_CONF="mesa-${mesa_ver}/src/gallium/frontends/va/config.c"
