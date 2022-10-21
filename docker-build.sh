@@ -297,6 +297,7 @@ prepare_extra_amd64() {
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
           -DENABLE_NONFREE_KERNELS=ON \
+          -DENABLE_PRODUCTION_KMD=ON \
           LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
