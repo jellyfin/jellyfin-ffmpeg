@@ -22,26 +22,32 @@ case ${cli_release} in
     'buster')
         release="debian:buster"
         gcc_version="8"
+        llvm_version="13"
     ;;
     'bullseye')
         release="debian:bullseye"
         gcc_version="10"
+        llvm_version="13"
     ;;
     'bionic')
         release="ubuntu:bionic"
         gcc_version="7"
+        llvm_version="10"
     ;;
     'focal')
         release="ubuntu:focal"
         gcc_version="9"
+        llvm_version="12"
     ;;
     'jammy')
         release="ubuntu:jammy"
         gcc_version="11"
+        llvm_version="14"
     ;;
     'kinetic')
         release="ubuntu:kinetic"
         gcc_version="12"
+        llvm_version="15"
     ;;
     *)
         echo "Invalid release."
@@ -90,7 +96,7 @@ cleanup() {
 trap cleanup EXIT INT
 
 # Generate Dockerfile
-make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_version} ARCH=${arch}
+make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_version} LLVM_VER=${llvm_version} ARCH=${arch}
 # Set up the build environment docker image
 docker build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}
