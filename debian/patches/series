@@ -35,3 +35,4 @@
 0035-add-pause-support-for-ffmpeg.patch
 0036-enable-gcc-vectorization-and-lto-auto.patch
 0037-add-fixes-for-vaapi-rendernode-enumeration.patch
+0038-add-tier-option-for-qsv-hevc-encoder.patch
