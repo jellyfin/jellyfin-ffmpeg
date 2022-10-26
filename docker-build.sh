@@ -141,7 +141,7 @@ prepare_extra_amd64() {
         NASM_PATH=/usr/lib/nasm-mozilla/bin/nasm
     fi
     pushd ${SOURCE_DIR}
-    git clone -b v1.2.1 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v1.3.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
     mkdir build
     pushd build
@@ -242,7 +242,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.2.1 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.3.0 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -368,13 +368,12 @@ prepare_extra_amd64() {
 
     # MESA
     # Minimal libs for AMD VAAPI, AMD RADV and Intel ANV
-    if [[ $( lsb_release -c -s ) != "bionic" ]]; then
-        # llvm >= 11
-        apt-get install -y llvm-11-dev libudev-dev
+    if [[ ${LLVM_VER} -ge 11 ]]; then
+        apt-get install -y llvm-${LLVM_VER}-dev libudev-dev
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="22.0.5"
+        mesa_ver="22.2.2"
         mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
         wget ${mesa_link} -O mesa.tar.xz
         tar xaf mesa.tar.xz
@@ -407,6 +406,7 @@ prepare_extra_amd64() {
             -Dgallium-{extra-hud,nine}=false \
             -Dgallium-{omx,vdpau,xa,xvmc,opencl}=disabled \
             -Dgallium-va=enabled \
+            -Dvideo-codecs=vc1dec,h264dec,h264enc,h265dec,h265enc \
             -Dgbm=disabled \
             -Dgles1=disabled \
             -Dgles2=disabled \
