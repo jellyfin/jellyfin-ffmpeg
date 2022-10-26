@@ -36,3 +36,4 @@
 0036-enable-gcc-vectorization-and-lto-auto.patch
 0037-add-fixes-for-vaapi-rendernode-enumeration.patch
 0038-add-tier-option-for-qsv-hevc-encoder.patch
+0039-add-fixes-for-some-quirks-on-dg2-on-windows.patch
