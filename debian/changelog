@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (5.1.2-3) unstable; urgency=medium
+
+  * Add tier option for the QSV HEVC encoder
+  * Add fixes for some quirks on DG2 on Windows
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 26 Oct 2022 20:44:03 +0800
+
 jellyfin-ffmpeg (5.1.2-2) unstable; urgency=medium
 
   * Add fixes for the invalid modifier on AMD APU
