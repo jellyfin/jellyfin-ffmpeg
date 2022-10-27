@@ -2,6 +2,7 @@ jellyfin-ffmpeg (5.1.2-3) unstable; urgency=medium
 
   * Add tier option for the QSV HEVC encoder
   * Add fixes for some quirks on DG2 on Windows
+  * Improve the robustness of DV tonemap
   * Update dependencies
 
  -- nyanmisaka <nst799610810@gmail.com>  Tue, 26 Oct 2022 20:44:03 +0800

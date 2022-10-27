@@ -1518,7 +1518,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1036 @@
+@@ -0,0 +1,1039 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1990,7 +1990,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        // dovi_pivots
 +        if (comp->num_pivots > 2) {
 +            // Skip the (irrelevant) lower and upper bounds
-+            float pivots_data[7];
++            float pivots_data[7] = {0};
 +            memcpy(pivots_data, comp->pivots + 1,
 +                   (comp->num_pivots - 2) * sizeof(pivots_data[0]));
 +            // Fill the remainder with a quasi-infinite sentinel pivot
@@ -2417,6 +2417,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        s->out_pri        = s->pri;
 +        s->out_range      = s->range;
 +        s->out_chroma_loc = s->in_chroma_loc;
++
++        if (!s->dovi)
++            s->apply_dovi = 0;
 +
 +        if ((ret = compile(link)) < 0)
 +            goto fail;
