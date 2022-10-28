@@ -10,7 +10,6 @@ done
 
 # Use the latest distro for toolchains
 distro="ubuntu:kinetic"
-ffrevison="3"
 image_name="jellyfin-ffmpeg-build-windows-win64"
 package_temporary_dir="$( mktemp -d )"
 current_user="$( whoami )"
@@ -25,7 +24,7 @@ cleanup() {
 trap cleanup EXIT INT
 
 # Generate Dockerfile
-make -f Dockerfile.win64.make DISTRO=${distro} FF_REV=${ffrevison}
+make -f Dockerfile.win64.make DISTRO=${distro}
 # Set up the build environment docker image
 docker build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}
