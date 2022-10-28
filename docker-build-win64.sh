@@ -558,7 +558,7 @@ popd
 
 # Jellyfin-FFmpeg
 pushd ${SOURCE_DIR}
-ffversion="$(cat RELEASE)-${FF_REV}"
+ffversion="$(dpkg-parsechangelog --show-field Version)"
 if [[ -f "patches/series" ]]; then
     quilt push -a
 fi

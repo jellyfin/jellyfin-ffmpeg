@@ -8,7 +8,6 @@ ARG ARTIFACT_DIR=/dist
 ENV DEBIAN_FRONTEND=noninteractive \
     SOURCE_DIR=/ffmpeg \
     ARTIFACT_DIR=/dist \
-    FF_REV=FFMPEG_REV \
     FF_PREFIX=/opt/ffmpeg \
     FF_DEPS_PREFIX=/opt/ffdeps \
     FF_TOOLCHAIN=x86_64-w64-mingw32 \
