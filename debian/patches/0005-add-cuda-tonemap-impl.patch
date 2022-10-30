@@ -982,7 +982,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,381 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1233,7 +1233,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +            break;
 +
 +        dovi_params = src_dovi_params + i*8;
-+        dovi_pivots = src_dovi_pivots + i*7;
++        dovi_pivots = src_dovi_pivots + i*8;
 +        dovi_coeffs = src_dovi_coeffs + i*8;
 +        dovi_mmr = src_dovi_mmr + i*48;
 +        dovi_num_pivots = dovi_params[0];
@@ -1284,9 +1284,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +extern "C" {
 +
 +__global__ void tonemap(FFCUDAFrame src, FFCUDAFrame dst,
-+                        cudaTextureObject_t ditherTex,
-+                        float *dovi_params, float *dovi_pivots,
-+                        float4 *dovi_coeffs, float4 *dovi_mmr)
++                        cudaTextureObject_t ditherTex, float *doviBuf)
 +{
 +    int xi = blockIdx.x * blockDim.x + threadIdx.x;
 +    int yi = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1313,7 +1311,12 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +        }
 +
 +        if (dovi_reshape) {
++            float *dovi_params = doviBuf;
++            float *dovi_pivots = doviBuf + 24;
++            float4 *dovi_coeffs = (float4 *)(doviBuf + 48);
++            float4 *dovi_mmr = (float4 *)(doviBuf + 144);
 +            int has_mmr = dovi_params[1] || dovi_params[9] || dovi_params[17];
++
 +            if (!has_mmr && skip_aa) {
 +                yuv0 = reshape_dovi_yuv(yuv0, 0, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
 +                yuv1 = make_float3(reshape_dovi_yuv(yuv1, 1, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr).x, yuv0.y, yuv0.z);
@@ -1518,7 +1521,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1039 @@
+@@ -0,0 +1,990 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1613,20 +1616,17 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CUdeviceptr ditherBuffer;
 +    CUtexObject ditherTex;
 +
-+    CUdeviceptr dovi_params_buf;
-+    CUdeviceptr dovi_pivots_buf;
-+    CUdeviceptr dovi_coeffs_buf;
-+    CUdeviceptr dovi_mmr_buf;
-+
-+#define dovi_params_size 8*sizeof(float)
-+#define dovi_pivots_size 7*sizeof(float)
-+#define dovi_coeffs_size 8*4*sizeof(float)
-+#define dovi_mmr_size 8*6*4*sizeof(float)
++#define params_cnt 8
++#define pivots_cnt (7+1)
++#define coeffs_cnt 8*4
++#define mmr_cnt 8*6*4
++#define params_sz params_cnt*sizeof(float)
++#define pivots_sz pivots_cnt*sizeof(float)
++#define coeffs_sz coeffs_cnt*sizeof(float)
++#define mmr_sz mmr_cnt*sizeof(float)
++    CUdeviceptr doviBuffer;
 +    struct DoviMetadata *dovi;
-+    float *dovi_params;
-+    float *dovi_pivots;
-+    float *dovi_coeffs;
-+    float *dovi_mmr;
++    float *dovi_pbuf;
 +
 +    enum TonemapAlgorithm tonemap;
 +    int apply_dovi;
@@ -1664,10 +1664,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        return AVERROR(ENOMEM);
 +
 +    s->dovi = NULL;
-+    s->dovi_params_buf = NULL;
-+    s->dovi_pivots_buf = NULL;
-+    s->dovi_coeffs_buf = NULL;
-+    s->dovi_mmr_buf = NULL;
++    s->doviBuffer = NULL;
 +
 +    return 0;
 +}
@@ -1690,21 +1687,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +            CHECK_CU(cu->cuMemFree(s->ditherBuffer));
 +            s->ditherBuffer = 0;
 +        }
-+        if (s->dovi_params_buf) {
-+            CHECK_CU(cu->cuMemFree(s->dovi_params_buf));
-+            s->dovi_params_buf = 0;
-+        }
-+        if (s->dovi_pivots_buf) {
-+            CHECK_CU(cu->cuMemFree(s->dovi_pivots_buf));
-+            s->dovi_pivots_buf = 0;
-+        }
-+        if (s->dovi_coeffs_buf) {
-+            CHECK_CU(cu->cuMemFree(s->dovi_coeffs_buf));
-+            s->dovi_coeffs_buf = 0;
-+        }
-+        if (s->dovi_mmr_buf) {
-+            CHECK_CU(cu->cuMemFree(s->dovi_mmr_buf));
-+            s->dovi_mmr_buf = 0;
++        if (s->doviBuffer) {
++            CHECK_CU(cu->cuMemFree(s->doviBuffer));
++            s->doviBuffer = 0;
 +        }
 +        if (s->cu_module) {
 +            CHECK_CU(cu->cuModuleUnload(s->cu_module));
@@ -1717,14 +1702,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +    if (s->dovi)
 +        av_freep(&s->dovi);
-+    if (s->dovi_params)
-+        av_freep(&s->dovi_params);
-+    if (s->dovi_pivots)
-+        av_freep(&s->dovi_pivots);
-+    if (s->dovi_coeffs)
-+        av_freep(&s->dovi_coeffs);
-+    if (s->dovi_mmr)
-+        av_freep(&s->dovi_mmr);
++    if (s->dovi_pbuf)
++        av_freep(&s->dovi_pbuf);
 +
 +    av_frame_free(&s->frame);
 +    av_buffer_unref(&s->frames_ctx);
@@ -1921,7 +1900,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    return 0;
 +}
 +
-+static void update_dovi_params(AVFilterContext *ctx)
++static void update_dovi_buf(AVFilterContext *ctx)
 +{
 +    TonemapCUDAContext *s = ctx->priv;
 +    float coeffs_data[8][4] = {0};
@@ -1984,27 +1963,27 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +                mmr_single, min_order, max_order,
 +                comp->pivots[0], comp->pivots[comp->num_pivots - 1]
 +            };
-+            memcpy(s->dovi_params + c*8, params, dovi_params_size);
++            memcpy(s->dovi_pbuf + c*params_cnt, params, params_sz);
 +        }
 +
 +        // dovi_pivots
 +        if (comp->num_pivots > 2) {
 +            // Skip the (irrelevant) lower and upper bounds
-+            float pivots_data[7] = {0};
++            float pivots_data[7+1] = {0};
 +            memcpy(pivots_data, comp->pivots + 1,
 +                   (comp->num_pivots - 2) * sizeof(pivots_data[0]));
 +            // Fill the remainder with a quasi-infinite sentinel pivot
 +            for (i = comp->num_pivots - 2; i < FF_ARRAY_ELEMS(pivots_data); i++)
 +                pivots_data[i] = 1e9f;
-+            memcpy(s->dovi_pivots + c*7, pivots_data, dovi_pivots_size);
++            memcpy(s->dovi_pbuf + 3*params_cnt + c*pivots_cnt, pivots_data, pivots_sz);
 +        }
 +
 +        // dovi_coeffs
-+        memcpy(s->dovi_coeffs + c*8*4, &coeffs_data[0], dovi_coeffs_size);
++        memcpy(s->dovi_pbuf + 3*(params_cnt+pivots_cnt) + c*coeffs_cnt, &coeffs_data[0], coeffs_sz);
 +
 +        // dovi_mmr
 +        if (has_mmr)
-+            memcpy(s->dovi_mmr + c*8*6*4, &mmr_packed_data[0], dovi_mmr_size);
++            memcpy(s->dovi_pbuf + 3*(params_cnt+pivots_cnt+coeffs_cnt) + c*mmr_cnt, &mmr_packed_data[0], mmr_sz);
 +    }
 +}
 +
@@ -2169,21 +2148,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        return ret;
 +
 +    if (s->dovi) {
-+        s->dovi_params = av_mallocz(3*dovi_params_size);
-+        s->dovi_pivots = av_mallocz(3*dovi_pivots_size);
-+        s->dovi_coeffs = av_mallocz(3*dovi_coeffs_size);
-+        s->dovi_mmr = av_mallocz(3*dovi_mmr_size);
-+
-+        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_params_buf, 3*dovi_params_size));
-+        if (ret < 0)
-+            goto fail;
-+        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_pivots_buf, 3*dovi_pivots_size));
-+        if (ret < 0)
-+            goto fail;
-+        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_coeffs_buf, 3*dovi_coeffs_size));
-+        if (ret < 0)
-+            goto fail;
-+        ret = CHECK_CU(cu->cuMemAlloc(&s->dovi_mmr_buf, 3*dovi_mmr_size));
++        s->dovi_pbuf = av_mallocz(3*(params_sz+pivots_sz+coeffs_sz+mmr_sz));
++        ret = CHECK_CU(cu->cuMemAlloc(&s->doviBuffer, 3*(params_sz+pivots_sz+coeffs_sz+mmr_sz)));
 +        if (ret < 0)
 +            goto fail;
 +    }
@@ -2274,9 +2240,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    TonemapCUDAContext *s = ctx->priv;
 +    CudaFunctions *cu = s->hwctx->internal->cuda_dl;
 +    FFCUDAFrame src, dst;
-+    void *args[] = { &src, &dst, &s->ditherTex,
-+                     &s->dovi_params_buf, &s->dovi_pivots_buf,
-+                     &s->dovi_coeffs_buf, &s->dovi_mmr_buf };
++    void *args[] = { &src, &dst, &s->ditherTex, &s->doviBuffer };
 +    int ret, aa = s->tradeoff != 1;
 +
 +    ret = ff_make_cuda_frame(ctx, cu, aa,
@@ -2430,24 +2394,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        goto fail;
 +
 +    if (s->dovi) {
-+        update_dovi_params(ctx);
++        update_dovi_buf(ctx);
 +
-+        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_params_buf, s->dovi_params,
-+                                             3*dovi_params_size, s->hwctx->stream));
-+        if (ret < 0)
++        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->doviBuffer, s->dovi_pbuf,
++                                             3*(params_sz+pivots_sz+coeffs_sz+mmr_sz), s->hwctx->stream));
++        if (ret < 0) {
++            av_log(ctx, AV_LOG_ERROR, "Failed to update dovi buf.\n");
 +            goto fail;
-+        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_pivots_buf, s->dovi_pivots,
-+                                             3*dovi_pivots_size, s->hwctx->stream));
-+        if (ret < 0)
-+            goto fail;
-+        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_coeffs_buf, s->dovi_coeffs,
-+                                             3*dovi_coeffs_size, s->hwctx->stream));
-+        if (ret < 0)
-+            goto fail;
-+        ret = CHECK_CU(cu->cuMemcpyHtoDAsync(s->dovi_mmr_buf, s->dovi_mmr,
-+                                             3*dovi_mmr_size, s->hwctx->stream));
-+        if (ret < 0)
-+            goto fail;
++        }
 +
 +        av_freep(&s->dovi);
 +    }
