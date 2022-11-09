@@ -277,6 +277,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
 -    QSVOverlayContext  *s = fs->opaque;
 -    AVFrame        *frame = NULL;
 -    int               ret = 0, i;
+-
+-    for (i = 0; i < ctx->nb_inputs; i++) {
+-        ret = ff_framesync_get_frame(fs, i, &frame, 0);
+-        if (ret == 0)
+-            ret = ff_qsvvpp_filter_frame(s->qsv, ctx->inputs[i], frame);
+-        if (ret < 0 && ret != AVERROR(EAGAIN))
+-            break;
+-    }
 +    AVFilterContext *ctx = fs->parent;
 +    QSVVPPContext   *qsv = fs->opaque;
 +    AVFilterLink    *in0 = ctx->inputs[0];
@@ -285,21 +293,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
 +    AVFrame     *overlay = NULL;
 +    int              ret = 0;
  
--    for (i = 0; i < ctx->nb_inputs; i++) {
--        ret = ff_framesync_get_frame(fs, i, &frame, 0);
--        if (ret == 0)
--            ret = ff_qsvvpp_filter_frame(s->qsv, ctx->inputs[i], frame);
--        if (ret < 0 && ret != AVERROR(EAGAIN))
--            break;
--    }
+-    return ret;
 +    ret = ff_framesync_get_frame(fs, 0, &main, 0);
 +    if (ret < 0)
 +        return ret;
 +    ret = ff_framesync_get_frame(fs, 1, &overlay, 0);
 +    if (ret < 0)
 +        return ret;
- 
--    return ret;
++
 +    if (!main)
 +        return AVERROR_BUG;
 +
@@ -345,22 +346,28 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
  
      return ff_framesync_configure(&s->fs);
  }
-@@ -280,14 +290,6 @@ static int config_output(AVFilterLink *o
+@@ -276,18 +286,14 @@ static int config_output(AVFilterLink *o
+     int ret;
+ 
+     av_log(ctx, AV_LOG_DEBUG, "Output is of %s.\n", av_get_pix_fmt_name(outlink->format));
++    vpp->qsv_param.out_sw_format = in0->format;
+     if ((in0->format == AV_PIX_FMT_QSV && in1->format != AV_PIX_FMT_QSV) ||
          (in0->format != AV_PIX_FMT_QSV && in1->format == AV_PIX_FMT_QSV)) {
          av_log(ctx, AV_LOG_ERROR, "Mixing hardware and software pixel formats is not supported.\n");
          return AVERROR(EINVAL);
--    } else if (in0->format == AV_PIX_FMT_QSV) {
--        AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)in0->hw_frames_ctx->data;
+     } else if (in0->format == AV_PIX_FMT_QSV) {
+         AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)in0->hw_frames_ctx->data;
 -        AVHWFramesContext *hw_frame1 = (AVHWFramesContext *)in1->hw_frames_ctx->data;
 -
 -        if (hw_frame0->device_ctx != hw_frame1->device_ctx) {
 -            av_log(ctx, AV_LOG_ERROR, "Inputs with different underlying QSV devices are forbidden.\n");
 -            return AVERROR(EINVAL);
 -        }
++        vpp->qsv_param.out_sw_format = hw_frame0->sw_format;
      }
  
      outlink->w          = vpp->var_values[VAR_MW];
-@@ -299,7 +301,7 @@ static int config_output(AVFilterLink *o
+@@ -299,7 +305,7 @@ static int config_output(AVFilterLink *o
      if (ret < 0)
          return ret;
  
@@ -369,7 +376,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
  }
  
  /*
-@@ -348,7 +350,7 @@ static av_cold void overlay_qsv_uninit(A
+@@ -348,7 +354,7 @@ static av_cold void overlay_qsv_uninit(A
  {
      QSVOverlayContext *vpp = ctx->priv;
  
@@ -378,13 +385,22 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_qsv.c
      ff_framesync_uninit(&vpp->fs);
      av_freep(&vpp->comp_conf.InputStream);
      av_freep(&vpp->qsv_param.ext_buf);
-@@ -426,4 +428,4 @@ const AVFilter ff_vf_overlay_qsv = {
-     FILTER_QUERY_FUNC(overlay_qsv_query_formats),
-     .priv_class     = &overlay_qsv_class,
-     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
--};
-+};
-\ No newline at end of file
+@@ -368,6 +374,7 @@ static int overlay_qsv_query_formats(AVF
+     static const enum AVPixelFormat main_in_fmts[] = {
+         AV_PIX_FMT_YUV420P,
+         AV_PIX_FMT_NV12,
++        AV_PIX_FMT_P010,
+         AV_PIX_FMT_YUYV422,
+         AV_PIX_FMT_RGB32,
+         AV_PIX_FMT_QSV,
+@@ -375,6 +382,7 @@ static int overlay_qsv_query_formats(AVF
+     };
+     static const enum AVPixelFormat out_pix_fmts[] = {
+         AV_PIX_FMT_NV12,
++        AV_PIX_FMT_P010,
+         AV_PIX_FMT_QSV,
+         AV_PIX_FMT_NONE
+     };
 Index: jellyfin-ffmpeg/libavfilter/vf_scale_qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_scale_qsv.c
