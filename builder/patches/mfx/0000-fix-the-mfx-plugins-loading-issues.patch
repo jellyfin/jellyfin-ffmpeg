@@ -1,0 +1,41 @@
+From 4956295de595932d39ec87460e91aeac08fb94aa Mon Sep 17 00:00:00 2001
+From: nyanmisaka <nst799610810@gmail.com>
+Date: Sat, 29 Oct 2022 00:07:43 +0800
+Subject: [PATCH] Fix the MFX plugins loading issue on linux
+
+add a series of fallback paths for plugins.cfg, this should cover most linux distros.
+
+Signed-off-by: nyanmisaka <nst799610810@gmail.com>
+---
+ src/mfxloader.cpp | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/mfxloader.cpp b/src/mfxloader.cpp
+index 2f676f5..a18b8c7 100644
+--- a/src/mfxloader.cpp
++++ b/src/mfxloader.cpp
+@@ -452,7 +452,24 @@ mfxStatus MFXVideoUSER_Load(mfxSession session, const mfxPluginUID *uid, mfxU32
+       if (MFX::g_GlobalCtx.m_plugins.empty()) {
+         // Parsing plugin configuration file and loading information of
+         // _all_ plugins registered on the system.
++#if defined(__linux__)
++        // Hardcode common plugins paths for most linux distros in case of
++        // the legacy mfxdispatcher is configured to static build.
++        const char *plugins_paths[4] = { "/plugins.cfg",
++                                         "/usr/share/mfx/plugins.cfg",
++                                         "/usr/local/share/mfx/plugins.cfg",
++                                         "/opt/intel/mediasdk/plugins/plugins.cfg" };
++        for (int i = 0; i < sizeof(plugins_paths) / sizeof(plugins_paths[0]); i++) {
++          FILE *fp = NULL;
++          if ((fp = fopen(plugins_paths[i], "r")) != NULL) {
++            fclose(fp);
++            parse(plugins_paths[i], MFX::g_GlobalCtx.m_plugins);
++            break;
++          }
++        }
++#else
+         parse(MFX_PLUGINS_CONF_DIR "/plugins.cfg", MFX::g_GlobalCtx.m_plugins);
++#endif
+       }
+ 
+       // search for plugin description
