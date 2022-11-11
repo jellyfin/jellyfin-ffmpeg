@@ -318,7 +318,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,264 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -365,6 +365,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +extern __constant__ const enum AVChromaLocation chroma_loc_src, chroma_loc_dst;
 +extern __constant__ const bool rgb2rgb_passthrough;
 +extern __constant__ const float rgb2rgb_matrix[9];
++extern __constant__ const bool skip_tonemap;
 +extern __constant__ const bool dovi_perf_tradeoff;
 +extern __constant__ const float lms2rgb_matrix[9];
 +extern __constant__ const float yuv_matrix[9], rgb_matrix[9];
@@ -473,7 +474,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +
 +static __inline__ __device__ float linearize(float x)
 +{
-+    if (trc_src == AVCOL_TRC_SMPTE2084)
++    if (trc_src == AVCOL_TRC_SMPTE2084 && !skip_tonemap)
 +        return eotf_st2084(x);
 +    else if (trc_src == AVCOL_TRC_ARIB_STD_B67)
 +        return eotf_arib_b67(x);
@@ -982,7 +983,7 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,383 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1335,23 +1336,25 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +        float3 c2 = map_to_dst_space_from_yuv(yuv2);
 +        float3 c3 = map_to_dst_space_from_yuv(yuv3);
 +
-+        src.peak = rescale_peak(src.peak, dst.peak);
-+        if (tonemap_func == TONEMAP_BT2390) {
-+            src.peak_inv_pq = inverse_eotf_st2084(src.peak);
-+            dst.peak_inv_pq = inverse_eotf_st2084(dst.peak);
-+        }
++        if (!skip_tonemap) {
++            src.peak = rescale_peak(src.peak, dst.peak);
++            if (tonemap_func == TONEMAP_BT2390) {
++                src.peak_inv_pq = inverse_eotf_st2084(src.peak);
++                dst.peak_inv_pq = inverse_eotf_st2084(dst.peak);
++            }
 +
-+        c0 = map_one_pixel_rgb(c0, src, dst);
-+        c1 = map_one_pixel_rgb(c1, src, dst);
-+        c2 = map_one_pixel_rgb(c2, src, dst);
-+        c3 = map_one_pixel_rgb(c3, src, dst);
++            c0 = map_one_pixel_rgb(c0, src, dst);
++            c1 = map_one_pixel_rgb(c1, src, dst);
++            c2 = map_one_pixel_rgb(c2, src, dst);
++            c3 = map_one_pixel_rgb(c3, src, dst);
++        }
 +
 +        yuv0 = lrgb2yuv(c0);
 +        yuv1 = lrgb2yuv(c1);
 +        yuv2 = lrgb2yuv(c2);
 +        yuv3 = lrgb2yuv(c3);
 +
-+        if (enable_dither) {
++        if (enable_dither && !skip_tonemap) {
 +            float d = read_dither(ditherTex, dither_size, xi, yi);
 +            yuv0.x = get_dithered_y(yuv0.x, d);
 +            yuv1.x = get_dithered_y(yuv1.x, d);
@@ -1521,7 +1524,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,990 @@
+@@ -0,0 +1,1038 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1631,6 +1634,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    enum TonemapAlgorithm tonemap;
 +    int apply_dovi;
 +    int tradeoff;
++    int init_with_dovi;
 +    double ref_white;
 +    double param;
 +    double desat_param;
@@ -1669,7 +1673,33 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    return 0;
 +}
 +
-+static av_cold void uninit(AVFilterContext *ctx)
++static av_cold void uninit_dovi(AVFilterContext *ctx)
++{
++    TonemapCUDAContext *s = ctx->priv;
++
++    if (s->hwctx) {
++        CudaFunctions *cu = s->hwctx->internal->cuda_dl;
++        CUcontext dummy, cuda_ctx = s->hwctx->cuda_ctx;
++
++        CHECK_CU(cu->cuCtxPushCurrent(cuda_ctx));
++
++        if (s->doviBuffer) {
++            CHECK_CU(cu->cuMemFree(s->doviBuffer));
++            s->doviBuffer = 0;
++        }
++
++        CHECK_CU(cu->cuCtxPopCurrent(&dummy));
++    }
++
++    if (s->dovi)
++        av_freep(&s->dovi);
++    if (s->dovi_pbuf)
++        av_freep(&s->dovi_pbuf);
++
++    s->init_with_dovi = 0;
++}
++
++static av_cold void uninit_common(AVFilterContext *ctx)
 +{
 +    TonemapCUDAContext *s = ctx->priv;
 +
@@ -1687,10 +1717,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +            CHECK_CU(cu->cuMemFree(s->ditherBuffer));
 +            s->ditherBuffer = 0;
 +        }
-+        if (s->doviBuffer) {
-+            CHECK_CU(cu->cuMemFree(s->doviBuffer));
-+            s->doviBuffer = 0;
-+        }
 +        if (s->cu_module) {
 +            CHECK_CU(cu->cuModuleUnload(s->cu_module));
 +            s->cu_func = NULL;
@@ -1699,11 +1725,14 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +        CHECK_CU(cu->cuCtxPopCurrent(&dummy));
 +    }
++}
 +
-+    if (s->dovi)
-+        av_freep(&s->dovi);
-+    if (s->dovi_pbuf)
-+        av_freep(&s->dovi_pbuf);
++static av_cold void uninit(AVFilterContext *ctx)
++{
++    TonemapCUDAContext *s = ctx->priv;
++
++    uninit_common(ctx);
++    uninit_dovi(ctx);
 +
 +    av_frame_free(&s->frame);
 +    av_buffer_unref(&s->frames_ctx);
@@ -2040,6 +2069,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    s->ref_white = s->tonemap == TONEMAP_BT2390 ? REFERENCE_WHITE_ALT
 +                                                : REFERENCE_WHITE;
 +
++    if (s->tonemap == TONEMAP_BT2390 && s->peak)
++        s->peak = FFMAX(s->peak / 10.0f, 1.1f);
++
 +    s->dst_peak = s->dst_peak ? s->dst_peak : 1.0f;
 +
 +    if (in_trc == AVCOL_TRC_UNSPECIFIED)
@@ -2061,6 +2093,18 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        in_range = AVCOL_RANGE_MPEG;
 +    if (out_range == AVCOL_RANGE_UNSPECIFIED)
 +        out_range = AVCOL_RANGE_MPEG;
++
++    if (out_trc == AVCOL_TRC_SMPTE2084) {
++        int is_10_or_16b_out = s->out_desc->comp[0].depth == 10 ||
++                               s->out_desc->comp[0].depth == 16;
++        if (!(is_10_or_16b_out &&
++            out_pri == AVCOL_PRI_BT2020 &&
++            out_spc == AVCOL_SPC_BT2020_NCL)) {
++            av_log(ctx, AV_LOG_ERROR, "HDR passthrough requires BT.2020 "
++                   "colorspace and 10/16 bit output format depth.\n");
++            return AVERROR(EINVAL);
++        }
++    }
 +
 +    av_log(ctx, AV_LOG_DEBUG, "Tonemapping transfer from %s to %s\n",
 +           av_color_transfer_name(in_trc),
@@ -2137,6 +2181,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    CONSTANT_M("yuv_matrix", yuv_matrix);
 +    CONSTANT_A(".u8 rgb2rgb_passthrough = %i", 1, in_pri == out_pri);
 +    CONSTANT_M("rgb2rgb_matrix", rgb2rgb_matrix);
++    CONSTANT_A(".u8 skip_tonemap = %i", 1, out_trc == AVCOL_TRC_SMPTE2084);
 +    CONSTANT_A(".u8 dovi_perf_tradeoff = %i", 1, s->tradeoff == 1);
 +    CONSTANT_A(".u8 skip_aa = %i", 1, s->tradeoff == 1);
 +    CONSTANT_M("lms2rgb_matrix", lms2rgb_matrix);
@@ -2364,6 +2409,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        }
 +    }
 +
++    if (!s->init_with_dovi && s->dovi && s->cu_func)
++        uninit_common(ctx);
++
 +    if (!s->cu_func ||
 +        s->in_trc        != in->color_trc ||
 +        s->in_spc        != in->colorspace ||
@@ -2382,11 +2430,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +        s->out_range      = s->range;
 +        s->out_chroma_loc = s->in_chroma_loc;
 +
-+        if (!s->dovi)
-+            s->apply_dovi = 0;
-+
 +        if ((ret = compile(link)) < 0)
 +            goto fail;
++
++        s->init_with_dovi = !!s->dovi;
 +    }
 +
 +    ret = CHECK_CU(cu->cuCtxPushCurrent(s->hwctx->cuda_ctx));
@@ -2414,8 +2461,11 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +    av_frame_free(&in);
 +
-+    av_frame_remove_side_data(out, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
-+    av_frame_remove_side_data(out, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++    if (s->out_trc != AVCOL_TRC_SMPTE2084) {
++        av_frame_remove_side_data(out, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
++        av_frame_remove_side_data(out, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++    }
++
 +    av_frame_remove_side_data(out, AV_FRAME_DATA_DOVI_RPU_BUFFER);
 +    av_frame_remove_side_data(out, AV_FRAME_DATA_DOVI_METADATA);
 +
@@ -2431,44 +2481,45 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +#define OFFSET(x) offsetof(TonemapCUDAContext, x)
 +#define FLAGS (AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM)
 +static const AVOption options[] = {
-+    { "tonemap",      "Tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, {.i64 = TONEMAP_NONE}, TONEMAP_NONE, TONEMAP_MAX - 1, FLAGS, "tonemap" },
-+    {     "none",     0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_NONE},              0, 0, FLAGS, "tonemap" },
-+    {     "linear",   0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_LINEAR},            0, 0, FLAGS, "tonemap" },
-+    {     "gamma",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_GAMMA},             0, 0, FLAGS, "tonemap" },
-+    {     "clip",     0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_CLIP},              0, 0, FLAGS, "tonemap" },
-+    {     "reinhard", 0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_REINHARD},          0, 0, FLAGS, "tonemap" },
-+    {     "hable",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_HABLE},             0, 0, FLAGS, "tonemap" },
-+    {     "mobius",   0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MOBIUS},            0, 0, FLAGS, "tonemap" },
-+    {     "bt2390",   0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_BT2390},            0, 0, FLAGS, "tonemap" },
-+    { "transfer",     "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
-+    { "t",            "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
-+    {     "bt709",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT709},           0, 0, FLAGS, "transfer" },
-+    {     "bt2020",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT2020_10},       0, 0, FLAGS, "transfer" },
-+    { "matrix",       "Set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
-+    { "m",            "Set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
-+    {     "bt709",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT709},           0, 0, FLAGS, "matrix" },
-+    {     "bt2020",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT2020_NCL},      0, 0, FLAGS, "matrix" },
-+    { "primaries",    "Set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
-+    { "p",            "Set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
-+    {     "bt709",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT709},           0, 0, FLAGS, "primaries" },
-+    {     "bt2020",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT2020},          0, 0, FLAGS, "primaries" },
-+    { "range",        "Set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
-+    { "r",            "Set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
-+    {     "tv",       0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, "range" },
-+    {     "pc",       0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, "range" },
-+    {     "limited",  0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, "range" },
-+    {     "full",     0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, "range" },
-+    { "format",       "Output format",       OFFSET(format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
-+    { "apply_dovi",   "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
-+    { "tradeoff",     "Apply tradeoffs to offload computing", OFFSET(tradeoff), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 1, FLAGS, "tradeoff" },
-+    {     "auto",     0, 0, AV_OPT_TYPE_CONST, {.i64 = -1},                        0, 0, FLAGS, "tradeoff" },
-+    {     "disabled", 0, 0, AV_OPT_TYPE_CONST, {.i64 = 0},                         0, 0, FLAGS, "tradeoff" },
-+    {     "enabled",  0, 0, AV_OPT_TYPE_CONST, {.i64 = 1},                         0, 0, FLAGS, "tradeoff" },
-+    { "peak",         "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, {.dbl = 0}, 0, DBL_MAX, FLAGS },
-+    { "target_peak",  "Target signal peak override", OFFSET(dst_peak), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
-+    { "param",        "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, {.dbl = NAN}, DBL_MIN, DBL_MAX, FLAGS },
-+    { "desat",        "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, {.dbl = 0.5}, 0, DBL_MAX, FLAGS },
-+    { "threshold",    "Scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, {.dbl = 0.2}, 0, DBL_MAX, FLAGS },
++    { "tonemap",       "Tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, {.i64 = TONEMAP_NONE}, TONEMAP_NONE, TONEMAP_MAX - 1, FLAGS, "tonemap" },
++    {     "none",      0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_NONE},              0, 0, FLAGS, "tonemap" },
++    {     "linear",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_LINEAR},            0, 0, FLAGS, "tonemap" },
++    {     "gamma",     0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_GAMMA},             0, 0, FLAGS, "tonemap" },
++    {     "clip",      0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_CLIP},              0, 0, FLAGS, "tonemap" },
++    {     "reinhard",  0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_REINHARD},          0, 0, FLAGS, "tonemap" },
++    {     "hable",     0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_HABLE},             0, 0, FLAGS, "tonemap" },
++    {     "mobius",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MOBIUS},            0, 0, FLAGS, "tonemap" },
++    {     "bt2390",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_BT2390},            0, 0, FLAGS, "tonemap" },
++    { "transfer",      "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
++    { "t",             "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
++    {     "bt709",     0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT709},           0, 0, FLAGS, "transfer" },
++    {     "bt2020",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT2020_10},       0, 0, FLAGS, "transfer" },
++    {     "smpte2084", 0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_SMPTE2084},       0, 0, FLAGS, "transfer" },
++    { "matrix",        "Set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
++    { "m",             "Set colorspace matrix", OFFSET(spc), AV_OPT_TYPE_INT, {.i64 = AVCOL_SPC_BT709}, -1, INT_MAX, FLAGS, "matrix" },
++    {     "bt709",     0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT709},           0, 0, FLAGS, "matrix" },
++    {     "bt2020",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT2020_NCL},      0, 0, FLAGS, "matrix" },
++    { "primaries",     "Set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
++    { "p",             "Set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, "primaries" },
++    {     "bt709",     0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT709},           0, 0, FLAGS, "primaries" },
++    {     "bt2020",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT2020},          0, 0, FLAGS, "primaries" },
++    { "range",         "Set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
++    { "r",             "Set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, "range" },
++    {     "tv",        0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, "range" },
++    {     "pc",        0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, "range" },
++    {     "limited",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, "range" },
++    {     "full",      0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, "range" },
++    { "format",        "Output format",       OFFSET(format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
++    { "apply_dovi",    "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
++    { "tradeoff",      "Apply tradeoffs to offload computing", OFFSET(tradeoff), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 1, FLAGS, "tradeoff" },
++    {     "auto",      0, 0, AV_OPT_TYPE_CONST, {.i64 = -1},                        0, 0, FLAGS, "tradeoff" },
++    {     "disabled",  0, 0, AV_OPT_TYPE_CONST, {.i64 = 0},                         0, 0, FLAGS, "tradeoff" },
++    {     "enabled",   0, 0, AV_OPT_TYPE_CONST, {.i64 = 1},                         0, 0, FLAGS, "tradeoff" },
++    { "peak",          "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, {.dbl = 0}, 0, DBL_MAX, FLAGS },
++    { "target_peak",   "Target signal peak override", OFFSET(dst_peak), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
++    { "param",         "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, {.dbl = NAN}, DBL_MIN, DBL_MAX, FLAGS },
++    { "desat",         "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, {.dbl = 0.5}, 0, DBL_MAX, FLAGS },
++    { "threshold",     "Scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, {.dbl = 0.2}, 0, DBL_MAX, FLAGS },
 +    { NULL },
 +};
 +
