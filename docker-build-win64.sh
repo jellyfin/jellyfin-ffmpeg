@@ -621,8 +621,8 @@ popd
 # Zip and copy artifacts
 mkdir -p ${ARTIFACT_DIR}/zip
 pushd ${FF_PREFIX}/bin
-ffpackage="jellyfin-ffmpeg_${ffversion}-windows_win64"
-zip -r ${ARTIFACT_DIR}/zip/${ffpackage}.zip ./*.{exe,dll}
+ffpackage="jellyfin-ffmpeg_${ffversion}-portable_win64"
+zip -9 -r ${ARTIFACT_DIR}/zip/${ffpackage}.zip ./*.{exe,dll}
 pushd ${ARTIFACT_DIR}/zip
 sha256sum ./${ffpackage}.zip > ./${ffpackage}.zip.sha256sum
 chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

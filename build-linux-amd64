@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -o xtrace
+set -o errexit
+
+# Check for dependencies
+for dep in bash docker; do
+    command -v ${dep} &>/dev/null || { echo "The command '${dep}' is required."; exit 1; }
+done
+
+# Build the jellyfin-ffmpeg portable version
+[[ $(docker image ls 'ghcr.io/jellyfin/jellyfin-ffmpeg/linux64-gpl:latest' | wc -l) -eq 1 ]] && \
+    ./builder/makeimage.sh linux64 gpl
+
+./builder/build.sh linux64 gpl
+
+# If no 1st parameter was specified, move pkg to parent directory
+if [[ -z ${1} ]]; then
+    path="../bin"
+else
+    path="${1}"
+fi
+mkdir ${path} &>/dev/null || true
+mv builder/artifacts/jellyfin-ffmpeg*portable_linux64-gpl*.{tar.xz,sha256sum} "${path}"
