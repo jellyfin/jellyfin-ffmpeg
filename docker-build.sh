@@ -160,7 +160,7 @@ prepare_extra_amd64() {
 
     # FFNVCODEC
     pushd ${SOURCE_DIR}
-    git clone -b n11.1.5.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers
+    git clone -b n11.1.5.2 --depth=1 https://github.com/FFmpeg/nv-codec-headers
     pushd nv-codec-headers
     make
     make install
@@ -179,7 +179,7 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     mkdir libdrm
     pushd libdrm
-    libdrm_ver="2.4.113"
+    libdrm_ver="2.4.114"
     libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
     wget ${libdrm_link} -O libdrm.tar.xz
     tar xaf libdrm.tar.xz
@@ -256,7 +256,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-22.5.4 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-22.6.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -276,7 +276,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-22.5.4 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-22.6.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -290,9 +290,8 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-22.5.4 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-22.6.2 --depth=1 https://github.com/intel/media-driver
     pushd media-driver
-    sed -i 's|find_package(X11)||g' media_softlet/media_top_cmake.cmake media_driver/media_top_cmake.cmake
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -310,7 +309,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.231 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.234 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -323,7 +322,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.231 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.234 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -373,7 +372,7 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="22.2.2"
+        mesa_ver="22.2.3"
         mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
         wget ${mesa_link} -O mesa.tar.xz
         tar xaf mesa.tar.xz

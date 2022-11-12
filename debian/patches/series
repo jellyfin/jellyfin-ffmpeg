@@ -37,3 +37,6 @@
 0037-add-fixes-for-vaapi-rendernode-enumeration.patch
 0038-add-tier-option-for-qsv-hevc-encoder.patch
 0039-add-fixes-for-some-quirks-on-dg2-on-windows.patch
+0040-add-10bit-support-for-cuda-overlay.patch
+0041-add-hdr-metadata-for-qsv-hevc-encoder.patch
+0042-add-hdr-metadata-for-nvenc-hevc-encoder.patch

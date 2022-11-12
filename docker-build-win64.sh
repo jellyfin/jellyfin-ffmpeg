@@ -185,7 +185,7 @@ popd
 # FONTCONFIG
 mkdir fontconfig
 pushd fontconfig
-fc_ver="2.14.0"
+fc_ver="2.14.1"
 fc_link="https://www.freedesktop.org/software/fontconfig/release/fontconfig-${fc_ver}.tar.xz"
 wget ${fc_link} -O fc.tar.gz
 tar xaf fc.tar.gz
@@ -530,7 +530,7 @@ EOF
 popd
 
 # FFNVCODEC
-git clone -b n11.1.5.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
+git clone -b n11.1.5.2 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
 pushd nv-codec-headers
 make PREFIX=${FF_DEPS_PREFIX} install
 popd
