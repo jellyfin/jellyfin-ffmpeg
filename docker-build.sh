@@ -242,7 +242,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.0 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.3.1 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -256,7 +256,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-22.6.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-22.6.4 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -276,7 +276,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-22.6.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-22.6.4 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -290,8 +290,9 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-22.6.2 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-22.6.4 --depth=1 https://github.com/intel/media-driver
     pushd media-driver
+    sed -i 's|#include <va/va_dricommon.h>||g' media_softlet/linux/common/vp/ddi/ddi_vp_functions.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -309,7 +310,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.234 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.236 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -322,7 +323,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.234 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.236 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -343,7 +344,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2022.3 --depth=1 https://github.com/google/shaderc
+    git clone -b v2022.4 --depth=1 https://github.com/google/shaderc
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -372,7 +373,7 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="22.2.3"
+        mesa_ver="22.2.4"
         mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
         wget ${mesa_link} -O mesa.tar.xz
         tar xaf mesa.tar.xz
