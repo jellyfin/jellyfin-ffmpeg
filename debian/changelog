@@ -4,6 +4,7 @@ jellyfin-ffmpeg (5.1.2-5) unstable; urgency=medium
   * Add HDR metadata support for QSV/NVENC HEVC encoder
   * Add 10bit overlay support for QSV/CUDA/OpenCL
   * Add DOVI to HDR support for CUDA/OpenCL
+  * Add D3D11VA/DXVA2 HEVC 422 444 8-12 bits decoding on Intel
   * Update dependencies
 
  -- nyanmisaka <nst799610810@gmail.com>  Mon, 07 Oct 2022 21:31:17 +0800

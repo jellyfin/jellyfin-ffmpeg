@@ -40,3 +40,4 @@
 0040-add-10bit-support-for-cuda-overlay.patch
 0041-add-hdr-metadata-for-qsv-hevc-encoder.patch
 0042-add-hdr-metadata-for-nvenc-hevc-encoder.patch
+0043-add-d3d11va-dxva2-hevc-422-444-decoding.patch
