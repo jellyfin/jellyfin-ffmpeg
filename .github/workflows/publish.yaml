@@ -99,7 +99,7 @@ jobs:
             ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg
 
   maintain_repository_portable:
-    name: Maintain Repository
+    name: Maintain Repository (Portable)
     runs-on: ubuntu-latest
     needs:
       - build_publish_windows_portable
@@ -126,6 +126,7 @@ jobs:
             basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
             find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
             if [ "${{ matrix.arrays.distro }}" == "windows" ]; then
+              mkdir -p /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}
               ln -fs /srv/repository/releases/ffmpeg/${version}/${basename}_*.zip /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/jellyfin-ffmpeg.zip
             fi
             rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
