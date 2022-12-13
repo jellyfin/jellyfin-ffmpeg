@@ -123,11 +123,12 @@ jobs:
             set -o xtrace
             tag="${{ github.event.release.tag_name }}"
             version="${tag#v}"
-            basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
             find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
             if [ "${{ matrix.arrays.distro }}" == "windows" ]; then
               mkdir -p /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}
-              ln -fs /srv/repository/releases/ffmpeg/${version}/${basename}_*.zip /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/jellyfin-ffmpeg.zip
+              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip /srv/repository/releases/ffmpeg/${version}/jellyfin-ffmpeg-portable_win64.zip
+              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/
+              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip.sha265sum /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/
             fi
             rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
             rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
