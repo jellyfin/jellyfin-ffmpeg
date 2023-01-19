@@ -166,7 +166,7 @@ popd
 # LZMA
 mkdir xz
 pushd xz
-xz_ver="5.2.9"
+xz_ver="5.4.1"
 xz_link="https://sourceforge.net/projects/lzmautils/files/xz-${xz_ver}.tar.xz/download"
 wget ${xz_link} -O xz.tar.xz
 tar xaf xz.tar.xz

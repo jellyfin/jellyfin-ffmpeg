@@ -1255,10 +1255,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      CALC_EXPR(w_expr,
 -            var_values[VAR_OUT_W] = var_values[VAR_oW] = var_values[VAR_W],
 -            vpp->out_width);
+-
 +            var_values[VAR_OUT_W] = var_values[VAR_OW] = var_values[VAR_W],
 +            vpp->out_width, var_values[VAR_CW]);
  
--
 -    CALC_EXPR(cx_expr, var_values[CX], vpp->crop_x);
 -    CALC_EXPR(cy_expr, var_values[CY], vpp->crop_y);
 +    CALC_EXPR(cx_expr, var_values[VAR_CX], vpp->crop_x, (var_values[VAR_IW] - var_values[VAR_OW]) / 2);
@@ -1359,7 +1359,38 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      if (vpp->use_crop) {
          vpp->crop_x = FFMAX(vpp->crop_x, 0);
          vpp->crop_y = FFMAX(vpp->crop_y, 0);
-@@ -335,7 +358,6 @@ static int config_output(AVFilterLink *o
+@@ -316,6 +339,30 @@ static mfxStatus get_mfx_version(const A
+     return MFXQueryVersion(device_hwctx->session, mfx_version);
+ }
+ 
++static mfxStatus get_mfx_platform(const AVFilterContext *ctx, mfxPlatform *mfx_platform)
++{
++    const AVFilterLink *inlink = ctx->inputs[0];
++    AVBufferRef *device_ref;
++    AVHWDeviceContext *device_ctx;
++    AVQSVDeviceContext *device_hwctx;
++
++    if (inlink->hw_frames_ctx) {
++        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)inlink->hw_frames_ctx->data;
++        device_ref = frames_ctx->device_ref;
++    } else if (ctx->hw_device_ctx) {
++        device_ref = ctx->hw_device_ctx;
++    } else {
++        mfx_platform->CodeName = 0;
++        mfx_platform->DeviceId = 0;
++        return MFX_ERR_NONE;
++    }
++
++    device_ctx   = (AVHWDeviceContext *)device_ref->data;
++    device_hwctx = device_ctx->hwctx;
++
++    return MFXVideoCORE_QueryPlatform(device_hwctx->session, mfx_platform);
++}
++
+ static int config_output(AVFilterLink *outlink)
+ {
+     AVFilterContext *ctx = outlink->src;
+@@ -335,7 +382,6 @@ static int config_output(AVFilterLink *o
      param.filter_frame  = NULL;
      param.num_ext_buf   = 0;
      param.ext_buf       = ext_buf;
@@ -1367,7 +1398,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  
      if (get_mfx_version(ctx, &mfx_version) != MFX_ERR_NONE) {
          av_log(ctx, AV_LOG_ERROR, "Failed to query mfx version.\n");
-@@ -365,53 +387,46 @@ static int config_output(AVFilterLink *o
+@@ -365,53 +411,46 @@ static int config_output(AVFilterLink *o
          param.crop     = &crop;
      }
  
@@ -1387,10 +1418,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +#define SET_MFX_PARAM_FIELD(extbuf, field, value) do { \
 +        vpp->extbuf.field = value; \
 +    } while (0)
-+
-+    vpp->qsv.deinterlace_enabled = !!vpp->deinterlace;
  
 -        param.ext_buf[param.num_ext_buf++] = (mfxExtBuffer*)&vpp->deinterlace_conf;
++    vpp->qsv.deinterlace_enabled = !!vpp->deinterlace;
++
 +    if (vpp->deinterlace) {
 +        INIT_MFX_EXTBUF(deinterlace_conf, MFX_EXTBUFF_VPP_DEINTERLACING);
 +        SET_MFX_PARAM_FIELD(deinterlace_conf, Mode, (vpp->deinterlace == 1 ?
@@ -1448,7 +1479,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      }
  
      if (vpp->transpose >= 0) {
-@@ -458,18 +473,14 @@ static int config_output(AVFilterLink *o
+@@ -458,18 +497,14 @@ static int config_output(AVFilterLink *o
  
      if (vpp->rotate) {
          if (QSV_RUNTIME_VERSION_ATLEAST(mfx_version, 1, 17)) {
@@ -1469,7 +1500,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          } else {
              av_log(ctx, AV_LOG_WARNING, "The QSV VPP rotate option is "
                     "not supported with this MSDK version.\n");
-@@ -479,12 +490,8 @@ static int config_output(AVFilterLink *o
+@@ -479,12 +514,8 @@ static int config_output(AVFilterLink *o
  
      if (vpp->hflip) {
          if (QSV_RUNTIME_VERSION_ATLEAST(mfx_version, 1, 19)) {
@@ -1484,7 +1515,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          } else {
              av_log(ctx, AV_LOG_WARNING, "The QSV VPP hflip option is "
                     "not supported with this MSDK version.\n");
-@@ -494,22 +501,23 @@ static int config_output(AVFilterLink *o
+@@ -494,22 +525,38 @@ static int config_output(AVFilterLink *o
  
      if (inlink->w != outlink->w || inlink->h != outlink->h) {
          if (QSV_RUNTIME_VERSION_ATLEAST(mfx_version, 1, 19)) {
@@ -1492,10 +1523,24 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 -            vpp->scale_conf.Header.BufferId    = MFX_EXTBUFF_VPP_SCALING;
 -            vpp->scale_conf.Header.BufferSz    = sizeof(mfxExtVPPScaling);
 -            vpp->scale_conf.ScalingMode        = vpp->scale_mode;
--
++            mfxPlatform mfx_platform;
++            int compute = 0;
++            int mode = vpp->scale_mode;
++            int vpl = QSV_RUNTIME_VERSION_ATLEAST(mfx_version, 1, 255);
++
++            if (vpl && get_mfx_platform(ctx, &mfx_platform) == MFX_ERR_NONE) {
++                int code_name = mfx_platform.CodeName;
++                compute = code_name >= 45 && code_name != 55 && code_name != 50;
++            }
++
++            if (mode == -1)
++                mode = (vpl && compute) ? 1001 : MFX_SCALING_MODE_DEFAULT;
++            else if (mode > 2)
++                mode = vpl ? (1000 + mode - 2) : MFX_SCALING_MODE_DEFAULT;
+ 
 -            param.ext_buf[param.num_ext_buf++] = (mfxExtBuffer*)&vpp->scale_conf;
 +            INIT_MFX_EXTBUF(scale_conf, MFX_EXTBUFF_VPP_SCALING);
-+            SET_MFX_PARAM_FIELD(scale_conf, ScalingMode, vpp->scale_mode);
++            SET_MFX_PARAM_FIELD(scale_conf, ScalingMode, mode);
          } else
              av_log(ctx, AV_LOG_WARNING, "The QSV VPP Scale option is "
                  "not supported with this MSDK version.\n");
@@ -1516,7 +1561,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          av_log(ctx, AV_LOG_VERBOSE, "qsv vpp pass through mode.\n");
          if (inlink->hw_frames_ctx)
              outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
-@@ -522,29 +530,27 @@ static int activate(AVFilterContext *ctx
+@@ -522,29 +569,27 @@ static int activate(AVFilterContext *ctx
  {
      AVFilterLink *inlink = ctx->inputs[0];
      AVFilterLink *outlink = ctx->outputs[0];
@@ -1551,7 +1596,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
              ret = ff_qsvvpp_filter_frame(qsv, inlink, in);
              av_frame_free(&in);
              if (ret == AVERROR(EAGAIN))
-@@ -552,7 +558,7 @@ static int activate(AVFilterContext *ctx
+@@ -552,7 +597,7 @@ static int activate(AVFilterContext *ctx
              else if (ret < 0)
                  return ret;
  
@@ -1560,7 +1605,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
                  goto eof;
  
              if (qsv->got_frame) {
-@@ -561,6 +567,7 @@ static int activate(AVFilterContext *ctx
+@@ -561,6 +606,7 @@ static int activate(AVFilterContext *ctx
              }
          }
      } else {
@@ -1568,7 +1613,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          if (in) {
              if (in->pts != AV_NOPTS_VALUE)
                  in->pts = av_rescale_q(in->pts, inlink->time_base, outlink->time_base);
-@@ -569,7 +576,7 @@ static int activate(AVFilterContext *ctx
+@@ -569,7 +615,7 @@ static int activate(AVFilterContext *ctx
              if (ret < 0)
                  return ret;
  
@@ -1577,7 +1622,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
                  goto eof;
  
              return 0;
-@@ -577,7 +584,7 @@ static int activate(AVFilterContext *ctx
+@@ -577,7 +623,7 @@ static int activate(AVFilterContext *ctx
      }
  
  not_ready:
@@ -1586,7 +1631,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
          goto eof;
  
      FF_FILTER_FORWARD_WANTED(outlink, inlink);
-@@ -589,7 +596,93 @@ eof:
+@@ -589,7 +635,96 @@ eof:
      return 0;
  }
  
@@ -1668,10 +1713,13 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +    { "height", "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
 +    { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
 +    { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = 4 }, 0, INT_MAX, .flags = FLAGS },
-+    { "scale_mode", "scale mode", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = MFX_SCALING_MODE_DEFAULT }, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, .flags = FLAGS, "scale mode" },
++    { "scale_mode", "scale mode", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 5, .flags = FLAGS, "scale mode" },
 +    { "auto",      "auto mode",             0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_DEFAULT},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
 +    { "low_power", "low power mode",        0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, "scale mode"},
 +    { "hq",        "high quality mode",     0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
++    { "compute",   "compute mode",          0,    AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
++    { "vd",        "vd mode",               0,    AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
++    { "ve",        "ve mode",               0,    AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
 +    { "passthrough", "Apply pass through mode if possible.", OFFSET(has_passthrough), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, .flags = FLAGS },
 +
 +    { NULL }
@@ -1681,7 +1729,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  {
      int ret;
      static const enum AVPixelFormat in_pix_fmts[] = {
-@@ -615,46 +708,75 @@ static int query_formats(AVFilterContext
+@@ -615,46 +750,79 @@ static int query_formats(AVFilterContext
                            &ctx->outputs[0]->incfg.formats);
  }
  
@@ -1692,11 +1740,11 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  {
 -    VPPContext *vpp = ctx->priv;
 +    VPPContext  *vpp  = ctx->priv;
- 
--    ff_qsvvpp_free(&vpp->qsv);
++
 +    vpp_preinit(ctx);
 +    vpp->has_passthrough = 0;
-+
+ 
+-    ff_qsvvpp_free(&vpp->qsv);
 +    return 0;
  }
  
@@ -1727,9 +1775,13 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
 +    { "cy",     "set the y crop area expression",       OFFSET(cy), AV_OPT_TYPE_STRING, { .str = "(ih-oh)/2" }, .flags = FLAGS },
 +    { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
 +
-+    { "mode",      "set scaling mode",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = MFX_SCALING_MODE_DEFAULT}, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, FLAGS, "mode"},
++    { "mode",      "set scaling mode",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = -1 }, -1, 5, FLAGS, "mode"},
++    { "auto",      "auto mode",             0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_DEFAULT},  INT_MIN, INT_MAX, FLAGS, "mode"},
 +    { "low_power", "low power mode",        0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, "mode"},
 +    { "hq",        "high quality mode",     0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, "mode"},
++    { "compute",   "compute mode",          0,             AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, "mode"},
++    { "vd",        "vd mode",               0,             AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, "mode"},
++    { "ve",        "ve mode",               0,             AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, "mode"},
 +
 +    { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = 4 }, 0, INT_MAX, .flags = FLAGS },
 +

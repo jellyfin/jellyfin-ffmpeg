@@ -201,7 +201,7 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone -b 2.16.0 --depth=1 https://github.com/intel/libva
+    git clone -b 2.17.0 --depth=1 https://github.com/intel/libva
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
@@ -218,7 +218,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone -b 2.16.0 --depth=1 https://github.com/intel/libva-utils
+    git clone -b 2.17.1 --depth=1 https://github.com/intel/libva-utils
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -242,7 +242,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.2 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.3.3 --depth=1 https://github.com/intel/gmmlib
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -256,7 +256,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-22.6.4 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-23.1.0 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -276,8 +276,11 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-22.6.4 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-23.1.0 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
     pushd oneVPL-intel-gpu
+    # Wa for an av1 dec regression
+    wget -q -O - https://github.com/oneapi-src/oneVPL-intel-gpu/commit/f31fd02.patch | git apply
+    wget -q -O - https://github.com/oneapi-src/oneVPL-intel-gpu/commit/dca2c3d.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
@@ -290,9 +293,8 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-22.6.4 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-23.1.0 --depth=1 https://github.com/intel/media-driver
     pushd media-driver
-    sed -i 's|#include <va/va_dricommon.h>||g' media_softlet/linux/common/vp/ddi/ddi_vp_functions.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -344,7 +346,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2022.4 --depth=1 https://github.com/google/shaderc
+    git clone -b v2023.1 --depth=1 https://github.com/google/shaderc
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -373,13 +375,14 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="22.2.5"
+        mesa_ver="22.3.3"
         mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
         wget ${mesa_link} -O mesa.tar.xz
         tar xaf mesa.tar.xz
-        # fix the invalid modifier issue on amd apu
-        MESA_SI_TEX="mesa-${mesa_ver}/src/gallium/drivers/radeonsi/si_texture.c"
-	sed -i 's|(struct si_texture \*)screen->resource_create(screen, \&templ)|(struct si_texture\*)((tex->surface.modifier==DRM_FORMAT_MOD_INVALID\|\|!screen->resource_create_with_modifiers)?screen->resource_create(screen,\&templ):screen->resource_create_with_modifiers(screen,\&templ,\&tex->surface.modifier,1))|g' ${MESA_SI_TEX}
+        # Wa for the hevc vce encoder regression
+        pushd mesa-${mesa_ver}
+        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/20714.patch | git apply
+        popd
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa-${mesa_ver}/src/gallium/frontends/va/picture.c"
         MESA_VA_CONF="mesa-${mesa_ver}/src/gallium/frontends/va/config.c"
@@ -396,7 +399,7 @@ prepare_extra_amd64() {
             --wrap-mode=nofallback \
             -Db_ndebug=true \
             -Db_lto=false \
-            -Dplatforms=x11\
+            -Dplatforms=x11 \
             -Ddri-drivers=[] \
             -Dgallium-drivers=radeonsi \
             -Dvulkan-drivers=amd,intel \
@@ -404,7 +407,7 @@ prepare_extra_amd64() {
             -Ddri3=enabled \
             -Degl=disabled \
             -Dgallium-{extra-hud,nine}=false \
-            -Dgallium-{omx,vdpau,xa,xvmc,opencl}=disabled \
+            -Dgallium-{omx,vdpau,xa,opencl}=disabled \
             -Dgallium-va=enabled \
             -Dvideo-codecs=vc1dec,h264dec,h264enc,h265dec,h265enc \
             -Dgbm=disabled \
@@ -489,7 +492,7 @@ EOF
     # Add armhf architecture
     dpkg --add-architecture armhf
     # Update and install cross-gcc-dev
-    apt-get update
+    apt-get update && apt-get upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="armhf" cross-gcc-gensource ${GCC_VER}
@@ -527,7 +530,7 @@ EOF
     # Add armhf architecture
     dpkg --add-architecture arm64
     # Update and install cross-gcc-dev
-    apt-get update
+    apt-get update && apt-get upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="arm64" cross-gcc-gensource ${GCC_VER}
@@ -541,6 +544,7 @@ EOF
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
+        apt-get update && apt-get upgrade -y
         prepare_extra_common
         prepare_extra_amd64
         CONFIG_SITE=""
