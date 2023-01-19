@@ -70,7 +70,7 @@ popd
 mkdir freetype
 pushd freetype
 ft_ver="2.12.1"
-ft_link="https://sourceforge.net/projects/freetype/files/freetype2/${ft_ver}/freetype-${ft_ver}.tar.xz/download"
+ft_link="https://download.savannah.gnu.org/releases/freetype/freetype-${ft_ver}.tar.xz"
 wget ${ft_link} -O ft.tar.gz
 tar xaf ft.tar.gz
 pushd freetype-${ft_ver}
@@ -164,22 +164,18 @@ popd
 popd
 
 # LZMA
-mkdir xz
+git clone -b v5.4.1 --depth=1 https://github.com/xz-mirror/xz.git
 pushd xz
-xz_ver="5.4.1"
-xz_link="https://sourceforge.net/projects/lzmautils/files/xz-${xz_ver}.tar.xz/download"
-wget ${xz_link} -O xz.tar.xz
-tar xaf xz.tar.xz
-pushd xz-${xz_ver}
+./autogen.sh --no-po4a
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
+    --disable-symbol-versions \
     --disable-shared \
     --enable-static \
     --with-pic
 make -j$(nproc)
 make install
-popd
 popd
 
 # FONTCONFIG
