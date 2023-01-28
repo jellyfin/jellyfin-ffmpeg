@@ -2,6 +2,7 @@ jellyfin-ffmpeg (5.1.2-7) unstable; urgency=medium
 
   * Enable zero-copy dovi buffer on Intel dGPU
   * Improve scaling speed for VAAPI and QSV
+  * Fix the tone-mapping FPS regression on Pascal
   * Update dependencies
 
  -- nyanmisaka <nst799610810@gmail.com>  Tue, 17 Jan 2023 22:33:03 +0800
