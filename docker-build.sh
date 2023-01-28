@@ -346,7 +346,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2023.1 --depth=1 https://github.com/google/shaderc
+    git clone -b v2023.2 --depth=1 https://github.com/google/shaderc
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -375,14 +375,10 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="22.3.3"
+        mesa_ver="22.3.4"
         mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
         wget ${mesa_link} -O mesa.tar.xz
         tar xaf mesa.tar.xz
-        # Wa for the hevc vce encoder regression
-        pushd mesa-${mesa_ver}
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/20714.patch | git apply
-        popd
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa-${mesa_ver}/src/gallium/frontends/va/picture.c"
         MESA_VA_CONF="mesa-${mesa_ver}/src/gallium/frontends/va/config.c"
