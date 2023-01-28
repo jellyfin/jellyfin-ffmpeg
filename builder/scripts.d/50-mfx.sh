@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/lu-zero/mfx_dispatch.git"
-SCRIPT_COMMIT="7e4d221c36c630c1250b23a5dfa15657bc04c10c"
+SCRIPT_COMMIT="d6241243f85a0d947bdfe813006686a930edef24"
 
 ffbuild_enabled() {
     [[ $TARGET == *arm64 ]] && return -1
