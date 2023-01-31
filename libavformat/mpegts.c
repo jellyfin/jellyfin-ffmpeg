@@ -2105,6 +2105,13 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                     av_dict_set(&st->metadata, "language", language, 0);
             }
         }
+        if (ext_desc_tag == 0x15) { /* AC-4 descriptor */
+            st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
+            st->codecpar->codec_id = AV_CODEC_ID_AC4;
+            sti->request_probe = 0;
+
+            sti->need_context_update = 1;
+        }
         break;
     case 0x6a: /* ac-3_descriptor */
         {
