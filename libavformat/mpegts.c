@@ -975,8 +975,8 @@ static int mpegts_set_stream_info(AVStream *st, PESContext *pes,
             (sti->request_probe > 0 && sti->request_probe < AVPROBE_SCORE_STREAM_RETRY / 5)) &&
         sti->probe_packets > 0 &&
         stream_type == STREAM_TYPE_PRIVATE_DATA) {
-        st->codecpar->codec_type = AVMEDIA_TYPE_DATA;
-        st->codecpar->codec_id   = AV_CODEC_ID_BIN_DATA;
+        st->codecpar->codec_type = pes->stream_type == 6 ? AVMEDIA_TYPE_AUDIO : AVMEDIA_TYPE_DATA;
+        st->codecpar->codec_id   = pes->stream_type == 6 ? AV_CODEC_ID_AC4 : AV_CODEC_ID_BIN_DATA;
         sti->request_probe = AVPROBE_SCORE_STREAM_RETRY / 5;
     }
 
