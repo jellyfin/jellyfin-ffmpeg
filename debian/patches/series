@@ -46,3 +46,4 @@
 0046-dont-fail-on-missing-vulkan-drm-modifiers.patch
 0047-prefer-vulkan-device-with-higher-api-version.patch
 0048-add-fixes-for-vaapi-drm-vulkan-tearing.patch
+0049-add-fixes-for-the-incorrect-null-terminator-in-assenc.patch
