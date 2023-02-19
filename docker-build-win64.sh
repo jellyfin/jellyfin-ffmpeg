@@ -69,8 +69,8 @@ popd
 # FREETYPE
 mkdir freetype
 pushd freetype
-ft_ver="2.12.1"
-ft_link="https://download.savannah.gnu.org/releases/freetype/freetype-${ft_ver}.tar.xz"
+ft_ver="2.13.0"
+ft_link="https://download.savannah.gnu.org/releases/freetype/freetype-${ft_ver}.tar.gz"
 wget ${ft_link} -O ft.tar.gz
 tar xaf ft.tar.gz
 pushd freetype-${ft_ver}
@@ -455,7 +455,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.1.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build
@@ -495,7 +495,7 @@ mv * ${FF_DEPS_PREFIX}/include/CL
 popd
 
 # OpenCL ICD loader
-git clone -b v2022.09.30 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+git clone -b v2023.02.06 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 pushd OpenCL-ICD-Loader
 mkdir build
 pushd build
@@ -519,7 +519,7 @@ includedir=\${prefix}/include
 Name: OpenCL
 Description: OpenCL ICD Loader
 Version: 3.0
-Libs: -L\${libdir} -lOpenCL
+Libs: -L\${libdir} -l:OpenCL.a
 Cflags: -I\${includedir}
 Libs.private: -lole32 -lshlwapi -lcfgmgr32
 EOF

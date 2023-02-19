@@ -91,7 +91,7 @@ prepare_extra_common() {
 
     # DAV1D
     pushd ${SOURCE_DIR}
-    git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 1.1.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
     if [ "${ARCH}" = "amd64" ]; then
         nasmver="$(nasm -v | cut -d ' ' -f3)"
         nasmminver="2.14.0"
@@ -179,7 +179,7 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     mkdir libdrm
     pushd libdrm
-    libdrm_ver="2.4.114"
+    libdrm_ver="2.4.115"
     libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
     wget ${libdrm_link} -O libdrm.tar.xz
     tar xaf libdrm.tar.xz
@@ -256,7 +256,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-23.1.0 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-23.1.1 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -276,11 +276,8 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.1.0 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-23.1.1 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
     pushd oneVPL-intel-gpu
-    # Wa for an av1 dec regression
-    wget -q -O - https://github.com/oneapi-src/oneVPL-intel-gpu/commit/f31fd02.patch | git apply
-    wget -q -O - https://github.com/oneapi-src/oneVPL-intel-gpu/commit/dca2c3d.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
@@ -293,8 +290,10 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.1.0 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-23.1.1 --depth=1 https://github.com/intel/media-driver
     pushd media-driver
+    # Possible fix for TGLx timeout caused by 'HCP Scalability Decode' under heavy load
+    wget -q -O - https://github.com/intel/media-driver/commit/284750bf2619112627dd8c60bd5c8032c7780606.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -312,7 +311,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.237 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -325,7 +324,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.237 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -375,10 +374,13 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="22.3.4"
+        mesa_ver="22.3.5"
         mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
         wget ${mesa_link} -O mesa.tar.xz
         tar xaf mesa.tar.xz
+        # reduce encode overhead with optimized buffer types
+        wget -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/20376.patch | git apply
+        wget -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/20989.patch | git apply
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa-${mesa_ver}/src/gallium/frontends/va/picture.c"
         MESA_VA_CONF="mesa-${mesa_ver}/src/gallium/frontends/va/config.c"
@@ -439,7 +441,7 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
-    git clone --recursive --depth=1 https://github.com/haasn/libplacebo
+    git clone -b v5.229.2 --recursive --depth=1 https://github.com/haasn/libplacebo
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
