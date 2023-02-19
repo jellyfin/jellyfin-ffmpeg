@@ -47,3 +47,4 @@
 0047-prefer-vulkan-device-with-higher-api-version.patch
 0048-add-fixes-for-vaapi-drm-vulkan-tearing.patch
 0049-add-fixes-for-the-incorrect-null-terminator-in-assenc.patch
+0050-skip-loading-plugins-on-vpl-runtime.patch
