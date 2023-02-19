@@ -42,3 +42,4 @@
 0042-add-hdr-metadata-for-nvenc-hevc-encoder.patch
 0043-add-d3d11va-dxva2-hevc-422-444-decoding.patch
 0044-default-vaapi-scaler-algorithm-to-fast.patch
+0045-remove-the-changed-vulkan-video-extensions.patch
