@@ -1,3 +1,16 @@
+jellyfin-ffmpeg (5.1.2-8) unstable; urgency=medium
+
+  * Remove the changed vulkan video extensions
+  * Don't fail on missing vulkan drm modifiers
+  * Prefer Vulkan device with higer API version
+  * Default to use complex font shaping in libass
+  * Add fixes for VAAPI-DRM-Vulkan tearing
+  * Add fixes for the incorrect null terminator in assenc
+  * Skip loading plugins on VPL runtime
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Wed, 15 Feb 2023 22:52:17 +0800
+
 jellyfin-ffmpeg (5.1.2-7) unstable; urgency=medium
 
   * Enable zero-copy dovi buffer on Intel dGPU

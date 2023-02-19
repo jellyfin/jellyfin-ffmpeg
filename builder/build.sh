@@ -99,9 +99,9 @@ else
     OUTPUT_FNAME="${PKG_NAME}.tar.xz"
     tar cJf "${ARTIFACTS_PATH}/${OUTPUT_FNAME}" *
 fi
+cd -
 cd "${ARTIFACTS_PATH}"
 sha256sum ./${OUTPUT_FNAME} > ./${OUTPUT_FNAME}.sha256sum
-cd -
 cd -
 
 rm -rf ffbuild
