@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 
 usage() {
-    echo -e "Build Jellyfin FFMPEG packages"
+    echo -e "Build Jellyfin FFMPEG deb packages"
     echo -e " $0 <release> <arch>"
     echo -e "Releases:          Arches:"
     echo -e " * buster           * amd64"
     echo -e " * bullseye         * armhf"
-    echo -e " * bionic           * arm64"
+    echo -e " * bookworm         * arm64"
+    echo -e " * bionic"
     echo -e " * focal"
     echo -e " * jammy"
     echo -e " * kinetic"
+    echo -e " * lunar"
 }
 
 if [[ -z ${1} ]]; then
@@ -29,6 +31,11 @@ case ${cli_release} in
         gcc_version="10"
         llvm_version="13"
     ;;
+    'bookworm')
+        release="debian:bookworm"
+        gcc_version="12"
+        llvm_version="15"
+    ;;
     'bionic')
         release="ubuntu:bionic"
         gcc_version="7"
@@ -46,6 +53,11 @@ case ${cli_release} in
     ;;
     'kinetic')
         release="ubuntu:kinetic"
+        gcc_version="12"
+        llvm_version="15"
+    ;;
+    'lunar')
+        release="ubuntu:lunar"
         gcc_version="12"
         llvm_version="15"
     ;;
