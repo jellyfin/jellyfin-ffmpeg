@@ -113,7 +113,7 @@ prepare_extra_common() {
         -Denable_{tools,tests,examples}=false
     meson configure dav1d_build
     ninja -C dav1d_build install
-    cp ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
+    cp -a ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
     echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 
@@ -192,7 +192,7 @@ prepare_extra_amd64() {
         -D{valgrind,freedreno,vc4,vmwgfx,nouveau,man-pages}=disabled
     meson configure drm_build
     ninja -C drm_build install
-    cp ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/libdrm
+    cp -a ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/libdrm
     cp ${TARGET_DIR}/share/libdrm/*.ids ${SOURCE_DIR}/libdrm
     echo "libdrm/libdrm*.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     echo "libdrm/*.ids usr/lib/jellyfin-ffmpeg/share/libdrm" >> ${DPKG_INSTALL_LIST}
@@ -235,7 +235,7 @@ prepare_extra_amd64() {
     ./configure LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri
     make -j$(nproc) && make install
     mkdir -p ${SOURCE_DIR}/intel/dri
-    cp ${TARGET_DIR}/lib/dri/i965*.so ${SOURCE_DIR}/intel/dri
+    cp -a ${TARGET_DIR}/lib/dri/i965*.so ${SOURCE_DIR}/intel/dri
     echo "intel/dri/i965*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -303,7 +303,7 @@ prepare_extra_amd64() {
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libigfxcmrt.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     mkdir -p ${SOURCE_DIR}/intel/dri
-    cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
+    cp -a ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
     echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -337,7 +337,7 @@ prepare_extra_amd64() {
         -DBUILD_TESTS=OFF \
         -DBUILD_WSI_{XCB,XLIB,WAYLAND}_SUPPORT=ON ..
     make -j$(nproc) && make install
-    cp ${TARGET_DIR}/lib/libvulkan.so* ${SOURCE_DIR}/Vulkan-Loader
+    cp -a ${TARGET_DIR}/lib/libvulkan.so* ${SOURCE_DIR}/Vulkan-Loader
     echo "Vulkan-Loader/libvulkan.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -361,7 +361,7 @@ prepare_extra_amd64() {
         -DBUILD_SHARED_LIBS=OFF ..
     ninja -j$(nproc)
     ninja install
-    cp ${TARGET_DIR}/lib/libshaderc_shared.so* ${SOURCE_DIR}/shaderc
+    cp -a ${TARGET_DIR}/lib/libshaderc_shared.so* ${SOURCE_DIR}/shaderc
     echo "shaderc/libshaderc_shared* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -425,9 +425,9 @@ prepare_extra_amd64() {
             -Dmicrosoft-clc=disabled
         meson configure mesa_build
         ninja -C mesa_build install
-        cp ${TARGET_DIR}/lib/libvulkan_*.so ${SOURCE_DIR}/mesa
-        cp ${TARGET_DIR}/lib/libVkLayer_MESA*.so ${SOURCE_DIR}/mesa
-        cp ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
+        cp -a ${TARGET_DIR}/lib/libvulkan_*.so ${SOURCE_DIR}/mesa
+        cp -a ${TARGET_DIR}/lib/libVkLayer_MESA*.so ${SOURCE_DIR}/mesa
+        cp -a ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
         echo "mesa/lib*.so usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
         echo "mesa/radeonsi_drv_video.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
         cp ${TARGET_DIR}/share/drirc.d/*.conf ${SOURCE_DIR}/mesa
@@ -456,7 +456,7 @@ prepare_extra_amd64() {
         -D{demos,tests,bench,fuzz}=false
     meson configure placebo_build
     ninja -C placebo_build install
-    cp ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
+    cp -a ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
     echo "libplacebo/libplacebo* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 }
