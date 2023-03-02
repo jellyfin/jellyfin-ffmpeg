@@ -43,8 +43,8 @@
 .endm
 
 function ff_synth_filter_float_neon, export=1
+        mov             x9,  x7                 // imdct_fn parameter
         ldr             w7,  [x2]               // *synth_buf_offset
-        ldr             x9,  [x0, #IMDCT_HALF]  // imdct_half function pointer
         sxtw            x7,  w7
         stp             x3,  x4,  [sp, #-64]!
         add             x1,  x1,  x7,  lsl #2   // synth_buf
@@ -58,14 +58,15 @@ function ff_synth_filter_float_neon, export=1
         str             s0,  [sp, #48]
 
         mov             x2,  x6                 // in
+        mov             x3,  #4                 // sizeof(float)
 
         blr             x9
 
-        ldp             x2,  x4,  [sp]          // synct_buf_2, window
         ldp             x13, x9,  [sp, #16]     // out, synth_buf
         ldp             x0,  x30, [sp, #32]     // *synth_buf_offset
         AARCH64_VALIDATE_LINK_REGISTER
         ldr             s0,  [sp, #48]
+        ldp             x2,  x4,  [sp], #64     // synct_buf_2, window
 
         add             x3,  x2,  #16*4         // synct_buf_2 + 16
         add             x14, x13, #16*4         // out + 16
@@ -116,6 +117,5 @@ function ff_synth_filter_float_neon, export=1
         b               1b
 
 10:
-        add             sp,  sp,  #64
         ret
 endfunc

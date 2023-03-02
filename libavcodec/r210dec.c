@@ -23,7 +23,7 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "config_components.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/bswap.h"
 #include "libavutil/common.h"
 
@@ -105,36 +105,33 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *pic,
 #if CONFIG_R210_DECODER
 const FFCodec ff_r210_decoder = {
     .p.name         = "r210",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Uncompressed RGB 10-bit"),
+    CODEC_LONG_NAME("Uncompressed RGB 10-bit"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_R210,
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 #if CONFIG_R10K_DECODER
 const FFCodec ff_r10k_decoder = {
     .p.name         = "r10k",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("AJA Kona 10-bit RGB Codec"),
+    CODEC_LONG_NAME("AJA Kona 10-bit RGB Codec"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_R10K,
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 #if CONFIG_AVRP_DECODER
 const FFCodec ff_avrp_decoder = {
     .p.name         = "avrp",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Avid 1:1 10-bit RGB Packer"),
+    CODEC_LONG_NAME("Avid 1:1 10-bit RGB Packer"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AVRP,
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

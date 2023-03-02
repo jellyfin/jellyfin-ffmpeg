@@ -21,6 +21,12 @@
 ; Open `doc/transforms.md` to see the code upon which the transforms here were
 ; based upon and compare.
 
+; Intra-asm call convention:
+;       320 bytes of stack available
+;       14 GPRs available (last 4 must not be clobbered)
+;       Additionally, don't clobber ctx, in, out, stride, len, lut
+;       All vector regs available
+
 ; TODO:
 ;       carry over registers from smaller transforms to save on ~8 loads/stores
 ;       check if vinsertf could be faster than verpm2f128 for duplication
@@ -44,6 +50,8 @@
 cextern tab_ %+ i %+ _float ; ff_tab_i_float...
 %assign i (i << 1)
 %endrep
+
+cextern tab_53_float
 
 struc AVTXContext
     .len:          resd 1 ; Length
@@ -81,6 +89,9 @@ s16_mult_odd1: dd COS16_1,  COS16_1,  COS16_3,  COS16_3,  COS16_1, -COS16_1,  CO
 s16_mult_odd2: dd COS16_3, -COS16_3,  COS16_1, -COS16_1, -COS16_3, -COS16_3, -COS16_1, -COS16_1
 s16_perm:      dd 0, 1, 2, 3, 1, 0, 3, 2
 
+s15_perm:      dd 0, 6, 5, 3, 2, 4, 7, 1
+
+mask_mmppmmmm: dd NEG, NEG, POS, POS, NEG, NEG, NEG, NEG
 mask_mmmmpppm: dd NEG, NEG, NEG, NEG, POS, POS, POS, NEG
 mask_ppmpmmpm: dd POS, POS, NEG, POS, NEG, NEG, POS, NEG
 mask_mppmmpmp: dd NEG, POS, POS, NEG, NEG, POS, NEG, POS
@@ -100,19 +111,19 @@ SECTION .text
 ; %7 - temporary register (for avx only, enables vgatherdpd (AVX2) if FMA3 is set)
 %macro LOAD64_LUT 5-7
 %if %0 > 6 && cpuflag(avx2)
-    pcmpeqd %6, %6 ; pcmpeqq has a 0.5 throughput on Zen 3, this has 0.25
-    movapd xmm%7, [%3 + %4] ; float mov since vgatherdpd is a float instruction
-    vgatherdpd %1, [%2 + xmm%7*8], %6 ; must use separate registers for args
+    pcmpeqd %7, %7 ; pcmpeqq has a 0.5 throughput on Zen 3, this has 0.25
+    movupd xmm%6, [%3 + %4] ; float mov since vgatherdpd is a float instruction
+    vgatherdpd %1, [%2 + xmm%6*8], %7 ; must use separate registers for args
 %else
     mov      %5d, [%3 + %4 + 0]
     movsd  xmm%1, [%2 + %5q*8]
-%if mmsize == 32
+%if sizeof%1 > 16 && %0 > 5
     mov      %5d, [%3 + %4 + 8]
     movsd  xmm%6, [%2 + %5q*8]
 %endif
     mov      %5d, [%3 + %4 + 4]
     movhps xmm%1, [%2 + %5q*8]
-%if mmsize == 32
+%if sizeof%1 > 16 && %0 > 5
     mov      %5d, [%3 + %4 + 12]
     movhps xmm%6, [%2 + %5q*8]
     vinsertf128 %1, %1, xmm%6, 1
@@ -294,6 +305,132 @@ SECTION .text
     addps      %1, %1, %5                   ; even part 1
 %undef mask
 %undef perm
+%endmacro
+
+; Single 15-point complex FFT
+; Input:
+; xm0 must contain in[0,1].reim
+; m2 - in[3-6].reim
+; m3 - in[7-11].reim
+; m4 - in[12-15].reim
+; xm5 must contain in[2].reimreim
+;
+; Output:
+; m0, m1, m2 - ACs
+; xm14 - out[0]
+; xm15 - out[10, 5]
+%macro FFT15 0
+    shufps xm1, xm0, xm0, q3223      ; in[1].imrereim
+    shufps xm0, xm0, xm0, q1001      ; in[0].imrereim
+
+    xorps xm1, xm11
+    addps xm1, xm0                   ; pc[0,1].imre
+
+    shufps xm0, xm1, xm1, q3232      ; pc[1].reimreim
+    addps xm0, xm5                   ; dc[0].reimreim
+
+    mulps xm1, xm9                   ; tab[0123]*pc[01]
+
+    shufpd xm6, xm1, xm1, 01b        ; pc[1,0].reim
+    xorps xm1, xm11
+    addps xm1, xm1, xm6
+    addsubps xm1, xm5, xm1           ; dc[1,2].reim
+
+    subps m7, m2, m3                 ; q[0-3].imre
+    addps m6, m2, m3                 ; q[4-7]
+    shufps m7, m7, m7, q2301         ; q[0-3].reim
+
+    addps m5, m4, m6                 ; y[0-3]
+
+    vperm2f128 m14, m9, m9, 0x11     ; tab[23232323]
+    vbroadcastsd m15, xm9            ; tab[01010101]
+
+    mulps m6, m14
+    mulps m7, m15
+
+    subps m2, m6, m7                 ; k[0-3]
+    addps m3, m6, m7                 ; k[4-7]
+
+    shufps m12, m11, m11, q3232      ; ppppmmmm
+
+    addsubps m6, m4, m2              ; k[0-3]
+    addsubps m7, m4, m3              ; k[4-7]
+
+    ; 15pt from here on
+    vpermpd m2, m5, q0123            ; y[3-0]
+    vpermpd m3, m6, q0123            ; k[3-0]
+    vpermpd m4, m7, q0123            ; k[7-4]
+
+    xorps m5, m12
+    xorps m6, m12
+    xorps m7, m12
+
+    addps m2, m5                     ; t[0-3]
+    addps m3, m6                     ; t[4-7]
+    addps m4, m7                     ; t[8-11]
+
+    movlhps xm14, xm2                ; out[0]
+    unpcklpd xm15, xm3, xm4          ; out[10,5]
+    unpckhpd xm5, xm3, xm4           ; out[10,5]
+
+    addps xm14, xm2                  ; out[0]
+    addps xm15, xm5                  ; out[10,5]
+    addps xm14, xm0                  ; out[0]
+    addps xm15, xm1                  ; out[10,5]
+
+    shufps m12, m10, m10, q3232      ; tab5 4 5 4 5  8  9  8  9
+    shufps m13, m10, m10, q1010      ; tab5 6 7 6 7 10 11 10 11
+
+    mulps m5, m2, m12                ; t[0-3]
+    mulps m6, m3, m12                ; t[4-7]
+    mulps m7, m4, m12                ; t[8-11]
+
+    mulps m2, m13                    ; r[0-3]
+    mulps m3, m13                    ; r[4-7]
+    mulps m4, m13                    ; r[8-11]
+
+    shufps m5, m5, m5, q1032         ; t[1,0,3,2].reim
+    shufps m6, m6, m6, q1032         ; t[5,4,7,6].reim
+    shufps m7, m7, m7, q1032         ; t[9,8,11,10].reim
+
+    vperm2f128 m13, m11, m11, 0x01   ; mmmmmmpp
+    shufps m12, m11, m11, q3232      ; ppppmmmm
+
+    xorps m5, m13
+    xorps m6, m13
+    xorps m7, m13
+
+    addps m2, m5                     ; r[0,1,2,3]
+    addps m3, m6                     ; r[4,5,6,7]
+    addps m4, m7                     ; r[8,9,10,11]
+
+    shufps m5, m2, m2, q2301
+    shufps m6, m3, m3, q2301
+    shufps m7, m4, m4, q2301
+
+    xorps m2, m12
+    xorps m3, m12
+    xorps m4, m12
+
+    vpermpd m5, m5, q0123
+    vpermpd m6, m6, q0123
+    vpermpd m7, m7, q0123
+
+    addps m5, m2
+    addps m6, m3
+    addps m7, m4
+
+    vpermps m5, m8, m5
+    vpermps m6, m8, m6
+    vpermps m7, m8, m7
+
+    vbroadcastsd m0, xm0             ; dc[0]
+    vpermpd m2, m1, q1111            ; dc[2]
+    vbroadcastsd m1, xm1             ; dc[1]
+
+    addps m0, m5
+    addps m1, m6
+    addps m2, m7
 %endmacro
 
 ; Cobmines m0...m8 (tx1[even, even, odd, odd], tx2,3[even], tx2,3[odd]) coeffs
@@ -675,15 +812,25 @@ SECTION .text
 %endmacro
 
 INIT_XMM sse3
+cglobal fft2_asm_float, 0, 0, 0, ctx, out, in, stride
+    movaps m0, [inq]
+    FFT2 m0, m1
+    movaps [outq], m0
+    ret
+
 cglobal fft2_float, 4, 4, 2, ctx, out, in, stride
     movaps m0, [inq]
     FFT2 m0, m1
     movaps [outq], m0
     RET
 
-%macro FFT4 2
+%macro FFT4_FN 3
 INIT_XMM sse2
+%if %3
+cglobal fft4_ %+ %1 %+ _asm_float, 0, 0, 0, ctx, out, in, stride
+%else
 cglobal fft4_ %+ %1 %+ _float, 4, 4, 3, ctx, out, in, stride
+%endif
     movaps m0, [inq + 0*mmsize]
     movaps m1, [inq + 1*mmsize]
 
@@ -701,26 +848,33 @@ cglobal fft4_ %+ %1 %+ _float, 4, 4, 3, ctx, out, in, stride
     movaps [outq + 0*mmsize], m2
     movaps [outq + 1*mmsize], m0
 
+%if %3
+    ret
+%else
     RET
+%endif
 %endmacro
 
-FFT4 fwd, 0
-FFT4 inv, 1
+FFT4_FN fwd, 0, 0
+FFT4_FN fwd, 0, 1
+FFT4_FN inv, 1, 0
+FFT4_FN inv, 1, 1
 
-%macro FFT8_SSE_FN 2
+%macro FFT8_SSE_FN 1
 INIT_XMM sse3
-cglobal fft8_ %+ %1, 4, 4, 6, ctx, out, in, tmp
-%if %2
+%if %1
+cglobal fft8_asm_float, 0, 0, 0, ctx, out, in, stride, tmp
+    movaps m0, [inq + 0*mmsize]
+    movaps m1, [inq + 1*mmsize]
+    movaps m2, [inq + 2*mmsize]
+    movaps m3, [inq + 3*mmsize]
+%else
+cglobal fft8_float, 4, 4, 6, ctx, out, in, tmp
     mov ctxq, [ctxq + AVTXContext.map]
     LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq
     LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq
     LOAD64_LUT m2, inq, ctxq, (mmsize/2)*2, tmpq
     LOAD64_LUT m3, inq, ctxq, (mmsize/2)*3, tmpq
-%else
-    movaps m0, [inq + 0*mmsize]
-    movaps m1, [inq + 1*mmsize]
-    movaps m2, [inq + 2*mmsize]
-    movaps m3, [inq + 3*mmsize]
 %endif
 
     FFT8 m0, m1, m2, m3, m4, m5
@@ -735,22 +889,33 @@ cglobal fft8_ %+ %1, 4, 4, 6, ctx, out, in, tmp
     movups [outq + 2*mmsize], m5
     movups [outq + 3*mmsize], m1
 
+%if %1
+    ret
+%else
     RET
+%endif
+
+%if %1
+cglobal fft8_ns_float, 4, 5, 6, ctx, out, in, stride, tmp
+    call mangle(ff_tx_fft8_asm_float_sse3)
+    RET
+%endif
 %endmacro
 
-FFT8_SSE_FN float,    1
-FFT8_SSE_FN ns_float, 0
+FFT8_SSE_FN 0
+FFT8_SSE_FN 1
 
-%macro FFT8_AVX_FN 2
+%macro FFT8_AVX_FN 1
 INIT_YMM avx
-cglobal fft8_ %+ %1, 4, 4, 4, ctx, out, in, tmp
-%if %2
+%if %1
+cglobal fft8_asm_float, 0, 0, 0, ctx, out, in, stride, tmp
+    movaps m0, [inq + 0*mmsize]
+    movaps m1, [inq + 1*mmsize]
+%else
+cglobal fft8_float, 4, 4, 4, ctx, out, in, tmp
     mov ctxq, [ctxq + AVTXContext.map]
     LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq, m2
     LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq, m3
-%else
-    movaps m0, [inq + 0*mmsize]
-    movaps m1, [inq + 1*mmsize]
 %endif
 
     FFT8_AVX m0, m1, m2, m3
@@ -764,21 +929,32 @@ cglobal fft8_ %+ %1, 4, 4, 4, ctx, out, in, tmp
     vextractf128 [outq + 16*2], m2, 1
     vextractf128 [outq + 16*3], m0, 1
 
+%if %1
+    ret
+%else
     RET
+%endif
+
+%if %1
+cglobal fft8_ns_float, 4, 5, 4, ctx, out, in, stride, tmp
+    call mangle(ff_tx_fft8_asm_float_avx)
+    RET
+%endif
 %endmacro
 
-FFT8_AVX_FN float,    1
-FFT8_AVX_FN ns_float, 0
+FFT8_AVX_FN 0
+FFT8_AVX_FN 1
 
-%macro FFT16_FN 3
+%macro FFT16_FN 2
 INIT_YMM %1
-cglobal fft16_ %+ %2, 4, 4, 8, ctx, out, in, tmp
-%if %3
+%if %2
+cglobal fft16_asm_float, 0, 0, 0, ctx, out, in, stride, tmp
     movaps m0, [inq + 0*mmsize]
     movaps m1, [inq + 1*mmsize]
     movaps m2, [inq + 2*mmsize]
     movaps m3, [inq + 3*mmsize]
 %else
+cglobal fft16_float, 4, 4, 8, ctx, out, in, tmp
     mov ctxq, [ctxq + AVTXContext.map]
     LOAD64_LUT m0, inq, ctxq, (mmsize/2)*0, tmpq, m4
     LOAD64_LUT m1, inq, ctxq, (mmsize/2)*1, tmpq, m5
@@ -802,23 +978,34 @@ cglobal fft16_ %+ %2, 4, 4, 8, ctx, out, in, tmp
     vextractf128 [outq + 16*6], m5, 1
     vextractf128 [outq + 16*7], m1, 1
 
+%if %2
+    ret
+%else
     RET
+%endif
+
+%if %2
+cglobal fft16_ns_float, 4, 5, 8, ctx, out, in, stride, tmp
+    call mangle(ff_tx_fft16_asm_float_ %+ %1)
+    RET
+%endif
 %endmacro
 
-FFT16_FN avx,  float,    0
-FFT16_FN avx,  ns_float, 1
-FFT16_FN fma3, float,    0
-FFT16_FN fma3, ns_float, 1
+FFT16_FN avx,  0
+FFT16_FN avx,  1
+FFT16_FN fma3, 0
+FFT16_FN fma3, 1
 
-%macro FFT32_FN 3
+%macro FFT32_FN 2
 INIT_YMM %1
-cglobal fft32_ %+ %2, 4, 4, 16, ctx, out, in, tmp
-%if %3
+%if %2
+cglobal fft32_asm_float, 0, 0, 0, ctx, out, in, stride, tmp
     movaps m4, [inq + 4*mmsize]
     movaps m5, [inq + 5*mmsize]
     movaps m6, [inq + 6*mmsize]
     movaps m7, [inq + 7*mmsize]
 %else
+cglobal fft32_float, 4, 4, 16, ctx, out, in, tmp
     mov ctxq, [ctxq + AVTXContext.map]
     LOAD64_LUT m4, inq, ctxq, (mmsize/2)*4, tmpq,  m8, m12
     LOAD64_LUT m5, inq, ctxq, (mmsize/2)*5, tmpq,  m9, m13
@@ -828,7 +1015,7 @@ cglobal fft32_ %+ %2, 4, 4, 16, ctx, out, in, tmp
 
     FFT8 m4, m5, m6, m7, m8, m9
 
-%if %3
+%if %2
     movaps m0, [inq + 0*mmsize]
     movaps m1, [inq + 1*mmsize]
     movaps m2, [inq + 2*mmsize]
@@ -875,14 +1062,24 @@ cglobal fft32_ %+ %2, 4, 4, 16, ctx, out, in, tmp
     vextractf128 [outq + 16*14], m10, 1
     vextractf128 [outq + 16*15],  m5, 1
 
+%if %2
+    ret
+%else
     RET
+%endif
+
+%if %2
+cglobal fft32_ns_float, 4, 5, 16, ctx, out, in, stride, tmp
+    call mangle(ff_tx_fft32_asm_float_ %+ %1)
+    RET
+%endif
 %endmacro
 
 %if ARCH_X86_64
-FFT32_FN avx,  float,    0
-FFT32_FN avx,  ns_float, 1
-FFT32_FN fma3, float,    0
-FFT32_FN fma3, ns_float, 1
+FFT32_FN avx,  0
+FFT32_FN avx,  1
+FFT32_FN fma3, 0
+FFT32_FN fma3, 1
 %endif
 
 %macro FFT_SPLIT_RADIX_DEF 1-2
@@ -923,17 +1120,21 @@ ALIGN 16
 %endif
 %endmacro
 
-%macro FFT_SPLIT_RADIX_FN 3
+%macro FFT_SPLIT_RADIX_FN 2
 INIT_YMM %1
-cglobal fft_sr_ %+ %2, 4, 8, 16, 272, lut, out, in, len, tmp, itab, rtab, tgt
-    movsxd lenq, dword [lutq + AVTXContext.len]
-    mov lutq, [lutq + AVTXContext.map]
+%if %2
+cglobal fft_sr_asm_float, 0, 0, 0, ctx, out, in, stride, len, lut, itab, rtab, tgt, tmp
+%else
+cglobal fft_sr_float, 4, 10, 16, 272, ctx, out, in, stride, len, lut, itab, rtab, tgt, tmp
+    movsxd lenq, dword [ctxq + AVTXContext.len]
+    mov lutq, [ctxq + AVTXContext.map]
+%endif
     mov tgtq, lenq
 
 ; Bottom-most/32-point transform ===============================================
 ALIGN 16
 .32pt:
-%if %3
+%if %2
     movaps m4, [inq + 4*mmsize]
     movaps m5, [inq + 5*mmsize]
     movaps m6, [inq + 6*mmsize]
@@ -947,7 +1148,7 @@ ALIGN 16
 
     FFT8 m4, m5, m6, m7, m8, m9
 
-%if %3
+%if %2
     movaps m0, [inq + 0*mmsize]
     movaps m1, [inq + 1*mmsize]
     movaps m2, [inq + 2*mmsize]
@@ -972,7 +1173,7 @@ ALIGN 16
     movaps [outq + 5*mmsize], m5
     movaps [outq + 7*mmsize], m7
 
-%if %3
+%if %2
     add inq, 8*mmsize
 %else
     add lutq, (mmsize/2)*8
@@ -1007,7 +1208,7 @@ ALIGN 16
     SWAP m4, m1
     SWAP m6, m3
 
-%if %3
+%if %2
     movaps tx1_e0, [inq + 0*mmsize]
     movaps tx1_e1, [inq + 1*mmsize]
     movaps tx1_o0, [inq + 2*mmsize]
@@ -1021,7 +1222,7 @@ ALIGN 16
 
     FFT16 tx1_e0, tx1_e1, tx1_o0, tx1_o1, tw_e, tw_o, tx2_o0, tx2_o1
 
-%if %3
+%if %2
     movaps tx2_e0, [inq + 4*mmsize]
     movaps tx2_e1, [inq + 5*mmsize]
     movaps tx2_o0, [inq + 6*mmsize]
@@ -1038,13 +1239,13 @@ ALIGN 16
     movaps tw_e,           [tab_64_float]
     vperm2f128 tw_o, tw_o, [tab_64_float + 64 - 4*7], 0x23
 
-%if %3
+%if %2
     add inq, 8*mmsize
 %else
     add lutq, (mmsize/2)*8
 %endif
     cmp tgtq, 64
-    je .deinterleave
+    je .64pt_deint
 
     SPLIT_RADIX_COMBINE_64
 
@@ -1190,21 +1391,30 @@ FFT_SPLIT_RADIX_DEF 131072
 ; Final synthesis + deinterleaving code
 ;===============================================================================
 .deinterleave:
-    cmp lenq, 64
-    je .64pt_deint
-
+%if %2
+    PUSH strideq
+%endif
+    mov tgtq, lenq
     imul tmpq, lenq, 2
-    lea lutq, [4*lenq + tmpq]
+    lea strideq, [4*lenq + tmpq]
 
 .synth_deinterleave:
-    SPLIT_RADIX_COMBINE_DEINTERLEAVE_FULL tmpq, lutq
+    SPLIT_RADIX_COMBINE_DEINTERLEAVE_FULL tmpq, strideq
     add outq, 8*mmsize
     add rtabq, 4*mmsize
     sub itabq, 4*mmsize
-    sub lenq, 4*mmsize
+    sub tgtq, 4*mmsize
     jg .synth_deinterleave
 
+%if %2
+    POP strideq
+    sub outq, tmpq
+    neg tmpq
+    lea inq, [inq + tmpq*4]
+    ret
+%else
     RET
+%endif
 
 ; 64-point deinterleave which only has to load 4 registers =====================
 .64pt_deint:
@@ -1281,14 +1491,446 @@ FFT_SPLIT_RADIX_DEF 131072
     vextractf128 [outq + 15*mmsize +  0], tw_o,   1
     vextractf128 [outq + 15*mmsize + 16], tx2_e1, 1
 
+%if %2
+    sub inq, 16*mmsize
+    ret
+%else
     RET
+%endif
+
+%if %2
+cglobal fft_sr_ns_float, 4, 10, 16, 272, ctx, out, in, tmp, len, lut, itab, rtab, tgt, off
+    movsxd lenq, dword [ctxq + AVTXContext.len]
+    mov lutq, [ctxq + AVTXContext.map]
+
+    call mangle(ff_tx_fft_sr_asm_float_ %+ %1)
+    RET
+%endif
 %endmacro
 
 %if ARCH_X86_64
-FFT_SPLIT_RADIX_FN fma3, float,    0
-FFT_SPLIT_RADIX_FN fma3, ns_float, 1
+FFT_SPLIT_RADIX_FN avx, 0
+FFT_SPLIT_RADIX_FN avx, 1
+FFT_SPLIT_RADIX_FN fma3, 0
+FFT_SPLIT_RADIX_FN fma3, 1
 %if HAVE_AVX2_EXTERNAL
-FFT_SPLIT_RADIX_FN avx2, float,    0
-FFT_SPLIT_RADIX_FN avx2, ns_float, 1
+FFT_SPLIT_RADIX_FN avx2, 0
+FFT_SPLIT_RADIX_FN avx2, 1
 %endif
+%endif
+
+%macro FFT15_FN 2
+INIT_YMM avx2
+cglobal fft15_ %+ %2, 4, 10, 16, ctx, out, in, stride, len, lut, tmp, tgt5, stride3, stride5
+    mov lutq, [ctxq + AVTXContext.map]
+
+    imul stride3q, strideq, 3
+    imul stride5q, strideq, 5
+
+    movaps m11, [mask_mmppmmmm]      ; mmppmmmm
+    movaps m10, [tab_53_float]       ; tab5
+    movaps xm9, [tab_53_float + 32]  ; tab3
+    vpermpd m9, m9, q1110            ; tab[23232323]
+    movaps m8, [s15_perm]
+
+%if %1
+    movups  xm0, [inq]
+    movddup xm5, [inq + 16]
+    movups  m2, [inq + mmsize*0 + 24]
+    movups  m3, [inq + mmsize*1 + 24]
+    movups  m4, [inq + mmsize*2 + 24]
+%else
+    LOAD64_LUT xm0, inq, lutq, 0, tmpq, m14, xm15
+    LOAD64_LUT  m2, inq, lutq, (mmsize/2)*0 + 12, tmpq, m6, m7
+    LOAD64_LUT  m3, inq, lutq, (mmsize/2)*1 + 12, tmpq, m14, m15
+    LOAD64_LUT  m4, inq, lutq, (mmsize/2)*2 + 12, tmpq, m6, m7
+    mov tmpd, [lutq + 8]
+    movddup xm5, [inq + tmpq*8]
+%endif
+
+    FFT15
+
+    lea tgt5q, [outq + stride5q]
+    lea tmpq,  [outq + stride5q*2]
+
+    movhps [outq], xm14              ; out[0]
+    movhps [outq + stride5q*1], xm15 ; out[5]
+    movlps [outq + stride5q*2], xm15 ; out[10]
+
+    vextractf128 xm3, m0, 1
+    vextractf128 xm4, m1, 1
+    vextractf128 xm5, m2, 1
+
+    movlps [outq  + strideq*1],  xm1
+    movhps [outq  + strideq*2],  xm2
+    movlps [outq  + stride3q*1], xm3
+    movhps [outq  + strideq*4],  xm4
+    movlps [outq  + stride3q*2], xm0
+    movlps [outq  + strideq*8],  xm5
+    movhps [outq  + stride3q*4], xm0
+    movhps [tgt5q + strideq*2],  xm1
+    movhps [tgt5q + strideq*4],  xm3
+    movlps [tmpq  + strideq*1],  xm2
+    movlps [tmpq  + stride3q*1], xm4
+    movhps [tmpq  + strideq*4],  xm5
+
+    RET
+%endmacro
+
+%if ARCH_X86_64 && HAVE_AVX2_EXTERNAL
+FFT15_FN 0, float
+FFT15_FN 1, ns_float
+%endif
+
+%macro IMDCT_FN 1
+INIT_YMM %1
+cglobal mdct_inv_float, 4, 14, 16, 320, ctx, out, in, stride, len, lut, exp, t1, t2, t3, \
+                                        t4, t5, btmp
+    movsxd lenq, dword [ctxq + AVTXContext.len]
+    mov expq, [ctxq + AVTXContext.exp]
+
+    lea t1d, [lend - 1]
+    imul t1d, strided
+
+    mov btmpq, ctxq                    ; backup original context
+    mov lutq, [ctxq + AVTXContext.map] ; load map
+
+    cmp strideq, 4
+    je .stride4
+
+    shl strideq, 1
+    movd xm4, strided
+    vpbroadcastd m4, xm4             ; stride splatted
+    movd xm5, t1d
+    vpbroadcastd m5, xm5             ; offset splatted
+
+    mov t2q, outq                    ; don't modify the original output
+    pcmpeqd m15, m15                 ; set all bits to 1
+
+.stridex_pre:
+    pmulld m2, m4, [lutq]            ; multiply by stride
+    movaps m0, m15
+    psubd m3, m5, m2                 ; subtract from offset
+    movaps m1, m15
+    vgatherdps m6, [inq + m2], m0    ; im
+    vgatherdps m7, [inq + m3], m1    ; re
+
+    movaps m8, [expq + 0*mmsize]     ; tab 1
+    movaps m9, [expq + 1*mmsize]     ; tab 2
+
+    unpcklps m0, m7, m6              ; re, im, re, im
+    unpckhps m1, m7, m6              ; re, im, re, im
+
+    vperm2f128 m2, m1, m0, 0x02      ; output order
+    vperm2f128 m3, m1, m0, 0x13      ; output order
+
+    movshdup m10, m8                 ; tab 1 imim
+    movshdup m11, m9                 ; tab 2 imim
+    movsldup m12, m8                 ; tab 1 rere
+    movsldup m13, m9                 ; tab 2 rere
+
+    mulps m10, m2                    ; 1 reim * imim
+    mulps m11, m3                    ; 2 reim * imim
+
+    shufps m10, m10, m10, q2301
+    shufps m11, m11, m11, q2301
+
+    fmaddsubps m10, m12, m2, m10
+    fmaddsubps m11, m13, m3, m11
+
+    movups [t2q + 0*mmsize], m10
+    movups [t2q + 1*mmsize], m11
+
+    add expq, mmsize*2
+    add lutq, mmsize
+    add t2q, mmsize*2
+    sub lenq, mmsize/2
+    jg .stridex_pre
+    jmp .transform
+
+.stride4:
+    lea expq, [expq + lenq*4]
+    lea lutq, [lutq + lenq*2]
+    lea t1q, [inq + t1q]
+    lea t1q, [t1q + strideq - mmsize]
+    lea t2q, [lenq*2 - mmsize/2]
+
+.stride4_pre:
+    movups       m4, [inq]
+    movups       m3, [t1q]
+
+    movsldup     m1, m4              ; im im, im im
+    movshdup     m0, m3              ; re re, re re
+    movshdup     m4, m4              ; re re, re re (2)
+    movsldup     m3, m3              ; im im, im im (2)
+
+    movups       m2, [expq]          ; tab
+    movups       m5, [expq + 2*t2q]  ; tab (2)
+
+    vpermpd      m0, m0, q0123       ; flip
+    shufps       m7, m2, m2, q2301
+    vpermpd      m4, m4, q0123       ; flip (2)
+    shufps       m8, m5, m5, q2301
+
+    mulps        m1, m7              ; im im * tab.reim
+    mulps        m3, m8              ; im im * tab.reim (2)
+
+    fmaddsubps   m0, m0, m2, m1
+    fmaddsubps   m4, m4, m5, m3
+
+    vextractf128 xm3, m0, 1
+    vextractf128 xm6, m4, 1
+
+    ; scatter
+    movsxd strideq, dword [lutq + 0*4]
+    movsxd lenq,    dword [lutq + 1*4]
+    movsxd t3q,     dword [lutq + 2*4]
+    movsxd t4q,     dword [lutq + 3*4]
+
+    movlps [outq + strideq*8], xm0
+    movhps [outq + lenq*8],    xm0
+    movlps [outq + t3q*8],     xm3
+    movhps [outq + t4q*8],     xm3
+
+    movsxd strideq, dword [lutq + 0*4 + t2q]
+    movsxd lenq,    dword [lutq + 1*4 + t2q]
+    movsxd t3q,     dword [lutq + 2*4 + t2q]
+    movsxd t4q,     dword [lutq + 3*4 + t2q]
+
+    movlps [outq + strideq*8], xm4
+    movhps [outq + lenq*8],    xm4
+    movlps [outq + t3q*8],     xm6
+    movhps [outq + t4q*8],     xm6
+
+    add lutq, mmsize/2
+    add expq, mmsize
+    add inq, mmsize
+    sub t1q, mmsize
+    sub t2q, mmsize
+    jge .stride4_pre
+
+.transform:
+    mov strideq, 2*4
+    mov t4q, ctxq                      ; backup original context
+    mov t5q, [ctxq + AVTXContext.fn]   ; subtransform's jump point
+    mov ctxq, [ctxq + AVTXContext.sub]
+    mov lutq, [ctxq + AVTXContext.map]
+    movsxd lenq, dword [ctxq + AVTXContext.len]
+
+    mov inq, outq                    ; in-place transform
+    call t5q                         ; call the FFT
+
+    mov ctxq, t4q                    ; restore original context
+    movsxd lenq, dword [ctxq + AVTXContext.len]
+    mov expq, [ctxq + AVTXContext.exp]
+    lea expq, [expq + lenq*4]
+
+    xor t1q, t1q                     ; low
+    lea t2q, [lenq*4 - mmsize]       ; high
+
+.post:
+    movaps m2, [expq + t2q]          ; tab h
+    movaps m3, [expq + t1q]          ; tab l
+    movups m0, [outq + t2q]          ; in h
+    movups m1, [outq + t1q]          ; in l
+
+    movshdup m4, m2                  ; tab h imim
+    movshdup m5, m3                  ; tab l imim
+    movsldup m6, m2                  ; tab h rere
+    movsldup m7, m3                  ; tab l rere
+
+    shufps m2, m0, m0, q2301         ; in h imre
+    shufps m3, m1, m1, q2301         ; in l imre
+
+    mulps m6, m0
+    mulps m7, m1
+
+    fmaddsubps m4, m4, m2, m6
+    fmaddsubps m5, m5, m3, m7
+
+    vpermpd m3, m5, q0123            ; flip
+    vpermpd m2, m4, q0123            ; flip
+
+    blendps m1, m2, m5, 01010101b
+    blendps m0, m3, m4, 01010101b
+
+    movups [outq + t2q], m0
+    movups [outq + t1q], m1
+
+    add t1q, mmsize
+    sub t2q, mmsize
+    sub lenq, mmsize/2
+    jg .post
+
+    RET
+%endmacro
+
+%if ARCH_X86_64 && HAVE_AVX2_EXTERNAL
+IMDCT_FN avx2
+%endif
+
+%macro PFA_15_FN 2
+INIT_YMM %1
+%if %2
+cglobal fft_pfa_15xM_asm_float, 0, 0, 0, ctx, out, in, stride, len, lut, buf, map, tgt, tmp, \
+                                         tgt5, stride3, stride5, btmp
+%else
+cglobal fft_pfa_15xM_float, 4, 14, 16, 320, ctx, out, in, stride, len, lut, buf, map, tgt, tmp, \
+                                            tgt5, stride3, stride5, btmp
+%endif
+
+%if %2
+    PUSH inq
+    PUSH tgt5q
+    PUSH stride3q
+    PUSH stride5q
+    PUSH btmpq
+%endif
+
+    PUSH strideq
+
+    mov btmpq, outq
+
+    mov outq, [ctxq + AVTXContext.tmp]
+%if %2 == 0
+    movsxd lenq, dword [ctxq + AVTXContext.len]
+    mov lutq, [ctxq + AVTXContext.map]
+%endif
+
+    ; Load stride (second transform's length) and second transform's LUT
+    mov tmpq, [ctxq + AVTXContext.sub]
+    movsxd strideq, dword [tmpq + AVTXContext.len]
+    mov mapq, [tmpq + AVTXContext.map]
+
+    shl strideq, 3
+    imul stride3q, strideq, 3
+    imul stride5q, strideq, 5
+
+    movaps m11, [mask_mmppmmmm]      ; mmppmmmm
+    movaps m10, [tab_53_float]       ; tab5
+    movaps xm9, [tab_53_float + 32]  ; tab3
+    vpermpd m9, m9, q1110            ; tab[23232323]
+    movaps m8, [s15_perm]
+
+.dim1:
+    mov tmpd, [mapq]
+    lea tgtq, [outq + tmpq*8]
+
+%if %2
+    movups  xm0, [inq]                                            ; in[0,1].reim
+    movddup xm5, [inq + 16]                                       ; in[2].reimreim
+    movups  m2, [inq + mmsize*0 + 24]                             ; in[3-6].reim
+    movups  m3, [inq + mmsize*1 + 24]                             ; in[7-11].reim
+    movups  m4, [inq + mmsize*2 + 24]                             ; in[12-15].reim
+%else
+    LOAD64_LUT xm0, inq, lutq, 0, tmpq, m14, xm15                 ; in[0,1].reim
+    LOAD64_LUT  m2, inq, lutq, (mmsize/2)*0 + 12, tmpq, m6, m7
+    LOAD64_LUT  m3, inq, lutq, (mmsize/2)*1 + 12, tmpq, m14, m15
+    LOAD64_LUT  m4, inq, lutq, (mmsize/2)*2 + 12, tmpq, m6, m7
+    mov tmpd, [lutq + 8]
+    movddup xm5, [inq + tmpq*8]     ; in[2].reimreim
+%endif
+
+    FFT15
+
+    lea tgt5q, [tgtq + stride5q]
+    lea tmpq,  [tgtq + stride5q*2]
+
+    movhps [tgtq], xm14              ; out[0]
+    movhps [tgtq + stride5q*1], xm15 ; out[5]
+    movlps [tgtq + stride5q*2], xm15 ; out[10]
+
+    vextractf128 xm3, m0, 1
+    vextractf128 xm4, m1, 1
+    vextractf128 xm5, m2, 1
+
+    movlps [tgtq  + strideq*1],  xm1
+    movhps [tgtq  + strideq*2],  xm2
+    movlps [tgtq  + stride3q*1], xm3
+    movhps [tgtq  + strideq*4],  xm4
+    movlps [tgtq  + stride3q*2], xm0
+    movlps [tgtq  + strideq*8],  xm5
+    movhps [tgtq  + stride3q*4], xm0
+    movhps [tgt5q + strideq*2],  xm1
+    movhps [tgt5q + strideq*4],  xm3
+    movlps [tmpq  + strideq*1],  xm2
+    movlps [tmpq  + stride3q*1], xm4
+    movhps [tmpq  + strideq*4],  xm5
+
+%if %2
+    add inq, mmsize*3 + 24
+%else
+    add lutq, (mmsize/2)*3 + 12
+%endif
+    add mapq, 4
+    sub lenq, 15
+    jg .dim1
+
+    ; Second transform setup
+    mov stride5q, ctxq                              ; backup original context
+    movsxd stride3q, dword [ctxq + AVTXContext.len] ; full length
+    mov tgt5q, [ctxq + AVTXContext.fn]              ; subtransform's jump point
+
+    mov inq, outq                                   ; in-place transform
+    mov ctxq, [ctxq + AVTXContext.sub]              ; load subtransform's context
+    mov lutq, [ctxq + AVTXContext.map]              ; load subtransform's map
+    movsxd lenq, dword [ctxq + AVTXContext.len]     ; load subtransform's length
+
+.dim2:
+    call tgt5q                                      ; call the FFT
+    lea inq,  [inq  + lenq*8]
+    lea outq, [outq + lenq*8]
+    sub stride3q, lenq
+    jg .dim2
+
+    mov ctxq, stride5q                              ; restore original context
+    mov lutq, [ctxq + AVTXContext.map]
+    mov inq,  [ctxq + AVTXContext.tmp]
+    movsxd lenq, dword [ctxq + AVTXContext.len]     ; full length
+
+    lea stride3q, [lutq + lenq*4]                   ; second part of the LUT
+    mov stride5q, lenq
+    mov tgt5q, btmpq
+    POP strideq
+    lea tmpq, [strideq + 2*strideq]
+
+.post:
+    LOAD64_LUT m0, inq, stride3q, 0, tmpq, m8, m9
+    vextractf128 xm1, m0, 1
+    movlps [tgt5q], xm0
+    movhps [tgt5q + strideq], xm0
+    movlps [tgt5q + strideq*2], xm1
+    movhps [tgt5q + tmpq], xm1
+
+    lea tgt5q, [tgt5q + 4*strideq]
+    add stride3q, mmsize/2
+    sub stride5q, mmsize/8
+    jg .post
+
+%if %2
+    mov outq, btmpq
+    POP btmpq
+    POP stride5q
+    POP stride3q
+    POP tgt5q
+    POP inq
+    ret
+%else
+    RET
+%endif
+
+%if %2
+cglobal fft_pfa_15xM_ns_float, 4, 14, 16, 320, ctx, out, in, stride, len, lut, buf, map, tgt, tmp, \
+                                               tgt5, stride3, stride5, btmp
+    movsxd lenq, dword [ctxq + AVTXContext.len]
+    mov lutq, [ctxq + AVTXContext.map]
+
+    call mangle(ff_tx_fft_pfa_15xM_asm_float)
+    RET
+%endif
+%endmacro
+
+%if ARCH_X86_64 && HAVE_AVX2_EXTERNAL
+PFA_15_FN avx2, 0
+PFA_15_FN avx2, 1
 %endif

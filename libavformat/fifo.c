@@ -148,8 +148,8 @@ static int fifo_thread_write_header(FifoThreadContext *ctx)
 
     // Check for options unrecognized by underlying muxer
     if (format_options) {
-        AVDictionaryEntry *entry = NULL;
-        while ((entry = av_dict_get(format_options, "", entry, AV_DICT_IGNORE_SUFFIX)))
+        const AVDictionaryEntry *entry = NULL;
+        while ((entry = av_dict_iterate(format_options, entry)))
             av_log(avf2, AV_LOG_ERROR, "Unknown option '%s'\n", entry->key);
         ret = AVERROR(EINVAL);
     }
@@ -432,6 +432,8 @@ static void *fifo_consumer_thread(void *data)
     fifo_thread_ctx.avf = avf;
     fifo_thread_ctx.last_received_dts = AV_NOPTS_VALUE;
 
+    ff_thread_setname("fifo-consumer");
+
     while (1) {
         uint8_t just_flushed = 0;
 
@@ -499,19 +501,19 @@ static int fifo_mux_init(AVFormatContext *avf, const AVOutputFormat *oformat,
     if (ret < 0)
         return ret;
     avf2->opaque = avf->opaque;
+#if FF_API_AVFORMAT_IO_CLOSE
+FF_DISABLE_DEPRECATION_WARNINGS
     avf2->io_close = avf->io_close;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     avf2->io_close2 = avf->io_close2;
     avf2->io_open = avf->io_open;
     avf2->flags = avf->flags;
 
     for (i = 0; i < avf->nb_streams; ++i) {
-        AVStream *st = avformat_new_stream(avf2, NULL);
+        AVStream *st = ff_stream_clone(avf2, avf->streams[i]);
         if (!st)
             return AVERROR(ENOMEM);
-
-        ret = ff_stream_encode_params_copy(st, avf->streams[i]);
-        if (ret < 0)
-            return ret;
     }
 
     return 0;
@@ -709,15 +711,15 @@ static const AVClass fifo_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_fifo_muxer = {
-    .name           = "fifo",
-    .long_name      = NULL_IF_CONFIG_SMALL("FIFO queue pseudo-muxer"),
+const FFOutputFormat ff_fifo_muxer = {
+    .p.name         = "fifo",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("FIFO queue pseudo-muxer"),
+    .p.priv_class   = &fifo_muxer_class,
+    .p.flags        = AVFMT_NOFILE | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
     .priv_data_size = sizeof(FifoContext),
     .init           = fifo_init,
     .write_header   = fifo_write_header,
     .write_packet   = fifo_write_packet,
     .write_trailer  = fifo_write_trailer,
     .deinit         = fifo_deinit,
-    .priv_class     = &fifo_muxer_class,
-    .flags          = AVFMT_NOFILE | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
 };

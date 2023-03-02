@@ -99,6 +99,14 @@ FATE_SAMPLES_FFMPEG-$(call FILTERDEMDEC, AMIX ARESAMPLE SINE, RAWVIDEO, \
 fate-shortest: tests/data/vsynth_lena.yuv
 fate-shortest: CMD = framecrc -auto_conversion_filters -f lavfi -i "sine=3000:d=10" -f lavfi -i "sine=1000:d=1" -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -idct simple -f rawvideo -s 352x288 -pix_fmt yuv420p -i $(TARGET_PATH)/tests/data/vsynth_lena.yuv -filter_complex "[0:a:0][1:a:0]amix=inputs=2[audio]" -map 2:v:0 -map "[audio]" -sws_flags +accurate_rnd+bitexact -fflags +bitexact -flags +bitexact -idct simple -dct fastint -qscale 10 -threads 1 -c:v mpeg4 -c:a ac3_fixed -shortest
 
+# test interleaving video with a sparse subtitle stream
+FATE_SAMPLES_FFMPEG-$(call ALLYES, COLOR_FILTER, VOBSUB_DEMUXER, MATROSKA_DEMUXER,, \
+                           RAWVIDEO_ENCODER, MATROSKA_MUXER, FRAMECRC_MUXER) += fate-shortest-sub
+fate-shortest-sub: CMD = transcode                                                                    \
+        vobsub $(TARGET_SAMPLES)/sub/vobsub.idx matroska                                              \
+        "-filter_complex 'color=s=1x1:rate=1:duration=400' -pix_fmt rgb24 -allow_raw_vfw 1 -c:s copy -c:v rawvideo"  \
+        "-map 0 -c copy -shortest -shortest_buf_duration 40 -max_delay 1"
+
 # Basic test for fix_sub_duration, which calculates duration based on the
 # following subtitle's pts.
 FATE_SAMPLES_FFMPEG-$(call FILTERDEMDECENCMUX, MOVIE, MPEGVIDEO, \
@@ -108,6 +116,21 @@ FATE_SAMPLES_FFMPEG-$(call FILTERDEMDECENCMUX, MOVIE, MPEGVIDEO, \
 fate-ffmpeg-fix_sub_duration: CMD = fmtstdout srt -fix_sub_duration \
   -real_time 1 -f lavfi \
   -i "movie=$(TARGET_SAMPLES)/sub/Closedcaption_rollup.m2v[out0+subcc]"
+
+# Basic test for fix_sub_duration_heartbeat, which causes a buffered subtitle
+# to be pushed out when a video keyframe is received from an encoder.
+FATE_SAMPLES_FFMPEG-$(call FILTERDEMDECENCMUX, MOVIE, MPEGVIDEO, \
+                           MPEG2VIDEO, SUBRIP, SRT, LAVFI_INDEV  \
+                           MPEGVIDEO_PARSER CCAPTION_DECODER \
+                           MPEG2VIDEO_ENCODER NULL_MUXER PIPE_PROTOCOL) \
+                           += fate-ffmpeg-fix_sub_duration_heartbeat
+fate-ffmpeg-fix_sub_duration_heartbeat: CMD = fmtstdout srt -fix_sub_duration \
+  -real_time 1 -f lavfi \
+  -i "movie=$(TARGET_SAMPLES)/sub/Closedcaption_rollup.m2v[out0+subcc]" \
+  -map 0:v  -map 0:s -fix_sub_duration_heartbeat:v:0 \
+  -c:v mpeg2video -b:v 2M -g 30 -sc_threshold 1000000000 \
+  -c:s srt \
+  -f null -
 
 FATE_STREAMCOPY-$(call REMUX, MP4 MOV, EAC3_DEMUXER) += fate-copy-trac3074
 fate-copy-trac3074: CMD = transcode eac3 $(TARGET_SAMPLES)/eac3/csi_miami_stereo_128_spx.eac3\

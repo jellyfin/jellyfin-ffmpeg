@@ -25,7 +25,7 @@
 #include "mpegvideodata.h"
 #include "mpegvideoenc.h"
 
-void ff_flv_encode_picture_header(MpegEncContext *s, int picture_number)
+void ff_flv_encode_picture_header(MpegEncContext *s)
 {
     int format;
 
@@ -94,7 +94,7 @@ void ff_flv2_encode_ac_esc(PutBitContext *pb, int slevel, int level,
 
 const FFCodec ff_flv_encoder = {
     .p.name         = "flv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("FLV / Sorenson Spark / Sorenson H.263 (Flash Video)"),
+    CODEC_LONG_NAME("FLV / Sorenson Spark / Sorenson H.263 (Flash Video)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_FLV1,
     .p.priv_class   = &ff_mpv_enc_class,
@@ -102,7 +102,8 @@ const FFCodec ff_flv_encoder = {
     .init           = ff_mpv_encode_init,
     FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),
     .close          = ff_mpv_encode_end,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE},
+    .p.capabilities = AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
 };

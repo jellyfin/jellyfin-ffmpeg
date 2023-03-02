@@ -44,7 +44,6 @@
 #include <math.h>
 
 #include "libavutil/channel_layout.h"
-#include "libavutil/float_dsp.h"
 #include "avcodec.h"
 #include "libavutil/common.h"
 #include "libavutil/avassert.h"
@@ -56,7 +55,7 @@
 #include "lsp.h"
 #include "amr.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #include "amrnbdata.h"
 
@@ -1092,13 +1091,13 @@ static int amrnb_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     *got_frame_ptr = 1;
 
-    return avpkt->size;
+    return buf - avpkt->data;
 }
 
 
 const FFCodec ff_amrnb_decoder = {
     .p.name         = "amrnb",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("AMR-NB (Adaptive Multi-Rate NarrowBand)"),
+    CODEC_LONG_NAME("AMR-NB (Adaptive Multi-Rate NarrowBand)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_AMR_NB,
     .priv_data_size = sizeof(AMRChannelsContext),
@@ -1107,5 +1106,4 @@ const FFCodec ff_amrnb_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
                                                      AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

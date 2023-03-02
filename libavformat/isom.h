@@ -135,8 +135,11 @@ typedef struct MOVFragmentStreamInfo {
     int64_t first_tfra_pts;
     int64_t tfdt_dts;
     int64_t next_trun_dts;
+    // Index of the first sample/trun in the fragment.
+    int index_base;
     int index_entry;
     MOVEncryptionIndex *encryption_index;
+    int stsd_id; // current fragment stsd_id
 } MOVFragmentStreamInfo;
 
 typedef struct MOVFragmentIndexItem {
@@ -253,7 +256,6 @@ typedef struct MOVStreamContext {
     struct {
         struct AVAESCTR* aes_ctr;
         struct AVAES *aes_ctx;
-        unsigned int frag_index_entry_base;
         unsigned int per_sample_iv_size;  // Either 0, 8, or 16.
         AVEncryptionInfo *default_encrypted_sample;
         MOVEncryptionIndex *encryption_index;
@@ -284,6 +286,7 @@ typedef struct MOVContext {
     int use_absolute_path;
     int ignore_editlist;
     int advanced_editlist;
+    int advanced_editlist_autodisabled;
     int ignore_chapters;
     int seek_individually;
     int64_t next_root_atom; ///< offset of the next root atom
@@ -318,6 +321,12 @@ typedef struct MOVContext {
     uint32_t max_stts_delta;
     int is_still_picture_avif;
     int primary_item_id;
+    struct {
+        int item_id;
+        int extent_length;
+        int64_t extent_offset;
+    } *avif_info;
+    int avif_info_size;
 } MOVContext;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);

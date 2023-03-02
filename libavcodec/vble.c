@@ -203,7 +203,7 @@ static av_cold int vble_decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_vble_decoder = {
     .p.name         = "vble",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("VBLE Lossless Codec"),
+    CODEC_LONG_NAME("VBLE Lossless Codec"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_VBLE,
     .priv_data_size = sizeof(VBLEContext),
@@ -211,5 +211,4 @@ const FFCodec ff_vble_decoder = {
     .close          = vble_decode_close,
     FF_CODEC_DECODE_CB(vble_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

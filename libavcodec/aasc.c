@@ -24,13 +24,11 @@
  * Autodesk RLE Video Decoder by Konstantin Shishkov
  */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "msrledec.h"
 
 typedef struct AascContext {
@@ -151,7 +149,7 @@ static av_cold int aasc_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_aasc_decoder = {
     .p.name         = "aasc",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Autodesk RLE"),
+    CODEC_LONG_NAME("Autodesk RLE"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AASC,
     .priv_data_size = sizeof(AascContext),
@@ -159,5 +157,4 @@ const FFCodec ff_aasc_decoder = {
     .close          = aasc_decode_end,
     FF_CODEC_DECODE_CB(aasc_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

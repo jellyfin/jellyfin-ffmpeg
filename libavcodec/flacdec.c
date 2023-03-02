@@ -44,13 +44,14 @@
 #include "flac.h"
 #include "flacdata.h"
 #include "flacdsp.h"
+#include "flac_parse.h"
 #include "thread.h"
 #include "unary.h"
 
 
 typedef struct FLACContext {
     AVClass *class;
-    struct FLACStreaminfo flac_stream_info;
+    FLACStreaminfo stream_info;
 
     AVCodecContext *avctx;                  ///< parent AVCodecContext
     GetBitContext gb;                       ///< GetBitContext initialized to start at the current frame
@@ -63,6 +64,9 @@ typedef struct FLACContext {
     int32_t *decoded[FLAC_MAX_CHANNELS];    ///< decoded samples
     uint8_t *decoded_buffer;
     unsigned int decoded_buffer_size;
+    int64_t *decoded_33bps;                  ///< decoded samples for a 33 bps subframe
+    uint8_t *decoded_buffer_33bps;
+    unsigned int decoded_buffer_size_33bps;
     int buggy_lpc;                          ///< use workaround for old lavc encoded files
 
     FLACDSPContext dsp;
@@ -73,7 +77,7 @@ static int allocate_buffers(FLACContext *s);
 static void flac_set_bps(FLACContext *s)
 {
     enum AVSampleFormat req = s->avctx->request_sample_fmt;
-    int need32 = s->flac_stream_info.bps > 16;
+    int need32 = s->stream_info.bps > 16;
     int want32 = av_get_bytes_per_sample(req) > 2;
     int planar = av_sample_fmt_is_planar(req);
 
@@ -82,19 +86,18 @@ static void flac_set_bps(FLACContext *s)
             s->avctx->sample_fmt = AV_SAMPLE_FMT_S32P;
         else
             s->avctx->sample_fmt = AV_SAMPLE_FMT_S32;
-        s->sample_shift = 32 - s->flac_stream_info.bps;
+        s->sample_shift = 32 - s->stream_info.bps;
     } else {
         if (planar)
             s->avctx->sample_fmt = AV_SAMPLE_FMT_S16P;
         else
             s->avctx->sample_fmt = AV_SAMPLE_FMT_S16;
-        s->sample_shift = 16 - s->flac_stream_info.bps;
+        s->sample_shift = 16 - s->stream_info.bps;
     }
 }
 
 static av_cold int flac_decode_init(AVCodecContext *avctx)
 {
-    enum FLACExtradataFormat format;
     uint8_t *streaminfo;
     int ret;
     FLACContext *s = avctx->priv_data;
@@ -105,11 +108,11 @@ static av_cold int flac_decode_init(AVCodecContext *avctx)
     if (!avctx->extradata)
         return 0;
 
-    if (!ff_flac_is_extradata_valid(avctx, &format, &streaminfo))
+    if (!ff_flac_is_extradata_valid(avctx, &streaminfo))
         return AVERROR_INVALIDDATA;
 
     /* initialize based on the demuxer-supplied streamdata header */
-    ret = ff_flac_parse_streaminfo(avctx, &s->flac_stream_info, streaminfo);
+    ret = ff_flac_parse_streaminfo(avctx, &s->stream_info, streaminfo);
     if (ret < 0)
         return ret;
     ret = allocate_buffers(s);
@@ -117,7 +120,7 @@ static av_cold int flac_decode_init(AVCodecContext *avctx)
         return ret;
     flac_set_bps(s);
     ff_flacdsp_init(&s->dsp, avctx->sample_fmt,
-                    s->flac_stream_info.channels, s->flac_stream_info.bps);
+                    s->stream_info.channels);
     s->got_streaminfo = 1;
 
     return 0;
@@ -137,10 +140,10 @@ static int allocate_buffers(FLACContext *s)
     int buf_size;
     int ret;
 
-    av_assert0(s->flac_stream_info.max_blocksize);
+    av_assert0(s->stream_info.max_blocksize);
 
-    buf_size = av_samples_get_buffer_size(NULL, s->flac_stream_info.channels,
-                                          s->flac_stream_info.max_blocksize,
+    buf_size = av_samples_get_buffer_size(NULL, s->stream_info.channels,
+                                          s->stream_info.max_blocksize,
                                           AV_SAMPLE_FMT_S32P, 0);
     if (buf_size < 0)
         return buf_size;
@@ -151,9 +154,27 @@ static int allocate_buffers(FLACContext *s)
 
     ret = av_samples_fill_arrays((uint8_t **)s->decoded, NULL,
                                  s->decoded_buffer,
-                                 s->flac_stream_info.channels,
-                                 s->flac_stream_info.max_blocksize,
+                                 s->stream_info.channels,
+                                 s->stream_info.max_blocksize,
                                  AV_SAMPLE_FMT_S32P, 0);
+    if (ret >= 0 && s->stream_info.bps == 32 && s->stream_info.channels == 2) {
+        buf_size = av_samples_get_buffer_size(NULL, 1,
+                                              s->stream_info.max_blocksize,
+                                              AV_SAMPLE_FMT_S64P, 0);
+        if (buf_size < 0)
+            return buf_size;
+
+        av_fast_malloc(&s->decoded_buffer_33bps, &s->decoded_buffer_size_33bps, buf_size);
+        if (!s->decoded_buffer_33bps)
+            return AVERROR(ENOMEM);
+
+        ret = av_samples_fill_arrays((uint8_t **)&s->decoded_33bps, NULL,
+                                     s->decoded_buffer_33bps,
+                                     1,
+                                     s->stream_info.max_blocksize,
+                                     AV_SAMPLE_FMT_S64P, 0);
+
+    }
     return ret < 0 ? ret : 0;
 }
 
@@ -177,7 +198,7 @@ static int parse_streaminfo(FLACContext *s, const uint8_t *buf, int buf_size)
         metadata_size != FLAC_STREAMINFO_SIZE) {
         return AVERROR_INVALIDDATA;
     }
-    ret = ff_flac_parse_streaminfo(s->avctx, &s->flac_stream_info, &buf[8]);
+    ret = ff_flac_parse_streaminfo(s->avctx, &s->stream_info, &buf[8]);
     if (ret < 0)
         return ret;
     ret = allocate_buffers(s);
@@ -185,7 +206,7 @@ static int parse_streaminfo(FLACContext *s, const uint8_t *buf, int buf_size)
         return ret;
     flac_set_bps(s);
     ff_flacdsp_init(&s->dsp, s->avctx->sample_fmt,
-                    s->flac_stream_info.channels, s->flac_stream_info.bps);
+                    s->stream_info.channels);
     s->got_streaminfo = 1;
 
     return 0;
@@ -331,6 +352,62 @@ static int decode_subframe_fixed(FLACContext *s, int32_t *decoded,
     return 0;
 }
 
+#define DECODER_SUBFRAME_FIXED_WIDE(residual) {                       \
+    const int blocksize = s->blocksize;                               \
+    int ret;                                                          \
+                                                                      \
+    if ((ret = decode_residuals(s, residual, pred_order)) < 0)        \
+        return ret;                                                   \
+                                                                      \
+    switch (pred_order) {                                             \
+    case 0:                                                           \
+        for (int i = pred_order; i < blocksize; i++)                  \
+            decoded[i] = residual[i];                                 \
+        break;                                                        \
+    case 1:                                                           \
+        for (int i = pred_order; i < blocksize; i++)                  \
+            decoded[i] = (int64_t)residual[i] + (int64_t)decoded[i-1];\
+        break;                                                        \
+    case 2:                                                           \
+        for (int i = pred_order; i < blocksize; i++)                  \
+            decoded[i] = (int64_t)residual[i] + 2*(int64_t)decoded[i-1] - (int64_t)decoded[i-2];  \
+        break;                                                        \
+    case 3:                                                           \
+        for (int i = pred_order; i < blocksize; i++)                  \
+            decoded[i] = (int64_t)residual[i] + 3*(int64_t)decoded[i-1] - 3*(int64_t)decoded[i-2] + (int64_t)decoded[i-3];   \
+        break;                                                        \
+    case 4:                                                           \
+        for (int i = pred_order; i < blocksize; i++)                  \
+            decoded[i] = (int64_t)residual[i] + 4*(int64_t)decoded[i-1] - 6*(int64_t)decoded[i-2] + 4*(int64_t)decoded[i-3] - (int64_t)decoded[i-4];   \
+        break;                                                        \
+    default:                                                          \
+        av_log(s->avctx, AV_LOG_ERROR, "illegal pred order %d\n", pred_order);   \
+        return AVERROR_INVALIDDATA;                                   \
+    }                                                                 \
+    return 0;                                                         \
+}
+
+static int decode_subframe_fixed_wide(FLACContext *s, int32_t *decoded,
+                                      int pred_order, int bps)
+{
+    /* warm up samples */
+    for (int i = 0; i < pred_order; i++) {
+        decoded[i] = get_sbits_long(&s->gb, bps);
+    }
+    DECODER_SUBFRAME_FIXED_WIDE(decoded);
+}
+
+
+static int decode_subframe_fixed_33bps(FLACContext *s, int64_t *decoded,
+                                       int32_t *residual, int pred_order)
+{
+    /* warm up samples */                                             \
+    for (int i = 0; i < pred_order; i++) {                            \
+        decoded[i] = get_sbits64(&s->gb, 33);                         \
+    }                                                                 \
+    DECODER_SUBFRAME_FIXED_WIDE(residual);
+}
+
 static void lpc_analyze_remodulate(SUINT32 *decoded, const int coeffs[32],
                                    int order, int qlevel, int len, int bps)
 {
@@ -389,14 +466,55 @@ static int decode_subframe_lpc(FLACContext *s, int32_t *decoded, int pred_order,
     if ((ret = decode_residuals(s, decoded, pred_order)) < 0)
         return ret;
 
-    if (   (    s->buggy_lpc && s->flac_stream_info.bps <= 16)
+    if (   (    s->buggy_lpc && s->stream_info.bps <= 16)
         || (   !s->buggy_lpc && bps <= 16
             && bps + coeff_prec + av_log2(pred_order) <= 32)) {
         s->dsp.lpc16(decoded, coeffs, pred_order, qlevel, s->blocksize);
     } else {
         s->dsp.lpc32(decoded, coeffs, pred_order, qlevel, s->blocksize);
-        if (s->flac_stream_info.bps <= 16)
+        if (s->stream_info.bps <= 16)
             lpc_analyze_remodulate(decoded, coeffs, pred_order, qlevel, s->blocksize, bps);
+    }
+
+    return 0;
+}
+
+static int decode_subframe_lpc_33bps(FLACContext *s, int64_t *decoded,
+                                     int32_t *residual, int pred_order)
+{
+    int i, j, ret;
+    int coeff_prec, qlevel;
+    int coeffs[32];
+
+    /* warm up samples */
+    for (i = 0; i < pred_order; i++) {
+        decoded[i] = get_sbits64(&s->gb, 33);
+    }
+
+    coeff_prec = get_bits(&s->gb, 4) + 1;
+    if (coeff_prec == 16) {
+        av_log(s->avctx, AV_LOG_ERROR, "invalid coeff precision\n");
+        return AVERROR_INVALIDDATA;
+    }
+    qlevel = get_sbits(&s->gb, 5);
+    if (qlevel < 0) {
+        av_log(s->avctx, AV_LOG_ERROR, "qlevel %d not supported, maybe buggy stream\n",
+               qlevel);
+        return AVERROR_INVALIDDATA;
+    }
+
+    for (i = 0; i < pred_order; i++) {
+        coeffs[pred_order - i - 1] = get_sbits(&s->gb, coeff_prec);
+    }
+
+    if ((ret = decode_residuals(s, residual, pred_order)) < 0)
+        return ret;
+
+    for (i = pred_order; i < s->blocksize; i++, decoded++) {
+        int64_t sum = 0;
+        for (j = 0; j < pred_order; j++)
+            sum += (int64_t)coeffs[j] * decoded[j];
+        decoded[j] = residual[i] + (sum >> qlevel);
     }
 
     return 0;
@@ -406,8 +524,8 @@ static inline int decode_subframe(FLACContext *s, int channel)
 {
     int32_t *decoded = s->decoded[channel];
     int type, wasted = 0;
-    int bps = s->flac_stream_info.bps;
-    int i, tmp, ret;
+    int bps = s->stream_info.bps;
+    int i, ret;
 
     if (channel == 0) {
         if (s->ch_mode == FLAC_CHMODE_RIGHT_SIDE)
@@ -427,7 +545,7 @@ static inline int decode_subframe(FLACContext *s, int channel)
         int left = get_bits_left(&s->gb);
         if ( left <= 0 ||
             (left < bps && !show_bits_long(&s->gb, left)) ||
-                           !show_bits_long(&s->gb, bps)) {
+                           !show_bits_long(&s->gb, bps-1)) {
             av_log(s->avctx, AV_LOG_ERROR,
                    "Invalid number of wasted bits > available bits (%d) - left=%d\n",
                    bps, left);
@@ -436,34 +554,63 @@ static inline int decode_subframe(FLACContext *s, int channel)
         wasted = 1 + get_unary(&s->gb, 1, get_bits_left(&s->gb));
         bps -= wasted;
     }
-    if (bps > 32) {
-        avpriv_report_missing_feature(s->avctx, "Decorrelated bit depth > 32");
-        return AVERROR_PATCHWELCOME;
-    }
 
 //FIXME use av_log2 for types
     if (type == 0) {
-        tmp = get_sbits_long(&s->gb, bps);
-        for (i = 0; i < s->blocksize; i++)
-            decoded[i] = tmp;
+        if (bps < 33) {
+            int32_t tmp = get_sbits_long(&s->gb, bps);
+            for (i = 0; i < s->blocksize; i++)
+                decoded[i] = tmp;
+        } else {
+            int64_t tmp = get_sbits64(&s->gb, 33);
+            for (i = 0; i < s->blocksize; i++)
+                s->decoded_33bps[i] = tmp;
+        }
     } else if (type == 1) {
-        for (i = 0; i < s->blocksize; i++)
-            decoded[i] = get_sbits_long(&s->gb, bps);
+        if (bps < 33) {
+            for (i = 0; i < s->blocksize; i++)
+                decoded[i] = get_sbits_long(&s->gb, bps);
+        } else {
+            for (i = 0; i < s->blocksize; i++)
+                s->decoded_33bps[i] = get_sbits64(&s->gb, 33);
+        }
     } else if ((type >= 8) && (type <= 12)) {
-        if ((ret = decode_subframe_fixed(s, decoded, type & ~0x8, bps)) < 0)
-            return ret;
+        int order = type & ~0x8;
+        if (bps < 33) {
+            if (bps + order <= 32) {
+                if ((ret = decode_subframe_fixed(s, decoded, order, bps)) < 0)
+                    return ret;
+            } else {
+                if ((ret = decode_subframe_fixed_wide(s, decoded, order, bps)) < 0)
+                    return ret;
+            }
+        } else {
+            if ((ret = decode_subframe_fixed_33bps(s, s->decoded_33bps, decoded, order)) < 0)
+                return ret;
+        }
     } else if (type >= 32) {
-        if ((ret = decode_subframe_lpc(s, decoded, (type & ~0x20)+1, bps)) < 0)
-            return ret;
+        if (bps < 33) {
+            if ((ret = decode_subframe_lpc(s, decoded, (type & ~0x20)+1, bps)) < 0)
+                return ret;
+        } else {
+            if ((ret = decode_subframe_lpc_33bps(s, s->decoded_33bps, decoded, (type & ~0x20)+1)) < 0)
+                return ret;
+        }
     } else {
         av_log(s->avctx, AV_LOG_ERROR, "invalid coding type\n");
         return AVERROR_INVALIDDATA;
     }
 
-    if (wasted && wasted < 32) {
-        int i;
-        for (i = 0; i < s->blocksize; i++)
-            decoded[i] = (unsigned)decoded[i] << wasted;
+    if (wasted) {
+        if (wasted+bps == 33) {
+            int i;
+            for (i = 0; i < s->blocksize; i++)
+                s->decoded_33bps[i] = (uint64_t)decoded[i] << wasted;
+        } else if (wasted < 32) {
+            int i;
+            for (i = 0; i < s->blocksize; i++)
+                decoded[i] = (unsigned)decoded[i] << wasted;
+        }
     }
 
     return 0;
@@ -480,68 +627,68 @@ static int decode_frame(FLACContext *s)
         return ret;
     }
 
-    if (   s->flac_stream_info.channels
-        && fi.channels != s->flac_stream_info.channels
+    if (   s->stream_info.channels
+        && fi.channels != s->stream_info.channels
         && s->got_streaminfo) {
-        s->flac_stream_info.channels = fi.channels;
+        s->stream_info.channels = fi.channels;
         ff_flac_set_channel_layout(s->avctx, fi.channels);
         ret = allocate_buffers(s);
         if (ret < 0)
             return ret;
     }
-    s->flac_stream_info.channels = fi.channels;
+    s->stream_info.channels = fi.channels;
     ff_flac_set_channel_layout(s->avctx, fi.channels);
     s->ch_mode = fi.ch_mode;
 
-    if (!s->flac_stream_info.bps && !fi.bps) {
+    if (!s->stream_info.bps && !fi.bps) {
         av_log(s->avctx, AV_LOG_ERROR, "bps not found in STREAMINFO or frame header\n");
         return AVERROR_INVALIDDATA;
     }
     if (!fi.bps) {
-        fi.bps = s->flac_stream_info.bps;
-    } else if (s->flac_stream_info.bps && fi.bps != s->flac_stream_info.bps) {
+        fi.bps = s->stream_info.bps;
+    } else if (s->stream_info.bps && fi.bps != s->stream_info.bps) {
         av_log(s->avctx, AV_LOG_ERROR, "switching bps mid-stream is not "
                                        "supported\n");
         return AVERROR_INVALIDDATA;
     }
 
-    if (!s->flac_stream_info.bps) {
-        s->flac_stream_info.bps = s->avctx->bits_per_raw_sample = fi.bps;
+    if (!s->stream_info.bps) {
+        s->stream_info.bps = s->avctx->bits_per_raw_sample = fi.bps;
         flac_set_bps(s);
     }
 
-    if (!s->flac_stream_info.max_blocksize)
-        s->flac_stream_info.max_blocksize = FLAC_MAX_BLOCKSIZE;
-    if (fi.blocksize > s->flac_stream_info.max_blocksize) {
+    if (!s->stream_info.max_blocksize)
+        s->stream_info.max_blocksize = FLAC_MAX_BLOCKSIZE;
+    if (fi.blocksize > s->stream_info.max_blocksize) {
         av_log(s->avctx, AV_LOG_ERROR, "blocksize %d > %d\n", fi.blocksize,
-               s->flac_stream_info.max_blocksize);
+               s->stream_info.max_blocksize);
         return AVERROR_INVALIDDATA;
     }
     s->blocksize = fi.blocksize;
 
-    if (!s->flac_stream_info.samplerate && !fi.samplerate) {
+    if (!s->stream_info.samplerate && !fi.samplerate) {
         av_log(s->avctx, AV_LOG_ERROR, "sample rate not found in STREAMINFO"
                                         " or frame header\n");
         return AVERROR_INVALIDDATA;
     }
     if (fi.samplerate == 0)
-        fi.samplerate = s->flac_stream_info.samplerate;
-    s->flac_stream_info.samplerate = s->avctx->sample_rate = fi.samplerate;
+        fi.samplerate = s->stream_info.samplerate;
+    s->stream_info.samplerate = s->avctx->sample_rate = fi.samplerate;
 
     if (!s->got_streaminfo) {
         ret = allocate_buffers(s);
         if (ret < 0)
             return ret;
         s->got_streaminfo = 1;
-        dump_headers(s->avctx, &s->flac_stream_info);
+        dump_headers(s->avctx, &s->stream_info);
     }
     ff_flacdsp_init(&s->dsp, s->avctx->sample_fmt,
-                    s->flac_stream_info.channels, s->flac_stream_info.bps);
+                    s->stream_info.channels);
 
-//    dump_headers(s->avctx, &s->flac_stream_info);
+//    dump_headers(s->avctx, &s->stream_info);
 
     /* subframes */
-    for (i = 0; i < s->flac_stream_info.channels; i++) {
+    for (i = 0; i < s->stream_info.channels; i++) {
         if ((ret = decode_subframe(s, i)) < 0)
             return ret;
     }
@@ -552,6 +699,26 @@ static int decode_frame(FLACContext *s)
     skip_bits(gb, 16); /* data crc */
 
     return 0;
+}
+
+static void decorrelate_33bps(int ch_mode, int32_t **decoded, int64_t *decoded_33bps, int len)
+{
+    int i;
+    if (ch_mode == FLAC_CHMODE_LEFT_SIDE ) {
+        for (i = 0; i < len; i++)
+           decoded[1][i] = decoded[0][i] - decoded_33bps[i];
+    } else if (ch_mode == FLAC_CHMODE_RIGHT_SIDE ) {
+        for (i = 0; i < len; i++)
+           decoded[0][i] = decoded[1][i] + decoded_33bps[i];
+    } else if (ch_mode == FLAC_CHMODE_MID_SIDE ) {
+        for (i = 0; i < len; i++) {
+            uint64_t a = decoded[0][i];
+            int64_t b = decoded_33bps[i];
+            a -= b >> 1;
+            decoded[0][i] = (a + b);
+            decoded[1][i] = a;
+        }
+    }
 }
 
 static int flac_decode_frame(AVCodecContext *avctx, AVFrame *frame,
@@ -565,12 +732,6 @@ static int flac_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     *got_frame_ptr = 0;
 
-    if (s->flac_stream_info.max_framesize == 0) {
-        s->flac_stream_info.max_framesize =
-            ff_flac_get_max_frame_size(s->flac_stream_info.max_blocksize ? s->flac_stream_info.max_blocksize : FLAC_MAX_BLOCKSIZE,
-                                       FLAC_MAX_CHANNELS, 32);
-    }
-
     if (buf_size > 5 && !memcmp(buf, "\177FLAC", 5)) {
         av_log(s->avctx, AV_LOG_DEBUG, "skipping flac header packet 1\n");
         return buf_size;
@@ -583,7 +744,7 @@ static int flac_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     /* check that there is at least the smallest decodable amount of data.
        this amount corresponds to the smallest valid FLAC frame possible.
-       FF F8 69 02 00 00 9A 00 00 34 46 */
+       FF F8 69 02 00 00 9A 00 00 34 */
     if (buf_size < FLAC_MIN_FRAME_SIZE)
         return buf_size;
 
@@ -618,9 +779,15 @@ static int flac_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    s->dsp.decorrelate[s->ch_mode](frame->data, s->decoded,
-                                   s->flac_stream_info.channels,
-                                   s->blocksize, s->sample_shift);
+    if (s->stream_info.bps == 32 && s->ch_mode > 0) {
+        decorrelate_33bps(s->ch_mode, s->decoded, s->decoded_33bps, s->blocksize);
+        s->dsp.decorrelate[0](frame->data, s->decoded, s->stream_info.channels,
+                              s->blocksize, s->sample_shift);
+    } else {
+        s->dsp.decorrelate[s->ch_mode](frame->data, s->decoded,
+                                       s->stream_info.channels,
+                                       s->blocksize, s->sample_shift);
+    }
 
     if (bytes_read > buf_size) {
         av_log(s->avctx, AV_LOG_ERROR, "overread: %d\n", bytes_read - buf_size);
@@ -641,6 +808,7 @@ static av_cold int flac_decode_close(AVCodecContext *avctx)
     FLACContext *s = avctx->priv_data;
 
     av_freep(&s->decoded_buffer);
+    av_freep(&s->decoded_buffer_33bps);
 
     return 0;
 }
@@ -659,7 +827,7 @@ static const AVClass flac_decoder_class = {
 
 const FFCodec ff_flac_decoder = {
     .p.name         = "flac",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("FLAC (Free Lossless Audio Codec)"),
+    CODEC_LONG_NAME("FLAC (Free Lossless Audio Codec)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_FLAC,
     .priv_data_size = sizeof(FLACContext),
@@ -675,5 +843,4 @@ const FFCodec ff_flac_decoder = {
                                                       AV_SAMPLE_FMT_S32P,
                                                       AV_SAMPLE_FMT_NONE },
     .p.priv_class   = &flac_decoder_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

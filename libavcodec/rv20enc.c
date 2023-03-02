@@ -34,12 +34,12 @@
 #include "put_bits.h"
 #include "rv10enc.h"
 
-void ff_rv20_encode_picture_header(MpegEncContext *s, int picture_number){
+void ff_rv20_encode_picture_header(MpegEncContext *s) {
     put_bits(&s->pb, 2, s->pict_type); //I 0 vs. 1 ?
     put_bits(&s->pb, 1, 0);     /* unknown bit */
     put_bits(&s->pb, 5, s->qscale);
 
-    put_sbits(&s->pb, 8, picture_number); //FIXME wrong, but correct is not known
+    put_sbits(&s->pb, 8, s->picture_number); //FIXME wrong, but correct is not known
     s->mb_x= s->mb_y= 0;
     ff_h263_encode_mba(s);
 
@@ -64,14 +64,15 @@ void ff_rv20_encode_picture_header(MpegEncContext *s, int picture_number){
 
 const FFCodec ff_rv20_encoder = {
     .p.name         = "rv20",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("RealVideo 2.0"),
+    CODEC_LONG_NAME("RealVideo 2.0"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_RV20,
     .p.priv_class   = &ff_mpv_enc_class,
+    .p.capabilities = AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(MpegEncContext),
     .init           = ff_mpv_encode_init,
     FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),
     .close          = ff_mpv_encode_end,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
 };

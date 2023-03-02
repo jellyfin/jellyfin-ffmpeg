@@ -26,7 +26,7 @@
  */
 
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "mjpeg.h"
 #include "mjpegdec.h"
 
@@ -344,7 +344,7 @@ the_end:
 
 const FFCodec ff_mxpeg_decoder = {
     .p.name         = "mxpeg",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Mobotix MxPEG video"),
+    CODEC_LONG_NAME("Mobotix MxPEG video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MXPEG,
     .priv_data_size = sizeof(MXpegDecodeContext),
@@ -353,5 +353,5 @@ const FFCodec ff_mxpeg_decoder = {
     FF_CODEC_DECODE_CB(mxpeg_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.max_lowres   = 3,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

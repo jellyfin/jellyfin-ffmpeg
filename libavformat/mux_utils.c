@@ -20,6 +20,7 @@
  */
 
 #include "libavutil/dict.h"
+#include "libavutil/dict_internal.h"
 #include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
@@ -29,6 +30,7 @@
 #include "internal.h"
 #include "mux.h"
 
+#if FF_API_GET_END_PTS
 int64_t av_stream_get_end_pts(const AVStream *st)
 {
     if (cffstream(st)->priv_pts) {
@@ -36,20 +38,20 @@ int64_t av_stream_get_end_pts(const AVStream *st)
     } else
         return AV_NOPTS_VALUE;
 }
+#endif
 
 int avformat_query_codec(const AVOutputFormat *ofmt, enum AVCodecID codec_id,
                          int std_compliance)
 {
     if (ofmt) {
         unsigned int codec_tag;
-        if (ofmt->query_codec)
-            return ofmt->query_codec(codec_id, std_compliance);
+        if (ffofmt(ofmt)->query_codec)
+            return ffofmt(ofmt)->query_codec(codec_id, std_compliance);
         else if (ofmt->codec_tag)
             return !!av_codec_get_tag2(ofmt->codec_tag, codec_id, &codec_tag);
         else if (codec_id == ofmt->video_codec ||
                  codec_id == ofmt->audio_codec ||
-                 codec_id == ofmt->subtitle_codec ||
-                 codec_id == ofmt->data_codec)
+                 codec_id == ofmt->subtitle_codec)
             return 1;
     }
     return AVERROR_PATCHWELCOME;
@@ -118,34 +120,6 @@ int ff_format_output_open(AVFormatContext *s, const char *url, AVDictionary **op
 
     if (!(s->oformat->flags & AVFMT_NOFILE))
         return s->io_open(s, &s->pb, url, AVIO_FLAG_WRITE, options);
-    return 0;
-}
-
-int ff_stream_encode_params_copy(AVStream *dst, const AVStream *src)
-{
-    int ret;
-
-    dst->id                  = src->id;
-    dst->time_base           = src->time_base;
-    dst->nb_frames           = src->nb_frames;
-    dst->disposition         = src->disposition;
-    dst->sample_aspect_ratio = src->sample_aspect_ratio;
-    dst->avg_frame_rate      = src->avg_frame_rate;
-    dst->r_frame_rate        = src->r_frame_rate;
-
-    av_dict_free(&dst->metadata);
-    ret = av_dict_copy(&dst->metadata, src->metadata, 0);
-    if (ret < 0)
-        return ret;
-
-    ret = avcodec_parameters_copy(dst->codecpar, src->codecpar);
-    if (ret < 0)
-        return ret;
-
-    ret = ff_stream_side_data_copy(dst, src);
-    if (ret < 0)
-        return ret;
-
     return 0;
 }
 

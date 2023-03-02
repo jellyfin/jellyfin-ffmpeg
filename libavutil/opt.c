@@ -1329,17 +1329,18 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 av_log(av_log_obj, AV_LOG_INFO, "%-12s ", "");
                 break;
         }
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_ENCODING_PARAM) ? 'E' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_DECODING_PARAM) ? 'D' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_FILTERING_PARAM)? 'F' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_VIDEO_PARAM   ) ? 'V' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_AUDIO_PARAM   ) ? 'A' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_SUBTITLE_PARAM) ? 'S' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_EXPORT)         ? 'X' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_READONLY)       ? 'R' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_BSF_PARAM)      ? 'B' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_RUNTIME_PARAM)  ? 'T' : '.');
-        av_log(av_log_obj, AV_LOG_INFO, "%c", (opt->flags & AV_OPT_FLAG_DEPRECATED)     ? 'P' : '.');
+        av_log(av_log_obj, AV_LOG_INFO, "%c%c%c%c%c%c%c%c%c%c%c",
+               (opt->flags & AV_OPT_FLAG_ENCODING_PARAM)  ? 'E' : '.',
+               (opt->flags & AV_OPT_FLAG_DECODING_PARAM)  ? 'D' : '.',
+               (opt->flags & AV_OPT_FLAG_FILTERING_PARAM) ? 'F' : '.',
+               (opt->flags & AV_OPT_FLAG_VIDEO_PARAM)     ? 'V' : '.',
+               (opt->flags & AV_OPT_FLAG_AUDIO_PARAM)     ? 'A' : '.',
+               (opt->flags & AV_OPT_FLAG_SUBTITLE_PARAM)  ? 'S' : '.',
+               (opt->flags & AV_OPT_FLAG_EXPORT)          ? 'X' : '.',
+               (opt->flags & AV_OPT_FLAG_READONLY)        ? 'R' : '.',
+               (opt->flags & AV_OPT_FLAG_BSF_PARAM)       ? 'B' : '.',
+               (opt->flags & AV_OPT_FLAG_RUNTIME_PARAM)   ? 'T' : '.',
+               (opt->flags & AV_OPT_FLAG_DEPRECATED)      ? 'P' : '.');
 
         if (opt->help)
             av_log(av_log_obj, AV_LOG_INFO, " %s", opt->help);
@@ -1741,17 +1742,17 @@ void av_opt_free(void *obj)
 
 int av_opt_set_dict2(void *obj, AVDictionary **options, int search_flags)
 {
-    AVDictionaryEntry *t = NULL;
+    const AVDictionaryEntry *t = NULL;
     AVDictionary    *tmp = NULL;
     int ret;
 
     if (!options)
         return 0;
 
-    while ((t = av_dict_get(*options, "", t, AV_DICT_IGNORE_SUFFIX))) {
+    while ((t = av_dict_iterate(*options, t))) {
         ret = av_opt_set(obj, t->key, t->value, search_flags);
         if (ret == AVERROR_OPTION_NOT_FOUND)
-            ret = av_dict_set(&tmp, t->key, t->value, 0);
+            ret = av_dict_set(&tmp, t->key, t->value, AV_DICT_MULTIKEY);
         if (ret < 0) {
             av_log(obj, AV_LOG_ERROR, "Error setting option %s to value %s.\n", t->key, t->value);
             av_dict_free(&tmp);
@@ -2136,16 +2137,16 @@ FF_ENABLE_DEPRECATION_WARNINGS
     case AV_OPT_TYPE_DICT: {
         AVDictionary *dict1 = NULL;
         AVDictionary *dict2 = *(AVDictionary **)dst;
-        AVDictionaryEntry *en1 = NULL;
-        AVDictionaryEntry *en2 = NULL;
+        const AVDictionaryEntry *en1 = NULL;
+        const AVDictionaryEntry *en2 = NULL;
         ret = av_dict_parse_string(&dict1, o->default_val.str, "=", ":", 0);
         if (ret < 0) {
             av_dict_free(&dict1);
             return ret;
         }
         do {
-            en1 = av_dict_get(dict1, "", en1, AV_DICT_IGNORE_SUFFIX);
-            en2 = av_dict_get(dict2, "", en2, AV_DICT_IGNORE_SUFFIX);
+            en1 = av_dict_iterate(dict1, en1);
+            en2 = av_dict_iterate(dict2, en2);
         } while (en1 && en2 && !strcmp(en1->key, en2->key) && !strcmp(en1->value, en2->value));
         av_dict_free(&dict1);
         return (!en1 && !en2);

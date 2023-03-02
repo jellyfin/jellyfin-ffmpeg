@@ -26,15 +26,11 @@
 #include <stdint.h>
 
 #include "libavutil/channel_layout.h"
-#include "libavutil/float_dsp.h"
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "fft.h"
 #include "get_bits.h"
-#include "lsp.h"
-#include "sinewin.h"
 
 #include "twinvq.h"
 #include "metasound_data.h"
@@ -302,11 +298,6 @@ static av_cold int metasound_decode_init(AVCodecContext *avctx)
         props++;
     }
 
-    if (channels <= 0 || channels > TWINVQ_CHANNELS_MAX) {
-        av_log(avctx, AV_LOG_ERROR, "Unsupported number of channels: %i\n",
-               channels);
-        return AVERROR_INVALIDDATA;
-    }
     av_channel_layout_uninit(&avctx->ch_layout);
     av_channel_layout_default(&avctx->ch_layout, channels);
 
@@ -314,46 +305,46 @@ static av_cold int metasound_decode_init(AVCodecContext *avctx)
 
     switch ((channels << 16) + (isampf << 8) + ibps) {
     case (1 << 16) + ( 8 << 8) +  6:
-        tctx->mtab = &ff_metasound_mode0806;
+        tctx->mtab = &metasound_mode0806;
         break;
     case (2 << 16) + ( 8 << 8) +  6:
-        tctx->mtab = &ff_metasound_mode0806s;
+        tctx->mtab = &metasound_mode0806s;
         break;
     case (1 << 16) + ( 8 << 8) +  8:
-        tctx->mtab = &ff_metasound_mode0808;
+        tctx->mtab = &metasound_mode0808;
         break;
     case (2 << 16) + ( 8 << 8) +  8:
-        tctx->mtab = &ff_metasound_mode0808s;
+        tctx->mtab = &metasound_mode0808s;
         break;
     case (1 << 16) + (11 << 8) + 10:
-        tctx->mtab = &ff_metasound_mode1110;
+        tctx->mtab = &metasound_mode1110;
         break;
     case (2 << 16) + (11 << 8) + 10:
-        tctx->mtab = &ff_metasound_mode1110s;
+        tctx->mtab = &metasound_mode1110s;
         break;
     case (1 << 16) + (16 << 8) + 16:
-        tctx->mtab = &ff_metasound_mode1616;
+        tctx->mtab = &metasound_mode1616;
         break;
     case (2 << 16) + (16 << 8) + 16:
-        tctx->mtab = &ff_metasound_mode1616s;
+        tctx->mtab = &metasound_mode1616s;
         break;
     case (1 << 16) + (22 << 8) + 24:
-        tctx->mtab = &ff_metasound_mode2224;
+        tctx->mtab = &metasound_mode2224;
         break;
     case (2 << 16) + (22 << 8) + 24:
-        tctx->mtab = &ff_metasound_mode2224s;
+        tctx->mtab = &metasound_mode2224s;
         break;
     case (1 << 16) + (44 << 8) + 32:
     case (2 << 16) + (44 << 8) + 32:
-        tctx->mtab = &ff_metasound_mode4432;
+        tctx->mtab = &metasound_mode4432;
         break;
     case (1 << 16) + (44 << 8) + 40:
     case (2 << 16) + (44 << 8) + 40:
-        tctx->mtab = &ff_metasound_mode4440;
+        tctx->mtab = &metasound_mode4440;
         break;
     case (1 << 16) + (44 << 8) + 48:
     case (2 << 16) + (44 << 8) + 48:
-        tctx->mtab = &ff_metasound_mode4448;
+        tctx->mtab = &metasound_mode4448;
         break;
     default:
         av_log(avctx, AV_LOG_ERROR,
@@ -375,7 +366,7 @@ static av_cold int metasound_decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_metasound_decoder = {
     .p.name         = "metasound",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Voxware MetaSound"),
+    CODEC_LONG_NAME("Voxware MetaSound"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_METASOUND,
     .priv_data_size = sizeof(TwinVQContext),
@@ -385,5 +376,5 @@ const FFCodec ff_metasound_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

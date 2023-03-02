@@ -877,8 +877,19 @@ This is not the same as the @option{-framerate} option used for some input forma
 like image2 or v4l2 (it used to be the same in older versions of FFmpeg).
 If in doubt use @option{-framerate} instead of the input option @option{-r}.
 
-As an output option, duplicate or drop input frames to achieve constant output
+As an output option:
+@table @option
+@item video encoding
+Duplicate or drop frames right before encoding them to achieve constant output
 frame rate @var{fps}.
+
+@item video streamcopy
+Indicate to the muxer that @var{fps} is the stream frame rate. No data is
+dropped or duplicated in this case. This may produce invalid files if @var{fps}
+does not match the actual stream frame rate as determined by packet timestamps.
+See also the @code{setts} bitstream filter.
+
+@end table
 
 @item -fpsmax[:@var{stream_specifier}] @var{fps} (@emph{output,per-stream})
 Set maximum frame rate (Hz value, fraction or abbreviation).
@@ -911,6 +922,32 @@ numerator and denominator of the aspect ratio. For example "4:3",
 If used together with @option{-vcodec copy}, it will affect the aspect ratio
 stored at container level, but not the aspect ratio stored in encoded
 frames, if it exists.
+
+@item -display_rotation[:@var{stream_specifier}] @var{rotation} (@emph{input,per-stream})
+Set video rotation metadata.
+
+@var{rotation} is a decimal number specifying the amount in degree by
+which the video should be rotated counter-clockwise before being
+displayed.
+
+This option overrides the rotation/display transform metadata stored in
+the file, if any. When the video is being transcoded (rather than
+copied) and @code{-autorotate} is enabled, the video will be rotated at
+the filtering stage. Otherwise, the metadata will be written into the
+output file if the muxer supports it.
+
+If the @code{-display_hflip} and/or @code{-display_vflip} options are
+given, they are applied after the rotation specified by this option.
+
+@item -display_hflip[:@var{stream_specifier}] (@emph{input,per-stream})
+Set whether on display the image should be horizontally flipped.
+
+See the @code{-display_rotation} option for more details.
+
+@item -display_vflip[:@var{stream_specifier}] (@emph{input,per-stream})
+Set whether on display the image should be vertically flipped.
+
+See the @code{-display_rotation} option for more details.
 
 @item -vn (@emph{input/output})
 As an input option, blocks all video streams of a file from being filtered or
@@ -985,14 +1022,9 @@ list separated with slashes. Two first values are the beginning and
 end frame numbers, last one is quantizer to use if positive, or quality
 factor if negative.
 
-@item -ilme
-Force interlacing support in encoder (MPEG-2 and MPEG-4 only).
-Use this option if your input file is interlaced and you want
-to keep the interlaced format for minimum losses.
-The alternative is to deinterlace the input stream by use of a filter
-such as @code{yadif} or @code{bwdif}, but deinterlacing introduces losses.
 @item -psnr
-Calculate PSNR of compressed frames.
+Calculate PSNR of compressed frames. This option is deprecated, pass the
+PSNR flag to the encoder instead, using @code{-flags +psnr}.
 @item -vstats
 Dump video coding statistics to @file{vstats_HHMMSS.log}.
 @item -vstats_file @var{file}
@@ -1009,8 +1041,6 @@ version > 1:
 @code{out= %2d st= %2d frame= %5d q= %2.1f PSNR= %6.2f f_size= %6d s_size= %8.0fkB time= %0.3f br= %7.1fkbits/s avg_br= %7.1fkbits/s}
 @item -top[:@var{stream_specifier}] @var{n} (@emph{output,per-stream})
 top=1/bottom=0/auto=-1 field first
-@item -dc @var{precision}
-Intra_dc_precision.
 @item -vtag @var{fourcc/tag} (@emph{output})
 Force video tag/fourcc. This is an alias for @code{-tag:v}.
 @item -qphist (@emph{global})
@@ -1312,6 +1342,22 @@ List all hardware acceleration components enabled in this build of ffmpeg.
 Actual runtime availability depends on the hardware and its suitable driver
 being installed.
 
+@item -fix_sub_duration_heartbeat[:@var{stream_specifier}]
+Set a specific output video stream as the heartbeat stream according to which
+to split and push through currently in-progress subtitle upon receipt of a
+random access packet.
+
+This lowers the latency of subtitles for which the end packet or the following
+subtitle has not yet been received. As a drawback, this will most likely lead
+to duplication of subtitle events in order to cover the full duration, so
+when dealing with use cases where latency of when the subtitle event is passed
+on to output is not relevant this option should not be utilized.
+
+Requires @option{-fix_sub_duration} to be set for the relevant input subtitle
+stream for this to have any effect, as well as for the input subtitle stream
+having to be directly mapped to the same output in which the heartbeat stream
+resides.
+
 @end table
 
 @section Audio Options
@@ -1410,18 +1456,18 @@ Set the size of the canvas used to render subtitles.
 @section Advanced options
 
 @table @option
-@item -map [-]@var{input_file_id}[:@var{stream_specifier}][?][,@var{sync_file_id}[:@var{stream_specifier}]] | @var{[linklabel]} (@emph{output})
+@item -map [-]@var{input_file_id}[:@var{stream_specifier}][?] | @var{[linklabel]} (@emph{output})
 
-Designate one or more input streams as a source for the output file. Each input
-stream is identified by the input file index @var{input_file_id} and
-the input stream index @var{input_stream_id} within the input
-file. Both indices start at 0. If specified,
-@var{sync_file_id}:@var{stream_specifier} sets which input stream
-is used as a presentation sync reference.
+Create one or more streams in the output file. This option has two forms for
+specifying the data source(s): the first selects one or more streams from some
+input file (specified with @code{-i}), the second takes an output from some
+complex filtergraph (specified with @code{-filter_complex} or
+@code{-filter_complex_script}).
 
-The first @code{-map} option on the command line specifies the
-source for output stream 0, the second @code{-map} option specifies
-the source for output stream 1, etc.
+In the first form, an output stream is created for every stream from the input
+file with the index @var{input_file_id}. If @var{stream_specifier} is given,
+only those streams that match the specifier are used (see the
+@ref{Stream specifiers} section for the @var{stream_specifier} syntax).
 
 A @code{-} character before the stream identifier creates a "negative" mapping.
 It disables matching streams from already created mappings.
@@ -1435,39 +1481,56 @@ An alternative @var{[linklabel]} form will map outputs from complex filter
 graphs (see the @option{-filter_complex} option) to the output file.
 @var{linklabel} must correspond to a defined output link label in the graph.
 
-For example, to map ALL streams from the first input file to output
+This option may be specified multiple times, each adding more streams to the
+output file. Any given input stream may also be mapped any number of times as a
+source for different output streams, e.g. in order to use different encoding
+options and/or filters. The streams are created in the output in the same order
+in which the @code{-map} options are given on the commandline.
+
+Using this option disables the default mappings for this output file.
+
+Examples:
+
+@table @emph
+
+@item map everything
+To map ALL streams from the first input file to output
 @example
 ffmpeg -i INPUT -map 0 output
 @end example
 
-For example, if you have two audio streams in the first input file,
-these streams are identified by "0:0" and "0:1". You can use
-@code{-map} to select which streams to place in an output file. For
-example:
+@item select specific stream
+If you have two audio streams in the first input file, these streams are
+identified by @var{0:0} and @var{0:1}. You can use @code{-map} to select which
+streams to place in an output file. For example:
 @example
 ffmpeg -i INPUT -map 0:1 out.wav
 @end example
-will map the input stream in @file{INPUT} identified by "0:1" to
-the (single) output stream in @file{out.wav}.
+will map the second input stream in @file{INPUT} to the (single) output stream
+in @file{out.wav}.
 
-For example, to select the stream with index 2 from input file
-@file{a.mov} (specified by the identifier "0:2"), and stream with
-index 6 from input @file{b.mov} (specified by the identifier "1:6"),
-and copy them to the output file @file{out.mov}:
+@item create multiple streams
+To select the stream with index 2 from input file @file{a.mov} (specified by the
+identifier @var{0:2}), and stream with index 6 from input @file{b.mov}
+(specified by the identifier @var{1:6}), and copy them to the output file
+@file{out.mov}:
 @example
 ffmpeg -i a.mov -i b.mov -c copy -map 0:2 -map 1:6 out.mov
 @end example
 
+@item create multiple streams 2
 To select all video and the third audio stream from an input file:
 @example
 ffmpeg -i INPUT -map 0:v -map 0:a:2 OUTPUT
 @end example
 
+@item negative map
 To map all the streams except the second audio, use negative mappings
 @example
 ffmpeg -i INPUT -map 0 -map -0:a:1 OUTPUT
 @end example
 
+@item optional map
 To map the video and audio streams from the first input, and using the
 trailing @code{?}, ignore the audio mapping if no audio streams exist in
 the first input:
@@ -1475,12 +1538,13 @@ the first input:
 ffmpeg -i INPUT -map 0:v -map 0:a? OUTPUT
 @end example
 
+@item map by language
 To pick the English audio stream:
 @example
 ffmpeg -i INPUT -map 0:m:language:eng OUTPUT
 @end example
 
-Note that using this option disables the default mappings for this output file.
+@end table
 
 @item -ignore_unknown
 Ignore input streams with unknown type instead of failing if copying
@@ -1491,6 +1555,10 @@ Allow input streams with unknown type to be copied instead of failing if copying
 such streams is attempted.
 
 @item -map_channel [@var{input_file_id}.@var{stream_specifier}.@var{channel_id}|-1][?][:@var{output_file_id}.@var{stream_specifier}]
+This option is deprecated and will be removed. It can be replaced by the
+@var{pan} filter. In some cases it may be easier to use some combination of the
+@var{channelsplit}, @var{channelmap}, or @var{amerge} filters.
+
 Map an audio channel from a given input to an output. If
 @var{output_file_id}.@var{stream_specifier} is not set, the audio channel will
 be mapped on all the audio streams.
@@ -1674,18 +1742,6 @@ The default is -1.1. One possible usecase is to avoid framedrops in case
 of noisy timestamps or to increase frame drop precision in case of exact
 timestamps.
 
-@item -async @var{samples_per_second}
-Audio sync method. "Stretches/squeezes" the audio stream to match the timestamps,
-the parameter is the maximum samples per second by which the audio is changed.
--async 1 is a special case where only the start of the audio stream is corrected
-without any later correction.
-
-Note that the timestamps may be further modified by the muxer, after this.
-For example, in the case that the format option @option{avoid_negative_ts}
-is enabled.
-
-This option has been deprecated. Use the @code{aresample} audio filter instead.
-
 @item -adrift_threshold @var{time}
 Set the minimum difference between timestamps and audio data (in seconds) to trigger
 adding/dropping samples to make it match the timestamps. This option effectively is
@@ -1765,6 +1821,22 @@ Default value is 0.
 Enable bitexact mode for (de)muxer and (de/en)coder
 @item -shortest (@emph{output})
 Finish encoding when the shortest output stream ends.
+
+Note that this option may require buffering frames, which introduces extra
+latency. The maximum amount of this latency may be controlled with the
+@code{-shortest_buf_duration} option.
+
+@item -shortest_buf_duration @var{duration} (@emph{output})
+The @code{-shortest} option may require buffering potentially large amounts
+of data when at least one of the streams is "sparse" (i.e. has large gaps
+between frames – this is typically the case for subtitles).
+
+This option controls the maximum duration of buffered frames in seconds.
+Larger values may allow the @code{-shortest} option to produce more accurate
+results, but increase memory use and latency.
+
+The default value is 10 seconds.
+
 @item -dts_delta_threshold
 Timestamp discontinuity delta threshold.
 @item -dts_error_threshold @var{seconds}
@@ -1899,12 +1971,15 @@ to the @option{-ss} option is considered an actual timestamp, and is not
 offset by the start time of the file. This matters only for files which do
 not start from timestamp 0, such as transport streams.
 
-@item -thread_queue_size @var{size} (@emph{input})
-This option sets the maximum number of queued packets when reading from the
-file or device. With low latency / high rate live streams, packets may be
-discarded if they are not read in a timely manner; setting this value can
+@item -thread_queue_size @var{size} (@emph{input/output})
+For input, this option sets the maximum number of queued packets when reading
+from the file or device. With low latency / high rate live streams, packets may
+be discarded if they are not read in a timely manner; setting this value can
 force ffmpeg to use a separate input thread and read packets as soon as they
 arrive. By default ffmpeg only does this if multiple inputs are specified.
+
+For output, this option specified the maximum number of packets that may be
+queued to each muxing thread.
 
 @item -sdp_file @var{file} (@emph{global})
 Print sdp information for an output stream to @var{file}.
@@ -1985,6 +2060,116 @@ Declare the number of bits per raw sample in the given output stream to be
 encoder/muxer, it does not change the stream to conform to this value. Setting
 values that do not match the stream properties may result in encoding failures
 or invalid output files.
+
+@item -stats_enc_pre[:@var{stream_specifier}] @var{path} (@emph{output,per-stream})
+@item -stats_enc_post[:@var{stream_specifier}] @var{path} (@emph{output,per-stream})
+@item -stats_mux_pre[:@var{stream_specifier}] @var{path} (@emph{output,per-stream})
+Write per-frame encoding information about the matching streams into the file
+given by @var{path}.
+
+@option{-stats_enc_pre} writes information about raw video or audio frames right
+before they are sent for encoding, while @option{-stats_enc_post} writes
+information about encoded packets as they are received from the encoder.
+@option{-stats_mux_pre} writes information about packets just as they are about to
+be sent to the muxer. Every frame or packet produces one line in the specified
+file. The format of this line is controlled by @option{-stats_enc_pre_fmt} /
+@option{-stats_enc_post_fmt} / @option{-stats_mux_pre_fmt}.
+
+When stats for multiple streams are written into a single file, the lines
+corresponding to different streams will be interleaved. The precise order of
+this interleaving is not specified and not guaranteed to remain stable between
+different invocations of the program, even with the same options.
+
+@item -stats_enc_pre_fmt[:@var{stream_specifier}] @var{format_spec} (@emph{output,per-stream})
+@item -stats_enc_post_fmt[:@var{stream_specifier}] @var{format_spec} (@emph{output,per-stream})
+@item -stats_mux_pre_fmt[:@var{stream_specifier}] @var{format_spec} (@emph{output,per-stream})
+Specify the format for the lines written with @option{-stats_enc_pre} /
+@option{-stats_enc_post} / @option{-stats_mux_pre}.
+
+@var{format_spec} is a string that may contain directives of the form
+@var{@{fmt@}}. @var{format_spec} is backslash-escaped --- use \@{, \@}, and \\
+to write a literal @{, @}, or \, respectively, into the output.
+
+The directives given with @var{fmt} may be one of the following:
+@table @option
+@item fidx
+Index of the output file.
+
+@item sidx
+Index of the output stream in the file.
+
+@item n
+Frame number. Pre-encoding: number of frames sent to the encoder so far.
+Post-encoding: number of packets received from the encoder so far.
+Muxing: number of packets submitted to the muxer for this stream so far.
+
+@item ni
+Input frame number. Index of the input frame (i.e. output by a decoder) that
+corresponds to this output frame or packet. -1 if unavailable.
+
+@item tb
+Encoder timebase, as a rational number @var{num/den}. Note that this may be
+different from the timebase used by the muxer.
+
+@item tbi
+Timebase for @var{ptsi}, as a rational number @var{num/den}. Available when
+@var{ptsi} is available, @var{0/1} otherwise.
+
+@item pts
+Presentation timestamp of the frame or packet, as an integer. Should be
+multiplied by the timebase to compute presentation time.
+
+@item ptsi
+Presentation timestamp of the input frame (see @var{ni}), as an integer. Should
+be multiplied by @var{tbi} to compute presentation time. Printed as
+(2^63 - 1 = 9223372036854775807) when not available.
+
+@item t
+Presentation time of the frame or packet, as a decimal number. Equal to
+@var{pts} multiplied by @var{tb}.
+
+@item ti
+Presentation time of the input frame (see @var{ni}), as a decimal number. Equal
+to @var{ptsi} multiplied by @var{tbi}. Printed as inf when not available.
+
+@item dts
+Decoding timestamp of the packet, as an integer. Should be multiplied by the
+timebase to compute presentation time. Post-encoding only.
+
+@item dt
+Decoding time of the frame or packet, as a decimal number. Equal to
+@var{dts} multiplied by @var{tb}.
+
+@item sn
+Number of audio samples sent to the encoder so far. Audio and pre-encoding only.
+
+@item samp
+Number of audio samples in the frame. Audio and pre-encoding only.
+
+@item size
+Size of the encoded packet in bytes. Post-encoding only.
+
+@item br
+Current bitrate in bits per second. Post-encoding only.
+
+@item abr
+Average bitrate for the whole stream so far, in bits per second, -1 if it cannot
+be determined at this point. Post-encoding only.
+@end table
+
+The default format strings are:
+@table @option
+@item pre-encoding
+@{fidx@} @{sidx@} @{n@} @{t@}
+@item post-encoding
+@{fidx@} @{sidx@} @{n@} @{t@}
+@end table
+In the future, new items may be added to the end of the default formatting
+strings. Users who depend on the format staying exactly the same, should
+prescribe it manually.
+
+Note that stats for different streams written into the same file may have
+different formats.
 
 @end table
 

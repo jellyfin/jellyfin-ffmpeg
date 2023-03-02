@@ -29,7 +29,7 @@
 #include "bytestream.h"
 #include "codec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "packet.h"
 #include "png.h"
 #include "pngdsp.h"
@@ -246,7 +246,7 @@ static void lscr_decode_flush(AVCodecContext *avctx)
 
 const FFCodec ff_lscr_decoder = {
     .p.name         = "lscr",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("LEAD Screen Capture"),
+    CODEC_LONG_NAME("LEAD Screen Capture"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_LSCR,
     .p.capabilities = AV_CODEC_CAP_DR1,
@@ -255,5 +255,5 @@ const FFCodec ff_lscr_decoder = {
     .close          = lscr_decode_close,
     FF_CODEC_DECODE_CB(decode_frame_lscr),
     .flush          = lscr_decode_flush,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

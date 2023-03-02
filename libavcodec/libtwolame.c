@@ -33,7 +33,6 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "mpegaudio.h"
 
 typedef struct TWOLAMEContext {
@@ -211,14 +210,15 @@ static const int twolame_samplerates[] = {
 
 const FFCodec ff_libtwolame_encoder = {
     .p.name         = "libtwolame",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libtwolame MP2 (MPEG audio layer 2)"),
+    CODEC_LONG_NAME("libtwolame MP2 (MPEG audio layer 2)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_MP2,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size = sizeof(TWOLAMEContext),
     .init           = twolame_encode_init,
     FF_CODEC_ENCODE_CB(twolame_encode_frame),
     .close          = twolame_encode_close,
-    .p.capabilities = AV_CODEC_CAP_DELAY,
     .defaults       = twolame_defaults,
     .p.priv_class   = &twolame_class,
     .p.sample_fmts  = (const enum AVSampleFormat[]) {
@@ -228,12 +228,7 @@ const FFCodec ff_libtwolame_encoder = {
         AV_SAMPLE_FMT_S16P,
         AV_SAMPLE_FMT_NONE
     },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts = (const uint64_t[]) {
-        AV_CH_LAYOUT_MONO,
-        AV_CH_LAYOUT_STEREO,
-        0 },
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO, AV_CH_LAYOUT_STEREO)
     .p.ch_layouts    = (const AVChannelLayout[]) {
         AV_CHANNEL_LAYOUT_MONO,
         AV_CHANNEL_LAYOUT_STEREO,

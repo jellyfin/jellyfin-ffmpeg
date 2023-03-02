@@ -27,6 +27,7 @@
 #include "encode.h"
 #include "put_bits.h"
 #include "audio_frame_queue.h"
+#include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/crc.h"
 #include "libavutil/avstring.h"
@@ -122,6 +123,7 @@ typedef struct MLPEncodeContext {
 
     /* channel_meaning */
     int             substream_info;
+    int             thd_substream_info;
     int             fs;
     int             wordlength;
     int             channel_occupancy;
@@ -153,8 +155,8 @@ typedef struct MLPEncodeContext {
     unsigned int    min_restart_interval;   ///< Min interval of access units in between two major frames.
     unsigned int    restart_intervals;      ///< Number of possible major frame sizes.
 
-    uint16_t        timestamp;              ///< Timestamp of current access unit.
-    uint16_t        dts;                    ///< Decoding timestamp of current access unit.
+    uint16_t        output_timing;          ///< Timestamp of current access unit.
+    uint16_t        input_timing;           ///< Decoding timestamp of current access unit.
 
     uint8_t         channel_arrangement;    ///< channel arrangement for MLP streams
 
@@ -479,6 +481,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
     static AVOnce init_static_once = AV_ONCE_INIT;
     MLPEncodeContext *ctx = avctx->priv_data;
     RestartHeader *const rh = &ctx->restart_header;
+    uint64_t channels_present;
     unsigned int sum = 0;
     size_t size;
     int ret;
@@ -536,9 +539,8 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
     }
 
     ctx->substream_info |= SUBSTREAM_INFO_ALWAYS_SET;
-    if (avctx->ch_layout.nb_channels <= 2) {
+    if (avctx->ch_layout.nb_channels <= 2)
         ctx->substream_info |= SUBSTREAM_INFO_MAX_2_CHAN;
-    }
 
     switch (avctx->sample_fmt) {
     case AV_SAMPLE_FMT_S16:
@@ -559,7 +561,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
     }
     ctx->coded_sample_fmt[1] = -1 & 0xf;
 
-    ctx->dts = -avctx->frame_size;
+    ctx->input_timing = -avctx->frame_size;
 
     ctx->num_channels = avctx->ch_layout.nb_channels + 2; /* +2 noise channels */
     ctx->one_sample_buffer_size = avctx->frame_size
@@ -589,23 +591,23 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
 
     ctx->num_substreams = 1; // TODO: change this after adding multi-channel support for TrueHD
 
+    channels_present = av_channel_layout_subset(&avctx->ch_layout, ~(uint64_t)0);
     if (ctx->avctx->codec_id == AV_CODEC_ID_MLP) {
-        static const AVChannelLayout layout_arrangement[] = {
-            AV_CHANNEL_LAYOUT_MONO,         AV_CHANNEL_LAYOUT_STEREO,
-            AV_CHANNEL_LAYOUT_2_1,          AV_CHANNEL_LAYOUT_QUAD,
-            AV_CHANNEL_LAYOUT_2POINT1,      { 0 }, { 0 },
-            AV_CHANNEL_LAYOUT_SURROUND,     AV_CHANNEL_LAYOUT_4POINT0,
-            AV_CHANNEL_LAYOUT_5POINT0_BACK, AV_CHANNEL_LAYOUT_3POINT1,
-            AV_CHANNEL_LAYOUT_4POINT1,      AV_CHANNEL_LAYOUT_5POINT1_BACK,
+        static const uint64_t layout_arrangement[] = {
+            AV_CH_LAYOUT_MONO,         AV_CH_LAYOUT_STEREO,
+            AV_CH_LAYOUT_2_1,          AV_CH_LAYOUT_QUAD,
+            AV_CH_LAYOUT_2POINT1,      0, 0,
+            AV_CH_LAYOUT_SURROUND,     AV_CH_LAYOUT_4POINT0,
+            AV_CH_LAYOUT_5POINT0_BACK, AV_CH_LAYOUT_3POINT1,
+            AV_CH_LAYOUT_4POINT1,      AV_CH_LAYOUT_5POINT1_BACK,
         };
         int i;
 
-        for (i = 0; i < FF_ARRAY_ELEMS(layout_arrangement); i++)
-            if (!av_channel_layout_compare(&avctx->ch_layout, &layout_arrangement[i]))
+        for (i = 0;; i++) {
+            av_assert1(i < FF_ARRAY_ELEMS(layout_arrangement) ||
+                       !"Impossible channel layout");
+            if (channels_present == layout_arrangement[i])
                 break;
-        if (i == FF_ARRAY_ELEMS(layout_arrangement)) {
-            av_log(avctx, AV_LOG_ERROR, "Unsupported channel arrangement\n");
-            return AVERROR(EINVAL);
         }
         ctx->channel_arrangement = i;
         ctx->flags = FLAGS_DVDA;
@@ -613,27 +615,32 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
         ctx->summary_info      = ff_mlp_ch_info[ctx->channel_arrangement].summary_info     ;
     } else {
         /* TrueHD */
-        if (!av_channel_layout_compare(&avctx->ch_layout,
-                                       &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO)) {
-            ctx->ch_modifier_thd0    = 0;
-            ctx->ch_modifier_thd1    = 0;
-            ctx->ch_modifier_thd2    = 0;
+        if (channels_present == AV_CH_LAYOUT_MONO) {
+            ctx->ch_modifier_thd0    = 3;
+            ctx->ch_modifier_thd1    = 3;
+            ctx->ch_modifier_thd2    = 3;
+            ctx->channel_arrangement = 2;
+            ctx->thd_substream_info  = 0x14;
+        } else if (channels_present == AV_CH_LAYOUT_STEREO) {
+            ctx->ch_modifier_thd0    = 1;
+            ctx->ch_modifier_thd1    = 1;
+            ctx->ch_modifier_thd2    = 1;
             ctx->channel_arrangement = 1;
-        } else if (!av_channel_layout_compare(&avctx->ch_layout,
-                                              &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT0_BACK)) {
+            ctx->thd_substream_info  = 0x14;
+        } else if (channels_present == AV_CH_LAYOUT_5POINT0) {
             ctx->ch_modifier_thd0    = 1;
             ctx->ch_modifier_thd1    = 1;
             ctx->ch_modifier_thd2    = 1;
             ctx->channel_arrangement = 11;
-        } else if (!av_channel_layout_compare(&avctx->ch_layout,
-                                              &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1_BACK)) {
+            ctx->thd_substream_info  = 0x104;
+        } else if (channels_present == AV_CH_LAYOUT_5POINT1) {
             ctx->ch_modifier_thd0    = 2;
             ctx->ch_modifier_thd1    = 1;
             ctx->ch_modifier_thd2    = 2;
             ctx->channel_arrangement = 15;
+            ctx->thd_substream_info  = 0x104;
         } else {
-            av_log(avctx, AV_LOG_ERROR, "Unsupported channel arrangement\n");
-            return AVERROR(EINVAL);
+            av_assert1(!"AVCodec.ch_layouts needs to be updated");
         }
         ctx->flags = 0;
         ctx->channel_occupancy = 0;
@@ -718,7 +725,9 @@ static void write_major_sync(MLPEncodeContext *ctx, uint8_t *buf, int buf_size)
     } else if (ctx->avctx->codec_id == AV_CODEC_ID_TRUEHD) {
         put_bits(&pb,  8, SYNC_TRUEHD              );
         put_bits(&pb,  4, ctx->coded_sample_rate[0]);
-        put_bits(&pb,  4, 0                        ); /* ignored */
+        put_bits(&pb,  1, 0                        ); /* 6ch multichannel type */
+        put_bits(&pb,  1, 0                        ); /* 8ch multichannel type */
+        put_bits(&pb,  2, 0                        ); /* ignored */
         put_bits(&pb,  2, ctx->ch_modifier_thd0    );
         put_bits(&pb,  2, ctx->ch_modifier_thd1    );
         put_bits(&pb,  5, ctx->channel_arrangement );
@@ -732,20 +741,41 @@ static void write_major_sync(MLPEncodeContext *ctx, uint8_t *buf, int buf_size)
     put_bits(&pb,  1, 1                        ); /* is_vbr */
     put_bits(&pb, 15, ctx->coded_peak_bitrate  );
     put_bits(&pb,  4, 1                        ); /* num_substreams */
-    put_bits(&pb,  4, 0x1                      ); /* ignored */
+    put_bits(&pb,  2, 0                        ); /* ignored */
+    put_bits(&pb,  2, 0                        ); /* extended substream info */
 
     /* channel_meaning */
-    put_bits(&pb,  8, ctx->substream_info      );
-    put_bits(&pb,  5, ctx->fs                  );
-    put_bits(&pb,  5, ctx->wordlength          );
-    put_bits(&pb,  6, ctx->channel_occupancy   );
-    put_bits(&pb,  3, 0                        ); /* ignored */
-    put_bits(&pb, 10, 0                        ); /* speaker_layout */
-    put_bits(&pb,  3, 0                        ); /* copy_protection */
-    put_bits(&pb, 16, 0x8080                   ); /* ignored */
-    put_bits(&pb,  7, 0                        ); /* ignored */
-    put_bits(&pb,  4, 0                        ); /* source_format */
-    put_bits(&pb,  5, ctx->summary_info        );
+    if (ctx->avctx->codec_id == AV_CODEC_ID_MLP) {
+        put_bits(&pb,  8, ctx->substream_info      );
+        put_bits(&pb,  5, ctx->fs                  );
+        put_bits(&pb,  5, ctx->wordlength          );
+        put_bits(&pb,  6, ctx->channel_occupancy   );
+        put_bits(&pb,  3, 0                        ); /* ignored */
+        put_bits(&pb, 10, 0                        ); /* speaker_layout */
+        put_bits(&pb,  3, 0                        ); /* copy_protection */
+        put_bits(&pb, 16, 0x8080                   ); /* ignored */
+        put_bits(&pb,  7, 0                        ); /* ignored */
+        put_bits(&pb,  4, 0                        ); /* source_format */
+        put_bits(&pb,  5, ctx->summary_info        );
+    } else if (ctx->avctx->codec_id == AV_CODEC_ID_TRUEHD) {
+        put_bits(&pb,  8, ctx->thd_substream_info  );
+        put_bits(&pb,  6, 0                        ); /* reserved */
+        put_bits(&pb,  1, 0                        ); /* 2ch control enabled */
+        put_bits(&pb,  1, 0                        ); /* 6ch control enabled */
+        put_bits(&pb,  1, 0                        ); /* 8ch control enabled */
+        put_bits(&pb,  1, 0                        ); /* reserved */
+        put_bits(&pb,  7, 0                        ); /* drc start up gain */
+        put_bits(&pb,  6, 0                        ); /* 2ch dialogue norm */
+        put_bits(&pb,  6, 0                        ); /* 2ch mix level */
+        put_bits(&pb,  5, 0                        ); /* 6ch dialogue norm */
+        put_bits(&pb,  6, 0                        ); /* 6ch mix level */
+        put_bits(&pb,  5, 0                        ); /* 6ch source format */
+        put_bits(&pb,  5, 0                        ); /* 8ch dialogue norm */
+        put_bits(&pb,  6, 0                        ); /* 8ch mix level */
+        put_bits(&pb,  6, 0                        ); /* 8ch source format */
+        put_bits(&pb,  1, 0                        ); /* reserved */
+        put_bits(&pb,  1, 0                        ); /* extra channel meaning present */
+    }
 
     flush_put_bits(&pb);
 
@@ -765,7 +795,7 @@ static void write_restart_header(MLPEncodeContext *ctx, PutBitContext *pb)
     uint8_t checksum;
 
     put_bits(pb, 14, 0x31ea                ); /* TODO 0x31eb */
-    put_bits(pb, 16, ctx->timestamp        );
+    put_bits(pb, 16, ctx->output_timing    );
     put_bits(pb,  4, rh->min_channel       );
     put_bits(pb,  4, rh->max_channel       );
     put_bits(pb,  4, rh->max_matrix_channel);
@@ -1092,7 +1122,7 @@ static void write_frame_headers(MLPEncodeContext *ctx, uint8_t *frame_header,
     uint16_t access_unit_header = 0;
     uint16_t parity_nibble = 0;
 
-    parity_nibble  = ctx->dts;
+    parity_nibble  = ctx->input_timing;
     parity_nibble ^= length;
 
     for (unsigned int substr = 0; substr < ctx->num_substreams; substr++) {
@@ -1118,7 +1148,7 @@ static void write_frame_headers(MLPEncodeContext *ctx, uint8_t *frame_header,
     access_unit_header |= length & 0xFFF;
 
     AV_WB16(frame_header  , access_unit_header);
-    AV_WB16(frame_header+2, ctx->dts          );
+    AV_WB16(frame_header+2, ctx->input_timing );
 }
 
 /** Writes an entire access unit to the bitstream. */
@@ -1202,7 +1232,7 @@ static void input_data_internal(MLPEncodeContext *ctx, const uint8_t *samples,
 }
 
 /** Wrapper function for inputting data in two different bit-depths. */
-static void input_data(MLPEncodeContext *ctx, void *samples, int nb_samples)
+static void input_data(MLPEncodeContext *ctx, const void *samples, int nb_samples)
 {
     input_data_internal(ctx, samples, nb_samples, ctx->avctx->sample_fmt == AV_SAMPLE_FMT_S32);
 }
@@ -2069,7 +2099,7 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     int bytes_written = 0;
     int channels = avctx->ch_layout.nb_channels;
     int restart_frame, ret;
-    uint8_t *data;
+    const uint8_t *data;
 
     if (!frame && !ctx->last_frames)
         ctx->last_frames = (ctx->afq.remaining_samples + avctx->frame_size - 1) / avctx->frame_size;
@@ -2088,7 +2118,7 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     data = frame ? frame->data[0] : NULL;
 
-    ctx->frame_index = avctx->frame_number % ctx->max_restart_interval;
+    ctx->frame_index = avctx->frame_num % ctx->max_restart_interval;
 
     ctx->inout_buffer = ctx->major_inout_buffer
                       + ctx->frame_index * ctx->one_sample_buffer_size;
@@ -2098,7 +2128,7 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     ctx->write_buffer = ctx->inout_buffer;
 
-    if (avctx->frame_number < ctx->max_restart_interval) {
+    if (avctx->frame_num < ctx->max_restart_interval) {
         if (data)
             goto input_and_return;
     }
@@ -2117,8 +2147,8 @@ static int mlp_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     bytes_written = write_access_unit(ctx, avpkt->data, avpkt->size, restart_frame);
 
-    ctx->timestamp += avctx->frame_size;
-    ctx->dts       += avctx->frame_size;
+    ctx->output_timing += avctx->frame_size;
+    ctx->input_timing  += avctx->frame_size;
 
 input_and_return:
 
@@ -2156,7 +2186,8 @@ input_and_return:
 
             input_to_sample_buffer(ctx);
 
-            analyze_sample_buffer(ctx);
+            if (number_of_samples > 0)
+                analyze_sample_buffer(ctx);
         }
 
         if (ctx->frame_index == (ctx->max_restart_interval - 1)) {
@@ -2168,7 +2199,7 @@ input_and_return:
     }
 
     if (!frame && ctx->last_frames < ctx->max_restart_interval - 1)
-        avctx->frame_number++;
+        avctx->frame_num++;
 
     if (bytes_written > 0) {
         ff_af_queue_remove(&ctx->afq,
@@ -2210,45 +2241,45 @@ static av_cold int mlp_encode_close(AVCodecContext *avctx)
 #if CONFIG_MLP_ENCODER
 const FFCodec ff_mlp_encoder = {
     .p.name                 ="mlp",
-    .p.long_name            = NULL_IF_CONFIG_SMALL("MLP (Meridian Lossless Packing)"),
+    CODEC_LONG_NAME("MLP (Meridian Lossless Packing)"),
     .p.type                 = AVMEDIA_TYPE_AUDIO,
     .p.id                   = AV_CODEC_ID_MLP,
+    .p.capabilities         = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                              AV_CODEC_CAP_EXPERIMENTAL,
     .priv_data_size         = sizeof(MLPEncodeContext),
     .init                   = mlp_encode_init,
     FF_CODEC_ENCODE_CB(mlp_encode_frame),
     .close                  = mlp_encode_close,
-    .p.capabilities         = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
     .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE},
     .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts      = ff_mlp_channel_layouts,
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(ff_mlp_channel_layouts)
     .p.ch_layouts           = ff_mlp_ch_layouts,
-    .caps_internal          = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal          = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 #if CONFIG_TRUEHD_ENCODER
 const FFCodec ff_truehd_encoder = {
     .p.name                 ="truehd",
-    .p.long_name            = NULL_IF_CONFIG_SMALL("TrueHD"),
+    CODEC_LONG_NAME("TrueHD"),
     .p.type                 = AVMEDIA_TYPE_AUDIO,
     .p.id                   = AV_CODEC_ID_TRUEHD,
+    .p.capabilities         = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                              AV_CODEC_CAP_SMALL_LAST_FRAME |
+                              AV_CODEC_CAP_EXPERIMENTAL,
     .priv_data_size         = sizeof(MLPEncodeContext),
     .init                   = mlp_encode_init,
     FF_CODEC_ENCODE_CB(mlp_encode_frame),
     .close                  = mlp_encode_close,
-    .p.capabilities         = AV_CODEC_CAP_SMALL_LAST_FRAME | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_EXPERIMENTAL,
     .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE},
     .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts      = (const uint64_t[]) {AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_5POINT0_BACK, AV_CH_LAYOUT_5POINT1_BACK, 0},
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO, AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_5POINT0, AV_CH_LAYOUT_5POINT1)
     .p.ch_layouts           = (const AVChannelLayout[]) {
+                                  AV_CHANNEL_LAYOUT_MONO,
                                   AV_CHANNEL_LAYOUT_STEREO,
-                                  AV_CHANNEL_LAYOUT_5POINT0_BACK,
-                                  AV_CHANNEL_LAYOUT_5POINT1_BACK,
+                                  AV_CHANNEL_LAYOUT_5POINT0,
+                                  AV_CHANNEL_LAYOUT_5POINT1,
                                   { 0 }
                               },
-    .caps_internal          = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal          = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

@@ -23,7 +23,7 @@
 #include "get_bits.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/colorspace.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
@@ -1571,7 +1571,7 @@ static const AVClass dvbsubdec_class = {
 
 const FFCodec ff_dvbsub_decoder = {
     .p.name         = "dvbsub",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("DVB subtitles"),
+    CODEC_LONG_NAME("DVB subtitles"),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_DVB_SUBTITLE,
     .priv_data_size = sizeof(DVBSubContext),
@@ -1579,5 +1579,4 @@ const FFCodec ff_dvbsub_decoder = {
     .close          = dvbsub_close_decoder,
     FF_CODEC_DECODE_SUB_CB(dvbsub_decode),
     .p.priv_class   = &dvbsubdec_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -151,10 +151,12 @@ static int io_open_default(AVFormatContext *s, AVIOContext **pb,
     return ffio_open_whitelist(pb, url, flags, &s->interrupt_callback, options, s->protocol_whitelist, s->protocol_blacklist);
 }
 
+#if FF_API_AVFORMAT_IO_CLOSE
 void ff_format_io_close_default(AVFormatContext *s, AVIOContext *pb)
 {
     avio_close(pb);
 }
+#endif
 
 static int io_close2_default(AVFormatContext *s, AVIOContext *pb)
 {
@@ -172,7 +174,11 @@ AVFormatContext *avformat_alloc_context(void)
     s = &si->pub;
     s->av_class = &av_format_context_class;
     s->io_open  = io_open_default;
+#if FF_API_AVFORMAT_IO_CLOSE
+FF_DISABLE_DEPRECATION_WARNINGS
     s->io_close = ff_format_io_close_default;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     s->io_close2= io_close2_default;
 
     av_opt_set_defaults(s);
@@ -257,10 +263,7 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
         return NULL;
     st = &sti->pub;
 
-#if FF_API_AVSTREAM_CLASS
     st->av_class = &stream_class;
-#endif
-
     st->codecpar = avcodec_parameters_alloc();
     if (!st->codecpar)
         goto fail;

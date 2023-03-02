@@ -537,7 +537,7 @@ static int ra144_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
 const FFCodec ff_ra_144_encoder = {
     .p.name         = "real_144",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("RealAudio 1.0 (14.4K)"),
+    CODEC_LONG_NAME("RealAudio 1.0 (14.4K)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_RA_144,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
@@ -549,9 +549,6 @@ const FFCodec ff_ra_144_encoder = {
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                      AV_SAMPLE_FMT_NONE },
     .p.supported_samplerates = (const int[]){ 8000, 0 },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts = (const uint64_t[]) { AV_CH_LAYOUT_MONO, 0 },
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO)
     .p.ch_layouts   = (const AVChannelLayout[]){ AV_CHANNEL_LAYOUT_MONO, { 0 } },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

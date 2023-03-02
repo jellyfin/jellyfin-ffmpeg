@@ -22,7 +22,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 
 static av_cold int m101_decode_init(AVCodecContext *avctx)
@@ -53,11 +53,6 @@ static int m101_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     int min_stride = 2 * avctx->width;
     int bits = avctx->extradata[2*4];
 
-    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
-        return ret;
-    frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
-
     stride = AV_RL32(avctx->extradata + 5*4);
 
     if (avctx->pix_fmt == AV_PIX_FMT_YUV422P10)
@@ -69,6 +64,10 @@ static int m101_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
     }
 
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
+        return ret;
+    frame->pict_type = AV_PICTURE_TYPE_I;
+    frame->key_frame = 1;
     frame->interlaced_frame = ((avctx->extradata[3*4] & 3) != 3);
     if (frame->interlaced_frame)
         frame->top_field_first = avctx->extradata[3*4] & 1;
@@ -107,11 +106,10 @@ static int m101_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_m101_decoder = {
     .p.name         = "m101",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Matrox Uncompressed SD"),
+    CODEC_LONG_NAME("Matrox Uncompressed SD"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_M101,
     .init           = m101_decode_init,
     FF_CODEC_DECODE_CB(m101_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

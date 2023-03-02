@@ -27,11 +27,10 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "mathops.h"
 
 #include "libavutil/colorspace.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 
 #define RGBA(r,g,b,a) (((unsigned)(a) << 24) | ((r) << 16) | ((g) << 8) | (b))
@@ -692,7 +691,7 @@ static const AVClass pgsdec_class = {
 
 const FFCodec ff_pgssub_decoder = {
     .p.name         = "pgssub",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("HDMV Presentation Graphic Stream subtitles"),
+    CODEC_LONG_NAME("HDMV Presentation Graphic Stream subtitles"),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_HDMV_PGS_SUBTITLE,
     .priv_data_size = sizeof(PGSSubContext),
@@ -700,5 +699,4 @@ const FFCodec ff_pgssub_decoder = {
     .close          = close_decoder,
     FF_CODEC_DECODE_SUB_CB(decode),
     .p.priv_class   = &pgsdec_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

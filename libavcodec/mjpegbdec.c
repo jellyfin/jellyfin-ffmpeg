@@ -64,10 +64,8 @@ read_header:
     s->restart_count = 0;
     s->mjpb_skiptosod = 0;
 
-    if (buf_end - buf_ptr >= 1 << 28)
-        return AVERROR_INVALIDDATA;
-
-    init_get_bits(&hgb, buf_ptr, /*buf_size*/(buf_end - buf_ptr)*8);
+    if ((ret = init_get_bits8(&hgb, buf_ptr, /*buf_size*/(buf_end - buf_ptr))) < 0)
+        return ret;
 
     skip_bits(&hgb, 32); /* reserved zeros */
 
@@ -143,9 +141,10 @@ read_header:
         av_log(avctx, AV_LOG_WARNING, "no picture\n");
         return buf_size;
     }
-
-    if ((ret = av_frame_ref(rframe, s->picture_ptr)) < 0)
-        return ret;
+    av_frame_move_ref(rframe, s->picture_ptr);
+    s->got_picture = 0;
+    if (avctx->skip_frame == AVDISCARD_ALL)
+        return buf_size;
     *got_frame = 1;
 
     if (!s->lossless && avctx->debug & FF_DEBUG_QP) {
@@ -158,7 +157,7 @@ read_header:
 
 const FFCodec ff_mjpegb_decoder = {
     .p.name         = "mjpegb",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Apple MJPEG-B"),
+    CODEC_LONG_NAME("Apple MJPEG-B"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MJPEGB,
     .priv_data_size = sizeof(MJpegDecodeContext),
@@ -167,5 +166,20 @@ const FFCodec ff_mjpegb_decoder = {
     FF_CODEC_DECODE_CB(mjpegb_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.max_lowres   = 3,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+};
+
+const FFCodec ff_media100_decoder = {
+    .p.name         = "media100",
+    CODEC_LONG_NAME("Media 100"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MEDIA100,
+    .priv_data_size = sizeof(MJpegDecodeContext),
+    .init           = ff_mjpeg_decode_init,
+    .close          = ff_mjpeg_decode_end,
+    FF_CODEC_DECODE_CB(mjpegb_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.max_lowres   = 3,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .bsfs           = "media100_to_mjpegb",
 };

@@ -670,12 +670,12 @@ static void write_table_entries_attrib(AVFormatContext *s)
 {
     WtvContext *wctx = s->priv_data;
     AVIOContext *pb = s->pb;
-    AVDictionaryEntry *tag = 0;
+    const AVDictionaryEntry *tag = NULL;
 
     ff_standardize_creation_time(s);
     //FIXME: translate special tags (e.g. WM/Bitrate) to binary representation
     ff_metadata_conv(&s->metadata, ff_asf_metadata_conv, NULL);
-    while ((tag = av_dict_get(s->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
+    while ((tag = av_dict_iterate(s->metadata, tag)))
         write_tag(pb, tag->key, tag->value);
 
     if (wctx->thumbnail.size) {
@@ -698,11 +698,11 @@ static void write_table_redirector_legacy_attrib(AVFormatContext *s)
 {
     WtvContext *wctx = s->priv_data;
     AVIOContext *pb = s->pb;
-    AVDictionaryEntry *tag = 0;
+    const AVDictionaryEntry *tag = NULL;
     int64_t pos = 0;
 
     //FIXME: translate special tags to binary representation
-    while ((tag = av_dict_get(s->metadata, "", tag, AV_DICT_IGNORE_SUFFIX))) {
+    while ((tag = av_dict_iterate(s->metadata, tag))) {
         avio_wl64(pb, pos);
         pos += metadata_header_size(tag->key) + strlen(tag->value)*2 + 2;
     }
@@ -829,15 +829,15 @@ static int write_trailer(AVFormatContext *s)
     return 0;
 }
 
-const AVOutputFormat ff_wtv_muxer = {
-    .name           = "wtv",
-    .long_name      = NULL_IF_CONFIG_SMALL("Windows Television (WTV)"),
-    .extensions     = "wtv",
+const FFOutputFormat ff_wtv_muxer = {
+    .p.name         = "wtv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Windows Television (WTV)"),
+    .p.extensions   = "wtv",
     .priv_data_size = sizeof(WtvContext),
-    .audio_codec    = AV_CODEC_ID_AC3,
-    .video_codec    = AV_CODEC_ID_MPEG2VIDEO,
+    .p.audio_codec  = AV_CODEC_ID_AC3,
+    .p.video_codec  = AV_CODEC_ID_MPEG2VIDEO,
     .write_header   = write_header,
     .write_packet   = write_packet,
     .write_trailer  = write_trailer,
-    .codec_tag      = ff_riff_codec_tags_list,
+    .p.codec_tag    = ff_riff_codec_tags_list,
 };

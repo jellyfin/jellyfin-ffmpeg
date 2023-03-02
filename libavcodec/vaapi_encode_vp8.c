@@ -244,7 +244,7 @@ static const AVClass vaapi_encode_vp8_class = {
 
 const FFCodec ff_vp8_vaapi_encoder = {
     .p.name         = "vp8_vaapi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("VP8 (VAAPI)"),
+    CODEC_LONG_NAME("VP8 (VAAPI)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_VP8,
     .priv_data_size = sizeof(VAAPIEncodeVP8Context),
@@ -253,8 +253,9 @@ const FFCodec ff_vp8_vaapi_encoder = {
     .close          = &ff_vaapi_encode_close,
     .p.priv_class   = &vaapi_encode_vp8_class,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
-                      AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_vp8_defaults,
     .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,

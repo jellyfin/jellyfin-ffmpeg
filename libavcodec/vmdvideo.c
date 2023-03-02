@@ -40,7 +40,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "bytestream.h"
 
 #define VMD_HEADER_SIZE 0x330
@@ -466,7 +466,7 @@ static int vmdvideo_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_vmdvideo_decoder = {
     .p.name         = "vmdvideo",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Sierra VMD video"),
+    CODEC_LONG_NAME("Sierra VMD video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_VMDVIDEO,
     .priv_data_size = sizeof(VmdVideoContext),
@@ -474,5 +474,5 @@ const FFCodec ff_vmdvideo_decoder = {
     .close          = vmdvideo_decode_end,
     FF_CODEC_DECODE_CB(vmdvideo_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

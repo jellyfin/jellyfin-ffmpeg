@@ -21,12 +21,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/intreadwrite.h"
-#include "libavutil/imgutils.h"
 #include "bytestream.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "texturedsp.h"
 
 #define TXD_DXT1 0x31545844
@@ -166,7 +164,7 @@ unsupported:
 
 const FFCodec ff_txd_decoder = {
     .p.name         = "txd",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Renderware TXD (TeXture Dictionary) image"),
+    CODEC_LONG_NAME("Renderware TXD (TeXture Dictionary) image"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_TXD,
     .p.capabilities = AV_CODEC_CAP_DR1,

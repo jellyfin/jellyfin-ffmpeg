@@ -32,11 +32,11 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "error_resilience.h"
 #include "h263.h"
 #include "h263data.h"
 #include "h263dec.h"
-#include "internal.h"
 #include "mpeg_er.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
@@ -531,7 +531,7 @@ static int rv10_decode_packet(AVCodecContext *avctx, const uint8_t *buf,
     /* decode each macroblock */
     for (s->mb_num_left = mb_count; s->mb_num_left > 0; s->mb_num_left--) {
         int ret;
-        ff_update_block_index(s);
+        ff_update_block_index(s, 8, s->avctx->lowres, 1);
         ff_tlog(avctx, "**mb x=%d y=%d\n", s->mb_x, s->mb_y);
 
         s->mv_dir  = MV_DIR_FORWARD;
@@ -603,7 +603,7 @@ static int rv10_decode_frame(AVCodecContext *avctx, AVFrame *pict,
     int slice_count;
     const uint8_t *slices_hdr = NULL;
 
-    ff_dlog(avctx, "*****frame %d size=%d\n", avctx->frame_number, buf_size);
+    ff_dlog(avctx, "*****frame %"PRId64" size=%d\n", avctx->frame_num, buf_size);
 
     /* no supplementary picture */
     if (buf_size == 0) {
@@ -683,7 +683,7 @@ static int rv10_decode_frame(AVCodecContext *avctx, AVFrame *pict,
 
 const FFCodec ff_rv10_decoder = {
     .p.name         = "rv10",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("RealVideo 1.0"),
+    CODEC_LONG_NAME("RealVideo 1.0"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_RV10,
     .priv_data_size = sizeof(RVDecContext),
@@ -691,7 +691,6 @@ const FFCodec ff_rv10_decoder = {
     .close          = rv10_decode_end,
     FF_CODEC_DECODE_CB(rv10_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
     .p.max_lowres   = 3,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,
@@ -701,7 +700,7 @@ const FFCodec ff_rv10_decoder = {
 
 const FFCodec ff_rv20_decoder = {
     .p.name         = "rv20",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("RealVideo 2.0"),
+    CODEC_LONG_NAME("RealVideo 2.0"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_RV20,
     .priv_data_size = sizeof(RVDecContext),
@@ -709,7 +708,6 @@ const FFCodec ff_rv20_decoder = {
     .close          = rv10_decode_end,
     FF_CODEC_DECODE_CB(rv10_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
     .flush          = ff_mpeg_flush,
     .p.max_lowres   = 3,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {

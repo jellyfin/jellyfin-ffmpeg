@@ -28,7 +28,6 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
-#include "internal.h"
 #include "scpr.h"
 
 static void renew_table3(uint32_t nsym, uint32_t *cntsum,
@@ -1167,6 +1166,9 @@ static int decompress_p3(AVCodecContext *avctx,
             } else {
                 int run, bx = x * 16 + sx1, by = y * 16 + sy1;
                 uint32_t clr, ptype = 0, r, g, b;
+
+                if (bx >= avctx->width)
+                    return AVERROR_INVALIDDATA;
 
                 for (; by < y * 16 + sy2 && by < avctx->height;) {
                     ret = decode_value3(s, 5, &s->op_model3[ptype].cntsum,

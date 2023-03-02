@@ -23,7 +23,6 @@
 #include "bytestream.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 
 typedef struct BlurayPCMEncContext {
     uint16_t header;      // Header added to every frame
@@ -64,7 +63,7 @@ static av_cold int pcm_bluray_encode_init(AVCodecContext *avctx)
         return AVERROR_BUG;
     }
 
-    switch (avctx->ch_layout.u.mask) {
+    switch (av_channel_layout_subset(&avctx->ch_layout, ~(uint64_t)0)) {
     case AV_CH_LAYOUT_MONO:
         ch_layout = 1;
         break;
@@ -266,8 +265,6 @@ static int pcm_bluray_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         return AVERROR_BUG;
     }
 
-    avpkt->pts = frame->pts;
-    avpkt->duration = ff_samples_to_time_base(avctx, frame->nb_samples);
     *got_packet_ptr = 1;
 
     return 0;
@@ -275,15 +272,14 @@ static int pcm_bluray_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
 const FFCodec ff_pcm_bluray_encoder = {
     .p.name                = "pcm_bluray",
-    .p.long_name           = NULL_IF_CONFIG_SMALL("PCM signed 16|20|24-bit big-endian for Blu-ray media"),
+    CODEC_LONG_NAME("PCM signed 16|20|24-bit big-endian for Blu-ray media"),
     .p.type                = AVMEDIA_TYPE_AUDIO,
     .p.id                  = AV_CODEC_ID_PCM_BLURAY,
     .priv_data_size        = sizeof(BlurayPCMEncContext),
     .init                  = pcm_bluray_encode_init,
     FF_CODEC_ENCODE_CB(pcm_bluray_encode_frame),
     .p.supported_samplerates = (const int[]) { 48000, 96000, 192000, 0 },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts = (const uint64_t[]) {
+    CODEC_OLD_CHANNEL_LAYOUTS(
         AV_CH_LAYOUT_MONO,
         AV_CH_LAYOUT_STEREO,
         AV_CH_LAYOUT_SURROUND,
@@ -293,9 +289,7 @@ const FFCodec ff_pcm_bluray_encoder = {
         AV_CH_LAYOUT_5POINT0,
         AV_CH_LAYOUT_5POINT1,
         AV_CH_LAYOUT_7POINT0,
-        AV_CH_LAYOUT_7POINT1,
-        0 },
-#endif
+        AV_CH_LAYOUT_7POINT1)
     .p.ch_layouts   = (const AVChannelLayout[]) {
         AV_CHANNEL_LAYOUT_MONO,
         AV_CHANNEL_LAYOUT_STEREO,
@@ -310,6 +304,5 @@ const FFCodec ff_pcm_bluray_encoder = {
         { 0 } },
     .p.sample_fmts         = (const enum AVSampleFormat[]) {
         AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE },
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
-    .p.capabilities        = AV_CODEC_CAP_DR1,
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
 };

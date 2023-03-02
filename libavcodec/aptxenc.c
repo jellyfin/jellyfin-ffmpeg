@@ -24,8 +24,15 @@
 
 #include "libavutil/channel_layout.h"
 #include "aptx.h"
+#include "audio_frame_queue.h"
 #include "codec_internal.h"
 #include "encode.h"
+#include "internal.h"
+
+typedef struct AptXEncContext {
+    AptXContext common;
+    AudioFrameQueue afq;
+} AptXEncContext;
 
 /*
  * Half-band QMF analysis filter realized with a polyphase FIR filter.
@@ -212,10 +219,11 @@ static void aptx_encode_samples(AptXContext *ctx,
 static int aptx_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                              const AVFrame *frame, int *got_packet_ptr)
 {
-    AptXContext *s = avctx->priv_data;
+    AptXEncContext *const s0 = avctx->priv_data;
+    AptXContext *const s = &s0->common;
     int pos, ipos, channel, sample, output_size, ret;
 
-    if ((ret = ff_af_queue_add(&s->afq, frame)) < 0)
+    if ((ret = ff_af_queue_add(&s0->afq, frame)) < 0)
         return ret;
 
     output_size = s->block_size * frame->nb_samples/4;
@@ -232,33 +240,43 @@ static int aptx_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         aptx_encode_samples(s, samples, avpkt->data + pos);
     }
 
-    ff_af_queue_remove(&s->afq, frame->nb_samples, &avpkt->pts, &avpkt->duration);
+    ff_af_queue_remove(&s0->afq, frame->nb_samples, &avpkt->pts, &avpkt->duration);
     *got_packet_ptr = 1;
     return 0;
 }
 
 static av_cold int aptx_close(AVCodecContext *avctx)
 {
-    AptXContext *s = avctx->priv_data;
+    AptXEncContext *const s = avctx->priv_data;
     ff_af_queue_close(&s->afq);
     return 0;
+}
+
+static av_cold int aptx_encode_init(AVCodecContext *avctx)
+{
+    AptXEncContext *const s = avctx->priv_data;
+
+    ff_af_queue_init(avctx, &s->afq);
+
+    if (!avctx->frame_size || avctx->frame_size % 4)
+        avctx->frame_size = 1024;
+    avctx->internal->pad_samples = 4;
+
+    return ff_aptx_init(avctx);
 }
 
 #if CONFIG_APTX_ENCODER
 const FFCodec ff_aptx_encoder = {
     .p.name                = "aptx",
-    .p.long_name           = NULL_IF_CONFIG_SMALL("aptX (Audio Processing Technology for Bluetooth)"),
+    CODEC_LONG_NAME("aptX (Audio Processing Technology for Bluetooth)"),
     .p.type                = AVMEDIA_TYPE_AUDIO,
     .p.id                  = AV_CODEC_ID_APTX,
-    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME,
-    .priv_data_size        = sizeof(AptXContext),
-    .init                  = ff_aptx_init,
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .priv_data_size        = sizeof(AptXEncContext),
+    .init                  = aptx_encode_init,
     FF_CODEC_ENCODE_CB(aptx_encode_frame),
     .close                 = aptx_close,
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts     = (const uint64_t[]) { AV_CH_LAYOUT_STEREO, 0},
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_STEREO)
     .p.ch_layouts          = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_STEREO, { 0 } },
     .p.sample_fmts         = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
                                                              AV_SAMPLE_FMT_NONE },
@@ -269,18 +287,15 @@ const FFCodec ff_aptx_encoder = {
 #if CONFIG_APTX_HD_ENCODER
 const FFCodec ff_aptx_hd_encoder = {
     .p.name                = "aptx_hd",
-    .p.long_name           = NULL_IF_CONFIG_SMALL("aptX HD (Audio Processing Technology for Bluetooth)"),
+    CODEC_LONG_NAME("aptX HD (Audio Processing Technology for Bluetooth)"),
     .p.type                = AVMEDIA_TYPE_AUDIO,
     .p.id                  = AV_CODEC_ID_APTX_HD,
-    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME,
-    .priv_data_size        = sizeof(AptXContext),
-    .init                  = ff_aptx_init,
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .priv_data_size        = sizeof(AptXEncContext),
+    .init                  = aptx_encode_init,
     FF_CODEC_ENCODE_CB(aptx_encode_frame),
     .close                 = aptx_close,
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts     = (const uint64_t[]) { AV_CH_LAYOUT_STEREO, 0},
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_STEREO)
     .p.ch_layouts          = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_STEREO, { 0 } },
     .p.sample_fmts         = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
                                                              AV_SAMPLE_FMT_NONE },

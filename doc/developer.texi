@@ -10,40 +10,78 @@
 
 @contents
 
-@chapter Notes for external developers
+@chapter Introduction
 
-This document is mostly useful for internal FFmpeg developers.
-External developers who need to use the API in their application should
-refer to the API doxygen documentation in the public headers, and
-check the examples in @file{doc/examples} and in the source code to
-see how the public API is employed.
+This text is concerned with the development @emph{of} FFmpeg itself. Information
+on using the FFmpeg libraries in other programs can be found elsewhere, e.g. in:
+@itemize @bullet
+@item
+the installed header files
+@item
+@url{http://ffmpeg.org/doxygen/trunk/index.html, the Doxygen documentation}
+generated from the headers
+@item
+the examples under @file{doc/examples}
+@end itemize
 
-You can use the FFmpeg libraries in your commercial program, but you
-are encouraged to @emph{publish any patch you make}. In this case the
-best way to proceed is to send your patches to the ffmpeg-devel
-mailing list following the guidelines illustrated in the remainder of
-this document.
+If you modify FFmpeg code for your own use case, you are highly encouraged to
+@emph{submit your changes back to us}, using this document as a guide. There are
+both pragmatic and ideological reasons to do so:
+@itemize @bullet
+@item
+Maintaining external changes to keep up with upstream development is
+time-consuming and error-prone. With your code in the main tree, it will be
+maintained by FFmpeg developers.
+@item
+FFmpeg developers include leading experts in the field who can find bugs or
+design flaws in your code.
+@item
+By supporting the project you find useful you ensure it continues to be
+maintained and developed.
+@end itemize
 
 For more detailed legal information about the use of FFmpeg in
 external programs read the @file{LICENSE} file in the source tree and
 consult @url{https://ffmpeg.org/legal.html}.
 
-@chapter Contributing
+@section Contributing code
 
-There are 2 ways by which code gets into FFmpeg:
-@itemize @bullet
-@item Submitting patches to the ffmpeg-devel mailing list.
-      See @ref{Submitting patches} for details.
-@item Directly committing changes to the main tree.
-@end itemize
-
-Whichever way, changes should be reviewed by the maintainer of the code
-before they are committed. And they should follow the @ref{Coding Rules}.
+All proposed code changes should be submitted for review to
+@url{mailto:ffmpeg-devel@@ffmpeg.org, the development mailing list}, as
+described in more detail in the @ref{Submitting patches} chapter. The code
+should comply with the @ref{Development Policy} and follow the @ref{Coding Rules}.
 The developer making the commit and the author are responsible for their changes
 and should try to fix issues their commit causes.
 
 @anchor{Coding Rules}
 @chapter Coding Rules
+
+@section C language features
+
+FFmpeg is programmed in the ISO C99 language, extended with:
+@itemize @bullet
+@item
+Atomic operations from C11 @file{stdatomic.h}. They are emulated on
+architectures/compilers that do not support them, so all FFmpeg-internal code
+may use atomics without any extra checks. However, @file{stdatomic.h} must not
+be included in public headers, so they stay C99-compatible.
+@end itemize
+
+Compiler-specific extensions may be used with good reason, but must not be
+depended on, i.e. the code must still compile and work with compilers lacking
+the extension.
+
+The following C99 features must not be used anywhere in the codebase:
+@itemize @bullet
+@item
+variable-length arrays;
+
+@item
+complex numbers;
+
+@item
+mixed statements and declarations.
+@end itemize
 
 @section Code formatting conventions
 
@@ -67,8 +105,39 @@ K&R coding style is used.
 @end itemize
 The presentation is one inspired by 'indent -i4 -kr -nut'.
 
-The main priority in FFmpeg is simplicity and small code size in order to
-minimize the bug count.
+@subsection Vim configuration
+In order to configure Vim to follow FFmpeg formatting conventions, paste
+the following snippet into your @file{.vimrc}:
+@example
+" indentation rules for FFmpeg: 4 spaces, no tabs
+set expandtab
+set shiftwidth=4
+set softtabstop=4
+set cindent
+set cinoptions=(0
+" Allow tabs in Makefiles.
+autocmd FileType make,automake set noexpandtab shiftwidth=8 softtabstop=8
+" Trailing whitespace and tabs are forbidden, so highlight them.
+highlight ForbiddenWhitespace ctermbg=red guibg=red
+match ForbiddenWhitespace /\s\+$\|\t/
+" Do not highlight spaces at the end of line while typing on that line.
+autocmd InsertEnter * match ForbiddenWhitespace /\t\|\s\+\%#\@@<!$/
+@end example
+
+@subsection Emacs configuration
+For Emacs, add these roughly equivalent lines to your @file{.emacs.d/init.el}:
+@lisp
+(c-add-style "ffmpeg"
+             '("k&r"
+               (c-basic-offset . 4)
+               (indent-tabs-mode . nil)
+               (show-trailing-whitespace . t)
+               (c-offsets-alist
+                (statement-cont . (c-lineup-assignments +)))
+               )
+             )
+(setq c-default-style "ffmpeg")
+@end lisp
 
 @section Comments
 Use the JavaDoc/Doxygen  format (see examples below) so that code documentation
@@ -110,78 +179,31 @@ int myfunc(int my_parameter)
 ...
 @end example
 
-@section C language features
-
-FFmpeg is programmed in the ISO C90 language with a few additional
-features from ISO C99, namely:
-
-@itemize @bullet
-@item
-the @samp{inline} keyword;
-
-@item
-@samp{//} comments;
-
-@item
-designated struct initializers (@samp{struct s x = @{ .i = 17 @};});
-
-@item
-compound literals (@samp{x = (struct s) @{ 17, 23 @};}).
-
-@item
-for loops with variable definition (@samp{for (int i = 0; i < 8; i++)});
-
-@item
-Variadic macros (@samp{#define ARRAY(nb, ...) (int[nb + 1])@{ nb, __VA_ARGS__ @}});
-
-@item
-Implementation defined behavior for signed integers is assumed to match the
-expected behavior for two's complement. Non representable values in integer
-casts are binary truncated. Shift right of signed values uses sign extension.
-@end itemize
-
-These features are supported by all compilers we care about, so we will not
-accept patches to remove their use unless they absolutely do not impair
-clarity and performance.
-
-All code must compile with recent versions of GCC and a number of other
-currently supported compilers. To ensure compatibility, please do not use
-additional C99 features or GCC extensions. Especially watch out for:
-
-@itemize @bullet
-@item
-mixing statements and declarations;
-
-@item
-@samp{long long} (use @samp{int64_t} instead);
-
-@item
-@samp{__attribute__} not protected by @samp{#ifdef __GNUC__} or similar;
-
-@item
-GCC statement expressions (@samp{(x = (@{ int y = 4; y; @})}).
-@end itemize
-
 @section Naming conventions
-All names should be composed with underscores (_), not CamelCase. For example,
-@samp{avfilter_get_video_buffer} is an acceptable function name and
-@samp{AVFilterGetVideo} is not. The exception from this are type names, like
-for example structs and enums; they should always be in CamelCase.
 
-There are the following conventions for naming variables and functions:
+Names of functions, variables, and struct members must be lowercase, using
+underscores (_) to separate words. For example, @samp{avfilter_get_video_buffer}
+is an acceptable function name and @samp{AVFilterGetVideo} is not.
 
+Struct, union, enum, and typedeffed type names must use CamelCase. All structs
+and unions should be typedeffed to the same name as the struct/union tag, e.g.
+@code{typedef struct AVFoo @{ ... @} AVFoo;}. Enums are typically not
+typedeffed.
+
+Enumeration constants and macros must be UPPERCASE, except for macros
+masquerading as functions, which should use the function naming convention.
+
+All identifiers in the libraries should be namespaced as follows:
 @itemize @bullet
 @item
-For local variables no prefix is required.
+No namespacing for identifiers with file and lower scope (e.g. local variables,
+static functions), and struct and union members,
 
 @item
-For file-scope variables and functions declared as @code{static}, no prefix
-is required.
-
-@item
-For variables and functions visible outside of file scope, but only used
-internally by a library, an @code{ff_} prefix should be used,
-e.g. @samp{ff_w64_demuxer}.
+The @code{ff_} prefix must be used for variables and functions visible outside
+of file scope, but only used internally within a single library, e.g.
+@samp{ff_w64_demuxer}. This prevents name collisions when FFmpeg is statically
+linked.
 
 @item
 For variables and functions visible outside of file scope, used internally
@@ -189,13 +211,19 @@ across multiple libraries, use @code{avpriv_} as prefix, for example,
 @samp{avpriv_report_missing_feature}.
 
 @item
+All other internal identifiers, like private type or macro names, should be
+namespaced only to avoid possible internal conflicts. E.g. @code{H264_NAL_SPS}
+vs. @code{HEVC_NAL_SPS}.
+
+@item
 Each library has its own prefix for public symbols, in addition to the
 commonly used @code{av_} (@code{avformat_} for libavformat,
 @code{avcodec_} for libavcodec, @code{swr_} for libswresample, etc).
 Check the existing code and choose names accordingly.
-Note that some symbols without these prefixes are also exported for
-retro-compatibility reasons. These exceptions are declared in the
-@code{lib<name>/lib<name>.v} files.
+
+@item
+Other public identifiers (struct, union, enum, macro, type names) must use their
+library's public prefix (@code{AV}, @code{Sws}, or @code{Swr}).
 @end itemize
 
 Furthermore, name space reserved for the system should not be invaded.
@@ -218,39 +246,7 @@ Casts should be used only when necessary. Unneeded parentheses
 should also be avoided if they don't make the code easier to understand.
 @end itemize
 
-@section Editor configuration
-In order to configure Vim to follow FFmpeg formatting conventions, paste
-the following snippet into your @file{.vimrc}:
-@example
-" indentation rules for FFmpeg: 4 spaces, no tabs
-set expandtab
-set shiftwidth=4
-set softtabstop=4
-set cindent
-set cinoptions=(0
-" Allow tabs in Makefiles.
-autocmd FileType make,automake set noexpandtab shiftwidth=8 softtabstop=8
-" Trailing whitespace and tabs are forbidden, so highlight them.
-highlight ForbiddenWhitespace ctermbg=red guibg=red
-match ForbiddenWhitespace /\s\+$\|\t/
-" Do not highlight spaces at the end of line while typing on that line.
-autocmd InsertEnter * match ForbiddenWhitespace /\t\|\s\+\%#\@@<!$/
-@end example
-
-For Emacs, add these roughly equivalent lines to your @file{.emacs.d/init.el}:
-@lisp
-(c-add-style "ffmpeg"
-             '("k&r"
-               (c-basic-offset . 4)
-               (indent-tabs-mode . nil)
-               (show-trailing-whitespace . t)
-               (c-offsets-alist
-                (statement-cont . (c-lineup-assignments +)))
-               )
-             )
-(setq c-default-style "ffmpeg")
-@end lisp
-
+@anchor{Development Policy}
 @chapter Development Policy
 
 @section Patches/Committing

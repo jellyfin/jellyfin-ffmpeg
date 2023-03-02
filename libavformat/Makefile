@@ -13,6 +13,7 @@ OBJS = allformats.o         \
        demux.o              \
        demux_utils.o        \
        dump.o               \
+       dv.o                 \
        format.o             \
        id3v1.o              \
        id3v2.o              \
@@ -100,6 +101,7 @@ OBJS-$(CONFIG_AMRNB_DEMUXER)             += amr.o rawdec.o
 OBJS-$(CONFIG_AMRWB_DEMUXER)             += amr.o rawdec.o
 OBJS-$(CONFIG_AMV_MUXER)                 += amvenc.o
 OBJS-$(CONFIG_ANM_DEMUXER)               += anm.o
+OBJS-$(CONFIG_APAC_DEMUXER)              += apac.o rawdec.o
 OBJS-$(CONFIG_APC_DEMUXER)               += apc.o
 OBJS-$(CONFIG_APE_DEMUXER)               += ape.o apetag.o img2.o
 OBJS-$(CONFIG_APM_DEMUXER)               += apm.o
@@ -146,6 +148,7 @@ OBJS-$(CONFIG_BIT_MUXER)                 += bit.o
 OBJS-$(CONFIG_BITPACKED_DEMUXER)         += rawvideodec.o
 OBJS-$(CONFIG_BMV_DEMUXER)               += bmv.o
 OBJS-$(CONFIG_BOA_DEMUXER)               += boadec.o
+OBJS-$(CONFIG_BONK_DEMUXER)              += bonk.o rawdec.o
 OBJS-$(CONFIG_BFSTM_DEMUXER)             += brstm.o
 OBJS-$(CONFIG_BRSTM_DEMUXER)             += brstm.o
 OBJS-$(CONFIG_C93_DEMUXER)               += c93.o voc_packet.o voc.o
@@ -184,7 +187,6 @@ OBJS-$(CONFIG_DSS_DEMUXER)               += dss.o
 OBJS-$(CONFIG_DTSHD_DEMUXER)             += dtshddec.o
 OBJS-$(CONFIG_DTS_DEMUXER)               += dtsdec.o rawdec.o
 OBJS-$(CONFIG_DTS_MUXER)                 += rawenc.o
-OBJS-$(CONFIG_DV_DEMUXER)                += dv.o
 OBJS-$(CONFIG_DV_MUXER)                  += dvenc.o
 OBJS-$(CONFIG_DVBSUB_DEMUXER)            += dvbsub.o rawdec.o
 OBJS-$(CONFIG_DVBTXT_DEMUXER)            += dvbtxt.o rawdec.o
@@ -273,6 +275,7 @@ OBJS-$(CONFIG_IMAGE_DPX_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_EXR_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_GEM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_GIF_PIPE_DEMUXER)     += img2dec.o img2.o
+OBJS-$(CONFIG_IMAGE_HDR_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_J2K_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_JPEG_PIPE_DEMUXER)    += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_JPEGLS_PIPE_DEMUXER)  += img2dec.o img2.o
@@ -317,6 +320,7 @@ OBJS-$(CONFIG_JV_DEMUXER)                += jvdec.o
 OBJS-$(CONFIG_KUX_DEMUXER)               += flvdec.o
 OBJS-$(CONFIG_KVAG_DEMUXER)              += kvag.o
 OBJS-$(CONFIG_KVAG_MUXER)                += kvag.o rawenc.o
+OBJS-$(CONFIG_LAF_DEMUXER)               += lafdec.o
 OBJS-$(CONFIG_LATM_MUXER)                += latmenc.o rawenc.o
 OBJS-$(CONFIG_LMLM4_DEMUXER)             += lmlm4.o
 OBJS-$(CONFIG_LOAS_DEMUXER)              += loasdec.o rawdec.o
@@ -478,6 +482,7 @@ OBJS-$(CONFIG_RAWVIDEO_DEMUXER)          += rawvideodec.o
 OBJS-$(CONFIG_RAWVIDEO_MUXER)            += rawenc.o
 OBJS-$(CONFIG_REALTEXT_DEMUXER)          += realtextdec.o subtitles.o
 OBJS-$(CONFIG_REDSPARK_DEMUXER)          += redspark.o
+OBJS-$(CONFIG_RKA_DEMUXER)               += rka.o apetag.o img2.o
 OBJS-$(CONFIG_RL2_DEMUXER)               += rl2.o
 OBJS-$(CONFIG_RM_DEMUXER)                += rmdec.o rm.o rmsipr.o
 OBJS-$(CONFIG_RM_MUXER)                  += rmenc.o rm.o
@@ -519,6 +524,7 @@ OBJS-$(CONFIG_SBG_DEMUXER)               += sbgdec.o
 OBJS-$(CONFIG_SCC_DEMUXER)               += sccdec.o subtitles.o
 OBJS-$(CONFIG_SCC_MUXER)                 += sccenc.o
 OBJS-$(CONFIG_SCD_DEMUXER)               += scd.o
+OBJS-$(CONFIG_SDNS_DEMUXER)              += sdns.o
 OBJS-$(CONFIG_SDP_DEMUXER)               += rtsp.o
 OBJS-$(CONFIG_SDR2_DEMUXER)              += sdr2.o
 OBJS-$(CONFIG_SDS_DEMUXER)               += sdsdec.o
@@ -593,6 +599,8 @@ OBJS-$(CONFIG_VPLAYER_DEMUXER)           += vplayerdec.o subtitles.o
 OBJS-$(CONFIG_VQF_DEMUXER)               += vqf.o
 OBJS-$(CONFIG_W64_DEMUXER)               += wavdec.o w64.o pcm.o
 OBJS-$(CONFIG_W64_MUXER)                 += wavenc.o w64.o
+OBJS-$(CONFIG_WADY_DEMUXER)              += wady.o pcm.o
+OBJS-$(CONFIG_WAVARC_DEMUXER)            += wavarc.o
 OBJS-$(CONFIG_WAV_DEMUXER)               += wavdec.o pcm.o
 OBJS-$(CONFIG_WAV_MUXER)                 += wavenc.o
 OBJS-$(CONFIG_WC3_DEMUXER)               += wc3movie.o
@@ -616,6 +624,7 @@ OBJS-$(CONFIG_WVE_DEMUXER)               += wvedec.o pcm.o
 OBJS-$(CONFIG_WV_MUXER)                  += wvenc.o wv.o apetag.o img2.o
 OBJS-$(CONFIG_XA_DEMUXER)                += xa.o
 OBJS-$(CONFIG_XBIN_DEMUXER)              += bintext.o sauce.o
+OBJS-$(CONFIG_XMD_DEMUXER)               += xmd.o pcm.o
 OBJS-$(CONFIG_XMV_DEMUXER)               += xmv.o
 OBJS-$(CONFIG_XVAG_DEMUXER)              += xvag.o
 OBJS-$(CONFIG_XWMA_DEMUXER)              += xwma.o
@@ -643,6 +652,7 @@ OBJS-$(CONFIG_DATA_PROTOCOL)             += data_uri.o
 OBJS-$(CONFIG_FFRTMPCRYPT_PROTOCOL)      += rtmpcrypt.o rtmpdigest.o rtmpdh.o
 OBJS-$(CONFIG_FFRTMPHTTP_PROTOCOL)       += rtmphttp.o
 OBJS-$(CONFIG_FILE_PROTOCOL)             += file.o
+OBJS-$(CONFIG_FD_PROTOCOL)               += file.o
 OBJS-$(CONFIG_FTP_PROTOCOL)              += ftp.o urldecode.o
 OBJS-$(CONFIG_GOPHER_PROTOCOL)           += gopher.o
 OBJS-$(CONFIG_GOPHERS_PROTOCOL)          += gopher.o
@@ -668,8 +678,8 @@ OBJS-$(CONFIG_SRTP_PROTOCOL)             += srtpproto.o srtp.o
 OBJS-$(CONFIG_SUBFILE_PROTOCOL)          += subfile.o
 OBJS-$(CONFIG_TEE_PROTOCOL)              += teeproto.o tee_common.o
 OBJS-$(CONFIG_TCP_PROTOCOL)              += tcp.o
-OBJS-$(CONFIG_IPFS_PROTOCOL)             += ipfsgateway.o
-OBJS-$(CONFIG_IPNS_PROTOCOL)             += ipfsgateway.o
+OBJS-$(CONFIG_IPFS_GATEWAY_PROTOCOL)     += ipfsgateway.o
+OBJS-$(CONFIG_IPNS_GATEWAY_PROTOCOL)     += ipfsgateway.o
 TLS-OBJS-$(CONFIG_GNUTLS)                += tls_gnutls.o
 TLS-OBJS-$(CONFIG_LIBTLS)                += tls_libtls.o
 TLS-OBJS-$(CONFIG_MBEDTLS)               += tls_mbedtls.o
@@ -710,10 +720,9 @@ SHLIBOBJS-$(CONFIG_RTP_MUXER)            += golomb_tab.o jpegtables.o \
 SHLIBOBJS-$(CONFIG_SPDIF_MUXER)          += dca_sample_rate_tab.o
 
 # libavdevice dependencies
-OBJS-$(CONFIG_IEC61883_INDEV)            += dv.o
 
 # Windows resource file
-SLIBOBJS-$(HAVE_GNU_WINDRES)             += avformatres.o
+SHLIBOBJS-$(HAVE_GNU_WINDRES)            += avformatres.o
 
 SKIPHEADERS-$(CONFIG_IMF_DEMUXER)        += imf.h
 SKIPHEADERS-$(CONFIG_FFRTMPCRYPT_PROTOCOL) += rtmpdh.h

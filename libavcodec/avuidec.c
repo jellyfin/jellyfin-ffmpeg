@@ -22,7 +22,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/intreadwrite.h"
 
 static av_cold int avui_decode_init(AVCodecContext *avctx)
@@ -121,11 +121,10 @@ static int avui_decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
 const FFCodec ff_avui_decoder = {
     .p.name         = "avui",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Avid Meridien Uncompressed"),
+    CODEC_LONG_NAME("Avid Meridien Uncompressed"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AVUI,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .init         = avui_decode_init,
     FF_CODEC_DECODE_CB(avui_decode_frame),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

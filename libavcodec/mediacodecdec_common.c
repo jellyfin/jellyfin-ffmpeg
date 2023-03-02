@@ -32,7 +32,7 @@
 #include "libavutil/timestamp.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "decode.h"
 
 #include "mediacodec.h"
 #include "mediacodec_surface.h"
@@ -265,8 +265,7 @@ static void mediacodec_buffer_release(void *opaque, uint8_t *data)
         ff_AMediaCodec_releaseOutputBuffer(ctx->codec, buffer->index, 0);
     }
 
-    if (ctx->delay_flush)
-        ff_mediacodec_dec_unref(ctx);
+    ff_mediacodec_dec_unref(ctx);
     av_freep(&buffer);
 }
 
@@ -321,8 +320,7 @@ static int mediacodec_wrap_hw_buffer(AVCodecContext *avctx,
 
     buffer->ctx = s;
     buffer->serial = atomic_load(&s->serial);
-    if (s->delay_flush)
-        ff_mediacodec_dec_ref(s);
+    ff_mediacodec_dec_ref(s);
 
     buffer->index = index;
     buffer->pts = info->presentationTimeUs;
@@ -336,8 +334,7 @@ static int mediacodec_wrap_hw_buffer(AVCodecContext *avctx,
 
     return 0;
 fail:
-    av_freep(buffer);
-    av_buffer_unref(&frame->buf[0]);
+    av_freep(&buffer);
     status = ff_AMediaCodec_releaseOutputBuffer(s->codec, index, 0);
     if (status < 0) {
         av_log(avctx, AV_LOG_ERROR, "Failed to release output buffer\n");
@@ -489,8 +486,24 @@ static int mediacodec_dec_parse_format(AVCodecContext *avctx, MediaCodecDecConte
     AMEDIAFORMAT_GET_INT32(s->crop_left,   "crop-left",   0);
     AMEDIAFORMAT_GET_INT32(s->crop_right,  "crop-right",  0);
 
-    width = s->crop_right + 1 - s->crop_left;
-    height = s->crop_bottom + 1 - s->crop_top;
+    // Try "crop" for NDK
+    if (!(s->crop_right && s->crop_bottom) && s->use_ndk_codec)
+        ff_AMediaFormat_getRect(s->format, "crop", &s->crop_left, &s->crop_top, &s->crop_right, &s->crop_bottom);
+
+    if (s->crop_right && s->crop_bottom) {
+        width = s->crop_right + 1 - s->crop_left;
+        height = s->crop_bottom + 1 - s->crop_top;
+    } else {
+        /* TODO: NDK MediaFormat should try getRect() first.
+         * Try crop-width/crop-height, it works on NVIDIA Shield.
+         */
+        AMEDIAFORMAT_GET_INT32(width,  "crop-width",  0);
+        AMEDIAFORMAT_GET_INT32(height, "crop-height", 0);
+    }
+    if (!width || !height) {
+        width = s->width;
+        height = s->height;
+    }
 
     AMEDIAFORMAT_GET_INT32(s->display_width,  "display-width",  0);
     AMEDIAFORMAT_GET_INT32(s->display_height, "display-height", 0);
@@ -580,14 +593,14 @@ int ff_mediacodec_dec_init(AVCodecContext *avctx, MediaCodecDecContext *s,
             if (device_ctx->type == AV_HWDEVICE_TYPE_MEDIACODEC) {
                 if (device_ctx->hwctx) {
                     AVMediaCodecDeviceContext *mediacodec_ctx = (AVMediaCodecDeviceContext *)device_ctx->hwctx;
-                    s->surface = ff_mediacodec_surface_ref(mediacodec_ctx->surface, avctx);
+                    s->surface = ff_mediacodec_surface_ref(mediacodec_ctx->surface, mediacodec_ctx->native_window, avctx);
                     av_log(avctx, AV_LOG_INFO, "Using surface %p\n", s->surface);
                 }
             }
         }
 
         if (!s->surface && user_ctx && user_ctx->surface) {
-            s->surface = ff_mediacodec_surface_ref(user_ctx->surface, avctx);
+            s->surface = ff_mediacodec_surface_ref(user_ctx->surface, NULL, avctx);
             av_log(avctx, AV_LOG_INFO, "Using surface %p\n", s->surface);
         }
     }
@@ -599,12 +612,27 @@ int ff_mediacodec_dec_init(AVCodecContext *avctx, MediaCodecDecContext *s,
 
     s->codec_name = ff_AMediaCodecList_getCodecNameByType(mime, profile, 0, avctx);
     if (!s->codec_name) {
-        ret = AVERROR_EXTERNAL;
-        goto fail;
+        // getCodecNameByType() can fail due to missing JVM, while NDK
+        // mediacodec can be used without JVM.
+        if (!s->use_ndk_codec) {
+            ret = AVERROR_EXTERNAL;
+            goto fail;
+        }
+        av_log(avctx, AV_LOG_INFO, "Failed to getCodecNameByType\n");
+    } else {
+        av_log(avctx, AV_LOG_DEBUG, "Found decoder %s\n", s->codec_name);
     }
 
-    av_log(avctx, AV_LOG_DEBUG, "Found decoder %s\n", s->codec_name);
-    s->codec = ff_AMediaCodec_createCodecByName(s->codec_name);
+    if (s->codec_name)
+        s->codec = ff_AMediaCodec_createCodecByName(s->codec_name, s->use_ndk_codec);
+    else {
+        s->codec = ff_AMediaCodec_createDecoderByType(mime, s->use_ndk_codec);
+        if (s->codec) {
+            s->codec_name = ff_AMediaCodec_getName(s->codec);
+            if (!s->codec_name)
+                s->codec_name = av_strdup(mime);
+        }
+    }
     if (!s->codec) {
         av_log(avctx, AV_LOG_ERROR, "Failed to create media decoder for type %s and name %s\n", mime, s->codec_name);
         ret = AVERROR_EXTERNAL;
@@ -872,7 +900,7 @@ int ff_mediacodec_dec_receive(AVCodecContext *avctx, MediaCodecDecContext *s,
 */
 int ff_mediacodec_dec_flush(AVCodecContext *avctx, MediaCodecDecContext *s)
 {
-    if (!s->surface || atomic_load(&s->refcount) == 1) {
+    if (!s->surface || !s->delay_flush || atomic_load(&s->refcount) == 1) {
         int ret;
 
         /* No frames (holding a reference to the codec) are retained by the

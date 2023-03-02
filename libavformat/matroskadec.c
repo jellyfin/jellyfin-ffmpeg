@@ -38,6 +38,7 @@
 #include "libavutil/base64.h"
 #include "libavutil/bprint.h"
 #include "libavutil/dict.h"
+#include "libavutil/dict_internal.h"
 #include "libavutil/display.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/intreadwrite.h"
@@ -45,6 +46,7 @@
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
+#include "libavutil/pixdesc.h"
 #include "libavutil/time_internal.h"
 #include "libavutil/spherical.h"
 
@@ -2183,8 +2185,8 @@ static int mkv_parse_video_color(AVStream *st, const MatroskaTrack *track) {
         color->chroma_siting_horz  < MATROSKA_COLOUR_CHROMASITINGHORZ_NB &&
         color->chroma_siting_vert  < MATROSKA_COLOUR_CHROMASITINGVERT_NB) {
         st->codecpar->chroma_location =
-            avcodec_chroma_pos_to_enum((color->chroma_siting_horz - 1) << 7,
-                                       (color->chroma_siting_vert - 1) << 7);
+            av_chroma_location_pos_to_enum((color->chroma_siting_horz - 1) << 7,
+                                           (color->chroma_siting_vert - 1) << 7);
     }
     if (color->max_cll && color->max_fall) {
         size_t size = 0;
@@ -4008,7 +4010,8 @@ typedef struct {
 
 /* This function searches all the Cues and returns the CueDesc corresponding to
  * the timestamp ts. Returned CueDesc will be such that start_time_ns <= ts <
- * end_time_ns. All 4 fields will be set to -1 if ts >= file's duration.
+ * end_time_ns. All 4 fields will be set to -1 if ts >= file's duration or
+ * if an error occurred.
  */
 static CueDesc get_cue_desc(AVFormatContext *s, int64_t ts, int64_t cues_start) {
     MatroskaDemuxContext *matroska = s->priv_data;
@@ -4027,6 +4030,8 @@ static CueDesc get_cue_desc(AVFormatContext *s, int64_t ts, int64_t cues_start) 
         }
     }
     --i;
+    if (index_entries[i].timestamp > matroska->duration)
+        return (CueDesc) {-1, -1, -1, -1};
     cue_desc.start_time_ns = index_entries[i].timestamp * matroska->time_scale;
     cue_desc.start_offset = index_entries[i].pos - matroska->segment_start;
     if (i != nb_index_entries - 1) {

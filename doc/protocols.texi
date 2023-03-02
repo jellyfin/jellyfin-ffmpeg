@@ -275,6 +275,33 @@ For example, to convert a GIF file given inline with @command{ffmpeg}:
 ffmpeg -i "data:image/gif;base64,R0lGODdhCAAIAMIEAAAAAAAA//8AAP//AP///////////////ywAAAAACAAIAAADF0gEDLojDgdGiJdJqUX02iB4E8Q9jUMkADs=" smiley.png
 @end example
 
+@section fd
+
+File descriptor access protocol.
+
+The accepted syntax is:
+@example
+fd: -fd @var{file_descriptor}
+@end example
+
+If @option{fd} is not specified, by default the stdout file descriptor will be
+used for writing, stdin for reading. Unlike the pipe protocol, fd protocol has
+seek support if it corresponding to a regular file. fd protocol doesn't support
+pass file descriptor via URL for security.
+
+This protocol accepts the following options:
+
+@table @option
+@item blocksize
+Set I/O operation maximum block size, in bytes. Default value is
+@code{INT_MAX}, which results in not limiting the requested block size.
+Setting this value reasonably low improves user termination request reaction
+time, which is valuable if data transmission is slow.
+
+@item fd
+Set file descriptor.
+@end table
+
 @section file
 
 File access protocol.
@@ -622,9 +649,6 @@ This protocol wraps the IPFS native protocols (ipfs:// and ipns://) to be sent
 to such a gateway. Users can (and should) host their own node which means this
 protocol will use one's local gateway to access files on the IPFS network.
 
-If a user doesn't have a node of their own then the public gateway @code{https://dweb.link}
-is used by default.
-
 This protocol accepts the following options:
 
 @table @option
@@ -632,18 +656,18 @@ This protocol accepts the following options:
 @item gateway
 Defines the gateway to use. When not set, the protocol will first try
 locating the local gateway by looking at @code{$IPFS_GATEWAY}, @code{$IPFS_PATH}
-and @code{$HOME/.ipfs/}, in that order. If that fails @code{https://dweb.link} will be used.
+and @code{$HOME/.ipfs/}, in that order.
 
 @end table
 
 One can use this protocol in 2 ways. Using IPFS:
 @example
-ffplay ipfs://QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T
+ffplay ipfs://<hash>
 @end example
 
 Or the IPNS protocol (IPNS is mutable IPFS):
 @example
-ffplay ipns://QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T
+ffplay ipns://<hash>
 @end example
 
 @section mmst
@@ -690,7 +714,7 @@ The accepted syntax is:
 pipe:[@var{number}]
 @end example
 
-@var{number} is the number corresponding to the file descriptor of the
+If @option{fd} isn't specified, @var{number} is the number corresponding to the file descriptor of the
 pipe (e.g. 0 for stdin, 1 for stdout, 2 for stderr).  If @var{number}
 is not specified, by default the stdout file descriptor will be used
 for writing, stdin for reading.
@@ -717,6 +741,8 @@ Set I/O operation maximum block size, in bytes. Default value is
 @code{INT_MAX}, which results in not limiting the requested block size.
 Setting this value reasonably low improves user termination request reaction
 time, which is valuable if data transmission is slow.
+@item fd
+Set file descriptor.
 @end table
 
 Note that some formats (typically MOV), require the output protocol to
@@ -1178,6 +1204,59 @@ Options can be set on the @command{ffmpeg}/@command{ffplay} command
 line, or set in code via @code{AVOption}s or in
 @code{avformat_open_input}.
 
+@subsection Muxer
+The following options are supported.
+
+@table @option
+@item rtsp_transport
+Set RTSP transport protocols.
+
+It accepts the following values:
+@table @samp
+@item udp
+Use UDP as lower transport protocol.
+
+@item tcp
+Use TCP (interleaving within the RTSP control channel) as lower
+transport protocol.
+@end table
+
+Default value is @samp{0}.
+
+@item rtsp_flags
+Set RTSP flags.
+
+The following values are accepted:
+@table @samp
+@item latm
+Use MP4A-LATM packetization instead of MPEG4-GENERIC for AAC.
+@item rfc2190
+Use RFC 2190 packetization instead of RFC 4629 for H.263.
+@item skip_rtcp
+Don't send RTCP sender reports.
+@item h264_mode0
+Use mode 0 for H.264 in RTP.
+@item send_bye
+Send RTCP BYE packets when finishing.
+@end table
+
+Default value is @samp{0}.
+
+
+@item min_port
+Set minimum local UDP port. Default value is 5000.
+
+@item max_port
+Set maximum local UDP port. Default value is 65000.
+
+@item buffer_size
+Set the maximum socket buffer size in bytes.
+
+@item pkt_size
+Set max send packet size (in bytes). Default value is 1472.
+@end table
+
+@subsection Demuxer
 The following options are supported.
 
 @table @option
@@ -1203,6 +1282,10 @@ Use UDP multicast as lower transport protocol.
 @item http
 Use HTTP tunneling as lower transport protocol, which is useful for
 passing proxies.
+
+@item https
+Use HTTPs tunneling as lower transport protocol, which is useful for
+passing proxies and widely used for security consideration.
 @end table
 
 Multiple lower transport protocols may be specified, in that case they are
@@ -1220,6 +1303,9 @@ Accept packets only from negotiated peer address and port.
 Act as a server, listening for an incoming connection.
 @item prefer_tcp
 Try TCP for RTP transport first, if TCP is available as RTSP RTP transport.
+@item satip_raw
+Export raw MPEG-TS stream instead of demuxing. The flag will simply write out
+the raw stream, with the original PAT/PMT/PIDs intact.
 @end table
 
 Default value is @samp{none}.
@@ -1232,6 +1318,7 @@ The following flags are accepted:
 @item video
 @item audio
 @item data
+@item subtitle
 @end table
 
 By default it accepts all media types.
@@ -1256,6 +1343,9 @@ Set socket TCP I/O timeout in microseconds.
 @item user_agent
 Override User-Agent header. If not specified, it defaults to the
 libavformat identifier string.
+
+@item buffer_size
+Set the maximum socket buffer size in bytes.
 @end table
 
 When receiving data over UDP, the demuxer tries to reorder received packets

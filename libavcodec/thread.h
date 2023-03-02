@@ -62,19 +62,7 @@ int ff_thread_decode_frame(AVCodecContext *avctx, AVFrame *picture,
  */
 void ff_thread_finish_setup(AVCodecContext *avctx);
 
-#if FF_API_THREAD_SAFE_CALLBACKS
-/**
- * Wrapper around get_format() for frame-multithreaded codecs.
- * Call this function instead of avctx->get_format().
- * Cannot be called after the codec has called ff_thread_finish_setup().
- *
- * @param avctx The current context.
- * @param fmt The list of available formats.
- */
-enum AVPixelFormat ff_thread_get_format(AVCodecContext *avctx, const enum AVPixelFormat *fmt);
-#else
 #define ff_thread_get_format ff_get_format
-#endif
 
 /**
  * Wrapper around get_buffer() for frame-multithreaded codecs.
@@ -104,8 +92,7 @@ int ff_slice_thread_execute_with_mainfunc(AVCodecContext *avctx,
         int (*action_func2)(AVCodecContext *c, void *arg, int jobnr, int threadnr),
         int (*main_func)(AVCodecContext *c), void *arg, int *ret, int job_count);
 void ff_thread_free(AVCodecContext *s);
-int ff_alloc_entries(AVCodecContext *avctx, int count);
-void ff_reset_entries(AVCodecContext *avctx);
+int ff_slice_thread_allocz_entries(AVCodecContext *avctx, int count);
 int ff_slice_thread_init_progress(AVCodecContext *avctx);
 void ff_thread_report_progress2(AVCodecContext *avctx, int field, int thread, int n);
 void ff_thread_await_progress2(AVCodecContext *avctx,  int field, int thread, int shift);

@@ -25,7 +25,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/internal.h"
 
 static av_cold int aura_decode_init(AVCodecContext *avctx)
@@ -98,11 +98,10 @@ static int aura_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_aura2_decoder = {
     .p.name         = "aura2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Auravision Aura 2"),
+    CODEC_LONG_NAME("Auravision Aura 2"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AURA2,
     .init           = aura_decode_init,
     FF_CODEC_DECODE_CB(aura_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

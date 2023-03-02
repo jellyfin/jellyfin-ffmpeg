@@ -201,7 +201,7 @@ static int irdft_horizontal8(AVFilterContext *ctx, void *arg, int jobnr, int nb_
             s->ihtx_fn(s->ihrdft[jobnr][plane],
                        s->rdft_hdata_out[plane] + i * s->rdft_hstride[plane],
                        s->rdft_hdata_in[plane] + i * s->rdft_hstride[plane],
-                       sizeof(float));
+                       sizeof(AVComplexFloat));
 
         for (int i = slice_start; i < slice_end; i++) {
             const float scale = 1.f / (s->rdft_hlen[plane] * s->rdft_vlen[plane]);
@@ -232,7 +232,7 @@ static int irdft_horizontal16(AVFilterContext *ctx, void *arg, int jobnr, int nb
             s->ihtx_fn(s->ihrdft[jobnr][plane],
                        s->rdft_hdata_out[plane] + i * s->rdft_hstride[plane],
                        s->rdft_hdata_in[plane] + i * s->rdft_hstride[plane],
-                       sizeof(float));
+                       sizeof(AVComplexFloat));
 
         for (int i = slice_start; i < slice_end; i++) {
             const float scale = 1.f / (s->rdft_hlen[plane] * s->rdft_vlen[plane]);
@@ -306,7 +306,7 @@ static int config_props(AVFilterLink *inlink)
 {
     FFTFILTContext *s = inlink->dst->priv;
     const AVPixFmtDescriptor *desc;
-    int i, plane;
+    int ret, i, plane;
 
     desc = av_pix_fmt_desc_get(inlink->format);
     s->depth = desc->comp[0].depth;
@@ -335,12 +335,14 @@ static int config_props(AVFilterLink *inlink)
         for (int j = 0; j < s->nb_threads; j++) {
             float scale = 1.f, iscale = 1.f;
 
-            av_tx_init(&s->hrdft[j][i], &s->htx_fn, AV_TX_FLOAT_RDFT, 0, 1 << s->rdft_hbits[i], &scale, 0);
-            if (!s->hrdft[j][i])
-                return AVERROR(ENOMEM);
-            av_tx_init(&s->ihrdft[j][i], &s->ihtx_fn, AV_TX_FLOAT_RDFT, 1, 1 << s->rdft_hbits[i], &iscale, 0);
-            if (!s->ihrdft[j][i])
-                return AVERROR(ENOMEM);
+            ret = av_tx_init(&s->hrdft[j][i], &s->htx_fn, AV_TX_FLOAT_RDFT,
+                             0, 1 << s->rdft_hbits[i], &scale, 0);
+            if (ret < 0)
+                return ret;
+            ret = av_tx_init(&s->ihrdft[j][i], &s->ihtx_fn, AV_TX_FLOAT_RDFT,
+                             1, 1 << s->rdft_hbits[i], &iscale, 0);
+            if (ret < 0)
+                return ret;
         }
 
         /* RDFT - Array initialization for Vertical pass*/
@@ -356,12 +358,14 @@ static int config_props(AVFilterLink *inlink)
         for (int j = 0; j < s->nb_threads; j++) {
             float scale = 1.f, iscale = 1.f;
 
-            av_tx_init(&s->vrdft[j][i], &s->vtx_fn, AV_TX_FLOAT_RDFT, 0, 1 << s->rdft_vbits[i], &scale, 0);
-            if (!s->vrdft[j][i])
-                return AVERROR(ENOMEM);
-            av_tx_init(&s->ivrdft[j][i], &s->ivtx_fn, AV_TX_FLOAT_RDFT, 1, 1 << s->rdft_vbits[i], &iscale, 0);
-            if (!s->ivrdft[j][i])
-                return AVERROR(ENOMEM);
+            ret = av_tx_init(&s->vrdft[j][i], &s->vtx_fn, AV_TX_FLOAT_RDFT,
+                             0, 1 << s->rdft_vbits[i], &scale, 0);
+            if (ret < 0)
+                return ret;
+            ret = av_tx_init(&s->ivrdft[j][i], &s->ivtx_fn, AV_TX_FLOAT_RDFT,
+                             1, 1 << s->rdft_vbits[i], &iscale, 0);
+            if (ret < 0)
+                return ret;
         }
     }
 
@@ -464,7 +468,7 @@ static int irdft_vertical(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
             s->ivtx_fn(s->ivrdft[jobnr][plane],
                        s->rdft_vdata_in[plane] + i * s->rdft_vstride[plane],
                        s->rdft_vdata_out[plane] + i * s->rdft_vstride[plane],
-                       sizeof(float));
+                       sizeof(AVComplexFloat));
     }
 
     return 0;

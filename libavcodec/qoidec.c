@@ -18,32 +18,28 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdlib.h>
-
-#include "libavutil/imgutils.h"
 #include "avcodec.h"
-#include "internal.h"
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "thread.h"
 #include "qoi.h"
 
 static int qoi_decode_frame(AVCodecContext *avctx, AVFrame *p,
                             int *got_frame, AVPacket *avpkt)
 {
-    const uint8_t *buf = avpkt->data;
-    int ret, buf_size = avpkt->size;
     int width, height, channels, space, run = 0;
     uint8_t index[64][4] = { 0 };
     uint8_t px[4] = { 0, 0, 0, 255 };
     GetByteContext gb;
     uint8_t *dst;
     uint64_t len;
+    int ret;
 
-    if (buf_size < 20)
+    if (avpkt->size < 20)
         return AVERROR_INVALIDDATA;
 
-    bytestream2_init(&gb, buf, buf_size);
+    bytestream2_init(&gb, avpkt->data, avpkt->size);
     bytestream2_skip(&gb, 4);
     width  = bytestream2_get_be32(&gb);
     height = bytestream2_get_be32(&gb);
@@ -63,6 +59,9 @@ static int qoi_decode_frame(AVCodecContext *avctx, AVFrame *p,
     case 4: avctx->pix_fmt = AV_PIX_FMT_RGBA;  break;
     default: return AVERROR_INVALIDDATA;
     }
+
+    if (avctx->skip_frame >= AVDISCARD_ALL)
+        return avpkt->size;
 
     if ((ret = ff_thread_get_buffer(avctx, p, 0)) < 0)
         return ret;
@@ -112,14 +111,15 @@ static int qoi_decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     *got_frame   = 1;
 
-    return buf_size;
+    return avpkt->size;
 }
 
 const FFCodec ff_qoi_decoder = {
     .p.name         = "qoi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("QOI (Quite OK Image format) image"),
+    CODEC_LONG_NAME("QOI (Quite OK Image format) image"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_QOI,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
     FF_CODEC_DECODE_CB(qoi_decode_frame),
 };

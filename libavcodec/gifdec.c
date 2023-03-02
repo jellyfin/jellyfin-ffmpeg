@@ -21,12 +21,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "lzw.h"
 #include "gif.h"
 
@@ -475,7 +474,7 @@ static int gif_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     s->frame->pts     = avpkt->pts;
     s->frame->pkt_dts = avpkt->dts;
-    s->frame->pkt_duration = avpkt->duration;
+    s->frame->duration = avpkt->duration;
 
     if (avpkt->size >= 6) {
         s->keyframe = memcmp(avpkt->data, gif87a_sig, 6) == 0 ||
@@ -558,7 +557,7 @@ static const AVClass decoder_class = {
 
 const FFCodec ff_gif_decoder = {
     .p.name         = "gif",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("GIF (Graphics Interchange Format)"),
+    CODEC_LONG_NAME("GIF (Graphics Interchange Format)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_GIF,
     .priv_data_size = sizeof(GifState),
@@ -566,7 +565,6 @@ const FFCodec ff_gif_decoder = {
     .close          = gif_decode_close,
     FF_CODEC_DECODE_CB(gif_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.priv_class   = &decoder_class,
 };

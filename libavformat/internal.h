@@ -23,7 +23,6 @@
 
 #include <stdint.h>
 
-#include "libavcodec/avcodec.h"
 #include "libavcodec/packet_internal.h"
 
 #include "avformat.h"
@@ -221,7 +220,7 @@ typedef struct FFStream {
     /**
      * The codec context used by avformat_find_stream_info, the parser, etc.
      */
-    AVCodecContext *avctx;
+    struct AVCodecContext *avctx;
     /**
      * 1 if avctx has been initialized with the values from the codec parameters
      */
@@ -309,6 +308,13 @@ typedef struct FFStream {
      * Timestamp offset added to timestamps before muxing
      */
     int64_t mux_ts_offset;
+
+    /**
+     * This is the lowest ts allowed in this track; it may be set by the muxer
+     * during init or write_header and influences the automatic timestamp
+     * shifting code.
+     */
+    int64_t lowest_ts_allowed;
 
     /**
      * Internal data to check for wrapping of the time stamp
@@ -626,6 +632,17 @@ enum AVCodecID ff_get_pcm_codec_id(int bps, int flt, int be, int sflags);
 int ff_stream_side_data_copy(AVStream *dst, const AVStream *src);
 
 /**
+ * Create a new stream and copy to it all parameters from a source stream, with
+ * the exception of the index field, which is set when the new stream is
+ * created.
+ *
+ * @param dst_ctx pointer to the context in which the new stream is created
+ * @param src pointer to source AVStream
+ * @return pointer to the new stream or NULL on error
+ */
+AVStream *ff_stream_clone(AVFormatContext *dst_ctx, const AVStream *src);
+
+/**
  * Wrap ffurl_move() and log if error happens.
  *
  * @param url_src source path
@@ -688,6 +705,7 @@ int ff_unlock_avformat(void);
  */
 void ff_format_set_url(AVFormatContext *s, char *url);
 
-void avpriv_register_devices(const AVOutputFormat * const o[], const AVInputFormat * const i[]);
+struct FFOutputFormat;
+void avpriv_register_devices(const struct FFOutputFormat * const o[], const AVInputFormat * const i[]);
 
 #endif /* AVFORMAT_INTERNAL_H */

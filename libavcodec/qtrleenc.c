@@ -374,7 +374,7 @@ static int qtrle_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         return ret;
 
     if (avctx->gop_size == 0 || !s->previous_frame->data[0] ||
-        (s->avctx->frame_number % avctx->gop_size) == 0) {
+        (s->avctx->frame_num % avctx->gop_size) == 0) {
         /* I-Frame */
         s->key_frame = 1;
     } else {
@@ -401,9 +401,10 @@ static int qtrle_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 const FFCodec ff_qtrle_encoder = {
     .p.name         = "qtrle",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("QuickTime Animation (RLE) video"),
+    CODEC_LONG_NAME("QuickTime Animation (RLE) video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_QTRLE,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(QtrleEncContext),
     .init           = qtrle_encode_init,
     FF_CODEC_ENCODE_CB(qtrle_encode_frame),
@@ -411,5 +412,5 @@ const FFCodec ff_qtrle_encoder = {
     .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGB555BE, AV_PIX_FMT_ARGB, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

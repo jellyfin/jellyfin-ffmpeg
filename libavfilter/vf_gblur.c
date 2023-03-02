@@ -125,7 +125,7 @@ static void gaussianiir2d(AVFilterContext *ctx, int plane)
     const int nb_threads = ff_filter_get_nb_threads(ctx);
     ThreadData td;
 
-    if (s->sigma <= 0 || s->steps < 0)
+    if (s->sigma < 0 || s->steps < 0)
         return;
 
     td.width = width;
@@ -207,6 +207,12 @@ static void set_params(float sigma, int steps, float *postscale, float *boundary
     *postscale = pow(dnu / lambda, steps);
     *boundaryscale = 1.0 / (1.0 - dnu);
     *nu = (float)dnu;
+    if (!isnormal(*postscale))
+        *postscale = 1.f;
+    if (!isnormal(*boundaryscale))
+        *boundaryscale = 1.f;
+    if (!isnormal(*nu))
+        *nu = 0.f;
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
@@ -241,7 +247,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         uint16_t *dst16 = (uint16_t *)out->data[plane];
         int y, x;
 
-        if (!s->sigma || !(s->planes & (1 << plane))) {
+        if (!(s->planes & (1 << plane))) {
             if (out != in)
                 av_image_copy_plane(out->data[plane], out->linesize[plane],
                                     in->data[plane], in->linesize[plane],

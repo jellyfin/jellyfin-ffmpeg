@@ -119,17 +119,17 @@ typedef struct WavpackContext {
 
 #define LEVEL_DECAY(a)  (((a) + 0x80) >> 8)
 
-static av_always_inline unsigned get_tail(GetBitContext *gb, int k)
+static av_always_inline unsigned get_tail(GetBitContext *gb, unsigned k)
 {
     int p, e, res;
 
     if (k < 1)
         return 0;
     p   = av_log2(k);
-    e   = (1 << (p + 1)) - k - 1;
-    res = get_bitsz(gb, p);
+    e   = (1LL << (p + 1)) - k - 1;
+    res = get_bits_long(gb, p);
     if (res >= e)
-        res = (res << 1) - e + get_bits1(gb);
+        res = res * 2U - e + get_bits1(gb);
     return res;
 }
 
@@ -266,10 +266,6 @@ static int wv_get_value(WavpackFrameContext *ctx, GetBitContext *gb,
         INC_MED(2);
     }
     if (!c->error_limit) {
-        if (add >= 0x2000000U) {
-            av_log(ctx->avctx, AV_LOG_ERROR, "k %d is too large\n", add);
-            goto error;
-        }
         ret = base + get_tail(gb, add);
         if (get_bits_left(gb) <= 0)
             goto error;
@@ -499,6 +495,8 @@ static int wv_unpack_dsd_high(WavpackFrameContext *s, uint8_t *dst_left, uint8_t
                 sp[0].fltr0 = 0;
             }
 
+            if (DSD_BYTE_READY(high, low) && !bytestream2_get_bytes_left(&s->gbyte))
+                return AVERROR_INVALIDDATA;
             while (DSD_BYTE_READY(high, low) && bytestream2_get_bytes_left(&s->gbyte)) {
                 value = (value << 8) | bytestream2_get_byte(&s->gbyte);
                 high = (high << 8) | 0xff;
@@ -534,6 +532,8 @@ static int wv_unpack_dsd_high(WavpackFrameContext *s, uint8_t *dst_left, uint8_t
                 sp[1].fltr0 = 0;
             }
 
+            if (DSD_BYTE_READY(high, low) && !bytestream2_get_bytes_left(&s->gbyte))
+                return AVERROR_INVALIDDATA;
             while (DSD_BYTE_READY(high, low) && bytestream2_get_bytes_left(&s->gbyte)) {
                 value = (value << 8) | bytestream2_get_byte(&s->gbyte);
                 high = (high << 8) | 0xff;
@@ -1616,7 +1616,7 @@ static void wavpack_decode_flush(AVCodecContext *avctx)
 
 static int dsd_channel(AVCodecContext *avctx, void *frmptr, int jobnr, int threadnr)
 {
-    WavpackContext *s  = avctx->priv_data;
+    const WavpackContext *s  = avctx->priv_data;
     AVFrame *frame = frmptr;
 
     ff_dsd2pcm_translate (&s->dsdctx [jobnr], s->samples, 0,
@@ -1703,7 +1703,7 @@ error:
 
 const FFCodec ff_wavpack_decoder = {
     .p.name         = "wavpack",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("WavPack"),
+    CODEC_LONG_NAME("WavPack"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_WAVPACK,
     .priv_data_size = sizeof(WavpackContext),
@@ -1711,9 +1711,9 @@ const FFCodec ff_wavpack_decoder = {
     .close          = wavpack_decode_end,
     FF_CODEC_DECODE_CB(wavpack_decode_frame),
     .flush          = wavpack_decode_flush,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(update_thread_context),
+    UPDATE_THREAD_CONTEXT(update_thread_context),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
                       AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP |
                       FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };

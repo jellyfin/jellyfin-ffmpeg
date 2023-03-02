@@ -29,7 +29,7 @@
 #include "avcodec.h"
 #include "codec_id.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 typedef struct {
     int fq, q, s, lt;
@@ -85,11 +85,6 @@ static av_cold int dfpwm_dec_init(struct AVCodecContext *ctx)
 {
     DFPWMState *state = ctx->priv_data;
 
-    if (ctx->ch_layout.nb_channels <= 0) {
-        av_log(ctx, AV_LOG_ERROR, "Invalid number of channels\n");
-        return AVERROR(EINVAL);
-    }
-
     state->fq = 0;
     state->q = 0;
     state->s = 0;
@@ -127,12 +122,11 @@ static int dfpwm_dec_frame(struct AVCodecContext *ctx, AVFrame *frame,
 
 const FFCodec ff_dfpwm_decoder = {
     .p.name         = "dfpwm",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("DFPWM1a audio"),
+    CODEC_LONG_NAME("DFPWM1a audio"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_DFPWM,
     .priv_data_size = sizeof(DFPWMState),
     .init           = dfpwm_dec_init,
     FF_CODEC_DECODE_CB(dfpwm_dec_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

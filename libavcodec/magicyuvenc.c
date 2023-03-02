@@ -458,11 +458,12 @@ static int magy_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     if (s->correlate) {
-        uint8_t *r, *g, *b, *decorrelated[2] = { s->decorrelate_buf[0],
+        uint8_t *decorrelated[2] = { s->decorrelate_buf[0],
                                                  s->decorrelate_buf[1] };
         const int decorrelate_linesize = FFALIGN(width, 16);
         const uint8_t *const data[4] = { decorrelated[0], frame->data[0],
                                          decorrelated[1], frame->data[3] };
+        const uint8_t *r, *g, *b;
         const int linesize[4]  = { decorrelate_linesize, frame->linesize[0],
                                    decorrelate_linesize, frame->linesize[3] };
 
@@ -565,19 +566,20 @@ static const AVClass magicyuv_class = {
 
 const FFCodec ff_magicyuv_encoder = {
     .p.name           = "magicyuv",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("MagicYUV video"),
+    CODEC_LONG_NAME("MagicYUV video"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_MAGICYUV,
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                        AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size   = sizeof(MagicYUVContext),
     .p.priv_class     = &magicyuv_class,
     .init             = magy_encode_init,
     .close            = magy_encode_close,
     FF_CODEC_ENCODE_CB(magy_encode_frame),
-    .p.capabilities   = AV_CODEC_CAP_FRAME_THREADS,
     .p.pix_fmts       = (const enum AVPixelFormat[]) {
                           AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP, AV_PIX_FMT_YUV422P,
                           AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA444P, AV_PIX_FMT_GRAY8,
                           AV_PIX_FMT_NONE
                       },
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

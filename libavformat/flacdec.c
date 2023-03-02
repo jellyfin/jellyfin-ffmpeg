@@ -20,6 +20,8 @@
  */
 
 #include "libavutil/channel_layout.h"
+#include "libavcodec/avcodec.h"
+#include "libavcodec/bytestream.h"
 #include "libavcodec/flac.h"
 #include "avformat.h"
 #include "demux.h"

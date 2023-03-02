@@ -26,7 +26,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/common.h"
 
 /*
@@ -286,7 +286,7 @@ static int mace_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_mace3_decoder = {
     .p.name         = "mace3",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("MACE (Macintosh Audio Compression/Expansion) 3:1"),
+    CODEC_LONG_NAME("MACE (Macintosh Audio Compression/Expansion) 3:1"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_MACE3,
     .priv_data_size = sizeof(MACEContext),
@@ -295,12 +295,11 @@ const FFCodec ff_mace3_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 
 const FFCodec ff_mace6_decoder = {
     .p.name         = "mace6",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("MACE (Macintosh Audio Compression/Expansion) 6:1"),
+    CODEC_LONG_NAME("MACE (Macintosh Audio Compression/Expansion) 6:1"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_MACE6,
     .priv_data_size = sizeof(MACEContext),
@@ -309,5 +308,4 @@ const FFCodec ff_mace6_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

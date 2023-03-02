@@ -27,7 +27,7 @@
 #include "libavutil/common.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 typedef struct LibSpeexContext {
     SpeexBits bits;
@@ -192,11 +192,12 @@ static av_cold void libspeex_decode_flush(AVCodecContext *avctx)
 
 const FFCodec ff_libspeex_decoder = {
     .p.name         = "libspeex",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libspeex Speex"),
+    CODEC_LONG_NAME("libspeex Speex"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_SPEEX,
     .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .p.wrapper_name = "libspeex",
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size = sizeof(LibSpeexContext),
     .init           = libspeex_decode_init,
     .close          = libspeex_decode_close,

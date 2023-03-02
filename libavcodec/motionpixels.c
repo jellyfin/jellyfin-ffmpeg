@@ -27,7 +27,7 @@
 #include "get_bits.h"
 #include "bswapdsp.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #define MAX_HUFF_CODES 16
 
@@ -185,7 +185,7 @@ static YuvPixel mp_get_yuv_from_rgb(MotionPixelsContext *mp, int x, int y)
     int color;
 
     color = *(uint16_t *)&mp->frame->data[0][y * mp->frame->linesize[0] + x * 2];
-    return mp_rgb_yuv_table[color];
+    return mp_rgb_yuv_table[color & 0x7FFF];
 }
 
 static void mp_set_rgb_from_yuv(MotionPixelsContext *mp, int x, int y, const YuvPixel *p)
@@ -347,7 +347,7 @@ end:
 
 const FFCodec ff_motionpixels_decoder = {
     .p.name         = "motionpixels",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Motion Pixels video"),
+    CODEC_LONG_NAME("Motion Pixels video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MOTIONPIXELS,
     .priv_data_size = sizeof(MotionPixelsContext),
@@ -355,5 +355,5 @@ const FFCodec ff_motionpixels_decoder = {
     .close          = mp_decode_end,
     FF_CODEC_DECODE_CB(mp_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

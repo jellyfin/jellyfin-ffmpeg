@@ -49,13 +49,17 @@ static int add_mb(AVMotionVector *mb, uint32_t mb_type,
 }
 
 void ff_draw_horiz_band(AVCodecContext *avctx,
-                        AVFrame *cur, AVFrame *last,
+                        const AVFrame *cur, const AVFrame *last,
                         int y, int h, int picture_structure,
                         int first_field, int low_delay)
 {
-    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
-    int vshift = desc->log2_chroma_h;
     const int field_pic = picture_structure != PICT_FRAME;
+    const AVFrame *src;
+    int offset[AV_NUM_DATA_POINTERS];
+
+    if (!avctx->draw_horiz_band)
+        return;
+
     if (field_pic) {
         h <<= 1;
         y <<= 1;
@@ -67,42 +71,93 @@ void ff_draw_horiz_band(AVCodecContext *avctx,
         !(avctx->slice_flags & SLICE_FLAG_ALLOW_FIELD))
         return;
 
-    if (avctx->draw_horiz_band) {
-        AVFrame *src;
-        int offset[AV_NUM_DATA_POINTERS];
-        int i;
+    if (cur->pict_type == AV_PICTURE_TYPE_B || low_delay ||
+        (avctx->slice_flags & SLICE_FLAG_CODED_ORDER))
+        src = cur;
+    else if (last)
+        src = last;
+    else
+        return;
 
-        if (cur->pict_type == AV_PICTURE_TYPE_B || low_delay ||
-           (avctx->slice_flags & SLICE_FLAG_CODED_ORDER))
-            src = cur;
-        else if (last)
-            src = last;
-        else
-            return;
+    if (cur->pict_type == AV_PICTURE_TYPE_B &&
+        picture_structure == PICT_FRAME &&
+        avctx->codec_id != AV_CODEC_ID_SVQ3) {
+        for (int i = 0; i < AV_NUM_DATA_POINTERS; i++)
+            offset[i] = 0;
+    } else {
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
+        int vshift = desc->log2_chroma_h;
 
-        if (cur->pict_type == AV_PICTURE_TYPE_B &&
-            picture_structure == PICT_FRAME &&
-            avctx->codec_id != AV_CODEC_ID_SVQ3) {
-            for (i = 0; i < AV_NUM_DATA_POINTERS; i++)
-                offset[i] = 0;
-        } else {
-            offset[0]= y * src->linesize[0];
-            offset[1]=
-            offset[2]= (y >> vshift) * src->linesize[1];
-            for (i = 3; i < AV_NUM_DATA_POINTERS; i++)
-                offset[i] = 0;
-        }
+        offset[0] = y * src->linesize[0];
+        offset[1] =
+        offset[2] = (y >> vshift) * src->linesize[1];
+        for (int i = 3; i < AV_NUM_DATA_POINTERS; i++)
+            offset[i] = 0;
+    }
 
-        emms_c();
+    emms_c();
 
-        avctx->draw_horiz_band(avctx, src, offset,
-                               y, picture_structure, h);
+    avctx->draw_horiz_band(avctx, src, offset,
+                            y, picture_structure, h);
+}
+
+static char get_type_mv_char(int mb_type)
+{
+    // Type & MV direction
+    if (IS_PCM(mb_type))
+        return 'P';
+    else if (IS_INTRA(mb_type) && IS_ACPRED(mb_type))
+        return 'A';
+    else if (IS_INTRA4x4(mb_type))
+        return 'i';
+    else if (IS_INTRA16x16(mb_type))
+        return 'I';
+    else if (IS_DIRECT(mb_type) && IS_SKIP(mb_type))
+        return 'd';
+    else if (IS_DIRECT(mb_type))
+        return 'D';
+    else if (IS_GMC(mb_type) && IS_SKIP(mb_type))
+        return 'g';
+    else if (IS_GMC(mb_type))
+        return 'G';
+    else if (IS_SKIP(mb_type))
+        return 'S';
+    else if (!USES_LIST(mb_type, 1))
+        return '>';
+    else if (!USES_LIST(mb_type, 0))
+        return '<';
+    else {
+        av_assert2(USES_LIST(mb_type, 0) && USES_LIST(mb_type, 1));
+        return 'X';
     }
 }
 
-void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_table,
-                         uint32_t *mbtype_table, int8_t *qscale_table, int16_t (*motion_val[2])[2],
-                         int mb_width, int mb_height, int mb_stride, int quarter_sample)
+static char get_segmentation_char(int mb_type)
+{
+    if (IS_8X8(mb_type))
+        return '+';
+    else if (IS_16X8(mb_type))
+        return '-';
+    else if (IS_8X16(mb_type))
+        return '|';
+    else if (IS_INTRA(mb_type) || IS_16X16(mb_type))
+        return ' ';
+
+    return '?';
+}
+
+static char get_interlacement_char(int mb_type)
+{
+    if (IS_INTERLACED(mb_type))
+        return '=';
+    else
+        return ' ';
+}
+
+void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict,
+                          const uint8_t *mbskip_table, const uint32_t *mbtype_table,
+                          const int8_t *qscale_table, int16_t (*const motion_val[2])[2],
+                          int mb_width, int mb_height, int mb_stride, int quarter_sample)
 {
     if ((avctx->export_side_data & AV_CODEC_EXPORT_DATA_MVS) && mbtype_table && motion_val[0]) {
         const int shift = 1 + quarter_sample;
@@ -175,7 +230,7 @@ void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_
         if (mbcount) {
             AVFrameSideData *sd;
 
-            av_log(avctx, AV_LOG_DEBUG, "Adding %d MVs info to frame %d\n", mbcount, avctx->frame_number);
+            av_log(avctx, AV_LOG_DEBUG, "Adding %d MVs info to frame %"PRId64"\n", mbcount, avctx->frame_num);
             sd = av_frame_new_side_data(pict, AV_FRAME_DATA_MOTION_VECTORS, mbcount * sizeof(AVMotionVector));
             if (!sd) {
                 av_freep(&mvs);
@@ -211,51 +266,11 @@ void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_
                 }
                 if (avctx->debug & FF_DEBUG_MB_TYPE) {
                     int mb_type = mbtype_table[x + y * mb_stride];
-                    // Type & MV direction
-                    if (IS_PCM(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "P");
-                    else if (IS_INTRA(mb_type) && IS_ACPRED(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "A");
-                    else if (IS_INTRA4x4(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "i");
-                    else if (IS_INTRA16x16(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "I");
-                    else if (IS_DIRECT(mb_type) && IS_SKIP(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "d");
-                    else if (IS_DIRECT(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "D");
-                    else if (IS_GMC(mb_type) && IS_SKIP(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "g");
-                    else if (IS_GMC(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "G");
-                    else if (IS_SKIP(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "S");
-                    else if (!USES_LIST(mb_type, 1))
-                        av_log(avctx, AV_LOG_DEBUG, ">");
-                    else if (!USES_LIST(mb_type, 0))
-                        av_log(avctx, AV_LOG_DEBUG, "<");
-                    else {
-                        av_assert2(USES_LIST(mb_type, 0) && USES_LIST(mb_type, 1));
-                        av_log(avctx, AV_LOG_DEBUG, "X");
-                    }
 
-                    // segmentation
-                    if (IS_8X8(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "+");
-                    else if (IS_16X8(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "-");
-                    else if (IS_8X16(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "|");
-                    else if (IS_INTRA(mb_type) || IS_16X16(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, " ");
-                    else
-                        av_log(avctx, AV_LOG_DEBUG, "?");
-
-
-                    if (IS_INTERLACED(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "=");
-                    else
-                        av_log(avctx, AV_LOG_DEBUG, " ");
+                    av_log(avctx, AV_LOG_DEBUG, "%c%c%c",
+                           get_type_mv_char(mb_type),
+                           get_segmentation_char(mb_type),
+                           get_interlacement_char(mb_type));
                 }
             }
             av_log(avctx, AV_LOG_DEBUG, "\n");

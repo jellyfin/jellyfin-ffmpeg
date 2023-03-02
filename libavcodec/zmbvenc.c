@@ -84,8 +84,8 @@ typedef struct ZmbvEncContext {
 /** Block comparing function
  * XXX should be optimized and moved to DSPContext
  */
-static inline int block_cmp(ZmbvEncContext *c, uint8_t *src, int stride,
-                            uint8_t *src2, int stride2, int bw, int bh,
+static inline int block_cmp(ZmbvEncContext *c, const uint8_t *src, int stride,
+                            const uint8_t *src2, int stride2, int bw, int bh,
                             int *xored)
 {
     int sum = 0;
@@ -119,7 +119,7 @@ static inline int block_cmp(ZmbvEncContext *c, uint8_t *src, int stride,
 /** Motion estimation function
  * TODO make better ME decisions
  */
-static int zmbv_me(ZmbvEncContext *c, uint8_t *src, int sstride, uint8_t *prev,
+static int zmbv_me(ZmbvEncContext *c, const uint8_t *src, int sstride, const uint8_t *prev,
                    int pstride, int x, int y, int *mx, int *my, int *xored)
 {
     int dx, dy, txored, tv, bv, bw, bh;
@@ -171,7 +171,8 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     ZmbvEncContext * const c = avctx->priv_data;
     z_stream  *const zstream = &c->zstream.zstream;
     const AVFrame * const p = pict;
-    uint8_t *src, *prev, *buf;
+    const uint8_t *src;
+    uint8_t *prev, *buf;
     uint32_t *palptr;
     int keyframe, chpal;
     int fl;
@@ -218,7 +219,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
     }else{
         int x, y, bh2, bw2, xored;
-        uint8_t *tsrc, *tprev;
+        const uint8_t *tsrc, *tprev;
         uint8_t *mv;
         int mx = 0, my = 0;
 
@@ -412,10 +413,10 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
 const FFCodec ff_zmbv_encoder = {
     .p.name         = "zmbv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Zip Motion Blocks Video"),
+    CODEC_LONG_NAME("Zip Motion Blocks Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_ZMBV,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(ZmbvEncContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),
@@ -428,5 +429,5 @@ const FFCodec ff_zmbv_encoder = {
 #endif //ZMBV_ENABLE_24BPP
                                                      AV_PIX_FMT_BGR0,
                                                      AV_PIX_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

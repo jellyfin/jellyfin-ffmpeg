@@ -70,8 +70,8 @@ static const AVOption libvmaf_options[] = {
     {"enable_transform",  "use model='enable_transform=true'.",                         OFFSET(enable_transform), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS|AV_OPT_FLAG_DEPRECATED},
     {"phone_model",  "use model='enable_transform=true'.",                              OFFSET(phone_model), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS|AV_OPT_FLAG_DEPRECATED},
     {"psnr",  "use feature='name=psnr'.",                                               OFFSET(psnr), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS|AV_OPT_FLAG_DEPRECATED},
-    {"ssim",  "use feature='name=ssim'.",                                               OFFSET(ssim), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS|AV_OPT_FLAG_DEPRECATED},
-    {"ms_ssim",  "use feature='name=ms_ssim'.",                                         OFFSET(ms_ssim), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS|AV_OPT_FLAG_DEPRECATED},
+    {"ssim",  "use feature='name=float_ssim'.",                                         OFFSET(ssim), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS|AV_OPT_FLAG_DEPRECATED},
+    {"ms_ssim",  "use feature='name=float_ms_ssim'.",                                   OFFSET(ms_ssim), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS|AV_OPT_FLAG_DEPRECATED},
     {"pool",  "Set the pool method to be used for computing vmaf.",                     OFFSET(pool), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 1, FLAGS},
     {"n_threads", "Set number of threads to be used when computing vmaf.",              OFFSET(n_threads), AV_OPT_TYPE_INT, {.i64=0}, 0, UINT_MAX, FLAGS},
     {"n_subsample", "Set interval for frame subsampling used when computing vmaf.",     OFFSET(n_subsample), AV_OPT_TYPE_INT, {.i64=1}, 1, UINT_MAX, FLAGS},
@@ -108,6 +108,7 @@ static enum VmafPixelFormat pix_fmt_map(enum AVPixelFormat av_pix_fmt)
 
 static int copy_picture_data(AVFrame *src, VmafPicture *dst, unsigned bpc)
 {
+    const int bytes_per_value = bpc > 8 ? 2 : 1;
     int err = vmaf_picture_alloc(dst, pix_fmt_map(src->format), bpc,
                                  src->width, src->height);
     if (err)
@@ -117,7 +118,7 @@ static int copy_picture_data(AVFrame *src, VmafPicture *dst, unsigned bpc)
         uint8_t *src_data = src->data[i];
         uint8_t *dst_data = dst->data[i];
         for (unsigned j = 0; j < dst->h[i]; j++) {
-            memcpy(dst_data, src_data, sizeof(*dst_data) * dst->w[i]);
+            memcpy(dst_data, src_data, bytes_per_value * dst->w[i]);
             src_data += src->linesize[i];
             dst_data += dst->stride[i];
         }
@@ -235,9 +236,9 @@ static int parse_features(AVFilterContext *ctx)
     for (unsigned i = 0; i < dict_cnt; i++) {
         char *feature_name = NULL;
         VmafFeatureDictionary *feature_opts_dict = NULL;
-        AVDictionaryEntry *e = NULL;
+        const AVDictionaryEntry *e = NULL;
 
-        while (e = av_dict_get(dict[i], "", e, AV_DICT_IGNORE_SUFFIX)) {
+        while (e = av_dict_iterate(dict[i], e)) {
             if (av_stristr(e->key, "name")) {
                 feature_name = e->value;
                 continue;
@@ -294,11 +295,11 @@ static int parse_models(AVFilterContext *ctx)
 
     for (unsigned i = 0; i < dict_cnt; i++) {
         VmafModelConfig model_cfg = { 0 };
-        AVDictionaryEntry *e = NULL;
+        const AVDictionaryEntry *e = NULL;
         char *version = NULL;
         char  *path = NULL;
 
-        while (e = av_dict_get(dict[i], "", e, AV_DICT_IGNORE_SUFFIX)) {
+        while (e = av_dict_iterate(dict[i], e)) {
             if (av_stristr(e->key, "disable_clip")) {
                 model_cfg.flags |= av_stristr(e->value, "true") ?
                     VMAF_MODEL_FLAG_DISABLE_CLIP : 0;
@@ -354,7 +355,7 @@ static int parse_models(AVFilterContext *ctx)
             goto exit;
         }
 
-        while (e = av_dict_get(dict[i], "", e, AV_DICT_IGNORE_SUFFIX)) {
+        while (e = av_dict_iterate(dict[i], e)) {
             VmafFeatureDictionary *feature_opts_dict = NULL;
             char *feature_opt = NULL;
 

@@ -30,8 +30,8 @@
 #include "bswapdsp.h"
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 #define TM2_ESCAPE 0x80000000
 #define TM2_DELTAS 64
@@ -1010,7 +1010,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_truemotion2_decoder = {
     .p.name         = "truemotion2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Duck TrueMotion 2.0"),
+    CODEC_LONG_NAME("Duck TrueMotion 2.0"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_TRUEMOTION2,
     .priv_data_size = sizeof(TM2Context),
@@ -1018,5 +1018,5 @@ const FFCodec ff_truemotion2_decoder = {
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

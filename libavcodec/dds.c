@@ -34,9 +34,8 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "texturedsp.h"
-#include "thread.h"
 
 #define DDPF_FOURCC    (1 <<  2)
 #define DDPF_PALETTE   (1 <<  5)
@@ -711,11 +710,10 @@ static int dds_decode(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_dds_decoder = {
     .p.name         = "dds",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("DirectDraw Surface image decoder"),
+    CODEC_LONG_NAME("DirectDraw Surface image decoder"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_DDS,
     FF_CODEC_DECODE_CB(dds_decode),
     .priv_data_size = sizeof(DDSContext),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE
 };

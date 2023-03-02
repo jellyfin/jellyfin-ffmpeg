@@ -76,7 +76,7 @@ static void to_meta_with_crop(AVCodecContext *avctx,
     int luma = 0;
     int height = FFMIN(avctx->height, C64YRES);
     int width  = FFMIN(avctx->width , C64XRES);
-    uint8_t *src = p->data[0];
+    const uint8_t *src = p->data[0];
 
     for (blocky = 0; blocky < C64YRES; blocky += 8) {
         for (blockx = 0; blockx < C64XRES; blockx += 8) {
@@ -395,7 +395,7 @@ static int a64multi_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 #if CONFIG_A64MULTI_ENCODER
 const FFCodec ff_a64multi_encoder = {
     .p.name         = "a64multi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Multicolor charset for Commodore 64"),
+    CODEC_LONG_NAME("Multicolor charset for Commodore 64"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_A64_MULTI,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
@@ -404,13 +404,13 @@ const FFCodec ff_a64multi_encoder = {
     FF_CODEC_ENCODE_CB(a64multi_encode_frame),
     .close          = a64multi_close_encoder,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE},
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 #if CONFIG_A64MULTI5_ENCODER
 const FFCodec ff_a64multi5_encoder = {
     .p.name         = "a64multi5",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Multicolor charset for Commodore 64, extended with 5th color (colram)"),
+    CODEC_LONG_NAME("Multicolor charset for Commodore 64, extended with 5th color (colram)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_A64_MULTI5,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
@@ -419,6 +419,6 @@ const FFCodec ff_a64multi5_encoder = {
     FF_CODEC_ENCODE_CB(a64multi_encode_frame),
     .close          = a64multi_close_encoder,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE},
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

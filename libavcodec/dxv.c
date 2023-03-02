@@ -193,7 +193,7 @@ static int yao_block(uint8_t *plane0, ptrdiff_t stride0,
 static int decompress_texture_thread(AVCodecContext *avctx, void *arg,
                                      int slice, int thread_nb)
 {
-    DXVContext *ctx = avctx->priv_data;
+    const DXVContext *ctx = avctx->priv_data;
     AVFrame *frame = arg;
     const uint8_t *d = ctx->tex_data;
     int w_block = avctx->coded_width / ctx->texture_block_w;
@@ -432,7 +432,7 @@ static int get_opcodes(GetByteContext *gb, uint32_t *table, uint8_t *dst, int op
     int64_t size_in_bits;
     unsigned endoffset, newoffset, offset;
     unsigned next;
-    uint8_t *src = (uint8_t *)gb->buffer;
+    const uint8_t *src = gb->buffer;
 
     ret = fill_optable(table, optable, nb_elements);
     if (ret < 0)
@@ -1262,7 +1262,7 @@ static int dxv_close(AVCodecContext *avctx)
 
 const FFCodec ff_dxv_decoder = {
     .p.name         = "dxv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Resolume DXV"),
+    CODEC_LONG_NAME("Resolume DXV"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_DXV,
     .init           = dxv_init,
@@ -1272,6 +1272,5 @@ const FFCodec ff_dxv_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1 |
                       AV_CODEC_CAP_SLICE_THREADS |
                       AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

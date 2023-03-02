@@ -20,18 +20,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #define CACHED_BITSTREAM_READER !ARCH_X86_32
 #include "libavutil/intreadwrite.h"
 
 #include "avcodec.h"
-#include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 #include "lossless_videodsp.h"
 #include "zlib_wrapper.h"
 
@@ -164,9 +159,6 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if (size < 1 || size >= avpkt->size)
         return AVERROR_INVALIDDATA;
 
-    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
-        return ret;
-
     if (type == MKTAG('L','Z','Y','V')) {
         z_stream *const zstream = &s->zstream.zstream;
         ret = inflateReset(zstream);
@@ -174,6 +166,9 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
             av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", ret);
             return AVERROR_EXTERNAL;
         }
+
+        if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
+            return ret;
 
         zstream->next_in  = avpkt->data + 8;
         zstream->avail_in = avpkt->size - 8;
@@ -223,8 +218,14 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
             }
         }
 
+        if (get_bits_left(gb) < avctx->height * avctx->width)
+            return AVERROR_INVALIDDATA;
+
         ret = build_vlc(avctx, &s->vlc);
         if (ret < 0)
+            return ret;
+
+        if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
             return ret;
 
         for (int p = 0; p < 3; p++) {
@@ -300,7 +301,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_mvha_decoder = {
     .p.name           = "mvha",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("MidiVid Archive Codec"),
+    CODEC_LONG_NAME("MidiVid Archive Codec"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_MVHA,
     .priv_data_size   = sizeof(MVHAContext),
@@ -308,6 +309,5 @@ const FFCodec ff_mvha_decoder = {
     .close            = decode_close,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
-                        FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

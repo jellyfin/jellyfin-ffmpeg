@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015 Stupeflix
+ * Copyright (c) 2022 Clément Bœsch <u pkh me>
  *
  * This file is part of FFmpeg.
  *
@@ -24,12 +25,15 @@
  */
 
 #include "libavutil/bprint.h"
+#include "libavutil/file_open.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/qsort.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "framesync.h"
 #include "internal.h"
+#include "palette.h"
 
 enum dithering_mode {
     DITHERING_NONE,
@@ -38,14 +42,10 @@ enum dithering_mode {
     DITHERING_FLOYD_STEINBERG,
     DITHERING_SIERRA2,
     DITHERING_SIERRA2_4A,
+    DITHERING_SIERRA3,
+    DITHERING_BURKES,
+    DITHERING_ATKINSON,
     NB_DITHERING
-};
-
-enum color_search_method {
-    COLOR_SEARCH_NNS_ITERATIVE,
-    COLOR_SEARCH_NNS_RECURSIVE,
-    COLOR_SEARCH_BRUTEFORCE,
-    NB_COLOR_SEARCHES
 };
 
 enum diff_mode {
@@ -54,15 +54,19 @@ enum diff_mode {
     NB_DIFF_MODE
 };
 
+struct color_info {
+    uint32_t srgb;
+    int32_t lab[3];
+};
+
 struct color_node {
-    uint8_t val[4];
+    struct color_info c;
     uint8_t palette_id;
     int split;
     int left_id, right_id;
 };
 
-#define NBITS 5
-#define CACHE_SIZE (1<<(4*NBITS))
+#define CACHE_SIZE (1<<15)
 
 struct cached_color {
     uint32_t color;
@@ -87,7 +91,6 @@ typedef struct PaletteUseContext {
     uint32_t palette[AVPALETTE_COUNT];
     int transparency_index; /* index in the palette of transparency. -1 if there is no transparency in the palette. */
     int trans_thresh;
-    int use_alpha;
     int palette_loaded;
     int dither;
     int new;
@@ -100,14 +103,12 @@ typedef struct PaletteUseContext {
 
     /* debug options */
     char *dot_filename;
-    int color_search_method;
     int calc_mean_err;
     uint64_t total_mean_err;
-    int debug_accuracy;
 } PaletteUseContext;
 
 #define OFFSET(x) offsetof(PaletteUseContext, x)
-#define FLAGS (AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)
+#define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption paletteuse_options[] = {
     { "dither", "select dithering mode", OFFSET(dither), AV_OPT_TYPE_INT, {.i64=DITHERING_SIERRA2_4A}, 0, NB_DITHERING-1, FLAGS, "dithering_mode" },
         { "bayer",           "ordered 8x8 bayer dithering (deterministic)",                            0, AV_OPT_TYPE_CONST, {.i64=DITHERING_BAYER},           INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
@@ -115,21 +116,17 @@ static const AVOption paletteuse_options[] = {
         { "floyd_steinberg", "Floyd and Steingberg dithering (error diffusion)",                       0, AV_OPT_TYPE_CONST, {.i64=DITHERING_FLOYD_STEINBERG}, INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
         { "sierra2",         "Frankie Sierra dithering v2 (error diffusion)",                          0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA2},         INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
         { "sierra2_4a",      "Frankie Sierra dithering v2 \"Lite\" (error diffusion)",                 0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA2_4A},      INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
+        { "sierra3",         "Frankie Sierra dithering v3 (error diffusion)",                          0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA3},         INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
+        { "burkes",          "Burkes dithering (error diffusion)",                                     0, AV_OPT_TYPE_CONST, {.i64=DITHERING_BURKES},          INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
+        { "atkinson",        "Atkinson dithering by Bill Atkinson at Apple Computer (error diffusion)",0, AV_OPT_TYPE_CONST, {.i64=DITHERING_ATKINSON},        INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
     { "bayer_scale", "set scale for bayer dithering", OFFSET(bayer_scale), AV_OPT_TYPE_INT, {.i64=2}, 0, 5, FLAGS },
     { "diff_mode",   "set frame difference mode",     OFFSET(diff_mode),   AV_OPT_TYPE_INT, {.i64=DIFF_MODE_NONE}, 0, NB_DIFF_MODE-1, FLAGS, "diff_mode" },
         { "rectangle", "process smallest different rectangle", 0, AV_OPT_TYPE_CONST, {.i64=DIFF_MODE_RECTANGLE}, INT_MIN, INT_MAX, FLAGS, "diff_mode" },
     { "new", "take new palette for each output frame", OFFSET(new), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "alpha_threshold", "set the alpha threshold for transparency", OFFSET(trans_thresh), AV_OPT_TYPE_INT, {.i64=128}, 0, 255, FLAGS },
-    { "use_alpha", "use alpha channel for mapping", OFFSET(use_alpha), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
 
     /* following are the debug options, not part of the official API */
     { "debug_kdtree", "save Graphviz graph of the kdtree in specified file", OFFSET(dot_filename), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
-    { "color_search", "set reverse colormap color search method", OFFSET(color_search_method), AV_OPT_TYPE_INT, {.i64=COLOR_SEARCH_NNS_ITERATIVE}, 0, NB_COLOR_SEARCHES-1, FLAGS, "search" },
-        { "nns_iterative", "iterative search",             0, AV_OPT_TYPE_CONST, {.i64=COLOR_SEARCH_NNS_ITERATIVE}, INT_MIN, INT_MAX, FLAGS, "search" },
-        { "nns_recursive", "recursive search",             0, AV_OPT_TYPE_CONST, {.i64=COLOR_SEARCH_NNS_RECURSIVE}, INT_MIN, INT_MAX, FLAGS, "search" },
-        { "bruteforce",    "brute-force into the palette", 0, AV_OPT_TYPE_CONST, {.i64=COLOR_SEARCH_BRUTEFORCE},    INT_MIN, INT_MAX, FLAGS, "search" },
-    { "mean_err", "compute and print mean error", OFFSET(calc_mean_err), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
-    { "debug_accuracy", "test color search accuracy", OFFSET(debug_accuracy), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { NULL }
 };
 
@@ -156,73 +153,52 @@ static int query_formats(AVFilterContext *ctx)
 static av_always_inline uint32_t dither_color(uint32_t px, int er, int eg,
                                               int eb, int scale, int shift)
 {
-    return                px >> 24                                        << 24
+    return (px & 0xff000000)
          | av_clip_uint8((px >> 16 & 0xff) + ((er * scale) / (1<<shift))) << 16
          | av_clip_uint8((px >>  8 & 0xff) + ((eg * scale) / (1<<shift))) <<  8
          | av_clip_uint8((px       & 0xff) + ((eb * scale) / (1<<shift)));
 }
 
-static av_always_inline int diff(const uint8_t *c1, const uint8_t *c2, const PaletteUseContext *s)
+static av_always_inline int diff(const struct color_info *a, const struct color_info *b, const int trans_thresh)
 {
-    // XXX: try L*a*b with CIE76 (dL*dL + da*da + db*db)
-    const int da = c1[0] - c2[0];
-    const int dr = c1[1] - c2[1];
-    const int dg = c1[2] - c2[2];
-    const int db = c1[3] - c2[3];
+    const uint8_t alpha_a = a->srgb >> 24;
+    const uint8_t alpha_b = b->srgb >> 24;
 
-    if (s->use_alpha)
-        return da*da + dr*dr + dg*dg + db*db;
-
-    if (c1[0] < s->trans_thresh && c2[0] < s->trans_thresh) {
+    if (alpha_a < trans_thresh && alpha_b < trans_thresh) {
         return 0;
-    } else if (c1[0] >= s->trans_thresh && c2[0] >= s->trans_thresh) {
-        return dr*dr + dg*dg + db*db;
+    } else if (alpha_a >= trans_thresh && alpha_b >= trans_thresh) {
+        const int64_t dL = a->lab[0] - b->lab[0];
+        const int64_t da = a->lab[1] - b->lab[1];
+        const int64_t db = a->lab[2] - b->lab[2];
+        const int64_t ret = dL*dL + da*da + db*db;
+        return FFMIN(ret, INT32_MAX - 1);
     } else {
-        return 255*255 + 255*255 + 255*255;
+        return INT32_MAX - 1;
     }
 }
 
-static av_always_inline uint8_t colormap_nearest_bruteforce(const PaletteUseContext *s, const uint8_t *argb)
+static struct color_info get_color_from_srgb(uint32_t srgb)
 {
-    int i, pal_id = -1, min_dist = INT_MAX;
-
-    for (i = 0; i < AVPALETTE_COUNT; i++) {
-        const uint32_t c = s->palette[i];
-
-        if (s->use_alpha || c >> 24 >= s->trans_thresh) { // ignore transparent entry
-            const uint8_t palargb[] = {
-                s->palette[i]>>24 & 0xff,
-                s->palette[i]>>16 & 0xff,
-                s->palette[i]>> 8 & 0xff,
-                s->palette[i]     & 0xff,
-            };
-            const int d = diff(palargb, argb, s);
-            if (d < min_dist) {
-                pal_id = i;
-                min_dist = d;
-            }
-        }
-    }
-    return pal_id;
+    const struct Lab lab = ff_srgb_u8_to_oklab_int(srgb);
+    struct color_info ret = {.srgb=srgb, .lab={lab.L, lab.a, lab.b}};
+    return ret;
 }
 
-/* Recursive form, simpler but a bit slower. Kept for reference. */
 struct nearest_color {
     int node_pos;
-    int dist_sqd;
+    int64_t dist_sqd;
 };
 
-static void colormap_nearest_node(const PaletteUseContext *s,
-                                  const struct color_node *map,
+static void colormap_nearest_node(const struct color_node *map,
                                   const int node_pos,
-                                  const uint8_t *target,
+                                  const struct color_info *target,
+                                  const int trans_thresh,
                                   struct nearest_color *nearest)
 {
     const struct color_node *kd = map + node_pos;
-    const int split = kd->split;
-    int dx, nearer_kd_id, further_kd_id;
-    const uint8_t *current = kd->val;
-    const int current_to_target = diff(target, current, s);
+    int nearer_kd_id, further_kd_id;
+    const struct color_info *current = &kd->c;
+    const int64_t current_to_target = diff(target, current, trans_thresh);
 
     if (current_to_target < nearest->dist_sqd) {
         nearest->node_pos = node_pos;
@@ -230,23 +206,23 @@ static void colormap_nearest_node(const PaletteUseContext *s,
     }
 
     if (kd->left_id != -1 || kd->right_id != -1) {
-        dx = target[split] - current[split];
+        const int64_t dx = target->lab[kd->split] - current->lab[kd->split];
 
         if (dx <= 0) nearer_kd_id = kd->left_id,  further_kd_id = kd->right_id;
         else         nearer_kd_id = kd->right_id, further_kd_id = kd->left_id;
 
         if (nearer_kd_id != -1)
-            colormap_nearest_node(s, map, nearer_kd_id, target, nearest);
+            colormap_nearest_node(map, nearer_kd_id, target, trans_thresh, nearest);
 
         if (further_kd_id != -1 && dx*dx < nearest->dist_sqd)
-            colormap_nearest_node(s, map, further_kd_id, target, nearest);
+            colormap_nearest_node(map, further_kd_id, target, trans_thresh, nearest);
     }
 }
 
-static av_always_inline uint8_t colormap_nearest_recursive(const PaletteUseContext *s, const struct color_node *node, const uint8_t *rgb)
+static av_always_inline uint8_t colormap_nearest(const struct color_node *node, const struct color_info *target, const int trans_thresh)
 {
     struct nearest_color res = {.dist_sqd = INT_MAX, .node_pos = -1};
-    colormap_nearest_node(s, node, 0, rgb, &res);
+    colormap_nearest_node(node, 0, target, trans_thresh, &res);
     return node[res.node_pos].palette_id;
 }
 
@@ -255,108 +231,23 @@ struct stack_node {
     int dx2;
 };
 
-static av_always_inline uint8_t colormap_nearest_iterative(const PaletteUseContext *s, const struct color_node *root, const uint8_t *target)
-{
-    int pos = 0, best_node_id = -1, best_dist = INT_MAX, cur_color_id = 0;
-    struct stack_node nodes[16];
-    struct stack_node *node = &nodes[0];
-
-    for (;;) {
-
-        const struct color_node *kd = &root[cur_color_id];
-        const uint8_t *current = kd->val;
-        const int current_to_target = diff(target, current, s);
-
-        /* Compare current color node to the target and update our best node if
-         * it's actually better. */
-        if (current_to_target < best_dist) {
-            best_node_id = cur_color_id;
-            if (!current_to_target)
-                goto end; // exact match, we can return immediately
-            best_dist = current_to_target;
-        }
-
-        /* Check if it's not a leaf */
-        if (kd->left_id != -1 || kd->right_id != -1) {
-            const int split = kd->split;
-            const int dx = target[split] - current[split];
-            int nearer_kd_id, further_kd_id;
-
-            /* Define which side is the most interesting. */
-            if (dx <= 0) nearer_kd_id = kd->left_id,  further_kd_id = kd->right_id;
-            else         nearer_kd_id = kd->right_id, further_kd_id = kd->left_id;
-
-            if (nearer_kd_id != -1) {
-                if (further_kd_id != -1) {
-                    /* Here, both paths are defined, so we push a state for
-                     * when we are going back. */
-                    node->color_id = further_kd_id;
-                    node->dx2 = dx*dx;
-                    pos++;
-                    node++;
-                }
-                /* We can now update current color with the most probable path
-                 * (no need to create a state since there is nothing to save
-                 * anymore). */
-                cur_color_id = nearer_kd_id;
-                continue;
-            } else if (dx*dx < best_dist) {
-                /* The nearest path isn't available, so there is only one path
-                 * possible and it's the least probable. We enter it only if the
-                 * distance from the current point to the hyper rectangle is
-                 * less than our best distance. */
-                cur_color_id = further_kd_id;
-                continue;
-            }
-        }
-
-        /* Unstack as much as we can, typically as long as the least probable
-         * branch aren't actually probable. */
-        do {
-            if (--pos < 0)
-                goto end;
-            node--;
-        } while (node->dx2 >= best_dist);
-
-        /* We got a node where the least probable branch might actually contain
-         * a relevant color. */
-        cur_color_id = node->color_id;
-    }
-
-end:
-    return root[best_node_id].palette_id;
-}
-
-#define COLORMAP_NEAREST(s, search, root, target)                                    \
-    search == COLOR_SEARCH_NNS_ITERATIVE ? colormap_nearest_iterative(s, root, target) :      \
-    search == COLOR_SEARCH_NNS_RECURSIVE ? colormap_nearest_recursive(s, root, target) :      \
-                                           colormap_nearest_bruteforce(s, target)
-
 /**
  * Check if the requested color is in the cache already. If not, find it in the
  * color tree and cache it.
- * Note: a, r, g, and b are the components of color, but are passed as well to avoid
- * recomputing them (they are generally computed by the caller for other uses).
  */
-static av_always_inline int color_get(PaletteUseContext *s, uint32_t color,
-                                      uint8_t a, uint8_t r, uint8_t g, uint8_t b,
-                                      const enum color_search_method search_method)
+static av_always_inline int color_get(PaletteUseContext *s, uint32_t color)
 {
-    int i;
-    const uint8_t argb_elts[] = {a, r, g, b};
-    const uint8_t rhash = r & ((1<<NBITS)-1);
-    const uint8_t ghash = g & ((1<<NBITS)-1);
-    const uint8_t bhash = b & ((1<<NBITS)-1);
-    const unsigned hash = rhash<<(NBITS*2) | ghash<<NBITS | bhash;
+    struct color_info clrinfo;
+    const uint32_t hash = ff_lowbias32(color) & (CACHE_SIZE - 1);
     struct cache_node *node = &s->cache[hash];
     struct cached_color *e;
 
     // first, check for transparency
-    if (a < s->trans_thresh && s->transparency_index >= 0) {
+    if (color>>24 < s->trans_thresh && s->transparency_index >= 0) {
         return s->transparency_index;
     }
 
-    for (i = 0; i < node->nb_entries; i++) {
+    for (int i = 0; i < node->nb_entries; i++) {
         e = &node->entries[i];
         if (e->color == color)
             return e->pal_entry;
@@ -367,28 +258,26 @@ static av_always_inline int color_get(PaletteUseContext *s, uint32_t color,
     if (!e)
         return AVERROR(ENOMEM);
     e->color = color;
-    e->pal_entry = COLORMAP_NEAREST(s, search_method, s->map, argb_elts);
+    clrinfo = get_color_from_srgb(color);
+    e->pal_entry = colormap_nearest(s->map, &clrinfo, s->trans_thresh);
 
     return e->pal_entry;
 }
 
 static av_always_inline int get_dst_color_err(PaletteUseContext *s,
-                                              uint32_t c, int *ea, int *er, int *eg, int *eb,
-                                              const enum color_search_method search_method)
+                                              uint32_t c, int *er, int *eg, int *eb)
 {
-    const uint8_t a = c >> 24 & 0xff;
-    const uint8_t r = c >> 16 & 0xff;
-    const uint8_t g = c >>  8 & 0xff;
-    const uint8_t b = c       & 0xff;
     uint32_t dstc;
-    const int dstx = color_get(s, c, a, r, g, b, search_method);
+    const int dstx = color_get(s, c);
     if (dstx < 0)
         return dstx;
     dstc = s->palette[dstx];
     if (dstx == s->transparency_index) {
-        *ea =*er = *eg = *eb = 0;
+        *er = *eg = *eb = 0;
     } else {
-        *ea = (int)a - (int)(dstc >> 24 & 0xff);
+        const uint8_t r = c >> 16 & 0xff;
+        const uint8_t g = c >>  8 & 0xff;
+        const uint8_t b = c       & 0xff;
         *er = (int)r - (int)(dstc >> 16 & 0xff);
         *eg = (int)g - (int)(dstc >>  8 & 0xff);
         *eb = (int)b - (int)(dstc       & 0xff);
@@ -398,10 +287,8 @@ static av_always_inline int get_dst_color_err(PaletteUseContext *s,
 
 static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFrame *in,
                                       int x_start, int y_start, int w, int h,
-                                      enum dithering_mode dither,
-                                      const enum color_search_method search_method)
+                                      enum dithering_mode dither)
 {
-    int x, y;
     const int src_linesize = in ->linesize[0] >> 2;
     const int dst_linesize = out->linesize[0];
     uint32_t *src = ((uint32_t *)in ->data[0]) + y_start*src_linesize;
@@ -410,13 +297,13 @@ static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFram
     w += x_start;
     h += y_start;
 
-    for (y = y_start; y < h; y++) {
-        for (x = x_start; x < w; x++) {
-            int ea, er, eg, eb;
+    for (int y = y_start; y < h; y++) {
+        for (int x = x_start; x < w; x++) {
+            int er, eg, eb;
 
             if (dither == DITHERING_BAYER) {
                 const int d = s->ordered_dither[(y & 7)<<3 | (x & 7)];
-                const uint8_t a8 = src[x] >> 24 & 0xff;
+                const uint8_t a8 = src[x] >> 24;
                 const uint8_t r8 = src[x] >> 16 & 0xff;
                 const uint8_t g8 = src[x] >>  8 & 0xff;
                 const uint8_t b8 = src[x]       & 0xff;
@@ -424,7 +311,7 @@ static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFram
                 const uint8_t g = av_clip_uint8(g8 + d);
                 const uint8_t b = av_clip_uint8(b8 + d);
                 const uint32_t color_new = (unsigned)(a8) << 24 | r << 16 | g << 8 | b;
-                const int color = color_get(s, color_new, a8, r, g, b, search_method);
+                const int color = color_get(s, color_new);
 
                 if (color < 0)
                     return color;
@@ -432,7 +319,7 @@ static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFram
 
             } else if (dither == DITHERING_HECKBERT) {
                 const int right = x < w - 1, down = y < h - 1;
-                const int color = get_dst_color_err(s, src[x], &ea, &er, &eg, &eb, search_method);
+                const int color = get_dst_color_err(s, src[x], &er, &eg, &eb);
 
                 if (color < 0)
                     return color;
@@ -444,7 +331,7 @@ static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFram
 
             } else if (dither == DITHERING_FLOYD_STEINBERG) {
                 const int right = x < w - 1, down = y < h - 1, left = x > x_start;
-                const int color = get_dst_color_err(s, src[x], &ea, &er, &eg, &eb, search_method);
+                const int color = get_dst_color_err(s, src[x], &er, &eg, &eb);
 
                 if (color < 0)
                     return color;
@@ -458,7 +345,7 @@ static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFram
             } else if (dither == DITHERING_SIERRA2) {
                 const int right  = x < w - 1, down  = y < h - 1, left  = x > x_start;
                 const int right2 = x < w - 2,                    left2 = x > x_start + 1;
-                const int color = get_dst_color_err(s, src[x], &ea, &er, &eg, &eb, search_method);
+                const int color = get_dst_color_err(s, src[x], &er, &eg, &eb);
 
                 if (color < 0)
                     return color;
@@ -477,7 +364,7 @@ static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFram
 
             } else if (dither == DITHERING_SIERRA2_4A) {
                 const int right = x < w - 1, down = y < h - 1, left = x > x_start;
-                const int color = get_dst_color_err(s, src[x], &ea, &er, &eg, &eb, search_method);
+                const int color = get_dst_color_err(s, src[x], &er, &eg, &eb);
 
                 if (color < 0)
                     return color;
@@ -487,12 +374,73 @@ static av_always_inline int set_frame(PaletteUseContext *s, AVFrame *out, AVFram
                 if (left  && down) src[src_linesize + x - 1] = dither_color(src[src_linesize + x - 1], er, eg, eb, 1, 2);
                 if (         down) src[src_linesize + x    ] = dither_color(src[src_linesize + x    ], er, eg, eb, 1, 2);
 
+            } else if (dither == DITHERING_SIERRA3) {
+                const int right  = x < w - 1, down  = y < h - 1, left  = x > x_start;
+                const int right2 = x < w - 2, down2 = y < h - 2, left2 = x > x_start + 1;
+                const int color = get_dst_color_err(s, src[x], &er, &eg, &eb);
+
+                if (color < 0)
+                    return color;
+                dst[x] = color;
+
+                if (right)         src[                 x + 1] = dither_color(src[                 x + 1], er, eg, eb, 5, 5);
+                if (right2)        src[                 x + 2] = dither_color(src[                 x + 2], er, eg, eb, 3, 5);
+
+                if (down) {
+                    if (left2)     src[src_linesize   + x - 2] = dither_color(src[src_linesize   + x - 2], er, eg, eb, 2, 5);
+                    if (left)      src[src_linesize   + x - 1] = dither_color(src[src_linesize   + x - 1], er, eg, eb, 4, 5);
+                    if (1)         src[src_linesize   + x    ] = dither_color(src[src_linesize   + x    ], er, eg, eb, 5, 5);
+                    if (right)     src[src_linesize   + x + 1] = dither_color(src[src_linesize   + x + 1], er, eg, eb, 4, 5);
+                    if (right2)    src[src_linesize   + x + 2] = dither_color(src[src_linesize   + x + 2], er, eg, eb, 2, 5);
+
+                    if (down2) {
+                        if (left)  src[src_linesize*2 + x - 1] = dither_color(src[src_linesize*2 + x - 1], er, eg, eb, 2, 5);
+                        if (1)     src[src_linesize*2 + x    ] = dither_color(src[src_linesize*2 + x    ], er, eg, eb, 3, 5);
+                        if (right) src[src_linesize*2 + x + 1] = dither_color(src[src_linesize*2 + x + 1], er, eg, eb, 2, 5);
+                    }
+                }
+
+            } else if (dither == DITHERING_BURKES) {
+                const int right  = x < w - 1, down  = y < h - 1, left  = x > x_start;
+                const int right2 = x < w - 2,                    left2 = x > x_start + 1;
+                const int color = get_dst_color_err(s, src[x], &er, &eg, &eb);
+
+                if (color < 0)
+                    return color;
+                dst[x] = color;
+
+                if (right)      src[                 x + 1] = dither_color(src[                 x + 1], er, eg, eb, 8, 5);
+                if (right2)     src[                 x + 2] = dither_color(src[                 x + 2], er, eg, eb, 4, 5);
+
+                if (down) {
+                    if (left2)  src[src_linesize   + x - 2] = dither_color(src[src_linesize   + x - 2], er, eg, eb, 2, 5);
+                    if (left)   src[src_linesize   + x - 1] = dither_color(src[src_linesize   + x - 1], er, eg, eb, 4, 5);
+                    if (1)      src[src_linesize   + x    ] = dither_color(src[src_linesize   + x    ], er, eg, eb, 8, 5);
+                    if (right)  src[src_linesize   + x + 1] = dither_color(src[src_linesize   + x + 1], er, eg, eb, 4, 5);
+                    if (right2) src[src_linesize   + x + 2] = dither_color(src[src_linesize   + x + 2], er, eg, eb, 2, 5);
+                }
+
+            } else if (dither == DITHERING_ATKINSON) {
+                const int right  = x < w - 1, down  = y < h - 1, left = x > x_start;
+                const int right2 = x < w - 2, down2 = y < h - 2;
+                const int color = get_dst_color_err(s, src[x], &er, &eg, &eb);
+
+                if (color < 0)
+                    return color;
+                dst[x] = color;
+
+                if (right)     src[                 x + 1] = dither_color(src[                 x + 1], er, eg, eb, 1, 3);
+                if (right2)    src[                 x + 2] = dither_color(src[                 x + 2], er, eg, eb, 1, 3);
+
+                if (down) {
+                    if (left)  src[src_linesize   + x - 1] = dither_color(src[src_linesize   + x - 1], er, eg, eb, 1, 3);
+                    if (1)     src[src_linesize   + x    ] = dither_color(src[src_linesize   + x    ], er, eg, eb, 1, 3);
+                    if (right) src[src_linesize   + x + 1] = dither_color(src[src_linesize   + x + 1], er, eg, eb, 1, 3);
+                    if (down2) src[src_linesize*2 + x    ] = dither_color(src[src_linesize*2 + x    ], er, eg, eb, 1, 3);
+                }
+
             } else {
-                const uint8_t a = src[x] >> 24 & 0xff;
-                const uint8_t r = src[x] >> 16 & 0xff;
-                const uint8_t g = src[x] >>  8 & 0xff;
-                const uint8_t b = src[x]       & 0xff;
-                const int color = color_get(s, src[x], a, r, g, b, search_method);
+                const int color = color_get(s, src[x]);
 
                 if (color < 0)
                     return color;
@@ -512,20 +460,18 @@ static void disp_node(AVBPrint *buf,
                       int depth)
 {
     const struct color_node *node = &map[node_id];
-    const uint32_t fontcolor = node->val[1] > 0x50 &&
-                               node->val[2] > 0x50 &&
-                               node->val[3] > 0x50 ? 0 : 0xffffff;
-    const int rgb_comp = node->split - 1;
+    const uint32_t fontcolor = node->c.lab[0] > 0x7fff ? 0 : 0xffffff;
+    const int lab_comp = node->split;
     av_bprintf(buf, "%*cnode%d ["
-               "label=\"%c%02X%c%02X%c%02X%c\" "
-               "fillcolor=\"#%02x%02x%02x\" "
+               "label=\"%c%d%c%d%c%d%c\" "
+               "fillcolor=\"#%06"PRIX32"\" "
                "fontcolor=\"#%06"PRIX32"\"]\n",
                depth*INDENT, ' ', node->palette_id,
-               "[  "[rgb_comp], node->val[1],
-               "][ "[rgb_comp], node->val[2],
-               " ]["[rgb_comp], node->val[3],
-               "  ]"[rgb_comp],
-               node->val[1], node->val[2], node->val[3],
+               "[  "[lab_comp], node->c.lab[0],
+               "][ "[lab_comp], node->c.lab[1],
+               " ]["[lab_comp], node->c.lab[2],
+               "  ]"[lab_comp],
+               node->c.srgb & 0xffffff,
                fontcolor);
     if (parent_id != -1)
         av_bprintf(buf, "%*cnode%d -> node%d\n", depth*INDENT, ' ',
@@ -560,114 +506,64 @@ static int disp_tree(const struct color_node *node, const char *fname)
     return 0;
 }
 
-static int debug_accuracy(const PaletteUseContext *s)
-{
-    int r, g, b, ret = 0;
-
-    for (r = 0; r < 256; r++) {
-        for (g = 0; g < 256; g++) {
-            for (b = 0; b < 256; b++) {
-                const uint8_t argb[] = {0xff, r, g, b};
-                const int r1 = COLORMAP_NEAREST(s, s->color_search_method, s->map, argb);
-                const int r2 = colormap_nearest_bruteforce(s, argb);
-                if (r1 != r2) {
-                    const uint32_t c1 = s->palette[r1];
-                    const uint32_t c2 = s->palette[r2];
-                    const uint8_t a1 = s->use_alpha ? c1>>24 & 0xff : 0xff;
-                    const uint8_t a2 = s->use_alpha ? c2>>24 & 0xff : 0xff;
-                    const uint8_t palargb1[] = { a1, c1>>16 & 0xff, c1>> 8 & 0xff, c1 & 0xff };
-                    const uint8_t palargb2[] = { a2, c2>>16 & 0xff, c2>> 8 & 0xff, c2 & 0xff };
-                    const int d1 = diff(palargb1, argb, s);
-                    const int d2 = diff(palargb2, argb, s);
-                    if (d1 != d2) {
-                        if (s->use_alpha)
-                            av_log(NULL, AV_LOG_ERROR,
-                                   "/!\\ %02X%02X%02X: %d ! %d (%08"PRIX32" ! %08"PRIX32") / dist: %d ! %d\n",
-                                   r, g, b, r1, r2, c1, c2, d1, d2);
-                        else
-                            av_log(NULL, AV_LOG_ERROR,
-                                   "/!\\ %02X%02X%02X: %d ! %d (%06"PRIX32" ! %06"PRIX32") / dist: %d ! %d\n",
-                                   r, g, b, r1, r2, c1 & 0xffffff, c2 & 0xffffff, d1, d2);
-                        ret = 1;
-                    }
-                }
-            }
-        }
-    }
-    return ret;
-}
-
 struct color {
-    uint32_t value;
+    struct Lab value;
     uint8_t pal_id;
 };
 
 struct color_rect {
-    uint8_t min[4];
-    uint8_t max[4];
+    int32_t min[3];
+    int32_t max[3];
 };
 
 typedef int (*cmp_func)(const void *, const void *);
 
-#define DECLARE_CMP_FUNC(name, pos)                     \
+#define DECLARE_CMP_FUNC(name)                          \
 static int cmp_##name(const void *pa, const void *pb)   \
 {                                                       \
     const struct color *a = pa;                         \
     const struct color *b = pb;                         \
-    return   (int)(a->value >> (8 * (3 - (pos))) & 0xff)     \
-           - (int)(b->value >> (8 * (3 - (pos))) & 0xff);    \
+    return FFDIFFSIGN(a->value.name, b->value.name);    \
 }
 
-DECLARE_CMP_FUNC(a, 0)
-DECLARE_CMP_FUNC(r, 1)
-DECLARE_CMP_FUNC(g, 2)
-DECLARE_CMP_FUNC(b, 3)
+DECLARE_CMP_FUNC(L)
+DECLARE_CMP_FUNC(a)
+DECLARE_CMP_FUNC(b)
 
-static const cmp_func cmp_funcs[] = {cmp_a, cmp_r, cmp_g, cmp_b};
+static const cmp_func cmp_funcs[] = {cmp_L, cmp_a, cmp_b};
 
-static int get_next_color(const uint8_t *color_used, const PaletteUseContext *s,
+static int get_next_color(const uint8_t *color_used, const uint32_t *palette,
                           int *component, const struct color_rect *box)
 {
-    int wa, wr, wg, wb;
-    int i, longest = 0;
+    int wL, wa, wb;
+    int longest = 0;
     unsigned nb_color = 0;
     struct color_rect ranges;
     struct color tmp_pal[256];
     cmp_func cmpf;
 
-    ranges.min[0] = ranges.min[1] = ranges.min[2]  = ranges.min[3]= 0xff;
-    ranges.max[0] = ranges.max[1] = ranges.max[2]  = ranges.max[3]= 0x00;
+    ranges.min[0] = ranges.min[1] = ranges.min[2] = 0xffff;
+    ranges.max[0] = ranges.max[1] = ranges.max[2] = -0xffff;
 
-    for (i = 0; i < AVPALETTE_COUNT; i++) {
-        const uint32_t c = s->palette[i];
-        const uint8_t a = c >> 24 & 0xff;
-        const uint8_t r = c >> 16 & 0xff;
-        const uint8_t g = c >>  8 & 0xff;
-        const uint8_t b = c       & 0xff;
+    for (int i = 0; i < AVPALETTE_COUNT; i++) {
+        const uint32_t c = palette[i];
+        const uint8_t a = c >> 24;
+        const struct Lab lab = ff_srgb_u8_to_oklab_int(c);
 
-        if (!s->use_alpha && a < s->trans_thresh) {
-            continue;
-        }
-
-        if (color_used[i] || (a != 0xff && !s->use_alpha) ||
-            r < box->min[1] || g < box->min[2] || b < box->min[3] ||
-            r > box->max[1] || g > box->max[2] || b > box->max[3])
+        if (color_used[i] || (a != 0xff) ||
+            lab.L < box->min[0] || lab.a < box->min[1] || lab.b < box->min[2] ||
+            lab.L > box->max[0] || lab.a > box->max[1] || lab.b > box->max[2])
             continue;
 
-        if (s->use_alpha && (a < box->min[0] || a > box->max[0]))
-            continue;
+        if (lab.L < ranges.min[0]) ranges.min[0] = lab.L;
+        if (lab.a < ranges.min[1]) ranges.min[1] = lab.a;
+        if (lab.b < ranges.min[2]) ranges.min[2] = lab.b;
 
-        if (a < ranges.min[0]) ranges.min[0] = a;
-        if (r < ranges.min[1]) ranges.min[1] = r;
-        if (g < ranges.min[2]) ranges.min[2] = g;
-        if (b < ranges.min[3]) ranges.min[3] = b;
+        if (lab.L > ranges.max[0]) ranges.max[0] = lab.L;
+        if (lab.a > ranges.max[1]) ranges.max[1] = lab.a;
+        if (lab.b > ranges.max[2]) ranges.max[2] = lab.b;
 
-        if (a > ranges.max[0]) ranges.max[0] = a;
-        if (r > ranges.max[1]) ranges.max[1] = r;
-        if (g > ranges.max[2]) ranges.max[2] = g;
-        if (b > ranges.max[3]) ranges.max[3] = b;
-
-        tmp_pal[nb_color].value  = c;
+        tmp_pal[nb_color].value  = lab;
         tmp_pal[nb_color].pal_id = i;
 
         nb_color++;
@@ -677,22 +573,12 @@ static int get_next_color(const uint8_t *color_used, const PaletteUseContext *s,
         return -1;
 
     /* define longest axis that will be the split component */
-    wa = ranges.max[0] - ranges.min[0];
-    wr = ranges.max[1] - ranges.min[1];
-    wg = ranges.max[2] - ranges.min[2];
-    wb = ranges.max[3] - ranges.min[3];
-
-    if (s->use_alpha) {
-        if (wa >= wr && wa >= wb && wa >= wg) longest = 0;
-        if (wr >= wg && wr >= wb && wr >= wa) longest = 1;
-        if (wg >= wr && wg >= wb && wg >= wa) longest = 2;
-        if (wb >= wr && wb >= wg && wb >= wa) longest = 3;
-    } else {
-        if (wr >= wg && wr >= wb) longest = 1;
-        if (wg >= wr && wg >= wb) longest = 2;
-        if (wb >= wr && wb >= wg) longest = 3;
-    }
-
+    wL = ranges.max[0] - ranges.min[0];
+    wa = ranges.max[1] - ranges.min[1];
+    wb = ranges.max[2] - ranges.min[2];
+    if (wb >= wL && wb >= wa) longest = 2;
+    if (wa >= wL && wa >= wb) longest = 1;
+    if (wL >= wa && wL >= wb) longest = 0;
     cmpf = cmp_funcs[longest];
     *component = longest;
 
@@ -705,41 +591,39 @@ static int get_next_color(const uint8_t *color_used, const PaletteUseContext *s,
 static int colormap_insert(struct color_node *map,
                            uint8_t *color_used,
                            int *nb_used,
-                           const PaletteUseContext *s,
+                           const uint32_t *palette,
+                           const int trans_thresh,
                            const struct color_rect *box)
 {
-    uint32_t c;
     int component, cur_id;
+    int comp_value;
     int node_left_id = -1, node_right_id = -1;
     struct color_node *node;
     struct color_rect box1, box2;
-    const int pal_id = get_next_color(color_used, s, &component, box);
+    const int pal_id = get_next_color(color_used, palette, &component, box);
 
     if (pal_id < 0)
         return -1;
 
     /* create new node with that color */
     cur_id = (*nb_used)++;
-    c = s->palette[pal_id];
     node = &map[cur_id];
     node->split = component;
     node->palette_id = pal_id;
-    node->val[0] = c>>24 & 0xff;
-    node->val[1] = c>>16 & 0xff;
-    node->val[2] = c>> 8 & 0xff;
-    node->val[3] = c     & 0xff;
+    node->c = get_color_from_srgb(palette[pal_id]);
 
     color_used[pal_id] = 1;
 
     /* get the two boxes this node creates */
     box1 = box2 = *box;
-    box1.max[component] = node->val[component];
-    box2.min[component] = FFMIN(node->val[component] + 1, 255);
+    comp_value = node->c.lab[component];
+    box1.max[component] = comp_value;
+    box2.min[component] = FFMIN(comp_value + 1, 0xffff);
 
-    node_left_id = colormap_insert(map, color_used, nb_used, s, &box1);
+    node_left_id = colormap_insert(map, color_used, nb_used, palette, trans_thresh, &box1);
 
     if (box2.min[component] <= box2.max[component])
-        node_right_id = colormap_insert(map, color_used, nb_used, s, &box2);
+        node_right_id = colormap_insert(map, color_used, nb_used, palette, trans_thresh, &box2);
 
     node->left_id  = node_left_id;
     node->right_id = node_right_id;
@@ -754,85 +638,40 @@ static int cmp_pal_entry(const void *a, const void *b)
     return c1 - c2;
 }
 
-static int cmp_pal_entry_alpha(const void *a, const void *b)
-{
-    const int c1 = *(const uint32_t *)a;
-    const int c2 = *(const uint32_t *)b;
-    return c1 - c2;
-}
-
 static void load_colormap(PaletteUseContext *s)
 {
-    int i, nb_used = 0;
+    int nb_used = 0;
     uint8_t color_used[AVPALETTE_COUNT] = {0};
     uint32_t last_color = 0;
     struct color_rect box;
 
-    if (!s->use_alpha && s->transparency_index >= 0) {
+    if (s->transparency_index >= 0) {
         FFSWAP(uint32_t, s->palette[s->transparency_index], s->palette[255]);
     }
 
     /* disable transparent colors and dups */
-    qsort(s->palette, AVPALETTE_COUNT-(s->transparency_index >= 0), sizeof(*s->palette),
-        s->use_alpha ? cmp_pal_entry_alpha : cmp_pal_entry);
+    qsort(s->palette, AVPALETTE_COUNT-(s->transparency_index >= 0), sizeof(*s->palette), cmp_pal_entry);
 
-    for (i = 0; i < AVPALETTE_COUNT; i++) {
+    for (int i = 0; i < AVPALETTE_COUNT; i++) {
         const uint32_t c = s->palette[i];
         if (i != 0 && c == last_color) {
             color_used[i] = 1;
             continue;
         }
         last_color = c;
-        if (!s->use_alpha && c >> 24 < s->trans_thresh) {
+        if (c >> 24 < s->trans_thresh) {
             color_used[i] = 1; // ignore transparent color(s)
             continue;
         }
     }
 
-    box.min[0] = box.min[1] = box.min[2] = box.min[3] = 0x00;
-    box.max[0] = box.max[1] = box.max[2] = box.max[3] = 0xff;
+    box.min[0] = box.min[1] = box.min[2] = -0xffff;
+    box.max[0] = box.max[1] = box.max[2] = 0xffff;
 
-    colormap_insert(s->map, color_used, &nb_used, s, &box);
+    colormap_insert(s->map, color_used, &nb_used, s->palette, s->trans_thresh, &box);
 
     if (s->dot_filename)
         disp_tree(s->map, s->dot_filename);
-
-    if (s->debug_accuracy) {
-        if (!debug_accuracy(s))
-            av_log(NULL, AV_LOG_INFO, "Accuracy check passed\n");
-    }
-}
-
-static void debug_mean_error(PaletteUseContext *s, const AVFrame *in1,
-                             const AVFrame *in2, int frame_count)
-{
-    int x, y;
-    const uint32_t *palette = s->palette;
-    uint32_t *src1 = (uint32_t *)in1->data[0];
-    uint8_t  *src2 =             in2->data[0];
-    const int src1_linesize = in1->linesize[0] >> 2;
-    const int src2_linesize = in2->linesize[0];
-    const float div = in1->width * in1->height * (s->use_alpha ? 4 : 3);
-    unsigned mean_err = 0;
-
-    for (y = 0; y < in1->height; y++) {
-        for (x = 0; x < in1->width; x++) {
-            const uint32_t c1 = src1[x];
-            const uint32_t c2 = palette[src2[x]];
-            const uint8_t a1 = s->use_alpha ? c1>>24 & 0xff : 0xff;
-            const uint8_t a2 = s->use_alpha ? c2>>24 & 0xff : 0xff;
-            const uint8_t argb1[] = {a1, c1 >> 16 & 0xff, c1 >> 8 & 0xff, c1 & 0xff};
-            const uint8_t argb2[] = {a2, c2 >> 16 & 0xff, c2 >> 8 & 0xff, c2 & 0xff};
-            mean_err += diff(argb1, argb2, s);
-        }
-        src1 += src1_linesize;
-        src2 += src2_linesize;
-    }
-
-    s->total_mean_err += mean_err;
-
-    av_log(NULL, AV_LOG_INFO, "MEP:%.3f TotalMEP:%.3f\n",
-           mean_err / div, s->total_mean_err / (div * frame_count));
 }
 
 static void set_processing_window(enum diff_mode diff_mode,
@@ -944,7 +783,7 @@ static int apply_palette(AVFilterLink *inlink, AVFrame *in, AVFrame **outf)
     av_frame_unref(s->last_out);
     if ((ret = av_frame_ref(s->last_in, in))       < 0 ||
         (ret = av_frame_ref(s->last_out, out))     < 0 ||
-        (ret = av_frame_make_writable(s->last_in)) < 0) {
+        (ret = ff_inlink_make_frame_writable(inlink, &s->last_in)) < 0) {
         av_frame_free(&out);
         *outf = NULL;
         return ret;
@@ -960,8 +799,6 @@ static int apply_palette(AVFilterLink *inlink, AVFrame *in, AVFrame **outf)
         return ret;
     }
     memcpy(out->data[1], s->palette, AVPALETTE_SIZE);
-    if (s->calc_mean_err)
-        debug_mean_error(s, in, out, inlink->frame_count_out);
     *outf = out;
     return 0;
 }
@@ -1023,7 +860,7 @@ static void load_palette(PaletteUseContext *s, const AVFrame *palette_frame)
     for (y = 0; y < palette_frame->height; y++) {
         for (x = 0; x < palette_frame->width; x++) {
             s->palette[i] = p[x];
-            if (!s->use_alpha && p[x]>>24 < s->trans_thresh) {
+            if (p[x]>>24 < s->trans_thresh) {
                 s->transparency_index = i; // we are assuming at most one transparent color in palette
             }
             i++;
@@ -1063,38 +900,33 @@ static int load_apply_palette(FFFrameSync *fs)
     return ff_filter_frame(ctx->outputs[0], out);
 }
 
-#define DEFINE_SET_FRAME(color_search, name, value)                             \
+#define DEFINE_SET_FRAME(name, value)                                           \
 static int set_frame_##name(PaletteUseContext *s, AVFrame *out, AVFrame *in,    \
                             int x_start, int y_start, int w, int h)             \
 {                                                                               \
-    return set_frame(s, out, in, x_start, y_start, w, h, value, color_search);  \
+    return set_frame(s, out, in, x_start, y_start, w, h, value);                \
 }
 
-#define DEFINE_SET_FRAME_COLOR_SEARCH(color_search, color_search_macro)                                 \
-    DEFINE_SET_FRAME(color_search_macro, color_search##_##none,            DITHERING_NONE)              \
-    DEFINE_SET_FRAME(color_search_macro, color_search##_##bayer,           DITHERING_BAYER)             \
-    DEFINE_SET_FRAME(color_search_macro, color_search##_##heckbert,        DITHERING_HECKBERT)          \
-    DEFINE_SET_FRAME(color_search_macro, color_search##_##floyd_steinberg, DITHERING_FLOYD_STEINBERG)   \
-    DEFINE_SET_FRAME(color_search_macro, color_search##_##sierra2,         DITHERING_SIERRA2)           \
-    DEFINE_SET_FRAME(color_search_macro, color_search##_##sierra2_4a,      DITHERING_SIERRA2_4A)        \
+DEFINE_SET_FRAME(none,            DITHERING_NONE)
+DEFINE_SET_FRAME(bayer,           DITHERING_BAYER)
+DEFINE_SET_FRAME(heckbert,        DITHERING_HECKBERT)
+DEFINE_SET_FRAME(floyd_steinberg, DITHERING_FLOYD_STEINBERG)
+DEFINE_SET_FRAME(sierra2,         DITHERING_SIERRA2)
+DEFINE_SET_FRAME(sierra2_4a,      DITHERING_SIERRA2_4A)
+DEFINE_SET_FRAME(sierra3,         DITHERING_SIERRA3)
+DEFINE_SET_FRAME(burkes,          DITHERING_BURKES)
+DEFINE_SET_FRAME(atkinson,        DITHERING_ATKINSON)
 
-DEFINE_SET_FRAME_COLOR_SEARCH(nns_iterative, COLOR_SEARCH_NNS_ITERATIVE)
-DEFINE_SET_FRAME_COLOR_SEARCH(nns_recursive, COLOR_SEARCH_NNS_RECURSIVE)
-DEFINE_SET_FRAME_COLOR_SEARCH(bruteforce,    COLOR_SEARCH_BRUTEFORCE)
-
-#define DITHERING_ENTRIES(color_search) {       \
-    set_frame_##color_search##_none,            \
-    set_frame_##color_search##_bayer,           \
-    set_frame_##color_search##_heckbert,        \
-    set_frame_##color_search##_floyd_steinberg, \
-    set_frame_##color_search##_sierra2,         \
-    set_frame_##color_search##_sierra2_4a,      \
-}
-
-static const set_frame_func set_frame_lut[NB_COLOR_SEARCHES][NB_DITHERING] = {
-    DITHERING_ENTRIES(nns_iterative),
-    DITHERING_ENTRIES(nns_recursive),
-    DITHERING_ENTRIES(bruteforce),
+static const set_frame_func set_frame_lut[NB_DITHERING] = {
+    [DITHERING_NONE]            = set_frame_none,
+    [DITHERING_BAYER]           = set_frame_bayer,
+    [DITHERING_HECKBERT]        = set_frame_heckbert,
+    [DITHERING_FLOYD_STEINBERG] = set_frame_floyd_steinberg,
+    [DITHERING_SIERRA2]         = set_frame_sierra2,
+    [DITHERING_SIERRA2_4A]      = set_frame_sierra2_4a,
+    [DITHERING_SIERRA3]         = set_frame_sierra3,
+    [DITHERING_BURKES]          = set_frame_burkes,
+    [DITHERING_ATKINSON]        = set_frame_atkinson,
 };
 
 static int dither_value(int p)
@@ -1114,13 +946,12 @@ static av_cold int init(AVFilterContext *ctx)
     if (!s->last_in || !s->last_out)
         return AVERROR(ENOMEM);
 
-    s->set_frame = set_frame_lut[s->color_search_method][s->dither];
+    s->set_frame = set_frame_lut[s->dither];
 
     if (s->dither == DITHERING_BAYER) {
-        int i;
         const int delta = 1 << (5 - s->bayer_scale); // to avoid too much luma
 
-        for (i = 0; i < FF_ARRAY_ELEMS(s->ordered_dither); i++)
+        for (int i = 0; i < FF_ARRAY_ELEMS(s->ordered_dither); i++)
             s->ordered_dither[i] = (dither_value(i) >> s->bayer_scale) - delta;
     }
 
@@ -1135,11 +966,10 @@ static int activate(AVFilterContext *ctx)
 
 static av_cold void uninit(AVFilterContext *ctx)
 {
-    int i;
     PaletteUseContext *s = ctx->priv;
 
     ff_framesync_uninit(&s->fs);
-    for (i = 0; i < CACHE_SIZE; i++)
+    for (int i = 0; i < CACHE_SIZE; i++)
         av_freep(&s->cache[i].entries);
     av_frame_free(&s->last_in);
     av_frame_free(&s->last_out);

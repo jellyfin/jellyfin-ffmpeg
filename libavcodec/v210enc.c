@@ -109,13 +109,13 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 const FFCodec ff_v210_encoder = {
     .p.name         = "v210",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Uncompressed 4:2:2 10-bit"),
+    CODEC_LONG_NAME("Uncompressed 4:2:2 10-bit"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_V210,
-    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(V210EncContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),
     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV422P, AV_PIX_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

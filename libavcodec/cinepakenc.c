@@ -429,7 +429,7 @@ static int encode_codebook(CinepakEncContext *s, int *codebook, int size,
 
 // sets out to the sub picture starting at (x,y) in in
 static void get_sub_picture(CinepakEncContext *s, int x, int y,
-                            uint8_t * in_data[4], int  in_linesize[4],
+                            uint8_t *const in_data[4], const int in_linesize[4],
                             uint8_t *out_data[4], int out_linesize[4])
 {
     out_data[0]     = in_data[0] + x + y * in_linesize[0];
@@ -1019,7 +1019,7 @@ static int rd_frame(CinepakEncContext *s, const AVFrame *frame,
         // build a copy of the given frame in the correct colorspace
         for (y = 0; y < s->h; y += 2)
             for (x = 0; x < s->w; x += 2) {
-                uint8_t *ir[2];
+                const uint8_t *ir[2];
                 int32_t r, g, b, rr, gg, bb;
                 ir[0] = frame->data[0] + x * 3 + y * frame->linesize[0];
                 ir[1] = ir[0] + frame->linesize[0];
@@ -1097,7 +1097,7 @@ static int rd_frame(CinepakEncContext *s, const AVFrame *frame,
                                 data, linesize);
             else
                 get_sub_picture(s, 0, y,
-                                (uint8_t **)frame->data, (int *)frame->linesize,
+                                frame->data, frame->linesize,
                                 data, linesize);
             get_sub_picture(s, 0, y,
                             s->last_frame->data, s->last_frame->linesize,
@@ -1216,14 +1216,15 @@ static av_cold int cinepak_encode_end(AVCodecContext *avctx)
 
 const FFCodec ff_cinepak_encoder = {
     .p.name         = "cinepak",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Cinepak"),
+    CODEC_LONG_NAME("Cinepak"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CINEPAK,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(CinepakEncContext),
     .init           = cinepak_encode_init,
     FF_CODEC_ENCODE_CB(cinepak_encode_frame),
     .close          = cinepak_encode_end,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_RGB24, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE },
     .p.priv_class   = &cinepak_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

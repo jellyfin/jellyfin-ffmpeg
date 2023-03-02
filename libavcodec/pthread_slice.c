@@ -237,14 +237,16 @@ void ff_thread_await_progress2(AVCodecContext *avctx, int field, int thread, int
     pthread_mutex_unlock(&progress->mutex);
 }
 
-int ff_alloc_entries(AVCodecContext *avctx, int count)
+int ff_slice_thread_allocz_entries(AVCodecContext *avctx, int count)
 {
     if (avctx->active_thread_type & FF_THREAD_SLICE)  {
         SliceThreadContext *p = avctx->internal->thread_ctx;
 
-        if (p->entries) {
-            av_freep(&p->entries);
+        if (p->entries_count == count) {
+            memset(p->entries, 0, p->entries_count * sizeof(*p->entries));
+            return 0;
         }
+        av_freep(&p->entries);
 
         p->entries       = av_calloc(count, sizeof(*p->entries));
         if (!p->entries) {
@@ -255,10 +257,4 @@ int ff_alloc_entries(AVCodecContext *avctx, int count)
     }
 
     return 0;
-}
-
-void ff_reset_entries(AVCodecContext *avctx)
-{
-    SliceThreadContext *p = avctx->internal->thread_ctx;
-    memset(p->entries, 0, p->entries_count * sizeof(int));
 }

@@ -24,7 +24,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 static const int bmv_aud_mults[16] = {
     16512, 8256, 4128, 2064, 1032, 516, 258, 192, 129, 88, 64, 56, 48, 40, 36, 32
@@ -80,11 +80,10 @@ static int bmv_aud_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_bmv_audio_decoder = {
     .p.name         = "bmv_audio",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Discworld II BMV audio"),
+    CODEC_LONG_NAME("Discworld II BMV audio"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_BMV_AUDIO,
     .init           = bmv_aud_decode_init,
     FF_CODEC_DECODE_CB(bmv_aud_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

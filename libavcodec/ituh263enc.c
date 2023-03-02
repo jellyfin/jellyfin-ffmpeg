@@ -105,7 +105,7 @@ av_const int ff_h263_aspect_to_info(AVRational aspect){
     return FF_ASPECT_EXTENDED;
 }
 
-void ff_h263_encode_picture_header(MpegEncContext * s, int picture_number)
+void ff_h263_encode_picture_header(MpegEncContext * s)
 {
     int format, coded_frame_rate, coded_frame_rate_base, i, temp_ref;
     int best_clock_code=1;
@@ -898,12 +898,13 @@ static const AVClass h263_class = {
 
 const FFCodec ff_h263_encoder = {
     .p.name         = "h263",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("H.263 / H.263-1996"),
+    CODEC_LONG_NAME("H.263 / H.263-1996"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_H263,
     .p.pix_fmts = (const enum AVPixelFormat[]){AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE},
     .p.priv_class   = &h263_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .priv_data_size = sizeof(MpegEncContext),
     .init           = ff_mpv_encode_init,
     FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),
@@ -928,13 +929,13 @@ static const AVClass h263p_class = {
 
 const FFCodec ff_h263p_encoder = {
     .p.name         = "h263p",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("H.263+ / H.263-1998 / H.263 version 2"),
+    CODEC_LONG_NAME("H.263+ / H.263-1998 / H.263 version 2"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_H263P,
     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
     .p.priv_class   = &h263p_class,
-    .p.capabilities = AV_CODEC_CAP_SLICE_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .priv_data_size = sizeof(MpegEncContext),
     .init           = ff_mpv_encode_init,
     FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),

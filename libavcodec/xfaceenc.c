@@ -213,10 +213,10 @@ static int xface_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 const FFCodec ff_xface_encoder = {
     .p.name         = "xface",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("X-face image"),
+    CODEC_LONG_NAME("X-face image"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_XFACE,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_MONOWHITE, AV_PIX_FMT_NONE },
     .priv_data_size = sizeof(XFaceContext),
     FF_CODEC_ENCODE_CB(xface_encode_frame),

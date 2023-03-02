@@ -43,6 +43,8 @@
 #include "libavutil/time.h"
 #include "libavutil/time_internal.h"
 
+#include "libavcodec/avcodec.h"
+
 #include "avformat.h"
 #include "avio_internal.h"
 #include "avc.h"
@@ -250,6 +252,7 @@ typedef struct HLSContext {
     int http_persistent;
     AVIOContext *m3u8_out;
     AVIOContext *sub_m3u8_out;
+    AVIOContext *http_delete;
     int64_t timeout;
     int ignore_io_errors;
     char *headers;
@@ -563,19 +566,22 @@ static void reflush_dynbuf(VariantStream *vs, int *range_length)
 #endif
 
 static int hls_delete_file(HLSContext *hls, AVFormatContext *avf,
-                           const char *path, const char *proto)
+                           char *path, const char *proto)
 {
     if (hls->method || (proto && !av_strcasecmp(proto, "http"))) {
         AVDictionary *opt = NULL;
-        AVIOContext  *out = NULL;
         int ret;
+
         set_http_options(avf, &opt, hls);
         av_dict_set(&opt, "method", "DELETE", 0);
-        ret = avf->io_open(avf, &out, path, AVIO_FLAG_WRITE, &opt);
+
+        ret = hlsenc_io_open(avf, &hls->http_delete, path, &opt);
         av_dict_free(&opt);
         if (ret < 0)
             return hls->ignore_io_errors ? 1 : ret;
-        ff_format_io_close(avf, &out);
+
+        //Nothing to write
+        hlsenc_io_close(avf, &hls->http_delete, path);
     } else if (unlink(path) < 0) {
         av_log(hls, AV_LOG_ERROR, "failed to delete old segment %s: %s\n",
                path, strerror(errno));
@@ -660,7 +666,7 @@ static int hls_delete_old_segments(AVFormatContext *s, HLSContext *hls,
         }
 
         proto = avio_find_protocol_name(s->url);
-        if (ret = hls_delete_file(hls, vs->avf, path.str, proto))
+        if (ret = hls_delete_file(hls, s, path.str, proto))
             goto fail;
 
         if ((segment->sub_filename[0] != '\0')) {
@@ -677,7 +683,7 @@ static int hls_delete_old_segments(AVFormatContext *s, HLSContext *hls,
                 goto fail;
             }
 
-            if (ret = hls_delete_file(hls, vs->vtt_avf, path.str, proto))
+            if (ret = hls_delete_file(hls, s, path.str, proto))
                 goto fail;
         }
         av_bprint_clear(&path);
@@ -863,7 +869,11 @@ static int hls_mux_init(AVFormatContext *s, VariantStream *vs)
     oc->max_delay                = s->max_delay;
     oc->opaque                   = s->opaque;
     oc->io_open                  = s->io_open;
+#if FF_API_AVFORMAT_IO_CLOSE
+FF_DISABLE_DEPRECATION_WARNINGS
     oc->io_close                 = s->io_close;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     oc->io_close2                = s->io_close2;
     oc->strict_std_compliance    = s->strict_std_compliance;
     av_dict_copy(&oc->metadata, s->metadata, 0);
@@ -2705,6 +2715,7 @@ static void hls_deinit(AVFormatContext *s)
 
     ff_format_io_close(s, &hls->m3u8_out);
     ff_format_io_close(s, &hls->sub_m3u8_out);
+    ff_format_io_close(s, &hls->http_delete);
     av_freep(&hls->key_basename);
     av_freep(&hls->var_streams);
     av_freep(&hls->cc_streams);
@@ -3109,9 +3120,6 @@ static const AVOption options[] = {
     {"hls_init_time", "set segment length at init list",         OFFSET(init_time),     AV_OPT_TYPE_DURATION, {.i64 = 0},       0, INT64_MAX, E},
     {"hls_list_size", "set maximum number of playlist entries",  OFFSET(max_nb_segments),    AV_OPT_TYPE_INT,    {.i64 = 5},     0, INT_MAX, E},
     {"hls_delete_threshold", "set number of unreferenced segments to keep before deleting",  OFFSET(hls_delete_threshold),    AV_OPT_TYPE_INT,    {.i64 = 1},     1, INT_MAX, E},
-#if FF_HLS_TS_OPTIONS
-    {"hls_ts_options","set hls mpegts list of options for the container format used for hls (deprecated, use hls_segment_options instead of it.)", OFFSET(format_options), AV_OPT_TYPE_DICT, {.str = NULL},  0, 0,    E | AV_OPT_FLAG_DEPRECATED},
-#endif
     {"hls_vtt_options","set hls vtt list of options for the container format used for hls", OFFSET(vtt_format_options_str), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,    E},
     {"hls_allow_cache", "explicitly set whether the client MAY (1) or MUST NOT (0) cache media segments", OFFSET(allowcache), AV_OPT_TYPE_INT, {.i64 = -1}, INT_MIN, INT_MAX, E},
     {"hls_base_url",  "url to prepend to each playlist entry",   OFFSET(baseurl), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E},
@@ -3176,19 +3184,19 @@ static const AVClass hls_class = {
 };
 
 
-const AVOutputFormat ff_hls_muxer = {
-    .name           = "hls",
-    .long_name      = NULL_IF_CONFIG_SMALL("Apple HTTP Live Streaming"),
-    .extensions     = "m3u8",
+const FFOutputFormat ff_hls_muxer = {
+    .p.name           = "hls",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("Apple HTTP Live Streaming"),
+    .p.extensions     = "m3u8",
+    .p.audio_codec    = AV_CODEC_ID_AAC,
+    .p.video_codec    = AV_CODEC_ID_H264,
+    .p.subtitle_codec = AV_CODEC_ID_WEBVTT,
+    .p.flags          = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_NODIMENSIONS,
+    .p.priv_class     = &hls_class,
     .priv_data_size = sizeof(HLSContext),
-    .audio_codec    = AV_CODEC_ID_AAC,
-    .video_codec    = AV_CODEC_ID_H264,
-    .subtitle_codec = AV_CODEC_ID_WEBVTT,
-    .flags          = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_NODIMENSIONS,
     .init           = hls_init,
     .write_header   = hls_write_header,
     .write_packet   = hls_write_packet,
     .write_trailer  = hls_write_trailer,
     .deinit         = hls_deinit,
-    .priv_class     = &hls_class,
 };

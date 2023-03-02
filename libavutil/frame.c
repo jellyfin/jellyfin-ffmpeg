@@ -35,23 +35,6 @@
                av_get_channel_layout_nb_channels((frame)->channel_layout))
 #endif
 
-#if FF_API_COLORSPACE_NAME
-const char *av_get_colorspace_name(enum AVColorSpace val)
-{
-    static const char * const name[] = {
-        [AVCOL_SPC_RGB]       = "GBR",
-        [AVCOL_SPC_BT709]     = "bt709",
-        [AVCOL_SPC_FCC]       = "fcc",
-        [AVCOL_SPC_BT470BG]   = "bt470bg",
-        [AVCOL_SPC_SMPTE170M] = "smpte170m",
-        [AVCOL_SPC_SMPTE240M] = "smpte240m",
-        [AVCOL_SPC_YCOCG]     = "YCgCo",
-    };
-    if ((unsigned)val >= FF_ARRAY_ELEMS(name))
-        return NULL;
-    return name[val];
-}
-#endif
 static void get_frame_defaults(AVFrame *frame)
 {
     memset(frame, 0, sizeof(*frame));
@@ -59,7 +42,12 @@ static void get_frame_defaults(AVFrame *frame)
     frame->pts                   =
     frame->pkt_dts               = AV_NOPTS_VALUE;
     frame->best_effort_timestamp = AV_NOPTS_VALUE;
+    frame->duration            = 0;
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
     frame->pkt_duration        = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     frame->pkt_pos             = -1;
     frame->pkt_size            = -1;
     frame->time_base           = (AVRational){ 0, 1 };
@@ -283,6 +271,7 @@ static int frame_copy_props(AVFrame *dst, const AVFrame *src, int force_copy)
     dst->crop_left              = src->crop_left;
     dst->crop_right             = src->crop_right;
     dst->pts                    = src->pts;
+    dst->duration               = src->duration;
     dst->repeat_pict            = src->repeat_pict;
     dst->interlaced_frame       = src->interlaced_frame;
     dst->top_field_first        = src->top_field_first;
@@ -292,13 +281,25 @@ static int frame_copy_props(AVFrame *dst, const AVFrame *src, int force_copy)
     dst->pkt_dts                = src->pkt_dts;
     dst->pkt_pos                = src->pkt_pos;
     dst->pkt_size               = src->pkt_size;
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
     dst->pkt_duration           = src->pkt_duration;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     dst->time_base              = src->time_base;
+#if FF_API_REORDERED_OPAQUE
+FF_DISABLE_DEPRECATION_WARNINGS
     dst->reordered_opaque       = src->reordered_opaque;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     dst->quality                = src->quality;
     dst->best_effort_timestamp  = src->best_effort_timestamp;
+#if FF_API_FRAME_PICTURE_NUMBER
+FF_DISABLE_DEPRECATION_WARNINGS
     dst->coded_picture_number   = src->coded_picture_number;
     dst->display_picture_number = src->display_picture_number;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     dst->flags                  = src->flags;
     dst->decode_error_flags     = src->decode_error_flags;
     dst->color_primaries        = src->color_primaries;
@@ -541,9 +542,6 @@ int av_frame_make_writable(AVFrame *frame)
 {
     AVFrame tmp;
     int ret;
-
-    if (!frame->buf[0])
-        return AVERROR(EINVAL);
 
     if (av_frame_is_writable(frame))
         return 0;
@@ -824,6 +822,7 @@ const char *av_frame_side_data_name(enum AVFrameSideDataType type)
     case AV_FRAME_DATA_DETECTION_BBOXES:            return "Bounding boxes for object detection and classification";
     case AV_FRAME_DATA_DOVI_RPU_BUFFER:             return "Dolby Vision RPU Data";
     case AV_FRAME_DATA_DOVI_METADATA:               return "Dolby Vision Metadata";
+    case AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT: return "Ambient viewing environment";
     }
     return NULL;
 }

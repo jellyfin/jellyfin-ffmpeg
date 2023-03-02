@@ -20,7 +20,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/bswap.h"
 #include "libavutil/internal.h"
 
@@ -121,11 +121,10 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
 const FFCodec ff_v210x_decoder = {
     .p.name         = "v210x",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Uncompressed 4:2:2 10-bit"),
+    CODEC_LONG_NAME("Uncompressed 4:2:2 10-bit"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_V210X,
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

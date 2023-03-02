@@ -27,7 +27,6 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "wma.h"
 #include "libavutil/avassert.h"
 
@@ -93,7 +92,9 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
     /* init MDCT */
     for (i = 0; i < s->nb_block_sizes; i++) {
-        ret = ff_mdct_init(&s->mdct_ctx[i], s->frame_len_bits - i + 1, 0, 1.0);
+        float scale = 1.0f;
+        ret = av_tx_init(&s->mdct_ctx[i], &s->mdct_fn[i], AV_TX_FLOAT_MDCT,
+                         0, 1 << (s->frame_len_bits - i), &scale, 0);
         if (ret < 0)
             return ret;
     }
@@ -110,10 +111,11 @@ static av_cold int encode_init(AVCodecContext *avctx)
 static int apply_window_and_mdct(AVCodecContext *avctx, const AVFrame *frame)
 {
     WMACodecContext *s = avctx->priv_data;
-    float **audio      = (float **) frame->extended_data;
+    const float *const *audio = (const float *const *) frame->extended_data;
     int len            = frame->nb_samples;
     int window_index   = s->frame_len_bits - s->block_len_bits;
-    FFTContext *mdct   = &s->mdct_ctx[window_index];
+    AVTXContext *mdct  = s->mdct_ctx[window_index];
+    av_tx_fn mdct_fn   = s->mdct_fn[window_index];
     int ch;
     const float *win   = s->windows[window_index];
     int window_len     = 1 << s->block_len_bits;
@@ -125,7 +127,7 @@ static int apply_window_and_mdct(AVCodecContext *avctx, const AVFrame *frame)
         s->fdsp->vector_fmul_reverse(&s->output[window_len], s->frame_out[ch],
                                     win, len);
         s->fdsp->vector_fmul(s->frame_out[ch], s->frame_out[ch], win, len);
-        mdct->mdct_calc(mdct, s->coefs[ch], s->output);
+        mdct_fn(mdct, s->coefs[ch], s->output, sizeof(float));
         if (!isfinite(s->coefs[ch][0])) {
             av_log(avctx, AV_LOG_ERROR, "Input contains NaN/+-Inf\n");
             return AVERROR(EINVAL);
@@ -435,30 +437,32 @@ static int encode_superframe(AVCodecContext *avctx, AVPacket *avpkt,
 #if CONFIG_WMAV1_ENCODER
 const FFCodec ff_wmav1_encoder = {
     .p.name         = "wmav1",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Windows Media Audio 1"),
+    CODEC_LONG_NAME("Windows Media Audio 1"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_WMAV1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(WMACodecContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_superframe),
     .close          = ff_wma_end,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
 #if CONFIG_WMAV2_ENCODER
 const FFCodec ff_wmav2_encoder = {
     .p.name         = "wmav2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Windows Media Audio 2"),
+    CODEC_LONG_NAME("Windows Media Audio 2"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_WMAV2,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(WMACodecContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_superframe),
     .close          = ff_wma_end,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

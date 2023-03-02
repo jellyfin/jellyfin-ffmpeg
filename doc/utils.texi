@@ -713,8 +713,12 @@ FL+FR+FC+LFE+BL+BR+SL+SR
 FL+FR+FC+LFE+BL+BR+FLC+FRC
 @item 7.1(wide-side)
 FL+FR+FC+LFE+FLC+FRC+SL+SR
+@item 7.1(top)
+FL+FR+FC+LFE+BL+BR+TFL+TFR
 @item octagonal
 FL+FR+FC+BL+BR+BC+SL+SR
+@item cube
+FL+FR+BL+BR+TFL+TFR+TBL+TBR
 @item hexadecagonal
 FL+FR+FC+BL+BR+BC+SL+SR+WL+WR+TBL+TBR+TBC+TFC+TFL+TFR
 @item downmix
@@ -1073,13 +1077,13 @@ indication of the corresponding powers of 10 and of 2.
 @item T
 10^12 / 2^40
 @item P
-10^15 / 2^40
+10^15 / 2^50
 @item E
-10^18 / 2^50
+10^18 / 2^60
 @item Z
-10^21 / 2^60
+10^21 / 2^70
 @item Y
-10^24 / 2^70
+10^24 / 2^80
 @end table
 
 @c man end EXPRESSION EVALUATION

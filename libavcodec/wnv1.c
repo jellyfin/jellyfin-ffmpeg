@@ -29,8 +29,8 @@
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 static const uint8_t code_tab[16][2] = {
     {  7, 1 }, {  8, 3 }, {  6, 3 }, { 9, 4 }, {  5, 4 }, { 10, 5 }, {  4, 5 },
@@ -137,11 +137,10 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_wnv1_decoder = {
     .p.name         = "wnv1",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Winnov WNV1"),
+    CODEC_LONG_NAME("Winnov WNV1"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_WNV1,
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

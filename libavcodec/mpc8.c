@@ -30,8 +30,8 @@
 #include "libavutil/thread.h"
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 #include "mpegaudiodsp.h"
 
 #include "mpc.h"
@@ -385,7 +385,7 @@ static av_cold void mpc8_decode_flush(AVCodecContext *avctx)
 
 const FFCodec ff_mpc8_decoder = {
     .p.name         = "mpc8",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Musepack SV8"),
+    CODEC_LONG_NAME("Musepack SV8"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_MUSEPACK8,
     .priv_data_size = sizeof(MPCContext),
@@ -395,5 +395,4 @@ const FFCodec ff_mpc8_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

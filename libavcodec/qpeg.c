@@ -28,7 +28,6 @@
 #include "bytestream.h"
 #include "codec_internal.h"
 #include "decode.h"
-#include "internal.h"
 
 typedef struct QpegContext{
     AVCodecContext *avctx;
@@ -353,7 +352,7 @@ static av_cold int decode_init(AVCodecContext *avctx){
 
 const FFCodec ff_qpeg_decoder = {
     .p.name         = "qpeg",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Q-team QPEG"),
+    CODEC_LONG_NAME("Q-team QPEG"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_QPEG,
     .priv_data_size = sizeof(QpegContext),
@@ -362,6 +361,5 @@ const FFCodec ff_qpeg_decoder = {
     FF_CODEC_DECODE_CB(decode_frame),
     .flush          = decode_flush,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -30,7 +30,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 typedef struct BFIContext {
     AVCodecContext *avctx;
@@ -66,7 +66,7 @@ static int bfi_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     bytestream2_init(&g, avpkt->data, buf_size);
 
     /* Set frame parameters and palette, if necessary */
-    if (!avctx->frame_number) {
+    if (!avctx->frame_num) {
         frame->pict_type = AV_PICTURE_TYPE_I;
         frame->key_frame = 1;
         /* Setting the palette */
@@ -177,7 +177,7 @@ static av_cold int bfi_decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_bfi_decoder = {
     .p.name         = "bfi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Brute Force & Ignorance"),
+    CODEC_LONG_NAME("Brute Force & Ignorance"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_BFI,
     .priv_data_size = sizeof(BFIContext),
@@ -185,5 +185,4 @@ const FFCodec ff_bfi_decoder = {
     .close          = bfi_decode_close,
     FF_CODEC_DECODE_CB(bfi_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

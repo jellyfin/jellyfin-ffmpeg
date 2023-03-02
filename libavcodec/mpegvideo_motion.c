@@ -31,163 +31,9 @@
 #include "h261.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
+#include "mpeg4videodec.h"
 #include "qpeldsp.h"
 #include "wmv2.h"
-
-static void gmc1_motion(MpegEncContext *s,
-                        uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr,
-                        uint8_t **ref_picture)
-{
-    uint8_t *ptr;
-    int src_x, src_y, motion_x, motion_y;
-    ptrdiff_t offset, linesize, uvlinesize;
-    int emu = 0;
-
-    motion_x   = s->sprite_offset[0][0];
-    motion_y   = s->sprite_offset[0][1];
-    src_x      = s->mb_x * 16 + (motion_x >> (s->sprite_warping_accuracy + 1));
-    src_y      = s->mb_y * 16 + (motion_y >> (s->sprite_warping_accuracy + 1));
-    motion_x *= 1 << (3 - s->sprite_warping_accuracy);
-    motion_y *= 1 << (3 - s->sprite_warping_accuracy);
-    src_x      = av_clip(src_x, -16, s->width);
-    if (src_x == s->width)
-        motion_x = 0;
-    src_y = av_clip(src_y, -16, s->height);
-    if (src_y == s->height)
-        motion_y = 0;
-
-    linesize   = s->linesize;
-    uvlinesize = s->uvlinesize;
-
-    ptr = ref_picture[0] + src_y * linesize + src_x;
-
-    if ((unsigned)src_x >= FFMAX(s->h_edge_pos - 17, 0) ||
-        (unsigned)src_y >= FFMAX(s->v_edge_pos - 17, 0)) {
-        s->vdsp.emulated_edge_mc(s->sc.edge_emu_buffer, ptr,
-                                 linesize, linesize,
-                                 17, 17,
-                                 src_x, src_y,
-                                 s->h_edge_pos, s->v_edge_pos);
-        ptr = s->sc.edge_emu_buffer;
-    }
-
-    if ((motion_x | motion_y) & 7) {
-        s->mdsp.gmc1(dest_y, ptr, linesize, 16,
-                     motion_x & 15, motion_y & 15, 128 - s->no_rounding);
-        s->mdsp.gmc1(dest_y + 8, ptr + 8, linesize, 16,
-                     motion_x & 15, motion_y & 15, 128 - s->no_rounding);
-    } else {
-        int dxy;
-
-        dxy = ((motion_x >> 3) & 1) | ((motion_y >> 2) & 2);
-        if (s->no_rounding) {
-            s->hdsp.put_no_rnd_pixels_tab[0][dxy](dest_y, ptr, linesize, 16);
-        } else {
-            s->hdsp.put_pixels_tab[0][dxy](dest_y, ptr, linesize, 16);
-        }
-    }
-
-    if (CONFIG_GRAY && s->avctx->flags & AV_CODEC_FLAG_GRAY)
-        return;
-
-    motion_x   = s->sprite_offset[1][0];
-    motion_y   = s->sprite_offset[1][1];
-    src_x      = s->mb_x * 8 + (motion_x >> (s->sprite_warping_accuracy + 1));
-    src_y      = s->mb_y * 8 + (motion_y >> (s->sprite_warping_accuracy + 1));
-    motion_x  *= 1 << (3 - s->sprite_warping_accuracy);
-    motion_y  *= 1 << (3 - s->sprite_warping_accuracy);
-    src_x      = av_clip(src_x, -8, s->width >> 1);
-    if (src_x == s->width >> 1)
-        motion_x = 0;
-    src_y = av_clip(src_y, -8, s->height >> 1);
-    if (src_y == s->height >> 1)
-        motion_y = 0;
-
-    offset = (src_y * uvlinesize) + src_x;
-    ptr    = ref_picture[1] + offset;
-    if ((unsigned)src_x >= FFMAX((s->h_edge_pos >> 1) - 9, 0) ||
-        (unsigned)src_y >= FFMAX((s->v_edge_pos >> 1) - 9, 0)) {
-        s->vdsp.emulated_edge_mc(s->sc.edge_emu_buffer, ptr,
-                                 uvlinesize, uvlinesize,
-                                 9, 9,
-                                 src_x, src_y,
-                                 s->h_edge_pos >> 1, s->v_edge_pos >> 1);
-        ptr = s->sc.edge_emu_buffer;
-        emu = 1;
-    }
-    s->mdsp.gmc1(dest_cb, ptr, uvlinesize, 8,
-                 motion_x & 15, motion_y & 15, 128 - s->no_rounding);
-
-    ptr = ref_picture[2] + offset;
-    if (emu) {
-        s->vdsp.emulated_edge_mc(s->sc.edge_emu_buffer, ptr,
-                                 uvlinesize, uvlinesize,
-                                 9, 9,
-                                 src_x, src_y,
-                                 s->h_edge_pos >> 1, s->v_edge_pos >> 1);
-        ptr = s->sc.edge_emu_buffer;
-    }
-    s->mdsp.gmc1(dest_cr, ptr, uvlinesize, 8,
-                 motion_x & 15, motion_y & 15, 128 - s->no_rounding);
-}
-
-static void gmc_motion(MpegEncContext *s,
-                       uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr,
-                       uint8_t **ref_picture)
-{
-    uint8_t *ptr;
-    int linesize, uvlinesize;
-    const int a = s->sprite_warping_accuracy;
-    int ox, oy;
-
-    linesize   = s->linesize;
-    uvlinesize = s->uvlinesize;
-
-    ptr = ref_picture[0];
-
-    ox = s->sprite_offset[0][0] + s->sprite_delta[0][0] * s->mb_x * 16 +
-         s->sprite_delta[0][1] * s->mb_y * 16;
-    oy = s->sprite_offset[0][1] + s->sprite_delta[1][0] * s->mb_x * 16 +
-         s->sprite_delta[1][1] * s->mb_y * 16;
-
-    s->mdsp.gmc(dest_y, ptr, linesize, 16,
-                ox, oy,
-                s->sprite_delta[0][0], s->sprite_delta[0][1],
-                s->sprite_delta[1][0], s->sprite_delta[1][1],
-                a + 1, (1 << (2 * a + 1)) - s->no_rounding,
-                s->h_edge_pos, s->v_edge_pos);
-    s->mdsp.gmc(dest_y + 8, ptr, linesize, 16,
-                ox + s->sprite_delta[0][0] * 8,
-                oy + s->sprite_delta[1][0] * 8,
-                s->sprite_delta[0][0], s->sprite_delta[0][1],
-                s->sprite_delta[1][0], s->sprite_delta[1][1],
-                a + 1, (1 << (2 * a + 1)) - s->no_rounding,
-                s->h_edge_pos, s->v_edge_pos);
-
-    if (CONFIG_GRAY && s->avctx->flags & AV_CODEC_FLAG_GRAY)
-        return;
-
-    ox = s->sprite_offset[1][0] + s->sprite_delta[0][0] * s->mb_x * 8 +
-         s->sprite_delta[0][1] * s->mb_y * 8;
-    oy = s->sprite_offset[1][1] + s->sprite_delta[1][0] * s->mb_x * 8 +
-         s->sprite_delta[1][1] * s->mb_y * 8;
-
-    ptr = ref_picture[1];
-    s->mdsp.gmc(dest_cb, ptr, uvlinesize, 8,
-                ox, oy,
-                s->sprite_delta[0][0], s->sprite_delta[0][1],
-                s->sprite_delta[1][0], s->sprite_delta[1][1],
-                a + 1, (1 << (2 * a + 1)) - s->no_rounding,
-                (s->h_edge_pos + 1) >> 1, (s->v_edge_pos + 1) >> 1);
-
-    ptr = ref_picture[2];
-    s->mdsp.gmc(dest_cr, ptr, uvlinesize, 8,
-                ox, oy,
-                s->sprite_delta[0][0], s->sprite_delta[0][1],
-                s->sprite_delta[1][0], s->sprite_delta[1][1],
-                a + 1, (1 << (2 * a + 1)) - s->no_rounding,
-                (s->h_edge_pos + 1) >> 1, (s->v_edge_pos + 1) >> 1);
-}
 
 static inline int hpel_motion(MpegEncContext *s,
                               uint8_t *dest, uint8_t *src,
@@ -232,7 +78,7 @@ void mpeg_motion_internal(MpegEncContext *s,
                           int field_based,
                           int bottom_field,
                           int field_select,
-                          uint8_t **ref_picture,
+                          uint8_t *const *ref_picture,
                           op_pixels_func (*pix_op)[4],
                           int motion_x,
                           int motion_y,
@@ -241,7 +87,7 @@ void mpeg_motion_internal(MpegEncContext *s,
                           int is_16x8,
                           int mb_y)
 {
-    uint8_t *ptr_y, *ptr_cb, *ptr_cr;
+    const uint8_t *ptr_y, *ptr_cb, *ptr_cr;
     int dxy, uvdxy, mx, my, src_x, src_y,
         uvsrc_x, uvsrc_y, v_edge_pos, block_y_half;
     ptrdiff_t uvlinesize, linesize;
@@ -369,7 +215,7 @@ void mpeg_motion_internal(MpegEncContext *s,
 /* apply one mpeg motion vector to the three components */
 static void mpeg_motion(MpegEncContext *s,
                         uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr,
-                        int field_select, uint8_t **ref_picture,
+                        int field_select, uint8_t *const *ref_picture,
                         op_pixels_func (*pix_op)[4],
                         int motion_x, int motion_y, int h, int is_16x8, int mb_y)
 {
@@ -388,7 +234,7 @@ static void mpeg_motion(MpegEncContext *s,
 static void mpeg_motion_field(MpegEncContext *s, uint8_t *dest_y,
                               uint8_t *dest_cb, uint8_t *dest_cr,
                               int bottom_field, int field_select,
-                              uint8_t **ref_picture,
+                              uint8_t *const *ref_picture,
                               op_pixels_func (*pix_op)[4],
                               int motion_x, int motion_y, int h, int mb_y)
 {
@@ -489,12 +335,12 @@ static inline void qpel_motion(MpegEncContext *s,
                                uint8_t *dest_cb,
                                uint8_t *dest_cr,
                                int field_based, int bottom_field,
-                               int field_select, uint8_t **ref_picture,
+                               int field_select, uint8_t *const *ref_picture,
                                op_pixels_func (*pix_op)[4],
                                qpel_mc_func (*qpix_op)[16],
                                int motion_x, int motion_y, int h)
 {
-    uint8_t *ptr_y, *ptr_cb, *ptr_cr;
+    const uint8_t *ptr_y, *ptr_cb, *ptr_cr;
     int dxy, uvdxy, mx, my, src_x, src_y, uvsrc_x, uvsrc_y, v_edge_pos;
     ptrdiff_t linesize, uvlinesize;
 
@@ -593,11 +439,11 @@ static inline void qpel_motion(MpegEncContext *s,
  */
 static void chroma_4mv_motion(MpegEncContext *s,
                               uint8_t *dest_cb, uint8_t *dest_cr,
-                              uint8_t **ref_picture,
+                              uint8_t *const *ref_picture,
                               op_pixels_func *pix_op,
                               int mx, int my)
 {
-    uint8_t *ptr;
+    const uint8_t *ptr;
     int src_x, src_y, dxy, emu = 0;
     ptrdiff_t offset;
 
@@ -643,7 +489,7 @@ static void chroma_4mv_motion(MpegEncContext *s,
     pix_op[dxy](dest_cr, ptr, s->uvlinesize, 8);
 }
 
-static inline void prefetch_motion(MpegEncContext *s, uint8_t **pix, int dir)
+static inline void prefetch_motion(MpegEncContext *s, uint8_t *const *pix, int dir)
 {
     /* fetch pixels for estimated mv 4 macroblocks ahead
      * optimized for 64byte cache lines */
@@ -661,11 +507,11 @@ static inline void apply_obmc(MpegEncContext *s,
                               uint8_t *dest_y,
                               uint8_t *dest_cb,
                               uint8_t *dest_cr,
-                              uint8_t **ref_picture,
+                              uint8_t *const *ref_picture,
                               op_pixels_func (*pix_op)[4])
 {
     LOCAL_ALIGNED_8(int16_t, mv_cache, [4], [4][2]);
-    Picture *cur_frame   = &s->current_picture;
+    const Picture *cur_frame = &s->current_picture;
     int mb_x = s->mb_x;
     int mb_y = s->mb_y;
     const int xy         = mb_x + mb_y * s->mb_stride;
@@ -749,7 +595,7 @@ static inline void apply_8x8(MpegEncContext *s,
                              uint8_t *dest_cb,
                              uint8_t *dest_cr,
                              int dir,
-                             uint8_t **ref_picture,
+                             uint8_t *const *ref_picture,
                              qpel_mc_func (*qpix_op)[16],
                              op_pixels_func (*pix_op)[4])
 {
@@ -757,7 +603,8 @@ static inline void apply_8x8(MpegEncContext *s,
     int i;
     int mb_x = s->mb_x;
     int mb_y = s->mb_y;
-    uint8_t *ptr, *dest;
+    uint8_t *dest;
+    const uint8_t *ptr;
 
     mx = 0;
     my = 0;
@@ -833,7 +680,7 @@ static av_always_inline void mpv_motion_internal(MpegEncContext *s,
                                                  uint8_t *dest_cb,
                                                  uint8_t *dest_cr,
                                                  int dir,
-                                                 uint8_t **ref_picture,
+                                                 uint8_t *const *ref_picture,
                                                  op_pixels_func (*pix_op)[4],
                                                  qpel_mc_func (*qpix_op)[16],
                                                  int is_mpeg12)
@@ -848,14 +695,8 @@ static av_always_inline void mpv_motion_internal(MpegEncContext *s,
 
     switch (s->mv_type) {
     case MV_TYPE_16X16:
-        if (!is_mpeg12 && s->mcsel) {
-            if (s->real_sprite_warping_points == 1) {
-                gmc1_motion(s, dest_y, dest_cb, dest_cr,
-                            ref_picture);
-            } else {
-                gmc_motion(s, dest_y, dest_cb, dest_cr,
-                           ref_picture);
-            }
+        if (CONFIG_MPEG4_DECODER && !is_mpeg12 && s->mcsel) {
+            ff_mpeg4_mcsel_motion(s, dest_y, dest_cb, dest_cr, ref_picture);
         } else if (!is_mpeg12 && s->quarter_sample) {
             qpel_motion(s, dest_y, dest_cb, dest_cr,
                         0, 0, 0,
@@ -912,7 +753,7 @@ static av_always_inline void mpv_motion_internal(MpegEncContext *s,
     case MV_TYPE_16X8:
         if (CONFIG_SMALL || is_mpeg12) {
             for (i = 0; i < 2; i++) {
-                uint8_t **ref2picture;
+                uint8_t *const *ref2picture;
 
                 if ((s->picture_structure == s->field_select[dir][i] + 1 ||
                      s->pict_type == AV_PICTURE_TYPE_B || s->first_field) &&
@@ -974,7 +815,7 @@ static av_always_inline void mpv_motion_internal(MpegEncContext *s,
 void ff_mpv_motion(MpegEncContext *s,
                    uint8_t *dest_y, uint8_t *dest_cb,
                    uint8_t *dest_cr, int dir,
-                   uint8_t **ref_picture,
+                   uint8_t *const *ref_picture,
                    op_pixels_func (*pix_op)[4],
                    qpel_mc_func (*qpix_op)[16])
 {

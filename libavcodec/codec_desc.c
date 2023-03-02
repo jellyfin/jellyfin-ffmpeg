@@ -1462,6 +1462,7 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("Avid Meridien Uncompressed"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
     },
+#if FF_API_AYUV_CODECID
     {
         .id        = AV_CODEC_ID_AYUV,
         .type      = AVMEDIA_TYPE_VIDEO,
@@ -1469,6 +1470,7 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("Uncompressed packed MS 4:4:4:4"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
     },
+#endif
     {
         .id        = AV_CODEC_ID_TARGA_Y216,
         .type      = AVMEDIA_TYPE_VIDEO,
@@ -1892,6 +1894,34 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "phm",
         .long_name = NULL_IF_CONFIG_SMALL("PHM (Portable HalfFloatMap) image"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_RADIANCE_HDR,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "hdr",
+        .long_name = NULL_IF_CONFIG_SMALL("HDR (Radiance RGBE format) image"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_WBMP,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "wbmp",
+        .long_name = NULL_IF_CONFIG_SMALL("WBMP (Wireless Application Protocol Bitmap) image"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_MEDIA100,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "media100",
+        .long_name = NULL_IF_CONFIG_SMALL("Media 100i"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_VQC,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "vqc",
+        .long_name = NULL_IF_CONFIG_SMALL("ViewQuest VQC"),
+        .props     = AV_CODEC_PROP_LOSSY,
     },
 
     /* various PCM "codecs" */
@@ -2506,6 +2536,13 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("ADPCM IMA Acorn Replay"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
     },
+    {
+        .id        = AV_CODEC_ID_ADPCM_XMD,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "adpcm_xmd",
+        .long_name = NULL_IF_CONFIG_SMALL("ADPCM Konami XMD"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
 
     /* AMR */
     {
@@ -2587,6 +2624,20 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .type      = AVMEDIA_TYPE_AUDIO,
         .name      = "derf_dpcm",
         .long_name = NULL_IF_CONFIG_SMALL("DPCM Xilam DERF"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_WADY_DPCM,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "wady_dpcm",
+        .long_name = NULL_IF_CONFIG_SMALL("DPCM Marble WADY"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_CBD2_DPCM,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "cbd2_dpcm",
+        .long_name = NULL_IF_CONFIG_SMALL("DPCM Cuberoot-Delta-Exact"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
     },
 
@@ -3274,6 +3325,48 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("DFPWM (Dynamic Filter Pulse Width Modulation)"),
         .props     = AV_CODEC_PROP_LOSSY,
     },
+    {
+        .id        = AV_CODEC_ID_BONK,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "bonk",
+        .long_name = NULL_IF_CONFIG_SMALL("Bonk audio"),
+        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_MISC4,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "misc4",
+        .long_name = NULL_IF_CONFIG_SMALL("Micronas SC-4 Audio"),
+        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_INTRA_ONLY,
+    },
+    {
+        .id        = AV_CODEC_ID_APAC,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "apac",
+        .long_name = NULL_IF_CONFIG_SMALL("Marian's A-pac audio"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_FTR,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "ftr",
+        .long_name = NULL_IF_CONFIG_SMALL("FTR Voice"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_WAVARC,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "wavarc",
+        .long_name = NULL_IF_CONFIG_SMALL("Waveform Archiver"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_RKA,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "rka",
+        .long_name = NULL_IF_CONFIG_SMALL("RKA (RK Audio)"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_LOSSLESS,
+    },
 
     /* subtitle codecs */
     {
@@ -3545,6 +3638,18 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "wrapped_avframe",
         .long_name = NULL_IF_CONFIG_SMALL("AVFrame to AVPacket passthrough"),
         .props     = AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_VNULL,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "vnull",
+        .long_name = NULL_IF_CONFIG_SMALL("Null video codec"),
+    },
+    {
+        .id        = AV_CODEC_ID_ANULL,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "anull",
+        .long_name = NULL_IF_CONFIG_SMALL("Null audio codec"),
     },
 };
 

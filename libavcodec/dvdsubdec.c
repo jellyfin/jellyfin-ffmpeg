@@ -21,13 +21,14 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
+#include "dvdsub.h"
 #include "get_bits.h"
-#include "internal.h"
 
 #include "libavutil/attributes.h"
 #include "libavutil/colorspace.h"
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/bswap.h"
 
 typedef struct DVDSubContext
@@ -707,7 +708,7 @@ static const AVClass dvdsub_class = {
 
 const FFCodec ff_dvdsub_decoder = {
     .p.name         = "dvdsub",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("DVD subtitles"),
+    CODEC_LONG_NAME("DVD subtitles"),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_DVD_SUBTITLE,
     .priv_data_size = sizeof(DVDSubContext),
@@ -715,5 +716,4 @@ const FFCodec ff_dvdsub_decoder = {
     FF_CODEC_DECODE_SUB_CB(dvdsub_decode),
     .flush          = dvdsub_flush,
     .p.priv_class   = &dvdsub_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

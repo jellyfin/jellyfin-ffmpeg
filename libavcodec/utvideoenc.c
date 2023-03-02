@@ -277,7 +277,7 @@ static void mangle_rgb_planes(uint8_t *dst[4], ptrdiff_t dst_stride,
 #undef B
 
 /* Write data to a plane with median prediction */
-static void median_predict(UtvideoContext *c, uint8_t *src, uint8_t *dst,
+static void median_predict(UtvideoContext *c, const uint8_t *src, uint8_t *dst,
                            ptrdiff_t stride, int width, int height)
 {
     int i, j;
@@ -376,7 +376,7 @@ static int write_huff_codes(uint8_t *src, uint8_t *dst, int dst_size,
     return put_bytes_output(&pb);
 }
 
-static int encode_plane(AVCodecContext *avctx, uint8_t *src,
+static int encode_plane(AVCodecContext *avctx, const uint8_t *src,
                         uint8_t *dst, ptrdiff_t stride, int plane_no,
                         int width, int height, PutByteContext *pb)
 {
@@ -645,18 +645,19 @@ static const AVClass utvideo_class = {
 
 const FFCodec ff_utvideo_encoder = {
     .p.name         = "utvideo",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Ut Video"),
+    CODEC_LONG_NAME("Ut Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_UTVIDEO,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(UtvideoContext),
     .p.priv_class   = &utvideo_class,
     .init           = utvideo_encode_init,
     FF_CODEC_ENCODE_CB(utvideo_encode_frame),
     .close          = utvideo_encode_close,
-    .p.capabilities = AV_CODEC_CAP_FRAME_THREADS,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
                           AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP, AV_PIX_FMT_YUV422P,
                           AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE
                       },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

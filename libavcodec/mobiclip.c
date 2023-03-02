@@ -27,12 +27,12 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
-#include "bytestream.h"
 #include "bswapdsp.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "golomb.h"
-#include "internal.h"
+#include "mathops.h"
 
 #define MOBI_RL_VLC_BITS 12
 #define MOBI_MV_VLC_BITS 6
@@ -1216,6 +1216,9 @@ static int mobiclip_decode(AVCodecContext *avctx, AVFrame *rframe,
     AVFrame *frame = s->pic[s->current_pic];
     int ret;
 
+    if (avctx->height/16 * (avctx->width/16) * 2 > 8LL*FFALIGN(pkt->size, 2))
+        return AVERROR_INVALIDDATA;
+
     av_fast_padded_malloc(&s->bitstream, &s->bitstream_size,
                           pkt->size);
 
@@ -1342,7 +1345,7 @@ static av_cold int mobiclip_close(AVCodecContext *avctx)
 
 const FFCodec ff_mobiclip_decoder = {
     .p.name         = "mobiclip",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("MobiClip Video"),
+    CODEC_LONG_NAME("MobiClip Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MOBICLIP,
     .priv_data_size = sizeof(MobiClipContext),
@@ -1351,5 +1354,5 @@ const FFCodec ff_mobiclip_decoder = {
     .flush          = mobiclip_flush,
     .close          = mobiclip_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

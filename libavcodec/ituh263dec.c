@@ -50,6 +50,7 @@
 #include "mpegvideodata.h"
 #include "mpegvideodec.h"
 #include "mpeg4videodec.h"
+#include "mpeg4videodefs.h"
 
 // The defines below define the number of bits that are read at once for
 // reading vlc values. Changing these may improve speed and data cache needs
@@ -543,9 +544,9 @@ static int h263_decode_block(MpegEncContext * s, int16_t * block,
         i = 0;
         if (s->ac_pred) {
             if (s->h263_aic_dir)
-                scan_table = s->intra_v_scantable.permutated; /* left */
+                scan_table = s->permutated_intra_v_scantable; /* left */
             else
-                scan_table = s->intra_h_scantable.permutated; /* top */
+                scan_table = s->permutated_intra_h_scantable; /* top */
         }
     } else if (s->mb_intra) {
         /* DC coef */
@@ -1092,7 +1093,7 @@ int ff_h263_decode_picture_header(MpegEncContext *s)
 
     align_get_bits(&s->gb);
 
-    if (show_bits(&s->gb, 2) == 2 && s->avctx->frame_number == 0) {
+    if (show_bits(&s->gb, 2) == 2 && s->avctx->frame_num == 0) {
          av_log(s->avctx, AV_LOG_WARNING, "Header looks like RTP instead of H.263\n");
     }
 

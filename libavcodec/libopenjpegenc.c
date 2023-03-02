@@ -756,13 +756,15 @@ static const AVClass openjpeg_class = {
 
 const FFCodec ff_libopenjpeg_encoder = {
     .p.name         = "libopenjpeg",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("OpenJPEG JPEG 2000"),
+    CODEC_LONG_NAME("OpenJPEG JPEG 2000"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_JPEG2000,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size = sizeof(LibOpenJPEGContext),
     .init           = libopenjpeg_encode_init,
     FF_CODEC_ENCODE_CB(libopenjpeg_encode_frame),
-    .p.capabilities = AV_CODEC_CAP_FRAME_THREADS,
+    .p.capabilities = AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA, AV_PIX_FMT_RGB48,
         AV_PIX_FMT_RGBA64, AV_PIX_FMT_GBR24P,

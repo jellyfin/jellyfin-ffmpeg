@@ -29,8 +29,8 @@
 #include "codec_internal.h"
 #include "encode.h"
 #include "libopus.h"
-#include "vorbis.h"
 #include "audio_frame_queue.h"
+#include "vorbis_data.h"
 
 typedef struct LibopusEncOpts {
     int vbr;
@@ -459,7 +459,7 @@ static int libopus_encode(AVCodecContext *avctx, AVPacket *avpkt,
     const int bytes_per_sample = av_get_bytes_per_sample(avctx->sample_fmt);
     const int channels         = avctx->ch_layout.nb_channels;
     const int sample_size      = channels * bytes_per_sample;
-    uint8_t *audio;
+    const uint8_t *audio;
     int ret;
     int discard_padding;
 
@@ -470,18 +470,18 @@ static int libopus_encode(AVCodecContext *avctx, AVPacket *avpkt,
         if (opus->encoder_channel_map != NULL) {
             audio = opus->samples;
             libopus_copy_samples_with_channel_map(
-                audio, frame->data[0], opus->encoder_channel_map,
+                opus->samples, frame->data[0], opus->encoder_channel_map,
                 channels, frame->nb_samples, bytes_per_sample);
         } else if (frame->nb_samples < opus->opts.packet_size) {
             audio = opus->samples;
-            memcpy(audio, frame->data[0], frame->nb_samples * sample_size);
+            memcpy(opus->samples, frame->data[0], frame->nb_samples * sample_size);
         } else
             audio = frame->data[0];
     } else {
         if (!opus->afq.remaining_samples || (!opus->afq.frame_alloc && !opus->afq.frame_count))
             return 0;
         audio = opus->samples;
-        memset(audio, 0, opus->opts.packet_size * sample_size);
+        memset(opus->samples, 0, opus->opts.packet_size * sample_size);
     }
 
     /* Maximum packet size taken from opusenc in opus-tools. 120ms packets
@@ -491,11 +491,11 @@ static int libopus_encode(AVCodecContext *avctx, AVPacket *avpkt,
         return ret;
 
     if (avctx->sample_fmt == AV_SAMPLE_FMT_FLT)
-        ret = opus_multistream_encode_float(opus->enc, (float *)audio,
+        ret = opus_multistream_encode_float(opus->enc, (const float *)audio,
                                             opus->opts.packet_size,
                                             avpkt->data, avpkt->size);
     else
-        ret = opus_multistream_encode(opus->enc, (opus_int16 *)audio,
+        ret = opus_multistream_encode(opus->enc, (const opus_int16 *)audio,
                                       opus->opts.packet_size,
                                       avpkt->data, avpkt->size);
 
@@ -585,14 +585,16 @@ static const int libopus_sample_rates[] = {
 
 const FFCodec ff_libopus_encoder = {
     .p.name          = "libopus",
-    .p.long_name     = NULL_IF_CONFIG_SMALL("libopus Opus"),
+    CODEC_LONG_NAME("libopus Opus"),
     .p.type          = AVMEDIA_TYPE_AUDIO,
     .p.id            = AV_CODEC_ID_OPUS,
+    .p.capabilities  = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                       AV_CODEC_CAP_SMALL_LAST_FRAME,
+    .caps_internal   = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size  = sizeof(LibopusEncContext),
     .init            = libopus_encode_init,
     FF_CODEC_ENCODE_CB(libopus_encode),
     .close           = libopus_encode_close,
-    .p.capabilities  = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .p.sample_fmts   = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                       AV_SAMPLE_FMT_FLT,
                                                       AV_SAMPLE_FMT_NONE },

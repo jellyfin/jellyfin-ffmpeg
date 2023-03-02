@@ -26,7 +26,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "texturedsp.h"
 #include "vbn.h"
 #include "libavutil/imgutils.h"
@@ -175,12 +175,11 @@ out:
 
 const FFCodec ff_vbn_decoder = {
     .p.name         = "vbn",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Vizrt Binary Image"),
+    CODEC_LONG_NAME("Vizrt Binary Image"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_VBN,
     .init           = vbn_init,
     FF_CODEC_DECODE_CB(vbn_decode_frame),
     .priv_data_size = sizeof(VBNContext),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE
 };

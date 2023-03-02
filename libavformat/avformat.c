@@ -35,6 +35,7 @@
 #include "avformat.h"
 #include "avio.h"
 #include "demux.h"
+#include "mux.h"
 #include "internal.h"
 
 void ff_free_stream(AVStream **pst)
@@ -100,8 +101,8 @@ void avformat_free_context(AVFormatContext *s)
         return;
     si = ffformatcontext(s);
 
-    if (s->oformat && s->oformat->deinit && si->initialized)
-        s->oformat->deinit(s);
+    if (s->oformat && ffofmt(s->oformat)->deinit && si->initialized)
+        ffofmt(s->oformat)->deinit(s);
 
     av_opt_free(s);
     if (s->iformat && s->iformat->priv_class && s->priv_data)
@@ -233,6 +234,72 @@ int ff_stream_side_data_copy(AVStream *dst, const AVStream *src)
     }
 
     return 0;
+}
+
+/**
+ * Copy all stream parameters from source to destination stream, with the
+ * exception of the index field, which is usually set by avformat_new_stream().
+ *
+ * @param dst pointer to destination AVStream
+ * @param src pointer to source AVStream
+ * @return >=0 on success, AVERROR code on error
+ */
+static int stream_params_copy(AVStream *dst, const AVStream *src)
+{
+    int ret;
+
+    dst->id                  = src->id;
+    dst->time_base           = src->time_base;
+    dst->start_time          = src->start_time;
+    dst->duration            = src->duration;
+    dst->nb_frames           = src->nb_frames;
+    dst->disposition         = src->disposition;
+    dst->discard             = src->discard;
+    dst->sample_aspect_ratio = src->sample_aspect_ratio;
+    dst->avg_frame_rate      = src->avg_frame_rate;
+    dst->event_flags         = src->event_flags;
+    dst->r_frame_rate        = src->r_frame_rate;
+    dst->pts_wrap_bits       = src->pts_wrap_bits;
+
+    av_dict_free(&dst->metadata);
+    ret = av_dict_copy(&dst->metadata, src->metadata, 0);
+    if (ret < 0)
+        return ret;
+
+    ret = avcodec_parameters_copy(dst->codecpar, src->codecpar);
+    if (ret < 0)
+        return ret;
+
+    ret = ff_stream_side_data_copy(dst, src);
+    if (ret < 0)
+        return ret;
+
+    av_packet_unref(&dst->attached_pic);
+    if (src->attached_pic.data) {
+        ret = av_packet_ref(&dst->attached_pic, &src->attached_pic);
+        if (ret < 0)
+            return ret;
+    }
+
+    return 0;
+}
+
+AVStream *ff_stream_clone(AVFormatContext *dst_ctx, const AVStream *src)
+{
+    AVStream *st;
+    int ret;
+
+    st = avformat_new_stream(dst_ctx, NULL);
+    if (!st)
+        return NULL;
+
+    ret = stream_params_copy(st, src);
+    if (ret < 0) {
+        ff_remove_stream(dst_ctx, st);
+        return NULL;
+    }
+
+    return st;
 }
 
 AVProgram *av_new_program(AVFormatContext *ac, int id)
@@ -636,6 +703,10 @@ int avformat_transfer_internal_stream_timing_info(const AVOutputFormat *ofmt,
 {
     const AVCodecContext *const dec_ctx = cffstream(ist)->avctx;
     AVCodecContext       *const enc_ctx =  ffstream(ost)->avctx;
+    AVRational dec_ctx_tb = dec_ctx->framerate.num ? av_inv_q(av_mul_q(dec_ctx->framerate,
+                                                                       (AVRational){dec_ctx->ticks_per_frame, 1}))
+                                                   : (ist->codecpar->codec_type == AVMEDIA_TYPE_AUDIO ? (AVRational){0, 1}
+                                                                                                      : ist->time_base);
 
     enc_ctx->time_base = ist->time_base;
     /*
@@ -648,38 +719,41 @@ int avformat_transfer_internal_stream_timing_info(const AVOutputFormat *ofmt,
         if (copy_tb == AVFMT_TBCF_AUTO && ist->r_frame_rate.num
             && av_q2d(ist->r_frame_rate) >= av_q2d(ist->avg_frame_rate)
             && 0.5/av_q2d(ist->r_frame_rate) > av_q2d(ist->time_base)
-            && 0.5/av_q2d(ist->r_frame_rate) > av_q2d(dec_ctx->time_base)
-            && av_q2d(ist->time_base) < 1.0/500 && av_q2d(dec_ctx->time_base) < 1.0/500
+            && 0.5/av_q2d(ist->r_frame_rate) > av_q2d(dec_ctx_tb)
+            && av_q2d(ist->time_base) < 1.0/500 && av_q2d(dec_ctx_tb) < 1.0/500
             || copy_tb == AVFMT_TBCF_R_FRAMERATE) {
             enc_ctx->time_base.num = ist->r_frame_rate.den;
             enc_ctx->time_base.den = 2*ist->r_frame_rate.num;
             enc_ctx->ticks_per_frame = 2;
         } else
 #endif
-            if (copy_tb == AVFMT_TBCF_AUTO && av_q2d(dec_ctx->time_base)*dec_ctx->ticks_per_frame > 2*av_q2d(ist->time_base)
+            if (copy_tb == AVFMT_TBCF_AUTO && dec_ctx->framerate.num &&
+                av_q2d(av_inv_q(dec_ctx->framerate)) > 2*av_q2d(ist->time_base)
                    && av_q2d(ist->time_base) < 1.0/500
-                   || copy_tb == AVFMT_TBCF_DECODER) {
-            enc_ctx->time_base = dec_ctx->time_base;
+                   || (copy_tb == AVFMT_TBCF_DECODER &&
+                       (dec_ctx->framerate.num || ist->codecpar->codec_type == AVMEDIA_TYPE_AUDIO))) {
+            enc_ctx->time_base = dec_ctx_tb;
             enc_ctx->time_base.num *= dec_ctx->ticks_per_frame;
             enc_ctx->time_base.den *= 2;
             enc_ctx->ticks_per_frame = 2;
         }
     } else if (!(ofmt->flags & AVFMT_VARIABLE_FPS)
                && !av_match_name(ofmt->name, "mov,mp4,3gp,3g2,psp,ipod,ismv,f4v")) {
-        if (copy_tb == AVFMT_TBCF_AUTO && dec_ctx->time_base.den
-            && av_q2d(dec_ctx->time_base)*dec_ctx->ticks_per_frame > av_q2d(ist->time_base)
+        if (copy_tb == AVFMT_TBCF_AUTO && dec_ctx->framerate.num
+            && av_q2d(av_inv_q(dec_ctx->framerate)) > av_q2d(ist->time_base)
             && av_q2d(ist->time_base) < 1.0/500
-            || copy_tb == AVFMT_TBCF_DECODER) {
-            enc_ctx->time_base = dec_ctx->time_base;
+            || (copy_tb == AVFMT_TBCF_DECODER &&
+                (dec_ctx->framerate.num || ist->codecpar->codec_type == AVMEDIA_TYPE_AUDIO))) {
+            enc_ctx->time_base = dec_ctx_tb;
             enc_ctx->time_base.num *= dec_ctx->ticks_per_frame;
         }
     }
 
     if ((enc_ctx->codec_tag == AV_RL32("tmcd") || ost->codecpar->codec_tag == AV_RL32("tmcd"))
-        && dec_ctx->time_base.num < dec_ctx->time_base.den
-        && dec_ctx->time_base.num > 0
-        && 121LL*dec_ctx->time_base.num > dec_ctx->time_base.den) {
-        enc_ctx->time_base = dec_ctx->time_base;
+        && dec_ctx_tb.num < dec_ctx_tb.den
+        && dec_ctx_tb.num > 0
+        && 121LL*dec_ctx_tb.num > dec_ctx_tb.den) {
+        enc_ctx->time_base = dec_ctx_tb;
     }
 
     av_reduce(&enc_ctx->time_base.num, &enc_ctx->time_base.den,
@@ -780,10 +854,16 @@ int ff_format_io_close(AVFormatContext *s, AVIOContext **pb)
 {
     int ret = 0;
     if (*pb) {
+#if FF_API_AVFORMAT_IO_CLOSE
+FF_DISABLE_DEPRECATION_WARNINGS
         if (s->io_close == ff_format_io_close_default || s->io_close == NULL)
+#endif
             ret = s->io_close2(s, *pb);
+#if FF_API_AVFORMAT_IO_CLOSE
         else
             s->io_close(s, *pb);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     }
     *pb = NULL;
     return ret;

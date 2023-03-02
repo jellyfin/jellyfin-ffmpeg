@@ -18,19 +18,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 typedef struct TrueMotion2RTContext {
     GetBitContext gb;
@@ -221,12 +216,11 @@ static av_cold int truemotion2rt_decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_truemotion2rt_decoder = {
     .p.name         = "truemotion2rt",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Duck TrueMotion 2.0 Real Time"),
+    CODEC_LONG_NAME("Duck TrueMotion 2.0 Real Time"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_TRUEMOTION2RT,
     .priv_data_size = sizeof(TrueMotion2RTContext),
     .init           = truemotion2rt_decode_init,
     FF_CODEC_DECODE_CB(truemotion2rt_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

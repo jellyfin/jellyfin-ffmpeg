@@ -25,7 +25,6 @@
 #include "bytestream.h"
 #include "codec_internal.h"
 #include "decode.h"
-#include "internal.h"
 
 typedef struct GDVContext {
     AVCodecContext *avctx;
@@ -562,7 +561,7 @@ static av_cold int gdv_decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_gdv_decoder = {
     .p.name         = "gdv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Gremlin Digital Video"),
+    CODEC_LONG_NAME("Gremlin Digital Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_GDV,
     .priv_data_size = sizeof(GDVContext),
@@ -570,5 +569,4 @@ const FFCodec ff_gdv_decoder = {
     .close          = gdv_decode_close,
     FF_CODEC_DECODE_CB(gdv_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -29,8 +29,8 @@
 #include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 #include "msgsmdec.h"
 
 #include "gsmdec_template.c"
@@ -115,7 +115,7 @@ static void gsm_flush(AVCodecContext *avctx)
 #if CONFIG_GSM_DECODER
 const FFCodec ff_gsm_decoder = {
     .p.name         = "gsm",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("GSM"),
+    CODEC_LONG_NAME("GSM"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_GSM,
     .priv_data_size = sizeof(GSMContext),
@@ -123,13 +123,12 @@ const FFCodec ff_gsm_decoder = {
     FF_CODEC_DECODE_CB(gsm_decode_frame),
     .flush          = gsm_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
 #if CONFIG_GSM_MS_DECODER
 const FFCodec ff_gsm_ms_decoder = {
     .p.name         = "gsm_ms",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("GSM Microsoft variant"),
+    CODEC_LONG_NAME("GSM Microsoft variant"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_GSM_MS,
     .priv_data_size = sizeof(GSMContext),
@@ -137,6 +136,5 @@ const FFCodec ff_gsm_ms_decoder = {
     FF_CODEC_DECODE_CB(gsm_decode_frame),
     .flush          = gsm_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

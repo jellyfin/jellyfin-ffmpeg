@@ -25,11 +25,11 @@
  */
 
 #include "libavutil/channel_layout.h"
+#include "libavutil/intreadwrite.h"
 
 #include "avcodec.h"
-#include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "mathops.h"
 
 typedef struct CinAudioContext {
@@ -123,12 +123,11 @@ static int cinaudio_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_dsicinaudio_decoder = {
     .p.name         = "dsicinaudio",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Delphine Software International CIN audio"),
+    CODEC_LONG_NAME("Delphine Software International CIN audio"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_DSICINAUDIO,
     .priv_data_size = sizeof(CinAudioContext),
     .init           = cinaudio_decode_init,
     FF_CODEC_DECODE_CB(cinaudio_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

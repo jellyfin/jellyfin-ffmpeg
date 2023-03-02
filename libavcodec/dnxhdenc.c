@@ -419,7 +419,7 @@ static av_cold int dnxhd_encode_init(AVCodecContext *avctx)
 
     avctx->bits_per_raw_sample = ctx->bit_depth;
 
-    ff_blockdsp_init(&ctx->bdsp, avctx);
+    ff_blockdsp_init(&ctx->bdsp);
     ff_fdctdsp_init(&ctx->m.fdsp, avctx);
     ff_mpv_idct_init(&ctx->m);
     ff_mpegvideoencdsp_init(&ctx->m.mpvencdsp, avctx);
@@ -944,7 +944,7 @@ static int dnxhd_mb_var_thread(AVCodecContext *avctx, void *arg,
 
     ctx = ctx->thread[threadnr];
     if (ctx->bit_depth == 8) {
-        uint8_t *pix = ctx->thread[0]->src[0] + ((mb_y << 4) * ctx->m.linesize);
+        const uint8_t *pix = ctx->thread[0]->src[0] + ((mb_y << 4) * ctx->m.linesize);
         for (mb_x = 0; mb_x < ctx->m.mb_width; ++mb_x, pix += 16) {
             unsigned mb = mb_y * ctx->m.mb_width + mb_x;
             int sum;
@@ -973,8 +973,8 @@ static int dnxhd_mb_var_thread(AVCodecContext *avctx, void *arg,
     } else { // 10-bit
         const int linesize = ctx->m.linesize >> 1;
         for (mb_x = 0; mb_x < ctx->m.mb_width; ++mb_x) {
-            uint16_t *pix = (uint16_t *)ctx->thread[0]->src[0] +
-                            ((mb_y << 4) * linesize) + (mb_x << 4);
+            const uint16_t *pix = (const uint16_t *)ctx->thread[0]->src[0] +
+                                     ((mb_y << 4) * linesize) + (mb_x << 4);
             unsigned mb  = mb_y * ctx->m.mb_width + mb_x;
             int sum = 0;
             int sqsum = 0;
@@ -1355,11 +1355,11 @@ static const FFCodecDefault dnxhd_defaults[] = {
 
 const FFCodec ff_dnxhd_encoder = {
     .p.name         = "dnxhd",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("VC3/DNxHD"),
+    CODEC_LONG_NAME("VC3/DNxHD"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_DNXHD,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
-                      AV_CODEC_CAP_SLICE_THREADS,
+                      AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(DNXHDEncContext),
     .init           = dnxhd_encode_init,
     FF_CODEC_ENCODE_CB(dnxhd_encode_picture),
@@ -1374,5 +1374,5 @@ const FFCodec ff_dnxhd_encoder = {
     .p.priv_class   = &dnxhd_class,
     .defaults       = dnxhd_defaults,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_dnxhd_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

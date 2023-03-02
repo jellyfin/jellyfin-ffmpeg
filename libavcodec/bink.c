@@ -32,10 +32,9 @@
 #include "binkdsp.h"
 #include "blockdsp.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "hpeldsp.h"
-#include "internal.h"
-#include "mathops.h"
 
 #define BINK_FLAG_ALPHA 0x00100000
 #define BINK_FLAG_GRAY  0x00020000
@@ -871,7 +870,7 @@ static int binkb_decode_plane(BinkContext *c, AVFrame *frame, GetBitContext *gb,
 
     binkb_init_bundles(c);
     ref_start = frame->data[plane_idx];
-    ref_end   = frame->data[plane_idx] + (bh * frame->linesize[plane_idx] + bw) * 8;
+    ref_end   = frame->data[plane_idx] + ((bh - 1) * frame->linesize[plane_idx] + bw - 1) * 8;
 
     for (i = 0; i < 64; i++)
         coordmap[i] = (i & 7) + (i >> 3) * stride;
@@ -927,7 +926,7 @@ static int binkb_decode_plane(BinkContext *c, AVFrame *frame, GetBitContext *gb,
                 xoff = binkb_get_value(c, BINKB_SRC_X_OFF);
                 yoff = binkb_get_value(c, BINKB_SRC_Y_OFF) + ybias;
                 ref = dst + xoff + yoff * stride;
-                if (ref < ref_start || ref + 8*stride > ref_end) {
+                if (ref < ref_start || ref > ref_end) {
                     av_log(c->avctx, AV_LOG_WARNING, "Reference block is out of bounds\n");
                 } else if (ref + 8*stride < dst || ref >= dst + 8*stride) {
                     c->put_pixels_tab(dst, ref, stride, 8);
@@ -943,7 +942,7 @@ static int binkb_decode_plane(BinkContext *c, AVFrame *frame, GetBitContext *gb,
                 xoff = binkb_get_value(c, BINKB_SRC_X_OFF);
                 yoff = binkb_get_value(c, BINKB_SRC_Y_OFF) + ybias;
                 ref = dst + xoff + yoff * stride;
-                if (ref < ref_start || ref + 8 * stride > ref_end) {
+                if (ref < ref_start || ref > ref_end) {
                     av_log(c->avctx, AV_LOG_WARNING, "Reference block is out of bounds\n");
                 } else if (ref + 8*stride < dst || ref >= dst + 8*stride) {
                     c->put_pixels_tab(dst, ref, stride, 8);
@@ -975,7 +974,7 @@ static int binkb_decode_plane(BinkContext *c, AVFrame *frame, GetBitContext *gb,
                 xoff = binkb_get_value(c, BINKB_SRC_X_OFF);
                 yoff = binkb_get_value(c, BINKB_SRC_Y_OFF) + ybias;
                 ref = dst + xoff + yoff * stride;
-                if (ref < ref_start || ref + 8 * stride > ref_end) {
+                if (ref < ref_start || ref > ref_end) {
                     av_log(c->avctx, AV_LOG_WARNING, "Reference block is out of bounds\n");
                 } else if (ref + 8*stride < dst || ref >= dst + 8*stride) {
                     c->put_pixels_tab(dst, ref, stride, 8);
@@ -1385,7 +1384,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     avctx->pix_fmt = c->has_alpha ? AV_PIX_FMT_YUVA420P : AV_PIX_FMT_YUV420P;
     avctx->color_range = c->version == 'k' ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
 
-    ff_blockdsp_init(&c->bdsp, avctx);
+    ff_blockdsp_init(&c->bdsp);
     ff_hpeldsp_init(&hdsp, avctx->flags);
     c->put_pixels_tab = hdsp.put_pixels_tab[1][0];
     ff_binkdsp_init(&c->binkdsp);
@@ -1421,7 +1420,7 @@ static void flush(AVCodecContext *avctx)
 
 const FFCodec ff_bink_decoder = {
     .p.name         = "binkvideo",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Bink video"),
+    CODEC_LONG_NAME("Bink video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_BINKVIDEO,
     .priv_data_size = sizeof(BinkContext),
@@ -1430,5 +1429,5 @@ const FFCodec ff_bink_decoder = {
     FF_CODEC_DECODE_CB(decode_frame),
     .flush          = flush,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

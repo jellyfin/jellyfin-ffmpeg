@@ -30,8 +30,8 @@
 #include "avcodec.h"
 #include "blockdsp.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 typedef struct JvContext {
     BlockDSPContext bdsp;
@@ -56,7 +56,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
 
     avctx->pix_fmt = AV_PIX_FMT_PAL8;
-    ff_blockdsp_init(&s->bdsp, avctx);
+    ff_blockdsp_init(&s->bdsp);
     return 0;
 }
 
@@ -236,7 +236,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_jv_decoder = {
     .p.name         = "jv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Bitmap Brothers JV video"),
+    CODEC_LONG_NAME("Bitmap Brothers JV video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_JV,
     .priv_data_size = sizeof(JvContext),
@@ -244,5 +244,4 @@ const FFCodec ff_jv_decoder = {
     .close          = decode_close,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

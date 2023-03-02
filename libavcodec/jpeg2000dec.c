@@ -37,7 +37,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "thread.h"
 #include "jpeg2000.h"
 #include "jpeg2000dsp.h"
@@ -521,6 +521,10 @@ static int get_cox(Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *c)
 
     c->cblk_style = bytestream2_get_byteu(&s->g);
     if (c->cblk_style != 0) { // cblk style
+        if (c->cblk_style & JPEG2000_CTSY_HTJ2K_M || c->cblk_style & JPEG2000_CTSY_HTJ2K_F) {
+            av_log(s->avctx, AV_LOG_ERROR, "Support for High throughput JPEG 2000 is not yet available\n");
+            return AVERROR_PATCHWELCOME;
+        }
         av_log(s->avctx, AV_LOG_WARNING, "extra cblk styles %X\n", c->cblk_style);
         if (c->cblk_style & JPEG2000_CBLK_BYPASS)
             av_log(s->avctx, AV_LOG_WARNING, "Selective arithmetic coding bypass\n");
@@ -1679,7 +1683,7 @@ static void decode_refpass(Jpeg2000T1Context *t1, int width, int height,
                 }
 }
 
-static void decode_clnpass(Jpeg2000DecoderContext *s, Jpeg2000T1Context *t1,
+static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t1,
                            int width, int height, int bpno, int bandno,
                            int seg_symbols, int vert_causal_ctx_csty_symbol)
 {
@@ -1745,7 +1749,7 @@ static void decode_clnpass(Jpeg2000DecoderContext *s, Jpeg2000T1Context *t1,
     }
 }
 
-static int decode_cblk(Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *codsty,
+static int decode_cblk(const Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *codsty,
                        Jpeg2000T1Context *t1, Jpeg2000Cblk *cblk,
                        int width, int height, int bandpos, uint8_t roi_shift)
 {
@@ -1896,7 +1900,7 @@ static void dequantization_int_97(int x, int y, Jpeg2000Cblk *cblk,
     }
 }
 
-static inline void mct_decode(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
+static inline void mct_decode(const Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
 {
     int i, csize = 1;
     void *src[3];
@@ -1937,7 +1941,7 @@ static inline void roi_scale_cblk(Jpeg2000Cblk *cblk,
     }
 }
 
-static inline void tile_codeblocks(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
+static inline void tile_codeblocks(const Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
 {
     Jpeg2000T1Context t1;
 
@@ -2009,7 +2013,7 @@ static inline void tile_codeblocks(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile
 }
 
 #define WRITE_FRAME(D, PIXEL)                                                                     \
-    static inline void write_frame_ ## D(Jpeg2000DecoderContext * s, Jpeg2000Tile * tile,         \
+    static inline void write_frame_ ## D(const Jpeg2000DecoderContext * s, Jpeg2000Tile * tile,   \
                                          AVFrame * picture, int precision)                        \
     {                                                                                             \
         const AVPixFmtDescriptor *pixdesc = av_pix_fmt_desc_get(s->avctx->pix_fmt);               \
@@ -2078,7 +2082,7 @@ WRITE_FRAME(16, uint16_t)
 static int jpeg2000_decode_tile(AVCodecContext *avctx, void *td,
                                 int jobnr, int threadnr)
 {
-    Jpeg2000DecoderContext *s = avctx->priv_data;
+    const Jpeg2000DecoderContext *s = avctx->priv_data;
     AVFrame *picture = td;
     Jpeg2000Tile *tile = s->tile + jobnr;
 
@@ -2515,6 +2519,15 @@ static int jpeg2000_decode_frame(AVCodecContext *avctx, AVFrame *picture,
     if (ret = jpeg2000_read_main_headers(s))
         goto end;
 
+    if (s->sar.num && s->sar.den)
+        avctx->sample_aspect_ratio = s->sar;
+    s->sar.num = s->sar.den = 0;
+
+    if (avctx->skip_frame >= AVDISCARD_ALL) {
+        jpeg2000_dec_cleanup(s);
+        return avpkt->size;
+    }
+
     /* get picture buffer */
     if ((ret = ff_thread_get_buffer(avctx, picture, 0)) < 0)
         goto end;
@@ -2543,9 +2556,6 @@ static int jpeg2000_decode_frame(AVCodecContext *avctx, AVFrame *picture,
 
     if (s->avctx->pix_fmt == AV_PIX_FMT_PAL8)
         memcpy(picture->data[1], s->palette, 256 * sizeof(uint32_t));
-    if (s->sar.num && s->sar.den)
-        avctx->sample_aspect_ratio = s->sar;
-    s->sar.num = s->sar.den = 0;
 
     return bytestream2_tell(&s->g);
 
@@ -2572,7 +2582,7 @@ static const AVClass jpeg2000_class = {
 
 const FFCodec ff_jpeg2000_decoder = {
     .p.name           = "jpeg2000",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("JPEG 2000"),
+    CODEC_LONG_NAME("JPEG 2000"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_JPEG2000,
     .p.capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_DR1,
@@ -2582,5 +2592,5 @@ const FFCodec ff_jpeg2000_decoder = {
     .p.priv_class     = &jpeg2000_class,
     .p.max_lowres     = 5,
     .p.profiles       = NULL_IF_CONFIG_SMALL(ff_jpeg2000_profiles),
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal    = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
 };

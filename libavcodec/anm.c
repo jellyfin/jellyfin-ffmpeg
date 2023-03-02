@@ -27,7 +27,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 typedef struct AnmContext {
     AVFrame *frame;
@@ -191,7 +191,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_anm_decoder = {
     .p.name         = "anm",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Deluxe Paint Animation"),
+    CODEC_LONG_NAME("Deluxe Paint Animation"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_ANM,
     .priv_data_size = sizeof(AnmContext),
@@ -199,5 +199,4 @@ const FFCodec ff_anm_decoder = {
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

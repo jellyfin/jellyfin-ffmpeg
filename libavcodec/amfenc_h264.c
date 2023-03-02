@@ -380,7 +380,7 @@ static const AVClass h264_amf_class = {
 
 const FFCodec ff_h264_amf_encoder = {
     .p.name         = "h264_amf",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("AMD AMF H.264 Encoder"),
+    CODEC_LONG_NAME("AMD AMF H.264 Encoder"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_H264,
     .init           = amf_encode_init_h264,
@@ -391,7 +391,8 @@ const FFCodec ff_h264_amf_encoder = {
     .defaults       = defaults,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                       AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
     .p.pix_fmts     = ff_amf_pix_fmts,
     .p.wrapper_name = "amf",
     .hw_configs     = ff_amfenc_hw_configs,

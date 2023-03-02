@@ -392,6 +392,10 @@ fate-png-side-data: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_frames \
 FATE_PNG_TRANSCODE-$(call TRANSCODE, PNG, IMAGE2 IMAGE_PNG_PIPE) += fate-png-icc
 fate-png-icc: CMD = transcode png_pipe $(TARGET_SAMPLES)/png1/lena-int_rgb24.png image2 "-c png" "" "-show_frames"
 
+FATE_PNG_PROBE-$(call ALLYES, LCMS2) += fate-png-icc-parse
+fate-png-icc-parse: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -show_frames \
+    -flags2 icc_profiles $(TARGET_SAMPLES)/png1/lena-int_rgb24.png
+
 FATE_PNG-$(call DEMDEC, IMAGE2, PNG) += $(FATE_PNG)
 FATE_PNG_PROBE-$(call DEMDEC, IMAGE2, PNG) += $(FATE_PNG_PROBE)
 FATE_IMAGE_FRAMECRC += $(FATE_PNG-yes)
@@ -497,7 +501,26 @@ fate-tiff-fax-g3: CMD = framecrc -i $(TARGET_SAMPLES)/CCITT_fax/G31D.TIF
 FATE_TIFF += fate-tiff-fax-g3s
 fate-tiff-fax-g3s: CMD = framecrc -i $(TARGET_SAMPLES)/CCITT_fax/G31DS.TIF
 
-FATE_TIFF-$(call DEMDEC, IMAGE2, TIFF) += $(FATE_TIFF)
+FATE_TIFF += fate-tiff-uncompressed-rgbf32le
+fate-tiff-uncompressed-rgbf32le: CMD = framecrc -i $(TARGET_SAMPLES)/tiff/uncompressed_rgbf32le.tif
+
+FATE_TIFF += fate-tiff-uncompressed-rgbaf32le
+fate-tiff-uncompressed-rgbaf32le: CMD = framecrc -i $(TARGET_SAMPLES)/tiff/uncompressed_rgbaf32le.tif
+
+FATE_TIFF += fate-tiff-lzw-rgbf32le
+fate-tiff-lzw-rgbf32le: CMD = framecrc -i $(TARGET_SAMPLES)/tiff/lzw_rgbf32le.tif
+
+FATE_TIFF += fate-tiff-lzw-rgbaf32le
+fate-tiff-lzw-rgbaf32le: CMD = framecrc -i $(TARGET_SAMPLES)/tiff/lzw_rgbaf32le.tif
+
+FATE_TIFF_ZIP += fate-tiff-zip-rgbf32le
+fate-tiff-zip-rgbf32le: CMD = framecrc -i $(TARGET_SAMPLES)/tiff/zip_rgbf32le.tif
+
+FATE_TIFF_ZIP += fate-tiff-zip-rgbaf32le
+fate-tiff-zip-rgbaf32le: CMD = framecrc -i $(TARGET_SAMPLES)/tiff/zip_rgbaf32le.tif
+
+FATE_TIFF-$(call FRAMECRC, IMAGE2, TIFF, ZLIB) += $(FATE_TIFF_ZIP)
+FATE_TIFF-$(call FRAMECRC, IMAGE2, TIFF) += $(FATE_TIFF)
 
 FATE_IMAGE_FRAMECRC += $(FATE_TIFF-yes)
 fate-tiff: $(FATE_TIFF-yes)

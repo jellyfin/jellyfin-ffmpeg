@@ -20,7 +20,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "zlib_wrapper.h"
 #include "libavutil/common.h"
 
@@ -84,11 +84,12 @@ static int zerocodec_decode_frame(AVCodecContext *avctx, AVFrame *pic,
             return AVERROR_INVALIDDATA;
         }
 
-        if (!(avpkt->flags & AV_PKT_FLAG_KEY))
+        if (!(avpkt->flags & AV_PKT_FLAG_KEY)) {
             for (j = 0; j < avctx->width << 1; j++)
                 dst[j] += prev[j] & -!dst[j];
+            prev -= prev_pic->linesize[0];
+        }
 
-        prev -= prev_pic->linesize[0];
         dst  -= pic->linesize[0];
     }
 
@@ -136,7 +137,7 @@ static void zerocodec_decode_flush(AVCodecContext *avctx)
 const FFCodec ff_zerocodec_decoder = {
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.name         = "zerocodec",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("ZeroCodec Lossless Video"),
+    CODEC_LONG_NAME("ZeroCodec Lossless Video"),
     .p.id           = AV_CODEC_ID_ZEROCODEC,
     .priv_data_size = sizeof(ZeroCodecContext),
     .init           = zerocodec_decode_init,
@@ -144,6 +145,5 @@ const FFCodec ff_zerocodec_decoder = {
     .flush          = zerocodec_decode_flush,
     .close          = zerocodec_decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

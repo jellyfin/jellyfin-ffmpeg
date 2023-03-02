@@ -27,11 +27,13 @@
 #include "libavutil/ffversion.h"
 
 #include <string.h>
+#include <math.h>
 
 #include "libavformat/avformat.h"
 #include "libavformat/version.h"
 #include "libavcodec/avcodec.h"
 #include "libavcodec/version.h"
+#include "libavutil/ambient_viewing_environment.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
@@ -655,7 +657,7 @@ static int writer_open(WriterContext **wctx, const Writer *writer, const char *a
             goto fail;
         }
 
-        while ((opt = av_dict_get(opts, "", opt, AV_DICT_IGNORE_SUFFIX))) {
+        while ((opt = av_dict_iterate(opts, opt))) {
             if ((ret = av_opt_set(*wctx, opt->key, opt->value, AV_OPT_SEARCH_CHILDREN)) < 0) {
                 av_log(*wctx, AV_LOG_ERROR, "Failed to set option '%s' with value '%s' provided to writer context\n",
                        opt->key, opt->value);
@@ -1896,12 +1898,14 @@ static void writer_register_all(void)
     writer_print_string(w, k, pbuf.str, 0);    \
 } while (0)
 
-#define print_list_fmt(k, f, n, ...) do {       \
+#define print_list_fmt(k, f, n, m, ...) do {    \
     av_bprint_clear(&pbuf);                     \
     for (int idx = 0; idx < n; idx++) {         \
-        if (idx > 0)                            \
-            av_bprint_chars(&pbuf, ' ', 1);     \
-        av_bprintf(&pbuf, f, __VA_ARGS__);      \
+        for (int idx2 = 0; idx2 < m; idx2++) {  \
+            if (idx > 0 || idx2 > 0)            \
+                av_bprint_chars(&pbuf, ' ', 1); \
+            av_bprintf(&pbuf, f, __VA_ARGS__);  \
+        }                                       \
     }                                           \
     writer_print_string(w, k, pbuf.str, 0);     \
 } while (0)
@@ -1942,7 +1946,7 @@ static inline int show_tags(WriterContext *w, AVDictionary *tags, int section_id
         return 0;
     writer_print_section_header(w, section_id);
 
-    while ((tag = av_dict_get(tags, "", tag, AV_DICT_IGNORE_SUFFIX))) {
+    while ((tag = av_dict_iterate(tags, tag))) {
         if ((ret = print_str_validate(tag->key, tag->value)) < 0)
             break;
     }
@@ -2012,7 +2016,7 @@ static void print_dovi_metadata(WriterContext *w, const AVDOVIMetadata *dovi)
             const AVDOVIReshapingCurve *curve = &mapping->curves[c];
             writer_print_section_header(w, SECTION_ID_FRAME_SIDE_DATA_COMPONENT);
 
-            print_list_fmt("pivots", "%"PRIu16, curve->num_pivots, curve->pivots[idx]);
+            print_list_fmt("pivots", "%"PRIu16, curve->num_pivots, 1, curve->pivots[idx]);
 
             writer_print_section_header(w, SECTION_ID_FRAME_SIDE_DATA_PIECE_LIST);
             for (int i = 0; i < curve->num_pivots - 1; i++) {
@@ -2024,7 +2028,7 @@ static void print_dovi_metadata(WriterContext *w, const AVDOVIMetadata *dovi)
                     print_str("mapping_idc_name",   "polynomial");
                     print_int("poly_order",         curve->poly_order[i]);
                     print_list_fmt("poly_coef", "%"PRIi64,
-                                   curve->poly_order[i] + 1,
+                                   curve->poly_order[i] + 1, 1,
                                    curve->poly_coef[i][idx]);
                     break;
                 case AV_DOVI_MAPPING_MMR:
@@ -2032,8 +2036,8 @@ static void print_dovi_metadata(WriterContext *w, const AVDOVIMetadata *dovi)
                     print_int("mmr_order",          curve->mmr_order[i]);
                     print_int("mmr_constant",       curve->mmr_constant[i]);
                     print_list_fmt("mmr_coef", "%"PRIi64,
-                                   curve->mmr_order[i] * 7,
-                                   curve->mmr_coef[i][0][idx]);
+                                   curve->mmr_order[i], 7,
+                                   curve->mmr_coef[i][idx][idx2]);
                     break;
                 default:
                     print_str("mapping_idc_name",   "unknown");
@@ -2071,15 +2075,15 @@ static void print_dovi_metadata(WriterContext *w, const AVDOVIMetadata *dovi)
         print_int("dm_metadata_id",         color->dm_metadata_id);
         print_int("scene_refresh_flag",     color->scene_refresh_flag);
         print_list_fmt("ycc_to_rgb_matrix", "%d/%d",
-                       FF_ARRAY_ELEMS(color->ycc_to_rgb_matrix),
+                       FF_ARRAY_ELEMS(color->ycc_to_rgb_matrix), 1,
                        color->ycc_to_rgb_matrix[idx].num,
                        color->ycc_to_rgb_matrix[idx].den);
         print_list_fmt("ycc_to_rgb_offset", "%d/%d",
-                       FF_ARRAY_ELEMS(color->ycc_to_rgb_offset),
+                       FF_ARRAY_ELEMS(color->ycc_to_rgb_offset), 1,
                        color->ycc_to_rgb_offset[idx].num,
                        color->ycc_to_rgb_offset[idx].den);
         print_list_fmt("rgb_to_lms_matrix", "%d/%d",
-                       FF_ARRAY_ELEMS(color->rgb_to_lms_matrix),
+                       FF_ARRAY_ELEMS(color->rgb_to_lms_matrix), 1,
                        color->rgb_to_lms_matrix[idx].num,
                        color->rgb_to_lms_matrix[idx].den);
         print_int("signal_eotf",            color->signal_eotf);
@@ -2265,6 +2269,17 @@ static void print_dynamic_hdr_vivid(WriterContext *w, const AVDynamicHDRVivid *m
     }
 }
 
+static void print_ambient_viewing_environment(WriterContext *w,
+                                              const AVAmbientViewingEnvironment *env)
+{
+    if (!env)
+        return;
+
+    print_q("ambient_illuminance", env->ambient_illuminance, '/');
+    print_q("ambient_light_x",     env->ambient_light_x,     '/');
+    print_q("ambient_light_y",     env->ambient_light_y,     '/');
+}
+
 static void print_pkt_side_data(WriterContext *w,
                                 AVCodecParameters *par,
                                 const AVPacketSideData *side_data,
@@ -2282,8 +2297,11 @@ static void print_pkt_side_data(WriterContext *w,
         writer_print_section_header(w, id_data);
         print_str("side_data_type", name ? name : "unknown");
         if (sd->type == AV_PKT_DATA_DISPLAYMATRIX && sd->size >= 9*4) {
+            double rotation = av_display_rotation_get((int32_t *)sd->data);
+            if (isnan(rotation))
+                rotation = 0;
             writer_print_integers(w, "displaymatrix", sd->data, 9, " %11d", 3, 4, 1);
-            print_int("rotation", av_display_rotation_get((int32_t *)sd->data));
+            print_int("rotation", rotation);
         } else if (sd->type == AV_PKT_DATA_STEREO3D) {
             const AVStereo3D *stereo = (AVStereo3D *)sd->data;
             print_str("type", av_stereo3d_type_name(stereo->type));
@@ -2495,8 +2513,12 @@ static void show_packet(WriterContext *w, InputFile *ifile, AVPacket *pkt, int p
     print_val("size",             pkt->size, unit_byte_str);
     if (pkt->pos != -1) print_fmt    ("pos", "%"PRId64, pkt->pos);
     else                print_str_opt("pos", "N/A");
-    print_fmt("flags", "%c%c",      pkt->flags & AV_PKT_FLAG_KEY ? 'K' : '_',
-              pkt->flags & AV_PKT_FLAG_DISCARD ? 'D' : '_');
+    print_fmt("flags", "%c%c%c",      pkt->flags & AV_PKT_FLAG_KEY ? 'K' : '_',
+              pkt->flags & AV_PKT_FLAG_DISCARD ? 'D' : '_',
+              pkt->flags & AV_PKT_FLAG_CORRUPT ? 'C' : '_');
+    if (do_show_data)
+        writer_print_data(w, "data", pkt->data, pkt->size);
+    writer_print_data_hash(w, "data_hash", pkt->data, pkt->size);
 
     if (pkt->side_data_elems) {
         size_t size;
@@ -2515,9 +2537,6 @@ static void show_packet(WriterContext *w, InputFile *ifile, AVPacket *pkt, int p
                             SECTION_ID_PACKET_SIDE_DATA);
     }
 
-    if (do_show_data)
-        writer_print_data(w, "data", pkt->data, pkt->size);
-    writer_print_data_hash(w, "data_hash", pkt->data, pkt->size);
     writer_print_section_footer(w);
 
     av_bprint_finalize(&pbuf, NULL);
@@ -2570,8 +2589,14 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
     print_time("pkt_dts_time",          frame->pkt_dts, &stream->time_base);
     print_ts  ("best_effort_timestamp", frame->best_effort_timestamp);
     print_time("best_effort_timestamp_time", frame->best_effort_timestamp, &stream->time_base);
+#if LIBAVUTIL_VERSION_MAJOR < 59
+    AV_NOWARN_DEPRECATED(
     print_duration_ts  ("pkt_duration",      frame->pkt_duration);
     print_duration_time("pkt_duration_time", frame->pkt_duration, &stream->time_base);
+    )
+#endif
+    print_duration_ts  ("duration",          frame->duration);
+    print_duration_time("duration_time",     frame->duration, &stream->time_base);
     if (frame->pkt_pos != -1) print_fmt    ("pkt_pos", "%"PRId64, frame->pkt_pos);
     else                      print_str_opt("pkt_pos", "N/A");
     if (frame->pkt_size != -1) print_val    ("pkt_size", frame->pkt_size, unit_byte_str);
@@ -2593,8 +2618,12 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
             print_str_opt("sample_aspect_ratio", "N/A");
         }
         print_fmt("pict_type",              "%c", av_get_picture_type_char(frame->pict_type));
+#if LIBAVUTIL_VERSION_MAJOR < 59
+    AV_NOWARN_DEPRECATED(
         print_int("coded_picture_number",   frame->coded_picture_number);
         print_int("display_picture_number", frame->display_picture_number);
+    )
+#endif
         print_int("interlaced_frame",       frame->interlaced_frame);
         print_int("top_field_first",        frame->top_field_first);
         print_int("repeat_pict",            frame->repeat_pict);
@@ -2633,8 +2662,11 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
             name = av_frame_side_data_name(sd->type);
             print_str("side_data_type", name ? name : "unknown");
             if (sd->type == AV_FRAME_DATA_DISPLAYMATRIX && sd->size >= 9*4) {
+                double rotation = av_display_rotation_get((int32_t *)sd->data);
+                if (isnan(rotation))
+                    rotation = 0;
                 writer_print_integers(w, "displaymatrix", sd->data, 9, " %11d", 3, 4, 1);
-                print_int("rotation", av_display_rotation_get((int32_t *)sd->data));
+                print_int("rotation", rotation);
             } else if (sd->type == AV_FRAME_DATA_AFD && sd->size > 0) {
                 print_int("active_format", *sd->data);
             } else if (sd->type == AV_FRAME_DATA_GOP_TIMECODE && sd->size >= 8) {
@@ -2689,6 +2721,9 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
             } else if (sd->type == AV_FRAME_DATA_DYNAMIC_HDR_VIVID) {
                 AVDynamicHDRVivid *metadata = (AVDynamicHDRVivid *)sd->data;
                 print_dynamic_hdr_vivid(w, metadata);
+            } else if (sd->type == AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT) {
+                print_ambient_viewing_environment(
+                    w, (const AVAmbientViewingEnvironment *)sd->data);
             }
             writer_print_section_footer(w);
         }
@@ -2703,7 +2738,7 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
 
 static av_always_inline int process_frame(WriterContext *w,
                                           InputFile *ifile,
-                                          AVFrame *frame, AVPacket *pkt,
+                                          AVFrame *frame, const AVPacket *pkt,
                                           int *packet_new)
 {
     AVFormatContext *fmt_ctx = ifile->fmt_ctx;
@@ -2844,9 +2879,10 @@ static int read_interval_packets(WriterContext *w, InputFile *ifile,
         }
         if (selected_streams[pkt->stream_index]) {
             AVRational tb = ifile->streams[pkt->stream_index].st->time_base;
+            int64_t pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
 
-            if (pkt->pts != AV_NOPTS_VALUE)
-                *cur_ts = av_rescale_q(pkt->pts, tb, AV_TIME_BASE_Q);
+            if (pts != AV_NOPTS_VALUE)
+                *cur_ts = av_rescale_q(pts, tb, AV_TIME_BASE_Q);
 
             if (!has_start && *cur_ts != AV_NOPTS_VALUE) {
                 start = *cur_ts;
@@ -2880,7 +2916,7 @@ static int read_interval_packets(WriterContext *w, InputFile *ifile,
     }
     av_packet_unref(pkt);
     //Flush remaining frames that are cached in the decoder
-    for (i = 0; i < fmt_ctx->nb_streams; i++) {
+    for (i = 0; i < ifile->nb_streams; i++) {
         pkt->stream_index = i;
         if (do_read_frames) {
             while (process_frame(w, ifile, frame, pkt, &(int){1}) > 0);
@@ -3038,6 +3074,8 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
         }
 
         print_int("bits_per_sample", av_get_bits_per_sample(par->codec_id));
+
+        print_int("initial_padding", par->initial_padding);
         break;
 
     case AVMEDIA_TYPE_SUBTITLE:
@@ -3264,15 +3302,9 @@ static int show_format(WriterContext *w, InputFile *ifile)
 
 static void show_error(WriterContext *w, int err)
 {
-    char errbuf[128];
-    const char *errbuf_ptr = errbuf;
-
-    if (av_strerror(err, errbuf, sizeof(errbuf)) < 0)
-        errbuf_ptr = strerror(AVUNERROR(err));
-
     writer_print_section_header(w, SECTION_ID_ERROR);
     print_int("code", err);
-    print_str("string", errbuf_ptr);
+    print_str("string", av_err2str(err));
     writer_print_section_footer(w);
 }
 
@@ -3285,10 +3317,8 @@ static int open_input_file(InputFile *ifile, const char *filename,
     int scan_all_pmts_set = 0;
 
     fmt_ctx = avformat_alloc_context();
-    if (!fmt_ctx) {
-        print_error(filename, AVERROR(ENOMEM));
-        exit_program(1);
-    }
+    if (!fmt_ctx)
+        report_and_exit(AVERROR(ENOMEM));
 
     if (!av_dict_get(format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
@@ -3306,7 +3336,7 @@ static int open_input_file(InputFile *ifile, const char *filename,
     ifile->fmt_ctx = fmt_ctx;
     if (scan_all_pmts_set)
         av_dict_set(&format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE);
-    while ((t = av_dict_get(format_opts, "", t, AV_DICT_IGNORE_SUFFIX)))
+    while ((t = av_dict_iterate(format_opts, t)))
         av_log(NULL, AV_LOG_WARNING, "Option %s skipped - not known to demuxer.\n", t->key);
 
     if (find_stream_info) {
@@ -3705,7 +3735,7 @@ static void opt_input_file(void *optctx, const char *arg)
         exit_program(1);
     }
     if (!strcmp(arg, "-"))
-        arg = "pipe:";
+        arg = "fd:";
     input_filename = arg;
 }
 
@@ -3724,7 +3754,7 @@ static void opt_output_file(void *optctx, const char *arg)
         exit_program(1);
     }
     if (!strcmp(arg, "-"))
-        arg = "pipe:";
+        arg = "fd:";
     output_filename = arg;
 }
 

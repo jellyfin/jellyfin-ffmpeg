@@ -69,7 +69,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 {
     Msvideo1EncContext * const c = avctx->priv_data;
     const AVFrame *p = pict;
-    uint16_t *src;
+    const uint16_t *src;
     uint8_t *prevptr;
     uint8_t *dst, *buf;
     int keyframe = 0;
@@ -85,7 +85,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     if(!c->prev)
         c->prev = av_malloc(avctx->width * 3 * (avctx->height + 3));
     prevptr = c->prev + avctx->width * 3 * (FFALIGN(avctx->height, 4) - 1);
-    src = (uint16_t*)(p->data[0] + p->linesize[0]*(FFALIGN(avctx->height, 4) - 1));
+    src = (const uint16_t*)(p->data[0] + p->linesize[0]*(FFALIGN(avctx->height, 4) - 1));
     if(c->keyint >= avctx->keyint_min)
         keyframe = 1;
 
@@ -304,13 +304,13 @@ static av_cold int encode_end(AVCodecContext *avctx)
 
 const FFCodec ff_msvideo1_encoder = {
     .p.name         = "msvideo1",
-    .p.long_name = NULL_IF_CONFIG_SMALL("Microsoft Video-1"),
+    CODEC_LONG_NAME("Microsoft Video-1"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MSVIDEO1,
+    .p.capabilities = AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(Msvideo1EncContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),
     .close          = encode_end,
     .p.pix_fmts = (const enum AVPixelFormat[]){AV_PIX_FMT_RGB555, AV_PIX_FMT_NONE},
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -21,7 +21,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 static av_cold int v308_decode_init(AVCodecContext *avctx)
 {
@@ -74,11 +74,10 @@ static int v308_decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
 const FFCodec ff_v308_decoder = {
     .p.name       = "v308",
-    .p.long_name  = NULL_IF_CONFIG_SMALL("Uncompressed packed 4:4:4"),
+    CODEC_LONG_NAME("Uncompressed packed 4:4:4"),
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_V308,
     .init         = v308_decode_init,
     FF_CODEC_DECODE_CB(v308_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

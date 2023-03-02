@@ -344,7 +344,7 @@ static IMFSample *mf_v_avframe_to_sample(AVCodecContext *avctx, const AVFrame *f
         return NULL;
     }
 
-    IMFSample_SetSampleDuration(sample, mf_to_mf_time(avctx, frame->pkt_duration));
+    IMFSample_SetSampleDuration(sample, mf_to_mf_time(avctx, frame->duration));
 
     return sample;
 }
@@ -1214,7 +1214,6 @@ static int mf_init(AVCodecContext *avctx)
                 return 0;
         }
     }
-    mf_close(avctx);
     return ret;
 }
 
@@ -1230,7 +1229,7 @@ static int mf_init(AVCodecContext *avctx)
     const FFCodec ff_ ## NAME ## _mf_encoder = {                               \
         .p.priv_class   = &ff_ ## NAME ## _mf_encoder_class,                   \
         .p.name         = #NAME "_mf",                                         \
-        .p.long_name    = NULL_IF_CONFIG_SMALL(#ID " via MediaFoundation"),    \
+        CODEC_LONG_NAME(#ID " via MediaFoundation"),                           \
         .p.type         = AVMEDIA_TYPE_ ## MEDIATYPE,                          \
         .p.id           = AV_CODEC_ID_ ## ID,                                  \
         .priv_data_size = sizeof(MFContext),                                   \
@@ -1239,8 +1238,7 @@ static int mf_init(AVCodecContext *avctx)
         FF_CODEC_RECEIVE_PACKET_CB(mf_receive_packet),                         \
         FMTS                                                                   \
         CAPS                                                                   \
-        .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |                       \
-                          FF_CODEC_CAP_INIT_CLEANUP,                           \
+        .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,                           \
     };
 
 #define AFMTS \

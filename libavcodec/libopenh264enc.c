@@ -50,9 +50,6 @@ typedef struct SVCContext {
     int max_nal_size;
     int skip_frames;
     int skipped;
-#if FF_API_OPENH264_CABAC
-    int cabac;                      // deprecated
-#endif
     int coder;
 
     // rate control mode
@@ -63,22 +60,6 @@ typedef struct SVCContext {
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 #define DEPRECATED AV_OPT_FLAG_DEPRECATED
 static const AVOption options[] = {
-#if FF_API_OPENH264_SLICE_MODE
-#if OPENH264_VER_AT_LEAST(1, 6)
-    { "slice_mode", "set slice mode, use slices/max_nal_size", OFFSET(slice_mode), AV_OPT_TYPE_INT, { .i64 = SM_FIXEDSLCNUM_SLICE }, SM_SINGLE_SLICE, SM_RESERVED, VE|DEPRECATED, "slice_mode" },
-#else
-    { "slice_mode", "set slice mode, use slices/max_nal_size", OFFSET(slice_mode), AV_OPT_TYPE_INT, { .i64 = SM_AUTO_SLICE }, SM_SINGLE_SLICE, SM_RESERVED, VE|DEPRECATED, "slice_mode" },
-#endif
-        { "fixed", "a fixed number of slices", 0, AV_OPT_TYPE_CONST, { .i64 = SM_FIXEDSLCNUM_SLICE }, 0, 0, VE, "slice_mode" },
-#if OPENH264_VER_AT_LEAST(1, 6)
-        { "dyn", "Size limited (compatibility name)", 0, AV_OPT_TYPE_CONST, { .i64 = SM_SIZELIMITED_SLICE }, 0, 0, VE, "slice_mode" },
-        { "sizelimited", "Size limited", 0, AV_OPT_TYPE_CONST, { .i64 = SM_SIZELIMITED_SLICE }, 0, 0, VE, "slice_mode" },
-#else
-        { "rowmb", "one slice per row of macroblocks", 0, AV_OPT_TYPE_CONST, { .i64 = SM_ROWMB_SLICE }, 0, 0, VE, "slice_mode" },
-        { "auto", "automatic number of slices according to number of threads", 0, AV_OPT_TYPE_CONST, { .i64 = SM_AUTO_SLICE }, 0, 0, VE, "slice_mode" },
-        { "dyn", "Dynamic slicing", 0, AV_OPT_TYPE_CONST, { .i64 = SM_DYN_SLICE }, 0, 0, VE, "slice_mode" },
-#endif
-#endif
     { "loopfilter", "enable loop filter", OFFSET(loopfilter), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, VE },
     { "profile", "set profile restrictions", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = FF_PROFILE_UNKNOWN }, FF_PROFILE_UNKNOWN, 0xffff, VE, "profile" },
 #define PROFILE(name, value)  name, NULL, 0, AV_OPT_TYPE_CONST, { .i64 = value }, 0, 0, VE, "profile"
@@ -88,9 +69,6 @@ static const AVOption options[] = {
 #undef PROFILE
     { "max_nal_size", "set maximum NAL size in bytes", OFFSET(max_nal_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, VE },
     { "allow_skip_frames", "allow skipping frames to hit the target bitrate", OFFSET(skip_frames), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
-#if FF_API_OPENH264_CABAC
-    { "cabac", "Enable cabac(deprecated, use coder)", OFFSET(cabac), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, VE|DEPRECATED },
-#endif
     { "coder", "Coder type",  OFFSET(coder), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE, "coder" },
         { "default",          NULL, 0, AV_OPT_TYPE_CONST, { .i64 = -1 }, INT_MIN, INT_MAX, VE, "coder" },
         { "cavlc",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 },  INT_MIN, INT_MAX, VE, "coder" },
@@ -453,15 +431,16 @@ static const FFCodecDefault svc_enc_defaults[] = {
 
 const FFCodec ff_libopenh264_encoder = {
     .p.name         = "libopenh264",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("OpenH264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
+    CODEC_LONG_NAME("OpenH264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_H264,
-    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_OTHER_THREADS,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_OTHER_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(SVCContext),
     .init           = svc_encode_init,
     FF_CODEC_ENCODE_CB(svc_encode_frame),
     .close          = svc_encode_close,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP |
                       FF_CODEC_CAP_AUTO_THREADS,
     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P,
                                                     AV_PIX_FMT_NONE },
