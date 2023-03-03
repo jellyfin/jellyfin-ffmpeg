@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
-      codenames: '["buster", "bullseye"]'
+      codenames: '["buster", "bullseye", "bookworm"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: false
 
@@ -30,7 +30,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["kinetic", "jammy", "focal", "bionic"]'
+      codenames: '["bionic", "focal", "jammy", "kinetic", "lunar"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: false
 

@@ -9,6 +9,9 @@ packages:
   - bullseye-amd64
   - bullseye-armhf
   - bullseye-arm64
+  - bookworm-amd64
+  - bookworm-armhf
+  - bookworm-arm64
   - bionic-amd64
   - bionic-armhf
   - bionic-arm64
@@ -21,3 +24,6 @@ packages:
   - kinetic-amd64
   - kinetic-armhf
   - kinetic-arm64
+  - lunar-amd64
+  - lunar-armhf
+  - lunar-arm64
