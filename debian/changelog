@@ -3,6 +3,8 @@ jellyfin-ffmpeg (6.0-1) unstable; urgency=medium
   * New upstream version 6.0
   * Rename package to jellyin-ffmpeg6
   * Update build scripts and dependencies
+  * Drop the EOL Ubuntu bionic
+  * Enable Debian bookworm and Ubuntu lunar
 
  -- nyanmisaka <nst799610810@gmail.com>  Tue, 28 Feb 2023 19:50:24 +0800
 
