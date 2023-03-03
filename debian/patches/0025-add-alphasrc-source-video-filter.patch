@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -556,6 +556,7 @@ OBJS-$(CONFIG_ZSCALE_FILTER)
+@@ -570,6 +570,7 @@ OBJS-$(CONFIG_XSTACK_QSV_FILTER)
  
  OBJS-$(CONFIG_ALLRGB_FILTER)                 += vsrc_testsrc.o
  OBJS-$(CONFIG_ALLYUV_FILTER)                 += vsrc_testsrc.o
@@ -14,7 +14,7 @@ Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -522,6 +522,7 @@ extern const AVFilter ff_vf_zscale;
+@@ -534,6 +534,7 @@ extern const AVFilter ff_vf_xstack_qsv;
  
  extern const AVFilter ff_vsrc_allrgb;
  extern const AVFilter ff_vsrc_allyuv;

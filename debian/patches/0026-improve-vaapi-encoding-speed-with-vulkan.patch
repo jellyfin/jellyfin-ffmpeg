@@ -67,7 +67,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
      if (err < 0)
          return err;
  
-@@ -722,7 +741,7 @@ fail:
+@@ -731,7 +750,7 @@ fail:
  static int vaapi_encode_discard(AVCodecContext *avctx,
                                  VAAPIEncodePicture *pic)
  {
@@ -76,7 +76,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
  
      if (pic->output_buffer_ref) {
          av_log(avctx, AV_LOG_DEBUG, "Discard output for pic "
-@@ -1207,49 +1226,37 @@ int ff_vaapi_encode_receive_packet(AVCod
+@@ -1227,49 +1246,37 @@ int ff_vaapi_encode_receive_packet(AVCod
              return AVERROR(EAGAIN);
      }
  
@@ -146,7 +146,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
      err = vaapi_encode_output(avctx, pic, pkt);
      if (err < 0) {
          av_log(avctx, AV_LOG_ERROR, "Output failed: %d.\n", err);
-@@ -2725,16 +2732,16 @@ av_cold int ff_vaapi_encode_init(AVCodec
+@@ -2745,16 +2752,16 @@ av_cold int ff_vaapi_encode_init(AVCodec
  #if VA_CHECK_VERSION(1, 9, 0)
      // check vaSyncBuffer function
      vas = vaSyncBuffer(ctx->hwctx->display, VA_INVALID_ID, 0);
@@ -174,7 +174,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/vaapi_encode.h
 +++ jellyfin-ffmpeg/libavcodec/vaapi_encode.h
-@@ -479,10 +479,9 @@ int ff_vaapi_encode_close(AVCodecContext
+@@ -483,10 +483,9 @@ int ff_vaapi_encode_close(AVCodecContext
        OFFSET(common.desired_b_depth), AV_OPT_TYPE_INT, \
        { .i64 = 1 }, 1, INT_MAX, FLAGS }, \
      { "async_depth", "Maximum processing parallelism. " \

@@ -1,3 +1,48 @@
+Index: jellyfin-ffmpeg/libavcodec/qsv.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/qsv.c
++++ jellyfin-ffmpeg/libavcodec/qsv.c
+@@ -196,7 +196,7 @@ int ff_qsv_print_warning(void *log_ctx,
+ {
+     const char *desc;
+     int ret = qsv_map_error(err, &desc);
+-    av_log(log_ctx, AV_LOG_WARNING, "%s: %s (%d)\n", warning_string, desc, err);
++    av_log(log_ctx, AV_LOG_VERBOSE, "%s: %s (%d)\n", warning_string, desc, err);
+     return ret;
+ }
+ 
+@@ -208,7 +208,6 @@ enum AVPixelFormat ff_qsv_map_fourcc(uin
+     case MFX_FOURCC_P8:   return AV_PIX_FMT_PAL8;
+     case MFX_FOURCC_A2RGB10: return AV_PIX_FMT_X2RGB10;
+     case MFX_FOURCC_RGB4: return AV_PIX_FMT_BGRA;
+-#if CONFIG_VAAPI
+     case MFX_FOURCC_YUY2: return AV_PIX_FMT_YUYV422;
+     case MFX_FOURCC_Y210: return AV_PIX_FMT_Y210;
+     case MFX_FOURCC_AYUV: return AV_PIX_FMT_VUYX;
+@@ -218,7 +217,6 @@ enum AVPixelFormat ff_qsv_map_fourcc(uin
+     case MFX_FOURCC_Y216: return AV_PIX_FMT_Y212;
+     case MFX_FOURCC_Y416: return AV_PIX_FMT_XV36;
+ #endif
+-#endif
+     }
+     return AV_PIX_FMT_NONE;
+ }
+@@ -245,7 +243,6 @@ int ff_qsv_map_pixfmt(enum AVPixelFormat
+         *fourcc = MFX_FOURCC_RGB4;
+         *shift = 0;
+         return AV_PIX_FMT_BGRA;
+-#if CONFIG_VAAPI
+     case AV_PIX_FMT_YUV422P:
+     case AV_PIX_FMT_YUYV422:
+         *fourcc = MFX_FOURCC_YUY2;
+@@ -278,7 +275,6 @@ int ff_qsv_map_pixfmt(enum AVPixelFormat
+         *shift = 1;
+         return AV_PIX_FMT_XV36;
+ #endif
+-#endif
+     default:
+         return AVERROR(ENOSYS);
+     }
 Index: jellyfin-ffmpeg/libavcodec/qsv_internal.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/qsv_internal.h
@@ -11,7 +56,7 @@ Index: jellyfin-ffmpeg/libavcodec/qsv_internal.h
  #define QSV_VERSION_ATLEAST(MAJOR, MINOR)   \
      (MFX_VERSION_MAJOR > (MAJOR) ||         \
       MFX_VERSION_MAJOR == (MAJOR) && MFX_VERSION_MINOR >= (MINOR))
-@@ -90,6 +92,7 @@ typedef struct QSVFrame {
+@@ -99,6 +101,7 @@ typedef struct QSVFrame {
  
      int queued;
      int used;
@@ -23,10 +68,10 @@ Index: jellyfin-ffmpeg/libavcodec/qsvdec.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/qsvdec.c
 +++ jellyfin-ffmpeg/libavcodec/qsvdec.c
-@@ -41,13 +41,16 @@
- #include "libavutil/time.h"
+@@ -42,13 +42,16 @@
  #include "libavutil/imgutils.h"
  #include "libavutil/film_grain_params.h"
+ #include "libavutil/mastering_display_metadata.h"
 +#include "libavutil/stereo3d.h"
  
  #include "avcodec.h"
@@ -39,8 +84,8 @@ Index: jellyfin-ffmpeg/libavcodec/qsvdec.c
 +#include "h264_sei.h"
  #include "qsv_internal.h"
  
- static const AVRational mfx_tb = { 1, 90000 };
-@@ -99,8 +102,13 @@ typedef struct QSVContext {
+ #if QSV_ONEVPL
+@@ -106,8 +109,13 @@ typedef struct QSVContext {
  
      char *load_plugins;
  
@@ -54,11 +99,11 @@ Index: jellyfin-ffmpeg/libavcodec/qsvdec.c
  } QSVContext;
  
  static const AVCodecHWConfigInternal *const qsv_hw_configs[] = {
-@@ -600,6 +608,147 @@ static int qsv_export_film_grain(AVCodec
- }
+@@ -694,6 +702,147 @@ static int qsv_export_hdr_side_data(AVCo
+ 
  #endif
  
-+static int h264_decode_fpa(H264SEIFramePacking *fpa, AVFrame *frame)
++static int h264_decode_fpa(H2645SEIFramePacking *fpa, AVFrame *frame)
 +{
 +    if (!fpa || !frame) {
 +        return AVERROR(EINVAL);
@@ -143,7 +188,7 @@ Index: jellyfin-ffmpeg/libavcodec/qsvdec.c
 +
 +    switch (q->payload.Type) {
 +    case SEI_TYPE_FRAME_PACKING_ARRANGEMENT:
-+        ret = h264_decode_fpa(&q->sei.frame_packing, frame);
++        ret = h264_decode_fpa(&q->sei.common.frame_packing, frame);
 +        break;
 +    default:
 +        break;
@@ -174,7 +219,7 @@ Index: jellyfin-ffmpeg/libavcodec/qsvdec.c
 +        sts = MFXVideoDECODE_GetPayload(q->session, &ts, &q->payload);
 +
 +        if (sts == MFX_ERR_NOT_ENOUGH_BUFFER) {
-+            av_log(avctx, AV_LOG_DEBUG, "Space for SEI is not enough. One SEI will be skipped\n");
++            av_log(avctx, AV_LOG_VERBOSE, "Space for SEI is not enough. One SEI will be skipped\n");
 +            continue;
 +        } else if (sts != MFX_ERR_NONE || q->payload.NumBit == 0) {
 +            break;
@@ -192,7 +237,7 @@ Index: jellyfin-ffmpeg/libavcodec/qsvdec.c
 +        }
 +
 +        if (ret < 0) {
-+            av_log(avctx, AV_LOG_DEBUG, "parse side data failed\n");
++            av_log(avctx, AV_LOG_VERBOSE, "parse side data failed\n");
 +            break;
 +        }
 +    }
@@ -202,18 +247,18 @@ Index: jellyfin-ffmpeg/libavcodec/qsvdec.c
  static int qsv_decode(AVCodecContext *avctx, QSVContext *q,
                        AVFrame *frame, int *got_frame,
                        const AVPacket *avpkt)
-@@ -709,6 +858,10 @@ static int qsv_decode(AVCodecContext *av
+@@ -803,6 +952,10 @@ static int qsv_decode(AVCodecContext *av
  
          outsurf = &aframe.frame->surface;
  
 +        ret = extract_frame_side_data(avctx, q, frame);
 +        if (ret < 0)
-+            av_log(avctx, AV_LOG_DEBUG, "Extracting side from packet failed\n");
++            av_log(avctx, AV_LOG_VERBOSE, "Extracting side from packet failed\n");
 +
          frame->pts = MFX_PTS_TO_PTS(outsurf->Data.TimeStamp, avctx->pkt_timebase);
  #if QSV_VERSION_ATLEAST(1, 34)
          if ((avctx->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN) &&
-@@ -770,6 +923,8 @@ static void qsv_decode_close_qsvcontext(
+@@ -873,6 +1026,8 @@ static void qsv_decode_close_qsvcontext(
      av_buffer_unref(&q->frames_ctx.hw_frames_ctx);
      av_buffer_unref(&q->frames_ctx.mids_buf);
      av_buffer_pool_uninit(&q->pool);
@@ -226,48 +271,73 @@ Index: jellyfin-ffmpeg/libavcodec/qsvenc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/qsvenc.c
 +++ jellyfin-ffmpeg/libavcodec/qsvenc.c
-@@ -564,7 +564,7 @@ static int init_video_param_jpeg(AVCodec
-                                             !desc->log2_chroma_w + !desc->log2_chroma_h;
-     q->param.mfx.FrameInfo.BitDepthLuma   = desc->comp[0].depth;
-     q->param.mfx.FrameInfo.BitDepthChroma = desc->comp[0].depth;
--    q->param.mfx.FrameInfo.Shift          = desc->comp[0].depth > 8;
-+    q->param.mfx.FrameInfo.Shift          = desc->comp[0].shift > 0;
+@@ -680,7 +680,9 @@ static int is_strict_gop(QSVEncContext *
  
-     q->param.mfx.FrameInfo.Width  = FFALIGN(avctx->width, 16);
-     q->param.mfx.FrameInfo.Height = FFALIGN(avctx->height, 16);
-@@ -663,7 +663,7 @@ static int init_video_param(AVCodecConte
-                                             !desc->log2_chroma_w + !desc->log2_chroma_h;
-     q->param.mfx.FrameInfo.BitDepthLuma   = desc->comp[0].depth;
-     q->param.mfx.FrameInfo.BitDepthChroma = desc->comp[0].depth;
--    q->param.mfx.FrameInfo.Shift          = desc->comp[0].depth > 8;
-+    q->param.mfx.FrameInfo.Shift          = desc->comp[0].shift > 0;
+ static int init_video_param_jpeg(AVCodecContext *avctx, QSVEncContext *q)
+ {
+-    enum AVPixelFormat sw_format = avctx->pix_fmt == AV_PIX_FMT_QSV ?
++    enum AVPixelFormat sw_format = avctx->pix_fmt == AV_PIX_FMT_QSV ||
++                                   avctx->pix_fmt == AV_PIX_FMT_VAAPI ||
++                                   avctx->pix_fmt == AV_PIX_FMT_D3D11 ?
+                                    avctx->sw_pix_fmt : avctx->pix_fmt;
+     const AVPixFmtDescriptor *desc;
+     int ret;
+@@ -746,7 +748,9 @@ static int init_video_param_jpeg(AVCodec
  
-     // If the minor version is greater than or equal to 19,
-     // then can use the same alignment settings as H.264 for HEVC
-@@ -812,11 +812,6 @@ static int init_video_param(AVCodecConte
+ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
+ {
+-    enum AVPixelFormat sw_format = avctx->pix_fmt == AV_PIX_FMT_QSV ?
++    enum AVPixelFormat sw_format = avctx->pix_fmt == AV_PIX_FMT_QSV ||
++                                   avctx->pix_fmt == AV_PIX_FMT_VAAPI ||
++                                   avctx->pix_fmt == AV_PIX_FMT_D3D11 ?
+                                    avctx->sw_pix_fmt : avctx->pix_fmt;
+     const AVPixFmtDescriptor *desc;
+     float quant;
+@@ -1118,6 +1122,10 @@ static int init_video_param(AVCodecConte
+                 q->extco3.MaxFrameSizeI = q->max_frame_size_i;
+             if (q->max_frame_size_p >= 0)
+                 q->extco3.MaxFrameSizeP = q->max_frame_size_p;
++            if (sw_format == AV_PIX_FMT_BGRA &&
++                (q->profile == MFX_PROFILE_HEVC_REXT ||
++                q->profile == MFX_PROFILE_UNKNOWN))
++                q->extco3.TargetChromaFormatPlus1 = MFX_CHROMAFORMAT_YUV444 + 1;
  
-             q->extco2.LookAheadDS = q->look_ahead_downsampling;
-             q->extco2.RepeatPPS   = q->repeat_pps ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
--
--            if (q->adaptive_i >= 0)
--                q->extco2.AdaptiveI = q->adaptive_i ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
--            if (q->adaptive_b >= 0)
--                q->extco2.AdaptiveB = q->adaptive_b ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
-         }
+             q->extco3.ScenarioInfo = q->scenario;
+         } else if (avctx->codec_id == AV_CODEC_ID_AV1) {
+@@ -1618,7 +1626,31 @@ int ff_qsv_enc_init(AVCodecContext *avct
  
-         if (avctx->codec_id == AV_CODEC_ID_H264 || avctx->codec_id == AV_CODEC_ID_HEVC) {
-@@ -836,6 +831,10 @@ static int init_video_param(AVCodecConte
+     if (avctx->hw_frames_ctx) {
+         AVHWFramesContext    *frames_ctx = (AVHWFramesContext*)avctx->hw_frames_ctx->data;
+-        AVQSVFramesContext *frames_hwctx = frames_ctx->hwctx;
++        AVQSVFramesContext *frames_hwctx = NULL;
++
++        if (frames_ctx->format == AV_PIX_FMT_VAAPI || frames_ctx->format == AV_PIX_FMT_D3D11) {
++            AVBufferRef *derive_device_ref = NULL;
++            AVBufferRef *derive_frames_ref = NULL;
++            ret = av_hwdevice_ctx_create_derived(&derive_device_ref,
++                                                 AV_HWDEVICE_TYPE_QSV, frames_ctx->device_ref, 0);
++            if (ret < 0) {
++                av_log(avctx, AV_LOG_ERROR, "Failed to derive QSV device context: %d.\n", ret);
++                return ret;
++            }
++            ret = av_hwframe_ctx_create_derived(&derive_frames_ref,
++                                                AV_PIX_FMT_QSV, derive_device_ref, avctx->hw_frames_ctx, 0);
++            if (ret < 0) {
++                av_log(avctx, AV_LOG_ERROR, "Failed to derive QSV frames context: %d.\n", ret);
++                av_buffer_unref(&derive_device_ref);
++                return ret;
++            }
++            av_buffer_unref(&avctx->hw_device_ctx);
++            avctx->hw_device_ctx = derive_device_ref;
++            av_buffer_unref(&avctx->hw_frames_ctx);
++            avctx->hw_frames_ctx = derive_frames_ref;
++            frames_ctx = (AVHWFramesContext*)avctx->hw_frames_ctx->data;
++        }
++        frames_hwctx = frames_ctx->hwctx;
  
-             if (q->b_strategy >= 0)
-                 q->extco2.BRefType = q->b_strategy ? MFX_B_REF_PYRAMID : MFX_B_REF_OFF;
-+            if (q->adaptive_i >= 0)
-+                q->extco2.AdaptiveI = q->adaptive_i ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
-+            if (q->adaptive_b >= 0)
-+                q->extco2.AdaptiveB = q->adaptive_b ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
-             if ((avctx->qmin >= 0 && avctx->qmax >= 0 && avctx->qmin > avctx->qmax) ||
-                 (q->max_qp_i >= 0 && q->min_qp_i >= 0 && q->min_qp_i > q->max_qp_i) ||
-                 (q->max_qp_p >= 0 && q->min_qp_p >= 0 && q->min_qp_p > q->max_qp_p) ||
-@@ -1421,6 +1420,10 @@ static void clear_unused_frames(QSVEncCo
+         if (!iopattern) {
+ #if QSV_HAVE_OPAQUE
+@@ -1773,6 +1805,10 @@ static void clear_unused_frames(QSVEncCo
              memset(&cur->enc_ctrl, 0, sizeof(cur->enc_ctrl));
              cur->enc_ctrl.Payload = cur->payloads;
              cur->enc_ctrl.ExtParam = cur->extparam;
@@ -278,7 +348,33 @@ Index: jellyfin-ffmpeg/libavcodec/qsvenc.c
              if (cur->frame->format == AV_PIX_FMT_QSV) {
                  av_frame_unref(cur->frame);
              }
-@@ -1484,12 +1487,20 @@ static int submit_frame(QSVEncContext *q
+@@ -1887,19 +1923,42 @@ static int submit_frame(QSVEncContext *q
+     if (ret < 0)
+         return ret;
+ 
+-    if (frame->format == AV_PIX_FMT_QSV) {
+-        ret = av_frame_ref(qf->frame, frame);
+-        if (ret < 0)
+-            return ret;
++    if (frame->format == AV_PIX_FMT_QSV || frame->format == AV_PIX_FMT_VAAPI || frame->format == AV_PIX_FMT_D3D11) {
++        if (frame->format == AV_PIX_FMT_QSV) {
++            ret = av_frame_ref(qf->frame, frame);
++            if (ret < 0)
++                return ret;
++        } else {
++            qf->frame->format = AV_PIX_FMT_QSV;
++            qf->frame->hw_frames_ctx = av_buffer_ref(q->avctx->hw_frames_ctx);
++            if (!qf->frame->hw_frames_ctx)
++                return AVERROR(ENOMEM);
++            ret = av_hwframe_map(qf->frame, frame, 0);
++            if (ret < 0) {
++                av_log(q->avctx, AV_LOG_ERROR, "Failed to map to QSV frames\n");
++                return ret;
++            }
++            ret = av_frame_copy_props(qf->frame, frame);
++            if (ret < 0)
++                return ret;
++        }
  
          qf->surface = *(mfxFrameSurface1*)qf->frame->data[3];
  
@@ -303,42 +399,136 @@ Index: jellyfin-ffmpeg/libavcodec/qsvenc.c
          }
      } else {
          /* make a copy if the input is not padded as libmfx requires */
-Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
+@@ -2597,6 +2656,8 @@ int ff_qsv_enc_close(AVCodecContext *avc
+ 
+ const AVCodecHWConfigInternal *const ff_qsv_enc_hw_configs[] = {
+     HW_CONFIG_ENCODER_FRAMES(QSV,  QSV),
++    HW_CONFIG_ENCODER_FRAMES(VAAPI,VAAPI),
++    HW_CONFIG_ENCODER_FRAMES(D3D11,D3D11VA),
+     HW_CONFIG_ENCODER_DEVICE(NV12, QSV),
+     HW_CONFIG_ENCODER_DEVICE(P010, QSV),
+     NULL,
+Index: jellyfin-ffmpeg/libavcodec/qsvenc_av1.c
 ===================================================================
---- jellyfin-ffmpeg.orig/libavfilter/qsvvpp.c
-+++ jellyfin-ffmpeg/libavfilter/qsvvpp.c
-@@ -465,15 +465,14 @@ static QSVFrame *query_frame(QSVVPPConte
-         if (!out_frame->frame)
-             return NULL;
- 
--        out_frame->frame->width  = outlink->w;
--        out_frame->frame->height = outlink->h;
--
-         ret = map_frame_to_surface(out_frame->frame,
-                                    &out_frame->surface);
-         if (ret < 0)
-             return NULL;
-     }
- 
-+    out_frame->frame->width  = outlink->w;
-+    out_frame->frame->height = outlink->h;
-     out_frame->surface.Info = s->vpp_param.vpp.Out;
- 
-     return out_frame;
+--- jellyfin-ffmpeg.orig/libavcodec/qsvenc_av1.c
++++ jellyfin-ffmpeg/libavcodec/qsvenc_av1.c
+@@ -149,10 +149,13 @@ FFCodec ff_av1_qsv_encoder = {
+     .p.pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+                                                     AV_PIX_FMT_P010,
+                                                     AV_PIX_FMT_QSV,
++                                                    AV_PIX_FMT_VAAPI,
++                                                    AV_PIX_FMT_D3D11,
+                                                     AV_PIX_FMT_NONE },
+     .p.priv_class     = &class,
+     .defaults       = qsv_enc_defaults,
+-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
++    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
++                      FF_CODEC_CAP_INIT_CLEANUP,
+     .p.wrapper_name   = "qsv",
+     .hw_configs     = ff_qsv_enc_hw_configs,
+ };
+Index: jellyfin-ffmpeg/libavcodec/qsvenc_h264.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/qsvenc_h264.c
++++ jellyfin-ffmpeg/libavcodec/qsvenc_h264.c
+@@ -201,6 +201,8 @@ const FFCodec ff_h264_qsv_encoder = {
+     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
+     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+                                                     AV_PIX_FMT_QSV,
++                                                    AV_PIX_FMT_VAAPI,
++                                                    AV_PIX_FMT_D3D11,
+                                                     AV_PIX_FMT_NONE },
+     .p.priv_class   = &class,
+     .defaults       = qsv_enc_defaults,
+Index: jellyfin-ffmpeg/libavcodec/qsvenc_hevc.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/qsvenc_hevc.c
++++ jellyfin-ffmpeg/libavcodec/qsvenc_hevc.c
+@@ -400,6 +400,8 @@ const FFCodec ff_hevc_qsv_encoder = {
+                                                     AV_PIX_FMT_YUYV422,
+                                                     AV_PIX_FMT_Y210,
+                                                     AV_PIX_FMT_QSV,
++                                                    AV_PIX_FMT_VAAPI,
++                                                    AV_PIX_FMT_D3D11,
+                                                     AV_PIX_FMT_BGRA,
+                                                     AV_PIX_FMT_X2RGB10,
+                                                     AV_PIX_FMT_VUYX,
+Index: jellyfin-ffmpeg/libavcodec/qsvenc_jpeg.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/qsvenc_jpeg.c
++++ jellyfin-ffmpeg/libavcodec/qsvenc_jpeg.c
+@@ -92,6 +92,8 @@ const FFCodec ff_mjpeg_qsv_encoder = {
+                                                     AV_PIX_FMT_YUYV422,
+                                                     AV_PIX_FMT_BGRA,
+                                                     AV_PIX_FMT_QSV,
++                                                    AV_PIX_FMT_VAAPI,
++                                                    AV_PIX_FMT_D3D11,
+                                                     AV_PIX_FMT_NONE },
+     .p.priv_class   = &class,
+     .defaults       = qsv_enc_defaults,
+Index: jellyfin-ffmpeg/libavcodec/qsvenc_mpeg2.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/qsvenc_mpeg2.c
++++ jellyfin-ffmpeg/libavcodec/qsvenc_mpeg2.c
+@@ -104,6 +104,8 @@ const FFCodec ff_mpeg2_qsv_encoder = {
+     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
+     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+                                                     AV_PIX_FMT_QSV,
++                                                    AV_PIX_FMT_VAAPI,
++                                                    AV_PIX_FMT_D3D11,
+                                                     AV_PIX_FMT_NONE },
+     .p.priv_class   = &class,
+     .defaults       = qsv_enc_defaults,
+Index: jellyfin-ffmpeg/libavcodec/qsvenc_vp9.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/qsvenc_vp9.c
++++ jellyfin-ffmpeg/libavcodec/qsvenc_vp9.c
+@@ -116,6 +116,8 @@ const FFCodec ff_vp9_qsv_encoder = {
+                                                     AV_PIX_FMT_VUYX,
+                                                     AV_PIX_FMT_QSV,
+                                                     AV_PIX_FMT_XV30,
++                                                    AV_PIX_FMT_VAAPI,
++                                                    AV_PIX_FMT_D3D11,
+                                                     AV_PIX_FMT_NONE },
+     .p.priv_class   = &class,
+     .defaults       = qsv_enc_defaults,
 Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_qsv.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
-@@ -486,7 +486,7 @@ static int qsv_init_surface(AVHWFramesCo
+@@ -115,7 +115,6 @@ static const struct {
+     { AV_PIX_FMT_BGRA, MFX_FOURCC_RGB4, 0 },
+     { AV_PIX_FMT_P010, MFX_FOURCC_P010, 1 },
+     { AV_PIX_FMT_PAL8, MFX_FOURCC_P8,   0 },
+-#if CONFIG_VAAPI
+     { AV_PIX_FMT_YUYV422,
+                        MFX_FOURCC_YUY2, 0 },
+     { AV_PIX_FMT_UYVY422,
+@@ -144,7 +143,6 @@ static const struct {
+     { AV_PIX_FMT_XV36,
+                        MFX_FOURCC_Y416, 1 },
+ #endif
+-#endif
+ };
  
-     surf->Info.BitDepthLuma   = desc->comp[0].depth;
-     surf->Info.BitDepthChroma = desc->comp[0].depth;
--    surf->Info.Shift          = desc->comp[0].depth > 8;
-+    surf->Info.Shift          = desc->comp[0].shift > 0;
- 
-     if (desc->log2_chroma_w && desc->log2_chroma_h)
-         surf->Info.ChromaFormat   = MFX_CHROMAFORMAT_YUV420;
-@@ -1337,11 +1337,23 @@ static int qsv_frames_derive_to(AVHWFram
+ extern int ff_qsv_get_surface_base_handle(mfxFrameSurface1 *surf,
+@@ -1526,7 +1524,6 @@ static int map_frame_to_surface(const AV
+         surface->Data.R = frame->data[0] + 2;
+         surface->Data.A = frame->data[0] + 3;
+         break;
+-#if CONFIG_VAAPI
+     case AV_PIX_FMT_YUYV422:
+         surface->Data.Y = frame->data[0];
+         surface->Data.U = frame->data[0] + 1;
+@@ -1563,7 +1560,6 @@ static int map_frame_to_surface(const AV
+         surface->Data.U = frame->data[0];
+         surface->Data.V = frame->data[0] + 2;
+         break;
+-#endif
+     default:
+         return MFX_ERR_UNSUPPORTED;
+     }
+@@ -1878,11 +1874,23 @@ static int qsv_frames_derive_to(AVHWFram
      return 0;
  }
  
@@ -362,7 +552,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
  
      for (i = 0; i < hwctx->nb_surfaces && index < 0; i++) {
          switch(src->format) {
-@@ -1380,21 +1392,77 @@ static int qsv_map_to(AVHWFramesContext
+@@ -1921,21 +1929,77 @@ static int qsv_map_to(AVHWFramesContext
          }
      }
      if (index < 0) {
@@ -395,17 +585,17 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
 +            }
 +            *(VASurfaceID*)(new_hdlpair->first) = (VASurfaceID)(uintptr_t)src->data[3];
 +            new_sur->Data.MemId = new_hdlpair;
- 
--    err = ff_hwframe_map_create(dst->hw_frames_ctx,
--                                dst, src, NULL, NULL);
--    if (err)
--        return err;
++
 +            err = ff_hwframe_map_create(dst->hw_frames_ctx, dst, src,
 +                                        &qsv_umap_from_vaapi,
 +                                        (void*)new_sur);
 +            if (err)
 +                goto qsv_map_to_err;
-+
+ 
+-    err = ff_hwframe_map_create(dst->hw_frames_ctx,
+-                                dst, src, NULL, NULL);
+-    if (err)
+-        return err;
 +            av_log(dst_ctx, AV_LOG_DEBUG, "Trying to map from a surface which "
 +                "is not in the mapped frames context, so create a new surface\n");
 +        }
@@ -449,16 +639,3 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
  }
  
  static int qsv_frames_get_constraints(AVHWDeviceContext *ctx,
-Index: jellyfin-ffmpeg/libavcodec/qsvenc_hevc.c
-===================================================================
---- jellyfin-ffmpeg.orig/libavcodec/qsvenc_hevc.c
-+++ jellyfin-ffmpeg/libavcodec/qsvenc_hevc.c
-@@ -234,6 +234,8 @@ static const AVOption options[] = {
-     QSV_OPTION_DBLK_IDC
-     QSV_OPTION_LOW_DELAY_BRC
-     QSV_OPTION_MAX_MIN_QP
-+    QSV_OPTION_ADAPTIVE_I
-+    QSV_OPTION_ADAPTIVE_B
- 
-     { "idr_interval", "Distance (in I-frames) between IDR frames", OFFSET(qsv.idr_interval), AV_OPT_TYPE_INT, { .i64 = 0 }, -1, INT_MAX, VE, "idr_interval" },
-     { "begin_only", "Output an IDR-frame only at the beginning of the stream", 0, AV_OPT_TYPE_CONST, { .i64 = -1 }, 0, 0, VE, "idr_interval" },

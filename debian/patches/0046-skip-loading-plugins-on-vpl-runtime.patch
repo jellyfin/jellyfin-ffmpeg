@@ -2,10 +2,10 @@ Index: jellyfin-ffmpeg/libavcodec/qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/qsv.c
 +++ jellyfin-ffmpeg/libavcodec/qsv.c
-@@ -369,9 +369,17 @@ enum AVPictureType ff_qsv_map_pictype(in
- static int qsv_load_plugins(mfxSession session, const char *load_plugins,
+@@ -409,9 +409,17 @@ static int qsv_load_plugins(mfxSession s
                              void *logctx)
  {
+ #if QSV_HAVE_USER_PLUGIN
 +    mfxVersion ver;
      if (!load_plugins || !*load_plugins)
          return 0;

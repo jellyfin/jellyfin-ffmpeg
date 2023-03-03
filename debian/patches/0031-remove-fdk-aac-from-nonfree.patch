@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -1783,7 +1783,6 @@ EXTERNAL_LIBRARY_GPL_LIST="
+@@ -1774,7 +1774,6 @@ EXTERNAL_LIBRARY_GPL_LIST="
  
  EXTERNAL_LIBRARY_NONFREE_LIST="
      decklink
@@ -10,7 +10,7 @@ Index: jellyfin-ffmpeg/configure
      libtls
  "
  
-@@ -1822,6 +1821,7 @@ EXTERNAL_LIBRARY_LIST="
+@@ -1814,6 +1813,7 @@ EXTERNAL_LIBRARY_LIST="
      libdav1d
      libdc1394
      libdrm

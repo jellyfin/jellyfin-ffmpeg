@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -7131,6 +7131,8 @@ if enabled lto; then
+@@ -7196,6 +7196,8 @@ if enabled lto; then
      test "$cc_type" != "$ld_type" && die "LTO requires same compiler and linker"
      check_cflags  -flto
      check_ldflags -flto $cpuflags
@@ -11,7 +11,7 @@ Index: jellyfin-ffmpeg/configure
      disable inline_asm_direct_symbol_refs
  fi
  
-@@ -7169,7 +7171,9 @@ if enabled icc; then
+@@ -7234,7 +7236,9 @@ if enabled icc; then
              disable aligned_stack
      fi
  elif enabled gcc; then

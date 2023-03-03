@@ -2,21 +2,23 @@ Index: jellyfin-ffmpeg/libavcodec/nvenc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/nvenc.c
 +++ jellyfin-ffmpeg/libavcodec/nvenc.c
-@@ -24,11 +24,13 @@
+@@ -24,6 +24,7 @@
  
  #include "nvenc.h"
  #include "hevc_sei.h"
 +#include "put_bits.h"
- 
- #include "libavutil/hwcontext_cuda.h"
+ #if CONFIG_AV1_NVENC_ENCODER
+ #include "av1.h"
+ #endif
+@@ -33,6 +34,7 @@
  #include "libavutil/hwcontext.h"
  #include "libavutil/cuda_check.h"
  #include "libavutil/imgutils.h"
 +#include "libavutil/mastering_display_metadata.h"
  #include "libavutil/mem.h"
  #include "libavutil/pixdesc.h"
- #include "atsc_a53.h"
-@@ -2226,6 +2228,80 @@ static int prepare_sei_data_array(AVCode
+ #include "libavutil/mathematics.h"
+@@ -2445,6 +2447,80 @@ static int prepare_sei_data_array(AVCode
              }
          }
      }

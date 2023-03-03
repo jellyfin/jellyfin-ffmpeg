@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_vaapi.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_vaapi.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_vaapi.c
-@@ -1301,8 +1301,17 @@ static int vaapi_map_to_drm_esh(AVHWFram
+@@ -1319,8 +1319,17 @@ static int vaapi_map_to_drm_esh(AVHWFram
      surface_id = (VASurfaceID)(uintptr_t)src->data[3];
  
      export_flags = VA_EXPORT_SURFACE_SEPARATE_LAYERS;

@@ -23,7 +23,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
-@@ -558,6 +558,35 @@ static void d3d11va_device_uninit(AVHWDe
+@@ -545,6 +545,35 @@ static void d3d11va_device_uninit(AVHWDe
      }
  }
  
@@ -59,7 +59,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
  static int d3d11va_device_create(AVHWDeviceContext *ctx, const char *device,
                                   AVDictionary *opts, int flags)
  {
-@@ -656,6 +685,9 @@ static int d3d11va_device_create(AVHWDev
+@@ -608,6 +637,9 @@ static int d3d11va_device_create(AVHWDev
          ID3D10Multithread_Release(pMultithread);
      }
  
@@ -94,12 +94,12 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_opencl.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
-@@ -1380,7 +1380,7 @@ static int opencl_device_derive(AVHWDevi
+@@ -1371,7 +1371,7 @@ static int opencl_device_derive(AVHWDevi
                  CL_CONTEXT_D3D11_DEVICE_KHR,
                  (intptr_t)src_hwctx->device,
                  CL_CONTEXT_INTEROP_USER_SYNC,
 -                CL_TRUE,
-+                (!src_hwctx->device_desc.VendorId == 0x8086 || src_hwctx->is_uma),
++                (src_hwctx->device_desc.VendorId != 0x8086 || src_hwctx->is_uma),
                  0,
              };
              OpenCLDeviceSelector selector = {

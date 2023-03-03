@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_overlay_cuda.c
 +++ jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
-@@ -49,6 +49,8 @@
+@@ -50,6 +50,8 @@
  static const enum AVPixelFormat supported_main_formats[] = {
      AV_PIX_FMT_NV12,
      AV_PIX_FMT_YUV420P,
@@ -11,7 +11,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
      AV_PIX_FMT_NONE,
  };
  
-@@ -100,12 +102,15 @@ typedef struct OverlayCUDAContext {
+@@ -101,12 +103,15 @@ typedef struct OverlayCUDAContext {
      enum AVPixelFormat in_format_overlay;
      enum AVPixelFormat in_format_main;
  
@@ -28,7 +28,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
      CUstream cu_stream;
  
      FFFrameSync fs;
-@@ -180,7 +185,10 @@ static int set_expr(AVExpr **pexpr, cons
+@@ -181,7 +186,10 @@ static int set_expr(AVExpr **pexpr, cons
  static int formats_match(const enum AVPixelFormat format_main, const enum AVPixelFormat format_overlay) {
      switch(format_main) {
      case AV_PIX_FMT_NV12:
@@ -40,7 +40,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
      case AV_PIX_FMT_YUV420P:
          return format_overlay == AV_PIX_FMT_YUV420P ||
                 format_overlay == AV_PIX_FMT_YUVA420P;
-@@ -195,11 +203,13 @@ static int formats_match(const enum AVPi
+@@ -196,11 +204,13 @@ static int formats_match(const enum AVPi
  static int overlay_cuda_call_kernel(
      OverlayCUDAContext *ctx,
      int x_position, int y_position,
@@ -57,7 +57,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
      int alpha_adj_x, int alpha_adj_y) {
  
      CudaFunctions *cu = ctx->hwctx->internal->cuda_dl;
-@@ -207,14 +217,18 @@ static int overlay_cuda_call_kernel(
+@@ -208,14 +218,18 @@ static int overlay_cuda_call_kernel(
      void* kernel_args[] = {
          &x_position, &y_position,
          &main_data, &main_linesize,
@@ -77,7 +77,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
          DIV_UP(main_width, BLOCK_X), DIV_UP(main_height, BLOCK_Y), 1,
          BLOCK_X, BLOCK_Y, 1,
          0, ctx->cu_stream, kernel_args, NULL));
-@@ -289,11 +303,13 @@ static int overlay_cuda_blend(FFFrameSyn
+@@ -290,11 +304,13 @@ static int overlay_cuda_blend(FFFrameSyn
  
      overlay_cuda_call_kernel(ctx,
          ctx->x_position, ctx->y_position,
@@ -94,7 +94,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
  
      // overlay rest planes depending on pixel format
  
-@@ -301,29 +317,42 @@ static int overlay_cuda_blend(FFFrameSyn
+@@ -302,29 +318,42 @@ static int overlay_cuda_blend(FFFrameSyn
      case AV_PIX_FMT_NV12:
          overlay_cuda_call_kernel(ctx,
              ctx->x_position, ctx->y_position / 2,
@@ -154,7 +154,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
          break;
      default:
          av_log(ctx, AV_LOG_ERROR, "Passed unsupported overlay pixel format\n");
-@@ -449,6 +478,8 @@ static int overlay_cuda_config_output(AV
+@@ -450,6 +479,8 @@ static int overlay_cuda_config_output(AV
          return AVERROR(ENOSYS);
      }
  
@@ -163,7 +163,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_cuda.c
      // check overlay input formats
  
      if (!frames_ctx_overlay) {
-@@ -502,7 +533,13 @@ static int overlay_cuda_config_output(AV
+@@ -503,7 +534,13 @@ static int overlay_cuda_config_output(AV
          return err;
      }
  

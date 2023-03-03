@@ -52,9 +52,9 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2.c
 +    case AV_PIX_FMT_YUV422P:   return AV_PIX_FMT_YUYV422;
 +    case AV_PIX_FMT_YUV422P10: return AV_PIX_FMT_Y210;
 +    case AV_PIX_FMT_YUV422P12: return AV_PIX_FMT_Y212;
-+    case AV_PIX_FMT_YUV444P:   return AV_PIX_FMT_0YUV;
-+    case AV_PIX_FMT_YUV444P10: return AV_PIX_FMT_Y410;
-+    case AV_PIX_FMT_YUV444P12: return AV_PIX_FMT_Y412;
++    case AV_PIX_FMT_YUV444P:   return AV_PIX_FMT_VUYX;
++    case AV_PIX_FMT_YUV444P10: return AV_PIX_FMT_XV30;
++    case AV_PIX_FMT_YUV444P12: return AV_PIX_FMT_XV36;
 +    default:                   return AV_PIX_FMT_NV12;
 +    }
 +}
@@ -91,9 +91,9 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2.c
 +    case AV_PIX_FMT_YUYV422: return MKTAG('Y', 'U', 'Y', '2');
 +    case AV_PIX_FMT_Y210:    return MKTAG('Y', '2', '1', '0');
 +    case AV_PIX_FMT_Y212:    return MKTAG('Y', '2', '1', '6');
-+    case AV_PIX_FMT_0YUV:    return MKTAG('A', 'Y', 'U', 'V');
-+    case AV_PIX_FMT_Y410:    return MKTAG('Y', '4', '1', '0');
-+    case AV_PIX_FMT_Y412:    return MKTAG('Y', '4', '1', '6');
++    case AV_PIX_FMT_VUYX:    return MKTAG('A', 'Y', 'U', 'V');
++    case AV_PIX_FMT_XV30:    return MKTAG('Y', '4', '1', '0');
++    case AV_PIX_FMT_XV36:    return MKTAG('Y', '4', '1', '6');
 +    default:                 return D3DFMT_UNKNOWN;
 +    }
 +}
@@ -131,9 +131,9 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2.c
 +    case AV_PIX_FMT_YUYV422: return DXGI_FORMAT_YUY2;
 +    case AV_PIX_FMT_Y210:    return DXGI_FORMAT_Y210;
 +    case AV_PIX_FMT_Y212:    return DXGI_FORMAT_Y216;
-+    case AV_PIX_FMT_0YUV:    return DXGI_FORMAT_AYUV;
-+    case AV_PIX_FMT_Y410:    return DXGI_FORMAT_Y410;
-+    case AV_PIX_FMT_Y412:    return DXGI_FORMAT_Y416;
++    case AV_PIX_FMT_VUYX:    return DXGI_FORMAT_AYUV;
++    case AV_PIX_FMT_XV30:    return DXGI_FORMAT_Y410;
++    case AV_PIX_FMT_XV36:    return DXGI_FORMAT_Y416;
 +    case AV_PIX_FMT_YUV420P: return DXGI_FORMAT_420_OPAQUE;
 +    default:                 return DXGI_FORMAT_UNKNOWN;
      }
@@ -291,7 +291,7 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/hevcdec.c
 +++ jellyfin-ffmpeg/libavcodec/hevcdec.c
-@@ -452,6 +452,13 @@ static enum AVPixelFormat get_format(HEV
+@@ -453,6 +453,13 @@ static enum AVPixelFormat get_format(HEV
  #endif
          break;
      case AV_PIX_FMT_YUV444P:
@@ -305,7 +305,7 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
  #if CONFIG_HEVC_VAAPI_HWACCEL
          *fmt++ = AV_PIX_FMT_VAAPI;
  #endif
-@@ -467,6 +474,13 @@ static enum AVPixelFormat get_format(HEV
+@@ -468,6 +475,13 @@ static enum AVPixelFormat get_format(HEV
          break;
      case AV_PIX_FMT_YUV422P:
      case AV_PIX_FMT_YUV422P10LE:
@@ -319,21 +319,7 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
  #if CONFIG_HEVC_VAAPI_HWACCEL
         *fmt++ = AV_PIX_FMT_VAAPI;
  #endif
-@@ -475,6 +489,13 @@ static enum AVPixelFormat get_format(HEV
- #endif
-         break;
-     case AV_PIX_FMT_YUV422P12LE:
-+#if CONFIG_HEVC_DXVA2_HWACCEL
-+        *fmt++ = AV_PIX_FMT_DXVA2_VLD;
-+#endif
-+#if CONFIG_HEVC_D3D11VA_HWACCEL
-+        *fmt++ = AV_PIX_FMT_D3D11VA_VLD;
-+        *fmt++ = AV_PIX_FMT_D3D11;
-+#endif
- #if CONFIG_HEVC_VAAPI_HWACCEL
-         *fmt++ = AV_PIX_FMT_VAAPI;
- #endif
-@@ -485,6 +506,13 @@ static enum AVPixelFormat get_format(HEV
+@@ -481,6 +495,13 @@ static enum AVPixelFormat get_format(HEV
  #endif
      case AV_PIX_FMT_YUV420P12:
      case AV_PIX_FMT_YUV444P12:
@@ -345,5 +331,19 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
 +        *fmt++ = AV_PIX_FMT_D3D11;
 +#endif
  #if CONFIG_HEVC_VAAPI_HWACCEL
-         *fmt++ = AV_PIX_FMT_VAAPI;
+        *fmt++ = AV_PIX_FMT_VAAPI;
+ #endif
+@@ -492,6 +513,13 @@ static enum AVPixelFormat get_format(HEV
+ #endif
+         break;
+     case AV_PIX_FMT_YUV422P12:
++#if CONFIG_HEVC_DXVA2_HWACCEL
++        *fmt++ = AV_PIX_FMT_DXVA2_VLD;
++#endif
++#if CONFIG_HEVC_D3D11VA_HWACCEL
++        *fmt++ = AV_PIX_FMT_D3D11VA_VLD;
++        *fmt++ = AV_PIX_FMT_D3D11;
++#endif
+ #if CONFIG_HEVC_VAAPI_HWACCEL
+        *fmt++ = AV_PIX_FMT_VAAPI;
  #endif

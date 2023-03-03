@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavformat/hlsenc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavformat/hlsenc.c
 +++ jellyfin-ffmpeg/libavformat/hlsenc.c
-@@ -850,7 +850,7 @@ static int hls_mux_init(AVFormatContext
+@@ -854,7 +854,7 @@ static int hls_mux_init(AVFormatContext
      AVFormatContext *vtt_oc = NULL;
      int byterange_mode = (hls->flags & HLS_SINGLE_FILE) || (hls->max_seg_size > 0);
      int remaining_options;
@@ -11,7 +11,7 @@ Index: jellyfin-ffmpeg/libavformat/hlsenc.c
  
      ret = avformat_alloc_output_context2(&vs->avf, vs->oformat, NULL, NULL);
      if (ret < 0)
-@@ -897,6 +897,15 @@ static int hls_mux_init(AVFormatContext
+@@ -905,6 +905,15 @@ FF_ENABLE_DEPRECATION_WARNINGS
              st->codecpar->codec_tag = 0;
          }
  
@@ -31,7 +31,7 @@ Index: jellyfin-ffmpeg/libavformat/movenc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavformat/movenc.c
 +++ jellyfin-ffmpeg/libavformat/movenc.c
-@@ -7311,6 +7311,8 @@ static const AVCodecTag codec_mp4_tags[]
+@@ -7714,6 +7714,8 @@ static const AVCodecTag codec_mp4_tags[]
      { AV_CODEC_ID_H264,            MKTAG('a', 'v', 'c', '3') },
      { AV_CODEC_ID_HEVC,            MKTAG('h', 'e', 'v', '1') },
      { AV_CODEC_ID_HEVC,            MKTAG('h', 'v', 'c', '1') },

@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_vulkan.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_vulkan.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_vulkan.c
-@@ -2269,13 +2269,7 @@ static int vulkan_frames_init(AVHWFrames
+@@ -2273,13 +2273,7 @@ static int vulkan_frames_init(AVHWFrames
      AVVulkanDeviceContext *dev_hwctx = hwfc->device_ctx->hwctx;
      VulkanDevicePriv *p = hwfc->device_ctx->internal->priv;
      const VkImageDrmFormatModifierListCreateInfoEXT *modifier_info;
@@ -17,7 +17,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_vulkan.c
  
      if (!hwctx->usage)
          hwctx->usage = FF_VK_DEFAULT_USAGE_FLAGS;
-@@ -2294,9 +2288,6 @@ static int vulkan_frames_init(AVHWFrames
+@@ -2298,9 +2292,6 @@ static int vulkan_frames_init(AVHWFrames
          const VkFormat *fmt = av_vkfmt_from_pixfmt(hwfc->sw_format);
          VkImageDrmFormatModifierListCreateInfoEXT *modifier_info;
          FFVulkanFunctions *vk = &p->vkfn;
@@ -27,7 +27,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_vulkan.c
  
          VkDrmFormatModifierPropertiesListEXT mod_props_list = {
              .sType = VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT,
-@@ -2312,66 +2303,76 @@ static int vulkan_frames_init(AVHWFrames
+@@ -2316,66 +2307,76 @@ static int vulkan_frames_init(AVHWFrames
          /* Get all supported modifiers */
          vk->GetPhysicalDeviceFormatProperties2(dev_hwctx->phys_dev, fmt[0], &prop);
  

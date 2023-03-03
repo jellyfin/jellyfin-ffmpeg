@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_vulkan.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_vulkan.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_vulkan.c
-@@ -770,7 +770,7 @@ static const char *vk_dev_type(enum VkPh
+@@ -774,7 +774,7 @@ static const char *vk_dev_type(enum VkPh
  static int find_device(AVHWDeviceContext *ctx, VulkanDeviceSelection *select)
  {
      int err = 0, choice = -1;
@@ -11,7 +11,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_vulkan.c
      VkResult ret;
      VulkanDevicePriv *p = ctx->internal->priv;
      FFVulkanFunctions *vk = &p->vkfn;
-@@ -824,49 +824,61 @@ static int find_device(AVHWDeviceContext
+@@ -828,49 +828,61 @@ static int find_device(AVHWDeviceContext
  
      if (select->has_uuid) {
          for (int i = 0; i < num; i++) {
