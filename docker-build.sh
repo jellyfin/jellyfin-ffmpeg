@@ -62,6 +62,8 @@ prepare_extra_common() {
     pushd ${SOURCE_DIR}
     git clone --depth=1 https://github.com/acoustid/chromaprint.git
     pushd chromaprint
+    echo "Libs.private: -lfftw3f -lstdc++" >> libchromaprint.pc.cmake
+    echo "Cflags.private: -DCHROMAPRINT_NODLL" >> libchromaprint.pc.cmake
     mkdir build
     pushd build
     cmake \
@@ -80,7 +82,7 @@ prepare_extra_common() {
 
     # ZIMG
     pushd ${SOURCE_DIR}
-    git clone --recursive --depth=1 https://github.com/sekrit-twc/zimg
+    git clone --recursive --depth=1 https://github.com/sekrit-twc/zimg.git
     pushd zimg
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR} ${CROSS_OPT}
@@ -160,16 +162,16 @@ prepare_extra_amd64() {
 
     # FFNVCODEC
     pushd ${SOURCE_DIR}
-    git clone -b n11.1.5.2 --depth=1 https://github.com/FFmpeg/nv-codec-headers
+    git clone --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
     pushd nv-codec-headers
-    make
-    make install
+    git reset --hard "c5e4af7"
+    make && make install
     popd
     popd
 
     # AMF
     # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
-    git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+    git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
     pushd AMF/amf/public/include
     mkdir -p /usr/include/AMF
     mv * /usr/include/AMF
@@ -201,7 +203,7 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone -b 2.17.0 --depth=1 https://github.com/intel/libva
+    git clone -b 2.17.0 --depth=1 https://github.com/intel/libva.git
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
@@ -218,7 +220,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone -b 2.17.1 --depth=1 https://github.com/intel/libva-utils
+    git clone -b 2.17.1 --depth=1 https://github.com/intel/libva-utils.git
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -229,7 +231,7 @@ prepare_extra_amd64() {
 
     # INTEL-VAAPI-DRIVER
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/intel/intel-vaapi-driver
+    git clone --depth=1 https://github.com/intel/intel-vaapi-driver.git
     pushd intel-vaapi-driver
     ./autogen.sh
     ./configure LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri
@@ -242,7 +244,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.3 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.3.4 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -252,31 +254,52 @@ prepare_extra_amd64() {
     popd
     popd
 
-    # MediaSDK
+    # MediaSDK (RT only)
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-23.1.1 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-23.1.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
-          -DBUILD_SAMPLES=OFF \
+          -DBUILD_RUNTIME=ON \
+          -DBUILD_{SAMPLES,TUTORIALS,OPENCL}=OFF \
           -DBUILD_TUTORIALS=OFF \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
-    echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${DPKG_INSTALL_LIST}
-    echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${DPKG_INSTALL_LIST}
+    echo "intel${TARGET_DIR}/lib/libmfxhw64.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
 
-    # ONEVPL-INTEL-GPU
+    # ONEVPL (dispatcher + header)
+    pushd ${SOURCE_DIR}
+    git clone -b v2023.1.2 --depth=1 https://github.com/oneapi-src/oneVPL.git
+    pushd oneVPL
+    sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' dispatcher/vpl/mfx_dispatcher_vpl_loader.cpp
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+          -DCMAKE_INSTALL_BINDIR=${TARGET_DIR}/bin \
+          -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=ON \
+          -DBUILD_{DISPATCHER,DEV}=ON \
+          -DBUILD_{PREVIEW,TESTS}=OFF \
+          -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
+          -DINSTALL_EXAMPLE_CODE=OFF \
+          ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    echo "intel${TARGET_DIR}/lib/libvpl.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+    popd
+
+    # ONEVPL-INTEL-GPU (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.1.1 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-23.1.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -290,10 +313,10 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.1.1 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-23.1.2 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     # Possible fix for TGLx timeout caused by 'HCP Scalability Decode' under heavy load
-    wget -q -O - https://github.com/intel/media-driver/commit/284750bf2619112627dd8c60bd5c8032c7780606.patch | git apply
+    wget -q -O - https://github.com/intel/media-driver/commit/284750bf.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -311,7 +334,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -324,7 +347,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -345,7 +368,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2023.2 --depth=1 https://github.com/google/shaderc
+    git clone -b v2023.2 --depth=1 https://github.com/google/shaderc.git
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -372,25 +395,22 @@ prepare_extra_amd64() {
     if [[ ${LLVM_VER} -ge 11 ]]; then
         apt-get install -y llvm-${LLVM_VER}-dev libudev-dev
         pushd ${SOURCE_DIR}
-        mkdir mesa
+        git clone -b main https://gitlab.freedesktop.org/mesa/mesa.git
         pushd mesa
-        mesa_ver="22.3.5"
-        mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
-        wget ${mesa_link} -O mesa.tar.xz
-        tar xaf mesa.tar.xz
-        # reduce encode overhead with optimized buffer types
-        wget -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/20376.patch | git apply
-        wget -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/20989.patch | git apply
+        git reset --hard "a19a37e8"
+        # fix av1 main nv12 decoding
+        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/commit/39c6f1f5.patch | git apply
+        popd
         # disable the broken hevc packed header
-        MESA_VA_PIC="mesa-${mesa_ver}/src/gallium/frontends/va/picture.c"
-        MESA_VA_CONF="mesa-${mesa_ver}/src/gallium/frontends/va/config.c"
+        MESA_VA_PIC="mesa/src/gallium/frontends/va/picture.c"
+        MESA_VA_CONF="mesa/src/gallium/frontends/va/config.c"
         sed -i 's|handleVAEncPackedHeaderParameterBufferType(context, buf);||g' ${MESA_VA_PIC}
         sed -i 's|handleVAEncPackedHeaderDataBufferType(context, buf);||g' ${MESA_VA_PIC}
         sed -i 's|if (u_reduce_video_profile(ProfileToPipe(profile)) == PIPE_VIDEO_FORMAT_HEVC)|if (0)|g' ${MESA_VA_CONF}
         # force reporting all packed headers are supported
         sed -i 's|value = VA_ENC_PACKED_HEADER_NONE;|value = 0x0000001f;|g' ${MESA_VA_CONF}
         sed -i 's|if (attrib_list\[i\].type == VAConfigAttribEncPackedHeaders)|if (0)|g' ${MESA_VA_CONF}
-        meson setup mesa-${mesa_ver} mesa_build \
+        meson setup mesa mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
             --buildtype=release \
@@ -398,7 +418,6 @@ prepare_extra_amd64() {
             -Db_ndebug=true \
             -Db_lto=false \
             -Dplatforms=x11 \
-            -Ddri-drivers=[] \
             -Dgallium-drivers=radeonsi \
             -Dvulkan-drivers=amd,intel \
             -Dvulkan-layers=device-select,overlay \
@@ -441,7 +460,7 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
-    git clone -b v5.229.2 --recursive --depth=1 https://github.com/haasn/libplacebo
+    git clone -b v5.229.2 --recursive --depth=1 https://github.com/haasn/libplacebo.git
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
@@ -582,5 +601,5 @@ popd
 
 # Move the artifacts out
 mkdir -p ${ARTIFACT_DIR}/deb
-mv /jellyfin-ffmpeg{,5}_* ${ARTIFACT_DIR}/deb/
+mv /jellyfin-ffmpeg{,6}_* ${ARTIFACT_DIR}/deb/
 chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

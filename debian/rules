@@ -4,27 +4,22 @@ export V=1
 
 ORIG_VERSION := $(shell dpkg-parsechangelog -S version)
 VERSION_SUFFIX := $(shell lsb_release -c -s)
-# Set the current "testing" explicitly to "buster"
-ifeq ($(VERSION_SUFFIX),testing)
-	VERSION_SUFFIX := buster
-endif
 PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
 
 CONFIG := --prefix=${TARGET_DIR} \
 	--target-os=linux \
-	--extra-libs='-lfftw3f' \
 	--extra-version=Jellyfin \
 	--disable-doc \
 	--disable-ffplay \
 	--disable-ptx-compression \
-	--disable-shared \
+	--disable-static \
 	--disable-libxcb \
 	--disable-sdl2 \
 	--disable-xlib \
 	--enable-lto \
 	--enable-gpl \
 	--enable-version3 \
-	--enable-static \
+	--enable-shared \
 	--enable-gmp \
 	--enable-gnutls \
 	--enable-chromaprint \
@@ -66,7 +61,7 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-opencl \
 	--enable-vaapi \
 	--enable-amf \
-	--enable-libmfx \
+	--enable-libvpl \
 	--enable-ffnvcodec \
 	--enable-cuda \
 	--enable-cuda-llvm \
@@ -105,7 +100,6 @@ override_dh_auto_clean:
 	dh_auto_clean || true
 
 override_dh_auto_install:
-	make -j1 install-data DESTDIR=/srv/build/ffmpeg/jellyfin-ffmpeg/debian/jellyfin-ffmpeg AM_UPDATE_INFO_DIR=no 
 
 override_dh_usrlocal:
 
