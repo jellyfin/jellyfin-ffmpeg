@@ -79,11 +79,11 @@ Build-Depends:
 # autodetected zlib
  zlib1g-dev
 
-Package: jellyfin-ffmpeg5
+Package: jellyfin-ffmpeg6
 Architecture: amd64 armhf arm64
 Multi-Arch: foreign
-Replaces: jellyfin-ffmpeg
-Conflicts: jellyfin-ffmpeg
+Replaces: jellyfin-ffmpeg, jellyfin-ffmpeg5
+Conflicts: jellyfin-ffmpeg, jellyfin-ffmpeg5
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}
