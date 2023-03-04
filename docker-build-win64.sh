@@ -67,13 +67,9 @@ make install
 popd
 
 # FREETYPE
-mkdir freetype
+git clone --depth=1 https://gitlab.freedesktop.org/freetype/freetype.git
 pushd freetype
-ft_ver="2.13.0"
-ft_link="https://download.savannah.gnu.org/releases/freetype/freetype-${ft_ver}.tar.gz"
-wget ${ft_link} -O ft.tar.gz
-tar xaf ft.tar.gz
-pushd freetype-${ft_ver}
+./autogen.sh
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
@@ -81,7 +77,6 @@ pushd freetype-${ft_ver}
     --enable-static
 make -j$(nproc)
 make install
-popd
 popd
 
 # FRIBIDI
@@ -488,7 +483,7 @@ make install
 popd
 
 # OpenCL headers
-git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers
+git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers.git
 pushd OpenCL-Headers/CL
 mkdir -p ${FF_DEPS_PREFIX}/include/CL
 mv * ${FF_DEPS_PREFIX}/include/CL
@@ -532,7 +527,7 @@ make PREFIX=${FF_DEPS_PREFIX} install
 popd
 
 # AMF
-git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
 pushd AMF/amf/public/include
 mkdir -p ${FF_DEPS_PREFIX}/include/AMF
 mv * ${FF_DEPS_PREFIX}/include/AMF
