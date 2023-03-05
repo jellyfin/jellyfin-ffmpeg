@@ -552,14 +552,13 @@ end:
 
 const FFCodec ff_jpegls_decoder = {
     .p.name         = "jpegls",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("JPEG-LS"),
+    CODEC_LONG_NAME("JPEG-LS"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_JPEGLS,
     .priv_data_size = sizeof(MJpegDecodeContext),
     .init           = ff_mjpeg_decode_init,
     .close          = ff_mjpeg_decode_end,
-    FF_CODEC_RECEIVE_FRAME_CB(ff_mjpeg_receive_frame),
+    FF_CODEC_DECODE_CB(ff_mjpeg_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
-                      FF_CODEC_CAP_SETS_PKT_DTS,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

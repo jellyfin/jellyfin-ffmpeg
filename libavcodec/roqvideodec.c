@@ -26,12 +26,11 @@
  */
 
 #include "libavutil/avassert.h"
-#include "libavutil/imgutils.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "roqvideo.h"
 
 static void roqvideo_decode_frame(RoqContext *ri, GetByteContext *gb)
@@ -235,7 +234,7 @@ static av_cold int roq_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_roq_decoder = {
     .p.name         = "roqvideo",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("id RoQ video"),
+    CODEC_LONG_NAME("id RoQ video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_ROQ,
     .priv_data_size = sizeof(RoqContext),
@@ -243,5 +242,5 @@ const FFCodec ff_roq_decoder = {
     .close          = roq_decode_end,
     FF_CODEC_DECODE_CB(roq_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

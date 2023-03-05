@@ -614,7 +614,7 @@ static const AVClass alac_class = {
 
 const FFCodec ff_alac_decoder = {
     .p.name         = "alac",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("ALAC (Apple Lossless Audio Codec)"),
+    CODEC_LONG_NAME("ALAC (Apple Lossless Audio Codec)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_ALAC,
     .priv_data_size = sizeof(ALACContext),
@@ -622,6 +622,6 @@ const FFCodec ff_alac_decoder = {
     .close          = alac_decode_close,
     FF_CODEC_DECODE_CB(alac_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.priv_class   = &alac_class
 };

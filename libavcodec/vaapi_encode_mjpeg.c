@@ -566,7 +566,7 @@ static const AVClass vaapi_encode_mjpeg_class = {
 
 const FFCodec ff_mjpeg_vaapi_encoder = {
     .p.name         = "mjpeg_vaapi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("MJPEG (VAAPI)"),
+    CODEC_LONG_NAME("MJPEG (VAAPI)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MJPEG,
     .priv_data_size = sizeof(VAAPIEncodeMJPEGContext),
@@ -574,8 +574,10 @@ const FFCodec ff_mjpeg_vaapi_encoder = {
     FF_CODEC_RECEIVE_PACKET_CB(&ff_vaapi_encode_receive_packet),
     .close          = &vaapi_encode_mjpeg_close,
     .p.priv_class   = &vaapi_encode_mjpeg_class,
-    .p.capabilities = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DR1 |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_mjpeg_defaults,
     .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,

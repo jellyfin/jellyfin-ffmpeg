@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://gitlab.freedesktop.org/fontconfig/fontconfig.git"
-SCRIPT_COMMIT="2ef790a0dbbab24235d1b8c0325ab4414de5f0a9"
+SCRIPT_COMMIT="a6a169572204dd86f4ab462ef505d98fdfd82d76"
 
 ffbuild_enabled() {
     return 0

@@ -70,15 +70,13 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "libavutil/intreadwrite.h"
-#include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #define PALETTE_COUNT 256
 #define VQA_HEADER_SIZE 0x2A
@@ -848,7 +846,7 @@ static const FFCodecDefault vqa_defaults[] = {
 
 const FFCodec ff_vqa_decoder = {
     .p.name         = "vqavideo",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Westwood Studios VQA (Vector Quantized Animation) video"),
+    CODEC_LONG_NAME("Westwood Studios VQA (Vector Quantized Animation) video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_WS_VQA,
     .priv_data_size = sizeof(VqaContext),
@@ -857,5 +855,5 @@ const FFCodec ff_vqa_decoder = {
     FF_CODEC_DECODE_CB(vqa_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
     .defaults       = vqa_defaults,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -24,7 +24,6 @@
 #include "bytestream.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 
 typedef struct PCMDVDContext {
     uint8_t header[3];       // Header added to every frame
@@ -167,8 +166,6 @@ static int pcm_dvd_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         break;
     }
 
-    avpkt->pts      = frame->pts;
-    avpkt->duration = ff_samples_to_time_base(avctx, frame->nb_samples);
     *got_packet_ptr = 1;
 
     return 0;
@@ -176,21 +173,17 @@ static int pcm_dvd_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
 const FFCodec ff_pcm_dvd_encoder = {
     .p.name         = "pcm_dvd",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("PCM signed 16|20|24-bit big-endian for DVD media"),
+    CODEC_LONG_NAME("PCM signed 16|20|24-bit big-endian for DVD media"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_PCM_DVD,
-    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(PCMDVDContext),
     .init           = pcm_dvd_encode_init,
     FF_CODEC_ENCODE_CB(pcm_dvd_encode_frame),
     .p.supported_samplerates = (const int[]) { 48000, 96000, 0},
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts = (const uint64_t[]) { AV_CH_LAYOUT_MONO,
-                                            AV_CH_LAYOUT_STEREO,
-                                            AV_CH_LAYOUT_5POINT1,
-                                            AV_CH_LAYOUT_7POINT1,
-                                            0 },
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO, AV_CH_LAYOUT_STEREO,
+                              AV_CH_LAYOUT_5POINT1, AV_CH_LAYOUT_7POINT1)
     .p.ch_layouts   = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO,
                                                   AV_CHANNEL_LAYOUT_STEREO,
                                                   AV_CHANNEL_LAYOUT_5POINT1,
@@ -199,5 +192,4 @@ const FFCodec ff_pcm_dvd_encoder = {
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                      AV_SAMPLE_FMT_S32,
                                                      AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

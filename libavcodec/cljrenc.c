@@ -42,7 +42,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     CLJRContext *a = avctx->priv_data;
     PutBitContext pb;
     int x, y, ret;
-    uint32_t dither= avctx->frame_number;
+    uint32_t dither= avctx->frame_num;
     static const uint32_t ordered_dither[2][2] =
     {
         { 0x10400000, 0x104F0000 },
@@ -63,9 +63,9 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     init_put_bits(&pb, pkt->data, pkt->size);
 
     for (y = 0; y < avctx->height; y++) {
-        uint8_t *luma = &p->data[0][y * p->linesize[0]];
-        uint8_t *cb   = &p->data[1][y * p->linesize[1]];
-        uint8_t *cr   = &p->data[2][y * p->linesize[2]];
+        const uint8_t *luma = &p->data[0][y * p->linesize[0]];
+        const uint8_t *cb   = &p->data[1][y * p->linesize[1]];
+        const uint8_t *cr   = &p->data[2][y * p->linesize[2]];
         uint8_t luma_tmp[4];
         for (x = 0; x < avctx->width; x += 4) {
             switch (a->dither_type) {
@@ -110,10 +110,10 @@ static const AVClass cljr_class = {
 
 const FFCodec ff_cljr_encoder = {
     .p.name         = "cljr",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Cirrus Logic AccuPak"),
+    CODEC_LONG_NAME("Cirrus Logic AccuPak"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CLJR,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(CLJRContext),
     FF_CODEC_ENCODE_CB(encode_frame),
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV411P,

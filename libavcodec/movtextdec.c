@@ -593,7 +593,7 @@ static const AVClass mov_text_decoder_class = {
 
 const FFCodec ff_movtext_decoder = {
     .p.name       = "mov_text",
-    .p.long_name  = NULL_IF_CONFIG_SMALL("3GPP Timed Text subtitle"),
+    CODEC_LONG_NAME("3GPP Timed Text subtitle"),
     .p.type       = AVMEDIA_TYPE_SUBTITLE,
     .p.id         = AV_CODEC_ID_MOV_TEXT,
     .priv_data_size = sizeof(MovTextContext),
@@ -602,5 +602,4 @@ const FFCodec ff_movtext_decoder = {
     FF_CODEC_DECODE_SUB_CB(mov_text_decode_frame),
     .close        = mov_text_decode_close,
     .flush        = mov_text_flush,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

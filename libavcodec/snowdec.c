@@ -655,14 +655,13 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_snow_decoder = {
     .p.name         = "snow",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Snow"),
+    CODEC_LONG_NAME("Snow"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_SNOW,
     .priv_data_size = sizeof(SnowContext),
     .init           = ff_snow_common_init,
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DR1 /*| AV_CODEC_CAP_DRAW_HORIZ_BAND*/,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

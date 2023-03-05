@@ -21,8 +21,8 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 typedef struct AvsContext {
     AVFrame *frame;
@@ -177,7 +177,7 @@ static av_cold int avs_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_avs_decoder = {
     .p.name         = "avs",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("AVS (Audio Video Standard) video"),
+    CODEC_LONG_NAME("AVS (Audio Video Standard) video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AVS,
     .priv_data_size = sizeof(AvsContext),
@@ -185,5 +185,4 @@ const FFCodec ff_avs_decoder = {
     FF_CODEC_DECODE_CB(avs_decode_frame),
     .close          = avs_decode_end,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

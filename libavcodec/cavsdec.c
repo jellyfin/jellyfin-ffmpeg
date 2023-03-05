@@ -31,7 +31,7 @@
 #include "golomb.h"
 #include "cavs.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "mathops.h"
 #include "mpeg12data.h"
 #include "startcode.h"
@@ -521,7 +521,7 @@ static inline int dequant(AVSContext *h, int16_t *level_buf, uint8_t *run_buf,
 {
     int round = 1 << (shift - 1);
     int pos = -1;
-    const uint8_t *scantab = h->scantable.permutated;
+    const uint8_t *scantab = h->permutated_scantable;
 
     /* inverse scan and dequantization */
     while (--coeff_num >= 0) {
@@ -1317,7 +1317,7 @@ static int cavs_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
 const FFCodec ff_cavs_decoder = {
     .p.name         = "cavs",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Chinese AVS (Audio Video Standard) (AVS1-P2, JiZhun profile)"),
+    CODEC_LONG_NAME("Chinese AVS (Audio Video Standard) (AVS1-P2, JiZhun profile)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CAVS,
     .priv_data_size = sizeof(AVSContext),
@@ -1326,5 +1326,5 @@ const FFCodec ff_cavs_decoder = {
     FF_CODEC_DECODE_CB(cavs_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .flush          = cavs_flush,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

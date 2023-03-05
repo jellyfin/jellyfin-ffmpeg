@@ -795,12 +795,6 @@ deletes them. Increase this to allow continue clients to download segments which
 were recently referenced in the playlist. Default value is 1, meaning segments older than
 @code{hls_list_size+1} will be deleted.
 
-@item hls_ts_options @var{options_list}
-Set output format options using a :-separated list of key=value
-parameters. Values containing @code{:} special characters must be
-escaped.
-@code{hls_ts_options} is deprecated, use hls_segment_options instead of it..
-
 @item hls_start_number_source
 Start the playlist sequence number (@code{#EXT-X-MEDIA-SEQUENCE}) according to the specified source.
 Unless @code{hls_flags single_file} is set, it also specifies source of starting sequence numbers of
@@ -1915,6 +1909,8 @@ Conform to System B (DVB) instead of System A (ATSC).
 Mark the initial packet of each stream as discontinuity.
 @item nit
 Emit NIT table.
+@item omit_rai
+Disable writing of random access indicator.
 @end table
 
 @item mpegts_copyts @var{boolean}
@@ -2366,6 +2362,11 @@ specification. Default value is "2". See also the
 Note that splitting may not be accurate, unless you force the
 reference stream key-frames at the given time. See the introductory
 notice and the examples below.
+
+@item min_seg_duration @var{time}
+Set minimum segment duration to @var{time}, the value must be a duration
+specification. This prevents the muxer ending segments at a duration below
+this value. Only effective with @code{segment_time}. Default value is "0".
 
 @item segment_atclocktime @var{1|0}
 If set to "1" split at regular clock time intervals starting from 00:00

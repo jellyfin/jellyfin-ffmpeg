@@ -70,6 +70,11 @@ const char *cpl_doc =
     "    <Id>urn:uuid:8e097bb0-cff7-4969-a692-bad47bfb528f</Id>"
     "  </EssenceDescriptor>"
     "</EssenceDescriptorList>"
+    "<CompositionTimecode>"
+    "<TimecodeDropFrame>false</TimecodeDropFrame>"
+    "<TimecodeRate>24</TimecodeRate>"
+    "<TimecodeStartAddress>02:10:01.23</TimecodeStartAddress>"
+    "</CompositionTimecode>"
     "<EditRate>24000 1001</EditRate>"
     "<SegmentList>"
     "<Segment>"
@@ -288,6 +293,7 @@ static int test_cpl_parsing(void)
 {
     xmlDocPtr doc;
     FFIMFCPL *cpl;
+    char tc_buf[AV_TIMECODE_STR_SIZE];
     int ret;
 
     doc = xmlReadMemory(cpl_doc, strlen(cpl_doc), NULL, NULL, 0);
@@ -306,6 +312,7 @@ static int test_cpl_parsing(void)
     printf("%s\n", cpl->content_title_utf8);
     printf(AV_PRI_URN_UUID "\n", AV_UUID_ARG(cpl->id_uuid));
     printf("%i %i\n", cpl->edit_rate.num, cpl->edit_rate.den);
+    printf("%s\n", av_timecode_make_string(cpl->tc, tc_buf, 0));
 
     printf("Marker resource count: %" PRIu32 "\n", cpl->main_markers_track->resource_count);
     for (uint32_t i = 0; i < cpl->main_markers_track->resource_count; i++) {
@@ -338,10 +345,9 @@ static int test_cpl_parsing(void)
     return 0;
 }
 
-static int test_bad_cpl_parsing(void)
+static int test_bad_cpl_parsing(FFIMFCPL **cpl)
 {
     xmlDocPtr doc;
-    FFIMFCPL *cpl;
     int ret;
 
     doc = xmlReadMemory(cpl_bad_doc, strlen(cpl_bad_doc), NULL, NULL, 0);
@@ -350,7 +356,7 @@ static int test_bad_cpl_parsing(void)
         return 1;
     }
 
-    ret = ff_imf_parse_cpl_from_xml_dom(doc, &cpl);
+    ret = ff_imf_parse_cpl_from_xml_dom(doc, cpl);
     xmlFreeDoc(doc);
     if (ret) {
         printf("CPL parsing failed.\n");
@@ -506,6 +512,7 @@ fail:
 
 int main(int argc, char *argv[])
 {
+    FFIMFCPL *cpl;
     int ret = 0;
 
     if (test_cpl_parsing() != 0)
@@ -518,8 +525,12 @@ int main(int argc, char *argv[])
         ret = 1;
 
     printf("#### The following should fail ####\n");
-    if (test_bad_cpl_parsing() == 0)
+    if (test_bad_cpl_parsing(&cpl) == 0) {
         ret = 1;
+    } else if (cpl) {
+        printf("Improper cleanup after failed CPL parsing\n");
+        ret = 1;
+    }
     printf("#### End failing test ####\n");
 
     return ret;

@@ -32,7 +32,6 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "g722.h"
 #include "libavutil/common.h"
 
@@ -373,20 +372,19 @@ static int g722_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
 const FFCodec ff_adpcm_g722_encoder = {
     .p.name          = "g722",
-    .p.long_name     = NULL_IF_CONFIG_SMALL("G.722 ADPCM"),
+    CODEC_LONG_NAME("G.722 ADPCM"),
     .p.type          = AVMEDIA_TYPE_AUDIO,
     .p.id            = AV_CODEC_ID_ADPCM_G722,
-    .p.capabilities  = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME,
+    .p.capabilities  = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME |
+                       AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size  = sizeof(G722Context),
     .init            = g722_encode_init,
     .close           = g722_encode_close,
     FF_CODEC_ENCODE_CB(g722_encode_frame),
     .p.sample_fmts   = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts = (const uint64_t[]){ AV_CH_LAYOUT_MONO, 0 },
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO)
     .p.ch_layouts   = (const AVChannelLayout[]){
         AV_CHANNEL_LAYOUT_MONO, { 0 }
     },
-    .caps_internal   = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
 };

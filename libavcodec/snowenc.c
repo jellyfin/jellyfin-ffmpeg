@@ -26,6 +26,7 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
+#include "me_cmp.h"
 #include "packet_internal.h"
 #include "snow_dwt.h"
 #include "snow.h"
@@ -66,6 +67,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     if ((ret = ff_snow_common_init(avctx)) < 0) {
         return ret;
     }
+    ff_me_cmp_init(&s->mecc, avctx);
     ff_mpegvideoencdsp_init(&s->mpvencdsp, avctx);
 
     ff_snow_alloc_blocks(s);
@@ -80,11 +82,11 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
     s->m.me.temp      =
     s->m.me.scratchpad = av_calloc(avctx->width + 64, 2*16*2*sizeof(uint8_t));
-    s->m.me.map       = av_mallocz(ME_MAP_SIZE*sizeof(uint32_t));
-    s->m.me.score_map = av_mallocz(ME_MAP_SIZE*sizeof(uint32_t));
     s->m.sc.obmc_scratchpad= av_mallocz(MB_SIZE*MB_SIZE*12*sizeof(uint32_t));
-    if (!s->m.me.scratchpad || !s->m.me.map || !s->m.me.score_map || !s->m.sc.obmc_scratchpad)
+    s->m.me.map       = av_mallocz(2 * ME_MAP_SIZE * sizeof(*s->m.me.map));
+    if (!s->m.me.scratchpad || !s->m.me.map || !s->m.sc.obmc_scratchpad)
         return AVERROR(ENOMEM);
+    s->m.me.score_map = s->m.me.map + ME_MAP_SIZE;
 
     ff_h263_encode_init(&s->m); //mv_penalty
 
@@ -151,7 +153,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
 }
 
 //near copy & paste from dsputil, FIXME
-static int pix_sum(uint8_t * pix, int line_size, int w, int h)
+static int pix_sum(const uint8_t * pix, int line_size, int w, int h)
 {
     int s, i, j;
 
@@ -167,7 +169,7 @@ static int pix_sum(uint8_t * pix, int line_size, int w, int h)
 }
 
 //near copy & paste from dsputil, FIXME
-static int pix_norm1(uint8_t * pix, int line_size, int w)
+static int pix_norm1(const uint8_t * pix, int line_size, int w)
 {
     int s, i, j;
     const uint32_t *sq = ff_square_tab + 256;
@@ -245,7 +247,7 @@ static int encode_q_branch(SnowContext *s, int level, int x, int y){
     int l,cr,cb;
     const int stride= s->current_picture->linesize[0];
     const int uvstride= s->current_picture->linesize[1];
-    uint8_t *current_data[3]= { s->input_picture->data[0] + (x + y*  stride)*block_w,
+    const uint8_t *const current_data[3] = { s->input_picture->data[0] + (x + y*  stride)*block_w,
                                 s->input_picture->data[1] + ((x*block_w)>>s->chroma_h_shift) + ((y*uvstride*block_w)>>s->chroma_v_shift),
                                 s->input_picture->data[2] + ((x*block_w)>>s->chroma_h_shift) + ((y*uvstride*block_w)>>s->chroma_v_shift)};
     int P[10][2];
@@ -508,7 +510,7 @@ static int get_dc(SnowContext *s, int mb_x, int mb_y, int plane_index){
     const uint8_t *obmc  = plane_index ? ff_obmc_tab[s->block_max_depth+s->chroma_h_shift] : ff_obmc_tab[s->block_max_depth];
     const int obmc_stride= plane_index ? (2*block_size)>>s->chroma_h_shift : 2*block_size;
     const int ref_stride= s->current_picture->linesize[plane_index];
-    uint8_t *src= s-> input_picture->data[plane_index];
+    const uint8_t *src = s->input_picture->data[plane_index];
     IDWTELEM *dst= (IDWTELEM*)s->m.sc.obmc_scratchpad + plane_index*block_size*block_size*4; //FIXME change to unsigned
     const int b_stride = s->b_width << s->block_max_depth;
     const int w= p->width;
@@ -603,7 +605,7 @@ static int get_block_rd(SnowContext *s, int mb_x, int mb_y, int plane_index, uin
     const int obmc_stride= plane_index ? (2*block_size)>>s->chroma_h_shift : 2*block_size;
     const int ref_stride= s->current_picture->linesize[plane_index];
     uint8_t *dst= s->current_picture->data[plane_index];
-    uint8_t *src= s->  input_picture->data[plane_index];
+    const uint8_t *src = s->input_picture->data[plane_index];
     IDWTELEM *pred= (IDWTELEM*)s->m.sc.obmc_scratchpad + plane_index*block_size*block_size*4;
     uint8_t *cur = s->scratchbuf;
     uint8_t *tmp = s->emu_edge_buffer;
@@ -706,7 +708,7 @@ static int get_4block_rd(SnowContext *s, int mb_x, int mb_y, int plane_index){
     const int obmc_stride= plane_index ? (2*block_size)>>s->chroma_h_shift : 2*block_size;
     const int ref_stride= s->current_picture->linesize[plane_index];
     uint8_t *dst= s->current_picture->data[plane_index];
-    uint8_t *src= s-> input_picture->data[plane_index];
+    const uint8_t *src = s->input_picture->data[plane_index];
     //FIXME zero_dst is const but add_yblock changes dst if add is 0 (this is never the case for dst=zero_dst
     // const has only been removed from zero_dst to suppress a warning
     static IDWTELEM zero_dst[4096]; //FIXME
@@ -892,34 +894,23 @@ static int encode_subband(SnowContext *s, SubBand *b, const IDWTELEM *src, const
 //    encode_subband_dzr(s, b, src, parent, stride, orientation);
 }
 
-static av_always_inline int check_block(SnowContext *s, int mb_x, int mb_y, int p[3], int intra, uint8_t (*obmc_edged)[MB_SIZE * 2], int *best_rd){
+static av_always_inline int check_block_intra(SnowContext *s, int mb_x, int mb_y, int p[3],
+                                              uint8_t (*obmc_edged)[MB_SIZE * 2], int *best_rd)
+{
     const int b_stride= s->b_width << s->block_max_depth;
     BlockNode *block= &s->block[mb_x + mb_y * b_stride];
     BlockNode backup= *block;
-    unsigned value;
-    int rd, index;
+    int rd;
 
     av_assert2(mb_x>=0 && mb_y>=0);
     av_assert2(mb_x<b_stride);
 
-    if(intra){
-        block->color[0] = p[0];
-        block->color[1] = p[1];
-        block->color[2] = p[2];
-        block->type |= BLOCK_INTRA;
-    }else{
-        index= (p[0] + 31*p[1]) & (ME_CACHE_SIZE-1);
-        value= s->me_cache_generation + (p[0]>>10) + (p[1]<<6) + (block->ref<<12);
-        if(s->me_cache[index] == value)
-            return 0;
-        s->me_cache[index]= value;
+    block->color[0] = p[0];
+    block->color[1] = p[1];
+    block->color[2] = p[2];
+    block->type |= BLOCK_INTRA;
 
-        block->mx= p[0];
-        block->my= p[1];
-        block->type &= ~BLOCK_INTRA;
-    }
-
-    rd= get_block_rd(s, mb_x, mb_y, 0, obmc_edged) + s->intra_penalty * !!intra;
+    rd = get_block_rd(s, mb_x, mb_y, 0, obmc_edged) + s->intra_penalty;
 
 //FIXME chroma
     if(rd < *best_rd){
@@ -934,8 +925,35 @@ static av_always_inline int check_block(SnowContext *s, int mb_x, int mb_y, int 
 /* special case for int[2] args we discard afterwards,
  * fixes compilation problem with gcc 2.95 */
 static av_always_inline int check_block_inter(SnowContext *s, int mb_x, int mb_y, int p0, int p1, uint8_t (*obmc_edged)[MB_SIZE * 2], int *best_rd){
-    int p[2] = {p0, p1};
-    return check_block(s, mb_x, mb_y, p, 0, obmc_edged, best_rd);
+    const int b_stride = s->b_width << s->block_max_depth;
+    BlockNode *block = &s->block[mb_x + mb_y * b_stride];
+    BlockNode backup = *block;
+    unsigned value;
+    int rd, index;
+
+    av_assert2(mb_x >= 0 && mb_y >= 0);
+    av_assert2(mb_x < b_stride);
+
+    index = (p0 + 31 * p1) & (ME_CACHE_SIZE-1);
+    value = s->me_cache_generation + (p0 >> 10) + p1 * (1 << 6) + (block->ref << 12);
+    if (s->me_cache[index] == value)
+        return 0;
+    s->me_cache[index] = value;
+
+    block->mx = p0;
+    block->my = p1;
+    block->type &= ~BLOCK_INTRA;
+
+    rd = get_block_rd(s, mb_x, mb_y, 0, obmc_edged);
+
+//FIXME chroma
+    if (rd < *best_rd) {
+        *best_rd = rd;
+        return 1;
+    } else {
+        *block   = backup;
+        return 0;
+    }
 }
 
 static av_always_inline int check_4block_inter(SnowContext *s, int mb_x, int mb_y, int p0, int p1, int ref, int *best_rd){
@@ -1060,7 +1078,7 @@ static void iterative_me(SnowContext *s){
 
                 //skip stuff outside the picture
                 if(mb_x==0 || mb_y==0 || mb_x==b_width-1 || mb_y==b_height-1){
-                    uint8_t *src= s->  input_picture->data[0];
+                    const uint8_t *src = s->input_picture->data[0];
                     uint8_t *dst= s->current_picture->data[0];
                     const int stride= s->current_picture->linesize[0];
                     const int block_w= MB_SIZE >> s->block_max_depth;
@@ -1092,7 +1110,7 @@ static void iterative_me(SnowContext *s){
                 // get previous score (cannot be cached due to OBMC)
                 if(pass > 0 && (block->type&BLOCK_INTRA)){
                     int color0[3]= {block->color[0], block->color[1], block->color[2]};
-                    check_block(s, mb_x, mb_y, color0, 1, obmc_edged, &best_rd);
+                    check_block_intra(s, mb_x, mb_y, color0, obmc_edged, &best_rd);
                 }else
                     check_block_inter(s, mb_x, mb_y, block->mx, block->my, obmc_edged, &best_rd);
 
@@ -1150,7 +1168,7 @@ static void iterative_me(SnowContext *s){
                 }
                 best_rd= ref_rd;
                 *block= ref_b;
-                check_block(s, mb_x, mb_y, color, 1, obmc_edged, &best_rd);
+                check_block_intra(s, mb_x, mb_y, color, obmc_edged, &best_rd);
                 //FIXME RD style color selection
                 if(!same_block(block, &backup)){
                     if(tb ) tb ->type &= ~BLOCK_OPT;
@@ -1511,11 +1529,11 @@ static int ratecontrol_1pass(SnowContext *s, AVFrame *pict)
     coef_sum = (uint64_t)coef_sum * coef_sum >> 16;
 
     if(pict->pict_type == AV_PICTURE_TYPE_I){
-        s->m.current_picture.mb_var_sum= coef_sum;
-        s->m.current_picture.mc_mb_var_sum= 0;
+        s->m.mb_var_sum    = coef_sum;
+        s->m.mc_mb_var_sum = 0;
     }else{
-        s->m.current_picture.mc_mb_var_sum= coef_sum;
-        s->m.current_picture.mb_var_sum= 0;
+        s->m.mc_mb_var_sum = coef_sum;
+        s->m.mb_var_sum    = 0;
     }
 
     pict->quality= ff_rate_estimate_qscale(&s->m, 1);
@@ -1589,9 +1607,9 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     pic->pict_type = pict->pict_type;
     pic->quality = pict->quality;
 
-    s->m.picture_number= avctx->frame_number;
+    s->m.picture_number= avctx->frame_num;
     if(avctx->flags&AV_CODEC_FLAG_PASS2){
-        s->m.pict_type = pic->pict_type = s->m.rc_context.entry[avctx->frame_number].new_pict_type;
+        s->m.pict_type = pic->pict_type = s->m.rc_context.entry[avctx->frame_num].new_pict_type;
         s->keyframe = pic->pict_type == AV_PICTURE_TYPE_I;
         if(!(avctx->flags&AV_CODEC_FLAG_QSCALE)) {
             pic->quality = ff_rate_estimate_qscale(&s->m, 0);
@@ -1599,11 +1617,11 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                 return -1;
         }
     }else{
-        s->keyframe= avctx->gop_size==0 || avctx->frame_number % avctx->gop_size == 0;
+        s->keyframe= avctx->gop_size==0 || avctx->frame_num % avctx->gop_size == 0;
         s->m.pict_type = pic->pict_type = s->keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
     }
 
-    if(s->pass1_rc && avctx->frame_number == 0)
+    if(s->pass1_rc && avctx->frame_num == 0)
         pic->quality = 2*FF_QP2LAMBDA;
     if (pic->quality) {
         s->qlog   = qscale2qlog(pic->quality);
@@ -1798,7 +1816,7 @@ redo_frame:
             if(s->qlog == LOSSLESS_QLOG){
                 for(y=0; y<h; y++){
                     for(x=0; x<w; x++){
-                        s->spatial_idwt_buffer[y*w + x]<<=FRAC_BITS;
+                        s->spatial_idwt_buffer[y*w + x] *= 1 << FRAC_BITS;
                     }
                 }
             }
@@ -1838,13 +1856,12 @@ redo_frame:
 
     ff_snow_release_buffer(avctx);
 
-    s->current_picture->coded_picture_number = avctx->frame_number;
     s->current_picture->pict_type = pic->pict_type;
     s->current_picture->quality = pic->quality;
     s->m.frame_bits = 8*(s->c.bytestream - s->c.bytestream_start);
     s->m.p_tex_bits = s->m.frame_bits - s->m.misc_bits - s->m.mv_bits;
-    s->m.current_picture.f->display_picture_number =
-    s->m.current_picture.f->coded_picture_number   = avctx->frame_number;
+    s->m.current_picture.display_picture_number =
+    s->m.current_picture.coded_picture_number   = avctx->frame_num;
     s->m.current_picture.f->quality                = pic->quality;
     s->m.total_bits += 8*(s->c.bytestream - s->c.bytestream_start);
     if(s->pass1_rc)
@@ -1914,9 +1931,10 @@ static const AVClass snowenc_class = {
 
 const FFCodec ff_snow_encoder = {
     .p.name         = "snow",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Snow"),
+    CODEC_LONG_NAME("Snow"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_SNOW,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(SnowContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),
@@ -1927,6 +1945,5 @@ const FFCodec ff_snow_encoder = {
         AV_PIX_FMT_NONE
     },
     .p.priv_class   = &snowenc_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

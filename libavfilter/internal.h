@@ -137,6 +137,10 @@ struct AVFilterGraphInternal {
 
 struct AVFilterInternal {
     avfilter_execute_func *execute;
+
+    // 1 when avfilter_init_*() was successfully called on this filter
+    // 0 otherwise
+    int initialized;
 };
 
 static av_always_inline int ff_filter_execute(AVFilterContext *ctx, avfilter_action_func *func,
@@ -256,8 +260,6 @@ void ff_avfilter_link_set_in_status(AVFilterLink *link, int status, int64_t pts)
  */
 void ff_avfilter_link_set_out_status(AVFilterLink *link, int status, int64_t pts);
 
-void ff_command_queue_pop(AVFilterContext *filter);
-
 #define D2TS(d)      (isnan(d) ? AV_NOPTS_VALUE : (int64_t)(d))
 #define TS2D(ts)     ((ts) == AV_NOPTS_VALUE ? NAN : (double)(ts))
 #define TS2T(ts, tb) ((ts) == AV_NOPTS_VALUE ? NAN : (double)(ts) * av_q2d(tb))
@@ -266,9 +268,11 @@ void ff_command_queue_pop(AVFilterContext *filter);
 
 #define FF_TPRINTF_START(ctx, func) ff_tlog(NULL, "%-16s: ", #func)
 
-char *ff_get_ref_perms_string(char *buf, size_t buf_size, int perms);
-
+#ifdef TRACE
 void ff_tlog_link(void *ctx, AVFilterLink *link, int end);
+#else
+#define ff_tlog_link(ctx, link, end) do { } while(0)
+#endif
 
 /**
  * Append a new input/output pad to the filter's list of such pads.
@@ -404,5 +408,18 @@ int ff_filter_process_command(AVFilterContext *ctx, const char *cmd,
  */
 int ff_filter_init_hw_frames(AVFilterContext *avctx, AVFilterLink *link,
                              int default_pool_size);
+
+/**
+ * Parse filter options into a dictionary.
+ *
+ * @param logctx context for logging
+ * @param priv_class a filter's private class for shorthand options or NULL
+ * @param options dictionary to store parsed options in
+ * @param args options string to parse
+ *
+ * @return a non-negative number on success, a negative error code on failure
+ */
+int ff_filter_opt_parse(void *logctx, const AVClass *priv_class,
+                        AVDictionary **options, const char *args);
 
 #endif /* AVFILTER_INTERNAL_H */

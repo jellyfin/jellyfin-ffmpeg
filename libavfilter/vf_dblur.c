@@ -47,7 +47,7 @@ typedef struct DBlurContext {
 
 static const AVOption dblur_options[] = {
     { "angle",  "set angle",            OFFSET(angle),  AV_OPT_TYPE_FLOAT, {.dbl=45},  0.0,  360, FLAGS },
-    { "radius", "set radius",           OFFSET(radius), AV_OPT_TYPE_FLOAT, {.dbl=5},     1, 8192, FLAGS },
+    { "radius", "set radius",           OFFSET(radius), AV_OPT_TYPE_FLOAT, {.dbl=5},     0, 8192, FLAGS },
     { "planes", "set planes to filter", OFFSET(planes), AV_OPT_TYPE_INT,   {.i64=0xF},   0,  0xF, FLAGS },
     { NULL }
 };
@@ -67,7 +67,7 @@ static int filter_horizontally(AVFilterContext *ctx, int width, int height)
     float g;
 
     if (s->R3 > 0) {
-        for (int y = 1; y < height - 1; y++) {
+        for (int y = 1; y < height; y++) {
             g = q * f(y, 0) + c * f(y, 0);
             for (int x = 0; x < width; x++) {
                 f(y, x) = b0 * f(y, x) + b1 * f(y - 1, x) + g;
@@ -83,7 +83,7 @@ static int filter_horizontally(AVFilterContext *ctx, int width, int height)
             }
         }
     } else {
-        for (int y = 1; y < height - 1; y++) {
+        for (int y = 1; y < height; y++) {
             g = q * f(y, width - 1) + c * f(y, width - 1);
             for (int x = width - 1; x >= 0; x--) {
                 f(y, x) = b0 * f(y, x) + b1 * f(y - 1, x) + g;

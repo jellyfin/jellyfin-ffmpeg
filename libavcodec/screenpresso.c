@@ -34,7 +34,6 @@
  */
 
 #include <stdint.h>
-#include <string.h>
 #include <zlib.h>
 
 #include "libavutil/imgutils.h"
@@ -43,7 +42,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 typedef struct ScreenpressoContext {
     AVFrame *current;
@@ -185,7 +184,7 @@ static int screenpresso_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_screenpresso_decoder = {
     .p.name         = "screenpresso",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Screenpresso"),
+    CODEC_LONG_NAME("Screenpresso"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_SCREENPRESSO,
     .init           = screenpresso_init,
@@ -193,6 +192,5 @@ const FFCodec ff_screenpresso_decoder = {
     .close          = screenpresso_close,
     .priv_data_size = sizeof(ScreenpressoContext),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

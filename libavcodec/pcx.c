@@ -22,12 +22,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 #define PCX_HEADER_SIZE 128
 
@@ -251,7 +250,7 @@ end:
 
 const FFCodec ff_pcx_decoder = {
     .p.name       = "pcx",
-    .p.long_name  = NULL_IF_CONFIG_SMALL("PC Paintbrush PCX image"),
+    CODEC_LONG_NAME("PC Paintbrush PCX image"),
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_PCX,
     FF_CODEC_DECODE_CB(pcx_decode_frame),

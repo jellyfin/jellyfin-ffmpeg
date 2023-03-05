@@ -27,14 +27,12 @@
  * @remark Development mentored by Benjamin Larson
  */
 
-#include <stddef.h>
-
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/float_dsp.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "qcelpdata.h"
 #include "celp_filters.h"
@@ -648,8 +646,8 @@ static qcelp_packet_rate determine_bitrate(AVCodecContext *avctx,
 static void warn_insufficient_frame_quality(AVCodecContext *avctx,
                                             const char *message)
 {
-    av_log(avctx, AV_LOG_WARNING, "Frame #%d, IFQ: %s\n",
-           avctx->frame_number, message);
+    av_log(avctx, AV_LOG_WARNING, "Frame #%"PRId64", IFQ: %s\n",
+           avctx->frame_num, message);
 }
 
 static void postfilter(QCELPContext *q, float *samples, float *lpc)
@@ -792,12 +790,11 @@ erasure:
 
 const FFCodec ff_qcelp_decoder = {
     .p.name         = "qcelp",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("QCELP / PureVoice"),
+    CODEC_LONG_NAME("QCELP / PureVoice"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_QCELP,
     .init           = qcelp_decode_init,
     FF_CODEC_DECODE_CB(qcelp_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .priv_data_size = sizeof(QCELPContext),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

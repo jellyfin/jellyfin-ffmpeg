@@ -33,7 +33,7 @@
 #include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "ilbcdata.h"
 
@@ -91,7 +91,6 @@ typedef struct ILBCContext {
     int              enhancer;
 
     int              mode;
-    GetBitContext    gb;
     ILBCFrame        frame;
 
     int              prev_enh_pl;
@@ -127,11 +126,14 @@ typedef struct ILBCContext {
     int16_t          hpimemy[4];
 } ILBCContext;
 
-static int unpack_frame(ILBCContext *s)
+static int unpack_frame(ILBCContext *s, const uint8_t *buf, int size)
 {
     ILBCFrame *frame = &s->frame;
-    GetBitContext *gb = &s->gb;
-    int j;
+    GetBitContext gb0, *const gb = &gb0;
+    int j, ret;
+
+    if ((ret = init_get_bits8(gb, buf, size)) < 0)
+        return ret;
 
     frame->lsf[0] = get_bits(gb, 6);
     frame->lsf[1] = get_bits(gb, 7);
@@ -331,8 +333,8 @@ static void lsf_check_stability(int16_t *lsf, int dim, int nb_vectors)
     }
 }
 
-static void lsf_interpolate(int16_t *out, int16_t *in1,
-                            int16_t *in2, int16_t coef,
+static void lsf_interpolate(int16_t *out, const int16_t *in1,
+                            const int16_t *in2, int16_t coef,
                             int size)
 {
     int invcoef = 16384 - coef, i;
@@ -341,7 +343,7 @@ static void lsf_interpolate(int16_t *out, int16_t *in1,
         out[i] = (coef * in1[i] + invcoef * in2[i] + 8192) >> 14;
 }
 
-static void lsf2lsp(int16_t *lsf, int16_t *lsp, int order)
+static void lsf2lsp(const int16_t *lsf, int16_t *lsp, int order)
 {
     int16_t diff, freq;
     int32_t tmp;
@@ -364,7 +366,7 @@ static void lsf2lsp(int16_t *lsf, int16_t *lsp, int order)
     }
 }
 
-static void get_lsp_poly(int16_t *lsp, int32_t *f)
+static void get_lsp_poly(const int16_t *lsp, int32_t *f)
 {
     int16_t high, low;
     int i, j, k, l;
@@ -391,7 +393,7 @@ static void get_lsp_poly(int16_t *lsp, int32_t *f)
     }
 }
 
-static void lsf2poly(int16_t *a, int16_t *lsf)
+static void lsf2poly(int16_t *a, const int16_t *lsf)
 {
     int32_t f[2][6];
     int16_t lsp[10];
@@ -418,8 +420,8 @@ static void lsf2poly(int16_t *a, int16_t *lsf)
     }
 }
 
-static void lsp_interpolate2polydec(int16_t *a, int16_t *lsf1,
-                                   int16_t *lsf2, int coef, int length)
+static void lsp_interpolate2polydec(int16_t *a, const int16_t *lsf1,
+                                    const int16_t *lsf2, int coef, int length)
 {
     int16_t lsftmp[LPC_FILTERORDER];
 
@@ -437,13 +439,13 @@ static void bw_expand(int16_t *out, const int16_t *in, const int16_t *coef, int 
 }
 
 static void lsp_interpolate(int16_t *syntdenum, int16_t *weightdenum,
-                            int16_t *lsfdeq, int16_t length,
+                            const int16_t *lsfdeq, int16_t length,
                             ILBCContext *s)
 {
-    int16_t lp[LPC_FILTERORDER + 1], *lsfdeq2;
+    int16_t lp[LPC_FILTERORDER + 1];
+    const int16_t *const lsfdeq2 = lsfdeq + length;
     int i, pos, lp_length;
 
-    lsfdeq2 = lsfdeq + length;
     lp_length = length + 1;
 
     if (s->mode == 30) {
@@ -478,8 +480,8 @@ static void lsp_interpolate(int16_t *syntdenum, int16_t *weightdenum,
     }
 }
 
-static void filter_mafq12(int16_t *in_ptr, int16_t *out_ptr,
-                          int16_t *B, int16_t B_length,
+static void filter_mafq12(const int16_t *in_ptr, int16_t *out_ptr,
+                          const int16_t *B, int16_t B_length,
                           int16_t length)
 {
     int o, i, j;
@@ -520,13 +522,14 @@ static void filter_arfq12(const int16_t *data_in,
     }
 }
 
-static void state_construct(int16_t ifm, int16_t *idx,
-                           int16_t *synt_denum, int16_t *Out_fix,
+static void state_construct(int16_t ifm, const int16_t *idx,
+                            const int16_t *synt_denum, int16_t *Out_fix,
                            int16_t len)
 {
     int k;
     int16_t maxVal;
-    int16_t *tmp1, *tmp2, *tmp3;
+    int16_t *tmp1, *tmp3;
+    const int16_t *tmp2;
     /* Stack based */
     int16_t numerator[1 + LPC_FILTERORDER];
     int16_t sampleValVec[2 * STATE_SHORT_LEN_30MS + LPC_FILTERORDER];
@@ -630,7 +633,7 @@ static void add_vector_and_shift(int16_t *out, const int16_t *in1,
         out[i] = (in1[i] + in2[i]) >> shift;
 }
 
-static void create_augmented_vector(int index, int16_t *buffer, int16_t *cbVec)
+static void create_augmented_vector(int index, const int16_t *buffer, int16_t *cbVec)
 {
     int16_t cbVecTmp[4];
     int interpolation_length = FFMIN(4, index);
@@ -696,7 +699,7 @@ static void get_codebook(int16_t * cbvec,   /* (o) Constructed codebook vector *
 
             /* do filtering to get the codebook vector */
 
-            filter_mafq12(&mem[memIndTest + 4], cbvec, (int16_t *) kCbFiltersRev, CB_FILTERLEN, cbveclen);
+            filter_mafq12(&mem[memIndTest + 4], cbvec, kCbFiltersRev, CB_FILTERLEN, cbveclen);
         } else {
             /* interpolated vectors */
             /* Stuff zeros outside memory buffer  */
@@ -704,7 +707,7 @@ static void get_codebook(int16_t * cbvec,   /* (o) Constructed codebook vector *
             memset(mem + lMem, 0, CB_HALFFILTERLEN * 2);
 
             /* do filtering */
-            filter_mafq12(&mem[memIndTest + 7], tempbuff2, (int16_t *) kCbFiltersRev, CB_FILTERLEN, (int16_t) (cbveclen + 5));
+            filter_mafq12(&mem[memIndTest + 7], tempbuff2, kCbFiltersRev, CB_FILTERLEN, (int16_t) (cbveclen + 5));
 
             /* Calculate lag index */
             lag = (cbveclen << 1) - 20 + index - base_size - lMem - 1;
@@ -716,8 +719,8 @@ static void get_codebook(int16_t * cbvec,   /* (o) Constructed codebook vector *
 
 static void construct_vector (
     int16_t *decvector,   /* (o) Decoded vector */
-    int16_t *index,       /* (i) Codebook indices */
-    int16_t *gain_index,  /* (i) Gain quantization indices */
+    const int16_t *index,       /* (i) Codebook indices */
+    const int16_t *gain_index,  /* (i) Gain quantization indices */
     int16_t *mem,         /* (i) Buffer for codevector construction */
     int16_t lMem,         /* (i) Length of buffer */
     int16_t veclen)
@@ -753,10 +756,10 @@ static void construct_vector (
     }
 }
 
-static void reverse_memcpy(int16_t *dest, int16_t *source, int length)
+static void reverse_memcpy(int16_t *dest, const int16_t *source, int length)
 {
     int16_t* destPtr = dest;
-    int16_t* sourcePtr = source;
+    const int16_t *sourcePtr = source;
     int j;
 
     for (j = 0; j < length; j++)
@@ -766,7 +769,7 @@ static void reverse_memcpy(int16_t *dest, int16_t *source, int length)
 static void decode_residual(ILBCContext *s,
                             ILBCFrame *encbits,
                             int16_t *decresidual,
-                            int16_t *syntdenum)
+                            const int16_t *syntdenum)
 {
     int16_t meml_gotten, Nfor, Nback, diff, start_pos;
     int16_t subcount, subframe;
@@ -911,12 +914,10 @@ static int32_t scale_dot_product(const int16_t *v1, const int16_t *v2, int lengt
     return av_clipl_int32(sum);
 }
 
-static void correlation(int32_t *corr, int32_t *ener, int16_t *buffer,
+static void correlation(int32_t *corr, int32_t *ener, const int16_t *buffer,
                         int16_t lag, int16_t blen, int16_t srange, int16_t scale)
 {
-    int16_t *w16ptr;
-
-    w16ptr = &buffer[blen - srange - lag];
+    const int16_t *w16ptr = &buffer[blen - srange - lag];
 
     *corr = scale_dot_product(&buffer[blen - srange], w16ptr, srange, scale);
     *ener = scale_dot_product(w16ptr, w16ptr, srange, scale);
@@ -952,8 +953,8 @@ static void do_plc(int16_t *plc_residual,      /* (o) concealed residual */
                    int16_t *plc_lpc,           /* (o) concealed LP parameters */
                    int16_t PLI,                /* (i) packet loss indicator
                                                       0 - no PL, 1 = PL */
-                   int16_t *decresidual,       /* (i) decoded residual */
-                   int16_t *lpc,               /* (i) decoded LPC (only used for no PL) */
+                   const int16_t *decresidual, /* (i) decoded residual */
+                   const int16_t *lpc,         /* (i) decoded LPC (only used for no PL) */
                    int16_t inlag,              /* (i) pitch lag */
                    ILBCContext *s)             /* (i/o) decoder instance */
 {
@@ -1202,7 +1203,7 @@ static void do_plc(int16_t *plc_residual,      /* (o) concealed residual */
     return;
 }
 
-static int xcorr_coeff(int16_t *target, int16_t *regressor,
+static int xcorr_coeff(const int16_t *target, const int16_t *regressor,
                        int16_t subl, int16_t searchLen,
                        int16_t offset, int16_t step)
 {
@@ -1213,8 +1214,8 @@ static int xcorr_coeff(int16_t *target, int16_t *regressor,
     int16_t cross_corr_sg_mod, cross_corr_sg_mod_max;
     int32_t cross_corr, energy;
     int16_t cross_corr_mod, energy_mod, enery_mod_max;
-    int16_t *tp, *rp;
-    int16_t *rp_beg, *rp_end;
+    const int16_t *rp;
+    const int16_t *rp_beg, *rp_end;
     int16_t totscale, totscale_max;
     int16_t scalediff;
     int32_t new_crit, max_crit;
@@ -1253,10 +1254,9 @@ static int xcorr_coeff(int16_t *target, int16_t *regressor,
     energy = scale_dot_product(regressor, regressor, subl, shifts);
 
     for (k = 0; k < searchLen; k++) {
-        tp = target;
         rp = &regressor[pos];
 
-        cross_corr = scale_dot_product(tp, rp, subl, shifts);
+        cross_corr = scale_dot_product(target, rp, subl, shifts);
 
         if ((energy > 0) && (cross_corr > 0)) {
             /* Put cross correlation and energy on 16 bit word */
@@ -1359,21 +1359,21 @@ static void hp_output(int16_t *signal, const int16_t *ba, int16_t *y,
 static int ilbc_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
-    const uint8_t *buf = avpkt->data;
     ILBCContext *s     = avctx->priv_data;
     int mode = s->mode, ret;
     int16_t *plc_data = &s->plc_residual[LPC_FILTERORDER];
 
-    if ((ret = init_get_bits8(&s->gb, buf, avpkt->size)) < 0)
-        return ret;
     memset(&s->frame, 0, sizeof(ILBCFrame));
+    ret = unpack_frame(s, avpkt->data, avpkt->size);
+    if (ret < 0)
+        return ret;
+    if (ret)
+        mode = 0;
 
     frame->nb_samples = s->block_samples;
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    if (unpack_frame(s))
-        mode = 0;
     if (s->frame.start < 1 || s->frame.start > 5)
         mode = 0;
 
@@ -1480,12 +1480,11 @@ static av_cold int ilbc_decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_ilbc_decoder = {
     .p.name         = "ilbc",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("iLBC (Internet Low Bitrate Codec)"),
+    CODEC_LONG_NAME("iLBC (Internet Low Bitrate Codec)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_ILBC,
     .init           = ilbc_decode_init,
     FF_CODEC_DECODE_CB(ilbc_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .priv_data_size = sizeof(ILBCContext),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

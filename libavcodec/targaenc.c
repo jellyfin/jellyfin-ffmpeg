@@ -72,7 +72,7 @@ static int targa_encode_normal(uint8_t *outbuf, const AVFrame *pic, int bpp, int
 {
     int i, n = bpp * w;
     uint8_t *out = outbuf;
-    uint8_t *ptr = pic->data[0];
+    const uint8_t *ptr = pic->data[0];
 
     for(i=0; i < h; i++) {
         memcpy(out, ptr, n);
@@ -204,9 +204,10 @@ static const AVClass targa_class = {
 
 const FFCodec ff_targa_encoder = {
     .p.name         = "targa",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Truevision Targa image"),
+    CODEC_LONG_NAME("Truevision Targa image"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_TARGA,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(TargaContext),
     .p.priv_class   = &targa_class,
     .init           = targa_encode_init,
@@ -215,5 +216,4 @@ const FFCodec ff_targa_encoder = {
         AV_PIX_FMT_BGR24, AV_PIX_FMT_BGRA, AV_PIX_FMT_RGB555LE, AV_PIX_FMT_GRAY8, AV_PIX_FMT_PAL8,
         AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -23,8 +23,6 @@
 
 #include "libavutil/common.h"
 #include "libavutil/mathematics.h"
-#include "libavutil/hwcontext.h"
-#include "libavutil/hwcontext_qsv.h"
 #include "libavutil/time.h"
 #include "libavutil/pixdesc.h"
 
@@ -32,11 +30,21 @@
 #include "qsvvpp.h"
 #include "video.h"
 
+#if QSV_ONEVPL
+#include <mfxdispatcher.h>
+#else
+#define MFXUnload(a) do { } while(0)
+#endif
+
 #define IS_VIDEO_MEMORY(mode)  (mode & (MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET | \
                                         MFX_MEMTYPE_VIDEO_MEMORY_PROCESSOR_TARGET))
+#if QSV_HAVE_OPAQUE
 #define IS_OPAQUE_MEMORY(mode) (mode & MFX_MEMTYPE_OPAQUE_FRAME)
+#endif
 #define IS_SYSTEM_MEMORY(mode) (mode & MFX_MEMTYPE_SYSTEM_MEMORY)
 #define MFX_IMPL_VIA_MASK(impl) (0x0f00 & (impl))
+
+#define QSV_HAVE_AUDIO         !QSV_ONEVPL
 
 static const AVRational default_tb = { 1, 90000 };
 
@@ -51,10 +59,14 @@ static const struct {
 } qsv_iopatterns[] = {
     {MFX_IOPATTERN_IN_VIDEO_MEMORY,     "input is video memory surface"         },
     {MFX_IOPATTERN_IN_SYSTEM_MEMORY,    "input is system memory surface"        },
+#if QSV_HAVE_OPAQUE
     {MFX_IOPATTERN_IN_OPAQUE_MEMORY,    "input is opaque memory surface"        },
+#endif
     {MFX_IOPATTERN_OUT_VIDEO_MEMORY,    "output is video memory surface"        },
     {MFX_IOPATTERN_OUT_SYSTEM_MEMORY,   "output is system memory surface"       },
+#if QSV_HAVE_OPAQUE
     {MFX_IOPATTERN_OUT_OPAQUE_MEMORY,   "output is opaque memory surface"       },
+#endif
 };
 
 int ff_qsvvpp_print_iopattern(void *log_ctx, int mfx_iopattern,
@@ -100,8 +112,12 @@ static const struct {
     { MFX_ERR_INVALID_VIDEO_PARAM,      AVERROR(EINVAL), "invalid video parameters"             },
     { MFX_ERR_UNDEFINED_BEHAVIOR,       AVERROR_BUG,     "undefined behavior"                   },
     { MFX_ERR_DEVICE_FAILED,            AVERROR(EIO),    "device failed"                        },
+#if QSV_HAVE_AUDIO
     { MFX_ERR_INCOMPATIBLE_AUDIO_PARAM, AVERROR(EINVAL), "incompatible audio parameters"        },
     { MFX_ERR_INVALID_AUDIO_PARAM,      AVERROR(EINVAL), "invalid audio parameters"             },
+#endif
+    { MFX_ERR_GPU_HANG,                 AVERROR(EIO),    "GPU Hang"                             },
+    { MFX_ERR_REALLOC_SURFACE,          AVERROR_UNKNOWN, "need bigger surface for output"       },
 
     { MFX_WRN_IN_EXECUTION,             0,               "operation in execution"               },
     { MFX_WRN_DEVICE_BUSY,              0,               "device busy"                          },
@@ -111,7 +127,13 @@ static const struct {
     { MFX_WRN_VALUE_NOT_CHANGED,        0,               "value is saturated"                   },
     { MFX_WRN_OUT_OF_RANGE,             0,               "value out of range"                   },
     { MFX_WRN_FILTER_SKIPPED,           0,               "filter skipped"                       },
+#if QSV_HAVE_AUDIO
     { MFX_WRN_INCOMPATIBLE_AUDIO_PARAM, 0,               "incompatible audio parameters"        },
+#endif
+
+#if QSV_VERSION_ATLEAST(1, 31)
+    { MFX_ERR_NONE_PARTIAL_OUTPUT,      0,               "partial output"                       },
+#endif
 };
 
 static int qsv_map_error(mfxStatus mfx_err, const char **desc)
@@ -223,6 +245,12 @@ static int pix_fmt_to_mfx_fourcc(int format)
         return MFX_FOURCC_YUY2;
     case AV_PIX_FMT_BGRA:
         return MFX_FOURCC_RGB4;
+    case AV_PIX_FMT_P010:
+        return MFX_FOURCC_P010;
+#if CONFIG_VAAPI
+    case AV_PIX_FMT_UYVY422:
+        return MFX_FOURCC_UYVY;
+#endif
     }
 
     return MFX_FOURCC_NV12;
@@ -251,6 +279,11 @@ static int map_frame_to_surface(AVFrame *frame, mfxFrameSurface1 *surface)
         surface->Data.G = frame->data[0] + 1;
         surface->Data.R = frame->data[0] + 2;
         surface->Data.A = frame->data[0] + 3;
+        break;
+    case AV_PIX_FMT_UYVY422:
+        surface->Data.Y = frame->data[0] + 1;
+        surface->Data.U = frame->data[0];
+        surface->Data.V = frame->data[0] + 2;
         break;
     default:
         return MFX_ERR_UNSUPPORTED;
@@ -302,6 +335,14 @@ static int fill_frameinfo_by_link(mfxFrameInfo *frameinfo, AVFilterLink *link)
     frameinfo->CropH          = link->h;
     frameinfo->FrameRateExtN  = link->frame_rate.num;
     frameinfo->FrameRateExtD  = link->frame_rate.den;
+
+    /* Apparently VPP in the SDK requires the frame rate to be set to some value, otherwise
+     * init will fail */
+    if (frameinfo->FrameRateExtD == 0 || frameinfo->FrameRateExtN == 0) {
+        frameinfo->FrameRateExtN = 25;
+        frameinfo->FrameRateExtD = 1;
+    }
+
     frameinfo->AspectRatioW   = link->sample_aspect_ratio.num ? link->sample_aspect_ratio.num : 1;
     frameinfo->AspectRatioH   = link->sample_aspect_ratio.den ? link->sample_aspect_ratio.den : 1;
 
@@ -400,7 +441,10 @@ static QSVFrame *submit_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *p
                 return NULL;
             }
 
-            av_frame_copy_props(qsv_frame->frame, picref);
+            if (av_frame_copy_props(qsv_frame->frame, picref) < 0) {
+                av_frame_free(&qsv_frame->frame);
+                return NULL;
+            }
         } else
             qsv_frame->frame = av_frame_clone(picref);
 
@@ -465,15 +509,19 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink)
         if (!out_frame->frame)
             return NULL;
 
-        out_frame->frame->width  = outlink->w;
-        out_frame->frame->height = outlink->h;
-
         ret = map_frame_to_surface(out_frame->frame,
                                    &out_frame->surface);
         if (ret < 0)
             return NULL;
     }
 
+    if (outlink->frame_rate.num && outlink->frame_rate.den)
+        out_frame->frame->duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+    else
+        out_frame->frame->duration = 0;
+
+    out_frame->frame->width  = outlink->w;
+    out_frame->frame->height = outlink->h;
     out_frame->surface.Info = s->vpp_param.vpp.Out;
 
     return out_frame;
@@ -530,9 +578,13 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
         if (!out_frames_ref)
             return AVERROR(ENOMEM);
 
+#if QSV_HAVE_OPAQUE
         s->out_mem_mode = IS_OPAQUE_MEMORY(s->in_mem_mode) ?
                           MFX_MEMTYPE_OPAQUE_FRAME :
                           MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET | MFX_MEMTYPE_FROM_VPPOUT;
+#else
+        s->out_mem_mode = MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET | MFX_MEMTYPE_FROM_VPPOUT;
+#endif
 
         out_frames_ctx   = (AVHWFramesContext *)out_frames_ref->data;
         out_frames_hwctx = out_frames_ctx->hwctx;
@@ -598,13 +650,10 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
     }
 
     /* create a "slave" session with those same properties, to be used for vpp */
-    ret = MFXInit(impl, &ver, &s->session);
-    if (ret < 0)
-        return ff_qsvvpp_print_error(avctx, ret, "Error initializing a session");
-    else if (ret > 0) {
-        ff_qsvvpp_print_warning(avctx, ret, "Warning in session initialization");
-        return AVERROR_UNKNOWN;
-    }
+    ret = ff_qsvvpp_create_mfx_session(avctx, device_hwctx->loader, impl, &ver,
+                                       &s->session);
+    if (ret)
+        return ret;
 
     if (handle) {
         ret = MFXVideoCORE_SetHandle(s->session, handle_type, handle);
@@ -618,6 +667,7 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
             return AVERROR_UNKNOWN;
     }
 
+#if QSV_HAVE_OPAQUE
     if (IS_OPAQUE_MEMORY(s->in_mem_mode) || IS_OPAQUE_MEMORY(s->out_mem_mode)) {
         s->opaque_alloc.In.Surfaces   = s->surface_ptrs_in;
         s->opaque_alloc.In.NumSurface = s->nb_surface_ptrs_in;
@@ -629,7 +679,9 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
 
         s->opaque_alloc.Header.BufferId = MFX_EXTBUFF_OPAQUE_SURFACE_ALLOCATION;
         s->opaque_alloc.Header.BufferSz = sizeof(s->opaque_alloc);
-    } else if (IS_VIDEO_MEMORY(s->in_mem_mode) || IS_VIDEO_MEMORY(s->out_mem_mode)) {
+    } else
+#endif
+    if (IS_VIDEO_MEMORY(s->in_mem_mode) || IS_VIDEO_MEMORY(s->out_mem_mode)) {
         mfxFrameAllocator frame_allocator = {
             .pthis  = s,
             .Alloc  = frame_alloc,
@@ -647,15 +699,11 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
     return 0;
 }
 
-int ff_qsvvpp_create(AVFilterContext *avctx, QSVVPPContext **vpp, QSVVPPParam *param)
+int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param)
 {
     int i;
     int ret;
-    QSVVPPContext *s;
-
-    s = av_mallocz(sizeof(*s));
-    if (!s)
-        return AVERROR(ENOMEM);
+    QSVVPPContext *s = avctx->priv;
 
     s->filter_frame  = param->filter_frame;
     if (!s->filter_frame)
@@ -701,6 +749,7 @@ int ff_qsvvpp_create(AVFilterContext *avctx, QSVVPPContext **vpp, QSVVPPParam *p
         goto failed;
     }
 
+#if QSV_HAVE_OPAQUE
     if (IS_OPAQUE_MEMORY(s->in_mem_mode) || IS_OPAQUE_MEMORY(s->out_mem_mode)) {
         s->nb_ext_buffers = param->num_ext_buf + 1;
         s->ext_buffers = av_calloc(s->nb_ext_buffers, sizeof(*s->ext_buffers));
@@ -718,32 +767,39 @@ int ff_qsvvpp_create(AVFilterContext *avctx, QSVVPPContext **vpp, QSVVPPParam *p
         s->vpp_param.NumExtParam = param->num_ext_buf;
         s->vpp_param.ExtParam    = param->ext_buf;
     }
+#else
+    s->vpp_param.NumExtParam = param->num_ext_buf;
+    s->vpp_param.ExtParam    = param->ext_buf;
+#endif
 
     s->got_frame = 0;
 
     /** keep fifo size at least 1. Even when async_depth is 0, fifo is used. */
-    s->async_fifo  = av_fifo_alloc2(param->async_depth + 1, sizeof(QSVAsyncFrame), 0);
-    s->async_depth = param->async_depth;
+    s->async_fifo  = av_fifo_alloc2(s->async_depth + 1, sizeof(QSVAsyncFrame), 0);
     if (!s->async_fifo) {
         ret = AVERROR(ENOMEM);
         goto failed;
     }
 
-    s->vpp_param.AsyncDepth = param->async_depth;
+    s->vpp_param.AsyncDepth = s->async_depth;
 
     if (IS_SYSTEM_MEMORY(s->in_mem_mode))
         s->vpp_param.IOPattern |= MFX_IOPATTERN_IN_SYSTEM_MEMORY;
     else if (IS_VIDEO_MEMORY(s->in_mem_mode))
         s->vpp_param.IOPattern |= MFX_IOPATTERN_IN_VIDEO_MEMORY;
+#if QSV_HAVE_OPAQUE
     else if (IS_OPAQUE_MEMORY(s->in_mem_mode))
         s->vpp_param.IOPattern |= MFX_IOPATTERN_IN_OPAQUE_MEMORY;
+#endif
 
     if (IS_SYSTEM_MEMORY(s->out_mem_mode))
         s->vpp_param.IOPattern |= MFX_IOPATTERN_OUT_SYSTEM_MEMORY;
     else if (IS_VIDEO_MEMORY(s->out_mem_mode))
         s->vpp_param.IOPattern |= MFX_IOPATTERN_OUT_VIDEO_MEMORY;
+#if QSV_HAVE_OPAQUE
     else if (IS_OPAQUE_MEMORY(s->out_mem_mode))
         s->vpp_param.IOPattern |= MFX_IOPATTERN_OUT_OPAQUE_MEMORY;
+#endif
 
     /* Print input memory mode */
     ff_qsvvpp_print_iopattern(avctx, s->vpp_param.IOPattern & 0x0F, "VPP");
@@ -756,25 +812,22 @@ int ff_qsvvpp_create(AVFilterContext *avctx, QSVVPPContext **vpp, QSVVPPParam *p
     } else if (ret > 0)
         ff_qsvvpp_print_warning(avctx, ret, "Warning When creating qsvvpp");
 
-    *vpp = s;
     return 0;
 
 failed:
-    ff_qsvvpp_free(&s);
+    ff_qsvvpp_close(avctx);
 
     return ret;
 }
 
-int ff_qsvvpp_free(QSVVPPContext **vpp)
+int ff_qsvvpp_close(AVFilterContext *avctx)
 {
-    QSVVPPContext *s = *vpp;
-
-    if (!s)
-        return 0;
+    QSVVPPContext *s = avctx->priv;
 
     if (s->session) {
         MFXVideoVPP_Close(s->session);
         MFXClose(s->session);
+        s->session = NULL;
     }
 
     /* release all the resources */
@@ -782,10 +835,11 @@ int ff_qsvvpp_free(QSVVPPContext **vpp)
     clear_frame_list(&s->out_frame_list);
     av_freep(&s->surface_ptrs_in);
     av_freep(&s->surface_ptrs_out);
+#if QSV_HAVE_OPAQUE
     av_freep(&s->ext_buffers);
+#endif
     av_freep(&s->frame_infos);
     av_fifo_freep2(&s->async_fifo);
-    av_freep(vpp);
 
     return 0;
 }
@@ -797,7 +851,7 @@ int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picr
     QSVAsyncFrame     aframe;
     mfxSyncPoint      sync;
     QSVFrame         *in_frame, *out_frame;
-    int               ret, filter_ret;
+    int               ret, ret1, filter_ret;
 
     while (s->eof && av_fifo_read(s->async_fifo, &aframe, 1) >= 0) {
         if (MFXVideoCORE_SyncOperation(s->session, aframe.sync, 1000) < 0)
@@ -854,8 +908,13 @@ int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picr
             av_fifo_read(s->async_fifo, &aframe, 1);
 
             do {
-                ret = MFXVideoCORE_SyncOperation(s->session, aframe.sync, 1000);
-            } while (ret == MFX_WRN_IN_EXECUTION);
+                ret1 = MFXVideoCORE_SyncOperation(s->session, aframe.sync, 1000);
+            } while (ret1 == MFX_WRN_IN_EXECUTION);
+
+            if (ret1 < 0) {
+                ret = ret1;
+                break;
+            }
 
             filter_ret = s->filter_frame(outlink, aframe.frame->frame);
             if (filter_ret < 0) {
@@ -875,4 +934,107 @@ int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picr
         ff_qsvvpp_print_warning(ctx, ret, "Warning in running VPP");
 
     return 0;
+}
+
+#if QSV_ONEVPL
+
+int ff_qsvvpp_create_mfx_session(void *ctx,
+                                 void *loader,
+                                 mfxIMPL implementation,
+                                 mfxVersion *pver,
+                                 mfxSession *psession)
+{
+    mfxStatus sts;
+    mfxSession session = NULL;
+    uint32_t impl_idx = 0;
+
+    av_log(ctx, AV_LOG_VERBOSE,
+           "Use Intel(R) oneVPL to create MFX session with the specified MFX loader\n");
+
+    if (!loader) {
+        av_log(ctx, AV_LOG_ERROR, "Invalid MFX Loader handle\n");
+        return AVERROR(EINVAL);
+    }
+
+    while (1) {
+        /* Enumerate all implementations */
+        mfxImplDescription *impl_desc;
+
+        sts = MFXEnumImplementations(loader, impl_idx,
+                                     MFX_IMPLCAPS_IMPLDESCSTRUCTURE,
+                                     (mfxHDL *)&impl_desc);
+        /* Failed to find an available implementation */
+        if (sts == MFX_ERR_NOT_FOUND)
+            break;
+        else if (sts != MFX_ERR_NONE) {
+            impl_idx++;
+            continue;
+        }
+
+        sts = MFXCreateSession(loader, impl_idx, &session);
+        MFXDispReleaseImplDescription(loader, impl_desc);
+        if (sts == MFX_ERR_NONE)
+            break;
+
+        impl_idx++;
+    }
+
+    if (sts < 0)
+        return ff_qsvvpp_print_error(ctx, sts,
+                                     "Error creating a MFX session");
+    else if (sts > 0) {
+        ff_qsvvpp_print_warning(ctx, sts,
+                                "Warning in MFX session creation");
+        return AVERROR_UNKNOWN;
+    }
+
+    *psession = session;
+
+    return 0;
+}
+
+#else
+
+int ff_qsvvpp_create_mfx_session(void *ctx,
+                                 void *loader,
+                                 mfxIMPL implementation,
+                                 mfxVersion *pver,
+                                 mfxSession *psession)
+{
+    mfxSession session = NULL;
+    mfxStatus sts;
+
+    av_log(ctx, AV_LOG_VERBOSE,
+           "Use Intel(R) Media SDK to create MFX session, API version is "
+           "%d.%d, the required implementation version is %d.%d\n",
+           MFX_VERSION_MAJOR, MFX_VERSION_MINOR, pver->Major, pver->Minor);
+
+    *psession = NULL;
+    sts = MFXInit(implementation, pver, &session);
+    if (sts < 0)
+        return ff_qsvvpp_print_error(ctx, sts,
+                                     "Error initializing an MFX session");
+    else if (sts > 0) {
+        ff_qsvvpp_print_warning(ctx, sts, "Warning in MFX session initialization");
+        return AVERROR_UNKNOWN;
+    }
+
+    *psession = session;
+
+    return 0;
+}
+
+#endif
+
+AVFrame *ff_qsvvpp_get_video_buffer(AVFilterLink *inlink, int w, int h)
+{
+    /* When process YUV420 frames, FFmpeg uses same alignment on Y/U/V
+     * planes. VPL and MSDK use Y plane's pitch / 2 as U/V planes's
+     * pitch, which makes U/V planes 16-bytes aligned. We need to set a
+     * separate alignment to meet runtime's behaviour.
+    */
+    return ff_default_get_video_buffer2(inlink,
+                                        FFALIGN(inlink->w, 32),
+                                        FFALIGN(inlink->h, 32),
+                                        16);
 }

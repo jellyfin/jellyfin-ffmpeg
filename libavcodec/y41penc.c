@@ -42,7 +42,7 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *pic, int *got_packet)
 {
     uint8_t *dst;
-    uint8_t *y, *u, *v;
+    const uint8_t *y, *u, *v;
     int i, j, ret;
 
     ret = ff_get_encode_buffer(avctx, pkt, avctx->width * avctx->height * 1.5, 0);
@@ -79,13 +79,12 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 const FFCodec ff_y41p_encoder = {
     .p.name       = "y41p",
-    .p.long_name  = NULL_IF_CONFIG_SMALL("Uncompressed YUV 4:1:1 12-bit"),
+    CODEC_LONG_NAME("Uncompressed YUV 4:1:1 12-bit"),
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_Y41P,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .init         = y41p_encode_init,
     FF_CODEC_ENCODE_CB(y41p_encode_frame),
     .p.pix_fmts   = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV411P,
                                                  AV_PIX_FMT_NONE },
-    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

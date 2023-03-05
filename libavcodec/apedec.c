@@ -31,7 +31,7 @@
 #include "bswapdsp.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "unary.h"
 
@@ -1577,7 +1577,6 @@ static int ape_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         ape_unpack_mono(s, blockstodecode);
     else
         ape_unpack_stereo(s, blockstodecode);
-    emms_c();
 
     if (s->error) {
         s->samples=0;
@@ -1660,7 +1659,7 @@ static const AVClass ape_decoder_class = {
 
 const FFCodec ff_ape_decoder = {
     .p.name         = "ape",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Monkey's Audio"),
+    CODEC_LONG_NAME("Monkey's Audio"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_APE,
     .priv_data_size = sizeof(APEContext),
@@ -1669,7 +1668,7 @@ const FFCodec ff_ape_decoder = {
     FF_CODEC_DECODE_CB(ape_decode_frame),
     .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DELAY |
                       AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .flush          = ape_flush,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,
                                                       AV_SAMPLE_FMT_S16P,

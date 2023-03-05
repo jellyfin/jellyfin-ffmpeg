@@ -22,9 +22,10 @@
 #include "config_components.h"
 
 #include "libavutil/avstring.h"
+#include "libavutil/file_open.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
-#include "avformat.h"
+#include "avio.h"
 #if HAVE_DIRENT_H
 #include <dirent.h>
 #endif
@@ -67,6 +68,24 @@
 #  endif
 #endif
 
+/* S_ISREG not available on Windows */
+#ifndef S_ISREG
+#  ifdef S_IFREG
+#    define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#  else
+#    define S_ISREG(m) 0
+#  endif
+#endif
+
+/* S_ISBLK not available on Windows */
+#ifndef S_ISBLK
+#  ifdef S_IFBLK
+#    define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)
+#  else
+#    define S_ISBLK(m) 0
+#  endif
+#endif
+
 /* standard file protocol */
 
 typedef struct FileContext {
@@ -91,6 +110,7 @@ static const AVOption file_options[] = {
 
 static const AVOption pipe_options[] = {
     { "blocksize", "set I/O operation maximum block size", offsetof(FileContext, blocksize), AV_OPT_TYPE_INT, { .i64 = INT_MAX }, 1, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
+    { "fd", "set file descriptor", offsetof(FileContext, fd), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
     { NULL }
 };
 
@@ -103,6 +123,13 @@ static const AVClass file_class = {
 
 static const AVClass pipe_class = {
     .class_name = "pipe",
+    .item_name  = av_default_item_name,
+    .option     = pipe_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
+static const AVClass fd_class = {
+    .class_name = "fd",
     .item_name  = av_default_item_name,
     .option     = pipe_options,
     .version    = LIBAVUTIL_VERSION_INT,
@@ -163,6 +190,53 @@ static int file_check(URLContext *h, int mask)
 #endif
     }
     return ret;
+}
+
+static int fd_dup(URLContext *h, int oldfd)
+{
+    int newfd;
+
+#ifdef F_DUPFD_CLOEXEC
+    newfd = fcntl(oldfd, F_DUPFD_CLOEXEC, 0);
+#else
+    newfd = dup(oldfd);
+#endif
+    if (newfd == -1)
+        return newfd;
+
+#if HAVE_FCNTL
+    if (fcntl(newfd, F_SETFD, FD_CLOEXEC) == -1)
+        av_log(h, AV_LOG_DEBUG, "Failed to set close on exec\n");
+#endif
+
+#if HAVE_SETMODE
+    setmode(newfd, O_BINARY);
+#endif
+    return newfd;
+}
+
+static int file_close(URLContext *h)
+{
+    FileContext *c = h->priv_data;
+    int ret = close(c->fd);
+    return (ret == -1) ? AVERROR(errno) : 0;
+}
+
+/* XXX: use llseek */
+static int64_t file_seek(URLContext *h, int64_t pos, int whence)
+{
+    FileContext *c = h->priv_data;
+    int64_t ret;
+
+    if (whence == AVSEEK_SIZE) {
+        struct stat st;
+        ret = fstat(c->fd, &st);
+        return ret < 0 ? AVERROR(errno) : (S_ISFIFO(st.st_mode) ? 0 : st.st_size);
+    }
+
+    ret = lseek(c->fd, pos, whence);
+
+    return ret < 0 ? AVERROR(errno) : ret;
 }
 
 #if CONFIG_FILE_PROTOCOL
@@ -242,30 +316,6 @@ static int file_open(URLContext *h, const char *filename, int flags)
         h->is_streamed = !c->seekable;
 
     return 0;
-}
-
-/* XXX: use llseek */
-static int64_t file_seek(URLContext *h, int64_t pos, int whence)
-{
-    FileContext *c = h->priv_data;
-    int64_t ret;
-
-    if (whence == AVSEEK_SIZE) {
-        struct stat st;
-        ret = fstat(c->fd, &st);
-        return ret < 0 ? AVERROR(errno) : (S_ISFIFO(st.st_mode) ? 0 : st.st_size);
-    }
-
-    ret = lseek(c->fd, pos, whence);
-
-    return ret < 0 ? AVERROR(errno) : ret;
-}
-
-static int file_close(URLContext *h)
-{
-    FileContext *c = h->priv_data;
-    int ret = close(c->fd);
-    return (ret == -1) ? AVERROR(errno) : 0;
 }
 
 static int file_open_dir(URLContext *h)
@@ -380,20 +430,24 @@ static int pipe_open(URLContext *h, const char *filename, int flags)
     FileContext *c = h->priv_data;
     int fd;
     char *final;
-    av_strstart(filename, "pipe:", &filename);
 
-    fd = strtol(filename, &final, 10);
-    if((filename == final) || *final ) {/* No digits found, or something like 10ab */
-        if (flags & AVIO_FLAG_WRITE) {
-            fd = 1;
-        } else {
-            fd = 0;
+    if (c->fd < 0) {
+        av_strstart(filename, "pipe:", &filename);
+
+        fd = strtol(filename, &final, 10);
+        if((filename == final) || *final ) {/* No digits found, or something like 10ab */
+            if (flags & AVIO_FLAG_WRITE) {
+                fd = 1;
+            } else {
+                fd = 0;
+            }
         }
+        c->fd = fd;
     }
-#if HAVE_SETMODE
-    setmode(fd, O_BINARY);
-#endif
-    c->fd = fd;
+
+    c->fd = fd_dup(h, c->fd);
+    if (c->fd == -1)
+        return AVERROR(errno);
     h->is_streamed = 1;
     return 0;
 }
@@ -403,6 +457,7 @@ const URLProtocol ff_pipe_protocol = {
     .url_open            = pipe_open,
     .url_read            = file_read,
     .url_write           = file_write,
+    .url_close           = file_close,
     .url_get_file_handle = file_get_handle,
     .url_check           = file_check,
     .priv_data_size      = sizeof(FileContext),
@@ -411,3 +466,49 @@ const URLProtocol ff_pipe_protocol = {
 };
 
 #endif /* CONFIG_PIPE_PROTOCOL */
+
+#if CONFIG_FD_PROTOCOL
+
+static int fd_open(URLContext *h, const char *filename, int flags)
+{
+    FileContext *c = h->priv_data;
+    struct stat st;
+
+    if (strcmp(filename, "fd:") != 0) {
+        av_log(h, AV_LOG_ERROR, "Doesn't support pass file descriptor via URL,"
+                                " please set it via -fd {num}\n");
+        return AVERROR(EINVAL);
+    }
+
+    if (c->fd < 0) {
+        if (flags & AVIO_FLAG_WRITE) {
+            c->fd = 1;
+        } else {
+            c->fd = 0;
+        }
+    }
+    if (fstat(c->fd, &st) < 0)
+        return AVERROR(errno);
+    h->is_streamed = !(S_ISREG(st.st_mode) || S_ISBLK(st.st_mode));
+    c->fd = fd_dup(h, c->fd);
+    if (c->fd == -1)
+        return AVERROR(errno);
+
+    return 0;
+}
+
+const URLProtocol ff_fd_protocol = {
+    .name                = "fd",
+    .url_open            = fd_open,
+    .url_read            = file_read,
+    .url_write           = file_write,
+    .url_seek            = file_seek,
+    .url_close           = file_close,
+    .url_get_file_handle = file_get_handle,
+    .url_check           = file_check,
+    .priv_data_size      = sizeof(FileContext),
+    .priv_data_class     = &fd_class,
+    .default_whitelist   = "crypto,data"
+};
+
+#endif /* CONFIG_FD_PROTOCOL */

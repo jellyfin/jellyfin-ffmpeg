@@ -22,13 +22,11 @@
 #ifndef AVCODEC_MSMPEG4DEC_H
 #define AVCODEC_MSMPEG4DEC_H
 
-#include "config.h"
 #include "avcodec.h"
 #include "mpegvideo.h"
 
 #define INTER_INTRA_VLC_BITS 3
 #define MB_NON_INTRA_VLC_BITS 9
-#define MB_INTRA_VLC_BITS 9
 
 extern VLC ff_mb_non_intra_vlc[4];
 extern VLC ff_inter_intra_vlc;
@@ -39,12 +37,5 @@ int ff_msmpeg4_decode_ext_header(MpegEncContext *s, int buf_size);
 void ff_msmpeg4_decode_motion(MpegEncContext * s, int *mx_ptr, int *my_ptr);
 int ff_msmpeg4_decode_block(MpegEncContext * s, int16_t * block,
                             int n, int coded, const uint8_t *scan_table);
-
-#define CONFIG_MSMPEG4_DECODER (CONFIG_MSMPEG4V1_DECODER || \
-                                CONFIG_MSMPEG4V2_DECODER || \
-                                CONFIG_MSMPEG4V3_DECODER || \
-                                CONFIG_WMV1_DECODER      || \
-                                CONFIG_WMV2_DECODER      || \
-                                CONFIG_VC1_DECODER)
 
 #endif

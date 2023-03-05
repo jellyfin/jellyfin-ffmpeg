@@ -21,7 +21,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "dvdsub.h"
 #include "libavutil/avassert.h"
 #include "libavutil/bprint.h"
 #include "libavutil/imgutils.h"
@@ -379,7 +379,7 @@ static int encode_dvd_subtitles(AVCodecContext *avctx,
     if (x2 > avctx->width || y2 > avctx->height) {
         av_log(avctx, AV_LOG_ERROR, "canvas_size(%d:%d) is too small(%d:%d) for render\n",
                avctx->width, avctx->height, x2, y2);
-        ret = AVERROR(EINVAL);;
+        ret = AVERROR(EINVAL);
         goto fail;
     }
     *q++ = 0x05;
@@ -502,12 +502,11 @@ static const AVClass dvdsubenc_class = {
 
 const FFCodec ff_dvdsub_encoder = {
     .p.name         = "dvdsub",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("DVD subtitles"),
+    CODEC_LONG_NAME("DVD subtitles"),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_DVD_SUBTITLE,
     .init           = dvdsub_init,
     FF_CODEC_ENCODE_SUB_CB(dvdsub_encode),
     .p.priv_class   = &dvdsubenc_class,
     .priv_data_size = sizeof(DVDSubtitleContext),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

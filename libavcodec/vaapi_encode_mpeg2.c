@@ -689,7 +689,7 @@ static const AVClass vaapi_encode_mpeg2_class = {
 
 const FFCodec ff_mpeg2_vaapi_encoder = {
     .p.name         = "mpeg2_vaapi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("MPEG-2 (VAAPI)"),
+    CODEC_LONG_NAME("MPEG-2 (VAAPI)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MPEG2VIDEO,
     .priv_data_size = sizeof(VAAPIEncodeMPEG2Context),
@@ -698,8 +698,9 @@ const FFCodec ff_mpeg2_vaapi_encoder = {
     .close          = &vaapi_encode_mpeg2_close,
     .p.priv_class   = &vaapi_encode_mpeg2_class,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
-                      AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_mpeg2_defaults,
     .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,

@@ -116,12 +116,11 @@ static int v410_decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
 const FFCodec ff_v410_decoder = {
     .p.name       = "v410",
-    .p.long_name  = NULL_IF_CONFIG_SMALL("Uncompressed 4:4:4 10-bit"),
+    CODEC_LONG_NAME("Uncompressed 4:4:4 10-bit"),
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_V410,
     .init         = v410_decode_init,
     FF_CODEC_DECODE_CB(v410_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS |
                     AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

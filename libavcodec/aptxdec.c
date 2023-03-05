@@ -25,7 +25,7 @@
 #include "libavutil/channel_layout.h"
 #include "aptx.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 /*
  * Half-band QMF synthesis filter realized with a polyphase FIR filter.
@@ -151,7 +151,7 @@ static int aptx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     /* get output buffer */
     frame->ch_layout.nb_channels = NB_CHANNELS;
     frame->format = AV_SAMPLE_FMT_S32P;
-    frame->nb_samples = 4 * avpkt->size / s->block_size;
+    frame->nb_samples = 4 * (avpkt->size / s->block_size);
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
@@ -176,17 +176,14 @@ static int aptx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 #if CONFIG_APTX_DECODER
 const FFCodec ff_aptx_decoder = {
     .p.name                = "aptx",
-    .p.long_name           = NULL_IF_CONFIG_SMALL("aptX (Audio Processing Technology for Bluetooth)"),
+    CODEC_LONG_NAME("aptX (Audio Processing Technology for Bluetooth)"),
     .p.type                = AVMEDIA_TYPE_AUDIO,
     .p.id                  = AV_CODEC_ID_APTX,
     .priv_data_size        = sizeof(AptXContext),
     .init                  = ff_aptx_init,
     FF_CODEC_DECODE_CB(aptx_decode_frame),
     .p.capabilities        = AV_CODEC_CAP_DR1,
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts     = (const uint64_t[]) { AV_CH_LAYOUT_STEREO, 0},
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_STEREO)
     .p.ch_layouts          = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_STEREO, { 0 } },
     .p.sample_fmts         = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
                                                              AV_SAMPLE_FMT_NONE },
@@ -196,17 +193,14 @@ const FFCodec ff_aptx_decoder = {
 #if CONFIG_APTX_HD_DECODER
 const FFCodec ff_aptx_hd_decoder = {
     .p.name                = "aptx_hd",
-    .p.long_name           = NULL_IF_CONFIG_SMALL("aptX HD (Audio Processing Technology for Bluetooth)"),
+    CODEC_LONG_NAME("aptX HD (Audio Processing Technology for Bluetooth)"),
     .p.type                = AVMEDIA_TYPE_AUDIO,
     .p.id                  = AV_CODEC_ID_APTX_HD,
     .priv_data_size        = sizeof(AptXContext),
     .init                  = ff_aptx_init,
     FF_CODEC_DECODE_CB(aptx_decode_frame),
     .p.capabilities        = AV_CODEC_CAP_DR1,
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts     = (const uint64_t[]) { AV_CH_LAYOUT_STEREO, 0},
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_STEREO)
     .p.ch_layouts          = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_STEREO, { 0 } },
     .p.sample_fmts         = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
                                                              AV_SAMPLE_FMT_NONE },

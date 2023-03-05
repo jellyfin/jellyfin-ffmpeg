@@ -18,21 +18,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define YLC_VLC_BITS 10
 
-#include "libavutil/imgutils.h"
-#include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem.h"
+#include "libavutil/pixfmt.h"
 #include "avcodec.h"
 #include "bswapdsp.h"
 #include "codec_internal.h"
 #include "get_bits.h"
-#include "huffyuvdsp.h"
 #include "thread.h"
 #include "unary.h"
 
@@ -451,7 +447,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_ylc_decoder = {
     .p.name         = "ylc",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("YUY2 Lossless Codec"),
+    CODEC_LONG_NAME("YUY2 Lossless Codec"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_YLC,
     .priv_data_size = sizeof(YLCContext),
@@ -459,5 +455,4 @@ const FFCodec ff_ylc_decoder = {
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -1,8 +1,20 @@
+Index: jellyfin-ffmpeg/configure
+===================================================================
+--- jellyfin-ffmpeg.orig/configure
++++ jellyfin-ffmpeg/configure
+@@ -3680,6 +3680,7 @@ gblur_vulkan_filter_deps="vulkan spirv_c
+ hflip_vulkan_filter_deps="vulkan spirv_compiler"
+ histeq_filter_deps="gpl"
+ hqdn3d_filter_deps="gpl"
++hwupload_vaapi_filter_deps="vaapi"
+ iccdetect_filter_deps="lcms2"
+ iccgen_filter_deps="lcms2"
+ interlace_filter_deps="gpl"
 Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -328,6 +328,7 @@ OBJS-$(CONFIG_HUESATURATION_FILTER)
+@@ -336,6 +336,7 @@ OBJS-$(CONFIG_HUESATURATION_FILTER)
  OBJS-$(CONFIG_HWDOWNLOAD_FILTER)             += vf_hwdownload.o
  OBJS-$(CONFIG_HWMAP_FILTER)                  += vf_hwmap.o
  OBJS-$(CONFIG_HWUPLOAD_CUDA_FILTER)          += vf_hwupload_cuda.o
@@ -14,7 +26,7 @@ Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -309,6 +309,7 @@ extern const AVFilter ff_vf_hwdownload;
+@@ -315,6 +315,7 @@ extern const AVFilter ff_vf_hwdownload;
  extern const AVFilter ff_vf_hwmap;
  extern const AVFilter ff_vf_hwupload;
  extern const AVFilter ff_vf_hwupload_cuda;

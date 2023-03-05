@@ -20,14 +20,13 @@
  */
 
 #include "libavutil/channel_layout.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
 #include "bswapdsp.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 #include "truespeech_data.h"
 /**
@@ -358,12 +357,11 @@ static int truespeech_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_truespeech_decoder = {
     .p.name         = "truespeech",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("DSP Group TrueSpeech"),
+    CODEC_LONG_NAME("DSP Group TrueSpeech"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_TRUESPEECH,
     .priv_data_size = sizeof(TSContext),
     .init           = truespeech_decode_init,
     FF_CODEC_DECODE_CB(truespeech_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

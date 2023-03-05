@@ -624,7 +624,7 @@ static int cuvid_output_frame(AVCodecContext *avctx, AVFrame *frame)
          * So set pkt_pts and clear all the other pkt_ fields.
          */
         frame->pkt_pos = -1;
-        frame->pkt_duration = 0;
+        frame->duration = 0;
         frame->pkt_size = -1;
 
         frame->interlaced_frame = !parsed_frame.is_deinterlacing && !parsed_frame.dispinfo.progressive_frame;
@@ -1118,7 +1118,7 @@ static const AVCodecHWConfigInternal *const cuvid_hw_configs[] = {
     }; \
     const FFCodec ff_##x##_cuvid_decoder = { \
         .p.name         = #x "_cuvid", \
-        .p.long_name    = NULL_IF_CONFIG_SMALL("Nvidia CUVID " #X " decoder"), \
+        CODEC_LONG_NAME("Nvidia CUVID " #X " decoder"), \
         .p.type         = AVMEDIA_TYPE_VIDEO, \
         .p.id           = AV_CODEC_ID_##X, \
         .priv_data_size = sizeof(CuvidContext), \
@@ -1129,7 +1129,8 @@ static const AVCodecHWConfigInternal *const cuvid_hw_configs[] = {
         .flush          = cuvid_flush, \
         .bsfs           = bsf_name, \
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
-        .caps_internal  = FF_CODEC_CAP_SETS_FRAME_PROPS, \
+        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE | \
+                          FF_CODEC_CAP_SETS_FRAME_PROPS, \
         .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_CUDA, \
                                                         AV_PIX_FMT_NV12, \
                                                         AV_PIX_FMT_P010, \

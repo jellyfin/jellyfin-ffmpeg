@@ -33,7 +33,8 @@ static int qoi_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t px[4] = { 0, 0, 0, 255 };
     uint8_t index[64][4] = { 0 };
     int64_t packet_size;
-    uint8_t *buf, *src;
+    uint8_t *buf;
+    const uint8_t *src;
     int ret, run = 0;
 
     packet_size = avctx->width * avctx->height * (channels + 1LL) + 14LL + 8LL;
@@ -127,14 +128,14 @@ static int qoi_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 const FFCodec ff_qoi_encoder = {
     .p.name         = "qoi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("QOI (Quite OK Image format) image"),
+    CODEC_LONG_NAME("QOI (Quite OK Image format) image"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_QOI,
-    .p.capabilities = AV_CODEC_CAP_FRAME_THREADS,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     FF_CODEC_ENCODE_CB(qoi_encode_frame),
     .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_RGBA, AV_PIX_FMT_RGB24,
         AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

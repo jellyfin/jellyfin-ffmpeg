@@ -19,19 +19,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <stddef.h>
 #include <limits.h>
 
-#include "libavutil/bswap.h"
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/lzo.h"
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "idctdsp.h"
-#include "internal.h"
+#include "decode.h"
+#include "jpegquanttables.h"
 #include "rtjpeg.h"
 
 typedef struct NuvContext {
@@ -44,28 +42,6 @@ typedef struct NuvContext {
     uint32_t lq[64], cq[64];
     RTJpegContext rtj;
 } NuvContext;
-
-static const uint8_t fallback_lquant[] = {
-    16,  11,  10,  16,  24,  40,  51,  61,
-    12,  12,  14,  19,  26,  58,  60,  55,
-    14,  13,  16,  24,  40,  57,  69,  56,
-    14,  17,  22,  29,  51,  87,  80,  62,
-    18,  22,  37,  56,  68, 109, 103,  77,
-    24,  35,  55,  64,  81, 104, 113,  92,
-    49,  64,  78,  87, 103, 121, 120, 101,
-    72,  92,  95,  98, 112, 100, 103,  99
-};
-
-static const uint8_t fallback_cquant[] = {
-    17, 18, 24, 47, 99, 99, 99, 99,
-    18, 21, 26, 66, 99, 99, 99, 99,
-    24, 26, 56, 99, 99, 99, 99, 99,
-    47, 66, 99, 99, 99, 99, 99, 99,
-    99, 99, 99, 99, 99, 99, 99, 99,
-    99, 99, 99, 99, 99, 99, 99, 99,
-    99, 99, 99, 99, 99, 99, 99, 99,
-    99, 99, 99, 99, 99, 99, 99, 99
-};
 
 /**
  * @brief copy frame data from buffer to AVFrame, handling stride.
@@ -110,8 +86,8 @@ static void get_quant_quality(NuvContext *c, int quality)
     int i;
     quality = FFMAX(quality, 1);
     for (i = 0; i < 64; i++) {
-        c->lq[i] = (fallback_lquant[i] << 7) / quality;
-        c->cq[i] = (fallback_cquant[i] << 7) / quality;
+        c->lq[i] = (ff_mjpeg_std_luminance_quant_tbl[i] << 7) / quality;
+        c->cq[i] = (ff_mjpeg_std_chrominance_quant_tbl[i] << 7) / quality;
     }
 }
 
@@ -163,7 +139,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
     int size_change = 0;
     int minsize = 0;
     int flags = 0;
-    int result, init_frame = !avctx->frame_number;
+    int result, init_frame = !avctx->frame_num;
     enum {
         NUV_UNCOMPRESSED  = '0',
         NUV_RTJPEG        = '1',
@@ -364,7 +340,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_nuv_decoder = {
     .p.name         = "nuv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("NuppelVideo/RTJPEG"),
+    CODEC_LONG_NAME("NuppelVideo/RTJPEG"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_NUV,
     .priv_data_size = sizeof(NuvContext),
@@ -372,5 +348,5 @@ const FFCodec ff_nuv_decoder = {
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -29,11 +29,10 @@
 #include "libavutil/mem_internal.h"
 #include "libavutil/reverse.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "avcodec.h"
 #include "golomb.h"
-#include "mathops.h"
 #include "dsd.h"
 
 #define DST_MAX_CHANNELS 6
@@ -386,7 +385,7 @@ dsd:
 
 const FFCodec ff_dst_decoder = {
     .p.name         = "dst",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("DST (Digital Stream Transfer)"),
+    CODEC_LONG_NAME("DST (Digital Stream Transfer)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_DST,
     .priv_data_size = sizeof(DSTContext),
@@ -395,5 +394,4 @@ const FFCodec ff_dst_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLT,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

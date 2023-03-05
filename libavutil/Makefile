@@ -4,6 +4,7 @@ DESC = FFmpeg utility library
 HEADERS = adler32.h                                                     \
           aes.h                                                         \
           aes_ctr.h                                                     \
+          ambient_viewing_environment.h                                 \
           attributes.h                                                  \
           audio_fifo.h                                                  \
           avassert.h                                                    \
@@ -102,6 +103,7 @@ BUILT_HEADERS = avconfig.h                                              \
 OBJS = adler32.o                                                        \
        aes.o                                                            \
        aes_ctr.o                                                        \
+       ambient_viewing_environment.o                                    \
        audio_fifo.o                                                     \
        avstring.o                                                       \
        avsscanf.o                                                       \
@@ -112,7 +114,6 @@ OBJS = adler32.o                                                        \
        cast5.o                                                          \
        camellia.o                                                       \
        channel_layout.o                                                 \
-       color_utils.o                                                    \
        cpu.o                                                            \
        crc.o                                                            \
        csp.o                                                            \
@@ -201,7 +202,7 @@ OBJS-$(!CONFIG_VULKAN)                  += hwcontext_stub.o
 OBJS += $(COMPAT_OBJS:%=../compat/%)
 
 # Windows resource file
-SLIBOBJS-$(HAVE_GNU_WINDRES)            += avutilres.o
+SHLIBOBJS-$(HAVE_GNU_WINDRES)           += avutilres.o
 
 SKIPHEADERS                            += objc.h
 SKIPHEADERS-$(HAVE_CUDA_H)             += hwcontext_cuda.h

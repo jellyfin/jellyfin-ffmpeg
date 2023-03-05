@@ -26,12 +26,11 @@
 
 #include "libavutil/common.h"
 #include "libavutil/frame.h"
-#include "libavutil/lfg.h"
 #include "libavutil/xga_font_data.h"
 #include "avcodec.h"
 #include "cga_data.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #define ATTR_BOLD         0x01  /**< Bold/Bright-foreground (mode 1) */
 #define ATTR_FAINT        0x02  /**< Faint (mode 2) */
@@ -365,7 +364,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     if ((ret = ff_reget_buffer(avctx, s->frame, 0)) < 0)
         return ret;
-    if (!avctx->frame_number) {
+    if (!avctx->frame_num) {
         for (i=0; i<avctx->height; i++)
             memset(s->frame->data[0]+ i*s->frame->linesize[0], 0, avctx->width);
         memset(s->frame->data[1], 0, AVPALETTE_SIZE);
@@ -482,7 +481,7 @@ static const FFCodecDefault ansi_defaults[] = {
 
 const FFCodec ff_ansi_decoder = {
     .p.name         = "ansi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("ASCII/ANSI art"),
+    CODEC_LONG_NAME("ASCII/ANSI art"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_ANSI,
     .priv_data_size = sizeof(AnsiContext),
@@ -490,6 +489,5 @@ const FFCodec ff_ansi_decoder = {
     .close          = decode_close,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
     .defaults       = ansi_defaults,
 };

@@ -35,11 +35,10 @@
 #include "bytestream.h"
 #include "bswapdsp.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "aandcttab.h"
 #include "eaidct.h"
-#include "idctdsp.h"
-#include "internal.h"
 #include "mpeg12data.h"
 #include "mpeg12vlc.h"
 
@@ -52,13 +51,11 @@ typedef struct MadContext {
     AVCodecContext *avctx;
     BlockDSPContext bdsp;
     BswapDSPContext bbdsp;
-    IDCTDSPContext idsp;
     AVFrame *last_frame;
     GetBitContext gb;
     void *bitstream_buf;
     unsigned int bitstream_buf_size;
     DECLARE_ALIGNED(32, int16_t, block)[64];
-    ScanTable scantable;
     uint16_t quant_matrix[64];
     int mb_x;
     int mb_y;
@@ -69,11 +66,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
     MadContext *s = avctx->priv_data;
     s->avctx = avctx;
     avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-    ff_blockdsp_init(&s->bdsp, avctx);
+    ff_blockdsp_init(&s->bdsp);
     ff_bswapdsp_init(&s->bbdsp);
-    ff_idctdsp_init(&s->idsp, avctx);
-    ff_init_scantable_permutation(s->idsp.idct_permutation, FF_IDCT_PERM_NONE);
-    ff_init_scantable(s->idsp.idct_permutation, &s->scantable, ff_zigzag_direct);
     ff_mpeg12_init_vlcs();
 
     s->last_frame = av_frame_alloc();
@@ -134,8 +128,7 @@ static inline void idct_put(MadContext *t, AVFrame *frame, int16_t *block,
 static inline int decode_block_intra(MadContext *s, int16_t * block)
 {
     int level, i, j, run;
-    RLTable *rl = &ff_rl_mpeg1;
-    const uint8_t *scantable = s->scantable.permutated;
+    const uint8_t *scantable = ff_zigzag_direct;
     int16_t *quant_matrix = s->quant_matrix;
 
     block[0] = (128 + get_sbits(&s->gb, 8)) * quant_matrix[0];
@@ -148,7 +141,7 @@ static inline int decode_block_intra(MadContext *s, int16_t * block)
         /* now quantify & encode AC coefficients */
         for (;;) {
             UPDATE_CACHE(re, &s->gb);
-            GET_RL_VLC(level, run, re, &s->gb, rl->rl_vlc[0], TEX_VLC_BITS, 2, 0);
+            GET_RL_VLC(level, run, re, &s->gb, ff_mpeg1_rl_vlc, TEX_VLC_BITS, 2, 0);
 
             if (level == 127) {
                 break;
@@ -342,7 +335,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_eamad_decoder = {
     .p.name         = "eamad",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Electronic Arts Madcow Video"),
+    CODEC_LONG_NAME("Electronic Arts Madcow Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MAD,
     .priv_data_size = sizeof(MadContext),
@@ -350,5 +343,4 @@ const FFCodec ff_eamad_decoder = {
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

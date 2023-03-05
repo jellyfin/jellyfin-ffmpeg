@@ -26,7 +26,7 @@
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 /**
  * @file
@@ -172,11 +172,10 @@ static int ws_snd_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_ws_snd1_decoder = {
     .p.name         = "ws_snd1",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Westwood Audio (SND1)"),
+    CODEC_LONG_NAME("Westwood Audio (SND1)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_WESTWOOD_SND1,
     .init           = ws_snd_decode_init,
     FF_CODEC_DECODE_CB(ws_snd_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

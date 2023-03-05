@@ -30,7 +30,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/internal.h"
 #include "libavutil/xga_font_data.h"
 
@@ -88,11 +88,10 @@ static av_cold int tmv_decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_tmv_decoder = {
     .p.name         = "tmv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("8088flex TMV"),
+    CODEC_LONG_NAME("8088flex TMV"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_TMV,
     .init           = tmv_decode_init,
     FF_CODEC_DECODE_CB(tmv_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

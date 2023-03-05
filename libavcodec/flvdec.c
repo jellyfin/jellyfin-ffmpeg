@@ -108,14 +108,12 @@ int ff_flv_decode_picture_header(MpegEncContext *s)
                s->h263_flv - 1, s->qscale, s->picture_number);
     }
 
-    s->y_dc_scale_table = s->c_dc_scale_table = ff_mpeg1_dc_scale_table;
-
     return 0;
 }
 
 const FFCodec ff_flv_decoder = {
     .p.name         = "flv",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("FLV / Sorenson Spark / Sorenson H.263 (Flash Video)"),
+    CODEC_LONG_NAME("FLV / Sorenson Spark / Sorenson H.263 (Flash Video)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_FLV1,
     .priv_data_size = sizeof(MpegEncContext),
@@ -123,8 +121,7 @@ const FFCodec ff_flv_decoder = {
     .close          = ff_h263_decode_end,
     FF_CODEC_DECODE_CB(ff_h263_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
     .p.max_lowres   = 3,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },

@@ -67,13 +67,9 @@ make install
 popd
 
 # FREETYPE
-mkdir freetype
+git clone --depth=1 https://gitlab.freedesktop.org/freetype/freetype.git
 pushd freetype
-ft_ver="2.13.0"
-ft_link="https://download.savannah.gnu.org/releases/freetype/freetype-${ft_ver}.tar.gz"
-wget ${ft_link} -O ft.tar.gz
-tar xaf ft.tar.gz
-pushd freetype-${ft_ver}
+./autogen.sh
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
@@ -81,7 +77,6 @@ pushd freetype-${ft_ver}
     --enable-static
 make -j$(nproc)
 make install
-popd
 popd
 
 # FRIBIDI
@@ -158,8 +153,8 @@ cmake \
     ..
 make -j$(nproc)
 make install
-FF_EXTRA_LIBS="-lfftw3f -lstdc++${FF_EXTRA_LIBS}"
-FF_EXTRA_CFLAGS="-DCHROMAPRINT_NODLL${FF_EXTRA_CFLAGS}"
+echo "Libs.private: -lfftw3f -lstdc++" >> ${FF_DEPS_PREFIX}/lib/pkgconfig/libchromaprint.pc
+echo "Cflags.private: -DCHROMAPRINT_NODLL" >> ${FF_DEPS_PREFIX}/lib/pkgconfig/libchromaprint.pc
 popd
 popd
 
@@ -488,7 +483,7 @@ make install
 popd
 
 # OpenCL headers
-git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers
+git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers.git
 pushd OpenCL-Headers/CL
 mkdir -p ${FF_DEPS_PREFIX}/include/CL
 mv * ${FF_DEPS_PREFIX}/include/CL
@@ -526,30 +521,38 @@ EOF
 popd
 
 # FFNVCODEC
-git clone -b n11.1.5.2 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
+git clone --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
 pushd nv-codec-headers
+git reset --hard "c5e4af7"
 make PREFIX=${FF_DEPS_PREFIX} install
 popd
 
 # AMF
-git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
 pushd AMF/amf/public/include
 mkdir -p ${FF_DEPS_PREFIX}/include/AMF
 mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
 
-# LIBMFX
-git clone -b 1.35.1 --depth=1 https://github.com/lu-zero/mfx_dispatch.git
-pushd mfx_dispatch
-autoreconf -i
-./configure \
-    --prefix=${FF_DEPS_PREFIX} \
-    --host=${FF_TOOLCHAIN} \
-    --disable-shared \
-    --enable-static \
-    --with-pic
+# VPL
+git clone -b v2023.1.2 --depth=1 https://github.com/oneapi-src/oneVPL.git
+pushd oneVPL
+mkdir build && pushd build
+cmake \
+    -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
+    -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
+    -DCMAKE_INSTALL_BINDIR=${FF_DEPS_PREFIX}/bin \
+    -DCMAKE_INSTALL_LIBDIR=${FF_DEPS_PREFIX}/lib \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_{DISPATCHER,DEV}=ON \
+    -DBUILD_{PREVIEW,TESTS}=OFF \
+    -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
+    -DINSTALL_EXAMPLE_CODE=OFF \
+    ..
 make -j$(nproc)
 make install
+popd
 popd
 
 # Jellyfin-FFmpeg
@@ -561,8 +564,6 @@ fi
 ./configure \
     --prefix=${FF_PREFIX} \
     ${FF_TARGET_FLAGS} \
-    --extra-libs="${FF_EXTRA_LIBS}" \
-    --extra-cflags="${FF_EXTRA_CFLAGS}" \
     --extra-version=Jellyfin \
     --disable-ffplay \
     --disable-debug \
@@ -603,7 +604,7 @@ fi
     --enable-dxva2 \
     --enable-d3d11va \
     --enable-amf \
-    --enable-libmfx \
+    --enable-libvpl \
     --enable-ffnvcodec \
     --enable-cuda \
     --enable-cuda-llvm \

@@ -91,11 +91,9 @@ static int webm_chunk_init(AVFormatContext *s)
     if ((ret = av_dict_copy(&oc->metadata, s->metadata, 0)) < 0)
         return ret;
 
-    if (!(st = avformat_new_stream(oc, NULL)))
+    st = ff_stream_clone(oc, ost);
+    if (!st)
         return AVERROR(ENOMEM);
-
-    if ((ret = ff_stream_encode_params_copy(st, ost)) < 0)
-        return ret;
 
     if (wc->http_method)
         if ((ret = av_dict_set(&dict, "method", wc->http_method, 0)) < 0)
@@ -129,6 +127,7 @@ fail:
     ffformatcontext(s)->avoid_negative_ts_use_pts =
         ffformatcontext(oc)->avoid_negative_ts_use_pts;
     oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
+    ffformatcontext(oc)->avoid_negative_ts_status = AVOID_NEGATIVE_TS_DISABLED;
 
     return 0;
 }
@@ -151,10 +150,13 @@ static int webm_chunk_write_header(AVFormatContext *s)
 {
     WebMChunkContext *wc = s->priv_data;
     AVFormatContext *oc = wc->avf;
+    AVStream *st = s->streams[0], *ost = oc->streams[0];
     int ret;
 
     ret = avformat_write_header(oc, NULL);
     ff_format_io_close(s, &oc->pb);
+    ffstream(st)->lowest_ts_allowed = ffstream(ost)->lowest_ts_allowed;
+    ffstream(ost)->lowest_ts_allowed = 0;
     wc->header_written = 1;
     if (ret < 0)
         return ret;
@@ -290,18 +292,18 @@ static const AVClass webm_chunk_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_webm_chunk_muxer = {
-    .name           = "webm_chunk",
-    .long_name      = NULL_IF_CONFIG_SMALL("WebM Chunk Muxer"),
-    .mime_type      = "video/webm",
-    .extensions     = "chk",
-    .flags          = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_NEEDNUMBER |
+const FFOutputFormat ff_webm_chunk_muxer = {
+    .p.name         = "webm_chunk",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("WebM Chunk Muxer"),
+    .p.mime_type    = "video/webm",
+    .p.extensions   = "chk",
+    .p.flags        = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_NEEDNUMBER |
                       AVFMT_TS_NONSTRICT,
+    .p.priv_class   = &webm_chunk_class,
     .priv_data_size = sizeof(WebMChunkContext),
     .init           = webm_chunk_init,
     .write_header   = webm_chunk_write_header,
     .write_packet   = webm_chunk_write_packet,
     .write_trailer  = webm_chunk_write_trailer,
     .deinit         = webm_chunk_deinit,
-    .priv_class     = &webm_chunk_class,
 };

@@ -223,7 +223,7 @@ static int davs2_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_libdavs2_decoder = {
     .p.name         = "libdavs2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libdavs2 AVS2-P2/IEEE1857.4"),
+    CODEC_LONG_NAME("libdavs2 AVS2-P2/IEEE1857.4"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AVS2,
     .priv_data_size = sizeof(DAVS2Context),
@@ -232,7 +232,8 @@ const FFCodec ff_libdavs2_decoder = {
     FF_CODEC_DECODE_CB(davs2_decode_frame),
     .flush          = davs2_flush,
     .p.capabilities =  AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
-    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_AUTO_THREADS,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
     .p.wrapper_name = "libdavs2",

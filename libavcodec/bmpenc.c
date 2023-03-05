@@ -72,7 +72,8 @@ static int bmp_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint32_t palette256[256];
     int pad_bytes_per_row, pal_entries = 0, compression = BMP_RGB;
     int bit_count = avctx->bits_per_coded_sample;
-    uint8_t *ptr, *buf;
+    const uint8_t *ptr;
+    uint8_t *buf;
 
     switch (avctx->pix_fmt) {
     case AV_PIX_FMT_RGB444:
@@ -157,10 +158,10 @@ static int bmp_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 const FFCodec ff_bmp_encoder = {
     .p.name         = "bmp",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("BMP (Windows and OS/2 bitmap)"),
+    CODEC_LONG_NAME("BMP (Windows and OS/2 bitmap)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_BMP,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .init           = bmp_encode_init,
     FF_CODEC_ENCODE_CB(bmp_encode_frame),
     .p.pix_fmts     = (const enum AVPixelFormat[]){
@@ -170,5 +171,4 @@ const FFCodec ff_bmp_encoder = {
         AV_PIX_FMT_MONOBLACK,
         AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

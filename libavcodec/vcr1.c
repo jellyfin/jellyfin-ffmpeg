@@ -26,7 +26,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libavutil/avassert.h"
 #include "libavutil/internal.h"
 
@@ -123,12 +123,11 @@ static int vcr1_decode_frame(AVCodecContext *avctx, AVFrame *p,
 
 const FFCodec ff_vcr1_decoder = {
     .p.name         = "vcr1",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("ATI VCR1"),
+    CODEC_LONG_NAME("ATI VCR1"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_VCR1,
     .priv_data_size = sizeof(VCR1Context),
     .init           = vcr1_decode_init,
     FF_CODEC_DECODE_CB(vcr1_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

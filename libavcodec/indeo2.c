@@ -30,10 +30,9 @@
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "indeo2data.h"
-#include "internal.h"
-#include "mathops.h"
 
 typedef struct Ir2Context{
     AVCodecContext *avctx;
@@ -261,7 +260,7 @@ static av_cold int ir2_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_indeo2_decoder = {
     .p.name         = "indeo2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Intel Indeo 2"),
+    CODEC_LONG_NAME("Intel Indeo 2"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_INDEO2,
     .priv_data_size = sizeof(Ir2Context),
@@ -269,5 +268,4 @@ const FFCodec ff_indeo2_decoder = {
     .close          = ir2_decode_end,
     FF_CODEC_DECODE_CB(ir2_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

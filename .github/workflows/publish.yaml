@@ -10,7 +10,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
-      codenames: '["buster", "bullseye"]'
+      codenames: '["buster", "bullseye", "bookworm"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["kinetic", "jammy", "focal", "bionic"]'
+      codenames: '["focal", "jammy", "kinetic", "lunar"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -65,10 +65,11 @@ jobs:
         arrays: [
           {distro: 'debian', codename: 'buster'},
           {distro: 'debian', codename: 'bullseye'},
-          {distro: 'ubuntu', codename: 'kinetic'},
-          {distro: 'ubuntu', codename: 'jammy'},
+          {distro: 'debian', codename: 'bookworm'},
           {distro: 'ubuntu', codename: 'focal'},
-          {distro: 'ubuntu', codename: 'bionic'}
+          {distro: 'ubuntu', codename: 'jammy'},
+          {distro: 'ubuntu', codename: 'kinetic'},
+          {distro: 'ubuntu', codename: 'lunar'}
         ]
     steps:
       - name: Sync mirrors and update symlinks

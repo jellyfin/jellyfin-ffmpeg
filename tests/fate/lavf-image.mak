@@ -1,6 +1,6 @@
 LAVF_IMAGES = $(call ALLYES, FILE_PROTOCOL IMAGE2_DEMUXER PGMYUV_DECODER \
                              SCALE_FILTER $(1)_ENCODER IMAGE2_MUXER      \
-                             $(1)_DECODER RAWVIDEO_ENCODER CRC_MUXER)
+                             $(1)_DECODER RAWVIDEO_ENCODER CRC_MUXER PIPE_PROTOCOL)
 
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,         BMP) += bmp
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,         DPX) += dpx
@@ -43,6 +43,7 @@ FATE_LAVF_IMAGES-$(call LAVF_IMAGES,     SUNRAST) += sun
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,       TARGA) += tga
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,        TIFF) += tiff
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,         QOI) += qoi
+FATE_LAVF_IMAGES-$(call LAVF_IMAGES,        WBMP) += wbmp
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,         XBM) += xbm
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,         XWD) += xwd
 FATE_LAVF_IMAGES-$(call LAVF_IMAGES,         XWD) += rgba.xwd

@@ -414,7 +414,7 @@ static av_cold int hap_close(AVCodecContext *avctx)
 
 const FFCodec ff_hap_decoder = {
     .p.name         = "hap",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Vidvox Hap"),
+    CODEC_LONG_NAME("Vidvox Hap"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_HAP,
     .init           = hap_init,
@@ -423,8 +423,7 @@ const FFCodec ff_hap_decoder = {
     .priv_data_size = sizeof(HapContext),
     .p.capabilities = AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_SLICE_THREADS |
                       AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .codec_tags     = (const uint32_t []){
         MKTAG('H','a','p','1'),
         MKTAG('H','a','p','5'),

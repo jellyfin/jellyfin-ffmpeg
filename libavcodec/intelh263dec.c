@@ -122,9 +122,6 @@ int ff_intel_h263_decode_picture_header(MpegEncContext *s)
         return AVERROR_INVALIDDATA;
     s->f_code = 1;
 
-    s->y_dc_scale_table=
-    s->c_dc_scale_table= ff_mpeg1_dc_scale_table;
-
     ff_h263_show_pict_info(s);
 
     return 0;
@@ -132,7 +129,7 @@ int ff_intel_h263_decode_picture_header(MpegEncContext *s)
 
 const FFCodec ff_h263i_decoder = {
     .p.name         = "h263i",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Intel H.263"),
+    CODEC_LONG_NAME("Intel H.263"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_H263I,
     .priv_data_size = sizeof(MpegEncContext),
@@ -140,8 +137,7 @@ const FFCodec ff_h263i_decoder = {
     .close          = ff_h263_decode_end,
     FF_CODEC_DECODE_CB(ff_h263_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NONE

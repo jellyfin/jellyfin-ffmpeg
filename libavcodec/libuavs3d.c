@@ -30,7 +30,7 @@
 #include "avcodec.h"
 #include "avs3.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "uavs3d.h"
 
 typedef struct uavs3d_context {
@@ -81,8 +81,12 @@ static void uavs3d_output_callback(uavs3d_io_frm_t *dec_frame) {
     frm->pkt_dts   = dec_frame->dts;
     frm->pkt_pos   = dec_frame->pkt_pos;
     frm->pkt_size  = dec_frame->pkt_size;
+#if FF_API_FRAME_PICTURE_NUMBER
+FF_DISABLE_DEPRECATION_WARNINGS
     frm->coded_picture_number   = dec_frame->dtr;
     frm->display_picture_number = dec_frame->ptr;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     if (dec_frame->type < 0 || dec_frame->type >= FF_ARRAY_ELEMS(ff_avs3_image_type)) {
         av_log(NULL, AV_LOG_WARNING, "Error frame type in uavs3d: %d.\n", dec_frame->type);
@@ -248,7 +252,7 @@ static int libuavs3d_decode_frame(AVCodecContext *avctx, AVFrame *frm,
 
 const FFCodec ff_libuavs3d_decoder = {
     .p.name         = "libuavs3d",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libuavs3d AVS3-P2/IEEE1857.10"),
+    CODEC_LONG_NAME("libuavs3d AVS3-P2/IEEE1857.10"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AVS3,
     .priv_data_size = sizeof(uavs3d_context),
@@ -256,7 +260,8 @@ const FFCodec ff_libuavs3d_decoder = {
     .close          = libuavs3d_end,
     FF_CODEC_DECODE_CB(libuavs3d_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
-    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_AUTO_THREADS,
     .flush          = libuavs3d_flush,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_YUV420P10LE,

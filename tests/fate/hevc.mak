@@ -141,6 +141,7 @@ HEVC_SAMPLES_8BIT =             \
     WPP_D_ericsson_MAIN_2       \
     WPP_E_ericsson_MAIN_2       \
     WPP_F_ericsson_MAIN_2       \
+    WPP_HIGH_TP_444_8BIT_RExt_Apple_2 \
 
 HEVC_SAMPLES_10BIT =            \
     DBLK_A_MAIN10_VIXS_3        \
@@ -235,6 +236,9 @@ FATE_HEVC_FFPROBE-$(call DEMDEC, HEVC, HEVC) += fate-hevc-paired-fields
 
 fate-hevc-monochrome-crop: CMD = probeframes -show_entries frame=width,height:stream=width,height $(TARGET_SAMPLES)/hevc/hevc-monochrome.hevc
 FATE_HEVC_FFPROBE-$(call PARSERDEMDEC, HEVC, HEVC, HEVC) += fate-hevc-monochrome-crop
+
+fate-hevc-afd-tc-sei: CMD = run ffprobe$(PROGSSUF)$(EXESUF) -bitexact -show_entries frame_side_data_list -select_streams v $(TARGET_SAMPLES)/mpegts/loewe.ts
+FATE_HEVC_FFPROBE-$(call PARSERDEMDEC, HEVC, HEVC, HEVC) += fate-hevc-afd-tc-sei
 
 fate-hevc-hdr10-plus-metadata: CMD = probeframes -show_entries frame=side_data_list $(TARGET_SAMPLES)/hevc/hdr10_plus_h265_sample.hevc
 FATE_HEVC_FFPROBE-$(call DEMDEC, HEVC, HEVC) += fate-hevc-hdr10-plus-metadata

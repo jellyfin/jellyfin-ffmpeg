@@ -23,7 +23,7 @@
 #include "get_bits.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #define PALDATA_FOLLOWS_TILEDATA 4
 #define HAVE_COMPRESSED_TILEMAP 32
@@ -521,7 +521,7 @@ static av_cold int sga_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_sga_decoder = {
     .p.name         = "sga",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Digital Pictures SGA Video"),
+    CODEC_LONG_NAME("Digital Pictures SGA Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_SGA_VIDEO,
     .priv_data_size = sizeof(SGAVideoContext),
@@ -529,5 +529,4 @@ const FFCodec ff_sga_decoder = {
     FF_CODEC_DECODE_CB(sga_decode_frame),
     .close          = sga_decode_end,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

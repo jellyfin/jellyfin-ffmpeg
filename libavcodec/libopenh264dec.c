@@ -31,7 +31,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "libopenh264.h"
 
 typedef struct SVCContext {
@@ -158,7 +158,7 @@ static int svc_decode_frame(AVCodecContext *avctx, AVFrame *avframe,
 
 const FFCodec ff_libopenh264_decoder = {
     .p.name         = "libopenh264",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("OpenH264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
+    CODEC_LONG_NAME("OpenH264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_H264,
     .priv_data_size = sizeof(SVCContext),
@@ -166,7 +166,7 @@ const FFCodec ff_libopenh264_decoder = {
     FF_CODEC_DECODE_CB(svc_decode_frame),
     .close          = svc_decode_close,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_INIT_THREADSAFE |
+    .caps_internal  = FF_CODEC_CAP_SETS_PKT_DTS |
                       FF_CODEC_CAP_INIT_CLEANUP,
     .bsfs           = "h264_mp4toannexb",
     .p.wrapper_name = "libopenh264",

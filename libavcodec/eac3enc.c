@@ -189,7 +189,7 @@ void ff_eac3_output_frame_header(AC3EncodeContext *s)
         put_bits(&s->pb, 1, 0);
     }
     if (s->num_blocks != 6)
-        put_bits(&s->pb, 1, !(s->avctx->frame_number % 6)); /* converter sync flag */
+        put_bits(&s->pb, 1, !(s->avctx->frame_num % 6)); /* converter sync flag */
     put_bits(&s->pb, 1, 0);                         /* no additional bit stream info */
 
     /* frame header */
@@ -249,13 +249,12 @@ void ff_eac3_output_frame_header(AC3EncodeContext *s)
 }
 
 
-FF_DISABLE_DEPRECATION_WARNINGS
 const FFCodec ff_eac3_encoder = {
     .p.name          = "eac3",
-    .p.long_name     = NULL_IF_CONFIG_SMALL("ATSC A/52 E-AC-3"),
+    CODEC_LONG_NAME("ATSC A/52 E-AC-3"),
     .p.type          = AVMEDIA_TYPE_AUDIO,
     .p.id            = AV_CODEC_ID_EAC3,
-    .p.capabilities  = AV_CODEC_CAP_DR1,
+    .p.capabilities  = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size  = sizeof(AC3EncodeContext),
     .init            = ff_ac3_float_encode_init,
     FF_CODEC_ENCODE_CB(ff_ac3_float_encode_frame),
@@ -264,11 +263,8 @@ const FFCodec ff_eac3_encoder = {
                                                       AV_SAMPLE_FMT_NONE },
     .p.priv_class    = &eac3enc_class,
     .p.supported_samplerates = ff_ac3_sample_rate_tab,
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts = ff_ac3_channel_layouts,
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(ff_ac3_channel_layouts)
     .p.ch_layouts    = ff_ac3_ch_layouts,
     .defaults        = ff_ac3_enc_defaults,
-    .caps_internal   = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
 };
-FF_ENABLE_DEPRECATION_WARNINGS

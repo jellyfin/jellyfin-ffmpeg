@@ -20,10 +20,30 @@
 
 #include "libavutil/dict.c"
 
+static const AVDictionaryEntry *dict_iterate(const AVDictionary *m,
+                                             const AVDictionaryEntry *prev)
+{
+    const AVDictionaryEntry *dict_get = av_dict_get(m, "", prev, AV_DICT_IGNORE_SUFFIX);
+    const AVDictionaryEntry *dict_iterate = av_dict_iterate(m, prev);
+
+    if (dict_get != dict_iterate) {
+#define GET(entry, mem) ((entry) ? (entry)->mem : "N/A")
+        printf("Iterating with av_dict_iterate() yields a different result "
+               "than iterating with av_dict_get() and AV_DICT_IGNORE_SUFFIX "
+               "(prev: %p, key %s; av_dict_iterate() %p, key %s, value %s; "
+               "av_dict_get() %p, key %s, value %s)\n",
+               prev, GET(prev, key),
+               dict_iterate, GET(dict_iterate, key), GET(dict_iterate, value),
+               dict_get, GET(dict_get, key), GET(dict_get, value));
+#undef GET
+    }
+    return dict_iterate;
+}
+
 static void print_dict(const AVDictionary *m)
 {
-    AVDictionaryEntry *t = NULL;
-    while ((t = av_dict_get(m, "", t, AV_DICT_IGNORE_SUFFIX)))
+    const AVDictionaryEntry *t = NULL;
+    while ((t = dict_iterate(m, t)))
         printf("%s %s   ", t->key, t->value);
     printf("\n");
 }
@@ -52,7 +72,7 @@ static void test_separators(const AVDictionary *m, const char pair, const char v
 int main(void)
 {
     AVDictionary *dict = NULL;
-    AVDictionaryEntry *e;
+    const AVDictionaryEntry *e;
     char *buffer = NULL;
 
     printf("Testing av_dict_get_string() and av_dict_parse_string()\n");
@@ -91,16 +111,22 @@ int main(void)
     av_dict_set(&dict, "f", NULL, 0);
     av_dict_set(&dict, "ff", "f", 0);
     av_dict_set(&dict, "ff", "f", AV_DICT_APPEND);
+    if (av_dict_get(dict, NULL, NULL, 0))
+        printf("av_dict_get() does not correctly handle NULL key.\n");
     e = NULL;
-    while ((e = av_dict_get(dict, "", e, AV_DICT_IGNORE_SUFFIX)))
+    while ((e = dict_iterate(dict, e)))
         printf("%s %s\n", e->key, e->value);
     av_dict_free(&dict);
 
-    av_dict_set(&dict, NULL, "a", 0);
-    av_dict_set(&dict, NULL, "b", 0);
-    av_dict_get(dict, NULL, NULL, 0);
+    if (av_dict_set(&dict, NULL, "a", 0) >= 0 ||
+        av_dict_set(&dict, NULL, "b", 0) >= 0 ||
+        av_dict_set(&dict, NULL, NULL, AV_DICT_DONT_STRDUP_KEY) >= 0 ||
+        av_dict_set(&dict, NULL, av_strdup("b"), AV_DICT_DONT_STRDUP_VAL) >= 0 ||
+        av_dict_count(dict))
+        printf("av_dict_set does not correctly handle NULL key\n");
+
     e = NULL;
-    while ((e = av_dict_get(dict, "", e, AV_DICT_IGNORE_SUFFIX)))
+    while ((e = dict_iterate(dict, e)))
         printf("'%s' '%s'\n", e->key, e->value);
     av_dict_free(&dict);
 
@@ -116,7 +142,7 @@ int main(void)
     av_dict_set_int(&dict, "12", 1, 0);
     av_dict_set_int(&dict, "12", 2, AV_DICT_APPEND);
     e = NULL;
-    while ((e = av_dict_get(dict, "", e, AV_DICT_IGNORE_SUFFIX)))
+    while ((e = dict_iterate(dict, e)))
         printf("%s %s\n", e->key, e->value);
     av_dict_free(&dict);
 

@@ -36,8 +36,8 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 #include "thread.h"
 
 typedef struct PhotoCDContext {
@@ -325,6 +325,9 @@ static int photocd_decode_frame(AVCodecContext *avctx, AVFrame *p,
     if (ret < 0)
         return ret;
 
+    if (avctx->skip_frame >= AVDISCARD_ALL)
+        return avpkt->size;
+
     if ((ret = ff_thread_get_buffer(avctx, p, 0)) < 0)
         return ret;
 
@@ -466,6 +469,6 @@ const FFCodec ff_photocd_decoder = {
     .close          = photocd_decode_close,
     FF_CODEC_DECODE_CB(photocd_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Kodak Photo CD"),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    CODEC_LONG_NAME("Kodak Photo CD"),
 };

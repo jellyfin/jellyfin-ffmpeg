@@ -28,12 +28,11 @@
 #define UNCHECKED_BITSTREAM_READER 1
 
 #include "libavutil/intreadwrite.h"
-#include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 #define BIT_PLANAR   0x00
 #define CHUNKY       0x20
@@ -338,7 +337,7 @@ static av_cold int cdxl_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_cdxl_decoder = {
     .p.name         = "cdxl",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Commodore CDXL video"),
+    CODEC_LONG_NAME("Commodore CDXL video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CDXL,
     .priv_data_size = sizeof(CDXLVideoContext),
@@ -346,5 +345,4 @@ const FFCodec ff_cdxl_decoder = {
     .close          = cdxl_decode_end,
     FF_CODEC_DECODE_CB(cdxl_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

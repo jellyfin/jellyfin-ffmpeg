@@ -413,8 +413,6 @@ static int encode_picture_ls(AVCodecContext *avctx, AVPacket *pkt,
     /* End of image */
     put_marker_byteu(&pb, EOI);
 
-    emms_c();
-
     av_shrink_packet(pkt, bytestream2_tell_p(&pb));
     *got_packet = 1;
     return 0;
@@ -475,10 +473,11 @@ static const AVClass jpegls_class = {
 
 const FFCodec ff_jpegls_encoder = {
     .p.name         = "jpegls",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("JPEG-LS"),
+    CODEC_LONG_NAME("JPEG-LS"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_JPEGLS,
-    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(JPEGLSContext),
     .p.priv_class   = &jpegls_class,
     .init           = encode_jpegls_init,
@@ -489,6 +488,5 @@ const FFCodec ff_jpegls_encoder = {
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY16,
         AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

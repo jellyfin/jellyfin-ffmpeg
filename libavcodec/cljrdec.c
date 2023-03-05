@@ -26,8 +26,8 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 static int decode_frame(AVCodecContext *avctx, AVFrame *p,
                         int *got_frame, AVPacket *avpkt)
@@ -83,12 +83,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_cljr_decoder = {
     .p.name         = "cljr",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Cirrus Logic AccuPak"),
+    CODEC_LONG_NAME("Cirrus Logic AccuPak"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CLJR,
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 

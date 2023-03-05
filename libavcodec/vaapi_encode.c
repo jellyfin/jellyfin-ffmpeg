@@ -695,6 +695,7 @@ static int vaapi_encode_output(AVCodecContext *avctx,
         pkt->flags |= AV_PKT_FLAG_KEY;
 
     pkt->pts = pic->pts;
+    pkt->duration = pic->duration;
 
     vas = vaUnmapBuffer(ctx->hwctx->display, pic->output_buffer);
     if (vas != VA_STATUS_SUCCESS) {
@@ -702,6 +703,14 @@ static int vaapi_encode_output(AVCodecContext *avctx,
                "%d (%s).\n", vas, vaErrorStr(vas));
         err = AVERROR(EIO);
         goto fail;
+    }
+
+    // for no-delay encoders this is handled in generic codec
+    if (avctx->codec->capabilities & AV_CODEC_CAP_DELAY &&
+        avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
+        pkt->opaque     = pic->opaque;
+        pkt->opaque_ref = pic->opaque_ref;
+        pic->opaque_ref = NULL;
     }
 
     av_buffer_unref(&pic->output_buffer_ref);
@@ -776,6 +785,8 @@ static int vaapi_encode_free(AVCodecContext *avctx,
 
     av_frame_free(&pic->input_image);
     av_frame_free(&pic->recon_image);
+
+    av_buffer_unref(&pic->opaque_ref);
 
     av_freep(&pic->param_buffers);
     av_freep(&pic->slices);
@@ -1144,6 +1155,15 @@ static int vaapi_encode_send_frame(AVCodecContext *avctx, AVFrame *frame)
 
         pic->input_surface = (VASurfaceID)(uintptr_t)frame->data[3];
         pic->pts = frame->pts;
+        pic->duration = frame->duration;
+
+        if (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
+            err = av_buffer_replace(&pic->opaque_ref, frame->opaque_ref);
+            if (err < 0)
+                goto fail;
+
+            pic->opaque = frame->opaque;
+        }
 
         av_frame_move_ref(pic->input_image, frame);
 
@@ -1305,9 +1325,14 @@ static const VAAPIEncodeRTFormat vaapi_encode_rt_formats[] = {
     { "YUV420",    VA_RT_FORMAT_YUV420,        8, 3, 1, 1 },
     { "YUV422",    VA_RT_FORMAT_YUV422,        8, 3, 1, 0 },
 #if VA_CHECK_VERSION(1, 2, 0)
+    { "YUV420_12", VA_RT_FORMAT_YUV420_12,    12, 3, 1, 1 },
     { "YUV422_10", VA_RT_FORMAT_YUV422_10,    10, 3, 1, 0 },
+    { "YUV422_12", VA_RT_FORMAT_YUV422_12,    12, 3, 1, 0 },
+    { "YUV444_10", VA_RT_FORMAT_YUV444_10,    10, 3, 0, 0 },
+    { "YUV444_12", VA_RT_FORMAT_YUV444_12,    12, 3, 0, 0 },
 #endif
     { "YUV444",    VA_RT_FORMAT_YUV444,        8, 3, 0, 0 },
+    { "XYUV",      VA_RT_FORMAT_YUV444,        8, 3, 0, 0 },
     { "YUV411",    VA_RT_FORMAT_YUV411,        8, 3, 2, 0 },
 #if VA_CHECK_VERSION(0, 38, 1)
     { "YUV420_10", VA_RT_FORMAT_YUV420_10BPP, 10, 3, 1, 1 },

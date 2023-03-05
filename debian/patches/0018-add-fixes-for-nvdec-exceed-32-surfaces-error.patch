@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavcodec/nvdec.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/nvdec.c
 +++ jellyfin-ffmpeg/libavcodec/nvdec.c
-@@ -303,8 +303,10 @@ static int nvdec_init_hwframes(AVCodecCo
+@@ -306,8 +306,10 @@ static int nvdec_init_hwframes(AVCodecCo
      frames_ctx = (AVHWFramesContext*)(*out_frames_ref)->data;
  
      if (dummy) {

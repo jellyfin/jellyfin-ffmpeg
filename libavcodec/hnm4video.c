@@ -29,7 +29,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #define HNM4_CHUNK_ID_PL 19536
 #define HNM4_CHUNK_ID_IZ 23113
@@ -499,7 +499,7 @@ static av_cold int hnm_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_hnm4_video_decoder = {
     .p.name         = "hnm4video",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("HNM 4 video"),
+    CODEC_LONG_NAME("HNM 4 video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_HNM4_VIDEO,
     .priv_data_size = sizeof(Hnm4VideoContext),
@@ -507,5 +507,5 @@ const FFCodec ff_hnm4_video_decoder = {
     .close          = hnm_decode_end,
     FF_CODEC_DECODE_CB(hnm_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

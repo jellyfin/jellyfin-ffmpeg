@@ -190,7 +190,7 @@ static av_cold int libjxl_encode_init(AVCodecContext *avctx)
  * Populate a JxlColorEncoding with the given enum AVColorPrimaries.
  * @return < 0 upon failure, >= 0 upon success
  */
-static int libjxl_populate_primaries(JxlColorEncoding *jxl_color, enum AVColorPrimaries prm)
+static int libjxl_populate_primaries(void *avctx, JxlColorEncoding *jxl_color, enum AVColorPrimaries prm)
 {
     const AVColorPrimariesDesc *desc;
 
@@ -209,6 +209,11 @@ static int libjxl_populate_primaries(JxlColorEncoding *jxl_color, enum AVColorPr
         return 0;
     case AVCOL_PRI_SMPTE432:
         jxl_color->primaries = JXL_PRIMARIES_P3;
+        jxl_color->white_point = JXL_WHITE_POINT_D65;
+        return 0;
+    case AVCOL_PRI_UNSPECIFIED:
+        av_log(avctx, AV_LOG_WARNING, "Unknown primaries, assuming BT.709/sRGB. Colors may be wrong.\n");
+        jxl_color->primaries = JXL_PRIMARIES_SRGB;
         jxl_color->white_point = JXL_WHITE_POINT_D65;
         return 0;
     }
@@ -245,6 +250,10 @@ static int libjxl_encode_frame(AVCodecContext *avctx, AVPacket *pkt, const AVFra
     JxlBasicInfo info;
     JxlColorEncoding jxl_color;
     JxlPixelFormat jxl_fmt;
+    int bits_per_sample;
+#if JPEGXL_NUMERIC_VERSION >= JPEGXL_COMPUTE_NUMERIC_VERSION(0, 8, 0)
+    JxlBitDepth jxl_bit_depth;
+#endif
     JxlEncoderStatus jret;
     int ret;
     size_t available = ctx->buffer_size;
@@ -264,7 +273,9 @@ static int libjxl_encode_frame(AVCodecContext *avctx, AVPacket *pkt, const AVFra
     info.ysize = frame->height;
     info.num_extra_channels = (jxl_fmt.num_channels + 1) % 2;
     info.num_color_channels = jxl_fmt.num_channels - info.num_extra_channels;
-    info.bits_per_sample = av_get_bits_per_pixel(pix_desc) / jxl_fmt.num_channels;
+    bits_per_sample = av_get_bits_per_pixel(pix_desc) / jxl_fmt.num_channels;
+    info.bits_per_sample = avctx->bits_per_raw_sample > 0 && !(pix_desc->flags & AV_PIX_FMT_FLAG_FLOAT)
+                           ? avctx->bits_per_raw_sample : bits_per_sample;
     info.alpha_bits = (info.num_extra_channels > 0) * info.bits_per_sample;
     if (pix_desc->flags & AV_PIX_FMT_FLAG_FLOAT) {
         info.exponent_bits_per_sample = info.bits_per_sample > 16 ? 8 : 5;
@@ -275,6 +286,13 @@ static int libjxl_encode_frame(AVCodecContext *avctx, AVPacket *pkt, const AVFra
         info.alpha_exponent_bits = 0;
         jxl_fmt.data_type = info.bits_per_sample <= 8 ? JXL_TYPE_UINT8 : JXL_TYPE_UINT16;
     }
+
+#if JPEGXL_NUMERIC_VERSION >= JPEGXL_COMPUTE_NUMERIC_VERSION(0, 8, 0)
+    jxl_bit_depth.bits_per_sample = bits_per_sample;
+    jxl_bit_depth.type = JXL_BIT_DEPTH_FROM_PIXEL_FORMAT;
+    jxl_bit_depth.exponent_bits_per_sample = pix_desc->flags & AV_PIX_FMT_FLAG_FLOAT ?
+                                             info.exponent_bits_per_sample : 0;
+#endif
 
     /* JPEG XL format itself does not support limited range */
     if (avctx->color_range == AVCOL_RANGE_MPEG ||
@@ -340,7 +358,7 @@ static int libjxl_encode_frame(AVCodecContext *avctx, AVPacket *pkt, const AVFra
     else
         jxl_color.color_space = JXL_COLOR_SPACE_RGB;
 
-    ret = libjxl_populate_primaries(&jxl_color,
+    ret = libjxl_populate_primaries(avctx, &jxl_color,
             frame->color_primaries && frame->color_primaries != AVCOL_PRI_UNSPECIFIED
             ? frame->color_primaries : avctx->color_primaries);
     if (ret < 0)
@@ -351,6 +369,11 @@ static int libjxl_encode_frame(AVCodecContext *avctx, AVPacket *pkt, const AVFra
         av_log(avctx, AV_LOG_WARNING, "Could not set ICC Profile\n");
     if (JxlEncoderSetColorEncoding(ctx->encoder, &jxl_color) != JXL_ENC_SUCCESS)
         av_log(avctx, AV_LOG_WARNING, "Failed to set JxlColorEncoding\n");
+
+#if JPEGXL_NUMERIC_VERSION >= JPEGXL_COMPUTE_NUMERIC_VERSION(0, 8, 0)
+    if (JxlEncoderSetFrameBitDepth(ctx->options, &jxl_bit_depth) != JXL_ENC_SUCCESS)
+        av_log(avctx, AV_LOG_WARNING, "Failed to set JxlBitDepth\n");
+#endif
 
     /* depending on basic info, level 10 might
      * be required instead of level 5 */
@@ -455,15 +478,18 @@ static const AVClass libjxl_encode_class = {
 
 const FFCodec ff_libjxl_encoder = {
     .p.name           = "libjxl",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("libjxl JPEG XL"),
+    CODEC_LONG_NAME("libjxl JPEG XL"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_JPEGXL,
     .priv_data_size   = sizeof(LibJxlEncodeContext),
     .init             = libjxl_encode_init,
     FF_CODEC_ENCODE_CB(libjxl_encode_frame),
     .close            = libjxl_encode_close,
-    .p.capabilities   = AV_CODEC_CAP_OTHER_THREADS,
-    .caps_internal    = FF_CODEC_CAP_AUTO_THREADS | FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities   = AV_CODEC_CAP_OTHER_THREADS |
+                        AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal    = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                        FF_CODEC_CAP_AUTO_THREADS | FF_CODEC_CAP_INIT_CLEANUP |
+                        FF_CODEC_CAP_ICC_PROFILES,
     .p.pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_RGB48, AV_PIX_FMT_RGBA64,

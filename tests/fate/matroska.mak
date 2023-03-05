@@ -49,6 +49,12 @@ FATE_MATROSKA-$(call ALLYES, FLAC_DECODER FLAC_ENCODER FLAC_PARSER \
 fate-matroska-flac-extradata-update: CMD = transcode matroska $(TARGET_SAMPLES)/mkv/flac_channel_layouts.mka \
                                            matroska "-map 0 -map 0:0 -c flac -frames:a:2 8" "-map 0 -c copy"
 
+# This tests that the Matroska/WebM muxer writes the AV1 CodecPrivate
+# via extradata obtained from packet side data. It also tests that
+# the aspect ratio is only written with pixels as DisplayUnit for WebM.
+FATE_MATROSKA-$(call REMUX, WEBM MATROSKA, IVF_DEMUXER AV1_PARSER EXTRACT_EXTRADATA_BSF) += fate-webm-av1-extradata-update
+fate-webm-av1-extradata-update: CMD = transcode ivf $(TARGET_SAMPLES)/av1/decode_model.ivf webm "-c copy -bsf extract_extradata -sar 3:1" "-c copy" "" "" "-nofind_stream_info" "-nofind_stream_info"
+
 # This test tests demuxing Vorbis and chapters from ogg and muxing it in and
 # demuxing it from Matroska/WebM. It furthermore tests the WebM muxer, in
 # particular its DASH mode. Finally, it tests writing the Cues at the front.
@@ -162,6 +168,25 @@ fate-matroska-vp8-alpha-remux: CMD = transcode matroska $(TARGET_SAMPLES)/vp8_al
 FATE_MATROSKA_FFMPEG_FFPROBE-$(call REMUX, MATROSKA, MPEGTS_DEMUXER AC3_DECODER) \
                                += fate-matroska-mpegts-remux
 fate-matroska-mpegts-remux: CMD = transcode mpegts $(TARGET_SAMPLES)/mpegts/pmtchange.ts matroska "-map 0:2 -map 0:2 -c copy -disposition:a:1 -visual_impaired+hearing_impaired -default_mode infer" "-map 0 -c copy" "-show_entries stream_disposition:stream=index"
+
+# Tests maintaining codec delay while remuxing from Matroska.
+# For some reason, ffmpeg shifts the timestamps of the input file
+# to make them zero before reaching the muxer while it does not
+# for the ogg-opus-remux test. -avoid_negative_ts make_zero counters this.
+FATE_MATROSKA_FFMPEG_FFPROBE-$(call REMUX, MATROSKA, OPUS_PARSER OPUS_DECODER) += fate-matroska-opus-remux
+fate-matroska-opus-remux: CMD = transcode matroska $(TARGET_SAMPLES)/mkv/codec_delay_opus.mkv matroska "-avoid_negative_ts make_zero -c copy" "-copyts -c copy" "-show_packets -show_entries stream=codec_name,initial_padding -read_intervals %0.05"
+
+# Tests maintaining codec delay while remuxing from ogg.
+FATE_MATROSKA_FFMPEG_FFPROBE-$(call REMUX, MATROSKA, OGG_DEMUXER OPUS_PARSER OPUS_DECODER) += fate-matroska-ogg-opus-remux
+fate-matroska-ogg-opus-remux: CMD = transcode ogg $(TARGET_SAMPLES)/ogg/intro-partial.opus matroska "-c copy" "-copyts -c copy" "-show_packets -show_entries stream=codec_name,initial_padding -read_intervals %0.05"
+
+# This tests reencoding with an audio encoder that adds initial padding.
+# The initial padding is currently not maintained.
+FATE_MATROSKA_FFMPEG_FFPROBE-$(call REMUX, MATROSKA, MXF_DEMUXER PCM_S16LE_DECODER \
+                                           MP2FIXED_ENCODER ARESAMPLE_FILTER       \
+                                           MPEG2VIDEO_DECODER MPEGVIDEO_PARSER     \
+                                           EXTRACT_EXTRADATA_BSF) += fate-matroska-encoding-delay
+fate-matroska-encoding-delay: CMD = transcode mxf $(TARGET_SAMPLES)/mxf/Sony-00001.mxf matroska "-c:v copy -af aresample -c:a mp2fixed" "-copyts -c copy" "-show_packets -show_entries stream=codec_name,initial_padding -read_intervals %0.05"
 
 FATE_MATROSKA-$(call REMUX, MATROSKA, SUP_DEMUXER) += fate-matroska-pgs-remux
 fate-matroska-pgs-remux: CMD = transcode sup $(TARGET_SAMPLES)/sub/pgs_sub.sup matroska "-copyts -c:s copy" "-copyts -c:s copy"

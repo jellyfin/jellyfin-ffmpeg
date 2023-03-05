@@ -21,13 +21,11 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "zlib_wrapper.h"
 
 #include <zlib.h>
@@ -170,7 +168,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_mwsc_decoder = {
     .p.name           = "mwsc",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("MatchWare Screen Capture Codec"),
+    CODEC_LONG_NAME("MatchWare Screen Capture Codec"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_MWSC,
     .priv_data_size   = sizeof(MWSCContext),
@@ -178,6 +176,5 @@ const FFCodec ff_mwsc_decoder = {
     .close            = decode_close,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
-                        FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

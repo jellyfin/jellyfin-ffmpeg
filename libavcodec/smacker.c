@@ -28,8 +28,7 @@
  * Based on http://wiki.multimedia.cx/index.php?title=Smacker
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <stddef.h>
 
 #include "libavutil/channel_layout.h"
 
@@ -51,9 +50,8 @@
 #define BITSTREAM_READER_LE
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
-#include "mathops.h"
 
 typedef struct SmackVContext {
     AVCodecContext *avctx;
@@ -744,7 +742,7 @@ error:
 
 const FFCodec ff_smacker_decoder = {
     .p.name         = "smackvid",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Smacker video"),
+    CODEC_LONG_NAME("Smacker video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_SMACKVIDEO,
     .priv_data_size = sizeof(SmackVContext),
@@ -752,16 +750,15 @@ const FFCodec ff_smacker_decoder = {
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_INIT_THREADSAFE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 
 const FFCodec ff_smackaud_decoder = {
     .p.name         = "smackaud",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Smacker audio"),
+    CODEC_LONG_NAME("Smacker audio"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_SMACKAUDIO,
     .init           = smka_decode_init,
     FF_CODEC_DECODE_CB(smka_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

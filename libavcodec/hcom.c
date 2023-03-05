@@ -22,8 +22,8 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 typedef struct HEntry {
     int16_t l, r;
@@ -136,7 +136,7 @@ static av_cold int hcom_close(AVCodecContext *avctx)
 
 const FFCodec ff_hcom_decoder = {
     .p.name         = "hcom",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("HCOM Audio"),
+    CODEC_LONG_NAME("HCOM Audio"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_HCOM,
     .priv_data_size = sizeof(HCOMContext),
@@ -144,5 +144,5 @@ const FFCodec ff_hcom_decoder = {
     .close          = hcom_close,
     FF_CODEC_DECODE_CB(hcom_decode),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -24,7 +24,7 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #ifdef AACDECODER_LIB_VL0
 #define FDKDEC_VER_AT_LEAST(vl0, vl1) \
@@ -478,7 +478,7 @@ static av_cold void fdk_aac_decode_flush(AVCodecContext *avctx)
 
 const FFCodec ff_libfdk_aac_decoder = {
     .p.name         = "libfdk_aac",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Fraunhofer FDK AAC"),
+    CODEC_LONG_NAME("Fraunhofer FDK AAC"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_AAC,
     .priv_data_size = sizeof(FDKAACDecContext),
@@ -492,7 +492,6 @@ const FFCodec ff_libfdk_aac_decoder = {
 #endif
     ,
     .p.priv_class   = &fdk_aac_dec_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.wrapper_name = "libfdk",
 };

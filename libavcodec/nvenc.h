@@ -171,7 +171,7 @@ typedef struct NvencContext
     AVFifo *unused_surface_queue;
     AVFifo *output_surface_queue;
     AVFifo *output_surface_ready_queue;
-    AVFifo *timestamp_list;
+    AVFifo *reorder_queue;
 
     NV_ENC_SEI_PAYLOAD *sei_data;
     int sei_data_size;
@@ -199,6 +199,8 @@ typedef struct NvencContext
     int tier;
     int rc;
     int cbr;
+    int tile_rows;
+    int tile_cols;
     int twopass;
     int device;
     int flags;
@@ -236,6 +238,8 @@ typedef struct NvencContext
     int single_slice_intra_refresh;
     int constrained_encoding;
     int udu_sei;
+    int timing_info;
+    int highbitdepth;
 } NvencContext;
 
 int ff_nvenc_encode_init(AVCodecContext *avctx);

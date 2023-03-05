@@ -236,7 +236,11 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
     av_dict_copy(&avf2->metadata, avf->metadata, 0);
     avf2->opaque   = avf->opaque;
     avf2->io_open  = avf->io_open;
+#if FF_API_AVFORMAT_IO_CLOSE
+FF_DISABLE_DEPRECATION_WARNINGS
     avf2->io_close = avf->io_close;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     avf2->io_close2 = avf->io_close2;
     avf2->interrupt_callback = avf->interrupt_callback;
     avf2->flags = avf->flags;
@@ -284,14 +288,11 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
         }
         tee_slave->stream_map[i] = stream_count++;
 
-        if (!(st2 = avformat_new_stream(avf2, NULL))) {
+        st2 = ff_stream_clone(avf2, st);
+        if (!st2) {
             ret = AVERROR(ENOMEM);
             goto end;
         }
-
-        ret = ff_stream_encode_params_copy(st2, st);
-        if (ret < 0)
-            goto end;
     }
 
     ret = ff_format_output_open(avf2, filename, &options);
@@ -605,13 +606,13 @@ static int tee_write_packet(AVFormatContext *avf, AVPacket *pkt)
     return ret_all;
 }
 
-const AVOutputFormat ff_tee_muxer = {
-    .name              = "tee",
-    .long_name         = NULL_IF_CONFIG_SMALL("Multiple muxer tee"),
+const FFOutputFormat ff_tee_muxer = {
+    .p.name            = "tee",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("Multiple muxer tee"),
     .priv_data_size    = sizeof(TeeContext),
     .write_header      = tee_write_header,
     .write_trailer     = tee_write_trailer,
     .write_packet      = tee_write_packet,
-    .priv_class        = &tee_muxer_class,
-    .flags             = AVFMT_NOFILE | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .p.priv_class      = &tee_muxer_class,
+    .p.flags           = AVFMT_NOFILE | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
 };

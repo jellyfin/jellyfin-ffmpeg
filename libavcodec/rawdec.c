@@ -233,9 +233,6 @@ static int raw_decode(AVCodecContext *avctx, AVFrame *frame,
     if (res < 0)
         return res;
 
-    frame->pkt_pos      = avctx->internal->last_pkt_props->pos;
-    frame->pkt_duration = avctx->internal->last_pkt_props->duration;
-
     if (context->tff >= 0) {
         frame->interlaced_frame = 1;
         frame->top_field_first  = context->tff;
@@ -482,7 +479,7 @@ static av_cold int raw_close_decoder(AVCodecContext *avctx)
 
 const FFCodec ff_rawvideo_decoder = {
     .p.name         = "rawvideo",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("raw video"),
+    CODEC_LONG_NAME("raw video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_RAWVIDEO,
     .priv_data_size = sizeof(RawVideoContext),
@@ -491,5 +488,4 @@ const FFCodec ff_rawvideo_decoder = {
     FF_CODEC_DECODE_CB(raw_decode),
     .p.priv_class   = &rawdec_class,
     .p.capabilities = AV_CODEC_CAP_PARAM_CHANGE,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

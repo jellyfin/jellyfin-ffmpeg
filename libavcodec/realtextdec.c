@@ -76,12 +76,11 @@ static int realtext_decode_frame(AVCodecContext *avctx, AVSubtitle *sub,
 
 const FFCodec ff_realtext_decoder = {
     .p.name         = "realtext",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("RealText subtitle"),
+    CODEC_LONG_NAME("RealText subtitle"),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_REALTEXT,
     FF_CODEC_DECODE_SUB_CB(realtext_decode_frame),
     .init           = ff_ass_subtitle_header_default,
     .flush          = ff_ass_decoder_flush,
     .priv_data_size = sizeof(FFASSDecoderContext),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

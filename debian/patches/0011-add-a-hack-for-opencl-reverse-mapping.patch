@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavfilter/avfilter.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/avfilter.h
 +++ jellyfin-ffmpeg/libavfilter/avfilter.h
-@@ -548,6 +548,7 @@ struct AVFilterLink {
+@@ -532,6 +532,7 @@ struct AVFilterLink {
      int w;                      ///< agreed upon image width
      int h;                      ///< agreed upon image height
      AVRational sample_aspect_ratio; ///< agreed upon sample aspect ratio
@@ -14,7 +14,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/opencl.c
 +++ jellyfin-ffmpeg/libavfilter/opencl.c
-@@ -75,6 +75,9 @@ int ff_opencl_filter_config_input(AVFilt
+@@ -76,6 +76,9 @@ int ff_opencl_filter_config_input(AVFilt
      if (!ctx->output_height)
          ctx->output_height = inlink->h;
  
@@ -24,7 +24,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl.c
      return 0;
  }
  
-@@ -123,6 +126,9 @@ int ff_opencl_filter_config_output(AVFil
+@@ -124,6 +127,9 @@ int ff_opencl_filter_config_output(AVFil
      outlink->w = ctx->output_width;
      outlink->h = ctx->output_height;
  
@@ -117,7 +117,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
-@@ -210,7 +210,7 @@ static AVBufferRef *d3d11va_alloc_single
+@@ -213,7 +213,7 @@ static AVBufferRef *d3d11va_alloc_single
          .ArraySize  = 1,
          .Usage      = D3D11_USAGE_DEFAULT,
          .BindFlags  = hwctx->BindFlags,
@@ -126,7 +126,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
      };
  
      hr = ID3D11Device_CreateTexture2D(device_hwctx->device, &texDesc, NULL, &tex);
-@@ -274,9 +274,17 @@ static int d3d11va_frames_init(AVHWFrame
+@@ -277,9 +277,17 @@ static int d3d11va_frames_init(AVHWFrame
          .ArraySize  = ctx->initial_pool_size,
          .Usage      = D3D11_USAGE_DEFAULT,
          .BindFlags  = hwctx->BindFlags,

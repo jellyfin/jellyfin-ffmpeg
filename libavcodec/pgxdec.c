@@ -20,10 +20,9 @@
  */
 
 #include "avcodec.h"
-#include "internal.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "libavutil/imgutils.h"
+#include "decode.h"
 
 static int pgx_get_number(AVCodecContext *avctx, GetByteContext *g, int *number) {
     int ret = AVERROR_INVALIDDATA;
@@ -153,7 +152,7 @@ static int pgx_decode_frame(AVCodecContext *avctx, AVFrame *p,
 
 const FFCodec ff_pgx_decoder = {
     .p.name         = "pgx",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("PGX (JPEG2000 Test Format)"),
+    CODEC_LONG_NAME("PGX (JPEG2000 Test Format)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_PGX,
     .p.capabilities = AV_CODEC_CAP_DR1,

@@ -30,7 +30,7 @@
 #include <xvid.h>
 
 #include "libavutil/avassert.h"
-#include "libavutil/file.h"
+#include "libavutil/file_open.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
@@ -899,16 +899,16 @@ static const AVClass xvid_class = {
 
 const FFCodec ff_libxvid_encoder = {
     .p.name         = "libxvid",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libxvidcore MPEG-4 part 2"),
+    CODEC_LONG_NAME("libxvidcore MPEG-4 part 2"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MPEG4,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(struct xvid_context),
     .init           = xvid_encode_init,
     FF_CODEC_ENCODE_CB(xvid_encode_frame),
     .close          = xvid_encode_close,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
     .p.priv_class   = &xvid_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.wrapper_name = "libxvid",
 };

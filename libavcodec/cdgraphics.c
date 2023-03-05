@@ -22,7 +22,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 /**
  * @file
@@ -374,7 +374,7 @@ static void cdg_decode_flush(AVCodecContext *avctx)
         return;
 
     memset(cc->frame->data[0], 0, cc->frame->linesize[0] * avctx->height);
-    if (!avctx->frame_number)
+    if (!avctx->frame_num)
         memset(cc->frame->data[1], 0, AVPALETTE_SIZE);
 }
 
@@ -389,7 +389,7 @@ static av_cold int cdg_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_cdgraphics_decoder = {
     .p.name         = "cdgraphics",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("CD Graphics video"),
+    CODEC_LONG_NAME("CD Graphics video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CDGRAPHICS,
     .priv_data_size = sizeof(CDGraphicsContext),
@@ -398,5 +398,4 @@ const FFCodec ff_cdgraphics_decoder = {
     FF_CODEC_DECODE_CB(cdg_decode_frame),
     .flush          = cdg_decode_flush,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -48,7 +48,7 @@ ALIGN 16
 
     sub       lenq, 64
     jge       .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_XMM sse
@@ -141,7 +141,7 @@ cglobal vector_fmac_scalar, 4,4,5, dst, src, mul, len
 %endif ; mmsize
     sub    lenq, 64
     jge .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_XMM sse
@@ -178,7 +178,7 @@ cglobal vector_fmul_scalar, 4,4,3, dst, src, mul, len
     mova  [dstq+lenq], m1
     sub    lenq, mmsize
     jge .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_XMM sse
@@ -233,7 +233,7 @@ cglobal vector_dmac_scalar, 4,4,5, dst, src, mul, len
     movaps [dstq+lenq+3*mmsize], m4
     sub    lenq, mmsize*4
     jge .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_XMM sse2
@@ -280,7 +280,7 @@ cglobal vector_dmul_scalar, 4,4,3, dst, src, mul, len
     movaps [dstq+lenq+mmsize], m2
     sub          lenq, 2*mmsize
     jge .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_XMM sse2
@@ -323,7 +323,7 @@ cglobal vector_fmul_window, 5, 6, 6, dst, src0, src1, win, len, len1
     sub       len1q, mmsize
     add       lenq,  mmsize
     jl .loop
-    REP_RET
+    RET
 
 ;-----------------------------------------------------------------------------
 ; vector_fmul_add(float *dst, const float *src0, const float *src1,
@@ -352,7 +352,7 @@ ALIGN 16
 
     sub     lenq,   2*mmsize
     jge     .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_XMM sse
@@ -401,7 +401,7 @@ ALIGN 16
     add     src1q, 2*mmsize
     sub     lenq,  2*mmsize
     jge     .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_XMM sse
@@ -440,6 +440,133 @@ cglobal scalarproduct_float, 3,3,2, v1, v2, offset
 %endif
     RET
 
+INIT_YMM fma3
+cglobal scalarproduct_float, 3,5,8, v1, v2, size, len, offset
+    xor   offsetq, offsetq
+    xorps      m0, m0, m0
+    shl     sized, 2
+    mov      lenq, sizeq
+    cmp      lenq, 32
+    jl   .l16
+    cmp      lenq, 64
+    jl   .l32
+    xorps    m1, m1, m1
+    cmp      lenq, 128
+    jl   .l64
+    and    lenq, ~127
+    xorps    m2, m2, m2
+    xorps    m3, m3, m3
+.loop128:
+    movups   m4, [v1q+offsetq]
+    movups   m5, [v1q+offsetq + 32]
+    movups   m6, [v1q+offsetq + 64]
+    movups   m7, [v1q+offsetq + 96]
+    fmaddps  m0, m4, [v2q+offsetq     ], m0
+    fmaddps  m1, m5, [v2q+offsetq + 32], m1
+    fmaddps  m2, m6, [v2q+offsetq + 64], m2
+    fmaddps  m3, m7, [v2q+offsetq + 96], m3
+    add   offsetq, 128
+    cmp   offsetq, lenq
+    jl .loop128
+    addps    m0, m0, m2
+    addps    m1, m1, m3
+    mov      lenq, sizeq
+    and      lenq, 127
+    cmp      lenq, 64
+    jge .l64
+    addps    m0, m0, m1
+    cmp      lenq, 32
+    jge .l32
+    vextractf128 xmm2, m0, 1
+    addps    xmm0, xmm2
+    cmp      lenq, 16
+    jge .l16
+    movhlps  xmm1, xmm0
+    addps    xmm0, xmm1
+    movss    xmm1, xmm0
+    shufps   xmm0, xmm0, 1
+    addss    xmm0, xmm1
+%if ARCH_X86_64 == 0
+    movss r0m, xm0
+    fld dword r0m
+%endif
+    RET
+.l64:
+    and    lenq, ~63
+    add    lenq, offsetq
+.loop64:
+    movups   m4, [v1q+offsetq]
+    movups   m5, [v1q+offsetq + 32]
+    fmaddps  m0, m4, [v2q+offsetq], m0
+    fmaddps  m1, m5, [v2q+offsetq + 32], m1
+    add   offsetq, 64
+    cmp   offsetq, lenq
+    jl .loop64
+    addps    m0, m0, m1
+    mov      lenq, sizeq
+    and      lenq, 63
+    cmp      lenq, 32
+    jge .l32
+    vextractf128 xmm2, m0, 1
+    addps    xmm0, xmm2
+    cmp      lenq, 16
+    jge .l16
+    movhlps  xmm1, xmm0
+    addps    xmm0, xmm1
+    movss    xmm1, xmm0
+    shufps   xmm0, xmm0, 1
+    addss    xmm0, xmm1
+%if ARCH_X86_64 == 0
+    movss r0m, xm0
+    fld dword r0m
+%endif
+    RET
+.l32:
+    and    lenq, ~31
+    add    lenq, offsetq
+.loop32:
+    movups   m4, [v1q+offsetq]
+    fmaddps  m0, m4, [v2q+offsetq], m0
+    add   offsetq, 32
+    cmp   offsetq, lenq
+    jl .loop32
+    vextractf128 xmm2, m0, 1
+    addps    xmm0, xmm2
+    mov      lenq, sizeq
+    and      lenq, 31
+    cmp      lenq, 16
+    jge .l16
+    movhlps  xmm1, xmm0
+    addps    xmm0, xmm1
+    movss    xmm1, xmm0
+    shufps   xmm0, xmm0, 1
+    addss    xmm0, xmm1
+%if ARCH_X86_64 == 0
+    movss r0m, xm0
+    fld dword r0m
+%endif
+    RET
+.l16:
+    and    lenq, ~15
+    add    lenq, offsetq
+.loop16:
+    movaps   xmm1, [v1q+offsetq]
+    mulps    xmm1, [v2q+offsetq]
+    addps    xmm0, xmm1
+    add   offsetq, 16
+    cmp   offsetq, lenq
+    jl .loop16
+    movhlps  xmm1, xmm0
+    addps    xmm0, xmm1
+    movss    xmm1, xmm0
+    shufps   xmm0, xmm0, 1
+    addss    xmm0, xmm1
+%if ARCH_X86_64 == 0
+    movss r0m, xm0
+    fld dword r0m
+%endif
+    RET
+
 ;-----------------------------------------------------------------------------
 ; void ff_butterflies_float(float *src0, float *src1, int len);
 ;-----------------------------------------------------------------------------
@@ -458,4 +585,4 @@ cglobal butterflies_float, 3,3,3, src0, src1, len
     mova        [src0q + lenq], m0
     add       lenq, mmsize
     jl .loop
-    REP_RET
+    RET

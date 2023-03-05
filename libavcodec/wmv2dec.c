@@ -28,7 +28,7 @@
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "msmpeg4.h"
-#include "msmpeg4data.h"
+#include "msmpeg4_vc1_data.h"
 #include "msmpeg4dec.h"
 #include "simple_idct.h"
 #include "wmv2.h"
@@ -52,7 +52,6 @@ typedef struct WMV2DecContext {
     int per_mb_rl_bit;
     int skip_type;
 
-    ScanTable abt_scantable[2];
     DECLARE_ALIGNED(32, int16_t, abt_block2)[6][64];
 } WMV2DecContext;
 
@@ -242,6 +241,10 @@ int ff_wmv2_decode_secondary_picture_header(MpegEncContext *s)
     WMV2DecContext *const w = (WMV2DecContext *) s;
 
     if (s->pict_type == AV_PICTURE_TYPE_I) {
+        /* Is filling with zeroes really the right thing to do? */
+        memset(s->current_picture_ptr->mb_type, 0,
+               sizeof(*s->current_picture_ptr->mb_type) *
+               s->mb_height * s->mb_stride);
         if (w->j_type_bit)
             w->j_type = get_bits1(&s->gb);
         else
@@ -421,9 +424,7 @@ static inline int wmv2_decode_inter_block(WMV2DecContext *w, int16_t *block,
     w->abt_type_table[n] = w->abt_type;
 
     if (w->abt_type) {
-//        const uint8_t *scantable = w->abt_scantable[w->abt_type - 1].permutated;
-        const uint8_t *scantable = w->abt_scantable[w->abt_type - 1].scantable;
-//        const uint8_t *scantable = w->abt_type - 1 ? w->abt_scantable[1].permutated : w->abt_scantable[0].scantable;
+        const uint8_t *scantable = w->abt_type == 1 ? ff_wmv2_scantableA : ff_wmv2_scantableB;
 
         sub_cbp = sub_cbp_table[decode012(&s->gb)];
 
@@ -444,7 +445,7 @@ static inline int wmv2_decode_inter_block(WMV2DecContext *w, int16_t *block,
     }
 }
 
-int ff_wmv2_decode_mb(MpegEncContext *s, int16_t block[6][64])
+static int wmv2_decode_mb(MpegEncContext *s, int16_t block[6][64])
 {
     /* The following is only allowed because this encoder
      * does not use slice threading. */
@@ -481,7 +482,8 @@ int ff_wmv2_decode_mb(MpegEncContext *s, int16_t block[6][64])
         s->mb_intra = 1;
         if (get_bits_left(&s->gb) <= 0)
             return AVERROR_INVALIDDATA;
-        code = get_vlc2(&s->gb, ff_msmp4_mb_i_vlc.table, MB_INTRA_VLC_BITS, 2);
+        code = get_vlc2(&s->gb, ff_msmp4_mb_i_vlc.table,
+                        MSMP4_MB_INTRA_VLC_BITS, 2);
         /* predict coded block pattern */
         cbp = 0;
         for (i = 0; i < 6; i++) {
@@ -572,13 +574,11 @@ static av_cold int wmv2_decode_init(AVCodecContext *avctx)
     if ((ret = ff_msmpeg4_decode_init(avctx)) < 0)
         return ret;
 
-    ff_wmv2_common_init(s);
-    ff_init_scantable(s->idsp.idct_permutation, &w->abt_scantable[0],
-                      ff_wmv2_scantableA);
-    ff_init_scantable(s->idsp.idct_permutation, &w->abt_scantable[1],
-                      ff_wmv2_scantableB);
+    s->decode_mb = wmv2_decode_mb;
 
-    return ff_intrax8_common_init(avctx, &w->x8, &w->s.idsp,
+    ff_wmv2_common_init(s);
+
+    return ff_intrax8_common_init(avctx, &w->x8,
                                   w->s.block, w->s.block_last_index,
                                   w->s.mb_width, w->s.mb_height);
 }
@@ -593,7 +593,7 @@ static av_cold int wmv2_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_wmv2_decoder = {
     .p.name         = "wmv2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Windows Media Video 8"),
+    CODEC_LONG_NAME("Windows Media Video 8"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_WMV2,
     .priv_data_size = sizeof(WMV2DecContext),
@@ -601,7 +601,7 @@ const FFCodec ff_wmv2_decoder = {
     .close          = wmv2_decode_end,
     FF_CODEC_DECODE_CB(ff_h263_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
 };

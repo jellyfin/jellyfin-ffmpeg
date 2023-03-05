@@ -22,12 +22,11 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/mem_internal.h"
-#include "libavutil/opt.h"
 
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 #define SUBFRAMES 4
 #define PULSE_MAX 8
@@ -774,12 +773,11 @@ static int dss_sp_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_dss_sp_decoder = {
     .p.name         = "dss_sp",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Digital Speech Standard - Standard Play mode (DSS SP)"),
+    CODEC_LONG_NAME("Digital Speech Standard - Standard Play mode (DSS SP)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_DSS_SP,
     .priv_data_size = sizeof(DssSpContext),
     .init           = dss_sp_decode_init,
     FF_CODEC_DECODE_CB(dss_sp_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

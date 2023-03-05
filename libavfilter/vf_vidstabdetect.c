@@ -23,9 +23,11 @@
 #include <vid.stab/libvidstab.h>
 
 #include "libavutil/common.h"
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
+#include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "internal.h"
 
 #include "vidstabutils.h"
@@ -148,10 +150,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
     VSFrame frame;
-    int plane;
+    int plane, ret;
 
-    if (s->conf.show > 0 && !av_frame_is_writable(in))
-        av_frame_make_writable(in);
+    if (s->conf.show > 0 && !av_frame_is_writable(in)) {
+        ret = ff_inlink_make_frame_writable(inlink, &in);
+        if (ret < 0) {
+            av_frame_free(&in);
+            return ret;
+        }
+    }
 
     for (plane = 0; plane < md->fi.planes; plane++) {
         frame.data[plane] = in->data[plane];

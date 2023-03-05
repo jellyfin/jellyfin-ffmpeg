@@ -152,13 +152,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
     int header_size;
     int32_t complexity;
 
-    /* channels */
-    if (channels < 1 || channels > 2) {
-        av_log(avctx, AV_LOG_ERROR, "Invalid channels (%d). Only stereo and "
-               "mono are supported\n", channels);
-        return AVERROR(EINVAL);
-    }
-
     /* sample rate and encoding mode */
     switch (avctx->sample_rate) {
     case  8000: mode = speex_lib_get_mode(SPEEX_MODEID_NB);  break;
@@ -350,21 +343,18 @@ static const FFCodecDefault defaults[] = {
 
 const FFCodec ff_libspeex_encoder = {
     .p.name         = "libspeex",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libspeex Speex"),
+    CODEC_LONG_NAME("libspeex Speex"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_SPEEX,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size = sizeof(LibSpeexEncContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),
     .close          = encode_close,
-    .p.capabilities = AV_CODEC_CAP_DELAY,
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                      AV_SAMPLE_FMT_NONE },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts = (const uint64_t[]){ AV_CH_LAYOUT_MONO,
-                                           AV_CH_LAYOUT_STEREO,
-                                           0 },
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO, AV_CH_LAYOUT_STEREO)
     .p.ch_layouts    = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO,
                                                    AV_CHANNEL_LAYOUT_STEREO,
                                                    { 0 },

@@ -19,9 +19,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "internal.h"
 #include "libavutil/avstring.h"
 #include <stdlib.h>
+
+#include "dvdsub.h"
 
 void ff_dvdsub_parse_palette(uint32_t *palette, const char *p)
 {

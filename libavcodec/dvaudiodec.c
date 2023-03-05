@@ -22,7 +22,7 @@
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "dvaudio.h"
 
 typedef struct DVAudioContext {
@@ -120,12 +120,11 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 const FFCodec ff_dvaudio_decoder = {
     .p.name         = "dvaudio",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Ulead DV Audio"),
+    CODEC_LONG_NAME("Ulead DV Audio"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_DVAUDIO,
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
     .priv_data_size = sizeof(DVAudioContext),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

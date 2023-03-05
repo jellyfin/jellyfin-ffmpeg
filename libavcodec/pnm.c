@@ -26,7 +26,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/avstring.h"
 #include "avcodec.h"
-#include "internal.h"
+#include "decode.h"
 #include "pnm.h"
 
 static inline int pnm_space(int c)
@@ -38,7 +38,7 @@ static void pnm_get(PNMContext *sc, char *str, int buf_size)
 {
     char *s;
     int c;
-    uint8_t *bs  = sc->bytestream;
+    const uint8_t *bs  = sc->bytestream;
     const uint8_t *end = sc->bytestream_end;
 
     /* skip spaces and comments */

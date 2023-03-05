@@ -22,7 +22,7 @@
 #ifndef AVCODEC_MPEG12_H
 #define AVCODEC_MPEG12_H
 
-#include "mpegvideo.h"
+#include "libavutil/rational.h"
 
 /* Start codes. */
 #define SEQ_END_CODE            0x000001b7
@@ -33,13 +33,6 @@
 #define SLICE_MAX_START_CODE    0x000001af
 #define EXT_START_CODE          0x000001b5
 #define USER_START_CODE         0x000001b2
-
-void ff_mpeg12_common_init(MpegEncContext *s);
-
-void ff_mpeg1_clean_buffers(MpegEncContext *s);
-#if FF_API_FLAG_TRUNCATED
-int ff_mpeg1_find_frame_end(ParseContext *pc, const uint8_t *buf, int buf_size, AVCodecParserContext *s);
-#endif
 
 void ff_mpeg12_find_best_frame_rate(AVRational frame_rate,
                                     int *code, int *ext_n, int *ext_d,

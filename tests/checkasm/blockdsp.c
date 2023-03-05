@@ -42,7 +42,7 @@
 #define check_clear(func, size)                                     \
 do {                                                                \
     if (check_func(h.func, "blockdsp." #func)) {                    \
-        declare_func_emms(AV_CPU_FLAG_MMX, void, int16_t *block);   \
+        declare_func(void, int16_t *block);                         \
         randomize_buffers(size);                                    \
         call_ref(buf0);                                             \
         call_new(buf1);                                             \
@@ -57,10 +57,9 @@ void checkasm_check_blockdsp(void)
     LOCAL_ALIGNED_32(uint16_t, buf0, [6 * 8 * 8]);
     LOCAL_ALIGNED_32(uint16_t, buf1, [6 * 8 * 8]);
 
-    AVCodecContext avctx = { 0 };
     BlockDSPContext h;
 
-    ff_blockdsp_init(&h, &avctx);
+    ff_blockdsp_init(&h);
 
     check_clear(clear_block,  8 * 8);
     check_clear(clear_blocks, 8 * 8 * 6);

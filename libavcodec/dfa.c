@@ -25,7 +25,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
@@ -423,7 +423,7 @@ static av_cold int dfa_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_dfa_decoder = {
     .p.name         = "dfa",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Chronomaster DFA"),
+    CODEC_LONG_NAME("Chronomaster DFA"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_DFA,
     .priv_data_size = sizeof(DfaContext),
@@ -431,5 +431,4 @@ const FFCodec ff_dfa_decoder = {
     .close          = dfa_decode_end,
     FF_CODEC_DECODE_CB(dfa_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

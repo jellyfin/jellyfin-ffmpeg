@@ -24,8 +24,8 @@
 #include "avcodec.h"
 #include "libavutil/opt.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "encode.h"
-#include "internal.h"
 #include "codec2utils.h"
 
 typedef struct {
@@ -105,7 +105,6 @@ static av_cold int libcodec2_init_encoder(AVCodecContext *avctx)
 
     //will need to be smarter once we get wideband support
     if (avctx->sample_rate != 8000 ||
-        avctx->ch_layout.nb_channels != 1 ||
         avctx->sample_fmt != AV_SAMPLE_FMT_S16) {
         av_log(avctx, AV_LOG_ERROR, "only 8 kHz 16-bit mono allowed\n");
         return AVERROR(EINVAL);
@@ -178,37 +177,36 @@ static int libcodec2_encode(AVCodecContext *avctx, AVPacket *avpkt,
 
 const FFCodec ff_libcodec2_decoder = {
     .p.name                 = "libcodec2",
-    .p.long_name            = NULL_IF_CONFIG_SMALL("codec2 decoder using libcodec2"),
+    CODEC_LONG_NAME("codec2 decoder using libcodec2"),
     .p.type                 = AVMEDIA_TYPE_AUDIO,
     .p.id                   = AV_CODEC_ID_CODEC2,
     .p.capabilities         = AV_CODEC_CAP_CHANNEL_CONF,
     .p.supported_samplerates = (const int[]){ 8000, 0 },
     .p.sample_fmts          = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE },
     .p.ch_layouts           = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO, { 0 } },
+    .caps_internal          = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size         = sizeof(LibCodec2Context),
     .init                   = libcodec2_init_decoder,
     .close                  = libcodec2_close,
     FF_CODEC_DECODE_CB(libcodec2_decode),
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts      = (const uint64_t[]) { AV_CH_LAYOUT_MONO, 0 },
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO)
 };
 
 const FFCodec ff_libcodec2_encoder = {
     .p.name                 = "libcodec2",
-    .p.long_name            = NULL_IF_CONFIG_SMALL("codec2 encoder using libcodec2"),
+    CODEC_LONG_NAME("codec2 encoder using libcodec2"),
     .p.type                 = AVMEDIA_TYPE_AUDIO,
     .p.id                   = AV_CODEC_ID_CODEC2,
-    .p.capabilities         = AV_CODEC_CAP_DR1,
+    .p.capabilities         = AV_CODEC_CAP_DR1 |
+                              AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .p.supported_samplerates = (const int[]){ 8000, 0 },
     .p.sample_fmts          = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE },
     .p.ch_layouts           = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO, { 0 } },
     .p.priv_class           = &libcodec2_enc_class,
+    .caps_internal          = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size         = sizeof(LibCodec2Context),
     .init                   = libcodec2_init_encoder,
     .close                  = libcodec2_close,
     FF_CODEC_ENCODE_CB(libcodec2_encode),
-#if FF_API_OLD_CHANNEL_LAYOUT
-    .p.channel_layouts      = (const uint64_t[]) { AV_CH_LAYOUT_MONO, 0 },
-#endif
+    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO)
 };

@@ -96,8 +96,8 @@ static av_cold int xavs2_init(AVCodecContext *avctx)
     xavs2_opt_set2("OpenGOP",  "%d", !(avctx->flags & AV_CODEC_FLAG_CLOSED_GOP));
 
     {
-        AVDictionaryEntry *en = NULL;
-        while ((en = av_dict_get(cae->xavs2_opts, "", en, AV_DICT_IGNORE_SUFFIX)))
+        const AVDictionaryEntry *en = NULL;
+        while ((en = av_dict_iterate(cae->xavs2_opts, en)))
             xavs2_opt_set2(en->key, "%s", en->value);
     }
 
@@ -288,7 +288,7 @@ static const FFCodecDefault xavs2_defaults[] = {
 
 const FFCodec ff_libxavs2_encoder = {
     .p.name         = "libxavs2",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libxavs2 AVS2-P2/IEEE1857.4"),
+    CODEC_LONG_NAME("libxavs2 AVS2-P2/IEEE1857.4"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_AVS2,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
@@ -297,7 +297,8 @@ const FFCodec ff_libxavs2_encoder = {
     .init           = xavs2_init,
     FF_CODEC_ENCODE_CB(xavs2_encode_frame),
     .close          = xavs2_close,
-    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_AUTO_THREADS,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
     .p.priv_class   = &libxavs2,
