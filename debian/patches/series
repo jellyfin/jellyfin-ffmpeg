@@ -48,3 +48,4 @@
 0048-fix-nvenc-potential-null-pointer-dereference.patch
 0049-fix-filter_at_id_syntax_from_upstream.patch
 0050-fix-nvenc-b-ref-mode-cap-check.patch
+0051-fix-the-empty-output-in-webvtt-transcoding.patch
