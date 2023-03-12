@@ -3,6 +3,7 @@ jellyfin-ffmpeg (5.1.2-9) unstable; urgency=medium
   * Fix a typo in the patch
   * Update dependencies
   * Enable Debian bookworm and Ubuntu lunar
+  * Fix the empty output in webvtt transcoding
 
  -- nyanmisaka <nst799610810@gmail.com>  Fri, 3 Mar 2023 19:15:27 +0800
 
