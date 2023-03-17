@@ -28,6 +28,7 @@
 #include <stdint.h>
 
 #include "libavutil/avassert.h"
+#include "libavutil/libm.h"
 #include "libavutil/thread.h"
 
 #include "mpegaudiodata.h"
@@ -64,10 +65,10 @@ const uint8_t ff_lsf_nsf_table[6][3][4] = {
 
 /* mpegaudio layer 3 huffman tables */
 VLC ff_huff_vlc[16];
-static VLC_TYPE huff_vlc_tables[128 + 128 + 128 + 130 + 128 + 154 + 166 + 142 +
-                                204 + 190 + 170 + 542 + 460 + 662 + 414][2];
+static VLCElem huff_vlc_tables[128 + 128 + 128 + 130 + 128 + 154 + 166 + 142 +
+                               204 + 190 + 170 + 542 + 460 + 662 + 414];
 VLC ff_huff_quad_vlc[2];
-static VLC_TYPE  huff_quad_vlc_tables[64 + 16][2];
+static VLCElem huff_quad_vlc_tables[64 + 16];
 
 static const uint8_t mpa_hufflens[] = {
     /* Huffman table 1 - 4 entries */
@@ -368,7 +369,7 @@ const uint8_t ff_band_size_long[9][22] = {
 { 6, 6, 6, 6, 6, 6, 8, 10, 12, 14, 16,
   20, 24, 28, 32, 38, 46, 52, 60, 68, 58, 54, }, /* 22050 */
 { 6, 6, 6, 6, 6, 6, 8, 10, 12, 14, 16,
-  18, 22, 26, 32, 38, 46, 52, 64, 70, 76, 36, }, /* 24000 */
+  18, 22, 26, 32, 38, 46, 54, 62, 70, 76, 36, }, /* 24000 */
 { 6, 6, 6, 6, 6, 6, 8, 10, 12, 14, 16,
   20, 24, 28, 32, 38, 46, 52, 60, 68, 58, 54, }, /* 16000 */
 { 6, 6, 6, 6, 6, 6, 8, 10, 12, 14, 16,

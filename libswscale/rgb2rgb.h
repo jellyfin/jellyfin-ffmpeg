@@ -26,10 +26,7 @@
 #ifndef SWSCALE_RGB2RGB_H
 #define SWSCALE_RGB2RGB_H
 
-#include <inttypes.h>
-
-#include "libavutil/avutil.h"
-#include "swscale.h"
+#include <stdint.h>
 
 /* A full collection of RGB to RGB(BGR) converters */
 extern void (*rgb24tobgr32)(const uint8_t *src, uint8_t *dst, int src_size);
@@ -170,6 +167,8 @@ extern void (*yuyvtoyuv422)(uint8_t *ydst, uint8_t *udst, uint8_t *vdst, const u
 void ff_sws_rgb2rgb_init(void);
 
 void rgb2rgb_init_aarch64(void);
+void rgb2rgb_init_riscv(void);
 void rgb2rgb_init_x86(void);
+void rgb2rgb_init_loongarch(void);
 
 #endif /* SWSCALE_RGB2RGB_H */

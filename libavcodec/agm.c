@@ -20,8 +20,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define BITSTREAM_READER_LE
@@ -30,28 +28,12 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "copy_block.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "idctdsp.h"
-#include "internal.h"
-
-static const uint8_t unscaled_luma[64] = {
-    16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19,
-    26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69, 56,
-    14, 17, 22, 29, 51, 87, 80, 62, 18, 22, 37, 56,
-    68,109,103, 77, 24, 35, 55, 64, 81,104,113, 92,
-    49, 64, 78, 87,103,121,120,101, 72, 92, 95, 98,
-    112,100,103,99
-};
-
-static const uint8_t unscaled_chroma[64] = {
-    17, 18, 24, 47, 99, 99, 99, 99, 18, 21, 26, 66,
-    99, 99, 99, 99, 24, 26, 56, 99, 99, 99, 99, 99,
-    47, 66, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-    99, 99, 99, 99
-};
+#include "jpegquanttables.h"
 
 typedef struct MotionVector {
     int16_t x, y;
@@ -89,7 +71,7 @@ typedef struct AGMContext {
     int luma_quant_matrix[64];
     int chroma_quant_matrix[64];
 
-    ScanTable scantable;
+    uint8_t permutated_scantable[64];
     DECLARE_ALIGNED(32, int16_t, block)[64];
 
     int16_t *wblocks;
@@ -196,7 +178,7 @@ static int read_code(GetBitContext *gb, int *oskip, int *level, int *map, int mo
 static int decode_intra_blocks(AGMContext *s, GetBitContext *gb,
                                const int *quant_matrix, int *skip, int *dc_level)
 {
-    const uint8_t *scantable = s->scantable.permutated;
+    const uint8_t *scantable = s->permutated_scantable;
     int level, ret, map = 0;
 
     memset(s->wblocks, 0, s->wblocks_size);
@@ -238,7 +220,7 @@ static int decode_inter_blocks(AGMContext *s, GetBitContext *gb,
                                const int *quant_matrix, int *skip,
                                int *map)
 {
-    const uint8_t *scantable = s->scantable.permutated;
+    const uint8_t *scantable = s->permutated_scantable;
     int level, ret;
 
     memset(s->wblocks, 0, s->wblocks_size);
@@ -273,7 +255,7 @@ static int decode_inter_blocks(AGMContext *s, GetBitContext *gb,
 static int decode_intra_block(AGMContext *s, GetBitContext *gb,
                               const int *quant_matrix, int *skip, int *dc_level)
 {
-    const uint8_t *scantable = s->scantable.permutated;
+    const uint8_t *scantable = s->permutated_scantable;
     const int offset = s->plus ? 0 : 1024;
     int16_t *block = s->block;
     int level, ret, map = 0;
@@ -363,7 +345,7 @@ static int decode_inter_block(AGMContext *s, GetBitContext *gb,
                               const int *quant_matrix, int *skip,
                               int *map)
 {
-    const uint8_t *scantable = s->scantable.permutated;
+    const uint8_t *scantable = s->permutated_scantable;
     int16_t *block = s->block;
     int level, ret;
 
@@ -551,13 +533,13 @@ static void compute_quant_matrix(AGMContext *s, double qscale)
     } else {
         if (qscale >= 0.0) {
             for (int i = 0; i < 64; i++) {
-                luma[i]   = FFMAX(1, unscaled_luma  [(i & 7) * 8 + (i >> 3)] * f);
-                chroma[i] = FFMAX(1, unscaled_chroma[(i & 7) * 8 + (i >> 3)] * f);
+                luma[i]   = FFMAX(1, ff_mjpeg_std_luminance_quant_tbl  [(i & 7) * 8 + (i >> 3)] * f);
+                chroma[i] = FFMAX(1, ff_mjpeg_std_chrominance_quant_tbl[(i & 7) * 8 + (i >> 3)] * f);
             }
         } else {
             for (int i = 0; i < 64; i++) {
-                luma[i]   = FFMAX(1, 255.0 - (255 - unscaled_luma  [(i & 7) * 8 + (i >> 3)]) * f);
-                chroma[i] = FFMAX(1, 255.0 - (255 - unscaled_chroma[(i & 7) * 8 + (i >> 3)]) * f);
+                luma[i]   = FFMAX(1, 255.0 - (255 - ff_mjpeg_std_luminance_quant_tbl  [(i & 7) * 8 + (i >> 3)]) * f);
+                chroma[i] = FFMAX(1, 255.0 - (255 - ff_mjpeg_std_chrominance_quant_tbl[(i & 7) * 8 + (i >> 3)]) * f);
             }
         }
     }
@@ -1093,13 +1075,12 @@ static int decode_huffman2(AVCodecContext *avctx, int header, int size)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame, AVPacket *avpkt)
 {
     AGMContext *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
     GetByteContext *gbyte = &s->gbyte;
-    AVFrame *frame = data;
     int w, h, width, height, header;
     unsigned compressed_size;
     long skip;
@@ -1251,7 +1232,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     avctx->idct_algo = FF_IDCT_SIMPLE;
     ff_idctdsp_init(&s->idsp, avctx);
-    ff_init_scantable(s->idsp.idct_permutation, &s->scantable, ff_zigzag_direct);
+    ff_permute_scantable(s->permutated_scantable, ff_zigzag_direct,
+                         s->idsp.idct_permutation);
 
     s->prev_frame = av_frame_alloc();
     if (!s->prev_frame)
@@ -1285,18 +1267,17 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_agm_decoder = {
-    .name             = "agm",
-    .long_name        = NULL_IF_CONFIG_SMALL("Amuse Graphics Movie"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_AGM,
+const FFCodec ff_agm_decoder = {
+    .p.name           = "agm",
+    CODEC_LONG_NAME("Amuse Graphics Movie"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_AGM,
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .priv_data_size   = sizeof(AGMContext),
     .init             = decode_init,
     .close            = decode_close,
-    .decode           = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .flush            = decode_flush,
-    .capabilities     = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
-                        FF_CODEC_CAP_INIT_CLEANUP |
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP |
                         FF_CODEC_CAP_EXPORTS_CROPPING,
 };

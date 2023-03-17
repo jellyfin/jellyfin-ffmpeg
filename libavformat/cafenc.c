@@ -23,6 +23,7 @@
 #include "caf.h"
 #include "isom.h"
 #include "avio_internal.h"
+#include "mux.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/dict.h"
 
@@ -52,7 +53,11 @@ static uint32_t codec_flags(enum AVCodecID codec_id) {
     }
 }
 
-static uint32_t samples_per_packet(enum AVCodecID codec_id, int channels, int block_align) {
+static uint32_t samples_per_packet(const AVCodecParameters *par) {
+    enum AVCodecID codec_id = par->codec_id;
+    int channels = par->ch_layout.nb_channels, block_align = par->block_align;
+    int frame_size = par->frame_size, sample_rate = par->sample_rate;
+
     switch (codec_id) {
     case AV_CODEC_ID_PCM_S8:
     case AV_CODEC_ID_PCM_S16LE:
@@ -82,6 +87,8 @@ static uint32_t samples_per_packet(enum AVCodecID codec_id, int channels, int bl
         return 320;
     case AV_CODEC_ID_MP1:
         return 384;
+    case AV_CODEC_ID_OPUS:
+        return frame_size * 48000 / sample_rate;
     case AV_CODEC_ID_MP2:
     case AV_CODEC_ID_MP3:
         return 1152;
@@ -106,10 +113,10 @@ static int caf_write_header(AVFormatContext *s)
     AVIOContext *pb = s->pb;
     AVCodecParameters *par = s->streams[0]->codecpar;
     CAFContext *caf = s->priv_data;
-    AVDictionaryEntry *t = NULL;
+    const AVDictionaryEntry *t = NULL;
     unsigned int codec_tag = ff_codec_get_tag(ff_codec_caf_tags, par->codec_id);
     int64_t chunk_size = 0;
-    int frame_size = par->frame_size;
+    int frame_size = par->frame_size, sample_rate = par->sample_rate;
 
     if (s->nb_streams != 1) {
         av_log(s, AV_LOG_ERROR, "CAF files have exactly one stream\n");
@@ -122,7 +129,7 @@ static int caf_write_header(AVFormatContext *s)
         return AVERROR_PATCHWELCOME;
     }
 
-    if (par->codec_id == AV_CODEC_ID_OPUS && par->channels > 2) {
+    if (par->codec_id == AV_CODEC_ID_OPUS && par->ch_layout.nb_channels > 2) {
         av_log(s, AV_LOG_ERROR, "Only mono and stereo are supported for Opus\n");
         return AVERROR_INVALIDDATA;
     }
@@ -138,7 +145,10 @@ static int caf_write_header(AVFormatContext *s)
     }
 
     if (par->codec_id != AV_CODEC_ID_MP3 || frame_size != 576)
-        frame_size = samples_per_packet(par->codec_id, par->channels, par->block_align);
+        frame_size = samples_per_packet(par);
+
+    if (par->codec_id == AV_CODEC_ID_OPUS)
+        sample_rate = 48000;
 
     ffio_wfourcc(pb, "caff"); //< mFileType
     avio_wb16(pb, 1);         //< mFileVersion
@@ -146,18 +156,18 @@ static int caf_write_header(AVFormatContext *s)
 
     ffio_wfourcc(pb, "desc");                         //< Audio Description chunk
     avio_wb64(pb, 32);                                //< mChunkSize
-    avio_wb64(pb, av_double2int(par->sample_rate));   //< mSampleRate
+    avio_wb64(pb, av_double2int(sample_rate));        //< mSampleRate
     avio_wl32(pb, codec_tag);                         //< mFormatID
     avio_wb32(pb, codec_flags(par->codec_id));        //< mFormatFlags
     avio_wb32(pb, par->block_align);                  //< mBytesPerPacket
     avio_wb32(pb, frame_size);                        //< mFramesPerPacket
-    avio_wb32(pb, par->channels);                     //< mChannelsPerFrame
+    avio_wb32(pb, par->ch_layout.nb_channels);        //< mChannelsPerFrame
     avio_wb32(pb, av_get_bits_per_sample(par->codec_id)); //< mBitsPerChannel
 
-    if (par->channel_layout) {
+    if (par->ch_layout.order == AV_CHANNEL_ORDER_NATIVE) {
         ffio_wfourcc(pb, "chan");
         avio_wb64(pb, 12);
-        ff_mov_write_chan(pb, par->channel_layout);
+        ff_mov_write_chan(pb, par->ch_layout.u.mask);
     }
 
     if (par->codec_id == AV_CODEC_ID_ALAC) {
@@ -185,13 +195,13 @@ static int caf_write_header(AVFormatContext *s)
     ff_standardize_creation_time(s);
     if (av_dict_count(s->metadata)) {
         ffio_wfourcc(pb, "info"); //< Information chunk
-        while ((t = av_dict_get(s->metadata, "", t, AV_DICT_IGNORE_SUFFIX))) {
+        while ((t = av_dict_iterate(s->metadata, t))) {
             chunk_size += strlen(t->key) + strlen(t->value) + 2;
         }
         avio_wb64(pb, chunk_size + 4);
         avio_wb32(pb, av_dict_count(s->metadata));
         t = NULL;
-        while ((t = av_dict_get(s->metadata, "", t, AV_DICT_IGNORE_SUFFIX))) {
+        while ((t = av_dict_iterate(s->metadata, t))) {
             avio_put_str(pb, t->key);
             avio_put_str(pb, t->value);
         }
@@ -247,7 +257,7 @@ static int caf_write_trailer(AVFormatContext *s)
         avio_seek(pb, caf->data, SEEK_SET);
         avio_wb64(pb, file_size - caf->data - 8);
         if (!par->block_align) {
-            int packet_size = samples_per_packet(par->codec_id, par->channels, par->block_align);
+            int packet_size = samples_per_packet(par);
             if (!packet_size) {
                 packet_size = st->duration / (caf->packets - 1);
                 avio_seek(pb, FRAME_SIZE_OFFSET, SEEK_SET);
@@ -266,16 +276,16 @@ static int caf_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-const AVOutputFormat ff_caf_muxer = {
-    .name           = "caf",
-    .long_name      = NULL_IF_CONFIG_SMALL("Apple CAF (Core Audio Format)"),
-    .mime_type      = "audio/x-caf",
-    .extensions     = "caf",
+const FFOutputFormat ff_caf_muxer = {
+    .p.name         = "caf",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Apple CAF (Core Audio Format)"),
+    .p.mime_type    = "audio/x-caf",
+    .p.extensions   = "caf",
     .priv_data_size = sizeof(CAFContext),
-    .audio_codec    = AV_CODEC_ID_PCM_S16BE,
-    .video_codec    = AV_CODEC_ID_NONE,
+    .p.audio_codec  = AV_CODEC_ID_PCM_S16BE,
+    .p.video_codec  = AV_CODEC_ID_NONE,
     .write_header   = caf_write_header,
     .write_packet   = caf_write_packet,
     .write_trailer  = caf_write_trailer,
-    .codec_tag      = ff_caf_codec_tags_list,
+    .p.codec_tag    = ff_caf_codec_tags_list,
 };

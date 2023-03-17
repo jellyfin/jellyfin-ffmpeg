@@ -31,20 +31,19 @@
 #include "avcodec.h"
 #include "blockdsp.h"
 #include "bswapdsp.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "aandcttab.h"
 #include "eaidct.h"
-#include "idctdsp.h"
-#include "internal.h"
-#include "mpeg12.h"
+#include "mpeg12data.h"
+#include "mpeg12dec.h"
 
 typedef struct TqiContext {
     AVCodecContext *avctx;
     GetBitContext gb;
     BlockDSPContext bdsp;
     BswapDSPContext bsdsp;
-    IDCTDSPContext idsp;
-    ScanTable intra_scantable;
 
     void *bitstream_buf;
     unsigned int bitstream_buf_size;
@@ -60,11 +59,8 @@ static av_cold int tqi_decode_init(AVCodecContext *avctx)
 {
     TqiContext *t = avctx->priv_data;
 
-    ff_blockdsp_init(&t->bdsp, avctx);
+    ff_blockdsp_init(&t->bdsp);
     ff_bswapdsp_init(&t->bsdsp);
-    ff_idctdsp_init(&t->idsp, avctx);
-    ff_init_scantable_permutation(t->idsp.idct_permutation, FF_IDCT_PERM_NONE);
-    ff_init_scantable(t->idsp.idct_permutation, &t->intra_scantable, ff_zigzag_direct);
 
     avctx->framerate = (AVRational){ 15, 1 };
     avctx->pix_fmt = AV_PIX_FMT_YUV420P;
@@ -80,7 +76,7 @@ static int tqi_decode_mb(TqiContext *t, int16_t (*block)[64])
     for (n = 0; n < 6; n++) {
         int ret = ff_mpeg1_decode_block_intra(&t->gb,
                                               t->intra_matrix,
-                                              t->intra_scantable.permutated,
+                                              ff_zigzag_direct,
                                               t->last_dc, block[n], n, 1);
         if (ret < 0) {
             av_log(t->avctx, AV_LOG_ERROR, "ac-tex damaged at %d %d\n",
@@ -122,15 +118,13 @@ static void tqi_calculate_qtable(TqiContext *t, int quant)
         t->intra_matrix[i] = (ff_inv_aanscales[i] * ff_mpeg1_default_intra_matrix[i] * qscale + 32) >> 14;
 }
 
-static int tqi_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int tqi_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     const uint8_t *buf_end = buf+buf_size;
     TqiContext *t = avctx->priv_data;
-    AVFrame *frame = data;
     int ret, w, h;
 
     if (buf_size < 12)
@@ -181,15 +175,14 @@ static av_cold int tqi_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_eatqi_decoder = {
-    .name           = "eatqi",
-    .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts TQI Video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_TQI,
+const FFCodec ff_eatqi_decoder = {
+    .p.name         = "eatqi",
+    CODEC_LONG_NAME("Electronic Arts TQI Video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_TQI,
     .priv_data_size = sizeof(TqiContext),
     .init           = tqi_decode_init,
     .close          = tqi_decode_end,
-    .decode         = tqi_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(tqi_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };

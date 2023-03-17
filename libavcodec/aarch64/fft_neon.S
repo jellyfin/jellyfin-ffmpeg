@@ -341,8 +341,8 @@ endfunc
 .macro  def_fft n, n2, n4
 function fft\n\()_neon, align=6
         AARCH64_VALID_JUMP_TARGET
-        sub             sp,  sp,  #16
-        stp             x28, x30, [sp]
+        AARCH64_SIGN_LINK_REGISTER
+        stp             x28, x30, [sp, #-16]!
         add             x28, x0,  #\n4*2*8
         bl              fft\n2\()_neon
         mov             x0,  x28
@@ -351,6 +351,7 @@ function fft\n\()_neon, align=6
         bl              fft\n4\()_neon
         sub             x0,  x28, #\n4*2*8
         ldp             x28, x30, [sp], #16
+        AARCH64_VALIDATE_LINK_REGISTER
         movrel          x4,  X(ff_cos_\n)
         mov             x2,  #\n4>>1
         b               fft_pass_neon

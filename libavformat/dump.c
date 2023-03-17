@@ -30,11 +30,12 @@
 #include "libavutil/dovi_meta.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
-#include "libavutil/avstring.h"
 #include "libavutil/replaygain.h"
 #include "libavutil/spherical.h"
 #include "libavutil/stereo3d.h"
 #include "libavutil/timecode.h"
+
+#include "libavcodec/avcodec.h"
 
 #include "avformat.h"
 #include "internal.h"
@@ -139,16 +140,14 @@ static void dump_metadata(void *ctx, const AVDictionary *m, const char *indent)
         const AVDictionaryEntry *tag = NULL;
 
         av_log(ctx, AV_LOG_INFO, "%sMetadata:\n", indent);
-        while ((tag = av_dict_get(m, "", tag, AV_DICT_IGNORE_SUFFIX)))
+        while ((tag = av_dict_iterate(m, tag)))
             if (strcmp("language", tag->key)) {
                 const char *p = tag->value;
                 av_log(ctx, AV_LOG_INFO,
                        "%s  %-16s: ", indent, tag->key);
                 while (*p) {
-                    char tmp[256];
                     size_t len = strcspn(p, "\x8\xa\xb\xc\xd");
-                    av_strlcpy(tmp, p, FFMIN(sizeof(tmp), len+1));
-                    av_log(ctx, AV_LOG_INFO, "%s", tmp);
+                    av_log(ctx, AV_LOG_INFO, "%.*s", (int)(FFMIN(255, len)), p);
                     p += len;
                     if (*p == 0xd) av_log(ctx, AV_LOG_INFO, " ");
                     if (*p == 0xa) av_log(ctx, AV_LOG_INFO, "\n%s  %-16s: ", indent, "");
@@ -164,8 +163,11 @@ static void dump_paramchange(void *ctx, const AVPacketSideData *sd)
 {
     int size = sd->size;
     const uint8_t *data = sd->data;
-    uint32_t flags, channels, sample_rate, width, height;
+    uint32_t flags, sample_rate, width, height;
+#if FF_API_OLD_CHANNEL_LAYOUT
+    uint32_t channels;
     uint64_t layout;
+#endif
 
     if (!data || sd->size < 4)
         goto fail;
@@ -174,6 +176,8 @@ static void dump_paramchange(void *ctx, const AVPacketSideData *sd)
     data += 4;
     size -= 4;
 
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
     if (flags & AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_COUNT) {
         if (size < 4)
             goto fail;
@@ -191,6 +195,8 @@ static void dump_paramchange(void *ctx, const AVPacketSideData *sd)
         av_log(ctx, AV_LOG_INFO,
                "channel layout: %s, ", av_get_channel_name(layout));
     }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif /* FF_API_OLD_CHANNEL_LAYOUT */
     if (flags & AV_SIDE_DATA_PARAM_CHANGE_SAMPLE_RATE) {
         if (size < 4)
             goto fail;
@@ -611,6 +617,8 @@ static void dump_stream_format(const AVFormatContext *ic, int i,
         av_log(NULL, AV_LOG_INFO, " (dependent)");
     if (st->disposition & AV_DISPOSITION_STILL_IMAGE)
         av_log(NULL, AV_LOG_INFO, " (still image)");
+    if (st->disposition & AV_DISPOSITION_NON_DIEGETIC)
+        av_log(NULL, AV_LOG_INFO, " (non-diegetic)");
     av_log(NULL, AV_LOG_INFO, "\n");
 
     dump_metadata(NULL, st->metadata, "    ");

@@ -29,6 +29,7 @@
  */
 
 #include "config.h"
+#include "config_components.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -37,12 +38,15 @@
 #include "libavutil/base64.h"
 #include "libavutil/bprint.h"
 #include "libavutil/dict.h"
+#include "libavutil/dict_internal.h"
+#include "libavutil/display.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/lzo.h"
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
+#include "libavutil/pixdesc.h"
 #include "libavutil/time_internal.h"
 #include "libavutil/spherical.h"
 
@@ -53,6 +57,7 @@
 
 #include "avformat.h"
 #include "avio_internal.h"
+#include "demux.h"
 #include "dovi_isom.h"
 #include "internal.h"
 #include "isom.h"
@@ -803,7 +808,6 @@ static const CodecMime mkv_image_mime_tags[] = {
 };
 
 static const CodecMime mkv_mime_tags[] = {
-    {"text/plain"                 , AV_CODEC_ID_TEXT},
     {"application/x-truetype-font", AV_CODEC_ID_TTF},
     {"application/x-font"         , AV_CODEC_ID_TTF},
     {"application/vnd.ms-opentype", AV_CODEC_ID_OTF},
@@ -1683,7 +1687,6 @@ static int matroska_decode_buffer(uint8_t **buf, int *buf_size,
         memcpy(pkt_data + header_size, data, isize);
         break;
     }
-#if CONFIG_LZO
     case MATROSKA_TRACK_ENCODING_COMP_LZO:
         do {
             int insize = isize;
@@ -1703,7 +1706,6 @@ static int matroska_decode_buffer(uint8_t **buf, int *buf_size,
         }
         pkt_size -= olen;
         break;
-#endif
 #if CONFIG_ZLIB
     case MATROSKA_TRACK_ENCODING_COMP_ZLIB:
     {
@@ -2083,7 +2085,7 @@ static int matroska_parse_flac(AVFormatContext *s,
                     av_log(s, AV_LOG_WARNING,
                            "Invalid value of WAVEFORMATEXTENSIBLE_CHANNEL_MASK\n");
                 } else
-                    st->codecpar->channel_layout = mask;
+                    av_channel_layout_from_mask(&st->codecpar->ch_layout, mask);
             }
             av_dict_free(&dict);
         }
@@ -2095,7 +2097,7 @@ static int matroska_parse_flac(AVFormatContext *s,
     return 0;
 }
 
-static int mkv_field_order(MatroskaDemuxContext *matroska, int64_t field_order)
+static int mkv_field_order(MatroskaDemuxContext *matroska, uint64_t field_order)
 {
     int minor, micro, bttb = 0;
 
@@ -2183,8 +2185,8 @@ static int mkv_parse_video_color(AVStream *st, const MatroskaTrack *track) {
         color->chroma_siting_horz  < MATROSKA_COLOUR_CHROMASITINGHORZ_NB &&
         color->chroma_siting_vert  < MATROSKA_COLOUR_CHROMASITINGVERT_NB) {
         st->codecpar->chroma_location =
-            avcodec_chroma_pos_to_enum((color->chroma_siting_horz - 1) << 7,
-                                       (color->chroma_siting_vert - 1) << 7);
+            av_chroma_location_pos_to_enum((color->chroma_siting_horz - 1) << 7,
+                                           (color->chroma_siting_vert - 1) << 7);
     }
     if (color->max_cll && color->max_fall) {
         size_t size = 0;
@@ -2231,6 +2233,44 @@ static int mkv_parse_video_color(AVStream *st, const MatroskaTrack *track) {
     return 0;
 }
 
+static int mkv_create_display_matrix(AVStream *st,
+                                     const MatroskaTrackVideoProjection *proj,
+                                     void *logctx)
+{
+    double pitch = proj->pitch, yaw = proj->yaw, roll = proj->roll;
+    int32_t *matrix;
+    int hflip;
+
+    if (pitch == 0.0 && yaw == 0.0 && roll == 0.0)
+        return 0;
+
+    /* Note: The following constants are exactly representable
+     * as floating-point numbers. */
+    if (pitch != 0.0 || (yaw != 0.0 && yaw != 180.0 && yaw != -180.0) ||
+        isnan(roll)) {
+        av_log(logctx, AV_LOG_WARNING, "Ignoring non-2D rectangular "
+               "projection in stream %u (yaw %f, pitch %f, roll %f)\n",
+               st->index, yaw, pitch, roll);
+        return 0;
+    }
+    matrix = (int32_t*)av_stream_new_side_data(st, AV_PKT_DATA_DISPLAYMATRIX,
+                                               9 * sizeof(*matrix));
+    if (!matrix)
+        return AVERROR(ENOMEM);
+
+    hflip = yaw != 0.0;
+    /* ProjectionPoseRoll is in the counter-clockwise direction
+     * whereas av_display_rotation_set() expects its argument
+     * to be oriented clockwise, so we need to negate roll.
+     * Furthermore, if hflip is set, we need to negate it again
+     * to account for the fact that the Matroska specifications
+     * require the yaw rotation to be applied first. */
+    av_display_rotation_set(matrix, roll * (2 * hflip - 1));
+    av_display_matrix_flip(matrix, hflip, 0);
+
+    return 0;
+}
+
 static int mkv_parse_video_projection(AVStream *st, const MatroskaTrack *track,
                                       void *logctx)
 {
@@ -2249,6 +2289,8 @@ static int mkv_parse_video_projection(AVStream *st, const MatroskaTrack *track,
     }
 
     switch (track->video.projection.type) {
+    case MATROSKA_VIDEO_PROJECTION_TYPE_RECTANGULAR:
+        return mkv_create_display_matrix(st, mkv_projection, logctx);
     case MATROSKA_VIDEO_PROJECTION_TYPE_EQUIRECTANGULAR:
         if (track->video.projection.private.size == 20) {
             t = AV_RB32(priv_data +  4);
@@ -2291,9 +2333,6 @@ static int mkv_parse_video_projection(AVStream *st, const MatroskaTrack *track,
             return AVERROR_INVALIDDATA;
         }
         break;
-    case MATROSKA_VIDEO_PROJECTION_TYPE_RECTANGULAR:
-        /* No Spherical metadata */
-        return 0;
     default:
         av_log(logctx, AV_LOG_WARNING,
                "Unknown spherical metadata type %"PRIu64"\n",
@@ -2489,9 +2528,7 @@ static int matroska_parse_tracks(AVFormatContext *s)
 #if CONFIG_BZLIB
                  encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_BZLIB &&
 #endif
-#if CONFIG_LZO
                  encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_LZO   &&
-#endif
                  encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_HEADERSTRIP) {
                 encodings[0].scope = 0;
                 av_log(matroska->ctx, AV_LOG_ERROR,
@@ -2851,11 +2888,14 @@ static int matroska_parse_tracks(AVFormatContext *s)
                 mkv_stereo_mode_display_mul(track->video.stereo_mode, &display_width_mul, &display_height_mul);
 
             if (track->video.display_unit < MATROSKA_VIDEO_DISPLAYUNIT_UNKNOWN) {
-                av_reduce(&st->sample_aspect_ratio.num,
-                          &st->sample_aspect_ratio.den,
-                          st->codecpar->height * track->video.display_width  * display_width_mul,
-                          st->codecpar->width  * track->video.display_height * display_height_mul,
-                          INT_MAX);
+                if (track->video.display_width && track->video.display_height &&
+                    st->codecpar->height  < INT64_MAX / track->video.display_width  / display_width_mul &&
+                    st->codecpar->width   < INT64_MAX / track->video.display_height / display_height_mul)
+                    av_reduce(&st->sample_aspect_ratio.num,
+                              &st->sample_aspect_ratio.den,
+                              st->codecpar->height * track->video.display_width  * display_width_mul,
+                              st->codecpar->width  * track->video.display_height * display_height_mul,
+                              INT_MAX);
             }
             if (st->codecpar->codec_id != AV_CODEC_ID_HEVC)
                 sti->need_parsing = AVSTREAM_PARSE_HEADERS;
@@ -2911,7 +2951,11 @@ static int matroska_parse_tracks(AVFormatContext *s)
             st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
             st->codecpar->codec_tag   = fourcc;
             st->codecpar->sample_rate = track->audio.out_samplerate;
-            st->codecpar->channels    = track->audio.channels;
+            // channel layout may be already set by codec private checks above
+            if (!av_channel_layout_check(&st->codecpar->ch_layout)) {
+                st->codecpar->ch_layout.order = AV_CHANNEL_ORDER_UNSPEC;
+                st->codecpar->ch_layout.nb_channels = track->audio.channels;
+            }
             if (!st->codecpar->bits_per_coded_sample)
                 st->codecpar->bits_per_coded_sample = track->audio.bitdepth;
             if (st->codecpar->codec_id == AV_CODEC_ID_MP3 ||
@@ -3661,6 +3705,8 @@ static int matroska_parse_block(MatroskaDemuxContext *matroska, AVBufferRef *buf
     uint64_t num;
     int trust_default_duration;
 
+    av_assert1(buf);
+
     ffio_init_context(&pb, data, size, 0, NULL, NULL, NULL, NULL);
 
     if ((n = ebml_read_num(matroska, &pb.pub, 8, &num, 1)) < 0)
@@ -3964,7 +4010,8 @@ typedef struct {
 
 /* This function searches all the Cues and returns the CueDesc corresponding to
  * the timestamp ts. Returned CueDesc will be such that start_time_ns <= ts <
- * end_time_ns. All 4 fields will be set to -1 if ts >= file's duration.
+ * end_time_ns. All 4 fields will be set to -1 if ts >= file's duration or
+ * if an error occurred.
  */
 static CueDesc get_cue_desc(AVFormatContext *s, int64_t ts, int64_t cues_start) {
     MatroskaDemuxContext *matroska = s->priv_data;
@@ -3983,6 +4030,8 @@ static CueDesc get_cue_desc(AVFormatContext *s, int64_t ts, int64_t cues_start) 
         }
     }
     --i;
+    if (index_entries[i].timestamp > matroska->duration)
+        return (CueDesc) {-1, -1, -1, -1};
     cue_desc.start_time_ns = index_entries[i].timestamp * matroska->time_scale;
     cue_desc.start_offset = index_entries[i].pos - matroska->segment_start;
     if (i != nb_index_entries - 1) {

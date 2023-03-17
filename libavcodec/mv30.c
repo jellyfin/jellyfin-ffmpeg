@@ -20,19 +20,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "copy_block.h"
+#include "decode.h"
 #include "mathops.h"
 #include "blockdsp.h"
 #include "get_bits.h"
-#include "internal.h"
 #include "aandcttab.h"
 
 #define CBP_VLC_BITS  9
@@ -600,12 +600,11 @@ fail:
     return ret;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame, AVPacket *avpkt)
 {
     MV30Context *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
-    AVFrame *frame = data;
     int ret;
 
     if ((ret = init_get_bits8(gb, avpkt->data, avpkt->size)) < 0)
@@ -671,7 +670,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     avctx->pix_fmt = AV_PIX_FMT_YUV420P;
     avctx->color_range = AVCOL_RANGE_JPEG;
 
-    ff_blockdsp_init(&s->bdsp, avctx);
+    ff_blockdsp_init(&s->bdsp);
 
     s->prev_frame = av_frame_alloc();
     if (!s->prev_frame)
@@ -702,17 +701,16 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_mv30_decoder = {
-    .name             = "mv30",
-    .long_name        = NULL_IF_CONFIG_SMALL("MidiVid 3.0"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_MV30,
+const FFCodec ff_mv30_decoder = {
+    .p.name           = "mv30",
+    CODEC_LONG_NAME("MidiVid 3.0"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_MV30,
     .priv_data_size   = sizeof(MV30Context),
     .init             = decode_init,
     .close            = decode_close,
-    .decode           = decode_frame,
+    FF_CODEC_DECODE_CB(decode_frame),
     .flush            = decode_flush,
-    .capabilities     = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
-                        FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities   = AV_CODEC_CAP_DR1,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

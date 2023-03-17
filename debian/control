@@ -5,7 +5,7 @@ Maintainer: Jellyfin Packaging Team <packaging@jellyfin.org>
 Uploaders: Jellyfin Packaging Team <packaging@jellyfin.org>
 Rules-Requires-Root: no
 Homepage: https://ffmpeg.org/
-Standards-Version: 5.0.1
+Standards-Version: 4.2.1
 Vcs-Git: https://github.com/jellyfin/jellyfin-ffmpeg.git
 Vcs-Browser: https://github.com/jellyfin/jellyfin-ffmpeg
 Build-Depends:
@@ -79,11 +79,11 @@ Build-Depends:
 # autodetected zlib
  zlib1g-dev
 
-Package: jellyfin-ffmpeg5
+Package: jellyfin-ffmpeg6
 Architecture: amd64 armhf arm64
 Multi-Arch: foreign
-Replaces: jellyfin-ffmpeg
-Conflicts: jellyfin-ffmpeg
+Replaces: jellyfin-ffmpeg, jellyfin-ffmpeg5
+Conflicts: jellyfin-ffmpeg, jellyfin-ffmpeg5
 Depends:
  ${shlibs:Depends},
  ${misc:Depends}

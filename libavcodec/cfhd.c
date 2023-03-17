@@ -26,12 +26,13 @@
 #include "libavutil/attributes.h"
 #include "libavutil/buffer.h"
 #include "libavutil/common.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
-#include "libavutil/opt.h"
+#include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "internal.h"
 #include "thread.h"
@@ -372,14 +373,12 @@ static int alloc_buffers(AVCodecContext *avctx)
     return 0;
 }
 
-static int cfhd_decode(AVCodecContext *avctx, void *data, int *got_frame,
-                       AVPacket *avpkt)
+static int cfhd_decode(AVCodecContext *avctx, AVFrame *pic,
+                       int *got_frame, AVPacket *avpkt)
 {
     CFHDContext *s = avctx->priv_data;
     CFHDDSPContext *dsp = &s->dsp;
     GetByteContext gb;
-    ThreadFrame frame = { .f = data };
-    AVFrame *pic = data;
     int ret = 0, i, j, plane, got_buffer = 0;
     int16_t *coeff_data;
 
@@ -681,10 +680,9 @@ static int cfhd_decode(AVCodecContext *avctx, void *data, int *got_frame,
                     return AVERROR_INVALIDDATA;
                 avctx->height = height;
             }
-            frame.f->width =
-            frame.f->height = 0;
+            pic->width = pic->height = 0;
 
-            if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+            if ((ret = ff_thread_get_buffer(avctx, pic, 0)) < 0)
                 return ret;
 
             s->coded_width = 0;
@@ -692,10 +690,9 @@ static int cfhd_decode(AVCodecContext *avctx, void *data, int *got_frame,
             s->coded_format = AV_PIX_FMT_NONE;
             got_buffer = 1;
         } else if (tag == FrameIndex && data == 1 && s->sample_type == 1 && s->frame_type == 2) {
-            frame.f->width =
-            frame.f->height = 0;
+            pic->width = pic->height = 0;
 
-            if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+            if ((ret = ff_thread_get_buffer(avctx, pic, 0)) < 0)
                 return ret;
             s->coded_width = 0;
             s->coded_height = 0;
@@ -822,7 +819,7 @@ static int cfhd_decode(AVCodecContext *avctx, void *data, int *got_frame,
                                    VLC_BITS, 3, 1);
 
                         /* escape */
-                        if (level == 64)
+                        if (!run)
                             break;
 
                         count += run;
@@ -853,7 +850,7 @@ static int cfhd_decode(AVCodecContext *avctx, void *data, int *got_frame,
                                    VLC_BITS, 3, 1);
 
                         /* escape */
-                        if (level == 255 && run == 2)
+                        if (!run)
                             break;
 
                         count += run;
@@ -1407,9 +1404,6 @@ static av_cold int cfhd_close(AVCodecContext *avctx)
 
     free_buffers(s);
 
-    ff_free_vlc(&s->vlc_9);
-    ff_free_vlc(&s->vlc_18);
-
     return 0;
 }
 
@@ -1458,16 +1452,16 @@ static int update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
 }
 #endif
 
-const AVCodec ff_cfhd_decoder = {
-    .name             = "cfhd",
-    .long_name        = NULL_IF_CONFIG_SMALL("GoPro CineForm HD"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_CFHD,
+const FFCodec ff_cfhd_decoder = {
+    .p.name           = "cfhd",
+    CODEC_LONG_NAME("GoPro CineForm HD"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_CFHD,
     .priv_data_size   = sizeof(CFHDContext),
     .init             = cfhd_init,
     .close            = cfhd_close,
-    .decode           = cfhd_decode,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(update_thread_context),
-    .capabilities     = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    FF_CODEC_DECODE_CB(cfhd_decode),
+    UPDATE_THREAD_CONTEXT(update_thread_context),
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

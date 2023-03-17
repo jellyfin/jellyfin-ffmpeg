@@ -5,6 +5,7 @@ HEADERS = avfilter.h                                                    \
           buffersink.h                                                  \
           buffersrc.h                                                   \
           version.h                                                     \
+          version_major.h                                               \
 
 OBJS = allfilters.o                                                     \
        audio.o                                                          \
@@ -12,6 +13,7 @@ OBJS = allfilters.o                                                     \
        avfiltergraph.o                                                  \
        buffersink.o                                                     \
        buffersrc.o                                                      \
+       colorspace.o                                                     \
        drawutils.o                                                      \
        fifo.o                                                           \
        formats.o                                                        \
@@ -19,8 +21,10 @@ OBJS = allfilters.o                                                     \
        framequeue.o                                                     \
        graphdump.o                                                      \
        graphparser.o                                                    \
+       version.o                                                        \
        video.o                                                          \
 
+OBJS-$(HAVE_LIBC_MSVCRT)                     += file_open.o
 OBJS-$(HAVE_THREADS)                         += pthread.o
 
 # subsystems
@@ -44,6 +48,7 @@ OBJS-$(CONFIG_ADECORRELATE_FILTER)           += af_adecorrelate.o
 OBJS-$(CONFIG_ADELAY_FILTER)                 += af_adelay.o
 OBJS-$(CONFIG_ADENORM_FILTER)                += af_adenorm.o
 OBJS-$(CONFIG_ADERIVATIVE_FILTER)            += af_aderivative.o
+OBJS-$(CONFIG_ADRC_FILTER)                   += af_adrc.o
 OBJS-$(CONFIG_ADYNAMICEQUALIZER_FILTER)      += af_adynamicequalizer.o
 OBJS-$(CONFIG_ADYNAMICSMOOTH_FILTER)         += af_adynamicsmooth.o
 OBJS-$(CONFIG_AECHO_FILTER)                  += af_aecho.o
@@ -124,6 +129,7 @@ OBJS-$(CONFIG_CROSSFEED_FILTER)              += af_crossfeed.o
 OBJS-$(CONFIG_CRYSTALIZER_FILTER)            += af_crystalizer.o
 OBJS-$(CONFIG_DCSHIFT_FILTER)                += af_dcshift.o
 OBJS-$(CONFIG_DEESSER_FILTER)                += af_deesser.o
+OBJS-$(CONFIG_DIALOGUENHANCE_FILTER)         += af_dialoguenhance.o
 OBJS-$(CONFIG_DRMETER_FILTER)                += af_drmeter.o
 OBJS-$(CONFIG_DYNAUDNORM_FILTER)             += af_dynaudnorm.o
 OBJS-$(CONFIG_EARWAX_FILTER)                 += af_earwax.o
@@ -160,10 +166,12 @@ OBJS-$(CONFIG_SURROUND_FILTER)               += af_surround.o
 OBJS-$(CONFIG_TREBLE_FILTER)                 += af_biquads.o
 OBJS-$(CONFIG_TREMOLO_FILTER)                += af_tremolo.o
 OBJS-$(CONFIG_VIBRATO_FILTER)                += af_vibrato.o generate_wave_table.o
+OBJS-$(CONFIG_VIRTUALBASS_FILTER)            += af_virtualbass.o
 OBJS-$(CONFIG_VOLUME_FILTER)                 += af_volume.o
 OBJS-$(CONFIG_VOLUMEDETECT_FILTER)           += af_volumedetect.o
 
 OBJS-$(CONFIG_AEVALSRC_FILTER)               += aeval.o
+OBJS-$(CONFIG_AFDELAYSRC_FILTER)             += asrc_afdelaysrc.o
 OBJS-$(CONFIG_AFIRSRC_FILTER)                += asrc_afirsrc.o
 OBJS-$(CONFIG_ANOISESRC_FILTER)              += asrc_anoisesrc.o
 OBJS-$(CONFIG_ANULLSRC_FILTER)               += asrc_anullsrc.o
@@ -185,13 +193,18 @@ OBJS-$(CONFIG_AVGBLUR_FILTER)                += vf_avgblur.o
 OBJS-$(CONFIG_AVGBLUR_OPENCL_FILTER)         += vf_avgblur_opencl.o opencl.o \
                                                 opencl/avgblur.o boxblur.o
 OBJS-$(CONFIG_AVGBLUR_VULKAN_FILTER)         += vf_avgblur_vulkan.o vulkan.o vulkan_filter.o
+OBJS-$(CONFIG_BACKGROUNDKEY_FILTER)          += vf_backgroundkey.o
 OBJS-$(CONFIG_BBOX_FILTER)                   += bbox.o vf_bbox.o
 OBJS-$(CONFIG_BENCH_FILTER)                  += f_bench.o
 OBJS-$(CONFIG_BILATERAL_FILTER)              += vf_bilateral.o
+OBJS-$(CONFIG_BILATERAL_CUDA_FILTER)         += vf_bilateral_cuda.o vf_bilateral_cuda.ptx.o
 OBJS-$(CONFIG_BITPLANENOISE_FILTER)          += vf_bitplanenoise.o
 OBJS-$(CONFIG_BLACKDETECT_FILTER)            += vf_blackdetect.o
 OBJS-$(CONFIG_BLACKFRAME_FILTER)             += vf_blackframe.o
 OBJS-$(CONFIG_BLEND_FILTER)                  += vf_blend.o framesync.o
+OBJS-$(CONFIG_BLEND_VULKAN_FILTER)           += vf_blend_vulkan.o framesync.o vulkan.o vulkan_filter.o
+OBJS-$(CONFIG_BLOCKDETECT_FILTER)            += vf_blockdetect.o
+OBJS-$(CONFIG_BLURDETECT_FILTER)             += vf_blurdetect.o edge_common.o
 OBJS-$(CONFIG_BM3D_FILTER)                   += vf_bm3d.o framesync.o
 OBJS-$(CONFIG_BOXBLUR_FILTER)                += vf_boxblur.o boxblur.o
 OBJS-$(CONFIG_BOXBLUR_OPENCL_FILTER)         += vf_avgblur_opencl.o opencl.o \
@@ -201,6 +214,8 @@ OBJS-$(CONFIG_CAS_FILTER)                    += vf_cas.o
 OBJS-$(CONFIG_CHROMABER_VULKAN_FILTER)       += vf_chromaber_vulkan.o vulkan.o vulkan_filter.o
 OBJS-$(CONFIG_CHROMAHOLD_FILTER)             += vf_chromakey.o
 OBJS-$(CONFIG_CHROMAKEY_FILTER)              += vf_chromakey.o
+OBJS-$(CONFIG_CHROMAKEY_CUDA_FILTER)         += vf_chromakey_cuda.o vf_chromakey_cuda.ptx.o
+
 OBJS-$(CONFIG_CHROMANR_FILTER)               += vf_chromanr.o
 OBJS-$(CONFIG_CHROMASHIFT_FILTER)            += vf_chromashift.o
 OBJS-$(CONFIG_CIESCOPE_FILTER)               += vf_ciescope.o
@@ -215,8 +230,12 @@ OBJS-$(CONFIG_COLORKEY_OPENCL_FILTER)        += vf_colorkey_opencl.o opencl.o \
                                                 opencl/colorkey.o
 OBJS-$(CONFIG_COLORHOLD_FILTER)              += vf_colorkey.o
 OBJS-$(CONFIG_COLORLEVELS_FILTER)            += vf_colorlevels.o
+OBJS-$(CONFIG_COLORMAP_FILTER)               += vf_colormap.o
 OBJS-$(CONFIG_COLORMATRIX_FILTER)            += vf_colormatrix.o
-OBJS-$(CONFIG_COLORSPACE_FILTER)             += vf_colorspace.o colorspace.o colorspacedsp.o
+OBJS-$(CONFIG_COLORSPACE_FILTER)             += vf_colorspace.o colorspacedsp.o
+OBJS-$(CONFIG_COLORSPACE_CUDA_FILTER)        += vf_colorspace_cuda.o \
+                                                vf_colorspace_cuda.ptx.o \
+                                                cuda/load_helper.o
 OBJS-$(CONFIG_COLORTEMPERATURE_FILTER)       += vf_colortemperature.o
 OBJS-$(CONFIG_CONVOLUTION_FILTER)            += vf_convolution.o
 OBJS-$(CONFIG_CONVOLUTION_OPENCL_FILTER)     += vf_convolution_opencl.o opencl.o \
@@ -224,6 +243,7 @@ OBJS-$(CONFIG_CONVOLUTION_OPENCL_FILTER)     += vf_convolution_opencl.o opencl.o
 OBJS-$(CONFIG_CONVOLVE_FILTER)               += vf_convolve.o framesync.o
 OBJS-$(CONFIG_COPY_FILTER)                   += vf_copy.o
 OBJS-$(CONFIG_COREIMAGE_FILTER)              += vf_coreimage.o
+OBJS-$(CONFIG_CORR_FILTER)                   += vf_corr.o framesync.o
 OBJS-$(CONFIG_COVER_RECT_FILTER)             += vf_cover_rect.o lavfutils.o
 OBJS-$(CONFIG_CROP_FILTER)                   += vf_crop.o
 OBJS-$(CONFIG_CROPDETECT_FILTER)             += vf_cropdetect.o
@@ -240,7 +260,7 @@ OBJS-$(CONFIG_DECONVOLVE_FILTER)             += vf_convolve.o framesync.o
 OBJS-$(CONFIG_DEDOT_FILTER)                  += vf_dedot.o
 OBJS-$(CONFIG_DEFLATE_FILTER)                += vf_neighbor.o
 OBJS-$(CONFIG_DEFLICKER_FILTER)              += vf_deflicker.o
-OBJS-$(CONFIG_DEINTERLACE_QSV_FILTER)        += vf_deinterlace_qsv.o
+OBJS-$(CONFIG_DEINTERLACE_QSV_FILTER)        += vf_vpp_qsv.o
 OBJS-$(CONFIG_DEINTERLACE_VAAPI_FILTER)      += vf_deinterlace_vaapi.o vaapi_vpp.o
 OBJS-$(CONFIG_DEJUDDER_FILTER)               += vf_dejudder.o
 OBJS-$(CONFIG_DELOGO_FILTER)                 += vf_delogo.o
@@ -262,7 +282,7 @@ OBJS-$(CONFIG_DRAWBOX_FILTER)                += vf_drawbox.o
 OBJS-$(CONFIG_DRAWGRAPH_FILTER)              += f_drawgraph.o
 OBJS-$(CONFIG_DRAWGRID_FILTER)               += vf_drawbox.o
 OBJS-$(CONFIG_DRAWTEXT_FILTER)               += vf_drawtext.o
-OBJS-$(CONFIG_EDGEDETECT_FILTER)             += vf_edgedetect.o
+OBJS-$(CONFIG_EDGEDETECT_FILTER)             += vf_edgedetect.o edge_common.o
 OBJS-$(CONFIG_ELBG_FILTER)                   += vf_elbg.o
 OBJS-$(CONFIG_ENTROPY_FILTER)                += vf_entropy.o
 OBJS-$(CONFIG_EPX_FILTER)                    += vf_epx.o
@@ -274,6 +294,7 @@ OBJS-$(CONFIG_ESTDIF_FILTER)                 += vf_estdif.o
 OBJS-$(CONFIG_EXPOSURE_FILTER)               += vf_exposure.o
 OBJS-$(CONFIG_EXTRACTPLANES_FILTER)          += vf_extractplanes.o
 OBJS-$(CONFIG_FADE_FILTER)                   += vf_fade.o
+OBJS-$(CONFIG_FEEDBACK_FILTER)               += vf_feedback.o
 OBJS-$(CONFIG_FFTDNOIZ_FILTER)               += vf_fftdnoiz.o
 OBJS-$(CONFIG_FFTFILT_FILTER)                += vf_fftfilt.o
 OBJS-$(CONFIG_FIELD_FILTER)                  += vf_field.o
@@ -317,6 +338,8 @@ OBJS-$(CONFIG_HWMAP_FILTER)                  += vf_hwmap.o
 OBJS-$(CONFIG_HWUPLOAD_CUDA_FILTER)          += vf_hwupload_cuda.o
 OBJS-$(CONFIG_HWUPLOAD_FILTER)               += vf_hwupload.o
 OBJS-$(CONFIG_HYSTERESIS_FILTER)             += vf_hysteresis.o framesync.o
+OBJS-$(CONFIG_ICCDETECT_FILTER)              += vf_iccdetect.o fflcms2.o
+OBJS-$(CONFIG_ICCGEN_FILTER)                 += vf_iccgen.o fflcms2.o
 OBJS-$(CONFIG_IDENTITY_FILTER)               += vf_identity.o
 OBJS-$(CONFIG_IDET_FILTER)                   += vf_idet.o
 OBJS-$(CONFIG_IL_FILTER)                     += vf_il.o
@@ -358,6 +381,7 @@ OBJS-$(CONFIG_MIX_FILTER)                    += vf_mix.o framesync.o
 OBJS-$(CONFIG_MONOCHROME_FILTER)             += vf_monochrome.o
 OBJS-$(CONFIG_MORPHO_FILTER)                 += vf_morpho.o
 OBJS-$(CONFIG_MPDECIMATE_FILTER)             += vf_mpdecimate.o
+OBJS-$(CONFIG_MULTIPLY_FILTER)               += vf_multiply.o
 OBJS-$(CONFIG_NEGATE_FILTER)                 += vf_negate.o
 OBJS-$(CONFIG_NLMEANS_FILTER)                += vf_nlmeans.o
 OBJS-$(CONFIG_NLMEANS_OPENCL_FILTER)         += vf_nlmeans_opencl.o opencl.o opencl/nlmeans.o
@@ -375,17 +399,19 @@ OBJS-$(CONFIG_OVERLAY_CUDA_FILTER)           += vf_overlay_cuda.o framesync.o vf
 OBJS-$(CONFIG_OVERLAY_OPENCL_FILTER)         += vf_overlay_opencl.o opencl.o \
                                                 opencl/overlay.o framesync.o
 OBJS-$(CONFIG_OVERLAY_QSV_FILTER)            += vf_overlay_qsv.o framesync.o
+OBJS-$(CONFIG_OVERLAY_VAAPI_FILTER)          += vf_overlay_vaapi.o framesync.o vaapi_vpp.o
 OBJS-$(CONFIG_OVERLAY_VULKAN_FILTER)         += vf_overlay_vulkan.o vulkan.o vulkan_filter.o
 OBJS-$(CONFIG_OWDENOISE_FILTER)              += vf_owdenoise.o
 OBJS-$(CONFIG_PAD_FILTER)                    += vf_pad.o
 OBJS-$(CONFIG_PAD_OPENCL_FILTER)             += vf_pad_opencl.o opencl.o opencl/pad.o
-OBJS-$(CONFIG_PALETTEGEN_FILTER)             += vf_palettegen.o
-OBJS-$(CONFIG_PALETTEUSE_FILTER)             += vf_paletteuse.o framesync.o
+OBJS-$(CONFIG_PALETTEGEN_FILTER)             += vf_palettegen.o palette.o
+OBJS-$(CONFIG_PALETTEUSE_FILTER)             += vf_paletteuse.o framesync.o palette.o
 OBJS-$(CONFIG_PERMS_FILTER)                  += f_perms.o
 OBJS-$(CONFIG_PERSPECTIVE_FILTER)            += vf_perspective.o
 OBJS-$(CONFIG_PHASE_FILTER)                  += vf_phase.o
 OBJS-$(CONFIG_PHOTOSENSITIVITY_FILTER)       += vf_photosensitivity.o
 OBJS-$(CONFIG_PIXDESCTEST_FILTER)            += vf_pixdesctest.o
+OBJS-$(CONFIG_PIXELIZE_FILTER)               += vf_pixelize.o
 OBJS-$(CONFIG_PIXSCOPE_FILTER)               += vf_datascope.o
 OBJS-$(CONFIG_PP_FILTER)                     += vf_pp.o qp_table.o
 OBJS-$(CONFIG_PP7_FILTER)                    += vf_pp7.o qp_table.o
@@ -404,6 +430,8 @@ OBJS-$(CONFIG_READEIA608_FILTER)             += vf_readeia608.o
 OBJS-$(CONFIG_READVITC_FILTER)               += vf_readvitc.o
 OBJS-$(CONFIG_REALTIME_FILTER)               += f_realtime.o
 OBJS-$(CONFIG_REMAP_FILTER)                  += vf_remap.o framesync.o
+OBJS-$(CONFIG_REMAP_OPENCL_FILTER)           += vf_remap_opencl.o framesync.o opencl.o \
+                                                opencl/remap.o
 OBJS-$(CONFIG_REMOVEGRAIN_FILTER)            += vf_removegrain.o
 OBJS-$(CONFIG_REMOVELOGO_FILTER)             += bbox.o lswsutils.o lavfutils.o vf_removelogo.o
 OBJS-$(CONFIG_REPEATFIELDS_FILTER)           += vf_repeatfields.o
@@ -418,7 +446,7 @@ OBJS-$(CONFIG_SCALE_FILTER)                  += vf_scale.o scale_eval.o
 OBJS-$(CONFIG_SCALE_CUDA_FILTER)             += vf_scale_cuda.o scale_eval.o \
                                                 vf_scale_cuda.ptx.o cuda/load_helper.o
 OBJS-$(CONFIG_SCALE_NPP_FILTER)              += vf_scale_npp.o scale_eval.o
-OBJS-$(CONFIG_SCALE_QSV_FILTER)              += vf_scale_qsv.o
+OBJS-$(CONFIG_SCALE_QSV_FILTER)              += vf_vpp_qsv.o
 OBJS-$(CONFIG_SCALE_VAAPI_FILTER)            += vf_scale_vaapi.o scale_eval.o vaapi_vpp.o
 OBJS-$(CONFIG_SCALE_VULKAN_FILTER)           += vf_scale_vulkan.o vulkan.o vulkan_filter.o
 OBJS-$(CONFIG_SCALE2REF_FILTER)              += vf_scale.o scale_eval.o
@@ -453,10 +481,12 @@ OBJS-$(CONFIG_SMARTBLUR_FILTER)              += vf_smartblur.o
 OBJS-$(CONFIG_SOBEL_FILTER)                  += vf_convolution.o
 OBJS-$(CONFIG_SOBEL_OPENCL_FILTER)           += vf_convolution_opencl.o opencl.o \
                                                 opencl/convolution.o
+OBJS-$(CONFIG_SITI_FILTER)                   += vf_siti.o
 OBJS-$(CONFIG_SPLIT_FILTER)                  += split.o
 OBJS-$(CONFIG_SPP_FILTER)                    += vf_spp.o qp_table.o
 OBJS-$(CONFIG_SR_FILTER)                     += vf_sr.o
 OBJS-$(CONFIG_SSIM_FILTER)                   += vf_ssim.o framesync.o
+OBJS-$(CONFIG_SSIM360_FILTER)                += vf_ssim360.o framesync.o
 OBJS-$(CONFIG_STEREO3D_FILTER)               += vf_stereo3d.o
 OBJS-$(CONFIG_STREAMSELECT_FILTER)           += f_streamselect.o framesync.o
 OBJS-$(CONFIG_SUBTITLES_FILTER)              += vf_subtitles.o
@@ -476,8 +506,8 @@ OBJS-$(CONFIG_TLUT2_FILTER)                  += vf_lut2.o framesync.o
 OBJS-$(CONFIG_TMEDIAN_FILTER)                += vf_xmedian.o framesync.o
 OBJS-$(CONFIG_TMIDEQUALIZER_FILTER)          += vf_tmidequalizer.o
 OBJS-$(CONFIG_TMIX_FILTER)                   += vf_mix.o framesync.o
-OBJS-$(CONFIG_TONEMAP_FILTER)                += vf_tonemap.o colorspace.o
-OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)         += vf_tonemap_opencl.o colorspace.o opencl.o \
+OBJS-$(CONFIG_TONEMAP_FILTER)                += vf_tonemap.o
+OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)         += vf_tonemap_opencl.o opencl.o \
                                                 opencl/tonemap.o opencl/colorspace_common.o
 OBJS-$(CONFIG_TONEMAP_VAAPI_FILTER)          += vf_tonemap_vaapi.o vaapi_vpp.o
 OBJS-$(CONFIG_TPAD_FILTER)                   += vf_tpad.o
@@ -528,13 +558,21 @@ OBJS-$(CONFIG_YAEPBLUR_FILTER)               += vf_yaepblur.o
 OBJS-$(CONFIG_ZMQ_FILTER)                    += f_zmq.o
 OBJS-$(CONFIG_ZOOMPAN_FILTER)                += vf_zoompan.o
 OBJS-$(CONFIG_ZSCALE_FILTER)                 += vf_zscale.o
+OBJS-$(CONFIG_HSTACK_VAAPI_FILTER)           += vf_stack_vaapi.o framesync.o vaapi_vpp.o
+OBJS-$(CONFIG_VSTACK_VAAPI_FILTER)           += vf_stack_vaapi.o framesync.o vaapi_vpp.o
+OBJS-$(CONFIG_XSTACK_VAAPI_FILTER)           += vf_stack_vaapi.o framesync.o vaapi_vpp.o
+OBJS-$(CONFIG_HSTACK_QSV_FILTER)             += vf_stack_qsv.o framesync.o
+OBJS-$(CONFIG_VSTACK_QSV_FILTER)             += vf_stack_qsv.o framesync.o
+OBJS-$(CONFIG_XSTACK_QSV_FILTER)             += vf_stack_qsv.o framesync.o
 
 OBJS-$(CONFIG_ALLRGB_FILTER)                 += vsrc_testsrc.o
 OBJS-$(CONFIG_ALLYUV_FILTER)                 += vsrc_testsrc.o
 OBJS-$(CONFIG_CELLAUTO_FILTER)               += vsrc_cellauto.o
 OBJS-$(CONFIG_COLOR_FILTER)                  += vsrc_testsrc.o
+OBJS-$(CONFIG_COLORCHART_FILTER)             += vsrc_testsrc.o
 OBJS-$(CONFIG_COLORSPECTRUM_FILTER)          += vsrc_testsrc.o
 OBJS-$(CONFIG_COREIMAGESRC_FILTER)           += vf_coreimage.o
+OBJS-$(CONFIG_DDAGRAB_FILTER)                += vsrc_ddagrab.o
 OBJS-$(CONFIG_FREI0R_SRC_FILTER)             += vf_frei0r.o
 OBJS-$(CONFIG_GRADIENTS_FILTER)              += vsrc_gradients.o
 OBJS-$(CONFIG_HALDCLUTSRC_FILTER)            += vsrc_testsrc.o
@@ -556,6 +594,7 @@ OBJS-$(CONFIG_YUVTESTSRC_FILTER)             += vsrc_testsrc.o
 OBJS-$(CONFIG_NULLSINK_FILTER)               += vsink_nullsink.o
 
 # multimedia filters
+OBJS-$(CONFIG_A3DSCOPE_FILTER)               += avf_a3dscope.o
 OBJS-$(CONFIG_ABITSCOPE_FILTER)              += avf_abitscope.o
 OBJS-$(CONFIG_ADRAWGRAPH_FILTER)             += f_drawgraph.o
 OBJS-$(CONFIG_AGRAPHMONITOR_FILTER)          += f_graphmonitor.o
@@ -564,6 +603,7 @@ OBJS-$(CONFIG_APHASEMETER_FILTER)            += avf_aphasemeter.o
 OBJS-$(CONFIG_AVECTORSCOPE_FILTER)           += avf_avectorscope.o
 OBJS-$(CONFIG_CONCAT_FILTER)                 += avf_concat.o
 OBJS-$(CONFIG_SHOWCQT_FILTER)                += avf_showcqt.o lswsutils.o lavfutils.o
+OBJS-$(CONFIG_SHOWCWT_FILTER)                += avf_showcwt.o
 OBJS-$(CONFIG_SHOWFREQS_FILTER)              += avf_showfreqs.o
 OBJS-$(CONFIG_SHOWSPATIAL_FILTER)            += avf_showspatial.o
 OBJS-$(CONFIG_SHOWSPECTRUM_FILTER)           += avf_showspectrum.o
@@ -574,6 +614,7 @@ OBJS-$(CONFIG_SHOWWAVESPIC_FILTER)           += avf_showwaves.o
 OBJS-$(CONFIG_SPECTRUMSYNTH_FILTER)          += vaf_spectrumsynth.o
 
 # multimedia sources
+OBJS-$(CONFIG_AVSYNCTEST_FILTER)             += src_avsynctest.o
 OBJS-$(CONFIG_AMOVIE_FILTER)                 += src_movie.o
 OBJS-$(CONFIG_MOVIE_FILTER)                  += src_movie.o
 
@@ -581,8 +622,9 @@ OBJS-$(CONFIG_MOVIE_FILTER)                  += src_movie.o
 SHLIBOBJS                                    += log2_tab.o
 
 # Windows resource file
-SLIBOBJS-$(HAVE_GNU_WINDRES)                 += avfilterres.o
+SHLIBOBJS-$(HAVE_GNU_WINDRES)                += avfilterres.o
 
+SKIPHEADERS-$(CONFIG_LCMS2)                  += fflcms2.h
 SKIPHEADERS-$(CONFIG_LIBVIDSTAB)             += vidstabutils.h
 
 SKIPHEADERS-$(CONFIG_QSVVPP)                 += qsvvpp.h

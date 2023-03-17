@@ -1,11 +1,10 @@
-224607440d242dad567b8ee2ed3afeac *tests/data/fate/aac-autobsf-adtstoasc.matroska
-6651 tests/data/fate/aac-autobsf-adtstoasc.matroska
+4342e4f3f93b16514bda511b3b7fd93a *tests/data/fate/aac-autobsf-adtstoasc.matroska
+6642 tests/data/fate/aac-autobsf-adtstoasc.matroska
 #extradata 0:        2, 0x0030001c
 #tb 0: 1/1000
 #media_type 0: audio
 #codec_id 0: aac
 #sample_rate 0: 16000
-#channel_layout 0: 4
 #channel_layout_name 0: mono
 0,          0,          0,       64,        4, 0x02f70117
 0,         64,         64,       64,      163, 0xd5f85007

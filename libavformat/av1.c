@@ -23,7 +23,7 @@
 #include "libavutil/mem.h"
 #include "libavcodec/av1.h"
 #include "libavcodec/av1_parse.h"
-#include "libavcodec/profiles.h"
+#include "libavcodec/avcodec.h"
 #include "libavcodec/put_bits.h"
 #include "av1.h"
 #include "avio.h"
@@ -33,8 +33,7 @@ static int av1_filter_obus(AVIOContext *pb, const uint8_t *buf,
                            int size, int *offset)
 {
     const uint8_t *start = buf, *end = buf + size;
-    int64_t obu_size;
-    int off, start_pos, type, temporal_id, spatial_id;
+    int off;
     enum {
         START_NOT_FOUND,
         START_FOUND,
@@ -44,6 +43,8 @@ static int av1_filter_obus(AVIOContext *pb, const uint8_t *buf,
 
     off = size = 0;
     while (buf < end) {
+        int64_t obu_size;
+        int start_pos, type, temporal_id, spatial_id;
         int len = parse_obu_header(buf, end - buf, &obu_size, &start_pos,
                                    &type, &temporal_id, &spatial_id);
         if (len < 0)
@@ -333,13 +334,46 @@ static int parse_sequence_header(AV1SequenceParameters *seq_params, const uint8_
 
 int ff_av1_parse_seq_header(AV1SequenceParameters *seq, const uint8_t *buf, int size)
 {
-    int64_t obu_size;
-    int start_pos, type, temporal_id, spatial_id;
+    int is_av1c;
 
     if (size <= 0)
         return AVERROR_INVALIDDATA;
 
+    is_av1c = !!(buf[0] & 0x80);
+    if (is_av1c) {
+        GetBitContext gb;
+        int ret, version = buf[0] & 0x7F;
+
+        if (version != 1 || size < 4)
+            return AVERROR_INVALIDDATA;
+
+        ret = init_get_bits8(&gb, buf, 4);
+        if (ret < 0)
+            return ret;
+
+        memset(seq, 0, sizeof(*seq));
+
+        skip_bits(&gb, 8);
+        seq->profile    = get_bits(&gb, 3);
+        seq->level      = get_bits(&gb, 5);
+        seq->tier       = get_bits(&gb, 1);
+        seq->bitdepth   = get_bits(&gb, 1) * 2 + 8;
+        seq->bitdepth  += get_bits(&gb, 1) * 2;
+        seq->monochrome               = get_bits(&gb, 1);
+        seq->chroma_subsampling_x     = get_bits(&gb, 1);
+        seq->chroma_subsampling_y     = get_bits(&gb, 1);
+        seq->chroma_sample_position   = get_bits(&gb, 2);
+        seq->color_primaries          = AVCOL_PRI_UNSPECIFIED;
+        seq->transfer_characteristics = AVCOL_TRC_UNSPECIFIED;
+        seq->matrix_coefficients      = AVCOL_SPC_UNSPECIFIED;
+
+        size -= 4;
+        buf  += 4;
+    }
+
     while (size > 0) {
+        int64_t obu_size;
+        int start_pos, type, temporal_id, spatial_id;
         int len = parse_obu_header(buf, size, &obu_size, &start_pos,
                                    &type, &temporal_id, &spatial_id);
         if (len < 0)
@@ -358,18 +392,17 @@ int ff_av1_parse_seq_header(AV1SequenceParameters *seq, const uint8_t *buf, int 
         buf  += len;
     }
 
-    return AVERROR_INVALIDDATA;
+    return is_av1c ? 0 : AVERROR_INVALIDDATA;
 }
 
-int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size)
+int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
+                       int write_seq_header)
 {
     AVIOContext *meta_pb;
     AV1SequenceParameters seq_params;
     PutBitContext pbc;
     uint8_t header[4], *meta;
     const uint8_t *seq;
-    int64_t obu_size;
-    int start_pos, type, temporal_id, spatial_id;
     int ret, nb_seq = 0, seq_size, meta_size;
 
     if (size <= 0)
@@ -394,6 +427,8 @@ int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size)
         return ret;
 
     while (size > 0) {
+        int64_t obu_size;
+        int start_pos, type, temporal_id, spatial_id;
         int len = parse_obu_header(buf, size, &obu_size, &start_pos,
                                    &type, &temporal_id, &spatial_id);
         if (len < 0) {
@@ -451,7 +486,9 @@ int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size)
     flush_put_bits(&pbc);
 
     avio_write(pb, header, sizeof(header));
-    avio_write(pb, seq, seq_size);
+    if (write_seq_header) {
+        avio_write(pb, seq, seq_size);
+    }
 
     meta_size = avio_get_dyn_buf(meta_pb, &meta);
     if (meta_size)

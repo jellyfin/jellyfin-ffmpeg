@@ -22,7 +22,7 @@ fate-binsub-mksenc: CMD = md5pipe -i $(TARGET_SAMPLES)/sub/1ededcbd7b.ass -c cop
 FATE_SUBTITLES_ASS-$(call DEMDEC, JACOSUB, JACOSUB) += fate-sub-jacosub
 fate-sub-jacosub: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/JACOsub_capability_tester.jss
 
-FATE_SUBTITLES-$(call DEMMUX, JACOSUB, JACOSUB) += fate-sub-jacosub-remux
+FATE_SUBTITLES-$(call REMUX, JACOSUB) += fate-sub-jacosub-remux
 fate-sub-jacosub-remux: CMD = transcode jacosub $(TARGET_SAMPLES)/sub/JACOsub_capability_tester.jss jacosub "-map 0 -c copy" "-map 0 -c copy"
 fate-sub-jacosub-remux: CMP = diff
 
@@ -49,6 +49,11 @@ fate-sub-mpsub: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/MPSub_capability_te
 
 FATE_SUBTITLES_ASS-$(call DEMDEC, MPSUB, TEXT) += fate-sub-mpsub-frames
 fate-sub-mpsub-frames: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/MPSub_capability_tester_frames.sub
+
+# FIXME?: The dts in the input file are not monotonous and so the
+# timestamps of the remuxed file have been fixed up.
+FATE_SUBTITLES-$(call REMUX, SUP) += fate-sub-pgs-remux
+fate-sub-pgs-remux: CMD = transcode sup $(TARGET_SAMPLES)/sub/pgs_sub.sup sup "-copyts -c:s copy" "-copyts -c:s copy"
 
 FATE_SUBTITLES_ASS-$(call DEMDEC, PJS, PJS) += fate-sub-pjs
 fate-sub-pjs: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/PJS_capability_tester.pjs

@@ -20,8 +20,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "dxva2_internal.h"
 #include "mpegutils.h"
+#include "mpegvideodec.h"
 #include "vc1.h"
 #include "vc1data.h"
 
@@ -369,8 +372,6 @@ static int dxva2_vc1_end_frame(AVCodecContext *avctx)
                                     &ctx_pic->pp, sizeof(ctx_pic->pp),
                                     NULL, 0,
                                     commit_bitstream_and_slice_buffer);
-    if (!ret)
-        ff_mpeg_draw_horiz_band(&v->s, 0, avctx->height);
     return ret;
 }
 

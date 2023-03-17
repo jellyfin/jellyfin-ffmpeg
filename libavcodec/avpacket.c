@@ -22,14 +22,12 @@
 #include <string.h>
 
 #include "libavutil/avassert.h"
-#include "libavutil/common.h"
-#include "libavutil/internal.h"
+#include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/mem.h"
 #include "libavutil/rational.h"
 
-#include "bytestream.h"
-#include "internal.h"
+#include "defs.h"
 #include "packet.h"
 #include "packet_internal.h"
 
@@ -318,7 +316,7 @@ uint8_t *av_packet_pack_dictionary(AVDictionary *dict, size_t *size)
         const AVDictionaryEntry *t = NULL;
         size_t total_length = 0;
 
-        while ((t = av_dict_get(dict, "", t, AV_DICT_IGNORE_SUFFIX))) {
+        while ((t = av_dict_iterate(dict, t))) {
             for (int i = 0; i < 2; i++) {
                 const char  *str = i ? t->value : t->key;
                 const size_t len = strlen(str) + 1;

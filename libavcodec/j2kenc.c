@@ -66,10 +66,11 @@
 
 #include <float.h>
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "bytestream.h"
 #include "jpeg2000.h"
+#include "version.h"
 #include "libavutil/common.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
@@ -287,13 +288,11 @@ static void tag_tree_code(Jpeg2000EncoderContext *s, Jpeg2000TgtNode *node, int 
 /** update the value in node */
 static void tag_tree_update(Jpeg2000TgtNode *node)
 {
-    int lev = 0;
     while (node->parent){
         if (node->parent->val <= node->val)
             break;
         node->parent->val = node->val;
         node = node->parent;
-        lev++;
     }
 }
 
@@ -508,7 +507,7 @@ static int init_tiles(Jpeg2000EncoderContext *s)
     static void copy_frame_ ##D(Jpeg2000EncoderContext *s)                                                                  \
     {                                                                                                                       \
         int tileno, compno, i, y, x;                                                                                        \
-        PIXEL *line;                                                                                                        \
+        const PIXEL *line;                                                                                                  \
         for (tileno = 0; tileno < s->numXtiles * s->numYtiles; tileno++){                                                   \
             Jpeg2000Tile *tile = s->tile + tileno;                                                                          \
             if (s->planar){                                                                                                 \
@@ -516,23 +515,23 @@ static int init_tiles(Jpeg2000EncoderContext *s)
                     Jpeg2000Component *comp = tile->comp + compno;                                                          \
                     int *dst = comp->i_data;                                                                                \
                     int cbps = s->cbps[compno];                                                                             \
-                    line = (PIXEL*)s->picture->data[compno]                                                                 \
+                    line = (const PIXEL*)s->picture->data[compno]                                                           \
                            + comp->coord[1][0] * (s->picture->linesize[compno] / sizeof(PIXEL))                             \
                            + comp->coord[0][0];                                                                             \
                     for (y = comp->coord[1][0]; y < comp->coord[1][1]; y++){                                                \
-                        PIXEL *ptr = line;                                                                                  \
+                        const PIXEL *ptr = line;                                                                            \
                         for (x = comp->coord[0][0]; x < comp->coord[0][1]; x++)                                             \
                             *dst++ = *ptr++ - (1 << (cbps - 1));                                                            \
                         line += s->picture->linesize[compno] / sizeof(PIXEL);                                               \
                     }                                                                                                       \
                 }                                                                                                           \
             } else{                                                                                                         \
-                line = (PIXEL*)s->picture->data[0] + tile->comp[0].coord[1][0] * (s->picture->linesize[0] / sizeof(PIXEL))  \
+                line = (const PIXEL*)(s->picture->data[0] + tile->comp[0].coord[1][0] * s->picture->linesize[0])            \
                        + tile->comp[0].coord[0][0] * s->ncomponents;                                                        \
                                                                                                                             \
                 i = 0;                                                                                                      \
                 for (y = tile->comp[0].coord[1][0]; y < tile->comp[0].coord[1][1]; y++){                                    \
-                    PIXEL *ptr = line;                                                                                      \
+                    const PIXEL *ptr = line;                                                                                \
                     for (x = tile->comp[0].coord[0][0]; x < tile->comp[0].coord[0][1]; x++, i++){                           \
                         for (compno = 0; compno < s->ncomponents; compno++){                                                \
                             int cbps = s->cbps[compno];                                                                     \
@@ -1598,7 +1597,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         update_size(chunkstart, s->buf);
         if (avctx->pix_fmt == AV_PIX_FMT_PAL8) {
             int i;
-            uint8_t *palette = pict->data[1];
+            const uint8_t *palette = pict->data[1];
             chunkstart = s->buf;
             bytestream_put_be32(&s->buf, 0);
             bytestream_put_buffer(&s->buf, "pclr", 4);
@@ -1831,16 +1830,17 @@ static const AVClass j2k_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_jpeg2000_encoder = {
-    .name           = "jpeg2000",
-    .long_name      = NULL_IF_CONFIG_SMALL("JPEG 2000"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_JPEG2000,
+const FFCodec ff_jpeg2000_encoder = {
+    .p.name         = "jpeg2000",
+    CODEC_LONG_NAME("JPEG 2000"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_JPEG2000,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(Jpeg2000EncoderContext),
     .init           = j2kenc_init,
-    .encode2        = encode_frame,
+    FF_CODEC_ENCODE_CB(encode_frame),
     .close          = j2kenc_destroy,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_YUV444P, AV_PIX_FMT_GRAY8,
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
         AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
@@ -1848,6 +1848,6 @@ const AVCodec ff_jpeg2000_encoder = {
         AV_PIX_FMT_RGB48, AV_PIX_FMT_GRAY16,
         AV_PIX_FMT_NONE
     },
-    .priv_class     = &j2k_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .p.priv_class   = &j2k_class,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

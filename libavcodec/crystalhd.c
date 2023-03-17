@@ -45,6 +45,8 @@
  * Includes
  ****************************************************************************/
 
+#include "config_components.h"
+
 #define _XOPEN_SOURCE 600
 #include <inttypes.h>
 #include <stdio.h>
@@ -55,6 +57,7 @@
 #include <libcrystalhd/libcrystalhd_if.h>
 
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "decode.h"
 #include "internal.h"
 #include "libavutil/imgutils.h"
@@ -326,6 +329,10 @@ static av_cold int init(AVCodecContext *avctx)
     av_log(avctx, AV_LOG_VERBOSE, "CrystalHD Init for %s\n",
            avctx->codec->name);
 
+    av_log(avctx, AV_LOG_WARNING, "CrystalHD support is deprecated and will "
+           "be removed. Please contact the developers if you are interested in "
+           "maintaining it.\n");
+
     avctx->pix_fmt = AV_PIX_FMT_YUYV422;
 
     /* Initialize the library */
@@ -543,7 +550,7 @@ static inline CopyRet copy_frame(AVCodecContext *avctx,
     frame->pts = pkt_pts;
 
     frame->pkt_pos = -1;
-    frame->pkt_duration = 0;
+    frame->duration = 0;
     frame->pkt_size = -1;
 
     if (!priv->need_second_field) {
@@ -771,22 +778,23 @@ static int crystalhd_receive_frame(AVCodecContext *avctx, AVFrame *frame)
         .option = options, \
         .version = LIBAVUTIL_VERSION_INT, \
     }; \
-    const AVCodec ff_##x##_crystalhd_decoder = { \
-        .name           = #x "_crystalhd", \
-        .long_name      = NULL_IF_CONFIG_SMALL("CrystalHD " #X " decoder"), \
-        .type           = AVMEDIA_TYPE_VIDEO, \
-        .id             = AV_CODEC_ID_##X, \
+    const FFCodec ff_##x##_crystalhd_decoder = { \
+        .p.name         = #x "_crystalhd", \
+        CODEC_LONG_NAME("CrystalHD " #X " decoder"), \
+        .p.type         = AVMEDIA_TYPE_VIDEO, \
+        .p.id           = AV_CODEC_ID_##X, \
         .priv_data_size = sizeof(CHDContext), \
-        .priv_class     = &x##_crystalhd_class, \
+        .p.priv_class   = &x##_crystalhd_class, \
         .init           = init, \
         .close          = uninit, \
-        .receive_frame  = crystalhd_receive_frame, \
+        FF_CODEC_RECEIVE_FRAME_CB(crystalhd_receive_frame), \
         .flush          = flush, \
         .bsfs           = bsf_name, \
-        .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
-        .caps_internal  = FF_CODEC_CAP_SETS_FRAME_PROPS, \
-        .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUYV422, AV_PIX_FMT_NONE}, \
-        .wrapper_name   = "crystalhd", \
+        .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
+        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE | \
+                          FF_CODEC_CAP_SETS_FRAME_PROPS, \
+        .p.pix_fmts     = (const enum AVPixelFormat[]){AV_PIX_FMT_YUYV422, AV_PIX_FMT_NONE}, \
+        .p.wrapper_name = "crystalhd", \
     };
 
 #if CONFIG_H264_CRYSTALHD_DECODER

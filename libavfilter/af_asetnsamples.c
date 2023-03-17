@@ -66,12 +66,8 @@ static int activate(AVFilterContext *ctx)
         return ret;
 
     if (ret > 0) {
-        if (!s->pad || frame->nb_samples == s->nb_out_samples) {
-            ret = ff_filter_frame(outlink, frame);
-            if (ff_inlink_queued_samples(inlink) >= s->nb_out_samples)
-                ff_filter_set_ready(ctx, 100);
-            return ret;
-        }
+        if (!s->pad || frame->nb_samples == s->nb_out_samples)
+            return ff_filter_frame(outlink, frame);
 
         pad_frame = ff_get_audio_buffer(outlink, s->nb_out_samples);
         if (!pad_frame) {
@@ -87,15 +83,19 @@ static int activate(AVFilterContext *ctx)
         }
 
         av_samples_copy(pad_frame->extended_data, frame->extended_data,
-                        0, 0, frame->nb_samples, frame->channels, frame->format);
+                        0, 0, frame->nb_samples, frame->ch_layout.nb_channels, frame->format);
         av_samples_set_silence(pad_frame->extended_data, frame->nb_samples,
-                               s->nb_out_samples - frame->nb_samples, frame->channels,
+                               s->nb_out_samples - frame->nb_samples, frame->ch_layout.nb_channels,
                                frame->format);
         av_frame_free(&frame);
         return ff_filter_frame(outlink, pad_frame);
     }
 
     FF_FILTER_FORWARD_STATUS(inlink, outlink);
+    if (ff_inlink_queued_samples(inlink) >= s->nb_out_samples) {
+        ff_filter_set_ready(ctx, 100);
+        return 0;
+    }
     FF_FILTER_FORWARD_WANTED(outlink, inlink);
 
     return FFERROR_NOT_READY;

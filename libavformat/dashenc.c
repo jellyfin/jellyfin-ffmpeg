@@ -21,6 +21,7 @@
  */
 
 #include "config.h"
+#include "config_components.h"
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -37,6 +38,8 @@
 #include "libavutil/time.h"
 #include "libavutil/time_internal.h"
 
+#include "libavcodec/avcodec.h"
+
 #include "av1.h"
 #include "avc.h"
 #include "avformat.h"
@@ -47,6 +50,7 @@
 #endif
 #include "internal.h"
 #include "isom.h"
+#include "mux.h"
 #include "os_support.h"
 #include "url.h"
 #include "vpcc.h"
@@ -175,6 +179,7 @@ typedef struct DASHContext {
     int master_playlist_created;
     AVIOContext *mpd_out;
     AVIOContext *m3u8_out;
+    AVIOContext *http_delete;
     int streaming;
     int64_t timeout;
     int index_correction;
@@ -334,7 +339,7 @@ static int init_segment_types(AVFormatContext *s)
 static void set_vp9_codec_str(AVFormatContext *s, AVCodecParameters *par,
                               AVRational *frame_rate, char *str, int size) {
     VPCC vpcc;
-    int ret = ff_isom_get_vpcc_features(s, par, frame_rate, &vpcc);
+    int ret = ff_isom_get_vpcc_features(s, par, NULL, 0, frame_rate, &vpcc);
     if (ret == 0) {
         av_strlcatf(str, size, "vp09.%02d.%02d.%02d",
                     vpcc.profile, vpcc.level, vpcc.bitdepth);
@@ -638,6 +643,7 @@ static void dash_free(AVFormatContext *s)
 
     ff_format_io_close(s, &c->mpd_out);
     ff_format_io_close(s, &c->m3u8_out);
+    ff_format_io_close(s, &c->http_delete);
 }
 
 static void output_segment_list(OutputStream *os, AVIOContext *out, AVFormatContext *s,
@@ -859,7 +865,7 @@ static int write_adaptation_set(AVFormatContext *s, AVIOContext *out, int as_ind
             avio_printf(out, "\t\t\t<Representation id=\"%d\" mimeType=\"audio/%s\" codecs=\"%s\"%s audioSamplingRate=\"%d\">\n",
                 i, os->format_name, os->codec_str, bandwidth_str, s->streams[i]->codecpar->sample_rate);
             avio_printf(out, "\t\t\t\t<AudioChannelConfiguration schemeIdUri=\"urn:mpeg:dash:23003:3:audio_channel_configuration:2011\" value=\"%d\" />\n",
-                s->streams[i]->codecpar->channels);
+                s->streams[i]->codecpar->ch_layout.nb_channels);
         }
         if (!final && c->write_prft && os->producer_reference_time_str[0]) {
             avio_printf(out, "\t\t\t\t<ProducerReferenceTime id=\"%d\" inband=\"true\" type=\"%s\" wallClockTime=\"%s\" presentationTime=\"%"PRId64"\">\n",
@@ -1545,7 +1551,11 @@ static int dash_init(AVFormatContext *s)
             return AVERROR_MUXER_NOT_FOUND;
         ctx->interrupt_callback    = s->interrupt_callback;
         ctx->opaque                = s->opaque;
+#if FF_API_AVFORMAT_IO_CLOSE
+FF_DISABLE_DEPRECATION_WARNINGS
         ctx->io_close              = s->io_close;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         ctx->io_close2             = s->io_close2;
         ctx->io_open               = s->io_open;
         ctx->strict_std_compliance = s->strict_std_compliance;
@@ -1851,18 +1861,18 @@ static void dashenc_delete_file(AVFormatContext *s, char *filename) {
     int http_base_proto = ff_is_http_proto(filename);
 
     if (http_base_proto) {
-        AVIOContext *out = NULL;
         AVDictionary *http_opts = NULL;
 
         set_http_options(&http_opts, c);
         av_dict_set(&http_opts, "method", "DELETE", 0);
 
-        if (dashenc_io_open(s, &out, filename, &http_opts) < 0) {
+        if (dashenc_io_open(s, &c->http_delete, filename, &http_opts) < 0) {
             av_log(s, AV_LOG_ERROR, "failed to delete %s\n", filename);
         }
-
         av_dict_free(&http_opts);
-        ff_format_io_close(s, &out);
+
+        //Nothing to write
+        dashenc_io_close(s, &c->http_delete, filename);
     } else {
         int res = ffurl_delete(filename);
         if (res < 0) {
@@ -2340,10 +2350,10 @@ static int dash_check_bitstream(AVFormatContext *s, AVStream *st,
     DASHContext *c = s->priv_data;
     OutputStream *os = &c->streams[st->index];
     AVFormatContext *oc = os->ctx;
-    if (oc->oformat->check_bitstream) {
+    if (ffofmt(oc->oformat)->check_bitstream) {
         AVStream *const ost = oc->streams[0];
         int ret;
-        ret = oc->oformat->check_bitstream(oc, ost, avpkt);
+        ret = ffofmt(oc->oformat)->check_bitstream(oc, ost, avpkt);
         if (ret == 1) {
             FFStream *const  sti = ffstream(st);
             FFStream *const osti = ffstream(ost);
@@ -2413,19 +2423,19 @@ static const AVClass dash_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_dash_muxer = {
-    .name           = "dash",
-    .long_name      = NULL_IF_CONFIG_SMALL("DASH Muxer"),
-    .extensions     = "mpd",
+const FFOutputFormat ff_dash_muxer = {
+    .p.name          = "dash",
+    .p.long_name     = NULL_IF_CONFIG_SMALL("DASH Muxer"),
+    .p.extensions    = "mpd",
+    .p.audio_codec   = AV_CODEC_ID_AAC,
+    .p.video_codec   = AV_CODEC_ID_H264,
+    .p.flags         = AVFMT_GLOBALHEADER | AVFMT_NOFILE | AVFMT_TS_NEGATIVE,
+    .p.priv_class    = &dash_class,
     .priv_data_size = sizeof(DASHContext),
-    .audio_codec    = AV_CODEC_ID_AAC,
-    .video_codec    = AV_CODEC_ID_H264,
-    .flags          = AVFMT_GLOBALHEADER | AVFMT_NOFILE | AVFMT_TS_NEGATIVE,
     .init           = dash_init,
     .write_header   = dash_write_header,
     .write_packet   = dash_write_packet,
     .write_trailer  = dash_write_trailer,
     .deinit         = dash_free,
     .check_bitstream = dash_check_bitstream,
-    .priv_class     = &dash_class,
 };

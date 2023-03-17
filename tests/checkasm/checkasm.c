@@ -21,6 +21,7 @@
  */
 
 #include "config.h"
+#include "config_components.h"
 
 #if CONFIG_LINUX_PERF
 # ifndef _GNU_SOURCE
@@ -95,7 +96,7 @@ static const struct {
     #if CONFIG_EXR_DECODER
         { "exrdsp", checkasm_check_exrdsp },
     #endif
-    #if CONFIG_FLACDSP
+    #if CONFIG_FLAC_DECODER
         { "flacdsp", checkasm_check_flacdsp },
     #endif
     #if CONFIG_FMTCONVERT
@@ -122,6 +123,9 @@ static const struct {
     #if CONFIG_HUFFYUV_DECODER
         { "huffyuvdsp", checkasm_check_huffyuvdsp },
     #endif
+    #if CONFIG_IDCTDSP
+        { "idctdsp", checkasm_check_idctdsp },
+    #endif
     #if CONFIG_JPEG2000_DECODER
         { "jpeg2000dsp", checkasm_check_jpeg2000dsp },
     #endif
@@ -130,6 +134,12 @@ static const struct {
     #endif
     #if CONFIG_LLVIDENCDSP
         { "llviddspenc", checkasm_check_llviddspenc },
+    #endif
+    #if CONFIG_LPC
+        { "lpc", checkasm_check_lpc },
+    #endif
+    #if CONFIG_ME_CMP
+        { "motion", checkasm_check_motion },
     #endif
     #if CONFIG_OPUS_DECODER
         { "opusdsp", checkasm_check_opusdsp },
@@ -146,6 +156,9 @@ static const struct {
     #if CONFIG_V210_ENCODER
         { "v210enc", checkasm_check_v210enc },
     #endif
+    #if CONFIG_VC1DSP
+        { "vc1dsp", checkasm_check_vc1dsp },
+    #endif
     #if CONFIG_VP8DSP
         { "vp8dsp", checkasm_check_vp8dsp },
     #endif
@@ -154,6 +167,9 @@ static const struct {
     #endif
     #if CONFIG_VIDEODSP
         { "videodsp", checkasm_check_videodsp },
+    #endif
+    #if CONFIG_VORBIS_DECODER
+        { "vorbisdsp", checkasm_check_vorbisdsp },
     #endif
 #endif
 #if CONFIG_AVFILTER
@@ -181,8 +197,12 @@ static const struct {
     #if CONFIG_THRESHOLD_FILTER
         { "vf_threshold", checkasm_check_vf_threshold },
     #endif
+    #if CONFIG_SOBEL_FILTER
+        { "vf_sobel", checkasm_check_vf_sobel },
+    #endif
 #endif
 #if CONFIG_SWSCALE
+    { "sw_gbrp", checkasm_check_sw_gbrp },
     { "sw_rgb", checkasm_check_sw_rgb },
     { "sw_scale", checkasm_check_sw_scale },
 #endif
@@ -215,27 +235,37 @@ static const struct {
     { "ALTIVEC",  "altivec",  AV_CPU_FLAG_ALTIVEC },
     { "VSX",      "vsx",      AV_CPU_FLAG_VSX },
     { "POWER8",   "power8",   AV_CPU_FLAG_POWER8 },
+#elif ARCH_RISCV
+    { "RVI",      "rvi",      AV_CPU_FLAG_RVI },
+    { "RVF",      "rvf",      AV_CPU_FLAG_RVF },
+    { "RVD",      "rvd",      AV_CPU_FLAG_RVD },
+    { "RVVi32",   "rvv_i32",  AV_CPU_FLAG_RVV_I32 },
+    { "RVVf32",   "rvv_f32",  AV_CPU_FLAG_RVV_F32 },
+    { "RVVi64",   "rvv_i64",  AV_CPU_FLAG_RVV_I64 },
+    { "RVVf64",   "rvv_f64",  AV_CPU_FLAG_RVV_F64 },
+    { "RVBbasic", "rvb_b",    AV_CPU_FLAG_RVB_BASIC },
 #elif ARCH_MIPS
     { "MMI",      "mmi",      AV_CPU_FLAG_MMI },
     { "MSA",      "msa",      AV_CPU_FLAG_MSA },
 #elif ARCH_X86
-    { "MMX",      "mmx",      AV_CPU_FLAG_MMX|AV_CPU_FLAG_CMOV },
-    { "MMXEXT",   "mmxext",   AV_CPU_FLAG_MMXEXT },
-    { "3DNOW",    "3dnow",    AV_CPU_FLAG_3DNOW },
-    { "3DNOWEXT", "3dnowext", AV_CPU_FLAG_3DNOWEXT },
-    { "SSE",      "sse",      AV_CPU_FLAG_SSE },
-    { "SSE2",     "sse2",     AV_CPU_FLAG_SSE2|AV_CPU_FLAG_SSE2SLOW },
-    { "SSE3",     "sse3",     AV_CPU_FLAG_SSE3|AV_CPU_FLAG_SSE3SLOW },
-    { "SSSE3",    "ssse3",    AV_CPU_FLAG_SSSE3|AV_CPU_FLAG_ATOM },
-    { "SSE4.1",   "sse4",     AV_CPU_FLAG_SSE4 },
-    { "SSE4.2",   "sse42",    AV_CPU_FLAG_SSE42 },
-    { "AES-NI",   "aesni",    AV_CPU_FLAG_AESNI },
-    { "AVX",      "avx",      AV_CPU_FLAG_AVX },
-    { "XOP",      "xop",      AV_CPU_FLAG_XOP },
-    { "FMA3",     "fma3",     AV_CPU_FLAG_FMA3 },
-    { "FMA4",     "fma4",     AV_CPU_FLAG_FMA4 },
-    { "AVX2",     "avx2",     AV_CPU_FLAG_AVX2 },
-    { "AVX-512",  "avx512",   AV_CPU_FLAG_AVX512 },
+    { "MMX",        "mmx",       AV_CPU_FLAG_MMX|AV_CPU_FLAG_CMOV },
+    { "MMXEXT",     "mmxext",    AV_CPU_FLAG_MMXEXT },
+    { "3DNOW",      "3dnow",     AV_CPU_FLAG_3DNOW },
+    { "3DNOWEXT",   "3dnowext",  AV_CPU_FLAG_3DNOWEXT },
+    { "SSE",        "sse",       AV_CPU_FLAG_SSE },
+    { "SSE2",       "sse2",      AV_CPU_FLAG_SSE2|AV_CPU_FLAG_SSE2SLOW },
+    { "SSE3",       "sse3",      AV_CPU_FLAG_SSE3|AV_CPU_FLAG_SSE3SLOW },
+    { "SSSE3",      "ssse3",     AV_CPU_FLAG_SSSE3|AV_CPU_FLAG_ATOM },
+    { "SSE4.1",     "sse4",      AV_CPU_FLAG_SSE4 },
+    { "SSE4.2",     "sse42",     AV_CPU_FLAG_SSE42 },
+    { "AES-NI",     "aesni",     AV_CPU_FLAG_AESNI },
+    { "AVX",        "avx",       AV_CPU_FLAG_AVX },
+    { "XOP",        "xop",       AV_CPU_FLAG_XOP },
+    { "FMA3",       "fma3",      AV_CPU_FLAG_FMA3 },
+    { "FMA4",       "fma4",      AV_CPU_FLAG_FMA4 },
+    { "AVX2",       "avx2",      AV_CPU_FLAG_AVX2 },
+    { "AVX-512",    "avx512",    AV_CPU_FLAG_AVX512 },
+    { "AVX-512ICL", "avx512icl", AV_CPU_FLAG_AVX512ICL },
 #elif ARCH_LOONGARCH
     { "LSX",      "lsx",      AV_CPU_FLAG_LSX },
     { "LASX",     "lasx",     AV_CPU_FLAG_LASX },
@@ -891,5 +921,6 @@ int checkasm_check_##type(const char *const file, const int line, \
 
 DEF_CHECKASM_CHECK_FUNC(uint8_t,  "%02x")
 DEF_CHECKASM_CHECK_FUNC(uint16_t, "%04x")
+DEF_CHECKASM_CHECK_FUNC(uint32_t, "%08x")
 DEF_CHECKASM_CHECK_FUNC(int16_t,  "%6d")
 DEF_CHECKASM_CHECK_FUNC(int32_t,  "%9d")

@@ -288,8 +288,14 @@ static int config_output(AVFilterLink *outlink)
         outlink->format      = inlink->format;
         outlink->sample_rate = sample_rate = inlink->sample_rate;
         if (s->nb_inputs == s->nb_outputs) {
+            int ret;
+            if ((ret = av_channel_layout_copy(&outlink->ch_layout, &inlink->ch_layout)) < 0)
+                return ret;
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
             outlink->channel_layout = inlink->channel_layout;
-            outlink->channels = inlink->channels;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         }
 
     } else {
@@ -496,7 +502,7 @@ static int query_formats(AVFilterContext *ctx)
 
     if (s->nb_inputs == 2 && s->nb_outputs == 2) {
         layouts = NULL;
-        ret = ff_add_channel_layout(&layouts, AV_CH_LAYOUT_STEREO);
+        ret = ff_add_channel_layout(&layouts, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO);
         if (ret < 0)
             return ret;
         ret = ff_set_common_channel_layouts(ctx, layouts);
@@ -505,10 +511,10 @@ static int query_formats(AVFilterContext *ctx)
     } else {
         if (s->nb_inputs >= 1) {
             AVFilterLink *inlink = ctx->inputs[0];
-            uint64_t inlayout = FF_COUNT2LAYOUT(s->nb_inputs);
+            AVChannelLayout inlayout = FF_COUNT2LAYOUT(s->nb_inputs);
 
             layouts = NULL;
-            ret = ff_add_channel_layout(&layouts, inlayout);
+            ret = ff_add_channel_layout(&layouts, &inlayout);
             if (ret < 0)
                 return ret;
             ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts);
@@ -523,10 +529,10 @@ static int query_formats(AVFilterContext *ctx)
         }
 
         if (s->nb_outputs >= 1) {
-            uint64_t outlayout = FF_COUNT2LAYOUT(s->nb_outputs);
+            AVChannelLayout outlayout = FF_COUNT2LAYOUT(s->nb_outputs);
 
             layouts = NULL;
-            ret = ff_add_channel_layout(&layouts, outlayout);
+            ret = ff_add_channel_layout(&layouts, &outlayout);
             if (ret < 0)
                 return ret;
             ret = ff_channel_layouts_ref(layouts, &outlink->incfg.channel_layouts);
@@ -535,6 +541,26 @@ static int query_formats(AVFilterContext *ctx)
         }
     }
 
+    return 0;
+}
+
+static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,
+                           char *res, int res_len, int flags)
+{
+    LV2Context *s = ctx->priv;
+    const LilvPort *port;
+    LilvNode *sym;
+    int index;
+
+    sym  = lilv_new_string(s->world, cmd);
+    port = lilv_plugin_get_port_by_symbol(s->plugin, sym);
+    lilv_node_free(sym);
+    if (!port) {
+        av_log(s, AV_LOG_WARNING, "Unknown option: <%s>\n", cmd);
+    } else {
+        index = lilv_port_get_index(s->plugin, port);
+        s->controls[index] = atof(args);
+    }
     return 0;
 }
 
@@ -578,6 +604,7 @@ const AVFilter ff_af_lv2 = {
     .priv_class    = &lv2_class,
     .init          = init,
     .uninit        = uninit,
+    .process_command = process_command,
     .inputs        = 0,
     FILTER_OUTPUTS(lv2_outputs),
     FILTER_QUERY_FUNC(query_formats),

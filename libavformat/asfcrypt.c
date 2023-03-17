@@ -20,10 +20,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <stddef.h>
 #include "libavutil/bswap.h"
-#include "libavutil/common.h"
 #include "libavutil/des.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/rc4.h"
 #include "asfcrypt.h"
 
@@ -72,7 +73,7 @@ static void multiswap_invert_keys(uint32_t keys[12])
         keys[i] = inverse(keys[i]);
 }
 
-static uint32_t multiswap_step(const uint32_t keys[12], uint32_t v)
+static uint32_t multiswap_step(const uint32_t keys[6], uint32_t v)
 {
     int i;
     v *= keys[0];
@@ -84,7 +85,7 @@ static uint32_t multiswap_step(const uint32_t keys[12], uint32_t v)
     return v;
 }
 
-static uint32_t multiswap_inv_step(const uint32_t keys[12], uint32_t v)
+static uint32_t multiswap_inv_step(const uint32_t keys[6], uint32_t v)
 {
     int i;
     v -= keys[5];

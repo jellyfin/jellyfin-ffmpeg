@@ -1,0 +1,113 @@
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        default: 'linux'
+        type: string
+      architectures:
+        description: 'Stringified JSON object listing target architectures'
+        required: true
+        default: '["amd64"]'
+        type: string
+      release:
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      deploy-host:
+        required: false
+      deploy-user:
+        required: false
+      deploy-key:
+        required: false
+
+jobs:
+  build:
+    name: 'Build Portable FFmpeg'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: ${{fromJson(inputs.architectures)}}
+  
+    steps:
+      - uses: actions/checkout@v3.1.0
+
+      - name: Build Portable
+        run: ./build-${{ inputs.os }}-${{ matrix.arch }} ./dist
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3.1.1
+        with:
+          name: ${{ inputs.os }}-${{ matrix.arch }}-portable
+          path: dist
+
+  publish:
+    name: Publish Portable Release
+    if: ${{ inputs.release }}
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: ${{fromJson(inputs.architectures)}}
+
+    steps:
+      - name: Set Versions
+        uses: actions/github-script@v6.3.3
+        id: set_version
+        with:
+          script: |
+            const tag = context.ref.substring(10)
+            const no_v = tag.replace('v', '')
+            const dash_index = no_v.lastIndexOf('-')
+            const no_dash = (dash_index > -1) ?  no_v.substring(0, dash_index) : no_v
+            core.setOutput('tag', tag)
+            core.setOutput('no-v', no_v)
+            core.setOutput('no-dash', no_dash)
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v3.0.1
+        with:
+          name: ${{ inputs.os }}-${{ matrix.arch }}-portable
+          path: artifact
+
+      - name: Prepare Release Assets
+        run: |-
+          pushd artifact
+          find * -type f \( -name "*.xz" -o -name "*.zip" \) | while read file; do
+            sha256sum "${file}" | tee "${file}.sha256sum"
+          done
+          popd
+
+      - name: Upload GH Release Assets
+        uses: shogo82148/actions-upload-release-asset@v1.6.3
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          overwrite: true
+          asset_path: |
+            ./artifact/**/*.zip
+            ./artifact/**/*.tar.xz
+            ./artifact/**/*.sha256sum
+
+      - name: Make Sure FFmpeg Directory Exists
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.deploy-host }}
+          username: ${{ secrets.deploy-user }}
+          key: ${{ secrets.deploy-key }}
+          script_stop: true
+          script: |-
+            mkdir -p /srv/repository/releases/ffmpeg/${{ steps.set_version.outputs.no-v }}/
+
+      - name: Upload Release Assets
+        uses: burnett01/rsync-deployments@5.2.1
+        with:
+          switches: -vrptz
+          path: ./artifact/*
+          remote_path: /srv/repository/releases/ffmpeg/${{ steps.set_version.outputs.no-v }}/
+          remote_host: ${{ secrets.deploy-host }}
+          remote_user: ${{ secrets.deploy-user }}
+          remote_key: ${{ secrets.deploy-key }}

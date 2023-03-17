@@ -27,7 +27,7 @@ popd
 # ICONV
 mkdir iconv
 pushd iconv
-iconv_ver="1.16"
+iconv_ver="1.17"
 iconv_link="https://ftp.gnu.org/pub/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
 wget ${iconv_link} -O iconv.tar.gz
 tar xaf iconv.tar.gz
@@ -67,13 +67,9 @@ make install
 popd
 
 # FREETYPE
-mkdir freetype
+git clone --depth=1 https://gitlab.freedesktop.org/freetype/freetype.git
 pushd freetype
-ft_ver="2.11.1"
-ft_link="https://sourceforge.net/projects/freetype/files/freetype2/${ft_ver}/freetype-${ft_ver}.tar.xz/download"
-wget ${ft_link} -O ft.tar.gz
-tar xaf ft.tar.gz
-pushd freetype-${ft_ver}
+./autogen.sh
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
@@ -81,7 +77,6 @@ pushd freetype-${ft_ver}
     --enable-static
 make -j$(nproc)
 make install
-popd
 popd
 
 # FRIBIDI
@@ -158,34 +153,30 @@ cmake \
     ..
 make -j$(nproc)
 make install
-FF_EXTRA_LIBS="-lfftw3f -lstdc++${FF_EXTRA_LIBS}"
-FF_EXTRA_CFLAGS="-DCHROMAPRINT_NODLL${FF_EXTRA_CFLAGS}"
+echo "Libs.private: -lfftw3f -lstdc++" >> ${FF_DEPS_PREFIX}/lib/pkgconfig/libchromaprint.pc
+echo "Cflags.private: -DCHROMAPRINT_NODLL" >> ${FF_DEPS_PREFIX}/lib/pkgconfig/libchromaprint.pc
 popd
 popd
 
 # LZMA
-mkdir xz
+git clone -b v5.4.1 --depth=1 https://github.com/xz-mirror/xz.git
 pushd xz
-xz_ver="5.2.5"
-xz_link="https://sourceforge.net/projects/lzmautils/files/xz-${xz_ver}.tar.xz/download"
-wget ${xz_link} -O xz.tar.xz
-tar xaf xz.tar.xz
-pushd xz-${xz_ver}
+./autogen.sh --no-po4a
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
+    --disable-symbol-versions \
     --disable-shared \
     --enable-static \
     --with-pic
 make -j$(nproc)
 make install
 popd
-popd
 
 # FONTCONFIG
 mkdir fontconfig
 pushd fontconfig
-fc_ver="2.13.96"
+fc_ver="2.14.2"
 fc_link="https://www.freedesktop.org/software/fontconfig/release/fontconfig-${fc_ver}.tar.xz"
 wget ${fc_link} -O fc.tar.gz
 tar xaf fc.tar.gz
@@ -329,7 +320,7 @@ make install
 popd
 
 # LIBWEBP
-git clone --depth=1 https://chromium.googlesource.com/webm/libwebp
+git clone -b v1.2.3 --depth=1 https://chromium.googlesource.com/webm/libwebp
 pushd libwebp
 ./autogen.sh
 ./configure \
@@ -356,7 +347,7 @@ make install
 popd
 
 # ZIMG
-git clone -b release-3.0.4 --depth=1 https://github.com/sekrit-twc/zimg.git
+git clone --recursive --depth=1 https://github.com/sekrit-twc/zimg.git
 pushd zimg
 ./autogen.sh
 ./configure \
@@ -441,8 +432,25 @@ make install
 popd
 popd
 
+# SVT-AV1
+git clone -b v1.3.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+pushd SVT-AV1
+mkdir build
+pushd build
+cmake \
+    -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
+    -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_AVX512=ON \
+    -DBUILD_{SHARED_LIBS,TESTING,APPS,DEC}=OFF \
+    ..
+make -j$(nproc)
+make install
+popd
+popd
+
 # DAV1D
-git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.1.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build
@@ -475,14 +483,14 @@ make install
 popd
 
 # OpenCL headers
-git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers
+git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers.git
 pushd OpenCL-Headers/CL
 mkdir -p ${FF_DEPS_PREFIX}/include/CL
 mv * ${FF_DEPS_PREFIX}/include/CL
 popd
 
 # OpenCL ICD loader
-git clone -b v2022.01.04 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+git clone -b v2023.02.06 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 pushd OpenCL-ICD-Loader
 mkdir build
 pushd build
@@ -490,10 +498,9 @@ cmake \
     -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
     -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
     -DOPENCL_ICD_LOADER_HEADERS_DIR=${FF_DEPS_PREFIX}/include \
     -DOPENCL_ICD_LOADER_{PIC,DISABLE_OPENCLON12}=ON \
-    -DOPENCL_ICD_LOADER_{BUILD_TESTING,REQUIRE_WDK}=OFF \
+    -DOPENCL_ICD_LOADER_{BUILD_SHARED_LIBS,BUILD_TESTING,REQUIRE_WDK}=OFF \
     ..
 make -j$(nproc)
 make install
@@ -507,50 +514,56 @@ includedir=\${prefix}/include
 Name: OpenCL
 Description: OpenCL ICD Loader
 Version: 3.0
-Libs: -L\${libdir} -lOpenCL
+Libs: -L\${libdir} -l:OpenCL.a
 Cflags: -I\${includedir}
 Libs.private: -lole32 -lshlwapi -lcfgmgr32
 EOF
 popd
 
 # FFNVCODEC
-git clone -b n11.1.5.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
+git clone --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
 pushd nv-codec-headers
+git reset --hard "c5e4af7"
 make PREFIX=${FF_DEPS_PREFIX} install
 popd
 
 # AMF
-git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
 pushd AMF/amf/public/include
 mkdir -p ${FF_DEPS_PREFIX}/include/AMF
 mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
 
-# LIBMFX
-git clone -b 1.35.1 --depth=1 https://github.com/lu-zero/mfx_dispatch.git
-pushd mfx_dispatch
-autoreconf -i
-./configure \
-    --prefix=${FF_DEPS_PREFIX} \
-    --host=${FF_TOOLCHAIN} \
-    --disable-shared \
-    --enable-static \
-    --with-pic
+# VPL
+git clone -b v2023.1.2 --depth=1 https://github.com/oneapi-src/oneVPL.git
+pushd oneVPL
+mkdir build && pushd build
+cmake \
+    -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
+    -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX} \
+    -DCMAKE_INSTALL_BINDIR=${FF_DEPS_PREFIX}/bin \
+    -DCMAKE_INSTALL_LIBDIR=${FF_DEPS_PREFIX}/lib \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_{DISPATCHER,DEV}=ON \
+    -DBUILD_{PREVIEW,TESTS}=OFF \
+    -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
+    -DINSTALL_EXAMPLE_CODE=OFF \
+    ..
 make -j$(nproc)
 make install
+popd
 popd
 
 # Jellyfin-FFmpeg
 pushd ${SOURCE_DIR}
-ffversion="$(cat RELEASE)-${FF_REV}"
+ffversion="$(dpkg-parsechangelog --show-field Version)"
 if [[ -f "patches/series" ]]; then
     quilt push -a
 fi
 ./configure \
     --prefix=${FF_PREFIX} \
     ${FF_TARGET_FLAGS} \
-    --extra-libs="${FF_EXTRA_LIBS}" \
-    --extra-cflags="${FF_EXTRA_CFLAGS}" \
     --extra-version=Jellyfin \
     --disable-ffplay \
     --disable-debug \
@@ -584,13 +597,14 @@ fi
     --enable-libzimg \
     --enable-libx264 \
     --enable-libx265 \
+    --enable-libsvtav1 \
     --enable-libdav1d \
     --enable-libfdk-aac \
     --enable-opencl \
     --enable-dxva2 \
     --enable-d3d11va \
     --enable-amf \
-    --enable-libmfx \
+    --enable-libvpl \
     --enable-ffnvcodec \
     --enable-cuda \
     --enable-cuda-llvm \
@@ -604,8 +618,8 @@ popd
 # Zip and copy artifacts
 mkdir -p ${ARTIFACT_DIR}/zip
 pushd ${FF_PREFIX}/bin
-ffpackage="jellyfin-ffmpeg_${ffversion}-windows_win64"
-zip -r ${ARTIFACT_DIR}/zip/${ffpackage}.zip ./*.{exe,dll}
+ffpackage="jellyfin-ffmpeg_${ffversion}-portable_win64"
+zip -9 -r ${ARTIFACT_DIR}/zip/${ffpackage}.zip ./*.{exe,dll}
 pushd ${ARTIFACT_DIR}/zip
 sha256sum ./${ffpackage}.zip > ./${ffpackage}.zip.sha256sum
 chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

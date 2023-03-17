@@ -50,9 +50,6 @@ typedef struct BufferSourceContext {
     int               w, h;
     enum AVPixelFormat  pix_fmt;
     AVRational        pixel_aspect;
-#if FF_API_SWS_PARAM_OPTION
-    char              *sws_param;
-#endif
 
     AVBufferRef *hw_frames_ctx;
 
@@ -60,8 +57,8 @@ typedef struct BufferSourceContext {
     int sample_rate;
     enum AVSampleFormat sample_fmt;
     int channels;
-    uint64_t channel_layout;
     char    *channel_layout_str;
+    AVChannelLayout ch_layout;
 
     int eof;
 } BufferSourceContext;
@@ -73,12 +70,12 @@ typedef struct BufferSourceContext {
         av_log(s, AV_LOG_WARNING, "Changing video frame properties on the fly is not supported by all filters.\n");\
     }
 
-#define CHECK_AUDIO_PARAM_CHANGE(s, c, srate, ch_layout, ch_count, format, pts)\
+#define CHECK_AUDIO_PARAM_CHANGE(s, c, srate, layout, format, pts)\
     if (c->sample_fmt != format || c->sample_rate != srate ||\
-        c->channel_layout != ch_layout || c->channels != ch_count) {\
+        av_channel_layout_compare(&c->ch_layout, &layout) || c->channels != layout.nb_channels) {\
         av_log(s, AV_LOG_INFO, "filter context - fmt: %s r: %d layout: %"PRIX64" ch: %d, incoming frame - fmt: %s r: %d layout: %"PRIX64" ch: %d pts_time: %s\n",\
-               av_get_sample_fmt_name(c->sample_fmt), c->sample_rate, c->channel_layout, c->channels,\
-               av_get_sample_fmt_name(format), srate, ch_layout, ch_count, av_ts2timestr(pts, &s->outputs[0]->time_base));\
+               av_get_sample_fmt_name(c->sample_fmt), c->sample_rate, c->ch_layout.order == AV_CHANNEL_ORDER_NATIVE ? c->ch_layout.u.mask : 0, c->channels,\
+               av_get_sample_fmt_name(format), srate, layout.order == AV_CHANNEL_ORDER_NATIVE ? layout.u.mask : 0, layout.nb_channels, av_ts2timestr(pts, &s->outputs[0]->time_base));\
         av_log(s, AV_LOG_ERROR, "Changing audio frame properties on the fly is not supported.\n");\
         return AVERROR(EINVAL);\
     }
@@ -127,8 +124,21 @@ int av_buffersrc_parameters_set(AVFilterContext *ctx, AVBufferSrcParameters *par
         }
         if (param->sample_rate > 0)
             s->sample_rate = param->sample_rate;
-        if (param->channel_layout)
-            s->channel_layout = param->channel_layout;
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
+        // if the old/new fields are set inconsistently, prefer the old ones
+        if (param->channel_layout && (param->ch_layout.order != AV_CHANNEL_ORDER_NATIVE ||
+                                      param->ch_layout.u.mask != param->channel_layout)) {
+            av_channel_layout_uninit(&s->ch_layout);
+            av_channel_layout_from_mask(&s->ch_layout, param->channel_layout);
+FF_ENABLE_DEPRECATION_WARNINGS
+        } else
+#endif
+        if (param->ch_layout.nb_channels) {
+            int ret = av_channel_layout_copy(&s->ch_layout, &param->ch_layout);
+            if (ret < 0)
+                return ret;
+        }
         break;
     default:
         return AVERROR_BUG;
@@ -168,11 +178,15 @@ int attribute_align_arg av_buffersrc_add_frame_flags(AVFilterContext *ctx, AVFra
     AVFrame *copy;
     int refcounted, ret;
 
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
     if (frame && frame->channel_layout &&
         av_get_channel_layout_nb_channels(frame->channel_layout) != frame->channels) {
         av_log(ctx, AV_LOG_ERROR, "Layout indicates a different number of channels than actually present\n");
         return AVERROR(EINVAL);
     }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     s->nb_failed_requests = 0;
 
@@ -192,10 +206,20 @@ int attribute_align_arg av_buffersrc_add_frame_flags(AVFilterContext *ctx, AVFra
             break;
         case AVMEDIA_TYPE_AUDIO:
             /* For layouts unknown on input but known on link after negotiation. */
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
             if (!frame->channel_layout)
-                frame->channel_layout = s->channel_layout;
-            CHECK_AUDIO_PARAM_CHANGE(ctx, s, frame->sample_rate, frame->channel_layout,
-                                     frame->channels, frame->format, frame->pts);
+                frame->channel_layout = s->ch_layout.order == AV_CHANNEL_ORDER_NATIVE ?
+                                        s->ch_layout.u.mask : 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+            if (frame->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
+                ret = av_channel_layout_copy(&frame->ch_layout, &s->ch_layout);
+                if (ret < 0)
+                    return ret;
+            }
+            CHECK_AUDIO_PARAM_CHANGE(ctx, s, frame->sample_rate, frame->ch_layout,
+                                     frame->format, frame->pts);
             break;
         default:
             return AVERROR(EINVAL);
@@ -215,6 +239,13 @@ int attribute_align_arg av_buffersrc_add_frame_flags(AVFilterContext *ctx, AVFra
             return ret;
         }
     }
+
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (copy->pkt_duration && copy->pkt_duration != copy->duration)
+        copy->duration = copy->pkt_duration;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     ret = ff_filter_frame(ctx->outputs[0], copy);
     if (ret < 0)
@@ -253,11 +284,6 @@ static av_cold int init_video(AVFilterContext *ctx)
            c->time_base.num, c->time_base.den, c->frame_rate.num, c->frame_rate.den,
            c->pixel_aspect.num, c->pixel_aspect.den);
 
-#if FF_API_SWS_PARAM_OPTION
-    if (c->sws_param)
-        av_log(ctx, AV_LOG_WARNING, "sws_param option is deprecated and ignored\n");
-#endif
-
     return 0;
 }
 
@@ -279,9 +305,6 @@ static const AVOption buffer_options[] = {
     { "pixel_aspect",  "sample aspect ratio",    OFFSET(pixel_aspect),     AV_OPT_TYPE_RATIONAL, { .dbl = 0 }, 0, DBL_MAX, V },
     { "time_base",     NULL,                     OFFSET(time_base),        AV_OPT_TYPE_RATIONAL, { .dbl = 0 }, 0, DBL_MAX, V },
     { "frame_rate",    NULL,                     OFFSET(frame_rate),       AV_OPT_TYPE_RATIONAL, { .dbl = 0 }, 0, DBL_MAX, V },
-#if FF_API_SWS_PARAM_OPTION
-    { "sws_param",     NULL,                     OFFSET(sws_param),        AV_OPT_TYPE_STRING,                    .flags = V },
-#endif
     { NULL },
 };
 
@@ -301,6 +324,7 @@ AVFILTER_DEFINE_CLASS(abuffer);
 static av_cold int init_audio(AVFilterContext *ctx)
 {
     BufferSourceContext *s = ctx->priv;
+    char buf[128];
     int ret = 0;
 
     if (s->sample_fmt == AV_SAMPLE_FMT_NONE) {
@@ -308,24 +332,39 @@ static av_cold int init_audio(AVFilterContext *ctx)
         return AVERROR(EINVAL);
     }
 
-    if (s->channel_layout_str || s->channel_layout) {
+    if (s->channel_layout_str || s->ch_layout.nb_channels) {
         int n;
 
-        if (!s->channel_layout) {
-            s->channel_layout = av_get_channel_layout(s->channel_layout_str);
-            if (!s->channel_layout) {
-                av_log(ctx, AV_LOG_ERROR, "Invalid channel layout %s.\n",
+        if (!s->ch_layout.nb_channels) {
+            ret = av_channel_layout_from_string(&s->ch_layout, s->channel_layout_str);
+            if (ret < 0) {
+#if FF_API_OLD_CHANNEL_LAYOUT
+                uint64_t mask;
+FF_DISABLE_DEPRECATION_WARNINGS
+                mask = av_get_channel_layout(s->channel_layout_str);
+                if (!mask) {
+#endif
+                    av_log(ctx, AV_LOG_ERROR, "Invalid channel layout %s.\n",
+                           s->channel_layout_str);
+                    return AVERROR(EINVAL);
+#if FF_API_OLD_CHANNEL_LAYOUT
+                }
+FF_ENABLE_DEPRECATION_WARNINGS
+                av_log(ctx, AV_LOG_WARNING, "Channel layout '%s' uses a deprecated syntax.\n",
                        s->channel_layout_str);
-                return AVERROR(EINVAL);
+                av_channel_layout_from_mask(&s->ch_layout, mask);
+#endif
             }
         }
-        n = av_get_channel_layout_nb_channels(s->channel_layout);
+
+        n = s->ch_layout.nb_channels;
+        av_channel_layout_describe(&s->ch_layout, buf, sizeof(buf));
         if (s->channels) {
             if (n != s->channels) {
                 av_log(ctx, AV_LOG_ERROR,
                        "Mismatching channel count %d and layout '%s' "
                        "(%d channels)\n",
-                       s->channels, s->channel_layout_str, n);
+                       s->channels, buf, n);
                 return AVERROR(EINVAL);
             }
         }
@@ -334,6 +373,9 @@ static av_cold int init_audio(AVFilterContext *ctx)
         av_log(ctx, AV_LOG_ERROR, "Neither number of channels nor "
                                   "channel layout specified\n");
         return AVERROR(EINVAL);
+    } else {
+        s->ch_layout = FF_COUNT2LAYOUT(s->channels);
+        av_channel_layout_describe(&s->ch_layout, buf, sizeof(buf));
     }
 
     if (!s->time_base.num)
@@ -342,7 +384,7 @@ static av_cold int init_audio(AVFilterContext *ctx)
     av_log(ctx, AV_LOG_VERBOSE,
            "tb:%d/%d samplefmt:%s samplerate:%d chlayout:%s\n",
            s->time_base.num, s->time_base.den, av_get_sample_fmt_name(s->sample_fmt),
-           s->sample_rate, s->channel_layout_str);
+           s->sample_rate, buf);
 
     return ret;
 }
@@ -351,6 +393,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     BufferSourceContext *s = ctx->priv;
     av_buffer_unref(&s->hw_frames_ctx);
+    av_channel_layout_uninit(&s->ch_layout);
 }
 
 static int query_formats(AVFilterContext *ctx)
@@ -374,9 +417,7 @@ static int query_formats(AVFilterContext *ctx)
             (ret = ff_set_common_samplerates (ctx         , samplerates   )) < 0)
             return ret;
 
-        if ((ret = ff_add_channel_layout(&channel_layouts,
-                              c->channel_layout ? c->channel_layout :
-                              FF_COUNT2LAYOUT(c->channels))) < 0)
+        if ((ret = ff_add_channel_layout(&channel_layouts, &c->ch_layout)) < 0)
             return ret;
         if ((ret = ff_set_common_channel_layouts(ctx, channel_layouts)) < 0)
             return ret;
@@ -405,8 +446,11 @@ static int config_props(AVFilterLink *link)
         }
         break;
     case AVMEDIA_TYPE_AUDIO:
-        if (!c->channel_layout)
-            c->channel_layout = link->channel_layout;
+        if (!c->ch_layout.nb_channels) {
+            int ret = av_channel_layout_copy(&c->ch_layout, &link->ch_layout);
+            if (ret < 0)
+                return ret;
+        }
         break;
     default:
         return AVERROR(EINVAL);

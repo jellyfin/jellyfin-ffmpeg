@@ -122,12 +122,21 @@ static const VAAPIFormatDescriptor vaapi_format_map[] = {
 #ifdef VA_FOURCC_Y210
     MAP(Y210, YUV422_10,  Y210, 0),
 #endif
+#ifdef VA_FOURCC_Y212
+    MAP(Y212, YUV422_12,  Y212, 0),
+#endif
     MAP(411P, YUV411,  YUV411P, 0),
     MAP(422V, YUV422,  YUV440P, 0),
     MAP(444P, YUV444,  YUV444P, 0),
+#ifdef VA_FOURCC_XYUV
+    MAP(XYUV, YUV444,  VUYX,    0),
+#endif
     MAP(Y800, YUV400,  GRAY8,   0),
 #ifdef VA_FOURCC_P010
     MAP(P010, YUV420_10BPP, P010, 0),
+#endif
+#ifdef VA_FOURCC_P012
+    MAP(P012, YUV420_12, P012, 0),
 #endif
     MAP(BGRA, RGB32,   BGRA, 0),
     MAP(BGRX, RGB32,   BGR0, 0),
@@ -141,6 +150,16 @@ static const VAAPIFormatDescriptor vaapi_format_map[] = {
     MAP(XRGB, RGB32,   0RGB, 0),
 #ifdef VA_FOURCC_X2R10G10B10
     MAP(X2R10G10B10, RGB32_10, X2RGB10, 0),
+#endif
+#ifdef VA_FOURCC_Y410
+    // libva doesn't include a fourcc for XV30 and the driver only declares
+    // support for Y410, so we must fudge the mapping here.
+    MAP(Y410, YUV444_10,  XV30, 0),
+#endif
+#ifdef VA_FOURCC_Y412
+    // libva doesn't include a fourcc for XV36 and the driver only declares
+    // support for Y412, so we must fudge the mapping here.
+    MAP(Y412, YUV444_12,  XV36, 0),
 #endif
 };
 #undef MAP
@@ -998,6 +1017,9 @@ static const struct {
 #if defined(VA_FOURCC_P010) && defined(DRM_FORMAT_R16)
     DRM_MAP(P010, 2, DRM_FORMAT_R16, DRM_FORMAT_RG1616),
 #endif
+#if defined(VA_FOURCC_P012) && defined(DRM_FORMAT_R16)
+    DRM_MAP(P012, 2, DRM_FORMAT_R16, DRM_FORMAT_RG1616),
+#endif
     DRM_MAP(BGRA, 1, DRM_FORMAT_ARGB8888),
     DRM_MAP(BGRX, 1, DRM_FORMAT_XRGB8888),
     DRM_MAP(RGBA, 1, DRM_FORMAT_ABGR8888),
@@ -1008,6 +1030,15 @@ static const struct {
 #endif
     DRM_MAP(ARGB, 1, DRM_FORMAT_BGRA8888),
     DRM_MAP(XRGB, 1, DRM_FORMAT_BGRX8888),
+#if defined(VA_FOURCC_XYUV) && defined(DRM_FORMAT_XYUV8888)
+    DRM_MAP(XYUV, 1, DRM_FORMAT_XYUV8888),
+#endif
+#if defined(VA_FOURCC_Y412) && defined(DRM_FORMAT_XVYU2101010)
+    DRM_MAP(Y410, 1, DRM_FORMAT_XVYU2101010),
+#endif
+#if defined(VA_FOURCC_Y412) && defined(DRM_FORMAT_XVYU12_16161616)
+    DRM_MAP(Y412, 1, DRM_FORMAT_XVYU12_16161616),
+#endif
 };
 #undef DRM_MAP
 
@@ -1026,7 +1057,12 @@ static void vaapi_unmap_from_drm(AVHWFramesContext *dst_fc,
 static int vaapi_map_from_drm(AVHWFramesContext *src_fc, AVFrame *dst,
                               const AVFrame *src, int flags)
 {
+#if VA_CHECK_VERSION(1, 1, 0)
     VAAPIFramesContext     *src_vafc = src_fc->internal->priv;
+    int use_prime2;
+#else
+    int k;
+#endif
     AVHWFramesContext      *dst_fc =
         (AVHWFramesContext*)dst->hw_frames_ctx->data;
     AVVAAPIDeviceContext  *dst_dev = dst_fc->device_ctx->hwctx;
@@ -1034,9 +1070,27 @@ static int vaapi_map_from_drm(AVHWFramesContext *src_fc, AVFrame *dst,
     const VAAPIFormatDescriptor *format_desc;
     VASurfaceID surface_id;
     VAStatus vas = VA_STATUS_SUCCESS;
-    int use_prime2;
     uint32_t va_fourcc;
     int err, i, j;
+
+#if !VA_CHECK_VERSION(1, 1, 0)
+    unsigned long buffer_handle;
+    VASurfaceAttribExternalBuffers buffer_desc;
+    VASurfaceAttrib attrs[2] = {
+        {
+            .type  = VASurfaceAttribMemoryType,
+            .flags = VA_SURFACE_ATTRIB_SETTABLE,
+            .value.type    = VAGenericValueTypeInteger,
+            .value.value.i = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME,
+        },
+        {
+            .type  = VASurfaceAttribExternalBufferDescriptor,
+            .flags = VA_SURFACE_ATTRIB_SETTABLE,
+            .value.type    = VAGenericValueTypePointer,
+            .value.value.p = &buffer_desc,
+        }
+    };
+#endif
 
     desc = (AVDRMFrameDescriptor*)src->data[0];
 
@@ -1072,6 +1126,7 @@ static int vaapi_map_from_drm(AVHWFramesContext *src_fc, AVFrame *dst,
     format_desc = vaapi_format_from_fourcc(va_fourcc);
     av_assert0(format_desc);
 
+#if VA_CHECK_VERSION(1, 1, 0)
     use_prime2 = !src_vafc->prime_2_import_unsupported &&
                  desc->objects[0].format_modifier != DRM_FORMAT_MOD_INVALID;
     if (use_prime2) {
@@ -1183,6 +1238,37 @@ static int vaapi_map_from_drm(AVHWFramesContext *src_fc, AVFrame *dst,
                                &surface_id, 1,
                                buffer_attrs, FF_ARRAY_ELEMS(buffer_attrs));
     }
+#else
+    buffer_handle = desc->objects[0].fd;
+    buffer_desc.pixel_format = va_fourcc;
+    buffer_desc.width        = src_fc->width;
+    buffer_desc.height       = src_fc->height;
+    buffer_desc.data_size    = desc->objects[0].size;
+    buffer_desc.buffers      = &buffer_handle;
+    buffer_desc.num_buffers  = 1;
+    buffer_desc.flags        = 0;
+
+    k = 0;
+    for (i = 0; i < desc->nb_layers; i++) {
+        for (j = 0; j < desc->layers[i].nb_planes; j++) {
+            buffer_desc.pitches[k] = desc->layers[i].planes[j].pitch;
+            buffer_desc.offsets[k] = desc->layers[i].planes[j].offset;
+            ++k;
+        }
+    }
+    buffer_desc.num_planes = k;
+
+    if (format_desc->chroma_planes_swapped &&
+        buffer_desc.num_planes == 3) {
+        FFSWAP(uint32_t, buffer_desc.pitches[1], buffer_desc.pitches[2]);
+        FFSWAP(uint32_t, buffer_desc.offsets[1], buffer_desc.offsets[2]);
+    }
+
+    vas = vaCreateSurfaces(dst_dev->display, format_desc->rt_format,
+                           src->width, src->height,
+                           &surface_id, 1,
+                           attrs, FF_ARRAY_ELEMS(attrs));
+#endif
     if (vas != VA_STATUS_SUCCESS) {
         av_log(dst_fc, AV_LOG_ERROR, "Failed to create surface from DRM "
                "object: %d (%s).\n", vas, vaErrorStr(vas));
@@ -1425,7 +1511,7 @@ static int vaapi_map_to_drm_abh(AVHWFramesContext *hwfc, AVFrame *dst,
         goto fail_derived;
     }
 
-    av_log(hwfc, AV_LOG_DEBUG, "DRM PRIME fd is %ld.\n",
+    av_log(hwfc, AV_LOG_DEBUG, "DRM PRIME fd is %"PRIdPTR".\n",
            mapping->buffer_info.handle);
 
     mapping->drm_desc.nb_objects = 1;
@@ -1614,6 +1700,7 @@ static int vaapi_device_create(AVHWDeviceContext *ctx, const char *device,
             char path[64];
             int n, max_devices = 8;
 #if CONFIG_LIBDRM
+            drmVersion *info;
             const AVDictionaryEntry *kernel_driver;
             kernel_driver = av_dict_get(opts, "kernel_driver", NULL, 0);
 #endif
@@ -1627,9 +1714,15 @@ static int vaapi_device_create(AVHWDeviceContext *ctx, const char *device,
                     break;
                 }
 #if CONFIG_LIBDRM
+                info = drmGetVersion(priv->drm_fd);
+                if (!info) {
+                    av_log(ctx, AV_LOG_VERBOSE,
+                           "Failed to get DRM version for device %d.\n", n);
+                    close(priv->drm_fd);
+                    priv->drm_fd = -1;
+                    continue;
+                }
                 if (kernel_driver) {
-                    drmVersion *info;
-                    info = drmGetVersion(priv->drm_fd);
                     if (strcmp(kernel_driver->value, info->name)) {
                         av_log(ctx, AV_LOG_VERBOSE, "Ignoring device %d "
                                "with non-matching kernel driver (%s).\n",
@@ -1644,12 +1737,20 @@ static int vaapi_device_create(AVHWDeviceContext *ctx, const char *device,
                            "with matching kernel driver (%s).\n",
                            n, info->name);
                     drmFreeVersion(info);
-                } else
-#endif
-                {
-                    av_log(ctx, AV_LOG_VERBOSE, "Trying to use "
-                           "DRM render node for device %d.\n", n);
+                    break;
+                // drmGetVersion() ensures |info->name| is 0-terminated.
+                } else if (!strcmp(info->name, "vgem")) {
+                    av_log(ctx, AV_LOG_VERBOSE,
+                           "Skipping vgem node for device %d.\n", n);
+                    drmFreeVersion(info);
+                    close(priv->drm_fd);
+                    priv->drm_fd = -1;
+                    continue;
                 }
+                drmFreeVersion(info);
+#endif
+                av_log(ctx, AV_LOG_VERBOSE, "Trying to use "
+                       "DRM render node for device %d.\n", n);
                 break;
             }
             if (n >= max_devices)

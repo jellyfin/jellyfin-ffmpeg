@@ -4,6 +4,7 @@ FFLIBS = avutil
 
 HEADERS = swresample.h                       \
           version.h                          \
+          version_major.h                    \
 
 OBJS = audioconvert.o                        \
        dither.o                              \
@@ -13,6 +14,7 @@ OBJS = audioconvert.o                        \
        resample_dsp.o                        \
        swresample.o                          \
        swresample_frame.o                    \
+       version.o                             \
 
 OBJS-$(CONFIG_LIBSOXR) += soxr_resample.o
 
@@ -20,6 +22,6 @@ OBJS-$(CONFIG_LIBSOXR) += soxr_resample.o
 SHLIBOBJS              += log2_tab.o
 
 # Windows resource file
-SLIBOBJS-$(HAVE_GNU_WINDRES) += swresampleres.o
+SHLIBOBJS-$(HAVE_GNU_WINDRES) += swresampleres.o
 
 TESTPROGS = swresample

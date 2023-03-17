@@ -173,6 +173,7 @@ static const struct {
     { AV_PIX_FMT_NV12, { VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM } },
     { AV_PIX_FMT_NV21, { VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM } },
     { AV_PIX_FMT_P010, { VK_FORMAT_R16_UNORM, VK_FORMAT_R16G16_UNORM } },
+    { AV_PIX_FMT_P012, { VK_FORMAT_R16_UNORM, VK_FORMAT_R16G16_UNORM } },
     { AV_PIX_FMT_P016, { VK_FORMAT_R16_UNORM, VK_FORMAT_R16G16_UNORM } },
 
     { AV_PIX_FMT_NV16, { VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM } },
@@ -209,6 +210,9 @@ static const struct {
     { AV_PIX_FMT_YUVA444P10, { VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM } },
     { AV_PIX_FMT_YUVA444P12, { VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM } },
     { AV_PIX_FMT_YUVA444P16, { VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM, VK_FORMAT_R16_UNORM } },
+
+    { AV_PIX_FMT_VUYX,   { VK_FORMAT_R8G8B8A8_UNORM } },
+    { AV_PIX_FMT_XV36,   { VK_FORMAT_R16G16B16A16_UNORM } },
 
     { AV_PIX_FMT_BGRA,   { VK_FORMAT_B8G8R8A8_UNORM } },
     { AV_PIX_FMT_RGBA,   { VK_FORMAT_R8G8B8A8_UNORM } },
@@ -354,14 +358,6 @@ static const VulkanOptExtension optional_device_exts[] = {
     { VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,            FF_VK_EXT_EXTERNAL_WIN32_MEMORY  },
     { VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,         FF_VK_EXT_EXTERNAL_WIN32_SEM     },
 #endif
-
-    /* Video encoding/decoding */
-    { VK_KHR_VIDEO_QUEUE_EXTENSION_NAME,                      FF_VK_EXT_NO_FLAG                },
-    { VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME,               FF_VK_EXT_NO_FLAG                },
-    { VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME,               FF_VK_EXT_NO_FLAG                },
-    { VK_EXT_VIDEO_ENCODE_H264_EXTENSION_NAME,                FF_VK_EXT_NO_FLAG                },
-    { VK_EXT_VIDEO_DECODE_H264_EXTENSION_NAME,                FF_VK_EXT_NO_FLAG                },
-    { VK_EXT_VIDEO_DECODE_H265_EXTENSION_NAME,                FF_VK_EXT_NO_FLAG                },
 };
 
 /* Converts return values to strings */
@@ -1054,7 +1050,7 @@ static int setup_queue_families(AVHWDeviceContext *ctx, VkDeviceCreateInfo *cd)
     SETUP_QUEUE(enc_index)
     SETUP_QUEUE(dec_index)
 
-#undef ADD_QUEUE
+#undef SETUP_QUEUE
 
     av_free(qf);
 
@@ -1321,8 +1317,18 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
     VulkanDevicePriv *p = ctx->internal->priv;
     FFVulkanFunctions *vk = &p->vkfn;
     AVVulkanDeviceContext *hwctx = ctx->hwctx;
+
+    /*
+     * VkPhysicalDeviceVulkan12Features has a timelineSemaphore field, but
+     * MoltenVK doesn't implement VkPhysicalDeviceVulkan12Features yet, so we
+     * use VkPhysicalDeviceTimelineSemaphoreFeatures directly.
+     */
+    VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+    };
     VkPhysicalDeviceVulkan12Features dev_features_1_2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &timeline_features,
     };
     VkPhysicalDeviceVulkan11Features dev_features_1_1 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
@@ -1366,7 +1372,7 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
 #undef COPY_FEATURE
 
     /* We require timeline semaphores */
-    if (!dev_features_1_2.timelineSemaphore) {
+    if (!timeline_features.timelineSemaphore) {
         av_log(ctx, AV_LOG_ERROR, "Device does not support timeline semaphores!\n");
         err = AVERROR(ENOSYS);
         goto end;
@@ -2619,6 +2625,15 @@ static const struct {
     { DRM_FORMAT_XRGB8888, VK_FORMAT_B8G8R8A8_UNORM },
     { DRM_FORMAT_ABGR8888, VK_FORMAT_R8G8B8A8_UNORM },
     { DRM_FORMAT_XBGR8888, VK_FORMAT_R8G8B8A8_UNORM },
+
+    // All these DRM_FORMATs were added in the same libdrm commit.
+#ifdef DRM_FORMAT_XYUV8888
+    { DRM_FORMAT_XYUV8888, VK_FORMAT_R8G8B8A8_UNORM     },
+    { DRM_FORMAT_XVYU12_16161616, VK_FORMAT_R16G16B16A16_UNORM} ,
+    // As we had to map XV36 to a 16bit Vulkan format, reverse mapping will
+    // end up yielding Y416 as the DRM format, so we need to recognise it.
+    { DRM_FORMAT_Y416,     VK_FORMAT_R16G16B16A16_UNORM },
+#endif
 };
 
 static inline VkFormat drm_to_vulkan_fmt(uint32_t drm_fourcc)
@@ -2927,6 +2942,7 @@ static int vulkan_map_from_drm(AVHWFramesContext *hwfc, AVFrame *dst,
 
 fail:
     vulkan_frame_free(hwfc->device_ctx->hwctx, (uint8_t *)f);
+    dst->data[0] = NULL;
     return err;
 }
 

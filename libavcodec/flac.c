@@ -26,18 +26,19 @@
 #include "get_bits.h"
 #include "flac.h"
 #include "flacdata.h"
+#include "flac_parse.h"
 
-static const int8_t sample_size_table[] = { 0, 8, 12, 0, 16, 20, 24, 0 };
+static const int8_t sample_size_table[] = { 0, 8, 12, 0, 16, 20, 24, 32 };
 
-static const uint64_t flac_channel_layouts[8] = {
-    AV_CH_LAYOUT_MONO,
-    AV_CH_LAYOUT_STEREO,
-    AV_CH_LAYOUT_SURROUND,
-    AV_CH_LAYOUT_QUAD,
-    AV_CH_LAYOUT_5POINT0,
-    AV_CH_LAYOUT_5POINT1,
-    AV_CH_LAYOUT_6POINT1,
-    AV_CH_LAYOUT_7POINT1
+static const AVChannelLayout flac_channel_layouts[8] = {
+    AV_CHANNEL_LAYOUT_MONO,
+    AV_CHANNEL_LAYOUT_STEREO,
+    AV_CHANNEL_LAYOUT_SURROUND,
+    AV_CHANNEL_LAYOUT_QUAD,
+    AV_CHANNEL_LAYOUT_5POINT0,
+    AV_CHANNEL_LAYOUT_5POINT1,
+    AV_CHANNEL_LAYOUT_6POINT1,
+    AV_CHANNEL_LAYOUT_7POINT1
 };
 
 static int64_t get_utf8(GetBitContext *gb)
@@ -81,7 +82,7 @@ int ff_flac_decode_frame_header(AVCodecContext *avctx, GetBitContext *gb,
 
     /* bits per sample */
     bps_code = get_bits(gb, 3);
-    if (bps_code == 3 || bps_code == 7) {
+    if (bps_code == 3) {
         av_log(avctx, AV_LOG_ERROR + log_level_offset,
                "invalid sample size code (%d)\n",
                bps_code);
@@ -145,29 +146,7 @@ int ff_flac_decode_frame_header(AVCodecContext *avctx, GetBitContext *gb,
     return 0;
 }
 
-int ff_flac_get_max_frame_size(int blocksize, int ch, int bps)
-{
-    /* Technically, there is no limit to FLAC frame size, but an encoder
-       should not write a frame that is larger than if verbatim encoding mode
-       were to be used. */
-
-    int count;
-
-    count = 16;                  /* frame header */
-    count += ch * ((7+bps+7)/8); /* subframe headers */
-    if (ch == 2) {
-        /* for stereo, need to account for using decorrelation */
-        count += (( 2*bps+1) * blocksize + 7) / 8;
-    } else {
-        count += ( ch*bps    * blocksize + 7) / 8;
-    }
-    count += 2; /* frame footer */
-
-    return count;
-}
-
 int ff_flac_is_extradata_valid(AVCodecContext *avctx,
-                               enum FLACExtradataFormat *format,
                                uint8_t **streaminfo_start)
 {
     if (!avctx->extradata || avctx->extradata_size < FLAC_STREAMINFO_SIZE) {
@@ -180,25 +159,29 @@ int ff_flac_is_extradata_valid(AVCodecContext *avctx,
             av_log(avctx, AV_LOG_WARNING, "extradata contains %d bytes too many.\n",
                    FLAC_STREAMINFO_SIZE-avctx->extradata_size);
         }
-        *format = FLAC_EXTRADATA_FORMAT_STREAMINFO;
         *streaminfo_start = avctx->extradata;
     } else {
         if (avctx->extradata_size < 8+FLAC_STREAMINFO_SIZE) {
             av_log(avctx, AV_LOG_ERROR, "extradata too small.\n");
             return 0;
         }
-        *format = FLAC_EXTRADATA_FORMAT_FULL_HEADER;
         *streaminfo_start = &avctx->extradata[8];
     }
     return 1;
 }
 
-void ff_flac_set_channel_layout(AVCodecContext *avctx)
+void ff_flac_set_channel_layout(AVCodecContext *avctx, int channels)
 {
-    if (avctx->channels <= FF_ARRAY_ELEMS(flac_channel_layouts))
-        avctx->channel_layout = flac_channel_layouts[avctx->channels - 1];
+    if (channels == avctx->ch_layout.nb_channels &&
+        avctx->ch_layout.order != AV_CHANNEL_ORDER_UNSPEC)
+        return;
+
+    av_channel_layout_uninit(&avctx->ch_layout);
+    if (channels <= FF_ARRAY_ELEMS(flac_channel_layouts))
+        avctx->ch_layout = flac_channel_layouts[channels - 1];
     else
-        avctx->channel_layout = 0;
+        avctx->ch_layout = (AVChannelLayout){ .order = AV_CHANNEL_ORDER_UNSPEC,
+                                              .nb_channels = channels };
 }
 
 int ff_flac_parse_streaminfo(AVCodecContext *avctx, struct FLACStreaminfo *s,
@@ -229,13 +212,9 @@ int ff_flac_parse_streaminfo(AVCodecContext *avctx, struct FLACStreaminfo *s,
         return AVERROR_INVALIDDATA;
     }
 
-    avctx->channels = s->channels;
     avctx->sample_rate = s->samplerate;
     avctx->bits_per_raw_sample = s->bps;
-
-    if (!avctx->channel_layout ||
-        av_get_channel_layout_nb_channels(avctx->channel_layout) != avctx->channels)
-        ff_flac_set_channel_layout(avctx);
+    ff_flac_set_channel_layout(avctx, s->channels);
 
     s->samples = get_bits64(&gb, 36);
 

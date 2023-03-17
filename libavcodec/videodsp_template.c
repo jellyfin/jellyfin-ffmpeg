@@ -20,6 +20,10 @@
  */
 
 #include "bit_depth_template.c"
+#if BIT_DEPTH != 8
+// ff_emulated_edge_mc_8 is used by the x86 MpegVideoDSP API.
+static
+#endif
 void FUNC(ff_emulated_edge_mc)(uint8_t *buf, const uint8_t *src,
                                ptrdiff_t buf_linesize,
                                ptrdiff_t src_linesize,
@@ -60,7 +64,7 @@ void FUNC(ff_emulated_edge_mc)(uint8_t *buf, const uint8_t *src,
     av_assert2(start_x < end_x && block_w);
 
     w    = end_x - start_x;
-    src += start_y * src_linesize + start_x * sizeof(pixel);
+    src += start_y * src_linesize + start_x * (ptrdiff_t)sizeof(pixel);
     buf += start_x * sizeof(pixel);
 
     // top
@@ -83,7 +87,7 @@ void FUNC(ff_emulated_edge_mc)(uint8_t *buf, const uint8_t *src,
         buf += buf_linesize;
     }
 
-    buf -= block_h * buf_linesize + start_x * sizeof(pixel);
+    buf -= block_h * buf_linesize + start_x * (ptrdiff_t)sizeof(pixel);
     while (block_h--) {
         pixel *bufp = (pixel *) buf;
 

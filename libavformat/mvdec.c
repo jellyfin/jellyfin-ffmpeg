@@ -45,6 +45,10 @@ typedef struct MvContext {
     int aformat;          ///< audio format
 } MvContext;
 
+/* these magic numbers are defined in moviefile.h on Silicon Grahpics IRIX */
+#define MOVIE_SOUND  1
+#define MOVIE_SILENT 2
+
 #define AUDIO_FORMAT_SIGNED 401
 
 static int mv_probe(const AVProbeData *p)
@@ -107,9 +111,7 @@ static int set_channels(AVFormatContext *avctx, AVStream *st, int channels)
         av_log(avctx, AV_LOG_ERROR, "Channel count %d invalid.\n", channels);
         return AVERROR_INVALIDDATA;
     }
-    st->codecpar->channels       = channels;
-    st->codecpar->channel_layout = (st->codecpar->channels == 1) ? AV_CH_LAYOUT_MONO
-                                                                 : AV_CH_LAYOUT_STEREO;
+    av_channel_layout_default(&st->codecpar->ch_layout, channels);
     return 0;
 }
 
@@ -279,7 +281,7 @@ static void read_index(AVIOContext *pb, AVStream *st)
             return ;
         av_add_index_entry(st, pos, timestamp, size, 0, AVINDEX_KEYFRAME);
         if (st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            timestamp += size / (st->codecpar->channels * 2LL);
+            timestamp += size / (st->codecpar->ch_layout.nb_channels * 2LL);
         } else {
             timestamp++;
         }
@@ -305,18 +307,25 @@ static int mv_read_header(AVFormatContext *avctx)
 
         avio_skip(pb, 10);
 
+        fps = av_d2q(av_int2double(avio_rb64(pb)), INT_MAX);
+
         /* allocate audio track first to prevent unnecessary seeking
          * (audio packet always precede video packet for a given frame) */
-        ast = avformat_new_stream(avctx, NULL);
-        if (!ast)
-            return AVERROR(ENOMEM);
+        v = avio_rb16(pb);
+        if (v == MOVIE_SOUND) {
+            /* movie has sound so allocate an audio stream */
+            ast = avformat_new_stream(avctx, NULL);
+            if (!ast)
+                return AVERROR(ENOMEM);
+        } else if (v != MOVIE_SILENT)
+            return AVERROR_INVALIDDATA;
+
+        avio_skip(pb, 2);
 
         vst = avformat_new_stream(avctx, NULL);
         if (!vst)
             return AVERROR(ENOMEM);
-        fps = av_d2q(av_int2double(avio_rb64(pb)), INT_MAX);
         avpriv_set_pts_info(vst, 64, fps.den, fps.num);
-        avio_skip(pb, 4);
         vst->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
         vst->avg_frame_rate = fps;
         vst->duration = vst->nb_frames = avio_rb32(pb);
@@ -338,41 +347,44 @@ static int mv_read_header(AVFormatContext *avctx)
         vst->codecpar->height    = avio_rb32(pb);
         avio_skip(pb, 12);
 
-        ast->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
-        ast->nb_frames          = vst->nb_frames;
-        ast->codecpar->sample_rate = avio_rb32(pb);
-        if (ast->codecpar->sample_rate <= 0) {
-            av_log(avctx, AV_LOG_ERROR, "Invalid sample rate %d\n", ast->codecpar->sample_rate);
-            return AVERROR_INVALIDDATA;
-        }
-        avpriv_set_pts_info(ast, 33, 1, ast->codecpar->sample_rate);
-
-        bytes_per_sample = avio_rb32(pb);
-
-        v = avio_rb32(pb);
-        if (v == AUDIO_FORMAT_SIGNED) {
-            switch (bytes_per_sample) {
-            case 1:
-                ast->codecpar->codec_id = AV_CODEC_ID_PCM_S8;
-                break;
-            case 2:
-                ast->codecpar->codec_id = AV_CODEC_ID_PCM_S16BE;
-                break;
-            default:
-                avpriv_request_sample(avctx, "Audio sample size %i bytes", bytes_per_sample);
-                break;
+        if (ast) {
+            ast->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
+            ast->nb_frames = vst->nb_frames;
+            ast->codecpar->sample_rate = avio_rb32(pb);
+            if (ast->codecpar->sample_rate <= 0) {
+                av_log(avctx, AV_LOG_ERROR, "Invalid sample rate %d\n", ast->codecpar->sample_rate);
+                return AVERROR_INVALIDDATA;
             }
-        } else {
-            avpriv_request_sample(avctx, "Audio compression (format %i)", v);
-        }
+            avpriv_set_pts_info(ast, 33, 1, ast->codecpar->sample_rate);
 
-        if (bytes_per_sample == 0)
-            return AVERROR_INVALIDDATA;
+            bytes_per_sample = avio_rb32(pb);
 
-        if (set_channels(avctx, ast, avio_rb32(pb)) < 0)
-            return AVERROR_INVALIDDATA;
+            v = avio_rb32(pb);
+            if (v == AUDIO_FORMAT_SIGNED) {
+                switch (bytes_per_sample) {
+                case 1:
+                    ast->codecpar->codec_id = AV_CODEC_ID_PCM_S8;
+                    break;
+                case 2:
+                    ast->codecpar->codec_id = AV_CODEC_ID_PCM_S16BE;
+                    break;
+                default:
+                    avpriv_request_sample(avctx, "Audio sample size %i bytes", bytes_per_sample);
+                    break;
+                }
+            } else {
+                avpriv_request_sample(avctx, "Audio compression (format %i)", v);
+            }
 
-        avio_skip(pb, 8);
+            if (bytes_per_sample == 0)
+                return AVERROR_INVALIDDATA;
+
+            if (set_channels(avctx, ast, avio_rb32(pb)) < 0)
+                return AVERROR_INVALIDDATA;
+
+            avio_skip(pb, 8);
+        } else
+            avio_skip(pb, 24); /* skip meaningless audio metadata */
 
         var_read_metadata(avctx, "title", 0x80);
         var_read_metadata(avctx, "comment", 0x100);
@@ -386,9 +398,11 @@ static int mv_read_header(AVFormatContext *avctx)
             if (avio_feof(pb))
                 return AVERROR_INVALIDDATA;
             avio_skip(pb, 8);
-            av_add_index_entry(ast, pos, timestamp, asize, 0, AVINDEX_KEYFRAME);
+            if (ast) {
+                av_add_index_entry(ast, pos, timestamp, asize, 0, AVINDEX_KEYFRAME);
+                timestamp += asize / (ast->codecpar->ch_layout.nb_channels * (uint64_t)bytes_per_sample);
+            }
             av_add_index_entry(vst, pos + asize, i, vsize, 0, AVINDEX_KEYFRAME);
-            timestamp += asize / (ast->codecpar->channels * (uint64_t)bytes_per_sample);
         }
     } else if (!version && avio_rb16(pb) == 3) {
         avio_skip(pb, 4);
@@ -423,7 +437,7 @@ static int mv_read_header(AVFormatContext *avctx)
                                       ast->codecpar->bits_per_coded_sample);
                 ast->codecpar->codec_id = AV_CODEC_ID_NONE;
             }
-            if (ast->codecpar->channels <= 0) {
+            if (ast->codecpar->ch_layout.nb_channels <= 0) {
                 av_log(avctx, AV_LOG_ERROR, "No valid channel count found.\n");
                 return AVERROR_INVALIDDATA;
             }

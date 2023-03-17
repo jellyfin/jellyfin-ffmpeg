@@ -1,11 +1,10 @@
-c39ad75ef516d1d2e1332d960ad1057b *tests/data/fate/webm-dash-chapters.webm
-111239 tests/data/fate/webm-dash-chapters.webm
+aa3ca15fae0239d6bf67fa0658a8bc3b *tests/data/fate/webm-dash-chapters.webm
+111150 tests/data/fate/webm-dash-chapters.webm
 #extradata 0:     3469, 0xc6769ddc
 #tb 0: 1/1000
 #media_type 0: audio
 #codec_id 0: vorbis
 #sample_rate 0: 44100
-#channel_layout 0: 4
 #channel_layout_name 0: mono
 0,          0,          0,        5,       28, 0xefcf103e
 0,          6,          6,       26,      198, 0xfbbe5eb5

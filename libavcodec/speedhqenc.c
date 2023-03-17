@@ -27,16 +27,21 @@
  * SpeedHQ encoder.
  */
 
-#include "libavutil/pixdesc.h"
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
-#include "mpeg12.h"
+#include "codec_internal.h"
+#include "mpeg12data.h"
+#include "mpeg12vlc.h"
 #include "mpegvideo.h"
+#include "mpegvideodata.h"
+#include "mpegvideoenc.h"
+#include "rl.h"
+#include "speedhq.h"
 #include "speedhqenc.h"
 
-extern RLTable ff_rl_speedhq;
-static uint8_t speedhq_static_rl_table_store[2][2*MAX_RUN + MAX_LEVEL + 3];
+static uint8_t speedhq_max_level[MAX_LEVEL + 1];
+static uint8_t speedhq_index_run[MAX_RUN   + 1];
 
 /* Exactly the same as MPEG-2, except little-endian. */
 static const uint16_t mpeg12_vlc_dc_lum_code_reversed[12] = {
@@ -53,9 +58,16 @@ static uint32_t speedhq_chr_dc_uni[512];
 
 static uint8_t uni_speedhq_ac_vlc_len[64 * 64 * 2];
 
+typedef struct SpeedHQEncContext {
+    MpegEncContext m;
+
+    int slice_start;
+} SpeedHQEncContext;
+
 static av_cold void speedhq_init_static_data(void)
 {
-    ff_rl_init(&ff_rl_speedhq, speedhq_static_rl_table_store);
+    ff_rl_init_level_run(speedhq_max_level, speedhq_index_run,
+                         ff_speedhq_run, ff_speedhq_level, SPEEDHQ_RL_NB_ELEMS);
 
     /* build unified dc encoding tables */
     for (int i = -255; i < 256; i++) {
@@ -79,14 +91,13 @@ static av_cold void speedhq_init_static_data(void)
         speedhq_chr_dc_uni[i + 255] = bits + (code << 8);
     }
 
-    ff_mpeg1_init_uni_ac_vlc(&ff_rl_speedhq, uni_speedhq_ac_vlc_len);
+    ff_mpeg1_init_uni_ac_vlc(speedhq_max_level, speedhq_index_run,
+                             ff_speedhq_vlc_table, uni_speedhq_ac_vlc_len);
 }
 
 av_cold int ff_speedhq_encode_init(MpegEncContext *s)
 {
     static AVOnce init_static_once = AV_ONCE_INIT;
-
-    av_assert0(s->slice_context_count == 1);
 
     if (s->width > 65500 || s->height > 65500) {
         av_log(s, AV_LOG_ERROR, "SpeedHQ does not support resolutions above 65500x65500\n");
@@ -102,6 +113,9 @@ av_cold int ff_speedhq_encode_init(MpegEncContext *s)
     s->intra_ac_vlc_last_length =
     s->intra_chroma_ac_vlc_length      =
     s->intra_chroma_ac_vlc_last_length = uni_speedhq_ac_vlc_len;
+
+    s->y_dc_scale_table =
+    s->c_dc_scale_table = ff_mpeg12_dc_scale_table[3];
 
     switch (s->avctx->pix_fmt) {
     case AV_PIX_FMT_YUV420P:
@@ -122,24 +136,27 @@ av_cold int ff_speedhq_encode_init(MpegEncContext *s)
 
 void ff_speedhq_encode_picture_header(MpegEncContext *s)
 {
+    SpeedHQEncContext *ctx = (SpeedHQEncContext*)s;
+
     put_bits_le(&s->pb, 8, 100 - s->qscale * 2);  /* FIXME why doubled */
     put_bits_le(&s->pb, 24, 4);  /* no second field */
 
+    ctx->slice_start = 4;
     /* length of first slice, will be filled out later */
-    s->slice_start = 4;
     put_bits_le(&s->pb, 24, 0);
 }
 
 void ff_speedhq_end_slice(MpegEncContext *s)
 {
+    SpeedHQEncContext *ctx = (SpeedHQEncContext*)s;
     int slice_len;
 
     flush_put_bits_le(&s->pb);
-    slice_len = s->pb.buf_ptr - (s->pb.buf + s->slice_start);
-    AV_WL24(s->pb.buf + s->slice_start, slice_len);
+    slice_len = put_bytes_output(&s->pb) - ctx->slice_start;
+    AV_WL24(s->pb.buf + ctx->slice_start, slice_len);
 
     /* length of next slice, will be filled out later */
-    s->slice_start = s->pb.buf_ptr - s->pb.buf;
+    ctx->slice_start = put_bytes_output(&s->pb);
     put_bits_le(&s->pb, 24, 0);
 }
 
@@ -206,14 +223,15 @@ static void encode_block(MpegEncContext *s, int16_t *block, int n)
             MASK_ABS(sign, alevel);
             sign &= 1;
 
-            if (alevel <= ff_rl_speedhq.max_level[0][run]) {
-                code = ff_rl_speedhq.index_run[0][run] + alevel - 1;
+            if (alevel <= speedhq_max_level[run]) {
+                code = speedhq_index_run[run] + alevel - 1;
                 /* store the VLC & sign at once */
-                put_bits_le(&s->pb, ff_rl_speedhq.table_vlc[code][1] + 1,
-                            ff_rl_speedhq.table_vlc[code][0] + (sign << ff_rl_speedhq.table_vlc[code][1]));
+                put_bits_le(&s->pb, ff_speedhq_vlc_table[code][1] + 1,
+                            ff_speedhq_vlc_table[code][0] | (sign << ff_speedhq_vlc_table[code][1]));
             } else {
-                /* escape seems to be pretty rare <5% so I do not optimize it */
-                put_bits_le(&s->pb, ff_rl_speedhq.table_vlc[121][1], ff_rl_speedhq.table_vlc[121][0]);
+                /* escape seems to be pretty rare <5% so I do not optimize it;
+                 * the values correspond to ff_speedhq_vlc_table[121] */
+                put_bits_le(&s->pb, 6, 32);
                 /* escape: only clip in this case */
                 put_bits_le(&s->pb, 6, run);
                 put_bits_le(&s->pb, 12, level + 2048);
@@ -221,8 +239,8 @@ static void encode_block(MpegEncContext *s, int16_t *block, int n)
             last_non_zero = i;
         }
     }
-    /* end of block */
-    put_bits_le(&s->pb, ff_rl_speedhq.table_vlc[122][1], ff_rl_speedhq.table_vlc[122][0]);
+    /* end of block; the values correspond to ff_speedhq_vlc_table[122] */
+    put_bits_le(&s->pb, 4, 6);
 }
 
 void ff_speedhq_encode_mb(MpegEncContext *s, int16_t block[12][64])
@@ -264,21 +282,20 @@ int ff_speedhq_mb_y_order_to_mb(int mb_y_order, int mb_height, int *first_in_sli
     return mb_y_order * 4 + slice_num;
 }
 
-#if CONFIG_SPEEDHQ_ENCODER
-const AVCodec ff_speedhq_encoder = {
-    .name           = "speedhq",
-    .long_name      = NULL_IF_CONFIG_SMALL("NewTek SpeedHQ"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SPEEDHQ,
-    .priv_class     = &ff_mpv_enc_class,
-    .priv_data_size = sizeof(MpegEncContext),
+const FFCodec ff_speedhq_encoder = {
+    .p.name         = "speedhq",
+    CODEC_LONG_NAME("NewTek SpeedHQ"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SPEEDHQ,
+    .p.priv_class   = &ff_mpv_enc_class,
+    .p.capabilities = AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .priv_data_size = sizeof(SpeedHQEncContext),
     .init           = ff_mpv_encode_init,
-    .encode2        = ff_mpv_encode_picture,
+    FF_CODEC_ENCODE_CB(ff_mpv_encode_picture),
     .close          = ff_mpv_encode_end,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P,
         AV_PIX_FMT_NONE
     },
 };
-#endif

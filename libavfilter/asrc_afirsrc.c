@@ -109,7 +109,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 static av_cold int query_formats(AVFilterContext *ctx)
 {
     AudioFIRSourceContext *s = ctx->priv;
-    static const int64_t chlayouts[] = { AV_CH_LAYOUT_MONO, -1 };
+    static const AVChannelLayout chlayouts[] = { AV_CHANNEL_LAYOUT_MONO, { 0 } };
     int sample_rates[] = { s->sample_rate, -1 };
     static const enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_FLT,
@@ -239,7 +239,7 @@ static av_cold int config_output(AVFilterLink *outlink)
 
     lininterp(s->complexf, s->freq, s->magnitude, s->phase, s->nb_freq, fft_size / 2);
 
-    s->tx_fn(s->tx_ctx, s->complexf + fft_size, s->complexf, sizeof(float));
+    s->tx_fn(s->tx_ctx, s->complexf + fft_size, s->complexf, sizeof(*s->complexf));
 
     compensation = 2.f / fft_size;
     middle = s->nb_taps / 2;

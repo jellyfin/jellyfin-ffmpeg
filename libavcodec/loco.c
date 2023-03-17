@@ -25,9 +25,10 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "golomb.h"
-#include "internal.h"
 #include "mathops.h"
 
 enum LOCO_MODE {
@@ -195,14 +196,12 @@ static void rotate_faulty_loco(uint8_t *data, int width, int height, int stride)
     }
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *p,
+                        int *got_frame, AVPacket *avpkt)
 {
     LOCOContext * const l = avctx->priv_data;
     const uint8_t *buf    = avpkt->data;
     int buf_size          = avpkt->size;
-    AVFrame * const p     = data;
     int decoded, ret;
 
     if ((ret = ff_get_buffer(avctx, p, 0)) < 0)
@@ -337,14 +336,13 @@ static av_cold int decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_loco_decoder = {
-    .name           = "loco",
-    .long_name      = NULL_IF_CONFIG_SMALL("LOCO"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_LOCO,
+const FFCodec ff_loco_decoder = {
+    .p.name         = "loco",
+    CODEC_LONG_NAME("LOCO"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_LOCO,
     .priv_data_size = sizeof(LOCOContext),
     .init           = decode_init,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };

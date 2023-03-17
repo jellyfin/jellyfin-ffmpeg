@@ -38,21 +38,16 @@ jobs:
         arch: ${{fromJson(inputs.architectures)}}
   
     steps:
-      - uses: actions/checkout@v2.4.0
+      - uses: actions/checkout@v3.1.0
 
       - name: Install make and mmv
         run: sudo apt-get install make mmv
 
       - name: Build Linux
-        if: ${{ contains(inputs.distro, 'debian') || contains(inputs.distro, 'ubuntu') }}
         run: ./build ${{ matrix.release }} ${{ matrix.arch }} dist
 
-      - name: Build Windows
-        if: ${{ contains(inputs.distro, 'windows') }}
-        run: ./build-win64 dist
-
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3.0.0
+        uses: actions/upload-artifact@v3.1.1
         with:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: dist
@@ -71,7 +66,7 @@ jobs:
 
     steps:
       - name: Set Versions
-        uses: actions/github-script@v6.0.0
+        uses: actions/github-script@v6.3.3
         id: set_version
         with:
           script: |
@@ -84,7 +79,7 @@ jobs:
             core.setOutput('no-dash', no_dash)
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v3.0.0
+        uses: actions/download-artifact@v3.0.1
         with:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: artifact
@@ -92,13 +87,13 @@ jobs:
       - name: Prepare Release Assets
         run: |-
           pushd artifact
-          find * -type f \( -name "*.deb" -o -name "*.zip" \) | while read file; do
+          find * -type f -name "*.deb" | while read file; do
             sha256sum "${file}" | tee "${file}.sha256sum"
           done
           popd
           
       - name: Upload GH Release Assets
-        uses: shogo82148/actions-upload-release-asset@v1.5.0
+        uses: shogo82148/actions-upload-release-asset@v1.6.3
         with:
           upload_url: ${{ github.event.release.upload_url }}
           overwrite: true
@@ -108,7 +103,7 @@ jobs:
             ./artifact/**/*.sha256sum
 
       - name: Make Sure Release Directory Exists
-        uses: appleboy/ssh-action@v0.1.4
+        uses: appleboy/ssh-action@v0.1.5
         with:
           host: ${{ secrets.deploy-host }}
           username: ${{ secrets.deploy-user }}
@@ -118,7 +113,7 @@ jobs:
             mkdir -p /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
 
       - name: Upload Release Assets
-        uses: burnett01/rsync-deployments@5.2
+        uses: burnett01/rsync-deployments@5.2.1
         with:
           switches: -vrptz
           path: ./artifact/*

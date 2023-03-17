@@ -10,7 +10,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
-      codenames: '["buster", "bullseye"]'
+      codenames: '["buster", "bullseye", "bookworm"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["jammy", "focal", "bionic", "impish"]'
+      codenames: '["focal", "jammy", "kinetic", "lunar"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -30,12 +30,22 @@ jobs:
       deploy-user: ${{ secrets.DEPLOY_USER }}
       deploy-key: ${{ secrets.DEPLOY_KEY }}
 
-  build_publish_windows:
-    uses: ./.github/workflows/_meta.yaml
+  build_publish_windows_portable:
+    uses: ./.github/workflows/_meta_portable.yaml
     with:
-      distro: 'windows'
-      codenames: '["windows"]'
+      os: 'windows'
       architectures: '["win64"]'
+      release: true
+    secrets:
+      deploy-host: ${{ secrets.DEPLOY_HOST }}
+      deploy-user: ${{ secrets.DEPLOY_USER }}
+      deploy-key: ${{ secrets.DEPLOY_KEY }}
+
+  build_publish_linux_portable:
+    uses: ./.github/workflows/_meta_portable.yaml
+    with:
+      os: 'linux'
+      architectures: '["amd64", "arm64"]'
       release: true
     secrets:
       deploy-host: ${{ secrets.DEPLOY_HOST }}
@@ -48,7 +58,6 @@ jobs:
     needs:
       - build_publish_debian
       - build_publish_ubuntu
-      - build_publish_windows
     strategy:
       fail-fast: true
       max-parallel: 1
@@ -56,11 +65,11 @@ jobs:
         arrays: [
           {distro: 'debian', codename: 'buster'},
           {distro: 'debian', codename: 'bullseye'},
-          {distro: 'ubuntu', codename: 'jammy'},
+          {distro: 'debian', codename: 'bookworm'},
           {distro: 'ubuntu', codename: 'focal'},
-          {distro: 'ubuntu', codename: 'bionic'},
-          {distro: 'ubuntu', codename: 'impish'},
-          {distro: 'windows', codename: 'windows'},
+          {distro: 'ubuntu', codename: 'jammy'},
+          {distro: 'ubuntu', codename: 'kinetic'},
+          {distro: 'ubuntu', codename: 'lunar'}
         ]
     steps:
       - name: Sync mirrors and update symlinks
@@ -77,20 +86,54 @@ jobs:
             version="${tag#v}"
             basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
             find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
-            if [ "${{ matrix.arrays.distro }}" != "windows" ]; then
-              find /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
-                reprepro -b /srv/repository/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
-              done
-              find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "${basename}_*" -exec rm {} \;
-              reprepro -b /srv/repository/${{ matrix.arrays.distro }} deleteunreferenced
-              reprepro -b /srv/repository/${{ matrix.arrays.distro }} export
-            fi
-            if [ "${{ matrix.arrays.distro }}" == "windows" ]; then
-              ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/${basename}_*.zip /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/jellyfin-ffmpeg.zip
-            fi
+            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
+              reprepro -b /srv/repository/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
+            done
+            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "${basename}_*" -exec rm {} \;
+            reprepro -b /srv/repository/${{ matrix.arrays.distro }} deleteunreferenced
+            reprepro -b /srv/repository/${{ matrix.arrays.distro }} export
             rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
             rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
             ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
             ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable/ffmpeg
             ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable-pre/ffmpeg
             ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg
+
+  maintain_repository_portable:
+    name: Maintain Repository (Portable)
+    runs-on: ubuntu-latest
+    needs:
+      - build_publish_windows_portable
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        arrays: [
+          {distro: 'windows', codename: 'windows'},
+        ]
+    steps:
+      - name: Update symlinks
+        uses: appleboy/ssh-action@v0.1.4
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script_stop: true
+          script: |-
+            set -o errexit
+            set -o xtrace
+            tag="${{ github.event.release.tag_name }}"
+            version="${tag#v}"
+            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
+            if [ "${{ matrix.arrays.distro }}" == "windows" ]; then
+              mkdir -p /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}
+              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip /srv/repository/releases/ffmpeg/${version}/jellyfin-ffmpeg-portable_win64.zip
+              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/
+              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip.sha265sum /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/
+            fi
+            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
+            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
+            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
+            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable/ffmpeg
+            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable-pre/ffmpeg
+            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg

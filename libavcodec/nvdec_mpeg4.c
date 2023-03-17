@@ -21,7 +21,9 @@
  */
 
 #include "avcodec.h"
-#include "mpeg4video.h"
+#include "internal.h"
+#include "mpeg4videodec.h"
+#include "mpeg4videodefs.h"
 #include "nvdec.h"
 #include "decode.h"
 

@@ -24,14 +24,12 @@
  * DXA Video decoder
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
 #include "bytestream.h"
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 
 #include <zlib.h>
 
@@ -207,9 +205,9 @@ static int decode_13(AVCodecContext *avctx, DxaDecContext *c, uint8_t* dst,
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
-    AVFrame *frame = data;
     DxaDecContext * const c = avctx->priv_data;
     uint8_t *outptr, *srcptr, *tmpptr;
     unsigned long dsize;
@@ -360,15 +358,15 @@ static av_cold int decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_dxa_decoder = {
-    .name           = "dxa",
-    .long_name      = NULL_IF_CONFIG_SMALL("Feeble Files/ScummVM DXA"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_DXA,
+const FFCodec ff_dxa_decoder = {
+    .p.name         = "dxa",
+    CODEC_LONG_NAME("Feeble Files/ScummVM DXA"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_DXA,
     .priv_data_size = sizeof(DxaDecContext),
     .init           = decode_init,
     .close          = decode_end,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "ffv1_template.c"
+
 static av_always_inline int RENAME(decode_line)(FFV1Context *s, int w,
                                                  TYPE *sample[2],
                                                  int plane_index, int bits)
@@ -93,11 +95,11 @@ static av_always_inline int RENAME(decode_line)(FFV1Context *s, int w,
                         run_count--;
                     }
                 } else {
-                while (run_count > 1 && w-x > 1) {
-                    sample[1][x] = RENAME(predict)(sample[1] + x, sample[0] + x);
-                    x++;
-                    run_count--;
-                }
+                    while (run_count > 1 && w-x > 1) {
+                        sample[1][x] = RENAME(predict)(sample[1] + x, sample[0] + x);
+                        x++;
+                        run_count--;
+                    }
                 }
                 run_count--;
                 if (run_count < 0) {

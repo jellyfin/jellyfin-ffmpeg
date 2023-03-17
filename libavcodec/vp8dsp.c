@@ -25,6 +25,8 @@
  * VP8 compatible video decoder
  */
 
+#include "config_components.h"
+
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
 
@@ -466,7 +468,7 @@ static const uint8_t subpel_filters[7][6] = {
 
 #define PUT_PIXELS(WIDTH)                                                     \
 static void put_vp8_pixels ## WIDTH ## _c(uint8_t *dst, ptrdiff_t dststride,  \
-                                          uint8_t *src, ptrdiff_t srcstride,  \
+                                          const uint8_t *src, ptrdiff_t srcstride, \
                                           int h, int x, int y)                \
 {                                                                             \
     int i;                                                                    \
@@ -490,7 +492,7 @@ PUT_PIXELS(4)
 #define VP8_EPEL_H(SIZE, TAPS)                                                \
 static void put_vp8_epel ## SIZE ## _h ## TAPS ## _c(uint8_t *dst,            \
                                                      ptrdiff_t dststride,     \
-                                                     uint8_t *src,            \
+                                                     const uint8_t *src,      \
                                                      ptrdiff_t srcstride,     \
                                                      int h, int mx, int my)   \
 {                                                                             \
@@ -508,7 +510,7 @@ static void put_vp8_epel ## SIZE ## _h ## TAPS ## _c(uint8_t *dst,            \
 #define VP8_EPEL_V(SIZE, TAPS)                                                \
 static void put_vp8_epel ## SIZE ## _v ## TAPS ## _c(uint8_t *dst,            \
                                                      ptrdiff_t dststride,     \
-                                                     uint8_t *src,            \
+                                                     const uint8_t *src,      \
                                                      ptrdiff_t srcstride,     \
                                                      int h, int mx, int my)   \
 {                                                                             \
@@ -527,7 +529,7 @@ static void put_vp8_epel ## SIZE ## _v ## TAPS ## _c(uint8_t *dst,            \
 static void                                                                   \
 put_vp8_epel ## SIZE ## _h ## HTAPS ## v ## VTAPS ## _c(uint8_t *dst,         \
                                                         ptrdiff_t dststride,  \
-                                                        uint8_t *src,         \
+                                                        const uint8_t *src,   \
                                                         ptrdiff_t srcstride,  \
                                                         int h, int mx,        \
                                                         int my)               \
@@ -584,7 +586,7 @@ VP8_EPEL_HV(4,  6, 6)
 
 #define VP8_BILINEAR(SIZE)                                                    \
 static void put_vp8_bilinear ## SIZE ## _h_c(uint8_t *dst, ptrdiff_t dstride, \
-                                             uint8_t *src, ptrdiff_t sstride, \
+                                             const uint8_t *src, ptrdiff_t sstride, \
                                              int h, int mx, int my)           \
 {                                                                             \
     int a = 8 - mx, b = mx;                                                   \
@@ -598,7 +600,7 @@ static void put_vp8_bilinear ## SIZE ## _h_c(uint8_t *dst, ptrdiff_t dstride, \
 }                                                                             \
                                                                               \
 static void put_vp8_bilinear ## SIZE ## _v_c(uint8_t *dst, ptrdiff_t dstride, \
-                                             uint8_t *src, ptrdiff_t sstride, \
+                                             const uint8_t *src, ptrdiff_t sstride, \
                                              int h, int mx, int my)           \
 {                                                                             \
     int c = 8 - my, d = my;                                                   \
@@ -613,7 +615,7 @@ static void put_vp8_bilinear ## SIZE ## _v_c(uint8_t *dst, ptrdiff_t dstride, \
                                                                               \
 static void put_vp8_bilinear ## SIZE ## _hv_c(uint8_t *dst,                   \
                                               ptrdiff_t dstride,              \
-                                              uint8_t *src,                   \
+                                              const uint8_t *src,             \
                                               ptrdiff_t sstride,              \
                                               int h, int mx, int my)          \
 {                                                                             \
@@ -673,14 +675,15 @@ av_cold void ff_vp78dsp_init(VP8DSPContext *dsp)
     VP78_BILINEAR_MC_FUNC(1, 8);
     VP78_BILINEAR_MC_FUNC(2, 4);
 
-    if (ARCH_AARCH64)
-        ff_vp78dsp_init_aarch64(dsp);
-    if (ARCH_ARM)
-        ff_vp78dsp_init_arm(dsp);
-    if (ARCH_PPC)
-        ff_vp78dsp_init_ppc(dsp);
-    if (ARCH_X86)
-        ff_vp78dsp_init_x86(dsp);
+#if ARCH_AARCH64
+    ff_vp78dsp_init_aarch64(dsp);
+#elif ARCH_ARM
+    ff_vp78dsp_init_arm(dsp);
+#elif ARCH_PPC
+    ff_vp78dsp_init_ppc(dsp);
+#elif ARCH_X86
+    ff_vp78dsp_init_x86(dsp);
+#endif
 }
 
 #if CONFIG_VP7_DECODER
@@ -735,15 +738,16 @@ av_cold void ff_vp8dsp_init(VP8DSPContext *dsp)
     dsp->vp8_v_loop_filter_simple = vp8_v_loop_filter_simple_c;
     dsp->vp8_h_loop_filter_simple = vp8_h_loop_filter_simple_c;
 
-    if (ARCH_AARCH64)
-        ff_vp8dsp_init_aarch64(dsp);
-    if (ARCH_ARM)
-        ff_vp8dsp_init_arm(dsp);
-    if (ARCH_X86)
-        ff_vp8dsp_init_x86(dsp);
-    if (ARCH_MIPS)
-        ff_vp8dsp_init_mips(dsp);
-    if (ARCH_LOONGARCH)
-        ff_vp8dsp_init_loongarch(dsp);
+#if ARCH_AARCH64
+    ff_vp8dsp_init_aarch64(dsp);
+#elif ARCH_ARM
+    ff_vp8dsp_init_arm(dsp);
+#elif ARCH_X86
+    ff_vp8dsp_init_x86(dsp);
+#elif ARCH_MIPS
+    ff_vp8dsp_init_mips(dsp);
+#elif ARCH_LOONGARCH
+    ff_vp8dsp_init_loongarch(dsp);
+#endif
 }
 #endif /* CONFIG_VP8_DECODER */

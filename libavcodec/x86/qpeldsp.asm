@@ -92,7 +92,7 @@ cglobal put_no_rnd_pixels8_l2, 6,6
     add          r2, 32
     sub         r5d, 4
     jne .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_MMX mmxext
@@ -161,12 +161,10 @@ cglobal put_no_rnd_pixels16_l2, 6,6
     add          r2, 32
     sub         r5d, 2
     jne .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_MMX mmxext
-PUT_NO_RND_PIXELS16_l2
-INIT_MMX 3dnow
 PUT_NO_RND_PIXELS16_l2
 
 %macro MPEG4_QPEL16_H_LOWPASS 1
@@ -276,7 +274,7 @@ cglobal %1_mpeg4_qpel16_h_lowpass, 5, 5, 0, 16
     add          r0, r2
     dec r4d
     jne .loop
-    REP_RET
+    RET
 %endmacro
 
 %macro PUT_OP 2-3
@@ -359,7 +357,7 @@ cglobal %1_mpeg4_qpel8_h_lowpass, 5, 5, 0, 8
     add          r0, r2
     dec r4d
     jne .loop
-    REP_RET
+    RET
 %endmacro
 
 INIT_MMX mmxext
@@ -468,7 +466,7 @@ cglobal %1_mpeg4_qpel16_v_lowpass, 4, 6, 0, 544
     add    r0, r1
     dec r4d
     jne .loopv
-    REP_RET
+    RET
 %endmacro
 
 %macro PUT_OPH 2-3
@@ -545,7 +543,7 @@ cglobal %1_mpeg4_qpel8_v_lowpass, 4, 6, 0, 288
     add    r0, r1
     dec r4d
     jne .loopv
-    REP_RET
+    RET
 %endmacro
 
 INIT_MMX mmxext

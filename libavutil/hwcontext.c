@@ -18,6 +18,7 @@
 
 #include "config.h"
 
+#include "avassert.h"
 #include "buffer.h"
 #include "common.h"
 #include "hwcontext.h"
@@ -396,9 +397,13 @@ int av_hwframe_transfer_get_formats(AVBufferRef *hwframe_ref,
 
 static int transfer_data_alloc(AVFrame *dst, const AVFrame *src, int flags)
 {
-    AVHWFramesContext *ctx = (AVHWFramesContext*)src->hw_frames_ctx->data;
+    AVHWFramesContext *ctx;
     AVFrame *frame_tmp;
     int ret = 0;
+
+    if (!src->hw_frames_ctx)
+        return AVERROR(EINVAL);
+    ctx = (AVHWFramesContext*)src->hw_frames_ctx->data;
 
     frame_tmp = av_frame_alloc();
     if (!frame_tmp)
@@ -788,6 +793,8 @@ fail:
 
 int av_hwframe_map(AVFrame *dst, const AVFrame *src, int flags)
 {
+    AVBufferRef    *orig_dst_frames = dst->hw_frames_ctx;
+    enum AVPixelFormat orig_dst_fmt = dst->format;
     AVHWFramesContext *src_frames, *dst_frames;
     HWMapDescriptor *hwmap;
     int ret;
@@ -824,8 +831,10 @@ int av_hwframe_map(AVFrame *dst, const AVFrame *src, int flags)
             src_frames->internal->hw_type->map_from) {
             ret = src_frames->internal->hw_type->map_from(src_frames,
                                                           dst, src, flags);
-            if (ret != AVERROR(ENOSYS))
+            if (ret >= 0)
                 return ret;
+            else if (ret != AVERROR(ENOSYS))
+                goto fail;
         }
     }
 
@@ -836,12 +845,30 @@ int av_hwframe_map(AVFrame *dst, const AVFrame *src, int flags)
             dst_frames->internal->hw_type->map_to) {
             ret = dst_frames->internal->hw_type->map_to(dst_frames,
                                                         dst, src, flags);
-            if (ret != AVERROR(ENOSYS))
+            if (ret >= 0)
                 return ret;
+            else if (ret != AVERROR(ENOSYS))
+                goto fail;
         }
     }
 
     return AVERROR(ENOSYS);
+
+fail:
+    // if the caller provided dst frames context, it should be preserved
+    // by this function
+    av_assert0(orig_dst_frames == NULL ||
+               orig_dst_frames == dst->hw_frames_ctx);
+
+    // preserve user-provided dst frame fields, but clean
+    // anything we might have set
+    dst->hw_frames_ctx = NULL;
+    av_frame_unref(dst);
+
+    dst->hw_frames_ctx = orig_dst_frames;
+    dst->format        = orig_dst_fmt;
+
+    return ret;
 }
 
 int av_hwframe_ctx_create_derived(AVBufferRef **derived_frame_ctx,

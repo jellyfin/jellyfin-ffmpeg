@@ -25,9 +25,11 @@
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/timestamp.h"
+#include "libavcodec/codec_desc.h"
 #include "libavcodec/bsf.h"
 #include "avformat.h"
 #include "avio_internal.h"
+#include "demux.h"
 #include "internal.h"
 #include "url.h"
 
@@ -179,8 +181,9 @@ static int copy_stream_props(AVStream *st, AVStream *source_st)
             if (ret < 0)
                 return ret;
         }
-        memcpy(st->codecpar->extradata, source_st->codecpar->extradata,
-               source_st->codecpar->extradata_size);
+        if (source_st->codecpar->extradata_size)
+            memcpy(st->codecpar->extradata, source_st->codecpar->extradata,
+                   source_st->codecpar->extradata_size);
         return 0;
     }
     if ((ret = avcodec_parameters_copy(st->codecpar, source_st->codecpar)) < 0)
@@ -816,16 +819,6 @@ static int concat_read_packet(AVFormatContext *avf, AVPacket *pkt)
     return 0;
 }
 
-static void rescale_interval(AVRational tb_in, AVRational tb_out,
-                             int64_t *min_ts, int64_t *ts, int64_t *max_ts)
-{
-    *ts     = av_rescale_q    (*    ts, tb_in, tb_out);
-    *min_ts = av_rescale_q_rnd(*min_ts, tb_in, tb_out,
-                               AV_ROUND_UP   | AV_ROUND_PASS_MINMAX);
-    *max_ts = av_rescale_q_rnd(*max_ts, tb_in, tb_out,
-                               AV_ROUND_DOWN | AV_ROUND_PASS_MINMAX);
-}
-
 static int try_seek(AVFormatContext *avf, int stream,
                     int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
 {
@@ -838,8 +831,8 @@ static int try_seek(AVFormatContext *avf, int stream,
     if (stream >= 0) {
         if (stream >= cat->avf->nb_streams)
             return AVERROR(EIO);
-        rescale_interval(AV_TIME_BASE_Q, cat->avf->streams[stream]->time_base,
-                         &min_ts, &ts, &max_ts);
+        ff_rescale_interval(AV_TIME_BASE_Q, cat->avf->streams[stream]->time_base,
+                            &min_ts, &ts, &max_ts);
     }
     return avformat_seek_file(cat->avf, stream, min_ts, ts, max_ts, flags);
 }
@@ -853,8 +846,8 @@ static int real_seek(AVFormatContext *avf, int stream,
     if (stream >= 0) {
         if (stream >= avf->nb_streams)
             return AVERROR(EINVAL);
-        rescale_interval(avf->streams[stream]->time_base, AV_TIME_BASE_Q,
-                         &min_ts, &ts, &max_ts);
+        ff_rescale_interval(avf->streams[stream]->time_base, AV_TIME_BASE_Q,
+                            &min_ts, &ts, &max_ts);
     }
 
     left  = 0;

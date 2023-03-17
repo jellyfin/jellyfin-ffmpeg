@@ -110,9 +110,9 @@ static int sds_read_header(AVFormatContext *ctx)
     avio_skip(pb, 11);
 
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
-    st->codecpar->channels = 1;
+    st->codecpar->ch_layout.nb_channels = 1;
     st->codecpar->sample_rate = sample_period ? 1000000000 / sample_period : 16000;
-    st->duration = (avio_size(pb) - 21) / (127) * s->size / 4;
+    st->duration = av_rescale((avio_size(pb) - 21) / 127,  s->size, 4);
 
     avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
 

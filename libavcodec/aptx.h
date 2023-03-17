@@ -25,9 +25,7 @@
 
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
-#include "internal.h"
 #include "mathops.h"
-#include "audio_frame_queue.h"
 
 
 enum channels {
@@ -96,7 +94,6 @@ typedef struct {
     int block_size;
     int32_t sync_idx;
     Channel channels[NB_CHANNELS];
-    AudioFrameQueue afq;
 } AptXContext;
 
 typedef const struct {

@@ -32,7 +32,8 @@
 #include "libavutil/mem_internal.h"
 #include "libavutil/thread.h"
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "put_bits.h"
 #include "wmavoice_data.h"
@@ -319,18 +320,10 @@ static av_cold void wmavoice_init_static_data(void)
         10, 10, 10, 12, 12, 12,
         14, 14, 14, 14
     };
-    static const uint16_t codes[] = {
-          0x0000, 0x0001, 0x0002,        //              00/01/10
-          0x000c, 0x000d, 0x000e,        //           11+00/01/10
-          0x003c, 0x003d, 0x003e,        //         1111+00/01/10
-          0x00fc, 0x00fd, 0x00fe,        //       111111+00/01/10
-          0x03fc, 0x03fd, 0x03fe,        //     11111111+00/01/10
-          0x0ffc, 0x0ffd, 0x0ffe,        //   1111111111+00/01/10
-          0x3ffc, 0x3ffd, 0x3ffe, 0x3fff // 111111111111+xx
-    };
 
-    INIT_VLC_STATIC(&frame_type_vlc, VLC_NBITS, sizeof(bits),
-                    bits, 1, 1, codes, 2, 2, 132);
+    INIT_VLC_STATIC_FROM_LENGTHS(&frame_type_vlc, VLC_NBITS,
+                                 FF_ARRAY_ELEMS(bits), bits,
+                                 1, NULL, 0, 0, 0, 0, 132);
 }
 
 static av_cold void wmavoice_flush(AVCodecContext *ctx)
@@ -475,8 +468,8 @@ static av_cold int wmavoice_decode_init(AVCodecContext *ctx)
                                   2 * (s->block_conv_table[1] - 2 * s->min_pitch_val);
     s->block_pitch_nbits        = av_ceil_log2(s->block_pitch_range);
 
-    ctx->channels               = 1;
-    ctx->channel_layout         = AV_CH_LAYOUT_MONO;
+    av_channel_layout_uninit(&ctx->ch_layout);
+    ctx->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     ctx->sample_fmt             = AV_SAMPLE_FMT_FLT;
 
     return 0;
@@ -1902,11 +1895,13 @@ static void copy_bits(PutBitContext *pb,
  *
  * For more information about frames, see #synth_superframe().
  */
-static int wmavoice_decode_packet(AVCodecContext *ctx, void *data,
+static int wmavoice_decode_packet(AVCodecContext *ctx, AVFrame *frame,
                                   int *got_frame_ptr, AVPacket *avpkt)
 {
     WMAVoiceContext *s = ctx->priv_data;
     GetBitContext *gb = &s->gb;
+    const uint8_t *buf = avpkt->data;
+    uint8_t dummy[1];
     int size, res, pos;
 
     /* Packets are sometimes a multiple of ctx->block_align, with a packet
@@ -1915,7 +1910,10 @@ static int wmavoice_decode_packet(AVCodecContext *ctx, void *data,
      * in a single "muxer" packet, so we artificially emulate that by
      * capping the packet size at ctx->block_align. */
     for (size = avpkt->size; size > ctx->block_align; size -= ctx->block_align);
-    init_get_bits8(&s->gb, avpkt->data, size);
+    buf = size ? buf : dummy;
+    res = init_get_bits8(&s->gb, buf, size);
+    if (res < 0)
+        return res;
 
     /* size == ctx->block_align is used to indicate whether we are dealing with
      * a new packet or a packet of which we already read the packet header
@@ -1938,10 +1936,10 @@ static int wmavoice_decode_packet(AVCodecContext *ctx, void *data,
             if (cnt + s->spillover_nbits > avpkt->size * 8) {
                 s->spillover_nbits = avpkt->size * 8 - cnt;
             }
-            copy_bits(&s->pb, avpkt->data, size, gb, s->spillover_nbits);
+            copy_bits(&s->pb, buf, size, gb, s->spillover_nbits);
             flush_put_bits(&s->pb);
             s->sframe_cache_size += s->spillover_nbits;
-            if ((res = synth_superframe(ctx, data, got_frame_ptr)) == 0 &&
+            if ((res = synth_superframe(ctx, frame, got_frame_ptr)) == 0 &&
                 *got_frame_ptr) {
                 cnt += s->spillover_nbits;
                 s->skip_bits_next = cnt & 7;
@@ -1964,7 +1962,7 @@ static int wmavoice_decode_packet(AVCodecContext *ctx, void *data,
         *got_frame_ptr = 0;
         return size;
     } else if (s->nb_superframes > 0) {
-        if ((res = synth_superframe(ctx, data, got_frame_ptr)) < 0) {
+        if ((res = synth_superframe(ctx, frame, got_frame_ptr)) < 0) {
             return res;
         } else if (*got_frame_ptr) {
             int cnt = get_bits_count(gb);
@@ -1975,7 +1973,7 @@ static int wmavoice_decode_packet(AVCodecContext *ctx, void *data,
     } else if ((s->sframe_cache_size = pos) > 0) {
         /* ... cache it for spillover in next packet */
         init_put_bits(&s->pb, s->sframe_cache, SFRAME_CACHE_MAXSIZE);
-        copy_bits(&s->pb, avpkt->data, size, gb, s->sframe_cache_size);
+        copy_bits(&s->pb, buf, size, gb, s->sframe_cache_size);
         // FIXME bad - just copy bytes as whole and add use the
         // skip_bits_next field
     }
@@ -1997,16 +1995,16 @@ static av_cold int wmavoice_decode_end(AVCodecContext *ctx)
     return 0;
 }
 
-const AVCodec ff_wmavoice_decoder = {
-    .name             = "wmavoice",
-    .long_name        = NULL_IF_CONFIG_SMALL("Windows Media Audio Voice"),
-    .type             = AVMEDIA_TYPE_AUDIO,
-    .id               = AV_CODEC_ID_WMAVOICE,
+const FFCodec ff_wmavoice_decoder = {
+    .p.name           = "wmavoice",
+    CODEC_LONG_NAME("Windows Media Audio Voice"),
+    .p.type           = AVMEDIA_TYPE_AUDIO,
+    .p.id             = AV_CODEC_ID_WMAVOICE,
     .priv_data_size   = sizeof(WMAVoiceContext),
     .init             = wmavoice_decode_init,
     .close            = wmavoice_decode_end,
-    .decode           = wmavoice_decode_packet,
-    .capabilities     = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    FF_CODEC_DECODE_CB(wmavoice_decode_packet),
+    .p.capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
     .flush            = wmavoice_flush,
 };

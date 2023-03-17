@@ -21,6 +21,7 @@
 
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 static int aix_probe(const AVProbeData *p)
@@ -64,7 +65,7 @@ static int aix_read_header(AVFormatContext *s)
         st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
         st->codecpar->codec_id    = AV_CODEC_ID_ADPCM_ADX;
         st->codecpar->sample_rate = avio_rb32(s->pb);
-        st->codecpar->channels    = avio_r8(s->pb);
+        st->codecpar->ch_layout.nb_channels = avio_r8(s->pb);
         avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
         avio_skip(s->pb, 3);
     }

@@ -46,6 +46,7 @@ typedef struct PeriodItem {
     int size;
     int type;
     double max_peak;
+    double rms_sum;
 } PeriodItem;
 
 typedef struct ChannelContext {
@@ -54,6 +55,7 @@ typedef struct ChannelContext {
     PeriodItem pi[MAX_ITEMS];
     double gain_state;
     double pi_max_peak;
+    double pi_rms_sum;
     int pi_start;
     int pi_end;
     int pi_size;
@@ -62,13 +64,15 @@ typedef struct ChannelContext {
 typedef struct SpeechNormalizerContext {
     const AVClass *class;
 
+    double rms_value;
     double peak_value;
     double max_expansion;
     double max_compression;
     double threshold_value;
     double raise_amount;
     double fall_amount;
-    uint64_t channels;
+    char *ch_layout_str;
+    AVChannelLayout ch_layout;
     int invert;
     int link;
 
@@ -103,12 +107,14 @@ static const AVOption speechnorm_options[] = {
     { "r",     "set the expansion raising amount", OFFSET(raise_amount), AV_OPT_TYPE_DOUBLE, {.dbl=0.001}, 0.0, 1.0, FLAGS },
     { "fall", "set the compression raising amount", OFFSET(fall_amount), AV_OPT_TYPE_DOUBLE, {.dbl=0.001}, 0.0, 1.0, FLAGS },
     { "f",    "set the compression raising amount", OFFSET(fall_amount), AV_OPT_TYPE_DOUBLE, {.dbl=0.001}, 0.0, 1.0, FLAGS },
-    { "channels", "set channels to filter", OFFSET(channels), AV_OPT_TYPE_CHANNEL_LAYOUT, {.i64=-1}, INT64_MIN, INT64_MAX, FLAGS },
-    { "h",        "set channels to filter", OFFSET(channels), AV_OPT_TYPE_CHANNEL_LAYOUT, {.i64=-1}, INT64_MIN, INT64_MAX, FLAGS },
+    { "channels", "set channels to filter", OFFSET(ch_layout_str), AV_OPT_TYPE_STRING, {.str="all"}, 0, 0, FLAGS },
+    { "h",        "set channels to filter", OFFSET(ch_layout_str), AV_OPT_TYPE_STRING, {.str="all"}, 0, 0, FLAGS },
     { "invert", "set inverted filtering", OFFSET(invert), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "i",      "set inverted filtering", OFFSET(invert), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "link", "set linked channels filtering", OFFSET(link), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "l",    "set linked channels filtering", OFFSET(link), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
+    { "rms", "set the RMS value", OFFSET(rms_value), AV_OPT_TYPE_DOUBLE, {.dbl=0.0}, 0.0, 1.0, FLAGS },
+    { "m",   "set the RMS value", OFFSET(rms_value), AV_OPT_TYPE_DOUBLE, {.dbl=0.0}, 0.0, 1.0, FLAGS },
     { NULL }
 };
 
@@ -128,7 +134,7 @@ static int get_pi_samples(PeriodItem *pi, int start, int end, int remain)
             start = 0;
         if (pi[start].type == 0)
             break;
-        av_assert0(pi[start].size > 0);
+        av_assert1(pi[start].size > 0);
         sum += pi[start].size;
     }
 
@@ -142,7 +148,7 @@ static int available_samples(AVFilterContext *ctx)
     int min_pi_nb_samples;
 
     min_pi_nb_samples = get_pi_samples(s->cc[0].pi, s->cc[0].pi_start, s->cc[0].pi_end, s->cc[0].pi_size);
-    for (int ch = 1; ch < inlink->channels && min_pi_nb_samples > 0; ch++) {
+    for (int ch = 1; ch < inlink->ch_layout.nb_channels && min_pi_nb_samples > 0; ch++) {
         ChannelContext *cc = &s->cc[ch];
 
         min_pi_nb_samples = FFMIN(min_pi_nb_samples, get_pi_samples(cc->pi, cc->pi_start, cc->pi_end, cc->pi_size));
@@ -156,16 +162,20 @@ static void consume_pi(ChannelContext *cc, int nb_samples)
     if (cc->pi_size >= nb_samples) {
         cc->pi_size -= nb_samples;
     } else {
-        av_assert0(0);
+        av_assert1(0);
     }
 }
 
-static double next_gain(AVFilterContext *ctx, double pi_max_peak, int bypass, double state)
+static double next_gain(AVFilterContext *ctx, double pi_max_peak, int bypass, double state,
+                        double pi_rms_sum, int pi_size)
 {
     SpeechNormalizerContext *s = ctx->priv;
-    const double expansion = FFMIN(s->max_expansion, s->peak_value / pi_max_peak);
     const double compression = 1. / s->max_compression;
     const int type = s->invert ? pi_max_peak <= s->threshold_value : pi_max_peak >= s->threshold_value;
+    double expansion = FFMIN(s->max_expansion, s->peak_value / pi_max_peak);
+
+    if (s->rms_value > DBL_EPSILON)
+        expansion = FFMIN(expansion, s->rms_value / sqrt(pi_rms_sum / pi_size));
 
     if (bypass) {
         return 1.;
@@ -178,21 +188,23 @@ static double next_gain(AVFilterContext *ctx, double pi_max_peak, int bypass, do
 
 static void next_pi(AVFilterContext *ctx, ChannelContext *cc, int bypass)
 {
-    av_assert0(cc->pi_size >= 0);
+    av_assert1(cc->pi_size >= 0);
     if (cc->pi_size == 0) {
         SpeechNormalizerContext *s = ctx->priv;
         int start = cc->pi_start;
 
-        av_assert0(cc->pi[start].size > 0);
+        av_assert1(cc->pi[start].size > 0);
         av_assert0(cc->pi[start].type > 0 || s->eof);
         cc->pi_size = cc->pi[start].size;
+        cc->pi_rms_sum = cc->pi[start].rms_sum;
         cc->pi_max_peak = cc->pi[start].max_peak;
-        av_assert0(cc->pi_start != cc->pi_end || s->eof);
+        av_assert1(cc->pi_start != cc->pi_end || s->eof);
         start++;
         if (start >= MAX_ITEMS)
             start = 0;
         cc->pi_start = start;
-        cc->gain_state = next_gain(ctx, cc->pi_max_peak, bypass, cc->gain_state);
+        cc->gain_state = next_gain(ctx, cc->pi_max_peak, bypass, cc->gain_state,
+                                   cc->pi_rms_sum, cc->pi_size);
     }
 }
 
@@ -208,7 +220,8 @@ static double min_gain(AVFilterContext *ctx, ChannelContext *cc, int max_size)
     while (size <= max_size) {
         if (idx == cc->pi_end)
             break;
-        gain_state = next_gain(ctx, cc->pi[idx].max_peak, 0, gain_state);
+        gain_state = next_gain(ctx, cc->pi[idx].max_peak, 0, gain_state,
+                               cc->pi[idx].rms_sum, cc->pi[idx].size);
         min_gain = FFMIN(min_gain, gain_state);
         size += cc->pi[idx].size;
         idx++;
@@ -219,58 +232,80 @@ static double min_gain(AVFilterContext *ctx, ChannelContext *cc, int max_size)
     return min_gain;
 }
 
-#define ANALYZE_CHANNEL(name, ptype, zero, min_peak)                                       \
-static void analyze_channel_## name (AVFilterContext *ctx, ChannelContext *cc,             \
-                                     const uint8_t *srcp, int nb_samples)                  \
-{                                                                                          \
-    SpeechNormalizerContext *s = ctx->priv;                                                \
-    const ptype *src = (const ptype *)srcp;                                                \
-    int n = 0;                                                                             \
-                                                                                           \
-    if (cc->state < 0)                                                                     \
-        cc->state = src[0] >= zero;                                                        \
-                                                                                           \
-    while (n < nb_samples) {                                                               \
-        if ((cc->state != (src[n] >= zero)) ||                                             \
-            (cc->pi[cc->pi_end].size > s->max_period)) {                                   \
-            ptype max_peak = cc->pi[cc->pi_end].max_peak;                                  \
-            int state = cc->state;                                                         \
-            cc->state = src[n] >= zero;                                                    \
-            av_assert0(cc->pi[cc->pi_end].size > 0);                                       \
-            if (max_peak >= min_peak ||                                                    \
-                cc->pi[cc->pi_end].size > s->max_period) {                                 \
-                cc->pi[cc->pi_end].type = 1;                                               \
-                cc->pi_end++;                                                              \
-                if (cc->pi_end >= MAX_ITEMS)                                               \
-                    cc->pi_end = 0;                                                        \
-                if (cc->state != state)                                                    \
-                    cc->pi[cc->pi_end].max_peak = DBL_MIN;                                 \
-                else                                                                       \
-                    cc->pi[cc->pi_end].max_peak = max_peak;                                \
-                cc->pi[cc->pi_end].type = 0;                                               \
-                cc->pi[cc->pi_end].size = 0;                                               \
-                av_assert0(cc->pi_end != cc->pi_start);                                    \
-            }                                                                              \
-        }                                                                                  \
-                                                                                           \
-        if (cc->state) {                                                                   \
-            while (src[n] >= zero) {                                                       \
-                cc->pi[cc->pi_end].max_peak = FFMAX(cc->pi[cc->pi_end].max_peak,  src[n]); \
-                cc->pi[cc->pi_end].size++;                                                 \
-                n++;                                                                       \
-                if (n >= nb_samples)                                                       \
-                    break;                                                                 \
-            }                                                                              \
-        } else {                                                                           \
-            while (src[n] < zero) {                                                        \
-                cc->pi[cc->pi_end].max_peak = FFMAX(cc->pi[cc->pi_end].max_peak, -src[n]); \
-                cc->pi[cc->pi_end].size++;                                                 \
-                n++;                                                                       \
-                if (n >= nb_samples)                                                       \
-                    break;                                                                 \
-            }                                                                              \
-        }                                                                                  \
-    }                                                                                      \
+#define ANALYZE_CHANNEL(name, ptype, zero, min_peak)                            \
+static void analyze_channel_## name (AVFilterContext *ctx, ChannelContext *cc,  \
+                                     const uint8_t *srcp, int nb_samples)       \
+{                                                                               \
+    SpeechNormalizerContext *s = ctx->priv;                                     \
+    const ptype *src = (const ptype *)srcp;                                     \
+    const int max_period = s->max_period;                                       \
+    PeriodItem *pi = (PeriodItem *)&cc->pi;                                     \
+    int pi_end = cc->pi_end;                                                    \
+    int n = 0;                                                                  \
+                                                                                \
+    if (cc->state < 0)                                                          \
+        cc->state = src[0] >= zero;                                             \
+                                                                                \
+    while (n < nb_samples) {                                                    \
+        ptype new_max_peak;                                                     \
+        ptype new_rms_sum;                                                      \
+        int new_size;                                                           \
+                                                                                \
+        if ((cc->state != (src[n] >= zero)) ||                                  \
+            (pi[pi_end].size > max_period)) {                                   \
+            ptype max_peak = pi[pi_end].max_peak;                               \
+            ptype rms_sum = pi[pi_end].rms_sum;                                 \
+            int state = cc->state;                                              \
+                                                                                \
+            cc->state = src[n] >= zero;                                         \
+            av_assert1(pi[pi_end].size > 0);                                    \
+            if (max_peak >= min_peak ||                                         \
+                pi[pi_end].size > max_period) {                                 \
+                pi[pi_end].type = 1;                                            \
+                pi_end++;                                                       \
+                if (pi_end >= MAX_ITEMS)                                        \
+                    pi_end = 0;                                                 \
+                if (cc->state != state) {                                       \
+                    pi[pi_end].max_peak = DBL_MIN;                              \
+                    pi[pi_end].rms_sum = 0.0;                                   \
+                } else {                                                        \
+                    pi[pi_end].max_peak = max_peak;                             \
+                    pi[pi_end].rms_sum = rms_sum;                               \
+                }                                                               \
+                pi[pi_end].type = 0;                                            \
+                pi[pi_end].size = 0;                                            \
+                av_assert1(pi_end != cc->pi_start);                             \
+            }                                                                   \
+        }                                                                       \
+                                                                                \
+        new_max_peak = pi[pi_end].max_peak;                                     \
+        new_rms_sum = pi[pi_end].rms_sum;                                       \
+        new_size = pi[pi_end].size;                                             \
+        if (cc->state) {                                                        \
+            while (src[n] >= zero) {                                            \
+                new_max_peak = FFMAX(new_max_peak,  src[n]);                    \
+                new_rms_sum += src[n] * src[n];                                 \
+                new_size++;                                                     \
+                n++;                                                            \
+                if (n >= nb_samples)                                            \
+                    break;                                                      \
+            }                                                                   \
+        } else {                                                                \
+            while (src[n] < zero) {                                             \
+                new_max_peak = FFMAX(new_max_peak, -src[n]);                    \
+                new_rms_sum += src[n] * src[n];                                 \
+                new_size++;                                                     \
+                n++;                                                            \
+                if (n >= nb_samples)                                            \
+                    break;                                                      \
+            }                                                                   \
+        }                                                                       \
+                                                                                \
+        pi[pi_end].max_peak = new_max_peak;                                     \
+        pi[pi_end].rms_sum = new_rms_sum;                                       \
+        pi[pi_end].size = new_size;                                             \
+    }                                                                           \
+    cc->pi_end = pi_end;                                                        \
 }
 
 ANALYZE_CHANNEL(dbl, double, 0.0, MIN_PEAK)
@@ -283,11 +318,12 @@ static void filter_channels_## name (AVFilterContext *ctx,                      
     SpeechNormalizerContext *s = ctx->priv;                                     \
     AVFilterLink *inlink = ctx->inputs[0];                                      \
                                                                                 \
-    for (int ch = 0; ch < inlink->channels; ch++) {                             \
+    for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {                \
         ChannelContext *cc = &s->cc[ch];                                        \
         const ptype *src = (const ptype *)in->extended_data[ch];                \
         ptype *dst = (ptype *)out->extended_data[ch];                           \
-        const int bypass = !(av_channel_layout_extract_channel(inlink->channel_layout, ch) & s->channels); \
+        enum AVChannel channel = av_channel_layout_channel_from_index(&inlink->ch_layout, ch); \
+        const int bypass = av_channel_layout_index_from_channel(&s->ch_layout, channel) < 0; \
         int n = 0;                                                              \
                                                                                 \
         while (n < nb_samples) {                                                \
@@ -296,7 +332,7 @@ static void filter_channels_## name (AVFilterContext *ctx,                      
                                                                                 \
             next_pi(ctx, cc, bypass);                                           \
             size = FFMIN(nb_samples - n, cc->pi_size);                          \
-            av_assert0(size > 0);                                               \
+            av_assert1(size > 0);                                               \
             gain = cc->gain_state;                                              \
             consume_pi(cc, size);                                               \
             for (int i = n; !ctx->is_disabled && i < n + size; i++)             \
@@ -330,29 +366,28 @@ static void filter_link_channels_## name (AVFilterContext *ctx,                 
                                                                                 \
     while (n < nb_samples) {                                                    \
         int min_size = nb_samples - n;                                          \
-        int max_size = 1;                                                       \
         ptype gain = s->max_expansion;                                          \
                                                                                 \
-        for (int ch = 0; ch < inlink->channels; ch++) {                         \
+        for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {            \
             ChannelContext *cc = &s->cc[ch];                                    \
                                                                                 \
-            cc->bypass = !(av_channel_layout_extract_channel(inlink->channel_layout, ch) & s->channels); \
+            enum AVChannel channel = av_channel_layout_channel_from_index(&inlink->ch_layout, ch); \
+            cc->bypass = av_channel_layout_index_from_channel(&s->ch_layout, channel) < 0; \
                                                                                 \
             next_pi(ctx, cc, cc->bypass);                                       \
             min_size = FFMIN(min_size, cc->pi_size);                            \
-            max_size = FFMAX(max_size, cc->pi_size);                            \
         }                                                                       \
                                                                                 \
-        av_assert0(min_size > 0);                                               \
-        for (int ch = 0; ch < inlink->channels; ch++) {                         \
+        av_assert1(min_size > 0);                                               \
+        for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {            \
             ChannelContext *cc = &s->cc[ch];                                    \
                                                                                 \
             if (cc->bypass)                                                     \
                 continue;                                                       \
-            gain = FFMIN(gain, min_gain(ctx, cc, max_size));                    \
+            gain = FFMIN(gain, min_gain(ctx, cc, min_size));                    \
         }                                                                       \
                                                                                 \
-        for (int ch = 0; ch < inlink->channels; ch++) {                         \
+        for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {            \
             ChannelContext *cc = &s->cc[ch];                                    \
             const ptype *src = (const ptype *)in->extended_data[ch];            \
             ptype *dst = (ptype *)out->extended_data[ch];                       \
@@ -428,7 +463,7 @@ static int filter_frame(AVFilterContext *ctx)
 
         ff_bufqueue_add(ctx, &s->queue, in);
 
-        for (int ch = 0; ch < inlink->channels; ch++) {
+        for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
             ChannelContext *cc = &s->cc[ch];
 
             s->analyze_channel(ctx, cc, in->extended_data[ch], in->nb_samples);
@@ -445,6 +480,13 @@ static int activate(AVFilterContext *ctx)
     SpeechNormalizerContext *s = ctx->priv;
     int ret, status;
     int64_t pts;
+
+    ret = av_channel_layout_copy(&s->ch_layout, &inlink->ch_layout);
+    if (ret < 0)
+        return ret;
+    if (strcmp(s->ch_layout_str, "all"))
+        av_channel_layout_from_string(&s->ch_layout,
+                                      s->ch_layout_str);
 
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
@@ -486,15 +528,15 @@ static int config_input(AVFilterLink *inlink)
     s->max_period = inlink->sample_rate / 10;
 
     s->prev_gain = 1.;
-    s->cc = av_calloc(inlink->channels, sizeof(*s->cc));
+    s->cc = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->cc));
     if (!s->cc)
         return AVERROR(ENOMEM);
 
-    for (int ch = 0; ch < inlink->channels; ch++) {
+    for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
         ChannelContext *cc = &s->cc[ch];
 
         cc->state = -1;
-        cc->gain_state = 1.;
+        cc->gain_state = s->max_expansion;
     }
 
     switch (inlink->format) {
@@ -509,7 +551,7 @@ static int config_input(AVFilterLink *inlink)
         s->filter_channels[1] = filter_link_channels_dbl;
         break;
     default:
-        av_assert0(0);
+        av_assert1(0);
     }
 
     return 0;
@@ -536,6 +578,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     SpeechNormalizerContext *s = ctx->priv;
 
     ff_bufqueue_discard_all(&s->queue);
+    av_channel_layout_uninit(&s->ch_layout);
     av_freep(&s->cc);
 }
 

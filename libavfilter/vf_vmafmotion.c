@@ -24,6 +24,7 @@
  * Calculate VMAF Motion score.
  */
 
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
@@ -312,7 +313,7 @@ static av_cold int init(AVFilterContext *ctx)
         if (!strcmp(s->stats_file_str, "-")) {
             s->stats_file = stdout;
         } else {
-            s->stats_file = fopen(s->stats_file_str, "w");
+            s->stats_file = avpriv_fopen_utf8(s->stats_file_str, "w");
             if (!s->stats_file) {
                 int err = AVERROR(errno);
                 char buf[128];

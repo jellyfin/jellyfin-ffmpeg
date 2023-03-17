@@ -2095,6 +2095,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
         c->convert_unscaled = rgbToPlanarRgbWrapper;
 
     if (isBayer(srcFormat)) {
+        c->dst_slice_align = 2;
         if (dstFormat == AV_PIX_FMT_RGB24)
             c->convert_unscaled = bayer_to_rgb24_wrapper;
         else if (dstFormat == AV_PIX_FMT_RGB48)
@@ -2222,12 +2223,13 @@ void ff_get_unscaled_swscale(SwsContext *c)
             c->convert_unscaled = planarCopyWrapper;
     }
 
-    if (ARCH_PPC)
-        ff_get_unscaled_swscale_ppc(c);
-     if (ARCH_ARM)
-         ff_get_unscaled_swscale_arm(c);
-    if (ARCH_AARCH64)
-        ff_get_unscaled_swscale_aarch64(c);
+#if ARCH_PPC
+    ff_get_unscaled_swscale_ppc(c);
+#elif ARCH_ARM
+    ff_get_unscaled_swscale_arm(c);
+#elif ARCH_AARCH64
+    ff_get_unscaled_swscale_aarch64(c);
+#endif
 }
 
 /* Convert the palette to the same packed 32-bit format as the palette */

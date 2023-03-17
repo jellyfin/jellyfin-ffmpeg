@@ -33,8 +33,8 @@
 #include "libavutil/intreadwrite.h"
 #include "libavcodec/bytestream.h"
 #include "avformat.h"
-#include "internal.h"
 #include "avio_internal.h"
+#include "mux.h"
 
 typedef struct FILMOutputContext {
     AVIOContext *header;
@@ -236,7 +236,7 @@ static int film_write_header(AVFormatContext *format_context)
         AVStream *audio = format_context->streams[film->audio_index];
         int audio_codec = get_audio_codec_id(audio->codecpar->codec_id);
 
-        bytestream_put_byte(&ptr, audio->codecpar->channels); /* Audio channels */
+        bytestream_put_byte(&ptr, audio->codecpar->ch_layout.nb_channels); /* Audio channels */
         bytestream_put_byte(&ptr, audio->codecpar->bits_per_coded_sample); /* Audio bit depth */
         bytestream_put_byte(&ptr, audio_codec); /* Compression - 0 is PCM, 2 is ADX */
         bytestream_put_be16(&ptr, audio->codecpar->sample_rate); /* Audio sampling rate */
@@ -280,13 +280,13 @@ static void film_deinit(AVFormatContext *format_context)
     ffio_free_dyn_buf(&film->header);
 }
 
-const AVOutputFormat ff_segafilm_muxer = {
-    .name           = "film_cpk",
-    .long_name      = NULL_IF_CONFIG_SMALL("Sega FILM / CPK"),
-    .extensions     = "cpk",
+const FFOutputFormat ff_segafilm_muxer = {
+    .p.name         = "film_cpk",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Sega FILM / CPK"),
+    .p.extensions   = "cpk",
     .priv_data_size = sizeof(FILMOutputContext),
-    .audio_codec    = AV_CODEC_ID_PCM_S16BE_PLANAR,
-    .video_codec    = AV_CODEC_ID_CINEPAK,
+    .p.audio_codec  = AV_CODEC_ID_PCM_S16BE_PLANAR,
+    .p.video_codec  = AV_CODEC_ID_CINEPAK,
     .init           = film_init,
     .write_trailer  = film_write_header,
     .write_packet   = film_write_packet,

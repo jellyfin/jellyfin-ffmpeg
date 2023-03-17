@@ -21,15 +21,14 @@
 #ifndef AVFILTER_AFIR_H
 #define AVFILTER_AFIR_H
 
-#include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
-#include "libavutil/opt.h"
-#include "libavcodec/avfft.h"
-
-#include "audio.h"
+#include "libavutil/frame.h"
+#include "libavutil/rational.h"
+#include "libavutil/tx.h"
 #include "avfilter.h"
-#include "formats.h"
-#include "internal.h"
+#include "af_afirdsp.h"
+
+#define MAX_IR_STREAMS 32
 
 typedef struct AudioFIRSegment {
     int nb_partitions;
@@ -40,23 +39,23 @@ typedef struct AudioFIRSegment {
     int input_size;
     int input_offset;
 
+    int *loading;
     int *output_offset;
     int *part_index;
 
-    AVFrame *sum;
-    AVFrame *block;
+    AVFrame *sumin;
+    AVFrame *sumout;
+    AVFrame *blockout;
+    AVFrame *tempin;
+    AVFrame *tempout;
     AVFrame *buffer;
-    AVFrame *coeff;
+    AVFrame *coeff[MAX_IR_STREAMS];
     AVFrame *input;
     AVFrame *output;
 
-    RDFTContext **rdft, **irdft;
+    AVTXContext **ctx, **tx, **itx;
+    av_tx_fn ctx_fn, tx_fn, itx_fn;
 } AudioFIRSegment;
-
-typedef struct AudioFIRDSPContext {
-    void (*fcmul_add)(float *sum, const float *t, const float *c,
-                      ptrdiff_t len);
-} AudioFIRDSPContext;
 
 typedef struct AudioFIRContext {
     const AVClass *class;
@@ -75,32 +74,29 @@ typedef struct AudioFIRContext {
     int minp;
     int maxp;
     int nb_irs;
+    int prev_selir;
     int selir;
+    int precision;
+    int format;
 
-    float gain;
-
-    int eof_coeffs[32];
-    int have_coeffs;
-    int nb_taps;
+    int eof_coeffs[MAX_IR_STREAMS];
+    int have_coeffs[MAX_IR_STREAMS];
+    int nb_taps[MAX_IR_STREAMS];
     int nb_channels;
-    int nb_coef_channels;
     int one2many;
 
     AudioFIRSegment seg[1024];
     int nb_segments;
 
     AVFrame *in;
-    AVFrame *ir[32];
+    AVFrame *ir[MAX_IR_STREAMS];
+    AVFrame *norm_ir[MAX_IR_STREAMS];
     AVFrame *video;
     int min_part_size;
     int64_t pts;
 
     AudioFIRDSPContext afirdsp;
     AVFloatDSPContext *fdsp;
-
 } AudioFIRContext;
-
-void ff_afir_init(AudioFIRDSPContext *s);
-void ff_afir_init_x86(AudioFIRDSPContext *s);
 
 #endif /* AVFILTER_AFIR_H */

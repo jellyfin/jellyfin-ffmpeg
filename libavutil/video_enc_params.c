@@ -16,12 +16,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "buffer.h"
-#include "common.h"
 #include "frame.h"
 #include "mem.h"
 #include "video_enc_params.h"
@@ -29,11 +27,11 @@
 AVVideoEncParams *av_video_enc_params_alloc(enum AVVideoEncParamsType type,
                                             unsigned int nb_blocks, size_t *out_size)
 {
-    const size_t blocks_offset = offsetof(
-        struct {
-            AVVideoEncParams   p;
-            AVVideoBlockParams b;
-        }, b);
+    struct TestStruct {
+        AVVideoEncParams   p;
+        AVVideoBlockParams b;
+    };
+    const size_t blocks_offset = offsetof(struct TestStruct, b);
     size_t size = blocks_offset;
     AVVideoEncParams *par;
 

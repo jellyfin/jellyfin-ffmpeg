@@ -48,8 +48,9 @@
 
 #include "avformat.h"
 #include "avio_internal.h"
+#include "mux.h"
 #include "spdif.h"
-#include "libavcodec/ac3.h"
+#include "libavcodec/ac3defs.h"
 #include "libavcodec/adts_parser.h"
 #include "libavcodec/dca.h"
 #include "libavcodec/dca_syncwords.h"
@@ -63,7 +64,7 @@ typedef struct IEC61937Context {
     uint8_t *buffer;                ///< allocated buffer, used for swap bytes
     int buffer_size;                ///< size of allocated buffer
 
-    uint8_t *out_buf;               ///< pointer to the outgoing data before byte-swapping
+    const uint8_t *out_buf;         ///< pointer to the outgoing data before byte-swapping
     int out_bytes;                  ///< amount of outgoing bytes
 
     int use_preamble;               ///< preamble enabled (disabled for exactly pre-padded DTS)
@@ -410,8 +411,8 @@ static const uint8_t mat_end_code[16] = {
 
 static const struct {
     unsigned int pos;
-    const uint8_t *code;
     unsigned int len;
+    const uint8_t *code;
 } mat_codes[] = {
     MAT_CODE(0, mat_start_code),
     MAT_CODE(30708, mat_middle_code),
@@ -657,7 +658,7 @@ static int spdif_write_packet(struct AVFormatContext *s, AVPacket *pkt)
         av_fast_malloc(&ctx->buffer, &ctx->buffer_size, ctx->out_bytes + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!ctx->buffer)
             return AVERROR(ENOMEM);
-        ff_spdif_bswap_buf16((uint16_t *)ctx->buffer, (uint16_t *)ctx->out_buf, ctx->out_bytes >> 1);
+        ff_spdif_bswap_buf16((uint16_t *)ctx->buffer, (const uint16_t *)ctx->out_buf, ctx->out_bytes >> 1);
         avio_write(s->pb, ctx->buffer, ctx->out_bytes & ~1);
     }
 
@@ -673,16 +674,16 @@ static int spdif_write_packet(struct AVFormatContext *s, AVPacket *pkt)
     return 0;
 }
 
-const AVOutputFormat ff_spdif_muxer = {
-    .name              = "spdif",
-    .long_name         = NULL_IF_CONFIG_SMALL("IEC 61937 (used on S/PDIF - IEC958)"),
-    .extensions        = "spdif",
+const FFOutputFormat ff_spdif_muxer = {
+    .p.name            = "spdif",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("IEC 61937 (used on S/PDIF - IEC958)"),
+    .p.extensions      = "spdif",
     .priv_data_size    = sizeof(IEC61937Context),
-    .audio_codec       = AV_CODEC_ID_AC3,
-    .video_codec       = AV_CODEC_ID_NONE,
+    .p.audio_codec     = AV_CODEC_ID_AC3,
+    .p.video_codec     = AV_CODEC_ID_NONE,
     .write_header      = spdif_write_header,
     .write_packet      = spdif_write_packet,
     .deinit            = spdif_deinit,
-    .flags             = AVFMT_NOTIMESTAMPS,
-    .priv_class        = &spdif_class,
+    .p.flags           = AVFMT_NOTIMESTAMPS,
+    .p.priv_class      = &spdif_class,
 };

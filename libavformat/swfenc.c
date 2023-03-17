@@ -20,11 +20,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavcodec/put_bits.h"
 #include "libavutil/avassert.h"
 #include "libavutil/fifo.h"
 #include "avformat.h"
 #include "flv.h"
+#include "mux.h"
 #include "swf.h"
 
 #define AUDIO_FIFO_SIZE 65536
@@ -38,7 +41,7 @@ typedef struct SWFEncContext {
     int swf_frame_number;
     int video_frame_number;
     int tag;
-    AVFifoBuffer *audio_fifo;
+    AVFifo *audio_fifo;
     AVCodecParameters *audio_par, *video_par;
     AVStream *video_st;
 } SWFEncContext;
@@ -211,7 +214,7 @@ static int swf_write_header(AVFormatContext *s)
             }
             if (par->codec_id == AV_CODEC_ID_MP3) {
                 swf->audio_par = par;
-                swf->audio_fifo= av_fifo_alloc(AUDIO_FIFO_SIZE);
+                swf->audio_fifo = av_fifo_alloc2(AUDIO_FIFO_SIZE, 1, 0);
                 if (!swf->audio_fifo)
                     return AVERROR(ENOMEM);
             } else {
@@ -348,7 +351,7 @@ static int swf_write_header(AVFormatContext *s)
             return -1;
         }
         v |= 0x02; /* 16 bit playback */
-        if (swf->audio_par->channels == 2)
+        if (swf->audio_par->ch_layout.nb_channels == 2)
             v |= 0x01; /* stereo playback */
         avio_w8(s->pb, v);
         v |= 0x20; /* mp3 compressed */
@@ -359,6 +362,12 @@ static int swf_write_header(AVFormatContext *s)
         put_swf_end_tag(s);
     }
 
+    return 0;
+}
+
+static int fifo_avio_wrapper(void *opaque, void *buf, size_t *nb_elems)
+{
+    avio_write(opaque, buf, *nb_elems);
     return 0;
 }
 
@@ -454,12 +463,12 @@ static int swf_write_video(AVFormatContext *s,
     swf->swf_frame_number++;
 
     /* streaming sound always should be placed just before showframe tags */
-    if (swf->audio_par && av_fifo_size(swf->audio_fifo)) {
-        int frame_size = av_fifo_size(swf->audio_fifo);
+    if (swf->audio_par && av_fifo_can_read(swf->audio_fifo)) {
+        size_t frame_size = av_fifo_can_read(swf->audio_fifo);
         put_swf_tag(s, TAG_STREAMBLOCK | TAG_LONG);
         avio_wl16(pb, swf->sound_samples);
         avio_wl16(pb, 0); // seek samples
-        av_fifo_generic_read(swf->audio_fifo, pb, frame_size, (void*)avio_write);
+        av_fifo_read_to_cb(swf->audio_fifo, fifo_avio_wrapper, pb, &frame_size);
         put_swf_end_tag(s);
 
         /* update FIFO */
@@ -473,8 +482,8 @@ static int swf_write_video(AVFormatContext *s,
     return 0;
 }
 
-static int swf_write_audio(AVFormatContext *s,
-                           AVCodecParameters *par, uint8_t *buf, int size)
+static int swf_write_audio(AVFormatContext *s, AVCodecParameters *par,
+                           const uint8_t *buf, int size)
 {
     SWFEncContext *swf = s->priv_data;
 
@@ -482,12 +491,12 @@ static int swf_write_audio(AVFormatContext *s,
     if (swf->swf_frame_number == 16000)
         av_log(s, AV_LOG_INFO, "warning: Flash Player limit of 16000 frames reached\n");
 
-    if (av_fifo_size(swf->audio_fifo) + size > AUDIO_FIFO_SIZE) {
+    if (av_fifo_can_write(swf->audio_fifo) < size) {
         av_log(s, AV_LOG_ERROR, "audio fifo too small to mux audio essence\n");
         return -1;
     }
 
-    av_fifo_generic_write(swf->audio_fifo, buf, size, NULL);
+    av_fifo_write(swf->audio_fifo, buf, size);
     swf->sound_samples += av_get_audio_frame_duration2(par, size);
 
     /* if audio only stream make sure we add swf frames */
@@ -535,37 +544,37 @@ static void swf_deinit(AVFormatContext *s)
 {
     SWFEncContext *swf = s->priv_data;
 
-    av_fifo_freep(&swf->audio_fifo);
+    av_fifo_freep2(&swf->audio_fifo);
 }
 
 #if CONFIG_SWF_MUXER
-const AVOutputFormat ff_swf_muxer = {
-    .name              = "swf",
-    .long_name         = NULL_IF_CONFIG_SMALL("SWF (ShockWave Flash)"),
-    .mime_type         = "application/x-shockwave-flash",
-    .extensions        = "swf",
+const FFOutputFormat ff_swf_muxer = {
+    .p.name            = "swf",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("SWF (ShockWave Flash)"),
+    .p.mime_type       = "application/x-shockwave-flash",
+    .p.extensions      = "swf",
     .priv_data_size    = sizeof(SWFEncContext),
-    .audio_codec       = AV_CODEC_ID_MP3,
-    .video_codec       = AV_CODEC_ID_FLV1,
+    .p.audio_codec     = AV_CODEC_ID_MP3,
+    .p.video_codec     = AV_CODEC_ID_FLV1,
     .write_header      = swf_write_header,
     .write_packet      = swf_write_packet,
     .write_trailer     = swf_write_trailer,
     .deinit            = swf_deinit,
-    .flags             = AVFMT_TS_NONSTRICT,
+    .p.flags           = AVFMT_TS_NONSTRICT,
 };
 #endif
 #if CONFIG_AVM2_MUXER
-const AVOutputFormat ff_avm2_muxer = {
-    .name              = "avm2",
-    .long_name         = NULL_IF_CONFIG_SMALL("SWF (ShockWave Flash) (AVM2)"),
-    .mime_type         = "application/x-shockwave-flash",
+const FFOutputFormat ff_avm2_muxer = {
+    .p.name            = "avm2",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("SWF (ShockWave Flash) (AVM2)"),
+    .p.mime_type       = "application/x-shockwave-flash",
     .priv_data_size    = sizeof(SWFEncContext),
-    .audio_codec       = AV_CODEC_ID_MP3,
-    .video_codec       = AV_CODEC_ID_FLV1,
+    .p.audio_codec     = AV_CODEC_ID_MP3,
+    .p.video_codec     = AV_CODEC_ID_FLV1,
     .write_header      = swf_write_header,
     .write_packet      = swf_write_packet,
     .write_trailer     = swf_write_trailer,
     .deinit            = swf_deinit,
-    .flags             = AVFMT_TS_NONSTRICT,
+    .p.flags           = AVFMT_TS_NONSTRICT,
 };
 #endif

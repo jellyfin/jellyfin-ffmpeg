@@ -21,10 +21,11 @@
 
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
+#include "libavutil/version.h"
+#include "codec_internal.h"
 #include "dirac.h"
 #include "encode.h"
 #include "put_bits.h"
-#include "internal.h"
 #include "version.h"
 
 #include "vc2enc_dwt.h"
@@ -116,7 +117,7 @@ typedef struct SliceArgs {
 typedef struct TransformArgs {
     void *ctx;
     Plane *plane;
-    void *idata;
+    const void *idata;
     ptrdiff_t istride;
     int field;
     VC2TransformContext t;
@@ -232,7 +233,7 @@ static void encode_parse_info(VC2EncContext *s, enum DiracParseCodes pcode)
 
     align_put_bits(&s->pb);
 
-    cur_pos = put_bits_count(&s->pb) >> 3;
+    cur_pos = put_bytes_count(&s->pb, 0);
 
     /* Magic string */
     ff_put_string(&s->pb, "BBCD", 0);
@@ -745,7 +746,7 @@ static int encode_hq_slice(AVCodecContext *avctx, void *arg)
     /* Luma + 2 Chroma planes */
     for (p = 0; p < 3; p++) {
         int bytes_start, bytes_len, pad_s, pad_c;
-        bytes_start = put_bits_count(pb) >> 3;
+        bytes_start = put_bytes_count(pb, 0);
         put_bits(pb, 8, 0);
         for (level = 0; level < s->wavelet_depth; level++) {
             for (orientation = !!level; orientation < 4; orientation++) {
@@ -754,10 +755,10 @@ static int encode_hq_slice(AVCodecContext *avctx, void *arg)
                                quants[level][orientation]);
             }
         }
-        align_put_bits(pb);
-        bytes_len = (put_bits_count(pb) >> 3) - bytes_start - 1;
+        flush_put_bits(pb);
+        bytes_len = put_bytes_output(pb) - bytes_start - 1;
         if (p == 2) {
-            int len_diff = slice_bytes_max - (put_bits_count(pb) >> 3);
+            int len_diff = slice_bytes_max - put_bytes_output(pb);
             pad_s = FFALIGN((bytes_len + len_diff), s->size_scaler)/s->size_scaler;
             pad_c = (pad_s*s->size_scaler) - bytes_len;
         } else {
@@ -765,7 +766,6 @@ static int encode_hq_slice(AVCodecContext *avctx, void *arg)
             pad_c = (pad_s*s->size_scaler) - bytes_len;
         }
         pb->buf[bytes_start] = pad_s;
-        flush_put_bits(pb);
         /* vc2-reference uses that padding that decodes to '0' coeffs */
         memset(put_bits_ptr(pb), 0xFF, pad_c);
         skip_put_bytes(pb, pad_c);
@@ -1135,7 +1135,7 @@ static av_cold int vc2_encode_init(AVCodecContext *avctx)
         p->coef_stride = FFALIGN(p->dwt_width, 32);
         p->coef_buf = av_mallocz(p->coef_stride*p->dwt_height*sizeof(dwtcoef));
         if (!p->coef_buf)
-            goto alloc_fail;
+            return AVERROR(ENOMEM);
         for (level = s->wavelet_depth-1; level >= 0; level--) {
             w = w >> 1;
             h = h >> 1;
@@ -1154,7 +1154,7 @@ static av_cold int vc2_encode_init(AVCodecContext *avctx)
                                       s->plane[i].coef_stride,
                                       s->plane[i].dwt_height,
                                       s->slice_width, s->slice_height))
-            goto alloc_fail;
+            return AVERROR(ENOMEM);
     }
 
     /* Slices */
@@ -1163,7 +1163,7 @@ static av_cold int vc2_encode_init(AVCodecContext *avctx)
 
     s->slice_args = av_calloc(s->num_x*s->num_y, sizeof(SliceArgs));
     if (!s->slice_args)
-        goto alloc_fail;
+        return AVERROR(ENOMEM);
 
     for (i = 0; i < 116; i++) {
         const uint64_t qf = ff_dirac_qscale_tab[i];
@@ -1183,11 +1183,6 @@ static av_cold int vc2_encode_init(AVCodecContext *avctx)
     }
 
     return 0;
-
-alloc_fail:
-    vc2_encode_end(avctx);
-    av_log(avctx, AV_LOG_ERROR, "Unable to allocate memory!\n");
-    return AVERROR(ENOMEM);
 }
 
 #define VC2ENC_FLAGS (AV_OPT_FLAG_ENCODING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)
@@ -1216,7 +1211,7 @@ static const AVClass vc2enc_class = {
     .version = LIBAVUTIL_VERSION_INT
 };
 
-static const AVCodecDefault vc2enc_defaults[] = {
+static const FFCodecDefault vc2enc_defaults[] = {
     { "b",              "600000000"   },
     { NULL },
 };
@@ -1228,18 +1223,19 @@ static const enum AVPixelFormat allowed_pix_fmts[] = {
     AV_PIX_FMT_NONE
 };
 
-const AVCodec ff_vc2_encoder = {
-    .name           = "vc2",
-    .long_name      = NULL_IF_CONFIG_SMALL("SMPTE VC-2"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_DIRAC,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS,
+const FFCodec ff_vc2_encoder = {
+    .p.name         = "vc2",
+    CODEC_LONG_NAME("SMPTE VC-2"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_DIRAC,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .priv_data_size = sizeof(VC2EncContext),
     .init           = vc2_encode_init,
     .close          = vc2_encode_end,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
-    .encode2        = vc2_encode_frame,
-    .priv_class     = &vc2enc_class,
+    FF_CODEC_ENCODE_CB(vc2_encode_frame),
+    .p.priv_class   = &vc2enc_class,
     .defaults       = vc2enc_defaults,
-    .pix_fmts       = allowed_pix_fmts
+    .p.pix_fmts     = allowed_pix_fmts
 };

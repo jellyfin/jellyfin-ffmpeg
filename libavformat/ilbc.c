@@ -19,8 +19,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "avformat.h"
 #include "internal.h"
+#include "mux.h"
 #include "rawenc.h"
 
 static const char mode20_header[] = "#!iLBC20\n";
@@ -75,7 +78,7 @@ static int ilbc_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
     st->codecpar->codec_id = AV_CODEC_ID_ILBC;
     st->codecpar->sample_rate = 8000;
-    st->codecpar->channels = 1;
+    st->codecpar->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     st->start_time = 0;
     avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
@@ -118,14 +121,14 @@ const AVInputFormat ff_ilbc_demuxer = {
 };
 
 #if CONFIG_ILBC_MUXER
-const AVOutputFormat ff_ilbc_muxer = {
-    .name         = "ilbc",
-    .long_name    = NULL_IF_CONFIG_SMALL("iLBC storage"),
-    .mime_type    = "audio/iLBC",
-    .extensions   = "lbc",
-    .audio_codec  = AV_CODEC_ID_ILBC,
+const FFOutputFormat ff_ilbc_muxer = {
+    .p.name         = "ilbc",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("iLBC storage"),
+    .p.mime_type    = "audio/iLBC",
+    .p.extensions   = "lbc",
+    .p.audio_codec  = AV_CODEC_ID_ILBC,
+    .p.flags        = AVFMT_NOTIMESTAMPS,
     .write_header = ilbc_write_header,
     .write_packet = ff_raw_write_packet,
-    .flags        = AVFMT_NOTIMESTAMPS,
 };
 #endif

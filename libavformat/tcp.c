@@ -175,7 +175,7 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
         while (cur_ai && fd < 0) {
             fd = ff_socket(cur_ai->ai_family,
                            cur_ai->ai_socktype,
-                           cur_ai->ai_protocol);
+                           cur_ai->ai_protocol, h);
             if (fd < 0) {
                 ret = ff_neterrno();
                 cur_ai = cur_ai->ai_next;
@@ -188,7 +188,7 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
 
     if (s->listen == 2) {
         // multi-client
-        if ((ret = ff_listen(fd, cur_ai->ai_addr, cur_ai->ai_addrlen)) < 0)
+        if ((ret = ff_listen(fd, cur_ai->ai_addr, cur_ai->ai_addrlen, h)) < 0)
             goto fail1;
     } else if (s->listen == 1) {
         // single client

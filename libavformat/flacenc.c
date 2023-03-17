@@ -30,6 +30,8 @@
 #include "flacenc.h"
 #include "id3v2.h"
 #include "internal.h"
+#include "mux.h"
+#include "version.h"
 #include "vorbiscomment.h"
 
 
@@ -238,9 +240,9 @@ static int flac_init(struct AVFormatContext *s)
     }
 
     /* add the channel layout tag */
-    if (par->channel_layout &&
-        !(par->channel_layout & ~0x3ffffULL) &&
-        !ff_flac_is_native_layout(par->channel_layout)) {
+    if (par->ch_layout.order == AV_CHANNEL_ORDER_NATIVE &&
+        !(par->ch_layout.u.mask & ~0x3ffffULL) &&
+        !ff_flac_is_native_layout(par->ch_layout.u.mask)) {
         AVDictionaryEntry *chmask = av_dict_get(s->metadata, "WAVEFORMATEXTENSIBLE_CHANNEL_MASK",
                                                 NULL, 0);
 
@@ -249,7 +251,7 @@ static int flac_init(struct AVFormatContext *s)
                    "already present, this muxer will not overwrite it.\n");
         } else {
             uint8_t buf[32];
-            snprintf(buf, sizeof(buf), "0x%"PRIx64, par->channel_layout);
+            snprintf(buf, sizeof(buf), "0x%"PRIx64, par->ch_layout.u.mask);
             av_dict_set(&s->metadata, "WAVEFORMATEXTENSIBLE_CHANNEL_MASK", buf, 0);
         }
     }
@@ -412,19 +414,19 @@ static const AVClass flac_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_flac_muxer = {
-    .name              = "flac",
-    .long_name         = NULL_IF_CONFIG_SMALL("raw FLAC"),
+const FFOutputFormat ff_flac_muxer = {
+    .p.name            = "flac",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("raw FLAC"),
     .priv_data_size    = sizeof(FlacMuxerContext),
-    .mime_type         = "audio/x-flac",
-    .extensions        = "flac",
-    .audio_codec       = AV_CODEC_ID_FLAC,
-    .video_codec       = AV_CODEC_ID_PNG,
+    .p.mime_type       = "audio/x-flac",
+    .p.extensions      = "flac",
+    .p.audio_codec     = AV_CODEC_ID_FLAC,
+    .p.video_codec     = AV_CODEC_ID_PNG,
     .init              = flac_init,
     .write_header      = flac_write_header,
     .write_packet      = flac_write_packet,
     .write_trailer     = flac_write_trailer,
     .deinit            = flac_deinit,
-    .flags             = AVFMT_NOTIMESTAMPS,
-    .priv_class        = &flac_muxer_class,
+    .p.flags           = AVFMT_NOTIMESTAMPS,
+    .p.priv_class      = &flac_muxer_class,
 };

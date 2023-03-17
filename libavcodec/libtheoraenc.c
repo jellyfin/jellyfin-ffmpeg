@@ -37,8 +37,8 @@
 #include "libavutil/log.h"
 #include "libavutil/base64.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 
 /* libtheora includes */
 #include <theora/theoraenc.h>
@@ -119,7 +119,7 @@ static int get_stats(AVCodecContext *avctx, int eos)
     return 0;
 #else
     av_log(avctx, AV_LOG_ERROR, "libtheora too old to support 2pass\n");
-    return AVERROR(ENOSUP);
+    return AVERROR(ENOTSUP);
 #endif
 }
 
@@ -158,7 +158,7 @@ static int submit_stats(AVCodecContext *avctx)
     return 0;
 #else
     av_log(avctx, AV_LOG_ERROR, "libtheora too old to support 2pass\n");
-    return AVERROR(ENOSUP);
+    return AVERROR(ENOTSUP);
 #endif
 }
 
@@ -346,7 +346,13 @@ static int encode_frame(AVCodecContext* avc_context, AVPacket *pkt,
 
     // HACK: assumes no encoder delay, this is true until libtheora becomes
     // multithreaded (which will be disabled unless explicitly requested)
-    pkt->pts = pkt->dts = frame->pts;
+    pkt->pts = frame->pts;
+    pkt->duration = frame->duration;
+
+    ret = ff_encode_reordered_opaque(avc_context, pkt, frame);
+    if (ret < 0)
+        return ret;
+
     if (!(o_packet.granulepos & h->keyframe_mask))
         pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
@@ -367,19 +373,22 @@ static av_cold int encode_close(AVCodecContext* avc_context)
 }
 
 /** AVCodec struct exposed to libavcodec */
-const AVCodec ff_libtheora_encoder = {
-    .name           = "libtheora",
-    .long_name      = NULL_IF_CONFIG_SMALL("libtheora Theora"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_THEORA,
-    .capabilities   = AV_CODEC_CAP_DR1 |
-                      AV_CODEC_CAP_DELAY /* for statsfile summary */,
+const FFCodec ff_libtheora_encoder = {
+    .p.name         = "libtheora",
+    CODEC_LONG_NAME("libtheora Theora"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_THEORA,
+    .p.capabilities = AV_CODEC_CAP_DR1 |
+                      /* for statsfile summary */
+                      AV_CODEC_CAP_DELAY |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size = sizeof(TheoraContext),
     .init           = encode_init,
     .close          = encode_close,
-    .encode2        = encode_frame,
-    .pix_fmts       = (const enum AVPixelFormat[]){
+    FF_CODEC_ENCODE_CB(encode_frame),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE
     },
-    .wrapper_name   = "libtheora",
+    .p.wrapper_name = "libtheora",
 };

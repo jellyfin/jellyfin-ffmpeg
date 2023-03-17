@@ -21,6 +21,7 @@
 #include "config.h"
 #include "libavutil/attributes.h"
 #include "mathops.h"
+#include "huffyuv.h"
 #include "huffyuvdsp.h"
 
 // 0x00010001 or 0x0001000100010001 or whatever, depending on the cpu's native arithmetic size
@@ -86,6 +87,7 @@ av_cold void ff_huffyuvdsp_init(HuffYUVDSPContext *c, enum AVPixelFormat pix_fmt
     c->add_hfyu_median_pred_int16 = add_hfyu_median_pred_int16_c;
     c->add_hfyu_left_pred_bgr32 = add_hfyu_left_pred_bgr32_c;
 
-    if (ARCH_X86)
-        ff_huffyuvdsp_init_x86(c, pix_fmt);
+#if ARCH_X86
+    ff_huffyuvdsp_init_x86(c, pix_fmt);
+#endif
 }

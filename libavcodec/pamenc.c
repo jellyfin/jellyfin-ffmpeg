@@ -21,14 +21,15 @@
 
 #include "libavutil/avassert.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 
 static int pam_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                             const AVFrame *p, int *got_packet)
 {
     int i, h, w, n, linesize, depth, maxval, ret, header_size;
-    uint8_t *bytestream, *ptr;
+    uint8_t *bytestream;
+    const uint8_t *ptr;
     const char *tuple_type;
     char header[100];
 
@@ -127,19 +128,18 @@ static int pam_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     return 0;
 }
 
-const AVCodec ff_pam_encoder = {
-    .name           = "pam",
-    .long_name      = NULL_IF_CONFIG_SMALL("PAM (Portable AnyMap) image"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_PAM,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .encode2        = pam_encode_frame,
-    .pix_fmts       = (const enum AVPixelFormat[]){
+const FFCodec ff_pam_encoder = {
+    .p.name         = "pam",
+    CODEC_LONG_NAME("PAM (Portable AnyMap) image"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_PAM,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    FF_CODEC_ENCODE_CB(pam_encode_frame),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
         AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE,
         AV_PIX_FMT_MONOBLACK, AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

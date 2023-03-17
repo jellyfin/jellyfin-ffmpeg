@@ -27,11 +27,12 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
-#include "bytestream.h"
 #include "bswapdsp.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "golomb.h"
-#include "internal.h"
+#include "mathops.h"
 
 #define MOBI_RL_VLC_BITS 12
 #define MOBI_MV_VLC_BITS 6
@@ -287,7 +288,7 @@ static av_cold void mobiclip_init_static(void)
                                  syms1, sizeof(*syms1), sizeof(*syms1),
                                  0, 0, 1 << MOBI_RL_VLC_BITS);
     for (int i = 0; i < 2; i++) {
-        static VLC_TYPE vlc_buf[2 * 16 << MOBI_MV_VLC_BITS][2];
+        static VLCElem vlc_buf[2 * 16 << MOBI_MV_VLC_BITS];
         for (int j = 0; j < 16; j++) {
             mv_vlc[i][j].table           = &vlc_buf[(16 * i + j) << MOBI_MV_VLC_BITS];
             mv_vlc[i][j].table_allocated = 1 << MOBI_MV_VLC_BITS;
@@ -329,7 +330,7 @@ static av_cold int mobiclip_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int setup_qtables(AVCodecContext *avctx, int quantizer)
+static int setup_qtables(AVCodecContext *avctx, int64_t quantizer)
 {
     MobiClipContext *s = avctx->priv_data;
     int qx, qy;
@@ -1207,13 +1208,16 @@ static int predict_motion(AVCodecContext *avctx,
     return 0;
 }
 
-static int mobiclip_decode(AVCodecContext *avctx, void *data,
-                            int *got_frame, AVPacket *pkt)
+static int mobiclip_decode(AVCodecContext *avctx, AVFrame *rframe,
+                           int *got_frame, AVPacket *pkt)
 {
     MobiClipContext *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
     AVFrame *frame = s->pic[s->current_pic];
     int ret;
+
+    if (avctx->height/16 * (avctx->width/16) * 2 > 8LL*FFALIGN(pkt->size, 2))
+        return AVERROR_INVALIDDATA;
 
     av_fast_padded_malloc(&s->bitstream, &s->bitstream_size,
                           pkt->size);
@@ -1255,7 +1259,7 @@ static int mobiclip_decode(AVCodecContext *avctx, void *data,
         frame->key_frame = 0;
         s->dct_tab_idx = 0;
 
-        ret = setup_qtables(avctx, s->quantizer + get_se_golomb(gb));
+        ret = setup_qtables(avctx, s->quantizer + (int64_t)get_se_golomb(gb));
         if (ret < 0)
             return ret;
 
@@ -1307,7 +1311,7 @@ static int mobiclip_decode(AVCodecContext *avctx, void *data,
         avctx->colorspace = AVCOL_SPC_YCGCO;
 
     s->current_pic = (s->current_pic + 1) % 6;
-    ret = av_frame_ref(data, frame);
+    ret = av_frame_ref(rframe, frame);
     if (ret < 0)
         return ret;
     *got_frame = 1;
@@ -1339,16 +1343,16 @@ static av_cold int mobiclip_close(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_mobiclip_decoder = {
-    .name           = "mobiclip",
-    .long_name      = NULL_IF_CONFIG_SMALL("MobiClip Video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_MOBICLIP,
+const FFCodec ff_mobiclip_decoder = {
+    .p.name         = "mobiclip",
+    CODEC_LONG_NAME("MobiClip Video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_MOBICLIP,
     .priv_data_size = sizeof(MobiClipContext),
     .init           = mobiclip_init,
-    .decode         = mobiclip_decode,
+    FF_CODEC_DECODE_CB(mobiclip_decode),
     .flush          = mobiclip_flush,
     .close          = mobiclip_close,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

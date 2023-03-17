@@ -23,9 +23,11 @@
 #include <vid.stab/libvidstab.h>
 
 #include "libavutil/common.h"
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
+#include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "internal.h"
 
 #include "vidstabutils.h"
@@ -126,7 +128,7 @@ static int config_input(AVFilterLink *inlink)
     av_log(ctx, AV_LOG_INFO, "          show = %d\n", s->conf.show);
     av_log(ctx, AV_LOG_INFO, "        result = %s\n", s->result);
 
-    s->f = fopen(s->result, "w");
+    s->f = avpriv_fopen_utf8(s->result, "w");
     if (s->f == NULL) {
         av_log(ctx, AV_LOG_ERROR, "cannot open transform file %s\n", s->result);
         return AVERROR(EINVAL);
@@ -148,10 +150,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
     VSFrame frame;
-    int plane;
+    int plane, ret;
 
-    if (s->conf.show > 0 && !av_frame_is_writable(in))
-        av_frame_make_writable(in);
+    if (s->conf.show > 0 && !av_frame_is_writable(in)) {
+        ret = ff_inlink_make_frame_writable(inlink, &in);
+        if (ret < 0) {
+            av_frame_free(&in);
+            return ret;
+        }
+    }
 
     for (plane = 0; plane < md->fi.planes; plane++) {
         frame.data[plane] = in->data[plane];

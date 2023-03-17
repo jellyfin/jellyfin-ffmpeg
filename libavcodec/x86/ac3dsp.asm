@@ -60,17 +60,10 @@ cglobal ac3_exponent_min, 3, 4, 2, exp, reuse_blks, expn, offset
     sub        expnq, mmsize
     jg .nextexp
 .end:
-    REP_RET
+    RET
 %endmacro
 
-%define LOOP_ALIGN
-INIT_MMX mmx
-AC3_EXPONENT_MIN
-%if HAVE_MMXEXT_EXTERNAL
 %define LOOP_ALIGN ALIGN 16
-INIT_MMX mmxext
-AC3_EXPONENT_MIN
-%endif
 %if HAVE_SSE2_EXTERNAL
 INIT_XMM sse2
 AC3_EXPONENT_MIN
@@ -80,60 +73,6 @@ AC3_EXPONENT_MIN
 ;-----------------------------------------------------------------------------
 ; void ff_float_to_fixed24(int32_t *dst, const float *src, unsigned int len)
 ;-----------------------------------------------------------------------------
-
-; The 3DNow! version is not bit-identical because pf2id uses truncation rather
-; than round-to-nearest.
-INIT_MMX 3dnow
-cglobal float_to_fixed24, 3, 3, 0, dst, src, len
-    movq   m0, [pf_1_24]
-.loop:
-    movq   m1, [srcq   ]
-    movq   m2, [srcq+8 ]
-    movq   m3, [srcq+16]
-    movq   m4, [srcq+24]
-    pfmul  m1, m0
-    pfmul  m2, m0
-    pfmul  m3, m0
-    pfmul  m4, m0
-    pf2id  m1, m1
-    pf2id  m2, m2
-    pf2id  m3, m3
-    pf2id  m4, m4
-    movq  [dstq   ], m1
-    movq  [dstq+8 ], m2
-    movq  [dstq+16], m3
-    movq  [dstq+24], m4
-    add  srcq, 32
-    add  dstq, 32
-    sub  lend, 8
-    ja .loop
-    femms
-    RET
-
-INIT_XMM sse
-cglobal float_to_fixed24, 3, 3, 3, dst, src, len
-    movaps     m0, [pf_1_24]
-.loop:
-    movaps     m1, [srcq   ]
-    movaps     m2, [srcq+16]
-    mulps      m1, m0
-    mulps      m2, m0
-    cvtps2pi  mm0, m1
-    movhlps    m1, m1
-    cvtps2pi  mm1, m1
-    cvtps2pi  mm2, m2
-    movhlps    m2, m2
-    cvtps2pi  mm3, m2
-    movq  [dstq   ], mm0
-    movq  [dstq+ 8], mm1
-    movq  [dstq+16], mm2
-    movq  [dstq+24], mm3
-    add      srcq, 32
-    add      dstq, 32
-    sub      lend, 8
-    ja .loop
-    emms
-    RET
 
 INIT_XMM sse2
 cglobal float_to_fixed24, 3, 3, 9, dst, src, len
@@ -187,7 +126,7 @@ cglobal float_to_fixed24, 3, 3, 9, dst, src, len
     sub      lenq, 16
 %endif
     ja .loop
-    REP_RET
+    RET
 
 ;------------------------------------------------------------------------------
 ; int ff_ac3_compute_mantissa_size(uint16_t mant_cnt[6][16])
@@ -281,7 +220,7 @@ cglobal ac3_extract_exponents, 3, 3, 4, exp, coef, len
 
     add     lenq, 4
     jl .loop
-    REP_RET
+    RET
 %endmacro
 
 %if HAVE_SSE2_EXTERNAL

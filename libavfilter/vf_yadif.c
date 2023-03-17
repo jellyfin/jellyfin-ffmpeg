@@ -252,8 +252,6 @@ static void filter(AVFilterContext *ctx, AVFrame *dstpic,
         ff_filter_execute(ctx, filter_slice, &td, NULL,
                           FFMIN(h, ff_filter_get_nb_threads(ctx)));
     }
-
-    emms_c();
 }
 
 static av_cold void uninit(AVFilterContext *ctx)
@@ -311,8 +309,9 @@ static int config_output(AVFilterLink *outlink)
         s->filter_edges = filter_edges;
     }
 
-    if (ARCH_X86)
-        ff_yadif_init_x86(s);
+#if ARCH_X86
+    ff_yadif_init_x86(s);
+#endif
 
     return 0;
 }

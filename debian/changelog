@@ -1,6 +1,127 @@
+jellyfin-ffmpeg (6.0-1) unstable; urgency=medium
+
+  * New upstream version 6.0
+  * Rename package to jellyin-ffmpeg6
+  * Update build scripts and dependencies
+  * Drop the EOL Ubuntu bionic
+  * Enable Debian bookworm and Ubuntu lunar
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 28 Feb 2023 19:50:24 +0800
+
+jellyfin-ffmpeg (5.1.2-8) unstable; urgency=medium
+
+  * Remove the changed vulkan video extensions
+  * Don't fail on missing vulkan drm modifiers
+  * Prefer Vulkan device with higer API version
+  * Default to use complex font shaping in libass
+  * Add fixes for VAAPI-DRM-Vulkan tearing
+  * Add fixes for the incorrect null terminator in assenc
+  * Skip loading plugins on VPL runtime
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Wed, 15 Feb 2023 22:52:17 +0800
+
+jellyfin-ffmpeg (5.1.2-7) unstable; urgency=medium
+
+  * Enable zero-copy dovi buffer on Intel dGPU
+  * Improve scaling speed for VAAPI and QSV
+  * Fix the tone-mapping FPS regression on Pascal
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 17 Jan 2023 22:33:03 +0800
+
+jellyfin-ffmpeg (5.1.2-6) unstable; urgency=medium
+
+  * Fix onevpl loading in linux portable build
+  * Fix VAAPI PGS subtitle burn-in on DG2
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 23 Dec 2022 21:15:31 +0800
+
+jellyfin-ffmpeg (5.1.2-5) unstable; urgency=medium
+
+  * Optimize dovi buffer access, mainly on Intel
+  * Add HDR metadata support for QSV/NVENC HEVC encoder
+  * Add 10bit overlay support for QSV/CUDA/OpenCL
+  * Add DOVI to HDR support for CUDA/OpenCL
+  * Add D3D11VA/DXVA2 HEVC 422 444 8-12 bits decoding on Intel
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Mon, 07 Oct 2022 21:31:17 +0800
+
+jellyfin-ffmpeg (5.1.2-4) unstable; urgency=medium
+
+  * Hotfix for Mesa driver build
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sat, 29 Oct 2022 17:22:13 +0800
+
+jellyfin-ffmpeg (5.1.2-3) unstable; urgency=medium
+
+  * Add tier option for the QSV HEVC encoder
+  * Add fixes for some quirks on DG2 on Windows
+  * Improve the robustness of DV tonemap
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 26 Oct 2022 20:44:03 +0800
+
+jellyfin-ffmpeg (5.1.2-2) unstable; urgency=medium
+
+  * Add fixes for the invalid modifier on AMD APU
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sun, 16 Oct 2022 22:36:31 +0800
+
+jellyfin-ffmpeg (5.1.2-1) unstable; urgency=medium
+
+  * New upstream version 5.1.2
+  * Enable SVT-AV1 encoder for amd64
+  * Remove unneeded assertion from AMF encoder
+  * Disable reshape if DOVI require an EL
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 30 Sep 2022 22:35:03 +0800
+
+jellyfin-ffmpeg (5.1.1-2) unstable; urgency=medium
+
+  * Add fixes for VAAPI render node enumeration
+  * Pin libva to release and update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sun, 25 Sep 2022 13:41:31 +0800
+
+jellyfin-ffmpeg (5.1.1-1) unstable; urgency=medium
+
+  * New upstream version 5.1.1
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 2 Sep 2022 15:43:17 +0800
+
+jellyfin-ffmpeg (5.1-2) unstable; urgency=medium
+
+  * Revert Mesa to the last release
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Mon, 15 Aug 2022 19:29:03 +0800
+
+jellyfin-ffmpeg (5.1-1) unstable; urgency=medium
+
+  * New upstream version 5.1
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 28 Jul 2022 12:05:31 +0800
+
+jellyfin-ffmpeg (5.0.1-8) unstable; urgency=medium
+
+  * Add pause support for ffmpeg by using p key.
+  * Faster HDR/DoVi tonemap on low-power devices.
+  * Add simple anti-aliasing for ocl/cuda tonemap.
+  * Update dependencies.
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 1 Jul 2022 01:49:03 +0800
+
 jellyfin-ffmpeg (5.0.1-7) unstable; urgency=medium
 
   * Switch to single precision fftw, enable neon for arm.
+  * Fix the incorrect full to limit color range on DoVi tonemap.
 
  -- nyanmisaka <nst799610810@gmail.com>  Thu, 23 Jun 2022 19:19:17 +0800
 

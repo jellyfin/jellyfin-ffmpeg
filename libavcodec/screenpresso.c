@@ -34,7 +34,6 @@
  */
 
 #include <stdint.h>
-#include <string.h>
 #include <zlib.h>
 
 #include "libavutil/imgutils.h"
@@ -42,7 +41,8 @@
 #include "libavutil/mem.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 
 typedef struct ScreenpressoContext {
     AVFrame *current;
@@ -101,11 +101,10 @@ static void sum_delta_flipped(uint8_t       *dst, int dst_linesize,
     }
 }
 
-static int screenpresso_decode_frame(AVCodecContext *avctx, void *data,
+static int screenpresso_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                      int *got_frame, AVPacket *avpkt)
 {
     ScreenpressoContext *ctx = avctx->priv_data;
-    AVFrame *frame = data;
     uLongf length = ctx->inflated_size;
     int keyframe, component_size, src_linesize;
     int ret;
@@ -183,16 +182,15 @@ static int screenpresso_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-const AVCodec ff_screenpresso_decoder = {
-    .name           = "screenpresso",
-    .long_name      = NULL_IF_CONFIG_SMALL("Screenpresso"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SCREENPRESSO,
+const FFCodec ff_screenpresso_decoder = {
+    .p.name         = "screenpresso",
+    CODEC_LONG_NAME("Screenpresso"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SCREENPRESSO,
     .init           = screenpresso_init,
-    .decode         = screenpresso_decode_frame,
+    FF_CODEC_DECODE_CB(screenpresso_decode_frame),
     .close          = screenpresso_close,
     .priv_data_size = sizeof(ScreenpressoContext),
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

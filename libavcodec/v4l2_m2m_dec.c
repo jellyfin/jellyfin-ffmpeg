@@ -27,8 +27,8 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "libavcodec/avcodec.h"
+#include "codec_internal.h"
 #include "libavcodec/decode.h"
-#include "libavcodec/internal.h"
 
 #include "v4l2_context.h"
 #include "v4l2_m2m.h"
@@ -226,7 +226,7 @@ static av_cold int v4l2_decode_close(AVCodecContext *avctx)
 static const AVOption options[] = {
     V4L_M2M_DEFAULT_OPTS,
     { "num_capture_buffers", "Number of buffers in the capture context",
-        OFFSET(num_capture_buffers), AV_OPT_TYPE_INT, {.i64 = 20}, 20, INT_MAX, FLAGS },
+        OFFSET(num_capture_buffers), AV_OPT_TYPE_INT, {.i64 = 20}, 2, INT_MAX, FLAGS },
     { NULL},
 };
 
@@ -240,20 +240,21 @@ static const AVOption options[] = {
 
 #define M2MDEC(NAME, LONGNAME, CODEC, bsf_name) \
     M2MDEC_CLASS(NAME) \
-    const AVCodec ff_ ## NAME ## _v4l2m2m_decoder = { \
-        .name           = #NAME "_v4l2m2m" , \
-        .long_name      = NULL_IF_CONFIG_SMALL("V4L2 mem2mem " LONGNAME " decoder wrapper"), \
-        .type           = AVMEDIA_TYPE_VIDEO, \
-        .id             = CODEC , \
+    const FFCodec ff_ ## NAME ## _v4l2m2m_decoder = { \
+        .p.name         = #NAME "_v4l2m2m" , \
+        CODEC_LONG_NAME("V4L2 mem2mem " LONGNAME " decoder wrapper"), \
+        .p.type         = AVMEDIA_TYPE_VIDEO, \
+        .p.id           = CODEC , \
         .priv_data_size = sizeof(V4L2m2mPriv), \
-        .priv_class     = &v4l2_m2m_ ## NAME ## _dec_class, \
+        .p.priv_class   = &v4l2_m2m_ ## NAME ## _dec_class, \
         .init           = v4l2_decode_init, \
-        .receive_frame  = v4l2_receive_frame, \
+        FF_CODEC_RECEIVE_FRAME_CB(v4l2_receive_frame), \
         .close          = v4l2_decode_close, \
         .bsfs           = bsf_name, \
-        .capabilities   = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING, \
-        .caps_internal  = FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_INIT_CLEANUP, \
-        .wrapper_name   = "v4l2m2m", \
+        .p.capabilities = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING, \
+        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE | \
+                          FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_INIT_CLEANUP, \
+        .p.wrapper_name = "v4l2m2m", \
     }
 
 M2MDEC(h264,  "H.264", AV_CODEC_ID_H264,       "h264_mp4toannexb");

@@ -22,20 +22,20 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include <mfx/mfxvideo.h>
+#include <mfxvideo.h>
 
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
+#include "libavutil/mastering_display_metadata.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "hevc.h"
 #include "hevcdec.h"
 #include "h2645_parse.h"
-#include "internal.h"
 #include "qsv.h"
-#include "qsv_internal.h"
 #include "qsvenc.h"
 
 enum LoadPlugin {
@@ -161,6 +161,83 @@ static int generate_fake_vps(QSVEncContext *q, AVCodecContext *avctx)
     return 0;
 }
 
+static int qsv_hevc_set_encode_ctrl(AVCodecContext *avctx,
+                                    const AVFrame *frame, mfxEncodeCtrl *enc_ctrl)
+{
+    QSVHEVCEncContext *q = avctx->priv_data;
+    AVFrameSideData *sd;
+
+    if (!frame || !QSV_RUNTIME_VERSION_ATLEAST(q->qsv.ver, 1, 25))
+        return 0;
+
+    sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+    if (sd) {
+        AVMasteringDisplayMetadata *mdm = (AVMasteringDisplayMetadata *)sd->data;
+
+        // SEI is needed when both the primaries and luminance are set
+        if (mdm->has_primaries && mdm->has_luminance) {
+            const int mapping[3] = {1, 2, 0};
+            const int chroma_den = 50000;
+            const int luma_den   = 10000;
+            int i;
+            mfxExtMasteringDisplayColourVolume *mdcv = av_mallocz(sizeof(mfxExtMasteringDisplayColourVolume));
+
+            if (!mdcv)
+                return AVERROR(ENOMEM);
+
+            mdcv->Header.BufferId = MFX_EXTBUFF_MASTERING_DISPLAY_COLOUR_VOLUME;
+            mdcv->Header.BufferSz = sizeof(*mdcv);
+
+            for (i = 0; i < 3; i++) {
+                const int j = mapping[i];
+
+                mdcv->DisplayPrimariesX[i] =
+                    FFMIN(lrint(chroma_den *
+                                av_q2d(mdm->display_primaries[j][0])),
+                          chroma_den);
+                mdcv->DisplayPrimariesY[i] =
+                    FFMIN(lrint(chroma_den *
+                                av_q2d(mdm->display_primaries[j][1])),
+                          chroma_den);
+            }
+
+            mdcv->WhitePointX =
+                FFMIN(lrint(chroma_den * av_q2d(mdm->white_point[0])),
+                      chroma_den);
+            mdcv->WhitePointY =
+                FFMIN(lrint(chroma_den * av_q2d(mdm->white_point[1])),
+                      chroma_den);
+
+            mdcv->MaxDisplayMasteringLuminance =
+                lrint(luma_den * av_q2d(mdm->max_luminance));
+            mdcv->MinDisplayMasteringLuminance =
+                FFMIN(lrint(luma_den * av_q2d(mdm->min_luminance)),
+                      mdcv->MaxDisplayMasteringLuminance);
+
+            enc_ctrl->ExtParam[enc_ctrl->NumExtParam++] = (mfxExtBuffer *)mdcv;
+        }
+    }
+
+    sd = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    if (sd) {
+        AVContentLightMetadata *clm = (AVContentLightMetadata *)sd->data;
+        mfxExtContentLightLevelInfo * clli = av_mallocz(sizeof(mfxExtContentLightLevelInfo));
+
+        if (!clli)
+            return AVERROR(ENOMEM);
+
+        clli->Header.BufferId = MFX_EXTBUFF_CONTENT_LIGHT_LEVEL_INFO;
+        clli->Header.BufferSz = sizeof(*clli);
+
+        clli->MaxContentLightLevel          = FFMIN(clm->MaxCLL,  65535);
+        clli->MaxPicAverageLightLevel       = FFMIN(clm->MaxFALL, 65535);
+
+        enc_ctrl->ExtParam[enc_ctrl->NumExtParam++] = (mfxExtBuffer *)clli;
+    }
+
+    return 0;
+}
+
 static av_cold int qsv_enc_init(AVCodecContext *avctx)
 {
     QSVHEVCEncContext *q = avctx->priv_data;
@@ -189,6 +266,8 @@ static av_cold int qsv_enc_init(AVCodecContext *avctx)
 
     // HEVC and H264 meaning of the value is shifted by 1, make it consistent
     q->qsv.idr_interval++;
+
+    q->qsv.set_encode_ctrl_cb = qsv_hevc_set_encode_ctrl;
 
     ret = ff_qsv_enc_init(avctx, &q->qsv);
     if (ret < 0)
@@ -224,6 +303,24 @@ static av_cold int qsv_enc_close(AVCodecContext *avctx)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     QSV_COMMON_OPTS
+    QSV_OPTION_RDO
+    QSV_OPTION_MAX_FRAME_SIZE
+    QSV_OPTION_MAX_SLICE_SIZE
+    QSV_OPTION_MBBRC
+    QSV_OPTION_EXTBRC
+    QSV_OPTION_P_STRATEGY
+    QSV_OPTION_B_STRATEGY
+    QSV_OPTION_DBLK_IDC
+    QSV_OPTION_LOW_DELAY_BRC
+    QSV_OPTION_MAX_MIN_QP
+    QSV_OPTION_ADAPTIVE_I
+    QSV_OPTION_ADAPTIVE_B
+    QSV_OPTION_SCENARIO
+    QSV_OPTION_AVBR
+    QSV_OPTION_SKIP_FRAME
+#if QSV_HAVE_HE
+    QSV_HE_OPTIONS
+#endif
 
     { "idr_interval", "Distance (in I-frames) between IDR frames", OFFSET(qsv.idr_interval), AV_OPT_TYPE_INT, { .i64 = 0 }, -1, INT_MAX, VE, "idr_interval" },
     { "begin_only", "Output an IDR-frame only at the beginning of the stream", 0, AV_OPT_TYPE_CONST, { .i64 = -1 }, 0, 0, VE, "idr_interval" },
@@ -235,15 +332,19 @@ static const AVOption options[] = {
     { "load_plugins", "A :-separate list of hexadecimal plugin UIDs to load in an internal session",
         OFFSET(qsv.load_plugins), AV_OPT_TYPE_STRING, { .str = "" }, 0, 0, VE },
 
-#if QSV_HAVE_LA
     { "look_ahead_depth", "Depth of look ahead in number frames, available when extbrc option is enabled", OFFSET(qsv.look_ahead_depth), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 100, VE },
-#endif
     { "profile", NULL, OFFSET(qsv.profile), AV_OPT_TYPE_INT, { .i64 = MFX_PROFILE_UNKNOWN }, 0, INT_MAX, VE, "profile" },
     { "unknown", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_UNKNOWN      }, INT_MIN, INT_MAX,     VE, "profile" },
     { "main",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_HEVC_MAIN    }, INT_MIN, INT_MAX,     VE, "profile" },
     { "main10",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_HEVC_MAIN10  }, INT_MIN, INT_MAX,     VE, "profile" },
     { "mainsp",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_HEVC_MAINSP  }, INT_MIN, INT_MAX,     VE, "profile" },
     { "rext",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_HEVC_REXT    }, INT_MIN, INT_MAX,     VE, "profile" },
+#if QSV_VERSION_ATLEAST(1, 32)
+    { "scc",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_PROFILE_HEVC_SCC     }, INT_MIN, INT_MAX,     VE, "profile" },
+#endif
+    { "tier",    "Set the encoding tier (only level >= 4 can support high tier)", OFFSET(qsv.tier), AV_OPT_TYPE_INT, { .i64 = MFX_TIER_HEVC_HIGH }, MFX_TIER_HEVC_MAIN, MFX_TIER_HEVC_HIGH, VE, "tier" },
+    { "main",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_TIER_HEVC_MAIN       }, INT_MIN, INT_MAX,     VE, "tier" },
+    { "high",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_TIER_HEVC_HIGH       }, INT_MIN, INT_MAX,     VE, "tier" },
 
     { "gpb", "1: GPB (generalized P/B frame); 0: regular P frame", OFFSET(qsv.gpb), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, VE},
 
@@ -251,6 +352,16 @@ static const AVOption options[] = {
     { "tile_rows",  "Number of rows for tiled encoding",      OFFSET(qsv.tile_rows),    AV_OPT_TYPE_INT, { .i64 = 0 }, 0, UINT16_MAX, VE },
     { "recovery_point_sei", "Insert recovery point SEI messages",       OFFSET(qsv.recovery_point_sei),      AV_OPT_TYPE_INT, { .i64 = -1 },               -1,          1, VE },
     { "aud", "Insert the Access Unit Delimiter NAL", OFFSET(qsv.aud), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE},
+    { "pic_timing_sei",    "Insert picture timing SEI with pic_struct_syntax element", OFFSET(qsv.pic_timing_sei), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, VE },
+    { "transform_skip", "Turn this option ON to enable transformskip",   OFFSET(qsv.transform_skip),          AV_OPT_TYPE_INT,    { .i64 = -1},   -1, 1,  VE},
+    { "int_ref_type", "Intra refresh type. B frames should be set to 0",         OFFSET(qsv.int_ref_type),            AV_OPT_TYPE_INT, { .i64 = -1 }, -1, UINT16_MAX, VE, "int_ref_type" },
+        { "none",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, .flags = VE, "int_ref_type" },
+        { "vertical", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, .flags = VE, "int_ref_type" },
+        { "horizontal", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, .flags = VE, "int_ref_type" },
+        { "slice"     , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 3 }, .flags = VE, "int_ref_type" },
+    { "int_ref_cycle_size", "Number of frames in the intra refresh cycle",       OFFSET(qsv.int_ref_cycle_size),      AV_OPT_TYPE_INT, { .i64 = -1 },               -1, UINT16_MAX, VE },
+    { "int_ref_qp_delta",   "QP difference for the refresh MBs",                 OFFSET(qsv.int_ref_qp_delta),        AV_OPT_TYPE_INT, { .i64 = INT16_MIN }, INT16_MIN,  INT16_MAX, VE },
+    { "int_ref_cycle_dist",   "Distance between the beginnings of the intra-refresh cycles in frames",  OFFSET(qsv.int_ref_cycle_dist),      AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT16_MAX, VE },
 
     { NULL },
 };
@@ -262,36 +373,42 @@ static const AVClass class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static const AVCodecDefault qsv_enc_defaults[] = {
+static const FFCodecDefault qsv_enc_defaults[] = {
     { "b",         "1M"    },
     { "refs",      "0"     },
-    // same as the x264 default
-    { "g",         "248"   },
-    { "bf",        "8"     },
+    { "g",         "-1"    },
+    { "bf",        "-1"    },
     { "qmin",      "-1"    },
     { "qmax",      "-1"    },
     { "trellis",   "-1"    },
-    { "flags",     "+cgop" },
     { NULL },
 };
 
-const AVCodec ff_hevc_qsv_encoder = {
-    .name           = "hevc_qsv",
-    .long_name      = NULL_IF_CONFIG_SMALL("HEVC (Intel Quick Sync Video acceleration)"),
+const FFCodec ff_hevc_qsv_encoder = {
+    .p.name         = "hevc_qsv",
+    CODEC_LONG_NAME("HEVC (Intel Quick Sync Video acceleration)"),
     .priv_data_size = sizeof(QSVHEVCEncContext),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_HEVC,
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_HEVC,
     .init           = qsv_enc_init,
-    .encode2        = qsv_enc_frame,
+    FF_CODEC_ENCODE_CB(qsv_enc_frame),
     .close          = qsv_enc_close,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
-    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID,
+    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,
                                                     AV_PIX_FMT_P010,
+                                                    AV_PIX_FMT_P012,
+                                                    AV_PIX_FMT_YUYV422,
+                                                    AV_PIX_FMT_Y210,
                                                     AV_PIX_FMT_QSV,
+                                                    AV_PIX_FMT_BGRA,
+                                                    AV_PIX_FMT_X2RGB10,
+                                                    AV_PIX_FMT_VUYX,
+                                                    AV_PIX_FMT_XV30,
                                                     AV_PIX_FMT_NONE },
-    .priv_class     = &class,
+    .p.priv_class   = &class,
     .defaults       = qsv_enc_defaults,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
-    .wrapper_name   = "qsv",
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
+    .p.wrapper_name = "qsv",
     .hw_configs     = ff_qsv_enc_hw_configs,
 };

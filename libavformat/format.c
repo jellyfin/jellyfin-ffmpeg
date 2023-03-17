@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/opt.h"
@@ -97,7 +99,7 @@ enum AVCodecID av_guess_codec(const AVOutputFormat *fmt, const char *short_name,
     if (type == AVMEDIA_TYPE_VIDEO) {
         enum AVCodecID codec_id = AV_CODEC_ID_NONE;
 
-#if CONFIG_IMAGE2_MUXER
+#if CONFIG_IMAGE2_MUXER || CONFIG_IMAGE2PIPE_MUXER
         if (!strcmp(fmt->name, "image2") || !strcmp(fmt->name, "image2pipe")) {
             codec_id = ff_guess_image2_codec(filename);
         }
@@ -109,8 +111,6 @@ enum AVCodecID av_guess_codec(const AVOutputFormat *fmt, const char *short_name,
         return fmt->audio_codec;
     else if (type == AVMEDIA_TYPE_SUBTITLE)
         return fmt->subtitle_codec;
-    else if (type == AVMEDIA_TYPE_DATA)
-        return fmt->data_codec;
     else
         return AV_CODEC_ID_NONE;
 }

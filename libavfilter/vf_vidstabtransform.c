@@ -23,8 +23,9 @@
 #include <vid.stab/libvidstab.h>
 
 #include "libavutil/common.h"
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
+#include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "internal.h"
 
@@ -191,7 +192,7 @@ static int config_input(AVFilterLink *inlink)
         av_log(ctx, AV_LOG_INFO, "    zoomspeed = %g\n", tc->conf.zoomSpeed);
     av_log(ctx, AV_LOG_INFO, "    interpol  = %s\n", getInterpolationTypeName(tc->conf.interpolType));
 
-    f = fopen(tc->input, "r");
+    f = avpriv_fopen_utf8(tc->input, "r");
     if (!f) {
         int ret = AVERROR(errno);
         av_log(ctx, AV_LOG_ERROR, "cannot open input file %s\n", tc->input);

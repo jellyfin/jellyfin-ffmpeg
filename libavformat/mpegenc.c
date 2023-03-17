@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include <stdint.h>
 
 #include "libavutil/attributes.h"
@@ -33,6 +35,7 @@
 #include "avio_internal.h"
 #include "internal.h"
 #include "mpeg.h"
+#include "mux.h"
 
 #define MAX_PAYLOAD_SIZE 4096
 
@@ -45,7 +48,7 @@ typedef struct PacketDesc {
 } PacketDesc;
 
 typedef struct StreamInfo {
-    AVFifoBuffer *fifo;
+    AVFifo *fifo;
     uint8_t id;
     int max_buffer_size; /* in bytes */
     int buffer_index;
@@ -84,10 +87,10 @@ typedef struct MpegMuxContext {
     int preload;
 } MpegMuxContext;
 
-extern const AVOutputFormat ff_mpeg1vcd_muxer;
-extern const AVOutputFormat ff_mpeg2dvd_muxer;
-extern const AVOutputFormat ff_mpeg2svcd_muxer;
-extern const AVOutputFormat ff_mpeg2vob_muxer;
+extern const FFOutputFormat ff_mpeg1vcd_muxer;
+extern const FFOutputFormat ff_mpeg2dvd_muxer;
+extern const FFOutputFormat ff_mpeg2svcd_muxer;
+extern const FFOutputFormat ff_mpeg2vob_muxer;
 
 static int put_pack_header(AVFormatContext *ctx, uint8_t *buf,
                            int64_t timestamp)
@@ -305,12 +308,12 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
     int video_bitrate;
 
     s->packet_number = 0;
-    s->is_vcd   =  (CONFIG_MPEG1VCD_MUXER  && ctx->oformat == &ff_mpeg1vcd_muxer);
-    s->is_svcd  =  (CONFIG_MPEG2SVCD_MUXER && ctx->oformat == &ff_mpeg2svcd_muxer);
-    s->is_mpeg2 = ((CONFIG_MPEG2VOB_MUXER  && ctx->oformat == &ff_mpeg2vob_muxer) ||
-                   (CONFIG_MPEG2DVD_MUXER  && ctx->oformat == &ff_mpeg2dvd_muxer) ||
-                   (CONFIG_MPEG2SVCD_MUXER && ctx->oformat == &ff_mpeg2svcd_muxer));
-    s->is_dvd   =  (CONFIG_MPEG2DVD_MUXER  && ctx->oformat == &ff_mpeg2dvd_muxer);
+    s->is_vcd   =  (CONFIG_MPEG1VCD_MUXER  && ctx->oformat == &ff_mpeg1vcd_muxer.p);
+    s->is_svcd  =  (CONFIG_MPEG2SVCD_MUXER && ctx->oformat == &ff_mpeg2svcd_muxer.p);
+    s->is_mpeg2 = ((CONFIG_MPEG2VOB_MUXER  && ctx->oformat == &ff_mpeg2vob_muxer.p) ||
+                   (CONFIG_MPEG2DVD_MUXER  && ctx->oformat == &ff_mpeg2dvd_muxer.p) ||
+                   (CONFIG_MPEG2SVCD_MUXER && ctx->oformat == &ff_mpeg2svcd_muxer.p));
+    s->is_dvd   =  (CONFIG_MPEG2DVD_MUXER  && ctx->oformat == &ff_mpeg2dvd_muxer.p);
 
     if (ctx->packet_size) {
         if (ctx->packet_size < 20 || ctx->packet_size > (1 << 23) + 10) {
@@ -380,14 +383,14 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
                     av_log(ctx, AV_LOG_INFO, "\n");
                     return AVERROR(EINVAL);
                 }
-                if (st->codecpar->channels > 8) {
+                if (st->codecpar->ch_layout.nb_channels > 8) {
                     av_log(ctx, AV_LOG_ERROR, "At most 8 channels allowed for LPCM streams.\n");
                     return AVERROR(EINVAL);
                 }
                 stream->lpcm_header[0] = 0x0c;
-                stream->lpcm_header[1] = (st->codecpar->channels - 1) | (j << 4);
+                stream->lpcm_header[1] = (st->codecpar->ch_layout.nb_channels - 1) | (j << 4);
                 stream->lpcm_header[2] = 0x80;
-                stream->lpcm_align     = st->codecpar->channels * 2;
+                stream->lpcm_align     = st->codecpar->ch_layout.nb_channels * 2;
             } else if (st->codecpar->codec_id == AV_CODEC_ID_PCM_DVD) {
                 int freq;
 
@@ -404,10 +407,10 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
                 stream->lpcm_header[0] = 0x0c;
                 stream->lpcm_header[1] = (freq << 4) |
                                          (((st->codecpar->bits_per_coded_sample - 16) / 4) << 6) |
-                                         st->codecpar->channels - 1;
+                                         st->codecpar->ch_layout.nb_channels - 1;
                 stream->lpcm_header[2] = 0x80;
                 stream->id = lpcm_id++;
-                stream->lpcm_align = st->codecpar->channels * st->codecpar->bits_per_coded_sample / 8;
+                stream->lpcm_align = st->codecpar->ch_layout.nb_channels * st->codecpar->bits_per_coded_sample / 8;
             } else if (st->codecpar->codec_id == AV_CODEC_ID_MLP ||
                        st->codecpar->codec_id == AV_CODEC_ID_TRUEHD) {
                        av_log(ctx, AV_LOG_ERROR, "Support for muxing audio codec %s not implemented.\n",
@@ -459,7 +462,7 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
                    av_get_media_type_string(st->codecpar->codec_type), i);
             return AVERROR(EINVAL);
         }
-        stream->fifo = av_fifo_alloc(16);
+        stream->fifo = av_fifo_alloc2(16, 1, 0);
         if (!stream->fifo)
             return AVERROR(ENOMEM);
     }
@@ -626,6 +629,12 @@ static int get_nb_frames(AVFormatContext *ctx, StreamInfo *stream, int len)
     return nb_frames;
 }
 
+static int fifo_avio_wrapper(void *opaque, void *buf, size_t *nb_elems)
+{
+    avio_write(opaque, buf, *nb_elems);
+    return 0;
+}
+
 /* flush the packet on stream stream_index */
 static int flush_packet(AVFormatContext *ctx, int stream_index,
                         int64_t pts, int64_t dts, int64_t scr, int trailer_size)
@@ -741,6 +750,7 @@ static int flush_packet(AVFormatContext *ctx, int stream_index,
     packet_size -= pad_packet_bytes + zero_trail_bytes;
 
     if (packet_size > 0) {
+        size_t fifo_data;
         /* packet header size */
         packet_size -= 6;
 
@@ -776,7 +786,7 @@ static int flush_packet(AVFormatContext *ctx, int stream_index,
             startcode = 0x100 + id;
         }
 
-        stuffing_size = payload_size - av_fifo_size(stream->fifo);
+        stuffing_size = payload_size - av_fifo_can_read(stream->fifo);
 
         // first byte does not fit -> reset pts/dts + stuffing
         if (payload_size <= trailer_size && pts != AV_NOPTS_VALUE) {
@@ -814,7 +824,7 @@ static int flush_packet(AVFormatContext *ctx, int stream_index,
             stuffing_size = 0;
 
         if (startcode == PRIVATE_STREAM_1 && id >= 0xa0) {
-            if (payload_size < av_fifo_size(stream->fifo))
+            if (payload_size < av_fifo_can_read(stream->fifo))
                 stuffing_size += payload_size % stream->lpcm_align;
         }
 
@@ -907,11 +917,10 @@ static int flush_packet(AVFormatContext *ctx, int stream_index,
         }
 
         /* output data */
-        av_assert0(payload_size - stuffing_size <= av_fifo_size(stream->fifo));
-        av_fifo_generic_read(stream->fifo, ctx->pb,
-                             payload_size - stuffing_size,
-                             (void (*)(void*, void*, int))avio_write);
-        stream->bytes_to_iframe -= payload_size - stuffing_size;
+        fifo_data = payload_size - stuffing_size;
+        av_assert0(fifo_data <= av_fifo_can_read(stream->fifo));
+        av_fifo_read_to_cb(stream->fifo, fifo_avio_wrapper, ctx->pb, &fifo_data);
+        stream->bytes_to_iframe -= fifo_data;
     } else {
         payload_size  =
         stuffing_size = 0;
@@ -1005,7 +1014,7 @@ retry:
     for (i = 0; i < ctx->nb_streams; i++) {
         AVStream *st = ctx->streams[i];
         StreamInfo *stream = st->priv_data;
-        const int avail_data = av_fifo_size(stream->fifo);
+        const size_t avail_data = av_fifo_can_read(stream->fifo);
         const int space = stream->max_buffer_size - stream->buffer_index;
         int rel_space = 1024LL * space / stream->max_buffer_size;
         PacketDesc *next_pkt = stream->premux_packet;
@@ -1075,7 +1084,7 @@ retry:
     st     = ctx->streams[best_i];
     stream = st->priv_data;
 
-    av_assert0(av_fifo_size(stream->fifo) > 0);
+    av_assert0(av_fifo_can_read(stream->fifo) > 0);
 
     av_assert0(avail_space >= s->packet_size || ignore_constraints);
 
@@ -1095,7 +1104,7 @@ retry:
         es_size = flush_packet(ctx, best_i, timestamp_packet->pts,
                                timestamp_packet->dts, scr, trailer_size);
     } else {
-        av_assert0(av_fifo_size(stream->fifo) == trailer_size);
+        av_assert0(av_fifo_can_read(stream->fifo) == trailer_size);
         es_size = flush_packet(ctx, best_i, AV_NOPTS_VALUE, AV_NOPTS_VALUE, scr,
                                trailer_size);
     }
@@ -1137,13 +1146,14 @@ static int mpeg_mux_write_packet(AVFormatContext *ctx, AVPacket *pkt)
 {
     int stream_index = pkt->stream_index;
     int size         = pkt->size;
-    uint8_t *buf     = pkt->data;
+    const uint8_t *buf = pkt->data;
     MpegMuxContext *s = ctx->priv_data;
     AVStream *st      = ctx->streams[stream_index];
     StreamInfo *stream = st->priv_data;
     int64_t pts, dts;
     PacketDesc *pkt_desc;
     int preload, ret;
+    size_t can_write;
     const int is_iframe = st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
                           (pkt->flags & AV_PKT_FLAG_KEY);
 
@@ -1184,6 +1194,14 @@ static int mpeg_mux_write_packet(AVFormatContext *ctx, AVPacket *pkt)
         size -= 3;
     }
 
+    /* Enlarge the FIFO before adding a new PacketDesc
+     * in order to avoid inconsistencies on failure. */
+    can_write = av_fifo_can_write(stream->fifo);
+    if (can_write < size) {
+        ret = av_fifo_grow2(stream->fifo, size - can_write);
+        if (ret < 0)
+            return ret;
+    }
     pkt_desc                 = av_mallocz(sizeof(PacketDesc));
     if (!pkt_desc)
         return AVERROR(ENOMEM);
@@ -1199,22 +1217,18 @@ static int mpeg_mux_write_packet(AVFormatContext *ctx, AVPacket *pkt)
     pkt_desc->unwritten_size =
     pkt_desc->size           = size;
 
-    ret = av_fifo_realloc2(stream->fifo, av_fifo_size(stream->fifo) + size);
-    if (ret < 0)
-        return ret;
-
     if (s->is_dvd) {
         // min VOBU length 0.4 seconds (mpucoder)
         if (is_iframe &&
             (s->packet_number == 0 || pts != AV_NOPTS_VALUE &&
              (pts - stream->vobu_start_pts >= 36000))) {
-            stream->bytes_to_iframe = av_fifo_size(stream->fifo);
+            stream->bytes_to_iframe = av_fifo_can_read(stream->fifo);
             stream->align_iframe    = 1;
             stream->vobu_start_pts  = pts;
         }
     }
 
-    av_fifo_generic_write(stream->fifo, buf, size, NULL);
+    av_fifo_write(stream->fifo, buf, size);
 
     for (;;) {
         int ret = output_packet(ctx, 0);
@@ -1244,7 +1258,7 @@ static int mpeg_mux_end(AVFormatContext *ctx)
     for (i = 0; i < ctx->nb_streams; i++) {
         stream = ctx->streams[i]->priv_data;
 
-        av_assert0(av_fifo_size(stream->fifo) == 0);
+        av_assert0(av_fifo_can_read(stream->fifo) == 0);
     }
     return 0;
 }
@@ -1260,7 +1274,7 @@ static void mpeg_mux_deinit(AVFormatContext *ctx)
             av_free(pkt);
             pkt = tmp;
         }
-        av_fifo_freep(&stream->fifo);
+        av_fifo_freep2(&stream->fifo);
     }
 }
 
@@ -1280,87 +1294,87 @@ static const AVClass mpeg_class = {
 };
 
 #if CONFIG_MPEG1SYSTEM_MUXER
-const AVOutputFormat ff_mpeg1system_muxer = {
-    .name              = "mpeg",
-    .long_name         = NULL_IF_CONFIG_SMALL("MPEG-1 Systems / MPEG program stream"),
-    .mime_type         = "video/mpeg",
-    .extensions        = "mpg,mpeg",
+const FFOutputFormat ff_mpeg1system_muxer = {
+    .p.name            = "mpeg",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("MPEG-1 Systems / MPEG program stream"),
+    .p.mime_type       = "video/mpeg",
+    .p.extensions      = "mpg,mpeg",
     .priv_data_size    = sizeof(MpegMuxContext),
-    .audio_codec       = AV_CODEC_ID_MP2,
-    .video_codec       = AV_CODEC_ID_MPEG1VIDEO,
+    .p.audio_codec     = AV_CODEC_ID_MP2,
+    .p.video_codec     = AV_CODEC_ID_MPEG1VIDEO,
     .write_header      = mpeg_mux_init,
     .write_packet      = mpeg_mux_write_packet,
     .write_trailer     = mpeg_mux_end,
     .deinit            = mpeg_mux_deinit,
-    .priv_class        = &mpeg_class,
+    .p.priv_class      = &mpeg_class,
 };
 #endif
 
 #if CONFIG_MPEG1VCD_MUXER
-const AVOutputFormat ff_mpeg1vcd_muxer = {
-    .name              = "vcd",
-    .long_name         = NULL_IF_CONFIG_SMALL("MPEG-1 Systems / MPEG program stream (VCD)"),
-    .mime_type         = "video/mpeg",
+const FFOutputFormat ff_mpeg1vcd_muxer = {
+    .p.name            = "vcd",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("MPEG-1 Systems / MPEG program stream (VCD)"),
+    .p.mime_type       = "video/mpeg",
     .priv_data_size    = sizeof(MpegMuxContext),
-    .audio_codec       = AV_CODEC_ID_MP2,
-    .video_codec       = AV_CODEC_ID_MPEG1VIDEO,
+    .p.audio_codec     = AV_CODEC_ID_MP2,
+    .p.video_codec     = AV_CODEC_ID_MPEG1VIDEO,
     .write_header      = mpeg_mux_init,
     .write_packet      = mpeg_mux_write_packet,
     .write_trailer     = mpeg_mux_end,
     .deinit            = mpeg_mux_deinit,
-    .priv_class        = &mpeg_class,
+    .p.priv_class      = &mpeg_class,
 };
 #endif
 
 #if CONFIG_MPEG2VOB_MUXER
-const AVOutputFormat ff_mpeg2vob_muxer = {
-    .name              = "vob",
-    .long_name         = NULL_IF_CONFIG_SMALL("MPEG-2 PS (VOB)"),
-    .mime_type         = "video/mpeg",
-    .extensions        = "vob",
+const FFOutputFormat ff_mpeg2vob_muxer = {
+    .p.name            = "vob",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("MPEG-2 PS (VOB)"),
+    .p.mime_type       = "video/mpeg",
+    .p.extensions      = "vob",
     .priv_data_size    = sizeof(MpegMuxContext),
-    .audio_codec       = AV_CODEC_ID_MP2,
-    .video_codec       = AV_CODEC_ID_MPEG2VIDEO,
+    .p.audio_codec     = AV_CODEC_ID_MP2,
+    .p.video_codec     = AV_CODEC_ID_MPEG2VIDEO,
     .write_header      = mpeg_mux_init,
     .write_packet      = mpeg_mux_write_packet,
     .write_trailer     = mpeg_mux_end,
     .deinit            = mpeg_mux_deinit,
-    .priv_class        = &mpeg_class,
+    .p.priv_class      = &mpeg_class,
 };
 #endif
 
 /* Same as mpeg2vob_mux except that the pack size is 2324 */
 #if CONFIG_MPEG2SVCD_MUXER
-const AVOutputFormat ff_mpeg2svcd_muxer = {
-    .name              = "svcd",
-    .long_name         = NULL_IF_CONFIG_SMALL("MPEG-2 PS (SVCD)"),
-    .mime_type         = "video/mpeg",
-    .extensions        = "vob",
+const FFOutputFormat ff_mpeg2svcd_muxer = {
+    .p.name            = "svcd",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("MPEG-2 PS (SVCD)"),
+    .p.mime_type       = "video/mpeg",
+    .p.extensions      = "vob",
     .priv_data_size    = sizeof(MpegMuxContext),
-    .audio_codec       = AV_CODEC_ID_MP2,
-    .video_codec       = AV_CODEC_ID_MPEG2VIDEO,
+    .p.audio_codec     = AV_CODEC_ID_MP2,
+    .p.video_codec     = AV_CODEC_ID_MPEG2VIDEO,
     .write_header      = mpeg_mux_init,
     .write_packet      = mpeg_mux_write_packet,
     .write_trailer     = mpeg_mux_end,
     .deinit            = mpeg_mux_deinit,
-    .priv_class        = &mpeg_class,
+    .p.priv_class      = &mpeg_class,
 };
 #endif
 
 /*  Same as mpeg2vob_mux except the 'is_dvd' flag is set to produce NAV pkts */
 #if CONFIG_MPEG2DVD_MUXER
-const AVOutputFormat ff_mpeg2dvd_muxer = {
-    .name              = "dvd",
-    .long_name         = NULL_IF_CONFIG_SMALL("MPEG-2 PS (DVD VOB)"),
-    .mime_type         = "video/mpeg",
-    .extensions        = "dvd",
+const FFOutputFormat ff_mpeg2dvd_muxer = {
+    .p.name            = "dvd",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("MPEG-2 PS (DVD VOB)"),
+    .p.mime_type       = "video/mpeg",
+    .p.extensions      = "dvd",
     .priv_data_size    = sizeof(MpegMuxContext),
-    .audio_codec       = AV_CODEC_ID_MP2,
-    .video_codec       = AV_CODEC_ID_MPEG2VIDEO,
+    .p.audio_codec     = AV_CODEC_ID_MP2,
+    .p.video_codec     = AV_CODEC_ID_MPEG2VIDEO,
     .write_header      = mpeg_mux_init,
     .write_packet      = mpeg_mux_write_packet,
     .write_trailer     = mpeg_mux_end,
     .deinit            = mpeg_mux_deinit,
-    .priv_class        = &mpeg_class,
+    .p.priv_class      = &mpeg_class,
 };
 #endif

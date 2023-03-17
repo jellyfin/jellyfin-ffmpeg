@@ -48,6 +48,7 @@
 #include <mach/mach_time.h>
 #endif
 
+#include "common.h"
 #include "log.h"
 
 #if   ARCH_AARCH64
@@ -56,6 +57,8 @@
 #   include "arm/timer.h"
 #elif ARCH_PPC
 #   include "ppc/timer.h"
+#elif ARCH_RISCV
+#   include "riscv/timer.h"
 #elif ARCH_X86
 #   include "x86/timer.h"
 #endif

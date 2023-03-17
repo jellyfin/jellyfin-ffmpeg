@@ -38,7 +38,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavcodec/png.h"
 #include "avio_internal.h"
-#include "internal.h"
+#include "demux.h"
 #include "id3v1.h"
 #include "id3v2.h"
 
@@ -69,6 +69,7 @@ const AVMetadataConv ff_id3v2_4_metadata_conv[] = {
     { "TSOA", "album-sort"    },
     { "TSOP", "artist-sort"   },
     { "TSOT", "title-sort"    },
+    { "TIT1", "grouping"      },
     { 0 }
 };
 
@@ -376,10 +377,10 @@ static void read_uslt(AVFormatContext *s, AVIOContext *pb, int taglen,
     lang[3] = '\0';
     taglen -= 3;
 
-    if (decode_str(s, pb, encoding, &descriptor, &taglen) < 0)
+    if (decode_str(s, pb, encoding, &descriptor, &taglen) < 0 || taglen < 0)
         goto error;
 
-    if (decode_str(s, pb, encoding, &text, &taglen) < 0)
+    if (decode_str(s, pb, encoding, &text, &taglen) < 0 || taglen < 0)
         goto error;
 
     // FFmpeg does not support hierarchical metadata, so concatenate the keys.

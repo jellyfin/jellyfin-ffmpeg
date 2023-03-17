@@ -21,14 +21,10 @@
  * implementing an classification filter using deep learning networks.
  */
 
-#include "libavformat/avio.h"
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/avassert.h"
-#include "libavutil/imgutils.h"
 #include "filters.h"
 #include "dnn_filter_common.h"
-#include "formats.h"
 #include "internal.h"
 #include "libavutil/time.h"
 #include "libavutil/avstring.h"
@@ -131,7 +127,7 @@ static int read_classify_label_file(AVFilterContext *context)
     FILE *file;
     DnnClassifyContext *ctx = context->priv;
 
-    file = av_fopen_utf8(ctx->labels_filename, "r");
+    file = avpriv_fopen_utf8(ctx->labels_filename, "r");
     if (!file){
         av_log(context, AV_LOG_ERROR, "failed to open file %s\n", ctx->labels_filename);
         return AVERROR(EINVAL);
@@ -213,7 +209,7 @@ static int dnn_classify_flush_frame(AVFilterLink *outlink, int64_t pts, int64_t 
     DNNAsyncStatusType async_state;
 
     ret = ff_dnn_flush(&ctx->dnnctx);
-    if (ret != DNN_SUCCESS) {
+    if (ret != 0) {
         return -1;
     }
 
@@ -253,7 +249,7 @@ static int dnn_classify_activate(AVFilterContext *filter_ctx)
         if (ret < 0)
             return ret;
         if (ret > 0) {
-            if (ff_dnn_execute_model_classification(&ctx->dnnctx, in, NULL, ctx->target) != DNN_SUCCESS) {
+            if (ff_dnn_execute_model_classification(&ctx->dnnctx, in, NULL, ctx->target) != 0) {
                 return AVERROR(EIO);
             }
         }

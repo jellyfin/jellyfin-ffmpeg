@@ -36,8 +36,9 @@
 #include "blockdsp.h"
 #include "bswapdsp.h"
 #include "bytestream.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 
 #define BLOCK_TYPE_VLC_BITS 5
@@ -249,7 +250,7 @@ static void idct(int16_t block[64])
 
 static av_cold void init_vlcs(void)
 {
-    static VLC_TYPE table[2][4][32][2];
+    static VLCElem table[2][4][32];
     int i, j;
 
     for (i = 0; i < 2; i++) {
@@ -833,13 +834,12 @@ static int decode_i_frame(FourXContext *f, const uint8_t *buf, int length)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
                         int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf    = avpkt->data;
     int buf_size          = avpkt->size;
     FourXContext *const f = avctx->priv_data;
-    AVFrame *picture      = data;
     int i, frame_4cc, frame_size, ret;
 
     if (buf_size < 20)
@@ -875,7 +875,7 @@ static int decode_frame(AVCodecContext *avctx, void *data,
         }
 
         for (i = 0; i < CFRAME_BUFFER_COUNT; i++)
-            if (f->cfrm[i].id && f->cfrm[i].id < avctx->frame_number)
+            if (f->cfrm[i].id && f->cfrm[i].id < avctx->frame_num)
                 av_log(f->avctx, AV_LOG_ERROR, "lost c frame %d\n",
                        f->cfrm[i].id);
 
@@ -910,9 +910,9 @@ static int decode_frame(AVCodecContext *avctx, void *data,
             buf        = cfrm->data;
             frame_size = cfrm->size;
 
-            if (id != avctx->frame_number)
-                av_log(f->avctx, AV_LOG_ERROR, "cframe id mismatch %d %d\n",
-                       id, avctx->frame_number);
+            if (id != avctx->frame_num)
+                av_log(f->avctx, AV_LOG_ERROR, "cframe id mismatch %d %"PRId64"\n",
+                       id, avctx->frame_num);
 
             if (f->version <= 1)
                 return AVERROR_INVALIDDATA;
@@ -950,9 +950,11 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     } else if (frame_4cc == AV_RL32("snd_")) {
         av_log(avctx, AV_LOG_ERROR, "ignoring snd_ chunk length:%d\n",
                buf_size);
+        return AVERROR_INVALIDDATA;
     } else {
         av_log(avctx, AV_LOG_ERROR, "ignoring unknown chunk length:%d\n",
                buf_size);
+        return AVERROR_INVALIDDATA;
     }
 
     picture->key_frame = picture->pict_type == AV_PICTURE_TYPE_I;
@@ -963,8 +965,6 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     FFSWAP(uint16_t *, f->frame_buffer, f->last_frame_buffer);
 
     *got_frame = 1;
-
-    emms_c();
 
     return buf_size;
 }
@@ -1008,13 +1008,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     f->frame_buffer      = av_mallocz(avctx->width * avctx->height * 2);
     f->last_frame_buffer = av_mallocz(avctx->width * avctx->height * 2);
-    if (!f->frame_buffer || !f->last_frame_buffer) {
-        decode_end(avctx);
+    if (!f->frame_buffer || !f->last_frame_buffer)
         return AVERROR(ENOMEM);
-    }
 
     f->version = AV_RL32(avctx->extradata) >> 16;
-    ff_blockdsp_init(&f->bdsp, avctx);
+    ff_blockdsp_init(&f->bdsp);
     ff_bswapdsp_init(&f->bbdsp);
     f->avctx = avctx;
 
@@ -1028,15 +1026,15 @@ static av_cold int decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_fourxm_decoder = {
-    .name           = "4xm",
-    .long_name      = NULL_IF_CONFIG_SMALL("4X Movie"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_4XM,
+const FFCodec ff_fourxm_decoder = {
+    .p.name         = "4xm",
+    CODEC_LONG_NAME("4X Movie"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_4XM,
     .priv_data_size = sizeof(FourXContext),
     .init           = decode_init,
     .close          = decode_end,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -112,7 +112,7 @@ static int query_formats(AVFilterContext *ctx)
 
     formats = ff_make_format_list(sample_fmts);
     if ((ret = ff_formats_ref         (formats, &outlink->incfg.formats        )) < 0 ||
-        (ret = ff_add_channel_layout  (&layout, FF_COUNT2LAYOUT(s->channels))) < 0 ||
+        (ret = ff_add_channel_layout  (&layout, &FF_COUNT2LAYOUT(s->channels))) < 0 ||
         (ret = ff_channel_layouts_ref (layout , &outlink->incfg.channel_layouts)) < 0)
         return ret;
 
@@ -342,7 +342,7 @@ static void synth_window(AVFilterContext *ctx, int x)
             s->fft_in[ch][y].im = -s->fft_in[ch][f].im;
         }
 
-        s->tx_fn(s->fft, s->fft_out[ch], s->fft_in[ch], sizeof(float));
+        s->tx_fn(s->fft, s->fft_out[ch], s->fft_in[ch], sizeof(AVComplexFloat));
     }
 }
 

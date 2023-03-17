@@ -23,8 +23,8 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "sgi.h"
 #include "rle.h"
 
@@ -96,7 +96,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     SgiContext *s = avctx->priv_data;
     const AVFrame * const p = frame;
     PutByteContext pbc;
-    uint8_t *in_buf, *encode_buf;
+    uint8_t *encode_buf;
     int x, y, z, length, tablesize, ret, i;
     unsigned int width, height, depth, dimension;
     unsigned int bytes_per_channel, pixmax, put_be;
@@ -200,7 +200,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             return AVERROR(ENOMEM);
 
         for (z = 0; z < depth; z++) {
-            in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
+            const uint8_t *in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
 
             for (y = 0; y < height; y++) {
                 bytestream2_put_be32(&taboff_pcb, bytestream2_tell_p(&pbc));
@@ -231,7 +231,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         av_free(encode_buf);
     } else {
         for (z = 0; z < depth; z++) {
-            in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
+            const uint8_t *in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
 
             for (y = 0; y < height; y++) {
                 for (x = 0; x < width * depth; x += depth)
@@ -270,21 +270,21 @@ static const AVClass sgi_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_sgi_encoder = {
-    .name      = "sgi",
-    .long_name = NULL_IF_CONFIG_SMALL("SGI image"),
-    .type      = AVMEDIA_TYPE_VIDEO,
-    .id        = AV_CODEC_ID_SGI,
+const FFCodec ff_sgi_encoder = {
+    .p.name    = "sgi",
+    CODEC_LONG_NAME("SGI image"),
+    .p.type    = AVMEDIA_TYPE_VIDEO,
+    .p.id      = AV_CODEC_ID_SGI,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(SgiContext),
-    .priv_class = &sgi_class,
+    .p.priv_class = &sgi_class,
     .init      = encode_init,
-    .encode2   = encode_frame,
-    .pix_fmts  = (const enum AVPixelFormat[]) {
+    FF_CODEC_ENCODE_CB(encode_frame),
+    .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_RGB48LE, AV_PIX_FMT_RGB48BE,
         AV_PIX_FMT_RGBA64LE, AV_PIX_FMT_RGBA64BE,
         AV_PIX_FMT_GRAY16LE, AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_GRAY8,
         AV_PIX_FMT_NONE
     },
-    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

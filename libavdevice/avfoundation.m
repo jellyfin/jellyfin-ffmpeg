@@ -106,6 +106,7 @@ typedef struct
     int             audio_device_index;
     int             audio_stream_index;
 
+    char            *url;
     char            *video_filename;
     char            *audio_filename;
 
@@ -299,6 +300,7 @@ static void destroy_context(AVFContext* ctx)
     ctx->avf_delegate    = NULL;
     ctx->avf_audio_delegate = NULL;
 
+    av_freep(&ctx->url);
     av_freep(&ctx->audio_buffer);
 
     pthread_mutex_destroy(&ctx->frame_lock);
@@ -308,18 +310,22 @@ static void destroy_context(AVFContext* ctx)
     }
 }
 
-static void parse_device_name(AVFormatContext *s)
+static int parse_device_name(AVFormatContext *s)
 {
     AVFContext *ctx = (AVFContext*)s->priv_data;
-    char *tmp = av_strdup(s->url);
     char *save;
 
-    if (tmp[0] != ':') {
-        ctx->video_filename = av_strtok(tmp,  ":", &save);
+    ctx->url = av_strdup(s->url);
+
+    if (!ctx->url)
+        return AVERROR(ENOMEM);
+    if (ctx->url[0] != ':') {
+        ctx->video_filename = av_strtok(ctx->url,  ":", &save);
         ctx->audio_filename = av_strtok(NULL, ":", &save);
     } else {
-        ctx->audio_filename = av_strtok(tmp,  ":", &save);
+        ctx->audio_filename = av_strtok(ctx->url,  ":", &save);
     }
+    return 0;
 }
 
 /**
@@ -700,8 +706,7 @@ static int get_audio_config(AVFormatContext *s)
 
     stream->codecpar->codec_type     = AVMEDIA_TYPE_AUDIO;
     stream->codecpar->sample_rate    = basic_desc->mSampleRate;
-    stream->codecpar->channels       = basic_desc->mChannelsPerFrame;
-    stream->codecpar->channel_layout = av_get_default_channel_layout(stream->codecpar->channels);
+    av_channel_layout_default(&stream->codecpar->ch_layout, basic_desc->mChannelsPerFrame);
 
     ctx->audio_channels        = basic_desc->mChannelsPerFrame;
     ctx->audio_bits_per_sample = basic_desc->mBitsPerChannel;
@@ -758,6 +763,7 @@ static int get_audio_config(AVFormatContext *s)
 
 static int avf_read_header(AVFormatContext *s)
 {
+    int ret = 0;
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     uint32_t num_screens    = 0;
     AVFContext *ctx         = (AVFContext*)s->priv_data;
@@ -810,7 +816,9 @@ static int avf_read_header(AVFormatContext *s)
     }
 
     // parse input filename for video and audio device
-    parse_device_name(s);
+    ret = parse_device_name(s);
+    if (ret)
+        goto fail;
 
     // check for device index given in filename
     if (ctx->video_device_index == -1 && ctx->video_filename) {
@@ -1000,6 +1008,8 @@ static int avf_read_header(AVFormatContext *s)
 fail:
     [pool release];
     destroy_context(ctx);
+    if (ret)
+        return ret;
     return AVERROR(EIO);
 }
 

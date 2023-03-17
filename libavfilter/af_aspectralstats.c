@@ -21,7 +21,6 @@
 #include <float.h>
 #include <math.h>
 
-#include "libavutil/audio_fifo.h"
 #include "libavutil/opt.h"
 #include "libavutil/tx.h"
 #include "audio.h"
@@ -29,6 +28,22 @@
 #include "filters.h"
 #include "internal.h"
 #include "window_func.h"
+
+#define MEASURE_ALL       UINT_MAX
+#define MEASURE_NONE      0
+#define MEASURE_MEAN     (1 <<  0)
+#define MEASURE_VARIANCE (1 <<  1)
+#define MEASURE_CENTROID (1 <<  2)
+#define MEASURE_SPREAD   (1 <<  3)
+#define MEASURE_SKEWNESS (1 <<  4)
+#define MEASURE_KURTOSIS (1 <<  5)
+#define MEASURE_ENTROPY  (1 <<  6)
+#define MEASURE_FLATNESS (1 <<  7)
+#define MEASURE_CREST    (1 <<  8)
+#define MEASURE_FLUX     (1 <<  9)
+#define MEASURE_SLOPE    (1 << 10)
+#define MEASURE_DECREASE (1 << 11)
+#define MEASURE_ROLLOFF  (1 << 12)
 
 typedef struct ChannelSpectralStats {
     float mean;
@@ -48,22 +63,21 @@ typedef struct ChannelSpectralStats {
 
 typedef struct AudioSpectralStatsContext {
     const AVClass *class;
+    unsigned measure;
     int win_size;
     int win_func;
     float overlap;
     int nb_channels;
     int hop_size;
     ChannelSpectralStats *stats;
-    AVAudioFifo *fifo;
     float *window_func_lut;
-    int64_t pts;
-    int eof;
     av_tx_fn tx_fn;
     AVTXContext **fft;
     AVComplexFloat **fft_in;
     AVComplexFloat **fft_out;
     float **prev_magnitude;
     float **magnitude;
+    AVFrame *window;
 } AudioSpectralStatsContext;
 
 #define OFFSET(x) offsetof(AudioSpectralStatsContext, x)
@@ -73,6 +87,22 @@ static const AVOption aspectralstats_options[] = {
     { "win_size", "set the window size", OFFSET(win_size), AV_OPT_TYPE_INT, {.i64=2048}, 32, 65536, A },
     WIN_FUNC_OPTION("win_func", OFFSET(win_func), A, WFUNC_HANNING),
     { "overlap", "set window overlap", OFFSET(overlap), AV_OPT_TYPE_FLOAT, {.dbl=0.5}, 0,  1, A },
+    { "measure", "select the parameters which are measured", OFFSET(measure), AV_OPT_TYPE_FLAGS, {.i64=MEASURE_ALL}, 0, UINT_MAX, A, "measure" },
+    { "none",     "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NONE    }, 0, 0, A, "measure" },
+    { "all",      "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ALL     }, 0, 0, A, "measure" },
+    { "mean",     "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MEAN    }, 0, 0, A, "measure" },
+    { "variance", "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_VARIANCE}, 0, 0, A, "measure" },
+    { "centroid", "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_CENTROID}, 0, 0, A, "measure" },
+    { "spread",   "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_SPREAD  }, 0, 0, A, "measure" },
+    { "skewness", "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_SKEWNESS}, 0, 0, A, "measure" },
+    { "kurtosis", "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_KURTOSIS}, 0, 0, A, "measure" },
+    { "entropy",  "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ENTROPY }, 0, 0, A, "measure" },
+    { "flatness", "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_FLATNESS}, 0, 0, A, "measure" },
+    { "crest",    "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_CREST   }, 0, 0, A, "measure" },
+    { "flux",     "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_FLUX    }, 0, 0, A, "measure" },
+    { "slope",    "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_SLOPE   }, 0, 0, A, "measure" },
+    { "decrease", "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_DECREASE}, 0, 0, A, "measure" },
+    { "rolloff",  "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ROLLOFF }, 0, 0, A, "measure" },
     { NULL }
 };
 
@@ -81,14 +111,10 @@ AVFILTER_DEFINE_CLASS(aspectralstats);
 static int config_output(AVFilterLink *outlink)
 {
     AudioSpectralStatsContext *s = outlink->src->priv;
-    float overlap, scale;
+    float overlap, scale = 1.f;
     int ret;
 
-    s->nb_channels = outlink->channels;
-    s->fifo = av_audio_fifo_alloc(outlink->format, s->nb_channels, s->win_size);
-    if (!s->fifo)
-        return AVERROR(ENOMEM);
-
+    s->nb_channels = outlink->ch_layout.nb_channels;
     s->window_func_lut = av_realloc_f(s->window_func_lut, s->win_size,
                                       sizeof(*s->window_func_lut));
     if (!s->window_func_lut)
@@ -147,6 +173,10 @@ static int config_output(AVFilterLink *outlink)
             return AVERROR(ENOMEM);
     }
 
+    s->window = ff_get_audio_buffer(outlink, s->win_size);
+    if (!s->window)
+        return AVERROR(ENOMEM);
+
     return 0;
 }
 
@@ -169,19 +199,32 @@ static void set_metadata(AudioSpectralStatsContext *s, AVDictionary **metadata)
     for (int ch = 0; ch < s->nb_channels; ch++) {
         ChannelSpectralStats *stats = &s->stats[ch];
 
-        set_meta(metadata, ch + 1, "mean",     "%g", stats->mean);
-        set_meta(metadata, ch + 1, "variance", "%g", stats->variance);
-        set_meta(metadata, ch + 1, "centroid", "%g", stats->centroid);
-        set_meta(metadata, ch + 1, "spread",   "%g", stats->spread);
-        set_meta(metadata, ch + 1, "skewness", "%g", stats->skewness);
-        set_meta(metadata, ch + 1, "kurtosis", "%g", stats->kurtosis);
-        set_meta(metadata, ch + 1, "entropy",  "%g", stats->entropy);
-        set_meta(metadata, ch + 1, "flatness", "%g", stats->flatness);
-        set_meta(metadata, ch + 1, "crest",    "%g", stats->crest);
-        set_meta(metadata, ch + 1, "flux",     "%g", stats->flux);
-        set_meta(metadata, ch + 1, "slope",    "%g", stats->slope);
-        set_meta(metadata, ch + 1, "decrease", "%g", stats->decrease);
-        set_meta(metadata, ch + 1, "rolloff",  "%g", stats->rolloff);
+        if (s->measure & MEASURE_MEAN)
+            set_meta(metadata, ch + 1, "mean",     "%g", stats->mean);
+        if (s->measure & MEASURE_VARIANCE)
+            set_meta(metadata, ch + 1, "variance", "%g", stats->variance);
+        if (s->measure & MEASURE_CENTROID)
+            set_meta(metadata, ch + 1, "centroid", "%g", stats->centroid);
+        if (s->measure & MEASURE_SPREAD)
+            set_meta(metadata, ch + 1, "spread",   "%g", stats->spread);
+        if (s->measure & MEASURE_SKEWNESS)
+            set_meta(metadata, ch + 1, "skewness", "%g", stats->skewness);
+        if (s->measure & MEASURE_KURTOSIS)
+            set_meta(metadata, ch + 1, "kurtosis", "%g", stats->kurtosis);
+        if (s->measure & MEASURE_ENTROPY)
+            set_meta(metadata, ch + 1, "entropy",  "%g", stats->entropy);
+        if (s->measure & MEASURE_FLATNESS)
+            set_meta(metadata, ch + 1, "flatness", "%g", stats->flatness);
+        if (s->measure & MEASURE_CREST)
+            set_meta(metadata, ch + 1, "crest",    "%g", stats->crest);
+        if (s->measure & MEASURE_FLUX)
+            set_meta(metadata, ch + 1, "flux",     "%g", stats->flux);
+        if (s->measure & MEASURE_SLOPE)
+            set_meta(metadata, ch + 1, "slope",    "%g", stats->slope);
+        if (s->measure & MEASURE_DECREASE)
+            set_meta(metadata, ch + 1, "decrease", "%g", stats->decrease);
+        if (s->measure & MEASURE_ROLLOFF)
+            set_meta(metadata, ch + 1, "rolloff",  "%g", stats->rolloff);
     }
 }
 
@@ -392,14 +435,15 @@ static float spectral_rolloff(const float *const spectral, int size, int max_fre
 static int filter_channel(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 {
     AudioSpectralStatsContext *s = ctx->priv;
+    const float *window_func_lut = s->window_func_lut;
     AVFrame *in = arg;
     const int channels = s->nb_channels;
-    const int samples = in->nb_samples;
     const int start = (channels * jobnr) / nb_jobs;
     const int end = (channels * (jobnr+1)) / nb_jobs;
+    const int offset = s->win_size - s->hop_size;
 
     for (int ch = start; ch < end; ch++) {
-        const float *const src = (const float *const)in->extended_data[ch];
+        float *window = (float *)s->window->extended_data[ch];
         ChannelSpectralStats *stats = &s->stats[ch];
         AVComplexFloat *fft_out = s->fft_out[ch];
         AVComplexFloat *fft_in = s->fft_in[ch];
@@ -407,17 +451,16 @@ static int filter_channel(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
         float *prev_magnitude = s->prev_magnitude[ch];
         const float scale = 1.f / s->win_size;
 
-        for (int n = 0; n < samples; n++) {
-            fft_in[n].re = src[n] * s->window_func_lut[n];
+        memmove(window, &window[s->hop_size], offset * sizeof(float));
+        memcpy(&window[offset], in->extended_data[ch], in->nb_samples * sizeof(float));
+        memset(&window[offset + in->nb_samples], 0, (s->hop_size - in->nb_samples) * sizeof(float));
+
+        for (int n = 0; n < s->win_size; n++) {
+            fft_in[n].re = window[n] * window_func_lut[n];
             fft_in[n].im = 0;
         }
 
-        for (int n = in->nb_samples; n < s->win_size; n++) {
-            fft_in[n].re = 0;
-            fft_in[n].im = 0;
-        }
-
-        s->tx_fn(s->fft[ch], fft_out, fft_in, sizeof(float));
+        s->tx_fn(s->fft[ch], fft_out, fft_in, sizeof(*fft_in));
 
         for (int n = 0; n < s->win_size / 2; n++) {
             fft_out[n].re *= scale;
@@ -427,19 +470,32 @@ static int filter_channel(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
         for (int n = 0; n < s->win_size / 2; n++)
             magnitude[n] = hypotf(fft_out[n].re, fft_out[n].im);
 
-        stats->mean     = spectral_mean(magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->variance = spectral_variance(magnitude, s->win_size / 2, in->sample_rate / 2, stats->mean);
-        stats->centroid = spectral_centroid(magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->spread   = spectral_spread(magnitude, s->win_size / 2, in->sample_rate / 2, stats->centroid);
-        stats->skewness = spectral_skewness(magnitude, s->win_size / 2, in->sample_rate / 2, stats->centroid, stats->spread);
-        stats->kurtosis = spectral_kurtosis(magnitude, s->win_size / 2, in->sample_rate / 2, stats->centroid, stats->spread);
-        stats->entropy  = spectral_entropy(magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->flatness = spectral_flatness(magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->crest    = spectral_crest(magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->flux     = spectral_flux(magnitude, prev_magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->slope    = spectral_slope(magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->decrease = spectral_decrease(magnitude, s->win_size / 2, in->sample_rate / 2);
-        stats->rolloff  = spectral_rolloff(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & (MEASURE_MEAN | MEASURE_VARIANCE))
+            stats->mean     = spectral_mean(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & MEASURE_VARIANCE)
+            stats->variance = spectral_variance(magnitude, s->win_size / 2, in->sample_rate / 2, stats->mean);
+        if (s->measure & (MEASURE_SPREAD | MEASURE_KURTOSIS | MEASURE_SKEWNESS | MEASURE_CENTROID))
+            stats->centroid = spectral_centroid(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & (MEASURE_SPREAD | MEASURE_KURTOSIS | MEASURE_SKEWNESS))
+            stats->spread   = spectral_spread(magnitude, s->win_size / 2, in->sample_rate / 2, stats->centroid);
+        if (s->measure & MEASURE_SKEWNESS)
+            stats->skewness = spectral_skewness(magnitude, s->win_size / 2, in->sample_rate / 2, stats->centroid, stats->spread);
+        if (s->measure & MEASURE_KURTOSIS)
+            stats->kurtosis = spectral_kurtosis(magnitude, s->win_size / 2, in->sample_rate / 2, stats->centroid, stats->spread);
+        if (s->measure & MEASURE_ENTROPY)
+            stats->entropy  = spectral_entropy(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & MEASURE_FLATNESS)
+            stats->flatness = spectral_flatness(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & MEASURE_CREST)
+            stats->crest    = spectral_crest(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & MEASURE_FLUX)
+            stats->flux     = spectral_flux(magnitude, prev_magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & MEASURE_SLOPE)
+            stats->slope    = spectral_slope(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & MEASURE_DECREASE)
+            stats->decrease = spectral_decrease(magnitude, s->win_size / 2, in->sample_rate / 2);
+        if (s->measure & MEASURE_ROLLOFF)
+            stats->rolloff  = spectral_rolloff(magnitude, s->win_size / 2, in->sample_rate / 2);
 
         memcpy(prev_magnitude, magnitude, s->win_size * sizeof(float));
     }
@@ -447,102 +503,71 @@ static int filter_channel(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
     return 0;
 }
 
-static int filter_frame(AVFilterLink *inlink)
+static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     AudioSpectralStatsContext *s = ctx->priv;
     AVDictionary **metadata;
-    AVFrame *out, *in = NULL;
-    int ret = 0;
+    AVFrame *out;
+    int ret;
 
-    out = ff_get_audio_buffer(outlink, s->hop_size);
-    if (!out) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    if (!in) {
-        in = ff_get_audio_buffer(outlink, s->win_size);
-        if (!in)
+    if (av_frame_is_writable(in)) {
+        out = in;
+    } else {
+        out = ff_get_audio_buffer(outlink, in->nb_samples);
+        if (!out) {
+            av_frame_free(&in);
             return AVERROR(ENOMEM);
+        }
+        ret = av_frame_copy_props(out, in);
+        if (ret < 0)
+            goto fail;
+        ret = av_frame_copy(out, in);
+        if (ret < 0)
+            goto fail;
     }
-
-    ret = av_audio_fifo_peek(s->fifo, (void **)in->extended_data, s->win_size);
-    if (ret < 0)
-        goto fail;
 
     metadata = &out->metadata;
     ff_filter_execute(ctx, filter_channel, in, NULL,
-                      FFMIN(inlink->channels, ff_filter_get_nb_threads(ctx)));
+                      FFMIN(inlink->ch_layout.nb_channels, ff_filter_get_nb_threads(ctx)));
 
     set_metadata(s, metadata);
 
-    out->pts = s->pts;
-    s->pts += av_rescale_q(s->hop_size, (AVRational){1, outlink->sample_rate}, outlink->time_base);
-
-    av_audio_fifo_read(s->fifo, (void **)out->extended_data, s->hop_size);
-
-    av_frame_free(&in);
+    if (out != in)
+        av_frame_free(&in);
     return ff_filter_frame(outlink, out);
 fail:
     av_frame_free(&in);
-    return ret < 0 ? ret : 0;
+    av_frame_free(&out);
+    return ret;
 }
 
 static int activate(AVFilterContext *ctx)
 {
-    AVFilterLink *inlink = ctx->inputs[0];
-    AVFilterLink *outlink = ctx->outputs[0];
     AudioSpectralStatsContext *s = ctx->priv;
-    AVFrame *in = NULL;
-    int ret = 0, status;
-    int64_t pts;
+    AVFilterLink *outlink = ctx->outputs[0];
+    AVFilterLink *inlink = ctx->inputs[0];
+    AVFrame *in;
+    int ret;
 
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
-    if (!s->eof && av_audio_fifo_size(s->fifo) < s->win_size) {
-        ret = ff_inlink_consume_frame(inlink, &in);
-        if (ret < 0)
-            return ret;
-
-        if (ret > 0) {
-            ret = av_audio_fifo_write(s->fifo, (void **)in->extended_data,
-                                      in->nb_samples);
-            if (ret >= 0 && s->pts == AV_NOPTS_VALUE)
-                s->pts = in->pts;
-
-            av_frame_free(&in);
-            if (ret < 0)
-                return ret;
-        }
-    }
-
-    if ((av_audio_fifo_size(s->fifo) >= s->win_size) ||
-        (av_audio_fifo_size(s->fifo) > 0 && s->eof)) {
-        ret = filter_frame(inlink);
-        if (av_audio_fifo_size(s->fifo) >= s->win_size)
-            ff_filter_set_ready(ctx, 100);
+    ret = ff_inlink_consume_samples(inlink, s->hop_size, s->hop_size, &in);
+    if (ret < 0)
         return ret;
-    }
+    if (ret > 0)
+        ret = filter_frame(inlink, in);
+    if (ret < 0)
+        return ret;
 
-    if (!s->eof && ff_inlink_acknowledge_status(inlink, &status, &pts)) {
-        if (status == AVERROR_EOF) {
-            s->eof = 1;
-            if (av_audio_fifo_size(s->fifo) >= 0) {
-                ff_filter_set_ready(ctx, 100);
-                return 0;
-            }
-        }
-    }
-
-    if (s->eof && av_audio_fifo_size(s->fifo) <= 0) {
-        ff_outlink_set_status(outlink, AVERROR_EOF, s->pts);
+    if (ff_inlink_queued_samples(inlink) >= s->hop_size) {
+        ff_filter_set_ready(ctx, 10);
         return 0;
     }
 
-    if (!s->eof)
-        FF_FILTER_FORWARD_WANTED(outlink, inlink);
+    FF_FILTER_FORWARD_STATUS(inlink, outlink);
+    FF_FILTER_FORWARD_WANTED(outlink, inlink);
 
     return FFERROR_NOT_READY;
 }
@@ -572,8 +597,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->stats);
 
     av_freep(&s->window_func_lut);
-    av_audio_fifo_free(s->fifo);
-    s->fifo = NULL;
+    av_frame_free(&s->window);
 }
 
 static const AVFilterPad aspectralstats_inputs[] = {

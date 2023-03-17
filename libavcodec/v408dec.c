@@ -19,20 +19,26 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 
 static av_cold int v408_decode_init(AVCodecContext *avctx)
 {
     avctx->pix_fmt = AV_PIX_FMT_YUVA444P;
 
+#if FF_API_AYUV_CODECID
+    if (avctx->codec_id==AV_CODEC_ID_AYUV)
+        av_log(avctx, AV_LOG_WARNING, "This decoder is deprecated and will be removed.\n");
+#endif
     return 0;
 }
 
-static int v408_decode_frame(AVCodecContext *avctx, void *data,
+static int v408_decode_frame(AVCodecContext *avctx, AVFrame *pic,
                              int *got_frame, AVPacket *avpkt)
 {
-    AVFrame *pic = data;
     const uint8_t *src = avpkt->data;
     uint8_t *y, *u, *v, *a;
     int i, j, ret;
@@ -55,12 +61,15 @@ static int v408_decode_frame(AVCodecContext *avctx, void *data,
 
     for (i = 0; i < avctx->height; i++) {
         for (j = 0; j < avctx->width; j++) {
+#if FF_API_AYUV_CODECID
             if (avctx->codec_id==AV_CODEC_ID_AYUV) {
                 v[j] = *src++;
                 u[j] = *src++;
                 y[j] = *src++;
                 a[j] = *src++;
-            } else {
+            } else
+#endif
+            {
                 u[j] = *src++;
                 y[j] = *src++;
                 v[j] = *src++;
@@ -79,27 +88,27 @@ static int v408_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
+#if FF_API_AYUV_CODECID
 #if CONFIG_AYUV_DECODER
-const AVCodec ff_ayuv_decoder = {
-    .name         = "ayuv",
-    .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed packed MS 4:4:4:4"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_AYUV,
+const FFCodec ff_ayuv_decoder = {
+    .p.name       = "ayuv",
+    CODEC_LONG_NAME("Uncompressed packed MS 4:4:4:4"),
+    .p.type       = AVMEDIA_TYPE_VIDEO,
+    .p.id         = AV_CODEC_ID_AYUV,
     .init         = v408_decode_init,
-    .decode       = v408_decode_frame,
-    .capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(v408_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };
 #endif
+#endif
 #if CONFIG_V408_DECODER
-const AVCodec ff_v408_decoder = {
-    .name         = "v408",
-    .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed packed QT 4:4:4:4"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_V408,
+const FFCodec ff_v408_decoder = {
+    .p.name       = "v408",
+    CODEC_LONG_NAME("Uncompressed packed QT 4:4:4:4"),
+    .p.type       = AVMEDIA_TYPE_VIDEO,
+    .p.id         = AV_CODEC_ID_V408,
     .init         = v408_decode_init,
-    .decode       = v408_decode_frame,
-    .capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(v408_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };
 #endif

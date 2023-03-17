@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/opt.h"
 #include "avformat.h"
 
@@ -42,7 +44,7 @@ static AVStream *aptx_read_header_common(AVFormatContext *s)
         return NULL;
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
     st->codecpar->format = AV_SAMPLE_FMT_S32P;
-    st->codecpar->channels = 2;
+    st->codecpar->ch_layout.nb_channels = 2;
     st->codecpar->sample_rate = s1->sample_rate;
     st->start_time = 0;
     return st;
@@ -56,7 +58,6 @@ static int aptx_read_header(AVFormatContext *s)
     st->codecpar->codec_id = AV_CODEC_ID_APTX;
     st->codecpar->bits_per_coded_sample = 4;
     st->codecpar->block_align = APTX_BLOCK_SIZE;
-    st->codecpar->frame_size = APTX_PACKET_SIZE;
     return 0;
 }
 
@@ -68,18 +69,23 @@ static int aptx_hd_read_header(AVFormatContext *s)
     st->codecpar->codec_id = AV_CODEC_ID_APTX_HD;
     st->codecpar->bits_per_coded_sample = 6;
     st->codecpar->block_align = APTX_HD_BLOCK_SIZE;
-    st->codecpar->frame_size = APTX_HD_PACKET_SIZE;
     return 0;
 }
 
 static int aptx_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
-    return av_get_packet(s->pb, pkt, APTX_PACKET_SIZE);
+    int ret = av_get_packet(s->pb, pkt, APTX_PACKET_SIZE);
+    if (ret >= 0 && !(ret % APTX_BLOCK_SIZE))
+        pkt->flags &= ~AV_PKT_FLAG_CORRUPT;
+    return ret >= 0 ? 0 : ret;
 }
 
 static int aptx_hd_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
-    return av_get_packet(s->pb, pkt, APTX_HD_PACKET_SIZE);
+    int ret = av_get_packet(s->pb, pkt, APTX_HD_PACKET_SIZE);
+    if (ret >= 0 && !(ret % APTX_HD_BLOCK_SIZE))
+        pkt->flags &= ~AV_PKT_FLAG_CORRUPT;
+    return ret >= 0 ? 0 : ret;
 }
 
 static const AVOption aptx_options[] = {

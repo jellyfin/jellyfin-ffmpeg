@@ -5,8 +5,9 @@
 set -o errexit
 set -o xtrace
 
-ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
-PORTS_ADDR=http://ports.ubuntu.com/
+DEBIAN_ADDR=http://deb.debian.org/debian/
+UBUNTU_ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
+UBUNTU_PORTS_ADDR=http://ports.ubuntu.com/
 
 # Prepare common extra libs for amd64, armhf and arm64
 prepare_extra_common() {
@@ -61,6 +62,8 @@ prepare_extra_common() {
     pushd ${SOURCE_DIR}
     git clone --depth=1 https://github.com/acoustid/chromaprint.git
     pushd chromaprint
+    echo "Libs.private: -lfftw3f -lstdc++" >> libchromaprint.pc.cmake
+    echo "Cflags.private: -DCHROMAPRINT_NODLL" >> libchromaprint.pc.cmake
     mkdir build
     pushd build
     cmake \
@@ -79,7 +82,7 @@ prepare_extra_common() {
 
     # ZIMG
     pushd ${SOURCE_DIR}
-    git clone -b release-3.0.4 --depth=1 https://github.com/sekrit-twc/zimg
+    git clone --recursive --depth=1 https://github.com/sekrit-twc/zimg.git
     pushd zimg
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR} ${CROSS_OPT}
@@ -90,7 +93,7 @@ prepare_extra_common() {
 
     # DAV1D
     pushd ${SOURCE_DIR}
-    git clone -b 1.0.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 1.1.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
     if [ "${ARCH}" = "amd64" ]; then
         nasmver="$(nasm -v | cut -d ' ' -f3)"
         nasmminver="2.14.0"
@@ -112,7 +115,7 @@ prepare_extra_common() {
         -Denable_{tools,tests,examples}=false
     meson configure dav1d_build
     ninja -C dav1d_build install
-    cp ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
+    cp -a ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
     echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 
@@ -155,18 +158,37 @@ prepare_extra_arm() {
 
 # Prepare extra headers, libs and drivers for x86_64-linux-gnu
 prepare_extra_amd64() {
+    # SVT-AV1
+    # nasm >= 2.14
+    pushd ${SOURCE_DIR}
+    git clone -b v1.3.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    pushd SVT-AV1
+    mkdir build
+    pushd build
+    cmake \
+        -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DENABLE_AVX512=ON \
+        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_{TESTING,APPS,DEC}=OFF \
+        ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/SVT-AV1
+    echo "SVT-AV1${TARGET_DIR}/lib/libSvtAv1Enc.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+
     # FFNVCODEC
     pushd ${SOURCE_DIR}
-    git clone -b n11.1.5.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers
+    git clone --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
     pushd nv-codec-headers
-    make
-    make install
+    git reset --hard "c5e4af7"
+    make && make install
     popd
     popd
 
     # AMF
     # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
-    git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF
+    git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
     pushd AMF/amf/public/include
     mkdir -p /usr/include/AMF
     mv * /usr/include/AMF
@@ -176,7 +198,7 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     mkdir libdrm
     pushd libdrm
-    libdrm_ver="2.4.111"
+    libdrm_ver="2.4.115"
     libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
     wget ${libdrm_link} -O libdrm.tar.xz
     tar xaf libdrm.tar.xz
@@ -184,11 +206,12 @@ prepare_extra_amd64() {
         --prefix=${TARGET_DIR} \
         --libdir=lib \
         --buildtype=release \
-        -D{amdgpu,radeon,intel,udev}=true \
-        -D{valgrind,freedreno,vc4,vmwgfx,nouveau,man-pages}=false
+        -D{udev,tests,install-test-programs}=false \
+        -D{amdgpu,radeon,intel}=enabled \
+        -D{valgrind,freedreno,vc4,vmwgfx,nouveau,man-pages}=disabled
     meson configure drm_build
     ninja -C drm_build install
-    cp ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/libdrm
+    cp -a ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/libdrm
     cp ${TARGET_DIR}/share/libdrm/*.ids ${SOURCE_DIR}/libdrm
     echo "libdrm/libdrm*.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     echo "libdrm/*.ids usr/lib/jellyfin-ffmpeg/share/libdrm" >> ${DPKG_INSTALL_LIST}
@@ -197,7 +220,7 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/intel/libva
+    git clone -b 2.17.0 --depth=1 https://github.com/intel/libva.git
     pushd libva
     sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|getenv("LIBVA_DRIVER_NAME")|getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
@@ -214,7 +237,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/intel/libva-utils
+    git clone -b 2.17.1 --depth=1 https://github.com/intel/libva-utils.git
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -225,55 +248,75 @@ prepare_extra_amd64() {
 
     # INTEL-VAAPI-DRIVER
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/intel/intel-vaapi-driver
+    git clone --depth=1 https://github.com/intel/intel-vaapi-driver.git
     pushd intel-vaapi-driver
     ./autogen.sh
     ./configure LIBVA_DRIVERS_PATH=${TARGET_DIR}/lib/dri
     make -j$(nproc) && make install
     mkdir -p ${SOURCE_DIR}/intel/dri
-    cp ${TARGET_DIR}/lib/dri/i965*.so ${SOURCE_DIR}/intel/dri
+    cp -a ${TARGET_DIR}/lib/dri/i965*.so ${SOURCE_DIR}/intel/dri
     echo "intel/dri/i965*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
     popd
     popd
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.1.3 --depth=1 https://github.com/intel/gmmlib
+    git clone -b intel-gmmlib-22.3.4 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    make install
     echo "intel${TARGET_DIR}/lib/libigdgmm.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
 
-    # MediaSDK
+    # MediaSDK (RT only)
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-22.4.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK
+    git clone -b intel-mediasdk-23.1.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
-          -DBUILD_SAMPLES=OFF \
+          -DBUILD_RUNTIME=ON \
+          -DBUILD_{SAMPLES,TUTORIALS,OPENCL}=OFF \
           -DBUILD_TUTORIALS=OFF \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
-    echo "intel${TARGET_DIR}/lib/libmfx* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
-    echo "intel${TARGET_DIR}/lib/mfx/*.so usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${DPKG_INSTALL_LIST}
-    echo "intel${TARGET_DIR}/share/mfx/plugins.cfg usr/lib/jellyfin-ffmpeg/lib/mfx" >> ${DPKG_INSTALL_LIST}
+    echo "intel${TARGET_DIR}/lib/libmfxhw64.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
     popd
 
-    # ONEVPL-INTEL-GPU
+    # ONEVPL (dispatcher + header)
+    pushd ${SOURCE_DIR}
+    git clone -b v2023.1.2 --depth=1 https://github.com/oneapi-src/oneVPL.git
+    pushd oneVPL
+    sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' dispatcher/vpl/mfx_dispatcher_vpl_loader.cpp
+    mkdir build && pushd build
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+          -DCMAKE_INSTALL_BINDIR=${TARGET_DIR}/bin \
+          -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=ON \
+          -DBUILD_{DISPATCHER,DEV}=ON \
+          -DBUILD_{PREVIEW,TESTS}=OFF \
+          -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
+          -DINSTALL_EXAMPLE_CODE=OFF \
+          ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
+    echo "intel${TARGET_DIR}/lib/libvpl.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+    popd
+
+    # ONEVPL-INTEL-GPU (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-22.4.3 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu
+    git clone -b intel-onevpl-23.1.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -287,9 +330,10 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-22.4.3 --depth=1 https://github.com/intel/media-driver
+    git clone -b intel-media-23.1.2 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
-    sed -i 's|find_package(X11)||g' media_softlet/media_top_cmake.cmake media_driver/media_top_cmake.cmake
+    # Possible fix for TGLx timeout caused by 'HCP Scalability Decode' under heavy load
+    wget -q -O - https://github.com/intel/media-driver/commit/284750bf.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -299,7 +343,7 @@ prepare_extra_amd64() {
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libigfxcmrt.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     mkdir -p ${SOURCE_DIR}/intel/dri
-    cp ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
+    cp -a ${TARGET_DIR}/lib/dri/iHD*.so ${SOURCE_DIR}/intel/dri
     echo "intel/dri/iHD*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -307,7 +351,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.216 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers
+    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -320,7 +364,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.216 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader
+    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -333,7 +377,7 @@ prepare_extra_amd64() {
         -DBUILD_TESTS=OFF \
         -DBUILD_WSI_{XCB,XLIB,WAYLAND}_SUPPORT=ON ..
     make -j$(nproc) && make install
-    cp ${TARGET_DIR}/lib/libvulkan.so* ${SOURCE_DIR}/Vulkan-Loader
+    cp -a ${TARGET_DIR}/lib/libvulkan.so* ${SOURCE_DIR}/Vulkan-Loader
     echo "Vulkan-Loader/libvulkan.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -341,7 +385,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2022.1 --depth=1 https://github.com/google/shaderc
+    git clone -b v2023.2 --depth=1 https://github.com/google/shaderc.git
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -357,7 +401,7 @@ prepare_extra_amd64() {
         -DBUILD_SHARED_LIBS=OFF ..
     ninja -j$(nproc)
     ninja install
-    cp ${TARGET_DIR}/lib/libshaderc_shared.so* ${SOURCE_DIR}/shaderc
+    cp -a ${TARGET_DIR}/lib/libshaderc_shared.so* ${SOURCE_DIR}/shaderc
     echo "shaderc/libshaderc_shared* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
@@ -365,42 +409,41 @@ prepare_extra_amd64() {
 
     # MESA
     # Minimal libs for AMD VAAPI, AMD RADV and Intel ANV
-    if [[ $( lsb_release -c -s ) != "bionic" ]]; then
-        # llvm >= 11
-        apt-get install -y llvm-11-dev
+    if [[ ${LLVM_VER} -ge 11 ]]; then
+        apt-get install -y llvm-${LLVM_VER}-dev libudev-dev
         pushd ${SOURCE_DIR}
-        mkdir mesa
+        git clone -b main https://gitlab.freedesktop.org/mesa/mesa.git
         pushd mesa
-        mesa_ver="22.0.5"
-        mesa_link="https://mesa.freedesktop.org/archive/mesa-${mesa_ver}.tar.xz"
-        wget ${mesa_link} -O mesa.tar.xz
-        tar xaf mesa.tar.xz
+        git reset --hard "a19a37e8"
+        # fix av1 main nv12 decoding
+        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/commit/39c6f1f5.patch | git apply
+        popd
         # disable the broken hevc packed header
-        MESA_VA_PIC="mesa-${mesa_ver}/src/gallium/frontends/va/picture.c"
-        MESA_VA_CONF="mesa-${mesa_ver}/src/gallium/frontends/va/config.c"
+        MESA_VA_PIC="mesa/src/gallium/frontends/va/picture.c"
+        MESA_VA_CONF="mesa/src/gallium/frontends/va/config.c"
         sed -i 's|handleVAEncPackedHeaderParameterBufferType(context, buf);||g' ${MESA_VA_PIC}
         sed -i 's|handleVAEncPackedHeaderDataBufferType(context, buf);||g' ${MESA_VA_PIC}
         sed -i 's|if (u_reduce_video_profile(ProfileToPipe(profile)) == PIPE_VIDEO_FORMAT_HEVC)|if (0)|g' ${MESA_VA_CONF}
         # force reporting all packed headers are supported
         sed -i 's|value = VA_ENC_PACKED_HEADER_NONE;|value = 0x0000001f;|g' ${MESA_VA_CONF}
         sed -i 's|if (attrib_list\[i\].type == VAConfigAttribEncPackedHeaders)|if (0)|g' ${MESA_VA_CONF}
-        meson setup mesa-${mesa_ver} mesa_build \
+        meson setup mesa mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
             --buildtype=release \
             --wrap-mode=nofallback \
             -Db_ndebug=true \
             -Db_lto=false \
-            -Dplatforms=x11\
-            -Ddri-drivers=[] \
+            -Dplatforms=x11 \
             -Dgallium-drivers=radeonsi \
             -Dvulkan-drivers=amd,intel \
             -Dvulkan-layers=device-select,overlay \
             -Ddri3=enabled \
             -Degl=disabled \
             -Dgallium-{extra-hud,nine}=false \
-            -Dgallium-{omx,vdpau,xa,xvmc,opencl}=disabled \
+            -Dgallium-{omx,vdpau,xa,opencl}=disabled \
             -Dgallium-va=enabled \
+            -Dvideo-codecs=vc1dec,h264dec,h264enc,h265dec,h265enc \
             -Dgbm=disabled \
             -Dgles1=disabled \
             -Dgles2=disabled \
@@ -418,9 +461,9 @@ prepare_extra_amd64() {
             -Dmicrosoft-clc=disabled
         meson configure mesa_build
         ninja -C mesa_build install
-        cp ${TARGET_DIR}/lib/libvulkan_*.so ${SOURCE_DIR}/mesa
-        cp ${TARGET_DIR}/lib/libVkLayer_MESA*.so ${SOURCE_DIR}/mesa
-        cp ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
+        cp -a ${TARGET_DIR}/lib/libvulkan_*.so ${SOURCE_DIR}/mesa
+        cp -a ${TARGET_DIR}/lib/libVkLayer_MESA*.so ${SOURCE_DIR}/mesa
+        cp -a ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
         echo "mesa/lib*.so usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
         echo "mesa/radeonsi_drv_video.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
         cp ${TARGET_DIR}/share/drirc.d/*.conf ${SOURCE_DIR}/mesa
@@ -434,21 +477,22 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/haasn/libplacebo
+    git clone -b v5.229.2 --recursive --depth=1 https://github.com/haasn/libplacebo.git
+    sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
         --libdir=lib \
         --buildtype=release \
         --default-library=shared \
         -Dvulkan=enabled \
-        -Dvulkan-link=false \
+        -Dvk-proc-addr=enabled \
         -Dvulkan-registry=${TARGET_DIR}/share/vulkan/registry/vk.xml \
         -Dshaderc=enabled \
         -Dglslang=disabled \
         -D{demos,tests,bench,fuzz}=false
     meson configure placebo_build
     ninja -C placebo_build install
-    cp ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
+    cp -a ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
     echo "libplacebo/libplacebo* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 }
@@ -456,74 +500,85 @@ prepare_extra_amd64() {
 # Prepare the cross-toolchain
 prepare_crossbuild_env_armhf() {
     # Prepare the Ubuntu-specific cross-build requirements
+    if [[ $( lsb_release -i -s ) == "Debian" ]]; then
+        CODENAME="$( lsb_release -c -s )"
+        echo "deb [arch=amd64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+        echo "deb [arch=armhf] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+    fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
         # Remove the default sources.list
         rm /etc/apt/sources.list
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
         cat <<EOF > /etc/apt/sources.list.d/armhf.list
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=armhf] ${PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=armhf] ${UBUNTU_PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
     fi
     # Add armhf architecture
     dpkg --add-architecture armhf
     # Update and install cross-gcc-dev
-    apt-get update
+    apt-get update && apt-get upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="armhf" cross-gcc-gensource ${GCC_VER}
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-armhf
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-arm-linux-gnueabihf g++-${GCC_VER}-arm-linux-gnueabihf libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf libstdc++6:armhf
+    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-arm-linux-gnueabihf g++-${GCC_VER}-arm-linux-gnueabihf libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf libstdc++6:armhf
     popd
 }
 prepare_crossbuild_env_arm64() {
     # Prepare the Ubuntu-specific cross-build requirements
+    if [[ $( lsb_release -i -s ) == "Debian" ]]; then
+        CODENAME="$( lsb_release -c -s )"
+        echo "deb [arch=amd64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+        echo "deb [arch=arm64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+    fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
         # Remove the default sources.list
         rm /etc/apt/sources.list
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=amd64] ${ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
         cat <<EOF > /etc/apt/sources.list.d/arm64.list
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME} main restricted universe multiverse
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
-deb [arch=arm64] ${PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
     fi
     # Add armhf architecture
     dpkg --add-architecture arm64
     # Update and install cross-gcc-dev
-    apt-get update
+    apt-get update && apt-get upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="arm64" cross-gcc-gensource ${GCC_VER}
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-arm64
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 libstdc++6:arm64
+    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 libstdc++6:arm64
     popd
 }
 
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
+        apt-get update && apt-get upgrade -y
         prepare_extra_common
         prepare_extra_amd64
         CONFIG_SITE=""
@@ -565,5 +620,5 @@ popd
 
 # Move the artifacts out
 mkdir -p ${ARTIFACT_DIR}/deb
-mv /jellyfin-ffmpeg{,5}_* ${ARTIFACT_DIR}/deb/
+mv /jellyfin-ffmpeg{,6}_* ${ARTIFACT_DIR}/deb/
 chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

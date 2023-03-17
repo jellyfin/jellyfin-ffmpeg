@@ -20,9 +20,11 @@
 #include "libavutil/opt.h"
 
 #include "bsf.h"
+#include "bsf_internal.h"
 #include "cbs.h"
 #include "cbs_bsf.h"
 #include "cbs_h265.h"
+#include "h2645data.h"
 #include "hevc.h"
 #include "h265_profile_level.h"
 
@@ -193,25 +195,17 @@ static int h265_metadata_update_sps(AVBSFContext *bsf,
     int crop_unit_x, crop_unit_y;
 
     if (ctx->sample_aspect_ratio.num && ctx->sample_aspect_ratio.den) {
-        // Table E-1.
-        static const AVRational sar_idc[] = {
-            {   0,  0 }, // Unspecified (never written here).
-            {   1,  1 }, {  12, 11 }, {  10, 11 }, {  16, 11 },
-            {  40, 33 }, {  24, 11 }, {  20, 11 }, {  32, 11 },
-            {  80, 33 }, {  18, 11 }, {  15, 11 }, {  64, 33 },
-            { 160, 99 }, {   4,  3 }, {   3,  2 }, {   2,  1 },
-        };
         int num, den, i;
 
         av_reduce(&num, &den, ctx->sample_aspect_ratio.num,
                   ctx->sample_aspect_ratio.den, 65535);
 
-        for (i = 1; i < FF_ARRAY_ELEMS(sar_idc); i++) {
-            if (num == sar_idc[i].num &&
-                den == sar_idc[i].den)
+        for (i = 1; i < FF_ARRAY_ELEMS(ff_h2645_pixel_aspect); i++) {
+            if (num == ff_h2645_pixel_aspect[i].num &&
+                den == ff_h2645_pixel_aspect[i].den)
                 break;
         }
-        if (i == FF_ARRAY_ELEMS(sar_idc)) {
+        if (i == FF_ARRAY_ELEMS(ff_h2645_pixel_aspect)) {
             sps->vui.aspect_ratio_idc = 255;
             sps->vui.sar_width  = num;
             sps->vui.sar_height = den;
@@ -436,7 +430,7 @@ static const AVOption h265_metadata_options[] = {
 
     { "chroma_sample_loc_type", "Set chroma sample location type (figure E-1)",
         OFFSET(chroma_sample_loc_type), AV_OPT_TYPE_INT,
-        { .i64 = -1 }, -1, 6, FLAGS },
+        { .i64 = -1 }, -1, 5, FLAGS },
 
     { "tick_rate",
         "Set VPS and VUI tick rate (time_scale / num_units_in_tick)",
@@ -498,12 +492,12 @@ static const enum AVCodecID h265_metadata_codec_ids[] = {
     AV_CODEC_ID_HEVC, AV_CODEC_ID_NONE,
 };
 
-const AVBitStreamFilter ff_hevc_metadata_bsf = {
-    .name           = "hevc_metadata",
+const FFBitStreamFilter ff_hevc_metadata_bsf = {
+    .p.name         = "hevc_metadata",
+    .p.codec_ids    = h265_metadata_codec_ids,
+    .p.priv_class   = &h265_metadata_class,
     .priv_data_size = sizeof(H265MetadataContext),
-    .priv_class     = &h265_metadata_class,
     .init           = &h265_metadata_init,
     .close          = &ff_cbs_bsf_generic_close,
     .filter         = &ff_cbs_bsf_generic_filter,
-    .codec_ids      = h265_metadata_codec_ids,
 };

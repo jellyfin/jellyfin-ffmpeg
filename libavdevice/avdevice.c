@@ -17,44 +17,16 @@
  */
 
 #include "libavutil/avassert.h"
-#include "libavutil/samplefmt.h"
-#include "libavutil/pixfmt.h"
 #include "avdevice.h"
 #include "internal.h"
-#include "config.h"
-
-#include "libavutil/ffversion.h"
-const char av_device_ffversion[] = "FFmpeg version " FFMPEG_VERSION;
-
-#if FF_API_DEVICE_CAPABILITIES
-const AVOption av_device_capabilities[] = {
-    { NULL }
-};
-#endif
-
-unsigned avdevice_version(void)
-{
-    av_assert0(LIBAVDEVICE_VERSION_MICRO >= 100);
-    return LIBAVDEVICE_VERSION_INT;
-}
-
-const char * avdevice_configuration(void)
-{
-    return FFMPEG_CONFIGURATION;
-}
-
-const char * avdevice_license(void)
-{
-#define LICENSE_PREFIX "libavdevice license: "
-    return &LICENSE_PREFIX FFMPEG_LICENSE[sizeof(LICENSE_PREFIX) - 1];
-}
+#include "libavformat/mux.h"
 
 int avdevice_app_to_dev_control_message(struct AVFormatContext *s, enum AVAppToDevMessageType type,
                                         void *data, size_t data_size)
 {
-    if (!s->oformat || !s->oformat->control_message)
+    if (!s->oformat || !ffofmt(s->oformat)->control_message)
         return AVERROR(ENOSYS);
-    return s->oformat->control_message(s, type, data, data_size);
+    return ffofmt(s->oformat)->control_message(s, type, data, data_size);
 }
 
 int avdevice_dev_to_app_control_message(struct AVFormatContext *s, enum AVDevToAppMessageType type,
@@ -65,26 +37,13 @@ int avdevice_dev_to_app_control_message(struct AVFormatContext *s, enum AVDevToA
     return s->control_message_cb(s, type, data, data_size);
 }
 
-#if FF_API_DEVICE_CAPABILITIES
-int avdevice_capabilities_create(AVDeviceCapabilitiesQuery **caps, AVFormatContext *s,
-                                 AVDictionary **device_options)
-{
-    return AVERROR(ENOSYS);
-}
-
-void avdevice_capabilities_free(AVDeviceCapabilitiesQuery **caps, AVFormatContext *s)
-{
-    return;
-}
-#endif
-
 int avdevice_list_devices(AVFormatContext *s, AVDeviceInfoList **device_list)
 {
     int ret;
     av_assert0(s);
     av_assert0(device_list);
     av_assert0(s->oformat || s->iformat);
-    if ((s->oformat && !s->oformat->get_device_list) ||
+    if ((s->oformat && !ffofmt(s->oformat)->get_device_list) ||
         (s->iformat && !s->iformat->get_device_list)) {
         *device_list = NULL;
         return AVERROR(ENOSYS);
@@ -95,12 +54,14 @@ int avdevice_list_devices(AVFormatContext *s, AVDeviceInfoList **device_list)
     /* no default device by default */
     (*device_list)->default_device = -1;
     if (s->oformat)
-        ret = s->oformat->get_device_list(s, *device_list);
+        ret = ffofmt(s->oformat)->get_device_list(s, *device_list);
     else
         ret = s->iformat->get_device_list(s, *device_list);
-    if (ret < 0)
+    if (ret < 0) {
         avdevice_free_list_devices(device_list);
-    return ret;
+        return ret;
+    }
+    return (*device_list)->nb_devices;
 }
 
 static int list_devices_for_context(AVFormatContext *s, AVDictionary *options,

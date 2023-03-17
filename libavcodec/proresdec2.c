@@ -21,23 +21,25 @@
 
 /**
  * @file
- * Known FOURCCs: 'apch' (HQ), 'apcn' (SD), 'apcs' (LT), 'acpo' (Proxy), 'ap4h' (4444)
+ * Known FOURCCs: 'apch' (HQ), 'apcn' (SD), 'apcs' (LT), 'apco' (Proxy), 'ap4h' (4444), 'ap4x' (4444 XQ)
  */
 
 //#define DEBUG
 
 #define LONG_BITSTREAM_READER
 
+#include "config_components.h"
+
 #include "libavutil/internal.h"
 #include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "hwconfig.h"
 #include "idctdsp.h"
-#include "internal.h"
 #include "profiles.h"
-#include "simple_idct.h"
 #include "proresdec.h"
 #include "proresdata.h"
 #include "thread.h"
@@ -175,7 +177,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_DEBUG, "Auto bitdepth precision. Use 12b decoding based on codec tag.\n");
     }
 
-    ff_blockdsp_init(&ctx->bdsp, avctx);
+    ff_blockdsp_init(&ctx->bdsp);
     ret = ff_proresdsp_init(&ctx->prodsp, avctx);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Fail to init proresdsp for bits per raw sample %d\n", avctx->bits_per_raw_sample);
@@ -287,10 +289,10 @@ static int decode_frame_header(ProresContext *ctx, const uint8_t *buf,
         avctx->pix_fmt = ret;
     }
 
-    avctx->color_primaries = buf[14];
-    avctx->color_trc       = buf[15];
-    avctx->colorspace      = buf[16];
-    avctx->color_range     = AVCOL_RANGE_MPEG;
+    ctx->frame->color_primaries = buf[14];
+    ctx->frame->color_trc       = buf[15];
+    ctx->frame->colorspace      = buf[16];
+    ctx->frame->color_range     = AVCOL_RANGE_MPEG;
 
     ptr   = buf + 20;
     flags = buf[19];
@@ -497,7 +499,7 @@ static const uint8_t lev_to_cb[10] = { 0x04, 0x0A, 0x05, 0x06, 0x04, 0x28, 0x28,
 static av_always_inline int decode_ac_coeffs(AVCodecContext *avctx, GetBitContext *gb,
                                              int16_t *out, int blocks_per_slice)
 {
-    ProresContext *ctx = avctx->priv_data;
+    const ProresContext *ctx = avctx->priv_data;
     int block_mask, sign;
     unsigned pos, run, level;
     int max_coeffs, i, bits_left;
@@ -542,7 +544,7 @@ static int decode_slice_luma(AVCodecContext *avctx, SliceContext *slice,
                              const uint8_t *buf, unsigned buf_size,
                              const int16_t *qmat)
 {
-    ProresContext *ctx = avctx->priv_data;
+    const ProresContext *ctx = avctx->priv_data;
     LOCAL_ALIGNED_32(int16_t, blocks, [8*4*64]);
     int16_t *block;
     GetBitContext gb;
@@ -608,7 +610,7 @@ static int decode_slice_chroma(AVCodecContext *avctx, SliceContext *slice,
 /**
  * Decode alpha slice plane.
  */
-static void decode_slice_alpha(ProresContext *ctx,
+static void decode_slice_alpha(const ProresContext *ctx,
                                uint16_t *dst, int dst_stride,
                                const uint8_t *buf, int buf_size,
                                int blocks_per_slice)
@@ -640,7 +642,7 @@ static void decode_slice_alpha(ProresContext *ctx,
 
 static int decode_slice_thread(AVCodecContext *avctx, void *arg, int jobnr, int threadnr)
 {
-    ProresContext *ctx = avctx->priv_data;
+    const ProresContext *ctx = avctx->priv_data;
     SliceContext *slice = &ctx->slices[jobnr];
     const uint8_t *buf = slice->data;
     AVFrame *pic = ctx->frame;
@@ -775,12 +777,10 @@ static int decode_picture(AVCodecContext *avctx)
     return ctx->slices[0].ret;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     ProresContext *ctx = avctx->priv_data;
-    ThreadFrame tframe = { .f = data };
-    AVFrame *frame = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     int frame_hdr_size, pic_size, ret;
@@ -805,7 +805,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     buf += frame_hdr_size;
     buf_size -= frame_hdr_size;
 
-    if ((ret = ff_thread_get_buffer(avctx, &tframe, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
         return ret;
     ff_thread_finish_setup(avctx);
 
@@ -869,19 +869,18 @@ static int update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
 }
 #endif
 
-const AVCodec ff_prores_decoder = {
-    .name           = "prores",
-    .long_name      = NULL_IF_CONFIG_SMALL("Apple ProRes (iCodec Pro)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_PRORES,
+const FFCodec ff_prores_decoder = {
+    .p.name         = "prores",
+    CODEC_LONG_NAME("Apple ProRes (iCodec Pro)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_PRORES,
     .priv_data_size = sizeof(ProresContext),
     .init           = decode_init,
     .close          = decode_close,
-    .decode         = decode_frame,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(update_thread_context),
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
-    .profiles       = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    UPDATE_THREAD_CONTEXT(update_thread_context),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
+    .p.profiles     = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
     .hw_configs     = (const AVCodecHWConfigInternal *const []) {
 #if CONFIG_PRORES_VIDEOTOOLBOX_HWACCEL
         HWACCEL_VIDEOTOOLBOX(prores),

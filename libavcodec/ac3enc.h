@@ -31,11 +31,13 @@
 #include <stdint.h>
 
 #include "libavutil/opt.h"
+#include "libavutil/tx.h"
+
 #include "ac3.h"
+#include "ac3defs.h"
 #include "ac3dsp.h"
 #include "avcodec.h"
-#include "fft.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "mathops.h"
 #include "me_cmp.h"
 #include "put_bits.h"
@@ -166,7 +168,8 @@ typedef struct AC3EncodeContext {
 #endif
     MECmpContext mecc;
     AC3DSPContext ac3dsp;                   ///< AC-3 optimized functions
-    FFTContext mdct;                        ///< FFT context for MDCT calculation
+    AVTXContext *tx;                        ///< FFT context for MDCT calculation
+    av_tx_fn tx_fn;
     const SampleType *mdct_window;          ///< MDCT window function array
 
     AC3Block blocks[AC3_MAX_BLOCKS];        ///< per-block info
@@ -256,7 +259,6 @@ typedef struct AC3EncodeContext {
     int warned_alternate_bitstream;
 
     /* fixed vs. float function pointers */
-    void (*mdct_end)(struct AC3EncodeContext *s);
     int  (*mdct_init)(struct AC3EncodeContext *s);
 
     /* fixed vs. float templated function pointers */
@@ -266,11 +268,13 @@ typedef struct AC3EncodeContext {
     void (*output_frame_header)(struct AC3EncodeContext *s);
 } AC3EncodeContext;
 
-
+#if FF_API_OLD_CHANNEL_LAYOUT
 extern const uint64_t ff_ac3_channel_layouts[19];
+#endif
+extern const AVChannelLayout ff_ac3_ch_layouts[19];
 extern const AVOption ff_ac3_enc_options[];
 extern const AVClass ff_ac3enc_class;
-extern const AVCodecDefault ff_ac3_enc_defaults[];
+extern const FFCodecDefault ff_ac3_enc_defaults[];
 
 int ff_ac3_encode_init(AVCodecContext *avctx);
 int ff_ac3_float_encode_init(AVCodecContext *avctx);

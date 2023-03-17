@@ -20,7 +20,7 @@
 
 #include <string.h>
 #include "checkasm.h"
-#include "libavcodec/v210dec.h"
+#include "libavcodec/v210dec_init.h"
 
 static uint32_t get_v210(void)
 {
@@ -54,12 +54,12 @@ void checkasm_check_v210dec(void)
     if (check_func(h.unpack_frame, "v210_unpack")) {
         uint32_t src0[NUM_SAMPLES/3];
         uint32_t src1[NUM_SAMPLES/3];
-        uint16_t y0[NUM_SAMPLES/2];
-        uint16_t y1[NUM_SAMPLES/2];
-        uint16_t u0[NUM_SAMPLES/4];
-        uint16_t u1[NUM_SAMPLES/4];
-        uint16_t v0[NUM_SAMPLES/4];
-        uint16_t v1[NUM_SAMPLES/4];
+        uint16_t y0[NUM_SAMPLES/2 + 26];
+        uint16_t y1[NUM_SAMPLES/2 + 26];
+        uint16_t u0[NUM_SAMPLES/4 + 13];
+        uint16_t u1[NUM_SAMPLES/4 + 13];
+        uint16_t v0[NUM_SAMPLES/4 + 13];
+        uint16_t v1[NUM_SAMPLES/4 + 13];
         declare_func(void, const uint32_t *src, uint16_t *y, uint16_t *u, uint16_t *v, int width);
         const int pixels = NUM_SAMPLES / 2 / 6 * 6;
 

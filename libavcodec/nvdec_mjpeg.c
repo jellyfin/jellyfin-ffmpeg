@@ -69,7 +69,6 @@ static int nvdec_mjpeg_frame_params(AVCodecContext *avctx,
     return ff_nvdec_frame_params(avctx, hw_frames_ctx, 1, 0);
 }
 
-#if CONFIG_MJPEG_NVDEC_HWACCEL
 AVHWAccel ff_mjpeg_nvdec_hwaccel = {
     .name                 = "mjpeg_nvdec",
     .type                 = AVMEDIA_TYPE_VIDEO,
@@ -83,4 +82,3 @@ AVHWAccel ff_mjpeg_nvdec_hwaccel = {
     .uninit               = ff_nvdec_decode_uninit,
     .priv_data_size       = sizeof(NVDECContext),
 };
-#endif

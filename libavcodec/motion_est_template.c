@@ -281,7 +281,7 @@ static int qpel_motion_search(MpegEncContext * s,
                     for(i=0; i<8; i++){
                         if(score < best[i]){
                             memmove(&best[i+1], &best[i], sizeof(int)*(7-i));
-                            memmove(&best_pos[i+1][0], &best_pos[i][0], sizeof(int)*2*(7-i));
+                            memmove(&best_pos[i + 1], &best_pos[i], sizeof(*best_pos) * (7 - i));
                             best[i]= score;
                             best_pos[i][0]= nx + 4*mx;
                             best_pos[i][1]= ny + 4*my;
@@ -858,7 +858,7 @@ static av_always_inline int diamond_search(MpegEncContext * s, int *best, int dm
    optimal mv.
  */
 static av_always_inline int epzs_motion_search_internal(MpegEncContext * s, int *mx_ptr, int *my_ptr,
-                             int P[10][2], int src_index, int ref_index, int16_t (*last_mv)[2],
+                             int P[10][2], int src_index, int ref_index, const int16_t (*last_mv)[2],
                              int ref_mv_scale, int flags, int size, int h)
 {
     MotionEstContext * const c= &s->me;
@@ -976,7 +976,7 @@ static av_always_inline int epzs_motion_search_internal(MpegEncContext * s, int 
 //this function is dedicated to the brain damaged gcc
 int ff_epzs_motion_search(MpegEncContext *s, int *mx_ptr, int *my_ptr,
                           int P[10][2], int src_index, int ref_index,
-                          int16_t (*last_mv)[2], int ref_mv_scale,
+                          const int16_t (*last_mv)[2], int ref_mv_scale,
                           int size, int h)
 {
     MotionEstContext * const c= &s->me;
@@ -992,7 +992,7 @@ int ff_epzs_motion_search(MpegEncContext *s, int *mx_ptr, int *my_ptr,
 
 static int epzs_motion_search2(MpegEncContext * s,
                              int *mx_ptr, int *my_ptr, int P[10][2],
-                             int src_index, int ref_index, int16_t (*last_mv)[2],
+                             int src_index, int ref_index, const int16_t (*last_mv)[2],
                              int ref_mv_scale, const int size)
 {
     MotionEstContext * const c= &s->me;

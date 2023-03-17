@@ -58,16 +58,9 @@
 #include "avformat.h"
 #include "libavformat/avio.h"
 #include "libavutil/rational.h"
+#include "libavutil/uuid.h"
+#include "libavutil/timecode.h"
 #include <libxml/tree.h>
-
-#define FF_IMF_UUID_FORMAT                            \
-    "urn:uuid:%02hhx%02hhx%02hhx%02hhx-%02hhx%02hhx-" \
-    "%02hhx%02hhx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
-
-/**
- * UUID as defined in IETF RFC 422
- */
-typedef uint8_t FFIMFUUID[16];
 
 /**
  * IMF Composition Playlist Base Resource
@@ -84,7 +77,7 @@ typedef struct FFIMFBaseResource {
  */
 typedef struct FFIMFTrackFileResource {
     FFIMFBaseResource base;
-    FFIMFUUID track_file_uuid; /**< TrackFileResourceType/TrackFileId */
+    AVUUID track_file_uuid; /**< TrackFileResourceType/TrackFileId */
 } FFIMFTrackFileResource;
 
 /**
@@ -109,7 +102,7 @@ typedef struct FFIMFMarkerResource {
  * IMF Composition Playlist Virtual Track
  */
 typedef struct FFIMFBaseVirtualTrack {
-    FFIMFUUID id_uuid; /**< TrackId associated with the Virtual Track */
+    AVUUID id_uuid; /**< TrackId associated with the Virtual Track */
 } FFIMFBaseVirtualTrack;
 
 /**
@@ -135,9 +128,10 @@ typedef struct FFIMFMarkerVirtualTrack {
  * IMF Composition Playlist
  */
 typedef struct FFIMFCPL {
-    FFIMFUUID id_uuid;                               /**< CompositionPlaylist/Id element */
+    AVUUID id_uuid;                               /**< CompositionPlaylist/Id element */
     xmlChar *content_title_utf8;                     /**< CompositionPlaylist/ContentTitle element */
     AVRational edit_rate;                            /**< CompositionPlaylist/EditRate element */
+    AVTimecode *tc;                                  /**< CompositionPlaylist/CompositionTimecode element */
     FFIMFMarkerVirtualTrack *main_markers_track;     /**< Main Marker Virtual Track */
     FFIMFTrackFileVirtualTrack *main_image_2d_track; /**< Main Image Virtual Track */
     uint32_t main_audio_track_count;                 /**< Number of Main Audio Virtual Tracks */
@@ -196,7 +190,7 @@ int ff_imf_xml_read_rational(xmlNodePtr element, AVRational *rational);
  * Reads a UUID from an XML element
  * @return 0 on success, < 0 AVERROR code on error.
  */
-int ff_imf_xml_read_uuid(xmlNodePtr element, uint8_t uuid[16]);
+int ff_imf_xml_read_uuid(xmlNodePtr element, AVUUID uuid);
 
 /**
  * Returns the first child element with the specified local name

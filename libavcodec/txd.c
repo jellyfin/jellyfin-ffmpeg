@@ -21,21 +21,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/intreadwrite.h"
-#include "libavutil/imgutils.h"
 #include "bytestream.h"
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "texturedsp.h"
 
 #define TXD_DXT1 0x31545844
 #define TXD_DXT3 0x33545844
 
-static int txd_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                            AVPacket *avpkt) {
+static int txd_decode_frame(AVCodecContext *avctx, AVFrame *p,
+                            int *got_frame, AVPacket *avpkt)
+{
     GetByteContext gb;
     TextureDSPContext dxtc;
-    AVFrame * const p = data;
     unsigned int version, w, h, d3d_format, depth, stride, flags;
     unsigned int y, v;
     uint8_t *ptr;
@@ -163,11 +162,11 @@ unsupported:
     return AVERROR_PATCHWELCOME;
 }
 
-const AVCodec ff_txd_decoder = {
-    .name           = "txd",
-    .long_name      = NULL_IF_CONFIG_SMALL("Renderware TXD (TeXture Dictionary) image"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_TXD,
-    .decode         = txd_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+const FFCodec ff_txd_decoder = {
+    .p.name         = "txd",
+    CODEC_LONG_NAME("Renderware TXD (TeXture Dictionary) image"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_TXD,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(txd_decode_frame),
 };

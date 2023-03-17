@@ -110,6 +110,7 @@ static int check_modelinput_inlink(const DNNData *model_input, const AVFilterLin
             return AVERROR(EIO);
         }
         return 0;
+    case AV_PIX_FMT_GRAY8:
     case AV_PIX_FMT_GRAYF32:
     case AV_PIX_FMT_YUV420P:
     case AV_PIX_FMT_YUV422P:
@@ -134,14 +135,14 @@ static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *context     = inlink->dst;
     DnnProcessingContext *ctx = context->priv;
-    DNNReturnType result;
+    int result;
     DNNData model_input;
     int check;
 
     result = ff_dnn_get_input(&ctx->dnnctx, &model_input);
-    if (result != DNN_SUCCESS) {
+    if (result != 0) {
         av_log(ctx, AV_LOG_ERROR, "could not get input from the model\n");
-        return AVERROR(EIO);
+        return result;
     }
 
     check = check_modelinput_inlink(&model_input, inlink);
@@ -194,14 +195,14 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *context = outlink->src;
     DnnProcessingContext *ctx = context->priv;
-    DNNReturnType result;
+    int result;
     AVFilterLink *inlink = context->inputs[0];
 
     // have a try run in case that the dnn model resize the frame
     result = ff_dnn_get_output(&ctx->dnnctx, inlink->w, inlink->h, &outlink->w, &outlink->h);
-    if (result != DNN_SUCCESS) {
+    if (result != 0) {
         av_log(ctx, AV_LOG_ERROR, "could not get output from the model\n");
-        return AVERROR(EIO);
+        return result;
     }
 
     prepare_uv_scale(outlink);
@@ -247,7 +248,7 @@ static int flush_frame(AVFilterLink *outlink, int64_t pts, int64_t *out_pts)
     DNNAsyncStatusType async_state;
 
     ret = ff_dnn_flush(&ctx->dnnctx);
-    if (ret != DNN_SUCCESS) {
+    if (ret != 0) {
         return -1;
     }
 
@@ -296,7 +297,7 @@ static int activate(AVFilterContext *filter_ctx)
                 return AVERROR(ENOMEM);
             }
             av_frame_copy_props(out, in);
-            if (ff_dnn_execute_model(&ctx->dnnctx, in, out) != DNN_SUCCESS) {
+            if (ff_dnn_execute_model(&ctx->dnnctx, in, out) != 0) {
                 return AVERROR(EIO);
             }
         }

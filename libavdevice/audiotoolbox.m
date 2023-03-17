@@ -30,6 +30,7 @@
 
 #include "libavutil/opt.h"
 #include "libavformat/internal.h"
+#include "libavformat/mux.h"
 #include "libavutil/internal.h"
 #include "avdevice.h"
 
@@ -173,7 +174,7 @@ static av_cold int at_write_header(AVFormatContext *avctx)
     device_format.mFormatFlags      |= (codecpar->codec_id == AV_CODEC_ID_PCM_S16BE) ? kAudioFormatFlagIsBigEndian : 0;
     device_format.mFormatFlags      |= (codecpar->codec_id == AV_CODEC_ID_PCM_S24BE) ? kAudioFormatFlagIsBigEndian : 0;
     device_format.mFormatFlags      |= (codecpar->codec_id == AV_CODEC_ID_PCM_S32BE) ? kAudioFormatFlagIsBigEndian : 0;
-    device_format.mChannelsPerFrame  = codecpar->channels;
+    device_format.mChannelsPerFrame  = codecpar->ch_layout.nb_channels;
     device_format.mBitsPerChannel    = (codecpar->codec_id == AV_NE(AV_CODEC_ID_PCM_S24BE, AV_CODEC_ID_PCM_S24LE)) ? 24 : (av_get_bytes_per_sample(codecpar->format) << 3);
     device_format.mBytesPerFrame     = (device_format.mBitsPerChannel >> 3) * device_format.mChannelsPerFrame;
     device_format.mFramesPerPacket   = 1;
@@ -193,9 +194,9 @@ static av_cold int at_write_header(AVFormatContext *avctx)
     av_log(ctx, AV_LOG_DEBUG, "device_format.mFormatFlags      |= %s\n", (codecpar->codec_id == AV_CODEC_ID_PCM_S24BE) ? "kAudioFormatFlagIsBigEndian" : "0");
     av_log(ctx, AV_LOG_DEBUG, "device_format.mFormatFlags      |= %s\n", (codecpar->codec_id == AV_CODEC_ID_PCM_S32BE) ? "kAudioFormatFlagIsBigEndian" : "0");
     av_log(ctx, AV_LOG_DEBUG, "device_format.mFormatFlags      == %i\n", device_format.mFormatFlags);
-    av_log(ctx, AV_LOG_DEBUG, "device_format.mChannelsPerFrame  = %i\n", codecpar->channels);
+    av_log(ctx, AV_LOG_DEBUG, "device_format.mChannelsPerFrame  = %i\n", codecpar->ch_layout.nb_channels);
     av_log(ctx, AV_LOG_DEBUG, "device_format.mBitsPerChannel    = %i\n", av_get_bytes_per_sample(codecpar->format) << 3);
-    av_log(ctx, AV_LOG_DEBUG, "device_format.mBytesPerFrame     = %i\n", (device_format.mBitsPerChannel >> 3) * codecpar->channels);
+    av_log(ctx, AV_LOG_DEBUG, "device_format.mBytesPerFrame     = %i\n", (device_format.mBitsPerChannel >> 3) * codecpar->ch_layout.nb_channels);
     av_log(ctx, AV_LOG_DEBUG, "device_format.mBytesPerPacket    = %i\n", device_format.mBytesPerFrame);
     av_log(ctx, AV_LOG_DEBUG, "device_format.mFramesPerPacket   = %i\n", 1);
     av_log(ctx, AV_LOG_DEBUG, "device_format.mReserved          = %i\n", 0);
@@ -294,15 +295,15 @@ static const AVClass at_class = {
     .category   = AV_CLASS_CATEGORY_DEVICE_AUDIO_OUTPUT,
 };
 
-const AVOutputFormat ff_audiotoolbox_muxer = {
-    .name           = "audiotoolbox",
-    .long_name      = NULL_IF_CONFIG_SMALL("AudioToolbox output device"),
+const FFOutputFormat ff_audiotoolbox_muxer = {
+    .p.name         = "audiotoolbox",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AudioToolbox output device"),
     .priv_data_size = sizeof(ATContext),
-    .audio_codec    = AV_NE(AV_CODEC_ID_PCM_S16BE, AV_CODEC_ID_PCM_S16LE),
-    .video_codec    = AV_CODEC_ID_NONE,
+    .p.audio_codec  = AV_NE(AV_CODEC_ID_PCM_S16BE, AV_CODEC_ID_PCM_S16LE),
+    .p.video_codec  = AV_CODEC_ID_NONE,
     .write_header   = at_write_header,
     .write_packet   = at_write_packet,
     .write_trailer  = at_write_trailer,
-    .flags          = AVFMT_NOFILE,
-    .priv_class     = &at_class,
+    .p.flags        = AVFMT_NOFILE,
+    .p.priv_class   = &at_class,
 };

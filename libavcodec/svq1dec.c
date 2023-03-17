@@ -36,10 +36,11 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "h263.h"
+#include "h263data.h"
 #include "hpeldsp.h"
-#include "internal.h"
 #include "mathops.h"
 #include "svq1.h"
 
@@ -72,6 +73,8 @@ typedef struct SVQ1Context {
     int height;
     int frame_code;
     int nonref;         // 1 if the current frame won't be referenced
+
+    int last_tempref;
 } SVQ1Context;
 
 static const uint8_t string_table[256] = {
@@ -228,7 +231,7 @@ static int svq1_decode_block_intra(GetBitContext *bitbuf, uint8_t *pixels,
 }
 
 static int svq1_decode_block_non_intra(GetBitContext *bitbuf, uint8_t *pixels,
-                                       ptrdiff_t pitch)
+                                       ptrdiff_t pitch, int buggy)
 {
     uint32_t bit_cache;
     uint8_t *list[63];
@@ -268,6 +271,13 @@ static int svq1_decode_block_non_intra(GetBitContext *bitbuf, uint8_t *pixels,
         av_assert0(stages >= 0);
 
         mean = get_vlc2(bitbuf, svq1_inter_mean.table, 9, 3) - 256;
+
+        if (buggy) {
+            if (mean == -128)
+                mean = 128;
+            else if (mean == 128)
+                mean = -128;
+        }
 
         SVQ1_CALC_CODEBOOK_ENTRIES(ff_svq1_inter_codebooks);
 
@@ -454,7 +464,7 @@ static int svq1_decode_delta_block(AVCodecContext *avctx, HpelDSPContext *hdsp,
                                    GetBitContext *bitbuf,
                                    uint8_t *current, uint8_t *previous,
                                    ptrdiff_t pitch, svq1_pmv *motion, int x, int y,
-                                   int width, int height)
+                                   int width, int height, int buggy)
 {
     uint32_t block_type;
     int result = 0;
@@ -486,7 +496,7 @@ static int svq1_decode_delta_block(AVCodecContext *avctx, HpelDSPContext *hdsp,
             ff_dlog(avctx, "Error in svq1_motion_inter_block %i\n", result);
             break;
         }
-        result = svq1_decode_block_non_intra(bitbuf, current, pitch);
+        result = svq1_decode_block_non_intra(bitbuf, current, pitch, buggy);
         break;
 
     case SVQ1_BLOCK_INTER_4V:
@@ -497,7 +507,7 @@ static int svq1_decode_delta_block(AVCodecContext *avctx, HpelDSPContext *hdsp,
             ff_dlog(avctx, "Error in svq1_motion_inter_4v_block %i\n", result);
             break;
         }
-        result = svq1_decode_block_non_intra(bitbuf, current, pitch);
+        result = svq1_decode_block_non_intra(bitbuf, current, pitch, buggy);
         break;
 
     case SVQ1_BLOCK_INTRA:
@@ -523,15 +533,18 @@ static void svq1_parse_string(GetBitContext *bitbuf, uint8_t out[257])
     out[i] = 0;
 }
 
-static int svq1_decode_frame_header(AVCodecContext *avctx, AVFrame *frame)
+static int svq1_decode_frame_header(AVCodecContext *avctx, AVFrame *frame, int * buggy)
 {
     SVQ1Context *s = avctx->priv_data;
     GetBitContext *bitbuf = &s->gb;
     int frame_size_code;
     int width  = s->width;
     int height = s->height;
+    int tempref;
 
-    skip_bits(bitbuf, 8); /* temporal_reference */
+    tempref = get_bits(bitbuf, 8); /* temporal_reference */
+    *buggy = tempref == 0 && s->last_tempref == 0 && avctx->extradata_size == 0;
+    s->last_tempref = tempref;
 
     /* frame type */
     s->nonref = 0;
@@ -616,15 +629,14 @@ static int svq1_decode_frame_header(AVCodecContext *avctx, AVFrame *frame)
     return 0;
 }
 
-static int svq1_decode_frame(AVCodecContext *avctx, void *data,
+static int svq1_decode_frame(AVCodecContext *avctx, AVFrame *cur,
                              int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     SVQ1Context     *s = avctx->priv_data;
-    AVFrame       *cur = data;
     uint8_t *current;
-    int result, i, x, y, width, height;
+    int result, i, x, y, width, height, buggy;
     int ret;
 
     /* initialize bit buffer */
@@ -664,7 +676,7 @@ static int svq1_decode_frame(AVCodecContext *avctx, void *data,
             src[i] = ((src[i] << 16) | (src[i] >> 16)) ^ src[7 - i];
     }
 
-    result = svq1_decode_frame_header(avctx, cur);
+    result = svq1_decode_frame_header(avctx, cur, &buggy);
     if (result != 0) {
         ff_dlog(avctx, "Error in svq1_decode_frame_header %i\n", result);
         return result;
@@ -734,7 +746,7 @@ static int svq1_decode_frame(AVCodecContext *avctx, void *data,
                     result = svq1_decode_delta_block(avctx, &s->hdsp,
                                                      &s->gb, &current[x],
                                                      previous, linesize,
-                                                     s->pmv, x, y, width, height);
+                                                     s->pmv, x, y, width, height, buggy);
                     if (result != 0) {
                         ff_dlog(avctx,
                                 "Error in svq1_decode_delta_block %i\n",
@@ -777,7 +789,7 @@ static av_cold void svq1_static_init(void)
     for (int i = 0, offset = 0; i < 6; i++) {
         static const uint8_t sizes[2][6] = { { 14, 10, 14, 18, 16, 18 },
                                              { 10, 10, 14, 14, 14, 16 } };
-        static VLC_TYPE table[168][2];
+        static VLCElem table[168];
         svq1_intra_multistage[i].table           = &table[offset];
         svq1_intra_multistage[i].table_allocated = sizes[0][i];
         offset                                  += sizes[0][i];
@@ -820,6 +832,8 @@ static av_cold int svq1_decode_init(AVCodecContext *avctx)
 
     ff_thread_once(&init_static_once, svq1_static_init);
 
+    s->last_tempref = 0xFF;
+
     return 0;
 }
 
@@ -843,18 +857,17 @@ static void svq1_flush(AVCodecContext *avctx)
     av_frame_unref(s->prev);
 }
 
-const AVCodec ff_svq1_decoder = {
-    .name           = "svq1",
-    .long_name      = NULL_IF_CONFIG_SMALL("Sorenson Vector Quantizer 1 / Sorenson Video 1 / SVQ1"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SVQ1,
+const FFCodec ff_svq1_decoder = {
+    .p.name         = "svq1",
+    CODEC_LONG_NAME("Sorenson Vector Quantizer 1 / Sorenson Video 1 / SVQ1"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SVQ1,
     .priv_data_size = sizeof(SVQ1Context),
     .init           = svq1_decode_init,
     .close          = svq1_decode_end,
-    .decode         = svq1_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(svq1_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .flush          = svq1_flush,
-    .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV410P,
+    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV410P,
                                                      AV_PIX_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

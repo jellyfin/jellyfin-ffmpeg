@@ -291,6 +291,7 @@ static int write_frame(AVFilterContext *ctx, FPSContext *s, AVFilterLink *outlin
         // Make sure Closed Captions will not be duplicated
         av_frame_remove_side_data(s->frames[0], AV_FRAME_DATA_A53_CC);
         frame->pts = s->next_pts++;
+        frame->duration = 1;
 
         av_log(ctx, AV_LOG_DEBUG, "Writing frame with pts %"PRId64" to pts %"PRId64"\n",
                s->frames[0]->pts, frame->pts);
@@ -351,7 +352,7 @@ static int activate(AVFilterContext *ctx)
     if (s->frames_count > 0) {
         ret = write_frame(ctx, s, outlink, &again);
         /* Couldn't generate a frame, so schedule us to perform another step */
-        if (again)
+        if (again && ff_inoutlink_check_flow(inlink, outlink))
             ff_filter_set_ready(ctx, 100);
         return ret;
     }

@@ -23,12 +23,14 @@
 #include "libavutil/thread.h"
 #include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
+#include "libavutil/opt.h"
+#include "libavutil/tx.h"
 
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "dolby_e.h"
 #include "kbdwin.h"
-#include "fft.h"
 
 #define MAX_SEGMENTS    2
 
@@ -38,6 +40,11 @@
 
 #define MAX_MSTR_EXP    2
 #define MAX_BIAS_EXP    50
+
+enum DBEOutputChannelOrder {
+    CHANNEL_ORDER_DEFAULT,
+    CHANNEL_ORDER_CODED,
+};
 
 typedef struct DBEGroup {
     uint8_t         nb_exponent;
@@ -70,6 +77,7 @@ typedef struct DBEChannel {
 } DBEChannel;
 
 typedef struct DBEDecodeContext {
+    const AVClass   *class;
     AVCodecContext  *avctx;
     DBEContext  dectx;
 
@@ -77,7 +85,8 @@ typedef struct DBEDecodeContext {
 
     DECLARE_ALIGNED(32, float, history)[MAX_CHANNELS][256];
 
-    FFTContext          imdct[3];
+    AVTXContext         *imdct[2][3];
+    av_tx_fn             imdct_fn[2][3];
     AVFloatDSPContext   *fdsp;
 } DBEDecodeContext;
 
@@ -981,23 +990,23 @@ static int parse_meter(DBEDecodeContext *s1)
 
 static void imdct_calc(DBEDecodeContext *s1, DBEGroup *g, float *result, float *values)
 {
-    FFTContext *imdct = &s1->imdct[g->imdct_idx];
+    AVTXContext *imdct = s1->imdct[g->imdct_phs == 1][g->imdct_idx];
+    av_tx_fn  imdct_fn = s1->imdct_fn[g->imdct_phs == 1][g->imdct_idx];
     int n   = 1 << imdct_bits_tab[g->imdct_idx];
     int n2  = n >> 1;
-    int i;
 
     switch (g->imdct_phs) {
     case 0:
-        imdct->imdct_half(imdct, result, values);
-        for (i = 0; i < n2; i++)
+        imdct_fn(imdct, result, values, sizeof(float));
+        for (int i = 0; i < n2; i++)
             result[n2 + i] = result[n2 - i - 1];
         break;
     case 1:
-        imdct->imdct_calc(imdct, result, values);
+        imdct_fn(imdct, result, values, sizeof(float));
         break;
     case 2:
-        imdct->imdct_half(imdct, result + n2, values);
-        for (i = 0; i < n2; i++)
+        imdct_fn(imdct, result + n2, values, sizeof(float));
+        for (int i = 0; i < n2; i++)
             result[i] = -result[n - i - 1];
         break;
     default:
@@ -1057,7 +1066,7 @@ static int filter_frame(DBEDecodeContext *s, AVFrame *frame)
         reorder = ch_reorder_4;
     else if (metadata->nb_channels == 6)
         reorder = ch_reorder_6;
-    else if (metadata->nb_programs == 1 && !(s->avctx->request_channel_layout & AV_CH_LAYOUT_NATIVE))
+    else if (metadata->nb_programs == 1 && metadata->output_channel_order == CHANNEL_ORDER_DEFAULT)
         reorder = ch_reorder_8;
     else
         reorder = ch_reorder_n;
@@ -1076,7 +1085,7 @@ static int filter_frame(DBEDecodeContext *s, AVFrame *frame)
     return 0;
 }
 
-static int dolby_e_decode_frame(AVCodecContext *avctx, void *data,
+static int dolby_e_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                 int *got_frame_ptr, AVPacket *avpkt)
 {
     DBEDecodeContext *s1 = avctx->priv_data;
@@ -1093,19 +1102,23 @@ static int dolby_e_decode_frame(AVCodecContext *avctx, void *data,
         s->metadata.multi_prog_warned = 1;
     }
 
+    av_channel_layout_uninit(&avctx->ch_layout);
     switch (s->metadata.nb_channels) {
     case 4:
-        avctx->channel_layout = AV_CH_LAYOUT_4POINT0;
+        avctx->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_4POINT0;
         break;
     case 6:
-        avctx->channel_layout = AV_CH_LAYOUT_5POINT1;
+        avctx->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1;
         break;
     case 8:
-        avctx->channel_layout = AV_CH_LAYOUT_7POINT1;
+        avctx->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_7POINT1;
+        break;
+    default:
+        avctx->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
+        avctx->ch_layout.nb_channels = s->metadata.nb_channels;
         break;
     }
 
-    avctx->channels    = s->metadata.nb_channels;
     avctx->sample_rate = s->metadata.sample_rate;
     avctx->sample_fmt  = AV_SAMPLE_FMT_FLTP;
 
@@ -1123,7 +1136,7 @@ static int dolby_e_decode_frame(AVCodecContext *avctx, void *data,
         return ret;
     if ((ret = parse_meter(s1)) < 0)
         return ret;
-    if ((ret = filter_frame(s1, data)) < 0)
+    if ((ret = filter_frame(s1, frame)) < 0)
         return ret;
 
     *got_frame_ptr = 1;
@@ -1140,10 +1153,11 @@ static av_cold void dolby_e_flush(AVCodecContext *avctx)
 static av_cold int dolby_e_close(AVCodecContext *avctx)
 {
     DBEDecodeContext *s = avctx->priv_data;
-    int i;
 
-    for (i = 0; i < 3; i++)
-        ff_mdct_end(&s->imdct[i]);
+    for (int i = 0; i < 3; i++) {
+        av_tx_uninit(&s->imdct[0][i]);
+        av_tx_uninit(&s->imdct[1][i]);
+    }
 
     av_freep(&s->fdsp);
     return 0;
@@ -1240,34 +1254,69 @@ static av_cold int dolby_e_init(AVCodecContext *avctx)
 {
     static AVOnce init_once = AV_ONCE_INIT;
     DBEDecodeContext *s = avctx->priv_data;
-    int i;
+    float scale = 2.0f;
+    int ret;
 
     if (ff_thread_once(&init_once, init_tables))
         return AVERROR_UNKNOWN;
 
-    for (i = 0; i < 3; i++)
-        if (ff_mdct_init(&s->imdct[i], imdct_bits_tab[i], 1, 2.0) < 0)
-            return AVERROR(ENOMEM);
+    for (int i = 0; i < 3; i++) {
+        if ((ret = av_tx_init(&s->imdct[0][i], &s->imdct_fn[0][i], AV_TX_FLOAT_MDCT,
+                              1, 1 << imdct_bits_tab[i] - 1, &scale, 0)) < 0)
+            return ret;
+        if ((ret = av_tx_init(&s->imdct[1][i], &s->imdct_fn[1][i], AV_TX_FLOAT_MDCT,
+                              1, 1 << imdct_bits_tab[i] - 1, &scale, AV_TX_FULL_IMDCT)) < 0)
+            return ret;
+    }
 
     if (!(s->fdsp = avpriv_float_dsp_alloc(0)))
         return AVERROR(ENOMEM);
 
-    s->dectx.metadata.multi_prog_warned = !!(avctx->request_channel_layout & AV_CH_LAYOUT_NATIVE);
+#if FF_API_OLD_CHANNEL_LAYOUT
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (avctx->request_channel_layout & AV_CH_LAYOUT_NATIVE)
+        s->dectx.metadata.output_channel_order = CHANNEL_ORDER_CODED;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
+    s->dectx.metadata.multi_prog_warned = s->dectx.metadata.output_channel_order == CHANNEL_ORDER_CODED;
     s->dectx.avctx = s->avctx = avctx;
     return 0;
 }
 
-const AVCodec ff_dolby_e_decoder = {
-    .name           = "dolby_e",
-    .long_name      = NULL_IF_CONFIG_SMALL("Dolby E"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_DOLBY_E,
+#define OFFSET(x) offsetof(DBEDecodeContext, x)
+#define FLAGS (AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM)
+static const AVOption options[] = {
+    { "channel_order", "Order in which the channels are to be exported",
+        OFFSET(dectx.metadata.output_channel_order), AV_OPT_TYPE_INT,
+        { .i64 = CHANNEL_ORDER_DEFAULT }, 0, 1, FLAGS, "channel_order" },
+      { "default", "normal libavcodec channel order", 0, AV_OPT_TYPE_CONST,
+        { .i64 = CHANNEL_ORDER_DEFAULT }, .flags = FLAGS, "channel_order" },
+      { "coded",    "order in which the channels are coded in the bitstream",
+        0, AV_OPT_TYPE_CONST, { .i64 = CHANNEL_ORDER_CODED }, .flags = FLAGS, "channel_order" },
+
+      { NULL },
+};
+
+static const AVClass dolby_e_decoder_class = {
+    .class_name = "Dolby E decoder",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
+const FFCodec ff_dolby_e_decoder = {
+    .p.name         = "dolby_e",
+    CODEC_LONG_NAME("Dolby E"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_DOLBY_E,
     .priv_data_size = sizeof(DBEDecodeContext),
+    .p.priv_class   = &dolby_e_decoder_class,
     .init           = dolby_e_init,
-    .decode         = dolby_e_decode_frame,
+    FF_CODEC_DECODE_CB(dolby_e_decode_frame),
     .close          = dolby_e_close,
     .flush          = dolby_e_flush,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE },
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

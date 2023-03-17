@@ -22,13 +22,15 @@
 #ifndef AVCODEC_OPTIONS_TABLE_H
 #define AVCODEC_OPTIONS_TABLE_H
 
+#include "config_components.h"
+
 #include <float.h>
 #include <limits.h>
 #include <stdint.h>
 
 #include "libavutil/opt.h"
 #include "avcodec.h"
-#include "version.h"
+#include "version_major.h"
 
 #define OFFSET(x) offsetof(AVCodecContext,x)
 #define DEFAULT 0 //should be NAN but it does not work as it is not a constant in glibc as required by ANSI/ISO C
@@ -55,13 +57,13 @@ static const AVOption avcodec_options[] = {
 {"qpel", "use 1/4-pel motion compensation", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_QPEL }, INT_MIN, INT_MAX, V|E, "flags"},
 {"loop", "use loop filter", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_LOOP_FILTER }, INT_MIN, INT_MAX, V|E, "flags"},
 {"qscale", "use fixed qscale", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_QSCALE }, INT_MIN, INT_MAX, 0, "flags"},
+{"recon_frame", "export reconstructed frames", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_RECON_FRAME}, .unit = "flags"},
+{"copy_opaque", "propagate opaque values", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_COPY_OPAQUE}, .unit = "flags"},
+{"frame_duration", "use frame durations", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_FRAME_DURATION}, .unit = "flags"},
 {"pass1", "use internal 2-pass ratecontrol in first  pass mode", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_PASS1 }, INT_MIN, INT_MAX, 0, "flags"},
 {"pass2", "use internal 2-pass ratecontrol in second pass mode", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_PASS2 }, INT_MIN, INT_MAX, 0, "flags"},
 {"gray", "only decode/encode grayscale", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_GRAY }, INT_MIN, INT_MAX, V|E|D, "flags"},
 {"psnr", "error[?] variables will be set during encoding", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_PSNR }, INT_MIN, INT_MAX, V|E, "flags"},
-#if FF_API_FLAG_TRUNCATED
-{"truncated", "(Deprecated, use parsers instead.) Input bitstream might be randomly truncated", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_TRUNCATED }, INT_MIN, INT_MAX, V|D | AV_OPT_FLAG_DEPRECATED, "flags"},
-#endif
 {"ildct", "use interlaced DCT", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_INTERLACED_DCT }, INT_MIN, INT_MAX, V|E, "flags"},
 {"low_delay", "force low delay", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_LOW_DELAY }, INT_MIN, INT_MAX, V|D|E, "flags"},
 {"global_header", "place global headers in extradata instead of every keyframe", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_GLOBAL_HEADER }, INT_MIN, INT_MAX, V|A|E, "flags"},
@@ -81,6 +83,7 @@ static const AVOption avcodec_options[] = {
 {"export_mvs", "export motion vectors through frame side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG2_EXPORT_MVS}, INT_MIN, INT_MAX, V|D, "flags2"},
 {"skip_manual", "do not skip samples and export skip information as frame side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG2_SKIP_MANUAL}, INT_MIN, INT_MAX, A|D, "flags2"},
 {"ass_ro_flush_noop", "do not reset ASS ReadOrder field on flush", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG2_RO_FLUSH_NOOP}, INT_MIN, INT_MAX, S|D, "flags2"},
+{"icc_profiles", "generate/parse embedded ICC profiles from/to colorimetry tags", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG2_ICC_PROFILES}, INT_MIN, INT_MAX, S|D, "flags2"},
 {"export_side_data", "Export metadata as side data", OFFSET(export_side_data), AV_OPT_TYPE_FLAGS, {.i64 = DEFAULT}, 0, UINT_MAX, A|V|S|D|E, "export_side_data"},
 {"mvs", "export motion vectors through frame side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_EXPORT_DATA_MVS}, INT_MIN, INT_MAX, V|D, "export_side_data"},
 {"prft", "export Producer Reference Time through packet side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_EXPORT_DATA_PRFT}, INT_MIN, INT_MAX, A|V|S|E, "export_side_data"},
@@ -89,10 +92,12 @@ static const AVOption avcodec_options[] = {
 {"time_base", NULL, OFFSET(time_base), AV_OPT_TYPE_RATIONAL, {.dbl = 0}, 0, INT_MAX},
 {"g", "set the group of picture (GOP) size", OFFSET(gop_size), AV_OPT_TYPE_INT, {.i64 = 12 }, INT_MIN, INT_MAX, V|E},
 {"ar", "set audio sampling rate (in Hz)", OFFSET(sample_rate), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, 0, INT_MAX, A|D|E},
+#if FF_API_OLD_CHANNEL_LAYOUT
 {"ac", "set number of audio channels", OFFSET(channels), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, 0, INT_MAX, A|D|E},
+#endif
 {"cutoff", "set cutoff bandwidth", OFFSET(cutoff), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, INT_MIN, INT_MAX, A|E},
 {"frame_size", NULL, OFFSET(frame_size), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, 0, INT_MAX, A|E},
-{"frame_number", NULL, OFFSET(frame_number), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, INT_MIN, INT_MAX},
+{"frame_number", NULL, OFFSET(frame_num), AV_OPT_TYPE_INT64, {.i64 = DEFAULT }, INT_MIN, INT_MAX},
 {"delay", NULL, OFFSET(delay), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, INT_MIN, INT_MAX},
 {"qcomp", "video quantizer scale compression (VBR). Constant of ratecontrol equation. "
           "Recommended range for default rc_eq: 0.0-1.0",
@@ -262,8 +267,11 @@ static const AVOption avcodec_options[] = {
 {"mv0_threshold", NULL, OFFSET(mv0_threshold), AV_OPT_TYPE_INT, {.i64 = 256 }, 0, INT_MAX, V|E},
 {"compression_level", NULL, OFFSET(compression_level), AV_OPT_TYPE_INT, {.i64 = FF_COMPRESSION_DEFAULT }, INT_MIN, INT_MAX, V|A|E},
 {"bits_per_raw_sample", NULL, OFFSET(bits_per_raw_sample), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, 0, INT_MAX},
+{"ch_layout", NULL, OFFSET(ch_layout), AV_OPT_TYPE_CHLAYOUT, {.str = NULL }, 0, 0, A|E|D, "ch_layout"},
+#if FF_API_OLD_CHANNEL_LAYOUT
 {"channel_layout", NULL, OFFSET(channel_layout), AV_OPT_TYPE_CHANNEL_LAYOUT, {.i64 = DEFAULT }, 0, UINT64_MAX, A|E|D, "channel_layout"},
 {"request_channel_layout", NULL, OFFSET(request_channel_layout), AV_OPT_TYPE_CHANNEL_LAYOUT, {.i64 = DEFAULT }, 0, UINT64_MAX, A|D, "request_channel_layout"},
+#endif
 {"rc_max_vbv_use", NULL, OFFSET(rc_max_available_vbv_use), AV_OPT_TYPE_FLOAT, {.dbl = 0 }, 0.0, FLT_MAX, V|E},
 {"rc_min_vbv_use", NULL, OFFSET(rc_min_vbv_overflow_use),  AV_OPT_TYPE_FLOAT, {.dbl = 3 },     0.0, FLT_MAX, V|E},
 {"ticks_per_frame", NULL, OFFSET(ticks_per_frame), AV_OPT_TYPE_INT, {.i64 = 1 }, 1, INT_MAX, A|V|E|D},
@@ -368,10 +376,6 @@ static const AVOption avcodec_options[] = {
 {"auto",        NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_SUB_CHARENC_MODE_AUTOMATIC},   INT_MIN, INT_MAX, S|D, "sub_charenc_mode"},
 {"pre_decoder", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_SUB_CHARENC_MODE_PRE_DECODER}, INT_MIN, INT_MAX, S|D, "sub_charenc_mode"},
 {"ignore",      NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_SUB_CHARENC_MODE_IGNORE},      INT_MIN, INT_MAX, S|D, "sub_charenc_mode"},
-#if FF_API_SUB_TEXT_FORMAT
-{"sub_text_format", "Deprecated, does nothing", OFFSET(sub_text_format), AV_OPT_TYPE_INT, {.i64 = FF_SUB_TEXT_FMT_ASS}, 0, 1, S|D | AV_OPT_FLAG_DEPRECATED, "sub_text_format"},
-{"ass",              NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_SUB_TEXT_FMT_ASS},              INT_MIN, INT_MAX, S|D, "sub_text_format"},
-#endif
 {"apply_cropping", NULL, OFFSET(apply_cropping), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, V | D },
 {"skip_alpha", "Skip processing alpha", OFFSET(skip_alpha), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, V|D },
 {"field_order", "Field order", OFFSET(field_order), AV_OPT_TYPE_INT, {.i64 = AV_FIELD_UNKNOWN }, 0, 5, V|D|E, "field_order" },
@@ -390,6 +394,7 @@ static const AVOption avcodec_options[] = {
 {"ignore_level", "ignore level even if the codec level used is unknown or higher than the maximum supported level reported by the hardware driver", 0, AV_OPT_TYPE_CONST, { .i64 = AV_HWACCEL_FLAG_IGNORE_LEVEL }, INT_MIN, INT_MAX, V | D, "hwaccel_flags" },
 {"allow_high_depth", "allow to output YUV pixel formats with a different chroma sampling than 4:2:0 and/or other than 8 bits per component", 0, AV_OPT_TYPE_CONST, {.i64 = AV_HWACCEL_FLAG_ALLOW_HIGH_DEPTH }, INT_MIN, INT_MAX, V | D, "hwaccel_flags"},
 {"allow_profile_mismatch", "attempt to decode anyway if HW accelerated decoder's supported profiles do not exactly match the stream", 0, AV_OPT_TYPE_CONST, {.i64 = AV_HWACCEL_FLAG_ALLOW_PROFILE_MISMATCH }, INT_MIN, INT_MAX, V | D, "hwaccel_flags"},
+{"unsafe_output", "allow potentially unsafe hwaccel frame output that might require special care to process successfully", 0, AV_OPT_TYPE_CONST, {.i64 = AV_HWACCEL_FLAG_UNSAFE_OUTPUT }, INT_MIN, INT_MAX, V | D, "hwaccel_flags"},
 {"extra_hw_frames", "Number of extra hardware frames to allocate for the user", OFFSET(extra_hw_frames), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, V|D },
 {"discard_damaged_percentage", "Percentage of damaged samples to discard a frame", OFFSET(discard_damaged_percentage), AV_OPT_TYPE_INT, {.i64 = 95 }, 0, 100, V|D },
 {NULL},

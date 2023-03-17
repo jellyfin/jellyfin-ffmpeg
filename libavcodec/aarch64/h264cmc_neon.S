@@ -19,9 +19,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/aarch64/asm.S"
 
-/* chroma_mc8(uint8_t *dst, uint8_t *src, ptrdiff_t stride, int h, int x, int y) */
+/* chroma_mc8(uint8_t *dst, const uint8_t *src, ptrdiff_t stride, int h, int x, int y) */
 .macro  h264_chroma_mc8 type, codec=h264
 function ff_\type\()_\codec\()_chroma_mc8_neon, export=1
   .ifc \type,avg
@@ -191,7 +193,7 @@ function ff_\type\()_\codec\()_chroma_mc8_neon, export=1
 endfunc
 .endm
 
-/* chroma_mc4(uint8_t *dst, uint8_t *src, ptrdiff_t stride, int h, int x, int y) */
+/* chroma_mc4(uint8_t *dst, const uint8_t *src, ptrdiff_t stride, int h, int x, int y) */
 .macro  h264_chroma_mc4 type, codec=h264
 function ff_\type\()_\codec\()_chroma_mc4_neon, export=1
   .ifc \type,avg

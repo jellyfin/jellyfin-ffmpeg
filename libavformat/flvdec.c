@@ -24,18 +24,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/dict.h"
+#include "libavutil/dict_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/internal.h"
 #include "libavutil/intfloat.h"
+#include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
-#include "libavutil/time_internal.h"
-#include "libavcodec/bytestream.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
-#include "avio_internal.h"
 #include "flv.h"
 
 #define VALIDATE_INDEX_TS_THRESH 2500
@@ -65,7 +66,7 @@ typedef struct FLVContext {
     uint8_t resync_buffer[2*RESYNC_BUFFER_SIZE];
 
     int broken_sizes;
-    int sum_flv_tag_size;
+    int64_t sum_flv_tag_size;
 
     int last_keyframe_stream_index;
     int keyframe_count;
@@ -146,9 +147,9 @@ static void add_keyframes_index(AVFormatContext *s)
     if (ffstream(stream)->nb_index_entries == 0) {
         for (i = 0; i < flv->keyframe_count; i++) {
             av_log(s, AV_LOG_TRACE, "keyframe filepositions = %"PRId64" times = %"PRId64"\n",
-                   flv->keyframe_filepositions[i], flv->keyframe_times[i] * 1000);
+                   flv->keyframe_filepositions[i], flv->keyframe_times[i]);
             av_add_index_entry(stream, flv->keyframe_filepositions[i],
-                flv->keyframe_times[i] * 1000, 0, 0, AVINDEX_KEYFRAME);
+                flv->keyframe_times[i], 0, 0, AVINDEX_KEYFRAME);
         }
     } else
         av_log(s, AV_LOG_WARNING, "Skipping duplicate index\n");
@@ -428,6 +429,7 @@ static int parse_keyframes_index(AVFormatContext *s, AVIOContext *ioc, int64_t m
            amf_get_string(ioc, str_val, sizeof(str_val)) > 0) {
         int64_t **current_array;
         unsigned int arraylen;
+        int factor;
 
         // Expect array object in context
         if (avio_r8(ioc) != AMF_DATA_TYPE_ARRAY)
@@ -440,10 +442,12 @@ static int parse_keyframes_index(AVFormatContext *s, AVIOContext *ioc, int64_t m
         if       (!strcmp(KEYFRAMES_TIMESTAMP_TAG , str_val) && !times) {
             current_array = &times;
             timeslen      = arraylen;
+            factor = 1000;
         } else if (!strcmp(KEYFRAMES_BYTEOFFSET_TAG, str_val) &&
                    !filepositions) {
             current_array = &filepositions;
             fileposlen    = arraylen;
+            factor = 1;
         } else
             // unexpected metatag inside keyframes, will not use such
             // metadata for indexing
@@ -458,10 +462,10 @@ static int parse_keyframes_index(AVFormatContext *s, AVIOContext *ioc, int64_t m
             double d;
             if (avio_r8(ioc) != AMF_DATA_TYPE_NUMBER)
                 goto invalid;
-            d = av_int2double(avio_rb64(ioc));
+            d = av_int2double(avio_rb64(ioc)) * factor;
             if (isnan(d) || d < INT64_MIN || d > INT64_MAX)
                 goto invalid;
-            if (current_array == &times && (d <= INT64_MIN / 1000 || d >= INT64_MAX / 1000))
+            if (avio_feof(ioc))
                 goto invalid;
             current_array[0][i] = d;
         }
@@ -476,7 +480,7 @@ static int parse_keyframes_index(AVFormatContext *s, AVIOContext *ioc, int64_t m
     if (timeslen == fileposlen && fileposlen>1 && max_pos <= filepositions[0]) {
         for (i = 0; i < FFMIN(2,fileposlen); i++) {
             flv->validate_index[i].pos = filepositions[i];
-            flv->validate_index[i].dts = times[i] * 1000;
+            flv->validate_index[i].dts = times[i];
             flv->validate_count        = i + 1;
         }
         flv->keyframe_times = times;
@@ -629,10 +633,7 @@ static int amf_parse_object(AVFormatContext *s, AVStream *astream,
                     } else if (!strcmp(key, "audiosamplesize") && apar) {
                         apar->bits_per_coded_sample = num_val;
                     } else if (!strcmp(key, "stereo") && apar) {
-                        apar->channels       = num_val + 1;
-                        apar->channel_layout = apar->channels == 2 ?
-                                               AV_CH_LAYOUT_STEREO :
-                                               AV_CH_LAYOUT_MONO;
+                        av_channel_layout_default(&apar->ch_layout, num_val + 1);
                     } else if (!strcmp(key, "width") && vpar) {
                         vpar->width = num_val;
                     } else if (!strcmp(key, "height") && vpar) {
@@ -1031,7 +1032,7 @@ retry:
     type = (avio_r8(s->pb) & 0x1F);
     orig_size =
     size = avio_rb24(s->pb);
-    flv->sum_flv_tag_size += size + 11;
+    flv->sum_flv_tag_size += size + 11LL;
     dts  = avio_rb24(s->pb);
     dts |= (unsigned)avio_r8(s->pb) << 24;
     av_log(s, AV_LOG_TRACE, "type:%d, size:%d, last:%d, dts:%"PRId64" pos:%"PRId64"\n", type, size, last, dts, avio_tell(s->pb));
@@ -1202,12 +1203,10 @@ retry_duration:
         sample_rate = 44100 << ((flags & FLV_AUDIO_SAMPLERATE_MASK) >>
                                 FLV_AUDIO_SAMPLERATE_OFFSET) >> 3;
         bits_per_coded_sample = (flags & FLV_AUDIO_SAMPLESIZE_MASK) ? 16 : 8;
-        if (!st->codecpar->channels || !st->codecpar->sample_rate ||
+        if (!av_channel_layout_check(&st->codecpar->ch_layout) ||
+            !st->codecpar->sample_rate ||
             !st->codecpar->bits_per_coded_sample) {
-            st->codecpar->channels              = channels;
-            st->codecpar->channel_layout        = channels == 1
-                                               ? AV_CH_LAYOUT_MONO
-                                               : AV_CH_LAYOUT_STEREO;
+            av_channel_layout_default(&st->codecpar->ch_layout, channels);
             st->codecpar->sample_rate           = sample_rate;
             st->codecpar->bits_per_coded_sample = bits_per_coded_sample;
         }
@@ -1217,7 +1216,7 @@ retry_duration:
             flv->last_sample_rate =
             sample_rate           = st->codecpar->sample_rate;
             flv->last_channels    =
-            channels              = st->codecpar->channels;
+            channels              = st->codecpar->ch_layout.nb_channels;
         } else {
             AVCodecParameters *par = avcodec_parameters_alloc();
             if (!par) {
@@ -1333,7 +1332,7 @@ leave:
             !avio_feof(s->pb) &&
             (last != orig_size || !last) && last != flv->sum_flv_tag_size &&
             !flv->broken_sizes) {
-            av_log(s, AV_LOG_ERROR, "Packet mismatch %d %d %d\n", last, orig_size + 11, flv->sum_flv_tag_size);
+            av_log(s, AV_LOG_ERROR, "Packet mismatch %d %d %"PRId64"\n", last, orig_size + 11, flv->sum_flv_tag_size);
             avio_seek(s->pb, pos + 1, SEEK_SET);
             ret = resync(s);
             av_packet_unref(pkt);

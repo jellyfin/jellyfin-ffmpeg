@@ -32,11 +32,14 @@
 
 #include "avformat.h"
 #include "matroska.h"
+#include "mux.h"
 
 #include "libavutil/avstring.h"
 #include "libavutil/dict.h"
 #include "libavutil/opt.h"
 #include "libavutil/time_internal.h"
+
+#include "libavcodec/codec_desc.h"
 
 typedef struct AdaptationSet {
     char id[10];
@@ -93,7 +96,7 @@ static int write_header(AVFormatContext *s)
     }
     avio_printf(pb, "  minBufferTime=\"PT%gS\"\n", min_buffer_time);
     avio_printf(pb, "  profiles=\"%s\"%s",
-                w->is_live ? "urn:mpeg:dash:profile:isoff-live:2011" : "urn:webm:dash:profile:webm-on-demand:2012",
+                w->is_live ? "urn:mpeg:dash:profile:isoff-live:2011" : "urn:mpeg:dash:profile:webm-on-demand:2012",
                 w->is_live ? "\n" : ">\n");
     if (w->is_live) {
         time_t local_time = time(NULL);
@@ -538,13 +541,13 @@ static const AVClass webm_dash_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_webm_dash_manifest_muxer = {
-    .name              = "webm_dash_manifest",
-    .long_name         = NULL_IF_CONFIG_SMALL("WebM DASH Manifest"),
-    .mime_type         = "application/xml",
-    .extensions        = "xml",
+const FFOutputFormat ff_webm_dash_manifest_muxer = {
+    .p.name            = "webm_dash_manifest",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("WebM DASH Manifest"),
+    .p.mime_type       = "application/xml",
+    .p.extensions      = "xml",
     .priv_data_size    = sizeof(WebMDashMuxContext),
     .write_header      = webm_dash_manifest_write_header,
     .write_packet      = webm_dash_manifest_write_packet,
-    .priv_class        = &webm_dash_class,
+    .p.priv_class      = &webm_dash_class,
 };

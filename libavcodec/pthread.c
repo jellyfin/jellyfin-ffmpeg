@@ -32,7 +32,7 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "pthread_internal.h"
 #include "thread.h"
 
@@ -48,9 +48,6 @@
 static void validate_thread_parameters(AVCodecContext *avctx)
 {
     int frame_threading_supported = (avctx->codec->capabilities & AV_CODEC_CAP_FRAME_THREADS)
-#if FF_API_FLAG_TRUNCATED
-                                && !(avctx->flags  & AV_CODEC_FLAG_TRUNCATED)
-#endif
                                 && !(avctx->flags  & AV_CODEC_FLAG_LOW_DELAY)
                                 && !(avctx->flags2 & AV_CODEC_FLAG2_CHUNKS);
     if (avctx->thread_count == 1) {
@@ -60,7 +57,7 @@ static void validate_thread_parameters(AVCodecContext *avctx)
     } else if (avctx->codec->capabilities & AV_CODEC_CAP_SLICE_THREADS &&
                avctx->thread_type & FF_THREAD_SLICE) {
         avctx->active_thread_type = FF_THREAD_SLICE;
-    } else if (!(avctx->codec->caps_internal & FF_CODEC_CAP_AUTO_THREADS)) {
+    } else if (!(ffcodec(avctx->codec)->caps_internal & FF_CODEC_CAP_AUTO_THREADS)) {
         avctx->thread_count       = 1;
         avctx->active_thread_type = 0;
     }

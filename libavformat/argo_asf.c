@@ -19,9 +19,13 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
+#include "config_components.h"
+
 #include "libavutil/avstring.h"
 #include "avformat.h"
 #include "internal.h"
+#include "mux.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/avassert.h"
@@ -96,11 +100,9 @@ int ff_argo_asf_fill_stream(AVFormatContext *s, AVStream *st, const ArgoASFFileH
     st->codecpar->format                    = AV_SAMPLE_FMT_S16P;
 
     if (ckhdr->flags & ASF_CF_STEREO) {
-        st->codecpar->channel_layout        = AV_CH_LAYOUT_STEREO;
-        st->codecpar->channels              = 2;
+        st->codecpar->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO;
     } else {
-        st->codecpar->channel_layout        = AV_CH_LAYOUT_MONO;
-        st->codecpar->channels              = 1;
+        st->codecpar->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     }
 
     /* v1.1 files (FX Fighter) are all marked as 44100, but are actually 22050. */
@@ -121,11 +123,11 @@ int ff_argo_asf_fill_stream(AVFormatContext *s, AVStream *st, const ArgoASFFileH
      * (nchannel control bytes) + ((bytes_per_channel) * nchannel)
      * For mono, this is 17. For stereo, this is 34.
      */
-    st->codecpar->block_align           = st->codecpar->channels +
+    st->codecpar->block_align           = st->codecpar->ch_layout.nb_channels +
                                           (ckhdr->num_samples / 2) *
-                                          st->codecpar->channels;
+                                          st->codecpar->ch_layout.nb_channels;
 
-    st->codecpar->bit_rate              = st->codecpar->channels *
+    st->codecpar->bit_rate              = st->codecpar->ch_layout.nb_channels *
                                           st->codecpar->sample_rate *
                                           st->codecpar->bits_per_coded_sample;
 
@@ -305,12 +307,12 @@ static int argo_asf_write_init(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
-    if (par->channels > 2) {
+    if (par->ch_layout.nb_channels > 2) {
         av_log(s, AV_LOG_ERROR, "ASF files only support up to 2 channels\n");
         return AVERROR(EINVAL);
     }
 
-    if (par->block_align != 17 * par->channels)
+    if (par->block_align != 17 * par->ch_layout.nb_channels)
         return AVERROR(EINVAL);
 
     if (par->sample_rate > UINT16_MAX) {
@@ -392,7 +394,7 @@ static int argo_asf_write_header(AVFormatContext *s)
     chdr.unk2          = ~0;
     chdr.flags         = ASF_CF_BITS_PER_SAMPLE | ASF_CF_ALWAYS1;
 
-    if (par->channels == 2)
+    if (par->ch_layout.nb_channels == 2)
         chdr.flags |= ASF_CF_STEREO;
 
     argo_asf_write_file_header(&fhdr, s->pb);
@@ -469,20 +471,20 @@ static const AVClass argo_asf_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT
 };
 
-const AVOutputFormat ff_argo_asf_muxer = {
-    .name           = "argo_asf",
-    .long_name      = NULL_IF_CONFIG_SMALL("Argonaut Games ASF"),
+const FFOutputFormat ff_argo_asf_muxer = {
+    .p.name         = "argo_asf",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Argonaut Games ASF"),
     /*
      * NB: Can't do this as it conflicts with the actual ASF format.
-     * .extensions  = "asf",
+     * .p.extensions  = "asf",
      */
-    .audio_codec    = AV_CODEC_ID_ADPCM_ARGO,
-    .video_codec    = AV_CODEC_ID_NONE,
+    .p.audio_codec  = AV_CODEC_ID_ADPCM_ARGO,
+    .p.video_codec  = AV_CODEC_ID_NONE,
+    .p.priv_class   = &argo_asf_muxer_class,
     .init           = argo_asf_write_init,
     .write_header   = argo_asf_write_header,
     .write_packet   = argo_asf_write_packet,
     .write_trailer  = argo_asf_write_trailer,
-    .priv_class     = &argo_asf_muxer_class,
     .priv_data_size = sizeof(ArgoASFMuxContext)
 };
 #endif

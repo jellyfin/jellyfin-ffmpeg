@@ -31,10 +31,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <float.h>
-
 #include "libavutil/avassert.h"
-#include "libavutil/avstring.h"
+#include "libavutil/file_open.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
@@ -353,7 +351,7 @@ static int config_input(AVFilterLink *inlink)
     AudioRNNContext *s = ctx->priv;
     int ret = 0;
 
-    s->channels = inlink->channels;
+    s->channels = inlink->ch_layout.nb_channels;
 
     if (!s->st)
         s->st = av_calloc(s->channels, sizeof(DenoiseState));
@@ -375,14 +373,15 @@ static int config_input(AVFilterLink *inlink)
 
     for (int i = 0; i < s->channels; i++) {
         DenoiseState *st = &s->st[i];
+        float scale = 1.f;
 
         if (!st->tx)
-            ret = av_tx_init(&st->tx, &st->tx_fn, AV_TX_FLOAT_FFT, 0, WINDOW_SIZE, NULL, 0);
+            ret = av_tx_init(&st->tx, &st->tx_fn, AV_TX_FLOAT_FFT, 0, WINDOW_SIZE, &scale, 0);
         if (ret < 0)
             return ret;
 
         if (!st->txi)
-            ret = av_tx_init(&st->txi, &st->txi_fn, AV_TX_FLOAT_FFT, 1, WINDOW_SIZE, NULL, 0);
+            ret = av_tx_init(&st->txi, &st->txi_fn, AV_TX_FLOAT_FFT, 1, WINDOW_SIZE, &scale, 0);
         if (ret < 0)
             return ret;
     }
@@ -418,7 +417,7 @@ static void forward_transform(DenoiseState *st, AVComplexFloat *out, const float
         x[i].im = 0;
     }
 
-    st->tx_fn(st->tx, y, x, sizeof(float));
+    st->tx_fn(st->tx, y, x, sizeof(AVComplexFloat));
 
     RNN_COPY(out, y, FREQ_SIZE);
 }
@@ -435,7 +434,7 @@ static void inverse_transform(DenoiseState *st, float *out, const AVComplexFloat
         x[i].im = -x[WINDOW_SIZE - i].im;
     }
 
-    st->txi_fn(st->txi, y, x, sizeof(float));
+    st->txi_fn(st->txi, y, x, sizeof(AVComplexFloat));
 
     for (int i = 0; i < WINDOW_SIZE; i++)
         out[i] = y[i].re / WINDOW_SIZE;
@@ -1413,8 +1412,8 @@ static int rnnoise_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_j
     ThreadData *td = arg;
     AVFrame *in = td->in;
     AVFrame *out = td->out;
-    const int start = (out->channels * jobnr) / nb_jobs;
-    const int end = (out->channels * (jobnr+1)) / nb_jobs;
+    const int start = (out->ch_layout.nb_channels * jobnr) / nb_jobs;
+    const int end = (out->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
 
     for (int ch = start; ch < end; ch++) {
         rnnoise_channel(s, &s->st[ch],
@@ -1438,11 +1437,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_free(&in);
         return AVERROR(ENOMEM);
     }
-    out->pts = in->pts;
+    av_frame_copy_props(out, in);
 
     td.in = in; td.out = out;
     ff_filter_execute(ctx, rnnoise_channels, &td, NULL,
-                      FFMIN(outlink->channels, ff_filter_get_nb_threads(ctx)));
+                      FFMIN(outlink->ch_layout.nb_channels, ff_filter_get_nb_threads(ctx)));
 
     av_frame_free(&in);
     return ff_filter_frame(outlink, out);
@@ -1478,7 +1477,7 @@ static int open_model(AVFilterContext *ctx, RNNModel **model)
 
     if (!s->model_name)
         return AVERROR(EINVAL);
-    f = av_fopen_utf8(s->model_name, "r");
+    f = avpriv_fopen_utf8(s->model_name, "r");
     if (!f) {
         av_log(ctx, AV_LOG_ERROR, "Failed to open model file: %s\n", s->model_name);
         return AVERROR(EINVAL);

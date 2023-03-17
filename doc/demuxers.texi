@@ -274,6 +274,35 @@ which streams to actually receive.
 Each stream mirrors the @code{id} and @code{bandwidth} properties from the
 @code{<Representation>} as metadata keys named "id" and "variant_bitrate" respectively.
 
+@subsection Options
+
+This demuxer accepts the following option:
+
+@table @option
+
+@item cenc_decryption_key
+16-byte key, in hex, to decrypt files encrypted using ISO Common Encryption (CENC/AES-128 CTR; ISO/IEC 23001-7).
+
+@end table
+
+@section ea
+
+Electronic Arts Multimedia format demuxer.
+
+This format is used by various Electronic Arts games.
+
+@subsection Options
+
+@table @option
+
+@item merge_alpha @var{bool}
+
+Normally the VP6 alpha channel (if exists) is returned as a secondary video
+stream, by setting this option you can make the demuxer return a single video
+stream which contains the alpha channel in addition to the ordinary video.
+
+@end table
+
 @section imf
 
 Interoperable Master Format demuxer.
@@ -362,6 +391,9 @@ It accepts the following options:
 @item live_start_index
 segment index to start live streams at (negative values are from the end).
 
+@item prefer_x_start
+prefer to use #EXT-X-START if it's in playlist instead of live_start_index.
+
 @item allowed_extensions
 ',' separated list of file extensions that hls is allowed to access.
 
@@ -387,6 +419,10 @@ Use HTTP partial requests for downloading HTTP segments.
 
 @item seg_format_options
 Set options for the demuxer of media segments using a list of key=value pairs separated by @code{:}.
+
+@item seg_max_retry
+Maximum number of times to reload a segment on error, useful when segment skip on network error is not desired.
+Default value is 0.
 @end table
 
 @section image2
@@ -775,6 +811,10 @@ disabled). Default value is -1.
 @item merge_pmt_versions
 Re-use existing streams when a PMT's version is updated and elementary
 streams move to different PIDs. Default value is 0.
+
+@item max_packet_size
+Set maximum size, in bytes, of packet emitted by the demuxer. Payloads above this size
+are split across multiple packets. Range is 1 to INT_MAX/2. Default is 204800 bytes.
 @end table
 
 @section mpjpeg

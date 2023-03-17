@@ -20,11 +20,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avstring.h"
+#include "libavutil/reverse.h"
 
 #include "avcodec.h"
-#include "internal.h"
-#include "mathops.h"
+#include "codec_internal.h"
+#include "decode.h"
 
 static int get_nibble(uint8_t x)
 {
@@ -63,10 +63,9 @@ static int parse_str_int(const uint8_t *p, const uint8_t *end, const uint8_t *ke
     return INT_MIN;
 }
 
-static int xbm_decode_frame(AVCodecContext *avctx, void *data,
+static int xbm_decode_frame(AVCodecContext *avctx, AVFrame *p,
                             int *got_frame, AVPacket *avpkt)
 {
-    AVFrame *p = data;
     int ret, linesize, i, j;
     int width  = 0;
     int height = 0;
@@ -82,6 +81,9 @@ static int xbm_decode_frame(AVCodecContext *avctx, void *data,
 
     if ((ret = ff_set_dimensions(avctx, width, height)) < 0)
         return ret;
+
+    if (avctx->skip_frame >= AVDISCARD_ALL)
+        return avpkt->size;
 
     if ((ret = ff_get_buffer(avctx, p, 0)) < 0)
         return ret;
@@ -136,11 +138,12 @@ static int xbm_decode_frame(AVCodecContext *avctx, void *data,
     return avpkt->size;
 }
 
-const AVCodec ff_xbm_decoder = {
-    .name         = "xbm",
-    .long_name    = NULL_IF_CONFIG_SMALL("XBM (X BitMap) image"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_XBM,
-    .decode       = xbm_decode_frame,
-    .capabilities = AV_CODEC_CAP_DR1,
+const FFCodec ff_xbm_decoder = {
+    .p.name       = "xbm",
+    CODEC_LONG_NAME("XBM (X BitMap) image"),
+    .p.type       = AVMEDIA_TYPE_VIDEO,
+    .p.id         = AV_CODEC_ID_XBM,
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    FF_CODEC_DECODE_CB(xbm_decode_frame),
 };

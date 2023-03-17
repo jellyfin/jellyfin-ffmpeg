@@ -28,12 +28,16 @@
 #include "libavutil/opt.h"
 
 #include "libavcodec/ac3_parser_internal.h"
-#include "libavcodec/internal.h"
+#include "libavcodec/avcodec.h"
+#include "libavcodec/bytestream.h"
+#include "libavcodec/h264.h"
+#include "libavcodec/startcode.h"
 
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
 #include "mpegts.h"
+#include "mux.h"
 
 #define PCR_TIME_BASE 27000000
 
@@ -110,6 +114,7 @@ typedef struct MpegTSWrite {
 #define MPEGTS_FLAG_SYSTEM_B        0x08
 #define MPEGTS_FLAG_DISCONT         0x10
 #define MPEGTS_FLAG_NIT             0x20
+#define MPEGTS_FLAG_OMIT_RAI        0x40
     int flags;
     int copyts;
     int tables_version;
@@ -466,7 +471,7 @@ static int get_m2ts_stream_type(AVFormatContext *s, AVStream *st)
         stream_type = 0x81;
         break;
     case AV_CODEC_ID_DTS:
-        stream_type = (st->codecpar->channels > 6) ? 0x85 : 0x82;
+        stream_type = (st->codecpar->ch_layout.nb_channels > 6) ? 0x85 : 0x82;
         break;
     case AV_CODEC_ID_TRUEHD:
         stream_type = 0x83;
@@ -592,6 +597,8 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
             if (codec_id == AV_CODEC_ID_S302M)
                 put_registration_descriptor(&q, MKTAG('B', 'S', 'S', 'D'));
             if (codec_id == AV_CODEC_ID_OPUS) {
+                int ch = st->codecpar->ch_layout.nb_channels;
+
                 /* 6 bytes registration descriptor, 4 bytes Opus audio descriptor */
                 if (q - data > SECTION_LENGTH - 6 - 4) {
                     err = 1;
@@ -605,11 +612,11 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                 *q++ = 0x80;
 
                 if (st->codecpar->extradata && st->codecpar->extradata_size >= 19) {
-                    if (st->codecpar->extradata[18] == 0 && st->codecpar->channels <= 2) {
+                    if (st->codecpar->extradata[18] == 0 && ch <= 2) {
                         /* RTP mapping family */
-                        *q++ = st->codecpar->channels;
-                    } else if (st->codecpar->extradata[18] == 1 && st->codecpar->channels <= 8 &&
-                               st->codecpar->extradata_size >= 21 + st->codecpar->channels) {
+                        *q++ = ch;
+                    } else if (st->codecpar->extradata[18] == 1 && ch <= 8 &&
+                               st->codecpar->extradata_size >= 21 + ch) {
                         static const uint8_t coupled_stream_counts[9] = {
                             1, 0, 1, 1, 2, 2, 2, 3, 3
                         };
@@ -635,14 +642,14 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                         };
                         /* Vorbis mapping family */
 
-                        if (st->codecpar->extradata[19] == st->codecpar->channels - coupled_stream_counts[st->codecpar->channels] &&
-                            st->codecpar->extradata[20] == coupled_stream_counts[st->codecpar->channels] &&
-                            memcmp(&st->codecpar->extradata[21], channel_map_a[st->codecpar->channels-1], st->codecpar->channels) == 0) {
-                            *q++ = st->codecpar->channels;
-                        } else if (st->codecpar->channels >= 2 && st->codecpar->extradata[19] == st->codecpar->channels &&
+                        if (st->codecpar->extradata[19] == ch - coupled_stream_counts[ch] &&
+                            st->codecpar->extradata[20] == coupled_stream_counts[ch] &&
+                            memcmp(&st->codecpar->extradata[21], channel_map_a[ch - 1], ch) == 0) {
+                            *q++ = ch;
+                        } else if (ch >= 2 && st->codecpar->extradata[19] == ch &&
                                    st->codecpar->extradata[20] == 0 &&
-                                   memcmp(&st->codecpar->extradata[21], channel_map_b[st->codecpar->channels-1], st->codecpar->channels) == 0) {
-                            *q++ = st->codecpar->channels | 0x80;
+                                   memcmp(&st->codecpar->extradata[21], channel_map_b[ch - 1], ch) == 0) {
+                            *q++ = ch | 0x80;
                         } else {
                             /* Unsupported, could write an extended descriptor here */
                             av_log(s, AV_LOG_ERROR, "Unsupported Opus Vorbis-style channel mapping");
@@ -653,9 +660,9 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                         av_log(s, AV_LOG_ERROR, "Unsupported Opus channel mapping for family %d", st->codecpar->extradata[18]);
                         *q++ = 0xff;
                     }
-                } else if (st->codecpar->channels <= 2) {
+                } else if (ch <= 2) {
                     /* Assume RTP mapping family */
-                    *q++ = st->codecpar->channels;
+                    *q++ = ch;
                 } else {
                     /* Unsupported */
                     av_log(s, AV_LOG_ERROR, "Unsupported Opus channel mapping");
@@ -1562,7 +1569,8 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
             q = get_ts_payload_start(buf);
             ts_st->discontinuity = 0;
         }
-        if (key && is_start && pts != AV_NOPTS_VALUE &&
+        if (!(ts->flags & MPEGTS_FLAG_OMIT_RAI) &&
+            key && is_start && pts != AV_NOPTS_VALUE &&
             !is_dvb_teletext /* adaptation+payload forbidden for teletext (ETSI EN 300 472 V1.3.1 4.1) */) {
             // set Random Access for key frames
             if (ts_st->pcr_period)
@@ -1833,7 +1841,7 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
 {
     AVStream *st = s->streams[pkt->stream_index];
     int size = pkt->size;
-    uint8_t *buf = pkt->data;
+    const uint8_t *buf = pkt->data;
     uint8_t *data = NULL;
     MpegTSWrite *ts = s->priv_data;
     MpegTSWriteStream *ts_st = st->priv_data;
@@ -1871,6 +1879,7 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
 
     if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         const uint8_t *p = buf, *buf_end = p + size;
+        const uint8_t *found_aud = NULL, *found_aud_end = NULL;
         uint32_t state = -1;
         int extradd = (pkt->flags & AV_PKT_FLAG_KEY) ? st->codecpar->extradata_size : 0;
         int ret = ff_check_h264_startcode(s, st, pkt);
@@ -1880,27 +1889,58 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
         if (extradd && AV_RB24(st->codecpar->extradata) > 1)
             extradd = 0;
 
+        /* Ensure that all pictures are prefixed with an AUD, and that
+         * IDR pictures are also prefixed with SPS and PPS. SPS and PPS
+         * are assumed to be available in 'extradata' if not found in-band. */
         do {
             p = avpriv_find_start_code(p, buf_end, &state);
             av_log(s, AV_LOG_TRACE, "nal %"PRId32"\n", state & 0x1f);
-            if ((state & 0x1f) == 7)
+            if ((state & 0x1f) == H264_NAL_SPS)
                 extradd = 0;
-        } while (p < buf_end && (state & 0x1f) != 9 &&
-                 (state & 0x1f) != 5 && (state & 0x1f) != 1);
-
-        if ((state & 0x1f) != 5)
+            if ((state & 0x1f) == H264_NAL_AUD) {
+                found_aud = p - 4;     // start of the 0x000001 start code.
+                found_aud_end = p + 1; // first byte past the AUD.
+                if (found_aud < buf)
+                    found_aud = buf;
+                if (buf_end < found_aud_end)
+                    found_aud_end = buf_end;
+            }
+        } while (p < buf_end
+                 && (state & 0x1f) != H264_NAL_IDR_SLICE
+                 && (state & 0x1f) != H264_NAL_SLICE
+                 && (extradd > 0 || !found_aud));
+        if ((state & 0x1f) != H264_NAL_IDR_SLICE)
             extradd = 0;
-        if ((state & 0x1f) != 9) { // AUD NAL
+
+        if (!found_aud) {
+            /* Prefix 'buf' with the missing AUD, and extradata if needed. */
             data = av_malloc(pkt->size + 6 + extradd);
             if (!data)
                 return AVERROR(ENOMEM);
             memcpy(data + 6, st->codecpar->extradata, extradd);
             memcpy(data + 6 + extradd, pkt->data, pkt->size);
             AV_WB32(data, 0x00000001);
-            data[4] = 0x09;
+            data[4] = H264_NAL_AUD;
             data[5] = 0xf0; // any slice type (0xe) + rbsp stop one bit
             buf     = data;
             size    = pkt->size + 6 + extradd;
+        } else if (extradd != 0) {
+            /* Move the AUD up to the beginning of the frame, where the H.264
+             * spec requires it to appear. Emit the extradata after it. */
+            PutByteContext pb;
+            const int new_pkt_size = pkt->size + 1 + extradd;
+            data = av_malloc(new_pkt_size);
+            if (!data)
+                return AVERROR(ENOMEM);
+            bytestream2_init_writer(&pb, data, new_pkt_size);
+            bytestream2_put_byte(&pb, 0x00);
+            bytestream2_put_buffer(&pb, found_aud, found_aud_end - found_aud);
+            bytestream2_put_buffer(&pb, st->codecpar->extradata, extradd);
+            bytestream2_put_buffer(&pb, pkt->data, found_aud - pkt->data);
+            bytestream2_put_buffer(&pb, found_aud_end, buf_end - found_aud_end);
+            av_assert0(new_pkt_size == bytestream2_tell_p(&pb));
+            buf     = data;
+            size    = new_pkt_size;
         }
     } else if (st->codecpar->codec_id == AV_CODEC_ID_AAC) {
         if (pkt->size < 2) {
@@ -2097,6 +2137,10 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
             ts_st->dvb_ac3_desc = dvb_ac3_desc;
         }
         av_free(hdr);
+    } else if (st->codecpar->codec_id == AV_CODEC_ID_PCM_BLURAY && ts->m2ts_mode) {
+        mpegts_write_pes(s, st, buf, size, pts, dts,
+                         pkt->flags & AV_PKT_FLAG_KEY, stream_id);
+        return 0;
     }
 
     if (ts_st->payload_size && (ts_st->payload_size + size > ts->pes_payload_size ||
@@ -2274,6 +2318,8 @@ static const AVOption options[] = {
       0, AV_OPT_TYPE_CONST, { .i64 = MPEGTS_FLAG_DISCONT }, 0, INT_MAX, ENC, "mpegts_flags" },
     { "nit", "Enable NIT transmission",
       0, AV_OPT_TYPE_CONST, { .i64 = MPEGTS_FLAG_NIT}, 0, INT_MAX, ENC, "mpegts_flags" },
+    { "omit_rai", "Disable writing of random access indicator",
+      0, AV_OPT_TYPE_CONST, { .i64 = MPEGTS_FLAG_OMIT_RAI }, 0, INT_MAX, ENC, "mpegts_flags" },
     { "mpegts_copyts", "don't offset dts/pts", OFFSET(copyts), AV_OPT_TYPE_BOOL, { .i64 = -1 }, -1, 1, ENC },
     { "tables_version", "set PAT, PMT, SDT and NIT version", OFFSET(tables_version), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 31, ENC },
     { "omit_video_pes_length", "Omit the PES packet length for video packets",
@@ -2296,19 +2342,19 @@ static const AVClass mpegts_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_mpegts_muxer = {
-    .name           = "mpegts",
-    .long_name      = NULL_IF_CONFIG_SMALL("MPEG-TS (MPEG-2 Transport Stream)"),
-    .mime_type      = "video/MP2T",
-    .extensions     = "ts,m2t,m2ts,mts",
+const FFOutputFormat ff_mpegts_muxer = {
+    .p.name         = "mpegts",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MPEG-TS (MPEG-2 Transport Stream)"),
+    .p.mime_type    = "video/MP2T",
+    .p.extensions   = "ts,m2t,m2ts,mts",
     .priv_data_size = sizeof(MpegTSWrite),
-    .audio_codec    = AV_CODEC_ID_MP2,
-    .video_codec    = AV_CODEC_ID_MPEG2VIDEO,
+    .p.audio_codec  = AV_CODEC_ID_MP2,
+    .p.video_codec  = AV_CODEC_ID_MPEG2VIDEO,
     .init           = mpegts_init,
     .write_packet   = mpegts_write_packet,
     .write_trailer  = mpegts_write_end,
     .deinit         = mpegts_deinit,
     .check_bitstream = mpegts_check_bitstream,
-    .flags          = AVFMT_ALLOW_FLUSH | AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
-    .priv_class     = &mpegts_muxer_class,
+    .p.flags        = AVFMT_ALLOW_FLUSH | AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
+    .p.priv_class   = &mpegts_muxer_class,
 };

@@ -48,7 +48,6 @@ typedef struct ESTDIFContext {
     int max;
     int nb_planes;
     int nb_threads;
-    int64_t pts;
     AVFrame *prev;
 
     void (*interpolate)(struct ESTDIFContext *s, uint8_t *dst,
@@ -95,7 +94,7 @@ static const AVOption estdif_options[] = {
     CONST("interlaced", "only deinterlace frames marked as interlaced", 1, "deint"),
     { "rslope", "specify the search radius for edge slope tracing", OFFSET(rslope), AV_OPT_TYPE_INT, {.i64=1}, 1, MAX_R, FLAGS, },
     { "redge",  "specify the search radius for best edge matching", OFFSET(redge),  AV_OPT_TYPE_INT, {.i64=2}, 0, MAX_R, FLAGS, },
-    { "ecost",  "specify the edge cost for edge matching",          OFFSET(ecost),  AV_OPT_TYPE_FLOAT,{.dbl=0.03125},0,1,FLAGS, },
+    { "ecost",  "specify the edge cost for edge matching",          OFFSET(ecost),  AV_OPT_TYPE_FLOAT,{.dbl=1},0,9,FLAGS, },
     { "mcost",  "specify the middle cost for edge matching",        OFFSET(mcost),  AV_OPT_TYPE_FLOAT,{.dbl=0.5}, 0, 1,  FLAGS, },
     { "dcost",  "specify the distance cost for edge matching",      OFFSET(dcost),  AV_OPT_TYPE_FLOAT,{.dbl=0.5}, 0, 1,  FLAGS, },
     { "interp", "specify the type of interpolation",                OFFSET(interp), AV_OPT_TYPE_INT, {.i64=1}, 0, 2,     FLAGS, "interp" },
@@ -137,9 +136,11 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
+    ESTDIFContext *s = ctx->priv;
 
     outlink->time_base = av_mul_q(inlink->time_base, (AVRational){1, 2});
-    outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
+    if (s->mode)
+        outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
 
     return 0;
 }
@@ -431,7 +432,7 @@ static int deinterlace_slice(AVFilterContext *ctx, void *arg,
     return 0;
 }
 
-static int filter(AVFilterContext *ctx, int is_second, AVFrame *in)
+static int filter(AVFilterContext *ctx, AVFrame *in, int64_t pts, int64_t duration)
 {
     ESTDIFContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
@@ -443,7 +444,8 @@ static int filter(AVFilterContext *ctx, int is_second, AVFrame *in)
         return AVERROR(ENOMEM);
     av_frame_copy_props(out, in);
     out->interlaced_frame = 0;
-    out->pts = s->pts;
+    out->pts = pts;
+    out->duration = duration;
 
     td.out = out; td.in = in;
     ff_filter_execute(ctx, deinterlace_slice, &td, NULL,
@@ -502,21 +504,21 @@ static int config_input(AVFilterLink *inlink)
 
     if ((s->deint && !s->prev->interlaced_frame) || ctx->is_disabled) {
         s->prev->pts *= 2;
+        s->prev->duration *= 2;
         ret = ff_filter_frame(ctx->outputs[0], s->prev);
         s->prev = in;
         return ret;
     }
 
-    s->pts = s->prev->pts * 2;
-    ret = filter(ctx, 0, s->prev);
+    ret = filter(ctx, s->prev, s->prev->pts * 2,
+                 s->prev->duration * (s->mode ? 1 : 2));
     if (ret < 0 || s->mode == 0) {
         av_frame_free(&s->prev);
         s->prev = in;
         return ret;
     }
 
-    s->pts = s->prev->pts + in->pts;
-    ret = filter(ctx, 1, s->prev);
+    ret = filter(ctx, s->prev, s->prev->pts + in->pts, in->duration);
     av_frame_free(&s->prev);
     s->prev = in;
     return ret;

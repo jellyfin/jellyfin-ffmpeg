@@ -23,6 +23,7 @@
 #include "avio_internal.h"
 #include "internal.h"
 #include "ast.h"
+#include "mux.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
 
@@ -84,7 +85,7 @@ static int ast_write_header(AVFormatContext *s)
     avio_wb32(pb, 0); /* File size minus header */
     avio_wb16(pb, codec_tag);
     avio_wb16(pb, 16); /* Bit depth */
-    avio_wb16(pb, par->channels);
+    avio_wb16(pb, par->ch_layout.nb_channels);
     avio_wb16(pb, 0); /* Loop flag */
     avio_wb32(pb, par->sample_rate);
 
@@ -109,7 +110,7 @@ static int ast_write_packet(AVFormatContext *s, AVPacket *pkt)
     AVIOContext *pb = s->pb;
     ASTMuxContext *ast = s->priv_data;
     AVCodecParameters *par = s->streams[0]->codecpar;
-    int size = pkt->size / par->channels;
+    int size = pkt->size / par->ch_layout.nb_channels;
 
     if (s->streams[0]->nb_frames == 0)
         ast->fbs = size;
@@ -194,16 +195,16 @@ static const AVClass ast_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_ast_muxer = {
-    .name              = "ast",
-    .long_name         = NULL_IF_CONFIG_SMALL("AST (Audio Stream)"),
-    .extensions        = "ast",
+const FFOutputFormat ff_ast_muxer = {
+    .p.name            = "ast",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("AST (Audio Stream)"),
+    .p.extensions      = "ast",
     .priv_data_size    = sizeof(ASTMuxContext),
-    .audio_codec       = AV_CODEC_ID_PCM_S16BE_PLANAR,
-    .video_codec       = AV_CODEC_ID_NONE,
+    .p.audio_codec     = AV_CODEC_ID_PCM_S16BE_PLANAR,
+    .p.video_codec     = AV_CODEC_ID_NONE,
     .write_header      = ast_write_header,
     .write_packet      = ast_write_packet,
     .write_trailer     = ast_write_trailer,
-    .priv_class        = &ast_muxer_class,
-    .codec_tag         = ff_ast_codec_tags_list,
+    .p.priv_class      = &ast_muxer_class,
+    .p.codec_tag       = ff_ast_codec_tags_list,
 };

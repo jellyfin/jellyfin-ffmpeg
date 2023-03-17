@@ -27,6 +27,8 @@
 #include <float.h>
 
 #include "libavutil/avassert.h"
+#include "libavutil/channel_layout.h"
+#include "libavutil/eval.h"
 #include "libavutil/opt.h"
 
 #define MIN_FILTER_SIZE 3
@@ -39,6 +41,26 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "internal.h"
+
+static const char * const var_names[] = {
+    "ch",           ///< the value of the current channel
+    "sn",           ///< number of samples
+    "nb_channels",
+    "t",            ///< timestamp expressed in seconds
+    "sr",           ///< sample rate
+    "p",            ///< peak value
+    NULL
+};
+
+enum var_name {
+    VAR_CH,
+    VAR_SN,
+    VAR_NB_CHANNELS,
+    VAR_T,
+    VAR_SR,
+    VAR_P,
+    VAR_VARS_NB
+};
 
 typedef struct local_gain {
     double max_gain;
@@ -63,6 +85,8 @@ typedef struct DynamicAudioNormalizerContext {
     int dc_correction;
     int channels_coupled;
     int alt_boundary_mode;
+    double overlap;
+    char *expr_str;
 
     double peak_value;
     double max_amplification;
@@ -75,7 +99,10 @@ typedef struct DynamicAudioNormalizerContext {
     double *weights;
 
     int channels;
+    int sample_advance;
     int eof;
+    char *channels_to_filter;
+    AVChannelLayout ch_layout;
     int64_t pts;
 
     cqueue **gain_history_original;
@@ -84,7 +111,17 @@ typedef struct DynamicAudioNormalizerContext {
     cqueue **threshold_history;
 
     cqueue *is_enabled;
+
+    AVFrame *window;
+
+    AVExpr *expr;
+    double var_values[VAR_VARS_NB];
 } DynamicAudioNormalizerContext;
+
+typedef struct ThreadData {
+    AVFrame *in, *out;
+    int enabled;
+} ThreadData;
 
 #define OFFSET(x) offsetof(DynamicAudioNormalizerContext, x)
 #define FLAGS AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
@@ -110,6 +147,12 @@ static const AVOption dynaudnorm_options[] = {
     { "s",           "set the compress factor",          OFFSET(compress_factor),   AV_OPT_TYPE_DOUBLE, {.dbl = 0.0},  0.0,  30.0, FLAGS },
     { "threshold",   "set the threshold value",          OFFSET(threshold),         AV_OPT_TYPE_DOUBLE, {.dbl = 0.0},  0.0,   1.0, FLAGS },
     { "t",           "set the threshold value",          OFFSET(threshold),         AV_OPT_TYPE_DOUBLE, {.dbl = 0.0},  0.0,   1.0, FLAGS },
+    { "channels",    "set channels to filter",           OFFSET(channels_to_filter),AV_OPT_TYPE_STRING, {.str="all"},    0,     0, FLAGS },
+    { "h",           "set channels to filter",           OFFSET(channels_to_filter),AV_OPT_TYPE_STRING, {.str="all"},    0,     0, FLAGS },
+    { "overlap",     "set the frame overlap",            OFFSET(overlap),           AV_OPT_TYPE_DOUBLE, {.dbl=.0},     0.0,   1.0, FLAGS },
+    { "o",           "set the frame overlap",            OFFSET(overlap),           AV_OPT_TYPE_DOUBLE, {.dbl=.0},     0.0,   1.0, FLAGS },
+    { "curve",       "set the custom peak mapping curve",OFFSET(expr_str),          AV_OPT_TYPE_STRING, {.str=NULL},      .flags = FLAGS },
+    { "v",           "set the custom peak mapping curve",OFFSET(expr_str),          AV_OPT_TYPE_STRING, {.str=NULL},      .flags = FLAGS },
     { NULL }
 };
 
@@ -238,7 +281,6 @@ static void init_gaussian_filter(DynamicAudioNormalizerContext *s)
     double total_weight = 0.0;
     const double sigma = (((s->filter_size / 2.0) - 1.0) / 3.0) + (1.0 / 3.0);
     double adjust;
-    int i;
 
     // Pre-compute constants
     const int offset = s->filter_size / 2;
@@ -246,7 +288,7 @@ static void init_gaussian_filter(DynamicAudioNormalizerContext *s)
     const double c2 = 2.0 * sigma * sigma;
 
     // Compute weights
-    for (i = 0; i < s->filter_size; i++) {
+    for (int i = 0; i < s->filter_size; i++) {
         const int x = i - offset;
 
         s->weights[i] = c1 * exp(-x * x / c2);
@@ -255,7 +297,7 @@ static void init_gaussian_filter(DynamicAudioNormalizerContext *s)
 
     // Adjust weights
     adjust = 1.0 / total_weight;
-    for (i = 0; i < s->filter_size; i++) {
+    for (int i = 0; i < s->filter_size; i++) {
         s->weights[i] *= adjust;
     }
 }
@@ -263,13 +305,12 @@ static void init_gaussian_filter(DynamicAudioNormalizerContext *s)
 static av_cold void uninit(AVFilterContext *ctx)
 {
     DynamicAudioNormalizerContext *s = ctx->priv;
-    int c;
 
     av_freep(&s->prev_amplification_factor);
     av_freep(&s->dc_correction_value);
     av_freep(&s->compress_threshold);
 
-    for (c = 0; c < s->channels; c++) {
+    for (int c = 0; c < s->channels; c++) {
         if (s->gain_history_original)
             cqueue_free(s->gain_history_original[c]);
         if (s->gain_history_minimum)
@@ -290,28 +331,34 @@ static av_cold void uninit(AVFilterContext *ctx)
 
     av_freep(&s->weights);
 
+    av_channel_layout_uninit(&s->ch_layout);
+
     ff_bufqueue_discard_all(&s->queue);
+
+    av_frame_free(&s->window);
+    av_expr_free(s->expr);
+    s->expr = NULL;
 }
 
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
     DynamicAudioNormalizerContext *s = ctx->priv;
-    int c;
+    int ret = 0;
 
     uninit(ctx);
 
-    s->channels = inlink->channels;
+    s->channels = inlink->ch_layout.nb_channels;
     s->frame_len = frame_size(inlink->sample_rate, s->frame_len_msec);
     av_log(ctx, AV_LOG_DEBUG, "frame len %d\n", s->frame_len);
 
-    s->prev_amplification_factor = av_malloc_array(inlink->channels, sizeof(*s->prev_amplification_factor));
-    s->dc_correction_value = av_calloc(inlink->channels, sizeof(*s->dc_correction_value));
-    s->compress_threshold = av_calloc(inlink->channels, sizeof(*s->compress_threshold));
-    s->gain_history_original = av_calloc(inlink->channels, sizeof(*s->gain_history_original));
-    s->gain_history_minimum = av_calloc(inlink->channels, sizeof(*s->gain_history_minimum));
-    s->gain_history_smoothed = av_calloc(inlink->channels, sizeof(*s->gain_history_smoothed));
-    s->threshold_history = av_calloc(inlink->channels, sizeof(*s->threshold_history));
+    s->prev_amplification_factor = av_malloc_array(inlink->ch_layout.nb_channels, sizeof(*s->prev_amplification_factor));
+    s->dc_correction_value = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->dc_correction_value));
+    s->compress_threshold = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->compress_threshold));
+    s->gain_history_original = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->gain_history_original));
+    s->gain_history_minimum = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->gain_history_minimum));
+    s->gain_history_smoothed = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->gain_history_smoothed));
+    s->threshold_history = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->threshold_history));
     s->weights = av_malloc_array(MAX_FILTER_SIZE, sizeof(*s->weights));
     s->is_enabled = cqueue_create(s->filter_size, MAX_FILTER_SIZE);
     if (!s->prev_amplification_factor || !s->dc_correction_value ||
@@ -321,7 +368,7 @@ static int config_input(AVFilterLink *inlink)
         !s->is_enabled || !s->weights)
         return AVERROR(ENOMEM);
 
-    for (c = 0; c < inlink->channels; c++) {
+    for (int c = 0; c < inlink->ch_layout.nb_channels; c++) {
         s->prev_amplification_factor[c] = 1.0;
 
         s->gain_history_original[c] = cqueue_create(s->filter_size, MAX_FILTER_SIZE);
@@ -336,7 +383,18 @@ static int config_input(AVFilterLink *inlink)
 
     init_gaussian_filter(s);
 
-    return 0;
+    s->window = ff_get_audio_buffer(ctx->outputs[0], s->frame_len * 2);
+    if (!s->window)
+        return AVERROR(ENOMEM);
+    s->sample_advance = FFMAX(1, lrint(s->frame_len * (1. - s->overlap)));
+
+    s->var_values[VAR_SR] = inlink->sample_rate;
+    s->var_values[VAR_NB_CHANNELS] = s->channels;
+
+    if (s->expr_str)
+        ret = av_expr_parse(&s->expr, s->expr_str, var_names, NULL, NULL,
+                            NULL, NULL, 0, ctx);
+    return ret;
 }
 
 static inline double fade(double prev, double next, int pos, int length)
@@ -361,20 +419,19 @@ static inline double bound(const double threshold, const double val)
 static double find_peak_magnitude(AVFrame *frame, int channel)
 {
     double max = DBL_EPSILON;
-    int c, i;
 
     if (channel == -1) {
-        for (c = 0; c < frame->channels; c++) {
+        for (int c = 0; c < frame->ch_layout.nb_channels; c++) {
             double *data_ptr = (double *)frame->extended_data[c];
 
-            for (i = 0; i < frame->nb_samples; i++)
-                max = FFMAX(max, fabs(data_ptr[i]));
+            for (int i = 0; i < frame->nb_samples; i++)
+                max = fmax(max, fabs(data_ptr[i]));
         }
     } else {
         double *data_ptr = (double *)frame->extended_data[channel];
 
-        for (i = 0; i < frame->nb_samples; i++)
-            max = FFMAX(max, fabs(data_ptr[i]));
+        for (int i = 0; i < frame->nb_samples; i++)
+            max = fmax(max, fabs(data_ptr[i]));
     }
 
     return max;
@@ -383,28 +440,27 @@ static double find_peak_magnitude(AVFrame *frame, int channel)
 static double compute_frame_rms(AVFrame *frame, int channel)
 {
     double rms_value = 0.0;
-    int c, i;
 
     if (channel == -1) {
-        for (c = 0; c < frame->channels; c++) {
+        for (int c = 0; c < frame->ch_layout.nb_channels; c++) {
             const double *data_ptr = (double *)frame->extended_data[c];
 
-            for (i = 0; i < frame->nb_samples; i++) {
+            for (int i = 0; i < frame->nb_samples; i++) {
                 rms_value += pow_2(data_ptr[i]);
             }
         }
 
-        rms_value /= frame->nb_samples * frame->channels;
+        rms_value /= frame->nb_samples * frame->ch_layout.nb_channels;
     } else {
         const double *data_ptr = (double *)frame->extended_data[channel];
-        for (i = 0; i < frame->nb_samples; i++) {
+        for (int i = 0; i < frame->nb_samples; i++) {
             rms_value += pow_2(data_ptr[i]);
         }
 
         rms_value /= frame->nb_samples;
     }
 
-    return FFMAX(sqrt(rms_value), DBL_EPSILON);
+    return fmax(sqrt(rms_value), DBL_EPSILON);
 }
 
 static local_gain get_max_local_gain(DynamicAudioNormalizerContext *s, AVFrame *frame,
@@ -413,10 +469,22 @@ static local_gain get_max_local_gain(DynamicAudioNormalizerContext *s, AVFrame *
     const double peak_magnitude = find_peak_magnitude(frame, channel);
     const double maximum_gain = s->peak_value / peak_magnitude;
     const double rms_gain = s->target_rms > DBL_EPSILON ? (s->target_rms / compute_frame_rms(frame, channel)) : DBL_MAX;
+    double target_gain = DBL_MAX;
     local_gain gain;
 
+    if (s->expr_str) {
+        double var_values[VAR_VARS_NB];
+
+        memcpy(var_values, s->var_values, sizeof(var_values));
+
+        var_values[VAR_CH] = channel;
+        var_values[VAR_P]  = peak_magnitude;
+
+        target_gain = av_expr_eval(s->expr, var_values, s) / peak_magnitude;
+    }
+
     gain.threshold = peak_magnitude > s->threshold;
-    gain.max_gain  = bound(s->max_amplification, FFMIN(maximum_gain, rms_gain));
+    gain.max_gain  = bound(s->max_amplification, fmin(target_gain, fmin(maximum_gain, rms_gain)));
 
     return gain;
 }
@@ -424,10 +492,9 @@ static local_gain get_max_local_gain(DynamicAudioNormalizerContext *s, AVFrame *
 static double minimum_filter(cqueue *q)
 {
     double min = DBL_MAX;
-    int i;
 
-    for (i = 0; i < cqueue_size(q); i++) {
-        min = FFMIN(min, cqueue_peek(q, i));
+    for (int i = 0; i < cqueue_size(q); i++) {
+        min = fmin(min, cqueue_peek(q, i));
     }
 
     return min;
@@ -435,12 +502,15 @@ static double minimum_filter(cqueue *q)
 
 static double gaussian_filter(DynamicAudioNormalizerContext *s, cqueue *q, cqueue *tq)
 {
+    const double *weights = s->weights;
     double result = 0.0, tsum = 0.0;
-    int i;
 
-    for (i = 0; i < cqueue_size(q); i++) {
-        tsum += cqueue_peek(tq, i) * s->weights[i];
-        result += cqueue_peek(q, i) * s->weights[i] * cqueue_peek(tq, i);
+    for (int i = 0; i < cqueue_size(q); i++) {
+        double tq_item = cqueue_peek(tq, i);
+        double q_item = cqueue_peek(q, i);
+
+        tsum   += tq_item * weights[i];
+        result += tq_item * weights[i] * q_item;
     }
 
     if (tsum == 0.0)
@@ -454,7 +524,7 @@ static void update_gain_history(DynamicAudioNormalizerContext *s, int channel,
 {
     if (cqueue_empty(s->gain_history_original[channel])) {
         const int pre_fill_size = s->filter_size / 2;
-        const double initial_value = s->alt_boundary_mode ? gain.max_gain : FFMIN(1.0, gain.max_gain);
+        const double initial_value = s->alt_boundary_mode ? gain.max_gain : fmin(1.0, gain.max_gain);
 
         s->prev_amplification_factor[channel] = initial_value;
 
@@ -476,7 +546,7 @@ static void update_gain_history(DynamicAudioNormalizerContext *s, int channel,
 
             while (cqueue_size(s->gain_history_minimum[channel]) < pre_fill_size) {
                 input++;
-                initial_value = FFMIN(initial_value, cqueue_peek(s->gain_history_original[channel], input));
+                initial_value = fmin(initial_value, cqueue_peek(s->gain_history_original[channel], input));
                 cqueue_enqueue(s->gain_history_minimum[channel], initial_value);
             }
         }
@@ -495,7 +565,7 @@ static void update_gain_history(DynamicAudioNormalizerContext *s, int channel,
 
         smoothed = gaussian_filter(s, s->gain_history_minimum[channel], s->threshold_history[channel]);
         limit    = cqueue_peek(s->gain_history_original[channel], 0);
-        smoothed = FFMIN(smoothed, limit);
+        smoothed = fmin(smoothed, limit);
 
         cqueue_enqueue(s->gain_history_smoothed[channel], smoothed);
 
@@ -504,30 +574,51 @@ static void update_gain_history(DynamicAudioNormalizerContext *s, int channel,
     }
 }
 
+static int update_gain_histories(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+{
+    DynamicAudioNormalizerContext *s = ctx->priv;
+    AVFrame *analyze_frame = arg;
+    const int channels = s->channels;
+    const int start = (channels * jobnr) / nb_jobs;
+    const int end = (channels * (jobnr+1)) / nb_jobs;
+
+    for (int c = start; c < end; c++)
+        update_gain_history(s, c, get_max_local_gain(s, analyze_frame, c));
+
+    return 0;
+}
+
 static inline double update_value(double new, double old, double aggressiveness)
 {
     av_assert0((aggressiveness >= 0.0) && (aggressiveness <= 1.0));
     return aggressiveness * new + (1.0 - aggressiveness) * old;
 }
 
+static inline int bypass_channel(DynamicAudioNormalizerContext *s, AVFrame *frame, int ch)
+{
+    enum AVChannel channel = av_channel_layout_channel_from_index(&frame->ch_layout, ch);
+
+    return av_channel_layout_index_from_channel(&s->ch_layout, channel) < 0;
+}
+
 static void perform_dc_correction(DynamicAudioNormalizerContext *s, AVFrame *frame)
 {
     const double diff = 1.0 / frame->nb_samples;
     int is_first_frame = cqueue_empty(s->gain_history_original[0]);
-    int c, i;
 
-    for (c = 0; c < s->channels; c++) {
+    for (int c = 0; c < s->channels; c++) {
+        const int bypass = bypass_channel(s, frame, c);
         double *dst_ptr = (double *)frame->extended_data[c];
         double current_average_value = 0.0;
         double prev_value;
 
-        for (i = 0; i < frame->nb_samples; i++)
+        for (int i = 0; i < frame->nb_samples; i++)
             current_average_value += dst_ptr[i] * diff;
 
         prev_value = is_first_frame ? current_average_value : s->dc_correction_value[c];
         s->dc_correction_value[c] = is_first_frame ? current_average_value : update_value(current_average_value, s->dc_correction_value[c], 0.1);
 
-        for (i = 0; i < frame->nb_samples; i++) {
+        for (int i = 0; i < frame->nb_samples && !bypass; i++) {
             dst_ptr[i] -= fade(prev_value, s->dc_correction_value[c], i, frame->nb_samples);
         }
     }
@@ -559,13 +650,12 @@ static double compute_frame_std_dev(DynamicAudioNormalizerContext *s,
                                     AVFrame *frame, int channel)
 {
     double variance = 0.0;
-    int i, c;
 
     if (channel == -1) {
-        for (c = 0; c < s->channels; c++) {
+        for (int c = 0; c < s->channels; c++) {
             const double *data_ptr = (double *)frame->extended_data[c];
 
-            for (i = 0; i < frame->nb_samples; i++) {
+            for (int i = 0; i < frame->nb_samples; i++) {
                 variance += pow_2(data_ptr[i]);  // Assume that MEAN is *zero*
             }
         }
@@ -573,23 +663,22 @@ static double compute_frame_std_dev(DynamicAudioNormalizerContext *s,
     } else {
         const double *data_ptr = (double *)frame->extended_data[channel];
 
-        for (i = 0; i < frame->nb_samples; i++) {
+        for (int i = 0; i < frame->nb_samples; i++) {
             variance += pow_2(data_ptr[i]);      // Assume that MEAN is *zero*
         }
         variance /= frame->nb_samples - 1;
     }
 
-    return FFMAX(sqrt(variance), DBL_EPSILON);
+    return fmax(sqrt(variance), DBL_EPSILON);
 }
 
 static void perform_compression(DynamicAudioNormalizerContext *s, AVFrame *frame)
 {
     int is_first_frame = cqueue_empty(s->gain_history_original[0]);
-    int c, i;
 
     if (s->channels_coupled) {
         const double standard_deviation = compute_frame_std_dev(s, frame, -1);
-        const double current_threshold  = FFMIN(1.0, s->compress_factor * standard_deviation);
+        const double current_threshold  = fmin(1.0, s->compress_factor * standard_deviation);
 
         const double prev_value = is_first_frame ? current_threshold : s->compress_threshold[0];
         double prev_actual_thresh, curr_actual_thresh;
@@ -598,28 +687,34 @@ static void perform_compression(DynamicAudioNormalizerContext *s, AVFrame *frame
         prev_actual_thresh = setup_compress_thresh(prev_value);
         curr_actual_thresh = setup_compress_thresh(s->compress_threshold[0]);
 
-        for (c = 0; c < s->channels; c++) {
+        for (int c = 0; c < s->channels; c++) {
             double *const dst_ptr = (double *)frame->extended_data[c];
-            for (i = 0; i < frame->nb_samples; i++) {
+            const int bypass = bypass_channel(s, frame, c);
+
+            if (bypass)
+                continue;
+
+            for (int i = 0; i < frame->nb_samples; i++) {
                 const double localThresh = fade(prev_actual_thresh, curr_actual_thresh, i, frame->nb_samples);
                 dst_ptr[i] = copysign(bound(localThresh, fabs(dst_ptr[i])), dst_ptr[i]);
             }
         }
     } else {
-        for (c = 0; c < s->channels; c++) {
+        for (int c = 0; c < s->channels; c++) {
+            const int bypass = bypass_channel(s, frame, c);
             const double standard_deviation = compute_frame_std_dev(s, frame, c);
-            const double current_threshold  = setup_compress_thresh(FFMIN(1.0, s->compress_factor * standard_deviation));
-
+            const double current_threshold  = setup_compress_thresh(fmin(1.0, s->compress_factor * standard_deviation));
             const double prev_value = is_first_frame ? current_threshold : s->compress_threshold[c];
             double prev_actual_thresh, curr_actual_thresh;
             double *dst_ptr;
+
             s->compress_threshold[c] = is_first_frame ? current_threshold : update_value(current_threshold, s->compress_threshold[c], 1.0/3.0);
 
             prev_actual_thresh = setup_compress_thresh(prev_value);
             curr_actual_thresh = setup_compress_thresh(s->compress_threshold[c]);
 
             dst_ptr = (double *)frame->extended_data[c];
-            for (i = 0; i < frame->nb_samples; i++) {
+            for (int i = 0; i < frame->nb_samples && !bypass; i++) {
                 const double localThresh = fade(prev_actual_thresh, curr_actual_thresh, i, frame->nb_samples);
                 dst_ptr[i] = copysign(bound(localThresh, fabs(dst_ptr[i])), dst_ptr[i]);
             }
@@ -627,52 +722,114 @@ static void perform_compression(DynamicAudioNormalizerContext *s, AVFrame *frame
     }
 }
 
-static void analyze_frame(DynamicAudioNormalizerContext *s, AVFrame *frame)
+static int analyze_frame(AVFilterContext *ctx, AVFilterLink *outlink, AVFrame **frame)
 {
-    if (s->dc_correction) {
-        perform_dc_correction(s, frame);
+    DynamicAudioNormalizerContext *s = ctx->priv;
+    AVFrame *analyze_frame;
+
+    if (s->dc_correction || s->compress_factor > DBL_EPSILON) {
+        int ret;
+
+        if (!av_frame_is_writable(*frame)) {
+            AVFrame *out = ff_get_audio_buffer(outlink, (*frame)->nb_samples);
+
+            if (!out) {
+                av_frame_free(frame);
+                return AVERROR(ENOMEM);
+            }
+            ret = av_frame_copy_props(out, *frame);
+            if (ret < 0) {
+                av_frame_free(frame);
+                av_frame_free(&out);
+                return ret;
+            }
+            ret = av_frame_copy(out, *frame);
+            if (ret < 0) {
+                av_frame_free(frame);
+                av_frame_free(&out);
+                return ret;
+            }
+
+            av_frame_free(frame);
+            *frame = out;
+        }
     }
 
-    if (s->compress_factor > DBL_EPSILON) {
-        perform_compression(s, frame);
-    }
+    if (s->dc_correction)
+        perform_dc_correction(s, *frame);
 
-    if (s->channels_coupled) {
-        const local_gain gain = get_max_local_gain(s, frame, -1);
-        int c;
+    if (s->compress_factor > DBL_EPSILON)
+        perform_compression(s, *frame);
 
-        for (c = 0; c < s->channels; c++)
-            update_gain_history(s, c, gain);
-    } else {
-        int c;
+    if (s->frame_len != s->sample_advance) {
+        const int offset = s->frame_len - s->sample_advance;
 
-        for (c = 0; c < s->channels; c++)
-            update_gain_history(s, c, get_max_local_gain(s, frame, c));
-    }
-}
+        for (int c = 0; c < s->channels; c++) {
+            double *src = (double *)s->window->extended_data[c];
 
-static void amplify_frame(DynamicAudioNormalizerContext *s, AVFrame *in,
-                          AVFrame *frame, int enabled)
-{
-    int c, i;
-
-    for (c = 0; c < s->channels; c++) {
-        const double *src_ptr = (const double *)in->extended_data[c];
-        double *dst_ptr = (double *)frame->extended_data[c];
-        double current_amplification_factor;
-
-        cqueue_dequeue(s->gain_history_smoothed[c], &current_amplification_factor);
-
-        for (i = 0; i < frame->nb_samples && enabled; i++) {
-            const double amplification_factor = fade(s->prev_amplification_factor[c],
-                                                     current_amplification_factor, i,
-                                                     frame->nb_samples);
-
-            dst_ptr[i] = src_ptr[i] * amplification_factor;
+            memmove(src, &src[s->sample_advance], offset * sizeof(double));
+            memcpy(&src[offset], (*frame)->extended_data[c], (*frame)->nb_samples * sizeof(double));
+            memset(&src[offset + (*frame)->nb_samples], 0, (s->sample_advance - (*frame)->nb_samples) * sizeof(double));
         }
 
-        s->prev_amplification_factor[c] = current_amplification_factor;
+        analyze_frame = s->window;
+    } else {
+        av_samples_copy(s->window->extended_data, (*frame)->extended_data, 0, 0,
+                        FFMIN(s->frame_len, (*frame)->nb_samples), (*frame)->ch_layout.nb_channels, (*frame)->format);
+        analyze_frame = *frame;
     }
+
+    s->var_values[VAR_SN] = outlink->sample_count_in;
+    s->var_values[VAR_T] = s->var_values[VAR_SN] * (double)1/outlink->sample_rate;
+
+    if (s->channels_coupled) {
+        const local_gain gain = get_max_local_gain(s, analyze_frame, -1);
+        for (int c = 0; c < s->channels; c++)
+            update_gain_history(s, c, gain);
+    } else {
+        ff_filter_execute(ctx, update_gain_histories, analyze_frame, NULL,
+                          FFMIN(s->channels, ff_filter_get_nb_threads(ctx)));
+    }
+
+    return 0;
+}
+
+static void amplify_channel(DynamicAudioNormalizerContext *s, AVFrame *in,
+                            AVFrame *frame, int enabled, int c)
+{
+    const int bypass = bypass_channel(s, frame, c);
+    const double *src_ptr = (const double *)in->extended_data[c];
+    double *dst_ptr = (double *)frame->extended_data[c];
+    double current_amplification_factor;
+
+    cqueue_dequeue(s->gain_history_smoothed[c], &current_amplification_factor);
+
+    for (int i = 0; i < frame->nb_samples && enabled && !bypass; i++) {
+        const double amplification_factor = fade(s->prev_amplification_factor[c],
+                                                 current_amplification_factor, i,
+                                                 frame->nb_samples);
+
+        dst_ptr[i] = src_ptr[i] * amplification_factor;
+    }
+
+    s->prev_amplification_factor[c] = current_amplification_factor;
+}
+
+static int amplify_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+{
+    DynamicAudioNormalizerContext *s = ctx->priv;
+    ThreadData *td = arg;
+    AVFrame *out = td->out;
+    AVFrame *in = td->in;
+    const int enabled = td->enabled;
+    const int channels = s->channels;
+    const int start = (channels * jobnr) / nb_jobs;
+    const int end = (channels * (jobnr+1)) / nb_jobs;
+
+    for (int ch = start; ch < end; ch++)
+        amplify_channel(s, in, out, enabled, ch);
+
+    return 0;
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
@@ -680,7 +837,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVFilterContext *ctx = inlink->dst;
     DynamicAudioNormalizerContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    int ret = 1;
+    ThreadData td;
+    int ret;
 
     while (((s->queue.available >= s->filter_size) ||
             (s->eof && s->queue.available)) &&
@@ -702,15 +860,24 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
             av_frame_copy_props(out, in);
         }
 
-        amplify_frame(s, in, out, is_enabled > 0.);
+        td.in = in;
+        td.out = out;
+        td.enabled = is_enabled > 0.;
+        ff_filter_execute(ctx, amplify_channels, &td, NULL,
+                          FFMIN(s->channels, ff_filter_get_nb_threads(ctx)));
+
         s->pts = out->pts + av_rescale_q(out->nb_samples, av_make_q(1, outlink->sample_rate),
                                          outlink->time_base);
         if (out != in)
             av_frame_free(&in);
         ret = ff_filter_frame(outlink, out);
+        if (ret < 0)
+            return ret;
     }
 
-    analyze_frame(s, in);
+    ret = analyze_frame(ctx, outlink, &in);
+    if (ret < 0)
+        return ret;
     if (!s->eof) {
         ff_bufqueue_add(ctx, &s->queue, in);
         cqueue_enqueue(s->is_enabled, !ctx->is_disabled);
@@ -718,23 +885,22 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_free(&in);
     }
 
-    return ret;
+    return 1;
 }
 
 static int flush_buffer(DynamicAudioNormalizerContext *s, AVFilterLink *inlink,
                         AVFilterLink *outlink)
 {
-    AVFrame *out = ff_get_audio_buffer(outlink, s->frame_len);
-    int c, i;
+    AVFrame *out = ff_get_audio_buffer(outlink, s->sample_advance);
 
     if (!out)
         return AVERROR(ENOMEM);
 
-    for (c = 0; c < s->channels; c++) {
+    for (int c = 0; c < s->channels; c++) {
         double *dst_ptr = (double *)out->extended_data[c];
 
-        for (i = 0; i < out->nb_samples; i++) {
-            dst_ptr[i] = s->alt_boundary_mode ? DBL_EPSILON : ((s->target_rms > DBL_EPSILON) ? FFMIN(s->peak_value, s->target_rms) : s->peak_value);
+        for (int i = 0; i < out->nb_samples; i++) {
+            dst_ptr[i] = s->alt_boundary_mode ? DBL_EPSILON : ((s->target_rms > DBL_EPSILON) ? fmin(s->peak_value, s->target_rms) : s->peak_value);
             if (s->dc_correction) {
                 dst_ptr[i] *= ((i % 2) == 1) ? -1 : 1;
                 dst_ptr[i] += s->dc_correction_value[c];
@@ -750,19 +916,13 @@ static int flush(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
     DynamicAudioNormalizerContext *s = ctx->priv;
-    int ret = 0;
 
-    if (!cqueue_empty(s->gain_history_smoothed[0])) {
-        ret = flush_buffer(s, inlink, outlink);
-    } else if (s->queue.available) {
-        AVFrame *out = ff_bufqueue_get(&s->queue);
-
-        s->pts = out->pts + av_rescale_q(out->nb_samples, av_make_q(1, outlink->sample_rate),
-                                         outlink->time_base);
-        ret = ff_filter_frame(outlink, out);
+    while (s->eof && cqueue_empty(s->gain_history_smoothed[0])) {
+        for (int c = 0; c < s->channels; c++)
+            update_gain_history(s, c, (local_gain){ cqueue_peek(s->gain_history_original[c], 0), 1.0});
     }
 
-    return ret;
+    return flush_buffer(s, inlink, outlink);
 }
 
 static int activate(AVFilterContext *ctx)
@@ -774,10 +934,16 @@ static int activate(AVFilterContext *ctx)
     int ret = 0, status;
     int64_t pts;
 
+    ret = av_channel_layout_copy(&s->ch_layout, &inlink->ch_layout);
+    if (ret < 0)
+        return ret;
+    if (strcmp(s->channels_to_filter, "all"))
+        av_channel_layout_from_string(&s->ch_layout, s->channels_to_filter);
+
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
     if (!s->eof) {
-        ret = ff_inlink_consume_samples(inlink, s->frame_len, s->frame_len, &in);
+        ret = ff_inlink_consume_samples(inlink, s->sample_advance, s->sample_advance, &in);
         if (ret < 0)
             return ret;
         if (ret > 0) {
@@ -786,7 +952,7 @@ static int activate(AVFilterContext *ctx)
                 return ret;
         }
 
-        if (ff_inlink_check_available_samples(inlink, s->frame_len) > 0) {
+        if (ff_inlink_check_available_samples(inlink, s->sample_advance) > 0) {
             ff_filter_set_ready(ctx, 10);
             return 0;
         }
@@ -835,7 +1001,13 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
     }
 
     s->frame_len = frame_size(inlink->sample_rate, s->frame_len_msec);
-
+    s->sample_advance = FFMAX(1, lrint(s->frame_len * (1. - s->overlap)));
+    if (s->expr_str) {
+        ret = av_expr_parse(&s->expr, s->expr_str, var_names, NULL, NULL,
+                            NULL, NULL, 0, ctx);
+        if (ret < 0)
+            return ret;
+    }
     return 0;
 }
 
@@ -865,6 +1037,7 @@ const AVFilter ff_af_dynaudnorm = {
     FILTER_OUTPUTS(avfilter_af_dynaudnorm_outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
     .priv_class    = &dynaudnorm_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };

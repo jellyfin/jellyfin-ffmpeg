@@ -45,11 +45,11 @@ int ff_spatial_idwt_init(DWTContext *d, DWTPlane *p, enum dwt_type type,
     d->decomposition_count = decomposition_count;
 
     if (bit_depth == 8)
-        ret = ff_spatial_idwt_init_8bit(d, type);
+        ret = spatial_idwt_init_8bit(d, type);
     else if (bit_depth == 10)
-        ret = ff_spatial_idwt_init_10bit(d, type);
+        ret = spatial_idwt_init_10bit(d, type);
     else if (bit_depth == 12)
-        ret = ff_spatial_idwt_init_12bit(d, type);
+        ret = spatial_idwt_init_12bit(d, type);
     else
         av_log(NULL, AV_LOG_WARNING, "Unsupported bit depth = %i\n", bit_depth);
 
@@ -58,8 +58,10 @@ int ff_spatial_idwt_init(DWTContext *d, DWTPlane *p, enum dwt_type type,
         return AVERROR_INVALIDDATA;
     }
 
-    if (ARCH_X86 && bit_depth == 8)
+#if ARCH_X86
+    if (bit_depth == 8)
         ff_spatial_idwt_init_x86(d, type);
+#endif
     return 0;
 }
 

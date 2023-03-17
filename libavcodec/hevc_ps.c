@@ -1,8 +1,8 @@
 /*
  * HEVC Parameter Set decoding
  *
- * Copyright (C) 2012 - 2103 Guillaume Martres
- * Copyright (C) 2012 - 2103 Mickael Raulet
+ * Copyright (C) 2012 - 2013 Guillaume Martres
+ * Copyright (C) 2012 - 2013 Mickael Raulet
  * Copyright (C) 2012 - 2013 Gildas Cocherel
  * Copyright (C) 2013 Vittorio Giovara
  *
@@ -25,6 +25,7 @@
 
 #include "libavutil/imgutils.h"
 #include "golomb.h"
+#include "h2645_vui.h"
 #include "hevc_data.h"
 #include "hevc_ps.h"
 
@@ -48,26 +49,6 @@ static const uint8_t default_scaling_list_inter[] = {
     18, 20, 24, 25, 28, 33, 41, 54,
     20, 24, 25, 28, 33, 41, 54, 71,
     24, 25, 28, 33, 41, 54, 71, 91
-};
-
-static const AVRational vui_sar[] = {
-    {  0,   1 },
-    {  1,   1 },
-    { 12,  11 },
-    { 10,  11 },
-    { 16,  11 },
-    { 40,  33 },
-    { 24,  11 },
-    { 20,  11 },
-    { 32,  11 },
-    { 80,  33 },
-    { 18,  11 },
-    { 15,  11 },
-    { 64,  33 },
-    { 160, 99 },
-    {  4,   3 },
-    {  3,   2 },
-    {  2,   1 },
 };
 
 static const uint8_t hevc_sub_width_c[] = {
@@ -122,7 +103,6 @@ int ff_hevc_decode_short_term_rps(GetBitContext *gb, AVCodecContext *avctx,
     uint8_t rps_predict = 0;
     int delta_poc;
     int k0 = 0;
-    int k1 = 0;
     int k  = 0;
     int i;
 
@@ -172,8 +152,6 @@ int ff_hevc_decode_short_term_rps(GetBitContext *gb, AVCodecContext *avctx,
                 rps->delta_poc[k] = delta_poc;
                 if (delta_poc < 0)
                     k0++;
-                else
-                    k1++;
                 k++;
             }
         }
@@ -590,47 +568,15 @@ static void decode_vui(GetBitContext *gb, AVCodecContext *avctx,
 {
     VUI backup_vui, *vui = &sps->vui;
     GetBitContext backup;
-    int sar_present, alt = 0;
+    int alt = 0;
 
-    av_log(avctx, AV_LOG_DEBUG, "Decoding VUI\n");
+    ff_h2645_decode_common_vui_params(gb, &sps->vui.common, avctx);
 
-    sar_present = get_bits1(gb);
-    if (sar_present) {
-        uint8_t sar_idx = get_bits(gb, 8);
-        if (sar_idx < FF_ARRAY_ELEMS(vui_sar))
-            vui->sar = vui_sar[sar_idx];
-        else if (sar_idx == 255) {
-            vui->sar.num = get_bits(gb, 16);
-            vui->sar.den = get_bits(gb, 16);
-        } else
-            av_log(avctx, AV_LOG_WARNING,
-                   "Unknown SAR index: %u.\n", sar_idx);
-    }
-
-    vui->overscan_info_present_flag = get_bits1(gb);
-    if (vui->overscan_info_present_flag)
-        vui->overscan_appropriate_flag = get_bits1(gb);
-
-    vui->video_signal_type_present_flag = get_bits1(gb);
-    if (vui->video_signal_type_present_flag) {
-        vui->video_format                    = get_bits(gb, 3);
-        vui->video_full_range_flag           = get_bits1(gb);
-        vui->colour_description_present_flag = get_bits1(gb);
-        if (vui->video_full_range_flag && sps->pix_fmt == AV_PIX_FMT_YUV420P)
+    if (vui->common.video_signal_type_present_flag) {
+        if (vui->common.video_full_range_flag && sps->pix_fmt == AV_PIX_FMT_YUV420P)
             sps->pix_fmt = AV_PIX_FMT_YUVJ420P;
-        if (vui->colour_description_present_flag) {
-            vui->colour_primaries        = get_bits(gb, 8);
-            vui->transfer_characteristic = get_bits(gb, 8);
-            vui->matrix_coeffs           = get_bits(gb, 8);
-
-            // Set invalid values to "unspecified"
-            if (!av_color_primaries_name(vui->colour_primaries))
-                vui->colour_primaries = AVCOL_PRI_UNSPECIFIED;
-            if (!av_color_transfer_name(vui->transfer_characteristic))
-                vui->transfer_characteristic = AVCOL_TRC_UNSPECIFIED;
-            if (!av_color_space_name(vui->matrix_coeffs))
-                vui->matrix_coeffs = AVCOL_SPC_UNSPECIFIED;
-            if (vui->matrix_coeffs == AVCOL_SPC_RGB) {
+        if (vui->common.colour_description_present_flag) {
+            if (vui->common.matrix_coeffs == AVCOL_SPC_RGB) {
                 switch (sps->pix_fmt) {
                 case AV_PIX_FMT_YUV444P:
                     sps->pix_fmt = AV_PIX_FMT_GBRP;
@@ -646,12 +592,6 @@ static void decode_vui(GetBitContext *gb, AVCodecContext *avctx,
         }
     }
 
-    vui->chroma_loc_info_present_flag = get_bits1(gb);
-    if (vui->chroma_loc_info_present_flag) {
-        vui->chroma_sample_loc_type_top_field    = get_ue_golomb_long(gb);
-        vui->chroma_sample_loc_type_bottom_field = get_ue_golomb_long(gb);
-    }
-
     vui->neutra_chroma_indication_flag = get_bits1(gb);
     vui->field_seq_flag                = get_bits1(gb);
     vui->frame_field_info_present_flag = get_bits1(gb);
@@ -659,7 +599,7 @@ static void decode_vui(GetBitContext *gb, AVCodecContext *avctx,
     // Backup context in case an alternate header is detected
     memcpy(&backup, gb, sizeof(backup));
     memcpy(&backup_vui, vui, sizeof(backup_vui));
-    if (get_bits_left(gb) >= 68 && show_bits_long(gb, 21) == 0x100000) {
+    if (get_bits_left(gb) >= 68 && show_bits(gb, 21) == 0x100000) {
         vui->default_display_window_flag = 0;
         av_log(avctx, AV_LOG_WARNING, "Invalid default display window\n");
     } else
@@ -1126,7 +1066,7 @@ int ff_hevc_parse_sps(HEVCSPS *sps, GetBitContext *gb, unsigned int *sps_id,
 
     sps->sps_temporal_mvp_enabled_flag          = get_bits1(gb);
     sps->sps_strong_intra_smoothing_enable_flag = get_bits1(gb);
-    sps->vui.sar = (AVRational){0, 1};
+    sps->vui.common.sar = (AVRational){0, 1};
     vui_present = get_bits1(gb);
     if (vui_present)
         decode_vui(gb, avctx, apply_defdispwin, sps);

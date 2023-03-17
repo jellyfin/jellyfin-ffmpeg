@@ -181,9 +181,9 @@ static unsigned int match_colors(const uint8_t *block, ptrdiff_t stride,
     int x, y, k = 0;
     int c0_point, half_point, c3_point;
     uint8_t color[16];
-    static const int indexMap[8] = {
-        0 << 30, 2 << 30, 0 << 30, 2 << 30,
-        3 << 30, 3 << 30, 1 << 30, 1 << 30,
+    static const uint32_t indexMap[8] = {
+        0U << 30, 2U << 30, 0U << 30, 2U << 30,
+        3U << 30, 3U << 30, 1U << 30, 1U << 30,
     };
 
     /* Fill color and compute direction for each component */
@@ -255,11 +255,11 @@ static void optimize_colors(const uint8_t *block, ptrdiff_t stride,
 
         muv = minv = maxv = bp[0];
         for (y = 0; y < 4; y++) {
-            for (x = 4; x < 4; x += 4) {
+            for (x = 0; x < 4; x++) {
                 muv += bp[x * 4 + y * stride];
-                if (bp[x] < minv)
+                if (bp[x * 4 + y * stride] < minv)
                     minv = bp[x * 4 + y * stride];
-                else if (bp[x] > maxv)
+                else if (bp[x * 4 + y * stride] > maxv)
                     maxv = bp[x * 4 + y * stride];
             }
         }
@@ -670,3 +670,7 @@ av_cold void ff_texturedspenc_init(TextureDSPContext *c)
     c->dxt5ys_block       = dxt5ys_block;
     c->rgtc1u_alpha_block = rgtc1u_alpha_block;
 }
+
+#define TEXTUREDSP_FUNC_NAME ff_texturedsp_compress_thread
+#define TEXTUREDSP_TEX_FUNC(a, b, c) tex_funct(c, b, a)
+#include "texturedsp_template.c"

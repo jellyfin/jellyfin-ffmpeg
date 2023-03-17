@@ -89,6 +89,8 @@ const AVCodecTag ff_codec_movvideo_tags[] = {
 
     { AV_CODEC_ID_DVVIDEO, MKTAG('d', 'v', 'c', 'p') }, /* DV PAL */
     { AV_CODEC_ID_DVVIDEO, MKTAG('d', 'v', 'c', ' ') }, /* DV NTSC */
+    { AV_CODEC_ID_DVVIDEO, MKTAG('d', 'v', 'l', 'p') }, /* DV PAL 16:9 produced by Radius SoftDV */
+    { AV_CODEC_ID_DVVIDEO, MKTAG('d', 'v', 'l', ' ') }, /* DV NTSC 16:9 produced by Radius SoftDV */
     { AV_CODEC_ID_DVVIDEO, MKTAG('d', 'v', 'p', 'p') }, /* DVCPRO PAL produced by FCP */
     { AV_CODEC_ID_DVVIDEO, MKTAG('d', 'v', '5', 'p') }, /* DVCPRO50 PAL produced by FCP */
     { AV_CODEC_ID_DVVIDEO, MKTAG('d', 'v', '5', 'n') }, /* DVCPRO50 NTSC produced by FCP */
@@ -272,6 +274,13 @@ const AVCodecTag ff_codec_movvideo_tags[] = {
 
     { AV_CODEC_ID_RAWVIDEO, MKTAG('B', 'G', 'G', 'R') }, /* ASC Bayer BGGR */
 
+    { AV_CODEC_ID_MEDIA100, MKTAG('6', '0', '1', 'N') },
+    { AV_CODEC_ID_MEDIA100, MKTAG('6', '0', '1', 'P') },
+    { AV_CODEC_ID_MEDIA100, MKTAG('d', 't', 'n', 't') },
+    { AV_CODEC_ID_MEDIA100, MKTAG('d', 't', 'N', 'T') },
+    { AV_CODEC_ID_MEDIA100, MKTAG('d', 't', 'p', 'a') },
+    { AV_CODEC_ID_MEDIA100, MKTAG('d', 't', 'P', 'A') },
+
     { AV_CODEC_ID_NONE, 0 },
 };
 
@@ -330,7 +339,7 @@ const AVCodecTag ff_codec_movaudio_tags[] = {
     { AV_CODEC_ID_SPEEX,           MKTAG('S', 'P', 'X', 'N') }, /* ZygoAudio (quality 10 mode) */
     { AV_CODEC_ID_EVRC,            MKTAG('s', 'e', 'v', 'c') }, /* 3GPP2 */
     { AV_CODEC_ID_SMV,             MKTAG('s', 's', 'm', 'v') }, /* 3GPP2 */
-    { AV_CODEC_ID_FLAC,            MKTAG('f', 'L', 'a', 'C') }, /* nonstandard */
+    { AV_CODEC_ID_FLAC,            MKTAG('f', 'L', 'a', 'C') },
     { AV_CODEC_ID_TRUEHD,          MKTAG('m', 'l', 'p', 'a') }, /* mp4ra.org */
     { AV_CODEC_ID_OPUS,            MKTAG('O', 'p', 'u', 's') }, /* mp4ra.org */
     { AV_CODEC_ID_MPEGH_3D_AUDIO,  MKTAG('m', 'h', 'm', '1') }, /* MPEG-H 3D Audio bitstream */

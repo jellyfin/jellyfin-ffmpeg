@@ -52,6 +52,7 @@ typedef struct ATADenoiseContext {
     int nb_planes;
     int planewidth[4];
     int planeheight[4];
+    int linesizes[4];
 
     struct FFBufQueue q;
     void *data[4][SIZE];
@@ -153,7 +154,6 @@ static void fweight_row##name(const uint8_t *ssrc, uint8_t *ddst,           \
        unsigned ldiff, rdiff;                                               \
        float sum = srcx;                                                    \
        float wsum = 1.f;                                                    \
-       int l = 0, r = 0;                                                    \
        int srcjx, srcix;                                                    \
                                                                             \
        for (int j = mid - 1, i = mid + 1; j >= 0 && i < size; j--, i++) {   \
@@ -164,7 +164,6 @@ static void fweight_row##name(const uint8_t *ssrc, uint8_t *ddst,           \
            if (ldiff > thra ||                                              \
                lsumdiff > thrb)                                             \
                break;                                                       \
-           l++;                                                             \
            sum += srcjx * weights[j];                                       \
            wsum += weights[j];                                              \
                                                                             \
@@ -175,7 +174,6 @@ static void fweight_row##name(const uint8_t *ssrc, uint8_t *ddst,           \
            if (rdiff > thra ||                                              \
                rsumdiff > thrb)                                             \
                break;                                                       \
-           r++;                                                             \
            sum += srcix * weights[i];                                       \
            wsum += weights[i];                                              \
        }                                                                    \
@@ -204,7 +202,6 @@ static void fweight_row##name##_serial(const uint8_t *ssrc, uint8_t *ddst,  \
        unsigned ldiff, rdiff;                                               \
        float sum = srcx;                                                    \
        float wsum = 1.f;                                                    \
-       int l = 0, r = 0;                                                    \
        int srcjx, srcix;                                                    \
                                                                             \
        for (int j = mid - 1; j >= 0; j--) {                                 \
@@ -215,7 +212,6 @@ static void fweight_row##name##_serial(const uint8_t *ssrc, uint8_t *ddst,  \
            if (ldiff > thra ||                                              \
                lsumdiff > thrb)                                             \
                break;                                                       \
-           l++;                                                             \
            sum += srcjx * weights[j];                                       \
            wsum += weights[j];                                              \
        }                                                                    \
@@ -228,7 +224,6 @@ static void fweight_row##name##_serial(const uint8_t *ssrc, uint8_t *ddst,  \
            if (rdiff > thra ||                                              \
                rsumdiff > thrb)                                             \
                break;                                                       \
-           r++;                                                             \
            sum += srcix * weights[i];                                       \
            wsum += weights[i];                                              \
        }                                                                    \
@@ -363,7 +358,7 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 
         if (!((1 << p) & s->planes)) {
             av_image_copy_plane(dst, out->linesize[p], src, in->linesize[p],
-                                w, slice_end - slice_start);
+                                s->linesizes[p], slice_end - slice_start);
             continue;
         }
 
@@ -389,7 +384,7 @@ static int config_input(AVFilterLink *inlink)
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
     AVFilterContext *ctx = inlink->dst;
     ATADenoiseContext *s = ctx->priv;
-    int depth;
+    int depth, ret;
 
     s->nb_planes = desc->nb_components;
 
@@ -400,6 +395,9 @@ static int config_input(AVFilterLink *inlink)
 
     depth = desc->comp[0].depth;
     s->filter_slice = filter_slice;
+
+    if ((ret = av_image_fill_linesizes(s->linesizes, inlink->format, inlink->w)) < 0)
+        return ret;
 
     for (int p = 0; p < s->nb_planes; p++) {
         if (depth == 8 && s->sigma[p] == INT16_MAX)
@@ -429,8 +427,9 @@ static int config_input(AVFilterLink *inlink)
         }
     }
 
-    if (ARCH_X86)
-        ff_atadenoise_init_x86(&s->dsp, depth, s->algorithm, s->sigma);
+#if ARCH_X86
+    ff_atadenoise_init_x86(&s->dsp, depth, s->algorithm, s->sigma);
+#endif
 
     return 0;
 }

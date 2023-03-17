@@ -27,8 +27,8 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "bmp.h"
+#include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 
 static const uint32_t monoblack_pal[] = { 0x000000, 0xFFFFFF };
 static const uint32_t rgb565_masks[]  = { 0xF800, 0x07E0, 0x001F };
@@ -72,7 +72,8 @@ static int bmp_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint32_t palette256[256];
     int pad_bytes_per_row, pal_entries = 0, compression = BMP_RGB;
     int bit_count = avctx->bits_per_coded_sample;
-    uint8_t *ptr, *buf;
+    const uint8_t *ptr;
+    uint8_t *buf;
 
     switch (avctx->pix_fmt) {
     case AV_PIX_FMT_RGB444:
@@ -155,20 +156,19 @@ static int bmp_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     return 0;
 }
 
-const AVCodec ff_bmp_encoder = {
-    .name           = "bmp",
-    .long_name      = NULL_IF_CONFIG_SMALL("BMP (Windows and OS/2 bitmap)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_BMP,
-    .capabilities   = AV_CODEC_CAP_DR1,
+const FFCodec ff_bmp_encoder = {
+    .p.name         = "bmp",
+    CODEC_LONG_NAME("BMP (Windows and OS/2 bitmap)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_BMP,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .init           = bmp_encode_init,
-    .encode2        = bmp_encode_frame,
-    .pix_fmts       = (const enum AVPixelFormat[]){
+    FF_CODEC_ENCODE_CB(bmp_encode_frame),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_BGRA, AV_PIX_FMT_BGR24,
         AV_PIX_FMT_RGB565, AV_PIX_FMT_RGB555, AV_PIX_FMT_RGB444,
         AV_PIX_FMT_RGB8, AV_PIX_FMT_BGR8, AV_PIX_FMT_RGB4_BYTE, AV_PIX_FMT_BGR4_BYTE, AV_PIX_FMT_GRAY8, AV_PIX_FMT_PAL8,
         AV_PIX_FMT_MONOBLACK,
         AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

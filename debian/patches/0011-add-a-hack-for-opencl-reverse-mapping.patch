@@ -2,19 +2,19 @@ Index: jellyfin-ffmpeg/libavfilter/avfilter.h
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/avfilter.h
 +++ jellyfin-ffmpeg/libavfilter/avfilter.h
-@@ -542,6 +542,7 @@ struct AVFilterLink {
+@@ -532,6 +532,7 @@ struct AVFilterLink {
      int w;                      ///< agreed upon image width
      int h;                      ///< agreed upon image height
      AVRational sample_aspect_ratio; ///< agreed upon sample aspect ratio
 +    int fixed_pool_size;        ///< fixed size of the frame pool for reverse hw mapping
      /* These parameters apply only to audio */
-     uint64_t channel_layout;    ///< channel layout of current buffer (see libavutil/channel_layout.h)
-     int sample_rate;            ///< samples per second
+ #if FF_API_OLD_CHANNEL_LAYOUT
+     /**
 Index: jellyfin-ffmpeg/libavfilter/opencl.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/opencl.c
 +++ jellyfin-ffmpeg/libavfilter/opencl.c
-@@ -75,6 +75,9 @@ int ff_opencl_filter_config_input(AVFilt
+@@ -76,6 +76,9 @@ int ff_opencl_filter_config_input(AVFilt
      if (!ctx->output_height)
          ctx->output_height = inlink->h;
  
@@ -24,7 +24,7 @@ Index: jellyfin-ffmpeg/libavfilter/opencl.c
      return 0;
  }
  
-@@ -123,6 +126,9 @@ int ff_opencl_filter_config_output(AVFil
+@@ -124,6 +127,9 @@ int ff_opencl_filter_config_output(AVFil
      outlink->w = ctx->output_width;
      outlink->h = ctx->output_height;
  
@@ -85,38 +85,6 @@ Index: jellyfin-ffmpeg/libavfilter/vf_hwmap.c
  
              err = av_hwframe_ctx_init(ctx->hwframes_ref);
              if (err < 0) {
-Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
-===================================================================
---- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.c
-+++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
-@@ -199,7 +199,7 @@ static AVBufferRef *d3d11va_alloc_single
-         .ArraySize  = 1,
-         .Usage      = D3D11_USAGE_DEFAULT,
-         .BindFlags  = hwctx->BindFlags,
--        .MiscFlags  = hwctx->MiscFlags,
-+        .MiscFlags  = hwctx->MiscFlags | D3D11_RESOURCE_MISC_SHARED,
-     };
- 
-     hr = ID3D11Device_CreateTexture2D(device_hwctx->device, &texDesc, NULL, &tex);
-@@ -263,9 +263,17 @@ static int d3d11va_frames_init(AVHWFrame
-         .ArraySize  = ctx->initial_pool_size,
-         .Usage      = D3D11_USAGE_DEFAULT,
-         .BindFlags  = hwctx->BindFlags,
--        .MiscFlags  = hwctx->MiscFlags,
-+        .MiscFlags  = hwctx->MiscFlags | D3D11_RESOURCE_MISC_SHARED,
-     };
- 
-+#if HAVE_OPENCL_D3D11
-+    if (ctx->user_opaque) {
-+        D3D11_TEXTURE2D_DESC *desc = ctx->user_opaque;
-+        if (desc->BindFlags & D3D11_BIND_DECODER)
-+            texDesc.BindFlags = D3D11_BIND_DECODER;
-+    }
-+#endif
-+
-     if (hwctx->texture) {
-         D3D11_TEXTURE2D_DESC texDesc2;
-         ID3D11Texture2D_GetDesc(hwctx->texture, &texDesc2);
 Index: jellyfin-ffmpeg/libavfilter/vf_hwupload.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/vf_hwupload.c
@@ -145,3 +113,35 @@ Index: jellyfin-ffmpeg/libavfilter/vf_hwupload.c
      err = av_hwframe_ctx_init(ctx->hwframes_ref);
      if (err < 0)
          goto fail;
+Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
+@@ -213,7 +213,7 @@ static AVBufferRef *d3d11va_alloc_single
+         .ArraySize  = 1,
+         .Usage      = D3D11_USAGE_DEFAULT,
+         .BindFlags  = hwctx->BindFlags,
+-        .MiscFlags  = hwctx->MiscFlags,
++        .MiscFlags  = hwctx->MiscFlags | D3D11_RESOURCE_MISC_SHARED,
+     };
+ 
+     hr = ID3D11Device_CreateTexture2D(device_hwctx->device, &texDesc, NULL, &tex);
+@@ -277,9 +277,17 @@ static int d3d11va_frames_init(AVHWFrame
+         .ArraySize  = ctx->initial_pool_size,
+         .Usage      = D3D11_USAGE_DEFAULT,
+         .BindFlags  = hwctx->BindFlags,
+-        .MiscFlags  = hwctx->MiscFlags,
++        .MiscFlags  = hwctx->MiscFlags | D3D11_RESOURCE_MISC_SHARED,
+     };
+ 
++#if HAVE_OPENCL_D3D11
++    if (ctx->user_opaque) {
++        D3D11_TEXTURE2D_DESC *desc = ctx->user_opaque;
++        if (desc->BindFlags & D3D11_BIND_DECODER)
++            texDesc.BindFlags = D3D11_BIND_DECODER;
++    }
++#endif
++
+     if (hwctx->texture) {
+         D3D11_TEXTURE2D_DESC texDesc2;
+         ID3D11Texture2D_GetDesc(hwctx->texture, &texDesc2);

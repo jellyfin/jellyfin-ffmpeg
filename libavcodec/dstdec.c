@@ -27,11 +27,12 @@
 
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem_internal.h"
-#include "internal.h"
+#include "libavutil/reverse.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "avcodec.h"
 #include "golomb.h"
-#include "mathops.h"
 #include "dsd.h"
 
 #define DST_MAX_CHANNELS 6
@@ -80,8 +81,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
     DSTContext *s = avctx->priv_data;
     int i;
 
-    if (avctx->channels > DST_MAX_CHANNELS) {
-        avpriv_request_sample(avctx, "Channel count %d", avctx->channels);
+    if (avctx->ch_layout.nb_channels > DST_MAX_CHANNELS) {
+        avpriv_request_sample(avctx, "Channel count %d", avctx->ch_layout.nb_channels);
         return AVERROR_PATCHWELCOME;
     }
 
@@ -97,7 +98,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     avctx->sample_fmt = AV_SAMPLE_FMT_FLT;
 
-    for (i = 0; i < avctx->channels; i++)
+    for (i = 0; i < avctx->ch_layout.nb_channels; i++)
         memset(s->dsdctx[i].buf, 0x69, sizeof(s->dsdctx[i].buf));
 
     ff_init_dsd_data();
@@ -214,7 +215,7 @@ static uint8_t prob_dst_x_bit(int c)
     return (ff_reverse[c & 127] >> 1) + 1;
 }
 
-static void build_filter(int16_t table[DST_MAX_ELEMENTS][16][256], const Table *fsets)
+static int build_filter(int16_t table[DST_MAX_ELEMENTS][16][256], const Table *fsets)
 {
     int i, j, k, l;
 
@@ -225,17 +226,20 @@ static void build_filter(int16_t table[DST_MAX_ELEMENTS][16][256], const Table *
             int total = av_clip(length - j * 8, 0, 8);
 
             for (k = 0; k < 256; k++) {
-                int v = 0;
+                int64_t v = 0;
 
                 for (l = 0; l < total; l++)
                     v += (((k >> l) & 1) * 2 - 1) * fsets->coeff[i][j * 8 + l];
+                if ((int16_t)v != v)
+                    return AVERROR_INVALIDDATA;
                 table[i][j][k] = v;
             }
         }
     }
+    return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame_ptr, AVPacket *avpkt)
 {
     unsigned samples_per_frame = DST_SAMPLES_PER_FRAME(avctx->sample_rate);
@@ -243,11 +247,10 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     unsigned map_ch_to_pelem[DST_MAX_CHANNELS];
     unsigned i, ch, same_map, dst_x_bit;
     unsigned half_prob[DST_MAX_CHANNELS];
-    const int channels = avctx->channels;
+    const int channels = avctx->ch_layout.nb_channels;
     DSTContext *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
     ArithCoder *ac = &s->ac;
-    AVFrame *frame = data;
     uint8_t *dsd;
     float *pcm;
     int ret;
@@ -328,7 +331,9 @@ static int decode_frame(AVCodecContext *avctx, void *data,
         return AVERROR_INVALIDDATA;
     ac_init(ac, gb);
 
-    build_filter(s->filter, &s->fsets);
+    ret = build_filter(s->filter, &s->fsets);
+    if (ret < 0)
+        return ret;
 
     memset(s->status, 0xAA, sizeof(s->status));
     memset(dsd, 0, frame->nb_samples * 4 * channels);
@@ -378,16 +383,15 @@ dsd:
     return avpkt->size;
 }
 
-const AVCodec ff_dst_decoder = {
-    .name           = "dst",
-    .long_name      = NULL_IF_CONFIG_SMALL("DST (Digital Stream Transfer)"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_DST,
+const FFCodec ff_dst_decoder = {
+    .p.name         = "dst",
+    CODEC_LONG_NAME("DST (Digital Stream Transfer)"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_DST,
     .priv_data_size = sizeof(DSTContext),
     .init           = decode_init,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLT,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLT,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

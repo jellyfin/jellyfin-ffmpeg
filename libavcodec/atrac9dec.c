@@ -22,10 +22,11 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/thread.h"
 
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "fft.h"
 #include "atrac9tab.h"
+#include "libavutil/tx.h"
 #include "libavutil/lfg.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/mem_internal.h"
@@ -85,7 +86,8 @@ typedef struct ATRAC9BlockData {
 typedef struct ATRAC9Context {
     AVCodecContext *avctx;
     AVFloatDSPContext *fdsp;
-    FFTContext imdct;
+    AVTXContext *tx;
+    av_tx_fn tx_fn;
     ATRAC9BlockData block[5];
     AVLFG lfg;
 
@@ -100,7 +102,7 @@ typedef struct ATRAC9Context {
     uint8_t alloc_curve[48][48];
     DECLARE_ALIGNED(32, float, imdct_win)[256];
 
-    DECLARE_ALIGNED(32, float, temp)[256];
+    DECLARE_ALIGNED(32, float, temp)[2048];
 } ATRAC9Context;
 
 static VLC sf_vlc[2][8];            /* Signed/unsigned, length */
@@ -777,7 +779,7 @@ imdct:
         const ptrdiff_t offset = wsize*frame_idx*sizeof(float);
         float *dst = (float *)(frame->extended_data[dst_idx] + offset);
 
-        s->imdct.imdct_half(&s->imdct, s->temp, c->coeffs);
+        s->tx_fn(s->tx, s->temp, c->coeffs, sizeof(float));
         s->fdsp->vector_fmul_window(dst, c->prev_win, s->temp,
                                     s->imdct_win, wsize >> 1);
         memcpy(c->prev_win, s->temp + (wsize >> 1), sizeof(float)*wsize >> 1);
@@ -786,12 +788,11 @@ imdct:
     return 0;
 }
 
-static int atrac9_decode_frame(AVCodecContext *avctx, void *data,
+static int atrac9_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
     int ret;
     GetBitContext gb;
-    AVFrame *frame = data;
     ATRAC9Context *s = avctx->priv_data;
     const int frames = FFMIN(avpkt->size / s->avg_frame_size, s->frame_count);
 
@@ -834,7 +835,7 @@ static av_cold int atrac9_decode_close(AVCodecContext *avctx)
 {
     ATRAC9Context *s = avctx->priv_data;
 
-    ff_mdct_end(&s->imdct);
+    av_tx_uninit(&s->tx);
     av_freep(&s->fdsp);
 
     return 0;
@@ -844,7 +845,7 @@ static av_cold void atrac9_init_vlc(VLC *vlc, int nb_bits, int nb_codes,
                                     const uint8_t (**tab)[2],
                                     unsigned *buf_offset, int offset)
 {
-    static VLC_TYPE vlc_buf[24812][2];
+    static VLCElem vlc_buf[24812];
 
     vlc->table           = &vlc_buf[*buf_offset];
     vlc->table_allocated = FF_ARRAY_ELEMS(vlc_buf) - *buf_offset;
@@ -896,10 +897,11 @@ static av_cold void atrac9_init_static(void)
 
 static av_cold int atrac9_decode_init(AVCodecContext *avctx)
 {
+    float scale;
     static AVOnce static_table_init = AV_ONCE_INIT;
     GetBitContext gb;
     ATRAC9Context *s = avctx->priv_data;
-    int version, block_config_idx, superframe_idx, alloc_c_len;
+    int err, version, block_config_idx, superframe_idx, alloc_c_len;
 
     s->avctx = avctx;
 
@@ -938,8 +940,8 @@ static av_cold int atrac9_decode_init(AVCodecContext *avctx)
     }
     s->block_config = &at9_block_layout[block_config_idx];
 
-    avctx->channel_layout = s->block_config->channel_layout;
-    avctx->channels       = av_get_channel_layout_nb_channels(avctx->channel_layout);
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout      = s->block_config->channel_layout;
     avctx->sample_fmt     = AV_SAMPLE_FMT_FLTP;
 
     if (get_bits1(&gb)) {
@@ -959,8 +961,11 @@ static av_cold int atrac9_decode_init(AVCodecContext *avctx)
     s->frame_count = 1 << superframe_idx;
     s->frame_log2  = at9_tab_sri_frame_log2[s->samplerate_idx];
 
-    if (ff_mdct_init(&s->imdct, s->frame_log2 + 1, 1, 1.0f / 32768.0f))
-        return AVERROR(ENOMEM);
+    scale = 1.0f / 32768.0;
+    err = av_tx_init(&s->tx, &s->tx_fn, AV_TX_FLOAT_MDCT, 1,
+                     1 << s->frame_log2, &scale, 0);
+    if (err < 0)
+        return err;
 
     s->fdsp = avpriv_float_dsp_alloc(avctx->flags & AV_CODEC_FLAG_BITEXACT);
     if (!s->fdsp)
@@ -987,16 +992,16 @@ static av_cold int atrac9_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_atrac9_decoder = {
-    .name           = "atrac9",
-    .long_name      = NULL_IF_CONFIG_SMALL("ATRAC9 (Adaptive TRansform Acoustic Coding 9)"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_ATRAC9,
+const FFCodec ff_atrac9_decoder = {
+    .p.name         = "atrac9",
+    CODEC_LONG_NAME("ATRAC9 (Adaptive TRansform Acoustic Coding 9)"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_ATRAC9,
     .priv_data_size = sizeof(ATRAC9Context),
     .init           = atrac9_decode_init,
     .close          = atrac9_decode_close,
-    .decode         = atrac9_decode_frame,
+    FF_CODEC_DECODE_CB(atrac9_decode_frame),
     .flush          = atrac9_decode_flush,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
 };

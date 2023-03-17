@@ -25,12 +25,11 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "decode.h"
-#include "internal.h"
 #include "libavutil/common.h"
 
 #define KMVC_KEYFRAME 0x80
@@ -260,11 +259,10 @@ static int kmvc_decode_inter_8x8(KmvcContext * ctx, int w, int h)
     return 0;
 }
 
-static int decode_frame(AVCodecContext * avctx, void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext * avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     KmvcContext *const ctx = avctx->priv_data;
-    AVFrame *frame = data;
     uint8_t *out, *src;
     int i, ret;
     int header;
@@ -404,14 +402,13 @@ static av_cold int decode_init(AVCodecContext * avctx)
     return 0;
 }
 
-const AVCodec ff_kmvc_decoder = {
-    .name           = "kmvc",
-    .long_name      = NULL_IF_CONFIG_SMALL("Karl Morton's video codec"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_KMVC,
+const FFCodec ff_kmvc_decoder = {
+    .p.name         = "kmvc",
+    CODEC_LONG_NAME("Karl Morton's video codec"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_KMVC,
     .priv_data_size = sizeof(KmvcContext),
     .init           = decode_init,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };

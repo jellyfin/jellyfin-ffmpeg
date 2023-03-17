@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "formats.h"
@@ -31,7 +33,9 @@ typedef struct ReverseContext {
     AVFrame **frames;
     unsigned int frames_size;
     unsigned int pts_size;
+    unsigned int duration_size;
     int64_t *pts;
+    int64_t *duration;
     int flush_idx;
     int64_t nb_samples;
 } ReverseContext;
@@ -45,12 +49,15 @@ static av_cold int init(AVFilterContext *ctx)
     if (!s->pts)
         return AVERROR(ENOMEM);
 
+    s->duration = av_fast_realloc(NULL, &s->duration_size,
+                                  DEFAULT_LENGTH * sizeof(*(s->duration)));
+    if (!s->duration)
+        return AVERROR(ENOMEM);
+
     s->frames = av_fast_realloc(NULL, &s->frames_size,
                                 DEFAULT_LENGTH * sizeof(*(s->frames)));
-    if (!s->frames) {
-        av_freep(&s->pts);
+    if (!s->frames)
         return AVERROR(ENOMEM);
-    }
 
     return 0;
 }
@@ -65,6 +72,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     }
 
     av_freep(&s->pts);
+    av_freep(&s->duration);
     av_freep(&s->frames);
 }
 
@@ -81,6 +89,13 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         s->pts = ptr;
     }
 
+    if (s->nb_frames + 1 > s->duration_size / sizeof(*(s->duration))) {
+        ptr = av_fast_realloc(s->duration, &s->duration_size, s->duration_size * 2);
+        if (!ptr)
+            return AVERROR(ENOMEM);
+        s->duration = ptr;
+    }
+
     if (s->nb_frames + 1 > s->frames_size / sizeof(*(s->frames))) {
         ptr = av_fast_realloc(s->frames, &s->frames_size, s->frames_size * 2);
         if (!ptr)
@@ -90,6 +105,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     s->frames[s->nb_frames] = in;
     s->pts[s->nb_frames]    = in->pts;
+    s->duration[s->nb_frames] = in->duration;
     s->nb_frames++;
 
     return 0;
@@ -107,6 +123,7 @@ static int request_frame(AVFilterLink *outlink)
 
     if (ret == AVERROR_EOF && s->nb_frames > 0) {
         AVFrame *out = s->frames[s->nb_frames - 1];
+        out->duration= s->duration[s->flush_idx];
         out->pts     = s->pts[s->flush_idx++];
         ret          = ff_filter_frame(outlink, out);
         s->frames[s->nb_frames - 1] = NULL;
@@ -148,7 +165,7 @@ const AVFilter ff_vf_reverse = {
 
 static void reverse_samples_planar(AVFrame *out)
 {
-    for (int p = 0; p < out->channels; p++) {
+    for (int p = 0; p < out->ch_layout.nb_channels; p++) {
         switch (out->format) {
         case AV_SAMPLE_FMT_U8P: {
             uint8_t *dst = (uint8_t *)out->extended_data[p];
@@ -192,7 +209,7 @@ static void reverse_samples_planar(AVFrame *out)
 
 static void reverse_samples_packed(AVFrame *out)
 {
-    const int channels = out->channels;
+    const int channels = out->ch_layout.nb_channels;
 
     switch (out->format) {
     case AV_SAMPLE_FMT_U8: {
@@ -250,6 +267,7 @@ static int areverse_request_frame(AVFilterLink *outlink)
 
     if (ret == AVERROR_EOF && s->nb_frames > 0) {
         AVFrame *out = s->frames[s->nb_frames - 1];
+        out->duration = s->duration[s->flush_idx];
         out->pts     = s->pts[s->flush_idx++] - s->nb_samples;
         s->nb_samples += s->pts[s->flush_idx] - s->pts[s->flush_idx - 1] - out->nb_samples;
 

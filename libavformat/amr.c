@@ -23,11 +23,14 @@
 Write and read amr data according to RFC3267, http://www.ietf.org/rfc/rfc3267.txt?number=3267
 */
 
+#include "config_components.h"
+
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
+#include "mux.h"
 #include "rawdec.h"
 #include "rawenc.h"
 
@@ -100,33 +103,31 @@ static int amr_read_header(AVFormatContext *s)
         st->codecpar->codec_tag   = MKTAG('s', 'a', 'm', 'r');
         st->codecpar->codec_id    = AV_CODEC_ID_AMR_NB;
         st->codecpar->sample_rate = 8000;
-        st->codecpar->channels = 1;
-        st->codecpar->channel_layout = AV_CH_LAYOUT_MONO;
+        st->codecpar->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
         back = read - sizeof(AMR_header);
     } else if (!memcmp(header, AMRWB_header, sizeof(AMRWB_header))) {
         st->codecpar->codec_tag   = MKTAG('s', 'a', 'w', 'b');
         st->codecpar->codec_id    = AV_CODEC_ID_AMR_WB;
         st->codecpar->sample_rate = 16000;
-        st->codecpar->channels = 1;
-        st->codecpar->channel_layout = AV_CH_LAYOUT_MONO;
+        st->codecpar->ch_layout      = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
         back = read - sizeof(AMRWB_header);
     } else if (!memcmp(header, AMRMC_header, sizeof(AMRMC_header))) {
         st->codecpar->codec_tag   = MKTAG('s', 'a', 'm', 'r');
         st->codecpar->codec_id    = AV_CODEC_ID_AMR_NB;
         st->codecpar->sample_rate = 8000;
-        st->codecpar->channels    = AV_RL32(header + 12);
+        st->codecpar->ch_layout.nb_channels = AV_RL32(header + 12);
         back = read - 4 - sizeof(AMRMC_header);
     } else if (!memcmp(header, AMRWBMC_header, sizeof(AMRWBMC_header))) {
         st->codecpar->codec_tag   = MKTAG('s', 'a', 'w', 'b');
         st->codecpar->codec_id    = AV_CODEC_ID_AMR_WB;
         st->codecpar->sample_rate = 16000;
-        st->codecpar->channels    = AV_RL32(header + 15);
+        st->codecpar->ch_layout.nb_channels = AV_RL32(header + 15);
         back = read - 4 - sizeof(AMRWBMC_header);
     } else {
         return AVERROR_INVALIDDATA;
     }
 
-    if (st->codecpar->channels < 1)
+    if (st->codecpar->ch_layout.nb_channels < 1)
         return AVERROR_INVALIDDATA;
 
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
@@ -188,8 +189,7 @@ static int amrnb_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
     st->codecpar->codec_id       = AV_CODEC_ID_AMR_NB;
     st->codecpar->sample_rate    = 8000;
-    st->codecpar->channels       = 1;
-    st->codecpar->channel_layout = AV_CH_LAYOUT_MONO;
+    st->codecpar->ch_layout      = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     st->codecpar->codec_type     = AVMEDIA_TYPE_AUDIO;
     ffstream(st)->need_parsing   = AVSTREAM_PARSE_FULL_RAW;
     avpriv_set_pts_info(st, 64, 1, 8000);
@@ -246,8 +246,7 @@ static int amrwb_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
     st->codecpar->codec_id       = AV_CODEC_ID_AMR_WB;
     st->codecpar->sample_rate    = 16000;
-    st->codecpar->channels       = 1;
-    st->codecpar->channel_layout = AV_CH_LAYOUT_MONO;
+    st->codecpar->ch_layout      = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     st->codecpar->codec_type     = AVMEDIA_TYPE_AUDIO;
     ffstream(st)->need_parsing   = AVSTREAM_PARSE_FULL_RAW;
     avpriv_set_pts_info(st, 64, 1, 16000);
@@ -268,15 +267,15 @@ const AVInputFormat ff_amrwb_demuxer = {
 #endif
 
 #if CONFIG_AMR_MUXER
-const AVOutputFormat ff_amr_muxer = {
-    .name              = "amr",
-    .long_name         = NULL_IF_CONFIG_SMALL("3GPP AMR"),
-    .mime_type         = "audio/amr",
-    .extensions        = "amr",
-    .audio_codec       = AV_CODEC_ID_AMR_NB,
-    .video_codec       = AV_CODEC_ID_NONE,
+const FFOutputFormat ff_amr_muxer = {
+    .p.name            = "amr",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("3GPP AMR"),
+    .p.mime_type       = "audio/amr",
+    .p.extensions      = "amr",
+    .p.audio_codec     = AV_CODEC_ID_AMR_NB,
+    .p.video_codec     = AV_CODEC_ID_NONE,
+    .p.flags           = AVFMT_NOTIMESTAMPS,
     .write_header      = amr_write_header,
     .write_packet      = ff_raw_write_packet,
-    .flags             = AVFMT_NOTIMESTAMPS,
 };
 #endif

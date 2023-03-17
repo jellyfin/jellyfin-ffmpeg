@@ -24,13 +24,13 @@
 #include "libavutil/mips/mmiutils.h"
 
 #define PUT_HEVC_QPEL_H(w, x_step, src_step, dst_step)                   \
-void ff_hevc_put_hevc_qpel_h##w##_8_mmi(int16_t *dst, uint8_t *_src,     \
+void ff_hevc_put_hevc_qpel_h##w##_8_mmi(int16_t *dst, const uint8_t *_src, \
                                         ptrdiff_t _srcstride,            \
                                         int height, intptr_t mx,         \
                                         intptr_t my, int width)          \
 {                                                                        \
     int x, y;                                                            \
-    pixel *src = (pixel*)_src - 3;                                       \
+    const pixel *src = (const pixel*)_src - 3;                           \
     ptrdiff_t srcstride = _srcstride / sizeof(pixel);                    \
     double ftmp[15];                                                     \
     uint64_t rtmp[1];                                                    \
@@ -80,7 +80,7 @@ void ff_hevc_put_hevc_qpel_h##w##_8_mmi(int16_t *dst, uint8_t *_src,     \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp4]    \n\t"    \
         "paddh        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"    \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"    \
-        MMI_ULDC1(%[ftmp3], %[dst], 0x00)                                \
+        MMI_USDC1(%[ftmp3], %[dst], 0x00)                                \
                                                                          \
         "daddi        %[x],          %[x],         -0x01        \n\t"    \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"    \
@@ -118,14 +118,14 @@ PUT_HEVC_QPEL_H(48, 12, -48, -96);
 PUT_HEVC_QPEL_H(64, 16, -64, -128);
 
 #define PUT_HEVC_QPEL_HV(w, x_step, src_step, dst_step)                  \
-void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
+void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, const uint8_t *_src,\
                                      ptrdiff_t _srcstride,               \
                                      int height, intptr_t mx,            \
                                      intptr_t my, int width)             \
 {                                                                        \
     int x, y;                                                            \
     const int8_t *filter;                                                \
-    pixel *src = (pixel*)_src;                                           \
+    const pixel *src = (const pixel*)_src;                               \
     ptrdiff_t srcstride = _srcstride / sizeof(pixel);                    \
     int16_t tmp_array[(MAX_PB_SIZE + QPEL_EXTRA) * MAX_PB_SIZE];         \
     int16_t *tmp = tmp_array;                                            \
@@ -178,7 +178,7 @@ void ff_hevc_put_hevc_qpel_hv##w##_8_mmi(int16_t *dst, uint8_t *_src,    \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp4]    \n\t"    \
         "paddh        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"    \
         "paddh        %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"    \
-        MMI_ULDC1(%[ftmp3], %[tmp], 0x00)                                \
+        MMI_USDC1(%[ftmp3], %[tmp], 0x00)                                \
                                                                          \
         "daddi        %[x],          %[x],         -0x01        \n\t"    \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"    \
@@ -303,14 +303,14 @@ PUT_HEVC_QPEL_HV(64, 16, -64, -128);
 #define PUT_HEVC_QPEL_BI_H(w, x_step, src_step, src2_step, dst_step)    \
 void ff_hevc_put_hevc_qpel_bi_h##w##_8_mmi(uint8_t *_dst,               \
                                            ptrdiff_t _dststride,        \
-                                           uint8_t *_src,               \
+                                           const uint8_t *_src,         \
                                            ptrdiff_t _srcstride,        \
-                                           int16_t *src2, int height,   \
+                                           const int16_t *src2, int height, \
                                            intptr_t mx, intptr_t my,    \
                                            int width)                   \
 {                                                                       \
     int x, y;                                                           \
-    pixel        *src       = (pixel*)_src - 3;                         \
+    const pixel  *src       = (const pixel*)_src - 3;                   \
     ptrdiff_t     srcstride = _srcstride / sizeof(pixel);               \
     pixel *dst          = (pixel *)_dst;                                \
     ptrdiff_t dststride = _dststride / sizeof(pixel);                   \
@@ -434,9 +434,9 @@ PUT_HEVC_QPEL_BI_H(64, 16, -64, -128, -64);
 #define PUT_HEVC_QPEL_BI_HV(w, x_step, src_step, src2_step, dst_step)   \
 void ff_hevc_put_hevc_qpel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
                                             ptrdiff_t _dststride,       \
-                                            uint8_t *_src,              \
+                                            const uint8_t *_src,        \
                                             ptrdiff_t _srcstride,       \
-                                            int16_t *src2, int height,  \
+                                            const int16_t *src2, int height, \
                                             intptr_t mx, intptr_t my,   \
                                             int width)                  \
 {                                                                       \
@@ -654,9 +654,9 @@ PUT_HEVC_QPEL_BI_HV(64, 16, -64, -128, -64);
 #define PUT_HEVC_EPEL_BI_HV(w, x_step, src_step, src2_step, dst_step)   \
 void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
                                             ptrdiff_t _dststride,       \
-                                            uint8_t *_src,              \
+                                            const uint8_t *_src,        \
                                             ptrdiff_t _srcstride,       \
-                                            int16_t *src2, int height,  \
+                                            const int16_t *src2, int height, \
                                             intptr_t mx, intptr_t my,   \
                                             int width)                  \
 {                                                                       \
@@ -690,10 +690,10 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
                                                                         \
         "1:                                                     \n\t"   \
         "2:                                                     \n\t"   \
-        MMI_ULDC1(%[ftmp3], %[src], 0x00)                               \
-        MMI_ULDC1(%[ftmp4], %[src], 0x01)                               \
-        MMI_ULDC1(%[ftmp5], %[src], 0x02)                               \
-        MMI_ULDC1(%[ftmp6], %[src], 0x03)                               \
+        MMI_ULWC1(%[ftmp2], %[src], 0x00)                               \
+        MMI_ULWC1(%[ftmp3], %[src], 0x01)                               \
+        MMI_ULWC1(%[ftmp4], %[src], 0x02)                               \
+        MMI_ULWC1(%[ftmp5], %[src], 0x03)                               \
         "punpcklbh    %[ftmp2],      %[ftmp2],      %[ftmp0]    \n\t"   \
         "pmullh       %[ftmp2],      %[ftmp2],      %[ftmp1]    \n\t"   \
         "punpcklbh    %[ftmp3],      %[ftmp3],      %[ftmp0]    \n\t"   \
@@ -707,7 +707,7 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "paddh        %[ftmp2],      %[ftmp2],      %[ftmp3]    \n\t"   \
         "paddh        %[ftmp4],      %[ftmp4],      %[ftmp5]    \n\t"   \
         "paddh        %[ftmp2],      %[ftmp2],      %[ftmp4]    \n\t"   \
-        MMI_ULDC1(%[ftmp2], %[tmp], 0x00)                               \
+        MMI_USDC1(%[ftmp2], %[tmp], 0x00)                               \
                                                                         \
         "daddi        %[x],          %[x],         -0x01        \n\t"   \
         PTR_ADDIU    "%[src],        %[src],        0x04        \n\t"   \
@@ -773,7 +773,7 @@ void ff_hevc_put_hevc_epel_bi_hv##w##_8_mmi(uint8_t *_dst,              \
         "paddw        %[ftmp5],      %[ftmp5],      %[ftmp6]    \n\t"   \
         "psraw        %[ftmp5],      %[ftmp5],      %[ftmp0]    \n\t"   \
         "packsswh     %[ftmp3],      %[ftmp3],      %[ftmp5]    \n\t"   \
-        MMI_ULDC1(%[ftmp4], %[tmp], 0x02)                               \
+        MMI_ULDC1(%[ftmp4], %[src2], 0x00)                               \
         "li           %[rtmp0],      0x10                       \n\t"   \
         "dmtc1        %[rtmp0],      %[ftmp8]                   \n\t"   \
         "punpcklhw    %[ftmp5],      %[ftmp2],      %[ftmp3]    \n\t"   \
@@ -835,9 +835,9 @@ PUT_HEVC_EPEL_BI_HV(32, 8, -32, -64, -32);
 #define PUT_HEVC_PEL_BI_PIXELS(w, x_step, src_step, dst_step, src2_step)  \
 void ff_hevc_put_hevc_pel_bi_pixels##w##_8_mmi(uint8_t *_dst,             \
                                                ptrdiff_t _dststride,      \
-                                               uint8_t *_src,             \
+                                               const uint8_t *_src,       \
                                                ptrdiff_t _srcstride,      \
-                                               int16_t *src2, int height, \
+                                               const int16_t *src2, int height, \
                                                intptr_t mx, intptr_t my,  \
                                                int width)                 \
 {                                                                         \
@@ -945,7 +945,7 @@ PUT_HEVC_PEL_BI_PIXELS(64, 8, -64, -64, -128);
 #define PUT_HEVC_QPEL_UNI_HV(w, x_step, src_step, dst_step, tmp_step)   \
 void ff_hevc_put_hevc_qpel_uni_hv##w##_8_mmi(uint8_t *_dst,             \
                                              ptrdiff_t _dststride,      \
-                                             uint8_t *_src,             \
+                                             const uint8_t *_src,       \
                                              ptrdiff_t _srcstride,      \
                                              int height,                \
                                              intptr_t mx, intptr_t my,  \

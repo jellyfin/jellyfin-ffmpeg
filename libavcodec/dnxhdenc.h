@@ -34,7 +34,7 @@
 #include "dnxhddata.h"
 
 typedef struct RCCMPEntry {
-    uint16_t mb;
+    uint32_t mb;
     int value;
 } RCCMPEntry;
 
@@ -86,7 +86,7 @@ typedef struct DNXHDEncContext {
     uint16_t (*qmatrix_c16)[2][64];
 
     unsigned frame_bits;
-    uint8_t *src[3];
+    const uint8_t *src[3];
 
     uint32_t *orig_vlc_codes;
     uint8_t  *orig_vlc_bits;
@@ -100,7 +100,7 @@ typedef struct DNXHDEncContext {
     unsigned qscale;
     unsigned lambda;
 
-    uint16_t *mb_bits;
+    uint32_t *mb_bits;
     uint8_t  *mb_qscale;
 
     RCCMPEntry *mb_cmp;

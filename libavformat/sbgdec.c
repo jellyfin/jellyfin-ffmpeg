@@ -1317,6 +1317,8 @@ static int generate_intervals(void *log, struct sbg_script *s, int sample_rate,
 
     /* Pseudo event before the first one */
     ev0 = s->events[s->nb_events - 1];
+    if (av_sat_sub64(ev0.ts_int, period) != (uint64_t)ev0.ts_int - period)
+        return AVERROR_INVALIDDATA;
     ev0.ts_int   -= period;
     ev0.ts_trans -= period;
     ev0.ts_next  -= period;
@@ -1446,8 +1448,7 @@ static av_cold int sbg_read_header(AVFormatContext *avf)
     sti = ffstream(st);
     st->codecpar->codec_type     = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id       = AV_CODEC_ID_FFWAVESYNTH;
-    st->codecpar->channels       = 2;
-    st->codecpar->channel_layout = AV_CH_LAYOUT_STEREO;
+    st->codecpar->ch_layout      = (AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO;
     st->codecpar->sample_rate    = sbg->sample_rate;
     st->codecpar->frame_size     = sbg->frame_size;
     avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
@@ -1479,7 +1480,7 @@ static int sbg_read_packet(AVFormatContext *avf, AVPacket *packet)
     int ret;
 
     ts = ffstream(avf->streams[0])->cur_dts;
-    end_ts = ts + avf->streams[0]->codecpar->frame_size;
+    end_ts = av_sat_add64(ts, avf->streams[0]->codecpar->frame_size);
     if (avf->streams[0]->duration != AV_NOPTS_VALUE)
         end_ts = FFMIN(avf->streams[0]->start_time + avf->streams[0]->duration,
                        end_ts);

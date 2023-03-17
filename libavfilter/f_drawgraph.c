@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "float.h"
 
 #include "libavutil/avstring.h"
@@ -166,7 +168,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVDictionaryEntry *e;
     AVFrame *out = s->out;
     AVFrame *clone = NULL;
-    int64_t in_pts, out_pts;
+    int64_t in_pts, out_pts, in_duration;
     int i;
 
     if (s->slide == 4 && s->nb_values >= s->values_size[0] / sizeof(float)) {
@@ -318,6 +320,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     s->x++;
 
     in_pts = in->pts;
+    in_duration = in->duration;
 
     av_frame_free(&in);
 
@@ -334,6 +337,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         return AVERROR(ENOMEM);
 
     clone->pts = s->prev_pts = out_pts;
+    clone->duration = av_rescale_q(in_duration, inlink->time_base, outlink->time_base);
     return ff_filter_frame(outlink, clone);
 }
 

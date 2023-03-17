@@ -27,6 +27,7 @@
 #include "internal.h"
 #include "lrc.h"
 #include "metadata.h"
+#include "mux.h"
 #include "version.h"
 #include "libavutil/dict.h"
 #include "libavutil/log.h"
@@ -62,8 +63,7 @@ static int lrc_write_header(AVFormatContext *s)
         av_dict_set(&s->metadata, "ve", NULL, 0);
     }
     for(metadata_item = NULL;
-       (metadata_item = av_dict_get(s->metadata, "", metadata_item,
-                                    AV_DICT_IGNORE_SUFFIX));) {
+       (metadata_item = av_dict_iterate(s->metadata, metadata_item));) {
         char *delim;
         if(!metadata_item->value[0]) {
             continue;
@@ -104,7 +104,7 @@ static int lrc_write_packet(AVFormatContext *s, AVPacket *pkt)
                     size--;
                 next_line++;
             }
-            if(line[0] == '[') {
+            if (size && line[0] == '[') {
                 av_log(s, AV_LOG_WARNING,
                        "Subtitle starts with '[', may cause problems with LRC format.\n");
             }
@@ -125,14 +125,14 @@ static int lrc_write_packet(AVFormatContext *s, AVPacket *pkt)
     return 0;
 }
 
-const AVOutputFormat ff_lrc_muxer = {
-    .name           = "lrc",
-    .long_name      = NULL_IF_CONFIG_SMALL("LRC lyrics"),
-    .extensions     = "lrc",
+const FFOutputFormat ff_lrc_muxer = {
+    .p.name           = "lrc",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("LRC lyrics"),
+    .p.extensions     = "lrc",
+    .p.flags          = AVFMT_VARIABLE_FPS | AVFMT_GLOBALHEADER |
+                        AVFMT_TS_NEGATIVE | AVFMT_TS_NONSTRICT,
+    .p.subtitle_codec = AV_CODEC_ID_SUBRIP,
     .priv_data_size = 0,
     .write_header   = lrc_write_header,
     .write_packet   = lrc_write_packet,
-    .flags          = AVFMT_VARIABLE_FPS | AVFMT_GLOBALHEADER |
-                      AVFMT_TS_NEGATIVE | AVFMT_TS_NONSTRICT,
-    .subtitle_codec = AV_CODEC_ID_SUBRIP
 };

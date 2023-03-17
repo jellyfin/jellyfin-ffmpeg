@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
-      codenames: '["buster", "bullseye"]'
+      codenames: '["buster", "bullseye", "bookworm"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: false
 
@@ -30,14 +30,20 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["jammy", "focal", "bionic", "impish"]'
+      codenames: '["focal", "jammy", "kinetic", "lunar"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: false
 
-  build_windows:
-    uses: ./.github/workflows/_meta.yaml
+  build_portable_windows:
+    uses: ./.github/workflows/_meta_portable.yaml
     with:
-      distro: 'windows'
-      codenames: '["windows"]'
+      os: 'windows'
       architectures: '["win64"]'
+      release: false
+
+  build_portable_linux:
+    uses: ./.github/workflows/_meta_portable.yaml
+    with:
+      os: 'linux'
+      architectures: '["amd64", "arm64"]'
       release: false

@@ -38,10 +38,10 @@
 #include "ttadata.h"
 #include "ttadsp.h"
 #include "avcodec.h"
+#include "codec_internal.h"
 #include "get_bits.h"
 #include "thread.h"
 #include "unary.h"
-#include "internal.h"
 
 #define FORMAT_SIMPLE    1
 #define FORMAT_ENCRYPTED 2
@@ -113,11 +113,9 @@ static int allocate_buffers(AVCodecContext *avctx)
             return AVERROR(ENOMEM);
     } else
         s->decode_buffer = NULL;
-    s->ch_ctx = av_malloc_array(avctx->channels, sizeof(*s->ch_ctx));
-    if (!s->ch_ctx) {
-        av_freep(&s->decode_buffer);
+    s->ch_ctx = av_malloc_array(avctx->ch_layout.nb_channels, sizeof(*s->ch_ctx));
+    if (!s->ch_ctx)
         return AVERROR(ENOMEM);
-    }
 
     return 0;
 }
@@ -156,9 +154,18 @@ static av_cold int tta_decode_init(AVCodecContext * avctx)
             }
             AV_WL64(s->crc_pass, tta_check_crc64(s->pass));
         }
-        avctx->channels = s->channels = get_bits(&gb, 16);
-        if (s->channels > 1 && s->channels < 9)
-            avctx->channel_layout = tta_channel_layouts[s->channels-2];
+
+        s->channels = get_bits(&gb, 16);
+
+        av_channel_layout_uninit(&avctx->ch_layout);
+        if (s->channels > 1 && s->channels < 9) {
+            av_channel_layout_from_mask(&avctx->ch_layout, tta_channel_layouts[s->channels-2]);
+        }
+        if (avctx->ch_layout.nb_channels == 0) {
+            avctx->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
+            avctx->ch_layout.nb_channels = s->channels;
+        }
+
         avctx->bits_per_raw_sample = get_bits(&gb, 16);
         s->bps = (avctx->bits_per_raw_sample + 7) / 8;
         avctx->sample_rate = get_bits_long(&gb, 32);
@@ -199,7 +206,7 @@ static av_cold int tta_decode_init(AVCodecContext * avctx)
                        (s->last_frame_length ? 1 : 0);
 
         av_log(avctx, AV_LOG_DEBUG, "format: %d chans: %d bps: %d rate: %d block: %d\n",
-            s->format, avctx->channels, avctx->bits_per_coded_sample, avctx->sample_rate,
+            s->format, avctx->ch_layout.nb_channels, avctx->bits_per_coded_sample, avctx->sample_rate,
             avctx->block_align);
         av_log(avctx, AV_LOG_DEBUG, "data_length: %d frame_length: %d last: %d total: %d\n",
             s->data_length, s->frame_length, s->last_frame_length, total_frames);
@@ -218,11 +225,9 @@ static av_cold int tta_decode_init(AVCodecContext * avctx)
     return allocate_buffers(avctx);
 }
 
-static int tta_decode_frame(AVCodecContext *avctx, void *data,
+static int tta_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                             int *got_frame_ptr, AVPacket *avpkt)
 {
-    AVFrame *frame     = data;
-    ThreadFrame tframe = { .f = data };
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     TTAContext *s = avctx->priv_data;
@@ -242,7 +247,7 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = framelen;
-    if ((ret = ff_thread_get_buffer(avctx, &tframe, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
     // decode directly to output buffer for 24-bit sample format
@@ -360,21 +365,24 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
     switch (s->bps) {
     case 1: {
         uint8_t *samples = (uint8_t *)frame->data[0];
-        for (p = s->decode_buffer; (int32_t*)p < s->decode_buffer + (framelen * s->channels); p++)
-            *samples++ = *p + 0x80;
+        p = s->decode_buffer;
+        for (i = 0; i < framelen * s->channels; i++)
+            samples[i] = p[i] + 0x80;
         break;
         }
     case 2: {
         int16_t *samples = (int16_t *)frame->data[0];
-        for (p = s->decode_buffer; (int32_t*)p < s->decode_buffer + (framelen * s->channels); p++)
-            *samples++ = *p;
+        p = s->decode_buffer;
+        for (i = 0; i < framelen * s->channels; i++)
+            samples[i] = p[i];
         break;
         }
     case 3: {
         // shift samples for 24-bit sample format
         int32_t *samples = (int32_t *)frame->data[0];
+
         for (i = 0; i < framelen * s->channels; i++)
-            *samples++ *= 256;
+            samples[i] = samples[i] * 256U;
         // reset decode buffer
         s->decode_buffer = NULL;
         break;
@@ -416,16 +424,16 @@ static const AVClass tta_decoder_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_tta_decoder = {
-    .name           = "tta",
-    .long_name      = NULL_IF_CONFIG_SMALL("TTA (True Audio)"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_TTA,
+const FFCodec ff_tta_decoder = {
+    .p.name         = "tta",
+    CODEC_LONG_NAME("TTA (True Audio)"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_TTA,
     .priv_data_size = sizeof(TTAContext),
     .init           = tta_decode_init,
     .close          = tta_decode_close,
-    .decode         = tta_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_CHANNEL_CONF,
-    .priv_class     = &tta_decoder_class,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(tta_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.priv_class   = &tta_decoder_class,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -30,19 +30,23 @@
  * Theora decoder by Alex Beregszaszi
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include "config_components.h"
+
+#include <stddef.h>
 #include <string.h>
 
 #include "libavutil/imgutils.h"
 #include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "hpeldsp.h"
-#include "internal.h"
+#include "jpegquanttables.h"
 #include "mathops.h"
 #include "thread.h"
+#include "threadframe.h"
 #include "videodsp.h"
 #include "vp3data.h"
 #include "vp4data.h"
@@ -332,11 +336,11 @@ static void vp3_decode_flush(AVCodecContext *avctx)
     Vp3DecodeContext *s = avctx->priv_data;
 
     if (s->golden_frame.f)
-        ff_thread_release_buffer(avctx, &s->golden_frame);
+        ff_thread_release_ext_buffer(avctx, &s->golden_frame);
     if (s->last_frame.f)
-        ff_thread_release_buffer(avctx, &s->last_frame);
+        ff_thread_release_ext_buffer(avctx, &s->last_frame);
     if (s->current_frame.f)
-        ff_thread_release_buffer(avctx, &s->current_frame);
+        ff_thread_release_ext_buffer(avctx, &s->current_frame);
 }
 
 static av_cold int vp3_decode_end(AVCodecContext *avctx)
@@ -1193,7 +1197,7 @@ static int unpack_vlcs(Vp3DecodeContext *s, GetBitContext *gb,
     /* local references to structure members to avoid repeated dereferences */
     int *coded_fragment_list   = s->coded_fragment_list[plane];
     Vp3Fragment *all_fragments = s->all_fragments;
-    VLC_TYPE(*vlc_table)[2] = table->table;
+    const VLCElem *vlc_table = table->table;
 
     if (num_coeffs < 0) {
         av_log(s->avctx, AV_LOG_ERROR,
@@ -1946,7 +1950,7 @@ static void vp3_draw_horiz_band(Vp3DecodeContext *s, int y)
 static void await_reference_row(Vp3DecodeContext *s, Vp3Fragment *fragment,
                                 int motion_y, int y)
 {
-    ThreadFrame *ref_frame;
+    const ThreadFrame *ref_frame;
     int ref_row;
     int border = motion_y & 1;
 
@@ -2415,7 +2419,7 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
             s->coded_dc_scale_factor[1][i] = s->version < 2 ? vp31_dc_scale_factor[i] : vp4_uv_dc_scale_factor[i];
             s->coded_ac_scale_factor[i] = s->version < 2 ? vp31_ac_scale_factor[i] : vp4_ac_scale_factor[i];
             s->base_matrix[0][i]        = s->version < 2 ? vp31_intra_y_dequant[i] : vp4_generic_dequant[i];
-            s->base_matrix[1][i]        = s->version < 2 ? vp31_intra_c_dequant[i] : vp4_generic_dequant[i];
+            s->base_matrix[1][i]        = s->version < 2 ? ff_mjpeg_std_chrominance_quant_tbl[i] : vp4_generic_dequant[i];
             s->base_matrix[2][i]        = s->version < 2 ? vp31_inter_dequant[i]   : vp4_generic_dequant[i];
             s->filter_limit_values[i]   = s->version < 2 ? vp31_filter_limit_values[i] : vp4_filter_limit_values[i];
         }
@@ -2506,25 +2510,25 @@ static int update_frames(AVCodecContext *avctx)
     int ret = 0;
 
     /* shuffle frames (last = current) */
-    ff_thread_release_buffer(avctx, &s->last_frame);
+    ff_thread_release_ext_buffer(avctx, &s->last_frame);
     ret = ff_thread_ref_frame(&s->last_frame, &s->current_frame);
     if (ret < 0)
         goto fail;
 
     if (s->keyframe) {
-        ff_thread_release_buffer(avctx, &s->golden_frame);
+        ff_thread_release_ext_buffer(avctx, &s->golden_frame);
         ret = ff_thread_ref_frame(&s->golden_frame, &s->current_frame);
     }
 
 fail:
-    ff_thread_release_buffer(avctx, &s->current_frame);
+    ff_thread_release_ext_buffer(avctx, &s->current_frame);
     return ret;
 }
 
 #if HAVE_THREADS
 static int ref_frame(Vp3DecodeContext *s, ThreadFrame *dst, ThreadFrame *src)
 {
-    ff_thread_release_buffer(s->avctx, dst);
+    ff_thread_release_ext_buffer(s->avctx, dst);
     if (src->f->data[0])
         return ff_thread_ref_frame(dst, src);
     return 0;
@@ -2582,11 +2586,9 @@ static int vp3_update_thread_context(AVCodecContext *dst, const AVCodecContext *
 }
 #endif
 
-static int vp3_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int vp3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame, AVPacket *avpkt)
 {
-    AVFrame     *frame  = data;
     const uint8_t *buf  = avpkt->data;
     int buf_size        = avpkt->size;
     Vp3DecodeContext *s = avctx->priv_data;
@@ -2652,8 +2654,8 @@ static int vp3_decode_frame(AVCodecContext *avctx,
         s->qps[i] = -1;
 
     if (s->avctx->debug & FF_DEBUG_PICT_INFO)
-        av_log(s->avctx, AV_LOG_INFO, " VP3 %sframe #%d: Q index = %d\n",
-               s->keyframe ? "key" : "", avctx->frame_number + 1, s->qps[0]);
+        av_log(s->avctx, AV_LOG_INFO, " VP3 %sframe #%"PRId64": Q index = %d\n",
+               s->keyframe ? "key" : "", avctx->frame_num + 1, s->qps[0]);
 
     s->skip_loop_filter = !s->filter_limit_values[s->qps[0]] ||
                           avctx->skip_loop_filter >= (s->keyframe ? AVDISCARD_ALL
@@ -2674,11 +2676,17 @@ static int vp3_decode_frame(AVCodecContext *avctx,
     s->current_frame.f->pict_type = s->keyframe ? AV_PICTURE_TYPE_I
                                                 : AV_PICTURE_TYPE_P;
     s->current_frame.f->key_frame = s->keyframe;
-    if ((ret = ff_thread_get_buffer(avctx, &s->current_frame, AV_GET_BUFFER_FLAG_REF)) < 0)
+    if ((ret = ff_thread_get_ext_buffer(avctx, &s->current_frame,
+                                        AV_GET_BUFFER_FLAG_REF)) < 0)
         goto error;
 
-    if (!s->edge_emu_buffer)
+    if (!s->edge_emu_buffer) {
         s->edge_emu_buffer = av_malloc(9 * FFABS(s->current_frame.f->linesize[0]));
+        if (!s->edge_emu_buffer) {
+            ret = AVERROR(ENOMEM);
+            goto error;
+        }
+    }
 
     if (s->keyframe) {
         if (!s->theora) {
@@ -2693,7 +2701,7 @@ static int vp3_decode_frame(AVCodecContext *avctx,
                 }
 #endif
                 s->version = version;
-                if (avctx->frame_number == 0)
+                if (avctx->frame_num == 0)
                     av_log(s->avctx, AV_LOG_DEBUG,
                            "VP version: %d\n", s->version);
             }
@@ -2733,10 +2741,10 @@ static int vp3_decode_frame(AVCodecContext *avctx,
                    "vp3: first frame not a keyframe\n");
 
             s->golden_frame.f->pict_type = AV_PICTURE_TYPE_I;
-            if ((ret = ff_thread_get_buffer(avctx, &s->golden_frame,
-                                     AV_GET_BUFFER_FLAG_REF)) < 0)
+            if ((ret = ff_thread_get_ext_buffer(avctx, &s->golden_frame,
+                                                AV_GET_BUFFER_FLAG_REF)) < 0)
                 goto error;
-            ff_thread_release_buffer(avctx, &s->last_frame);
+            ff_thread_release_ext_buffer(avctx, &s->last_frame);
             if ((ret = ff_thread_ref_frame(&s->last_frame,
                                            &s->golden_frame)) < 0)
                 goto error;
@@ -2808,7 +2816,7 @@ static int vp3_decode_frame(AVCodecContext *avctx,
     vp3_draw_horiz_band(s, s->height);
 
     /* output frame, offset as needed */
-    if ((ret = av_frame_ref(data, s->current_frame.f)) < 0)
+    if ((ret = av_frame_ref(frame, s->current_frame.f)) < 0)
         return ret;
 
     frame->crop_left   = s->offset_x;
@@ -3149,10 +3157,10 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
                    "Unknown Theora config packet: %d\n", ptype & ~0x80);
             break;
         }
-        if (ptype != 0x81 && 8 * header_len[i] != get_bits_count(&gb))
+        if (ptype != 0x81 && get_bits_left(&gb) >= 8U)
             av_log(avctx, AV_LOG_WARNING,
                    "%d bits left in packet %X\n",
-                   8 * header_len[i] - get_bits_count(&gb), ptype);
+                   get_bits_left(&gb), ptype);
         if (s->theora < 0x030200)
             break;
     }
@@ -3160,56 +3168,56 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
     return vp3_decode_init(avctx);
 }
 
-const AVCodec ff_theora_decoder = {
-    .name                  = "theora",
-    .long_name             = NULL_IF_CONFIG_SMALL("Theora"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_THEORA,
+const FFCodec ff_theora_decoder = {
+    .p.name                = "theora",
+    CODEC_LONG_NAME("Theora"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_THEORA,
     .priv_data_size        = sizeof(Vp3DecodeContext),
     .init                  = theora_decode_init,
     .close                 = vp3_decode_end,
-    .decode                = vp3_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(vp3_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+    UPDATE_THREAD_CONTEXT(vp3_update_thread_context),
+    .caps_internal         = FF_CODEC_CAP_INIT_CLEANUP |
                              FF_CODEC_CAP_EXPORTS_CROPPING | FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 #endif
 
-const AVCodec ff_vp3_decoder = {
-    .name                  = "vp3",
-    .long_name             = NULL_IF_CONFIG_SMALL("On2 VP3"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_VP3,
+const FFCodec ff_vp3_decoder = {
+    .p.name                = "vp3",
+    CODEC_LONG_NAME("On2 VP3"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_VP3,
     .priv_data_size        = sizeof(Vp3DecodeContext),
     .init                  = vp3_decode_init,
     .close                 = vp3_decode_end,
-    .decode                = vp3_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(vp3_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+    UPDATE_THREAD_CONTEXT(vp3_update_thread_context),
+    .caps_internal         = FF_CODEC_CAP_INIT_CLEANUP |
                              FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 
 #if CONFIG_VP4_DECODER
-const AVCodec ff_vp4_decoder = {
-    .name                  = "vp4",
-    .long_name             = NULL_IF_CONFIG_SMALL("On2 VP4"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_VP4,
+const FFCodec ff_vp4_decoder = {
+    .p.name                = "vp4",
+    CODEC_LONG_NAME("On2 VP4"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_VP4,
     .priv_data_size        = sizeof(Vp3DecodeContext),
     .init                  = vp3_decode_init,
     .close                 = vp3_decode_end,
-    .decode                = vp3_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(vp3_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP |
+    UPDATE_THREAD_CONTEXT(vp3_update_thread_context),
+    .caps_internal         = FF_CODEC_CAP_INIT_CLEANUP |
                              FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 #endif

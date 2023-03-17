@@ -25,6 +25,7 @@
 #include "dcahuff.h"
 #include "dcamath.h"
 #include "dca_syncwords.h"
+#include "decode.h"
 
 #if ARCH_ARM
 #include "arm/dca.h"
@@ -66,9 +67,9 @@ static const uint8_t block_code_nbits[7] = {
     7, 10, 12, 13, 15, 17, 19
 };
 
-static int dca_get_vlc(GetBitContext *s, DCAVLC *v, int i)
+static int dca_get_vlc(GetBitContext *s, const VLC *vlc)
 {
-    return get_vlc2(s, v->vlc[i].table, v->vlc[i].bits, v->max_depth) + v->offset;
+    return get_vlc2(s, vlc->table, vlc->bits, 2);
 }
 
 static void get_array(GetBitContext *s, int32_t *array, int size, int n)
@@ -361,7 +362,8 @@ static inline int parse_scale(DCACoreDecoder *s, int *scale_index, int sel)
 
     // If Huffman code was used, the difference of scales was encoded
     if (sel < 5)
-        *scale_index += dca_get_vlc(&s->gb, &ff_dca_vlc_scale_factor, sel);
+        *scale_index += get_vlc2(&s->gb, ff_dca_vlc_scale_factor[sel].table,
+                                 DCA_SCALES_VLC_BITS, 2);
     else
         *scale_index = get_bits(&s->gb, sel + 1);
 
@@ -380,7 +382,8 @@ static inline int parse_joint_scale(DCACoreDecoder *s, int sel)
 
     // Absolute value was encoded even when Huffman code was used
     if (sel < 5)
-        scale_index = dca_get_vlc(&s->gb, &ff_dca_vlc_scale_factor, sel);
+        scale_index = get_vlc2(&s->gb, ff_dca_vlc_scale_factor[sel].table,
+                               DCA_SCALES_VLC_BITS, 2);
     else
         scale_index = get_bits(&s->gb, sel + 1);
 
@@ -432,7 +435,7 @@ static int parse_subframe_header(DCACoreDecoder *s, int sf,
             int abits;
 
             if (sel < 5)
-                abits = dca_get_vlc(&s->gb, &ff_dca_vlc_bit_allocation, sel);
+                abits = dca_get_vlc(&s->gb, &ff_dca_vlc_bit_allocation[sel]);
             else
                 abits = get_bits(&s->gb, sel - 1);
 
@@ -455,7 +458,8 @@ static int parse_subframe_header(DCACoreDecoder *s, int sf,
             int sel = s->transition_mode_sel[ch];
             for (band = 0; band < s->subband_vq_start[ch]; band++)
                 if (s->bit_allocation[ch][band])
-                    s->transition_mode[sf][ch][band] = dca_get_vlc(&s->gb, &ff_dca_vlc_transition_mode, sel);
+                    s->transition_mode[sf][ch][band] = get_vlc2(&s->gb, ff_dca_vlc_transition_mode[sel].table,
+                                                                DCA_TMODE_VLC_BITS, 1);
         }
     }
 
@@ -566,7 +570,7 @@ static inline int parse_huffman_codes(DCACoreDecoder *s, int32_t *audio, int abi
 
     // Extract Huffman codes from the bit stream
     for (i = 0; i < DCA_SUBBAND_SAMPLES; i++)
-        audio[i] = dca_get_vlc(&s->gb, &ff_dca_vlc_quant_index[abits - 1], sel);
+        audio[i] = dca_get_vlc(&s->gb, &ff_dca_vlc_quant_index[abits - 1][sel]);
 
     return 1;
 }
@@ -766,7 +770,9 @@ static void erase_adpcm_history(DCACoreDecoder *s)
         for (band = 0; band < DCA_SUBBANDS; band++)
             AV_ZERO128(s->subband_samples[ch][band] - DCA_ADPCM_COEFFS);
 
+#ifdef FF_COPY_SWAP_ZERO_USES_MMX
     emms_c();
+#endif
 }
 
 static int alloc_sample_buffer(DCACoreDecoder *s)
@@ -830,7 +836,9 @@ static int parse_frame_data(DCACoreDecoder *s, enum HeaderType header, int xch_b
         }
     }
 
+#ifdef FF_COPY_SWAP_ZERO_USES_MMX
     emms_c();
+#endif
 
     return 0;
 }
@@ -1275,7 +1283,9 @@ static void erase_x96_adpcm_history(DCACoreDecoder *s)
         for (band = 0; band < DCA_SUBBANDS_X96; band++)
             AV_ZERO128(s->x96_subband_samples[ch][band] - DCA_ADPCM_COEFFS);
 
+#ifdef FF_COPY_SWAP_ZERO_USES_MMX
     emms_c();
+#endif
 }
 
 static int alloc_x96_sample_buffer(DCACoreDecoder *s)
@@ -1330,7 +1340,7 @@ static int parse_x96_subframe_header(DCACoreDecoder *s, int xch_base)
         for (band = s->x96_subband_start; band < s->nsubbands[ch]; band++) {
             // If Huffman code was used, the difference of abits was encoded
             if (sel < 7)
-                abits += dca_get_vlc(&s->gb, &ff_dca_vlc_quant_index[5 + 2 * s->x96_high_res], sel);
+                abits += dca_get_vlc(&s->gb, &ff_dca_vlc_quant_index[5 + 2 * s->x96_high_res][sel]);
             else
                 abits = get_bits(&s->gb, 3 + s->x96_high_res);
 
@@ -1505,7 +1515,9 @@ static int parse_x96_frame_data(DCACoreDecoder *s, int exss, int xch_base)
         }
     }
 
+#ifdef FF_COPY_SWAP_ZERO_USES_MMX
     emms_c();
+#endif
 
     return 0;
 }
@@ -1796,7 +1808,7 @@ static int parse_optional_info(DCACoreDecoder *s)
     return 0;
 }
 
-int ff_dca_core_parse(DCACoreDecoder *s, uint8_t *data, int size)
+int ff_dca_core_parse(DCACoreDecoder *s, const uint8_t *data, int size)
 {
     int ret;
 
@@ -1829,7 +1841,7 @@ int ff_dca_core_parse(DCACoreDecoder *s, uint8_t *data, int size)
     return 0;
 }
 
-int ff_dca_core_parse_exss(DCACoreDecoder *s, uint8_t *data, DCAExssAsset *asset)
+int ff_dca_core_parse_exss(DCACoreDecoder *s, const uint8_t *data, DCAExssAsset *asset)
 {
     AVCodecContext *avctx = s->avctx;
     DCAContext *dca = avctx->priv_data;
@@ -2148,7 +2160,7 @@ static int filter_frame_fixed(DCACoreDecoder *s, AVFrame *frame)
                                        nsamples, s->ch_mask);
     }
 
-    for (i = 0; i < avctx->channels; i++) {
+    for (i = 0; i < avctx->ch_layout.nb_channels; i++) {
         int32_t *samples = s->output_samples[s->ch_remap[i]];
         int32_t *plane = (int32_t *)frame->extended_data[i];
         for (n = 0; n < nsamples; n++)
@@ -2180,11 +2192,11 @@ static int filter_frame_float(DCACoreDecoder *s, AVFrame *frame)
         return ret;
 
     // Build reverse speaker to channel mapping
-    for (i = 0; i < avctx->channels; i++)
+    for (i = 0; i < avctx->ch_layout.nb_channels; i++)
         output_samples[s->ch_remap[i]] = (float *)frame->extended_data[i];
 
     // Allocate space for extra channels
-    nchannels = av_popcount(s->ch_mask) - avctx->channels;
+    nchannels = av_popcount(s->ch_mask) - avctx->ch_layout.nb_channels;
     if (nchannels > 0) {
         av_fast_malloc(&s->output_buffer, &s->output_size,
                        nsamples * nchannels * sizeof(float));
@@ -2223,7 +2235,8 @@ static int filter_frame_float(DCACoreDecoder *s, AVFrame *frame)
         // Filter bank reconstruction
         s->dcadsp->sub_qmf_float[x96_synth](
             &s->synth,
-            &s->imdct[x96_synth],
+            s->imdct[x96_synth],
+            s->imdct_fn[x96_synth],
             output_samples[spkr],
             s->subband_samples[ch],
             ch < x96_nchannels ? s->x96_subband_samples[ch] : NULL,
@@ -2412,16 +2425,24 @@ av_cold void ff_dca_core_flush(DCACoreDecoder *s)
 
 av_cold int ff_dca_core_init(DCACoreDecoder *s)
 {
+    int ret;
+    float scale = 1.0f;
+
     if (!(s->float_dsp = avpriv_float_dsp_alloc(0)))
         return -1;
     if (!(s->fixed_dsp = avpriv_alloc_fixed_dsp(0)))
         return -1;
 
     ff_dcadct_init(&s->dcadct);
-    if (ff_mdct_init(&s->imdct[0], 6, 1, 1.0) < 0)
-        return -1;
-    if (ff_mdct_init(&s->imdct[1], 7, 1, 1.0) < 0)
-        return -1;
+
+    if ((ret = av_tx_init(&s->imdct[0], &s->imdct_fn[0], AV_TX_FLOAT_MDCT,
+                          1, 32, &scale, 0)) < 0)
+        return ret;
+
+    if ((ret = av_tx_init(&s->imdct[1], &s->imdct_fn[1], AV_TX_FLOAT_MDCT,
+                          1, 64, &scale, 0)) < 0)
+        return ret;
+
     ff_synth_filter_init(&s->synth);
 
     s->x96_rand = 1;
@@ -2433,8 +2454,8 @@ av_cold void ff_dca_core_close(DCACoreDecoder *s)
     av_freep(&s->float_dsp);
     av_freep(&s->fixed_dsp);
 
-    ff_mdct_end(&s->imdct[0]);
-    ff_mdct_end(&s->imdct[1]);
+    av_tx_uninit(&s->imdct[0]);
+    av_tx_uninit(&s->imdct[1]);
 
     av_freep(&s->subband_buffer);
     s->subband_size = 0;

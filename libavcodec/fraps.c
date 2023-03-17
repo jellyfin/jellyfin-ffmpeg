@@ -40,7 +40,7 @@
 #include "huffman.h"
 #include "bytestream.h"
 #include "bswapdsp.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "thread.h"
 
 #define FPS_TAG MKTAG('F', 'P', 'S', 'x')
@@ -133,18 +133,14 @@ static int fraps2_decode_plane(FrapsContext *s, uint8_t *dst, int stride, int w,
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *f,
+                        int *got_frame, AVPacket *avpkt)
 {
     FrapsContext * const s = avctx->priv_data;
     const uint8_t *buf     = avpkt->data;
     int buf_size           = avpkt->size;
-    ThreadFrame frame = { .f = data };
-    AVFrame * const f = data;
     uint32_t header;
     unsigned int version,header_size;
-    unsigned int x, y;
     const uint32_t *buf32;
     uint32_t *luma1,*luma2,*cb,*cr;
     uint32_t offs[4];
@@ -227,7 +223,7 @@ static int decode_frame(AVCodecContext *avctx,
                                      : AVCOL_RANGE_JPEG;
     avctx->colorspace = version & 1 ? AVCOL_SPC_UNSPECIFIED : AVCOL_SPC_BT709;
 
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, f, 0)) < 0)
         return ret;
 
     switch (version) {
@@ -241,12 +237,12 @@ static int decode_frame(AVCodecContext *avctx,
         }
 
         buf32 = (const uint32_t*)buf;
-        for (y = 0; y < avctx->height / 2; y++) {
+        for (ptrdiff_t y = 0; y < avctx->height / 2; y++) {
             luma1 = (uint32_t*)&f->data[0][  y * 2      * f->linesize[0] ];
             luma2 = (uint32_t*)&f->data[0][ (y * 2 + 1) * f->linesize[0] ];
             cr    = (uint32_t*)&f->data[1][  y          * f->linesize[1] ];
             cb    = (uint32_t*)&f->data[2][  y          * f->linesize[2] ];
-            for (x = 0; x < avctx->width; x += 8) {
+            for (ptrdiff_t x = 0; x < avctx->width; x += 8) {
                 *luma1++ = *buf32++;
                 *luma1++ = *buf32++;
                 *luma2++ = *buf32++;
@@ -261,18 +257,18 @@ static int decode_frame(AVCodecContext *avctx,
         if (is_pal) {
             uint32_t *pal = (uint32_t *)f->data[1];
 
-            for (y = 0; y < 256; y++) {
+            for (unsigned y = 0; y < 256; y++) {
                 pal[y] = AV_RL32(buf) | 0xFF000000;
                 buf += 4;
             }
 
-            for (y = 0; y <avctx->height; y++)
+            for (ptrdiff_t y = 0; y < avctx->height; y++)
                 memcpy(&f->data[0][y * f->linesize[0]],
                        &buf[y * avctx->width],
                        avctx->width);
         } else {
         /* Fraps v1 is an upside-down BGR24 */
-            for (y = 0; y<avctx->height; y++)
+            for (ptrdiff_t y = 0; y < avctx->height; y++)
                 memcpy(&f->data[0][(avctx->height - y - 1) * f->linesize[0]],
                        &buf[y * avctx->width * 3],
                        3 * avctx->width);
@@ -342,15 +338,14 @@ static av_cold int decode_end(AVCodecContext *avctx)
 }
 
 
-const AVCodec ff_fraps_decoder = {
-    .name           = "fraps",
-    .long_name      = NULL_IF_CONFIG_SMALL("Fraps"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_FRAPS,
+const FFCodec ff_fraps_decoder = {
+    .p.name         = "fraps",
+    CODEC_LONG_NAME("Fraps"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_FRAPS,
     .priv_data_size = sizeof(FrapsContext),
     .init           = decode_init,
     .close          = decode_end,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
 };

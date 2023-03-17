@@ -59,23 +59,38 @@ typedef struct GuidedContext {
     int planewidth[4];
     int planeheight[4];
 
+    float *I;
+    float *II;
+    float *P;
+    float *IP;
+    float *meanI;
+    float *meanII;
+    float *meanP;
+    float *meanIP;
+
+    float *A;
+    float *B;
+    float *meanA;
+    float *meanB;
+
     int (*box_slice)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } GuidedContext;
 
 #define OFFSET(x) offsetof(GuidedContext, x)
-#define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
+#define TFLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
+#define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 
 static const AVOption guided_options[] = {
-    { "radius",   "set the box radius",                               OFFSET(radius),   AV_OPT_TYPE_INT,   {.i64 = 3    },     1,                    20, FLAGS },
-    { "eps",      "set the regularization parameter (with square)",   OFFSET(eps),      AV_OPT_TYPE_FLOAT, {.dbl = 0.01 },   0.0,                     1, FLAGS },
-    { "mode",     "set filtering mode (0: basic mode; 1: fast mode)", OFFSET(mode),     AV_OPT_TYPE_INT,   {.i64 = BASIC}, BASIC,          NB_MODES - 1, FLAGS, "mode" },
-    { "basic",    "basic guided filter",                              0,                AV_OPT_TYPE_CONST, {.i64 = BASIC},     0,                     0, FLAGS, "mode" },
-    { "fast",     "fast guided filter",                               0,                AV_OPT_TYPE_CONST, {.i64 = FAST },     0,                     0, FLAGS, "mode" },
-    { "sub",      "subsampling ratio for fast mode",                  OFFSET(sub),      AV_OPT_TYPE_INT,   {.i64 = 4    },     2,                    64, FLAGS },
-    { "guidance", "set guidance mode (0: off mode; 1: on mode)",      OFFSET(guidance), AV_OPT_TYPE_INT,   {.i64 = OFF  },   OFF, NB_GUIDANCE_MODES - 1, FLAGS, "guidance" },
-    { "off",      "only one input is enabled",                        0,                AV_OPT_TYPE_CONST, {.i64 = OFF  },     0,                     0, FLAGS, "guidance" },
-    { "on",       "two inputs are required",                          0,                AV_OPT_TYPE_CONST, {.i64 = ON   },     0,                     0, FLAGS, "guidance" },
-    { "planes",   "set planes to filter",                             OFFSET(planes),   AV_OPT_TYPE_INT,   {.i64 = 1    },     0,                   0xF, FLAGS },
+    { "radius",   "set the box radius",                               OFFSET(radius),   AV_OPT_TYPE_INT,   {.i64 = 3    },     1,                    20, TFLAGS },
+    { "eps",      "set the regularization parameter (with square)",   OFFSET(eps),      AV_OPT_TYPE_FLOAT, {.dbl = 0.01 },   0.0,                     1, TFLAGS },
+    { "mode",     "set filtering mode (0: basic mode; 1: fast mode)", OFFSET(mode),     AV_OPT_TYPE_INT,   {.i64 = BASIC}, BASIC,          NB_MODES - 1, TFLAGS, "mode" },
+    { "basic",    "basic guided filter",                              0,                AV_OPT_TYPE_CONST, {.i64 = BASIC},     0,                     0, TFLAGS, "mode" },
+    { "fast",     "fast guided filter",                               0,                AV_OPT_TYPE_CONST, {.i64 = FAST },     0,                     0, TFLAGS, "mode" },
+    { "sub",      "subsampling ratio for fast mode",                  OFFSET(sub),      AV_OPT_TYPE_INT,   {.i64 = 4    },     2,                    64, TFLAGS },
+    { "guidance", "set guidance mode (0: off mode; 1: on mode)",      OFFSET(guidance), AV_OPT_TYPE_INT,   {.i64 = OFF  },   OFF, NB_GUIDANCE_MODES - 1,  FLAGS, "guidance" },
+    { "off",      "only one input is enabled",                        0,                AV_OPT_TYPE_CONST, {.i64 = OFF  },     0,                     0,  FLAGS, "guidance" },
+    { "on",       "two inputs are required",                          0,                AV_OPT_TYPE_CONST, {.i64 = ON   },     0,                     0,  FLAGS, "guidance" },
+    { "planes",   "set planes to filter",                             OFFSET(planes),   AV_OPT_TYPE_INT,   {.i64 = 1    },     0,                   0xF, TFLAGS },
     { NULL }
 };
 
@@ -196,38 +211,19 @@ static int guided_##name(AVFilterContext *ctx, GuidedContext *s,                
                                                                                         \
     ThreadData t;                                                                       \
     const int nb_threads = ff_filter_get_nb_threads(ctx);                               \
-    float *I;                                                                           \
-    float *II;                                                                          \
-    float *P;                                                                           \
-    float *IP;                                                                          \
-    float *meanI;                                                                       \
-    float *meanII;                                                                      \
-    float *meanP;                                                                       \
-    float *meanIP;                                                                      \
-    float *A;                                                                           \
-    float *B;                                                                           \
-    float *meanA;                                                                       \
-    float *meanB;                                                                       \
+    float *I = s->I;                                                                    \
+    float *II = s->II;                                                                  \
+    float *P = s->P;                                                                    \
+    float *IP = s->IP;                                                                  \
+    float *meanI = s->meanI;                                                             \
+    float *meanII = s->meanII;                                                          \
+    float *meanP = s->meanP;                                                            \
+    float *meanIP = s->meanIP;                                                          \
+    float *A = s->A;                                                                    \
+    float *B = s->B;                                                                    \
+    float *meanA = s->meanA;                                                            \
+    float *meanB = s->meanB;                                                            \
                                                                                         \
-    I      = av_calloc(w * h, sizeof(float));                                           \
-    II     = av_calloc(w * h, sizeof(float));                                           \
-    P      = av_calloc(w * h, sizeof(float));                                           \
-    IP     = av_calloc(w * h, sizeof(float));                                           \
-    meanI  = av_calloc(w * h, sizeof(float));                                           \
-    meanII = av_calloc(w * h, sizeof(float));                                           \
-    meanP  = av_calloc(w * h, sizeof(float));                                           \
-    meanIP = av_calloc(w * h, sizeof(float));                                           \
-                                                                                        \
-    A      = av_calloc(w * h, sizeof(float));                                           \
-    B      = av_calloc(w * h, sizeof(float));                                           \
-    meanA  = av_calloc(w * h, sizeof(float));                                           \
-    meanB  = av_calloc(w * h, sizeof(float));                                           \
-                                                                                        \
-    if (!I || !II || !P || !IP || !meanI || !meanII || !meanP ||                        \
-        !meanIP || !A || !B || !meanA || !meanB) {                                      \
-        ret = AVERROR(ENOMEM);                                                          \
-        goto end;                                                                       \
-    }                                                                                   \
     for (int i = 0;i < h;i++) {                                                         \
         for (int j = 0;j < w;j++) {                                                     \
             int x = i * w + j;                                                          \
@@ -279,19 +275,7 @@ static int guided_##name(AVFilterContext *ctx, GuidedContext *s,                
                                       meanB[x] * maxval;                                \
         }                                                                               \
     }                                                                                   \
-end:                                                                                    \
-    av_freep(&I);                                                                       \
-    av_freep(&II);                                                                      \
-    av_freep(&P);                                                                       \
-    av_freep(&IP);                                                                      \
-    av_freep(&meanI);                                                                   \
-    av_freep(&meanII);                                                                  \
-    av_freep(&meanP);                                                                   \
-    av_freep(&meanIP);                                                                  \
-    av_freep(&A);                                                                       \
-    av_freep(&B);                                                                       \
-    av_freep(&meanA);                                                                   \
-    av_freep(&meanB);                                                                   \
+                                                                                        \
     return ret;                                                                         \
 }
 
@@ -337,10 +321,12 @@ static int process_frame(FFFrameSync *fs)
     if (ret < 0)
         return ret;
 
+    if (ctx->is_disabled)
+        return ff_filter_frame(outlink, main_frame);
+
     ret = filter_frame(ctx, &out_frame, main_frame, ref_frame);
-    if (ret < 0) {
+    if (ret < 0)
         return ret;
-    }
     av_frame_free(&main_frame);
 
     return ff_filter_frame(outlink, out_frame);
@@ -349,11 +335,10 @@ static int process_frame(FFFrameSync *fs)
 static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
-
     GuidedContext *s = ctx->priv;
     AVFilterLink *mainlink = ctx->inputs[0];
     FFFrameSyncIn *in;
-    int ret;
+    int w, h, ret;
 
     if (s->guidance == ON) {
         if (ctx->inputs[0]->w != ctx->inputs[1]->w ||
@@ -363,11 +348,29 @@ static int config_output(AVFilterLink *outlink)
         }
     }
 
-    outlink->w = mainlink->w;
-    outlink->h = mainlink->h;
+    outlink->w = w = mainlink->w;
+    outlink->h = h = mainlink->h;
     outlink->time_base = mainlink->time_base;
     outlink->sample_aspect_ratio = mainlink->sample_aspect_ratio;
     outlink->frame_rate = mainlink->frame_rate;
+
+    s->I      = av_calloc(w * h, sizeof(*s->I));
+    s->II     = av_calloc(w * h, sizeof(*s->II));
+    s->P      = av_calloc(w * h, sizeof(*s->P));
+    s->IP     = av_calloc(w * h, sizeof(*s->IP));
+    s->meanI  = av_calloc(w * h, sizeof(*s->meanI));
+    s->meanII = av_calloc(w * h, sizeof(*s->meanII));
+    s->meanP  = av_calloc(w * h, sizeof(*s->meanP));
+    s->meanIP = av_calloc(w * h, sizeof(*s->meanIP));
+
+    s->A      = av_calloc(w * h, sizeof(*s->A));
+    s->B      = av_calloc(w * h, sizeof(*s->B));
+    s->meanA  = av_calloc(w * h, sizeof(*s->meanA));
+    s->meanB  = av_calloc(w * h, sizeof(*s->meanA));
+
+    if (!s->I || !s->II || !s->P || !s->IP || !s->meanI || !s->meanII || !s->meanP ||
+        !s->meanIP || !s->A || !s->B || !s->meanA || !s->meanB)
+        return AVERROR(ENOMEM);
 
     if (s->guidance == OFF)
         return 0;
@@ -395,6 +398,8 @@ static int config_output(AVFilterLink *outlink)
 static int activate(AVFilterContext *ctx)
 {
     GuidedContext *s = ctx->priv;
+    AVFilterLink *outlink = ctx->outputs[0];
+    AVFilterLink *inlink = ctx->inputs[0];
     AVFrame *frame = NULL;
     AVFrame *out = NULL;
     int ret, status;
@@ -402,23 +407,26 @@ static int activate(AVFilterContext *ctx)
     if (s->guidance)
         return ff_framesync_activate(&s->fs);
 
-    FF_FILTER_FORWARD_STATUS_BACK(ctx->outputs[0], ctx->inputs[0]);
+    FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
-    if ((ret = ff_inlink_consume_frame(ctx->inputs[0], &frame)) > 0) {
+    if ((ret = ff_inlink_consume_frame(inlink, &frame)) > 0) {
+        if (ctx->is_disabled)
+            return ff_filter_frame(outlink, frame);
+
         ret = filter_frame(ctx, &out, frame, frame);
         av_frame_free(&frame);
         if (ret < 0)
             return ret;
-        ret = ff_filter_frame(ctx->outputs[0], out);
+        ret = ff_filter_frame(outlink, out);
     }
     if (ret < 0)
         return ret;
-    if (ff_inlink_acknowledge_status(ctx->inputs[0], &status, &pts)) {
-        ff_outlink_set_status(ctx->outputs[0], status, pts);
+    if (ff_inlink_acknowledge_status(inlink, &status, &pts)) {
+        ff_outlink_set_status(outlink, status, pts);
         return 0;
     }
-    if (ff_outlink_frame_wanted(ctx->outputs[0]))
-        ff_inlink_request_frame(ctx->inputs[0]);
+    if (ff_outlink_frame_wanted(outlink))
+        ff_inlink_request_frame(inlink);
     return 0;
 }
 
@@ -452,22 +460,21 @@ static av_cold void uninit(AVFilterContext *ctx)
     GuidedContext *s = ctx->priv;
     if (s->guidance == ON)
         ff_framesync_uninit(&s->fs);
+
+    av_freep(&s->I);
+    av_freep(&s->II);
+    av_freep(&s->P);
+    av_freep(&s->IP);
+    av_freep(&s->meanI);
+    av_freep(&s->meanII);
+    av_freep(&s->meanP);
+    av_freep(&s->meanIP);
+    av_freep(&s->A);
+    av_freep(&s->B);
+    av_freep(&s->meanA);
+    av_freep(&s->meanB);
+
     return;
-}
-
-static int process_command(AVFilterContext *ctx,
-                           const char *cmd,
-                           const char *arg,
-                           char *res,
-                           int res_len,
-                           int flags)
-{
-    int ret = ff_filter_process_command(ctx, cmd, arg, res, res_len, flags);
-
-    if (ret < 0)
-        return ret;
-
-    return 0;
 }
 
 static const AVFilterPad guided_outputs[] = {
@@ -490,6 +497,6 @@ const AVFilter ff_vf_guided = {
     FILTER_OUTPUTS(guided_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags           = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_SLICE_THREADS |
-                       AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
-    .process_command = process_command,
+                       AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+    .process_command = ff_filter_process_command,
 };

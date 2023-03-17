@@ -20,14 +20,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "avformat.h"
 #include "internal.h"
-#include "avio_internal.h"
 #include "rawdec.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/intreadwrite.h"
+
+#include "libavcodec/avcodec.h"
 
 #define RAW_PACKET_SIZE 1024
 

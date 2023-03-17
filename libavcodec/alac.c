@@ -52,7 +52,7 @@
 #include "avcodec.h"
 #include "get_bits.h"
 #include "bytestream.h"
-#include "internal.h"
+#include "codec_internal.h"
 #include "thread.h"
 #include "unary.h"
 #include "mathops.h"
@@ -270,10 +270,9 @@ static int decode_element(AVCodecContext *avctx, AVFrame *frame, int ch_index,
         return AVERROR_INVALIDDATA;
     }
     if (!alac->nb_samples) {
-        ThreadFrame tframe = { .f = frame };
         /* get output buffer */
         frame->nb_samples = output_samples;
-        if ((ret = ff_thread_get_buffer(avctx, &tframe, 0)) < 0)
+        if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
             return ret;
     } else if (output_samples != alac->nb_samples) {
         av_log(avctx, AV_LOG_ERROR, "sample count mismatch: %"PRIu32" != %d\n",
@@ -414,11 +413,10 @@ static int decode_element(AVCodecContext *avctx, AVFrame *frame, int ch_index,
     return 0;
 }
 
-static int alac_decode_frame(AVCodecContext *avctx, void *data,
+static int alac_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
     ALACContext *alac = avctx->priv_data;
-    AVFrame *frame    = data;
     enum AlacRawDataBlockType element;
     int channels;
     int ch, ret, got_end;
@@ -578,19 +576,17 @@ static av_cold int alac_decode_init(AVCodecContext * avctx)
 
     if (alac->channels < 1) {
         av_log(avctx, AV_LOG_WARNING, "Invalid channel count\n");
-        alac->channels = avctx->channels;
-    } else {
-        if (alac->channels > ALAC_MAX_CHANNELS)
-            alac->channels = avctx->channels;
-        else
-            avctx->channels = alac->channels;
+        if (avctx->ch_layout.nb_channels < 1)
+            return AVERROR(EINVAL);
+        alac->channels = avctx->ch_layout.nb_channels;
     }
-    if (avctx->channels > ALAC_MAX_CHANNELS || avctx->channels <= 0 ) {
+    if (alac->channels > ALAC_MAX_CHANNELS) {
         avpriv_report_missing_feature(avctx, "Channel count %d",
-                                      avctx->channels);
+                                      alac->channels);
         return AVERROR_PATCHWELCOME;
     }
-    avctx->channel_layout = ff_alac_channel_layouts[alac->channels - 1];
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout = ff_alac_ch_layouts[alac->channels - 1];
 
     if ((ret = allocate_buffers(alac)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "Error allocating buffers\n");
@@ -616,16 +612,16 @@ static const AVClass alac_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_alac_decoder = {
-    .name           = "alac",
-    .long_name      = NULL_IF_CONFIG_SMALL("ALAC (Apple Lossless Audio Codec)"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_ALAC,
+const FFCodec ff_alac_decoder = {
+    .p.name         = "alac",
+    CODEC_LONG_NAME("ALAC (Apple Lossless Audio Codec)"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_ALAC,
     .priv_data_size = sizeof(ALACContext),
     .init           = alac_decode_init,
     .close          = alac_decode_close,
-    .decode         = alac_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_CHANNEL_CONF,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
-    .priv_class     = &alac_class
+    FF_CODEC_DECODE_CB(alac_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_CHANNEL_CONF,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .p.priv_class   = &alac_class
 };

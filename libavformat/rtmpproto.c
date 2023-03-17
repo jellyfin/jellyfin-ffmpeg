@@ -24,6 +24,8 @@
  * RTMP protocol
  */
 
+#include "config_components.h"
+
 #include "libavcodec/bytestream.h"
 #include "libavutil/avstring.h"
 #include "libavutil/base64.h"
@@ -42,6 +44,7 @@
 #include "rtmpcrypt.h"
 #include "rtmppkt.h"
 #include "url.h"
+#include "version.h"
 
 #if CONFIG_ZLIB
 #include <zlib.h>
@@ -1854,11 +1857,10 @@ static int write_begin(URLContext *s)
 }
 
 static int write_status(URLContext *s, RTMPPacket *pkt,
-                        const char *status, const char *filename)
+                        const char *status, const char *description, const char *details)
 {
     RTMPContext *rt = s->priv_data;
     RTMPPacket spkt = { 0 };
-    char statusmsg[128];
     uint8_t *pp;
     int ret;
 
@@ -1881,11 +1883,11 @@ static int write_status(URLContext *s, RTMPPacket *pkt,
     ff_amf_write_field_name(&pp, "code");
     ff_amf_write_string(&pp, status);
     ff_amf_write_field_name(&pp, "description");
-    snprintf(statusmsg, sizeof(statusmsg),
-             "%s is now published", filename);
-    ff_amf_write_string(&pp, statusmsg);
-    ff_amf_write_field_name(&pp, "details");
-    ff_amf_write_string(&pp, filename);
+    ff_amf_write_string(&pp, description);
+    if (details) {
+        ff_amf_write_field_name(&pp, "details");
+        ff_amf_write_string(&pp, details);
+    }
     ff_amf_write_object_end(&pp);
 
     spkt.size = pp - spkt.data;
@@ -1961,20 +1963,22 @@ static int send_invoke_response(URLContext *s, RTMPPacket *pkt)
         pp = spkt.data;
         ff_amf_write_string(&pp, "onFCPublish");
     } else if (!strcmp(command, "publish")) {
+        char statusmsg[128];
+        snprintf(statusmsg, sizeof(statusmsg), "%s is now published", filename);
         ret = write_begin(s);
         if (ret < 0)
             return ret;
 
         // Send onStatus(NetStream.Publish.Start)
         return write_status(s, pkt, "NetStream.Publish.Start",
-                           filename);
+                            statusmsg, filename);
     } else if (!strcmp(command, "play")) {
         ret = write_begin(s);
         if (ret < 0)
             return ret;
         rt->state = STATE_SENDING;
         return write_status(s, pkt, "NetStream.Play.Start",
-                            filename);
+                            "playing stream", NULL);
     } else {
         if ((ret = ff_rtmp_packet_create(&spkt, RTMP_SYSTEM_CHANNEL,
                                          RTMP_PT_INVOKE, 0,

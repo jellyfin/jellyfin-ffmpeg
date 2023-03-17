@@ -29,11 +29,11 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "encode.h"
 #include "get_bits.h"
 #include "put_bits.h"
-#include "golomb.h"
-#include "internal.h"
+#include "put_golomb.h"
 #include "mathops.h"
 #include "mjpeg.h"
 #include "jpegls.h"
@@ -413,8 +413,6 @@ static int encode_picture_ls(AVCodecContext *avctx, AVPacket *pkt,
     /* End of image */
     put_marker_byteu(&pb, EOI);
 
-    emms_c();
-
     av_shrink_packet(pkt, bytestream2_tell_p(&pb));
     *got_packet = 1;
     return 0;
@@ -473,22 +471,22 @@ static const AVClass jpegls_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVCodec ff_jpegls_encoder = {
-    .name           = "jpegls",
-    .long_name      = NULL_IF_CONFIG_SMALL("JPEG-LS"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_JPEGLS,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+const FFCodec ff_jpegls_encoder = {
+    .p.name         = "jpegls",
+    CODEC_LONG_NAME("JPEG-LS"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_JPEGLS,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(JPEGLSContext),
-    .priv_class     = &jpegls_class,
+    .p.priv_class   = &jpegls_class,
     .init           = encode_jpegls_init,
-    .encode2        = encode_picture_ls,
+    FF_CODEC_ENCODE_CB(encode_picture_ls),
     .close          = encode_jpegls_close,
-    .pix_fmts       = (const enum AVPixelFormat[]) {
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_BGR24, AV_PIX_FMT_RGB24,
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY16,
         AV_PIX_FMT_NONE
     },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

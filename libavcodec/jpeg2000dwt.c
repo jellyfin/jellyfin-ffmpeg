@@ -25,10 +25,10 @@
  * Discrete wavelet transform
  */
 
-#include "libavutil/common.h"
+#include "libavutil/error.h"
+#include "libavutil/macros.h"
 #include "libavutil/mem.h"
 #include "jpeg2000dwt.h"
-#include "internal.h"
 
 /* Defines for 9/7 DWT lifting parameters.
  * Parameters are in float. */
@@ -81,7 +81,7 @@ static void sd_1d53(int *p, int i0, int i1)
 
     if (i1 <= i0 + 1) {
         if (i0 == 1)
-            p[1] <<= 1;
+            p[1] *= 2;
         return;
     }
 

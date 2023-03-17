@@ -21,7 +21,8 @@
 #include "libavutil/intreadwrite.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 
 
 static av_cold int m101_decode_init(AVCodecContext *avctx)
@@ -43,20 +44,14 @@ static av_cold int m101_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int m101_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                      AVPacket *avpkt)
+static int m101_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int stride, ret;
     int x, y;
     int min_stride = 2 * avctx->width;
     int bits = avctx->extradata[2*4];
-    AVFrame *frame = data;
-
-    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
-        return ret;
-    frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
 
     stride = AV_RL32(avctx->extradata + 5*4);
 
@@ -69,6 +64,10 @@ static int m101_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         return AVERROR_INVALIDDATA;
     }
 
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
+        return ret;
+    frame->pict_type = AV_PICTURE_TYPE_I;
+    frame->key_frame = 1;
     frame->interlaced_frame = ((avctx->extradata[3*4] & 3) != 3);
     if (frame->interlaced_frame)
         frame->top_field_first = avctx->extradata[3*4] & 1;
@@ -105,13 +104,12 @@ static int m101_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     return avpkt->size;
 }
 
-const AVCodec ff_m101_decoder = {
-    .name           = "m101",
-    .long_name      = NULL_IF_CONFIG_SMALL("Matrox Uncompressed SD"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_M101,
+const FFCodec ff_m101_decoder = {
+    .p.name         = "m101",
+    CODEC_LONG_NAME("Matrox Uncompressed SD"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_M101,
     .init           = m101_decode_init,
-    .decode         = m101_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(m101_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };

@@ -27,6 +27,7 @@
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
+#include "mux.h"
 
 typedef struct TTAMuxContext {
     AVIOContext *seek_table;
@@ -82,7 +83,7 @@ static int tta_write_header(AVFormatContext *s)
     ffio_init_checksum(tta->seek_table, ff_crcEDB88320_update, UINT32_MAX);
     avio_write(s->pb, "TTA1", 4);
     avio_wl16(s->pb, par->extradata ? AV_RL16(par->extradata + 4) : 1);
-    avio_wl16(s->pb, par->channels);
+    avio_wl16(s->pb, par->ch_layout.nb_channels);
     avio_wl16(s->pb, par->bits_per_raw_sample);
     avio_wl32(s->pb, par->sample_rate);
 
@@ -165,14 +166,14 @@ static void tta_deinit(AVFormatContext *s)
     avpriv_packet_list_free(&tta->queue);
 }
 
-const AVOutputFormat ff_tta_muxer = {
-    .name              = "tta",
-    .long_name         = NULL_IF_CONFIG_SMALL("TTA (True Audio)"),
-    .mime_type         = "audio/x-tta",
-    .extensions        = "tta",
+const FFOutputFormat ff_tta_muxer = {
+    .p.name            = "tta",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("TTA (True Audio)"),
+    .p.mime_type       = "audio/x-tta",
+    .p.extensions      = "tta",
     .priv_data_size    = sizeof(TTAMuxContext),
-    .audio_codec       = AV_CODEC_ID_TTA,
-    .video_codec       = AV_CODEC_ID_NONE,
+    .p.audio_codec     = AV_CODEC_ID_TTA,
+    .p.video_codec     = AV_CODEC_ID_NONE,
     .init              = tta_init,
     .deinit            = tta_deinit,
     .write_header      = tta_write_header,

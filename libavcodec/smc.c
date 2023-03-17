@@ -28,15 +28,12 @@
  * The SMC decoder outputs PAL8 colorspace data.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
 #include "decode.h"
-#include "internal.h"
 
 #define CPAIR 2
 #define CQUAD 4
@@ -48,8 +45,6 @@ typedef struct SmcContext {
 
     AVCodecContext *avctx;
     AVFrame *frame;
-
-    GetByteContext gb;
 
     /* SMC color tables */
     uint8_t color_pairs[COLORS_PER_TABLE * CPAIR];
@@ -78,9 +73,8 @@ typedef struct SmcContext {
     } \
 }
 
-static int smc_decode_stream(SmcContext *s)
+static int smc_decode_stream(SmcContext *s, GetByteContext *gb)
 {
-    GetByteContext *gb = &s->gb;
     int width = s->avctx->width;
     int height = s->avctx->height;
     int stride = s->frame->linesize[0];
@@ -427,32 +421,31 @@ static av_cold int smc_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int smc_decode_frame(AVCodecContext *avctx,
-                             void *data, int *got_frame,
-                             AVPacket *avpkt)
+static int smc_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                            int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     SmcContext *s = avctx->priv_data;
+    GetByteContext gb;
     int ret;
     int total_blocks = ((s->avctx->width + 3) / 4) * ((s->avctx->height + 3) / 4);
 
     if (total_blocks / 1024 > avpkt->size)
         return AVERROR_INVALIDDATA;
 
-    bytestream2_init(&s->gb, buf, buf_size);
-
     if ((ret = ff_reget_buffer(avctx, s->frame, 0)) < 0)
         return ret;
 
     s->frame->palette_has_changed = ff_copy_palette(s->pal, avpkt, avctx);
 
-    ret = smc_decode_stream(s);
+    bytestream2_init(&gb, buf, buf_size);
+    ret = smc_decode_stream(s, &gb);
     if (ret < 0)
         return ret;
 
     *got_frame      = 1;
-    if ((ret = av_frame_ref(data, s->frame)) < 0)
+    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
         return ret;
 
     /* always report that the buffer was completely consumed */
@@ -468,15 +461,14 @@ static av_cold int smc_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-const AVCodec ff_smc_decoder = {
-    .name           = "smc",
-    .long_name      = NULL_IF_CONFIG_SMALL("QuickTime Graphics (SMC)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_SMC,
+const FFCodec ff_smc_decoder = {
+    .p.name         = "smc",
+    CODEC_LONG_NAME("QuickTime Graphics (SMC)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_SMC,
     .priv_data_size = sizeof(SmcContext),
     .init           = smc_decode_init,
     .close          = smc_decode_end,
-    .decode         = smc_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(smc_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };
