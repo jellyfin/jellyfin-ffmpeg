@@ -156,9 +156,8 @@ prepare_extra_amd64() {
 
     # FFNVCODEC
     pushd ${SOURCE_DIR}
-    git clone --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
+    git clone -b n12.0.16.0 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
     pushd nv-codec-headers
-    git reset --hard "c5e4af7"
     make && make install
     popd
     popd
@@ -252,7 +251,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-23.1.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
+    git clone -b intel-mediasdk-23.1.3 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -269,7 +268,7 @@ prepare_extra_amd64() {
 
     # ONEVPL (dispatcher + header)
     pushd ${SOURCE_DIR}
-    git clone -b v2023.1.2 --depth=1 https://github.com/oneapi-src/oneVPL.git
+    git clone -b v2023.1.3 --depth=1 https://github.com/oneapi-src/oneVPL.git
     pushd oneVPL
     sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' dispatcher/vpl/mfx_dispatcher_vpl_loader.cpp
     mkdir build && pushd build
@@ -293,7 +292,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.1.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-23.1.3 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -307,7 +306,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.1.2 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-23.1.3 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     # Possible fix for TGLx timeout caused by 'HCP Scalability Decode' under heavy load
     wget -q -O - https://github.com/intel/media-driver/commit/284750bf.patch | git apply
@@ -362,7 +361,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2023.2 --depth=1 https://github.com/google/shaderc.git
+    git clone -b v2023.3 --depth=1 https://github.com/google/shaderc.git
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -391,9 +390,10 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         git clone -b main https://gitlab.freedesktop.org/mesa/mesa.git
         pushd mesa
-        git reset --hard "a19a37e8"
-        # fix av1 main nv12 decoding
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/commit/39c6f1f5.patch | git apply
+        git reset --hard "10622ccc"
+        # fix building with python 3.8
+        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/commit/044db56a.patch | git apply
+        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/commit/40f89860.patch | git apply
         popd
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa/src/gallium/frontends/va/picture.c"
