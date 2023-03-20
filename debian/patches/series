@@ -48,3 +48,4 @@
 0048-add-fixes-for-vaapi-drm-vulkan-tearing.patch
 0049-add-fixes-for-the-incorrect-null-terminator-in-assenc.patch
 0050-skip-loading-plugins-on-vpl-runtime.patch
+0051-fix-the-empty-output-in-webvtt-transcoding.patch
