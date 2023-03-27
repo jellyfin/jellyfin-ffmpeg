@@ -322,7 +322,7 @@ void ff_png_filter_row(PNGDSPContext *dsp, uint8_t *dst, int filter_type,
 static void deloco_ ## NAME(TYPE *dst, int size, int alpha) \
 { \
     int i; \
-    for (i = 0; i < size; i += 3 + alpha) { \
+    for (i = 0; i < size - 2; i += 3 + alpha) { \
         int g = dst [i + 1]; \
         dst[i + 0] += g; \
         dst[i + 2] += g; \
@@ -1231,6 +1231,7 @@ static int decode_frame_common(AVCodecContext *avctx, PNGDecContext *s,
                 }
                 av_log(avctx, AV_LOG_ERROR, ", skipping\n");
                 bytestream2_skip(&s->gb, length + 8); /* tag */
+                continue;
             }
         }
         tag = bytestream2_get_le32(&s->gb);

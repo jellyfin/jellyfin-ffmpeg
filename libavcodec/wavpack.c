@@ -129,7 +129,7 @@ static av_always_inline unsigned get_tail(GetBitContext *gb, int k)
     e   = (1 << (p + 1)) - k - 1;
     res = get_bitsz(gb, p);
     if (res >= e)
-        res = (res << 1) - e + get_bits1(gb);
+        res = res * 2U - e + get_bits1(gb);
     return res;
 }
 
@@ -499,6 +499,8 @@ static int wv_unpack_dsd_high(WavpackFrameContext *s, uint8_t *dst_left, uint8_t
                 sp[0].fltr0 = 0;
             }
 
+            if (DSD_BYTE_READY(high, low) && !bytestream2_get_bytes_left(&s->gbyte))
+                return AVERROR_INVALIDDATA;
             while (DSD_BYTE_READY(high, low) && bytestream2_get_bytes_left(&s->gbyte)) {
                 value = (value << 8) | bytestream2_get_byte(&s->gbyte);
                 high = (high << 8) | 0xff;
@@ -534,6 +536,8 @@ static int wv_unpack_dsd_high(WavpackFrameContext *s, uint8_t *dst_left, uint8_t
                 sp[1].fltr0 = 0;
             }
 
+            if (DSD_BYTE_READY(high, low) && !bytestream2_get_bytes_left(&s->gbyte))
+                return AVERROR_INVALIDDATA;
             while (DSD_BYTE_READY(high, low) && bytestream2_get_bytes_left(&s->gbyte)) {
                 value = (value << 8) | bytestream2_get_byte(&s->gbyte);
                 high = (high << 8) | 0xff;
