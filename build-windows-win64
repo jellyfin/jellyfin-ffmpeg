@@ -9,7 +9,7 @@ for dep in docker make; do
 done
 
 # Use the latest distro for toolchains
-distro="ubuntu:kinetic"
+distro="ubuntu:lunar"
 image_name="jellyfin-ffmpeg-build-windows-win64"
 package_temporary_dir="$( mktemp -d )"
 current_user="$( whoami )"
