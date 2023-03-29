@@ -2553,7 +2553,9 @@ static int decode_chunks(AVCodecContext *avctx, AVFrame *picture,
             }
             break;
         case EXT_START_CODE:
-            init_get_bits(&s2->gb, buf_ptr, input_size * 8);
+            ret = init_get_bits8(&s2->gb, buf_ptr, input_size);
+            if (ret < 0)
+                return ret;
 
             switch (get_bits(&s2->gb, 4)) {
             case 0x1:
@@ -2975,6 +2977,10 @@ static int ipu_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     MpegEncContext *m = &s->m;
     GetBitContext *gb = &m->gb;
     int ret;
+
+    // Check for minimal intra MB size (considering mb header, luma & chroma dc VLC, ac EOB VLC)
+    if (avpkt->size*8LL < (avctx->width+15)/16 * ((avctx->height+15)/16) * (2 + 3*4 + 2*2 + 2*6))
+        return AVERROR_INVALIDDATA;
 
     ret = ff_get_buffer(avctx, frame, 0);
     if (ret < 0)

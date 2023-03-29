@@ -376,7 +376,7 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         git clone https://gitlab.freedesktop.org/mesa/mesa.git
         pushd mesa
-        git reset --hard "f39ffc69"
+        git reset --hard "5e9ea154"
         popd
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa/src/gallium/frontends/va/picture.c"
