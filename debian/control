@@ -35,6 +35,8 @@ Build-Depends:
  libtheora-dev,
 # --enable-libvorbis
  libvorbis-dev,
+# --enable-libopenmpt
+ libopenmpt-dev,
 # --enable-libwebp
  libwebp-dev,
 # --enable-libvpx
