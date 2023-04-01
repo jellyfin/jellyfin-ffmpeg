@@ -279,7 +279,13 @@ prepare_extra_amd64() {
     git clone -b intel-onevpl-23.1.5 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
-    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+          -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_RUNTIME=ON \
+          -DBUILD_{TESTS,TOOLS}=OFF \
+          -DMFX_ENABLE_{KERNELS,ENCTOOLS,AENC}=ON \
+          ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libmfx-gen* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
