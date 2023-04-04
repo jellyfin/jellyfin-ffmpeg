@@ -319,6 +319,25 @@ make -j$(nproc)
 make install
 popd
 
+# OPENMPT
+mkdir mpt
+pushd mpt
+mpt_ver="0.6.9"
+mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
+wget ${mpt_link} -O mpt.tar.gz
+tar xaf mpt.tar.gz
+pushd libopenmpt-${mpt_ver}+release.autotools
+./configure \
+    --prefix=${FF_DEPS_PREFIX} \
+    --host=${FF_TOOLCHAIN} \
+    --enable-static \
+    --disable-{shared,examples,tests,openmpt123} \
+    --without-{mpg123,portaudio,portaudiocpp,sndfile,flac}
+make -j$(nproc)
+make install
+popd
+popd
+
 # LIBWEBP
 git clone -b v1.2.3 --depth=1 https://chromium.googlesource.com/webm/libwebp
 pushd libwebp
@@ -373,11 +392,14 @@ make install
 popd
 
 # X265
-git clone -b 3.5 --depth=1 https://bitbucket.org/multicoreware/x265_git.git
+git clone --depth=1 https://bitbucket.org/multicoreware/x265_git.git
 pushd x265_git
+# Wa for https://bitbucket.org/multicoreware/x265_git/issues/624
+rm -rf .git
 x265_conf="
     -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN}
     -DCMAKE_INSTALL_PREFIX=${FF_DEPS_PREFIX}
+    -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
     -DENABLE_ASSEMBLY=ON
     -DENABLE_SHARED=OFF
@@ -429,6 +451,7 @@ SAVE
 END
 EOF
 make install
+echo "Libs.private: -lstdc++" >> ${FF_DEPS_PREFIX}/lib/pkgconfig/x265.pc
 popd
 popd
 
@@ -586,6 +609,7 @@ fi
     --enable-libopus \
     --enable-libtheora \
     --enable-libvorbis \
+    --enable-libopenmpt \
     --enable-libwebp \
     --enable-libvpx \
     --enable-libzimg \

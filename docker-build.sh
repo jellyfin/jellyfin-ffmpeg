@@ -256,7 +256,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-23.1.4 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
+    git clone -b intel-mediasdk-23.1.5 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -276,10 +276,16 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.1.4 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-23.1.5 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
-    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
+    cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+          -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_RUNTIME=ON \
+          -DBUILD_{TESTS,TOOLS}=OFF \
+          -DMFX_ENABLE_{KERNELS,ENCTOOLS,AENC}=ON \
+          ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libmfx-gen* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
@@ -290,7 +296,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.1.4 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-23.1.5 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     # Possible fix for TGLx timeout caused by 'HCP Scalability Decode' under heavy load
     wget -q -O - https://github.com/intel/media-driver/commit/284750bf.patch | git apply
@@ -376,7 +382,7 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         git clone https://gitlab.freedesktop.org/mesa/mesa.git
         pushd mesa
-        git reset --hard "5e9ea154"
+        git reset --hard "1995762d"
         popd
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa/src/gallium/frontends/va/picture.c"
