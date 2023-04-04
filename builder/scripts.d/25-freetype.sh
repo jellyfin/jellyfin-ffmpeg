@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://gitlab.freedesktop.org/freetype/freetype.git"
-SCRIPT_COMMIT="4f0a55d15ed1c9af267ed8223cc2f04307a3d656"
+SCRIPT_COMMIT="6d7b8b22c4f4ca6cde1998997ae4ea2aa6e57d26"
 
 ffbuild_enabled() {
     return 0

@@ -47,3 +47,4 @@
 0047-update-the-default-params-of-qsv-encoders.patch
 0048-fix-the-empty-output-in-webvtt-transcoding.patch
 0049-add-queued-key-fixes-from-upstream.patch
+0050-revert-libplacebo-to-ad-hoc-mode.patch

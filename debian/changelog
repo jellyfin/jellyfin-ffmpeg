@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (6.0-2) unstable; urgency=medium
+
+  * Add a tone-mapping mode RGB in CUDA & OpenCL
+  * Update dependencies
+  * Enable libopenmpt
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 29 Mar 2023 21:55:14 +0800
+
 jellyfin-ffmpeg (6.0-1) unstable; urgency=medium
 
   * New upstream version 6.0

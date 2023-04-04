@@ -33,6 +33,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libopus \
 	--enable-libtheora \
 	--enable-libvorbis \
+	--enable-libopenmpt \
 	--enable-libdav1d \
 	--enable-libwebp \
 	--enable-libvpx \
