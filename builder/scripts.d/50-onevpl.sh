@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/oneapi-src/oneVPL.git"
-SCRIPT_COMMIT="4cdf44ccaa605460499c52f39eff5517da2fc3c8"
+SCRIPT_COMMIT="208c0d4e8c6fac9d2058e6a169a4322f94f5306a"
 
 ffbuild_enabled() {
     [[ $TARGET == *arm64 ]] && return -1
