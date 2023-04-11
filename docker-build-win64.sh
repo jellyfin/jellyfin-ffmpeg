@@ -557,7 +557,7 @@ mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
 
 # VPL
-git clone -b v2023.1.3 --depth=1 https://github.com/oneapi-src/oneVPL.git
+git clone -b v2023.2.0 --depth=1 https://github.com/oneapi-src/oneVPL.git
 pushd oneVPL
 mkdir build && pushd build
 cmake \
