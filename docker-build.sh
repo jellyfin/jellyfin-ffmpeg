@@ -251,7 +251,7 @@ prepare_extra_amd64() {
     # Provides MSDK runtime (libmfxhw64.so.1) for 11th Gen Rocket Lake and older
     # Provides MFX dispatcher (libmfx.so.1) for FFmpeg
     pushd ${SOURCE_DIR}
-    git clone -b intel-mediasdk-23.1.5 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
+    git clone -b intel-mediasdk-23.1.6 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
     pushd MediaSDK
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
@@ -268,7 +268,7 @@ prepare_extra_amd64() {
 
     # ONEVPL (dispatcher + header)
     pushd ${SOURCE_DIR}
-    git clone -b v2023.1.3 --depth=1 https://github.com/oneapi-src/oneVPL.git
+    git clone -b v2023.2.0 --depth=1 https://github.com/oneapi-src/oneVPL.git
     pushd oneVPL
     sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' dispatcher/vpl/mfx_dispatcher_vpl_loader.cpp
     mkdir build && pushd build
@@ -312,7 +312,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.1.5 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-23.1.6 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     # Possible fix for TGLx timeout caused by 'HCP Scalability Decode' under heavy load
     wget -q -O - https://github.com/intel/media-driver/commit/284750bf.patch | git apply
@@ -398,7 +398,7 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         git clone -b main https://gitlab.freedesktop.org/mesa/mesa.git
         pushd mesa
-        git reset --hard "1995762d"
+        git reset --hard "4b182dbc"
         popd
         # disable the broken hevc packed header
         MESA_VA_PIC="mesa/src/gallium/frontends/va/picture.c"

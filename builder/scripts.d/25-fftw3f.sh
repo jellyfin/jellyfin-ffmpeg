@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/FFTW/fftw3.git"
-SCRIPT_COMMIT="c277d55689eef1616fa622b3bf6794af3a58e960"
+SCRIPT_COMMIT="11d93a81143ecb6c5ac7f67d7059bf11bd93ef35"
 
 ffbuild_enabled() {
     # Dependency of GPL-Only librubberband
