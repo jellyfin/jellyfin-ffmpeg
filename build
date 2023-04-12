@@ -49,7 +49,7 @@ case ${cli_release} in
     'jammy')
         release="ubuntu:jammy"
         gcc_version="11"
-        llvm_version="14"
+        llvm_version="15"
     ;;
     'kinetic')
         release="ubuntu:kinetic"
