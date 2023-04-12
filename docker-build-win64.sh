@@ -506,7 +506,7 @@ make install
 popd
 
 # OpenCL headers
-git clone --depth=1 https://github.com/KhronosGroup/OpenCL-Headers.git
+git clone -b v2023.02.06 --depth=1 https://github.com/KhronosGroup/OpenCL-Headers.git
 pushd OpenCL-Headers/CL
 mkdir -p ${FF_DEPS_PREFIX}/include/CL
 mv * ${FF_DEPS_PREFIX}/include/CL
