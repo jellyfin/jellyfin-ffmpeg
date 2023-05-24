@@ -10,7 +10,6 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--target-os=linux \
 	--extra-version=Jellyfin \
 	--disable-doc \
-	--disable-ffplay \
 	--disable-ptx-compression \
 	--disable-static \
 	--disable-libxcb \
