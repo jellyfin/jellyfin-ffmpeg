@@ -48,3 +48,4 @@
 0048-add-fixes-for-the-incorrect-null-terminator-in-assenc.patch
 0049-skip-loading-plugins-on-vpl-runtime.patch
 0050-fix-the-empty-output-in-webvtt-transcoding.patch
+0051-update-deprecated-params-for-svt-av1-encoder.patch
