@@ -1,4 +1,5 @@
 ffmpeg usr/lib/jellyfin-ffmpeg
+ffplay usr/lib/jellyfin-ffplay
 ffprobe usr/lib/jellyfin-ffmpeg
 libavcodec/libavcodec.so* usr/lib/jellyfin-ffmpeg/lib
 libavdevice/libavdevice.so* usr/lib/jellyfin-ffmpeg/lib
