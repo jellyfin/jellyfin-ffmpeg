@@ -1,0 +1,1749 @@
+Index: jellyfin-ffmpeg/configure
+===================================================================
+--- jellyfin-ffmpeg.orig/configure
++++ jellyfin-ffmpeg/configure
+@@ -3261,6 +3261,8 @@ av1_qsv_decoder_select="qsvdec"
+ av1_qsv_encoder_select="qsvenc"
+ av1_qsv_encoder_deps="libvpl"
+ av1_amf_encoder_deps="amf"
++av1_vaapi_encoder_deps="VAEncPictureParameterBufferAV1"
++av1_vaapi_encoder_select="cbs_av1 vaapi_encode"
+ 
+ # parsers
+ aac_parser_select="adts_header mpeg4audio"
+@@ -6977,6 +6979,7 @@ if enabled vaapi; then
+     check_type "va/va.h va/va_enc_jpeg.h" "VAEncPictureParameterBufferJPEG"
+     check_type "va/va.h va/va_enc_vp8.h"  "VAEncPictureParameterBufferVP8"
+     check_type "va/va.h va/va_enc_vp9.h"  "VAEncPictureParameterBufferVP9"
++    check_type "va/va.h va/va_enc_av1.h"  "VAEncPictureParameterBufferAV1"
+ fi
+ 
+ if enabled_all opencl libdrm ; then
+Index: jellyfin-ffmpeg/libavcodec/Makefile
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/Makefile
++++ jellyfin-ffmpeg/libavcodec/Makefile
+@@ -255,6 +255,7 @@ OBJS-$(CONFIG_AV1_CUVID_DECODER)       +
+ OBJS-$(CONFIG_AV1_MEDIACODEC_DECODER)  += mediacodecdec.o
+ OBJS-$(CONFIG_AV1_NVENC_ENCODER)       += nvenc_av1.o nvenc.o
+ OBJS-$(CONFIG_AV1_QSV_ENCODER)         += qsvenc_av1.o
++OBJS-$(CONFIG_AV1_VAAPI_ENCODER)       += vaapi_encode_av1.o av1_profile_level.o
+ OBJS-$(CONFIG_AVRN_DECODER)            += avrndec.o
+ OBJS-$(CONFIG_AVRP_DECODER)            += r210dec.o
+ OBJS-$(CONFIG_AVRP_ENCODER)            += r210enc.o
+Index: jellyfin-ffmpeg/libavcodec/allcodecs.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/allcodecs.c
++++ jellyfin-ffmpeg/libavcodec/allcodecs.c
+@@ -838,6 +838,7 @@ extern const FFCodec ff_av1_nvenc_encode
+ extern const FFCodec ff_av1_qsv_decoder;
+ extern const FFCodec ff_av1_qsv_encoder;
+ extern const FFCodec ff_av1_amf_encoder;
++extern const FFCodec ff_av1_vaapi_encoder;
+ extern const FFCodec ff_libopenh264_encoder;
+ extern const FFCodec ff_libopenh264_decoder;
+ extern const FFCodec ff_h264_amf_encoder;
+Index: jellyfin-ffmpeg/libavcodec/av1.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/av1.h
++++ jellyfin-ffmpeg/libavcodec/av1.h
+@@ -175,6 +175,13 @@ enum {
+     AV1_RESTORE_SWITCHABLE = 3,
+ };
+ 
++// TX mode (section 6.8.21)
++enum {
++    AV1_ONLY_4X4        = 0,
++    AV1_TX_MODE_LARGEST = 1,
++    AV1_TX_MODE_SELECT  = 2,
++};
++
+ // Sequence Headers are actually unbounded because one can use
+ // an arbitrary number of leading zeroes when encoding via uvlc.
+ // The following estimate is based around using the lowest number
+Index: jellyfin-ffmpeg/libavcodec/av1_profile_level.c
+===================================================================
+--- /dev/null
++++ jellyfin-ffmpeg/libavcodec/av1_profile_level.c
+@@ -0,0 +1,92 @@
++/*
++ * Copyright (c) 2023 Fei Wang
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#include "libavutil/common.h"
++#include "av1_profile_level.h"
++
++/** ignore entries which named in spec but no details. Like level 2.2 and 7.0. */
++static const AV1LevelDescriptor av1_levels[] = {
++    // Name                      MaxVSize                           MainMbps              MaxTiles
++    // |  level_idx                 | MaxDisplayRate                    | HighMbps         | MaxTileCols
++    // |      |   MaxPicSize        |       |     MaxDecodeRate         |    |   MainCR    |   |
++    // |      |     |    MaxHSize   |       |           | MaxHeaderRate |    |     | HighCR|   |
++    // |      |     |        |      |       |           |       |       |    |     |  |    |   |
++    { "2.0",  0,   147456,  2048, 1152,   4423680,     5529600, 150,   1.5,     0, 2, 0,   8,  4 },
++    { "2.1",  1,   278784,  2816, 1584,   8363520,    10454400, 150,   3.0,     0, 2, 0,   8,  4 },
++    { "3.0",  4,   665856,  4352, 2448,  19975680,    24969600, 150,   6.0,     0, 2, 0,  16,  6 },
++    { "3.1",  5,  1065024,  5504, 3096,  31950720,    39938400, 150,  10.0,     0, 2, 0,  16,  6 },
++    { "4.0",  8,  2359296,  6144, 3456,  70778880,    77856768, 300,  12.0,  30.0, 4, 4,  32,  8 },
++    { "4.1",  9,  2359296,  6144, 3456,  141557760,  155713536, 300,  20.0,  50.0, 4, 4,  32,  8 },
++    { "5.0", 12,  8912896,  8192, 4352,  267386880,  273715200, 300,  30.0, 100.0, 6, 4,  64,  8 },
++    { "5.1", 13,  8912896,  8192, 4352,  534773760,  547430400, 300,  40.0, 160.0, 8, 4,  64,  8 },
++    { "5.2", 14,  8912896,  8192, 4352, 1069547520, 1094860800, 300,  60.0, 240.0, 8, 4,  64,  8 },
++    { "5.3", 15,  8912896,  8192, 4352, 1069547520, 1176502272, 300,  60.0, 240.0, 8, 4,  64,  8 },
++    { "6.0", 16, 35651584, 16384, 8704, 1069547520, 1176502272, 300,  60.0, 240.0, 8, 4, 128, 16 },
++    { "6.1", 17, 35651584, 16384, 8704, 2139095040, 2189721600, 300, 100.0, 480.0, 8, 4, 128, 16 },
++    { "6.2", 18, 35651584, 16384, 8704, 4278190080, 4379443200, 300, 160.0, 800.0, 8, 4, 128, 16 },
++    { "6.3", 19, 35651584, 16384, 8704, 4278190080, 4706009088, 300, 160.0, 800.0, 8, 4, 128, 16 },
++};
++
++const AV1LevelDescriptor *ff_av1_guess_level(int64_t bitrate,
++                                             int tier,
++                                             int width,
++                                             int height,
++                                             int tiles,
++                                             int tile_cols,
++                                             float fps)
++{
++    int pic_size;
++    uint64_t display_rate;
++    float max_br;
++    int i;
++
++    pic_size = width * height;
++    display_rate = (uint64_t)pic_size * fps;
++
++    for (i = 0; i < FF_ARRAY_ELEMS(av1_levels); i++) {
++        const AV1LevelDescriptor *level = &av1_levels[i];
++        // Limitation: decode rate, header rate, compress rate, etc. are not considered.
++        if (pic_size > level->max_pic_size)
++            continue;
++        if (width > level->max_h_size)
++            continue;
++        if (height > level->max_v_size)
++            continue;
++        if (display_rate > level->max_display_rate)
++            continue;
++
++        if (tier)
++            max_br = level->high_mbps;
++        else
++            max_br = level->main_mbps;
++        if (!max_br)
++            continue;
++        if (bitrate > (int64_t)(1000000.0 * max_br))
++            continue;
++
++        if (tiles > level->max_tiles)
++            continue;
++        if (tile_cols > level->max_tile_cols)
++            continue;
++        return level;
++    }
++
++    return NULL;
++}
+Index: jellyfin-ffmpeg/libavcodec/av1_profile_level.h
+===================================================================
+--- /dev/null
++++ jellyfin-ffmpeg/libavcodec/av1_profile_level.h
+@@ -0,0 +1,58 @@
++/*
++ * Copyright (c) 2023 Fei Wang
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#ifndef AVCODEC_AV1_PROFILE_LEVEL_H
++#define AVCODEC_AV1_PROFILE_LEVEL_H
++
++#include <stdint.h>
++
++typedef struct AV1LevelDescriptor {
++    const char *name;
++    uint8_t     level_idx;
++
++    uint32_t    max_pic_size;
++    uint32_t    max_h_size;
++    uint32_t    max_v_size;
++    uint64_t    max_display_rate;
++    uint64_t    max_decode_rate;
++
++    uint32_t    max_header_rate;
++    float       main_mbps;
++    float       high_mbps;
++    uint32_t    main_cr;
++    uint32_t    high_cr;
++    uint32_t    max_tiles;
++    uint32_t    max_tile_cols;
++} AV1LevelDescriptor;
++
++/**
++ * Guess the level of a stream from some parameters.
++ *
++ * Unknown parameters may be zero, in which case they will be ignored.
++ */
++const AV1LevelDescriptor *ff_av1_guess_level(int64_t bitrate,
++                                             int tier,
++                                             int width,
++                                             int height,
++                                             int tile_rows,
++                                             int tile_cols,
++                                             float fps);
++
++#endif /* AVCODEC_AV1_PROFILE_LEVEL_H */
+Index: jellyfin-ffmpeg/libavcodec/cbs_av1_syntax_template.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/cbs_av1_syntax_template.c
++++ jellyfin-ffmpeg/libavcodec/cbs_av1_syntax_template.c
+@@ -1018,9 +1018,9 @@ static int FUNC(read_tx_mode)(CodedBitst
+     int err;
+ 
+     if (priv->coded_lossless)
+-        infer(tx_mode, 0);
++        infer(tx_mode, AV1_ONLY_4X4);
+     else
+-        increment(tx_mode, 1, 2);
++        increment(tx_mode, AV1_TX_MODE_LARGEST, AV1_TX_MODE_SELECT);
+ 
+     return 0;
+ }
+Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/vaapi_encode.c
++++ jellyfin-ffmpeg/libavcodec/vaapi_encode.c
+@@ -650,14 +650,41 @@ fail_at_end:
+     return err;
+ }
+ 
++static int vaapi_encode_set_output_timestamp(AVCodecContext *avctx,
++                                             VAAPIEncodePicture *pic,
++                                             AVPacket *pkt)
++{
++    VAAPIEncodeContext *ctx = avctx->priv_data;
++
++    if (avctx->codec_id == AV_CODEC_ID_AV1) {
++        pkt->dts = pkt->pts - ctx->dts_pts_diff;
++        return 0;
++    }
++
++    if (ctx->output_delay == 0) {
++        pkt->dts = pkt->pts;
++    } else if (pic->encode_order < ctx->decode_delay) {
++        if (ctx->ts_ring[pic->encode_order] < INT64_MIN + ctx->dts_pts_diff)
++            pkt->dts = INT64_MIN;
++        else
++            pkt->dts = ctx->ts_ring[pic->encode_order] - ctx->dts_pts_diff;
++    } else {
++        pkt->dts = ctx->ts_ring[(pic->encode_order - ctx->decode_delay) %
++                                (3 * ctx->output_delay + ctx->async_depth)];
++    }
++
++    return 0;
++}
++
+ static int vaapi_encode_output(AVCodecContext *avctx,
+                                VAAPIEncodePicture *pic, AVPacket *pkt)
+ {
+     VAAPIEncodeContext *ctx = avctx->priv_data;
+     VACodedBufferSegment *buf_list, *buf;
+-    VAStatus vas;
++    AVPacket *pkt_ptr = pkt;
+     int total_size = 0;
+     uint8_t *ptr;
++    VAStatus vas;
+     int err;
+ 
+     err = vaapi_encode_wait(avctx, pic);
+@@ -677,11 +704,52 @@ static int vaapi_encode_output(AVCodecCo
+     for (buf = buf_list; buf; buf = buf->next)
+         total_size += buf->size;
+ 
+-    err = ff_get_encode_buffer(avctx, pkt, total_size, 0);
+-    ptr = pkt->data;
++    /** repack av1 coded frame for not display and repeat frames */
++    if (avctx->codec_id == AV_CODEC_ID_AV1) {
++        int display_frame = pic->display_order <= pic->encode_order;
++
++        if (display_frame) {
++            total_size += ctx->header_data_size;
++            err = ff_get_encode_buffer(avctx, pkt, total_size, 0);
++            if (err < 0)
++                goto fail_mapped;
++            ptr = pkt->data;
++
++            if (ctx->header_data_size) {
++                memcpy(ptr, ctx->header_data, ctx->header_data_size);
++                ptr += ctx->header_data_size;
++                ctx->header_data_size = 0;
++            }
++        } else {
++            ctx->header_data = av_realloc(ctx->header_data, total_size);
++            if (!ctx->header_data) {
++                err = AVERROR(ENOMEM);
++                goto fail_mapped;
++            }
++            ptr = ctx->header_data;
++            ctx->header_data_size = total_size;
++
++            if (pic->tail_size) {
++                if (ctx->tail_pkt->size) {
++                    err = AVERROR(AVERROR_BUG);
++                    goto fail_mapped;
++                }
+ 
+-    if (err < 0)
+-        goto fail_mapped;
++                err = ff_get_encode_buffer(avctx, ctx->tail_pkt, pic->tail_size, 0);
++                if (err < 0)
++                    goto fail_mapped;
++
++                memcpy(ctx->tail_pkt->data, pic->tail_data, pic->tail_size);
++                pkt_ptr = ctx->tail_pkt;
++            }
++        }
++    } else {
++        err = ff_get_encode_buffer(avctx, pkt, total_size, 0);
++        ptr = pkt->data;
++
++        if (err < 0)
++            goto fail_mapped;
++    }
+ 
+     for (buf = buf_list; buf; buf = buf->next) {
+         av_log(avctx, AV_LOG_DEBUG, "Output buffer: %u bytes "
+@@ -692,10 +760,10 @@ static int vaapi_encode_output(AVCodecCo
+     }
+ 
+     if (pic->type == PICTURE_TYPE_IDR)
+-        pkt->flags |= AV_PKT_FLAG_KEY;
++        pkt_ptr->flags |= AV_PKT_FLAG_KEY;
+ 
+-    pkt->pts = pic->pts;
+-    pkt->duration = pic->duration;
++    pkt_ptr->pts = pic->pts;
++    pkt_ptr->duration = pic->duration;
+ 
+     vas = vaUnmapBuffer(ctx->hwctx->display, pic->output_buffer);
+     if (vas != VA_STATUS_SUCCESS) {
+@@ -708,8 +776,8 @@ static int vaapi_encode_output(AVCodecCo
+     // for no-delay encoders this is handled in generic codec
+     if (avctx->codec->capabilities & AV_CODEC_CAP_DELAY &&
+         avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
+-        pkt->opaque     = pic->opaque;
+-        pkt->opaque_ref = pic->opaque_ref;
++        pkt_ptr->opaque     = pic->opaque;
++        pkt_ptr->opaque_ref = pic->opaque_ref;
+         pic->opaque_ref = NULL;
+     }
+ 
+@@ -718,6 +786,9 @@ static int vaapi_encode_output(AVCodecCo
+ 
+     av_log(avctx, AV_LOG_DEBUG, "Output read for pic %"PRId64"/%"PRId64".\n",
+            pic->display_order, pic->encode_order);
++
++    vaapi_encode_set_output_timestamp(avctx, pic, pkt_ptr);
++
+     return 0;
+ 
+ fail_mapped:
+@@ -1205,10 +1276,23 @@ fail:
+ int ff_vaapi_encode_receive_packet(AVCodecContext *avctx, AVPacket *pkt)
+ {
+     VAAPIEncodeContext *ctx = avctx->priv_data;
+-    VAAPIEncodePicture *pic;
++    VAAPIEncodePicture *pic = NULL;
+     AVFrame *frame = ctx->frame;
+     int err;
+ 
++start:
++    /** if no B frame before repeat P frame, sent repeat P frame out. */
++    if (avctx->codec_id == AV_CODEC_ID_AV1 && ctx->tail_pkt->size) {
++        for (VAAPIEncodePicture *tmp = ctx->pic_start; tmp; tmp = tmp->next) {
++            if (tmp->type == PICTURE_TYPE_B && tmp->pts < ctx->tail_pkt->pts)
++                break;
++            else if (!tmp->next) {
++                av_packet_move_ref(pkt, ctx->tail_pkt);
++                goto end;
++            }
++        }
++    }
++
+     err = ff_encode_get_frame(avctx, frame);
+     if (err < 0 && err != AVERROR_EOF)
+         return err;
+@@ -1228,8 +1312,6 @@ int ff_vaapi_encode_receive_packet(AVCod
+     }
+ 
+     if (ctx->has_sync_buffer_func) {
+-        pic = NULL;
+-
+         if (av_fifo_can_write(ctx->encode_fifo)) {
+             err = vaapi_encode_pick_next(avctx, &pic);
+             if (!err) {
+@@ -1255,7 +1337,6 @@ int ff_vaapi_encode_receive_packet(AVCod
+         av_fifo_read(ctx->encode_fifo, &pic, 1);
+         ctx->encode_order = pic->encode_order + 1;
+     } else {
+-        pic = NULL;
+         err = vaapi_encode_pick_next(avctx, &pic);
+         if (err < 0)
+             return err;
+@@ -1276,27 +1357,20 @@ int ff_vaapi_encode_receive_packet(AVCod
+         return err;
+     }
+ 
+-    if (ctx->output_delay == 0) {
+-        pkt->dts = pkt->pts;
+-    } else if (pic->encode_order < ctx->decode_delay) {
+-        if (ctx->ts_ring[pic->encode_order] < INT64_MIN + ctx->dts_pts_diff)
+-            pkt->dts = INT64_MIN;
+-        else
+-            pkt->dts = ctx->ts_ring[pic->encode_order] - ctx->dts_pts_diff;
+-    } else {
+-        pkt->dts = ctx->ts_ring[(pic->encode_order - ctx->decode_delay) %
+-                                (3 * ctx->output_delay + ctx->async_depth)];
+-    }
+-    av_log(avctx, AV_LOG_DEBUG, "Output packet: pts %"PRId64" dts %"PRId64".\n",
+-           pkt->pts, pkt->dts);
+-
+     ctx->output_order = pic->encode_order;
+     vaapi_encode_clear_old(avctx);
+ 
++    /** loop to get an available pkt in encoder flushing. */
++    if (ctx->end_of_stream && !pkt->size)
++        goto start;
++
++end:
++    av_log(avctx, AV_LOG_DEBUG, "Output packet: pts %"PRId64", dts %"PRId64", "
++           "size %u bytes.\n", pkt->pts, pkt->dts, pkt->size);
++
+     return 0;
+ }
+ 
+-
+ static av_cold void vaapi_encode_add_global_param(AVCodecContext *avctx, int type,
+                                                   void *buffer, size_t size)
+ {
+@@ -2597,6 +2671,10 @@ av_cold int ff_vaapi_encode_init(AVCodec
+     ctx->device = (AVHWDeviceContext*)ctx->device_ref->data;
+     ctx->hwctx = ctx->device->hwctx;
+ 
++    ctx->tail_pkt = av_packet_alloc();
++    if (!ctx->tail_pkt)
++        goto fail;
++
+     err = vaapi_encode_profile_entrypoint(avctx);
+     if (err < 0)
+         goto fail;
+@@ -2789,9 +2867,11 @@ av_cold int ff_vaapi_encode_close(AVCode
+     }
+ 
+     av_frame_free(&ctx->frame);
++    av_packet_free(&ctx->tail_pkt);
+ 
+     av_freep(&ctx->codec_sequence_params);
+     av_freep(&ctx->codec_picture_params);
++    av_freep(&ctx->header_data);
+     av_fifo_freep2(&ctx->encode_fifo);
+ 
+     av_buffer_unref(&ctx->recon_frames_ref);
+Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.h
+===================================================================
+--- jellyfin-ffmpeg.orig/libavcodec/vaapi_encode.h
++++ jellyfin-ffmpeg/libavcodec/vaapi_encode.h
+@@ -131,6 +131,11 @@ typedef struct VAAPIEncodePicture {
+ 
+     int          nb_slices;
+     VAAPIEncodeSlice *slices;
++
++    /** Tail data of current pic, used only for repeat header of AV1. */
++    char tail_data[MAX_PARAM_BUFFER_SIZE];
++    /** Byte length of tail_data. */
++    size_t tail_size;
+ } VAAPIEncodePicture;
+ 
+ typedef struct VAAPIEncodeProfile {
+@@ -364,6 +369,13 @@ typedef struct VAAPIEncodeContext {
+     AVFifo          *encode_fifo;
+     // Max number of frame buffered in encoder.
+     int             async_depth;
++
++    /** Head data for current output pkt, used only for AV1. */
++    void  *header_data;
++    size_t header_data_size;
++
++    /** Store av1 repeat frame header pkt. */
++    AVPacket *tail_pkt;
+ } VAAPIEncodeContext;
+ 
+ enum {
+Index: jellyfin-ffmpeg/libavcodec/vaapi_encode_av1.c
+===================================================================
+--- /dev/null
++++ jellyfin-ffmpeg/libavcodec/vaapi_encode_av1.c
+@@ -0,0 +1,1235 @@
++/*
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#include <va/va.h>
++#include <va/va_enc_av1.h>
++
++#include "libavutil/pixdesc.h"
++#include "libavutil/opt.h"
++
++#include "cbs_av1.h"
++#include "put_bits.h"
++#include "codec_internal.h"
++#include "av1_profile_level.h"
++#include "vaapi_encode.h"
++
++#define AV1_MAX_QUANT 255
++
++typedef struct VAAPIEncodeAV1Picture {
++    int64_t last_idr_frame;
++    int slot;
++} VAAPIEncodeAV1Picture;
++
++typedef struct VAAPIEncodeAV1Context {
++    VAAPIEncodeContext common;
++    AV1RawOBU sh; /**< sequence header.*/
++    AV1RawOBU fh; /**< frame header.*/
++    CodedBitstreamContext *cbc;
++    CodedBitstreamFragment current_obu;
++    VAConfigAttribValEncAV1 attr;
++    VAConfigAttribValEncAV1Ext1 attr_ext1;
++    VAConfigAttribValEncAV1Ext2 attr_ext2;
++
++    char sh_data[MAX_PARAM_BUFFER_SIZE]; /**< coded sequence header data. */
++    size_t sh_data_len; /**< bit length of sh_data. */
++    char fh_data[MAX_PARAM_BUFFER_SIZE]; /**< coded frame header data. */
++    size_t fh_data_len; /**< bit length of fh_data. */
++
++    uint8_t uniform_tile;
++    uint8_t use_128x128_superblock;
++    int sb_cols;
++    int sb_rows;
++    int tile_cols_log2;
++    int tile_rows_log2;
++    int max_tile_width_sb;
++    int max_tile_height_sb;
++    uint8_t width_in_sbs_minus_1[AV1_MAX_TILE_COLS];
++    uint8_t height_in_sbs_minus_1[AV1_MAX_TILE_ROWS];
++
++    int min_log2_tile_cols;
++    int max_log2_tile_cols;
++    int min_log2_tile_rows;
++    int max_log2_tile_rows;
++
++    int q_idx_idr;
++    int q_idx_p;
++    int q_idx_b;
++
++    /** user options */
++    int profile;
++    int level;
++    int tier;
++    int tile_cols;
++    int tile_rows;
++    int tile_groups;
++} VAAPIEncodeAV1Context;
++
++static av_cold int vaapi_encode_av1_configure(AVCodecContext *avctx)
++{
++    VAAPIEncodeContext     *ctx = avctx->priv_data;
++    VAAPIEncodeAV1Context *priv = avctx->priv_data;
++    int ret;
++
++    ret = ff_cbs_init(&priv->cbc, AV_CODEC_ID_AV1, avctx);
++    if (ret < 0)
++        return ret;
++
++    if (ctx->rc_mode->quality) {
++        priv->q_idx_p = av_clip(ctx->rc_quality, 0, AV1_MAX_QUANT);
++        if (fabs(avctx->i_quant_factor) > 0.0)
++            priv->q_idx_idr =
++                av_clip((fabs(avctx->i_quant_factor) * priv->q_idx_p  +
++                         avctx->i_quant_offset) + 0.5,
++                        0, AV1_MAX_QUANT);
++        else
++            priv->q_idx_idr = priv->q_idx_p;
++
++        if (fabs(avctx->b_quant_factor) > 0.0)
++            priv->q_idx_b =
++                av_clip((fabs(avctx->b_quant_factor) * priv->q_idx_p  +
++                         avctx->b_quant_offset) + 0.5,
++                        0, AV1_MAX_QUANT);
++        else
++            priv->q_idx_b = priv->q_idx_p;
++    } else {
++        /** Arbitrary value */
++        priv->q_idx_idr = priv->q_idx_p = priv->q_idx_b = 128;
++    }
++
++    return 0;
++}
++
++static int vaapi_encode_av1_add_obu(AVCodecContext *avctx,
++                                    CodedBitstreamFragment *au,
++                                    uint8_t type,
++                                    void *obu_unit)
++{
++    int ret;
++
++    ret = ff_cbs_insert_unit_content(au, -1,
++                                     type, obu_unit, NULL);
++    if (ret < 0) {
++        av_log(avctx, AV_LOG_ERROR, "Failed to add OBU unit: "
++               "type = %d.\n", type);
++        return ret;
++    }
++
++    return 0;
++}
++
++static int vaapi_encode_av1_write_obu(AVCodecContext *avctx,
++                                      char *data, size_t *data_len,
++                                      CodedBitstreamFragment *bs)
++{
++    VAAPIEncodeAV1Context *priv = avctx->priv_data;
++    int ret;
++
++    ret = ff_cbs_write_fragment_data(priv->cbc, bs);
++    if (ret < 0) {
++        av_log(avctx, AV_LOG_ERROR, "Failed to write packed header.\n");
++        return ret;
++    }
++
++    if ((size_t)8 * MAX_PARAM_BUFFER_SIZE < 8 * bs->data_size - bs->data_bit_padding) {
++        av_log(avctx, AV_LOG_ERROR, "Access unit too large: "
++               "%zu < %zu.\n", (size_t)8 * MAX_PARAM_BUFFER_SIZE,
++               8 * bs->data_size - bs->data_bit_padding);
++        return AVERROR(ENOSPC);
++    }
++
++    memcpy(data, bs->data, bs->data_size);
++    *data_len = 8 * bs->data_size - bs->data_bit_padding;
++
++    return 0;
++}
++
++static int get_relative_dist(const AV1RawSequenceHeader *seq,
++                             unsigned int a, unsigned int b)
++{
++    unsigned int diff, m;
++    if (!seq->enable_order_hint)
++        return 0;
++    diff = a - b;
++    m = 1 << seq->order_hint_bits_minus_1;
++    diff = (diff & (m - 1)) - (diff & m);
++    return diff;
++}
++
++static int write_ns(PutBitContext *pbc, uint32_t n, uint32_t value)
++{
++    uint32_t w, m, v, extra_bit;
++
++    w = av_log2(n) + 1;
++    m = (1 << w) - n;
++
++    if (value < m) {
++        v = value;
++        put_bits(pbc, w - 1, v);
++    } else {
++        v = m + ((value - m) >> 1);
++        extra_bit = (value - m) & 1;
++        put_bits(pbc, w - 1, v);
++        put_bits(pbc, 1, extra_bit);
++    }
++
++    return 0;
++}
++
++/**
++ * This API provide the minmum implemention according current enabled features
++ * in frame header. If more features will enable in furture, please make sure
++ * the relative flags of features should be packed correctly into frame header
++ * obu in this API.
++ */
++static int vaapi_encode_av1_write_frame_header(AVCodecContext *avctx,
++                                               VAAPIEncodePicture *pic,
++                                               char *data, size_t *data_len)
++{
++    VAAPIEncodeContext              *ctx = avctx->priv_data;
++    VAAPIEncodeAV1Context          *priv = avctx->priv_data;
++    AV1RawOBU                    *fh_obu = &priv->fh;
++    AV1RawOBU                    *sh_obu = &priv->sh;
++    AV1RawFrameHeader                *fh = &fh_obu->obu.frame.header;
++    AV1RawSequenceHeader             *sh = &sh_obu->obu.sequence_header;
++    VAEncPictureParameterBufferAV1 *vpic = pic->codec_picture_params;
++    PutBitContext pbc, pbc_tmp;
++    uint8_t byte;
++    int qindex, coded_lossless;
++    int id_len, frame_is_intra, skip_mode_allowed;
++    int start, payload_bits, obu_size, obu_size_len;
++    int qindex_offset, loopfilter_offset;
++    int cdef_start_offset, cdef_end_offset;
++    int i;
++
++    init_put_bits(&pbc, data, MAX_PARAM_BUFFER_SIZE);
++
++    /** obu header */
++    put_bits(&pbc, 1, fh_obu->header.obu_forbidden_bit);
++    put_bits(&pbc, 4, fh_obu->header.obu_type);
++    put_bits(&pbc, 1, fh_obu->header.obu_extension_flag);
++    put_bits(&pbc, 1, fh_obu->header.obu_has_size_field);
++    put_bits(&pbc, 1, fh_obu->header.obu_reserved_1bit);
++
++    /** record pbc status to re-write obu size later. */
++    if (fh_obu->header.obu_has_size_field) {
++        pbc_tmp = pbc;
++        put_bits32(&pbc, 0);
++        put_bits32(&pbc, 0);
++    }
++
++    start = put_bits_count(&pbc);
++
++    /** uncompressed_header() */
++    if (sh->frame_id_numbers_present_flag)
++        id_len = sh->additional_frame_id_length_minus_1 +
++                 sh->delta_frame_id_length_minus_2 + 3;
++
++    frame_is_intra = (fh->frame_type == AV1_FRAME_KEY ||
++                      fh->frame_type == AV1_FRAME_INTRA_ONLY);
++    if (!sh->reduced_still_picture_header) {
++        put_bits(&pbc, 1, fh->show_existing_frame);
++        if (fh->show_existing_frame) {
++            put_bits(&pbc, 3, fh->frame_to_show_map_idx);
++            goto trailing_bits;
++        }
++        if (sh->frame_id_numbers_present_flag)
++            put_bits(&pbc, id_len, fh->display_frame_id);
++
++        put_bits(&pbc, 2, fh->frame_type);
++        put_bits(&pbc, 1, fh->show_frame);
++        if (!fh->show_frame)
++            put_bits(&pbc, 1, fh->showable_frame);
++
++        if (!(fh->frame_type == AV1_FRAME_SWITCH ||
++            (fh->frame_type == AV1_FRAME_KEY && fh->show_frame)))
++            put_bits(&pbc, 1, fh->error_resilient_mode);
++    }
++
++    put_bits(&pbc, 1, fh->disable_cdf_update);
++    if (sh->seq_force_screen_content_tools == AV1_SELECT_SCREEN_CONTENT_TOOLS)
++        put_bits(&pbc, 1, fh->allow_screen_content_tools);
++
++    if (fh->allow_screen_content_tools && sh->seq_force_integer_mv == AV1_SELECT_INTEGER_MV)
++        put_bits(&pbc, 1, fh->force_integer_mv);
++
++    if (sh->frame_id_numbers_present_flag)
++        put_bits(&pbc, id_len, fh->current_frame_id);
++
++    if (fh->frame_type != AV1_FRAME_SWITCH && !sh->reduced_still_picture_header)
++        put_bits(&pbc, 1, fh->frame_size_override_flag);
++
++    if (sh->enable_order_hint)
++        put_bits(&pbc, sh->order_hint_bits_minus_1 + 1, fh->order_hint);
++
++    if (!(frame_is_intra || fh->error_resilient_mode))
++        put_bits(&pbc, 3, fh->primary_ref_frame);
++
++    if (!(fh->frame_type == AV1_FRAME_SWITCH ||
++        fh->frame_type == AV1_FRAME_KEY && fh->show_frame))
++        put_bits(&pbc, 8, fh->refresh_frame_flags);
++
++    if (frame_is_intra) {
++        /** render_size() */
++         put_bits(&pbc, 1, fh->render_and_frame_size_different);
++    } else {
++        if (!frame_is_intra && sh->enable_order_hint)
++            put_bits(&pbc, 1, fh->frame_refs_short_signaling);
++
++        for (i=0; i < AV1_REFS_PER_FRAME; i++) {
++            if (!fh->frame_refs_short_signaling)
++                put_bits(&pbc, 3, fh->ref_frame_idx[i]);
++        }
++
++        if (!(fh->frame_size_override_flag && !fh->error_resilient_mode))
++            put_bits(&pbc, 1, fh->render_and_frame_size_different);
++
++        if (!fh->force_integer_mv)
++            put_bits(&pbc, 1, fh->allow_high_precision_mv);
++
++        /** read_interpolation_filter() */
++        put_bits(&pbc, 1, fh->is_filter_switchable);
++        if (!fh->is_filter_switchable)
++            put_bits(&pbc, 2, fh->interpolation_filter);
++
++        put_bits(&pbc, 1, fh->is_motion_mode_switchable);
++    }
++
++    if (!(sh->reduced_still_picture_header || fh->disable_cdf_update))
++        put_bits(&pbc, 1, fh->disable_frame_end_update_cdf);
++
++    /** tile_info() */
++    put_bits(&pbc, 1, fh->uniform_tile_spacing_flag);
++    if (fh->uniform_tile_spacing_flag) {
++        for (i = 0; i < priv->tile_cols_log2 - priv->min_log2_tile_cols; i++) {
++            put_bits(&pbc, 1, 1);
++        }
++        if (priv->tile_cols_log2 < priv->max_log2_tile_cols)
++            put_bits(&pbc, 1, 0);
++
++        for (i = 0; i < priv->tile_rows_log2 - priv->min_log2_tile_rows; i++) {
++            put_bits(&pbc, 1, 1);
++        }
++        if (priv->tile_rows_log2 < priv->max_log2_tile_rows)
++            put_bits(&pbc, 1, 0);
++    } else {
++        int start_sb = 0;
++        int max_width, max_height;
++        for (int i = 0; start_sb < priv->sb_cols; i++) {
++            max_width = FFMIN(priv->sb_cols - start_sb, priv->max_tile_width_sb);
++            write_ns(&pbc, max_width, fh->width_in_sbs_minus_1[i]);
++            start_sb += fh->width_in_sbs_minus_1[i] + 1;
++        }
++
++        start_sb = 0;
++        for (int i = 0; start_sb < priv->sb_rows; i++) {
++            max_height = FFMIN(priv->sb_rows - start_sb, priv->max_tile_height_sb);
++            write_ns(&pbc, max_height, fh->height_in_sbs_minus_1[i]);
++            start_sb += fh->height_in_sbs_minus_1[i] + 1;
++        }
++    }
++
++    if (priv->tile_cols_log2 || priv->tile_rows_log2) {
++        put_bits(&pbc, priv->tile_cols_log2 + priv->tile_rows_log2, fh->context_update_tile_id);
++        put_bits(&pbc, 2, fh->tile_size_bytes_minus1);
++    }
++
++    qindex_offset = put_bits_count(&pbc);
++    /** quantization_params() */
++    put_bits(&pbc, 8, fh->base_q_idx);
++    put_bits(&pbc, 1, fh->delta_q_y_dc);
++    put_bits(&pbc, 1, fh->delta_q_u_dc);
++    put_bits(&pbc, 1, fh->delta_q_u_ac);
++    put_bits(&pbc, 1, fh->using_qmatrix);
++
++    /** segmentation_params() */
++    put_bits(&pbc, 1, fh->segmentation_enabled);
++
++    /** delta_q_params() */
++    if (fh->base_q_idx)
++        put_bits(&pbc, 1, fh->delta_q_present);
++    if (fh->delta_q_present)
++        put_bits(&pbc, 2, fh->delta_q_res);
++
++    /** delta_lf_params() */
++    if (fh->delta_q_present) {
++        if (!fh->allow_intrabc)
++            put_bits(&pbc, 1, fh->delta_lf_present);
++        if (fh->delta_lf_present) {
++            put_bits(&pbc, 2, fh->delta_lf_res);
++            put_bits(&pbc, 1, fh->delta_lf_multi);
++        }
++    }
++
++    /** codelossless */
++    coded_lossless = 1;
++    for (i = 0; i < AV1_MAX_SEGMENTS; i++) {
++        if (fh->segmentation_enabled && fh->feature_enabled[i][AV1_SEG_LVL_ALT_Q])
++            qindex = fh->base_q_idx + fh->feature_value[i][AV1_SEG_LVL_ALT_Q];
++        else
++            qindex = fh->base_q_idx;
++        qindex = av_clip_uintp2(qindex, 8);
++
++        if (qindex || fh->delta_q_y_dc || fh->delta_q_u_ac || fh->delta_q_u_dc ||
++            fh->delta_q_v_ac || fh->delta_q_v_dc)
++            coded_lossless = 0;
++    }
++
++    loopfilter_offset = put_bits_count(&pbc);
++    /** loop_filter_params() */
++    if (!(coded_lossless || fh->allow_intrabc)) {
++        put_bits(&pbc, 6, fh->loop_filter_level[0]);
++        put_bits(&pbc, 6, fh->loop_filter_level[1]);
++        if (fh->loop_filter_level[0] || fh->loop_filter_level[1]) {
++            put_bits(&pbc, 6, fh->loop_filter_level[2]);
++            put_bits(&pbc, 6, fh->loop_filter_level[3]);
++        }
++        put_bits(&pbc, 3, fh->loop_filter_sharpness);
++        put_bits(&pbc, 1, fh->loop_filter_delta_enabled);
++    }
++
++    cdef_start_offset = put_bits_count(&pbc);
++    /** cdef_params() */
++    if (!(coded_lossless || fh->allow_intrabc || !sh->enable_cdef)) {
++        put_bits(&pbc, 2, fh->cdef_damping_minus_3);
++        put_bits(&pbc, 2, fh->cdef_bits);
++        for (i = 0; i < (1 << fh->cdef_bits); i++) {
++            put_bits(&pbc, 4, fh->cdef_y_pri_strength[i]);
++            put_bits(&pbc, 2, fh->cdef_y_sec_strength[i]);
++            put_bits(&pbc, 4, fh->cdef_uv_pri_strength[i]);
++            put_bits(&pbc, 2, fh->cdef_uv_sec_strength[i]);
++        }
++    }
++    cdef_end_offset = put_bits_count(&pbc);
++
++    /** read_tx_mode() */
++    if (fh->tx_mode == AV1_TX_MODE_SELECT)
++        put_bits(&pbc, 1, 1);
++    else
++        put_bits(&pbc, 1, 0);
++
++    /** frame_reference_mode() */
++    if (!frame_is_intra)
++        put_bits(&pbc, 1, fh->reference_select);
++
++    /** skip_mode_params() */
++    if (frame_is_intra || !fh->reference_select || !sh->enable_order_hint)
++        skip_mode_allowed = 0;
++    else {
++        int forward_idx, backward_idx;
++        int ref_hint, forward_hint, backward_hint;
++
++        forward_idx = -1;
++        backward_idx = -1;
++
++        for (i = 0; i < AV1_REFS_PER_FRAME; i++) {
++            ref_hint = fh->ref_order_hint[fh->ref_frame_idx[i]];
++            if (get_relative_dist(sh, ref_hint, fh->order_hint) < 0) {
++                if (forward_idx < 0 || get_relative_dist(sh, ref_hint, forward_idx) > 0) {
++                    forward_idx = i;
++                    forward_hint = ref_hint;
++                }
++            } else if (get_relative_dist(sh, ref_hint, fh->order_hint) > 0) {
++                if (backward_idx < 0 || get_relative_dist(sh, ref_hint, backward_hint) < 0) {
++                    backward_idx = i;
++                    backward_hint = ref_hint;
++                }
++            }
++        }
++        if (forward_idx < 0)
++            skip_mode_allowed = 0;
++        else if (backward_idx >= 0)
++            skip_mode_allowed = 1;
++        else {
++            int second_forward_idx, second_forward_hint;
++            second_forward_idx = -1;
++            for (i = 0; i < AV1_REFS_PER_FRAME; i++) {
++                ref_hint = fh->ref_order_hint[fh->ref_frame_idx[i]];
++                if (get_relative_dist(sh, ref_hint, forward_hint) < 0) {
++                    if (second_forward_idx < 0 || get_relative_dist(sh, ref_hint, second_forward_hint) > 0){
++                        second_forward_idx = i;
++                        second_forward_hint = ref_hint;
++                    }
++                }
++            }
++            if (second_forward_idx < 0)
++                skip_mode_allowed = 0;
++            else
++                skip_mode_allowed = 1;
++        }
++    }
++
++    if (skip_mode_allowed)
++        put_bits(&pbc, 1, fh->skip_mode_present);
++
++    put_bits(&pbc, 1, fh->reduced_tx_set);
++
++    /** global_motion_params() */
++    if (!frame_is_intra) {
++        for (i = AV1_REF_FRAME_LAST; i <= AV1_REF_FRAME_ALTREF; i++) {
++            put_bits(&pbc, 1, fh->is_global[i]);
++            if (fh->is_global[i]) {
++                put_bits(&pbc, 1, fh->is_rot_zoom[i]);
++                if (!fh->is_rot_zoom[i])
++                    put_bits(&pbc, 1, fh->is_translation[i]);
++            }
++        }
++    }
++
++trailing_bits:
++    payload_bits = put_bits_count(&pbc) - start;
++
++    /** trailing_bits() */
++    put_bits(&pbc, 1, 1);
++    obu_size = (put_bits_count(&pbc) - start + 7) / 8;
++    for (i = 0; i < obu_size * 8 - payload_bits - 1; i++)
++        put_bits(&pbc, 1, 0);
++
++    flush_put_bits(&pbc);
++    *data_len = put_bits_count(&pbc);
++
++    /** update obu size in bitstream */
++    if (fh_obu->header.obu_has_size_field) {
++        obu_size_len = priv->attr_ext2.bits.obu_size_bytes_minus1 + 1;
++        for (i = 0; i < obu_size_len; i++) {
++            byte = obu_size >> (7 * i) & 0x7f;
++            if (i < obu_size_len - 1)
++                byte |= 0x80;
++            put_bits(&pbc_tmp, 8, byte);
++        }
++        flush_put_bits(&pbc_tmp);
++        memmove(pbc_tmp.buf_ptr, pbc_tmp.buf_ptr + (8 - obu_size_len), obu_size);
++        *data_len -= (8 - obu_size_len) * 8;
++    }
++
++    if (fh->show_existing_frame)
++        return 0;
++
++    if (!(ctx->va_rc_mode & VA_RC_CQP)) {
++        vpic->min_base_qindex = av_clip(avctx->qmin, 1, AV1_MAX_QUANT);
++        vpic->max_base_qindex = av_clip(avctx->qmax, 1, AV1_MAX_QUANT);
++
++        vpic->bit_offset_qindex            = qindex_offset - (8 - obu_size_len) * 8;
++        vpic->bit_offset_loopfilter_params = loopfilter_offset - (8 - obu_size_len) * 8;
++        vpic->bit_offset_cdef_params       = cdef_start_offset - (8 - obu_size_len) * 8;
++        vpic->size_in_bits_cdef_params     = cdef_end_offset - cdef_start_offset;
++        vpic->size_in_bits_frame_hdr_obu   = *data_len;
++
++        vpic->byte_offset_frame_hdr_obu_size = (((pic->type == PICTURE_TYPE_IDR) ?
++                                               priv->sh_data_len / 8 : 0) +
++                                               (fh_obu->header.obu_extension_flag ?
++                                               2 : 1));
++    }
++
++    return 0;
++}
++
++static int tile_log2(int blkSize, int target) {
++    int k;
++    for (k = 0; (blkSize << k) < target; k++);
++    return k;
++}
++
++static int vaapi_encode_av1_set_tile(AVCodecContext *avctx)
++{
++    VAAPIEncodeAV1Context *priv = avctx->priv_data;
++    int mi_cols, mi_rows, sb_shift, sb_size;
++    int max_tile_area_sb, widest_tile_sb;
++    int tile_width_sb, tile_height_sb;
++    int min_log2_tiles;
++    int i;
++
++    mi_cols = 2 * ((avctx->width + 7) >> 3);
++    mi_rows = 2 * ((avctx->height + 7) >> 3);
++    priv->sb_cols = priv->use_128x128_superblock ?
++                    ((mi_cols + 31) >> 5) : ((mi_cols + 15) >> 4);
++    priv->sb_rows = priv->use_128x128_superblock ?
++                    ((mi_rows + 31) >> 5) : ((mi_rows + 15) >> 4);
++    sb_shift = priv->use_128x128_superblock ? 5 : 4;
++    sb_size  = sb_shift + 2;
++    priv->max_tile_width_sb = AV1_MAX_TILE_WIDTH >> sb_size;
++    max_tile_area_sb = AV1_MAX_TILE_AREA  >> (2 * sb_size);
++
++    priv->min_log2_tile_cols = tile_log2(priv->max_tile_width_sb, priv->sb_cols);
++    priv->max_log2_tile_cols = tile_log2(1, FFMIN(priv->sb_cols, AV1_MAX_TILE_COLS));
++    priv->max_log2_tile_rows = tile_log2(1, FFMIN(priv->sb_rows, AV1_MAX_TILE_ROWS));
++    min_log2_tiles = FFMAX(priv->min_log2_tile_cols,
++                           tile_log2(max_tile_area_sb, priv->sb_rows * priv->sb_cols));
++
++    if (priv->tile_cols != av_clip(priv->tile_cols, (priv->sb_cols + priv->max_tile_width_sb - 1) / priv->max_tile_width_sb, priv->sb_cols)) {
++        priv->tile_cols = av_clip(priv->tile_cols, (priv->sb_cols + priv->max_tile_width_sb - 1) / priv->max_tile_width_sb, priv->sb_cols);
++        av_log(avctx, AV_LOG_WARNING, "Invalid tile cols, correct to %d.\n", priv->tile_cols);
++    }
++
++    /** try uniformed tile mode first. */
++    priv->tile_cols_log2 = tile_log2(1, priv->tile_cols);
++    tile_width_sb = (priv->sb_cols + (1 << priv->tile_cols_log2) - 1) >>
++                    priv->tile_cols_log2;
++
++    if ((priv->sb_cols + tile_width_sb - 1) / tile_width_sb == priv->tile_cols) {
++        for (i=0; i < priv->tile_cols - 1; i++)
++            priv->width_in_sbs_minus_1[i] = tile_width_sb - 1;
++        priv->width_in_sbs_minus_1[i] = priv->sb_cols - (priv->tile_cols - 1) * tile_width_sb - 1;
++        widest_tile_sb = tile_width_sb;
++    } else {
++        for (i = 0; i < priv->tile_cols; i++) {
++            priv->width_in_sbs_minus_1[i] = (i + 1) * priv->sb_cols / priv->tile_cols - i * priv->sb_cols / priv->tile_cols - 1;
++            widest_tile_sb = FFMIN(widest_tile_sb, priv->width_in_sbs_minus_1[i] + 1);
++        }
++    }
++
++    if (min_log2_tiles)
++        max_tile_area_sb = (priv->sb_rows * priv->sb_cols) >> (min_log2_tiles + 1);
++    else
++        max_tile_area_sb = priv->sb_rows * priv->sb_cols;
++    priv->max_tile_height_sb = FFMAX(1, max_tile_area_sb / widest_tile_sb);
++
++    if (priv->tile_rows != av_clip(priv->tile_rows, (priv->sb_rows + priv->max_tile_height_sb - 1) / priv->max_tile_height_sb, priv->sb_rows)) {
++        priv->tile_rows = av_clip(priv->tile_rows, (priv->sb_rows + priv->max_tile_height_sb - 1) / priv->max_tile_height_sb, priv->sb_rows);
++        av_log(avctx, AV_LOG_WARNING, "Invalid tile rows, correct to %d.\n", priv->tile_rows);
++    }
++
++    priv->tile_rows_log2 = tile_log2(1, priv->tile_rows);
++    tile_height_sb = (priv->sb_rows + (1 << priv->tile_rows_log2) - 1) >>
++                      priv->tile_rows_log2;
++
++    if ((priv->sb_rows + tile_height_sb - 1) / tile_height_sb == priv->tile_rows) {
++        for (i=0; i < priv->tile_rows - 1; i++)
++            priv->height_in_sbs_minus_1[i] = tile_height_sb - 1;
++        priv->height_in_sbs_minus_1[i] = priv->sb_rows - (priv->tile_rows - 1) * tile_height_sb - 1;
++    } else {
++        for (i = 0; i < priv->tile_rows; i++)
++            priv->height_in_sbs_minus_1[i] = (i + 1) * priv->sb_rows / priv->tile_rows - i * priv->sb_rows / priv->tile_rows - 1;
++    }
++
++    if ((priv->sb_cols + tile_width_sb - 1) / tile_width_sb == priv->tile_cols &&
++        (priv->sb_rows + tile_height_sb - 1) / tile_height_sb == priv->tile_rows) {
++        priv->uniform_tile = 1;
++        priv->min_log2_tile_rows = FFMAX(min_log2_tiles - priv->tile_cols_log2, 0);
++    }
++
++    /** check if tile cols/rows is supported by driver. */
++    if (priv->attr_ext2.bits.max_tile_num_minus1) {
++        if ((priv->tile_cols * priv->tile_rows - 1) > priv->attr_ext2.bits.max_tile_num_minus1) {
++            av_log(avctx, AV_LOG_ERROR, "Unsupported tile num %d * %d = %d by driver, "
++                   "should be less than %d.\n", priv->tile_cols, priv->tile_rows,
++                   priv->tile_cols * priv->tile_rows,
++                   priv->attr_ext2.bits.max_tile_num_minus1 + 1);
++            return AVERROR(EINVAL);
++        }
++    }
++    av_log(avctx, AV_LOG_DEBUG, "Setting tile cols/rows to %d/%d.\n",
++           priv->tile_cols, priv->tile_rows);
++
++    /** check if tile group numbers is valid. */
++    if (priv->tile_groups > priv->tile_cols * priv->tile_rows) {
++        priv->tile_groups = priv->tile_cols * priv->tile_rows;
++        av_log(avctx, AV_LOG_ERROR, "Invalid tile groups number %d, "
++        "correct to %d.\n", priv->tile_groups, priv->tile_cols * priv->tile_rows);
++    }
++
++    return 0;
++}
++
++static int vaapi_encode_av1_write_sequence_header(AVCodecContext *avctx,
++                                                  char *data, size_t *data_len)
++{
++    VAAPIEncodeAV1Context *priv = avctx->priv_data;
++
++    memcpy(data, &priv->sh_data, MAX_PARAM_BUFFER_SIZE * sizeof(char));
++    *data_len = priv->sh_data_len;
++
++    return 0;
++}
++
++static int vaapi_encode_av1_init_sequence_params(AVCodecContext *avctx)
++{
++    VAAPIEncodeContext               *ctx = avctx->priv_data;
++    VAAPIEncodeAV1Context           *priv = avctx->priv_data;
++    AV1RawOBU                     *sh_obu = &priv->sh;
++    AV1RawSequenceHeader              *sh = &sh_obu->obu.sequence_header;
++    VAEncSequenceParameterBufferAV1 *vseq = ctx->codec_sequence_params;
++    CodedBitstreamFragment           *obu = &priv->current_obu;
++    const AVPixFmtDescriptor *desc;
++    int ret;
++
++    memset(sh_obu, 0, sizeof(*sh_obu));
++    sh_obu->header.obu_type = AV1_OBU_SEQUENCE_HEADER;
++
++    desc = av_pix_fmt_desc_get(priv->common.input_frames->sw_format);
++    av_assert0(desc);
++
++    sh->seq_profile  = avctx->profile;
++    if (!sh->seq_force_screen_content_tools)
++        sh->seq_force_integer_mv = AV1_SELECT_INTEGER_MV;
++    sh->frame_width_bits_minus_1  = av_log2(avctx->width);
++    sh->frame_height_bits_minus_1 = av_log2(avctx->height);
++    sh->max_frame_width_minus_1   = avctx->width - 1;
++    sh->max_frame_height_minus_1  = avctx->height - 1;
++    sh->seq_tier[0]               = priv->tier;
++    /** enable order hint and use maximum 7 by default. */
++    sh->enable_order_hint         = 1;
++    sh->order_hint_bits_minus_1   = 7;
++
++    sh->color_config = (AV1RawColorConfig) {
++        .high_bitdepth                  = desc->comp[0].depth == 8 ? 0 : 1,
++        .color_primaries                = avctx->color_primaries,
++        .transfer_characteristics       = avctx->color_trc,
++        .matrix_coefficients            = avctx->colorspace,
++        .color_description_present_flag = (avctx->color_primaries != AVCOL_PRI_UNSPECIFIED ||
++                                           avctx->color_trc       != AVCOL_TRC_UNSPECIFIED ||
++                                           avctx->colorspace      != AVCOL_SPC_UNSPECIFIED),
++        .subsampling_x                  = desc->log2_chroma_w,
++        .subsampling_y                  = desc->log2_chroma_h,
++    };
++
++    if (avctx->level != FF_LEVEL_UNKNOWN) {
++        sh->seq_level_idx[0] = avctx->level;
++    } else {
++        const AV1LevelDescriptor *level;
++        float framerate;
++
++        if (avctx->framerate.num > 0 && avctx->framerate.den > 0)
++            framerate = avctx->framerate.num / avctx->framerate.den;
++        else
++            framerate = 0;
++
++        level = ff_av1_guess_level(avctx->bit_rate, priv->tier,
++                                   ctx->surface_width, ctx->surface_height,
++                                   priv->tile_rows * priv->tile_cols,
++                                   priv->tile_cols, framerate);
++        if (level) {
++            av_log(avctx, AV_LOG_VERBOSE, "Using level %s.\n", level->name);
++            sh->seq_level_idx[0] = level->level_idx;
++        } else {
++            av_log(avctx, AV_LOG_VERBOSE, "Stream will not conform to "
++                   "any normal level, using level 6.3 by default.\n");
++            sh->seq_level_idx[0] = 19;
++            sh->seq_tier[0] = 1;
++        }
++    }
++    vseq->seq_profile             = sh->seq_profile;
++    vseq->seq_level_idx           = sh->seq_level_idx[0];
++    vseq->seq_tier                = sh->seq_tier[0];
++    vseq->order_hint_bits_minus_1 = sh->order_hint_bits_minus_1;
++    vseq->intra_period            = ctx->gop_size;
++    vseq->ip_period               = ctx->b_per_p + 1;
++
++    vseq->seq_fields.bits.enable_order_hint = sh->enable_order_hint;
++
++    if (!(ctx->va_rc_mode & VA_RC_CQP)) {
++        vseq->bits_per_second = ctx->va_bit_rate;
++        vseq->seq_fields.bits.enable_cdef = sh->enable_cdef = 1;
++    }
++
++    ret = vaapi_encode_av1_add_obu(avctx, obu, AV1_OBU_SEQUENCE_HEADER, &priv->sh);
++    if (ret < 0)
++        goto end;
++
++    ret = vaapi_encode_av1_write_obu(avctx, priv->sh_data, &priv->sh_data_len, obu);
++    if (ret < 0)
++        goto end;
++
++end:
++    ff_cbs_fragment_reset(obu);
++    return ret;
++}
++
++static int vaapi_encode_av1_init_picture_params(AVCodecContext *avctx,
++                                                VAAPIEncodePicture *pic)
++{
++    VAAPIEncodeContext              *ctx = avctx->priv_data;
++    VAAPIEncodePicture             *prev = pic->prev;
++    VAAPIEncodeAV1Picture         *hprev = prev ? prev->priv_data : NULL;
++    VAAPIEncodeAV1Context          *priv = avctx->priv_data;
++    VAAPIEncodeAV1Picture          *hpic = pic->priv_data;
++    AV1RawOBU                    *fh_obu = &priv->fh;
++    AV1RawFrameHeader                *fh = &fh_obu->obu.frame.header;
++    VAEncPictureParameterBufferAV1 *vpic = pic->codec_picture_params;
++    CodedBitstreamFragment          *obu = &priv->current_obu;
++    VAAPIEncodeAV1Picture *href0, *href1;
++    int slot, i;
++    int ret;
++    static const int8_t default_loop_filter_ref_deltas[AV1_TOTAL_REFS_PER_FRAME] =
++        { 1, 0, 0, 0, -1, 0, -1, -1 };
++
++    memset(fh_obu, 0, sizeof(*fh_obu));
++    pic->nb_slices = priv->tile_groups;
++    fh_obu->header.obu_type = AV1_OBU_FRAME_HEADER;
++    fh_obu->header.obu_has_size_field = 1;
++
++    switch (pic->type) {
++    case PICTURE_TYPE_IDR:
++        av_assert0(pic->nb_refs == 0);
++        fh->frame_type = AV1_FRAME_KEY;
++        fh->refresh_frame_flags = 0xff;
++        fh->base_q_idx = priv->q_idx_idr;
++        hpic->slot = 0;
++        hpic->last_idr_frame = pic->display_order;
++        break;
++    case PICTURE_TYPE_P:
++        av_assert0(pic->nb_refs == 1 && prev);
++        fh->frame_type = AV1_FRAME_INTER;
++        fh->base_q_idx = priv->q_idx_p;
++        fh->reference_select = 1;
++        hpic->last_idr_frame = hprev->last_idr_frame;
++        href0 = pic->refs[0]->priv_data;
++        vpic->ref_frame_ctrl_l0.fields.search_idx0 = 1;
++
++        av_assert0(href0->slot == 0 || href0->slot == 1);
++
++        if (ctx->max_b_depth > 0) {
++            hpic->slot = !href0->slot;
++            fh->refresh_frame_flags = 1 << hpic->slot | 0xfc;
++            for (i=0; i < AV1_NUM_REF_FRAMES; i++) {
++                fh->ref_order_hint[i] = pic->refs[0]->display_order - hpic->last_idr_frame;
++            }
++
++            if (hpic->slot) {
++                for (i=0; i < AV1_REFS_PER_FRAME; i++)
++                    fh->ref_frame_idx[i] = 0;
++                if (pic->refs[0]->refs[0])
++                    fh->ref_order_hint[1] = pic->refs[0]->refs[0]->display_order - hpic->last_idr_frame;
++            } else {
++                for (i=0; i < AV1_REFS_PER_FRAME; i++)
++                    fh->ref_frame_idx[i] = 1;
++                fh->primary_ref_frame = 1;
++                if (pic->refs[0]->refs[0])
++                    fh->ref_order_hint[0] = pic->refs[0]->refs[0]->display_order - hpic->last_idr_frame;
++            }
++        } else {
++            hpic->slot = 0;
++            fh->refresh_frame_flags = 0xff;
++            for (i=0; i < AV1_NUM_REF_FRAMES; i++)
++                fh->ref_order_hint[i] = pic->refs[0]->display_order - hpic->last_idr_frame;
++        }
++        break;
++    case PICTURE_TYPE_B:
++        av_assert0(pic->nb_refs == 2 && prev);
++        href0 = pic->refs[0]->priv_data;
++        href1 = pic->refs[1]->priv_data;
++        av_assert0(href0->slot < pic->b_depth + 1 &&
++                   href1->slot < pic->b_depth + 1);
++        fh->frame_type = AV1_FRAME_INTER;
++        fh->base_q_idx = priv->q_idx_b;
++        fh->refresh_frame_flags = 0x0;
++        fh->reference_select = 1;
++        hpic->last_idr_frame = hprev->last_idr_frame;
++
++        /** Use LAST_FRAME and BWDREF_FRAME for reference by default. */
++        vpic->ref_frame_ctrl_l0.fields.search_idx0 = 1;
++        vpic->ref_frame_ctrl_l1.fields.search_idx0 = 5;
++
++        /** B frame will not be referenced, disable its recon frame. */
++        vpic->picture_flags.bits.disable_frame_recon = 1;
++
++        if (href0->slot) {
++            for (i=0; i < 4; i++) {
++                fh->ref_frame_idx[i] = 1;
++            }
++            for (i=4; i < 7; i++) {
++                fh->ref_frame_idx[i] = 0;
++            }
++            for (i=0; i < AV1_NUM_REF_FRAMES; i++)
++                fh->ref_order_hint[i] = pic->refs[1]->display_order - hpic->last_idr_frame;
++            fh->ref_order_hint[1] = pic->refs[0]->display_order - hpic->last_idr_frame;
++            fh->primary_ref_frame = 1;
++        } else {
++            for (i=0; i < 4; i++) {
++                fh->ref_frame_idx[i] = 0;
++            }
++            for (i=4; i < 7; i++) {
++                fh->ref_frame_idx[i] = 1;
++            }
++
++            for (i=0; i < AV1_NUM_REF_FRAMES; i++) {
++                fh->ref_order_hint[i] = pic->refs[1]->display_order - hpic->last_idr_frame;
++            }
++            fh->ref_order_hint[0] = pic->refs[0]->display_order - hpic->last_idr_frame;
++        }
++        break;
++    default:
++        av_assert0(0 && "invalid picture type");
++    }
++
++    fh->show_frame                = pic->display_order <= pic->encode_order;
++    fh->showable_frame            = fh->frame_type != AV1_FRAME_KEY;
++    fh->frame_width_minus_1       = avctx->width - 1;
++    fh->frame_height_minus_1      = avctx->height - 1;
++    fh->render_width_minus_1      = fh->frame_width_minus_1;
++    fh->render_height_minus_1     = fh->frame_height_minus_1;
++    fh->order_hint                = pic->display_order - hpic->last_idr_frame;
++    fh->tile_cols                 = priv->tile_cols;
++    fh->tile_rows                 = priv->tile_rows;
++    fh->tile_cols_log2            = priv->tile_cols_log2;
++    fh->tile_rows_log2            = priv->tile_rows_log2;
++    fh->uniform_tile_spacing_flag = priv->uniform_tile;
++    fh->tile_size_bytes_minus1    = priv->attr_ext2.bits.tile_size_bytes_minus1;
++    fh->reduced_tx_set            = 1;
++
++    /** ignore ONLY_4x4 mode for codedlossless is not fully implemented. */
++    if (priv->attr_ext2.bits.tx_mode_support & 0x04)
++        fh->tx_mode = AV1_TX_MODE_SELECT;
++    else if (priv->attr_ext2.bits.tx_mode_support & 0x02)
++        fh->tx_mode = AV1_TX_MODE_LARGEST;
++    else
++        return AVERROR(EINVAL);
++
++    for (i=0; i < fh->tile_cols; i++)
++        fh->width_in_sbs_minus_1[i] = vpic->width_in_sbs_minus_1[i] = priv->width_in_sbs_minus_1[i];
++
++    for (i=0; i < fh->tile_rows; i++)
++        fh->height_in_sbs_minus_1[i] = vpic->height_in_sbs_minus_1[i] = priv->height_in_sbs_minus_1[i];
++
++    memcpy(fh->loop_filter_ref_deltas, default_loop_filter_ref_deltas,
++           AV1_TOTAL_REFS_PER_FRAME * sizeof(int8_t));
++
++    if (fh->frame_type == AV1_FRAME_KEY) {
++        fh->error_resilient_mode = 1;
++        fh->refresh_frame_flags = (1 << AV1_NUM_REF_FRAMES) - 1;
++    }
++
++    if (fh->frame_type == AV1_FRAME_KEY || fh->error_resilient_mode)
++        fh->primary_ref_frame = AV1_PRIMARY_REF_NONE;
++
++    vpic->base_qindex          = fh->base_q_idx;
++    vpic->frame_width_minus_1  = fh->frame_width_minus_1;
++    vpic->frame_height_minus_1 = fh->frame_height_minus_1;
++    vpic->primary_ref_frame    = fh->primary_ref_frame;
++    vpic->reconstructed_frame  = pic->recon_surface;
++    vpic->coded_buf            = pic->output_buffer;
++    vpic->tile_cols            = fh->tile_cols;
++    vpic->tile_rows            = fh->tile_rows;
++    vpic->order_hint           = fh->order_hint;
++#if VA_CHECK_VERSION(1, 16, 0)
++    vpic->refresh_frame_flags  = fh->refresh_frame_flags;
++#endif
++
++    vpic->picture_flags.bits.enable_frame_obu     = 0;
++    vpic->picture_flags.bits.frame_type           = fh->frame_type;
++    vpic->picture_flags.bits.reduced_tx_set       = fh->reduced_tx_set;
++    vpic->picture_flags.bits.error_resilient_mode = fh->error_resilient_mode;
++
++    /** let driver decide to use single or compound reference prediction mode. */
++    vpic->mode_control_flags.bits.reference_mode = fh->reference_select ? 2 : 0;
++    vpic->mode_control_flags.bits.tx_mode = fh->tx_mode;
++
++    vpic->tile_group_obu_hdr_info.bits.obu_has_size_field = 1;
++
++    /** set reference. */
++    for (i = 0; i < AV1_REFS_PER_FRAME; i++)
++        vpic->ref_frame_idx[i] = fh->ref_frame_idx[i];
++
++    for (i = 0; i < FF_ARRAY_ELEMS(vpic->reference_frames); i++)
++        vpic->reference_frames[i] = VA_INVALID_SURFACE;
++    for (i = 0; i < pic->nb_refs; i++) {
++        VAAPIEncodePicture *ref_pic = pic->refs[i];
++
++        slot = ((VAAPIEncodeAV1Picture*)ref_pic->priv_data)->slot;
++        av_assert0(vpic->reference_frames[slot] == VA_INVALID_SURFACE);
++
++        vpic->reference_frames[slot] = ref_pic->recon_surface;
++    }
++
++   /** pack frame header, and set va params offset like bit_offset_qindex etc. */
++    ret = vaapi_encode_av1_write_frame_header(avctx, pic, priv->fh_data, &priv->fh_data_len);
++    if (ret < 0)
++        goto end;
++
++end:
++    ff_cbs_fragment_reset(obu);
++    return ret;
++}
++
++static int vaapi_encode_av1_init_slice_params(AVCodecContext *avctx,
++                                              VAAPIEncodePicture *pic,
++                                              VAAPIEncodeSlice *slice)
++{
++    VAAPIEncodeAV1Context      *priv = avctx->priv_data;
++    VAEncTileGroupBufferAV1  *vslice = slice->codec_slice_params;
++    CodedBitstreamAV1Context  *cbctx = priv->cbc->priv_data;
++    int div;
++
++    /** Set tile group info. */
++    div = priv->tile_cols * priv->tile_rows / priv->tile_groups;
++    vslice->tg_start = slice->index * div;
++    if (slice->index == (priv->tile_groups - 1)) {
++        vslice->tg_end = priv->tile_cols * priv->tile_rows - 1;
++        cbctx->seen_frame_header = 0;
++    } else {
++        vslice->tg_end = (slice->index + 1) * div - 1;
++    }
++
++    return 0;
++}
++
++static int vaapi_encode_av1_write_picture_header(AVCodecContext *avctx,
++                                                 VAAPIEncodePicture *pic,
++                                                 char *data, size_t *data_len)
++{
++    VAAPIEncodeAV1Context     *priv = avctx->priv_data;
++    CodedBitstreamFragment     *obu = &priv->current_obu;
++    AV1RawOBU               *fh_obu = &priv->fh;
++    AV1RawFrameHeader       *rep_fh = &fh_obu->obu.frame_header;
++    VAAPIEncodeAV1Picture *href0;
++    int ret = 0;
++
++    pic->tail_size = 0;
++    /** Pack repeat frame header. */
++    if (pic->display_order > pic->encode_order) {
++        memset(fh_obu, 0, sizeof(*fh_obu));
++        href0 = pic->refs[0]->priv_data;
++        fh_obu->header.obu_type = AV1_OBU_FRAME_HEADER;
++        fh_obu->header.obu_has_size_field = 1;
++
++        rep_fh->show_existing_frame   = 1;
++        rep_fh->frame_to_show_map_idx = href0->slot == 0;
++        rep_fh->frame_type            = AV1_FRAME_INTER;
++        rep_fh->frame_width_minus_1   = avctx->width - 1;
++        rep_fh->frame_height_minus_1  = avctx->height - 1;
++        rep_fh->render_width_minus_1  = rep_fh->frame_width_minus_1;
++        rep_fh->render_height_minus_1 = rep_fh->frame_height_minus_1;
++
++        ret = vaapi_encode_av1_write_frame_header(avctx, pic, pic->tail_data, &pic->tail_size);
++        if (ret < 0)
++            goto end;
++
++        pic->tail_size /= 8;
++    }
++
++    memcpy(data, &priv->fh_data, MAX_PARAM_BUFFER_SIZE * sizeof(char));
++    *data_len = priv->fh_data_len;
++
++end:
++    ff_cbs_fragment_reset(obu);
++    return ret;
++}
++
++static const VAAPIEncodeProfile vaapi_encode_av1_profiles[] = {
++    { FF_PROFILE_AV1_MAIN,  8, 3, 1, 1, VAProfileAV1Profile0 },
++    { FF_PROFILE_AV1_MAIN, 10, 3, 1, 1, VAProfileAV1Profile0 },
++    { FF_PROFILE_UNKNOWN }
++};
++
++static const VAAPIEncodeType vaapi_encode_type_av1 = {
++    .profiles        = vaapi_encode_av1_profiles,
++    .flags           = FLAG_B_PICTURES |
++                       FLAG_B_PICTURE_REFERENCES,
++    .default_quality = 25,
++    .configure       = &vaapi_encode_av1_configure,
++
++    .sequence_header_type  = VAEncPackedHeaderSequence,
++    .sequence_params_size  = sizeof(VAEncSequenceParameterBufferAV1),
++    .init_sequence_params  = &vaapi_encode_av1_init_sequence_params,
++    .write_sequence_header = &vaapi_encode_av1_write_sequence_header,
++
++    .picture_priv_data_size = sizeof(VAAPIEncodeAV1Picture),
++    .picture_header_type    = VAEncPackedHeaderPicture,
++    .picture_params_size    = sizeof(VAEncPictureParameterBufferAV1),
++    .init_picture_params    = &vaapi_encode_av1_init_picture_params,
++    .write_picture_header   = &vaapi_encode_av1_write_picture_header,
++
++    .slice_params_size = sizeof(VAEncTileGroupBufferAV1),
++    .init_slice_params = &vaapi_encode_av1_init_slice_params,
++};
++
++static av_cold int vaapi_encode_av1_init(AVCodecContext *avctx)
++{
++    VAAPIEncodeContext      *ctx = avctx->priv_data;
++    VAAPIEncodeAV1Context  *priv = avctx->priv_data;
++    VAConfigAttrib attr;
++    VAStatus vas;
++    int ret;
++
++    ctx->codec = &vaapi_encode_type_av1;
++
++    ctx->desired_packed_headers =
++        VA_ENC_PACKED_HEADER_SEQUENCE |
++        VA_ENC_PACKED_HEADER_PICTURE;
++
++    if (avctx->profile == FF_PROFILE_UNKNOWN)
++        avctx->profile = priv->profile;
++    if (avctx->level == FF_LEVEL_UNKNOWN)
++        avctx->level = priv->level;
++
++    if (avctx->level != FF_LEVEL_UNKNOWN && avctx->level & ~0x1f) {
++        av_log(avctx, AV_LOG_ERROR, "Invalid level %d\n", avctx->level);
++        return AVERROR(EINVAL);
++    }
++
++    ret = ff_vaapi_encode_init(avctx);
++    if (ret < 0)
++        return ret;
++
++    attr.type = VAConfigAttribEncAV1;
++    vas = vaGetConfigAttributes(ctx->hwctx->display,
++                                ctx->va_profile,
++                                ctx->va_entrypoint,
++                                &attr, 1);
++    if (vas != VA_STATUS_SUCCESS) {
++        av_log(avctx, AV_LOG_ERROR, "Failed to query "
++               "config attribute: %d (%s).\n", vas, vaErrorStr(vas));
++        return AVERROR_EXTERNAL;
++    } else if (attr.value == VA_ATTRIB_NOT_SUPPORTED) {
++        priv->attr.value = 0;
++        av_log(avctx, AV_LOG_WARNING, "Attribute type:%d is not "
++               "supported.\n", attr.type);
++    } else {
++        priv->attr.value = attr.value;
++    }
++
++    attr.type = VAConfigAttribEncAV1Ext1;
++    vas = vaGetConfigAttributes(ctx->hwctx->display,
++                                ctx->va_profile,
++                                ctx->va_entrypoint,
++                                &attr, 1);
++    if (vas != VA_STATUS_SUCCESS) {
++        av_log(avctx, AV_LOG_ERROR, "Failed to query "
++               "config attribute: %d (%s).\n", vas, vaErrorStr(vas));
++        return AVERROR_EXTERNAL;
++    } else if (attr.value == VA_ATTRIB_NOT_SUPPORTED) {
++        priv->attr_ext1.value = 0;
++        av_log(avctx, AV_LOG_WARNING, "Attribute type:%d is not "
++               "supported.\n", attr.type);
++    } else {
++        priv->attr_ext1.value = attr.value;
++    }
++
++    /** This attr provides essential indicators, return error if not support. */
++    attr.type = VAConfigAttribEncAV1Ext2;
++    vas = vaGetConfigAttributes(ctx->hwctx->display,
++                                ctx->va_profile,
++                                ctx->va_entrypoint,
++                                &attr, 1);
++    if (vas != VA_STATUS_SUCCESS || attr.value == VA_ATTRIB_NOT_SUPPORTED) {
++        av_log(avctx, AV_LOG_ERROR, "Failed to query "
++               "config attribute: %d (%s).\n", vas, vaErrorStr(vas));
++        return AVERROR_EXTERNAL;
++    } else {
++        priv->attr_ext2.value = attr.value;
++    }
++
++    ret = vaapi_encode_av1_set_tile(avctx);
++    if (ret < 0)
++        return ret;
++
++    return 0;
++}
++
++static av_cold int vaapi_encode_av1_close(AVCodecContext *avctx)
++{
++    VAAPIEncodeAV1Context *priv = avctx->priv_data;
++
++    ff_cbs_fragment_free(&priv->current_obu);
++    ff_cbs_close(&priv->cbc);
++
++    return ff_vaapi_encode_close(avctx);
++}
++
++#define OFFSET(x) offsetof(VAAPIEncodeAV1Context, x)
++#define FLAGS (AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM)
++
++static const AVOption vaapi_encode_av1_options[] = {
++    VAAPI_ENCODE_COMMON_OPTIONS,
++    VAAPI_ENCODE_RC_OPTIONS,
++    { "profile", "Set profile (seq_profile)",
++      OFFSET(profile), AV_OPT_TYPE_INT,
++      { .i64 = FF_PROFILE_UNKNOWN }, FF_PROFILE_UNKNOWN, 0xff, FLAGS, "profile" },
++
++#define PROFILE(name, value)  name, NULL, 0, AV_OPT_TYPE_CONST, \
++    { .i64 = value }, 0, 0, FLAGS, "profile"
++    { PROFILE("main",               FF_PROFILE_AV1_MAIN) },
++    { PROFILE("high",               FF_PROFILE_AV1_HIGH) },
++    { PROFILE("professional",       FF_PROFILE_AV1_PROFESSIONAL) },
++#undef PROFILE
++
++    { "tier", "Set tier (seq_tier)",
++      OFFSET(tier), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, "tier" },
++    { "main", NULL, 0, AV_OPT_TYPE_CONST,
++      { .i64 = 0 }, 0, 0, FLAGS, "tier" },
++    { "high", NULL, 0, AV_OPT_TYPE_CONST,
++      { .i64 = 1 }, 0, 0, FLAGS, "tier" },
++    { "level", "Set level (seq_level_idx)",
++      OFFSET(level), AV_OPT_TYPE_INT,
++      { .i64 = FF_LEVEL_UNKNOWN }, FF_LEVEL_UNKNOWN, 0x1f, FLAGS, "level" },
++
++#define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, \
++      { .i64 = value }, 0, 0, FLAGS, "level"
++    { LEVEL("2.0",  0) },
++    { LEVEL("2.1",  1) },
++    { LEVEL("3.0",  4) },
++    { LEVEL("3.1",  5) },
++    { LEVEL("4.0",  8) },
++    { LEVEL("4.1",  9) },
++    { LEVEL("5.0", 12) },
++    { LEVEL("5.1", 13) },
++    { LEVEL("5.2", 14) },
++    { LEVEL("5.3", 15) },
++    { LEVEL("6.0", 16) },
++    { LEVEL("6.1", 17) },
++    { LEVEL("6.2", 18) },
++    { LEVEL("6.3", 19) },
++#undef LEVEL
++
++    { "tile_cols", "Number of tile columns",
++      OFFSET(tile_cols), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, AV1_MAX_TILE_COLS, FLAGS },
++    { "tile_rows", "Number of tile rows",
++      OFFSET(tile_rows), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, AV1_MAX_TILE_ROWS, FLAGS },
++    { "tile_groups", "Number of tile groups for encoding",
++      OFFSET(tile_groups), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, AV1_MAX_TILE_ROWS * AV1_MAX_TILE_COLS, FLAGS },
++
++    { NULL },
++};
++
++static const FFCodecDefault vaapi_encode_av1_defaults[] = {
++    { "b",              "0"   },
++    { "bf",             "3"   },
++    { "g",              "120" },
++    { "qmin",           "1"   },
++    { "qmax",           "255" },
++    { NULL },
++};
++
++static const AVClass vaapi_encode_av1_class = {
++    .class_name = "av1_vaapi",
++    .item_name  = av_default_item_name,
++    .option     = vaapi_encode_av1_options,
++    .version    = LIBAVUTIL_VERSION_INT,
++};
++
++const FFCodec ff_av1_vaapi_encoder = {
++    .p.name         = "av1_vaapi",
++    CODEC_LONG_NAME("AV1 (VAAPI)"),
++    .p.type         = AVMEDIA_TYPE_VIDEO,
++    .p.id           = AV_CODEC_ID_AV1,
++    .priv_data_size = sizeof(VAAPIEncodeAV1Context),
++    .init           = &vaapi_encode_av1_init,
++    FF_CODEC_RECEIVE_PACKET_CB(&ff_vaapi_encode_receive_packet),
++    .close          = &vaapi_encode_av1_close,
++    .p.priv_class   = &vaapi_encode_av1_class,
++    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
++                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
++    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
++                      FF_CODEC_CAP_INIT_CLEANUP,
++    .defaults       = vaapi_encode_av1_defaults,
++    .p.pix_fmts = (const enum AVPixelFormat[]) {
++        AV_PIX_FMT_VAAPI,
++        AV_PIX_FMT_NONE,
++    },
++    .hw_configs     = ff_vaapi_encode_hw_configs,
++    .p.wrapper_name = "vaapi",
++};
