@@ -1,3 +1,12 @@
+jellyfin-ffmpeg (6.0-3) unstable; urgency=medium
+
+  * Add AV1 VA-API encoder from upstream intel
+  * Backport upstream qsvenc fixes
+  * Fix the slow VPP tone-mapping on DG2
+  * Update dependencies and build scripts
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 29 Apr 2023 22:45:23 +0800
+
 jellyfin-ffmpeg (6.0-2) unstable; urgency=medium
 
   * Add a tone-mapping mode RGB in CUDA & OpenCL
