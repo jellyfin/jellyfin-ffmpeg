@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/lu-zero/mfx_dispatch.git"
-SCRIPT_COMMIT="5a3f178be7f406cec920b9f52f46c1ae29f29bb2"
+SCRIPT_COMMIT="f6aac4576826ed821c81231fdfb0d24047158e7d"
 
 ffbuild_enabled() {
     return -1
