@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-git clone --depth=1 https://github.com/mirror/mingw-w64.git
+git clone --depth=1 https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 ./configure \
     --prefix=/usr/${FF_TOOLCHAIN} \
@@ -322,7 +322,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.6.9"
+mpt_ver="0.7.1"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -339,7 +339,7 @@ popd
 popd
 
 # LIBWEBP
-git clone -b v1.2.3 --depth=1 https://chromium.googlesource.com/webm/libwebp
+git clone -b v1.3.0 --depth=1 https://chromium.googlesource.com/webm/libwebp
 pushd libwebp
 ./autogen.sh
 ./configure \
@@ -456,7 +456,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v1.3.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v1.5.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
@@ -473,7 +473,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.1.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.2.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build
@@ -506,14 +506,14 @@ make install
 popd
 
 # OpenCL headers
-git clone -b v2023.02.06 --depth=1 https://github.com/KhronosGroup/OpenCL-Headers.git
+git clone -b v2023.04.17 --depth=1 https://github.com/KhronosGroup/OpenCL-Headers.git
 pushd OpenCL-Headers/CL
 mkdir -p ${FF_DEPS_PREFIX}/include/CL
 mv * ${FF_DEPS_PREFIX}/include/CL
 popd
 
 # OpenCL ICD loader
-git clone -b v2023.02.06 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+git clone -b v2023.04.17 --depth=1 https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 pushd OpenCL-ICD-Loader
 mkdir build
 pushd build
