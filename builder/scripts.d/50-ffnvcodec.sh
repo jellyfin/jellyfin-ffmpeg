@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/FFmpeg/nv-codec-headers.git"
-SCRIPT_COMMIT="f8ae7a49bfef2f99d2c931a791dc3863fda67bf3"
+SCRIPT_COMMIT="4fd7be29a431441ca31b8db0155875ae2ff4ed47"
 
 ffbuild_enabled() {
     [[ $TARGET == *arm64 ]] && return -1
