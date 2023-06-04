@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "6.0-2"
+version: "6.0-3"
 packages:
   - buster-amd64
   - buster-armhf
