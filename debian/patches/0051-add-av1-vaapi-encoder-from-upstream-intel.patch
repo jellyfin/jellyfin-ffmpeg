@@ -300,7 +300,9 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
 +            if (err < 0)
 +                goto fail_mapped;
 +            ptr = pkt->data;
-+
+ 
+-    if (err < 0)
+-        goto fail_mapped;
 +            if (ctx->header_data_size) {
 +                memcpy(ptr, ctx->header_data, ctx->header_data_size);
 +                ptr += ctx->header_data_size;
@@ -320,9 +322,7 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
 +                    err = AVERROR(AVERROR_BUG);
 +                    goto fail_mapped;
 +                }
- 
--    if (err < 0)
--        goto fail_mapped;
++
 +                err = ff_get_encode_buffer(avctx, ctx->tail_pkt, pic->tail_size, 0);
 +                if (err < 0)
 +                    goto fail_mapped;
@@ -454,18 +454,20 @@ Index: jellyfin-ffmpeg/libavcodec/vaapi_encode.c
  static av_cold void vaapi_encode_add_global_param(AVCodecContext *avctx, int type,
                                                    void *buffer, size_t size)
  {
-@@ -2597,6 +2671,10 @@ av_cold int ff_vaapi_encode_init(AVCodec
+@@ -2597,6 +2671,12 @@ av_cold int ff_vaapi_encode_init(AVCodec
      ctx->device = (AVHWDeviceContext*)ctx->device_ref->data;
      ctx->hwctx = ctx->device->hwctx;
  
 +    ctx->tail_pkt = av_packet_alloc();
-+    if (!ctx->tail_pkt)
++    if (!ctx->tail_pkt) {
++        err = AVERROR(ENOMEM);
 +        goto fail;
++    }
 +
      err = vaapi_encode_profile_entrypoint(avctx);
      if (err < 0)
          goto fail;
-@@ -2789,9 +2867,11 @@ av_cold int ff_vaapi_encode_close(AVCode
+@@ -2789,9 +2869,11 @@ av_cold int ff_vaapi_encode_close(AVCode
      }
  
      av_frame_free(&ctx->frame);
