@@ -183,3 +183,23 @@ Index: jellyfin-ffmpeg/libavcodec/qsvenc.c
      }
  
      if ((avctx->codec_id == AV_CODEC_ID_H264 ||
+Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_qsv.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
+@@ -1689,6 +1689,15 @@ static int qsv_device_derive(AVHWDeviceC
+                              AVDictionary *opts, int flags)
+ {
+     mfxIMPL impl;
++    QSVDevicePriv *priv;
++
++    priv = av_mallocz(sizeof(*priv));
++    if (!priv)
++        return AVERROR(ENOMEM);
++
++    ctx->user_opaque = priv;
++    ctx->free = qsv_device_free;
++    
+     impl = choose_implementation("hw_any", child_device_ctx->type);
+     return qsv_device_derive_from_child(ctx, impl,
+                                         child_device_ctx, flags);
