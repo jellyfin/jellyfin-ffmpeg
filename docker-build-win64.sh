@@ -159,9 +159,9 @@ popd
 popd
 
 # LZMA
-git clone -b v5.4.1 --depth=1 https://github.com/xz-mirror/xz.git
+git clone -b v5.4.3 --depth=1 https://github.com/xz-mirror/xz.git
 pushd xz
-./autogen.sh --no-po4a
+./autogen.sh --no-po4a --no-doxygen
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
@@ -322,7 +322,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.1"
+mpt_ver="0.7.2"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -456,7 +456,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v1.5.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v1.6.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build

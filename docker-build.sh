@@ -141,7 +141,7 @@ prepare_extra_amd64() {
         NASM_PATH=/usr/lib/nasm-mozilla/bin/nasm
     fi
     pushd ${SOURCE_DIR}
-    git clone -b v1.5.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v1.6.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
     mkdir build
     pushd build
@@ -242,7 +242,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.5 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.3.7 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -276,7 +276,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.2.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-23.2.3 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -302,6 +302,8 @@ prepare_extra_amd64() {
     wget -q -O - https://github.com/intel/media-driver/commit/cbbd676f.patch | git apply
     # Correct AV1 supported tx mode caps for the AV1 VA-API encoder
     wget -q -O - https://github.com/intel/media-driver/commit/89201eaa.patch | git apply
+    # Fix the slow VPP tone-mapping on ADL-S and ADL-N
+    wget -q -O - https://github.com/intel/media-driver/commit/1097e39b.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -380,19 +382,7 @@ prepare_extra_amd64() {
     if [[ ${LLVM_VER} -ge 11 ]]; then
         apt-get install -y llvm-${LLVM_VER}-dev libudev-dev
         pushd ${SOURCE_DIR}
-        git clone https://gitlab.freedesktop.org/mesa/mesa.git
-        pushd mesa
-        git reset --hard "cf323446"
-        popd
-        # disable the broken hevc packed header
-        MESA_VA_PIC="mesa/src/gallium/frontends/va/picture.c"
-        MESA_VA_CONF="mesa/src/gallium/frontends/va/config.c"
-        sed -i 's|handleVAEncPackedHeaderParameterBufferType(context, buf);||g' ${MESA_VA_PIC}
-        sed -i 's|handleVAEncPackedHeaderDataBufferType(context, buf);||g' ${MESA_VA_PIC}
-        sed -i 's|if (u_reduce_video_profile(ProfileToPipe(profile)) == PIPE_VIDEO_FORMAT_HEVC)|if (0)|g' ${MESA_VA_CONF}
-        # force reporting all packed headers are supported
-        sed -i 's|value = VA_ENC_PACKED_HEADER_NONE;|value = 0x0000001f;|g' ${MESA_VA_CONF}
-        sed -i 's|if (attrib_list\[i\].type == VAConfigAttribEncPackedHeaders)|if (0)|g' ${MESA_VA_CONF}
+        git clone -b llvm11 --depth=1 https://gitlab.freedesktop.org/nyanmisaka/mesa.git
         meson setup mesa mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
