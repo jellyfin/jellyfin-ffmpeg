@@ -1,0 +1,51 @@
+Index: jellyfin-ffmpeg/libavutil/hwcontext_vaapi.c
+===================================================================
+--- jellyfin-ffmpeg.orig/libavutil/hwcontext_vaapi.c
++++ jellyfin-ffmpeg/libavutil/hwcontext_vaapi.c
+@@ -1015,6 +1015,7 @@ static const struct {
+     DRM_MAP(NV12, 1, DRM_FORMAT_NV12),
+ #if defined(VA_FOURCC_P010) && defined(DRM_FORMAT_R16)
+     DRM_MAP(P010, 2, DRM_FORMAT_R16, DRM_FORMAT_RG1616),
++    DRM_MAP(P010, 2, DRM_FORMAT_R16, DRM_FORMAT_GR1616),
+ #endif
+     DRM_MAP(BGRA, 1, DRM_FORMAT_ARGB8888),
+     DRM_MAP(BGRX, 1, DRM_FORMAT_XRGB8888),
+@@ -1081,12 +1082,6 @@ static int vaapi_map_from_drm(AVHWFrames
+ 
+     desc = (AVDRMFrameDescriptor*)src->data[0];
+ 
+-    if (desc->nb_objects != 1) {
+-        av_log(dst_fc, AV_LOG_ERROR, "VAAPI can only map frames "
+-               "made from a single DRM object.\n");
+-        return AVERROR(EINVAL);
+-    }
+-
+     va_fourcc = 0;
+     for (i = 0; i < FF_ARRAY_ELEMS(vaapi_drm_format_map); i++) {
+         if (desc->nb_layers != vaapi_drm_format_map[i].nb_layer_formats)
+@@ -1195,6 +1190,12 @@ static int vaapi_map_from_drm(AVHWFrames
+             }
+         };
+ 
++        if (desc->nb_objects != 1) {
++            av_log(dst_fc, AV_LOG_ERROR, "VAAPI can only map frames "
++                   "made from a single DRM object.\n");
++            return AVERROR(EINVAL);
++        }
++
+         buffer_handle = desc->objects[0].fd;
+         buffer_desc.pixel_format = va_fourcc;
+         buffer_desc.width        = src_fc->width;
+@@ -1226,6 +1227,12 @@ static int vaapi_map_from_drm(AVHWFrames
+                                buffer_attrs, FF_ARRAY_ELEMS(buffer_attrs));
+     }
+ #else
++    if (desc->nb_objects != 1) {
++        av_log(dst_fc, AV_LOG_ERROR, "VAAPI can only map frames "
++               "made from a single DRM object.\n");
++        return AVERROR(EINVAL);
++    }
++
+     buffer_handle = desc->objects[0].fd;
+     buffer_desc.pixel_format = va_fourcc;
+     buffer_desc.width        = src_fc->width;
