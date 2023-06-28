@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-git clone --depth=1 https://git.code.sf.net/p/mingw-w64/mingw-w64.git
+git clone -b v11.0.1 --depth=1 https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 ./configure \
     --prefix=/usr/${FF_TOOLCHAIN} \
