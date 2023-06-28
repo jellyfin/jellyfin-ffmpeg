@@ -1,3 +1,14 @@
+jellyfin-ffmpeg (6.0-4) unstable; urgency=medium
+
+  * Allow VA-API import DRM prime2 planar formats
+  * Fix the slow VPP tone-mapping on ADL-S and ADL-N
+  * Fix a potential memory leak in QSV
+  * Refine VA-API AV1 encoder
+  * Update queued fixes from upstream
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 15 Jun 2023 23:10:39 +0800
+
 jellyfin-ffmpeg (6.0-3) unstable; urgency=medium
 
   * Add AV1 VA-API encoder from upstream intel

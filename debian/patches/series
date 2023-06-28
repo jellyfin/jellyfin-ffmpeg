@@ -50,3 +50,4 @@
 0050-revert-libplacebo-to-ad-hoc-mode.patch
 0051-add-av1-vaapi-encoder-from-upstream-intel.patch
 0052-backport-upstream-qsvenc-fixes.patch
+0053-allow-vaapi-import-drm-prime2-planar-formats.patch
