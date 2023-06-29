@@ -51,3 +51,4 @@
 0051-update-deprecated-params-for-svt-av1-encoder.patch
 0052-backport-upstream-qsvenc-fixes.patch
 0053-allow-vaapi-import-drm-prime2-planar-formats.patch
+0054-add-vui-info-to-the-seq-header-of-hevc-vaapi-encoder.patch
