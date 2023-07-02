@@ -73,7 +73,7 @@ jobs:
         ]
     steps:
       - name: Sync mirrors and update symlinks
-        uses: appleboy/ssh-action@v0.1.4
+        uses: appleboy/ssh-action@1d1b21ca96111b1eb4c03c21c14ebb971d2200f6 # v0.1.4
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -106,7 +106,7 @@ jobs:
         ]
     steps:
       - name: Update symlinks
-        uses: appleboy/ssh-action@v0.1.4
+        uses: appleboy/ssh-action@1d1b21ca96111b1eb4c03c21c14ebb971d2200f6 # v0.1.4
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
