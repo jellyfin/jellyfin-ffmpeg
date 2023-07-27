@@ -236,6 +236,15 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
  fail:
  #endif
      return ret;
+@@ -1927,7 +1939,7 @@ static int qsv_map_to(AVHWFramesContext
+         case AV_PIX_FMT_VAAPI:
+         {
+             mfxHDLPair *pair = (mfxHDLPair*)hwctx->surfaces[i].Data.MemId;
+-            if (*(VASurfaceID*)pair->first == (VASurfaceID)src->data[3]) {
++            if (*(VASurfaceID*)pair->first == (VASurfaceID)(uintptr_t)src->data[3]) {
+                 index = i;
+                 break;
+             }
 @@ -2187,6 +2199,15 @@ static int qsv_device_derive(AVHWDeviceC
                               AVDictionary *opts, int flags)
  {
