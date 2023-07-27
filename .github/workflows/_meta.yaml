@@ -38,7 +38,7 @@ jobs:
         arch: ${{fromJson(inputs.architectures)}}
   
     steps:
-      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3.1.0
+      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
 
       - name: Install make and mmv
         run: sudo apt-get install make mmv
@@ -47,7 +47,7 @@ jobs:
         run: ./build ${{ matrix.release }} ${{ matrix.arch }} dist
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb # v3.1.1
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
         with:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: dist
@@ -66,7 +66,7 @@ jobs:
 
     steps:
       - name: Set Versions
-        uses: actions/github-script@d556feaca394842dc55e4734bf3bb9f685482fa0 # v6.3.3
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
         id: set_version
         with:
           script: |
@@ -79,7 +79,7 @@ jobs:
             core.setOutput('no-dash', no_dash)
 
       - name: Download Artifacts
-        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7 # v3.0.1
+        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a # v3.0.2
         with:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: artifact
@@ -93,7 +93,7 @@ jobs:
           popd
           
       - name: Upload GH Release Assets
-        uses: shogo82148/actions-upload-release-asset@e94a7386c3c266a207386460471b1efb5c7431eb # v1.6.3
+        uses: shogo82148/actions-upload-release-asset@7eaf21378a56987478e34936683ba93ffb6c4f3c # v1.6.5
         with:
           upload_url: ${{ github.event.release.upload_url }}
           overwrite: true
@@ -103,7 +103,7 @@ jobs:
             ./artifact/**/*.sha256sum
 
       - name: Make Sure Release Directory Exists
-        uses: appleboy/ssh-action@f9010ff7f1bbd7db1a0b4bab661437550cea20c0 # v0.1.5
+        uses: appleboy/ssh-action@334f9259f2f8eb3376d33fa4c684fff373f2c2a6 # v0.1.10
         with:
           host: ${{ secrets.deploy-host }}
           username: ${{ secrets.deploy-user }}
@@ -113,7 +113,7 @@ jobs:
             mkdir -p /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
 
       - name: Upload Release Assets
-        uses: burnett01/rsync-deployments@2651e3eecb4ea772cbe952695d04952e92027b4f # 5.2.1
+        uses: burnett01/rsync-deployments@b247bfd3aff7245a6df1b3a64798f4176ca2a4a1 # 5.2.2
         with:
           switches: -vrptz
           path: ./artifact/*
