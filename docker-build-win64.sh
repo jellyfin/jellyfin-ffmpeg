@@ -100,7 +100,7 @@ popd
 # GMP
 mkdir gmp
 pushd gmp
-gmp_ver="6.2.1"
+gmp_ver="6.3.0"
 gmp_link="https://ftp.gnu.org/gnu/gmp/gmp-${gmp_ver}.tar.xz"
 wget ${gmp_link} -O gmp.tar.gz
 tar xaf gmp.tar.gz
@@ -159,7 +159,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.4.3 --depth=1 https://github.com/xz-mirror/xz.git
+git clone -b v5.4.4 --depth=1 https://github.com/xz-mirror/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
@@ -339,7 +339,7 @@ popd
 popd
 
 # LIBWEBP
-git clone -b v1.3.0 --depth=1 https://chromium.googlesource.com/webm/libwebp
+git clone -b v1.3.1 --depth=1 https://chromium.googlesource.com/webm/libwebp
 pushd libwebp
 ./autogen.sh
 ./configure \
