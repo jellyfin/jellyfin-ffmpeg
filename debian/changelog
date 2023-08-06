@@ -1,3 +1,15 @@
+jellyfin-ffmpeg (6.0-5) unstable; urgency=medium
+
+  * Add VUI info to the seq header of HEVC VA-API encoder
+  * Remove HDR metadata from tonemap_vaapi SDR output
+  * Backport QSV fixes from upstream
+  * Refine VA-API AV1 encoder v3
+  * Fix VA-API import DRM prime2 planar formats
+  * Use contiguous linear Vulkan images for AMD encoder
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 27 Jul 2023 21:54:12 +0800
+
 jellyfin-ffmpeg (6.0-4) unstable; urgency=medium
 
   * Allow VA-API import DRM prime2 planar formats
