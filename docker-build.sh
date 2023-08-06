@@ -201,10 +201,10 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone -b 2.18.0 --depth=1 https://github.com/intel/libva.git
+    git clone -b 2.19.0 --depth=1 https://github.com/intel/libva.git
     pushd libva
-    sed -i 's|getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
-    sed -i 's|getenv("LIBVA_DRIVER_NAME")|getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
+    sed -i 's|secure_getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
+    sed -i 's|secure_getenv("LIBVA_DRIVER_NAME")|secure_getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
     ./autogen.sh
     ./configure \
         --prefix=${TARGET_DIR} \
@@ -218,7 +218,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone -b 2.18.2 --depth=1 https://github.com/intel/libva-utils.git
+    git clone -b 2.19.0 --depth=1 https://github.com/intel/libva-utils.git
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -242,7 +242,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.7 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.3.9 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -276,7 +276,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.2.3 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-23.3.0 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -296,14 +296,8 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.2.3 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-23.3.0 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
-    # Possible fix for TGLx timeout caused by 'HCP Scalability Decode' under heavy load
-    wget -q -O - https://github.com/intel/media-driver/commit/cbbd676f.patch | git apply
-    # Correct AV1 supported tx mode caps for the AV1 VA-API encoder
-    wget -q -O - https://github.com/intel/media-driver/commit/89201eaa.patch | git apply
-    # Fix the slow VPP tone-mapping on ADL-S and ADL-N
-    wget -q -O - https://github.com/intel/media-driver/commit/1097e39b.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
@@ -321,7 +315,11 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    vk_ver="v1.3.260"
+    if [[ $( lsb_release -c -s ) == "bionic" ]]; then
+        vk_ver="v1.3.240"
+    fi
+    git clone -b ${vk_ver} --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -334,7 +332,11 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.240 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    vk_ver="v1.3.260"
+    if [[ $( lsb_release -c -s ) == "bionic" ]]; then
+        vk_ver="v1.3.240"
+    fi
+    git clone -b ${vk_ver} --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -355,7 +357,7 @@ prepare_extra_amd64() {
 
     # SHADERC
     pushd ${SOURCE_DIR}
-    git clone -b v2023.3 --depth=1 https://github.com/google/shaderc.git
+    git clone -b v2023.5 --depth=1 https://github.com/google/shaderc.git
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -433,7 +435,11 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
-    git clone -b v5.229.2 --recursive --depth=1 https://github.com/haasn/libplacebo.git
+    pl_ver="v5.264.1"
+    if [[ $( lsb_release -c -s ) == "bionic" ]]; then
+        pl_ver="v5.229.2"
+    fi
+    git clone -b ${pl_ver} --recursive --depth=1 https://github.com/haasn/libplacebo.git
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \

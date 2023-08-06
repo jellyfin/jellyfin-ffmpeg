@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://gitlab.freedesktop.org/xorg/lib/libxau.git"
-SCRIPT_COMMIT="df1bf4fe528a5a9eef420f78efb225e4696ac467"
+SCRIPT_COMMIT="68e74d37b99f56bbd1a5f2fb8cb4ad6116f27bd3"
 
 ffbuild_enabled() {
     [[ $TARGET != linux* ]] && return -1

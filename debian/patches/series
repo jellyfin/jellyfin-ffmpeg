@@ -52,3 +52,6 @@
 0052-backport-upstream-qsvenc-fixes.patch
 0053-allow-vaapi-import-drm-prime2-planar-formats.patch
 0054-add-vui-info-to-the-seq-header-of-hevc-vaapi-encoder.patch
+0055-use-contiguous-linear-vulkan-images-for-amd-encoder.patch
+0056-fix-libplacebo-filter-build-with-v6-api.patch
+0057-fix-x86-mathops-assembly-build-with-newer-binutil.patch
