@@ -55,3 +55,4 @@
 0055-use-contiguous-linear-vulkan-images-for-amd-encoder.patch
 0056-fix-libplacebo-filter-build-with-v6-api.patch
 0057-fix-x86-mathops-assembly-build-with-newer-binutil.patch
+0058-sync-intel-d3d11va-textures-before-mapping-to-opencl.patch

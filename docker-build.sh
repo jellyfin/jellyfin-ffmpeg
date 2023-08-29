@@ -138,7 +138,7 @@ prepare_extra_amd64() {
     # SVT-AV1
     # nasm >= 2.14
     pushd ${SOURCE_DIR}
-    git clone -b v1.6.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v1.7.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
     mkdir build
     pushd build
@@ -174,7 +174,7 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     mkdir libdrm
     pushd libdrm
-    libdrm_ver="2.4.115"
+    libdrm_ver="2.4.116"
     libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
     wget ${libdrm_link} -O libdrm.tar.xz
     tar xaf libdrm.tar.xz
@@ -237,7 +237,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.9 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.3.10 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -292,7 +292,7 @@ prepare_extra_amd64() {
     # ONEVPL-INTEL-GPU (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.3.0 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-23.3.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -312,7 +312,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.3.0 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-23.3.2 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -331,7 +331,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.260 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.261 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -344,7 +344,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.260 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.261 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \

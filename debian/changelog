@@ -1,3 +1,12 @@
+jellyfin-ffmpeg (6.0-6) unstable; urgency=medium
+
+  * Sync intel D3D11VA textures before mapping to OpenCL
+  * Tune the default param of QSV AV1e
+  * Backport upstream QSV fixes
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sat, 26 Aug 2023 01:19:34 +0800
+
 jellyfin-ffmpeg (6.0-5) unstable; urgency=medium
 
   * Add VUI info to the seq header of HEVC VA-API encoder
