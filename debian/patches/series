@@ -56,3 +56,4 @@
 0056-fix-libplacebo-filter-build-with-v6-api.patch
 0057-fix-x86-mathops-assembly-build-with-newer-binutil.patch
 0058-sync-intel-d3d11va-textures-before-mapping-to-opencl.patch
+0059-add-icon-for-windows-version-ffmpeg.patch
