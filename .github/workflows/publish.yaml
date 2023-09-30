@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["focal", "jammy", "kinetic", "lunar"]'
+      codenames: '["focal", "jammy", "lunar", "mantic"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -68,8 +68,8 @@ jobs:
           {distro: 'debian', codename: 'bookworm'},
           {distro: 'ubuntu', codename: 'focal'},
           {distro: 'ubuntu', codename: 'jammy'},
-          {distro: 'ubuntu', codename: 'kinetic'},
-          {distro: 'ubuntu', codename: 'lunar'}
+          {distro: 'ubuntu', codename: 'lunar'},
+          {distro: 'ubuntu', codename: 'mantic'}
         ]
     steps:
       - name: Sync mirrors and update symlinks
