@@ -24,3 +24,6 @@ packages:
   - lunar-amd64
   - lunar-armhf
   - lunar-arm64
+  - mantic-amd64
+  - mantic-armhf
+  - mantic-arm64
