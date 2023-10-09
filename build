@@ -10,8 +10,8 @@ usage() {
     echo -e " * bionic"
     echo -e " * focal"
     echo -e " * jammy"
-    echo -e " * kinetic"
     echo -e " * lunar"
+    echo -e " * mantic"
 }
 
 if [[ -z ${1} ]]; then
@@ -51,15 +51,15 @@ case ${cli_release} in
         gcc_version="11"
         llvm_version="15"
     ;;
-    'kinetic')
-        release="ubuntu:kinetic"
-        gcc_version="12"
-        llvm_version="15"
-    ;;
     'lunar')
         release="ubuntu:lunar"
         gcc_version="12"
         llvm_version="15"
+    ;;
+    'mantic')
+        release="ubuntu:mantic"
+        gcc_version="13"
+        llvm_version="17"
     ;;
     *)
         echo "Invalid release."
