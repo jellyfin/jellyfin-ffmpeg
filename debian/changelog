@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (5.1.3-6) unstable; urgency=medium
+
+  * Update dependencies
+  * Add suport for Ubuntu 23.10 (Mantic)
+  * Drop the EOL Ubuntu 22.10 (Kinetic)
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 29 Sep 2023 23:44:51 +0800
+
 jellyfin-ffmpeg (5.1.3-5) unstable; urgency=medium
 
   * Sync intel D3D11VA textures before mapping to OpenCL

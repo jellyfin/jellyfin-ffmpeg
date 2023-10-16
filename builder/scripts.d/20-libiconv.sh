@@ -12,6 +12,12 @@ ffbuild_dockerbuild() {
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" iconv
     cd iconv
 
+    cat <<EOF > ./.gitmodules
+[subcheckout "gnulib"]
+	url = https://git.savannah.gnu.org/git/gnulib.git
+	path = gnulib
+EOF
+
     ./gitsub.sh pull
     ./autogen.sh
 

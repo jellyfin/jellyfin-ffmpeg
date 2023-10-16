@@ -91,7 +91,7 @@ prepare_extra_common() {
 
     # DAV1D
     pushd ${SOURCE_DIR}
-    git clone -b 1.2.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 1.3.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
     if [ "${ARCH}" = "amd64" ]; then
         nasmver="$(nasm -v | cut -d ' ' -f3)"
         nasmminver="2.14.0"
@@ -201,7 +201,7 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone -b 2.19.0 --depth=1 https://github.com/intel/libva.git
+    git clone -b 2.20.0 --depth=1 https://github.com/intel/libva.git
     pushd libva
     sed -i 's|secure_getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|secure_getenv("LIBVA_DRIVER_NAME")|secure_getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
@@ -218,7 +218,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone -b 2.19.0 --depth=1 https://github.com/intel/libva-utils.git
+    git clone -b 2.20.0 --depth=1 https://github.com/intel/libva-utils.git
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -242,7 +242,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.10 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.3.12 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -258,6 +258,8 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     git clone -b intel-mediasdk-23.2.2 --depth=1 https://github.com/Intel-Media-SDK/MediaSDK.git
     pushd MediaSDK
+    # fix build for gcc 13
+    wget -q -O - https://github.com/Intel-Media-SDK/MediaSDK/commit/8fb9f5f.patch | git apply
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -276,7 +278,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.3.2 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-23.3.4 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -296,7 +298,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.3.2 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-23.3.4 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -315,7 +317,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    vk_ver="v1.3.261"
+    vk_ver="v1.3.268"
     if [[ $( lsb_release -c -s ) == "bionic" ]]; then
         vk_ver="v1.3.240"
     fi
@@ -332,7 +334,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    vk_ver="v1.3.261"
+    vk_ver="v1.3.268"
     if [[ $( lsb_release -c -s ) == "bionic" ]]; then
         vk_ver="v1.3.240"
     fi

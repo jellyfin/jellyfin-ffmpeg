@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "5.1.3-5"
+version: "5.1.3-6"
 packages:
   - buster-amd64
   - buster-armhf
@@ -21,9 +21,9 @@ packages:
   - jammy-amd64
   - jammy-armhf
   - jammy-arm64
-  - kinetic-amd64
-  - kinetic-armhf
-  - kinetic-arm64
   - lunar-amd64
   - lunar-armhf
   - lunar-arm64
+  - mantic-amd64
+  - mantic-armhf
+  - mantic-arm64
