@@ -1,8 +1,8 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/openssl/openssl.git"
-SCRIPT_COMMIT="OpenSSL_1_1_1v"
-SCRIPT_TAGFILTER="OpenSSL_1_1_1*"
+SCRIPT_COMMIT="openssl-3.1.3"
+SCRIPT_TAGFILTER="openssl-3.1.*"
 
 ffbuild_enabled() {
     return 0
@@ -11,15 +11,22 @@ ffbuild_enabled() {
 ffbuild_dockerbuild() {
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" openssl
     cd openssl
+    git submodule update --init --recursive --depth=1
 
     local myconf=(
         threads
         zlib
         no-shared
+        no-tests
+        no-apps
+        no-legacy
+        no-ssl2
+        no-ssl3
         enable-camellia
         enable-ec
         enable-srp
         --prefix="$FFBUILD_PREFIX"
+        --libdir=lib
     )
 
     if [[ $TARGET == win64 ]]; then
@@ -47,16 +54,27 @@ ffbuild_dockerbuild() {
         return -1
     fi
 
+    export CFLAGS="$CFLAGS -fno-strict-aliasing"
+    export CXXFLAGS="$CXXFLAGS -fno-strict-aliasing"
+
     # OpenSSL build system prepends the cross prefix itself
-    export CC="gcc"
-    export CXX="g++"
-    export AR="gcc-ar"
-    export RANLIB="gcc-ranlib"
+    export CC="${CC/${FFBUILD_CROSS_PREFIX}/}"
+    export CXX="${CXX/${FFBUILD_CROSS_PREFIX}/}"
+    export AR="${AR/${FFBUILD_CROSS_PREFIX}/}"
+    export RANLIB="${RANLIB/${FFBUILD_CROSS_PREFIX}/}"
+
+    # Actually allow Configure to disable apps
+    sed -i '/^my @disablables =/ s/$/"apps",/' Configure
 
     ./Configure "${myconf[@]}"
 
     sed -i -e "/^CFLAGS=/s|=.*|=${CFLAGS}|" -e "/^LDFLAGS=/s|=[[:space:]]*$|=${LDFLAGS}|" Makefile
 
-    make -j$(nproc)
+    make -j$(nproc) build_sw
     make install_sw
+}
+
+ffbuild_configure() {
+    [[ $TARGET == win* ]] && return 0
+    echo --enable-openssl
 }

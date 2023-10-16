@@ -159,7 +159,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.4.4 --depth=1 https://github.com/xz-mirror/xz.git
+git clone -b v5.4.4 --depth=1 https://github.com/tukaani-project/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
@@ -322,7 +322,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.2"
+mpt_ver="0.7.3"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -339,7 +339,7 @@ popd
 popd
 
 # LIBWEBP
-git clone -b v1.3.1 --depth=1 https://chromium.googlesource.com/webm/libwebp
+git clone -b v1.3.2 --depth=1 https://chromium.googlesource.com/webm/libwebp
 pushd libwebp
 ./autogen.sh
 ./configure \
@@ -473,7 +473,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.2.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.3.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build

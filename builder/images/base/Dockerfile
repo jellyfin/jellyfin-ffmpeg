@@ -1,4 +1,4 @@
-FROM ubuntu:lunar
+FROM ubuntu:mantic
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN \
