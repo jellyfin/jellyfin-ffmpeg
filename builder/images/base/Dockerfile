@@ -1,4 +1,4 @@
-FROM ubuntu:kinetic
+FROM ubuntu:mantic
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN \
