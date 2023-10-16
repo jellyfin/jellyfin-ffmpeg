@@ -1,3 +1,13 @@
+jellyfin-ffmpeg (6.0-7) unstable; urgency=medium
+
+  * Update dependencies
+  * Add suport for Ubuntu 23.10 (Mantic)
+  * Drop the EOL Ubuntu 22.10 (Kinetic)
+  * Fix QSV AV1 encoder ICQ rate control on Linux
+  * Update VA-API AV1 encoder to the upstream final version
+
+ -- nyanmisaka <nst799610810@gmail.com>  Fri, 29 Sep 2023 23:43:30 +0800
+
 jellyfin-ffmpeg (6.0-6) unstable; urgency=medium
 
   * Sync intel D3D11VA textures before mapping to OpenCL
