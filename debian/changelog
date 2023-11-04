@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (5.1.3-7) unstable; urgency=medium
+
+  * Fix the brightness issue in HLG-2-SDR tonemap
+  * Revert libdrm version to 2.4.115 for a known issue
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sat, 4 Nov 2023 22:18:25 +0800
+
 jellyfin-ffmpeg (5.1.3-6) unstable; urgency=medium
 
   * Update dependencies
