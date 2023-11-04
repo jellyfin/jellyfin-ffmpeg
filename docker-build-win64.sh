@@ -159,7 +159,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.4.4 --depth=1 https://github.com/tukaani-project/xz.git
+git clone -b v5.4.5 --depth=1 https://github.com/tukaani-project/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
