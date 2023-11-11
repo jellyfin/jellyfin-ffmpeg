@@ -227,15 +227,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
              ret = ff_filter_frame(outlink, in);
              if (ret < 0)
                  return ret;
-@@ -602,6 +643,7 @@ not_ready:
-     return FFERROR_NOT_READY;
- 
- eof:
-+    pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
-     ff_outlink_set_status(outlink, status, pts);
-     return 0;
- }
-@@ -685,20 +727,14 @@ static const AVOption vpp_options[] = {
+@@ -686,20 +727,14 @@ static const AVOption vpp_options[] = {
      { "h",      "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
      { "height", "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
      { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
@@ -258,7 +250,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
  
      { "rate", "Generate output at frame rate or field rate, available only for deinterlace mode",
        OFFSET(field_rate), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, "rate" },
-@@ -707,6 +743,7 @@ static const AVOption vpp_options[] = {
+@@ -708,6 +743,7 @@ static const AVOption vpp_options[] = {
      { "field", "Output at field rate (one frame of output for each field)",
        0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, "rate" },
  
@@ -266,7 +258,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      { NULL }
  };
  
-@@ -751,19 +788,14 @@ static const AVOption qsvscale_options[]
+@@ -752,19 +788,14 @@ static const AVOption qsvscale_options[]
      { "h",      "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str = "ih"   }, .flags = FLAGS },
      { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
  
@@ -288,7 +280,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_qsv.c
      { NULL },
  };
  
-@@ -788,6 +820,7 @@ static const AVOption qsvdeint_options[]
+@@ -789,6 +820,7 @@ static const AVOption qsvdeint_options[]
      { "bob",   "bob algorithm",                  0, AV_OPT_TYPE_CONST,      {.i64 = MFX_DEINTERLACING_BOB}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, "mode"},
      { "advanced", "Motion adaptive algorithm",   0, AV_OPT_TYPE_CONST, {.i64 = MFX_DEINTERLACING_ADVANCED}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, "mode"},
  
