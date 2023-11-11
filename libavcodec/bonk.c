@@ -155,6 +155,7 @@ static int intlist_read(BonkContext *s, int *buf, int entries, int base_2_part)
     int n_zeros = 0, step = 256, dominant = 0;
     int pos = 0, level = 0;
     BitCount *bits = s->bits;
+    int passes = 1;
 
     memset(buf, 0, entries * sizeof(*buf));
     if (base_2_part) {
@@ -216,24 +217,28 @@ static int intlist_read(BonkContext *s, int *buf, int entries, int base_2_part)
     x = 0;
     n_zeros = 0;
     for (i = 0; n_zeros < entries; i++) {
+        if (x >= max_x)
+            return AVERROR_INVALIDDATA;
+
         if (pos >= entries) {
             pos = 0;
-            level += 1 << low_bits;
+            level += passes << low_bits;
+            passes = 1;
+            if (bits[x].bit && bits[x].count > entries - n_zeros)
+                passes =  bits[x].count / (entries - n_zeros);
         }
 
         if (level > 1 << 16)
             return AVERROR_INVALIDDATA;
 
-        if (x >= max_x)
-            return AVERROR_INVALIDDATA;
-
         if (buf[pos] >= level) {
             if (bits[x].bit)
-                buf[pos] += 1 << low_bits;
+                buf[pos] += passes << low_bits;
             else
                 n_zeros++;
 
-            bits[x].count--;
+            av_assert1(bits[x].count >= passes);
+            bits[x].count -= passes;
             x += bits[x].count == 0;
         }
 
@@ -265,14 +270,14 @@ static inline int shift(int a, int b)
 
 static int predictor_calc_error(int *k, int *state, int order, int error)
 {
-    int i, x = error - shift_down(k[order-1] * state[order-1], LATTICE_SHIFT);
+    int i, x = error - (unsigned)shift_down(k[order-1] * (unsigned)state[order-1], LATTICE_SHIFT);
     int *k_ptr = &(k[order-2]),
         *state_ptr = &(state[order-2]);
 
     for (i = order-2; i >= 0; i--, k_ptr--, state_ptr--) {
         unsigned k_value = *k_ptr, state_value = *state_ptr;
 
-        x -= shift_down(k_value * state_value, LATTICE_SHIFT);
+        x -= (unsigned) shift_down(k_value * (unsigned)state_value, LATTICE_SHIFT);
         state_ptr[1] = state_value + shift_down(k_value * x, LATTICE_SHIFT);
     }
 

@@ -75,6 +75,8 @@ int ff_imf_xml_read_uuid(xmlNodePtr element, AVUUID uuid)
     int ret = 0;
 
     xmlChar *element_text = xmlNodeListGetString(element->doc, element->xmlChildrenNode, 1);
+    if (!element_text)
+        return AVERROR_INVALIDDATA;
     ret = av_uuid_urn_parse(element_text, uuid);
     if (ret) {
         av_log(NULL, AV_LOG_ERROR, "Invalid UUID\n");
@@ -90,7 +92,7 @@ int ff_imf_xml_read_rational(xmlNodePtr element, AVRational *rational)
     int ret = 0;
 
     xmlChar *element_text = xmlNodeListGetString(element->doc, element->xmlChildrenNode, 1);
-    if (sscanf(element_text, "%i %i", &rational->num, &rational->den) != 2) {
+    if (element_text == NULL || sscanf(element_text, "%i %i", &rational->num, &rational->den) != 2) {
         av_log(NULL, AV_LOG_ERROR, "Invalid rational number\n");
         ret = AVERROR_INVALIDDATA;
     }
@@ -104,7 +106,7 @@ int ff_imf_xml_read_uint32(xmlNodePtr element, uint32_t *number)
     int ret = 0;
 
     xmlChar *element_text = xmlNodeListGetString(element->doc, element->xmlChildrenNode, 1);
-    if (sscanf(element_text, "%" PRIu32, number) != 1) {
+    if (element_text == NULL || sscanf(element_text, "%" PRIu32, number) != 1) {
         av_log(NULL, AV_LOG_ERROR, "Invalid unsigned 32-bit integer");
         ret = AVERROR_INVALIDDATA;
     }
@@ -188,6 +190,10 @@ static int fill_content_title(xmlNodePtr cpl_element, FFIMFCPL *cpl)
     cpl->content_title_utf8 = xmlNodeListGetString(cpl_element->doc,
                                                    element->xmlChildrenNode,
                                                    1);
+    if (!cpl->content_title_utf8)
+        cpl->content_title_utf8 = xmlStrdup("");
+    if (!cpl->content_title_utf8)
+        return AVERROR(ENOMEM);
 
     return 0;
 }
@@ -260,6 +266,8 @@ static int fill_timecode(xmlNodePtr cpl_element, FFIMFCPL *cpl)
     }
 
     tc_str = xmlNodeListGetString(element->doc, element->xmlChildrenNode, 1);
+    if (!tc_str)
+        return AVERROR_INVALIDDATA;
     ret = parse_cpl_tc_type(tc_str, comps);
     xmlFree(tc_str);
     if (ret)
@@ -608,11 +616,10 @@ static int push_main_audio_sequence(xmlNodePtr audio_sequence_elem, FFIMFCPL *cp
         ret = fill_trackfile_resource(resource_elem,
                                       &vt->resources[vt->resource_count],
                                       cpl);
-        vt->resource_count++;
-        if (ret) {
+        if (ret)
             av_log(NULL, AV_LOG_ERROR, "Invalid Resource\n");
-            continue;
-        }
+        else
+            vt->resource_count++;
 
         resource_elem = xmlNextElementSibling(resource_elem);
     }
@@ -691,11 +698,10 @@ static int push_main_image_2d_sequence(xmlNodePtr image_sequence_elem, FFIMFCPL 
         ret = fill_trackfile_resource(resource_elem,
                                       &cpl->main_image_2d_track->resources[cpl->main_image_2d_track->resource_count],
                                       cpl);
-        cpl->main_image_2d_track->resource_count++;
-        if (ret) {
+        if (ret)
             av_log(NULL, AV_LOG_ERROR, "Invalid Resource\n");
-            continue;
-        }
+        else
+            cpl->main_image_2d_track->resource_count++;
 
         resource_elem = xmlNextElementSibling(resource_elem);
     }

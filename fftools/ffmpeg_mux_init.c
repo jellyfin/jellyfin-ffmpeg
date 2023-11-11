@@ -606,8 +606,11 @@ static OutputStream *new_output_stream(Muxer *mux, const OptionsContext *o,
     MATCH_PER_STREAM_OPT(codec_tags, str, codec_tag, oc, st);
     if (codec_tag) {
         uint32_t tag = strtol(codec_tag, &next, 0);
-        if (*next)
-            tag = AV_RL32(codec_tag);
+        if (*next) {
+            uint8_t buf[4] = { 0 };
+            memcpy(buf, codec_tag, FFMIN(sizeof(buf), strlen(codec_tag)));
+            tag = AV_RL32(buf);
+        }
         ost->st->codecpar->codec_tag = tag;
         if (ost->enc_ctx)
             ost->enc_ctx->codec_tag = tag;
@@ -1819,11 +1822,11 @@ static int copy_metadata(Muxer *mux, AVFormatContext *ic,
     parse_meta_type(mux, inspec,  &type_in,  &idx_in,  &istream_spec);
     parse_meta_type(mux, outspec, &type_out, &idx_out, &ostream_spec);
 
-    if (type_in == 'g' || type_out == 'g')
+    if (type_in == 'g' || type_out == 'g' || (!*outspec && !ic))
         *metadata_global_manual = 1;
-    if (type_in == 's' || type_out == 's')
+    if (type_in == 's' || type_out == 's' || (!*outspec && !ic))
         *metadata_streams_manual = 1;
-    if (type_in == 'c' || type_out == 'c')
+    if (type_in == 'c' || type_out == 'c' || (!*outspec && !ic))
         *metadata_chapters_manual = 1;
 
     /* ic is NULL when just disabling automatic mappings */
@@ -2063,7 +2066,7 @@ static void parse_forced_key_frames(KeyframeForceCtx *kf, const Muxer *mux,
         if (next)
             *next++ = 0;
 
-        if (!memcmp(p, "chapters", 8)) {
+        if (strstr(p, "chapters") == p) {
             AVChapter * const *ch = mux->fc->chapters;
             unsigned int    nb_ch = mux->fc->nb_chapters;
             int j;

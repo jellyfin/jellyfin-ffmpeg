@@ -353,7 +353,7 @@ static int16_t long_term_filter(AudioDSPContext *adsp, int pitch_delay_int,
         if (tmp > 0)
             L_temp0 >>= tmp;
         else
-            L_temp1 >>= -tmp;
+            L_temp1 >>= FFMIN(-tmp, 31);
 
         /* Check if longer filter increases the values of R'(k). */
         if (L_temp1 > L_temp0) {
@@ -581,7 +581,7 @@ void ff_g729_postfilter(AudioDSPContext *adsp, int16_t* ht_prev_data, int* voici
 int16_t ff_g729_adaptive_gain_control(int gain_before, int gain_after, int16_t *speech,
                                    int subframe_size, int16_t gain_prev)
 {
-    int gain; // (3.12)
+    unsigned gain; // (3.12)
     int n;
     int exp_before, exp_after;
 
@@ -603,7 +603,7 @@ int16_t ff_g729_adaptive_gain_control(int gain_before, int gain_after, int16_t *
             gain = ((gain_before - gain_after) << 14) / gain_after + 0x4000;
             gain = bidir_sal(gain, exp_after - exp_before);
         }
-        gain = av_clip_int16(gain);
+        gain = FFMIN(gain, 32767);
         gain = (gain * G729_AGC_FAC1 + 0x4000) >> 15; // gain * (1-0.9875)
     } else
         gain = 0;

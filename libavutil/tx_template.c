@@ -43,6 +43,10 @@
     SR_TABLE(32768)    \
     SR_TABLE(65536)    \
     SR_TABLE(131072)   \
+    SR_TABLE(262144)   \
+    SR_TABLE(524288)   \
+    SR_TABLE(1048576)   \
+    SR_TABLE(2097152)   \
 
 #define SR_TABLE(len) \
     TABLE_DEF(len, len/4 + 1);
@@ -181,10 +185,9 @@ static av_always_inline void fft3(TXComplex *out, TXComplex *in,
     BF(tmp[1].re, tmp[2].im, in[1].im, in[2].im);
     BF(tmp[1].im, tmp[2].re, in[1].re, in[2].re);
 
-    out[0*stride].re = tmp[0].re + tmp[2].re;
-    out[0*stride].im = tmp[0].im + tmp[2].im;
-
 #ifdef TX_INT32
+    out[0*stride].re = (int64_t)tmp[0].re + tmp[2].re;
+    out[0*stride].im = (int64_t)tmp[0].im + tmp[2].im;
     mtmp[0] = (int64_t)tab[ 8] * tmp[1].re;
     mtmp[1] = (int64_t)tab[ 9] * tmp[1].im;
     mtmp[2] = (int64_t)tab[10] * tmp[2].re;
@@ -194,6 +197,8 @@ static av_always_inline void fft3(TXComplex *out, TXComplex *in,
     out[2*stride].re = tmp[0].re - (mtmp[2] - mtmp[0] + 0x40000000 >> 31);
     out[2*stride].im = tmp[0].im - (mtmp[3] + mtmp[1] + 0x40000000 >> 31);
 #else
+    out[0*stride].re = tmp[0].re + tmp[2].re;
+    out[0*stride].im = tmp[0].im + tmp[2].im;
     tmp[1].re = tab[ 8] * tmp[1].re;
     tmp[1].im = tab[ 9] * tmp[1].im;
     tmp[2].re = tab[10] * tmp[2].re;
@@ -218,8 +223,8 @@ static av_always_inline void NAME(TXComplex *out, TXComplex *in,    \
     BF(t[3].im, t[2].re, in[2].re, in[3].re);                       \
     BF(t[3].re, t[2].im, in[2].im, in[3].im);                       \
                                                                     \
-    out[D0*stride].re = dc.re + t[0].re + t[2].re;                  \
-    out[D0*stride].im = dc.im + t[0].im + t[2].im;                  \
+    out[D0*stride].re = dc.re + (TXUSample)t[0].re + t[2].re;        \
+    out[D0*stride].im = dc.im + (TXUSample)t[0].im + t[2].im;        \
                                                                     \
     SMUL(t[4].re, t[0].re, tab[0], tab[2], t[2].re, t[0].re);       \
     SMUL(t[4].im, t[0].im, tab[0], tab[2], t[2].im, t[0].im);       \
@@ -231,14 +236,14 @@ static av_always_inline void NAME(TXComplex *out, TXComplex *in,    \
     BF(z0[2].re, z0[1].re, t[4].re, t[5].re);                       \
     BF(z0[2].im, z0[1].im, t[4].im, t[5].im);                       \
                                                                     \
-    out[D1*stride].re = dc.re + z0[3].re;                           \
-    out[D1*stride].im = dc.im + z0[0].im;                           \
-    out[D2*stride].re = dc.re + z0[2].re;                           \
-    out[D2*stride].im = dc.im + z0[1].im;                           \
-    out[D3*stride].re = dc.re + z0[1].re;                           \
-    out[D3*stride].im = dc.im + z0[2].im;                           \
-    out[D4*stride].re = dc.re + z0[0].re;                           \
-    out[D4*stride].im = dc.im + z0[3].im;                           \
+    out[D1*stride].re = dc.re + (TXUSample)z0[3].re;                 \
+    out[D1*stride].im = dc.im + (TXUSample)z0[0].im;                 \
+    out[D2*stride].re = dc.re + (TXUSample)z0[2].re;                 \
+    out[D2*stride].im = dc.im + (TXUSample)z0[1].im;                 \
+    out[D3*stride].re = dc.re + (TXUSample)z0[1].re;                 \
+    out[D3*stride].im = dc.im + (TXUSample)z0[2].im;                 \
+    out[D4*stride].re = dc.re + (TXUSample)z0[0].re;                 \
+    out[D4*stride].im = dc.im + (TXUSample)z0[3].im;                 \
 }
 
 DECL_FFT5(fft5,     0,  1,  2,  3,  4)
@@ -717,6 +722,10 @@ DECL_SR_CODELET(16384,8192,4096)
 DECL_SR_CODELET(32768,16384,8192)
 DECL_SR_CODELET(65536,32768,16384)
 DECL_SR_CODELET(131072,65536,32768)
+DECL_SR_CODELET(262144,131072,65536)
+DECL_SR_CODELET(524288,262144,131072)
+DECL_SR_CODELET(1048576,524288,262144)
+DECL_SR_CODELET(2097152,1048576,524288)
 
 static av_cold int TX_NAME(ff_tx_fft_init)(AVTXContext *s,
                                            const FFTXCodelet *cd,
@@ -1947,6 +1956,10 @@ const FFTXCodelet * const TX_NAME(ff_tx_codelet_list)[] = {
     &TX_NAME(ff_tx_fft32768_ns_def),
     &TX_NAME(ff_tx_fft65536_ns_def),
     &TX_NAME(ff_tx_fft131072_ns_def),
+    &TX_NAME(ff_tx_fft262144_ns_def),
+    &TX_NAME(ff_tx_fft524288_ns_def),
+    &TX_NAME(ff_tx_fft1048576_ns_def),
+    &TX_NAME(ff_tx_fft2097152_ns_def),
 
     /* Prime factor codelets */
     &TX_NAME(ff_tx_fft3_ns_def),

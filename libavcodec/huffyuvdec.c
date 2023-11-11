@@ -695,9 +695,9 @@ static void decode_422_bitstream(HYuvDecContext *s, int count)
 /* TODO instead of restarting the read when the code isn't in the first level
  * of the joint table, jump into the 2nd level of the individual table. */
 #define READ_2PIX_PLANE16(dst0, dst1, plane){\
-    dst0 = get_vlc2(&s->gb, s->vlc[plane].table, VLC_BITS, 3)<<2;\
+    dst0 = get_vlc2(&s->gb, s->vlc[plane].table, VLC_BITS, 3)*4;\
     dst0 += get_bits(&s->gb, 2);\
-    dst1 = get_vlc2(&s->gb, s->vlc[plane].table, VLC_BITS, 3)<<2;\
+    dst1 = get_vlc2(&s->gb, s->vlc[plane].table, VLC_BITS, 3)*4;\
     dst1 += get_bits(&s->gb, 2);\
 }
 static void decode_plane_bitstream(HYuvDecContext *s, int width, int plane)
@@ -755,7 +755,7 @@ static void decode_plane_bitstream(HYuvDecContext *s, int width, int plane)
             }
         }
         if( width&1 && get_bits_left(&s->gb)>0 ) {
-            int dst = get_vlc2(&s->gb, s->vlc[plane].table, VLC_BITS, 3)<<2;
+            int dst = (unsigned)get_vlc2(&s->gb, s->vlc[plane].table, VLC_BITS, 3)<<2;
             s->temp16[0][width-1] = dst + get_bits(&s->gb, 2);
         }
     }
