@@ -124,7 +124,7 @@ shift_and_ret:
     return buf + len;
 }
 
-static int get_shift(int timeres, const char *buf)
+static int get_shift(unsigned timeres, const char *buf)
 {
     int sign = 1;
     int a = 0, b = 0, c = 0, d = 0;
@@ -143,16 +143,16 @@ static int get_shift(int timeres, const char *buf)
 
     ret = 0;
     switch (n) {
-    case 4:
-        ret = sign * (((int64_t)a*3600 + (int64_t)b*60 + c) * timeres + d);
-        break;
-    case 3:
-        ret = sign * ((         (int64_t)a*60 + b) * timeres + c);
-        break;
-    case 2:
-        ret = sign * ((                (int64_t)a) * timeres + b);
-        break;
+    case 1:                      a = 0;
+    case 2:        c = b; b = a; a = 0;
+    case 3: d = c; c = b; b = a; a = 0;
     }
+
+    ret = (int64_t)a*3600 + (int64_t)b*60 + c;
+    if (FFABS(ret) > (INT64_MAX - FFABS(d)) / timeres)
+        return 0;
+    ret = sign * (ret * timeres + d);
+
     if ((int)ret != ret)
         ret = 0;
 
@@ -227,13 +227,16 @@ static int jacosub_read_header(AVFormatContext *s)
             }
             av_bprintf(&header, "#S %s", p);
             break;
-        case 'T': // ...but must be placed after TIMERES
-            jacosub->timeres = strtol(p, NULL, 10);
-            if (!jacosub->timeres)
+        case 'T': { // ...but must be placed after TIMERES
+            int64_t timeres = strtol(p, NULL, 10);
+            if (timeres <= 0 || timeres > UINT32_MAX) {
                 jacosub->timeres = 30;
-            else
+            } else {
+                jacosub->timeres = timeres;
                 av_bprintf(&header, "#T %s", p);
+            }
             break;
+        }
         }
     }
 

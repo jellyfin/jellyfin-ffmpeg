@@ -1517,7 +1517,8 @@ static void luma_mc_uni(HEVCContext *s, uint8_t *dst, ptrdiff_t dststride,
 
     if (x_off < QPEL_EXTRA_BEFORE || y_off < QPEL_EXTRA_AFTER ||
         x_off >= pic_width - block_w - QPEL_EXTRA_AFTER ||
-        y_off >= pic_height - block_h - QPEL_EXTRA_AFTER) {
+        y_off >= pic_height - block_h - QPEL_EXTRA_AFTER ||
+        ref == s->frame) {
         const ptrdiff_t edge_emu_stride = EDGE_EMU_BUFFER_STRIDE << s->ps.sps->pixel_shift;
         int offset     = QPEL_EXTRA_BEFORE * srcstride       + (QPEL_EXTRA_BEFORE << s->ps.sps->pixel_shift);
         int buf_offset = QPEL_EXTRA_BEFORE * edge_emu_stride + (QPEL_EXTRA_BEFORE << s->ps.sps->pixel_shift);
@@ -1665,6 +1666,7 @@ static void chroma_mc_uni(HEVCContext *s, uint8_t *dst0,
     intptr_t my          = av_mod_uintp2(mv->y, 2 + vshift);
     intptr_t _mx         = mx << (1 - hshift);
     intptr_t _my         = my << (1 - vshift);
+    int emu              = src0 == s->frame->data[1] || src0 == s->frame->data[2];
 
     x_off += mv->x >> (2 + hshift);
     y_off += mv->y >> (2 + vshift);
@@ -1672,7 +1674,8 @@ static void chroma_mc_uni(HEVCContext *s, uint8_t *dst0,
 
     if (x_off < EPEL_EXTRA_BEFORE || y_off < EPEL_EXTRA_AFTER ||
         x_off >= pic_width - block_w - EPEL_EXTRA_AFTER ||
-        y_off >= pic_height - block_h - EPEL_EXTRA_AFTER) {
+        y_off >= pic_height - block_h - EPEL_EXTRA_AFTER ||
+        emu) {
         const int edge_emu_stride = EDGE_EMU_BUFFER_STRIDE << s->ps.sps->pixel_shift;
         int offset0 = EPEL_EXTRA_BEFORE * (srcstride + (1 << s->ps.sps->pixel_shift));
         int buf_offset0 = EPEL_EXTRA_BEFORE *
@@ -1911,13 +1914,13 @@ static void hls_prediction_unit(HEVCContext *s, int x0, int y0,
 
     if (current_mv.pred_flag & PF_L0) {
         ref0 = refPicList[0].ref[current_mv.ref_idx[0]];
-        if (!ref0)
+        if (!ref0 || !ref0->frame->data[0])
             return;
         hevc_await_progress(s, ref0, &current_mv.mv[0], y0, nPbH);
     }
     if (current_mv.pred_flag & PF_L1) {
         ref1 = refPicList[1].ref[current_mv.ref_idx[1]];
-        if (!ref1)
+        if (!ref1 || !ref1->frame->data[0])
             return;
         hevc_await_progress(s, ref1, &current_mv.mv[1], y0, nPbH);
     }
