@@ -317,7 +317,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    vk_ver="v1.3.269"
+    vk_ver="v1.3.270"
     if [[ $( lsb_release -c -s ) == "bionic" ]]; then
         vk_ver="v1.3.240"
     fi
@@ -334,7 +334,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    vk_ver="v1.3.269"
+    vk_ver="v1.3.270"
     if [[ $( lsb_release -c -s ) == "bionic" ]]; then
         vk_ver="v1.3.240"
     fi
