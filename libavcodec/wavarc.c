@@ -98,7 +98,7 @@ static av_cold int wavarc_init(AVCodecContext *avctx)
     }
 
     s->max_framesize = s->nb_samples * 16;
-    s->bitstream = av_calloc(s->max_framesize, sizeof(*s->bitstream));
+    s->bitstream = av_calloc(s->max_framesize + AV_INPUT_BUFFER_PADDING_SIZE, sizeof(*s->bitstream));
     if (!s->bitstream)
         return AVERROR(ENOMEM);
 
@@ -141,11 +141,11 @@ static void do_stereo(WavArcContext *s, int ch, int correlated, int len)
     } else {
         if (correlated) {
             for (int n = 0; n < nb_samples; n++)
-                s->samples[1][n + len] += s->samples[0][n + len];
+                s->samples[1][n + len] += (unsigned)s->samples[0][n + len];
         }
         for (int n = 0; n < len; n++) {
             s->pred[0][n] = s->samples[1][nb_samples + n];
-            s->pred[1][n] = s->pred[0][n] - s->samples[0][nb_samples + n];
+            s->pred[1][n] = s->pred[0][n] - (unsigned)s->samples[0][nb_samples + n];
         }
     }
 }
@@ -192,7 +192,7 @@ static int decode_1dif(AVCodecContext *avctx,
         if (block_type < 4 && block_type >= 0) {
             k = 1 + (avctx->sample_fmt == AV_SAMPLE_FMT_S16P);
             k = get_urice(gb, k) + 1;
-            if (k > 32)
+            if (k >= 32)
                 return AVERROR_INVALIDDATA;
         }
 
@@ -205,6 +205,10 @@ static int decode_1dif(AVCodecContext *avctx,
             continue;
         case 6:
             s->shift = get_urice(gb, 2);
+            if ((unsigned)s->shift > 31) {
+                s->shift = 0;
+                return AVERROR_INVALIDDATA;
+            }
             continue;
         case 5:
             if (avctx->sample_fmt == AV_SAMPLE_FMT_U8P) {
@@ -284,7 +288,7 @@ static int decode_2slp(AVCodecContext *avctx,
         if (block_type < 5 && block_type >= 0) {
             k = 1 + (avctx->sample_fmt == AV_SAMPLE_FMT_S16P);
             k = get_urice(gb, k) + 1;
-            if (k > 32)
+            if (k >= 32)
                 return AVERROR_INVALIDDATA;
         }
 
@@ -294,13 +298,17 @@ static int decode_2slp(AVCodecContext *avctx,
             return AVERROR_EOF;
         case 8:
             s->nb_samples = get_urice(gb, 8);
-            if (s->nb_samples > 570) {
+            if (s->nb_samples > 570U) {
                 s->nb_samples = 570;
                 return AVERROR_INVALIDDATA;
             }
             continue;
         case 7:
             s->shift = get_urice(gb, 2);
+            if ((unsigned)s->shift > 31) {
+                s->shift = 0;
+                return AVERROR_INVALIDDATA;
+            }
             continue;
         case 6:
             if (avctx->sample_fmt == AV_SAMPLE_FMT_U8P) {
@@ -343,13 +351,15 @@ static int decode_2slp(AVCodecContext *avctx,
             break;
         case 0:
             order = get_urice(gb, 2);
+            if ((unsigned)order >= FF_ARRAY_ELEMS(s->filter[ch]))
+                return AVERROR_INVALIDDATA;
             for (int o = 0; o < order; o++)
                 s->filter[ch][o] = get_srice(gb, 2);
             for (int n = 0; n < s->nb_samples; n++) {
                 int sum = 15;
 
                 for (int o = 0; o < order; o++)
-                    sum += s->filter[ch][o] * samples[n + 70 - o - 1];
+                    sum += s->filter[ch][o] * (unsigned)samples[n + 70 - o - 1];
 
                 samples[n + 70] = get_srice(gb, k) + (sum >> 4);
             }
@@ -452,7 +462,7 @@ fail:
             const int *src = s->samples[ch] + s->offset;
 
             for (int n = 0; n < frame->nb_samples; n++)
-                dst[n] = src[n] * (1 << s->shift) + 0x80U;
+                dst[n] = src[n] * (1U << s->shift) + 0x80U;
         }
         break;
     case AV_SAMPLE_FMT_S16P:
@@ -461,7 +471,7 @@ fail:
             const int *src = s->samples[ch] + s->offset;
 
             for (int n = 0; n < frame->nb_samples; n++)
-                dst[n] = src[n] * (1 << s->shift);
+                dst[n] = src[n] * (1U << s->shift);
         }
         break;
     }

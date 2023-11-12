@@ -295,7 +295,7 @@ void ff_mpeg4_decode_studio(MpegEncContext *s, uint8_t *dest_y, uint8_t *dest_cb
             int hsub = i ? s->chroma_x_shift : 0;
             int lowres = s->avctx->lowres;
             int step = 1 << lowres;
-            dest_pcm[i] += (linesize[i] / 2) * ((16 >> vsub) - 1);
+            dest_pcm[i] += (linesize[i] / 2) * ((16 >> vsub + lowres) - 1);
             for (int h = (16 >> (vsub + lowres)) - 1; h >= 0; h--){
                 for (int w = (16 >> (hsub + lowres)) - 1, idx = 0; w >= 0; w--, idx += step)
                     dest_pcm[i][w] = src[idx];
@@ -861,7 +861,7 @@ static inline int get_amv(Mpeg4DecContext *ctx, int n)
         for (y = 0; y < 16; y++) {
             int v;
 
-            v = mb_v + dy * y;
+            v = mb_v + (unsigned)dy * y;
             // FIXME optimize
             for (x = 0; x < 16; x++) {
                 sum += v >> shift;
@@ -1437,7 +1437,7 @@ static inline int mpeg4_decode_block(Mpeg4DecContext *ctx, int16_t *block,
                                 if (SHOW_UBITS(re, &s->gb, 1) == 0) {
                                     av_log(s->avctx, AV_LOG_ERROR,
                                            "1. marker bit missing in 3. esc\n");
-                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR))
+                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR) || get_bits_left(&s->gb) <= 0)
                                         return AVERROR_INVALIDDATA;
                                 }
                                 SKIP_CACHE(re, &s->gb, 1);
@@ -1448,7 +1448,7 @@ static inline int mpeg4_decode_block(Mpeg4DecContext *ctx, int16_t *block,
                                 if (SHOW_UBITS(re, &s->gb, 1) == 0) {
                                     av_log(s->avctx, AV_LOG_ERROR,
                                            "2. marker bit missing in 3. esc\n");
-                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR))
+                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR) || get_bits_left(&s->gb) <= 0)
                                         return AVERROR_INVALIDDATA;
                                 }
 

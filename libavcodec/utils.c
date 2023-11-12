@@ -317,7 +317,7 @@ void avcodec_align_dimensions2(AVCodecContext *s, int *width, int *height,
     }
 
     if (s->codec_id == AV_CODEC_ID_IFF_ILBM) {
-        w_align = FFMAX(w_align, 8);
+        w_align = FFMAX(w_align, 16);
     }
 
     *width  = FFALIGN(*width, w_align);
@@ -641,9 +641,9 @@ static int get_audio_frame_duration(enum AVCodecID id, int sr, int ch, int ba,
     if (sr > 0) {
         /* calc from sample rate */
         if (id == AV_CODEC_ID_TTA)
-            return 256 * sr / 245;
+            return 256ll * sr / 245;
         else if (id == AV_CODEC_ID_DST)
-            return 588 * sr / 44100;
+            return 588ll * sr / 44100;
         else if (id == AV_CODEC_ID_BINKAUDIO_DCT) {
             if (sr / 22050 > 22)
                 return 0;
