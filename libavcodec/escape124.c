@@ -158,7 +158,7 @@ static MacroBlock decode_macroblock(Escape124Context* s, GetBitContext* gb,
 
     // This condition can occur with invalid bitstreams and
     // *codebook_index == 2
-    if (block_index >= s->codebooks[*codebook_index].size)
+    if (block_index >= s->codebooks[*codebook_index].size || !s->codebooks[*codebook_index].blocks)
         return (MacroBlock) { { 0 } };
 
     return s->codebooks[*codebook_index].blocks[block_index];
@@ -237,7 +237,7 @@ static int escape124_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         if ((ret = av_frame_ref(frame, s->frame)) < 0)
             return ret;
 
-        return frame_size;
+        return 0;
     }
 
     for (i = 0; i < 3; i++) {
@@ -371,7 +371,7 @@ static int escape124_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     *got_frame = 1;
 
-    return frame_size;
+    return 0;
 }
 
 

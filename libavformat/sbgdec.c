@@ -1289,7 +1289,10 @@ static int generate_intervals(void *log, struct sbg_script *s, int sample_rate,
     /* SBaGen handles the time before and after the extremal events,
        and the corresponding transitions, as if the sequence were cyclic
        with a 24-hours period. */
-    period = s->events[s->nb_events - 1].ts - s->events[0].ts;
+    period = s->events[s->nb_events - 1].ts - (uint64_t)s->events[0].ts;
+    if (period < 0)
+        return AVERROR_INVALIDDATA;
+
     period = (period + (DAY_TS - 1)) / DAY_TS * DAY_TS;
     period = FFMAX(period, DAY_TS);
 
@@ -1458,6 +1461,13 @@ static av_cold int sbg_read_header(AVFormatContext *avf)
     st->duration      = script.end_ts == AV_NOPTS_VALUE ? AV_NOPTS_VALUE :
                         av_rescale(script.end_ts - script.start_ts,
                                    sbg->sample_rate, AV_TIME_BASE);
+
+    if (st->duration != AV_NOPTS_VALUE && (
+        st->duration < 0 || st->start_time > INT64_MAX - st->duration)) {
+        r = AVERROR_INVALIDDATA;
+        goto fail;
+    }
+
     sti->cur_dts      = st->start_time;
     r = encode_intervals(&script, st->codecpar, &inter);
     if (r < 0)

@@ -721,11 +721,10 @@ static void encode_cblk(Jpeg2000EncoderContext *s, Jpeg2000T1Context *t1, Jpeg20
 
     if (max == 0){
         cblk->nonzerobits = 0;
-        bpno = 0;
     } else{
         cblk->nonzerobits = av_log2(max) + 1 - NMSEDEC_FRACBITS;
-        bpno = cblk->nonzerobits - 1;
     }
+    bpno = cblk->nonzerobits - 1;
 
     cblk->data[0] = 0;
     ff_mqc_initenc(&t1->mqc, cblk->data + 1);
@@ -1531,6 +1530,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int tileno, ret;
     Jpeg2000EncoderContext *s = avctx->priv_data;
     uint8_t *chunkstart, *jp2cstart, *jp2hstart;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
 
     if ((ret = ff_alloc_packet(avctx, pkt, avctx->width*avctx->height*9 + AV_INPUT_BUFFER_MIN_SIZE)) < 0)
         return ret;
@@ -1543,7 +1543,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     s->lambda = s->picture->quality * LAMBDA_SCALE;
 
-    if (avctx->pix_fmt == AV_PIX_FMT_BGR48 || avctx->pix_fmt == AV_PIX_FMT_GRAY16)
+    if (s->cbps[0] > 8)
         copy_frame_16(s);
     else
         copy_frame_8(s);
@@ -1587,7 +1587,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         bytestream_put_byte(&s->buf, 1);
         bytestream_put_byte(&s->buf, 0);
         bytestream_put_byte(&s->buf, 0);
-        if (avctx->pix_fmt == AV_PIX_FMT_RGB24 || avctx->pix_fmt == AV_PIX_FMT_PAL8) {
+        if ((desc->flags & AV_PIX_FMT_FLAG_RGB) || avctx->pix_fmt == AV_PIX_FMT_PAL8) {
             bytestream_put_be32(&s->buf, 16);
         } else if (s->ncomponents == 1) {
             bytestream_put_be32(&s->buf, 17);
@@ -1717,6 +1717,7 @@ static av_cold int j2kenc_init(AVCodecContext *avctx)
     Jpeg2000EncoderContext *s = avctx->priv_data;
     Jpeg2000CodingStyle *codsty = &s->codsty;
     Jpeg2000QuantStyle  *qntsty = &s->qntsty;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
 
     s->avctx = avctx;
     av_log(s->avctx, AV_LOG_DEBUG, "init\n");
@@ -1729,7 +1730,7 @@ static av_cold int j2kenc_init(AVCodecContext *avctx)
 
     if (avctx->pix_fmt == AV_PIX_FMT_PAL8 && (s->pred != FF_DWT97_INT || s->format != CODEC_JP2)) {
         av_log(s->avctx, AV_LOG_WARNING, "Forcing lossless jp2 for pal8\n");
-        s->pred = FF_DWT97_INT;
+        s->pred = 1;
         s->format = CODEC_JP2;
     }
 
@@ -1759,20 +1760,13 @@ static av_cold int j2kenc_init(AVCodecContext *avctx)
     s->width = avctx->width;
     s->height = avctx->height;
 
+    s->ncomponents = desc->nb_components;
     for (i = 0; i < 3; i++) {
-        if (avctx->pix_fmt == AV_PIX_FMT_GRAY16 || avctx->pix_fmt == AV_PIX_FMT_RGB48)
-            s->cbps[i] = 16;
-        else
-            s->cbps[i] = 8;
+        s->cbps[i] = desc->comp[i].depth;
     }
 
-    if (avctx->pix_fmt == AV_PIX_FMT_RGB24 || avctx->pix_fmt == AV_PIX_FMT_RGB48){
-        s->ncomponents = 3;
-    } else if (avctx->pix_fmt == AV_PIX_FMT_GRAY8 || avctx->pix_fmt == AV_PIX_FMT_PAL8 || avctx->pix_fmt == AV_PIX_FMT_GRAY16){
-        s->ncomponents = 1;
-    } else{ // planar YUV
+    if ((desc->flags & AV_PIX_FMT_FLAG_PLANAR) && s->ncomponents > 1) {
         s->planar = 1;
-        s->ncomponents = 3;
         ret = av_pix_fmt_get_chroma_sub_sample(avctx->pix_fmt,
                                                s->chroma_shift, s->chroma_shift + 1);
         if (ret)
@@ -1810,7 +1804,7 @@ static const AVOption options[] = {
     { "tile_height",   "Tile Height",       OFFSET(tile_height),   AV_OPT_TYPE_INT,   { .i64 = 256         }, 1,     1<<30,           VE, },
     { "pred",          "DWT Type",          OFFSET(pred),          AV_OPT_TYPE_INT,   { .i64 = 0           }, 0,         1,           VE, "pred"        },
     { "dwt97int",      NULL,                0,                     AV_OPT_TYPE_CONST, { .i64 = 0           }, INT_MIN, INT_MAX,       VE, "pred"        },
-    { "dwt53",         NULL,                0,                     AV_OPT_TYPE_CONST, { .i64 = 0           }, INT_MIN, INT_MAX,       VE, "pred"        },
+    { "dwt53",         NULL,                0,                     AV_OPT_TYPE_CONST, { .i64 = 1           }, INT_MIN, INT_MAX,       VE, "pred"        },
     { "sop",           "SOP marker",        OFFSET(sop),           AV_OPT_TYPE_INT,   { .i64 = 0           }, 0,         1,           VE, },
     { "eph",           "EPH marker",        OFFSET(eph),           AV_OPT_TYPE_INT,   { .i64 = 0           }, 0,         1,           VE, },
     { "prog",          "Progression Order", OFFSET(prog),          AV_OPT_TYPE_INT,   { .i64 = 0           }, JPEG2000_PGOD_LRCP,         JPEG2000_PGOD_CPRL,           VE, "prog" },
