@@ -1,4 +1,4 @@
-FROM ubuntu:mantic
+FROM ubuntu:mantic-20231128
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN \
