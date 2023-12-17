@@ -56,3 +56,4 @@
 0056-sync-intel-d3d11va-textures-before-mapping-to-opencl.patch
 0057-add-icon-for-windows-version-ffmpeg.patch
 0058-add-full-hwa-pipeline-for-rockchip-rk3588-platform.patch
+0059-add-checks-for-arm-mali-in-opencl-tonemap.patch
