@@ -1,3 +1,9 @@
+## Prerequisites
+Please make sure the following dependancies are installed on your machine
+* gcc 
+* yasm
+* make
+
 ## Installing FFmpeg
 
 1. Type `./configure` to create the configuration. A list of configure

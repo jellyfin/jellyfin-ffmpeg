@@ -34,6 +34,10 @@ and in the [wiki](https://trac.ffmpeg.org).
 
 Coding examples are available in the **doc/examples** directory.
 
+### Instalation
+
+View the instalation instructions [Here](INSTALL.md)
+
 ## License
 
 FFmpeg codebase is mainly LGPL-licensed with optional components licensed under
