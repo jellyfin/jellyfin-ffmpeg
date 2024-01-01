@@ -93,7 +93,7 @@ jobs:
             ./artifact/**/*.sha256sum
 
       - name: Make Sure FFmpeg Directory Exists
-        uses: appleboy/ssh-action@8f949198563a347a01c65ffc60399aef2b59d4ab # v1.0.1
+        uses: appleboy/ssh-action@2451745138b602d3e100a6def50c8e4e39591d4c # v1.0.2
         with:
           host: ${{ secrets.deploy-host }}
           username: ${{ secrets.deploy-user }}
