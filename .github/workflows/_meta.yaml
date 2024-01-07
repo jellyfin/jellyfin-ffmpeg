@@ -103,7 +103,7 @@ jobs:
             ./artifact/**/*.sha256sum
 
       - name: Make Sure Release Directory Exists
-        uses: appleboy/ssh-action@2451745138b602d3e100a6def50c8e4e39591d4c # v1.0.2
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ secrets.deploy-host }}
           username: ${{ secrets.deploy-user }}
