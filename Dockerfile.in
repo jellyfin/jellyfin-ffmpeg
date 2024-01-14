@@ -24,26 +24,26 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # Prepare Debian build environment
 RUN apt-get update \
-  && apt-get upgrade -y \
-  && apt-get install --no-install-recommends -y \
-     curl ninja-build debhelper gnupg wget devscripts \ 
-     mmv equivs git nasm pkg-config subversion dh-autoreconf \
-     libpciaccess-dev libwayland-dev libx11-dev libx11-xcb-dev \
-     libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev \
-     libxcb-shm0-dev libxcb-sync-dev libxshmfence-dev libxext-dev \ 
-     libxfixes-dev libxcb1-dev libxrandr-dev libzstd-dev \ 
-     libelf-dev python3-pip zip unzip tar flex bison \
-  && apt-get clean autoclean -y \
-  && apt-get autoremove -y \
-  && rm -rf /var/lib/apt/lists/*
+ && apt-get upgrade -y \
+ && apt-get install --no-install-recommends -y \
+    curl ninja-build debhelper gnupg wget devscripts \ 
+    mmv equivs git nasm pkg-config subversion dh-autoreconf \
+    libpciaccess-dev libwayland-dev libx11-dev libx11-xcb-dev \
+    libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev \
+    libxcb-shm0-dev libxcb-sync-dev libxshmfence-dev libxext-dev \ 
+    libxfixes-dev libxcb1-dev libxrandr-dev libzstd-dev \ 
+    libelf-dev python3-pip zip unzip tar flex bison \
+ && apt-get clean autoclean -y \
+ && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/*
 
 # Install newer tools from pip3
 RUN pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") --upgrade pip \
-  && pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") meson cmake mako jinja2
+ && pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") meson cmake mako jinja2
 
 # Avoids timeouts when using git and disable the detachedHead advice
 RUN git config --global http.postbuffer 524288000 \
-  && git config --global advice.detachedHead false
+ && git config --global advice.detachedHead false
 
 # Link to docker-build script
 RUN ln -sf ${SOURCE_DIR}/docker-build.sh /docker-build.sh
