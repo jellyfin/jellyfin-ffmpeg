@@ -1,7 +1,7 @@
 #!/bin/bash
 
-SCRIPT_REPO="https://github.com/oneapi-src/oneVPL.git"
-SCRIPT_COMMIT="ca5bbbb057a6e84b103aca807612afb693ad046c"
+SCRIPT_REPO="https://github.com/intel/libvpl.git"
+SCRIPT_COMMIT="18e890e7a5d6355306b8f1046b46c378ced453ff"
 
 ffbuild_enabled() {
     [[ $TARGET == *arm64 ]] && return -1
@@ -9,8 +9,8 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
-    git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" onevpl
-    cd onevpl
+    git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" libvpl
+    cd libvpl
 
     mkdir build && cd build
 
