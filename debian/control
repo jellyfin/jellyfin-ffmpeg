@@ -50,7 +50,7 @@ Build-Depends:
 # --enable-cuda-llvm
  clang [!armhf !arm64],
 # --enable-opencl
- ocl-icd-opencl-dev [!armhf !arm64],
+ ocl-icd-opencl-dev,
 # --enable-omx
 # libomxil-bellagio-dev
 # omx headers are fully included in raspberrypi/firmware.
