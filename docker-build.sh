@@ -7,7 +7,7 @@ set -o xtrace
 
 DEBIAN_ADDR=http://deb.debian.org/debian/
 UBUNTU_ARCHIVE_ADDR=http://archive.ubuntu.com/ubuntu/
-UBUNTU_PORTS_ADDR=http://ports.ubuntu.com/
+UBUNTU_PORTS_ADDR=http://ports.ubuntu.com/ubuntu-ports/
 
 # Prepare common extra libs for amd64, armhf and arm64
 prepare_extra_common() {
@@ -117,6 +117,37 @@ prepare_extra_common() {
     echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 
+    # SVT-AV1
+    NASM_PATH=/usr/bin/nasm
+    if [[ $( lsb_release -c -s ) == "bionic" ]]; then
+        # nasm >= 2.14
+        apt-get install -y nasm-mozilla
+        NASM_PATH=/usr/lib/nasm-mozilla/bin/nasm
+    fi
+    pushd ${SOURCE_DIR}
+    git clone -b v1.8.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    pushd SVT-AV1
+    mkdir build
+    pushd build
+    if [ "${ARCH}" = "amd64" ]; then
+        svtav1_avx512="-DENABLE_AVX512=ON"
+    else
+        svtav1_avx512="-DENABLE_AVX512=OFF"
+    fi
+    cmake \
+        ${CMAKE_TOOLCHAIN_OPT} \
+        -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+        -DCMAKE_ASM_NASM_COMPILER=${NASM_PATH} \
+        -DCMAKE_BUILD_TYPE=Release \
+        $svtav1_avx512 \
+        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_{TESTING,APPS,DEC}=OFF \
+        ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/SVT-AV1
+    echo "SVT-AV1${TARGET_DIR}/lib/libSvtAv1Enc.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+
     # FDK-AAC-STRIPPED
     pushd ${SOURCE_DIR}
     git clone -b stripped4 --depth=1 https://gitlab.freedesktop.org/wtaymans/fdk-aac-stripped.git
@@ -133,31 +164,6 @@ prepare_extra_common() {
 
 # Prepare extra headers, libs and drivers for x86_64-linux-gnu
 prepare_extra_amd64() {
-    # SVT-AV1
-    NASM_PATH=/usr/bin/nasm
-    if [[ $( lsb_release -c -s ) == "bionic" ]]; then
-        # nasm >= 2.14
-        apt-get install -y nasm-mozilla
-        NASM_PATH=/usr/lib/nasm-mozilla/bin/nasm
-    fi
-    pushd ${SOURCE_DIR}
-    git clone -b v1.7.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
-    pushd SVT-AV1
-    mkdir build
-    pushd build
-    cmake \
-        -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
-        -DCMAKE_ASM_NASM_COMPILER=${NASM_PATH} \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DENABLE_AVX512=ON \
-        -DBUILD_SHARED_LIBS=ON \
-        -DBUILD_{TESTING,APPS,DEC}=OFF \
-        ..
-    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/SVT-AV1
-    echo "SVT-AV1${TARGET_DIR}/lib/libSvtAv1Enc.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
-    popd
-    popd
-
     # FFNVCODEC
     pushd ${SOURCE_DIR}
     git clone -b n11.1.5.2 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
@@ -242,7 +248,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.12 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.3.17 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -278,7 +284,7 @@ prepare_extra_amd64() {
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     # Both MSDK and VPL runtime can be loaded by MFX dispatcher (libmfx.so.1)
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-23.4.0 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-24.1.1 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -298,7 +304,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-23.4.0 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.1.1 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -317,7 +323,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    vk_ver="v1.3.270"
+    vk_ver="v1.3.276"
     if [[ $( lsb_release -c -s ) == "bionic" ]]; then
         vk_ver="v1.3.240"
     fi
@@ -334,7 +340,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    vk_ver="v1.3.270"
+    vk_ver="v1.3.276"
     if [[ $( lsb_release -c -s ) == "bionic" ]]; then
         vk_ver="v1.3.240"
     fi
@@ -497,7 +503,7 @@ EOF
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-armhf
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-arm-linux-gnueabihf g++-${GCC_VER}-arm-linux-gnueabihf libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libcurl4-openssl-dev:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf libstdc++6:armhf
+    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-arm-linux-gnueabihf g++-${GCC_VER}-arm-linux-gnueabihf libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf libstdc++6:armhf
     popd
 }
 prepare_crossbuild_env_arm64() {
@@ -535,7 +541,7 @@ EOF
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-arm64
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libcurl4-openssl-dev:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 libstdc++6:arm64
+    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 libstdc++6:arm64
     popd
 }
 
