@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git"
-SCRIPT_COMMIT="2f326350e849894a929296854f5290e66197c97c"
+SCRIPT_COMMIT="8787d3ef5d938425d094170c1b2fec87762683b6"
 
 ffbuild_enabled() {
     [[ $TARGET == *arm64 ]] && return -1

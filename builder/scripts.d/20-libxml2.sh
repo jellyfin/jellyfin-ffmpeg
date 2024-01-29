@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/GNOME/libxml2.git"
-SCRIPT_COMMIT="da703eaaea152f6dd9e871cbe7f0ae46322c583d"
+SCRIPT_COMMIT="12ce9b5ffeba776ede786c075795a4dbae94bfa1"
 
 ffbuild_enabled() {
     return 0

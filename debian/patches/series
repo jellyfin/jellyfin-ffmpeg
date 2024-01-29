@@ -57,3 +57,4 @@
 0057-add-icon-for-windows-version-ffmpeg.patch
 0058-fix-the-broken-dts-with-fractional-framerates-on-nvenc.patch
 0059-fix-the-compatibility-with-ffnvcodec-sdk-12-1.patch
+0060-fix-libx265-encoded-fmp4-hls-playback-on-safari.patch
