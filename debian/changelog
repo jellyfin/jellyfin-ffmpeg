@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (6.0.1-2) unstable; urgency=medium
+
+  * Add full HWA pipeline for Rockchip RK3588 platform
+  * Fix libx265 encoded fMP4 HLS playback on Safari
+  * Update build scripts and dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sun, 17 Dec 2023 22:41:39 +0800
+
 jellyfin-ffmpeg (6.0.1-1) unstable; urgency=medium
 
   * New upstream version 6.0.1

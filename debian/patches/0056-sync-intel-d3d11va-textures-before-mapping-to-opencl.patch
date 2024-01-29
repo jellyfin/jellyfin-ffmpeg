@@ -230,7 +230,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
  
          for (p = 0; p < nb_planes; p++) {
              UINT subresource = 2 * i + p;
-@@ -2806,6 +2920,10 @@ static void opencl_unmap_from_d3d11(AVHW
+@@ -2816,6 +2930,10 @@ static void opencl_unmap_from_d3d11(AVHW
  static int opencl_map_from_d3d11(AVHWFramesContext *dst_fc, AVFrame *dst,
                                   const AVFrame *src, int flags)
  {
@@ -241,9 +241,9 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      OpenCLDeviceContext  *device_priv = dst_fc->device_ctx->internal->priv;
      OpenCLFramesContext  *frames_priv = dst_fc->internal->priv;
      AVOpenCLFrameDescriptor *desc;
-@@ -2828,6 +2946,14 @@ static int opencl_map_from_d3d11(AVHWFra
-     nb_planes = device_priv->d3d11_map_amd ? (desc->nb_planes - 1)
-                                            : desc->nb_planes;
+@@ -2846,6 +2964,14 @@ static int opencl_map_from_d3d11(AVHWFra
+     mem_objs = device_priv->d3d11_map_amd ? &desc->planes[nb_planes]
+                                           : desc->planes;
  
 +    if (src_hwctx->require_sync &&
 +        frames_priv->sync_point && frames_priv->sync_tex_2x2) {
@@ -253,18 +253,18 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
 +                                  dst_fc);
 +    }
 +
-     if (device_priv->d3d11_map_amd) {
-         cle = device_priv->clEnqueueAcquireD3D11ObjectsKHR(
-             frames_priv->command_queue, 1, &desc->planes[nb_planes],
-@@ -2881,6 +3007,7 @@ static int opencl_frames_derive_from_d3d
+     cle = device_priv->clEnqueueAcquireD3D11ObjectsKHR(
+         frames_priv->command_queue, num_objs, mem_objs,
+         0, NULL, &event);
+@@ -2885,6 +3011,7 @@ fail:
+ static int opencl_frames_derive_from_d3d11(AVHWFramesContext *dst_fc,
                                             AVHWFramesContext *src_fc, int flags)
  {
-     AVOpenCLDeviceContext    *dst_dev = dst_fc->device_ctx->hwctx;
 +    AVD3D11VADeviceContext *device_hwctx = src_fc->device_ctx->hwctx;
+     AVOpenCLDeviceContext    *dst_dev = dst_fc->device_ctx->hwctx;
      AVD3D11VAFramesContext *src_hwctx = src_fc->hwctx;
      OpenCLDeviceContext  *device_priv = dst_fc->device_ctx->internal->priv;
-     OpenCLFramesContext  *frames_priv = dst_fc->internal->priv;
-@@ -2923,6 +3050,14 @@ static int opencl_frames_derive_from_d3d
+@@ -2928,6 +3055,14 @@ static int opencl_frames_derive_from_d3d
      if (!frames_priv->mapped_frames)
          return AVERROR(ENOMEM);
  

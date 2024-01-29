@@ -159,7 +159,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.4.5 --depth=1 https://github.com/tukaani-project/xz.git
+git clone -b v5.4.6 --depth=1 https://github.com/tukaani-project/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
@@ -176,7 +176,7 @@ popd
 # FONTCONFIG
 mkdir fontconfig
 pushd fontconfig
-fc_ver="2.14.2"
+fc_ver="2.15.0"
 fc_link="https://www.freedesktop.org/software/fontconfig/release/fontconfig-${fc_ver}.tar.xz"
 wget ${fc_link} -O fc.tar.gz
 tar xaf fc.tar.gz
@@ -456,7 +456,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v1.7.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v1.8.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
@@ -557,8 +557,8 @@ mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
 
 # VPL
-git clone -b v2023.3.1 --depth=1 https://github.com/oneapi-src/oneVPL.git
-pushd oneVPL
+git clone -b v2.10.1 --depth=1 https://github.com/intel/libvpl.git
+pushd libvpl
 mkdir build && pushd build
 cmake \
     -DCMAKE_TOOLCHAIN_FILE=${FF_CMAKE_TOOLCHAIN} \
