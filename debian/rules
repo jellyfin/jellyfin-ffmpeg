@@ -23,6 +23,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-gmp \
 	--enable-gnutls \
 	--enable-chromaprint \
+	--enable-opencl \
 	--enable-libdrm \
 	--enable-libass \
 	--enable-libfreetype \
@@ -35,6 +36,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libvorbis \
 	--enable-libopenmpt \
 	--enable-libdav1d \
+	--enable-libsvtav1 \
 	--enable-libwebp \
 	--enable-libvpx \
 	--enable-libx264 \
@@ -43,23 +45,10 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libzimg \
 	--enable-libfdk-aac \
 
-CONFIG_ARM_COMMON := --toolchain=hardened \
-	--enable-cross-compile \
-
-CONFIG_ARM := ${CONFIG_ARM_COMMON} \
-	--arch=armhf \
-	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
-
-CONFIG_ARM64 := ${CONFIG_ARM_COMMON} \
-	--arch=arm64 \
-	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
-
 CONFIG_x86 := --arch=amd64 \
-	--enable-libsvtav1 \
 	--enable-libshaderc \
 	--enable-libplacebo \
 	--enable-vulkan \
-	--enable-opencl \
 	--enable-vaapi \
 	--enable-amf \
 	--enable-libvpl \
@@ -69,6 +58,19 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-cuvid \
 	--enable-nvdec \
 	--enable-nvenc \
+
+CONFIG_ARM_COMMON := --toolchain=hardened \
+	--enable-cross-compile \
+	--enable-rkmpp \
+	--enable-rkrga \
+
+CONFIG_ARM := --arch=armhf \
+	--cross-prefix=/usr/bin/arm-linux-gnueabihf- \
+	${CONFIG_ARM_COMMON} \
+
+CONFIG_ARM64 := --arch=arm64 \
+	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
+	${CONFIG_ARM_COMMON} \
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
