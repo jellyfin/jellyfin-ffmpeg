@@ -24,7 +24,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # Prepare Debian and mingw-w64 build environment
 RUN apt-get -y update \
- && apt-get install --no-install-recommends -y \ 
+ && apt-get install --no-install-recommends -y apt-transport-https \ 
     build-essential yasm nasm xxd pkgconf git curl \
     wget unzip subversion autoconf automake libtool \
     libtool-bin autopoint cmake clang texinfo texi2html \
