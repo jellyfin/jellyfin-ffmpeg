@@ -34,8 +34,7 @@ RUN apt-get update \
     libxfixes-dev libxcb1-dev libxrandr-dev libzstd-dev \ 
     libelf-dev python3-pip zip unzip tar flex bison \
  && apt-get clean autoclean -y \
- && apt-get autoremove -y \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get autoremove -y
 
 # Install newer tools from pip3
 RUN pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") --upgrade pip \
