@@ -162,7 +162,7 @@ prepare_extra_common() {
 prepare_extra_amd64() {
     # FFNVCODEC
     pushd ${SOURCE_DIR}
-    git clone -b n12.0.16.0 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
+    git clone -b n12.0.16.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
     pushd nv-codec-headers
     make && make install
     popd
@@ -300,7 +300,7 @@ prepare_extra_amd64() {
     # ONEVPL-INTEL-GPU (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.1.1 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-24.1.3 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -320,7 +320,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.1.1 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.1.3 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -450,8 +450,18 @@ prepare_extra_amd64() {
     fi
 
     # LIBPLACEBO
+    pl_ver="v6.338.2"
+    if [[ $( lsb_release -c -s ) == "buster" ]]; then
+        pl_ver="v5.264.1"
+    fi
     pushd ${SOURCE_DIR}
-    git clone -b v5.264.1 --recursive --depth=1 https://github.com/haasn/libplacebo.git
+    git clone -b ${pl_ver} --recursive --depth=1 https://github.com/haasn/libplacebo.git
+    if [[ $( lsb_release -c -s ) != "buster" ]]; then
+        pushd libplacebo
+        # fix p010 green screen in v6.338.2
+        wget -q -O - https://github.com/haasn/libplacebo/commit/a5e7010.patch | git apply
+        popd
+    fi
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
