@@ -273,7 +273,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
   *
   * This file is part of FFmpeg.
   *
-@@ -19,569 +20,931 @@
+@@ -19,569 +20,933 @@
   * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
   */
  
@@ -924,11 +924,11 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +        light = av_content_light_metadata_create_side_data(frame);
 +    if (!light)
 +        return AVERROR(ENOMEM);
-+
-+    light->MaxCLL  = mpp_light.MaxCLL;
-+    light->MaxFALL = mpp_light.MaxFALL;
  
 -    av_free(desc);
++    light->MaxCLL  = mpp_light.MaxCLL;
++    light->MaxFALL = mpp_light.MaxFALL;
++
 +    return 0;
  }
  
@@ -1239,17 +1239,11 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -        } else {
 -            av_log(avctx, AV_LOG_ERROR, "Failed to retrieve the frame buffer, frame is dropped (code = %d)\n", ret);
 -            mpp_frame_deinit(&mppframe);
--        }
--    } else if (decoder->eos_reached) {
--        return AVERROR_EOF;
--    } else if (ret == MPP_ERR_TIMEOUT) {
--        av_log(avctx, AV_LOG_DEBUG, "Timeout when trying to get a frame from MPP\n");
 +    if ((ret = r->mapi->control(r->mctx, MPP_SET_OUTPUT_TIMEOUT, (MppParam)&timeout)) != MPP_OK) {
 +        av_log(avctx, AV_LOG_ERROR, "Failed to set output timeout: %d\n", ret);
 +        return AVERROR_EXTERNAL;
-     }
- 
--    return AVERROR(EAGAIN);
++    }
++
 +    ret = r->mapi->decode_get_frame(r->mctx, &mpp_frame);
 +    if (ret != MPP_OK && ret != MPP_ERR_TIMEOUT) {
 +        av_log(avctx, AV_LOG_ERROR, "Failed to get frame: %d\n", ret);
@@ -1261,10 +1255,17 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +    }
 +    if (mpp_frame_get_eos(mpp_frame)) {
 +        av_log(avctx, AV_LOG_DEBUG, "Received a 'EOS' frame\n");
-+        r->eof = 1;
-+        ret = AVERROR_EOF;
-+        goto exit;
-+    }
++        /* EOS frame may contain valid data */
++        if (!mpp_frame_get_buffer(mpp_frame)) {
++            r->eof = 1;
++            ret = AVERROR_EOF;
++            goto exit;
+         }
+-    } else if (decoder->eos_reached) {
+-        return AVERROR_EOF;
+-    } else if (ret == MPP_ERR_TIMEOUT) {
+-        av_log(avctx, AV_LOG_DEBUG, "Timeout when trying to get a frame from MPP\n");
+     }
 +    if (mpp_frame_get_discard(mpp_frame)) {
 +        av_log(avctx, AV_LOG_DEBUG, "Received a 'discard' frame\n");
 +        ret = AVERROR(EAGAIN);
@@ -1299,9 +1300,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +            avctx->pix_fmt = ret;
 +        }
  
--fail:
--    if (mppframe)
--        mpp_frame_deinit(&mppframe);
+-    return AVERROR(EAGAIN);
 +        avctx->width        = mpp_frame_get_width(mpp_frame);
 +        avctx->height       = mpp_frame_get_height(mpp_frame);
 +        avctx->coded_width  = FFALIGN(avctx->width,  64);
@@ -1328,8 +1327,9 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +            goto exit;
 +        }
  
--    if (framecontext)
--        av_buffer_unref(&framecontext->decoder_ref);
+-fail:
+-    if (mppframe)
+-        mpp_frame_deinit(&mppframe);
 +        if ((ret = r->mapi->control(r->mctx, MPP_DEC_SET_INFO_CHANGE_READY, NULL)) != MPP_OK) {
 +            av_log(avctx, AV_LOG_ERROR, "Failed to set info change ready: %d\n", ret);
 +            ret = AVERROR_EXTERNAL;
@@ -1389,29 +1389,31 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +        }
 +    }
  
--    if (framecontextref)
--        av_buffer_unref(&framecontextref);
+-    if (framecontext)
+-        av_buffer_unref(&framecontext->decoder_ref);
 +exit:
 +    if (mpp_frame)
 +        mpp_frame_deinit(&mpp_frame);
 +    return ret;
 +}
  
--    if (desc)
--        av_free(desc);
+-    if (framecontextref)
+-        av_buffer_unref(&framecontextref);
 +static int rkmpp_send_eos(AVCodecContext *avctx)
 +{
 +    RKMPPDecContext *r = avctx->priv_data;
 +    MppPacket mpp_pkt = NULL;
 +    int ret;
  
--    return ret;
+-    if (desc)
+-        av_free(desc);
 +    if ((ret = mpp_packet_init(&mpp_pkt, NULL, 0)) != MPP_OK) {
 +        av_log(avctx, AV_LOG_ERROR, "Failed to init 'EOS' packet: %d\n", ret);
 +        return AVERROR_EXTERNAL;
 +    }
 +    mpp_packet_set_eos(mpp_pkt);
-+
+ 
+-    return ret;
 +    do {
 +        ret = r->mapi->decode_put_packet(r->mctx, mpp_pkt);
 +    } while (ret != MPP_OK);
@@ -1567,7 +1569,6 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -    if (ret == MPP_OK) {
 -        decoder->first_packet = 1;
 +        av_packet_unref(&r->last_pkt);
-+        av_frame_unref(&r->last_frame);
      } else
 -        av_log(avctx, AV_LOG_ERROR, "Failed to reset MPI (code = %d)\n", ret);
 +        av_log(avctx, AV_LOG_ERROR, "Failed to reset MPP context: %d\n", ret);
@@ -1641,7 +1642,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavcodec/rkmppdec.h
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,155 @@
 +/*
 + * Copyright (c) 2017 Lionel CHAZALLON
 + * Copyright (c) 2023 Huseyin BIYIK
@@ -1698,8 +1699,6 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.h
 +    AVBufferRef   *hwframe;
 +
 +    AVPacket       last_pkt;
-+    AVFrame        last_frame;
-+
 +    int            eof;
 +    int            info_change;
 +    int            errinfo_cnt;
@@ -5543,7 +5542,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
          {
              OpenCLDeviceSelector selector = {
                  .platform_index      = -1,
-@@ -3193,6 +3208,7 @@ static int opencl_map_from_drm_arm(AVHWF
+@@ -3198,6 +3213,7 @@ static int opencl_map_from_drm_arm(AVHWF
      AVHWFramesContext *src_fc =
          (AVHWFramesContext*)src->hw_frames_ctx->data;
      AVOpenCLDeviceContext *dst_dev = dst_fc->device_ctx->hwctx;
@@ -5551,7 +5550,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
      const AVDRMFrameDescriptor *desc;
      DRMARMtoOpenCLMapping *mapping = NULL;
      cl_mem_flags cl_flags;
-@@ -3226,8 +3242,8 @@ static int opencl_map_from_drm_arm(AVHWF
+@@ -3231,8 +3247,8 @@ static int opencl_map_from_drm_arm(AVHWF
          }
  
          mapping->object_buffers[i] =
@@ -5562,7 +5561,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
          if (!mapping->object_buffers[i]) {
              av_log(dst_fc, AV_LOG_ERROR, "Failed to create CL buffer "
                     "from object %d (fd %d, size %"SIZE_SPECIFIER") of DRM frame: %d.\n",
-@@ -3258,6 +3274,8 @@ static int opencl_map_from_drm_arm(AVHWF
+@@ -3263,6 +3279,8 @@ static int opencl_map_from_drm_arm(AVHWF
                  goto fail;
              }
  
