@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (6.0.1-3) unstable; urgency=medium
+
+  * Fix libplacebo v6 required hostQueryReset capability
+  * Sync RKMPP fixes from ffmpeg-rockchip
+  * Update build scripts and dependencies
+
 jellyfin-ffmpeg (6.0.1-2) unstable; urgency=medium
 
   * Add full HWA pipeline for Rockchip RK3588 platform
