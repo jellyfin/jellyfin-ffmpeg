@@ -4,24 +4,6 @@ FROM DISTRO
 ARG SOURCE_DIR=/ffmpeg
 ARG ARTIFACT_DIR=/dist
 
-# Docker run environment
-ENV DEB_BUILD_OPTIONS=noddebs \
-    DEBIAN_FRONTEND=noninteractive \
-    ARCH=BUILD_ARCHITECTURE \
-    GCC_VER=GCC_RELEASE_VERSION \
-    LLVM_VER=LLVM_RELEASE_VERSION \
-    SOURCE_DIR=/ffmpeg \
-    ARTIFACT_DIR=/dist \
-    TARGET_DIR=/usr/lib/jellyfin-ffmpeg \
-    DPKG_INSTALL_LIST=${SOURCE_DIR}/debian/jellyfin-ffmpeg6.install \
-    PATH=${TARGET_DIR}/bin:${PATH} \
-    PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH} \
-    CFLAGS="-I${TARGET_DIR}/include $CFLAGS" \
-    CPPFLAGS="-I${TARGET_DIR}/include $CPPFLAGS" \
-    CXXFLAGS="-I${TARGET_DIR}/include $CXXFLAGS" \
-    LDFLAGS="-Wl,-rpath=${TARGET_DIR}/lib -L${TARGET_DIR}/lib" \
-    LD_LIBRARY_PATH=${TARGET_DIR}/lib:${TARGET_DIR}/lib/mfx:${TARGET_DIR}/lib/xorg:${LD_LIBRARY_PATH}
-
 # Prepare Debian build environment
 RUN apt-get update \
  && apt-get upgrade -y \
@@ -52,3 +34,21 @@ VOLUME ${ARTIFACT_DIR}/
 COPY . ${SOURCE_DIR}/
 
 ENTRYPOINT ["/docker-build.sh"]
+
+# Docker run environment
+ENV DEB_BUILD_OPTIONS=noddebs \
+    DEBIAN_FRONTEND=noninteractive \
+    SOURCE_DIR=/ffmpeg \
+    ARTIFACT_DIR=/dist \
+    TARGET_DIR=/usr/lib/jellyfin-ffmpeg \
+    DPKG_INSTALL_LIST=${SOURCE_DIR}/debian/jellyfin-ffmpeg6.install \
+    PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH} \
+    LD_LIBRARY_PATH=${TARGET_DIR}/lib:${TARGET_DIR}/lib/mfx:${TARGET_DIR}/lib/xorg:${LD_LIBRARY_PATH} \
+    ARCH=BUILD_ARCHITECTURE \
+    GCC_VER=GCC_RELEASE_VERSION \
+    LLVM_VER=LLVM_RELEASE_VERSION \
+    PATH=${TARGET_DIR}/bin:${PATH} \
+    LDFLAGS="-Wl,-rpath=${TARGET_DIR}/lib -L${TARGET_DIR}/lib" \
+    CXXFLAGS="-I${TARGET_DIR}/include $CXXFLAGS" \
+    CPPFLAGS="-I${TARGET_DIR}/include $CPPFLAGS" \
+    CFLAGS="-I${TARGET_DIR}/include $CFLAGS"
