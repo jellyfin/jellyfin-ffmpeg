@@ -23,24 +23,32 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DLLTOOL="x86_64-w64-mingw32-dlltool"
 
 # Prepare Debian and mingw-w64 build environment
-RUN \
-    apt-get -y update && \
-    apt-get -y install build-essential yasm nasm xxd pkgconf git curl wget unzip subversion autoconf automake libtool libtool-bin autopoint cmake clang texinfo texi2html help2man flex bison gperf gettext itstool ragel libc6-dev libssl-dev gtk-doc-tools gobject-introspection gawk meson ninja-build p7zip-full python3-distutils python3-apt python-is-python3 zip quilt binutils-mingw-w64-x86-64 gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 gfortran-mingw-w64-x86-64 && \
-    rm /usr/lib/gcc/*-w64-mingw32/*/libstdc++*.dll* && \
-    rm /usr/lib/gcc/*-w64-mingw32/*/libgcc_s* && \
-    rm /usr/lib/gcc/*-w64-mingw32/*/*.dll.a && \
-    rm /usr/*-w64-mingw32/lib/*.dll.a
+RUN apt-get -y update \
+ && apt-get install --no-install-recommends -y apt-transport-https \ 
+    build-essential yasm nasm xxd pkgconf git curl \
+    wget unzip subversion autoconf automake libtool \
+    libtool-bin autopoint cmake clang texinfo texi2html \
+    help2man flex bison gperf gettext itstool ragel \
+    libc6-dev libssl-dev gtk-doc-tools gobject-introspection \
+    gawk meson ninja-build p7zip-full python3-distutils \
+    python3-apt python-is-python3 zip quilt \ 
+    binutils-mingw-w64-x86-64 gcc-mingw-w64-x86-64 \
+    g++-mingw-w64-x86-64 gfortran-mingw-w64-x86-64 \
+ && apt-get clean autoclean -y \
+ && apt-get autoremove -y \
+ && rm -rf /usr/lib/gcc/*-w64-mingw32/*/libstdc++*.dll* \
+ && rm -rf /usr/lib/gcc/*-w64-mingw32/*/libgcc_s* \
+ && rm -rf /usr/lib/gcc/*-w64-mingw32/*/*.dll.a \
+ && rm -rf /usr/*-w64-mingw32/lib/*.dll.a
 
 # Avoids timeouts when using git and disable the detachedHead advice
-RUN \
-    git config --global http.postbuffer 524288000 && \
-    git config --global advice.detachedHead false
+RUN git config --global http.postbuffer 524288000 \
+ && git config --global advice.detachedHead false
 
 # Prepare build script and patches
-RUN \
-    mkdir -p /opt/ffmpeg /opt/ffdeps ${SOURCE_DIR} && \
-    ln -sf ${SOURCE_DIR}/debian/patches ${SOURCE_DIR} && \
-    ln -sf ${SOURCE_DIR}/docker-build-win64.sh /docker-build-win64.sh
+RUN mkdir -p /opt/ffmpeg /opt/ffdeps ${SOURCE_DIR} \
+ && ln -sf ${SOURCE_DIR}/debian/patches ${SOURCE_DIR} \
+ && ln -sf ${SOURCE_DIR}/docker-build-win64.sh /docker-build-win64.sh
 
 VOLUME ${ARTIFACT_DIR}/
 
