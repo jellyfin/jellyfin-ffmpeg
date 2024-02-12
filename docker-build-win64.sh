@@ -544,7 +544,7 @@ EOF
 popd
 
 # FFNVCODEC
-git clone -b n12.0.16.0 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
+git clone -b n12.0.16.1 --depth=1 https://github.com/FFmpeg/nv-codec-headers.git
 pushd nv-codec-headers
 make PREFIX=${FF_DEPS_PREFIX} install
 popd
