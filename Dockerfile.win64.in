@@ -23,7 +23,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DLLTOOL="x86_64-w64-mingw32-dlltool"
 
 # Prepare Debian and mingw-w64 build environment
-RUN apt-get -y update \
+RUN apt-get update \
  && apt-get install -y \ 
     build-essential yasm nasm xxd pkgconf git curl \
     wget unzip subversion autoconf automake libtool \
