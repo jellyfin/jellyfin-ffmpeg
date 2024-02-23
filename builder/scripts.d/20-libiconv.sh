@@ -19,7 +19,6 @@ ffbuild_dockerbuild() {
 EOF
 
     ./gitsub.sh pull
-    ./autogen.sh
 
     local myconf=(
         --prefix="$FFBUILD_PREFIX"
@@ -33,11 +32,14 @@ EOF
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        sed -i '' 's/join/gjoin/g' ./gnulib/gnulib-tool
     else
         echo "Unknown target"
         return -1
     fi
 
+    ./autogen.sh
     ./configure "${myconf[@]}"
     make -j$(nproc)
     make install

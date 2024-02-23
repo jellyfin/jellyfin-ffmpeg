@@ -51,6 +51,10 @@ ffbuild_dockerbuild() {
             CONFIG=gcc
             TOOLCHAIN_PREFIX="$FFBUILD_CROSS_PREFIX"
         )
+    elif [[ $TARGET == mac* ]]; then
+        myconf+=(
+            CONFIG=clang
+        )
     else
         echo "Unknown target"
         return -1

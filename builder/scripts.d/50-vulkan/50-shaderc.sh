@@ -4,6 +4,7 @@ SCRIPT_REPO="https://github.com/google/shaderc.git"
 SCRIPT_COMMIT="5b892551dd02bbf8704adbc3fcde2fd645f333b2"
 
 ffbuild_enabled() {
+    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 

@@ -7,6 +7,8 @@ SCRIPT_REPO2="https://github.com/KhronosGroup/OpenCL-ICD-Loader.git"
 SCRIPT_COMMIT2="2cde5d09953a041786d1cfdcb1c08704a82cb904"
 
 ffbuild_enabled() {
+    # OpenCL headers are macOS built-in
+    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 

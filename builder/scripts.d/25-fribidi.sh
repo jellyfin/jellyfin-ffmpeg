@@ -26,6 +26,8 @@ ffbuild_dockerbuild() {
         myconf+=(
             --cross-file=/cross.meson
         )
+    elif [[ $TARGET == mac* ]]; then
+        :
     else
         echo "Unknown target"
         return -1
@@ -35,7 +37,11 @@ ffbuild_dockerbuild() {
     ninja -j$(nproc)
     ninja install
 
-    sed -i 's/Cflags:/Cflags: -DFRIBIDI_LIB_STATIC/' "$FFBUILD_PREFIX"/lib/pkgconfig/fribidi.pc
+    if [[ $TARGET == mac* ]]; then
+        gsed -i 's/Cflags:/Cflags: -DFRIBIDI_LIB_STATIC/' "$FFBUILD_PREFIX"/lib/pkgconfig/fribidi.pc
+    else
+        sed -i 's/Cflags:/Cflags: -DFRIBIDI_LIB_STATIC/' "$FFBUILD_PREFIX"/lib/pkgconfig/fribidi.pc
+    fi
 }
 
 ffbuild_configure() {

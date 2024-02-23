@@ -15,12 +15,17 @@ ffbuild_dockerbuild() {
 
     local common_config=(
         -DCMAKE_INSTALL_PREFIX="$FFBUILD_PREFIX"
-        -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN"
         -DCMAKE_BUILD_TYPE=Release
         -DENABLE_SHARED=OFF
         -DENABLE_CLI=OFF
         -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
     )
+
+    if [[ $TARGET != mac* ]]; then
+        common_config+=(
+            -DCMAKE_TOOLCHAIN_FILE="$FFBUILD_CMAKE_TOOLCHAIN"
+        )
+    fi
 
     if [[ $TARGET != *32 ]]; then
         mkdir 8bit 10bit 12bit
@@ -45,14 +50,18 @@ EOF
         mv ../10bit/libx265.a ../8bit/libx265_main10.a
         mv libx265.a libx265_main.a
 
-        ${FFBUILD_CROSS_PREFIX}ar -M <<EOF
-CREATE libx265.a
-ADDLIB libx265_main.a
-ADDLIB libx265_main10.a
-ADDLIB libx265_main12.a
-SAVE
-END
-EOF
+        if [[ $TARGET == mac* ]]; then
+            libtool -static -o libx265.a libx265_main.a libx265_main10.a libx265_main12.a 2>/dev/null
+        else
+            ${FFBUILD_CROSS_PREFIX}ar -M <<EOF
+            CREATE libx265.a
+            ADDLIB libx265_main.a
+            ADDLIB libx265_main10.a
+            ADDLIB libx265_main12.a
+            SAVE
+            END
+            EOF
+        fi
     else
         mkdir 8bit
         cd 8bit

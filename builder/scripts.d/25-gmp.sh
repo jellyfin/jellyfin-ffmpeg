@@ -11,7 +11,11 @@ ffbuild_enabled() {
 ffbuild_dockerbuild() {
     retry-tool check-wget "gmp.tar.xz" "$SCRIPT_URL" "$SCRIPT_SHA512"
 
-    tar xaf "gmp.tar.xz"
+    if [[ $TARGET == mac* ]]; then
+        gtar xaf "gmp.tar.xz"
+    else
+        tar xaf "gmp.tar.xz"
+    fi
     cd "gmp-$SCRIPT_VERSION"
 
     local myconf=(
@@ -26,6 +30,15 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        myconf+=(
+            --enable-cxx
+        )
+        # The shipped configure script relies on an outdated libtool version
+        # which causes linker errors due to name collisions on macOS
+        # leads to wrongly compiled libraries
+        # regenerate the configure ourselves as a workaroud
+        autoreconf -i -s
     else
         echo "Unknown target"
         return -1

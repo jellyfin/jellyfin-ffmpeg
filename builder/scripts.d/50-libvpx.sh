@@ -43,6 +43,8 @@ ffbuild_dockerbuild() {
             --target=arm64-linux-gcc
         )
         export CROSS="$FFBUILD_CROSS_PREFIX"
+    elif [[ $TARGET == mac* ]]; then
+        :
     else
         echo "Unknown target"
         return -1

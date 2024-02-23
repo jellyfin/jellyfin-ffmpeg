@@ -11,6 +11,10 @@ ffbuild_dockerbuild() {
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" fc
     cd fc
 
+    if [[ $TARGET == mac* ]]; then
+        sed -i '' 's/LIBTOOLIZE=\${LIBTOOLIZE-libtoolize}/LIBTOOLIZE=glibtoolize/' ./autogen.sh
+    fi
+
     ./autogen.sh --noconf
 
     local myconf=(
@@ -32,6 +36,8 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        :
     else
         echo "Unknown target"
         return -1

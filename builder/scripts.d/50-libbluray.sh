@@ -31,6 +31,10 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        myconf+=(
+            --disable-dependency-tracking
+        )
     else
         echo "Unknown target"
         return -1
