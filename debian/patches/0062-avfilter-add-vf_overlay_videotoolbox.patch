@@ -124,14 +124,14 @@ diff --git a/configure b/configure
 index 23066efa32..a7c349d126 100755
 --- a/configure
 +++ b/configure
-@@ -3719,6 +3719,7 @@ overlay_qsv_filter_deps="libmfx"
- overlay_qsv_filter_select="qsvvpp"
+@@ -3720,6 +3720,7 @@ overlay_qsv_filter_select="qsvvpp"
  overlay_vaapi_filter_deps="vaapi VAProcPipelineCaps_blend_flags"
  overlay_vulkan_filter_deps="vulkan spirv_compiler"
  overlay_rkrga_filter_deps="rkrga"
 +overlay_videotoolbox_filter_deps="metal corevideo coreimage videotoolbox"
  owdenoise_filter_deps="gpl"
  pad_opencl_filter_deps="opencl"
+ pan_filter_deps="swresample"
 diff --git a/doc/filters.texi b/doc/filters.texi
 index e0436a5755..bfb77562cb 100644
 --- a/doc/filters.texi
@@ -213,14 +213,14 @@ diff --git a/libavfilter/allfilters.c b/libavfilter/allfilters.c
 index 149bf50997..ec9d975ecb 100644
 --- a/libavfilter/allfilters.c
 +++ b/libavfilter/allfilters.c
-@@ -378,6 +378,7 @@ extern const AVFilter ff_vf_overlay_qsv;
- extern const AVFilter ff_vf_overlay_vaapi;
+@@ -378,6 +378,7 @@ extern const AVFilter ff_vf_overlay_vaapi;
  extern const AVFilter ff_vf_overlay_vulkan;
  extern const AVFilter ff_vf_overlay_cuda;
  extern const AVFilter ff_vf_overlay_rkrga;
 +extern const AVFilter ff_vf_overlay_videotoolbox;
  extern const AVFilter ff_vf_owdenoise;
  extern const AVFilter ff_vf_pad;
+ extern const AVFilter ff_vf_pad_opencl;
 diff --git a/libavfilter/metal/utils.h b/libavfilter/metal/utils.h
 index 7350d42a35..d79c79751c 100644
 --- a/libavfilter/metal/utils.h
