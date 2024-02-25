@@ -51,7 +51,7 @@ index de093fffb1..efd8d0e094 100644
      default:
          err = AVERROR(ENOSYS);
          break;
-@@ -2819,6 +2830,84 @@ fail:
+@@ -2819,6 +2830,85 @@ fail:
 
  #endif
 
@@ -128,6 +128,7 @@ index de093fffb1..efd8d0e094 100644
 +    for (int i = 0; i < desc->nb_planes; i++)
 +        clReleaseMemObject(desc->planes[i]);
 +    av_freep(&desc);
++    memset(dst->data, 0, sizeof(dst->data));
 +    return err;
 +}
 +
