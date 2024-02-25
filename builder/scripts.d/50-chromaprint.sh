@@ -22,9 +22,7 @@ ffbuild_dockerbuild() {
     make -j$(nproc)
     make install
 
-    if [[ $TARGET != mac* ]]; then
-        echo "Libs.private: -lfftw3f -lstdc++" >> "$FFBUILD_PREFIX"/lib/pkgconfig/libchromaprint.pc
-    fi
+    echo "Libs.private: -lfftw3f -lstdc++" >> "$FFBUILD_PREFIX"/lib/pkgconfig/libchromaprint.pc
     echo "Cflags.private: -DCHROMAPRINT_NODLL" >> "$FFBUILD_PREFIX"/lib/pkgconfig/libchromaprint.pc
 }
 

@@ -16,7 +16,7 @@ ffbuild_dockerbuild() {
         # The git does not build on macOS
         retry-tool check-wget "fftw-3.3.10.tar.gz" "http://fftw.org/fftw-3.3.10.tar.gz" "2d34b5ccac7b08740dbdacc6ebe451d8a34cf9d9bfec85a5e776e87adf94abfd803c222412d8e10fbaa4ed46f504aa87180396af1b108666cde4314a55610b40"
         tar xvf fftw-3.3.10.tar.gz
-        mv fftw-3.3.10.tar.gz fftw3f
+        mv fftw-3.3.10 fftw3f
     fi
     cd fftw3f
 

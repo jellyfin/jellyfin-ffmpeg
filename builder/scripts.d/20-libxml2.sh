@@ -4,6 +4,8 @@ SCRIPT_REPO="https://github.com/GNOME/libxml2.git"
 SCRIPT_COMMIT="12ce9b5ffeba776ede786c075795a4dbae94bfa1"
 
 ffbuild_enabled() {
+    # libxml2 is macOS built-in
+    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 
@@ -23,8 +25,6 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
-    elif [[ $TARGET == mac* ]]; then
-        :
     else
         echo "Unknown target"
         return -1

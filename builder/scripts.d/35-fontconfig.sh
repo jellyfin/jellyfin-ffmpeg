@@ -15,7 +15,11 @@ ffbuild_dockerbuild() {
         sed -i '' 's/LIBTOOLIZE=\${LIBTOOLIZE-libtoolize}/LIBTOOLIZE=glibtoolize/' ./autogen.sh
     fi
 
-    ./autogen.sh --noconf
+    if [[ $TARGET == mac* ]]; then
+        autoreconf -iv
+    else
+        ./autogen.sh --noconf
+    fi
 
     local myconf=(
         --prefix="$FFBUILD_PREFIX"

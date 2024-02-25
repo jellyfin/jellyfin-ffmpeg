@@ -12,15 +12,7 @@ ffbuild_dockerbuild() {
     cd libvpx
 
     local myconf=(
-        --disable-shared
-        --enable-static
-        --enable-pic
-        --disable-examples
-        --disable-tools
-        --disable-docs
-        --disable-unit-tests
-        --enable-vp9-highbitdepth
-        --prefix="$FFBUILD_PREFIX"
+        .
     )
 
     if [[ $TARGET == win64 ]]; then
@@ -53,6 +45,8 @@ ffbuild_dockerbuild() {
     ./configure "${myconf[@]}"
     make -j$(nproc)
     make install
+
+    # macOS ranlib is /usr/bin/ranlib
 
     # Work around strip breaking LTO symbol index
     "$RANLIB" "$FFBUILD_PREFIX"/lib/libvpx.a

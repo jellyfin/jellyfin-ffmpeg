@@ -5,6 +5,8 @@ SCRIPT_COMMIT="v1.17"
 SCRIPT_TAGFILTER="v?.*"
 
 ffbuild_enabled() {
+    # iconv is macOS built-in
+    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 
@@ -32,8 +34,6 @@ EOF
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
-    elif [[ $TARGET == mac* ]]; then
-        sed -i '' 's/join/gjoin/g' ./gnulib/gnulib-tool
     else
         echo "Unknown target"
         return -1
