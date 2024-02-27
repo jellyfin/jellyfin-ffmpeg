@@ -320,12 +320,16 @@ index 0000000000..936e57e03e
 +        dest.write(result_color, gid);
 +    }
 +}
+Index: libavfilter/vf_overlay_videotoolbox.m
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
 diff --git a/libavfilter/vf_overlay_videotoolbox.m b/libavfilter/vf_overlay_videotoolbox.m
 new file mode 100644
-index 0000000000..e2df688729
---- /dev/null
-+++ b/libavfilter/vf_overlay_videotoolbox.m
-@@ -0,0 +1,551 @@
+--- /dev/null	(revision 913e5ef1730481306c9607c554aea3043ea0ecd4)
++++ b/libavfilter/vf_overlay_videotoolbox.m	(revision 913e5ef1730481306c9607c554aea3043ea0ecd4)
+@@ -0,0 +1,609 @@
 +/*
 + * Copyright (C) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -397,6 +401,35 @@ index 0000000000..e2df688729
 +// (we'll statically verify it's correct in overlay_videotoolbox_init behind a check)
 +#define OVERLAY_VT_CTX_SIZE (sizeof(FFFrameSync) + sizeof(uint) * 3 + sizeof(void*) * 13 + 4)
 +
++// Neither VideoToolbox nor CoreImage can convert YUV420P frames into 16-bit depth color formats.
++// Additionally, the only hardware formats that support an Alpha channel are AYUV64 and BGRA.
++// However, neither can be directly manipulated with YUV420P frames.
++// In such cases, the user will have to use NV12 instead.
++static const enum AVPixelFormat supported_main_formats[] = {
++    AV_PIX_FMT_NV12,
++    AV_PIX_FMT_P010,
++    AV_PIX_FMT_NONE,
++};
++
++static const enum AVPixelFormat supported_overlay_formats[] = {
++    AV_PIX_FMT_NV12,
++    AV_PIX_FMT_P010,
++    AV_PIX_FMT_AYUV64,
++    AV_PIX_FMT_BGRA,
++    AV_PIX_FMT_NONE,
++};
++
++/**
++ * Helper to find out if provided format is supported by filter
++ */
++static int format_is_supported(const enum AVPixelFormat formats[], enum AVPixelFormat fmt)
++{
++    for (int i = 0; formats[i] != AV_PIX_FMT_NONE; i++)
++        if (formats[i] == fmt)
++            return 1;
++    return 0;
++}
++
 +static void call_kernel(AVFilterContext *avctx,
 +                        id<MTLTexture> dst,
 +                        id<MTLTexture> main,
@@ -460,7 +493,7 @@ index 0000000000..e2df688729
 +    AVFrame *output;
 +    AVHWFramesContext *frames_ctx = (AVHWFramesContext*)inlink_main->hw_frames_ctx->data;
 +    AVHWFramesContext *frames_ctx_overlay = (AVHWFramesContext*)inlink_overlay->hw_frames_ctx->data;
-+    const AVPixFmtDescriptor *in_main_desc, *in_overlay_desc;
++    const AVPixFmtDescriptor *in_overlay_desc;
 +
 +    CVMetalTextureRef main, dst, overlay;
 +    id<MTLTexture> tex_main, tex_overlay, tex_dst;
@@ -470,7 +503,6 @@ index 0000000000..e2df688729
 +    int ret;
 +    int i, overlay_planes = 0;
 +
-+    in_main_desc = av_pix_fmt_desc_get(frames_ctx->sw_format);
 +    in_overlay_desc = av_pix_fmt_desc_get(frames_ctx_overlay->sw_format);
 +    if (@available(macOS 11.3, iOS 14.2, *)) {
 +        mtl_format = MTLPixelFormatRGBA16Unorm;
@@ -512,27 +544,18 @@ index 0000000000..e2df688729
 +        overlay_planes = FFMAX(overlay_planes,
 +                               in_overlay_desc->comp[i].plane + 1);
 +
-+    // We need to convert input overlay when it is planar or the color depth does not match
-+    if (overlay_planes > 1 || in_main_desc->comp[0].depth != in_overlay_desc->comp[0].depth) {
-+        if (!ctx->input_overlay_pixel_buffer_cache) {
-+            ret = CVPixelBufferCreate(kCFAllocatorDefault,
-+                                      CVPixelBufferGetWidthOfPlane((CVPixelBufferRef)input_overlay->data[3], 0),
-+                                      CVPixelBufferGetHeightOfPlane((CVPixelBufferRef)input_overlay->data[3], 0),
-+                                      cv_format,
-+                                      (__bridge CFDictionaryRef)@{
-+                                          (NSString *)kCVPixelBufferCGImageCompatibilityKey: @(YES),
-+                                          (NSString *)kCVPixelBufferMetalCompatibilityKey: @(YES)
-+                                      },
-+                                      &ctx->input_overlay_pixel_buffer_cache);
-+            if (ret < 0)
-+                return ret;
-+        }
-+        ret = transfer_pixel_buffer(ctx, (CVPixelBufferRef)input_overlay->data[3], ctx->input_overlay_pixel_buffer_cache);
++    if (!ctx->input_overlay_pixel_buffer_cache) {
++        ret = CVPixelBufferCreate(kCFAllocatorDefault,
++                                  CVPixelBufferGetWidthOfPlane((CVPixelBufferRef)input_overlay->data[3], 0),
++                                  CVPixelBufferGetHeightOfPlane((CVPixelBufferRef)input_overlay->data[3], 0),
++                                  cv_format,
++                                  (__bridge CFDictionaryRef)@{
++                                      (NSString *)kCVPixelBufferCGImageCompatibilityKey: @(YES),
++                                      (NSString *)kCVPixelBufferMetalCompatibilityKey: @(YES)
++                                  },
++                                  &ctx->input_overlay_pixel_buffer_cache);
 +        if (ret < 0)
 +            return ret;
-+        overlay = ff_metal_texture_from_pixbuf(avctx, ctx->texture_cache, ctx->input_overlay_pixel_buffer_cache, 0, mtl_format);
-+    } else {
-+        overlay = ff_metal_texture_from_pixbuf(avctx, ctx->texture_cache, (CVPixelBufferRef)input_overlay->data[3], 0, mtl_format);
 +    }
 +
 +    if (!ctx->input_main_pixel_buffer_cache) {
@@ -548,6 +571,7 @@ index 0000000000..e2df688729
 +        if (ret < 0)
 +            return ret;
 +    }
++
 +    if (!ctx->output_pixel_buffer_cache) {
 +        ret = CVPixelBufferCreate(kCFAllocatorDefault,
 +                                  CVPixelBufferGetWidthOfPlane((CVPixelBufferRef)input_main->data[3], 0),
@@ -566,8 +590,17 @@ index 0000000000..e2df688729
 +    if (ret < 0)
 +        return ret;
 +
++    ret = transfer_pixel_buffer(ctx, (CVPixelBufferRef)input_overlay->data[3], ctx->input_overlay_pixel_buffer_cache);
++    if (ret < 0)
++        return ret;
++
++    overlay = ff_metal_texture_from_pixbuf(avctx, ctx->texture_cache, ctx->input_overlay_pixel_buffer_cache, 0, mtl_format);
 +    main = ff_metal_texture_from_pixbuf(avctx, ctx->texture_cache, ctx->input_main_pixel_buffer_cache, 0, mtl_format);
 +    dst = ff_metal_texture_from_pixbuf(avctx, ctx->texture_cache, ctx->output_pixel_buffer_cache, 0, mtl_format);
++
++    if (!overlay || !main || !dst) {
++        return AVERROR(ENOSYS);
++    }
 +
 +    tex_main = CVMetalTextureGetTexture(main);
 +    tex_overlay  = CVMetalTextureGetTexture(overlay);
@@ -576,8 +609,12 @@ index 0000000000..e2df688729
 +    call_kernel(avctx, tex_dst, tex_main, tex_overlay, ctx->x_position, ctx->y_position);
 +
 +    ret = transfer_pixel_buffer(ctx, ctx->output_pixel_buffer_cache, (CVPixelBufferRef)output->data[3]);
-+    if (ret < 0)
++    if (ret < 0) {
++        CFRelease(main);
++        CFRelease(overlay);
++        CFRelease(dst);
 +        return ret;
++    }
 +
 +    CFRelease(main);
 +    CFRelease(overlay);
@@ -747,8 +784,8 @@ index 0000000000..e2df688729
 +    AVFilterLink *inlink_main = avctx->inputs[0];
 +    AVFilterLink *inlink_overlay = avctx->inputs[1];
 +    OverlayVideoToolboxContext *ctx = avctx->priv;
-+    AVHWFramesContext *main_frames, *output_frames;
-+    AVBufferRef *input_ref;
++    AVHWFramesContext *main_frames, *output_frames, *overlay_frames;
++    AVBufferRef *input_ref, *overlay_ref;
 +    int ret = 0;
 +
 +    if (!inlink_main->hw_frames_ctx ||
@@ -759,8 +796,33 @@ index 0000000000..e2df688729
 +    }
 +
 +    input_ref = inlink_main->hw_frames_ctx;
++    overlay_ref = inlink_overlay->hw_frames_ctx;
 +    main_frames = (AVHWFramesContext*)input_ref->data;
++    overlay_frames = (AVHWFramesContext*)overlay_ref->data;
 +    av_assert0(main_frames);
++    av_assert0(overlay_frames);
++
++    if (!format_is_supported(supported_main_formats, main_frames->sw_format)) {
++        av_log(ctx, AV_LOG_ERROR, "Unsupported main input format: %s.\n",
++               av_get_pix_fmt_name(main_frames->sw_format));
++        if (main_frames->sw_format == AV_PIX_FMT_YUV420P) {
++            av_log(ctx, AV_LOG_WARNING, "Hint: Use %s instead of %s.\n",
++                   av_get_pix_fmt_name(AV_PIX_FMT_NV12),
++                   av_get_pix_fmt_name(AV_PIX_FMT_YUV420P));
++        }
++        return AVERROR(ENOSYS);
++    }
++
++    if (!format_is_supported(supported_overlay_formats, overlay_frames->sw_format)) {
++        av_log(ctx, AV_LOG_ERROR, "Unsupported overlay input format: %s.\n",
++               av_get_pix_fmt_name(overlay_frames->sw_format));
++        if (overlay_frames->sw_format == AV_PIX_FMT_YUV420P) {
++            av_log(ctx, AV_LOG_WARNING, "Hint: Use %s instead of %s.\n",
++                   av_get_pix_fmt_name(AV_PIX_FMT_NV12),
++                   av_get_pix_fmt_name(AV_PIX_FMT_YUV420P));
++        }
++        return AVERROR(ENOSYS);
++    }
 +
 +    ctx->device_ref = av_buffer_ref(main_frames->device_ref);
 +    if (!ctx->device_ref) {
@@ -877,3 +939,4 @@ index 0000000000..e2df688729
 +    FILTER_OUTPUTS(overlay_videotoolbox_outputs),
 +    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 +};
+
