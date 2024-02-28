@@ -58,3 +58,7 @@
 0058-add-full-hwa-pipeline-for-rockchip-rk3588-platform.patch
 0059-add-checks-for-arm-mali-in-opencl-tonemap.patch
 0060-fix-libx265-encoded-fmp4-hls-playback-on-safari.patch
+0061-backport-scale-vt.patch
+0062-avfilter-add-vf_overlay_videotoolbox.patch
+0063-backport-videotoolbox-map-from-opencl.patch
+0064-backport-enhanced-vt.patch
