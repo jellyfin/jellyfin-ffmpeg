@@ -12,6 +12,6 @@ if [ $XCODE_MAJOR_VER -ge 15 ]; then
   export LDFLAGS="-Wl,-ld_classic"
 fi
 FF_HOST_LDFLAGS+="-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib -L/opt/ffbuild/prefix/lib"
-export PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/opt/homebrew/Library/Homebrew/os/mac/pkgconfig/14:/usr/local/Homebrew/Library/Homebrew/os/mac/pkgconfig/$MACOS_MAJOR_VER"
+export PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/opt/homebrew/Library/Homebrew/os/mac/pkgconfig/$MACOS_MAJOR_VER:/usr/local/Homebrew/Library/Homebrew/os/mac/pkgconfig/$MACOS_MAJOR_VER"
 export CMAKE_PREFIX_PATH="/opt/ffbuild/prefix"
 export PKG_CONFIG_PATH="/opt/ffbuild/prefix/lib/pkgconfig"
