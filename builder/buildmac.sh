@@ -52,6 +52,7 @@ FF_LDEXEFLAGS="$(xargs <<< "$FF_LDEXEFLAGS")"
 FF_LIBS="$(xargs <<< "$FF_LIBS")"
 FF_HOST_CFLAGS="$(xargs <<< "$FF_HOST_CFLAGS")"
 FF_HOST_LDFLAGS="$(xargs <<< "$FF_HOST_LDFLAGS")"
+FFBUILD_TARGET_FLAGS="$(xargs <<< "$FFBUILD_TARGET_FLAGS")"
 
 cd ..
 if [[ -f "debian/patches/series" ]]; then
@@ -61,13 +62,13 @@ fi
 
 ./configure --prefix=/ffbuild/prefix \
     $FFBUILD_TARGET_FLAGS \
-    --host-cflags='$FF_HOST_CFLAGS' \
-    --host-ldflags='$FF_HOST_LDFLAGS' \
+    --host-cflags="$FF_HOST_CFLAGS" \
+    --host-ldflags="$FF_HOST_LDFLAGS" \
     --extra-version="Jellyfin" \
-    --extra-cflags='$FF_CFLAGS' \
-    --extra-cxxflags='$FF_CXXFLAGS' \
-    --extra-ldflags='$FF_LDFLAGS' \
-    --extra-ldexeflags='$FF_LDEXEFLAGS' \
-    --extra-libs='$FF_LIBS' \
+    --extra-cflags="$FF_CFLAGS" \
+    --extra-cxxflags="$FF_CXXFLAGS" \
+    --extra-ldflags="$FF_LDFLAGS" \
+    --extra-ldexeflags="$FF_LDEXEFLAGS" \
+    --extra-libs="$FF_LIBS" \
     $FF_CONFIGURE
-make -j\$(nproc) V=1
+make -j$(nproc) V=1
