@@ -12,10 +12,6 @@ ffbuild_dockerbuild() {
     cd fc
 
     if [[ $TARGET == mac* ]]; then
-        sed -i '' 's/LIBTOOLIZE=\${LIBTOOLIZE-libtoolize}/LIBTOOLIZE=glibtoolize/' ./autogen.sh
-    fi
-
-    if [[ $TARGET == mac* ]]; then
         autoreconf -iv
     else
         ./autogen.sh --noconf
@@ -41,7 +37,8 @@ ffbuild_dockerbuild() {
             --host="$FFBUILD_TOOLCHAIN"
         )
     elif [[ $TARGET == mac* ]]; then
-        :
+        # freetype's pkg-config usage cannot find static libbrotli
+        export FREETYPE_LIBS="$(pkg-config --libs --static freetype2)"
     else
         echo "Unknown target"
         return -1
@@ -50,6 +47,10 @@ ffbuild_dockerbuild() {
     ./configure "${myconf[@]}"
     make -j$(nproc)
     make install
+    #  Manually tell it to link against macOS builtin and static libintl
+    if [[ $TARGET == mac* ]]; then
+        sed -i '' '/^Libs:/ s/$/ -lintl -framework CoreFoundation/' "$FFBUILD_PREFIX"/lib/pkgconfig/fontconfig.pc
+    fi
 }
 
 ffbuild_configure() {

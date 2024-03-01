@@ -50,5 +50,9 @@ ffbuild_configure() {
 }
 
 ffbuild_unconfigure() {
-    echo --disable-iconv
+    if [[ $TARGET == mac* ]]; then
+        echo --enable-iconv
+    else
+        echo --disable-iconv
+    fi
 }

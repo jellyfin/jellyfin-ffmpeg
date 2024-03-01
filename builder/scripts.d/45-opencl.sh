@@ -58,5 +58,9 @@ ffbuild_configure() {
 }
 
 ffbuild_unconfigure() {
-    echo --disable-opencl
+    if [[ $TARGET == mac* ]]; then
+        echo --enable-opencl
+    else
+        echo --disable-opencl
+    fi
 }

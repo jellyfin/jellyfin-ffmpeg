@@ -33,6 +33,11 @@ ffbuild_dockerbuild() {
     ./configure "${myconf[@]}"
     make -j$(nproc)
     make install
+
+    # freetype2 does not link to macOS built-in iconv in its pkgconfig, add it
+    if [[ $TARGET == mac* ]]; then
+        sed -i '' '/^Libs:/ s/$/ -liconv/' "$FFBUILD_PREFIX"/lib/pkgconfig/freetype2.pc
+    fi
 }
 
 ffbuild_configure() {

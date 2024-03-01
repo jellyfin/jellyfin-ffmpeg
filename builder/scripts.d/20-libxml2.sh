@@ -40,5 +40,9 @@ ffbuild_configure() {
 }
 
 ffbuild_unconfigure() {
-    echo --disable-libxml2
+    if [[ $TARGET == mac* ]]; then
+        echo --enable-libxml2
+    else
+        echo --disable-libxml2
+    fi
 }
