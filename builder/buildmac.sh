@@ -56,7 +56,7 @@ FFBUILD_TARGET_FLAGS="$(xargs <<< "$FFBUILD_TARGET_FLAGS")"
 
 cd ..
 if [[ -f "debian/patches/series" ]]; then
-    ln -s ffmpeg/debian/patches patches
+    ln -s debian/patches patches
     quilt push -a
 fi
 
