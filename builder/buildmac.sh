@@ -1,6 +1,7 @@
 #!/bin/bash
 set -xe
 cd "$(dirname "$0")"
+export FFBUILD_PREFIX="/opt/ffbuild/prefix"
 #source util/vars.sh
 
 get_output() {
@@ -32,8 +33,6 @@ source "variants/${TARGET}-gpl.sh"
 for addin in ${ADDINS[*]}; do
     source "addins/${addin}.sh"
 done
-
-export FFBUILD_PREFIX="/opt/ffbuild/prefix"
 
 for script in scripts.d/*.sh; do
     FF_CONFIGURE+=" $(get_output $script configure)"
