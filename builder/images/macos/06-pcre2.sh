@@ -13,7 +13,6 @@ ffbuild_macbase() {
           --enable-pcre2grep-libz \
           --enable-pcre2grep-libbz2 \
           --enable-jit
-
   make -j$(nproc)
   make install
 }
