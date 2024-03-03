@@ -15,11 +15,18 @@ ffbuild_dockerbuild() {
     retry-tool sh -c "rm -rf zvbi && svn checkout '${SCRIPT_REPO}@${SCRIPT_REV}' zvbi"
     cd zvbi
 
-    # TODO: fix mac patch
-    for patch in /patches/*.patch; do
-        echo "Applying $patch"
-        patch -p1 < "$patch"
-    done
+    if [[ $TARGET == mac* ]]; then
+        rm -f "$BUILDER_ROOT"/patches/zvbi/0001-ioctl.patch
+        for patch in "$BUILDER_ROOT"/patches/zvbi/*.patch; do
+            echo "Applying $patch"
+            patch -p1 < "$patch"
+        done
+    else
+        for patch in /patches/*.patch; do
+            echo "Applying $patch"
+            patch -p1 < "$patch"
+        done
+    fi
 
     autoreconf -i
 

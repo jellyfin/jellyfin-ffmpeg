@@ -54,8 +54,6 @@ ffbuild_dockerbuild() {
     make -j$(nproc)
     make install
 
-    # macOS ranlib is /usr/bin/ranlib
-
     # Work around strip breaking LTO symbol index
     "$RANLIB" "$FFBUILD_PREFIX"/lib/libvpx.a
 }

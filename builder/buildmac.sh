@@ -65,7 +65,7 @@ for lib in scripts.d/*.sh; do
     cd "$BUILDER_ROOT"/build
     source "$BUILDER_ROOT"/"$lib"
     ffbuild_enabled || continue
-    ffbuild_dockerstage || exit $?
+    ffbuild_dockerbuild || exit $?
 done
 
 cd "$BUILDER_ROOT"

@@ -53,14 +53,14 @@ EOF
         if [[ $TARGET == mac* ]]; then
             libtool -static -o libx265.a libx265_main.a libx265_main10.a libx265_main12.a 2>/dev/null
         else
-            ${FFBUILD_CROSS_PREFIX}ar -M <<EOF
-            CREATE libx265.a
-            ADDLIB libx265_main.a
-            ADDLIB libx265_main10.a
-            ADDLIB libx265_main12.a
-            SAVE
-            END
-            EOF
+        ${FFBUILD_CROSS_PREFIX}ar -M <<EOF
+CREATE libx265.a
+ADDLIB libx265_main.a
+ADDLIB libx265_main10.a
+ADDLIB libx265_main12.a
+SAVE
+END
+EOF
         fi
     else
         mkdir 8bit

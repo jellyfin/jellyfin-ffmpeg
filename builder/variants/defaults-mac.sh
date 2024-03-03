@@ -15,3 +15,4 @@ FF_HOST_LDFLAGS+="-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib 
 export PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/opt/homebrew/Library/Homebrew/os/mac/pkgconfig/$MACOS_MAJOR_VER:/usr/local/Homebrew/Library/Homebrew/os/mac/pkgconfig/$MACOS_MAJOR_VER"
 export CMAKE_PREFIX_PATH=""$FFBUILD_PREFIX""
 export PKG_CONFIG_PATH=""$FFBUILD_PREFIX"/lib/pkgconfig"
+export RANLIB="/usr/bin/ranlib"

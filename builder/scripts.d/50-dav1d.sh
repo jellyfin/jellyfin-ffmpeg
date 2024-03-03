@@ -23,6 +23,8 @@ ffbuild_dockerbuild() {
         myconf+=(
             --cross-file=/cross.meson
         )
+    elif [[ $TARGET == mac* ]]; then
+        :
     else
         echo "Unknown target"
         return -1
