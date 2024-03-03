@@ -1,8 +1,8 @@
 #!/bin/bash
 set -xe
-cd "$(dirname "$0")"
+export BUILDER_ROOT="$(dirname "$0")"
+cd BUILDER_ROOT
 export FFBUILD_PREFIX="/opt/ffbuild/prefix"
-#source util/vars.sh
 
 get_output() {
     (
@@ -53,6 +53,22 @@ FF_HOST_CFLAGS="$(xargs <<< "$FF_HOST_CFLAGS")"
 FF_HOST_LDFLAGS="$(xargs <<< "$FF_HOST_LDFLAGS")"
 FFBUILD_TARGET_FLAGS="$(xargs <<< "$FFBUILD_TARGET_FLAGS")"
 
+mkdir build && cd build
+for macbase in images/macos/*.sh; do
+    cd "$BUILDER_ROOT"/build
+    source macbase
+    ffbuild_macbase || exit $?
+done
+
+cd "$BUILDER_ROOT"
+for lib in scripts.d/*.sh; do
+    cd "$BUILDER_ROOT"/build
+    source lib
+    ffbuild_enabled || exit 0
+    ffbuild_dockerstage || exit $?
+done
+
+cd "$BUILDER_ROOT"
 cd ..
 if [[ -f "debian/patches/series" ]]; then
     ln -s debian/patches patches
