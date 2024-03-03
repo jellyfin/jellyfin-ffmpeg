@@ -56,14 +56,14 @@ FFBUILD_TARGET_FLAGS="$(xargs <<< "$FFBUILD_TARGET_FLAGS")"
 mkdir build
 for macbase in images/macos/*.sh; do
     cd "$BUILDER_ROOT"/build
-    source $macbase
+    source "$BUILDER_ROOT"/"$macbase"
     ffbuild_macbase || exit $?
 done
 
 cd "$BUILDER_ROOT"
 for lib in scripts.d/*.sh; do
     cd "$BUILDER_ROOT"/build
-    source $lib
+    source "$BUILDER_ROOT"/"$lib"
     ffbuild_enabled || exit 0
     ffbuild_dockerstage || exit $?
 done
