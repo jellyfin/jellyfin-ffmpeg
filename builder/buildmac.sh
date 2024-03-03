@@ -1,7 +1,7 @@
 #!/bin/bash
 set -xe
 export BUILDER_ROOT="$(dirname "$0")"
-cd BUILDER_ROOT
+cd $BUILDER_ROOT
 export FFBUILD_PREFIX="/opt/ffbuild/prefix"
 
 get_output() {
