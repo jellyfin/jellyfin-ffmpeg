@@ -64,7 +64,7 @@ cd "$BUILDER_ROOT"
 for lib in scripts.d/*.sh; do
     cd "$BUILDER_ROOT"/build
     source "$BUILDER_ROOT"/"$lib"
-    ffbuild_enabled || exit 0
+    ffbuild_enabled || continue
     ffbuild_dockerstage || exit $?
 done
 
