@@ -29,6 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
+      - name: Prepare prefix dir
+        run: |
+          sudo mkdir /opt/ffbuild
+          sudo chmod 777 /opt/ffbuild
+
       - name: Build Portable
         run: ./builder/buildmac.sh
 
