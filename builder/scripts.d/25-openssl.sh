@@ -59,7 +59,9 @@ ffbuild_dockerbuild() {
     export CFLAGS="$CFLAGS -fno-strict-aliasing"
     export CXXFLAGS="$CXXFLAGS -fno-strict-aliasing"
 
-    if [[ $TARGET == !mac* ]]; then
+    if [[ $TARGET == mac* ]]; then
+        gsed -i '/^my @disablables =/ s/$/"apps",/' Configure
+    else
         # OpenSSL build system prepends the cross prefix itself
         export CC="${CC/${FFBUILD_CROSS_PREFIX}/}"
         export CXX="${CXX/${FFBUILD_CROSS_PREFIX}/}"
@@ -68,8 +70,6 @@ ffbuild_dockerbuild() {
 
         # Actually allow Configure to disable apps
         sed -i '/^my @disablables =/ s/$/"apps",/' Configure
-    else
-        gsed -i '/^my @disablables =/ s/$/"apps",/' Configure
     fi
 
     ./Configure "${myconf[@]}"
