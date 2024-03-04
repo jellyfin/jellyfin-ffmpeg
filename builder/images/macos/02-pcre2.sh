@@ -4,7 +4,7 @@ ffbuild_macbase() {
   wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.42/pcre2-10.42.tar.bz2
   tar xvf pcre2-10.42.tar.bz2
   cd pcre2-10.42
-  ./configure --prefix=="$FFBUILD_PREFIX" \
+  ./configure --prefix="$FFBUILD_PREFIX" \
           --disable-shared \
           --enable-static \
           --disable-dependency-tracking \
