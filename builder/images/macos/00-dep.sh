@@ -8,6 +8,6 @@ ffbuild_macbase() {
   cp "$BUILDER_ROOT"/images/base/retry-tool.sh /opt/ffbuild/bin/retry-tool
   chmod +x /opt/ffbuild/bin/retry-tool
   cp "$BUILDER_ROOT"/images/base/check-wget.sh /opt/ffbuild/bin/check-wget
-  chmod +x  /opt/ffbuild/bin/check-wget
+  chmod +x /opt/ffbuild/bin/check-wget
   export PATH="/opt/ffbuild/bin:$PATH"
 }

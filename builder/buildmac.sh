@@ -60,30 +60,28 @@ for macbase in images/macos/*.sh; do
     ffbuild_macbase || exit $?
 done
 
-cd "$BUILDER_ROOT"
-for lib in scripts.d/*.sh; do
-    cd "$BUILDER_ROOT"/build
-    source "$BUILDER_ROOT"/"$lib"
-    ffbuild_enabled || continue
-    ffbuild_dockerbuild || exit $?
-done
+# We have to manually match lines to get version as there will be no dpkg-parsechangelog on macOS
+PKG_VER=0.0.0
+while IFS= read -r line; do
+    if [[ $line == jellyfin-ffmpeg* ]]; then
+        if [[ $line =~ \(([^\)]+)\) ]]; then
+            PKG_VER="${BASH_REMATCH[1]}"
+            break
+        fi
+    fi
+done < "$BUILDER_ROOT"/../debian/changelog
 
+PKG_NAME="jellyfin-ffmpeg_${PKG_VER}_portable_${TARGET}-${VARIANT}${ADDINS_STR:+-}${ADDINS_STR}"
+ARTIFACTS_PATH="$BUILDER_ROOT"/artifacts
+OUTPUT_FNAME="${PKG_NAME}.tar.xz"
 cd "$BUILDER_ROOT"
-cd ..
-if [[ -f "debian/patches/series" ]]; then
-    ln -s debian/patches patches
-    quilt push -a
+mkdir -p artifacts
+tar -cJf "${ARTIFACTS_PATH}/${OUTPUT_FNAME}" ../ffmpeg ../ffprobe
+cd "${ARTIFACTS_PATH}"
+sha256sum ./${OUTPUT_FNAME} > ./${OUTPUT_FNAME}.sha256sum
+cd "$BUILDER_ROOT"/..
+
+if [[ -n "$GITHUB_ACTIONS" ]]; then
+    echo "build_name=${BUILD_NAME}" >> "$GITHUB_OUTPUT"
+    echo "${OUTPUT_FNAME}" > "${ARTIFACTS_PATH}/${TARGET}-${VARIANT}${ADDINS_STR:+-}${ADDINS_STR}.txt"
 fi
-
-./configure --prefix=/ffbuild/prefix \
-    $FFBUILD_TARGET_FLAGS \
-    --host-cflags="$FF_HOST_CFLAGS" \
-    --host-ldflags="$FF_HOST_LDFLAGS" \
-    --extra-version="Jellyfin" \
-    --extra-cflags="$FF_CFLAGS" \
-    --extra-cxxflags="$FF_CXXFLAGS" \
-    --extra-ldflags="$FF_LDFLAGS" \
-    --extra-ldexeflags="$FF_LDEXEFLAGS" \
-    --extra-libs="$FF_LIBS" \
-    $FF_CONFIGURE
-make -j$(nproc) V=1
