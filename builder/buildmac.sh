@@ -104,7 +104,10 @@ ARTIFACTS_PATH="$BUILDER_ROOT"/artifacts
 OUTPUT_FNAME="${PKG_NAME}.tar.xz"
 cd "$BUILDER_ROOT"
 mkdir -p artifacts
-tar -cJf "${ARTIFACTS_PATH}/${OUTPUT_FNAME}" ../ffmpeg ../ffprobe
+# bsdtar can add files in parent dir, but macOS's native archive utility won't be able to unzip it by double clicking, we have to move it to current dir as a workaround
+mv ../ffmpeg ./
+mv ../ffprobe ./
+tar -cJf "${ARTIFACTS_PATH}/${OUTPUT_FNAME}" ffmpeg ffprobe
 cd "${ARTIFACTS_PATH}"
 sha256sum ./${OUTPUT_FNAME} > ./${OUTPUT_FNAME}.sha256sum
 cd "$BUILDER_ROOT"/..
