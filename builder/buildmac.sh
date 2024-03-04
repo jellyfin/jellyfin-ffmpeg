@@ -60,6 +60,34 @@ for macbase in images/macos/*.sh; do
     ffbuild_macbase || exit $?
 done
 
+cd "$BUILDER_ROOT"
+for lib in scripts.d/*.sh; do
+    cd "$BUILDER_ROOT"/build
+    source "$BUILDER_ROOT"/"$lib"
+    ffbuild_enabled || continue
+    ffbuild_dockerbuild || exit $?
+done
+
+cd "$BUILDER_ROOT"
+cd ..
+if [[ -f "debian/patches/series" ]]; then
+    ln -s debian/patches patches
+    quilt push -a
+fi
+
+./configure --prefix=/ffbuild/prefix \
+    $FFBUILD_TARGET_FLAGS \
+    --host-cflags="$FF_HOST_CFLAGS" \
+    --host-ldflags="$FF_HOST_LDFLAGS" \
+    --extra-version="Jellyfin" \
+    --extra-cflags="$FF_CFLAGS" \
+    --extra-cxxflags="$FF_CXXFLAGS" \
+    --extra-ldflags="$FF_LDFLAGS" \
+    --extra-ldexeflags="$FF_LDEXEFLAGS" \
+    --extra-libs="$FF_LIBS" \
+    $FF_CONFIGURE
+make -j$(nproc) V=1
+
 # We have to manually match lines to get version as there will be no dpkg-parsechangelog on macOS
 PKG_VER=0.0.0
 while IFS= read -r line; do
