@@ -3,7 +3,7 @@ XCODE_MAJOR_VER="$(xcodebuild -version | grep 'Xcode' | awk '{print $2}' | cut -
 
 FF_CFLAGS+="-I"$FFBUILD_PREFIX"/include"
 FF_LDFLAGS+="-L"$FFBUILD_PREFIX"/lib"
-FF_CONFIGURE+=" --disable-libxcb --disable-libjack --disable-indev=jack --enable-neon --enable-runtime-cpudetect --enable-audiotoolbox --enable-videotoolbox"
+FF_CONFIGURE+=" --disable-libjack --disable-indev=jack --enable-neon --enable-runtime-cpudetect --enable-audiotoolbox --enable-videotoolbox"
 FFBUILD_TARGET_FLAGS="--disable-shared --enable-static --pkg-config-flags=\"--static\" --enable-pthreads --cc=clang"
 FF_HOST_CFLAGS="-I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I"$FFBUILD_PREFIX"/include"
 FF_HOST_LDFLAGS=""
