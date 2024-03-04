@@ -16,7 +16,7 @@ on:
 jobs:
   build:
     name: 'Build Portable FFmpeg'
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os.name }}
     strategy:
       fail-fast: true
       matrix:
