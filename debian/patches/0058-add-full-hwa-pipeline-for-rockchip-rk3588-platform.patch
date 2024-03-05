@@ -3119,7 +3119,7 @@ Index: jellyfin-ffmpeg/libavfilter/rkrga_common.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/rkrga_common.c
-@@ -0,0 +1,1234 @@
+@@ -0,0 +1,1249 @@
 +/*
 + * Copyright (c) 2023 NyanMisaka
 + *
@@ -4170,9 +4170,24 @@ Index: jellyfin-ffmpeg/libavfilter/rkrga_common.c
 +        frame->pat->locked = status;
 +}
 +
++static void rga_drain_fifo(RKRGAContext *r)
++{
++    RGAAsyncFrame aframe;
++
++    while (r->async_fifo && av_fifo_read(r->async_fifo, &aframe, 1) >= 0) {
++        if (imsync(aframe.dst->info.out_fence_fd) != IM_STATUS_SUCCESS)
++            av_log(NULL, AV_LOG_WARNING, "RGA sync failed\n");
++
++        set_rga_async_frame_lock_status(&aframe, 0);
++    }
++}
++
 +av_cold int ff_rkrga_close(AVFilterContext *avctx)
 +{
 +    RKRGAContext *r = avctx->priv;
++
++    /* Drain the fifo during filter reset */
++    rga_drain_fifo(r);
 +
 +    clear_frame_list(&r->src_frame_list);
 +    clear_frame_list(&r->dst_frame_list);
@@ -4858,7 +4873,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
-@@ -0,0 +1,561 @@
+@@ -0,0 +1,570 @@
 +/*
 + * Copyright (c) 2023 NyanMisaka
 + *
@@ -5147,6 +5162,8 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
 +{
 +    RGAVppContext *r = ctx->priv;
 +    const AVPixFmtDescriptor *desc;
++    const char *rga_ver = NULL;
++    int has_rga3 = 0;
 +    int out_depth, force_chroma;
 +    int is_yuv, is_fully_planar;
 +
@@ -5159,8 +5176,15 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
 +    else
 +        out_depth = (r->force_yuv == FORCE_YUV_8BIT) ? 8 :
 +                    (r->force_yuv == FORCE_YUV_10BIT) ? 10 : 0;
++
 +    if (!out_depth)
 +        return;
++
++    /* Auto fallback to 8-bit fmts on RGA2 */
++    rga_ver = querystring(RGA_VERSION);
++    has_rga3 = !!strstr(rga_ver, "RGA_3");
++    if (out_depth >= 10 && !has_rga3)
++        out_depth = 8;
 +
 +    desc = av_pix_fmt_desc_get(in_format);
 +    is_yuv = !(desc->flags & AV_PIX_FMT_FLAG_RGB) && desc->nb_components >= 2;
