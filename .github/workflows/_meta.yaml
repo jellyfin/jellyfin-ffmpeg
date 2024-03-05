@@ -93,7 +93,7 @@ jobs:
           popd
           
       - name: Upload GH Release Assets
-        uses: shogo82148/actions-upload-release-asset@c91b7fd867cf280772374042252f0dc8e1ade751 # v1.7.3
+        uses: shogo82148/actions-upload-release-asset@5bd52f05dd8076794da5975d4c0a4f3bce7dd8f5 # v1.7.4
         with:
           upload_url: ${{ github.event.release.upload_url }}
           overwrite: true
