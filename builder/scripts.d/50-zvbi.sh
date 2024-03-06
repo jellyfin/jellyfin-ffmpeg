@@ -15,10 +15,18 @@ ffbuild_dockerbuild() {
     retry-tool sh -c "rm -rf zvbi && svn checkout '${SCRIPT_REPO}@${SCRIPT_REV}' zvbi"
     cd zvbi
 
-    for patch in /patches/*.patch; do
-        echo "Applying $patch"
-        patch -p1 < "$patch"
-    done
+    if [[ $TARGET == mac* ]]; then
+        rm -f "$BUILDER_ROOT"/patches/zvbi/0001-ioctl.patch
+        for patch in "$BUILDER_ROOT"/patches/zvbi/*.patch; do
+            echo "Applying $patch"
+            patch -p1 < "$patch"
+        done
+    else
+        for patch in /patches/*.patch; do
+            echo "Applying $patch"
+            patch -p1 < "$patch"
+        done
+    fi
 
     autoreconf -i
 
@@ -39,6 +47,8 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        :
     else
         echo "Unknown target"
         return -1
@@ -49,7 +59,11 @@ ffbuild_dockerbuild() {
     make -C src install
     make SUBDIRS=. install
 
-    sed -i "s/\/[^ ]*libiconv.a/-liconv/" "$FFBUILD_PREFIX"/lib/pkgconfig/zvbi-0.2.pc
+    if [[ $TARGET == mac* ]]; then
+        gsed -i "s/\/[^ ]*libiconv.a/-liconv/" "$FFBUILD_PREFIX"/lib/pkgconfig/zvbi-0.2.pc
+    else
+        sed -i "s/\/[^ ]*libiconv.a/-liconv/" "$FFBUILD_PREFIX"/lib/pkgconfig/zvbi-0.2.pc
+    fi
 }
 
 ffbuild_configure() {

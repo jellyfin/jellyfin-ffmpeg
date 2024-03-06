@@ -4,6 +4,7 @@ SCRIPT_REPO="https://github.com/intel/libvpl.git"
 SCRIPT_COMMIT="18e890e7a5d6355306b8f1046b46c378ced453ff"
 
 ffbuild_enabled() {
+    [[ $TARGET == mac* ]] && return -1
     [[ $TARGET == *arm64 ]] && return -1
     return 0
 }

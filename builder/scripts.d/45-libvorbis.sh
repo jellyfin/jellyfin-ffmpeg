@@ -24,6 +24,9 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        # This only make sense for PowerPC
+        sed -i '' 's/-force_cpusubtype_ALL//g' ./configure
     else
         echo "Unknown target"
         return -1

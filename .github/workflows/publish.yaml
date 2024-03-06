@@ -52,6 +52,15 @@ jobs:
       deploy-user: ${{ secrets.DEPLOY_USER }}
       deploy-key: ${{ secrets.DEPLOY_KEY }}
 
+  build_publish_mac_portable:
+      uses: ./.github/workflows/_meta_mac_portable.yaml
+      with:
+        release: true
+      secrets:
+        deploy-host: ${{ secrets.DEPLOY_HOST }}
+        deploy-user: ${{ secrets.DEPLOY_USER }}
+        deploy-key: ${{ secrets.DEPLOY_KEY }}
+
   maintain_repository:
     name: Maintain Repository
     runs-on: ubuntu-latest

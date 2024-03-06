@@ -10,7 +10,14 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
-    git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT_PINNED" fftw3f
+    if [[ $TARGET != mac* ]]; then
+        git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT_PINNED" fftw3f
+    else
+        # The git does not build on macOS
+        retry-tool check-wget "fftw-3.3.10.tar.gz" "http://fftw.org/fftw-3.3.10.tar.gz" "2d34b5ccac7b08740dbdacc6ebe451d8a34cf9d9bfec85a5e776e87adf94abfd803c222412d8e10fbaa4ed46f504aa87180396af1b108666cde4314a55610b40"
+        tar xvf fftw-3.3.10.tar.gz
+        mv fftw-3.3.10 fftw3f
+    fi
     cd fftw3f
 
     local myconf=(
@@ -45,12 +52,21 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        :
     else
         echo "Unknown target"
         return -1
     fi
 
     ./bootstrap.sh "${myconf[@]}"
-    make -j$(nproc)
-    make install
+    if [[ $TARGET == mac* ]]; then
+        sed -i '' 's/CC = gcc/CC = gcc-13/' Makefile
+        sed -i '' 's/CPP = gcc/CPP = gcc-13/' Makefile
+        gmake -j$(nproc)
+        gmake install
+    else
+        make -j$(nproc)
+        make install
+    fi
 }

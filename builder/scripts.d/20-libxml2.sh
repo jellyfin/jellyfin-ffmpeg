@@ -8,6 +8,9 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # libxml2 is macOS built-in
+    [[ $TARGET == mac* ]] && return 0
+
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" libxml2
     cd libxml2
 

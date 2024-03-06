@@ -1,0 +1,108 @@
+on:
+  workflow_call:
+    inputs:
+      release:
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      deploy-host:
+        required: false
+      deploy-user:
+        required: false
+      deploy-key:
+        required: false
+
+jobs:
+  build:
+    name: 'Build Portable FFmpeg'
+    runs-on: ${{ matrix.os.name }}
+    strategy:
+      fail-fast: true
+      matrix:
+        # Currently, macOS 12 is x86 exclusive and macOS 14 is arm exclusive and we have no other way to specify arch
+        os:
+          - name: macos-12
+            arch: x86_64
+          - name: macos-14
+            arch: arm64
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Prepare prefix dir
+        run: |
+          sudo mkdir /opt/ffbuild
+          sudo chmod 777 /opt/ffbuild
+
+      - name: Build Portable
+        run: ./builder/buildmac.sh
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: mac-${{ matrix.os.arch }}-portable
+          path: ./builder/artifacts
+
+  publish:
+    name: Publish Portable Release
+    if: ${{ inputs.release }}
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [arm64, x86_64]
+
+    steps:
+      - name: Set Versions
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        id: set_version
+        with:
+          script: |
+            const tag = context.ref.substring(10)
+            const no_v = tag.replace('v', '')
+            const dash_index = no_v.lastIndexOf('-')
+            const no_dash = (dash_index > -1) ?  no_v.substring(0, dash_index) : no_v
+            core.setOutput('tag', tag)
+            core.setOutput('no-v', no_v)
+            core.setOutput('no-dash', no_dash)
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@c850b930e6ba138125429b7e5c93fc707a7f8427 # v4.1.4
+        with:
+          name: mac-${{ matrix.arch }}-portable
+          path: artifact
+
+      - name: Upload GH Release Assets
+        uses: shogo82148/actions-upload-release-asset@c91b7fd867cf280772374042252f0dc8e1ade751 # v1.7.3
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          overwrite: true
+          asset_path: |
+            ./artifact/**/*.tar.xz
+            ./artifact/**/*.sha256sum
+
+      - name: Make Sure FFmpeg Directory Exists
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        with:
+          host: ${{ secrets.deploy-host }}
+          username: ${{ secrets.deploy-user }}
+          key: ${{ secrets.deploy-key }}
+          script_stop: true
+          script: |-
+            mkdir -p /srv/repository/releases/ffmpeg/${{ steps.set_version.outputs.no-v }}/
+
+      - name: Upload Release Assets
+        uses: burnett01/rsync-deployments@45d84ad5f6c174f3e0ffc50e9060a9666d09c16e # 6.0.0
+        with:
+          switches: -vrptz
+          path: ./artifact/*
+          remote_path: /srv/repository/releases/ffmpeg/${{ steps.set_version.outputs.no-v }}/
+          remote_host: ${{ secrets.deploy-host }}
+          remote_user: ${{ secrets.deploy-user }}
+          remote_key: ${{ secrets.deploy-key }}

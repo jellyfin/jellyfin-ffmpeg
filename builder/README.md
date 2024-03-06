@@ -2,6 +2,8 @@
 
 Portable versions builder of jellyfin-ffmpeg for Windows and Linux.
 
+For macOS build instructions, please refer to [this documentation](./Buildmac.md).
+
 ## Package List
 
 For a list of included dependencies check the `scripts.d` directory.

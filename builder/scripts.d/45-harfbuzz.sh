@@ -22,6 +22,9 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        # freetype's pkg-config usage cannot find static libbrotli
+        export FREETYPE_LIBS="$(pkg-config --libs --static freetype2)"
     else
         echo "Unknown target"
         return -1

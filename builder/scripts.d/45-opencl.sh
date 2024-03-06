@@ -11,6 +11,9 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # OpenCL headers are macOS built-in
+    [[ $TARGET == mac* ]] && return 0
+
     mkdir opencl && cd opencl
 
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" headers

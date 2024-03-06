@@ -9,6 +9,9 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerbuild() {
+    # iconv is macOS built-in
+    [[ $TARGET == mac* ]] && return 0
+
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" iconv
     cd iconv
 
@@ -19,7 +22,6 @@ ffbuild_dockerbuild() {
 EOF
 
     ./gitsub.sh pull
-    ./autogen.sh
 
     local myconf=(
         --prefix="$FFBUILD_PREFIX"
@@ -38,6 +40,7 @@ EOF
         return -1
     fi
 
+    ./autogen.sh
     ./configure "${myconf[@]}"
     make -j$(nproc)
     make install

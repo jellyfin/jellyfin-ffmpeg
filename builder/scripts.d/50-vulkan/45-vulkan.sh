@@ -5,6 +5,7 @@ SCRIPT_COMMIT="v1.3.276"
 SCRIPT_TAGFILTER="v?.*.*"
 
 ffbuild_enabled() {
+    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 

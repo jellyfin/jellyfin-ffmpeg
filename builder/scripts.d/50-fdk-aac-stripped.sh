@@ -4,6 +4,8 @@ SCRIPT_REPO="https://gitlab.freedesktop.org/wtaymans/fdk-aac-stripped.git"
 SCRIPT_COMMIT="585981a49f2186b0d2e47c64bf6b5abf539395f8"
 
 ffbuild_enabled() {
+    # Prefer AudioToolbox's AAC encoder on macOS
+    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 
@@ -25,6 +27,8 @@ ffbuild_dockerbuild() {
         myconf+=(
             --host="$FFBUILD_TOOLCHAIN"
         )
+    elif [[ $TARGET == mac* ]]; then
+        :
     else
         echo "Unknown target"
         return -1

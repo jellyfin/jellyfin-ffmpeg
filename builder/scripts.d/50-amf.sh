@@ -4,6 +4,7 @@ SCRIPT_REPO="https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git"
 SCRIPT_COMMIT="8787d3ef5d938425d094170c1b2fec87762683b6"
 
 ffbuild_enabled() {
+    [[ $TARGET == mac* ]] && return -1
     [[ $TARGET == *arm64 ]] && return -1
     return 0
 }
