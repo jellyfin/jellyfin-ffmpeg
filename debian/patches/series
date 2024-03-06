@@ -62,3 +62,4 @@
 0062-avfilter-add-vf_overlay_videotoolbox.patch
 0063-backport-videotoolbox-map-from-opencl.patch
 0064-backport-enhanced-vt.patch
+0065-add-cuda-transpose-filter-impl.patch
