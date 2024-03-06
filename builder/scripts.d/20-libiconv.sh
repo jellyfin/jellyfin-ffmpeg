@@ -5,12 +5,13 @@ SCRIPT_COMMIT="v1.17"
 SCRIPT_TAGFILTER="v?.*"
 
 ffbuild_enabled() {
-    # iconv is macOS built-in
-    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 
 ffbuild_dockerbuild() {
+    # iconv is macOS built-in
+    [[ $TARGET == mac* ]] && return 0
+
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" iconv
     cd iconv
 
@@ -50,9 +51,5 @@ ffbuild_configure() {
 }
 
 ffbuild_unconfigure() {
-    if [[ $TARGET == mac* ]]; then
-        echo --enable-iconv
-    else
-        echo --disable-iconv
-    fi
+    echo --disable-iconv
 }

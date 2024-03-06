@@ -4,12 +4,13 @@ SCRIPT_REPO="https://github.com/GNOME/libxml2.git"
 SCRIPT_COMMIT="12ce9b5ffeba776ede786c075795a4dbae94bfa1"
 
 ffbuild_enabled() {
-    # libxml2 is macOS built-in
-    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 
 ffbuild_dockerbuild() {
+    # libxml2 is macOS built-in
+    [[ $TARGET == mac* ]] && return 0
+
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" libxml2
     cd libxml2
 
@@ -40,9 +41,5 @@ ffbuild_configure() {
 }
 
 ffbuild_unconfigure() {
-    if [[ $TARGET == mac* ]]; then
-        echo --enable-libxml2
-    else
-        echo --disable-libxml2
-    fi
+    echo --disable-libxml2
 }
