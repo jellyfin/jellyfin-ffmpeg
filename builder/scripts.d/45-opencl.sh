@@ -7,12 +7,13 @@ SCRIPT_REPO2="https://github.com/KhronosGroup/OpenCL-ICD-Loader.git"
 SCRIPT_COMMIT2="2cde5d09953a041786d1cfdcb1c08704a82cb904"
 
 ffbuild_enabled() {
-    # OpenCL headers are macOS built-in
-    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 
 ffbuild_dockerbuild() {
+    # OpenCL headers are macOS built-in
+    [[ $TARGET == mac* ]] && return 0
+
     mkdir opencl && cd opencl
 
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" headers
@@ -58,9 +59,5 @@ ffbuild_configure() {
 }
 
 ffbuild_unconfigure() {
-    if [[ $TARGET == mac* ]]; then
-        echo --enable-opencl
-    else
-        echo --disable-opencl
-    fi
+    echo --disable-opencl
 }
