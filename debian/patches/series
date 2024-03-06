@@ -63,3 +63,4 @@
 0063-backport-videotoolbox-map-from-opencl.patch
 0064-backport-enhanced-vt.patch
 0065-add-cuda-transpose-filter-impl.patch
+0066-add-flip-feat-to-opencl-transpose-filter.patch
