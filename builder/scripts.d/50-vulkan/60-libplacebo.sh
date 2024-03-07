@@ -8,19 +8,10 @@ ffbuild_enabled() {
     return 0
 }
 
-ffbuild_dockerstage() {
-    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/libplacebo,dst=/patches run_stage /stage.sh"
-}
-
 ffbuild_dockerbuild() {
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" placebo
     cd placebo
     git submodule update --init --recursive
-
-    for patch in /patches/*.patch; do
-        echo "Applying $patch"
-        patch -p1 < "$patch"
-    done
 
     sed -i 's/DPL_EXPORT/DPL_STATIC/' src/meson.build
 

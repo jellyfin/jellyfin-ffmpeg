@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/KhronosGroup/SPIRV-Cross.git"
-SCRIPT_COMMIT="03b485dc47c6e84a15936601e8b121d84d8ddadf"
+SCRIPT_COMMIT="2a7c8184921897ff3d6c6c3f70af4099e2e00331"
 
 ffbuild_enabled() {
     [[ $TARGET == mac* ]] && return -1

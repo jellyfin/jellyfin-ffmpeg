@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://gitlab.freedesktop.org/wtaymans/fdk-aac-stripped.git"
-SCRIPT_COMMIT="585981a49f2186b0d2e47c64bf6b5abf539395f8"
+SCRIPT_COMMIT="529b87452cd33d45e1d0a5066d20b64f10b38845"
 
 ffbuild_enabled() {
     # Prefer AudioToolbox's AAC encoder on macOS
