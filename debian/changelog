@@ -1,8 +1,23 @@
+jellyfin-ffmpeg (6.0.1-4) unstable; urgency=medium
+
+  * Add VideoToolBox overlay filter
+  * Backport VideoToolBox changes from upstream
+  * Add macOS builder script
+  * Add CUDA transpose filter
+  * Add flip feature to OpenCL transpose filter
+  * Sync RKRGA filter fixes from ffmpeg-rockchip
+  * Update 10-bit support for AMF AV1 encoder
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 5 Mar 2024 10:34:57 +0800
+
 jellyfin-ffmpeg (6.0.1-3) unstable; urgency=medium
 
   * Fix libplacebo v6 required hostQueryReset capability
   * Sync RKMPP fixes from ffmpeg-rockchip
   * Update build scripts and dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sun, 11 Feb 2024 20:07:24 +0800
 
 jellyfin-ffmpeg (6.0.1-2) unstable; urgency=medium
 
