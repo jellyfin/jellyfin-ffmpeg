@@ -159,7 +159,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.4.6 --depth=1 https://github.com/tukaani-project/xz.git
+git clone -b v5.6.0 --depth=1 https://github.com/tukaani-project/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
@@ -322,7 +322,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.3"
+mpt_ver="0.7.4"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -473,7 +473,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.3.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.4.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build
@@ -557,7 +557,7 @@ mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
 
 # VPL
-git clone -b v2.10.1 --depth=1 https://github.com/intel/libvpl.git
+git clone -b v2.10.2 --depth=1 https://github.com/intel/libvpl.git
 pushd libvpl
 mkdir build && pushd build
 cmake \

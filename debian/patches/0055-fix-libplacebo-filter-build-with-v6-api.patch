@@ -18,7 +18,17 @@ Index: jellyfin-ffmpeg/libavfilter/vf_libplacebo.c
  
       /* pl_dither_params */
      int dithering;
-@@ -446,7 +446,6 @@ static int process_frames(AVFilterContex
+@@ -414,7 +414,9 @@ static int process_frames(AVFilterContex
+             .minimum_peak = s->min_peak,
+             .scene_threshold_low = s->scene_low,
+             .scene_threshold_high = s->scene_high,
++#if PL_API_VER < 256
+             .overshoot_margin = s->overshoot,
++#endif
+         ),
+ 
+         .color_map_params = pl_color_map_params(
+@@ -446,7 +448,6 @@ static int process_frames(AVFilterContex
          .polar_cutoff = s->polar_cutoff,
          .disable_linear_scaling = s->disable_linear,
          .disable_builtin_scalers = s->disable_builtin,
@@ -26,7 +36,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_libplacebo.c
          .force_dither = s->force_dither,
          .disable_fbos = s->disable_fbos,
      };
-@@ -774,7 +773,7 @@ static const AVOption libplacebo_options
+@@ -774,7 +775,7 @@ static const AVOption libplacebo_options
      { "polar_cutoff", "Polar LUT cutoff", OFFSET(polar_cutoff), AV_OPT_TYPE_FLOAT, {.dbl = 0}, 0.0, 1.0, DYNAMIC },
      { "disable_linear", "Disable linear scaling", OFFSET(disable_linear), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, DYNAMIC },
      { "disable_builtin", "Disable built-in scalers", OFFSET(disable_builtin), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, DYNAMIC },
