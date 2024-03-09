@@ -64,3 +64,4 @@
 0064-backport-enhanced-vt.patch
 0065-add-cuda-transpose-filter-impl.patch
 0066-add-flip-feat-to-opencl-transpose-filter.patch
+0067-backport-transpose_vt.patch
