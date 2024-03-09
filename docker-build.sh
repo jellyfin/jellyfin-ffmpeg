@@ -638,7 +638,7 @@ pushd ${SOURCE_DIR}
 
 # Install dependencies and build the deb
 yes | mk-build-deps -i ${DEP_ARCH_OPT}
-dpkg-buildpackage -rfakeroot -us -uc ${BUILD_ARCH_OPT}
+dpkg-buildpackage -rfakeroot -us -uc ${BUILD_ARCH_OPT} -j$( grep 'cpu cores' /proc/cpuinfo | uniq | awk '{ print $NF }' )
 
 popd
 
