@@ -14,21 +14,21 @@ jobs:
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   build_publish_ubuntu:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["bionic", "focal", "jammy", "lunar", "mantic"]'
+      codenames: '["focal", "jammy"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   build_publish_windows_portable:
     uses: ./.github/workflows/_meta_portable.yaml
@@ -37,9 +37,9 @@ jobs:
       architectures: '["win64"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   build_publish_linux_portable:
     uses: ./.github/workflows/_meta_portable.yaml
@@ -48,9 +48,9 @@ jobs:
       architectures: '["amd64", "arm64"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   maintain_repository:
     name: Maintain Repository
@@ -66,39 +66,32 @@ jobs:
           {distro: 'debian', codename: 'buster'},
           {distro: 'debian', codename: 'bullseye'},
           {distro: 'debian', codename: 'bookworm'},
-          {distro: 'ubuntu', codename: 'bionic'},
           {distro: 'ubuntu', codename: 'focal'},
-          {distro: 'ubuntu', codename: 'jammy'},
-          {distro: 'ubuntu', codename: 'lunar'},
-          {distro: 'ubuntu', codename: 'mantic'}
+          {distro: 'ubuntu', codename: 'jammy'}
         ]
     steps:
       - name: Sync mirrors and update symlinks
         uses: appleboy/ssh-action@v0.1.4
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          key: ${{ secrets.REPO_KEY }}
           script_stop: true
           script: |-
             set -o errexit
             set -o xtrace
             tag="${{ github.event.release.tag_name }}"
             version="${tag#v}"
+            major_version="${version%%.*}
             basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
-            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
-            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} -type f -name "${basename}_*.deb" | while read file; do
-              reprepro -b /srv/repository/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
+            basedir="/srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/${major_version}.x/${version}"
+            find ${basedir} -type f -name "${basename}_*.deb" | while read file; do
+                reprepro -b /srv/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
             done
-            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "${basename}_*" -exec rm {} \;
-            reprepro -b /srv/repository/${{ matrix.arrays.distro }} deleteunreferenced
-            reprepro -b /srv/repository/${{ matrix.arrays.distro }} export
-            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
-            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
-            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
-            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable/ffmpeg
-            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable-pre/ffmpeg
-            ln -fs /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg
+            reprepro -b /srv/${{ matrix.arrays.distro }} deleteunreferenced
+            reprepro -b /srv/${{ matrix.arrays.distro }} export
+            rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
+            ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
 
   maintain_repository_portable:
     name: Maintain Repository (Portable)
@@ -116,25 +109,16 @@ jobs:
       - name: Update symlinks
         uses: appleboy/ssh-action@v0.1.4
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          key: ${{ secrets.REPO_KEY }}
           script_stop: true
           script: |-
             set -o errexit
             set -o xtrace
             tag="${{ github.event.release.tag_name }}"
             version="${tag#v}"
-            find /srv/repository/releases/server/${{ matrix.arrays.distro }}/ -type l -name "jellyfin-ffmpeg*_*" -exec rm {} \;
-            if [ "${{ matrix.arrays.distro }}" == "windows" ]; then
-              mkdir -p /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}
-              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip /srv/repository/releases/ffmpeg/${version}/jellyfin-ffmpeg-portable_win64.zip
-              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/
-              ln -fs /srv/repository/releases/ffmpeg/${version}/*.zip.sha265sum /srv/repository/releases/server/${{ matrix.arrays.distro }}/versions/jellyfin-ffmpeg/${version}/
-            fi
-            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
-            rm -f /srv/repository/releases/server/${{ matrix.arrays.distro }}/{stable,stable-pre,unstable}/ffmpeg
-            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/ffmpeg
-            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable/ffmpeg
-            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/stable-pre/ffmpeg
-            ln -fs /srv/repository/releases/ffmpeg/${version} /srv/repository/releases/server/${{ matrix.arrays.distro }}/unstable/ffmpeg
+            major_version="${version%%.*}
+            basedir="/srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/${major_version}.x/${version}"
+            rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
+            ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
