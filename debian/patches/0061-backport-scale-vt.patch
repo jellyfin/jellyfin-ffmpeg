@@ -90,7 +90,7 @@ diff --git a/libavfilter/vf_scale_vt.c b/libavfilter/vf_scale_vt.c
 new file mode 100644
 --- /dev/null	(revision c2c96c4c2419859c4d1b11e6f907e58afb6dfa3c)
 +++ b/libavfilter/vf_scale_vt.c	(revision c2c96c4c2419859c4d1b11e6f907e58afb6dfa3c)
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,293 @@
 +/*
 + * Copyright (c) 2023 Zhao Zhili <zhilizhao@tencent.com>
 + *
@@ -141,6 +141,7 @@ new file mode 100644
 +static const enum AVPixelFormat supported_formats[] = {
 +    AV_PIX_FMT_NV12,
 +    AV_PIX_FMT_P010,
++    AV_PIX_FMT_NONE,
 +};
 +
 +static int format_is_supported(enum AVPixelFormat fmt)
@@ -306,7 +307,7 @@ new file mode 100644
 +    hw_frame_ctx_in = (AVHWFramesContext *)inlink->hw_frames_ctx->data;
 +
 +    out_format = (s->format == AV_PIX_FMT_NONE) ? hw_frame_ctx_in->sw_format : s->format;
-+    if (!format_is_supported(out_format)) {
++    if (!format_is_supported(s->format)) {
 +        av_log(s, AV_LOG_ERROR, "Unsupported output format: %s\n",
 +               av_get_pix_fmt_name(out_format));
 +        return AVERROR(ENOSYS);
