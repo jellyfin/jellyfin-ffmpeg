@@ -121,4 +121,6 @@ else
 fi
 mkdir ${path} &>/dev/null || true
 mmv "${package_temporary_dir}/deb/*.deb" "${path}/#1.deb"
+mmv "${package_temporary_dir}/deb/*.dsc" "${path}/#1.dsc"
+mmv "${package_temporary_dir}/deb/*.tar.*" "${path}/#1.tar.#2"
 mmv "${package_temporary_dir}/deb/*_${arch}.*" "${path}/#1-${cli_release}_${arch}.#2"
