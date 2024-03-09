@@ -104,7 +104,7 @@ jobs:
           key: ${{ secrets.REPO_KEY }}
           source: artifact/*
           strip_components: 1
-          target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}/
+          target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
 
       - name: Move incoming release into repository
         uses: appleboy/ssh-action@8f949198563a347a01c65ffc60399aef2b59d4ab # v1.0.1
