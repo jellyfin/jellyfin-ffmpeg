@@ -14,9 +14,9 @@ jobs:
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   build_publish_ubuntu:
     uses: ./.github/workflows/_meta.yaml
@@ -26,9 +26,9 @@ jobs:
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   build_publish_windows_portable:
     uses: ./.github/workflows/_meta_portable.yaml
@@ -37,9 +37,9 @@ jobs:
       architectures: '["win64"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   build_publish_linux_portable:
     uses: ./.github/workflows/_meta_portable.yaml
@@ -48,18 +48,18 @@ jobs:
       architectures: '["amd64", "arm64"]'
       release: true
     secrets:
-      deploy-host: ${{ secrets.DEPLOY_HOST }}
-      deploy-user: ${{ secrets.DEPLOY_USER }}
-      deploy-key: ${{ secrets.DEPLOY_KEY }}
+      deploy-host: ${{ secrets.REPO_HOST }}
+      deploy-user: ${{ secrets.REPO_USER }}
+      deploy-key: ${{ secrets.REPO_KEY }}
 
   build_publish_mac_portable:
       uses: ./.github/workflows/_meta_mac_portable.yaml
       with:
         release: true
       secrets:
-        deploy-host: ${{ secrets.DEPLOY_HOST }}
-        deploy-user: ${{ secrets.DEPLOY_USER }}
-        deploy-key: ${{ secrets.DEPLOY_KEY }}
+        deploy-host: ${{ secrets.REPO_HOST }}
+        deploy-user: ${{ secrets.REPO_USER }}
+        deploy-key: ${{ secrets.REPO_KEY }}
 
   maintain_repository:
     name: Maintain Repository
@@ -84,9 +84,9 @@ jobs:
       - name: Sync mirrors and update symlinks
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          key: ${{ secrets.REPO_KEY }}
           script_stop: true
           script: |-
             set -o errexit
@@ -120,9 +120,9 @@ jobs:
       - name: Update symlinks
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          key: ${{ secrets.REPO_KEY }}
           script_stop: true
           script: |-
             set -o errexit
