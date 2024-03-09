@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["focal", "jammy", "lunar", "mantic"]'
+      codenames: '["focal", "jammy"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
