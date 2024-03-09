@@ -95,12 +95,12 @@ jobs:
             basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
             basedir="/srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/${major_version}.x/${version}"
             find ${basedir} -type f -name "${basename}_*.deb" | while read file; do
-                reprepro -b /srv/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
+                sudo reprepro -b /srv/${{ matrix.arrays.distro }} --export=never --keepunreferencedfiles includedeb ${{ matrix.arrays.codename }} ${file}
             done
-            reprepro -b /srv/${{ matrix.arrays.distro }} deleteunreferenced
-            reprepro -b /srv/${{ matrix.arrays.distro }} export
-            rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
-            ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
+            sudo reprepro -b /srv/${{ matrix.arrays.distro }} deleteunreferenced
+            sudo reprepro -b /srv/${{ matrix.arrays.distro }} export
+            sudo rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
+            sudo ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
 
   maintain_repository_portable:
     name: Maintain Repository (Portable)
@@ -129,5 +129,5 @@ jobs:
             version="${tag#v}"
             major_version="${version%%.*}
             basedir="/srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/${major_version}.x/${version}"
-            rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
-            ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
+            sudo rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
+            sudo ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
