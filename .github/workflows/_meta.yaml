@@ -97,14 +97,14 @@ jobs:
             ./artifact/**/*.deb
 
       - name: Upload release archive to repo.jellyfin.org
-        uses: burnett01/rsync-deployments@45d84ad5f6c174f3e0ffc50e9060a9666d09c16e # 6.0.0
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
-          switches: -vrptz
-          path: ./artifact/*
-          remote_path: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}/
-          remote_host: ${{ secrets.REPO_HOST }}
-          remote_user: ${{ secrets.REPO_USER }}
-          remote_key: ${{ secrets.REPO_KEY }}
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          key: ${{ secrets.REPO_KEY }}
+          source: artifact/*
+          strip_components: 1
+          target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}/
 
       - name: Move incoming release into repository
         uses: appleboy/ssh-action@8f949198563a347a01c65ffc60399aef2b59d4ab # v1.0.1
