@@ -73,10 +73,13 @@ jobs:
             const tag = context.ref.substring(10)
             const no_v = tag.replace('v', '')
             const dash_index = no_v.lastIndexOf('-')
+            const major_index = no_v.firstIndexOf('.')
             const no_dash = (dash_index > -1) ?  no_v.substring(0, dash_index) : no_v
+            const major = (major_index > -1) ?  no_v.substring(0, major_index) : no_v
             core.setOutput('tag', tag)
             core.setOutput('no-v', no_v)
             core.setOutput('no-dash', no_dash)
+            core.setOutput('major', major)
 
       - name: Download Artifacts
         uses: actions/download-artifact@c850b930e6ba138125429b7e5c93fc707a7f8427 # v4.1.4
@@ -84,14 +87,6 @@ jobs:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: artifact
 
-      - name: Prepare Release Assets
-        run: |-
-          pushd artifact
-          find * -type f -name "*.deb" | while read file; do
-            sha256sum "${file}" | tee "${file}.sha256sum"
-          done
-          popd
-          
       - name: Upload GH Release Assets
         uses: shogo82148/actions-upload-release-asset@5bd52f05dd8076794da5975d4c0a4f3bce7dd8f5 # v1.7.4
         with:
@@ -100,7 +95,6 @@ jobs:
           asset_path: |
             ./artifact/**/*.zip
             ./artifact/**/*.deb
-            ./artifact/**/*.sha256sum
 
       - name: Make Sure Release Directory Exists
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
@@ -110,14 +104,14 @@ jobs:
           key: ${{ secrets.deploy-key }}
           script_stop: true
           script: |-
-            mkdir -p /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
+            mkdir -p /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
 
       - name: Upload Release Assets
         uses: burnett01/rsync-deployments@93f02b856fbeaf9a8fbfdd8ce1a4adfd0843f849 # 7.0.0
         with:
           switches: -vrptz
           path: ./artifact/*
-          remote_path: /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
+          remote_path: /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}/
           remote_host: ${{ secrets.deploy-host }}
           remote_user: ${{ secrets.deploy-user }}
           remote_key: ${{ secrets.deploy-key }}
