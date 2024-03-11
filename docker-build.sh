@@ -599,6 +599,18 @@ EOF
     popd
 }
 
+# Move to source directory
+pushd ${SOURCE_DIR}
+
+# Ensure the source is clean
+dh_clean
+
+# Create a tar archive of the current source
+vers=$( cat VERSION )
+tar -cz --transform "s,^,jellyfin-ffmpeg_${vers}/," --exclude=.git* --exclude=.pc -f ../jellyfin-ffmpeg_${vers}.orig.tar.gz ./
+
+popd
+
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
@@ -638,7 +650,7 @@ pushd ${SOURCE_DIR}
 
 # Install dependencies and build the deb
 yes | mk-build-deps -i ${DEP_ARCH_OPT}
-dpkg-buildpackage -b -rfakeroot -us -uc ${BUILD_ARCH_OPT} -j$( grep 'cpu cores' /proc/cpuinfo | uniq | awk '{ print $NF }' )
+dpkg-buildpackage -rfakeroot -us -uc ${BUILD_ARCH_OPT} -j$( grep 'cpu cores' /proc/cpuinfo | uniq | awk '{ print $NF }' )
 
 popd
 
