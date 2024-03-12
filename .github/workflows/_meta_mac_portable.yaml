@@ -100,7 +100,7 @@ jobs:
           target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/macos/${{ matrix.arch }}
 
       - name: Move incoming release into repository
-        uses: appleboy/ssh-action@8f949198563a347a01c65ffc60399aef2b59d4ab # v1.0.1
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ secrets.REPO_HOST }}
           username: ${{ secrets.REPO_USER }}
