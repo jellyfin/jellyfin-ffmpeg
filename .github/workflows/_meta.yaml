@@ -73,10 +73,13 @@ jobs:
             const tag = context.ref.substring(10)
             const no_v = tag.replace('v', '')
             const dash_index = no_v.lastIndexOf('-')
+            const major_index = no_v.firstIndexOf('.')
             const no_dash = (dash_index > -1) ?  no_v.substring(0, dash_index) : no_v
+            const major = (major_index > -1) ?  no_v.substring(0, major_index) : no_v
             core.setOutput('tag', tag)
             core.setOutput('no-v', no_v)
             core.setOutput('no-dash', no_dash)
+            core.setOutput('major', major)
 
       - name: Download Artifacts
         uses: actions/download-artifact@v3.0.1
@@ -84,14 +87,6 @@ jobs:
           name: ${{ inputs.distro }}-${{ matrix.release }}-${{ matrix.arch }}
           path: artifact
 
-      - name: Prepare Release Assets
-        run: |-
-          pushd artifact
-          find * -type f -name "*.deb" | while read file; do
-            sha256sum "${file}" | tee "${file}.sha256sum"
-          done
-          popd
-          
       - name: Upload GH Release Assets
         uses: shogo82148/actions-upload-release-asset@v1.6.3
         with:
@@ -100,24 +95,27 @@ jobs:
           asset_path: |
             ./artifact/**/*.zip
             ./artifact/**/*.deb
-            ./artifact/**/*.sha256sum
 
-      - name: Make Sure Release Directory Exists
-        uses: appleboy/ssh-action@v0.1.5
+      - name: Upload release archive to repo.jellyfin.org
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
-          host: ${{ secrets.deploy-host }}
-          username: ${{ secrets.deploy-user }}
-          key: ${{ secrets.deploy-key }}
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          key: ${{ secrets.REPO_KEY }}
+          source: artifact/*
+          strip_components: 1
+          target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
+
+      - name: Move incoming release into repository
+        uses: appleboy/ssh-action@8f949198563a347a01c65ffc60399aef2b59d4ab # v1.0.1
+        with:
+          host: ${{ secrets.REPO_HOST }}
+          username: ${{ secrets.REPO_USER }}
+          key: ${{ secrets.REPO_KEY }}
+          envs: JELLYFIN_VERSION
           script_stop: true
-          script: |-
-            mkdir -p /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
-
-      - name: Upload Release Assets
-        uses: burnett01/rsync-deployments@5.2.1
-        with:
-          switches: -vrptz
-          path: ./artifact/*
-          remote_path: /srv/repository/releases/server/${{ inputs.distro }}/versions/jellyfin-ffmpeg/${{ steps.set_version.outputs.no-v }}/
-          remote_host: ${{ secrets.deploy-host }}
-          remote_user: ${{ secrets.deploy-user }}
-          remote_key: ${{ secrets.deploy-key }}
+          script: |
+            if [ -d "/srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}" ] && [ -n "${{ steps.set_version.outputs.major }}" ] && [ -n "${{ steps.set_version.outputs.no-v }}" ]; then
+                sudo rm -r /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
+            fi
+            sudo mv -t /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }} /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
