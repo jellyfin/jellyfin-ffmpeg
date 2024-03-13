@@ -376,20 +376,40 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -    RKMPPDecoder *decoder = (RKMPPDecoder *)rk_context->decoder_ref->data;
 -    int ret;
 -    MppPacket packet;
+-
+-    // create the MPP packet
+-    ret = mpp_packet_init(&packet, buffer, size);
+-    if (ret != MPP_OK) {
+-        av_log(avctx, AV_LOG_ERROR, "Failed to init MPP packet (code = %d)\n", ret);
+-        return AVERROR_UNKNOWN;
+-    }
+-
+-    mpp_packet_set_pts(packet, pts);
+-
+-    if (!buffer)
+-        mpp_packet_set_eos(packet);
+-
+-    ret = decoder->mpi->decode_put_packet(decoder->ctx, packet);
+-    if (ret != MPP_OK) {
+-        if (ret == MPP_ERR_BUFFER_FULL) {
+-            av_log(avctx, AV_LOG_DEBUG, "Buffer full writing %d bytes to decoder\n", size);
+-            ret = AVERROR(EAGAIN);
+-        } else
+-            ret = AVERROR_UNKNOWN;
 +    switch (mpp_fmt & MPP_FRAME_FMT_MASK) {
 +    case MPP_FMT_YUV420SP:          return DRM_FORMAT_YUV420_8BIT;
 +    case MPP_FMT_YUV420SP_10BIT:    return DRM_FORMAT_YUV420_10BIT;
 +    case MPP_FMT_YUV422SP:          return DRM_FORMAT_YUYV;
 +    case MPP_FMT_YUV422SP_10BIT:    return DRM_FORMAT_Y210;
 +    default:                        return DRM_FORMAT_INVALID;
-+    }
+     }
+-    else
+-        av_log(avctx, AV_LOG_DEBUG, "Wrote %d bytes to decoder\n", size);
+-
+-    mpp_packet_deinit(&packet);
 +}
  
--    // create the MPP packet
--    ret = mpp_packet_init(&packet, buffer, size);
--    if (ret != MPP_OK) {
--        av_log(avctx, AV_LOG_ERROR, "Failed to init MPP packet (code = %d)\n", ret);
--        return AVERROR_UNKNOWN;
+-    return ret;
 +static uint32_t rkmpp_get_av_format(MppFrameFormat mpp_fmt)
 +{
 +    switch (mpp_fmt & MPP_FRAME_FMT_MASK) {
@@ -398,79 +418,61 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +    case MPP_FMT_YUV422SP:          return AV_PIX_FMT_NV16;
 +    case MPP_FMT_YUV422SP_10BIT:    return AV_PIX_FMT_NV20;
 +    default:                        return AV_PIX_FMT_NONE;
-     }
-+}
++    }
+ }
  
--    mpp_packet_set_pts(packet, pts);
+-static int rkmpp_close_decoder(AVCodecContext *avctx)
 +static int get_afbc_byte_stride(const AVPixFmtDescriptor *desc,
 +                                int *stride, int reverse)
-+{
+ {
+-    RKMPPDecodeContext *rk_context = avctx->priv_data;
+-    av_buffer_unref(&rk_context->decoder_ref);
+-    return 0;
 +    if (!desc || !stride || *stride <= 0)
 +        return AVERROR(EINVAL);
- 
--    if (!buffer)
--        mpp_packet_set_eos(packet);
++
 +    if (desc->nb_components == 1 ||
 +        (desc->flags & AV_PIX_FMT_FLAG_RGB) ||
 +        (!(desc->flags & AV_PIX_FMT_FLAG_RGB) &&
 +         !(desc->flags & AV_PIX_FMT_FLAG_PLANAR)))
 +        return 0;
- 
--    ret = decoder->mpi->decode_put_packet(decoder->ctx, packet);
--    if (ret != MPP_OK) {
--        if (ret == MPP_ERR_BUFFER_FULL) {
--            av_log(avctx, AV_LOG_DEBUG, "Buffer full writing %d bytes to decoder\n", size);
--            ret = AVERROR(EAGAIN);
--        } else
--            ret = AVERROR_UNKNOWN;
--    }
++
 +    if (desc->log2_chroma_w == 1 && desc->log2_chroma_h == 1)
 +        *stride = reverse ? (*stride * 2 / 3) : (*stride * 3 / 2);
 +    else if (desc->log2_chroma_w == 1 && !desc->log2_chroma_h)
 +        *stride = reverse ? (*stride / 2) : (*stride * 2);
 +    else if (!desc->log2_chroma_w && !desc->log2_chroma_h)
 +        *stride = reverse ? (*stride / 3) : (*stride * 3);
-     else
--        av_log(avctx, AV_LOG_DEBUG, "Wrote %d bytes to decoder\n", size);
--
--    mpp_packet_deinit(&packet);
++    else
 +        return AVERROR(EINVAL);
- 
--    return ret;
++
 +    return (*stride > 0) ? 0 : AVERROR(EINVAL);
  }
  
--static int rkmpp_close_decoder(AVCodecContext *avctx)
+-static void rkmpp_release_decoder(void *opaque, uint8_t *data)
 +static av_cold int rkmpp_decode_close(AVCodecContext *avctx)
  {
--    RKMPPDecodeContext *rk_context = avctx->priv_data;
--    av_buffer_unref(&rk_context->decoder_ref);
--    return 0;
--}
-+    RKMPPDecContext *r = avctx->priv_data;
- 
--static void rkmpp_release_decoder(void *opaque, uint8_t *data)
--{
 -    RKMPPDecoder *decoder = (RKMPPDecoder *)data;
-+    r->eof = 0;
-+    r->info_change = 0;
-+    r->errinfo_cnt = 0;
-+    r->queue_cnt = 0;
-+    r->queue_size = 0;
++    RKMPPDecContext *r = avctx->priv_data;
  
 -    if (decoder->mpi) {
 -        decoder->mpi->reset(decoder->ctx);
 -        mpp_destroy(decoder->ctx);
 -        decoder->ctx = NULL;
+-    }
++    r->eof = 0;
++    r->draining = 0;
++    r->info_change = 0;
++    r->errinfo_cnt = 0;
+ 
+-    if (decoder->frame_group) {
+-        mpp_buffer_group_put(decoder->frame_group);
+-        decoder->frame_group = NULL;
 +    if (r->mapi) {
 +        r->mapi->reset(r->mctx);
 +        mpp_destroy(r->mctx);
 +        r->mctx = NULL;
-     }
--
--    if (decoder->frame_group) {
--        mpp_buffer_group_put(decoder->frame_group);
--        decoder->frame_group = NULL;
++    }
 +    if (r->buf_group &&
 +        r->buf_mode == RKMPP_DEC_PURE_EXTERNAL) {
 +        mpp_buffer_group_put(r->buf_group);
@@ -913,10 +915,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -    AVBufferRef *framecontextref = (AVBufferRef *)opaque;
 -    RKMPPFrameContext *framecontext = (RKMPPFrameContext *)framecontextref->data;
 +    AVContentLightMetadata *light = NULL;
- 
--    mpp_frame_deinit(&framecontext->frame);
--    av_buffer_unref(&framecontext->decoder_ref);
--    av_buffer_unref(&framecontextref);
++
 +    AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
 +    if (sd)
 +        light = (AVContentLightMetadata *)sd->data;
@@ -925,10 +924,13 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +    if (!light)
 +        return AVERROR(ENOMEM);
  
--    av_free(desc);
+-    mpp_frame_deinit(&framecontext->frame);
+-    av_buffer_unref(&framecontext->decoder_ref);
+-    av_buffer_unref(&framecontextref);
 +    light->MaxCLL  = mpp_light.MaxCLL;
 +    light->MaxFALL = mpp_light.MaxFALL;
-+
+ 
+-    av_free(desc);
 +    return 0;
  }
  
@@ -1119,126 +1121,47 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -        } else if (mpp_frame_get_eos(mppframe)) {
 -            av_log(avctx, AV_LOG_DEBUG, "Received a EOS frame.\n");
 -            decoder->eos_reached = 1;
--            ret = AVERROR_EOF;
--            goto fail;
--        } else if (mpp_frame_get_discard(mppframe)) {
--            av_log(avctx, AV_LOG_DEBUG, "Received a discard frame.\n");
--            ret = AVERROR(EAGAIN);
--            goto fail;
--        } else if (mpp_frame_get_errinfo(mppframe)) {
--            av_log(avctx, AV_LOG_ERROR, "Received a errinfo frame.\n");
--            ret = AVERROR_UNKNOWN;
--            goto fail;
--        }
 +    if (!avctx || !mpp_frame)
 +        return;
- 
--        // here we should have a valid frame
--        av_log(avctx, AV_LOG_DEBUG, "Received a frame.\n");
++
 +    if (avctx->color_primaries == AVCOL_PRI_RESERVED0)
 +        avctx->color_primaries = AVCOL_PRI_UNSPECIFIED;
 +    if ((val = mpp_frame_get_color_primaries(mpp_frame)) &&
 +        val != MPP_FRAME_PRI_RESERVED0 &&
 +        val != MPP_FRAME_PRI_UNSPECIFIED)
 +        avctx->color_primaries = val;
- 
--        // setup general frame fields
--        frame->format           = AV_PIX_FMT_DRM_PRIME;
--        frame->width            = mpp_frame_get_width(mppframe);
--        frame->height           = mpp_frame_get_height(mppframe);
--        frame->pts              = mpp_frame_get_pts(mppframe);
--        frame->color_range      = mpp_frame_get_color_range(mppframe);
--        frame->color_primaries  = mpp_frame_get_color_primaries(mppframe);
--        frame->color_trc        = mpp_frame_get_color_trc(mppframe);
--        frame->colorspace       = mpp_frame_get_colorspace(mppframe);
--
--        mode = mpp_frame_get_mode(mppframe);
--        frame->interlaced_frame = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_DEINTERLACED);
--        frame->top_field_first  = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_TOP_FIRST);
--
--        mppformat = mpp_frame_get_fmt(mppframe);
--        drmformat = rkmpp_get_frameformat(mppformat);
--
--        // now setup the frame buffer info
--        buffer = mpp_frame_get_buffer(mppframe);
--        if (buffer) {
--            desc = av_mallocz(sizeof(AVDRMFrameDescriptor));
--            if (!desc) {
--                ret = AVERROR(ENOMEM);
--                goto fail;
--            }
++
 +    if (avctx->color_trc == AVCOL_TRC_RESERVED0)
 +        avctx->color_trc = AVCOL_TRC_UNSPECIFIED;
 +    if ((val = mpp_frame_get_color_trc(mpp_frame)) &&
 +        val != MPP_FRAME_TRC_RESERVED0 &&
 +        val != MPP_FRAME_TRC_UNSPECIFIED)
 +        avctx->color_trc = val;
- 
--            desc->nb_objects = 1;
--            desc->objects[0].fd = mpp_buffer_get_fd(buffer);
--            desc->objects[0].size = mpp_buffer_get_size(buffer);
--
--            desc->nb_layers = 1;
--            layer = &desc->layers[0];
--            layer->format = drmformat;
--            layer->nb_planes = 2;
--
--            layer->planes[0].object_index = 0;
--            layer->planes[0].offset = 0;
--            layer->planes[0].pitch = mpp_frame_get_hor_stride(mppframe);
--
--            layer->planes[1].object_index = 0;
--            layer->planes[1].offset = layer->planes[0].pitch * mpp_frame_get_ver_stride(mppframe);
--            layer->planes[1].pitch = layer->planes[0].pitch;
--
--            // we also allocate a struct in buf[0] that will allow to hold additionnal information
--            // for releasing properly MPP frames and decoder
--            framecontextref = av_buffer_allocz(sizeof(*framecontext));
--            if (!framecontextref) {
--                ret = AVERROR(ENOMEM);
--                goto fail;
--            }
++
 +    if (avctx->colorspace == AVCOL_SPC_RESERVED)
 +        avctx->colorspace = AVCOL_SPC_UNSPECIFIED;
 +    if ((val = mpp_frame_get_colorspace(mpp_frame)) &&
 +        val != MPP_FRAME_SPC_RESERVED &&
 +        val != MPP_FRAME_SPC_UNSPECIFIED)
 +        avctx->colorspace = val;
- 
--            // MPP decoder needs to be closed only when all frames have been released.
--            framecontext = (RKMPPFrameContext *)framecontextref->data;
--            framecontext->decoder_ref = av_buffer_ref(rk_context->decoder_ref);
--            framecontext->frame = mppframe;
--
--            frame->data[0]  = (uint8_t *)desc;
--            frame->buf[0]   = av_buffer_create((uint8_t *)desc, sizeof(*desc), rkmpp_release_frame,
--                                               framecontextref, AV_BUFFER_FLAG_READONLY);
++
 +    if ((val = mpp_frame_get_color_range(mpp_frame)) > MPP_FRAME_RANGE_UNSPECIFIED)
 +        avctx->color_range = val;
- 
--            if (!frame->buf[0]) {
--                ret = AVERROR(ENOMEM);
--                goto fail;
--            }
++
 +    if ((val = mpp_frame_get_chroma_location(mpp_frame)) > MPP_CHROMA_LOC_UNSPECIFIED)
 +        avctx->chroma_sample_location = val;
 +}
- 
--            frame->hw_frames_ctx = av_buffer_ref(decoder->frames_ref);
--            if (!frame->hw_frames_ctx) {
--                ret = AVERROR(ENOMEM);
--                goto fail;
--            }
++
 +static int rkmpp_get_frame(AVCodecContext *avctx, AVFrame *frame, int timeout)
 +{
 +    RKMPPDecContext *r = avctx->priv_data;
 +    MppFrame mpp_frame = NULL;
 +    int ret;
- 
--            return 0;
--        } else {
--            av_log(avctx, AV_LOG_ERROR, "Failed to retrieve the frame buffer, frame is dropped (code = %d)\n", ret);
--            mpp_frame_deinit(&mppframe);
++
++    /* should not provide any frame after EOS */
++    if (r->eof)
++        return AVERROR_EOF;
++
 +    if ((ret = r->mapi->control(r->mctx, MPP_SET_OUTPUT_TIMEOUT, (MppParam)&timeout)) != MPP_OK) {
 +        av_log(avctx, AV_LOG_ERROR, "Failed to set output timeout: %d\n", ret);
 +        return AVERROR_EXTERNAL;
@@ -1250,7 +1173,8 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +        return AVERROR_EXTERNAL;
 +    }
 +    if (!mpp_frame) {
-+        av_log(avctx, AV_LOG_DEBUG, "Timeout getting decoded frame\n");
++        if (timeout != MPP_TIMEOUT_NON_BLOCK)
++            av_log(avctx, AV_LOG_DEBUG, "Timeout getting decoded frame\n");
 +        return AVERROR(EAGAIN);
 +    }
 +    if (mpp_frame_get_eos(mpp_frame)) {
@@ -1258,14 +1182,19 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +        /* EOS frame may contain valid data */
 +        if (!mpp_frame_get_buffer(mpp_frame)) {
 +            r->eof = 1;
-+            ret = AVERROR_EOF;
+             ret = AVERROR_EOF;
+-            goto fail;
+-        } else if (mpp_frame_get_discard(mppframe)) {
+-            av_log(avctx, AV_LOG_DEBUG, "Received a discard frame.\n");
+-            ret = AVERROR(EAGAIN);
+-            goto fail;
+-        } else if (mpp_frame_get_errinfo(mppframe)) {
+-            av_log(avctx, AV_LOG_ERROR, "Received a errinfo frame.\n");
+-            ret = AVERROR_UNKNOWN;
+-            goto fail;
 +            goto exit;
-         }
--    } else if (decoder->eos_reached) {
--        return AVERROR_EOF;
--    } else if (ret == MPP_ERR_TIMEOUT) {
--        av_log(avctx, AV_LOG_DEBUG, "Timeout when trying to get a frame from MPP\n");
-     }
++        }
++    }
 +    if (mpp_frame_get_discard(mpp_frame)) {
 +        av_log(avctx, AV_LOG_DEBUG, "Received a 'discard' frame\n");
 +        ret = AVERROR(EAGAIN);
@@ -1298,9 +1227,10 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +            if ((ret = ff_get_format(avctx, pix_fmts)) < 0)
 +                goto exit;
 +            avctx->pix_fmt = ret;
-+        }
+         }
  
--    return AVERROR(EAGAIN);
+-        // here we should have a valid frame
+-        av_log(avctx, AV_LOG_DEBUG, "Received a frame.\n");
 +        avctx->width        = mpp_frame_get_width(mpp_frame);
 +        avctx->height       = mpp_frame_get_height(mpp_frame);
 +        avctx->coded_width  = FFALIGN(avctx->width,  64);
@@ -1327,9 +1257,30 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +            goto exit;
 +        }
  
--fail:
--    if (mppframe)
--        mpp_frame_deinit(&mppframe);
+-        // setup general frame fields
+-        frame->format           = AV_PIX_FMT_DRM_PRIME;
+-        frame->width            = mpp_frame_get_width(mppframe);
+-        frame->height           = mpp_frame_get_height(mppframe);
+-        frame->pts              = mpp_frame_get_pts(mppframe);
+-        frame->color_range      = mpp_frame_get_color_range(mppframe);
+-        frame->color_primaries  = mpp_frame_get_color_primaries(mppframe);
+-        frame->color_trc        = mpp_frame_get_color_trc(mppframe);
+-        frame->colorspace       = mpp_frame_get_colorspace(mppframe);
+-
+-        mode = mpp_frame_get_mode(mppframe);
+-        frame->interlaced_frame = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_DEINTERLACED);
+-        frame->top_field_first  = ((mode & MPP_FRAME_FLAG_FIELD_ORDER_MASK) == MPP_FRAME_FLAG_TOP_FIRST);
+-
+-        mppformat = mpp_frame_get_fmt(mppframe);
+-        drmformat = rkmpp_get_frameformat(mppformat);
+-
+-        // now setup the frame buffer info
+-        buffer = mpp_frame_get_buffer(mppframe);
+-        if (buffer) {
+-            desc = av_mallocz(sizeof(AVDRMFrameDescriptor));
+-            if (!desc) {
+-                ret = AVERROR(ENOMEM);
+-                goto fail;
 +        if ((ret = r->mapi->control(r->mctx, MPP_DEC_SET_INFO_CHANGE_READY, NULL)) != MPP_OK) {
 +            av_log(avctx, AV_LOG_ERROR, "Failed to set info change ready: %d\n", ret);
 +            ret = AVERROR_EXTERNAL;
@@ -1346,7 +1297,31 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +                if ((ret = rkmpp_export_frame(avctx, frame, mpp_frame)) < 0)
 +                    goto exit;
 +                return 0;
-+            }
+             }
+-
+-            desc->nb_objects = 1;
+-            desc->objects[0].fd = mpp_buffer_get_fd(buffer);
+-            desc->objects[0].size = mpp_buffer_get_size(buffer);
+-
+-            desc->nb_layers = 1;
+-            layer = &desc->layers[0];
+-            layer->format = drmformat;
+-            layer->nb_planes = 2;
+-
+-            layer->planes[0].object_index = 0;
+-            layer->planes[0].offset = 0;
+-            layer->planes[0].pitch = mpp_frame_get_hor_stride(mppframe);
+-
+-            layer->planes[1].object_index = 0;
+-            layer->planes[1].offset = layer->planes[0].pitch * mpp_frame_get_ver_stride(mppframe);
+-            layer->planes[1].pitch = layer->planes[0].pitch;
+-
+-            // we also allocate a struct in buf[0] that will allow to hold additionnal information
+-            // for releasing properly MPP frames and decoder
+-            framecontextref = av_buffer_allocz(sizeof(*framecontext));
+-            if (!framecontextref) {
+-                ret = AVERROR(ENOMEM);
+-                goto fail;
 +            break;
 +        case AV_PIX_FMT_NV12:
 +        case AV_PIX_FMT_NV16:
@@ -1378,52 +1353,113 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 +                }
 +                av_frame_free(&tmp_frame);
 +                return 0;
-+            }
+             }
+-
+-            // MPP decoder needs to be closed only when all frames have been released.
+-            framecontext = (RKMPPFrameContext *)framecontextref->data;
+-            framecontext->decoder_ref = av_buffer_ref(rk_context->decoder_ref);
+-            framecontext->frame = mppframe;
+-
+-            frame->data[0]  = (uint8_t *)desc;
+-            frame->buf[0]   = av_buffer_create((uint8_t *)desc, sizeof(*desc), rkmpp_release_frame,
+-                                               framecontextref, AV_BUFFER_FLAG_READONLY);
+-
+-            if (!frame->buf[0]) {
+-                ret = AVERROR(ENOMEM);
+-                goto fail;
 +            break;
 +        default:
 +            {
 +                ret = AVERROR_BUG;
 +                goto exit;
-+            }
+             }
 +            break;
 +        }
 +    }
  
--    if (framecontext)
--        av_buffer_unref(&framecontext->decoder_ref);
+-            frame->hw_frames_ctx = av_buffer_ref(decoder->frames_ref);
+-            if (!frame->hw_frames_ctx) {
+-                ret = AVERROR(ENOMEM);
+-                goto fail;
+-            }
 +exit:
 +    if (mpp_frame)
 +        mpp_frame_deinit(&mpp_frame);
 +    return ret;
 +}
  
--    if (framecontextref)
--        av_buffer_unref(&framecontextref);
+-            return 0;
+-        } else {
+-            av_log(avctx, AV_LOG_ERROR, "Failed to retrieve the frame buffer, frame is dropped (code = %d)\n", ret);
+-            mpp_frame_deinit(&mppframe);
+-        }
+-    } else if (decoder->eos_reached) {
+-        return AVERROR_EOF;
+-    } else if (ret == MPP_ERR_TIMEOUT) {
+-        av_log(avctx, AV_LOG_DEBUG, "Timeout when trying to get a frame from MPP\n");
 +static int rkmpp_send_eos(AVCodecContext *avctx)
 +{
 +    RKMPPDecContext *r = avctx->priv_data;
 +    MppPacket mpp_pkt = NULL;
 +    int ret;
- 
--    if (desc)
--        av_free(desc);
++
 +    if ((ret = mpp_packet_init(&mpp_pkt, NULL, 0)) != MPP_OK) {
 +        av_log(avctx, AV_LOG_ERROR, "Failed to init 'EOS' packet: %d\n", ret);
 +        return AVERROR_EXTERNAL;
-+    }
+     }
 +    mpp_packet_set_eos(mpp_pkt);
  
--    return ret;
+-    return AVERROR(EAGAIN);
 +    do {
 +        ret = r->mapi->decode_put_packet(r->mctx, mpp_pkt);
 +    } while (ret != MPP_OK);
+ 
+-fail:
+-    if (mppframe)
+-        mpp_frame_deinit(&mppframe);
++    r->draining = 1;
++
++    mpp_packet_deinit(&mpp_pkt);
++    return 0;
++}
+ 
+-    if (framecontext)
+-        av_buffer_unref(&framecontext->decoder_ref);
++static int rkmpp_send_packet(AVCodecContext *avctx, AVPacket *pkt)
++{
++    RKMPPDecContext *r = avctx->priv_data;
++    MppPacket mpp_pkt = NULL;
++    int64_t pts = PTS_TO_MPP_PTS(pkt->pts, avctx->pkt_timebase);
++    int ret;
+ 
+-    if (framecontextref)
+-        av_buffer_unref(&framecontextref);
++    /* avoid sending new data after EOS */
++    if (r->draining)
++        return AVERROR(EOF);
+ 
+-    if (desc)
+-        av_free(desc);
++    if ((ret = mpp_packet_init(&mpp_pkt, pkt->data, pkt->size)) != MPP_OK) {
++        av_log(avctx, AV_LOG_ERROR, "Failed to init packet: %d\n", ret);
++        return AVERROR_EXTERNAL;
++    }
++    mpp_packet_set_pts(mpp_pkt, pts);
+ 
+-    return ret;
++    if ((ret = r->mapi->decode_put_packet(r->mctx, mpp_pkt)) != MPP_OK) {
++        av_log(avctx, AV_LOG_TRACE, "Decoder buffer is full\n");
++        mpp_packet_deinit(&mpp_pkt);
++        return AVERROR(EAGAIN);
++    }
++    av_log(avctx, AV_LOG_DEBUG, "Wrote %d bytes to decoder\n", pkt->size);
 +
 +    mpp_packet_deinit(&mpp_pkt);
 +    return 0;
  }
  
 -static int rkmpp_receive_frame(AVCodecContext *avctx, AVFrame *frame)
-+static int rkmpp_send_packet(AVCodecContext *avctx, AVPacket *pkt)
++static int rkmpp_decode_receive_frame(AVCodecContext *avctx, AVFrame *frame)
  {
 -    RKMPPDecodeContext *rk_context = avctx->priv_data;
 -    RKMPPDecoder *decoder = (RKMPPDecoder *)rk_context->decoder_ref->data;
@@ -1439,8 +1475,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -            return ret;
 -        }
 +    RKMPPDecContext *r = avctx->priv_data;
-+    MppPacket mpp_pkt = NULL;
-+    int64_t pts = PTS_TO_MPP_PTS(pkt->pts, avctx->pkt_timebase);
++    AVPacket *pkt = &r->last_pkt;
 +    int ret;
  
 -        freeslots = INPUT_MAX_PACKETS - usedslots;
@@ -1449,101 +1484,69 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -            if (ret < 0 && ret != AVERROR_EOF) {
 -                return ret;
 -            }
-+    if ((ret = mpp_packet_init(&mpp_pkt, pkt->data, pkt->size)) != MPP_OK) {
-+        av_log(avctx, AV_LOG_ERROR, "Failed to init packet: %d\n", ret);
-+        return AVERROR_EXTERNAL;
-+    }
-+    mpp_packet_set_pts(mpp_pkt, pts);
-+
-+    if ((ret = r->mapi->decode_put_packet(r->mctx, mpp_pkt)) != MPP_OK) {
-+        av_log(avctx, AV_LOG_TRACE, "Decoder buffer is full\n");
-+        mpp_packet_deinit(&mpp_pkt);
-+        return AVERROR(EAGAIN);
-+    }
-+    av_log(avctx, AV_LOG_DEBUG, "Wrote %d bytes to decoder\n", pkt->size);
++    if (r->info_change && !r->buf_group)
++        return AVERROR_EOF;
  
 -            ret = rkmpp_send_packet(avctx, &pkt);
 -            av_packet_unref(&pkt);
-+    mpp_packet_deinit(&mpp_pkt);
-+    return 0;
-+}
-+
-+static int rkmpp_decode_receive_frame(AVCodecContext *avctx, AVFrame *frame)
-+{
-+    AVCodecInternal *avci = avctx->internal;
-+    RKMPPDecContext *r = avctx->priv_data;
-+    AVPacket *pkt = &r->last_pkt;
-+    int retry_cnt = 0;
-+    int ret_send, ret_get;
-+
-+    if (r->info_change && !r->buf_group)
++    /* no more frames after EOS */
++    if (r->eof)
 +        return AVERROR_EOF;
  
 -            if (ret < 0) {
 -                av_log(avctx, AV_LOG_ERROR, "Failed to send packet to decoder (code = %d)\n", ret);
 -                return ret;
-+    if (!avci->draining) {
++    /* drain remain frames */
++    if (r->draining) {
++        ret = rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
++        goto exit;
++    }
++
++    while (1) {
 +        if (!pkt->size) {
-+            switch (ff_decode_get_packet(avctx, pkt)) {
-+            case AVERROR_EOF:
-+                av_log(avctx, AV_LOG_DEBUG, "Decoder draining\n");
-+                ret_send = rkmpp_send_eos(avctx);
-+                if (ret_send < 0)
-+                    return ret_send;
-+                goto get_frame;
-+            case AVERROR(EAGAIN):
-+                av_log(avctx, AV_LOG_TRACE, "Decoder could not get packet, retrying\n");
-+                return AVERROR(EAGAIN);
++            ret = ff_decode_get_packet(avctx, pkt);
++            if (ret == AVERROR_EOF) {
++                av_log(avctx, AV_LOG_DEBUG, "Decoder is at EOF\n");
++                /* send EOS and start draining */
++                rkmpp_send_eos(avctx);
++                ret = rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
++                goto exit;
++            } else if (ret == AVERROR(EAGAIN)) {
++                /* not blocking so that we can feed data ASAP */
++                ret = rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_NON_BLOCK);
++                goto exit;
++            } else if (ret < 0) {
++                av_log(avctx, AV_LOG_ERROR, "Decoder failed to get packet: %d\n", ret);
++                goto exit;
++            }
++        } else {
++            /* send pending data to decoder */
++            ret = rkmpp_send_packet(avctx, pkt);
++            if (ret == AVERROR(EAGAIN)) {
++                /* some streams might need more packets to start returning frames */
++                ret = rkmpp_get_frame(avctx, frame, 100);
++                if (ret != AVERROR(EAGAIN))
++                    goto exit;
++            } else if (ret < 0) {
++                av_log(avctx, AV_LOG_ERROR, "Decoder failed to send packet: %d\n", ret);
++                goto exit;
++            } else {
++                av_packet_unref(pkt);
++                pkt->size = 0;
              }
          }
 -
 -        // make sure we keep decoder full
 -        if (freeslots > 1)
 -            return AVERROR(EAGAIN);
-+send_pkt:
-+        /* there is definitely a packet to send to decoder */
-+        ret_send = rkmpp_send_packet(avctx, pkt);
-+        if (ret_send == 0) {
-+            /* send successful, continue until decoder input buffer is full */
-+            av_packet_unref(pkt);
-+            r->queue_cnt++;
-+            if (r->queue_size <= 0 ||
-+                r->queue_cnt < r->queue_size)
-+                return AVERROR(EAGAIN);
-+        } else if (ret_send < 0 && ret_send != AVERROR(EAGAIN)) {
-+            /* something went wrong, raise error */
-+            av_log(avctx, AV_LOG_ERROR, "Decoder failed to send data: %d", ret_send);
-+            return ret_send;
-+        } else
-+            /* input buffer is full, estimate queue size */
-+            r->queue_size = FFMAX(r->queue_cnt, r->queue_size);
      }
  
 -    return rkmpp_retrieve_frame(avctx, frame);
-+    if (r->eof)
-+        return AVERROR_EOF;
-+
-+get_frame:
-+    /* were here only when draining and buffer is full */
-+    ret_get = rkmpp_get_frame(avctx, frame, 100);
-+    if (ret_get == AVERROR_EOF)
-+        av_log(avctx, AV_LOG_DEBUG, "Decoder is at EOF\n");
-+    /* EAGAIN should never happen during draining */
-+    else if (avci->draining && ret_get == AVERROR(EAGAIN)) {
-+        if (retry_cnt++ < MAX_RETRY_COUNT)
-+            goto get_frame;
-+        else
-+            ret_get = AVERROR_BUG;
-+    }
-+    /* this is not likely but lets handle it in case synchronization issues of MPP */
-+    else if (ret_get == AVERROR(EAGAIN) && ret_send == AVERROR(EAGAIN))
-+        goto send_pkt;
-+    else if (ret_get < 0 && ret_get != AVERROR(EAGAIN))
-+        av_log(avctx, AV_LOG_ERROR, "Decoder failed to get frame: %d\n", ret_get);
-+    else
-+        r->queue_cnt--;
-+
-+    return ret_get;
++exit:
++    if (r->draining &&
++        ret == AVERROR(EAGAIN))
++        ret = AVERROR_EOF;
++    return ret;
  }
  
 -static void rkmpp_flush(AVCodecContext *avctx)
@@ -1560,10 +1563,9 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 -    av_log(avctx, AV_LOG_DEBUG, "Flush.\n");
 +    if ((ret = r->mapi->reset(r->mctx)) == MPP_OK) {
 +        r->eof = 0;
++        r->draining = 0;
 +        r->info_change = 0;
 +        r->errinfo_cnt = 0;
-+        r->queue_cnt = 0;
-+        r->queue_size = 0;
  
 -    ret = decoder->mpi->reset(decoder->ctx);
 -    if (ret == MPP_OK) {
@@ -1642,7 +1644,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavcodec/rkmppdec.h
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,153 @@
 +/*
 + * Copyright (c) 2017 Lionel CHAZALLON
 + * Copyright (c) 2023 Huseyin BIYIK
@@ -1686,7 +1688,6 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.h
 +#include "libavutil/pixdesc.h"
 +
 +#define MAX_ERRINFO_COUNT 100
-+#define MAX_RETRY_COUNT   100
 +
 +typedef struct RKMPPDecContext {
 +    AVClass       *class;
@@ -1700,10 +1701,9 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppdec.h
 +
 +    AVPacket       last_pkt;
 +    int            eof;
++    int            draining;
 +    int            info_change;
 +    int            errinfo_cnt;
-+    int            queue_cnt;
-+    int            queue_size;
 +
 +    int            deint;
 +    int            afbc;
@@ -1802,7 +1802,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavcodec/rkmppenc.c
-@@ -0,0 +1,999 @@
+@@ -0,0 +1,1013 @@
 +/*
 + * Copyright (c) 2023 Huseyin BIYIK
 + * Copyright (c) 2023 NyanMisaka
@@ -2113,9 +2113,11 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +
 +    mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", 0);
 +    mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", fps_num);
++    mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denom", fps_den);
 +    mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", fps_den);
 +    mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", 0);
 +    mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num",fps_num);
++    mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denom", fps_den);
 +    mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", fps_den);
 +
 +    mpp_enc_cfg_set_s32(cfg, "rc:gop", FFMAX(avctx->gop_size, 1));
@@ -2253,6 +2255,10 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +            avctx->level = r->level;
 +            mpp_enc_cfg_set_s32(cfg, "h265:profile", avctx->profile);
 +            mpp_enc_cfg_set_s32(cfg, "h265:level", avctx->level);
++            if (avctx->level >= 120) {
++                mpp_enc_cfg_set_s32(cfg, "h265:tier", r->tier);
++                av_log(avctx, AV_LOG_VERBOSE, "Tier is set to %d\n", r->tier);
++            }
 +
 +            switch (avctx->profile) {
 +            case FF_PROFILE_HEVC_MAIN:
@@ -2480,7 +2486,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    mpp_packet_deinit(&mpp_pkt);
 +}
 +
-+static int rkmpp_get_packet(AVCodecContext *avctx, AVPacket *packet)
++static int rkmpp_get_packet(AVCodecContext *avctx, AVPacket *packet, int timeout)
 +{
 +    RKMPPEncContext *r = avctx->priv_data;
 +    MppPacket mpp_pkt = NULL;
@@ -2488,6 +2494,11 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    MppFrame mpp_frame = NULL;
 +    MppBuffer mpp_buf = NULL;
 +    int ret, key_frame = 0;
++
++    if ((ret = r->mapi->control(r->mctx, MPP_SET_OUTPUT_TIMEOUT, (MppParam)&timeout)) != MPP_OK) {
++        av_log(avctx, AV_LOG_ERROR, "Failed to set output timeout: %d\n", ret);
++        return AVERROR_EXTERNAL;
++    }
 +
 +    if ((ret = r->mapi->encode_get_packet(r->mctx, &mpp_pkt)) != MPP_OK) {
 +        int log_level = (ret == MPP_NOK) ? AV_LOG_DEBUG : AV_LOG_ERROR;
@@ -2558,10 +2569,11 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +{
 +    RKMPPEncContext *r = avctx->priv_data;
 +    MPPEncFrame *mpp_enc_frame = NULL;
-+    int surfaces = r->surfaces;
 +    int ret;
++    int timeout = (avctx->flags & AV_CODEC_FLAG_LOW_DELAY)
++                  ? MPP_TIMEOUT_BLOCK : MPP_TIMEOUT_NON_BLOCK;
 +
-+    if (get_used_frame_count(r->frame_list) > surfaces)
++    if (get_used_frame_count(r->frame_list) > H26X_ASYNC_FRAMES)
 +        goto get;
 +
 +    mpp_enc_frame = rkmpp_submit_frame(avctx, (AVFrame *)frame);
@@ -2578,7 +2590,9 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +        return ret;
 +
 +get:
-+    ret = rkmpp_get_packet(avctx, packet);
++    ret = rkmpp_get_packet(avctx, packet, timeout);
++    if (!frame && ret == AVERROR(EAGAIN))
++        goto send;
 +    if (ret == AVERROR_EOF ||
 +        ret == AVERROR(EAGAIN))
 +        *got_packet = 0;
@@ -2806,7 +2820,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavcodec/rkmppenc.h
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,239 @@
 +/*
 + * Copyright (c) 2023 Huseyin BIYIK
 + * Copyright (c) 2023 NyanMisaka
@@ -2847,7 +2861,8 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +#include "libavutil/opt.h"
 +#include "libavutil/pixdesc.h"
 +
-+#define H26X_HEADER_SIZE 1024
++#define H26X_HEADER_SIZE  1024
++#define H26X_ASYNC_FRAMES 4
 +#define ALIGN_DOWN(a, b) ((a) & ~((b)-1))
 +
 +typedef struct MPPEncFrame {
@@ -2879,8 +2894,8 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +    int                qp_min;
 +    int                qp_max_i;
 +    int                qp_min_i;
-+    int                surfaces;
 +    int                profile;
++    int                tier;
 +    int                level;
 +    int                coder;
 +    int                dct8x8;
@@ -2914,8 +2929,6 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +            { .i64 = -1 }, -1, 51, VE, "qp_max_i" }, \
 +    { "qp_min_i", "Set the min QP value for I frame", OFFSET(qp_min_i), AV_OPT_TYPE_INT, \
 +            { .i64 = -1 }, -1, 51, VE, "qp_min_i" }, \
-+    { "surfaces", "Set the maximum surfaces to be used for encoding", OFFSET(surfaces), AV_OPT_TYPE_INT, \
-+            { .i64 = 4 }, 1, 16, VE, "surfaces" },
 +
 +static const AVOption h264_options[] = {
 +    RKMPP_ENC_COMMON_OPTS
@@ -2959,6 +2972,10 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +    { "profile", "Set the encoding profile restriction", OFFSET(profile), AV_OPT_TYPE_INT,
 +            { .i64 = FF_PROFILE_HEVC_MAIN }, -1, FF_PROFILE_HEVC_MAIN, VE, "profile" },
 +        { "main",       NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_HEVC_MAIN }, INT_MIN, INT_MAX, VE, "profile" },
++    { "tier", "Set the encoding profile tier restriction", OFFSET(tier), AV_OPT_TYPE_INT,
++            { .i64 = 1 }, 0, 1, VE, "tier" },
++        { "main",       NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, INT_MIN, INT_MAX, VE, "tier" },
++        { "high",       NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, INT_MIN, INT_MAX, VE, "tier" },
 +    { "level", "Set the encoding level restriction", OFFSET(level), AV_OPT_TYPE_INT,
 +            { .i64 = 0 }, FF_LEVEL_UNKNOWN, 186, VE, "level" },
 +        { "1",          NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 30 }, 0, 0, VE, "level" },
@@ -4505,7 +4522,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_rkrga.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_overlay_rkrga.c
-@@ -0,0 +1,363 @@
+@@ -0,0 +1,368 @@
 +/*
 + * Copyright (c) 2023 NyanMisaka
 + *
@@ -4778,6 +4795,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_rkrga.c
 +    AVFilterLink *inlink_overlay = ctx->inputs[1];
 +    AVFilterLink *outlink        = ctx->outputs[0];
 +    int i, ret;
++    int64_t pts = AV_NOPTS_VALUE;
 +
 +    ret = ff_framesync_activate(&r->fs);
 +    if (ret < 0)
@@ -4785,18 +4803,20 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_rkrga.c
 +
 +    if (r->fs.eof) {
 +        r->rga.eof = 1;
++        pts = r->fs.pts;
 +        goto eof;
 +    }
 +
-+    if (!r->rga.got_frame) {
++    if (r->rga.got_frame)
++        r->rga.got_frame = 0;
++    else {
 +        for (i = 0; i < ctx->nb_inputs; i++) {
 +            if (!ff_inlink_check_available_frame(ctx->inputs[i])) {
 +                FF_FILTER_FORWARD_WANTED(outlink, ctx->inputs[i]);
 +            }
 +        }
 +        return FFERROR_NOT_READY;
-+    } else
-+        r->rga.got_frame = 0;
++    }
 +
 +    return 0;
 +
@@ -4804,7 +4824,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_rkrga.c
 +    ff_rkrga_filter_frame(&r->rga,
 +                          inlink_main, NULL,
 +                          inlink_overlay, NULL);
-+    ff_outlink_set_status(outlink, AVERROR_EOF, AV_NOPTS_VALUE);
++
++    pts = av_rescale_q(pts, inlink_main->time_base, outlink->time_base);
++    ff_outlink_set_status(outlink, AVERROR_EOF, pts);
 +    return 0;
 +}
 +
@@ -4873,7 +4895,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
-@@ -0,0 +1,570 @@
+@@ -0,0 +1,578 @@
 +/*
 + * Copyright (c) 2023 NyanMisaka
 + *
@@ -5268,24 +5290,26 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
 +    AVFilterLink *outlink = ctx->outputs[0];
 +    RGAVppContext      *r = ctx->priv;
 +    AVFrame *in = NULL;
-+    int ret, status = 0;
++    int ret, at_eof = 0, status = 0;
 +    int64_t pts = AV_NOPTS_VALUE;
 +
 +    FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 +
-+    if (!r->rga.eof) {
++    if (r->rga.eof)
++        at_eof = 1;
++    else {
 +        ret = ff_inlink_consume_frame(inlink, &in);
 +        if (ret < 0)
 +            return ret;
 +
 +        if (ff_inlink_acknowledge_status(inlink, &status, &pts)) {
 +            if (status == AVERROR_EOF) {
-+                r->rga.eof = 1;
++                at_eof = 1;
 +            }
 +        }
 +    }
 +
-+    if (in || r->rga.eof) {
++    if (in) {
 +        ret = ff_rkrga_filter_frame(&r->rga, inlink, in, NULL, NULL);
 +        av_frame_free(&in);
 +        if (ret < 0)
@@ -5293,8 +5317,10 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
 +        else if (!r->rga.got_frame)
 +            goto not_ready;
 +
-+        if (r->rga.eof)
++        if (at_eof) {
++            r->rga.eof = 1;
 +            goto eof;
++        }
 +
 +        if (r->rga.got_frame) {
 +            r->rga.got_frame = 0;
@@ -5303,15 +5329,19 @@ Index: jellyfin-ffmpeg/libavfilter/vf_vpp_rkrga.c
 +    }
 +
 +not_ready:
-+    if (r->rga.eof)
++    if (at_eof) {
++        r->rga.eof = 1;
 +        goto eof;
++    }
 +
 +    FF_FILTER_FORWARD_WANTED(outlink, inlink);
 +    return FFERROR_NOT_READY;
 +
 +eof:
++    ff_rkrga_filter_frame(&r->rga, inlink, NULL, NULL, NULL);
++
 +    pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
-+    ff_outlink_set_status(outlink, status, pts);
++    ff_outlink_set_status(outlink, AVERROR_EOF, pts);
 +    return 0;
 +}
 +
