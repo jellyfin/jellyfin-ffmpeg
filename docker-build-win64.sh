@@ -159,7 +159,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.6.0 --depth=1 https://github.com/tukaani-project/xz.git
+git clone -b v5.6.1 --depth=1 https://github.com/tukaani-project/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
@@ -456,7 +456,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v1.8.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v2.0.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
