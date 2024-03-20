@@ -117,5 +117,5 @@ jobs:
             sudo mv -t /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/macos/${{ matrix.arch }}
             sudo chown -R root:root /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
             # Update symlink for latest-X.x
-            sudo rm -f /srv/repository/main/ffmpeg/macos/latest-${{ steps.set_version.outputs.major }}.x
-            sudo ln -s /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }} /srv/repository/main/ffmpeg/macos/latest-${{ steps.set_version.outputs.major }}.x
+            sudo rm -f /srv/repository/main/ffmpeg/macos/latest-${{ steps.set_version.outputs.major }}.x || true
+            sudo ln -s /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }} /srv/repository/main/ffmpeg/macos/latest-${{ steps.set_version.outputs.major }}.x || true
