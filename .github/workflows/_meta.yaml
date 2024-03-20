@@ -73,7 +73,7 @@ jobs:
             const tag = context.ref.substring(10)
             const no_v = tag.replace('v', '')
             const dash_index = no_v.lastIndexOf('-')
-            const major_index = no_v.firstIndexOf('.')
+            const major_index = no_v.indexOf('.')
             const no_dash = (dash_index > -1) ?  no_v.substring(0, dash_index) : no_v
             const major = (major_index > -1) ?  no_v.substring(0, major_index) : no_v
             core.setOutput('tag', tag)
