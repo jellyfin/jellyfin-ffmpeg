@@ -109,8 +109,8 @@ jobs:
           script_stop: true
           script: |
             # Create the target folder and move arch directory into it
-            sudo mkdir -p /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
-            sudo mv -t /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/macos/${{ matrix.arch }}
+            sudo mkdir -p /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
+            sudo mv -t /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/macos/${{ matrix.arch }}/*
             sudo chown -R root:root /srv/repository/main/ffmpeg/macos/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
             # Update symlink for latest-X.x
             sudo rm -f /srv/repository/main/ffmpeg/macos/latest-${{ steps.set_version.outputs.major }}.x || true
