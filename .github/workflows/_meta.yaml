@@ -115,10 +115,6 @@ jobs:
           envs: JELLYFIN_VERSION
           script_stop: true
           script: |
-            if [ -d "/srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}" ] && [ -n "${{ steps.set_version.outputs.major }}" ] && [ -n "${{ steps.set_version.outputs.no-v }}" ]; then
-                # Clean up existing folders for this arch, if rebuilt
-                sudo rm -r /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
-            fi
             # Create the target folder and move arch directory into it
             sudo mkdir -p /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
             sudo mv -t /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}/${{ matrix.release }}/*
