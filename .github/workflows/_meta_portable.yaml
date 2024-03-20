@@ -89,9 +89,9 @@ jobs:
       - name: Upload release archive to repo.jellyfin.org
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
-          host: ${{ secrets.REPO_HOST }}
-          username: ${{ secrets.REPO_USER }}
-          key: ${{ secrets.REPO_KEY }}
+          host: ${{ secrets.deploy-host }}
+          username: ${{ secrets.deploy-user }}
+          key: ${{ secrets.deploy-key }}
           source: artifact/*
           strip_components: 1
           target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.os }}/${{ matrix.arch }}
@@ -99,9 +99,9 @@ jobs:
       - name: Move incoming release into repository
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
-          host: ${{ secrets.REPO_HOST }}
-          username: ${{ secrets.REPO_USER }}
-          key: ${{ secrets.REPO_KEY }}
+          host: ${{ secrets.deploy-host }}
+          username: ${{ secrets.deploy-user }}
+          key: ${{ secrets.deploy-key }}
           envs: JELLYFIN_VERSION
           script_stop: true
           script: |
