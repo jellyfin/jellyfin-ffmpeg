@@ -91,7 +91,7 @@ jobs:
             set -o xtrace
             tag="${{ github.event.release.tag_name }}"
             version="${tag#v}"
-            major_version="${version%%.*}
+            major_version="${version%%.*}"
             basename="jellyfin-ffmpeg*_${version}-${{ matrix.arrays.codename }}"
             basedir="/srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/${major_version}.x/${version}"
             find ${basedir} -type f -name "${basename}_*.deb" | while read file; do
