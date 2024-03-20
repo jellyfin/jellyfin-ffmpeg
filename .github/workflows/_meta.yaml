@@ -104,7 +104,7 @@ jobs:
           key: ${{ secrets.deploy-key }}
           source: artifact/*
           strip_components: 1
-          target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
+          target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}/${{ matrix.release }}
 
       - name: Move incoming release into repository
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
@@ -120,8 +120,9 @@ jobs:
                 sudo rm -r /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
             fi
             # Create the target folder and move arch directory into it
-            sudo mkdir -p /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
-            sudo mv -t /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
+            sudo mkdir -p /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
+            sudo mv -t /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}/${{ matrix.release }}/*
+            sudo chown -R root:root /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
             # Update symlink for latest-X.x
-            sudo rm -f /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x
-            sudo ln -s /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }} /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x
+            sudo rm -f /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x || true
+            sudo ln -s /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }} /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x || true

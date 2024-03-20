@@ -100,9 +100,6 @@ else
     tar cJf "${ARTIFACTS_PATH}/${OUTPUT_FNAME}" *
 fi
 cd -
-cd "${ARTIFACTS_PATH}"
-sha256sum ./${OUTPUT_FNAME} > ./${OUTPUT_FNAME}.sha256sum
-cd -
 
 rm -rf ffbuild
 
