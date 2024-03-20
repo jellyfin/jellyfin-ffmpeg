@@ -116,6 +116,12 @@ jobs:
           script_stop: true
           script: |
             if [ -d "/srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}" ] && [ -n "${{ steps.set_version.outputs.major }}" ] && [ -n "${{ steps.set_version.outputs.no-v }}" ]; then
+                # Clean up existing folders for this arch, if rebuilt
                 sudo rm -r /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
             fi
-            sudo mv -t /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }} /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
+            # Create the target folder and move arch directory into it
+            sudo mkdir -p /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
+            sudo mv -t /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
+            # Update symlink for latest-X.x
+            sudo rm -f /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x
+            sudo ln -s /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }} /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x
