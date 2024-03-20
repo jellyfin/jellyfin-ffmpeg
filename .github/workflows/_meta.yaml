@@ -122,6 +122,7 @@ jobs:
             # Create the target folder and move arch directory into it
             sudo mkdir -p /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
             sudo mv -t /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/${{ inputs.distro }}/${{ matrix.arch }}
+            sudo chown -R root:root /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
             # Update symlink for latest-X.x
             sudo rm -f /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x
             sudo ln -s /srv/repository/main/ffmpeg/${{ inputs.distro }}/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }} /srv/repository/main/ffmpeg/${{ inputs.distro }}/latest-${{ steps.set_version.outputs.major }}.x
