@@ -79,7 +79,7 @@ jobs:
           {distro: 'ubuntu', codename: 'jammy'}
         ]
     steps:
-      - name: Sync mirrors and update symlinks
+      - name: Import packages into reprepro
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ secrets.REPO_HOST }}
@@ -99,35 +99,3 @@ jobs:
             done
             sudo reprepro -b /srv/${{ matrix.arrays.distro }} deleteunreferenced
             sudo reprepro -b /srv/${{ matrix.arrays.distro }} export
-            sudo rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
-            sudo ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
-
-  maintain_repository_portable:
-    name: Maintain Repository (Portable)
-    runs-on: ubuntu-latest
-    needs:
-      - build_publish_windows_portable
-    strategy:
-      fail-fast: true
-      max-parallel: 1
-      matrix:
-        arrays: [
-          {distro: 'windows', codename: 'windows'},
-        ]
-    steps:
-      - name: Update symlinks
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
-        with:
-          host: ${{ secrets.REPO_HOST }}
-          username: ${{ secrets.REPO_USER }}
-          key: ${{ secrets.REPO_KEY }}
-          script_stop: true
-          script: |-
-            set -o errexit
-            set -o xtrace
-            tag="${{ github.event.release.tag_name }}"
-            version="${tag#v}"
-            major_version="${version%%.*}
-            basedir="/srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/${major_version}.x/${version}"
-            sudo rm -f /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
-            sudo ln -s ${basedir} /srv/repository/main/ffmpeg/${{ matrix.arrays.distro }}/latest-${major_version}.x
