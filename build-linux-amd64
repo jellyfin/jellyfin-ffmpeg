@@ -21,4 +21,4 @@ else
     path="${1}"
 fi
 mkdir ${path} &>/dev/null || true
-mv builder/artifacts/jellyfin-ffmpeg*portable_linux64-gpl*.{tar.xz,sha256sum} "${path}"
+mv builder/artifacts/jellyfin-ffmpeg*portable_linux64-gpl*.tar.xz "${path}"

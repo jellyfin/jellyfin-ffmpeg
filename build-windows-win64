@@ -36,4 +36,4 @@ else
     path="${1}"
 fi
 mkdir ${path} &>/dev/null || true
-mv "${package_temporary_dir}"/zip/jellyfin-ffmpeg*.{zip,sha256sum} "${path}"
+mv "${package_temporary_dir}"/zip/jellyfin-ffmpeg*.zip "${path}"
