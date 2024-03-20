@@ -108,8 +108,6 @@ mkdir -p artifacts
 mv ../ffmpeg ./
 mv ../ffprobe ./
 tar -cJf "${ARTIFACTS_PATH}/${OUTPUT_FNAME}" ffmpeg ffprobe
-cd "${ARTIFACTS_PATH}"
-sha256sum ./${OUTPUT_FNAME} > ./${OUTPUT_FNAME}.sha256sum
 cd "$BUILDER_ROOT"/..
 
 if [[ -n "$GITHUB_ACTIONS" ]]; then
