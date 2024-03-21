@@ -8,7 +8,7 @@ RUN \
         xxd pkgconf curl wget unzip git subversion mercurial \
         autoconf automake libtool libtool-bin autopoint gettext cmake clang meson ninja-build \
         texinfo texi2html help2man flex bison groff \
-        gperf itstool ragel libc6-dev libssl-dev \
+        gperf itstool ragel libc6-dev zlib1g-dev libssl-dev \
         gtk-doc-tools gobject-introspection gawk \
         ocaml ocamlbuild libnum-ocaml-dev indent p7zip-full \
         python3-distutils python3-jinja2 python3-apt python-is-python3 && \

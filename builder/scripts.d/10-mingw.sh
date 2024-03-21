@@ -34,7 +34,8 @@ ffbuild_dockerbuild() {
     local myconf=(
         --prefix="$GCC_SYSROOT/usr/$FFBUILD_TOOLCHAIN"
         --host="$FFBUILD_TOOLCHAIN"
-        --with-default-win32-winnt="0x601"
+        --with-default-win32-winnt="0x0601"
+        --with-default-msvcrt="ucrt"
         --enable-idl
     )
 

@@ -6,12 +6,15 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-git clone -b v11.0.1 --depth=1 https://git.code.sf.net/p/mingw-w64/mingw-w64.git
+mingw_commit="0bac2d3cdb122dadcdee90009f7e24a69d56939f"
+git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
+git checkout ${mingw_commit}
 ./configure \
     --prefix=/usr/${FF_TOOLCHAIN} \
     --host=${FF_TOOLCHAIN} \
-    --with-default-win32-winnt="0x601" \
+    --with-default-win32-winnt="0x0601" \
+    --with-default-msvcrt="msvcrt" \
     --enable-idl
 make -j$(nproc)
 make install

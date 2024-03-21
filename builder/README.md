@@ -30,8 +30,8 @@ On success, the resulting `zip` or `tar.xz` file will be in the `artifacts` subd
 
 Available targets:
 * `win64` (x86_64 Windows, windows>=7)
-* `linux64` (x86_64 Linux, glibc>=2.23, linux>=4.4)
-* `linuxarm64` (arm64 (aarch64) Linux, glibc>=2.27, linux>=4.15)
+* `linux64` (x86_64 Linux, glibc>=2.28, linux>=4.18)
+* `linuxarm64` (arm64 (aarch64) Linux, glibc>=2.28, linux>=4.18)
 
 Available variants:
 * `gpl` Includes all dependencies, even those that require full GPL instead of just LGPL.
