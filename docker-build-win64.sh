@@ -325,7 +325,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.4"
+mpt_ver="0.7.5"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -476,7 +476,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.4.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.4.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build
