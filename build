@@ -9,8 +9,7 @@ usage() {
     echo -e " * bookworm         * arm64"
     echo -e " * focal"
     echo -e " * jammy"
-    echo -e " * lunar"
-    echo -e " * mantic"
+    echo -e " * noble"
 }
 
 if [[ -z ${1} ]]; then
@@ -28,12 +27,12 @@ case ${cli_release} in
     'bullseye')
         release="debian:bullseye"
         gcc_version="10"
-        llvm_version="13"
+        llvm_version="16"
     ;;
     'bookworm')
         release="debian:bookworm"
         gcc_version="12"
-        llvm_version="15"
+        llvm_version="16"
     ;;
     'focal')
         release="ubuntu:focal"
@@ -45,13 +44,8 @@ case ${cli_release} in
         gcc_version="11"
         llvm_version="15"
     ;;
-    'lunar')
-        release="ubuntu:lunar"
-        gcc_version="12"
-        llvm_version="15"
-    ;;
-    'mantic')
-        release="ubuntu:mantic"
+    'noble')
+        release="ubuntu:noble"
         gcc_version="13"
         llvm_version="17"
     ;;

@@ -1,5 +1,5 @@
 #!/usr/bin/make
-DISTRO=ubuntu:mantic
+DISTRO=ubuntu:noble
 .PHONY: Dockerfile
 Dockerfile: Dockerfile.win64.in
 	sed 's/DISTRO/$(DISTRO)/' $< > $@ || rm -f $@
