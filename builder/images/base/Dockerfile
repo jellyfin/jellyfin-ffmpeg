@@ -1,4 +1,4 @@
-FROM ubuntu:noble
+FROM ubuntu:noble-20240225
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN \
