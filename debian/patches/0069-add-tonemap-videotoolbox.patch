@@ -942,7 +942,7 @@ new file mode 100644
 +    float *dovi_buf = ctx->mtl_dovi_buffer.contents;
 +    float coeffs_data[8][4] = {0};
 +    float mmr_packed_data[8*6][4] = {0};
-+    int c, i, j, k, err;
++    int c, i, j, k;
 +
 +    av_assert0(dovi_buf);
 +
@@ -1548,35 +1548,35 @@ new file mode 100644
 +                        float peak)
 +{
 +    TonemapVideoToolboxContext *ctx = avctx->priv;
-+    id<MTLCommandBuffer> buffer = CFBridgingRetain(ctx->mtl_queue.commandBuffer);
-+    id<MTLComputeCommandEncoder> encoder = CFBridgingRetain((__bridge id<MTLCommandBuffer>)buffer.computeCommandEncoder);
++    id<MTLCommandBuffer> buffer = ctx->mtl_queue.commandBuffer;
++    id<MTLComputeCommandEncoder> encoder = buffer.computeCommandEncoder;
 +    float* peak_ptr = ctx->mtl_peak_buffer.contents;
 +    *peak_ptr = peak;
 +
-+    [(__bridge id<MTLComputeCommandEncoder>)encoder setTexture:out_y_tex  atIndex:0];
-+    [(__bridge id<MTLComputeCommandEncoder>)encoder setTexture:in_y_tex atIndex:1];
-+    [(__bridge id<MTLComputeCommandEncoder>)encoder setTexture:out_u_uv_tex  atIndex:2];
-+    [(__bridge id<MTLComputeCommandEncoder>)encoder setTexture:in_u_uv_tex atIndex:3];
++    [encoder setTexture:out_y_tex  atIndex:0];
++    [encoder setTexture:in_y_tex atIndex:1];
++    [encoder setTexture:out_u_uv_tex  atIndex:2];
++    [encoder setTexture:in_u_uv_tex atIndex:3];
 +    if (ctx->out_planes > 2) {
-+        [(__bridge id<MTLComputeCommandEncoder>)encoder setTexture:out_v_tex atIndex:4];
++        [encoder setTexture:out_v_tex atIndex:4];
 +    }
 +    if (ctx->in_planes > 2) {
-+        [(__bridge id<MTLComputeCommandEncoder>)encoder setTexture:in_v_tex atIndex:5];
++        [encoder setTexture:in_v_tex atIndex:5];
 +    }
 +    if (ctx->dither_texture) {
-+        [(__bridge id<MTLComputeCommandEncoder>)encoder setTexture:ctx->dither_texture atIndex:6];
++        [encoder setTexture:ctx->dither_texture atIndex:6];
 +    }
 +    if (ctx->mtl_dovi_buffer) {
-+        [(__bridge id<MTLComputeCommandEncoder>)encoder setBuffer:ctx->mtl_dovi_buffer offset:0 atIndex:7];
++        [encoder setBuffer:ctx->mtl_dovi_buffer offset:0 atIndex:7];
 +    }
-+    [(__bridge id<MTLComputeCommandEncoder>)encoder setBuffer:ctx->mtl_peak_buffer offset:0 atIndex:8];
-+    ff_metal_compute_encoder_dispatch(ctx->mtl_device, ctx->mtl_pipeline, encoder, out_u_uv_tex.width, out_u_uv_tex.height);
-+    [(__bridge id<MTLComputeCommandEncoder>)encoder endEncoding];
++    [encoder setBuffer:ctx->mtl_peak_buffer offset:0 atIndex:8];
 +
-+    [(__bridge id<MTLCommandBuffer>)buffer commit];
-+    [(__bridge id<MTLCommandBuffer>)buffer waitUntilCompleted];
-+    ff_objc_release(&encoder);
-+    ff_objc_release(&buffer);
++    ff_metal_compute_encoder_dispatch(ctx->mtl_device, ctx->mtl_pipeline, encoder, out_u_uv_tex.width, out_u_uv_tex.height);
++
++    [encoder endEncoding];
++
++    [buffer commit];
++    [buffer waitUntilCompleted];
 +}
 +
 +static int tonemap_videotoolbox_filter_frame(AVFilterLink *inlink, AVFrame *input)
@@ -1586,15 +1586,15 @@ new file mode 100644
 +    TonemapVideoToolboxContext *ctx = avctx->priv;
 +    AVFrameSideData  *dovi_sd = NULL;
 +    AVFrame *output = NULL;
-+    AVHWFramesContext *frames_ctx = (AVHWFramesContext*)inlink->hw_frames_ctx->data;
-+    int pixel_size, channels;
-+    const AVComponentDescriptor *comp;
++
 +    CVMetalTextureRef in_y, in_u_uv, in_v;
 +    id<MTLTexture> in_y_tex, in_u_uv_tex, in_v_tex = NULL;
++
 +    CVMetalTextureRef out_y, out_u_uv, out_v;
 +    id<MTLTexture> out_y_tex, out_u_uv_tex, out_v_tex = NULL;
++
 +    MTLPixelFormat format;
-+    int i = 0;
++
 +    int err;
 +
 +    av_log(ctx, AV_LOG_DEBUG, "Filter input: %s, %ux%u (%"PRId64").\n",
