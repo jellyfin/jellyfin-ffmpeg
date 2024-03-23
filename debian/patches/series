@@ -67,3 +67,5 @@
 0067-backport-transpose_vt.patch
 0068-backport-upstream-svt-av1-encoder-changes.patch
 0069-add-tonemap-videotoolbox.patch
+0070-add-customized-surf-align-for-amd-vaapi.patch
+0071-check-pciid-when-deriving-from-va-to-vk.patch

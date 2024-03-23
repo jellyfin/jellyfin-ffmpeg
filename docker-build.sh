@@ -93,7 +93,7 @@ prepare_extra_common() {
 
     # DAV1D
     pushd ${SOURCE_DIR}
-    git clone -b 1.4.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 1.4.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
     if [ "${ARCH}" = "amd64" ]; then
         nasmver="$(nasm -v | cut -d ' ' -f3)"
         nasmminver="2.14.0"
@@ -180,7 +180,7 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     mkdir libdrm
     pushd libdrm
-    libdrm_ver="2.4.115"
+    libdrm_ver="2.4.120"
     libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
     wget ${libdrm_link} -O libdrm.tar.xz
     tar xaf libdrm.tar.xz
@@ -300,7 +300,7 @@ prepare_extra_amd64() {
     # ONEVPL-INTEL-GPU (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.1.4 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
+    git clone -b intel-onevpl-24.1.5 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
     pushd oneVPL-intel-gpu
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -320,7 +320,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.1.4 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.1.5 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -372,8 +372,12 @@ prepare_extra_amd64() {
     popd
 
     # SHADERC
+    shaderc_ver="v2023.7"
+    if [[ ${GCC_VER} -lt 9 ]]; then
+        shaderc_ver="v2023.5"
+    fi
     pushd ${SOURCE_DIR}
-    git clone -b v2023.5 --depth=1 https://github.com/google/shaderc.git
+    git clone -b ${shaderc_ver} --depth=1 https://github.com/google/shaderc.git
     pushd shaderc
     ./utils/git-sync-deps
     mkdir build && pushd build
@@ -398,9 +402,15 @@ prepare_extra_amd64() {
     # MESA
     # Minimal libs for AMD VAAPI, AMD RADV and Intel ANV
     if [[ ${LLVM_VER} -ge 11 ]]; then
+        mesa_branch="llvm15"
+        mesa_codecs="all"
+        if [[ ${LLVM_VER} -lt 15 ]]; then
+            mesa_branch="llvm11"
+            mesa_codecs="vc1dec,h264dec,h264enc,h265dec,h265enc"
+        fi
         apt-get install -y llvm-${LLVM_VER}-dev libudev-dev
         pushd ${SOURCE_DIR}
-        git clone -b llvm11 --depth=1 https://gitlab.freedesktop.org/nyanmisaka/mesa.git
+        git clone -b ${mesa_branch} --depth=1 https://gitlab.freedesktop.org/nyanmisaka/mesa.git
         meson setup mesa mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
@@ -417,7 +427,7 @@ prepare_extra_amd64() {
             -Dgallium-{extra-hud,nine}=false \
             -Dgallium-{omx,vdpau,xa,opencl}=disabled \
             -Dgallium-va=enabled \
-            -Dvideo-codecs=vc1dec,h264dec,h264enc,h265dec,h265enc \
+            -Dvideo-codecs=${mesa_codecs} \
             -Dgbm=disabled \
             -Dgles1=disabled \
             -Dgles2=disabled \

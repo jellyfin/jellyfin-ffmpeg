@@ -6,12 +6,15 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-git clone -b v11.0.1 --depth=1 https://git.code.sf.net/p/mingw-w64/mingw-w64.git
+mingw_commit="0bac2d3cdb122dadcdee90009f7e24a69d56939f"
+git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
+git checkout ${mingw_commit}
 ./configure \
     --prefix=/usr/${FF_TOOLCHAIN} \
     --host=${FF_TOOLCHAIN} \
-    --with-default-win32-winnt="0x601" \
+    --with-default-win32-winnt="0x0601" \
+    --with-default-msvcrt="msvcrt" \
     --enable-idl
 make -j$(nproc)
 make install
@@ -322,7 +325,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.4"
+mpt_ver="0.7.5"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -473,7 +476,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.4.0 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.4.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
 pushd dav1d
 mkdir build
 pushd build

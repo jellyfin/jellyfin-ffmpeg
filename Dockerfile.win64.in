@@ -17,8 +17,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     FF_TARGET_FLAGS="--arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- --pkg-config=pkg-config --pkg-config-flags=--static" \
     PKG_CONFIG=pkg-config \
     PKG_CONFIG_LIBDIR=/opt/ffdeps/lib/pkgconfig:/opt/ffdeps/share/pkgconfig \
-    CFLAGS="-static-libgcc -static-libstdc++ -I/opt/ffdeps/include -mtune=generic -O2 -pipe -D_FORTIFY_SOURCE=0" \
-    CXXFLAGS="-static-libgcc -static-libstdc++ -I/opt/ffdeps/include -mtune=generic -O2 -pipe -D_FORTIFY_SOURCE=0" \
+    CFLAGS="-static-libgcc -static-libstdc++ -I/opt/ffdeps/include -mtune=generic -O2 -pipe -D_FORTIFY_SOURCE=0 -D_WIN32_WINNT=0x0601" \
+    CXXFLAGS="-static-libgcc -static-libstdc++ -I/opt/ffdeps/include -mtune=generic -O2 -pipe -D_FORTIFY_SOURCE=0 -D_WIN32_WINNT=0x0601" \
     LDFLAGS="-static-libgcc -static-libstdc++ -L/opt/ffdeps/lib -O2 -pipe" \
     DLLTOOL="x86_64-w64-mingw32-dlltool"
 
@@ -31,7 +31,7 @@ RUN apt-get update \
     help2man flex bison gperf gettext itstool ragel \
     libc6-dev libssl-dev gtk-doc-tools gobject-introspection \
     gawk meson ninja-build p7zip-full python3-distutils \
-    python3-apt python-is-python3 zip quilt \ 
+    python3-apt python-is-python3 zip quilt \
     binutils-mingw-w64-x86-64 gcc-mingw-w64-x86-64 \
     g++-mingw-w64-x86-64 gfortran-mingw-w64-x86-64 \
  && apt-get clean autoclean -y \

@@ -1,7 +1,7 @@
 #!/usr/bin/make
-DISTRO=bullseye
-GCC_VER=10
-LLVM_VER=13
+DISTRO=noble
+GCC_VER=13
+LLVM_VER=17
 ARCH=amd64
 .PHONY: Dockerfile
 Dockerfile: Dockerfile.in
