@@ -1,3 +1,14 @@
+jellyfin-ffmpeg (6.0.1-5) unstable; urgency=medium
+
+  * Add VideoToolbox tonemap filter
+  * Add support for Ubuntu 24.04 LTS (Noble)
+  * Add customized surface alignment for AMD VA-API
+  * Check PCIID when deriving from VA-API to Vulkan
+  * Upgrade to Mesa 24.0.x on newer distros (LLVM 15+)
+  * Update build dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 21 Mar 2024 17:57:37 +0800
+
 jellyfin-ffmpeg (6.0.1-4) unstable; urgency=medium
 
   * Add VideoToolBox overlay filter
