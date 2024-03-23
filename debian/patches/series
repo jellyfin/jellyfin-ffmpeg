@@ -66,3 +66,4 @@
 0066-add-flip-feat-to-opencl-transpose-filter.patch
 0067-backport-transpose_vt.patch
 0068-backport-upstream-svt-av1-encoder-changes.patch
+0069-add-tonemap-videotoolbox.patch
