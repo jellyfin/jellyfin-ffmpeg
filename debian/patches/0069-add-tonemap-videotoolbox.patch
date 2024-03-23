@@ -12,7 +12,7 @@ diff --git a/configure b/configure
  tonemap_filter_deps="const_nan"
  tonemap_vaapi_filter_deps="vaapi VAProcFilterParameterBufferHDRToneMapping"
  tonemap_opencl_filter_deps="opencl const_nan"
-+tonemap_videotoolbox_filter_deps="metal corevideo videotoolbox"
++tonemap_videotoolbox_filter_deps="metal corevideo videotoolbox const_nan"
  transpose_opencl_filter_deps="opencl"
  transpose_vaapi_filter_deps="vaapi VAProcPipelineCaps_rotation_flags"
  transpose_vulkan_filter_deps="vulkan spirv_compiler"
@@ -1523,7 +1523,7 @@ new file mode 100644
 +    out_frames_ctx->width = outlink->w;
 +    out_frames_ctx->height = outlink->h;
 +
-+    ret = ff_filter_init_hw_frames(avctx, outlink, 10);
++    ret = ff_filter_init_hw_frames(avctx, outlink, 1);
 +    if (ret < 0)
 +        return ret;
 +
