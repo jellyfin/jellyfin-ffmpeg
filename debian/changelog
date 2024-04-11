@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (6.0.1-6) unstable; urgency=medium
+
+  * Fix Noble builds and update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 11 Apr 2024 20:31:19 +0800
+
 jellyfin-ffmpeg (6.0.1-5) unstable; urgency=medium
 
   * Add VideoToolbox tonemap filter
