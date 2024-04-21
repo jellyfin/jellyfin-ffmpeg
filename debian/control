@@ -15,18 +15,12 @@ Build-Depends:
  dpkg-dev,
 # --enable-gnutls
  libgnutls28-dev | libgnutls-dev,
-# --enable-libass
- libass-dev,
 # --enable-libbluray
  libbluray-dev,
 # --enable-libdrm
  libdrm-dev [!amd64],
-# --enable-libfontconfig
- libfontconfig-dev,
-# --enable-libfreetype
- libfreetype6-dev,
-# --enable-fribidi
- libfribidi-dev,
+# --enable-gmp
+ libgmp-dev,
 # --enable-libmp3lame
  libmp3lame-dev,
 # --enable-libopus
@@ -51,35 +45,12 @@ Build-Depends:
  clang [!armhf !arm64],
 # --enable-opencl
  ocl-icd-opencl-dev,
-# --enable-omx
-# libomxil-bellagio-dev
-# omx headers are fully included in raspberrypi/firmware.
-# libomxil-bellagio-dev is missing some functions required in ffmpeg 4.3+.
-# Drop this package when building ffmpeg 4.3+.
-#
-# --enable-vaapi
-# libva-dev is replaced by the libva build from source,
-# which will be shipped with jellyfin-ffmpeg package.
-# Vaapi currently only supports Intel and AMD gfx
-# and the drivers they provide only support x86/x64.
-# libva-dev [!armhf !arm64],
-#
-# --enable-nvenc/--enable-nvdec
-# [!armhf] is needed otherwise mk-build-deps creates an invalid build
-# dep list, targeting armhf specifically when the packge is any.
-# The docker build guarantees this is installed for armhf crossbuild.
-# Disabled entirely as the install now happens via Git inside the
-# Docker build environment.
-# nv-codec-headers [!armhf !arm64],
-#
 # used to detect libraries
  pkg-config,
 # HTML documentation
  texinfo,
 # assembler optimizations
- nasm,
-# autodetected zlib
- zlib1g-dev
+ nasm
 
 Package: jellyfin-ffmpeg6
 Architecture: amd64 armhf arm64
