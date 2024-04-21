@@ -124,6 +124,8 @@ prepare_extra_common() {
     pushd ${SOURCE_DIR}
     git clone -b v2.0.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
+    # Fix performance regression for systems with multiple processor groups
+    wget -q -O - https://gitlab.com/AOMediaCodec/SVT-AV1/-/commit/4579ddcf.patch | git apply
     mkdir build
     pushd build
     if [ "${ARCH}" = "amd64" ]; then
@@ -243,7 +245,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.18 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.3.19 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -297,11 +299,11 @@ prepare_extra_amd64() {
     popd
     popd
 
-    # ONEVPL-INTEL-GPU (RT only)
+    # VPL-GPU-RT (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.1.5 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
-    pushd oneVPL-intel-gpu
+    git clone -b intel-onevpl-24.2.1 --depth=1 https://github.com/intel/vpl-gpu-rt.git
+    pushd vpl-gpu-rt
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
@@ -320,7 +322,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.1.5 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.2.1 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -339,7 +341,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.280 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.283 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -352,7 +354,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.280 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.283 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -535,8 +537,8 @@ prepare_crossbuild_env_armhf() {
     fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
-        # Remove the default sources.list
-        rm /etc/apt/sources.list
+        # Remove the default sources
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
 deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
@@ -554,7 +556,7 @@ EOF
     # Add armhf architecture
     dpkg --add-architecture armhf
     # Update and install cross-gcc-dev
-    apt-get update && apt-get upgrade -y
+    apt-get update && apt-get dist-upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="armhf" cross-gcc-gensource ${GCC_VER}
@@ -573,8 +575,8 @@ prepare_crossbuild_env_arm64() {
     fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
-        # Remove the default sources.list
-        rm /etc/apt/sources.list
+        # Remove the default sources
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
 deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
@@ -592,7 +594,7 @@ EOF
     # Add armhf architecture
     dpkg --add-architecture arm64
     # Update and install cross-gcc-dev
-    apt-get update && apt-get upgrade -y
+    apt-get update && apt-get dist-upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="arm64" cross-gcc-gensource ${GCC_VER}
