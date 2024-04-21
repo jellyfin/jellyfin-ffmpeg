@@ -53,7 +53,13 @@ Index: jellyfin-ffmpeg/configure
  hevc_vaapi_encoder_deps="VAEncPictureParameterBufferHEVC"
  hevc_vaapi_encoder_select="atsc_a53 cbs_h265 vaapi_encode"
  hevc_v4l2m2m_decoder_deps="v4l2_m2m hevc_v4l2_m2m"
-@@ -3218,6 +3225,7 @@ mjpeg_vaapi_encoder_select="cbs_jpeg jpe
+@@ -3213,11 +3220,13 @@ mjpeg_cuvid_decoder_deps="cuvid"
+ mjpeg_qsv_decoder_select="qsvdec"
+ mjpeg_qsv_encoder_deps="libmfx"
+ mjpeg_qsv_encoder_select="qsvenc"
++mjpeg_rkmpp_encoder_deps="rkmpp"
+ mjpeg_vaapi_encoder_deps="VAEncPictureParameterBufferJPEG"
+ mjpeg_vaapi_encoder_select="cbs_jpeg jpegtables vaapi_encode"
  mp3_mf_encoder_deps="mediafoundation"
  mpeg1_cuvid_decoder_deps="cuvid"
  mpeg1_v4l2m2m_decoder_deps="v4l2_m2m mpeg1_v4l2_m2m"
@@ -61,7 +67,7 @@ Index: jellyfin-ffmpeg/configure
  mpeg2_crystalhd_decoder_select="crystalhd"
  mpeg2_cuvid_decoder_deps="cuvid"
  mpeg2_mmal_decoder_deps="mmal"
-@@ -3226,6 +3234,7 @@ mpeg2_qsv_decoder_select="qsvdec"
+@@ -3226,6 +3235,7 @@ mpeg2_qsv_decoder_select="qsvdec"
  mpeg2_qsv_encoder_select="qsvenc"
  mpeg2_vaapi_encoder_select="cbs_mpeg2 vaapi_encode"
  mpeg2_v4l2m2m_decoder_deps="v4l2_m2m mpeg2_v4l2_m2m"
@@ -69,7 +75,7 @@ Index: jellyfin-ffmpeg/configure
  mpeg4_crystalhd_decoder_select="crystalhd"
  mpeg4_cuvid_decoder_deps="cuvid"
  mpeg4_mediacodec_decoder_deps="mediacodec"
-@@ -3233,6 +3242,8 @@ mpeg4_mmal_decoder_deps="mmal"
+@@ -3233,6 +3243,8 @@ mpeg4_mmal_decoder_deps="mmal"
  mpeg4_omx_encoder_deps="omx"
  mpeg4_v4l2m2m_decoder_deps="v4l2_m2m mpeg4_v4l2_m2m"
  mpeg4_v4l2m2m_encoder_deps="v4l2_m2m mpeg4_v4l2_m2m"
@@ -78,7 +84,7 @@ Index: jellyfin-ffmpeg/configure
  msmpeg4_crystalhd_decoder_select="crystalhd"
  vc1_crystalhd_decoder_select="crystalhd"
  vc1_cuvid_decoder_deps="cuvid"
-@@ -3709,6 +3720,7 @@ overlay_qsv_filter_deps="libmfx"
+@@ -3709,6 +3721,7 @@ overlay_qsv_filter_deps="libmfx"
  overlay_qsv_filter_select="qsvvpp"
  overlay_vaapi_filter_deps="vaapi VAProcPipelineCaps_blend_flags"
  overlay_vulkan_filter_deps="vulkan spirv_compiler"
@@ -86,7 +92,7 @@ Index: jellyfin-ffmpeg/configure
  owdenoise_filter_deps="gpl"
  pad_opencl_filter_deps="opencl"
  pan_filter_deps="swresample"
-@@ -3731,6 +3743,7 @@ scale_filter_deps="swscale"
+@@ -3731,6 +3744,7 @@ scale_filter_deps="swscale"
  scale_opencl_filter_deps="opencl"
  scale_qsv_filter_deps="libmfx"
  scale_qsv_filter_select="qsvvpp"
@@ -94,7 +100,7 @@ Index: jellyfin-ffmpeg/configure
  scdet_filter_select="scene_sad"
  select_filter_select="scene_sad"
  sharpness_vaapi_filter_deps="vaapi"
-@@ -3771,6 +3784,7 @@ scale_vaapi_filter_deps="vaapi"
+@@ -3771,6 +3785,7 @@ scale_vaapi_filter_deps="vaapi"
  scale_vulkan_filter_deps="vulkan spirv_compiler"
  vpp_qsv_filter_deps="libmfx"
  vpp_qsv_filter_select="qsvvpp"
@@ -102,7 +108,7 @@ Index: jellyfin-ffmpeg/configure
  xfade_opencl_filter_deps="opencl"
  yadif_cuda_filter_deps="ffnvcodec"
  yadif_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
-@@ -3817,14 +3831,14 @@ cws2fws_extralibs="zlib_extralibs"
+@@ -3817,14 +3832,14 @@ cws2fws_extralibs="zlib_extralibs"
  
  # libraries, in any order
  avcodec_deps="avutil"
@@ -119,7 +125,7 @@ Index: jellyfin-ffmpeg/configure
  postproc_deps="avutil gpl"
  postproc_suggest="libm stdatomic"
  swresample_deps="avutil"
-@@ -6795,11 +6809,16 @@ enabled openssl           && { { check_p
+@@ -6795,11 +6810,16 @@ enabled openssl           && { { check_p
                                 check_lib openssl openssl/ssl.h SSL_library_init -lssl -lcrypto -lws2_32 -lgdi32 ||
                                 die "ERROR: openssl not found"; }
  enabled pocketsphinx      && require_pkg_config pocketsphinx pocketsphinx pocketsphinx/pocketsphinx.h ps_init
@@ -138,7 +144,7 @@ Index: jellyfin-ffmpeg/configure
  enabled vapoursynth       && require_pkg_config vapoursynth "vapoursynth-script >= 42" VSScript.h vsscript_init
  
  
-@@ -6985,7 +7004,7 @@ fi
+@@ -6985,7 +7005,7 @@ fi
  if enabled_all opencl libdrm ; then
      check_type "CL/cl_intel.h" "clCreateImageFromFdINTEL_fn" &&
          enable opencl_drm_beignet
@@ -183,7 +189,15 @@ Index: jellyfin-ffmpeg/libavcodec/Makefile
  OBJS-$(CONFIG_HEVC_VAAPI_ENCODER)      += vaapi_encode_h265.o h265_profile_level.o \
                                            h2645data.o
  OBJS-$(CONFIG_HEVC_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
-@@ -530,6 +534,7 @@ OBJS-$(CONFIG_MPEG1VIDEO_DECODER)      +
+@@ -498,6 +502,7 @@ OBJS-$(CONFIG_MJPEG_ENCODER)           +
+ OBJS-$(CONFIG_MJPEGB_DECODER)          += mjpegbdec.o
+ OBJS-$(CONFIG_MJPEG_CUVID_DECODER)     += cuviddec.o
+ OBJS-$(CONFIG_MJPEG_QSV_ENCODER)       += qsvenc_jpeg.o
++OBJS-$(CONFIG_MJPEG_RKMPP_ENCODER)     += rkmppenc.o
+ OBJS-$(CONFIG_MJPEG_VAAPI_ENCODER)     += vaapi_encode_mjpeg.o
+ OBJS-$(CONFIG_MLP_DECODER)             += mlpdec.o mlpdsp.o
+ OBJS-$(CONFIG_MLP_ENCODER)             += mlpenc.o mlp.o
+@@ -530,6 +535,7 @@ OBJS-$(CONFIG_MPEG1VIDEO_DECODER)      +
  OBJS-$(CONFIG_MPEG1VIDEO_ENCODER)      += mpeg12enc.o mpeg12.o
  OBJS-$(CONFIG_MPEG1_CUVID_DECODER)     += cuviddec.o
  OBJS-$(CONFIG_MPEG1_V4L2M2M_DECODER)   += v4l2_m2m_dec.o
@@ -191,7 +205,7 @@ Index: jellyfin-ffmpeg/libavcodec/Makefile
  OBJS-$(CONFIG_MPEG2_MMAL_DECODER)      += mmaldec.o
  OBJS-$(CONFIG_MPEG2_QSV_DECODER)       += qsvdec.o
  OBJS-$(CONFIG_MPEG2_QSV_ENCODER)       += qsvenc_mpeg2.o
-@@ -539,6 +544,7 @@ OBJS-$(CONFIG_MPEG2_CUVID_DECODER)     +
+@@ -539,6 +545,7 @@ OBJS-$(CONFIG_MPEG2_CUVID_DECODER)     +
  OBJS-$(CONFIG_MPEG2_MEDIACODEC_DECODER) += mediacodecdec.o
  OBJS-$(CONFIG_MPEG2_VAAPI_ENCODER)     += vaapi_encode_mpeg2.o
  OBJS-$(CONFIG_MPEG2_V4L2M2M_DECODER)   += v4l2_m2m_dec.o
@@ -199,7 +213,7 @@ Index: jellyfin-ffmpeg/libavcodec/Makefile
  OBJS-$(CONFIG_MPEG4_DECODER)           += mpeg4videodsp.o xvididct.o
  OBJS-$(CONFIG_MPEG4_ENCODER)           += mpeg4videoenc.o
  OBJS-$(CONFIG_MPEG4_CUVID_DECODER)     += cuviddec.o
-@@ -546,6 +552,7 @@ OBJS-$(CONFIG_MPEG4_MEDIACODEC_DECODER)
+@@ -546,6 +553,7 @@ OBJS-$(CONFIG_MPEG4_MEDIACODEC_DECODER)
  OBJS-$(CONFIG_MPEG4_OMX_ENCODER)       += omx.o
  OBJS-$(CONFIG_MPEG4_V4L2M2M_DECODER)   += v4l2_m2m_dec.o
  OBJS-$(CONFIG_MPEG4_V4L2M2M_ENCODER)   += v4l2_m2m_enc.o
@@ -252,7 +266,7 @@ Index: jellyfin-ffmpeg/libavcodec/allcodecs.c
  extern const FFCodec ff_hevc_amf_encoder;
  extern const FFCodec ff_hevc_cuvid_decoder;
  extern const FFCodec ff_hevc_mediacodec_decoder;
-@@ -860,6 +866,7 @@ extern const FFCodec ff_hevc_qsv_encoder
+@@ -860,10 +866,12 @@ extern const FFCodec ff_hevc_qsv_encoder
  extern const FFCodec ff_hevc_v4l2m2m_encoder;
  extern const FFCodec ff_hevc_vaapi_encoder;
  extern const FFCodec ff_hevc_videotoolbox_encoder;
@@ -260,6 +274,11 @@ Index: jellyfin-ffmpeg/libavcodec/allcodecs.c
  extern const FFCodec ff_libkvazaar_encoder;
  extern const FFCodec ff_mjpeg_cuvid_decoder;
  extern const FFCodec ff_mjpeg_qsv_encoder;
+ extern const FFCodec ff_mjpeg_qsv_decoder;
++extern const FFCodec ff_mjpeg_rkmpp_encoder;
+ extern const FFCodec ff_mjpeg_vaapi_encoder;
+ extern const FFCodec ff_mp3_mf_encoder;
+ extern const FFCodec ff_mpeg1_cuvid_decoder;
 Index: jellyfin-ffmpeg/libavcodec/rkmppdec.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/rkmppdec.c
@@ -1802,7 +1821,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavcodec/rkmppenc.c
-@@ -0,0 +1,1013 @@
+@@ -0,0 +1,1102 @@
 +/*
 + * Copyright (c) 2023 Huseyin BIYIK
 + * Copyright (c) 2023 NyanMisaka
@@ -1835,13 +1854,14 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +static MppCodingType rkmpp_get_coding_type(AVCodecContext *avctx)
 +{
 +    switch (avctx->codec_id) {
-+    case AV_CODEC_ID_H264: return MPP_VIDEO_CodingAVC;
-+    case AV_CODEC_ID_HEVC: return MPP_VIDEO_CodingHEVC;
-+    default:               return MPP_VIDEO_CodingUnused;
++    case AV_CODEC_ID_H264:  return MPP_VIDEO_CodingAVC;
++    case AV_CODEC_ID_HEVC:  return MPP_VIDEO_CodingHEVC;
++    case AV_CODEC_ID_MJPEG: return MPP_VIDEO_CodingMJPEG;
++    default:                return MPP_VIDEO_CodingUnused;
 +    }
 +}
 +
-+static MppFrameFormat rkmpp_get_mpp_fmt(enum AVPixelFormat pix_fmt)
++static MppFrameFormat rkmpp_get_mpp_fmt_h26x(enum AVPixelFormat pix_fmt)
 +{
 +    switch (pix_fmt) {
 +    case AV_PIX_FMT_GRAY8:   return MPP_FMT_YUV400;
@@ -1866,6 +1886,33 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    case AV_PIX_FMT_ABGR:
 +    case AV_PIX_FMT_0BGR:    return MPP_FMT_ABGR8888;
 +    default:                 return MPP_FMT_BUTT;
++    }
++}
++
++static MppFrameFormat rkmpp_get_mpp_fmt_mjpeg(enum AVPixelFormat pix_fmt)
++{
++    switch (pix_fmt) {
++    case AV_PIX_FMT_YUV420P:   return MPP_FMT_YUV420P;
++    case AV_PIX_FMT_NV12:      return MPP_FMT_YUV420SP;
++    case AV_PIX_FMT_YUYV422:   return MPP_FMT_YUV422_YUYV;
++    case AV_PIX_FMT_UYVY422:   return MPP_FMT_YUV422_UYVY;
++    case AV_PIX_FMT_RGB444BE:  return MPP_FMT_RGB444;
++    case AV_PIX_FMT_BGR444BE:  return MPP_FMT_BGR444;
++    case AV_PIX_FMT_RGB555BE:  return MPP_FMT_RGB555;
++    case AV_PIX_FMT_BGR555BE:  return MPP_FMT_BGR555;
++    case AV_PIX_FMT_RGB565BE:  return MPP_FMT_RGB565;
++    case AV_PIX_FMT_BGR565BE:  return MPP_FMT_BGR565;
++    case AV_PIX_FMT_RGBA:
++    case AV_PIX_FMT_RGB0:      return MPP_FMT_RGBA8888;
++    case AV_PIX_FMT_BGRA:
++    case AV_PIX_FMT_BGR0:      return MPP_FMT_BGRA8888;
++    case AV_PIX_FMT_ARGB:
++    case AV_PIX_FMT_0RGB:      return MPP_FMT_ARGB8888;
++    case AV_PIX_FMT_ABGR:
++    case AV_PIX_FMT_0BGR:      return MPP_FMT_ABGR8888;
++    case AV_PIX_FMT_X2RGB10BE: return MPP_FMT_RGB101010;
++    case AV_PIX_FMT_X2BGR10BE: return MPP_FMT_BGR101010;
++    default:                   return MPP_FMT_BUTT;
 +    }
 +}
 +
@@ -2036,6 +2083,13 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +
 +    pix_desc = av_pix_fmt_desc_get(r->pix_fmt);
 +    is_afbc = drm_is_afbc(drm_desc->objects[0].format_modifier);
++    if (is_afbc &&
++        !(avctx->codec_id == AV_CODEC_ID_H264 ||
++          avctx->codec_id == AV_CODEC_ID_HEVC)) {
++        av_log(avctx, AV_LOG_ERROR, "AFBC is not supported in codec '%s'\n",
++               avcodec_get_name(avctx->codec_id));
++        return AVERROR(ENOSYS);
++    }
 +    if (!is_afbc) {
 +        ret = get_byte_stride(&drm_desc->objects[0],
 +                              &drm_desc->layers[0],
@@ -2122,7 +2176,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +
 +    mpp_enc_cfg_set_s32(cfg, "rc:gop", FFMAX(avctx->gop_size, 1));
 +
-+    rc_mode = r->rc_mode;
++    rc_mode = avctx->codec_id == AV_CODEC_ID_MJPEG ? MPP_ENC_RC_MODE_FIXQP : r->rc_mode;
 +    if (rc_mode == MPP_ENC_RC_MODE_BUTT) {
 +        if (r->qp_init >= 0)
 +            rc_mode = MPP_ENC_RC_MODE_FIXQP;
@@ -2147,7 +2201,6 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    switch (rc_mode) {
 +    case MPP_ENC_RC_MODE_FIXQP:
 +        /* do not setup bitrate on FIXQP mode */
-+        min_bps = max_bps = avctx->bit_rate;
 +        break;
 +    case MPP_ENC_RC_MODE_VBR:
 +    case MPP_ENC_RC_MODE_AVBR:
@@ -2164,12 +2217,15 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +        min_bps = avctx->bit_rate * 15 / 16;
 +        break;
 +    }
-+    mpp_enc_cfg_set_u32(cfg, "rc:bps_target", avctx->bit_rate);
-+    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", max_bps);
-+    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", min_bps);
-+
-+    av_log(avctx, AV_LOG_VERBOSE, "Bitrate Target/Min/Max is set to %ld/%d/%d\n",
-+           avctx->bit_rate, min_bps, max_bps);
++    if (rc_mode == MPP_ENC_RC_MODE_CBR ||
++        rc_mode == MPP_ENC_RC_MODE_VBR ||
++        rc_mode == MPP_ENC_RC_MODE_AVBR) {
++        mpp_enc_cfg_set_u32(cfg, "rc:bps_target", avctx->bit_rate);
++        mpp_enc_cfg_set_s32(cfg, "rc:bps_max", max_bps);
++        mpp_enc_cfg_set_s32(cfg, "rc:bps_min", min_bps);
++        av_log(avctx, AV_LOG_VERBOSE, "Bitrate Target/Min/Max is set to %ld/%d/%d\n",
++               avctx->bit_rate, min_bps, max_bps);
++    }
 +
 +    if (avctx->rc_buffer_size > 0 &&
 +        (rc_mode == MPP_ENC_RC_MODE_CBR ||
@@ -2212,6 +2268,17 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +            mpp_enc_cfg_set_s32(cfg, "rc:qp_min", qp_min);
 +            mpp_enc_cfg_set_s32(cfg, "rc:qp_max_i",qp_max_i);
 +            mpp_enc_cfg_set_s32(cfg, "rc:qp_min_i", qp_min_i);
++        }
++        break;
++    case AV_CODEC_ID_MJPEG:
++        {
++            qp_init = r->qp_init >= 1 ? r->qp_init : 80;
++            qp_max = r->qp_max >= 1 ? r->qp_max : 99;
++            qp_min = r->qp_min >= 1 ? r->qp_min : 1;
++            /* jpeg use special codec config to control qtable */
++            mpp_enc_cfg_set_s32(cfg, "jpeg:q_factor", qp_init);
++            mpp_enc_cfg_set_s32(cfg, "jpeg:qf_max", qp_max);
++            mpp_enc_cfg_set_s32(cfg, "jpeg:qf_min", qp_min);
 +        }
 +        break;
 +    default:
@@ -2269,6 +2336,8 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +            av_log(avctx, AV_LOG_VERBOSE, "Level is set to %d\n", avctx->level / 3);
 +        }
 +        break;
++    case AV_CODEC_ID_MJPEG:
++        break;
 +    default:
 +        return AVERROR(EINVAL);
 +    }
@@ -2278,15 +2347,15 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +        return AVERROR_EXTERNAL;
 +    }
 +
-+    sei_mode = MPP_ENC_SEI_MODE_DISABLE;
-+    if ((ret = r->mapi->control(r->mctx, MPP_ENC_SET_SEI_CFG, &sei_mode)) != MPP_OK) {
-+        av_log(avctx, AV_LOG_ERROR, "Failed to set SEI config: %d\n", ret);
-+        return AVERROR_EXTERNAL;
-+    }
-+
-+    header_mode = MPP_ENC_HEADER_MODE_EACH_IDR;
 +    if (avctx->codec_id == AV_CODEC_ID_H264 ||
 +        avctx->codec_id == AV_CODEC_ID_HEVC) {
++        sei_mode = MPP_ENC_SEI_MODE_DISABLE;
++        if ((ret = r->mapi->control(r->mctx, MPP_ENC_SET_SEI_CFG, &sei_mode)) != MPP_OK) {
++            av_log(avctx, AV_LOG_ERROR, "Failed to set SEI config: %d\n", ret);
++            return AVERROR_EXTERNAL;
++        }
++
++        header_mode = MPP_ENC_HEADER_MODE_EACH_IDR;
 +        if ((ret = r->mapi->control(r->mctx, MPP_ENC_SET_HEADER_MODE, &header_mode)) != MPP_OK) {
 +            av_log(avctx, AV_LOG_ERROR, "Failed to set header mode: %d\n", ret);
 +            return AVERROR_EXTERNAL;
@@ -2305,7 +2374,10 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    const AVDRMFrameDescriptor *drm_desc;
 +    const AVDRMLayerDescriptor *layer;
 +    const AVDRMPlaneDescriptor *plane0;
-+    const AVPixFmtDescriptor *pix_desc;
++    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(r->pix_fmt);
++    const int is_planar = pix_desc->flags & AV_PIX_FMT_FLAG_PLANAR;
++    const int is_rgb = pix_desc->flags & AV_PIX_FMT_FLAG_RGB;
++    const int is_yuv = !is_rgb && pix_desc->nb_components >= 2;
 +    int hor_stride = 0, ver_stride = 0;
 +    MppBufferInfo buf_info = { 0 };
 +    MppFrameFormat mpp_fmt = r->mpp_fmt;
@@ -2358,9 +2430,19 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    if (drm_desc->objects[0].fd < 0)
 +        goto exit;
 +
++    /* planar YUV quirks */
 +    if ((r->pix_fmt == AV_PIX_FMT_YUV420P ||
-+         r->pix_fmt == AV_PIX_FMT_YUV422P) && (drm_frame->width % 2)) {
-+        av_log(avctx, AV_LOG_ERROR, "Unsupported width %d, not 2-aligned\n", drm_frame->width);
++         r->pix_fmt == AV_PIX_FMT_YUV422P ||
++         r->pix_fmt == AV_PIX_FMT_NV24) && (drm_frame->width % 2)) {
++        av_log(avctx, AV_LOG_ERROR, "Unsupported width '%d', not 2-aligned\n",
++               drm_frame->width);
++        goto exit;
++    }
++    /* packed RGB/YUV quirks */
++    if ((is_rgb || (is_yuv && !is_planar)) &&
++        (drm_frame->width % 2 || drm_frame->height % 2)) {
++        av_log(avctx, AV_LOG_ERROR, "Unsupported size '%dx%d', not 2-aligned\n",
++               drm_frame->width, drm_frame->height);
 +        goto exit;
 +    }
 +
@@ -2377,6 +2459,13 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    plane0 = &layer->planes[0];
 +
 +    is_afbc = drm_is_afbc(drm_desc->objects[0].format_modifier);
++    if (is_afbc &&
++        !(avctx->codec_id == AV_CODEC_ID_H264 ||
++          avctx->codec_id == AV_CODEC_ID_HEVC)) {
++        av_log(avctx, AV_LOG_ERROR, "AFBC is not supported in codec '%s'\n",
++               avcodec_get_name(avctx->codec_id));
++        goto exit;
++    }
 +    if (is_afbc) {
 +        uint32_t drm_afbc_fmt = rkmpp_get_drm_afbc_format(mpp_fmt);
 +        int afbc_offset_y = 0;
@@ -2395,7 +2484,6 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    }
 +    mpp_frame_set_fmt(mpp_frame, mpp_fmt);
 +
-+    pix_desc = av_pix_fmt_desc_get(r->pix_fmt);
 +    if (is_afbc) {
 +        hor_stride = plane0->pitch;
 +        if ((ret = get_afbc_byte_stride(pix_desc, &hor_stride, 1)) < 0)
@@ -2459,7 +2547,9 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    if (frame && (ret = rkmpp_set_enc_cfg_prep(avctx, frame)) < 0)
 +        goto exit;
 +
-+    if (frame && frame->pict_type == AV_PICTURE_TYPE_I) {
++    if ((avctx->codec_id == AV_CODEC_ID_H264 ||
++         avctx->codec_id == AV_CODEC_ID_HEVC) &&
++         frame && frame->pict_type == AV_PICTURE_TYPE_I) {
 +        if ((ret = r->mapi->control(r->mctx, MPP_ENC_SET_IDR_FRAME, NULL)) != MPP_OK) {
 +            av_log(avctx, AV_LOG_ERROR, "Failed to set IDR frame: %d\n", ret);
 +            ret = AVERROR_EXTERNAL;
@@ -2570,10 +2660,13 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    RKMPPEncContext *r = avctx->priv_data;
 +    MPPEncFrame *mpp_enc_frame = NULL;
 +    int ret;
-+    int timeout = (avctx->flags & AV_CODEC_FLAG_LOW_DELAY)
-+                  ? MPP_TIMEOUT_BLOCK : MPP_TIMEOUT_NON_BLOCK;
++    int timeout = (avctx->codec_id == AV_CODEC_ID_H264 ||
++                   avctx->codec_id == AV_CODEC_ID_HEVC ||
++                   avctx->codec_id == AV_CODEC_ID_MJPEG) &&
++                   !(avctx->flags & AV_CODEC_FLAG_LOW_DELAY)
++                   ? MPP_TIMEOUT_NON_BLOCK : MPP_TIMEOUT_BLOCK;
 +
-+    if (get_used_frame_count(r->frame_list) > H26X_ASYNC_FRAMES)
++    if (get_used_frame_count(r->frame_list) > r->async_frames)
 +        goto get;
 +
 +    mpp_enc_frame = rkmpp_submit_frame(avctx, (AVFrame *)frame);
@@ -2609,6 +2702,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    RKMPPEncContext *r = avctx->priv_data;
 +
 +    r->cfg_init = 0;
++    r->async_frames = 0;
 +
 +    if (r->mapi) {
 +        r->mapi->reset(r->mctx);
@@ -2664,13 +2758,18 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +    int output_timeout = MPP_TIMEOUT_NON_BLOCK;
 +    int ret;
 +
++    r->cfg_init = 0;
++    r->async_frames = 0;
++
 +    if ((coding_type = rkmpp_get_coding_type(avctx)) == MPP_VIDEO_CodingUnused) {
 +        av_log(avctx, AV_LOG_ERROR, "Unknown codec id: %d\n", avctx->codec_id);
 +        return AVERROR(ENOSYS);
 +    }
 +
 +    pix_fmt = avctx->pix_fmt == AV_PIX_FMT_DRM_PRIME ? avctx->sw_pix_fmt : avctx->pix_fmt;
-+    mpp_fmt = rkmpp_get_mpp_fmt(pix_fmt) & MPP_FRAME_FMT_MASK;
++    mpp_fmt = avctx->codec_id == AV_CODEC_ID_MJPEG
++              ? rkmpp_get_mpp_fmt_mjpeg(pix_fmt) : rkmpp_get_mpp_fmt_h26x(pix_fmt);
++    mpp_fmt &= MPP_FRAME_FMT_MASK;
 +
 +    if (mpp_fmt == MPP_FMT_BUTT) {
 +        av_log(avctx, AV_LOG_ERROR, "Unsupported input pixel format '%s'\n",
@@ -2726,6 +2825,12 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +        goto fail;
 +
 +    if (avctx->codec_id == AV_CODEC_ID_H264 ||
++        avctx->codec_id == AV_CODEC_ID_HEVC)
++        r->async_frames = H26X_ASYNC_FRAMES;
++    else if (avctx->codec_id == AV_CODEC_ID_MJPEG)
++        r->async_frames = MJPEG_ASYNC_FRAMES;
++
++    if (avctx->codec_id == AV_CODEC_ID_H264 ||
 +        avctx->codec_id == AV_CODEC_ID_HEVC) {
 +        RK_U8 enc_hdr_buf[H26X_HEADER_SIZE];
 +        size_t pkt_len = 0;
@@ -2734,7 +2839,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +        memset(enc_hdr_buf, 0, H26X_HEADER_SIZE);
 +
 +        if ((ret = mpp_packet_init(&mpp_pkt,
-+	                           (void *)enc_hdr_buf,
++                                   (void *)enc_hdr_buf,
 +                                   H26X_HEADER_SIZE)) != MPP_OK || !mpp_pkt) {
 +            av_log(avctx, AV_LOG_ERROR, "Failed to init extra info packet: %d\n", ret);
 +            ret = AVERROR_EXTERNAL;
@@ -2811,16 +2916,19 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.c
 +}
 +
 +#if CONFIG_H264_RKMPP_ENCODER
-+DEFINE_RKMPP_ENCODER(h264, H264)
++DEFINE_RKMPP_ENCODER(h264, H264, h26x)
 +#endif
 +#if CONFIG_HEVC_RKMPP_ENCODER
-+DEFINE_RKMPP_ENCODER(hevc, HEVC)
++DEFINE_RKMPP_ENCODER(hevc, HEVC, h26x)
++#endif
++#if CONFIG_MJPEG_RKMPP_ENCODER
++DEFINE_RKMPP_ENCODER(mjpeg, MJPEG, mjpeg)
 +#endif
 Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavcodec/rkmppenc.h
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,276 @@
 +/*
 + * Copyright (c) 2023 Huseyin BIYIK
 + * Copyright (c) 2023 NyanMisaka
@@ -2861,8 +2969,9 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +#include "libavutil/opt.h"
 +#include "libavutil/pixdesc.h"
 +
-+#define H26X_HEADER_SIZE  1024
-+#define H26X_ASYNC_FRAMES 4
++#define H26X_HEADER_SIZE   1024
++#define H26X_ASYNC_FRAMES  4
++#define MJPEG_ASYNC_FRAMES 8
 +#define ALIGN_DOWN(a, b) ((a) & ~((b)-1))
 +
 +typedef struct MPPEncFrame {
@@ -2887,6 +2996,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +    enum AVPixelFormat pix_fmt;
 +
 +    MPPEncFrame       *frame_list;
++    int                async_frames;
 +
 +    int                rc_mode;
 +    int                qp_init;
@@ -2994,7 +3104,17 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +    { NULL }
 +};
 +
-+static const enum AVPixelFormat rkmpp_enc_pix_fmts[] = {
++static const AVOption mjpeg_options[] = {
++    { "qp_init", "Set the initial QP/Q_Factor value", OFFSET(qp_init), AV_OPT_TYPE_INT, \
++            { .i64 = -1 }, -1, 99, VE, "qmin" }, \
++    { "qp_max", "Set the max QP/Q_Factor value", OFFSET(qp_max), AV_OPT_TYPE_INT, \
++            { .i64 = -1 }, -1, 99, VE, "qp_max" }, \
++    { "qp_min", "Set the min QP/Q_Factor value", OFFSET(qp_min), AV_OPT_TYPE_INT, \
++            { .i64 = -1 }, -1, 99, VE, "qp_min" }, \
++    { NULL }
++};
++
++static const enum AVPixelFormat rkmpp_enc_pix_fmts_h26x[] = {
 +    AV_PIX_FMT_GRAY8,
 +    AV_PIX_FMT_YUV420P,
 +    AV_PIX_FMT_YUV422P,
@@ -3020,6 +3140,31 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +    AV_PIX_FMT_NONE,
 +};
 +
++static const enum AVPixelFormat rkmpp_enc_pix_fmts_mjpeg[] = {
++    AV_PIX_FMT_YUV420P,
++    AV_PIX_FMT_NV12,
++    AV_PIX_FMT_YUYV422,
++    AV_PIX_FMT_UYVY422,
++    AV_PIX_FMT_RGB444BE,
++    AV_PIX_FMT_BGR444BE,
++    AV_PIX_FMT_RGB555BE,
++    AV_PIX_FMT_BGR555BE,
++    AV_PIX_FMT_RGB565BE,
++    AV_PIX_FMT_BGR565BE,
++    AV_PIX_FMT_RGBA,
++    AV_PIX_FMT_RGB0,
++    AV_PIX_FMT_BGRA,
++    AV_PIX_FMT_BGR0,
++    AV_PIX_FMT_ARGB,
++    AV_PIX_FMT_0RGB,
++    AV_PIX_FMT_ABGR,
++    AV_PIX_FMT_0BGR,
++    AV_PIX_FMT_X2RGB10BE,
++    AV_PIX_FMT_X2BGR10BE,
++    AV_PIX_FMT_DRM_PRIME,
++    AV_PIX_FMT_NONE,
++};
++
 +static const AVCodecHWConfigInternal *const rkmpp_enc_hw_configs[] = {
 +    HW_CONFIG_ENCODER_DEVICE(NONE,      RKMPP),
 +    HW_CONFIG_ENCODER_FRAMES(DRM_PRIME, RKMPP),
@@ -3033,7 +3178,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +    { NULL }
 +};
 +
-+#define DEFINE_RKMPP_ENCODER(x, X) \
++#define DEFINE_RKMPP_ENCODER(x, X, xx) \
 +static const AVClass x##_rkmpp_encoder_class = { \
 +    .class_name = #x "_rkmpp_encoder", \
 +    .item_name  = av_default_item_name, \
@@ -3053,7 +3198,7 @@ Index: jellyfin-ffmpeg/libavcodec/rkmppenc.h
 +    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE, \
 +    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE | \
 +                      FF_CODEC_CAP_INIT_CLEANUP, \
-+    .p.pix_fmts     = rkmpp_enc_pix_fmts, \
++    .p.pix_fmts     = rkmpp_enc_pix_fmts_##xx, \
 +    .hw_configs     = rkmpp_enc_hw_configs, \
 +    .defaults       = rkmpp_enc_defaults, \
 +    .p.wrapper_name = "rkmpp", \
@@ -5628,7 +5773,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_rkmpp.c
 ===================================================================
 --- /dev/null
 +++ jellyfin-ffmpeg/libavutil/hwcontext_rkmpp.c
-@@ -0,0 +1,581 @@
+@@ -0,0 +1,598 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -5673,40 +5818,52 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_rkmpp.c
 +    uint32_t drm_format;
 +} supported_formats[] = {
 +    /* grayscale */
-+    { AV_PIX_FMT_GRAY8,    DRM_FORMAT_R8        },
-+    /* planar YUV */
-+    { AV_PIX_FMT_YUV420P,  DRM_FORMAT_YUV420,   },
-+    { AV_PIX_FMT_YUV422P,  DRM_FORMAT_YUV422,   },
-+    { AV_PIX_FMT_YUV444P,  DRM_FORMAT_YUV444,   },
++    { AV_PIX_FMT_GRAY8,     DRM_FORMAT_R8        },
++    /* fully-planar YUV */
++    { AV_PIX_FMT_YUV420P,   DRM_FORMAT_YUV420,   },
++    { AV_PIX_FMT_YUV422P,   DRM_FORMAT_YUV422,   },
++    { AV_PIX_FMT_YUV444P,   DRM_FORMAT_YUV444,   },
 +    /* semi-planar YUV */
-+    { AV_PIX_FMT_NV12,     DRM_FORMAT_NV12,     },
-+    { AV_PIX_FMT_NV21,     DRM_FORMAT_NV21,     },
-+    { AV_PIX_FMT_NV16,     DRM_FORMAT_NV16,     },
-+    { AV_PIX_FMT_NV24,     DRM_FORMAT_NV24,     },
++    { AV_PIX_FMT_NV12,      DRM_FORMAT_NV12,     },
++    { AV_PIX_FMT_NV21,      DRM_FORMAT_NV21,     },
++    { AV_PIX_FMT_NV16,      DRM_FORMAT_NV16,     },
++    { AV_PIX_FMT_NV24,      DRM_FORMAT_NV24,     },
 +    /* semi-planar YUV 10-bit */
-+    { AV_PIX_FMT_P010,     DRM_FORMAT_P010,     },
-+    { AV_PIX_FMT_P210,     DRM_FORMAT_P210,     },
-+    { AV_PIX_FMT_NV15,     DRM_FORMAT_NV15,     },
-+    { AV_PIX_FMT_NV20,     DRM_FORMAT_NV20,     },
++    { AV_PIX_FMT_P010,      DRM_FORMAT_P010,     },
++    { AV_PIX_FMT_P210,      DRM_FORMAT_P210,     },
++    { AV_PIX_FMT_NV15,      DRM_FORMAT_NV15,     },
++    { AV_PIX_FMT_NV20,      DRM_FORMAT_NV20,     },
 +    /* packed YUV */
-+    { AV_PIX_FMT_YUYV422,  DRM_FORMAT_YUYV,     },
-+    { AV_PIX_FMT_YVYU422,  DRM_FORMAT_YVYU,     },
-+    { AV_PIX_FMT_UYVY422,  DRM_FORMAT_UYVY,     },
++    { AV_PIX_FMT_YUYV422,   DRM_FORMAT_YUYV,     },
++    { AV_PIX_FMT_YVYU422,   DRM_FORMAT_YVYU,     },
++    { AV_PIX_FMT_UYVY422,   DRM_FORMAT_UYVY,     },
 +    /* packed RGB */
-+    { AV_PIX_FMT_RGB555LE, DRM_FORMAT_XRGB1555, },
-+    { AV_PIX_FMT_BGR555LE, DRM_FORMAT_XBGR1555, },
-+    { AV_PIX_FMT_RGB565LE, DRM_FORMAT_RGB565,   },
-+    { AV_PIX_FMT_BGR565LE, DRM_FORMAT_BGR565,   },
-+    { AV_PIX_FMT_RGB24,    DRM_FORMAT_RGB888,   },
-+    { AV_PIX_FMT_BGR24,    DRM_FORMAT_BGR888,   },
-+    { AV_PIX_FMT_RGBA,     DRM_FORMAT_ABGR8888, },
-+    { AV_PIX_FMT_RGB0,     DRM_FORMAT_XBGR8888, },
-+    { AV_PIX_FMT_BGRA,     DRM_FORMAT_ARGB8888, },
-+    { AV_PIX_FMT_BGR0,     DRM_FORMAT_XRGB8888, },
-+    { AV_PIX_FMT_ARGB,     DRM_FORMAT_BGRA8888, },
-+    { AV_PIX_FMT_0RGB,     DRM_FORMAT_BGRX8888, },
-+    { AV_PIX_FMT_ABGR,     DRM_FORMAT_RGBA8888, },
-+    { AV_PIX_FMT_0BGR,     DRM_FORMAT_RGBX8888, },
++    { AV_PIX_FMT_RGB444LE,  DRM_FORMAT_XRGB4444, },
++    { AV_PIX_FMT_RGB444BE,  DRM_FORMAT_XRGB4444    | DRM_FORMAT_BIG_ENDIAN, },
++    { AV_PIX_FMT_BGR444LE,  DRM_FORMAT_XBGR4444, },
++    { AV_PIX_FMT_BGR444BE,  DRM_FORMAT_XBGR4444    | DRM_FORMAT_BIG_ENDIAN, },
++    { AV_PIX_FMT_RGB555LE,  DRM_FORMAT_XRGB1555, },
++    { AV_PIX_FMT_RGB555BE,  DRM_FORMAT_XRGB1555    | DRM_FORMAT_BIG_ENDIAN, },
++    { AV_PIX_FMT_BGR555LE,  DRM_FORMAT_XBGR1555, },
++    { AV_PIX_FMT_BGR555BE,  DRM_FORMAT_XBGR1555    | DRM_FORMAT_BIG_ENDIAN, },
++    { AV_PIX_FMT_RGB565LE,  DRM_FORMAT_RGB565,   },
++    { AV_PIX_FMT_RGB565BE,  DRM_FORMAT_RGB565      | DRM_FORMAT_BIG_ENDIAN, },
++    { AV_PIX_FMT_BGR565LE,  DRM_FORMAT_BGR565,   },
++    { AV_PIX_FMT_BGR565BE,  DRM_FORMAT_BGR565      | DRM_FORMAT_BIG_ENDIAN, },
++    { AV_PIX_FMT_RGB24,     DRM_FORMAT_RGB888,   },
++    { AV_PIX_FMT_BGR24,     DRM_FORMAT_BGR888,   },
++    { AV_PIX_FMT_RGBA,      DRM_FORMAT_ABGR8888, },
++    { AV_PIX_FMT_RGB0,      DRM_FORMAT_XBGR8888, },
++    { AV_PIX_FMT_BGRA,      DRM_FORMAT_ARGB8888, },
++    { AV_PIX_FMT_BGR0,      DRM_FORMAT_XRGB8888, },
++    { AV_PIX_FMT_ARGB,      DRM_FORMAT_BGRA8888, },
++    { AV_PIX_FMT_0RGB,      DRM_FORMAT_BGRX8888, },
++    { AV_PIX_FMT_ABGR,      DRM_FORMAT_RGBA8888, },
++    { AV_PIX_FMT_0BGR,      DRM_FORMAT_RGBX8888, },
++    { AV_PIX_FMT_X2RGB10LE, DRM_FORMAT_XRGB2101010, },
++    { AV_PIX_FMT_X2RGB10BE, DRM_FORMAT_XRGB2101010 | DRM_FORMAT_BIG_ENDIAN, },
++    { AV_PIX_FMT_X2BGR10LE, DRM_FORMAT_XBGR2101010, },
++    { AV_PIX_FMT_X2BGR10BE, DRM_FORMAT_XBGR2101010 | DRM_FORMAT_BIG_ENDIAN, },
 +};
 +
 +static int rkmpp_device_create(AVHWDeviceContext *hwdev, const char *device,
@@ -5781,8 +5938,11 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_rkmpp.c
 +{
 +    const AVPixFmtDescriptor *pixdesc = av_pix_fmt_desc_get(pix_fmt);
 +    const int is_rgb = pixdesc->flags & AV_PIX_FMT_FLAG_RGB;
++    const int is_yuv = !is_rgb && pixdesc->nb_components >= 2;
 +    const int is_planar = pixdesc->flags & AV_PIX_FMT_FLAG_PLANAR;
 +    const int is_packed_fmt = is_rgb || (!is_rgb && !is_planar);
++    const int is_fully_planar = is_planar &&
++                                pixdesc->comp[1].plane != pixdesc->comp[2].plane;
 +    int linesize;
 +
 +    if (pix_fmt == AV_PIX_FMT_NV15 ||
@@ -5797,6 +5957,8 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_rkmpp.c
 +    if (is_packed_fmt) {
 +        const int pixel_width = av_get_padded_bits_per_pixel(pixdesc) / 8;
 +        linesize = FFALIGN(linesize / pixel_width, 8) * pixel_width;
++    } else if (is_yuv && is_fully_planar) {
++        linesize = FFALIGN(linesize, 16);
 +    } else
 +        linesize = FFALIGN(linesize, 64);
 +
@@ -5861,7 +6023,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_rkmpp.c
 +        layer->planes[i].object_index = 0;
 +        layer->planes[i].offset =
 +            layer->planes[i-1].offset +
-+            layer->planes[i-1].pitch * (hwfc->height >> (i > 1 ? pixdesc->log2_chroma_h : 0));
++            layer->planes[i-1].pitch * (FFALIGN(hwfc->height, 2) >> (i > 1 ? pixdesc->log2_chroma_h : 0));
 +        layer->planes[i].pitch =
 +            rkmpp_get_aligned_linesize(hwfc->sw_format, hwfc->width, i);
 +    }
