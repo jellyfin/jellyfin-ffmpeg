@@ -13,21 +13,156 @@ UBUNTU_PORTS_ADDR=http://ports.ubuntu.com/ubuntu-ports/
 prepare_extra_common() {
     case ${ARCH} in
         'amd64')
+            CROSS_PREFIX_OPT=""
             CROSS_OPT=""
             CMAKE_TOOLCHAIN_OPT=""
             MESON_CROSS_OPT=""
         ;;
         'armhf')
+            CROSS_PREFIX_OPT="arm-linux-gnueabihf-"
             CROSS_OPT="--host=armv7-linux-gnueabihf CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++"
             CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
             MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
         ;;
         'arm64')
+            CROSS_PREFIX_OPT="aarch64-linux-gnu-"
             CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
             CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
             MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
         ;;
     esac
+
+    # ICONV
+    pushd ${SOURCE_DIR}
+    mkdir iconv
+    pushd iconv
+    iconv_ver="1.17"
+    iconv_link="https://ftp.gnu.org/pub/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
+    wget ${iconv_link} -O iconv.tar.gz
+    tar xaf iconv.tar.gz
+    pushd libiconv-${iconv_ver}
+    ./configure \
+        ${CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --disable-static \
+        --enable-{shared,extra-encodings} \
+        --with-pic
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/iconv
+    echo "iconv${TARGET_DIR}/lib/libiconv.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+    popd
+
+    # ZLIB
+    pushd ${SOURCE_DIR}
+    git clone -b v1.3.1 --depth=1 https://github.com/madler/zlib.git
+    pushd zlib
+    CROSS_PREFIX=${CROSS_PREFIX_OPT} ./configure \
+        --prefix=${TARGET_DIR} \
+        --shared
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/zlib
+    echo "zlib${TARGET_DIR}/lib/libz.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+
+    # LIBXML2
+    pushd ${SOURCE_DIR}
+    git clone -b v2.9.14 --depth=1 https://github.com/GNOME/libxml2.git
+    pushd libxml2
+    ./autogen.sh \
+        ${CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --disable-{static,maintainer-mode} \
+        --enable-shared \
+        --without-python
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/libxml2
+    echo "libxml2${TARGET_DIR}/lib/libxml2.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+
+    # FREETYPE
+    pushd ${SOURCE_DIR}
+    git clone -b VER-2-13-2 --depth=1 https://gitlab.freedesktop.org/freetype/freetype.git
+    pushd freetype
+    ./autogen.sh
+    ./configure \
+        ${CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --enable-shared \
+        --disable-static
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/freetype
+    echo "freetype${TARGET_DIR}/lib/libfreetype.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+
+    # FRIBIDI
+    pushd ${SOURCE_DIR}
+    git clone -b v1.0.13 --depth=1 https://github.com/fribidi/fribidi.git
+    meson setup fribidi fribidi_build \
+        ${MESON_CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --libdir=lib \
+        --buildtype=release \
+        --default-library=shared \
+        -D{bin,docs,tests}=false
+    meson configure fribidi_build
+    ninja -C fribidi_build install
+    cp -a ${TARGET_DIR}/lib/libfribidi.so* ${SOURCE_DIR}/fribidi
+    echo "fribidi/libfribidi.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+
+    # FONTCONFIG
+    pushd ${SOURCE_DIR}
+    mkdir fontconfig
+    pushd fontconfig
+    fc_ver="2.15.0"
+    fc_link="https://www.freedesktop.org/software/fontconfig/release/fontconfig-${fc_ver}.tar.xz"
+    wget ${fc_link} -O fc.tar.gz
+    tar xaf fc.tar.gz
+    pushd fontconfig-${fc_ver}
+    ./configure \
+        ${CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --disable-{static,docs} \
+        --enable-{shared,libxml2,iconv}
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/fontconfig
+    echo "fontconfig${TARGET_DIR}/lib/libfontconfig.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+    popd
+
+    # HARFBUZZ
+    pushd ${SOURCE_DIR}
+    git clone -b 8.4.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
+    pushd harfbuzz
+    ./autogen.sh \
+        ${CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --enable-shared \
+        --disable-static \
+        --with-pic
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/harfbuzz
+    echo "harfbuzz${TARGET_DIR}/lib/libharfbuzz.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+
+    # LIBASS
+    pushd ${SOURCE_DIR}
+    git clone -b 0.17.1 --depth=1 https://github.com/libass/libass.git
+    pushd libass
+    ./autogen.sh
+    ./configure \
+        ${CROSS_OPT} \
+        --prefix=${TARGET_DIR} \
+        --enable-shared \
+        --disable-static \
+        --with-pic
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/libass
+    echo "libass${TARGET_DIR}/lib/libass.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
 
     # FFTW3
     pushd ${SOURCE_DIR}
@@ -124,6 +259,8 @@ prepare_extra_common() {
     pushd ${SOURCE_DIR}
     git clone -b v2.0.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
+    # Fix performance regression for systems with multiple processor groups
+    wget -q -O - https://gitlab.com/AOMediaCodec/SVT-AV1/-/commit/4579ddcf.patch | git apply
     mkdir build
     pushd build
     if [ "${ARCH}" = "amd64" ]; then
@@ -243,7 +380,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.18 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.3.19 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -297,11 +434,11 @@ prepare_extra_amd64() {
     popd
     popd
 
-    # ONEVPL-INTEL-GPU (RT only)
+    # VPL-GPU-RT (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.1.5 --depth=1 https://github.com/oneapi-src/oneVPL-intel-gpu.git
-    pushd oneVPL-intel-gpu
+    git clone -b intel-onevpl-24.2.1 --depth=1 https://github.com/intel/vpl-gpu-rt.git
+    pushd vpl-gpu-rt
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
@@ -320,7 +457,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.1.5 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.2.1 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -339,7 +476,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.280 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.283 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -352,7 +489,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.280 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.283 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -535,8 +672,8 @@ prepare_crossbuild_env_armhf() {
     fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
-        # Remove the default sources.list
-        rm /etc/apt/sources.list
+        # Remove the default sources
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
 deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
@@ -554,14 +691,14 @@ EOF
     # Add armhf architecture
     dpkg --add-architecture armhf
     # Update and install cross-gcc-dev
-    apt-get update && apt-get upgrade -y
+    apt-get update && apt-get dist-upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="armhf" cross-gcc-gensource ${GCC_VER}
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-armhf
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-arm-linux-gnueabihf g++-${GCC_VER}-arm-linux-gnueabihf libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libfontconfig1-dev:armhf libfreetype6-dev:armhf libstdc++6:armhf
+    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-arm-linux-gnueabihf g++-${GCC_VER}-arm-linux-gnueabihf libstdc++6-armhf-cross binutils-arm-linux-gnueabihf bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev systemtap-sdt-dev autogen expect chrpath zip libc6-dev:armhf linux-libc-dev:armhf libgcc1:armhf libstdc++6:armhf
     popd
 }
 prepare_crossbuild_env_arm64() {
@@ -573,8 +710,8 @@ prepare_crossbuild_env_arm64() {
     fi
     if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
         CODENAME="$( lsb_release -c -s )"
-        # Remove the default sources.list
-        rm /etc/apt/sources.list
+        # Remove the default sources
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources
         # Add arch-specific list files
         cat <<EOF > /etc/apt/sources.list.d/amd64.list
 deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
@@ -589,24 +726,24 @@ deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-backports main restricted univ
 deb [arch=arm64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
 EOF
     fi
-    # Add armhf architecture
+    # Add arm64 architecture
     dpkg --add-architecture arm64
     # Update and install cross-gcc-dev
-    apt-get update && apt-get upgrade -y
+    apt-get update && apt-get dist-upgrade -y
     yes | apt-get install -y cross-gcc-dev
     # Generate gcc cross source
     TARGET_LIST="arm64" cross-gcc-gensource ${GCC_VER}
     # Install dependencies
     pushd cross-gcc-packages-amd64/cross-gcc-${GCC_VER}-arm64
     ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
-    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev libgmp-dev systemtap-sdt-dev autogen expect chrpath zlib1g-dev zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libfontconfig1-dev:arm64 libfreetype6-dev:arm64 libstdc++6:arm64
+    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev systemtap-sdt-dev autogen expect chrpath zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libstdc++6:arm64
     popd
 }
 
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
-        apt-get update && apt-get upgrade -y
+        apt-get update && apt-get dist-upgrade -y
         prepare_extra_common
         prepare_extra_amd64
         CONFIG_SITE=""

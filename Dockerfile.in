@@ -24,7 +24,7 @@ ENV CFLAGS="-I${TARGET_DIR}/include $CFLAGS"
 
 # Prepare Debian build environment
 RUN apt-get update \
- && apt-get upgrade -y \
+ && apt-get dist-upgrade -y \
  && apt-get install -y apt-transport-https \
     curl ninja-build debhelper gnupg wget devscripts \ 
     mmv equivs git nasm pkg-config subversion dh-autoreconf \
@@ -32,7 +32,7 @@ RUN apt-get update \
     libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev \
     libxcb-shm0-dev libxcb-sync-dev libxshmfence-dev libxext-dev \ 
     libxfixes-dev libxcb1-dev libxrandr-dev libzstd-dev \ 
-    libelf-dev python3-pip zip unzip tar flex bison \
+    libelf-dev python3-pip zip unzip tar flex bison gperf ragel \
  && apt-get clean autoclean -y \
  && apt-get autoremove -y
 

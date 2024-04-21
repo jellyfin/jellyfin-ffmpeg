@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-mingw_commit="0bac2d3cdb122dadcdee90009f7e24a69d56939f"
+mingw_commit="cd4cf9b279f8fb0815f8b9665d3cea60a30290bc"
 git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 git checkout ${mingw_commit}
@@ -162,7 +162,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.6.1 --depth=1 https://github.com/tukaani-project/xz.git
+git clone -b v5.6.1 --depth=1 https://git.tukaani.org/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
@@ -325,7 +325,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.5"
+mpt_ver="0.7.6"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -461,6 +461,8 @@ popd
 # SVT-AV1
 git clone -b v2.0.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
+# Fix performance regression for systems with multiple processor groups
+wget -q -O - https://gitlab.com/AOMediaCodec/SVT-AV1/-/commit/4579ddcf.patch | git apply
 mkdir build
 pushd build
 cmake \
