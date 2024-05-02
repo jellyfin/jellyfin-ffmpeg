@@ -12,7 +12,7 @@ diff --git a/libavcodec/libopusenc.c b/libavcodec/libopusenc.c
          av_log(avctx, AV_LOG_WARNING,
                 "No channel layout specified. Opus encoder will use Vorbis "
                 "channel layout for %d channels.\n", avctx->ch_layout.nb_channels);
-+    } else if (avctx->ch_layout.nb_channels == 6 && av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1) == 0) {
++    } else if (av_channel_layout_compare(&avctx->ch_layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_5POINT1) == 0) {
 +        av_log(avctx, AV_LOG_WARNING,
 +               "Input channel layout 5.1(side) detected, side channels will be mapped to back channels.\n");
 +        return 0;
