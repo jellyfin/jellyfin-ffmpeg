@@ -70,3 +70,4 @@
 0070-add-customized-surf-align-for-amd-vaapi.patch
 0071-check-pciid-when-deriving-from-va-to-vk.patch
 0072-add-mjpeg-videotoolbox.patch
+0073-opus-allow-5point1-side-inputs.patch
