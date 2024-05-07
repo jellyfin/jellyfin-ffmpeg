@@ -41,7 +41,7 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
 ===================================================================
 --- FFmpeg.orig/libavcodec/videotoolboxenc.c
 +++ FFmpeg/libavcodec/videotoolboxenc.c
-@@ -547,6 +547,7 @@ static CMVideoCodecType get_cm_codec_typ
+@@ -547,6 +547,7 @@ static CMVideoCodecType get_cm_codec_type(AVCodecContext *avctx,
                      else
                          return MKBETAG('a','p','c','n'); // kCMVideoCodecType_AppleProRes422
              }
@@ -49,7 +49,7 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
          default:               return 0;
      }
  }
-@@ -1233,7 +1234,7 @@ static int vtenc_create_encoder(AVCodecC
+@@ -1233,7 +1234,7 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
                                        kVTCompressionPropertyKey_Quality,
                                        quality_num);
          CFRelease(quality_num);
@@ -58,28 +58,28 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
          bit_rate_num = CFNumberCreate(kCFAllocatorDefault,
                                        kCFNumberSInt32Type,
                                        &bit_rate);
-@@ -1347,7 +1348,7 @@ static int vtenc_create_encoder(AVCodecC
+@@ -1347,7 +1348,7 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
          }
      }
- 
+
 -    if (avctx->gop_size > 0 && avctx->codec_id != AV_CODEC_ID_PRORES) {
 +    if (avctx->gop_size > 0 && avctx->codec_id != AV_CODEC_ID_PRORES && avctx->codec_id != AV_CODEC_ID_MJPEG) {
          CFNumberRef interval = CFNumberCreate(kCFAllocatorDefault,
                                                kCFNumberIntType,
                                                &avctx->gop_size);
-@@ -1496,7 +1497,7 @@ static int vtenc_create_encoder(AVCodecC
+@@ -1496,7 +1497,7 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
          }
      }
- 
+
 -    if (!vtctx->has_b_frames && avctx->codec_id != AV_CODEC_ID_PRORES) {
 +    if (!vtctx->has_b_frames && avctx->codec_id != AV_CODEC_ID_PRORES && avctx->codec_id != AV_CODEC_ID_MJPEG) {
          status = VTSessionSetProperty(vtctx->session,
                                        kVTCompressionPropertyKey_AllowFrameReordering,
                                        kCFBooleanFalse);
-@@ -2844,6 +2845,13 @@ static const enum AVPixelFormat prores_p
+@@ -2844,6 +2845,13 @@ static const enum AVPixelFormat prores_pix_fmts[] = {
      AV_PIX_FMT_NONE
  };
- 
+
 +static const enum AVPixelFormat mjpeg_pix_fmts[] = {
 +    AV_PIX_FMT_VIDEOTOOLBOX,
 +    AV_PIX_FMT_NV12,
@@ -90,16 +90,20 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
  #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
  #define COMMON_OPTIONS \
      { "allow_sw", "Allow software encoding", OFFSET(allow_sw), AV_OPT_TYPE_BOOL, \
-@@ -3003,4 +3011,29 @@ const FFCodec ff_prores_videotoolbox_enc
-     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
+@@ -3004,3 +3012,33 @@ const FFCodec ff_prores_videotoolbox_encoder = {
      .p.wrapper_name   = "videotoolbox",
      .hw_configs       = vt_encode_hw_configs,
+ };
++
++static const AVOption mjpeg_options[] = {
++    { "allow_sw", "Allow software encoding", OFFSET(allow_sw), AV_OPT_TYPE_BOOL,{ .i64 = 0 }, 0, 1, VE },
++    { NULL },
 +};
 +
 +static const AVClass mjpeg_videotoolbox_class = {
 +    .class_name = "mjpeg_videotoolbox",
 +    .item_name  = av_default_item_name,
-+    .option     = NULL,
++    .option     = mjpeg_options,
 +    .version    = LIBAVUTIL_VERSION_INT,
 +};
 +
@@ -111,7 +115,7 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
 +    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
 +                        AV_CODEC_CAP_HARDWARE,
 +    .priv_data_size   = sizeof(VTEncContext),
-+    .p.pix_fmts       = prores_pix_fmts,
++    .p.pix_fmts       = mjpeg_pix_fmts,
 +    .init             = vtenc_init,
 +    FF_CODEC_ENCODE_CB(vtenc_frame),
 +    .close            = vtenc_close,
@@ -119,4 +123,4 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
 +    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 +    .p.wrapper_name   = "videotoolbox",
 +    .hw_configs       = vt_encode_hw_configs,
- };
++};
