@@ -97,7 +97,7 @@ prepare_extra_common() {
 
     # FRIBIDI
     pushd ${SOURCE_DIR}
-    git clone -b v1.0.13 --depth=1 https://github.com/fribidi/fribidi.git
+    git clone -b v1.0.14 --depth=1 https://github.com/fribidi/fribidi.git
     meson setup fribidi fribidi_build \
         ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
@@ -135,7 +135,7 @@ prepare_extra_common() {
 
     # HARFBUZZ
     pushd ${SOURCE_DIR}
-    git clone -b 8.4.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
+    git clone -b 8.5.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
     pushd harfbuzz
     ./autogen.sh \
         ${CROSS_OPT} \
@@ -150,7 +150,7 @@ prepare_extra_common() {
 
     # LIBASS
     pushd ${SOURCE_DIR}
-    git clone -b 0.17.1 --depth=1 https://github.com/libass/libass.git
+    git clone -b 0.17.2 --depth=1 https://github.com/libass/libass.git
     pushd libass
     ./autogen.sh
     ./configure \
@@ -257,10 +257,8 @@ prepare_extra_common() {
     # SVT-AV1
     # nasm >= 2.14
     pushd ${SOURCE_DIR}
-    git clone -b v2.0.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v2.1.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
-    # Fix performance regression for systems with multiple processor groups
-    wget -q -O - https://gitlab.com/AOMediaCodec/SVT-AV1/-/commit/4579ddcf.patch | git apply
     mkdir build
     pushd build
     if [ "${ARCH}" = "amd64" ]; then
@@ -414,7 +412,7 @@ prepare_extra_amd64() {
     # Provides VPL header and dispatcher (libvpl.so.2) for FFmpeg
     # Both MSDK and VPL runtime can be loaded by VPL dispatcher
     pushd ${SOURCE_DIR}
-    git clone -b v2.10.2 --depth=1 https://github.com/intel/libvpl.git
+    git clone -b v2.11.0 --depth=1 https://github.com/intel/libvpl.git
     pushd libvpl
     sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' libvpl/src/mfx_dispatcher_vpl_loader.cpp
     mkdir build && pushd build
@@ -437,7 +435,7 @@ prepare_extra_amd64() {
     # VPL-GPU-RT (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.2.1 --depth=1 https://github.com/intel/vpl-gpu-rt.git
+    git clone -b intel-onevpl-24.2.3 --depth=1 https://github.com/intel/vpl-gpu-rt.git
     pushd vpl-gpu-rt
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -457,7 +455,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.2.1 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.2.3 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -476,7 +474,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.283 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.285 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -489,7 +487,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.283 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.285 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
