@@ -1,3 +1,13 @@
+jellyfin-ffmpeg (6.0.1-7) unstable; urgency=medium
+
+  * Add DOVI descriptor support in mpegtsenc
+  * Sync RKMPP fixes from ffmpeg-rockchip
+  * Fix a typo in the CUDA/OpenCL transpose filter
+  * Fix some warnings-as-errors in GCC 14
+  * Update dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 21 May 2024 17:09:43 +0800
+
 jellyfin-ffmpeg (6.0.1-6) unstable; urgency=medium
 
   * Fix Noble builds and update dependencies
