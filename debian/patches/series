@@ -72,3 +72,4 @@
 0072-add-mjpeg-videotoolbox.patch
 0073-opus-allow-5point1-side-inputs.patch
 0074-add-dovi-descriptor-support-in-mpegtsenc.patch
+0075-fix-gcc-14-warnings-in-qsv-hwcontext.patch
