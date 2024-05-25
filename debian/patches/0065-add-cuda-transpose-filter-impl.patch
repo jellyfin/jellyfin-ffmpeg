@@ -556,7 +556,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_transpose_cuda.cu
 +        return;
 +
 +    int xi = (dir < 4) ? ((dir &  2) ? (dst_height - 1 - yo) : yo)
-+                       : ((dir &  5) ? (dst_width  - 1 - xo) : xo);
++                       : ((dir == 5) ? (dst_width  - 1 - xo) : xo);
 +    int yi = (dir < 4) ? ((dir &  1) ? (dst_width  - 1 - xo) : xo)
 +                       : ((dir == 5) ? yo : (dst_height - 1 - yo));
 +    if (xi >= src_width || yi >= src_height)

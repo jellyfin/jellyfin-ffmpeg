@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-mingw_commit="cd4cf9b279f8fb0815f8b9665d3cea60a30290bc"
+mingw_commit="cff4b8fda1b577b99144020fb81b27f5bc633a5e"
 git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 git checkout ${mingw_commit}
@@ -325,7 +325,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.6"
+mpt_ver="0.7.7"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -342,7 +342,7 @@ popd
 popd
 
 # LIBWEBP
-git clone -b v1.3.2 --depth=1 https://chromium.googlesource.com/webm/libwebp
+git clone -b v1.4.0 --depth=1 https://chromium.googlesource.com/webm/libwebp
 pushd libwebp
 ./autogen.sh
 ./configure \
@@ -459,10 +459,8 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v2.0.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v2.1.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
-# Fix performance regression for systems with multiple processor groups
-wget -q -O - https://gitlab.com/AOMediaCodec/SVT-AV1/-/commit/4579ddcf.patch | git apply
 mkdir build
 pushd build
 cmake \
@@ -562,7 +560,7 @@ mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
 
 # VPL
-git clone -b v2.10.2 --depth=1 https://github.com/intel/libvpl.git
+git clone -b v2.11.0 --depth=1 https://github.com/intel/libvpl.git
 pushd libvpl
 mkdir build && pushd build
 cmake \
