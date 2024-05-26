@@ -78,7 +78,7 @@ set -o xtrace
 set -o errexit
 
 # Check for dependencies
-if command -v "podman" &>/dev/null; then
+if ! command -v "docker" &>/dev/null && command -v "podman" &>/dev/null; then
     container_cmd=podman
 else
     container_cmd=docker
