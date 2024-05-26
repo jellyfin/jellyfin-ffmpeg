@@ -78,13 +78,18 @@ set -o xtrace
 set -o errexit
 
 # Check for dependencies
-for dep in docker make mmv; do
-    command -v ${dep} &>/dev/null || { echo "The command '${dep}' is required."; exit 1; }
+if ! command -v "docker" &>/dev/null && command -v "podman" &>/dev/null; then
+    container_cmd=podman
+else
+    container_cmd=docker
+fi
+
+for dep in ${container_cmd} make mmv; do
+    command -v "${dep}" &>/dev/null || { echo "The command '${dep}' is required."; exit 1; }
 done
 
 image_name="jellyfin-ffmpeg-build-${cli_release}"
 package_temporary_dir="$( mktemp -d )"
-current_user="$( whoami )"
 
 # Trap cleanup for latter sections
 cleanup() {
@@ -98,15 +103,15 @@ trap cleanup EXIT INT
 # Generate Dockerfile
 make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_version} LLVM_VER=${llvm_version} ARCH=${arch}
 # Set up the build environment docker image
-docker build . -t "${image_name}"
+${container_cmd} build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}
-docker run --rm -e "RELEASE=${release}" -v "${package_temporary_dir}:/dist" "${image_name}"
+${container_cmd} run --rm -e "RELEASE=${release}" -v "${package_temporary_dir}:/dist" "${image_name}"
 # If no 3rd parameter was specified, move APKs to parent directory
 if [[ -z ${3} ]]; then
     path="../bin"
 else
     path="${3}"
 fi
-mkdir ${path} &>/dev/null || true
+mkdir "${path}" &>/dev/null || true
 mmv "${package_temporary_dir}/deb/*.deb" "${path}/#1.deb"
 mmv "${package_temporary_dir}/deb/*_${arch}.*" "${path}/#1-${cli_release}_${arch}.#2"
