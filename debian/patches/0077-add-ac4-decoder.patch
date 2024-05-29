@@ -39,7 +39,7 @@ Index: FFmpeg/libavcodec/ac4dec.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavcodec/ac4dec.c
-@@ -0,0 +1,5901 @@
+@@ -0,0 +1,5902 @@
 +/*
 + * AC-4 Audio Decoder
 + *
@@ -4694,6 +4694,7 @@ Index: FFmpeg/libavcodec/ac4dec.c
 +        break;
 +    case CM_ASPX_ACPL_1:
 +    case CM_ASPX_ACPL_2:
++    case CM_ASPX_ACPL_3:
 +        switch (ss->coding_config) {
 +        case 0:
 +            if (ss->mdct_stereo_proc[0])
