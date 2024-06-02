@@ -74,3 +74,4 @@
 0074-add-dovi-descriptor-support-in-mpegtsenc.patch
 0075-fix-gcc-14-warnings-in-qsv-hwcontext.patch
 0076-vt-low-priority-keyframe-decoding.patch
+0077-add-detection-of-dtsx.patch
