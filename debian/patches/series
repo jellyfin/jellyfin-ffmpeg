@@ -75,3 +75,5 @@
 0075-fix-gcc-14-warnings-in-qsv-hwcontext.patch
 0076-vt-low-priority-keyframe-decoding.patch
 0077-add-detection-of-dtsx.patch
+0078-add-detection-of-atmos-in-eac3.patch
+0079-add-detection-of-atmos-in-truehd.patch
