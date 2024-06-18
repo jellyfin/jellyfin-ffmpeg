@@ -1,0 +1,154 @@
+From 154a74b0a75eaecd5022cef3cb520ee949b578d9 Mon Sep 17 00:00:00 2001
+From: Brett Jia <dev.bjia56@gmail.com>
+Date: Wed, 19 Jun 2024 11:44:23 -0400
+Subject: [PATCH] namespace vars that conflict with vpx
+
+---
+ mpp/hal/rkdec/vp9d/hal_vp9d_com.c | 30 +++++++++++++++---------------
+ mpp/hal/rkdec/vp9d/hal_vp9d_com.h |  6 +++---
+ 2 files changed, 18 insertions(+), 18 deletions(-)
+
+diff --git a/mpp/hal/rkdec/vp9d/hal_vp9d_com.c b/mpp/hal/rkdec/vp9d/hal_vp9d_com.c
+index c1913893..898970a8 100644
+--- a/mpp/hal/rkdec/vp9d/hal_vp9d_com.c
++++ b/mpp/hal/rkdec/vp9d/hal_vp9d_com.c
+@@ -838,7 +838,7 @@ static const RK_U8 vp9_default_coef_probs[4][2][2][6][6][3] = {
+     }
+ };
+ 
+-const vp9_prob vp9_kf_y_mode_prob[INTRA_MODES][INTRA_MODES][INTRA_MODES - 1] = {
++const vp9_prob mpp_vp9_kf_y_mode_prob[INTRA_MODES][INTRA_MODES][INTRA_MODES - 1] = {
+     {
+         // above = dc
+         { 137,  30,  42, 148, 151, 207,  70,  52,  91 },  // left = dc
+@@ -953,7 +953,7 @@ const vp9_prob vp9_kf_y_mode_prob[INTRA_MODES][INTRA_MODES][INTRA_MODES - 1] = {
+     }
+ };
+ 
+-const vp9_prob vp9_kf_uv_mode_prob[INTRA_MODES][INTRA_MODES - 1] = {
++const vp9_prob mpp_vp9_kf_uv_mode_prob[INTRA_MODES][INTRA_MODES - 1] = {
+     { 144,  11,  54, 157, 195, 130,  46,  58, 108 },  // y = dc
+     { 118,  15, 123, 148, 131, 101,  44,  93, 131 },  // y = v
+     { 113,  12,  23, 188, 226, 142,  26,  32, 125 },  // y = h
+@@ -966,7 +966,7 @@ const vp9_prob vp9_kf_uv_mode_prob[INTRA_MODES][INTRA_MODES - 1] = {
+     { 102,  19,  66, 162, 182, 122,  35,  59, 128 }   // y = tm
+ };
+ 
+-const vp9_prob vp9_kf_partition_probs[PARTITION_CONTEXTS][PARTITION_TYPES - 1] = {
++const vp9_prob mpp_vp9_kf_partition_probs[PARTITION_CONTEXTS][PARTITION_TYPES - 1] = {
+     // 8x8 -> 4x4
+     { 158,  97,  94 },  // a/l both not split
+     {  93,  24,  99 },  // a split, l not split
+@@ -1013,8 +1013,8 @@ MPP_RET hal_vp9d_output_probe(void *buf, void *dxva)
+     memset(buf, 0, 304 * 8);
+ 
+     if (intraFlag) {
+-        memcpy(partition_probs, vp9_kf_partition_probs, sizeof(partition_probs));
+-        memcpy(uv_mode_prob, vp9_kf_uv_mode_prob, sizeof(uv_mode_prob));
++        memcpy(partition_probs, mpp_vp9_kf_partition_probs, sizeof(partition_probs));
++        memcpy(uv_mode_prob, mpp_vp9_kf_uv_mode_prob, sizeof(uv_mode_prob));
+     } else {
+         memcpy(partition_probs, pic_param->prob.partition, sizeof(partition_probs));
+         memcpy(uv_mode_prob, pic_param->prob.uv_mode, sizeof(uv_mode_prob));
+@@ -1073,11 +1073,11 @@ MPP_RET hal_vp9d_output_probe(void *buf, void *dxva)
+             }
+ 
+         //intra mode prob  80 x 128 bit
+-        for (i = 0; i < INTRA_MODES; i++) { //vp9_kf_y_mode_prob
++        for (i = 0; i < INTRA_MODES; i++) { //mpp_vp9_kf_y_mode_prob
+             RK_S32 byte_count = 0;
+             for (j = 0; j < INTRA_MODES; j++)
+                 for (k = 0; k < INTRA_MODES - 1; k++) {
+-                    mpp_put_bits(&bp, vp9_kf_y_mode_prob[i][j][k], 8);
++                    mpp_put_bits(&bp, mpp_vp9_kf_y_mode_prob[i][j][k], 8);
+                     byte_count++;
+                     if (byte_count == 27) {
+                         byte_count = 0;
+@@ -1087,7 +1087,7 @@ MPP_RET hal_vp9d_output_probe(void *buf, void *dxva)
+                 }
+             if (i < 4) {
+                 for (m = 0; m < (i < 3 ? 23 : 21); m++)
+-                    mpp_put_bits(&bp, ((vp9_prob *)(&vp9_kf_uv_mode_prob[0][0]))[i * 23 + m], 8);
++                    mpp_put_bits(&bp, ((vp9_prob *)(&mpp_vp9_kf_uv_mode_prob[0][0]))[i * 23 + m], 8);
+                 for (; m < 23; m++)
+                     mpp_put_bits(&bp, 0, 8);
+             } else {
+@@ -1462,7 +1462,7 @@ MPP_RET hal_vp9d_prob_flag_delta(void *buf, void *dxva)
+     memset(buf, 0, PROB_SIZE);
+ 
+     if (intraFlag) {
+-        memcpy(partition_probs, vp9_kf_partition_probs, sizeof(partition_probs));
++        memcpy(partition_probs, mpp_vp9_kf_partition_probs, sizeof(partition_probs));
+     } else {
+         memcpy(partition_flag, prob_flag->partition, sizeof(partition_flag));
+         memcpy(partition_delta, prob_delta->partition, sizeof(partition_delta));
+@@ -1575,11 +1575,11 @@ MPP_RET hal_vp9d_prob_flag_delta(void *buf, void *dxva)
+             }
+ 
+         //intra mode prob  80 x 128 bit
+-        for (i = 0; i < INTRA_MODES; i++) { //vp9_kf_y_mode_prob
++        for (i = 0; i < INTRA_MODES; i++) { //mpp_vp9_kf_y_mode_prob
+             RK_S32 byte_count = 0;
+             for (j = 0; j < INTRA_MODES; j++)
+                 for (k = 0; k < INTRA_MODES - 1; k++) {
+-                    mpp_put_bits(&bp, vp9_kf_y_mode_prob[i][j][k], 8);
++                    mpp_put_bits(&bp, mpp_vp9_kf_y_mode_prob[i][j][k], 8);
+                     byte_count++;
+                     if (byte_count == 27) {
+                         byte_count = 0;
+@@ -1589,7 +1589,7 @@ MPP_RET hal_vp9d_prob_flag_delta(void *buf, void *dxva)
+                 }
+             if (i < 4) {
+                 for (m = 0; m < (i < 3 ? 23 : 21); m++)
+-                    mpp_put_bits(&bp, ((vp9_prob *)(&vp9_kf_uv_mode_prob[0][0]))[i * 23 + m], 8);
++                    mpp_put_bits(&bp, ((vp9_prob *)(&mpp_vp9_kf_uv_mode_prob[0][0]))[i * 23 + m], 8);
+                 for (; m < 23; m++)
+                     mpp_put_bits(&bp, 0, 8);
+             } else {
+@@ -1936,7 +1936,7 @@ MPP_RET hal_vp9d_prob_kf(void *buf)
+ 
+     for (i = 0; i < 16; i++)//kf_partition_prob
+         for (j = 0; j < 3; j++)
+-            mpp_put_bits(&bp, vp9_kf_partition_probs[i][j], 8);
++            mpp_put_bits(&bp, mpp_vp9_kf_partition_probs[i][j], 8);
+ 
+     //intra mode prob  80 x 128 bit, 10x 8x 128bit
+     for (i = 0; i < 10; i++) {
+@@ -1944,7 +1944,7 @@ MPP_RET hal_vp9d_prob_kf(void *buf)
+         RK_U8 val = 0;
+         for (j = 0; j < 10; j++)
+             for (k = 0; k < 9; k++) {
+-                mpp_put_bits(&bp, vp9_kf_y_mode_prob[i][j][k], 8);
++                mpp_put_bits(&bp, mpp_vp9_kf_y_mode_prob[i][j][k], 8);
+                 byte_count++;
+                 if (byte_count == 27) {
+                     byte_count = 0;
+@@ -1954,7 +1954,7 @@ MPP_RET hal_vp9d_prob_kf(void *buf)
+         // 6x128 bit, 23x4 bytes
+         if (i < 4) {
+             for (m = 0; m < (i < 3 ? 23 : 21); m++) {
+-                val = ((RK_U8 *)(&vp9_kf_uv_mode_prob[0][0]))[i * 23 + m];
++                val = ((RK_U8 *)(&mpp_vp9_kf_uv_mode_prob[0][0]))[i * 23 + m];
+                 mpp_put_bits(&bp, val, 8);
+             }
+             for (; m < 23; m++)
+diff --git a/mpp/hal/rkdec/vp9d/hal_vp9d_com.h b/mpp/hal/rkdec/vp9d/hal_vp9d_com.h
+index 8dee8e56..3c41a935 100644
+--- a/mpp/hal/rkdec/vp9d/hal_vp9d_com.h
++++ b/mpp/hal/rkdec/vp9d/hal_vp9d_com.h
+@@ -77,9 +77,9 @@ do{\
+ }} while (0)
+ 
+ 
+-extern const vp9_prob vp9_kf_y_mode_prob[INTRA_MODES][INTRA_MODES][INTRA_MODES - 1];
+-extern const vp9_prob vp9_kf_uv_mode_prob[INTRA_MODES][INTRA_MODES - 1];
+-extern const vp9_prob vp9_kf_partition_probs[PARTITION_CONTEXTS][PARTITION_TYPES - 1];
++extern const vp9_prob mpp_vp9_kf_y_mode_prob[INTRA_MODES][INTRA_MODES][INTRA_MODES - 1];
++extern const vp9_prob mpp_vp9_kf_uv_mode_prob[INTRA_MODES][INTRA_MODES - 1];
++extern const vp9_prob mpp_vp9_kf_partition_probs[PARTITION_CONTEXTS][PARTITION_TYPES - 1];
+ 
+ #ifdef __cplusplus
+ extern "C" {
+-- 
+2.34.1
+
