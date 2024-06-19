@@ -1,0 +1,274 @@
+diff --git a/libavfilter/vf_tonemap.c b/libavfilter/vf_tonemap.c
+index d1087e6bd9..e79cf9bc09 100644
+--- a/libavfilter/vf_tonemap.c
++++ b/libavfilter/vf_tonemap.c
+@@ -33,6 +33,17 @@
+ #include "libavutil/intreadwrite.h"
+ #include "libavutil/opt.h"
+ #include "libavutil/pixdesc.h"
++#include "libavutil/cpu.h"
++#if   ARCH_AARCH64
++#   include <arm_neon.h>
++#   include "libavutil/aarch64/cpu.h"
++#elif ARCH_ARM
++#   include <arm_neon.h>
++#   include "libavutil/arm/cpu.h"
++#elif ARCH_X86
++#   include <immintrin.h>
++#   include "libavutil/x86/cpu.h"
++#endif
+ 
+ #include "avfilter.h"
+ #include "colorspace.h"
+@@ -60,33 +71,10 @@ typedef struct TonemapContext {
+     double peak;
+ 
+     const AVLumaCoefficients *coeffs;
++    void (*tonemap_simd)(struct TonemapContext *s, AVFrame *out, const AVFrame *in,
++                        const AVPixFmtDescriptor *desc, int x, int y, double peak);
+ } TonemapContext;
+ 
+-static av_cold int init(AVFilterContext *ctx)
+-{
+-    TonemapContext *s = ctx->priv;
+-
+-    switch(s->tonemap) {
+-    case TONEMAP_GAMMA:
+-        if (isnan(s->param))
+-            s->param = 1.8f;
+-        break;
+-    case TONEMAP_REINHARD:
+-        if (!isnan(s->param))
+-            s->param = (1.0f - s->param) / s->param;
+-        break;
+-    case TONEMAP_MOBIUS:
+-        if (isnan(s->param))
+-            s->param = 0.3f;
+-        break;
+-    }
+-
+-    if (isnan(s->param))
+-        s->param = 1.0f;
+-
+-    return 0;
+-}
+-
+ static float hable(float in)
+ {
+     float a = 0.15f, b = 0.50f, c = 0.10f, d = 0.20f, e = 0.02f, f = 0.30f;
+@@ -172,6 +160,139 @@ static void tonemap(TonemapContext *s, AVFrame *out, const AVFrame *in,
+     *b_out *= sig / sig_orig;
+ }
+ 
++#if ARCH_X86
++static void tonemap_sse(TonemapContext *s, AVFrame *out, const AVFrame *in,
++                        const AVPixFmtDescriptor *desc, int x, int y, double peak)
++{
++    int map[3] = { desc->comp[0].plane, desc->comp[1].plane, desc->comp[2].plane };
++
++    __m128 sig4, sig_orig4, rx4, gx4, bx4, ss;
++    __m128 param_x4 = _mm_set1_ps((float)s->param);
++    __m128 peak_x4 = _mm_set1_ps((float)peak);
++    __m128 eps_x4 = _mm_set1_ps((float)1e-6);
++
++    /* load values */
++    rx4 = _mm_load_ps((const float *)(in->data[map[0]] + x * desc->comp[map[0]].step + y * in->linesize[map[0]]));
++    gx4 = _mm_load_ps((const float *)(in->data[map[1]] + x * desc->comp[map[1]].step + y * in->linesize[map[1]]));
++    bx4 = _mm_load_ps((const float *)(in->data[map[2]] + x * desc->comp[map[2]].step + y * in->linesize[map[2]]));
++
++    /* desaturate to prevent unnatural colors */
++    if (s->desat > 0) {
++        __m128 desat4 = _mm_set1_ps((float)s->desat);
++        __m128 luma4 = _mm_set1_ps(0);
++        __m128 overbright4;
++        luma4 = _mm_add_ps(_mm_mul_ps(rx4, _mm_set1_ps((float)av_q2d(s->coeffs->cr))), luma4);
++        luma4 = _mm_add_ps(_mm_mul_ps(gx4, _mm_set1_ps((float)av_q2d(s->coeffs->cg))), luma4);
++        luma4 = _mm_add_ps(_mm_mul_ps(bx4, _mm_set1_ps((float)av_q2d(s->coeffs->cb))), luma4);
++        overbright4 = _mm_div_ps(_mm_max_ps(_mm_sub_ps(luma4, desat4), eps_x4), _mm_max_ps(luma4, eps_x4));
++        rx4 = _mm_sub_ps(rx4, _mm_mul_ps(rx4, overbright4));
++        rx4 = _mm_add_ps(rx4, _mm_mul_ps(luma4, overbright4));
++        gx4 = _mm_sub_ps(gx4, _mm_mul_ps(gx4, overbright4));
++        gx4 = _mm_add_ps(gx4, _mm_mul_ps(luma4, overbright4));
++        bx4 = _mm_sub_ps(bx4, _mm_mul_ps(bx4, overbright4));
++        bx4 = _mm_add_ps(bx4, _mm_mul_ps(luma4, overbright4));
++    }
++
++    /* pick the brightest component, reducing the value range as necessary
++     * to keep the entire signal in range and preventing discoloration due to
++     * out-of-bounds clipping */
++    sig4 = _mm_max_ps(_mm_max_ps(rx4, _mm_max_ps(gx4, bx4)), eps_x4);
++    sig_orig4 = sig4;
++
++    switch(s->tonemap) {
++        default:
++        case TONEMAP_NONE:
++            // do nothing
++            break;
++        case TONEMAP_LINEAR:
++            // sig = sig * s->param / peak;
++            sig4 = _mm_div_ps(_mm_mul_ps(sig4, param_x4), peak_x4);
++            break;
++        case TONEMAP_REINHARD:
++            // sig = sig / (sig + s->param) * (peak + s->param) / peak;
++            sig4 = _mm_div_ps(_mm_mul_ps(_mm_div_ps(sig4, _mm_add_ps(sig4, param_x4)), _mm_add_ps(peak_x4, param_x4)), peak_x4);
++            break;
++    }
++
++    ss = _mm_div_ps(sig4, sig_orig4);
++    rx4 = _mm_mul_ps(rx4, ss);
++    gx4 = _mm_mul_ps(gx4, ss);
++    bx4 = _mm_mul_ps(bx4, ss);
++
++    /* apply the computed scale factor to the color,
++     * linearly to prevent discoloration */
++    _mm_store_ps((float *)(out->data[map[0]] + x * desc->comp[map[0]].step + y * out->linesize[map[0]]), rx4);
++    _mm_store_ps((float *)(out->data[map[1]] + x * desc->comp[map[1]].step + y * out->linesize[map[1]]), gx4);
++    _mm_store_ps((float *)(out->data[map[2]] + x * desc->comp[map[2]].step + y * out->linesize[map[2]]), bx4);
++}
++#endif
++
++#if ARCH_AARCH64 || ARCH_ARM
++static void tonemap_neon(TonemapContext *s, AVFrame *out, const AVFrame *in,
++                    const AVPixFmtDescriptor *desc, int x, int y, double peak)
++{
++    int map[3] = { desc->comp[0].plane, desc->comp[1].plane, desc->comp[2].plane };
++
++    float32x4_t sig4, sig_orig4, rx4, gx4, bx4, ss;
++    float32x4_t param_x4 = vdupq_n_f32((float)s->param);
++    float32x4_t eps_x4 = vdupq_n_f32((float)1e-6);
++
++    /* load values */
++    rx4 = vld1q_f32((const float *)(in->data[map[0]] + x * desc->comp[map[0]].step + y * in->linesize[map[0]]));
++    gx4 = vld1q_f32((const float *)(in->data[map[1]] + x * desc->comp[map[1]].step + y * in->linesize[map[1]]));
++    bx4 = vld1q_f32((const float *)(in->data[map[2]] + x * desc->comp[map[2]].step + y * in->linesize[map[2]]));
++
++    /* desaturate to prevent unnatural colors */
++    if (s->desat > 0) {
++        float32x4_t desat4 = vdupq_n_f32((float)s->desat);
++        float32x4_t luma4 = vdupq_n_f32(0);
++        float32x4_t overbright4;
++        luma4 = vmlaq_n_f32(luma4, rx4, (float)av_q2d(s->coeffs->cr));
++        luma4 = vmlaq_n_f32(luma4, gx4, (float)av_q2d(s->coeffs->cg));
++        luma4 = vmlaq_n_f32(luma4, bx4, (float)av_q2d(s->coeffs->cb));
++        overbright4 = vdivq_f32(vmaxq_f32(vsubq_f32(luma4, desat4), eps_x4), vmaxq_f32(luma4, eps_x4));
++        rx4 = vmlsq_f32(rx4, rx4, overbright4);
++        rx4 = vmlaq_f32(rx4, luma4, overbright4);
++        gx4 = vmlsq_f32(gx4, gx4, overbright4);
++        gx4 = vmlaq_f32(gx4, luma4, overbright4);
++        bx4 = vmlsq_f32(bx4, bx4, overbright4);
++        bx4 = vmlaq_f32(bx4, luma4, overbright4);
++    }
++
++    /* pick the brightest component, reducing the value range as necessary
++     * to keep the entire signal in range and preventing discoloration due to
++     * out-of-bounds clipping */
++    sig4 = vmaxq_f32(vmaxq_f32(rx4, vmaxq_f32(gx4, bx4)), eps_x4);
++    sig_orig4 = sig4;
++
++    switch(s->tonemap) {
++    default:
++    case TONEMAP_NONE:
++        // do nothing
++        break;
++    case TONEMAP_LINEAR:
++        // sig = sig * s->param / peak;
++        sig4 = vmulq_n_f32(vmulq_n_f32(sig4, (float)s->param), (float)(1.0f/peak));
++        break;
++    case TONEMAP_REINHARD:
++        // sig = sig / (sig + s->param) * (peak + s->param) / peak;
++        sig4 = vmulq_n_f32(vmulq_n_f32(vdivq_f32(sig4, vaddq_f32(sig4, param_x4)), (float)(peak + s->param)), (float)(1.0f/peak));
++        break;
++    }
++
++    ss = vdivq_f32(sig4, sig_orig4);
++    rx4 = vmulq_f32(rx4, ss);
++    gx4 = vmulq_f32(gx4, ss);
++    bx4 = vmulq_f32(bx4, ss);
++
++    /* apply the computed scale factor to the color,
++     * linearly to prevent discoloration */
++    vst1q_f32((float *)(out->data[map[0]] + x * desc->comp[map[0]].step + y * out->linesize[map[0]]), rx4);
++    vst1q_f32((float *)(out->data[map[1]] + x * desc->comp[map[1]].step + y * out->linesize[map[1]]), gx4);
++    vst1q_f32((float *)(out->data[map[2]] + x * desc->comp[map[2]].step + y * out->linesize[map[2]]), bx4);
++}
++#endif
++
+ typedef struct ThreadData {
+     AVFrame *in, *out;
+     const AVPixFmtDescriptor *desc;
+@@ -189,9 +310,21 @@ static int tonemap_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
+     const int slice_end = (in->height * (jobnr+1)) / nb_jobs;
+     double peak = td->peak;
+ 
+-    for (int y = slice_start; y < slice_end; y++)
+-        for (int x = 0; x < out->width; x++)
+-            tonemap(s, out, in, desc, x, y, peak);
++    if (s->tonemap_simd) {
++        for (int y = slice_start; y < slice_end; y++)
++            for (int x = 0; x < out->width >> 2; x++)
++                s->tonemap_simd(s, out, in, desc, x << 2, y, peak);
++
++        if (out->width & 3) {
++            for (int y = slice_start; y < slice_end; y++)
++                for (int x = (out->width & (int)0xfffffffd); x < out->width; x++)
++                    tonemap(s, out, in, desc, x, y, peak);
++        }
++    } else {
++        for (int y = slice_start; y < slice_end; y++)
++            for (int x = 0; x < out->width; x++)
++                tonemap(s, out, in, desc, x, y, peak);
++    }
+ 
+     return 0;
+ }
+@@ -280,6 +413,50 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
+     return ff_filter_frame(outlink, out);
+ }
+ 
++static av_cold int init(AVFilterContext *ctx)
++{
++    TonemapContext *s = ctx->priv;
++    int cpu_flags = av_get_cpu_flags();
++    int useSimdTonemap = 0;
++
++    switch(s->tonemap) {
++        case TONEMAP_NONE:
++        case TONEMAP_LINEAR:
++            useSimdTonemap = 1;
++            break;
++        case TONEMAP_GAMMA:
++            if (isnan(s->param))
++                s->param = 1.8f;
++            break;
++        case TONEMAP_REINHARD:
++            if (!isnan(s->param))
++                s->param = (1.0f - s->param) / s->param;
++            useSimdTonemap = 1;
++            break;
++        case TONEMAP_MOBIUS:
++            if (isnan(s->param))
++                s->param = 0.3f;
++            break;
++    }
++
++    if (useSimdTonemap) {
++#if ARCH_AARCH64 || ARCH_ARM
++        if (have_neon(cpu_flags)) {
++            s->tonemap_simd = tonemap_neon;
++        }
++#elif ARCH_X86
++        if (X86_SSE3(cpu_flags)) {
++        s->tonemap_simd = tonemap_sse;
++    }
++#endif
++    }
++
++    if (isnan(s->param))
++        s->param = 1.0f;
++
++    return 0;
++}
++
+ #define OFFSET(x) offsetof(TonemapContext, x)
+ #define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM
+ static const AVOption tonemap_options[] = {
