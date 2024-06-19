@@ -2,7 +2,7 @@ diff --git a/libavfilter/vf_tonemap.c b/libavfilter/vf_tonemap.c
 index d1087e6bd9..e79cf9bc09 100644
 --- a/libavfilter/vf_tonemap.c
 +++ b/libavfilter/vf_tonemap.c
-@@ -33,6 +33,17 @@
+@@ -33,6 +33,14 @@
  #include "libavutil/intreadwrite.h"
  #include "libavutil/opt.h"
  #include "libavutil/pixdesc.h"
@@ -10,24 +10,21 @@ index d1087e6bd9..e79cf9bc09 100644
 +#if   ARCH_AARCH64
 +#   include <arm_neon.h>
 +#   include "libavutil/aarch64/cpu.h"
-+#elif ARCH_ARM
-+#   include <arm_neon.h>
-+#   include "libavutil/arm/cpu.h"
 +#elif ARCH_X86
 +#   include <immintrin.h>
 +#   include "libavutil/x86/cpu.h"
 +#endif
- 
+
  #include "avfilter.h"
  #include "colorspace.h"
 @@ -60,33 +71,10 @@ typedef struct TonemapContext {
      double peak;
- 
+
      const AVLumaCoefficients *coeffs;
 +    void (*tonemap_simd)(struct TonemapContext *s, AVFrame *out, const AVFrame *in,
 +                        const AVPixFmtDescriptor *desc, int x, int y, double peak);
  } TonemapContext;
- 
+
 -static av_cold int init(AVFilterContext *ctx)
 -{
 -    TonemapContext *s = ctx->priv;
@@ -59,7 +56,7 @@ index d1087e6bd9..e79cf9bc09 100644
 @@ -172,6 +160,139 @@ static void tonemap(TonemapContext *s, AVFrame *out, const AVFrame *in,
      *b_out *= sig / sig_orig;
  }
- 
+
 +#if ARCH_X86
 +static void tonemap_sse(TonemapContext *s, AVFrame *out, const AVFrame *in,
 +                        const AVPixFmtDescriptor *desc, int x, int y, double peak)
@@ -127,7 +124,7 @@ index d1087e6bd9..e79cf9bc09 100644
 +}
 +#endif
 +
-+#if ARCH_AARCH64 || ARCH_ARM
++#if ARCH_AARCH64
 +static void tonemap_neon(TonemapContext *s, AVFrame *out, const AVFrame *in,
 +                    const AVPixFmtDescriptor *desc, int x, int y, double peak)
 +{
@@ -199,7 +196,7 @@ index d1087e6bd9..e79cf9bc09 100644
 @@ -189,9 +310,21 @@ static int tonemap_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
      const int slice_end = (in->height * (jobnr+1)) / nb_jobs;
      double peak = td->peak;
- 
+
 -    for (int y = slice_start; y < slice_end; y++)
 -        for (int x = 0; x < out->width; x++)
 -            tonemap(s, out, in, desc, x, y, peak);
@@ -218,13 +215,13 @@ index d1087e6bd9..e79cf9bc09 100644
 +            for (int x = 0; x < out->width; x++)
 +                tonemap(s, out, in, desc, x, y, peak);
 +    }
- 
+
      return 0;
  }
 @@ -280,6 +413,50 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
      return ff_filter_frame(outlink, out);
  }
- 
+
 +static av_cold int init(AVFilterContext *ctx)
 +{
 +    TonemapContext *s = ctx->priv;
@@ -252,7 +249,7 @@ index d1087e6bd9..e79cf9bc09 100644
 +    }
 +
 +    if (useSimdTonemap) {
-+#if ARCH_AARCH64 || ARCH_ARM
++#if ARCH_AARCH64
 +        if (have_neon(cpu_flags)) {
 +            s->tonemap_simd = tonemap_neon;
 +        }
