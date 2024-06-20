@@ -1,0 +1,27 @@
+From 2a8381af76eab5bec53b74ca72f7855576ba780d Mon Sep 17 00:00:00 2001
+From: Brett Jia <dev.bjia56@gmail.com>
+Date: Wed, 19 Jun 2024 21:52:59 -0400
+Subject: [PATCH] switch meson to build static lib
+
+---
+ meson.build | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index be2c2e9bb249..6f774754d628 100644
+--- a/meson.build
++++ b/meson.build
+@@ -30,12 +30,11 @@ librga_srcs = [
+ 
+ incdir = include_directories('include', 'im2d_api', 'core/hardware', 'core/utils', 'core/3rdparty/libdrm/include/drm')
+ 
+-librga = shared_library(
++librga = static_library(
+     'rga',
+     librga_srcs,
+     dependencies : [libthreads_dep],
+ 	include_directories : incdir,
+-    version : meson.project_version(),
+     cpp_args : ['-w'],
+     install : true,
+ )

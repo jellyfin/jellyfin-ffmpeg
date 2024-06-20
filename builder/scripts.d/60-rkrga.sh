@@ -1,8 +1,7 @@
 #!/bin/bash
 
-SCRIPT_REPO="https://github.com/bjia56/rk-mirrors.git"
-SCRIPT_COMMIT="jellyfin-rga-1"
-#"a9fc19e6b906d7cecd6bcefbd45e5e151831d33f"
+SCRIPT_REPO="https://github.com/nyanmisaka/rk-mirrors.git"
+SCRIPT_COMMIT="a9fc19e6b906d7cecd6bcefbd45e5e151831d33f"
 
 ffbuild_enabled() {
     [[ $TARGET == linux* ]] && [[ $TARGET == *arm64 ]] && return 0
@@ -10,13 +9,19 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerstage() {
-    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/rkmpp,dst=/patches run_stage /stage.sh"
+    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/rkrga,dst=/patches run_stage /stage.sh"
 }
 
 ffbuild_dockerbuild() {
     git clone "$SCRIPT_REPO" rkrga
     cd rkrga
     git checkout "$SCRIPT_COMMIT"
+
+    for patch in /patches/*.patch; do
+        echo "Applying $patch"
+        patch -p1 < "$patch"
+    done
+
     cd ..
 
     meson setup rkrga rkrga_build \
