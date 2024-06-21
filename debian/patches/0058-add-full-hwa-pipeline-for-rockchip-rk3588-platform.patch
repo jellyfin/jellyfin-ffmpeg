@@ -140,7 +140,7 @@ Index: jellyfin-ffmpeg/configure
                                 { enabled libdrm ||
                                   die "ERROR: rkmpp requires --enable-libdrm"; }
                               }
-+enabled rkrga             && require_pkg_config rkrga librga rga/RgaApi.h c_RkRgaBlit&&
++enabled rkrga             && require_pkg_config rkrga librga rga/RgaApi.h c_RkRgaBlit &&
 +                             { require_pkg_config rkrga librga rga/im2d.h querystring &&
 +                               { enabled rkmpp ||
 +                                 die "ERROR: rkrga requires --enable-rkmpp"; }
