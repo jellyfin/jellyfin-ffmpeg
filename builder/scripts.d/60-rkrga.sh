@@ -8,33 +8,36 @@ ffbuild_enabled() {
     return -1
 }
 
-ffbuild_dockerstage() {
-    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/rkrga,dst=/patches run_stage /stage.sh"
-}
-
 ffbuild_dockerbuild() {
-    git clone "$SCRIPT_REPO" rkrga
+    git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" rkrga
     cd rkrga
-    git checkout "$SCRIPT_COMMIT"
 
-    for patch in /patches/*.patch; do
-        echo "Applying $patch"
-        patch -p1 < "$patch"
-    done
+    sed -i 's/shared_library/library/g' meson.build
 
-    cd ..
+    mkdir rkrga_build && cd rkrga_build
 
-    meson setup rkrga rkrga_build \
-        --cross-file=/cross.meson \
-        --prefix=${FFBUILD_PREFIX} \
-        --buildtype=release \
-        --default-library=static \
-        -Dcpp_args=-fpermissive \
-        -Dlibdrm=false \
+    local myconf=(
+        --prefix="$FFBUILD_PREFIX"
+        --buildtype=release
+        --default-library=static
+        -Dcpp_args=-fpermissive
+        -Dlibdrm=false
         -Dlibrga_demo=false
+    )
 
-    meson configure rkrga_build
-    ninja -C rkrga_build install
+    if [[ $TARGET == linux* ]]; then
+        myconf+=(
+            --cross-file=/cross.meson
+        )
+    else
+        echo "Unknown target"
+        return -1
+    fi
+
+    meson "${myconf[@]}" ..
+
+    ninja -j$(nproc)
+    ninja install
 
     echo "Libs.private: -lstdc++" >> "$FFBUILD_PREFIX"/lib/pkgconfig/librga.pc
 }
