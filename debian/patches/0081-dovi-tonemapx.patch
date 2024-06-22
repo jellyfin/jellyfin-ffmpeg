@@ -1,5 +1,3 @@
-Index: FFmpeg/libavfilter/vf_tonemapx.c
-===================================================================
 --- FFmpeg.orig/libavfilter/vf_tonemapx.c
 +++ FFmpeg/libavfilter/vf_tonemapx.c
 @@ -89,6 +89,7 @@ typedef struct TonemapxContext {
@@ -7,13 +5,13 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
      uint16_t *delin_lut;
      int in_yuv_off, out_yuv_off;
 +    struct DoviMetadata *dovi;
- 
+
      DECLARE_ALIGNED(16, int16_t, yuv2rgb_coeffs)[3][3][8];
      DECLARE_ALIGNED(16, int16_t, rgb2yuv_coeffs)[3][3][8];
 @@ -113,6 +114,13 @@ static const enum AVPixelFormat out_pix_
      AV_PIX_FMT_P016,
  };
- 
+
 +static const double dovi_lms2rgb_matrix[3][3] =
 +    {
 +        { 3.06441879, -2.16597676,  0.10155818},
@@ -27,7 +25,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 @@ -383,6 +391,205 @@ static int compute_rgb_coeffs(TonemapxCo
      return 0;
  }
- 
+
 +inline static float dot(const float* x, const float* y, int len)
 +{
 +    int i;
@@ -243,7 +241,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 @@ -503,20 +711,58 @@ static void tonemap_frame_p016_p010_2_nv
              int u = (srcuv[x]     >> in_sh2) - in_uv_offset;
              int v = (srcuv[x + 1] >> in_sh2) - in_uv_offset;
- 
+
 -            r[0] = av_clip_int16((y00 * cy + crv * v + in_rnd) >> in_sh);
 -            r[1] = av_clip_int16((y01 * cy + crv * v + in_rnd) >> in_sh);
 -            r[2] = av_clip_int16((y10 * cy + crv * v + in_rnd) >> in_sh);
@@ -310,7 +308,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +//            b[1] = av_clip_int16((y01 * cy + cbu * u + in_rnd) >> in_sh);
 +//            b[2] = av_clip_int16((y10 * cy + cbu * u + in_rnd) >> in_sh);
 +//            b[3] = av_clip_int16((y11 * cy + cbu * u + in_rnd) >> in_sh);
- 
+
              tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
                            params->lin_lut, params->tonemap_lut, params->delin_lut,
 @@ -559,7 +805,8 @@ static void tonemap_frame_p016_p010_2_p0
@@ -326,7 +324,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 @@ -600,20 +847,56 @@ static void tonemap_frame_p016_p010_2_p0
              int u = (srcuv[x]     >> in_sh2) - in_uv_offset;
              int v = (srcuv[x + 1] >> in_sh2) - in_uv_offset;
- 
+
 -            r[0] = av_clip_int16((y00 * cy + crv * v + in_rnd) >> in_sh);
 -            r[1] = av_clip_int16((y01 * cy + crv * v + in_rnd) >> in_sh);
 -            r[2] = av_clip_int16((y10 * cy + crv * v + in_rnd) >> in_sh);
@@ -391,7 +389,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +            b[1] = av_clip_int16(c2[2] * 28672);
 +            b[2] = av_clip_int16(c3[2] * 28672);
 +            b[3] = av_clip_int16(c4[2] * 28672);
- 
+
              tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
                            params->lin_lut, params->tonemap_lut, params->delin_lut,
 @@ -685,7 +968,7 @@ static int filter_slice(AVFilterContext
@@ -410,20 +408,20 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 -                                            &params);
 +                                            &params, s);
      }
- 
+
      return 0;
 @@ -712,6 +995,7 @@ static int filter_frame(AVFilterLink *li
      double peak = s->peak;
      const AVLumaCoefficients *coeffs;
      ThreadData td;
 +    AVFrameSideData *dovi_sd = av_frame_get_side_data(in, AV_FRAME_DATA_DOVI_METADATA);
- 
+
      desc = av_pix_fmt_desc_get(link->format);
      odesc = av_pix_fmt_desc_get(outlink->format);
 @@ -781,6 +1065,23 @@ static int filter_frame(AVFilterLink *li
              goto fail;
      }
- 
+
 +    if (dovi_sd) {
 +        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
 +        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
