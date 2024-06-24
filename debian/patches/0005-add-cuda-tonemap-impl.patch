@@ -98,7 +98,7 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.c
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3])
  {
-@@ -191,3 +203,155 @@ void ff_update_hdr_metadata(AVFrame *in,
+@@ -191,3 +202,155 @@ void ff_update_hdr_metadata(AVFrame *in,
              metadata->max_luminance = av_d2q(peak * REFERENCE_WHITE, 10000);
      }
  }
@@ -120,8 +120,7 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.c
 +    peak = powf(peak, 1.0f / ST2084_M2);
 +    peak = fmaxf(peak - ST2084_C1, 0.0f) / (ST2084_C2 - ST2084_C3 * peak);
 +    peak = powf(peak, 1.0f / ST2084_M1);
-+    peak *= 10000.0f;
-+    peak *= REFERENCE_WHITE_ALT;
++    peak *= 100.0f;
 +
 +    return peak;
 +}
