@@ -98,7 +98,7 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.c
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3])
  {
-@@ -191,3 +202,155 @@ void ff_update_hdr_metadata(AVFrame *in,
+@@ -191,3 +203,154 @@ void ff_update_hdr_metadata(AVFrame *in,
              metadata->max_luminance = av_d2q(peak * REFERENCE_WHITE, 10000);
      }
  }
