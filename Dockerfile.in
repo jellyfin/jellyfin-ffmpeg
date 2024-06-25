@@ -37,7 +37,7 @@ RUN apt-get update \
  && apt-get autoremove -y
 
 # Install newer tools from pip3
-RUN pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") --upgrade pip \
+RUN pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") --ignore-installed pip \
  && pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") meson cmake mako jinja2
 
 # Avoids timeouts when using git and disable the detachedHead advice
