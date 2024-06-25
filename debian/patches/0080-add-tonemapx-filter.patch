@@ -115,7 +115,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,2547 @@
+@@ -0,0 +1,2579 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -170,6 +170,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +#define REFERENCE_WHITE 203.0f
 +#define FLOAT_EPS 1.175494351e-38f
++
++#if defined(__GNUC__) || defined(__clang__)
++#    if (__GNUC__ >= 11) || (__clang_major__ >= 12)
++#        define X86_64_V2 __attribute__((target("arch=x86-64-v2")))
++#        define X86_64_V3 __attribute__((target("arch=x86-64-v3")))
++#    else
++#        define X86_64_V2 __attribute__((target("arch=nehalem")))
++#        define X86_64_V3 __attribute__((target("arch=haswell")))
++#    endif // (__GNUC__ >= 11) || (__clang_major__ >= 12)
++#endif // ifdef __GNUC__
 +
 +enum TonemapAlgorithm {
 +    TONEMAP_NONE,
@@ -575,8 +585,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +#if ARCH_X86
-+__attribute__((target("arch=x86-64-v2")))
-+static inline void tonemap_int32x4_sse(__m128i r_in, __m128i g_in, __m128i b_in,
++X86_64_V2 static inline void tonemap_int32x4_sse(__m128i r_in, __m128i g_in, __m128i b_in,
 +                                       int16_t *r_out, int16_t *g_out, int16_t *b_out,
 +                                       float *lin_lut, float *tonemap_lut, uint16_t *delin_lut,
 +                                       const AVLumaCoefficients *coeffs,
@@ -607,12 +616,18 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    b = _mm_add_epi32(b_in, input_lut_offset);
 +    b = _mm_min_epi32(b, upper_bound);
 +
-+    for (i = 0; i < 4; i++) {
-+        mapval4[i] = tonemap_lut[_mm_extract_epi32(sig4, i)];
-+        r_lin4[i] = lin_lut[_mm_extract_epi32(r, i)];
-+        g_lin4[i] = lin_lut[_mm_extract_epi32(g, i)];
-+        b_lin4[i] = lin_lut[_mm_extract_epi32(b, i)];
-+    }
++    // Cannot use loop here as the lane has to be compile-time constant
++#define LOAD_LUT(i) mapval4[i] = tonemap_lut[_mm_extract_epi32(sig4, i)]; \
++r_lin4[i] = lin_lut[_mm_extract_epi32(r, i)];                             \
++g_lin4[i] = lin_lut[_mm_extract_epi32(g, i)];                             \
++b_lin4[i] = lin_lut[_mm_extract_epi32(b, i)];
++
++    LOAD_LUT(0)
++    LOAD_LUT(1)
++    LOAD_LUT(2)
++    LOAD_LUT(3)
++
++#undef LOAD_LUT
 +
 +    mapvalx4 = _mm_loadu_ps(mapval4);
 +    r_linx4 = _mm_loadu_ps(r_lin4);
@@ -676,15 +691,19 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    bx4 = _mm_min_epi32(bx4, upper_bound);
 +    bx4 = _mm_max_epi32(bx4, zerox4);
 +
-+    for (i = 0; i < 4; i++) {
-+        r_out[i] = delin_lut[_mm_extract_epi32(rx4, i)];
-+        g_out[i] = delin_lut[_mm_extract_epi32(gx4, i)];
-+        b_out[i] = delin_lut[_mm_extract_epi32(bx4, i)];
-+    }
++#define SAVE_COLOR(i) r_out[i] = delin_lut[_mm_extract_epi32(rx4, i)]; \
++g_out[i] = delin_lut[_mm_extract_epi32(gx4, i)];                       \
++b_out[i] = delin_lut[_mm_extract_epi32(bx4, i)];
++
++    SAVE_COLOR(0)
++    SAVE_COLOR(1)
++    SAVE_COLOR(2)
++    SAVE_COLOR(3)
++
++#undef SAVE_COLOR
 +}
 +
-+__attribute__((target("arch=x86-64-v3")))
-+static inline void tonemap_int32x8_avx(__m256i r_in, __m256i g_in, __m256i b_in,
++X86_64_V3 static inline void tonemap_int32x8_avx(__m256i r_in, __m256i g_in, __m256i b_in,
 +                                       int16_t *r_out, int16_t *g_out, int16_t *b_out,
 +                                       float *lin_lut, float *tonemap_lut, uint16_t *delin_lut,
 +                                       const AVLumaCoefficients *coeffs,
@@ -715,12 +734,21 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    b = _mm256_add_epi32(b_in, input_lut_offset);
 +    b = _mm256_min_epi32(b, upper_bound);
 +
-+    for (i = 0; i < 8; i++) {
-+        mapval8[i] = tonemap_lut[_mm256_extract_epi32(sig8, i)];
-+        r_lin8[i] = lin_lut[_mm256_extract_epi32(r, i)];
-+        g_lin8[i] = lin_lut[_mm256_extract_epi32(g, i)];
-+        b_lin8[i] = lin_lut[_mm256_extract_epi32(b, i)];
-+    }
++#define LOAD_LUT(i) mapval8[i] = tonemap_lut[_mm256_extract_epi32(sig8, i)]; \
++r_lin8[i] = lin_lut[_mm256_extract_epi32(r, i)];                             \
++g_lin8[i] = lin_lut[_mm256_extract_epi32(g, i)];                             \
++b_lin8[i] = lin_lut[_mm256_extract_epi32(b, i)];
++
++    LOAD_LUT(0)
++    LOAD_LUT(1)
++    LOAD_LUT(2)
++    LOAD_LUT(3)
++    LOAD_LUT(4)
++    LOAD_LUT(5)
++    LOAD_LUT(6)
++    LOAD_LUT(7)
++
++#undef LOAD_LUT
 +
 +    mapvalx8 = _mm256_loadu_ps(mapval8);
 +    r_linx8 = _mm256_loadu_ps(r_lin8);
@@ -779,11 +807,20 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    bx8 = _mm256_min_epi32(bx8, upper_bound);
 +    bx8 = _mm256_max_epi32(bx8, zerox8);
 +
-+    for (i = 0; i < 8; i++) {
-+        r_out[i] = delin_lut[_mm256_extract_epi32(rx8, i)];
-+        g_out[i] = delin_lut[_mm256_extract_epi32(gx8, i)];
-+        b_out[i] = delin_lut[_mm256_extract_epi32(bx8, i)];
-+    }
++#define SAVE_COLOR(i) r_out[i] = delin_lut[_mm256_extract_epi32(rx8, i)]; \
++g_out[i] = delin_lut[_mm256_extract_epi32(gx8, i)];                       \
++b_out[i] = delin_lut[_mm256_extract_epi32(bx8, i)];
++
++    SAVE_COLOR(0)
++    SAVE_COLOR(1)
++    SAVE_COLOR(2)
++    SAVE_COLOR(3)
++    SAVE_COLOR(4)
++    SAVE_COLOR(5)
++    SAVE_COLOR(6)
++    SAVE_COLOR(7)
++
++#undef SAVE_COLOR
 +}
 +#endif
 +
@@ -832,18 +869,19 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +    // Cannot use loop here as the lane has to be compile-time constant
 +#define LOAD_LUT(i) mapval4a[i] = tonemap_lut[vget_lane_s16(vget_low_s16(sig8), i)]; \
-+    mapval4b[i] = tonemap_lut[vget_lane_s16(vget_high_s16(sig8), i)]; \
-+    r_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(r), i)]; \
-+    r_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(r), i)]; \
-+    g_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(g), i)]; \
-+    g_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(g), i)]; \
-+    b_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(b), i)]; \
-+    b_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(b), i)];
++mapval4b[i] = tonemap_lut[vget_lane_s16(vget_high_s16(sig8), i)];                    \
++r_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(r), i)];                             \
++r_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(r), i)];                            \
++g_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(g), i)];                             \
++g_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(g), i)];                            \
++b_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(b), i)];                             \
++b_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(b), i)];
 +
 +    LOAD_LUT(0)
 +    LOAD_LUT(1)
 +    LOAD_LUT(2)
 +    LOAD_LUT(3)
++
 +#undef  LOAD_LUT
 +
 +    mapvalx4a = vld1q_f32(mapval4a);
@@ -1070,8 +1108,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +#if ARCH_X86
-+__attribute__((target("arch=x86-64-v2")))
-+static inline __m128i av_clip_int16_sse(__m128i a)
++X86_64_V2 static inline __m128i av_clip_int16_sse(__m128i a)
 +{
 +    __m128i add_result = _mm_add_epi32(a, _mm_set1_epi32(0x8000U));
 +    __m128i mask = _mm_set1_epi32(~0xFFFF);
@@ -1084,8 +1121,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    return _mm_or_si128(_mm_and_si128(cmp, a), _mm_andnot_si128(cmp, xor_result));
 +}
 +
-+__attribute__((target("arch=x86-64-v3")))
-+static inline __m256i av_clip_int16_avx(__m256i a)
++X86_64_V3 static inline __m256i av_clip_int16_avx(__m256i a)
 +{
 +    __m256i add_result = _mm256_add_epi32(a, _mm256_set1_epi32(0x8000U));
 +    __m256i mask = _mm256_set1_epi32(~0xFFFF);
@@ -1098,8 +1134,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    return _mm256_or_si256(_mm256_and_si256(cmp, a), _mm256_andnot_si256(cmp, xor_result));
 +}
 +
-+__attribute__((target("arch=x86-64-v2")))
-+static void tonemap_frame_p016_p010_2_nv12_sse(uint8_t *dsty,
++X86_64_V2 static void tonemap_frame_p016_p010_2_nv12_sse(uint8_t *dsty,
 +                                               uint8_t *dstuv,
 +                                               const uint16_t *srcy,
 +                                               const uint16_t *srcuv,
@@ -1319,8 +1354,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    }
 +}
 +
-+__attribute__((target("arch=x86-64-v3")))
-+static void tonemap_frame_p016_p010_2_nv12_avx(uint8_t *dsty,
++X86_64_V3 static void tonemap_frame_p016_p010_2_nv12_avx(uint8_t *dsty,
 +                                               uint8_t *dstuv,
 +                                               const uint16_t *srcy,
 +                                               const uint16_t *srcuv,
@@ -1793,8 +1827,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +#if ARCH_X86
-+__attribute__((target("arch=x86-64-v2")))
-+static void tonemap_frame_p016_p010_2_p016_p010_sse(uint16_t *dsty,
++X86_64_V2 static void tonemap_frame_p016_p010_2_p016_p010_sse(uint16_t *dsty,
 +                                                    uint16_t *dstuv,
 +                                                    const uint16_t *srcy,
 +                                                    const uint16_t *srcuv,
@@ -2016,8 +2049,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    }
 +}
 +
-+__attribute__((target("arch=x86-64-v3")))
-+static void tonemap_frame_p016_p010_2_p016_p010_avx(uint16_t *dsty,
++X86_64_V3 static void tonemap_frame_p016_p010_2_p016_p010_avx(uint16_t *dsty,
 +                                                    uint16_t *dstuv,
 +                                                    const uint16_t *srcy,
 +                                                    const uint16_t *srcuv,
