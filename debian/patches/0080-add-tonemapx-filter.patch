@@ -176,10 +176,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#        define X86_64_V2 __attribute__((target("arch=x86-64-v2")))
 +#        define X86_64_V3 __attribute__((target("arch=x86-64-v3")))
 +#    else
-+#        define X86_64_V2 __attribute__((target("arch=nehalem")))
-+#        define X86_64_V3 __attribute__((target("arch=haswell")))
++#        define X86_64_V2 __attribute__((target("sse4.2")))
++#        define X86_64_V3 __attribute__((target("avx2,fma")))
 +#    endif // (__GNUC__ >= 11) || (__clang_major__ >= 12)
-+#endif // ifdef __GNUC__
++#endif // defined(__GNUC__) || defined(__clang__)
 +
 +enum TonemapAlgorithm {
 +    TONEMAP_NONE,
@@ -2262,10 +2262,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        rsrcy += offset;
 +        rsrcuv += offset;
 +        tonemap_frame_p016_p010_2_p016_p010(rdsty, rdstuv,
-+                                       rsrcy, rsrcuv,
-+                                       dstlinesize, srclinesize,
-+                                       dstdepth, srcdepth,
-+                                       remainw, rheight, params);
++                                            rsrcy, rsrcuv,
++                                            dstlinesize, srclinesize,
++                                            dstdepth, srcdepth,
++                                            remainw, rheight, params);
 +    }
 +}
 +#endif
