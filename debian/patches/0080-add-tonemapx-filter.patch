@@ -34,7 +34,7 @@ Index: FFmpeg/libavfilter/colorspace.c
  #include "libavutil/frame.h"
  #include "libavutil/mastering_display_metadata.h"
  #include "libavutil/pixdesc.h"
-@@ -355,3 +356,51 @@ float inverse_eotf_arib_b67(float x) {
+@@ -354,3 +355,51 @@ float inverse_eotf_arib_b67(float x) {
  float inverse_eotf_bt1886(float x) {
      return x > 0.0f ? powf(x, 1.0f / 2.4f) : 0.0f;
  }
@@ -115,7 +115,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,2555 @@
+@@ -0,0 +1,2547 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -167,14 +167,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#include "formats.h"
 +#include "internal.h"
 +#include "video.h"
-+
-+//#if ARCH_AARCH64
-+//#define _mm_extract_epi32(a, b) 0
-+//#define _mm_shuffle_epi32(a, b) _mm_setzero_si128()
-+//#define __builtin_ia32_vec_ext_v8si(sig4, i) 0
-+//#define __builtin_ia32_extract128i256(a, b) _mm_setzero_si128()
-+//#define __builtin_ia32_pshufd256(a, b) _mm256_setzero_si256()
-+//#endif
 +
 +#define REFERENCE_WHITE 203.0f
 +#define FLOAT_EPS 1.175494351e-38f
@@ -804,7 +796,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +                                        double (*rgb2rgb)[3][3],
 +                                        int rgb2rgb_passthrough)
 +{
-+    uint16x8_t sig8;
++    int16x8_t sig8;
 +    float32x4_t mapvalx4a;
 +    float32x4_t mapvalx4b;
 +    float32x4_t r_linx4a;
@@ -839,14 +831,14 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    b = vminq_s16(b, input_upper_bound);
 +
 +    // Cannot use loop here as the lane has to be compile-time constant
-+#define LOAD_LUT(i) mapval4a[i] = tonemap_lut[vget_lane_u16(vget_low_u16(sig8), i)]; \
-+    mapval4b[i] = tonemap_lut[vget_lane_u16(vget_high_u16(sig8), i)]; \
-+    r_lin4a[i] = lin_lut[vget_lane_u16(vget_low_u16(r), i)]; \
-+    r_lin4b[i] = lin_lut[vget_lane_u16(vget_high_u16(r), i)]; \
-+    g_lin4a[i] = lin_lut[vget_lane_u16(vget_low_u16(g), i)]; \
-+    g_lin4b[i] = lin_lut[vget_lane_u16(vget_high_u16(g), i)]; \
-+    b_lin4a[i] = lin_lut[vget_lane_u16(vget_low_u16(b), i)]; \
-+    b_lin4b[i] = lin_lut[vget_lane_u16(vget_high_u16(b), i)];
++#define LOAD_LUT(i) mapval4a[i] = tonemap_lut[vget_lane_s16(vget_low_s16(sig8), i)]; \
++    mapval4b[i] = tonemap_lut[vget_lane_s16(vget_high_s16(sig8), i)]; \
++    r_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(r), i)]; \
++    r_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(r), i)]; \
++    g_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(g), i)]; \
++    g_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(g), i)]; \
++    b_lin4a[i] = lin_lut[vget_lane_s16(vget_low_s16(b), i)]; \
++    b_lin4b[i] = lin_lut[vget_lane_s16(vget_high_s16(b), i)];
 +
 +    LOAD_LUT(0)
 +    LOAD_LUT(1)
