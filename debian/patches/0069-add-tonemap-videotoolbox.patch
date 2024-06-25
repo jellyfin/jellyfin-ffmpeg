@@ -1,14 +1,10 @@
 Subject: [PATCH] avfilter: add vf_tonemap_videotoolbox
 ---
-Index: configure
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
+Index: FFmpeg/configure
 ===================================================================
-diff --git a/configure b/configure
---- a/configure	(revision 2e3649a10ff797e360eb9fd5d389dfa6611dea59)
-+++ b/configure	(revision bcb63879b775fef8085a5311f045dc1cc4960a98)
-@@ -3748,6 +3748,7 @@
+--- FFmpeg.orig/configure
++++ FFmpeg/configure
+@@ -3772,6 +3772,7 @@ tinterlace_pad_test_deps="tinterlace_fil
  tonemap_filter_deps="const_nan"
  tonemap_vaapi_filter_deps="vaapi VAProcFilterParameterBufferHDRToneMapping"
  tonemap_opencl_filter_deps="opencl const_nan"
@@ -16,15 +12,11 @@ diff --git a/configure b/configure
  transpose_opencl_filter_deps="opencl"
  transpose_vaapi_filter_deps="vaapi VAProcPipelineCaps_rotation_flags"
  transpose_vulkan_filter_deps="vulkan spirv_compiler"
-Index: libavfilter/Makefile
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
+Index: FFmpeg/libavfilter/Makefile
 ===================================================================
-diff --git a/libavfilter/Makefile b/libavfilter/Makefile
---- a/libavfilter/Makefile	(revision 2e3649a10ff797e360eb9fd5d389dfa6611dea59)
-+++ b/libavfilter/Makefile	(revision bcb63879b775fef8085a5311f045dc1cc4960a98)
-@@ -510,6 +510,9 @@
+--- FFmpeg.orig/libavfilter/Makefile
++++ FFmpeg/libavfilter/Makefile
+@@ -521,6 +521,9 @@ OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)
  OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)           += vf_tonemap_cuda.o cuda/tonemap.ptx.o \
                                                  cuda/host_util.o
  OBJS-$(CONFIG_TONEMAP_VAAPI_FILTER)          += vf_tonemap_vaapi.o vaapi_vpp.o
@@ -34,16 +26,11 @@ diff --git a/libavfilter/Makefile b/libavfilter/Makefile
  OBJS-$(CONFIG_TPAD_FILTER)                   += vf_tpad.o
  OBJS-$(CONFIG_TRANSPOSE_FILTER)              += vf_transpose.o
  OBJS-$(CONFIG_TRANSPOSE_CUDA_FILTER)         += vf_transpose_cuda.o vf_transpose_cuda.ptx.o \
-                                                 cuda/load_helper.o
-Index: libavfilter/allfilters.c
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
+Index: FFmpeg/libavfilter/allfilters.c
 ===================================================================
-diff --git a/libavfilter/allfilters.c b/libavfilter/allfilters.c
---- a/libavfilter/allfilters.c	(revision 2e3649a10ff797e360eb9fd5d389dfa6611dea59)
-+++ b/libavfilter/allfilters.c	(revision bcb63879b775fef8085a5311f045dc1cc4960a98)
-@@ -480,6 +480,7 @@
+--- FFmpeg.orig/libavfilter/allfilters.c
++++ FFmpeg/libavfilter/allfilters.c
+@@ -487,6 +487,7 @@ extern const AVFilter ff_vf_tonemap;
  extern const AVFilter ff_vf_tonemap_cuda;
  extern const AVFilter ff_vf_tonemap_opencl;
  extern const AVFilter ff_vf_tonemap_vaapi;
@@ -51,15 +38,10 @@ diff --git a/libavfilter/allfilters.c b/libavfilter/allfilters.c
  extern const AVFilter ff_vf_tpad;
  extern const AVFilter ff_vf_transpose;
  extern const AVFilter ff_vf_transpose_cuda;
-Index: libavfilter/metal/vf_tonemap_videotoolbox.metal
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
+Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 ===================================================================
-diff --git a/libavfilter/metal/vf_tonemap_videotoolbox.metal b/libavfilter/metal/vf_tonemap_videotoolbox.metal
-new file mode 100644
---- /dev/null	(revision bcb63879b775fef8085a5311f045dc1cc4960a98)
-+++ b/libavfilter/metal/vf_tonemap_videotoolbox.metal	(revision bcb63879b775fef8085a5311f045dc1cc4960a98)
+--- /dev/null
++++ FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 @@ -0,0 +1,688 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
@@ -749,16 +731,11 @@ new file mode 100644
 +        dst2.write(float4(chroma.y, chroma.z, 0.0f, 1.0f), uint2(xi, yi));
 +    }
 +}
-Index: libavfilter/vf_tonemap_videotoolbox.m
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
+Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 ===================================================================
-diff --git a/libavfilter/vf_tonemap_videotoolbox.m b/libavfilter/vf_tonemap_videotoolbox.m
-new file mode 100644
---- /dev/null	(revision bcb63879b775fef8085a5311f045dc1cc4960a98)
-+++ b/libavfilter/vf_tonemap_videotoolbox.m	(revision bcb63879b775fef8085a5311f045dc1cc4960a98)
-@@ -0,0 +1,1106 @@
+--- /dev/null
++++ FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
+@@ -0,0 +1,1134 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1777,6 +1754,34 @@ new file mode 100644
 +    if (ctx->trc_out != AVCOL_TRC_SMPTE2084) {
 +        av_frame_remove_side_data(output, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
 +        av_frame_remove_side_data(output, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++    } else {
++        CGColorSpaceRef colorspace = NULL;
++        CFStringRef colormatrix = kCVImageBufferYCbCrMatrix_ITU_R_2020;
++        CFStringRef colorpri = kCVImageBufferColorPrimaries_ITU_R_2020;
++        CFStringRef colortrc = kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ;
++        CFMutableDictionaryRef attachments = CFDictionaryCreateMutable(NULL, 4,
++                                                                       &kCFTypeDictionaryKeyCallBacks,
++                                                                       &kCFTypeDictionaryValueCallBacks);
++        if (!attachments) {
++            err = AVERROR(ENOMEM);
++            goto fail;
++        }
++        CFDictionarySetValue(attachments, kCVImageBufferYCbCrMatrixKey, colormatrix);
++        CFDictionarySetValue(attachments, kCVImageBufferColorPrimariesKey, colorpri);
++        CFDictionarySetValue(attachments, kCVImageBufferTransferFunctionKey, colortrc);
++        colorspace = CVImageBufferCreateColorSpaceFromAttachments(attachments);
++        if (colorspace) {
++            CFDictionarySetValue(attachments, kCVImageBufferCGColorSpaceKey, colorspace);
++            CFRelease(colorspace);
++        } else {
++            av_log(avctx, AV_LOG_WARNING, "Unable to set proper colorspace for the CVImageBuffer.\n");
++        }
++        CVBufferSetAttachments(
++            (CVPixelBufferRef)output->data[3],
++            attachments,
++            kCVAttachmentMode_ShouldPropagate);
++        CFRelease(attachments);
++        ff_update_hdr_metadata(output, 100.0f);
 +    }
 +
 +    av_frame_remove_side_data(output, AV_FRAME_DATA_DOVI_RPU_BUFFER);
