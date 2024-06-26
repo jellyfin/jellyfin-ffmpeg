@@ -115,7 +115,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,2579 @@
+@@ -0,0 +1,2585 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -180,6 +180,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#        define X86_64_V3 __attribute__((target("avx2,fma")))
 +#    endif // (__GNUC__ >= 11) || (__clang_major__ >= 12)
 +#endif // defined(__GNUC__) || defined(__clang__)
++
++#if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
++#define OS_WIN
++#endif
 +
 +enum TonemapAlgorithm {
 +    TONEMAP_NONE,
@@ -2594,10 +2598,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        s->tonemap_frame_p01x_2_nv12 = tonemap_frame_p016_p010_2_nv12_sse;
 +        s->tonemap_frame_p01x_2_p01x = tonemap_frame_p016_p010_2_p016_p010_sse;
 +    }
++#ifndef OS_WIN
 +    if (X86_AVX2(cpu_flags) && X86_FMA3(cpu_flags)) {
 +        s->tonemap_frame_p01x_2_nv12 = tonemap_frame_p016_p010_2_nv12_avx;
 +        s->tonemap_frame_p01x_2_p01x = tonemap_frame_p016_p010_2_p016_p010_avx;
 +    }
++#endif
 +#endif
 +
 +    if (!s->tonemap_frame_p01x_2_nv12) {
