@@ -251,12 +251,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    AVFrame *in, *out;
 +    const AVPixFmtDescriptor *desc, *odesc;
 +    double peak;
-+    void (*tonemap_fuc) (void *dsty, void *dstuv,
-+                         const uint16_t *srcy, const uint16_t *srcuv,
-+                         const int *dstlinesize, const int *srclinesize,
-+                         int dstdepth, int srcdepth,
-+                         int width, int height,
-+                         const struct TonemapIntParams *params);
++    void (*tonemap_func) (void *dsty, void *dstuv,
++                          const uint16_t *srcy, const uint16_t *srcuv,
++                          const int *dstlinesize, const int *srclinesize,
++                          int dstdepth, int srcdepth,
++                          int width, int height,
++                          const struct TonemapIntParams *params);
 +} ThreadData;
 +
 +static const enum AVPixelFormat in_pix_fmts[] = {
@@ -3027,14 +3027,14 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +    av_log(s, AV_LOG_DEBUG, "dst depth: %d, src depth: %d\n", odesc->comp[0].depth, desc->comp[0].depth);
 +
-+    td->tonemap_fuc(out->data[0] + out->linesize[0] * slice_start,
-+                    out->data[1] + out->linesize[1] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h),
-+                    (void*)(in->data[0] + in->linesize[0] * slice_start),
-+                    (void*)(in->data[1] + in->linesize[1] * AV_CEIL_RSHIFT(slice_start, odesc->log2_chroma_h)),
-+                    out->linesize, in->linesize,
-+                    odesc->comp[0].depth, desc->comp[0].depth,
-+                    out->width, slice_end - slice_start,
-+                    &params);
++    td->tonemap_func(out->data[0] + out->linesize[0] * slice_start,
++                     out->data[1] + out->linesize[1] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h),
++                     (void*)(in->data[0] + in->linesize[0] * slice_start),
++                     (void*)(in->data[1] + in->linesize[1] * AV_CEIL_RSHIFT(slice_start, odesc->log2_chroma_h)),
++                     out->linesize, in->linesize,
++                     odesc->comp[0].depth, desc->comp[0].depth,
++                     out->width, slice_end - slice_start,
++                     &params);
 +
 +    return 0;
 +}
@@ -3127,7 +3127,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    td.desc  = desc;
 +    td.odesc = odesc;
 +    td.peak  = peak;
-+    td.tonemap_fuc = odesc->comp[0].depth == 8 ? s->tonemap_frame_p01x_2_nv12 : s->tonemap_frame_p01x_2_p01x;
++    td.tonemap_func = odesc->comp[0].depth == 8 ? s->tonemap_frame_p01x_2_nv12 : s->tonemap_frame_p01x_2_p01x;
 +    ctx->internal->execute(ctx, filter_slice, &td, NULL,
 +                           FFMIN(outlink->h >> FFMAX(desc->log2_chroma_h, odesc->log2_chroma_h), ff_filter_get_nb_threads(ctx)));
 +
