@@ -873,17 +873,17 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    sig8 = vmaxq_s16(r, vmaxq_s16(g, b));
 +    sig8 = vaddq_s16(sig8, input_lut_offset);
 +    sig8 = vminq_s16(sig8, input_upper_bound);
-+    sig8 = vmaxq_s16(sig8, zerox4);
++    sig8 = vmaxq_s16(sig8, vreinterpretq_s16_s32(zerox4));
 +
 +    r = vaddq_s16(r, input_lut_offset);
 +    r = vminq_s16(r, input_upper_bound);
-+    r = vmaxq_s16(r, zerox4);
++    r = vmaxq_s16(r, vreinterpretq_s16_s32(zerox4));
 +    g = vaddq_s16(g, input_lut_offset);
 +    g = vminq_s16(g, input_upper_bound);
-+    g = vmaxq_s16(g, zerox4);
++    g = vmaxq_s16(g, vreinterpretq_s16_s32(zerox4));
 +    b = vaddq_s16(b, input_lut_offset);
 +    b = vminq_s16(b, input_upper_bound);
-+    b = vmaxq_s16(b, zerox4);
++    b = vmaxq_s16(b, vreinterpretq_s16_s32(zerox4));
 +
 +    // Cannot use loop here as the lane has to be compile-time constant
 +#define LOAD_LUT(i) mapval4a[i] = tonemap_lut[vget_lane_s16(vget_low_s16(sig8), i)]; \
