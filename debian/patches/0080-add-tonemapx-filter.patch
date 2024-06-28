@@ -2784,12 +2784,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    uint16x8_t r1x8, g1x8, b1x8;
 +
 +    int16x8_t r0ox8, g0ox8, b0ox8;
-+    int16x8_t y0ox8;
++    uint16x8_t y0ox8;
 +    int32x4_t r0oax4, r0obx4, g0oax4, g0obx4, b0oax4, b0obx4;
 +    int32x4_t y0oax4, y0obx4;
 +
 +    int16x8_t r1ox8, g1ox8, b1ox8;
-+    int16x8_t y1ox8;
++    uint16x8_t y1ox8;
 +    int32x4_t r1oax4, r1obx4, g1oax4, g1obx4, b1oax4, b1obx4;
 +    int32x4_t y1oax4, y1obx4;
 +    int32x4_t uvoax4, uvobx4;
@@ -2797,7 +2797,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    int32x4_t ravgx4, gavgx4, bavgx4, uox4, vox4;
 +    int32x4_t out_yuv_offx4 = vdupq_n_s32(params->out_yuv_off);
 +    int32x4_t out_rndx4 = vdupq_n_s32(out_rnd);
-+    uint16x8_t out_sh2x8 = vdupq_n_u16(out_sh2);
++    int16x8_t out_sh2x8 = vdupq_n_s16(out_sh2);
 +    int32x4_t out_uv_offsetx4 = vdupq_n_s32(out_uv_offset);
 +    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(2);
 +    for (; height > 1; height -= 2,
