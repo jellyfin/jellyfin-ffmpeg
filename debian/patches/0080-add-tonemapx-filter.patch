@@ -115,7 +115,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,3153 @@
+@@ -0,0 +1,3151 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -154,10 +154,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#if  ARCH_AARCH64
 +#   include <arm_neon.h>
 +#   include "libavutil/aarch64/cpu.h"
-+#define __builtin_ia32_extract128i256(a, b) _mm_setzero_si128()
-+#define __builtin_ia32_permdi256(a, b) _mm256_setzero_si256()
 +#endif
-+#if ARCH_X86 || ARCH_AARCH64
++#if ARCH_X86
 +#   include <immintrin.h>
 +#   include <emmintrin.h>
 +#   include <smmintrin.h>
@@ -586,7 +584,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    *b_out = delin_lut[av_clip_uintp2(b_lin * 32767 + 0.5, 15)];
 +}
 +
-+#if ARCH_X86 || ARCH_AARCH64
++#if ARCH_X86
 +X86_64_V2 static inline __m128i av_clip_uint16_sse(__m128i a)
 +{
 +    __m128i mask = _mm_set1_epi32(0x7FFF);
@@ -1122,7 +1120,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    }
 +}
 +
-+#if ARCH_X86 || ARCH_AARCH64
++#if ARCH_X86
 +X86_64_V2 static inline __m128i av_clip_int16_sse(__m128i a)
 +{
 +    __m128i add_result = _mm_add_epi32(a, _mm_set1_epi32(0x8000U));
@@ -2103,7 +2101,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    }
 +}
 +
-+#if ARCH_X86 || ARCH_AARCH64
++#if ARCH_X86
 +X86_64_V2 static void tonemap_frame_p016_p010_2_p016_p010_sse(uint16_t *dsty, uint16_t *dstuv,
 +                                                              const uint16_t *srcy, const uint16_t *srcuv,
 +                                                              const int *dstlinesize, const int *srclinesize,
