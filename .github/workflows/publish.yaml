@@ -10,7 +10,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
-      codenames: '["buster", "bullseye", "bookworm"]'
+      codenames: '["bullseye", "bookworm"]'
       architectures: '["amd64", "arm64", "armhf"]'
       release: true
     secrets:
@@ -72,7 +72,6 @@ jobs:
       max-parallel: 1
       matrix:
         arrays: [
-          {distro: 'debian', codename: 'buster'},
           {distro: 'debian', codename: 'bullseye'},
           {distro: 'debian', codename: 'bookworm'},
           {distro: 'ubuntu', codename: 'focal'},
