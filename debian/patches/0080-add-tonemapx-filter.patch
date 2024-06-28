@@ -3269,13 +3269,3 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    FILTER_QUERY_FUNC(query_formats),
 +    .flags           = AVFILTER_FLAG_SLICE_THREADS,
 +};
-Index: FFmpeg/builder/variants/defaults-gpl.sh
-===================================================================
---- FFmpeg.orig/builder/variants/defaults-gpl.sh
-+++ FFmpeg/builder/variants/defaults-gpl.sh
-@@ -6,3 +6,5 @@ GIT_BRANCH="jellyfin"
- LICENSE_FILE="COPYING.GPLv3"
- 
- [[ $TARGET == linux* ]] && FF_CONFIGURE+=" --disable-libxcb --disable-xlib" || true
-+[[ $TARGET == win* ]] && FF_CFLAGS+=" -Wa,-muse-unaligned-vector-move" || true
-+[[ $TARGET == win* ]] && FF_CXXFLAGS+=" -Wa,-muse-unaligned-vector-move" || true
