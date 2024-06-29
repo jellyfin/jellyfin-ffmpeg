@@ -195,9 +195,10 @@ popd
 popd
 
 # HARFBUZZ
+harfbuzz_commit="bc90b29b37fe3809f9e48aa7be08fbf2208e481a"
 git clone https://github.com/harfbuzz/harfbuzz.git
 pushd harfbuzz
-git checkout bc90b29b37fe3809f9e48aa7be08fbf2208e481a
+git checkout ${harfbuzz_commit}
 ./autogen.sh \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \
