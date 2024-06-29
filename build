@@ -4,10 +4,9 @@ usage() {
     echo -e "Build Jellyfin FFMPEG deb packages"
     echo -e " $0 <release> <arch>"
     echo -e "Releases:          Arches:"
-    echo -e " * buster           * amd64"
-    echo -e " * bullseye         * armhf"
-    echo -e " * bookworm         * arm64"
-    echo -e " * focal"
+    echo -e " * bullseye         * amd64"
+    echo -e " * bookworm         * armhf"
+    echo -e " * focal            * arm64"
     echo -e " * jammy"
     echo -e " * noble"
 }
@@ -19,11 +18,6 @@ fi
 
 cli_release="${1}"
 case ${cli_release} in
-    'buster')
-        release="debian:buster"
-        gcc_version="8"
-        llvm_version="13"
-    ;;
     'bullseye')
         release="debian:bullseye"
         gcc_version="10"

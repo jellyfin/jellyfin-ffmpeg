@@ -596,9 +596,6 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pl_ver="v6.338.2"
-    if [[ $( lsb_release -c -s ) == "buster" ]]; then
-        pl_ver="v5.264.1"
-    fi
     pushd ${SOURCE_DIR}
     git clone -b ${pl_ver} --recursive --depth=1 https://github.com/haasn/libplacebo.git
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
