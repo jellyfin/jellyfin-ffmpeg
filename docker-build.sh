@@ -37,7 +37,7 @@ prepare_extra_common() {
     mkdir iconv
     pushd iconv
     iconv_ver="1.17"
-    iconv_link="https://ftp.gnu.org/pub/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
+    iconv_link="https://mirrors.kernel.org/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
     wget ${iconv_link} -O iconv.tar.gz
     tar xaf iconv.tar.gz
     pushd libiconv-${iconv_ver}
@@ -596,9 +596,6 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pl_ver="v6.338.2"
-    if [[ $( lsb_release -c -s ) == "buster" ]]; then
-        pl_ver="v5.264.1"
-    fi
     pushd ${SOURCE_DIR}
     git clone -b ${pl_ver} --recursive --depth=1 https://github.com/haasn/libplacebo.git
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build

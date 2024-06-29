@@ -2,7 +2,7 @@
 
 SCRIPT_VERSION="6.3.0"
 SCRIPT_SHA512="e85a0dab5195889948a3462189f0e0598d331d3457612e2d3350799dba2e244316d256f8161df5219538eb003e4b5343f989aaa00f96321559063ed8c8f29fd2"
-SCRIPT_URL="https://ftp.gnu.org/gnu/gmp/gmp-${SCRIPT_VERSION}.tar.xz"
+SCRIPT_URL="https://mirrors.kernel.org/gnu/gmp/gmp-${SCRIPT_VERSION}.tar.xz"
 
 ffbuild_enabled() {
     return 0
