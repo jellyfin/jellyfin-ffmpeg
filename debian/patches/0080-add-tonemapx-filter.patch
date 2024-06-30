@@ -115,7 +115,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1203 @@
+@@ -0,0 +1,1211 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -148,7 +148,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#include "libavutil/mem_internal.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/cpu.h"
-+#if  ARCH_AARCH64
++#if ARCH_AARCH64
 +#   include "libavutil/aarch64/cpu.h"
 +#   include "aarch64/vf_tonemapx_intrin_neon.h"
 +#endif
@@ -358,8 +358,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        return x;
 +}
 +
-+static int comput_trc_luts(TonemapxContext *s, enum AVColorTransferCharacteristic trc_src,
-+                           enum AVColorTransferCharacteristic trc_dst)
++static int compute_trc_luts(TonemapxContext *s, enum AVColorTransferCharacteristic trc_src,
++                            enum AVColorTransferCharacteristic trc_dst)
 +{
 +    int i;
 +
@@ -514,21 +514,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    r_lin *= mapval;
 +    g_lin *= mapval;
 +    b_lin *= mapval;
-+
-+    /*float cmin = FFMIN(FFMIN(r_lin, g_lin), b_lin);
-+    if (cmin < 0.0) {
-+        float luma = ocoeffs->cr * r_lin + ocoeffs->cg * g_lin + ocoeffs->cb * b_lin;
-+        float coeff = cmin / (cmin - luma);
-+        r_lin = MIX(r_lin, luma, coeff);
-+        g_lin = MIX(g_lin, luma, coeff);
-+        b_lin = MIX(b_lin, luma, coeff);avassert
-+    }
-+    float cmax = FFMAX(FFMAX(r_lin, g_lin), b_lin);
-+    if (cmax > 1.0) {
-+        r_lin /= cmax;
-+        g_lin /= cmax;
-+        b_lin /= cmax;
-+    }*/
 +#undef MIX
 +
 +    *r_out = delin_lut[av_clip_uintp2(r_lin * 32767 + 0.5, 15)];
@@ -570,6 +555,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    int ocgv  = (*params->rgb2yuv_coeffs)[2][1][0];
 +    int cbv   = (*params->rgb2yuv_coeffs)[2][2][0];
 +
++    int r00, g00, b00;
++    int r01, g01, b01;
++    int r10, g10, b10;
++    int r11, g11, b11;
++
 +    int16_t r[4], g[4], b[4];
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0] * 2, dstuv += dstlinesize[1],
@@ -610,10 +600,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
 +
-+            int r00 = r[0], g00 = g[0], b00 = b[0];
-+            int r01 = r[1], g01 = g[1], b01 = b[1];
-+            int r10 = r[2], g10 = g[2], b10 = b[2];
-+            int r11 = r[3], g11 = g[3], b11 = b[3];
++            r00 = r[0], g00 = g[0], b00 = b[0];
++            r01 = r[1], g01 = g[1], b01 = b[1];
++            r10 = r[2], g10 = g[2], b10 = b[2];
++            r11 = r[3], g11 = g[3], b11 = b[3];
 +
 +            dsty[x]                      = av_clip_uint8(params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh));
 +            dsty[x + 1]                  = av_clip_uint8(params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh));
@@ -660,6 +650,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    int ocgv  = (*params->rgb2yuv_coeffs)[2][1][0];
 +    int cbv   = (*params->rgb2yuv_coeffs)[2][2][0];
 +
++    int r00, g00, b00;
++    int r01, g01, b01;
++    int r10, g10, b10;
++    int r11, g11, b11;
++
 +    int16_t r[4], g[4], b[4];
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0] * 2, dstu += dstlinesize[1], dstv += dstlinesize[2],
@@ -700,10 +695,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
 +
-+            int r00 = r[0], g00 = g[0], b00 = b[0];
-+            int r01 = r[1], g01 = g[1], b01 = b[1];
-+            int r10 = r[2], g10 = g[2], b10 = b[2];
-+            int r11 = r[3], g11 = g[3], b11 = b[3];
++            r00 = r[0], g00 = g[0], b00 = b[0];
++            r01 = r[1], g01 = g[1], b01 = b[1];
++            r10 = r[2], g10 = g[2], b10 = b[2];
++            r11 = r[3], g11 = g[3], b11 = b[3];
 +
 +            dsty[x]                      = av_clip_uint8(params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh));
 +            dsty[x + 1]                  = av_clip_uint8(params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh));
@@ -750,6 +745,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    int ocgv  = (*params->rgb2yuv_coeffs)[2][1][0];
 +    int cbv   = (*params->rgb2yuv_coeffs)[2][2][0];
 +
++    int r00, g00, b00;
++    int r01, g01, b01;
++    int r10, g10, b10;
++    int r11, g11, b11;
++
 +    int16_t r[4], g[4], b[4];
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0], dstu += dstlinesize[1] / 2, dstv += dstlinesize[1] / 2,
@@ -790,10 +790,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
 +
-+            int r00 = r[0], g00 = g[0], b00 = b[0];
-+            int r01 = r[1], g01 = g[1], b01 = b[1];
-+            int r10 = r[2], g10 = g[2], b10 = b[2];
-+            int r11 = r[3], g11 = g[3], b11 = b[3];
++            r00 = r[0], g00 = g[0], b00 = b[0];
++            r01 = r[1], g01 = g[1], b01 = b[1];
++            r10 = r[2], g10 = g[2], b10 = b[2];
++            r11 = r[3], g11 = g[3], b11 = b[3];
 +
 +            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)), 16);
 +            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)), 16);
@@ -842,6 +842,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    int ocgv  = (*params->rgb2yuv_coeffs)[2][1][0];
 +    int cbv   = (*params->rgb2yuv_coeffs)[2][2][0];
 +
++    int r00, g00, b00;
++    int r01, g01, b01;
++    int r10, g10, b10;
++    int r11, g11, b11;
++
 +    int16_t r[4], g[4], b[4];
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0], dstuv += dstlinesize[1] / 2,
@@ -882,10 +887,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
 +
-+            int r00 = r[0], g00 = g[0], b00 = b[0];
-+            int r01 = r[1], g01 = g[1], b01 = b[1];
-+            int r10 = r[2], g10 = g[2], b10 = b[2];
-+            int r11 = r[3], g11 = g[3], b11 = b[3];
++            r00 = r[0], g00 = g[0], b00 = b[0];
++            r01 = r[1], g01 = g[1], b01 = b[1];
++            r10 = r[2], g10 = g[2], b10 = b[2];
++            r11 = r[3], g11 = g[3], b11 = b[3];
 +
 +            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
 +            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
@@ -966,9 +971,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    LOAD_TONEMAP_PARAMS
 +    av_log(s, AV_LOG_DEBUG, "planar dst depth: %d, src depth: %d\n", odesc->comp[0].depth, desc->comp[0].depth);
 +
-+    s->tonemap_func_planar10(out->data[0] + out->linesize[0] * slice_start,
-+                             out->data[1] + out->linesize[1] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h),
-+                             out->data[2] + out->linesize[2] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h),
++    s->tonemap_func_planar10((uint16_t *) (out->data[0] + out->linesize[0] * slice_start),
++                             (uint16_t *) (out->data[1] +
++                                           out->linesize[1] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h)),
++                             (uint16_t *) (out->data[2] +
++                                           out->linesize[2] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h)),
 +                             (void*)(in->data[0] + in->linesize[0] * slice_start),
 +                             (void*)(in->data[1] + in->linesize[1] * AV_CEIL_RSHIFT(slice_start, odesc->log2_chroma_h)),
 +                             (void*)(in->data[2] + in->linesize[2] * AV_CEIL_RSHIFT(slice_start, odesc->log2_chroma_h)),
@@ -985,8 +992,9 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    LOAD_TONEMAP_PARAMS
 +    av_log(s, AV_LOG_DEBUG, "biplanar dst depth: %d, src depth: %d\n", odesc->comp[0].depth, desc->comp[0].depth);
 +
-+    s->tonemap_func_biplanar10(out->data[0] + out->linesize[0] * slice_start,
-+                               out->data[1] + out->linesize[1] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h),
++    s->tonemap_func_biplanar10((uint16_t *) (out->data[0] + out->linesize[0] * slice_start),
++                               (uint16_t *) (out->data[1] +
++                                             out->linesize[1] * AV_CEIL_RSHIFT(slice_start, desc->log2_chroma_h)),
 +                               (void*)(in->data[0] + in->linesize[0] * slice_start),
 +                               (void*)(in->data[1] + in->linesize[1] * AV_CEIL_RSHIFT(slice_start, odesc->log2_chroma_h)),
 +                               out->linesize, in->linesize,
@@ -1076,7 +1084,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        out->color_range = AVCOL_RANGE_MPEG;
 +
 +    if (!s->lin_lut || !s->delin_lut) {
-+        if ((ret = comput_trc_luts(s, in->color_trc, out->color_trc)) < 0)
++        if ((ret = compute_trc_luts(s, in->color_trc, out->color_trc)) < 0)
 +            goto fail;
 +    }
 +
@@ -1309,7 +1317,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +AVFilter ff_vf_tonemapx = {
 +    .name            = "tonemapx",
-+    .description     = NULL_IF_CONFIG_SMALL("HDR to SDR tonemapping"),
++    .description     = NULL_IF_CONFIG_SMALL("SIMD optimized HDR to SDR tonemapping"),
 +    .init            = init,
 +    .uninit          = uninit,
 +    .priv_size       = sizeof(TonemapxContext),
@@ -1332,7 +1340,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,1216 @@
+@@ -0,0 +1,1215 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1681,6 +1689,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, g0oax4, cgy);
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
++            // output shift bits for 8bit outputs is 29 -8 = 21
 +            y0oax4 = vshrq_n_s32(y0oax4, 21);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
@@ -1755,14 +1764,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            uox4 = vmlaq_n_s32(uox4, bavgx4, cburv);
 +            uox4 = vshrq_n_s32(uox4, 21);
 +            uox4 = vaddq_s32(uox4, out_uv_offsetx4);
-+            vst1_lane_u32(&dstu[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(uox4), vdup_n_s16(0)))), 0);
++            vst1_lane_u32((uint32_t *) &dstu[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(uox4), vdup_n_s16(0)))), 0);
 +
 +            vox4 = vmlaq_n_s32(out_rndx4, ravgx4, cburv);
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
 +            vox4 = vshrq_n_s32(vox4, 21);
 +            vox4 = vaddq_s32(vox4, out_uv_offsetx4);
-+            vst1_lane_u32(&dstv[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(vox4), vdup_n_s16(0)))), 0);
++            vst1_lane_u32((uint32_t *) &dstv[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(vox4), vdup_n_s16(0)))), 0);
 +        }
 +    }
 +
@@ -1803,13 +1812,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    const int in_uv_offset = 128 << (in_depth - 8);
 +    const int in_sh = in_depth - 1;
 +    const int in_rnd = 1 << (in_sh - 1);
-+//    const int in_sh2 = 16 - in_depth;
 +
 +    const int out_depth = dstdepth;
 +    const int out_uv_offset = 128 << (out_depth - 8);
 +    const int out_sh = 29 - out_depth;
 +    const int out_rnd = 1 << (out_sh - 1);
-+//    const int out_sh2 = 16 - out_depth;
 +
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
@@ -1934,6 +1941,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, g0oax4, cgy);
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
++            // output shift bits for 8bit outputs is 29 -8 = 21
 +            y0oax4 = vshrq_n_s32(y0oax4, 21);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
@@ -2298,7 +2306,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    const int in_uv_offset = 128 << (in_depth - 8);
 +    const int in_sh = in_depth - 1;
 +    const int in_rnd = 1 << (in_sh - 1);
-+    const int in_sh2 = 16 - in_depth;
 +
 +    const int out_depth = dstdepth;
 +    const int out_uv_offset = 128 << (out_depth - 8);
@@ -2618,8 +2625,8 @@ Index: FFmpeg/libavfilter/x86/Makefile
  OBJS-$(CONFIG_V360_FILTER)                   += x86/vf_v360_init.o
  OBJS-$(CONFIG_W3FDIF_FILTER)                 += x86/vf_w3fdif_init.o
  OBJS-$(CONFIG_YADIF_FILTER)                  += x86/vf_yadif_init.o
-+OBJS-$(CONFIG_TONEMAPX_FILTER)               += x86/vf_tonemapx_intrin_sse.o
-+OBJS-$(CONFIG_TONEMAPX_FILTER)               += x86/vf_tonemapx_intrin_avx.o
++OBJS-$(CONFIG_TONEMAPX_FILTER)               += x86/vf_tonemapx_intrin_sse.o \
++                                                x86/vf_tonemapx_intrin_avx.o
  
  X86ASM-OBJS-$(CONFIG_SCENE_SAD)              += x86/scene_sad.o
  
@@ -2627,7 +2634,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
-@@ -0,0 +1,1362 @@
+@@ -0,0 +1,1361 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -2699,7 +2706,6 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +    __m128 mapvalx4, r_linx4, g_linx4, b_linx4;
 +    __m128 offset = _mm_set1_ps(0.5f);
 +    __m128i input_lut_offset = _mm_set1_epi32(2048);
-+    __m128i upper_bound = _mm_set1_epi32(32767);
 +    __m128 intermediate_upper_bound = _mm_set1_ps(32767.0f);
 +    __m128i r, g, b, rx4, gx4, bx4;
 +
@@ -3000,6 +3006,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(goax4, _mm_set1_epi32(cgy)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(boax4, _mm_set1_epi32(cby)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(out_rnd));
++            // output shift bits for 8bit outputs is 29 -8 = 21
 +            yoax4 = _mm_srai_epi32(yoax4, 21);
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(params->out_yuv_off));
 +
@@ -3408,13 +3415,11 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +    const int in_uv_offset = 128 << (in_depth - 8);
 +    const int in_sh = in_depth - 1;
 +    const int in_rnd = 1 << (in_sh - 1);
-+//    const int in_sh2 = 16 - in_depth;
 +
 +    const int out_depth = dstdepth;
 +    const int out_uv_offset = 128 << (out_depth - 8);
 +    const int out_sh = 29 - out_depth;
 +    const int out_rnd = 1 << (out_sh - 1);
-+//    const int out_sh2 = 16 - out_depth;
 +
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
@@ -3594,6 +3599,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(goax4, _mm_set1_epi32(cgy)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(boax4, _mm_set1_epi32(cby)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(out_rnd));
++            // output shift bits for 8bit outputs is 29 -8 = 21
 +            yoax4 = _mm_srai_epi32(yoax4, 21);
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(params->out_yuv_off));
 +
@@ -4138,7 +4144,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,1387 @@
+@@ -0,0 +1,1385 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -4928,13 +4934,11 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +    const int in_uv_offset = 128 << (in_depth - 8);
 +    const int in_sh = in_depth - 1;
 +    const int in_rnd = 1 << (in_sh - 1);
-+//    const int in_sh2 = 16 - in_depth;
 +
 +    const int out_depth = dstdepth;
 +    const int out_uv_offset = 128 << (out_depth - 8);
 +    const int out_sh = 29 - out_depth;
 +    const int out_rnd = 1 << (out_sh - 1);
-+//    const int out_sh2 = 16 - out_depth;
 +
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
