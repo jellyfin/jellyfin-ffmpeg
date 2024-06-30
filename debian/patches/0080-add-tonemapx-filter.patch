@@ -161,7 +161,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#            include "libavutil/aarch64/cpu.h"
 +#            include "aarch64/vf_tonemapx_intrin_neon.h"
 +#        else
-+#            undef ENABLE_INTRINSICS
++#            undef ENABLE_TONEMAPX_INTRINSICS
 +#        endif
 +#    endif // ARCH_AARCH64
 +#    if ARCH_X86
