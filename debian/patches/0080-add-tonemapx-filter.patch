@@ -568,6 +568,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +#if ARCH_X86
++// GCC 10 and below does not implement _mm_storeu_si32 with movd instruction
++// cast the register into float register and store with movss as a workaround
++#if (defined(__GNUC__) && !defined(__clang__)) && (__GNUC__ <= 10)
++__attribute__((always_inline))
++X86_64_V2 static inline void _mm_storeu_si32(void* mem_addr, __m128i a) {
++    _mm_store_ss((float*)mem_addr, _mm_castsi128_ps(a));
++    return;
++}
++#endif
++
 +X86_64_V2 static inline __m128i av_clip_uint16_sse(__m128i a)
 +{
 +    __m128i mask = _mm_set1_epi32(0x7FFF);
@@ -592,16 +602,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    __m128i sig4;
 +    __m128 mapvalx4, r_linx4, g_linx4, b_linx4;
 +    __m128 offset = _mm_set1_ps(0.5f);
-+    __m128i zerox4 = _mm_setzero_si128();
 +    __m128i input_lut_offset = _mm_set1_epi32(2048);
 +    __m128i upper_bound = _mm_set1_epi32(32767);
 +    __m128 intermediate_upper_bound = _mm_set1_ps(32767.0f);
 +    __m128i r, g, b, rx4, gx4, bx4;
 +
 +    float mapval4[4], r_lin4[4], g_lin4[4], b_lin4[4];
-+    int r4[4], g4[4], b4[4], s4[4];
-+    int lr[4], lg[4], lb[4];
-+    int i;
 +
 +    sig4 = _mm_max_epi32(r_in, _mm_max_epi32(g_in, b_in));
 +    sig4 = _mm_add_epi32(sig4, input_lut_offset);
@@ -714,7 +720,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    __m256i r, g, b, rx8, gx8, bx8;
 +
 +    float mapval8[8], r_lin8[8], g_lin8[8], b_lin8[8];
-+    int i;
 +
 +    sig8 = _mm256_max_epi32(r_in, _mm256_max_epi32(g_in, b_in));
 +    sig8 = _mm256_add_epi32(sig8, input_lut_offset);
@@ -1028,7 +1033,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    const int out_uv_offset = 128 << (out_depth - 8);
 +    const int out_sh = 29 - out_depth;
 +    const int out_rnd = 1 << (out_sh - 1);
-+    const int out_sh2 = 16 - out_depth;
 +
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
@@ -1563,7 +1567,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    __m256i rndx8 = _mm256_set1_epi32(in_rnd);
 +
 +    __m256i ux8, vx8;
-+    __m256i uvx8a, uvx8b;
 +    __m256i y0x16, y1x16;
 +    __m256i y0x8a, y0x8b, y1x8a, y1x8b, ux8a, ux8b, vx8a, vx8b;
 +    __m256i r0x8a, g0x8a, b0x8a, r0x8b, g0x8b, b0x8b;
@@ -1577,7 +1580,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    __m256i r1ox16, g1ox16, b1ox16;
 +    __m256i y1ox16;
 +    __m256i r1oax8, r1obx8, g1oax8, g1obx8, b1oax8, b1obx8;
-+    __m256i y1oax8, y1obx8, uvoax8, uvobx8, uvox16;
++    __m256i y1oax8, y1obx8;
 +    __m256i uox8, vox8, ravgx8, gavgx8, bavgx8;
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0] * 2, dstu += dstlinesize[1], dstv += dstlinesize[2],
@@ -3128,7 +3131,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    const int in_uv_offset = 128 << (in_depth - 8);
 +    const int in_sh = in_depth - 1;
 +    const int in_rnd = 1 << (in_sh - 1);
-+    const int in_sh2 = 16 - in_depth;
 +
 +    const int out_depth = dstdepth;
 +    const int out_uv_offset = 128 << (out_depth - 8);
@@ -3158,7 +3160,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    __m128i cyx4 = _mm_set1_epi32(cy);
 +    __m128i rndx4 = _mm_set1_epi32(in_rnd);
 +    __m128i zero128 = _mm_setzero_si128();
-+    __m128i uvx8, ux4, vx4;
++    __m128i ux4, vx4;
 +    __m128i y0x8, y1x8;
 +    __m128i y0x4a, y0x4b, y1x4a, y1x4b, ux4a, ux4b, vx4a, vx4b;
 +    __m128i r0x4a, g0x4a, b0x4a, r0x4b, g0x4b, b0x4b;
@@ -3172,8 +3174,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    __m128i r1ox8, g1ox8, b1ox8;
 +    __m128i y1ox8;
 +    __m128i r1oax4, r1obx4, g1oax4, g1obx4, b1oax4, b1obx4;
-+    __m128i y1oax4, y1obx4, uvoax4, uvobx4;
-+    __m128i uox4, vox4, ravgx4, gavgx4, bavgx4, uvox8;
++    __m128i y1oax4, y1obx4;
++    __m128i uox4, vox4, ravgx4, gavgx4, bavgx4;
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0], dstu += dstlinesize[1] / 2, dstv += dstlinesize[1] / 2,
 +                       srcy += srclinesize[0], srcu += srclinesize[1] / 2, srcv += srclinesize[1] / 2) {
@@ -3729,7 +3731,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    const int in_uv_offset = 128 << (in_depth - 8);
 +    const int in_sh = in_depth - 1;
 +    const int in_rnd = 1 << (in_sh - 1);
-+    const int in_sh2 = 16 - in_depth;
 +
 +    const int out_depth = dstdepth;
 +    const int out_uv_offset = 128 << (out_depth - 8);
@@ -4037,7 +4038,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    const int in_uv_offset = 128 << (in_depth - 8);
 +    const int in_sh = in_depth - 1;
 +    const int in_rnd = 1 << (in_sh - 1);
-+    const int in_sh2 = 16 - in_depth;
 +
 +    const int out_depth = dstdepth;
 +    const int out_uv_offset = 128 << (out_depth - 8);
