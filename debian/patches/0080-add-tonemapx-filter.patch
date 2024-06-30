@@ -285,13 +285,13 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +static float bt2390(float s, float peak)
 +{
-+    float peak_pq = inverse_eotf_st2084(peak, REFERENCE_WHITE);
++    float peak_pq = inverse_eotf_st2084(peak, REFERENCE_WHITE_ALT);
 +    float scale = 1.0f / peak_pq;
 +
 +    // SDR peak
 +    float dst_peak = 1.0f;
-+    float s_pq = inverse_eotf_st2084(s, REFERENCE_WHITE) * scale;
-+    float maxLum = inverse_eotf_st2084(dst_peak, REFERENCE_WHITE) * scale;
++    float s_pq = inverse_eotf_st2084(s, REFERENCE_WHITE_ALT) * scale;
++    float maxLum = inverse_eotf_st2084(dst_peak, REFERENCE_WHITE_ALT) * scale;
 +
 +    float ks = 1.5f * maxLum - 0.5f;
 +    float tb = (s_pq - ks) / (1.0f - ks);
@@ -302,7 +302,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +               (-2.0f * tb3 + 3.0f * tb2) * maxLum;
 +    float sig = (s_pq < ks) ? s_pq : pb;
 +
-+    return eotf_st2084(sig * peak_pq, REFERENCE_WHITE);
++    return eotf_st2084(sig * peak_pq, REFERENCE_WHITE_ALT);
 +}
 +
 +static float mapsig(enum TonemapAlgorithm alg, float sig, double peak, double param)
@@ -343,7 +343,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +static float linearize(float x, enum AVColorTransferCharacteristic trc_src)
 +{
 +    if (trc_src == AVCOL_TRC_SMPTE2084)
-+        return eotf_st2084(x, REFERENCE_WHITE);
++        return eotf_st2084(x, REFERENCE_WHITE_ALT);
 +    else if (trc_src == AVCOL_TRC_ARIB_STD_B67)
 +        return eotf_arib_b67(x);
 +    else
@@ -538,11 +538,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +// See also libavfilter/colorspacedsp_template.c
 +void tonemap_frame_p016_p010_2_nv12(uint8_t *dsty, uint8_t *dstuv,
-+                                           const uint16_t *srcy, const uint16_t *srcuv,
-+                                           const int *dstlinesize, const int *srclinesize,
-+                                           int dstdepth, int srcdepth,
-+                                           int width, int height,
-+                                           const struct TonemapIntParams *params)
++                                    const uint16_t *srcy, const uint16_t *srcuv,
++                                    const int *dstlinesize, const int *srclinesize,
++                                    int dstdepth, int srcdepth,
++                                    int width, int height,
++                                    const struct TonemapIntParams *params)
 +{
 +    const int in_depth = srcdepth;
 +    const int in_uv_offset = 128 << (in_depth - 8);
@@ -629,11 +629,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +void tonemap_frame_420p10_2_420p(uint8_t *dsty, uint8_t *dstu, uint8_t *dstv,
-+                                        const uint16_t *srcy, const uint16_t *srcu, const uint16_t *srcv,
-+                                        const int *dstlinesize, const int *srclinesize,
-+                                        int dstdepth, int srcdepth,
-+                                        int width, int height,
-+                                        const struct TonemapIntParams *params)
++                                 const uint16_t *srcy, const uint16_t *srcu, const uint16_t *srcv,
++                                 const int *dstlinesize, const int *srclinesize,
++                                 int dstdepth, int srcdepth,
++                                 int width, int height,
++                                 const struct TonemapIntParams *params)
 +{
 +    const int in_depth = srcdepth;
 +    const int in_uv_offset = 128 << (in_depth - 8);
@@ -719,11 +719,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +void tonemap_frame_420p10_2_420p10(uint16_t *dsty, uint16_t *dstu, uint16_t *dstv,
-+                                          const uint16_t *srcy, const uint16_t *srcu, const uint16_t *srcv,
-+                                          const int *dstlinesize, const int *srclinesize,
-+                                          int dstdepth, int srcdepth,
-+                                          int width, int height,
-+                                          const struct TonemapIntParams *params)
++                                   const uint16_t *srcy, const uint16_t *srcu, const uint16_t *srcv,
++                                   const int *dstlinesize, const int *srclinesize,
++                                   int dstdepth, int srcdepth,
++                                   int width, int height,
++                                   const struct TonemapIntParams *params)
 +{
 +    const int in_depth = srcdepth;
 +    const int in_uv_offset = 128 << (in_depth - 8);
@@ -809,11 +809,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +void tonemap_frame_p016_p010_2_p016_p010(uint16_t *dsty, uint16_t *dstuv,
-+                                                const uint16_t *srcy, const uint16_t *srcuv,
-+                                                const int *dstlinesize, const int *srclinesize,
-+                                                int dstdepth, int srcdepth,
-+                                                int width, int height,
-+                                                const struct TonemapIntParams *params)
++                                         const uint16_t *srcy, const uint16_t *srcuv,
++                                         const int *dstlinesize, const int *srclinesize,
++                                         int dstdepth, int srcdepth,
++                                         int width, int height,
++                                         const struct TonemapIntParams *params)
 +{
 +    const int in_depth = srcdepth;
 +    const int in_uv_offset = 128 << (in_depth - 8);
@@ -4057,7 +4057,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,76 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -4080,16 +4080,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +#define FFMPEG_VF_TONEMAPX_H
 +
 +#include "colorspace.h"
-+
-+#ifdef REFERENCE_WHITE
-+#undef REFERENCE_WHITE
-+#endif
-+#define REFERENCE_WHITE 203.0f
-+
-+#ifdef FLOAT_EPS
-+#undef FLOAT_EPS
-+#endif
-+#define FLOAT_EPS 1.175494351e-38f
 +
 +#if defined(__GNUC__) || defined(__clang__)
 +#    if (__GNUC__ >= 11) || (__clang_major__ >= 12)
