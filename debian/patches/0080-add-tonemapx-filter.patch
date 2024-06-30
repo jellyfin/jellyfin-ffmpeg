@@ -115,7 +115,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1211 @@
+@@ -0,0 +1,1263 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -148,15 +148,35 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#include "libavutil/mem_internal.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/cpu.h"
-+#if ARCH_AARCH64
-+#   include "libavutil/aarch64/cpu.h"
-+#   include "aarch64/vf_tonemapx_intrin_neon.h"
-+#endif
-+#if ARCH_X86
-+#   include "libavutil/x86/cpu.h"
-+#   include "x86/vf_tonemapx_intrin_sse.h"
-+#   include "x86/vf_tonemapx_intrin_avx.h"
-+#endif
++
++#if defined(__GNUC__) || defined(__clang__)
++#    if (__GNUC__ >= 10) || (__clang_major__ >= 11)
++#        define ENABLE_TONEMAPX_INTRINSICS
++#    endif // (__GNUC__ >= 10) || (__clang_major__ >= 11)
++#endif // defined(__GNUC__) || defined(__clang__)
++
++#ifdef ENABLE_TONEMAPX_INTRINSICS
++#    if ARCH_AARCH64
++#        if (HAVE_NEON) && (HAVE_INTRINSICS_NEON)
++#            include "libavutil/aarch64/cpu.h"
++#            include "aarch64/vf_tonemapx_intrin_neon.h"
++#        else
++#            undef ENABLE_INTRINSICS
++#        endif
++#    endif // ARCH_AARCH64
++#    if ARCH_X86
++#        include "libavutil/x86/cpu.h"
++#        if (HAVE_SSE42)
++#           include "x86/vf_tonemapx_intrin_sse.h"
++#           define ENABLE_TONEMAPX_SSE_INTRINSICS
++#        endif
++#        if (HAVE_AVX2) && (HAVE_FMA3)
++#            include "x86/vf_tonemapx_intrin_avx.h"
++#            define ENABLE_TONEMAPX_AVX_INTRINSICS
++#        endif
++#    endif // ARCH_X86
++#endif // ENABLE_TONEMAPX_INTRINSICS
++
 +
 +#include "avfilter.h"
 +#include "formats.h"
@@ -1199,30 +1219,46 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +{
 +    TonemapxContext *s = ctx->priv;
 +    int cpu_flags = av_get_cpu_flags();
-+    av_log(ctx, AV_LOG_DEBUG, "Requested output format: %s\n",
++    enum SIMDVariant active_simd = SIMD_NONE;
++    av_log(s, AV_LOG_DEBUG, "Requested output format: %s\n",
 +           s->format_str);
 +
++#ifdef ENABLE_TONEMAPX_INTRINSICS
 +#if ARCH_AARCH64
 +    if (have_neon(cpu_flags)) {
 +        s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12_neon;
 +        s->tonemap_func_biplanar10 = tonemap_frame_p016_p010_2_p016_p010_neon;
 +        s->tonemap_func_planar8 = tonemap_frame_420p10_2_420p_neon;
 +        s->tonemap_func_planar10 = tonemap_frame_420p10_2_420p10_neon;
++        active_simd = SIMD_NEON;
 +    }
 +#elif ARCH_X86
++#ifdef ENABLE_TONEMAPX_SSE_INTRINSICS
 +    if (X86_SSE42(cpu_flags)) {
 +        s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12_sse;
 +        s->tonemap_func_biplanar10 = tonemap_frame_p016_p010_2_p016_p010_sse;
 +        s->tonemap_func_planar8 = tonemap_frame_420p10_2_420p_sse;
 +        s->tonemap_func_planar10 = tonemap_frame_420p10_2_420p10_sse;
++        active_simd = SIMD_SSE;
 +    }
++#else
++    av_log(s, AV_LOG_WARNING, "SSE optimization disabled at compile time\n");
++#endif // ENABLE_TONEMAPX_SSE_INTRINSICS
++#ifdef ENABLE_TONEMAPX_AVX_INTRINSICS
 +    if (X86_AVX2(cpu_flags) && X86_FMA3(cpu_flags)) {
 +        s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12_avx;
 +        s->tonemap_func_biplanar10 = tonemap_frame_p016_p010_2_p016_p010_avx;
 +        s->tonemap_func_planar8 = tonemap_frame_420p10_2_420p_avx;
 +        s->tonemap_func_planar10 = tonemap_frame_420p10_2_420p10_avx;
++        active_simd = SIMD_AVX;
 +    }
-+#endif
++#else
++    av_log(s, AV_LOG_WARNING, "AVX optimization disabled at compile time\n");
++#endif // ENABLE_TONEMAPX_AVX_INTRINSICS
++#endif  // ARCH_X86/ARCH_AARCH64
++#else
++    av_log(s, AV_LOG_WARNING, "SIMD optimization disabled at compile time\n");
++#endif // ENABLE_TONEMAPX_INTRINSICS
 +
 +    if (!s->tonemap_func_biplanar8) {
 +        s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12;
@@ -1238,6 +1274,22 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +    if (!s->tonemap_func_planar10) {
 +        s->tonemap_func_planar10 = tonemap_frame_420p10_2_420p10;
++    }
++
++    switch(active_simd) {
++        case SIMD_NEON:
++            av_log(s, AV_LOG_INFO, "Using CPU capability: NEON\n");
++            break;
++        case SIMD_SSE:
++            av_log(s, AV_LOG_INFO, "Using CPU capability: SSE4.2\n");
++            break;
++        case SIMD_AVX:
++            av_log(s, AV_LOG_INFO, "Using CPU capabilities: AVX2 FMA3\n");
++            break;
++        default:
++        case SIMD_NONE:
++            av_log(s, AV_LOG_INFO, "No CPU SIMD extension available\n");
++            break;
 +    }
 +
 +    switch(s->tonemap) {
@@ -4047,7 +4099,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,83 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -4094,6 +4146,13 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +    const AVLumaCoefficients *coeffs, *ocoeffs;
 +    double desat;
 +} TonemapIntParams;
++
++enum SIMDVariant {
++    SIMD_NONE = -1,
++    SIMD_NEON,
++    SIMD_SSE,
++    SIMD_AVX
++};
 +
 +void tonemap_frame_420p10_2_420p(uint8_t *dsty, uint8_t *dstu, uint8_t *dstv,
 +                                        const uint16_t *srcy, const uint16_t *srcu, const uint16_t *srcv,
