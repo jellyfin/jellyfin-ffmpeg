@@ -1689,7 +1689,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, g0oax4, cgy);
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
-+            // output shift bits for 8bit outputs is 29 -8 = 21
++            // output shift bits for 8bit outputs is 29 - 8 = 21
 +            y0oax4 = vshrq_n_s32(y0oax4, 21);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
@@ -1941,7 +1941,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, g0oax4, cgy);
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
-+            // output shift bits for 8bit outputs is 29 -8 = 21
++            // output shift bits for 8bit outputs is 29 - 8 = 21
 +            y0oax4 = vshrq_n_s32(y0oax4, 21);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
@@ -2634,7 +2634,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
-@@ -0,0 +1,1361 @@
+@@ -0,0 +1,1345 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -3006,7 +3006,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(goax4, _mm_set1_epi32(cgy)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(boax4, _mm_set1_epi32(cby)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(out_rnd));
-+            // output shift bits for 8bit outputs is 29 -8 = 21
++            // output shift bits for 8bit outputs is 29 - 8 = 21
 +            yoax4 = _mm_srai_epi32(yoax4, 21);
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(params->out_yuv_off));
 +
@@ -3194,27 +3194,25 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            vx4b = _mm_unpackhi_epi32(vx4, vx4);
 +
 +            // r = av_clip_int16((y * cy + crv * v + in_rnd) >> in_sh);
-+            r0x4a = _mm_mullo_epi32(y0x4a, cyx4);
++            r0x4a = g0x4a = b0x4a = _mm_mullo_epi32(y0x4a, cyx4);
 +            r0x4a = _mm_add_epi32(r0x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(crv)));
 +            r0x4a = _mm_add_epi32(r0x4a, rndx4);
 +            r0x4a = _mm_srai_epi32(r0x4a, in_sh);
 +            r0x4a = av_clip_int16_sse(r0x4a);
 +
-+            r1x4a = _mm_mullo_epi32(y1x4a, cyx4);
++            r1x4a = g1x4a = b1x4a = _mm_mullo_epi32(y1x4a, cyx4);
 +            r1x4a = _mm_add_epi32(r1x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(crv)));
 +            r1x4a = _mm_add_epi32(r1x4a, rndx4);
 +            r1x4a = _mm_srai_epi32(r1x4a, in_sh);
 +            r1x4a = av_clip_int16_sse(r1x4a);
 +
 +            // g = av_clip_int16((y * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g0x4a = _mm_mullo_epi32(y0x4a, cyx4);
 +            g0x4a = _mm_add_epi32(g0x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cgu)));
 +            g0x4a = _mm_add_epi32(g0x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(cgv)));
 +            g0x4a = _mm_add_epi32(g0x4a, rndx4);
 +            g0x4a = _mm_srai_epi32(g0x4a, in_sh);
 +            g0x4a = av_clip_int16_sse(g0x4a);
 +
-+            g1x4a = _mm_mullo_epi32(y1x4a, cyx4);
 +            g1x4a = _mm_add_epi32(g1x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cgu)));
 +            g1x4a = _mm_add_epi32(g1x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(cgv)));
 +            g1x4a = _mm_add_epi32(g1x4a, rndx4);
@@ -3222,51 +3220,45 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            g1x4a = av_clip_int16_sse(g1x4a);
 +
 +            // b = av_clip_int16((y * cy + cbu * u + in_rnd) >> in_sh);
-+            b0x4a = _mm_mullo_epi32(y0x4a, cyx4);
 +            b0x4a = _mm_add_epi32(b0x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cbu)));
 +            b0x4a = _mm_add_epi32(b0x4a, rndx4);
 +            b0x4a = _mm_srai_epi32(b0x4a, in_sh);
 +            b0x4a = av_clip_int16_sse(b0x4a);
 +
-+            b1x4a = _mm_mullo_epi32(y1x4a, cyx4);
 +            b1x4a = _mm_add_epi32(b1x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cbu)));
 +            b1x4a = _mm_add_epi32(b1x4a, rndx4);
 +            b1x4a = _mm_srai_epi32(b1x4a, in_sh);
 +            b1x4a = av_clip_int16_sse(b1x4a);
 +
-+            r0x4b = _mm_mullo_epi32(y0x4b, cyx4);
++            r0x4b = g0x4b = b0x4b = _mm_mullo_epi32(y0x4b, cyx4);
 +            r0x4b = _mm_add_epi32(r0x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(crv)));
 +            r0x4b = _mm_add_epi32(r0x4b, rndx4);
 +            r0x4b = _mm_srai_epi32(r0x4b, in_sh);
 +            r0x4b = av_clip_int16_sse(r0x4b);
 +
-+            r1x4b = _mm_mullo_epi32(y1x4b, cyx4);
++            r1x4b = g1x4b = b1x4b = _mm_mullo_epi32(y1x4b, cyx4);
 +            r1x4b = _mm_add_epi32(r1x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(crv)));
 +            r1x4b = _mm_add_epi32(r1x4b, rndx4);
 +            r1x4b = _mm_srai_epi32(r1x4b, in_sh);
 +            r1x4b = av_clip_int16_sse(r1x4b);
 +
-+            g0x4b = _mm_mullo_epi32(y0x4b, cyx4);
 +            g0x4b = _mm_add_epi32(g0x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cgu)));
 +            g0x4b = _mm_add_epi32(g0x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(cgv)));
 +            g0x4b = _mm_add_epi32(g0x4b, rndx4);
 +            g0x4b = _mm_srai_epi32(g0x4b, in_sh);
 +            g0x4b = av_clip_int16_sse(g0x4b);
 +
-+            g1x4b = _mm_mullo_epi32(y1x4b, cyx4);
 +            g1x4b = _mm_add_epi32(g1x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cgu)));
 +            g1x4b = _mm_add_epi32(g1x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(cgv)));
 +            g1x4b = _mm_add_epi32(g1x4b, rndx4);
 +            g1x4b = _mm_srai_epi32(g1x4b, in_sh);
 +            g1x4b = av_clip_int16_sse(g1x4b);
 +
-+            b0x4b = _mm_mullo_epi32(y0x4b, cyx4);
 +            b0x4b = _mm_add_epi32(b0x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cbu)));
 +            b0x4b = _mm_add_epi32(b0x4b, rndx4);
 +            b0x4b = _mm_srai_epi32(b0x4b, in_sh);
 +            b0x4b = av_clip_int16_sse(b0x4b);
 +
-+            b1x4b = _mm_mullo_epi32(y1x4b, cyx4);
 +            b1x4b = _mm_add_epi32(b1x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cbu)));
 +            b1x4b = _mm_add_epi32(b1x4b, rndx4);
 +            b1x4b = _mm_srai_epi32(b1x4b, in_sh);
@@ -3599,7 +3591,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(goax4, _mm_set1_epi32(cgy)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_mullo_epi32(boax4, _mm_set1_epi32(cby)));
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(out_rnd));
-+            // output shift bits for 8bit outputs is 29 -8 = 21
++            // output shift bits for 8bit outputs is 29 - 8 = 21
 +            yoax4 = _mm_srai_epi32(yoax4, 21);
 +            yoax4 = _mm_add_epi32(yoax4, _mm_set1_epi32(params->out_yuv_off));
 +
@@ -3792,27 +3784,25 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            vx4b = _mm_shuffle_epi32(uvx4b, _MM_SHUFFLE(3, 3, 1, 1));
 +
 +            // r = av_clip_int16((y * cy + crv * v + in_rnd) >> in_sh);
-+            r0x4a = _mm_mullo_epi32(y0x4a, cyx4);
++            r0x4a = g0x4a = b0x4a = _mm_mullo_epi32(y0x4a, cyx4);
 +            r0x4a = _mm_add_epi32(r0x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(crv)));
 +            r0x4a = _mm_add_epi32(r0x4a, rndx4);
 +            r0x4a = _mm_srai_epi32(r0x4a, in_sh);
 +            r0x4a = av_clip_int16_sse(r0x4a);
 +
-+            r1x4a = _mm_mullo_epi32(y1x4a, cyx4);
++            r1x4a = g1x4a = b1x4a = _mm_mullo_epi32(y1x4a, cyx4);
 +            r1x4a = _mm_add_epi32(r1x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(crv)));
 +            r1x4a = _mm_add_epi32(r1x4a, rndx4);
 +            r1x4a = _mm_srai_epi32(r1x4a, in_sh);
 +            r1x4a = av_clip_int16_sse(r1x4a);
 +
 +            // g = av_clip_int16((y * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g0x4a = _mm_mullo_epi32(y0x4a, cyx4);
 +            g0x4a = _mm_add_epi32(g0x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cgu)));
 +            g0x4a = _mm_add_epi32(g0x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(cgv)));
 +            g0x4a = _mm_add_epi32(g0x4a, rndx4);
 +            g0x4a = _mm_srai_epi32(g0x4a, in_sh);
 +            g0x4a = av_clip_int16_sse(g0x4a);
 +
-+            g1x4a = _mm_mullo_epi32(y1x4a, cyx4);
 +            g1x4a = _mm_add_epi32(g1x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cgu)));
 +            g1x4a = _mm_add_epi32(g1x4a, _mm_mullo_epi32(vx4a, _mm_set1_epi32(cgv)));
 +            g1x4a = _mm_add_epi32(g1x4a, rndx4);
@@ -3820,51 +3810,45 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            g1x4a = av_clip_int16_sse(g1x4a);
 +
 +            // b = av_clip_int16((y * cy + cbu * u + in_rnd) >> in_sh);
-+            b0x4a = _mm_mullo_epi32(y0x4a, cyx4);
 +            b0x4a = _mm_add_epi32(b0x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cbu)));
 +            b0x4a = _mm_add_epi32(b0x4a, rndx4);
 +            b0x4a = _mm_srai_epi32(b0x4a, in_sh);
 +            b0x4a = av_clip_int16_sse(b0x4a);
 +
-+            b1x4a = _mm_mullo_epi32(y1x4a, cyx4);
 +            b1x4a = _mm_add_epi32(b1x4a, _mm_mullo_epi32(ux4a, _mm_set1_epi32(cbu)));
 +            b1x4a = _mm_add_epi32(b1x4a, rndx4);
 +            b1x4a = _mm_srai_epi32(b1x4a, in_sh);
 +            b1x4a = av_clip_int16_sse(b1x4a);
 +
-+            r0x4b = _mm_mullo_epi32(y0x4b, cyx4);
++            r0x4b = g0x4b = b0x4b = _mm_mullo_epi32(y0x4b, cyx4);
 +            r0x4b = _mm_add_epi32(r0x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(crv)));
 +            r0x4b = _mm_add_epi32(r0x4b, rndx4);
 +            r0x4b = _mm_srai_epi32(r0x4b, in_sh);
 +            r0x4b = av_clip_int16_sse(r0x4b);
 +
-+            r1x4b = _mm_mullo_epi32(y1x4b, cyx4);
++            r1x4b = g1x4b = b1x4b = _mm_mullo_epi32(y1x4b, cyx4);
 +            r1x4b = _mm_add_epi32(r1x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(crv)));
 +            r1x4b = _mm_add_epi32(r1x4b, rndx4);
 +            r1x4b = _mm_srai_epi32(r1x4b, in_sh);
 +            r1x4b = av_clip_int16_sse(r1x4b);
 +
-+            g0x4b = _mm_mullo_epi32(y0x4b, cyx4);
 +            g0x4b = _mm_add_epi32(g0x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cgu)));
 +            g0x4b = _mm_add_epi32(g0x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(cgv)));
 +            g0x4b = _mm_add_epi32(g0x4b, rndx4);
 +            g0x4b = _mm_srai_epi32(g0x4b, in_sh);
 +            g0x4b = av_clip_int16_sse(g0x4b);
 +
-+            g1x4b = _mm_mullo_epi32(y1x4b, cyx4);
 +            g1x4b = _mm_add_epi32(g1x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cgu)));
 +            g1x4b = _mm_add_epi32(g1x4b, _mm_mullo_epi32(vx4b, _mm_set1_epi32(cgv)));
 +            g1x4b = _mm_add_epi32(g1x4b, rndx4);
 +            g1x4b = _mm_srai_epi32(g1x4b, in_sh);
 +            g1x4b = av_clip_int16_sse(g1x4b);
 +
-+            b0x4b = _mm_mullo_epi32(y0x4b, cyx4);
 +            b0x4b = _mm_add_epi32(b0x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cbu)));
 +            b0x4b = _mm_add_epi32(b0x4b, rndx4);
 +            b0x4b = _mm_srai_epi32(b0x4b, in_sh);
 +            b0x4b = av_clip_int16_sse(b0x4b);
 +
-+            b1x4b = _mm_mullo_epi32(y1x4b, cyx4);
 +            b1x4b = _mm_add_epi32(b1x4b, _mm_mullo_epi32(ux4b, _mm_set1_epi32(cbu)));
 +            b1x4b = _mm_add_epi32(b1x4b, rndx4);
 +            b1x4b = _mm_srai_epi32(b1x4b, in_sh);
@@ -4144,7 +4128,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,1385 @@
+@@ -0,0 +1,1353 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -4398,27 +4382,25 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            vx8b = _mm256_permutevar8x32_epi32(vx8, _mm256_set_epi32(7, 7, 6, 6, 5, 5, 4, 4));
 +
 +            // r = av_clip_int16((y * cy + crv * v + in_rnd) >> in_sh);
-+            r0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
++            r0x8a = g0x8a = b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            r0x8a = _mm256_add_epi32(r0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r0x8a = _mm256_add_epi32(r0x8a, rndx8);
 +            r0x8a = _mm256_srai_epi32(r0x8a, in_sh);
 +            r0x8a = av_clip_int16_avx(r0x8a);
 +
-+            r1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
++            r1x8a = g1x8a = b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            r1x8a = _mm256_add_epi32(r1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r1x8a = _mm256_add_epi32(r1x8a, rndx8);
 +            r1x8a = _mm256_srai_epi32(r1x8a, in_sh);
 +            r1x8a = av_clip_int16_avx(r1x8a);
 +
 +            // g = av_clip_int16((y * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g0x8a = _mm256_add_epi32(g0x8a, rndx8);
 +            g0x8a = _mm256_srai_epi32(g0x8a, in_sh);
 +            g0x8a = av_clip_int16_avx(g0x8a);
 +
-+            g1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g1x8a = _mm256_add_epi32(g1x8a, rndx8);
@@ -4426,51 +4408,45 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            g1x8a = av_clip_int16_avx(g1x8a);
 +
 +            // b = av_clip_int16((y * cy + cbu * u + in_rnd) >> in_sh);
-+            b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            b0x8a = _mm256_add_epi32(b0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b0x8a = _mm256_add_epi32(b0x8a, rndx8);
 +            b0x8a = _mm256_srai_epi32(b0x8a, in_sh);
 +            b0x8a = av_clip_int16_avx(b0x8a);
 +
-+            b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            b1x8a = _mm256_add_epi32(b1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b1x8a = _mm256_add_epi32(b1x8a, rndx8);
 +            b1x8a = _mm256_srai_epi32(b1x8a, in_sh);
 +            b1x8a = av_clip_int16_avx(b1x8a);
 +
-+            r0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
++            r0x8b = g0x8b = b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            r0x8b = _mm256_add_epi32(r0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r0x8b = _mm256_add_epi32(r0x8b, rndx8);
 +            r0x8b = _mm256_srai_epi32(r0x8b, in_sh);
 +            r0x8b = av_clip_int16_avx(r0x8b);
 +
-+            r1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
++            r1x8b = g1x8b = b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            r1x8b = _mm256_add_epi32(r1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r1x8b = _mm256_add_epi32(r1x8b, rndx8);
 +            r1x8b = _mm256_srai_epi32(r1x8b, in_sh);
 +            r1x8b = av_clip_int16_avx(r1x8b);
 +
-+            g0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g0x8b = _mm256_add_epi32(g0x8b, rndx8);
 +            g0x8b = _mm256_srai_epi32(g0x8b, in_sh);
 +            g0x8b = av_clip_int16_avx(g0x8b);
 +
-+            g1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g1x8b = _mm256_add_epi32(g1x8b, rndx8);
 +            g1x8b = _mm256_srai_epi32(g1x8b, in_sh);
 +            g1x8b = av_clip_int16_avx(g1x8b);
 +
-+            b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            b0x8b = _mm256_add_epi32(b0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b0x8b = _mm256_add_epi32(b0x8b, rndx8);
 +            b0x8b = _mm256_srai_epi32(b0x8b, in_sh);
 +            b0x8b = av_clip_int16_avx(b0x8b);
 +
-+            b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            b1x8b = _mm256_add_epi32(b1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b1x8b = _mm256_add_epi32(b1x8b, rndx8);
 +            b1x8b = _mm256_srai_epi32(b1x8b, in_sh);
@@ -4704,27 +4680,25 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            vx8b = _mm256_permutevar8x32_epi32(vx8, _mm256_set_epi32(7, 7, 6, 6, 5, 5, 4, 4));
 +
 +            // r = av_clip_int16((y * cy + crv * v + in_rnd) >> in_sh);
-+            r0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
++            r0x8a = g0x8a = b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            r0x8a = _mm256_add_epi32(r0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r0x8a = _mm256_add_epi32(r0x8a, rndx8);
 +            r0x8a = _mm256_srai_epi32(r0x8a, in_sh);
 +            r0x8a = av_clip_int16_avx(r0x8a);
 +
-+            r1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
++            r1x8a = g1x8a = b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            r1x8a = _mm256_add_epi32(r1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r1x8a = _mm256_add_epi32(r1x8a, rndx8);
 +            r1x8a = _mm256_srai_epi32(r1x8a, in_sh);
 +            r1x8a = av_clip_int16_avx(r1x8a);
 +
 +            // g = av_clip_int16((y * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g0x8a = _mm256_add_epi32(g0x8a, rndx8);
 +            g0x8a = _mm256_srai_epi32(g0x8a, in_sh);
 +            g0x8a = av_clip_int16_avx(g0x8a);
 +
-+            g1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g1x8a = _mm256_add_epi32(g1x8a, rndx8);
@@ -4732,51 +4706,45 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            g1x8a = av_clip_int16_avx(g1x8a);
 +
 +            // b = av_clip_int16((y * cy + cbu * u + in_rnd) >> in_sh);
-+            b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            b0x8a = _mm256_add_epi32(b0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b0x8a = _mm256_add_epi32(b0x8a, rndx8);
 +            b0x8a = _mm256_srai_epi32(b0x8a, in_sh);
 +            b0x8a = av_clip_int16_avx(b0x8a);
 +
-+            b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            b1x8a = _mm256_add_epi32(b1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b1x8a = _mm256_add_epi32(b1x8a, rndx8);
 +            b1x8a = _mm256_srai_epi32(b1x8a, in_sh);
 +            b1x8a = av_clip_int16_avx(b1x8a);
 +
-+            r0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
++            r0x8b = g0x8b = b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            r0x8b = _mm256_add_epi32(r0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r0x8b = _mm256_add_epi32(r0x8b, rndx8);
 +            r0x8b = _mm256_srai_epi32(r0x8b, in_sh);
 +            r0x8b = av_clip_int16_avx(r0x8b);
 +
-+            r1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
++            r1x8b = g1x8b = b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            r1x8b = _mm256_add_epi32(r1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r1x8b = _mm256_add_epi32(r1x8b, rndx8);
 +            r1x8b = _mm256_srai_epi32(r1x8b, in_sh);
 +            r1x8b = av_clip_int16_avx(r1x8b);
 +
-+            g0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g0x8b = _mm256_add_epi32(g0x8b, rndx8);
 +            g0x8b = _mm256_srai_epi32(g0x8b, in_sh);
 +            g0x8b = av_clip_int16_avx(g0x8b);
 +
-+            g1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g1x8b = _mm256_add_epi32(g1x8b, rndx8);
 +            g1x8b = _mm256_srai_epi32(g1x8b, in_sh);
 +            g1x8b = av_clip_int16_avx(g1x8b);
 +
-+            b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            b0x8b = _mm256_add_epi32(b0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b0x8b = _mm256_add_epi32(b0x8b, rndx8);
 +            b0x8b = _mm256_srai_epi32(b0x8b, in_sh);
 +            b0x8b = av_clip_int16_avx(b0x8b);
 +
-+            b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            b1x8b = _mm256_add_epi32(b1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b1x8b = _mm256_add_epi32(b1x8b, rndx8);
 +            b1x8b = _mm256_srai_epi32(b1x8b, in_sh);
@@ -5014,27 +4982,25 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            vx8b = _mm256_shuffle_epi32(uvx8b, _MM_SHUFFLE(3, 3, 1, 1));
 +
 +            // r = av_clip_int16((y * cy + crv * v + in_rnd) >> in_sh);
-+            r0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
++            r0x8a = g0x8a = b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            r0x8a = _mm256_add_epi32(r0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r0x8a = _mm256_add_epi32(r0x8a, rndx8);
 +            r0x8a = _mm256_srai_epi32(r0x8a, in_sh);
 +            r0x8a = av_clip_int16_avx(r0x8a);
 +
-+            r1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
++            r1x8a = g1x8a = b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            r1x8a = _mm256_add_epi32(r1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r1x8a = _mm256_add_epi32(r1x8a, rndx8);
 +            r1x8a = _mm256_srai_epi32(r1x8a, in_sh);
 +            r1x8a = av_clip_int16_avx(r1x8a);
 +
 +            // g = av_clip_int16((y * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g0x8a = _mm256_add_epi32(g0x8a, rndx8);
 +            g0x8a = _mm256_srai_epi32(g0x8a, in_sh);
 +            g0x8a = av_clip_int16_avx(g0x8a);
 +
-+            g1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g1x8a = _mm256_add_epi32(g1x8a, rndx8);
@@ -5042,51 +5008,45 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            g1x8a = av_clip_int16_avx(g1x8a);
 +
 +            // b = av_clip_int16((y * cy + cbu * u + in_rnd) >> in_sh);
-+            b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            b0x8a = _mm256_add_epi32(b0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b0x8a = _mm256_add_epi32(b0x8a, rndx8);
 +            b0x8a = _mm256_srai_epi32(b0x8a, in_sh);
 +            b0x8a = av_clip_int16_avx(b0x8a);
 +
-+            b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            b1x8a = _mm256_add_epi32(b1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b1x8a = _mm256_add_epi32(b1x8a, rndx8);
 +            b1x8a = _mm256_srai_epi32(b1x8a, in_sh);
 +            b1x8a = av_clip_int16_avx(b1x8a);
 +
-+            r0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
++            r0x8b = g0x8b = b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            r0x8b = _mm256_add_epi32(r0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r0x8b = _mm256_add_epi32(r0x8b, rndx8);
 +            r0x8b = _mm256_srai_epi32(r0x8b, in_sh);
 +            r0x8b = av_clip_int16_avx(r0x8b);
 +
-+            r1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
++            r1x8b = g1x8b = b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            r1x8b = _mm256_add_epi32(r1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r1x8b = _mm256_add_epi32(r1x8b, rndx8);
 +            r1x8b = _mm256_srai_epi32(r1x8b, in_sh);
 +            r1x8b = av_clip_int16_avx(r1x8b);
 +
-+            g0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g0x8b = _mm256_add_epi32(g0x8b, rndx8);
 +            g0x8b = _mm256_srai_epi32(g0x8b, in_sh);
 +            g0x8b = av_clip_int16_avx(g0x8b);
 +
-+            g1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g1x8b = _mm256_add_epi32(g1x8b, rndx8);
 +            g1x8b = _mm256_srai_epi32(g1x8b, in_sh);
 +            g1x8b = av_clip_int16_avx(g1x8b);
 +
-+            b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            b0x8b = _mm256_add_epi32(b0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b0x8b = _mm256_add_epi32(b0x8b, rndx8);
 +            b0x8b = _mm256_srai_epi32(b0x8b, in_sh);
 +            b0x8b = av_clip_int16_avx(b0x8b);
 +
-+            b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            b1x8b = _mm256_add_epi32(b1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b1x8b = _mm256_add_epi32(b1x8b, rndx8);
 +            b1x8b = _mm256_srai_epi32(b1x8b, in_sh);
@@ -5321,27 +5281,25 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            vx8b = _mm256_shuffle_epi32(uvx8b, _MM_SHUFFLE(3, 3, 1, 1));
 +
 +            // r = av_clip_int16((y * cy + crv * v + in_rnd) >> in_sh);
-+            r0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
++            r0x8a = g0x8a = b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            r0x8a = _mm256_add_epi32(r0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r0x8a = _mm256_add_epi32(r0x8a, rndx8);
 +            r0x8a = _mm256_srai_epi32(r0x8a, in_sh);
 +            r0x8a = av_clip_int16_avx(r0x8a);
 +
-+            r1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
++            r1x8a = g1x8a = b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            r1x8a = _mm256_add_epi32(r1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(crv)));
 +            r1x8a = _mm256_add_epi32(r1x8a, rndx8);
 +            r1x8a = _mm256_srai_epi32(r1x8a, in_sh);
 +            r1x8a = av_clip_int16_avx(r1x8a);
 +
 +            // g = av_clip_int16((y * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g0x8a = _mm256_add_epi32(g0x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g0x8a = _mm256_add_epi32(g0x8a, rndx8);
 +            g0x8a = _mm256_srai_epi32(g0x8a, in_sh);
 +            g0x8a = av_clip_int16_avx(g0x8a);
 +
-+            g1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cgu)));
 +            g1x8a = _mm256_add_epi32(g1x8a, _mm256_mullo_epi32(vx8a, _mm256_set1_epi32(cgv)));
 +            g1x8a = _mm256_add_epi32(g1x8a, rndx8);
@@ -5349,51 +5307,45 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            g1x8a = av_clip_int16_avx(g1x8a);
 +
 +            // b = av_clip_int16((y * cy + cbu * u + in_rnd) >> in_sh);
-+            b0x8a = _mm256_mullo_epi32(y0x8a, cyx8);
 +            b0x8a = _mm256_add_epi32(b0x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b0x8a = _mm256_add_epi32(b0x8a, rndx8);
 +            b0x8a = _mm256_srai_epi32(b0x8a, in_sh);
 +            b0x8a = av_clip_int16_avx(b0x8a);
 +
-+            b1x8a = _mm256_mullo_epi32(y1x8a, cyx8);
 +            b1x8a = _mm256_add_epi32(b1x8a, _mm256_mullo_epi32(ux8a, _mm256_set1_epi32(cbu)));
 +            b1x8a = _mm256_add_epi32(b1x8a, rndx8);
 +            b1x8a = _mm256_srai_epi32(b1x8a, in_sh);
 +            b1x8a = av_clip_int16_avx(b1x8a);
 +
-+            r0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
++            r0x8b = g0x8b = b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            r0x8b = _mm256_add_epi32(r0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r0x8b = _mm256_add_epi32(r0x8b, rndx8);
 +            r0x8b = _mm256_srai_epi32(r0x8b, in_sh);
 +            r0x8b = av_clip_int16_avx(r0x8b);
 +
-+            r1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
++            r1x8b = g1x8b = b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            r1x8b = _mm256_add_epi32(r1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(crv)));
 +            r1x8b = _mm256_add_epi32(r1x8b, rndx8);
 +            r1x8b = _mm256_srai_epi32(r1x8b, in_sh);
 +            r1x8b = av_clip_int16_avx(r1x8b);
 +
-+            g0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g0x8b = _mm256_add_epi32(g0x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g0x8b = _mm256_add_epi32(g0x8b, rndx8);
 +            g0x8b = _mm256_srai_epi32(g0x8b, in_sh);
 +            g0x8b = av_clip_int16_avx(g0x8b);
 +
-+            g1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cgu)));
 +            g1x8b = _mm256_add_epi32(g1x8b, _mm256_mullo_epi32(vx8b, _mm256_set1_epi32(cgv)));
 +            g1x8b = _mm256_add_epi32(g1x8b, rndx8);
 +            g1x8b = _mm256_srai_epi32(g1x8b, in_sh);
 +            g1x8b = av_clip_int16_avx(g1x8b);
 +
-+            b0x8b = _mm256_mullo_epi32(y0x8b, cyx8);
 +            b0x8b = _mm256_add_epi32(b0x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b0x8b = _mm256_add_epi32(b0x8b, rndx8);
 +            b0x8b = _mm256_srai_epi32(b0x8b, in_sh);
 +            b0x8b = av_clip_int16_avx(b0x8b);
 +
-+            b1x8b = _mm256_mullo_epi32(y1x8b, cyx8);
 +            b1x8b = _mm256_add_epi32(b1x8b, _mm256_mullo_epi32(ux8b, _mm256_set1_epi32(cbu)));
 +            b1x8b = _mm256_add_epi32(b1x8b, rndx8);
 +            b1x8b = _mm256_srai_epi32(b1x8b, in_sh);
