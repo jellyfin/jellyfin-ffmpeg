@@ -2574,8 +2574,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.h
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
-+#ifndef FFMPEG_VF_TONEMAPX_INTRIN_NEON_H
-+#define FFMPEG_VF_TONEMAPX_INTRIN_NEON_H
++#ifndef AVFILTER_TONEMAPX_INTRIN_NEON_H
++#define AVFILTER_TONEMAPX_INTRIN_NEON_H
 +
 +#include <arm_neon.h>
 +
@@ -2609,7 +2609,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.h
 +                                              int width, int height,
 +                                              const struct TonemapIntParams *params);
 +
-+#endif //FFMPEG_VF_TONEMAPX_INTRIN_NEON_H
++#endif //AVFILTER_TONEMAPX_INTRIN_NEON_H
 Index: FFmpeg/libavfilter/x86/Makefile
 ===================================================================
 --- FFmpeg.orig/libavfilter/x86/Makefile
@@ -4015,8 +4015,8 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.h
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
-+#ifndef FFMPEG_VF_TONEMAPX_INTRIN_SSE_H
-+#define FFMPEG_VF_TONEMAPX_INTRIN_SSE_H
++#ifndef AVFILTER_TONEMAPX_INTRIN_SSE_H
++#define AVFILTER_TONEMAPX_INTRIN_SSE_H
 +
 +#include <immintrin.h>
 +#include <emmintrin.h>
@@ -4052,7 +4052,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.h
 +                                                       int width, int height,
 +                                                       const struct TonemapIntParams *params);
 +
-+#endif //FFMPEG_VF_TONEMAPX_INTRIN_SSE_H
++#endif //AVFILTER_TONEMAPX_INTRIN_SSE_H
 Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
@@ -4076,8 +4076,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
-+#ifndef FFMPEG_VF_TONEMAPX_H
-+#define FFMPEG_VF_TONEMAPX_H
++#ifndef AVFILTER_TONEMAPX_H
++#define AVFILTER_TONEMAPX_H
 +
 +#include "colorspace.h"
 +
@@ -4133,7 +4133,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +                                                int width, int height,
 +                                                const struct TonemapIntParams *params);
 +
-+#endif //FFMPEG_VF_TONEMAPX_H
++#endif //AVFILTER_TONEMAPX_H
 Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
@@ -5551,8 +5551,8 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.h
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
-+#ifndef FFMPEG_VF_TONEMAPX_INTRIN_AVX_H
-+#define FFMPEG_VF_TONEMAPX_INTRIN_AVX_H
++#ifndef AVFILTER_TONEMAPX_INTRIN_AVX_H
++#define AVFILTER_TONEMAPX_INTRIN_AVX_H
 +
 +#include <immintrin.h>
 +#include <emmintrin.h>
@@ -5588,4 +5588,4 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.h
 +                                                       int width, int height,
 +                                                       const struct TonemapIntParams *params);
 +
-+#endif //FFMPEG_VF_TONEMAPX_INTRIN_AVX_H
++#endif //AVFILTER_TONEMAPX_INTRIN_AVX_H
