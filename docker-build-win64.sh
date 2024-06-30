@@ -588,6 +588,9 @@ ffversion="$(dpkg-parsechangelog --show-field Version)"
 if [[ -f "patches/series" ]]; then
     quilt push -a
 fi
+# Workaround for GCC bug causing misaligned AVX instructions
+CFLAGS+=" -Wa,-muse-unaligned-vector-move"
+CXXFLAGS+=" -Wa,-muse-unaligned-vector-move"
 ./configure \
     --prefix=${FF_PREFIX} \
     ${FF_TARGET_FLAGS} \
