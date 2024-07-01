@@ -16,7 +16,7 @@ Index: FFmpeg/configure
          esac
 +    elif enabled x86_64; then
 +        case $target_os in
-+        mingw64*|win64|cygwin*)
++        mingw*|win*|cygwin*)
 +            # GCC on Windows cannot guarantee a 32-byte aligned stack
 +            # Such alignment is required by certain AVX instructions
 +            # Force GCC to use the unaligned equivalents instead
@@ -5258,11 +5258,11 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +}
 +
 +X86_64_V3 void tonemap_frame_p016_p010_2_p016_p010_avx(uint16_t *dsty, uint16_t *dstuv,
-+                                                              const uint16_t *srcy, const uint16_t *srcuv,
-+                                                              const int *dstlinesize, const int *srclinesize,
-+                                                              int dstdepth, int srcdepth,
-+                                                              int width, int height,
-+                                                              const struct TonemapIntParams *params)
++                                                       const uint16_t *srcy, const uint16_t *srcuv,
++                                                       const int *dstlinesize, const int *srclinesize,
++                                                       int dstdepth, int srcdepth,
++                                                       int width, int height,
++                                                       const struct TonemapIntParams *params)
 +{
 +    uint16_t *rdsty = dsty;
 +    uint16_t *rdstuv = dstuv;
