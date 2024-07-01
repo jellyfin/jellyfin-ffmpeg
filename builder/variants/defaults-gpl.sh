@@ -6,5 +6,3 @@ GIT_BRANCH="jellyfin"
 LICENSE_FILE="COPYING.GPLv3"
 
 [[ $TARGET == linux* ]] && FF_CONFIGURE+=" --disable-libxcb --disable-xlib" || true
-[[ $TARGET == win* ]] && FF_CFLAGS+=" -Wa,-muse-unaligned-vector-move" || true
-[[ $TARGET == win* ]] && FF_CXXFLAGS+=" -Wa,-muse-unaligned-vector-move" || true

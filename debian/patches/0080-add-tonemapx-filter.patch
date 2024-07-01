@@ -10,6 +10,23 @@ Index: FFmpeg/configure
  tonemap_vaapi_filter_deps="vaapi VAProcFilterParameterBufferHDRToneMapping"
  tonemap_opencl_filter_deps="opencl const_nan"
  tonemap_videotoolbox_filter_deps="metal corevideo videotoolbox const_nan"
+@@ -7295,6 +7296,16 @@ elif enabled gcc; then
+             check_cflags -mpreferred-stack-boundary=4
+             ;;
+         esac
++    elif enabled x86_64; then
++        case $target_os in
++        mingw64*|win64|cygwin*)
++            # GCC on Windows cannot guarantee a 32-byte aligned stack
++            # Such alignment is required by certain AVX instructions
++            # Force GCC to use the unaligned equivalents instead
++            check_cflags -Wa,-muse-unaligned-vector-move
++            check_cxxflags -Wa,-muse-unaligned-vector-move
++            ;;
++        esac
+     fi
+ elif enabled llvm_gcc; then
+     check_cflags -mllvm -stack-alignment=16
 Index: FFmpeg/libavfilter/allfilters.c
 ===================================================================
 --- FFmpeg.orig/libavfilter/allfilters.c
