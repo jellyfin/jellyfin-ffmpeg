@@ -39,7 +39,7 @@ Index: FFmpeg/libavcodec/ac4dec.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavcodec/ac4dec.c
-@@ -0,0 +1,5902 @@
+@@ -0,0 +1,5900 @@
 +/*
 + * AC-4 Audio Decoder
 + *
@@ -62,8 +62,6 @@ Index: FFmpeg/libavcodec/ac4dec.c
 + * License along with FFmpeg; if not, write to the Free Software
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
-+
-+#define GNU_SOURCE
 +
 +#define ASSERT_LEVEL 5
 +#include "libavutil/avassert.h"
@@ -5818,9 +5816,9 @@ Index: FFmpeg/libavcodec/ac4dec.c
 +    avctx->ch_layout.nb_channels = channel_mode_nb_channels[ssinfo->channel_mode];
 +    avctx->ch_layout = ff_ac4_ch_layouts[ssinfo->channel_mode];
 +    avctx->sample_rate = s->fs_index ? 48000 : 44100;
-+//    avctx->sample_rate = (int)av_rescale(avctx->sample_rate,
-+//                                    s->resampling_ratio.den,
-+//                                    s->resampling_ratio.num);
++    avctx->sample_rate = (int)av_rescale(avctx->sample_rate,
++                                    s->resampling_ratio.den,
++                                    s->resampling_ratio.num);
 +    frame->nb_samples = s->frame_len_base;
 +    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
 +        return ret;
@@ -7616,7 +7614,7 @@ Index: FFmpeg/libavcodec/codec_desc.c
 ===================================================================
 --- FFmpeg.orig/libavcodec/codec_desc.c
 +++ FFmpeg/libavcodec/codec_desc.c
-@@ -3367,6 +3367,13 @@ static const AVCodecDescriptor codec_des
+@@ -3369,6 +3369,13 @@ static const AVCodecDescriptor codec_des
          .long_name = NULL_IF_CONFIG_SMALL("RKA (RK Audio)"),
          .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_LOSSLESS,
      },
