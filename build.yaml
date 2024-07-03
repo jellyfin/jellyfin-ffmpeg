@@ -3,9 +3,6 @@
 name: "jellyfin-ffmpeg"
 version: "6.0.1-7"
 packages:
-  - buster-amd64
-  - buster-armhf
-  - buster-arm64
   - bullseye-amd64
   - bullseye-armhf
   - bullseye-arm64

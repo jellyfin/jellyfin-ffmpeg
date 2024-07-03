@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_REPO="https://git.savannah.gnu.org/git/libiconv.git"
+SCRIPT_REPO="https://skia.googlesource.com/third_party/libiconv"
 SCRIPT_COMMIT="v1.17"
 SCRIPT_TAGFILTER="v?.*"
 
@@ -17,7 +17,7 @@ ffbuild_dockerbuild() {
 
     cat <<EOF > ./.gitmodules
 [subcheckout "gnulib"]
-	url = https://git.savannah.gnu.org/git/gnulib.git
+	url = https://github.com/coreutils/gnulib.git
 	path = gnulib
 EOF
 
