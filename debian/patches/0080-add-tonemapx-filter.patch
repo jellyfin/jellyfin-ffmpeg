@@ -2747,7 +2747,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,99 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2772,15 +2772,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +#include "config.h"
 +#include "colorspace.h"
 +
-+#if defined(__GNUC__) || defined(__clang__)
-+#    if (__GNUC__ >= 11) || (__clang_major__ >= 12)
-+#        define X86_64_V2 __attribute__((target("arch=x86-64-v2")))
-+#        define X86_64_V3 __attribute__((target("arch=x86-64-v3")))
-+#    else
-+#        define X86_64_V2 __attribute__((target("sse4.2")))
-+#        define X86_64_V3 __attribute__((target("avx2,fma")))
-+#    endif // (__GNUC__ >= 11) || (__clang_major__ >= 12)
-+#endif // defined(__GNUC__) || defined(__clang__)
++#define X86_64_V2 __attribute__((target("sse4.2")))
++#define X86_64_V3 __attribute__((target("avx2,fma")))
 +
 +#if defined(__GNUC__) || defined(__clang__)
 +#    if (__GNUC__ >= 9) || (__clang_major__ >= 11)
