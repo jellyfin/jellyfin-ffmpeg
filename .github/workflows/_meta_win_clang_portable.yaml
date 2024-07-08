@@ -40,9 +40,9 @@ jobs:
             diffstat
             mingw-w64-clang-x86_64-nasm
 
+      - run: '"C:\Program Files\Git\bin\git.exe" config --global core.autocrlf false'
+      - run: '"C:\Program Files\Git\bin\git.exe" config --global core.eol lf'
       - run: | # Disable autocrlf for windows
-         '"C:\Program Files\Git\bin\git.exe" config --global core.autocrlf false'
-         '"C:\Program Files\Git\bin\git.exe" config --global core.eol lf'
          git config --global core.autocrlf false
          git config --global core.eol lf
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
