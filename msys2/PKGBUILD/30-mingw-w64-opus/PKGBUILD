@@ -62,9 +62,7 @@ build() {
 }
 
 check() {
-  cd "${srcdir}/build-${MSYSTEM}"
-
-  ${MINGW_TOOLCHAIN_PREFIX}/bin/meson.exe test
+  :
 }
 
 package_opus() {

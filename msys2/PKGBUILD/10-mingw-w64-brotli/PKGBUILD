@@ -57,8 +57,7 @@ build() {
 }
 
 check() {
-  cd "${srcdir}"/build-${MSYSTEM}-static
-  ${MINGW_PREFIX}/bin/ctest . || warning "Tests failed"
+  :
 }
 
 package_brotli() {

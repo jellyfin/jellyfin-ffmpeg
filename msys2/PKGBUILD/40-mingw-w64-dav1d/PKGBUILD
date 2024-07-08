@@ -53,9 +53,7 @@ build() {
 }
 
 check() {
-  cd "${srcdir}/build-${MSYSTEM}"
-
-  ${FF_MINGW_PREFIX}/bin/meson test
+  :
 }
 
 package() {

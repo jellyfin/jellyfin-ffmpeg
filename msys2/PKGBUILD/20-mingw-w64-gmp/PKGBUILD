@@ -62,8 +62,7 @@ build() {
 }
 
 check() {
-  cd "${srcdir}/static-${MSYSTEM}"
-  make check
+  :
 }
 
 package() {

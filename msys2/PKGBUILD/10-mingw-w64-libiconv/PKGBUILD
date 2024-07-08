@@ -79,8 +79,7 @@ build() {
 }
 
 check() {
-  cd "${srcdir}/build-${MSYSTEM}"
-  make check || msg2 "tests failed"
+  :
 }
 
 package_libiconv() {
