@@ -1,2 +1,3 @@
 *.pnm -diff -text
 tests/ref/fate/sub-scc eol=crlf
+msys2** -text
