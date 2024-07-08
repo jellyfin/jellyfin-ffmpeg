@@ -9,6 +9,7 @@ TARGET="win64-clang"
 VARIANT="gpl"
 
 # Copy libc++ to our prefix folder
+mkdir -p /clang64/ffbuild/lib
 cp /clang64/lib/libc++.a /clang64/ffbuild/lib/libc++.a
 
 cd "$BUILDER_ROOT"/PKGBUILD
