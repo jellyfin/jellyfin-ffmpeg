@@ -27,8 +27,8 @@ prepare() {
 }
 
 build() {
-  export CMAKE_PREFIX_PATH="${MINGW_TOOLCHAIN_PREFIX}"
-  export PKG_CONFIG_PATH="${MINGW_TOOLCHAIN_PREFIX}/lib/pkgconfig/:${PKG_CONFIG_PATH}"
+  export CMAKE_PREFIX_PATH="${FF_MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig/:${PKG_CONFIG_PATH}"
   _common_opts=(
     -G"Ninja"
     -DCMAKE_BUILD_TYPE=Release \
@@ -52,8 +52,8 @@ build() {
 }
 
 package() {
-  export CMAKE_PREFIX_PATH="${MINGW_TOOLCHAIN_PREFIX}"
-  export PKG_CONFIG_PATH="${MINGW_TOOLCHAIN_PREFIX}/lib/pkgconfig/:${PKG_CONFIG_PATH}"
+  export CMAKE_PREFIX_PATH="${FF_MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig/:${PKG_CONFIG_PATH}"
   # static
   cd "${srcdir}/static-${MSYSTEM}"
   DESTDIR="${pkgdir}" ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake.exe --install ./

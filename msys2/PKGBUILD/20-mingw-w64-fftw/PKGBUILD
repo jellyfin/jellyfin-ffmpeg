@@ -27,7 +27,7 @@ sha256sums=('56c932549852cddcfafdab3820b0200c7742675be92179e59e6215b340e26467'
             'd44e0b25fee59bee3b2fa81ce86762b66158d5e2be7f350d8cf937691aa72b5b'
             'd82e96c8545515b9c83d54356209ee9c4a45bedc3859cb01cf3966dc38fc7a33')
 
-precision="double float \
+precision="float \
            $( [[ ${MINGW_PACKAGE_PREFIX} == *-clang-* ]] || echo "quad" )"
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
