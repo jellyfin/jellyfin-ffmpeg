@@ -8,8 +8,6 @@ arch="x86_64"
 TARGET="win64-clang"
 VARIANT="gpl"
 
-pacman -S --noconfirm mingw-w64-clang-x86_64-toolchain git quilt diffstat mingw-w64-clang-x86_64-nasm
-
 # Copy libc++ to our prefix folder
 cp /clang64/lib/libc++.a /clang64/ffbuild/lib/libc++.a
 
