@@ -26,7 +26,7 @@ sha256sums=('ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269'
             'e519a50a4adaf05b18650d3e9d644badc66e80ca86063681ffe9a2c2226319d0'
             'f93e6b50082a8e880ee8436c7ec6a65a8f01e9282436af77f95bb259b1c7f7f7')
 
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 prepare() {
   cd "${srcdir}/${_realname}-${pkgver}"
