@@ -13,10 +13,10 @@ mkdir -p /clang64/ffbuild/lib
 cp /clang64/lib/libc++.a /clang64/ffbuild/lib/libc++.a
 
 cd "$BUILDER_ROOT"/PKGBUILD
-for pkg in */; do
-    if [ -d "$dir" ]; then
-        echo "Installing $dir"
-        cd "$dir"
+for pkg in *; do
+    if [ -d "$pkg" ]; then
+        echo "Installing $pkg"
+        cd "$pkg"
 
         (MINGW_ARCH=clang64 makepkg-mingw -sLfi --noconfirm --skippgpcheck) || exit $?
 
