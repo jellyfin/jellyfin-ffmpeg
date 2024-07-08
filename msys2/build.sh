@@ -42,7 +42,6 @@ PKG_CONFIG_PATH=/clang64/ffbuild/lib/pkgconfig ./configure --cc=clang \
     --disable-doc \
     --disable-sdl2 \
     --disable-ptx-compression \
-    --enable-shared \
     --enable-lto \
     --enable-gpl \
     --enable-version3 \
