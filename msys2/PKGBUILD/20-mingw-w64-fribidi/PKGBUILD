@@ -24,6 +24,7 @@ sha256sums=('0bbc7ff633bfa208ae32d7e369cf5a7d20d5d2557a0b067c9aa98bcbf9967587')
 export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 build() {
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
   MSYS2_ARG_CONV_EXCL="--prefix=" \
   ${MINGW_PREFIX}/bin/meson.exe setup \
       --prefix=${FF_MINGW_PREFIX} \

@@ -70,6 +70,7 @@ prepare() {
 }
 
 build() {
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
   # Static build
   msg2 "Building static for ${MSYSTEM}"
   [[ -d "${srcdir}"/build-static-${MSYSTEM} ]] && rm -rf "${srcdir}"/build-static-${MSYSTEM}
