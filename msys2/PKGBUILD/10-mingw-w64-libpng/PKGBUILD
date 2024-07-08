@@ -1,0 +1,92 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=libpng
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+pkgver=1.6.43
+_apngver=1.6.40
+pkgrel=1
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+pkgdesc="A collection of routines used to create PNG format graphics (mingw-w64)"
+depends=("${MINGW_PACKAGE_PREFIX}-gcc-libs"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-zlib")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc" "${MINGW_PACKAGE_PREFIX}-autotools")
+license=('custom')
+url="http://www.libpng.org/pub/png/libpng.html"
+msys2_repository_url='https://github.com/pnggroup/libpng'
+msys2_references=(
+  "cpe: cpe:/a:greg_roelofs:libpng"
+  "cpe: cpe:/a:libpng:libpng"
+)
+options=('strip' '!libtool' 'staticlibs')
+# apng: https://github.com/mozilla/gecko-dev/commits/master/media/libpng/apng.patch
+source=("https://downloads.sourceforge.net/sourceforge/libpng/${_realname}-${pkgver}.tar.xz"
+        "https://raw.githubusercontent.com/mozilla/gecko-dev/ee4f298265cc851314bf431fb0efccba6af15f74/media/libpng/apng.patch")
+sha256sums=('6a5ca0652392a2d7c9db2ae5b40210843c0bbc081cbd410825ab00cc59f14a6c'
+            '2a65fa19b126e85ad14ef1d1d9fc5079193e92af6b8db4454e3a875da5fdb79d')
+validpgpkeys=('8048643BA2C840F4F92A195FF54984BFA16C640F')  # Glenn Randers-Pehrson (mozilla) <glennrp+bmo@gmail.com>
+
+export MINGW_FFBUILD_PREFIX="${MINGW_PREFIX}/ffbuild/"
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+
+  # Add animated PNG (apng) support
+  # Some context as to why this is here: https://bugs.gentoo.org/824018
+  # Arch dropped it some time ago:
+  # https://gitlab.archlinux.org/archlinux/packaging/packages/libpng/-/commit/bc95b152de9709a21c2938d5a
+  # Maybe we should too?
+  patch -p1 -i "${srcdir}/apng.patch"
+
+  # autoreconf to get updated libtool files with clang support
+  autoreconf -fiv
+}
+
+build() {
+  [[ -d "${srcdir}/build-${MSYSTEM}" ]] && rm -rf "${srcdir}/build-${MSYSTEM}"
+  mkdir -p "${srcdir}/build-${MSYSTEM}" && cd "${srcdir}/build-${MSYSTEM}"
+
+  ../"${_realname}-${pkgver}"/configure \
+    --build=${MINGW_CHOST} \
+    --host=${MINGW_CHOST} \
+    --target=${MINGW_CHOST} \
+    --prefix=${MINGW_FFBUILD_PREFIX} \
+    --disable-shared --enable-static \
+    as_ln_s="cp -pR"
+
+  make
+
+  msg2 "Build contributed programs"
+  mkdir -p ".libs/contrib/pngminus" && cd ".libs/contrib/pngminus"
+  cp -r "${srcdir}/${_realname}-${pkgver}/contrib/pngminus"/* .
+# libpng.a and libpng.dll.a are basically symlinks to libpng16.a 
+# and libpng16.dll.a that are created at "make install" but we are
+# building the contributed programs before the "make install" so
+# we have to link to libpng16.dll.a or libpng16.a if building 
+# statically. When building the static programs, we might also
+# want to build with the static version of zlib.
+  make PNGINC="-I${srcdir}/${_realname}-${pkgver} -I${srcdir}/build-${MSYSTEM}" \
+    CC="${MINGW_PREFIX}/bin/cc" \
+    PNGLIB_SHARED="-L../.. -lpng16" \
+    PNGLIB_STATIC="../../libpng16.a" \
+    ZLIB_STATIC="${MINGW_FFBUILD_PREFIX}/lib/libz.a" \
+    CFLAGS="$CFLAGS" \
+    LDFLAGS="-L../.. $LDFLAGS" \
+    png2pnm pnm2png png2pnm-static pnm2png-static
+}
+
+check() {
+  :
+}
+
+package () {
+  cd "${srcdir}/build-${MSYSTEM}"
+  make install DESTDIR="${pkgdir}"
+
+  install -D -m644 "${srcdir}/libpng-${pkgver}/LICENSE" "${pkgdir}${MINGW_FFBUILD_PREFIX}/share/licenses/${_realname}/LICENSE"
+
+  msg2 "Install contributed programs"
+  cd ".libs/contrib/pngminus"
+}
+

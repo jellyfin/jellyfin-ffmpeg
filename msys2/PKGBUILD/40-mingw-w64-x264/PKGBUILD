@@ -1,0 +1,84 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=x264
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-libx264")
+pkgver=0.164.r3191.4613ac3
+pkgrel=1
+pkgdesc="Library for encoding H264/AVC video streams (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url="https://www.videolan.org/developers/x264.html"
+license=("custom")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-autotools"
+              $( [[ "${CARCH}" != "i686" \
+                && "${CARCH}" != "x86_64" ]] \
+                || echo "${MINGW_PACKAGE_PREFIX}-nasm" )
+             "git")
+options=('strip' 'staticlibs')
+_commit="4613ac3c15fd75cebc4b9f65b7fb95e70a3acce1"
+source=("${_realname}"::"git+https://code.videolan.org/videolan/${_realname}.git#commit=${_commit}"
+        0001-beautify-pc.all.patch
+        0002-install-avisynth_c.h.mingw.patch
+        0003-pkgconfig-add-Cflags-private.patch
+        0004-dont-align-64byte-stack.patch)
+sha256sums=('SKIP'
+            '8e92f4d6c1924664e7c9f5b797070a35f8eabbfce431f996167fe426fc833dda'
+            '611d427742347e0dfbcea8d45c8c9b0fd15e29ab0b22207000f8bf5f3ba1a3a9'
+            '0cbf016c01291f1b8b97ffabdf7e52a8a8593ddf8d88c782245b60462a18bd60'
+            'SKIP')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+
+pkgver() {
+  cd ${srcdir}/${_realname}
+
+  ./version.sh | grep X264_POINTVER | sed -r 's/^#define X264_POINTVER "([0-9]+\.[0-9]+)\.([0-9]+)M? (.*)"$/\1.r\2.\3/'
+}
+
+prepare() {
+  cd ${_realname}
+  patch -p1 -i ${srcdir}/0001-beautify-pc.all.patch
+  patch -p1 -i ${srcdir}/0002-install-avisynth_c.h.mingw.patch
+  patch -p1 -i ${srcdir}/0003-pkgconfig-add-Cflags-private.patch
+  # 64byte stack alignment conflicts with ffmpeg's 16byte alignment,
+  # which errors in clang with LTO, see https://github.com/llvm/llvm-project/issues/60310
+  patch -p1 -i ${srcdir}/0004-dont-align-64byte-stack.patch
+}
+
+build() {
+  [[ -d "build-${MINGW_CHOST}" ]] && rm -rf "build-${MINGW_CHOST}"
+  mkdir -p "${srcdir}/build-${MINGW_CHOST}"
+  cd "${srcdir}/build-${MINGW_CHOST}"
+  ../${_realname}/configure \
+    --prefix=${MINGW_PREFIX} \
+    --host=${MINGW_CHOST} \
+    --enable-static \
+    --enable-strip \
+    --disable-cli \
+    --disable-lavf \
+    --disable-swscale
+
+  make
+
+  make DESTDIR="${srcdir}/dest/libx264" install
+}
+
+package_libx264() {
+  depends=()
+
+  cp -r "${srcdir}/dest/libx264/"* "${pkgdir}"
+}
+
+# template start; name=mingw-w64-splitpkg-wrappers; version=1.0;
+# vim: set ft=bash :
+
+# generate wrappers
+for _name in "${pkgname[@]}"; do
+  _short="package_${_name#${MINGW_PACKAGE_PREFIX}-jellyfin-}"
+  _func="$(declare -f "${_short}")"
+  eval "${_func/#${_short}/package_${_name}}"
+done
+# template end;

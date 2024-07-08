@@ -1,0 +1,161 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=fftw
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+_pkgver=3.3.10
+pkgver=${_pkgver//-/.}
+pkgrel=5
+pkgdesc="A library for computing the discrete Fourier transform (DFT) (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url="https://www.fftw.org/"
+license=("spdx:GPL-2.0-or-later")
+makedepends=("${MINGW_PACKAGE_PREFIX}-autotools"
+             "${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-cmake"
+             $( [[ ${MINGW_PACKAGE_PREFIX} == *-clang-* ]] || \
+               echo "${MINGW_PACKAGE_PREFIX}-gcc-fortran"))
+depends=("${MINGW_PACKAGE_PREFIX}-gcc-libs")
+options=('staticlibs' 'strip')
+source=("https://www.fftw.org/${_realname}-${_pkgver}.tar.gz"
+        "0001-detect-arm64-counter.patch"
+        "0002-no-dllexport.patch"
+        "0003-shared-lib.patch")
+sha256sums=('56c932549852cddcfafdab3820b0200c7742675be92179e59e6215b340e26467'
+            'f8be1bef7df7438328d0aabefd51a7043a6f9f569b646e0e3151db9cdc9ff05e'
+            'd44e0b25fee59bee3b2fa81ce86762b66158d5e2be7f350d8cf937691aa72b5b'
+            'd82e96c8545515b9c83d54356209ee9c4a45bedc3859cb01cf3966dc38fc7a33')
+
+precision="double float \
+           $( [[ ${MINGW_PACKAGE_PREFIX} == *-clang-* ]] || echo "quad" )"
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+  apply_patch_with_msg \
+    0001-detect-arm64-counter.patch \
+    0002-no-dllexport.patch \
+    0003-shared-lib.patch
+}
+
+build() {
+  # clang complains when trying to use an sse2 intrinsic if sse2 is not enabled
+  if [[ ${MINGW_PACKAGE_PREFIX} == *-clang-i686* ]]; then
+    CFLAGS+=" -msse2"
+  fi
+
+  for cur in ${precision}; do
+    [[ -d "${srcdir}"/build-${MSYSTEM}-${cur} ]] && rm -rf "${srcdir}"/build-${MSYSTEM}-${cur}
+    mkdir -p "${srcdir}"/build-${MSYSTEM}-${cur} && cd "${srcdir}"/build-${MSYSTEM}-${cur}
+
+    msg "Building ${_realname} for ${cur} precision ..."
+
+    # create FFTW3LibraryDepends.cmake by configuring (but not building) with cmake
+    local -a _config_cmake=""
+    if [ "${cur}" = "float" ]; then
+      _config_cmake="-DENABLE_FLOAT=ON"
+    elif [ "${cur}" = "long_double" ]; then
+      _config_cmake="-DENABLE_LONG_DOUBLE=ON"
+    elif [ "${cur}" = "quad" ]; then
+      _config_cmake="-DENABLE_QUAD_PRECISION=ON"
+    fi
+
+    if [[ $CARCH != aarch64 ]]; then
+      _config_cmake+=" -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_AVX=ON -DENABLE_AVX2=ON"
+    fi
+
+    MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+      "${MINGW_TOOLCHAIN_PREFIX}"/bin/cmake.exe \
+        -Wno-dev \
+        -GNinja \
+        ${_config_cmake} \
+        -DCMAKE_INSTALL_PREFIX="${MINGW_PREFIX}" \
+        -DBUILD_SHARED_LIBS=ON \
+        -DENABLE_OPENMP=ON \
+        -DENABLE_THREADS=ON \
+        ../${_realname}-${_pkgver}
+
+    # build library using autotools
+    local -a _config=""
+    if [[ $CARCH != aarch64 ]]; then
+      _config+="--enable-sse2 --enable-avx --enable-avx-128-fma --enable-avx2"
+    fi
+    if [ $CARCH = x86_64 ]; then
+      _config+=" --enable-avx512"
+    fi
+
+    if [ "${cur}" = "float" ]; then
+      _config+=" --enable-float"
+    elif [ "${cur}" = "long_double" ]; then
+      _config="--enable-long-double"
+    elif [ "${cur}" = "quad" ]; then
+      _config="--enable-quad-precision"
+    fi
+
+    ../${_realname}-${_pkgver}/configure \
+      --prefix="${MINGW_PREFIX}" \
+      --build=${MINGW_CHOST} \
+      --host=${MINGW_CHOST} \
+      ${_config} \
+      --enable-static \
+      --enable-single \
+      --disable-shared \
+      --disable-doc \
+      --disable-fortran \
+      --enable-threads \
+      --with-our-malloc \
+      --with-g77-wrappers \
+      --with-windows-f77-mangling \
+      --with-combined-threads \
+      --with-incoming-stack-boundary=2
+
+    make
+  done
+}
+
+package() {
+  for cur in ${precision}; do
+    msg "Installing ${_realname} for ${cur} precision ..."
+    cd "${srcdir}"/build-${MSYSTEM}-${cur}
+
+    make DESTDIR="${pkgdir}" install -C "${srcdir}"/build-${MSYSTEM}-${cur}
+
+    # move .cmake files to correct directory
+    local _prec_prefix
+    local _file_prefix
+    case "${cur}" in
+      double)
+        _prec_prefix=fftw3
+        _file_prefix=FFTW3
+        ;;
+      float)
+        _prec_prefix=fftw3f
+        _file_prefix=FFTW3f
+        ;;
+      long_double)
+        _prec_prefix=fftw3l
+        _file_prefix=FFTW3l
+        ;;
+      quad)
+        _prec_prefix=fftw3q
+        _file_prefix=FFTW3q
+        ;;
+    esac
+    local _staging_prefix=$(cygpath -am ${srcdir}/build-${MSYSTEM}-${cur})
+    sed -e "s|IMPORTED_IMPLIB_RELEASE \"${_staging_prefix}|IMPORTED_IMPLIB_RELEASE \"${MINGW_PREFIX}/lib|g" -i ./FFTW3LibraryDepends.cmake
+    sed -e "s|IMPORTED_LOCATION_RELEASE \"${_staging_prefix}|IMPORTED_LOCATION_RELEASE \"${MINGW_PREFIX}/bin|g" -i ./FFTW3LibraryDepends.cmake
+    install -Dm644 ./FFTW3LibraryDepends.cmake "${pkgdir}"${MINGW_PREFIX}/lib/cmake/${_prec_prefix}/FFTW3LibraryDepends.cmake
+    mv "${pkgdir}"${MINGW_PREFIX}/lib/cmake/fftw3/${_file_prefix}*.cmake "${pkgdir}"${MINGW_PREFIX}/lib/cmake/${_prec_prefix}/
+  done
+}

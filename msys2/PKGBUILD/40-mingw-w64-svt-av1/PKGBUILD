@@ -1,0 +1,58 @@
+# Maintainer: Miloš Komarčević <miloskomarcevic@aim.com>
+
+_realname=SVT-AV1
+pkgbase=mingw-w64-jellyfin-svt-av1
+pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-svt-av1")
+pkgver=2.1.2
+pkgrel=1
+pkgdesc="Scalable Video Technology AV1 encoder and decoder (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw64' 'ucrt64' 'clang64' 'clangarm64')
+url='https://gitlab.com/AOMediaCodec/SVT-AV1'
+license=('spdx:BSD-3-Clause-Clear')
+makedepends=("${MINGW_PACKAGE_PREFIX}-cmake"
+             "${MINGW_PACKAGE_PREFIX}-ninja"
+             "${MINGW_PACKAGE_PREFIX}-nasm"
+             "${MINGW_PACKAGE_PREFIX}-cc")
+source=("${url}/-/archive/v${pkgver}/${_realname}-v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+
+prepare() {
+  cd "${srcdir}"/${_realname}-v${pkgver}
+}
+
+build() {
+  export CMAKE_PREFIX_PATH="${MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  [[ -d "${srcdir}"/build-${MSYSTEM}-static ]] && rm -rf "${srcdir}"/build-${MSYSTEM}-static
+  mkdir -p "${srcdir}"/build-${MSYSTEM}-static && cd "${srcdir}"/build-${MSYSTEM}-static
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+    ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake \
+      -GNinja \
+      -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+      "${extra_config[@]}" \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DREPRODUCIBLE_BUILDS=ON \
+      ../${_realname}-v${pkgver}
+
+  ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake --build .
+}
+
+package() {
+  cd "${srcdir}"/build-${MSYSTEM}-static
+  DESTDIR="${pkgdir}" ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake --install .
+
+  install -Dm644 ${srcdir}/${_realname}-v${pkgver}/LICENSE.md ${pkgdir}${MINGW_PREFIX}/share/licenses/svt-av1/LICENSE
+  install -Dm644 ${srcdir}/${_realname}-v${pkgver}/PATENTS.md ${pkgdir}${MINGW_PREFIX}/share/licenses/svt-av1/PATENTS.md
+}

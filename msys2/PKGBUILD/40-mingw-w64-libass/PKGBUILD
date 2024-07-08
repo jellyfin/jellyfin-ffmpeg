@@ -1,0 +1,63 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=libass
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-${_realname}"
+pkgver=0.17.3
+pkgrel=1
+pkgdesc="A portable library for SSA/ASS subtitles rendering (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url='https://github.com/libass/libass'
+msys2_references=(
+  "cpe: cpe:/a:libass_project:libass"
+)
+license=('spdx:ISC')
+makedepends=("${MINGW_PACKAGE_PREFIX}-autotools"
+             "${MINGW_PACKAGE_PREFIX}-cc"
+              $( [[ "${CARCH}" != "i686" \
+                && "${CARCH}" != "x86_64" ]] \
+                || echo "${MINGW_PACKAGE_PREFIX}-nasm" ))
+depends=("${MINGW_PACKAGE_PREFIX}-jellyfin-fribidi"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-fontconfig"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-freetype"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-harfbuzz")
+source=(https://github.com/libass/${_realname}/releases/download/${pkgver}/${_realname}-${pkgver}.tar.xz)
+sha256sums=('SKIP')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+  # autoreconf to get updated libtool for clang
+  autoreconf -fiv
+}
+
+build() {
+  [[ -d "${srcdir}/build-${MSYSTEM}-static" ]] && rm -rf "${srcdir}/build-${MSYSTEM}-static"
+  mkdir -p "${srcdir}/build-${MSYSTEM}-static" && cd "${srcdir}/build-${MSYSTEM}-static"
+
+  export PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  CPPFLAGS+=" -DFRIBIDI_LIB_STATIC" \
+  ../${_realname}-${pkgver}/configure \
+    --prefix=${MINGW_PREFIX} \
+    --build=${MINGW_CHOST} \
+    --host=${MINGW_CHOST} \
+    --target=${MINGW_CHOST} \
+    --disable-shared \
+    --enable-static \
+    --disable-directwrite \
+    --disable-libunibreak \
+    --with-pic \
+    $( [[ "${CARCH}" != "i686" \
+      && "${CARCH}" != "x86_64" ]] \
+      || echo "--enable-asm")
+
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${MSYSTEM}-static"
+  make DESTDIR="${pkgdir}" install
+}

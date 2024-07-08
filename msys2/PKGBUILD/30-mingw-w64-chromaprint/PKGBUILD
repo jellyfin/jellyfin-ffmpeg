@@ -1,0 +1,64 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=chromaprint
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+pkgver=1.5.1
+pkgrel=2
+pkgdesc="Library that implements a custom algorithm for extracting fingerprints from any audio source (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url="https://acoustid.org/chromaprint"
+license=("LGPL")
+depends=("${MINGW_PACKAGE_PREFIX}-gcc-libs"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-fftw")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cmake"
+             "${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-ninja")
+options=('strip' 'staticlibs')
+source=("https://github.com/acoustid/${_realname}/releases/download/v${pkgver}/${_realname}-${pkgver}.tar.gz")
+sha256sums=('a1aad8fa3b8b18b78d3755b3767faff9abb67242e01b478ec9a64e190f335e1c')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export CMAKE_PREFIX_PATH="${MINGW_PREFIX}"
+export PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig/:${PKG_CONFIG_PATH}"
+
+prepare() {
+  cd "${srcdir}"/${_realname}-${pkgver}
+}
+
+build() {
+  _common_opts=(
+    -G"Ninja"
+    -DCMAKE_BUILD_TYPE=Release \
+    -DFFT_LIB=fftw3f \
+    -DBUILD_TESTS=off \
+    -DBUILD_TOOLS=off \
+  )
+
+  msg "Build static version"
+  [[ -d "${srcdir}/static-${MSYSTEM}" ]] && rm -r "${srcdir}/static-${MSYSTEM}"
+  mkdir -p "${srcdir}/static-${MSYSTEM}" && cd "${srcdir}/static-${MSYSTEM}"
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+  ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake.exe \
+    -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+    -DBUILD_SHARED_LIBS=off \
+    "${_common_opts[@]}" \
+    ../${_realname}-${pkgver}
+
+  ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake.exe --build ./
+}
+
+package() {
+  # static
+  cd "${srcdir}/static-${MSYSTEM}"
+  DESTDIR="${pkgdir}" ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake.exe --install ./
+
+  # Let ffmpeg also statically link to fftw3 and stdc++
+  # sed -s "s|-lchromaprint|-lchromaprint\ -lfftw3f -lstdc++|g" -i "${pkgdir}"${MINGW_PREFIX}/lib/pkgconfig/libchromaprint.pc
+  # sed -s "s|Cflags\:|Cflags\:\ -DCHROMAPRINT_NODLL|g" -i "${pkgdir}"${MINGW_PREFIX}/lib/pkgconfig/libchromaprint.pc
+  echo "Libs.private: -lfftw3f -lstdc++" >> "${pkgdir}"${MINGW_PREFIX}/lib/pkgconfig/libchromaprint.pc
+  echo "Cflags.private: -DCHROMAPRINT_NODLL" >> "${pkgdir}"${MINGW_PREFIX}/lib/pkgconfig/libchromaprint.pc
+}

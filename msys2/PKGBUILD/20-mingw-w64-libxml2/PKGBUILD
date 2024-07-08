@@ -1,0 +1,127 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Renato Silva <br.renatosilva@gmail.com>
+
+_realname=libxml2
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}-docs")
+pkgver=2.12.8
+pkgrel=1
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+pkgdesc="XML parsing library, version 2 (mingw-w64)"
+depends=("${MINGW_PACKAGE_PREFIX}-jellyfin-libiconv"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-xz"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-zlib")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-autotools"
+             "${MINGW_PACKAGE_PREFIX}-python")
+optdepends=("${MINGW_PACKAGE_PREFIX}-python: Python bindings")
+license=('spdx:MIT')
+url="https://gitlab.gnome.org/GNOME/libxml2/-/wikis/home"
+msys2_repository_url="https://gitlab.gnome.org/GNOME/libxml2"
+msys2_references=(
+  "cpe: cpe:/a:xmlsoft:libxml2"
+)
+install=${_realname}-${MSYSTEM}.install
+source=("https://download.gnome.org/sources/libxml2/${pkgver%.*}/${_realname}-${pkgver}.tar.xz"
+        https://www.w3.org/XML/Test/xmlts20130923.tar.gz
+        0027-decoding-segfault.patch
+        0029-xml2-config-win-paths.patch
+        0030-pkgconfig-add-Cflags-private.patch
+        0031-apply-msvc-relocation.patch)
+sha256sums=('43ad877b018bc63deb2468d71f95219c2fac196876ef36d1bee51d226173ec93'
+            '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f'
+            '0391a4b267ba7251ca74ff2e98bf4c0332a14b618e8147a9341ec5617e45d9d9'
+            '278b4531da3d2aabda080c412c5122b471202dd6df67768b38bb0c31c7a0e508'
+            '06c0afaf1b8dec10d6f23dec983026cddf992528ffbc1cc50418302fabf9dee0'
+            'b4e3cf5faf0ba1100e2ae6b632dc429c0b25c8caca327e0888b41341d6ddbf9a')
+
+export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _fname in "$@"
+  do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+# =========================================== #
+
+prepare() {
+  cd ${_realname}-${pkgver}
+
+  apply_patch_with_msg \
+    0030-pkgconfig-add-Cflags-private.patch \
+    0031-apply-msvc-relocation.patch
+
+  # https://gitlab.gnome.org/GNOME/libxml2/-/issues/64
+  # https://gitlab.gnome.org/GNOME/libxml2/-/merge_requests/15
+  # https://github.com/msys2/MINGW-packages/issues/7955
+   apply_patch_with_msg \
+    0027-decoding-segfault.patch
+
+  # https://github.com/msys2/MINGW-packages/issues/10577
+  apply_patch_with_msg \
+    0029-xml2-config-win-paths.patch
+
+  NOCONFIGURE=1 ./autogen.sh
+}
+
+build() {
+  # Static build
+  msg2 "Building static for ${MSYSTEM}"
+  [[ -d "${srcdir}"/build-static-${MSYSTEM} ]] && rm -rf "${srcdir}"/build-static-${MSYSTEM}
+  mkdir -p ${srcdir}/build-static-${MSYSTEM} && cd ${srcdir}/build-static-${MSYSTEM}
+  ../${_realname}-${pkgver}/configure \
+    --prefix=${MINGW_PREFIX} \
+    --host=${MINGW_CHOST} \
+    --target=${MINGW_CHOST} \
+    --build="${MINGW_CHOST}" \
+    --without-python \
+    --with-modules \
+    --enable-static \
+    --disable-shared \
+    --with-threads=win32 \
+    CFLAGS="${CFLAGS} -DLIBXML_STATIC_FOR_DLL -DNOLIBTOOL"
+  make
+}
+
+check() {
+  :
+}
+
+package_libxml2() {
+  # First install shared
+  make -C ${srcdir}/build-static-${MSYSTEM} install DESTDIR="${pkgdir}"
+
+  # License
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/Copyright" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+
+  # Remove hard coded library path from xlm2-config and libxml-2.0.pc files
+  local PREFIX_DEPS=$(cygpath -am ${MINGW_PREFIX})
+  sed -s "s|${PREFIX_DEPS}\/lib|\${libdir}|g" -i "${pkgdir}"${MINGW_PREFIX}/bin/xml2-config
+  sed -s "s|${PREFIX_DEPS}\/lib|\${libdir}|g" -i "${pkgdir}"${MINGW_PREFIX}/lib/pkgconfig/libxml-2.0.pc
+
+  mkdir -p dest${MINGW_PREFIX}/share
+  mv "${pkgdir}${MINGW_PREFIX}"/share/{doc,gtk-doc} dest${MINGW_PREFIX}/share
+}
+
+package_libxml2-docs() {
+  pkgdesc+=" (documentation)"
+  depends=()
+
+  mv dest/* "${pkgdir}"
+}
+
+# template start; name=mingw-w64-splitpkg-wrappers; version=1.0;
+# vim: set ft=bash :
+
+# generate wrappers
+for _name in "${pkgname[@]}"; do
+  _short="package_${_name#${MINGW_PACKAGE_PREFIX}-jellyfin-}"
+  _func="$(declare -f "${_short}")"
+  eval "${_func/#${_short}/package_${_name}}"
+done
+# template end;

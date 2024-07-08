@@ -18,37 +18,52 @@ on:
       - '**/*.md'
 
 jobs:
-  build_debian:
-    uses: ./.github/workflows/_meta.yaml
-    with:
-      distro: 'debian'
-      codenames: '["bullseye", "bookworm"]'
-      architectures: '["amd64", "arm64", "armhf"]'
-      release: false
-
-  build_ubuntu:
-    uses: ./.github/workflows/_meta.yaml
-    with:
-      distro: 'ubuntu'
-      codenames: '["focal", "jammy", "noble"]'
-      architectures: '["amd64", "arm64", "armhf"]'
-      release: false
+#   build_debian:
+#     uses: ./.github/workflows/_meta.yaml
+#     with:
+#       distro: 'debian'
+#       codenames: '["bullseye", "bookworm"]'
+#       architectures: '["amd64", "arm64", "armhf"]'
+#       release: false
+#
+#   build_ubuntu:
+#     uses: ./.github/workflows/_meta.yaml
+#     with:
+#       distro: 'ubuntu'
+#       codenames: '["focal", "jammy", "noble"]'
+#       architectures: '["amd64", "arm64", "armhf"]'
+#       release: false
+#
+#   build_portable_windows:
+#     uses: ./.github/workflows/_meta_portable.yaml
+#     with:
+#       os: 'windows'
+#       architectures: '["win64"]'
+#       release: false
 
   build_portable_windows:
-    uses: ./.github/workflows/_meta_portable.yaml
+    strategy:
+      fail-fast: true
+      matrix:
+        cc:
+          - name: gcc
+            profile: _meta_portable
+          - name: clang
+            profile: _meta_win_clang_portable
+    uses: ./.github/workflows/${{ matrix.cc.profile }}.yaml
     with:
       os: 'windows'
       architectures: '["win64"]'
       release: false
-
-  build_portable_linux:
-    uses: ./.github/workflows/_meta_portable.yaml
-    with:
-      os: 'linux'
-      architectures: '["amd64", "arm64"]'
-      release: false
-
-  build_portable_mac:
-    uses: ./.github/workflows/_meta_mac_portable.yaml
-    with:
-      release: false
+#
+#   build_portable_linux:
+#     uses: ./.github/workflows/_meta_portable.yaml
+#     with:
+#       os: 'linux'
+#       architectures: '["amd64", "arm64"]'
+#       release: false
+#
+#   build_portable_mac:
+#     uses: ./.github/workflows/_meta_mac_portable.yaml
+#     with:
+#       release: false
