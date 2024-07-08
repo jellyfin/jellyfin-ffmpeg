@@ -54,7 +54,7 @@ jobs:
         uses: actions/upload-artifact@0b2256b8c012f0828dc542b3febcab082c67f72b # v4.3.4
         with:
           name: win-clang-${{ matrix.os.arch }}-portable
-          path: ./builder/artifacts
+          path: ./msys2/artifacts
 
   publish:
     name: Publish Portable Release
