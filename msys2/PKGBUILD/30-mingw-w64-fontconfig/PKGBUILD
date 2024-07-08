@@ -38,7 +38,7 @@ sha256sums=('63a0658d0e06e0fa886106452b58ef04f21f58202ea02a94c39de0d3335d7c0e'
             'c225c156c4732a492c9588c8d33705ca29af6f3195f201f4012b09ff012f1831')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   cd "${srcdir}"/${_realname}-${pkgver}
@@ -55,7 +55,7 @@ prepare() {
 }
 
 build() {
-  export PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
   [[ -d "${srcdir}/build-${MINGW_CHOST}" ]] && rm -rf "${srcdir}/build-${MINGW_CHOST}"
   mkdir -p "${srcdir}/build-${MINGW_CHOST}"
   cd "${srcdir}/build-${MINGW_CHOST}"
@@ -64,15 +64,15 @@ build() {
   # and patch out symlinking
   PYTHON=/usr/bin/python \
   ../${_realname}-${pkgver}/configure \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --build=${MINGW_CHOST} \
     --host=${MINGW_CHOST} \
     --disable-shared \
     --enable-static \
     --enable-iconv \
-    --with-libiconv=${MINGW_PREFIX} \
+    --with-libiconv=${FF_MINGW_PREFIX} \
     --enable-libxml2 \
-    --with-libxml2=${MINGW_PREFIX} \
+    --with-libxml2=${FF_MINGW_PREFIX} \
     --disable-docs \
     --with-arch=${CARCH} \
     as_ln_s="cp -pR"
@@ -84,17 +84,17 @@ build() {
 package() {
   cd "${srcdir}/build-${MINGW_CHOST}"
   make -j1 DESTDIR="${pkgdir}" install
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
 
-  find "${pkgdir}${MINGW_PREFIX}" -name '*.def' -o -name '*.exp' | xargs -rtl1 rm
+  find "${pkgdir}${FF_MINGW_PREFIX}" -name '*.def' -o -name '*.exp' | xargs -rtl1 rm
 
   # Also install libintl lib
-  cp "${MINGW_TOOLCHAIN_PREFIX}"/lib/libintl.a "${pkgdir}${MINGW_PREFIX}/lib/"
+  cp "${MINGW_TOOLCHAIN_PREFIX}"/lib/libintl.a "${pkgdir}${FF_MINGW_PREFIX}/lib/"
 
   # Convert MSYS2-specific paths to pkg-config variables (see issue #872)
-  sed -i "s#${MINGW_PREFIX}/lib#\${libdir}#g" "${pkgdir}${MINGW_PREFIX}"/lib/pkgconfig/fontconfig.pc
-  sed -i "s#${MINGW_PREFIX}/include#\${includedir}#g" "${pkgdir}${MINGW_PREFIX}"/lib/pkgconfig/fontconfig.pc
+  sed -i "s#${FF_MINGW_PREFIX}/lib#\${libdir}#g" "${pkgdir}${FF_MINGW_PREFIX}"/lib/pkgconfig/fontconfig.pc
+  sed -i "s#${FF_MINGW_PREFIX}/include#\${includedir}#g" "${pkgdir}${FF_MINGW_PREFIX}"/lib/pkgconfig/fontconfig.pc
 
   # Also statically link to libintl
-  sed -s "s|-liconv|-liconv\ -lintl|g" -i "${pkgdir}"${MINGW_PREFIX}/lib/pkgconfig/fontconfig.pc
+  sed -s "s|-liconv|-liconv\ -lintl|g" -i "${pkgdir}"${FF_MINGW_PREFIX}/lib/pkgconfig/fontconfig.pc
 }

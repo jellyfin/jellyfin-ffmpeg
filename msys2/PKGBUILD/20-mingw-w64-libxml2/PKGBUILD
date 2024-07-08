@@ -37,7 +37,7 @@ sha256sums=('43ad877b018bc63deb2468d71f95219c2fac196876ef36d1bee51d226173ec93'
             '06c0afaf1b8dec10d6f23dec983026cddf992528ffbc1cc50418302fabf9dee0'
             'b4e3cf5faf0ba1100e2ae6b632dc429c0b25c8caca327e0888b41341d6ddbf9a')
 
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -75,7 +75,7 @@ build() {
   [[ -d "${srcdir}"/build-static-${MSYSTEM} ]] && rm -rf "${srcdir}"/build-static-${MSYSTEM}
   mkdir -p ${srcdir}/build-static-${MSYSTEM} && cd ${srcdir}/build-static-${MSYSTEM}
   ../${_realname}-${pkgver}/configure \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --host=${MINGW_CHOST} \
     --target=${MINGW_CHOST} \
     --build="${MINGW_CHOST}" \
@@ -97,15 +97,15 @@ package_libxml2() {
   make -C ${srcdir}/build-static-${MSYSTEM} install DESTDIR="${pkgdir}"
 
   # License
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/Copyright" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/Copyright" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
 
   # Remove hard coded library path from xlm2-config and libxml-2.0.pc files
-  local PREFIX_DEPS=$(cygpath -am ${MINGW_PREFIX})
-  sed -s "s|${PREFIX_DEPS}\/lib|\${libdir}|g" -i "${pkgdir}"${MINGW_PREFIX}/bin/xml2-config
-  sed -s "s|${PREFIX_DEPS}\/lib|\${libdir}|g" -i "${pkgdir}"${MINGW_PREFIX}/lib/pkgconfig/libxml-2.0.pc
+  local PREFIX_DEPS=$(cygpath -am ${FF_MINGW_PREFIX})
+  sed -s "s|${PREFIX_DEPS}\/lib|\${libdir}|g" -i "${pkgdir}"${FF_MINGW_PREFIX}/bin/xml2-config
+  sed -s "s|${PREFIX_DEPS}\/lib|\${libdir}|g" -i "${pkgdir}"${FF_MINGW_PREFIX}/lib/pkgconfig/libxml-2.0.pc
 
-  mkdir -p dest${MINGW_PREFIX}/share
-  mv "${pkgdir}${MINGW_PREFIX}"/share/{doc,gtk-doc} dest${MINGW_PREFIX}/share
+  mkdir -p dest${FF_MINGW_PREFIX}/share
+  mv "${pkgdir}${FF_MINGW_PREFIX}"/share/{doc,gtk-doc} dest${FF_MINGW_PREFIX}/share
 }
 
 package_libxml2-docs() {

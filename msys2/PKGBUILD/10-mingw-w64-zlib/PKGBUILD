@@ -35,7 +35,7 @@ sha256sums=('38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32'
             '0be98a7e660e7c068856f08b9e92d6c73a6b0d88c3e29a9716140b147f7c23c5')
 validpgpkeys=('5ED46A6721D365587791E2AA783FCD8E58BCAFBA')
 
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 apply_patch_with_msg() {
   for _patch in "$@"
@@ -64,7 +64,7 @@ build() {
 
   CHOST=${MINGW_CHOST} \
   ../${_realname}-${pkgver}/configure \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --static
 
   make
@@ -82,7 +82,7 @@ package_zlib() {
 
   make DESTDIR="${pkgdir}" install
 
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/LICENSE" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/LICENSE"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/LICENSE" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/LICENSE"
 }
 
 # template start; name=mingw-w64-splitpkg-wrappers; version=1.0;

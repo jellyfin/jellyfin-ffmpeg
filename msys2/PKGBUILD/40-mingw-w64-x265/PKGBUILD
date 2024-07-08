@@ -28,7 +28,7 @@ source=("${_realname}"::"git+https://bitbucket.org/multicoreware/x265_git.git#co
 sha256sums=('SKIP')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   mv "${srcdir}"/"x265"* "${srcdir}"/x265_${pkgver}
@@ -44,8 +44,8 @@ prepare() {
 
 
 build() {
-  export CMAKE_PREFIX_PATH="${MINGW_PREFIX}"
-  export PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  export CMAKE_PREFIX_PATH="${FF_MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
   if [ "${CARCH}" = 'x86_64' ]; then
     _ENABLE_ASM=ON
   else
@@ -57,7 +57,7 @@ build() {
   MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
   ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake \
     -G Ninja \
-    -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+    -DCMAKE_INSTALL_PREFIX=${FF_MINGW_PREFIX} \
     -DHIGH_BIT_DEPTH=ON \
     -DMAIN12=ON \
     -DEXPORT_C_API=OFF \
@@ -72,7 +72,7 @@ build() {
   MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
   ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake \
     -G Ninja \
-    -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+    -DCMAKE_INSTALL_PREFIX=${FF_MINGW_PREFIX} \
     -DHIGH_BIT_DEPTH=ON \
     -DEXPORT_C_API=OFF \
     -DENABLE_CLI=OFF \
@@ -88,7 +88,7 @@ build() {
   MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
   ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake \
     -G Ninja \
-    -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+    -DCMAKE_INSTALL_PREFIX=${FF_MINGW_PREFIX} \
     -DENABLE_SHARED=OFF \
     -DCMAKE_DLL_NAME_WITH_SOVERSION=ON \
     -DENABLE_ASSEMBLY=${_ENABLE_ASM} \

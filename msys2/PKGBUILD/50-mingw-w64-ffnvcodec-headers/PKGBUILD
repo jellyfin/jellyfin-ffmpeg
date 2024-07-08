@@ -16,7 +16,7 @@ source=(git+https://github.com/FFmpeg/nv-codec-headers.git#tag=${_tag})
 sha256sums=('SKIP')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 pkgver() {
   cd nv-codec-headers
@@ -25,17 +25,17 @@ pkgver() {
 }
 
 build() {
-  make PREFIX=${MINGW_PREFIX} -C nv-codec-headers
+  make PREFIX=${FF_MINGW_PREFIX} -C nv-codec-headers
   sed -n '4,25p' nv-codec-headers/include/ffnvcodec/nvEncodeAPI.h > LICENSE # Extract license
   sed -i '1,22s/^.\{,3\}//' LICENSE # Delete C comments
 }
 
 package() {
-  make PREFIX=${MINGW_PREFIX} DESTDIR="${pkgdir}" -C nv-codec-headers install
-  install -Dm 644 LICENSE -t "${pkgdir}${MINGW_PREFIX}"/share/licenses/ffnvcodec-headers/
+  make PREFIX=${FF_MINGW_PREFIX} DESTDIR="${pkgdir}" -C nv-codec-headers install
+  install -Dm 644 LICENSE -t "${pkgdir}${FF_MINGW_PREFIX}"/share/licenses/ffnvcodec-headers/
 
-  local PREFIX_WIN=$(cygpath -wm ${MINGW_PREFIX})
-  for pcfile in "${pkgdir}${MINGW_PREFIX}"/lib/pkgconfig/*.pc; do
-    sed -s "s|${PREFIX_WIN}|${MINGW_PREFIX}|g" -i "${pcfile}"
+  local PREFIX_WIN=$(cygpath -wm ${FF_MINGW_PREFIX})
+  for pcfile in "${pkgdir}${FF_MINGW_PREFIX}"/lib/pkgconfig/*.pc; do
+    sed -s "s|${PREFIX_WIN}|${FF_MINGW_PREFIX}|g" -i "${pcfile}"
   done
 }

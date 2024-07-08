@@ -29,7 +29,7 @@ sha256sums=('42fe524bcc82ea3a830057178faace22923a79bad3d819a4962d8cfc54c36f19'
 validpgpkeys=('65F7C6B4206BD057A7EB73787180713BE58D1ADC') # VideoLAN Release Signing Key
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   cd "${_realname}-${pkgver}"
@@ -42,7 +42,7 @@ build() {
 
   MSYS2_ARG_CONV_EXCL="--prefix=" \
     ${MINGW_TOOLCHAIN_PREFIX}/bin/meson setup \
-      --prefix=${MINGW_PREFIX} \
+      --prefix=${FF_MINGW_PREFIX} \
       --default-library static \
       --buildtype plain \
       -Denable_tests=false \
@@ -55,7 +55,7 @@ build() {
 check() {
   cd "${srcdir}/build-${MSYSTEM}"
 
-  ${MINGW_PREFIX}/bin/meson test
+  ${FF_MINGW_PREFIX}/bin/meson test
 }
 
 package() {
@@ -64,7 +64,7 @@ package() {
   DESTDIR="${pkgdir}" ${MINGW_TOOLCHAIN_PREFIX}/bin/meson install
 
   # License
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/doc/PATENTS" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/PATENTS"
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/README.md" "${pkgdir}${MINGW_PREFIX}/share/doc/${_realname}/README.md"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/doc/PATENTS" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/PATENTS"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/README.md" "${pkgdir}${FF_MINGW_PREFIX}/share/doc/${_realname}/README.md"
 }

@@ -19,7 +19,7 @@ sha256sums=('0eb4b4b9420a0f51db142ba3f9c64b333f826532dc0f48c6410ae51f4799b664'
             '7f635d4ca41c75dc52206749b6346c174c6a028de09604c6d66929bcdabf6c33')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   cd ${srcdir}/${_realname}-${pkgver}
@@ -27,8 +27,8 @@ prepare() {
 }
 
 build() {
-  export CMAKE_PREFIX_PATH="${MINGW_PREFIX}"
-  export PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig/:${PKG_CONFIG_PATH}"
+  export CMAKE_PREFIX_PATH="${FF_MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig/:${PKG_CONFIG_PATH}"
   declare -a extra_config
   if check_option "debug" "n"; then
     extra_config+=("-DCMAKE_BUILD_TYPE=Release")
@@ -43,7 +43,7 @@ build() {
   MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
     ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake \
       -G'MSYS Makefiles' \
-      -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+      -DCMAKE_INSTALL_PREFIX=${FF_MINGW_PREFIX} \
       "${extra_config[@]}" \
       -DBUILD_SHARED_LIBS=OFF \
       -DBUILD_TESTING=OFF \
@@ -58,8 +58,8 @@ package() {
   make DESTDIR="${pkgdir}" install
 
   # m4
-  install -Dm644 ${srcdir}/${_realname}-${pkgver}/ogg.m4 ${pkgdir}${MINGW_PREFIX}/share/aclocal/ogg.m4
+  install -Dm644 ${srcdir}/${_realname}-${pkgver}/ogg.m4 ${pkgdir}${FF_MINGW_PREFIX}/share/aclocal/ogg.m4
 
   # License
-  install -Dm644 ${srcdir}/${_realname}-${pkgver}/COPYING ${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING
+  install -Dm644 ${srcdir}/${_realname}-${pkgver}/COPYING ${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING
 }

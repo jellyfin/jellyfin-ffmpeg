@@ -27,7 +27,7 @@ sha256sums=('6a5ca0652392a2d7c9db2ae5b40210843c0bbc081cbd410825ab00cc59f14a6c'
             '2a65fa19b126e85ad14ef1d1d9fc5079193e92af6b8db4454e3a875da5fdb79d')
 validpgpkeys=('8048643BA2C840F4F92A195FF54984BFA16C640F')  # Glenn Randers-Pehrson (mozilla) <glennrp+bmo@gmail.com>
 
-export MINGW_FFBUILD_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 prepare() {
   cd "${srcdir}/${_realname}-${pkgver}"
@@ -51,7 +51,7 @@ build() {
     --build=${MINGW_CHOST} \
     --host=${MINGW_CHOST} \
     --target=${MINGW_CHOST} \
-    --prefix=${MINGW_FFBUILD_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --disable-shared --enable-static \
     as_ln_s="cp -pR"
 
@@ -60,17 +60,17 @@ build() {
   msg2 "Build contributed programs"
   mkdir -p ".libs/contrib/pngminus" && cd ".libs/contrib/pngminus"
   cp -r "${srcdir}/${_realname}-${pkgver}/contrib/pngminus"/* .
-# libpng.a and libpng.dll.a are basically symlinks to libpng16.a 
+# libpng.a and libpng.dll.a are basically symlinks to libpng16.a
 # and libpng16.dll.a that are created at "make install" but we are
 # building the contributed programs before the "make install" so
-# we have to link to libpng16.dll.a or libpng16.a if building 
+# we have to link to libpng16.dll.a or libpng16.a if building
 # statically. When building the static programs, we might also
 # want to build with the static version of zlib.
   make PNGINC="-I${srcdir}/${_realname}-${pkgver} -I${srcdir}/build-${MSYSTEM}" \
     CC="${MINGW_PREFIX}/bin/cc" \
     PNGLIB_SHARED="-L../.. -lpng16" \
     PNGLIB_STATIC="../../libpng16.a" \
-    ZLIB_STATIC="${MINGW_FFBUILD_PREFIX}/lib/libz.a" \
+    ZLIB_STATIC="${FF_MINGW_PREFIX}/lib/libz.a" \
     CFLAGS="$CFLAGS" \
     LDFLAGS="-L../.. $LDFLAGS" \
     png2pnm pnm2png png2pnm-static pnm2png-static
@@ -84,7 +84,7 @@ package () {
   cd "${srcdir}/build-${MSYSTEM}"
   make install DESTDIR="${pkgdir}"
 
-  install -D -m644 "${srcdir}/libpng-${pkgver}/LICENSE" "${pkgdir}${MINGW_FFBUILD_PREFIX}/share/licenses/${_realname}/LICENSE"
+  install -D -m644 "${srcdir}/libpng-${pkgver}/LICENSE" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/LICENSE"
 
   msg2 "Install contributed programs"
   cd ".libs/contrib/pngminus"

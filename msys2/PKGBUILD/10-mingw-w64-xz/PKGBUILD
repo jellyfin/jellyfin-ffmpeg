@@ -28,7 +28,7 @@ source=("https://github.com/tukaani-project/xz/releases/download/v${pkgver}/xz-$
 sha256sums=('a9db3bb3d64e248a0fae963f8fb6ba851a26ba1822e504dc0efd18a80c626caf')
 validpgpkeys=('3690C240CE51B4670D30AD1C38EE757D69184620') # Lasse Collin <lasse.collin@tukaani.org>
 
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 prepare() {
   cd "${_realname}-${pkgver}"
@@ -41,7 +41,7 @@ build() {
   mkdir -p "${srcdir}/build-${MSYSTEM}" && cd "${srcdir}/build-${MSYSTEM}"
 
   ../${_realname}-${pkgver}/configure \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --disable-rpath \
     --disable-lzma-links \
     --disable-symbol-versions \
@@ -56,5 +56,5 @@ package() {
   cd "${srcdir}/build-${MSYSTEM}"
   make DESTDIR="${pkgdir}" install
 
-  install -Dm644 ${srcdir}/${_realname}-${pkgver}/COPYING* -t ${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}
+  install -Dm644 ${srcdir}/${_realname}-${pkgver}/COPYING* -t ${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}
 }

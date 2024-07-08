@@ -32,7 +32,7 @@ sha256sums=('5f21d2db27071c8a46f1725928a10227ae45c5cd1cad3727e4aafbe476e321fa'
             '7c511b5df935278da2cba32b03b90582f360ab6786a5e32028bc82025193fabd')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -78,7 +78,7 @@ build() {
 
   LD=cc CFLAGS="$EXTRA_CFLAGS $CFLAGS -fno-asynchronous-unwind-tables" \
   ../${_realname}-${pkgver}/configure \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --target=${_targetarch} \
     --enable-vp8 \
     --enable-vp9 \
@@ -110,7 +110,7 @@ build() {
 
 package() {
   cd "${srcdir}/build-${MSYSTEM}"
-  make DIST_DIR="${pkgdir}${MINGW_PREFIX}" install
+  make DIST_DIR="${pkgdir}${FF_MINGW_PREFIX}" install
   # Also install pthread
-  cp "${MINGW_TOOLCHAIN_PREFIX}"/lib/libpthread.a "${pkgdir}${MINGW_PREFIX}/lib/"
+  cp "${MINGW_TOOLCHAIN_PREFIX}"/lib/libpthread.a "${pkgdir}${FF_MINGW_PREFIX}/lib/"
 }

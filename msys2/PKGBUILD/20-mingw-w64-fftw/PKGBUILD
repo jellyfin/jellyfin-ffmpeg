@@ -31,7 +31,7 @@ precision="double float \
            $( [[ ${MINGW_PACKAGE_PREFIX} == *-clang-* ]] || echo "quad" )"
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 apply_patch_with_msg() {
   for _patch in "$@"
@@ -80,7 +80,7 @@ build() {
         -Wno-dev \
         -GNinja \
         ${_config_cmake} \
-        -DCMAKE_INSTALL_PREFIX="${MINGW_PREFIX}" \
+        -DCMAKE_INSTALL_PREFIX="${FF_MINGW_PREFIX}" \
         -DBUILD_SHARED_LIBS=ON \
         -DENABLE_OPENMP=ON \
         -DENABLE_THREADS=ON \
@@ -104,7 +104,7 @@ build() {
     fi
 
     ../${_realname}-${_pkgver}/configure \
-      --prefix="${MINGW_PREFIX}" \
+      --prefix="${FF_MINGW_PREFIX}" \
       --build=${MINGW_CHOST} \
       --host=${MINGW_CHOST} \
       ${_config} \
@@ -153,9 +153,9 @@ package() {
         ;;
     esac
     local _staging_prefix=$(cygpath -am ${srcdir}/build-${MSYSTEM}-${cur})
-    sed -e "s|IMPORTED_IMPLIB_RELEASE \"${_staging_prefix}|IMPORTED_IMPLIB_RELEASE \"${MINGW_PREFIX}/lib|g" -i ./FFTW3LibraryDepends.cmake
-    sed -e "s|IMPORTED_LOCATION_RELEASE \"${_staging_prefix}|IMPORTED_LOCATION_RELEASE \"${MINGW_PREFIX}/bin|g" -i ./FFTW3LibraryDepends.cmake
-    install -Dm644 ./FFTW3LibraryDepends.cmake "${pkgdir}"${MINGW_PREFIX}/lib/cmake/${_prec_prefix}/FFTW3LibraryDepends.cmake
-    mv "${pkgdir}"${MINGW_PREFIX}/lib/cmake/fftw3/${_file_prefix}*.cmake "${pkgdir}"${MINGW_PREFIX}/lib/cmake/${_prec_prefix}/
+    sed -e "s|IMPORTED_IMPLIB_RELEASE \"${_staging_prefix}|IMPORTED_IMPLIB_RELEASE \"${FF_MINGW_PREFIX}/lib|g" -i ./FFTW3LibraryDepends.cmake
+    sed -e "s|IMPORTED_LOCATION_RELEASE \"${_staging_prefix}|IMPORTED_LOCATION_RELEASE \"${FF_MINGW_PREFIX}/bin|g" -i ./FFTW3LibraryDepends.cmake
+    install -Dm644 ./FFTW3LibraryDepends.cmake "${pkgdir}"${FF_MINGW_PREFIX}/lib/cmake/${_prec_prefix}/FFTW3LibraryDepends.cmake
+    mv "${pkgdir}"${FF_MINGW_PREFIX}/lib/cmake/fftw3/${_file_prefix}*.cmake "${pkgdir}"${FF_MINGW_PREFIX}/lib/cmake/${_prec_prefix}/
   done
 }

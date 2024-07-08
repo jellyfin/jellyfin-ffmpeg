@@ -19,7 +19,7 @@ source=("${_realname}"::"git+https://gitlab.freedesktop.org/wtaymans/${_realname
 sha256sums=('SKIP')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   cd ${srcdir}/${_realname}
@@ -31,7 +31,7 @@ build() {
   [[ -d "${srcdir}"/build-${CARCH} ]] && rm -rf "${srcdir}"/build-${CARCH}
   mkdir -p "${srcdir}"/build-${CARCH} && cd "${srcdir}"/build-${CARCH}
   ../${_realname}/configure \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --build=${MINGW_CHOST} \
     --host=${MINGW_CHOST} \
     --target=${MINGW_CHOST} \
@@ -46,8 +46,8 @@ package() {
   cd ${srcdir}/build-${CARCH}
 
   make DESTDIR=${pkgdir} install
-  
+
   # Install license
-  install -dm 755 "${pkgdir}${MINGW_PREFIX}"/share/licenses/libfdk-aac
-  install -m 644 "${srcdir}"/${_realname}/NOTICE "${pkgdir}${MINGW_PREFIX}"/share/licenses/libfdk-aac/
+  install -dm 755 "${pkgdir}${FF_MINGW_PREFIX}"/share/licenses/libfdk-aac
+  install -m 644 "${srcdir}"/${_realname}/NOTICE "${pkgdir}${FF_MINGW_PREFIX}"/share/licenses/libfdk-aac/
 }

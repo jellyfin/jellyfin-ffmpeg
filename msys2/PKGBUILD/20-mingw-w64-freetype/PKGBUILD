@@ -38,7 +38,7 @@ sha256sums=('12991c4e55c506dd7f9b765933e62fd2be2e06d421505d7950a132e4f1bb484d'
             '0571f18d97834df020e4cbdb1338b14f9160669f868237080951e01f5b86727c')
 validpgpkeys=('E30674707856409FF1948010BE6C3AAC63AD8E3F') # Werner Lemberg <wl@gnu.org>
 
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -73,7 +73,7 @@ build() {
 
   MSYS2_ARG_CONV_EXCL="--prefix=" \
     meson setup \
-      --prefix="${MINGW_PREFIX}" \
+      --prefix="${FF_MINGW_PREFIX}" \
       --wrap-mode=nodownload \
       --auto-features=enabled \
       --default-library=static \
@@ -89,6 +89,6 @@ package () {
   DESTDIR="${pkgdir}" meson install
 
   # Licenses
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/docs/GPLv2.TXT"   "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/GPLv2.TXT"
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/docs/FTL.TXT"     "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/FTL.TXT"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/docs/GPLv2.TXT"   "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/GPLv2.TXT"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/docs/FTL.TXT"     "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/FTL.TXT"
 }

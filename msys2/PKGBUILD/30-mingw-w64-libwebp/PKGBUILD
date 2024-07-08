@@ -25,7 +25,7 @@ sha256sums=('12af50c45530f0a292d39a88d952637e43fb2d4ab1883c44ae729840f7273381'
 validpgpkeys=('6B0E6B70976DE303EDF2F601F9C3D6BDB8232B5D')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   cd "${srcdir}/${_realname}-${pkgver}"
@@ -34,8 +34,8 @@ prepare() {
 }
 
 build() {
-  export CMAKE_PREFIX_PATH="${MINGW_PREFIX}"
-  export PKG_CONFIG_PATH="${MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  export CMAKE_PREFIX_PATH="${FF_MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
   declare -a extra_config
   if check_option "debug" "n"; then
     extra_config+=("-DCMAKE_BUILD_TYPE=Release")
@@ -49,7 +49,7 @@ build() {
   MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
     "${MINGW_TOOLCHAIN_PREFIX}"/bin/cmake.exe \
       -GNinja \
-      -DCMAKE_INSTALL_PREFIX="${MINGW_PREFIX}" \
+      -DCMAKE_INSTALL_PREFIX="${FF_MINGW_PREFIX}" \
       "${extra_config[@]}" \
       -DBUILD_SHARED_LIBS=OFF \
       -DWEBP_ENABLE_SWAP_16BIT_CSP=ON \
@@ -72,5 +72,5 @@ package() {
 
   DESTDIR="${pkgdir}" "${MINGW_TOOLCHAIN_PREFIX}"/bin/cmake.exe --install .
 
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
 }

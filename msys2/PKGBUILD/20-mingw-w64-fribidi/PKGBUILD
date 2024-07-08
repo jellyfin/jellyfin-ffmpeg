@@ -21,14 +21,14 @@ makedepends=("${MINGW_PACKAGE_PREFIX}-meson"
 source=("https://github.com/fribidi/fribidi/releases/download/v${pkgver}/fribidi-${pkgver}.tar.xz")
 sha256sums=('0bbc7ff633bfa208ae32d7e369cf5a7d20d5d2557a0b067c9aa98bcbf9967587')
 
-export MINGW_FFBUILD_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
 build() {
   MSYS2_ARG_CONV_EXCL="--prefix=" \
   ${MINGW_PREFIX}/bin/meson.exe setup \
-      --prefix=${MINGW_FFBUILD_PREFIX} \
+      --prefix=${FF_MINGW_PREFIX} \
       --buildtype plain \
-      --prefix=${MINGW_FFBUILD_PREFIX} \
+      --prefix=${FF_MINGW_PREFIX} \
        -Ddocs=false \
        --default-library static \
        build-${MSYSTEM}-static \
@@ -44,5 +44,5 @@ check() {
 package() {
   meson install -C build-${MSYSTEM}-static --destdir="${pkgdir}"
 
-  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${MINGW_FFBUILD_PREFIX}/share/licenses/${_realname}/COPYING"
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
 }

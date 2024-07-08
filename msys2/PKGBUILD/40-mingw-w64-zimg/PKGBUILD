@@ -22,7 +22,7 @@ sha256sums=('a9a0226bf85e0d83c41a8ebe4e3e690e1348682f6a2a7838f1b8cbff1b799bcf'
             '6e52d715d19080434392f04b33005fee428368e12176da20555f4059209c8134')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare(){
   bsdtar -xzf "${srcdir}/${_realname}-${pkgver}.tar.gz" || bsdtar -xzf "${srcdir}/${_realname}-${pkgver}.tar.gz"
@@ -37,7 +37,7 @@ build() {
   cd "${srcdir}/build-${MINGW_CHOST}"
 
   ../${_realname}-release-${pkgver}/configure \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --build=${MINGW_CHOST} \
     --host=${MINGW_CHOST} \
     --target=${MINGW_CHOST} \

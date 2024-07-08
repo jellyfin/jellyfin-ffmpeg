@@ -14,16 +14,16 @@ source=("${_realname}-${pkgver}.tar.gz::https://github.com/GPUOpen-LibrariesAndS
 sha256sums=('SKIP')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   cd "AMF-${pkgver}"
 }
 
 package() {
-    mkdir -p "${pkgdir}${MINGW_PREFIX}"/include/AMF/
-    cp -r "${srcdir}/AMF-${pkgver}"/amf/public/include/core/ "${pkgdir}${MINGW_PREFIX}"/include/AMF/
-    cp -r "${srcdir}/AMF-${pkgver}"/amf/public/include/components/ "${pkgdir}${MINGW_PREFIX}"/include/AMF/
+    mkdir -p "${pkgdir}${FF_MINGW_PREFIX}"/include/AMF/
+    cp -r "${srcdir}/AMF-${pkgver}"/amf/public/include/core/ "${pkgdir}${FF_MINGW_PREFIX}"/include/AMF/
+    cp -r "${srcdir}/AMF-${pkgver}"/amf/public/include/components/ "${pkgdir}${FF_MINGW_PREFIX}"/include/AMF/
 
-    install -D -m644 "${srcdir}/AMF-${pkgver}"/LICENSE.txt "${pkgdir}${MINGW_PREFIX}"/share/licenses/${_realname}/LICENSE
+    install -D -m644 "${srcdir}/AMF-${pkgver}"/LICENSE.txt "${pkgdir}${FF_MINGW_PREFIX}"/share/licenses/${_realname}/LICENSE
 }

@@ -23,7 +23,7 @@ sha256sums=('a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898'
             '7c3cde2634baa2cb1c31404bbfed2d8d7ba33556971ac842a08f2e87667849ab')
 validpgpkeys=('343C2FF0FBEE5EC2EDBEF399F3599FF828C67298') # Niels Möller <nisse@lysator.liu.se>"
 
-export MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
+export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild/"
 
 prepare() {
   cd "${srcdir}/${_realname}-${pkgver}"
@@ -53,7 +53,7 @@ build() {
   mkdir -p "${srcdir}/static-${MSYSTEM}" && cd "${srcdir}/static-${MSYSTEM}"
   ../${_realname}-${pkgver}/configure \
     --build=${MINGW_CHOST} \
-    --prefix=${MINGW_PREFIX} \
+    --prefix=${FF_MINGW_PREFIX} \
     --enable-cxx \
     "${extra_config[@]}" \
     --enable-static \
