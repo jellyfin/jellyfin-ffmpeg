@@ -23,6 +23,12 @@ ffbuild_dockerbuild() {
             --host="$FFBUILD_TOOLCHAIN"
         )
     elif [[ $TARGET == mac* ]]; then
+        myconf+=(
+            --with-glib=no
+            --with-cairo=no
+            --with-chafa=no
+            --with-icu=no
+        )
         # freetype's pkg-config usage cannot find static libbrotli
         export FREETYPE_LIBS="$(pkg-config --libs --static freetype2)"
     else
