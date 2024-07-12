@@ -6,6 +6,8 @@ SCRIPT_COMMIT="cab901fe465324cb46bd4953e18ddc610ade29b9"
 ffbuild_enabled() {
     # Dependency of GPL-Only librubberband
     [[ $VARIANT == lgpl* ]] && return -1
+    # Prefer macOS native vDSP
+    [[ $TARGET == mac* ]] && return -1
     return 0
 }
 
