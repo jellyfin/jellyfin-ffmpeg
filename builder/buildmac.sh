@@ -53,7 +53,7 @@ FF_HOST_CFLAGS="$(xargs <<< "$FF_HOST_CFLAGS")"
 FF_HOST_LDFLAGS="$(xargs <<< "$FF_HOST_LDFLAGS")"
 FFBUILD_TARGET_FLAGS="$(xargs <<< "$FFBUILD_TARGET_FLAGS")"
 
-mkdir build
+mkdir -p build
 for macbase in images/macos/*.sh; do
     cd "$BUILDER_ROOT"/build
     source "$BUILDER_ROOT"/"$macbase"
