@@ -8,7 +8,7 @@ FFBUILD_TARGET_FLAGS="--disable-shared --enable-static --pkg-config-flags=\"--st
 FF_HOST_CFLAGS="-I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include -I"$FFBUILD_PREFIX"/include"
 FF_HOST_LDFLAGS=""
 
-# This is no longer needed for latest xcode.
+# As of Xcode 15.4, this workaround is no longer needed.
 # If you enconters duplicated symbol linker error try uncomment the following
 # if [ $XCODE_MAJOR_VER -ge 15 ]; then
 #   FF_HOST_LDFLAGS+="-Wl,-ld_classic "
