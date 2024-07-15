@@ -47,7 +47,7 @@ build() {
     --target=${MINGW_CHOST} \
     --disable-shared \
     --enable-static \
-    --disable-directwrite \
+    --enable-directwrite \
     --disable-libunibreak \
     --with-pic \
     $( [[ "${CARCH}" != "i686" \
