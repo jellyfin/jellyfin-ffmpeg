@@ -1,0 +1,38 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=opencl-headers
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname=${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}
+pkgver=2023.04.17
+pkgrel=1
+epoch=2
+pkgdesc='OpenCL (Open Computing Language) header files (mingw-w64)'
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url='https://registry.khronos.org/OpenCL/'
+license=('spdx:Apache-2.0')
+makedepends=("${MINGW_PACKAGE_PREFIX}-cmake"
+             "${MINGW_PACKAGE_PREFIX}-ninja"
+             "${MINGW_PACKAGE_PREFIX}-cc")
+source=(https://github.com/KhronosGroup/OpenCL-Headers/archive/v${pkgver}/OpenCL-Headers-${pkgver}.tar.gz)
+sha256sums=('SKIP')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
+
+package() {
+  export CMAKE_PREFIX_PATH="${FF_MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  cd "${srcdir}"/OpenCL-Headers-${pkgver}
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+    ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake \
+      -G'Ninja' \
+      -DCMAKE_INSTALL_PREFIX=${FF_MINGW_PREFIX} \
+      -DBUILD_TESTING=OFF \
+      ../${_realname}-${pkgver}
+
+  DESTDIR=${pkgdir} cmake --install .
+
+  install -D -m644 "${srcdir}"/OpenCL-Headers-${pkgver}/LICENSE "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/LICENSE"
+}

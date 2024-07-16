@@ -1,0 +1,100 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Renato Silva <br.renatosilva@gmail.com>
+
+_realname=fontconfig
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+pkgver=2.15.0
+pkgrel=1
+pkgdesc="A library for configuring and customizing font access (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url="https://wiki.freedesktop.org/www/Software/fontconfig/"
+msys2_repository_url="https://gitlab.freedesktop.org/fontconfig/fontconfig"
+license=("custom")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-autotools"
+             "${MINGW_PACKAGE_PREFIX}-python-lxml"
+             "${MINGW_PACKAGE_PREFIX}-gperf"
+             "${MINGW_PACKAGE_PREFIX}-gettext-runtime"
+             "python")
+depends=("${MINGW_PACKAGE_PREFIX}-gcc-libs"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-freetype"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-libxml2"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-libiconv")
+options=('staticlibs' 'strip')
+install=${_realname}-${MSYSTEM}.install
+source=("https://www.freedesktop.org/software/fontconfig/release/fontconfig-${pkgver}.tar.xz"
+        0002-fix-mkdir.mingw.patch
+        0004-fix-mkdtemp.mingw.patch
+        0005-fix-setenv.mingw.patch
+        0007-pkgconfig.mingw.patch
+        https://gitlab.freedesktop.org/fontconfig/fontconfig/-/commit/a76b95105ca26c600279b2daf4bd43b37a918823.patch)
+sha256sums=('63a0658d0e06e0fa886106452b58ef04f21f58202ea02a94c39de0d3335d7c0e'
+            '9e5700b9c555e60cd8116fdc2e24cf0a01de01e83373dbbe78cef1e32b91da3b'
+            '57ff8420dbf62873b6fcb38b52fb7b37e0e278425a9125e15dccba54668c8ab9'
+            '552b54010f9fe4097f332cf2397bbd3e78489542d3bbf07792ed1cfe9381796e'
+            'af373531873da46d0356305da5444c1ec74f443cd2635ea2db6b7dadd1561f5b'
+            'c225c156c4732a492c9588c8d33705ca29af6f3195f201f4012b09ff012f1831')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
+
+prepare() {
+  cd "${srcdir}"/${_realname}-${pkgver}
+
+  patch -p1 -i ${srcdir}/0002-fix-mkdir.mingw.patch
+  patch -p1 -i ${srcdir}/0004-fix-mkdtemp.mingw.patch
+  patch -p1 -i ${srcdir}/0005-fix-setenv.mingw.patch
+  patch -p1 -i ${srcdir}/0007-pkgconfig.mingw.patch
+
+  # backport because it seems relevant for us
+  patch -p1 -i ${srcdir}/a76b95105ca26c600279b2daf4bd43b37a918823.patch
+
+  autoreconf -fiv
+}
+
+build() {
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  [[ -d "${srcdir}/build-${MINGW_CHOST}" ]] && rm -rf "${srcdir}/build-${MINGW_CHOST}"
+  mkdir -p "${srcdir}/build-${MINGW_CHOST}"
+  cd "${srcdir}/build-${MINGW_CHOST}"
+
+  # Use msys python for link_confs.py, so we don't have to fixup the path conversion
+  # and patch out symlinking
+  PYTHON=/usr/bin/python \
+  ../${_realname}-${pkgver}/configure \
+    --prefix=${FF_MINGW_PREFIX} \
+    --build=${MINGW_CHOST} \
+    --host=${MINGW_CHOST} \
+    --disable-shared \
+    --enable-static \
+    --enable-iconv \
+    --with-libiconv=${FF_MINGW_PREFIX} \
+    --enable-libxml2 \
+    --with-libxml2=${FF_MINGW_PREFIX} \
+    --disable-docs \
+    --with-arch=${CARCH} \
+    as_ln_s="cp -pR"
+
+  sed -i 's,all-am: Makefile $(PROGRAMS),all-am:,' test/Makefile
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${MINGW_CHOST}"
+  make -j1 DESTDIR="${pkgdir}" install
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+
+  find "${pkgdir}${FF_MINGW_PREFIX}" -name '*.def' -o -name '*.exp' | xargs -rtl1 rm
+
+  # Also install libintl lib
+  cp "${MINGW_TOOLCHAIN_PREFIX}"/lib/libintl.a "${pkgdir}${FF_MINGW_PREFIX}/lib/"
+
+  # Convert MSYS2-specific paths to pkg-config variables (see issue #872)
+  sed -i "s#${FF_MINGW_PREFIX}/lib#\${libdir}#g" "${pkgdir}${FF_MINGW_PREFIX}"/lib/pkgconfig/fontconfig.pc
+  sed -i "s#${FF_MINGW_PREFIX}/include#\${includedir}#g" "${pkgdir}${FF_MINGW_PREFIX}"/lib/pkgconfig/fontconfig.pc
+
+  # Also statically link to libintl
+  sed -s "s|-liconv|-liconv\ -lintl|g" -i "${pkgdir}"${FF_MINGW_PREFIX}/lib/pkgconfig/fontconfig.pc
+}

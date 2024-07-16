@@ -1,0 +1,60 @@
+# Maintainer: Leandro Nini <drfiemost@email.it>
+
+_realname=libopenmpt
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}")
+pkgver=0.7.8
+pkgrel=1
+pkgdesc="A cross-platform C++ and C library to decode tracked music files (modules) into a raw PCM audio stream (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clangarm64' 'clang32')
+url='https://lib.openmpt.org/libopenmpt/'
+msys2_repository_url='https://github.com/OpenMPT/openmpt'
+msys2_references=(
+  "cpe: cpe:/a:openmpt:libopenmpt"
+)
+license=('spdx:BSD-3-Clause')
+depends=("${MINGW_PACKAGE_PREFIX}-jellyfin-zlib"
+          "${MINGW_PACKAGE_PREFIX}-jellyfin-libogg"
+          "${MINGW_PACKAGE_PREFIX}-jellyfin-libvorbis")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-autotools")
+source=("https://lib.openmpt.org/files/${_realname}/src/${_realname}-${pkgver}+release.autotools.tar.gz")
+sha256sums=('87778c8046a226c6cbfb114f4c8e3e27c121b7b3dccce5cb7de45899250274cc')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}+release.autotools"
+  # autoreconf to get updated libtool files with clang support
+  autoreconf -fiv
+}
+
+build() {
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  mkdir -p "${srcdir}/build-${MSYSTEM}" && cd "${srcdir}/build-${MSYSTEM}"
+
+  CPPFLAGS+=" -DMPT_CHECK_CXX_IGNORE_WARNING_O2" \
+  ../${_realname}-${pkgver}+release.autotools/configure \
+    --prefix=${FF_MINGW_PREFIX} \
+    --build=${MINGW_CHOST} \
+    --target=${MINGW_CHOST} \
+    --host=${MINGW_CHOST} \
+    --enable-static \
+    --disable-{shared,examples,tests,openmpt123} \
+    --without-{mpg123,portaudio,portaudiocpp,sndfile,flac}
+
+  make
+}
+
+check() {
+  :
+}
+
+package() {
+  cd "${srcdir}/build-${MSYSTEM}"
+  make DESTDIR="${pkgdir}" install
+
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}+release.autotools/LICENSE" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/LICENSE"
+}

@@ -1,0 +1,53 @@
+# Contributor: Alexander Georgievskiy <galeksandrp@gmail.com>
+# Contributor: Andrew Sun <adsun701@gmail.com>
+
+_realname=fdk-aac-stripped
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+pkgver=git
+pkgrel=1
+pkgdesc="Fraunhofer FDK AAC stripped from parts with patent concerns (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+msys2_references=(
+  'archlinux: libfdk-aac'
+)
+license=('custom')
+makedepends=("${MINGW_PACKAGE_PREFIX}-autotools" "${MINGW_PACKAGE_PREFIX}-cc")
+_commit="529b87452cd33d45e1d0a5066d20b64f10b38845"
+source=("${_realname}"::"git+https://gitlab.freedesktop.org/wtaymans/${_realname}.git#commit=${_commit}")
+sha256sums=('SKIP')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
+
+prepare() {
+  cd ${srcdir}/${_realname}
+  ./autogen.sh
+}
+
+build() {
+  cd "${srcdir}"/${_realname}
+  [[ -d "${srcdir}"/build-${CARCH} ]] && rm -rf "${srcdir}"/build-${CARCH}
+  mkdir -p "${srcdir}"/build-${CARCH} && cd "${srcdir}"/build-${CARCH}
+  ../${_realname}/configure \
+    --prefix=${FF_MINGW_PREFIX} \
+    --build=${MINGW_CHOST} \
+    --host=${MINGW_CHOST} \
+    --target=${MINGW_CHOST} \
+    --enable-static \
+    --disable-shared \
+    --disable-example
+
+  make
+}
+
+package() {
+  cd ${srcdir}/build-${CARCH}
+
+  make DESTDIR=${pkgdir} install
+
+  # Install license
+  install -dm 755 "${pkgdir}${FF_MINGW_PREFIX}"/share/licenses/libfdk-aac
+  install -m 644 "${srcdir}"/${_realname}/NOTICE "${pkgdir}${FF_MINGW_PREFIX}"/share/licenses/libfdk-aac/
+}

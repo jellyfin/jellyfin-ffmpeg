@@ -1,0 +1,126 @@
+on:
+  workflow_call:
+    inputs:
+      release:
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      deploy-host:
+        required: false
+      deploy-user:
+        required: false
+      deploy-key:
+        required: false
+
+jobs:
+  build:
+    name: 'Build Portable FFmpeg'
+    runs-on: windows-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        os:
+          - name: CLANG64
+            arch: win64
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          msystem: CLANG64
+          install: >-
+            git
+            curl
+            wget
+            zip
+            mingw-w64-clang-x86_64-toolchain
+            quilt
+            diffstat
+            mingw-w64-clang-x86_64-nasm
+
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Prepare prefix dir
+        run: |
+          mkdir /clang64/ffbuild
+
+      - name: Build Portable
+        run: ./msys2/build.sh
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@0b2256b8c012f0828dc542b3febcab082c67f72b # v4.3.4
+        with:
+          name: win-clang-${{ matrix.os.arch }}-portable
+          path: ./msys2/artifacts
+
+  publish:
+    name: Publish Portable Release
+    if: ${{ inputs.release }}
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [win64]
+
+    steps:
+      - name: Set Versions
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        id: set_version
+        with:
+          script: |
+            const tag = context.ref.substring(10)
+            const no_v = tag.replace('v', '')
+            const dash_index = no_v.lastIndexOf('-')
+            const major_index = no_v.indexOf('.')
+            const no_dash = (dash_index > -1) ?  no_v.substring(0, dash_index) : no_v
+            const major = (major_index > -1) ?  no_v.substring(0, major_index) : no_v
+            core.setOutput('tag', tag)
+            core.setOutput('no-v', no_v)
+            core.setOutput('no-dash', no_dash)
+            core.setOutput('major', major)
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: win-clang-${{ matrix.arch }}-portable
+          path: artifact
+
+      - name: Upload GH Release Assets
+        uses: shogo82148/actions-upload-release-asset@8f032eff0255912cc9c8455797fd6d72f25c7ab7 # v1.7.5
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          overwrite: true
+          asset_path: |
+            ./artifact/**/*.zip
+
+      - name: Upload release archive to repo.jellyfin.org
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ secrets.deploy-host }}
+          username: ${{ secrets.deploy-user }}
+          key: ${{ secrets.deploy-key }}
+          source: artifact/*
+          strip_components: 1
+          target: /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/windows/${{ matrix.arch }}
+
+      - name: Move incoming release into repository
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        with:
+          host: ${{ secrets.deploy-host }}
+          username: ${{ secrets.deploy-user }}
+          key: ${{ secrets.deploy-key }}
+          envs: JELLYFIN_VERSION
+          script_stop: true
+          script: |
+            # Create the target folder and move arch directory into it
+            sudo mkdir -p /srv/repository/main/ffmpeg/windows/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}
+            sudo mv -t /srv/repository/main/ffmpeg/windows/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}/${{ matrix.arch }}/ /srv/incoming/ffmpeg/${{ steps.set_version.outputs.no-v }}/windows/${{ matrix.arch }}/*
+            sudo chown -R root:root /srv/repository/main/ffmpeg/windows/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }}
+            # Update symlink for latest-X.x
+            sudo rm -f /srv/repository/main/ffmpeg/windows/latest-${{ steps.set_version.outputs.major }}.x || true
+            sudo ln -s /srv/repository/main/ffmpeg/windows/${{ steps.set_version.outputs.major }}.x/${{ steps.set_version.outputs.no-v }} /srv/repository/main/ffmpeg/windows/latest-${{ steps.set_version.outputs.major }}.x || true

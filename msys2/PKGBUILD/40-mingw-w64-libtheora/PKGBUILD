@@ -1,0 +1,61 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=libtheora
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+pkgver=1.1.1
+pkgrel=7
+pkgdesc="An open video codec developed by the Xiph.org (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url="https://xiph.org/"
+license=('BSD')
+depends=("${MINGW_PACKAGE_PREFIX}-jellyfin-libpng"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-libogg"
+         "${MINGW_PACKAGE_PREFIX}-jellyfin-libvorbis")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-doxygen"
+             "${MINGW_PACKAGE_PREFIX}-SDL"
+             "${MINGW_PACKAGE_PREFIX}-autotools")
+source=("https://downloads.xiph.org/releases/theora/${_realname}-${pkgver}.tar.bz2"
+        libtheora-1.1.1-libpng16.patch
+        001-example.patch)
+sha256sums=('b6ae1ee2fa3d42ac489287d3ec34c5885730b1296f0801ae577a35193d3affbc'
+            'e4c9a8dc798c596ed32a2a720020ae27a0e72f5add1a47cb8fadebe0e7180d7e'
+            '5627d26c3316fef71bca037e1834bcba063dbf949ea9293820f0e68b13641105')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
+
+prepare() {
+  cd ${srcdir}/${_realname}-${pkgver}
+  sed -i "s,EXPORTS,," "win32/xmingw32/libtheoradec-all.def"
+  sed -i "s,EXPORTS,," "win32/xmingw32/libtheoraenc-all.def"
+  patch -p0 -i ${srcdir}/libtheora-1.1.1-libpng16.patch
+  patch -p1 -i ${srcdir}/001-example.patch
+
+  autoreconf -fiv -I m4
+}
+
+build() {
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  [[ -d "build-${MINGW_CHOST}" ]] && rm -rf "build-${MINGW_CHOST}"
+  mkdir -p ${srcdir}/build-$MINGW_CHOST
+  cd "${srcdir}/build-$MINGW_CHOST"
+
+  ../${_realname}-${pkgver}/configure \
+    --build=${MINGW_CHOST} \
+    --host=${MINGW_CHOST} \
+    --target=${MINGW_CHOST} \
+    --prefix=${FF_MINGW_PREFIX} \
+    --disable-{shared,examples,extra-programs,oggtest,vorbistest,spec,doc} \
+    --enable-static
+
+  # parallel is broken (libtheoraenc is missing sometimes)
+  make -j1
+}
+
+package() {
+  cd "${srcdir}/build-$MINGW_CHOST"
+  make install DESTDIR="${pkgdir}"
+}

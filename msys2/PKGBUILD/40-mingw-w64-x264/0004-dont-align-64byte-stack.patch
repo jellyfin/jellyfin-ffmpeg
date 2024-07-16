@@ -1,0 +1,19 @@
+diff --git a/configure b/configure
+index c1fb599f..7e77c7dd 100755
+--- a/configure
++++ b/configure
+@@ -934,13 +934,7 @@ fi
+ 
+ if cc_check '' '' '' '__attribute__((force_align_arg_pointer))' ; then
+     if [ $compiler = GNU -a \( $ARCH = X86 -o $ARCH = X86_64 \) ] ; then
+-        if cc_check '' -mpreferred-stack-boundary=6 ; then
+-            CFLAGS="$CFLAGS -mpreferred-stack-boundary=6"
+-            stack_alignment=64
+-        elif cc_check '' -mstack-alignment=64 ; then
+-            CFLAGS="$CFLAGS -mstack-alignment=64"
+-            stack_alignment=64
+-        elif [ $stack_alignment -lt 16 ] ; then
++        if [ $stack_alignment -lt 16 ] ; then
+             if cc_check '' -mpreferred-stack-boundary=4 ; then
+                 CFLAGS="$CFLAGS -mpreferred-stack-boundary=4"
+                 stack_alignment=16

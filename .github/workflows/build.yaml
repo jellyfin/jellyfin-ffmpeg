@@ -41,6 +41,11 @@ jobs:
       architectures: '["win64"]'
       release: false
 
+  build_portable_windows_clang:
+    uses: ./.github/workflows/_meta_win_clang_portable.yaml
+    with:
+      release: false
+
   build_portable_linux:
     uses: ./.github/workflows/_meta_portable.yaml
     with:
