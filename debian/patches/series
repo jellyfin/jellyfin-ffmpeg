@@ -79,3 +79,4 @@
 0079-add-detection-of-atmos-in-truehd.patch
 0080-add-tonemapx-filter.patch
 0081-fix-qsv-deint-3-2-pulldown-undefined-behavior.patch
+0082-add-ac4-decoder.patch
