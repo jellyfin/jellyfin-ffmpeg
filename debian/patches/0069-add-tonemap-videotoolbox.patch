@@ -1244,7 +1244,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    tonemap_func_type = (short)ctx->tonemap;
 +    is_tone_func_bt2390 = ctx->tonemap == TONEMAP_BT2390;
 +    is_tone_mode_rgb = ctx->tonemap_mode == TONEMAP_MODE_RGB;
-+    is_tone_mode_max = !is_tone_mode_rgb;
++    is_tone_mode_max = ctx->tonemap_mode == TONEMAP_MODE_MAX;
 +    is_non_semi_planar_in = ctx->in_planes > 2;
 +    is_non_semi_planar_out = ctx->out_planes > 2;
 +    enable_dither = ctx->in_desc->comp[0].depth > ctx->out_desc->comp[0].depth;
