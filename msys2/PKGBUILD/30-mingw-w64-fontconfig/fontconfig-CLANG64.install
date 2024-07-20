@@ -1,0 +1,18 @@
+MINGW_INSTALL=clang64
+
+post_install() {
+  echo "Warning: 'MSYS2_FC_CACHE_SKIP' set, skipping font cache update"
+}
+
+post_upgrade() {
+  echo "Warning: 'MSYS2_FC_CACHE_SKIP' set, skipping font cache update"
+}
+
+post_remove() {
+  cat << _EOF
+
+  Check for dead symlinks and leftover files
+  in ${MINGW_INSTALL}/etc/fonts/conf.d/
+
+_EOF
+}

@@ -1,0 +1,83 @@
+# Maintainer: J. Peter Mugaas <jpmugaas@suddenlink.net>
+
+_realname=brotli
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}")
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="Brotli compression library (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url='https://github.com/google/brotli'
+msys2_references=(
+  "pypi: brotli"
+  "cpe: cpe:/a:google:brotli"
+)
+makedepends=("${MINGW_PACKAGE_PREFIX}-cmake"
+             "${MINGW_PACKAGE_PREFIX}-ninja"
+             "${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-python-setuptools"
+             "${MINGW_PACKAGE_PREFIX}-python-build"
+             "${MINGW_PACKAGE_PREFIX}-python-installer"
+             "${MINGW_PACKAGE_PREFIX}-python-wheel"
+)
+license=('spdx:MIT')
+source=("${_realname}-${pkgver}.tar.gz"::"https://github.com/google/brotli/archive/v${pkgver}.tar.gz")
+sha256sums=('e720a6ca29428b803f4ad165371771f5398faba397edf6778837a18599ea13ff')
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+}
+
+build() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+
+  ${MINGW_PREFIX}/bin/python -m build --wheel --skip-dependency-check --no-isolation
+
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  mkdir -p "${srcdir}/build-${MSYSTEM}-static" && cd "${srcdir}/build-${MSYSTEM}-static"
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+    ${MINGW_PREFIX}/bin/cmake \
+      -GNinja \
+      -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX}/ffbuild/ \
+      "${extra_config[@]}" \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DENABLE_STATIC=ON \
+      -DBUILD_STATIC_LIBS=ON \
+      ../${_realname}-${pkgver}
+
+  ${MINGW_PREFIX}/bin/cmake --build .
+}
+
+check() {
+  :
+}
+
+package_brotli() {
+  cd "${srcdir}"/build-${MSYSTEM}-static
+  DESTDIR="${pkgdir}" ${MINGW_PREFIX}/bin/cmake --install .
+
+  install -D -m644 "${srcdir}"/brotli-${pkgver}/LICENSE "${pkgdir}${MINGW_PREFIX}/ffbuild/share/licenses/${_realname}/LICENSE"
+
+  # Let ffmpeg also statically link to brotlicommon
+  sed -s "s|-lbrotlidec|-lbrotlidec\ -lbrotlicommon|g" -i "${pkgdir}"${MINGW_PREFIX}/ffbuild/lib/pkgconfig/libbrotlidec.pc
+  sed -s "s|-lbrotlidec|-lbrotlidec\ -lbrotlicommon|g" -i "${pkgdir}"${MINGW_PREFIX}/ffbuild/lib/pkgconfig/libbrotlienc.pc
+}
+
+# template start; name=mingw-w64-splitpkg-wrappers; version=1.0;
+# vim: set ft=bash :
+
+# generate wrappers
+for _name in "${pkgname[@]}"; do
+  _short="package_${_name#${MINGW_PACKAGE_PREFIX}-jellyfin-}"
+  _func="$(declare -f "${_short}")"
+  eval "${_func/#${_short}/package_${_name}}"
+done
+# template end;

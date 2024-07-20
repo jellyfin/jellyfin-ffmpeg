@@ -1,0 +1,29 @@
+# Maintainer: ImperatorS79 <fevrier.simon@gmail.com>
+
+_realname=amf-headers
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}"
+pkgver=1.4.34
+pkgrel=1
+pkgdesc='Header files for AMD Advanced Media Framework'
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clangarm64' 'clang32')
+url='https://github.com/GPUOpen-LibrariesAndSDKs/AMF/'
+license=('spdx:MIT')
+source=("${_realname}-${pkgver}.tar.gz::https://github.com/GPUOpen-LibrariesAndSDKs/AMF/archive/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
+
+prepare() {
+  cd "AMF-${pkgver}"
+}
+
+package() {
+    mkdir -p "${pkgdir}${FF_MINGW_PREFIX}"/include/AMF/
+    cp -r "${srcdir}/AMF-${pkgver}"/amf/public/include/core/ "${pkgdir}${FF_MINGW_PREFIX}"/include/AMF/
+    cp -r "${srcdir}/AMF-${pkgver}"/amf/public/include/components/ "${pkgdir}${FF_MINGW_PREFIX}"/include/AMF/
+
+    install -D -m644 "${srcdir}/AMF-${pkgver}"/LICENSE.txt "${pkgdir}${FF_MINGW_PREFIX}"/share/licenses/${_realname}/LICENSE
+}

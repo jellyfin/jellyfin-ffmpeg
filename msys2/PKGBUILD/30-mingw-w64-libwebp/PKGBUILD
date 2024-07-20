@@ -1,0 +1,76 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Andrew Sun <adsun701@gmail.com>
+
+_realname=libwebp
+pkgbase=mingw-w64-jellyfin-${_realname}
+pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}")
+pkgver=1.4.0
+pkgrel=1
+pkgdesc="A library to encode and decode images in WebP format (mingw-w64)"
+arch=('any')
+mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clang32' 'clangarm64')
+url='https://developers.google.com/speed/webp/'
+msys2_references=(
+  "cpe: cpe:/a:webmproject:libwebp"
+)
+license=('spdx:BSD-3-Clause')
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
+             "${MINGW_PACKAGE_PREFIX}-cmake"
+             "${MINGW_PACKAGE_PREFIX}-ninja")
+provides=("${MINGW_PACKAGE_PREFIX}-libsharpyuv")
+source=(${_realname}-${pkgver}.tar.gz::https://github.com/webmproject/libwebp/archive/v${pkgver}.tar.gz
+        0001-mingw-cmake-output.patch)
+sha256sums=('12af50c45530f0a292d39a88d952637e43fb2d4ab1883c44ae729840f7273381'
+            '30ed42b782af427f57049abada30ce6d4d62318ee13014585cb352b570c68e3d')
+validpgpkeys=('6B0E6B70976DE303EDF2F601F9C3D6BDB8232B5D')
+
+export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
+export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+
+  patch -Np1 -i "${srcdir}"/0001-mingw-cmake-output.patch
+}
+
+build() {
+  export CMAKE_PREFIX_PATH="${FF_MINGW_PREFIX}"
+  export PKG_CONFIG_PATH="${FF_MINGW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  cd "${srcdir}/${_realname}-${pkgver}"
+  mkdir -p "${srcdir}/build-${MSYSTEM}-static" && cd "${srcdir}/build-${MSYSTEM}-static"
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+    "${MINGW_TOOLCHAIN_PREFIX}"/bin/cmake.exe \
+      -GNinja \
+      -DCMAKE_INSTALL_PREFIX="${FF_MINGW_PREFIX}" \
+      "${extra_config[@]}" \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DWEBP_ENABLE_SWAP_16BIT_CSP=ON \
+      -DWEBP_BUILD_ANIM_UTILS=OFF \
+      -DWEBP_BUILD_CWEBP=OFF \
+      -DWEBP_BUILD_DWEBP=OFF \
+      -DWEBP_BUILD_GIF2WEBP=OFF \
+      -DWEBP_BUILD_IMG2WEBP=OFF \
+      -DWEBP_BUILD_VWEBP=OFF \
+      -DWEBP_BUILD_WEBPINFO=OFF \
+      -DWEBP_BUILD_WEBPMUX=OFF \
+      -DWEBP_BUILD_EXTRAS=OFF \
+      ../${_realname}-${pkgver}
+
+  "${MINGW_TOOLCHAIN_PREFIX}"/bin/cmake.exe --build .
+}
+
+package() {
+  cd "${srcdir}/build-${MSYSTEM}-static"
+
+  DESTDIR="${pkgdir}" "${MINGW_TOOLCHAIN_PREFIX}"/bin/cmake.exe --install .
+
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/COPYING" "${pkgdir}${FF_MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+}
