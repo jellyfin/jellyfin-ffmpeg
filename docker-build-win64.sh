@@ -162,7 +162,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.6.1 --depth=1 https://git.tukaani.org/xz.git
+git clone -b v5.6.2 --depth=1 https://git.tukaani.org/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
