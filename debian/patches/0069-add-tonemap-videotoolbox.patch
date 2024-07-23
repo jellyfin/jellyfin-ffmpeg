@@ -512,7 +512,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +        if (is_tone_mode_max) {
 +            sig = fmax(fmax3(*r4, *g4, *b4), FLOAT_EPS);
 +        } else {
-+            sig = fmax((*r4 * .2126f + *g4 * .7152f + *b4 * .0722f), FLOAT_EPS);
++            sig = fmax((*r4 * 0.2627f + *g4 * 0.678f + *b4 * 0.0593f), FLOAT_EPS);
 +        }
 +        if (is_tone_func_bt2390) {
 +            sig = fmin(sig, peak);
