@@ -1478,7 +1478,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.h
 +enum TonemapMode {
 +    TONEMAP_MODE_MAX,
 +    TONEMAP_MODE_RGB,
-+    TONEMAP_MODE_RELATIVE_LUMINANCE,
++    TONEMAP_MODE_LUM,
 +    TONEMAP_MODE_COUNT,
 +};
 +
@@ -2605,9 +2605,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    {     "mobius",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MOBIUS},            0, 0, FLAGS, "tonemap" },
 +    {     "bt2390",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_BT2390},            0, 0, FLAGS, "tonemap" },
 +    { "tonemap_mode",  "Tonemap mode selection", OFFSET(tonemap_mode), AV_OPT_TYPE_INT, {.i64 = TONEMAP_MODE_MAX}, TONEMAP_MODE_MAX, TONEMAP_MODE_COUNT - 1, FLAGS, "tonemap_mode" },
-+    {     "max",       0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_MAX},          0, 0, FLAGS, "tonemap_mode" },
-+    {     "rgb",       0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_RGB},          0, 0, FLAGS, "tonemap_mode" },
-+    {     "relative_luminance", 0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_RELATIVE_LUMINANCE}, 0, 0, FLAGS, "tonemap_mode" },
++    {     "max", "Brightest channel based tonemap",  0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_MAX}, 0, 0, FLAGS, "tonemap_mode" },
++    {     "rgb", "Per-channel based tonemap",        0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_RGB}, 0, 0, FLAGS, "tonemap_mode" },
++    {     "lum", "Relative luminance based tonemap", 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_LUM}, 0, 0, FLAGS, "tonemap_mode" },
 +    { "transfer",      "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
 +    { "t",             "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
 +    {     "bt709",     0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT709},           0, 0, FLAGS, "transfer" },
