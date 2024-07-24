@@ -1,3 +1,19 @@
+jellyfin-ffmpeg (6.0.1-8) unstable; urgency=medium
+
+  * Add detection of DTS:X and DTS:X IMAX
+  * Add detection of Atmos
+  * Fix DOVI peak calculation
+  * Drop the EOL Debian buster build
+  * Add SIMD optimized tonemapx filter
+  * Add fast code path for bgra in videotoolbox overlay
+  * Improve macOS build performance
+  * Fix QSV deint 3:2 pulldown undefined behavior
+  * Add AC-4 decoder for ATSC 3.0 audio
+  * Add relative luminance mode to vt/cuda/ocl tonemap
+  * Update build scripts and dependencies
+
+ -- nyanmisaka <nst799610810@gmail.com>  Wed, 24 Jul 2024 20:57:11 +0800
+
 jellyfin-ffmpeg (6.0.1-7) unstable; urgency=medium
 
   * Add DOVI descriptor support in mpegtsenc
