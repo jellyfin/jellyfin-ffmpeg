@@ -528,10 +528,11 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
      default:
          return MFX_ERR_UNSUPPORTED;
      }
-@@ -1878,11 +1874,23 @@ static int qsv_frames_derive_to(AVHWFram
+@@ -1878,11 +1874,25 @@ static int qsv_frames_derive_to(AVHWFram
      return 0;
  }
  
++#if CONFIG_VAAPI
 +static void qsv_umap_from_vaapi(AVHWFramesContext *dst_fc,
 +                                 HWMapDescriptor *hwmap)
 +{
@@ -541,6 +542,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
 +    av_freep(&new_sur->Data.MemId);
 +    av_freep(&new_sur);
 +}
++#endif
 +
  static int qsv_map_to(AVHWFramesContext *dst_ctx,
                        AVFrame *dst, const AVFrame *src, int flags)
@@ -552,7 +554,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
  
      for (i = 0; i < hwctx->nb_surfaces && index < 0; i++) {
          switch(src->format) {
-@@ -1921,21 +1929,77 @@ static int qsv_map_to(AVHWFramesContext
+@@ -1921,21 +1931,77 @@ static int qsv_map_to(AVHWFramesContext
          }
      }
      if (index < 0) {
@@ -585,17 +587,17 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
 +            }
 +            *(VASurfaceID*)(new_hdlpair->first) = (VASurfaceID)(uintptr_t)src->data[3];
 +            new_sur->Data.MemId = new_hdlpair;
-+
-+            err = ff_hwframe_map_create(dst->hw_frames_ctx, dst, src,
-+                                        &qsv_umap_from_vaapi,
-+                                        (void*)new_sur);
-+            if (err)
-+                goto qsv_map_to_err;
  
 -    err = ff_hwframe_map_create(dst->hw_frames_ctx,
 -                                dst, src, NULL, NULL);
 -    if (err)
 -        return err;
++            err = ff_hwframe_map_create(dst->hw_frames_ctx, dst, src,
++                                        &qsv_umap_from_vaapi,
++                                        (void*)new_sur);
++            if (err)
++                goto qsv_map_to_err;
++
 +            av_log(dst_ctx, AV_LOG_DEBUG, "Trying to map from a surface which "
 +                "is not in the mapped frames context, so create a new surface\n");
 +        }
