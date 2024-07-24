@@ -249,7 +249,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_opencl.c
 +        frames_priv->sync_point && frames_priv->sync_tex_2x2) {
 +        opencl_sync_d3d11_texture(frames_priv,
 +                                  device_hwctx,
-+                                  src->data[0], index,
++                                  (ID3D11Texture2D *)src->data[0], index,
 +                                  dst_fc);
 +    }
 +

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/intel/libvpl.git"
-SCRIPT_COMMIT="18b63f421a016ea34d2fcfc6c63e16dba13b71f1"
+SCRIPT_COMMIT="0c13c410095764799afea0cf645bd896378579b8"
 
 ffbuild_enabled() {
     [[ $TARGET == mac* ]] && return -1

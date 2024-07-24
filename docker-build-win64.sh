@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-mingw_commit="cff4b8fda1b577b99144020fb81b27f5bc633a5e"
+mingw_commit="f1075a71a0027febccc19a1db0244e98f9ae0102"
 git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 git checkout ${mingw_commit}
@@ -84,21 +84,15 @@ popd
 
 # FRIBIDI
 git clone --depth=1 https://github.com/fribidi/fribidi.git
-pushd fribidi
-mkdir build
-pushd build
-meson \
+meson setup fribidi fribidi_build \
     --prefix=${FF_DEPS_PREFIX} \
     --cross-file=${FF_MESON_TOOLCHAIN} \
     --buildtype=release \
     --default-library=static \
-    -D{bin,docs,tests}=false \
-    ..
-ninja -j$(nproc)
-meson install
+    -D{bin,docs,tests}=false
+meson configure fribidi_build
+ninja -j$(nproc) -C fribidi_build install
 sed -i 's/Cflags:/Cflags: -DFRIBIDI_LIB_STATIC/' ${FF_DEPS_PREFIX}/lib/pkgconfig/fribidi.pc
-popd
-popd
 
 # GMP
 mkdir gmp
@@ -195,19 +189,17 @@ popd
 popd
 
 # HARFBUZZ
-harfbuzz_commit="bc90b29b37fe3809f9e48aa7be08fbf2208e481a"
-git clone https://github.com/harfbuzz/harfbuzz.git
-pushd harfbuzz
-git checkout ${harfbuzz_commit}
-./autogen.sh \
+git clone -b 9.0.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
+meson setup harfbuzz harfbuzz_build \
     --prefix=${FF_DEPS_PREFIX} \
-    --host=${FF_TOOLCHAIN} \
-    --disable-shared \
-    --enable-static \
-    --with-pic
-make -j$(nproc)
-make install
-popd
+    --cross-file=${FF_MESON_TOOLCHAIN} \
+    --buildtype=release \
+    --default-library=static \
+    -Dfreetype=enabled \
+    -D{glib,gobject,cairo,chafa,icu}=disabled \
+    -D{tests,introspection,docs,utilities}=disabled
+meson configure harfbuzz_build
+ninja -j$(nproc) -C harfbuzz_build install
 
 # LIBUDFREAD
 git clone --depth=1 https://code.videolan.org/videolan/libudfread.git
@@ -327,7 +319,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.7"
+mpt_ver="0.7.9"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
@@ -461,7 +453,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v2.1.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v2.1.2 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
@@ -478,22 +470,16 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.4.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
-pushd dav1d
-mkdir build
-pushd build
-meson \
+git clone -b 1.4.3 --depth=1 https://code.videolan.org/videolan/dav1d.git
+meson setup dav1d dav1d_build \
     --prefix=${FF_DEPS_PREFIX} \
     --cross-file=${FF_MESON_TOOLCHAIN} \
     --buildtype=release \
     --default-library=static \
     -Denable_asm=true \
-    -Denable_{tools,tests,examples}=false \
-    ..
-ninja -j$(nproc)
-meson install
-popd
-popd
+    -Denable_{tools,tests,examples}=false
+meson configure dav1d_build
+ninja -j$(nproc) -C dav1d_build install
 
 # FDK-AAC-STRIPPED
 git clone -b stripped4 --depth=1 https://gitlab.freedesktop.org/wtaymans/fdk-aac-stripped.git
@@ -555,14 +541,20 @@ make PREFIX=${FF_DEPS_PREFIX} install
 popd
 
 # AMF
-git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
-pushd AMF/amf/public/include
+mkdir amf-headers
+pushd amf-headers
+amf_ver="1.4.34"
+amf_link="https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v${amf_ver}/AMF-headers.tar.gz"
+wget ${amf_link} -O amf.tar.gz
+tar xaf amf.tar.gz
+pushd AMF
 mkdir -p ${FF_DEPS_PREFIX}/include/AMF
 mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
+popd
 
 # VPL
-git clone -b v2.11.0 --depth=1 https://github.com/intel/libvpl.git
+git clone -b v2.12.0 --depth=1 https://github.com/intel/libvpl.git
 pushd libvpl
 mkdir build && pushd build
 cmake \

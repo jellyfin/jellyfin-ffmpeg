@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://gitlab.freedesktop.org/xorg/lib/libx11.git"
-SCRIPT_COMMIT="97fb5bda3d0777380cd4b964f48771a82ef3f2a7"
+SCRIPT_COMMIT="92014b39634e0b0aa52d4bff955a7aac3ed0a915"
 
 ffbuild_enabled() {
     [[ $TARGET != linux* ]] && return -1
