@@ -1,25 +1,16 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/nyanmisaka/mpp.git"
-SCRIPT_COMMIT="2218dc0fc57062c0d33d06d350aea73d9fef5d57"
+SCRIPT_COMMIT="66af270e1e54432d0767cf929a5c4aee2b456d8c"
 
 ffbuild_enabled() {
     [[ $TARGET == linux* ]] && [[ $TARGET == *arm64 ]] && return 0
     return -1
 }
 
-ffbuild_dockerstage() {
-    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/rkmpp,dst=/patches run_stage /stage.sh"
-}
-
 ffbuild_dockerbuild() {
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" rkmpp
     cd rkmpp
-
-    for patch in /patches/*.patch; do
-        echo "Applying $patch"
-        patch -p1 < "$patch"
-    done
 
     mkdir rkmpp_build && cd rkmpp_build
 
