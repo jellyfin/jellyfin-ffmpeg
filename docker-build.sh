@@ -67,7 +67,12 @@ prepare_extra_common() {
 
     # LIBXML2
     pushd ${SOURCE_DIR}
-    git clone -b v2.9.14 --depth=1 https://github.com/GNOME/libxml2.git
+    libxml2_ver="v2.13.2"
+    if [[ $( lsb_release -c -s ) == "focal" ]]; then
+        # newer versions require automake 1.16.3+
+        libxml2_ver="v2.9.14"
+    fi
+    git clone -b ${libxml2_ver} --depth=1 https://github.com/GNOME/libxml2.git
     pushd libxml2
     ./autogen.sh \
         ${CROSS_OPT} \
@@ -97,7 +102,7 @@ prepare_extra_common() {
 
     # FRIBIDI
     pushd ${SOURCE_DIR}
-    git clone -b v1.0.14 --depth=1 https://github.com/fribidi/fribidi.git
+    git clone -b v1.0.15 --depth=1 https://github.com/fribidi/fribidi.git
     meson setup fribidi fribidi_build \
         ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
@@ -106,9 +111,9 @@ prepare_extra_common() {
         --default-library=shared \
         -D{bin,docs,tests}=false
     meson configure fribidi_build
-    ninja -C fribidi_build install
+    ninja -j$(nproc) -C fribidi_build install
     cp -a ${TARGET_DIR}/lib/libfribidi.so* ${SOURCE_DIR}/fribidi
-    echo "fribidi/libfribidi.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    echo "fribidi/libfribidi.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 
     # FONTCONFIG
@@ -135,22 +140,25 @@ prepare_extra_common() {
 
     # HARFBUZZ
     pushd ${SOURCE_DIR}
-    git clone -b 8.5.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
-    pushd harfbuzz
-    ./autogen.sh \
-        ${CROSS_OPT} \
+    git clone -b 9.0.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
+    meson setup harfbuzz harfbuzz_build \
+        ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
-        --enable-shared \
-        --disable-static \
-        --with-pic
-    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/harfbuzz
-    echo "harfbuzz${TARGET_DIR}/lib/libharfbuzz.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
-    popd
+        --libdir=lib \
+        --buildtype=release \
+        --default-library=shared \
+        -Dfreetype=enabled \
+        -D{glib,gobject,cairo,chafa,icu}=disabled \
+        -D{tests,introspection,docs,utilities}=disabled
+    meson configure harfbuzz_build
+    ninja -j$(nproc) -C harfbuzz_build install
+    cp -a ${TARGET_DIR}/lib/libharfbuzz.so* ${SOURCE_DIR}/harfbuzz
+    echo "harfbuzz/libharfbuzz.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 
     # LIBASS
     pushd ${SOURCE_DIR}
-    git clone -b 0.17.2 --depth=1 https://github.com/libass/libass.git
+    git clone -b 0.17.3 --depth=1 https://github.com/libass/libass.git
     pushd libass
     ./autogen.sh
     ./configure \
@@ -228,36 +236,24 @@ prepare_extra_common() {
 
     # DAV1D
     pushd ${SOURCE_DIR}
-    git clone -b 1.4.1 --depth=1 https://code.videolan.org/videolan/dav1d.git
-    if [ "${ARCH}" = "amd64" ]; then
-        nasmver="$(nasm -v | cut -d ' ' -f3)"
-        nasmminver="2.14.0"
-        if [ "$(printf '%s\n' "$nasmminver" "$nasmver" | sort -V | head -n1)" = "$nasmminver" ]; then
-            dav1d_asm=true
-        else
-            dav1d_asm=false
-        fi
-    else
-        dav1d_asm=true
-    fi
+    git clone -b 1.4.3 --depth=1 https://code.videolan.org/videolan/dav1d.git
     meson setup dav1d dav1d_build \
         ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
         --libdir=lib \
         --buildtype=release \
         -Ddefault_library=shared \
-        -Denable_asm=$dav1d_asm \
+        -Denable_asm=true \
         -Denable_{tools,tests,examples}=false
     meson configure dav1d_build
-    ninja -C dav1d_build install
+    ninja -j$(nproc) -C dav1d_build install
     cp -a ${TARGET_DIR}/lib/libdav1d.so* ${SOURCE_DIR}/dav1d
-    echo "dav1d/libdav1d.so* /usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    echo "dav1d/libdav1d.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
 
     # SVT-AV1
-    # nasm >= 2.14
     pushd ${SOURCE_DIR}
-    git clone -b v2.1.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v2.1.2 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
     mkdir build
     pushd build
@@ -305,17 +301,25 @@ prepare_extra_amd64() {
 
     # AMF
     # https://www.ffmpeg.org/general.html#AMD-AMF_002fVCE
-    git clone --depth=1 https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
-    pushd AMF/amf/public/include
+    pushd ${SOURCE_DIR}
+    mkdir amf-headers
+    pushd amf-headers
+    amf_ver="1.4.34"
+    amf_link="https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v${amf_ver}/AMF-headers.tar.gz"
+    wget ${amf_link} -O amf.tar.gz
+    tar xaf amf.tar.gz
+    pushd AMF
     mkdir -p /usr/include/AMF
     mv * /usr/include/AMF
+    popd
+    popd
     popd
 
     # LIBDRM
     pushd ${SOURCE_DIR}
     mkdir libdrm
     pushd libdrm
-    libdrm_ver="2.4.120"
+    libdrm_ver="2.4.122"
     libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
     wget ${libdrm_link} -O libdrm.tar.xz
     tar xaf libdrm.tar.xz
@@ -327,7 +331,7 @@ prepare_extra_amd64() {
         -D{amdgpu,radeon,intel}=enabled \
         -D{valgrind,freedreno,vc4,vmwgfx,nouveau,man-pages}=disabled
     meson configure drm_build
-    ninja -C drm_build install
+    ninja -j$(nproc) -C drm_build install
     cp -a ${TARGET_DIR}/lib/libdrm*.so* ${SOURCE_DIR}/libdrm
     cp ${TARGET_DIR}/share/libdrm/*.ids ${SOURCE_DIR}/libdrm
     echo "libdrm/libdrm*.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
@@ -337,7 +341,7 @@ prepare_extra_amd64() {
 
     # LIBVA
     pushd ${SOURCE_DIR}
-    git clone -b 2.21.0 --depth=1 https://github.com/intel/libva.git
+    git clone -b 2.22.0 --depth=1 https://github.com/intel/libva.git
     pushd libva
     sed -i 's|secure_getenv("LIBVA_DRIVERS_PATH")|"/usr/lib/jellyfin-ffmpeg/lib/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/dri:/usr/local/lib/dri"|g' va/va.c
     sed -i 's|secure_getenv("LIBVA_DRIVER_NAME")|secure_getenv("LIBVA_DRIVER_NAME_JELLYFIN")|g' va/va.c
@@ -354,7 +358,7 @@ prepare_extra_amd64() {
 
     # LIBVA-UTILS
     pushd ${SOURCE_DIR}
-    git clone -b 2.21.0 --depth=1 https://github.com/intel/libva-utils.git
+    git clone -b 2.22.0 --depth=1 https://github.com/intel/libva-utils.git
     pushd libva-utils
     ./autogen.sh
     ./configure --prefix=${TARGET_DIR}
@@ -378,7 +382,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.3.19 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.4.1 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -412,7 +416,7 @@ prepare_extra_amd64() {
     # Provides VPL header and dispatcher (libvpl.so.2) for FFmpeg
     # Both MSDK and VPL runtime can be loaded by VPL dispatcher
     pushd ${SOURCE_DIR}
-    git clone -b v2.11.0 --depth=1 https://github.com/intel/libvpl.git
+    git clone -b v2.12.0 --depth=1 https://github.com/intel/libvpl.git
     pushd libvpl
     sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' libvpl/src/mfx_dispatcher_vpl_loader.cpp
     mkdir build && pushd build
@@ -435,7 +439,7 @@ prepare_extra_amd64() {
     # VPL-GPU-RT (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.2.3 --depth=1 https://github.com/intel/vpl-gpu-rt.git
+    git clone -b intel-onevpl-24.2.5 --depth=1 https://github.com/intel/vpl-gpu-rt.git
     pushd vpl-gpu-rt
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -455,7 +459,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.2.3 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.2.5 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -474,7 +478,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.285 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.290 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -487,7 +491,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.285 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.290 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -579,7 +583,7 @@ prepare_extra_amd64() {
             -Dzstd=enabled \
             -Dmicrosoft-clc=disabled
         meson configure mesa_build
-        ninja -C mesa_build install
+        ninja -j$(nproc) -C mesa_build install
         cp -a ${TARGET_DIR}/lib/libvulkan_*.so ${SOURCE_DIR}/mesa
         cp -a ${TARGET_DIR}/lib/libVkLayer_MESA*.so ${SOURCE_DIR}/mesa
         cp -a ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
@@ -595,9 +599,8 @@ prepare_extra_amd64() {
     fi
 
     # LIBPLACEBO
-    pl_ver="v6.338.2"
     pushd ${SOURCE_DIR}
-    git clone -b ${pl_ver} --recursive --depth=1 https://github.com/haasn/libplacebo.git
+    git clone -b v6.338.2 --recursive --depth=1 https://github.com/haasn/libplacebo.git
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
@@ -611,7 +614,7 @@ prepare_extra_amd64() {
         -Dglslang=disabled \
         -D{demos,tests,bench,fuzz}=false
     meson configure placebo_build
-    ninja -C placebo_build install
+    ninja -j$(nproc) -C placebo_build install
     cp -a ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
     echo "libplacebo/libplacebo* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
@@ -651,7 +654,7 @@ prepare_extra_arm() {
         -Dlibdrm=false \
         -Dlibrga_demo=false
     meson configure rkrga_build
-    ninja -C rkrga_build install
+    ninja -j$(nproc) -C rkrga_build install
     cp -a ${TARGET_DIR}/lib/librga.so* ${SOURCE_DIR}/rkrga
     echo "rkrga/librga.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
