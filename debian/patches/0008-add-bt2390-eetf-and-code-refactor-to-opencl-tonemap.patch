@@ -467,11 +467,11 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +    float4 sig_g = fmax(*g4, FLOAT_EPS), sig_go = sig_g;
 +    float4 sig_b = fmax(*b4, FLOAT_EPS), sig_bo = sig_b;
 +#else
-+    #ifdef TONE_MODE_MAX
++  #ifdef TONE_MODE_MAX
 +    float4 sig = fmax(fmax(*r4, fmax(*g4, *b4)), FLOAT_EPS);
-+    #else
++  #else
 +    float4 sig = fmax((*r4 * 0.2126f + *g4 * 0.7152f + *b4 * 0.0722f), FLOAT_EPS);
-+    #endif
++  #endif
 +    float4 sig_o = sig;
 +#endif
  
