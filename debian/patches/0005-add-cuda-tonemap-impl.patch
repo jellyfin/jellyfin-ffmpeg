@@ -1,7 +1,7 @@
-Index: jellyfin-ffmpeg/configure
+Index: FFmpeg/configure
 ===================================================================
---- jellyfin-ffmpeg.orig/configure
-+++ jellyfin-ffmpeg/configure
+--- FFmpeg.orig/configure
++++ FFmpeg/configure
 @@ -3143,6 +3143,8 @@ scale_cuda_filter_deps="ffnvcodec"
  scale_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
  thumbnail_cuda_filter_deps="ffnvcodec"
@@ -38,10 +38,10 @@ Index: jellyfin-ffmpeg/configure
      check_nvcc cuda_llvm
  fi
  
-Index: jellyfin-ffmpeg/ffbuild/common.mak
+Index: FFmpeg/ffbuild/common.mak
 ===================================================================
---- jellyfin-ffmpeg.orig/ffbuild/common.mak
-+++ jellyfin-ffmpeg/ffbuild/common.mak
+--- FFmpeg.orig/ffbuild/common.mak
++++ FFmpeg/ffbuild/common.mak
 @@ -44,6 +44,7 @@ ASFLAGS    := $(CPPFLAGS) $(ASFLAGS)
  # end up in CXXFLAGS.
  $(call PREPEND,CXXFLAGS, CPPFLAGS CFLAGS)
@@ -50,10 +50,10 @@ Index: jellyfin-ffmpeg/ffbuild/common.mak
  
  HOSTCCFLAGS = $(IFLAGS) $(HOSTCPPFLAGS) $(HOSTCFLAGS)
  LDFLAGS    := $(ALLFFLIBS:%=$(LD_PATH)lib%) $(LDFLAGS)
-Index: jellyfin-ffmpeg/libavfilter/Makefile
+Index: FFmpeg/libavfilter/Makefile
 ===================================================================
---- jellyfin-ffmpeg.orig/libavfilter/Makefile
-+++ jellyfin-ffmpeg/libavfilter/Makefile
+--- FFmpeg.orig/libavfilter/Makefile
++++ FFmpeg/libavfilter/Makefile
 @@ -509,6 +509,8 @@ OBJS-$(CONFIG_TMIX_FILTER)
  OBJS-$(CONFIG_TONEMAP_FILTER)                += vf_tonemap.o
  OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)         += vf_tonemap_opencl.o opencl.o \
@@ -63,10 +63,10 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
  OBJS-$(CONFIG_TONEMAP_VAAPI_FILTER)          += vf_tonemap_vaapi.o vaapi_vpp.o
  OBJS-$(CONFIG_TPAD_FILTER)                   += vf_tpad.o
  OBJS-$(CONFIG_TRANSPOSE_FILTER)              += vf_transpose.o
-Index: jellyfin-ffmpeg/libavfilter/allfilters.c
+Index: FFmpeg/libavfilter/allfilters.c
 ===================================================================
---- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
-+++ jellyfin-ffmpeg/libavfilter/allfilters.c
+--- FFmpeg.orig/libavfilter/allfilters.c
++++ FFmpeg/libavfilter/allfilters.c
 @@ -478,6 +478,7 @@ extern const AVFilter ff_vf_tmedian;
  extern const AVFilter ff_vf_tmidequalizer;
  extern const AVFilter ff_vf_tmix;
@@ -75,10 +75,10 @@ Index: jellyfin-ffmpeg/libavfilter/allfilters.c
  extern const AVFilter ff_vf_tonemap_opencl;
  extern const AVFilter ff_vf_tonemap_vaapi;
  extern const AVFilter ff_vf_tpad;
-Index: jellyfin-ffmpeg/libavfilter/colorspace.c
+Index: FFmpeg/libavfilter/colorspace.c
 ===================================================================
---- jellyfin-ffmpeg.orig/libavfilter/colorspace.c
-+++ jellyfin-ffmpeg/libavfilter/colorspace.c
+--- FFmpeg.orig/libavfilter/colorspace.c
++++ FFmpeg/libavfilter/colorspace.c
 @@ -51,6 +51,18 @@ void ff_matrix_invert_3x3(const double i
      }
  }
@@ -253,10 +253,10 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.c
 +float inverse_eotf_bt1886(float x) {
 +    return x > 0.0f ? powf(x, 1.0f / 2.4f) : 0.0f;
 +}
-Index: jellyfin-ffmpeg/libavfilter/colorspace.h
+Index: FFmpeg/libavfilter/colorspace.h
 ===================================================================
---- jellyfin-ffmpeg.orig/libavfilter/colorspace.h
-+++ jellyfin-ffmpeg/libavfilter/colorspace.h
+--- FFmpeg.orig/libavfilter/colorspace.h
++++ FFmpeg/libavfilter/colorspace.h
 @@ -23,10 +23,42 @@
  #include "libavutil/csp.h"
  #include "libavutil/frame.h"
@@ -320,10 +320,10 @@ Index: jellyfin-ffmpeg/libavfilter/colorspace.h
 +float inverse_eotf_bt1886(float x);
 +
  #endif
-Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
+Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
++++ FFmpeg/libavfilter/cuda/colorspace_common.h
 @@ -0,0 +1,267 @@
 +/*
 + * This file is part of FFmpeg.
@@ -592,10 +592,10 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +#endif /* AVFILTER_CUDA_COLORSPACE_COMMON_H */
-Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.c
+Index: FFmpeg/libavfilter/cuda/host_util.c
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/host_util.c
++++ FFmpeg/libavfilter/cuda/host_util.c
 @@ -0,0 +1,77 @@
 +/*
 + * This file is part of FFmpeg.
@@ -674,10 +674,10 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.c
 +
 +    return ret;
 +}
-Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.h
+Index: FFmpeg/libavfilter/cuda/host_util.h
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/host_util.h
++++ FFmpeg/libavfilter/cuda/host_util.h
 @@ -0,0 +1,30 @@
 +/*
 + * This file is part of FFmpeg.
@@ -709,10 +709,10 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/host_util.h
 +                       FFCUDAFrame *dst, const AVFrame *src, const AVPixFmtDescriptor *src_desc);
 +
 +#endif /* AVFILTER_CUDA_HOST_UTIL_H */
-Index: jellyfin-ffmpeg/libavfilter/cuda/pixfmt.h
+Index: FFmpeg/libavfilter/cuda/pixfmt.h
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/pixfmt.h
++++ FFmpeg/libavfilter/cuda/pixfmt.h
 @@ -0,0 +1,225 @@
 +/*
 + * This file is part of FFmpeg.
@@ -939,10 +939,10 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/pixfmt.h
 +}
 +
 +#endif /* AVFILTER_CUDA_PIXFMT_H */
-Index: jellyfin-ffmpeg/libavfilter/cuda/shared.h
+Index: FFmpeg/libavfilter/cuda/shared.h
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/shared.h
++++ FFmpeg/libavfilter/cuda/shared.h
 @@ -0,0 +1,33 @@
 +/*
 + * This file is part of FFmpeg.
@@ -977,11 +977,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/shared.h
 +} FFCUDAFrame;
 +
 +#endif /* AVFILTER_CUDA_SHARED_H */
-Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
+Index: FFmpeg/libavfilter/cuda/tonemap.cu
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
-@@ -0,0 +1,418 @@
++++ FFmpeg/libavfilter/cuda/tonemap.cu
+@@ -0,0 +1,455 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1170,6 +1170,31 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +    return rgb;
 +}
 +
++static __inline__ __device__
++float3 map_one_pixel_rgb_mode_rl(float3 rgb, const FFCUDAFrame& src, const FFCUDAFrame& dst) {
++    float sig = max((rgb.x * 0.2627f + rgb.y * 0.678f + rgb.z * 0.0593f), FLOAT_EPS);
++    float peak = src.peak;
++    sig = min(sig, peak);
++    float sig_old = sig;
++    float dst_peak = 1.0f;
++
++    // Desaturate the color using a coefficient dependent on the signal level
++    if (desat_param > 0.0f) {
++        float luma = get_luma_dst(rgb, luma_dst);
++        float coeff = max(sig - 0.18f, FLOAT_EPS) / max(sig, FLOAT_EPS);
++        coeff = __powf(coeff, 10.0f / desat_param);
++        rgb = mix(rgb, make_float3(luma, luma, luma), make_float3(coeff, coeff, coeff));
++    }
++
++    sig = map(sig, peak, dst_peak);
++    rgb = rgb * (sig / sig_old);
++    rgb.x = clamp(rgb.x, 0.0f, 1.0f);
++    rgb.y = clamp(rgb.y, 0.0f, 1.0f);
++    rgb.z = clamp(rgb.z, 0.0f, 1.0f);
++
++    return rgb;
++}
++
 +// Map from source space YUV to destination space RGB
 +static __inline__ __device__
 +float3 map_to_dst_space_from_yuv(float3 yuv) {
@@ -1351,6 +1376,12 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +    c2 = map_one_pixel_rgb_mode_rgb(c2, src, dst); \
 +    c3 = map_one_pixel_rgb_mode_rgb(c3, src, dst);
 +
++#define _TONEMAP_RL \
++    c0 = map_one_pixel_rgb_mode_rl(c0, src, dst); \
++    c1 = map_one_pixel_rgb_mode_rl(c1, src, dst); \
++    c2 = map_one_pixel_rgb_mode_rl(c2, src, dst); \
++    c3 = map_one_pixel_rgb_mode_rl(c3, src, dst);
++
 +#define _RGB2YUV \
 +    yuv0 = lrgb2yuv(c0); \
 +    yuv1 = lrgb2yuv(c1); \
@@ -1385,26 +1416,32 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.cu
 +TONEMAP_VARIANT(_d,            _READER,         , _YUV2RGB,   _TONEMAP_MAX, _RGB2YUV, _DITHER, _WRITER)
 +TONEMAP_VARIANT(_rgb,          _READER,         , _YUV2RGB,   _TONEMAP_RGB, _RGB2YUV,        , _WRITER)
 +TONEMAP_VARIANT(_rgb_d,        _READER,         , _YUV2RGB,   _TONEMAP_RGB, _RGB2YUV, _DITHER, _WRITER)
++TONEMAP_VARIANT(_rl,           _READER,         , _YUV2RGB,   _TONEMAP_RL,  _RGB2YUV,        , _WRITER)
++TONEMAP_VARIANT(_rl_d,         _READER,         , _YUV2RGB,   _TONEMAP_RL,  _RGB2YUV, _DITHER, _WRITER)
 +
 +TONEMAP_VARIANT(_dovi,         _READER, _RESHAPE, _YCC2RGB,   _TONEMAP_MAX, _RGB2YUV,        , _WRITER)
 +TONEMAP_VARIANT(_dovi_d,       _READER, _RESHAPE, _YCC2RGB,   _TONEMAP_MAX, _RGB2YUV, _DITHER, _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb,     _READER, _RESHAPE, _YCC2RGB,   _TONEMAP_RGB, _RGB2YUV,        , _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb_d,   _READER, _RESHAPE, _YCC2RGB,   _TONEMAP_RGB, _RGB2YUV, _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_rl,      _READER, _RESHAPE, _YCC2RGB,   _TONEMAP_RL,  _RGB2YUV,        , _WRITER)
++TONEMAP_VARIANT(_dovi_rl_d,    _READER, _RESHAPE, _YCC2RGB,   _TONEMAP_RL,  _RGB2YUV, _DITHER, _WRITER)
 +
 +TONEMAP_VARIANT(_dovi_f,       _READER, _RESHAPE, _YCC2RGB_F, _TONEMAP_MAX, _RGB2YUV,        , _WRITER)
 +TONEMAP_VARIANT(_dovi_d_f,     _READER, _RESHAPE, _YCC2RGB_F, _TONEMAP_MAX, _RGB2YUV, _DITHER, _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb_f,   _READER, _RESHAPE, _YCC2RGB_F, _TONEMAP_RGB, _RGB2YUV,        , _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb_d_f, _READER, _RESHAPE, _YCC2RGB_F, _TONEMAP_RGB, _RGB2YUV, _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_rl_f,    _READER, _RESHAPE, _YCC2RGB_F, _TONEMAP_RL,  _RGB2YUV,        , _WRITER)
++TONEMAP_VARIANT(_dovi_rl_d_f,  _READER, _RESHAPE, _YCC2RGB_F, _TONEMAP_RL,  _RGB2YUV, _DITHER, _WRITER)
 +
 +TONEMAP_VARIANT(_dovi_pq,      _READER, _RESHAPE, _YCC2RGB,               , _RGB2YUV,        , _WRITER)
 +TONEMAP_VARIANT(_dovi_pq_f,    _READER, _RESHAPE, _YCC2RGB_F,             , _RGB2YUV,        , _WRITER)
 +
 +}
-Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.h
+Index: FFmpeg/libavfilter/cuda/tonemap.h
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/tonemap.h
-@@ -0,0 +1,40 @@
++++ FFmpeg/libavfilter/cuda/tonemap.h
+@@ -0,0 +1,41 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1441,14 +1478,15 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/tonemap.h
 +enum TonemapMode {
 +    TONEMAP_MODE_MAX,
 +    TONEMAP_MODE_RGB,
++    TONEMAP_MODE_LUM,
 +    TONEMAP_MODE_COUNT,
 +};
 +
 +#endif /* AVFILTER_CUDA_TONEMAP_H */
-Index: jellyfin-ffmpeg/libavfilter/cuda/util.h
+Index: FFmpeg/libavfilter/cuda/util.h
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/cuda/util.h
++++ FFmpeg/libavfilter/cuda/util.h
 @@ -0,0 +1,86 @@
 +/*
 + * This file is part of FFmpeg.
@@ -1536,11 +1574,11 @@ Index: jellyfin-ffmpeg/libavfilter/cuda/util.h
 +}
 +
 +#endif /* AVFILTER_CUDA_UTIL_H */
-Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
+Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
-+++ jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1096 @@
++++ FFmpeg/libavfilter/vf_tonemap_cuda.c
+@@ -0,0 +1,1101 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2054,6 +2092,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    enum AVColorPrimaries in_pri = s->in_pri, out_pri = s->out_pri;
 +    enum AVColorRange in_range = s->in_range, out_range = s->out_range;
 +    int rgb = s->tonemap_mode == TONEMAP_MODE_RGB;
++    int max = s->tonemap_mode == TONEMAP_MODE_MAX;
 +    int d = s->in_desc->comp[0].depth > s->out_desc->comp[0].depth && s->ditherTex;
 +    char info_log[4096], error_log[4096];
 +    CUjit_option options[] = { CU_JIT_INFO_LOG_BUFFER,
@@ -2286,15 +2325,18 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +    ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_tm, s->cu_module,
 +                                           rgb ? (d ? "tonemap_rgb_d" : "tonemap_rgb")
-+                                               : (d ? "tonemap_d" : "tonemap")));
++                                               : (max ? (d ? "tonemap_d" : "tonemap")
++                                                      : (d ? "tonemap_rl_d" : "tonemap_rl"))));
 +    if (ret < 0)
 +        goto fail2;
 +
 +    ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_dovi, s->cu_module,
 +                                           s->tradeoff == 1 ? (rgb ? (d ? "tonemap_dovi_rgb_d_f" : "tonemap_dovi_rgb_f")
-+                                                                   : (d ? "tonemap_dovi_d_f" : "tonemap_dovi_f"))
++                                                                   : (max ? (d ? "tonemap_dovi_d_f" : "tonemap_dovi_f")
++                                                                          : (d ? "tonemap_dovi_rl_d_f" : "tonemap_dovi_rl_f")))
 +                                                            : (rgb ? (d ? "tonemap_dovi_rgb_d" : "tonemap_dovi_rgb")
-+                                                                   : (d ? "tonemap_dovi_d" : "tonemap_dovi"))));
++                                                                   : (max ? (d ? "tonemap_dovi_d" : "tonemap_dovi")
++                                                                          : (d ? "tonemap_dovi_rl_d" : "tonemap_dovi_rl")))));
 +    if (ret < 0)
 +        goto fail2;
 +
@@ -2563,8 +2605,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_cuda.c
 +    {     "mobius",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MOBIUS},            0, 0, FLAGS, "tonemap" },
 +    {     "bt2390",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_BT2390},            0, 0, FLAGS, "tonemap" },
 +    { "tonemap_mode",  "Tonemap mode selection", OFFSET(tonemap_mode), AV_OPT_TYPE_INT, {.i64 = TONEMAP_MODE_MAX}, TONEMAP_MODE_MAX, TONEMAP_MODE_COUNT - 1, FLAGS, "tonemap_mode" },
-+    {     "max",       0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_MAX},          0, 0, FLAGS, "tonemap_mode" },
-+    {     "rgb",       0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_RGB},          0, 0, FLAGS, "tonemap_mode" },
++    {     "max", "Brightest channel based tonemap",  0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_MAX}, 0, 0, FLAGS, "tonemap_mode" },
++    {     "rgb", "Per-channel based tonemap",        0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_RGB}, 0, 0, FLAGS, "tonemap_mode" },
++    {     "lum", "Relative luminance based tonemap", 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_MODE_LUM}, 0, 0, FLAGS, "tonemap_mode" },
 +    { "transfer",      "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
 +    { "t",             "Set transfer characteristic", OFFSET(trc), AV_OPT_TYPE_INT, {.i64 = AVCOL_TRC_BT709}, -1, INT_MAX, FLAGS, "transfer" },
 +    {     "bt709",     0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_TRC_BT709},           0, 0, FLAGS, "transfer" },
