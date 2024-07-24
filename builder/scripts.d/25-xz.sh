@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_REPO="https://github.com/tukaani-project/xz"
+SCRIPT_REPO="https://github.com/tukaani-project/xz.git"
 SCRIPT_COMMIT="v5.6.2"
 SCRIPT_TAGFILTER="v?.*.*"
 
