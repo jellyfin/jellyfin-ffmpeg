@@ -1172,7 +1172,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +
 +static __inline__ __device__
 +float3 map_one_pixel_rgb_mode_rl(float3 rgb, const FFCUDAFrame& src, const FFCUDAFrame& dst) {
-+    float sig = max((rgb.x * 0.2126f + rgb.y * 0.7152f + rgb.z * 0.0722f), FLOAT_EPS);
++    float sig = max((rgb.x * 0.2627f + rgb.y * 0.678f + rgb.z * 0.0593f), FLOAT_EPS);
 +    float peak = src.peak;
 +    sig = min(sig, peak);
 +    float sig_old = sig;
