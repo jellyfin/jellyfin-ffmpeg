@@ -25,6 +25,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-chromaprint \
 	--enable-opencl \
 	--enable-libdrm \
+	--enable-libxml2 \
 	--enable-libass \
 	--enable-libfreetype \
 	--enable-libfribidi \
