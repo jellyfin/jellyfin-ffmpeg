@@ -11,6 +11,8 @@ jellyfin-ffmpeg (6.0.1-8) unstable; urgency=medium
   * Add AC-4 decoder for ATSC 3.0 audio
   * Add relative luminance mode to vt/cuda/ocl tonemap
   * Update build scripts and dependencies
+  * Sync fixes from ffmpeg-rockchip
+  * Enable libxml2
 
  -- nyanmisaka <nst799610810@gmail.com>  Wed, 24 Jul 2024 20:57:11 +0800
 
