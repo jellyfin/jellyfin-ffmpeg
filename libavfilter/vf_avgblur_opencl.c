@@ -59,7 +59,7 @@ static int avgblur_opencl_init(AVFilterContext *avctx)
     cl_int cle;
     int err;
 
-    err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_avgblur, 1);
+    err = ff_opencl_filter_load_program(avctx, &ff_source_avgblur_cl, 1);
     if (err < 0)
         goto fail;
 
@@ -390,6 +390,7 @@ const AVFilter ff_vf_boxblur_opencl = {
     FILTER_OUTPUTS(avgblur_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };
 
 #endif /* CONFIG_BOXBLUR_OPENCL_FILTER */

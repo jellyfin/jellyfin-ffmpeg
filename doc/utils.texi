@@ -695,6 +695,8 @@ FL+FR+FC+LFE+SL+SR
 FL+FR+FC+BC+SL+SR
 @item 6.0(front)
 FL+FR+FLC+FRC+SL+SR
+@item 3.1.2
+FL+FR+FC+LFE+TFL+TFR
 @item hexagonal
 FL+FR+FC+BL+BR+BC
 @item 6.1
@@ -713,12 +715,22 @@ FL+FR+FC+LFE+BL+BR+SL+SR
 FL+FR+FC+LFE+BL+BR+FLC+FRC
 @item 7.1(wide-side)
 FL+FR+FC+LFE+FLC+FRC+SL+SR
-@item 7.1(top)
+@item 5.1.2
 FL+FR+FC+LFE+BL+BR+TFL+TFR
 @item octagonal
 FL+FR+FC+BL+BR+BC+SL+SR
 @item cube
 FL+FR+BL+BR+TFL+TFR+TBL+TBR
+@item 5.1.4
+FL+FR+FC+LFE+BL+BR+TFL+TFR+TBL+TBR
+@item 7.1.2
+FL+FR+FC+LFE+BL+BR+SL+SR+TFL+TFR
+@item 7.1.4
+FL+FR+FC+LFE+BL+BR+SL+SR+TFL+TFR+TBL+TBR
+@item 7.2.3
+FL+FR+FC+LFE+BL+BR+SL+SR+TFL+TFR+TBC+LFE2
+@item 9.1.4
+FL+FR+FC+LFE+BL+BR+FLC+FRC+SL+SR+TFL+TFR+TBL+TBR
 @item hexadecagonal
 FL+FR+FC+BL+BR+BC+SL+SR+WL+WR+TBL+TBR+TBC+TFC+TFL+TFR
 @item downmix
@@ -803,7 +815,7 @@ Compute arcsine of @var{x}.
 @item atan(x)
 Compute arctangent of @var{x}.
 
-@item atan2(x, y)
+@item atan2(y, x)
 Compute principal value of the arc tangent of @var{y}/@var{x}.
 
 @item between(x, min, max)
@@ -927,9 +939,15 @@ Returns the value of the expression printed.
 
 Prints t with loglevel l
 
-@item random(x)
-Return a pseudo random value between 0.0 and 1.0. @var{x} is the index of the
-internal variable which will be used to save the seed/state.
+@item random(idx)
+Return a pseudo random value between 0.0 and 1.0. @var{idx} is the
+index of the internal variable which will be used to save the
+seed/state.
+
+@item randomi(idx, min, max)
+Return a pseudo random value in the interval between @var{min} and
+@var{max}. @var{idx} is the index of the internal variable which will
+be used to save the seed/state.
 
 @item root(expr, max)
 Find an input value for which the function represented by @var{expr}

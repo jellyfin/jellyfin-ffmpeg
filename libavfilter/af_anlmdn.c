@@ -21,11 +21,9 @@
 #include <float.h>
 
 #include "libavutil/avassert.h"
-#include "libavutil/avstring.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 #include "filters.h"
 
 #include "af_anlmdndsp.h"
@@ -74,11 +72,11 @@ static const AVOption anlmdn_options[] = {
     { "p", "set patch duration",     OFFSET(pd), AV_OPT_TYPE_DURATION, {.i64=2000}, 1000, 100000, AFT },
     { "research", "set research duration",  OFFSET(rd), AV_OPT_TYPE_DURATION, {.i64=6000}, 2000, 300000, AFT },
     { "r", "set research duration",  OFFSET(rd), AV_OPT_TYPE_DURATION, {.i64=6000}, 2000, 300000, AFT },
-    { "output", "set output mode",   OFFSET(om), AV_OPT_TYPE_INT,      {.i64=OUT_MODE},  0, NB_MODES-1, AFT, "mode" },
-    { "o", "set output mode",        OFFSET(om), AV_OPT_TYPE_INT,      {.i64=OUT_MODE},  0, NB_MODES-1, AFT, "mode" },
-    {  "i", "input",                 0,          AV_OPT_TYPE_CONST,    {.i64=IN_MODE},   0,  0, AFT, "mode" },
-    {  "o", "output",                0,          AV_OPT_TYPE_CONST,    {.i64=OUT_MODE},  0,  0, AFT, "mode" },
-    {  "n", "noise",                 0,          AV_OPT_TYPE_CONST,    {.i64=NOISE_MODE},0,  0, AFT, "mode" },
+    { "output", "set output mode",   OFFSET(om), AV_OPT_TYPE_INT,      {.i64=OUT_MODE},  0, NB_MODES-1, AFT, .unit = "mode" },
+    { "o", "set output mode",        OFFSET(om), AV_OPT_TYPE_INT,      {.i64=OUT_MODE},  0, NB_MODES-1, AFT, .unit = "mode" },
+    {  "i", "input",                 0,          AV_OPT_TYPE_CONST,    {.i64=IN_MODE},   0,  0, AFT, .unit = "mode" },
+    {  "o", "output",                0,          AV_OPT_TYPE_CONST,    {.i64=OUT_MODE},  0,  0, AFT, .unit = "mode" },
+    {  "n", "noise",                 0,          AV_OPT_TYPE_CONST,    {.i64=NOISE_MODE},0,  0, AFT, .unit = "mode" },
     { "smooth", "set smooth factor", OFFSET(m),  AV_OPT_TYPE_FLOAT,    {.dbl=11.},       1, 1000, AFT },
     { "m", "set smooth factor",      OFFSET(m),  AV_OPT_TYPE_FLOAT,    {.dbl=11.},       1, 1000, AFT },
     { NULL }
@@ -343,13 +341,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_frame_free(&s->window);
 }
 
-static const AVFilterPad inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 static const AVFilterPad outputs[] = {
     {
         .name          = "default",
@@ -365,7 +356,7 @@ const AVFilter ff_af_anlmdn = {
     .priv_class    = &anlmdn_class,
     .activate      = activate,
     .uninit        = uninit,
-    FILTER_INPUTS(inputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .process_command = process_command,

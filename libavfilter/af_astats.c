@@ -58,6 +58,7 @@
 #define MEASURE_NOISE_FLOOR             (1 << 22)
 #define MEASURE_NOISE_FLOOR_COUNT       (1 << 23)
 #define MEASURE_ENTROPY                 (1 << 24)
+#define MEASURE_ABS_PEAK_COUNT          (1 << 25)
 
 #define MEASURE_MINMAXPEAK              (MEASURE_MIN_LEVEL | MEASURE_MAX_LEVEL | MEASURE_PEAK_LEVEL)
 
@@ -74,8 +75,10 @@ typedef struct ChannelStats {
     double min_diff, max_diff;
     double diff1_sum;
     double diff1_sum_x2;
-    uint64_t mask, imask;
+    double abs_peak;
+    uint64_t mask[4];
     uint64_t min_count, max_count;
+    uint64_t abs_peak_count;
     uint64_t noise_floor_count;
     uint64_t zero_runs;
     uint64_t nb_samples;
@@ -83,8 +86,11 @@ typedef struct ChannelStats {
     uint64_t nb_infs;
     uint64_t nb_denormals;
     double *win_samples;
-    uint64_t histogram[HISTOGRAM_SIZE];
+    double *sorted_samples;
     uint64_t ehistogram[HISTOGRAM_SIZE];
+    int64_t lasti;
+    int sorted_front;
+    int sorted_back;
     int win_pos;
     int max_index;
     double noise_floor;
@@ -116,35 +122,36 @@ static const AVOption astats_options[] = {
     { "length", "set the window length", OFFSET(time_constant), AV_OPT_TYPE_DOUBLE, {.dbl=.05}, 0, 10, FLAGS },
     { "metadata", "inject metadata in the filtergraph", OFFSET(metadata), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "reset", "Set the number of frames over which cumulative stats are calculated before being reset", OFFSET(reset_count), AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGS },
-    { "measure_perchannel", "Select the parameters which are measured per channel", OFFSET(measure_perchannel), AV_OPT_TYPE_FLAGS, {.i64=MEASURE_ALL}, 0, UINT_MAX, FLAGS, "measure" },
-      { "none"                      , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NONE                }, 0, 0, FLAGS, "measure" },
-      { "all"                       , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ALL                 }, 0, 0, FLAGS, "measure" },
-      { "Bit_depth"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_BIT_DEPTH           }, 0, 0, FLAGS, "measure" },
-      { "Crest_factor"              , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_CREST_FACTOR        }, 0, 0, FLAGS, "measure" },
-      { "DC_offset"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_DC_OFFSET           }, 0, 0, FLAGS, "measure" },
-      { "Dynamic_range"             , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_DYNAMIC_RANGE       }, 0, 0, FLAGS, "measure" },
-      { "Entropy"                   , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ENTROPY             }, 0, 0, FLAGS, "measure" },
-      { "Flat_factor"               , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_FLAT_FACTOR         }, 0, 0, FLAGS, "measure" },
-      { "Max_difference"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MAX_DIFFERENCE      }, 0, 0, FLAGS, "measure" },
-      { "Max_level"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MAX_LEVEL           }, 0, 0, FLAGS, "measure" },
-      { "Mean_difference"           , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MEAN_DIFFERENCE     }, 0, 0, FLAGS, "measure" },
-      { "Min_difference"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MIN_DIFFERENCE      }, 0, 0, FLAGS, "measure" },
-      { "Min_level"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MIN_LEVEL           }, 0, 0, FLAGS, "measure" },
-      { "Noise_floor"               , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NOISE_FLOOR         }, 0, 0, FLAGS, "measure" },
-      { "Noise_floor_count"         , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NOISE_FLOOR_COUNT   }, 0, 0, FLAGS, "measure" },
-      { "Number_of_Infs"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_INFS      }, 0, 0, FLAGS, "measure" },
-      { "Number_of_NaNs"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_NANS      }, 0, 0, FLAGS, "measure" },
-      { "Number_of_denormals"       , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_DENORMALS }, 0, 0, FLAGS, "measure" },
-      { "Number_of_samples"         , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_SAMPLES   }, 0, 0, FLAGS, "measure" },
-      { "Peak_count"                , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_PEAK_COUNT          }, 0, 0, FLAGS, "measure" },
-      { "Peak_level"                , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_PEAK_LEVEL          }, 0, 0, FLAGS, "measure" },
-      { "RMS_difference"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_DIFFERENCE      }, 0, 0, FLAGS, "measure" },
-      { "RMS_level"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_LEVEL           }, 0, 0, FLAGS, "measure" },
-      { "RMS_peak"                  , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_PEAK            }, 0, 0, FLAGS, "measure" },
-      { "RMS_trough"                , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_TROUGH          }, 0, 0, FLAGS, "measure" },
-      { "Zero_crossings"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ZERO_CROSSINGS      }, 0, 0, FLAGS, "measure" },
-      { "Zero_crossings_rate"       , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ZERO_CROSSINGS_RATE }, 0, 0, FLAGS, "measure" },
-    { "measure_overall", "Select the parameters which are measured overall", OFFSET(measure_overall), AV_OPT_TYPE_FLAGS, {.i64=MEASURE_ALL}, 0, UINT_MAX, FLAGS, "measure" },
+    { "measure_perchannel", "Select the parameters which are measured per channel", OFFSET(measure_perchannel), AV_OPT_TYPE_FLAGS, {.i64=MEASURE_ALL}, 0, UINT_MAX, FLAGS, .unit = "measure" },
+      { "none"                      , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NONE                }, 0, 0, FLAGS, .unit = "measure" },
+      { "all"                       , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ALL                 }, 0, 0, FLAGS, .unit = "measure" },
+      { "Bit_depth"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_BIT_DEPTH           }, 0, 0, FLAGS, .unit = "measure" },
+      { "Crest_factor"              , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_CREST_FACTOR        }, 0, 0, FLAGS, .unit = "measure" },
+      { "DC_offset"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_DC_OFFSET           }, 0, 0, FLAGS, .unit = "measure" },
+      { "Dynamic_range"             , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_DYNAMIC_RANGE       }, 0, 0, FLAGS, .unit = "measure" },
+      { "Entropy"                   , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ENTROPY             }, 0, 0, FLAGS, .unit = "measure" },
+      { "Flat_factor"               , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_FLAT_FACTOR         }, 0, 0, FLAGS, .unit = "measure" },
+      { "Max_difference"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MAX_DIFFERENCE      }, 0, 0, FLAGS, .unit = "measure" },
+      { "Max_level"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MAX_LEVEL           }, 0, 0, FLAGS, .unit = "measure" },
+      { "Mean_difference"           , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MEAN_DIFFERENCE     }, 0, 0, FLAGS, .unit = "measure" },
+      { "Min_difference"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MIN_DIFFERENCE      }, 0, 0, FLAGS, .unit = "measure" },
+      { "Min_level"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_MIN_LEVEL           }, 0, 0, FLAGS, .unit = "measure" },
+      { "Noise_floor"               , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NOISE_FLOOR         }, 0, 0, FLAGS, .unit = "measure" },
+      { "Noise_floor_count"         , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NOISE_FLOOR_COUNT   }, 0, 0, FLAGS, .unit = "measure" },
+      { "Number_of_Infs"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_INFS      }, 0, 0, FLAGS, .unit = "measure" },
+      { "Number_of_NaNs"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_NANS      }, 0, 0, FLAGS, .unit = "measure" },
+      { "Number_of_denormals"       , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_DENORMALS }, 0, 0, FLAGS, .unit = "measure" },
+      { "Number_of_samples"         , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_NUMBER_OF_SAMPLES   }, 0, 0, FLAGS, .unit = "measure" },
+      { "Peak_count"                , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_PEAK_COUNT          }, 0, 0, FLAGS, .unit = "measure" },
+      { "Peak_level"                , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_PEAK_LEVEL          }, 0, 0, FLAGS, .unit = "measure" },
+      { "RMS_difference"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_DIFFERENCE      }, 0, 0, FLAGS, .unit = "measure" },
+      { "RMS_level"                 , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_LEVEL           }, 0, 0, FLAGS, .unit = "measure" },
+      { "RMS_peak"                  , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_PEAK            }, 0, 0, FLAGS, .unit = "measure" },
+      { "RMS_trough"                , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_RMS_TROUGH          }, 0, 0, FLAGS, .unit = "measure" },
+      { "Zero_crossings"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ZERO_CROSSINGS      }, 0, 0, FLAGS, .unit = "measure" },
+      { "Zero_crossings_rate"       , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ZERO_CROSSINGS_RATE }, 0, 0, FLAGS, .unit = "measure" },
+      { "Abs_Peak_count"            , "", 0, AV_OPT_TYPE_CONST, {.i64=MEASURE_ABS_PEAK_COUNT      }, 0, 0, FLAGS, .unit = "measure" },
+    { "measure_overall", "Select the parameters which are measured overall", OFFSET(measure_overall), AV_OPT_TYPE_FLAGS, {.i64=MEASURE_ALL}, 0, UINT_MAX, FLAGS, .unit = "measure" },
     { NULL }
 };
 
@@ -159,6 +166,7 @@ static void reset_stats(AudioStatsContext *s)
 
         p->min = p->nmin = p->min_sigma_x2 = DBL_MAX;
         p->max = p->nmax = p->max_sigma_x2 =-DBL_MAX;
+        p->abs_peak = 0;
         p->min_non_zero = DBL_MAX;
         p->min_diff = DBL_MAX;
         p->max_diff = 0;
@@ -171,10 +179,13 @@ static void reset_stats(AudioStatsContext *s)
         p->max_runs = 0;
         p->diff1_sum = 0;
         p->diff1_sum_x2 = 0;
-        p->mask = 0;
-        p->imask = 0xFFFFFFFFFFFFFFFF;
+        p->mask[0] = 0;
+        p->mask[1] = 0;
+        p->mask[2] =~0;
+        p->mask[3] = 0;
         p->min_count = 0;
         p->max_count = 0;
+        p->abs_peak_count = 0;
         p->zero_runs = 0;
         p->nb_samples = 0;
         p->nb_nans = 0;
@@ -185,9 +196,12 @@ static void reset_stats(AudioStatsContext *s)
         p->noise_floor_count = 0;
         p->entropy = 0;
         p->win_pos = 0;
+        p->sorted_front = 0;
+        p->sorted_back = 0;
         memset(p->win_samples, 0, s->tc_samples * sizeof(*p->win_samples));
-        memset(p->histogram, 0, sizeof(p->histogram));
         memset(p->ehistogram, 0, sizeof(p->ehistogram));
+        for (int n = 0; n < s->tc_samples; n++)
+            p->sorted_samples[n] = -1.0;
     }
 }
 
@@ -208,6 +222,10 @@ static int config_output(AVFilterLink *outlink)
         p->win_samples = av_calloc(s->tc_samples, sizeof(*p->win_samples));
         if (!p->win_samples)
             return AVERROR(ENOMEM);
+
+        p->sorted_samples = av_calloc(s->tc_samples, sizeof(*p->sorted_samples));
+        if (!p->sorted_samples)
+            return AVERROR(ENOMEM);
     }
 
     s->mult = exp((-1 / s->time_constant / outlink->sample_rate));
@@ -224,20 +242,28 @@ static int config_output(AVFilterLink *outlink)
     return 0;
 }
 
-static void bit_depth(AudioStatsContext *s, uint64_t mask, uint64_t imask, AVRational *depth)
+static void bit_depth(AudioStatsContext *s, const uint64_t *const mask, uint8_t *depth)
 {
     unsigned result = s->maxbitdepth;
+    uint64_t amask = mask[1] & (~mask[2]);
 
-    mask = mask & (~imask);
+    depth[0] = 0;
+    for (int i = 0; i < result; i++)
+        depth[0] += !!(mask[0] & (1ULL << i));
 
-    for (; result && !(mask & 1); --result, mask >>= 1);
+    depth[1] = 0;
+    for (int i = 0; i < result; i++)
+        depth[1] += !!(mask[1] & (1ULL << i));
 
-    depth->den = result;
-    depth->num = 0;
+    depth[2] = result;
+    for (int i = 0; i < result && !(amask & 1); i++) {
+        depth[2]--;
+        amask >>= 1;
+    }
 
-    for (; result; --result, mask >>= 1)
-        if (mask & 1)
-            depth->num++;
+    depth[3] = 0;
+    for (int i = 0; i < result; i++)
+        depth[3] += !!(mask[3] & (1ULL << i));
 }
 
 static double calc_entropy(AudioStatsContext *s, ChannelStats *p)
@@ -254,6 +280,63 @@ static double calc_entropy(AudioStatsContext *s, ChannelStats *p)
     return -entropy / log2(HISTOGRAM_SIZE);
 }
 
+static double calc_noise_floor(double *ss, double x, double px,
+                               int n, int *ffront, int *bback)
+{
+    double r, ax = fabs(x);
+    int front = *ffront;
+    int back = *bback;
+    int empty = front == back && ss[front] == -1.0;
+
+    if (!empty && fabs(px) == ss[front]) {
+        ss[front] = -1.0;
+        if (back != front) {
+            front--;
+            if (front < 0)
+                front = n - 1;
+        }
+        empty = front == back;
+    }
+
+    if (!empty && ax >= ss[front]) {
+        while (1) {
+            ss[front] = -1.0;
+            if (back == front) {
+                empty = 1;
+                break;
+            }
+            front--;
+            if (front < 0)
+                front = n - 1;
+        }
+    }
+
+    while (!empty && ax >= ss[back]) {
+        ss[back] = -1.0;
+        if (back == front) {
+            empty = 1;
+            break;
+        }
+        back++;
+        if (back >= n)
+            back = 0;
+    }
+
+    if (!empty) {
+        back--;
+        if (back < 0)
+            back = n - 1;
+    }
+
+    ss[back] = ax;
+    r = ss[front];
+
+    *ffront = front;
+    *bback = back;
+
+    return r;
+}
+
 static inline void update_minmax(AudioStatsContext *s, ChannelStats *p, double d)
 {
     if (d < p->min)
@@ -264,9 +347,16 @@ static inline void update_minmax(AudioStatsContext *s, ChannelStats *p, double d
 
 static inline void update_stat(AudioStatsContext *s, ChannelStats *p, double d, double nd, int64_t i)
 {
-    double drop;
+    double abs_d = FFABS(d);
+    double drop, noise_floor;
     int index;
 
+    if (p->abs_peak < abs_d) {
+        p->abs_peak = abs_d;
+        p->abs_peak_count = 1;
+    } else if (p->abs_peak == abs_d) {
+        p->abs_peak_count++;
+    }
     if (d < p->min) {
         p->min = d;
         p->nmin = nd;
@@ -310,32 +400,33 @@ static inline void update_stat(AudioStatsContext *s, ChannelStats *p, double d, 
         p->diff1_sum += fabs(d - p->last);
         p->diff1_sum_x2 += (d - p->last) * (d - p->last);
     }
+    p->mask[0] |= (i < 0) ? -i : i;
+    p->mask[1] |= i;
+    p->mask[2] &= i;
+    if (!isnan(p->last))
+        p->mask[3] |= i ^ p->lasti;
+    p->lasti = i;
     p->last = d;
-    p->mask |= i;
-    p->imask &= i;
 
     drop = p->win_samples[p->win_pos];
     p->win_samples[p->win_pos] = nd;
     index = av_clip(lrint(av_clipd(FFABS(nd), 0.0, 1.0) * HISTOGRAM_MAX), 0, HISTOGRAM_MAX);
     p->max_index = FFMAX(p->max_index, index);
-    p->histogram[index]++;
     p->ehistogram[index]++;
-    if (!isnan(p->noise_floor))
-        p->histogram[av_clip(lrint(av_clipd(FFABS(drop), 0.0, 1.0) * HISTOGRAM_MAX), 0, HISTOGRAM_MAX)]--;
     p->win_pos++;
 
-    while (p->histogram[p->max_index] == 0)
-        p->max_index--;
-    if (p->win_pos >= s->tc_samples || !isnan(p->noise_floor)) {
-        double noise_floor = 1.;
+    if (p->win_pos >= s->tc_samples)
+        p->win_pos = 0;
 
-        for (int i = p->max_index; i >= 0; i--) {
-            if (p->histogram[i]) {
-                noise_floor = i / (double)HISTOGRAM_MAX;
-                break;
-            }
-        }
+    if (p->nb_samples >= s->tc_samples) {
+        p->max_sigma_x2 = FFMAX(p->max_sigma_x2, p->avg_sigma_x2);
+        p->min_sigma_x2 = FFMIN(p->min_sigma_x2, p->avg_sigma_x2);
+    }
+    p->nb_samples++;
 
+    noise_floor = calc_noise_floor(p->sorted_samples, nd, drop,
+                                   s->tc_samples, &p->sorted_front, &p->sorted_back);
+    if (p->nb_samples >= s->tc_samples) {
         if (isnan(p->noise_floor)) {
             p->noise_floor = noise_floor;
             p->noise_floor_count = 1;
@@ -348,16 +439,6 @@ static inline void update_stat(AudioStatsContext *s, ChannelStats *p, double d, 
             }
         }
     }
-
-    if (p->win_pos >= s->tc_samples) {
-        p->win_pos = 0;
-    }
-
-    if (p->nb_samples >= s->tc_samples) {
-        p->max_sigma_x2 = FFMAX(p->max_sigma_x2, p->avg_sigma_x2);
-        p->min_sigma_x2 = FFMIN(p->min_sigma_x2, p->avg_sigma_x2);
-    }
-    p->nb_samples++;
 }
 
 static inline void update_float_stat(AudioStatsContext *s, ChannelStats *p, float d)
@@ -396,8 +477,9 @@ static void set_meta(AVDictionary **metadata, int chan, const char *key,
 
 static void set_metadata(AudioStatsContext *s, AVDictionary **metadata)
 {
-    uint64_t mask = 0, imask = 0xFFFFFFFFFFFFFFFF, min_count = 0, max_count = 0, nb_samples = 0, noise_floor_count = 0;
+    uint64_t mask[4], min_count = 0, max_count = 0, nb_samples = 0, noise_floor_count = 0;
     uint64_t nb_nans = 0, nb_infs = 0, nb_denormals = 0;
+    uint64_t abs_peak_count = 0;
     double min_runs = 0, max_runs = 0,
            min = DBL_MAX, max =-DBL_MAX, min_diff = DBL_MAX, max_diff = 0,
            nmin = DBL_MAX, nmax =-DBL_MAX,
@@ -409,8 +491,13 @@ static void set_metadata(AudioStatsContext *s, AVDictionary **metadata)
            entropy = 0,
            min_sigma_x2 = DBL_MAX,
            max_sigma_x2 =-DBL_MAX;
-    AVRational depth;
+    uint8_t depth[4];
     int c;
+
+    mask[0] = 0;
+    mask[1] = 0;
+    mask[2] =~0;
+    mask[3] = 0;
 
     for (c = 0; c < s->nb_channels; c++) {
         ChannelStats *p = &s->chstats[c];
@@ -435,10 +522,13 @@ static void set_metadata(AudioStatsContext *s, AVDictionary **metadata)
         entropy += p->entropy;
         min_count += p->min_count;
         max_count += p->max_count;
+        abs_peak_count += p->abs_peak_count;
         min_runs += p->min_runs;
         max_runs += p->max_runs;
-        mask |= p->mask;
-        imask &= p->imask;
+        mask[0] |= p->mask[0];
+        mask[1] |= p->mask[1];
+        mask[2] &= p->mask[2];
+        mask[3] |= p->mask[3];
         nb_samples += p->nb_samples;
         nb_nans += p->nb_nans;
         nb_infs += p->nb_infs;
@@ -474,6 +564,8 @@ static void set_metadata(AudioStatsContext *s, AVDictionary **metadata)
             set_meta(metadata, c + 1, "Flat_factor", "%f", LINEAR_TO_DB((p->min_runs + p->max_runs) / (p->min_count + p->max_count)));
         if (s->measure_perchannel & MEASURE_PEAK_COUNT)
             set_meta(metadata, c + 1, "Peak_count", "%f", (float)(p->min_count + p->max_count));
+        if (s->measure_perchannel & MEASURE_ABS_PEAK_COUNT)
+            set_meta(metadata, c + 1, "Peak_count", "%f", p->abs_peak_count);
         if (s->measure_perchannel & MEASURE_NOISE_FLOOR)
             set_meta(metadata, c + 1, "Noise_floor", "%f", LINEAR_TO_DB(p->noise_floor));
         if (s->measure_perchannel & MEASURE_NOISE_FLOOR_COUNT)
@@ -481,9 +573,11 @@ static void set_metadata(AudioStatsContext *s, AVDictionary **metadata)
         if (s->measure_perchannel & MEASURE_ENTROPY)
             set_meta(metadata, c + 1, "Entropy", "%f", p->entropy);
         if (s->measure_perchannel & MEASURE_BIT_DEPTH) {
-            bit_depth(s, p->mask, p->imask, &depth);
-            set_meta(metadata, c + 1, "Bit_depth", "%f", depth.num);
-            set_meta(metadata, c + 1, "Bit_depth2", "%f", depth.den);
+            bit_depth(s, p->mask, depth);
+            set_meta(metadata, c + 1, "Bit_depth", "%f", depth[0]);
+            set_meta(metadata, c + 1, "Bit_depth2", "%f", depth[1]);
+            set_meta(metadata, c + 1, "Bit_depth3", "%f", depth[2]);
+            set_meta(metadata, c + 1, "Bit_depth4", "%f", depth[3]);
         }
         if (s->measure_perchannel & MEASURE_DYNAMIC_RANGE)
             set_meta(metadata, c + 1, "Dynamic_range", "%f", LINEAR_TO_DB(2 * FFMAX(FFABS(p->min), FFABS(p->max))/ p->min_non_zero));
@@ -525,6 +619,8 @@ static void set_metadata(AudioStatsContext *s, AVDictionary **metadata)
         set_meta(metadata, 0, "Overall.Flat_factor", "%f", LINEAR_TO_DB((min_runs + max_runs) / (min_count + max_count)));
     if (s->measure_overall & MEASURE_PEAK_COUNT)
         set_meta(metadata, 0, "Overall.Peak_count", "%f", (float)(min_count + max_count) / (double)s->nb_channels);
+    if (s->measure_overall & MEASURE_ABS_PEAK_COUNT)
+        set_meta(metadata, 0, "Overall.Abs_Peak_count", "%f", (float)(abs_peak_count) / (double)s->nb_channels);
     if (s->measure_overall & MEASURE_NOISE_FLOOR)
         set_meta(metadata, 0, "Overall.Noise_floor", "%f", LINEAR_TO_DB(noise_floor));
     if (s->measure_overall & MEASURE_NOISE_FLOOR_COUNT)
@@ -532,9 +628,11 @@ static void set_metadata(AudioStatsContext *s, AVDictionary **metadata)
     if (s->measure_overall & MEASURE_ENTROPY)
         set_meta(metadata, 0, "Overall.Entropy", "%f", entropy / (double)s->nb_channels);
     if (s->measure_overall & MEASURE_BIT_DEPTH) {
-        bit_depth(s, mask, imask, &depth);
-        set_meta(metadata, 0, "Overall.Bit_depth", "%f", depth.num);
-        set_meta(metadata, 0, "Overall.Bit_depth2", "%f", depth.den);
+        bit_depth(s, mask, depth);
+        set_meta(metadata, 0, "Overall.Bit_depth", "%f", depth[0]);
+        set_meta(metadata, 0, "Overall.Bit_depth2", "%f", depth[1]);
+        set_meta(metadata, 0, "Overall.Bit_depth3", "%f", depth[2]);
+        set_meta(metadata, 0, "Overall.Bit_depth4", "%f", depth[3]);
     }
     if (s->measure_overall & MEASURE_NUMBER_OF_SAMPLES)
         set_meta(metadata, 0, "Overall.Number_of_samples", "%f", nb_samples / s->nb_channels);
@@ -652,8 +750,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 static void print_stats(AVFilterContext *ctx)
 {
     AudioStatsContext *s = ctx->priv;
-    uint64_t mask = 0, imask = 0xFFFFFFFFFFFFFFFF, min_count = 0, max_count = 0, nb_samples = 0, noise_floor_count = 0;
-    uint64_t nb_nans = 0, nb_infs = 0, nb_denormals = 0;
+    uint64_t mask[4], min_count = 0, max_count = 0, nb_samples = 0, noise_floor_count = 0;
+    uint64_t nb_nans = 0, nb_infs = 0, nb_denormals = 0, abs_peak_count = 0;
     double min_runs = 0, max_runs = 0,
            min = DBL_MAX, max =-DBL_MAX, min_diff = DBL_MAX, max_diff = 0,
            nmin = DBL_MAX, nmax =-DBL_MAX,
@@ -665,8 +763,13 @@ static void print_stats(AVFilterContext *ctx)
            entropy = 0,
            min_sigma_x2 = DBL_MAX,
            max_sigma_x2 =-DBL_MAX;
-    AVRational depth;
+    uint8_t depth[4];
     int c;
+
+    mask[0] = 0;
+    mask[1] = 0;
+    mask[2] =~0;
+    mask[3] = 0;
 
     for (c = 0; c < s->nb_channels; c++) {
         ChannelStats *p = &s->chstats[c];
@@ -693,11 +796,14 @@ static void print_stats(AVFilterContext *ctx)
         entropy += p->entropy;
         min_count += p->min_count;
         max_count += p->max_count;
+        abs_peak_count += p->abs_peak_count;
         noise_floor_count += p->noise_floor_count;
         min_runs += p->min_runs;
         max_runs += p->max_runs;
-        mask |= p->mask;
-        imask &= p->imask;
+        mask[0] |= p->mask[0];
+        mask[1] |= p->mask[1];
+        mask[2] &= p->mask[2];
+        mask[3] |= p->mask[3];
         nb_samples += p->nb_samples;
         nb_nans += p->nb_nans;
         nb_infs += p->nb_infs;
@@ -736,6 +842,8 @@ static void print_stats(AVFilterContext *ctx)
             av_log(ctx, AV_LOG_INFO, "Flat factor: %f\n", LINEAR_TO_DB((p->min_runs + p->max_runs) / (p->min_count + p->max_count)));
         if (s->measure_perchannel & MEASURE_PEAK_COUNT)
             av_log(ctx, AV_LOG_INFO, "Peak count: %"PRId64"\n", p->min_count + p->max_count);
+        if (s->measure_perchannel & MEASURE_ABS_PEAK_COUNT)
+            av_log(ctx, AV_LOG_INFO, "Abs Peak count: %"PRId64"\n", p->abs_peak_count);
         if (s->measure_perchannel & MEASURE_NOISE_FLOOR)
             av_log(ctx, AV_LOG_INFO, "Noise floor dB: %f\n", LINEAR_TO_DB(p->noise_floor));
         if (s->measure_perchannel & MEASURE_NOISE_FLOOR_COUNT)
@@ -743,8 +851,8 @@ static void print_stats(AVFilterContext *ctx)
         if (s->measure_perchannel & MEASURE_ENTROPY)
             av_log(ctx, AV_LOG_INFO, "Entropy: %f\n", p->entropy);
         if (s->measure_perchannel & MEASURE_BIT_DEPTH) {
-            bit_depth(s, p->mask, p->imask, &depth);
-            av_log(ctx, AV_LOG_INFO, "Bit depth: %u/%u\n", depth.num, depth.den);
+            bit_depth(s, p->mask, depth);
+            av_log(ctx, AV_LOG_INFO, "Bit depth: %u/%u/%u/%u\n", depth[0], depth[1], depth[2], depth[3]);
         }
         if (s->measure_perchannel & MEASURE_DYNAMIC_RANGE)
             av_log(ctx, AV_LOG_INFO, "Dynamic range: %f\n", LINEAR_TO_DB(2 * FFMAX(FFABS(p->min), FFABS(p->max))/ p->min_non_zero));
@@ -792,6 +900,8 @@ static void print_stats(AVFilterContext *ctx)
         av_log(ctx, AV_LOG_INFO, "Flat factor: %f\n", LINEAR_TO_DB((min_runs + max_runs) / (min_count + max_count)));
     if (s->measure_overall & MEASURE_PEAK_COUNT)
         av_log(ctx, AV_LOG_INFO, "Peak count: %f\n", (min_count + max_count) / (double)s->nb_channels);
+    if (s->measure_overall & MEASURE_ABS_PEAK_COUNT)
+        av_log(ctx, AV_LOG_INFO, "Abs Peak count: %f\n", abs_peak_count / (double)s->nb_channels);
     if (s->measure_overall & MEASURE_NOISE_FLOOR)
         av_log(ctx, AV_LOG_INFO, "Noise floor dB: %f\n", LINEAR_TO_DB(noise_floor));
     if (s->measure_overall & MEASURE_NOISE_FLOOR_COUNT)
@@ -799,8 +909,8 @@ static void print_stats(AVFilterContext *ctx)
     if (s->measure_overall & MEASURE_ENTROPY)
         av_log(ctx, AV_LOG_INFO, "Entropy: %f\n", entropy / (double)s->nb_channels);
     if (s->measure_overall & MEASURE_BIT_DEPTH) {
-        bit_depth(s, mask, imask, &depth);
-        av_log(ctx, AV_LOG_INFO, "Bit depth: %u/%u\n", depth.num, depth.den);
+        bit_depth(s, mask, depth);
+        av_log(ctx, AV_LOG_INFO, "Bit depth: %u/%u/%u/%u\n", depth[0], depth[1], depth[2], depth[3]);
     }
     if (s->measure_overall & MEASURE_NUMBER_OF_SAMPLES)
         av_log(ctx, AV_LOG_INFO, "Number of samples: %"PRId64"\n", nb_samples / s->nb_channels);
@@ -823,6 +933,7 @@ static av_cold void uninit(AVFilterContext *ctx)
             ChannelStats *p = &s->chstats[i];
 
             av_freep(&p->win_samples);
+            av_freep(&p->sorted_samples);
         }
     }
     av_freep(&s->chstats);

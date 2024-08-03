@@ -13,6 +13,15 @@ corresponding value to true. They can be set to false by prefixing
 the option name with "no". For example using "-nofoo"
 will set the boolean option with name "foo" to false.
 
+Options that take arguments support a special syntax where the argument given on
+the command line is interpreted as a path to the file from which the actual
+argument value is loaded. To use this feature, add a forward slash '/'
+immediately before the option name (after the leading dash). E.g.
+@example
+ffmpeg -i INPUT -/filter:v filter.script OUTPUT
+@end example
+will load a filtergraph description from the file named @file{filter.script}.
+
 @anchor{Stream specifiers}
 @section Stream specifiers
 Some options are applied per-stream, e.g. bitrate or codec. Stream specifiers
@@ -37,9 +46,9 @@ Matches the stream with this index. E.g. @code{-threads:1 4} would set the
 thread count for the second stream to 4. If @var{stream_index} is used as an
 additional stream specifier (see below), then it selects stream number
 @var{stream_index} from the matching streams. Stream numbering is based on the
-order of the streams as detected by libavformat except when a program ID is
-also specified. In this case it is based on the ordering of the streams in the
-program.
+order of the streams as detected by libavformat except when a stream group
+specifier or program ID is also specified. In this case it is based on the
+ordering of the streams in the group or program.
 @item @var{stream_type}[:@var{additional_stream_specifier}]
 @var{stream_type} is one of following: 'v' or 'V' for video, 'a' for audio, 's'
 for subtitle, 'd' for data, and 't' for attachments. 'v' matches all video
@@ -48,6 +57,17 @@ thumbnails or cover arts. If @var{additional_stream_specifier} is used, then
 it matches streams which both have this type and match the
 @var{additional_stream_specifier}. Otherwise, it matches all streams of the
 specified type.
+@item g:@var{group_specifier}[:@var{additional_stream_specifier}]
+Matches streams which are in the group with the specifier @var{group_specifier}.
+if @var{additional_stream_specifier} is used, then it matches streams which both
+are part of the group and match the @var{additional_stream_specifier}.
+@var{group_specifier} may be one of the following:
+@table @option
+@item @var{group_index}
+Match the stream with this group index.
+@item #@var{group_id} or i:@var{group_id}
+Match the stream with this group id.
+@end table
 @item p:@var{program_id}[:@var{additional_stream_specifier}]
 Matches streams which are in the program with the id @var{program_id}. If
 @var{additional_stream_specifier} is used, then it matches streams which both

@@ -100,11 +100,12 @@ uint32_t av_timecode_get_smpte(AVRational rate, int drop, int hh, int mm, int ss
     return tc;
 }
 
-char *av_timecode_make_string(const AVTimecode *tc, char *buf, int framenum)
+char *av_timecode_make_string(const AVTimecode *tc, char *buf, int framenum_arg)
 {
     int fps = tc->fps;
     int drop = tc->flags & AV_TIMECODE_FLAG_DROPFRAME;
     int hh, mm, ss, ff, ff_len, neg = 0;
+    int64_t framenum = framenum_arg;
 
     framenum += tc->start;
     if (drop)
@@ -210,7 +211,7 @@ static int fps_from_frame_rate(AVRational rate)
 {
     if (!rate.den || !rate.num)
         return -1;
-    return (rate.num + rate.den/2) / rate.den;
+    return (rate.num + rate.den/2LL) / rate.den;
 }
 
 int av_timecode_check_frame_rate(AVRational rate)

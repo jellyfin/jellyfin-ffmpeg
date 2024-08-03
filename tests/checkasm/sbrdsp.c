@@ -190,8 +190,8 @@ static void test_hf_gen(void)
     for (i = 2; i < 64; i += 2) {
         memset(dst0, 0, 128 * 2 * sizeof(INTFLOAT));
         memset(dst1, 0, 128 * 2 * sizeof(INTFLOAT));
-        call_ref(dst0, low, alpha0, alpha1, 0.0, i, 128);
-        call_new(dst1, low, alpha0, alpha1, 0.0, i, 128);
+        call_ref(dst0, low, alpha0, alpha1, bw, i, 128);
+        call_new(dst1, low, alpha0, alpha1, bw, i, 128);
         if (!float_near_abs_eps_array((INTFLOAT *)dst0, (INTFLOAT *)dst1, EPS, 128 * 2))
             fail();
         bench_new(dst1, low, alpha0, alpha1, bw, i, 128);
@@ -233,7 +233,10 @@ static void test_hf_apply_noise(const SBRDSPContext *sbrdsp)
                        int kx, int m_max);
 
     randomize((INTFLOAT *)ref, 128 * 2);
-    randomize((INTFLOAT *)s_m, 128);
+
+    for (int i = 0; i < 128; i++)
+        s_m[i] = (rnd() & 1) ? ((INTFLOAT)rnd() / UINT_MAX) : (INTFLOAT)0;
+
     randomize((INTFLOAT *)q_filt, 128);
 
     for (i = 0; i < 4; i++) {

@@ -29,6 +29,7 @@
 #include "internal.h"
 #include "hevcdec.h"
 #include "hevc_data.h"
+#include "hwaccel_internal.h"
 
 static void dpb_add(CUVIDHEVCPICPARAMS *pp, int idx, const HEVCFrame *src)
 {
@@ -273,11 +274,11 @@ static int nvdec_hevc_decode_slice(AVCodecContext *avctx, const uint8_t *buffer,
     NVDECContext *ctx = avctx->internal->hwaccel_priv_data;
     void *tmp;
 
-    tmp = av_fast_realloc(ctx->bitstream, &ctx->bitstream_allocated,
+    tmp = av_fast_realloc(ctx->bitstream_internal, &ctx->bitstream_allocated,
                           ctx->bitstream_len + size + 3);
     if (!tmp)
         return AVERROR(ENOMEM);
-    ctx->bitstream = tmp;
+    ctx->bitstream = ctx->bitstream_internal = tmp;
 
     tmp = av_fast_realloc(ctx->slice_offsets, &ctx->slice_offsets_allocated,
                           (ctx->nb_slices + 1) * sizeof(*ctx->slice_offsets));
@@ -285,8 +286,8 @@ static int nvdec_hevc_decode_slice(AVCodecContext *avctx, const uint8_t *buffer,
         return AVERROR(ENOMEM);
     ctx->slice_offsets = tmp;
 
-    AV_WB24(ctx->bitstream + ctx->bitstream_len, 1);
-    memcpy(ctx->bitstream + ctx->bitstream_len + 3, buffer, size);
+    AV_WB24(ctx->bitstream_internal + ctx->bitstream_len, 1);
+    memcpy(ctx->bitstream_internal + ctx->bitstream_len + 3, buffer, size);
     ctx->slice_offsets[ctx->nb_slices] = ctx->bitstream_len ;
     ctx->bitstream_len += size + 3;
     ctx->nb_slices++;
@@ -306,10 +307,10 @@ static int nvdec_hevc_decode_init(AVCodecContext *avctx) {
     NVDECContext *ctx = avctx->internal->hwaccel_priv_data;
     ctx->supports_444 = 1;
 
-    if (avctx->profile != FF_PROFILE_HEVC_MAIN &&
-        avctx->profile != FF_PROFILE_HEVC_MAIN_10 &&
-        avctx->profile != FF_PROFILE_HEVC_MAIN_STILL_PICTURE &&
-        avctx->profile != FF_PROFILE_HEVC_REXT) {
+    if (avctx->profile != AV_PROFILE_HEVC_MAIN &&
+        avctx->profile != AV_PROFILE_HEVC_MAIN_10 &&
+        avctx->profile != AV_PROFILE_HEVC_MAIN_STILL_PICTURE &&
+        avctx->profile != AV_PROFILE_HEVC_REXT) {
         av_log(avctx, AV_LOG_ERROR, "Unsupported HEVC profile: %d\n", avctx->profile);
         return AVERROR(ENOTSUP);
     }
@@ -317,11 +318,11 @@ static int nvdec_hevc_decode_init(AVCodecContext *avctx) {
     return ff_nvdec_decode_init(avctx);
 }
 
-const AVHWAccel ff_hevc_nvdec_hwaccel = {
-    .name                 = "hevc_nvdec",
-    .type                 = AVMEDIA_TYPE_VIDEO,
-    .id                   = AV_CODEC_ID_HEVC,
-    .pix_fmt              = AV_PIX_FMT_CUDA,
+const FFHWAccel ff_hevc_nvdec_hwaccel = {
+    .p.name               = "hevc_nvdec",
+    .p.type               = AVMEDIA_TYPE_VIDEO,
+    .p.id                 = AV_CODEC_ID_HEVC,
+    .p.pix_fmt            = AV_PIX_FMT_CUDA,
     .start_frame          = nvdec_hevc_start_frame,
     .end_frame            = ff_nvdec_end_frame,
     .decode_slice         = nvdec_hevc_decode_slice,

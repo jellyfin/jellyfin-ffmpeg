@@ -20,13 +20,10 @@
 
 #include <math.h>
 #include "libavutil/eval.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "libavutil/video_enc_params.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -184,19 +181,12 @@ static const AVFilterPad qp_inputs[] = {
     },
 };
 
-static const AVFilterPad qp_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_qp = {
     .name          = "qp",
     .description   = NULL_IF_CONFIG_SMALL("Change video quantization parameters."),
     .priv_size     = sizeof(QPContext),
     FILTER_INPUTS(qp_inputs),
-    FILTER_OUTPUTS(qp_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     .priv_class    = &qp_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_METADATA_ONLY,

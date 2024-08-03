@@ -57,10 +57,13 @@ static int vp6_parse_header(VP56Context *s, const uint8_t *buf, int buf_size)
     int ret;
     int separated_coeff = buf[0] & 1;
 
-    s->frames[VP56_FRAME_CURRENT]->key_frame = !(buf[0] & 0x80);
+    if (!(buf[0] & 0x80))
+        s->frames[VP56_FRAME_CURRENT]->flags |= AV_FRAME_FLAG_KEY;
+    else
+        s->frames[VP56_FRAME_CURRENT]->flags &= ~AV_FRAME_FLAG_KEY;
     ff_vp56_init_dequant(s, (buf[0] >> 1) & 0x3F);
 
-    if (s->frames[VP56_FRAME_CURRENT]->key_frame) {
+    if (s->frames[VP56_FRAME_CURRENT]->flags & AV_FRAME_FLAG_KEY) {
         sub_version = buf[1] >> 3;
         if (sub_version > 8)
             return AVERROR_INVALIDDATA;
@@ -276,7 +279,7 @@ static int vp6_build_huff_tree(VP56Context *s, uint8_t coeff_model[],
         nodes[map[2*i+1]].count = b + !b;
     }
 
-    ff_free_vlc(vlc);
+    ff_vlc_free(vlc);
     /* then build the huffman tree according to probabilities */
     return ff_huff_build_tree(s->avctx, vlc, size, FF_HUFFMAN_BITS,
                               nodes, vp6_huff_cmp,
@@ -299,7 +302,7 @@ static int vp6_parse_coeff_models(VP56Context *s)
             if (vpx_rac_get_prob_branchy(c, vp6_dccv_pct[pt][node])) {
                 def_prob[node] = vp56_rac_gets_nn(c, 7);
                 model->coeff_dccv[pt][node] = def_prob[node];
-            } else if (s->frames[VP56_FRAME_CURRENT]->key_frame) {
+            } else if (s->frames[VP56_FRAME_CURRENT]->flags & AV_FRAME_FLAG_KEY) {
                 model->coeff_dccv[pt][node] = def_prob[node];
             }
 
@@ -322,7 +325,7 @@ static int vp6_parse_coeff_models(VP56Context *s)
                     if (vpx_rac_get_prob_branchy(c, vp6_ract_pct[ct][pt][cg][node])) {
                         def_prob[node] = vp56_rac_gets_nn(c, 7);
                         model->coeff_ract[pt][ct][cg][node] = def_prob[node];
-                    } else if (s->frames[VP56_FRAME_CURRENT]->key_frame) {
+                    } else if (s->frames[VP56_FRAME_CURRENT]->flags & AV_FRAME_FLAG_KEY) {
                         model->coeff_ract[pt][ct][cg][node] = def_prob[node];
                     }
 
@@ -705,11 +708,11 @@ static av_cold void vp6_decode_free_context(VP56Context *s)
     ff_vp56_free_context(s);
 
     for (pt=0; pt<2; pt++) {
-        ff_free_vlc(&s->dccv_vlc[pt]);
-        ff_free_vlc(&s->runv_vlc[pt]);
+        ff_vlc_free(&s->dccv_vlc[pt]);
+        ff_vlc_free(&s->runv_vlc[pt]);
         for (ct=0; ct<3; ct++)
             for (cg=0; cg<6; cg++)
-                ff_free_vlc(&s->ract_vlc[pt][ct][cg]);
+                ff_vlc_free(&s->ract_vlc[pt][ct][cg]);
     }
 }
 

@@ -21,12 +21,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config_components.h"
-
 #include <string.h>
 #include <sys/types.h>
 #include <mfxvideo.h>
 
+#include "libavutil/avassert.h"
 #include "libavutil/common.h"
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_qsv.h"
@@ -34,9 +33,9 @@
 #include "libavutil/log.h"
 #include "libavutil/time.h"
 #include "libavutil/imgutils.h"
-#include "libavcodec/bytestream.h"
 
 #include "avcodec.h"
+#include "encode.h"
 #include "internal.h"
 #include "packet_internal.h"
 #include "qsv.h"
@@ -598,6 +597,13 @@ static int select_rc_mode(AVCodecContext *avctx, QSVEncContext *q)
     else if (want_vcm) {
         rc_mode = MFX_RATECONTROL_VCM;
         rc_desc = "video conferencing mode (VCM)";
+
+        if (!avctx->bit_rate) {
+            av_log(avctx, AV_LOG_ERROR, "Using the %s ratecontrol method without "
+                   "setting bitrate. Please use the b option to set the desired "
+                   "bitrate.\n", rc_desc);
+            return AVERROR(EINVAL);
+        }
     }
 #endif
     else if (want_la) {
@@ -607,32 +613,50 @@ static int select_rc_mode(AVCodecContext *avctx, QSVEncContext *q)
         if (avctx->global_quality > 0) {
             rc_mode = MFX_RATECONTROL_LA_ICQ;
             rc_desc = "intelligent constant quality with lookahead (LA_ICQ)";
+        } else if (!avctx->bit_rate) {
+            av_log(avctx, AV_LOG_ERROR, "Using the %s ratecontrol method without "
+                   "setting bitrate. Please use the b option to set the desired "
+                   "bitrate.\n", rc_desc);
+            return AVERROR(EINVAL);
         }
     }
     else if (avctx->global_quality > 0 && !avctx->rc_max_rate) {
         rc_mode = MFX_RATECONTROL_ICQ;
         rc_desc = "intelligent constant quality (ICQ)";
     }
-    else if (avctx->rc_max_rate == avctx->bit_rate) {
-        rc_mode = MFX_RATECONTROL_CBR;
-        rc_desc = "constant bitrate (CBR)";
-    }
+    else if (avctx->bit_rate) {
+        if (avctx->rc_max_rate == avctx->bit_rate) {
+            rc_mode = MFX_RATECONTROL_CBR;
+            rc_desc = "constant bitrate (CBR)";
+        }
 #if QSV_HAVE_AVBR
-    else if (!avctx->rc_max_rate &&
-             (avctx->codec_id == AV_CODEC_ID_H264 || avctx->codec_id == AV_CODEC_ID_HEVC) &&
-             q->avbr_accuracy &&
-             q->avbr_convergence) {
-        rc_mode = MFX_RATECONTROL_AVBR;
-        rc_desc = "average variable bitrate (AVBR)";
-    }
+        else if (!avctx->rc_max_rate &&
+                 (avctx->codec_id == AV_CODEC_ID_H264 || avctx->codec_id == AV_CODEC_ID_HEVC) &&
+                 q->avbr_accuracy &&
+                 q->avbr_convergence) {
+            rc_mode = MFX_RATECONTROL_AVBR;
+            rc_desc = "average variable bitrate (AVBR)";
+        }
 #endif
-    else if (avctx->global_quality > 0) {
-        rc_mode = MFX_RATECONTROL_QVBR;
-        rc_desc = "constant quality with VBR algorithm (QVBR)";
-    }
-    else {
-        rc_mode = MFX_RATECONTROL_VBR;
-        rc_desc = "variable bitrate (VBR)";
+        else if (avctx->global_quality > 0) {
+            rc_mode = MFX_RATECONTROL_QVBR;
+            rc_desc = "constant quality with VBR algorithm (QVBR)";
+        } else {
+            rc_mode = MFX_RATECONTROL_VBR;
+            rc_desc = "variable bitrate (VBR)";
+        }
+    } else {
+        rc_mode = MFX_RATECONTROL_CQP;
+        rc_desc = "constant quantization parameter (CQP)";
+        if (avctx->codec_id == AV_CODEC_ID_AV1)
+            avctx->global_quality = FF_QP2LAMBDA * 128;
+        else
+            avctx->global_quality = FF_QP2LAMBDA * 26;
+        av_log(avctx, AV_LOG_WARNING, "Using the constant quantization "
+               "parameter (CQP) by default. Please use the global_quality "
+               "option and other options for a quality-based mode or the b "
+               "option and other options for a bitrate-based mode if the "
+               "default is not the desired choice.\n");
     }
 
     q->param.mfx.RateControlMethod = rc_mode;
@@ -834,7 +858,9 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
         // for progressive video, the height should be aligned to 16 for
         // H.264.  For HEVC, depending on the version of MFX, it should be
         // either 32 or 16.  The lower number is better if possible.
-        q->height_align = avctx->codec_id == AV_CODEC_ID_HEVC ? 32 : 16;
+        // For AV1, it is 32
+        q->height_align = (avctx->codec_id == AV_CODEC_ID_HEVC ||
+                           avctx->codec_id == AV_CODEC_ID_AV1) ? 32 : 16;
     }
     q->param.mfx.FrameInfo.Height = FFALIGN(avctx->height, q->height_align);
 
@@ -1118,11 +1144,16 @@ static int init_video_param(AVCodecContext *avctx, QSVEncContext *q)
                 q->extco3.MaxFrameSizeI = q->max_frame_size_i;
             if (q->max_frame_size_p >= 0)
                 q->extco3.MaxFrameSizeP = q->max_frame_size_p;
+            if (sw_format == AV_PIX_FMT_BGRA &&
+                (q->profile == MFX_PROFILE_HEVC_REXT ||
+                q->profile == MFX_PROFILE_UNKNOWN))
+                q->extco3.TargetChromaFormatPlus1 = MFX_CHROMAFORMAT_YUV444 + 1;
 
             q->extco3.ScenarioInfo = q->scenario;
         } else if (avctx->codec_id == AV_CODEC_ID_AV1) {
             if (q->low_delay_brc >= 0)
                 q->extco3.LowDelayBRC = q->low_delay_brc ? MFX_CODINGOPTION_ON : MFX_CODINGOPTION_OFF;
+            q->old_low_delay_brc = q->low_delay_brc;
         }
 
         if (avctx->codec_id == AV_CODEC_ID_HEVC) {
@@ -1499,7 +1530,7 @@ static int qsv_retrieve_enc_params(AVCodecContext *avctx, QSVEncContext *q)
     }
     memset(avctx->extradata + avctx->extradata_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
-    cpb_props = ff_add_cpb_side_data(avctx);
+    cpb_props = ff_encode_add_cpb_side_data(avctx);
     if (!cpb_props)
         return AVERROR(ENOMEM);
     cpb_props->max_bitrate = avctx->rc_max_rate;
@@ -1877,6 +1908,62 @@ static int qsvenc_fill_padding_area(AVFrame *frame, int new_w, int new_h)
     return 0;
 }
 
+/* frame width / height have been aligned with the alignment */
+static int qsvenc_get_continuous_buffer(AVFrame *frame)
+{
+    int total_size;
+
+    switch (frame->format) {
+    case AV_PIX_FMT_NV12:
+        frame->linesize[0] = frame->width;
+        frame->linesize[1] = frame->linesize[0];
+        total_size = frame->linesize[0] * frame->height + frame->linesize[1] * frame->height / 2;
+        break;
+
+    case AV_PIX_FMT_P010:
+    case AV_PIX_FMT_P012:
+        frame->linesize[0] = 2 * frame->width;
+        frame->linesize[1] = frame->linesize[0];
+        total_size = frame->linesize[0] * frame->height + frame->linesize[1] * frame->height / 2;
+        break;
+
+    case AV_PIX_FMT_YUYV422:
+        frame->linesize[0] = 2 * frame->width;
+        frame->linesize[1] = 0;
+        total_size = frame->linesize[0] * frame->height;
+        break;
+
+    case AV_PIX_FMT_Y210:
+    case AV_PIX_FMT_VUYX:
+    case AV_PIX_FMT_XV30:
+    case AV_PIX_FMT_BGRA:
+    case AV_PIX_FMT_X2RGB10:
+        frame->linesize[0] = 4 * frame->width;
+        frame->linesize[1] = 0;
+        total_size = frame->linesize[0] * frame->height;
+        break;
+
+    default:
+        // This should never be reached
+        av_assert0(0);
+        return AVERROR(EINVAL);
+    }
+
+    frame->buf[0] = av_buffer_alloc(total_size);
+    if (!frame->buf[0])
+        return AVERROR(ENOMEM);
+
+    frame->data[0] = frame->buf[0]->data;
+    frame->extended_data = frame->data;
+
+    if (frame->format == AV_PIX_FMT_NV12 ||
+        frame->format == AV_PIX_FMT_P010 ||
+        frame->format == AV_PIX_FMT_P012)
+        frame->data[1] = frame->data[0] + frame->linesize[0] * frame->height;
+
+    return 0;
+}
+
 static int submit_frame(QSVEncContext *q, const AVFrame *frame,
                         QSVFrame **new_frame)
 {
@@ -1904,8 +1991,9 @@ static int submit_frame(QSVEncContext *q, const AVFrame *frame,
     } else {
         /* make a copy if the input is not padded as libmfx requires */
         /* and to make allocation continious for data[0]/data[1] */
-         if ((frame->height & 31 || frame->linesize[0] & (q->width_align - 1)) ||
-            (frame->data[1] - frame->data[0] != frame->linesize[0] * FFALIGN(qf->frame->height, q->height_align))) {
+         if ((frame->height & (q->height_align - 1) || frame->linesize[0] & (q->width_align - 1)) ||
+            ((frame->format == AV_PIX_FMT_NV12 || frame->format == AV_PIX_FMT_P010 || frame->format == AV_PIX_FMT_P012) &&
+             (frame->data[1] - frame->data[0] != frame->linesize[0] * FFALIGN(qf->frame->height, q->height_align)))) {
             int tmp_w, tmp_h;
             qf->frame->height = tmp_h = FFALIGN(frame->height, q->height_align);
             qf->frame->width  = tmp_w = FFALIGN(frame->width, q->width_align);
@@ -1913,7 +2001,7 @@ static int submit_frame(QSVEncContext *q, const AVFrame *frame,
             qf->frame->format = frame->format;
 
             if (!qf->frame->data[0]) {
-                ret = av_frame_get_buffer(qf->frame, q->width_align);
+                ret = qsvenc_get_continuous_buffer(qf->frame);
                 if (ret < 0)
                     return ret;
             }
@@ -1933,8 +2021,7 @@ static int submit_frame(QSVEncContext *q, const AVFrame *frame,
                 return ret;
             }
         } else {
-            av_frame_unref(qf->frame);
-            ret = av_frame_ref(qf->frame, frame);
+            ret = av_frame_replace(qf->frame, frame);
             if (ret < 0)
                 return ret;
         }
@@ -1942,8 +2029,8 @@ static int submit_frame(QSVEncContext *q, const AVFrame *frame,
         qf->surface.Info = q->param.mfx.FrameInfo;
 
         qf->surface.Info.PicStruct =
-            !frame->interlaced_frame ? MFX_PICSTRUCT_PROGRESSIVE :
-            frame->top_field_first   ? MFX_PICSTRUCT_FIELD_TFF :
+            !(frame->flags & AV_FRAME_FLAG_INTERLACED) ? MFX_PICSTRUCT_PROGRESSIVE :
+            (frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? MFX_PICSTRUCT_FIELD_TFF :
                                        MFX_PICSTRUCT_FIELD_BFF;
         if (frame->repeat_pict == 1)
             qf->surface.Info.PicStruct |= MFX_PICSTRUCT_FIELD_REPEATED;
@@ -2209,7 +2296,9 @@ static int update_low_delay_brc(AVCodecContext *avctx, QSVEncContext *q)
 {
     int updated = 0;
 
-    if (avctx->codec_id != AV_CODEC_ID_H264 && avctx->codec_id != AV_CODEC_ID_HEVC)
+    if (avctx->codec_id != AV_CODEC_ID_H264 &&
+        avctx->codec_id != AV_CODEC_ID_HEVC &&
+        avctx->codec_id != AV_CODEC_ID_AV1)
         return 0;
 
     UPDATE_PARAM(q->old_low_delay_brc, q->low_delay_brc);
@@ -2395,7 +2484,7 @@ static int encode_frame(AVCodecContext *avctx, QSVEncContext *q,
         goto free;
     }
 
-    if (ret == MFX_WRN_INCOMPATIBLE_VIDEO_PARAM && frame && frame->interlaced_frame)
+    if (ret == MFX_WRN_INCOMPATIBLE_VIDEO_PARAM && frame && (frame->flags & AV_FRAME_FLAG_INTERLACED))
         print_interlace_msg(avctx, q);
 
     ret = 0;
@@ -2514,13 +2603,15 @@ int ff_qsv_encode(AVCodecContext *avctx, QSVEncContext *q,
         if (qpkt.bs->FrameType & MFX_FRAMETYPE_IDR || qpkt.bs->FrameType & MFX_FRAMETYPE_xIDR) {
             qpkt.pkt.flags |= AV_PKT_FLAG_KEY;
             pict_type = AV_PICTURE_TYPE_I;
-        } else if (qpkt.bs->FrameType & MFX_FRAMETYPE_I || qpkt.bs->FrameType & MFX_FRAMETYPE_xI)
+        } else if (qpkt.bs->FrameType & MFX_FRAMETYPE_I || qpkt.bs->FrameType & MFX_FRAMETYPE_xI) {
+            if (avctx->codec_id == AV_CODEC_ID_VP9)
+                qpkt.pkt.flags |= AV_PKT_FLAG_KEY;
             pict_type = AV_PICTURE_TYPE_I;
-        else if (qpkt.bs->FrameType & MFX_FRAMETYPE_P || qpkt.bs->FrameType & MFX_FRAMETYPE_xP)
+        } else if (qpkt.bs->FrameType & MFX_FRAMETYPE_P || qpkt.bs->FrameType & MFX_FRAMETYPE_xP)
             pict_type = AV_PICTURE_TYPE_P;
         else if (qpkt.bs->FrameType & MFX_FRAMETYPE_B || qpkt.bs->FrameType & MFX_FRAMETYPE_xB)
             pict_type = AV_PICTURE_TYPE_B;
-        else if (qpkt.bs->FrameType == MFX_FRAMETYPE_UNKNOWN) {
+        else if (qpkt.bs->FrameType == MFX_FRAMETYPE_UNKNOWN && qpkt.bs->DataLength) {
             pict_type = AV_PICTURE_TYPE_NONE;
             av_log(avctx, AV_LOG_WARNING, "Unknown FrameType, set pict_type to AV_PICTURE_TYPE_NONE.\n");
         } else {

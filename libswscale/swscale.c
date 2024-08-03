@@ -26,6 +26,7 @@
 #include "libavutil/bswap.h"
 #include "libavutil/common.h"
 #include "libavutil/cpu.h"
+#include "libavutil/emms.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixdesc.h"
@@ -903,7 +904,8 @@ static int scale_internal(SwsContext *c,
 
     if ((srcSliceY  & (macro_height_src - 1)) ||
         ((srcSliceH & (macro_height_src - 1)) && srcSliceY + srcSliceH != c->srcH) ||
-        srcSliceY + srcSliceH > c->srcH) {
+        srcSliceY + srcSliceH > c->srcH ||
+        (isBayer(c->srcFormat) && srcSliceH <= 1)) {
         av_log(c, AV_LOG_ERROR, "Slice parameters %d, %d are invalid\n", srcSliceY, srcSliceH);
         return AVERROR(EINVAL);
     }
@@ -1170,7 +1172,7 @@ int sws_receive_slice(struct SwsContext *c, unsigned int slice_start,
     }
 
     for (int i = 0; i < FF_ARRAY_ELEMS(dst); i++) {
-        ptrdiff_t offset = c->frame_dst->linesize[i] * (slice_start >> c->chrDstVSubSample);
+        ptrdiff_t offset = c->frame_dst->linesize[i] * (ptrdiff_t)(slice_start >> c->chrDstVSubSample);
         dst[i] = FF_PTR_ADD(c->frame_dst->data[i], offset);
     }
 
@@ -1231,7 +1233,7 @@ void ff_sws_slice_worker(void *priv, int jobnr, int threadnr,
         for (int i = 0; i < FF_ARRAY_ELEMS(dst) && parent->frame_dst->data[i]; i++) {
             const int vshift = (i == 1 || i == 2) ? c->chrDstVSubSample : 0;
             const ptrdiff_t offset = parent->frame_dst->linesize[i] *
-                ((slice_start + parent->dst_slice_start) >> vshift);
+                (ptrdiff_t)((slice_start + parent->dst_slice_start) >> vshift);
 
             dst[i] = parent->frame_dst->data[i] + offset;
         }

@@ -769,10 +769,6 @@ static void erase_adpcm_history(DCACoreDecoder *s)
     for (ch = 0; ch < DCA_CHANNELS; ch++)
         for (band = 0; band < DCA_SUBBANDS; band++)
             AV_ZERO128(s->subband_samples[ch][band] - DCA_ADPCM_COEFFS);
-
-#ifdef FF_COPY_SWAP_ZERO_USES_MMX
-    emms_c();
-#endif
 }
 
 static int alloc_sample_buffer(DCACoreDecoder *s)
@@ -835,10 +831,6 @@ static int parse_frame_data(DCACoreDecoder *s, enum HeaderType header, int xch_b
             memset(samples, 0, (DCA_ADPCM_COEFFS + s->npcmblocks) * sizeof(int32_t));
         }
     }
-
-#ifdef FF_COPY_SWAP_ZERO_USES_MMX
-    emms_c();
-#endif
 
     return 0;
 }
@@ -1282,10 +1274,6 @@ static void erase_x96_adpcm_history(DCACoreDecoder *s)
     for (ch = 0; ch < DCA_CHANNELS; ch++)
         for (band = 0; band < DCA_SUBBANDS_X96; band++)
             AV_ZERO128(s->x96_subband_samples[ch][band] - DCA_ADPCM_COEFFS);
-
-#ifdef FF_COPY_SWAP_ZERO_USES_MMX
-    emms_c();
-#endif
 }
 
 static int alloc_x96_sample_buffer(DCACoreDecoder *s)
@@ -1514,10 +1502,6 @@ static int parse_x96_frame_data(DCACoreDecoder *s, int exss, int xch_base)
                 memset(samples, 0, (DCA_ADPCM_COEFFS + s->npcmblocks) * sizeof(int32_t));
         }
     }
-
-#ifdef FF_COPY_SWAP_ZERO_USES_MMX
-    emms_c();
-#endif
 
     return 0;
 }
@@ -2386,13 +2370,13 @@ int ff_dca_core_filter_frame(DCACoreDecoder *s, AVFrame *frame)
 
     // Set profile, bit rate, etc
     if (s->ext_audio_mask & DCA_EXSS_MASK)
-        avctx->profile = FF_PROFILE_DTS_HD_HRA;
+        avctx->profile = AV_PROFILE_DTS_HD_HRA;
     else if (s->ext_audio_mask & (DCA_CSS_XXCH | DCA_CSS_XCH))
-        avctx->profile = FF_PROFILE_DTS_ES;
+        avctx->profile = AV_PROFILE_DTS_ES;
     else if (s->ext_audio_mask & DCA_CSS_X96)
-        avctx->profile = FF_PROFILE_DTS_96_24;
+        avctx->profile = AV_PROFILE_DTS_96_24;
     else
-        avctx->profile = FF_PROFILE_DTS;
+        avctx->profile = AV_PROFILE_DTS;
 
     if (s->bit_rate > 3 && !(s->ext_audio_mask & DCA_EXSS_MASK))
         avctx->bit_rate = s->bit_rate;

@@ -32,6 +32,7 @@
 #include "replaygain.h"
 
 #include "libavcodec/codec_id.h"
+#include "libavcodec/mpegaudio.h"
 #include "libavcodec/mpegaudiodecheader.h"
 
 #define XING_FLAG_FRAMES 0x01
@@ -136,9 +137,10 @@ static void read_xing_toc(AVFormatContext *s, int64_t filesize, int64_t duration
     int fill_index = (mp3->usetoc || fast_seek) && duration > 0;
 
     if (!filesize &&
-        !(filesize = avio_size(s->pb))) {
+        (filesize = avio_size(s->pb)) <= 0) {
         av_log(s, AV_LOG_WARNING, "Cannot determine file size, skipping TOC table.\n");
         fill_index = 0;
+        filesize = 0;
     }
 
     for (i = 0; i < XING_TOC_COUNT; i++) {
@@ -400,27 +402,22 @@ static int mp3_read_header(AVFormatContext *s)
     if (ret < 0)
         return ret;
 
+    ret = ffio_ensure_seekback(s->pb, 64 * 1024 + MPA_MAX_CODED_FRAME_SIZE + 4);
+    if (ret < 0)
+        return ret;
+
     off = avio_tell(s->pb);
     for (i = 0; i < 64 * 1024; i++) {
         uint32_t header, header2;
         int frame_size;
-        if (!(i&1023))
-            ffio_ensure_seekback(s->pb, i + 1024 + 4);
         frame_size = check(s->pb, off + i, &header);
         if (frame_size > 0) {
-            ffio_ensure_seekback(s->pb, i + 1024 + frame_size + 4);
             ret = check(s->pb, off + i + frame_size, &header2);
-            if (ret >= 0 &&
-                (header & MP3_MASK) == (header2 & MP3_MASK))
-            {
+            if (ret >= 0 && (header & MP3_MASK) == (header2 & MP3_MASK))
                 break;
-            } else if (ret == CHECK_SEEK_FAILED) {
-                av_log(s, AV_LOG_ERROR, "Invalid frame size (%d): Could not seek to %"PRId64".\n", frame_size, off + i + frame_size);
-                return AVERROR(EINVAL);
-            }
         } else if (frame_size == CHECK_SEEK_FAILED) {
-            av_log(s, AV_LOG_ERROR, "Failed to read frame size: Could not seek to %"PRId64".\n", (int64_t) (i + 1024 + frame_size + 4));
-            return AVERROR(EINVAL);
+            av_log(s, AV_LOG_ERROR, "Failed to find two consecutive MPEG audio frames.\n");
+            return AVERROR_INVALIDDATA;
         }
     }
     if (i == 64 * 1024) {
@@ -588,7 +585,7 @@ static int mp3_seek(AVFormatContext *s, int stream_index, int64_t timestamp,
     if (best_pos < 0)
         return best_pos;
 
-    if (mp3->is_cbr && ie == &ie1 && mp3->frames) {
+    if (mp3->is_cbr && ie == &ie1 && mp3->frames && mp3->header_filesize > 0) {
         int frame_duration = av_rescale(st->duration, 1, mp3->frames);
         ie1.timestamp = frame_duration * av_rescale(best_pos - si->data_offset, mp3->frames, mp3->header_filesize);
     }
@@ -610,15 +607,15 @@ static const AVClass demuxer_class = {
     .category   = AV_CLASS_CATEGORY_DEMUXER,
 };
 
-const AVInputFormat ff_mp3_demuxer = {
-    .name           = "mp3",
-    .long_name      = NULL_IF_CONFIG_SMALL("MP2/3 (MPEG audio layer 2/3)"),
+const FFInputFormat ff_mp3_demuxer = {
+    .p.name         = "mp3",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MP2/3 (MPEG audio layer 2/3)"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.extensions   = "mp2,mp3,m2a,mpa", /* XXX: use probe */
+    .p.priv_class   = &demuxer_class,
     .read_probe     = mp3_read_probe,
     .read_header    = mp3_read_header,
     .read_packet    = mp3_read_packet,
     .read_seek      = mp3_seek,
     .priv_data_size = sizeof(MP3DecContext),
-    .flags          = AVFMT_GENERIC_INDEX,
-    .extensions     = "mp2,mp3,m2a,mpa", /* XXX: use probe */
-    .priv_class     = &demuxer_class,
 };

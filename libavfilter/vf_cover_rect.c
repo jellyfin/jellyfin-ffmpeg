@@ -26,6 +26,7 @@
 #include "libavutil/opt.h"
 #include "filters.h"
 #include "internal.h"
+#include "video.h"
 
 #include "lavfutils.h"
 
@@ -47,9 +48,9 @@ typedef struct CoverContext {
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption cover_rect_options[] = {
     { "cover",  "cover bitmap filename",  OFFSET(cover_filename),  AV_OPT_TYPE_STRING, {.str = NULL}, .flags = FLAGS },
-    { "mode", "set removal mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64 = MODE_BLUR}, 0, NB_MODES - 1, FLAGS, "mode" },
-        { "cover", "cover area with bitmap", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_COVER}, INT_MIN, INT_MAX, FLAGS, "mode" },
-        { "blur", "blur area", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_BLUR}, INT_MIN, INT_MAX, FLAGS, "mode" },
+    { "mode", "set removal mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64 = MODE_BLUR}, 0, NB_MODES - 1, FLAGS, .unit = "mode" },
+        { "cover", "cover area with bitmap", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_COVER}, INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
+        { "blur", "blur area", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_BLUR}, INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
     { NULL }
 };
 
@@ -232,13 +233,6 @@ static const AVFilterPad cover_rect_inputs[] = {
     },
 };
 
-static const AVFilterPad cover_rect_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_cover_rect = {
     .name            = "cover_rect",
     .description     = NULL_IF_CONFIG_SMALL("Find and cover a user specified object."),
@@ -246,7 +240,7 @@ const AVFilter ff_vf_cover_rect = {
     .init            = init,
     .uninit          = uninit,
     FILTER_INPUTS(cover_rect_inputs),
-    FILTER_OUTPUTS(cover_rect_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS(AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVJ420P),
     .priv_class      = &cover_rect_class,
 };

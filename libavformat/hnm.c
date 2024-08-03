@@ -24,6 +24,7 @@
 
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 #define HNM4_TAG MKTAG('H', 'N', 'M', '4')
@@ -113,6 +114,8 @@ static int hnm_read_packet(AVFormatContext *s, AVPacket *pkt)
     if (hnm->superchunk_remaining == 0) {
         /* parse next superchunk */
         superchunk_size = avio_rl24(pb);
+        if (superchunk_size < 4)
+            return AVERROR_INVALIDDATA;
         avio_skip(pb, 1);
 
         hnm->superchunk_remaining = superchunk_size - 4;
@@ -123,7 +126,7 @@ static int hnm_read_packet(AVFormatContext *s, AVPacket *pkt)
     chunk_id = avio_rl16(pb);
     avio_skip(pb, 2);
 
-    if (chunk_size > hnm->superchunk_remaining || !chunk_size) {
+    if (chunk_size > hnm->superchunk_remaining || chunk_size < 8) {
         av_log(s, AV_LOG_ERROR,
                "invalid chunk size: %"PRIu32", offset: %"PRId64"\n",
                chunk_size, avio_tell(pb));
@@ -158,12 +161,12 @@ static int hnm_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-const AVInputFormat ff_hnm_demuxer = {
-    .name           = "hnm",
-    .long_name      = NULL_IF_CONFIG_SMALL("Cryo HNM v4"),
+const FFInputFormat ff_hnm_demuxer = {
+    .p.name         = "hnm",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Cryo HNM v4"),
+    .p.flags        = AVFMT_NO_BYTE_SEEK | AVFMT_NOGENSEARCH | AVFMT_NOBINSEARCH,
     .priv_data_size = sizeof(Hnm4DemuxContext),
     .read_probe     = hnm_probe,
     .read_header    = hnm_read_header,
     .read_packet    = hnm_read_packet,
-    .flags          = AVFMT_NO_BYTE_SEEK | AVFMT_NOGENSEARCH | AVFMT_NOBINSEARCH
 };

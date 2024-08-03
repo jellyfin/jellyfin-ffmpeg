@@ -32,7 +32,7 @@
 
 #define DNN_GENERIC_ERROR FFERRTAG('D','N','N','!')
 
-typedef enum {DNN_NATIVE, DNN_TF, DNN_OV} DNNBackendType;
+typedef enum {DNN_TF = 1, DNN_OV, DNN_TH} DNNBackendType;
 
 typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4} DNNDataType;
 
@@ -56,12 +56,21 @@ typedef enum {
     DFT_ANALYTICS_CLASSIFY, // classify for each bounding box
 }DNNFunctionType;
 
+typedef enum {
+    DL_NONE,
+    DL_NCHW,
+    DL_NHWC,
+} DNNLayout;
+
 typedef struct DNNData{
     void *data;
-    int width, height, channels;
+    int dims[4];
     // dt and order together decide the color format
     DNNDataType dt;
     DNNColorOrder order;
+    DNNLayout layout;
+    float scale;
+    float mean;
 } DNNData;
 
 typedef struct DNNExecBaseParams {
@@ -123,6 +132,21 @@ typedef struct DNNModule{
 } DNNModule;
 
 // Initializes DNNModule depending on chosen backend.
-DNNModule *ff_get_dnn_module(DNNBackendType backend_type);
+const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx);
+
+static inline int dnn_get_width_idx_by_layout(DNNLayout layout)
+{
+    return layout == DL_NHWC ? 2 : 3;
+}
+
+static inline int dnn_get_height_idx_by_layout(DNNLayout layout)
+{
+    return layout == DL_NHWC ? 1 : 2;
+}
+
+static inline int dnn_get_channel_idx_by_layout(DNNLayout layout)
+{
+    return layout == DL_NHWC ? 3 : 1;
+}
 
 #endif

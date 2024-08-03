@@ -23,6 +23,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/timecode.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "rawdec.h"
 
@@ -125,7 +126,7 @@ static int wsd_read_header(AVFormatContext *s)
     av_dict_set(&s->metadata, "playback_time", playback_time, 0);
 
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
-    st->codecpar->codec_id    = s->iformat->raw_codec_id;
+    st->codecpar->codec_id    = AV_CODEC_ID_DSD_MSBF;
     st->codecpar->sample_rate = avio_rb32(pb) / 8;
     avio_skip(pb, 4);
     st->codecpar->ch_layout.nb_channels = avio_r8(pb) & 0xF;
@@ -165,15 +166,15 @@ static int wsd_read_header(AVFormatContext *s)
     return avio_seek(pb, data_offset, SEEK_SET);
 }
 
-const AVInputFormat ff_wsd_demuxer = {
-    .name         = "wsd",
-    .long_name    = NULL_IF_CONFIG_SMALL("Wideband Single-bit Data (WSD)"),
+const FFInputFormat ff_wsd_demuxer = {
+    .p.name         = "wsd",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Wideband Single-bit Data (WSD)"),
+    .p.extensions   = "wsd",
+    .p.flags        = AVFMT_GENERIC_INDEX | AVFMT_NO_BYTE_SEEK,
+    .p.priv_class   = &ff_raw_demuxer_class,
     .read_probe   = wsd_probe,
     .read_header  = wsd_read_header,
     .read_packet  = ff_raw_read_partial_packet,
-    .extensions   = "wsd",
-    .flags        = AVFMT_GENERIC_INDEX | AVFMT_NO_BYTE_SEEK,
     .raw_codec_id = AV_CODEC_ID_DSD_MSBF,
     .priv_data_size = sizeof(FFRawDemuxerContext),
-    .priv_class     = &ff_raw_demuxer_class,
 };

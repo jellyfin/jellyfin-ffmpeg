@@ -43,6 +43,8 @@ isNBPS:
   gbrap10le
   gbrap12be
   gbrap12le
+  gbrap14be
+  gbrap14le
   gbrp10be
   gbrp10le
   gbrp12be
@@ -67,8 +69,12 @@ isNBPS:
   p012le
   p210be
   p210le
+  p212be
+  p212le
   p410be
   p410le
+  p412be
+  p412le
   x2bgr10be
   x2bgr10le
   x2rgb10be
@@ -141,6 +147,7 @@ isBE:
   bgra64be
   gbrap10be
   gbrap12be
+  gbrap14be
   gbrap16be
   gbrapf32be
   gbrp10be
@@ -160,8 +167,10 @@ isBE:
   p012be
   p016be
   p210be
+  p212be
   p216be
   p410be
+  p412be
   p416be
   rgb444be
   rgb48be
@@ -226,10 +235,14 @@ isYUV:
   p016le
   p210be
   p210le
+  p212be
+  p212le
   p216be
   p216le
   p410be
   p410le
+  p412be
+  p412le
   p416be
   p416le
   uyvy422
@@ -338,10 +351,14 @@ isPlanarYUV:
   p016le
   p210be
   p210le
+  p212be
+  p212le
   p216be
   p216le
   p410be
   p410le
+  p412be
+  p412le
   p416be
   p416le
   yuv410p
@@ -431,10 +448,14 @@ isSemiPlanarYUV:
   p016le
   p210be
   p210le
+  p212be
+  p212le
   p216be
   p216le
   p410be
   p410le
+  p412be
+  p412le
   p416be
   p416le
 
@@ -475,6 +496,8 @@ isRGB:
   gbrap10le
   gbrap12be
   gbrap12le
+  gbrap14be
+  gbrap14le
   gbrap16be
   gbrap16le
   gbrapf32be
@@ -629,6 +652,8 @@ AnyRGB:
   gbrap10le
   gbrap12be
   gbrap12le
+  gbrap14be
+  gbrap14le
   gbrap16be
   gbrap16le
   gbrapf32be
@@ -688,6 +713,8 @@ ALPHA:
   gbrap10le
   gbrap12be
   gbrap12le
+  gbrap14be
+  gbrap14le
   gbrap16be
   gbrap16le
   gbrapf32be
@@ -821,6 +848,8 @@ Planar:
   gbrap10le
   gbrap12be
   gbrap12le
+  gbrap14be
+  gbrap14le
   gbrap16be
   gbrap16le
   gbrapf32be
@@ -853,10 +882,14 @@ Planar:
   p016le
   p210be
   p210le
+  p212be
+  p212le
   p216be
   p216le
   p410be
   p410le
+  p412be
+  p412le
   p416be
   p416le
   yuv410p
@@ -996,6 +1029,8 @@ PlanarRGB:
   gbrap10le
   gbrap12be
   gbrap12le
+  gbrap14be
+  gbrap14le
   gbrap16be
   gbrap16le
   gbrapf32be
@@ -1029,8 +1064,12 @@ DataInHighBits:
   p012le
   p210be
   p210le
+  p212be
+  p212le
   p410be
   p410le
+  p412be
+  p412le
   xv36be
   xv36le
   xyz12be

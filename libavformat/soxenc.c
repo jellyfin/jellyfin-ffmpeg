@@ -107,13 +107,15 @@ static int sox_write_trailer(AVFormatContext *s)
 
 const FFOutputFormat ff_sox_muxer = {
     .p.name            = "sox",
-    .p.long_name       = NULL_IF_CONFIG_SMALL("SoX native"),
+    .p.long_name       = NULL_IF_CONFIG_SMALL("SoX (Sound eXchange) native"),
     .p.extensions      = "sox",
     .priv_data_size    = sizeof(SoXContext),
     .p.audio_codec     = AV_CODEC_ID_PCM_S32LE,
     .p.video_codec     = AV_CODEC_ID_NONE,
+    .p.subtitle_codec  = AV_CODEC_ID_NONE,
     .write_header      = sox_write_header,
     .write_packet      = ff_raw_write_packet,
     .write_trailer     = sox_write_trailer,
     .p.flags           = AVFMT_NOTIMESTAMPS,
+    .flags_internal    = FF_OFMT_FLAG_MAX_ONE_OF_EACH,
 };

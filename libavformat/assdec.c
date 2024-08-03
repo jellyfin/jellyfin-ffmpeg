@@ -23,6 +23,7 @@
 #include <stdint.h>
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "subtitles.h"
 #include "libavutil/bprint.h"
@@ -73,6 +74,8 @@ static int read_dialogue(ASSContext *ass, AVBPrint *dst, const uint8_t *p,
 
         av_bprint_clear(dst);
         av_bprintf(dst, "%u,%d,%s", ass->readorder++, layer, p + pos);
+        if (!av_bprint_is_complete(dst))
+            return AVERROR(ENOMEM);
 
         /* right strip the buffer */
         while (dst->len > 0 &&
@@ -135,7 +138,7 @@ static int ass_read_header(AVFormatContext *s)
             av_bprintf(&header, "%s", line.str);
             continue;
         }
-        sub = ff_subtitles_queue_insert(&ass->q, rline.str, rline.len, 0);
+        sub = ff_subtitles_queue_insert_bprint(&ass->q, &rline, 0);
         if (!sub) {
             res = AVERROR(ENOMEM);
             goto end;
@@ -158,10 +161,10 @@ end:
     return res;
 }
 
-const AVInputFormat ff_ass_demuxer = {
-    .name           = "ass",
-    .long_name      = NULL_IF_CONFIG_SMALL("SSA (SubStation Alpha) subtitle"),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+const FFInputFormat ff_ass_demuxer = {
+    .p.name         = "ass",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("SSA (SubStation Alpha) subtitle"),
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .priv_data_size = sizeof(ASSContext),
     .read_probe     = ass_probe,
     .read_header    = ass_read_header,

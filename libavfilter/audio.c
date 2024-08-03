@@ -26,8 +26,16 @@
 
 #include "audio.h"
 #include "avfilter.h"
+#include "avfilter_internal.h"
 #include "framepool.h"
 #include "internal.h"
+
+const AVFilterPad ff_audio_default_filterpad[1] = {
+    {
+        .name = "default",
+        .type = AVMEDIA_TYPE_AUDIO,
+    }
+};
 
 AVFrame *ff_null_get_audio_buffer(AVFilterLink *link, int nb_samples)
 {
@@ -37,20 +45,14 @@ AVFrame *ff_null_get_audio_buffer(AVFilterLink *link, int nb_samples)
 AVFrame *ff_default_get_audio_buffer(AVFilterLink *link, int nb_samples)
 {
     AVFrame *frame = NULL;
+    FilterLinkInternal *const li = ff_link_internal(link);
     int channels = link->ch_layout.nb_channels;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-    int channel_layout_nb_channels = av_get_channel_layout_nb_channels(link->channel_layout);
     int align = av_cpu_max_align();
 
-    av_assert0(channels == channel_layout_nb_channels || !channel_layout_nb_channels);
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
-    if (!link->frame_pool) {
-        link->frame_pool = ff_frame_pool_audio_init(av_buffer_allocz, channels,
-                                                    nb_samples, link->format, align);
-        if (!link->frame_pool)
+    if (!li->frame_pool) {
+        li->frame_pool = ff_frame_pool_audio_init(av_buffer_allocz, channels,
+                                                  nb_samples, link->format, align);
+        if (!li->frame_pool)
             return NULL;
     } else {
         int pool_channels = 0;
@@ -58,7 +60,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         int pool_align = 0;
         enum AVSampleFormat pool_format = AV_SAMPLE_FMT_NONE;
 
-        if (ff_frame_pool_get_audio_config(link->frame_pool,
+        if (ff_frame_pool_get_audio_config(li->frame_pool,
                                            &pool_channels, &pool_nb_samples,
                                            &pool_format, &pool_align) < 0) {
             return NULL;
@@ -67,24 +69,19 @@ FF_ENABLE_DEPRECATION_WARNINGS
         if (pool_channels != channels || pool_nb_samples < nb_samples ||
             pool_format != link->format || pool_align != align) {
 
-            ff_frame_pool_uninit((FFFramePool **)&link->frame_pool);
-            link->frame_pool = ff_frame_pool_audio_init(av_buffer_allocz, channels,
-                                                        nb_samples, link->format, align);
-            if (!link->frame_pool)
+            ff_frame_pool_uninit(&li->frame_pool);
+            li->frame_pool = ff_frame_pool_audio_init(av_buffer_allocz, channels,
+                                                      nb_samples, link->format, align);
+            if (!li->frame_pool)
                 return NULL;
         }
     }
 
-    frame = ff_frame_pool_get(link->frame_pool);
+    frame = ff_frame_pool_get(li->frame_pool);
     if (!frame)
         return NULL;
 
     frame->nb_samples = nb_samples;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-    frame->channel_layout = link->channel_layout;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     if (link->ch_layout.order != AV_CHANNEL_ORDER_UNSPEC &&
         av_channel_layout_copy(&frame->ch_layout, &link->ch_layout) < 0) {
         av_frame_free(&frame);

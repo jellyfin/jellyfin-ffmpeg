@@ -152,8 +152,21 @@ fate-dxv3-dxt1: CMD = framecrc -i $(TARGET_SAMPLES)/dxv/dxv3-nqna.mov
 FATE_DXV += fate-dxv3-dxt5
 fate-dxv3-dxt5: CMD = framecrc -i $(TARGET_SAMPLES)/dxv/dxv3-nqwa.mov
 
+FATE_DXV += fate-dxv3-ycg6
+fate-dxv3-ycg6: CMD = framecrc -i $(TARGET_SAMPLES)/dxv/dxv3-hqna.mov
+
+FATE_DXV += fate-dxv3-yg10
+fate-dxv3-yg10: CMD = framecrc -i $(TARGET_SAMPLES)/dxv/dxv3-hqwa.mov
+
 FATE_VIDEO-$(call FRAMECRC, MOV, DXV) += $(FATE_DXV)
 fate-dxv: $(FATE_DXV)
+
+fate-dxv3enc%: FMT = $(word 3, $(subst -, ,$(@)))
+fate-dxv3enc%: CMD = framecrc -lavfi testsrc2=duration=1:rate=1:size=1920x1080 -c:v dxv -format $(FMT)
+
+FATE_DXVENC_FMT = dxt1
+FATE_VIDEO-$(call FILTERFRAMECRC, TESTSRC2, DXV_ENCODER) += $(FATE_DXVENC_FMT:%=fate-dxv3enc-%)
+fate-dxvenc: $(FATE_DXVENC_FMT:%=fate-dxv3enc-%)
 
 FATE_VIDEO-$(call FRAMECRC, SEGAFILM, CINEPAK) += fate-film-cvid
 fate-film-cvid: CMD = framecrc -i $(TARGET_SAMPLES)/film/logo-capcom.cpk -an
@@ -255,7 +268,7 @@ fate-mpeg2-field-enc: CMD = framecrc -flags +bitexact -idct simple -i $(TARGET_S
 fate-mpeg2-ticket186: CMD = framecrc -flags +bitexact -idct simple -i $(TARGET_SAMPLES)/mpeg2/t.mpg -an
 
 FATE_VIDEO-$(call FRAMECRC, MPEGVIDEO, MPEG2VIDEO) += fate-mpeg2-ticket6677
-fate-mpeg2-ticket6677: CMD = framecrc -flags +bitexact -idct simple -i $(TARGET_SAMPLES)/mpeg2/sony-ct3.bs
+fate-mpeg2-ticket6677: CMD = framecrc -ec 0 -flags +bitexact -idct simple -i $(TARGET_SAMPLES)/mpeg2/sony-ct3.bs
 
 FATE_VIDEO-$(call FRAMECRC, MV, MVC1, SCALE_FILTER) += fate-mv-mvc1
 fate-mv-mvc1: CMD = framecrc -i $(TARGET_SAMPLES)/mv/posture.mv -an -frames 25 -pix_fmt rgb555le -vf scale
@@ -270,7 +283,7 @@ FATE_VIDEO-$(call FRAMECRC, MXG, MXPEG) += fate-mxpeg
 fate-mxpeg: CMD = framecrc -idct simple -flags +bitexact -i $(TARGET_SAMPLES)/mxpeg/m1.mxg -an
 
 FATE_NUV += fate-nuv-rtjpeg
-fate-nuv-rtjpeg: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/nuv/Today.nuv -an -enc_time_base -1
+fate-nuv-rtjpeg: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/nuv/Today.nuv -an -enc_time_base demux
 
 FATE_NUV += fate-nuv-rtjpeg-fh
 fate-nuv-rtjpeg-fh: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/nuv/rtjpeg_frameheader.nuv -an

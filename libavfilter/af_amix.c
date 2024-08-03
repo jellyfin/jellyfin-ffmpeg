@@ -43,7 +43,6 @@
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "internal.h"
 
 #define INPUT_ON       1    /**< input is active */
@@ -187,10 +186,10 @@ static const AVOption amix_options[] = {
     { "inputs", "Number of inputs.",
             OFFSET(nb_inputs), AV_OPT_TYPE_INT, { .i64 = 2 }, 1, INT16_MAX, A|F },
     { "duration", "How to determine the end-of-stream.",
-            OFFSET(duration_mode), AV_OPT_TYPE_INT, { .i64 = DURATION_LONGEST }, 0,  2, A|F, "duration" },
-        { "longest",  "Duration of longest input.",  0, AV_OPT_TYPE_CONST, { .i64 = DURATION_LONGEST  }, 0, 0, A|F, "duration" },
-        { "shortest", "Duration of shortest input.", 0, AV_OPT_TYPE_CONST, { .i64 = DURATION_SHORTEST }, 0, 0, A|F, "duration" },
-        { "first",    "Duration of first input.",    0, AV_OPT_TYPE_CONST, { .i64 = DURATION_FIRST    }, 0, 0, A|F, "duration" },
+            OFFSET(duration_mode), AV_OPT_TYPE_INT, { .i64 = DURATION_LONGEST }, 0,  2, A|F, .unit = "duration" },
+        { "longest",  "Duration of longest input.",  0, AV_OPT_TYPE_CONST, { .i64 = DURATION_LONGEST  }, 0, 0, A|F, .unit = "duration" },
+        { "shortest", "Duration of shortest input.", 0, AV_OPT_TYPE_CONST, { .i64 = DURATION_SHORTEST }, 0, 0, A|F, .unit = "duration" },
+        { "first",    "Duration of first input.",    0, AV_OPT_TYPE_CONST, { .i64 = DURATION_FIRST    }, 0, 0, A|F, .unit = "duration" },
     { "dropout_transition", "Transition time, in seconds, for volume "
                             "renormalization when an input stream ends.",
             OFFSET(dropout_transition), AV_OPT_TYPE_FLOAT, { .dbl = 2.0 }, 0, INT_MAX, A|F },
@@ -380,6 +379,9 @@ static int output_frame(AVFilterLink *outlink)
     av_frame_free(&in_buf);
 
     out_buf->pts = s->next_pts;
+    out_buf->duration = av_rescale_q(out_buf->nb_samples, av_make_q(1, outlink->sample_rate),
+                                     outlink->time_base);
+
     if (s->next_pts != AV_NOPTS_VALUE)
         s->next_pts += nb_samples;
 
@@ -395,6 +397,8 @@ static int request_samples(AVFilterContext *ctx, int min_samples)
     int i;
 
     av_assert0(s->nb_inputs > 1);
+    if (min_samples == 1 && s->duration_mode == DURATION_FIRST)
+        min_samples = av_audio_fifo_size(s->fifos[0]);
 
     for (i = 1; i < s->nb_inputs; i++) {
         if (!(s->input_state[i] & INPUT_ON) ||
@@ -403,6 +407,7 @@ static int request_samples(AVFilterContext *ctx, int min_samples)
         if (av_audio_fifo_size(s->fifos[i]) >= min_samples)
             continue;
         ff_inlink_request_frame(ctx->inputs[i]);
+        return 0;
     }
     return output_frame(ctx->outputs[0]);
 }
@@ -472,16 +477,12 @@ static int activate(AVFilterContext *ctx)
 
         if (ff_inlink_acknowledge_status(ctx->inputs[i], &status, &pts)) {
             if (status == AVERROR_EOF) {
-                if (i == 0) {
-                    s->input_state[i] = 0;
+                s->input_state[i] |= INPUT_EOF;
+                if (av_audio_fifo_size(s->fifos[i]) == 0) {
+                    s->input_state[i] &= ~INPUT_ON;
                     if (s->nb_inputs == 1) {
                         ff_outlink_set_status(outlink, status, pts);
                         return 0;
-                    }
-                } else {
-                    s->input_state[i] |= INPUT_EOF;
-                    if (av_audio_fifo_size(s->fifos[i]) == 0) {
-                        s->input_state[i] = 0;
                     }
                 }
             }

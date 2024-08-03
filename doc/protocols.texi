@@ -896,6 +896,13 @@ be named, by prefixing the type with 'N' and specifying the name before
 the value (i.e. @code{NB:myFlag:1}). This option may be used multiple
 times to construct arbitrary AMF sequences.
 
+@item rtmp_enhanced_codecs
+Specify the list of codecs the client advertises to support in an
+enhanced RTMP stream. This option should be set to a comma separated
+list of fourcc values, like @code{hvc1,av01,vp09} for multiple codecs
+or @code{hvc1} for only one codec. The specified list will be presented
+in the "fourCcLive" property of the Connect Command Message.
+
 @item rtmp_flashver
 Version of the Flash plugin used to run the SWF player. The default
 is LNX 9,0,124,2. (When publishing, the default is FMLE/3.0 (compatible;
@@ -1881,6 +1888,12 @@ The list of supported options follows.
 @item listen=@var{2|1|0}
 Listen for an incoming connection. 0 disables listen, 1 enables listen in
 single client mode, 2 enables listen in multi-client mode. Default value is 0.
+
+@item local_addr=@var{addr}
+Local IP address of a network interface used for tcp socket connect.
+
+@item local_port=@var{port}
+Local port used for tcp socket connect.
 
 @item timeout=@var{microseconds}
 Set raise error timeout, expressed in microseconds.

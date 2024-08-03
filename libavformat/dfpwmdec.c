@@ -22,6 +22,7 @@
 
 #include "libavutil/avstring.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "pcm.h"
 #include "libavutil/log.h"
@@ -31,9 +32,6 @@
 typedef struct DFPWMAudioDemuxerContext {
     AVClass *class;
     int sample_rate;
-#if FF_API_OLD_CHANNEL_LAYOUT
-    int channels;
-#endif
     AVChannelLayout ch_layout;
 } DFPWMAudioDemuxerContext;
 
@@ -50,18 +48,11 @@ static int dfpwm_read_header(AVFormatContext *s)
     par = st->codecpar;
 
     par->codec_type  = AVMEDIA_TYPE_AUDIO;
-    par->codec_id    = s->iformat->raw_codec_id;
+    par->codec_id    = AV_CODEC_ID_DFPWM;
     par->sample_rate = s1->sample_rate;
-#if FF_API_OLD_CHANNEL_LAYOUT
-    if (s1->ch_layout.nb_channels) {
-#endif
     ret = av_channel_layout_copy(&par->ch_layout, &s1->ch_layout);
     if (ret < 0)
         return ret;
-#if FF_API_OLD_CHANNEL_LAYOUT
-    } else
-        par->ch_layout.nb_channels = s1->channels;
-#endif
     par->bits_per_coded_sample = 1;
     par->block_align = 1;
 
@@ -71,13 +62,8 @@ static int dfpwm_read_header(AVFormatContext *s)
 
 static const AVOption dfpwm_options[] = {
     { "sample_rate", "", offsetof(DFPWMAudioDemuxerContext, sample_rate), AV_OPT_TYPE_INT, {.i64 = 48000}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    { "channels",    "", offsetof(DFPWMAudioDemuxerContext, channels),    AV_OPT_TYPE_INT, {.i64 = 1}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_DEPRECATED },
-    { "ch_layout",   "", offsetof(DFPWMAudioDemuxerContext, ch_layout),   AV_OPT_TYPE_CHLAYOUT, {.str = NULL}, 0, 0, AV_OPT_FLAG_DECODING_PARAM },
-#else
     { "ch_layout",   "", offsetof(DFPWMAudioDemuxerContext, ch_layout),   AV_OPT_TYPE_CHLAYOUT, {.str = "mono"}, 0, 0, AV_OPT_FLAG_DECODING_PARAM },
-#endif
-    { NULL },
+{ NULL },
 };
 static const AVClass dfpwm_demuxer_class = {
     .class_name = "dfpwm demuxer",
@@ -86,15 +72,15 @@ static const AVClass dfpwm_demuxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVInputFormat ff_dfpwm_demuxer = {
-    .name           = "dfpwm",
-    .long_name      = NULL_IF_CONFIG_SMALL("raw DFPWM1a"),
+const FFInputFormat ff_dfpwm_demuxer = {
+    .p.name         = "dfpwm",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("raw DFPWM1a"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.extensions   = "dfpwm",
+    .p.priv_class   = &dfpwm_demuxer_class,
     .priv_data_size = sizeof(DFPWMAudioDemuxerContext),
     .read_header    = dfpwm_read_header,
     .read_packet    = ff_pcm_read_packet,
     .read_seek      = ff_pcm_read_seek,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .extensions     = "dfpwm",
     .raw_codec_id   = AV_CODEC_ID_DFPWM,
-    .priv_class     = &dfpwm_demuxer_class,
 };

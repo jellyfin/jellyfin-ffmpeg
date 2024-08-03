@@ -31,9 +31,11 @@
 #include "libavutil/qsort.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
 #include "palette.h"
+#include "video.h"
 
 enum dithering_mode {
     DITHERING_NONE,
@@ -110,18 +112,18 @@ typedef struct PaletteUseContext {
 #define OFFSET(x) offsetof(PaletteUseContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption paletteuse_options[] = {
-    { "dither", "select dithering mode", OFFSET(dither), AV_OPT_TYPE_INT, {.i64=DITHERING_SIERRA2_4A}, 0, NB_DITHERING-1, FLAGS, "dithering_mode" },
-        { "bayer",           "ordered 8x8 bayer dithering (deterministic)",                            0, AV_OPT_TYPE_CONST, {.i64=DITHERING_BAYER},           INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
-        { "heckbert",        "dithering as defined by Paul Heckbert in 1982 (simple error diffusion)", 0, AV_OPT_TYPE_CONST, {.i64=DITHERING_HECKBERT},        INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
-        { "floyd_steinberg", "Floyd and Steingberg dithering (error diffusion)",                       0, AV_OPT_TYPE_CONST, {.i64=DITHERING_FLOYD_STEINBERG}, INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
-        { "sierra2",         "Frankie Sierra dithering v2 (error diffusion)",                          0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA2},         INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
-        { "sierra2_4a",      "Frankie Sierra dithering v2 \"Lite\" (error diffusion)",                 0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA2_4A},      INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
-        { "sierra3",         "Frankie Sierra dithering v3 (error diffusion)",                          0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA3},         INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
-        { "burkes",          "Burkes dithering (error diffusion)",                                     0, AV_OPT_TYPE_CONST, {.i64=DITHERING_BURKES},          INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
-        { "atkinson",        "Atkinson dithering by Bill Atkinson at Apple Computer (error diffusion)",0, AV_OPT_TYPE_CONST, {.i64=DITHERING_ATKINSON},        INT_MIN, INT_MAX, FLAGS, "dithering_mode" },
+    { "dither", "select dithering mode", OFFSET(dither), AV_OPT_TYPE_INT, {.i64=DITHERING_SIERRA2_4A}, 0, NB_DITHERING-1, FLAGS, .unit = "dithering_mode" },
+        { "bayer",           "ordered 8x8 bayer dithering (deterministic)",                            0, AV_OPT_TYPE_CONST, {.i64=DITHERING_BAYER},           INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
+        { "heckbert",        "dithering as defined by Paul Heckbert in 1982 (simple error diffusion)", 0, AV_OPT_TYPE_CONST, {.i64=DITHERING_HECKBERT},        INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
+        { "floyd_steinberg", "Floyd and Steingberg dithering (error diffusion)",                       0, AV_OPT_TYPE_CONST, {.i64=DITHERING_FLOYD_STEINBERG}, INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
+        { "sierra2",         "Frankie Sierra dithering v2 (error diffusion)",                          0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA2},         INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
+        { "sierra2_4a",      "Frankie Sierra dithering v2 \"Lite\" (error diffusion)",                 0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA2_4A},      INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
+        { "sierra3",         "Frankie Sierra dithering v3 (error diffusion)",                          0, AV_OPT_TYPE_CONST, {.i64=DITHERING_SIERRA3},         INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
+        { "burkes",          "Burkes dithering (error diffusion)",                                     0, AV_OPT_TYPE_CONST, {.i64=DITHERING_BURKES},          INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
+        { "atkinson",        "Atkinson dithering by Bill Atkinson at Apple Computer (error diffusion)",0, AV_OPT_TYPE_CONST, {.i64=DITHERING_ATKINSON},        INT_MIN, INT_MAX, FLAGS, .unit = "dithering_mode" },
     { "bayer_scale", "set scale for bayer dithering", OFFSET(bayer_scale), AV_OPT_TYPE_INT, {.i64=2}, 0, 5, FLAGS },
-    { "diff_mode",   "set frame difference mode",     OFFSET(diff_mode),   AV_OPT_TYPE_INT, {.i64=DIFF_MODE_NONE}, 0, NB_DIFF_MODE-1, FLAGS, "diff_mode" },
-        { "rectangle", "process smallest different rectangle", 0, AV_OPT_TYPE_CONST, {.i64=DIFF_MODE_RECTANGLE}, INT_MIN, INT_MAX, FLAGS, "diff_mode" },
+    { "diff_mode",   "set frame difference mode",     OFFSET(diff_mode),   AV_OPT_TYPE_INT, {.i64=DIFF_MODE_NONE}, 0, NB_DIFF_MODE-1, FLAGS, .unit = "diff_mode" },
+        { "rectangle", "process smallest different rectangle", 0, AV_OPT_TYPE_CONST, {.i64=DIFF_MODE_RECTANGLE}, INT_MIN, INT_MAX, FLAGS, .unit = "diff_mode" },
     { "new", "take new palette for each output frame", OFFSET(new), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS },
     { "alpha_threshold", "set the alpha threshold for transparency", OFFSET(trans_thresh), AV_OPT_TYPE_INT, {.i64=128}, 0, 255, FLAGS },
 
@@ -779,9 +781,8 @@ static int apply_palette(AVFilterLink *inlink, AVFrame *in, AVFrame **outf)
 
     set_processing_window(s->diff_mode, s->last_in, in,
                           s->last_out, out, &x, &y, &w, &h);
-    av_frame_unref(s->last_in);
     av_frame_unref(s->last_out);
-    if ((ret = av_frame_ref(s->last_in, in))       < 0 ||
+    if ((ret = av_frame_replace(s->last_in, in))   < 0 ||
         (ret = av_frame_ref(s->last_out, out))     < 0 ||
         (ret = ff_inlink_make_frame_writable(inlink, &s->last_in)) < 0) {
         av_frame_free(&out);
@@ -844,7 +845,7 @@ static void load_palette(PaletteUseContext *s, const AVFrame *palette_frame)
 {
     int i, x, y;
     const uint32_t *p = (const uint32_t *)palette_frame->data[0];
-    const int p_linesize = palette_frame->linesize[0] >> 2;
+    const ptrdiff_t p_linesize = palette_frame->linesize[0] >> 2;
 
     s->transparency_index = -1;
 

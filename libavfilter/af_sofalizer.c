@@ -36,6 +36,7 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 #include "audio.h"
 
@@ -597,7 +598,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     } else if (s->type == FREQUENCY_DOMAIN) {
         ff_filter_execute(ctx, sofalizer_fast_convolute, &td, NULL, 2);
     }
-    emms_c();
 
     /* display error message if clipping occurred */
     if (n_clippings[0] + n_clippings[1] > 0) {
@@ -1062,9 +1062,9 @@ static const AVOption sofalizer_options[] = {
     { "rotation",  "set rotation"  , OFFSET(rotation),  AV_OPT_TYPE_FLOAT,  {.dbl=0},    -360, 360, .flags = FLAGS },
     { "elevation", "set elevation",  OFFSET(elevation), AV_OPT_TYPE_FLOAT,  {.dbl=0},     -90,  90, .flags = FLAGS },
     { "radius",    "set radius",     OFFSET(radius),    AV_OPT_TYPE_FLOAT,  {.dbl=1},       0,   5, .flags = FLAGS },
-    { "type",      "set processing", OFFSET(type),      AV_OPT_TYPE_INT,    {.i64=1},       0,   1, .flags = FLAGS, "type" },
-    { "time",      "time domain",      0,               AV_OPT_TYPE_CONST,  {.i64=0},       0,   0, .flags = FLAGS, "type" },
-    { "freq",      "frequency domain", 0,               AV_OPT_TYPE_CONST,  {.i64=1},       0,   0, .flags = FLAGS, "type" },
+    { "type",      "set processing", OFFSET(type),      AV_OPT_TYPE_INT,    {.i64=1},       0,   1, .flags = FLAGS, .unit = "type" },
+    { "time",      "time domain",      0,               AV_OPT_TYPE_CONST,  {.i64=0},       0,   0, .flags = FLAGS, .unit = "type" },
+    { "freq",      "frequency domain", 0,               AV_OPT_TYPE_CONST,  {.i64=1},       0,   0, .flags = FLAGS, .unit = "type" },
     { "speakers",  "set speaker custom positions", OFFSET(speakers_pos), AV_OPT_TYPE_STRING,  {.str=0},    0, 0, .flags = FLAGS },
     { "lfegain",   "set lfe gain",                 OFFSET(lfe_gain),     AV_OPT_TYPE_FLOAT,   {.dbl=0},  -20,40, .flags = FLAGS },
     { "framesize", "set frame size", OFFSET(framesize), AV_OPT_TYPE_INT,    {.i64=1024},1024,96000, .flags = FLAGS },
@@ -1086,13 +1086,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_sofalizer = {
     .name          = "sofalizer",
     .description   = NULL_IF_CONFIG_SMALL("SOFAlizer (Spatially Oriented Format for Acoustics)."),
@@ -1102,7 +1095,7 @@ const AVFilter ff_af_sofalizer = {
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

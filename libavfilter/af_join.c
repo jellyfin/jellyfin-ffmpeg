@@ -48,10 +48,10 @@ typedef struct JoinContext {
 
     int inputs;
     char *map;
-    char    *channel_layout_str;
     AVChannelLayout ch_layout;
 
     int64_t  eof_pts;
+    int eof;
 
     ChannelMap *channels;
 
@@ -72,7 +72,7 @@ typedef struct JoinContext {
 static const AVOption join_options[] = {
     { "inputs",         "Number of input streams.", OFFSET(inputs),             AV_OPT_TYPE_INT,    { .i64 = 2 }, 1, INT_MAX,       A|F },
     { "channel_layout", "Channel layout of the "
-                        "output stream.",           OFFSET(channel_layout_str), AV_OPT_TYPE_STRING, {.str = "stereo"}, 0, 0, A|F },
+                        "output stream.",           OFFSET(ch_layout),          AV_OPT_TYPE_CHLAYOUT, {.str = "stereo"}, 0, 0, A|F },
     { "map",            "A comma-separated list of channels maps in the format "
                         "'input_stream.input_channel-output_channel.",
                                                     OFFSET(map),                AV_OPT_TYPE_STRING,                 .flags = A|F },
@@ -155,26 +155,6 @@ static av_cold int join_init(AVFilterContext *ctx)
 {
     JoinContext *s = ctx->priv;
     int ret, i;
-
-    ret = av_channel_layout_from_string(&s->ch_layout, s->channel_layout_str);
-    if (ret < 0) {
-#if FF_API_OLD_CHANNEL_LAYOUT
-        uint64_t mask;
-FF_DISABLE_DEPRECATION_WARNINGS
-        mask = av_get_channel_layout(s->channel_layout_str);
-        if (!mask) {
-#endif
-            av_log(ctx, AV_LOG_ERROR, "Error parsing channel layout '%s'.\n",
-                   s->channel_layout_str);
-            return AVERROR(EINVAL);
-#if FF_API_OLD_CHANNEL_LAYOUT
-        }
-FF_ENABLE_DEPRECATION_WARNINGS
-        av_log(ctx, AV_LOG_WARNING, "Channel layout '%s' uses a deprecated syntax.\n",
-               s->channel_layout_str);
-        av_channel_layout_from_mask(&s->ch_layout, mask);
-#endif
-    }
 
     s->channels     = av_calloc(s->ch_layout.nb_channels, sizeof(*s->channels));
     s->buffers      = av_calloc(s->ch_layout.nb_channels, sizeof(*s->buffers));
@@ -520,14 +500,12 @@ static int try_push_frame(AVFilterContext *ctx)
     }
 
     frame->nb_samples     = nb_samples;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-    frame->channel_layout = outlink->channel_layout;
-    frame->channels       = outlink->ch_layout.nb_channels;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
+    frame->duration = av_rescale_q(frame->nb_samples,
+                                   av_make_q(1, outlink->sample_rate),
+                                   outlink->time_base);
+
     if ((ret = av_channel_layout_copy(&frame->ch_layout, &outlink->ch_layout)) < 0)
-        return ret;
+        goto fail;
     frame->sample_rate    = outlink->sample_rate;
     frame->format         = outlink->format;
     frame->pts            = s->input_frames[0]->pts;
@@ -552,10 +530,11 @@ fail:
     return ret;
 eof:
     for (i = 0; i < ctx->nb_inputs; i++) {
-        if (ff_outlink_get_status(ctx->inputs[i]) &&
+        if (s->eof &&
             ff_inlink_queued_samples(ctx->inputs[i]) <= 0 &&
             !s->input_frames[i]) {
             ff_outlink_set_status(outlink, AVERROR_EOF, s->eof_pts);
+            break;
         }
     }
 
@@ -576,11 +555,10 @@ static int activate(AVFilterContext *ctx)
         if (ret < 0) {
             return ret;
         } else if (ret == 0 && ff_inlink_acknowledge_status(ctx->inputs[0], &status, &pts)) {
-            ff_outlink_set_status(ctx->outputs[0], status, s->eof_pts);
-            return 0;
+            s->eof |= status == AVERROR_EOF;
         }
 
-        if (!s->input_frames[0] && ff_outlink_frame_wanted(ctx->outputs[0])) {
+        if (!s->eof && !s->input_frames[0] && ff_outlink_frame_wanted(ctx->outputs[0])) {
             ff_inlink_request_frame(ctx->inputs[0]);
             return 0;
         }
@@ -596,11 +574,10 @@ static int activate(AVFilterContext *ctx)
         if (ret < 0) {
             return ret;
         } else if (ff_inlink_acknowledge_status(ctx->inputs[i], &status, &pts)) {
-            ff_outlink_set_status(ctx->outputs[0], status, pts);
-            return 0;
+            s->eof |= status == AVERROR_EOF;
         }
 
-        if (!s->input_frames[i]) {
+        if (!s->eof && !s->input_frames[i]) {
             ff_inlink_request_frame(ctx->inputs[i]);
             return 0;
         }

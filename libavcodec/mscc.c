@@ -53,6 +53,9 @@ static int rle_uncompress(AVCodecContext *avctx, GetByteContext *gb, PutByteCont
         unsigned run = bytestream2_get_byte(gb);
 
         if (run) {
+            if (bytestream2_get_bytes_left_p(pb) < run * s->bpp)
+                return AVERROR_INVALIDDATA;
+
             switch (avctx->bits_per_coded_sample) {
             case 8:
                 fill = bytestream2_get_byte(gb);
@@ -101,6 +104,9 @@ static int rle_uncompress(AVCodecContext *avctx, GetByteContext *gb, PutByteCont
 
                 bytestream2_seek_p(pb, y * avctx->width * s->bpp + x * s->bpp, SEEK_SET);
             } else {
+                if (bytestream2_get_bytes_left_p(pb) < copy * s->bpp)
+                    return AVERROR_INVALIDDATA;
+
                 for (j = 0; j < copy; j++) {
                     switch (avctx->bits_per_coded_sample) {
                     case 8:
@@ -150,7 +156,11 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
 
         if (pal && size == AVPALETTE_SIZE) {
+#if FF_API_PALETTE_HAS_CHANGED
+FF_DISABLE_DEPRECATION_WARNINGS
             frame->palette_has_changed = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
             for (j = 0; j < 256; j++)
                 s->pal[j] = 0xFF000000 | AV_RL32(pal + j * 4);
         } else if (pal) {
@@ -200,7 +210,7 @@ inflate_error:
                s->uncomp_buf + s->bpp * j * avctx->width, s->bpp * avctx->width);
     }
 
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     frame->pict_type = AV_PICTURE_TYPE_I;
 
     *got_frame = 1;

@@ -20,7 +20,6 @@
 #include "libavcodec/codec.h"
 #include "libavcodec/codec_desc.h"
 #include "libavcodec/codec_internal.h"
-#include "libavcodec/internal.h"
 
 static const char *get_type_string(enum AVMediaType type)
 {
@@ -149,8 +148,7 @@ int main(void){
                                         FF_CODEC_CAP_SETS_FRAME_PROPS) ||
                 codec->capabilities  & (AV_CODEC_CAP_AVOID_PROBING |
                                         AV_CODEC_CAP_CHANNEL_CONF  |
-                                        AV_CODEC_CAP_DRAW_HORIZ_BAND |
-                                        AV_CODEC_CAP_SUBFRAMES))
+                                        AV_CODEC_CAP_DRAW_HORIZ_BAND))
                 ERR("Encoder %s has decoder-only capabilities set\n");
             if (codec->capabilities & AV_CODEC_CAP_FRAME_THREADS &&
                 codec->capabilities & AV_CODEC_CAP_ENCODER_FLUSH)
@@ -177,6 +175,10 @@ int main(void){
                 !(codec->capabilities & AV_CODEC_CAP_FRAME_THREADS))
                 ERR("Decoder %s wants allocated progress without supporting"
                     "frame threads\n");
+            if (codec2->cb_type != FF_CODEC_CB_TYPE_DECODE &&
+                codec2->caps_internal & FF_CODEC_CAP_SETS_PKT_DTS)
+                ERR("Decoder %s is marked as setting pkt_dts when it doesn't have"
+                    "any effect\n");
         }
         if (priv_data_size_wrong(codec2))
             ERR_EXT("Private context of codec %s is impossibly-sized (size %d).",

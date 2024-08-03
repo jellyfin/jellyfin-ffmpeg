@@ -32,6 +32,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 #include "libavutil/avstring.h"
 #include "libavutil/dict.h"
@@ -128,7 +129,7 @@ static void bwf_write_bext_chunk(AVFormatContext *s)
 
         for (i = 0; i < len/16; i++) {
             memcpy(umidpart_str, tmp_tag->value + 2 + (i*16), 16);
-            umidpart = strtoll(umidpart_str, NULL, 16);
+            umidpart = strtoull(umidpart_str, NULL, 16);
             avio_wb64(s->pb, umidpart);
         }
         ffio_fill(s->pb, 0, 64 - i*8);
@@ -302,11 +303,6 @@ static int wav_write_header(AVFormatContext *s)
     WAVMuxContext *wav = s->priv_data;
     AVIOContext *pb = s->pb;
     int64_t fmt;
-
-    if (s->nb_streams != 1) {
-        av_log(s, AV_LOG_ERROR, "WAVE files have exactly one stream\n");
-        return AVERROR(EINVAL);
-    }
 
     if (wav->rf64 == RF64_ALWAYS) {
         ffio_wfourcc(pb, "RF64");
@@ -486,14 +482,14 @@ static int wav_write_trailer(AVFormatContext *s)
 #define ENC AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     { "write_bext", "Write BEXT chunk.", OFFSET(write_bext), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, ENC },
-    { "write_peak", "Write Peak Envelope chunk.",            OFFSET(write_peak), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, ENC, "peak" },
-    { "off",        "Do not write peak chunk.",              0,                  AV_OPT_TYPE_CONST, { .i64 = PEAK_OFF  }, 0, 0, ENC, "peak" },
-    { "on",         "Append peak chunk after wav data.",     0,                  AV_OPT_TYPE_CONST, { .i64 = PEAK_ON   }, 0, 0, ENC, "peak" },
-    { "only",       "Write only peak chunk, omit wav data.", 0,                  AV_OPT_TYPE_CONST, { .i64 = PEAK_ONLY }, 0, 0, ENC, "peak" },
-    { "rf64",       "Use RF64 header rather than RIFF for large files.",    OFFSET(rf64), AV_OPT_TYPE_INT,   { .i64 = RF64_NEVER  },-1, 1, ENC, "rf64" },
-    { "auto",       "Write RF64 header if file grows large enough.",        0,            AV_OPT_TYPE_CONST, { .i64 = RF64_AUTO   }, 0, 0, ENC, "rf64" },
-    { "always",     "Always write RF64 header regardless of file size.",    0,            AV_OPT_TYPE_CONST, { .i64 = RF64_ALWAYS }, 0, 0, ENC, "rf64" },
-    { "never",      "Never write RF64 header regardless of file size.",     0,            AV_OPT_TYPE_CONST, { .i64 = RF64_NEVER  }, 0, 0, ENC, "rf64" },
+    { "write_peak", "Write Peak Envelope chunk.",            OFFSET(write_peak), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, ENC, .unit = "peak" },
+    { "off",        "Do not write peak chunk.",              0,                  AV_OPT_TYPE_CONST, { .i64 = PEAK_OFF  }, 0, 0, ENC, .unit = "peak" },
+    { "on",         "Append peak chunk after wav data.",     0,                  AV_OPT_TYPE_CONST, { .i64 = PEAK_ON   }, 0, 0, ENC, .unit = "peak" },
+    { "only",       "Write only peak chunk, omit wav data.", 0,                  AV_OPT_TYPE_CONST, { .i64 = PEAK_ONLY }, 0, 0, ENC, .unit = "peak" },
+    { "rf64",       "Use RF64 header rather than RIFF for large files.",    OFFSET(rf64), AV_OPT_TYPE_INT,   { .i64 = RF64_NEVER  },-1, 1, ENC, .unit = "rf64" },
+    { "auto",       "Write RF64 header if file grows large enough.",        0,            AV_OPT_TYPE_CONST, { .i64 = RF64_AUTO   }, 0, 0, ENC, .unit = "rf64" },
+    { "always",     "Always write RF64 header regardless of file size.",    0,            AV_OPT_TYPE_CONST, { .i64 = RF64_ALWAYS }, 0, 0, ENC, .unit = "rf64" },
+    { "never",      "Never write RF64 header regardless of file size.",     0,            AV_OPT_TYPE_CONST, { .i64 = RF64_NEVER  }, 0, 0, ENC, .unit = "rf64" },
     { "peak_block_size", "Number of audio samples used to generate each peak frame.",   OFFSET(peak_block_size), AV_OPT_TYPE_INT, { .i64 = 256 }, 0, 65536, ENC },
     { "peak_format",     "The format of the peak envelope data (1: uint8, 2: uint16).", OFFSET(peak_format), AV_OPT_TYPE_INT,     { .i64 = PEAK_FORMAT_UINT16 }, PEAK_FORMAT_UINT8, PEAK_FORMAT_UINT16, ENC },
     { "peak_ppv",        "Number of peak points per peak value (1 or 2).",              OFFSET(peak_ppv), AV_OPT_TYPE_INT, { .i64 = 2 }, 1, 2, ENC },
@@ -515,6 +511,7 @@ const FFOutputFormat ff_wav_muxer = {
     .priv_data_size    = sizeof(WAVMuxContext),
     .p.audio_codec     = AV_CODEC_ID_PCM_S16LE,
     .p.video_codec     = AV_CODEC_ID_NONE,
+    .p.subtitle_codec  = AV_CODEC_ID_NONE,
     .write_header      = wav_write_header,
     .write_packet      = wav_write_packet,
     .write_trailer     = wav_write_trailer,
@@ -522,21 +519,12 @@ const FFOutputFormat ff_wav_muxer = {
     .p.flags           = AVFMT_TS_NONSTRICT,
     .p.codec_tag       = ff_wav_codec_tags_list,
     .p.priv_class      = &wav_muxer_class,
+    .flags_internal    = FF_OFMT_FLAG_MAX_ONE_OF_EACH,
 };
 #endif /* CONFIG_WAV_MUXER */
 
 #if CONFIG_W64_MUXER
 #include "w64.h"
-
-static av_cold int w64_init(AVFormatContext *ctx)
-{
-    if (ctx->nb_streams != 1) {
-        av_log(ctx, AV_LOG_ERROR, "This muxer only supports a single stream.\n");
-        return AVERROR(EINVAL);
-    }
-
-    return 0;
-}
 
 static void start_guid(AVIOContext *pb, const uint8_t *guid, int64_t *pos)
 {
@@ -623,11 +611,12 @@ const FFOutputFormat ff_w64_muxer = {
     .priv_data_size    = sizeof(WAVMuxContext),
     .p.audio_codec     = AV_CODEC_ID_PCM_S16LE,
     .p.video_codec     = AV_CODEC_ID_NONE,
-    .init              = w64_init,
+    .p.subtitle_codec  = AV_CODEC_ID_NONE,
     .write_header      = w64_write_header,
     .write_packet      = wav_write_packet,
     .write_trailer     = w64_write_trailer,
     .p.flags           = AVFMT_TS_NONSTRICT,
     .p.codec_tag       = ff_wav_codec_tags_list,
+    .flags_internal    = FF_OFMT_FLAG_MAX_ONE_OF_EACH,
 };
 #endif /* CONFIG_W64_MUXER */

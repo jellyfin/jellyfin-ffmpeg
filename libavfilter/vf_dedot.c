@@ -18,13 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -113,12 +111,12 @@ static int dedotcrawl##name(AVFilterContext *ctx, void *arg,     \
     for (int y = slice_start; y < slice_end; y++) {              \
         for (int x = 1; x < s->planewidth[0] - 1; x++) {         \
             int above = src[x - src_linesize];                   \
-            int bellow = src[x + src_linesize];                  \
+            int below = src[x + src_linesize];                   \
             int cur = src[x];                                    \
             int left = src[x - 1];                               \
             int right = src[x + 1];                              \
                                                                  \
-            if (FFABS(above + bellow - 2 * cur) <= luma2d &&     \
+            if (FFABS(above + below - 2 * cur) <= luma2d &&      \
                 FFABS(left + right - 2 * cur) <= luma2d)         \
                 continue;                                        \
                                                                  \
@@ -365,21 +363,14 @@ static av_cold void uninit(AVFilterContext *ctx)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM
 
 static const AVOption dedot_options[] = {
-    { "m",   "set filtering mode",                          OFFSET( m), AV_OPT_TYPE_FLAGS, {.i64=3},    0, 3, FLAGS, "m" },
-    { "dotcrawl",                                           0,       0, AV_OPT_TYPE_CONST, {.i64=1},    0, 0, FLAGS, "m" },
-    { "rainbows",                                           0,       0, AV_OPT_TYPE_CONST, {.i64=2},    0, 0, FLAGS, "m" },
+    { "m",   "set filtering mode",                          OFFSET( m), AV_OPT_TYPE_FLAGS, {.i64=3},    0, 3, FLAGS, .unit = "m" },
+    { "dotcrawl",                                           0,       0, AV_OPT_TYPE_CONST, {.i64=1},    0, 0, FLAGS, .unit = "m" },
+    { "rainbows",                                           0,       0, AV_OPT_TYPE_CONST, {.i64=2},    0, 0, FLAGS, .unit = "m" },
     { "lt",  "set spatial luma threshold",                  OFFSET(lt), AV_OPT_TYPE_FLOAT, {.dbl=.079}, 0, 1, FLAGS },
     { "tl",  "set tolerance for temporal luma",             OFFSET(tl), AV_OPT_TYPE_FLOAT, {.dbl=.079}, 0, 1, FLAGS },
     { "tc",  "set tolerance for chroma temporal variation", OFFSET(tc), AV_OPT_TYPE_FLOAT, {.dbl=.058}, 0, 1, FLAGS },
     { "ct",  "set temporal chroma threshold",               OFFSET(ct), AV_OPT_TYPE_FLOAT, {.dbl=.019}, 0, 1, FLAGS },
     { NULL },
-};
-
-static const AVFilterPad inputs[] = {
-    {
-        .name           = "default",
-        .type           = AVMEDIA_TYPE_VIDEO,
-    },
 };
 
 static const AVFilterPad outputs[] = {
@@ -399,7 +390,7 @@ const AVFilter ff_vf_dedot = {
     .priv_class    = &dedot_class,
     .activate      = activate,
     .uninit        = uninit,
-    FILTER_INPUTS(inputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
     FILTER_OUTPUTS(outputs),
     FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,

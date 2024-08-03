@@ -25,6 +25,7 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include <camera/NdkCameraDevice.h>
 #include <camera/NdkCameraManager.h>
@@ -32,6 +33,7 @@
 #include <media/NdkImageReader.h>
 
 #include "libavformat/avformat.h"
+#include "libavformat/demux.h"
 #include "libavformat/internal.h"
 #include "libavutil/avstring.h"
 #include "libavutil/display.h"
@@ -638,7 +640,7 @@ static int wait_for_image_format(AVFormatContext *avctx)
 static int add_display_matrix(AVFormatContext *avctx, AVStream *st)
 {
     AndroidCameraCtx *ctx = avctx->priv_data;
-    uint8_t *side_data;
+    AVPacketSideData *side_data;
     int32_t display_matrix[9];
 
     av_display_rotation_set(display_matrix, ctx->sensor_orientation);
@@ -647,14 +649,16 @@ static int add_display_matrix(AVFormatContext *avctx, AVStream *st)
         av_display_matrix_flip(display_matrix, 1, 0);
     }
 
-    side_data = av_stream_new_side_data(st,
-            AV_PKT_DATA_DISPLAYMATRIX, sizeof(display_matrix));
+    side_data = av_packet_side_data_new(&st->codecpar->coded_side_data,
+                                        &st->codecpar->nb_coded_side_data,
+                                        AV_PKT_DATA_DISPLAYMATRIX,
+                                        sizeof(display_matrix), 0);
 
     if (!side_data) {
         return AVERROR(ENOMEM);
     }
 
-    memcpy(side_data, display_matrix, sizeof(display_matrix));
+    memcpy(side_data->data, display_matrix, sizeof(display_matrix));
 
     return 0;
 }
@@ -857,13 +861,13 @@ static const AVClass android_camera_class = {
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_INPUT,
 };
 
-const AVInputFormat ff_android_camera_demuxer = {
-    .name           = "android_camera",
-    .long_name      = NULL_IF_CONFIG_SMALL("Android camera input device"),
+const FFInputFormat ff_android_camera_demuxer = {
+    .p.name         = "android_camera",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Android camera input device"),
+    .p.flags        = AVFMT_NOFILE,
+    .p.priv_class   = &android_camera_class,
     .priv_data_size = sizeof(AndroidCameraCtx),
     .read_header    = android_camera_read_header,
     .read_packet    = android_camera_read_packet,
     .read_close     = android_camera_read_close,
-    .flags          = AVFMT_NOFILE,
-    .priv_class     = &android_camera_class,
 };

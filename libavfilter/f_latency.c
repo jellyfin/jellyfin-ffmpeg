@@ -20,11 +20,11 @@
 
 #include "config_components.h"
 
-#include "libavutil/opt.h"
+#include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct LatencyContext {
     int64_t min_latency;
@@ -99,20 +99,6 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 #if CONFIG_LATENCY_FILTER
 
-static const AVFilterPad latency_inputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
-static const AVFilterPad latency_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_latency = {
     .name          = "latency",
     .description   = NULL_IF_CONFIG_SMALL("Report video filtering latency."),
@@ -122,27 +108,13 @@ const AVFilter ff_vf_latency = {
     .activate      = activate,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                      AVFILTER_FLAG_METADATA_ONLY,
-    FILTER_INPUTS(latency_inputs),
-    FILTER_OUTPUTS(latency_outputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
 };
 
 #endif // CONFIG_LATENCY_FILTER
 
 #if CONFIG_ALATENCY_FILTER
-
-static const AVFilterPad alatency_inputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
-static const AVFilterPad alatency_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
 
 const AVFilter ff_af_alatency = {
     .name          = "alatency",
@@ -152,7 +124,7 @@ const AVFilter ff_af_alatency = {
     .uninit        = uninit,
     .activate      = activate,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
-    FILTER_INPUTS(alatency_inputs),
-    FILTER_OUTPUTS(alatency_outputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
 };
 #endif // CONFIG_ALATENCY_FILTER

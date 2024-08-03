@@ -24,6 +24,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "pcm.h"
 #include "libavutil/log.h"
@@ -33,9 +34,6 @@
 typedef struct PCMAudioDemuxerContext {
     AVClass *class;
     int sample_rate;
-#if FF_API_OLD_CHANNEL_LAYOUT
-    int channels;
-#endif
     AVChannelLayout ch_layout;
 } PCMAudioDemuxerContext;
 
@@ -53,18 +51,11 @@ static int pcm_read_header(AVFormatContext *s)
     par = st->codecpar;
 
     par->codec_type  = AVMEDIA_TYPE_AUDIO;
-    par->codec_id    = s->iformat->raw_codec_id;
+    par->codec_id    = ffifmt(s->iformat)->raw_codec_id;
     par->sample_rate = s1->sample_rate;
-#if FF_API_OLD_CHANNEL_LAYOUT
-    if (s1->ch_layout.nb_channels) {
-#endif
     ret = av_channel_layout_copy(&par->ch_layout, &s1->ch_layout);
     if (ret < 0)
         return ret;
-#if FF_API_OLD_CHANNEL_LAYOUT
-    } else
-        par->ch_layout.nb_channels = s1->channels;
-#endif
 
     av_opt_get(s->pb, "mime_type", AV_OPT_SEARCH_CHILDREN, &mime_type);
     if (mime_type && s->iformat->mime_type) {
@@ -114,12 +105,7 @@ static int pcm_read_header(AVFormatContext *s)
 
 static const AVOption pcm_options[] = {
     { "sample_rate", "", offsetof(PCMAudioDemuxerContext, sample_rate), AV_OPT_TYPE_INT, {.i64 = 44100}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    { "channels",    "", offsetof(PCMAudioDemuxerContext, channels),    AV_OPT_TYPE_INT, {.i64 = 1}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_DEPRECATED },
-    { "ch_layout",   "", offsetof(PCMAudioDemuxerContext, ch_layout),   AV_OPT_TYPE_CHLAYOUT, {.str = NULL}, 0, 0, AV_OPT_FLAG_DECODING_PARAM },
-#else
     { "ch_layout",   "", offsetof(PCMAudioDemuxerContext, ch_layout),   AV_OPT_TYPE_CHLAYOUT, {.str = "mono"}, 0, 0, AV_OPT_FLAG_DECODING_PARAM },
-#endif
     { NULL },
 };
 static const AVClass pcm_demuxer_class = {
@@ -131,17 +117,17 @@ static const AVClass pcm_demuxer_class = {
 
 #define PCMDEF_0(name_, long_name_, ext, codec, ...)
 #define PCMDEF_1(name_, long_name_, ext, codec, ...)        \
-const AVInputFormat ff_pcm_ ## name_ ## _demuxer = {        \
-    .name           = #name_,                               \
-    .long_name      = NULL_IF_CONFIG_SMALL(long_name_),     \
+const FFInputFormat ff_pcm_ ## name_ ## _demuxer = {        \
+    .p.name         = #name_,                               \
+    .p.long_name    = NULL_IF_CONFIG_SMALL(long_name_),     \
+    .p.flags        = AVFMT_GENERIC_INDEX,                  \
+    .p.extensions   = ext,                                  \
+    .p.priv_class   = &pcm_demuxer_class,                   \
     .priv_data_size = sizeof(PCMAudioDemuxerContext),       \
     .read_header    = pcm_read_header,                      \
     .read_packet    = ff_pcm_read_packet,                   \
     .read_seek      = ff_pcm_read_seek,                     \
-    .flags          = AVFMT_GENERIC_INDEX,                  \
-    .extensions     = ext,                                  \
     .raw_codec_id   = codec,                                \
-    .priv_class     = &pcm_demuxer_class,                   \
     __VA_ARGS__                                             \
 };
 #define PCMDEF_2(name, long_name, ext, codec, enabled, ...) \
@@ -163,7 +149,7 @@ PCMDEF(s32le, "PCM signed 32-bit little-endian",                NULL, S32LE)
 PCMDEF(s24be, "PCM signed 24-bit big-endian",                   NULL, S24BE)
 PCMDEF(s24le, "PCM signed 24-bit little-endian",                NULL, S24LE)
 PCMDEF_EXT(s16be, "PCM signed 16-bit big-endian",
-           AV_NE("sw", NULL), S16BE, .mime_type = "audio/L16")
+           AV_NE("sw", NULL), S16BE, .p.mime_type = "audio/L16")
 PCMDEF(s16le, "PCM signed 16-bit little-endian",   AV_NE(NULL, "sw"), S16LE)
 PCMDEF(s8,    "PCM signed 8-bit",                               "sb",    S8)
 PCMDEF(u32be, "PCM unsigned 32-bit big-endian",                 NULL, U32BE)
@@ -180,12 +166,7 @@ PCMDEF(vidc,  "PCM Archimedes VIDC",                            NULL,  VIDC)
 #if CONFIG_SLN_DEMUXER
 static const AVOption sln_options[] = {
     { "sample_rate", "", offsetof(PCMAudioDemuxerContext, sample_rate), AV_OPT_TYPE_INT, {.i64 = 8000}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
-#if FF_API_OLD_CHANNEL_LAYOUT
-    { "channels",    "", offsetof(PCMAudioDemuxerContext, channels),    AV_OPT_TYPE_INT, {.i64 = 1}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_DEPRECATED },
-    { "ch_layout",   "", offsetof(PCMAudioDemuxerContext, ch_layout),   AV_OPT_TYPE_CHLAYOUT, {.str = NULL}, 0, 0, AV_OPT_FLAG_DECODING_PARAM },
-#else
     { "ch_layout",   "", offsetof(PCMAudioDemuxerContext, ch_layout),   AV_OPT_TYPE_CHLAYOUT, {.str = "mono"}, 0, 0, AV_OPT_FLAG_DECODING_PARAM },
-#endif
     { NULL },
 };
 
@@ -196,16 +177,16 @@ static const AVClass sln_demuxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVInputFormat ff_sln_demuxer = {
-    .name           = "sln",
-    .long_name      = NULL_IF_CONFIG_SMALL("Asterisk raw pcm"),
+const FFInputFormat ff_sln_demuxer = {
+    .p.name         = "sln",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Asterisk raw pcm"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.extensions   = "sln",
+    .p.priv_class   = &sln_demuxer_class,
     .priv_data_size = sizeof(PCMAudioDemuxerContext),
     .read_header    = pcm_read_header,
     .read_packet    = ff_pcm_read_packet,
     .read_seek      = ff_pcm_read_seek,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .extensions     = "sln",
     .raw_codec_id   = AV_CODEC_ID_PCM_S16LE,
-    .priv_class     = &sln_demuxer_class,
 };
 #endif

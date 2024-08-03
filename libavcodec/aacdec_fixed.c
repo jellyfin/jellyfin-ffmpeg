@@ -66,11 +66,11 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "get_bits.h"
-#include "lpc.h"
 #include "kbdwin.h"
 #include "sinewin_fixed_tablegen.h"
 
 #include "aac.h"
+#include "aacdec.h"
 #include "aactab.h"
 #include "aacdectab.h"
 #include "adts_header.h"
@@ -88,6 +88,49 @@ DECLARE_ALIGNED(32, static int, AAC_RENAME2(aac_kbd_long_1024))[1024];
 DECLARE_ALIGNED(32, static int, AAC_RENAME2(aac_kbd_short_128))[128];
 DECLARE_ALIGNED(32, static int, AAC_RENAME2(aac_kbd_long_960))[960];
 DECLARE_ALIGNED(32, static int, AAC_RENAME2(aac_kbd_short_120))[120];
+
+/* @name ltp_coef
+ * Table of the LTP coefficients
+ */
+static const int ltp_coef_fixed[8] = {
+    Q30(0.570829), Q30(0.696616), Q30(0.813004), Q30(0.911304),
+    Q30(0.984900), Q30(1.067894), Q30(1.194601), Q30(1.369533),
+};
+
+/* @name tns_tmp2_map
+ * Tables of the tmp2[] arrays of LPC coefficients used for TNS.
+ * The suffix _M_N[] indicate the values of coef_compress and coef_res
+ * respectively.
+ * @{
+ */
+static const int tns_tmp2_map_1_3[4] = {
+    Q31(0.00000000), Q31(-0.43388373),  Q31(0.64278758),  Q31(0.34202015),
+};
+
+static const int tns_tmp2_map_0_3[8] = {
+    Q31(0.00000000), Q31(-0.43388373), Q31(-0.78183150), Q31(-0.97492790),
+    Q31(0.98480773), Q31( 0.86602539), Q31( 0.64278758), Q31( 0.34202015),
+};
+
+static const int tns_tmp2_map_1_4[8] = {
+    Q31(0.00000000), Q31(-0.20791170), Q31(-0.40673664), Q31(-0.58778524),
+    Q31(0.67369562), Q31( 0.52643216), Q31( 0.36124167), Q31( 0.18374951),
+};
+
+static const int tns_tmp2_map_0_4[16] = {
+    Q31( 0.00000000), Q31(-0.20791170), Q31(-0.40673664), Q31(-0.58778524),
+    Q31(-0.74314481), Q31(-0.86602539), Q31(-0.95105654), Q31(-0.99452192),
+    Q31( 0.99573416), Q31( 0.96182561), Q31( 0.89516330), Q31( 0.79801720),
+    Q31( 0.67369562), Q31( 0.52643216), Q31( 0.36124167), Q31( 0.18374951),
+};
+
+static const int * const tns_tmp2_map_fixed[4] = {
+    tns_tmp2_map_0_3,
+    tns_tmp2_map_0_4,
+    tns_tmp2_map_1_3,
+    tns_tmp2_map_1_4
+};
+// @}
 
 static av_always_inline void reset_predict_state(PredictorState *ps)
 {
@@ -354,7 +397,7 @@ static const int cce_scale_fixed[8] = {
  *
  * @param   index   index into coupling gain array
  */
-static void apply_dependent_coupling_fixed(AACContext *ac,
+static void apply_dependent_coupling_fixed(AACDecContext *ac,
                                      SingleChannelElement *target,
                                      ChannelElement *cce, int index)
 {
@@ -418,7 +461,7 @@ static void apply_dependent_coupling_fixed(AACContext *ac,
  *
  * @param   index   index into coupling gain array
  */
-static void apply_independent_coupling_fixed(AACContext *ac,
+static void apply_independent_coupling_fixed(AACDecContext *ac,
                                        SingleChannelElement *target,
                                        ChannelElement *cce, int index)
 {
@@ -456,7 +499,7 @@ const FFCodec ff_aac_fixed_decoder = {
     CODEC_LONG_NAME("AAC (Advanced Audio Coding)"),
     .p.type          = AVMEDIA_TYPE_AUDIO,
     .p.id            = AV_CODEC_ID_AAC,
-    .priv_data_size  = sizeof(AACContext),
+    .priv_data_size  = sizeof(AACDecContext),
     .init            = aac_decode_init,
     .close           = aac_decode_close,
     FF_CODEC_DECODE_CB(aac_decode_frame),
@@ -465,8 +508,7 @@ const FFCodec ff_aac_fixed_decoder = {
     },
     .p.capabilities  = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(aac_channel_layout)
-    .p.ch_layouts    = aac_ch_layout,
+    .p.ch_layouts    = ff_aac_ch_layout,
     .p.priv_class    = &aac_decoder_class,
     .p.profiles      = NULL_IF_CONFIG_SMALL(ff_aac_profiles),
     .flush = flush,

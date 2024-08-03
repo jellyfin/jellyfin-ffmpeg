@@ -34,8 +34,10 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
+#include "ccfifo.h"
 #include "filters.h"
 #include "internal.h"
+#include "video.h"
 
 enum EOFAction {
     EOF_ACTION_ROUND,
@@ -85,6 +87,7 @@ typedef struct FPSContext {
 
     AVFrame *frames[2];     ///< buffered frames
     int      frames_count;  ///< number of buffered frames
+    CCFifo cc_fifo;       ///< closed captions
 
     int64_t  next_pts;      ///< pts of the next frame to output
 
@@ -102,15 +105,15 @@ typedef struct FPSContext {
 static const AVOption fps_options[] = {
     { "fps", "A string describing desired output framerate", OFFSET(framerate), AV_OPT_TYPE_STRING, { .str = "25" }, 0, 0, V|F },
     { "start_time", "Assume the first PTS should be this value.", OFFSET(start_time), AV_OPT_TYPE_DOUBLE, { .dbl = DBL_MAX}, -DBL_MAX, DBL_MAX, V|F },
-    { "round", "set rounding method for timestamps", OFFSET(rounding), AV_OPT_TYPE_INT, { .i64 = AV_ROUND_NEAR_INF }, 0, 5, V|F, "round" },
-        { "zero", "round towards 0",                 0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_ZERO     }, 0, 0, V|F, "round" },
-        { "inf",  "round away from 0",               0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_INF      }, 0, 0, V|F, "round" },
-        { "down", "round towards -infty",            0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_DOWN     }, 0, 0, V|F, "round" },
-        { "up",   "round towards +infty",            0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_UP       }, 0, 0, V|F, "round" },
-        { "near", "round to nearest",                0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_NEAR_INF }, 0, 0, V|F, "round" },
-    { "eof_action", "action performed for last frame", OFFSET(eof_action), AV_OPT_TYPE_INT, { .i64 = EOF_ACTION_ROUND }, 0, EOF_ACTION_NB-1, V|F, "eof_action" },
-        { "round", "round similar to other frames",  0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ROUND }, 0, 0, V|F, "eof_action" },
-        { "pass",  "pass through last frame",        0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS  }, 0, 0, V|F, "eof_action" },
+    { "round", "set rounding method for timestamps", OFFSET(rounding), AV_OPT_TYPE_INT, { .i64 = AV_ROUND_NEAR_INF }, 0, 5, V|F, .unit = "round" },
+        { "zero", "round towards 0",                 0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_ZERO     }, 0, 0, V|F, .unit = "round" },
+        { "inf",  "round away from 0",               0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_INF      }, 0, 0, V|F, .unit = "round" },
+        { "down", "round towards -infty",            0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_DOWN     }, 0, 0, V|F, .unit = "round" },
+        { "up",   "round towards +infty",            0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_UP       }, 0, 0, V|F, .unit = "round" },
+        { "near", "round to nearest",                0, AV_OPT_TYPE_CONST, { .i64 = AV_ROUND_NEAR_INF }, 0, 0, V|F, .unit = "round" },
+    { "eof_action", "action performed for last frame", OFFSET(eof_action), AV_OPT_TYPE_INT, { .i64 = EOF_ACTION_ROUND }, 0, EOF_ACTION_NB-1, V|F, .unit = "eof_action" },
+        { "round", "round similar to other frames",  0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ROUND }, 0, 0, V|F, .unit = "eof_action" },
+        { "pass",  "pass through last frame",        0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS  }, 0, 0, V|F, .unit = "eof_action" },
     { NULL }
 };
 
@@ -165,6 +168,7 @@ static av_cold void uninit(AVFilterContext *ctx)
         frame = shift_frame(ctx, s);
         av_frame_free(&frame);
     }
+    ff_ccfifo_uninit(&s->cc_fifo);
 
     av_log(ctx, AV_LOG_VERBOSE, "%d frames in, %d frames out; %d frames dropped, "
            "%d frames duplicated.\n", s->frames_in, s->frames_out, s->drop, s->dup);
@@ -210,6 +214,12 @@ static int config_props(AVFilterLink* outlink)
                s->in_pts_off, s->out_pts_off, s->start_time);
     }
 
+    ret = ff_ccfifo_init(&s->cc_fifo, outlink->frame_rate, ctx);
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR, "Failure to setup CC FIFO queue\n");
+        return ret;
+    }
+
     av_log(ctx, AV_LOG_VERBOSE, "fps=%d/%d\n", outlink->frame_rate.num, outlink->frame_rate.den);
 
     return 0;
@@ -242,6 +252,7 @@ static int read_frame(AVFilterContext *ctx, FPSContext *s, AVFilterLink *inlink,
     av_log(ctx, AV_LOG_DEBUG, "Read frame with in pts %"PRId64", out pts %"PRId64"\n",
            in_pts, frame->pts);
 
+    ff_ccfifo_extract(&s->cc_fifo, frame);
     s->frames[s->frames_count++] = frame;
     s->frames_in++;
 
@@ -289,7 +300,7 @@ static int write_frame(AVFilterContext *ctx, FPSContext *s, AVFilterLink *outlin
         if (!frame)
             return AVERROR(ENOMEM);
         // Make sure Closed Captions will not be duplicated
-        av_frame_remove_side_data(s->frames[0], AV_FRAME_DATA_A53_CC);
+        ff_ccfifo_inject(&s->cc_fifo, frame);
         frame->pts = s->next_pts++;
         frame->duration = 1;
 
@@ -366,13 +377,6 @@ static int activate(AVFilterContext *ctx)
     return FFERROR_NOT_READY;
 }
 
-static const AVFilterPad avfilter_vf_fps_inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 static const AVFilterPad avfilter_vf_fps_outputs[] = {
     {
         .name          = "default",
@@ -390,6 +394,6 @@ const AVFilter ff_vf_fps = {
     .priv_class  = &fps_class,
     .activate    = activate,
     .flags       = AVFILTER_FLAG_METADATA_ONLY,
-    FILTER_INPUTS(avfilter_vf_fps_inputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
     FILTER_OUTPUTS(avfilter_vf_fps_outputs),
 };

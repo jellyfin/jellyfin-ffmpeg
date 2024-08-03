@@ -115,9 +115,9 @@ static av_cold void mss4_init_vlc(VLC *vlc, unsigned *offset,
 
     vlc->table           = &vlc_buf[*offset];
     vlc->table_allocated = FF_ARRAY_ELEMS(vlc_buf) - *offset;
-    ff_init_vlc_from_lengths(vlc, FFMIN(bits[idx - 1], 9), idx,
+    ff_vlc_init_from_lengths(vlc, FFMIN(bits[idx - 1], 9), idx,
                              bits, 1, syms, 1, 1,
-                             0, INIT_VLC_STATIC_OVERLONG, NULL);
+                             0, VLC_INIT_STATIC_OVERLONG, NULL);
     *offset += vlc->table_size;
 }
 
@@ -156,9 +156,10 @@ static av_always_inline int get_coeff_bits(GetBitContext *gb, int nbits)
     return val;
 }
 
-static inline int get_coeff(GetBitContext *gb, VLC *vlc)
+static inline int get_coeff(GetBitContext *gb, const VLC *vlc,
+                            int nb_bits, int max_depth)
 {
-    int val = get_vlc2(gb, vlc->table, vlc->bits, 2);
+    int val = get_vlc2(gb, vlc->table, nb_bits, max_depth);
 
     return get_coeff_bits(gb, val);
 }
@@ -171,7 +172,7 @@ static int mss4_decode_dct(GetBitContext *gb, VLC *dc_vlc, VLC *ac_vlc,
 
     memset(block, 0, sizeof(*block) * 64);
 
-    dc = get_coeff(gb, dc_vlc);
+    dc = get_coeff(gb, dc_vlc, dc_vlc->bits, 2);
     // DC prediction is the same as in MSS3
     if (by) {
         if (bx) {
@@ -337,7 +338,7 @@ static int mss4_decode_image_block(MSS4Context *ctx, GetBitContext *gb,
     for (i = 0; i < 3; i++) {
         vec_len[i] = vec_len_syms[!!i][get_unary(gb, 0, 3)];
         for (j = 0; j < vec_len[i]; j++) {
-            vec[i][j]  = get_coeff(gb, &vec_entry_vlc[!!i]);
+            vec[i][j]  = get_coeff(gb, &vec_entry_vlc[!!i], 5, 1);
             vec[i][j] += ctx->prev_vec[i][j];
             ctx->prev_vec[i][j] = vec[i][j];
         }
@@ -503,7 +504,10 @@ static int mss4_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     if ((ret = ff_reget_buffer(avctx, c->pic, 0)) < 0)
         return ret;
-    c->pic->key_frame = (frame_type == INTRA_FRAME);
+    if (frame_type == INTRA_FRAME)
+        c->pic->flags |= AV_FRAME_FLAG_KEY;
+    else
+        c->pic->flags &= ~AV_FRAME_FLAG_KEY;
     c->pic->pict_type = (frame_type == INTRA_FRAME) ? AV_PICTURE_TYPE_I
                                                    : AV_PICTURE_TYPE_P;
     if (frame_type == SKIP_FRAME) {

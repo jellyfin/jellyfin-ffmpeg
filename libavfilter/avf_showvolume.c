@@ -82,17 +82,17 @@ static const AVOption showvolume_options[] = {
     { "v", "display volume value", OFFSET(draw_volume), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, FLAGS },
     { "dm", "duration for max value display", OFFSET(draw_persistent_duration), AV_OPT_TYPE_DOUBLE, {.dbl=0.}, 0, 9000, FLAGS},
     { "dmc","set color of the max value line", OFFSET(persistant_max_rgba), AV_OPT_TYPE_COLOR, {.str = "orange"}, 0, 0, FLAGS },
-    { "o", "set orientation", OFFSET(orientation), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS, "orientation" },
-    {   "h", "horizontal", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "orientation" },
-    {   "v", "vertical",   0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "orientation" },
+    { "o", "set orientation", OFFSET(orientation), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS, .unit = "orientation" },
+    {   "h", "horizontal", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, .unit = "orientation" },
+    {   "v", "vertical",   0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, .unit = "orientation" },
     { "s", "set step size", OFFSET(step), AV_OPT_TYPE_INT, {.i64=0}, 0, 5, FLAGS },
     { "p", "set background opacity", OFFSET(bgopacity), AV_OPT_TYPE_FLOAT, {.dbl=0}, 0, 1, FLAGS },
-    { "m", "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS, "mode" },
-    {   "p", "peak", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "mode" },
-    {   "r", "rms",  0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "mode" },
-    { "ds", "set display scale", OFFSET(display_scale), AV_OPT_TYPE_INT, {.i64=LINEAR}, LINEAR, NB_DISPLAY_SCALE - 1, FLAGS, "display_scale" },
-    {   "lin", "linear", 0, AV_OPT_TYPE_CONST, {.i64=LINEAR}, 0, 0, FLAGS, "display_scale" },
-    {   "log", "log",  0, AV_OPT_TYPE_CONST, {.i64=LOG}, 0, 0, FLAGS, "display_scale" },
+    { "m", "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGS, .unit = "mode" },
+    {   "p", "peak", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, .unit = "mode" },
+    {   "r", "rms",  0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, .unit = "mode" },
+    { "ds", "set display scale", OFFSET(display_scale), AV_OPT_TYPE_INT, {.i64=LINEAR}, LINEAR, NB_DISPLAY_SCALE - 1, FLAGS, .unit = "display_scale" },
+    {   "lin", "linear", 0, AV_OPT_TYPE_CONST, {.i64=LINEAR}, 0, 0, FLAGS, .unit = "display_scale" },
+    {   "log", "log",  0, AV_OPT_TYPE_CONST, {.i64=LOG}, 0, 0, FLAGS, .unit = "display_scale" },
     { NULL }
 };
 
@@ -370,20 +370,13 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
             max = av_clipf(max, 0, 1);
             max_draw = calc_max_draw(s, outlink, max);
 
-            for (j = max_draw; j < s->w; j++) {
+            for (j = s->w - 1; j >= max_draw; j--) {
                 uint8_t *dst = s->out->data[0] + j * s->out->linesize[0] + c * (s->b + s->h) * 4;
                 for (k = 0; k < s->h; k++) {
                     AV_WN32A(&dst[k * 4], lut[s->w - j - 1]);
-                    if (j & step)
-                        j += step;
                 }
-            }
-
-            if (s->h >= 8 && s->draw_text) {
-                int ret = av_channel_name(channel_name, sizeof(channel_name), av_channel_layout_channel_from_index(&insamples->ch_layout, c));
-                if (ret < 0)
-                    continue;
-                drawtext(s->out, c * (s->h + s->b) + (s->h - 10) / 2, outlink->h - 35, channel_name, 1);
+                if (j & step)
+                    j -= step;
             }
 
             if (s->draw_persistent_duration > 0.) {
@@ -415,13 +408,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
                 }
             }
 
-            if (s->h >= 8 && s->draw_text) {
-                int ret = av_channel_name(channel_name, sizeof(channel_name), av_channel_layout_channel_from_index(&insamples->ch_layout, c));
-                if (ret < 0)
-                    continue;
-                drawtext(s->out, 2, c * (s->h + s->b) + (s->h - 8) / 2, channel_name, 0);
-            }
-
             if (s->draw_persistent_duration > 0.) {
                 calc_persistent_max(s, max, c);
                 max_draw = FFMAX(0, calc_max_draw(s, outlink, s->max_persistent[c]) - 1);
@@ -438,6 +424,21 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
     if (ret < 0) {
         av_frame_free(&out);
         return ret;
+    }
+
+    /* draw channel names */
+    for (c = 0; c < inlink->ch_layout.nb_channels && s->h >= 10 && s->draw_text; c++) {
+        if (s->orientation) { /* vertical */
+            int ret = av_channel_name(channel_name, sizeof(channel_name), av_channel_layout_channel_from_index(&inlink->ch_layout, c));
+            if (ret < 0)
+                continue;
+            drawtext(out, c * (s->h + s->b) + (s->h - 10) / 2, outlink->h - 35, channel_name, 1);
+        } else { /* horizontal */
+            int ret = av_channel_name(channel_name, sizeof(channel_name), av_channel_layout_channel_from_index(&inlink->ch_layout, c));
+            if (ret < 0)
+                continue;
+            drawtext(out, 2, c * (s->h + s->b) + (s->h - 8) / 2, channel_name, 0);
+        }
     }
 
     /* draw volume level */

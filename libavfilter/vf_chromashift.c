@@ -18,15 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avstring.h"
-#include "libavutil/eval.h"
 #include "libavutil/imgutils.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -367,9 +363,9 @@ static const AVOption chromashift_options[] = {
     { "cbv", "shift chroma-blue vertically",   OFFSET(cbv),  AV_OPT_TYPE_INT,   {.i64=0}, -255, 255, .flags = VFR },
     { "crh", "shift chroma-red horizontally",  OFFSET(crh),  AV_OPT_TYPE_INT,   {.i64=0}, -255, 255, .flags = VFR },
     { "crv", "shift chroma-red vertically",    OFFSET(crv),  AV_OPT_TYPE_INT,   {.i64=0}, -255, 255, .flags = VFR },
-    { "edge", "set edge operation",            OFFSET(edge), AV_OPT_TYPE_INT,   {.i64=0},    0,   1, .flags = VFR, "edge" },
-    { "smear",                              0,            0, AV_OPT_TYPE_CONST, {.i64=0},    0,   0, .flags = VFR, "edge" },
-    { "wrap",                               0,            0, AV_OPT_TYPE_CONST, {.i64=1},    0,   0, .flags = VFR, "edge" },
+    { "edge", "set edge operation",            OFFSET(edge), AV_OPT_TYPE_INT,   {.i64=0},    0,   1, .flags = VFR, .unit = "edge" },
+    { "smear",                              0,            0, AV_OPT_TYPE_CONST, {.i64=0},    0,   0, .flags = VFR, .unit = "edge" },
+    { "wrap",                               0,            0, AV_OPT_TYPE_CONST, {.i64=1},    0,   0, .flags = VFR, .unit = "edge" },
     { NULL },
 };
 
@@ -379,13 +375,6 @@ static const AVFilterPad inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
         .config_props = config_input,
-    },
-};
-
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
     },
 };
 
@@ -411,7 +400,7 @@ const AVFilter ff_vf_chromashift = {
     .description   = NULL_IF_CONFIG_SMALL("Shift chroma."),
     .priv_size     = sizeof(ChromaShiftContext),
     .priv_class    = &chromashift_class,
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_INPUTS(inputs),
     FILTER_PIXFMTS_ARRAY(yuv_pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
@@ -435,9 +424,9 @@ static const AVOption rgbashift_options[] = {
     { "bv", "shift blue vertically",    OFFSET(bv),   AV_OPT_TYPE_INT,   {.i64=0}, -255, 255, .flags = VFR },
     { "ah", "shift alpha horizontally", OFFSET(ah),   AV_OPT_TYPE_INT,   {.i64=0}, -255, 255, .flags = VFR },
     { "av", "shift alpha vertically",   OFFSET(av),   AV_OPT_TYPE_INT,   {.i64=0}, -255, 255, .flags = VFR },
-    { "edge", "set edge operation",     OFFSET(edge), AV_OPT_TYPE_INT,   {.i64=0},    0,   1, .flags = VFR, "edge" },
-    { "smear",                          0,         0, AV_OPT_TYPE_CONST, {.i64=0},    0,   0, .flags = VFR, "edge" },
-    { "wrap",                           0,         0, AV_OPT_TYPE_CONST, {.i64=1},    0,   0, .flags = VFR, "edge" },
+    { "edge", "set edge operation",     OFFSET(edge), AV_OPT_TYPE_INT,   {.i64=0},    0,   1, .flags = VFR, .unit = "edge" },
+    { "smear",                          0,         0, AV_OPT_TYPE_CONST, {.i64=0},    0,   0, .flags = VFR, .unit = "edge" },
+    { "wrap",                           0,         0, AV_OPT_TYPE_CONST, {.i64=1},    0,   0, .flags = VFR, .unit = "edge" },
     { NULL },
 };
 
@@ -448,7 +437,7 @@ const AVFilter ff_vf_rgbashift = {
     .description   = NULL_IF_CONFIG_SMALL("Shift RGBA."),
     .priv_size     = sizeof(ChromaShiftContext),
     .priv_class    = &rgbashift_class,
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_INPUTS(inputs),
     FILTER_PIXFMTS_ARRAY(rgb_pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

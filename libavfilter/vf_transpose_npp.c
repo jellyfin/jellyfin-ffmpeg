@@ -300,7 +300,7 @@ static int npptranspose_rotate(AVFilterContext *ctx, NPPTransposeStageContext *s
 
         // nppRotate uses 0,0 as the rotation point
         // need to shift the image accordingly after rotation
-        // need to substract 1 to get the correct coordinates
+        // need to subtract 1 to get the correct coordinates
         double angle = s->dir == NPP_TRANSPOSE_CLOCK ? -90.0 : s->dir == NPP_TRANSPOSE_CCLOCK ? 90.0 : 180.0;
         int shiftw = (s->dir == NPP_TRANSPOSE_CLOCK  || s->dir == NPP_TRANSPOSE_CLOCK_FLIP) ? ow - 1 : 0;
         int shifth = (s->dir == NPP_TRANSPOSE_CCLOCK || s->dir == NPP_TRANSPOSE_CLOCK_FLIP) ? oh - 1 : 0;
@@ -426,15 +426,15 @@ fail:
 #define FLAGS (AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM)
 
 static const AVOption options[] = {
-    { "dir", "set transpose direction", OFFSET(dir), AV_OPT_TYPE_INT, { .i64 = NPP_TRANSPOSE_CCLOCK_FLIP }, 0, 3, FLAGS, "dir" },
-        { "cclock_flip", "rotate counter-clockwise with vertical flip", 0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CCLOCK_FLIP }, 0, 0, FLAGS, "dir" },
-        { "clock",       "rotate clockwise",                            0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CLOCK       }, 0, 0, FLAGS, "dir" },
-        { "cclock",      "rotate counter-clockwise",                    0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CCLOCK      }, 0, 0, FLAGS, "dir" },
-        { "clock_flip",  "rotate clockwise with vertical flip",         0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CLOCK_FLIP  }, 0, 0, FLAGS, "dir" },
-    { "passthrough", "do not apply transposition if the input matches the specified geometry", OFFSET(passthrough), AV_OPT_TYPE_INT, { .i64 = NPP_TRANSPOSE_PT_TYPE_NONE },  0, 2, FLAGS, "passthrough" },
-        { "none",      "always apply transposition",  0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_PT_TYPE_NONE },      0, 0, FLAGS, "passthrough" },
-        { "landscape", "preserve landscape geometry", 0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_PT_TYPE_LANDSCAPE }, 0, 0, FLAGS, "passthrough" },
-        { "portrait",  "preserve portrait geometry",  0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_PT_TYPE_PORTRAIT },  0, 0, FLAGS, "passthrough" },
+    { "dir", "set transpose direction", OFFSET(dir), AV_OPT_TYPE_INT, { .i64 = NPP_TRANSPOSE_CCLOCK_FLIP }, 0, 3, FLAGS, .unit = "dir" },
+        { "cclock_flip", "rotate counter-clockwise with vertical flip", 0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CCLOCK_FLIP }, 0, 0, FLAGS, .unit = "dir" },
+        { "clock",       "rotate clockwise",                            0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CLOCK       }, 0, 0, FLAGS, .unit = "dir" },
+        { "cclock",      "rotate counter-clockwise",                    0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CCLOCK      }, 0, 0, FLAGS, .unit = "dir" },
+        { "clock_flip",  "rotate clockwise with vertical flip",         0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_CLOCK_FLIP  }, 0, 0, FLAGS, .unit = "dir" },
+    { "passthrough", "do not apply transposition if the input matches the specified geometry", OFFSET(passthrough), AV_OPT_TYPE_INT, { .i64 = NPP_TRANSPOSE_PT_TYPE_NONE },  0, 2, FLAGS, .unit = "passthrough" },
+        { "none",      "always apply transposition",  0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_PT_TYPE_NONE },      0, 0, FLAGS, .unit = "passthrough" },
+        { "landscape", "preserve landscape geometry", 0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_PT_TYPE_LANDSCAPE }, 0, 0, FLAGS, .unit = "passthrough" },
+        { "portrait",  "preserve portrait geometry",  0, AV_OPT_TYPE_CONST, { .i64 = NPP_TRANSPOSE_PT_TYPE_PORTRAIT },  0, 0, FLAGS, .unit = "passthrough" },
     { NULL },
 };
 

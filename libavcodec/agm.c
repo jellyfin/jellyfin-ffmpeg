@@ -1015,12 +1015,12 @@ static int build_huff(const uint8_t *bitlen, VLC *vlc)
         }
     }
 
-    ff_free_vlc(vlc);
-    return ff_init_vlc_sparse(vlc, 13, nb_codes,
+    ff_vlc_free(vlc);
+    return ff_vlc_init_sparse(vlc, 13, nb_codes,
                               bits, 1, 1,
                               codes, 4, 4,
                               symbols, 1, 1,
-                              INIT_VLC_LE);
+                              VLC_INIT_LE);
 }
 
 static int decode_huffman2(AVCodecContext *avctx, int header, int size)
@@ -1100,7 +1100,10 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
 
     s->key_frame = (avpkt->flags & AV_PKT_FLAG_KEY);
-    frame->key_frame = s->key_frame;
+    if (s->key_frame)
+        frame->flags |= AV_FRAME_FLAG_KEY;
+    else
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
     frame->pict_type = s->key_frame ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
     if (!s->key_frame) {
@@ -1171,7 +1174,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((ret = ff_get_buffer(avctx, frame, AV_GET_BUFFER_FLAG_REF)) < 0)
         return ret;
 
-    if (frame->key_frame) {
+    if (frame->flags & AV_FRAME_FLAG_KEY) {
         if (!s->dct && !s->rgb)
             ret = decode_raw_intra(avctx, gbyte, frame);
         else if (!s->dct && s->rgb)
@@ -1200,8 +1203,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if (ret < 0)
         return ret;
 
-    av_frame_unref(s->prev_frame);
-    if ((ret = av_frame_ref(s->prev_frame, frame)) < 0)
+    if ((ret = av_frame_replace(s->prev_frame, frame)) < 0)
         return ret;
 
     frame->crop_top  = avctx->coded_height - avctx->height;
@@ -1253,7 +1255,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
 {
     AGMContext *s = avctx->priv_data;
 
-    ff_free_vlc(&s->vlc);
+    ff_vlc_free(&s->vlc);
     av_frame_free(&s->prev_frame);
     av_freep(&s->mvectors);
     s->mvectors_size = 0;

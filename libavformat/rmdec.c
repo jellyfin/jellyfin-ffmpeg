@@ -51,8 +51,8 @@ struct RMStream {
     int64_t audiotimestamp; ///< Audio packet timestamp
     int sub_packet_cnt; // Subpacket counter, used while reading
     int sub_packet_size, sub_packet_h, coded_framesize; ///< Descrambling parameters from container
-    int audio_framesize; /// Audio frame size from container
-    int sub_packet_lengths[16]; /// Length of each subpacket
+    int audio_framesize; ///< Audio frame size from container
+    int sub_packet_lengths[16]; ///< Length of each subpacket
     int32_t deint_id;  ///< deinterleaver used in audio stream
 };
 
@@ -267,9 +267,9 @@ static int rm_read_audio_stream_info(AVFormatContext *s, AVIOContext *pb,
         case DEINT_ID_INT4:
             if (ast->coded_framesize > ast->audio_framesize ||
                 sub_packet_h <= 1 ||
-                ast->coded_framesize * (uint64_t)sub_packet_h > (2 + (sub_packet_h & 1)) * ast->audio_framesize)
+                ast->coded_framesize * (uint64_t)sub_packet_h > (2LL + (sub_packet_h & 1)) * ast->audio_framesize)
                 return AVERROR_INVALIDDATA;
-            if (ast->coded_framesize * (uint64_t)sub_packet_h != 2*ast->audio_framesize) {
+            if (ast->coded_framesize * (uint64_t)sub_packet_h != 2LL*ast->audio_framesize) {
                 avpriv_request_sample(s, "mismatching interleaver parameters");
                 return AVERROR_INVALIDDATA;
             }
@@ -1145,11 +1145,11 @@ static int rm_read_seek(AVFormatContext *s, int stream_index,
 }
 
 
-const AVInputFormat ff_rm_demuxer = {
-    .name           = "rm",
-    .long_name      = NULL_IF_CONFIG_SMALL("RealMedia"),
+const FFInputFormat ff_rm_demuxer = {
+    .p.name         = "rm",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("RealMedia"),
     .priv_data_size = sizeof(RMDemuxContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = rm_probe,
     .read_header    = rm_read_header,
     .read_packet    = rm_read_packet,
@@ -1158,12 +1158,12 @@ const AVInputFormat ff_rm_demuxer = {
     .read_seek      = rm_read_seek,
 };
 
-const AVInputFormat ff_rdt_demuxer = {
-    .name           = "rdt",
-    .long_name      = NULL_IF_CONFIG_SMALL("RDT demuxer"),
+const FFInputFormat ff_rdt_demuxer = {
+    .p.name         = "rdt",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("RDT demuxer"),
+    .p.flags        = AVFMT_NOFILE,
     .priv_data_size = sizeof(RMDemuxContext),
     .read_close     = rm_read_close,
-    .flags          = AVFMT_NOFILE,
 };
 
 static int ivr_probe(const AVProbeData *p)
@@ -1398,14 +1398,14 @@ static int ivr_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-const AVInputFormat ff_ivr_demuxer = {
-    .name           = "ivr",
-    .long_name      = NULL_IF_CONFIG_SMALL("IVR (Internet Video Recording)"),
+const FFInputFormat ff_ivr_demuxer = {
+    .p.name         = "ivr",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("IVR (Internet Video Recording)"),
+    .p.extensions   = "ivr",
     .priv_data_size = sizeof(RMDemuxContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = ivr_probe,
     .read_header    = ivr_read_header,
     .read_packet    = ivr_read_packet,
     .read_close     = rm_read_close,
-    .extensions     = "ivr",
 };

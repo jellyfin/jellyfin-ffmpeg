@@ -23,11 +23,11 @@
 
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
-#include "libavcodec/avcodec.h"
 #include "libavcodec/av1_parse.h"
 #include "libavcodec/bsf.h"
 #include "avformat.h"
 #include "avio_internal.h"
+#include "demux.h"
 #include "internal.h"
 
 typedef struct AV1DemuxContext {
@@ -80,7 +80,7 @@ static int av1_read_header(AVFormatContext *s)
     st->codecpar->codec_id = AV_CODEC_ID_AV1;
     sti->need_parsing = AVSTREAM_PARSE_HEADERS;
 
-    sti->avctx->framerate = c->framerate;
+    st->avg_frame_rate = c->framerate;
     // taken from rawvideo demuxers
     avpriv_set_pts_info(st, 64, 1, 1200000);
 
@@ -124,13 +124,16 @@ static const AVClass av1_demuxer_class = {
 
 #if CONFIG_AV1_DEMUXER
 
-static int leb(AVIOContext *pb, uint32_t *len) {
+static int leb(AVIOContext *pb, uint32_t *len, int eof) {
     int more, i = 0;
-    uint8_t byte;
     *len = 0;
     do {
         unsigned bits;
-        byte = avio_r8(pb);
+        int byte = avio_r8(pb);
+        if (pb->error)
+            return pb->error;
+        if (pb->eof_reached)
+            return (eof && !i) ? AVERROR_EOF : AVERROR_INVALIDDATA;
         more = byte & 0x80;
         bits = byte & 0x7f;
         if (i <= 3 || (i == 4 && bits < (1 << 4)))
@@ -139,8 +142,6 @@ static int leb(AVIOContext *pb, uint32_t *len) {
             return AVERROR_INVALIDDATA;
         if (++i == 8 && more)
             return AVERROR_INVALIDDATA;
-        if (pb->eof_reached || pb->error)
-            return pb->error ? pb->error : AVERROR(EIO);
     } while (more);
     return i;
 }
@@ -167,18 +168,17 @@ static int annexb_probe(const AVProbeData *p)
     int seq = 0;
     int ret, type, cnt = 0;
 
-    ffio_init_context(&ctx, p->buf, p->buf_size, 0,
-                      NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&ctx, p->buf, p->buf_size);
 
-    ret = leb(pb, &temporal_unit_size);
+    ret = leb(pb, &temporal_unit_size, 1);
     if (ret < 0)
         return 0;
     cnt += ret;
-    ret = leb(pb, &frame_unit_size);
+    ret = leb(pb, &frame_unit_size, 0);
     if (ret < 0 || ((int64_t)frame_unit_size + ret) > temporal_unit_size)
         return 0;
     cnt += ret;
-    ret = leb(pb, &obu_unit_size);
+    ret = leb(pb, &obu_unit_size, 0);
     if (ret < 0 || ((int64_t)obu_unit_size + ret) >= frame_unit_size)
         return 0;
     cnt += ret;
@@ -196,7 +196,7 @@ static int annexb_probe(const AVProbeData *p)
     cnt += obu_unit_size;
 
     do {
-        ret = leb(pb, &obu_unit_size);
+        ret = leb(pb, &obu_unit_size, 0);
         if (ret < 0 || ((int64_t)obu_unit_size + ret) > frame_unit_size)
             return 0;
         cnt += ret;
@@ -229,31 +229,36 @@ static int annexb_read_packet(AVFormatContext *s, AVPacket *pkt)
 retry:
     if (avio_feof(s->pb)) {
         if (c->temporal_unit_size || c->frame_unit_size)
-            return AVERROR(EIO);
+            return AVERROR_INVALIDDATA;
         goto end;
     }
 
     if (!c->temporal_unit_size) {
-        len = leb(s->pb, &c->temporal_unit_size);
-        if (len < 0) return AVERROR_INVALIDDATA;
+        len = leb(s->pb, &c->temporal_unit_size, 1);
+        if (len == AVERROR_EOF) goto end;
+        else if (len < 0) return len;
     }
 
     if (!c->frame_unit_size) {
-        len = leb(s->pb, &c->frame_unit_size);
-        if (len < 0 || ((int64_t)c->frame_unit_size + len) > c->temporal_unit_size)
+        len = leb(s->pb, &c->frame_unit_size, 0);
+        if (len < 0)
+            return len;
+        if (((int64_t)c->frame_unit_size + len) > c->temporal_unit_size)
             return AVERROR_INVALIDDATA;
         c->temporal_unit_size -= len;
     }
 
-    len = leb(s->pb, &obu_unit_size);
-    if (len < 0 || ((int64_t)obu_unit_size + len) > c->frame_unit_size)
+    len = leb(s->pb, &obu_unit_size, 0);
+    if (len < 0)
+        return len;
+    if (((int64_t)obu_unit_size + len) > c->frame_unit_size)
         return AVERROR_INVALIDDATA;
 
     ret = av_get_packet(s->pb, pkt, obu_unit_size);
     if (ret < 0)
         return ret;
     if (ret != obu_unit_size)
-        return AVERROR(EIO);
+        return AVERROR_INVALIDDATA;
 
     c->temporal_unit_size -= obu_unit_size + len;
     c->frame_unit_size -= obu_unit_size + len;
@@ -277,18 +282,18 @@ end:
     return ret;
 }
 
-const AVInputFormat ff_av1_demuxer = {
-    .name           = "av1",
-    .long_name      = NULL_IF_CONFIG_SMALL("AV1 Annex B"),
+const FFInputFormat ff_av1_demuxer = {
+    .p.name         = "av1",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AV1 Annex B"),
+    .p.extensions   = "obu",
+    .p.flags        = AVFMT_GENERIC_INDEX | AVFMT_NOTIMESTAMPS,
+    .p.priv_class   = &av1_demuxer_class,
     .priv_data_size = sizeof(AV1DemuxContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = annexb_probe,
     .read_header    = av1_read_header,
     .read_packet    = annexb_read_packet,
     .read_close     = av1_read_close,
-    .extensions     = "obu",
-    .flags          = AVFMT_GENERIC_INDEX,
-    .priv_class     = &av1_demuxer_class,
 };
 #endif
 
@@ -321,7 +326,7 @@ static int read_obu_with_size(const uint8_t *buf, int buf_size, int64_t *obu_siz
         skip_bits(&gb, 3);  // extension_header_reserved_3bits
     }
 
-    *obu_size  = leb128(&gb);
+    *obu_size  = get_leb128(&gb);
     if (*obu_size > INT_MAX)
         return AVERROR_INVALIDDATA;
 
@@ -422,17 +427,17 @@ static int obu_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-const AVInputFormat ff_obu_demuxer = {
-    .name           = "obu",
-    .long_name      = NULL_IF_CONFIG_SMALL("AV1 low overhead OBU"),
+const FFInputFormat ff_obu_demuxer = {
+    .p.name         = "obu",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AV1 low overhead OBU"),
+    .p.extensions   = "obu",
+    .p.flags        = AVFMT_GENERIC_INDEX | AVFMT_NO_BYTE_SEEK | AVFMT_NOTIMESTAMPS,
+    .p.priv_class   = &av1_demuxer_class,
     .priv_data_size = sizeof(AV1DemuxContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = obu_probe,
     .read_header    = av1_read_header,
     .read_packet    = obu_read_packet,
     .read_close     = av1_read_close,
-    .extensions     = "obu",
-    .flags          = AVFMT_GENERIC_INDEX | AVFMT_NO_BYTE_SEEK,
-    .priv_class     = &av1_demuxer_class,
 };
 #endif

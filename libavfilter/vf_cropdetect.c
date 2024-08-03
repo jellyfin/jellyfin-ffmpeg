@@ -30,7 +30,6 @@
 #include "libavutil/qsort.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "edge_common.h"
@@ -475,9 +474,9 @@ static const AVOption cropdetect_options[] = {
     { "skip",  "Number of initial frames to skip",                    OFFSET(skip),        AV_OPT_TYPE_INT, { .i64 = 2 },  0, INT_MAX, FLAGS },
     { "reset_count", "Recalculate the crop area after this many frames",OFFSET(reset_count),AV_OPT_TYPE_INT,{ .i64 = 0 },  0, INT_MAX, FLAGS },
     { "max_outliers", "Threshold count of outliers",                  OFFSET(max_outliers),AV_OPT_TYPE_INT, { .i64 = 0 },  0, INT_MAX, FLAGS },
-    { "mode", "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=MODE_BLACK}, 0, MODE_NB-1, FLAGS, "mode" },
-        { "black",    "detect black pixels surrounding the video",     0, AV_OPT_TYPE_CONST, {.i64=MODE_BLACK},    INT_MIN, INT_MAX, FLAGS, "mode" },
-        { "mvedges",  "detect motion and edged surrounding the video", 0, AV_OPT_TYPE_CONST, {.i64=MODE_MV_EDGES}, INT_MIN, INT_MAX, FLAGS, "mode" },
+    { "mode", "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=MODE_BLACK}, 0, MODE_NB-1, FLAGS, .unit = "mode" },
+        { "black",    "detect black pixels surrounding the video",     0, AV_OPT_TYPE_CONST, {.i64=MODE_BLACK},    INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
+        { "mvedges",  "detect motion and edged surrounding the video", 0, AV_OPT_TYPE_CONST, {.i64=MODE_MV_EDGES}, INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
     { "high", "Set high threshold for edge detection",                OFFSET(high),        AV_OPT_TYPE_FLOAT, {.dbl=25/255.}, 0, 1, FLAGS },
     { "low", "Set low threshold for edge detection",                  OFFSET(low),         AV_OPT_TYPE_FLOAT, {.dbl=15/255.}, 0, 1, FLAGS },
     { "mv_threshold", "motion vector threshold when estimating video window size", OFFSET(mv_threshold), AV_OPT_TYPE_INT, {.i64=8}, 0, 100, FLAGS},
@@ -495,13 +494,6 @@ static const AVFilterPad avfilter_vf_cropdetect_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_cropdetect_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO
-    },
-};
-
 const AVFilter ff_vf_cropdetect = {
     .name          = "cropdetect",
     .description   = NULL_IF_CONFIG_SMALL("Auto-detect crop size."),
@@ -510,7 +502,7 @@ const AVFilter ff_vf_cropdetect = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_cropdetect_inputs),
-    FILTER_OUTPUTS(avfilter_vf_cropdetect_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_METADATA_ONLY,
     .process_command = process_command,

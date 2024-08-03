@@ -23,6 +23,7 @@
 #include "avcodec.h"
 #include "nvdec.h"
 #include "decode.h"
+#include "hwaccel_internal.h"
 #include "internal.h"
 #include "av1dec.h"
 
@@ -302,7 +303,7 @@ static int nvdec_av1_decode_slice(AVCodecContext *avctx, const uint8_t *buffer, 
 
     /* Shortcut if all tiles are in the same buffer */
     if (ctx->nb_slices == s->tg_end - s->tg_start + 1) {
-        ctx->bitstream = (uint8_t*)buffer;
+        ctx->bitstream = buffer;
         ctx->bitstream_len = size;
 
         for (int i = 0; i < ctx->nb_slices; ++i) {
@@ -320,7 +321,7 @@ static int nvdec_av1_decode_slice(AVCodecContext *avctx, const uint8_t *buffer, 
     }
     ctx->bitstream = ctx->bitstream_internal = tmp;
 
-    memcpy(ctx->bitstream + ctx->bitstream_len, buffer, size);
+    memcpy(ctx->bitstream_internal + ctx->bitstream_len, buffer, size);
 
     for (uint32_t tile_num = s->tg_start; tile_num <= s->tg_end; ++tile_num) {
         ctx->slice_offsets[tile_num*2    ] = ctx->bitstream_len + s->tile_group_info[tile_num].tile_offset;
@@ -337,11 +338,11 @@ static int nvdec_av1_frame_params(AVCodecContext *avctx, AVBufferRef *hw_frames_
     return ff_nvdec_frame_params(avctx, hw_frames_ctx, 8 * 2, 0);
 }
 
-const AVHWAccel ff_av1_nvdec_hwaccel = {
-    .name                 = "av1_nvdec",
-    .type                 = AVMEDIA_TYPE_VIDEO,
-    .id                   = AV_CODEC_ID_AV1,
-    .pix_fmt              = AV_PIX_FMT_CUDA,
+const FFHWAccel ff_av1_nvdec_hwaccel = {
+    .p.name               = "av1_nvdec",
+    .p.type               = AVMEDIA_TYPE_VIDEO,
+    .p.id                 = AV_CODEC_ID_AV1,
+    .p.pix_fmt            = AV_PIX_FMT_CUDA,
     .start_frame          = nvdec_av1_start_frame,
     .end_frame            = ff_nvdec_simple_end_frame,
     .decode_slice         = nvdec_av1_decode_slice,

@@ -23,7 +23,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 
 #define MAX_OVERSAMPLE 64
 
@@ -69,16 +68,16 @@ typedef struct ASoftClipContext {
 #define A AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption asoftclip_options[] = {
-    { "type", "set softclip type", OFFSET(type), AV_OPT_TYPE_INT,    {.i64=0},         -1, NB_TYPES-1, A, "types" },
-    { "hard",                NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_HARD},   0,          0, A, "types" },
-    { "tanh",                NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_TANH},   0,          0, A, "types" },
-    { "atan",                NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_ATAN},   0,          0, A, "types" },
-    { "cubic",               NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_CUBIC},  0,          0, A, "types" },
-    { "exp",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_EXP},    0,          0, A, "types" },
-    { "alg",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_ALG},    0,          0, A, "types" },
-    { "quintic",             NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_QUINTIC},0,          0, A, "types" },
-    { "sin",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_SIN},    0,          0, A, "types" },
-    { "erf",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_ERF},    0,          0, A, "types" },
+    { "type", "set softclip type", OFFSET(type), AV_OPT_TYPE_INT,    {.i64=0},         -1, NB_TYPES-1, A, .unit = "types" },
+    { "hard",                NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_HARD},   0,          0, A, .unit = "types" },
+    { "tanh",                NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_TANH},   0,          0, A, .unit = "types" },
+    { "atan",                NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_ATAN},   0,          0, A, .unit = "types" },
+    { "cubic",               NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_CUBIC},  0,          0, A, .unit = "types" },
+    { "exp",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_EXP},    0,          0, A, .unit = "types" },
+    { "alg",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_ALG},    0,          0, A, .unit = "types" },
+    { "quintic",             NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_QUINTIC},0,          0, A, .unit = "types" },
+    { "sin",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_SIN},    0,          0, A, .unit = "types" },
+    { "erf",                 NULL,            0, AV_OPT_TYPE_CONST,  {.i64=ASC_ERF},    0,          0, A, .unit = "types" },
     { "threshold", "set softclip threshold", OFFSET(threshold), AV_OPT_TYPE_DOUBLE, {.dbl=1}, 0.000001, 1, A },
     { "output", "set softclip output gain", OFFSET(output), AV_OPT_TYPE_DOUBLE, {.dbl=1}, 0.000001, 16, A },
     { "param", "set softclip parameter", OFFSET(param), AV_OPT_TYPE_DOUBLE, {.dbl=1}, 0.01,        3, A },
@@ -473,20 +472,13 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_asoftclip = {
     .name           = "asoftclip",
     .description    = NULL_IF_CONFIG_SMALL("Audio Soft Clipper."),
     .priv_size      = sizeof(ASoftClipContext),
     .priv_class     = &asoftclip_class,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .uninit         = uninit,
     .process_command = ff_filter_process_command,

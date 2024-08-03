@@ -112,7 +112,7 @@ static int parse_header(OutputStream *os, const uint8_t *buf, int buf_size)
     return 0;
 }
 
-static int hds_write(void *opaque, uint8_t *buf, int buf_size)
+static int hds_write(void *opaque, const uint8_t *buf, int buf_size)
 {
     OutputStream *os = opaque;
     if (os->out) {

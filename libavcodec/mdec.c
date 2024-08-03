@@ -68,7 +68,7 @@ static inline int mdec_decode_block_intra(MDECContext *a, int16_t *block, int n)
     const int qscale = a->qscale;
 
     /* DC coefficient */
-    if (a->version == 2) {
+    if (a->version <= 2) {
         block[0] = 2 * get_sbits(&a->gb, 10) + 1024;
     } else {
         component = (n <= 3 ? 0 : n - 4 + 1);
@@ -177,7 +177,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
         return ret;
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
 
     av_fast_padded_malloc(&a->bitstream_buffer, &a->bitstream_buffer_size, buf_size);
     if (!a->bitstream_buffer)

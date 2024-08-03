@@ -83,6 +83,11 @@ typedef void ID3D11Device;
 #define NVENC_NO_DEPRECATED_RC
 #endif
 
+// SDK 12.2 compile time feature checks
+#if NVENCAPI_CHECK_VERSION(12, 2)
+#define NVENC_HAVE_NEW_BIT_DEPTH_API
+#endif
+
 typedef struct NvencSurface
 {
     NV_ENC_INPUT_PTR input_surface;
@@ -99,10 +104,6 @@ typedef struct NvencSurface
 typedef struct NvencFrameData
 {
     int64_t duration;
-
-#if FF_API_REORDERED_OPAQUE
-    int64_t reordered_opaque;
-#endif
 
     void        *frame_opaque;
     AVBufferRef *frame_opaque_ref;
@@ -166,6 +167,12 @@ enum {
 enum {
     LIST_DEVICES = -2,
     ANY_DEVICE,
+};
+
+enum {
+    NVENC_RGB_MODE_DISABLED,
+    NVENC_RGB_MODE_420,
+    NVENC_RGB_MODE_444,
 };
 
 typedef struct NvencContext
@@ -262,6 +269,8 @@ typedef struct NvencContext
     int udu_sei;
     int timing_info;
     int highbitdepth;
+    int max_slice_size;
+    int rgb_mode;
 } NvencContext;
 
 int ff_nvenc_encode_init(AVCodecContext *avctx);

@@ -31,7 +31,9 @@
 #include "libavutil/eval.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 #define MAX_NB_THREADS 32
 #define NB_PLANES 4
@@ -84,12 +86,12 @@ static const AVOption geq_options[] = {
     { "g",          "set green expression",       OFFSET(expr_str[G]), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
     { "blue_expr",  "set blue expression",        OFFSET(expr_str[B]), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
     { "b",          "set blue expression",        OFFSET(expr_str[B]), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
-    { "interpolation","set interpolation method", OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, "interp" },
-    { "i",          "set interpolation method",   OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, "interp" },
-    { "nearest",    "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, "interp" },
-    { "n",          "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, "interp" },
-    { "bilinear",   "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, "interp" },
-    { "b",          "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, "interp" },
+    { "interpolation","set interpolation method", OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, .unit = "interp" },
+    { "i",          "set interpolation method",   OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, .unit = "interp" },
+    { "nearest",    "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, .unit = "interp" },
+    { "n",          "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, .unit = "interp" },
+    { "bilinear",   "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, .unit = "interp" },
+    { "b",          "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, .unit = "interp" },
     {NULL},
 };
 
@@ -515,13 +517,6 @@ static const AVFilterPad geq_inputs[] = {
     },
 };
 
-static const AVFilterPad geq_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_geq = {
     .name          = "geq",
     .description   = NULL_IF_CONFIG_SMALL("Apply generic equation to each pixel."),
@@ -529,7 +524,7 @@ const AVFilter ff_vf_geq = {
     .init          = geq_init,
     .uninit        = geq_uninit,
     FILTER_INPUTS(geq_inputs),
-    FILTER_OUTPUTS(geq_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(geq_query_formats),
     .priv_class    = &geq_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

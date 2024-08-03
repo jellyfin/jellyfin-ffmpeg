@@ -167,7 +167,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     LclDecContext * const c = avctx->priv_data;
-    unsigned int pixel_ptr;
+    ptrdiff_t pixel_ptr;
     int row, col;
     unsigned char *encoded = avpkt->data, *outptr;
     uint8_t *y_out, *u_out, *v_out;
@@ -221,7 +221,9 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                 if (c->decomp_size != mszh_dlen) {
                     av_log(avctx, AV_LOG_ERROR, "Decoded size differs (%d != %d)\n",
                            c->decomp_size, mszh_dlen);
-                    return AVERROR_INVALIDDATA;
+                    if (c->decomp_size != mszh_dlen &&
+                        c->decomp_size != mszh_dlen + 2) // YUV420 306x306 is missing 2 bytes
+                        return AVERROR_INVALIDDATA;
                 }
                 encoded = c->decomp_buf;
                 len = mszh_dlen;
@@ -479,7 +481,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
     }
 
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     frame->pict_type = AV_PICTURE_TYPE_I;
 
     *got_frame = 1;

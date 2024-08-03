@@ -28,6 +28,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "dxv.h"
 #include "lzf.h"
 #include "texturedsp.h"
 #include "thread.h"
@@ -37,215 +38,14 @@ typedef struct DXVContext {
     GetByteContext gbc;
 
     uint8_t *tex_data;   // Compressed texture
-    uint8_t *ctex_data;  // Compressed texture
-    int tex_rat;         // Compression ratio
-    int tex_step;        // Distance between blocks
-    int ctex_step;       // Distance between blocks
-    int64_t tex_size;    // Texture size
-    int64_t ctex_size;   // Texture size
+    uint8_t *ctex_data;  // Compressed chroma texture
 
-    /* Optimal number of slices for parallel decoding */
-    int slice_count;
+    int64_t tex_size;    // Texture size
+    int64_t ctex_size;   // Chroma texture size
 
     uint8_t *op_data[4]; // Opcodes
     int64_t op_size[4];  // Opcodes size
-
-    int texture_block_w;
-    int texture_block_h;
-
-    int ctexture_block_w;
-    int ctexture_block_h;
-
-    /* Pointer to the selected decompression function */
-    int (*tex_funct)(uint8_t *dst, ptrdiff_t stride, const uint8_t *block);
-    int (*tex_funct_planar[2])(uint8_t *plane0, ptrdiff_t stride0,
-                               uint8_t *plane1, ptrdiff_t stride1,
-                               const uint8_t *block);
 } DXVContext;
-
-static void decompress_indices(uint8_t *dst, const uint8_t *src)
-{
-    int block, i;
-
-    for (block = 0; block < 2; block++) {
-        int tmp = AV_RL24(src);
-
-        /* Unpack 8x3 bit from last 3 byte block */
-        for (i = 0; i < 8; i++)
-            dst[i] = (tmp >> (i * 3)) & 0x7;
-
-        src += 3;
-        dst += 8;
-    }
-}
-
-static int extract_component(int yo0, int yo1, int code)
-{
-    int yo;
-
-    if (yo0 == yo1) {
-        yo = yo0;
-    } else if (code == 0) {
-        yo = yo0;
-    } else if (code == 1) {
-        yo = yo1;
-    } else {
-        if (yo0 > yo1) {
-            yo = (uint8_t) (((8 - code) * yo0 +
-                             (code - 1) * yo1) / 7);
-        } else {
-            if (code == 6) {
-                yo = 0;
-            } else if (code == 7) {
-                yo = 255;
-            } else {
-                yo = (uint8_t) (((6 - code) * yo0 +
-                                 (code - 1) * yo1) / 5);
-            }
-        }
-    }
-
-    return yo;
-}
-
-static int cocg_block(uint8_t *plane0, ptrdiff_t stride0,
-                      uint8_t *plane1, ptrdiff_t stride1,
-                      const uint8_t *block)
-{
-    uint8_t co_indices[16];
-    uint8_t cg_indices[16];
-    uint8_t co0 = *(block);
-    uint8_t co1 = *(block + 1);
-    uint8_t cg0 = *(block + 8);
-    uint8_t cg1 = *(block + 9);
-    int x, y;
-
-    decompress_indices(co_indices, block + 2);
-    decompress_indices(cg_indices, block + 10);
-
-    for (y = 0; y < 4; y++) {
-        for (x = 0; x < 4; x++) {
-            int co_code = co_indices[x + y * 4];
-            int cg_code = cg_indices[x + y * 4];
-
-            plane0[x] = extract_component(cg0, cg1, cg_code);
-            plane1[x] = extract_component(co0, co1, co_code);
-        }
-        plane0 += stride0;
-        plane1 += stride1;
-    }
-
-    return 16;
-}
-
-static void yao_subblock(uint8_t *dst, uint8_t *yo_indices,
-                        ptrdiff_t stride, const uint8_t *block)
-{
-    uint8_t yo0 = *(block);
-    uint8_t yo1 = *(block + 1);
-    int x, y;
-
-    decompress_indices(yo_indices, block + 2);
-
-    for (y = 0; y < 4; y++) {
-        for (x = 0; x < 4; x++) {
-            int yo_code = yo_indices[x + y * 4];
-
-            dst[x] = extract_component(yo0, yo1, yo_code);
-        }
-        dst += stride;
-    }
-}
-
-static int yo_block(uint8_t *dst, ptrdiff_t stride,
-                    uint8_t *unused0, ptrdiff_t unused1,
-                    const uint8_t *block)
-{
-    uint8_t yo_indices[16];
-
-    yao_subblock(dst,      yo_indices, stride, block);
-    yao_subblock(dst + 4,  yo_indices, stride, block + 8);
-    yao_subblock(dst + 8,  yo_indices, stride, block + 16);
-    yao_subblock(dst + 12, yo_indices, stride, block + 24);
-
-    return 32;
-}
-
-static int yao_block(uint8_t *plane0, ptrdiff_t stride0,
-                     uint8_t *plane3, ptrdiff_t stride1,
-                     const uint8_t *block)
-{
-    uint8_t yo_indices[16];
-    uint8_t a_indices[16];
-
-    yao_subblock(plane0,      yo_indices, stride0, block);
-    yao_subblock(plane3,      a_indices,  stride1, block + 8);
-    yao_subblock(plane0 + 4,  yo_indices, stride0, block + 16);
-    yao_subblock(plane3 + 4,  a_indices,  stride1, block + 24);
-    yao_subblock(plane0 + 8,  yo_indices, stride0, block + 32);
-    yao_subblock(plane3 + 8,  a_indices,  stride1, block + 40);
-    yao_subblock(plane0 + 12, yo_indices, stride0, block + 48);
-    yao_subblock(plane3 + 12, a_indices,  stride1, block + 56);
-
-    return 64;
-}
-
-static int decompress_texture_thread(AVCodecContext *avctx, void *arg,
-                                     int slice, int thread_nb)
-{
-    const DXVContext *ctx = avctx->priv_data;
-    AVFrame *frame = arg;
-    const uint8_t *d = ctx->tex_data;
-    int w_block = avctx->coded_width / ctx->texture_block_w;
-    int h_block = avctx->coded_height / ctx->texture_block_h;
-    int x, y;
-    int start_slice, end_slice;
-
-    start_slice = h_block * slice / ctx->slice_count;
-    end_slice = h_block * (slice + 1) / ctx->slice_count;
-
-    if (ctx->tex_funct) {
-        for (y = start_slice; y < end_slice; y++) {
-            uint8_t *p = frame->data[0] + y * frame->linesize[0] * ctx->texture_block_h;
-            int off = y * w_block;
-            for (x = 0; x < w_block; x++) {
-                ctx->tex_funct(p + x * 4 * ctx->texture_block_w, frame->linesize[0],
-                               d + (off + x) * ctx->tex_step);
-            }
-        }
-    } else {
-        const uint8_t *c = ctx->ctex_data;
-
-        for (y = start_slice; y < end_slice; y++) {
-            uint8_t *p0 = frame->data[0] + y * frame->linesize[0] * ctx->texture_block_h;
-            uint8_t *p3 = ctx->tex_step != 64 ? NULL : frame->data[3] + y * frame->linesize[3] * ctx->texture_block_h;
-            int off = y * w_block;
-            for (x = 0; x < w_block; x++) {
-                ctx->tex_funct_planar[0](p0 + x * ctx->texture_block_w, frame->linesize[0],
-                                         p3 != NULL ? p3 + x * ctx->texture_block_w : NULL, frame->linesize[3],
-                                         d + (off + x) * ctx->tex_step);
-            }
-        }
-
-        w_block = (avctx->coded_width / 2) / ctx->ctexture_block_w;
-        h_block = (avctx->coded_height / 2) / ctx->ctexture_block_h;
-        start_slice = h_block * slice / ctx->slice_count;
-        end_slice = h_block * (slice + 1) / ctx->slice_count;
-
-        for (y = start_slice; y < end_slice; y++) {
-            uint8_t *p0 = frame->data[1] + y * frame->linesize[1] * ctx->ctexture_block_h;
-            uint8_t *p1 = frame->data[2] + y * frame->linesize[2] * ctx->ctexture_block_h;
-            int off = y * w_block;
-            for (x = 0; x < w_block; x++) {
-                ctx->tex_funct_planar[1](p0 + x * ctx->ctexture_block_w, frame->linesize[1],
-                                         p1 + x * ctx->ctexture_block_w, frame->linesize[2],
-                                         c + (off + x) * ctx->ctex_step);
-            }
-        }
-    }
-
-    return 0;
-}
 
 /* This scheme addresses already decoded elements depending on 2-bit status:
  *   0 -> copy new element
@@ -440,7 +240,7 @@ static int get_opcodes(GetByteContext *gb, uint32_t *table, uint8_t *dst, int op
 
     size_in_bits = bytestream2_get_le32(gb);
     endoffset = ((size_in_bits + 7) >> 3) - 4;
-    if (endoffset <= 0 || bytestream2_get_bytes_left(gb) < endoffset)
+    if ((int)endoffset <= 0 || bytestream2_get_bytes_left(gb) < endoffset)
         return AVERROR_INVALIDDATA;
 
     offset = endoffset;
@@ -955,7 +755,7 @@ static int dxv_decompress_dxt5(AVCodecContext *avctx)
                 break;
             case 2:
                 /* Copy two dwords from a previous index */
-                idx = 8 + bytestream2_get_le16(gbc);
+                idx = 8 + 4 * bytestream2_get_le16(gbc);
                 if (idx > pos || (unsigned int)(pos - idx) + 2 > ctx->tex_size / 4)
                     return AVERROR_INVALIDDATA;
                 prev = AV_RL32(ctx->tex_data + 4 * (pos - idx));
@@ -1043,6 +843,7 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
 {
     DXVContext *ctx = avctx->priv_data;
     GetByteContext *gbc = &ctx->gbc;
+    TextureDSPThreadContext texdsp_ctx, ctexdsp_ctx;
     int (*decompress_tex)(AVCodecContext *avctx);
     const char *msgcomp, *msgtext;
     uint32_t tag;
@@ -1052,65 +853,51 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
 
     bytestream2_init(gbc, avpkt->data, avpkt->size);
 
-    ctx->texture_block_h = 4;
-    ctx->texture_block_w = 4;
-
     avctx->pix_fmt = AV_PIX_FMT_RGBA;
     avctx->colorspace = AVCOL_SPC_RGB;
 
-    ctx->tex_funct = NULL;
-    ctx->tex_funct_planar[0] = NULL;
-    ctx->tex_funct_planar[1] = NULL;
-
     tag = bytestream2_get_le32(gbc);
     switch (tag) {
-    case MKBETAG('D', 'X', 'T', '1'):
+    case DXV_FMT_DXT1:
         decompress_tex = dxv_decompress_dxt1;
-        ctx->tex_funct = ctx->texdsp.dxt1_block;
-        ctx->tex_rat   = 8;
-        ctx->tex_step  = 8;
+        texdsp_ctx.tex_funct = ctx->texdsp.dxt1_block;
+        texdsp_ctx.tex_ratio = 8;
+        texdsp_ctx.raw_ratio = 16;
         msgcomp = "DXTR1";
         msgtext = "DXT1";
         break;
-    case MKBETAG('D', 'X', 'T', '5'):
+    case DXV_FMT_DXT5:
         decompress_tex = dxv_decompress_dxt5;
-        ctx->tex_funct = ctx->texdsp.dxt5_block;
-        ctx->tex_rat   = 4;
-        ctx->tex_step  = 16;
+        /* DXV misnomers DXT5, alpha is premultiplied so use DXT4 instead */
+        texdsp_ctx.tex_funct = ctx->texdsp.dxt4_block;
+        texdsp_ctx.tex_ratio = 16;
+        texdsp_ctx.raw_ratio = 16;
         msgcomp = "DXTR5";
         msgtext = "DXT5";
         break;
-    case MKBETAG('Y', 'C', 'G', '6'):
+    case DXV_FMT_YCG6:
         decompress_tex = dxv_decompress_ycg6;
-        ctx->tex_funct_planar[0] = yo_block;
-        ctx->tex_funct_planar[1] = cocg_block;
-        ctx->tex_rat   = 8;
-        ctx->tex_step  = 32;
-        ctx->ctex_step = 16;
+        texdsp_ctx.tex_funct  = ctx->texdsp.rgtc1u_gray_block;
+        texdsp_ctx.tex_ratio  = 8;
+        texdsp_ctx.raw_ratio  = 4;
+        ctexdsp_ctx.tex_funct = ctx->texdsp.rgtc1u_gray_block;
+        ctexdsp_ctx.tex_ratio = 16;
+        ctexdsp_ctx.raw_ratio = 4;
         msgcomp = "YOCOCG6";
         msgtext = "YCG6";
-        ctx->ctex_size = avctx->coded_width * avctx->coded_height / 4;
-        ctx->texture_block_h = 4;
-        ctx->texture_block_w = 16;
-        ctx->ctexture_block_h = 4;
-        ctx->ctexture_block_w = 4;
         avctx->pix_fmt = AV_PIX_FMT_YUV420P;
         avctx->colorspace = AVCOL_SPC_YCOCG;
         break;
-    case MKBETAG('Y', 'G', '1', '0'):
+    case DXV_FMT_YG10:
         decompress_tex = dxv_decompress_yg10;
-        ctx->tex_funct_planar[0] = yao_block;
-        ctx->tex_funct_planar[1] = cocg_block;
-        ctx->tex_rat   = 4;
-        ctx->tex_step  = 64;
-        ctx->ctex_step = 16;
+        texdsp_ctx.tex_funct  = ctx->texdsp.rgtc1u_gray_block;
+        texdsp_ctx.tex_ratio  = 16;
+        texdsp_ctx.raw_ratio  = 4;
+        ctexdsp_ctx.tex_funct = ctx->texdsp.rgtc1u_gray_block;
+        ctexdsp_ctx.tex_ratio = 16;
+        ctexdsp_ctx.raw_ratio = 4;
         msgcomp = "YAOCOCG10";
         msgtext = "YG10";
-        ctx->ctex_size = avctx->coded_width * avctx->coded_height / 4;
-        ctx->texture_block_h = 4;
-        ctx->texture_block_w = 16;
-        ctx->ctexture_block_h = 4;
-        ctx->ctexture_block_w = 4;
         avctx->pix_fmt = AV_PIX_FMT_YUVA420P;
         avctx->colorspace = AVCOL_SPC_YCOCG;
         break;
@@ -1129,26 +916,30 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
         }
 
         if (old_type & 0x40) {
+            tag = DXV_FMT_DXT5;
             msgtext = "DXT5";
 
-            ctx->tex_funct = ctx->texdsp.dxt5_block;
-            ctx->tex_step  = 16;
+            texdsp_ctx.tex_funct = ctx->texdsp.dxt4_block;
+            texdsp_ctx.tex_ratio = 16;
+            texdsp_ctx.raw_ratio = 16;
         } else if (old_type & 0x20 || version_major == 1) {
+            tag = DXV_FMT_DXT1;
             msgtext = "DXT1";
 
-            ctx->tex_funct = ctx->texdsp.dxt1_block;
-            ctx->tex_step  = 8;
+            texdsp_ctx.tex_funct = ctx->texdsp.dxt1_block;
+            texdsp_ctx.tex_ratio = 8;
+            texdsp_ctx.raw_ratio = 16;
         } else {
             av_log(avctx, AV_LOG_ERROR, "Unsupported header (0x%08"PRIX32")\n.", tag);
             return AVERROR_INVALIDDATA;
         }
-        ctx->tex_rat = 1;
         break;
     }
 
-    ctx->slice_count = av_clip(avctx->thread_count, 1,
-                               avctx->coded_height / FFMAX(ctx->texture_block_h,
-                                                           ctx->ctexture_block_h));
+    texdsp_ctx.slice_count  = av_clip(avctx->thread_count, 1,
+                                      avctx->coded_height / TEXTURE_BLOCK_H);
+    ctexdsp_ctx.slice_count = av_clip(avctx->thread_count, 1,
+                                      avctx->coded_height / 2 / TEXTURE_BLOCK_H);
 
     /* New header is 12 bytes long. */
     if (!old_type) {
@@ -1158,7 +949,6 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
         /* Encoder copies texture data when compression is not advantageous. */
         if (bytestream2_get_byte(gbc)) {
             msgcomp = "RAW";
-            ctx->tex_rat = 1;
             decompress_tex = dxv_decompress_raw;
         }
 
@@ -1176,13 +966,19 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
     }
 
-    ctx->tex_size = avctx->coded_width * avctx->coded_height * 4 / ctx->tex_rat;
+    ctx->tex_size = avctx->coded_width  / (texdsp_ctx.raw_ratio / (avctx->pix_fmt == AV_PIX_FMT_RGBA ? 4 : 1)) *
+                    avctx->coded_height / TEXTURE_BLOCK_H *
+                    texdsp_ctx.tex_ratio;
     ret = av_reallocp(&ctx->tex_data, ctx->tex_size + AV_INPUT_BUFFER_PADDING_SIZE);
     if (ret < 0)
         return ret;
 
-    if (ctx->ctex_size) {
+    if (avctx->pix_fmt != AV_PIX_FMT_RGBA) {
         int i;
+
+        ctx->ctex_size = avctx->coded_width  / 2 / ctexdsp_ctx.raw_ratio *
+                         avctx->coded_height / 2 / TEXTURE_BLOCK_H *
+                         ctexdsp_ctx.tex_ratio;
 
         ctx->op_size[0] = avctx->coded_width * avctx->coded_height / 16;
         ctx->op_size[1] = avctx->coded_width * avctx->coded_height / 32;
@@ -1203,24 +999,57 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
     ret = decompress_tex(avctx);
     if (ret < 0)
         return ret;
-    {
-        int w_block = avctx->coded_width / ctx->texture_block_w;
-        int h_block = avctx->coded_height / ctx->texture_block_h;
-        if (w_block * h_block * ctx->tex_step > ctx->tex_size * 8LL)
-            return AVERROR_INVALIDDATA;
-    }
 
     ret = ff_thread_get_buffer(avctx, frame, 0);
     if (ret < 0)
         return ret;
 
-    /* Now decompress the texture with the standard functions. */
-    avctx->execute2(avctx, decompress_texture_thread,
-                    frame, NULL, ctx->slice_count);
+    texdsp_ctx.width   = avctx->coded_width;
+    texdsp_ctx.height  = avctx->coded_height;
+    ctexdsp_ctx.width  = avctx->coded_width  / 2;
+    ctexdsp_ctx.height = avctx->coded_height / 2;
+    switch (tag) {
+    case DXV_FMT_YG10:
+        /* BC5 texture with alpha in the second half of each block */
+        texdsp_ctx.tex_data.in    = ctx->tex_data + texdsp_ctx.tex_ratio / 2;
+        texdsp_ctx.frame_data.out = frame->data[3];
+        texdsp_ctx.stride         = frame->linesize[3];
+        ret = ff_texturedsp_exec_decompress_threads(avctx, &texdsp_ctx);
+        if (ret < 0)
+            return ret;
+        /* fallthrough */
+    case DXV_FMT_YCG6:
+        /* BC5 texture with Co in the first half of each block and Cg in the second */
+        ctexdsp_ctx.tex_data.in    = ctx->ctex_data;
+        ctexdsp_ctx.frame_data.out = frame->data[2];
+        ctexdsp_ctx.stride         = frame->linesize[2];
+        ret = ff_texturedsp_exec_decompress_threads(avctx, &ctexdsp_ctx);
+        if (ret < 0)
+            return ret;
+        ctexdsp_ctx.tex_data.in    = ctx->ctex_data + ctexdsp_ctx.tex_ratio / 2;
+        ctexdsp_ctx.frame_data.out = frame->data[1];
+        ctexdsp_ctx.stride         = frame->linesize[1];
+        ret = ff_texturedsp_exec_decompress_threads(avctx, &ctexdsp_ctx);
+        if (ret < 0)
+            return ret;
+        /* fallthrough */
+    case DXV_FMT_DXT1:
+    case DXV_FMT_DXT5:
+        /* For DXT1 and DXT5, self explanatory
+         * For YCG6, BC4 texture for Y
+         * For YG10, BC5 texture with Y in the first half of each block */
+        texdsp_ctx.tex_data.in    = ctx->tex_data;
+        texdsp_ctx.frame_data.out = frame->data[0];
+        texdsp_ctx.stride         = frame->linesize[0];
+        ret = ff_texturedsp_exec_decompress_threads(avctx, &texdsp_ctx);
+        if (ret < 0)
+            return ret;
+        break;
+    }
 
     /* Frame is ready to be output. */
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     *got_frame = 1;
 
     return avpkt->size;
@@ -1237,9 +1066,9 @@ static int dxv_init(AVCodecContext *avctx)
         return ret;
     }
 
-    /* Codec requires 16x16 alignment. */
-    avctx->coded_width  = FFALIGN(avctx->width,  16);
-    avctx->coded_height = FFALIGN(avctx->height, 16);
+    /* Since codec is based on 4x4 blocks, size is aligned to 4 */
+    avctx->coded_width  = FFALIGN(avctx->width,  TEXTURE_BLOCK_W);
+    avctx->coded_height = FFALIGN(avctx->height, TEXTURE_BLOCK_H);
 
     ff_texturedsp_init(&ctx->texdsp);
 

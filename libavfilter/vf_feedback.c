@@ -27,6 +27,7 @@
 #include "libavutil/internal.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -163,11 +164,11 @@ static int activate(AVFilterContext *ctx)
                     src->data[0] + y * src->linesize[0], src->width * s->max_step[0]);
         }
 
-        for (int i = 1; i < 3; i ++) {
+        for (int i = 1; i < 3; i++) {
             if (dst->data[i]) {
                 for (int y = 0; y < src->height; y++) {
-                    memmove(dst->data[i] + ((s->y + y) >> s->vsub) * dst->linesize[i] + ((s->x * s->max_step[i]) >> s->hsub),
-                            src->data[i] + (y >> s->vsub) * src->linesize[i], (src->width * s->max_step[i]) >> s->hsub);
+                    memmove(dst->data[i] + ((s->y + y) >> s->vsub) * dst->linesize[i] + (s->x >> s->hsub) * s->max_step[i],
+                            src->data[i] + (y >> s->vsub) * src->linesize[i], (src->width >> s->hsub) * s->max_step[i]);
                 }
             }
         }
@@ -184,12 +185,15 @@ static int activate(AVFilterContext *ctx)
         return ret;
     }
 
-    if (!s->feed) {
+    if (!s->feed || ctx->is_disabled) {
         AVFrame *in = NULL;
 
         ret = ff_inlink_consume_frame(ctx->inputs[0], &in);
         if (ret < 0)
             return ret;
+
+        if (ret > 0 && ctx->is_disabled)
+            return ff_filter_frame(ctx->outputs[0], in);
 
         if (ret > 0) {
             AVFrame *frame;
@@ -213,7 +217,7 @@ static int activate(AVFilterContext *ctx)
             for (int i = 1; i < 3; i ++) {
                 if (frame->data[i]) {
                     frame->data[i] += (s->y >> s->vsub) * frame->linesize[i];
-                    frame->data[i] += (s->x * s->max_step[i]) >> s->hsub;
+                    frame->data[i] += (s->x >> s->hsub) * s->max_step[i];
                 }
             }
 
@@ -238,10 +242,11 @@ static int activate(AVFilterContext *ctx)
         return 0;
     }
 
-    if (!s->feed) {
+    if (!s->feed || ctx->is_disabled) {
         if (ff_outlink_frame_wanted(ctx->outputs[0])) {
             ff_inlink_request_frame(ctx->inputs[0]);
-            ff_inlink_request_frame(ctx->inputs[1]);
+            if (!ctx->is_disabled)
+                ff_inlink_request_frame(ctx->inputs[1]);
             return 0;
         }
     }
@@ -329,5 +334,6 @@ const AVFilter ff_vf_feedback = {
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_QUERY_FUNC(query_formats),
+    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = ff_filter_process_command,
 };

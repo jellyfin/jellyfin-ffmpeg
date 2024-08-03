@@ -195,8 +195,8 @@ static av_cold void jpg_free_context(JPGContext *ctx)
     int i;
 
     for (i = 0; i < 2; i++) {
-        ff_free_vlc(&ctx->dc_vlc[i]);
-        ff_free_vlc(&ctx->ac_vlc[i]);
+        ff_vlc_free(&ctx->dc_vlc[i]);
+        ff_vlc_free(&ctx->ac_vlc[i]);
     }
 
     av_freep(&ctx->buf);
@@ -1560,7 +1560,10 @@ static int g2m_decode_frame(AVCodecContext *avctx, AVFrame *pic,
         if ((ret = ff_get_buffer(avctx, pic, 0)) < 0)
             return ret;
 
-        pic->key_frame = got_header;
+        if (got_header)
+            pic->flags |= AV_FRAME_FLAG_KEY;
+        else
+            pic->flags &= ~AV_FRAME_FLAG_KEY;
         pic->pict_type = got_header ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
         for (i = 0; i < avctx->height; i++)

@@ -30,6 +30,7 @@
 #include "aacenc_tns.h"
 #include "aactab.h"
 #include "aacenc_utils.h"
+#include "lpc_functions.h"
 
 /* Could be set to 3 to save an additional bit at the cost of little quality */
 #define TNS_Q_BITS 4
@@ -147,7 +148,7 @@ static inline void quantize_coefs(double *coef, int *idx, float *lpc, int order,
                                   int c_bits)
 {
     int i;
-    const float *quant_arr = tns_tmp2_map[c_bits];
+    const float *quant_arr = ff_tns_tmp2_map[c_bits];
     for (i = 0; i < order; i++) {
         idx[i] = quant_array_idx(coef[i], quant_arr, c_bits ? 16 : 8);
         lpc[i] = quant_arr[idx[i]];
@@ -167,7 +168,7 @@ void ff_aac_search_for_tns(AACEncContext *s, SingleChannelElement *sce)
     const int c_bits = is8 ? TNS_Q_BITS_IS8 == 4 : TNS_Q_BITS == 4;
     const int sfb_start = av_clip(tns_min_sfb[is8][s->samplerate_index], 0, mmm);
     const int sfb_end   = av_clip(sce->ics.num_swb, 0, mmm);
-    const int order = is8 ? 7 : s->profile == FF_PROFILE_AAC_LOW ? 12 : TNS_MAX_ORDER;
+    const int order = is8 ? 7 : s->profile == AV_PROFILE_AAC_LOW ? 12 : TNS_MAX_ORDER;
     const int slant = sce->ics.window_sequence[0] == LONG_STOP_SEQUENCE  ? 1 :
                       sce->ics.window_sequence[0] == LONG_START_SEQUENCE ? 0 : 2;
     const int sfb_len = sfb_end - sfb_start;

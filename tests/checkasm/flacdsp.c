@@ -54,6 +54,28 @@ static void check_decorrelate(uint8_t **ref_dst, uint8_t **ref_src, uint8_t **ne
     bench_new(new_dst, (int32_t **)new_src, channels, BUF_SIZE / sizeof(int32_t), 8);
 }
 
+static void check_lpc(int pred_order)
+{
+    int qlevel = rnd() % 16;
+    LOCAL_ALIGNED_16(int32_t, coeffs, [32]);
+    LOCAL_ALIGNED_16(int32_t, dst0, [BUF_SIZE]);
+    LOCAL_ALIGNED_16(int32_t, dst1, [BUF_SIZE]);
+
+    declare_func(void, int32_t *, const int[32], int, int, int);
+
+    for (int i = 0; i < 32; i++)
+        coeffs[i] = rnd();
+    for (int i = 0; i < BUF_SIZE; i++)
+        dst0[i] = rnd();
+
+    memcpy(dst1, dst0, BUF_SIZE * sizeof (int32_t));
+    call_ref(dst0, coeffs, pred_order, qlevel, BUF_SIZE);
+    call_new(dst1, coeffs, pred_order, qlevel, BUF_SIZE);
+    if (memcmp(dst0, dst1, BUF_SIZE * sizeof (int32_t)) != 0)
+       fail();
+    bench_new(dst1, coeffs, pred_order, qlevel, BUF_SIZE);
+}
+
 void checkasm_check_flacdsp(void)
 {
     LOCAL_ALIGNED_16(uint8_t, ref_dst, [BUF_SIZE*MAX_CHANNELS]);
@@ -72,13 +94,14 @@ void checkasm_check_flacdsp(void)
         { AV_SAMPLE_FMT_S16, 16 },
         { AV_SAMPLE_FMT_S32, 32 },
     };
+    static const signed char pred_orders[] = { 13, 16, 29, 32 };
     FLACDSPContext h;
     int i, j;
 
     for (i = 0; i < 2; i++) {
         ff_flacdsp_init(&h, fmts[i].fmt, 2);
         for (j = 0; j < 3; j++)
-            if (check_func(h.decorrelate[j], "flac_decorrelate_%s_%d", names[j], fmts[i].bits))
+            if (check_func(h.decorrelate[j + 1], "flac_decorrelate_%s_%d", names[j], fmts[i].bits))
                 check_decorrelate(&ref_dst, ref_src, &new_dst, new_src, 2, fmts[i].bits);
         for (j = 2; j <= MAX_CHANNELS; j += 2) {
             ff_flacdsp_init(&h, fmts[i].fmt, j);
@@ -88,4 +111,13 @@ void checkasm_check_flacdsp(void)
     }
 
     report("decorrelate");
+
+    for (i = 0; i < FF_ARRAY_ELEMS(pred_orders); i++)
+        if (check_func(h.lpc16, "flac_lpc_16_%d", pred_orders[i]))
+            check_lpc(pred_orders[i]);
+    for (i = 0; i < FF_ARRAY_ELEMS(pred_orders); i++)
+        if (check_func(h.lpc32, "flac_lpc_32_%d", pred_orders[i]))
+            check_lpc(pred_orders[i]);
+
+    report("lpc");
 }

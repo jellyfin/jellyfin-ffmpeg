@@ -32,6 +32,7 @@
 #include "libavutil/intreadwrite.h"
 #include "avio_internal.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 #define MAX_AUDIO_SUBPACKETS 100
@@ -277,7 +278,8 @@ static uint8_t *read_sb_block(AVIOContext *src, unsigned *size,
     return buf;
 }
 
-static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *buf, int size)
+static int track_header(VividasDemuxContext *viv, AVFormatContext *s,
+                        const uint8_t *buf, int size)
 {
     int i, j, ret;
     int64_t off;
@@ -286,7 +288,7 @@ static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *
     FFIOContext pb0;
     AVIOContext *const pb = &pb0.pub;
 
-    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&pb0, buf, size);
 
     ffio_read_varlen(pb); // track_header_len
     avio_r8(pb); // '1'
@@ -432,7 +434,8 @@ static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *
     return 0;
 }
 
-static int track_index(VividasDemuxContext *viv, AVFormatContext *s, uint8_t *buf, unsigned size)
+static int track_index(VividasDemuxContext *viv, AVFormatContext *s,
+                       const uint8_t *buf, unsigned size)
 {
     int64_t off;
     int64_t poff;
@@ -443,7 +446,7 @@ static int track_index(VividasDemuxContext *viv, AVFormatContext *s, uint8_t *bu
     int64_t filesize = avio_size(s->pb);
     uint64_t n_sb_blocks_tmp;
 
-    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&pb0, buf, size);
 
     ffio_read_varlen(pb); // track_index_len
     avio_r8(pb); // 'c'
@@ -788,11 +791,11 @@ static int viv_read_seek(AVFormatContext *s, int stream_index, int64_t timestamp
     return 0;
 }
 
-const AVInputFormat ff_vividas_demuxer = {
-    .name           = "vividas",
-    .long_name      = NULL_IF_CONFIG_SMALL("Vividas VIV"),
+const FFInputFormat ff_vividas_demuxer = {
+    .p.name         = "vividas",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Vividas VIV"),
     .priv_data_size = sizeof(VividasDemuxContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = viv_probe,
     .read_header    = viv_read_header,
     .read_packet    = viv_read_packet,

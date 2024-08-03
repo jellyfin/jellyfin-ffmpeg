@@ -31,6 +31,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "sauce.h"
 
@@ -122,13 +123,16 @@ static int read_header(AVFormatContext *avctx)
     s->chars_per_frame = FFMAX(av_q2d(st->time_base)*s->chars_per_frame, 1);
 
     if (avctx->pb->seekable & AVIO_SEEKABLE_NORMAL) {
-        s->fsize = avio_size(avctx->pb);
-        st->duration = (s->fsize + s->chars_per_frame - 1) / s->chars_per_frame;
+        int64_t fsize = avio_size(avctx->pb);
+        if (fsize > 0) {
+            s->fsize = fsize;
+            st->duration = (s->fsize + s->chars_per_frame - 1) / s->chars_per_frame;
 
-        if (ff_sauce_read(avctx, &s->fsize, 0, 0) < 0)
-            efi_read(avctx, s->fsize - 51);
+            if (ff_sauce_read(avctx, &s->fsize, 0, 0) < 0)
+                efi_read(avctx, s->fsize - 51);
 
-        avio_seek(avctx->pb, 0, SEEK_SET);
+            avio_seek(avctx->pb, 0, SEEK_SET);
+        }
     }
 
 fail:
@@ -178,14 +182,14 @@ static const AVClass tty_demuxer_class = {
     .version        = LIBAVUTIL_VERSION_INT,
 };
 
-const AVInputFormat ff_tty_demuxer = {
-    .name           = "tty",
-    .long_name      = NULL_IF_CONFIG_SMALL("Tele-typewriter"),
+const FFInputFormat ff_tty_demuxer = {
+    .p.name         = "tty",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Tele-typewriter"),
+    .p.extensions   = tty_extensions,
+    .p.priv_class   = &tty_demuxer_class,
+    .p.flags        = AVFMT_GENERIC_INDEX,
     .priv_data_size = sizeof(TtyDemuxContext),
     .read_probe     = read_probe,
     .read_header    = read_header,
     .read_packet    = read_packet,
-    .extensions     = tty_extensions,
-    .priv_class     = &tty_demuxer_class,
-    .flags          = AVFMT_GENERIC_INDEX,
 };

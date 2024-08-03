@@ -24,11 +24,9 @@
 #include "libavutil/attributes.h"
 #include "libavutil/common.h"
 #include "libavutil/pixdesc.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -68,16 +66,16 @@ typedef struct VagueDenoiserContext {
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM
 static const AVOption vaguedenoiser_options[] = {
     { "threshold", "set filtering strength",   OFFSET(threshold), AV_OPT_TYPE_FLOAT, {.dbl=2.},  0,DBL_MAX, FLAGS },
-    { "method",    "set filtering method",     OFFSET(method),    AV_OPT_TYPE_INT,   {.i64=2 },  0, 2,      FLAGS, "method" },
-        { "hard",   "hard thresholding",       0,                 AV_OPT_TYPE_CONST, {.i64=0},   0, 0,      FLAGS, "method" },
-        { "soft",   "soft thresholding",       0,                 AV_OPT_TYPE_CONST, {.i64=1},   0, 0,      FLAGS, "method" },
-        { "garrote", "garrote thresholding",   0,                 AV_OPT_TYPE_CONST, {.i64=2},   0, 0,      FLAGS, "method" },
+    { "method",    "set filtering method",     OFFSET(method),    AV_OPT_TYPE_INT,   {.i64=2 },  0, 2,      FLAGS, .unit = "method" },
+        { "hard",   "hard thresholding",       0,                 AV_OPT_TYPE_CONST, {.i64=0},   0, 0,      FLAGS, .unit = "method" },
+        { "soft",   "soft thresholding",       0,                 AV_OPT_TYPE_CONST, {.i64=1},   0, 0,      FLAGS, .unit = "method" },
+        { "garrote", "garrote thresholding",   0,                 AV_OPT_TYPE_CONST, {.i64=2},   0, 0,      FLAGS, .unit = "method" },
     { "nsteps",    "set number of steps",      OFFSET(nsteps),    AV_OPT_TYPE_INT,   {.i64=6 },  1, 32,     FLAGS },
     { "percent", "set percent of full denoising", OFFSET(percent),AV_OPT_TYPE_FLOAT, {.dbl=85},  0,100,     FLAGS },
     { "planes",    "set planes to filter",     OFFSET(planes),    AV_OPT_TYPE_INT,   {.i64=15 }, 0, 15,     FLAGS },
-    { "type",    "set threshold type",     OFFSET(type),          AV_OPT_TYPE_INT,   {.i64=0 },  0, 1,      FLAGS, "type" },
-        { "universal",  "universal (VisuShrink)", 0,              AV_OPT_TYPE_CONST, {.i64=0},   0, 0,      FLAGS, "type" },
-        { "bayes",      "bayes (BayesShrink)",    0,              AV_OPT_TYPE_CONST, {.i64=1},   0, 0,      FLAGS, "type" },
+    { "type",    "set threshold type",     OFFSET(type),          AV_OPT_TYPE_INT,   {.i64=0 },  0, 1,      FLAGS, .unit = "type" },
+        { "universal",  "universal (VisuShrink)", 0,              AV_OPT_TYPE_CONST, {.i64=0},   0, 0,      FLAGS, .unit = "type" },
+        { "bayes",      "bayes (BayesShrink)",    0,              AV_OPT_TYPE_CONST, {.i64=1},   0, 0,      FLAGS, .unit = "type" },
     { NULL }
 };
 
@@ -594,13 +592,6 @@ static const AVFilterPad vaguedenoiser_inputs[] = {
 };
 
 
-static const AVFilterPad vaguedenoiser_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO
-    },
-};
-
 const AVFilter ff_vf_vaguedenoiser = {
     .name          = "vaguedenoiser",
     .description   = NULL_IF_CONFIG_SMALL("Apply a Wavelet based Denoiser."),
@@ -609,7 +600,7 @@ const AVFilter ff_vf_vaguedenoiser = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(vaguedenoiser_inputs),
-    FILTER_OUTPUTS(vaguedenoiser_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

@@ -72,13 +72,11 @@
  *              over-processed look. The default is full strength.
  */
 
-#include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -511,13 +509,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_normalize = {
     .name          = "normalize",
     .description   = NULL_IF_CONFIG_SMALL("Normalize RGB video."),
@@ -525,7 +516,7 @@ const AVFilter ff_vf_normalize = {
     .priv_class    = &normalize_class,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = ff_filter_process_command,

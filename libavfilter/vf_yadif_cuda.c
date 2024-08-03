@@ -38,8 +38,6 @@ typedef struct DeintCUDAContext {
     AVBufferRef         *input_frames_ref;
     AVHWFramesContext   *input_frames;
 
-    CUcontext   cu_ctx;
-    CUstream    stream;
     CUmodule    cu_module;
     CUfunction  cu_func_uchar;
     CUfunction  cu_func_uchar2;
@@ -109,7 +107,7 @@ static CUresult call_kernel(AVFilterContext *ctx, CUfunction func,
     ret = CHECK_CU(cu->cuLaunchKernel(func,
                                       DIV_UP(dst_width, BLOCKX), DIV_UP(dst_height, BLOCKY), 1,
                                       BLOCKX, BLOCKY, 1,
-                                      0, s->stream, args, NULL));
+                                      0, s->hwctx->stream, args, NULL));
 
 exit:
     if (tex_prev)
@@ -131,7 +129,7 @@ static void filter(AVFilterContext *ctx, AVFrame *dst,
     CUcontext dummy;
     int i, ret;
 
-    ret = CHECK_CU(cu->cuCtxPushCurrent(s->cu_ctx));
+    ret = CHECK_CU(cu->cuCtxPushCurrent(s->hwctx->cuda_ctx));
     if (ret < 0)
         return;
 
@@ -193,18 +191,15 @@ static av_cold void deint_cuda_uninit(AVFilterContext *ctx)
 {
     CUcontext dummy;
     DeintCUDAContext *s = ctx->priv;
-    YADIFContext *y = &s->yadif;
 
     if (s->hwctx && s->cu_module) {
         CudaFunctions *cu = s->hwctx->internal->cuda_dl;
-        CHECK_CU(cu->cuCtxPushCurrent(s->cu_ctx));
+        CHECK_CU(cu->cuCtxPushCurrent(s->hwctx->cuda_ctx));
         CHECK_CU(cu->cuModuleUnload(s->cu_module));
         CHECK_CU(cu->cuCtxPopCurrent(&dummy));
     }
 
-    av_frame_free(&y->prev);
-    av_frame_free(&y->cur);
-    av_frame_free(&y->next);
+    ff_yadif_uninit(ctx);
 
     av_buffer_unref(&s->device_ref);
     s->hwctx = NULL;
@@ -252,8 +247,6 @@ static int config_output(AVFilterLink *link)
         return AVERROR(ENOMEM);
     }
     s->hwctx = ((AVHWDeviceContext*)s->device_ref->data)->hwctx;
-    s->cu_ctx = s->hwctx->cuda_ctx;
-    s->stream = s->hwctx->stream;
     cu = s->hwctx->internal->cuda_dl;
 
     link->hw_frames_ctx = av_hwframe_ctx_alloc(s->device_ref);
@@ -284,24 +277,14 @@ static int config_output(AVFilterLink *link)
         goto exit;
     }
 
-    link->time_base = av_mul_q(ctx->inputs[0]->time_base, (AVRational){1, 2});
-    link->w         = ctx->inputs[0]->w;
-    link->h         = ctx->inputs[0]->h;
-
-    if(y->mode & 1)
-        link->frame_rate = av_mul_q(ctx->inputs[0]->frame_rate,
-                                    (AVRational){2, 1});
-
-    if (link->w < 3 || link->h < 3) {
-        av_log(ctx, AV_LOG_ERROR, "Video of less than 3 columns or lines is not supported\n");
-        ret = AVERROR(EINVAL);
+    ret = ff_yadif_config_output_common(link);
+    if (ret < 0)
         goto exit;
-    }
 
     y->csp = av_pix_fmt_desc_get(output_frames->sw_format);
     y->filter = filter;
 
-    ret = CHECK_CU(cu->cuCtxPushCurrent(s->cu_ctx));
+    ret = CHECK_CU(cu->cuCtxPushCurrent(s->hwctx->cuda_ctx));
     if (ret < 0)
         goto exit;
 

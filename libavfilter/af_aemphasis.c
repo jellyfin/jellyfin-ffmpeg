@@ -49,19 +49,19 @@ typedef struct AudioEmphasisContext {
 static const AVOption aemphasis_options[] = {
     { "level_in",      "set input gain", OFFSET(level_in),  AV_OPT_TYPE_DOUBLE, {.dbl=1}, 0, 64, FLAGS },
     { "level_out",    "set output gain", OFFSET(level_out), AV_OPT_TYPE_DOUBLE, {.dbl=1}, 0, 64, FLAGS },
-    { "mode",         "set filter mode", OFFSET(mode), AV_OPT_TYPE_INT,   {.i64=0}, 0, 1, FLAGS, "mode" },
-    { "reproduction",              NULL,            0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "mode" },
-    { "production",                NULL,            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "mode" },
-    { "type",         "set filter type", OFFSET(type), AV_OPT_TYPE_INT,   {.i64=4}, 0, 8, FLAGS, "type" },
-    { "col",                 "Columbia",            0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "type" },
-    { "emi",                      "EMI",            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "type" },
-    { "bsi",              "BSI (78RPM)",            0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGS, "type" },
-    { "riaa",                    "RIAA",            0, AV_OPT_TYPE_CONST, {.i64=3}, 0, 0, FLAGS, "type" },
-    { "cd",         "Compact Disc (CD)",            0, AV_OPT_TYPE_CONST, {.i64=4}, 0, 0, FLAGS, "type" },
-    { "50fm",               "50µs (FM)",            0, AV_OPT_TYPE_CONST, {.i64=5}, 0, 0, FLAGS, "type" },
-    { "75fm",               "75µs (FM)",            0, AV_OPT_TYPE_CONST, {.i64=6}, 0, 0, FLAGS, "type" },
-    { "50kf",            "50µs (FM-KF)",            0, AV_OPT_TYPE_CONST, {.i64=7}, 0, 0, FLAGS, "type" },
-    { "75kf",            "75µs (FM-KF)",            0, AV_OPT_TYPE_CONST, {.i64=8}, 0, 0, FLAGS, "type" },
+    { "mode",         "set filter mode", OFFSET(mode), AV_OPT_TYPE_INT,   {.i64=0}, 0, 1, FLAGS, .unit = "mode" },
+    { "reproduction",              NULL,            0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, .unit = "mode" },
+    { "production",                NULL,            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, .unit = "mode" },
+    { "type",         "set filter type", OFFSET(type), AV_OPT_TYPE_INT,   {.i64=4}, 0, 8, FLAGS, .unit = "type" },
+    { "col",                 "Columbia",            0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, .unit = "type" },
+    { "emi",                      "EMI",            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, .unit = "type" },
+    { "bsi",              "BSI (78RPM)",            0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGS, .unit = "type" },
+    { "riaa",                    "RIAA",            0, AV_OPT_TYPE_CONST, {.i64=3}, 0, 0, FLAGS, .unit = "type" },
+    { "cd",         "Compact Disc (CD)",            0, AV_OPT_TYPE_CONST, {.i64=4}, 0, 0, FLAGS, .unit = "type" },
+    { "50fm",               "50µs (FM)",            0, AV_OPT_TYPE_CONST, {.i64=5}, 0, 0, FLAGS, .unit = "type" },
+    { "75fm",               "75µs (FM)",            0, AV_OPT_TYPE_CONST, {.i64=6}, 0, 0, FLAGS, .unit = "type" },
+    { "50kf",            "50µs (FM-KF)",            0, AV_OPT_TYPE_CONST, {.i64=7}, 0, 0, FLAGS, .unit = "type" },
+    { "75kf",            "75µs (FM-KF)",            0, AV_OPT_TYPE_CONST, {.i64=8}, 0, 0, FLAGS, .unit = "type" },
     { NULL }
 };
 
@@ -361,13 +361,6 @@ static const AVFilterPad avfilter_af_aemphasis_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_af_aemphasis_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_aemphasis = {
     .name          = "aemphasis",
     .description   = NULL_IF_CONFIG_SMALL("Audio emphasis."),
@@ -375,7 +368,7 @@ const AVFilter ff_af_aemphasis = {
     .priv_class    = &aemphasis_class,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_aemphasis_inputs),
-    FILTER_OUTPUTS(avfilter_af_aemphasis_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
     .process_command = process_command,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |

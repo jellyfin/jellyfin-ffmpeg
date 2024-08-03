@@ -18,13 +18,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "avassert.h"
 #include "avstring.h"
 #include "dict.h"
 #include "dict_internal.h"
-#include "internal.h"
+#include "error.h"
 #include "mem.h"
 #include "time_internal.h"
 #include "bprint.h"
@@ -143,11 +145,8 @@ int av_dict_set(AVDictionary **pm, const char *key, const char *value,
         m->elems[m->count].value = copy_value;
         m->count++;
     } else {
-        if (!m->count) {
-            av_freep(&m->elems);
-            av_freep(pm);
-        }
-        av_freep(&copy_key);
+        err = 0;
+        goto end;
     }
 
     return 0;
@@ -155,12 +154,13 @@ int av_dict_set(AVDictionary **pm, const char *key, const char *value,
 enomem:
     err = AVERROR(ENOMEM);
 err_out:
+    av_free(copy_value);
+end:
     if (m && !m->count) {
         av_freep(&m->elems);
         av_freep(pm);
     }
     av_free(copy_key);
-    av_free(copy_value);
     return err;
 }
 

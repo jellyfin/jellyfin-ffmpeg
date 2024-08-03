@@ -21,12 +21,9 @@
 #include "motion_estimation.h"
 #include "libavcodec/mathops.h"
 #include "libavutil/common.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
-#include "libavutil/pixdesc.h"
 #include "libavutil/motion_vector.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -47,10 +44,10 @@ typedef struct MEContext {
 
 #define OFFSET(x) offsetof(MEContext, x)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
-#define CONST(name, help, val, unit) { name, help, 0, AV_OPT_TYPE_CONST, {.i64=val}, 0, 0, FLAGS, unit }
+#define CONST(name, help, val, u) { name, help, 0, AV_OPT_TYPE_CONST, {.i64=val}, 0, 0, FLAGS, .unit = u }
 
 static const AVOption mestimate_options[] = {
-    { "method", "motion estimation method", OFFSET(method), AV_OPT_TYPE_INT, {.i64 = AV_ME_METHOD_ESA}, AV_ME_METHOD_ESA, AV_ME_METHOD_UMH, FLAGS, "method" },
+    { "method", "motion estimation method", OFFSET(method), AV_OPT_TYPE_INT, {.i64 = AV_ME_METHOD_ESA}, AV_ME_METHOD_ESA, AV_ME_METHOD_UMH, FLAGS, .unit = "method" },
         CONST("esa",   "exhaustive search",                  AV_ME_METHOD_ESA,      "method"),
         CONST("tss",   "three step search",                  AV_ME_METHOD_TSS,      "method"),
         CONST("tdls",  "two dimensional logarithmic search", AV_ME_METHOD_TDLS,     "method"),
@@ -350,13 +347,6 @@ static const AVFilterPad mestimate_inputs[] = {
     },
 };
 
-static const AVFilterPad mestimate_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_mestimate = {
     .name          = "mestimate",
     .description   = NULL_IF_CONFIG_SMALL("Generate motion vectors."),
@@ -365,6 +355,6 @@ const AVFilter ff_vf_mestimate = {
     .uninit        = uninit,
     .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(mestimate_inputs),
-    FILTER_OUTPUTS(mestimate_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

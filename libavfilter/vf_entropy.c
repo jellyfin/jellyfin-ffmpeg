@@ -18,12 +18,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -45,9 +43,9 @@ typedef struct EntropyContext {
 #define OFFSET(x) offsetof(EntropyContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption entropy_options[] = {
-    { "mode", "set kind of histogram entropy measurement",  OFFSET(mode), AV_OPT_TYPE_INT,   {.i64=0}, 0, 1, FLAGS, "mode" },
-    { "normal", NULL,                                       0,            AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "mode" },
-    { "diff",   NULL,                                       0,            AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "mode" },
+    { "mode", "set kind of histogram entropy measurement",  OFFSET(mode), AV_OPT_TYPE_INT,   {.i64=0}, 0, 1, FLAGS, .unit = "mode" },
+    { "normal", NULL,                                       0,            AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, .unit = "mode" },
+    { "diff",   NULL,                                       0,            AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, .unit = "mode" },
     { NULL }
 };
 
@@ -176,20 +174,13 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_entropy = {
     .name           = "entropy",
     .description    = NULL_IF_CONFIG_SMALL("Measure video frames entropy."),
     .priv_size      = sizeof(EntropyContext),
     .uninit         = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixfmts),
     .priv_class     = &entropy_class,
     .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_METADATA_ONLY,

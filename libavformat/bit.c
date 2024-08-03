@@ -22,6 +22,7 @@
 #include "config_components.h"
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "mux.h"
 #include "libavcodec/get_bits.h"
@@ -113,22 +114,22 @@ static int read_packet(AVFormatContext *s,
     return 0;
 }
 
-const AVInputFormat ff_bit_demuxer = {
-    .name        = "bit",
-    .long_name   = NULL_IF_CONFIG_SMALL("G.729 BIT file format"),
+const FFInputFormat ff_bit_demuxer = {
+    .p.name       = "bit",
+    .p.long_name  = NULL_IF_CONFIG_SMALL("G.729 BIT file format"),
+    .p.extensions = "bit",
     .read_probe  = probe,
     .read_header = read_header,
     .read_packet = read_packet,
-    .extensions  = "bit",
 };
 #endif
 
 #if CONFIG_BIT_MUXER
-static int write_header(AVFormatContext *s)
+static av_cold int init(AVFormatContext *s)
 {
     AVCodecParameters *par = s->streams[0]->codecpar;
 
-    if ((par->codec_id != AV_CODEC_ID_G729) || par->ch_layout.nb_channels != 1) {
+    if (par->ch_layout.nb_channels != 1) {
         av_log(s, AV_LOG_ERROR,
                "only codec g729 with 1 channel is supported by this format\n");
         return AVERROR(EINVAL);
@@ -166,7 +167,10 @@ const FFOutputFormat ff_bit_muxer = {
     .p.extensions   = "bit",
     .p.audio_codec  = AV_CODEC_ID_G729,
     .p.video_codec  = AV_CODEC_ID_NONE,
-    .write_header = write_header,
+    .p.subtitle_codec = AV_CODEC_ID_NONE,
+    .flags_internal   = FF_OFMT_FLAG_MAX_ONE_OF_EACH |
+                        FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
+    .init             = init,
     .write_packet = write_packet,
 };
 #endif

@@ -174,9 +174,7 @@ static av_cold void do_uninit(AVFilterContext *ctx) API_AVAILABLE(macos(10.11), 
     YADIFVTContext *s = ctx->priv;
     YADIFContext *y = &s->yadif;
 
-    av_frame_free(&y->prev);
-    av_frame_free(&y->cur);
-    av_frame_free(&y->next);
+    ff_yadif_uninit(ctx);
 
     av_buffer_unref(&s->device_ref);
     av_buffer_unref(&s->input_frames_ref);
@@ -363,20 +361,9 @@ static int do_config_output(AVFilterLink *link) API_AVAILABLE(macos(10.11), ios(
         goto exit;
     }
 
-    link->time_base.num = ctx->inputs[0]->time_base.num;
-    link->time_base.den = ctx->inputs[0]->time_base.den * 2;
-    link->w             = ctx->inputs[0]->w;
-    link->h             = ctx->inputs[0]->h;
-
-    if(y->mode & 1)
-        link->frame_rate = av_mul_q(ctx->inputs[0]->frame_rate,
-                                    (AVRational){2, 1});
-
-    if (link->w < 3 || link->h < 3) {
-        av_log(ctx, AV_LOG_ERROR, "Video of less than 3 columns or lines is not supported\n");
-        ret = AVERROR(EINVAL);
+    ret = ff_yadif_config_output_common(link);
+    if (ret < 0)
         goto exit;
-    }
 
     y->csp = av_pix_fmt_desc_get(output_frames->sw_format);
     y->filter = filter;
@@ -401,18 +388,18 @@ static int config_output(AVFilterLink *link)
 
 static const AVOption yadif_videotoolbox_options[] = {
     #define OFFSET(x) offsetof(YADIFContext, x)
-    { "mode",   "specify the interlacing mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=YADIF_MODE_SEND_FRAME}, 0, 3, FLAGS, "mode"},
+    { "mode",   "specify the interlacing mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=YADIF_MODE_SEND_FRAME}, 0, 3, FLAGS, .unit = "mode"},
     CONST("send_frame",           "send one frame for each frame",                                     YADIF_MODE_SEND_FRAME,           "mode"),
     CONST("send_field",           "send one frame for each field",                                     YADIF_MODE_SEND_FIELD,           "mode"),
     CONST("send_frame_nospatial", "send one frame for each frame, but skip spatial interlacing check", YADIF_MODE_SEND_FRAME_NOSPATIAL, "mode"),
     CONST("send_field_nospatial", "send one frame for each field, but skip spatial interlacing check", YADIF_MODE_SEND_FIELD_NOSPATIAL, "mode"),
 
-    { "parity", "specify the assumed picture field parity", OFFSET(parity), AV_OPT_TYPE_INT, {.i64=YADIF_PARITY_AUTO}, -1, 1, FLAGS, "parity" },
+    { "parity", "specify the assumed picture field parity", OFFSET(parity), AV_OPT_TYPE_INT, {.i64=YADIF_PARITY_AUTO}, -1, 1, FLAGS, .unit = "parity" },
     CONST("tff",  "assume top field first",    YADIF_PARITY_TFF,  "parity"),
     CONST("bff",  "assume bottom field first", YADIF_PARITY_BFF,  "parity"),
     CONST("auto", "auto detect parity",        YADIF_PARITY_AUTO, "parity"),
 
-    { "deint", "specify which frames to deinterlace", OFFSET(deint), AV_OPT_TYPE_INT, {.i64=YADIF_DEINT_ALL}, 0, 1, FLAGS, "deint" },
+    { "deint", "specify which frames to deinterlace", OFFSET(deint), AV_OPT_TYPE_INT, {.i64=YADIF_DEINT_ALL}, 0, 1, FLAGS, .unit = "deint" },
     CONST("all",        "deinterlace all frames",                       YADIF_DEINT_ALL,        "deint"),
     CONST("interlaced", "only deinterlace frames marked as interlaced", YADIF_DEINT_INTERLACED, "deint"),
     #undef OFFSET

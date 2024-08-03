@@ -26,6 +26,7 @@
 #include "libavcodec/internal.h"
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "config.h"
 
@@ -62,6 +63,7 @@ typedef struct AviSynthLibrary {
     AVSC_DECLARE_FUNC(avs_create_script_environment);
     AVSC_DECLARE_FUNC(avs_delete_script_environment);
     AVSC_DECLARE_FUNC(avs_get_audio);
+    AVSC_DECLARE_FUNC(avs_get_channel_mask);
     AVSC_DECLARE_FUNC(avs_get_error);
     AVSC_DECLARE_FUNC(avs_get_frame);
     AVSC_DECLARE_FUNC(avs_get_version);
@@ -157,6 +159,7 @@ static av_cold int avisynth_load_library(void)
     LOAD_AVS_FUNC(avs_create_script_environment, 0);
     LOAD_AVS_FUNC(avs_delete_script_environment, 0);
     LOAD_AVS_FUNC(avs_get_audio, 0);
+    LOAD_AVS_FUNC(avs_get_channel_mask, 1);
     LOAD_AVS_FUNC(avs_get_error, 1); // New to AviSynth 2.6
     LOAD_AVS_FUNC(avs_get_frame, 0);
     LOAD_AVS_FUNC(avs_get_version, 0);
@@ -793,6 +796,10 @@ static int avisynth_create_stream_audio(AVFormatContext *s, AVStream *st)
     st->duration                        = avs->vi->num_audio_samples;
     avpriv_set_pts_info(st, 64, 1, avs->vi->audio_samples_per_second);
 
+    if (avs_library.avs_get_version(avs->clip) >= 10)
+        av_channel_layout_from_mask(&st->codecpar->ch_layout,
+                                    avs_library.avs_get_channel_mask(avs->vi));
+
     switch (avs->vi->sample_type) {
     case AVS_SAMPLE_INT8:
         st->codecpar->codec_id = AV_CODEC_ID_PCM_U8;
@@ -1173,14 +1180,14 @@ static int avisynth_read_seek(AVFormatContext *s, int stream_index,
                                    AVISYNTH_FRAMEPROP_MATRIX | AVISYNTH_FRAMEPROP_CHROMA_LOCATION
 #define OFFSET(x) offsetof(AviSynthContext, x)
 static const AVOption avisynth_options[] = {
-    { "avisynth_flags", "set flags related to reading frame properties from script (AviSynth+ v3.7.1 or higher)", OFFSET(flags), AV_OPT_TYPE_FLAGS, {.i64 = AVISYNTH_FRAMEPROP_DEFAULT}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM, "flags" },
-    { "field_order", "read field order", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_FIELD_ORDER}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, "flags" },
-    { "range", "read color range", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_RANGE}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, "flags" },
-    { "primaries", "read color primaries", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_PRIMARIES}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, "flags" },
-    { "transfer", "read color transfer characteristics", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_TRANSFER}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, "flags" },
-    { "matrix", "read matrix coefficients", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_MATRIX}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, "flags" },
-    { "chroma_location", "read chroma location", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_CHROMA_LOCATION}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, "flags" },
-    { "sar", "read sample aspect ratio", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_SAR}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, "flags" },
+    { "avisynth_flags", "set flags related to reading frame properties from script (AviSynth+ v3.7.1 or higher)", OFFSET(flags), AV_OPT_TYPE_FLAGS, {.i64 = AVISYNTH_FRAMEPROP_DEFAULT}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
+    { "field_order", "read field order", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_FIELD_ORDER}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
+    { "range", "read color range", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_RANGE}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
+    { "primaries", "read color primaries", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_PRIMARIES}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
+    { "transfer", "read color transfer characteristics", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_TRANSFER}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
+    { "matrix", "read matrix coefficients", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_MATRIX}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
+    { "chroma_location", "read chroma location", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_CHROMA_LOCATION}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
+    { "sar", "read sample aspect ratio", 0, AV_OPT_TYPE_CONST, {.i64 = AVISYNTH_FRAMEPROP_SAR}, 0, 1, AV_OPT_FLAG_DECODING_PARAM, .unit = "flags" },
     { NULL },
 };
 
@@ -1191,14 +1198,14 @@ static const AVClass avisynth_demuxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVInputFormat ff_avisynth_demuxer = {
-    .name           = "avisynth",
-    .long_name      = NULL_IF_CONFIG_SMALL("AviSynth script"),
+const FFInputFormat ff_avisynth_demuxer = {
+    .p.name         = "avisynth",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AviSynth script"),
+    .p.extensions   = "avs",
+    .p.priv_class   = &avisynth_demuxer_class,
     .priv_data_size = sizeof(AviSynthContext),
     .read_header    = avisynth_read_header,
     .read_packet    = avisynth_read_packet,
     .read_close     = avisynth_read_close,
     .read_seek      = avisynth_read_seek,
-    .extensions     = "avs",
-    .priv_class     = &avisynth_demuxer_class,
 };

@@ -29,6 +29,7 @@
  */
 
 #include "config.h"
+#include "libavformat/demux.h"
 #include "libavformat/internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
@@ -273,9 +274,22 @@ gdigrab_read_header(AVFormatContext *s1)
         }
     } else if (!strcmp(filename, "desktop")) {
         hwnd = NULL;
+    } else if (!strncmp(filename, "hwnd=", 5)) {
+        char *p;
+        name = filename + 5;
+
+        hwnd = (HWND) strtoull(name, &p, 0);
+
+        if (p == NULL || p == name || p[0] == '\0')
+        {
+            av_log(s1, AV_LOG_ERROR,
+                   "Invalid window handle '%s', must be a valid integer.\n", name);
+            ret = AVERROR(EINVAL);
+            goto error;
+        }
     } else {
         av_log(s1, AV_LOG_ERROR,
-               "Please use \"desktop\" or \"title=<windowname>\" to specify your target.\n");
+               "Please use \"desktop\", \"title=<windowname>\" or \"hwnd=<hwnd>\" to specify your target.\n");
         ret = AVERROR(EIO);
         goto error;
     }
@@ -664,13 +678,13 @@ static const AVClass gdigrab_class = {
 };
 
 /** gdi grabber device demuxer declaration */
-const AVInputFormat ff_gdigrab_demuxer = {
-    .name           = "gdigrab",
-    .long_name      = NULL_IF_CONFIG_SMALL("GDI API Windows frame grabber"),
+const FFInputFormat ff_gdigrab_demuxer = {
+    .p.name         = "gdigrab",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("GDI API Windows frame grabber"),
+    .p.flags        = AVFMT_NOFILE,
+    .p.priv_class   = &gdigrab_class,
     .priv_data_size = sizeof(struct gdigrab),
     .read_header    = gdigrab_read_header,
     .read_packet    = gdigrab_read_packet,
     .read_close     = gdigrab_read_close,
-    .flags          = AVFMT_NOFILE,
-    .priv_class     = &gdigrab_class,
 };

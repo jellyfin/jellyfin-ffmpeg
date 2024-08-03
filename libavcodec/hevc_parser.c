@@ -77,15 +77,15 @@ static int hevc_parse_slice_header(AVCodecParserContext *s, H2645NAL *nal,
         av_log(avctx, AV_LOG_ERROR, "PPS id out of range: %d\n", pps_id);
         return AVERROR_INVALIDDATA;
     }
-    ps->pps = (HEVCPPS*)ps->pps_list[pps_id]->data;
+    ps->pps = ps->pps_list[pps_id];
 
     if (ps->pps->sps_id >= HEVC_MAX_SPS_COUNT || !ps->sps_list[ps->pps->sps_id]) {
         av_log(avctx, AV_LOG_ERROR, "SPS id out of range: %d\n", ps->pps->sps_id);
         return AVERROR_INVALIDDATA;
     }
-    if (ps->sps != (HEVCSPS*)ps->sps_list[ps->pps->sps_id]->data) {
-        ps->sps = (HEVCSPS*)ps->sps_list[ps->pps->sps_id]->data;
-        ps->vps = (HEVCVPS*)ps->vps_list[ps->sps->vps_id]->data;
+    if (ps->sps != ps->sps_list[ps->pps->sps_id]) {
+        ps->sps  = ps->sps_list[ps->pps->sps_id];
+        ps->vps  = ps->vps_list[ps->sps->vps_id];
     }
     ow  = &ps->sps->output_window;
 
@@ -278,6 +278,8 @@ static int hevc_find_frame_end(AVCodecParserContext *s, const uint8_t *buf,
             (nut >= 41 && nut <= 44) || (nut >= 48 && nut <= 55)) {
             if (pc->frame_start_found) {
                 pc->frame_start_found = 0;
+                if (!((pc->state64 >> 6 * 8) & 0xFF))
+                    return i - 6;
                 return i - 5;
             }
         } else if (nut <= HEVC_NAL_RASL_R ||
@@ -288,6 +290,8 @@ static int hevc_find_frame_end(AVCodecParserContext *s, const uint8_t *buf,
                     pc->frame_start_found = 1;
                 } else { // First slice of next frame found
                     pc->frame_start_found = 0;
+                    if (!((pc->state64 >> 6 * 8) & 0xFF))
+                        return i - 6;
                     return i - 5;
                 }
             }

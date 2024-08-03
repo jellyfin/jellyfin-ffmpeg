@@ -119,7 +119,7 @@ static av_cold int wma_decode_init(AVCodecContext *avctx)
     }
 
     if (s->use_noise_coding) {
-        ret = ff_init_vlc_from_lengths(&s->hgain_vlc, HGAINVLCBITS,
+        ret = ff_vlc_init_from_lengths(&s->hgain_vlc, HGAINVLCBITS,
                                        FF_ARRAY_ELEMS(ff_wma_hgain_hufftab),
                                        &ff_wma_hgain_hufftab[0][1], 2,
                                        &ff_wma_hgain_hufftab[0][0], 2, 1,
@@ -130,7 +130,7 @@ static av_cold int wma_decode_init(AVCodecContext *avctx)
 
     if (s->use_exp_vlc) {
         // FIXME move out of context
-        ret = init_vlc(&s->exp_vlc, EXPVLCBITS, sizeof(ff_aac_scalefactor_bits),
+        ret = vlc_init(&s->exp_vlc, EXPVLCBITS, sizeof(ff_aac_scalefactor_bits),
                        ff_aac_scalefactor_bits, 1, 1,
                        ff_aac_scalefactor_code, 4, 4, 0);
         if (ret < 0)
@@ -616,7 +616,7 @@ static int wma_decode_block(WMACodecContext *s)
              * there is potentially less energy there */
             tindex = (ch == 1 && s->ms_stereo);
             memset(ptr, 0, s->block_len * sizeof(WMACoef));
-            ret = ff_wma_run_level_decode(s->avctx, &s->gb, &s->coef_vlc[tindex],
+            ret = ff_wma_run_level_decode(s->avctx, &s->gb, s->coef_vlc[tindex].table,
                                           s->level_table[tindex], s->run_table[tindex],
                                           0, ptr, 0, nb_coefs[ch],
                                           s->block_len, s->frame_len_bits, coef_nb_bits);

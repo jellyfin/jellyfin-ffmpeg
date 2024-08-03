@@ -125,9 +125,10 @@ static void chunky2chunky(CDXLVideoContext *c, int linesize, uint8_t *out)
     }
 }
 
-static void import_format(CDXLVideoContext *c, int linesize, uint8_t *out)
+static void import_format(CDXLVideoContext *c, ptrdiff_t linesize, uint8_t *out)
 {
-    memset(out, 0, linesize * c->avctx->height);
+    for (int y = 0; y < c->avctx->height; y++)
+        memset(out + y * linesize, 0, c->avctx->width);
 
     switch (c->format) {
     case BIT_PLANAR:
@@ -305,7 +306,7 @@ static int cdxl_decode_frame(AVCodecContext *avctx, AVFrame *p,
     if ((ret = ff_get_buffer(avctx, p, 0)) < 0)
         return ret;
     p->pict_type = AV_PICTURE_TYPE_I;
-    p->key_frame = 1;
+    p->flags |= AV_FRAME_FLAG_KEY;
 
     if (encoding) {
         av_fast_padded_malloc(&c->new_video, &c->new_video_size,
