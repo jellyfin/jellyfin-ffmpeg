@@ -230,8 +230,9 @@ make install
 popd
 
 # LIBBLURAY
-git clone --depth=1 https://code.videolan.org/videolan/libbluray.git
+git clone -b 1.3.4 --depth=1 https://code.videolan.org/videolan/libbluray.git
 pushd libbluray
+sed -i 's/dec_init/libbluray_dec_init/g' src/libbluray/disc/*.{c,h}
 ./bootstrap
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
@@ -592,7 +593,7 @@ fi
     --disable-w32threads \
     --enable-pthreads \
     --enable-shared \
-    --enable-lto \
+    --enable-lto=auto \
     --enable-gpl \
     --enable-version3 \
     --enable-schannel \
@@ -605,6 +606,7 @@ fi
     --enable-libfreetype \
     --enable-libfribidi \
     --enable-libfontconfig \
+    --enable-libharfbuzz \
     --enable-libass \
     --enable-libbluray \
     --enable-libmp3lame \
@@ -623,6 +625,7 @@ fi
     --enable-opencl \
     --enable-dxva2 \
     --enable-d3d11va \
+    --enable-d3d12va \
     --enable-amf \
     --enable-libvpl \
     --enable-ffnvcodec \

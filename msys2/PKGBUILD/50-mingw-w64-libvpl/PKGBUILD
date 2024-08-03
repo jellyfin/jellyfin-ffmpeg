@@ -3,7 +3,7 @@
 _realname=libvpl
 pkgbase=mingw-w64-jellyfin-${_realname}
 pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}")
-pkgver=2.11.0
+pkgver=2.12.0
 pkgrel=1
 pkgdesc="Intel Video Processing Library (mingw-w64)"
 arch=('any')

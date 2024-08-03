@@ -11,6 +11,12 @@ ffbuild_dockerbuild() {
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" libbluray
     cd libbluray
 
+    if [[ $TARGET == mac* ]]; then
+        gsed -i 's/dec_init/libbluray_dec_init/g' src/libbluray/disc/*.c src/libbluray/disc/*.h
+    else
+        sed -i 's/dec_init/libbluray_dec_init/g' src/libbluray/disc/*.c src/libbluray/disc/*.h
+    fi
+
     ./bootstrap
 
     local myconf=(
