@@ -25,6 +25,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "mux.h"
 #include "libavutil/opt.h"
@@ -46,13 +47,6 @@ typedef struct ArgoCVGHeader {
     uint32_t reverb; /*< Reverb flag. */
 } ArgoCVGHeader;
 
-typedef struct ArgoCVGOverride {
-    const char    *name;
-    ArgoCVGHeader header;
-    uint32_t      checksum;
-    int           sample_rate;
-} ArgoCVGOverride;
-
 typedef struct ArgoCVGDemuxContext {
     ArgoCVGHeader header;
     uint32_t      checksum;
@@ -71,12 +65,33 @@ typedef struct ArgoCVGMuxContext {
 
 #if CONFIG_ARGO_CVG_DEMUXER
 /* "Special" files that are played at a different rate. */
+//  FILE(NAME, SIZE, LOOP, REVERB, CHECKSUM, SAMPLE_RATE)
+#define OVERRIDE_FILES(FILE)                               \
+    FILE(CRYS,     23592, 0, 1, 2495499, 88200) /* Beta */ \
+    FILE(REDCRY88, 38280, 0, 1, 4134848, 88200) /* Beta */ \
+    FILE(DANLOOP1, 54744, 1, 0, 5684641, 37800) /* Beta */ \
+    FILE(PICKUP88, 12904, 0, 1, 1348091, 48000) /* Beta */ \
+    FILE(SELECT1,   5080, 0, 1,  549987, 44100) /* Beta */ \
+
+#define MAX_FILENAME_SIZE(NAME, SIZE, LOOP, REVERB, CHECKSUM, SAMPLE_RATE) \
+    MAX_SIZE_BEFORE_ ## NAME,                                  \
+    MAX_SIZE_UNTIL_ ## NAME ## _MINUS1 = FFMAX(sizeof(#NAME ".CVG"), MAX_SIZE_BEFORE_ ## NAME) - 1,
+enum {
+    OVERRIDE_FILES(MAX_FILENAME_SIZE)
+    MAX_OVERRIDE_FILENAME_SIZE
+};
+
+typedef struct ArgoCVGOverride {
+    const char    name[MAX_OVERRIDE_FILENAME_SIZE];
+    ArgoCVGHeader header;
+    uint32_t      checksum;
+    int           sample_rate;
+} ArgoCVGOverride;
+
+#define FILE(NAME, SIZE, LOOP, REVERB, CHECKSUM, SAMPLE_RATE) \
+    { #NAME ".CVG", { SIZE, LOOP, REVERB }, CHECKSUM, SAMPLE_RATE },
 static const ArgoCVGOverride overrides[] = {
-    { "CRYS.CVG",     { 23592, 0, 1 }, 2495499, 88200 }, /* Beta */
-    { "REDCRY88.CVG", { 38280, 0, 1 }, 4134848, 88200 }, /* Beta */
-    { "DANLOOP1.CVG", { 54744, 1, 0 }, 5684641, 37800 }, /* Beta */
-    { "PICKUP88.CVG", { 12904, 0, 1 }, 1348091, 48000 }, /* Beta */
-    { "SELECT1.CVG",  {  5080, 0, 1 },  549987, 44100 }, /* Beta */
+    OVERRIDE_FILES(FILE)
 };
 
 static int argo_cvg_probe(const AVProbeData *p)
@@ -253,9 +268,9 @@ static int argo_cvg_seek(AVFormatContext *s, int stream_index,
     return 0;
 }
 
-const AVInputFormat ff_argo_cvg_demuxer = {
-    .name           = "argo_cvg",
-    .long_name      = NULL_IF_CONFIG_SMALL("Argonaut Games CVG"),
+const FFInputFormat ff_argo_cvg_demuxer = {
+    .p.name         = "argo_cvg",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Argonaut Games CVG"),
     .priv_data_size = sizeof(ArgoCVGDemuxContext),
     .read_probe     = argo_cvg_probe,
     .read_header    = argo_cvg_read_header,
@@ -268,20 +283,7 @@ const AVInputFormat ff_argo_cvg_demuxer = {
 static int argo_cvg_write_init(AVFormatContext *s)
 {
     ArgoCVGMuxContext *ctx = s->priv_data;
-    const AVCodecParameters *par;
-
-    if (s->nb_streams != 1) {
-        av_log(s, AV_LOG_ERROR, "CVG files have exactly one stream\n");
-        return AVERROR(EINVAL);
-    }
-
-    par = s->streams[0]->codecpar;
-
-    if (par->codec_id != AV_CODEC_ID_ADPCM_PSX) {
-        av_log(s, AV_LOG_ERROR, "%s codec not supported\n",
-               avcodec_get_name(par->codec_id));
-        return AVERROR(EINVAL);
-    }
+    const AVCodecParameters *par = s->streams[0]->codecpar;
 
     if (par->ch_layout.nb_channels != 1) {
         av_log(s, AV_LOG_ERROR, "CVG files only support 1 channel\n");
@@ -407,7 +409,10 @@ const FFOutputFormat ff_argo_cvg_muxer = {
     .p.extensions   = "cvg",
     .p.audio_codec  = AV_CODEC_ID_ADPCM_PSX,
     .p.video_codec  = AV_CODEC_ID_NONE,
+    .p.subtitle_codec = AV_CODEC_ID_NONE,
     .p.priv_class   = &argo_cvg_muxer_class,
+    .flags_internal   = FF_OFMT_FLAG_MAX_ONE_OF_EACH |
+                        FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
     .init           = argo_cvg_write_init,
     .write_header   = argo_cvg_write_header,
     .write_packet   = argo_cvg_write_packet,

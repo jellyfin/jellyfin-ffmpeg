@@ -2103,11 +2103,6 @@ static int get_delayed_pic(DiracContext *s, AVFrame *picture, int *got_frame)
         out->reference ^= DELAYED_PIC_REF;
         if((ret = av_frame_ref(picture, out->avframe)) < 0)
             return ret;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-        picture->display_picture_number = out->picture_number;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         *got_frame = 1;
     }
 
@@ -2230,7 +2225,10 @@ static int dirac_decode_data_unit(AVCodecContext *avctx, const uint8_t *buf, int
         s->hq_picture    = (parse_code & 0xF8) == 0xE8;          /* [DIRAC_STD] is_hq_picture()       */
         s->dc_prediction = (parse_code & 0x28) == 0x08;          /* [DIRAC_STD] using_dc_prediction() */
         pic->reference   = (parse_code & 0x0C) == 0x0C;          /* [DIRAC_STD] is_reference()        */
-        pic->avframe->key_frame = s->num_refs == 0;              /* [DIRAC_STD] is_intra()            */
+        if (s->num_refs == 0)                                    /* [DIRAC_STD] is_intra()            */
+             pic->avframe->flags |= AV_FRAME_FLAG_KEY;
+        else
+             pic->avframe->flags &= ~AV_FRAME_FLAG_KEY;
         pic->avframe->pict_type = s->num_refs + 1;               /* Definition of AVPictureType in avutil.h */
 
         /* VC-2 Low Delay has a different parse code than the Dirac Low Delay */
@@ -2347,11 +2345,6 @@ static int dirac_decode_frame(AVCodecContext *avctx, AVFrame *picture,
             if((ret = av_frame_ref(picture, delayed_frame->avframe)) < 0)
                 return ret;
             s->frame_number = delayed_frame->picture_number + 1LL;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-            picture->display_picture_number = delayed_frame->picture_number;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
             *got_frame = 1;
         }
     } else if (s->current_picture->picture_number == s->frame_number) {
@@ -2359,11 +2352,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         if((ret = av_frame_ref(picture, s->current_picture->avframe)) < 0)
             return ret;
         s->frame_number = s->current_picture->picture_number + 1LL;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-        picture->display_picture_number = s->current_picture->picture_number;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         *got_frame = 1;
     }
 

@@ -73,7 +73,7 @@ int ds_run(DecodeContext *dc)
     while (ret >= 0) {
         ret = av_read_frame(dc->demuxer, dc->pkt);
         if (ret < 0)
-            goto flush;
+            break;
         if (dc->pkt->stream_index != dc->stream->index) {
             av_packet_unref(dc->pkt);
             continue;
@@ -91,18 +91,19 @@ int ds_run(DecodeContext *dc)
             fprintf(stderr, "Error decoding: %d\n", ret);
             return ret;
         } else if (ret > 0)
-            return 0;
+            goto finish;
     }
 
-flush:
-    avcodec_send_packet(dc->decoder, NULL);
-    ret = decode_read(dc, 1);
+    ret = avcodec_send_packet(dc->decoder, NULL);
+    if (ret >= 0)
+        ret = decode_read(dc, 1);
     if (ret < 0) {
         fprintf(stderr, "Error flushing: %d\n", ret);
         return ret;
     }
 
-    return 0;
+finish:
+    return dc->process_frame(dc, NULL);
 }
 
 void ds_free(DecodeContext *dc)
@@ -148,6 +149,10 @@ int ds_open(DecodeContext *dc, const char *url, int stream_idx)
     dc->decoder = avcodec_alloc_context3(codec);
     if (!dc->decoder)
         return AVERROR(ENOMEM);
+
+    ret = avcodec_parameters_to_context(dc->decoder, dc->stream->codecpar);
+    if (ret < 0)
+        goto fail;
 
     return 0;
 

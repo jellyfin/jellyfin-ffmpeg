@@ -24,6 +24,7 @@
  */
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "subtitles.h"
 
@@ -116,9 +117,10 @@ static int mpsub_read_header(AVFormatContext *s)
             AVPacket *sub;
             const int64_t pos = avio_tell(s->pb);
 
-            ff_subtitles_read_chunk(s->pb, &buf);
+            res = ff_subtitles_read_chunk(s->pb, &buf);
+            if (res < 0) goto end;
             if (buf.len) {
-                sub = ff_subtitles_queue_insert(&mpsub->q, buf.str, buf.len, 0);
+                sub = ff_subtitles_queue_insert_bprint(&mpsub->q, &buf, 0);
                 if (!sub) {
                     res = AVERROR(ENOMEM);
                     goto end;
@@ -169,14 +171,14 @@ end:
     return res;
 }
 
-const AVInputFormat ff_mpsub_demuxer = {
-    .name           = "mpsub",
-    .long_name      = NULL_IF_CONFIG_SMALL("MPlayer subtitles"),
+const FFInputFormat ff_mpsub_demuxer = {
+    .p.name         = "mpsub",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MPlayer subtitles"),
+    .p.extensions   = "sub",
     .priv_data_size = sizeof(MPSubContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = mpsub_probe,
     .read_header    = mpsub_read_header,
-    .extensions     = "sub",
     .read_packet    = ff_subtitles_read_packet,
     .read_seek2     = ff_subtitles_read_seek,
     .read_close     = ff_subtitles_read_close,

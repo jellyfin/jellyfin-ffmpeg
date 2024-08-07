@@ -20,9 +20,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <time.h>
+
 #include "libavutil/parseutils.h"
 #include "avio_internal.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 typedef struct DHAVContext {
@@ -460,14 +463,14 @@ static int dhav_read_seek(AVFormatContext *s, int stream_index,
     return 0;
 }
 
-const AVInputFormat ff_dhav_demuxer = {
-    .name           = "dhav",
-    .long_name      = NULL_IF_CONFIG_SMALL("Video DAV"),
+const FFInputFormat ff_dhav_demuxer = {
+    .p.name         = "dhav",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Video DAV"),
+    .p.extensions   = "dav",
+    .p.flags        = AVFMT_GENERIC_INDEX | AVFMT_NO_BYTE_SEEK | AVFMT_TS_DISCONT | AVFMT_TS_NONSTRICT | AVFMT_SEEK_TO_PTS,
     .priv_data_size = sizeof(DHAVContext),
     .read_probe     = dhav_probe,
     .read_header    = dhav_read_header,
     .read_packet    = dhav_read_packet,
     .read_seek      = dhav_read_seek,
-    .extensions     = "dav",
-    .flags          = AVFMT_GENERIC_INDEX | AVFMT_NO_BYTE_SEEK | AVFMT_TS_DISCONT | AVFMT_TS_NONSTRICT | AVFMT_SEEK_TO_PTS,
 };

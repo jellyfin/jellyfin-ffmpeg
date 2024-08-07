@@ -17,16 +17,14 @@
  */
 #include <string.h>
 
-#include "libavutil/avassert.h"
-#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
 #include "framesync.h"
-#include "formats.h"
 #include "internal.h"
 #include "vaapi_vpp.h"
+#include "video.h"
 #include "libavutil/eval.h"
 
 enum var_name {
@@ -237,6 +235,7 @@ static int overlay_vaapi_blend(FFFrameSync *fs)
         params[1].blend_state = &blend_state;
 
         params[1].surface       = (VASurfaceID)(uintptr_t)input_overlay->data[3];
+        params[1].surface_region = NULL;
         params[1].output_region = &overlay_region;
     }
 
@@ -382,10 +381,10 @@ static const AVOption overlay_vaapi_options[] = {
     { "alpha", "Overlay global alpha", OFFSET(alpha),  AV_OPT_TYPE_FLOAT,  { .dbl = 1.0 }, 0.0, 1.0,      .flags = FLAGS },
     { "eof_action", "Action to take when encountering EOF from secondary input ",
         OFFSET(fs.opt_eof_action), AV_OPT_TYPE_INT, { .i64 = EOF_ACTION_REPEAT },
-        EOF_ACTION_REPEAT, EOF_ACTION_PASS, .flags = FLAGS, "eof_action" },
-        { "repeat", "Repeat the previous frame.",   0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_REPEAT }, .flags = FLAGS, "eof_action" },
-        { "endall", "End both streams.",            0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ENDALL }, .flags = FLAGS, "eof_action" },
-        { "pass",   "Pass through the main input.", 0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS },   .flags = FLAGS, "eof_action" },
+        EOF_ACTION_REPEAT, EOF_ACTION_PASS, .flags = FLAGS, .unit = "eof_action" },
+        { "repeat", "Repeat the previous frame.",   0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_REPEAT }, .flags = FLAGS, .unit = "eof_action" },
+        { "endall", "End both streams.",            0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ENDALL }, .flags = FLAGS, .unit = "eof_action" },
+        { "pass",   "Pass through the main input.", 0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS },   .flags = FLAGS, .unit = "eof_action" },
     { "shortest", "force termination when the shortest input terminates", OFFSET(fs.opt_shortest),   AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
     { "repeatlast", "repeat overlay of the last overlay frame",           OFFSET(fs.opt_repeatlast), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
     { NULL },

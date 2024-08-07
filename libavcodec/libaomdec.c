@@ -48,7 +48,7 @@ static av_cold int aom_init(AVCodecContext *avctx,
         .threads = FFMIN(avctx->thread_count ? avctx->thread_count : av_cpu_count(), 16)
     };
 
-    av_log(avctx, AV_LOG_INFO, "%s\n", aom_codec_version_str());
+    av_log(avctx, AV_LOG_VERBOSE, "%s\n", aom_codec_version_str());
     av_log(avctx, AV_LOG_VERBOSE, "%s\n", aom_codec_build_config());
 
     if (aom_codec_dec_init(&ctx->decoder, iface, &deccfg, 0) != AOM_CODEC_OK) {
@@ -78,17 +78,17 @@ static int set_pix_fmt(AVCodecContext *avctx, struct aom_image *img)
         if (img->bit_depth == 8) {
             avctx->pix_fmt = img->monochrome ?
                              AV_PIX_FMT_GRAY8 : AV_PIX_FMT_YUV420P;
-            avctx->profile = FF_PROFILE_AV1_MAIN;
+            avctx->profile = AV_PROFILE_AV1_MAIN;
             return 0;
         } else if (img->bit_depth == 10) {
             avctx->pix_fmt = img->monochrome ?
                              AV_PIX_FMT_GRAY10 : AV_PIX_FMT_YUV420P10;
-            avctx->profile = FF_PROFILE_AV1_MAIN;
+            avctx->profile = AV_PROFILE_AV1_MAIN;
             return 0;
         } else if (img->bit_depth == 12) {
             avctx->pix_fmt = img->monochrome ?
                              AV_PIX_FMT_GRAY12 : AV_PIX_FMT_YUV420P12;
-            avctx->profile = FF_PROFILE_AV1_PROFESSIONAL;
+            avctx->profile = AV_PROFILE_AV1_PROFESSIONAL;
             return 0;
         } else {
             return AVERROR_INVALIDDATA;
@@ -97,15 +97,15 @@ static int set_pix_fmt(AVCodecContext *avctx, struct aom_image *img)
     case AOM_IMG_FMT_I42216:
         if (img->bit_depth == 8) {
             avctx->pix_fmt = AV_PIX_FMT_YUV422P;
-            avctx->profile = FF_PROFILE_AV1_PROFESSIONAL;
+            avctx->profile = AV_PROFILE_AV1_PROFESSIONAL;
             return 0;
         } else if (img->bit_depth == 10) {
             avctx->pix_fmt = AV_PIX_FMT_YUV422P10;
-            avctx->profile = FF_PROFILE_AV1_PROFESSIONAL;
+            avctx->profile = AV_PROFILE_AV1_PROFESSIONAL;
             return 0;
         } else if (img->bit_depth == 12) {
             avctx->pix_fmt = AV_PIX_FMT_YUV422P12;
-            avctx->profile = FF_PROFILE_AV1_PROFESSIONAL;
+            avctx->profile = AV_PROFILE_AV1_PROFESSIONAL;
             return 0;
         } else {
             return AVERROR_INVALIDDATA;
@@ -115,18 +115,18 @@ static int set_pix_fmt(AVCodecContext *avctx, struct aom_image *img)
         if (img->bit_depth == 8) {
             avctx->pix_fmt = avctx->colorspace == AVCOL_SPC_RGB ?
                              AV_PIX_FMT_GBRP : AV_PIX_FMT_YUV444P;
-            avctx->profile = FF_PROFILE_AV1_HIGH;
+            avctx->profile = AV_PROFILE_AV1_HIGH;
             return 0;
         } else if (img->bit_depth == 10) {
             avctx->pix_fmt = AV_PIX_FMT_YUV444P10;
             avctx->pix_fmt = avctx->colorspace == AVCOL_SPC_RGB ?
                              AV_PIX_FMT_GBRP10 : AV_PIX_FMT_YUV444P10;
-            avctx->profile = FF_PROFILE_AV1_HIGH;
+            avctx->profile = AV_PROFILE_AV1_HIGH;
             return 0;
         } else if (img->bit_depth == 12) {
             avctx->pix_fmt = avctx->colorspace == AVCOL_SPC_RGB ?
                              AV_PIX_FMT_GBRP12 : AV_PIX_FMT_YUV444P12;
-            avctx->profile = FF_PROFILE_AV1_PROFESSIONAL;
+            avctx->profile = AV_PROFILE_AV1_PROFESSIONAL;
             return 0;
         } else {
             return AVERROR_INVALIDDATA;
@@ -185,7 +185,10 @@ static int aom_decode(AVCodecContext *avctx, AVFrame *picture,
             aom_codec_frame_flags_t flags;
             ret = aom_codec_control(&ctx->decoder, AOMD_GET_FRAME_FLAGS, &flags);
             if (ret == AOM_CODEC_OK) {
-                picture->key_frame = !!(flags & AOM_FRAME_IS_KEY);
+                if (flags & AOM_FRAME_IS_KEY)
+                    picture->flags |= AV_FRAME_FLAG_KEY;
+                else
+                    picture->flags &= ~AV_FRAME_FLAG_KEY;
                 if (flags & (AOM_FRAME_IS_KEY | AOM_FRAME_IS_INTRAONLY))
                     picture->pict_type = AV_PICTURE_TYPE_I;
                 else if (flags & AOM_FRAME_IS_SWITCH)

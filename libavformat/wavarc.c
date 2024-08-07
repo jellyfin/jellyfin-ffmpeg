@@ -70,8 +70,10 @@ static int wavarc_read_header(AVFormatContext *s)
     if (avio_r8(pb))
         return AVERROR_INVALIDDATA;
     id = avio_rl32(pb);
+    w->data_end = avio_tell(pb);
     if (avio_read(pb, data, sizeof(data)) != sizeof(data))
         return AVERROR(EIO);
+    w->data_end += 16LL + AV_RL32(data + 4);
     fmt_len = AV_RL32(data + 32);
     if (fmt_len < 12)
         return AVERROR_INVALIDDATA;
@@ -98,8 +100,7 @@ static int wavarc_read_header(AVFormatContext *s)
         if (id != MKTAG('d','a','t','a'))
             avio_skip(pb, avio_rl32(pb));
     } while (id != MKTAG('d','a','t','a') && !avio_feof(pb));
-    w->data_end = avio_rl32(pb);
-    w->data_end += avio_tell(pb);
+    avio_skip(pb, 4);
 
     if (AV_RL32(par->extradata + 16) != MKTAG('R','I','F','F'))
         return AVERROR_INVALIDDATA;
@@ -132,14 +133,14 @@ static int wavarc_read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-const AVInputFormat ff_wavarc_demuxer = {
-    .name           = "wavarc",
-    .long_name      = NULL_IF_CONFIG_SMALL("Waveform Archiver"),
+const FFInputFormat ff_wavarc_demuxer = {
+    .p.name         = "wavarc",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Waveform Archiver"),
+    .p.flags        = AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK | AVFMT_NOTIMESTAMPS,
+    .p.extensions   = "wa",
     .priv_data_size = sizeof(WavArcContext),
     .read_probe     = wavarc_probe,
     .read_packet    = wavarc_read_packet,
-    .flags          = AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK | AVFMT_NOTIMESTAMPS,
     .read_header    = wavarc_read_header,
-    .extensions     = "wa",
     .raw_codec_id   = AV_CODEC_ID_WAVARC,
 };

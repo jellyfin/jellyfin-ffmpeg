@@ -78,12 +78,14 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int skips = 0;
     int quality = 24;
 
-    if ((ret = ff_alloc_packet(avctx, pkt, avctx->width*avctx->height*9 + AV_INPUT_BUFFER_MIN_SIZE)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, avctx->width*avctx->height*9 + FF_INPUT_BUFFER_MIN_SIZE)) < 0)
         return ret;
     dst= buf= pkt->data;
 
     if(!c->prev)
         c->prev = av_malloc(avctx->width * 3 * (avctx->height + 3));
+    if (!c->prev)
+        return AVERROR(ENOMEM);
     prevptr = c->prev + avctx->width * 3 * (FFALIGN(avctx->height, 4) - 1);
     src = (const uint16_t*)(p->data[0] + p->linesize[0]*(FFALIGN(avctx->height, 4) - 1));
     if(c->keyint >= avctx->keyint_min)

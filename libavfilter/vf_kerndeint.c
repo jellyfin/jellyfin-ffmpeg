@@ -32,8 +32,8 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct KerndeintContext {
     const AVClass *class;
@@ -141,7 +141,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpic)
         return AVERROR(ENOMEM);
     }
     av_frame_copy_props(outpic, inpic);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     outpic->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    outpic->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
     for (plane = 0; plane < 4 && inpic->data[plane] && inpic->linesize[plane]; plane++) {
         h = plane == 0 ? inlink->h : AV_CEIL_RSHIFT(inlink->h, kerndeint->vsub);
@@ -289,13 +294,6 @@ static const AVFilterPad kerndeint_inputs[] = {
     },
 };
 
-static const AVFilterPad kerndeint_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 
 const AVFilter ff_vf_kerndeint = {
     .name          = "kerndeint",
@@ -304,6 +302,6 @@ const AVFilter ff_vf_kerndeint = {
     .priv_class    = &kerndeint_class,
     .uninit        = uninit,
     FILTER_INPUTS(kerndeint_inputs),
-    FILTER_OUTPUTS(kerndeint_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

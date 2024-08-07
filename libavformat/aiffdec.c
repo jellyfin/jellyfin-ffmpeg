@@ -106,6 +106,8 @@ static int get_aiff_header(AVFormatContext *s, int64_t size,
         size++;
     par->codec_type = AVMEDIA_TYPE_AUDIO;
     channels = avio_rb16(pb);
+    if (par->ch_layout.nb_channels && par->ch_layout.nb_channels != channels)
+        return AVERROR_INVALIDDATA;
     par->ch_layout.nb_channels = channels;
     num_frames = avio_rb32(pb);
     par->bits_per_coded_sample = avio_rb16(pb);
@@ -202,8 +204,8 @@ static int get_aiff_header(AVFormatContext *s, int64_t size,
 static int aiff_probe(const AVProbeData *p)
 {
     /* check file header */
-    if (p->buf[0] == 'F' && p->buf[1] == 'O' &&
-        p->buf[2] == 'R' && p->buf[3] == 'M' &&
+    if (AV_RL32(p->buf) == MKTAG('F', 'O', 'R', 'M') &&
+        AV_RB32(p->buf + 4) >= 4 &&
         p->buf[8] == 'A' && p->buf[9] == 'I' &&
         p->buf[10] == 'F' && (p->buf[11] == 'F' || p->buf[11] == 'C'))
         return AVPROBE_SCORE_MAX;
@@ -433,13 +435,13 @@ static int aiff_read_packet(AVFormatContext *s,
     return 0;
 }
 
-const AVInputFormat ff_aiff_demuxer = {
-    .name           = "aiff",
-    .long_name      = NULL_IF_CONFIG_SMALL("Audio IFF"),
+const FFInputFormat ff_aiff_demuxer = {
+    .p.name         = "aiff",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Audio IFF"),
+    .p.codec_tag    = ff_aiff_codec_tags_list,
     .priv_data_size = sizeof(AIFFInputContext),
     .read_probe     = aiff_probe,
     .read_header    = aiff_read_header,
     .read_packet    = aiff_read_packet,
     .read_seek      = ff_pcm_read_seek,
-    .codec_tag      = ff_aiff_codec_tags_list,
 };

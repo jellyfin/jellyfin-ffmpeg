@@ -79,12 +79,10 @@ static void uavs3d_output_callback(uavs3d_io_frm_t *dec_frame) {
 
     frm->pts       = dec_frame->pts;
     frm->pkt_dts   = dec_frame->dts;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
     frm->pkt_pos   = dec_frame->pkt_pos;
     frm->pkt_size  = dec_frame->pkt_size;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-    frm->coded_picture_number   = dec_frame->dtr;
-    frm->display_picture_number = dec_frame->ptr;
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 
@@ -92,7 +90,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
         av_log(NULL, AV_LOG_WARNING, "Error frame type in uavs3d: %d.\n", dec_frame->type);
     } else {
         frm->pict_type = ff_avs3_image_type[dec_frame->type];
-        frm->key_frame = (frm->pict_type == AV_PICTURE_TYPE_I);
+        if (frm->pict_type == AV_PICTURE_TYPE_I)
+            frm->flags |= AV_FRAME_FLAG_KEY;
+        else
+            frm->flags &= ~AV_FRAME_FLAG_KEY;
     }
 
     for (i = 0; i < 3; i++) {
@@ -175,8 +176,12 @@ static int libuavs3d_decode_frame(AVCodecContext *avctx, AVFrame *frm,
         uavs3d_io_frm_t *frm_dec = &h->dec_frame;
 
         buf_end = buf + buf_size;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
         frm_dec->pkt_pos  = avpkt->pos;
         frm_dec->pkt_size = avpkt->size;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
         while (!finish) {
             int bs_len;
@@ -263,8 +268,5 @@ const FFCodec ff_libuavs3d_decoder = {
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
                       FF_CODEC_CAP_AUTO_THREADS,
     .flush          = libuavs3d_flush,
-    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
-                                                     AV_PIX_FMT_YUV420P10LE,
-                                                     AV_PIX_FMT_NONE },
     .p.wrapper_name = "libuavs3d",
 };

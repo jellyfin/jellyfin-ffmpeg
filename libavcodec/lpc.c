@@ -25,7 +25,38 @@
 
 #define LPC_USE_DOUBLE
 #include "lpc.h"
+#include "lpc_functions.h"
 #include "libavutil/avassert.h"
+
+/**
+ * Schur recursion.
+ * Produces reflection coefficients from autocorrelation data.
+ */
+static inline void compute_ref_coefs(const LPC_TYPE *autoc, int max_order,
+                                     LPC_TYPE *ref, LPC_TYPE *error)
+{
+    LPC_TYPE err;
+    LPC_TYPE gen0[MAX_LPC_ORDER], gen1[MAX_LPC_ORDER];
+
+    for (int i = 0; i < max_order; i++)
+        gen0[i] = gen1[i] = autoc[i + 1];
+
+    err    = autoc[0];
+    ref[0] = -gen1[0] / ((LPC_USE_FIXED || err) ? err : 1);
+    err   +=  gen1[0] * ref[0];
+    if (error)
+        error[0] = err;
+    for (int i = 1; i < max_order; i++) {
+        for (int j = 0; j < max_order - i; j++) {
+            gen1[j] = gen1[j + 1] + ref[i - 1] * gen0[j];
+            gen0[j] = gen1[j + 1] * ref[i - 1] + gen0[j];
+        }
+        ref[i] = -gen1[0] / ((LPC_USE_FIXED || err) ? err : 1);
+        err   +=  gen1[0] * ref[i];
+        if (error)
+            error[i] = err;
+    }
+}
 
 
 /**
@@ -250,8 +281,10 @@ int ff_lpc_calc_coefs(LPCContext *s,
         double av_uninit(weight);
         memset(var, 0, FFALIGN(MAX_LPC_ORDER+1,4)*sizeof(*var));
 
-        for(j=0; j<max_order; j++)
-            m[0].coeff[max_order-1][j] = -lpc[max_order-1][j];
+        /* Avoids initializing with an unused value when lpc_passes == 1 */
+        if (lpc_passes > 1)
+            for(j=0; j<max_order; j++)
+                m[0].coeff[max_order-1][j] = -lpc[max_order-1][j];
 
         for(; pass<lpc_passes; pass++){
             avpriv_init_lls(&m[pass&1], max_order);
@@ -320,7 +353,9 @@ av_cold int ff_lpc_init(LPCContext *s, int blocksize, int max_order,
     s->lpc_apply_welch_window = lpc_apply_welch_window_c;
     s->lpc_compute_autocorr   = lpc_compute_autocorr_c;
 
-#if ARCH_X86
+#if ARCH_RISCV
+    ff_lpc_init_riscv(s);
+#elif ARCH_X86
     ff_lpc_init_x86(s);
 #endif
 

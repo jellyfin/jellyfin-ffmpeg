@@ -25,6 +25,7 @@
  */
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "subtitles.h"
 #include "libavutil/avstring.h"
@@ -68,6 +69,10 @@ static int sami_read_header(AVFormatContext *s)
         const int64_t pos = ff_text_pos(&tr) - (c != 0);
         int is_sync, is_body, n = ff_smil_extract_next_text_chunk(&tr, &buf, &c);
 
+        if (n < 0) {
+            res = n;
+            goto end;
+        }
         if (n == 0)
             break;
 
@@ -84,7 +89,7 @@ static int sami_read_header(AVFormatContext *s)
         if (!got_first_sync_point) {
             av_bprintf(&hdr_buf, "%s", buf.str);
         } else {
-            sub = ff_subtitles_queue_insert(&sami->q, buf.str, buf.len, !is_sync);
+            sub = ff_subtitles_queue_insert_bprint(&sami->q, &buf, !is_sync);
             if (!sub) {
                 res = AVERROR(ENOMEM);
                 av_bprint_finalize(&hdr_buf, NULL);
@@ -117,14 +122,14 @@ end:
     return res;
 }
 
-const AVInputFormat ff_sami_demuxer = {
-    .name           = "sami",
-    .long_name      = NULL_IF_CONFIG_SMALL("SAMI subtitle format"),
+const FFInputFormat ff_sami_demuxer = {
+    .p.name         = "sami",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("SAMI subtitle format"),
+    .p.extensions   = "smi,sami",
     .priv_data_size = sizeof(SAMIContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = sami_probe,
     .read_header    = sami_read_header,
-    .extensions     = "smi,sami",
     .read_packet    = ff_subtitles_read_packet,
     .read_seek2     = ff_subtitles_read_seek,
     .read_close     = ff_subtitles_read_close,

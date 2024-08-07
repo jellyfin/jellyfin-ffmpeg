@@ -31,6 +31,7 @@
 #include "libavutil/hwcontext_qsv.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mastering_display_metadata.h"
 
 #include "formats.h"
 #include "internal.h"
@@ -58,6 +59,15 @@ typedef struct VPPContext{
     mfxExtVPPRotation rotation_conf;
     mfxExtVPPMirroring mirroring_conf;
     mfxExtVPPScaling scale_conf;
+#if QSV_ONEVPL
+    /** Video signal info attached on the input frame */
+    mfxExtVideoSignalInfo invsi_conf;
+    /** Video signal info attached on the output frame */
+    mfxExtVideoSignalInfo outvsi_conf;
+    /** HDR parameters attached on the input frame */
+    mfxExtMasteringDisplayColourVolume mdcv_conf;
+    mfxExtContentLightLevelInfo clli_conf;
+#endif
 
     /**
      * New dimensions. Special values are:
@@ -100,8 +110,19 @@ typedef struct VPPContext{
     char *ow, *oh;
     char *output_format_str;
 
+    /** The color properties for output */
+    char *color_primaries_str;
+    char *color_transfer_str;
+    char *color_matrix_str;
+
+    int color_range;
+    enum AVColorPrimaries color_primaries;
+    enum AVColorTransferCharacteristic color_transfer;
+    enum AVColorSpace color_matrix;
+
     int has_passthrough;        /* apply pass through mode if possible */
     int field_rate;             /* Generate output at frame rate or field rate for deinterlace mode, 0: frame, 1: field */
+    int tonemap;                /* 1: perform tonemapping if the input has HDR metadata, 0: always disable tonemapping */
 } VPPContext;
 
 static const char *const var_names[] = {
@@ -227,6 +248,11 @@ static av_cold int vpp_preinit(AVFilterContext *ctx)
     vpp->contrast = 1.0;
     vpp->transpose = -1;
 
+    vpp->color_range = AVCOL_RANGE_UNSPECIFIED;
+    vpp->color_primaries = AVCOL_PRI_UNSPECIFIED;
+    vpp->color_transfer = AVCOL_TRC_UNSPECIFIED;
+    vpp->color_matrix = AVCOL_SPC_UNSPECIFIED;
+
     vpp->has_passthrough = 1;
 
     return 0;
@@ -246,6 +272,24 @@ static av_cold int vpp_init(AVFilterContext *ctx)
         }
     }
 
+#define STRING_OPTION(var_name, func_name, default_value) do {          \
+        if (vpp->var_name ## _str) {                                    \
+            int var = av_ ## func_name ## _from_name(vpp->var_name ## _str); \
+            if (var < 0) {                                              \
+                av_log(ctx, AV_LOG_ERROR, "Invalid %s.\n", #var_name);  \
+                return AVERROR(EINVAL);                                 \
+            }                                                           \
+            vpp->var_name = var;                                        \
+        } else {                                                        \
+            vpp->var_name = default_value;                              \
+        }                                                               \
+    } while (0)
+
+    STRING_OPTION(color_primaries, color_primaries, AVCOL_PRI_UNSPECIFIED);
+    STRING_OPTION(color_transfer,  color_transfer,  AVCOL_TRC_UNSPECIFIED);
+    STRING_OPTION(color_matrix,    color_space,     AVCOL_SPC_UNSPECIFIED);
+
+#undef STRING_OPTION
     return 0;
 }
 
@@ -344,6 +388,140 @@ static mfxStatus get_mfx_version(const AVFilterContext *ctx, mfxVersion *mfx_ver
     return MFXQueryVersion(device_hwctx->session, mfx_version);
 }
 
+static int vpp_set_frame_ext_params(AVFilterContext *ctx, const AVFrame *in, AVFrame *out,  QSVVPPFrameParam *fp)
+{
+#if QSV_ONEVPL
+    VPPContext *vpp = ctx->priv;
+    QSVVPPContext *qsvvpp = &vpp->qsv;
+    mfxExtVideoSignalInfo invsi_conf, outvsi_conf;
+    mfxExtMasteringDisplayColourVolume mdcv_conf;
+    mfxExtContentLightLevelInfo clli_conf;
+    AVFrameSideData *sd;
+    int tm = 0;
+
+    fp->num_ext_buf = 0;
+
+    if (!in || !out ||
+        !QSV_RUNTIME_VERSION_ATLEAST(qsvvpp->ver, 2, 0))
+        return 0;
+
+    memset(&invsi_conf, 0, sizeof(mfxExtVideoSignalInfo));
+    invsi_conf.Header.BufferId          = MFX_EXTBUFF_VIDEO_SIGNAL_INFO_IN;
+    invsi_conf.Header.BufferSz          = sizeof(mfxExtVideoSignalInfo);
+    invsi_conf.VideoFullRange           = (in->color_range == AVCOL_RANGE_JPEG);
+    invsi_conf.ColourPrimaries          = (in->color_primaries == AVCOL_PRI_UNSPECIFIED) ? AVCOL_PRI_BT709 : in->color_primaries;
+    invsi_conf.TransferCharacteristics  = (in->color_trc == AVCOL_TRC_UNSPECIFIED) ? AVCOL_TRC_BT709 : in->color_trc;
+    invsi_conf.MatrixCoefficients       = (in->colorspace == AVCOL_SPC_UNSPECIFIED) ? AVCOL_SPC_BT709 : in->colorspace;
+    invsi_conf.ColourDescriptionPresent = 1;
+
+    memset(&mdcv_conf, 0, sizeof(mfxExtMasteringDisplayColourVolume));
+    sd = av_frame_get_side_data(in, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+    if (vpp->tonemap && sd) {
+        AVMasteringDisplayMetadata *mdm = (AVMasteringDisplayMetadata *)sd->data;
+
+        if (mdm->has_primaries && mdm->has_luminance) {
+            const int mapping[3] = {1, 2, 0};
+            const int chroma_den = 50000;
+            const int luma_den   = 10000;
+            int i;
+
+            mdcv_conf.Header.BufferId         = MFX_EXTBUFF_MASTERING_DISPLAY_COLOUR_VOLUME_IN;
+            mdcv_conf.Header.BufferSz         = sizeof(mfxExtMasteringDisplayColourVolume);
+
+            for (i = 0; i < 3; i++) {
+                const int j = mapping[i];
+
+                mdcv_conf.DisplayPrimariesX[i] =
+                    FFMIN(lrint(chroma_den *
+                                av_q2d(mdm->display_primaries[j][0])),
+                          chroma_den);
+                mdcv_conf.DisplayPrimariesY[i] =
+                    FFMIN(lrint(chroma_den *
+                                av_q2d(mdm->display_primaries[j][1])),
+                          chroma_den);
+            }
+
+            mdcv_conf.WhitePointX =
+                FFMIN(lrint(chroma_den * av_q2d(mdm->white_point[0])),
+                      chroma_den);
+            mdcv_conf.WhitePointY =
+                FFMIN(lrint(chroma_den * av_q2d(mdm->white_point[1])),
+                      chroma_den);
+
+            /* MaxDisplayMasteringLuminance is in the unit of 1 nits however
+             * MinDisplayMasteringLuminance is in the unit of 0.0001 nits
+             */
+            mdcv_conf.MaxDisplayMasteringLuminance =
+                lrint(av_q2d(mdm->max_luminance));
+            mdcv_conf.MinDisplayMasteringLuminance =
+                lrint(luma_den * av_q2d(mdm->min_luminance));
+            tm = 1;
+        }
+    }
+
+    memset(&clli_conf, 0, sizeof(mfxExtContentLightLevelInfo));
+    sd = av_frame_get_side_data(in, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    if (vpp->tonemap && sd) {
+        AVContentLightMetadata *clm = (AVContentLightMetadata *)sd->data;
+
+        clli_conf.Header.BufferId         = MFX_EXTBUFF_CONTENT_LIGHT_LEVEL_INFO;
+        clli_conf.Header.BufferSz         = sizeof(mfxExtContentLightLevelInfo);
+        clli_conf.MaxContentLightLevel    = FFMIN(clm->MaxCLL,  65535);
+        clli_conf.MaxPicAverageLightLevel = FFMIN(clm->MaxFALL, 65535);
+        tm = 1;
+    }
+
+    if (tm) {
+        av_frame_remove_side_data(out, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+        av_frame_remove_side_data(out, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+
+        out->color_primaries = AVCOL_PRI_BT709;
+        out->color_trc = AVCOL_TRC_BT709;
+        out->colorspace = AVCOL_SPC_BT709;
+        out->color_range = AVCOL_RANGE_MPEG;
+    }
+
+    if (vpp->color_range != AVCOL_RANGE_UNSPECIFIED)
+        out->color_range = vpp->color_range;
+    if (vpp->color_primaries != AVCOL_PRI_UNSPECIFIED)
+        out->color_primaries = vpp->color_primaries;
+    if (vpp->color_transfer != AVCOL_TRC_UNSPECIFIED)
+        out->color_trc = vpp->color_transfer;
+    if (vpp->color_matrix != AVCOL_SPC_UNSPECIFIED)
+        out->colorspace = vpp->color_matrix;
+
+    memset(&outvsi_conf, 0, sizeof(mfxExtVideoSignalInfo));
+    outvsi_conf.Header.BufferId          = MFX_EXTBUFF_VIDEO_SIGNAL_INFO_OUT;
+    outvsi_conf.Header.BufferSz          = sizeof(mfxExtVideoSignalInfo);
+    outvsi_conf.VideoFullRange           = (out->color_range == AVCOL_RANGE_JPEG);
+    outvsi_conf.ColourPrimaries          = (out->color_primaries == AVCOL_PRI_UNSPECIFIED) ? AVCOL_PRI_BT709 : out->color_primaries;
+    outvsi_conf.TransferCharacteristics  = (out->color_trc == AVCOL_TRC_UNSPECIFIED) ? AVCOL_TRC_BT709 : out->color_trc;
+    outvsi_conf.MatrixCoefficients       = (out->colorspace == AVCOL_SPC_UNSPECIFIED) ? AVCOL_SPC_BT709 : out->colorspace;
+    outvsi_conf.ColourDescriptionPresent = 1;
+
+    if (memcmp(&vpp->invsi_conf, &invsi_conf, sizeof(mfxExtVideoSignalInfo)) ||
+        memcmp(&vpp->mdcv_conf, &mdcv_conf, sizeof(mfxExtMasteringDisplayColourVolume)) ||
+        memcmp(&vpp->clli_conf, &clli_conf, sizeof(mfxExtContentLightLevelInfo)) ||
+        memcmp(&vpp->outvsi_conf, &outvsi_conf, sizeof(mfxExtVideoSignalInfo))) {
+        vpp->invsi_conf                 = invsi_conf;
+        fp->ext_buf[fp->num_ext_buf++]  = (mfxExtBuffer*)&vpp->invsi_conf;
+
+        vpp->outvsi_conf                = outvsi_conf;
+        fp->ext_buf[fp->num_ext_buf++]  = (mfxExtBuffer*)&vpp->outvsi_conf;
+
+        vpp->mdcv_conf                     = mdcv_conf;
+        if (mdcv_conf.Header.BufferId)
+            fp->ext_buf[fp->num_ext_buf++] = (mfxExtBuffer*)&vpp->mdcv_conf;
+
+        vpp->clli_conf                     = clli_conf;
+        if (clli_conf.Header.BufferId)
+            fp->ext_buf[fp->num_ext_buf++] = (mfxExtBuffer*)&vpp->clli_conf;
+    }
+#endif
+
+    return 0;
+}
+
 static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
@@ -358,9 +536,13 @@ static int config_output(AVFilterLink *outlink)
     outlink->w          = vpp->out_width;
     outlink->h          = vpp->out_height;
     outlink->frame_rate = vpp->framerate;
-    outlink->time_base  = av_inv_q(vpp->framerate);
+    if (vpp->framerate.num == 0 || vpp->framerate.den == 0)
+        outlink->time_base = inlink->time_base;
+    else
+        outlink->time_base = av_inv_q(vpp->framerate);
 
     param.filter_frame  = NULL;
+    param.set_frame_ext_params = vpp_set_frame_ext_params;
     param.num_ext_buf   = 0;
     param.ext_buf       = ext_buf;
 
@@ -524,6 +706,11 @@ static int config_output(AVFilterLink *outlink)
     if (vpp->use_frc || vpp->use_crop || vpp->deinterlace || vpp->denoise ||
         vpp->detail || vpp->procamp || vpp->rotate || vpp->hflip ||
         inlink->w != outlink->w || inlink->h != outlink->h || in_format != vpp->out_format ||
+        vpp->color_range != AVCOL_RANGE_UNSPECIFIED ||
+        vpp->color_primaries != AVCOL_PRI_UNSPECIFIED ||
+        vpp->color_transfer != AVCOL_TRC_UNSPECIFIED ||
+        vpp->color_matrix != AVCOL_SPC_UNSPECIFIED ||
+        vpp->tonemap ||
         !vpp->has_passthrough)
         return ff_qsvvpp_init(ctx, &param);
     else {
@@ -581,6 +768,11 @@ static int activate(AVFilterContext *ctx)
         if (in) {
             if (in->pts != AV_NOPTS_VALUE)
                 in->pts = av_rescale_q(in->pts, inlink->time_base, outlink->time_base);
+
+            if (outlink->frame_rate.num && outlink->frame_rate.den)
+                in->duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+            else
+                in->duration = 0;
 
             ret = ff_filter_frame(outlink, in);
             if (ret < 0)
@@ -649,14 +841,15 @@ const AVFilter ff_vf_##sn##_qsv = { \
     fmts, \
     .activate       = activate, \
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE, \
+    .flags          = AVFILTER_FLAG_HWDEVICE,       \
 };
 
 #if CONFIG_VPP_QSV_FILTER
 
 static const AVOption vpp_options[] = {
-    { "deinterlace", "deinterlace mode: 0=off, 1=bob, 2=advanced", OFFSET(deinterlace), AV_OPT_TYPE_INT,      { .i64 = 0 }, 0, MFX_DEINTERLACING_ADVANCED, .flags = FLAGS, "deinterlace" },
-    { "bob",         "Bob deinterlace mode.",                      0,                   AV_OPT_TYPE_CONST,    { .i64 = MFX_DEINTERLACING_BOB },            .flags = FLAGS, "deinterlace" },
-    { "advanced",    "Advanced deinterlace mode. ",                0,                   AV_OPT_TYPE_CONST,    { .i64 = MFX_DEINTERLACING_ADVANCED },       .flags = FLAGS, "deinterlace" },
+    { "deinterlace", "deinterlace mode: 0=off, 1=bob, 2=advanced", OFFSET(deinterlace), AV_OPT_TYPE_INT,      { .i64 = 0 }, 0, MFX_DEINTERLACING_ADVANCED, .flags = FLAGS, .unit = "deinterlace" },
+    { "bob",         "Bob deinterlace mode.",                      0,                   AV_OPT_TYPE_CONST,    { .i64 = MFX_DEINTERLACING_BOB },            .flags = FLAGS, .unit = "deinterlace" },
+    { "advanced",    "Advanced deinterlace mode. ",                0,                   AV_OPT_TYPE_CONST,    { .i64 = MFX_DEINTERLACING_ADVANCED },       .flags = FLAGS, .unit = "deinterlace" },
 
     { "denoise",     "denoise level [0, 100]",       OFFSET(denoise),     AV_OPT_TYPE_INT,      { .i64 = 0 }, 0, 100, .flags = FLAGS },
     { "detail",      "enhancement level [0, 100]",   OFFSET(detail),      AV_OPT_TYPE_INT,      { .i64 = 0 }, 0, 100, .flags = FLAGS },
@@ -667,7 +860,7 @@ static const AVOption vpp_options[] = {
     { "contrast",    "ProcAmp contrast",             OFFSET(contrast),    AV_OPT_TYPE_FLOAT,    { .dbl = 1.0 }, 0.0, 10.0, .flags = FLAGS},
     { "brightness",  "ProcAmp brightness",           OFFSET(brightness),  AV_OPT_TYPE_FLOAT,    { .dbl = 0.0 }, -100.0, 100.0, .flags = FLAGS},
 
-    { "transpose",  "set transpose direction",       OFFSET(transpose),   AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, 6, FLAGS, "transpose"},
+    { "transpose",  "set transpose direction",       OFFSET(transpose),   AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, 6, FLAGS, .unit = "transpose"},
         { "cclock_hflip",  "rotate counter-clockwise with horizontal flip",  0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK_FLIP }, .flags=FLAGS, .unit = "transpose" },
         { "clock",         "rotate clockwise",                               0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK       }, .flags=FLAGS, .unit = "transpose" },
         { "cclock",        "rotate counter-clockwise",                       0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK      }, .flags=FLAGS, .unit = "transpose" },
@@ -686,34 +879,59 @@ static const AVOption vpp_options[] = {
     { "h",      "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
     { "height", "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
     { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
-    { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, .flags = FLAGS },
+    { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = 4 }, 0, INT_MAX, .flags = FLAGS },
 #if QSV_ONEVPL
-    { "scale_mode", "scaling & format conversion mode (mode compute(3), vd(4) and ve(5) are only available on some platforms)", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 5, .flags = FLAGS, "scale mode" },
+    { "scale_mode", "scaling & format conversion mode (mode compute(3), vd(4) and ve(5) are only available on some platforms)", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 5, .flags = FLAGS, .unit = "scale mode" },
 #else
-    { "scale_mode", "scaling & format conversion mode", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = MFX_SCALING_MODE_DEFAULT }, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, .flags = FLAGS, "scale mode" },
+    { "scale_mode", "scaling & format conversion mode", OFFSET(scale_mode), AV_OPT_TYPE_INT, { .i64 = MFX_SCALING_MODE_DEFAULT }, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, .flags = FLAGS, .unit = "scale mode" },
 #endif
-    { "auto",      "auto mode",             0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_DEFAULT},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
-    { "low_power", "low power mode",        0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, "scale mode"},
-    { "hq",        "high quality mode",     0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
+    { "auto",      "auto mode",             0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_DEFAULT},  INT_MIN, INT_MAX, FLAGS, .unit = "scale mode"},
+    { "low_power", "low power mode",        0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, .unit = "scale mode"},
+    { "hq",        "high quality mode",     0,    AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, .unit = "scale mode"},
 #if QSV_ONEVPL
-    { "compute",   "compute",               0,    AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
-    { "vd",        "vd",                    0,    AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
-    { "ve",        "ve",                    0,    AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, "scale mode"},
+    { "compute",   "compute",               0,    AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, .unit = "scale mode"},
+    { "vd",        "vd",                    0,    AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, .unit = "scale mode"},
+    { "ve",        "ve",                    0,    AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, .unit = "scale mode"},
 #endif
 
     { "rate", "Generate output at frame rate or field rate, available only for deinterlace mode",
-      OFFSET(field_rate), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, "rate" },
+      OFFSET(field_rate), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, .unit = "rate" },
     { "frame", "Output at frame rate (one frame of output for each field-pair)",
-      0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, "rate" },
+      0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, .unit = "rate" },
     { "field", "Output at field rate (one frame of output for each field)",
-      0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, "rate" },
+      0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, .unit = "rate" },
+
+    { "out_range", "Output color range",
+      OFFSET(color_range), AV_OPT_TYPE_INT, { .i64 = AVCOL_RANGE_UNSPECIFIED },
+      AVCOL_RANGE_UNSPECIFIED, AVCOL_RANGE_JPEG, FLAGS, .unit = "range" },
+    { "full",    "Full range",
+      0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_JPEG }, 0, 0, FLAGS, .unit = "range" },
+    { "limited", "Limited range",
+      0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG }, 0, 0, FLAGS, .unit = "range" },
+    { "jpeg",    "Full range",
+      0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_JPEG }, 0, 0, FLAGS, .unit = "range" },
+    { "mpeg",    "Limited range",
+      0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG }, 0, 0, FLAGS, .unit = "range" },
+    { "tv",      "Limited range",
+      0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG }, 0, 0, FLAGS, .unit = "range" },
+    { "pc",      "Full range",
+      0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_JPEG }, 0, 0, FLAGS, .unit = "range" },
+    { "out_color_matrix", "Output color matrix coefficient set",
+      OFFSET(color_matrix_str), AV_OPT_TYPE_STRING, { .str = NULL }, .flags = FLAGS },
+    { "out_color_primaries", "Output color primaries",
+      OFFSET(color_primaries_str), AV_OPT_TYPE_STRING, { .str = NULL }, .flags = FLAGS },
+    { "out_color_transfer", "Output color transfer characteristics",
+      OFFSET(color_transfer_str),  AV_OPT_TYPE_STRING, { .str = NULL }, .flags = FLAGS },
+
+    {"tonemap", "Perform tonemapping (0=disable tonemapping, 1=perform tonemapping if the input has HDR metadata)", OFFSET(tonemap), AV_OPT_TYPE_INT, {.i64 = 0 }, 0, 1, .flags = FLAGS},
 
     { NULL }
 };
 
 static int vpp_query_formats(AVFilterContext *ctx)
 {
-    int ret;
+    VPPContext *vpp = ctx->priv;
+    int ret, i = 0;
     static const enum AVPixelFormat in_pix_fmts[] = {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NV12,
@@ -726,17 +944,25 @@ static int vpp_query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_QSV,
         AV_PIX_FMT_NONE
     };
-    static const enum AVPixelFormat out_pix_fmts[] = {
-        AV_PIX_FMT_NV12,
-        AV_PIX_FMT_P010,
-        AV_PIX_FMT_QSV,
-        AV_PIX_FMT_NONE
-    };
+    static enum AVPixelFormat out_pix_fmts[4];
 
     ret = ff_formats_ref(ff_make_format_list(in_pix_fmts),
                          &ctx->inputs[0]->outcfg.formats);
     if (ret < 0)
         return ret;
+
+    /* User specifies the output format */
+    if (vpp->out_format == AV_PIX_FMT_NV12 ||
+        vpp->out_format == AV_PIX_FMT_P010)
+        out_pix_fmts[i++] = vpp->out_format;
+    else {
+        out_pix_fmts[i++] = AV_PIX_FMT_NV12;
+        out_pix_fmts[i++] = AV_PIX_FMT_P010;
+    }
+
+    out_pix_fmts[i++] = AV_PIX_FMT_QSV;
+    out_pix_fmts[i++] = AV_PIX_FMT_NONE;
+
     return ff_formats_ref(ff_make_format_list(out_pix_fmts),
                           &ctx->outputs[0]->incfg.formats);
 }
@@ -753,16 +979,16 @@ static const AVOption qsvscale_options[] = {
     { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
 
 #if QSV_ONEVPL
-    { "mode",      "scaling & format conversion mode (mode compute(3), vd(4) and ve(5) are only available on some platforms)",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = 0}, 0, 5, FLAGS, "mode"},
+    { "mode",      "scaling & format conversion mode (mode compute(3), vd(4) and ve(5) are only available on some platforms)",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = 0}, 0, 5, FLAGS, .unit = "mode"},
 #else
-    { "mode",      "scaling & format conversion mode",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = MFX_SCALING_MODE_DEFAULT}, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, FLAGS, "mode"},
+    { "mode",      "scaling & format conversion mode",    OFFSET(scale_mode),    AV_OPT_TYPE_INT,    { .i64 = MFX_SCALING_MODE_DEFAULT}, MFX_SCALING_MODE_DEFAULT, MFX_SCALING_MODE_QUALITY, FLAGS, .unit = "mode"},
 #endif
-    { "low_power", "low power mode",        0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, "mode"},
-    { "hq",        "high quality mode",     0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, "mode"},
+    { "low_power", "low power mode",        0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_LOWPOWER}, INT_MIN, INT_MAX, FLAGS, .unit = "mode"},
+    { "hq",        "high quality mode",     0,             AV_OPT_TYPE_CONST,  { .i64 = MFX_SCALING_MODE_QUALITY},  INT_MIN, INT_MAX, FLAGS, .unit = "mode"},
 #if QSV_ONEVPL
-    { "compute",   "compute",               0,             AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, "mode"},
-    { "vd",        "vd",                    0,             AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, "mode"},
-    { "ve",        "ve",                    0,             AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, "mode"},
+    { "compute",   "compute",               0,             AV_OPT_TYPE_CONST,  { .i64 = 3},  INT_MIN, INT_MAX, FLAGS, .unit = "mode"},
+    { "vd",        "vd",                    0,             AV_OPT_TYPE_CONST,  { .i64 = 4},  INT_MIN, INT_MAX, FLAGS, .unit = "mode"},
+    { "ve",        "ve",                    0,             AV_OPT_TYPE_CONST,  { .i64 = 5},  INT_MIN, INT_MAX, FLAGS, .unit = "mode"},
 #endif
 
     { NULL },
@@ -785,9 +1011,9 @@ DEFINE_QSV_FILTER(qsvscale, scale, "scaling and format conversion", FILTER_SINGL
 #if CONFIG_DEINTERLACE_QSV_FILTER
 
 static const AVOption qsvdeint_options[] = {
-    { "mode", "set deinterlace mode", OFFSET(deinterlace),   AV_OPT_TYPE_INT, {.i64 = MFX_DEINTERLACING_ADVANCED}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, "mode"},
-    { "bob",   "bob algorithm",                  0, AV_OPT_TYPE_CONST,      {.i64 = MFX_DEINTERLACING_BOB}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, "mode"},
-    { "advanced", "Motion adaptive algorithm",   0, AV_OPT_TYPE_CONST, {.i64 = MFX_DEINTERLACING_ADVANCED}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, "mode"},
+    { "mode", "set deinterlace mode", OFFSET(deinterlace),   AV_OPT_TYPE_INT, {.i64 = MFX_DEINTERLACING_ADVANCED}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, .unit = "mode"},
+    { "bob",   "bob algorithm",                  0, AV_OPT_TYPE_CONST,      {.i64 = MFX_DEINTERLACING_BOB}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, .unit = "mode"},
+    { "advanced", "Motion adaptive algorithm",   0, AV_OPT_TYPE_CONST, {.i64 = MFX_DEINTERLACING_ADVANCED}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, .unit = "mode"},
 
     { NULL },
 };

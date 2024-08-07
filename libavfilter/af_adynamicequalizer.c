@@ -18,15 +18,66 @@
 
 #include <float.h>
 
+#include "libavutil/ffmath.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
 #include "formats.h"
 
+enum DetectionModes {
+    DET_UNSET = 0,
+    DET_DISABLED,
+    DET_OFF,
+    DET_ON,
+    DET_ADAPTIVE,
+    NB_DMODES,
+};
+
+enum FilterModes {
+    LISTEN = -1,
+    CUT_BELOW,
+    CUT_ABOVE,
+    BOOST_BELOW,
+    BOOST_ABOVE,
+    NB_FMODES,
+};
+
+typedef struct ChannelContext {
+    double fa_double[3], fm_double[3];
+    double dstate_double[2];
+    double fstate_double[2];
+    double tstate_double[2];
+    double lin_gain_double;
+    double detect_double;
+    double threshold_log_double;
+    double new_threshold_log_double;
+    double log_sum_double;
+    double sum_double;
+    float fa_float[3], fm_float[3];
+    float dstate_float[2];
+    float fstate_float[2];
+    float tstate_float[2];
+    float lin_gain_float;
+    float detect_float;
+    float threshold_log_float;
+    float new_threshold_log_float;
+    float log_sum_float;
+    float sum_float;
+    void *dqueue;
+    void *queue;
+    int position;
+    int size;
+    int front;
+    int back;
+    int detection;
+    int init;
+} ChannelContext;
+
 typedef struct AudioDynamicEqualizerContext {
     const AVClass *class;
 
     double threshold;
+    double threshold_log;
     double dfrequency;
     double dqfactor;
     double tfrequency;
@@ -34,192 +85,95 @@ typedef struct AudioDynamicEqualizerContext {
     double ratio;
     double range;
     double makeup;
-    double attack;
-    double release;
-    double attack_coef;
-    double release_coef;
+    double dattack;
+    double drelease;
+    double dattack_coef;
+    double drelease_coef;
+    double gattack_coef;
+    double grelease_coef;
     int mode;
-    int direction;
     int detection;
-    int type;
+    int tftype;
+    int dftype;
+    int precision;
+    int format;
+    int nb_channels;
 
-    AVFrame *state;
+    int (*filter_prepare)(AVFilterContext *ctx);
+    int (*filter_channels)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
+
+    double da_double[3], dm_double[3];
+    float da_float[3], dm_float[3];
+
+    ChannelContext *cc;
 } AudioDynamicEqualizerContext;
 
-static int config_input(AVFilterLink *inlink)
+static int query_formats(AVFilterContext *ctx)
 {
-    AVFilterContext *ctx = inlink->dst;
     AudioDynamicEqualizerContext *s = ctx->priv;
+    static const enum AVSampleFormat sample_fmts[3][3] = {
+        { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP, AV_SAMPLE_FMT_NONE },
+        { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE },
+        { AV_SAMPLE_FMT_DBLP, AV_SAMPLE_FMT_NONE },
+    };
+    int ret;
 
-    s->state = ff_get_audio_buffer(inlink, 8);
-    if (!s->state)
-        return AVERROR(ENOMEM);
+    if ((ret = ff_set_common_all_channel_counts(ctx)) < 0)
+        return ret;
 
-    for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
-        double *state = (double *)s->state->extended_data[ch];
+    if ((ret = ff_set_common_formats_from_list(ctx, sample_fmts[s->precision])) < 0)
+        return ret;
 
-        state[4] = 1.;
-    }
-
-    return 0;
+    return ff_set_common_all_samplerates(ctx);
 }
 
-static double get_svf(double in, double *m, double *a, double *b)
+static double get_coef(double x, double sr)
 {
-    const double v0 = in;
-    const double v3 = v0 - b[1];
-    const double v1 = a[0] * b[0] + a[1] * v3;
-    const double v2 = b[1] + a[1] * b[0] + a[2] * v3;
-
-    b[0] = 2. * v1 - b[0];
-    b[1] = 2. * v2 - b[1];
-
-    return m[0] * v0 + m[1] * v1 + m[2] * v2;
+    return 1.0 - exp(-1.0 / (0.001 * x * sr));
 }
 
 typedef struct ThreadData {
     AVFrame *in, *out;
 } ThreadData;
 
-static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+#define DEPTH 32
+#include "adynamicequalizer_template.c"
+
+#undef DEPTH
+#define DEPTH 64
+#include "adynamicequalizer_template.c"
+
+static int config_input(AVFilterLink *inlink)
 {
+    AVFilterContext *ctx = inlink->dst;
     AudioDynamicEqualizerContext *s = ctx->priv;
-    ThreadData *td = arg;
-    AVFrame *in = td->in;
-    AVFrame *out = td->out;
-    const double sample_rate = in->sample_rate;
-    const double makeup = s->makeup;
-    const double ratio = s->ratio;
-    const double range = s->range;
-    const double dfrequency = fmin(s->dfrequency, sample_rate * 0.5);
-    const double tfrequency = fmin(s->tfrequency, sample_rate * 0.5);
-    const double release = s->release_coef;
-    const double irelease = 1. - release;
-    const double attack = s->attack_coef;
-    const double iattack = 1. - attack;
-    const double dqfactor = s->dqfactor;
-    const double tqfactor = s->tqfactor;
-    const double fg = tan(M_PI * tfrequency / sample_rate);
-    const double dg = tan(M_PI * dfrequency / sample_rate);
-    const int start = (in->ch_layout.nb_channels * jobnr) / nb_jobs;
-    const int end = (in->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
-    const int detection = s->detection;
-    const int direction = s->direction;
-    const int mode = s->mode;
-    const int type = s->type;
-    double da[3], dm[3];
 
-    {
-        double k = 1. / dqfactor;
+    s->format = inlink->format;
+    s->cc = av_calloc(inlink->ch_layout.nb_channels, sizeof(*s->cc));
+    if (!s->cc)
+        return AVERROR(ENOMEM);
+    s->nb_channels = inlink->ch_layout.nb_channels;
 
-        da[0] = 1. / (1. + dg * (dg + k));
-        da[1] = dg * da[0];
-        da[2] = dg * da[1];
-
-        dm[0] = 0.;
-        dm[1] = k;
-        dm[2] = 0.;
+    switch (s->format) {
+    case AV_SAMPLE_FMT_DBLP:
+        s->filter_prepare  = filter_prepare_double;
+        s->filter_channels = filter_channels_double;
+        break;
+    case AV_SAMPLE_FMT_FLTP:
+        s->filter_prepare  = filter_prepare_float;
+        s->filter_channels = filter_channels_float;
+        break;
     }
 
-    for (int ch = start; ch < end; ch++) {
-        const double *src = (const double *)in->extended_data[ch];
-        double *dst = (double *)out->extended_data[ch];
-        double *state = (double *)s->state->extended_data[ch];
-        const double threshold = detection == 0 ? state[5] : s->threshold;
-
-        if (detection < 0)
-            state[5] = threshold;
-
-        for (int n = 0; n < out->nb_samples; n++) {
-            double detect, gain, v, listen;
-            double fa[3], fm[3];
-            double k, g;
-
-            detect = listen = get_svf(src[n], dm, da, state);
-            detect = fabs(detect);
-
-            if (detection > 0)
-                state[5] = fmax(state[5], detect);
-
-            if (direction == 0 && mode == 0 && detect < threshold)
-                detect = 1. / av_clipd(1. + makeup + (threshold - detect) * ratio, 1., range);
-            else if (direction == 0 && mode == 1 && detect < threshold)
-                detect = av_clipd(1. + makeup + (threshold - detect) * ratio, 1., range);
-            else if (direction == 1 && mode == 0 && detect > threshold)
-                detect = 1. / av_clipd(1. + makeup + (detect - threshold) * ratio, 1., range);
-            else if (direction == 1 && mode == 1 && detect > threshold)
-                detect = av_clipd(1. + makeup + (detect - threshold) * ratio, 1., range);
-            else
-                detect = 1.;
-
-            if (direction == 0) {
-                if (detect > state[4]) {
-                    detect = iattack * detect + attack * state[4];
-                } else {
-                    detect = irelease * detect + release * state[4];
-                }
-            } else {
-                if (detect < state[4]) {
-                    detect = iattack * detect + attack * state[4];
-                } else {
-                    detect = irelease * detect + release * state[4];
-                }
-            }
-
-            if (state[4] != detect || n == 0) {
-                state[4] = gain = detect;
-
-                switch (type) {
-                case 0:
-                    k = 1. / (tqfactor * gain);
-
-                    fa[0] = 1. / (1. + fg * (fg + k));
-                    fa[1] = fg * fa[0];
-                    fa[2] = fg * fa[1];
-
-                    fm[0] = 1.;
-                    fm[1] = k * (gain * gain - 1.);
-                    fm[2] = 0.;
-                    break;
-                case 1:
-                    k = 1. / tqfactor;
-                    g = fg / sqrt(gain);
-
-                    fa[0] = 1. / (1. + g * (g + k));
-                    fa[1] = g * fa[0];
-                    fa[2] = g * fa[1];
-
-                    fm[0] = 1.;
-                    fm[1] = k * (gain - 1.);
-                    fm[2] = gain * gain - 1.;
-                    break;
-                case 2:
-                    k = 1. / tqfactor;
-                    g = fg / sqrt(gain);
-
-                    fa[0] = 1. / (1. + g * (g + k));
-                    fa[1] = g * fa[0];
-                    fa[2] = g * fa[1];
-
-                    fm[0] = gain * gain;
-                    fm[1] = k * (1. - gain) * gain;
-                    fm[2] = 1. - gain * gain;
-                    break;
-                }
-            }
-
-            v = get_svf(src[n], fm, fa, &state[2]);
-            v = mode == -1 ? listen : v;
-            dst[n] = ctx->is_disabled ? src[n] : v;
-        }
+    for (int ch = 0; ch < s->nb_channels; ch++) {
+        ChannelContext *cc = &s->cc[ch];
+        cc->queue = av_calloc(inlink->sample_rate, sizeof(double));
+        cc->dqueue = av_calloc(inlink->sample_rate, sizeof(double));
+        if (!cc->queue || !cc->dqueue)
+            return AVERROR(ENOMEM);
     }
 
     return 0;
-}
-
-static double get_coef(double x, double sr)
-{
-    return exp(-1000. / (x * sr));
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
@@ -241,12 +195,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_copy_props(out, in);
     }
 
-    s->attack_coef = get_coef(s->attack, in->sample_rate);
-    s->release_coef = get_coef(s->release, in->sample_rate);
-
     td.in = in;
     td.out = out;
-    ff_filter_execute(ctx, filter_channels, &td, NULL,
+    s->filter_prepare(ctx);
+    ff_filter_execute(ctx, s->filter_channels, &td, NULL,
                      FFMIN(outlink->ch_layout.nb_channels, ff_filter_get_nb_threads(ctx)));
 
     if (out != in)
@@ -258,10 +210,16 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     AudioDynamicEqualizerContext *s = ctx->priv;
 
-    av_frame_free(&s->state);
+    for (int ch = 0; ch < s->nb_channels; ch++) {
+        ChannelContext *cc = &s->cc[ch];
+        av_freep(&cc->queue);
+        av_freep(&cc->dqueue);
+    }
+    av_freep(&s->cc);
 }
 
 #define OFFSET(x) offsetof(AudioDynamicEqualizerContext, x)
+#define AF AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 #define FLAGS AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption adynamicequalizer_options[] = {
@@ -270,26 +228,35 @@ static const AVOption adynamicequalizer_options[] = {
     { "dqfactor",   "set detection Q factor",  OFFSET(dqfactor),   AV_OPT_TYPE_DOUBLE, {.dbl=1},    0.001, 1000,    FLAGS },
     { "tfrequency", "set target frequency",    OFFSET(tfrequency), AV_OPT_TYPE_DOUBLE, {.dbl=1000},     2, 1000000, FLAGS },
     { "tqfactor",   "set target Q factor",     OFFSET(tqfactor),   AV_OPT_TYPE_DOUBLE, {.dbl=1},    0.001, 1000,    FLAGS },
-    { "attack",     "set attack duration",     OFFSET(attack),     AV_OPT_TYPE_DOUBLE, {.dbl=20},       1, 2000,    FLAGS },
-    { "release",    "set release duration",    OFFSET(release),    AV_OPT_TYPE_DOUBLE, {.dbl=200},      1, 2000,    FLAGS },
+    { "attack", "set detection attack duration", OFFSET(dattack),  AV_OPT_TYPE_DOUBLE, {.dbl=20},    0.01, 2000,    FLAGS },
+    { "release","set detection release duration",OFFSET(drelease), AV_OPT_TYPE_DOUBLE, {.dbl=200},   0.01, 2000,    FLAGS },
     { "ratio",      "set ratio factor",        OFFSET(ratio),      AV_OPT_TYPE_DOUBLE, {.dbl=1},        0, 30,      FLAGS },
-    { "makeup",     "set makeup gain",         OFFSET(makeup),     AV_OPT_TYPE_DOUBLE, {.dbl=0},        0, 100,     FLAGS },
-    { "range",      "set max gain",            OFFSET(range),      AV_OPT_TYPE_DOUBLE, {.dbl=50},       1, 200,     FLAGS },
-    { "mode",       "set mode",                OFFSET(mode),       AV_OPT_TYPE_INT,    {.i64=0},       -1, 1,       FLAGS, "mode" },
-    {   "listen",   0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=-1},       0, 0,       FLAGS, "mode" },
-    {   "cut",      0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, "mode" },
-    {   "boost",    0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, "mode" },
-    { "tftype",     "set target filter type",  OFFSET(type),       AV_OPT_TYPE_INT,    {.i64=0},        0, 2,       FLAGS, "type" },
-    {   "bell",     0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, "type" },
-    {   "lowshelf", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, "type" },
-    {   "highshelf",0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=2},        0, 0,       FLAGS, "type" },
-    { "direction",  "set direction",           OFFSET(direction),  AV_OPT_TYPE_INT,    {.i64=0},        0, 1,       FLAGS, "direction" },
-    {   "downward", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, "direction" },
-    {   "upward",   0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, "direction" },
-    { "auto",       "set auto threshold",      OFFSET(detection),  AV_OPT_TYPE_INT,    {.i64=-1},      -1, 1,       FLAGS, "auto" },
-    {   "disabled", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=-1},       0, 0,       FLAGS, "auto" },
-    {   "off",      0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, "auto" },
-    {   "on",       0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, "auto" },
+    { "makeup",     "set makeup gain",         OFFSET(makeup),     AV_OPT_TYPE_DOUBLE, {.dbl=0},        0, 1000,    FLAGS },
+    { "range",      "set max gain",            OFFSET(range),      AV_OPT_TYPE_DOUBLE, {.dbl=50},       1, 2000,    FLAGS },
+    { "mode",       "set mode",                OFFSET(mode),       AV_OPT_TYPE_INT,    {.i64=0},  LISTEN,NB_FMODES-1,FLAGS, .unit = "mode" },
+    {   "listen",   0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=LISTEN},   0, 0,       FLAGS, .unit = "mode" },
+    {   "cutbelow", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=CUT_BELOW},0, 0,       FLAGS, .unit = "mode" },
+    {   "cutabove", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=CUT_ABOVE},0, 0,       FLAGS, .unit = "mode" },
+    { "boostbelow", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=BOOST_BELOW},0, 0,     FLAGS, .unit = "mode" },
+    { "boostabove", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=BOOST_ABOVE},0, 0,     FLAGS, .unit = "mode" },
+    { "dftype",     "set detection filter type",OFFSET(dftype),    AV_OPT_TYPE_INT,    {.i64=0},        0, 3,       FLAGS, .unit = "dftype" },
+    {   "bandpass", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, .unit = "dftype" },
+    {   "lowpass",  0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, .unit = "dftype" },
+    {   "highpass", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=2},        0, 0,       FLAGS, .unit = "dftype" },
+    {   "peak",     0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=3},        0, 0,       FLAGS, .unit = "dftype" },
+    { "tftype",     "set target filter type",  OFFSET(tftype),     AV_OPT_TYPE_INT,    {.i64=0},        0, 2,       FLAGS, .unit = "tftype" },
+    {   "bell",     0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=0},        0, 0,       FLAGS, .unit = "tftype" },
+    {   "lowshelf", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=1},        0, 0,       FLAGS, .unit = "tftype" },
+    {   "highshelf",0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=2},        0, 0,       FLAGS, .unit = "tftype" },
+    { "auto",       "set auto threshold",      OFFSET(detection),  AV_OPT_TYPE_INT,    {.i64=DET_OFF},DET_DISABLED,NB_DMODES-1,FLAGS, .unit = "auto" },
+    {   "disabled", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=DET_DISABLED}, 0, 0,   FLAGS, .unit = "auto" },
+    {   "off",      0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=DET_OFF},      0, 0,   FLAGS, .unit = "auto" },
+    {   "on",       0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=DET_ON},       0, 0,   FLAGS, .unit = "auto" },
+    {   "adaptive", 0,                         0,                  AV_OPT_TYPE_CONST,  {.i64=DET_ADAPTIVE}, 0, 0,   FLAGS, .unit = "auto" },
+    { "precision", "set processing precision", OFFSET(precision),  AV_OPT_TYPE_INT,    {.i64=0},        0, 2,       AF, .unit = "precision" },
+    {   "auto",  "set auto processing precision",                  0, AV_OPT_TYPE_CONST, {.i64=0},      0, 0,       AF, .unit = "precision" },
+    {   "float", "set single-floating point processing precision", 0, AV_OPT_TYPE_CONST, {.i64=1},      0, 0,       AF, .unit = "precision" },
+    {   "double","set double-floating point processing precision", 0, AV_OPT_TYPE_CONST, {.i64=2},      0, 0,       AF, .unit = "precision" },
     { NULL }
 };
 
@@ -304,13 +271,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_adynamicequalizer = {
     .name            = "adynamicequalizer",
     .description     = NULL_IF_CONFIG_SMALL("Apply Dynamic Equalization of input audio."),
@@ -318,8 +278,8 @@ const AVFilter ff_af_adynamicequalizer = {
     .priv_class      = &adynamicequalizer_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
-    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
+    FILTER_QUERY_FUNC(query_formats),
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                        AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

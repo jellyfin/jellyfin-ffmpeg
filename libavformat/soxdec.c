@@ -33,15 +33,20 @@
 #include "libavutil/intfloat.h"
 #include "libavutil/dict.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "pcm.h"
 #include "sox.h"
 
 static int sox_probe(const AVProbeData *p)
 {
-    if (AV_RL32(p->buf) == SOX_TAG || AV_RB32(p->buf) == SOX_TAG)
-        return AVPROBE_SCORE_MAX;
-    return 0;
+    if (AV_RL32(p->buf) != SOX_TAG && AV_RB32(p->buf) != SOX_TAG)
+        return 0;
+    if (AV_RN32(p->buf+4) == 0)
+        return 0;
+    if (AV_RN32(p->buf+24) == 0)
+        return 0;
+    return AVPROBE_SCORE_MAX;
 }
 
 static int sox_read_header(AVFormatContext *s)
@@ -127,9 +132,9 @@ static int sox_read_header(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_sox_demuxer = {
-    .name           = "sox",
-    .long_name      = NULL_IF_CONFIG_SMALL("SoX native"),
+const FFInputFormat ff_sox_demuxer = {
+    .p.name         = "sox",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("SoX (Sound eXchange) native"),
     .read_probe     = sox_probe,
     .read_header    = sox_read_header,
     .read_packet    = ff_pcm_read_packet,

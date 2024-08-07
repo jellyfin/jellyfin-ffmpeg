@@ -26,6 +26,7 @@
  *   http://www.pcisys.net/~melanson/codecs/
  */
 
+#include "libavutil/emms.h"
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
@@ -118,7 +119,7 @@ static void svq1_write_header(SVQ1EncContext *s, PutBitContext *pb, int frame_ty
         /* output 5 unknown bits (2 + 2 + 1) */
         put_bits(pb, 5, 2); /* 2 needed by quicktime decoder */
 
-        i = ff_match_2uint16((void*)ff_svq1_frame_size_table,
+        i = ff_match_2uint16(ff_svq1_frame_size_table,
                              FF_ARRAY_ELEMS(ff_svq1_frame_size_table),
                              s->frame_width, s->frame_height);
         put_bits(pb, 3, i);
@@ -135,16 +136,6 @@ static void svq1_write_header(SVQ1EncContext *s, PutBitContext *pb, int frame_ty
 
 #define QUALITY_THRESHOLD    100
 #define THRESHOLD_MULTIPLIER 0.6
-
-static int ssd_int8_vs_int16_c(const int8_t *pix1, const int16_t *pix2,
-                               intptr_t size)
-{
-    int score = 0, i;
-
-    for (i = 0; i < size; i++)
-        score += (pix1[i] - pix2[i]) * (pix1[i] - pix2[i]);
-    return score;
-}
 
 static int encode_block(SVQ1EncContext *s, uint8_t *src, uint8_t *ref,
                         uint8_t *decoded, int stride, unsigned level,
@@ -569,6 +560,7 @@ static av_cold int svq1_encode_end(AVCodecContext *avctx)
 
     av_frame_free(&s->current_picture);
     av_frame_free(&s->last_picture);
+    av_frame_free(&s->m.new_picture);
 
     return 0;
 }
@@ -631,18 +623,14 @@ static av_cold int svq1_encode_init(AVCodecContext *avctx)
     s->dummy               = av_mallocz((s->y_block_width + 1) *
                                         s->y_block_height * sizeof(int32_t));
     s->m.me.map            = av_mallocz(2 * ME_MAP_SIZE * sizeof(*s->m.me.map));
-    s->svq1encdsp.ssd_int8_vs_int16 = ssd_int8_vs_int16_c;
+    s->m.new_picture       = av_frame_alloc();
 
-    if (!s->m.me.temp || !s->m.me.scratchpad || !s->m.me.map ||
-        !s->mb_type || !s->dummy)
+    if (!s->m.me.scratchpad || !s->m.me.map ||
+        !s->mb_type || !s->dummy || !s->m.new_picture)
         return AVERROR(ENOMEM);
     s->m.me.score_map = s->m.me.map + ME_MAP_SIZE;
 
-#if ARCH_PPC
-    ff_svq1enc_init_ppc(&s->svq1encdsp);
-#elif ARCH_X86
-    ff_svq1enc_init_x86(&s->svq1encdsp);
-#endif
+    ff_svq1enc_init(&s->svq1encdsp);
 
     ff_h263_encode_init(&s->m); // mv_penalty
 
@@ -657,7 +645,7 @@ static int svq1_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int i, ret;
 
     ret = ff_alloc_packet(avctx, pkt, s->y_block_width * s->y_block_height *
-                          MAX_MB_BYTES * 3 + AV_INPUT_BUFFER_MIN_SIZE);
+                          MAX_MB_BYTES * 3 + FF_INPUT_BUFFER_MIN_SIZE);
     if (ret < 0)
         return ret;
 
@@ -732,10 +720,10 @@ static int svq1_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 #define OFFSET(x) offsetof(struct SVQ1EncContext, x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
-    { "motion-est", "Motion estimation algorithm", OFFSET(motion_est), AV_OPT_TYPE_INT, { .i64 = FF_ME_EPZS }, FF_ME_ZERO, FF_ME_XONE, VE, "motion-est"},
-        { "zero", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_ME_ZERO }, 0, 0, FF_MPV_OPT_FLAGS, "motion-est" },
-        { "epzs", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_ME_EPZS }, 0, 0, FF_MPV_OPT_FLAGS, "motion-est" },
-        { "xone", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_ME_XONE }, 0, 0, FF_MPV_OPT_FLAGS, "motion-est" },
+    { "motion-est", "Motion estimation algorithm", OFFSET(motion_est), AV_OPT_TYPE_INT, { .i64 = FF_ME_EPZS }, FF_ME_ZERO, FF_ME_XONE, VE, .unit = "motion-est"},
+        { "zero", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_ME_ZERO }, 0, 0, FF_MPV_OPT_FLAGS, .unit = "motion-est" },
+        { "epzs", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_ME_EPZS }, 0, 0, FF_MPV_OPT_FLAGS, .unit = "motion-est" },
+        { "xone", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = FF_ME_XONE }, 0, 0, FF_MPV_OPT_FLAGS, .unit = "motion-est" },
 
     { NULL },
 };

@@ -20,56 +20,41 @@
 
 #include "libavutil/riscv/asm.S"
 
-func ff_opus_postfilter_rvv_128, zve32f
-        lvtypei a5, e32, m2, ta, ma
-        j       1f
-endfunc
-
-func ff_opus_postfilter_rvv_512, zve32f
-        lvtypei a5, e32, mf2, ta, ma
-        j       1f
-endfunc
-
-func ff_opus_postfilter_rvv_1024, zve32f
-        lvtypei a5, e32, mf4, ta, ma
-        j       1f
-endfunc
-
-func ff_opus_postfilter_rvv_256, zve32f
-        lvtypei a5, e32, m1, ta, ma
+func ff_opus_postfilter_rvv, zve32f
+        flw     fa0, 0(a2) // g0
+        slli    t1, a1, 2
+        flw     fa1, 4(a2) // g1
+        sub     t0, a0, t1
+        flw     fa2, 8(a2) // g2
+        addi    t1, t0, -2 * 4 // data - (period + 2) = initial &x4
+        vsetivli zero, 4, e32, m4, ta, ma
+        addi    t0, t0, 2 * 4 // data - (period - 2) = initial &x0
+        vle32.v v16, (t1)
+        addi    t3, a1, -2 // maximum parallelism w/o stepping our tail
 1:
-        li           a4, 5
-        addi         a1, a1, 2
-        slli         a1, a1, 2
-        lw           t1, 4(a2)
-        vsetivli     zero, 3, e32, m1, ta, ma
-        vle32.v      v24, (a2)
-        sub          a1, a0, a1      // a1 = &x4 = &data[-(period + 2)]
-        vsetvl       zero, a4, a5
-        vslide1up.vx v8, v24, t1
-        lw           t2, 8(a2)
-        vle32.v      v16, (a1)
-        vslide1up.vx v24, v8, t2     // v24 = { g[2], g[1], g[0], g[1], g[2] }
-2:
-        vsetvl  t0, a3, a5
-        vle32.v v0, (a0)
-        sub     a3, a3, t0
-3:
-        vsetvl         zero, a4, a5
-        lw             t2, 20(a1)
-        vfmul.vv       v8, v24, v16
-        addi           a0, a0, 4
-        vslide1down.vx v16, v16, t2
-        addi           a1, a1, 4
-        vfredusum.vs   v0, v8, v0
-        vsetvl         zero, t0, a5
-        vmv.x.s        t1, v0
-        addi           t0, t0, -1
-        vslide1down.vx v0, v0, zero
-        sw             t1, -4(a0)
-        bnez           t0, 3b
-
-        bnez    a3, 2b
+        vslidedown.vi v8, v16, 2
+        min     t1, a3, t3
+        vslide1down.vx v12, v16, zero
+        vsetvli t1, t1, e32, m4, ta, ma
+        vle32.v v0, (t0) // x0
+        sub     a3, a3, t1
+        vslide1down.vx v4, v8, zero
+        sh2add  t0, t1, t0
+        vle32.v v28, (a0)
+        addi    t2, t1, -4
+        vslideup.vi v4, v0, 1
+        vslideup.vi v8, v4, 1
+        vslideup.vi v12, v8, 1
+        vslideup.vi v16, v12, 1
+        vfadd.vv v20, v4, v12
+        vfadd.vv v24, v0, v16
+        vslidedown.vx v16, v0, t2
+        vfmacc.vf v28, fa0, v8
+        vfmacc.vf v28, fa1, v20
+        vfmacc.vf v28, fa2, v24
+        vse32.v v28, (a0)
+        sh2add  a0, t1, a0
+        bnez    a3, 1b
 
         ret
 endfunc

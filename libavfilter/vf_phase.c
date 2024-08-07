@@ -23,7 +23,6 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -75,10 +74,10 @@ typedef struct PhaseContext {
 
 #define OFFSET(x) offsetof(PhaseContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
-#define CONST(name, help, val, unit) { name, help, 0, AV_OPT_TYPE_CONST, {.i64=val}, 0, 0, FLAGS, unit }
+#define CONST(name, help, val, u) { name, help, 0, AV_OPT_TYPE_CONST, {.i64=val}, 0, 0, FLAGS, .unit = u }
 
 static const AVOption phase_options[] = {
-    { "mode", "set phase mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=AUTO_ANALYZE}, PROGRESSIVE, AUTO_ANALYZE, FLAGS, "mode" },
+    { "mode", "set phase mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=AUTO_ANALYZE}, PROGRESSIVE, AUTO_ANALYZE, FLAGS, .unit = "mode" },
     CONST("p", "progressive",          PROGRESSIVE,          "mode"),
     CONST("t", "top first",            TOP_FIRST,            "mode"),
     CONST("b", "bottom first",         BOTTOM_FIRST,         "mode"),
@@ -218,13 +217,6 @@ static const AVFilterPad phase_inputs[] = {
     },
 };
 
-static const AVFilterPad phase_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_phase = {
     .name          = "phase",
     .description   = NULL_IF_CONFIG_SMALL("Phase shift fields."),
@@ -232,7 +224,7 @@ const AVFilter ff_vf_phase = {
     .priv_class    = &phase_class,
     .uninit        = uninit,
     FILTER_INPUTS(phase_inputs),
-    FILTER_OUTPUTS(phase_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = ff_filter_process_command,

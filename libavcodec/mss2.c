@@ -324,7 +324,7 @@ static int decode_rle(GetBitContext *gb, uint8_t *pal_dst, ptrdiff_t pal_stride,
     if (next_code != 1 << current_length)
         return AVERROR_INVALIDDATA;
 
-    if ((i = init_vlc(&vlc, 9, alphabet_size, bits, 1, 1, codes, 4, 4, 0)) < 0)
+    if ((i = vlc_init(&vlc, 9, alphabet_size, bits, 1, 1, codes, 4, 4, 0)) < 0)
         return i;
 
     /* frame decode */
@@ -371,7 +371,7 @@ static int decode_rle(GetBitContext *gb, uint8_t *pal_dst, ptrdiff_t pal_stride,
         prev_avail = 1;
     } while (--h);
 
-    ff_free_vlc(&vlc);
+    ff_vlc_free(&vlc);
     return 0;
 }
 
@@ -422,7 +422,7 @@ static int decode_wmv9(AVCodecContext *avctx, const uint8_t *buf, int buf_size,
     ff_vc1_decode_blocks(v);
 
     if (v->end_mb_x == s->mb_width && s->end_mb_y == s->mb_height) {
-        ff_er_frame_end(&s->er);
+        ff_er_frame_end(&s->er, NULL);
     } else {
         av_log(v->s.avctx, AV_LOG_WARNING,
                "disabling error correction due to block count mismatch %dx%d != %dx%d\n",
@@ -660,7 +660,10 @@ static int mss2_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                     frame->linesize[0] * (avctx->height - 1);
     c->rgb_stride = -frame->linesize[0];
 
-    frame->key_frame = keyframe;
+    if (keyframe)
+        frame->flags |= AV_FRAME_FLAG_KEY;
+    else
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
     frame->pict_type = keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
     if (is_555) {
@@ -794,8 +797,7 @@ static int mss2_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         av_log(avctx, AV_LOG_WARNING, "buffer not fully consumed\n");
 
     if (c->mvX < 0 || c->mvY < 0) {
-        av_frame_unref(ctx->last_pic);
-        ret = av_frame_ref(ctx->last_pic, frame);
+        ret = av_frame_replace(ctx->last_pic, frame);
         if (ret < 0)
             return ret;
     }
@@ -884,14 +886,10 @@ static av_cold int mss2_decode_init(AVCodecContext *avctx)
     c->pal_stride   = c->mask_stride;
     c->pal_pic      = av_mallocz(c->pal_stride * avctx->height);
     c->last_pal_pic = av_mallocz(c->pal_stride * avctx->height);
-    if (!c->pal_pic || !c->last_pal_pic || !ctx->last_pic) {
-        mss2_decode_end(avctx);
+    if (!c->pal_pic || !c->last_pal_pic || !ctx->last_pic)
         return AVERROR(ENOMEM);
-    }
-    if (ret = wmv9_init(avctx)) {
-        mss2_decode_end(avctx);
+    if (ret = wmv9_init(avctx))
         return ret;
-    }
     ff_mss2dsp_init(&ctx->dsp);
 
     avctx->pix_fmt = c->free_colours == 127 ? AV_PIX_FMT_RGB555
@@ -911,4 +909,5 @@ const FFCodec ff_mss2_decoder = {
     .close          = mss2_decode_end,
     FF_CODEC_DECODE_CB(mss2_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

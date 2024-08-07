@@ -1,5 +1,5 @@
-0047ca43aa8ab2948752e367f184dc1f *tests/data/fate/matroska-dovi-write-config8.matroska
-3600576 tests/data/fate/matroska-dovi-write-config8.matroska
+0730145aa317d800cb4bde0e3a38bb8d *tests/data/fate/matroska-dovi-write-config8.matroska
+3600607 tests/data/fate/matroska-dovi-write-config8.matroska
 #extradata 0:      551, 0xa18acf66
 #extradata 1:        2, 0x00340022
 #tb 0: 1/1000
@@ -12,7 +12,7 @@
 #codec_id 1: aac
 #sample_rate 1: 44100
 #channel_layout_name 1: stereo
-0,        -67,          0,       33,    63375, 0xc76606ab, S=1,        8
+0,        -67,          0,       33,    63375, 0xc76606ab
 0,        -34,        133,       33,    46706, 0x0e08a7e5, F=0x0
 0,          0,         67,       33,    29766, 0x753c031a, F=0x0
 1,          0,          0,       23,        6, 0x031e0108
@@ -45,6 +45,15 @@
 1,        372,        372,       23,      479, 0x44dce967
 1,        395,        395,       23,      439, 0x7d85e4c9
 [STREAM]
+[SIDE_DATA]
+side_data_type=Display Matrix
+displaymatrix=
+00000000:            0       65536           0
+00000001:       -65536           0           0
+00000002:            0           0  1073741824
+
+rotation=-90
+[/SIDE_DATA]
 [SIDE_DATA]
 side_data_type=DOVI configuration record
 dv_version_major=1

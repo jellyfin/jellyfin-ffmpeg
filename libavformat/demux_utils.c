@@ -158,18 +158,6 @@ int ff_add_param_change(AVPacket *pkt, int32_t channels,
     if (!pkt)
         return AVERROR(EINVAL);
 
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (channels) {
-        size  += 4;
-        flags |= AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_COUNT;
-    }
-    if (channel_layout) {
-        size  += 8;
-        flags |= AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_LAYOUT;
-    }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     if (sample_rate) {
         size  += 4;
         flags |= AV_SIDE_DATA_PARAM_CHANGE_SAMPLE_RATE;
@@ -182,14 +170,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
     if (!data)
         return AVERROR(ENOMEM);
     bytestream_put_le32(&data, flags);
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (channels)
-        bytestream_put_le32(&data, channels);
-    if (channel_layout)
-        bytestream_put_le64(&data, channel_layout);
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     if (sample_rate)
         bytestream_put_le32(&data, sample_rate);
     if (width || height) {
@@ -201,8 +181,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
 int av_read_play(AVFormatContext *s)
 {
-    if (s->iformat->read_play)
-        return s->iformat->read_play(s);
+    if (ffifmt(s->iformat)->read_play)
+        return ffifmt(s->iformat)->read_play(s);
     if (s->pb)
         return avio_pause(s->pb, 0);
     return AVERROR(ENOSYS);
@@ -210,8 +190,8 @@ int av_read_play(AVFormatContext *s)
 
 int av_read_pause(AVFormatContext *s)
 {
-    if (s->iformat->read_pause)
-        return s->iformat->read_pause(s);
+    if (ffifmt(s->iformat)->read_pause)
+        return ffifmt(s->iformat)->read_pause(s);
     if (s->pb)
         return avio_pause(s->pb, 1);
     return AVERROR(ENOSYS);

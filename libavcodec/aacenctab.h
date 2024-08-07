@@ -30,6 +30,7 @@
 
 #include "libavutil/channel_layout.h"
 #include "aac.h"
+#include "defs.h"
 
 /** Total number of usable codebooks **/
 #define CB_TOT 12
@@ -124,10 +125,10 @@ static const unsigned char aac_maxval_cb[] = {
 };
 
 static const int aacenc_profiles[] = {
-    FF_PROFILE_AAC_MAIN,
-    FF_PROFILE_AAC_LOW,
-    FF_PROFILE_AAC_LTP,
-    FF_PROFILE_MPEG2_AAC_LOW,
+    AV_PROFILE_AAC_MAIN,
+    AV_PROFILE_AAC_LOW,
+    AV_PROFILE_AAC_LTP,
+    AV_PROFILE_MPEG2_AAC_LOW,
 };
 
 #endif /* AVCODEC_AACENCTAB_H */

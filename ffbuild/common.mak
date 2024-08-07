@@ -130,7 +130,7 @@ $(BIN2CEXE): ffbuild/bin2c_host.o
 ifdef CONFIG_PTX_COMPRESSION
 %.ptx.gz: TAG = GZIP
 %.ptx.gz: %.ptx
-	$(M)gzip -c9 $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) >$@
+	$(M)gzip -nc9 $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) >$@
 
 %.ptx.c: %.ptx.gz $(BIN2CEXE)
 	$(BIN2C) $(patsubst $(SRC_PATH)/%,$(SRC_LINK)/%,$<) $@ $(subst .,_,$(basename $(notdir $@)))
@@ -140,7 +140,7 @@ else
 endif
 
 clean::
-	$(RM) $(BIN2CEXE)
+	$(RM) $(BIN2CEXE) $(CLEANSUFFIXES:%=ffbuild/%)
 
 %.c %.h %.pc %.ver %.version: TAG = GEN
 

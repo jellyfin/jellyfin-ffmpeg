@@ -40,18 +40,18 @@
 
 static const AVOption signature_options[] = {
     { "detectmode", "set the detectmode",
-        OFFSET(mode),         AV_OPT_TYPE_INT,    {.i64 = MODE_OFF}, 0, NB_LOOKUP_MODE-1, FLAGS, "mode" },
-        { "off",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MODE_OFF},  0, 0, .flags = FLAGS, "mode" },
-        { "full", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MODE_FULL}, 0, 0, .flags = FLAGS, "mode" },
-        { "fast", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MODE_FAST}, 0, 0, .flags = FLAGS, "mode" },
+        OFFSET(mode),         AV_OPT_TYPE_INT,    {.i64 = MODE_OFF}, 0, NB_LOOKUP_MODE-1, FLAGS, .unit = "mode" },
+        { "off",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MODE_OFF},  0, 0, .flags = FLAGS, .unit = "mode" },
+        { "full", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MODE_FULL}, 0, 0, .flags = FLAGS, .unit = "mode" },
+        { "fast", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MODE_FAST}, 0, 0, .flags = FLAGS, .unit = "mode" },
     { "nb_inputs",  "number of inputs",
         OFFSET(nb_inputs),    AV_OPT_TYPE_INT,    {.i64 = 1},        1, INT_MAX,          FLAGS },
     { "filename",   "filename for output files",
         OFFSET(filename),     AV_OPT_TYPE_STRING, {.str = ""},       0, NB_FORMATS-1,     FLAGS },
     { "format",     "set output format",
-        OFFSET(format),       AV_OPT_TYPE_INT,    {.i64 = FORMAT_BINARY}, 0, 1,           FLAGS , "format" },
-        { "binary", 0, 0, AV_OPT_TYPE_CONST, {.i64=FORMAT_BINARY}, 0, 0, FLAGS, "format" },
-        { "xml",    0, 0, AV_OPT_TYPE_CONST, {.i64=FORMAT_XML},    0, 0, FLAGS, "format" },
+        OFFSET(format),       AV_OPT_TYPE_INT,    {.i64 = FORMAT_BINARY}, 0, 1,           FLAGS , .unit = "format" },
+        { "binary", 0, 0, AV_OPT_TYPE_CONST, {.i64=FORMAT_BINARY}, 0, 0, FLAGS, .unit = "format" },
+        { "xml",    0, 0, AV_OPT_TYPE_CONST, {.i64=FORMAT_XML},    0, 0, FLAGS, .unit = "format" },
     { "th_d",       "threshold to detect one word as similar",
         OFFSET(thworddist),   AV_OPT_TYPE_INT,    {.i64 = 9000},     1, INT_MAX,          FLAGS },
     { "th_dc",      "threshold to detect all words as similar",
@@ -250,14 +250,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
         int64_t* elemsignature;
         uint64_t* sortsignature;
 
-        elemsignature = av_malloc_array(elemcat->elem_count, sizeof(int64_t));
+        elemsignature = av_malloc_array(elemcat->elem_count, 2 * sizeof(int64_t));
         if (!elemsignature)
             return AVERROR(ENOMEM);
-        sortsignature = av_malloc_array(elemcat->elem_count, sizeof(int64_t));
-        if (!sortsignature) {
-            av_freep(&elemsignature);
-            return AVERROR(ENOMEM);
-        }
+        sortsignature = elemsignature + elemcat->elem_count;
 
         for (j = 0; j < elemcat->elem_count; j++) {
             blocksum = 0;
@@ -307,7 +303,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
             f++;
         }
         av_freep(&elemsignature);
-        av_freep(&sortsignature);
     }
 
     /* confidence */
@@ -383,6 +378,9 @@ static int xml_export(AVFilterContext *ctx, StreamContext *sc, const char* filen
     int i, j;
     FILE* f;
     unsigned int pot3[5] = { 3*3*3*3, 3*3*3, 3*3, 3, 1 };
+
+    if (!sc->coarseend->last)
+        return AVERROR(EINVAL); // No frames ?
 
     f = avpriv_fopen_utf8(filename, "w");
     if (!f) {

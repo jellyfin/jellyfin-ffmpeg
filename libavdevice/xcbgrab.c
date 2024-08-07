@@ -45,6 +45,7 @@
 #include "libavutil/time.h"
 
 #include "libavformat/avformat.h"
+#include "libavformat/demux.h"
 #include "libavformat/internal.h"
 
 typedef struct XCBGrabContext {
@@ -92,8 +93,8 @@ static const AVOption options[] = {
     { "framerate", "", OFFSET(framerate), AV_OPT_TYPE_STRING, {.str = "ntsc" }, 0, 0, D },
     { "draw_mouse", "Draw the mouse pointer.", OFFSET(draw_mouse), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, D },
     { "follow_mouse", "Move the grabbing region when the mouse pointer reaches within specified amount of pixels to the edge of region.",
-      OFFSET(follow_mouse), AV_OPT_TYPE_INT, { .i64 = 0 },  FOLLOW_CENTER, INT_MAX, D, "follow_mouse" },
-    { "centered", "Keep the mouse pointer at the center of grabbing region when following.", 0, AV_OPT_TYPE_CONST, { .i64 = -1 }, INT_MIN, INT_MAX, D, "follow_mouse" },
+      OFFSET(follow_mouse), AV_OPT_TYPE_INT, { .i64 = 0 },  FOLLOW_CENTER, INT_MAX, D, .unit = "follow_mouse" },
+    { "centered", "Keep the mouse pointer at the center of grabbing region when following.", 0, AV_OPT_TYPE_CONST, { .i64 = -1 }, INT_MIN, INT_MAX, D, .unit = "follow_mouse" },
     { "show_region", "Show the grabbing region.", OFFSET(show_region), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, D },
     { "region_border", "Set the region border thickness.", OFFSET(region_border), AV_OPT_TYPE_INT, { .i64 = 3 }, 1, 128, D },
     { "select_region", "Select the grabbing region graphically using the pointer.", OFFSET(select_region), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, D },
@@ -826,7 +827,10 @@ static av_cold int xcbgrab_read_header(AVFormatContext *s)
 
     if (!sscanf(s->url, "%[^+]+%d,%d", display_name, &c->x, &c->y)) {
         *display_name = 0;
-        sscanf(s->url, "+%d,%d", &c->x, &c->y);
+        if(sscanf(s->url, "+%d,%d", &c->x, &c->y) != 2) {
+            if (*s->url)
+                av_log(s, AV_LOG_WARNING, "Ambigous URL: %s\n", s->url);
+        }
     }
 
     c->conn = xcb_connect(display_name[0] ? display_name : NULL, &screen_num);
@@ -900,13 +904,13 @@ static av_cold int xcbgrab_read_header(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_xcbgrab_demuxer = {
-    .name           = "x11grab",
-    .long_name      = NULL_IF_CONFIG_SMALL("X11 screen capture, using XCB"),
+const FFInputFormat ff_xcbgrab_demuxer = {
+    .p.name         = "x11grab",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("X11 screen capture, using XCB"),
+    .p.flags        = AVFMT_NOFILE,
+    .p.priv_class   = &xcbgrab_class,
     .priv_data_size = sizeof(XCBGrabContext),
     .read_header    = xcbgrab_read_header,
     .read_packet    = xcbgrab_read_packet,
     .read_close     = xcbgrab_read_close,
-    .flags          = AVFMT_NOFILE,
-    .priv_class     = &xcbgrab_class,
 };

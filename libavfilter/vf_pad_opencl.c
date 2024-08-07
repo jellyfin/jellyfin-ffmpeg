@@ -19,10 +19,9 @@
 #include "libavutil/colorspace.h"
 #include "libavutil/eval.h"
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
+#include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
@@ -93,7 +92,7 @@ static int pad_opencl_init(AVFilterContext *avctx, AVFrame *input_frame)
     ctx->hsub = desc->log2_chroma_w;
     ctx->vsub = desc->log2_chroma_h;
 
-    err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_pad, 1);
+    err = ff_opencl_filter_load_program(avctx, &ff_source_pad_cl, 1);
     if (err < 0)
         goto fail;
 
@@ -391,5 +390,6 @@ const AVFilter ff_vf_pad_opencl = {
     FILTER_INPUTS(pad_opencl_inputs),
     FILTER_OUTPUTS(pad_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
-    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE
+    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

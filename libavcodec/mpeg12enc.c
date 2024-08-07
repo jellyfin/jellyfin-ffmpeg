@@ -203,23 +203,23 @@ static av_cold int encode_init(AVCodecContext *avctx)
         }
     }
 
-    if (avctx->profile == FF_PROFILE_UNKNOWN) {
-        if (avctx->level != FF_LEVEL_UNKNOWN) {
+    if (avctx->profile == AV_PROFILE_UNKNOWN) {
+        if (avctx->level != AV_LEVEL_UNKNOWN) {
             av_log(avctx, AV_LOG_ERROR, "Set profile and level\n");
             return AVERROR(EINVAL);
         }
         /* Main or 4:2:2 */
-        avctx->profile = avctx->pix_fmt == AV_PIX_FMT_YUV420P ? FF_PROFILE_MPEG2_MAIN
-                                                              : FF_PROFILE_MPEG2_422;
+        avctx->profile = avctx->pix_fmt == AV_PIX_FMT_YUV420P ? AV_PROFILE_MPEG2_MAIN
+                                                              : AV_PROFILE_MPEG2_422;
     }
-    if (avctx->level == FF_LEVEL_UNKNOWN) {
-        if (avctx->profile == FF_PROFILE_MPEG2_422) {   /* 4:2:2 */
+    if (avctx->level == AV_LEVEL_UNKNOWN) {
+        if (avctx->profile == AV_PROFILE_MPEG2_422) {   /* 4:2:2 */
             if (avctx->width <= 720 && avctx->height <= 608)
                 avctx->level = 5;                   /* Main */
             else
                 avctx->level = 2;                   /* High */
         } else {
-            if (avctx->profile != FF_PROFILE_MPEG2_HIGH &&
+            if (avctx->profile != AV_PROFILE_MPEG2_HIGH &&
                 avctx->pix_fmt != AV_PIX_FMT_YUV420P) {
                 av_log(avctx, AV_LOG_ERROR,
                        "Only High(1) and 4:2:2(0) profiles support 4:2:2 color sampling\n");
@@ -290,7 +290,7 @@ static void mpeg1_encode_sequence_header(MpegEncContext *s)
     AVRational aspect_ratio = s->avctx->sample_aspect_ratio;
     int aspect_ratio_info;
 
-    if (!s->current_picture.f->key_frame)
+    if (!(s->current_picture.f->flags & AV_FRAME_FLAG_KEY))
         return;
 
     if (aspect_ratio.num == 0 || aspect_ratio.den == 0)
@@ -333,7 +333,7 @@ static void mpeg1_encode_sequence_header(MpegEncContext *s)
     else
         /* VBV calculation: Scaled so that a VCD has the proper
          * VBV size of 40 kilobytes */
-        vbv_buffer_size = ((20 * s->bit_rate) / (1151929 / 2)) * 8 * 1024;
+        vbv_buffer_size = av_rescale_rnd(s->bit_rate, 20, 1151929 / 2, AV_ROUND_ZERO) * 8 * 1024;
     vbv_buffer_size = (vbv_buffer_size + 16383) / 16384;
 
     put_sbits(&s->pb, 18, v);
@@ -366,7 +366,7 @@ static void mpeg1_encode_sequence_header(MpegEncContext *s)
         put_header(s, EXT_START_CODE);
         put_bits(&s->pb, 4, 1);                 // seq ext
 
-        put_bits(&s->pb, 1, s->avctx->profile == FF_PROFILE_MPEG2_422); // escx 1 for 4:2:2 profile
+        put_bits(&s->pb, 1, s->avctx->profile == AV_PROFILE_MPEG2_422); // escx 1 for 4:2:2 profile
 
         put_bits(&s->pb, 3, s->avctx->profile); // profile
         put_bits(&s->pb, 4, s->avctx->level);   // level
@@ -530,7 +530,7 @@ void ff_mpeg1_encode_picture_header(MpegEncContext *s)
         if (s->progressive_sequence)
             put_bits(&s->pb, 1, 0);             /* no repeat */
         else
-            put_bits(&s->pb, 1, s->current_picture_ptr->f->top_field_first);
+            put_bits(&s->pb, 1, !!(s->current_picture_ptr->f->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST));
         /* XXX: optimize the generation of this flag with entropy measures */
         s->frame_pred_frame_dct = s->progressive_sequence;
 
@@ -1199,18 +1199,18 @@ static const AVOption mpeg2_options[] = {
     { "non_linear_quant", "Use nonlinear quantizer.",    FF_MPV_OFFSET(q_scale_type),   AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "alternate_scan",   "Enable alternate scantable.", FF_MPV_OFFSET(alternate_scan), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "a53cc", "Use A53 Closed Captions (if available)", OFFSET(a53_cc),         AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, VE },
-    { "seq_disp_ext",     "Write sequence_display_extension blocks.", OFFSET(seq_disp_ext), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE, "seq_disp_ext" },
-    {     "auto",   NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = -1},  0, 0, VE, "seq_disp_ext" },
-    {     "never",  NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = 0 },  0, 0, VE, "seq_disp_ext" },
-    {     "always", NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = 1 },  0, 0, VE, "seq_disp_ext" },
-    { "video_format",     "Video_format in the sequence_display_extension indicating the source of the video.", OFFSET(video_format), AV_OPT_TYPE_INT, { .i64 = VIDEO_FORMAT_UNSPECIFIED }, 0, 7, VE, "video_format" },
-    {     "component",    NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_COMPONENT  },  0, 0, VE, "video_format" },
-    {     "pal",          NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_PAL        },  0, 0, VE, "video_format" },
-    {     "ntsc",         NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_NTSC       },  0, 0, VE, "video_format" },
-    {     "secam",        NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_SECAM      },  0, 0, VE, "video_format" },
-    {     "mac",          NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_MAC        },  0, 0, VE, "video_format" },
-    {     "unspecified",  NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_UNSPECIFIED},  0, 0, VE, "video_format" },
-#define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, { .i64 = value }, 0, 0, VE, "avctx.level"
+    { "seq_disp_ext",     "Write sequence_display_extension blocks.", OFFSET(seq_disp_ext), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE, .unit = "seq_disp_ext" },
+    {     "auto",   NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = -1},  0, 0, VE, .unit = "seq_disp_ext" },
+    {     "never",  NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = 0 },  0, 0, VE, .unit = "seq_disp_ext" },
+    {     "always", NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = 1 },  0, 0, VE, .unit = "seq_disp_ext" },
+    { "video_format",     "Video_format in the sequence_display_extension indicating the source of the video.", OFFSET(video_format), AV_OPT_TYPE_INT, { .i64 = VIDEO_FORMAT_UNSPECIFIED }, 0, 7, VE, .unit = "video_format" },
+    {     "component",    NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_COMPONENT  },  0, 0, VE, .unit = "video_format" },
+    {     "pal",          NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_PAL        },  0, 0, VE, .unit = "video_format" },
+    {     "ntsc",         NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_NTSC       },  0, 0, VE, .unit = "video_format" },
+    {     "secam",        NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_SECAM      },  0, 0, VE, .unit = "video_format" },
+    {     "mac",          NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_MAC        },  0, 0, VE, .unit = "video_format" },
+    {     "unspecified",  NULL, 0, AV_OPT_TYPE_CONST,  {.i64 = VIDEO_FORMAT_UNSPECIFIED},  0, 0, VE, .unit = "video_format" },
+#define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, { .i64 = value }, 0, 0, VE, .unit = "avctx.level"
     { LEVEL("high",     4) },
     { LEVEL("high1440", 6) },
     { LEVEL("main",     8) },

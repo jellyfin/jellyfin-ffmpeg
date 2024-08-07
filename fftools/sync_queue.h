@@ -38,6 +38,11 @@ typedef union SyncQueueFrame {
 #define SQFRAME(frame) ((SyncQueueFrame){ .f = (frame) })
 #define SQPKT(pkt)     ((SyncQueueFrame){ .p = (pkt) })
 
+/**
+ * A sync queue provides timestamp synchronization between multiple streams.
+ * Some of these streams are marked as "limiting", then the queue ensures no
+ * stream gets ahead of any of the limiting streams.
+ */
 typedef struct SyncQueue SyncQueue;
 
 /**
@@ -45,7 +50,7 @@ typedef struct SyncQueue SyncQueue;
  *
  * @param buf_size_us maximum duration that will be buffered in microseconds
  */
-SyncQueue *sq_alloc(enum SyncQueueType type, int64_t buf_size_us);
+SyncQueue *sq_alloc(enum SyncQueueType type, int64_t buf_size_us, void *logctx);
 void       sq_free(SyncQueue **sq);
 
 /**
@@ -60,17 +65,21 @@ void       sq_free(SyncQueue **sq);
 int sq_add_stream(SyncQueue *sq, int limiting);
 
 /**
- * Set the timebase for the stream with index stream_idx. Should be called
- * before sending any frames for this stream.
- */
-void sq_set_tb(SyncQueue *sq, unsigned int stream_idx, AVRational tb);
-
-/**
  * Limit the number of output frames for stream with index stream_idx
  * to max_frames.
  */
 void sq_limit_frames(SyncQueue *sq, unsigned int stream_idx,
                      uint64_t max_frames);
+
+/**
+ * Set a constant output audio frame size, in samples. Can only be used with
+ * SYNC_QUEUE_FRAMES queues and audio streams.
+ *
+ * All output frames will have exactly frame_samples audio samples, except
+ * possibly for the last one, which may have fewer.
+ */
+void sq_frame_samples(SyncQueue *sq, unsigned int stream_idx,
+                      int frame_samples);
 
 /**
  * Submit a frame for the stream with index stream_idx.

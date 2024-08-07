@@ -27,6 +27,7 @@
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 
 typedef struct SincContext {
@@ -91,27 +92,12 @@ static int query_formats(AVFilterContext *ctx)
     return ff_set_common_samplerates_from_list(ctx, sample_rates);
 }
 
-static float bessel_I_0(float x)
-{
-    float term = 1, sum = 1, last_sum, x2 = x / 2;
-    int i = 1;
-
-    do {
-        float y = x2 / i++;
-
-        last_sum = sum;
-        sum += term *= y * y;
-    } while (sum != last_sum);
-
-    return sum;
-}
-
 static float *make_lpf(int num_taps, float Fc, float beta, float rho,
                        float scale, int dc_norm)
 {
     int i, m = num_taps - 1;
     float *h = av_calloc(num_taps, sizeof(*h)), sum = 0;
-    float mult = scale / bessel_I_0(beta), mult1 = 1.f / (.5f * m + rho);
+    float mult = scale / av_bessel_i0(beta), mult1 = 1.f / (.5f * m + rho);
 
     if (!h)
         return NULL;
@@ -121,7 +107,7 @@ static float *make_lpf(int num_taps, float Fc, float beta, float rho,
     for (i = 0; i <= m / 2; i++) {
         float z = i - .5f * m, x = z * M_PI, y = z * mult1;
         h[i] = x ? sinf(Fc * x) / x : Fc;
-        sum += h[i] *= bessel_I_0(beta * sqrtf(1.f - y * y)) * mult;
+        sum += h[i] *= av_bessel_i0(beta * sqrtf(1.f - y * y)) * mult;
         if (m - i != i) {
             h[m - i] = h[i];
             sum += h[i];
@@ -216,7 +202,7 @@ static float safe_log(float x)
 static int fir_to_phase(SincContext *s, float **h, int *len, int *post_len, float phase)
 {
     float *pi_wraps, *work, phase1 = (phase > 50.f ? 100.f - phase : phase) / 50.f;
-    int i, work_len, begin, end, imp_peak = 0, peak = 0;
+    int i, work_len, begin, end, imp_peak = 0, peak = 0, ret;
     float imp_sum = 0, peak_imp_sum = 0, scale = 1.f;
     float prev_angle2 = 0, cum_2pi = 0, prev_angle1 = 0, cum_1pi = 0;
 
@@ -232,12 +218,12 @@ static int fir_to_phase(SincContext *s, float **h, int *len, int *post_len, floa
 
     av_tx_uninit(&s->tx);
     av_tx_uninit(&s->itx);
-    av_tx_init(&s->tx,  &s->tx_fn,  AV_TX_FLOAT_RDFT, 0, work_len, &scale, AV_TX_INPLACE);
-    av_tx_init(&s->itx, &s->itx_fn, AV_TX_FLOAT_RDFT, 1, work_len, &scale, AV_TX_INPLACE);
-    if (!s->tx || !s->itx) {
-        av_free(work);
-        return AVERROR(ENOMEM);
-    }
+    ret = av_tx_init(&s->tx,  &s->tx_fn,  AV_TX_FLOAT_RDFT, 0, work_len, &scale, AV_TX_INPLACE);
+    if (ret < 0)
+        goto fail;
+    ret = av_tx_init(&s->itx, &s->itx_fn, AV_TX_FLOAT_RDFT, 1, work_len, &scale, AV_TX_INPLACE);
+    if (ret < 0)
+        goto fail;
 
     s->tx_fn(s->tx, work, work, sizeof(float));   /* Cepstral: */
 
@@ -329,9 +315,10 @@ static int fir_to_phase(SincContext *s, float **h, int *len, int *post_len, floa
            work_len, pi_wraps[work_len >> 1] / M_PI, peak, peak_imp_sum, imp_peak,
            work[imp_peak], *len, *post_len, 100.f - 100.f * *post_len / (*len - 1));
 
+fail:
     av_free(work);
 
-    return 0;
+    return ret;
 }
 
 static int config_output(AVFilterLink *outlink)

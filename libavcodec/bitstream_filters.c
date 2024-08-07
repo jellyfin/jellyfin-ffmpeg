@@ -46,7 +46,6 @@ extern const FFBitStreamFilter ff_imx_dump_header_bsf;
 extern const FFBitStreamFilter ff_media100_to_mjpegb_bsf;
 extern const FFBitStreamFilter ff_mjpeg2jpeg_bsf;
 extern const FFBitStreamFilter ff_mjpega_dump_header_bsf;
-extern const FFBitStreamFilter ff_mp3_header_decompress_bsf;
 extern const FFBitStreamFilter ff_mpeg2_metadata_bsf;
 extern const FFBitStreamFilter ff_mpeg4_unpack_bframes_bsf;
 extern const FFBitStreamFilter ff_mov2textsub_bsf;
@@ -58,6 +57,7 @@ extern const FFBitStreamFilter ff_pgs_frame_merge_bsf;
 extern const FFBitStreamFilter ff_prores_metadata_bsf;
 extern const FFBitStreamFilter ff_remove_extradata_bsf;
 extern const FFBitStreamFilter ff_setts_bsf;
+extern const FFBitStreamFilter ff_showinfo_bsf;
 extern const FFBitStreamFilter ff_text2movsub_bsf;
 extern const FFBitStreamFilter ff_trace_headers_bsf;
 extern const FFBitStreamFilter ff_truehd_core_bsf;
@@ -65,16 +65,19 @@ extern const FFBitStreamFilter ff_vp9_metadata_bsf;
 extern const FFBitStreamFilter ff_vp9_raw_reorder_bsf;
 extern const FFBitStreamFilter ff_vp9_superframe_bsf;
 extern const FFBitStreamFilter ff_vp9_superframe_split_bsf;
+extern const FFBitStreamFilter ff_vvc_metadata_bsf;
+extern const FFBitStreamFilter ff_vvc_mp4toannexb_bsf;
+extern const FFBitStreamFilter ff_evc_frame_merge_bsf;
 
 #include "libavcodec/bsf_list.c"
 
 const AVBitStreamFilter *av_bsf_iterate(void **opaque)
 {
-    uintptr_t i = (uintptr_t)*opaque;
+    uintptr_t i = (uintptr_t) * opaque;
     const FFBitStreamFilter *f = bitstream_filters[i];
 
     if (f) {
-        *opaque = (void*)(i + 1);
+        *opaque = (void *)(i + 1);
         return &f->p;
     }
     return NULL;

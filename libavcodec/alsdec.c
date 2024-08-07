@@ -2110,8 +2110,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     if (sconf->floating) {
         ctx->acf               = av_malloc_array(channels, sizeof(*ctx->acf));
-        ctx->shift_value       = av_malloc_array(channels, sizeof(*ctx->shift_value));
-        ctx->last_shift_value  = av_malloc_array(channels, sizeof(*ctx->last_shift_value));
+        ctx->shift_value       = av_calloc(channels, sizeof(*ctx->shift_value));
+        ctx->last_shift_value  = av_calloc(channels, sizeof(*ctx->last_shift_value));
         ctx->last_acf_mantissa = av_malloc_array(channels, sizeof(*ctx->last_acf_mantissa));
         ctx->raw_mantissa      = av_calloc(channels, sizeof(*ctx->raw_mantissa));
 
@@ -2190,6 +2190,10 @@ const FFCodec ff_als_decoder = {
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
     .flush          = flush,
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -199,6 +199,13 @@ Identical to @option{pass_types}, except the units in the given set
 removed and all others passed through.
 @end table
 
+The types used by pass_types and remove_types correspond to NAL unit types
+(nal_unit_type) in H.264, HEVC and H.266 (see Table 7-1 in the H.264
+and HEVC specifications or Table 5 in the H.266 specification), to
+marker values for JPEG (without 0xFF prefix) and to start codes without
+start code prefix (i.e. the byte following the 0x000001) for MPEG-2.
+For VP8 and VP9, every unit has type zero.
+
 Extradata is unchanged by this transformation, but note that if the stream
 contains inline parameter sets then the output may be unusable if they are
 removed.
@@ -211,6 +218,21 @@ ffmpeg -i INPUT -c:v copy -bsf:v 'filter_units=pass_types=1-5' OUTPUT
 To remove all AUDs, SEI and filler from an H.265 stream:
 @example
 ffmpeg -i INPUT -c:v copy -bsf:v 'filter_units=remove_types=35|38-40' OUTPUT
+@end example
+
+To remove all user data from a MPEG-2 stream, including Closed Captions:
+@example
+ffmpeg -i INPUT -c:v copy -bsf:v 'filter_units=remove_types=178' OUTPUT
+@end example
+
+To remove all SEI from a H264 stream, including Closed Captions:
+@example
+ffmpeg -i INPUT -c:v copy -bsf:v 'filter_units=remove_types=6' OUTPUT
+@end example
+
+To remove all prefix and suffix SEI from a HEVC stream, including Closed Captions and dynamic HDR:
+@example
+ffmpeg -i INPUT -c:v copy -bsf:v 'filter_units=remove_types=39|40' OUTPUT
 @end example
 
 @section hapqa_extract
@@ -527,10 +549,6 @@ Extract a representable text file from MOV subtitles, stripping the
 metadata header from each subtitle packet.
 
 See also the @ref{text2movsub} filter.
-
-@section mp3decomp
-
-Decompress non-standard compressed MP3 audio headers.
 
 @section mpeg2_metadata
 
@@ -881,6 +899,15 @@ The sample rate of stream packet belongs.
 @item NOPTS
 The AV_NOPTS_VALUE constant.
 @end table
+
+For example, to set PTS equal to DTS (not recommended if B-frames are involved):
+@example
+ffmpeg -i INPUT -c:a copy -bsf:a setts=pts=DTS out.mkv
+@end example
+
+@section showinfo
+Log basic packet information. Mainly useful for testing, debugging,
+and development.
 
 @anchor{text2movsub}
 @section text2movsub

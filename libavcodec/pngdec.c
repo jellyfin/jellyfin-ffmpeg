@@ -29,6 +29,7 @@
 #include "libavutil/csp.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mastering_display_metadata.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/rational.h"
 #include "libavutil/stereo3d.h"
@@ -75,11 +76,21 @@ typedef struct PNGDecContext {
     int have_chrm;
     uint32_t white_point[2];
     uint32_t display_primaries[3][2];
+    int gamma;
     int have_srgb;
     int have_cicp;
     enum AVColorPrimaries cicp_primaries;
     enum AVColorTransferCharacteristic cicp_trc;
     enum AVColorRange cicp_range;
+    int have_clli;
+    uint32_t clli_max;
+    uint32_t clli_avg;
+    /* Mastering Display Color Volume */
+    int have_mdcv;
+    uint16_t mdcv_primaries[3][2];
+    uint16_t mdcv_white_point[2];
+    uint32_t mdcv_max_lum;
+    uint32_t mdcv_min_lum;
 
     enum PNGHeaderState hdr_state;
     enum PNGImageState pic_state;
@@ -97,6 +108,7 @@ typedef struct PNGDecContext {
     int bpp;
     int has_trns;
     uint8_t transparent_color_be[6];
+    int significant_bits;
 
     uint32_t palette[256];
     uint8_t *crow_buf;
@@ -641,6 +653,140 @@ static int decode_phys_chunk(AVCodecContext *avctx, PNGDecContext *s,
     return 0;
 }
 
+/*
+ * This populates AVCodecContext fields so it must be called before
+ * ff_thread_finish_setup() to avoid a race condition with respect to the
+ * generic copying of avctx fields.
+ */
+static int populate_avctx_color_fields(AVCodecContext *avctx, AVFrame *frame)
+{
+    PNGDecContext *s = avctx->priv_data;
+    int ret;
+
+    if (s->have_cicp) {
+        if (s->cicp_primaries >= AVCOL_PRI_NB)
+            av_log(avctx, AV_LOG_WARNING, "unrecognized cICP primaries\n");
+        else
+            avctx->color_primaries = frame->color_primaries = s->cicp_primaries;
+        if (s->cicp_trc >= AVCOL_TRC_NB)
+            av_log(avctx, AV_LOG_WARNING, "unrecognized cICP transfer\n");
+        else
+            avctx->color_trc = frame->color_trc = s->cicp_trc;
+        if (s->cicp_range == 0) {
+            av_log(avctx, AV_LOG_WARNING, "tv-range cICP tag found. Colors may be wrong\n");
+            avctx->color_range = frame->color_range = AVCOL_RANGE_MPEG;
+        } else if (s->cicp_range != 1) {
+            /* we already printed a warning when parsing the cICP chunk */
+            avctx->color_range = frame->color_range = AVCOL_RANGE_UNSPECIFIED;
+        }
+    } else if (s->iccp_data) {
+        AVFrameSideData *sd;
+        ret = ff_frame_new_side_data(avctx, frame, AV_FRAME_DATA_ICC_PROFILE,
+                                     s->iccp_data_len, &sd);
+        if (ret < 0)
+            return ret;
+        if (sd) {
+            memcpy(sd->data, s->iccp_data, s->iccp_data_len);
+            av_dict_set(&sd->metadata, "name", s->iccp_name, 0);
+        }
+    } else if (s->have_srgb) {
+        avctx->color_primaries = frame->color_primaries = AVCOL_PRI_BT709;
+        avctx->color_trc = frame->color_trc = AVCOL_TRC_IEC61966_2_1;
+    } else if (s->have_chrm) {
+        AVColorPrimariesDesc desc;
+        enum AVColorPrimaries prim;
+        desc.wp.x = av_make_q(s->white_point[0], 100000);
+        desc.wp.y = av_make_q(s->white_point[1], 100000);
+        desc.prim.r.x = av_make_q(s->display_primaries[0][0], 100000);
+        desc.prim.r.y = av_make_q(s->display_primaries[0][1], 100000);
+        desc.prim.g.x = av_make_q(s->display_primaries[1][0], 100000);
+        desc.prim.g.y = av_make_q(s->display_primaries[1][1], 100000);
+        desc.prim.b.x = av_make_q(s->display_primaries[2][0], 100000);
+        desc.prim.b.y = av_make_q(s->display_primaries[2][1], 100000);
+        prim = av_csp_primaries_id_from_desc(&desc);
+        if (prim != AVCOL_PRI_UNSPECIFIED)
+            avctx->color_primaries = frame->color_primaries = prim;
+        else
+            av_log(avctx, AV_LOG_WARNING, "unknown cHRM primaries\n");
+    }
+
+    /* these chunks override gAMA */
+    if (s->iccp_data || s->have_srgb || s->have_cicp) {
+        av_dict_set(&s->frame_metadata, "gamma", NULL, 0);
+    } else if (s->gamma) {
+        /*
+         * These values are 100000/2.2, 100000/2.8, 100000/2.6, and
+         * 100000/1.0 respectively. 45455, 35714, and 38462, and 100000.
+         * There's a 0.001 gamma tolerance here in case of floating
+         * point issues when the PNG was written.
+         *
+         * None of the other enums have a pure gamma curve so it makes
+         * sense to leave those to sRGB and cICP.
+         */
+        if (s->gamma > 45355 && s->gamma < 45555)
+            avctx->color_trc = frame->color_trc = AVCOL_TRC_GAMMA22;
+        else if (s->gamma > 35614 && s->gamma < 35814)
+            avctx->color_trc = frame->color_trc = AVCOL_TRC_GAMMA28;
+        else if (s->gamma > 38362 && s->gamma < 38562)
+            avctx->color_trc = frame->color_trc = AVCOL_TRC_SMPTE428;
+        else if (s->gamma > 99900 && s->gamma < 100100)
+            avctx->color_trc = frame->color_trc = AVCOL_TRC_LINEAR;
+    }
+
+    /* PNG only supports RGB */
+    avctx->colorspace = frame->colorspace = AVCOL_SPC_RGB;
+    if (!s->have_cicp || s->cicp_range == 1)
+        avctx->color_range = frame->color_range = AVCOL_RANGE_JPEG;
+
+    /*
+     * tRNS sets alpha depth to full, so we ignore sBIT if set.
+     * As a result we must wait until now to set
+     * avctx->bits_per_raw_sample in case tRNS appears after sBIT
+     */
+    if (!s->has_trns && s->significant_bits > 0)
+        avctx->bits_per_raw_sample = s->significant_bits;
+
+    if (s->have_clli) {
+        AVContentLightMetadata *clli;
+
+        ret = ff_decode_content_light_new(avctx, frame, &clli);
+        if (ret < 0)
+            return ret;
+
+        if (clli) {
+            /*
+             * 0.0001 divisor value
+             * see: https://www.w3.org/TR/png-3/#cLLi-chunk
+             */
+            clli->MaxCLL = s->clli_max / 10000;
+            clli->MaxFALL = s->clli_avg / 10000;
+        }
+    }
+
+    if (s->have_mdcv) {
+        AVMasteringDisplayMetadata *mdcv;
+
+        ret = ff_decode_mastering_display_new(avctx, frame, &mdcv);
+        if (ret < 0)
+            return ret;
+
+        if (mdcv) {
+            mdcv->has_primaries = 1;
+            for (int i = 0; i < 3; i++) {
+                mdcv->display_primaries[i][0] = av_make_q(s->mdcv_primaries[i][0], 50000);
+                mdcv->display_primaries[i][1] = av_make_q(s->mdcv_primaries[i][1], 50000);
+            }
+            mdcv->white_point[0] = av_make_q(s->mdcv_white_point[0], 50000);
+            mdcv->white_point[1] = av_make_q(s->mdcv_white_point[1], 50000);
+            mdcv->has_luminance = 1;
+            mdcv->max_luminance = av_make_q(s->mdcv_max_lum, 10000);
+            mdcv->min_luminance = av_make_q(s->mdcv_min_lum, 10000);
+        }
+    }
+
+    return 0;
+}
+
 static int decode_idat_chunk(AVCodecContext *avctx, PNGDecContext *s,
                              GetByteContext *gb, AVFrame *p)
 {
@@ -728,7 +874,7 @@ static int decode_idat_chunk(AVCodecContext *avctx, PNGDecContext *s,
             s->bpp += byte_depth;
         }
 
-        ff_thread_release_ext_buffer(avctx, &s->picture);
+        ff_thread_release_ext_buffer(&s->picture);
         if (s->dispose_op == APNG_DISPOSE_OP_PREVIOUS) {
             /* We only need a buffer for the current picture. */
             ret = ff_thread_get_buffer(avctx, p, 0);
@@ -755,9 +901,11 @@ static int decode_idat_chunk(AVCodecContext *avctx, PNGDecContext *s,
         }
 
         p->pict_type        = AV_PICTURE_TYPE_I;
-        p->key_frame        = 1;
-        p->interlaced_frame = !!s->interlace_type;
+        p->flags           |= AV_FRAME_FLAG_KEY;
+        p->flags |= AV_FRAME_FLAG_INTERLACED * !!s->interlace_type;
 
+        if ((ret = populate_avctx_color_fields(avctx, p)) < 0)
+            return ret;
         ff_thread_finish_setup(avctx);
 
         /* compute the compressed row size */
@@ -918,6 +1066,44 @@ fail:
     return ret;
 }
 
+static int decode_sbit_chunk(AVCodecContext *avctx, PNGDecContext *s,
+                             GetByteContext *gb)
+{
+    int bits = 0;
+    int channels;
+
+    if (!(s->hdr_state & PNG_IHDR)) {
+        av_log(avctx, AV_LOG_ERROR, "sBIT before IHDR\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    if (s->pic_state & PNG_IDAT) {
+        av_log(avctx, AV_LOG_ERROR, "sBIT after IDAT\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    channels = s->color_type & PNG_COLOR_MASK_PALETTE ? 3 : ff_png_get_nb_channels(s->color_type);
+
+    if (bytestream2_get_bytes_left(gb) != channels) {
+        av_log(avctx, AV_LOG_ERROR, "Invalid sBIT size: %d, expected: %d\n",
+            bytestream2_get_bytes_left(gb), channels);
+        return AVERROR_INVALIDDATA;
+    }
+
+    for (int i = 0; i < channels; i++) {
+        int b = bytestream2_get_byteu(gb);
+        bits = FFMAX(b, bits);
+    }
+
+    if (bits <= 0 || bits > (s->color_type & PNG_COLOR_MASK_PALETTE ? 8 : s->bit_depth)) {
+        av_log(avctx, AV_LOG_ERROR, "Invalid significant bits: %d\n", bits);
+        return AVERROR_INVALIDDATA;
+    }
+    s->significant_bits = bits;
+
+    return 0;
+}
+
 static void handle_small_bpp(PNGDecContext *s, AVFrame *p)
 {
     if (s->bits_per_pixel == 1 && s->color_type == PNG_COLOR_TYPE_PALETTE) {
@@ -1034,7 +1220,7 @@ static int decode_fctl_chunk(AVCodecContext *avctx, PNGDecContext *s,
         return AVERROR_INVALIDDATA;
     }
 
-    if ((sequence_number == 0 || !s->last_picture.f->data[0]) &&
+    if ((sequence_number == 0 || !s->last_picture.f) &&
         dispose_op == APNG_DISPOSE_OP_PREVIOUS) {
         // No previous frame to revert to for the first frame
         // Spec says to just treat it as a APNG_DISPOSE_OP_BACKGROUND
@@ -1259,6 +1445,10 @@ static int decode_frame_common(AVCodecContext *avctx, PNGDecContext *s,
             case MKTAG('t', 'E', 'X', 't'):
             case MKTAG('I', 'D', 'A', 'T'):
             case MKTAG('t', 'R', 'N', 'S'):
+            case MKTAG('s', 'R', 'G', 'B'):
+            case MKTAG('c', 'I', 'C', 'P'):
+            case MKTAG('c', 'H', 'R', 'M'):
+            case MKTAG('g', 'A', 'M', 'A'):
                 break;
             default:
                 continue;
@@ -1327,11 +1517,8 @@ static int decode_frame_common(AVCodecContext *avctx, PNGDecContext *s,
             if (bytestream2_get_byte(&gb_chunk) != 0)
                 av_log(avctx, AV_LOG_WARNING, "nonzero cICP matrix\n");
             s->cicp_range = bytestream2_get_byte(&gb_chunk);
-            if (s->cicp_range != 0 && s->cicp_range != 1) {
-                av_log(avctx, AV_LOG_ERROR, "invalid cICP range: %d\n", s->cicp_range);
-                ret = AVERROR_INVALIDDATA;
-                goto fail;
-            }
+            if (s->cicp_range != 0 && s->cicp_range != 1)
+                av_log(avctx, AV_LOG_WARNING, "invalid cICP range: %d\n", s->cicp_range);
             s->have_cicp = 1;
             break;
         case MKTAG('s', 'R', 'G', 'B'):
@@ -1358,13 +1545,17 @@ static int decode_frame_common(AVCodecContext *avctx, PNGDecContext *s,
 
             break;
         }
+        case MKTAG('s', 'B', 'I', 'T'):
+            if ((ret = decode_sbit_chunk(avctx, s, &gb_chunk)) < 0)
+                goto fail;
+            break;
         case MKTAG('g', 'A', 'M', 'A'): {
             AVBPrint bp;
             char *gamma_str;
-            int num = bytestream2_get_be32(&gb_chunk);
+            s->gamma = bytestream2_get_be32(&gb_chunk);
 
             av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
-            av_bprintf(&bp, "%i/%i", num, 100000);
+            av_bprintf(&bp, "%i/%i", s->gamma, 100000);
             ret = av_bprint_finalize(&bp, &gamma_str);
             if (ret < 0)
                 return ret;
@@ -1373,6 +1564,30 @@ static int decode_frame_common(AVCodecContext *avctx, PNGDecContext *s,
 
             break;
         }
+        case MKTAG('c', 'L', 'L', 'i'):
+            if (bytestream2_get_bytes_left(&gb_chunk) != 8) {
+                av_log(avctx, AV_LOG_WARNING, "Invalid cLLi chunk size: %d\n", bytestream2_get_bytes_left(&gb_chunk));
+                break;
+            }
+            s->have_clli = 1;
+            s->clli_max = bytestream2_get_be32u(&gb_chunk);
+            s->clli_avg = bytestream2_get_be32u(&gb_chunk);
+            break;
+        case MKTAG('m', 'D', 'C', 'v'):
+            if (bytestream2_get_bytes_left(&gb_chunk) != 24) {
+                av_log(avctx, AV_LOG_WARNING, "Invalid mDCv chunk size: %d\n", bytestream2_get_bytes_left(&gb_chunk));
+                break;
+            }
+            s->have_mdcv = 1;
+            for (int i = 0; i < 3; i++) {
+                s->mdcv_primaries[i][0] = bytestream2_get_be16u(&gb_chunk);
+                s->mdcv_primaries[i][1] = bytestream2_get_be16u(&gb_chunk);
+            }
+            s->mdcv_white_point[0] = bytestream2_get_be16u(&gb_chunk);
+            s->mdcv_white_point[1] = bytestream2_get_be16u(&gb_chunk);
+            s->mdcv_max_lum = bytestream2_get_be32u(&gb_chunk);
+            s->mdcv_min_lum = bytestream2_get_be32u(&gb_chunk);
+            break;
         case MKTAG('I', 'E', 'N', 'D'):
             if (!(s->pic_state & PNG_ALLIMAGE))
                 av_log(avctx, AV_LOG_ERROR, "IEND without all image\n");
@@ -1505,55 +1720,7 @@ static void clear_frame_metadata(PNGDecContext *s)
 
 static int output_frame(PNGDecContext *s, AVFrame *f)
 {
-    AVCodecContext *avctx = s->avctx;
     int ret;
-
-    if (s->have_cicp) {
-        if (s->cicp_primaries >= AVCOL_PRI_NB)
-            av_log(avctx, AV_LOG_WARNING, "unrecognized cICP primaries\n");
-        else
-            avctx->color_primaries = f->color_primaries = s->cicp_primaries;
-        if (s->cicp_trc >= AVCOL_TRC_NB)
-            av_log(avctx, AV_LOG_WARNING, "unrecognized cICP transfer\n");
-        else
-            avctx->color_trc = f->color_trc = s->cicp_trc;
-        avctx->color_range = f->color_range =
-            s->cicp_range == 0 ? AVCOL_RANGE_MPEG : AVCOL_RANGE_JPEG;
-    } else if (s->iccp_data) {
-        AVFrameSideData *sd = av_frame_new_side_data(f, AV_FRAME_DATA_ICC_PROFILE, s->iccp_data_len);
-        if (!sd) {
-            ret = AVERROR(ENOMEM);
-            goto fail;
-        }
-        memcpy(sd->data, s->iccp_data, s->iccp_data_len);
-
-        av_dict_set(&sd->metadata, "name", s->iccp_name, 0);
-    } else if (s->have_srgb) {
-        avctx->color_primaries = f->color_primaries = AVCOL_PRI_BT709;
-        avctx->color_trc = f->color_trc = AVCOL_TRC_IEC61966_2_1;
-    } else if (s->have_chrm) {
-        AVColorPrimariesDesc desc;
-        enum AVColorPrimaries prim;
-        desc.wp.x = av_make_q(s->white_point[0], 100000);
-        desc.wp.y = av_make_q(s->white_point[1], 100000);
-        desc.prim.r.x = av_make_q(s->display_primaries[0][0], 100000);
-        desc.prim.r.y = av_make_q(s->display_primaries[0][1], 100000);
-        desc.prim.g.x = av_make_q(s->display_primaries[1][0], 100000);
-        desc.prim.g.y = av_make_q(s->display_primaries[1][1], 100000);
-        desc.prim.b.x = av_make_q(s->display_primaries[2][0], 100000);
-        desc.prim.b.y = av_make_q(s->display_primaries[2][1], 100000);
-        prim = av_csp_primaries_id_from_desc(&desc);
-        if (prim != AVCOL_PRI_UNSPECIFIED)
-            avctx->color_primaries = f->color_primaries = prim;
-        else
-            av_log(avctx, AV_LOG_WARNING, "unknown cHRM primaries\n");
-    }
-
-    /* these chunks override gAMA */
-    if (s->iccp_data || s->have_srgb || s->have_cicp)
-        av_dict_set(&s->frame_metadata, "gamma", NULL, 0);
-
-    avctx->colorspace = f->colorspace = AVCOL_SPC_RGB;
 
     if (s->stereo_mode >= 0) {
         AVStereo3D *stereo3d = av_stereo3d_create_side_data(f);
@@ -1619,7 +1786,7 @@ static int decode_frame_png(AVCodecContext *avctx, AVFrame *p,
         goto the_end;
 
     if (!(avctx->active_thread_type & FF_THREAD_FRAME)) {
-        ff_thread_release_ext_buffer(avctx, &s->last_picture);
+        ff_thread_release_ext_buffer(&s->last_picture);
         FFSWAP(ThreadFrame, s->picture, s->last_picture);
     }
 
@@ -1672,9 +1839,9 @@ static int decode_frame_apng(AVCodecContext *avctx, AVFrame *p,
 
     if (!(avctx->active_thread_type & FF_THREAD_FRAME)) {
         if (s->dispose_op == APNG_DISPOSE_OP_PREVIOUS) {
-            ff_thread_release_ext_buffer(avctx, &s->picture);
+            ff_thread_release_ext_buffer(&s->picture);
         } else {
-            ff_thread_release_ext_buffer(avctx, &s->last_picture);
+            ff_thread_release_ext_buffer(&s->last_picture);
             FFSWAP(ThreadFrame, s->picture, s->last_picture);
         }
     }
@@ -1715,7 +1882,7 @@ static int update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
     src_frame = psrc->dispose_op == APNG_DISPOSE_OP_PREVIOUS ?
                 &psrc->last_picture : &psrc->picture;
 
-    ff_thread_release_ext_buffer(dst, &pdst->last_picture);
+    ff_thread_release_ext_buffer(&pdst->last_picture);
     if (src_frame && src_frame->f->data[0]) {
         ret = ff_thread_ref_frame(&pdst->last_picture, src_frame);
         if (ret < 0)
@@ -1729,8 +1896,6 @@ static int update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
 static av_cold int png_dec_init(AVCodecContext *avctx)
 {
     PNGDecContext *s = avctx->priv_data;
-
-    avctx->color_range = AVCOL_RANGE_JPEG;
 
     s->avctx = avctx;
     s->last_picture.f = av_frame_alloc();
@@ -1747,9 +1912,9 @@ static av_cold int png_dec_end(AVCodecContext *avctx)
 {
     PNGDecContext *s = avctx->priv_data;
 
-    ff_thread_release_ext_buffer(avctx, &s->last_picture);
+    ff_thread_release_ext_buffer(&s->last_picture);
     av_frame_free(&s->last_picture.f);
-    ff_thread_release_ext_buffer(avctx, &s->picture);
+    ff_thread_release_ext_buffer(&s->picture);
     av_frame_free(&s->picture.f);
     av_freep(&s->buffer);
     s->buffer_size = 0;

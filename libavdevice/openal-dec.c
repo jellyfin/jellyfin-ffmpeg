@@ -26,6 +26,7 @@
 
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
+#include "libavformat/demux.h"
 #include "libavformat/internal.h"
 #include "avdevice.h"
 
@@ -234,9 +235,9 @@ static const AVOption options[] = {
     {"channels", "set number of channels",     OFFSET(channels),     AV_OPT_TYPE_INT, {.i64=2},     1, 2,      AV_OPT_FLAG_DECODING_PARAM },
     {"sample_rate", "set sample rate",         OFFSET(sample_rate),  AV_OPT_TYPE_INT, {.i64=44100}, 1, 192000, AV_OPT_FLAG_DECODING_PARAM },
     {"sample_size", "set sample size",         OFFSET(sample_size),  AV_OPT_TYPE_INT, {.i64=16},    8, 16,     AV_OPT_FLAG_DECODING_PARAM },
-    {"list_devices", "list available devices", OFFSET(list_devices), AV_OPT_TYPE_INT, {.i64=0},     0, 1,      AV_OPT_FLAG_DECODING_PARAM, "list_devices"  },
-    {"true",  "", 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, AV_OPT_FLAG_DECODING_PARAM, "list_devices" },
-    {"false", "", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, AV_OPT_FLAG_DECODING_PARAM, "list_devices" },
+    {"list_devices", "list available devices", OFFSET(list_devices), AV_OPT_TYPE_INT, {.i64=0},     0, 1,      AV_OPT_FLAG_DECODING_PARAM, .unit = "list_devices"  },
+    {"true",  "", 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, AV_OPT_FLAG_DECODING_PARAM, .unit = "list_devices" },
+    {"false", "", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, AV_OPT_FLAG_DECODING_PARAM, .unit = "list_devices" },
     {NULL},
 };
 
@@ -248,14 +249,14 @@ static const AVClass class = {
     .category = AV_CLASS_CATEGORY_DEVICE_AUDIO_INPUT,
 };
 
-const AVInputFormat ff_openal_demuxer = {
-    .name = "openal",
-    .long_name = NULL_IF_CONFIG_SMALL("OpenAL audio capture device"),
+const FFInputFormat ff_openal_demuxer = {
+    .p.name         = "openal",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("OpenAL audio capture device"),
+    .p.flags        = AVFMT_NOFILE,
+    .p.priv_class   = &class,
     .priv_data_size = sizeof(al_data),
     .read_probe = NULL,
     .read_header = read_header,
     .read_packet = read_packet,
     .read_close = read_close,
-    .flags = AVFMT_NOFILE,
-    .priv_class = &class
 };

@@ -18,61 +18,199 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/channel_layout.c"
+#include <inttypes.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "libavutil/bprint.h"
+#include "libavutil/channel_layout.h"
+#include "libavutil/error.h"
+#include "libavutil/internal.h"
+#include "libavutil/macros.h"
+#include "libavutil/mem.h"
+
+#define BPRINT_ARGS1(bp, ...)     (bp), __VA_ARGS__
+#define BPRINT_ARGS0(bp, ...)     __VA_ARGS__, (bp)
+#define ORD_ARGS1(str, size, ...) (str), (size), __VA_ARGS__
+#define ORD_ARGS0(str, size, ...) __VA_ARGS__, (str), (size)
+
+// This macro presumes the AVBPrint to have been cleared before usage.
+#define CMP_BPRINT_AND_NONBPRINT(bp, func_name, ARG_ORDER, ...) do {       \
+    char *str;                                                             \
+    int size;                                                              \
+    func_name ## _bprint(BPRINT_ARGS ## ARG_ORDER((bp), __VA_ARGS__));     \
+    if (strlen((bp)->str) != (bp)->len) {                                  \
+        printf("strlen of AVBPrint-string returned by "#func_name"_bprint" \
+               " differs from AVBPrint.len: %"SIZE_SPECIFIER" vs. %u\n",   \
+               strlen((bp)->str), (bp)->len);                              \
+        break;                                                             \
+    }                                                                      \
+    size = func_name(ORD_ARGS ## ARG_ORDER(NULL, 0, __VA_ARGS__));         \
+    if (size <= 0) {                                                       \
+        printf(#func_name " returned %d\n", size);                         \
+        break;                                                             \
+    }                                                                      \
+    if ((bp)->len != size - 1) {                                           \
+        printf("Return value %d of " #func_name " inconsistent with length"\
+               " %u obtained from corresponding bprint version\n",         \
+               size, (bp)->len);                                           \
+        break;                                                             \
+    }                                                                      \
+    str = av_malloc(size);                                                 \
+    if (!str) {                                                            \
+        printf("string of size %d could not be allocated.\n", size);       \
+        break;                                                             \
+    }                                                                      \
+    size = func_name(ORD_ARGS ## ARG_ORDER(str, size, __VA_ARGS__));       \
+    if (size <= 0 || (bp)->len != size - 1) {                              \
+        printf("Return value %d of " #func_name " inconsistent with length"\
+               " %d obtained in first pass.\n", size, (bp)->len);          \
+        av_free(str);                                                      \
+        break;                                                             \
+    }                                                                      \
+    if (strcmp(str, (bp)->str)) {                                          \
+        printf("Ordinary and _bprint versions of "#func_name" disagree: "  \
+               "'%s' vs. '%s'\n", str, (bp)->str);                         \
+        av_free(str);                                                      \
+        break;                                                             \
+    }                                                                      \
+    av_free(str);                                                          \
+    } while (0)
+
+
+static void channel_name(AVBPrint *bp, enum AVChannel channel)
+{
+    av_bprint_clear(bp);
+    CMP_BPRINT_AND_NONBPRINT(bp, av_channel_name, 1, channel);
+}
+
+static void channel_description(AVBPrint *bp, enum AVChannel channel)
+{
+    av_bprint_clear(bp);
+    CMP_BPRINT_AND_NONBPRINT(bp, av_channel_description, 1, channel);
+}
+
+static void channel_layout_from_mask(AVChannelLayout *layout,
+                                     AVBPrint *bp, uint64_t channel_layout)
+{
+    av_channel_layout_uninit(layout);
+    av_bprint_clear(bp);
+    if (!av_channel_layout_from_mask(layout, channel_layout) &&
+         av_channel_layout_check(layout))
+        CMP_BPRINT_AND_NONBPRINT(bp, av_channel_layout_describe, 0, layout);
+    else
+        av_bprintf(bp, "fail");
+}
+
+static void channel_layout_from_string(AVChannelLayout *layout,
+                                       AVBPrint *bp, const char *channel_layout)
+{
+    av_channel_layout_uninit(layout);
+    av_bprint_clear(bp);
+    if (!av_channel_layout_from_string(layout, channel_layout) &&
+         av_channel_layout_check(layout))
+        CMP_BPRINT_AND_NONBPRINT(bp, av_channel_layout_describe, 0, layout);
+    else
+        av_bprintf(bp, "fail");
+}
+
+static const char* channel_order_names[]  = {"UNSPEC", "NATIVE", "CUSTOM", "AMBI"};
+
+static void describe_type(AVBPrint *bp, AVChannelLayout *layout)
+{
+    if (layout->order >= 0 && layout->order < FF_ARRAY_ELEMS(channel_order_names)) {
+        av_bprintf(bp, "%-6s (", channel_order_names[layout->order]);
+        av_channel_layout_describe_bprint(layout, bp);
+        av_bprintf(bp, ")");
+    } else {
+        av_bprintf(bp, "???");
+    }
+}
+
+static const char *channel_layout_retype(AVChannelLayout *layout, AVBPrint *bp, const char *channel_layout)
+{
+    av_channel_layout_uninit(layout);
+    av_bprint_clear(bp);
+    if (!av_channel_layout_from_string(layout, channel_layout) &&
+        av_channel_layout_check(layout)) {
+        describe_type(bp, layout);
+        for (int i = 0; i < FF_CHANNEL_ORDER_NB; i++) {
+            int ret;
+            AVChannelLayout copy = {0};
+            av_bprintf(bp, "\n ");
+            if (av_channel_layout_copy(&copy, layout) < 0)
+                return "nomem";
+            ret = av_channel_layout_retype(&copy, i, 0);
+            if (ret < 0 && (copy.order != layout->order || av_channel_layout_compare(&copy, layout)))
+                av_bprintf(bp, "failed to keep existing layout on failure");
+            if (ret >= 0 && copy.order != i)
+                av_bprintf(bp, "returned success but did not change order");
+            if (ret == AVERROR(ENOSYS)) {
+                av_bprintf(bp, " != %s", channel_order_names[i]);
+            } else if (ret < 0) {
+                av_bprintf(bp, "FAIL");
+            } else {
+                av_bprintf(bp, " %s ", ret ? "~~" : "==");
+                describe_type(bp, &copy);
+            }
+            av_channel_layout_uninit(&copy);
+        }
+    } else {
+        av_bprintf(bp, "fail");
+    }
+    return bp->str;
+}
 
 #define CHANNEL_NAME(x)                                                    \
-    av_bprint_clear(&bp);                                                  \
-    av_channel_name_bprint(&bp, x);
+    channel_name(&bp, (x));                                                \
+    printf("With %-32s %14s\n", AV_STRINGIFY(x)":", bp.str)
 
 #define CHANNEL_DESCRIPTION(x)                                             \
-    av_bprint_clear(&bp);                                                  \
-    av_channel_description_bprint(&bp, x);
+    channel_description(&bp, (x));                                         \
+    printf("With %-23s %23s\n", AV_STRINGIFY(x)":", bp.str);
+
+#define CHANNEL_FROM_STRING(x)                                             \
+    printf("With %-38s %8d\n", AV_STRINGIFY(x)":", av_channel_from_string(x))
 
 #define CHANNEL_LAYOUT_FROM_MASK(x)                                        \
-    av_channel_layout_uninit(&layout);                                     \
-    av_bprint_clear(&bp);                                                  \
-    if (!av_channel_layout_from_mask(&layout, x) &&                        \
-         av_channel_layout_check(&layout))                                 \
-        av_channel_layout_describe_bprint(&layout, &bp);                   \
-    else                                                                   \
-        av_bprintf(&bp, "fail");
+    channel_layout_from_mask(&layout, &bp, (x));
 
 #define CHANNEL_LAYOUT_FROM_STRING(x)                                      \
-    av_channel_layout_uninit(&layout);                                     \
-    av_bprint_clear(&bp);                                                  \
-    if (!av_channel_layout_from_string(&layout, x) &&                      \
-         av_channel_layout_check(&layout))                                 \
-        av_channel_layout_describe_bprint(&layout, &bp);                   \
-    else                                                                   \
-        av_bprintf(&bp, "fail");
+    channel_layout_from_string(&layout, &bp, (x));                         \
+    printf("With \"%s\":%*s %32s\n", x, strlen(x) > 32 ? 0 : 32 - (int)strlen(x), "", bp.str);
 
-#define CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(x)                               \
+#define CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(l, x)                            \
     ret = av_channel_layout_channel_from_index(&layout, x);                \
     if (ret < 0)                                                           \
-        ret = -1
+        ret = -1;                                                          \
+    printf("On \"%s\" layout with %2d: %8d\n", l,  x, ret)
 
-#define CHANNEL_LAYOUT_SUBSET(x)                                           \
-    mask = av_channel_layout_subset(&layout, x)
+#define CHANNEL_LAYOUT_SUBSET(l, xstr, x)                                  \
+    mask = av_channel_layout_subset(&layout, x);                           \
+    printf("On \"%s\" layout with %-22s 0x%"PRIx64"\n", l, xstr, mask)
 
-#define CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(x)                               \
+#define CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(l, x)                            \
     ret = av_channel_layout_index_from_channel(&layout, x);                \
     if (ret < 0)                                                           \
-        ret = -1
+        ret = -1;                                                          \
+    printf("On \"%s\" layout with %-23s %3d\n", l, AV_STRINGIFY(x)":", ret)
 
-#define CHANNEL_LAYOUT_CHANNEL_FROM_STRING(x)                              \
+#define CHANNEL_LAYOUT_CHANNEL_FROM_STRING(l, x)                           \
     ret = av_channel_layout_channel_from_string(&layout, x);               \
     if (ret < 0)                                                           \
-        ret = -1
+        ret = -1;                                                          \
+    printf("On \"%s\" layout with %-21s %3d\n", bp.str, AV_STRINGIFY(x)":", ret);
 
-#define CHANNEL_LAYOUT_INDEX_FROM_STRING(x)                                \
+#define CHANNEL_LAYOUT_INDEX_FROM_STRING(l, x)                             \
     ret = av_channel_layout_index_from_string(&layout, x);                 \
     if (ret < 0)                                                           \
-        ret = -1
+        ret = -1;                                                          \
+    printf("On \"%s\" layout with %-20s %3d\n", l, AV_STRINGIFY(x)":", ret);
 
 int main(void)
 {
     const AVChannelLayout *playout;
-    AVChannelLayout layout = { 0 };
+    AVChannelLayout layout = { 0 }, layout2 = { 0 };
     AVBPrint bp;
     void *iter = NULL;
     uint64_t mask;
@@ -99,254 +237,208 @@ int main(void)
 
     printf("\nTesting av_channel_name\n");
     CHANNEL_NAME(AV_CHAN_FRONT_LEFT);
-    printf("With AV_CHAN_FRONT_LEFT: %27s\n", bp.str);
     CHANNEL_NAME(AV_CHAN_FRONT_RIGHT);
-    printf("With AV_CHAN_FRONT_RIGHT: %26s\n", bp.str);
     CHANNEL_NAME(63);
-    printf("With 63: %43s\n", bp.str);
     CHANNEL_NAME(AV_CHAN_AMBISONIC_BASE);
-    printf("With AV_CHAN_AMBISONIC_BASE: %23s\n", bp.str);
     CHANNEL_NAME(AV_CHAN_AMBISONIC_END);
-    printf("With AV_CHAN_AMBISONIC_END: %24s\n", bp.str);
 
     printf("Testing av_channel_description\n");
     CHANNEL_DESCRIPTION(AV_CHAN_FRONT_LEFT);
-    printf("With AV_CHAN_FRONT_LEFT: %27s\n", bp.str);
     CHANNEL_DESCRIPTION(AV_CHAN_FRONT_RIGHT);
-    printf("With AV_CHAN_FRONT_RIGHT: %26s\n", bp.str);
     CHANNEL_DESCRIPTION(63);
-    printf("With 63: %43s\n", bp.str);
     CHANNEL_DESCRIPTION(AV_CHAN_AMBISONIC_BASE);
-    printf("With AV_CHAN_AMBISONIC_BASE: %23s\n", bp.str);
     CHANNEL_DESCRIPTION(AV_CHAN_AMBISONIC_END);
-    printf("With AV_CHAN_AMBISONIC_END: %24s\n", bp.str);
 
     printf("\nTesting av_channel_from_string\n");
-    printf("With \"FL\": %41d\n", av_channel_from_string("FL"));
-    printf("With \"FR\": %41d\n", av_channel_from_string("FR"));
-    printf("With \"USR63\": %38d\n", av_channel_from_string("USR63"));
-    printf("With \"AMBI0\": %38d\n", av_channel_from_string("AMBI0"));
-    printf("With \"AMBI1023\": %35d\n", av_channel_from_string("AMBI1023"));
+    CHANNEL_FROM_STRING("FL");
+    CHANNEL_FROM_STRING("FR");
+    CHANNEL_FROM_STRING("USR63");
+    CHANNEL_FROM_STRING("AMBI0");
+    CHANNEL_FROM_STRING("AMBI1023");
+    CHANNEL_FROM_STRING("AMBI1024");
+    CHANNEL_FROM_STRING("Dummy");
+    CHANNEL_FROM_STRING("FL@Foo");
+    CHANNEL_FROM_STRING("Foo@FL");
+    CHANNEL_FROM_STRING("@FL");
 
     printf("\n==Native layouts==\n");
 
     printf("\nTesting av_channel_layout_from_string\n");
     CHANNEL_LAYOUT_FROM_STRING("0x3f");
-    printf("With \"0x3f\": %39s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("63");
-    printf("With \"63\": %41s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("6c");
-    printf("With \"6c\": %41s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("6C");
-    printf("With \"6C\": %41s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("6 channels");
-    printf("With \"6 channels\": %33s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("6 channels (FL+FR+FC+LFE+BL+BR)");
-    printf("With \"6 channels (FL+FR+FC+LFE+BL+BR)\": %12s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("FL+FR+FC+LFE+BL+BR");
-    printf("With \"FL+FR+FC+LFE+BL+BR\": %25s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("5.1");
-    printf("With \"5.1\": %40s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("FL+FR+USR63");
-    printf("With \"FL+FR+USR63\": %32s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("FL+FR+FC+LFE+SL+SR");
-    printf("With \"FL+FR+FC+LFE+SL+SR\": %25s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("5.1(side)");
-    printf("With \"5.1(side)\": %34s\n", bp.str);
 
     printf("\nTesting av_channel_layout_from_mask\n");
     CHANNEL_LAYOUT_FROM_MASK(AV_CH_LAYOUT_5POINT1);
     printf("With AV_CH_LAYOUT_5POINT1: %25s\n", bp.str);
 
     printf("\nTesting av_channel_layout_channel_from_index\n");
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(0);
-    printf("On 5.1(side) layout with 0: %24d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(1);
-    printf("On 5.1(side) layout with 1: %24d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(2);
-    printf("On 5.1(side) layout with 2: %24d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(3);
-    printf("On 5.1(side) layout with 3: %24d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(4);
-    printf("On 5.1(side) layout with 4: %24d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(5);
-    printf("On 5.1(side) layout with 5: %24d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(6);
-    printf("On 5.1(side) layout with 6: %24d\n", ret);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 0);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 1);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 2);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 3);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 4);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 5);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 6);
 
     printf("\nTesting av_channel_layout_index_from_channel\n");
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_FRONT_LEFT);
-    printf("On 5.1(side) layout with AV_CHAN_FRONT_LEFT: %7d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_FRONT_RIGHT);
-    printf("On 5.1(side) layout with AV_CHAN_FRONT_RIGHT: %6d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_FRONT_CENTER);
-    printf("On 5.1(side) layout with AV_CHAN_FRONT_CENTER: %5d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_LOW_FREQUENCY);
-    printf("On 5.1(side) layout with AV_CHAN_LOW_FREQUENCY: %4d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_SIDE_LEFT);
-    printf("On 5.1(side) layout with AV_CHAN_SIDE_LEFT: %8d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_SIDE_RIGHT);
-    printf("On 5.1(side) layout with AV_CHAN_SIDE_RIGHT: %7d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_BACK_CENTER);
-    printf("On 5.1(side) layout with AV_CHAN_BACK_CENTER: %6d\n", ret);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_FRONT_LEFT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_FRONT_RIGHT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_FRONT_CENTER);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_LOW_FREQUENCY);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_SIDE_LEFT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_SIDE_RIGHT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_BACK_CENTER);
 
     printf("\nTesting av_channel_layout_channel_from_string\n");
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("FL");
-    printf("On 5.1(side) layout with \"FL\": %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("FR");
-    printf("On 5.1(side) layout with \"FR\": %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("FC");
-    printf("On 5.1(side) layout with \"FC\": %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("LFE");
-    printf("On 5.1(side) layout with \"LFE\": %20d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("SL");
-    printf("On 5.1(side) layout with \"SL\": %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("SR");
-    printf("On 5.1(side) layout with \"SR\": %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("BC");
-    printf("On 5.1(side) layout with \"BC\": %21d\n", ret);
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FL");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FR");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FC");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "LFE");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "SL");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "SR");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "BC");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "@");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "@Foo");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FL@Foo");
 
     printf("\nTesting av_channel_layout_index_from_string\n");
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("FL");
-    printf("On 5.1(side) layout with \"FL\": %21d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("FR");
-    printf("On 5.1(side) layout with \"FR\": %21d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("FC");
-    printf("On 5.1(side) layout with \"FC\": %21d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("LFE");
-    printf("On 5.1(side) layout with \"LFE\": %20d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("SL");
-    printf("On 5.1(side) layout with \"SL\": %21d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("SR");
-    printf("On 5.1(side) layout with \"SR\": %21d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("BC");
-    printf("On 5.1(side) layout with \"BC\": %21d\n", ret);
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "FL");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "FR");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "FC");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "LFE");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "SL");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "SR");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "BC");
 
     printf("\nTesting av_channel_layout_subset\n");
-    CHANNEL_LAYOUT_SUBSET(AV_CH_LAYOUT_STEREO);
-    printf("On 5.1(side) layout with AV_CH_LAYOUT_STEREO:    0x%"PRIx64"\n", mask);
-    CHANNEL_LAYOUT_SUBSET(AV_CH_LAYOUT_2POINT1);
-    printf("On 5.1(side) layout with AV_CH_LAYOUT_2POINT1:   0x%"PRIx64"\n", mask);
-    CHANNEL_LAYOUT_SUBSET(AV_CH_LAYOUT_4POINT1);
-    printf("On 5.1(side) layout with AV_CH_LAYOUT_4POINT1:   0x%"PRIx64"\n", mask);
+    CHANNEL_LAYOUT_SUBSET(bp.str, "AV_CH_LAYOUT_STEREO:",  AV_CH_LAYOUT_STEREO);
+    CHANNEL_LAYOUT_SUBSET(bp.str, "AV_CH_LAYOUT_2POINT1:", AV_CH_LAYOUT_2POINT1);
+    CHANNEL_LAYOUT_SUBSET(bp.str, "AV_CH_LAYOUT_4POINT1:", AV_CH_LAYOUT_4POINT1);
 
     printf("\n==Custom layouts==\n");
 
     printf("\nTesting av_channel_layout_from_string\n");
     CHANNEL_LAYOUT_FROM_STRING("FL+FR+FC+BL+BR+LFE");
-    printf("With \"FL+FR+FC+BL+BR+LFE\": %34s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("2 channels (FR+FL)");
-    printf("With \"2 channels (FR+FL)\": %34s\n", bp.str);
+    CHANNEL_LAYOUT_FROM_STRING("2 channels (AMBI1023+FL)");
+    CHANNEL_LAYOUT_FROM_STRING("3 channels (FR+FL)");
+    CHANNEL_LAYOUT_FROM_STRING("-3 channels (FR+FL)");
+    CHANNEL_LAYOUT_FROM_STRING("0 channels ()");
+    CHANNEL_LAYOUT_FROM_STRING("2 channels (FL+FR");
     CHANNEL_LAYOUT_FROM_STRING("ambisonic 1+FR+FL");
-    printf("With \"ambisonic 1+FR+FL\": %35s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("ambisonic 2+FC@Foo");
-    printf("With \"ambisonic 2+FC@Foo\": %34s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("FL@Foo+FR@Bar");
-    printf("With \"FL@Foo+FR@Bar\": %39s\n", bp.str);
+    CHANNEL_LAYOUT_FROM_STRING("FL+stereo");
+    CHANNEL_LAYOUT_FROM_STRING("stereo+stereo");
+    CHANNEL_LAYOUT_FROM_STRING("stereo@Boo");
+    CHANNEL_LAYOUT_FROM_STRING("");
+    CHANNEL_LAYOUT_FROM_STRING("@");
+    CHANNEL_LAYOUT_FROM_STRING("@Dummy");
+    CHANNEL_LAYOUT_FROM_STRING("@FL");
+    CHANNEL_LAYOUT_FROM_STRING("Dummy");
+    CHANNEL_LAYOUT_FROM_STRING("Dummy@FL");
+    CHANNEL_LAYOUT_FROM_STRING("FR+Dummy");
+    CHANNEL_LAYOUT_FROM_STRING("FR+Dummy@FL");
+    CHANNEL_LAYOUT_FROM_STRING("UNK+UNSD");
+    CHANNEL_LAYOUT_FROM_STRING("NONE");
+    CHANNEL_LAYOUT_FROM_STRING("FR+@FL");
+    CHANNEL_LAYOUT_FROM_STRING("FL+@");
     CHANNEL_LAYOUT_FROM_STRING("FR+FL@Foo+USR63@Foo");
-    printf("With \"FR+FL@Foo+USR63@Foo\": %33s\n", bp.str);
+
+    ret = av_channel_layout_copy(&layout2, &layout);
+    if (ret < 0) {
+        printf("Copying channel layout \"FR+FL@Foo+USR63@Foo\" failed; "
+               "ret %d\n", ret);
+    }
+    ret = av_channel_layout_compare(&layout, &layout2);
+    if (ret)
+        printf("Channel layout and its copy compare unequal; ret: %d\n", ret);
 
     printf("\nTesting av_channel_layout_index_from_string\n");
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("FR");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FR\": %18d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("FL");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FL\": %18d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("USR63");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"USR63\": %15d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"Foo\": %17d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"@Foo\": %16d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("FR@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FR@Foo\": %14d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("FL@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FL@Foo\": %14d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("USR63@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"USR63@Foo\": %11d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_STRING("BC");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"BC\": %18d\n", ret);
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "FR");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "FL");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "USR63");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "Foo");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "@Foo");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "FR@Foo");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "FL@Foo");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "USR63@Foo");
+    CHANNEL_LAYOUT_INDEX_FROM_STRING(bp.str, "BC");
 
     printf("\nTesting av_channel_layout_channel_from_string\n");
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("FR");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FR\": %18d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("FL");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FL\": %18d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("USR63");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"USR63\": %15d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"Foo\": %17d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"@Foo\": %16d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("FR@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FR@Foo\": %14d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("FL@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"FL@Foo\": %14d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("USR63@Foo");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"USR63@Foo\": %11d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_STRING("BC");
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with \"BC\": %18d\n", ret);
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FR");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FL");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "USR63");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "Foo");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "@Foo");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FR@Foo");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "FL@Foo");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "USR63@Foo");
+    CHANNEL_LAYOUT_CHANNEL_FROM_STRING(bp.str, "BC");
 
     printf("\nTesting av_channel_layout_index_from_channel\n");
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_FRONT_RIGHT);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with AV_CHAN_FRONT_RIGHT: %3d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_FRONT_LEFT);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with AV_CHAN_FRONT_LEFT: %4d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(63);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with 63: %20d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_BACK_CENTER);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with AV_CHAN_BACK_CENTER: %3d\n", ret);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_FRONT_RIGHT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_FRONT_LEFT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, 63);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_BACK_CENTER);
 
     printf("\nTesting av_channel_layout_channel_from_index\n");
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(0);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with 0: %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(1);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with 1: %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(2);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with 2: %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(3);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with 3: %21d\n", ret);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 0);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 1);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 2);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 3);
 
     printf("\nTesting av_channel_layout_subset\n");
-    CHANNEL_LAYOUT_SUBSET(AV_CH_LAYOUT_STEREO);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with AV_CH_LAYOUT_STEREO: 0x%"PRIx64"\n", mask);
-    CHANNEL_LAYOUT_SUBSET(AV_CH_LAYOUT_QUAD);
-    printf("On \"FR+FL@Foo+USR63@Foo\" layout with AV_CH_LAYOUT_QUAD:   0x%"PRIx64"\n", mask);
+    CHANNEL_LAYOUT_SUBSET(bp.str, "AV_CH_LAYOUT_STEREO:", AV_CH_LAYOUT_STEREO);
+    CHANNEL_LAYOUT_SUBSET(bp.str, "AV_CH_LAYOUT_QUAD:", AV_CH_LAYOUT_QUAD);
 
     printf("\n==Ambisonic layouts==\n");
 
     printf("\nTesting av_channel_layout_from_string\n");
     CHANNEL_LAYOUT_FROM_STRING("ambisonic 1");
-    printf("With \"ambisonic 1\": %41s\n", bp.str);
     CHANNEL_LAYOUT_FROM_STRING("ambisonic 2+stereo");
-    printf("With \"ambisonic 2+stereo\": %34s\n", bp.str);
 
     printf("\nTesting av_channel_layout_index_from_channel\n");
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_AMBISONIC_BASE);
-    printf("On \"ambisonic 2+stereo\" layout with AV_CHAN_AMBISONIC_BASE: %d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_FRONT_LEFT);
-    printf("On \"ambisonic 2+stereo\" layout with AV_CHAN_FRONT_LEFT: %5d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_FRONT_RIGHT);
-    printf("On \"ambisonic 2+stereo\" layout with AV_CHAN_FRONT_RIGHT: %4d\n", ret);
-    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(AV_CHAN_BACK_CENTER);
-    printf("On \"ambisonic 2+stereo\" layout with AV_CHAN_BACK_CENTER: %4d\n", ret);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_AMBISONIC_BASE);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_FRONT_LEFT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_FRONT_RIGHT);
+    CHANNEL_LAYOUT_INDEX_FROM_CHANNEL(bp.str, AV_CHAN_BACK_CENTER);
 
     printf("\nTesting av_channel_layout_channel_from_index\n");
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(0);
-    printf("On \"ambisonic 2+stereo\" layout with 0: %22d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(9);
-    printf("On \"ambisonic 2+stereo\" layout with 9: %22d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(10);
-    printf("On \"ambisonic 2+stereo\" layout with 10: %21d\n", ret);
-    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(11);
-    printf("On \"ambisonic 2+stereo\" layout with 11: %21d\n", ret);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 0);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 9);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 10);
+    CHANNEL_LAYOUT_CHANNEL_FROM_INDEX(bp.str, 11);
 
     printf("\nTesting av_channel_layout_subset\n");
-    CHANNEL_LAYOUT_SUBSET(AV_CH_LAYOUT_STEREO);
-    printf("On \"ambisonic 2+stereo\" layout with AV_CH_LAYOUT_STEREO:  0x%"PRIx64"\n", mask);
-    CHANNEL_LAYOUT_SUBSET(AV_CH_LAYOUT_QUAD);
-    printf("On \"ambisonic 2+stereo\" layout with AV_CH_LAYOUT_QUAD:    0x%"PRIx64"\n", mask);
+    CHANNEL_LAYOUT_SUBSET(bp.str, "AV_CH_LAYOUT_STEREO:", AV_CH_LAYOUT_STEREO);
+    CHANNEL_LAYOUT_SUBSET(bp.str, "AV_CH_LAYOUT_QUAD:", AV_CH_LAYOUT_QUAD);
 
     av_channel_layout_uninit(&layout);
+    av_channel_layout_uninit(&layout2);
+
+    printf("\nTesting av_channel_layout_retype\n");
+    {
+        const char* layouts[] = {
+            "FL@Boo",
+            "stereo",
+            "FR+FL",
+            "ambisonic 2+stereo",
+            "2C",
+            NULL
+        };
+        for (int i = 0; layouts[i]; i++)
+            printf("With \"%s\": %s\n", layouts[i], channel_layout_retype(&layout, &bp, layouts[i]));
+    }
     av_bprint_finalize(&bp, NULL);
 
     return 0;

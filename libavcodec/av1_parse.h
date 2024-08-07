@@ -30,6 +30,7 @@
 
 #include "av1.h"
 #include "get_bits.h"
+#include "leb.h"
 
 // OBU header fields + max leb128 length
 #define MAX_OBU_HEADER_SIZE (2 + 8)
@@ -48,9 +49,6 @@ typedef struct AV1OBU {
     /** Size of entire OBU, including header */
     int raw_size;
     const uint8_t *raw_data;
-
-    /** GetBitContext initialized to the start of the payload */
-    GetBitContext gb;
 
     int type;
 
@@ -91,19 +89,6 @@ int ff_av1_packet_split(AV1Packet *pkt, const uint8_t *buf, int length,
  */
 void ff_av1_packet_uninit(AV1Packet *pkt);
 
-static inline int64_t leb128(GetBitContext *gb) {
-    int64_t ret = 0;
-    int i;
-
-    for (i = 0; i < 8; i++) {
-        int byte = get_bits(gb, 8);
-        ret |= (int64_t)(byte & 0x7f) << (i * 7);
-        if (!(byte & 0x80))
-            break;
-    }
-    return ret;
-}
-
 static inline int parse_obu_header(const uint8_t *buf, int buf_size,
                                    int64_t *obu_size, int *start_pos, int *type,
                                    int *temporal_id, int *spatial_id)
@@ -132,7 +117,7 @@ static inline int parse_obu_header(const uint8_t *buf, int buf_size,
         *temporal_id = *spatial_id = 0;
     }
 
-    *obu_size  = has_size_flag ? leb128(&gb)
+    *obu_size  = has_size_flag ? get_leb128(&gb)
                                : buf_size - 1 - extension_flag;
 
     if (get_bits_left(&gb) < 0)
@@ -180,5 +165,8 @@ static inline int get_obu_bit_length(const uint8_t *buf, int size, int type)
 
     return size;
 }
+
+AVRational ff_av1_framerate(int64_t ticks_per_frame, int64_t units_per_tick,
+                            int64_t time_scale);
 
 #endif /* AVCODEC_AV1_PARSE_H */

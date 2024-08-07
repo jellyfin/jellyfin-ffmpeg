@@ -24,7 +24,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 
 typedef struct BiquadCoeffs {
     double a1, a2;
@@ -333,13 +332,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_asupercut = {
     .name            = "asupercut",
     .description     = NULL_IF_CONFIG_SMALL("Cut super frequencies."),
@@ -347,7 +339,7 @@ const AVFilter ff_af_asupercut = {
     .priv_class      = &asupercut_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS_ARRAY(sample_fmts),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
@@ -370,7 +362,7 @@ const AVFilter ff_af_asubcut = {
     .priv_class      = &asubcut_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS_ARRAY(sample_fmts),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
@@ -395,7 +387,7 @@ const AVFilter ff_af_asuperpass = {
     .priv_size       = sizeof(ASuperCutContext),
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS_ARRAY(sample_fmts),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
@@ -409,7 +401,7 @@ const AVFilter ff_af_asuperstop = {
     .priv_size       = sizeof(ASuperCutContext),
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS_ARRAY(sample_fmts),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |

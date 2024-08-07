@@ -22,7 +22,6 @@
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0A00
 #endif
-#define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 
@@ -44,7 +43,6 @@
 #include "compat/w32dlfcn.h"
 #include "avfilter.h"
 #include "internal.h"
-#include "formats.h"
 #include "video.h"
 
 #include "vsrc_ddagrab_shaders.h"
@@ -70,7 +68,9 @@ typedef struct DdagrabContext {
 
     int mouse_x, mouse_y;
     ID3D11Texture2D *mouse_texture;
-    ID3D11ShaderResourceView* mouse_resource_view ;
+    ID3D11ShaderResourceView* mouse_resource_view;
+    ID3D11Texture2D *mouse_xor_texture;
+    ID3D11ShaderResourceView* mouse_xor_resource_view;
 
     AVRational time_base;
     int64_t time_frame;
@@ -82,6 +82,7 @@ typedef struct DdagrabContext {
     int raw_height;
 
     ID3D11Texture2D *probed_texture;
+    ID3D11Texture2D *buffer_texture;
 
     ID3D11VertexShader *vertex_shader;
     ID3D11InputLayout *input_layout;
@@ -89,6 +90,7 @@ typedef struct DdagrabContext {
     ID3D11Buffer *const_buffer;
     ID3D11SamplerState *sampler_state;
     ID3D11BlendState *blend_state;
+    ID3D11BlendState *blend_state_xor;
 
     int        output_idx;
     int        draw_mouse;
@@ -100,6 +102,7 @@ typedef struct DdagrabContext {
     int        out_fmt;
     int        allow_fallback;
     int        force_fmt;
+    int        dup_frames;
 } DdagrabContext;
 
 #define OFFSET(x) offsetof(DdagrabContext, x)
@@ -111,18 +114,20 @@ static const AVOption ddagrab_options[] = {
     { "video_size", "set video frame size",        OFFSET(width),      AV_OPT_TYPE_IMAGE_SIZE, { .str = NULL },       0,       0, FLAGS },
     { "offset_x",   "capture area x offset",       OFFSET(offset_x),   AV_OPT_TYPE_INT,        { .i64 = 0    }, INT_MIN, INT_MAX, FLAGS },
     { "offset_y",   "capture area y offset",       OFFSET(offset_y),   AV_OPT_TYPE_INT,        { .i64 = 0    }, INT_MIN, INT_MAX, FLAGS },
-    { "output_fmt", "desired output format",       OFFSET(out_fmt),    AV_OPT_TYPE_INT,        { .i64 = DXGI_FORMAT_B8G8R8A8_UNORM },    0, INT_MAX, FLAGS, "output_fmt" },
-    { "auto",       "let dda pick its preferred format", 0,            AV_OPT_TYPE_CONST,      { .i64 = 0 },                             0, INT_MAX, FLAGS, "output_fmt" },
-    { "8bit",       "only output default 8 Bit format",  0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_B8G8R8A8_UNORM },    0, INT_MAX, FLAGS, "output_fmt" },
-    { "bgra",       "only output 8 Bit BGRA",            0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_B8G8R8A8_UNORM },    0, INT_MAX, FLAGS, "output_fmt" },
-    { "10bit",      "only output default 10 Bit format", 0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R10G10B10A2_UNORM }, 0, INT_MAX, FLAGS, "output_fmt" },
-    { "x2bgr10",    "only output 10 Bit X2BGR10",        0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R10G10B10A2_UNORM }, 0, INT_MAX, FLAGS, "output_fmt" },
-    { "16bit",      "only output default 16 Bit format", 0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R16G16B16A16_FLOAT },0, INT_MAX, FLAGS, "output_fmt" },
-    { "rgbaf16",    "only output 16 Bit RGBAF16",        0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R16G16B16A16_FLOAT },0, INT_MAX, FLAGS, "output_fmt" },
+    { "output_fmt", "desired output format",       OFFSET(out_fmt),    AV_OPT_TYPE_INT,        { .i64 = DXGI_FORMAT_B8G8R8A8_UNORM },    0, INT_MAX, FLAGS, .unit = "output_fmt" },
+    { "auto",       "let dda pick its preferred format", 0,            AV_OPT_TYPE_CONST,      { .i64 = 0 },                             0, INT_MAX, FLAGS, .unit = "output_fmt" },
+    { "8bit",       "only output default 8 Bit format",  0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_B8G8R8A8_UNORM },    0, INT_MAX, FLAGS, .unit = "output_fmt" },
+    { "bgra",       "only output 8 Bit BGRA",            0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_B8G8R8A8_UNORM },    0, INT_MAX, FLAGS, .unit = "output_fmt" },
+    { "10bit",      "only output default 10 Bit format", 0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R10G10B10A2_UNORM }, 0, INT_MAX, FLAGS, .unit = "output_fmt" },
+    { "x2bgr10",    "only output 10 Bit X2BGR10",        0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R10G10B10A2_UNORM }, 0, INT_MAX, FLAGS, .unit = "output_fmt" },
+    { "16bit",      "only output default 16 Bit format", 0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R16G16B16A16_FLOAT },0, INT_MAX, FLAGS, .unit = "output_fmt" },
+    { "rgbaf16",    "only output 16 Bit RGBAF16",        0,            AV_OPT_TYPE_CONST,      { .i64 = DXGI_FORMAT_R16G16B16A16_FLOAT },0, INT_MAX, FLAGS, .unit = "output_fmt" },
     { "allow_fallback", "don't error on fallback to default 8 Bit format",
                                                    OFFSET(allow_fallback), AV_OPT_TYPE_BOOL,   { .i64 = 0    },       0,       1, FLAGS },
     { "force_fmt",  "exclude BGRA from format list (experimental, discouraged by Microsoft)",
                                                    OFFSET(force_fmt),  AV_OPT_TYPE_BOOL,       { .i64 = 0    },       0,       1, FLAGS },
+    { "dup_frames", "duplicate frames to maintain framerate",
+                                                   OFFSET(dup_frames), AV_OPT_TYPE_BOOL,       { .i64 = 1    },       0,       1, FLAGS },
     { NULL }
 };
 
@@ -142,6 +147,7 @@ static av_cold void ddagrab_uninit(AVFilterContext *avctx)
     DdagrabContext *dda = avctx->priv;
 
     release_resource(&dda->blend_state);
+    release_resource(&dda->blend_state_xor);
     release_resource(&dda->sampler_state);
     release_resource(&dda->pixel_shader);
     release_resource(&dda->input_layout);
@@ -149,10 +155,13 @@ static av_cold void ddagrab_uninit(AVFilterContext *avctx)
     release_resource(&dda->const_buffer);
 
     release_resource(&dda->probed_texture);
+    release_resource(&dda->buffer_texture);
 
     release_resource(&dda->dxgi_outdupl);
     release_resource(&dda->mouse_resource_view);
     release_resource(&dda->mouse_texture);
+    release_resource(&dda->mouse_xor_resource_view);
+    release_resource(&dda->mouse_xor_texture);
 
     av_frame_free(&dda->last_frame);
     av_buffer_unref(&dda->frames_ref);
@@ -414,6 +423,16 @@ static av_cold int init_render_resources(AVFilterContext *avctx)
         return AVERROR_EXTERNAL;
     }
 
+    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_INV_DEST_COLOR;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_COLOR;
+    hr = ID3D11Device_CreateBlendState(dev,
+        &blend_desc,
+        &dda->blend_state_xor);
+    if (FAILED(hr)) {
+        av_log(avctx, AV_LOG_ERROR, "CreateBlendState (xor) failed: %lx\n", hr);
+        return AVERROR_EXTERNAL;
+    }
+
     return 0;
 }
 
@@ -472,7 +491,7 @@ static int create_d3d11_pointer_tex(AVFilterContext *avctx,
     }
 
     hr = ID3D11Device_CreateShaderResourceView(dda->device_hwctx->device,
-        (ID3D11Resource*)dda->mouse_texture,
+        (ID3D11Resource*)*out_tex,
         &resource_desc,
         res_view);
     if (FAILED(hr)) {
@@ -484,50 +503,102 @@ static int create_d3d11_pointer_tex(AVFilterContext *avctx,
     return 0;
 }
 
-static uint8_t *convert_mono_buffer(uint8_t *input, int *_width, int *_height, int *_pitch)
+static int convert_mono_buffer(uint8_t *input, uint8_t **rgba_out, uint8_t **xor_out, int *_width, int *_height, int *_pitch)
 {
     int width = *_width, height = *_height, pitch = *_pitch;
     int real_height = height / 2;
+    int size = real_height * pitch;
+
     uint8_t *output = av_malloc(real_height * width * 4);
+    uint8_t *output_xor = av_malloc(real_height * width * 4);
+
     int y, x;
 
-    if (!output)
-        return NULL;
+    if (!output || !output_xor) {
+        av_free(output);
+        av_free(output_xor);
+        return AVERROR(ENOMEM);
+    }
 
-    // This simulates drawing the cursor on a full black surface
-    // i.e. ignore the AND mask, turn XOR mask into all 4 color channels
     for (y = 0; y < real_height; y++) {
         for (x = 0; x < width; x++) {
-            int v = input[(real_height + y) * pitch + (x / 8)];
-            v = (v >> (7 - (x % 8))) & 1;
-            memset(&output[4 * ((y*width) + x)], v ? 0xFF : 0, 4);
+            int in_pos = (y * pitch) + (x / 8);
+            int out_pos = 4 * ((y * width) + x);
+            int and_val = (input[in_pos] >> (7 - (x % 8))) & 1;
+            int xor_val = (input[in_pos + size] >> (7 - (x % 8))) & 1;
+
+            if (!and_val && !xor_val) {
+                // solid black
+                memset(&output[out_pos], 0, 4);
+                output[out_pos + 3] = 0xFF;
+
+                // transparent
+                memset(&output_xor[out_pos], 0, 4);
+            } else if (and_val && !xor_val) {
+                // transparent
+                memset(&output[out_pos], 0, 4);
+
+                // transparent
+                memset(&output_xor[out_pos], 0, 4);
+            } else if (!and_val && xor_val) {
+                // solid white
+                memset(&output[out_pos], 0xFF, 4);
+
+                // transparent
+                memset(&output_xor[out_pos], 0, 4);
+            } else if (and_val && xor_val) {
+                // transparent
+                memset(&output[out_pos], 0, 4);
+
+                // solid white -> invert color
+                memset(&output_xor[out_pos], 0xFF, 4);
+            }
         }
     }
 
     *_pitch = width * 4;
     *_height = real_height;
+    *rgba_out = output;
+    *xor_out = output_xor;
 
-    return output;
+    return 0;
 }
 
-static void fixup_color_mask(uint8_t *buf, int width, int height, int pitch)
+static int fixup_color_mask(uint8_t *input, uint8_t **rgba_out, uint8_t **xor_out, int width, int height, int pitch)
 {
+    int size = height * pitch;
+    uint8_t *output = av_malloc(size);
+    uint8_t *output_xor = av_malloc(size);
     int x, y;
-    // There is no good way to replicate XOR'ig parts of the texture with the screen
-    // best effort is rendering the non-masked parts, and make the rest transparent
+
+    if (!output || !output_xor) {
+        av_free(output);
+        av_free(output_xor);
+        return AVERROR(ENOMEM);
+    }
+
+    memcpy(output, input, size);
+    memcpy(output_xor, input, size);
+
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
             int pos = (y*pitch) + (4*x) + 3;
-            buf[pos] = buf[pos] ? 0 : 0xFF;
+            output[pos] = input[pos] ? 0 : 0xFF;
+            output_xor[pos] = input[pos] ? 0xFF : 0;
         }
     }
+
+    *rgba_out = output;
+    *xor_out = output_xor;
+
+    return 0;
 }
 
 static int update_mouse_pointer(AVFilterContext *avctx, DXGI_OUTDUPL_FRAME_INFO *frame_info)
 {
     DdagrabContext *dda = avctx->priv;
     HRESULT hr;
-    int ret;
+    int ret, ret2;
 
     if (frame_info->LastMouseUpdateTime.QuadPart == 0)
         return 0;
@@ -557,6 +628,7 @@ static int update_mouse_pointer(AVFilterContext *avctx, DXGI_OUTDUPL_FRAME_INFO 
     if (frame_info->PointerShapeBufferSize) {
         UINT size = frame_info->PointerShapeBufferSize;
         DXGI_OUTDUPL_POINTER_SHAPE_INFO shape_info;
+        uint8_t *rgba_buf = NULL, *rgb_xor_buf = NULL;
         uint8_t *buf = av_malloc(size);
         if (!buf)
             return AVERROR(ENOMEM);
@@ -573,26 +645,37 @@ static int update_mouse_pointer(AVFilterContext *avctx, DXGI_OUTDUPL_FRAME_INFO 
         }
 
         if (shape_info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME) {
-            uint8_t *new_buf = convert_mono_buffer(buf, &shape_info.Width, &shape_info.Height, &shape_info.Pitch);
-            av_free(buf);
-            if (!new_buf)
-                return AVERROR(ENOMEM);
-            buf = new_buf;
+            ret = convert_mono_buffer(buf, &rgba_buf, &rgb_xor_buf, &shape_info.Width, &shape_info.Height, &shape_info.Pitch);
+            av_freep(&buf);
+            if (ret < 0)
+                return ret;
         } else if (shape_info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MASKED_COLOR) {
-            fixup_color_mask(buf, shape_info.Width, shape_info.Height, shape_info.Pitch);
-        } else if (shape_info.Type != DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR) {
+            ret = fixup_color_mask(buf, &rgba_buf, &rgb_xor_buf, shape_info.Width, shape_info.Height, shape_info.Pitch);
+            av_freep(&buf);
+            if (ret < 0)
+                return ret;
+        } else if (shape_info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR) {
+            rgba_buf = buf;
+            buf = NULL;
+        } else {
             av_log(avctx, AV_LOG_WARNING, "Unsupported pointer shape type: %d\n", (int)shape_info.Type);
-            av_free(buf);
+            av_freep(&buf);
             return 0;
         }
 
         release_resource(&dda->mouse_resource_view);
         release_resource(&dda->mouse_texture);
+        release_resource(&dda->mouse_xor_resource_view);
+        release_resource(&dda->mouse_xor_texture);
 
-        ret = create_d3d11_pointer_tex(avctx, buf, &shape_info, &dda->mouse_texture, &dda->mouse_resource_view);
-        av_freep(&buf);
+        ret = create_d3d11_pointer_tex(avctx, rgba_buf, &shape_info, &dda->mouse_texture, &dda->mouse_resource_view);
+        ret2 = rgb_xor_buf ? create_d3d11_pointer_tex(avctx, rgb_xor_buf, &shape_info, &dda->mouse_xor_texture, &dda->mouse_xor_resource_view) : 0;
+        av_freep(&rgba_buf);
+        av_freep(&rgb_xor_buf);
         if (ret < 0)
             return ret;
+        if (ret2 < 0)
+            return ret2;
 
         av_log(avctx, AV_LOG_VERBOSE, "Updated pointer shape texture\n");
     }
@@ -626,9 +709,29 @@ static int next_frame_internal(AVFilterContext *avctx, ID3D11Texture2D **desktop
             goto error;
     }
 
-    if (need_frame && (!frame_info.LastPresentTime.QuadPart || !frame_info.AccumulatedFrames)) {
-        ret = AVERROR(EAGAIN);
-        goto error;
+    if (!frame_info.LastPresentTime.QuadPart || !frame_info.AccumulatedFrames) {
+        if (need_frame) {
+            ret = AVERROR(EAGAIN);
+            goto error;
+        }
+
+        // Unforunately, we can't rely on the desktop_resource's format in this case.
+        // The API might even return it in with a format that was not in the initial
+        // list of supported formats, and it can change/flicker randomly.
+        // To work around this, return an internal copy of the last valid texture we got.
+        release_resource(&desktop_resource);
+
+        // The initial probing should make this impossible.
+        if (!dda->buffer_texture) {
+            av_log(avctx, AV_LOG_ERROR, "No buffer texture while operating!\n");
+            ret = AVERROR_BUG;
+            goto error;
+        }
+
+        av_log(avctx, AV_LOG_TRACE, "Returning internal buffer for a frame!\n");
+        ID3D11Texture2D_AddRef(dda->buffer_texture);
+        *desktop_texture = dda->buffer_texture;
+        return 0;
     }
 
     hr = IDXGIResource_QueryInterface(desktop_resource, &IID_ID3D11Texture2D, (void**)desktop_texture);
@@ -638,6 +741,27 @@ static int next_frame_internal(AVFilterContext *avctx, ID3D11Texture2D **desktop
         ret = AVERROR_EXTERNAL;
         goto error;
     }
+
+    if (!dda->buffer_texture) {
+        D3D11_TEXTURE2D_DESC desc;
+        ID3D11Texture2D_GetDesc(*desktop_texture, &desc);
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = 0;
+        desc.CPUAccessFlags = 0;
+        desc.MiscFlags = 0;
+
+        hr = ID3D11Device_CreateTexture2D(dda->device_hwctx->device, &desc, NULL, &dda->buffer_texture);
+        if (FAILED(hr)) {
+            release_resource(desktop_texture);
+            av_log(avctx, AV_LOG_ERROR, "Failed creating internal buffer texture.\n");
+            ret = AVERROR(ENOMEM);
+            goto error;
+        }
+    }
+
+    ID3D11DeviceContext_CopyResource(dda->device_hwctx->device_context,
+                                     (ID3D11Resource*)dda->buffer_texture,
+                                     (ID3D11Resource*)*desktop_texture);
 
     return 0;
 
@@ -936,6 +1060,13 @@ static int draw_mouse_pointer(AVFilterContext *avctx, AVFrame *frame)
 
     ID3D11DeviceContext_Draw(devctx, num_vertices, 0);
 
+    if (dda->mouse_xor_resource_view) {
+        ID3D11DeviceContext_PSSetShaderResources(devctx, 0, 1, &dda->mouse_xor_resource_view);
+        ID3D11DeviceContext_OMSetBlendState(devctx, dda->blend_state_xor, NULL, 0xFFFFFFFF);
+
+        ID3D11DeviceContext_Draw(devctx, num_vertices, 0);
+    }
+
 end:
     release_resource(&mouse_vertex_buffer);
     release_resource(&target_view);
@@ -982,7 +1113,9 @@ static int ddagrab_request_frame(AVFilterLink *outlink)
     now -= dda->first_pts;
 
     if (!dda->probed_texture) {
-        ret = next_frame_internal(avctx, &cur_texture, 0);
+        do {
+            ret = next_frame_internal(avctx, &cur_texture, 0);
+        } while (ret == AVERROR(EAGAIN) && !dda->dup_frames);
     } else {
         cur_texture = dda->probed_texture;
         dda->probed_texture = NULL;
@@ -1018,7 +1151,7 @@ static int ddagrab_request_frame(AVFilterLink *outlink)
     if (desc.Format != dda->raw_format ||
         (int)desc.Width != dda->raw_width ||
         (int)desc.Height != dda->raw_height) {
-        av_log(avctx, AV_LOG_ERROR, "Output parameters changed!");
+        av_log(avctx, AV_LOG_ERROR, "Output parameters changed!\n");
         ret = AVERROR_OUTPUT_CHANGED;
         goto fail;
     }
@@ -1078,8 +1211,7 @@ static int ddagrab_request_frame(AVFilterLink *outlink)
         goto fail;
     }
 
-    av_frame_unref(dda->last_frame);
-    ret = av_frame_ref(dda->last_frame, frame);
+    ret = av_frame_replace(dda->last_frame, frame);
     if (ret < 0)
         return ret;
 
@@ -1120,4 +1252,5 @@ const AVFilter ff_vsrc_ddagrab = {
     FILTER_OUTPUTS(ddagrab_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_D3D11),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

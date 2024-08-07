@@ -519,8 +519,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 
 static const AVOption fade_options[] = {
-    { "type", "set the fade direction", OFFSET(type), AV_OPT_TYPE_INT, { .i64 = FADE_IN }, FADE_IN, FADE_OUT, FLAGS, "type" },
-    { "t",    "set the fade direction", OFFSET(type), AV_OPT_TYPE_INT, { .i64 = FADE_IN }, FADE_IN, FADE_OUT, FLAGS, "type" },
+    { "type", "set the fade direction", OFFSET(type), AV_OPT_TYPE_INT, { .i64 = FADE_IN }, FADE_IN, FADE_OUT, FLAGS, .unit = "type" },
+    { "t",    "set the fade direction", OFFSET(type), AV_OPT_TYPE_INT, { .i64 = FADE_IN }, FADE_IN, FADE_OUT, FLAGS, .unit = "type" },
         { "in",  "fade-in",  0, AV_OPT_TYPE_CONST, { .i64 = FADE_IN },  .flags = FLAGS, .unit = "type" },
         { "out", "fade-out", 0, AV_OPT_TYPE_CONST, { .i64 = FADE_OUT }, .flags = FLAGS, .unit = "type" },
     { "start_frame", "Number of the first frame to which to apply the effect.",
@@ -557,13 +557,6 @@ static const AVFilterPad avfilter_vf_fade_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_fade_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_fade = {
     .name          = "fade",
     .description   = NULL_IF_CONFIG_SMALL("Fade in/out input video."),
@@ -571,7 +564,7 @@ const AVFilter ff_vf_fade = {
     .priv_size     = sizeof(FadeContext),
     .priv_class    = &fade_class,
     FILTER_INPUTS(avfilter_vf_fade_inputs),
-    FILTER_OUTPUTS(avfilter_vf_fade_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SLICE_THREADS |
                      AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,

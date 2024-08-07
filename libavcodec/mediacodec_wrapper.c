@@ -60,31 +60,33 @@ struct JNIAMediaCodecListFields {
     jfieldID level_id;
 };
 
+#define OFFSET(x) offsetof(struct JNIAMediaCodecListFields, x)
 static const struct FFJniField jni_amediacodeclist_mapping[] = {
-    { "android/media/MediaCodecList", NULL, NULL, FF_JNI_CLASS, offsetof(struct JNIAMediaCodecListFields, mediacodec_list_class), 1 },
-        { "android/media/MediaCodecList", "<init>", "(I)V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecListFields, init_id), 0 },
-        { "android/media/MediaCodecList", "findDecoderForFormat", "(Landroid/media/MediaFormat;)Ljava/lang/String;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecListFields, find_decoder_for_format_id), 0 },
+    { "android/media/MediaCodecList", NULL, NULL, FF_JNI_CLASS, OFFSET(mediacodec_list_class), 1 },
+        { "android/media/MediaCodecList", "<init>", "(I)V", FF_JNI_METHOD, OFFSET(init_id), 0 },
+        { "android/media/MediaCodecList", "findDecoderForFormat", "(Landroid/media/MediaFormat;)Ljava/lang/String;", FF_JNI_METHOD, OFFSET(find_decoder_for_format_id), 0 },
 
-        { "android/media/MediaCodecList", "getCodecCount", "()I", FF_JNI_STATIC_METHOD, offsetof(struct JNIAMediaCodecListFields, get_codec_count_id), 1 },
-        { "android/media/MediaCodecList", "getCodecInfoAt", "(I)Landroid/media/MediaCodecInfo;", FF_JNI_STATIC_METHOD, offsetof(struct JNIAMediaCodecListFields, get_codec_info_at_id), 1 },
+        { "android/media/MediaCodecList", "getCodecCount", "()I", FF_JNI_STATIC_METHOD, OFFSET(get_codec_count_id), 1 },
+        { "android/media/MediaCodecList", "getCodecInfoAt", "(I)Landroid/media/MediaCodecInfo;", FF_JNI_STATIC_METHOD, OFFSET(get_codec_info_at_id), 1 },
 
-    { "android/media/MediaCodecInfo", NULL, NULL, FF_JNI_CLASS, offsetof(struct JNIAMediaCodecListFields, mediacodec_info_class), 1 },
-        { "android/media/MediaCodecInfo", "getName", "()Ljava/lang/String;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecListFields, get_name_id), 1 },
-        { "android/media/MediaCodecInfo", "getCapabilitiesForType", "(Ljava/lang/String;)Landroid/media/MediaCodecInfo$CodecCapabilities;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecListFields, get_codec_capabilities_id), 1 },
-        { "android/media/MediaCodecInfo", "getSupportedTypes", "()[Ljava/lang/String;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecListFields, get_supported_types_id), 1 },
-        { "android/media/MediaCodecInfo", "isEncoder", "()Z", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecListFields, is_encoder_id), 1 },
-        { "android/media/MediaCodecInfo", "isSoftwareOnly", "()Z", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecListFields, is_software_only_id), 0 },
+    { "android/media/MediaCodecInfo", NULL, NULL, FF_JNI_CLASS, OFFSET(mediacodec_info_class), 1 },
+        { "android/media/MediaCodecInfo", "getName", "()Ljava/lang/String;", FF_JNI_METHOD, OFFSET(get_name_id), 1 },
+        { "android/media/MediaCodecInfo", "getCapabilitiesForType", "(Ljava/lang/String;)Landroid/media/MediaCodecInfo$CodecCapabilities;", FF_JNI_METHOD, OFFSET(get_codec_capabilities_id), 1 },
+        { "android/media/MediaCodecInfo", "getSupportedTypes", "()[Ljava/lang/String;", FF_JNI_METHOD, OFFSET(get_supported_types_id), 1 },
+        { "android/media/MediaCodecInfo", "isEncoder", "()Z", FF_JNI_METHOD, OFFSET(is_encoder_id), 1 },
+        { "android/media/MediaCodecInfo", "isSoftwareOnly", "()Z", FF_JNI_METHOD, OFFSET(is_software_only_id), 0 },
 
-    { "android/media/MediaCodecInfo$CodecCapabilities", NULL, NULL, FF_JNI_CLASS, offsetof(struct JNIAMediaCodecListFields, codec_capabilities_class), 1 },
-        { "android/media/MediaCodecInfo$CodecCapabilities", "colorFormats", "[I", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecListFields, color_formats_id), 1 },
-        { "android/media/MediaCodecInfo$CodecCapabilities", "profileLevels", "[Landroid/media/MediaCodecInfo$CodecProfileLevel;", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecListFields, profile_levels_id), 1 },
+    { "android/media/MediaCodecInfo$CodecCapabilities", NULL, NULL, FF_JNI_CLASS, OFFSET(codec_capabilities_class), 1 },
+        { "android/media/MediaCodecInfo$CodecCapabilities", "colorFormats", "[I", FF_JNI_FIELD, OFFSET(color_formats_id), 1 },
+        { "android/media/MediaCodecInfo$CodecCapabilities", "profileLevels", "[Landroid/media/MediaCodecInfo$CodecProfileLevel;", FF_JNI_FIELD, OFFSET(profile_levels_id), 1 },
 
-    { "android/media/MediaCodecInfo$CodecProfileLevel", NULL, NULL, FF_JNI_CLASS, offsetof(struct JNIAMediaCodecListFields, codec_profile_level_class), 1 },
-        { "android/media/MediaCodecInfo$CodecProfileLevel", "profile", "I", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecListFields, profile_id), 1 },
-        { "android/media/MediaCodecInfo$CodecProfileLevel", "level", "I", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecListFields, level_id), 1 },
+    { "android/media/MediaCodecInfo$CodecProfileLevel", NULL, NULL, FF_JNI_CLASS, OFFSET(codec_profile_level_class), 1 },
+        { "android/media/MediaCodecInfo$CodecProfileLevel", "profile", "I", FF_JNI_FIELD, OFFSET(profile_id), 1 },
+        { "android/media/MediaCodecInfo$CodecProfileLevel", "level", "I", FF_JNI_FIELD, OFFSET(level_id), 1 },
 
     { NULL }
 };
+#undef OFFSET
 
 struct JNIAMediaFormatFields {
 
@@ -110,29 +112,31 @@ struct JNIAMediaFormatFields {
 
 };
 
+#define OFFSET(x) offsetof(struct JNIAMediaFormatFields, x)
 static const struct FFJniField jni_amediaformat_mapping[] = {
-    { "android/media/MediaFormat", NULL, NULL, FF_JNI_CLASS, offsetof(struct JNIAMediaFormatFields, mediaformat_class), 1 },
+    { "android/media/MediaFormat", NULL, NULL, FF_JNI_CLASS, OFFSET(mediaformat_class), 1 },
 
-        { "android/media/MediaFormat", "<init>", "()V", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, init_id), 1 },
+        { "android/media/MediaFormat", "<init>", "()V", FF_JNI_METHOD, OFFSET(init_id), 1 },
 
-        { "android/media/MediaFormat", "containsKey", "(Ljava/lang/String;)Z", FF_JNI_METHOD,offsetof(struct JNIAMediaFormatFields, contains_key_id), 1 },
+        { "android/media/MediaFormat", "containsKey", "(Ljava/lang/String;)Z", FF_JNI_METHOD, OFFSET(contains_key_id), 1 },
 
-        { "android/media/MediaFormat", "getInteger", "(Ljava/lang/String;)I", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, get_integer_id), 1 },
-        { "android/media/MediaFormat", "getLong", "(Ljava/lang/String;)J", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, get_long_id), 1 },
-        { "android/media/MediaFormat", "getFloat", "(Ljava/lang/String;)F", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, get_float_id), 1 },
-        { "android/media/MediaFormat", "getByteBuffer", "(Ljava/lang/String;)Ljava/nio/ByteBuffer;", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, get_bytebuffer_id), 1 },
-        { "android/media/MediaFormat", "getString", "(Ljava/lang/String;)Ljava/lang/String;", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, get_string_id), 1 },
+        { "android/media/MediaFormat", "getInteger", "(Ljava/lang/String;)I", FF_JNI_METHOD, OFFSET(get_integer_id), 1 },
+        { "android/media/MediaFormat", "getLong", "(Ljava/lang/String;)J", FF_JNI_METHOD, OFFSET(get_long_id), 1 },
+        { "android/media/MediaFormat", "getFloat", "(Ljava/lang/String;)F", FF_JNI_METHOD, OFFSET(get_float_id), 1 },
+        { "android/media/MediaFormat", "getByteBuffer", "(Ljava/lang/String;)Ljava/nio/ByteBuffer;", FF_JNI_METHOD, OFFSET(get_bytebuffer_id), 1 },
+        { "android/media/MediaFormat", "getString", "(Ljava/lang/String;)Ljava/lang/String;", FF_JNI_METHOD, OFFSET(get_string_id), 1 },
 
-        { "android/media/MediaFormat", "setInteger", "(Ljava/lang/String;I)V", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, set_integer_id), 1 },
-        { "android/media/MediaFormat", "setLong", "(Ljava/lang/String;J)V", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, set_long_id), 1 },
-        { "android/media/MediaFormat", "setFloat", "(Ljava/lang/String;F)V", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, set_float_id), 1 },
-        { "android/media/MediaFormat", "setByteBuffer", "(Ljava/lang/String;Ljava/nio/ByteBuffer;)V", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, set_bytebuffer_id), 1 },
-        { "android/media/MediaFormat", "setString", "(Ljava/lang/String;Ljava/lang/String;)V", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, set_string_id), 1 },
+        { "android/media/MediaFormat", "setInteger", "(Ljava/lang/String;I)V", FF_JNI_METHOD, OFFSET(set_integer_id), 1 },
+        { "android/media/MediaFormat", "setLong", "(Ljava/lang/String;J)V", FF_JNI_METHOD, OFFSET(set_long_id), 1 },
+        { "android/media/MediaFormat", "setFloat", "(Ljava/lang/String;F)V", FF_JNI_METHOD, OFFSET(set_float_id), 1 },
+        { "android/media/MediaFormat", "setByteBuffer", "(Ljava/lang/String;Ljava/nio/ByteBuffer;)V", FF_JNI_METHOD, OFFSET(set_bytebuffer_id), 1 },
+        { "android/media/MediaFormat", "setString", "(Ljava/lang/String;Ljava/lang/String;)V", FF_JNI_METHOD, OFFSET(set_string_id), 1 },
 
-        { "android/media/MediaFormat", "toString", "()Ljava/lang/String;", FF_JNI_METHOD, offsetof(struct JNIAMediaFormatFields, to_string_id), 1 },
+        { "android/media/MediaFormat", "toString", "()Ljava/lang/String;", FF_JNI_METHOD, OFFSET(to_string_id), 1 },
 
     { NULL }
 };
+#undef OFFSET
 
 static const AVClass amediaformat_class = {
     .class_name = "amediaformat",
@@ -202,57 +206,59 @@ struct JNIAMediaCodecFields {
 
 };
 
+#define OFFSET(x) offsetof(struct JNIAMediaCodecFields, x)
 static const struct FFJniField jni_amediacodec_mapping[] = {
-    { "android/media/MediaCodec", NULL, NULL, FF_JNI_CLASS, offsetof(struct JNIAMediaCodecFields, mediacodec_class), 1 },
+    { "android/media/MediaCodec", NULL, NULL, FF_JNI_CLASS, OFFSET(mediacodec_class), 1 },
 
-        { "android/media/MediaCodec", "INFO_TRY_AGAIN_LATER", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecFields, info_try_again_later_id), 1 },
-        { "android/media/MediaCodec", "INFO_OUTPUT_BUFFERS_CHANGED", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecFields, info_output_buffers_changed_id), 1 },
-        { "android/media/MediaCodec", "INFO_OUTPUT_FORMAT_CHANGED", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecFields, info_output_format_changed_id), 1 },
+        { "android/media/MediaCodec", "INFO_TRY_AGAIN_LATER", "I", FF_JNI_STATIC_FIELD, OFFSET(info_try_again_later_id), 1 },
+        { "android/media/MediaCodec", "INFO_OUTPUT_BUFFERS_CHANGED", "I", FF_JNI_STATIC_FIELD, OFFSET(info_output_buffers_changed_id), 1 },
+        { "android/media/MediaCodec", "INFO_OUTPUT_FORMAT_CHANGED", "I", FF_JNI_STATIC_FIELD, OFFSET(info_output_format_changed_id), 1 },
 
-        { "android/media/MediaCodec", "BUFFER_FLAG_CODEC_CONFIG", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecFields, buffer_flag_codec_config_id), 1 },
-        { "android/media/MediaCodec", "BUFFER_FLAG_END_OF_STREAM", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecFields, buffer_flag_end_of_stream_id), 1 },
-        { "android/media/MediaCodec", "BUFFER_FLAG_KEY_FRAME", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecFields, buffer_flag_key_frame_id), 0 },
+        { "android/media/MediaCodec", "BUFFER_FLAG_CODEC_CONFIG", "I", FF_JNI_STATIC_FIELD, OFFSET(buffer_flag_codec_config_id), 1 },
+        { "android/media/MediaCodec", "BUFFER_FLAG_END_OF_STREAM", "I", FF_JNI_STATIC_FIELD, OFFSET(buffer_flag_end_of_stream_id), 1 },
+        { "android/media/MediaCodec", "BUFFER_FLAG_KEY_FRAME", "I", FF_JNI_STATIC_FIELD, OFFSET(buffer_flag_key_frame_id), 0 },
 
-        { "android/media/MediaCodec", "CONFIGURE_FLAG_ENCODE", "I", FF_JNI_STATIC_FIELD, offsetof(struct JNIAMediaCodecFields, configure_flag_encode_id), 1 },
+        { "android/media/MediaCodec", "CONFIGURE_FLAG_ENCODE", "I", FF_JNI_STATIC_FIELD, OFFSET(configure_flag_encode_id), 1 },
 
-        { "android/media/MediaCodec", "createByCodecName", "(Ljava/lang/String;)Landroid/media/MediaCodec;", FF_JNI_STATIC_METHOD, offsetof(struct JNIAMediaCodecFields, create_by_codec_name_id), 1 },
-        { "android/media/MediaCodec", "createDecoderByType", "(Ljava/lang/String;)Landroid/media/MediaCodec;", FF_JNI_STATIC_METHOD, offsetof(struct JNIAMediaCodecFields, create_decoder_by_type_id), 1 },
-        { "android/media/MediaCodec", "createEncoderByType", "(Ljava/lang/String;)Landroid/media/MediaCodec;", FF_JNI_STATIC_METHOD, offsetof(struct JNIAMediaCodecFields, create_encoder_by_type_id), 1 },
+        { "android/media/MediaCodec", "createByCodecName", "(Ljava/lang/String;)Landroid/media/MediaCodec;", FF_JNI_STATIC_METHOD, OFFSET(create_by_codec_name_id), 1 },
+        { "android/media/MediaCodec", "createDecoderByType", "(Ljava/lang/String;)Landroid/media/MediaCodec;", FF_JNI_STATIC_METHOD, OFFSET(create_decoder_by_type_id), 1 },
+        { "android/media/MediaCodec", "createEncoderByType", "(Ljava/lang/String;)Landroid/media/MediaCodec;", FF_JNI_STATIC_METHOD, OFFSET(create_encoder_by_type_id), 1 },
 
-        { "android/media/MediaCodec", "getName", "()Ljava/lang/String;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, get_name_id), 1 },
+        { "android/media/MediaCodec", "getName", "()Ljava/lang/String;", FF_JNI_METHOD, OFFSET(get_name_id), 1 },
 
-        { "android/media/MediaCodec", "configure", "(Landroid/media/MediaFormat;Landroid/view/Surface;Landroid/media/MediaCrypto;I)V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, configure_id), 1 },
-        { "android/media/MediaCodec", "start", "()V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, start_id), 1 },
-        { "android/media/MediaCodec", "flush", "()V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, flush_id), 1 },
-        { "android/media/MediaCodec", "stop", "()V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, stop_id), 1 },
-        { "android/media/MediaCodec", "release", "()V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, release_id), 1 },
+        { "android/media/MediaCodec", "configure", "(Landroid/media/MediaFormat;Landroid/view/Surface;Landroid/media/MediaCrypto;I)V", FF_JNI_METHOD, OFFSET(configure_id), 1 },
+        { "android/media/MediaCodec", "start", "()V", FF_JNI_METHOD, OFFSET(start_id), 1 },
+        { "android/media/MediaCodec", "flush", "()V", FF_JNI_METHOD, OFFSET(flush_id), 1 },
+        { "android/media/MediaCodec", "stop", "()V", FF_JNI_METHOD, OFFSET(stop_id), 1 },
+        { "android/media/MediaCodec", "release", "()V", FF_JNI_METHOD, OFFSET(release_id), 1 },
 
-        { "android/media/MediaCodec", "getOutputFormat", "()Landroid/media/MediaFormat;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, get_output_format_id), 1 },
+        { "android/media/MediaCodec", "getOutputFormat", "()Landroid/media/MediaFormat;", FF_JNI_METHOD, OFFSET(get_output_format_id), 1 },
 
-        { "android/media/MediaCodec", "dequeueInputBuffer", "(J)I", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, dequeue_input_buffer_id), 1 },
-        { "android/media/MediaCodec", "queueInputBuffer", "(IIIJI)V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, queue_input_buffer_id), 1 },
-        { "android/media/MediaCodec", "getInputBuffer", "(I)Ljava/nio/ByteBuffer;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, get_input_buffer_id), 0 },
-        { "android/media/MediaCodec", "getInputBuffers", "()[Ljava/nio/ByteBuffer;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, get_input_buffers_id), 1 },
+        { "android/media/MediaCodec", "dequeueInputBuffer", "(J)I", FF_JNI_METHOD, OFFSET(dequeue_input_buffer_id), 1 },
+        { "android/media/MediaCodec", "queueInputBuffer", "(IIIJI)V", FF_JNI_METHOD, OFFSET(queue_input_buffer_id), 1 },
+        { "android/media/MediaCodec", "getInputBuffer", "(I)Ljava/nio/ByteBuffer;", FF_JNI_METHOD, OFFSET(get_input_buffer_id), 0 },
+        { "android/media/MediaCodec", "getInputBuffers", "()[Ljava/nio/ByteBuffer;", FF_JNI_METHOD, OFFSET(get_input_buffers_id), 1 },
 
-        { "android/media/MediaCodec", "dequeueOutputBuffer", "(Landroid/media/MediaCodec$BufferInfo;J)I", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, dequeue_output_buffer_id), 1 },
-        { "android/media/MediaCodec", "getOutputBuffer", "(I)Ljava/nio/ByteBuffer;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, get_output_buffer_id), 0 },
-        { "android/media/MediaCodec", "getOutputBuffers", "()[Ljava/nio/ByteBuffer;", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, get_output_buffers_id), 1 },
-        { "android/media/MediaCodec", "releaseOutputBuffer", "(IZ)V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, release_output_buffer_id), 1 },
-        { "android/media/MediaCodec", "releaseOutputBuffer", "(IJ)V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, release_output_buffer_at_time_id), 0 },
+        { "android/media/MediaCodec", "dequeueOutputBuffer", "(Landroid/media/MediaCodec$BufferInfo;J)I", FF_JNI_METHOD, OFFSET(dequeue_output_buffer_id), 1 },
+        { "android/media/MediaCodec", "getOutputBuffer", "(I)Ljava/nio/ByteBuffer;", FF_JNI_METHOD, OFFSET(get_output_buffer_id), 0 },
+        { "android/media/MediaCodec", "getOutputBuffers", "()[Ljava/nio/ByteBuffer;", FF_JNI_METHOD, OFFSET(get_output_buffers_id), 1 },
+        { "android/media/MediaCodec", "releaseOutputBuffer", "(IZ)V", FF_JNI_METHOD, OFFSET(release_output_buffer_id), 1 },
+        { "android/media/MediaCodec", "releaseOutputBuffer", "(IJ)V", FF_JNI_METHOD, OFFSET(release_output_buffer_at_time_id), 0 },
 
-        { "android/media/MediaCodec", "setInputSurface", "(Landroid/view/Surface;)V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, set_input_surface_id), 0 },
-        { "android/media/MediaCodec", "signalEndOfInputStream", "()V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, signal_end_of_input_stream_id), 0 },
+        { "android/media/MediaCodec", "setInputSurface", "(Landroid/view/Surface;)V", FF_JNI_METHOD, OFFSET(set_input_surface_id), 0 },
+        { "android/media/MediaCodec", "signalEndOfInputStream", "()V", FF_JNI_METHOD, OFFSET(signal_end_of_input_stream_id), 0 },
 
-    { "android/media/MediaCodec$BufferInfo", NULL, NULL, FF_JNI_CLASS, offsetof(struct JNIAMediaCodecFields, mediainfo_class), 1 },
+    { "android/media/MediaCodec$BufferInfo", NULL, NULL, FF_JNI_CLASS, OFFSET(mediainfo_class), 1 },
 
-        { "android/media/MediaCodec.BufferInfo", "<init>", "()V", FF_JNI_METHOD, offsetof(struct JNIAMediaCodecFields, init_id), 1 },
-        { "android/media/MediaCodec.BufferInfo", "flags", "I", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecFields, flags_id), 1 },
-        { "android/media/MediaCodec.BufferInfo", "offset", "I", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecFields, offset_id), 1 },
-        { "android/media/MediaCodec.BufferInfo", "presentationTimeUs", "J", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecFields, presentation_time_us_id), 1 },
-        { "android/media/MediaCodec.BufferInfo", "size", "I", FF_JNI_FIELD, offsetof(struct JNIAMediaCodecFields, size_id), 1 },
+        { "android/media/MediaCodec.BufferInfo", "<init>", "()V", FF_JNI_METHOD, OFFSET(init_id), 1 },
+        { "android/media/MediaCodec.BufferInfo", "flags", "I", FF_JNI_FIELD, OFFSET(flags_id), 1 },
+        { "android/media/MediaCodec.BufferInfo", "offset", "I", FF_JNI_FIELD, OFFSET(offset_id), 1 },
+        { "android/media/MediaCodec.BufferInfo", "presentationTimeUs", "J", FF_JNI_FIELD, OFFSET(presentation_time_us_id), 1 },
+        { "android/media/MediaCodec.BufferInfo", "size", "I", FF_JNI_FIELD, OFFSET(size_id), 1 },
 
     { NULL }
 };
+#undef OFFSET
 
 static const AVClass amediacodec_class = {
     .class_name = "amediacodec",
@@ -319,43 +325,141 @@ int ff_AMediaCodecProfile_getProfileFromAVCodecContext(AVCodecContext *avctx)
     static const int HEVCProfileMain10HDR10 = 0x1000;
     static const int HEVCProfileMain10HDR10Plus = 0x2000;
 
+    static const int VP9Profile0 = 0x01;
+    static const int VP9Profile1 = 0x02;
+    static const int VP9Profile2 = 0x04;
+    static const int VP9Profile3 = 0x08;
+    static const int VP9Profile2HDR = 0x1000;
+    static const int VP9Profile3HDR = 0x2000;
+    static const int VP9Profile2HDR10Plus = 0x4000;
+    static const int VP9Profile3HDR10Plus = 0x8000;
+
+    static const int MPEG4ProfileSimple           = 0x01;
+    static const int MPEG4ProfileSimpleScalable   = 0x02;
+    static const int MPEG4ProfileCore             = 0x04;
+    static const int MPEG4ProfileMain             = 0x08;
+    static const int MPEG4ProfileNbit             = 0x10;
+    static const int MPEG4ProfileScalableTexture  = 0x20;
+    static const int MPEG4ProfileSimpleFBA        = 0x80;
+    static const int MPEG4ProfileSimpleFace       = 0x40;
+    static const int MPEG4ProfileBasicAnimated    = 0x100;
+    static const int MPEG4ProfileHybrid           = 0x200;
+    static const int MPEG4ProfileAdvancedRealTime = 0x400;
+    static const int MPEG4ProfileCoreScalable     = 0x800;
+    static const int MPEG4ProfileAdvancedCoding   = 0x1000;
+    static const int MPEG4ProfileAdvancedCore     = 0x2000;
+    static const int MPEG4ProfileAdvancedScalable = 0x4000;
+    static const int MPEG4ProfileAdvancedSimple   = 0x8000;
+
+
+    static const int AV1ProfileMain8  = 0x1;
+    static const int AV1ProfileMain10 = 0x2;
+    static const int AV1ProfileMain10HDR10     = 0x1000;
+    static const int AV1ProfileMain10HDR10Plus = 0x2000;
+
     // Unused yet.
     (void)AVCProfileConstrainedHigh;
     (void)HEVCProfileMain10HDR10;
     (void)HEVCProfileMain10HDR10Plus;
+    (void)VP9Profile2HDR;
+    (void)VP9Profile3HDR;
+    (void)VP9Profile2HDR10Plus;
+    (void)VP9Profile3HDR10Plus;
+    (void)AV1ProfileMain10;
+    (void)AV1ProfileMain10HDR10;
+    (void)AV1ProfileMain10HDR10Plus;
 
     if (avctx->codec_id == AV_CODEC_ID_H264) {
         switch(avctx->profile) {
-        case FF_PROFILE_H264_BASELINE:
+        case AV_PROFILE_H264_BASELINE:
             return AVCProfileBaseline;
-        case FF_PROFILE_H264_CONSTRAINED_BASELINE:
+        case AV_PROFILE_H264_CONSTRAINED_BASELINE:
             return AVCProfileConstrainedBaseline;
-        case FF_PROFILE_H264_MAIN:
+        case AV_PROFILE_H264_MAIN:
             return AVCProfileMain;
             break;
-        case FF_PROFILE_H264_EXTENDED:
+        case AV_PROFILE_H264_EXTENDED:
             return AVCProfileExtended;
-        case FF_PROFILE_H264_HIGH:
+        case AV_PROFILE_H264_HIGH:
             return AVCProfileHigh;
-        case FF_PROFILE_H264_HIGH_10:
-        case FF_PROFILE_H264_HIGH_10_INTRA:
+        case AV_PROFILE_H264_HIGH_10:
+        case AV_PROFILE_H264_HIGH_10_INTRA:
             return AVCProfileHigh10;
-        case FF_PROFILE_H264_HIGH_422:
-        case FF_PROFILE_H264_HIGH_422_INTRA:
+        case AV_PROFILE_H264_HIGH_422:
+        case AV_PROFILE_H264_HIGH_422_INTRA:
             return AVCProfileHigh422;
-        case FF_PROFILE_H264_HIGH_444:
-        case FF_PROFILE_H264_HIGH_444_INTRA:
-        case FF_PROFILE_H264_HIGH_444_PREDICTIVE:
+        case AV_PROFILE_H264_HIGH_444:
+        case AV_PROFILE_H264_HIGH_444_INTRA:
+        case AV_PROFILE_H264_HIGH_444_PREDICTIVE:
             return AVCProfileHigh444;
         }
     } else if (avctx->codec_id == AV_CODEC_ID_HEVC) {
         switch (avctx->profile) {
-        case FF_PROFILE_HEVC_MAIN:
+        case AV_PROFILE_HEVC_MAIN:
             return HEVCProfileMain;
-        case FF_PROFILE_HEVC_MAIN_STILL_PICTURE:
+        case AV_PROFILE_HEVC_MAIN_STILL_PICTURE:
             return HEVCProfileMainStill;
-        case FF_PROFILE_HEVC_MAIN_10:
+        case AV_PROFILE_HEVC_MAIN_10:
             return HEVCProfileMain10;
+        }
+    } else if (avctx->codec_id == AV_CODEC_ID_VP9) {
+        switch (avctx->profile) {
+        case AV_PROFILE_VP9_0:
+            return VP9Profile0;
+        case AV_PROFILE_VP9_1:
+            return VP9Profile1;
+        case AV_PROFILE_VP9_2:
+            return VP9Profile2;
+         case AV_PROFILE_VP9_3:
+            return VP9Profile3;
+        }
+    } else if(avctx->codec_id == AV_CODEC_ID_MPEG4) {
+        switch (avctx->profile)
+        {
+        case AV_PROFILE_MPEG4_SIMPLE:
+            return MPEG4ProfileSimple;
+        case AV_PROFILE_MPEG4_SIMPLE_SCALABLE:
+            return MPEG4ProfileSimpleScalable;
+        case AV_PROFILE_MPEG4_CORE:
+            return MPEG4ProfileCore;
+        case AV_PROFILE_MPEG4_MAIN:
+            return MPEG4ProfileMain;
+        case AV_PROFILE_MPEG4_N_BIT:
+            return MPEG4ProfileNbit;
+        case AV_PROFILE_MPEG4_SCALABLE_TEXTURE:
+            return MPEG4ProfileScalableTexture;
+        case AV_PROFILE_MPEG4_SIMPLE_FACE_ANIMATION:
+            return MPEG4ProfileSimpleFBA;
+        case AV_PROFILE_MPEG4_BASIC_ANIMATED_TEXTURE:
+            return MPEG4ProfileBasicAnimated;
+        case AV_PROFILE_MPEG4_HYBRID:
+            return MPEG4ProfileHybrid;
+        case AV_PROFILE_MPEG4_ADVANCED_REAL_TIME:
+            return MPEG4ProfileAdvancedRealTime;
+        case AV_PROFILE_MPEG4_CORE_SCALABLE:
+            return MPEG4ProfileCoreScalable;
+        case AV_PROFILE_MPEG4_ADVANCED_CODING:
+            return MPEG4ProfileAdvancedCoding;
+        case AV_PROFILE_MPEG4_ADVANCED_CORE:
+            return MPEG4ProfileAdvancedCore;
+        case AV_PROFILE_MPEG4_ADVANCED_SCALABLE_TEXTURE:
+            return MPEG4ProfileAdvancedScalable;
+        case AV_PROFILE_MPEG4_ADVANCED_SIMPLE:
+            return MPEG4ProfileAdvancedSimple;
+        case AV_PROFILE_MPEG4_SIMPLE_STUDIO:
+            // Studio profiles are not supported by mediacodec.
+        default:
+            break;
+        }
+    } else if(avctx->codec_id == AV_CODEC_ID_AV1) {
+        switch (avctx->profile)
+        {
+        case AV_PROFILE_AV1_MAIN:
+            return AV1ProfileMain8;
+        case AV_PROFILE_AV1_HIGH:
+        case AV_PROFILE_AV1_PROFESSIONAL:
+        default:
+            break;
         }
     }
 
@@ -445,10 +549,8 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
             goto done;
         }
 
-        if (codec_name) {
-            (*env)->DeleteLocalRef(env, codec_name);
-            codec_name = NULL;
-        }
+        (*env)->DeleteLocalRef(env, codec_name);
+        codec_name = NULL;
 
         /* Skip software decoders */
         if (
@@ -512,10 +614,8 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
 
                 found_codec = profile == supported_profile;
 
-                if (profile_level) {
-                    (*env)->DeleteLocalRef(env, profile_level);
-                    profile_level = NULL;
-                }
+                (*env)->DeleteLocalRef(env, profile_level);
+                profile_level = NULL;
 
                 if (found_codec) {
                     break;
@@ -523,20 +623,14 @@ char *ff_AMediaCodecList_getCodecNameByType(const char *mime, int profile, int e
             }
 
 done_with_type:
-            if (profile_levels) {
-                (*env)->DeleteLocalRef(env, profile_levels);
-                profile_levels = NULL;
-            }
+            (*env)->DeleteLocalRef(env, profile_levels);
+            profile_levels = NULL;
 
-            if (capabilities) {
-                (*env)->DeleteLocalRef(env, capabilities);
-                capabilities = NULL;
-            }
+            (*env)->DeleteLocalRef(env, capabilities);
+            capabilities = NULL;
 
-            if (type) {
-                (*env)->DeleteLocalRef(env, type);
-                type = NULL;
-            }
+            (*env)->DeleteLocalRef(env, type);
+            type = NULL;
 
             av_freep(&supported_type);
 
@@ -546,15 +640,11 @@ done_with_type:
         }
 
 done_with_info:
-        if (info) {
-            (*env)->DeleteLocalRef(env, info);
-            info = NULL;
-        }
+        (*env)->DeleteLocalRef(env, info);
+        info = NULL;
 
-        if (types) {
-            (*env)->DeleteLocalRef(env, types);
-            types = NULL;
-        }
+        (*env)->DeleteLocalRef(env, types);
+        types = NULL;
 
         if (found_codec) {
             break;
@@ -564,33 +654,13 @@ done_with_info:
     }
 
 done:
-    if (codec_name) {
-        (*env)->DeleteLocalRef(env, codec_name);
-    }
-
-    if (info) {
-        (*env)->DeleteLocalRef(env, info);
-    }
-
-    if (type) {
-        (*env)->DeleteLocalRef(env, type);
-    }
-
-    if (types) {
-        (*env)->DeleteLocalRef(env, types);
-    }
-
-    if (capabilities) {
-        (*env)->DeleteLocalRef(env, capabilities);
-    }
-
-    if (profile_level) {
-        (*env)->DeleteLocalRef(env, profile_level);
-    }
-
-    if (profile_levels) {
-        (*env)->DeleteLocalRef(env, profile_levels);
-    }
+    (*env)->DeleteLocalRef(env, codec_name);
+    (*env)->DeleteLocalRef(env, info);
+    (*env)->DeleteLocalRef(env, type);
+    (*env)->DeleteLocalRef(env, types);
+    (*env)->DeleteLocalRef(env, capabilities);
+    (*env)->DeleteLocalRef(env, profile_level);
+    (*env)->DeleteLocalRef(env, profile_levels);
 
     av_freep(&supported_type);
 
@@ -637,9 +707,7 @@ static FFAMediaFormat *mediaformat_jni_new(void)
     }
 
 fail:
-    if (object) {
-        (*env)->DeleteLocalRef(env, object);
-    }
+    (*env)->DeleteLocalRef(env, object);
 
     if (!format->object) {
         ff_jni_reset_jfields(env, &format->jfields, jni_amediaformat_mapping, 1, format);
@@ -724,9 +792,7 @@ static char* mediaformat_jni_toString(FFAMediaFormat* ctx)
 
     ret = ff_jni_jstring_to_utf_chars(env, description, format);
 fail:
-    if (description) {
-        (*env)->DeleteLocalRef(env, description);
-    }
+    (*env)->DeleteLocalRef(env, description);
 
     return ret;
 }
@@ -763,9 +829,7 @@ static int mediaformat_jni_getInt32(FFAMediaFormat* ctx, const char *name, int32
 
     ret = 1;
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
+    (*env)->DeleteLocalRef(env, key);
 
     return ret;
 }
@@ -802,9 +866,7 @@ static int mediaformat_jni_getInt64(FFAMediaFormat* ctx, const char *name, int64
 
     ret = 1;
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
+    (*env)->DeleteLocalRef(env, key);
 
     return ret;
 }
@@ -841,9 +903,7 @@ static int mediaformat_jni_getFloat(FFAMediaFormat* ctx, const char *name, float
 
     ret = 1;
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
+    (*env)->DeleteLocalRef(env, key);
 
     return ret;
 }
@@ -895,13 +955,8 @@ static int mediaformat_jni_getBuffer(FFAMediaFormat* ctx, const char *name, void
 
     ret = 1;
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
-
-    if (result) {
-        (*env)->DeleteLocalRef(env, result);
-    }
+    (*env)->DeleteLocalRef(env, key);
+    (*env)->DeleteLocalRef(env, result);
 
     return ret;
 }
@@ -945,13 +1000,8 @@ static int mediaformat_jni_getString(FFAMediaFormat* ctx, const char *name, cons
 
     ret = 1;
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
-
-    if (result) {
-        (*env)->DeleteLocalRef(env, result);
-    }
+    (*env)->DeleteLocalRef(env, key);
+    (*env)->DeleteLocalRef(env, result);
 
     return ret;
 }
@@ -977,9 +1027,7 @@ static void mediaformat_jni_setInt32(FFAMediaFormat* ctx, const char* name, int3
     }
 
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
+    (*env)->DeleteLocalRef(env, key);
 }
 
 static void mediaformat_jni_setInt64(FFAMediaFormat* ctx, const char* name, int64_t value)
@@ -1003,9 +1051,7 @@ static void mediaformat_jni_setInt64(FFAMediaFormat* ctx, const char* name, int6
     }
 
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
+    (*env)->DeleteLocalRef(env, key);
 }
 
 static void mediaformat_jni_setFloat(FFAMediaFormat* ctx, const char* name, float value)
@@ -1029,9 +1075,7 @@ static void mediaformat_jni_setFloat(FFAMediaFormat* ctx, const char* name, floa
     }
 
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
+    (*env)->DeleteLocalRef(env, key);
 }
 
 static void mediaformat_jni_setString(FFAMediaFormat* ctx, const char* name, const char* value)
@@ -1061,13 +1105,8 @@ static void mediaformat_jni_setString(FFAMediaFormat* ctx, const char* name, con
     }
 
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
-
-    if (string) {
-        (*env)->DeleteLocalRef(env, string);
-    }
+    (*env)->DeleteLocalRef(env, key);
+    (*env)->DeleteLocalRef(env, string);
 }
 
 static void mediaformat_jni_setBuffer(FFAMediaFormat* ctx, const char* name, void* data, size_t size)
@@ -1109,13 +1148,8 @@ static void mediaformat_jni_setBuffer(FFAMediaFormat* ctx, const char* name, voi
     }
 
 fail:
-    if (key) {
-        (*env)->DeleteLocalRef(env, key);
-    }
-
-    if (buffer) {
-        (*env)->DeleteLocalRef(env, buffer);
-    }
+    (*env)->DeleteLocalRef(env, key);
+    (*env)->DeleteLocalRef(env, buffer);
 }
 
 static int codec_init_static_fields(FFAMediaCodecJni *codec)
@@ -1248,26 +1282,13 @@ static inline FFAMediaCodec *codec_create(int method, const char *arg)
 
     ret = 0;
 fail:
-    if (jarg) {
-        (*env)->DeleteLocalRef(env, jarg);
-    }
-
-    if (object) {
-        (*env)->DeleteLocalRef(env, object);
-    }
-
-    if (buffer_info) {
-        (*env)->DeleteLocalRef(env, buffer_info);
-    }
+    (*env)->DeleteLocalRef(env, jarg);
+    (*env)->DeleteLocalRef(env, object);
+    (*env)->DeleteLocalRef(env, buffer_info);
 
     if (ret < 0) {
-        if (codec->object) {
-            (*env)->DeleteGlobalRef(env, codec->object);
-        }
-
-        if (codec->buffer_info) {
-            (*env)->DeleteGlobalRef(env, codec->buffer_info);
-        }
+        (*env)->DeleteGlobalRef(env, codec->object);
+        (*env)->DeleteGlobalRef(env, codec->buffer_info);
 
         ff_jni_reset_jfields(env, &codec->jfields, jni_amediacodec_mapping, 1, codec);
         av_freep(&codec);
@@ -1588,13 +1609,8 @@ static uint8_t* mediacodec_jni_getInputBuffer(FFAMediaCodec* ctx, size_t idx, si
     ret = (*env)->GetDirectBufferAddress(env, buffer);
     *out_size = (*env)->GetDirectBufferCapacity(env, buffer);
 fail:
-    if (buffer) {
-        (*env)->DeleteLocalRef(env, buffer);
-    }
-
-    if (input_buffers) {
-        (*env)->DeleteLocalRef(env, input_buffers);
-    }
+    (*env)->DeleteLocalRef(env, buffer);
+    (*env)->DeleteLocalRef(env, input_buffers);
 
     return ret;
 }
@@ -1636,13 +1652,8 @@ static uint8_t* mediacodec_jni_getOutputBuffer(FFAMediaCodec* ctx, size_t idx, s
     ret = (*env)->GetDirectBufferAddress(env, buffer);
     *out_size = (*env)->GetDirectBufferCapacity(env, buffer);
 fail:
-    if (buffer) {
-        (*env)->DeleteLocalRef(env, buffer);
-    }
-
-    if (output_buffers) {
-        (*env)->DeleteLocalRef(env, output_buffers);
-    }
+    (*env)->DeleteLocalRef(env, buffer);
+    (*env)->DeleteLocalRef(env, output_buffers);
 
     return ret;
 }
@@ -1664,9 +1675,7 @@ static FFAMediaFormat* mediacodec_jni_getOutputFormat(FFAMediaCodec* ctx)
 
     ret = mediaformat_jni_newFromObject(mediaformat);
 fail:
-    if (mediaformat) {
-        (*env)->DeleteLocalRef(env, mediaformat);
-    }
+    (*env)->DeleteLocalRef(env, mediaformat);
 
     return ret;
 }
@@ -2541,4 +2550,106 @@ int ff_Build_SDK_INT(AVCodecContext *avctx)
     av_log(avctx, AV_LOG_DEBUG, "device api level %d\n", ret);
 
     return ret;
+}
+
+static struct {
+    enum FFAMediaFormatColorRange mf_range;
+    enum AVColorRange range;
+} color_range_map[] = {
+    { COLOR_RANGE_FULL,     AVCOL_RANGE_JPEG },
+    { COLOR_RANGE_LIMITED,  AVCOL_RANGE_MPEG },
+};
+
+static struct {
+    enum FFAMediaFormatColorStandard mf_standard;
+    enum AVColorSpace space;
+} color_space_map[] = {
+    { COLOR_STANDARD_BT709,         AVCOL_SPC_BT709         },
+    { COLOR_STANDARD_BT601_PAL,     AVCOL_SPC_BT470BG       },
+    { COLOR_STANDARD_BT601_NTSC,    AVCOL_SPC_SMPTE170M     },
+    { COLOR_STANDARD_BT2020,        AVCOL_SPC_BT2020_NCL    },
+};
+
+static struct {
+    enum FFAMediaFormatColorStandard mf_standard;
+    enum AVColorPrimaries primaries;
+} color_primaries_map[] = {
+    { COLOR_STANDARD_BT709,         AVCOL_PRI_BT709     },
+    { COLOR_STANDARD_BT601_PAL,     AVCOL_PRI_BT470BG   },
+    { COLOR_STANDARD_BT601_NTSC,    AVCOL_PRI_SMPTE170M },
+    { COLOR_STANDARD_BT2020,        AVCOL_PRI_BT2020    },
+};
+
+static struct {
+    enum FFAMediaFormatColorTransfer mf_transfer;
+    enum AVColorTransferCharacteristic transfer;
+} color_transfer_map[] = {
+    { COLOR_TRANSFER_LINEAR,        AVCOL_TRC_LINEAR        },
+    { COLOR_TRANSFER_SDR_VIDEO,     AVCOL_TRC_SMPTE170M     },
+    { COLOR_TRANSFER_ST2084,        AVCOL_TRC_SMPTEST2084   },
+    { COLOR_TRANSFER_HLG,           AVCOL_TRC_ARIB_STD_B67  },
+};
+
+enum AVColorRange ff_AMediaFormatColorRange_to_AVColorRange(int color_range)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(color_range_map); i++)
+        if (color_range_map[i].mf_range == color_range)
+            return color_range_map[i].range;
+
+    return AVCOL_RANGE_UNSPECIFIED;
+}
+
+int ff_AMediaFormatColorRange_from_AVColorRange(enum AVColorRange color_range)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(color_range_map); i++)
+        if (color_range_map[i].range == color_range)
+            return color_range_map[i].mf_range;
+    return COLOR_RANGE_UNSPECIFIED;
+}
+
+enum AVColorSpace ff_AMediaFormatColorStandard_to_AVColorSpace(int color_standard)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(color_space_map); i++)
+        if (color_space_map[i].mf_standard == color_standard)
+            return color_space_map[i].space;
+
+    return AVCOL_SPC_UNSPECIFIED;
+}
+
+int ff_AMediaFormatColorStandard_from_AVColorSpace(enum AVColorSpace color_space)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(color_space_map); i++)
+        if (color_space_map[i].space == color_space)
+            return color_space_map[i].mf_standard;
+
+    return COLOR_STANDARD_UNSPECIFIED;
+}
+
+enum AVColorPrimaries ff_AMediaFormatColorStandard_to_AVColorPrimaries(int color_standard)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(color_primaries_map); i++)
+        if (color_primaries_map[i].mf_standard == color_standard)
+            return color_primaries_map[i].primaries;
+
+    return AVCOL_PRI_UNSPECIFIED;
+}
+
+enum AVColorTransferCharacteristic
+ff_AMediaFormatColorTransfer_to_AVColorTransfer(int color_transfer)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(color_transfer_map); i++)
+        if (color_transfer_map[i].mf_transfer == color_transfer)
+            return color_transfer_map[i].transfer;
+
+    return AVCOL_TRC_UNSPECIFIED;
+}
+
+int ff_AMediaFormatColorTransfer_from_AVColorTransfer(
+    enum AVColorTransferCharacteristic color_transfer)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(color_transfer_map); i++)
+        if (color_transfer_map[i].transfer == color_transfer)
+            return color_transfer_map[i].mf_transfer;
+
+    return COLOR_TRANSFER_UNSPECIFIED;
 }

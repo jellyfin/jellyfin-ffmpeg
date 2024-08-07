@@ -37,6 +37,7 @@
 #include "encode.h"
 #include "h264.h"
 #include "h264_sei.h"
+#include "hwconfig.h"
 #include <dlfcn.h>
 
 #if !HAVE_KCMVIDEOCODECTYPE_HEVC
@@ -63,7 +64,21 @@ typedef OSStatus (*getParameterSetAtIndex)(CMFormatDescriptionRef videoDesc,
                                            size_t *parameterSetCountOut,
                                            int *NALUnitHeaderLengthOut);
 
-//These symbols may not be present
+/*
+ * Symbols that aren't available in MacOS 10.8 and iOS 8.0 need to be accessed
+ * from compat_keys, or it will cause compiler errors when compiling for older
+ * OS versions.
+ *
+ * For example, kVTCompressionPropertyKey_H264EntropyMode was added in
+ * MacOS 10.9. If this constant were used directly, a compiler would generate
+ * an error when it has access to the MacOS 10.8 headers, but does not have
+ * 10.9 headers.
+ *
+ * Runtime errors will still occur when unknown keys are set. A warning is
+ * logged and encoding continues where possible.
+ *
+ * When adding new symbols, they should be loaded/set in loadVTEncSymbols().
+ */
 static struct{
     CFStringRef kCVImageBufferColorPrimaries_ITU_R_2020;
     CFStringRef kCVImageBufferTransferFunction_ITU_R_2020;
@@ -94,6 +109,8 @@ static struct{
     CFStringRef kVTProfileLevel_H264_High_AutoLevel;
     CFStringRef kVTProfileLevel_H264_Extended_5_0;
     CFStringRef kVTProfileLevel_H264_Extended_AutoLevel;
+    CFStringRef kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel;
+    CFStringRef kVTProfileLevel_H264_ConstrainedHigh_AutoLevel;
 
     CFStringRef kVTProfileLevel_HEVC_Main_AutoLevel;
     CFStringRef kVTProfileLevel_HEVC_Main10_AutoLevel;
@@ -102,9 +119,16 @@ static struct{
     CFStringRef kVTCompressionPropertyKey_TargetQualityForAlpha;
     CFStringRef kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality;
     CFStringRef kVTCompressionPropertyKey_ConstantBitRate;
+    CFStringRef kVTCompressionPropertyKey_EncoderID;
 
     CFStringRef kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder;
     CFStringRef kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder;
+    CFStringRef kVTVideoEncoderSpecification_EnableLowLatencyRateControl;
+    CFStringRef kVTCompressionPropertyKey_AllowOpenGOP;
+    CFStringRef kVTCompressionPropertyKey_MaximizePowerEfficiency;
+    CFStringRef kVTCompressionPropertyKey_ReferenceBufferCount;
+    CFStringRef kVTCompressionPropertyKey_MaxAllowedFrameQP;
+    CFStringRef kVTCompressionPropertyKey_MinAllowedFrameQP;
 
     getParameterSetAtIndex CMVideoFormatDescriptionGetHEVCParameterSetAtIndex;
 } compat_keys;
@@ -120,7 +144,7 @@ do{                                                                     \
 
 static pthread_once_t once_ctrl = PTHREAD_ONCE_INIT;
 
-static void loadVTEncSymbols(){
+static void loadVTEncSymbols(void){
     compat_keys.CMVideoFormatDescriptionGetHEVCParameterSetAtIndex =
         (getParameterSetAtIndex)dlsym(
             RTLD_DEFAULT,
@@ -156,6 +180,8 @@ static void loadVTEncSymbols(){
     GET_SYM(kVTProfileLevel_H264_High_AutoLevel,     "H264_High_AutoLevel");
     GET_SYM(kVTProfileLevel_H264_Extended_5_0,       "H264_Extended_5_0");
     GET_SYM(kVTProfileLevel_H264_Extended_AutoLevel, "H264_Extended_AutoLevel");
+    GET_SYM(kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel, "H264_ConstrainedBaseline_AutoLevel");
+    GET_SYM(kVTProfileLevel_H264_ConstrainedHigh_AutoLevel,     "H264_ConstrainedHigh_AutoLevel");
 
     GET_SYM(kVTProfileLevel_HEVC_Main_AutoLevel,     "HEVC_Main_AutoLevel");
     GET_SYM(kVTProfileLevel_HEVC_Main10_AutoLevel,   "HEVC_Main10_AutoLevel");
@@ -166,34 +192,30 @@ static void loadVTEncSymbols(){
     GET_SYM(kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
             "PrioritizeEncodingSpeedOverQuality");
     GET_SYM(kVTCompressionPropertyKey_ConstantBitRate, "ConstantBitRate");
+    GET_SYM(kVTCompressionPropertyKey_EncoderID, "EncoderID");
 
     GET_SYM(kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder,
             "EnableHardwareAcceleratedVideoEncoder");
     GET_SYM(kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder,
             "RequireHardwareAcceleratedVideoEncoder");
+    GET_SYM(kVTVideoEncoderSpecification_EnableLowLatencyRateControl,
+                "EnableLowLatencyRateControl");
+    GET_SYM(kVTCompressionPropertyKey_AllowOpenGOP, "AllowOpenGOP");
+    GET_SYM(kVTCompressionPropertyKey_MaximizePowerEfficiency,
+            "MaximizePowerEfficiency");
+    GET_SYM(kVTCompressionPropertyKey_ReferenceBufferCount,
+            "ReferenceBufferCount");
+    GET_SYM(kVTCompressionPropertyKey_MaxAllowedFrameQP, "MaxAllowedFrameQP");
+    GET_SYM(kVTCompressionPropertyKey_MinAllowedFrameQP, "MinAllowedFrameQP");
 }
 
-typedef enum VT_H264Profile {
-    H264_PROF_AUTO,
-    H264_PROF_BASELINE,
-    H264_PROF_MAIN,
-    H264_PROF_HIGH,
-    H264_PROF_EXTENDED,
-    H264_PROF_COUNT
-} VT_H264Profile;
+#define H264_PROFILE_CONSTRAINED_HIGH (AV_PROFILE_H264_HIGH | AV_PROFILE_H264_CONSTRAINED)
 
 typedef enum VTH264Entropy{
     VT_ENTROPY_NOT_SET,
     VT_CAVLC,
     VT_CABAC
 } VTH264Entropy;
-
-typedef enum VT_HEVCProfile {
-    HEVC_PROF_AUTO,
-    HEVC_PROF_MAIN,
-    HEVC_PROF_MAIN10,
-    HEVC_PROF_COUNT
-} VT_HEVCProfile;
 
 static const uint8_t start_code[] = { 0, 0, 0, 1 };
 
@@ -213,6 +235,7 @@ typedef struct VTEncContext {
     AVClass *class;
     enum AVCodecID codec_id;
     VTCompressionSessionRef session;
+    CFDictionaryRef supported_props;
     CFStringRef ycbcr_matrix;
     CFStringRef color_primaries;
     CFStringRef transfer_function;
@@ -232,7 +255,7 @@ typedef struct VTEncContext {
     int64_t first_pts;
     int64_t dts_delta;
 
-    int64_t profile;
+    int profile;
     int level;
     int entropy;
     int realtime;
@@ -251,7 +274,46 @@ typedef struct VTEncContext {
 
     /* can't be bool type since AVOption will access it as int */
     int a53_cc;
+
+    int max_slice_bytes;
+    int power_efficient;
+    int max_ref_frames;
 } VTEncContext;
+
+static int vt_dump_encoder(AVCodecContext *avctx)
+{
+    VTEncContext *vtctx = avctx->priv_data;
+    CFStringRef encoder_id = NULL;
+    int status;
+    CFIndex length, max_size;
+    char *name;
+
+    status = VTSessionCopyProperty(vtctx->session,
+                                   compat_keys.kVTCompressionPropertyKey_EncoderID,
+                                   kCFAllocatorDefault,
+                                   &encoder_id);
+    // OK if not supported
+    if (status != noErr)
+        return 0;
+
+    length = CFStringGetLength(encoder_id);
+    max_size = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8);
+    name = av_malloc(max_size);
+    if (!name) {
+        CFRelease(encoder_id);
+        return AVERROR(ENOMEM);
+    }
+
+    CFStringGetCString(encoder_id,
+                       name,
+                       max_size,
+                       kCFStringEncodingUTF8);
+    av_log(avctx, AV_LOG_DEBUG, "Init the encoder: %s\n", name);
+    av_freep(&name);
+    CFRelease(encoder_id);
+
+    return 0;
+}
 
 static int vtenc_populate_extradata(AVCodecContext   *avctx,
                                     CMVideoCodecType codec_type,
@@ -296,6 +358,34 @@ static void set_async_error(VTEncContext *vtctx, int err)
 static void clear_frame_queue(VTEncContext *vtctx)
 {
     set_async_error(vtctx, 0);
+}
+
+static void vtenc_reset(VTEncContext *vtctx)
+{
+    if (vtctx->session) {
+        CFRelease(vtctx->session);
+        vtctx->session = NULL;
+    }
+
+    if (vtctx->supported_props) {
+        CFRelease(vtctx->supported_props);
+        vtctx->supported_props = NULL;
+    }
+
+    if (vtctx->color_primaries) {
+        CFRelease(vtctx->color_primaries);
+        vtctx->color_primaries = NULL;
+    }
+
+    if (vtctx->transfer_function) {
+        CFRelease(vtctx->transfer_function);
+        vtctx->transfer_function = NULL;
+    }
+
+    if (vtctx->ycbcr_matrix) {
+        CFRelease(vtctx->ycbcr_matrix);
+        vtctx->ycbcr_matrix = NULL;
+    }
 }
 
 static int vtenc_q_pop(VTEncContext *vtctx, bool wait, CMSampleBufferRef *buf, ExtraSEI **sei)
@@ -419,7 +509,7 @@ static int count_nalus(size_t length_code_size,
 }
 
 static CMVideoCodecType get_cm_codec_type(AVCodecContext *avctx,
-                                          int64_t profile,
+                                          int profile,
                                           double alpha_quality)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt == AV_PIX_FMT_VIDEOTOOLBOX ? avctx->sw_pix_fmt : avctx->pix_fmt);
@@ -431,23 +521,25 @@ static CMVideoCodecType get_cm_codec_type(AVCodecContext *avctx,
         }
         return kCMVideoCodecType_HEVC;
     case AV_CODEC_ID_PRORES:
+        if (desc && (desc->flags & AV_PIX_FMT_FLAG_ALPHA))
+            avctx->bits_per_coded_sample = 32;
         switch (profile) {
-        case FF_PROFILE_PRORES_PROXY:
+        case AV_PROFILE_PRORES_PROXY:
             return MKBETAG('a','p','c','o'); // kCMVideoCodecType_AppleProRes422Proxy
-        case FF_PROFILE_PRORES_LT:
+        case AV_PROFILE_PRORES_LT:
             return MKBETAG('a','p','c','s'); // kCMVideoCodecType_AppleProRes422LT
-        case FF_PROFILE_PRORES_STANDARD:
+        case AV_PROFILE_PRORES_STANDARD:
             return MKBETAG('a','p','c','n'); // kCMVideoCodecType_AppleProRes422
-        case FF_PROFILE_PRORES_HQ:
+        case AV_PROFILE_PRORES_HQ:
             return MKBETAG('a','p','c','h'); // kCMVideoCodecType_AppleProRes422HQ
-        case FF_PROFILE_PRORES_4444:
+        case AV_PROFILE_PRORES_4444:
             return MKBETAG('a','p','4','h'); // kCMVideoCodecType_AppleProRes4444
-        case FF_PROFILE_PRORES_XQ:
+        case AV_PROFILE_PRORES_XQ:
             return MKBETAG('a','p','4','x'); // kCMVideoCodecType_AppleProRes4444XQ
 
         default:
-            av_log(avctx, AV_LOG_ERROR, "Unknown profile ID: %"PRId64", using auto\n", profile);
-        case FF_PROFILE_UNKNOWN:
+            av_log(avctx, AV_LOG_ERROR, "Unknown profile ID: %d, using auto\n", profile);
+        case AV_PROFILE_UNKNOWN:
             if (desc &&
                 ((desc->flags & AV_PIX_FMT_FLAG_ALPHA) ||
                   desc->log2_chroma_w == 0))
@@ -711,20 +803,20 @@ static bool get_vt_h264_profile_level(AVCodecContext *avctx,
                                       CFStringRef    *profile_level_val)
 {
     VTEncContext *vtctx = avctx->priv_data;
-    int64_t profile = vtctx->profile;
+    int profile = vtctx->profile;
 
-    if (profile == H264_PROF_AUTO && vtctx->level) {
+    if (profile == AV_PROFILE_UNKNOWN && vtctx->level) {
         //Need to pick a profile if level is not auto-selected.
-        profile = vtctx->has_b_frames ? H264_PROF_MAIN : H264_PROF_BASELINE;
+        profile = vtctx->has_b_frames ? AV_PROFILE_H264_MAIN : AV_PROFILE_H264_BASELINE;
     }
 
     *profile_level_val = NULL;
 
     switch (profile) {
-        case H264_PROF_AUTO:
+        case AV_PROFILE_UNKNOWN:
             return true;
 
-        case H264_PROF_BASELINE:
+        case AV_PROFILE_H264_BASELINE:
             switch (vtctx->level) {
                 case  0: *profile_level_val =
                                   compat_keys.kVTProfileLevel_H264_Baseline_AutoLevel; break;
@@ -746,7 +838,19 @@ static bool get_vt_h264_profile_level(AVCodecContext *avctx,
             }
             break;
 
-        case H264_PROF_MAIN:
+        case AV_PROFILE_H264_CONSTRAINED_BASELINE:
+            *profile_level_val =  compat_keys.kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel;
+
+            if (vtctx->level != 0) {
+                av_log(avctx,
+                       AV_LOG_WARNING,
+                       "Level is auto-selected when constrained-baseline "
+                       "profile is used. The output may be encoded with a "
+                       "different level.\n");
+            }
+            break;
+
+        case AV_PROFILE_H264_MAIN:
             switch (vtctx->level) {
                 case  0: *profile_level_val =
                                   compat_keys.kVTProfileLevel_H264_Main_AutoLevel; break;
@@ -765,7 +869,19 @@ static bool get_vt_h264_profile_level(AVCodecContext *avctx,
             }
             break;
 
-        case H264_PROF_HIGH:
+        case H264_PROFILE_CONSTRAINED_HIGH:
+            *profile_level_val =  compat_keys.kVTProfileLevel_H264_ConstrainedHigh_AutoLevel;
+
+            if (vtctx->level != 0) {
+                av_log(avctx,
+                      AV_LOG_WARNING,
+                       "Level is auto-selected when constrained-high profile "
+                       "is used. The output may be encoded with a different "
+                       "level.\n");
+            }
+            break;
+
+        case AV_PROFILE_H264_HIGH:
             switch (vtctx->level) {
                 case  0: *profile_level_val =
                                   compat_keys.kVTProfileLevel_H264_High_AutoLevel; break;
@@ -788,7 +904,7 @@ static bool get_vt_h264_profile_level(AVCodecContext *avctx,
                                   compat_keys.kVTProfileLevel_H264_High_5_2;       break;
             }
             break;
-        case H264_PROF_EXTENDED:
+        case AV_PROFILE_H264_EXTENDED:
             switch (vtctx->level) {
                 case  0: *profile_level_val =
                                   compat_keys.kVTProfileLevel_H264_Extended_AutoLevel; break;
@@ -816,18 +932,36 @@ static bool get_vt_hevc_profile_level(AVCodecContext *avctx,
                                       CFStringRef    *profile_level_val)
 {
     VTEncContext *vtctx = avctx->priv_data;
-    int64_t profile = vtctx->profile;
+    int profile = vtctx->profile;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(
+            avctx->pix_fmt == AV_PIX_FMT_VIDEOTOOLBOX ? avctx->sw_pix_fmt
+                                                      : avctx->pix_fmt);
+    int bit_depth = desc ? desc->comp[0].depth : 0;
 
     *profile_level_val = NULL;
 
     switch (profile) {
-        case HEVC_PROF_AUTO:
+        case AV_PROFILE_UNKNOWN:
+            // Set profile automatically if user don't specify
+            if (bit_depth == 10) {
+                *profile_level_val =
+                        compat_keys.kVTProfileLevel_HEVC_Main10_AutoLevel;
+                break;
+            }
             return true;
-        case HEVC_PROF_MAIN:
+        case AV_PROFILE_HEVC_MAIN:
+            if (bit_depth > 0 && bit_depth != 8)
+                av_log(avctx, AV_LOG_WARNING,
+                       "main profile with %d bit input\n", bit_depth);
             *profile_level_val =
                 compat_keys.kVTProfileLevel_HEVC_Main_AutoLevel;
             break;
-        case HEVC_PROF_MAIN10:
+        case AV_PROFILE_HEVC_MAIN_10:
+            if (bit_depth > 0 && bit_depth != 10) {
+                av_log(avctx, AV_LOG_ERROR,
+                       "Invalid main10 profile with %d bit input\n", bit_depth);
+                return false;
+            }
             *profile_level_val =
                 compat_keys.kVTProfileLevel_HEVC_Main10_AutoLevel;
             break;
@@ -954,132 +1088,20 @@ pbinfo_nomem:
     return AVERROR(ENOMEM);
 }
 
-static int get_cv_color_primaries(AVCodecContext *avctx,
-                                  CFStringRef *primaries)
-{
-    enum AVColorPrimaries pri = avctx->color_primaries;
-    switch (pri) {
-        case AVCOL_PRI_UNSPECIFIED:
-            *primaries = NULL;
-            break;
-
-        case AVCOL_PRI_BT470BG:
-            *primaries = kCVImageBufferColorPrimaries_EBU_3213;
-            break;
-
-        case AVCOL_PRI_SMPTE170M:
-            *primaries = kCVImageBufferColorPrimaries_SMPTE_C;
-            break;
-
-        case AVCOL_PRI_BT709:
-            *primaries = kCVImageBufferColorPrimaries_ITU_R_709_2;
-            break;
-
-        case AVCOL_PRI_BT2020:
-            *primaries = compat_keys.kCVImageBufferColorPrimaries_ITU_R_2020;
-            break;
-
-        default:
-            av_log(avctx, AV_LOG_ERROR, "Color primaries %s is not supported.\n", av_color_primaries_name(pri));
-            *primaries = NULL;
-            return -1;
-    }
-
-    return 0;
-}
-
-static int get_cv_transfer_function(AVCodecContext *avctx,
-                                    CFStringRef *transfer_fnc,
-                                    CFNumberRef *gamma_level)
+static int get_cv_gamma(AVCodecContext *avctx,
+                        CFNumberRef *gamma_level)
 {
     enum AVColorTransferCharacteristic trc = avctx->color_trc;
-    Float32 gamma;
+    Float32 gamma = 0;
     *gamma_level = NULL;
 
-    switch (trc) {
-        case AVCOL_TRC_UNSPECIFIED:
-            *transfer_fnc = NULL;
-            break;
+    if (trc == AVCOL_TRC_GAMMA22)
+        gamma = 2.2;
+    else if (trc == AVCOL_TRC_GAMMA28)
+        gamma = 2.8;
 
-        case AVCOL_TRC_BT709:
-            *transfer_fnc = kCVImageBufferTransferFunction_ITU_R_709_2;
-            break;
-
-        case AVCOL_TRC_SMPTE240M:
-            *transfer_fnc = kCVImageBufferTransferFunction_SMPTE_240M_1995;
-            break;
-
-#if HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_SMPTE_ST_2084_PQ
-        case AVCOL_TRC_SMPTE2084:
-            *transfer_fnc = kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ;
-            break;
-#endif
-#if HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_LINEAR
-        case AVCOL_TRC_LINEAR:
-            *transfer_fnc = kCVImageBufferTransferFunction_Linear;
-            break;
-#endif
-#if HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_ITU_R_2100_HLG
-        case AVCOL_TRC_ARIB_STD_B67:
-            *transfer_fnc = kCVImageBufferTransferFunction_ITU_R_2100_HLG;
-            break;
-#endif
-
-        case AVCOL_TRC_GAMMA22:
-            gamma = 2.2;
-            *transfer_fnc = kCVImageBufferTransferFunction_UseGamma;
-            *gamma_level = CFNumberCreate(NULL, kCFNumberFloat32Type, &gamma);
-            break;
-
-        case AVCOL_TRC_GAMMA28:
-            gamma = 2.8;
-            *transfer_fnc = kCVImageBufferTransferFunction_UseGamma;
-            *gamma_level = CFNumberCreate(NULL, kCFNumberFloat32Type, &gamma);
-            break;
-
-        case AVCOL_TRC_BT2020_10:
-        case AVCOL_TRC_BT2020_12:
-            *transfer_fnc = compat_keys.kCVImageBufferTransferFunction_ITU_R_2020;
-            break;
-
-        default:
-            *transfer_fnc = NULL;
-            av_log(avctx, AV_LOG_ERROR, "Transfer function %s is not supported.\n", av_color_transfer_name(trc));
-            return -1;
-    }
-
-    return 0;
-}
-
-static int get_cv_ycbcr_matrix(AVCodecContext *avctx, CFStringRef *matrix) {
-    switch(avctx->colorspace) {
-        case AVCOL_SPC_BT709:
-            *matrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2;
-            break;
-
-        case AVCOL_SPC_UNSPECIFIED:
-        case AVCOL_SPC_RGB:
-            *matrix = NULL;
-            break;
-
-        case AVCOL_SPC_BT470BG:
-        case AVCOL_SPC_SMPTE170M:
-            *matrix = kCVImageBufferYCbCrMatrix_ITU_R_601_4;
-            break;
-
-        case AVCOL_SPC_SMPTE240M:
-            *matrix = kCVImageBufferYCbCrMatrix_SMPTE_240M_1995;
-            break;
-
-        case AVCOL_SPC_BT2020_NCL:
-            *matrix = compat_keys.kCVImageBufferYCbCrMatrix_ITU_R_2020;
-            break;
-
-        default:
-            av_log(avctx, AV_LOG_ERROR, "Color space %s is not supported.\n", av_color_space_name(avctx->colorspace));
-            return -1;
-    }
-
+    if (gamma != 0)
+        *gamma_level = CFNumberCreate(NULL, kCFNumberFloat32Type, &gamma);
     return 0;
 }
 
@@ -1087,6 +1109,47 @@ static int get_cv_ycbcr_matrix(AVCodecContext *avctx, CFStringRef *matrix) {
 static bool vtenc_qscale_enabled(void)
 {
     return !TARGET_OS_IPHONE && TARGET_CPU_ARM64;
+}
+
+static void set_encoder_property_or_log(AVCodecContext *avctx,
+                                        CFStringRef key,
+                                        const char *print_option_name,
+                                        CFTypeRef value) {
+    int status;
+    VTEncContext *vtctx = avctx->priv_data;
+
+    status = VTSessionSetProperty(vtctx->session, key, value);
+    if (status == kVTPropertyNotSupportedErr) {
+        av_log(avctx,
+               AV_LOG_INFO,
+               "This device does not support the %s option. Value ignored.\n",
+               print_option_name);
+    } else if (status != 0) {
+        av_log(avctx,
+               AV_LOG_ERROR,
+               "Error setting %s: Error %d\n",
+               print_option_name,
+               status);
+    }
+}
+
+static int set_encoder_int_property_or_log(AVCodecContext* avctx,
+                                           CFStringRef key,
+                                           const char* print_option_name,
+                                           int value) {
+    CFNumberRef value_cfnum = CFNumberCreate(kCFAllocatorDefault,
+                                             kCFNumberIntType,
+                                             &value);
+
+    if (value_cfnum == NULL) {
+        return AVERROR(ENOMEM);
+    }
+
+    set_encoder_property_or_log(avctx, key, print_option_name, value_cfnum);
+
+    CFRelease(value_cfnum);
+
+    return 0;
 }
 
 static int vtenc_create_encoder(AVCodecContext   *avctx,
@@ -1133,6 +1196,26 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
 
         return AVERROR_EXTERNAL;
     }
+
+#if defined (MAC_OS_X_VERSION_10_13) && (MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_13)
+    if (__builtin_available(macOS 10.13, *)) {
+        status = VTCopySupportedPropertyDictionaryForEncoder(avctx->width,
+                                                             avctx->height,
+                                                             codec_type,
+                                                             enc_info,
+                                                             NULL,
+                                                             &vtctx->supported_props);
+
+        if (status != noErr) {
+            av_log(avctx, AV_LOG_ERROR,"Error retrieving the supported property dictionary err=%"PRId64"\n", (int64_t)status);
+            return AVERROR_EXTERNAL;
+        }
+    }
+#endif
+
+    status = vt_dump_encoder(avctx);
+    if (status < 0)
+        return status;
 
     if (avctx->flags & AV_CODEC_FLAG_QSCALE && !vtenc_qscale_enabled()) {
         av_log(avctx, AV_LOG_ERROR, "Error: -q:v qscale not available for encoder. Use -b:v bitrate instead.\n");
@@ -1245,6 +1328,13 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
                                           compat_keys.kVTCompressionPropertyKey_TargetQualityForAlpha,
                                           alpha_quality_num);
             CFRelease(alpha_quality_num);
+
+            if (status) {
+                av_log(avctx,
+                       AV_LOG_ERROR,
+                       "Error setting alpha quality: %d\n",
+                       status);
+            }
         }
     }
 
@@ -1441,6 +1531,64 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
         }
     }
 
+    if ((avctx->flags & AV_CODEC_FLAG_CLOSED_GOP) != 0) {
+        set_encoder_property_or_log(avctx,
+                                    compat_keys.kVTCompressionPropertyKey_AllowOpenGOP,
+                                    "AllowOpenGop",
+                                    kCFBooleanFalse);
+    }
+
+    if (avctx->qmin >= 0) {
+        status = set_encoder_int_property_or_log(avctx,
+                                                 compat_keys.kVTCompressionPropertyKey_MinAllowedFrameQP,
+                                                 "qmin",
+                                                 avctx->qmin);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+
+    if (avctx->qmax >= 0) {
+        status = set_encoder_int_property_or_log(avctx,
+                                                 compat_keys.kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                                                 "qmax",
+                                                 avctx->qmax);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+
+    if (vtctx->max_slice_bytes >= 0 && avctx->codec_id == AV_CODEC_ID_H264) {
+        status = set_encoder_int_property_or_log(avctx,
+                                                 kVTCompressionPropertyKey_MaxH264SliceBytes,
+                                                 "max_slice_bytes",
+                                                 vtctx->max_slice_bytes);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+
+    if (vtctx->power_efficient >= 0) {
+        set_encoder_property_or_log(avctx,
+                                    compat_keys.kVTCompressionPropertyKey_MaximizePowerEfficiency,
+                                    "power_efficient",
+                                    vtctx->power_efficient ? kCFBooleanTrue : kCFBooleanFalse);
+    }
+
+    if (vtctx->max_ref_frames > 0) {
+        status = set_encoder_int_property_or_log(avctx,
+                                                 compat_keys.kVTCompressionPropertyKey_ReferenceBufferCount,
+                                                 "max_ref_frames",
+                                                 vtctx->max_ref_frames);
+
+        if (status != 0) {
+            return status;
+        }
+    }
+
     status = VTCompressionSessionPrepareToEncodeFrames(vtctx->session);
     if (status) {
         av_log(avctx, AV_LOG_ERROR, "Error: cannot prepare encoder: %d\n", status);
@@ -1480,12 +1628,12 @@ static int vtenc_configure_encoder(AVCodecContext *avctx)
         vtctx->get_param_set_func = CMVideoFormatDescriptionGetH264ParameterSetAtIndex;
 
         vtctx->has_b_frames = avctx->max_b_frames > 0;
-        if(vtctx->has_b_frames && vtctx->profile == H264_PROF_BASELINE){
+        if(vtctx->has_b_frames && (0xFF & vtctx->profile) == AV_PROFILE_H264_BASELINE){
             av_log(avctx, AV_LOG_WARNING, "Cannot use B-frames with baseline profile. Output will not contain B-frames.\n");
             vtctx->has_b_frames = 0;
         }
 
-        if (vtctx->entropy == VT_CABAC && vtctx->profile == H264_PROF_BASELINE) {
+        if (vtctx->entropy == VT_CABAC && (0xFF & vtctx->profile) == AV_PROFILE_H264_BASELINE) {
             av_log(avctx, AV_LOG_WARNING, "CABAC entropy requires 'main' or 'high' profile, but baseline was requested. Encode will not use CABAC entropy.\n");
             vtctx->entropy = VT_ENTROPY_NOT_SET;
         }
@@ -1526,6 +1674,13 @@ static int vtenc_configure_encoder(AVCodecContext *avctx)
     }
 #endif
 
+    // low-latency mode: eliminate frame reordering, follow a one-in-one-out encoding mode
+    if ((avctx->flags & AV_CODEC_FLAG_LOW_DELAY) && avctx->codec_id == AV_CODEC_ID_H264) {
+        CFDictionarySetValue(enc_info,
+                             compat_keys.kVTVideoEncoderSpecification_EnableLowLatencyRateControl,
+                             kCFBooleanTrue);
+    }
+
     if (avctx->pix_fmt != AV_PIX_FMT_VIDEOTOOLBOX) {
         status = create_cv_pixel_buffer_info(avctx, &pixel_buffer_info);
         if (status)
@@ -1534,9 +1689,10 @@ static int vtenc_configure_encoder(AVCodecContext *avctx)
 
     vtctx->dts_delta = vtctx->has_b_frames ? -1 : 0;
 
-    get_cv_transfer_function(avctx, &vtctx->transfer_function, &gamma_level);
-    get_cv_ycbcr_matrix(avctx, &vtctx->ycbcr_matrix);
-    get_cv_color_primaries(avctx, &vtctx->color_primaries);
+    get_cv_gamma(avctx, &gamma_level);
+    vtctx->transfer_function = av_map_videotoolbox_color_trc_from_av(avctx->color_trc);
+    vtctx->ycbcr_matrix = av_map_videotoolbox_color_matrix_from_av(avctx->colorspace);
+    vtctx->color_primaries = av_map_videotoolbox_color_primaries_from_av(avctx->color_primaries);
 
 
     if (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
@@ -1582,7 +1738,9 @@ static av_cold int vtenc_init(AVCodecContext *avctx)
     pthread_mutex_init(&vtctx->lock, NULL);
     pthread_cond_init(&vtctx->cv_sample_sent, NULL);
 
-    vtctx->session = NULL;
+    // It can happen when user set avctx->profile directly.
+    if (vtctx->profile == AV_PROFILE_UNKNOWN)
+        vtctx->profile = avctx->profile;
     status = vtenc_configure_encoder(avctx);
     if (status) return status;
 
@@ -1650,8 +1808,8 @@ static int find_sei_end(AVCodecContext *avctx,
 {
     int nal_type;
     size_t sei_payload_size = 0;
-    *sei_end = NULL;
     uint8_t *nal_start = nal_data;
+    *sei_end = NULL;
 
     if (!nal_size)
         return 0;
@@ -2041,7 +2199,7 @@ static int vtenc_cm_to_avpacket(
                 return AVERROR_EXTERNAL;
             }
 
-            int status = get_params_size(avctx, vid_fmt, &header_size);
+            status = get_params_size(avctx, vid_fmt, &header_size);
             if (status) return status;
         }
 
@@ -2146,7 +2304,7 @@ static int get_cv_pixel_info(
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
     VTEncContext *vtctx = avctx->priv_data;
     int av_format       = frame->format;
-    int av_color_range  = frame->color_range;
+    int av_color_range  = avctx->color_range;
     int i;
     int range_guessed;
     int status;
@@ -2351,8 +2509,8 @@ static int create_cv_pixel_buffer(AVCodecContext   *avctx,
 
         vtstatus = VTCompressionSessionPrepareToEncodeFrames(vtctx->session);
         if (vtstatus == kVTInvalidSessionErr) {
-            CFRelease(vtctx->session);
-            vtctx->session = NULL;
+            vtenc_reset(vtctx);
+
             status = vtenc_configure_encoder(avctx);
             if (status == 0)
                 pix_buf_pool = VTCompressionSessionGetPixelBufferPool(vtctx->session);
@@ -2608,10 +2766,7 @@ static int vtenc_populate_extradata(AVCodecContext   *avctx,
 
 pe_cleanup:
     CVPixelBufferRelease(pix_buf);
-    if(vtctx->session)
-        CFRelease(vtctx->session);
-
-    vtctx->session = NULL;
+    vtenc_reset(vtctx);
     vtctx->frame_ct_out = 0;
 
     av_assert0(status != 0 || (avctx->extradata && avctx->extradata_size > 0));
@@ -2634,23 +2789,8 @@ static av_cold int vtenc_close(AVCodecContext *avctx)
     clear_frame_queue(vtctx);
     pthread_cond_destroy(&vtctx->cv_sample_sent);
     pthread_mutex_destroy(&vtctx->lock);
-    CFRelease(vtctx->session);
-    vtctx->session = NULL;
 
-    if (vtctx->color_primaries) {
-        CFRelease(vtctx->color_primaries);
-        vtctx->color_primaries = NULL;
-    }
-
-    if (vtctx->transfer_function) {
-        CFRelease(vtctx->transfer_function);
-        vtctx->transfer_function = NULL;
-    }
-
-    if (vtctx->ycbcr_matrix) {
-        CFRelease(vtctx->ycbcr_matrix);
-        vtctx->ycbcr_matrix = NULL;
-    }
+    vtenc_reset(vtctx);
 
     return 0;
 }
@@ -2718,39 +2858,57 @@ static const enum AVPixelFormat prores_pix_fmts[] = {
         OFFSET(frames_after), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE }, \
     { "prio_speed", "prioritize encoding speed", OFFSET(prio_speed), AV_OPT_TYPE_BOOL, \
         { .i64 = -1 }, -1, 1, VE }, \
+    { "power_efficient", "Set to 1 to enable more power-efficient encoding if supported.", \
+        OFFSET(power_efficient), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE }, \
+    { "max_ref_frames", \
+        "Sets the maximum number of reference frames. This only has an effect when the value is less than the maximum allowed by the profile/level.", \
+        OFFSET(max_ref_frames), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, VE },
+
+static const AVCodecHWConfigInternal *const vt_encode_hw_configs[] = {
+        HW_CONFIG_ENCODER_FRAMES(VIDEOTOOLBOX, VIDEOTOOLBOX),
+        NULL,
+};
 
 #define OFFSET(x) offsetof(VTEncContext, x)
 static const AVOption h264_options[] = {
-    { "profile", "Profile", OFFSET(profile), AV_OPT_TYPE_INT64, { .i64 = H264_PROF_AUTO }, H264_PROF_AUTO, H264_PROF_COUNT, VE, "profile" },
-    { "baseline", "Baseline Profile", 0, AV_OPT_TYPE_CONST, { .i64 = H264_PROF_BASELINE }, INT_MIN, INT_MAX, VE, "profile" },
-    { "main",     "Main Profile",     0, AV_OPT_TYPE_CONST, { .i64 = H264_PROF_MAIN     }, INT_MIN, INT_MAX, VE, "profile" },
-    { "high",     "High Profile",     0, AV_OPT_TYPE_CONST, { .i64 = H264_PROF_HIGH     }, INT_MIN, INT_MAX, VE, "profile" },
-    { "extended", "Extend Profile",   0, AV_OPT_TYPE_CONST, { .i64 = H264_PROF_EXTENDED }, INT_MIN, INT_MAX, VE, "profile" },
+    { "profile", "Profile", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, INT_MAX, VE, .unit = "profile" },
+    { "baseline",             "Baseline Profile",             0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_H264_BASELINE             }, INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "constrained_baseline", "Constrained Baseline Profile", 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_H264_CONSTRAINED_BASELINE }, INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "main",                 "Main Profile",                 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_H264_MAIN                 }, INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "high",                 "High Profile",                 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_H264_HIGH                 }, INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "constrained_high",     "Constrained High Profile",     0, AV_OPT_TYPE_CONST, { .i64 = H264_PROFILE_CONSTRAINED_HIGH        }, INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "extended",             "Extend Profile",               0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_H264_EXTENDED             }, INT_MIN, INT_MAX, VE, .unit = "profile" },
 
-    { "level", "Level", OFFSET(level), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 52, VE, "level" },
-    { "1.3", "Level 1.3, only available with Baseline Profile", 0, AV_OPT_TYPE_CONST, { .i64 = 13 }, INT_MIN, INT_MAX, VE, "level" },
-    { "3.0", "Level 3.0", 0, AV_OPT_TYPE_CONST, { .i64 = 30 }, INT_MIN, INT_MAX, VE, "level" },
-    { "3.1", "Level 3.1", 0, AV_OPT_TYPE_CONST, { .i64 = 31 }, INT_MIN, INT_MAX, VE, "level" },
-    { "3.2", "Level 3.2", 0, AV_OPT_TYPE_CONST, { .i64 = 32 }, INT_MIN, INT_MAX, VE, "level" },
-    { "4.0", "Level 4.0", 0, AV_OPT_TYPE_CONST, { .i64 = 40 }, INT_MIN, INT_MAX, VE, "level" },
-    { "4.1", "Level 4.1", 0, AV_OPT_TYPE_CONST, { .i64 = 41 }, INT_MIN, INT_MAX, VE, "level" },
-    { "4.2", "Level 4.2", 0, AV_OPT_TYPE_CONST, { .i64 = 42 }, INT_MIN, INT_MAX, VE, "level" },
-    { "5.0", "Level 5.0", 0, AV_OPT_TYPE_CONST, { .i64 = 50 }, INT_MIN, INT_MAX, VE, "level" },
-    { "5.1", "Level 5.1", 0, AV_OPT_TYPE_CONST, { .i64 = 51 }, INT_MIN, INT_MAX, VE, "level" },
-    { "5.2", "Level 5.2", 0, AV_OPT_TYPE_CONST, { .i64 = 52 }, INT_MIN, INT_MAX, VE, "level" },
+    { "level", "Level", OFFSET(level), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 52, VE, .unit = "level" },
+    { "1.3", "Level 1.3, only available with Baseline Profile", 0, AV_OPT_TYPE_CONST, { .i64 = 13 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "3.0", "Level 3.0", 0, AV_OPT_TYPE_CONST, { .i64 = 30 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "3.1", "Level 3.1", 0, AV_OPT_TYPE_CONST, { .i64 = 31 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "3.2", "Level 3.2", 0, AV_OPT_TYPE_CONST, { .i64 = 32 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "4.0", "Level 4.0", 0, AV_OPT_TYPE_CONST, { .i64 = 40 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "4.1", "Level 4.1", 0, AV_OPT_TYPE_CONST, { .i64 = 41 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "4.2", "Level 4.2", 0, AV_OPT_TYPE_CONST, { .i64 = 42 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "5.0", "Level 5.0", 0, AV_OPT_TYPE_CONST, { .i64 = 50 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "5.1", "Level 5.1", 0, AV_OPT_TYPE_CONST, { .i64 = 51 }, INT_MIN, INT_MAX, VE, .unit = "level" },
+    { "5.2", "Level 5.2", 0, AV_OPT_TYPE_CONST, { .i64 = 52 }, INT_MIN, INT_MAX, VE, .unit = "level" },
 
-    { "coder", "Entropy coding", OFFSET(entropy), AV_OPT_TYPE_INT, { .i64 = VT_ENTROPY_NOT_SET }, VT_ENTROPY_NOT_SET, VT_CABAC, VE, "coder" },
-    { "cavlc", "CAVLC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CAVLC }, INT_MIN, INT_MAX, VE, "coder" },
-    { "vlc",   "CAVLC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CAVLC }, INT_MIN, INT_MAX, VE, "coder" },
-    { "cabac", "CABAC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CABAC }, INT_MIN, INT_MAX, VE, "coder" },
-    { "ac",    "CABAC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CABAC }, INT_MIN, INT_MAX, VE, "coder" },
+    { "coder", "Entropy coding", OFFSET(entropy), AV_OPT_TYPE_INT, { .i64 = VT_ENTROPY_NOT_SET }, VT_ENTROPY_NOT_SET, VT_CABAC, VE, .unit = "coder" },
+    { "cavlc", "CAVLC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CAVLC }, INT_MIN, INT_MAX, VE, .unit = "coder" },
+    { "vlc",   "CAVLC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CAVLC }, INT_MIN, INT_MAX, VE, .unit = "coder" },
+    { "cabac", "CABAC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CABAC }, INT_MIN, INT_MAX, VE, .unit = "coder" },
+    { "ac",    "CABAC entropy coding", 0, AV_OPT_TYPE_CONST, { .i64 = VT_CABAC }, INT_MIN, INT_MAX, VE, .unit = "coder" },
 
     { "a53cc", "Use A53 Closed Captions (if available)", OFFSET(a53_cc), AV_OPT_TYPE_BOOL, {.i64 = 1}, 0, 1, VE },
 
     { "constant_bit_rate", "Require constant bit rate (macOS 13 or newer)", OFFSET(constant_bit_rate), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
-
+    { "max_slice_bytes", "Set the maximum number of bytes in an H.264 slice.", OFFSET(max_slice_bytes), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, VE },
     COMMON_OPTIONS
     { NULL },
+};
+
+static const FFCodecDefault vt_defaults[] = {
+        {"qmin", "-1"},
+        {"qmax", "-1"},
+        {NULL},
 };
 
 static const AVClass h264_videotoolbox_class = {
@@ -2768,17 +2926,19 @@ const FFCodec ff_h264_videotoolbox_encoder = {
     .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .priv_data_size   = sizeof(VTEncContext),
     .p.pix_fmts       = avc_pix_fmts,
+    .defaults         = vt_defaults,
     .init             = vtenc_init,
     FF_CODEC_ENCODE_CB(vtenc_frame),
     .close            = vtenc_close,
     .p.priv_class     = &h264_videotoolbox_class,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
+    .hw_configs       = vt_encode_hw_configs,
 };
 
 static const AVOption hevc_options[] = {
-    { "profile", "Profile", OFFSET(profile), AV_OPT_TYPE_INT64, { .i64 = HEVC_PROF_AUTO }, HEVC_PROF_AUTO, HEVC_PROF_COUNT, VE, "profile" },
-    { "main",     "Main Profile",     0, AV_OPT_TYPE_CONST, { .i64 = HEVC_PROF_MAIN   }, INT_MIN, INT_MAX, VE, "profile" },
-    { "main10",   "Main10 Profile",   0, AV_OPT_TYPE_CONST, { .i64 = HEVC_PROF_MAIN10 }, INT_MIN, INT_MAX, VE, "profile" },
+    { "profile", "Profile", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, INT_MAX, VE, .unit = "profile" },
+    { "main",     "Main Profile",     0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_HEVC_MAIN    }, INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "main10",   "Main10 Profile",   0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_HEVC_MAIN_10 }, INT_MIN, INT_MAX, VE, .unit = "profile" },
 
     { "alpha_quality", "Compression quality for the alpha channel", OFFSET(alpha_quality), AV_OPT_TYPE_DOUBLE, { .dbl = 0.0 }, 0.0, 1.0, VE },
 
@@ -2804,23 +2964,25 @@ const FFCodec ff_hevc_videotoolbox_encoder = {
                         AV_CODEC_CAP_HARDWARE,
     .priv_data_size   = sizeof(VTEncContext),
     .p.pix_fmts       = hevc_pix_fmts,
+    .defaults         = vt_defaults,
     .init             = vtenc_init,
     FF_CODEC_ENCODE_CB(vtenc_frame),
     .close            = vtenc_close,
     .p.priv_class     = &hevc_videotoolbox_class,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
     .p.wrapper_name   = "videotoolbox",
+    .hw_configs       = vt_encode_hw_configs,
 };
 
 static const AVOption prores_options[] = {
-    { "profile", "Profile", OFFSET(profile), AV_OPT_TYPE_INT64, { .i64 = FF_PROFILE_UNKNOWN }, FF_PROFILE_UNKNOWN, FF_PROFILE_PRORES_XQ, VE, "profile" },
-    { "auto",     "Automatically determine based on input format", 0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_UNKNOWN },            INT_MIN, INT_MAX, VE, "profile" },
-    { "proxy",    "ProRes 422 Proxy",                              0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_PRORES_PROXY },       INT_MIN, INT_MAX, VE, "profile" },
-    { "lt",       "ProRes 422 LT",                                 0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_PRORES_LT },          INT_MIN, INT_MAX, VE, "profile" },
-    { "standard", "ProRes 422",                                    0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_PRORES_STANDARD },    INT_MIN, INT_MAX, VE, "profile" },
-    { "hq",       "ProRes 422 HQ",                                 0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_PRORES_HQ },          INT_MIN, INT_MAX, VE, "profile" },
-    { "4444",     "ProRes 4444",                                   0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_PRORES_4444 },        INT_MIN, INT_MAX, VE, "profile" },
-    { "xq",       "ProRes 4444 XQ",                                0, AV_OPT_TYPE_CONST, { .i64 = FF_PROFILE_PRORES_XQ },          INT_MIN, INT_MAX, VE, "profile" },
+    { "profile", "Profile", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, AV_PROFILE_PRORES_XQ, VE, .unit = "profile" },
+    { "auto",     "Automatically determine based on input format", 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_UNKNOWN },            INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "proxy",    "ProRes 422 Proxy",                              0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_PRORES_PROXY },       INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "lt",       "ProRes 422 LT",                                 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_PRORES_LT },          INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "standard", "ProRes 422",                                    0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_PRORES_STANDARD },    INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "hq",       "ProRes 422 HQ",                                 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_PRORES_HQ },          INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "4444",     "ProRes 4444",                                   0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_PRORES_4444 },        INT_MIN, INT_MAX, VE, .unit = "profile" },
+    { "xq",       "ProRes 4444 XQ",                                0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_PRORES_XQ },          INT_MIN, INT_MAX, VE, .unit = "profile" },
 
     COMMON_OPTIONS
     { NULL },
@@ -2842,10 +3004,12 @@ const FFCodec ff_prores_videotoolbox_encoder = {
                         AV_CODEC_CAP_HARDWARE,
     .priv_data_size   = sizeof(VTEncContext),
     .p.pix_fmts       = prores_pix_fmts,
+    .defaults         = vt_defaults,
     .init             = vtenc_init,
     FF_CODEC_ENCODE_CB(vtenc_frame),
     .close            = vtenc_close,
     .p.priv_class     = &prores_videotoolbox_class,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
     .p.wrapper_name   = "videotoolbox",
+    .hw_configs       = vt_encode_hw_configs,
 };

@@ -217,13 +217,13 @@ static int decode_slice_header(const FFV1Context *f, FFV1Context *fs)
 
     ps = get_symbol(c, state, 0);
     if (ps == 1) {
-        f->cur->interlaced_frame = 1;
-        f->cur->top_field_first  = 1;
+        f->cur->flags |= AV_FRAME_FLAG_INTERLACED;
+        f->cur->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
     } else if (ps == 2) {
-        f->cur->interlaced_frame = 1;
-        f->cur->top_field_first  = 0;
+        f->cur->flags |= AV_FRAME_FLAG_INTERLACED;
+        f->cur->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
     } else if (ps == 3) {
-        f->cur->interlaced_frame = 0;
+        f->cur->flags &= ~AV_FRAME_FLAG_INTERLACED;
     }
     f->cur->sample_aspect_ratio.num = get_symbol(c, state, 0);
     f->cur->sample_aspect_ratio.den = get_symbol(c, state, 0);
@@ -264,16 +264,16 @@ static int decode_slice(AVCodecContext *c, void *arg)
     for( si=0; fs != f->slice_context[si]; si ++)
         ;
 
-    if(f->fsrc && !p->key_frame)
+    if(f->fsrc && !(p->flags & AV_FRAME_FLAG_KEY))
         ff_thread_await_progress(&f->last_picture, si, 0);
 
-    if(f->fsrc && !p->key_frame) {
+    if(f->fsrc && !(p->flags & AV_FRAME_FLAG_KEY)) {
         FFV1Context *fssrc = f->fsrc->slice_context[si];
         FFV1Context *fsdst = f->slice_context[si];
         av_assert1(fsdst->plane_count == fssrc->plane_count);
         av_assert1(fsdst == fs);
 
-        if (!p->key_frame)
+        if (!(p->flags & AV_FRAME_FLAG_KEY))
             fsdst->slice_damaged |= fssrc->slice_damaged;
 
         for (i = 0; i < f->plane_count; i++) {
@@ -310,7 +310,7 @@ static int decode_slice(AVCodecContext *c, void *arg)
     }
     if ((ret = ff_ffv1_init_slice_state(f, fs)) < 0)
         return ret;
-    if (f->cur->key_frame || fs->slice_reset_contexts) {
+    if ((f->cur->flags & AV_FRAME_FLAG_KEY) || fs->slice_reset_contexts) {
         ff_ffv1_clear_slice_state(f, fs);
     } else if (fs->slice_damaged) {
         return AVERROR_INVALIDDATA;
@@ -438,6 +438,11 @@ static int read_extra_header(FFV1Context *f)
     if (f->version < 2) {
         av_log(f->avctx, AV_LOG_ERROR, "Invalid version in global header\n");
         return AVERROR_INVALIDDATA;
+    }
+    if (f->version > 4) {
+        av_log(f->avctx, AV_LOG_ERROR, "unsupported version %d\n",
+            f->version);
+        return AVERROR_PATCHWELCOME;
     }
     if (f->version > 2) {
         c->bytestream_end -= 4;
@@ -621,6 +626,9 @@ static int read_header(FFV1Context *f)
             } else if (f->avctx->bits_per_raw_sample == 12) {
                 f->packed_at_lsb = 1;
                 f->avctx->pix_fmt = AV_PIX_FMT_GRAY12;
+            } else if (f->avctx->bits_per_raw_sample == 14) {
+                f->packed_at_lsb = 1;
+                f->avctx->pix_fmt = AV_PIX_FMT_GRAY14;
             } else if (f->avctx->bits_per_raw_sample == 16) {
                 f->packed_at_lsb = 1;
                 f->avctx->pix_fmt = AV_PIX_FMT_GRAY16;
@@ -685,6 +693,12 @@ static int read_header(FFV1Context *f)
             case 0x10: f->avctx->pix_fmt = AV_PIX_FMT_YUV422P12; break;
             case 0x11: f->avctx->pix_fmt = AV_PIX_FMT_YUV420P12; break;
             }
+        } else if (f->avctx->bits_per_raw_sample == 12 && f->transparency) {
+            f->packed_at_lsb = 1;
+            switch(16 * f->chroma_h_shift + f->chroma_v_shift) {
+            case 0x00: f->avctx->pix_fmt = AV_PIX_FMT_YUVA444P12; break;
+            case 0x10: f->avctx->pix_fmt = AV_PIX_FMT_YUVA422P12; break;
+            }
         } else if (f->avctx->bits_per_raw_sample == 14 && !f->transparency) {
             f->packed_at_lsb = 1;
             switch(16 * f->chroma_h_shift + f->chroma_v_shift) {
@@ -729,6 +743,8 @@ static int read_header(FFV1Context *f)
             f->avctx->pix_fmt = AV_PIX_FMT_GBRAP12;
         else if (f->avctx->bits_per_raw_sample == 14 && !f->transparency)
             f->avctx->pix_fmt = AV_PIX_FMT_GBRP14;
+        else if (f->avctx->bits_per_raw_sample == 14 && f->transparency)
+            f->avctx->pix_fmt = AV_PIX_FMT_GBRAP14;
         else if (f->avctx->bits_per_raw_sample == 16 && !f->transparency) {
             f->avctx->pix_fmt = AV_PIX_FMT_GBRP16;
             f->use32bit = 1;
@@ -869,16 +885,16 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     AVFrame *p;
 
     if (f->last_picture.f)
-        ff_thread_release_ext_buffer(avctx, &f->last_picture);
+        ff_thread_release_ext_buffer(&f->last_picture);
     FFSWAP(ThreadFrame, f->picture, f->last_picture);
 
     f->cur = p = f->picture.f;
 
     if (f->version < 3 && avctx->field_order > AV_FIELD_PROGRESSIVE) {
         /* we have interlaced material flagged in container */
-        p->interlaced_frame = 1;
+        p->flags |= AV_FRAME_FLAG_INTERLACED;
         if (avctx->field_order == AV_FIELD_TT || avctx->field_order == AV_FIELD_TB)
-            p->top_field_first = 1;
+            p->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
     }
 
     f->avctx = avctx;
@@ -887,7 +903,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     p->pict_type = AV_PICTURE_TYPE_I; //FIXME I vs. P
     if (get_rac(c, &keystate)) {
-        p->key_frame    = 1;
+        p->flags |= AV_FRAME_FLAG_KEY;
         f->key_frame_ok = 0;
         if ((ret = read_header(f)) < 0)
             return ret;
@@ -898,7 +914,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                    "Cannot decode non-keyframe without valid keyframe\n");
             return AVERROR_INVALIDDATA;
         }
-        p->key_frame = 0;
+        p->flags &= ~AV_FRAME_FLAG_KEY;
     }
 
     if (f->ac != AC_GOLOMB_RICE) {
@@ -922,7 +938,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     if (avctx->debug & FF_DEBUG_PICT_INFO)
         av_log(avctx, AV_LOG_DEBUG, "ver:%d keyframe:%d coder:%d ec:%d slices:%d bps:%d\n",
-               f->version, p->key_frame, f->ac, f->ec, f->slice_count, f->avctx->bits_per_raw_sample);
+               f->version, !!(p->flags & AV_FRAME_FLAG_KEY), f->ac, f->ec, f->slice_count, f->avctx->bits_per_raw_sample);
 
     ff_thread_finish_setup(avctx);
 
@@ -1009,7 +1025,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     ff_thread_report_progress(&f->picture, INT_MAX, 0);
 
     if (f->last_picture.f)
-        ff_thread_release_ext_buffer(avctx, &f->last_picture);
+        ff_thread_release_ext_buffer(&f->last_picture);
     if ((ret = av_frame_ref(rframe, f->picture.f)) < 0)
         return ret;
 
@@ -1056,31 +1072,24 @@ static int update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
     if (dst == src)
         return 0;
 
-    {
-        ThreadFrame picture = fdst->picture, last_picture = fdst->last_picture;
-        uint8_t (*initial_states[MAX_QUANT_TABLES])[32];
-        struct FFV1Context *slice_context[MAX_SLICES];
-        memcpy(initial_states, fdst->initial_states, sizeof(fdst->initial_states));
-        memcpy(slice_context,  fdst->slice_context , sizeof(fdst->slice_context));
+    copy_fields(fdst, fsrc, fsrc);
+    fdst->use32bit     = fsrc->use32bit;
+    memcpy(fdst->state_transition, fsrc->state_transition,
+           sizeof(fdst->state_transition));
+    memcpy(fdst->quant_table, fsrc->quant_table, sizeof(fsrc->quant_table));
 
-        memcpy(fdst, fsrc, sizeof(*fdst));
-        memcpy(fdst->initial_states, initial_states, sizeof(fdst->initial_states));
-        memcpy(fdst->slice_context,  slice_context , sizeof(fdst->slice_context));
-        fdst->picture      = picture;
-        fdst->last_picture = last_picture;
-        for (i = 0; i<fdst->num_h_slices * fdst->num_v_slices; i++) {
-            FFV1Context *fssrc = fsrc->slice_context[i];
-            FFV1Context *fsdst = fdst->slice_context[i];
-            copy_fields(fsdst, fssrc, fsrc);
-        }
-        av_assert0(!fdst->plane[0].state);
-        av_assert0(!fdst->sample_buffer);
+    for (i = 0; i < fdst->num_h_slices * fdst->num_v_slices; i++) {
+        FFV1Context *fssrc = fsrc->slice_context[i];
+        FFV1Context *fsdst = fdst->slice_context[i];
+        copy_fields(fsdst, fssrc, fsrc);
     }
+    av_assert0(!fdst->plane[0].state);
+    av_assert0(!fdst->sample_buffer);
 
     av_assert1(fdst->max_slice_count == fsrc->max_slice_count);
 
 
-    ff_thread_release_ext_buffer(dst, &fdst->picture);
+    ff_thread_release_ext_buffer(&fdst->picture);
     if (fsrc->picture.f->data[0]) {
         if ((ret = ff_thread_ref_frame(&fdst->picture, &fsrc->picture)) < 0)
             return ret;
@@ -1097,12 +1106,12 @@ static av_cold int ffv1_decode_close(AVCodecContext *avctx)
     FFV1Context *const s = avctx->priv_data;
 
     if (s->picture.f) {
-        ff_thread_release_ext_buffer(avctx, &s->picture);
+        ff_thread_release_ext_buffer(&s->picture);
         av_frame_free(&s->picture.f);
     }
 
     if (s->last_picture.f) {
-        ff_thread_release_ext_buffer(avctx, &s->last_picture);
+        ff_thread_release_ext_buffer(&s->last_picture);
         av_frame_free(&s->last_picture.f);
     }
     return ff_ffv1_close(avctx);

@@ -599,25 +599,25 @@ prepare_extra_amd64() {
     fi
 
     # LIBPLACEBO
-    pushd ${SOURCE_DIR}
-    git clone -b v6.338.2 --recursive --depth=1 https://github.com/haasn/libplacebo.git
-    sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
-    meson setup libplacebo placebo_build \
-        --prefix=${TARGET_DIR} \
-        --libdir=lib \
-        --buildtype=release \
-        --default-library=shared \
-        -Dvulkan=enabled \
-        -Dvk-proc-addr=enabled \
-        -Dvulkan-registry=${TARGET_DIR}/share/vulkan/registry/vk.xml \
-        -Dshaderc=enabled \
-        -Dglslang=disabled \
-        -D{demos,tests,bench,fuzz}=false
-    meson configure placebo_build
-    ninja -j$(nproc) -C placebo_build install
-    cp -a ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
-    echo "libplacebo/libplacebo* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
-    popd
+#    pushd ${SOURCE_DIR}
+#    git clone -b v6.338.2 --recursive --depth=1 https://github.com/haasn/libplacebo.git
+#    sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
+#    meson setup libplacebo placebo_build \
+#        --prefix=${TARGET_DIR} \
+#        --libdir=lib \
+#        --buildtype=release \
+#        --default-library=shared \
+#        -Dvulkan=enabled \
+#        -Dvk-proc-addr=enabled \
+#        -Dvulkan-registry=${TARGET_DIR}/share/vulkan/registry/vk.xml \
+#        -Dshaderc=enabled \
+#        -Dglslang=disabled \
+#        -D{demos,tests,bench,fuzz}=false
+#    meson configure placebo_build
+#    ninja -j$(nproc) -C placebo_build install
+#    cp -a ${TARGET_DIR}/lib/libplacebo.so* ${SOURCE_DIR}/libplacebo
+#    echo "libplacebo/libplacebo* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+#    popd
 }
 
 # Prepare extra headers, libs and drivers for {arm,aarch64}-linux-gnu*
@@ -783,5 +783,5 @@ popd
 
 # Move the artifacts out
 mkdir -p ${ARTIFACT_DIR}/deb
-mv /jellyfin-ffmpeg{,6}_* ${ARTIFACT_DIR}/deb/
+mv /jellyfin-ffmpeg{,7}_* ${ARTIFACT_DIR}/deb/
 chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

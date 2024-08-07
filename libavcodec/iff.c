@@ -522,7 +522,7 @@ static int decode_byterun2(uint8_t *dst, int height, int line_size,
                            GetByteContext *gb)
 {
     GetByteContext cmds;
-    unsigned count;
+    int count;
     int i, y_pos = 0, x_pos = 0;
 
     if (bytestream2_get_be32(gb) != MKBETAG('V', 'D', 'A', 'T'))
@@ -530,7 +530,7 @@ static int decode_byterun2(uint8_t *dst, int height, int line_size,
 
     bytestream2_skip(gb, 4);
     count = bytestream2_get_be16(gb) - 2;
-    if (bytestream2_get_bytes_left(gb) < count)
+    if (count < 0 || bytestream2_get_bytes_left(gb) < count)
         return 0;
 
     bytestream2_init(&cmds, gb->buffer, count);
@@ -1887,10 +1887,10 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     }
 
     if (avpkt->flags & AV_PKT_FLAG_KEY) {
-        frame->key_frame = 1;
+        frame->flags |= AV_FRAME_FLAG_KEY;
         frame->pict_type = AV_PICTURE_TYPE_I;
     } else {
-        frame->key_frame = 0;
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
         frame->pict_type = AV_PICTURE_TYPE_P;
     }
 

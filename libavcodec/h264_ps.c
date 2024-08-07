@@ -34,6 +34,7 @@
 #include "h2645_vui.h"
 #include "h264_ps.h"
 #include "golomb.h"
+#include "refstruct.h"
 
 #define MIN_LOG2_MAX_FRAME_NUM    4
 
@@ -85,7 +86,7 @@ static const int level_max_dpb_mbs[][2] = {
 
 static void remove_pps(H264ParamSets *s, int id)
 {
-    av_buffer_unref(&s->pps_list[id]);
+    ff_refstruct_unref(&s->pps_list[id]);
 }
 
 static void remove_sps(H264ParamSets *s, int id)
@@ -95,11 +96,11 @@ static void remove_sps(H264ParamSets *s, int id)
     if (s->sps_list[id]) {
         /* drop all PPS that depend on this SPS */
         for (i = 0; i < FF_ARRAY_ELEMS(s->pps_list); i++)
-            if (s->pps_list[i] && ((PPS*)s->pps_list[i]->data)->sps_id == id)
+            if (s->pps_list[i] && s->pps_list[i]->sps_id == id)
                 remove_pps(s, i);
     }
 #endif
-    av_buffer_unref(&s->sps_list[id]);
+    ff_refstruct_unref(&s->sps_list[id]);
 }
 
 static inline int decode_hrd_parameters(GetBitContext *gb, void *logctx,
@@ -113,12 +114,13 @@ static inline int decode_hrd_parameters(GetBitContext *gb, void *logctx,
         return AVERROR_INVALIDDATA;
     }
 
-    get_bits(gb, 4); /* bit_rate_scale */
+    sps->cpr_flag = 0x0;
+    sps->bit_rate_scale = get_bits(gb, 4);
     get_bits(gb, 4); /* cpb_size_scale */
     for (i = 0; i < cpb_count; i++) {
-        get_ue_golomb_long(gb); /* bit_rate_value_minus1 */
-        get_ue_golomb_long(gb); /* cpb_size_value_minus1 */
-        get_bits1(gb);          /* cbr_flag */
+        sps->bit_rate_value[i] = get_ue_golomb_long(gb) + 1; /* bit_rate_value_minus1 + 1 */
+        sps->cpb_size_value[i] = get_ue_golomb_long(gb) + 1; /* cpb_size_value_minus1 + 1 */
+        sps->cpr_flag         |= get_bits1(gb) << i;
     }
     sps->initial_cpb_removal_delay_length = get_bits(gb, 5) + 1;
     sps->cpb_removal_delay_length         = get_bits(gb, 5) + 1;
@@ -176,7 +178,7 @@ static inline int decode_vui_parameters(GetBitContext *gb, void *logctx,
         get_ue_golomb_31(gb); /* log2_max_mv_length_horizontal */
         get_ue_golomb_31(gb); /* log2_max_mv_length_vertical */
         sps->num_reorder_frames = get_ue_golomb_31(gb);
-        get_ue_golomb_31(gb); /*max_dec_frame_buffering*/
+        sps->max_dec_frame_buffering = get_ue_golomb_31(gb);
 
         if (get_bits_left(gb) < 0) {
             sps->num_reorder_frames         = 0;
@@ -197,12 +199,14 @@ static inline int decode_vui_parameters(GetBitContext *gb, void *logctx,
 }
 
 static int decode_scaling_list(GetBitContext *gb, uint8_t *factors, int size,
-                                const uint8_t *jvt_list,
-                                const uint8_t *fallback_list)
+                               const uint8_t *jvt_list, const uint8_t *fallback_list,
+                               uint16_t *mask, int pos)
 {
     int i, last = 8, next = 8;
     const uint8_t *scan = size == 16 ? ff_zigzag_scan : ff_zigzag_direct;
-    if (!get_bits1(gb)) /* matrix not written, we use the predicted one */
+    uint16_t seq_scaling_list_present_flag = get_bits1(gb);
+    *mask |= (seq_scaling_list_present_flag << pos);
+    if (!seq_scaling_list_present_flag) /* matrix not written, we use the predicted one */
         memcpy(factors, fallback_list, size * sizeof(uint8_t));
     else
         for (i = 0; i < size; i++) {
@@ -226,6 +230,7 @@ static int decode_scaling_list(GetBitContext *gb, uint8_t *factors, int size,
 /* returns non zero if the provided SPS scaling matrix has been filled */
 static int decode_scaling_matrices(GetBitContext *gb, const SPS *sps,
                                     const PPS *pps, int is_sps,
+                                    int present_flag, uint16_t *mask,
                                     uint8_t(*scaling_matrix4)[16],
                                     uint8_t(*scaling_matrix8)[64])
 {
@@ -237,21 +242,22 @@ static int decode_scaling_matrices(GetBitContext *gb, const SPS *sps,
         fallback_sps ? sps->scaling_matrix8[3] : default_scaling8[1]
     };
     int ret = 0;
-    if (get_bits1(gb)) {
-        ret |= decode_scaling_list(gb, scaling_matrix4[0], 16, default_scaling4[0], fallback[0]);        // Intra, Y
-        ret |= decode_scaling_list(gb, scaling_matrix4[1], 16, default_scaling4[0], scaling_matrix4[0]); // Intra, Cr
-        ret |= decode_scaling_list(gb, scaling_matrix4[2], 16, default_scaling4[0], scaling_matrix4[1]); // Intra, Cb
-        ret |= decode_scaling_list(gb, scaling_matrix4[3], 16, default_scaling4[1], fallback[1]);        // Inter, Y
-        ret |= decode_scaling_list(gb, scaling_matrix4[4], 16, default_scaling4[1], scaling_matrix4[3]); // Inter, Cr
-        ret |= decode_scaling_list(gb, scaling_matrix4[5], 16, default_scaling4[1], scaling_matrix4[4]); // Inter, Cb
+    *mask = 0x0;
+    if (present_flag) {
+        ret |= decode_scaling_list(gb, scaling_matrix4[0], 16, default_scaling4[0], fallback[0], mask, 0);        // Intra, Y
+        ret |= decode_scaling_list(gb, scaling_matrix4[1], 16, default_scaling4[0], scaling_matrix4[0], mask, 1); // Intra, Cr
+        ret |= decode_scaling_list(gb, scaling_matrix4[2], 16, default_scaling4[0], scaling_matrix4[1], mask, 2); // Intra, Cb
+        ret |= decode_scaling_list(gb, scaling_matrix4[3], 16, default_scaling4[1], fallback[1], mask, 3);        // Inter, Y
+        ret |= decode_scaling_list(gb, scaling_matrix4[4], 16, default_scaling4[1], scaling_matrix4[3], mask, 4); // Inter, Cr
+        ret |= decode_scaling_list(gb, scaling_matrix4[5], 16, default_scaling4[1], scaling_matrix4[4], mask, 5); // Inter, Cb
         if (is_sps || pps->transform_8x8_mode) {
-            ret |= decode_scaling_list(gb, scaling_matrix8[0], 64, default_scaling8[0], fallback[2]); // Intra, Y
-            ret |= decode_scaling_list(gb, scaling_matrix8[3], 64, default_scaling8[1], fallback[3]); // Inter, Y
+            ret |= decode_scaling_list(gb, scaling_matrix8[0], 64, default_scaling8[0], fallback[2], mask, 6); // Intra, Y
+            ret |= decode_scaling_list(gb, scaling_matrix8[3], 64, default_scaling8[1], fallback[3], mask, 7); // Inter, Y
             if (sps->chroma_format_idc == 3) {
-                ret |= decode_scaling_list(gb, scaling_matrix8[1], 64, default_scaling8[0], scaling_matrix8[0]); // Intra, Cr
-                ret |= decode_scaling_list(gb, scaling_matrix8[4], 64, default_scaling8[1], scaling_matrix8[3]); // Inter, Cr
-                ret |= decode_scaling_list(gb, scaling_matrix8[2], 64, default_scaling8[0], scaling_matrix8[1]); // Intra, Cb
-                ret |= decode_scaling_list(gb, scaling_matrix8[5], 64, default_scaling8[1], scaling_matrix8[4]); // Inter, Cb
+                ret |= decode_scaling_list(gb, scaling_matrix8[1], 64, default_scaling8[0], scaling_matrix8[0], mask,  8); // Intra, Cr
+                ret |= decode_scaling_list(gb, scaling_matrix8[4], 64, default_scaling8[1], scaling_matrix8[3], mask,  9); // Inter, Cr
+                ret |= decode_scaling_list(gb, scaling_matrix8[2], 64, default_scaling8[0], scaling_matrix8[1], mask, 10); // Intra, Cb
+                ret |= decode_scaling_list(gb, scaling_matrix8[5], 64, default_scaling8[1], scaling_matrix8[4], mask, 11); // Inter, Cb
             }
         }
         if (!ret)
@@ -266,31 +272,27 @@ void ff_h264_ps_uninit(H264ParamSets *ps)
     int i;
 
     for (i = 0; i < MAX_SPS_COUNT; i++)
-        av_buffer_unref(&ps->sps_list[i]);
+        ff_refstruct_unref(&ps->sps_list[i]);
 
     for (i = 0; i < MAX_PPS_COUNT; i++)
-        av_buffer_unref(&ps->pps_list[i]);
+        ff_refstruct_unref(&ps->pps_list[i]);
 
-    av_buffer_unref(&ps->pps_ref);
-
-    ps->pps = NULL;
+    ff_refstruct_unref(&ps->pps);
     ps->sps = NULL;
 }
 
 int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
                                      H264ParamSets *ps, int ignore_truncation)
 {
-    AVBufferRef *sps_buf;
     int profile_idc, level_idc, constraint_set_flags = 0;
     unsigned int sps_id;
     int i, log2_max_frame_num_minus4;
     SPS *sps;
     int ret;
 
-    sps_buf = av_buffer_allocz(sizeof(*sps));
-    if (!sps_buf)
+    sps = ff_refstruct_allocz(sizeof(*sps));
+    if (!sps)
         return AVERROR(ENOMEM);
-    sps = (SPS*)sps_buf->data;
 
     sps->data_size = gb->buffer_end - gb->buffer;
     if (sps->data_size > sizeof(sps->data)) {
@@ -368,7 +370,8 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
             goto fail;
         }
         sps->transform_bypass = get_bits1(gb);
-        ret = decode_scaling_matrices(gb, sps, NULL, 1,
+        ret = decode_scaling_matrices(gb, sps, NULL, 1, get_bits1(gb),
+                                      &sps->scaling_matrix_present_mask,
                                       sps->scaling_matrix4, sps->scaling_matrix8);
         if (ret < 0)
             goto fail;
@@ -519,7 +522,7 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
 
     sps->vui_parameters_present_flag = get_bits1(gb);
     if (sps->vui_parameters_present_flag) {
-        int ret = decode_vui_parameters(gb, avctx, sps);
+        ret = decode_vui_parameters(gb, avctx, sps);
         if (ret < 0)
             goto fail;
     }
@@ -574,17 +577,17 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
      * original one.
      * otherwise drop all PPSes that depend on it */
     if (ps->sps_list[sps_id] &&
-        !memcmp(ps->sps_list[sps_id]->data, sps_buf->data, sps_buf->size)) {
-        av_buffer_unref(&sps_buf);
+        !memcmp(ps->sps_list[sps_id], sps, sizeof(*sps))) {
+        ff_refstruct_unref(&sps);
     } else {
         remove_sps(ps, sps_id);
-        ps->sps_list[sps_id] = sps_buf;
+        ps->sps_list[sps_id] = sps;
     }
 
     return 0;
 
 fail:
-    av_buffer_unref(&sps_buf);
+    ff_refstruct_unref(&sps);
     return AVERROR_INVALIDDATA;
 }
 
@@ -683,19 +686,16 @@ static int more_rbsp_data_in_pps(const SPS *sps, void *logctx)
     return 1;
 }
 
-static void pps_free(void *opaque, uint8_t *data)
+static void pps_free(FFRefStructOpaque unused, void *obj)
 {
-    PPS *pps = (PPS*)data;
+    PPS *pps = obj;
 
-    av_buffer_unref(&pps->sps_ref);
-
-    av_freep(&data);
+    ff_refstruct_unref(&pps->sps);
 }
 
 int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
                                          H264ParamSets *ps, int bit_length)
 {
-    AVBufferRef *pps_buf;
     const SPS *sps;
     unsigned int pps_id = get_ue_golomb(gb);
     PPS *pps;
@@ -708,15 +708,9 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
         return AVERROR_INVALIDDATA;
     }
 
-    pps = av_mallocz(sizeof(*pps));
+    pps = ff_refstruct_alloc_ext(sizeof(*pps), 0, NULL, pps_free);
     if (!pps)
         return AVERROR(ENOMEM);
-    pps_buf = av_buffer_create((uint8_t*)pps, sizeof(*pps),
-                               pps_free, NULL, 0);
-    if (!pps_buf) {
-        av_freep(&pps);
-        return AVERROR(ENOMEM);
-    }
 
     pps->data_size = gb->buffer_end - gb->buffer;
     if (pps->data_size > sizeof(pps->data)) {
@@ -731,6 +725,7 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
     if (!(bit_length & 7) && pps->data_size < sizeof(pps->data))
         pps->data[pps->data_size++] = 0x80;
 
+    pps->pps_id = pps_id;
     pps->sps_id = get_ue_golomb_31(gb);
     if ((unsigned)pps->sps_id >= MAX_SPS_COUNT ||
         !ps->sps_list[pps->sps_id]) {
@@ -738,12 +733,7 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
         ret = AVERROR_INVALIDDATA;
         goto fail;
     }
-    pps->sps_ref = av_buffer_ref(ps->sps_list[pps->sps_id]);
-    if (!pps->sps_ref) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-    pps->sps = (const SPS*)pps->sps_ref->data;
+    pps->sps = ff_refstruct_ref_c(ps->sps_list[pps->sps_id]);
     sps      = pps->sps;
 
     if (sps->bit_depth_luma > 14) {
@@ -802,7 +792,10 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
     bits_left = bit_length - get_bits_count(gb);
     if (bits_left > 0 && more_rbsp_data_in_pps(sps, avctx)) {
         pps->transform_8x8_mode = get_bits1(gb);
+        pps->pic_scaling_matrix_present_flag = get_bits1(gb);
         ret = decode_scaling_matrices(gb, sps, pps, 0,
+                                pps->pic_scaling_matrix_present_flag,
+                                &pps->pic_scaling_matrix_present_mask,
                                 pps->scaling_matrix4, pps->scaling_matrix8);
         if (ret < 0)
             goto fail;
@@ -842,11 +835,11 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
     }
 
     remove_pps(ps, pps_id);
-    ps->pps_list[pps_id] = pps_buf;
+    ps->pps_list[pps_id] = pps;
 
     return 0;
 
 fail:
-    av_buffer_unref(&pps_buf);
+    ff_refstruct_unref(&pps);
     return ret;
 }

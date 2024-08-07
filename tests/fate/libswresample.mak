@@ -347,19 +347,19 @@ endef
 fate-swr-resample_nn-fltp-44100-8000: CMP_TARGET = 591.03
 fate-swr-resample_nn-fltp-44100-8000: SIZE_TOLERANCE = 529200 - 20486
 
-fate-swr-resample_nn-fltp-8000-44100: CMP_TARGET = 3163.32
+fate-swr-resample_nn-fltp-8000-44100: CMP_TARGET = 3156.61
 fate-swr-resample_nn-fltp-8000-44100: SIZE_TOLERANCE = 96000 - 20480
 
 fate-swr-resample_nn-s16p-44100-8000: CMP_TARGET = 590.98
 fate-swr-resample_nn-s16p-44100-8000: SIZE_TOLERANCE = 529200 - 20486
 
-fate-swr-resample_nn-s16p-8000-44100: CMP_TARGET = 3163.39
+fate-swr-resample_nn-s16p-8000-44100: CMP_TARGET = 3156.61
 fate-swr-resample_nn-s16p-8000-44100: SIZE_TOLERANCE = 96000 - 20480
 
 define ARESAMPLE_ASYNC
-FATE_SWR_RESAMPLE += fate-swr-resample_async-$(3)-$(1)-$(2)
+FATE_SWR_RESAMPLE-$(call FILTERDEMDECENCMUX, ATRIM ASETNSAMPLES ASETPTS ARESAMPLE, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-swr-resample_async-$(3)-$(1)-$(2)
 fate-swr-resample_async-$(3)-$(1)-$(2): tests/data/asynth-$(1)-1.wav
-fate-swr-resample_async-$(3)-$(1)-$(2): CMD = ffmpeg -i $(TARGET_PATH)/tests/data/asynth-$(1)-1.wav -af atrim=end_sample=10240,asetpts=PTS+random\(0\)*200-100,aresample=$(2):async=50:min_hard_comp=0.100000:first_pts=0:linear_interp=0:exact_rational=0:internal_sample_fmt=$(3),aformat=$(3),aresample=$(1):linear_interp=0:exact_rational=0:internal_sample_fmt=$(3) -f wav -c:a pcm_s16le -
+fate-swr-resample_async-$(3)-$(1)-$(2): CMD = ffmpeg -i $(TARGET_PATH)/tests/data/asynth-$(1)-1.wav -af atrim=end_sample=10240,asetnsamples=2048,asetpts=PTS+random\(0\)*200-100,aresample=$(2):async=50:min_hard_comp=0.100000:first_pts=0:linear_interp=0:exact_rational=0:internal_sample_fmt=$(3),aformat=$(3),aresample=$(1):linear_interp=0:exact_rational=0:internal_sample_fmt=$(3) -f wav -c:a pcm_s16le -
 
 fate-swr-resample_async-$(3)-$(1)-$(2): CMP = stddev
 fate-swr-resample_async-$(3)-$(1)-$(2): CMP_UNIT = $(5)
@@ -367,17 +367,17 @@ fate-swr-resample_async-$(3)-$(1)-$(2): FUZZ = 0.1
 fate-swr-resample_async-$(3)-$(1)-$(2): REF = tests/data/asynth-$(1)-1.wav
 endef
 
-fate-swr-resample_async-fltp-44100-8000: CMP_TARGET = 4020.60
-fate-swr-resample_async-fltp-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_async-fltp-44100-8000: CMP_TARGET = 3802.05
+fate-swr-resample_async-fltp-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_async-fltp-8000-44100: CMP_TARGET = 11186.66
-fate-swr-resample_async-fltp-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_async-fltp-8000-44100: CMP_TARGET = 10451.40
+fate-swr-resample_async-fltp-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_async-s16p-44100-8000: CMP_TARGET = 4020.71
-fate-swr-resample_async-s16p-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_async-s16p-44100-8000: CMP_TARGET = 3802.16
+fate-swr-resample_async-s16p-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_async-s16p-8000-44100: CMP_TARGET = 11186.94
-fate-swr-resample_async-s16p-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_async-s16p-8000-44100: CMP_TARGET = 10451.66
+fate-swr-resample_async-s16p-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
 define ARESAMPLE_EXACT
 FATE_SWR_RESAMPLE += fate-swr-resample_exact-$(3)-$(1)-$(2)
@@ -631,9 +631,9 @@ fate-swr-resample_exact-s32p-96000-8000: CMP_TARGET = 58.54
 fate-swr-resample_exact-s32p-96000-8000: SIZE_TOLERANCE = 1152000 - 20496
 
 define ARESAMPLE_EXACT_ASYNC
-FATE_SWR_RESAMPLE += fate-swr-resample_exact_async-$(3)-$(1)-$(2)
+FATE_SWR_RESAMPLE-$(call FILTERDEMDECENCMUX, ATRIM ASETNSAMPLES ASETPTS ARESAMPLE, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-swr-resample_exact_async-$(3)-$(1)-$(2)
 fate-swr-resample_exact_async-$(3)-$(1)-$(2): tests/data/asynth-$(1)-1.wav
-fate-swr-resample_exact_async-$(3)-$(1)-$(2): CMD = ffmpeg -i $(TARGET_PATH)/tests/data/asynth-$(1)-1.wav -af atrim=end_sample=10240,asetpts=PTS+random\(0\)*200-100,aresample=$(2):async=50:min_hard_comp=0.100000:first_pts=0:internal_sample_fmt=$(3):exact_rational=on:linear_interp=0,aformat=$(3),aresample=$(1):internal_sample_fmt=$(3):exact_rational=on:linear_interp=0 -f wav -c:a pcm_s16le -
+fate-swr-resample_exact_async-$(3)-$(1)-$(2): CMD = ffmpeg -i $(TARGET_PATH)/tests/data/asynth-$(1)-1.wav -af atrim=end_sample=10240,asetnsamples=2048,asetpts=PTS+random\(0\)*200-100,aresample=$(2):async=50:min_hard_comp=0.100000:first_pts=0:internal_sample_fmt=$(3):exact_rational=on:linear_interp=0,aformat=$(3),aresample=$(1):internal_sample_fmt=$(3):exact_rational=on:linear_interp=0 -f wav -c:a pcm_s16le -
 
 fate-swr-resample_exact_async-$(3)-$(1)-$(2): CMP = stddev
 fate-swr-resample_exact_async-$(3)-$(1)-$(2): CMP_UNIT = $(5)
@@ -641,77 +641,77 @@ fate-swr-resample_exact_async-$(3)-$(1)-$(2): FUZZ = 0.1
 fate-swr-resample_exact_async-$(3)-$(1)-$(2): REF = tests/data/asynth-$(1)-1.wav
 endef
 
-fate-swr-resample_exact_async-dblp-44100-48000: CMP_TARGET = 7791.50
-fate-swr-resample_exact_async-dblp-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_async-dblp-44100-48000: CMP_TARGET = 5947.75
+fate-swr-resample_exact_async-dblp-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_async-dblp-44100-8000: CMP_TARGET = 4022.87
-fate-swr-resample_exact_async-dblp-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_async-dblp-44100-8000: CMP_TARGET = 3804.22
+fate-swr-resample_exact_async-dblp-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_async-dblp-48000-44100: CMP_TARGET = 1923.97
-fate-swr-resample_exact_async-dblp-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_async-dblp-48000-44100: CMP_TARGET = 3056.62
+fate-swr-resample_exact_async-dblp-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_async-dblp-48000-8000: CMP_TARGET = 2592.00
-fate-swr-resample_exact_async-dblp-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_async-dblp-48000-8000: CMP_TARGET = 3408.30
+fate-swr-resample_exact_async-dblp-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_async-dblp-8000-44100: CMP_TARGET = 11187.24
-fate-swr-resample_exact_async-dblp-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-dblp-8000-44100: CMP_TARGET = 10450.99
+fate-swr-resample_exact_async-dblp-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_async-dblp-8000-48000: CMP_TARGET = 11326.80
-fate-swr-resample_exact_async-dblp-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-dblp-8000-48000: CMP_TARGET = 10371.47
+fate-swr-resample_exact_async-dblp-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_async-fltp-44100-48000: CMP_TARGET = 7791.50
-fate-swr-resample_exact_async-fltp-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_async-fltp-44100-48000: CMP_TARGET = 5947.75
+fate-swr-resample_exact_async-fltp-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_async-fltp-44100-8000: CMP_TARGET = 4022.87
-fate-swr-resample_exact_async-fltp-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_async-fltp-44100-8000: CMP_TARGET = 3804.22
+fate-swr-resample_exact_async-fltp-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_async-fltp-48000-44100: CMP_TARGET = 1923.97
-fate-swr-resample_exact_async-fltp-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_async-fltp-48000-44100: CMP_TARGET = 3056.62
+fate-swr-resample_exact_async-fltp-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_async-fltp-48000-8000: CMP_TARGET = 2592.00
-fate-swr-resample_exact_async-fltp-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_async-fltp-48000-8000: CMP_TARGET = 3408.30
+fate-swr-resample_exact_async-fltp-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_async-fltp-8000-44100: CMP_TARGET = 11187.24
-fate-swr-resample_exact_async-fltp-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-fltp-8000-44100: CMP_TARGET = 10450.99
+fate-swr-resample_exact_async-fltp-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_async-fltp-8000-48000: CMP_TARGET = 11326.80
-fate-swr-resample_exact_async-fltp-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-fltp-8000-48000: CMP_TARGET = 10371.47
+fate-swr-resample_exact_async-fltp-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_async-s16p-44100-48000: CMP_TARGET = 7791.50
-fate-swr-resample_exact_async-s16p-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_async-s16p-44100-48000: CMP_TARGET = 5947.75
+fate-swr-resample_exact_async-s16p-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_async-s16p-44100-8000: CMP_TARGET = 4023.05
-fate-swr-resample_exact_async-s16p-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_async-s16p-44100-8000: CMP_TARGET = 3804.37
+fate-swr-resample_exact_async-s16p-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_async-s16p-48000-44100: CMP_TARGET = 1923.96
-fate-swr-resample_exact_async-s16p-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_async-s16p-48000-44100: CMP_TARGET = 3056.62
+fate-swr-resample_exact_async-s16p-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_async-s16p-48000-8000: CMP_TARGET = 2592.15
-fate-swr-resample_exact_async-s16p-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_async-s16p-48000-8000: CMP_TARGET = 3408.50
+fate-swr-resample_exact_async-s16p-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_async-s16p-8000-44100: CMP_TARGET = 11187.58
-fate-swr-resample_exact_async-s16p-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-s16p-8000-44100: CMP_TARGET = 10451.23
+fate-swr-resample_exact_async-s16p-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_async-s16p-8000-48000: CMP_TARGET = 11327.48
-fate-swr-resample_exact_async-s16p-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-s16p-8000-48000: CMP_TARGET = 10372.00
+fate-swr-resample_exact_async-s16p-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_async-s32p-44100-48000: CMP_TARGET = 7791.50
-fate-swr-resample_exact_async-s32p-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_async-s32p-44100-48000: CMP_TARGET = 5947.75
+fate-swr-resample_exact_async-s32p-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_async-s32p-44100-8000: CMP_TARGET = 4022.87
-fate-swr-resample_exact_async-s32p-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_async-s32p-44100-8000: CMP_TARGET = 3804.22
+fate-swr-resample_exact_async-s32p-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_async-s32p-48000-44100: CMP_TARGET = 1923.96
-fate-swr-resample_exact_async-s32p-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_async-s32p-48000-44100: CMP_TARGET = 3056.62
+fate-swr-resample_exact_async-s32p-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_async-s32p-48000-8000: CMP_TARGET = 2592.00
-fate-swr-resample_exact_async-s32p-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_async-s32p-48000-8000: CMP_TARGET = 3408.30
+fate-swr-resample_exact_async-s32p-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_async-s32p-8000-44100: CMP_TARGET = 11187.24
-fate-swr-resample_exact_async-s32p-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-s32p-8000-44100: CMP_TARGET = 10450.96
+fate-swr-resample_exact_async-s32p-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_async-s32p-8000-48000: CMP_TARGET = 11326.79
-fate-swr-resample_exact_async-s32p-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_async-s32p-8000-48000: CMP_TARGET = 10371.47
+fate-swr-resample_exact_async-s32p-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
 define ARESAMPLE_EXACT_LIN
 FATE_SWR_RESAMPLE += fate-swr-resample_exact_lin-$(3)-$(1)-$(2)
@@ -965,9 +965,9 @@ fate-swr-resample_exact_lin-s32p-96000-8000: CMP_TARGET = 58.54
 fate-swr-resample_exact_lin-s32p-96000-8000: SIZE_TOLERANCE = 1152000 - 20496
 
 define ARESAMPLE_EXACT_LIN_ASYNC
-FATE_SWR_RESAMPLE += fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2)
+FATE_SWR_RESAMPLE-$(call FILTERDEMDECENCMUX, ATRIM ASETNSAMPLES ASETPTS ARESAMPLE, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2)
 fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2): tests/data/asynth-$(1)-1.wav
-fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2): CMD = ffmpeg -i $(TARGET_PATH)/tests/data/asynth-$(1)-1.wav -af atrim=end_sample=10240,asetpts=PTS+random\(0\)*200-100,aresample=$(2):async=50:min_hard_comp=0.100000:first_pts=0:internal_sample_fmt=$(3):exact_rational=on:linear_interp=on,aformat=$(3),aresample=$(1):internal_sample_fmt=$(3):exact_rational=on:linear_interp=on -f wav -c:a pcm_s16le -
+fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2): CMD = ffmpeg -i $(TARGET_PATH)/tests/data/asynth-$(1)-1.wav -af atrim=end_sample=10240,asetnsamples=2048,asetpts=PTS+random\(0\)*200-100,aresample=$(2):async=50:min_hard_comp=0.100000:first_pts=0:internal_sample_fmt=$(3):exact_rational=on:linear_interp=on,aformat=$(3),aresample=$(1):internal_sample_fmt=$(3):exact_rational=on:linear_interp=on -f wav -c:a pcm_s16le -
 
 fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2): CMP = stddev
 fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2): CMP_UNIT = $(5)
@@ -975,77 +975,77 @@ fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2): FUZZ = 0.1
 fate-swr-resample_exact_lin_async-$(3)-$(1)-$(2): REF = tests/data/asynth-$(1)-1.wav
 endef
 
-fate-swr-resample_exact_lin_async-dblp-44100-48000: CMP_TARGET = 7791.72
-fate-swr-resample_exact_lin_async-dblp-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_lin_async-dblp-44100-48000: CMP_TARGET = 5948.03
+fate-swr-resample_exact_lin_async-dblp-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_lin_async-dblp-44100-8000: CMP_TARGET = 4023.01
-fate-swr-resample_exact_lin_async-dblp-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_lin_async-dblp-44100-8000: CMP_TARGET = 3804.55
+fate-swr-resample_exact_lin_async-dblp-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_lin_async-dblp-48000-44100: CMP_TARGET = 1923.79
-fate-swr-resample_exact_lin_async-dblp-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_lin_async-dblp-48000-44100: CMP_TARGET = 3056.76
+fate-swr-resample_exact_lin_async-dblp-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_lin_async-dblp-48000-8000: CMP_TARGET = 2591.72
-fate-swr-resample_exact_lin_async-dblp-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_lin_async-dblp-48000-8000: CMP_TARGET = 3408.48
+fate-swr-resample_exact_lin_async-dblp-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_lin_async-dblp-8000-44100: CMP_TARGET = 11187.24
-fate-swr-resample_exact_lin_async-dblp-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-dblp-8000-44100: CMP_TARGET = 10451.07
+fate-swr-resample_exact_lin_async-dblp-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_lin_async-dblp-8000-48000: CMP_TARGET = 11326.80
-fate-swr-resample_exact_lin_async-dblp-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-dblp-8000-48000: CMP_TARGET = 10371.52
+fate-swr-resample_exact_lin_async-dblp-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_lin_async-fltp-44100-48000: CMP_TARGET = 7791.72
-fate-swr-resample_exact_lin_async-fltp-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_lin_async-fltp-44100-48000: CMP_TARGET = 5948.03
+fate-swr-resample_exact_lin_async-fltp-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_lin_async-fltp-44100-8000: CMP_TARGET = 4023.01
-fate-swr-resample_exact_lin_async-fltp-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_lin_async-fltp-44100-8000: CMP_TARGET = 3804.55
+fate-swr-resample_exact_lin_async-fltp-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_lin_async-fltp-48000-44100: CMP_TARGET = 1923.79
-fate-swr-resample_exact_lin_async-fltp-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_lin_async-fltp-48000-44100: CMP_TARGET = 3056.76
+fate-swr-resample_exact_lin_async-fltp-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_lin_async-fltp-48000-8000: CMP_TARGET = 2591.72
-fate-swr-resample_exact_lin_async-fltp-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_lin_async-fltp-48000-8000: CMP_TARGET = 3408.48
+fate-swr-resample_exact_lin_async-fltp-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_lin_async-fltp-8000-44100: CMP_TARGET = 11187.25
-fate-swr-resample_exact_lin_async-fltp-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-fltp-8000-44100: CMP_TARGET = 10451.07
+fate-swr-resample_exact_lin_async-fltp-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_lin_async-fltp-8000-48000: CMP_TARGET = 11326.80
-fate-swr-resample_exact_lin_async-fltp-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-fltp-8000-48000: CMP_TARGET = 10371.52
+fate-swr-resample_exact_lin_async-fltp-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_lin_async-s16p-44100-48000: CMP_TARGET = 7791.72
-fate-swr-resample_exact_lin_async-s16p-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_lin_async-s16p-44100-48000: CMP_TARGET = 5948.03
+fate-swr-resample_exact_lin_async-s16p-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_lin_async-s16p-44100-8000: CMP_TARGET = 4023.19
-fate-swr-resample_exact_lin_async-s16p-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_lin_async-s16p-44100-8000: CMP_TARGET = 3804.70
+fate-swr-resample_exact_lin_async-s16p-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_lin_async-s16p-48000-44100: CMP_TARGET = 1923.79
-fate-swr-resample_exact_lin_async-s16p-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_lin_async-s16p-48000-44100: CMP_TARGET = 3056.76
+fate-swr-resample_exact_lin_async-s16p-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_lin_async-s16p-48000-8000: CMP_TARGET = 2591.85
-fate-swr-resample_exact_lin_async-s16p-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_lin_async-s16p-48000-8000: CMP_TARGET = 3408.68
+fate-swr-resample_exact_lin_async-s16p-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_lin_async-s16p-8000-44100: CMP_TARGET = 11187.57
-fate-swr-resample_exact_lin_async-s16p-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-s16p-8000-44100: CMP_TARGET = 10451.31
+fate-swr-resample_exact_lin_async-s16p-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_lin_async-s16p-8000-48000: CMP_TARGET = 11327.48
-fate-swr-resample_exact_lin_async-s16p-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-s16p-8000-48000: CMP_TARGET = 10372.05
+fate-swr-resample_exact_lin_async-s16p-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_lin_async-s32p-44100-48000: CMP_TARGET = 7791.72
-fate-swr-resample_exact_lin_async-s32p-44100-48000: SIZE_TOLERANCE = 529200 - 20300
+fate-swr-resample_exact_lin_async-s32p-44100-48000: CMP_TARGET = 5948.03
+fate-swr-resample_exact_lin_async-s32p-44100-48000: SIZE_TOLERANCE = 529200 - 20394
 
-fate-swr-resample_exact_lin_async-s32p-44100-8000: CMP_TARGET = 4023.02
-fate-swr-resample_exact_lin_async-s32p-44100-8000: SIZE_TOLERANCE = 529200 - 20310
+fate-swr-resample_exact_lin_async-s32p-44100-8000: CMP_TARGET = 3804.54
+fate-swr-resample_exact_lin_async-s32p-44100-8000: SIZE_TOLERANCE = 529200 - 20386
 
-fate-swr-resample_exact_lin_async-s32p-48000-44100: CMP_TARGET = 1923.77
-fate-swr-resample_exact_lin_async-s32p-48000-44100: SIZE_TOLERANCE = 576000 - 20298
+fate-swr-resample_exact_lin_async-s32p-48000-44100: CMP_TARGET = 3056.76
+fate-swr-resample_exact_lin_async-s32p-48000-44100: SIZE_TOLERANCE = 576000 - 20392
 
-fate-swr-resample_exact_lin_async-s32p-48000-8000: CMP_TARGET = 2591.71
-fate-swr-resample_exact_lin_async-s32p-48000-8000: SIZE_TOLERANCE = 576000 - 20304
+fate-swr-resample_exact_lin_async-s32p-48000-8000: CMP_TARGET = 3408.47
+fate-swr-resample_exact_lin_async-s32p-48000-8000: SIZE_TOLERANCE = 576000 - 20388
 
-fate-swr-resample_exact_lin_async-s32p-8000-44100: CMP_TARGET = 11187.25
-fate-swr-resample_exact_lin_async-s32p-8000-44100: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-s32p-8000-44100: CMP_TARGET = 10451.04
+fate-swr-resample_exact_lin_async-s32p-8000-44100: SIZE_TOLERANCE = 96000 - 20350
 
-fate-swr-resample_exact_lin_async-s32p-8000-48000: CMP_TARGET = 11326.81
-fate-swr-resample_exact_lin_async-s32p-8000-48000: SIZE_TOLERANCE = 96000 - 20344
+fate-swr-resample_exact_lin_async-s32p-8000-48000: CMP_TARGET = 10371.53
+fate-swr-resample_exact_lin_async-s32p-8000-48000: SIZE_TOLERANCE = 96000 - 20350
 
 $(call CROSS_TEST,$(SAMPLERATES),ARESAMPLE,s16p,s16le,s16)
 $(call CROSS_TEST,$(SAMPLERATES),ARESAMPLE,s32p,s32le,s16)
@@ -1082,11 +1082,14 @@ $(call CROSS_TEST,$(SAMPLERATES_LITE),ARESAMPLE_EXACT_LIN_ASYNC,s32p,s32le,s16)
 $(call CROSS_TEST,$(SAMPLERATES_LITE),ARESAMPLE_EXACT_LIN_ASYNC,fltp,f32le,s16)
 $(call CROSS_TEST,$(SAMPLERATES_LITE),ARESAMPLE_EXACT_LIN_ASYNC,dblp,f64le,s16)
 
+FATE_SWR_RESAMPLE-$(call FILTERDEMDEC, ARESAMPLE ASETPTS ATRIM SINE, , PCM_S16LE, LAVFI_INDEV) += fate-swr-async-firstpts
+fate-swr-async-firstpts: CMD = framecrc -auto_conversion_filters -copyts -f lavfi -i "sine=r=1000:samples_per_frame=100,asetpts=PTS+S+S*floor(ld(1)/4)+st(1\,ld(1)+1)*0,atrim=end=2" -filter:a aresample=async=300:first_pts=0
+
 FATE_SWR_RESAMPLE-$(call FILTERDEMDECENCMUX, ARESAMPLE, WAV, PCM_S16LE, PCM_S16LE, WAV) += $(FATE_SWR_RESAMPLE)
 fate-swr-resample: $(FATE_SWR_RESAMPLE-yes)
 FATE_SWR += $(FATE_SWR_RESAMPLE-yes)
 
-FATE_SWR_AUDIOCONVERT-$(call FILTERDEMDECENCMUX, AFORMAT AEVAL, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-swr-audioconvert
+FATE_SWR_AUDIOCONVERT-$(call FILTERDEMDECENCMUX, ARESAMPLE AFORMAT AEVAL, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-swr-audioconvert
 fate-swr-audioconvert: tests/data/asynth-44100-1.wav
 fate-swr-audioconvert: REF = tests/data/asynth-44100-1.wav
 fate-swr-audioconvert: CMD = ffmpeg -i $(TARGET_PATH)/tests/data/asynth-44100-1.wav -af "aresample,aformat=fltp,aresample,aeval=val(0)+(random(0)-0.5)/33000,aresample,aformat=fltp,aresample" -f wav -c:a pcm_s16le -

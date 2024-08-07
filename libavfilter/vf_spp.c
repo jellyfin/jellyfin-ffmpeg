@@ -31,6 +31,7 @@
  * ported by Clément Bœsch for FFmpeg.
  */
 
+#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
@@ -38,6 +39,7 @@
 #include "internal.h"
 #include "qp_table.h"
 #include "vf_spp.h"
+#include "video.h"
 
 enum mode {
     MODE_HARD,
@@ -64,9 +66,9 @@ static void *child_next(void *obj, void *prev)
 static const AVOption spp_options[] = {
     { "quality", "set quality", OFFSET(log2_count), AV_OPT_TYPE_INT, {.i64 = 3}, 0, MAX_LEVEL, TFLAGS },
     { "qp", "force a constant quantizer parameter", OFFSET(qp), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 63, FLAGS },
-    { "mode", "set thresholding mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64 = MODE_HARD}, 0, NB_MODES - 1, FLAGS, "mode" },
-        { "hard", "hard thresholding", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_HARD}, INT_MIN, INT_MAX, FLAGS, "mode" },
-        { "soft", "soft thresholding", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_SOFT}, INT_MIN, INT_MAX, FLAGS, "mode" },
+    { "mode", "set thresholding mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64 = MODE_HARD}, 0, NB_MODES - 1, FLAGS, .unit = "mode" },
+        { "hard", "hard thresholding", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_HARD}, INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
+        { "soft", "soft thresholding", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_SOFT}, INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
     { "use_bframe_qp", "use B-frames' QP", OFFSET(use_bframe_qp), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, FLAGS },
     { NULL }
 };
@@ -484,13 +486,6 @@ static const AVFilterPad spp_inputs[] = {
     },
 };
 
-static const AVFilterPad spp_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_spp = {
     .name            = "spp",
     .description     = NULL_IF_CONFIG_SMALL("Apply a simple post processing filter."),
@@ -498,7 +493,7 @@ const AVFilter ff_vf_spp = {
     .preinit         = preinit,
     .uninit          = uninit,
     FILTER_INPUTS(spp_inputs),
-    FILTER_OUTPUTS(spp_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .process_command = process_command,
     .priv_class      = &spp_class,

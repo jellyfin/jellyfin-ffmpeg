@@ -36,6 +36,7 @@ const AVCodecTag ff_mp4_obj_type[] = {
     { AV_CODEC_ID_MPEG4       , 0x20 },
     { AV_CODEC_ID_H264        , 0x21 },
     { AV_CODEC_ID_HEVC        , 0x23 },
+    { AV_CODEC_ID_VVC         , 0x33 },
     { AV_CODEC_ID_AAC         , 0x40 },
     { AV_CODEC_ID_MP4ALS      , 0x40 }, /* 14496-3 ALS */
     { AV_CODEC_ID_MPEG2VIDEO  , 0x61 }, /* MPEG-2 Main */
@@ -358,6 +359,7 @@ int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext 
                                                 st->codecpar->extradata_size, 1, fc);
             if (ret < 0)
                 return ret;
+            av_channel_layout_uninit(&st->codecpar->ch_layout);
             st->codecpar->ch_layout.order = AV_CHANNEL_ORDER_UNSPEC;
             st->codecpar->ch_layout.nb_channels = cfg.channels;
             if (cfg.object_type == 29 && cfg.sampling_index < 3) // old mp3on4

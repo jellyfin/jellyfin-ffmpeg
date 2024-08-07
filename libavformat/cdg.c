@@ -20,6 +20,7 @@
  */
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 #define CDG_PACKET_SIZE    24
@@ -45,7 +46,7 @@ static int read_probe(const AVProbeData *p)
 static int read_header(AVFormatContext *s)
 {
     AVStream *vst;
-    int ret;
+    int64_t ret;
 
     vst = avformat_new_stream(s, NULL);
     if (!vst)
@@ -83,12 +84,12 @@ static int read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-const AVInputFormat ff_cdg_demuxer = {
-    .name           = "cdg",
-    .long_name      = NULL_IF_CONFIG_SMALL("CD Graphics"),
+const FFInputFormat ff_cdg_demuxer = {
+    .p.name         = "cdg",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("CD Graphics"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.extensions   = "cdg",
     .read_probe     = read_probe,
     .read_header    = read_header,
     .read_packet    = read_packet,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .extensions     = "cdg",
 };

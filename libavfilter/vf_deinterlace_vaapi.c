@@ -23,7 +23,6 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "vaapi_vpp.h"
@@ -252,7 +251,7 @@ static int deint_vaapi_filter_frame(AVFilterLink *inlink, AVFrame *input_frame)
         if (err < 0)
             goto fail;
 
-        if (!ctx->auto_enable || input_frame->interlaced_frame) {
+        if (!ctx->auto_enable || (input_frame->flags & AV_FRAME_FLAG_INTERLACED)) {
             vas = vaMapBuffer(vpp_ctx->hwctx->display, vpp_ctx->filter_buffers[0],
                               &filter_params_addr);
             if (vas != VA_STATUS_SUCCESS) {
@@ -263,7 +262,7 @@ static int deint_vaapi_filter_frame(AVFilterLink *inlink, AVFrame *input_frame)
             }
             filter_params = filter_params_addr;
             filter_params->flags = 0;
-            if (input_frame->top_field_first) {
+            if (input_frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) {
                 filter_params->flags |= field ? VA_DEINTERLACING_BOTTOM_FIELD : 0;
             } else {
                 filter_params->flags |= VA_DEINTERLACING_BOTTOM_FIELD_FIRST;
@@ -303,7 +302,12 @@ static int deint_vaapi_filter_frame(AVFilterLink *inlink, AVFrame *input_frame)
                 output_frame->pts = input_frame->pts +
                     ctx->frame_queue[current_frame_index + 1]->pts;
         }
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         output_frame->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        output_frame->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
         av_log(avctx, AV_LOG_DEBUG, "Filter output: %s, %ux%u (%"PRId64").\n",
                av_get_pix_fmt_name(output_frame->format),
@@ -361,24 +365,24 @@ static av_cold int deint_vaapi_init(AVFilterContext *avctx)
 static const AVOption deint_vaapi_options[] = {
     { "mode", "Deinterlacing mode",
       OFFSET(mode), AV_OPT_TYPE_INT, { .i64 = VAProcDeinterlacingNone },
-      VAProcDeinterlacingNone, VAProcDeinterlacingCount - 1, FLAGS, "mode" },
+      VAProcDeinterlacingNone, VAProcDeinterlacingCount - 1, FLAGS, .unit = "mode" },
     { "default", "Use the highest-numbered (and therefore possibly most advanced) deinterlacing algorithm",
-      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingNone }, 0, 0, FLAGS, "mode" },
+      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingNone }, 0, 0, FLAGS, .unit = "mode" },
     { "bob", "Use the bob deinterlacing algorithm",
-      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingBob }, 0, 0, FLAGS, "mode" },
+      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingBob }, 0, 0, FLAGS, .unit = "mode" },
     { "weave", "Use the weave deinterlacing algorithm",
-      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingWeave }, 0, 0, FLAGS,  "mode" },
+      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingWeave }, 0, 0, FLAGS,  .unit = "mode" },
     { "motion_adaptive", "Use the motion adaptive deinterlacing algorithm",
-      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingMotionAdaptive }, 0, 0, FLAGS, "mode" },
+      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingMotionAdaptive }, 0, 0, FLAGS, .unit = "mode" },
     { "motion_compensated", "Use the motion compensated deinterlacing algorithm",
-      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingMotionCompensated }, 0, 0, FLAGS, "mode" },
+      0, AV_OPT_TYPE_CONST, { .i64 = VAProcDeinterlacingMotionCompensated }, 0, 0, FLAGS, .unit = "mode" },
 
     { "rate", "Generate output at frame rate or field rate",
-      OFFSET(field_rate), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 2, FLAGS, "rate" },
+      OFFSET(field_rate), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 2, FLAGS, .unit = "rate" },
     { "frame", "Output at frame rate (one frame of output for each field-pair)",
-      0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, "rate" },
+      0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, .unit = "rate" },
     { "field", "Output at field rate (one frame of output for each field)",
-      0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, "rate" },
+      0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, .unit = "rate" },
 
     { "auto", "Only deinterlace fields, passing frames through unchanged",
       OFFSET(auto_enable), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS },

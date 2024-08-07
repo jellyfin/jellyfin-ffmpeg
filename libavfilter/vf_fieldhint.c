@@ -25,6 +25,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -56,10 +57,10 @@ typedef struct FieldHintContext {
 
 static const AVOption fieldhint_options[] = {
     { "hint", "set hint file", OFFSET(hint_file_str), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
-    { "mode", "set hint mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, NB_HINTS-1, FLAGS, "mode" },
-    {   "absolute", 0, 0, AV_OPT_TYPE_CONST, {.i64=ABSOLUTE_HINT}, 0, 0, FLAGS, "mode" },
-    {   "relative", 0, 0, AV_OPT_TYPE_CONST, {.i64=RELATIVE_HINT}, 0, 0, FLAGS, "mode" },
-    {   "pattern",  0, 0, AV_OPT_TYPE_CONST, {.i64=PATTERN_HINT},  0, 0, FLAGS, "mode" },
+    { "mode", "set hint mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, NB_HINTS-1, FLAGS, .unit = "mode" },
+    {   "absolute", 0, 0, AV_OPT_TYPE_CONST, {.i64=ABSOLUTE_HINT}, 0, 0, FLAGS, .unit = "mode" },
+    {   "relative", 0, 0, AV_OPT_TYPE_CONST, {.i64=RELATIVE_HINT}, 0, 0, FLAGS, .unit = "mode" },
+    {   "pattern",  0, 0, AV_OPT_TYPE_CONST, {.i64=PATTERN_HINT},  0, 0, FLAGS, .unit = "mode" },
     { NULL }
 };
 
@@ -217,10 +218,20 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     switch (hint) {
     case '+':
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         out->interlaced_frame = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        out->flags |= AV_FRAME_FLAG_INTERLACED;
         break;
     case '-':
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         out->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        out->flags &= ~AV_FRAME_FLAG_INTERLACED;
         break;
     case '=':
         break;

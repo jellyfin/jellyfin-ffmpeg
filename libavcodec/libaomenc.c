@@ -451,16 +451,16 @@ static int set_pix_fmt(AVCodecContext *avctx, aom_codec_caps_t codec_caps,
         enccfg->monochrome = 1;
         /* Fall-through */
     case AV_PIX_FMT_YUV420P:
-        enccfg->g_profile = FF_PROFILE_AV1_MAIN;
+        enccfg->g_profile = AV_PROFILE_AV1_MAIN;
         *img_fmt = AOM_IMG_FMT_I420;
         return 0;
     case AV_PIX_FMT_YUV422P:
-        enccfg->g_profile = FF_PROFILE_AV1_PROFESSIONAL;
+        enccfg->g_profile = AV_PROFILE_AV1_PROFESSIONAL;
         *img_fmt = AOM_IMG_FMT_I422;
         return 0;
     case AV_PIX_FMT_YUV444P:
     case AV_PIX_FMT_GBRP:
-        enccfg->g_profile = FF_PROFILE_AV1_HIGH;
+        enccfg->g_profile = AV_PROFILE_AV1_HIGH;
         *img_fmt = AOM_IMG_FMT_I444;
         return 0;
     case AV_PIX_FMT_GRAY10:
@@ -471,7 +471,7 @@ static int set_pix_fmt(AVCodecContext *avctx, aom_codec_caps_t codec_caps,
     case AV_PIX_FMT_YUV420P12:
         if (codec_caps & AOM_CODEC_CAP_HIGHBITDEPTH) {
             enccfg->g_profile =
-                enccfg->g_bit_depth == 10 ? FF_PROFILE_AV1_MAIN : FF_PROFILE_AV1_PROFESSIONAL;
+                enccfg->g_bit_depth == 10 ? AV_PROFILE_AV1_MAIN : AV_PROFILE_AV1_PROFESSIONAL;
             *img_fmt = AOM_IMG_FMT_I42016;
             *flags |= AOM_CODEC_USE_HIGHBITDEPTH;
             return 0;
@@ -480,7 +480,7 @@ static int set_pix_fmt(AVCodecContext *avctx, aom_codec_caps_t codec_caps,
     case AV_PIX_FMT_YUV422P10:
     case AV_PIX_FMT_YUV422P12:
         if (codec_caps & AOM_CODEC_CAP_HIGHBITDEPTH) {
-            enccfg->g_profile = FF_PROFILE_AV1_PROFESSIONAL;
+            enccfg->g_profile = AV_PROFILE_AV1_PROFESSIONAL;
             *img_fmt = AOM_IMG_FMT_I42216;
             *flags |= AOM_CODEC_USE_HIGHBITDEPTH;
             return 0;
@@ -492,7 +492,7 @@ static int set_pix_fmt(AVCodecContext *avctx, aom_codec_caps_t codec_caps,
     case AV_PIX_FMT_GBRP12:
         if (codec_caps & AOM_CODEC_CAP_HIGHBITDEPTH) {
             enccfg->g_profile =
-                enccfg->g_bit_depth == 10 ? FF_PROFILE_AV1_HIGH : FF_PROFILE_AV1_PROFESSIONAL;
+                enccfg->g_bit_depth == 10 ? AV_PROFILE_AV1_HIGH : AV_PROFILE_AV1_PROFESSIONAL;
             *img_fmt = AOM_IMG_FMT_I44416;
             *flags |= AOM_CODEC_USE_HIGHBITDEPTH;
             return 0;
@@ -842,7 +842,7 @@ static av_cold int aom_init(AVCodecContext *avctx,
     /* 0-3: For non-zero values the encoder increasingly optimizes for reduced
      * complexity playback on low powered devices at the expense of encode
      * quality. */
-    if (avctx->profile != FF_PROFILE_UNKNOWN)
+    if (avctx->profile != AV_PROFILE_UNKNOWN)
         enccfg.g_profile = avctx->profile;
 
     enccfg.g_error_resilient = ctx->error_resilient;
@@ -1018,7 +1018,7 @@ static av_cold int aom_init(AVCodecContext *avctx,
     if (codec_caps & AOM_CODEC_CAP_HIGHBITDEPTH)
         ctx->rawimg.bit_depth = enccfg.g_bit_depth;
 
-    cpb_props = ff_add_cpb_side_data(avctx);
+    cpb_props = ff_encode_add_cpb_side_data(avctx);
     if (!cpb_props)
         return AVERROR(ENOMEM);
 
@@ -1295,8 +1295,19 @@ static int aom_encode(AVCodecContext *avctx, AVPacket *pkt,
         if (frame->duration > ULONG_MAX) {
             av_log(avctx, AV_LOG_WARNING,
                    "Frame duration too large: %"PRId64"\n", frame->duration);
-        } else
-            duration = frame->duration ? frame->duration : avctx->ticks_per_frame;
+        } else if (frame->duration)
+            duration = frame->duration;
+        else if (avctx->framerate.num > 0 && avctx->framerate.den > 0)
+            duration = av_rescale_q(1, av_inv_q(avctx->framerate), avctx->time_base);
+        else {
+FF_DISABLE_DEPRECATION_WARNINGS
+            duration =
+#if FF_API_TICKS_PER_FRAME
+                avctx->ticks_per_frame ? avctx->ticks_per_frame :
+#endif
+                1;
+FF_ENABLE_DEPRECATION_WARNINGS
+        }
 
         switch (frame->color_range) {
         case AVCOL_RANGE_MPEG:
@@ -1456,13 +1467,13 @@ static const AVOption options[] = {
                          "alternate reference frame selection",    OFFSET(lag_in_frames),   AV_OPT_TYPE_INT, {.i64 = -1},      -1,      INT_MAX, VE},
     { "arnr-max-frames", "altref noise reduction max frame count", OFFSET(arnr_max_frames), AV_OPT_TYPE_INT, {.i64 = -1},      -1,      INT_MAX, VE},
     { "arnr-strength",   "altref noise reduction filter strength", OFFSET(arnr_strength),   AV_OPT_TYPE_INT, {.i64 = -1},      -1,      6,       VE},
-    { "aq-mode",         "adaptive quantization mode",             OFFSET(aq_mode),         AV_OPT_TYPE_INT, {.i64 = -1},      -1,      4, VE, "aq_mode"},
-    { "none",            "Aq not used",         0, AV_OPT_TYPE_CONST, {.i64 = 0}, 0, 0, VE, "aq_mode"},
-    { "variance",        "Variance based Aq",   0, AV_OPT_TYPE_CONST, {.i64 = 1}, 0, 0, VE, "aq_mode"},
-    { "complexity",      "Complexity based Aq", 0, AV_OPT_TYPE_CONST, {.i64 = 2}, 0, 0, VE, "aq_mode"},
-    { "cyclic",          "Cyclic Refresh Aq",   0, AV_OPT_TYPE_CONST, {.i64 = 3}, 0, 0, VE, "aq_mode"},
-    { "error-resilience", "Error resilience configuration", OFFSET(error_resilient), AV_OPT_TYPE_FLAGS, {.i64 = 0}, INT_MIN, INT_MAX, VE, "er"},
-    { "default",         "Improve resiliency against losses of whole frames", 0, AV_OPT_TYPE_CONST, {.i64 = AOM_ERROR_RESILIENT_DEFAULT}, 0, 0, VE, "er"},
+    { "aq-mode",         "adaptive quantization mode",             OFFSET(aq_mode),         AV_OPT_TYPE_INT, {.i64 = -1},      -1,      4, VE, .unit = "aq_mode"},
+    { "none",            "Aq not used",         0, AV_OPT_TYPE_CONST, {.i64 = 0}, 0, 0, VE, .unit = "aq_mode"},
+    { "variance",        "Variance based Aq",   0, AV_OPT_TYPE_CONST, {.i64 = 1}, 0, 0, VE, .unit = "aq_mode"},
+    { "complexity",      "Complexity based Aq", 0, AV_OPT_TYPE_CONST, {.i64 = 2}, 0, 0, VE, .unit = "aq_mode"},
+    { "cyclic",          "Cyclic Refresh Aq",   0, AV_OPT_TYPE_CONST, {.i64 = 3}, 0, 0, VE, .unit = "aq_mode"},
+    { "error-resilience", "Error resilience configuration", OFFSET(error_resilient), AV_OPT_TYPE_FLAGS, {.i64 = 0}, INT_MIN, INT_MAX, VE, .unit = "er"},
+    { "default",         "Improve resiliency against losses of whole frames", 0, AV_OPT_TYPE_CONST, {.i64 = AOM_ERROR_RESILIENT_DEFAULT}, 0, 0, VE, .unit = "er"},
     { "crf",              "Select the quality for constant quality mode", offsetof(AOMContext, crf), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 63, VE },
     { "static-thresh",    "A change threshold on blocks below which they will be skipped by the encoder", OFFSET(static_thresh), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, VE },
     { "drop-threshold",   "Frame drop threshold", offsetof(AOMContext, drop_threshold), AV_OPT_TYPE_INT, {.i64 = 0 }, INT_MIN, INT_MAX, VE },
@@ -1481,13 +1492,13 @@ static const AVOption options[] = {
     { "enable-global-motion",  "Enable global motion",             OFFSET(enable_global_motion), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, VE},
     { "enable-intrabc",  "Enable intra block copy prediction mode", OFFSET(enable_intrabc), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, VE},
     { "enable-restoration", "Enable Loop Restoration filtering", OFFSET(enable_restoration), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, VE},
-    { "usage",           "Quality and compression efficiency vs speed trade-off", OFFSET(usage), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, "usage"},
-    { "good",            "Good quality",      0, AV_OPT_TYPE_CONST, {.i64 = 0 /* AOM_USAGE_GOOD_QUALITY */}, 0, 0, VE, "usage"},
-    { "realtime",        "Realtime encoding", 0, AV_OPT_TYPE_CONST, {.i64 = 1 /* AOM_USAGE_REALTIME */},     0, 0, VE, "usage"},
-    { "allintra",        "All Intra encoding", 0, AV_OPT_TYPE_CONST, {.i64 = 2 /* AOM_USAGE_ALL_INTRA */},    0, 0, VE, "usage"},
-    { "tune",            "The metric that the encoder tunes for. Automatically chosen by the encoder by default", OFFSET(tune), AV_OPT_TYPE_INT, {.i64 = -1}, -1, AOM_TUNE_SSIM, VE, "tune"},
-    { "psnr",            NULL,         0, AV_OPT_TYPE_CONST, {.i64 = AOM_TUNE_PSNR}, 0, 0, VE, "tune"},
-    { "ssim",            NULL,         0, AV_OPT_TYPE_CONST, {.i64 = AOM_TUNE_SSIM}, 0, 0, VE, "tune"},
+    { "usage",           "Quality and compression efficiency vs speed trade-off", OFFSET(usage), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, .unit = "usage"},
+    { "good",            "Good quality",      0, AV_OPT_TYPE_CONST, {.i64 = 0 /* AOM_USAGE_GOOD_QUALITY */}, 0, 0, VE, .unit = "usage"},
+    { "realtime",        "Realtime encoding", 0, AV_OPT_TYPE_CONST, {.i64 = 1 /* AOM_USAGE_REALTIME */},     0, 0, VE, .unit = "usage"},
+    { "allintra",        "All Intra encoding", 0, AV_OPT_TYPE_CONST, {.i64 = 2 /* AOM_USAGE_ALL_INTRA */},    0, 0, VE, .unit = "usage"},
+    { "tune",            "The metric that the encoder tunes for. Automatically chosen by the encoder by default", OFFSET(tune), AV_OPT_TYPE_INT, {.i64 = -1}, -1, AOM_TUNE_SSIM, VE, .unit = "tune"},
+    { "psnr",            NULL,         0, AV_OPT_TYPE_CONST, {.i64 = AOM_TUNE_PSNR}, 0, 0, VE, .unit = "tune"},
+    { "ssim",            NULL,         0, AV_OPT_TYPE_CONST, {.i64 = AOM_TUNE_SSIM}, 0, 0, VE, .unit = "tune"},
     FF_AV1_PROFILE_OPTS
     { "still-picture", "Encode in single frame mode (typically used for still AVIF images).", OFFSET(still_picture), AV_OPT_TYPE_BOOL, {.i64 = 0}, -1, 1, VE },
     { "enable-rect-partitions", "Enable rectangular partitions", OFFSET(enable_rect_partitions), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, VE},

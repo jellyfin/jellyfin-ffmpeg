@@ -712,8 +712,8 @@ static av_cold int opus_encode_init(AVCodecContext *avctx)
 
 #define OPUSENC_FLAGS AV_OPT_FLAG_ENCODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM
 static const AVOption opusenc_options[] = {
-    { "opus_delay", "Maximum delay in milliseconds", offsetof(OpusEncContext, options.max_delay_ms), AV_OPT_TYPE_FLOAT, { .dbl = OPUS_MAX_LOOKAHEAD }, 2.5f, OPUS_MAX_LOOKAHEAD, OPUSENC_FLAGS, "max_delay_ms" },
-    { "apply_phase_inv", "Apply intensity stereo phase inversion", offsetof(OpusEncContext, options.apply_phase_inv), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, OPUSENC_FLAGS, "apply_phase_inv" },
+    { "opus_delay", "Maximum delay in milliseconds", offsetof(OpusEncContext, options.max_delay_ms), AV_OPT_TYPE_FLOAT, { .dbl = OPUS_MAX_LOOKAHEAD }, 2.5f, OPUS_MAX_LOOKAHEAD, OPUSENC_FLAGS, .unit = "max_delay_ms" },
+    { "apply_phase_inv", "Apply intensity stereo phase inversion", offsetof(OpusEncContext, options.apply_phase_inv), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, OPUSENC_FLAGS, .unit = "apply_phase_inv" },
     { NULL },
 };
 
@@ -745,7 +745,6 @@ const FFCodec ff_opus_encoder = {
     .close          = opus_encode_end,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.supported_samplerates = (const int []){ 48000, 0 },
-    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO, AV_CH_LAYOUT_STEREO)
     .p.ch_layouts    = (const AVChannelLayout []){ AV_CHANNEL_LAYOUT_MONO,
                                                    AV_CHANNEL_LAYOUT_STEREO, { 0 } },
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,

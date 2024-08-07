@@ -467,28 +467,28 @@ static int read_seek(AVFormatContext *s, int stream_index,
     return 0;
 }
 
-const AVInputFormat ff_brstm_demuxer = {
-    .name           = "brstm",
-    .long_name      = NULL_IF_CONFIG_SMALL("BRSTM (Binary Revolution Stream)"),
+const FFInputFormat ff_brstm_demuxer = {
+    .p.name         = "brstm",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("BRSTM (Binary Revolution Stream)"),
+    .p.extensions   = "brstm",
     .priv_data_size = sizeof(BRSTMDemuxContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = probe,
     .read_header    = read_header,
     .read_packet    = read_packet,
     .read_close     = read_close,
     .read_seek      = read_seek,
-    .extensions     = "brstm",
 };
 
-const AVInputFormat ff_bfstm_demuxer = {
-    .name           = "bfstm",
-    .long_name      = NULL_IF_CONFIG_SMALL("BFSTM (Binary Cafe Stream)"),
+const FFInputFormat ff_bfstm_demuxer = {
+    .p.name         = "bfstm",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("BFSTM (Binary Cafe Stream)"),
+    .p.extensions   = "bfstm,bcstm",
     .priv_data_size = sizeof(BRSTMDemuxContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = probe_bfstm,
     .read_header    = read_header,
     .read_packet    = read_packet,
     .read_close     = read_close,
     .read_seek      = read_seek,
-    .extensions     = "bfstm,bcstm",
 };

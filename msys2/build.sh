@@ -42,7 +42,7 @@ PKG_CONFIG_PATH=/clang64/ffbuild/lib/pkgconfig ./configure --cc=clang \
     --disable-doc \
     --disable-sdl2 \
     --disable-ptx-compression \
-    --enable-lto \
+    --enable-lto=thin \
     --enable-gpl \
     --enable-version3 \
     --enable-schannel \
@@ -55,6 +55,7 @@ PKG_CONFIG_PATH=/clang64/ffbuild/lib/pkgconfig ./configure --cc=clang \
     --enable-libfreetype \
     --enable-libfribidi \
     --enable-libfontconfig \
+    --enable-libharfbuzz \
     --enable-libass \
     --enable-libbluray \
     --enable-libmp3lame \
@@ -73,6 +74,7 @@ PKG_CONFIG_PATH=/clang64/ffbuild/lib/pkgconfig ./configure --cc=clang \
     --enable-opencl \
     --enable-dxva2 \
     --enable-d3d11va \
+    --enable-d3d12va \
     --enable-amf \
     --enable-libvpl \
     --enable-ffnvcodec \

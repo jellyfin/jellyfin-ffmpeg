@@ -291,8 +291,6 @@ static void print_codec(const AVCodec *c)
         printf("delay ");
     if (c->capabilities & AV_CODEC_CAP_SMALL_LAST_FRAME)
         printf("small ");
-    if (c->capabilities & AV_CODEC_CAP_SUBFRAMES)
-        printf("subframes ");
     if (c->capabilities & AV_CODEC_CAP_EXPERIMENTAL)
         printf("exp ");
     if (c->capabilities & AV_CODEC_CAP_CHANNEL_CONF)
@@ -617,10 +615,10 @@ static void print_codecs_for_id(enum AVCodecID id, int encoder)
     void *iter = NULL;
     const AVCodec *codec;
 
-    printf(" (%s: ", encoder ? "encoders" : "decoders");
+    printf(" (%s:", encoder ? "encoders" : "decoders");
 
     while ((codec = next_codec_for_id(id, &iter, encoder)))
-        printf("%s ", codec->name);
+        printf(" %s", codec->name);
 
     printf(")");
 }
@@ -634,7 +632,7 @@ static int compare_codec_desc(const void *a, const void *b)
            strcmp((*da)->name, (*db)->name);
 }
 
-static unsigned get_codecs_sorted(const AVCodecDescriptor ***rcodecs)
+static int get_codecs_sorted(const AVCodecDescriptor ***rcodecs)
 {
     const AVCodecDescriptor *desc = NULL;
     const AVCodecDescriptor **codecs;
@@ -643,7 +641,7 @@ static unsigned get_codecs_sorted(const AVCodecDescriptor ***rcodecs)
     while ((desc = avcodec_descriptor_next(desc)))
         nb_codecs++;
     if (!(codecs = av_calloc(nb_codecs, sizeof(*codecs))))
-        report_and_exit(AVERROR(ENOMEM));
+        return AVERROR(ENOMEM);
     desc = NULL;
     while ((desc = avcodec_descriptor_next(desc)))
         codecs[i++] = desc;
@@ -668,7 +666,11 @@ static char get_media_type_char(enum AVMediaType type)
 int show_codecs(void *optctx, const char *opt, const char *arg)
 {
     const AVCodecDescriptor **codecs;
-    unsigned i, nb_codecs = get_codecs_sorted(&codecs);
+    unsigned i;
+    int nb_codecs = get_codecs_sorted(&codecs);
+
+    if (nb_codecs < 0)
+        return nb_codecs;
 
     printf("Codecs:\n"
            " D..... = Decoding supported\n"
@@ -690,14 +692,13 @@ int show_codecs(void *optctx, const char *opt, const char *arg)
         if (strstr(desc->name, "_deprecated"))
             continue;
 
-        printf(" ");
-        printf(avcodec_find_decoder(desc->id) ? "D" : ".");
-        printf(avcodec_find_encoder(desc->id) ? "E" : ".");
-
-        printf("%c", get_media_type_char(desc->type));
-        printf((desc->props & AV_CODEC_PROP_INTRA_ONLY) ? "I" : ".");
-        printf((desc->props & AV_CODEC_PROP_LOSSY)      ? "L" : ".");
-        printf((desc->props & AV_CODEC_PROP_LOSSLESS)   ? "S" : ".");
+        printf(" %c%c%c%c%c%c",
+               avcodec_find_decoder(desc->id) ? 'D' : '.',
+               avcodec_find_encoder(desc->id) ? 'E' : '.',
+               get_media_type_char(desc->type),
+               (desc->props & AV_CODEC_PROP_INTRA_ONLY) ? 'I' : '.',
+               (desc->props & AV_CODEC_PROP_LOSSY)      ? 'L' : '.',
+               (desc->props & AV_CODEC_PROP_LOSSLESS)   ? 'S' : '.');
 
         printf(" %-20s %s", desc->name, desc->long_name ? desc->long_name : "");
 
@@ -723,10 +724,13 @@ int show_codecs(void *optctx, const char *opt, const char *arg)
     return 0;
 }
 
-static void print_codecs(int encoder)
+static int print_codecs(int encoder)
 {
     const AVCodecDescriptor **codecs;
-    unsigned i, nb_codecs = get_codecs_sorted(&codecs);
+    int i, nb_codecs = get_codecs_sorted(&codecs);
+
+    if (nb_codecs < 0)
+        return nb_codecs;
 
     printf("%s:\n"
            " V..... = Video\n"
@@ -745,12 +749,13 @@ static void print_codecs(int encoder)
         void *iter = NULL;
 
         while ((codec = next_codec_for_id(desc->id, &iter, encoder))) {
-            printf(" %c", get_media_type_char(desc->type));
-            printf((codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) ? "F" : ".");
-            printf((codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) ? "S" : ".");
-            printf((codec->capabilities & AV_CODEC_CAP_EXPERIMENTAL)  ? "X" : ".");
-            printf((codec->capabilities & AV_CODEC_CAP_DRAW_HORIZ_BAND)?"B" : ".");
-            printf((codec->capabilities & AV_CODEC_CAP_DR1)           ? "D" : ".");
+            printf(" %c%c%c%c%c%c",
+                   get_media_type_char(desc->type),
+                   (codec->capabilities & AV_CODEC_CAP_FRAME_THREADS)   ? 'F' : '.',
+                   (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS)   ? 'S' : '.',
+                   (codec->capabilities & AV_CODEC_CAP_EXPERIMENTAL)    ? 'X' : '.',
+                   (codec->capabilities & AV_CODEC_CAP_DRAW_HORIZ_BAND) ? 'B' : '.',
+                   (codec->capabilities & AV_CODEC_CAP_DR1)             ? 'D' : '.');
 
             printf(" %-20s %s", codec->name, codec->long_name ? codec->long_name : "");
             if (strcmp(codec->name, desc->name))
@@ -760,18 +765,17 @@ static void print_codecs(int encoder)
         }
     }
     av_free(codecs);
+    return 0;
 }
 
 int show_decoders(void *optctx, const char *opt, const char *arg)
 {
-    print_codecs(0);
-    return 0;
+    return print_codecs(0);
 }
 
 int show_encoders(void *optctx, const char *opt, const char *arg)
 {
-    print_codecs(1);
-    return 0;
+    return print_codecs(1);
 }
 
 int show_bsfs(void *optctx, const char *opt, const char *arg)
@@ -850,15 +854,22 @@ static int show_formats_devices(void *optctx, const char *opt, const char *arg, 
     const AVOutputFormat *ofmt = NULL;
     const char *last_name;
     int is_dev;
+    const char *is_device_placeholder = device_only ? "" : ".";
 
-    printf("%s\n"
-           " D. = Demuxing supported\n"
-           " .E = Muxing supported\n"
-           " --\n", device_only ? "Devices:" : "File formats:");
+    printf("%s:\n"
+           " D.%s = Demuxing supported\n"
+           " .E%s = Muxing supported\n"
+           "%s"
+           " ---\n",
+           device_only ? "Devices" : "Formats",
+           is_device_placeholder, is_device_placeholder,
+           device_only ? "": " ..d = Is a device\n");
+
     last_name = "000";
     for (;;) {
         int decode = 0;
         int encode = 0;
+        int device = 0;
         const char *name      = NULL;
         const char *long_name = NULL;
 
@@ -873,6 +884,7 @@ static int show_formats_devices(void *optctx, const char *opt, const char *arg, 
                     name      = ofmt->name;
                     long_name = ofmt->long_name;
                     encode    = 1;
+                    device    = is_dev;
                 }
             }
         }
@@ -887,20 +899,24 @@ static int show_formats_devices(void *optctx, const char *opt, const char *arg, 
                     name      = ifmt->name;
                     long_name = ifmt->long_name;
                     encode    = 0;
+                    device    = is_dev;
                 }
-                if (name && strcmp(ifmt->name, name) == 0)
+                if (name && strcmp(ifmt->name, name) == 0) {
                     decode = 1;
+                    device = is_dev;
+                }
             }
         }
         if (!name)
             break;
         last_name = name;
 
-        printf(" %c%c %-15s %s\n",
+        printf(" %c%c%s %-15s %s\n",
                decode ? 'D' : ' ',
                encode ? 'E' : ' ',
+               device_only ? "" : (device ? "d" : " "),
                name,
-            long_name ? long_name:" ");
+            long_name ? long_name : " ");
     }
     return 0;
 }
@@ -1161,7 +1177,10 @@ int init_report(const char *env, FILE **file)
             report_file_level = strtol(val, &tail, 10);
             if (*tail) {
                 av_log(NULL, AV_LOG_FATAL, "Invalid report file level\n");
-                exit_program(1);
+                av_free(key);
+                av_free(val);
+                av_free(filename_template);
+                return AVERROR(EINVAL);
             }
             envlevel = 1;
         } else {
@@ -1221,7 +1240,7 @@ int opt_max_alloc(void *optctx, const char *opt, const char *arg)
     max = strtol(arg, &tail, 10);
     if (*tail) {
         av_log(NULL, AV_LOG_FATAL, "Invalid max_alloc \"%s\".\n", arg);
-        exit_program(1);
+        return AVERROR(EINVAL);
     }
     av_max_alloc(max);
     return 0;
@@ -1295,7 +1314,7 @@ int opt_loglevel(void *optctx, const char *opt, const char *arg)
                "Possible levels are numbers or:\n", arg);
         for (i = 0; i < FF_ARRAY_ELEMS(log_levels); i++)
             av_log(NULL, AV_LOG_FATAL, "\"%s\"\n", log_levels[i].name);
-        exit_program(1);
+        return AVERROR(EINVAL);
     }
 
 end:

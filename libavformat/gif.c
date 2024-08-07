@@ -40,16 +40,8 @@ typedef struct GIFContext {
     AVPacket *prev_pkt;
 } GIFContext;
 
-static int gif_write_header(AVFormatContext *s)
+static av_cold int gif_init(AVFormatContext *s)
 {
-    if (s->nb_streams != 1 ||
-        s->streams[0]->codecpar->codec_type != AVMEDIA_TYPE_VIDEO ||
-        s->streams[0]->codecpar->codec_id   != AV_CODEC_ID_GIF) {
-        av_log(s, AV_LOG_ERROR,
-               "GIF muxer supports only a single video GIF stream.\n");
-        return AVERROR(EINVAL);
-    }
-
     avpriv_set_pts_info(s->streams[0], 64, 1, 100);
 
     return 0;
@@ -88,6 +80,8 @@ static int gif_get_delay(GIFContext *gif, AVPacket *prev, AVPacket *new)
         gif->duration = av_clip_uint16(new->pts - prev->pts);
     else if (!new && gif->last_delay >= 0)
         gif->duration = gif->last_delay;
+    else if (prev->duration)
+        gif->duration = prev->duration;
 
     return gif->duration;
 }
@@ -211,7 +205,10 @@ const FFOutputFormat ff_gif_muxer = {
     .priv_data_size = sizeof(GIFContext),
     .p.audio_codec  = AV_CODEC_ID_NONE,
     .p.video_codec  = AV_CODEC_ID_GIF,
-    .write_header   = gif_write_header,
+    .p.subtitle_codec = AV_CODEC_ID_NONE,
+    .flags_internal   = FF_OFMT_FLAG_MAX_ONE_OF_EACH |
+                        FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
+    .init             = gif_init,
     .write_packet   = gif_write_packet,
     .write_trailer  = gif_write_trailer,
     .p.priv_class   = &gif_muxer_class,

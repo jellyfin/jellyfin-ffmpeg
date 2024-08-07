@@ -26,6 +26,7 @@
  */
 
 #include "libavutil/avassert.h"
+#include "libavutil/emms.h"
 #include "avcodec.h"
 #include "get_bits.h"
 #include "golomb.h"
@@ -1019,6 +1020,9 @@ static int decode_pic(AVSContext *h)
         if (h->stream_revision > 0)
             skip_bits(&h->gb, 1); //marker_bit
     }
+
+    if (get_bits_left(&h->gb) < 23)
+        return AVERROR_INVALIDDATA;
 
     ret = ff_get_buffer(h->avctx, h->cur.f, h->cur.f->pict_type == AV_PICTURE_TYPE_B ?
                         0 : AV_GET_BUFFER_FLAG_REF);

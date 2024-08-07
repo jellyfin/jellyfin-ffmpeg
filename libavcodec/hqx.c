@@ -504,7 +504,7 @@ static int hqx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     avctx->execute2(avctx, decode_slice_thread, NULL, NULL, 16);
 
-    ctx->pic->key_frame = 1;
+    ctx->pic->flags |= AV_FRAME_FLAG_KEY;
     ctx->pic->pict_type = AV_PICTURE_TYPE_I;
 
     *got_picture_ptr = 1;
@@ -517,9 +517,9 @@ static av_cold int hqx_decode_close(AVCodecContext *avctx)
     int i;
     HQXContext *ctx = avctx->priv_data;
 
-    ff_free_vlc(&ctx->cbp_vlc);
+    ff_vlc_free(&ctx->cbp_vlc);
     for (i = 0; i < 3; i++) {
-        ff_free_vlc(&ctx->dc_vlc[i]);
+        ff_vlc_free(&ctx->dc_vlc[i]);
     }
 
     return 0;

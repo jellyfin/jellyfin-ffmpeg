@@ -36,6 +36,29 @@
 #   define __has_feature(x) 0
 #endif
 
+#if HAVE_AS_ARCH_DIRECTIVE
+        .arch           AS_ARCH_LEVEL
+#endif
+
+#if HAVE_AS_ARCHEXT_DOTPROD_DIRECTIVE
+#define ENABLE_DOTPROD  .arch_extension dotprod
+#define DISABLE_DOTPROD .arch_extension nodotprod
+#else
+#define ENABLE_DOTPROD
+#define DISABLE_DOTPROD
+#endif
+
+#if HAVE_AS_ARCHEXT_I8MM_DIRECTIVE
+#define ENABLE_I8MM  .arch_extension i8mm
+#define DISABLE_I8MM .arch_extension noi8mm
+#else
+#define ENABLE_I8MM
+#define DISABLE_I8MM
+#endif
+
+DISABLE_DOTPROD
+DISABLE_I8MM
+
 
 /* Support macros for
  *   - Armv8.3-A Pointer Authentication and

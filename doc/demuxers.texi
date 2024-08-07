@@ -285,6 +285,168 @@ This demuxer accepts the following option:
 
 @end table
 
+@section dvdvideo
+
+DVD-Video demuxer, powered by libdvdnav and libdvdread.
+
+Can directly ingest DVD titles, specifically sequential PGCs, into
+a conversion pipeline. Menu assets, such as background video or audio,
+can also be demuxed given the menu's coordinates (at best effort).
+Seeking is not supported at this time.
+
+Block devices (DVD drives), ISO files, and directory structures are accepted.
+Activate with @code{-f dvdvideo} in front of one of these inputs.
+
+This demuxer does NOT have decryption code of any kind. You are on your own
+working with encrypted DVDs, and should not expect support on the matter.
+
+Underlying playback is handled by libdvdnav, and structure parsing by libdvdread.
+FFmpeg must be built with GPL library support available as well as the
+configure switches @code{--enable-libdvdnav} and @code{--enable-libdvdread}.
+
+You will need to provide either the desired "title number" or exact PGC/PG coordinates.
+Many open-source DVD players and tools can aid in providing this information.
+If not specified, the demuxer will default to title 1 which works for many discs.
+However, due to the flexibility of the format, it is recommended to check manually.
+There are many discs that are authored strangely or with invalid headers.
+
+If the input is a real DVD drive, please note that there are some drives which may
+silently fail on reading bad sectors from the disc, returning random bits instead
+which is effectively corrupt data. This is especially prominent on aging or rotting discs.
+A second pass and integrity checks would be needed to detect the corruption.
+This is not an FFmpeg issue.
+
+@subsection Background
+
+DVD-Video is not a directly accessible, linear container format in the
+traditional sense. Instead, it allows for complex and programmatic playback of
+carefully muxed MPEG-PS streams that are stored in headerless VOB files.
+To the end-user, these streams are known simply as "titles", but the actual
+logical playback sequence is defined by one or more "PGCs", or Program Group Chains,
+within the title. The PGC is in turn comprised of multiple "PGs", or Programs",
+which are the actual video segments (and for a typical video feature, sequentially
+ordered). The PGC structure, along with stream layout and metadata, are stored in
+IFO files that need to be parsed. PGCs can be thought of as playlists in easier terms.
+
+An actual DVD player relies on user GUI interaction via menus and an internal VM
+to drive the direction of demuxing. Generally, the user would either navigate (via menus)
+or automatically be redirected to the PGC of their choice. During this process and
+the subsequent playback, the DVD player's internal VM also maintains a state and
+executes instructions that can create jumps to different sectors during playback.
+This is why libdvdnav is involved, as a linear read of the MPEG-PS blobs on the
+disc (VOBs) is not enough to produce the right sequence in many cases.
+
+There are many other DVD structures (a long subject) that will not be discussed here.
+NAV packets, in particular, are handled by this demuxer to build accurate timing
+but not emitted as a stream. For a good high-level understanding, refer to:
+@url{https://code.videolan.org/videolan/libdvdnav/-/blob/master/doc/dvd_structures}
+
+@subsection Options
+
+This demuxer accepts the following options:
+
+@table @option
+
+@item title @var{int}
+The title number to play. Must be set if @option{pgc} and @option{pg} are not set.
+Not applicable to menus.
+Default is 0 (auto), which currently only selects the first available title (title 1)
+and notifies the user about the implications.
+
+@item chapter_start @var{int}
+The chapter, or PTT (part-of-title), number to start at. Not applicable to menus.
+Default is 1.
+
+@item chapter_end @var{int}
+The chapter, or PTT (part-of-title), number to end at. Not applicable to menus.
+Default is 0, which is a special value to signal end at the last possible chapter.
+
+@item angle @var{int}
+The video angle number, referring to what is essentially an additional
+video stream that is composed from alternate frames interleaved in the VOBs.
+Not applicable to menus.
+Default is 1.
+
+@item region @var{int}
+The region code to use for playback. Some discs may use this to default playback
+at a particular angle in different regions. This option will not affect the region code
+of a real DVD drive, if used as an input. Not applicable to menus.
+Default is 0, "world".
+
+@item menu @var{bool}
+Demux menu assets instead of navigating a title. Requires exact coordinates
+of the menu (@option{menu_lu}, @option{menu_vts}, @option{pgc}, @option{pg}).
+Default is false.
+
+@item menu_lu @var{int}
+The menu language to demux. In DVD, menus are grouped by language.
+Default is 0, the first language unit.
+
+@item menu_vts @var{int}
+The VTS where the menu lives, or 0 if it is a VMG menu (root-level).
+Default is 0, VMG menu.
+
+@item pgc @var{int}
+The entry PGC to start playback, in conjunction with @option{pg}.
+Alternative to setting @option{title}.
+Chapter markers are not supported at this time.
+Must be explicitly set for menus.
+Default is 0, automatically resolve from value of @option{title}.
+
+@item pg @var{int}
+The entry PG to start playback, in conjunction with @option{pgc}.
+Alternative to setting @option{title}.
+Chapter markers are not supported at this time.
+Default is 0, automatically resolve from value of @option{title}, or
+start from the beginning (PG 1) of the menu.
+
+@item preindex @var{bool}
+Enable this to have accurate chapter (PTT) markers and duration measurement,
+which requires a slow second pass read in order to index the chapter marker
+timestamps from NAV packets. This is non-ideal extra work for real optical drives.
+It is recommended and faster to use this option with a backup of the DVD structure
+stored on a hard drive. Not compatible with @option{pgc} and @option{pg}.
+Not applicable to menus.
+Default is 0, false.
+
+@item trim @var{bool}
+Skip padding cells (i.e. cells shorter than 1 second) from the beginning.
+There exist many discs with filler segments at the beginning of the PGC,
+often with junk data intended for controlling a real DVD player's
+buffering speed and with no other material data value.
+Not applicable to menus.
+Default is 1, true.
+
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Open title 3 from a given DVD structure:
+@example
+ffmpeg -f dvdvideo -title 3 -i <path to DVD> ...
+@end example
+
+@item
+Open chapters 3-6 from title 1 from a given DVD structure:
+@example
+ffmpeg -f dvdvideo -chapter_start 3 -chapter_end 6 -title 1 -i <path to DVD> ...
+@end example
+
+@item
+Open only chapter 5 from title 1 from a given DVD structure:
+@example
+ffmpeg -f dvdvideo -chapter_start 5 -chapter_end 5 -title 1 -i <path to DVD> ...
+@end example
+
+@item
+Demux menu with language 1 from VTS 1, PGC 1, starting at PG 1:
+@example
+ffmpeg -f dvdvideo -menu 1 -menu_lu 1 -menu_vts 1 -pgc 1 -pg 1 -i <path to DVD> ...
+@end example
+@end itemize
+
 @section ea
 
 Electronic Arts Multimedia format demuxer.
@@ -307,7 +469,15 @@ stream which contains the alpha channel in addition to the ordinary video.
 
 Interoperable Master Format demuxer.
 
-This demuxer presents audio and video streams found in an IMF Composition.
+This demuxer presents audio and video streams found in an IMF Composition, as
+specified in @url{https://doi.org/10.5594/SMPTE.ST2067-2.2020, SMPTE ST 2067-2}.
+
+@example
+ffmpeg [-assetmaps <path of ASSETMAP1>,<path of ASSETMAP2>,...] -i <path of CPL> ...
+@end example
+
+If @code{-assetmaps} is not specified, the demuxer looks for a file called
+@file{ASSETMAP.xml} in the same directory as the CPL.
 
 @section flv, live_flv, kux
 
@@ -769,8 +939,15 @@ error or used to store a negative value for dts correction when treated as signe
 the user set an upper limit, beyond which the delta is clamped to 1. Values greater than the limit if negative when
 cast to int32 are used to adjust onward dts.
 
-Unit is the track time scale. Range is 0 to UINT_MAX. Default is @code{UINT_MAX - 48000*10} which allows upto
+Unit is the track time scale. Range is 0 to UINT_MAX. Default is @code{UINT_MAX - 48000*10} which allows up to
 a 10 second dts correction for 48 kHz audio streams while accommodating 99.9% of @code{uint32} range.
+
+@item interleaved_read
+Interleave packets from multiple tracks at demuxer level. For badly interleaved files, this prevents playback issues
+caused by large gaps between packets in different tracks, as MOV/MP4 do not have packet placement requirements.
+However, this can cause excessive seeking on very badly interleaved files, due to seeking between tracks, so disabling
+it may prevent I/O issues, at the expense of playback.
+
 @end table
 
 @subsection Audible AAX
@@ -926,6 +1103,29 @@ This demuxer accepts the following option:
 The demuxer buffers the entire script into memory. Adjust this value to set the maximum buffer size,
 which in turn, acts as a ceiling for the size of scripts that can be read.
 Default is 1 MiB.
+@end table
+
+@section w64
+
+Sony Wave64 Audio demuxer.
+
+This demuxer accepts the following options:
+@table @option
+@item max_size
+See the same option for the @ref{wav} demuxer.
+@end table
+
+@anchor{wav}
+@section wav
+
+RIFF Wave Audio demuxer.
+
+This demuxer accepts the following options:
+@table @option
+@item max_size
+Specify the maximum packet size in bytes for the demuxed packets. By default
+this is set to 0, which means that a sensible value is chosen based on the
+input format.
 @end table
 
 @c man end DEMUXERS

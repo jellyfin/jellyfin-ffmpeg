@@ -19,32 +19,23 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <string.h>
+
 #include "libavutil/avstring.h"
-#include "libavutil/opt.h"
-#include "avformat.h"
-#include "avio_internal.h"
+#include "libavutil/dict.h"
+#include "libavutil/error.h"
+#include "libavutil/mem.h"
 #include "tee_common.h"
+#include "url.h"
 
 typedef struct ChildContext {
     URLContext *url_context;
 } ChildContext;
 
 typedef struct TeeContext {
-    const AVClass *class;
     int child_count;
     ChildContext *child;
 } TeeContext;
-
-static const AVOption tee_options[] = {
-    { NULL }
-};
-
-static const AVClass tee_class = {
-    .class_name = "tee",
-    .item_name  = av_default_item_name,
-    .option     = tee_options,
-    .version    = LIBAVUTIL_VERSION_INT,
-};
 
 static const char *const child_delim = "|";
 
@@ -85,9 +76,6 @@ static int tee_open(URLContext *h, const char *filename, int flags)
     int ret, i;
 
     av_strstart(filename, "tee:", &filename);
-
-    if (flags & AVIO_FLAG_READ)
-        return AVERROR(ENOSYS);
 
     while (*filename) {
         char *child_string = av_get_token(&filename, child_delim);
@@ -154,6 +142,5 @@ const URLProtocol ff_tee_protocol = {
     .url_write           = tee_write,
     .url_close           = tee_close,
     .priv_data_size      = sizeof(TeeContext),
-    .priv_data_class     = &tee_class,
     .default_whitelist   = "crypto,file,http,https,httpproxy,rtmp,tcp,tls"
 };

@@ -64,6 +64,7 @@ void ff_hls_senc_read_audio_setup_info(HLSAudioSetupInfo *info, const uint8_t *b
 
     info->codec_tag = AV_RL32(buf);
 
+    /* Always keep this list in sync with the one from hls_read_header() */
     if (info->codec_tag == MKTAG('z','a','a','c'))
         info->codec_id = AV_CODEC_ID_AAC;
     else if (info->codec_tag == MKTAG('z','a','c','3'))
@@ -105,8 +106,7 @@ int ff_hls_senc_parse_audio_setup_info(AVStream *st, HLSAudioSetupInfo *info)
 
         ret = avpriv_ac3_parse_header(&ac3hdr, info->setup_data, info->setup_data_length);
         if (ret < 0) {
-            if (ret != AVERROR(ENOMEM))
-                av_free(ac3hdr);
+            av_free(ac3hdr);
             return ret;
         }
 
@@ -317,8 +317,7 @@ static int get_next_ac3_eac3_sync_frame(CodecParserContext *ctx, AudioFrame *fra
 
     ret = avpriv_ac3_parse_header(&hdr, frame->data, ctx->buf_end - frame->data);
     if (ret < 0) {
-        if (ret != AVERROR(ENOMEM))
-            av_free(hdr);
+        av_free(hdr);
         return ret;
     }
 

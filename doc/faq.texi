@@ -450,7 +450,7 @@ work with streams that were detected during the initial scan; streams that
 are detected later are ignored.
 
 The size of the initial scan is controlled by two options: @code{probesize}
-(default ~5 Mo) and @code{analyzeduration} (default 5,000,000 µs = 5 s). For
+(default ~5@tie{}Mo) and @code{analyzeduration} (default 5,000,000@tie{}µs = 5@tie{}s). For
 the subtitle stream to be detected, both values must be large enough.
 
 @section Why was the @command{ffmpeg} @option{-sameq} option removed? What to use instead?
@@ -467,7 +467,7 @@ point acceptable for your tastes. The most common options to do that are
 @option{-qscale} and @option{-qmax}, but you should peruse the documentation
 of the encoder you chose.
 
-@section I have a stretched video, why does scaling does not fix it?
+@section I have a stretched video, why does scaling not fix it?
 
 A lot of video codecs and formats can store the @emph{aspect ratio} of the
 video: this is the ratio between the width and the height of either the full

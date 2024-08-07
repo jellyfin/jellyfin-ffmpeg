@@ -20,13 +20,13 @@
 
 #include <float.h>
 
+#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 #include "libavutil/tx.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 #include "filters.h"
 
 #define C       (M_LN10 * 0.1)
@@ -168,16 +168,16 @@ static const AVOption afftdn_options[] = {
     { "nr", "set the noise reduction",    OFFSET(noise_reduction), AV_OPT_TYPE_FLOAT,  {.dbl = 12},          .01, 97, AFR },
     { "noise_floor", "set the noise floor",OFFSET(noise_floor),    AV_OPT_TYPE_FLOAT,  {.dbl =-50},          -80,-20, AFR },
     { "nf", "set the noise floor",        OFFSET(noise_floor),     AV_OPT_TYPE_FLOAT,  {.dbl =-50},          -80,-20, AFR },
-    { "noise_type", "set the noise type", OFFSET(noise_type),      AV_OPT_TYPE_INT,    {.i64 = WHITE_NOISE}, WHITE_NOISE, NB_NOISE-1, AF, "type" },
-    { "nt", "set the noise type",         OFFSET(noise_type),      AV_OPT_TYPE_INT,    {.i64 = WHITE_NOISE}, WHITE_NOISE, NB_NOISE-1, AF, "type" },
-    {  "white", "white noise",            0,                       AV_OPT_TYPE_CONST,  {.i64 = WHITE_NOISE},   0,  0, AF, "type" },
-    {  "w", "white noise",                0,                       AV_OPT_TYPE_CONST,  {.i64 = WHITE_NOISE},   0,  0, AF, "type" },
-    {  "vinyl", "vinyl noise",            0,                       AV_OPT_TYPE_CONST,  {.i64 = VINYL_NOISE},   0,  0, AF, "type" },
-    {  "v", "vinyl noise",                0,                       AV_OPT_TYPE_CONST,  {.i64 = VINYL_NOISE},   0,  0, AF, "type" },
-    {  "shellac", "shellac noise",        0,                       AV_OPT_TYPE_CONST,  {.i64 = SHELLAC_NOISE}, 0,  0, AF, "type" },
-    {  "s", "shellac noise",              0,                       AV_OPT_TYPE_CONST,  {.i64 = SHELLAC_NOISE}, 0,  0, AF, "type" },
-    {  "custom", "custom noise",          0,                       AV_OPT_TYPE_CONST,  {.i64 = CUSTOM_NOISE},  0,  0, AF, "type" },
-    {  "c", "custom noise",               0,                       AV_OPT_TYPE_CONST,  {.i64 = CUSTOM_NOISE},  0,  0, AF, "type" },
+    { "noise_type", "set the noise type", OFFSET(noise_type),      AV_OPT_TYPE_INT,    {.i64 = WHITE_NOISE}, WHITE_NOISE, NB_NOISE-1, AF, .unit = "type" },
+    { "nt", "set the noise type",         OFFSET(noise_type),      AV_OPT_TYPE_INT,    {.i64 = WHITE_NOISE}, WHITE_NOISE, NB_NOISE-1, AF, .unit = "type" },
+    {  "white", "white noise",            0,                       AV_OPT_TYPE_CONST,  {.i64 = WHITE_NOISE},   0,  0, AF, .unit = "type" },
+    {  "w", "white noise",                0,                       AV_OPT_TYPE_CONST,  {.i64 = WHITE_NOISE},   0,  0, AF, .unit = "type" },
+    {  "vinyl", "vinyl noise",            0,                       AV_OPT_TYPE_CONST,  {.i64 = VINYL_NOISE},   0,  0, AF, .unit = "type" },
+    {  "v", "vinyl noise",                0,                       AV_OPT_TYPE_CONST,  {.i64 = VINYL_NOISE},   0,  0, AF, .unit = "type" },
+    {  "shellac", "shellac noise",        0,                       AV_OPT_TYPE_CONST,  {.i64 = SHELLAC_NOISE}, 0,  0, AF, .unit = "type" },
+    {  "s", "shellac noise",              0,                       AV_OPT_TYPE_CONST,  {.i64 = SHELLAC_NOISE}, 0,  0, AF, .unit = "type" },
+    {  "custom", "custom noise",          0,                       AV_OPT_TYPE_CONST,  {.i64 = CUSTOM_NOISE},  0,  0, AF, .unit = "type" },
+    {  "c", "custom noise",               0,                       AV_OPT_TYPE_CONST,  {.i64 = CUSTOM_NOISE},  0,  0, AF, .unit = "type" },
     { "band_noise", "set the custom bands noise", OFFSET(band_noise_str),  AV_OPT_TYPE_STRING, {.str = 0},     0,  0, AF },
     { "bn", "set the custom bands noise", OFFSET(band_noise_str),  AV_OPT_TYPE_STRING, {.str = 0},             0,  0, AF },
     { "residual_floor", "set the residual floor",OFFSET(residual_floor),  AV_OPT_TYPE_FLOAT, {.dbl =-38},    -80,-20, AFR },
@@ -186,33 +186,33 @@ static const AVOption afftdn_options[] = {
     { "tn", "track noise",                OFFSET(track_noise),     AV_OPT_TYPE_BOOL,   {.i64 =  0},            0,  1, AFR },
     { "track_residual", "track residual", OFFSET(track_residual),  AV_OPT_TYPE_BOOL,   {.i64 =  0},            0,  1, AFR },
     { "tr", "track residual",             OFFSET(track_residual),  AV_OPT_TYPE_BOOL,   {.i64 =  0},            0,  1, AFR },
-    { "output_mode", "set output mode",   OFFSET(output_mode),     AV_OPT_TYPE_INT,    {.i64 = OUT_MODE},      0,  NB_MODES-1, AFR, "mode" },
-    { "om", "set output mode",            OFFSET(output_mode),     AV_OPT_TYPE_INT,    {.i64 = OUT_MODE},      0,  NB_MODES-1, AFR, "mode" },
-    {  "input", "input",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = IN_MODE},       0,  0, AFR, "mode" },
-    {  "i", "input",                      0,                       AV_OPT_TYPE_CONST,  {.i64 = IN_MODE},       0,  0, AFR, "mode" },
-    {  "output", "output",                0,                       AV_OPT_TYPE_CONST,  {.i64 = OUT_MODE},      0,  0, AFR, "mode" },
-    {  "o", "output",                     0,                       AV_OPT_TYPE_CONST,  {.i64 = OUT_MODE},      0,  0, AFR, "mode" },
-    {  "noise", "noise",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = NOISE_MODE},    0,  0, AFR, "mode" },
-    {  "n", "noise",                      0,                       AV_OPT_TYPE_CONST,  {.i64 = NOISE_MODE},    0,  0, AFR, "mode" },
+    { "output_mode", "set output mode",   OFFSET(output_mode),     AV_OPT_TYPE_INT,    {.i64 = OUT_MODE},      0,  NB_MODES-1, AFR, .unit = "mode" },
+    { "om", "set output mode",            OFFSET(output_mode),     AV_OPT_TYPE_INT,    {.i64 = OUT_MODE},      0,  NB_MODES-1, AFR, .unit = "mode" },
+    {  "input", "input",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = IN_MODE},       0,  0, AFR, .unit = "mode" },
+    {  "i", "input",                      0,                       AV_OPT_TYPE_CONST,  {.i64 = IN_MODE},       0,  0, AFR, .unit = "mode" },
+    {  "output", "output",                0,                       AV_OPT_TYPE_CONST,  {.i64 = OUT_MODE},      0,  0, AFR, .unit = "mode" },
+    {  "o", "output",                     0,                       AV_OPT_TYPE_CONST,  {.i64 = OUT_MODE},      0,  0, AFR, .unit = "mode" },
+    {  "noise", "noise",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = NOISE_MODE},    0,  0, AFR, .unit = "mode" },
+    {  "n", "noise",                      0,                       AV_OPT_TYPE_CONST,  {.i64 = NOISE_MODE},    0,  0, AFR, .unit = "mode" },
     { "adaptivity", "set adaptivity factor",OFFSET(ratio),         AV_OPT_TYPE_FLOAT,  {.dbl = 0.5},           0,  1, AFR },
     { "ad",         "set adaptivity factor",OFFSET(ratio),         AV_OPT_TYPE_FLOAT,  {.dbl = 0.5},           0,  1, AFR },
     { "floor_offset", "set noise floor offset factor",OFFSET(floor_offset), AV_OPT_TYPE_FLOAT, {.dbl = 1.0},  -2,  2, AFR },
     { "fo",           "set noise floor offset factor",OFFSET(floor_offset), AV_OPT_TYPE_FLOAT, {.dbl = 1.0},  -2,  2, AFR },
-    { "noise_link", "set the noise floor link",OFFSET(noise_floor_link),AV_OPT_TYPE_INT,{.i64 = MIN_LINK},     0,  NB_LINK-1, AFR, "link" },
-    { "nl", "set the noise floor link",        OFFSET(noise_floor_link),AV_OPT_TYPE_INT,{.i64 = MIN_LINK},     0,  NB_LINK-1, AFR, "link" },
-    {  "none",    "none",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = NONE_LINK},     0,  0, AFR, "link" },
-    {  "min",     "min",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = MIN_LINK},      0,  0, AFR, "link" },
-    {  "max",     "max",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = MAX_LINK},      0,  0, AFR, "link" },
-    {  "average", "average",              0,                       AV_OPT_TYPE_CONST,  {.i64 = AVERAGE_LINK},  0,  0, AFR, "link" },
+    { "noise_link", "set the noise floor link",OFFSET(noise_floor_link),AV_OPT_TYPE_INT,{.i64 = MIN_LINK},     0,  NB_LINK-1, AFR, .unit = "link" },
+    { "nl", "set the noise floor link",        OFFSET(noise_floor_link),AV_OPT_TYPE_INT,{.i64 = MIN_LINK},     0,  NB_LINK-1, AFR, .unit = "link" },
+    {  "none",    "none",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = NONE_LINK},     0,  0, AFR, .unit = "link" },
+    {  "min",     "min",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = MIN_LINK},      0,  0, AFR, .unit = "link" },
+    {  "max",     "max",                  0,                       AV_OPT_TYPE_CONST,  {.i64 = MAX_LINK},      0,  0, AFR, .unit = "link" },
+    {  "average", "average",              0,                       AV_OPT_TYPE_CONST,  {.i64 = AVERAGE_LINK},  0,  0, AFR, .unit = "link" },
     { "band_multiplier", "set band multiplier",OFFSET(band_multiplier), AV_OPT_TYPE_FLOAT,{.dbl = 1.25},       0.2,5, AF  },
     { "bm",       "set band multiplier",       OFFSET(band_multiplier), AV_OPT_TYPE_FLOAT,{.dbl = 1.25},       0.2,5, AF  },
-    { "sample_noise", "set sample noise mode",OFFSET(sample_noise_mode),AV_OPT_TYPE_INT,{.i64 = SAMPLE_NONE},  0,  NB_SAMPLEMODES-1, AFR, "sample" },
-    { "sn",           "set sample noise mode",OFFSET(sample_noise_mode),AV_OPT_TYPE_INT,{.i64 = SAMPLE_NONE},  0,  NB_SAMPLEMODES-1, AFR, "sample" },
-    {  "none",    "none",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_NONE},   0,  0, AFR, "sample" },
-    {  "start",   "start",                0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_START},  0,  0, AFR, "sample" },
-    {  "begin",   "start",                0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_START},  0,  0, AFR, "sample" },
-    {  "stop",    "stop",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_STOP},   0,  0, AFR, "sample" },
-    {  "end",     "stop",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_STOP},   0,  0, AFR, "sample" },
+    { "sample_noise", "set sample noise mode",OFFSET(sample_noise_mode),AV_OPT_TYPE_INT,{.i64 = SAMPLE_NONE},  0,  NB_SAMPLEMODES-1, AFR, .unit = "sample" },
+    { "sn",           "set sample noise mode",OFFSET(sample_noise_mode),AV_OPT_TYPE_INT,{.i64 = SAMPLE_NONE},  0,  NB_SAMPLEMODES-1, AFR, .unit = "sample" },
+    {  "none",    "none",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_NONE},   0,  0, AFR, .unit = "sample" },
+    {  "start",   "start",                0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_START},  0,  0, AFR, .unit = "sample" },
+    {  "begin",   "start",                0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_START},  0,  0, AFR, .unit = "sample" },
+    {  "stop",    "stop",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_STOP},   0,  0, AFR, .unit = "sample" },
+    {  "end",     "stop",                 0,                       AV_OPT_TYPE_CONST,  {.i64 = SAMPLE_STOP},   0,  0, AFR, .unit = "sample" },
     { "gain_smooth", "set gain smooth radius",OFFSET(gain_smooth), AV_OPT_TYPE_INT,    {.i64 = 0},             0, 50, AFR },
     { "gs",          "set gain smooth radius",OFFSET(gain_smooth), AV_OPT_TYPE_INT,    {.i64 = 0},             0, 50, AFR },
     { NULL }
@@ -376,6 +376,8 @@ static void process_frame(AVFilterContext *ctx,
         case AV_SAMPLE_FMT_DBLP:
             noisy_data[i] = mag = hypot(fft_data_dbl[i].re, fft_data_dbl[i].im);
             break;
+        default:
+            av_assert2(0);
         }
 
         power = mag * mag;
@@ -970,6 +972,8 @@ static void sample_noise_block(AudioFFTDeNoiseContext *s,
             mag2 = fft_out_dbl[n].re * fft_out_dbl[n].re +
                    fft_out_dbl[n].im * fft_out_dbl[n].im;
             break;
+        default:
+            av_assert2(0);
         }
 
         mag2 = fmax(mag2, s->sample_floor);
@@ -1357,13 +1361,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_afftdn = {
     .name            = "afftdn",
     .description     = NULL_IF_CONFIG_SMALL("Denoise audio samples using FFT."),
@@ -1372,7 +1369,7 @@ const AVFilter ff_af_afftdn = {
     .activate        = activate,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |

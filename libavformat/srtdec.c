@@ -21,6 +21,7 @@
  */
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "subtitles.h"
 #include "libavutil/bprint.h"
@@ -97,12 +98,14 @@ static int add_event(FFDemuxSubtitlesQueue *q, AVBPrint *buf, char *line_cache,
     if (append_cache && line_cache[0])
         av_bprintf(buf, "%s\n", line_cache);
     line_cache[0] = 0;
+    if (!av_bprint_is_complete(buf))
+        return AVERROR(ENOMEM);
 
     while (buf->len > 0 && buf->str[buf->len - 1] == '\n')
         buf->str[--buf->len] = 0;
 
     if (buf->len) {
-        AVPacket *sub = ff_subtitles_queue_insert(q, buf->str, buf->len, 0);
+        AVPacket *sub = ff_subtitles_queue_insert_bprint(q, buf, 0);
         if (!sub)
             return AVERROR(ENOMEM);
         av_bprint_clear(buf);
@@ -211,11 +214,11 @@ end:
     return res;
 }
 
-const AVInputFormat ff_srt_demuxer = {
-    .name        = "srt",
-    .long_name   = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
+const FFInputFormat ff_srt_demuxer = {
+    .p.name      = "srt",
+    .p.long_name = NULL_IF_CONFIG_SMALL("SubRip subtitle"),
     .priv_data_size = sizeof(SRTContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe  = srt_probe,
     .read_header = srt_read_header,
     .read_packet = ff_subtitles_read_packet,

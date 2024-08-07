@@ -62,15 +62,15 @@ static const AVOption datascope_options[] = {
     { "s",    "set output size", OFFSET(ow),   AV_OPT_TYPE_IMAGE_SIZE, {.str="hd720"}, 0, 0, FLAGS },
     { "x",    "set x offset", OFFSET(x),    AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGSR },
     { "y",    "set y offset", OFFSET(y),    AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGSR },
-    { "mode", "set scope mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 2, FLAGSR, "mode" },
-    {   "mono",   NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGSR, "mode" },
-    {   "color",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGSR, "mode" },
-    {   "color2", NULL, 0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGSR, "mode" },
+    { "mode", "set scope mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=0}, 0, 2, FLAGSR, .unit = "mode" },
+    {   "mono",   NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGSR, .unit = "mode" },
+    {   "color",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGSR, .unit = "mode" },
+    {   "color2", NULL, 0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGSR, .unit = "mode" },
     { "axis",    "draw column/row numbers", OFFSET(axis), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGSR },
     { "opacity", "set background opacity", OFFSET(opacity), AV_OPT_TYPE_FLOAT, {.dbl=0.75}, 0, 1, FLAGSR },
-    { "format", "set display number format", OFFSET(dformat), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGSR, "format" },
-    {   "hex",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGSR, "format" },
-    {   "dec",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGSR, "format" },
+    { "format", "set display number format", OFFSET(dformat), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, FLAGSR, .unit = "format" },
+    {   "hex",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGSR, .unit = "format" },
+    {   "dec",  NULL, 0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGSR, .unit = "format" },
     { "components", "set components to display", OFFSET(components), AV_OPT_TYPE_INT, {.i64=15}, 1, 15, FLAGSR },
     { NULL }
 };
@@ -383,7 +383,7 @@ static int config_input(AVFilterLink *inlink)
     uint8_t alpha = s->opacity * 255;
 
     s->nb_planes = av_pix_fmt_count_planes(inlink->format);
-    ff_draw_init(&s->draw, inlink->format, 0);
+    ff_draw_init2(&s->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
     ff_draw_color(&s->draw, &s->white,  (uint8_t[]){ 255, 255, 255, 255} );
     ff_draw_color(&s->draw, &s->black,  (uint8_t[]){ 0, 0, 0, alpha} );
     ff_draw_color(&s->draw, &s->yellow, (uint8_t[]){ 255, 255, 0, 255} );
@@ -728,20 +728,13 @@ static const AVFilterPad pixscope_inputs[] = {
     },
 };
 
-static const AVFilterPad pixscope_outputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_pixscope = {
     .name          = "pixscope",
     .description   = NULL_IF_CONFIG_SMALL("Pixel data analysis."),
     .priv_size     = sizeof(PixscopeContext),
     .priv_class    = &pixscope_class,
     FILTER_INPUTS(pixscope_inputs),
-    FILTER_OUTPUTS(pixscope_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = pixscope_process_command,
@@ -1132,13 +1125,6 @@ static const AVFilterPad oscilloscope_inputs[] = {
     },
 };
 
-static const AVFilterPad oscilloscope_outputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_oscilloscope = {
     .name          = "oscilloscope",
     .description   = NULL_IF_CONFIG_SMALL("2D Video Oscilloscope."),
@@ -1146,7 +1132,7 @@ const AVFilter ff_vf_oscilloscope = {
     .priv_class    = &oscilloscope_class,
     .uninit        = oscilloscope_uninit,
     FILTER_INPUTS(oscilloscope_inputs),
-    FILTER_OUTPUTS(oscilloscope_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = oscilloscope_process_command,

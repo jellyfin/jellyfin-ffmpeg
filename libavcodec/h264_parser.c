@@ -47,6 +47,7 @@
 #include "h264data.h"
 #include "mpegutils.h"
 #include "parser.h"
+#include "refstruct.h"
 #include "startcode.h"
 
 typedef struct H264ParseContext {
@@ -373,13 +374,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
                 goto fail;
             }
 
-            av_buffer_unref(&p->ps.pps_ref);
-            p->ps.pps = NULL;
-            p->ps.sps = NULL;
-            p->ps.pps_ref = av_buffer_ref(p->ps.pps_list[pps_id]);
-            if (!p->ps.pps_ref)
-                goto fail;
-            p->ps.pps = (const PPS*)p->ps.pps_ref->data;
+            ff_refstruct_replace(&p->ps.pps, p->ps.pps_list[pps_id]);
             p->ps.sps = p->ps.pps->sps;
             sps       = p->ps.sps;
 
@@ -568,7 +563,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
                 if (p->sei.common.unregistered.x264_build < 44U)
                     den *= 2;
                 av_reduce(&avctx->framerate.den, &avctx->framerate.num,
-                          sps->num_units_in_tick * avctx->ticks_per_frame, den, 1 << 30);
+                          sps->num_units_in_tick * 2, den, 1 << 30);
             }
 
             av_freep(&rbsp.rbsp_buffer);
@@ -625,7 +620,7 @@ static int h264_parse(AVCodecParserContext *s,
     parse_nal_units(s, avctx, buf, buf_size);
 
     if (avctx->framerate.num)
-        time_base = av_inv_q(av_mul_q(avctx->framerate, (AVRational){avctx->ticks_per_frame, 1}));
+        time_base = av_inv_q(av_mul_q(avctx->framerate, (AVRational){2, 1}));
     if (p->sei.picture_timing.cpb_removal_delay >= 0) {
         s->dts_sync_point    = p->sei.buffering_period.present;
         s->dts_ref_dts_delta = p->sei.picture_timing.cpb_removal_delay;

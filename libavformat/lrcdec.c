@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "lrc.h"
 #include "metadata.h"
@@ -170,8 +171,11 @@ static int lrc_read_header(AVFormatContext *s)
     av_bprint_init(&line, 0, AV_BPRINT_SIZE_UNLIMITED);
 
     while(!avio_feof(s->pb)) {
-        int64_t pos = read_line(&line, s->pb);
-        int64_t header_offset = find_header(line.str);
+        int64_t header_offset, pos = read_line(&line, s->pb);
+
+        if (!av_bprint_is_complete(&line))
+            goto err_nomem_out;
+        header_offset = find_header(line.str);
         if(header_offset >= 0) {
             char *comma_offset = strchr(line.str, ':');
             if(comma_offset) {
@@ -205,7 +209,7 @@ static int lrc_read_header(AVFormatContext *s)
                 sub = ff_subtitles_queue_insert(&lrc->q, line.str + ts_strlength,
                                                 line.len - ts_strlength, 0);
                 if (!sub)
-                    return AVERROR(ENOMEM);
+                    goto err_nomem_out;
                 sub->pos = pos;
                 sub->pts = ts_start - lrc->ts_offset;
                 sub->duration = -1;
@@ -216,13 +220,16 @@ static int lrc_read_header(AVFormatContext *s)
     ff_metadata_conv_ctx(s, NULL, ff_lrc_metadata_conv);
     av_bprint_finalize(&line, NULL);
     return 0;
+err_nomem_out:
+    av_bprint_finalize(&line, NULL);
+    return AVERROR(ENOMEM);
 }
 
-const AVInputFormat ff_lrc_demuxer = {
-    .name           = "lrc",
-    .long_name      = NULL_IF_CONFIG_SMALL("LRC lyrics"),
+const FFInputFormat ff_lrc_demuxer = {
+    .p.name         = "lrc",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("LRC lyrics"),
     .priv_data_size = sizeof (LRCContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = lrc_probe,
     .read_header    = lrc_read_header,
     .read_packet    = ff_subtitles_read_packet,

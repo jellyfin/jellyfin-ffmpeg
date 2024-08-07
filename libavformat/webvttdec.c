@@ -25,6 +25,7 @@
  */
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "subtitles.h"
 #include "libavutil/bprint.h"
@@ -81,7 +82,9 @@ static int webvtt_read_header(AVFormatContext *s)
         size_t identifier_len, settings_len;
         int64_t ts_start, ts_end;
 
-        ff_subtitles_read_chunk(s->pb, &cue);
+        res = ff_subtitles_read_chunk(s->pb, &cue);
+        if (res < 0)
+            goto end;
 
         if (!cue.len)
             break;
@@ -92,6 +95,8 @@ static int webvtt_read_header(AVFormatContext *s)
         /* ignore header chunk */
         if (!strncmp(p, "\xEF\xBB\xBFWEBVTT", 9) ||
             !strncmp(p, "WEBVTT", 6) ||
+            !strncmp(p, "STYLE", 5) ||
+            !strncmp(p, "REGION", 6) ||
             !strncmp(p, "NOTE", 4))
             continue;
 
@@ -193,11 +198,11 @@ static int webvtt_read_close(AVFormatContext *s)
 #define KIND_FLAGS AV_OPT_FLAG_SUBTITLE_PARAM|AV_OPT_FLAG_DECODING_PARAM
 
 static const AVOption options[] = {
-    { "kind", "Set kind of WebVTT track", OFFSET(kind), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, KIND_FLAGS, "webvtt_kind" },
-        { "subtitles",    "WebVTT subtitles kind",    0, AV_OPT_TYPE_CONST, { .i64 = 0 },                           INT_MIN, INT_MAX, KIND_FLAGS, "webvtt_kind" },
-        { "captions",     "WebVTT captions kind",     0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_CAPTIONS },     INT_MIN, INT_MAX, KIND_FLAGS, "webvtt_kind" },
-        { "descriptions", "WebVTT descriptions kind", 0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DESCRIPTIONS }, INT_MIN, INT_MAX, KIND_FLAGS, "webvtt_kind" },
-        { "metadata",     "WebVTT metadata kind",     0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_METADATA },     INT_MIN, INT_MAX, KIND_FLAGS, "webvtt_kind" },
+    { "kind", "Set kind of WebVTT track", OFFSET(kind), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, KIND_FLAGS, .unit = "webvtt_kind" },
+        { "subtitles",    "WebVTT subtitles kind",    0, AV_OPT_TYPE_CONST, { .i64 = 0 },                           INT_MIN, INT_MAX, KIND_FLAGS, .unit = "webvtt_kind" },
+        { "captions",     "WebVTT captions kind",     0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_CAPTIONS },     INT_MIN, INT_MAX, KIND_FLAGS, .unit = "webvtt_kind" },
+        { "descriptions", "WebVTT descriptions kind", 0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DESCRIPTIONS }, INT_MIN, INT_MAX, KIND_FLAGS, .unit = "webvtt_kind" },
+        { "metadata",     "WebVTT metadata kind",     0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_METADATA },     INT_MIN, INT_MAX, KIND_FLAGS, .unit = "webvtt_kind" },
     { NULL }
 };
 
@@ -208,16 +213,16 @@ static const AVClass webvtt_demuxer_class = {
     .version     = LIBAVUTIL_VERSION_INT,
 };
 
-const AVInputFormat ff_webvtt_demuxer = {
-    .name           = "webvtt",
-    .long_name      = NULL_IF_CONFIG_SMALL("WebVTT subtitle"),
+const FFInputFormat ff_webvtt_demuxer = {
+    .p.name         = "webvtt",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("WebVTT subtitle"),
+    .p.extensions   = "vtt",
+    .p.priv_class   = &webvtt_demuxer_class,
     .priv_data_size = sizeof(WebVTTContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = webvtt_probe,
     .read_header    = webvtt_read_header,
     .read_packet    = webvtt_read_packet,
     .read_seek2     = webvtt_read_seek,
     .read_close     = webvtt_read_close,
-    .extensions     = "vtt",
-    .priv_class     = &webvtt_demuxer_class,
 };

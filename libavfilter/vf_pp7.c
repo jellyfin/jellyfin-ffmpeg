@@ -27,6 +27,7 @@
  * project, and ported by Arwa Arif for FFmpeg.
  */
 
+#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
@@ -34,6 +35,7 @@
 #include "internal.h"
 #include "qp_table.h"
 #include "vf_pp7.h"
+#include "video.h"
 
 enum mode {
     MODE_HARD,
@@ -45,10 +47,10 @@ enum mode {
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption pp7_options[] = {
     { "qp", "force a constant quantizer parameter", OFFSET(qp), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 64, FLAGS },
-    { "mode", "set thresholding mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64 = MODE_MEDIUM}, 0, 2, FLAGS, "mode" },
-        { "hard",   "hard thresholding",   0, AV_OPT_TYPE_CONST, {.i64 = MODE_HARD},   INT_MIN, INT_MAX, FLAGS, "mode" },
-        { "soft",   "soft thresholding",   0, AV_OPT_TYPE_CONST, {.i64 = MODE_SOFT},   INT_MIN, INT_MAX, FLAGS, "mode" },
-        { "medium", "medium thresholding", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_MEDIUM}, INT_MIN, INT_MAX, FLAGS, "mode" },
+    { "mode", "set thresholding mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64 = MODE_MEDIUM}, 0, 2, FLAGS, .unit = "mode" },
+        { "hard",   "hard thresholding",   0, AV_OPT_TYPE_CONST, {.i64 = MODE_HARD},   INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
+        { "soft",   "soft thresholding",   0, AV_OPT_TYPE_CONST, {.i64 = MODE_SOFT},   INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
+        { "medium", "medium thresholding", 0, AV_OPT_TYPE_CONST, {.i64 = MODE_MEDIUM}, INT_MIN, INT_MAX, FLAGS, .unit = "mode" },
     { NULL }
 };
 
@@ -385,20 +387,13 @@ static const AVFilterPad pp7_inputs[] = {
     },
 };
 
-static const AVFilterPad pp7_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_pp7 = {
     .name            = "pp7",
     .description     = NULL_IF_CONFIG_SMALL("Apply Postprocessing 7 filter."),
     .priv_size       = sizeof(PP7Context),
     .uninit          = uninit,
     FILTER_INPUTS(pp7_inputs),
-    FILTER_OUTPUTS(pp7_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class      = &pp7_class,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,

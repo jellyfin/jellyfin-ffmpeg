@@ -37,7 +37,7 @@ void ff_aac_encode_ltp_info(AACEncContext *s, SingleChannelElement *sce,
 {
     int i;
     IndividualChannelStream *ics = &sce->ics;
-    if (s->profile != FF_PROFILE_AAC_LTP || !ics->predictor_present)
+    if (s->profile != AV_PROFILE_AAC_LTP || !ics->predictor_present)
         return;
     if (common_window)
         put_bits(&s->pb, 1, 0);
@@ -92,8 +92,8 @@ static void get_lag(float *buf, const float *new, LongTermPrediction *ltp)
         }
     }
     ltp->lag = FFMAX(av_clip_uintp2(lag, 11), 0);
-    ltp->coef_idx = quant_array_idx(max_ratio, ltp_coef, 8);
-    ltp->coef = ltp_coef[ltp->coef_idx];
+    ltp->coef_idx = quant_array_idx(max_ratio, ff_ltp_coef, 8);
+    ltp->coef     = ff_ltp_coef[ltp->coef_idx];
 }
 
 static void generate_samples(float *buf, LongTermPrediction *ltp)
@@ -119,7 +119,7 @@ void ff_aac_update_ltp(AACEncContext *s, SingleChannelElement *sce)
     float *pred_signal = &sce->ltp_state[0];
     const float *samples = &s->planar_samples[s->cur_channel][1024];
 
-    if (s->profile != FF_PROFILE_AAC_LTP)
+    if (s->profile != AV_PROFILE_AAC_LTP)
         return;
 
     /* Calculate lag */
@@ -190,8 +190,8 @@ void ff_aac_search_for_ltp(AACEncContext *s, SingleChannelElement *sce,
                 FFPsyBand *band = &s->psy.ch[s->cur_channel].psy_bands[(w+w2)*16+g];
                 for (i = 0; i < sce->ics.swb_sizes[g]; i++)
                     PCD[i] = sce->coeffs[start+(w+w2)*128+i] - sce->lcoeffs[start+(w+w2)*128+i];
-                s->abs_pow34(C34,  &sce->coeffs[start+(w+w2)*128],  sce->ics.swb_sizes[g]);
-                s->abs_pow34(PCD34, PCD, sce->ics.swb_sizes[g]);
+                s->aacdsp.abs_pow34(C34,  &sce->coeffs[start+(w+w2)*128],  sce->ics.swb_sizes[g]);
+                s->aacdsp.abs_pow34(PCD34, PCD, sce->ics.swb_sizes[g]);
                 dist1 += quantize_band_cost(s, &sce->coeffs[start+(w+w2)*128], C34, sce->ics.swb_sizes[g],
                                             sce->sf_idx[(w+w2)*16+g], sce->band_type[(w+w2)*16+g],
                                             s->lambda/band->threshold, INFINITY, &bits_tmp1, NULL);

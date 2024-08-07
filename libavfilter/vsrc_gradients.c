@@ -20,13 +20,10 @@
 
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "video.h"
 #include "internal.h"
 #include "libavutil/imgutils.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
 #include "libavutil/lfg.h"
 #include "libavutil/random_seed.h"
 #include <float.h>
@@ -40,6 +37,7 @@ typedef struct GradientsContext {
     int64_t pts;
     int64_t duration;           ///< duration expressed in microseconds
     float speed;
+    float angle;
 
     uint8_t color_rgba[8][4];
     float  color_rgbaf[8][4];
@@ -55,6 +53,7 @@ typedef struct GradientsContext {
 
 #define OFFSET(x) offsetof(GradientsContext, x)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
+#define VFT AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption gradients_options[] = {
     {"size",      "set frame size", OFFSET(w),             AV_OPT_TYPE_IMAGE_SIZE, {.str="640x480"},  0, 0, FLAGS },
@@ -78,13 +77,14 @@ static const AVOption gradients_options[] = {
     {"seed",      "set the seed",   OFFSET(seed),          AV_OPT_TYPE_INT64,      {.i64=-1},        -1, UINT32_MAX, FLAGS },
     {"duration",  "set video duration", OFFSET(duration),  AV_OPT_TYPE_DURATION,   {.i64=-1},        -1, INT64_MAX, FLAGS },
     {"d",         "set video duration", OFFSET(duration),  AV_OPT_TYPE_DURATION,   {.i64=-1},        -1, INT64_MAX, FLAGS },
-    {"speed",     "set gradients rotation speed", OFFSET(speed), AV_OPT_TYPE_FLOAT,{.dbl=0.01}, 0.00001, 1, FLAGS },
-    {"type",      "set gradient type", OFFSET(type),       AV_OPT_TYPE_INT,        {.i64=0},          0, 3, FLAGS, "type" },
-    {"t",         "set gradient type", OFFSET(type),       AV_OPT_TYPE_INT,        {.i64=0},          0, 3, FLAGS, "type" },
-    {"linear",    "set gradient type",            0,       AV_OPT_TYPE_CONST,      {.i64=0},          0, 0, FLAGS, "type" },
-    {"radial",    "set gradient type",            0,       AV_OPT_TYPE_CONST,      {.i64=1},          0, 0, FLAGS, "type" },
-    {"circular",  "set gradient type",            0,       AV_OPT_TYPE_CONST,      {.i64=2},          0, 0, FLAGS, "type" },
-    {"spiral",    "set gradient type",            0,       AV_OPT_TYPE_CONST,      {.i64=3},          0, 0, FLAGS, "type" },
+    {"speed",     "set gradients rotation speed", OFFSET(speed), AV_OPT_TYPE_FLOAT,{.dbl=0.01},       0, 1, VFT },
+    {"type",      "set gradient type", OFFSET(type),       AV_OPT_TYPE_INT,        {.i64=0},          0, 4, VFT, .unit = "type" },
+    {"t",         "set gradient type", OFFSET(type),       AV_OPT_TYPE_INT,        {.i64=0},          0, 4, VFT, .unit = "type" },
+    { "linear",   "set linear gradient",          0,       AV_OPT_TYPE_CONST,      {.i64=0},          0, 0, VFT, .unit = "type" },
+    { "radial",   "set radial gradient",          0,       AV_OPT_TYPE_CONST,      {.i64=1},          0, 0, VFT, .unit = "type" },
+    { "circular", "set circular gradient",        0,       AV_OPT_TYPE_CONST,      {.i64=2},          0, 0, VFT, .unit = "type" },
+    { "spiral",   "set spiral gradient",          0,       AV_OPT_TYPE_CONST,      {.i64=3},          0, 0, VFT, .unit = "type" },
+    { "square",   "set square gradient",          0,       AV_OPT_TYPE_CONST,      {.i64=4},          0, 0, VFT, .unit = "type" },
     {NULL},
 };
 
@@ -111,13 +111,13 @@ static uint64_t lerp_color16(uint8_t c0[4], uint8_t c1[4], float x)
 {
     const float y = 1.f - x;
 
-    return (llrintf((c0[0] * y + c1[0] * x) * 256)) << 0  |
-           (llrintf((c0[1] * y + c1[1] * x) * 256)) << 16 |
-           (llrintf((c0[2] * y + c1[2] * x) * 256)) << 32 |
-           (llrintf((c0[3] * y + c1[3] * x) * 256)) << 48;
+    return ((uint64_t)llrintf((c0[0] * y + c1[0] * x) * 256)) << 0  |
+           ((uint64_t)llrintf((c0[1] * y + c1[1] * x) * 256)) << 16 |
+           ((uint64_t)llrintf((c0[2] * y + c1[2] * x) * 256)) << 32 |
+           ((uint64_t)llrintf((c0[3] * y + c1[3] * x) * 256)) << 48;
 }
 
-static uint32_t lerp_colors(uint8_t arr[3][4], int nb_colors, int nb_wrap_colors, float step)
+static uint32_t lerp_colors(uint8_t arr[8][4], int nb_colors, int nb_wrap_colors, float step)
 {
     float scl;
     int i, j;
@@ -140,7 +140,7 @@ static uint32_t lerp_colors(uint8_t arr[3][4], int nb_colors, int nb_wrap_colors
     return lerp_color(arr[i], arr[j], scl - i);
 }
 
-static uint64_t lerp_colors16(uint8_t arr[3][4], int nb_colors, int nb_wrap_colors, float step)
+static uint64_t lerp_colors16(uint8_t arr[8][4], int nb_colors, int nb_wrap_colors, float step)
 {
     float scl;
     int i, j;
@@ -163,7 +163,7 @@ static uint64_t lerp_colors16(uint8_t arr[3][4], int nb_colors, int nb_wrap_colo
     return lerp_color16(arr[i], arr[j], scl - i);
 }
 
-static void lerp_colors32(float arr[3][4], int nb_colors,
+static void lerp_colors32(float arr[8][4], int nb_colors,
                           int nb_wrap_colors, float step,
                           float *r, float *g, float *b, float *a)
 {
@@ -187,12 +187,12 @@ static void lerp_colors32(float arr[3][4], int nb_colors,
 
     scl = step * (nb_wrap_colors - 1);
     i = floorf(scl);
-    x = scl - i;
     j = i + 1;
     if (i >= nb_colors - 1) {
         i = nb_colors - 1;
         j = 0;
     }
+    x = scl - i;
 
     *r = lerpf(arr[i][0], arr[j][0], x);
     *g = lerpf(arr[i][1], arr[j][1], x);
@@ -222,6 +222,9 @@ static float project(float origin_x, float origin_y,
     case 3:
         od_s_q = M_PI * 2.f;
         break;
+    case 4:
+        od_s_q = fmaxf(fabsf(od_x), fabsf(od_y));
+        break;
     }
 
     switch (type) {
@@ -237,6 +240,9 @@ static float project(float origin_x, float origin_y,
     case 3:
         op_x_od = fmodf(atan2f(op_x, op_y) + M_PI + point_x / fmaxf(origin_x, dest_x), 2.f * M_PI);
         break;
+    case 4:
+        op_x_od = fmaxf(fabsf(op_x), fabsf(op_y));
+        break;
     }
 
     // Normalize and clamp range.
@@ -251,13 +257,14 @@ static int draw_gradients_slice(AVFilterContext *ctx, void *arg, int job, int nb
     const int height = frame->height;
     const int start = (height *  job   ) / nb_jobs;
     const int end   = (height * (job+1)) / nb_jobs;
-    const int linesize = frame->linesize[0] / 4;
+    const ptrdiff_t linesize = frame->linesize[0] / 4;
     uint32_t *dst = (uint32_t *)frame->data[0] + start * linesize;
+    const int type = s->type;
 
     for (int y = start; y < end; y++) {
         for (int x = 0; x < width; x++) {
-            float factor = project(s->fx0, s->fy0, s->fx1, s->fy1, x, y, s->type);
-            dst[x] = lerp_colors(s->color_rgba, s->nb_colors, s->nb_colors + (s->type >= 2), factor);
+            float factor = project(s->fx0, s->fy0, s->fx1, s->fy1, x, y, type);
+            dst[x] = lerp_colors(s->color_rgba, s->nb_colors, s->nb_colors + (type >= 2 && type <= 3), factor);
         }
 
         dst += linesize;
@@ -274,13 +281,14 @@ static int draw_gradients_slice16(AVFilterContext *ctx, void *arg, int job, int 
     const int height = frame->height;
     const int start = (height *  job   ) / nb_jobs;
     const int end   = (height * (job+1)) / nb_jobs;
-    const int linesize = frame->linesize[0] / 8;
+    const ptrdiff_t linesize = frame->linesize[0] / 8;
     uint64_t *dst = (uint64_t *)frame->data[0] + start * linesize;
+    const int type = s->type;
 
     for (int y = start; y < end; y++) {
         for (int x = 0; x < width; x++) {
-            float factor = project(s->fx0, s->fy0, s->fx1, s->fy1, x, y, s->type);
-            dst[x] = lerp_colors16(s->color_rgba, s->nb_colors, s->nb_colors + s->type >= 2, factor);
+            float factor = project(s->fx0, s->fy0, s->fx1, s->fy1, x, y, type);
+            dst[x] = lerp_colors16(s->color_rgba, s->nb_colors, s->nb_colors + (type >= 2 && type <= 3), factor);
         }
 
         dst += linesize;
@@ -297,19 +305,20 @@ static int draw_gradients_slice32_planar(AVFilterContext *ctx, void *arg, int jo
     const int height = frame->height;
     const int start = (height *  job   ) / nb_jobs;
     const int end   = (height * (job+1)) / nb_jobs;
-    const int linesize_g = frame->linesize[0] / 4;
-    const int linesize_b = frame->linesize[1] / 4;
-    const int linesize_r = frame->linesize[2] / 4;
-    const int linesize_a = frame->linesize[3] / 4;
+    const ptrdiff_t linesize_g = frame->linesize[0] / 4;
+    const ptrdiff_t linesize_b = frame->linesize[1] / 4;
+    const ptrdiff_t linesize_r = frame->linesize[2] / 4;
+    const ptrdiff_t linesize_a = frame->linesize[3] / 4;
     float *dst_g = (float *)frame->data[0] + start * linesize_g;
-    float *dst_b = (float *)frame->data[0] + start * linesize_b;
-    float *dst_r = (float *)frame->data[0] + start * linesize_r;
-    float *dst_a = (float *)frame->data[0] + start * linesize_a;
+    float *dst_b = (float *)frame->data[1] + start * linesize_b;
+    float *dst_r = (float *)frame->data[2] + start * linesize_r;
+    float *dst_a = (float *)frame->data[3] + start * linesize_a;
+    const int type = s->type;
 
     for (int y = start; y < end; y++) {
         for (int x = 0; x < width; x++) {
-            float factor = project(s->fx0, s->fy0, s->fx1, s->fy1, x, y, s->type);
-            lerp_colors32(s->color_rgbaf, s->nb_colors, s->nb_colors + s->type >= 2 ,factor,
+            float factor = project(s->fx0, s->fy0, s->fx1, s->fy1, x, y, type);
+            lerp_colors32(s->color_rgbaf, s->nb_colors, s->nb_colors + (type >= 2 && type <= 3), factor,
                           &dst_r[x], &dst_g[x], &dst_b[x], &dst_a[x]);
         }
 
@@ -384,9 +393,11 @@ static int activate(AVFilterContext *ctx)
 
     if (ff_outlink_frame_wanted(outlink)) {
         AVFrame *frame = ff_get_video_buffer(outlink, s->w, s->h);
-        float angle = fmodf(s->pts * s->speed, 2.f * M_PI);
+        float angle = fmodf(s->angle, 2.f * M_PI);
         const float w2 = s->w / 2.f;
         const float h2 = s->h / 2.f;
+
+        s->angle = angle + s->speed;
 
         s->fx0 = (s->x0 - w2) * cosf(angle) - (s->y0 - h2) * sinf(angle) + w2;
         s->fy0 = (s->x0 - w2) * sinf(angle) + (s->y0 - h2) * cosf(angle) + h2;
@@ -397,8 +408,19 @@ static int activate(AVFilterContext *ctx)
         if (!frame)
             return AVERROR(ENOMEM);
 
+#if FF_API_FRAME_KEY
+FF_DISABLE_DEPRECATION_WARNINGS
         frame->key_frame           = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
+        frame->flags              |= AV_FRAME_FLAG_KEY;
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         frame->interlaced_frame    = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        frame->flags              &= ~AV_FRAME_FLAG_INTERLACED;
         frame->pict_type           = AV_PICTURE_TYPE_I;
         frame->sample_aspect_ratio = (AVRational) {1, 1};
         frame->pts = s->pts++;
@@ -431,4 +453,5 @@ const AVFilter ff_vsrc_gradients = {
     FILTER_PIXFMTS(AV_PIX_FMT_RGBA, AV_PIX_FMT_RGBA64, AV_PIX_FMT_GBRAPF32),
     .activate      = activate,
     .flags         = AVFILTER_FLAG_SLICE_THREADS,
+    .process_command = ff_filter_process_command,
 };

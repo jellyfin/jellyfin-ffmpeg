@@ -24,6 +24,7 @@
 #include "libavutil/attributes.h"
 #include "libavutil/mathematics.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "libavutil/dict.h"
 #include "libavutil/intreadwrite.h"
@@ -615,7 +616,7 @@ null_chunk_retry:
         pkt = &nsv->ahead[NSV_ST_AUDIO];
         /* read raw audio specific header on the first audio chunk... */
         /* on ALL audio chunks ?? seems so! */
-        if (asize && st[NSV_ST_AUDIO]->codecpar->codec_tag == MKTAG('P', 'C', 'M', ' ')/* && fill_header*/) {
+        if (asize >= 4 && st[NSV_ST_AUDIO]->codecpar->codec_tag == MKTAG('P', 'C', 'M', ' ')/* && fill_header*/) {
             uint8_t bps;
             uint8_t channels;
             uint16_t samplerate;
@@ -747,11 +748,11 @@ static int nsv_probe(const AVProbeData *p)
     return score;
 }
 
-const AVInputFormat ff_nsv_demuxer = {
-    .name           = "nsv",
-    .long_name      = NULL_IF_CONFIG_SMALL("Nullsoft Streaming Video"),
+const FFInputFormat ff_nsv_demuxer = {
+    .p.name         = "nsv",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Nullsoft Streaming Video"),
     .priv_data_size = sizeof(NSVContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = nsv_probe,
     .read_header    = nsv_read_header,
     .read_packet    = nsv_read_packet,

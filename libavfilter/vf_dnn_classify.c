@@ -26,6 +26,7 @@
 #include "filters.h"
 #include "dnn_filter_common.h"
 #include "internal.h"
+#include "video.h"
 #include "libavutil/time.h"
 #include "libavutil/avstring.h"
 #include "libavutil/detection_bbox.h"
@@ -44,9 +45,9 @@ typedef struct DnnClassifyContext {
 #define OFFSET2(x) offsetof(DnnClassifyContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption dnn_classify_options[] = {
-    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = 2 },    INT_MIN, INT_MAX, FLAGS, "backend" },
+    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = DNN_OV },    INT_MIN, INT_MAX, FLAGS, .unit = "backend" },
 #if (CONFIG_LIBOPENVINO == 1)
-    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = 2 },    0, 0, FLAGS, "backend" },
+    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, .unit = "backend" },
 #endif
     DNN_COMMON_OPTIONS
     { "confidence",  "threshold of confidence",    OFFSET2(confidence),      AV_OPT_TYPE_FLOAT,     { .dbl = 0.5 },  0, 1, FLAGS},
@@ -67,8 +68,8 @@ static int dnn_classify_post_proc(AVFrame *frame, DNNData *output, uint32_t bbox
     uint32_t label_id;
     float confidence;
     AVFrameSideData *sd;
-
-    if (output->channels <= 0) {
+    int output_size = output->dims[3] * output->dims[2] * output->dims[1];
+    if (output_size <= 0) {
         return -1;
     }
 
@@ -87,7 +88,7 @@ static int dnn_classify_post_proc(AVFrame *frame, DNNData *output, uint32_t bbox
     classifications = output->data;
     label_id = 0;
     confidence= classifications[0];
-    for (int i = 1; i < output->channels; i++) {
+    for (int i = 1; i < output_size; i++) {
         if (classifications[i] > confidence) {
             label_id = i;
             confidence= classifications[i];
@@ -293,28 +294,14 @@ static av_cold void dnn_classify_uninit(AVFilterContext *context)
     free_classify_labels(ctx);
 }
 
-static const AVFilterPad dnn_classify_inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
-static const AVFilterPad dnn_classify_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_dnn_classify = {
     .name          = "dnn_classify",
     .description   = NULL_IF_CONFIG_SMALL("Apply DNN classify filter to the input."),
     .priv_size     = sizeof(DnnClassifyContext),
     .init          = dnn_classify_init,
     .uninit        = dnn_classify_uninit,
-    FILTER_INPUTS(dnn_classify_inputs),
-    FILTER_OUTPUTS(dnn_classify_outputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &dnn_classify_class,
     .activate      = dnn_classify_activate,

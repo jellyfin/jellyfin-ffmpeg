@@ -22,9 +22,9 @@
 #include "libavutil/mastering_display_metadata.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "vaapi_vpp.h"
+#include "video.h"
 
 typedef struct HDRVAAPIContext {
     VAAPIVPPContext vpp_ctx; // must be the first field
@@ -309,6 +309,9 @@ static int tonemap_vaapi_filter_frame(AVFilterLink *inlink, AVFrame *input_frame
            av_get_pix_fmt_name(output_frame->format),
            output_frame->width, output_frame->height, output_frame->pts);
 
+    av_frame_remove_side_data(output_frame, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    av_frame_remove_side_data(output_frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+
     return ff_filter_frame(outlink, output_frame);
 
 fail:
@@ -328,14 +331,6 @@ static av_cold int tonemap_vaapi_init(AVFilterContext *avctx)
 
     if (ctx->output_format_string) {
         vpp_ctx->output_format = av_get_pix_fmt(ctx->output_format_string);
-        switch (vpp_ctx->output_format) {
-        case AV_PIX_FMT_NV12:
-        case AV_PIX_FMT_P010:
-            break;
-        default:
-            av_log(avctx, AV_LOG_ERROR, "Invalid output format.\n");
-            return AVERROR(EINVAL);
-        }
     } else {
         vpp_ctx->output_format = AV_PIX_FMT_NV12;
         av_log(avctx, AV_LOG_WARNING, "Output format not set, use default format NV12\n");
@@ -364,25 +359,25 @@ static av_cold int tonemap_vaapi_init(AVFilterContext *avctx)
 #define OFFSET(x) offsetof(HDRVAAPIContext, x)
 #define FLAGS (AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM)
 static const AVOption tonemap_vaapi_options[] = {
-    { "format", "Output pixel format set", OFFSET(output_format_string), AV_OPT_TYPE_STRING, .flags = FLAGS, "format" },
+    { "format", "Output pixel format set", OFFSET(output_format_string), AV_OPT_TYPE_STRING, .flags = FLAGS, .unit = "format" },
     { "matrix", "Output color matrix coefficient set",
       OFFSET(color_matrix_string), AV_OPT_TYPE_STRING,
-      { .str = NULL }, .flags = FLAGS, "matrix" },
+      { .str = NULL }, .flags = FLAGS, .unit = "matrix" },
     { "m",      "Output color matrix coefficient set",
       OFFSET(color_matrix_string), AV_OPT_TYPE_STRING,
-      { .str = NULL }, .flags = FLAGS, "matrix" },
+      { .str = NULL }, .flags = FLAGS, .unit = "matrix" },
     { "primaries", "Output color primaries set",
       OFFSET(color_primaries_string), AV_OPT_TYPE_STRING,
-      { .str = NULL }, .flags = FLAGS, "primaries" },
+      { .str = NULL }, .flags = FLAGS, .unit = "primaries" },
     { "p",         "Output color primaries set",
       OFFSET(color_primaries_string), AV_OPT_TYPE_STRING,
-      { .str = NULL }, .flags = FLAGS, "primaries" },
+      { .str = NULL }, .flags = FLAGS, .unit = "primaries" },
     { "transfer", "Output color transfer characteristics set",
       OFFSET(color_transfer_string),  AV_OPT_TYPE_STRING,
-      { .str = NULL }, .flags = FLAGS, "transfer" },
+      { .str = NULL }, .flags = FLAGS, .unit = "transfer" },
     { "t",        "Output color transfer characteristics set",
       OFFSET(color_transfer_string),  AV_OPT_TYPE_STRING,
-      { .str = NULL }, .flags = FLAGS, "transfer" },
+      { .str = NULL }, .flags = FLAGS, .unit = "transfer" },
     { NULL }
 };
 

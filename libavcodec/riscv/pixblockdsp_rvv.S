@@ -20,29 +20,49 @@
 
 #include "libavutil/riscv/asm.S"
 
-func ff_get_pixels_8_rvv, zve32x
-        vsetivli     zero, 8, e8, mf2, ta, ma
-        vlsseg8e8.v  v16, (a1), a2
+func ff_get_pixels_8_rvv, zve64x
+        vsetivli zero, 8, e8, mf2, ta, ma
+        li      t0, 8 * 8
+1:
+        vlse64.v v16, (a1), a2
+        vsetvli zero, t0, e8, m4, ta, ma
         vwcvtu.x.x.v v8, v16
-        vwcvtu.x.x.v v9, v17
-        vwcvtu.x.x.v v10, v18
-        vwcvtu.x.x.v v11, v19
-        vwcvtu.x.x.v v12, v20
-        vwcvtu.x.x.v v13, v21
-        vwcvtu.x.x.v v14, v22
-        vwcvtu.x.x.v v15, v23
-        vsseg8e16.v  v8, (a0)
+        vse16.v v8, (a0)
         ret
 endfunc
 
-func ff_get_pixels_16_rvv, zve32x
-        vsetivli     zero, 8, e16, m1, ta, ma
-        vlsseg8e16.v v0, (a1), a2
-        vsseg8e16.v  v0, (a0)
+func ff_get_pixels_unaligned_8_rvv, zve64x
+        andi    t1, a1, 7
+        vsetivli zero, 8, e64, m4, ta, ma
+        li      t0, 8 * 8
+        beqz    t1, 1b
+        andi    a1, a1, -8
+        slli    t2, t1, 3
+        addi    t1, a1, 8
+        sub     t3, t0, t2
+        vlse64.v v16, (a1), a2
+        vlse64.v v24, (t1), a2
+        vsrl.vx v16, v16, t2
+        vsll.vx v24, v24, t3
+        vor.vv  v16, v16, v24
+        vsetvli zero, t0, e8, m4, ta, ma
+        vwcvtu.x.x.v v8, v16
+        vse16.v v8, (a0)
         ret
 endfunc
 
-func ff_diff_pixels_rvv, zve32x
+func ff_diff_pixels_rvv, zve64x
+        vsetivli zero, 8, e8, mf2, ta, ma
+        li      t0, 8 * 8
+        vlse64.v v16, (a1), a3
+        vlse64.v v24, (a2), a3
+        vsetvli zero, t0, e8, m4, ta, ma
+        vwsubu.vv v8, v16, v24
+        vse16.v v8, (a0)
+        ret
+endfunc
+
+func ff_diff_pixels_unaligned_rvv, zve32x
         vsetivli    zero, 8, e8, mf2, ta, ma
         vlsseg8e8.v v16, (a1), a3
         vlsseg8e8.v v24, (a2), a3

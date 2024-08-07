@@ -18,53 +18,139 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <float.h>
+
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
-#include "libavutil/opt.h"
 
-#include "audio.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "filters.h"
 #include "internal.h"
 
+typedef struct ChanStats {
+    double u;
+    double v;
+    double uv;
+} ChanStats;
+
 typedef struct AudioSDRContext {
     int channels;
-    int64_t pts;
-    double *sum_u;
-    double *sum_uv;
+    uint64_t nb_samples;
+    double max;
+
+    ChanStats *chs;
 
     AVFrame *cache[2];
+
+    int (*filter)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } AudioSDRContext;
 
-static void sdr(AVFilterContext *ctx, const AVFrame *u, const AVFrame *v)
-{
-    AudioSDRContext *s = ctx->priv;
-
-    for (int ch = 0; ch < u->ch_layout.nb_channels; ch++) {
-        const double *const us = (double *)u->extended_data[ch];
-        const double *const vs = (double *)v->extended_data[ch];
-        double sum_uv = s->sum_uv[ch];
-        double sum_u = s->sum_u[ch];
-
-        for (int n = 0; n < u->nb_samples; n++) {
-            sum_u  += us[n] * us[n];
-            sum_uv += (us[n] - vs[n]) * (us[n] - vs[n]);
-        }
-
-        s->sum_uv[ch] = sum_uv;
-        s->sum_u[ch]  = sum_u;
-    }
+#define SDR_FILTER(name, type)                                                \
+static int sdr_##name(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)\
+{                                                                             \
+    AudioSDRContext *s = ctx->priv;                                           \
+    AVFrame *u = s->cache[0];                                                 \
+    AVFrame *v = s->cache[1];                                                 \
+    const int channels = u->ch_layout.nb_channels;                            \
+    const int start = (channels * jobnr) / nb_jobs;                           \
+    const int end = (channels * (jobnr+1)) / nb_jobs;                         \
+    const int nb_samples = u->nb_samples;                                     \
+                                                                              \
+    for (int ch = start; ch < end; ch++) {                                    \
+        ChanStats *chs = &s->chs[ch];                                         \
+        const type *const us = (type *)u->extended_data[ch];                  \
+        const type *const vs = (type *)v->extended_data[ch];                  \
+        double sum_uv = 0.;                                                   \
+        double sum_u = 0.;                                                    \
+                                                                              \
+        for (int n = 0; n < nb_samples; n++) {                                \
+            sum_u  += us[n] * us[n];                                          \
+            sum_uv += (us[n] - vs[n]) * (us[n] - vs[n]);                      \
+        }                                                                     \
+                                                                              \
+        chs->uv += sum_uv;                                                    \
+        chs->u  += sum_u;                                                     \
+    }                                                                         \
+                                                                              \
+    return 0;                                                                 \
 }
+
+SDR_FILTER(fltp, float)
+SDR_FILTER(dblp, double)
+
+#define SISDR_FILTER(name, type)                                              \
+static int sisdr_##name(AVFilterContext *ctx, void *arg,int jobnr,int nb_jobs)\
+{                                                                             \
+    AudioSDRContext *s = ctx->priv;                                           \
+    AVFrame *u = s->cache[0];                                                 \
+    AVFrame *v = s->cache[1];                                                 \
+    const int channels = u->ch_layout.nb_channels;                            \
+    const int start = (channels * jobnr) / nb_jobs;                           \
+    const int end = (channels * (jobnr+1)) / nb_jobs;                         \
+    const int nb_samples = u->nb_samples;                                     \
+                                                                              \
+    for (int ch = start; ch < end; ch++) {                                    \
+        ChanStats *chs = &s->chs[ch];                                         \
+        const type *const us = (type *)u->extended_data[ch];                  \
+        const type *const vs = (type *)v->extended_data[ch];                  \
+        double sum_uv = 0.;                                                   \
+        double sum_u = 0.;                                                    \
+        double sum_v = 0.;                                                    \
+                                                                              \
+        for (int n = 0; n < nb_samples; n++) {                                \
+            sum_u  += us[n] * us[n];                                          \
+            sum_v  += vs[n] * vs[n];                                          \
+            sum_uv += us[n] * vs[n];                                          \
+        }                                                                     \
+                                                                              \
+        chs->uv += sum_uv;                                                    \
+        chs->u  += sum_u;                                                     \
+        chs->v  += sum_v;                                                     \
+    }                                                                         \
+                                                                              \
+    return 0;                                                                 \
+}
+
+SISDR_FILTER(fltp, float)
+SISDR_FILTER(dblp, double)
+
+#define PSNR_FILTER(name, type)                                               \
+static int psnr_##name(AVFilterContext *ctx, void *arg, int jobnr,int nb_jobs)\
+{                                                                             \
+    AudioSDRContext *s = ctx->priv;                                           \
+    AVFrame *u = s->cache[0];                                                 \
+    AVFrame *v = s->cache[1];                                                 \
+    const int channels = u->ch_layout.nb_channels;                            \
+    const int start = (channels * jobnr) / nb_jobs;                           \
+    const int end = (channels * (jobnr+1)) / nb_jobs;                         \
+    const int nb_samples = u->nb_samples;                                     \
+                                                                              \
+    for (int ch = start; ch < end; ch++) {                                    \
+        ChanStats *chs = &s->chs[ch];                                         \
+        const type *const us = (type *)u->extended_data[ch];                  \
+        const type *const vs = (type *)v->extended_data[ch];                  \
+        double sum_uv = 0.;                                                   \
+                                                                              \
+        for (int n = 0; n < nb_samples; n++)                                  \
+            sum_uv += (us[n] - vs[n]) * (us[n] - vs[n]);                      \
+                                                                              \
+        chs->uv += sum_uv;                                                    \
+    }                                                                         \
+                                                                              \
+    return 0;                                                                 \
+}
+
+PSNR_FILTER(fltp, float)
+PSNR_FILTER(dblp, double)
 
 static int activate(AVFilterContext *ctx)
 {
     AudioSDRContext *s = ctx->priv;
-    int ret, status;
-    int available;
+    AVFilterLink *outlink = ctx->outputs[0];
+    int ret, status, available;
     int64_t pts;
 
-    FF_FILTER_FORWARD_STATUS_BACK_ALL(ctx->outputs[0], ctx);
+    FF_FILTER_FORWARD_STATUS_BACK_ALL(outlink, ctx);
 
     available = FFMIN(ff_inlink_queued_samples(ctx->inputs[0]), ff_inlink_queued_samples(ctx->inputs[1]));
     if (available > 0) {
@@ -72,38 +158,39 @@ static int activate(AVFilterContext *ctx)
 
         for (int i = 0; i < 2; i++) {
             ret = ff_inlink_consume_samples(ctx->inputs[i], available, available, &s->cache[i]);
-            if (ret > 0) {
-                if (s->pts == AV_NOPTS_VALUE)
-                    s->pts = s->cache[i]->pts;
+            if (ret < 0) {
+                av_frame_free(&s->cache[0]);
+                av_frame_free(&s->cache[1]);
+                return ret;
             }
         }
 
-        sdr(ctx, s->cache[0], s->cache[1]);
+        if (!ctx->is_disabled)
+            ff_filter_execute(ctx, s->filter, NULL, NULL,
+                              FFMIN(outlink->ch_layout.nb_channels, ff_filter_get_nb_threads(ctx)));
 
         av_frame_free(&s->cache[1]);
         out = s->cache[0];
-        out->nb_samples = available;
-        out->pts = s->pts;
-        s->pts += available;
         s->cache[0] = NULL;
 
-        return ff_filter_frame(ctx->outputs[0], out);
+        s->nb_samples += available;
+        return ff_filter_frame(outlink, out);
     }
 
     for (int i = 0; i < 2; i++) {
         if (ff_inlink_acknowledge_status(ctx->inputs[i], &status, &pts)) {
-            ff_outlink_set_status(ctx->outputs[0], status, s->pts);
+            ff_outlink_set_status(outlink, status, pts);
             return 0;
         }
     }
 
-    if (ff_outlink_frame_wanted(ctx->outputs[0])) {
+    if (ff_outlink_frame_wanted(outlink)) {
         for (int i = 0; i < 2; i++) {
-            if (ff_inlink_queued_samples(ctx->inputs[i]) > 0)
+            if (s->cache[i] || ff_inlink_queued_samples(ctx->inputs[i]) > 0)
                 continue;
             ff_inlink_request_frame(ctx->inputs[i]);
+            return 0;
         }
-        return 0;
     }
 
     return FFERROR_NOT_READY;
@@ -115,13 +202,18 @@ static int config_output(AVFilterLink *outlink)
     AVFilterLink *inlink = ctx->inputs[0];
     AudioSDRContext *s = ctx->priv;
 
-    s->pts = AV_NOPTS_VALUE;
-
     s->channels = inlink->ch_layout.nb_channels;
 
-    s->sum_u  = av_calloc(outlink->ch_layout.nb_channels, sizeof(*s->sum_u));
-    s->sum_uv = av_calloc(outlink->ch_layout.nb_channels, sizeof(*s->sum_uv));
-    if (!s->sum_u || !s->sum_uv)
+    if (!strcmp(ctx->filter->name, "asdr"))
+        s->filter = inlink->format == AV_SAMPLE_FMT_FLTP ? sdr_fltp : sdr_dblp;
+    else if (!strcmp(ctx->filter->name, "asisdr"))
+        s->filter = inlink->format == AV_SAMPLE_FMT_FLTP ? sisdr_fltp : sisdr_dblp;
+    else
+        s->filter = inlink->format == AV_SAMPLE_FMT_FLTP ? psnr_fltp : psnr_dblp;
+    s->max = inlink->format == AV_SAMPLE_FMT_FLTP ? FLT_MAX : DBL_MAX;
+
+    s->chs  = av_calloc(outlink->ch_layout.nb_channels, sizeof(*s->chs));
+    if (!s->chs)
         return AVERROR(ENOMEM);
 
     return 0;
@@ -131,14 +223,28 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     AudioSDRContext *s = ctx->priv;
 
-    for (int ch = 0; ch < s->channels; ch++)
-        av_log(ctx, AV_LOG_INFO, "SDR ch%d: %g dB\n", ch, 20. * log10(s->sum_u[ch] / s->sum_uv[ch]));
+    if (!strcmp(ctx->filter->name, "asdr")) {
+        for (int ch = 0; ch < s->channels; ch++)
+            av_log(ctx, AV_LOG_INFO, "SDR ch%d: %g dB\n", ch, 10. * log10(s->chs[ch].u / s->chs[ch].uv));
+    } else if (!strcmp(ctx->filter->name, "asisdr")) {
+        for (int ch = 0; ch < s->channels; ch++) {
+            double scale = s->chs[ch].uv / s->chs[ch].v;
+            double sisdr = scale * scale * s->chs[ch].v / fmax(0., s->chs[ch].u + scale*scale*s->chs[ch].v - 2.0*scale*s->chs[ch].uv);
+
+            av_log(ctx, AV_LOG_INFO, "SI-SDR ch%d: %g dB\n", ch, 10. * log10(sisdr));
+        }
+    } else {
+        for (int ch = 0; ch < s->channels; ch++) {
+            double psnr = s->chs[ch].uv > 0.0 ? 2.0 * log(s->max) - log(s->nb_samples / s->chs[ch].uv) : INFINITY;
+
+            av_log(ctx, AV_LOG_INFO, "PSNR ch%d: %g dB\n", ch, psnr);
+        }
+    }
 
     av_frame_free(&s->cache[0]);
     av_frame_free(&s->cache[1]);
 
-    av_freep(&s->sum_u);
-    av_freep(&s->sum_uv);
+    av_freep(&s->chs);
 }
 
 static const AVFilterPad inputs[] = {
@@ -166,8 +272,41 @@ const AVFilter ff_af_asdr = {
     .priv_size      = sizeof(AudioSDRContext),
     .activate       = activate,
     .uninit         = uninit,
-    .flags          = AVFILTER_FLAG_METADATA_ONLY,
+    .flags          = AVFILTER_FLAG_METADATA_ONLY |
+                      AVFILTER_FLAG_SLICE_THREADS |
+                      AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
-    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP,
+                      AV_SAMPLE_FMT_DBLP),
+};
+
+const AVFilter ff_af_apsnr = {
+    .name           = "apsnr",
+    .description    = NULL_IF_CONFIG_SMALL("Measure Audio Peak Signal-to-Noise Ratio."),
+    .priv_size      = sizeof(AudioSDRContext),
+    .activate       = activate,
+    .uninit         = uninit,
+    .flags          = AVFILTER_FLAG_METADATA_ONLY |
+                      AVFILTER_FLAG_SLICE_THREADS |
+                      AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP,
+                      AV_SAMPLE_FMT_DBLP),
+};
+
+const AVFilter ff_af_asisdr = {
+    .name           = "asisdr",
+    .description    = NULL_IF_CONFIG_SMALL("Measure Audio Scale-Invariant Signal-to-Distortion Ratio."),
+    .priv_size      = sizeof(AudioSDRContext),
+    .activate       = activate,
+    .uninit         = uninit,
+    .flags          = AVFILTER_FLAG_METADATA_ONLY |
+                      AVFILTER_FLAG_SLICE_THREADS |
+                      AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
+    FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP,
+                      AV_SAMPLE_FMT_DBLP),
 };

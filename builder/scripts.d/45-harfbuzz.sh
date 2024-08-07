@@ -41,9 +41,15 @@ ffbuild_dockerbuild() {
         return -1
     fi
 
-    export LIBS="-lpthread"
-
     meson "${myconf[@]}" ..
     ninja -j$(nproc)
     ninja install
+}
+
+ffbuild_configure() {
+    echo --enable-libharfbuzz
+}
+
+ffbuild_unconfigure() {
+    echo --disable-libharfbuzz
 }

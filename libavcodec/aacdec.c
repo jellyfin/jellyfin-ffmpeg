@@ -40,11 +40,11 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "get_bits.h"
-#include "lpc.h"
 #include "kbdwin.h"
 #include "sinewin.h"
 
 #include "aac.h"
+#include "aacdec.h"
 #include "aactab.h"
 #include "aacdectab.h"
 #include "adts_header.h"
@@ -209,7 +209,7 @@ static av_always_inline void predict(PredictorState *ps, float *coef,
  *
  * @param   index   index into coupling gain array
  */
-static void apply_dependent_coupling(AACContext *ac,
+static void apply_dependent_coupling(AACDecContext *ac,
                                      SingleChannelElement *target,
                                      ChannelElement *cce, int index)
 {
@@ -245,7 +245,7 @@ static void apply_dependent_coupling(AACContext *ac,
  *
  * @param   index   index into coupling gain array
  */
-static void apply_independent_coupling(AACContext *ac,
+static void apply_independent_coupling(AACDecContext *ac,
                                        SingleChannelElement *target,
                                        ChannelElement *cce, int index)
 {
@@ -262,7 +262,7 @@ static void apply_independent_coupling(AACContext *ac,
 #define LOAS_SYNC_WORD   0x2b7       ///< 11 bits LOAS sync word
 
 struct LATMContext {
-    AACContext aac_ctx;     ///< containing AACContext
+    AACDecContext aac_ctx;  ///< containing AACContext
     int initialized;        ///< initialized after a valid extradata was seen
 
     // parser data
@@ -281,7 +281,7 @@ static inline uint32_t latm_get_value(GetBitContext *b)
 static int latm_decode_audio_specific_config(struct LATMContext *latmctx,
                                              GetBitContext *gb, int asclen)
 {
-    AACContext *ac        = &latmctx->aac_ctx;
+    AACDecContext *ac     = &latmctx->aac_ctx;
     AVCodecContext *avctx = ac->avctx;
     MPEG4AudioConfig m4ac = { 0 };
     GetBitContext gbc;
@@ -555,7 +555,7 @@ const FFCodec ff_aac_decoder = {
     CODEC_LONG_NAME("AAC (Advanced Audio Coding)"),
     .p.type          = AVMEDIA_TYPE_AUDIO,
     .p.id            = AV_CODEC_ID_AAC,
-    .priv_data_size  = sizeof(AACContext),
+    .priv_data_size  = sizeof(AACDecContext),
     .init            = aac_decode_init,
     .close           = aac_decode_close,
     FF_CODEC_DECODE_CB(aac_decode_frame),
@@ -564,8 +564,7 @@ const FFCodec ff_aac_decoder = {
     },
     .p.capabilities  = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(aac_channel_layout)
-    .p.ch_layouts    = aac_ch_layout,
+    .p.ch_layouts    = ff_aac_ch_layout,
     .flush = flush,
     .p.priv_class    = &aac_decoder_class,
     .p.profiles      = NULL_IF_CONFIG_SMALL(ff_aac_profiles),
@@ -590,8 +589,7 @@ const FFCodec ff_aac_latm_decoder = {
     },
     .p.capabilities  = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(aac_channel_layout)
-    .p.ch_layouts    = aac_ch_layout,
+    .p.ch_layouts    = ff_aac_ch_layout,
     .flush = flush,
     .p.profiles      = NULL_IF_CONFIG_SMALL(ff_aac_profiles),
 };

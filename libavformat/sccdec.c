@@ -20,10 +20,10 @@
  */
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "subtitles.h"
 #include "libavutil/avstring.h"
-#include "libavutil/bprint.h"
 #include "libavutil/intreadwrite.h"
 
 typedef struct SCCContext {
@@ -147,14 +147,14 @@ static int scc_read_header(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_scc_demuxer = {
-    .name           = "scc",
-    .long_name      = NULL_IF_CONFIG_SMALL("Scenarist Closed Captions"),
+const FFInputFormat ff_scc_demuxer = {
+    .p.name         = "scc",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Scenarist Closed Captions"),
+    .p.extensions   = "scc",
     .priv_data_size = sizeof(SCCContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = scc_probe,
     .read_header    = scc_read_header,
-    .extensions     = "scc",
     .read_packet    = ff_subtitles_read_packet,
     .read_seek2     = ff_subtitles_read_seek,
     .read_close     = ff_subtitles_read_close,

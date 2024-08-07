@@ -113,11 +113,7 @@ static av_cold int amv_init(AVFormatContext *s)
         return AVERROR(EINVAL);
     }
 
-    if (ast->codecpar->codec_id != AV_CODEC_ID_ADPCM_IMA_AMV) {
-        av_log(s, AV_LOG_ERROR, "Second AMV stream must be %s\n",
-                avcodec_get_name(AV_CODEC_ID_ADPCM_IMA_AMV));
-        return AVERROR(EINVAL);
-    }
+    av_assert1(ast->codecpar->codec_id == AV_CODEC_ID_ADPCM_IMA_AMV);
 
     /* These files are broken-enough as they are. They shouldn't be streamed. */
     if (!(s->pb->seekable & AVIO_SEEKABLE_NORMAL)) {
@@ -410,6 +406,9 @@ const FFOutputFormat ff_amv_muxer = {
     .priv_data_size = sizeof(AMVContext),
     .p.audio_codec  = AV_CODEC_ID_ADPCM_IMA_AMV,
     .p.video_codec  = AV_CODEC_ID_AMV,
+    .p.subtitle_codec = AV_CODEC_ID_NONE,
+    .flags_internal   = FF_OFMT_FLAG_MAX_ONE_OF_EACH |
+                        FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
     .init           = amv_init,
     .deinit         = amv_deinit,
     .write_header   = amv_write_header,

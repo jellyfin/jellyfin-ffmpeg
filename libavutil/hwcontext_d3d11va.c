@@ -62,7 +62,9 @@ static av_cold void load_functions(void)
         return;
 
     mD3D11CreateDevice = (PFN_D3D11_CREATE_DEVICE) GetProcAddress(d3dlib, "D3D11CreateDevice");
-    mCreateDXGIFactory = (PFN_CREATE_DXGI_FACTORY) GetProcAddress(dxgilib, "CreateDXGIFactory");
+    mCreateDXGIFactory = (PFN_CREATE_DXGI_FACTORY) GetProcAddress(dxgilib, "CreateDXGIFactory1");
+    if (!mCreateDXGIFactory)
+        mCreateDXGIFactory = (PFN_CREATE_DXGI_FACTORY) GetProcAddress(dxgilib, "CreateDXGIFactory");
 #else
     // In UWP (which lacks LoadLibrary), CreateDXGIFactory isn't available,
     // only CreateDXGIFactory1
@@ -72,6 +74,11 @@ static av_cold void load_functions(void)
 }
 
 typedef struct D3D11VAFramesContext {
+    /**
+     * The public AVD3D11VAFramesContext. See hwcontext_d3d11va.h for it.
+     */
+    AVD3D11VAFramesContext p;
+
     int nb_surfaces;
     int nb_surfaces_used;
 
@@ -89,6 +96,13 @@ static const struct {
     { DXGI_FORMAT_B8G8R8A8_UNORM,    AV_PIX_FMT_BGRA },
     { DXGI_FORMAT_R10G10B10A2_UNORM, AV_PIX_FMT_X2BGR10 },
     { DXGI_FORMAT_R16G16B16A16_FLOAT, AV_PIX_FMT_RGBAF16 },
+    { DXGI_FORMAT_AYUV,         AV_PIX_FMT_VUYX },
+    { DXGI_FORMAT_YUY2,         AV_PIX_FMT_YUYV422 },
+    { DXGI_FORMAT_Y210,         AV_PIX_FMT_Y210 },
+    { DXGI_FORMAT_Y410,         AV_PIX_FMT_XV30 },
+    { DXGI_FORMAT_P016,         AV_PIX_FMT_P012 },
+    { DXGI_FORMAT_Y216,         AV_PIX_FMT_Y212 },
+    { DXGI_FORMAT_Y416,         AV_PIX_FMT_XV36 },
     // Special opaque formats. The pix_fmt is merely a place holder, as the
     // opaque format cannot be accessed directly.
     { DXGI_FORMAT_420_OPAQUE,   AV_PIX_FMT_YUV420P },
@@ -106,8 +120,8 @@ static void d3d11va_default_unlock(void *ctx)
 
 static void d3d11va_frames_uninit(AVHWFramesContext *ctx)
 {
-    AVD3D11VAFramesContext *frames_hwctx = ctx->hwctx;
-    D3D11VAFramesContext *s = ctx->internal->priv;
+    D3D11VAFramesContext *s = ctx->hwctx;
+    AVD3D11VAFramesContext *frames_hwctx = &s->p;
 
     if (frames_hwctx->texture)
         ID3D11Texture2D_Release(frames_hwctx->texture);
@@ -162,8 +176,8 @@ static AVBufferRef *wrap_texture_buf(AVHWFramesContext *ctx, ID3D11Texture2D *te
 {
     AVBufferRef *buf;
     AVD3D11FrameDescriptor         *desc = av_mallocz(sizeof(*desc));
-    D3D11VAFramesContext              *s = ctx->internal->priv;
-    AVD3D11VAFramesContext *frames_hwctx = ctx->hwctx;
+    D3D11VAFramesContext              *s = ctx->hwctx;
+    AVD3D11VAFramesContext *frames_hwctx = &s->p;
     if (!desc) {
         ID3D11Texture2D_Release(tex);
         return NULL;
@@ -175,6 +189,7 @@ static AVBufferRef *wrap_texture_buf(AVHWFramesContext *ctx, ID3D11Texture2D *te
                                                    sizeof(*frames_hwctx->texture_infos));
         if (!frames_hwctx->texture_infos) {
             ID3D11Texture2D_Release(tex);
+            av_free(desc);
             return NULL;
         }
         s->nb_surfaces = s->nb_surfaces_used + 1;
@@ -187,7 +202,7 @@ static AVBufferRef *wrap_texture_buf(AVHWFramesContext *ctx, ID3D11Texture2D *te
     desc->texture = tex;
     desc->index   = index;
 
-    buf = av_buffer_create((uint8_t *)desc, sizeof(desc), free_texture, tex, 0);
+    buf = av_buffer_create((uint8_t *)desc, sizeof(*desc), free_texture, tex, 0);
     if (!buf) {
         ID3D11Texture2D_Release(tex);
         av_free(desc);
@@ -199,8 +214,8 @@ static AVBufferRef *wrap_texture_buf(AVHWFramesContext *ctx, ID3D11Texture2D *te
 
 static AVBufferRef *d3d11va_alloc_single(AVHWFramesContext *ctx)
 {
-    D3D11VAFramesContext       *s = ctx->internal->priv;
-    AVD3D11VAFramesContext *hwctx = ctx->hwctx;
+    D3D11VAFramesContext       *s = ctx->hwctx;
+    AVD3D11VAFramesContext *hwctx = &s->p;
     AVD3D11VADeviceContext *device_hwctx = ctx->device_ctx->hwctx;
     HRESULT hr;
     ID3D11Texture2D *tex;
@@ -228,8 +243,8 @@ static AVBufferRef *d3d11va_alloc_single(AVHWFramesContext *ctx)
 static AVBufferRef *d3d11va_pool_alloc(void *opaque, size_t size)
 {
     AVHWFramesContext        *ctx = (AVHWFramesContext*)opaque;
-    D3D11VAFramesContext       *s = ctx->internal->priv;
-    AVD3D11VAFramesContext *hwctx = ctx->hwctx;
+    D3D11VAFramesContext       *s = ctx->hwctx;
+    AVD3D11VAFramesContext *hwctx = &s->p;
     D3D11_TEXTURE2D_DESC  texDesc;
 
     if (!hwctx->texture)
@@ -248,9 +263,9 @@ static AVBufferRef *d3d11va_pool_alloc(void *opaque, size_t size)
 
 static int d3d11va_frames_init(AVHWFramesContext *ctx)
 {
-    AVD3D11VAFramesContext *hwctx        = ctx->hwctx;
     AVD3D11VADeviceContext *device_hwctx = ctx->device_ctx->hwctx;
-    D3D11VAFramesContext              *s = ctx->internal->priv;
+    D3D11VAFramesContext              *s = ctx->hwctx;
+    AVD3D11VAFramesContext        *hwctx = &s->p;
 
     int i;
     HRESULT hr;
@@ -307,9 +322,10 @@ static int d3d11va_frames_init(AVHWFramesContext *ctx)
         return AVERROR(ENOMEM);
     s->nb_surfaces = ctx->initial_pool_size;
 
-    ctx->internal->pool_internal = av_buffer_pool_init2(sizeof(AVD3D11FrameDescriptor),
-                                                        ctx, d3d11va_pool_alloc, NULL);
-    if (!ctx->internal->pool_internal)
+    ffhwframesctx(ctx)->pool_internal =
+        av_buffer_pool_init2(sizeof(AVD3D11FrameDescriptor),
+                             ctx, d3d11va_pool_alloc, NULL);
+    if (!ffhwframesctx(ctx)->pool_internal)
         return AVERROR(ENOMEM);
 
     return 0;
@@ -338,7 +354,7 @@ static int d3d11va_transfer_get_formats(AVHWFramesContext *ctx,
                                         enum AVHWFrameTransferDirection dir,
                                         enum AVPixelFormat **formats)
 {
-    D3D11VAFramesContext *s = ctx->internal->priv;
+    D3D11VAFramesContext *s = ctx->hwctx;
     enum AVPixelFormat *fmts;
 
     fmts = av_malloc_array(2, sizeof(*fmts));
@@ -360,7 +376,7 @@ static int d3d11va_transfer_get_formats(AVHWFramesContext *ctx,
 static int d3d11va_create_staging_texture(AVHWFramesContext *ctx, DXGI_FORMAT format)
 {
     AVD3D11VADeviceContext *device_hwctx = ctx->device_ctx->hwctx;
-    D3D11VAFramesContext              *s = ctx->internal->priv;
+    D3D11VAFramesContext              *s = ctx->hwctx;
     HRESULT hr;
     D3D11_TEXTURE2D_DESC texDesc = {
         .Width          = ctx->width,
@@ -400,7 +416,7 @@ static int d3d11va_transfer_data(AVHWFramesContext *ctx, AVFrame *dst,
                                  const AVFrame *src)
 {
     AVD3D11VADeviceContext *device_hwctx = ctx->device_ctx->hwctx;
-    D3D11VAFramesContext              *s = ctx->internal->priv;
+    D3D11VAFramesContext              *s = ctx->hwctx;
     int download = src->format == AV_PIX_FMT_D3D11;
     const AVFrame *frame = download ? src : dst;
     const AVFrame *other = download ? dst : src;
@@ -445,8 +461,8 @@ static int d3d11va_transfer_data(AVHWFramesContext *ctx, AVFrame *dst,
 
         fill_texture_ptrs(map_data, map_linesize, ctx, &desc, &map);
 
-        av_image_copy(dst->data, dst->linesize, (const uint8_t **)map_data, map_linesize,
-                      ctx->sw_format, w, h);
+        av_image_copy2(dst->data, dst->linesize, map_data, map_linesize,
+                       ctx->sw_format, w, h);
 
         ID3D11DeviceContext_Unmap(device_hwctx->device_context, staging, 0);
     } else {
@@ -457,8 +473,8 @@ static int d3d11va_transfer_data(AVHWFramesContext *ctx, AVFrame *dst,
 
         fill_texture_ptrs(map_data, map_linesize, ctx, &desc, &map);
 
-        av_image_copy(map_data, map_linesize, (const uint8_t **)src->data, src->linesize,
-                      ctx->sw_format, w, h);
+        av_image_copy2(map_data, map_linesize, src->data, src->linesize,
+                       ctx->sw_format, w, h);
 
         ID3D11DeviceContext_Unmap(device_hwctx->device_context, staging, 0);
 
@@ -545,6 +561,47 @@ static void d3d11va_device_uninit(AVHWDeviceContext *hwdev)
     }
 }
 
+static int d3d11va_device_find_adapter_by_vendor_id(AVHWDeviceContext *ctx, uint32_t flags, const char *vendor_id)
+{
+    HRESULT hr;
+    IDXGIAdapter *adapter = NULL;
+    IDXGIFactory2 *factory;
+    int adapter_id = 0;
+    long int id = strtol(vendor_id, NULL, 0);
+
+    hr = mCreateDXGIFactory(&IID_IDXGIFactory2, (void **)&factory);
+    if (FAILED(hr)) {
+        av_log(ctx, AV_LOG_ERROR, "CreateDXGIFactory returned error\n");
+        return -1;
+    }
+
+    while (IDXGIFactory2_EnumAdapters(factory, adapter_id++, &adapter) != DXGI_ERROR_NOT_FOUND) {
+        ID3D11Device* device = NULL;
+        DXGI_ADAPTER_DESC adapter_desc;
+
+        hr = mD3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, flags, NULL, 0, D3D11_SDK_VERSION, &device, NULL, NULL);
+        if (FAILED(hr)) {
+            av_log(ctx, AV_LOG_DEBUG, "D3D11CreateDevice returned error, try next adapter\n");
+            IDXGIAdapter_Release(adapter);
+            continue;
+        }
+
+        hr = IDXGIAdapter2_GetDesc(adapter, &adapter_desc);
+        ID3D11Device_Release(device);
+        IDXGIAdapter_Release(adapter);
+        if (FAILED(hr)) {
+            av_log(ctx, AV_LOG_DEBUG, "IDXGIAdapter2_GetDesc returned error, try next adapter\n");
+            continue;
+        } else if (adapter_desc.VendorId == id) {
+            IDXGIFactory2_Release(factory);
+            return adapter_id - 1;
+        }
+    }
+
+    IDXGIFactory2_Release(factory);
+    return -1;
+}
+
 static int d3d11va_device_create(AVHWDeviceContext *ctx, const char *device,
                                  AVDictionary *opts, int flags)
 {
@@ -556,15 +613,12 @@ static int d3d11va_device_create(AVHWDeviceContext *ctx, const char *device,
     UINT creationFlags = D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
     int is_debug       = !!av_dict_get(opts, "debug", NULL, 0);
     int ret;
+    int adapter = -1;
 
-    // (On UWP we can't check this.)
-#if !HAVE_UWP
-    if (!LoadLibrary("d3d11_1sdklayers.dll"))
-        is_debug = 0;
-#endif
-
-    if (is_debug)
+    if (is_debug) {
         creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
+        av_log(ctx, AV_LOG_INFO, "Enabling d3d11 debugging.\n");
+    }
 
     if ((ret = ff_thread_once(&functions_loaded, load_functions)) != 0)
         return AVERROR_UNKNOWN;
@@ -574,10 +628,25 @@ static int d3d11va_device_create(AVHWDeviceContext *ctx, const char *device,
     }
 
     if (device) {
+        adapter = atoi(device);
+    } else {
+        AVDictionaryEntry *e = av_dict_get(opts, "vendor_id", NULL, 0);
+        if (e && e->value) {
+            adapter = d3d11va_device_find_adapter_by_vendor_id(ctx, creationFlags, e->value);
+            if (adapter < 0) {
+                av_log(ctx, AV_LOG_ERROR, "Failed to find d3d11va adapter by "
+                       "vendor id %s\n", e->value);
+                return AVERROR_UNKNOWN;
+            }
+        }
+    }
+
+    if (adapter >= 0) {
         IDXGIFactory2 *pDXGIFactory;
+
+        av_log(ctx, AV_LOG_VERBOSE, "Selecting d3d11va adapter %d\n", adapter);
         hr = mCreateDXGIFactory(&IID_IDXGIFactory2, (void **)&pDXGIFactory);
         if (SUCCEEDED(hr)) {
-            int adapter = atoi(device);
             if (FAILED(IDXGIFactory2_EnumAdapters(pDXGIFactory, adapter, &pAdapter)))
                 pAdapter = NULL;
             IDXGIFactory2_Release(pDXGIFactory);
@@ -617,9 +686,17 @@ static int d3d11va_device_create(AVHWDeviceContext *ctx, const char *device,
             if (pf_DXGIGetDebugInterface) {
                 IDXGIDebug *dxgi_debug = NULL;
                 hr = pf_DXGIGetDebugInterface(&IID_IDXGIDebug, (void**)&dxgi_debug);
-                if (SUCCEEDED(hr) && dxgi_debug)
+                if (SUCCEEDED(hr) && dxgi_debug) {
                     IDXGIDebug_ReportLiveObjects(dxgi_debug, DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+                    av_log(ctx, AV_LOG_INFO, "Enabled dxgi debugging.\n");
+                } else {
+                    av_log(ctx, AV_LOG_WARNING, "Failed enabling dxgi debugging.\n");
+                }
+            } else {
+                av_log(ctx, AV_LOG_WARNING, "Failed getting dxgi debug interface.\n");
             }
+        } else {
+            av_log(ctx, AV_LOG_WARNING, "Failed loading dxgi debug library.\n");
         }
     }
 #endif
@@ -632,8 +709,7 @@ const HWContextType ff_hwcontext_type_d3d11va = {
     .name                 = "D3D11VA",
 
     .device_hwctx_size    = sizeof(AVD3D11VADeviceContext),
-    .frames_hwctx_size    = sizeof(AVD3D11VAFramesContext),
-    .frames_priv_size     = sizeof(D3D11VAFramesContext),
+    .frames_hwctx_size    = sizeof(D3D11VAFramesContext),
 
     .device_create        = d3d11va_device_create,
     .device_init          = d3d11va_device_init,

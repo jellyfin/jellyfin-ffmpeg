@@ -24,6 +24,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "libavutil/mem.h"
+#include "libavformat/demux.h"
 #include "libavformat/internal.h"
 #include "libavformat/riff.h"
 #include "avdevice.h"
@@ -431,8 +432,8 @@ dshow_get_device_media_types(AVFormatContext *avctx, enum dshowDeviceType devtyp
             IEnumMediaTypes_Release(types);
         if (p)
             IKsPropertySet_Release(p);
-        if (pin)
-            IPin_Release(pin);
+
+        IPin_Release(pin);
     }
 
     IEnumPins_Release(pins);
@@ -644,7 +645,7 @@ static int dshow_get_device_list(AVFormatContext *avctx, AVDeviceInfoList *devic
     }
 
     ret = dshow_cycle_devices(avctx, devenum, VideoDevice, VideoSourceDevice, NULL, NULL, &device_list);
-    if (ret < S_OK)
+    if (ret < S_OK && ret != AVERROR(EIO))
         goto error;
     ret = dshow_cycle_devices(avctx, devenum, AudioDevice, AudioSourceDevice, NULL, NULL, &device_list);
 
@@ -1000,7 +1001,7 @@ dshow_cycle_formats(AVFormatContext *avctx, enum dshowDeviceType devtype,
                     "  ch=%2u, bits=%2u, rate=%6lu\n",
                     fx->nChannels, fx->wBitsPerSample, fx->nSamplesPerSec
                 );
-                continue;
+                goto next;
             }
             if (
                 (requested_sample_rate && requested_sample_rate != fx->nSamplesPerSec) ||
@@ -1369,10 +1370,10 @@ dshow_open_device(AVFormatContext *avctx, ICreateDevEnum *devenum,
             goto error;
         }
     }
-        if (ctx->device_filter[otherDevType]) {
+    if (ctx->device_filter[otherDevType]) {
         // avoid adding add two instances of the same device to the graph, one for video, one for audio
         // a few devices don't support this (could also do this check earlier to avoid double crossbars, etc. but they seem OK)
-        if (strcmp(device_filter_unique_name, ctx->device_unique_name[otherDevType]) == 0) {
+        if (!device_filter_unique_name || strcmp(device_filter_unique_name, ctx->device_unique_name[otherDevType]) == 0) {
           av_log(avctx, AV_LOG_DEBUG, "reusing previous graph capture filter... %s\n", device_filter_unique_name);
           IBaseFilter_Release(device_filter);
           device_filter = ctx->device_filter[otherDevType];
@@ -1464,7 +1465,7 @@ dshow_open_device(AVFormatContext *avctx, ICreateDevEnum *devenum,
         av_log(avctx, AV_LOG_ERROR, "Could not create CaptureGraphBuilder2\n");
         goto error;
     }
-    ICaptureGraphBuilder2_SetFiltergraph(graph_builder2, graph);
+    r = ICaptureGraphBuilder2_SetFiltergraph(graph_builder2, graph);
     if (r != S_OK) {
         av_log(avctx, AV_LOG_ERROR, "Could not set graph for CaptureGraphBuilder2\n");
         goto error;
@@ -1545,7 +1546,10 @@ dshow_add_device(AVFormatContext *avctx,
 
     ctx->capture_filter[devtype]->stream_index = st->index;
 
-    ff_dshow_pin_ConnectionMediaType(ctx->capture_pin[devtype], &type);
+    if (ff_dshow_pin_ConnectionMediaType(ctx->capture_pin[devtype], &type) != S_OK) {
+        ret = AVERROR(EIO);
+        goto error;
+    }
     fmt_info = dshow_get_format_info(&type);
     if (!fmt_info) {
         ret = AVERROR(EIO);
@@ -1924,14 +1928,15 @@ static const AVClass dshow_class = {
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_INPUT,
 };
 
-const AVInputFormat ff_dshow_demuxer = {
-    .name           = "dshow",
-    .long_name      = NULL_IF_CONFIG_SMALL("DirectShow capture"),
+const FFInputFormat ff_dshow_demuxer = {
+    .p.name         = "dshow",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("DirectShow capture"),
+    .p.flags        = AVFMT_NOFILE | AVFMT_NOBINSEARCH |
+                      AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK,
+    .p.priv_class   = &dshow_class,
     .priv_data_size = sizeof(struct dshow_ctx),
     .read_header    = dshow_read_header,
     .read_packet    = dshow_read_packet,
     .read_close     = dshow_read_close,
     .get_device_list= dshow_get_device_list,
-    .flags          = AVFMT_NOFILE | AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK,
-    .priv_class     = &dshow_class,
 };

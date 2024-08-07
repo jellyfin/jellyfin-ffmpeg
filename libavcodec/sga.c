@@ -72,7 +72,7 @@ static int decode_palette(GetByteContext *gb, uint32_t *pal)
         return AVERROR_INVALIDDATA;
 
     memset(pal, 0, 16 * sizeof(*pal));
-    init_get_bits8(&gbit, gb->buffer, 18);
+    (void)init_get_bits8(&gbit, gb->buffer, 18);
 
     for (int RGBIndex = 0; RGBIndex < 3; RGBIndex++) {
         for (int index = 0; index < 16; index++) {
@@ -127,19 +127,18 @@ static int decode_index_palmap(SGAVideoContext *s, AVFrame *frame)
 
 static int decode_index_tilemap(SGAVideoContext *s, AVFrame *frame)
 {
-    GetByteContext *gb = &s->gb;
-    GetBitContext pm;
+    GetByteContext *gb = &s->gb, gb2;
 
     bytestream2_seek(gb, s->tilemapdata_offset, SEEK_SET);
     if (bytestream2_get_bytes_left(gb) < s->tilemapdata_size)
         return AVERROR_INVALIDDATA;
 
-    init_get_bits8(&pm, gb->buffer, s->tilemapdata_size);
+    gb2 = *gb;
 
     for (int y = 0; y < s->tiles_h; y++) {
         for (int x = 0; x < s->tiles_w; x++) {
             uint8_t tile[64];
-            int tilemap = get_bits(&pm, 16);
+            int tilemap = bytestream2_get_be16u(&gb2);
             int flip_x = (tilemap >> 11) & 1;
             int flip_y = (tilemap >> 12) & 1;
             int tindex = av_clip((tilemap & 511) - 1, 0, s->nb_tiles - 1);
@@ -497,9 +496,13 @@ static int sga_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     }
 
     memcpy(frame->data[1], s->pal, AVPALETTE_SIZE);
+#if FF_API_PALETTE_HAS_CHANGED
+FF_DISABLE_DEPRECATION_WARNINGS
     frame->palette_has_changed = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
 
     *got_frame = 1;
 

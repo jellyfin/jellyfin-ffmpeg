@@ -19,6 +19,7 @@
  */
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "riff.h"
 #include "libavutil/intreadwrite.h"
@@ -51,10 +52,17 @@ static int read_header(AVFormatContext *s)
     st->codecpar->codec_id   = ff_codec_get_id(ff_codec_bmp_tags, st->codecpar->codec_tag);
     st->codecpar->width      = avio_rl16(s->pb);
     st->codecpar->height     = avio_rl16(s->pb);
-    time_base.den         = avio_rl32(s->pb);
-    time_base.num         = avio_rl32(s->pb);
-    st->duration          = avio_rl32(s->pb);
+    time_base.den            = avio_rl32(s->pb);
+    time_base.num            = avio_rl32(s->pb);
+    st->nb_frames            = avio_rl32(s->pb);
     avio_skip(s->pb, 4); // unused
+
+    // Infer duration from nb_frames, in order to be backward compatible with
+    // previous IVF demuxer.
+    // It is popular to configure time_base to 1/frame_rate by IVF muxer, that
+    // the duration happens to be the same with nb_frames. See
+    // `https://chromium.googlesource.com/webm/vp8-test-vectors/+/refs/heads/main`
+    st->duration             = st->nb_frames;
 
     ffstream(st)->need_parsing = AVSTREAM_PARSE_HEADERS;
 
@@ -81,12 +89,12 @@ static int read_packet(AVFormatContext *s, AVPacket *pkt)
     return ret;
 }
 
-const AVInputFormat ff_ivf_demuxer = {
-    .name           = "ivf",
-    .long_name      = NULL_IF_CONFIG_SMALL("On2 IVF"),
+const FFInputFormat ff_ivf_demuxer = {
+    .p.name         = "ivf",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("On2 IVF"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.codec_tag    = (const AVCodecTag* const []){ ff_codec_bmp_tags, 0 },
     .read_probe     = probe,
     .read_header    = read_header,
     .read_packet    = read_packet,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .codec_tag      = (const AVCodecTag* const []){ ff_codec_bmp_tags, 0 },
 };
