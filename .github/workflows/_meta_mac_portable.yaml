@@ -20,9 +20,9 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        # Currently, macOS 12 is x86 exclusive and macOS 14 is arm exclusive and we have no other way to specify arch
+        # Currently, macOS 13 is x86 exclusive and macOS 14 is arm exclusive and we have no other way to specify arch
         os:
-          - name: macos-12
+          - name: macos-13
             arch: x86_64
           - name: macos-14
             arch: arm64
