@@ -382,7 +382,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.4.1 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.5.0 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -399,6 +399,8 @@ prepare_extra_amd64() {
     pushd MediaSDK
     # fix build in gcc 13
     wget -q -O - https://github.com/Intel-Media-SDK/MediaSDK/commit/8fb9f5f.patch | git apply
+    # fix ADI issue with VPL patch
+    wget -q -O - https://github.com/intel/vpl-gpu-rt/commit/e025c82.patch | git apply
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -425,10 +427,8 @@ prepare_extra_amd64() {
           -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=ON \
-          -DBUILD_{DISPATCHER,DEV}=ON \
-          -DBUILD_{PREVIEW,TESTS}=OFF \
-          -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
-          -DINSTALL_EXAMPLE_CODE=OFF \
+          -DINSTALL_{DEV,LIB}=ON \
+          -DBUILD_{TESTS,EXAMPLES,EXPERIMENTAL}=OFF \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libvpl.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
@@ -439,7 +439,7 @@ prepare_extra_amd64() {
     # VPL-GPU-RT (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.2.5 --depth=1 https://github.com/intel/vpl-gpu-rt.git
+    git clone -b intel-onevpl-24.3.1 --depth=1 https://github.com/intel/vpl-gpu-rt.git
     pushd vpl-gpu-rt
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -459,7 +459,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.2.5 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.3.1 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
