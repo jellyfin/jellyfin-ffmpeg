@@ -280,7 +280,7 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 +    return (float3)(r, g, b);
  #else
 -    return c;
-+    return (float3)(c.x, c.y, c.z);
++    return c;
  #endif
  }
 
@@ -645,13 +645,13 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
      }
 -    return r;
 +#ifdef TONE_FUNC_BT2390
-+        float src_peak_delin_pq = inverse_eotf_st2084(peak);
-+        float dst_peak_delin_pq = inverse_eotf_st2084(1.0f);
-+        MAP_FOUR_PIXELS(i4, src_peak_delin_pq, dst_peak_delin_pq)
++    float src_peak_delin_pq = inverse_eotf_st2084(peak);
++    float dst_peak_delin_pq = inverse_eotf_st2084(1.0f);
++    MAP_FOUR_PIXELS(i4, src_peak_delin_pq, dst_peak_delin_pq)
 +#else
-+        i4 = eotf_st2084x4(i4);
-+        MAP_FOUR_PIXELS(i4, peak, 1.0f)
-+        i4 = inverse_eotf_st2084x4(i4);
++    i4 = eotf_st2084x4(i4);
++    MAP_FOUR_PIXELS(i4, peak, 1.0f)
++    i4 = inverse_eotf_st2084x4(i4);
 +#endif
 +    i4 = fmin(i4, 1.0f);
 +    float4 factor = min(i4/i4_o, i4_o/i4);
