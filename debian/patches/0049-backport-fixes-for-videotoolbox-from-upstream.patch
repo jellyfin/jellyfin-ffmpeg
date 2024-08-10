@@ -291,7 +291,7 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
  
      //Populates extradata - output frames are flushed and param sets are available.
      status = VTCompressionSessionCompleteFrames(vtctx->session,
-@@ -2766,10 +2783,19 @@ static int vtenc_populate_extradata(AVCo
+@@ -2766,10 +2783,26 @@ static int vtenc_populate_extradata(AVCo
  
  pe_cleanup:
      CVPixelBufferRelease(pix_buf);
@@ -299,9 +299,16 @@ Index: FFmpeg/libavcodec/videotoolboxenc.c
 +
 +    if (status) {
 +        vtenc_reset(vtctx);
-+    } else if (vtctx->session) {
-+        CFRelease(vtctx->session);
-+        vtctx->session = NULL;
++    } else {
++        if (vtctx->session) {
++            CFRelease(vtctx->session);
++            vtctx->session = NULL;
++        }
++
++        if (vtctx->supported_props) {
++            CFRelease(vtctx->supported_props);
++            vtctx->supported_props = NULL;
++        }
 +    }
 +
      vtctx->frame_ct_out = 0;
@@ -390,7 +397,7 @@ Index: FFmpeg/libavutil/hwcontext_videotoolbox.c
 +            colormatrix, kCVAttachmentMode_ShouldPropagate);
 +    else {
 +        CVBufferRemoveAttachment(pixbuf, kCVImageBufferYCbCrMatrixKey);
-+        if (src->colorspace != AVCOL_SPC_UNSPECIFIED)
++        if (src->colorspace != AVCOL_SPC_UNSPECIFIED && src->colorspace != AVCOL_SPC_RGB)
 +            av_log(log_ctx, AV_LOG_WARNING,
 +                "Color space %s is not supported.\n",
 +                av_color_space_name(src->colorspace));
