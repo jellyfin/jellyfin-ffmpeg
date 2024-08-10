@@ -8,12 +8,14 @@ on:
   push:
     branches:
       - jellyfin
+      - jellyfin-7.0
     paths-ignore:
       - '**/*.md'
 
   pull_request:
     branches:
       - jellyfin
+      - jellyfin-7.0
     paths-ignore:
       - '**/*.md'
 
