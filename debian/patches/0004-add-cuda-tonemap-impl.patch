@@ -588,7 +588,7 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +    float rr = r * lms2rgb_matrix[0] + g * lms2rgb_matrix[1] + b * lms2rgb_matrix[2];
 +    float gg = r * lms2rgb_matrix[3] + g * lms2rgb_matrix[4] + b * lms2rgb_matrix[5];
 +    float bb = r * lms2rgb_matrix[6] + g * lms2rgb_matrix[7] + b * lms2rgb_matrix[8];
-+    return make_float3(rr, gg, bb);
++    return rgb2lrgb(make_float3(rr, gg, bb));
 +}
 +
 +static __inline__ __device__ float3 lrgb2ictcp(float r, float g, float b) {
@@ -1540,8 +1540,8 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +    WRITER \
 +}
 +
-+TONEMAP_VARIANT(,              _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_d,            _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
++TONEMAP_VARIANT(_max,          _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
++TONEMAP_VARIANT(_max_d,        _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
 +TONEMAP_VARIANT(_rgb,          _READER,         , _YUV2RGB,    _TONEMAP_RGB, _RGB2YUV,          , _WRITER)
 +TONEMAP_VARIANT(_rgb_d,        _READER,         , _YUV2RGB,    _TONEMAP_RGB, _RGB2YUV,   _DITHER, _WRITER)
 +TONEMAP_VARIANT(_lum,          _READER,         , _YUV2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,        , _WRITER)
@@ -1549,8 +1549,8 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +TONEMAP_VARIANT(_itp,          _READER,         , _YUV2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,        , _WRITER)
 +TONEMAP_VARIANT(_itp_d,        _READER,         , _YUV2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S, _DITHER, _WRITER)
 +
-+TONEMAP_VARIANT(_dovi,         _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_dovi_d,       _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_max,     _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
++TONEMAP_VARIANT(_dovi_max_d,   _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb,     _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_RGB, _RGB2YUV,          , _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb_d,   _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_RGB, _RGB2YUV,   _DITHER, _WRITER)
 +TONEMAP_VARIANT(_dovi_lum,     _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,        , _WRITER)
@@ -1558,8 +1558,8 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +TONEMAP_VARIANT(_dovi_itp,     _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,        , _WRITER)
 +TONEMAP_VARIANT(_dovi_itp_d,   _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S, _DITHER, _WRITER)
 +
-+TONEMAP_VARIANT(_dovi_f,       _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_dovi_d_f,     _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_max_f,   _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
++TONEMAP_VARIANT(_dovi_max_d_f, _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb_f,   _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_RGB, _RGB2YUV,          , _WRITER)
 +TONEMAP_VARIANT(_dovi_rgb_d_f, _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_RGB, _RGB2YUV,   _DITHER, _WRITER)
 +TONEMAP_VARIANT(_dovi_lum_f,   _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_LUM, _RGB2YUV_S,        , _WRITER)
@@ -2470,8 +2470,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +            ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_tm, s->cu_module, d ? "tonemap_max_d" : "tonemap_max"));
 +            if (ret < 0) goto fail2;
 +            ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_dovi, s->cu_module,
-+                                                   s->tradeoff == 1 ? (d ? "tonemap_dovi_d_f" : "tonemap_dovi_f")
-+                                                                    : (d ? "tonemap_dovi_d"   : "tonemap_dovi")));
++                                                   s->tradeoff == 1 ? (d ? "tonemap_dovi_max_d_f" : "tonemap_dovi_max_f")
++                                                                    : (d ? "tonemap_dovi_max_d"   : "tonemap_dovi_max")));
 +            if (ret < 0) goto fail2;
 +            break;
 +        case TONEMAP_MODE_RGB:
