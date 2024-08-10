@@ -598,7 +598,7 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +    sig_g = eotf_st2084x4(sig_g);
 +    sig_b = eotf_st2084x4(sig_b);
 +  #else
-+    sig = inverse_eotf_st2084x4(sig)
++    sig = inverse_eotf_st2084x4(sig);
 +    MAP_FOUR_PIXELS(sig, src_peak_delin_pq, dst_peak_delin_pq)
 +    sig = eotf_st2084x4(sig);
 +  #endif
