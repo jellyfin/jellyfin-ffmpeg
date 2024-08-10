@@ -20,3 +20,4 @@ export PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/opt/homebrew/Library/Homebrew/os/m
 export CMAKE_PREFIX_PATH=""$FFBUILD_PREFIX""
 export PKG_CONFIG_PATH=""$FFBUILD_PREFIX"/lib/pkgconfig"
 export RANLIB="/usr/bin/ranlib"
+export MACOSX_DEPLOYMENT_TARGET="12.0"
