@@ -28,7 +28,7 @@ Index: FFmpeg/configure
 +    nvccflags_default="--cuda-gpu-arch=sm_30 -O2 -ffast-math"
      NVCC_C=""
  fi
-
+ 
 @@ -6711,7 +6713,7 @@ fi
  if enabled cuda_nvcc; then
      nvccflags="$nvccflags -ptx"
@@ -37,7 +37,7 @@ Index: FFmpeg/configure
 +    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -Wno-c++11-narrowing -std=c++14 -include ${source_link}/compat/cuda/cuda_runtime.h"
      check_nvcc cuda_llvm
  fi
-
+ 
 Index: FFmpeg/ffbuild/common.mak
 ===================================================================
 --- FFmpeg.orig/ffbuild/common.mak
@@ -47,7 +47,7 @@ Index: FFmpeg/ffbuild/common.mak
  $(call PREPEND,CXXFLAGS, CPPFLAGS CFLAGS)
  X86ASMFLAGS += $(IFLAGS:%=%/) -I$(<D)/ -Pconfig.asm
 +NVCCFLAGS  += $(IFLAGS)
-
+ 
  HOSTCCFLAGS = $(IFLAGS) $(HOSTCPPFLAGS) $(HOSTCFLAGS)
  LDFLAGS    := $(ALLFFLIBS:%=$(LD_PATH)lib%) $(LDFLAGS)
 Index: FFmpeg/libavfilter/Makefile
@@ -82,7 +82,7 @@ Index: FFmpeg/libavfilter/colorspace.c
 @@ -51,6 +51,18 @@ void ff_matrix_invert_3x3(const double i
      }
  }
-
+ 
 +void ff_matrix_transpose_3x3(const double in[3][3], double out[3][3])
 +{
 +    int i, j;
@@ -262,7 +262,7 @@ Index: FFmpeg/libavfilter/colorspace.h
  #include "libavutil/frame.h"
  #include "libavutil/pixfmt.h"
 +#include "libavutil/dovi_meta.h"
-
+ 
  #define REFERENCE_WHITE 100.0f
 +#define REFERENCE_WHITE_ALT 203.0f
 +#define ST2084_MAX_LUMINANCE 10000.0f
@@ -294,7 +294,7 @@ Index: FFmpeg/libavfilter/colorspace.h
 +        float mmr_coeffs[8][3 /* order */][7];
 +    } comp[3];
 +};
-
+ 
  void ff_matrix_invert_3x3(const double in[3][3], double out[3][3]);
 +void ff_matrix_transpose_3x3(const double in[3][3], double out[3][3]);
  void ff_matrix_mul_3x3(double dst[3][3],
@@ -303,7 +303,7 @@ Index: FFmpeg/libavfilter/colorspace.h
 @@ -38,4 +70,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
  double ff_determine_signal_peak(AVFrame *in);
  void ff_update_hdr_metadata(AVFrame *in, double peak);
-
+ 
 +double ff_determine_dovi_signal_peak(const AVDOVIMetadata *data);
 +void ff_map_dovi_metadata(struct DoviMetadata *out, const AVDOVIMetadata *data);
 +
@@ -324,7 +324,7 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/colorspace_common.h
-@@ -0,0 +1,293 @@
+@@ -0,0 +1,330 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -615,6 +615,43 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +    float g = -0.791329555598929f * ll + 1.983600451792291f * mm - 0.192270896193362f * ss;
 +    float b = -0.025949899690593f * ll - 0.098913714711726f * mm + 1.124863614402319f * ss;
 +    return make_float3(r, g, b);
++}
++
++static __inline__ __device__ float parabolic(float x, float t0, float x0, float y0) {
++    float s = (y0 - t0) / sqrtf(x0 - y0);
++    float ox = t0 - s * s * 0.25f;
++    float oy = t0 - s * sqrtf(s * s * 0.25f);
++    return (x < t0 ? x : s * sqrtf(x - ox) + oy);
++}
++
++static __inline __device__ float3 gamut_compress(float3 rgb) {
++    #define cyan_limit 1.5187050250638159f
++    #define magenta_limit 1.0750082769546088f
++    #define yellow_limit 1.0887800403483898f
++    #define cyan_threshold 1.050508660266247f
++    #define magenta_threshold 0.940509816042432f
++    #define yellow_threshold 0.9771607996420639f
++
++    // Achromatic axis
++    float ac = max(max(rgb.x, rgb.y), rgb.z);
++    float ac_abs = fabsf(ac);
++    float3 ac3 = make_float3(ac, ac, ac);
++    float3 ac_abs3 = make_float3(ac_abs, ac_abs, ac_abs);
++
++    // Inverse RGB Ratios: distance from achromatic axis
++    float3 d = ac == 0.0f ? make_float3(0.0f, 0.0f, 0.0f) : (ac3 - rgb) / ac_abs3;
++
++    // Compressed distance
++    float3 cd = make_float3(
++        parabolic(d.x, cyan_threshold, cyan_limit, 1.0f),
++        parabolic(d.y, magenta_threshold, magenta_limit, 1.0f),
++        parabolic(d.z, yellow_threshold, yellow_limit, 1.0f)
++    );
++
++    // Inverse RGB Ratios to RGB
++    float3 crgb = ac3 - cd * ac_abs3;
++
++    return crgb;
 +}
 +
 +#endif /* AVFILTER_CUDA_COLORSPACE_COMMON_H */
@@ -1007,7 +1044,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/tonemap.cu
-@@ -0,0 +1,563 @@
+@@ -0,0 +1,573 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1507,6 +1544,16 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +    yuv3 = lrgb2yuv(c3);
 +
 +#define _RGB2YUV_S \
++    c0 = gamut_compress(lrgb2lrgb(c0)); \
++    c1 = gamut_compress(lrgb2lrgb(c1)); \
++    c2 = gamut_compress(lrgb2lrgb(c2)); \
++    c3 = gamut_compress(lrgb2lrgb(c3)); \
++    yuv0 = lrgb2yuv(clamp3(c0, 0.0f, 1.0f)); \
++    yuv1 = lrgb2yuv(clamp3(c1, 0.0f, 1.0f)); \
++    yuv2 = lrgb2yuv(clamp3(c2, 0.0f, 1.0f)); \
++    yuv3 = lrgb2yuv(clamp3(c3, 0.0f, 1.0f));
++
++#define _RGB2YUV_FS \
 +    c0 = clamp3(lrgb2lrgb(c0), 0.0f, 1.0f); \
 +    c1 = clamp3(lrgb2lrgb(c1), 0.0f, 1.0f); \
 +    c2 = clamp3(lrgb2lrgb(c2), 0.0f, 1.0f); \
@@ -1540,35 +1587,35 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +    WRITER \
 +}
 +
-+TONEMAP_VARIANT(_max,          _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_max_d,        _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
-+TONEMAP_VARIANT(_rgb,          _READER,         , _YUV2RGB,    _TONEMAP_RGB, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_rgb_d,        _READER,         , _YUV2RGB,    _TONEMAP_RGB, _RGB2YUV,   _DITHER, _WRITER)
-+TONEMAP_VARIANT(_lum,          _READER,         , _YUV2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,        , _WRITER)
-+TONEMAP_VARIANT(_lum_d,        _READER,         , _YUV2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S, _DITHER, _WRITER)
-+TONEMAP_VARIANT(_itp,          _READER,         , _YUV2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,        , _WRITER)
-+TONEMAP_VARIANT(_itp_d,        _READER,         , _YUV2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S, _DITHER, _WRITER)
++TONEMAP_VARIANT(_max,          _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,           , _WRITER)
++TONEMAP_VARIANT(_max_d,        _READER,         , _YUV2RGB,    _TONEMAP_MAX, _RGB2YUV,    _DITHER, _WRITER)
++TONEMAP_VARIANT(_rgb,          _READER,         , _YUV2RGB,    _TONEMAP_RGB, _RGB2YUV,           , _WRITER)
++TONEMAP_VARIANT(_rgb_d,        _READER,         , _YUV2RGB,    _TONEMAP_RGB, _RGB2YUV,    _DITHER, _WRITER)
++TONEMAP_VARIANT(_lum,          _READER,         , _YUV2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,         , _WRITER)
++TONEMAP_VARIANT(_lum_d,        _READER,         , _YUV2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,  _DITHER, _WRITER)
++TONEMAP_VARIANT(_itp,          _READER,         , _YUV2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,         , _WRITER)
++TONEMAP_VARIANT(_itp_d,        _READER,         , _YUV2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,  _DITHER, _WRITER)
 +
 +TONEMAP_VARIANT(_dovi_max,     _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_dovi_max_d,   _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
-+TONEMAP_VARIANT(_dovi_rgb,     _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_RGB, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_dovi_rgb_d,   _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_RGB, _RGB2YUV,   _DITHER, _WRITER)
-+TONEMAP_VARIANT(_dovi_lum,     _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,        , _WRITER)
-+TONEMAP_VARIANT(_dovi_lum_d,   _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S, _DITHER, _WRITER)
-+TONEMAP_VARIANT(_dovi_itp,     _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,        , _WRITER)
-+TONEMAP_VARIANT(_dovi_itp_d,   _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S, _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_max_d,   _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_MAX, _RGB2YUV,    _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_rgb,     _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_RGB, _RGB2YUV,           , _WRITER)
++TONEMAP_VARIANT(_dovi_rgb_d,   _READER, _RESHAPE, _YCC2RGB,    _TONEMAP_RGB, _RGB2YUV,    _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_lum,     _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,         , _WRITER)
++TONEMAP_VARIANT(_dovi_lum_d,   _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_LUM, _RGB2YUV_S,  _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_itp,     _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,         , _WRITER)
++TONEMAP_VARIANT(_dovi_itp_d,   _READER, _RESHAPE, _YCC2RGB_S,  _TONEMAP_ITP, _RGB2YUV_S,  _DITHER, _WRITER)
 +
-+TONEMAP_VARIANT(_dovi_max_f,   _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_dovi_max_d_f, _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,   _DITHER, _WRITER)
-+TONEMAP_VARIANT(_dovi_rgb_f,   _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_RGB, _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_dovi_rgb_d_f, _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_RGB, _RGB2YUV,   _DITHER, _WRITER)
-+TONEMAP_VARIANT(_dovi_lum_f,   _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_LUM, _RGB2YUV_S,        , _WRITER)
-+TONEMAP_VARIANT(_dovi_lum_d_f, _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_LUM, _RGB2YUV_S, _DITHER, _WRITER)
-+TONEMAP_VARIANT(_dovi_itp_f,   _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_ITP, _RGB2YUV_S,        , _WRITER)
-+TONEMAP_VARIANT(_dovi_itp_d_f, _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_ITP, _RGB2YUV_S, _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_max_f,   _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,           , _WRITER)
++TONEMAP_VARIANT(_dovi_max_d_f, _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_MAX, _RGB2YUV,    _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_rgb_f,   _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_RGB, _RGB2YUV,           , _WRITER)
++TONEMAP_VARIANT(_dovi_rgb_d_f, _READER, _RESHAPE, _YCC2RGB_F,  _TONEMAP_RGB, _RGB2YUV,    _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_lum_f,   _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_LUM, _RGB2YUV_FS,        , _WRITER)
++TONEMAP_VARIANT(_dovi_lum_d_f, _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_LUM, _RGB2YUV_FS, _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_itp_f,   _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_ITP, _RGB2YUV_FS,        , _WRITER)
++TONEMAP_VARIANT(_dovi_itp_d_f, _READER, _RESHAPE, _YCC2RGB_FS, _TONEMAP_ITP, _RGB2YUV_FS, _DITHER, _WRITER)
 +
-+TONEMAP_VARIANT(_dovi_pq,      _READER, _RESHAPE, _YCC2RGB,                , _RGB2YUV,          , _WRITER)
-+TONEMAP_VARIANT(_dovi_pq_f,    _READER, _RESHAPE, _YCC2RGB_F,              , _RGB2YUV,          , _WRITER)
++TONEMAP_VARIANT(_dovi_pq,      _READER, _RESHAPE, _YCC2RGB,                , _RGB2YUV,           , _WRITER)
++TONEMAP_VARIANT(_dovi_pq_f,    _READER, _RESHAPE, _YCC2RGB_F,              , _RGB2YUV,           , _WRITER)
 +
 +}
 Index: FFmpeg/libavfilter/cuda/tonemap.h
