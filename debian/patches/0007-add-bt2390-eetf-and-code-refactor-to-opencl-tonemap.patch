@@ -342,10 +342,10 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 +#endif
 +
 +float parabolic(float x, float t0, float x0, float y0) {
-+    float s = (y0 - t0) / sqrt(x0 - y0);
++    float s = (y0 - t0) / native_sqrt(x0 - y0);
 +    float ox = t0 - s * s * 0.25f;
-+    float oy = t0 - s * sqrt(s * s * 0.25f);
-+    return (x < t0 ? x : s * sqrt(x - ox) + oy);
++    float oy = t0 - s * native_sqrt(s * s * 0.25f);
++    return (x < t0 ? x : s * native_sqrt(x - ox) + oy);
 +}
 +
 +float3 gamut_compress(float3 rgb) {
@@ -358,10 +358,10 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 +    #define yellow_threshold 0.9771607996420639f
 +
 +    // Achromatic axis
-+    float ac = fmax(fmax(rgb.r, rgb.g), rgb.b);
++    float ac = fmax(fmax(rgb.x, rgb.y), rgb.z);
 +
 +    // Inverse RGB Ratios: distance from achromatic axis
-+    float3 d = ac == 0.0f ? float3(0.0f) : (ac - rgb) / fabs(ac);
++    float3 d = ac == 0.0f ? (float3)(0.0f, 0.0f, 0.0f) : (ac - rgb) / fabs(ac);
 +
 +    // Compressed distance
 +    float3 cd = (float3)(
@@ -468,7 +468,7 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
      float j = tone_param;
      float a, b;
  
-@@ -71,202 +84,426 @@ float mobius(float s, float peak) {
+@@ -71,202 +84,423 @@ float mobius(float s, float peak) {
          return s;
  
      a = -j * j * (peak - 1.0f) / (j * j - 2.0f * j + peak);
@@ -1009,19 +1009,16 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +    c1 = lrgb2lrgb(c1);
 +    c2 = lrgb2lrgb(c2);
 +    c3 = lrgb2lrgb(c3);
-+  #ifdef DOVI_PERF_TRADEOFF
-+    c0 = clamp(c0, 0.0f, 1.0f);
-+    c1 = clamp(c1, 0.0f, 1.0f);
-+    c2 = clamp(c2, 0.0f, 1.0f);
-+    c3 = clamp(c3, 0.0f, 1.0f);
-+  #else
-+    #ifndef RGB2RGB_PASSTHROUGH
++  #if !defined(RGB2RGB_PASSTHROUGH) && !defined(DOVI_PERF_TRADEOFF)
 +    c0 = gamut_compress(c0);
 +    c1 = gamut_compress(c1);
 +    c2 = gamut_compress(c2);
 +    c3 = gamut_compress(c3);
-+    #endif
 +  #endif
++    c0 = clamp(c0, 0.0f, 1.0f);
++    c1 = clamp(c1, 0.0f, 1.0f);
++    c2 = clamp(c2, 0.0f, 1.0f);
++    c3 = clamp(c3, 0.0f, 1.0f);
 +#endif
 +
 +    float y0 = lrgb2y(c0);
