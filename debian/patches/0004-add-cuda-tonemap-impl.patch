@@ -1044,7 +1044,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/tonemap.cu
-@@ -0,0 +1,573 @@
+@@ -0,0 +1,579 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1544,10 +1544,16 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +    yuv3 = lrgb2yuv(c3);
 +
 +#define _RGB2YUV_S \
-+    c0 = gamut_compress(lrgb2lrgb(c0)); \
-+    c1 = gamut_compress(lrgb2lrgb(c1)); \
-+    c2 = gamut_compress(lrgb2lrgb(c2)); \
-+    c3 = gamut_compress(lrgb2lrgb(c3)); \
++    c0 = lrgb2lrgb(c0); \
++    c1 = lrgb2lrgb(c1); \
++    c2 = lrgb2lrgb(c2); \
++    c3 = lrgb2lrgb(c3); \
++    if (!rgb2rgb_passthrough) {  \
++        c0 = gamut_compress(c0); \
++        c1 = gamut_compress(c1); \
++        c2 = gamut_compress(c2); \
++        c3 = gamut_compress(c3); \
++    } \
 +    yuv0 = lrgb2yuv(clamp3(c0, 0.0f, 1.0f)); \
 +    yuv1 = lrgb2yuv(clamp3(c1, 0.0f, 1.0f)); \
 +    yuv2 = lrgb2yuv(clamp3(c2, 0.0f, 1.0f)); \
