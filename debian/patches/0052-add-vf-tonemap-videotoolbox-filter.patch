@@ -40,7 +40,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
-@@ -0,0 +1,850 @@
+@@ -0,0 +1,891 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -403,6 +403,41 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +    *g4 = -0.791329555598929f * ll4 + 1.983600451792291f * mm4 - 0.192270896193362f * ss4;
 +    *b4 = -0.025949899690593f * ll4 - 0.098913714711726f * mm4 + 1.124863614402319f * ss4;
 +}
++
++float parabolic(float x, float t0, float x0, float y0) {
++    float s = (y0 - t0) / sqrt(x0 - y0);
++    float ox = t0 - s * s * 0.25f;
++    float oy = t0 - s * sqrt(s * s * 0.25f);
++    return (x < t0 ? x : s * sqrt(x - ox) + oy);
++}
++
++float3 gamut_compress(float3 rgb) {
++    #define cyan_limit 1.5187050250638159f
++    #define magenta_limit 1.0750082769546088f
++    #define yellow_limit 1.0887800403483898f
++    #define cyan_threshold 1.050508660266247f
++    #define magenta_threshold 0.940509816042432f
++    #define yellow_threshold 0.9771607996420639f
++
++    // Achromatic axis
++    float ac = max3(rgb.r, rgb.g, rgb.b);
++
++    // Inverse RGB Ratios: distance from achromatic axis
++    float3 d = ac == 0.0f ? float3(0.0f) : (ac - rgb) / abs(ac);
++
++    // Compressed distance
++    float3 cd = float3(
++        parabolic(d.x, cyan_threshold, cyan_limit, 1.0f),
++        parabolic(d.y, magenta_threshold, magenta_limit, 1.0f),
++        parabolic(d.z, yellow_threshold, yellow_limit, 1.0f)
++    );
++
++    // Inverse RGB Ratios to RGB
++    float3 crgb = ac - cd * abs(ac);
++
++    return crgb;
++}
++
 +
 +//------------
 +// Tonemapping methods
@@ -857,6 +892,12 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +        c1 = lrgb2lrgb(c1);
 +        c2 = lrgb2lrgb(c2);
 +        c3 = lrgb2lrgb(c3);
++        if (!is_rgb2rgb_passthrough) {
++            c0 = gamut_compress(c0);
++            c1 = gamut_compress(c1);
++            c2 = gamut_compress(c2);
++            c3 = gamut_compress(c3);
++        }
 +        c0 = clamp(c0, 0.0f, 1.0f);
 +        c1 = clamp(c1, 0.0f, 1.0f);
 +        c2 = clamp(c2, 0.0f, 1.0f);
