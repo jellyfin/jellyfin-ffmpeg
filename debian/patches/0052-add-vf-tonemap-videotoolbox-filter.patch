@@ -936,7 +936,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
-@@ -0,0 +1,1148 @@
+@@ -0,0 +1,1154 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1711,6 +1711,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    out_frames_ctx->width = outlink->w;
 +    out_frames_ctx->height = outlink->h;
 +
++    if (ctx->range != -1) {
++        ((AVVTFramesContext *)out_frames_ctx->hwctx)->color_range = ctx->range;
++    } else {
++        ((AVVTFramesContext *)out_frames_ctx->hwctx)->color_range = ((AVVTFramesContext *)in_frames_ctx->hwctx)->color_range;
++    }
++
 +    ret = ff_filter_init_hw_frames(avctx, outlink, 1);
 +    if (ret < 0)
 +        return ret;
@@ -2040,8 +2046,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    { "p",         "Set color primaries", OFFSET(primaries), AV_OPT_TYPE_INT, { .i64 = AVCOL_PRI_BT709 }, -1, INT_MAX, FLAGS, .unit = "primaries" },
 +        { "bt709",            0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_PRI_BT709 },         0, 0, FLAGS, .unit = "primaries" },
 +        { "bt2020",           0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_PRI_BT2020 },        0, 0, FLAGS, .unit = "primaries" },
-+    { "range",         "Set color range", OFFSET(range), AV_OPT_TYPE_INT, { .i64 = AVCOL_RANGE_MPEG }, -1, INT_MAX, FLAGS, .unit = "range" },
-+    { "r",             "Set color range", OFFSET(range), AV_OPT_TYPE_INT, { .i64 = AVCOL_RANGE_MPEG }, -1, INT_MAX, FLAGS, .unit = "range" },
++    { "range",         "Set color range", OFFSET(range), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, FLAGS, .unit = "range" },
++    { "r",             "Set color range", OFFSET(range), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX, FLAGS, .unit = "range" },
 +        { "tv",            0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG },         0, 0, FLAGS, .unit = "range" },
 +        { "pc",            0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_JPEG },         0, 0, FLAGS, .unit = "range" },
 +        { "limited",       0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG },         0, 0, FLAGS, .unit = "range" },

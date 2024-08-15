@@ -305,7 +305,7 @@ Index: FFmpeg/libavfilter/vf_transpose_vt.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_transpose_vt.m
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,383 @@
 +/*
 + * Copyright (c) 2023 Zhao Zhili <zhilizhao@tencent.com>
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
@@ -331,6 +331,7 @@ Index: FFmpeg/libavfilter/vf_transpose_vt.m
 +#include <VideoToolbox/VideoToolbox.h>
 +
 +#include "libavutil/hwcontext.h"
++#include "libavutil/hwcontext_videotoolbox.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/objc.h"
 +#include "internal.h"
@@ -486,6 +487,7 @@ Index: FFmpeg/libavfilter/vf_transpose_vt.m
 +    hw_frame_ctx_out->sw_format = hw_frame_ctx_in->sw_format;
 +    hw_frame_ctx_out->width = outlink->w;
 +    hw_frame_ctx_out->height = outlink->h;
++    ((AVVTFramesContext *)hw_frame_ctx_out->hwctx)->color_range = ((AVVTFramesContext *)hw_frame_ctx_in->hwctx)->color_range;
 +
 +    err = ff_filter_init_hw_frames(avctx, outlink, 1);
 +    if (err < 0)

@@ -232,7 +232,7 @@ Index: FFmpeg/libavfilter/vf_overlay_videotoolbox.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_overlay_videotoolbox.m
-@@ -0,0 +1,749 @@
+@@ -0,0 +1,751 @@
 +/*
 + * Copyright (C) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -259,6 +259,7 @@ Index: FFmpeg/libavfilter/vf_overlay_videotoolbox.m
 +#include "metal/utils.h"
 +#include "framesync.h"
 +#include "libavutil/hwcontext.h"
++#include "libavutil/hwcontext_videotoolbox.h"
 +#include "libavutil/pixdesc.h"
 +#include "libavutil/opt.h"
 +#include "libavutil/objc.h"
@@ -888,6 +889,7 @@ Index: FFmpeg/libavfilter/vf_overlay_videotoolbox.m
 +    output_frames->sw_format = main_frames->sw_format;
 +    output_frames->width     = inlink_main->w;
 +    output_frames->height    = inlink_main->h;
++    ((AVVTFramesContext *)output_frames->hwctx)->color_range = ((AVVTFramesContext *)main_frames->hwctx)->color_range;
 +
 +    ret = ff_filter_init_hw_frames(avctx, link, 1);
 +    if (ret < 0)
