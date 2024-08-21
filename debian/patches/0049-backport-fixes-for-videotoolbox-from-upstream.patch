@@ -518,3 +518,51 @@ Index: FFmpeg/libavutil/hwcontext_videotoolbox.h
   */
  int av_vt_pixbuf_set_attachments(void *log_ctx,
                                   CVPixelBufferRef pixbuf, const struct AVFrame *src);
+Index: FFmpeg/libavfilter/vf_yadif_videotoolbox.m
+===================================================================
+--- FFmpeg.orig/libavfilter/vf_yadif_videotoolbox.m
++++ FFmpeg/libavfilter/vf_yadif_videotoolbox.m
+@@ -24,6 +24,7 @@
+ #include "yadif.h"
+ #include "libavutil/avassert.h"
+ #include "libavutil/hwcontext.h"
++#include "libavutil/hwcontext_videotoolbox.h"
+ #include "libavutil/objc.h"
+ 
+ #include <assert.h>
+@@ -94,9 +95,6 @@ static void call_kernel(AVFilterContext
+ 
+     [buffer commit];
+     [buffer waitUntilCompleted];
+-
+-    ff_objc_release(&encoder);
+-    ff_objc_release(&buffer);
+ }
+ 
+ static void filter(AVFilterContext *ctx, AVFrame *dst,
+@@ -321,8 +319,9 @@ static int config_input(AVFilterLink *in
+ 
+ static int do_config_output(AVFilterLink *link) API_AVAILABLE(macos(10.11), ios(8.0))
+ {
+-    AVHWFramesContext *output_frames;
++    AVHWFramesContext *output_frames, *input_frames;
+     AVFilterContext *ctx = link->src;
++    AVFilterLink *inlink = link->src->inputs[0];
+     YADIFVTContext *s = ctx->priv;
+     YADIFContext *y = &s->yadif;
+     int ret = 0;
+@@ -343,12 +342,14 @@ static int do_config_output(AVFilterLink
+         goto exit;
+     }
+ 
++    input_frames = (AVHWFramesContext*)inlink->hw_frames_ctx->data;
+     output_frames = (AVHWFramesContext*)link->hw_frames_ctx->data;
+ 
+     output_frames->format    = AV_PIX_FMT_VIDEOTOOLBOX;
+     output_frames->sw_format = s->input_frames->sw_format;
+     output_frames->width     = ctx->inputs[0]->w;
+     output_frames->height    = ctx->inputs[0]->h;
++    ((AVVTFramesContext *)output_frames->hwctx)->color_range = ((AVVTFramesContext *)input_frames->hwctx)->color_range;
+ 
+     ret = ff_filter_init_hw_frames(ctx, link, 10);
+     if (ret < 0)
