@@ -88,7 +88,7 @@ jobs:
           path: artifact
 
       - name: Upload GH Release Assets
-        uses: shogo82148/actions-upload-release-asset@6d4fd50e333ee797e83ae380e6bc55b048baec41 # v1.7.6
+        uses: shogo82148/actions-upload-release-asset@aac270e08f6b4547ada0b3800f88e1eb3ce9d400 # v1.7.7
         with:
           upload_url: ${{ github.event.release.upload_url }}
           overwrite: true
