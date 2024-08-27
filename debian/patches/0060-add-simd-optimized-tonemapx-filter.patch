@@ -1477,7 +1477,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1260 @@
+@@ -0,0 +1,1261 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2488,7 +2488,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +    av_frame_free(&in);
 +
-+    ff_update_hdr_metadata(out, peak);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
 +
 +    return ff_filter_frame(outlink, out);
 +fail:
