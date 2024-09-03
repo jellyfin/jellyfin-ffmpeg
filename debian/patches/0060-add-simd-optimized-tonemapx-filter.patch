@@ -95,7 +95,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,2150 @@
+@@ -0,0 +1,2149 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -126,8 +126,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +inline static float32x4_t mix_float32x4(float32x4_t x, float32x4_t y, float32x4_t a)
 +{
 +    float32x4_t n = vsubq_f32(y, x);
-+    n = vmulq_f32(n, a);
-+    n = vaddq_f32(n, x);
++    n = vfmaq_f32(x, n, a);
 +    return n;
 +}
 +
@@ -3831,7 +3830,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    out->color_trc = s->trc;
 +    out->colorspace = s->spc;
 +    out->color_primaries = s->pri;
-+    out->color_range = s->range;
++    if (s->range != -1) out->color_range = s->range;
 +
 +    if (in->color_trc == AVCOL_TRC_UNSPECIFIED)
 +        in->color_trc = AVCOL_TRC_SMPTE2084;
@@ -4339,7 +4338,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,2277 @@
+@@ -0,0 +1,2276 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -4383,8 +4382,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +X86_64_V3 inline static __m128 mix_float32x4(__m128 x, __m128 y, __m128 a)
 +{
 +    __m128 n = _mm_sub_ps(y, x);
-+    n = _mm_mul_ps(n, a);
-+    n = _mm_add_ps(n, x);
++    n = _mm_fmadd_ps(a, n, x);
 +    return n;
 +}
 +
