@@ -52,6 +52,8 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libfdk-aac \
 
 CONFIG_x86 := --arch=amd64 \
+	--enable-libshaderc \
+	--enable-libplacebo \
 	--enable-vulkan \
 	--enable-vaapi \
 	--enable-amf \

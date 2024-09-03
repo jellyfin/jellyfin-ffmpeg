@@ -3,7 +3,7 @@
 _realname=SVT-AV1
 pkgbase=mingw-w64-jellyfin-svt-av1
 pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-svt-av1")
-pkgver=2.1.2
+pkgver=2.2.1
 pkgrel=1
 pkgdesc="Scalable Video Technology AV1 encoder and decoder (mingw-w64)"
 arch=('any')
