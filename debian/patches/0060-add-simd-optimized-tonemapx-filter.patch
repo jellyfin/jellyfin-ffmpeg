@@ -2412,7 +2412,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1776 @@
+@@ -0,0 +1,1778 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -3897,7 +3897,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        if (s->dovi) {
 +            if (desc->comp[2].plane == 1) {
 +                av_log(s, AV_LOG_ERROR, "Input pixel format has to be yuv420p10 for Dolby Vision reshaping\n");
-+                abort();
++                av_assert0(0);
 +            }
 +            update_dovi_buf(ctx);
 +            ff_matrix_mul_3x3(s->lms2rgb_matrix, dovi_lms2rgb_matrix, s->dovi->linear);
@@ -3922,6 +3922,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +    av_frame_remove_side_data(out, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
 +    av_frame_remove_side_data(out, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_DOVI_RPU_BUFFER);
++    av_frame_remove_side_data(out, AV_FRAME_DATA_DOVI_METADATA);
 +
 +    return ff_filter_frame(outlink, out);
 +fail:
@@ -4153,8 +4155,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    { "p",            "set color primaries", OFFSET(pri), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_BT709}, -1, INT_MAX, FLAGS, .unit = "primaries" },
 +    {     "bt709",    0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT709},           0, 0, FLAGS, .unit = "primaries" },
 +    {     "bt2020",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT2020},          0, 0, FLAGS, .unit = "primaries" },
-+    { "range",        "set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, .unit = "range" },
-+    { "r",            "set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_MPEG}, -1, INT_MAX, FLAGS, .unit = "range" },
++    { "range",        "set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, FLAGS, .unit = "range" },
++    { "r",            "set color range", OFFSET(range), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, FLAGS, .unit = "range" },
 +    {     "tv",       0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, .unit = "range" },
 +    {     "pc",       0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, .unit = "range" },
 +    {     "limited",  0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, .unit = "range" },
@@ -4193,7 +4195,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,126 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -4226,12 +4228,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +#        define CC_SUPPORTS_TONEMAPX_INTRINSICS
 +#    endif // (__GNUC__ >= 10) || (__clang_major__ >= 11)
 +#endif // defined(__GNUC__) || defined(__clang__)
-+
-+#if defined(__clang__)
-+#define UNROLL_LOOP #pragma clang loop unroll(full)
-+#else
-+#define UNROLL_LOOP GCC unroll n
-+#endif
 +
 +#ifdef CC_SUPPORTS_TONEMAPX_INTRINSICS
 +#    if ARCH_AARCH64
