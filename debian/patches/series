@@ -66,3 +66,4 @@
 0066-use-linear-contiguous-vulkan-images-for-amd-encoder.patch
 0067-prefer-vulkan-device-with-higher-api-version.patch
 0068-add-pgs-support-to-vulkan-overlay.patch
+0069-add-fixes-x265-build-from-upstream.patch
