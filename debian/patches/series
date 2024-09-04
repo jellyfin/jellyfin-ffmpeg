@@ -61,3 +61,9 @@
 0061-add-ac4-decoder-for-atsc-3-0.patch
 0062-tune-the-default-inter-thread-queue-sizes.patch
 0063-add-vendor-id-option-to-vaapi-hwcontext.patch
+0064-backport-fixes-for-vulkan-from-upstream.patch
+0065-revert-the-broken-vulkan-hwupload-rewrite.patch
+0066-use-linear-contiguous-vulkan-images-for-amd-encoder.patch
+0067-prefer-vulkan-device-with-higher-api-version.patch
+0068-add-pgs-support-to-vulkan-overlay.patch
+0069-add-fixes-x265-build-from-upstream.patch

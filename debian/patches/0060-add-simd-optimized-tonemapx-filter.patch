@@ -3827,10 +3827,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        av_log(s, AV_LOG_DEBUG, "Computed signal peak: %f\n", peak);
 +    }
 +
-+    out->color_trc = s->trc;
-+    out->colorspace = s->spc;
-+    out->color_primaries = s->pri;
-+    if (s->range != -1) out->color_range = s->range;
++    out->color_trc = s->trc == -1 ? AVCOL_TRC_UNSPECIFIED : s->trc;
++    out->colorspace = s->spc == -1 ? AVCOL_SPC_UNSPECIFIED : s->spc;
++    out->color_primaries = s->pri == -1 ? AVCOL_PRI_UNSPECIFIED : s->pri;
++    out->color_range = s->range == -1 ? in->color_range : s->range;
 +
 +    if (in->color_trc == AVCOL_TRC_UNSPECIFIED)
 +        in->color_trc = AVCOL_TRC_SMPTE2084;

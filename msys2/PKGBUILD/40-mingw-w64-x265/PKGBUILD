@@ -23,7 +23,7 @@ msys2_references=(
   "cpe: cpe:/a:multicorewareinc:x265"
   "cpe: cpe:/a:multicorewareinc:x265_high_efficiency_video_coding"
 )
-_commit="ad1a30a8a69d5bbc0096da7aafc9da21c599cb01"
+_commit="f6735953b90e4ff74849e20156a520f5bfd410fc"
 source=("${_realname}"::"git+https://bitbucket.org/multicoreware/x265_git.git#commit=${_commit}")
 sha256sums=('SKIP')
 

@@ -140,8 +140,8 @@ Index: FFmpeg/configure
                                 { enabled libdrm ||
                                   die "ERROR: rkmpp requires --enable-libdrm"; }
                               }
-+enabled rkrga             && require_pkg_config rkrga librga rga/RgaApi.h c_RkRgaBlit &&
-+                             { require_pkg_config rkrga librga rga/im2d.h querystring &&
++enabled rkrga             && { require_pkg_config rkrga librga rga/RgaApi.h c_RkRgaBlit &&
++                               require_pkg_config rkrga librga rga/im2d.h querystring &&
 +                               { enabled rkmpp ||
 +                                 die "ERROR: rkrga requires --enable-rkmpp"; }
 +                             }
@@ -4983,17 +4983,17 @@ Index: FFmpeg/libavfilter/vf_overlay_rkrga.c
 +    { "format", "Output video pixel format", OFFSET(format), AV_OPT_TYPE_PIXEL_FMT, { .i64 = AV_PIX_FMT_NONE }, INT_MIN, INT_MAX, .flags = FLAGS },
 +    { "eof_action", "Action to take when encountering EOF from secondary input ",
 +        OFFSET(fs.opt_eof_action), AV_OPT_TYPE_INT, { .i64 = EOF_ACTION_REPEAT },
-+        EOF_ACTION_REPEAT, EOF_ACTION_PASS, .flags = FLAGS, "eof_action" },
-+        { "repeat", "Repeat the previous frame.",   0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_REPEAT }, .flags = FLAGS, "eof_action" },
-+        { "endall", "End both streams.",            0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ENDALL }, .flags = FLAGS, "eof_action" },
-+        { "pass",   "Pass through the main input.", 0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS },   .flags = FLAGS, "eof_action" },
++        EOF_ACTION_REPEAT, EOF_ACTION_PASS, .flags = FLAGS, .unit = "eof_action" },
++        { "repeat", "Repeat the previous frame.",   0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_REPEAT }, .flags = FLAGS, .unit = "eof_action" },
++        { "endall", "End both streams.",            0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ENDALL }, .flags = FLAGS, .unit = "eof_action" },
++        { "pass",   "Pass through the main input.", 0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS },   .flags = FLAGS, .unit = "eof_action" },
 +    { "shortest", "Force termination when the shortest input terminates", OFFSET(fs.opt_shortest), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
 +    { "repeatlast", "Repeat overlay of the last overlay frame", OFFSET(fs.opt_repeatlast), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
-+    { "core", "Set multicore RGA scheduler core [use with caution]", OFFSET(rga.scheduler_core), AV_OPT_TYPE_FLAGS, { .i64 = 0 }, 0, INT_MAX, FLAGS, "core" },
-+        { "default",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, "core" },
-+        { "rga3_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, "core" }, /* RGA3_SCHEDULER_CORE0 */
-+        { "rga3_core1", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, "core" }, /* RGA3_SCHEDULER_CORE1 */
-+        { "rga2_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 4 }, 0, 0, FLAGS, "core" }, /* RGA2_SCHEDULER_CORE0 */
++    { "core", "Set multicore RGA scheduler core [use with caution]", OFFSET(rga.scheduler_core), AV_OPT_TYPE_FLAGS, { .i64 = 0 }, 0, INT_MAX, FLAGS, .unit = "core" },
++        { "default",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, .unit = "core" },
++        { "rga3_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, .unit = "core" }, /* RGA3_SCHEDULER_CORE0 */
++        { "rga3_core1", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, .unit = "core" }, /* RGA3_SCHEDULER_CORE1 */
++        { "rga2_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 4 }, 0, 0, FLAGS, .unit = "core" }, /* RGA2_SCHEDULER_CORE0 */
 +    { "async_depth", "Set the internal parallelization depth", OFFSET(rga.async_depth), AV_OPT_TYPE_INT, { .i64 = 2 }, 0, 4, .flags = FLAGS },
 +    { "afbc", "Enable AFBC (Arm Frame Buffer Compression) to save bandwidth", OFFSET(rga.afbc_out), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, .flags = FLAGS },
 +    { NULL },
@@ -5502,22 +5502,22 @@ Index: FFmpeg/libavfilter/vf_vpp_rkrga.c
 +#define FLAGS (AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)
 +
 +#define RKRGA_VPP_COMMON_OPTS \
-+    { "force_yuv",    "Enforce planar YUV format output", OFFSET(force_yuv), AV_OPT_TYPE_INT, { .i64 = FORCE_YUV_DISABLE }, 0, FORCE_YUV_NB - 1, FLAGS, "force_yuv" }, \
-+        { "disable",  NULL,                     0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_DISABLE  }, 0, 0, FLAGS, "force_yuv" }, \
-+        { "auto",     "Match in/out bit depth", 0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_AUTO     }, 0, 0, FLAGS, "force_yuv" }, \
-+        { "8bit",     "8-bit",                  0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_8BIT     }, 0, 0, FLAGS, "force_yuv" }, \
-+        { "10bit",    "10-bit uncompact/8-bit", 0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_10BIT    }, 0, 0, FLAGS, "force_yuv" }, \
-+    { "force_chroma", "Enforce chroma of planar YUV format output", OFFSET(force_chroma), AV_OPT_TYPE_INT, { .i64 = FORCE_CHROMA_AUTO }, 0, FORCE_CHROMA_NB - 1, FLAGS, "force_chroma" }, \
-+        { "auto",     "Match in/out chroma",    0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_AUTO  }, 0, 0, FLAGS, "force_chroma" }, \
-+        { "420sp",    "4:2:0 semi-planar",      0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_420SP }, 0, 0, FLAGS, "force_chroma" }, \
-+        { "420p",     "4:2:0 fully-planar",     0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_420P  }, 0, 0, FLAGS, "force_chroma" }, \
-+        { "422sp",    "4:2:2 semi-planar",      0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_422SP }, 0, 0, FLAGS, "force_chroma" }, \
-+        { "422p",     "4:2:2 fully-planar",     0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_422P  }, 0, 0, FLAGS, "force_chroma" }, \
-+    { "core", "Set multicore RGA scheduler core [use with caution]", OFFSET(rga.scheduler_core), AV_OPT_TYPE_FLAGS, { .i64 = 0 }, 0, INT_MAX, FLAGS, "core" }, \
-+        { "default",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, "core" }, \
-+        { "rga3_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, "core" }, /* RGA3_SCHEDULER_CORE0 */ \
-+        { "rga3_core1", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, "core" }, /* RGA3_SCHEDULER_CORE1 */ \
-+        { "rga2_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 4 }, 0, 0, FLAGS, "core" }, /* RGA2_SCHEDULER_CORE0 */ \
++    { "force_yuv",    "Enforce planar YUV format output", OFFSET(force_yuv), AV_OPT_TYPE_INT, { .i64 = FORCE_YUV_DISABLE }, 0, FORCE_YUV_NB - 1, FLAGS, .unit = "force_yuv" }, \
++        { "disable",  NULL,                     0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_DISABLE  }, 0, 0, FLAGS, .unit = "force_yuv" }, \
++        { "auto",     "Match in/out bit depth", 0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_AUTO     }, 0, 0, FLAGS, .unit = "force_yuv" }, \
++        { "8bit",     "8-bit",                  0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_8BIT     }, 0, 0, FLAGS, .unit = "force_yuv" }, \
++        { "10bit",    "10-bit uncompact/8-bit", 0, AV_OPT_TYPE_CONST, { .i64 = FORCE_YUV_10BIT    }, 0, 0, FLAGS, .unit = "force_yuv" }, \
++    { "force_chroma", "Enforce chroma of planar YUV format output", OFFSET(force_chroma), AV_OPT_TYPE_INT, { .i64 = FORCE_CHROMA_AUTO }, 0, FORCE_CHROMA_NB - 1, FLAGS, .unit = "force_chroma" }, \
++        { "auto",     "Match in/out chroma",    0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_AUTO  }, 0, 0, FLAGS, .unit = "force_chroma" }, \
++        { "420sp",    "4:2:0 semi-planar",      0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_420SP }, 0, 0, FLAGS, .unit = "force_chroma" }, \
++        { "420p",     "4:2:0 fully-planar",     0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_420P  }, 0, 0, FLAGS, .unit = "force_chroma" }, \
++        { "422sp",    "4:2:2 semi-planar",      0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_422SP }, 0, 0, FLAGS, .unit = "force_chroma" }, \
++        { "422p",     "4:2:2 fully-planar",     0, AV_OPT_TYPE_CONST, { .i64 = FORCE_CHROMA_422P  }, 0, 0, FLAGS, .unit = "force_chroma" }, \
++    { "core", "Set multicore RGA scheduler core [use with caution]", OFFSET(rga.scheduler_core), AV_OPT_TYPE_FLAGS, { .i64 = 0 }, 0, INT_MAX, FLAGS, .unit = "core" }, \
++        { "default",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, .unit = "core" }, \
++        { "rga3_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, .unit = "core" }, /* RGA3_SCHEDULER_CORE0 */ \
++        { "rga3_core1", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, .unit = "core" }, /* RGA3_SCHEDULER_CORE1 */ \
++        { "rga2_core0", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 4 }, 0, 0, FLAGS, .unit = "core" }, /* RGA2_SCHEDULER_CORE0 */ \
 +    { "async_depth", "Set the internal parallelization depth", OFFSET(rga.async_depth), AV_OPT_TYPE_INT, { .i64 = 2 }, 0, 4, .flags = FLAGS }, \
 +    { "afbc", "Enable AFBC (Arm Frame Buffer Compression) to save bandwidth", OFFSET(rga.afbc_out), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, .flags = FLAGS },
 +
@@ -5542,10 +5542,10 @@ Index: FFmpeg/libavfilter/vf_vpp_rkrga.c
 +    { "w",  "Output video width",  OFFSET(ow), AV_OPT_TYPE_STRING, { .str = "iw" }, 0, 0, FLAGS },
 +    { "h",  "Output video height", OFFSET(oh), AV_OPT_TYPE_STRING, { .str = "ih" }, 0, 0, FLAGS },
 +    { "format", "Output video pixel format", OFFSET(format), AV_OPT_TYPE_PIXEL_FMT, { .i64 = AV_PIX_FMT_NONE }, INT_MIN, INT_MAX, .flags = FLAGS },
-+    { "force_original_aspect_ratio", "Decrease or increase w/h if necessary to keep the original AR", OFFSET(force_original_aspect_ratio), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 2, FLAGS, "force_oar" }, \
-+        { "disable",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, "force_oar" }, \
-+        { "decrease", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, "force_oar" }, \
-+        { "increase", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, "force_oar" }, \
++    { "force_original_aspect_ratio", "Decrease or increase w/h if necessary to keep the original AR", OFFSET(force_original_aspect_ratio), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 2, FLAGS, .unit = "force_oar" }, \
++        { "disable",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, .unit = "force_oar" }, \
++        { "decrease", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, .unit = "force_oar" }, \
++        { "increase", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 2 }, 0, 0, FLAGS, .unit = "force_oar" }, \
 +    { "force_divisible_by", "Enforce that the output resolution is divisible by a defined integer when force_original_aspect_ratio is used", OFFSET(force_divisible_by), AV_OPT_TYPE_INT, { .i64 = 2 }, 1, 256, FLAGS }, \
 +    RKRGA_VPP_COMMON_OPTS
 +    { NULL },
@@ -5588,14 +5588,14 @@ Index: FFmpeg/libavfilter/vf_vpp_rkrga.c
 +    { "cx", "Set the x crop area expression",      OFFSET(cx), AV_OPT_TYPE_STRING, { .str = "(in_w-out_w)/2" }, 0, 0, FLAGS },
 +    { "cy", "Set the y crop area expression",      OFFSET(cy), AV_OPT_TYPE_STRING, { .str = "(in_h-out_h)/2" }, 0, 0, FLAGS },
 +    { "format", "Output video pixel format", OFFSET(format), AV_OPT_TYPE_PIXEL_FMT, { .i64 = AV_PIX_FMT_NONE }, INT_MIN, INT_MAX, .flags = FLAGS },
-+    { "transpose", "Set transpose direction", OFFSET(transpose), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 6, FLAGS, "transpose" },
-+        { "cclock_hflip", "Rotate counter-clockwise with horizontal flip", 0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK_FLIP }, 0, 0, FLAGS, "transpose" },
-+        { "clock",        "Rotate clockwise",                              0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK       }, 0, 0, FLAGS, "transpose" },
-+        { "cclock",       "Rotate counter-clockwise",                      0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK      }, 0, 0, FLAGS, "transpose" },
-+        { "clock_hflip",  "Rotate clockwise with horizontal flip",         0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK_FLIP  }, 0, 0, FLAGS, "transpose" },
-+        { "reversal",     "Rotate by half-turn",                           0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_REVERSAL    }, 0, 0, FLAGS, "transpose" },
-+        { "hflip",        "Flip horizontally",                             0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_HFLIP       }, 0, 0, FLAGS, "transpose" },
-+        { "vflip",        "Flip vertically",                               0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_VFLIP       }, 0, 0, FLAGS, "transpose" },
++    { "transpose", "Set transpose direction", OFFSET(transpose), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 6, FLAGS, .unit = "transpose" },
++        { "cclock_hflip", "Rotate counter-clockwise with horizontal flip", 0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK_FLIP }, 0, 0, FLAGS, .unit = "transpose" },
++        { "clock",        "Rotate clockwise",                              0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK       }, 0, 0, FLAGS, .unit = "transpose" },
++        { "cclock",       "Rotate counter-clockwise",                      0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK      }, 0, 0, FLAGS, .unit = "transpose" },
++        { "clock_hflip",  "Rotate clockwise with horizontal flip",         0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK_FLIP  }, 0, 0, FLAGS, .unit = "transpose" },
++        { "reversal",     "Rotate by half-turn",                           0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_REVERSAL    }, 0, 0, FLAGS, .unit = "transpose" },
++        { "hflip",        "Flip horizontally",                             0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_HFLIP       }, 0, 0, FLAGS, .unit = "transpose" },
++        { "vflip",        "Flip vertically",                               0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_VFLIP       }, 0, 0, FLAGS, .unit = "transpose" },
 +    RKRGA_VPP_COMMON_OPTS
 +    { NULL },
 +};

@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-mingw_commit="f1075a71a0027febccc19a1db0244e98f9ae0102"
+mingw_commit="1b554dec06f8d3c26b856a7d1575f396d8ffa403"
 git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 git checkout ${mingw_commit}
@@ -454,7 +454,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v2.1.2 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v2.2.1 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
@@ -555,7 +555,7 @@ popd
 popd
 
 # VPL
-git clone -b v2.12.0 --depth=1 https://github.com/intel/libvpl.git
+git clone -b v2.13.0 --depth=1 https://github.com/intel/libvpl.git
 pushd libvpl
 mkdir build && pushd build
 cmake \
