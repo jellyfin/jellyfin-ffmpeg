@@ -2750,10 +2750,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        s->in_range      = in->color_range;
 +        s->in_chroma_loc = in->chroma_location;
 +
-+        s->out_trc        = s->trc;
-+        s->out_spc        = s->spc;
-+        s->out_pri        = s->pri;
-+        s->out_range      = s->range;
++        s->out_trc        = s->trc == -1 ? AVCOL_TRC_UNSPECIFIED : s->trc;
++        s->out_spc        = s->spc == -1 ? AVCOL_SPC_UNSPECIFIED : s->spc;
++        s->out_pri        = s->pri == -1 ? AVCOL_PRI_UNSPECIFIED : s->pri;
++        s->out_range      = s->range == -1 ? s->in_range : s->range;
 +        s->out_chroma_loc = s->in_chroma_loc;
 +
 +        if ((ret = compile(link)) < 0)
