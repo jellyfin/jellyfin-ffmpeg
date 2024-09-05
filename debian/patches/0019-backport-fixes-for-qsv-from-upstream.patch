@@ -936,7 +936,45 @@ Index: FFmpeg/libavfilter/qsvvpp.c
      } else {
          pix_fmt = link->format;
          desc = av_pix_fmt_desc_get(pix_fmt);
-@@ -603,6 +603,26 @@ static int init_vpp_session(AVFilterCont
+@@ -440,11 +440,6 @@ static QSVFrame *submit_frame(QSVVPPCont
+                 av_frame_free(&qsv_frame->frame);
+                 return NULL;
+             }
+-
+-            if (av_frame_copy_props(qsv_frame->frame, picref) < 0) {
+-                av_frame_free(&qsv_frame->frame);
+-                return NULL;
+-            }
+         } else
+             qsv_frame->frame = av_frame_clone(picref);
+ 
+@@ -493,12 +488,6 @@ static QSVFrame *query_frame(QSVVPPConte
+         if (!out_frame->frame)
+             return NULL;
+ 
+-        ret = av_frame_copy_props(out_frame->frame, in);
+-        if (ret < 0) {
+-            av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
+-            return NULL;
+-        }
+-
+         ret = av_hwframe_get_buffer(outlink->hw_frames_ctx, out_frame->frame, 0);
+         if (ret < 0) {
+             av_log(ctx, AV_LOG_ERROR, "Can't allocate a surface.\n");
+@@ -515,12 +504,6 @@ static QSVFrame *query_frame(QSVVPPConte
+         if (!out_frame->frame)
+             return NULL;
+ 
+-        ret = av_frame_copy_props(out_frame->frame, in);
+-        if (ret < 0) {
+-            av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
+-            return NULL;
+-        }
+-
+         ret = map_frame_to_surface(out_frame->frame,
+                                    &out_frame->surface);
+         if (ret < 0)
+@@ -603,6 +586,26 @@ static int init_vpp_session(AVFilterCont
      device_ctx   = (AVHWDeviceContext *)device_ref->data;
      device_hwctx = device_ctx->hwctx;
  
@@ -963,7 +1001,7 @@ Index: FFmpeg/libavfilter/qsvvpp.c
      if (outlink->format == AV_PIX_FMT_QSV) {
          AVHWFramesContext *out_frames_ctx;
          AVBufferRef *out_frames_ref = av_hwframe_ctx_alloc(device_ref);
-@@ -624,9 +644,15 @@ static int init_vpp_session(AVFilterCont
+@@ -624,9 +627,15 @@ static int init_vpp_session(AVFilterCont
          out_frames_ctx->width             = FFALIGN(outlink->w, 32);
          out_frames_ctx->height            = FFALIGN(outlink->h, 32);
          out_frames_ctx->sw_format         = s->out_sw_format;
@@ -982,7 +1020,7 @@ Index: FFmpeg/libavfilter/qsvvpp.c
          out_frames_hwctx->frame_type      = s->out_mem_mode;
  
          ret = av_hwframe_ctx_init(out_frames_ref);
-@@ -652,26 +678,6 @@ static int init_vpp_session(AVFilterCont
+@@ -652,26 +661,6 @@ static int init_vpp_session(AVFilterCont
      } else
          s->out_mem_mode = MFX_MEMTYPE_SYSTEM_MEMORY;
  
@@ -1009,15 +1047,33 @@ Index: FFmpeg/libavfilter/qsvvpp.c
      ret = MFXVideoCORE_GetHandle(device_hwctx->session, handle_type, &handle);
      if (ret < 0)
          return ff_qsvvpp_print_error(avctx, ret, "Error getting the session handle");
-@@ -1014,6 +1020,7 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
+@@ -957,7 +946,7 @@ int ff_qsvvpp_close(AVFilterContext *avc
+     return 0;
+ }
+ 
+-int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picref)
++int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picref, AVFrame *propref)
+ {
+     AVFilterContext  *ctx     = inlink->dst;
+     AVFilterLink     *outlink = ctx->outputs[0];
+@@ -1014,6 +1003,16 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
                  return AVERROR(EAGAIN);
              break;
          }
 +
++        if (propref) {
++            ret1 = av_frame_copy_props(out_frame->frame, propref);
++            if (ret1 < 0) {
++                av_frame_free(&out_frame->frame);
++                av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
++                return ret1;
++            }
++        }
++
          out_frame->frame->pts = av_rescale_q(out_frame->surface.Data.TimeStamp,
                                               default_tb, outlink->time_base);
  
-@@ -1099,11 +1106,6 @@ int ff_qsvvpp_create_mfx_session(void *c
+@@ -1099,11 +1098,6 @@ int ff_qsvvpp_create_mfx_session(void *c
      if (sts < 0)
          return ff_qsvvpp_print_error(ctx, sts,
                                       "Error creating a MFX session");
@@ -1029,6 +1085,80 @@ Index: FFmpeg/libavfilter/qsvvpp.c
  
      *psession = session;
  
+Index: FFmpeg/libavfilter/qsvvpp.h
+===================================================================
+--- FFmpeg.orig/libavfilter/qsvvpp.h
++++ FFmpeg/libavfilter/qsvvpp.h
+@@ -131,7 +131,7 @@ int ff_qsvvpp_init(AVFilterContext *avct
+ int ff_qsvvpp_close(AVFilterContext *avctx);
+ 
+ /* vpp filter frame and call the cb if needed */
+-int ff_qsvvpp_filter_frame(QSVVPPContext *vpp, AVFilterLink *inlink, AVFrame *frame);
++int ff_qsvvpp_filter_frame(QSVVPPContext *vpp, AVFilterLink *inlink, AVFrame *frame, AVFrame *propref);
+ 
+ int ff_qsvvpp_print_iopattern(void *log_ctx, int mfx_iopattern,
+                               const char *extra_string);
+Index: FFmpeg/libavfilter/vf_overlay_qsv.c
+===================================================================
+--- FFmpeg.orig/libavfilter/vf_overlay_qsv.c
++++ FFmpeg/libavfilter/vf_overlay_qsv.c
+@@ -230,13 +230,16 @@ static int process_frame(FFFrameSync *fs
+ {
+     AVFilterContext  *ctx = fs->parent;
+     QSVVPPContext    *qsv = fs->opaque;
+-    AVFrame        *frame = NULL;
++    AVFrame        *frame = NULL, *propref = NULL;
+     int               ret = 0, i;
+ 
+     for (i = 0; i < ctx->nb_inputs; i++) {
+         ret = ff_framesync_get_frame(fs, i, &frame, 0);
+-        if (ret == 0)
+-            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame);
++        if (ret == 0) {
++            if (i == 0)
++                propref = frame;
++            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame, propref);
++        }
+         if (ret < 0 && ret != AVERROR(EAGAIN))
+             break;
+     }
+Index: FFmpeg/libavfilter/vf_stack_qsv.c
+===================================================================
+--- FFmpeg.orig/libavfilter/vf_stack_qsv.c
++++ FFmpeg/libavfilter/vf_stack_qsv.c
+@@ -70,13 +70,16 @@ static int process_frame(FFFrameSync *fs
+ {
+     AVFilterContext *ctx = fs->parent;
+     QSVVPPContext *qsv = fs->opaque;
+-    AVFrame *frame = NULL;
++    AVFrame *frame = NULL, *propref = NULL;
+     int ret = 0;
+ 
+     for (int i = 0; i < ctx->nb_inputs; i++) {
+         ret = ff_framesync_get_frame(fs, i, &frame, 0);
+-        if (ret == 0)
+-            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame);
++        if (ret == 0) {
++            if (i == 0)
++                propref = frame;
++            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame, propref);
++        }
+         if (ret < 0 && ret != AVERROR(EAGAIN))
+             break;
+     }
+Index: FFmpeg/libavfilter/vf_vpp_qsv.c
+===================================================================
+--- FFmpeg.orig/libavfilter/vf_vpp_qsv.c
++++ FFmpeg/libavfilter/vf_vpp_qsv.c
+@@ -748,7 +748,7 @@ static int activate(AVFilterContext *ctx
+ 
+     if (qsv->session) {
+         if (in || qsv->eof) {
+-            ret = ff_qsvvpp_filter_frame(qsv, inlink, in);
++            ret = ff_qsvvpp_filter_frame(qsv, inlink, in, in);
+             av_frame_free(&in);
+             if (ret == AVERROR(EAGAIN))
+                 goto not_ready;
 Index: FFmpeg/libavutil/hwcontext_qsv.c
 ===================================================================
 --- FFmpeg.orig/libavutil/hwcontext_qsv.c

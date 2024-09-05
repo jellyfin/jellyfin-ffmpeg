@@ -11,7 +11,7 @@ Index: FFmpeg/libavfilter/qsvvpp.c
      return ret;
  }
  
-@@ -463,8 +463,12 @@ static QSVFrame *submit_frame(QSVVPPCont
+@@ -458,8 +458,12 @@ static QSVFrame *submit_frame(QSVVPPCont
              !(qsv_frame->frame->flags & AV_FRAME_FLAG_INTERLACED) ? MFX_PICSTRUCT_PROGRESSIVE :
              ((qsv_frame->frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? MFX_PICSTRUCT_FIELD_TFF :
                                                   MFX_PICSTRUCT_FIELD_BFF);
@@ -25,23 +25,66 @@ Index: FFmpeg/libavfilter/qsvvpp.c
      else if (qsv_frame->frame->repeat_pict == 2)
          qsv_frame->surface.Info.PicStruct |= MFX_PICSTRUCT_FRAME_DOUBLING;
      else if (qsv_frame->frame->repeat_pict == 4)
+@@ -986,6 +990,23 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
+             return AVERROR(ENOMEM);
+         }
+ 
++        /* Copy metadata before initializing vpp session,
++         * which contains callback to drop the HDR metadata */
++        if (propref) {
++            int flags = out_frame->frame->flags;
++            int64_t duration = out_frame->frame->duration;
++
++            ret1 = av_frame_copy_props(out_frame->frame, propref);
++            if (ret1 < 0) {
++                av_frame_free(&out_frame->frame);
++                av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
++                return ret1;
++            }
++
++            out_frame->frame->flags = flags;
++            out_frame->frame->duration = duration;
++        }
++
+         ret = qsvvpp_init_vpp_session(ctx, s, in_frame, out_frame);
+         if (ret)
+             return ret;
+@@ -1004,15 +1025,6 @@ int ff_qsvvpp_filter_frame(QSVVPPContext
+             break;
+         }
+ 
+-        if (propref) {
+-            ret1 = av_frame_copy_props(out_frame->frame, propref);
+-            if (ret1 < 0) {
+-                av_frame_free(&out_frame->frame);
+-                av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
+-                return ret1;
+-            }
+-        }
+-
+         out_frame->frame->pts = av_rescale_q(out_frame->surface.Data.TimeStamp,
+                                              default_tb, outlink->time_base);
+ 
 Index: FFmpeg/libavfilter/vf_overlay_qsv.c
 ===================================================================
 --- FFmpeg.orig/libavfilter/vf_overlay_qsv.c
 +++ FFmpeg/libavfilter/vf_overlay_qsv.c
-@@ -228,40 +228,47 @@ static int config_overlay_input(AVFilter
+@@ -228,43 +228,47 @@ static int config_overlay_input(AVFilter
  
  static int process_frame(FFFrameSync *fs)
  {
 -    AVFilterContext  *ctx = fs->parent;
 -    QSVVPPContext    *qsv = fs->opaque;
--    AVFrame        *frame = NULL;
+-    AVFrame        *frame = NULL, *propref = NULL;
 -    int               ret = 0, i;
 -
 -    for (i = 0; i < ctx->nb_inputs; i++) {
 -        ret = ff_framesync_get_frame(fs, i, &frame, 0);
--        if (ret == 0)
--            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame);
+-        if (ret == 0) {
+-            if (i == 0)
+-                propref = frame;
+-            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame, propref);
+-        }
 -        if (ret < 0 && ret != AVERROR(EAGAIN))
 -            break;
 -    }
@@ -65,13 +108,13 @@ Index: FFmpeg/libavfilter/vf_overlay_qsv.c
  
 -    return ret;
 +    /* composite main frame */
-+    ret = ff_qsvvpp_filter_frame(qsv, in0, main);
++    ret = ff_qsvvpp_filter_frame(qsv, in0, main, main);
 +    if (ret < 0 && ret != AVERROR(EAGAIN))
 +        return ret;
 +
 +    /* composite overlay frame */
 +    /* or overwrite main frame again if the overlay frame isn't ready yet */
-+    return ff_qsvvpp_filter_frame(qsv, overlay ? in1 : in0, overlay ? overlay : main);
++    return ff_qsvvpp_filter_frame(qsv, overlay ? in1 : in0, overlay ? overlay : main, main);
  }
  
  static int init_framesync(AVFilterContext *ctx)
@@ -102,7 +145,7 @@ Index: FFmpeg/libavfilter/vf_overlay_qsv.c
  
      return ff_framesync_configure(&s->fs);
  }
-@@ -282,12 +289,6 @@ static int config_output(AVFilterLink *o
+@@ -285,12 +289,6 @@ static int config_output(AVFilterLink *o
          return AVERROR(EINVAL);
      } else if (in0->format == AV_PIX_FMT_QSV) {
          AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)in0->hw_frames_ctx->data;
@@ -115,7 +158,7 @@ Index: FFmpeg/libavfilter/vf_overlay_qsv.c
          vpp->qsv_param.out_sw_format = hw_frame0->sw_format;
      }
  
-@@ -369,6 +370,7 @@ static int overlay_qsv_query_formats(AVF
+@@ -372,6 +370,7 @@ static int overlay_qsv_query_formats(AVF
      static const enum AVPixelFormat main_in_fmts[] = {
          AV_PIX_FMT_YUV420P,
          AV_PIX_FMT_NV12,
@@ -123,7 +166,7 @@ Index: FFmpeg/libavfilter/vf_overlay_qsv.c
          AV_PIX_FMT_YUYV422,
          AV_PIX_FMT_RGB32,
          AV_PIX_FMT_QSV,
-@@ -376,6 +378,7 @@ static int overlay_qsv_query_formats(AVF
+@@ -379,6 +378,7 @@ static int overlay_qsv_query_formats(AVF
      };
      static const enum AVPixelFormat out_pix_fmts[] = {
          AV_PIX_FMT_NV12,
@@ -166,7 +209,34 @@ Index: FFmpeg/libavfilter/vf_vpp_qsv.c
  static int vpp_set_frame_ext_params(AVFilterContext *ctx, const AVFrame *in, AVFrame *out,  QSVVPPFrameParam *fp)
  {
  #if QSV_ONEVPL
-@@ -494,9 +518,9 @@ static int vpp_set_frame_ext_params(AVFi
+@@ -461,14 +485,19 @@ static int vpp_set_frame_ext_params(AVFi
+ 
+     memset(&clli_conf, 0, sizeof(mfxExtContentLightLevelInfo));
+     sd = av_frame_get_side_data(in, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+-    if (vpp->tonemap && sd) {
+-        AVContentLightMetadata *clm = (AVContentLightMetadata *)sd->data;
++    if (vpp->tonemap) {
++        AVContentLightMetadata *clm = sd ? (AVContentLightMetadata *)sd->data : NULL;
+ 
+-        clli_conf.Header.BufferId         = MFX_EXTBUFF_CONTENT_LIGHT_LEVEL_INFO;
+-        clli_conf.Header.BufferSz         = sizeof(mfxExtContentLightLevelInfo);
+-        clli_conf.MaxContentLightLevel    = FFMIN(clm->MaxCLL,  65535);
+-        clli_conf.MaxPicAverageLightLevel = FFMIN(clm->MaxFALL, 65535);
+-        tm = 1;
++        // Dumped from VP HAL, VPL requires at least one type of the metadata to trigger tone-mapping
++        #define HAL_HDR_DEFAULT_MAXCLL 4000
++        #define HAL_HDR_DEFAULT_MAXFALL 400
++        if (clm || !tm) {
++            clli_conf.Header.BufferId         = MFX_EXTBUFF_CONTENT_LIGHT_LEVEL_INFO;
++            clli_conf.Header.BufferSz         = sizeof(mfxExtContentLightLevelInfo);
++            clli_conf.MaxContentLightLevel    = FFMIN(clm ? clm->MaxCLL  : HAL_HDR_DEFAULT_MAXCLL,  65535);
++            clli_conf.MaxPicAverageLightLevel = FFMIN(clm ? clm->MaxFALL : HAL_HDR_DEFAULT_MAXFALL, 65535);
++            tm = 1;
++        }
+     }
+ 
+     if (tm) {
+@@ -494,9 +523,9 @@ static int vpp_set_frame_ext_params(AVFi
      outvsi_conf.Header.BufferId          = MFX_EXTBUFF_VIDEO_SIGNAL_INFO_OUT;
      outvsi_conf.Header.BufferSz          = sizeof(mfxExtVideoSignalInfo);
      outvsi_conf.VideoFullRange           = (out->color_range == AVCOL_RANGE_JPEG);
@@ -179,7 +249,7 @@ Index: FFmpeg/libavfilter/vf_vpp_qsv.c
      outvsi_conf.ColourDescriptionPresent = 1;
  
      if (memcmp(&vpp->invsi_conf, &invsi_conf, sizeof(mfxExtVideoSignalInfo)) ||
-@@ -686,12 +710,24 @@ static int config_output(AVFilterLink *o
+@@ -686,12 +715,24 @@ static int config_output(AVFilterLink *o
  
      if (inlink->w != outlink->w || inlink->h != outlink->h || in_format != vpp->out_format) {
          if (QSV_RUNTIME_VERSION_ATLEAST(mfx_version, 1, 19)) {
@@ -208,7 +278,7 @@ Index: FFmpeg/libavfilter/vf_vpp_qsv.c
  
              INIT_MFX_EXTBUF(scale_conf, MFX_EXTBUFF_VPP_SCALING);
              SET_MFX_PARAM_FIELD(scale_conf, ScalingMode, mode);
-@@ -880,19 +916,13 @@ static const AVOption vpp_options[] = {
+@@ -880,19 +921,13 @@ static const AVOption vpp_options[] = {
      { "height", "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str="w*ch/cw" }, 0, 255, .flags = FLAGS },
      { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
      { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = 4 }, 0, INT_MAX, .flags = FLAGS },
@@ -229,7 +299,7 @@ Index: FFmpeg/libavfilter/vf_vpp_qsv.c
  
      { "rate", "Generate output at frame rate or field rate, available only for deinterlace mode",
        OFFSET(field_rate), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, .unit = "rate" },
-@@ -923,8 +953,9 @@ static const AVOption vpp_options[] = {
+@@ -923,8 +958,9 @@ static const AVOption vpp_options[] = {
      { "out_color_transfer", "Output color transfer characteristics",
        OFFSET(color_transfer_str),  AV_OPT_TYPE_STRING, { .str = NULL }, .flags = FLAGS },
  
@@ -240,7 +310,7 @@ Index: FFmpeg/libavfilter/vf_vpp_qsv.c
      { NULL }
  };
  
-@@ -978,19 +1009,14 @@ static const AVOption qsvscale_options[]
+@@ -978,19 +1014,14 @@ static const AVOption qsvscale_options[]
      { "h",      "Output video height(0=input video height, -1=keep input video aspect)", OFFSET(oh), AV_OPT_TYPE_STRING, { .str = "ih"   }, .flags = FLAGS },
      { "format", "Output pixel format", OFFSET(output_format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
  
@@ -262,7 +332,7 @@ Index: FFmpeg/libavfilter/vf_vpp_qsv.c
      { NULL },
  };
  
-@@ -1015,6 +1041,7 @@ static const AVOption qsvdeint_options[]
+@@ -1015,6 +1046,7 @@ static const AVOption qsvdeint_options[]
      { "bob",   "bob algorithm",                  0, AV_OPT_TYPE_CONST,      {.i64 = MFX_DEINTERLACING_BOB}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, .unit = "mode"},
      { "advanced", "Motion adaptive algorithm",   0, AV_OPT_TYPE_CONST, {.i64 = MFX_DEINTERLACING_ADVANCED}, MFX_DEINTERLACING_BOB, MFX_DEINTERLACING_ADVANCED, FLAGS, .unit = "mode"},
  
