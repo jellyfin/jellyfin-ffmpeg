@@ -1,3 +1,14 @@
+jellyfin-ffmpeg (7.0.2-1) unstable; urgency=medium
+
+  * New upstream version 7.0.2
+  * Rename package to jellyin-ffmpeg7
+  * Update build scripts and dependencies
+  * Add ICtCp based tonemap method to vt/cuda/ocl tonemap
+  * Add ACES Reference Gamut Compression to vt/cuda/ocl tonemap
+  * Add DoVi reshaping support to software tonemapx
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 1 Aug 2024 22:10:36 +0800
+
 jellyfin-ffmpeg (6.0.1-8) unstable; urgency=medium
 
   * Add detection of DTS:X and DTS:X IMAX

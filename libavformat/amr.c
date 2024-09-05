@@ -29,6 +29,7 @@ Write and read amr data according to RFC3267, http://www.ietf.org/rfc/rfc3267.tx
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "avio_internal.h"
+#include "demux.h"
 #include "internal.h"
 #include "mux.h"
 #include "rawdec.h"
@@ -49,23 +50,6 @@ static const uint8_t amrnb_packed_size[16] = {
 static const uint8_t amrwb_packed_size[16] = {
     18, 24, 33, 37, 41, 47, 51, 59, 61, 6, 1, 1, 1, 1, 1, 1
 };
-
-#if CONFIG_AMR_MUXER
-static int amr_write_header(AVFormatContext *s)
-{
-    AVIOContext    *pb  = s->pb;
-    AVCodecParameters *par = s->streams[0]->codecpar;
-
-    if (par->codec_id == AV_CODEC_ID_AMR_NB) {
-        avio_write(pb, AMR_header,   sizeof(AMR_header));   /* magic number */
-    } else if (par->codec_id == AV_CODEC_ID_AMR_WB) {
-        avio_write(pb, AMRWB_header, sizeof(AMRWB_header)); /* magic number */
-    } else {
-        return -1;
-    }
-    return 0;
-}
-#endif /* CONFIG_AMR_MUXER */
 
 #if CONFIG_AMR_DEMUXER
 static int amr_probe(const AVProbeData *p)
@@ -140,15 +124,15 @@ static int amr_read_header(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_amr_demuxer = {
-    .name           = "amr",
-    .long_name      = NULL_IF_CONFIG_SMALL("3GPP AMR"),
+const FFInputFormat ff_amr_demuxer = {
+    .p.name         = "amr",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("3GPP AMR"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.priv_class   = &ff_raw_demuxer_class,
     .priv_data_size = sizeof(AMRContext),
     .read_probe     = amr_probe,
     .read_header    = amr_read_header,
     .read_packet    = ff_raw_read_partial_packet,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .priv_class     = &ff_raw_demuxer_class,
 };
 #endif
 
@@ -197,15 +181,15 @@ static int amrnb_read_header(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_amrnb_demuxer = {
-    .name           = "amrnb",
-    .long_name      = NULL_IF_CONFIG_SMALL("raw AMR-NB"),
+const FFInputFormat ff_amrnb_demuxer = {
+    .p.name         = "amrnb",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("raw AMR-NB"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.priv_class   = &ff_raw_demuxer_class,
     .priv_data_size = sizeof(AMRContext),
     .read_probe     = amrnb_probe,
     .read_header    = amrnb_read_header,
     .read_packet    = ff_raw_read_partial_packet,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .priv_class     = &ff_raw_demuxer_class,
 };
 #endif
 
@@ -254,19 +238,34 @@ static int amrwb_read_header(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_amrwb_demuxer = {
-    .name           = "amrwb",
-    .long_name      = NULL_IF_CONFIG_SMALL("raw AMR-WB"),
+const FFInputFormat ff_amrwb_demuxer = {
+    .p.name         = "amrwb",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("raw AMR-WB"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.priv_class   = &ff_raw_demuxer_class,
     .priv_data_size = sizeof(AMRContext),
     .read_probe     = amrwb_probe,
     .read_header    = amrwb_read_header,
     .read_packet    = ff_raw_read_partial_packet,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .priv_class     = &ff_raw_demuxer_class,
 };
 #endif
 
 #if CONFIG_AMR_MUXER
+static int amr_write_header(AVFormatContext *s)
+{
+    AVIOContext    *pb  = s->pb;
+    AVCodecParameters *par = s->streams[0]->codecpar;
+
+    if (par->codec_id == AV_CODEC_ID_AMR_NB) {
+        avio_write(pb, AMR_header,   sizeof(AMR_header));   /* magic number */
+    } else if (par->codec_id == AV_CODEC_ID_AMR_WB) {
+        avio_write(pb, AMRWB_header, sizeof(AMRWB_header)); /* magic number */
+    } else {
+        return -1;
+    }
+    return 0;
+}
+
 const FFOutputFormat ff_amr_muxer = {
     .p.name            = "amr",
     .p.long_name       = NULL_IF_CONFIG_SMALL("3GPP AMR"),
@@ -274,7 +273,9 @@ const FFOutputFormat ff_amr_muxer = {
     .p.extensions      = "amr",
     .p.audio_codec     = AV_CODEC_ID_AMR_NB,
     .p.video_codec     = AV_CODEC_ID_NONE,
+    .p.subtitle_codec  = AV_CODEC_ID_NONE,
     .p.flags           = AVFMT_NOTIMESTAMPS,
+    .flags_internal    = FF_OFMT_FLAG_MAX_ONE_OF_EACH,
     .write_header      = amr_write_header,
     .write_packet      = ff_raw_write_packet,
 };

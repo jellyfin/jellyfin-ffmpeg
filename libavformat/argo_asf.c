@@ -24,6 +24,7 @@
 
 #include "libavutil/avstring.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "mux.h"
 #include "libavutil/channel_layout.h"
@@ -258,7 +259,7 @@ static int argo_asf_seek(AVFormatContext *s, int stream_index,
         return -1;
 
     offset = asf->fhdr.chunk_offset + ASF_CHUNK_HEADER_SIZE +
-             (block * st->codecpar->block_align);
+             block * (int64_t)st->codecpar->block_align;
 
     if ((offset = avio_seek(s->pb, offset, SEEK_SET)) < 0)
         return offset;
@@ -272,9 +273,9 @@ static int argo_asf_seek(AVFormatContext *s, int stream_index,
  * - Argonaut Sound File?
  * - Audio Stream File?
  */
-const AVInputFormat ff_argo_asf_demuxer = {
-    .name           = "argo_asf",
-    .long_name      = NULL_IF_CONFIG_SMALL("Argonaut Games ASF"),
+const FFInputFormat ff_argo_asf_demuxer = {
+    .p.name         = "argo_asf",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Argonaut Games ASF"),
     .priv_data_size = sizeof(ArgoASFDemuxContext),
     .read_probe     = argo_asf_probe,
     .read_header    = argo_asf_read_header,
@@ -287,20 +288,7 @@ const AVInputFormat ff_argo_asf_demuxer = {
 static int argo_asf_write_init(AVFormatContext *s)
 {
     ArgoASFMuxContext *ctx = s->priv_data;
-    const AVCodecParameters *par;
-
-    if (s->nb_streams != 1) {
-        av_log(s, AV_LOG_ERROR, "ASF files have exactly one stream\n");
-        return AVERROR(EINVAL);
-    }
-
-    par = s->streams[0]->codecpar;
-
-    if (par->codec_id != AV_CODEC_ID_ADPCM_ARGO) {
-        av_log(s, AV_LOG_ERROR, "%s codec not supported\n",
-               avcodec_get_name(par->codec_id));
-        return AVERROR(EINVAL);
-    }
+    const AVCodecParameters *par = s->streams[0]->codecpar;
 
     if (ctx->version_major == 1 && ctx->version_minor == 1 && par->sample_rate != 22050) {
         av_log(s, AV_LOG_ERROR, "ASF v1.1 files only support a sample rate of 22050\n");
@@ -480,7 +468,10 @@ const FFOutputFormat ff_argo_asf_muxer = {
      */
     .p.audio_codec  = AV_CODEC_ID_ADPCM_ARGO,
     .p.video_codec  = AV_CODEC_ID_NONE,
+    .p.subtitle_codec = AV_CODEC_ID_NONE,
     .p.priv_class   = &argo_asf_muxer_class,
+    .flags_internal   = FF_OFMT_FLAG_MAX_ONE_OF_EACH |
+                        FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
     .init           = argo_asf_write_init,
     .write_header   = argo_asf_write_header,
     .write_packet   = argo_asf_write_packet,

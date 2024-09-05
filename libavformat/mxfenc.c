@@ -47,10 +47,13 @@
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/time_internal.h"
-#include "libavcodec/avcodec.h"
+#include "libavcodec/defs.h"
+#include "libavcodec/bytestream.h"
 #include "libavcodec/golomb.h"
 #include "libavcodec/h264.h"
+#include "libavcodec/jpeg2000.h"
 #include "libavcodec/packet_internal.h"
+#include "libavcodec/rangecoder.h"
 #include "libavcodec/startcode.h"
 #include "avformat.h"
 #include "avio_internal.h"
@@ -77,6 +80,20 @@ typedef struct MXFIndexEntry {
     uint8_t flags;
 } MXFIndexEntry;
 
+typedef struct j2k_info_t {
+    uint16_t j2k_cap;        ///< j2k required decoder capabilities
+    uint16_t j2k_rsiz;       ///< j2k required decoder capabilities (Rsiz)
+    uint32_t j2k_xsiz;       ///< j2k width of the reference grid (Xsiz)
+    uint32_t j2k_ysiz;       ///< j2k height of the reference grid (Ysiz)
+    uint32_t j2k_x0siz;      ///< j2k horizontal offset from the origin of the reference grid to the left side of the image (X0siz)
+    uint32_t j2k_y0siz;      ///< j2k vertical offset from the origin of the reference grid to the left side of the image (Y0siz)
+    uint32_t j2k_xtsiz;      ///< j2k width of one reference tile with respect to the reference grid (XTsiz)
+    uint32_t j2k_ytsiz;      ///< j2k height of one reference tile with respect to the reference grid (YTsiz)
+    uint32_t j2k_xt0siz;     ///< j2k horizontal offset from the origin of the reference grid to the left side of the first tile (XT0siz)
+    uint32_t j2k_yt0siz;     ///< j2k vertical offset from the origin of the reference grid to the left side of the first tile (YT0siz)
+    uint8_t  j2k_comp_desc[12]; ///< j2k components descriptor (Ssiz(i), XRsiz(i), YRsiz(i))
+} j2k_info_t;
+
 typedef struct MXFStreamContext {
     int64_t pkt_cnt;         ///< pkt counter for muxed packets
     UID track_essence_element_key;
@@ -102,6 +119,8 @@ typedef struct MXFStreamContext {
     int b_picture_count;     ///< maximum number of consecutive b pictures, used in mpeg-2 descriptor
     int low_delay;           ///< low delay, used in mpeg-2 descriptor
     int avc_intra;
+    int micro_version;       ///< format micro_version, used in ffv1 descriptor
+    j2k_info_t j2k_info;
 } MXFStreamContext;
 
 typedef struct MXFContainerEssenceEntry {
@@ -130,6 +149,7 @@ enum ULIndex {
     INDEX_H264,
     INDEX_S436M,
     INDEX_PRORES,
+    INDEX_FFV1,
 };
 
 static const struct {
@@ -144,6 +164,7 @@ static const struct {
     { AV_CODEC_ID_JPEG2000,   INDEX_JPEG2000 },
     { AV_CODEC_ID_H264,       INDEX_H264 },
     { AV_CODEC_ID_PRORES,     INDEX_PRORES },
+    { AV_CODEC_ID_FFV1,       INDEX_FFV1 },
     { AV_CODEC_ID_NONE }
 };
 
@@ -151,6 +172,7 @@ static void mxf_write_wav_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_aes3_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_mpegvideo_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_h264_desc(AVFormatContext *s, AVStream *st);
+static void mxf_write_ffv1_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_cdci_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_generic_sound_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_s436m_anc_desc(AVFormatContext *s, AVStream *st);
@@ -208,6 +230,11 @@ static const MXFContainerEssenceEntry mxf_essence_container_uls[] = {
       { 0x06,0x0E,0x2B,0x34,0x01,0x02,0x01,0x01,0x0d,0x01,0x03,0x01,0x15,0x01,0x17,0x00 },
       { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x03,0x00 },
       mxf_write_cdci_desc },
+    // FFV1
+    { { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x0d,0x01,0x03,0x01,0x02,0x23,0x01,0x00 },
+      { 0x06,0x0E,0x2B,0x34,0x01,0x02,0x01,0x01,0x0d,0x01,0x03,0x01,0x15,0x01,0x1d,0x00 },
+      { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x09,0x00,0x00 },
+      mxf_write_ffv1_desc },
     { { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 },
       { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 },
       { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 },
@@ -230,6 +257,15 @@ static const UID mxf_d10_container_uls[] = {
     { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x03,0x01,0x02,0x01,0x04,0x01 }, // D-10 525/50 NTSC 40mb/s
     { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x03,0x01,0x02,0x01,0x05,0x01 }, // D-10 625/50 PAL 30mb/s
     { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x03,0x01,0x02,0x01,0x06,0x01 }, // D-10 525/50 NTSC 30mb/s
+};
+
+
+static const UID mxf_ffv1_codec_uls[] = {
+    { 0x06,0x0e,0x2b,0x34,0x04,0x01,0x01,0x0D,0x04,0x01,0x02,0x02,0x03,0x09,0x01,0x00 }, // FFV1 version 0
+    { 0x06,0x0e,0x2b,0x34,0x04,0x01,0x01,0x0D,0x04,0x01,0x02,0x02,0x03,0x09,0x02,0x00 }, // FFV1 version 1
+    { 0x06,0x0e,0x2b,0x34,0x04,0x01,0x01,0x0D,0x04,0x01,0x02,0x02,0x03,0x09,0x03,0x00 }, // FFV1 version 2 (was only experimental)
+    { 0x06,0x0e,0x2b,0x34,0x04,0x01,0x01,0x0D,0x04,0x01,0x02,0x02,0x03,0x09,0x04,0x00 }, // FFV1 version 3
+    { 0x06,0x0e,0x2b,0x34,0x04,0x01,0x01,0x0D,0x04,0x01,0x02,0x02,0x03,0x09,0x05,0x00 }, // FFV1 version 4
 };
 
 static const uint8_t product_uid[]          = { 0xAD,0xAB,0x44,0x24,0x2f,0x25,0x4d,0xc7,0x92,0xff,0x29,0xbd,0x00,0x0c,0x00,0x02};
@@ -390,6 +426,24 @@ static const MXFLocalTagPair mxf_local_tag_batch[] = {
     { 0x8302, FF_MXF_MasteringDisplayWhitePointChromaticity },
     { 0x8303, FF_MXF_MasteringDisplayMaximumLuminance },
     { 0x8304, FF_MXF_MasteringDisplayMinimumLuminance },
+    // FFV1
+    { 0xDFD9, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x0E,0x04,0x01,0x06,0x0C,0x06,0x00,0x00,0x00}}, /* FFV1 Micro-version */
+    { 0xDFDA, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x0E,0x04,0x01,0x06,0x0C,0x05,0x00,0x00,0x00}}, /* FFV1 Version */
+    { 0xDFDB, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x0E,0x04,0x01,0x06,0x0C,0x01,0x00,0x00,0x00}}, /* FFV1 Initialization Metadata */
+    // ff_mxf_jpeg2000_local_tags
+    { 0x8400, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x09,0x06,0x01,0x01,0x04,0x06,0x10,0x00,0x00}}, /* Sub Descriptors / Opt Ordered array of strong references to sub descriptor sets */
+    { 0x8401, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x01,0x00,0x00,0x00}}, /* Rsiz: An enumerated value that defines the decoder capabilities */
+    { 0x8402, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x02,0x00,0x00,0x00}}, /* Xsiz: Width of the reference grid */
+    { 0x8403, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x03,0x00,0x00,0x00}}, /* Ysiz: Height of the reference grid */
+    { 0x8404, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x04,0x00,0x00,0x00}}, /* X0siz: Horizontal offset from the origin of the reference grid to the left side of the image area */
+    { 0x8405, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x05,0x00,0x00,0x00}}, /* Y0siz: Vertical offset from the origin of the reference grid to the left side of the image area */
+    { 0x8406, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x06,0x00,0x00,0x00}}, /* XTsiz: Width of one reference tile with respect to the reference grid */
+    { 0x8407, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x07,0x00,0x00,0x00}}, /* YTsiz: Height of one reference tile with respect to the reference grid */
+    { 0x8408, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x08,0x00,0x00,0x00}}, /* XT0siz: Horizontal offset from the origin of the reference grid to the left side of the first tile */
+    { 0x8409, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x09,0x00,0x00,0x00}}, /* YT0siz: Vertical offset from the origin of the reference grid to the left side of the first tile */
+    { 0x840A, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x0A,0x00,0x00,0x00}}, /* Csiz: The number of components in the picture */
+    { 0x840B, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x0B,0x00,0x00,0x00}}, /* Ssizi, XRSizi, YRSizi: Array of picture components where each component comprises 3 bytes named Ssizi, XRSizi, YRSizi.  The array of 3-byte groups is preceded by the array header comprising a 4-byte value of the number of components followed by a 4-byte value of 3. */
+    { 0x840C, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0a,0x04,0x01,0x06,0x03,0x0E,0x00,0x00,0x00}}, /* The nature and order of the image components in the compressed domain as carried in the J2C codestream. */
 };
 
 #define MXF_NUM_TAGS FF_ARRAY_ELEMS(mxf_local_tag_batch)
@@ -526,15 +580,23 @@ static void mxf_write_primer_pack(AVFormatContext *s)
     MXFContext *mxf = s->priv_data;
     AVIOContext *pb = s->pb;
     int local_tag_number = MXF_NUM_TAGS, i;
-    int will_have_avc_tags = 0, will_have_mastering_tags = 0;
+    int will_have_avc_tags = 0, will_have_mastering_tags = 0, will_have_ffv1_tags = 0, will_have_jpeg2000_tags = 0;
 
     for (i = 0; i < s->nb_streams; i++) {
         MXFStreamContext *sc = s->streams[i]->priv_data;
         if (s->streams[i]->codecpar->codec_id == AV_CODEC_ID_H264 && !sc->avc_intra) {
             will_have_avc_tags = 1;
         }
-        if (av_stream_get_side_data(s->streams[i], AV_PKT_DATA_MASTERING_DISPLAY_METADATA, NULL)) {
+        if (av_packet_side_data_get(s->streams[i]->codecpar->coded_side_data,
+                                    s->streams[i]->codecpar->nb_coded_side_data,
+                                    AV_PKT_DATA_MASTERING_DISPLAY_METADATA)) {
             will_have_mastering_tags = 1;
+        }
+        if (s->streams[i]->codecpar->codec_id == AV_CODEC_ID_FFV1) {
+            will_have_ffv1_tags = 1;
+        }
+        if (s->streams[i]->codecpar->codec_id == AV_CODEC_ID_JPEG2000){
+            will_have_jpeg2000_tags = 1;
         }
     }
 
@@ -544,8 +606,11 @@ static void mxf_write_primer_pack(AVFormatContext *s)
         mxf_mark_tag_unused(mxf, 0x5003);
     }
 
-    if (!will_have_avc_tags) {
+    if (!will_have_avc_tags && !will_have_ffv1_tags) {
         mxf_mark_tag_unused(mxf, 0x8100);
+    }
+
+    if (!will_have_avc_tags) {
         mxf_mark_tag_unused(mxf, 0x8200);
         mxf_mark_tag_unused(mxf, 0x8201);
         mxf_mark_tag_unused(mxf, 0x8202);
@@ -556,6 +621,28 @@ static void mxf_write_primer_pack(AVFormatContext *s)
         mxf_mark_tag_unused(mxf, 0x8302);
         mxf_mark_tag_unused(mxf, 0x8303);
         mxf_mark_tag_unused(mxf, 0x8304);
+    }
+
+    if (!will_have_ffv1_tags) {
+        mxf_mark_tag_unused(mxf, 0xDFD9);
+        mxf_mark_tag_unused(mxf, 0xDFDA);
+        mxf_mark_tag_unused(mxf, 0xDFDB);
+    }
+
+    if (!will_have_jpeg2000_tags) {
+        mxf_mark_tag_unused(mxf, 0x8400);
+        mxf_mark_tag_unused(mxf, 0x8401);
+        mxf_mark_tag_unused(mxf, 0x8402);
+        mxf_mark_tag_unused(mxf, 0x8403);
+        mxf_mark_tag_unused(mxf, 0x8404);
+        mxf_mark_tag_unused(mxf, 0x8405);
+        mxf_mark_tag_unused(mxf, 0x8406);
+        mxf_mark_tag_unused(mxf, 0x8407);
+        mxf_mark_tag_unused(mxf, 0x8408);
+        mxf_mark_tag_unused(mxf, 0x8409);
+        mxf_mark_tag_unused(mxf, 0x840A);
+        mxf_mark_tag_unused(mxf, 0x840B);
+        mxf_mark_tag_unused(mxf, 0x840C);
     }
 
     for (i = 0; i < MXF_NUM_TAGS; i++) {
@@ -1094,9 +1181,12 @@ static const UID mxf_mpegvideo_descriptor_key = { 0x06,0x0E,0x2B,0x34,0x02,0x53,
 static const UID mxf_wav_descriptor_key       = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0d,0x01,0x01,0x01,0x01,0x01,0x48,0x00 };
 static const UID mxf_aes3_descriptor_key      = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0d,0x01,0x01,0x01,0x01,0x01,0x47,0x00 };
 static const UID mxf_cdci_descriptor_key      = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0D,0x01,0x01,0x01,0x01,0x01,0x28,0x00 };
+static const UID mxf_rgba_descriptor_key      = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0D,0x01,0x01,0x01,0x01,0x01,0x29,0x00 };
 static const UID mxf_generic_sound_descriptor_key = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0D,0x01,0x01,0x01,0x01,0x01,0x42,0x00 };
 
 static const UID mxf_avc_subdescriptor_key = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0d,0x01,0x01,0x01,0x01,0x01,0x6E,0x00 };
+static const UID mxf_ffv1_subdescriptor_key = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0d,0x01,0x01,0x01,0x01,0x01,0x81,0x03 };
+static const UID mxf_jpeg2000_subdescriptor_key = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0D,0x01,0x01,0x01,0x01,0x01,0x5A,0x00};
 
 static inline uint16_t rescale_mastering_chroma(AVRational q)
 {
@@ -1112,15 +1202,16 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
 {
     MXFStreamContext *sc = st->priv_data;
     AVIOContext *pb = s->pb;
-    int stored_width = 0;
-    int stored_height = (st->codecpar->height+15)/16*16;
+    int stored_width = st->codecpar->width;
+    int stored_height = st->codecpar->height;
+    int display_width;
     int display_height;
     int f1, f2;
     const MXFCodecUL *color_primaries_ul;
     const MXFCodecUL *color_trc_ul;
     const MXFCodecUL *color_space_ul;
     int64_t pos = mxf_write_generic_desc(s, st, key);
-    uint8_t *side_data;
+    const AVPacketSideData *side_data;
 
     color_primaries_ul = mxf_get_codec_ul_by_id(ff_mxf_color_primaries_uls, st->codecpar->color_primaries);
     color_trc_ul       = mxf_get_codec_ul_by_id(ff_mxf_color_trc_uls, st->codecpar->color_trc);
@@ -1132,12 +1223,24 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
         else if (st->codecpar->height == 720)
             stored_width = 1280;
     }
-    if (!stored_width)
-        stored_width = (st->codecpar->width+15)/16*16;
+    display_width = stored_width;
 
+    switch (st->codecpar->codec_id) {
+    case AV_CODEC_ID_MPEG2VIDEO:
+    case AV_CODEC_ID_H264:
+        //Based on 16x16 macroblocks
+        stored_width = (stored_width+15)/16*16;
+        stored_height = (stored_height+15)/16*16;
+        break;
+    default:
+        break;
+    }
+
+    //Stored width
     mxf_write_local_tag(s, 4, 0x3203);
     avio_wb32(pb, stored_width);
 
+    //Stored height
     mxf_write_local_tag(s, 4, 0x3202);
     avio_wb32(pb, stored_height>>sc->interlaced);
 
@@ -1157,7 +1260,7 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
 
     //Sampled width
     mxf_write_local_tag(s, 4, 0x3205);
-    avio_wb32(pb, stored_width);
+    avio_wb32(pb, display_width);
 
     //Samples height
     mxf_write_local_tag(s, 4, 0x3204);
@@ -1171,8 +1274,9 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
     mxf_write_local_tag(s, 4, 0x3207);
     avio_wb32(pb, 0);
 
+    //Display width
     mxf_write_local_tag(s, 4, 0x3209);
-    avio_wb32(pb, stored_width);
+    avio_wb32(pb, display_width);
 
     if (st->codecpar->height == 608) // PAL + VBI
         display_height = 576;
@@ -1181,6 +1285,7 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
     else
         display_height = st->codecpar->height;
 
+    //Display height
     mxf_write_local_tag(s, 4, 0x3208);
     avio_wb32(pb, display_height>>sc->interlaced);
 
@@ -1198,41 +1303,43 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
         avio_wb32(pb, -((st->codecpar->height - display_height)&1));
     }
 
-    // component depth
-    mxf_write_local_tag(s, 4, 0x3301);
-    avio_wb32(pb, sc->component_depth);
+    if (key != mxf_rgba_descriptor_key) {
+        // component depth
+        mxf_write_local_tag(s, 4, 0x3301);
+        avio_wb32(pb, sc->component_depth);
 
-    // horizontal subsampling
-    mxf_write_local_tag(s, 4, 0x3302);
-    avio_wb32(pb, sc->h_chroma_sub_sample);
+        // horizontal subsampling
+        mxf_write_local_tag(s, 4, 0x3302);
+        avio_wb32(pb, sc->h_chroma_sub_sample);
 
-    // vertical subsampling
-    mxf_write_local_tag(s, 4, 0x3308);
-    avio_wb32(pb, sc->v_chroma_sub_sample);
+        // vertical subsampling
+        mxf_write_local_tag(s, 4, 0x3308);
+        avio_wb32(pb, sc->v_chroma_sub_sample);
 
-    // color siting
-    mxf_write_local_tag(s, 1, 0x3303);
-    avio_w8(pb, sc->color_siting);
+        // color siting
+        mxf_write_local_tag(s, 1, 0x3303);
+        avio_w8(pb, sc->color_siting);
 
-    // Padding Bits
-    mxf_write_local_tag(s, 2, 0x3307);
-    avio_wb16(pb, 0);
+        // Padding Bits
+        mxf_write_local_tag(s, 2, 0x3307);
+        avio_wb16(pb, 0);
 
-    if (st->codecpar->color_range != AVCOL_RANGE_UNSPECIFIED) {
-        int black = 0,
-            white = (1<<sc->component_depth) - 1,
-            color = (1<<sc->component_depth);
-        if (st->codecpar->color_range == AVCOL_RANGE_MPEG) {
-            black = 1   << (sc->component_depth - 4);
-            white = 235 << (sc->component_depth - 8);
-            color = (14 << (sc->component_depth - 4)) + 1;
+        if (st->codecpar->color_range != AVCOL_RANGE_UNSPECIFIED) {
+            int black = 0,
+                white = (1<<sc->component_depth) - 1,
+                color = (1<<sc->component_depth);
+            if (st->codecpar->color_range == AVCOL_RANGE_MPEG) {
+                black = 1   << (sc->component_depth - 4);
+                white = 235 << (sc->component_depth - 8);
+                color = (14 << (sc->component_depth - 4)) + 1;
+            }
+            mxf_write_local_tag(s, 4, 0x3304);
+            avio_wb32(pb, black);
+            mxf_write_local_tag(s, 4, 0x3305);
+            avio_wb32(pb, white);
+            mxf_write_local_tag(s, 4, 0x3306);
+            avio_wb32(pb, color);
         }
-        mxf_write_local_tag(s, 4, 0x3304);
-        avio_wb32(pb, black);
-        mxf_write_local_tag(s, 4, 0x3305);
-        avio_wb32(pb, white);
-        mxf_write_local_tag(s, 4, 0x3306);
-        avio_wb32(pb, color);
     }
 
     if (sc->signal_standard) {
@@ -1290,9 +1397,11 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
     avio_write(pb, *sc->codec_ul, 16);
 
     // Mastering Display metadata
-    side_data = av_stream_get_side_data(st, AV_PKT_DATA_MASTERING_DISPLAY_METADATA, NULL);
+    side_data = av_packet_side_data_get(st->codecpar->coded_side_data,
+                                        st->codecpar->nb_coded_side_data,
+                                        AV_PKT_DATA_MASTERING_DISPLAY_METADATA);
     if (side_data) {
-        const AVMasteringDisplayMetadata *metadata = (const AVMasteringDisplayMetadata*)side_data;
+        const AVMasteringDisplayMetadata *metadata = (const AVMasteringDisplayMetadata*)side_data->data;
         if (metadata->has_primaries) {
             mxf_write_local_tag(s, 12, 0x8301);
             avio_wb16(pb, rescale_mastering_chroma(metadata->display_primaries[0][0]));
@@ -1327,6 +1436,13 @@ static int64_t mxf_write_cdci_common(AVFormatContext *s, AVStream *st, const UID
         mxf_write_local_tag(s, 8 + 16, 0x8100);
         mxf_write_refs_count(pb, 1);
         mxf_write_uuid(pb, AVCSubDescriptor, 0);
+    }
+
+    if (st->codecpar->codec_id == AV_CODEC_ID_FFV1) {
+        // write ffv1 sub descriptor ref
+        mxf_write_local_tag(s, 8 + 16, 0x8100);
+        mxf_write_refs_count(pb, 1);
+        mxf_write_uuid(pb, FFV1SubDescriptor, 0);
     }
 
     return pos;
@@ -1365,6 +1481,63 @@ static void mxf_write_avc_subdesc(AVFormatContext *s, AVStream *st)
     mxf_update_klv_size(s->pb, pos);
 }
 
+static void mxf_write_jpeg2000_subdesc(AVFormatContext *s, AVStream *st)
+{
+    MXFStreamContext *sc = st->priv_data;
+    AVIOContext *pb = s->pb;
+    int64_t pos;
+    int component_count = av_pix_fmt_count_planes(st->codecpar->format);
+
+    /* JPEG2000 subdescriptor key */
+    avio_write(pb, mxf_jpeg2000_subdescriptor_key, 16);
+    klv_encode_ber4_length(pb, 0);
+    pos = avio_tell(pb);
+
+    mxf_write_local_tag(s, 16, 0x3C0A);
+    mxf_write_uuid(pb, JPEG2000SubDescriptor, 0);
+
+    /* Value defining the decoder capabilities (rsiz) */
+    mxf_write_local_tag(s, 2, 0x8401);
+    avio_wb16(pb, sc->j2k_info.j2k_rsiz);
+    /* Width of the JPEG2000 reference grid (Xsiz) */
+    mxf_write_local_tag(s, 4, 0x8402);
+    avio_wb32(pb, st->codecpar->width);
+    /* Height of the JPEG2000 reference grid (Ysiz) */
+    mxf_write_local_tag(s, 4, 0x8403);
+    avio_wb32(pb, st->codecpar->height);
+    /* Horizontal offset from the reference grid origin to the left side of the image area (X0siz) */
+    mxf_write_local_tag(s, 4, 0x8404);
+    avio_wb32(pb, sc->j2k_info.j2k_x0siz);
+    /* Vertical offset from the reference grid origin to the left side of the image area (Y0siz) */
+    mxf_write_local_tag(s, 4, 0x8405);
+    avio_wb32(pb, sc->j2k_info.j2k_y0siz);
+    /* Width of one reference tile with respect to the reference grid (XTsiz) */
+    mxf_write_local_tag(s, 4, 0x8406);
+    avio_wb32(pb, sc->j2k_info.j2k_xtsiz);
+    /* Height of one reference tile with respect to the reference grid (YTsiz) */
+    mxf_write_local_tag(s, 4, 0x8407);
+    avio_wb32(pb, sc->j2k_info.j2k_ytsiz);
+    /* Horizontal offset from the origin of the reference grid to the left side of the first tile (XT0siz) */
+    mxf_write_local_tag(s, 4, 0x8408);
+    avio_wb32(pb, sc->j2k_info.j2k_xt0siz);
+    /* Vertical offset from the origin of the reference grid to the left side of the first tile (YT0siz) */
+    mxf_write_local_tag(s, 4, 0x8409);
+    avio_wb32(pb, sc->j2k_info.j2k_yt0siz);
+    /* Image components number (Csiz) */
+    mxf_write_local_tag(s, 2, 0x840A);
+    avio_wb16(pb, component_count);
+    /* Array of picture components where each component comprises 3 bytes named Ssiz(i) (Pixel bitdepth - 1),
+       XRSiz(i) (Horizontal sampling), YRSiz(i) (Vertical sampling). The array of 3-byte groups is preceded
+       by the array header comprising a 4-byte value of the number of components followed by a 4-byte
+       value of 3. */
+    mxf_write_local_tag(s, 8 + 3*component_count, 0x840B);
+    avio_wb32(pb, component_count);
+    avio_wb32(pb, 3);
+    avio_write(pb, sc->j2k_info.j2k_comp_desc, 3*component_count);
+
+    mxf_update_klv_size(pb, pos);
+}
+
 static void mxf_write_cdci_desc(AVFormatContext *s, AVStream *st)
 {
     int64_t pos = mxf_write_cdci_common(s, st, mxf_cdci_descriptor_key);
@@ -1372,6 +1545,9 @@ static void mxf_write_cdci_desc(AVFormatContext *s, AVStream *st)
 
     if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         mxf_write_avc_subdesc(s, st);
+    }
+    if (st->codecpar->codec_id == AV_CODEC_ID_JPEG2000) {
+         mxf_write_jpeg2000_subdesc(s, st);
     }
 }
 
@@ -1385,6 +1561,47 @@ static void mxf_write_h264_desc(AVFormatContext *s, AVStream *st)
         mxf_update_klv_size(s->pb, pos);
         mxf_write_avc_subdesc(s, st);
     }
+}
+
+static void mxf_write_ffv1_subdesc(AVFormatContext *s, AVStream *st)
+{
+    AVIOContext *pb = s->pb;
+    MXFStreamContext *sc = st->priv_data;
+    int64_t pos;
+
+    avio_write(pb, mxf_ffv1_subdescriptor_key, 16);
+    klv_encode_ber4_length(pb, 0);
+    pos = avio_tell(pb);
+
+    mxf_write_local_tag(s, 16, 0x3C0A);
+    mxf_write_uuid(pb, FFV1SubDescriptor, 0);
+
+    if (st->codecpar->extradata_size) {
+        mxf_write_local_tag(s, st->codecpar->extradata_size, 0xDFDB);
+        avio_write(pb, st->codecpar->extradata, st->codecpar->extradata_size); // FFV1InitializationMetadata
+    }
+
+    mxf_write_local_tag(s, 2, 0xDFDA);
+    avio_wb16(pb, (*sc->codec_ul)[14]); // FFV1Version
+
+    if (st->codecpar->extradata_size) {
+        mxf_write_local_tag(s, 2, 0xDFD9);
+        avio_wb16(pb, sc->micro_version); // FFV1MicroVersion
+    }
+
+    mxf_update_klv_size(s->pb, pos);
+}
+
+static void mxf_write_ffv1_desc(AVFormatContext *s, AVStream *st)
+{
+    int is_rgb, pos;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(st->codecpar->format);
+    av_assert0(desc);
+    is_rgb = desc->flags & AV_PIX_FMT_FLAG_RGB;
+
+    pos = mxf_write_cdci_common(s, st, is_rgb ? mxf_rgba_descriptor_key : mxf_cdci_descriptor_key);
+    mxf_update_klv_size(s->pb, pos);
+    mxf_write_ffv1_subdesc(s, st);
 }
 
 static void mxf_write_s436m_anc_desc(AVFormatContext *s, AVStream *st)
@@ -2009,12 +2226,12 @@ static const struct {
     int profile;
     UID codec_ul;
 } mxf_prores_codec_uls[] = {
-    { FF_PROFILE_PRORES_PROXY,    { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x01,0x00 } },
-    { FF_PROFILE_PRORES_LT,       { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x02,0x00 } },
-    { FF_PROFILE_PRORES_STANDARD, { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x03,0x00 } },
-    { FF_PROFILE_PRORES_HQ,       { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x04,0x00 } },
-    { FF_PROFILE_PRORES_4444,     { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x05,0x00 } },
-    { FF_PROFILE_PRORES_XQ,       { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x06,0x00 } },
+    { AV_PROFILE_PRORES_PROXY,    { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x01,0x00 } },
+    { AV_PROFILE_PRORES_LT,       { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x02,0x00 } },
+    { AV_PROFILE_PRORES_STANDARD, { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x03,0x00 } },
+    { AV_PROFILE_PRORES_HQ,       { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x04,0x00 } },
+    { AV_PROFILE_PRORES_4444,     { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x05,0x00 } },
+    { AV_PROFILE_PRORES_XQ,       { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x0d,0x04,0x01,0x02,0x02,0x03,0x06,0x06,0x00 } },
 };
 
 static int mxf_parse_prores_frame(AVFormatContext *s, AVStream *st, AVPacket *pkt)
@@ -2343,6 +2560,122 @@ static int mxf_parse_h264_frame(AVFormatContext *s, AVStream *st,
         return 0;
     }
     sc->codec_ul = codec_ul;
+
+    return 1;
+}
+
+static inline int get_ffv1_unsigned_symbol(RangeCoder *c, uint8_t *state) {
+    if(get_rac(c, state+0))
+        return 0;
+    else{
+        int i, e;
+        unsigned a;
+        e= 0;
+        while(get_rac(c, state+1 + FFMIN(e,9))){ //1..10
+            e++;
+            if (e > 31)
+                return AVERROR_INVALIDDATA;
+        }
+
+        a= 1;
+        for(i=e-1; i>=0; i--){
+            a += a + get_rac(c, state+22 + FFMIN(i,9)); //22..31
+        }
+
+        return a;
+    }
+}
+#define FFV1_CONTEXT_SIZE 32
+static int mxf_parse_ffv1_frame(AVFormatContext *s, AVStream *st, AVPacket *pkt)
+{
+    MXFContext *mxf = s->priv_data;
+    MXFStreamContext *sc = st->priv_data;
+    uint8_t state[FFV1_CONTEXT_SIZE];
+    RangeCoder c;
+    unsigned v;
+
+    sc->frame_size = pkt->size;
+
+    if (mxf->header_written)
+        return 1;
+
+    memset(state, 128, sizeof(state));
+    if (st->codecpar->extradata) {
+        ff_init_range_decoder(&c, st->codecpar->extradata, st->codecpar->extradata_size);
+        ff_build_rac_states(&c, 0.05 * (1LL << 32), 256 - 8);
+        v = get_ffv1_unsigned_symbol(&c, state);
+        av_assert0(v >= 2);
+        if (v > 4) {
+            av_log(s, AV_LOG_ERROR, "unsupported ffv1 version %d\n", v);
+            return 0;
+        }
+        sc->micro_version = get_ffv1_unsigned_symbol(&c, state);
+    } else {
+        uint8_t keystate = 128;
+        ff_init_range_decoder(&c, pkt->data, pkt->size);
+        ff_build_rac_states(&c, 0.05 * (1LL << 32), 256 - 8);
+        get_rac(&c, &keystate); // keyframe
+        v = get_ffv1_unsigned_symbol(&c, state);
+        av_assert0(v < 2);
+    }
+    sc->codec_ul = &mxf_ffv1_codec_uls[v];
+
+    if (st->codecpar->field_order > AV_FIELD_PROGRESSIVE) {
+        sc->interlaced = 1;
+        sc->field_dominance = st->codecpar->field_order == (st->codecpar->field_order == AV_FIELD_TT || st->codecpar->field_order == AV_FIELD_TB) ? 1 : 2;
+    }
+    sc->aspect_ratio.num = st->codecpar->width * st->codecpar->sample_aspect_ratio.num;
+    sc->aspect_ratio.den = st->codecpar->height * st->codecpar->sample_aspect_ratio.den;
+    av_reduce(&sc->aspect_ratio.num, &sc->aspect_ratio.den,
+              sc->aspect_ratio.num, sc->aspect_ratio.den, INT_MAX);
+
+    return 1;
+}
+
+static int mxf_parse_jpeg2000_frame(AVFormatContext *s, AVStream *st, AVPacket *pkt)
+{
+    MXFContext *mxf = s->priv_data;
+    MXFStreamContext *sc = st->priv_data;
+    int component_count = av_pix_fmt_count_planes(st->codecpar->format);
+    GetByteContext g;
+    uint32_t j2k_ncomponents;
+
+    if (mxf->header_written)
+        return 1;
+
+    bytestream2_init(&g,pkt->data,pkt->size);
+
+    while (bytestream2_get_bytes_left(&g) >= 3 && bytestream2_peek_be16(&g) != JPEG2000_SOC)
+        bytestream2_skip(&g, 1);
+
+    if (bytestream2_get_be16u(&g) != JPEG2000_SOC) {
+        av_log(s, AV_LOG_ERROR, "Mandatory SOC marker is not present\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    /* Extract usefull size information from the SIZ marker */
+    if (bytestream2_get_be16u(&g) != JPEG2000_SIZ) {
+        av_log(s, AV_LOG_ERROR, "Mandatory SIZ marker is not present\n");
+        return AVERROR_INVALIDDATA;
+    }
+    bytestream2_skip(&g, 2); // Skip Lsiz
+    sc->j2k_info.j2k_cap = bytestream2_get_be16u(&g);
+    sc->j2k_info.j2k_xsiz = bytestream2_get_be32u(&g);
+    sc->j2k_info.j2k_ysiz = bytestream2_get_be32u(&g);
+    sc->j2k_info.j2k_x0siz = bytestream2_get_be32u(&g);
+    sc->j2k_info.j2k_y0siz = bytestream2_get_be32u(&g);
+    sc->j2k_info.j2k_xtsiz = bytestream2_get_be32u(&g);
+    sc->j2k_info.j2k_ytsiz = bytestream2_get_be32u(&g);
+    sc->j2k_info.j2k_xt0siz = bytestream2_get_be32u(&g);
+    sc->j2k_info.j2k_yt0siz = bytestream2_get_be32u(&g);
+    j2k_ncomponents = bytestream2_get_be16u(&g);
+    if (j2k_ncomponents != component_count) {
+        av_log(s, AV_LOG_ERROR, "Incoherence about components image number.\n");
+        return AVERROR_INVALIDDATA;
+    }
+    bytestream2_get_bufferu(&g, sc->j2k_info.j2k_comp_desc, 3 * j2k_ncomponents);
+
+    sc->frame_size = pkt->size;
 
     return 1;
 }
@@ -2958,6 +3291,16 @@ static int mxf_write_packet(AVFormatContext *s, AVPacket *pkt)
             av_log(s, AV_LOG_ERROR, "could not get h264 profile\n");
             return -1;
         }
+    } else if (st->codecpar->codec_id == AV_CODEC_ID_FFV1) {
+        if (!mxf_parse_ffv1_frame(s, st, pkt)) {
+            av_log(s, AV_LOG_ERROR, "could not get ffv1 version\n");
+            return -1;
+        }
+    } else if (st->codecpar->codec_id == AV_CODEC_ID_JPEG2000) {
+        if (!mxf_parse_jpeg2000_frame(s, st, pkt)) {
+            av_log(s, AV_LOG_ERROR, "could not get jpeg2000 profile\n");
+            return -1;
+        }
     }
 
     if (mxf->cbr_index) {
@@ -3196,23 +3539,33 @@ static int mxf_interleave(AVFormatContext *s, AVPacket *pkt,
     return mxf_interleave_get_packet(s, pkt, flush);
 }
 
+static int mxf_check_bitstream(AVFormatContext *s, AVStream *st, const AVPacket *pkt)
+{
+    if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
+        if (pkt->size >= 5 && AV_RB32(pkt->data) != 0x0000001 &&
+                              AV_RB24(pkt->data) != 0x000001)
+            return ff_stream_add_bitstream_filter(st, "h264_mp4toannexb", NULL);
+    }
+    return 1;
+}
+
 #define MXF_COMMON_OPTIONS \
     { "signal_standard", "Force/set Signal Standard",\
-      offsetof(MXFContext, signal_standard), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      offsetof(MXFContext, signal_standard), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "bt601", "ITU-R BT.601 and BT.656, also SMPTE 125M (525 and 625 line interlaced)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "bt1358", "ITU-R BT.1358 and ITU-R BT.799-3, also SMPTE 293M (525 and 625 line progressive)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 2}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 2}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte347m", "SMPTE 347M (540 Mbps mappings)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 3}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 3}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte274m", "SMPTE 274M (1125 line)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 4}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 4}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte296m", "SMPTE 296M (750 line progressive)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 5}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 5}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte349m", "SMPTE 349M (1485 Mbps mappings)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 6}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 6}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte428", "SMPTE 428-1 DCDM",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 7}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},
+      0, AV_OPT_TYPE_CONST, {.i64 = 7}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},
 
 
 
@@ -3277,6 +3630,7 @@ const FFOutputFormat ff_mxf_muxer = {
     .p.flags           = AVFMT_NOTIMESTAMPS,
     .interleave_packet = mxf_interleave,
     .p.priv_class      = &mxf_muxer_class,
+    .check_bitstream   = mxf_check_bitstream,
 };
 
 const FFOutputFormat ff_mxf_d10_muxer = {
@@ -3310,4 +3664,5 @@ const FFOutputFormat ff_mxf_opatom_muxer = {
     .p.flags           = AVFMT_NOTIMESTAMPS,
     .interleave_packet = mxf_interleave,
     .p.priv_class      = &mxf_opatom_muxer_class,
+    .check_bitstream   = mxf_check_bitstream,
 };

@@ -124,44 +124,35 @@ static int ttml_set_header_values_from_extradata(
 static int ttml_write_header(AVFormatContext *ctx)
 {
     TTMLMuxContext *ttml_ctx = ctx->priv_data;
+    AVStream    *st = ctx->streams[0];
+    AVIOContext *pb = ctx->pb;
+
+    const AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL,
+                                                0);
+    const char *printed_lang = (lang && lang->value) ? lang->value : "";
+
     ttml_ctx->document_written = 0;
+    ttml_ctx->input_type = ff_is_ttml_stream_paragraph_based(st->codecpar) ?
+                           PACKET_TYPE_PARAGRAPH :
+                           PACKET_TYPE_DOCUMENT;
 
-    if (ctx->nb_streams != 1 ||
-        ctx->streams[0]->codecpar->codec_id != AV_CODEC_ID_TTML) {
-        av_log(ctx, AV_LOG_ERROR, "Exactly one TTML stream is required!\n");
-        return AVERROR(EINVAL);
-    }
+    avpriv_set_pts_info(st, 64, 1, 1000);
 
-    {
-        AVStream    *st = ctx->streams[0];
-        AVIOContext *pb = ctx->pb;
-
-        AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL,
-                                              0);
-        const char *printed_lang = (lang && lang->value) ? lang->value : "";
-
-        ttml_ctx->input_type = ff_is_ttml_stream_paragraph_based(st->codecpar) ?
-                               PACKET_TYPE_PARAGRAPH :
-                               PACKET_TYPE_DOCUMENT;
-
-        avpriv_set_pts_info(st, 64, 1, 1000);
-
-        if (ttml_ctx->input_type == PACKET_TYPE_PARAGRAPH) {
-            struct TTMLHeaderParameters header_params;
-            int ret = ttml_set_header_values_from_extradata(
-                st->codecpar, &header_params);
-            if (ret < 0) {
-                av_log(ctx, AV_LOG_ERROR,
-                       "Failed to parse TTML header values from extradata: "
-                       "%s!\n", av_err2str(ret));
-                return ret;
-            }
-
-            avio_printf(pb, ttml_header_text,
-                        header_params.tt_element_params,
-                        printed_lang,
-                        header_params.pre_body_elements);
+    if (ttml_ctx->input_type == PACKET_TYPE_PARAGRAPH) {
+        struct TTMLHeaderParameters header_params;
+        int ret = ttml_set_header_values_from_extradata(
+            st->codecpar, &header_params);
+        if (ret < 0) {
+            av_log(ctx, AV_LOG_ERROR,
+                   "Failed to parse TTML header values from extradata: "
+                   "%s!\n", av_err2str(ret));
+            return ret;
         }
+
+        avio_printf(pb, ttml_header_text,
+                    header_params.tt_element_params,
+                    printed_lang,
+                    header_params.pre_body_elements);
     }
 
     return 0;
@@ -224,7 +215,11 @@ const FFOutputFormat ff_ttml_muxer = {
     .priv_data_size    = sizeof(TTMLMuxContext),
     .p.flags           = AVFMT_GLOBALHEADER | AVFMT_VARIABLE_FPS |
                          AVFMT_TS_NONSTRICT,
+    .p.video_codec     = AV_CODEC_ID_NONE,
+    .p.audio_codec     = AV_CODEC_ID_NONE,
     .p.subtitle_codec  = AV_CODEC_ID_TTML,
+    .flags_internal    = FF_OFMT_FLAG_MAX_ONE_OF_EACH |
+                         FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
     .write_header      = ttml_write_header,
     .write_packet      = ttml_write_packet,
     .write_trailer     = ttml_write_trailer,

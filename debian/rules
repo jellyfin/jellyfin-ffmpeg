@@ -4,7 +4,11 @@ export V=1
 
 ORIG_VERSION := $(shell dpkg-parsechangelog -S version)
 VERSION_SUFFIX := $(shell lsb_release -c -s)
-PACKAGEVERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
+PACKAGE_VERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)"
+FLTO_OPTIONS := auto
+ifeq ($(VERSION_SUFFIX),focal)
+	FLTO_OPTIONS := $(shell nproc)
+endif
 
 CONFIG := --prefix=${TARGET_DIR} \
 	--target-os=linux \
@@ -16,7 +20,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--disable-libxcb \
 	--disable-sdl2 \
 	--disable-xlib \
-	--enable-lto \
+	--enable-lto=${FLTO_OPTIONS} \
 	--enable-gpl \
 	--enable-version3 \
 	--enable-shared \
@@ -30,6 +34,7 @@ CONFIG := --prefix=${TARGET_DIR} \
 	--enable-libfreetype \
 	--enable-libfribidi \
 	--enable-libfontconfig \
+	--enable-libharfbuzz \
 	--enable-libbluray \
 	--enable-libmp3lame \
 	--enable-libopus \
@@ -92,7 +97,7 @@ endif
 	dh $@
 
 override_dh_gencontrol:
-	dh_gencontrol -- -v$(PACKAGEVERSION)
+	dh_gencontrol -- -v$(PACKAGE_VERSION)
 
 override_dh_auto_configure:
 	./configure $(CONFIG)

@@ -41,15 +41,15 @@ ffprobe will show it.
 
 ffprobe output is designed to be easily parsable by a textual filter,
 and consists of one or more sections of a form defined by the selected
-writer, which is specified by the @option{print_format} option.
+writer, which is specified by the @option{output_format} option.
 
 Sections may contain other nested sections, and are identified by a
 name (which may be shared by other sections), and an unique
 name. See the output of @option{sections}.
 
 Metadata tags stored in the container or in the streams are recognized
-and printed in the corresponding "FORMAT", "STREAM" or "PROGRAM_STREAM"
-section.
+and printed in the corresponding "FORMAT", "STREAM", "STREAM_GROUP_STREAM"
+or "PROGRAM_STREAM" section.
 
 @c man end
 
@@ -83,7 +83,7 @@ Use sexagesimal format HH:MM:SS.MICROSECONDS for time values.
 Prettify the format of the displayed values, it corresponds to the
 options "-unit -prefix -byte_binary_prefix -sexagesimal".
 
-@item -of, -print_format @var{writer_name}[=@var{writer_options}]
+@item -output_format, -of, -print_format @var{writer_name}[=@var{writer_options}]
 Set the output printing format.
 
 @var{writer_name} specifies the name of the writer, and
@@ -91,7 +91,7 @@ Set the output printing format.
 
 For example for printing the output in JSON format, specify:
 @example
--print_format json
+-output_format json
 @end example
 
 For more details on the available output printing formats, see the
@@ -231,6 +231,13 @@ multimedia stream.
 
 Each media stream information is printed within a dedicated section
 with name "PROGRAM_STREAM".
+
+@item -show_stream_groups
+Show information about stream groups and their streams contained in the
+input multimedia stream.
+
+Each media stream information is printed within a dedicated section
+with name "STREAM_GROUP_STREAM".
 
 @item -show_chapters
 Show information about chapters stored in the format.
@@ -415,8 +422,9 @@ keyN=valN
 [/SECTION]
 @end example
 
-Metadata tags are printed as a line in the corresponding FORMAT, STREAM or
-PROGRAM_STREAM section, and are prefixed by the string "TAG:".
+Metadata tags are printed as a line in the corresponding FORMAT, STREAM,
+STREAM_GROUP_STREAM or PROGRAM_STREAM section, and are prefixed by the
+string "TAG:".
 
 A description of the accepted options follows.
 

@@ -25,6 +25,7 @@
 #include <stdlib.h>
 
 #include "libavutil/bprint.h"
+#include "libavutil/error.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
 
@@ -235,17 +236,9 @@ done:
     av_free(name);
     av_free(message);
 
-    if (class_class) {
-        (*env)->DeleteLocalRef(env, class_class);
-    }
-
-    if (exception_class) {
-        (*env)->DeleteLocalRef(env, exception_class);
-    }
-
-    if (string) {
-        (*env)->DeleteLocalRef(env, string);
-    }
+    (*env)->DeleteLocalRef(env, class_class);
+    (*env)->DeleteLocalRef(env, exception_class);
+    (*env)->DeleteLocalRef(env, string);
 
     return ret;
 }

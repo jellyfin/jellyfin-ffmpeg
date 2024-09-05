@@ -67,6 +67,7 @@ build() {
     -Dgobject=disabled \
     -Dicu=disabled \
     -Dcpp_std=c++17 \
+    -Dfreetype=enabled \
     -Dgdi=disabled \
     -Dgraphite=disabled \
     -Ddirectwrite=disabled \

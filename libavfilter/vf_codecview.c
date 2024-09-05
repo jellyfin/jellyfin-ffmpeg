@@ -36,6 +36,7 @@
 #include "avfilter.h"
 #include "qp_table.h"
 #include "internal.h"
+#include "video.h"
 
 #define MV_P_FOR  (1<<0)
 #define MV_B_FOR  (1<<1)
@@ -58,20 +59,20 @@ typedef struct CodecViewContext {
 
 #define OFFSET(x) offsetof(CodecViewContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
-#define CONST(name, help, val, unit) { name, help, 0, AV_OPT_TYPE_CONST, {.i64=val}, 0, 0, FLAGS, unit }
+#define CONST(name, help, val, u) { name, help, 0, AV_OPT_TYPE_CONST, {.i64=val}, 0, 0, FLAGS, .unit = u }
 
 static const AVOption codecview_options[] = {
-    { "mv", "set motion vectors to visualize", OFFSET(mv), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv" },
+    { "mv", "set motion vectors to visualize", OFFSET(mv), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, .unit = "mv" },
         CONST("pf", "forward predicted MVs of P-frames",  MV_P_FOR,  "mv"),
         CONST("bf", "forward predicted MVs of B-frames",  MV_B_FOR,  "mv"),
         CONST("bb", "backward predicted MVs of B-frames", MV_B_BACK, "mv"),
     { "qp", NULL, OFFSET(qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
-    { "mv_type", "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
-    { "mvt",     "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
+    { "mv_type", "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, .unit = "mv_type" },
+    { "mvt",     "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, .unit = "mv_type" },
         CONST("fp", "forward predicted MVs",  MV_TYPE_FOR,  "mv_type"),
         CONST("bp", "backward predicted MVs", MV_TYPE_BACK, "mv_type"),
-    { "frame_type", "set frame types to visualize motion vectors of", OFFSET(frame_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "frame_type" },
-    { "ft",         "set frame types to visualize motion vectors of", OFFSET(frame_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "frame_type" },
+    { "frame_type", "set frame types to visualize motion vectors of", OFFSET(frame_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, .unit = "frame_type" },
+    { "ft",         "set frame types to visualize motion vectors of", OFFSET(frame_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, .unit = "frame_type" },
         CONST("if", "I-frames", FRAME_TYPE_I, "frame_type"),
         CONST("pf", "P-frames", FRAME_TYPE_P, "frame_type"),
         CONST("bf", "B-frames", FRAME_TYPE_B, "frame_type"),
@@ -110,7 +111,7 @@ static int clip_line(int *sx, int *sy, int *ex, int *ey, int maxx)
  * @param color color of the arrow
  */
 static void draw_line(uint8_t *buf, int sx, int sy, int ex, int ey,
-                      int w, int h, int stride, int color)
+                      int w, int h, ptrdiff_t stride, int color)
 {
     int x, y, fr, f;
 
@@ -168,7 +169,7 @@ static void draw_line(uint8_t *buf, int sx, int sy, int ex, int ey,
  * @param color color of the arrow
  */
 static void draw_arrow(uint8_t *buf, int sx, int sy, int ex,
-                       int ey, int w, int h, int stride, int color, int tail, int direction)
+                       int ey, int w, int h, ptrdiff_t stride, int color, int tail, int direction)
 {
     int dx,dy;
 
@@ -205,7 +206,7 @@ static void draw_arrow(uint8_t *buf, int sx, int sy, int ex,
     draw_line(buf, sx, sy, ex, ey, w, h, stride, color);
 }
 
-static void draw_block_rectangle(uint8_t *buf, int sx, int sy, int w, int h, int stride, int color)
+static void draw_block_rectangle(uint8_t *buf, int sx, int sy, int w, int h, ptrdiff_t stride, int color)
 {
     for (int x = sx; x < sx + w; x++)
         buf[x] = color;
@@ -215,9 +216,6 @@ static void draw_block_rectangle(uint8_t *buf, int sx, int sy, int w, int h, int
         buf[sx + w - 1] = color;
         buf += stride;
     }
-
-    for (int x = sx; x < sx + w; x++)
-        buf[x] = color;
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
@@ -243,8 +241,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             const int h = AV_CEIL_RSHIFT(frame->height, s->vsub);
             uint8_t *pu = frame->data[1];
             uint8_t *pv = frame->data[2];
-            const int lzu = frame->linesize[1];
-            const int lzv = frame->linesize[2];
+            const ptrdiff_t lzu = frame->linesize[1];
+            const ptrdiff_t lzv = frame->linesize[2];
 
             for (y = 0; y < h; y++) {
                 for (x = 0; x < w; x++) {
@@ -262,7 +260,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
         AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
         if (sd) {
             AVVideoEncParams *par = (AVVideoEncParams*)sd->data;
-            const int stride = frame->linesize[0];
+            const ptrdiff_t stride = frame->linesize[0];
 
             if (par->nb_blocks) {
                 for (int block_idx = 0; block_idx < par->nb_blocks; block_idx++) {
@@ -334,19 +332,12 @@ static const AVFilterPad codecview_inputs[] = {
     },
 };
 
-static const AVFilterPad codecview_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_codecview = {
     .name          = "codecview",
     .description   = NULL_IF_CONFIG_SMALL("Visualize information about some codecs."),
     .priv_size     = sizeof(CodecViewContext),
     FILTER_INPUTS(codecview_inputs),
-    FILTER_OUTPUTS(codecview_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     // TODO: we can probably add way more pixel formats without any other
     // changes; anything with 8-bit luma in first plane should be working
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_YUV420P),

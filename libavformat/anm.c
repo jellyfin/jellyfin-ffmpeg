@@ -172,7 +172,7 @@ static int read_packet(AVFormatContext *s,
     int tmp, record_size;
 
     if (avio_feof(s->pb))
-        return AVERROR(EIO);
+        return AVERROR_EOF;
 
     if (anm->page < 0)
         return anm->page;
@@ -215,9 +215,9 @@ repeat:
     return 0;
 }
 
-const AVInputFormat ff_anm_demuxer = {
-    .name           = "anm",
-    .long_name      = NULL_IF_CONFIG_SMALL("Deluxe Paint Animation"),
+const FFInputFormat ff_anm_demuxer = {
+    .p.name         = "anm",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Deluxe Paint Animation"),
     .priv_data_size = sizeof(AnmDemuxContext),
     .read_probe     = probe,
     .read_header    = read_header,

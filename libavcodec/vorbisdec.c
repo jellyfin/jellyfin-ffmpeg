@@ -210,7 +210,7 @@ static void vorbis_free(vorbis_context *vc)
     if (vc->codebooks)
         for (i = 0; i < vc->codebook_count; ++i) {
             av_freep(&vc->codebooks[i].codevectors);
-            ff_free_vlc(&vc->codebooks[i].vlc);
+            ff_vlc_free(&vc->codebooks[i].vlc);
         }
     av_freep(&vc->codebooks);
 
@@ -454,11 +454,11 @@ static int vorbis_parse_setup_hdr_codebooks(vorbis_context *vc)
 
         codebook_setup->maxdepth = (codebook_setup->maxdepth+codebook_setup->nb_bits - 1) / codebook_setup->nb_bits;
 
-        if ((ret = init_vlc(&codebook_setup->vlc, codebook_setup->nb_bits,
+        if ((ret = vlc_init(&codebook_setup->vlc, codebook_setup->nb_bits,
                             entries, tmp_vlc_bits, sizeof(*tmp_vlc_bits),
                             sizeof(*tmp_vlc_bits), tmp_vlc_codes,
                             sizeof(*tmp_vlc_codes), sizeof(*tmp_vlc_codes),
-                            INIT_VLC_LE))) {
+                            VLC_INIT_LE))) {
             av_log(vc->avctx, AV_LOG_ERROR, " Error generating vlc tables. \n");
             goto error;
         }
@@ -1468,6 +1468,9 @@ static av_always_inline int vorbis_residue_decode_internal(vorbis_context *vc,
                             unsigned step = FASTDIV(vr->partition_size << 1, dim << 1);
                             vorbis_codebook codebook = vc->codebooks[vqbook];
 
+                            if (get_bits_left(gb) <= 0)
+                                return AVERROR_INVALIDDATA;
+
                             if (vr_type == 0) {
 
                                 voffs = voffset+j*vlen;
@@ -1890,7 +1893,6 @@ const FFCodec ff_vorbis_decoder = {
     .flush           = vorbis_decode_flush,
     .p.capabilities  = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(ff_vorbis_channel_layouts)
     .p.ch_layouts    = ff_vorbis_ch_layouts,
     .p.sample_fmts   = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                        AV_SAMPLE_FMT_NONE },

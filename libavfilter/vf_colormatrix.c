@@ -30,12 +30,10 @@
 
 #include <float.h>
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "libavutil/avstring.h"
 
 #define NS(n) ((n) < 0 ? (int)((n)*65536.0-0.5+DBL_EPSILON) : (int)((n)*65536.0+0.5))
 #define CB(n) av_clip_uint8(n)
@@ -483,20 +481,13 @@ static const AVFilterPad colormatrix_inputs[] = {
     },
 };
 
-static const AVFilterPad colormatrix_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_colormatrix = {
     .name          = "colormatrix",
     .description   = NULL_IF_CONFIG_SMALL("Convert color matrix."),
     .priv_size     = sizeof(ColorMatrixContext),
     .init          = init,
     FILTER_INPUTS(colormatrix_inputs),
-    FILTER_OUTPUTS(colormatrix_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS(AV_PIX_FMT_YUV444P,
                    AV_PIX_FMT_YUV422P,
                    AV_PIX_FMT_YUV420P,

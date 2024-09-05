@@ -224,7 +224,13 @@ FATE_H264-$(call FRAMECRC, MOV, H264) += fate-h264-unescaped-extradata
 # this sample contains field-coded frames, with both fields in a single packet
 FATE_H264-$(call FRAMECRC, MOV, H264) += fate-h264-twofields-packet
 
-FATE_H264-$(call DEMMUX, MOV, H264, H264_MP4TOANNEXB_BSF) += fate-h264-bsf-mp4toannexb
+FATE_H264-$(call DEMMUX, MOV, H264, H264_MP4TOANNEXB_BSF SCALE_FILTER) += fate-h264-bsf-mp4toannexb-new-extradata
+
+FATE_H264-$(call DEMMUX, MOV, H264, H264_MP4TOANNEXB_BSF) += fate-h264-bsf-mp4toannexb \
+                                                             fate-h264-bsf-mp4toannexb-2 \
+                                                             fate-h264_mp4toannexb_ticket5927 \
+                                                             fate-h264_mp4toannexb_ticket5927_2 \
+
 FATE_H264-$(call FRAMECRC, MATROSKA, H264) += fate-h264-direct-bff
 FATE_H264-$(call FRAMECRC, FLV, H264, SCALE_FILTER) += fate-h264-brokensps-2580
 FATE_H264-$(call FRAMECRC, MXF, H264, PCM_S24LE_DECODER SCALE_FILTER ARESAMPLE_FILTER) += fate-h264-xavc-4389
@@ -346,7 +352,7 @@ fate-h264-conformance-frext-freh7_b:              CMD = framecrc -i $(TARGET_SAM
 fate-h264-conformance-frext-frext01_jvc_d:        CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FREXT01_JVC_D.264
 fate-h264-conformance-frext-frext02_jvc_c:        CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FREXT02_JVC_C.264
 fate-h264-conformance-frext-frext1_panasonic_c:   CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FRExt1_Panasonic.avc
-fate-h264-conformance-frext-frext2_panasonic_b:   CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FRExt2_Panasonic.avc -vsync passthrough
+fate-h264-conformance-frext-frext2_panasonic_b:   CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FRExt2_Panasonic.avc
 fate-h264-conformance-frext-frext3_panasonic_d:   CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FRExt3_Panasonic.avc
 fate-h264-conformance-frext-frext4_panasonic_a:   CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FRExt4_Panasonic.avc
 fate-h264-conformance-frext-frext_mmco4_sony_b:   CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/FRExt_MMCO4_Sony_B.264
@@ -365,7 +371,7 @@ fate-h264-conformance-frext-hpcadq_brcm_b:        CMD = framecrc -i $(TARGET_SAM
 fate-h264-conformance-frext-hpcafl_bcrm_c:        CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCAFL_BRCM_C.264
 fate-h264-conformance-frext-hpcaflnl_bcrm_c:      CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCAFLNL_BRCM_C.264
 fate-h264-conformance-frext-hpcalq_brcm_b:        CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCALQ_BRCM_B.264
-fate-h264-conformance-frext-hpcamapalq_bcrm_b:    CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCAMAPALQ_BRCM_B.264 -vsync passthrough
+fate-h264-conformance-frext-hpcamapalq_bcrm_b:    CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCAMAPALQ_BRCM_B.264
 fate-h264-conformance-frext-hpcamolq_brcm_b:      CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCAMOLQ_BRCM_B.264
 fate-h264-conformance-frext-hpcanl_brcm_c:        CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCANL_BRCM_C.264
 fate-h264-conformance-frext-hpcaq2lq_brcm_b:      CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/FRext/HPCAQ2LQ_BRCM_B.264
@@ -426,6 +432,15 @@ fate-h264-conformance-sva_nl1_b:                  CMD = framecrc -i $(TARGET_SAM
 fate-h264-conformance-sva_nl2_e:                  CMD = framecrc -i $(TARGET_SAMPLES)/h264-conformance/SVA_NL2_E.264
 
 fate-h264-bsf-mp4toannexb:                        CMD = md5 -i $(TARGET_SAMPLES)/h264/interlaced_crop.mp4 -c:v copy -f h264
+# First IDR is prefixed by SPS/PPS
+fate-h264-bsf-mp4toannexb-2:                      CMD = md5 -i $(TARGET_SAMPLES)/h264/ps_prefix_first_idr.mp4 -c:v copy -f h264
+fate-h264-bsf-mp4toannexb-2:                      CMP = oneline
+fate-h264-bsf-mp4toannexb-2:                      REF = cffcfa6a2d0b58c9de1f5785f099f41d
+fate-h264-bsf-mp4toannexb-new-extradata:          CMD = stream_remux mov $(TARGET_SAMPLES)/h264/extradata-reload-multi-stsd.mov "" h264 "-map 0:v"
+fate-h264_mp4toannexb_ticket5927:                 CMD = transcode "mp4" $(TARGET_SAMPLES)/h264/thezerotheorem-cut.mp4 \
+                                                        h264 "-c:v copy -bsf:v h264_mp4toannexb -an" "-c:v copy"
+fate-h264_mp4toannexb_ticket5927_2:               CMD = transcode "mp4" $(TARGET_SAMPLES)/h264/thezerotheorem-cut.mp4 \
+                                                        h264 "-c:v copy -an" "-c:v copy"
 
 fate-h264-crop-to-container:                      CMD = framemd5 -i $(TARGET_SAMPLES)/h264/crop-to-container-dims-canon.mov
 fate-h264-direct-bff:                             CMD = framecrc -i $(TARGET_SAMPLES)/h264/direct-bff.mkv
@@ -451,7 +466,9 @@ fate-h264-timecode:                               CMD = framecrc -i $(TARGET_SAM
 fate-h264-reinit-%:                               CMD = framecrc -i $(TARGET_SAMPLES)/h264/$(@:fate-h264-%=%).h264 -vf scale,format=yuv444p10le,scale=w=352:h=288
 
 fate-h264-dts_5frames:                            CMD = probeframes $(TARGET_SAMPLES)/h264/dts_5frames.mkv
-fate-h264-afd:                                    CMD = run ffprobe$(PROGSSUF)$(EXESUF) -bitexact -show_entries frame_side_data_list $(TARGET_SAMPLES)/h264/bbc2.sample.h264
+fate-h264-afd:                                    CMD = run ffprobe$(PROGSSUF)$(EXESUF) -bitexact -apply_cropping 0 \
+                                                        -show_entries frame=width,height,crop_top,crop_bottom,crop_left,crop_right:frame_side_data_list:stream=width,height,coded_width,coded_height \
+                                                        $(TARGET_SAMPLES)/h264/bbc2.sample.h264
 
 fate-h264-encparams: CMD = venc_data $(TARGET_SAMPLES)/h264-conformance/FRext/FRExt_MMCO4_Sony_B.264 0 1
 FATE_SAMPLES_DUMP_DATA += fate-h264-encparams

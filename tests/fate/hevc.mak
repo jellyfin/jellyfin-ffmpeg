@@ -210,7 +210,7 @@ FATE_HEVC-$(call FRAMECRC, HEVC, HEVC, HEVC_PARSER SCALE_FILTER) +=         \
                                                     $(HEVC_TESTS_422_10BIN) \
                                                     $(HEVC_TESTS_444_12BIT) \
 
-fate-hevc-paramchange-yuv420p-yuv420p10: CMD = framecrc -vsync passthrough -i $(TARGET_SAMPLES)/hevc/paramchange_yuv420p_yuv420p10.hevc -sws_flags area+accurate_rnd+bitexact
+fate-hevc-paramchange-yuv420p-yuv420p10: CMD = framecrc -i $(TARGET_SAMPLES)/hevc/paramchange_yuv420p_yuv420p10.hevc -fps_mode passthrough -sws_flags area+accurate_rnd+bitexact
 FATE_HEVC-$(call FRAMECRC, HEVC, HEVC, HEVC_PARSER SCALE_FILTER LARGE_TESTS) += fate-hevc-paramchange-yuv420p-yuv420p10
 
 tests/data/hevc-mp4.mov: TAG = GEN
@@ -222,7 +222,7 @@ FATE_HEVC-$(call ALLYES, HEVC_DEMUXER MOV_DEMUXER HEVC_PARSER HEVC_MP4TOANNEXB_B
 fate-hevc-bsf-mp4toannexb: tests/data/hevc-mp4.mov
 fate-hevc-bsf-mp4toannexb: CMD = md5 -i $(TARGET_PATH)/tests/data/hevc-mp4.mov -c:v copy -fflags +bitexact -f hevc
 fate-hevc-bsf-mp4toannexb: CMP = oneline
-fate-hevc-bsf-mp4toannexb: REF = 1873662a3af1848c37e4eb25722c8df9
+fate-hevc-bsf-mp4toannexb: REF = 73019329ed7f81c24f9af67c34c640c0
 
 fate-hevc-skiploopfilter: CMD = framemd5 -skip_loop_filter nokey -i $(TARGET_SAMPLES)/hevc-conformance/SAO_D_Samsung_5.bit -sws_flags bitexact
 FATE_HEVC-$(call FRAMEMD5, HEVC, HEVC, HEVC_PARSER) += fate-hevc-skiploopfilter

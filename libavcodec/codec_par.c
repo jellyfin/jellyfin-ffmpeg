@@ -27,11 +27,13 @@
 #include "libavutil/mem.h"
 #include "avcodec.h"
 #include "codec_par.h"
+#include "packet.h"
 
 static void codec_parameters_reset(AVCodecParameters *par)
 {
     av_freep(&par->extradata);
     av_channel_layout_uninit(&par->ch_layout);
+    av_packet_side_data_free(&par->coded_side_data, &par->nb_coded_side_data);
 
     memset(par, 0, sizeof(*par));
 
@@ -46,8 +48,9 @@ static void codec_parameters_reset(AVCodecParameters *par)
     par->color_space         = AVCOL_SPC_UNSPECIFIED;
     par->chroma_location     = AVCHROMA_LOC_UNSPECIFIED;
     par->sample_aspect_ratio = (AVRational){ 0, 1 };
-    par->profile             = FF_PROFILE_UNKNOWN;
-    par->level               = FF_LEVEL_UNKNOWN;
+    par->framerate           = (AVRational){ 0, 1 };
+    par->profile             = AV_PROFILE_UNKNOWN;
+    par->level               = AV_LEVEL_UNKNOWN;
 }
 
 AVCodecParameters *avcodec_parameters_alloc(void)
@@ -71,6 +74,35 @@ void avcodec_parameters_free(AVCodecParameters **ppar)
     av_freep(ppar);
 }
 
+static int codec_parameters_copy_side_data(AVPacketSideData **pdst, int *pnb_dst,
+                                           const AVPacketSideData *src, int nb_src)
+{
+    AVPacketSideData *dst;
+    int nb_dst = *pnb_dst;
+
+    if (!src)
+        return 0;
+
+    *pdst = dst = av_calloc(nb_src, sizeof(*dst));
+    if (!dst)
+        return AVERROR(ENOMEM);
+
+    for (int i = 0; i < nb_src; i++) {
+        const AVPacketSideData *src_sd = &src[i];
+        AVPacketSideData *dst_sd = &dst[i];
+
+        dst_sd->data = av_memdup(src_sd->data, src_sd->size);
+        if (!dst_sd->data)
+            return AVERROR(ENOMEM);
+
+        dst_sd->type = src_sd->type;
+        dst_sd->size = src_sd->size;
+        *pnb_dst = ++nb_dst;
+    }
+
+    return 0;
+}
+
 int avcodec_parameters_copy(AVCodecParameters *dst, const AVCodecParameters *src)
 {
     int ret;
@@ -81,6 +113,8 @@ int avcodec_parameters_copy(AVCodecParameters *dst, const AVCodecParameters *src
     dst->ch_layout      = (AVChannelLayout){0};
     dst->extradata      = NULL;
     dst->extradata_size = 0;
+    dst->coded_side_data      = NULL;
+    dst->nb_coded_side_data   = 0;
     if (src->extradata) {
         dst->extradata = av_mallocz(src->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!dst->extradata)
@@ -88,6 +122,10 @@ int avcodec_parameters_copy(AVCodecParameters *dst, const AVCodecParameters *src
         memcpy(dst->extradata, src->extradata, src->extradata_size);
         dst->extradata_size = src->extradata_size;
     }
+    ret = codec_parameters_copy_side_data(&dst->coded_side_data, &dst->nb_coded_side_data,
+                                           src->coded_side_data,  src->nb_coded_side_data);
+    if (ret < 0)
+        return ret;
 
     ret = av_channel_layout_copy(&dst->ch_layout, &src->ch_layout);
     if (ret < 0)
@@ -126,35 +164,13 @@ int avcodec_parameters_from_context(AVCodecParameters *par,
         par->chroma_location     = codec->chroma_sample_location;
         par->sample_aspect_ratio = codec->sample_aspect_ratio;
         par->video_delay         = codec->has_b_frames;
+        par->framerate           = codec->framerate;
         break;
     case AVMEDIA_TYPE_AUDIO:
         par->format           = codec->sample_fmt;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-        // if the old/new fields are set inconsistently, prefer the old ones
-        if ((codec->channels && codec->channels != codec->ch_layout.nb_channels) ||
-            (codec->channel_layout && (codec->ch_layout.order != AV_CHANNEL_ORDER_NATIVE ||
-                                       codec->ch_layout.u.mask != codec->channel_layout))) {
-            if (codec->channel_layout)
-                av_channel_layout_from_mask(&par->ch_layout, codec->channel_layout);
-            else {
-                par->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
-                par->ch_layout.nb_channels = codec->channels;
-            }
-FF_ENABLE_DEPRECATION_WARNINGS
-        } else {
-#endif
         ret = av_channel_layout_copy(&par->ch_layout, &codec->ch_layout);
         if (ret < 0)
             return ret;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-        }
-        par->channel_layout  = par->ch_layout.order == AV_CHANNEL_ORDER_NATIVE ?
-                               par->ch_layout.u.mask : 0;
-        par->channels        = par->ch_layout.nb_channels;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         par->sample_rate      = codec->sample_rate;
         par->block_align      = codec->block_align;
         par->frame_size       = codec->frame_size;
@@ -175,6 +191,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
         memcpy(par->extradata, codec->extradata, codec->extradata_size);
         par->extradata_size = codec->extradata_size;
     }
+
+    ret = codec_parameters_copy_side_data(&par->coded_side_data, &par->nb_coded_side_data,
+                                          codec->coded_side_data, codec->nb_coded_side_data);
+    if (ret < 0)
+        return ret;
 
     return 0;
 }
@@ -207,35 +228,13 @@ int avcodec_parameters_to_context(AVCodecContext *codec,
         codec->chroma_sample_location = par->chroma_location;
         codec->sample_aspect_ratio    = par->sample_aspect_ratio;
         codec->has_b_frames           = par->video_delay;
+        codec->framerate              = par->framerate;
         break;
     case AVMEDIA_TYPE_AUDIO:
         codec->sample_fmt       = par->format;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-        // if the old/new fields are set inconsistently, prefer the old ones
-        if ((par->channels && par->channels != par->ch_layout.nb_channels) ||
-            (par->channel_layout && (par->ch_layout.order != AV_CHANNEL_ORDER_NATIVE ||
-                                     par->ch_layout.u.mask != par->channel_layout))) {
-            if (par->channel_layout)
-                av_channel_layout_from_mask(&codec->ch_layout, par->channel_layout);
-            else {
-                codec->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
-                codec->ch_layout.nb_channels = par->channels;
-            }
-FF_ENABLE_DEPRECATION_WARNINGS
-        } else {
-#endif
         ret = av_channel_layout_copy(&codec->ch_layout, &par->ch_layout);
         if (ret < 0)
             return ret;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-        }
-        codec->channel_layout = codec->ch_layout.order == AV_CHANNEL_ORDER_NATIVE ?
-                                codec->ch_layout.u.mask : 0;
-        codec->channels       = codec->ch_layout.nb_channels;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         codec->sample_rate      = par->sample_rate;
         codec->block_align      = par->block_align;
         codec->frame_size       = par->frame_size;
@@ -250,14 +249,21 @@ FF_ENABLE_DEPRECATION_WARNINGS
         break;
     }
 
+    av_freep(&codec->extradata);
+    codec->extradata_size = 0;
     if (par->extradata) {
-        av_freep(&codec->extradata);
         codec->extradata = av_mallocz(par->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!codec->extradata)
             return AVERROR(ENOMEM);
         memcpy(codec->extradata, par->extradata, par->extradata_size);
         codec->extradata_size = par->extradata_size;
     }
+
+    av_packet_side_data_free(&codec->coded_side_data, &codec->nb_coded_side_data);
+    ret = codec_parameters_copy_side_data(&codec->coded_side_data, &codec->nb_coded_side_data,
+                                          par->coded_side_data, par->nb_coded_side_data);
+    if (ret < 0)
+        return ret;
 
     return 0;
 }

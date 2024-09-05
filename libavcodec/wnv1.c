@@ -39,12 +39,12 @@ static const uint8_t code_tab[16][2] = {
 };
 
 #define CODE_VLC_BITS 9
-static VLC code_vlc;
+static VLCElem code_vlc[1 << CODE_VLC_BITS];
 
 /* returns modified base_value */
 static inline int wnv1_get_code(GetBitContext *gb, int shift, int base_value)
 {
-    int v = get_vlc2(gb, code_vlc.table, CODE_VLC_BITS, 1);
+    int v = get_vlc2(gb, code_vlc, CODE_VLC_BITS, 1);
 
     if (v == 8)
         return get_bits(gb, 8 - shift) << shift;
@@ -69,7 +69,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     if ((ret = ff_get_buffer(avctx, p, 0)) < 0)
         return ret;
-    p->key_frame = 1;
+    p->flags |= AV_FRAME_FLAG_KEY;
 
     if ((ret = init_get_bits8(&gb, buf + 8, buf_size - 8)) < 0)
         return ret;
@@ -115,10 +115,10 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
 static av_cold void wnv1_init_static(void)
 {
-    INIT_VLC_STATIC_FROM_LENGTHS(&code_vlc, CODE_VLC_BITS, 16,
-                                 &code_tab[0][1], 2,
-                                 &code_tab[0][0], 2, 1,
-                                 -7, INIT_VLC_OUTPUT_LE, 1 << CODE_VLC_BITS);
+    VLC_INIT_STATIC_TABLE_FROM_LENGTHS(code_vlc, CODE_VLC_BITS, 16,
+                                       &code_tab[0][1], 2,
+                                       &code_tab[0][0], 2, 1,
+                                       -7, VLC_INIT_OUTPUT_LE);
 }
 
 static av_cold int decode_init(AVCodecContext *avctx)

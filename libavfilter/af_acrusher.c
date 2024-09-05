@@ -75,9 +75,9 @@ static const AVOption acrusher_options[] = {
     { "level_out","set level out",        OFFSET(level_out), AV_OPT_TYPE_DOUBLE, {.dbl=1},    0.015625, 64, A },
     { "bits",     "set bit reduction",    OFFSET(bits),      AV_OPT_TYPE_DOUBLE, {.dbl=8},    1,        64, A },
     { "mix",      "set mix",              OFFSET(mix),       AV_OPT_TYPE_DOUBLE, {.dbl=.5},   0,         1, A },
-    { "mode",     "set mode",             OFFSET(mode),      AV_OPT_TYPE_INT,    {.i64=0},    0,         1, A, "mode" },
-    {   "lin",    "linear",               0,                 AV_OPT_TYPE_CONST,  {.i64=0},    0,         0, A, "mode" },
-    {   "log",    "logarithmic",          0,                 AV_OPT_TYPE_CONST,  {.i64=1},    0,         0, A, "mode" },
+    { "mode",     "set mode",             OFFSET(mode),      AV_OPT_TYPE_INT,    {.i64=0},    0,         1, A, .unit = "mode" },
+    {   "lin",    "linear",               0,                 AV_OPT_TYPE_CONST,  {.i64=0},    0,         0, A, .unit = "mode" },
+    {   "log",    "logarithmic",          0,                 AV_OPT_TYPE_CONST,  {.i64=1},    0,         0, A, .unit = "mode" },
     { "dc",       "set DC",               OFFSET(dc),        AV_OPT_TYPE_DOUBLE, {.dbl=1},  .25,         4, A },
     { "aa",       "set anti-aliasing",    OFFSET(aa),        AV_OPT_TYPE_DOUBLE, {.dbl=.5},   0,         1, A },
     { "samples",  "set sample reduction", OFFSET(samples),   AV_OPT_TYPE_DOUBLE, {.dbl=1},    1,       250, A },
@@ -325,13 +325,6 @@ static const AVFilterPad avfilter_af_acrusher_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_af_acrusher_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_acrusher = {
     .name          = "acrusher",
     .description   = NULL_IF_CONFIG_SMALL("Reduce audio bit resolution."),
@@ -339,7 +332,7 @@ const AVFilter ff_af_acrusher = {
     .priv_class    = &acrusher_class,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_acrusher_inputs),
-    FILTER_OUTPUTS(avfilter_af_acrusher_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBL),
     .process_command = process_command,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,

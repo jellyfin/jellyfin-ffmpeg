@@ -61,28 +61,28 @@ typedef struct SVCContext {
 #define DEPRECATED AV_OPT_FLAG_DEPRECATED
 static const AVOption options[] = {
     { "loopfilter", "enable loop filter", OFFSET(loopfilter), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, VE },
-    { "profile", "set profile restrictions", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = FF_PROFILE_UNKNOWN }, FF_PROFILE_UNKNOWN, 0xffff, VE, "profile" },
-#define PROFILE(name, value)  name, NULL, 0, AV_OPT_TYPE_CONST, { .i64 = value }, 0, 0, VE, "profile"
-        { PROFILE("constrained_baseline", FF_PROFILE_H264_CONSTRAINED_BASELINE) },
-        { PROFILE("main",                 FF_PROFILE_H264_MAIN) },
-        { PROFILE("high",                 FF_PROFILE_H264_HIGH) },
+    { "profile", "set profile restrictions", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, 0xffff, VE, .unit = "profile" },
+#define PROFILE(name, value)  name, NULL, 0, AV_OPT_TYPE_CONST, { .i64 = value }, 0, 0, VE, .unit = "profile"
+        { PROFILE("constrained_baseline", AV_PROFILE_H264_CONSTRAINED_BASELINE) },
+        { PROFILE("main",                 AV_PROFILE_H264_MAIN) },
+        { PROFILE("high",                 AV_PROFILE_H264_HIGH) },
 #undef PROFILE
     { "max_nal_size", "set maximum NAL size in bytes", OFFSET(max_nal_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, VE },
     { "allow_skip_frames", "allow skipping frames to hit the target bitrate", OFFSET(skip_frames), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
-    { "coder", "Coder type",  OFFSET(coder), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE, "coder" },
-        { "default",          NULL, 0, AV_OPT_TYPE_CONST, { .i64 = -1 }, INT_MIN, INT_MAX, VE, "coder" },
-        { "cavlc",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 },  INT_MIN, INT_MAX, VE, "coder" },
-        { "cabac",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 },  INT_MIN, INT_MAX, VE, "coder" },
-        { "vlc",              NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 },  INT_MIN, INT_MAX, VE, "coder" },
-        { "ac",               NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 },  INT_MIN, INT_MAX, VE, "coder" },
+    { "coder", "Coder type",  OFFSET(coder), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE, .unit = "coder" },
+        { "default",          NULL, 0, AV_OPT_TYPE_CONST, { .i64 = -1 }, INT_MIN, INT_MAX, VE, .unit = "coder" },
+        { "cavlc",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 },  INT_MIN, INT_MAX, VE, .unit = "coder" },
+        { "cabac",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 },  INT_MIN, INT_MAX, VE, .unit = "coder" },
+        { "vlc",              NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 0 },  INT_MIN, INT_MAX, VE, .unit = "coder" },
+        { "ac",               NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 },  INT_MIN, INT_MAX, VE, .unit = "coder" },
 
-    { "rc_mode", "Select rate control mode", OFFSET(rc_mode), AV_OPT_TYPE_INT, { .i64 = RC_QUALITY_MODE }, RC_OFF_MODE, RC_TIMESTAMP_MODE, VE, "rc_mode" },
-        { "off",       "bit rate control off",                                                 0, AV_OPT_TYPE_CONST, { .i64 = RC_OFF_MODE },         0, 0, VE, "rc_mode" },
-        { "quality",   "quality mode",                                                         0, AV_OPT_TYPE_CONST, { .i64 = RC_QUALITY_MODE },     0, 0, VE, "rc_mode" },
-        { "bitrate",   "bitrate mode",                                                         0, AV_OPT_TYPE_CONST, { .i64 = RC_BITRATE_MODE },     0, 0, VE, "rc_mode" },
-        { "buffer",    "using buffer status to adjust the video quality (no bitrate control)", 0, AV_OPT_TYPE_CONST, { .i64 = RC_BUFFERBASED_MODE }, 0, 0, VE, "rc_mode" },
+    { "rc_mode", "Select rate control mode", OFFSET(rc_mode), AV_OPT_TYPE_INT, { .i64 = RC_QUALITY_MODE }, RC_OFF_MODE, RC_TIMESTAMP_MODE, VE, .unit = "rc_mode" },
+        { "off",       "bit rate control off",                                                 0, AV_OPT_TYPE_CONST, { .i64 = RC_OFF_MODE },         0, 0, VE, .unit = "rc_mode" },
+        { "quality",   "quality mode",                                                         0, AV_OPT_TYPE_CONST, { .i64 = RC_QUALITY_MODE },     0, 0, VE, .unit = "rc_mode" },
+        { "bitrate",   "bitrate mode",                                                         0, AV_OPT_TYPE_CONST, { .i64 = RC_BITRATE_MODE },     0, 0, VE, .unit = "rc_mode" },
+        { "buffer",    "using buffer status to adjust the video quality (no bitrate control)", 0, AV_OPT_TYPE_CONST, { .i64 = RC_BUFFERBASED_MODE }, 0, 0, VE, .unit = "rc_mode" },
 #if OPENH264_VER_AT_LEAST(1, 4)
-        { "timestamp", "bit rate control based on timestamp",                                  0, AV_OPT_TYPE_CONST, { .i64 = RC_TIMESTAMP_MODE },   0, 0, VE, "rc_mode" },
+        { "timestamp", "bit rate control based on timestamp",                                  0, AV_OPT_TYPE_CONST, { .i64 = RC_TIMESTAMP_MODE },   0, 0, VE, .unit = "rc_mode" },
 #endif
 
     { NULL }
@@ -110,13 +110,9 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
 {
     SVCContext *s = avctx->priv_data;
     SEncParamExt param = { 0 };
-    int err;
     int log_level;
     WelsTraceCallback callback_function;
     AVCPBProperties *props;
-
-    if ((err = ff_libopenh264_check_version(avctx)) < 0)
-        return AVERROR_ENCODER_NOT_FOUND;
 
     if (WelsCreateSVCEncoder(&s->encoder)) {
         av_log(avctx, AV_LOG_ERROR, "Unable to create encoder\n");
@@ -139,12 +135,13 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
     if (avctx->framerate.num > 0 && avctx->framerate.den > 0) {
         param.fMaxFrameRate = av_q2d(avctx->framerate);
     } else {
-        if (avctx->ticks_per_frame > INT_MAX / avctx->time_base.num) {
-            av_log(avctx, AV_LOG_ERROR,
-                   "Could not set framerate for libopenh264enc: integer overflow\n");
-            return AVERROR(EINVAL);
-        }
-        param.fMaxFrameRate = 1.0 / av_q2d(avctx->time_base) / FFMAX(avctx->ticks_per_frame, 1);
+FF_DISABLE_DEPRECATION_WARNINGS
+        param.fMaxFrameRate = 1.0 / av_q2d(avctx->time_base)
+#if FF_API_TICKS_PER_FRAME
+                                  / FFMAX(avctx->ticks_per_frame, 1)
+#endif
+                                  ;
+FF_ENABLE_DEPRECATION_WARNINGS
     }
     param.iPicWidth                  = avctx->width;
     param.iPicHeight                 = avctx->height;
@@ -176,12 +173,12 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
     param.iMultipleThreadIdc         = avctx->thread_count;
 
     /* Allow specifying the libopenh264 profile through AVCodecContext. */
-    if (FF_PROFILE_UNKNOWN == s->profile &&
-        FF_PROFILE_UNKNOWN != avctx->profile)
+    if (AV_PROFILE_UNKNOWN == s->profile &&
+        AV_PROFILE_UNKNOWN != avctx->profile)
         switch (avctx->profile) {
-        case FF_PROFILE_H264_HIGH:
-        case FF_PROFILE_H264_MAIN:
-        case FF_PROFILE_H264_CONSTRAINED_BASELINE:
+        case AV_PROFILE_H264_HIGH:
+        case AV_PROFILE_H264_MAIN:
+        case AV_PROFILE_H264_CONSTRAINED_BASELINE:
             s->profile = avctx->profile;
             break;
         default:
@@ -190,34 +187,34 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
             break;
         }
 
-    if (s->profile == FF_PROFILE_UNKNOWN && s->coder >= 0)
-        s->profile = s->coder == 0 ? FF_PROFILE_H264_CONSTRAINED_BASELINE :
+    if (s->profile == AV_PROFILE_UNKNOWN && s->coder >= 0)
+        s->profile = s->coder == 0 ? AV_PROFILE_H264_CONSTRAINED_BASELINE :
 #if OPENH264_VER_AT_LEAST(1, 8)
-                                     FF_PROFILE_H264_HIGH;
+                                     AV_PROFILE_H264_HIGH;
 #else
-                                     FF_PROFILE_H264_MAIN;
+                                     AV_PROFILE_H264_MAIN;
 #endif
 
     switch (s->profile) {
-    case FF_PROFILE_H264_HIGH:
+    case AV_PROFILE_H264_HIGH:
         av_log(avctx, AV_LOG_VERBOSE, "Using %s, "
                 "select EProfileIdc PRO_HIGH in libopenh264.\n",
                 param.iEntropyCodingModeFlag ? "CABAC" : "CAVLC");
         break;
-    case FF_PROFILE_H264_MAIN:
+    case AV_PROFILE_H264_MAIN:
         av_log(avctx, AV_LOG_VERBOSE, "Using %s, "
                 "select EProfileIdc PRO_MAIN in libopenh264.\n",
                 param.iEntropyCodingModeFlag ? "CABAC" : "CAVLC");
         break;
-    case FF_PROFILE_H264_CONSTRAINED_BASELINE:
-    case FF_PROFILE_UNKNOWN:
-        s->profile = FF_PROFILE_H264_CONSTRAINED_BASELINE;
+    case AV_PROFILE_H264_CONSTRAINED_BASELINE:
+    case AV_PROFILE_UNKNOWN:
+        s->profile = AV_PROFILE_H264_CONSTRAINED_BASELINE;
         param.iEntropyCodingModeFlag = 0;
         av_log(avctx, AV_LOG_VERBOSE, "Using CAVLC, "
                "select EProfileIdc PRO_BASELINE in libopenh264.\n");
         break;
     default:
-        s->profile = FF_PROFILE_H264_CONSTRAINED_BASELINE;
+        s->profile = AV_PROFILE_H264_CONSTRAINED_BASELINE;
         param.iEntropyCodingModeFlag = 0;
         av_log(avctx, AV_LOG_WARNING, "Unsupported profile, "
                "select EProfileIdc PRO_BASELINE in libopenh264.\n");
@@ -311,15 +308,15 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
 
 #if OPENH264_VER_AT_LEAST(1, 6)
     param.sSpatialLayers[0].uiVideoFormat = VF_UNDEF;
+
     if (avctx->color_range != AVCOL_RANGE_UNSPECIFIED) {
-        param.sSpatialLayers[0].bVideoSignalTypePresent = true;
         param.sSpatialLayers[0].bFullRange = (avctx->color_range == AVCOL_RANGE_JPEG);
-    }
+    }  else if (avctx->pix_fmt == AV_PIX_FMT_YUVJ420P)
+        param.sSpatialLayers[0].bFullRange = 1;
 
     if (avctx->colorspace != AVCOL_SPC_UNSPECIFIED      ||
         avctx->color_primaries != AVCOL_PRI_UNSPECIFIED ||
         avctx->color_trc != AVCOL_TRC_UNSPECIFIED) {
-        param.sSpatialLayers[0].bVideoSignalTypePresent = true;
         param.sSpatialLayers[0].bColorDescriptionPresent = true;
     }
 
@@ -329,6 +326,9 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
         param.sSpatialLayers[0].uiColorPrimaries = avctx->color_primaries;
     if (avctx->color_trc != AVCOL_TRC_UNSPECIFIED)
         param.sSpatialLayers[0].uiTransferCharacteristics = avctx->color_trc;
+
+    param.sSpatialLayers[0].bVideoSignalTypePresent =
+        (param.sSpatialLayers[0].bFullRange || param.sSpatialLayers[0].bColorDescriptionPresent);
 #endif
 
     if ((*s->encoder)->InitializeExt(s->encoder, &param) != cmResultSuccess) {
@@ -349,7 +349,7 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
         memcpy(avctx->extradata, fbi.sLayerInfo[0].pBsBuf, size);
     }
 
-    props = ff_add_cpb_side_data(avctx);
+    props = ff_encode_add_cpb_side_data(avctx);
     if (!props)
         return AVERROR(ENOMEM);
     props->max_bitrate = param.iMaxBitrate;
@@ -443,6 +443,7 @@ const FFCodec ff_libopenh264_encoder = {
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP |
                       FF_CODEC_CAP_AUTO_THREADS,
     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P,
+                                                    AV_PIX_FMT_YUVJ420P,
                                                     AV_PIX_FMT_NONE },
     .defaults       = svc_enc_defaults,
     .p.priv_class   = &class,

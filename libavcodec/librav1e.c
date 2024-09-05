@@ -57,9 +57,6 @@ typedef struct librav1eContext {
 typedef struct FrameData {
     int64_t pts;
     int64_t duration;
-#if FF_API_REORDERED_OPAQUE
-    int64_t reordered_opaque;
-#endif
 
     void        *frame_opaque;
     AVBufferRef *frame_opaque_ref;
@@ -219,10 +216,15 @@ static av_cold int librav1e_encode_init(AVCodecContext *avctx)
                                    avctx->framerate.den, avctx->framerate.num
                                    });
     } else {
+FF_DISABLE_DEPRECATION_WARNINGS
         rav1e_config_set_time_base(cfg, (RaRational) {
-                                   avctx->time_base.num * avctx->ticks_per_frame,
-                                   avctx->time_base.den
+                                   avctx->time_base.num
+#if FF_API_TICKS_PER_FRAME
+                                   * avctx->ticks_per_frame
+#endif
+                                   , avctx->time_base.den
                                    });
+FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     if ((avctx->flags & AV_CODEC_FLAG_PASS1 || avctx->flags & AV_CODEC_FLAG_PASS2) && !avctx->bit_rate) {
@@ -467,20 +469,11 @@ static int librav1e_receive_packet(AVCodecContext *avctx, AVPacket *pkt)
             }
             fd->pts      = frame->pts;
             fd->duration = frame->duration;
-#if FF_API_REORDERED_OPAQUE
-FF_DISABLE_DEPRECATION_WARNINGS
-            fd->reordered_opaque = frame->reordered_opaque;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
             if (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
                 fd->frame_opaque = frame->opaque;
-                ret = av_buffer_replace(&fd->frame_opaque_ref, frame->opaque_ref);
-                if (ret < 0) {
-                    frame_data_free(fd);
-                    av_frame_unref(frame);
-                    return ret;
-                }
+                fd->frame_opaque_ref = frame->opaque_ref;
+                frame->opaque_ref    = NULL;
             }
 
             rframe = rav1e_frame_new(ctx->ctx);
@@ -578,11 +571,6 @@ retry:
     fd = rpkt->opaque;
     pkt->pts = pkt->dts = fd->pts;
     pkt->duration = fd->duration;
-#if FF_API_REORDERED_OPAQUE
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->reordered_opaque = fd->reordered_opaque;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     if (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
         pkt->opaque          = fd->frame_opaque;

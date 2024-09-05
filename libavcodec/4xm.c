@@ -125,7 +125,7 @@ static const uint8_t dequant_table[64] = {
     20, 35, 34, 32, 31, 22, 15,  8,
 };
 
-static VLC block_type_vlc[2][4];
+static VLCElem block_type_vlc[2][4][32];
 
 
 typedef struct CFrameBuffer {
@@ -250,17 +250,15 @@ static void idct(int16_t block[64])
 
 static av_cold void init_vlcs(void)
 {
-    static VLCElem table[2][4][32];
     int i, j;
 
     for (i = 0; i < 2; i++) {
         for (j = 0; j < 4; j++) {
-            block_type_vlc[i][j].table           = table[i][j];
-            block_type_vlc[i][j].table_allocated = 32;
-            init_vlc(&block_type_vlc[i][j], BLOCK_TYPE_VLC_BITS, 7,
-                     &block_type_tab[i][j][0][1], 2, 1,
-                     &block_type_tab[i][j][0][0], 2, 1,
-                     INIT_VLC_USE_NEW_STATIC);
+            ff_vlc_init_table_sparse(block_type_vlc[i][j], FF_ARRAY_ELEMS(block_type_vlc[i][j]),
+                                     BLOCK_TYPE_VLC_BITS, 7,
+                                     &block_type_tab[i][j][0][1], 2, 1,
+                                     &block_type_tab[i][j][0][0], 2, 1,
+                                     NULL, 0, 0, 0);
         }
     }
 }
@@ -357,7 +355,7 @@ static int decode_p_block(FourXContext *f, uint16_t *dst, const uint16_t *src,
     if (get_bits_left(&f->gb) < 1)
         return AVERROR_INVALIDDATA;
     h     = 1 << log2h;
-    code  = get_vlc2(&f->gb, block_type_vlc[1 - (f->version > 1)][index].table,
+    code  = get_vlc2(&f->gb, block_type_vlc[1 - (f->version > 1)][index],
                      BLOCK_TYPE_VLC_BITS, 1);
     av_assert0(code >= 0 && code <= 6);
 
@@ -706,8 +704,8 @@ static const uint8_t *read_huffman_tables(FourXContext *f,
         len_tab[j]  = len;
     }
 
-    ff_free_vlc(&f->pre_vlc);
-    if (init_vlc(&f->pre_vlc, ACDC_VLC_BITS, 257, len_tab, 1, 1,
+    ff_vlc_free(&f->pre_vlc);
+    if (vlc_init(&f->pre_vlc, ACDC_VLC_BITS, 257, len_tab, 1, 1,
                  bits_tab, 4, 4, 0))
         return NULL;
 
@@ -959,7 +957,10 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
         return AVERROR_INVALIDDATA;
     }
 
-    picture->key_frame = picture->pict_type == AV_PICTURE_TYPE_I;
+    if (picture->pict_type == AV_PICTURE_TYPE_I)
+        picture->flags |= AV_FRAME_FLAG_KEY;
+    else
+        picture->flags &= ~AV_FRAME_FLAG_KEY;
 
     av_image_copy_plane(picture->data[0], picture->linesize[0],
                         (const uint8_t*)f->frame_buffer,  avctx->width * 2,
@@ -984,7 +985,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
         av_freep(&f->cfrm[i].data);
         f->cfrm[i].allocated_size = 0;
     }
-    ff_free_vlc(&f->pre_vlc);
+    ff_vlc_free(&f->pre_vlc);
 
     return 0;
 }

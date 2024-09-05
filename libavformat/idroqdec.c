@@ -30,6 +30,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 #include "avio_internal.h"
 
@@ -107,7 +108,7 @@ static int roq_read_packet(AVFormatContext *s,
     while (!packet_read) {
 
         if (avio_feof(s->pb))
-            return AVERROR(EIO);
+            return AVERROR_EOF;
 
         /* get the next chunk preamble */
         if ((ret = avio_read(pb, preamble, RoQ_CHUNK_PREAMBLE_SIZE)) !=
@@ -237,9 +238,9 @@ static int roq_read_packet(AVFormatContext *s,
     return ret;
 }
 
-const AVInputFormat ff_roq_demuxer = {
-    .name           = "roq",
-    .long_name      = NULL_IF_CONFIG_SMALL("id RoQ"),
+const FFInputFormat ff_roq_demuxer = {
+    .p.name         = "roq",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("id RoQ"),
     .priv_data_size = sizeof(RoqDemuxContext),
     .read_probe     = roq_probe,
     .read_header    = roq_read_header,

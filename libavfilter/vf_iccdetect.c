@@ -31,6 +31,7 @@
 #include "avfilter.h"
 #include "fflcms2.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct IccDetectContext {
     const AVClass *class;
@@ -92,7 +93,9 @@ static int iccdetect_filter_frame(AVFilterLink *inlink, AVFrame *frame)
     if (!profile)
         return AVERROR_INVALIDDATA;
 
-    ret = ff_icc_profile_read_primaries(&s->icc, profile, &coeffs);
+    ret = ff_icc_profile_sanitize(&s->icc, profile);
+    if (!ret)
+        ret = ff_icc_profile_read_primaries(&s->icc, profile, &coeffs);
     if (!ret)
         ret = ff_icc_profile_detect_transfer(&s->icc, profile, &s->profile_trc);
     cmsCloseProfile(profile);
@@ -123,13 +126,6 @@ static const AVFilterPad iccdetect_inputs[] = {
     },
 };
 
-static const AVFilterPad iccdetect_outputs[] = {
-    {
-        .name           = "default",
-        .type           = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_iccdetect = {
     .name        = "iccdetect",
     .description = NULL_IF_CONFIG_SMALL("Detect and parse ICC profiles."),
@@ -139,5 +135,5 @@ const AVFilter ff_vf_iccdetect = {
     .init        = &iccdetect_init,
     .uninit      = &iccdetect_uninit,
     FILTER_INPUTS(iccdetect_inputs),
-    FILTER_OUTPUTS(iccdetect_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
 };

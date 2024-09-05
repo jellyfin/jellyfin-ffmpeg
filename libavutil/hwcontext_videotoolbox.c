@@ -34,6 +34,10 @@
 #include "pixdesc.h"
 
 typedef struct VTFramesContext {
+    /**
+     * The public AVVTFramesContext. See hwcontext_videotoolbox.h for it.
+     */
+    AVVTFramesContext p;
     CVPixelBufferPoolRef pool;
 } VTFramesContext;
 
@@ -43,6 +47,7 @@ static const struct {
     enum AVPixelFormat pix_fmt;
 } cv_pix_fmts[] = {
     { kCVPixelFormatType_420YpCbCr8Planar,              false, AV_PIX_FMT_YUV420P },
+    { kCVPixelFormatType_420YpCbCr8PlanarFullRange,     true,  AV_PIX_FMT_YUV420P },
     { kCVPixelFormatType_422YpCbCr8,                    false, AV_PIX_FMT_UYVY422 },
     { kCVPixelFormatType_32BGRA,                        true,  AV_PIX_FMT_BGRA },
 #ifdef kCFCoreFoundationVersionNumber10_7
@@ -144,6 +149,25 @@ enum AVPixelFormat av_map_videotoolbox_format_to_pixfmt(uint32_t cv_fmt)
     return AV_PIX_FMT_NONE;
 }
 
+static uint32_t vt_format_from_pixfmt(enum AVPixelFormat pix_fmt,
+                                      enum AVColorRange range)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(cv_pix_fmts); i++) {
+        if (cv_pix_fmts[i].pix_fmt == pix_fmt) {
+            int full_range = (range == AVCOL_RANGE_JPEG);
+
+            // Don't care if unspecified
+            if (range == AVCOL_RANGE_UNSPECIFIED)
+                return cv_pix_fmts[i].cv_fmt;
+
+            if (cv_pix_fmts[i].full_range == full_range)
+                return cv_pix_fmts[i].cv_fmt;
+        }
+    }
+
+    return 0;
+}
+
 uint32_t av_map_videotoolbox_format_from_pixfmt(enum AVPixelFormat pix_fmt)
 {
     return av_map_videotoolbox_format_from_pixfmt2(pix_fmt, false);
@@ -151,17 +175,13 @@ uint32_t av_map_videotoolbox_format_from_pixfmt(enum AVPixelFormat pix_fmt)
 
 uint32_t av_map_videotoolbox_format_from_pixfmt2(enum AVPixelFormat pix_fmt, bool full_range)
 {
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(cv_pix_fmts); i++) {
-        if (cv_pix_fmts[i].pix_fmt == pix_fmt && cv_pix_fmts[i].full_range == full_range)
-            return cv_pix_fmts[i].cv_fmt;
-    }
-    return 0;
+    return vt_format_from_pixfmt(pix_fmt, full_range ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG);
 }
 
 static int vt_pool_alloc(AVHWFramesContext *ctx)
 {
-    VTFramesContext *fctx = ctx->internal->priv;
+    VTFramesContext *fctx = ctx->hwctx;
+    AVVTFramesContext *hw_ctx = &fctx->p;
     CVReturn err;
     CFNumberRef w, h, pixfmt;
     uint32_t cv_pixfmt;
@@ -173,7 +193,7 @@ static int vt_pool_alloc(AVHWFramesContext *ctx)
         &kCFTypeDictionaryKeyCallBacks,
         &kCFTypeDictionaryValueCallBacks);
 
-    cv_pixfmt = av_map_videotoolbox_format_from_pixfmt(ctx->sw_format);
+    cv_pixfmt = vt_format_from_pixfmt(ctx->sw_format, hw_ctx->color_range);
     pixfmt = CFNumberCreate(NULL, kCFNumberSInt32Type, &cv_pixfmt);
     CFDictionarySetValue(
         attributes,
@@ -221,7 +241,7 @@ static AVBufferRef *vt_pool_alloc_buffer(void *opaque, size_t size)
     AVBufferRef *buf;
     CVReturn err;
     AVHWFramesContext *ctx = opaque;
-    VTFramesContext *fctx = ctx->internal->priv;
+    VTFramesContext *fctx = ctx->hwctx;
 
     err = CVPixelBufferPoolCreatePixelBuffer(
         NULL,
@@ -244,7 +264,7 @@ static AVBufferRef *vt_pool_alloc_buffer(void *opaque, size_t size)
 
 static void vt_frames_uninit(AVHWFramesContext *ctx)
 {
-    VTFramesContext *fctx = ctx->internal->priv;
+    VTFramesContext *fctx = ctx->hwctx;
     if (fctx->pool) {
         CVPixelBufferPoolRelease(fctx->pool);
         fctx->pool = NULL;
@@ -266,9 +286,9 @@ static int vt_frames_init(AVHWFramesContext *ctx)
     }
 
     if (!ctx->pool) {
-        ctx->internal->pool_internal = av_buffer_pool_init2(
+        ffhwframesctx(ctx)->pool_internal = av_buffer_pool_init2(
                 sizeof(CVPixelBufferRef), ctx, vt_pool_alloc_buffer, NULL);
-        if (!ctx->internal->pool_internal)
+        if (!ffhwframesctx(ctx)->pool_internal)
             return AVERROR(ENOMEM);
     }
 
@@ -747,7 +767,7 @@ const HWContextType ff_hwcontext_type_videotoolbox = {
     .type                 = AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
     .name                 = "videotoolbox",
 
-    .frames_priv_size     = sizeof(VTFramesContext),
+    .frames_hwctx_size    = sizeof(VTFramesContext),
 
     .device_create        = vt_device_create,
     .frames_init          = vt_frames_init,

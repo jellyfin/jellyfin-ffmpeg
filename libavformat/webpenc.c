@@ -21,6 +21,7 @@
 
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
+#include "libavcodec/bytestream.h"
 #include "avformat.h"
 #include "internal.h"
 #include "mux.h"
@@ -37,19 +38,10 @@ typedef struct WebpContext{
 static int webp_init(AVFormatContext *s)
 {
     WebpContext *const w = s->priv_data;
-    AVStream *st;
+    AVStream *st = s->streams[0];
 
     w->last_pkt = ffformatcontext(s)->pkt;
 
-    if (s->nb_streams != 1) {
-        av_log(s, AV_LOG_ERROR, "Only exactly 1 stream is supported\n");
-        return AVERROR(EINVAL);
-    }
-    st = s->streams[0];
-    if (st->codecpar->codec_id != AV_CODEC_ID_WEBP) {
-        av_log(s, AV_LOG_ERROR, "Only WebP is supported\n");
-        return AVERROR(EINVAL);
-    }
     avpriv_set_pts_info(st, 24, 1, 1000);
 
     return 0;
@@ -76,72 +68,83 @@ static int is_animated_webp_packet(AVPacket *pkt)
     return 0;
 }
 
+/**
+ * Returns 1 if it has written a RIFF header with a correct length field
+ */
 static int flush(AVFormatContext *s, int trailer, int64_t pts)
 {
     WebpContext *w = s->priv_data;
     AVStream *st = s->streams[0];
+    uint8_t buf[12 /* RIFF+WEBP */ + 18 /* VP8X */ +
+                14 /* ANIM */ + 24 /* ANMF */], *bufp = buf;
+    int writing_webp_header = 0, skip = 0;
+    unsigned flags = 0;
+    int vp8x = 0;
 
-    if (w->last_pkt->size) {
-        int skip = 0;
-        unsigned flags = 0;
-        int vp8x = 0;
+    if (!w->last_pkt->size)
+        return 0;
 
-        if (AV_RL32(w->last_pkt->data) == AV_RL32("RIFF"))
-            skip = 12;
+    if (AV_RL32(w->last_pkt->data) == AV_RL32("RIFF"))
+        skip = 12;
 
-        if (AV_RL32(w->last_pkt->data + skip) == AV_RL32("VP8X")) {
-            flags |= w->last_pkt->data[skip + 4 + 4];
-            vp8x = 1;
-            skip += AV_RL32(w->last_pkt->data + skip + 4) + 8;
-        }
-
-        if (!w->wrote_webp_header) {
-            avio_write(s->pb, "RIFF\0\0\0\0WEBP", 12);
-            w->wrote_webp_header = 1;
-            if (w->frame_count > 1)  // first non-empty packet
-                w->frame_count = 1;  // so we don't count previous empty packets.
-        }
-
-        if (w->frame_count == 1) {
-            if (!trailer) {
-                vp8x = 1;
-                flags |= 2 + 16;
-            }
-
-            if (vp8x) {
-                avio_write(s->pb, "VP8X", 4);
-                avio_wl32(s->pb, 10);
-                avio_w8(s->pb, flags);
-                avio_wl24(s->pb, 0);
-                avio_wl24(s->pb, st->codecpar->width - 1);
-                avio_wl24(s->pb, st->codecpar->height - 1);
-            }
-            if (!trailer) {
-                avio_write(s->pb, "ANIM", 4);
-                avio_wl32(s->pb, 6);
-                avio_wl32(s->pb, 0xFFFFFFFF);
-                avio_wl16(s->pb, w->loop);
-            }
-        }
-
-        if (w->frame_count > trailer) {
-            avio_write(s->pb, "ANMF", 4);
-            avio_wl32(s->pb, 16 + w->last_pkt->size - skip);
-            avio_wl24(s->pb, 0);
-            avio_wl24(s->pb, 0);
-            avio_wl24(s->pb, st->codecpar->width - 1);
-            avio_wl24(s->pb, st->codecpar->height - 1);
-            if (w->last_pkt->pts != AV_NOPTS_VALUE && pts != AV_NOPTS_VALUE) {
-                avio_wl24(s->pb, pts - w->last_pkt->pts);
-            } else
-                avio_wl24(s->pb, w->last_pkt->duration);
-            avio_w8(s->pb, 0);
-        }
-        avio_write(s->pb, w->last_pkt->data + skip, w->last_pkt->size - skip);
-        av_packet_unref(w->last_pkt);
+    if (AV_RL32(w->last_pkt->data + skip) == AV_RL32("VP8X")) {
+        flags |= w->last_pkt->data[skip + 4 + 4];
+        vp8x = 1;
+        skip += AV_RL32(w->last_pkt->data + skip + 4) + 8;
     }
 
-    return 0;
+    if (!w->wrote_webp_header) {
+        bytestream_put_le32(&bufp, MKTAG('R', 'I', 'F', 'F'));
+        bytestream_put_le32(&bufp, 0); /* Size to be patched later */
+        bytestream_put_le32(&bufp, MKTAG('W', 'E', 'B', 'P'));
+        writing_webp_header  = 1;
+        w->wrote_webp_header = 1;
+        if (w->frame_count > 1)  // first non-empty packet
+            w->frame_count = 1;  // so we don't count previous empty packets.
+    }
+
+    if (w->frame_count == 1) {
+        if (!trailer) {
+            vp8x = 1;
+            flags |= 2 + 16;
+        }
+
+        if (vp8x) {
+            bytestream_put_le32(&bufp, MKTAG('V', 'P', '8', 'X'));
+            bytestream_put_le32(&bufp, 10);
+            bytestream_put_byte(&bufp, flags);
+            bytestream_put_le24(&bufp, 0);
+            bytestream_put_le24(&bufp, st->codecpar->width  - 1);
+            bytestream_put_le24(&bufp, st->codecpar->height - 1);
+        }
+        if (!trailer) {
+            bytestream_put_le32(&bufp, MKTAG('A', 'N', 'I', 'M'));
+            bytestream_put_le32(&bufp, 6);
+            bytestream_put_le32(&bufp, 0xFFFFFFFF);
+            bytestream_put_le16(&bufp, w->loop);
+        }
+    }
+
+    if (w->frame_count > trailer) {
+        bytestream_put_le32(&bufp, MKTAG('A', 'N', 'M', 'F'));
+        bytestream_put_le32(&bufp, 16 + w->last_pkt->size - skip);
+        bytestream_put_le24(&bufp, 0);
+        bytestream_put_le24(&bufp, 0);
+        bytestream_put_le24(&bufp, st->codecpar->width  - 1);
+        bytestream_put_le24(&bufp, st->codecpar->height - 1);
+        if (w->last_pkt->pts != AV_NOPTS_VALUE && pts != AV_NOPTS_VALUE) {
+            bytestream_put_le24(&bufp, pts - w->last_pkt->pts);
+        } else
+            bytestream_put_le24(&bufp, w->last_pkt->duration);
+        bytestream_put_byte(&bufp, 0);
+    }
+    if (trailer && writing_webp_header)
+        AV_WL32(buf + 4, bufp - (buf + 8) + w->last_pkt->size - skip);
+    avio_write(s->pb, buf, bufp - buf);
+    avio_write(s->pb, w->last_pkt->data + skip, w->last_pkt->size - skip);
+    av_packet_unref(w->last_pkt);
+
+    return trailer && writing_webp_header;
 }
 
 static int webp_write_packet(AVFormatContext *s, AVPacket *pkt)
@@ -177,19 +180,22 @@ static int webp_write_trailer(AVFormatContext *s)
 
     if (w->using_webp_anim_encoder) {
         if (w->loop) {  // Write loop count.
-            avio_seek(s->pb, 42, SEEK_SET);
-            avio_wl16(s->pb, w->loop);
+            if (avio_seek(s->pb, 42, SEEK_SET) == 42)
+                avio_wl16(s->pb, w->loop);
         }
     } else {
         int ret;
         if ((ret = flush(s, 1, AV_NOPTS_VALUE)) < 0)
             return ret;
 
-        filesize = avio_tell(s->pb);
-        avio_seek(s->pb, 4, SEEK_SET);
-        avio_wl32(s->pb, filesize - 8);
-        // Note: without the following, avio only writes 8 bytes to the file.
-        avio_seek(s->pb, filesize, SEEK_SET);
+        if (!ret) {
+            filesize = avio_tell(s->pb);
+            if (filesize >= 8 && avio_seek(s->pb, 4, SEEK_SET) == 4) {
+                avio_wl32(s->pb, filesize - 8);
+                // Note: without the following, avio only writes 8 bytes to the file.
+                avio_seek(s->pb, filesize, SEEK_SET);
+            }
+        }
     }
 
     return 0;
@@ -215,9 +221,13 @@ const FFOutputFormat ff_webp_muxer = {
     .p.extensions   = "webp",
     .priv_data_size = sizeof(WebpContext),
     .p.video_codec  = AV_CODEC_ID_WEBP,
+    .p.audio_codec    = AV_CODEC_ID_NONE,
+    .p.subtitle_codec = AV_CODEC_ID_NONE,
     .init           = webp_init,
     .write_packet   = webp_write_packet,
     .write_trailer  = webp_write_trailer,
     .p.priv_class   = &webp_muxer_class,
     .p.flags        = AVFMT_VARIABLE_FPS,
+    .flags_internal = FF_OFMT_FLAG_MAX_ONE_OF_EACH |
+                      FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
 };

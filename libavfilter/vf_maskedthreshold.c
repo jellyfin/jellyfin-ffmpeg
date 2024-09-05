@@ -22,7 +22,6 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "framesync.h"
@@ -54,9 +53,9 @@ typedef struct ThreadData {
 static const AVOption maskedthreshold_options[] = {
     { "threshold", "set threshold", OFFSET(threshold), AV_OPT_TYPE_INT, {.i64=1},   0, UINT16_MAX, TFLAGS },
     { "planes",    "set planes",    OFFSET(planes),    AV_OPT_TYPE_INT, {.i64=0xF}, 0, 0xF,        TFLAGS },
-    { "mode",      "set mode",      OFFSET(mode),      AV_OPT_TYPE_INT, {.i64=0},   0, 1,          FLAGS, "mode" },
-    { "abs",       "",              0,                 AV_OPT_TYPE_CONST, {.i64=0}, 0, 0,          FLAGS, "mode" },
-    { "diff",      "",              0,                 AV_OPT_TYPE_CONST, {.i64=1}, 0, 0,          FLAGS, "mode" },
+    { "mode",      "set mode",      OFFSET(mode),      AV_OPT_TYPE_INT, {.i64=0},   0, 1,          FLAGS, .unit = "mode" },
+    { "abs",       "",              0,                 AV_OPT_TYPE_CONST, {.i64=0}, 0, 0,          FLAGS, .unit = "mode" },
+    { "diff",      "",              0,                 AV_OPT_TYPE_CONST, {.i64=1}, 0, 0,          FLAGS, .unit = "mode" },
     { NULL }
 };
 

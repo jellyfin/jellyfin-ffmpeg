@@ -57,6 +57,15 @@ typedef struct TestContext {
     int bool3;
     AVDictionary *dict1;
     AVDictionary *dict2;
+
+    int           **array_int;
+    unsigned     nb_array_int;
+
+    char          **array_str;
+    unsigned     nb_array_str;
+
+    AVDictionary  **array_dict;
+    unsigned     nb_array_dict;
 } TestContext;
 
 #define OFFSET(x) offsetof(TestContext, x)
@@ -65,16 +74,26 @@ typedef struct TestContext {
 #define TEST_FLAG_LAME 02
 #define TEST_FLAG_MU   04
 
+static const AVOptionArrayDef array_str = {
+    .sep         = '|',
+    .def         = "str0|str\\|1|str\\\\2",
+};
+
+static const AVOptionArrayDef array_dict = {
+    // there are three levels of escaping - C string, array option, dict - so 8 backslashes are needed to get a literal one inside a dict key/val
+    .def         = "k00=v\\\\\\\\00:k01=v\\,01,k10=v\\\\=1\\\\:0",
+};
+
 static const AVOption test_options[]= {
     {"num",        "set num",            OFFSET(num),            AV_OPT_TYPE_INT,            { .i64 = 0 },                      0,       100, 1 },
     {"toggle",     "set toggle",         OFFSET(toggle),         AV_OPT_TYPE_INT,            { .i64 = 1 },                      0,         1, 1 },
     {"rational",   "set rational",       OFFSET(rational),       AV_OPT_TYPE_RATIONAL,       { .dbl = 1 },                      0,        10, 1 },
     {"string",     "set string",         OFFSET(string),         AV_OPT_TYPE_STRING,         { .str = "default" },       CHAR_MIN,  CHAR_MAX, 1 },
     {"escape",     "set escape str",     OFFSET(escape),         AV_OPT_TYPE_STRING,         { .str = "\\=," },          CHAR_MIN,  CHAR_MAX, 1 },
-    {"flags",      "set flags",          OFFSET(flags),          AV_OPT_TYPE_FLAGS,          { .i64 = 1 },                      0,   INT_MAX, 1, "flags" },
-    {"cool",       "set cool flag",      0,                      AV_OPT_TYPE_CONST,          { .i64 = TEST_FLAG_COOL },   INT_MIN,   INT_MAX, 1, "flags" },
-    {"lame",       "set lame flag",      0,                      AV_OPT_TYPE_CONST,          { .i64 = TEST_FLAG_LAME },   INT_MIN,   INT_MAX, 1, "flags" },
-    {"mu",         "set mu flag",        0,                      AV_OPT_TYPE_CONST,          { .i64 = TEST_FLAG_MU },     INT_MIN,   INT_MAX, 1, "flags" },
+    {"flags",      "set flags",          OFFSET(flags),          AV_OPT_TYPE_FLAGS,          { .i64 = 1 },                      0,   INT_MAX, 1, .unit = "flags" },
+    {"cool",       "set cool flag",      0,                      AV_OPT_TYPE_CONST,          { .i64 = TEST_FLAG_COOL },   INT_MIN,   INT_MAX, 1, .unit = "flags" },
+    {"lame",       "set lame flag",      0,                      AV_OPT_TYPE_CONST,          { .i64 = TEST_FLAG_LAME },   INT_MIN,   INT_MAX, 1, .unit = "flags" },
+    {"mu",         "set mu flag",        0,                      AV_OPT_TYPE_CONST,          { .i64 = TEST_FLAG_MU },     INT_MIN,   INT_MAX, 1, .unit = "flags" },
     {"size",       "set size",           OFFSET(w),              AV_OPT_TYPE_IMAGE_SIZE,     { .str="200x300" },                0,         0, 1 },
     {"pix_fmt",    "set pixfmt",         OFFSET(pix_fmt),        AV_OPT_TYPE_PIXEL_FMT,      { .i64 = AV_PIX_FMT_0BGR },       -1,   INT_MAX, 1 },
     {"sample_fmt", "set samplefmt",      OFFSET(sample_fmt),     AV_OPT_TYPE_SAMPLE_FMT,     { .i64 = AV_SAMPLE_FMT_S16 },     -1,   INT_MAX, 1 },
@@ -93,6 +112,9 @@ static const AVOption test_options[]= {
     {"bool3",      "set boolean value",  OFFSET(bool3),          AV_OPT_TYPE_BOOL,           { .i64 = 0 },                      0,         1, 1 },
     {"dict1",      "set dictionary value", OFFSET(dict1),        AV_OPT_TYPE_DICT,           { .str = NULL},                    0,         0, 1 },
     {"dict2",      "set dictionary value", OFFSET(dict2),        AV_OPT_TYPE_DICT,           { .str = "happy=':-)'"},           0,         0, 1 },
+    {"array_int",  "array of ints",        OFFSET(array_int),    AV_OPT_TYPE_INT | AV_OPT_TYPE_FLAG_ARRAY, .max = INT_MAX,           .flags = AV_OPT_FLAG_RUNTIME_PARAM },
+    {"array_str",  "array of strings",     OFFSET(array_str),    AV_OPT_TYPE_STRING | AV_OPT_TYPE_FLAG_ARRAY, { .arr = &array_str }, .flags = AV_OPT_FLAG_RUNTIME_PARAM },
+    {"array_dict", "array of dicts",       OFFSET(array_dict),   AV_OPT_TYPE_DICT | AV_OPT_TYPE_FLAG_ARRAY, { .arr = &array_dict },  .flags = AV_OPT_FLAG_RUNTIME_PARAM },
     { NULL },
 };
 
@@ -146,6 +168,17 @@ int main(void)
         printf("flt=%.6f\n", test_ctx.flt);
         printf("dbl=%.6f\n", test_ctx.dbl);
 
+        for (unsigned i = 0; i < test_ctx.nb_array_str; i++)
+            printf("array_str[%u]=%s\n", i, test_ctx.array_str[i]);
+
+        for (unsigned i = 0; i < test_ctx.nb_array_dict; i++) {
+            AVDictionary            *d = test_ctx.array_dict[i];
+            const AVDictionaryEntry *e = NULL;
+
+            while ((e = av_dict_iterate(d, e)))
+                printf("array_dict[%u]: %s\t%s\n", i, e->key, e->value);
+        }
+
         av_opt_show2(&test_ctx, NULL, -1, 0);
 
         av_opt_free(&test_ctx);
@@ -177,6 +210,9 @@ int main(void)
         TestContext test_ctx = { 0 };
         TestContext test2_ctx = { 0 };
         const AVOption *o = NULL;
+        char *val = NULL;
+        int ret;
+
         test_ctx.class = &test_class;
         test2_ctx.class = &test_class;
 
@@ -209,6 +245,17 @@ int main(void)
             av_free(value1);
             av_free(value2);
         }
+
+        // av_opt_set(NULL) with an array option resets it
+        ret = av_opt_set(&test_ctx, "array_dict", NULL, 0);
+        printf("av_opt_set(\"array_dict\", NULL) -> %d\n", ret);
+        printf("array_dict=%sNULL; nb_array_dict=%u\n",
+               test_ctx.array_dict ? "non-" : "", test_ctx.nb_array_dict);
+
+        // av_opt_get() on an empty array should return a NULL string
+        ret = av_opt_get(&test_ctx, "array_dict", AV_OPT_ALLOW_NULL, (uint8_t**)&val);
+        printf("av_opt_get(\"array_dict\") -> %s\n", val ? val : "NULL");
+
         av_opt_free(&test_ctx);
         av_opt_free(&test2_ctx);
     }
@@ -217,6 +264,7 @@ int main(void)
     {
         TestContext test_ctx = { 0 };
         char *buf;
+        int ret;
         test_ctx.class = &test_class;
 
         av_log_set_level(AV_LOG_QUIET);
@@ -227,8 +275,10 @@ int main(void)
             av_opt_free(&test_ctx);
             memset(&test_ctx, 0, sizeof(test_ctx));
             test_ctx.class = &test_class;
-            av_set_options_string(&test_ctx, buf, "=", ",");
+            ret = av_set_options_string(&test_ctx, buf, "=", ",");
             av_free(buf);
+            if (ret < 0)
+                printf("Error ret '%d'\n", ret);
             if (av_opt_serialize(&test_ctx, 0, 0, &buf, '=', ',') >= 0) {
                 printf("%s\n", buf);
                 av_free(buf);
@@ -303,6 +353,8 @@ int main(void)
             "bool1=true",
             "bool2=auto",
             "dict1='happy=\\:-):sad=\\:-('",
+            "array_int=0,32,2147483647",
+            "array_int=2147483648", // out of range, should fail
         };
 
         test_ctx.class = &test_class;

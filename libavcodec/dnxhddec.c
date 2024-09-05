@@ -130,21 +130,22 @@ static int dnxhd_init_vlc(DNXHDContext *ctx, uint32_t cid, int bitdepth)
         ctx->cid_table = cid_table;
         av_log(ctx->avctx, AV_LOG_VERBOSE, "Profile cid %"PRIu32".\n", cid);
 
-        ff_free_vlc(&ctx->ac_vlc);
-        ff_free_vlc(&ctx->dc_vlc);
-        ff_free_vlc(&ctx->run_vlc);
+        ff_vlc_free(&ctx->ac_vlc);
+        ff_vlc_free(&ctx->dc_vlc);
+        ff_vlc_free(&ctx->run_vlc);
 
-        if ((ret = init_vlc(&ctx->ac_vlc, DNXHD_VLC_BITS, 257,
+        if ((ret = vlc_init(&ctx->ac_vlc, DNXHD_VLC_BITS, 257,
                  ctx->cid_table->ac_bits, 1, 1,
                  ctx->cid_table->ac_codes, 2, 2, 0)) < 0)
             goto out;
-        if ((ret = init_vlc(&ctx->dc_vlc, DNXHD_DC_VLC_BITS, bitdepth > 8 ? 14 : 12,
+        if ((ret = vlc_init(&ctx->dc_vlc, DNXHD_DC_VLC_BITS, bitdepth > 8 ? 14 : 12,
                  ctx->cid_table->dc_bits, 1, 1,
                  ctx->cid_table->dc_codes, 1, 1, 0)) < 0)
             goto out;
-        if ((ret = init_vlc(&ctx->run_vlc, DNXHD_VLC_BITS, 62,
+        if ((ret = ff_vlc_init_sparse(&ctx->run_vlc, DNXHD_VLC_BITS, 62,
                  ctx->cid_table->run_bits, 1, 1,
-                 ctx->cid_table->run_codes, 2, 2, 0)) < 0)
+                 ctx->cid_table->run_codes, 2, 2,
+                 ctx->cid_table->run, 1, 1, 0)) < 0)
             goto out;
 
         ctx->cid = cid;
@@ -152,7 +153,7 @@ static int dnxhd_init_vlc(DNXHDContext *ctx, uint32_t cid, int bitdepth)
     ret = 0;
 out:
     if (ret < 0)
-        av_log(ctx->avctx, AV_LOG_ERROR, "init_vlc failed\n");
+        av_log(ctx->avctx, AV_LOG_ERROR, "vlc_init failed\n");
     return ret;
 }
 
@@ -160,17 +161,17 @@ static int dnxhd_get_profile(int cid)
 {
     switch(cid) {
     case 1270:
-        return FF_PROFILE_DNXHR_444;
+        return AV_PROFILE_DNXHR_444;
     case 1271:
-        return FF_PROFILE_DNXHR_HQX;
+        return AV_PROFILE_DNXHR_HQX;
     case 1272:
-        return FF_PROFILE_DNXHR_HQ;
+        return AV_PROFILE_DNXHR_HQ;
     case 1273:
-        return FF_PROFILE_DNXHR_SQ;
+        return AV_PROFILE_DNXHR_SQ;
     case 1274:
-        return FF_PROFILE_DNXHR_LB;
+        return AV_PROFILE_DNXHR_LB;
     }
-    return FF_PROFILE_DNXHD;
+    return AV_PROFILE_DNXHD;
 }
 
 static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
@@ -195,8 +196,9 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
     }
     if (buf[5] & 2) { /* interlaced */
         ctx->cur_field = first_field ? buf[5] & 1 : !ctx->cur_field;
-        frame->interlaced_frame = 1;
-        frame->top_field_first  = first_field ^ ctx->cur_field;
+        frame->flags |= AV_FRAME_FLAG_INTERLACED;
+        if (first_field ^ ctx->cur_field)
+            frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
         av_log(ctx->avctx, AV_LOG_DEBUG,
                "interlaced %d, cur field %d\n", buf[5] & 3, ctx->cur_field);
     } else {
@@ -261,7 +263,7 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
         ctx->decode_dct_block = dnxhd_decode_dct_block_12;
         ctx->pix_fmt = AV_PIX_FMT_YUV422P12;
     } else if (bitdepth == 10) {
-        if (ctx->avctx->profile == FF_PROFILE_DNXHR_HQX)
+        if (ctx->avctx->profile == AV_PROFILE_DNXHR_HQX)
             ctx->decode_dct_block = dnxhd_decode_dct_block_10_444;
         else
             ctx->decode_dct_block = dnxhd_decode_dct_block_10;
@@ -298,7 +300,7 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
     ctx->mb_width  = (ctx->width + 15)>> 4;
     ctx->mb_height = AV_RB16(buf + 0x16c);
 
-    if ((ctx->height + 15) >> 4 == ctx->mb_height && frame->interlaced_frame)
+    if ((ctx->height + 15) >> 4 == ctx->mb_height && (frame->flags & AV_FRAME_FLAG_INTERLACED))
         ctx->height <<= 1;
 
     av_log(ctx->avctx, AV_LOG_VERBOSE, "%dx%d, 4:%s %d bits, MBAFF=%d ACT=%d\n",
@@ -316,7 +318,7 @@ static int dnxhd_decode_header(DNXHDContext *ctx, AVFrame *frame,
         }
         ctx->data_offset = 0x280;
     }
-    if ((ctx->mb_height << frame->interlaced_frame) > (ctx->height + 15) >> 4) {
+    if ((ctx->mb_height << !!(frame->flags & AV_FRAME_FLAG_INTERLACED)) > (ctx->height + 15) >> 4) {
         av_log(ctx->avctx, AV_LOG_ERROR,
                 "mb height too big: %d\n", ctx->mb_height);
         return AVERROR_INVALIDDATA;
@@ -357,7 +359,7 @@ static av_always_inline int dnxhd_decode_dct_block(const DNXHDContext *ctx,
                                                    int level_shift,
                                                    int dc_shift)
 {
-    int i, j, index1, index2, len, flags;
+    int i, j, index1, len, flags;
     int level, component, sign;
     const int *scale;
     const uint8_t *weight_matrix;
@@ -424,10 +426,11 @@ static av_always_inline int dnxhd_decode_dct_block(const DNXHDContext *ctx,
         }
 
         if (flags & 2) {
+            int run;
             UPDATE_CACHE(bs, &row->gb);
-            GET_VLC(index2, bs, &row->gb, ctx->run_vlc.table,
+            GET_VLC(run, bs, &row->gb, ctx->run_vlc.table,
                     DNXHD_VLC_BITS, 2);
-            i += ctx->cid_table->run[index2];
+            i += run;
         }
 
         if (++i > 63) {
@@ -530,7 +533,7 @@ static int dnxhd_decode_macroblock(const DNXHDContext *ctx, RowContext *row,
             return AVERROR_INVALIDDATA;
     }
 
-    if (frame->interlaced_frame) {
+    if (frame->flags & AV_FRAME_FLAG_INTERLACED) {
         dct_linesize_luma   <<= 1;
         dct_linesize_chroma <<= 1;
     }
@@ -539,7 +542,7 @@ static int dnxhd_decode_macroblock(const DNXHDContext *ctx, RowContext *row,
     dest_u = frame->data[1] + ((y * dct_linesize_chroma) << 4) + (x << (3 + shift1 + ctx->is_444));
     dest_v = frame->data[2] + ((y * dct_linesize_chroma) << 4) + (x << (3 + shift1 + ctx->is_444));
 
-    if (frame->interlaced_frame && ctx->cur_field) {
+    if ((frame->flags & AV_FRAME_FLAG_INTERLACED) && ctx->cur_field) {
         dest_y += frame->linesize[0];
         dest_u += frame->linesize[1];
         dest_v += frame->linesize[2];
@@ -652,14 +655,14 @@ decode_coding_unit:
         if ((ret = ff_thread_get_buffer(avctx, picture, 0)) < 0)
             return ret;
         picture->pict_type = AV_PICTURE_TYPE_I;
-        picture->key_frame = 1;
+        picture->flags |= AV_FRAME_FLAG_KEY;
     }
 
     ctx->buf_size = buf_size - ctx->data_offset;
     ctx->buf = buf + ctx->data_offset;
     avctx->execute2(avctx, dnxhd_decode_row, picture, NULL, ctx->mb_height);
 
-    if (first_field && picture->interlaced_frame) {
+    if (first_field && (picture->flags & AV_FRAME_FLAG_INTERLACED)) {
         buf      += ctx->cid_table->coding_unit_size;
         buf_size -= ctx->cid_table->coding_unit_size;
         first_field = 0;
@@ -715,9 +718,9 @@ static av_cold int dnxhd_decode_close(AVCodecContext *avctx)
 {
     DNXHDContext *ctx = avctx->priv_data;
 
-    ff_free_vlc(&ctx->ac_vlc);
-    ff_free_vlc(&ctx->dc_vlc);
-    ff_free_vlc(&ctx->run_vlc);
+    ff_vlc_free(&ctx->ac_vlc);
+    ff_vlc_free(&ctx->dc_vlc);
+    ff_vlc_free(&ctx->run_vlc);
 
     av_freep(&ctx->rows);
 

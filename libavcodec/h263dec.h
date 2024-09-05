@@ -33,12 +33,10 @@
 #define CBPY_VLC_BITS 6
 #define TEX_VLC_BITS 9
 
-extern VLC ff_h263_intra_MCBPC_vlc;
-extern VLC ff_h263_inter_MCBPC_vlc;
-extern VLC ff_h263_cbpy_vlc;
-extern VLC ff_h263_mv_vlc;
-
-extern const enum AVPixelFormat ff_h263_hwaccel_pixfmt_list_420[];
+extern VLCElem ff_h263_intra_MCBPC_vlc[];
+extern VLCElem ff_h263_inter_MCBPC_vlc[];
+extern VLCElem ff_h263_cbpy_vlc[];
+extern VLCElem ff_h263_mv_vlc[];
 
 int ff_h263_decode_motion(MpegEncContext * s, int pred, int f_code);
 int ff_h263_decode_init(AVCodecContext *avctx);

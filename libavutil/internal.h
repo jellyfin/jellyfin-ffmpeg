@@ -40,17 +40,8 @@
 #include <stdio.h>
 #include "config.h"
 #include "attributes.h"
-#include "timer.h"
 #include "macros.h"
 #include "pixfmt.h"
-
-#if ARCH_X86
-#   include "x86/emms.h"
-#endif
-
-#ifndef emms_c
-#   define emms_c() do {} while(0)
-#endif
 
 #ifndef attribute_align_arg
 #if ARCH_X86_32 && AV_GCC_VERSION_AT_LEAST(4,2)

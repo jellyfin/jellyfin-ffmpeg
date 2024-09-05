@@ -26,6 +26,7 @@ export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
   cd ${srcdir}/${_realname}-${pkgver}
+  sed -i 's/dec_init/libbluray_dec_init/g' src/libbluray/disc/*.c src/libbluray/disc/*.h
 }
 
 build() {

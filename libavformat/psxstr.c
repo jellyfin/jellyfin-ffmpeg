@@ -33,6 +33,7 @@
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 #define RIFF_TAG MKTAG('R', 'I', 'F', 'F')
@@ -48,6 +49,7 @@
 #define CDXA_TYPE_DATA     0x08
 #define CDXA_TYPE_AUDIO    0x04
 #define CDXA_TYPE_VIDEO    0x02
+#define CDXA_TYPE_EMPTY    0x00
 
 #define STR_MAGIC (0x80010160)
 
@@ -165,8 +167,12 @@ static int str_read_packet(AVFormatContext *s,
     AVStream *st;
 
     while (1) {
+        int read = avio_read(pb, sector, RAW_CD_SECTOR_SIZE);
 
-        if (avio_read(pb, sector, RAW_CD_SECTOR_SIZE) != RAW_CD_SECTOR_SIZE)
+        if (read == AVERROR_EOF)
+            return AVERROR_EOF;
+
+        if (read != RAW_CD_SECTOR_SIZE)
             return AVERROR(EIO);
 
         channel = sector[0x11];
@@ -270,6 +276,10 @@ static int str_read_packet(AVFormatContext *s,
                 str->channels[channel].audio_stream_index;
             pkt->duration = 1;
             return 0;
+        case CDXA_TYPE_EMPTY: /* CD-ROM XA, May 1991, 4.3.2.3 */
+            /* NOTE this also catches 0x80 (EOF bit) because of CDXA_TYPE_MASK */
+            /* TODO consider refactoring so as to explicitly handle each case? */
+            break;
         default:
             av_log(s, AV_LOG_WARNING, "Unknown sector type %02X\n", sector[0x12]);
             /* drop the sector and move on */
@@ -293,13 +303,13 @@ static int str_read_close(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_str_demuxer = {
-    .name           = "psxstr",
-    .long_name      = NULL_IF_CONFIG_SMALL("Sony Playstation STR"),
+const FFInputFormat ff_str_demuxer = {
+    .p.name         = "psxstr",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Sony Playstation STR"),
+    .p.flags        = AVFMT_NO_BYTE_SEEK,
     .priv_data_size = sizeof(StrDemuxContext),
     .read_probe     = str_probe,
     .read_header    = str_read_header,
     .read_packet    = str_read_packet,
     .read_close     = str_read_close,
-    .flags          = AVFMT_NO_BYTE_SEEK,
 };

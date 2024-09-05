@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/harfbuzz/harfbuzz.git"
-SCRIPT_COMMIT="fe7dc0c3cfbdda5d064a8f5de9f0256a2df8dfed"
+SCRIPT_COMMIT="a070f9ebbe88dc71b248af9731dd49ec93f4e6e6"
 
 ffbuild_enabled() {
     return 0
@@ -41,9 +41,15 @@ ffbuild_dockerbuild() {
         return -1
     fi
 
-    export LIBS="-lpthread"
-
     meson "${myconf[@]}" ..
     ninja -j$(nproc)
     ninja install
+}
+
+ffbuild_configure() {
+    echo --enable-libharfbuzz
+}
+
+ffbuild_unconfigure() {
+    echo --disable-libharfbuzz
 }

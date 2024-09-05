@@ -38,7 +38,6 @@
 #include "libavutil/tx.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
 #include "video.h"
@@ -150,11 +149,11 @@ static const AVOption bm3d_options[] = {
     { "hdthr",  "set hard threshold for 3D transfer domain",
         OFFSET(hard_threshold), AV_OPT_TYPE_FLOAT, {.dbl=2.7},   0,    INT32_MAX, FLAGS },
     { "estim",  "set filtering estimation mode",
-        OFFSET(mode),           AV_OPT_TYPE_INT,   {.i64=BASIC}, 0,   NB_MODES-1, FLAGS, "mode" },
+        OFFSET(mode),           AV_OPT_TYPE_INT,   {.i64=BASIC}, 0,   NB_MODES-1, FLAGS, .unit = "mode" },
     { "basic",  "basic estimate",
-        0,                      AV_OPT_TYPE_CONST, {.i64=BASIC}, 0,            0, FLAGS, "mode" },
+        0,                      AV_OPT_TYPE_CONST, {.i64=BASIC}, 0,            0, FLAGS, .unit = "mode" },
     { "final",  "final estimate",
-        0,                      AV_OPT_TYPE_CONST, {.i64=FINAL}, 0,            0, FLAGS, "mode" },
+        0,                      AV_OPT_TYPE_CONST, {.i64=FINAL}, 0,            0, FLAGS, .unit = "mode" },
     { "ref",    "have reference stream",
         OFFSET(ref),            AV_OPT_TYPE_BOOL,  {.i64=0},     0,            1, FLAGS },
     { "planes", "set planes to filter",
@@ -274,7 +273,7 @@ static void do_block_matching_multi(BM3DContext *s, const uint8_t *src, int src_
                                     int r_y, int r_x, int plane, int jobnr)
 {
     SliceContext *sc = &s->slices[jobnr];
-    double MSE2SSE = s->group_size * s->block_size * s->block_size * src_range * src_range / (s->max * s->max);
+    double MSE2SSE = s->group_size * s->block_size * s->block_size * src_range * src_range / (double)(s->max * s->max);
     double distMul = 1. / MSE2SSE;
     double th_sse = th_mse * MSE2SSE;
     int index = sc->nb_match_blocks;

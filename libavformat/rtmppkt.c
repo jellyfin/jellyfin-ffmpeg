@@ -40,6 +40,12 @@ void ff_amf_write_number(uint8_t **dst, double val)
     bytestream_put_be64(dst, av_double2int(val));
 }
 
+void ff_amf_write_array_start(uint8_t **dst, uint32_t length)
+{
+    bytestream_put_byte(dst, AMF_DATA_TYPE_ARRAY);
+    bytestream_put_be32(dst, length);
+}
+
 void ff_amf_write_string(uint8_t **dst, const char *str)
 {
     bytestream_put_byte(dst, AMF_DATA_TYPE_STRING);
@@ -435,7 +441,6 @@ static int amf_tag_skip(GetByteContext *gb)
 {
     AMFDataType type;
     unsigned nb   = -1;
-    int parse_key = 1;
 
     if (bytestream2_get_bytes_left(gb) < 1)
         return -1;
@@ -460,13 +465,12 @@ static int amf_tag_skip(GetByteContext *gb)
         bytestream2_skip(gb, 10);
         return 0;
     case AMF_DATA_TYPE_ARRAY:
-        parse_key = 0;
     case AMF_DATA_TYPE_MIXEDARRAY:
         nb = bytestream2_get_be32(gb);
     case AMF_DATA_TYPE_OBJECT:
-        while (nb-- > 0 || type != AMF_DATA_TYPE_ARRAY) {
+        while (type != AMF_DATA_TYPE_ARRAY || nb-- > 0) {
             int t;
-            if (parse_key) {
+            if (type != AMF_DATA_TYPE_ARRAY) {
                 int size = bytestream2_get_be16(gb);
                 if (!size) {
                     bytestream2_get_byte(gb);

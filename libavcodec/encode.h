@@ -27,9 +27,10 @@
 #include "packet.h"
 
 /**
- * avcodec_receive_frame() implementation for encoders.
+ * Used by some encoders as upper bound for the length of headers.
+ * TODO: Use proper codec-specific upper bounds.
  */
-int ff_encode_receive_frame(AVCodecContext *avctx, AVFrame *frame);
+#define FF_INPUT_BUFFER_MIN_SIZE 16384
 
 /**
  * Called by encoders to get the next frame for encoding.
@@ -75,14 +76,13 @@ int ff_alloc_packet(AVCodecContext *avctx, AVPacket *avpkt, int64_t size);
 int ff_encode_reordered_opaque(AVCodecContext *avctx,
                                AVPacket *pkt, const AVFrame *frame);
 
-/*
- * Perform encoder initialization and validation.
- * Called when opening the encoder, before the FFCodec.init() call.
- */
-int ff_encode_preinit(AVCodecContext *avctx);
-
 int ff_encode_encode_cb(AVCodecContext *avctx, AVPacket *avpkt,
                         AVFrame *frame, int *got_packet);
+
+/**
+ * Add a CPB properties side data to an encoding context.
+ */
+AVCPBProperties *ff_encode_add_cpb_side_data(AVCodecContext *avctx);
 
 /**
  * Rescale from sample rate to AVCodecContext.time_base.

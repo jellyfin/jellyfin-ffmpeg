@@ -23,14 +23,9 @@
 #include "config.h"
 #include "config_components.h"
 #include <stdint.h>
+#include <time.h>
 #if HAVE_UNISTD_H
 #include <unistd.h>
-#endif
-
-#if CONFIG_GCRYPT
-#include <gcrypt.h>
-#elif CONFIG_OPENSSL
-#include <openssl/rand.h>
 #endif
 
 #include "libavutil/avassert.h"
@@ -40,10 +35,11 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
+#include "libavutil/random_seed.h"
 #include "libavutil/time.h"
 #include "libavutil/time_internal.h"
 
-#include "libavcodec/avcodec.h"
+#include "libavcodec/defs.h"
 
 #include "avformat.h"
 #include "avio_internal.h"
@@ -55,6 +51,7 @@
 #include "internal.h"
 #include "mux.h"
 #include "os_support.h"
+#include "url.h"
 
 typedef enum {
     HLS_START_SEQUENCE_AS_START_NUMBER = 0,
@@ -355,20 +352,30 @@ static void write_codec_attr(AVStream *st, VariantStream *vs)
 
     if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         uint8_t *data = st->codecpar->extradata;
-        if (data && (data[0] | data[1] | data[2]) == 0 && data[3] == 1 && (data[4] & 0x1F) == 7) {
+        if (data) {
+            const uint8_t *p;
+
+            if (AV_RB32(data) == 0x01 && (data[4] & 0x1F) == 7)
+                p = &data[5];
+            else if (AV_RB24(data) == 0x01 && (data[3] & 0x1F) == 7)
+                p = &data[4];
+            else if (data[0] == 0x01)  /* avcC */
+                p = &data[1];
+            else
+                goto fail;
             snprintf(attr, sizeof(attr),
-                     "avc1.%02x%02x%02x", data[5], data[6], data[7]);
+                     "avc1.%02x%02x%02x", p[0], p[1], p[2]);
         } else {
             goto fail;
         }
     } else if (st->codecpar->codec_id == AV_CODEC_ID_HEVC) {
         uint8_t *data = st->codecpar->extradata;
-        int profile = FF_PROFILE_UNKNOWN;
-        int level = FF_LEVEL_UNKNOWN;
+        int profile = AV_PROFILE_UNKNOWN;
+        int level = AV_LEVEL_UNKNOWN;
 
-        if (st->codecpar->profile != FF_PROFILE_UNKNOWN)
+        if (st->codecpar->profile != AV_PROFILE_UNKNOWN)
             profile = st->codecpar->profile;
-        if (st->codecpar->level != FF_LEVEL_UNKNOWN)
+        if (st->codecpar->level != AV_LEVEL_UNKNOWN)
             level = st->codecpar->level;
 
         /* check the boundary of data which from current position is small than extradata_size */
@@ -401,8 +408,8 @@ static void write_codec_attr(AVStream *st, VariantStream *vs)
             data++;
         }
         if (st->codecpar->codec_tag == MKTAG('h','v','c','1') &&
-            profile != FF_PROFILE_UNKNOWN &&
-            level != FF_LEVEL_UNKNOWN) {
+            profile != AV_PROFILE_UNKNOWN &&
+            level != AV_LEVEL_UNKNOWN) {
             snprintf(attr, sizeof(attr), "%s.%d.4.L%d.B01", av_fourcc2str(st->codecpar->codec_tag), profile, level);
         } else
             goto fail;
@@ -411,8 +418,11 @@ static void write_codec_attr(AVStream *st, VariantStream *vs)
     } else if (st->codecpar->codec_id == AV_CODEC_ID_MP3) {
         snprintf(attr, sizeof(attr), "mp4a.40.34");
     } else if (st->codecpar->codec_id == AV_CODEC_ID_AAC) {
-        /* TODO : For HE-AAC, HE-AACv2, the last digit needs to be set to 5 and 29 respectively */
-        snprintf(attr, sizeof(attr), "mp4a.40.2");
+        if (st->codecpar->profile != AV_PROFILE_UNKNOWN)
+            snprintf(attr, sizeof(attr), "mp4a.40.%d", st->codecpar->profile+1);
+        else
+            // This is for backward compatibility with the previous implementation.
+            snprintf(attr, sizeof(attr), "mp4a.40.2");
     } else if (st->codecpar->codec_id == AV_CODEC_ID_AC3) {
         snprintf(attr, sizeof(attr), "ac-3");
     } else if (st->codecpar->codec_id == AV_CODEC_ID_EAC3) {
@@ -700,20 +710,6 @@ fail:
     return ret;
 }
 
-static int randomize(uint8_t *buf, int len)
-{
-#if CONFIG_GCRYPT
-    gcry_randomize(buf, len, GCRY_VERY_STRONG_RANDOM);
-    return 0;
-#elif CONFIG_OPENSSL
-    if (RAND_bytes(buf, len))
-        return 0;
-#else
-    return AVERROR(ENOSYS);
-#endif
-    return AVERROR(EINVAL);
-}
-
 static int do_encrypt(AVFormatContext *s, VariantStream *vs)
 {
     HLSContext *hls = s->priv_data;
@@ -765,7 +761,7 @@ static int do_encrypt(AVFormatContext *s, VariantStream *vs)
     if (!*hls->key_string) {
         AVDictionary *options = NULL;
         if (!hls->key) {
-            if ((ret = randomize(key, sizeof(key))) < 0) {
+            if ((ret = av_random_bytes(key, sizeof(key))) < 0) {
                 av_log(s, AV_LOG_ERROR, "Cannot generate a strong random key\n");
                 return ret;
             }
@@ -869,11 +865,6 @@ static int hls_mux_init(AVFormatContext *s, VariantStream *vs)
     oc->max_delay                = s->max_delay;
     oc->opaque                   = s->opaque;
     oc->io_open                  = s->io_open;
-#if FF_API_AVFORMAT_IO_CLOSE
-FF_DISABLE_DEPRECATION_WARNINGS
-    oc->io_close                 = s->io_close;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     oc->io_close2                = s->io_close2;
     oc->strict_std_compliance    = s->strict_std_compliance;
     av_dict_copy(&oc->metadata, s->metadata, 0);
@@ -1005,7 +996,7 @@ static int sls_flags_filename_process(struct AVFormatContext *s, HLSContext *hls
                                              't',  (int64_t)round(duration * HLS_MICROSECOND_UNIT)) < 1) {
                 av_log(hls, AV_LOG_ERROR,
                        "Invalid second level segment filename template '%s', "
-                       "you can try to remove second_level_segment_time flag\n",
+                       "you can try to remove second_level_segment_duration flag\n",
                        vs->avf->url);
                 av_freep(&filename);
                 return AVERROR(EINVAL);
@@ -1098,7 +1089,7 @@ static int sls_flag_use_localtime_filename(AVFormatContext *oc, HLSContext *c, V
             char *filename = NULL;
             if (replace_int_data_in_filename(&filename, oc->url, 't', 0) < 1) {
                 av_log(c, AV_LOG_ERROR, "Invalid second level segment filename template '%s', "
-                        "you can try to remove second_level_segment_time flag\n",
+                        "you can try to remove second_level_segment_duration flag\n",
                        oc->url);
                 av_freep(&filename);
                 return AVERROR(EINVAL);
@@ -1360,16 +1351,17 @@ static const char* get_relative_url(const char *master_url, const char *media_ur
 
 static int64_t get_stream_bit_rate(AVStream *stream)
 {
-    AVCPBProperties *props = (AVCPBProperties*)av_stream_get_side_data(
-        stream,
-        AV_PKT_DATA_CPB_PROPERTIES,
-        NULL
+    const AVPacketSideData *sd = av_packet_side_data_get(
+        stream->codecpar->coded_side_data, stream->codecpar->nb_coded_side_data,
+        AV_PKT_DATA_CPB_PROPERTIES
     );
 
     if (stream->codecpar->bit_rate)
         return stream->codecpar->bit_rate;
-    else if (props)
+    else if (sd) {
+        AVCPBProperties *props = (AVCPBProperties*)sd->data;
         return props->max_bitrate;
+    }
 
     return 0;
 }
@@ -1392,6 +1384,7 @@ static int create_master_playlist(AVFormatContext *s,
     int is_file_proto = proto && !strcmp(proto, "file");
     int use_temp_file = is_file_proto && ((hls->flags & HLS_TEMP_FILE) || hls->master_publish_rate);
     char temp_filename[MAX_URL_SIZE];
+    int nb_channels;
 
     input_vs->m3u8_created = 1;
     if (!hls->master_m3u8_created) {
@@ -1440,8 +1433,13 @@ static int create_master_playlist(AVFormatContext *s,
             av_log(s, AV_LOG_ERROR, "Unable to find relative URL\n");
             goto fail;
         }
+        nb_channels = 0;
+        for (j = 0; j < vs->nb_streams; j++)
+            if (vs->streams[j]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
+                if (vs->streams[j]->codecpar->ch_layout.nb_channels > nb_channels)
+                    nb_channels = vs->streams[j]->codecpar->ch_layout.nb_channels;
 
-        ff_hls_write_audio_rendition(hls->m3u8_out, vs->agroup, m3u8_rel_name, vs->language, i, hls->has_default_key ? vs->is_default : 1);
+        ff_hls_write_audio_rendition(hls->m3u8_out, vs->agroup, m3u8_rel_name, vs->language, i, hls->has_default_key ? vs->is_default : 1, nb_channels);
     }
 
     /* For variant streams with video add #EXT-X-STREAM-INF tag with attributes*/
@@ -1587,7 +1585,9 @@ static int hls_window(AVFormatContext *s, int last, VariantStream *vs)
 
     set_http_options(s, &options, hls);
     snprintf(temp_filename, sizeof(temp_filename), use_temp_file ? "%s.tmp" : "%s", vs->m3u8_name);
-    if ((ret = hlsenc_io_open(s, byterange_mode ? &hls->m3u8_out : &vs->out, temp_filename, &options)) < 0) {
+    ret = hlsenc_io_open(s, byterange_mode ? &hls->m3u8_out : &vs->out, temp_filename, &options);
+    av_dict_free(&options);
+    if (ret < 0) {
         if (hls->ignore_io_errors)
             ret = 0;
         goto fail;
@@ -1642,8 +1642,11 @@ static int hls_window(AVFormatContext *s, int last, VariantStream *vs)
         ff_hls_write_end_list(byterange_mode ? hls->m3u8_out : vs->out);
 
     if (vs->vtt_m3u8_name) {
+        set_http_options(vs->vtt_avf, &options, hls);
         snprintf(temp_vtt_filename, sizeof(temp_vtt_filename), use_temp_file ? "%s.tmp" : "%s", vs->vtt_m3u8_name);
-        if ((ret = hlsenc_io_open(s, &hls->sub_m3u8_out, temp_vtt_filename, &options)) < 0) {
+        ret = hlsenc_io_open(s, &hls->sub_m3u8_out, temp_vtt_filename, &options);
+        av_dict_free(&options);
+        if (ret < 0) {
             if (hls->ignore_io_errors)
                 ret = 0;
             goto fail;
@@ -1870,18 +1873,23 @@ fail:
 
 static const char * get_default_pattern_localtime_fmt(AVFormatContext *s)
 {
+    HLSContext *hls = s->priv_data;
+#if HAVE_LIBC_MSVCRT
+    // no %s support on MSVC, which invokes the invalid parameter handler
+    // on unsupported format strings, instead of returning an error
+    int strftime_s_supported = 0;
+#else
     char b[21];
     time_t t = time(NULL);
-    struct tm *p, tmbuf;
-    HLSContext *hls = s->priv_data;
-
-    p = localtime_r(&t, &tmbuf);
+    struct tm tmbuf, *p = localtime_r(&t, &tmbuf);
     // no %s support when strftime returned error or left format string unchanged
-    // also no %s support on MSVC, which invokes the invalid parameter handler on unsupported format strings, instead of returning an error
+    int strftime_s_supported = strftime(b, sizeof(b), "%s", p) && strcmp(b, "%s");
+#endif
+
     if (hls->segment_type == SEGMENT_TYPE_FMP4) {
-        return (HAVE_LIBC_MSVCRT || !strftime(b, sizeof(b), "%s", p) || !strcmp(b, "%s")) ? "-%Y%m%d%H%M%S.m4s" : "-%s.m4s";
+        return strftime_s_supported ? "-%s.m4s" : "-%Y%m%d%H%M%S.m4s";
     }
-    return (HAVE_LIBC_MSVCRT || !strftime(b, sizeof(b), "%s", p) || !strcmp(b, "%s")) ? "-%Y%m%d%H%M%S.ts" : "-%s.ts";
+    return strftime_s_supported ? "-%s.ts" : "-%Y%m%d%H%M%S.ts";
 }
 
 static int append_postfix(char *name, int name_buf_len, int i)
@@ -2359,7 +2367,7 @@ static int hls_write_header(AVFormatContext *s)
         }
     }
 
-    return ret;
+    return 0;
 }
 
 static int hls_init_file_resend(AVFormatContext *s, VariantStream *vs)
@@ -2593,8 +2601,10 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
                            " will retry with a new http session.\n");
                     ff_format_io_close(s, &vs->out);
                     ret = hlsenc_io_open(s, &vs->out, filename, &options);
-                    reflush_dynbuf(vs, &range_length);
-                    ret = hlsenc_io_close(s, &vs->out, filename);
+                    if (ret >= 0) {
+                        reflush_dynbuf(vs, &range_length);
+                        ret = hlsenc_io_close(s, &vs->out, filename);
+                    }
                 }
                 av_dict_free(&options);
                 av_freep(&vs->temp_buffer);
@@ -2604,6 +2614,9 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
             if (use_temp_file)
                 hls_rename_temp_file(s, oc);
         }
+
+        if (ret < 0)
+            return ret;
 
         old_filename = av_strdup(oc->url);
         if (!old_filename) {
@@ -2947,7 +2960,7 @@ static int hls_init(AVFormatContext *s)
         av_log(hls, AV_LOG_DEBUG, "start_number evaluated to %"PRId64"\n", hls->start_sequence);
     }
 
-    hls->recording_time = hls->init_time ? hls->init_time : hls->time;
+    hls->recording_time = hls->init_time && hls->max_nb_segments > 0 ? hls->init_time : hls->time;
 
     if (hls->flags & HLS_SPLIT_BY_TIME && hls->flags & HLS_INDEPENDENT_SEGMENTS) {
         // Independent segments cannot be guaranteed when splitting by time
@@ -3132,38 +3145,38 @@ static const AVOption options[] = {
     {"hls_enc_key_url",    "url to access the key to decrypt the segments", OFFSET(key_url),      AV_OPT_TYPE_STRING, {.str = NULL},            0,       0,         E},
     {"hls_enc_iv",    "hex-coded 16 byte initialization vector", OFFSET(iv),      AV_OPT_TYPE_STRING, .flags = E},
     {"hls_subtitle_path",     "set path of hls subtitles", OFFSET(subtitle_filename), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,    E},
-    {"hls_segment_type",     "set hls segment files type", OFFSET(segment_type), AV_OPT_TYPE_INT, {.i64 = SEGMENT_TYPE_MPEGTS }, 0, SEGMENT_TYPE_FMP4, E, "segment_type"},
-    {"mpegts",   "make segment file to mpegts files in m3u8", 0, AV_OPT_TYPE_CONST, {.i64 = SEGMENT_TYPE_MPEGTS }, 0, UINT_MAX,   E, "segment_type"},
-    {"fmp4",   "make segment file to fragment mp4 files in m3u8", 0, AV_OPT_TYPE_CONST, {.i64 = SEGMENT_TYPE_FMP4 }, 0, UINT_MAX,   E, "segment_type"},
+    {"hls_segment_type",     "set hls segment files type", OFFSET(segment_type), AV_OPT_TYPE_INT, {.i64 = SEGMENT_TYPE_MPEGTS }, 0, SEGMENT_TYPE_FMP4, E, .unit = "segment_type"},
+    {"mpegts",   "make segment file to mpegts files in m3u8", 0, AV_OPT_TYPE_CONST, {.i64 = SEGMENT_TYPE_MPEGTS }, 0, UINT_MAX,   E, .unit = "segment_type"},
+    {"fmp4",   "make segment file to fragment mp4 files in m3u8", 0, AV_OPT_TYPE_CONST, {.i64 = SEGMENT_TYPE_FMP4 }, 0, UINT_MAX,   E, .unit = "segment_type"},
     {"hls_fmp4_init_filename", "set fragment mp4 file init filename", OFFSET(fmp4_init_filename),   AV_OPT_TYPE_STRING, {.str = "init.mp4"},            0,       0,         E},
     {"hls_fmp4_init_resend", "resend fragment mp4 init file after refresh m3u8 every time", OFFSET(resend_init_file), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, E },
-    {"hls_flags",     "set flags affecting HLS playlist and media file generation", OFFSET(flags), AV_OPT_TYPE_FLAGS, {.i64 = 0 }, 0, UINT_MAX, E, "flags"},
-    {"single_file",   "generate a single media file indexed with byte ranges", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SINGLE_FILE }, 0, UINT_MAX,   E, "flags"},
-    {"temp_file", "write segment and playlist to temporary file and rename when complete", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_TEMP_FILE }, 0, UINT_MAX,   E, "flags"},
-    {"delete_segments", "delete segment files that are no longer part of the playlist", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_DELETE_SEGMENTS }, 0, UINT_MAX,   E, "flags"},
-    {"round_durations", "round durations in m3u8 to whole numbers", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_ROUND_DURATIONS }, 0, UINT_MAX,   E, "flags"},
-    {"discont_start", "start the playlist with a discontinuity tag", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_DISCONT_START }, 0, UINT_MAX,   E, "flags"},
-    {"omit_endlist", "Do not append an endlist when ending stream", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_OMIT_ENDLIST }, 0, UINT_MAX,   E, "flags"},
-    {"split_by_time", "split the hls segment by time which user set by hls_time", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SPLIT_BY_TIME }, 0, UINT_MAX,   E, "flags"},
-    {"append_list", "append the new segments into old hls segment list", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_APPEND_LIST }, 0, UINT_MAX,   E, "flags"},
-    {"program_date_time", "add EXT-X-PROGRAM-DATE-TIME", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_PROGRAM_DATE_TIME }, 0, UINT_MAX,   E, "flags"},
-    {"second_level_segment_index", "include segment index in segment filenames when use_localtime", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SECOND_LEVEL_SEGMENT_INDEX }, 0, UINT_MAX,   E, "flags"},
-    {"second_level_segment_duration", "include segment duration in segment filenames when use_localtime", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SECOND_LEVEL_SEGMENT_DURATION }, 0, UINT_MAX,   E, "flags"},
-    {"second_level_segment_size", "include segment size in segment filenames when use_localtime", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SECOND_LEVEL_SEGMENT_SIZE }, 0, UINT_MAX,   E, "flags"},
-    {"periodic_rekey", "reload keyinfo file periodically for re-keying", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_PERIODIC_REKEY }, 0, UINT_MAX,   E, "flags"},
-    {"independent_segments", "add EXT-X-INDEPENDENT-SEGMENTS, whenever applicable", 0, AV_OPT_TYPE_CONST, { .i64 = HLS_INDEPENDENT_SEGMENTS }, 0, UINT_MAX, E, "flags"},
-    {"iframes_only", "add EXT-X-I-FRAMES-ONLY, whenever applicable", 0, AV_OPT_TYPE_CONST, { .i64 = HLS_I_FRAMES_ONLY }, 0, UINT_MAX, E, "flags"},
+    {"hls_flags",     "set flags affecting HLS playlist and media file generation", OFFSET(flags), AV_OPT_TYPE_FLAGS, {.i64 = 0 }, 0, UINT_MAX, E, .unit = "flags"},
+    {"single_file",   "generate a single media file indexed with byte ranges", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SINGLE_FILE }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"temp_file", "write segment and playlist to temporary file and rename when complete", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_TEMP_FILE }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"delete_segments", "delete segment files that are no longer part of the playlist", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_DELETE_SEGMENTS }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"round_durations", "round durations in m3u8 to whole numbers", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_ROUND_DURATIONS }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"discont_start", "start the playlist with a discontinuity tag", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_DISCONT_START }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"omit_endlist", "Do not append an endlist when ending stream", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_OMIT_ENDLIST }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"split_by_time", "split the hls segment by time which user set by hls_time", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SPLIT_BY_TIME }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"append_list", "append the new segments into old hls segment list", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_APPEND_LIST }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"program_date_time", "add EXT-X-PROGRAM-DATE-TIME", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_PROGRAM_DATE_TIME }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"second_level_segment_index", "include segment index in segment filenames when use_localtime", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SECOND_LEVEL_SEGMENT_INDEX }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"second_level_segment_duration", "include segment duration in segment filenames when use_localtime", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SECOND_LEVEL_SEGMENT_DURATION }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"second_level_segment_size", "include segment size in segment filenames when use_localtime", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_SECOND_LEVEL_SEGMENT_SIZE }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"periodic_rekey", "reload keyinfo file periodically for re-keying", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_PERIODIC_REKEY }, 0, UINT_MAX,   E, .unit = "flags"},
+    {"independent_segments", "add EXT-X-INDEPENDENT-SEGMENTS, whenever applicable", 0, AV_OPT_TYPE_CONST, { .i64 = HLS_INDEPENDENT_SEGMENTS }, 0, UINT_MAX, E, .unit = "flags"},
+    {"iframes_only", "add EXT-X-I-FRAMES-ONLY, whenever applicable", 0, AV_OPT_TYPE_CONST, { .i64 = HLS_I_FRAMES_ONLY }, 0, UINT_MAX, E, .unit = "flags"},
     {"strftime", "set filename expansion with strftime at segment creation", OFFSET(use_localtime), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, E },
     {"strftime_mkdir", "create last directory component in strftime-generated filename", OFFSET(use_localtime_mkdir), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, E },
-    {"hls_playlist_type", "set the HLS playlist type", OFFSET(pl_type), AV_OPT_TYPE_INT, {.i64 = PLAYLIST_TYPE_NONE }, 0, PLAYLIST_TYPE_NB-1, E, "pl_type" },
-    {"event", "EVENT playlist", 0, AV_OPT_TYPE_CONST, {.i64 = PLAYLIST_TYPE_EVENT }, INT_MIN, INT_MAX, E, "pl_type" },
-    {"vod", "VOD playlist", 0, AV_OPT_TYPE_CONST, {.i64 = PLAYLIST_TYPE_VOD }, INT_MIN, INT_MAX, E, "pl_type" },
+    {"hls_playlist_type", "set the HLS playlist type", OFFSET(pl_type), AV_OPT_TYPE_INT, {.i64 = PLAYLIST_TYPE_NONE }, 0, PLAYLIST_TYPE_NB-1, E, .unit = "pl_type" },
+    {"event", "EVENT playlist", 0, AV_OPT_TYPE_CONST, {.i64 = PLAYLIST_TYPE_EVENT }, INT_MIN, INT_MAX, E, .unit = "pl_type" },
+    {"vod", "VOD playlist", 0, AV_OPT_TYPE_CONST, {.i64 = PLAYLIST_TYPE_VOD }, INT_MIN, INT_MAX, E, .unit = "pl_type" },
     {"method", "set the HTTP method(default: PUT)", OFFSET(method), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,    E},
-    {"hls_start_number_source", "set source of first number in sequence", OFFSET(start_sequence_source_type), AV_OPT_TYPE_INT, {.i64 = HLS_START_SEQUENCE_AS_START_NUMBER }, 0, HLS_START_SEQUENCE_LAST-1, E, "start_sequence_source_type" },
-    {"generic", "start_number value (default)", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_START_NUMBER }, INT_MIN, INT_MAX, E, "start_sequence_source_type" },
-    {"epoch", "seconds since epoch", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_SECONDS_SINCE_EPOCH }, INT_MIN, INT_MAX, E, "start_sequence_source_type" },
-    {"epoch_us", "microseconds since epoch", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_MICROSECONDS_SINCE_EPOCH }, INT_MIN, INT_MAX, E, "start_sequence_source_type" },
-    {"datetime", "current datetime as YYYYMMDDhhmmss", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_FORMATTED_DATETIME }, INT_MIN, INT_MAX, E, "start_sequence_source_type" },
+    {"hls_start_number_source", "set source of first number in sequence", OFFSET(start_sequence_source_type), AV_OPT_TYPE_INT, {.i64 = HLS_START_SEQUENCE_AS_START_NUMBER }, 0, HLS_START_SEQUENCE_LAST-1, E, .unit = "start_sequence_source_type" },
+    {"generic", "start_number value (default)", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_START_NUMBER }, INT_MIN, INT_MAX, E, .unit = "start_sequence_source_type" },
+    {"epoch", "seconds since epoch", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_SECONDS_SINCE_EPOCH }, INT_MIN, INT_MAX, E, .unit = "start_sequence_source_type" },
+    {"epoch_us", "microseconds since epoch", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_MICROSECONDS_SINCE_EPOCH }, INT_MIN, INT_MAX, E, .unit = "start_sequence_source_type" },
+    {"datetime", "current datetime as YYYYMMDDhhmmss", 0, AV_OPT_TYPE_CONST, {.i64 = HLS_START_SEQUENCE_AS_FORMATTED_DATETIME }, INT_MIN, INT_MAX, E, .unit = "start_sequence_source_type" },
     {"http_user_agent", "override User-Agent field in HTTP header", OFFSET(user_agent), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,    E},
     {"var_stream_map", "Variant stream map string", OFFSET(var_stream_map), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,    E},
     {"cc_stream_map", "Closed captions stream map string", OFFSET(cc_stream_map), AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,    E},
@@ -3191,8 +3204,13 @@ const FFOutputFormat ff_hls_muxer = {
     .p.audio_codec    = AV_CODEC_ID_AAC,
     .p.video_codec    = AV_CODEC_ID_H264,
     .p.subtitle_codec = AV_CODEC_ID_WEBVTT,
+#if FF_API_ALLOW_FLUSH
     .p.flags          = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_NODIMENSIONS,
+#else
+    .p.flags          = AVFMT_NOFILE | AVFMT_GLOBALHEADER | AVFMT_NODIMENSIONS,
+#endif
     .p.priv_class     = &hls_class,
+    .flags_internal   = FF_OFMT_FLAG_ALLOW_FLUSH,
     .priv_data_size = sizeof(HLSContext),
     .init           = hls_init,
     .write_header   = hls_write_header,

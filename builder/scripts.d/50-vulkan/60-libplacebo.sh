@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://code.videolan.org/videolan/libplacebo.git"
-SCRIPT_COMMIT="64c1954570f1cd57f8570a57e51fb0249b57bb90"
+SCRIPT_COMMIT="1fd3c7bde7b943fe8985c893310b5269a09b46c5"
 
 ffbuild_enabled() {
     [[ $TARGET == mac* ]] && return -1

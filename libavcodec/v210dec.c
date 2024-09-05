@@ -33,7 +33,7 @@
 
 typedef struct ThreadData {
     AVFrame *frame;
-    uint8_t *buf;
+    const uint8_t *buf;
     int stride;
 } ThreadData;
 
@@ -111,7 +111,7 @@ static int v210_decode_slice(AVCodecContext *avctx, void *arg, int jobnr, int th
     int stride = td->stride;
     int slice_start = (avctx->height *  jobnr) / s->thread_count;
     int slice_end = (avctx->height * (jobnr+1)) / s->thread_count;
-    uint8_t *psrc = td->buf + stride * slice_start;
+    const uint8_t *psrc = td->buf + stride * slice_start;
     int16_t *py = (uint16_t*)frame->data[0] + slice_start * frame->linesize[0] / 2;
     int16_t *pu = (uint16_t*)frame->data[1] + slice_start * frame->linesize[1] / 2;
     int16_t *pv = (uint16_t*)frame->data[2] + slice_start * frame->linesize[2] / 2;
@@ -187,11 +187,11 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *pic,
         return ret;
 
     pic->pict_type = AV_PICTURE_TYPE_I;
-    pic->key_frame = 1;
+    pic->flags |= AV_FRAME_FLAG_KEY;
 
     if (stride) {
         td.stride = stride;
-        td.buf = (uint8_t*)psrc;
+        td.buf = psrc;
         td.frame = pic;
         avctx->execute2(avctx, v210_decode_slice, &td, NULL, s->thread_count);
     } else {
@@ -201,15 +201,16 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *pic,
         if (ret < 0)
             return ret;
         decode_row((const uint32_t *)psrc, (uint16_t *)pointers[0], (uint16_t *)pointers[1], (uint16_t *)pointers[2], avctx->width * avctx->height, s->unpack_frame);
-        av_image_copy(pic->data, pic->linesize, (const uint8_t **)pointers, linesizes, avctx->pix_fmt, avctx->width, avctx->height);
+        av_image_copy2(pic->data, pic->linesize, pointers, linesizes,
+                       avctx->pix_fmt, avctx->width, avctx->height);
         av_freep(&pointers[0]);
     }
 
     if (avctx->field_order > AV_FIELD_PROGRESSIVE) {
         /* we have interlaced material flagged in container */
-        pic->interlaced_frame = 1;
+        pic->flags |= AV_FRAME_FLAG_INTERLACED;
         if (avctx->field_order == AV_FIELD_TT || avctx->field_order == AV_FIELD_TB)
-            pic->top_field_first = 1;
+            pic->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
     }
 
     *got_frame      = 1;

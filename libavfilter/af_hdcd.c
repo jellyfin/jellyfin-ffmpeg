@@ -47,6 +47,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/avassert.h"
 #include "avfilter.h"
+#include "formats.h"
 #include "internal.h"
 #include "audio.h"
 
@@ -994,17 +995,17 @@ static const AVOption hdcd_options[] = {
     { "force_pe", "Always extend peaks above -3dBFS even when PE is not signaled.",
         OFFSET(force_pe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, A },
     { "analyze_mode",  "Replace audio with solid tone and signal some processing aspect in the amplitude.",
-        OFFSET(analyze_mode), AV_OPT_TYPE_INT, { .i64=HDCD_ANA_OFF }, 0, HDCD_ANA_TOP-1, A, "analyze_mode"},
-        { "off", HDCD_ANA_OFF_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_OFF}, 0, 0, A, "analyze_mode" },
-        { "lle", HDCD_ANA_LLE_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_LLE}, 0, 0, A, "analyze_mode" },
-        { "pe",  HDCD_ANA_PE_DESC,  0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_PE},  0, 0, A, "analyze_mode" },
-        { "cdt", HDCD_ANA_CDT_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_CDT}, 0, 0, A, "analyze_mode" },
-        { "tgm", HDCD_ANA_TGM_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_TGM}, 0, 0, A, "analyze_mode" },
+        OFFSET(analyze_mode), AV_OPT_TYPE_INT, { .i64=HDCD_ANA_OFF }, 0, HDCD_ANA_TOP-1, A, .unit = "analyze_mode"},
+        { "off", HDCD_ANA_OFF_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_OFF}, 0, 0, A, .unit = "analyze_mode" },
+        { "lle", HDCD_ANA_LLE_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_LLE}, 0, 0, A, .unit = "analyze_mode" },
+        { "pe",  HDCD_ANA_PE_DESC,  0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_PE},  0, 0, A, .unit = "analyze_mode" },
+        { "cdt", HDCD_ANA_CDT_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_CDT}, 0, 0, A, .unit = "analyze_mode" },
+        { "tgm", HDCD_ANA_TGM_DESC, 0, AV_OPT_TYPE_CONST, {.i64=HDCD_ANA_TGM}, 0, 0, A, .unit = "analyze_mode" },
     { "bits_per_sample",  "Valid bits per sample (location of the true LSB).",
-        OFFSET(bits_per_sample), AV_OPT_TYPE_INT, { .i64=16 }, 16, 24, A, "bits_per_sample"},
-        { "16", "16-bit (in s32 or s16)", 0, AV_OPT_TYPE_CONST, {.i64=16}, 0, 0, A, "bits_per_sample" },
-        { "20", "20-bit (in s32)", 0, AV_OPT_TYPE_CONST, {.i64=20}, 0, 0, A, "bits_per_sample" },
-        { "24", "24-bit (in s32)", 0, AV_OPT_TYPE_CONST, {.i64=24},  0, 0, A, "bits_per_sample" },
+        OFFSET(bits_per_sample), AV_OPT_TYPE_INT, { .i64=16 }, 16, 24, A, .unit = "bits_per_sample"},
+        { "16", "16-bit (in s32 or s16)", 0, AV_OPT_TYPE_CONST, {.i64=16}, 0, 0, A, .unit = "bits_per_sample" },
+        { "20", "20-bit (in s32)", 0, AV_OPT_TYPE_CONST, {.i64=20}, 0, 0, A, .unit = "bits_per_sample" },
+        { "24", "24-bit (in s32)", 0, AV_OPT_TYPE_CONST, {.i64=24},  0, 0, A, .unit = "bits_per_sample" },
     {NULL}
 };
 
@@ -1713,9 +1714,6 @@ static int config_input(AVFilterLink *inlink) {
     HDCDContext *s = ctx->priv;
     int c;
 
-    av_log(ctx, AV_LOG_VERBOSE, "Auto-convert: %s\n",
-        (ctx->graph->disable_auto_convert) ? "disabled" : "enabled");
-
     if ((inlink->format == AV_SAMPLE_FMT_S16 ||
          inlink->format == AV_SAMPLE_FMT_S16P) &&
          s->bits_per_sample != 16) {
@@ -1763,13 +1761,6 @@ static const AVFilterPad avfilter_af_hdcd_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_af_hdcd_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_hdcd = {
     .name          = "hdcd",
     .description   = NULL_IF_CONFIG_SMALL("Apply High Definition Compatible Digital (HDCD) decoding."),
@@ -1778,6 +1769,6 @@ const AVFilter ff_af_hdcd = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_hdcd_inputs),
-    FILTER_OUTPUTS(avfilter_af_hdcd_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
 };

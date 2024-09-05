@@ -67,7 +67,7 @@ prepare_extra_common() {
 
     # LIBXML2
     pushd ${SOURCE_DIR}
-    libxml2_ver="v2.13.2"
+    libxml2_ver="v2.13.3"
     if [[ $( lsb_release -c -s ) == "focal" ]]; then
         # newer versions require automake 1.16.3+
         libxml2_ver="v2.9.14"
@@ -87,7 +87,7 @@ prepare_extra_common() {
 
     # FREETYPE
     pushd ${SOURCE_DIR}
-    git clone -b VER-2-13-2 --depth=1 https://gitlab.freedesktop.org/freetype/freetype.git
+    git clone -b VER-2-13-3 --depth=1 https://gitlab.freedesktop.org/freetype/freetype.git
     pushd freetype
     ./autogen.sh
     ./configure \
@@ -253,7 +253,7 @@ prepare_extra_common() {
 
     # SVT-AV1
     pushd ${SOURCE_DIR}
-    git clone -b v2.1.2 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v2.2.1 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
     mkdir build
     pushd build
@@ -319,7 +319,7 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     mkdir libdrm
     pushd libdrm
-    libdrm_ver="2.4.122"
+    libdrm_ver="2.4.123"
     libdrm_link="https://dri.freedesktop.org/libdrm/libdrm-${libdrm_ver}.tar.xz"
     wget ${libdrm_link} -O libdrm.tar.xz
     tar xaf libdrm.tar.xz
@@ -382,7 +382,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.4.1 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.5.1 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -399,6 +399,8 @@ prepare_extra_amd64() {
     pushd MediaSDK
     # fix build in gcc 13
     wget -q -O - https://github.com/Intel-Media-SDK/MediaSDK/commit/8fb9f5f.patch | git apply
+    # fix ADI issue with VPL patch
+    wget -q -O - https://github.com/intel/vpl-gpu-rt/commit/e025c82.patch | git apply
     sed -i 's|MFX_PLUGINS_CONF_DIR "/plugins.cfg"|"/usr/lib/jellyfin-ffmpeg/lib/mfx/plugins.cfg"|g' api/mfx_dispatch/linux/mfxloader.cpp
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -416,7 +418,7 @@ prepare_extra_amd64() {
     # Provides VPL header and dispatcher (libvpl.so.2) for FFmpeg
     # Both MSDK and VPL runtime can be loaded by VPL dispatcher
     pushd ${SOURCE_DIR}
-    git clone -b v2.12.0 --depth=1 https://github.com/intel/libvpl.git
+    git clone -b v2.13.0 --depth=1 https://github.com/intel/libvpl.git
     pushd libvpl
     sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' libvpl/src/mfx_dispatcher_vpl_loader.cpp
     mkdir build && pushd build
@@ -425,10 +427,8 @@ prepare_extra_amd64() {
           -DCMAKE_INSTALL_LIBDIR=${TARGET_DIR}/lib \
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=ON \
-          -DBUILD_{DISPATCHER,DEV}=ON \
-          -DBUILD_{PREVIEW,TESTS}=OFF \
-          -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
-          -DINSTALL_EXAMPLE_CODE=OFF \
+          -DINSTALL_{DEV,LIB}=ON \
+          -DBUILD_{TESTS,EXAMPLES,EXPERIMENTAL}=OFF \
           ..
     make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/intel
     echo "intel${TARGET_DIR}/lib/libvpl.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
@@ -439,7 +439,7 @@ prepare_extra_amd64() {
     # VPL-GPU-RT (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.2.5 --depth=1 https://github.com/intel/vpl-gpu-rt.git
+    git clone -b intel-onevpl-24.3.3 --depth=1 https://github.com/intel/vpl-gpu-rt.git
     pushd vpl-gpu-rt
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -459,7 +459,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.2.5 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.3.3 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -478,7 +478,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.290 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.295 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -491,7 +491,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.290 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.295 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -600,7 +600,7 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
-    git clone -b v6.338.2 --recursive --depth=1 https://github.com/haasn/libplacebo.git
+    git clone -b v7.349.0 --recursive --depth=1 https://github.com/haasn/libplacebo.git
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
@@ -783,5 +783,5 @@ popd
 
 # Move the artifacts out
 mkdir -p ${ARTIFACT_DIR}/deb
-mv /jellyfin-ffmpeg{,6}_* ${ARTIFACT_DIR}/deb/
+mv /jellyfin-ffmpeg{,7}_* ${ARTIFACT_DIR}/deb/
 chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

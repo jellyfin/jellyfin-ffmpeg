@@ -24,7 +24,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 
 typedef struct DeesserChannel {
     double s1, s2, s3;
@@ -59,10 +58,10 @@ static const AVOption deesser_options[] = {
     { "i", "set intensity",    OFFSET(intensity), AV_OPT_TYPE_DOUBLE, {.dbl=0.0}, 0.0, 1.0, A },
     { "m", "set max deessing", OFFSET(max),       AV_OPT_TYPE_DOUBLE, {.dbl=0.5}, 0.0, 1.0, A },
     { "f", "set frequency",    OFFSET(frequency), AV_OPT_TYPE_DOUBLE, {.dbl=0.5}, 0.0, 1.0, A },
-    { "s", "set output mode",  OFFSET(mode),      AV_OPT_TYPE_INT,    {.i64=OUT_MODE}, 0, NB_MODES-1, A, "mode" },
-    {  "i", "input",           0,                 AV_OPT_TYPE_CONST,  {.i64=IN_MODE},  0, 0, A, "mode" },
-    {  "o", "output",          0,                 AV_OPT_TYPE_CONST,  {.i64=OUT_MODE}, 0, 0, A, "mode" },
-    {  "e", "ess",             0,                 AV_OPT_TYPE_CONST,  {.i64=ESS_MODE}, 0, 0, A, "mode" },
+    { "s", "set output mode",  OFFSET(mode),      AV_OPT_TYPE_INT,    {.i64=OUT_MODE}, 0, NB_MODES-1, A, .unit = "mode" },
+    {  "i", "input",           0,                 AV_OPT_TYPE_CONST,  {.i64=IN_MODE},  0, 0, A, .unit = "mode" },
+    {  "o", "output",          0,                 AV_OPT_TYPE_CONST,  {.i64=OUT_MODE}, 0, 0, A, .unit = "mode" },
+    {  "e", "ess",             0,                 AV_OPT_TYPE_CONST,  {.i64=ESS_MODE}, 0, 0, A, .unit = "mode" },
     { NULL }
 };
 
@@ -193,13 +192,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_deesser = {
     .name          = "deesser",
     .description   = NULL_IF_CONFIG_SMALL("Apply de-essing to the audio."),
@@ -207,7 +199,7 @@ const AVFilter ff_af_deesser = {
     .priv_class    = &deesser_class,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

@@ -36,7 +36,6 @@
 #include "libavutil/detection_bbox.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -471,13 +470,6 @@ static const AVFilterPad drawbox_inputs[] = {
     },
 };
 
-static const AVFilterPad drawbox_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_drawbox = {
     .name          = "drawbox",
     .description   = NULL_IF_CONFIG_SMALL("Draw a colored box on the input video."),
@@ -485,7 +477,7 @@ const AVFilter ff_vf_drawbox = {
     .priv_class    = &drawbox_class,
     .init          = init,
     FILTER_INPUTS(drawbox_inputs),
-    FILTER_OUTPUTS(drawbox_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .process_command = process_command,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
@@ -553,13 +545,6 @@ static const AVFilterPad drawgrid_inputs[] = {
     },
 };
 
-static const AVFilterPad drawgrid_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_drawgrid = {
     .name          = "drawgrid",
     .description   = NULL_IF_CONFIG_SMALL("Draw a colored grid on the input video."),
@@ -567,7 +552,7 @@ const AVFilter ff_vf_drawgrid = {
     .priv_class    = &drawgrid_class,
     .init          = init,
     FILTER_INPUTS(drawgrid_inputs),
-    FILTER_OUTPUTS(drawgrid_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = process_command,

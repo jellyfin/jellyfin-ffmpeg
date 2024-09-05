@@ -3,7 +3,7 @@
 _realname=libvpl
 pkgbase=mingw-w64-jellyfin-${_realname}
 pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-${_realname}")
-pkgver=2.11.0
+pkgver=2.13.0
 pkgrel=1
 pkgdesc="Intel Video Processing Library (mingw-w64)"
 arch=('any')
@@ -65,10 +65,8 @@ build() {
       -DCMAKE_INSTALL_PREFIX="${FF_MINGW_PREFIX}" \
       "${extra_config[@]}" \
       -DBUILD_SHARED_LIBS=OFF \
-      -DBUILD_{DISPATCHER,DEV}=ON \
-      -DBUILD_{PREVIEW,TESTS}=OFF \
-      -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
-      -DINSTALL_EXAMPLE_CODE=OFF \
+      -DINSTALL_{DEV,LIB}=ON \
+      -DBUILD_{TESTS,EXAMPLES,EXPERIMENTAL}=OFF \
       ../libvpl-${pkgver}
 
   "${MINGW_TOOLCHAIN_PREFIX}"/bin/cmake.exe --build .

@@ -51,7 +51,7 @@ sixtap_filter_v_m:   times 8 dw   1
                      times 8 dw  20
                      times 8 dw  52
 
-%ifdef PIC
+%if PIC
 %define sixtap_filter_hw   picregq
 %define sixtap_filter_hb   picregq
 %define sixtap_filter_v    picregq
@@ -84,7 +84,7 @@ SECTION .text
 %if WIN64
    movsxd   %1q, %1d
 %endif
-%ifdef PIC
+%if PIC
    add      %1q, picregq
 %else
    add      %1q, %2
@@ -104,7 +104,7 @@ SECTION .text
 
 %macro FILTER_V 1
 cglobal %1_rv40_qpel_v, 6,6+npicregs,12, dst, dststride, src, srcstride, height, my, picreg
-%ifdef PIC
+%if PIC
     lea  picregq, [sixtap_filter_v_m]
 %endif
     pxor      m7, m7
@@ -175,7 +175,7 @@ cglobal %1_rv40_qpel_v, 6,6+npicregs,12, dst, dststride, src, srcstride, height,
 
 %macro FILTER_H  1
 cglobal %1_rv40_qpel_h, 6, 6+npicregs, 12, dst, dststride, src, srcstride, height, mx, picreg
-%ifdef PIC
+%if PIC
     lea  picregq, [sixtap_filter_v_m]
 %endif
     pxor      m7, m7
@@ -238,7 +238,7 @@ FILTER_V  avg
 
 %macro FILTER_SSSE3 1
 cglobal %1_rv40_qpel_v, 6,6+npicregs,8, dst, dststride, src, srcstride, height, my, picreg
-%ifdef PIC
+%if PIC
     lea  picregq, [sixtap_filter_hb_m]
 %endif
 
@@ -283,7 +283,7 @@ cglobal %1_rv40_qpel_v, 6,6+npicregs,8, dst, dststride, src, srcstride, height, 
     RET
 
 cglobal %1_rv40_qpel_h, 6,6+npicregs,8, dst, dststride, src, srcstride, height, mx, picreg
-%ifdef PIC
+%if PIC
     lea  picregq, [sixtap_filter_hb_m]
 %endif
     mova      m3, [filter_h6_shuf2]
@@ -401,15 +401,6 @@ FILTER_SSSE3  avg
 
 
 %macro MAIN_LOOP   2
-%if mmsize == 8
-    RV40_WCORE %2, r0, r1, r2
-%if %1 == 16
-    RV40_WCORE %2, r0 + 8, r1 + 8, r2 + 8
-%endif
-
-    ; Prepare for next loop
-    add        r6, r5
-%else
 %ifidn %1, 8
     RV40_WCORE %2, r0, r1, r2, r5
     ; Prepare 2 next lines
@@ -418,7 +409,6 @@ FILTER_SSSE3  avg
     RV40_WCORE %2, r0, r1, r2
     ; Prepare single next line
     add        r6, r5
-%endif
 %endif
 
 %endmacro

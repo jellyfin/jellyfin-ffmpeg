@@ -48,7 +48,9 @@ static const char *const var_names[] = {
     "nb_channels",         ///< number of channels
     "nb_consumed_samples", ///< number of samples consumed by the filter
     "nb_samples",          ///< number of samples in the current frame
+#if FF_API_FRAME_PKT
     "pos",                 ///< position in the file of the frame
+#endif
     "pts",                 ///< frame presentation timestamp
     "sample_rate",         ///< sample rate
     "startpts",            ///< PTS at start of stream
@@ -68,19 +70,19 @@ static const AVOption volume_options[] = {
     { "volume", "set volume adjustment expression",
             OFFSET(volume_expr), AV_OPT_TYPE_STRING, { .str = "1.0" }, .flags = A|F|T },
     { "precision", "select mathematical precision",
-            OFFSET(precision), AV_OPT_TYPE_INT, { .i64 = PRECISION_FLOAT }, PRECISION_FIXED, PRECISION_DOUBLE, A|F, "precision" },
-        { "fixed",  "select 8-bit fixed-point",     0, AV_OPT_TYPE_CONST, { .i64 = PRECISION_FIXED  }, INT_MIN, INT_MAX, A|F, "precision" },
-        { "float",  "select 32-bit floating-point", 0, AV_OPT_TYPE_CONST, { .i64 = PRECISION_FLOAT  }, INT_MIN, INT_MAX, A|F, "precision" },
-        { "double", "select 64-bit floating-point", 0, AV_OPT_TYPE_CONST, { .i64 = PRECISION_DOUBLE }, INT_MIN, INT_MAX, A|F, "precision" },
-    { "eval", "specify when to evaluate expressions", OFFSET(eval_mode), AV_OPT_TYPE_INT, {.i64 = EVAL_MODE_ONCE}, 0, EVAL_MODE_NB-1, .flags = A|F, "eval" },
+            OFFSET(precision), AV_OPT_TYPE_INT, { .i64 = PRECISION_FLOAT }, PRECISION_FIXED, PRECISION_DOUBLE, A|F, .unit = "precision" },
+        { "fixed",  "select 8-bit fixed-point",     0, AV_OPT_TYPE_CONST, { .i64 = PRECISION_FIXED  }, INT_MIN, INT_MAX, A|F, .unit = "precision" },
+        { "float",  "select 32-bit floating-point", 0, AV_OPT_TYPE_CONST, { .i64 = PRECISION_FLOAT  }, INT_MIN, INT_MAX, A|F, .unit = "precision" },
+        { "double", "select 64-bit floating-point", 0, AV_OPT_TYPE_CONST, { .i64 = PRECISION_DOUBLE }, INT_MIN, INT_MAX, A|F, .unit = "precision" },
+    { "eval", "specify when to evaluate expressions", OFFSET(eval_mode), AV_OPT_TYPE_INT, {.i64 = EVAL_MODE_ONCE}, 0, EVAL_MODE_NB-1, .flags = A|F, .unit = "eval" },
          { "once",  "eval volume expression once", 0, AV_OPT_TYPE_CONST, {.i64=EVAL_MODE_ONCE},  .flags = A|F, .unit = "eval" },
          { "frame", "eval volume expression per-frame",                  0, AV_OPT_TYPE_CONST, {.i64=EVAL_MODE_FRAME}, .flags = A|F, .unit = "eval" },
     { "replaygain", "Apply replaygain side data when present",
-            OFFSET(replaygain), AV_OPT_TYPE_INT, { .i64 = REPLAYGAIN_DROP }, REPLAYGAIN_DROP, REPLAYGAIN_ALBUM, A|F, "replaygain" },
-        { "drop",   "replaygain side data is dropped", 0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_DROP   }, 0, 0, A|F, "replaygain" },
-        { "ignore", "replaygain side data is ignored", 0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_IGNORE }, 0, 0, A|F, "replaygain" },
-        { "track",  "track gain is preferred",         0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_TRACK  }, 0, 0, A|F, "replaygain" },
-        { "album",  "album gain is preferred",         0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_ALBUM  }, 0, 0, A|F, "replaygain" },
+            OFFSET(replaygain), AV_OPT_TYPE_INT, { .i64 = REPLAYGAIN_DROP }, REPLAYGAIN_DROP, REPLAYGAIN_ALBUM, A|F, .unit = "replaygain" },
+        { "drop",   "replaygain side data is dropped", 0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_DROP   }, 0, 0, A|F, .unit = "replaygain" },
+        { "ignore", "replaygain side data is ignored", 0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_IGNORE }, 0, 0, A|F, .unit = "replaygain" },
+        { "track",  "track gain is preferred",         0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_TRACK  }, 0, 0, A|F, .unit = "replaygain" },
+        { "album",  "album gain is preferred",         0, AV_OPT_TYPE_CONST, { .i64 = REPLAYGAIN_ALBUM  }, 0, 0, A|F, .unit = "replaygain" },
     { "replaygain_preamp", "Apply replaygain pre-amplification",
             OFFSET(replaygain_preamp), AV_OPT_TYPE_DOUBLE, { .dbl = 0.0 }, -15.0, 15.0, A|F },
     { "replaygain_noclip", "Apply replaygain clipping prevention",
@@ -288,7 +290,9 @@ static int config_output(AVFilterLink *outlink)
     vol->var_values[VAR_N] =
     vol->var_values[VAR_NB_CONSUMED_SAMPLES] =
     vol->var_values[VAR_NB_SAMPLES] =
+#if FF_API_FRAME_PKT
     vol->var_values[VAR_POS] =
+#endif
     vol->var_values[VAR_PTS] =
     vol->var_values[VAR_STARTPTS] =
     vol->var_values[VAR_STARTT] =
@@ -330,7 +334,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
     AVFilterLink *outlink = inlink->dst->outputs[0];
     int nb_samples        = buf->nb_samples;
     AVFrame *out_buf;
-    int64_t pos;
     AVFrameSideData *sd = av_frame_get_side_data(buf, AV_FRAME_DATA_REPLAYGAIN);
     int ret;
 
@@ -380,8 +383,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
     vol->var_values[VAR_T  ] = TS2T(buf->pts, inlink->time_base);
     vol->var_values[VAR_N  ] = inlink->frame_count_out;
 
-    pos = buf->pkt_pos;
-    vol->var_values[VAR_POS] = pos == -1 ? NAN : pos;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
+    {
+        int64_t pos;
+        pos = buf->pkt_pos;
+        vol->var_values[VAR_POS] = pos == -1 ? NAN : pos;
+    }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     if (vol->eval_mode == EVAL_MODE_FRAME)
         set_volume(ctx);
 
@@ -436,8 +446,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
             }
         }
     }
-
-    emms_c();
 
     if (buf != out_buf)
         av_frame_free(&buf);

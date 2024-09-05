@@ -36,6 +36,7 @@
 #include "mediacodec.h"
 #include "mediacodec_wrapper.h"
 #include "mediacodecdec_common.h"
+#include "profiles.h"
 
 #define INPUT_DEQUEUE_TIMEOUT_US 8000
 #define OUTPUT_DEQUEUE_TIMEOUT_US 8000
@@ -164,6 +165,18 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
     case AV_CODEC_ID_HEVC:
         codec_mime = "video/hevc";
         break;
+    case AV_CODEC_ID_VP8:
+        codec_mime = "video/x-vnd.on2.vp8";
+        break;
+    case AV_CODEC_ID_VP9:
+        codec_mime = "video/x-vnd.on2.vp9";
+        break;
+    case AV_CODEC_ID_MPEG4:
+        codec_mime = "video/mp4v-es";
+        break;
+    case AV_CODEC_ID_AV1:
+        codec_mime = "video/av01";
+        break;
     default:
         av_assert0(0);
     }
@@ -187,9 +200,19 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
     ff_AMediaFormat_setString(format, "mime", codec_mime);
     // Workaround the alignment requirement of mediacodec. We can't do it
     // silently for AV_PIX_FMT_MEDIACODEC.
-    if (avctx->pix_fmt != AV_PIX_FMT_MEDIACODEC) {
+    if (avctx->pix_fmt != AV_PIX_FMT_MEDIACODEC &&
+        (avctx->codec_id == AV_CODEC_ID_H264 ||
+         avctx->codec_id == AV_CODEC_ID_HEVC)) {
         s->width = FFALIGN(avctx->width, 16);
         s->height = FFALIGN(avctx->height, 16);
+        // If avctx video size is aligned to 16 already, we don't need to do
+        // anything. If align is needed for HEVC, we should use the maximum CTU
+        // size.
+        if (avctx->codec_id == AV_CODEC_ID_HEVC &&
+            (s->width != avctx->width || s->height != avctx->height)) {
+            s->width = FFALIGN(avctx->width, 64);
+            s->height = FFALIGN(avctx->height, 64);
+        }
     } else {
         s->width = avctx->width;
         s->height = avctx->height;
@@ -243,10 +266,23 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
         }
     }
 
+    ret = ff_AMediaFormatColorRange_from_AVColorRange(avctx->color_range);
+    if (ret != COLOR_RANGE_UNSPECIFIED)
+        ff_AMediaFormat_setInt32(format, "color-range", ret);
+    ret = ff_AMediaFormatColorStandard_from_AVColorSpace(avctx->colorspace);
+    if (ret != COLOR_STANDARD_UNSPECIFIED)
+        ff_AMediaFormat_setInt32(format, "color-standard", ret);
+    ret = ff_AMediaFormatColorTransfer_from_AVColorTransfer(avctx->color_trc);
+    if (ret != COLOR_TRANSFER_UNSPECIFIED)
+        ff_AMediaFormat_setInt32(format, "color-transfer", ret);
+
     if (avctx->bit_rate)
         ff_AMediaFormat_setInt32(format, "bitrate", avctx->bit_rate);
-    if (s->bitrate_mode >= 0)
+    if (s->bitrate_mode >= 0) {
         ff_AMediaFormat_setInt32(format, "bitrate-mode", s->bitrate_mode);
+        if (s->bitrate_mode == BITRATE_MODE_CQ && avctx->global_quality > 0)
+            ff_AMediaFormat_setInt32(format, "quality", avctx->global_quality);
+    }
     // frame-rate and i-frame-interval are required to configure codec
     if (avctx->framerate.num >= avctx->framerate.den && avctx->framerate.den > 0) {
         s->fps = avctx->framerate.num / avctx->framerate.den;
@@ -293,6 +329,9 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
     ret = ff_AMediaCodec_configure(s->codec, format, s->window, NULL, ret);
     if (ret) {
         av_log(avctx, AV_LOG_ERROR, "MediaCodec configure failed, %s\n", av_err2str(ret));
+        if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
+            av_log(avctx, AV_LOG_ERROR, "Please try -pix_fmt nv12, some devices don't "
+                                        "support yuv420p as encoder input format.\n");
         goto bailout;
     }
 
@@ -307,6 +346,10 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
         goto bailout;
 
     mediacodec_output_format(avctx);
+    if (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)
+        av_log(avctx, AV_LOG_WARNING,
+                "Mediacodec encoder doesn't support AV_CODEC_FLAG_GLOBAL_HEADER. "
+                "Use extract_extradata bsf when necessary.\n");
 
     s->frame = av_frame_alloc();
     if (!s->frame)
@@ -401,9 +444,6 @@ static void copy_frame_to_buffer(AVCodecContext *avctx, const AVFrame *frame, ui
     MediaCodecEncContext *s = avctx->priv_data;
     uint8_t *dst_data[4] = {};
     int dst_linesize[4] = {};
-    const uint8_t *src_data[4] = {
-            frame->data[0], frame->data[1], frame->data[2], frame->data[3]
-    };
 
     if (avctx->pix_fmt == AV_PIX_FMT_YUV420P) {
         dst_data[0] = dst;
@@ -422,8 +462,8 @@ static void copy_frame_to_buffer(AVCodecContext *avctx, const AVFrame *frame, ui
         av_assert0(0);
     }
 
-    av_image_copy(dst_data, dst_linesize, src_data, frame->linesize,
-                  avctx->pix_fmt, avctx->width, avctx->height);
+    av_image_copy2(dst_data, dst_linesize, frame->data, frame->linesize,
+                   avctx->pix_fmt, avctx->width, avctx->height);
 }
 
 static int mediacodec_send(AVCodecContext *avctx,
@@ -503,7 +543,7 @@ static int mediacodec_encode(AVCodecContext *avctx, AVPacket *pkt)
                 return 0;
         }
 
-        if (ret != AVERROR(EAGAIN))
+        if (ret < 0 && ret != AVERROR(EAGAIN))
             return ret;
 
         if (!s->frame->buf[0]) {
@@ -563,15 +603,15 @@ static const AVCodecHWConfigInternal *const mediacodec_hw_configs[] = {
     { "codec_name", "Select codec by name",                                                                 \
                     OFFSET(name), AV_OPT_TYPE_STRING, {0}, 0, 0, VE },                                      \
     { "bitrate_mode", "Bitrate control method",                                                             \
-                    OFFSET(bitrate_mode), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE, "bitrate_mode" },  \
-    { "cq", "Constant quality mode",                                                                        \
-                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_CQ}, 0, 0, VE, "bitrate_mode" },             \
-    { "vbr", "Variable bitrate mode",                                                                       \
-                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_VBR}, 0, 0, VE, "bitrate_mode" },            \
-    { "cbr", "Constant bitrate mode",                                                                       \
-                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_CBR}, 0, 0, VE, "bitrate_mode" },            \
-    { "cbr_fd", "Constant bitrate mode with frame drops",                                                   \
-                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_CBR_FD}, 0, 0, VE, "bitrate_mode" },         \
+                    OFFSET(bitrate_mode), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE, .unit = "bitrate_mode" },  \
+    { "cq", "Constant quality mode",                                                                                \
+                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_CQ}, 0, 0, VE, .unit = "bitrate_mode" },             \
+    { "vbr", "Variable bitrate mode",                                                                               \
+                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_VBR}, 0, 0, VE, .unit = "bitrate_mode" },            \
+    { "cbr", "Constant bitrate mode",                                                                               \
+                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_CBR}, 0, 0, VE, .unit = "bitrate_mode" },            \
+    { "cbr_fd", "Constant bitrate mode with frame drops",                                                           \
+                    0, AV_OPT_TYPE_CONST, {.i64 = BITRATE_MODE_CBR_FD}, 0, 0, VE, .unit = "bitrate_mode" },         \
     { "pts_as_dts", "Use PTS as DTS. It is enabled automatically if avctx max_b_frames <= 0, "              \
                     "since most of Android devices don't output B frames by default.",                      \
                     OFFSET(pts_as_dts), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, VE },                         \
@@ -632,28 +672,38 @@ enum MediaCodecAvcLevel {
 
 static const AVOption h264_options[] = {
     COMMON_OPTION
+
+    FF_AVCTX_PROFILE_OPTION("baseline",             NULL, VIDEO, AV_PROFILE_H264_BASELINE)
+    FF_AVCTX_PROFILE_OPTION("constrained_baseline", NULL, VIDEO, AV_PROFILE_H264_CONSTRAINED_BASELINE)
+    FF_AVCTX_PROFILE_OPTION("main",                 NULL, VIDEO, AV_PROFILE_H264_MAIN)
+    FF_AVCTX_PROFILE_OPTION("extended",             NULL, VIDEO, AV_PROFILE_H264_EXTENDED)
+    FF_AVCTX_PROFILE_OPTION("high",                 NULL, VIDEO, AV_PROFILE_H264_HIGH)
+    FF_AVCTX_PROFILE_OPTION("high10",               NULL, VIDEO, AV_PROFILE_H264_HIGH_10)
+    FF_AVCTX_PROFILE_OPTION("high422",              NULL, VIDEO, AV_PROFILE_H264_HIGH_422)
+    FF_AVCTX_PROFILE_OPTION("high444",              NULL, VIDEO, AV_PROFILE_H264_HIGH_444)
+
     { "level", "Specify level",
-                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, "level" },
-    { "1",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel1  },  0, 0, VE, "level" },
-    { "1b",     "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel1b }, 0, 0, VE, "level" },
-    { "1.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel11 }, 0, 0, VE, "level" },
-    { "1.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel12 }, 0, 0, VE, "level" },
-    { "1.3",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel13 }, 0, 0, VE, "level" },
-    { "2",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel2  },  0, 0, VE, "level" },
-    { "2.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel21 }, 0, 0, VE, "level" },
-    { "2.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel22 }, 0, 0, VE, "level" },
-    { "3",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel3  },  0, 0, VE, "level" },
-    { "3.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel31 }, 0, 0, VE, "level" },
-    { "3.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel32 }, 0, 0, VE, "level" },
-    { "4",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel4  },  0, 0, VE, "level" },
-    { "4.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel41 }, 0, 0, VE, "level" },
-    { "4.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel42 }, 0, 0, VE, "level" },
-    { "5",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel5  },  0, 0, VE, "level" },
-    { "5.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel51 }, 0, 0, VE, "level" },
-    { "5.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel52 }, 0, 0, VE, "level" },
-    { "6.0",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel6  }, 0, 0, VE, "level" },
-    { "6.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel61 }, 0, 0, VE, "level" },
-    { "6.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel62 }, 0, 0, VE, "level" },
+                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, .unit = "level" },
+    { "1",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel1  }, 0, 0, VE, .unit = "level" },
+    { "1b",     "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel1b }, 0, 0, VE, .unit = "level" },
+    { "1.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel11 }, 0, 0, VE, .unit = "level" },
+    { "1.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel12 }, 0, 0, VE, .unit = "level" },
+    { "1.3",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel13 }, 0, 0, VE, .unit = "level" },
+    { "2",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel2  }, 0, 0, VE, .unit = "level" },
+    { "2.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel21 }, 0, 0, VE, .unit = "level" },
+    { "2.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel22 }, 0, 0, VE, .unit = "level" },
+    { "3",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel3  }, 0, 0, VE, .unit = "level" },
+    { "3.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel31 }, 0, 0, VE, .unit = "level" },
+    { "3.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel32 }, 0, 0, VE, .unit = "level" },
+    { "4",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel4  }, 0, 0, VE, .unit = "level" },
+    { "4.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel41 }, 0, 0, VE, .unit = "level" },
+    { "4.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel42 }, 0, 0, VE, .unit = "level" },
+    { "5",      "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel5  }, 0, 0, VE, .unit = "level" },
+    { "5.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel51 }, 0, 0, VE, .unit = "level" },
+    { "5.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel52 }, 0, 0, VE, .unit = "level" },
+    { "6.0",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel6  }, 0, 0, VE, .unit = "level" },
+    { "6.1",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel61 }, 0, 0, VE, .unit = "level" },
+    { "6.2",    "", 0, AV_OPT_TYPE_CONST, { .i64 = AVCLevel62 }, 0, 0, VE, .unit = "level" },
     { NULL, }
 };
 
@@ -694,63 +744,299 @@ enum MediaCodecHevcLevel {
 
 static const AVOption hevc_options[] = {
     COMMON_OPTION
+
+    FF_AVCTX_PROFILE_OPTION("main",   NULL, VIDEO, AV_PROFILE_HEVC_MAIN)
+    FF_AVCTX_PROFILE_OPTION("main10", NULL, VIDEO, AV_PROFILE_HEVC_MAIN_10)
+
     { "level", "Specify tier and level",
-                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, "level" },
+                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, .unit = "level" },
     { "m1",    "Main tier level 1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel1  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel1  },  0, 0, VE,  .unit = "level" },
     { "h1",    "High tier level 1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel1  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel1  },  0, 0, VE,  .unit = "level" },
     { "m2",    "Main tier level 2",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel2  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel2  },  0, 0, VE,  .unit = "level" },
     { "h2",    "High tier level 2",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel2  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel2  },  0, 0, VE,  .unit = "level" },
     { "m2.1",  "Main tier level 2.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel21 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel21 },  0, 0, VE,  .unit = "level" },
     { "h2.1",  "High tier level 2.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel21 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel21 },  0, 0, VE,  .unit = "level" },
     { "m3",    "Main tier level 3",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel3  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel3  },  0, 0, VE,  .unit = "level" },
     { "h3",    "High tier level 3",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel3  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel3  },  0, 0, VE,  .unit = "level" },
     { "m3.1",  "Main tier level 3.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel31 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel31 },  0, 0, VE,  .unit = "level" },
     { "h3.1",  "High tier level 3.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel31 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel31 },  0, 0, VE,  .unit = "level" },
     { "m4",    "Main tier level 4",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel4  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel4  },  0, 0, VE,  .unit = "level" },
     { "h4",    "High tier level 4",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel4  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel4  },  0, 0, VE,  .unit = "level" },
     { "m4.1",  "Main tier level 4.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel41 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel41 },  0, 0, VE,  .unit = "level" },
     { "h4.1",  "High tier level 4.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel41 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel41 },  0, 0, VE,  .unit = "level" },
     { "m5",    "Main tier level 5",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel5  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel5  },  0, 0, VE,  .unit = "level" },
     { "h5",    "High tier level 5",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel5  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel5  },  0, 0, VE,  .unit = "level" },
     { "m5.1",  "Main tier level 5.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel51 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel51 },  0, 0, VE,  .unit = "level" },
     { "h5.1",  "High tier level 5.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel51 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel51 },  0, 0, VE,  .unit = "level" },
     { "m5.2",  "Main tier level 5.2",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel52 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel52 },  0, 0, VE,  .unit = "level" },
     { "h5.2",  "High tier level 5.2",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel52 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel52 },  0, 0, VE,  .unit = "level" },
     { "m6",    "Main tier level 6",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel6  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel6  },  0, 0, VE,  .unit = "level" },
     { "h6",    "High tier level 6",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel6  },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel6  },  0, 0, VE,  .unit = "level" },
     { "m6.1",  "Main tier level 6.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel61 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel61 },  0, 0, VE,  .unit = "level" },
     { "h6.1",  "High tier level 6.1",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel61 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel61 },  0, 0, VE,  .unit = "level" },
     { "m6.2",  "Main tier level 6.2",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel62 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCMainTierLevel62 },  0, 0, VE,  .unit = "level" },
     { "h6.2",  "High tier level 6.2",
-                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel62 },  0, 0, VE,  "level" },
+                0, AV_OPT_TYPE_CONST, { .i64 = HEVCHighTierLevel62 },  0, 0, VE,  .unit = "level" },
     { NULL, }
 };
 
 DECLARE_MEDIACODEC_ENCODER(hevc, "H.265", AV_CODEC_ID_HEVC)
 
 #endif  // CONFIG_HEVC_MEDIACODEC_ENCODER
+
+#if CONFIG_VP8_MEDIACODEC_ENCODER
+
+enum MediaCodecVP8Level {
+    VP8Level_Version0 = 0x01,
+    VP8Level_Version1 = 0x02,
+    VP8Level_Version2 = 0x04,
+    VP8Level_Version3 = 0x08,
+};
+
+static const AVOption vp8_options[] = {
+    COMMON_OPTION
+    { "level", "Specify tier and level",
+                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, .unit = "level" },
+    { "V0",    "Level Version 0",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP8Level_Version0 },  0, 0, VE,  .unit = "level" },
+    { "V1",    "Level Version 1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP8Level_Version1 },  0, 0, VE,  .unit = "level" },
+    { "V2",    "Level Version 2",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP8Level_Version2 },  0, 0, VE,  .unit = "level" },
+    { "V3",    "Level Version 3",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP8Level_Version3 },  0, 0, VE,  .unit = "level" },
+    { NULL, }
+};
+
+DECLARE_MEDIACODEC_ENCODER(vp8, "VP8", AV_CODEC_ID_VP8)
+
+#endif  // CONFIG_VP8_MEDIACODEC_ENCODER
+
+#if CONFIG_VP9_MEDIACODEC_ENCODER
+
+enum MediaCodecVP9Level {
+    VP9Level1  = 0x1,
+    VP9Level11  = 0x2,
+    VP9Level2  = 0x4,
+    VP9Level21  = 0x8,
+    VP9Level3 = 0x10,
+    VP9Level31 = 0x20,
+    VP9Level4  = 0x40,
+    VP9Level41  = 0x80,
+    VP9Level5 = 0x100,
+    VP9Level51 = 0x200,
+    VP9Level52  = 0x400,
+    VP9Level6  = 0x800,
+    VP9Level61 = 0x1000,
+    VP9Level62 = 0x2000,
+};
+
+static const AVOption vp9_options[] = {
+    COMMON_OPTION
+
+    FF_AVCTX_PROFILE_OPTION("profile0",   NULL, VIDEO, AV_PROFILE_VP9_0)
+    FF_AVCTX_PROFILE_OPTION("profile1",   NULL, VIDEO, AV_PROFILE_VP9_1)
+    FF_AVCTX_PROFILE_OPTION("profile2",   NULL, VIDEO, AV_PROFILE_VP9_2)
+    FF_AVCTX_PROFILE_OPTION("profile3",   NULL, VIDEO, AV_PROFILE_VP9_3)
+
+    { "level", "Specify tier and level",
+                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, .unit = "level" },
+    { "1",     "Level 1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level1  },  0, 0, VE,  .unit = "level" },
+    { "1.1",   "Level 1.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level11 },  0, 0, VE,  .unit = "level" },
+    { "2",     "Level 2",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level2  },  0, 0, VE,  .unit = "level" },
+    { "2.1",   "Level 2.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level21 },  0, 0, VE,  .unit = "level" },
+    { "3",     "Level 3",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level3  },  0, 0, VE,  .unit = "level" },
+    { "3.1",   "Level 3.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level31 },  0, 0, VE,  .unit = "level" },
+    { "4",     "Level 4",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level4  },  0, 0, VE,  .unit = "level" },
+    { "4.1",   "Level 4.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level41 },  0, 0, VE,  .unit = "level" },
+    { "5",     "Level 5",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level5  },  0, 0, VE,  .unit = "level" },
+    { "5.1",   "Level 5.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level51 },  0, 0, VE,  .unit = "level" },
+    { "5.2",   "Level 5.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level52 },  0, 0, VE,  .unit = "level" },
+    { "6",     "Level 6",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level6  },  0, 0, VE,  .unit = "level" },
+    { "6.1",   "Level 4.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level61 },  0, 0, VE,  .unit = "level" },
+    { "6.2",   "Level 6.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = VP9Level62 },  0, 0, VE,  .unit = "level" },
+    { NULL, }
+};
+
+DECLARE_MEDIACODEC_ENCODER(vp9, "VP9", AV_CODEC_ID_VP9)
+
+#endif  // CONFIG_VP9_MEDIACODEC_ENCODER
+
+#if CONFIG_MPEG4_MEDIACODEC_ENCODER
+
+enum MediaCodecMpeg4Level {
+    MPEG4Level0  = 0x01,
+    MPEG4Level0b  = 0x02,
+    MPEG4Level1 = 0x04,
+    MPEG4Level2  = 0x08,
+    MPEG4Level3 = 0x10,
+    MPEG4Level3b = 0x18,
+    MPEG4Level4 = 0x20,
+    MPEG4Level4a  = 0x40,
+    MPEG4Level5  = 0x80,
+    MPEG4Level6 = 0x100,
+};
+
+static const AVOption mpeg4_options[] = {
+    COMMON_OPTION
+
+    FF_MPEG4_PROFILE_OPTS
+
+    { "level", "Specify tier and level",
+                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, .unit = "level" },
+    { "0",     "Level 0",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level0  },  0, 0, VE,  .unit = "level" },
+    { "0b",    "Level 0b",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level0b },  0, 0, VE,  .unit = "level" },
+    { "1",     "Level 1",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level1  },  0, 0, VE,  .unit = "level" },
+    { "2",     "Level 2",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level2 },  0, 0, VE,  .unit = "level" },
+    { "3",     "Level 3",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level3  },  0, 0, VE,  .unit = "level" },
+    { "3b",    "Level 3b",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level3b },  0, 0, VE,  .unit = "level" },
+    { "4",     "Level 4",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level4  },  0, 0, VE,  .unit = "level" },
+    { "4a",    "Level 4a",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level4a },  0, 0, VE,  .unit = "level" },
+    { "5",     "Level 5",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level5  },  0, 0, VE,  .unit = "level" },
+    { "6",     "Level 6",
+                0, AV_OPT_TYPE_CONST, { .i64 = MPEG4Level6  },  0, 0, VE,  .unit = "level" },
+    { NULL, }
+};
+
+DECLARE_MEDIACODEC_ENCODER(mpeg4, "MPEG-4", AV_CODEC_ID_MPEG4)
+
+#endif  // CONFIG_MPEG4_MEDIACODEC_ENCODER
+
+#if CONFIG_AV1_MEDIACODEC_ENCODER
+
+enum MediaCodecAV1Level {
+    AV1Level2  = 0x1,
+    AV1Level21 = 0x2,
+    AV1Level22 = 0x4,
+    AV1Level23 = 0x8,
+    AV1Level3  = 0x10,
+    AV1Level31 = 0x20,
+    AV1Level32 = 0x40,
+    AV1Level33 = 0x80,
+    AV1Level4  = 0x100,
+    AV1Level41 = 0x200,
+    AV1Level42 = 0x400,
+    AV1Level43 = 0x800,
+    AV1Level5  = 0x1000,
+    AV1Level51 = 0x2000,
+    AV1Level52 = 0x4000,
+    AV1Level53 = 0x8000,
+    AV1Level6  = 0x10000,
+    AV1Level61 = 0x20000,
+    AV1Level62 = 0x40000,
+    AV1Level63 = 0x80000,
+    AV1Level7  = 0x100000,
+    AV1Level71 = 0x200000,
+    AV1Level72 = 0x400000,
+    AV1Level73 = 0x800000,
+};
+
+static const AVOption av1_options[] = {
+    COMMON_OPTION
+
+    FF_AV1_PROFILE_OPTS
+
+    { "level", "Specify tier and level",
+                OFFSET(level), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE, .unit = "level" },
+    { "2",     "Level 2",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level2  },  0, 0, VE,  .unit = "level" },
+    { "2.1",    "Level 2.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level21 },  0, 0, VE,  .unit = "level" },
+    { "2.2",    "Level 2.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level22 },  0, 0, VE,  .unit = "level" },
+    { "2.3",    "Level 2.3",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level23 },  0, 0, VE,  .unit = "level" },
+    { "3",      "Level 3",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level3  },  0, 0, VE,  .unit = "level" },
+    { "3.1",    "Level 3.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level31 },  0, 0, VE,  .unit = "level" },
+    { "3.2",    "Level 3.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level32 },  0, 0, VE,  .unit = "level" },
+    { "3.3",    "Level 3.3",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level33 },  0, 0, VE,  .unit = "level" },
+    { "4",      "Level 4",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level4  },  0, 0, VE,  .unit = "level" },
+    { "4.1",    "Level 4.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level41 },  0, 0, VE,  .unit = "level" },
+    { "4.2",    "Level 4.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level42 },  0, 0, VE,  .unit = "level" },
+    { "4.3",    "Level 4.3",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level43 },  0, 0, VE,  .unit = "level" },
+    { "5",      "Level 5",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level5  },  0, 0, VE,  .unit = "level" },
+    { "5.1",    "Level 5.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level51 },  0, 0, VE,  .unit = "level" },
+    { "5.2",    "Level 5.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level52 },  0, 0, VE,  .unit = "level" },
+    { "5.3",    "Level 5.3",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level53 },  0, 0, VE,  .unit = "level" },
+    { "6",      "Level 6",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level6  },  0, 0, VE,  .unit = "level" },
+    { "6.1",    "Level 6.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level61 },  0, 0, VE,  .unit = "level" },
+    { "6.2",    "Level 6.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level62 },  0, 0, VE,  .unit = "level" },
+    { "6.3",    "Level 6.3",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level63 },  0, 0, VE,  .unit = "level" },
+    { "7",      "Level 7",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level7  },  0, 0, VE,  .unit = "level" },
+    { "7.1",    "Level 7.1",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level71 },  0, 0, VE,  .unit = "level" },
+    { "7.2",    "Level 7.2",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level72 },  0, 0, VE,  .unit = "level" },
+    { "7.3",    "Level 7.3",
+                0, AV_OPT_TYPE_CONST, { .i64 = AV1Level73 },  0, 0, VE,  .unit = "level" },
+    { NULL, }
+};
+
+DECLARE_MEDIACODEC_ENCODER(av1, "AV1", AV_CODEC_ID_AV1)
+
+#endif  // CONFIG_AV1_MEDIACODEC_ENCODER

@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-mingw_commit="f1075a71a0027febccc19a1db0244e98f9ae0102"
+mingw_commit="1b554dec06f8d3c26b856a7d1575f396d8ffa403"
 git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 git checkout ${mingw_commit}
@@ -230,8 +230,9 @@ make install
 popd
 
 # LIBBLURAY
-git clone --depth=1 https://code.videolan.org/videolan/libbluray.git
+git clone -b 1.3.4 --depth=1 https://code.videolan.org/videolan/libbluray.git
 pushd libbluray
+sed -i 's/dec_init/libbluray_dec_init/g' src/libbluray/disc/*.{c,h}
 ./bootstrap
 ./configure \
     --prefix=${FF_DEPS_PREFIX} \
@@ -453,7 +454,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v2.1.2 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v2.2.1 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
@@ -554,7 +555,7 @@ popd
 popd
 
 # VPL
-git clone -b v2.12.0 --depth=1 https://github.com/intel/libvpl.git
+git clone -b v2.13.0 --depth=1 https://github.com/intel/libvpl.git
 pushd libvpl
 mkdir build && pushd build
 cmake \
@@ -564,10 +565,8 @@ cmake \
     -DCMAKE_INSTALL_LIBDIR=${FF_DEPS_PREFIX}/lib \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
-    -DBUILD_{DISPATCHER,DEV}=ON \
-    -DBUILD_{PREVIEW,TESTS}=OFF \
-    -DBUILD_TOOLS{,_ONEVPL_EXPERIMENTAL}=OFF \
-    -DINSTALL_EXAMPLE_CODE=OFF \
+    -DINSTALL_{DEV,LIB}=ON \
+    -DBUILD_{TESTS,EXAMPLES,EXPERIMENTAL}=OFF \
     ..
 make -j$(nproc)
 make install
@@ -592,7 +591,7 @@ fi
     --disable-w32threads \
     --enable-pthreads \
     --enable-shared \
-    --enable-lto \
+    --enable-lto=auto \
     --enable-gpl \
     --enable-version3 \
     --enable-schannel \
@@ -605,6 +604,7 @@ fi
     --enable-libfreetype \
     --enable-libfribidi \
     --enable-libfontconfig \
+    --enable-libharfbuzz \
     --enable-libass \
     --enable-libbluray \
     --enable-libmp3lame \
@@ -623,6 +623,7 @@ fi
     --enable-opencl \
     --enable-dxva2 \
     --enable-d3d11va \
+    --enable-d3d12va \
     --enable-amf \
     --enable-libvpl \
     --enable-ffnvcodec \

@@ -56,7 +56,7 @@ FATE_VP6-$(call FRAMECRC, FLV, VP6F) += fate-vp6f
 fate-vp6f: CMD = framecrc -flags +bitexact -i $(TARGET_SAMPLES)/flash-vp6/clip1024.flv
 
 FATE_VP8-$(call FRAMECRC, MATROSKA, VP8) += fate-vp8-2451
-fate-vp8-2451: CMD = framecrc -flags +bitexact -i $(TARGET_SAMPLES)/vp8/RRSF49-short.webm -vsync cfr -an
+fate-vp8-2451: CMD = framecrc -flags +bitexact -i $(TARGET_SAMPLES)/vp8/RRSF49-short.webm -fps_mode cfr -an
 
 FATE_SAMPLES_AVCONV += $(FATE_VP6-yes)
 fate-vp6: $(FATE_VP6-yes)
@@ -137,6 +137,10 @@ fate-vp9-05-resize: REF = $(SRC_PATH)/tests/ref/fate/vp9-05-resize
 
 fate-vp9-encparams: CMD = venc_data $(TARGET_SAMPLES)/vp9-test-vectors/vp90-2-segmentation-aq-akiyo.webm 0 5
 FATE_SAMPLES_DUMP_DATA-$(call DEMDEC, MATROSKA, VP9) += fate-vp9-encparams
+
+FATE_VP9-$(call ALLYES, MATROSKA_DEMUXER VP9_PARSER VP9_SUPERFRAME_SPLIT_BSF \
+                        VP9_SUPERFRAME_BSF FILE_PROTOCOL FRAMECRC_MUXER) += fate-vp9-superframe-bsf
+fate-vp9-superframe-bsf: CMD = framecrc -i $(TARGET_SAMPLES)/vp9-test-vectors/vp90-2-segmentation-sf-akiyo.webm -c:v copy -bsf:v vp9_superframe_split,vp9_superframe
 
 FATE_VP9-$(call DEMDEC, MATROSKA, VP9) += fate-vp9-encparams
 

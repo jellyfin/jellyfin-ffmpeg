@@ -28,6 +28,7 @@
 #include "decode.h"
 #include "internal.h"
 #include "h264dec.h"
+#include "hwaccel_internal.h"
 
 static void dpb_add(const H264Context *h, CUVIDH264DPBENTRY *dst, const H264Picture *src,
                     int frame_idx)
@@ -137,11 +138,11 @@ static int nvdec_h264_decode_slice(AVCodecContext *avctx, const uint8_t *buffer,
     const H264SliceContext *sl = &h->slice_ctx[0];
     void *tmp;
 
-    tmp = av_fast_realloc(ctx->bitstream, &ctx->bitstream_allocated,
+    tmp = av_fast_realloc(ctx->bitstream_internal, &ctx->bitstream_allocated,
                           ctx->bitstream_len + size + 3);
     if (!tmp)
         return AVERROR(ENOMEM);
-    ctx->bitstream = tmp;
+    ctx->bitstream = ctx->bitstream_internal = tmp;
 
     tmp = av_fast_realloc(ctx->slice_offsets, &ctx->slice_offsets_allocated,
                           (ctx->nb_slices + 1) * sizeof(*ctx->slice_offsets));
@@ -149,8 +150,8 @@ static int nvdec_h264_decode_slice(AVCodecContext *avctx, const uint8_t *buffer,
         return AVERROR(ENOMEM);
     ctx->slice_offsets = tmp;
 
-    AV_WB24(ctx->bitstream + ctx->bitstream_len, 1);
-    memcpy(ctx->bitstream + ctx->bitstream_len + 3, buffer, size);
+    AV_WB24(ctx->bitstream_internal + ctx->bitstream_len, 1);
+    memcpy(ctx->bitstream_internal + ctx->bitstream_len + 3, buffer, size);
     ctx->slice_offsets[ctx->nb_slices] = ctx->bitstream_len ;
     ctx->bitstream_len += size + 3;
     ctx->nb_slices++;
@@ -169,11 +170,11 @@ static int nvdec_h264_frame_params(AVCodecContext *avctx,
     return ff_nvdec_frame_params(avctx, hw_frames_ctx, sps->ref_frame_count + sps->num_reorder_frames, 0);
 }
 
-const AVHWAccel ff_h264_nvdec_hwaccel = {
-    .name                 = "h264_nvdec",
-    .type                 = AVMEDIA_TYPE_VIDEO,
-    .id                   = AV_CODEC_ID_H264,
-    .pix_fmt              = AV_PIX_FMT_CUDA,
+const FFHWAccel ff_h264_nvdec_hwaccel = {
+    .p.name               = "h264_nvdec",
+    .p.type               = AVMEDIA_TYPE_VIDEO,
+    .p.id                 = AV_CODEC_ID_H264,
+    .p.pix_fmt            = AV_PIX_FMT_CUDA,
     .start_frame          = nvdec_h264_start_frame,
     .end_frame            = ff_nvdec_end_frame,
     .decode_slice         = nvdec_h264_decode_slice,

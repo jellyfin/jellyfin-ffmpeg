@@ -33,6 +33,7 @@
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "avfilter.h"
+#include "formats.h"
 #include "internal.h"
 
 typedef struct URITable {
@@ -291,11 +292,6 @@ static int config_output(AVFilterLink *outlink)
             int ret;
             if ((ret = av_channel_layout_copy(&outlink->ch_layout, &inlink->ch_layout)) < 0)
                 return ret;
-#if FF_API_OLD_CHANNEL_LAYOUT
-FF_DISABLE_DEPRECATION_WARNINGS
-            outlink->channel_layout = inlink->channel_layout;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         }
 
     } else {

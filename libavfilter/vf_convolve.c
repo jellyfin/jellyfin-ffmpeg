@@ -22,16 +22,13 @@
 
 #include <float.h>
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/tx.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
-#include "video.h"
 
 #define MAX_THREADS 16
 
@@ -86,9 +83,9 @@ typedef struct ConvolveContext {
 
 static const AVOption convolve_options[] = {
     { "planes",  "set planes to convolve",                  OFFSET(planes),   AV_OPT_TYPE_INT,   {.i64=7}, 0, 15, FLAGS },
-    { "impulse", "when to process impulses",                OFFSET(impulse),  AV_OPT_TYPE_INT,   {.i64=1}, 0,  1, FLAGS, "impulse" },
-    {   "first", "process only first impulse, ignore rest", 0,                AV_OPT_TYPE_CONST, {.i64=0}, 0,  0, FLAGS, "impulse" },
-    {   "all",   "process all impulses",                    0,                AV_OPT_TYPE_CONST, {.i64=1}, 0,  0, FLAGS, "impulse" },
+    { "impulse", "when to process impulses",                OFFSET(impulse),  AV_OPT_TYPE_INT,   {.i64=1}, 0,  1, FLAGS, .unit = "impulse" },
+    {   "first", "process only first impulse, ignore rest", 0,                AV_OPT_TYPE_CONST, {.i64=0}, 0,  0, FLAGS, .unit = "impulse" },
+    {   "all",   "process all impulses",                    0,                AV_OPT_TYPE_CONST, {.i64=1}, 0,  0, FLAGS, .unit = "impulse" },
     { "noise",   "set noise",                               OFFSET(noise),    AV_OPT_TYPE_FLOAT, {.dbl=0.0000001}, 0,  1, FLAGS },
     { NULL },
 };
@@ -895,9 +892,9 @@ const AVFilter ff_vf_convolve = {
 
 static const AVOption deconvolve_options[] = {
     { "planes",  "set planes to deconvolve",                OFFSET(planes),   AV_OPT_TYPE_INT,   {.i64=7}, 0, 15, FLAGS },
-    { "impulse", "when to process impulses",                OFFSET(impulse),  AV_OPT_TYPE_INT,   {.i64=1}, 0,  1, FLAGS, "impulse" },
-    {   "first", "process only first impulse, ignore rest", 0,                AV_OPT_TYPE_CONST, {.i64=0}, 0,  0, FLAGS, "impulse" },
-    {   "all",   "process all impulses",                    0,                AV_OPT_TYPE_CONST, {.i64=1}, 0,  0, FLAGS, "impulse" },
+    { "impulse", "when to process impulses",                OFFSET(impulse),  AV_OPT_TYPE_INT,   {.i64=1}, 0,  1, FLAGS, .unit = "impulse" },
+    {   "first", "process only first impulse, ignore rest", 0,                AV_OPT_TYPE_CONST, {.i64=0}, 0,  0, FLAGS, .unit = "impulse" },
+    {   "all",   "process all impulses",                    0,                AV_OPT_TYPE_CONST, {.i64=1}, 0,  0, FLAGS, .unit = "impulse" },
     { "noise",   "set noise",                               OFFSET(noise),    AV_OPT_TYPE_FLOAT, {.dbl=0.0000001}, 0,  1, FLAGS },
     { NULL },
 };
@@ -925,9 +922,9 @@ const AVFilter ff_vf_deconvolve = {
 
 static const AVOption xcorrelate_options[] = {
     { "planes",  "set planes to cross-correlate",     OFFSET(planes),   AV_OPT_TYPE_INT,   {.i64=7}, 0, 15, FLAGS },
-    { "secondary", "when to process secondary frame", OFFSET(impulse),  AV_OPT_TYPE_INT,   {.i64=1}, 0,  1, FLAGS, "impulse" },
-    {   "first", "process only first secondary frame, ignore rest", 0,  AV_OPT_TYPE_CONST, {.i64=0}, 0,  0, FLAGS, "impulse" },
-    {   "all",   "process all secondary frames",                    0,  AV_OPT_TYPE_CONST, {.i64=1}, 0,  0, FLAGS, "impulse" },
+    { "secondary", "when to process secondary frame", OFFSET(impulse),  AV_OPT_TYPE_INT,   {.i64=1}, 0,  1, FLAGS, .unit = "impulse" },
+    {   "first", "process only first secondary frame, ignore rest", 0,  AV_OPT_TYPE_CONST, {.i64=0}, 0,  0, FLAGS, .unit = "impulse" },
+    {   "all",   "process all secondary frames",                    0,  AV_OPT_TYPE_CONST, {.i64=1}, 0,  0, FLAGS, .unit = "impulse" },
     { NULL },
 };
 
@@ -958,13 +955,7 @@ static const AVFilterPad xcorrelate_inputs[] = {
     },
 };
 
-static const AVFilterPad xcorrelate_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_VIDEO,
-        .config_props  = config_output,
-    },
-};
+#define xcorrelate_outputs convolve_outputs
 
 const AVFilter ff_vf_xcorrelate = {
     .name          = "xcorrelate",

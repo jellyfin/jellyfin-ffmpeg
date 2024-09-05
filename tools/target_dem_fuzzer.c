@@ -23,7 +23,7 @@
 #include "libavcodec/avcodec.h"
 #include "libavcodec/bytestream.h"
 #include "libavformat/avformat.h"
-
+#include "libavformat/demux.h"
 
 typedef struct IOContext {
     int64_t pos;
@@ -113,12 +113,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     static int c;
     int seekable = 0;
     int ret;
-    AVInputFormat *fmt = NULL;
+    const AVInputFormat *fmt = NULL;
 #ifdef FFMPEG_DEMUXER
 #define DEMUXER_SYMBOL0(DEMUXER) ff_##DEMUXER##_demuxer
 #define DEMUXER_SYMBOL(DEMUXER) DEMUXER_SYMBOL0(DEMUXER)
-    extern AVInputFormat DEMUXER_SYMBOL(FFMPEG_DEMUXER);
-    fmt = &DEMUXER_SYMBOL(FFMPEG_DEMUXER);
+    extern const FFInputFormat DEMUXER_SYMBOL(FFMPEG_DEMUXER);
+    fmt = &DEMUXER_SYMBOL(FFMPEG_DEMUXER).p;
 #endif
 
     if (!c) {

@@ -1,3 +1,6 @@
 * text eol=lf
+*.ico -diff -text
 *.pnm -diff -text
-tests/ref/fate/sub-scc eol=crlf
+debian/patches/* -text
+tests/ref/fate/* -text
+tests/ref/fate/sub-scc text eol=crlf

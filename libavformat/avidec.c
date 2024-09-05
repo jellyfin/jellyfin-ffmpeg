@@ -27,6 +27,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/opt.h"
 #include "libavutil/dict.h"
+#include "libavutil/integer.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
@@ -476,7 +477,7 @@ static int calculate_bitrate(AVFormatContext *s)
         AVStream *st = s->streams[i];
         FFStream *const sti = ffstream(st);
         int64_t duration;
-        int64_t bitrate;
+        AVInteger bitrate_i, den_i, num_i;
 
         for (j = 0; j < sti->nb_index_entries; j++)
             len += sti->index_entries[j].size;
@@ -484,9 +485,14 @@ static int calculate_bitrate(AVFormatContext *s)
         if (sti->nb_index_entries < 2 || st->codecpar->bit_rate > 0)
             continue;
         duration = sti->index_entries[j-1].timestamp - sti->index_entries[0].timestamp;
-        bitrate = av_rescale(8*len, st->time_base.den, duration * st->time_base.num);
-        if (bitrate > 0) {
-            st->codecpar->bit_rate = bitrate;
+        den_i = av_mul_i(av_int2i(duration), av_int2i(st->time_base.num));
+        num_i = av_add_i(av_mul_i(av_int2i(8*len), av_int2i(st->time_base.den)), av_shr_i(den_i, 1));
+        bitrate_i = av_div_i(num_i, den_i);
+        if (av_cmp_i(bitrate_i, av_int2i(INT64_MAX)) <= 0) {
+            int64_t bitrate = av_i2int(bitrate_i);
+            if (bitrate > 0) {
+                st->codecpar->bit_rate = bitrate;
+            }
         }
     }
     return 1;
@@ -1696,7 +1702,7 @@ static int check_stream_max_drift(AVFormatContext *s)
     int *idx = av_calloc(s->nb_streams, sizeof(*idx));
     if (!idx)
         return AVERROR(ENOMEM);
-    for (min_pos = pos = 0; min_pos != INT64_MAX; pos = min_pos + 1LU) {
+    for (min_pos = pos = 0; min_pos != INT64_MAX; pos = min_pos + 1ULL) {
         int64_t max_dts = INT64_MIN / 2;
         int64_t min_dts = INT64_MAX / 2;
         int64_t max_buffer = 0;
@@ -1869,13 +1875,20 @@ static int avi_read_seek(AVFormatContext *s, int stream_index,
     st    = s->streams[stream_index];
     sti   = ffstream(st);
     ast   = st->priv_data;
-    index = av_index_search_timestamp(st,
-                                      timestamp * FFMAX(ast->sample_size, 1),
-                                      flags);
+
+    if (avi->dv_demux) {
+        // index entries are in the AVI scale/rate timebase, which does
+        // not match DV demuxer's stream timebase
+        timestamp = av_rescale_q(timestamp, st->time_base,
+                                 (AVRational){ ast->scale, ast->rate });
+    } else
+        timestamp *= FFMAX(ast->sample_size, 1);
+
+    index = av_index_search_timestamp(st, timestamp, flags);
     if (index < 0) {
         if (sti->nb_index_entries > 0)
             av_log(s, AV_LOG_DEBUG, "Failed to find timestamp %"PRId64 " in index %"PRId64 " .. %"PRId64 "\n",
-                   timestamp * FFMAX(ast->sample_size, 1),
+                   timestamp,
                    sti->index_entries[0].timestamp,
                    sti->index_entries[sti->nb_index_entries - 1].timestamp);
         return AVERROR_INVALIDDATA;
@@ -1883,7 +1896,7 @@ static int avi_read_seek(AVFormatContext *s, int stream_index,
 
     /* find the position */
     pos       = sti->index_entries[index].pos;
-    timestamp = sti->index_entries[index].timestamp / FFMAX(ast->sample_size, 1);
+    timestamp = sti->index_entries[index].timestamp;
 
     av_log(s, AV_LOG_TRACE, "XX %"PRId64" %d %"PRId64"\n",
             timestamp, index, sti->index_entries[index].timestamp);
@@ -1898,11 +1911,14 @@ static int avi_read_seek(AVFormatContext *s, int stream_index,
 
         /* Feed the DV video stream version of the timestamp to the */
         /* DV demux so it can synthesize correct timestamps.        */
-        ff_dv_offset_reset(avi->dv_demux, timestamp);
+        ff_dv_ts_reset(avi->dv_demux,
+                           av_rescale_q(timestamp, (AVRational){ ast->scale, ast->rate },
+                                        st->time_base));
 
         avi->stream_index = -1;
         return 0;
     }
+    timestamp /= FFMAX(ast->sample_size, 1);
 
     pos_min = pos;
     for (i = 0; i < s->nb_streams; i++) {
@@ -2000,16 +2016,16 @@ static int avi_probe(const AVProbeData *p)
     return 0;
 }
 
-const AVInputFormat ff_avi_demuxer = {
-    .name           = "avi",
-    .long_name      = NULL_IF_CONFIG_SMALL("AVI (Audio Video Interleaved)"),
+const FFInputFormat ff_avi_demuxer = {
+    .p.name         = "avi",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("AVI (Audio Video Interleaved)"),
+    .p.extensions   = "avi",
+    .p.priv_class   = &demuxer_class,
     .priv_data_size = sizeof(AVIContext),
-    .flags_internal = FF_FMT_INIT_CLEANUP,
-    .extensions     = "avi",
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = avi_probe,
     .read_header    = avi_read_header,
     .read_packet    = avi_read_packet,
     .read_close     = avi_read_close,
     .read_seek      = avi_read_seek,
-    .priv_class = &demuxer_class,
 };
