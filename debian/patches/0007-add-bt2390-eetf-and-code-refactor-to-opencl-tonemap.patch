@@ -213,22 +213,15 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 +
 +float inverse_ootf_1_2(float x) {
 +    return x > 0.0f ? native_powr(x, 1.0f / 1.2f) : x;
-+}
-+
+ }
+ 
+-float inverse_eotf_bt1886(float c) {
+-    return c < 0.0f ? 0.0f : powr(c, 1.0f / 2.4f);
 +float oetf_arib_b67(float x) {
 +    x = fmax(x, 0.0f);
 +    return x <= (1.0f / 12.0f)
 +           ? native_sqrt(3.0f * x)
 +           : (ARIB_B67_A * native_log(12.0f * x - ARIB_B67_B) + ARIB_B67_C);
- }
- 
--float inverse_eotf_bt1886(float c) {
--    return c < 0.0f ? 0.0f : powr(c, 1.0f / 2.4f);
-+float inverse_oetf_arib_b67(float x) {
-+    x = fmax(x, 0.0f);
-+    return x <= 0.5f
-+           ? (x * x) * (1.0f / 3.0f)
-+           : (native_exp((x - ARIB_B67_C) / ARIB_B67_A) + ARIB_B67_B) * (1.0f / 12.0f);
  }
  
 -float oetf_bt709(float c) {
@@ -241,11 +234,18 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 -    float r1 = c / 4.5f;
 -    float r2 = powr((c + 0.099f) / 1.099f, 1.0f / 0.45f);
 -    return c < 0.081f ? r1 : r2;
++float inverse_oetf_arib_b67(float x) {
++    x = fmax(x, 0.0f);
++    return x <= 0.5f
++           ? (x * x) * (1.0f / 3.0f)
++           : (native_exp((x - ARIB_B67_C) / ARIB_B67_A) + ARIB_B67_B) * (1.0f / 12.0f);
+ }
+ 
 +// linearizer for HLG/ARIB-B67
 +float eotf_arib_b67(float x) {
 +    return ootf_1_2(inverse_oetf_arib_b67(x)) * 5.0f;
- }
- 
++}
++
 +// delinearizer for HLG/ARIB-B67
 +float inverse_eotf_arib_b67(float x) {
 +    return oetf_arib_b67(inverse_ootf_1_2(x / 5.0f));
@@ -265,7 +265,17 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
  float3 yuv2rgb(float y, float u, float v) {
  #ifdef FULL_RANGE_IN
      u -= 0.5f; v -= 0.5f;
-@@ -188,18 +241,101 @@ float3 lrgb2lrgb(float3 c) {
+@@ -150,7 +203,9 @@ float3 rgb2yuv(float r, float g, float b
+ 
+ float rgb2y(float r, float g, float b) {
+     float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
++#ifndef FULL_RANGE_OUT
+     y = (219.0f * y + 16.0f) / 255.0f;
++#endif
+     return y;
+ }
+ 
+@@ -188,18 +243,101 @@ float3 lrgb2lrgb(float3 c) {
  #endif
  }
  
