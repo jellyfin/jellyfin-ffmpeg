@@ -67,3 +67,4 @@
 0067-prefer-vulkan-device-with-higher-api-version.patch
 0068-add-pgs-support-to-vulkan-overlay.patch
 0069-add-fixes-x265-build-from-upstream.patch
+0070-fix-yuv420p-to-p01x-unscaled-conversion.patch
