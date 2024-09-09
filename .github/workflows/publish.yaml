@@ -41,6 +41,15 @@ jobs:
       deploy-user: ${{ secrets.REPO_USER }}
       deploy-key: ${{ secrets.REPO_KEY }}
 
+  build_publish_windows_clang_portable:
+      uses: ./.github/workflows/_meta_win_clang_portable.yaml
+      with:
+        release: true
+      secrets:
+        deploy-host: ${{ secrets.REPO_HOST }}
+        deploy-user: ${{ secrets.REPO_USER }}
+        deploy-key: ${{ secrets.REPO_KEY }}
+
   build_publish_linux_portable:
     uses: ./.github/workflows/_meta_portable.yaml
     with:
