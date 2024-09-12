@@ -69,3 +69,4 @@
 0069-add-fixes-x265-build-from-upstream.patch
 0070-fix-yuv420p-to-p01x-unscaled-conversion.patch
 0071-allow-vt-sw-decoder-for-every-codec.patch
+0072-add-bwdif-videotoolbox-filter.patch
