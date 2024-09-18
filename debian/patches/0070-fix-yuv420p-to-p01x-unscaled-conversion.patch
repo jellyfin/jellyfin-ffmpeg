@@ -2,7 +2,7 @@ Index: FFmpeg/libswscale/swscale_unscaled.c
 ===================================================================
 --- FFmpeg.orig/libswscale/swscale_unscaled.c
 +++ FFmpeg/libswscale/swscale_unscaled.c
-@@ -297,7 +297,7 @@ static int planar8ToP01xleWrapper(SwsCon
+@@ -352,7 +352,7 @@ static int planar8ToP01xleWrapper(SwsCon
          const uint8_t *tsrc0 = src[0];
          for (x = c->srcW; x > 0; x--) {
              t = *tsrc0++;
@@ -11,7 +11,7 @@ Index: FFmpeg/libswscale/swscale_unscaled.c
          }
          src[0] += srcStride[0];
          dstY += dstStride[0] / 2;
-@@ -308,9 +308,9 @@ static int planar8ToP01xleWrapper(SwsCon
+@@ -363,9 +363,9 @@ static int planar8ToP01xleWrapper(SwsCon
              const uint8_t *tsrc2 = src[2];
              for (x = c->srcW / 2; x > 0; x--) {
                  t = *tsrc1++;
@@ -145,6 +145,22 @@ Index: FFmpeg/tests/ref/fate/filter-pixfmts-null
  p210be              847e9c6e292b17349e69570829252b3e
  p210le              c06e4b76cf504e908128081f92b60ce2
  p212be              4df641ed058718ad27a01889f923b04f
+Index: FFmpeg/tests/ref/fate/filter-pixfmts-pad
+===================================================================
+--- FFmpeg.orig/tests/ref/fate/filter-pixfmts-pad
++++ FFmpeg/tests/ref/fate/filter-pixfmts-pad
+@@ -28,9 +28,9 @@ nv16                d3a50501d2ea8535489f
+ nv21                0fdeb2cdd56cf5a7147dc273456fa217
+ nv24                193b9eadcc06ad5081609f76249b3e47
+ nv42                1738ad3c31c6c16e17679f5b09ce4677
+-p010le              fbbc23cc1d764a5e6fb71883d985f3ed
++p010le              3a92c1bd3e9de050bf6abcc3fd911ab7
+ p012le              3a92c1bd3e9de050bf6abcc3fd911ab7
+-p016le              fbbc23cc1d764a5e6fb71883d985f3ed
++p016le              3a92c1bd3e9de050bf6abcc3fd911ab7
+ p210le              680912c059de39c3401cac856bd1b0c1
+ p212le              a2f88017bcce2383ba60bc4872e639ba
+ p216le              8718662e226a4581561e7bb532af2d83
 Index: FFmpeg/tests/ref/fate/filter-pixfmts-scale
 ===================================================================
 --- FFmpeg.orig/tests/ref/fate/filter-pixfmts-scale
