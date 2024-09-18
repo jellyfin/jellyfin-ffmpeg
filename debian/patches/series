@@ -71,3 +71,4 @@
 0071-allow-vt-sw-decoder-for-every-codec.patch
 0072-add-bwdif-videotoolbox-filter.patch
 0073-add-12bit-decoding-on-videotoolbox.patch
+0074-fix-the-sub2video-perf-regressions.patch

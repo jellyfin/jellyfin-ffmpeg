@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/nyanmisaka/rk-mirrors.git"
-SCRIPT_COMMIT="a9fc19e6b906d7cecd6bcefbd45e5e151831d33f"
+SCRIPT_COMMIT="e97e327662d1c0867d4cbcc01d5caf15250fc4e7"
 
 ffbuild_enabled() {
     [[ $TARGET == linux* ]] && [[ $TARGET == *arm64 ]] && return 0
