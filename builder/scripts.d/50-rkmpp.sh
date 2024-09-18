@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://github.com/nyanmisaka/mpp.git"
-SCRIPT_COMMIT="4ded78b9510145fa79bcd51beb1591450c872277"
+SCRIPT_COMMIT="d7f8a2f7cd59f4c38c0d28d85fbb5e4eb307290e"
 
 ffbuild_enabled() {
     [[ $TARGET == linux* ]] && [[ $TARGET == *arm64 ]] && return 0
