@@ -295,7 +295,7 @@ Index: FFmpeg/libavcodec/rkmppdec.c
   *
   * This file is part of FFmpeg.
   *
-@@ -19,569 +20,937 @@
+@@ -19,569 +20,952 @@
   * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
   */
  
@@ -486,6 +486,7 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +    r->draining = 0;
 +    r->info_change = 0;
 +    r->errinfo_cnt = 0;
++    r->got_frame = 0;
  
 -    if (decoder->frame_group) {
 -        mpp_buffer_group_put(decoder->frame_group);
@@ -625,6 +626,9 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 -    if (ret != MPP_OK) {
 -        av_log(avctx, AV_LOG_ERROR, "Failed to initialize MPP context (code = %d).\n", ret);
 -        ret = AVERROR_UNKNOWN;
++    if (avctx->skip_frame == AVDISCARD_NONKEY)
++        r->deint = 0;
++
 +    if ((ret = r->mapi->control(r->mctx, MPP_DEC_SET_ENABLE_DEINTERLACE, &r->deint)) != MPP_OK) {
 +        av_log(avctx, AV_LOG_ERROR, "Failed to set enable deinterlace: %d\n", ret);
 +        ret = AVERROR_EXTERNAL;
@@ -945,19 +949,25 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +        light = av_content_light_metadata_create_side_data(frame);
 +    if (!light)
 +        return AVERROR(ENOMEM);
++
++    light->MaxCLL  = mpp_light.MaxCLL;
++    light->MaxFALL = mpp_light.MaxFALL;
  
 -    mpp_frame_deinit(&framecontext->frame);
 -    av_buffer_unref(&framecontext->decoder_ref);
 -    av_buffer_unref(&framecontextref);
-+    light->MaxCLL  = mpp_light.MaxCLL;
-+    light->MaxFALL = mpp_light.MaxFALL;
++    return 0;
++}
  
 -    av_free(desc);
-+    return 0;
++static void rkmpp_free_mpp_frame(void *opaque, uint8_t *data)
++{
++    MppFrame mpp_frame = (MppFrame)opaque;
++    mpp_frame_deinit(&mpp_frame);
  }
  
 -static int rkmpp_retrieve_frame(AVCodecContext *avctx, AVFrame *frame)
-+static void rkmpp_free_mpp_frame(void *opaque, uint8_t *data)
++static void rkmpp_free_drm_desc(void *opaque, uint8_t *data)
  {
 -    RKMPPDecodeContext *rk_context = avctx->priv_data;
 -    RKMPPDecoder *decoder = (RKMPPDecoder *)rk_context->decoder_ref->data;
@@ -967,12 +977,6 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 -    MppFrame mppframe = NULL;
 -    MppBuffer buffer = NULL;
 -    AVDRMFrameDescriptor *desc = NULL;
-+    MppFrame mpp_frame = (MppFrame)opaque;
-+    mpp_frame_deinit(&mpp_frame);
-+}
-+
-+static void rkmpp_free_drm_desc(void *opaque, uint8_t *data)
-+{
 +    AVRKMPPDRMFrameDescriptor *drm_desc = (AVRKMPPDRMFrameDescriptor *)opaque;
 +    av_free(drm_desc);
 +}
@@ -1380,6 +1384,7 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +    } else {
 +        av_log(avctx, AV_LOG_DEBUG, "Received a frame\n");
 +        r->errinfo_cnt = 0;
++        r->got_frame = 1;
 +
 +        switch (avctx->pix_fmt) {
 +        case AV_PIX_FMT_DRM_PRIME:
@@ -1467,11 +1472,16 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +        return AVERROR_EXTERNAL;
 +    }
 +    mpp_packet_set_eos(mpp_pkt);
-+
+ 
+-            ret = rkmpp_send_packet(avctx, &pkt);
+-            av_packet_unref(&pkt);
 +    do {
 +        ret = r->mapi->decode_put_packet(r->mctx, mpp_pkt);
 +    } while (ret != MPP_OK);
-+
+ 
+-            if (ret < 0) {
+-                av_log(avctx, AV_LOG_ERROR, "Failed to send packet to decoder (code = %d)\n", ret);
+-                return ret;
 +    r->draining = 1;
 +
 +    mpp_packet_deinit(&mpp_pkt);
@@ -1489,6 +1499,15 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +    if (r->draining)
 +        return AVERROR(EOF);
 +
++    /* do not skip non-key pkt until got any frame */
++    if (r->got_frame &&
++        avctx->skip_frame == AVDISCARD_NONKEY &&
++        !(pkt->flags & AV_PKT_FLAG_KEY)) {
++        av_log(avctx, AV_LOG_TRACE, "Skip packet without key flag "
++               "at pts %"PRId64"\n", pkt->pts);
++        return 0;
++    }
++
 +    if ((ret = mpp_packet_init(&mpp_pkt, pkt->data, pkt->size)) != MPP_OK) {
 +        av_log(avctx, AV_LOG_ERROR, "Failed to init packet: %d\n", ret);
 +        return AVERROR_EXTERNAL;
@@ -1501,9 +1520,7 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +        return AVERROR(EAGAIN);
 +    }
 +    av_log(avctx, AV_LOG_DEBUG, "Wrote %d bytes to decoder\n", pkt->size);
- 
--            ret = rkmpp_send_packet(avctx, &pkt);
--            av_packet_unref(&pkt);
++
 +    mpp_packet_deinit(&mpp_pkt);
 +    return 0;
 +}
@@ -1520,10 +1537,7 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +    /* no more frames after EOS */
 +    if (r->eof)
 +        return AVERROR_EOF;
- 
--            if (ret < 0) {
--                av_log(avctx, AV_LOG_ERROR, "Failed to send packet to decoder (code = %d)\n", ret);
--                return ret;
++
 +    /* drain remain frames */
 +    if (r->draining) {
 +        ret = rkmpp_get_frame(avctx, frame, MPP_TIMEOUT_BLOCK);
@@ -1594,6 +1608,7 @@ Index: FFmpeg/libavcodec/rkmppdec.c
 +        r->draining = 0;
 +        r->info_change = 0;
 +        r->errinfo_cnt = 0;
++        r->got_frame = 0;
  
 -    ret = decoder->mpi->reset(decoder->ctx);
 -    if (ret == MPP_OK) {
@@ -1670,7 +1685,7 @@ Index: FFmpeg/libavcodec/rkmppdec.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavcodec/rkmppdec.h
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,144 @@
 +/*
 + * Copyright (c) 2017 Lionel CHAZALLON
 + * Copyright (c) 2023 Huseyin BIYIK
@@ -1730,6 +1745,7 @@ Index: FFmpeg/libavcodec/rkmppdec.h
 +    int            draining;
 +    int            info_change;
 +    int            errinfo_cnt;
++    int            got_frame;
 +
 +    int            deint;
 +    int            afbc;

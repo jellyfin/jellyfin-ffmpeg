@@ -4,6 +4,7 @@ jellyfin-ffmpeg (7.0.2-2) unstable; urgency=medium
   * Fix the default pkt thread queue size on certain platform
   * Add 12bit videotoolbox decoding support for HEVC
   * Fix the sub2video perf regressions
+  * Add key-frame only decoding for RKMPP
   * Update dependencies
 
  -- nyanmisaka <nst799610810@gmail.com>  Wed, 18 Sep 2024 20:37:24 +0800
