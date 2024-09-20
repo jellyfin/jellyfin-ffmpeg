@@ -365,7 +365,7 @@ Index: FFmpeg/fftools/ffprobe.c
  #include "opt_common.h"
  
  #include "libavutil/thread.h"
-+#ifdef CONFIG_VIDEOTOOLBOX
++#if CONFIG_VIDEOTOOLBOX
 +    #include "opt_vtinfo.h"
 +#endif
  
@@ -375,7 +375,7 @@ Index: FFmpeg/fftools/ffprobe.c
      { "print_filename",        OPT_TYPE_FUNC, OPT_FUNC_ARG, {.func_arg = opt_print_filename}, "override the printed input filename", "print_file"},
      { "find_stream_info",      OPT_TYPE_BOOL, OPT_INPUT | OPT_EXPERT, { &find_stream_info },
          "read and decode the streams to fill missing information with heuristics" },
-+#ifdef CONFIG_VIDEOTOOLBOX
++#if CONFIG_VIDEOTOOLBOX
 +    { "show_vt_info",          OPT_TYPE_FUNC, OPT_EXIT, { .func_arg = show_vt_info }, "show VideoToolbox info" },
 +#endif
      { NULL, },
