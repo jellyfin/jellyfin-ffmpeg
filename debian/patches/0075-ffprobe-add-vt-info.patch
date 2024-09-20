@@ -1,0 +1,359 @@
+Index: FFmpeg/fftools/Makefile
+===================================================================
+--- FFmpeg.orig/fftools/Makefile
++++ FFmpeg/fftools/Makefile
+@@ -38,6 +38,10 @@ $(1)$(PROGSSUF)_g$(EXESUF): FF_EXTRALIBS
+ -include $$(OBJS-$(1):.o=.d)
+ endef
+ 
++ifdef CONFIG_VIDEOTOOLBOX
++  OBJS-ffprobe += fftools/opt_vtinfo.o
++endif
++
+ $(foreach P,$(AVPROGS-yes),$(eval $(call DOFFTOOL,$(P))))
+ 
+ ifdef HAVE_GNU_WINDRES
+Index: FFmpeg/fftools/opt_vtinfo.h
+===================================================================
+--- /dev/null
++++ FFmpeg/fftools/opt_vtinfo.h
+@@ -0,0 +1,6 @@
++/**
++ * Print the VideoToolbox Hardware decoder/encoder info
++ * For decoders, only the decoder name the system claims to support will be printed
++ * This option processing function does not utilize the arguments.
++ */
++int show_vt_info(void *optctx, const char *opt, const char *arg);
+Index: FFmpeg/fftools/opt_vtinfo.m
+===================================================================
+--- /dev/null
++++ FFmpeg/fftools/opt_vtinfo.m
+@@ -0,0 +1,328 @@
++/*
++ * Copyright (c) 2024 Gnattu OC
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#import <Foundation/Foundation.h>
++#import <VideoToolbox/VideoToolbox.h>
++#import <CoreMedia/CoreMedia.h>
++#include "opt_vtinfo.h"
++
++CMVideoCodecType decoderCodecs[] = {
++    kCMVideoCodecType_MPEG2Video,
++    kCMVideoCodecType_MPEG4Video,
++    kCMVideoCodecType_H264,
++    kCMVideoCodecType_HEVC,
++    kCMVideoCodecType_VP9,
++    kCMVideoCodecType_AV1,
++};
++
++CFStringRef avProfiles[] = {
++    CFSTR("FF_PROFILE_H264_BASELINE"),
++    CFSTR("FF_PROFILE_H264_CONSTRAINED_BASELINE"),
++    CFSTR("FF_PROFILE_H264_MAIN"),
++    CFSTR("FF_PROFILE_H264_EXTENDED"),
++    CFSTR("FF_PROFILE_H264_HIGH"),
++    CFSTR("FF_PROFILE_H264_HIGH_422"),
++    CFSTR("FF_PROFILE_H264_HIGH_444_PREDICTIVE"),
++    CFSTR("FF_PROFILE_HEVC_MAIN"),
++    CFSTR("FF_PROFILE_HEVC_MAIN_10"),
++    CFSTR("FF_PROFILE_HEVC_MAIN_STILL_PICTURE"),
++    CFSTR("FF_PROFILE_HEVC_REXT"),
++};
++
++typedef struct ResCombo {
++    const int width;
++    const int height;
++} ResCombo;
++
++static const ResCombo res_combos[] = {
++    { 64,   64   },
++    { 128,  128  },
++    { 144,  144  },
++    { 256,  256  },
++    { 720,  480  },
++    { 1280, 720  },
++    { 2048, 1024 },
++    { 1920, 1080 },
++    { 1920, 1088 },
++    { 2560, 1440 },
++    { 2048, 2048 },
++    { 3840, 2160 },
++    { 4096, 2160 },
++    { 4096, 2304 },
++    { 4096, 2318 },
++    { 3840, 3840 },
++    { 4080, 4080 },
++    { 4096, 4096 },
++    { 7680, 4320 },
++    { 8192, 4320 },
++    { 8192, 4352 },
++    { 8192, 8192 },
++    { 0,    0    },
++};
++
++#define DLog(FORMAT, ...) fprintf(stdout,"%s\n", [[NSString stringWithFormat:FORMAT, ##__VA_ARGS__] UTF8String]);
++static void printDictAsJSON(CFDictionaryRef dict) {
++    NSDictionary *nsDict = (__bridge NSDictionary *)dict;
++    NSError *error = nil;
++    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:nsDict options:0 error:&error];
++
++    if (jsonData) {
++        NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
++        DLog(@"%@", jsonString)
++    } else {
++        DLog(@"Error serializing dictionary to JSON: %@", error)
++    }
++}
++
++static CFStringRef codecTypeName(CMVideoCodecType codecType) {
++    switch(codecType) {
++        case kCMVideoCodecType_MPEG2Video: return CFSTR("AV_CODEC_ID_MPEG2VIDEO");
++        case kCMVideoCodecType_MPEG4Video: return CFSTR("AV_CODEC_ID_MPEG4");
++        case kCMVideoCodecType_VP9: return CFSTR("AV_CODEC_ID_VP9");
++        case kCMVideoCodecType_JPEG: return CFSTR("AV_CODEC_ID_MJPEG");
++        case kCMVideoCodecType_H264: return CFSTR("AV_CODEC_ID_H264");
++        case kCMVideoCodecType_HEVC: return CFSTR("AV_CODEC_ID_HEVC");
++        case kCMVideoCodecType_AV1: return CFSTR("AV_CODEC_ID_AV1");
++        default: return CFSTR("AV_CODEC_ID_NONE");
++    }
++}
++
++static CFStringRef profileLevelName(CFStringRef profileLevel) {
++    CFStringRef vtProfiles[] = {
++        kVTProfileLevel_H264_Baseline_AutoLevel,
++        kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel,
++        kVTProfileLevel_H264_Main_AutoLevel,
++        kVTProfileLevel_H264_Extended_AutoLevel,
++        kVTProfileLevel_H264_High_AutoLevel,
++        CFSTR("H264_High422_AutoLevel"),
++        CFSTR("H264_High444Predictive_AutoLevel"),
++        kVTProfileLevel_HEVC_Main_AutoLevel,
++        kVTProfileLevel_HEVC_Main10_AutoLevel,
++        CFSTR("HEVC_MainStill_AutoLevel"),
++        CFSTR("HEVC_Main42210_AutoLevel"), // 444 and 8 bit variants also exists, use this to indicate rext support
++    };
++
++    CFDictionaryRef vtProfileToAvProfile = CFDictionaryCreate(
++        kCFAllocatorDefault,
++        (const void **)vtProfiles,
++        (const void **)avProfiles,
++        sizeof(vtProfiles) / sizeof(vtProfiles[0]),
++        &kCFTypeDictionaryKeyCallBacks,
++        &kCFTypeDictionaryValueCallBacks
++    );
++
++    CFStringRef avProfile = CFDictionaryGetValue(vtProfileToAvProfile, profileLevel);
++
++    CFRelease(vtProfileToAvProfile);
++
++    return avProfile;
++}
++
++static void addEncoderCapability(CFDictionaryRef encInfo, CFMutableArrayRef capabilities) {
++    CFNumberRef codecTypeNum = CFDictionaryGetValue(encInfo, kVTVideoEncoderList_CodecType);
++    CFBooleanRef isIsHardwareAccelerated = CFDictionaryGetValue(encInfo, kVTVideoEncoderList_IsHardwareAccelerated);
++    CMVideoCodecType codecType;
++    CFBooleanRef supports10bitEncode = kCFBooleanFalse;
++    CFBooleanRef supportsHdrEncode = kCFBooleanFalse;
++    CFBooleanRef supportsYuv444Encode = kCFBooleanFalse;
++    CFDictionaryRef supportedProps, profileLevels, transferFunctions = NULL;
++    CFMutableDictionaryRef encCapability, encSpec = NULL;
++    CFStringRef encoderID = NULL;
++    CFNumberRef x, y  = NULL;
++    int maxWidth = 0;
++    int maxHeight = 0;
++
++    if (!CFNumberGetValue(codecTypeNum, kCFNumberSInt32Type, &codecType)) {
++        // encoder with unknown type, return
++        return;
++    }
++
++    if (!isIsHardwareAccelerated || !CFBooleanGetValue(isIsHardwareAccelerated)) {
++        // We don't care about software encoders
++        return;
++    }
++
++    if (codecType != kCMVideoCodecType_H264
++        && codecType != kCMVideoCodecType_HEVC
++        && codecType != kCMVideoCodecType_JPEG
++        && codecType != kCMVideoCodecType_AV1) {
++        // The only encoders we care about
++        return;
++    }
++
++    encoderID = CFDictionaryGetValue(encInfo, kVTVideoEncoderList_EncoderID);
++    encSpec = CFDictionaryCreateMutable(kCFAllocatorDefault,
++                                        1,
++                                        &kCFTypeDictionaryKeyCallBacks,
++                                        &kCFTypeDictionaryValueCallBacks);
++
++    if (encSpec == NULL) {
++        exit(ENOMEM);
++    }
++
++    CFDictionaryAddValue(encSpec, kVTVideoEncoderList_EncoderID, encoderID);
++
++    for (const ResCombo *r = &res_combos[0]; r->width > 0; r++) {
++        OSStatus status = VTCopySupportedPropertyDictionaryForEncoder(r->width,
++                                                                      r->height,
++                                                                      codecType,
++                                                                      encSpec,
++                                                                      NULL,
++                                                                      &supportedProps);
++        if (status != 0 || supportedProps == NULL) {
++            break;
++        }
++
++        maxWidth = r->width;
++        maxHeight = r->height;
++    }
++
++    CFRelease(encSpec);
++
++    encCapability = CFDictionaryCreateMutable(kCFAllocatorDefault,
++                                              0,
++                                              &kCFTypeDictionaryKeyCallBacks,
++                                              &kCFTypeDictionaryValueCallBacks);
++    if (encCapability == NULL) {
++        exit(ENOMEM);
++    }
++
++    x = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &maxWidth);
++    y = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &maxHeight);
++
++    CFDictionaryAddValue(encCapability, CFSTR("Codec"), codecTypeName(codecType));
++    CFDictionaryAddValue(encCapability, CFSTR("MaxWidth"), x);
++    CFDictionaryAddValue(encCapability, CFSTR("MaxHeight"), y);
++
++    CFRelease(x);
++    CFRelease(y);
++
++    profileLevels = CFDictionaryGetValue(supportedProps, kVTCompressionPropertyKey_ProfileLevel);
++
++    if (profileLevels) {
++        CFArrayRef listOfProfiles = CFDictionaryGetValue(profileLevels, kVTPropertySupportedValueListKey);
++        if (listOfProfiles) {
++            CFMutableArrayRef encProfiles = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
++            if (encProfiles == NULL) {
++                exit(ENOMEM);
++            }
++
++            {
++                CFIndex len = CFArrayGetCount(listOfProfiles);
++                for (CFIndex i = 0; i < len; i++) {
++                    CFTypeRef profile = CFArrayGetValueAtIndex(listOfProfiles, i);
++                    if (CFStringCompare(profile, CFSTR("H264_High422_AutoLevel"), 0) == kCFCompareEqualTo ||
++                        CFStringCompare(profile, kVTProfileLevel_HEVC_Main10_AutoLevel, 0) == kCFCompareEqualTo) {
++                        supports10bitEncode = kCFBooleanTrue;
++                    }
++                    if (CFStringCompare(profile, CFSTR("H264_High444Predictive_AutoLevel"), 0) == kCFCompareEqualTo ||
++                        CFStringCompare(profile, CFSTR("HEVC_Main44410_AutoLevel"), 0) == kCFCompareEqualTo) {
++                        supportsYuv444Encode = kCFBooleanTrue;
++                    }
++                    {
++                        const CFStringRef profileAvName = profileLevelName(profile);
++                        if (profileAvName) {
++                            CFArrayAppendValue(encProfiles, profileAvName);
++                        }
++                    }
++                }
++            }
++            CFDictionaryAddValue(encCapability, CFSTR("Profiles"), encProfiles);
++            CFRelease(encProfiles);
++        }
++    }
++
++    transferFunctions = CFDictionaryGetValue(supportedProps, kVTCompressionPropertyKey_TransferFunction);
++    if (transferFunctions) {
++        CFArrayRef listOfTransferFunctions = CFDictionaryGetValue(transferFunctions, kVTPropertySupportedValueListKey);
++        if (listOfTransferFunctions) {
++            bool supportsPQ = CFArrayContainsValue(listOfTransferFunctions,
++                                                   CFRangeMake(0,CFArrayGetCount(listOfTransferFunctions)),
++                                                   kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ);
++            if (supportsPQ) {
++                supportsHdrEncode = kCFBooleanTrue;
++            }
++        }
++    }
++
++    CFDictionaryAddValue(encCapability, CFSTR("Support10bitEncode"), supports10bitEncode);
++    CFDictionaryAddValue(encCapability, CFSTR("SupportHDREncode"), supportsHdrEncode);
++    CFDictionaryAddValue(encCapability, CFSTR("SupportYuv444Encode"), supportsYuv444Encode);
++
++    CFRelease(supportsYuv444Encode);
++    CFRelease(supports10bitEncode);
++    CFRelease(supportsHdrEncode);
++
++    CFArrayAppendValue(capabilities, encCapability);
++    CFRelease(encCapability);
++}
++
++int show_vt_info(void *optctx, const char *opt, const char *arg) {
++    @autoreleasepool {
++        CFMutableDictionaryRef vtInfo = CFDictionaryCreateMutable(kCFAllocatorDefault,
++                                                                  0,
++                                                                  &kCFTypeDictionaryKeyCallBacks,
++                                                                  &kCFTypeDictionaryValueCallBacks);
++
++        CFArrayRef encoders = NULL;
++        int encoderCount;
++        OSStatus status;
++        CFMutableArrayRef encCapabilities = NULL;
++        CFMutableArrayRef decCapabilities = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
++        if (decCapabilities == NULL) {
++            exit(ENOMEM);
++        }
++
++        for (CFIndex i = 0; i < 5; i ++) {
++            CMVideoCodecType c = decoderCodecs[i];
++            VTRegisterSupplementalVideoDecoderIfAvailable(c);
++            if (VTIsHardwareDecodeSupported(c)) {
++                CFArrayAppendValue(decCapabilities, codecTypeName(c));
++            }
++        }
++
++        CFDictionaryAddValue(vtInfo, CFSTR("Decoders"), decCapabilities);
++        CFRelease(decCapabilities);
++
++        encCapabilities = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
++        if (encCapabilities == NULL) {
++            exit(ENOMEM);
++        }
++
++        status = VTCopyVideoEncoderList(NULL, &encoders);
++        if (status != 0 || encoders == NULL) {
++            // fprintf(stderr, "Get encoder list failed: %d\n", status);
++            return 1;
++        }
++
++        encoderCount = (int)CFArrayGetCount(encoders);
++        for (int i = 0; i < encoderCount; i++) {
++            CFDictionaryRef encInfo = CFArrayGetValueAtIndex(encoders, i);
++            addEncoderCapability(encInfo, encCapabilities);
++        }
++
++        CFDictionaryAddValue(vtInfo, CFSTR("Encoders"), encCapabilities);
++        CFRelease(encCapabilities);
++        CFRelease(encoders);
++        printDictAsJSON(vtInfo);
++        CFRelease(vtInfo);
++    }
++    return 0;
++}
