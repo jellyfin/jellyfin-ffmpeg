@@ -357,3 +357,27 @@ Index: FFmpeg/fftools/opt_vtinfo.m
 +    }
 +    return 0;
 +}
+Index: FFmpeg/fftools/ffprobe.c
+===================================================================
+--- FFmpeg.orig/fftools/ffprobe.c
++++ FFmpeg/fftools/ffprobe.c
+@@ -69,6 +69,9 @@
+ #include "opt_common.h"
+ 
+ #include "libavutil/thread.h"
++#ifdef CONFIG_VIDEOTOOLBOX
++    #include "opt_vtinfo.h"
++#endif
+ 
+ #if !HAVE_THREADS
+ #  ifdef pthread_mutex_lock
+@@ -4587,6 +4590,9 @@ static const OptionDef real_options[] =
+     { "print_filename",        OPT_TYPE_FUNC, OPT_FUNC_ARG, {.func_arg = opt_print_filename}, "override the printed input filename", "print_file"},
+     { "find_stream_info",      OPT_TYPE_BOOL, OPT_INPUT | OPT_EXPERT, { &find_stream_info },
+         "read and decode the streams to fill missing information with heuristics" },
++#ifdef CONFIG_VIDEOTOOLBOX
++    { "show_vt_info",          OPT_TYPE_FUNC, OPT_EXIT, { .func_arg = show_vt_info }, "show VideoToolbox info" },
++#endif
+     { NULL, },
+ };
+ 
