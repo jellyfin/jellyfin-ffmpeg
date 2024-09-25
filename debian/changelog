@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (7.0.2-3) unstable; urgency=medium
+
+  * Allow VPL QSV to init with the legacy MSDK path
+
+ -- nyanmisaka <nst799610810@gmail.com>  Tue, 24 Sep 2024 20:03:23 +0800
+
 jellyfin-ffmpeg (7.0.2-2) unstable; urgency=medium
 
   * Add bwdif_videotoolbox filter
