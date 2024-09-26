@@ -305,7 +305,7 @@ Index: FFmpeg/libavfilter/vf_transpose_vt.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_transpose_vt.m
-@@ -0,0 +1,383 @@
+@@ -0,0 +1,379 @@
 +/*
 + * Copyright (c) 2023 Zhao Zhili <zhilizhao@tencent.com>
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
@@ -345,15 +345,11 @@ Index: FFmpeg/libavfilter/vf_transpose_vt.m
 +    #define LEGACY_VT_SDK
 +#endif
 +
-+#ifdef LEGACY_VT_SDK
-+typedef void*  VTPixelRotationSessionRef;
-+#endif
-+
 +typedef struct TransposeVtContext {
 +    AVClass *class;
 +    CIContext *ci_ctx;
 +    CGImagePropertyOrientation orientation;
-+    VTPixelRotationSessionRef session;
++    void* session;
 +
 +    int dir;
 +    int passthrough;
@@ -366,7 +362,7 @@ Index: FFmpeg/libavfilter/vf_transpose_vt.m
 +    if (@available(macOS 13.0, iOS 16, *)) {
 +        int ret;
 +
-+        ret = VTPixelRotationSessionCreate(kCFAllocatorDefault, &s->session);
++        ret = VTPixelRotationSessionCreate(kCFAllocatorDefault, (VTPixelRotationSessionRef *) &s->session);
 +        if (ret != noErr) {
 +            av_log(avctx, AV_LOG_ERROR, "Rotation session create failed, %d\n", ret);
 +            return AVERROR_EXTERNAL;
