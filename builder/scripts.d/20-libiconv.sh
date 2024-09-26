@@ -22,6 +22,7 @@ ffbuild_dockerbuild() {
 EOF
 
     ./gitsub.sh pull
+    ./gitsub.sh checkout gnulib d4ec02b3cc70cddaaa5183cc5a45814e0afb2292 # tag v1.0
 
     local myconf=(
         --prefix="$FFBUILD_PREFIX"
