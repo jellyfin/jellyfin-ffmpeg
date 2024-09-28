@@ -102,7 +102,7 @@ prepare_extra_common() {
 
     # FRIBIDI
     pushd ${SOURCE_DIR}
-    git clone -b v1.0.15 --depth=1 https://github.com/fribidi/fribidi.git
+    git clone -b v1.0.16 --depth=1 https://github.com/fribidi/fribidi.git
     meson setup fribidi fribidi_build \
         ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
@@ -140,7 +140,7 @@ prepare_extra_common() {
 
     # HARFBUZZ
     pushd ${SOURCE_DIR}
-    git clone -b 9.0.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
+    git clone -b 10.0.1 --depth=1 https://github.com/harfbuzz/harfbuzz.git
     meson setup harfbuzz harfbuzz_build \
         ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
@@ -480,7 +480,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.295 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.296 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -493,7 +493,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.295 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.296 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \

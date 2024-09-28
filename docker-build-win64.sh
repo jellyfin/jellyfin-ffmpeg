@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-mingw_commit="1b554dec06f8d3c26b856a7d1575f396d8ffa403"
+mingw_commit="d2491a9358bddc9573d0ff2fa73989e3175c2009"
 git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 git checkout ${mingw_commit}
@@ -189,7 +189,7 @@ popd
 popd
 
 # HARFBUZZ
-git clone -b 9.0.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
+git clone -b 10.0.1 --depth=1 https://github.com/harfbuzz/harfbuzz.git
 meson setup harfbuzz harfbuzz_build \
     --prefix=${FF_DEPS_PREFIX} \
     --cross-file=${FF_MESON_TOOLCHAIN} \
@@ -320,7 +320,7 @@ popd
 # OPENMPT
 mkdir mpt
 pushd mpt
-mpt_ver="0.7.9"
+mpt_ver="0.7.10"
 mpt_link="https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${mpt_ver}+release.autotools.tar.gz"
 wget ${mpt_link} -O mpt.tar.gz
 tar xaf mpt.tar.gz
