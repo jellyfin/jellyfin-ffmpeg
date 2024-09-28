@@ -1,6 +1,7 @@
 jellyfin-ffmpeg (7.0.2-3) unstable; urgency=medium
 
   * Allow VPL QSV to init with the legacy MSDK path
+  * Enable VC1 decode on Intel Arc dGPU (MTL+ is not supported)
 
  -- nyanmisaka <nst799610810@gmail.com>  Tue, 24 Sep 2024 20:03:23 +0800
 

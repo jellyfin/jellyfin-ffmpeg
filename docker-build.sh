@@ -461,6 +461,8 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     git clone -b intel-media-24.3.4 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
+    # enable vc1 decode on dg2 (note that mtl+ is not supported)
+    wget -q -O - https://github.com/intel/media-driver/commit/d5dd47b.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DENABLE_KERNELS=ON \
