@@ -430,28 +430,28 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +        float32x4_t luma4 = vdupq_n_f32(0);
 +        float32x4_t overbright4;
 +        // Group A
-+        luma4 = vmlaq_n_f32(luma4, r_linx4a, (float)av_q2d(coeffs->cr));
-+        luma4 = vmlaq_n_f32(luma4, g_linx4a, (float)av_q2d(coeffs->cg));
-+        luma4 = vmlaq_n_f32(luma4, b_linx4a, (float)av_q2d(coeffs->cb));
++        luma4 = vfmaq_n_f32(luma4, r_linx4a, (float)av_q2d(coeffs->cr));
++        luma4 = vfmaq_n_f32(luma4, g_linx4a, (float)av_q2d(coeffs->cg));
++        luma4 = vfmaq_n_f32(luma4, b_linx4a, (float)av_q2d(coeffs->cb));
 +        overbright4 = vdivq_f32(vmaxq_f32(vsubq_f32(luma4, desat4), eps_x4), vmaxq_f32(luma4, eps_x4));
-+        r_linx4a = vmlsq_f32(r_linx4a, r_linx4a, overbright4);
-+        r_linx4a = vmlaq_f32(r_linx4a, luma4, overbright4);
-+        g_linx4a = vmlsq_f32(g_linx4a, g_linx4a, overbright4);
-+        g_linx4a = vmlaq_f32(g_linx4a, luma4, overbright4);
-+        b_linx4a = vmlsq_f32(b_linx4a, b_linx4a, overbright4);
-+        b_linx4a = vmlaq_f32(b_linx4a, luma4, overbright4);
++        r_linx4a = vfmsq_f32(r_linx4a, r_linx4a, overbright4);
++        r_linx4a = vfmaq_f32(r_linx4a, luma4, overbright4);
++        g_linx4a = vfmsq_f32(g_linx4a, g_linx4a, overbright4);
++        g_linx4a = vfmaq_f32(g_linx4a, luma4, overbright4);
++        b_linx4a = vfmsq_f32(b_linx4a, b_linx4a, overbright4);
++        b_linx4a = vfmaq_f32(b_linx4a, luma4, overbright4);
 +        // Group B
 +        luma4 = vdupq_n_f32(0);
-+        luma4 = vmlaq_n_f32(luma4, r_linx4b, (float)av_q2d(coeffs->cr));
-+        luma4 = vmlaq_n_f32(luma4, g_linx4b, (float)av_q2d(coeffs->cg));
-+        luma4 = vmlaq_n_f32(luma4, b_linx4b, (float)av_q2d(coeffs->cb));
++        luma4 = vfmaq_n_f32(luma4, r_linx4b, (float)av_q2d(coeffs->cr));
++        luma4 = vfmaq_n_f32(luma4, g_linx4b, (float)av_q2d(coeffs->cg));
++        luma4 = vfmaq_n_f32(luma4, b_linx4b, (float)av_q2d(coeffs->cb));
 +        overbright4 = vdivq_f32(vmaxq_f32(vsubq_f32(luma4, desat4), eps_x4), vmaxq_f32(luma4, eps_x4));
-+        r_linx4b = vmlsq_f32(r_linx4b, r_linx4b, overbright4);
-+        r_linx4b = vmlaq_f32(r_linx4b, luma4, overbright4);
-+        g_linx4b = vmlsq_f32(g_linx4b, g_linx4b, overbright4);
-+        g_linx4b = vmlaq_f32(g_linx4b, luma4, overbright4);
-+        b_linx4b = vmlsq_f32(b_linx4b, b_linx4b, overbright4);
-+        b_linx4b = vmlaq_f32(b_linx4b, luma4, overbright4);
++        r_linx4b = vfmsq_f32(r_linx4b, r_linx4b, overbright4);
++        r_linx4b = vfmaq_f32(r_linx4b, luma4, overbright4);
++        g_linx4b = vfmsq_f32(g_linx4b, g_linx4b, overbright4);
++        g_linx4b = vfmaq_f32(g_linx4b, luma4, overbright4);
++        b_linx4b = vfmsq_f32(b_linx4b, b_linx4b, overbright4);
++        b_linx4b = vfmaq_f32(b_linx4b, luma4, overbright4);
 +    }
 +
 +    r_linx4a = vmulq_f32(r_linx4a, mapvalx4a);
@@ -462,12 +462,12 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    g_linx4b = vmulq_f32(g_linx4b, mapvalx4b);
 +    b_linx4b = vmulq_f32(b_linx4b, mapvalx4b);
 +
-+    r_linx4a = vmlaq_n_f32(offset, r_linx4a, 32767);
-+    r_linx4b = vmlaq_n_f32(offset, r_linx4b, 32767);
-+    g_linx4a = vmlaq_n_f32(offset, g_linx4a, 32767);
-+    g_linx4b = vmlaq_n_f32(offset, g_linx4b, 32767);
-+    b_linx4a = vmlaq_n_f32(offset, b_linx4a, 32767);
-+    b_linx4b = vmlaq_n_f32(offset, b_linx4b, 32767);
++    r_linx4a = vfmaq_n_f32(offset, r_linx4a, 32767);
++    r_linx4b = vfmaq_n_f32(offset, r_linx4b, 32767);
++    g_linx4a = vfmaq_n_f32(offset, g_linx4a, 32767);
++    g_linx4b = vfmaq_n_f32(offset, g_linx4b, 32767);
++    b_linx4a = vfmaq_n_f32(offset, b_linx4a, 32767);
++    b_linx4b = vfmaq_n_f32(offset, b_linx4b, 32767);
 +
 +    rx4a = vcvtq_s32_f32(r_linx4a);
 +    rx4a = vminq_s32(rx4a, output_upper_bound);
