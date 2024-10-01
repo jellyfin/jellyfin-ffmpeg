@@ -95,7 +95,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,2149 @@
+@@ -0,0 +1,2150 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -335,7 +335,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +                                        const AVLumaCoefficients *coeffs,
 +                                        const AVLumaCoefficients *ocoeffs, double desat,
 +                                        double (*rgb2rgb)[3][3],
-+                                        int rgb2rgb_passthrough)
++                                        int rgb2rgb_passthrough,
++                                        int lut_off)
 +{
 +    int16x8_t sig8;
 +    float32x4_t mapvalx4a;
@@ -349,7 +350,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    float32x4_t offset = vdupq_n_f32(0.5f);
 +    int32x4_t output_upper_bound = vdupq_n_s32(32767);
 +    int32x4_t zerox4 = vdupq_n_s32(0);
-+    int16x8_t input_lut_offset = vdupq_n_s16(2048);
++    int16x8_t input_lut_offset = vdupq_n_s16(lut_off);
 +    int16x8_t input_upper_bound = vdupq_n_s16(32767);
 +    int16x8_t r, g, b;
 +    int32x4_t rx4a, gx4a, bx4a, rx4b, gx4b, bx4b;
@@ -640,9 +641,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, 32767.0f);
++            gx4a = vmulq_n_f32(gx4a, 32767.0f);
++            bx4a = vmulq_n_f32(bx4a, 32767.0f);
 +
 +            // Reshape y0x4b
 +            ia1 = vzip1q_f32(y0x4b, ux4b);
@@ -671,9 +672,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, 32767.0f);
++            gx4b = vmulq_n_f32(gx4b, 32767.0f);
++            bx4b = vmulq_n_f32(bx4b, 32767.0f);
 +
 +            r0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
@@ -706,9 +707,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, 32767.0f);
++            gx4a = vmulq_n_f32(gx4a, 32767.0f);
++            bx4a = vmulq_n_f32(bx4a, 32767.0f);
 +
 +            // Reshape y1x4b
 +            ia1 = vzip1q_f32(y1x4b, ux4b);
@@ -737,9 +738,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, 32767.0f);
++            gx4b = vmulq_n_f32(gx4b, 32767.0f);
++            bx4b = vmulq_n_f32(bx4b, 32767.0f);
 +
 +            r1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
@@ -748,11 +749,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, 0);
 +            tonemap_int16x8_neon(r1x8, g1x8, b1x8, (int16_t *) &r1, (int16_t *) &g1, (int16_t *) &b1,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, 0);
 +
 +            r0ox8 = vld1q_s16(r);
 +            g0ox8 = vld1q_s16(g);
@@ -992,11 +993,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16x8_neon(r1x8, g1x8, b1x8, (int16_t *) &r1, (int16_t *) &g1, (int16_t *) &b1,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = vld1q_s16(r);
 +            g0ox8 = vld1q_s16(g);
@@ -1246,11 +1247,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16x8_neon(r1x8, g1x8, b1x8, (int16_t *) &r1, (int16_t *) &g1, (int16_t *) &b1,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = vld1q_s16(r);
 +            g0ox8 = vld1q_s16(g);
@@ -1497,9 +1498,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, 32767.0f);
++            gx4a = vmulq_n_f32(gx4a, 32767.0f);
++            bx4a = vmulq_n_f32(bx4a, 32767.0f);
 +
 +            // Reshape y0x4b
 +            ia1 = vzip1q_f32(y0x4b, ux4b);
@@ -1528,9 +1529,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, 32767.0f);
++            gx4b = vmulq_n_f32(gx4b, 32767.0f);
++            bx4b = vmulq_n_f32(bx4b, 32767.0f);
 +
 +            r0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
@@ -1563,9 +1564,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, 32767.0f);
++            gx4a = vmulq_n_f32(gx4a, 32767.0f);
++            bx4a = vmulq_n_f32(bx4a, 32767.0f);
 +
 +            // Reshape y1x4b
 +            ia1 = vzip1q_f32(y1x4b, ux4b);
@@ -1594,9 +1595,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, 32767.0f);
++            gx4b = vmulq_n_f32(gx4b, 32767.0f);
++            bx4b = vmulq_n_f32(bx4b, 32767.0f);
 +
 +            r1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
@@ -1605,11 +1606,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, 0);
 +            tonemap_int16x8_neon(r1x8, g1x8, b1x8, (int16_t *) &r1, (int16_t *) &g1, (int16_t *) &b1,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, 0);
 +
 +            r0ox8 = vld1q_s16(r);
 +            g0ox8 = vld1q_s16(g);
@@ -1848,11 +1849,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16x8_neon(r1x8, g1x8, b1x8, (int16_t *) &r1, (int16_t *) &g1, (int16_t *) &b1,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = vld1q_s16(r);
 +            g0ox8 = vld1q_s16(g);
@@ -2103,11 +2104,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16x8_neon(r1x8, g1x8, b1x8, (int16_t *) &r1, (int16_t *) &g1, (int16_t *) &b1,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                 params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                 params->rgb2rgb_passthrough);
++                                 params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = vld1q_s16(r);
 +            g0ox8 = vld1q_s16(g);
@@ -2342,7 +2343,7 @@ Index: FFmpeg/libavfilter/colorspace.c
  #include "libavutil/frame.h"
  #include "libavutil/mastering_display_metadata.h"
  #include "libavutil/pixdesc.h"
-@@ -354,3 +355,51 @@ float inverse_eotf_arib_b67(float x) {
+@@ -354,3 +355,53 @@ float inverse_eotf_arib_b67(float x) {
  float inverse_eotf_bt1886(float x) {
      return x > 0.0f ? powf(x, 1.0f / 2.4f) : 0.0f;
  }
@@ -2369,15 +2370,17 @@ Index: FFmpeg/libavfilter/colorspace.c
 +}
 +
 +void ff_get_yuv_coeffs(int16_t out[3][3][8], double (*table)[3],
-+                       int depth, int y_rng, int uv_rng, int yuv2rgb)
++                       int depth, int y_rng, int uv_rng,
++                       int yuv2rgb, int yuv_full)
 +{
 +#define N (yuv2rgb ? m : n)
 +#define M (yuv2rgb ? n : m)
 +    int rng, n, m, o;
++    int rng_max = yuv_full ? 32767 : 28672;
 +    int bits = 1 << (yuv2rgb ? (depth - 1) : (29 - depth));
 +    for (rng = y_rng, n = 0; n < 3; n++, rng = uv_rng) {
 +        for (m = 0; m < 3; m++) {
-+            out[N][M][0] = lrint(bits * (yuv2rgb ? 28672 : rng) * table[N][M] / (yuv2rgb ? rng : 28672));
++            out[N][M][0] = lrint(bits * (yuv2rgb ? rng_max : rng) * table[N][M] / (yuv2rgb ? rng : rng_max));
 +            for (o = 1; o < 8; o++)
 +                out[N][M][o] = out[N][M][0];
 +        }
@@ -2398,20 +2401,21 @@ Index: FFmpeg/libavfilter/colorspace.h
 ===================================================================
 --- FFmpeg.orig/libavfilter/colorspace.h
 +++ FFmpeg/libavfilter/colorspace.h
-@@ -85,4 +85,8 @@ float eotf_arib_b67(float x);
+@@ -85,4 +85,9 @@ float eotf_arib_b67(float x);
  float inverse_eotf_arib_b67(float x);
  float inverse_eotf_bt1886(float x);
  
 +int ff_get_range_off(int *off, int *y_rng, int *uv_rng,
 +                     enum AVColorRange rng, int depth);
 +void ff_get_yuv_coeffs(int16_t out[3][3][8], double (*table)[3],
-+                       int depth, int y_rng, int uv_rng, int yuv2rgb);
++                       int depth, int y_rng, int uv_rng,
++                       int yuv2rgb, int yuv_full);
  #endif
 Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1778 @@
+@@ -0,0 +1,1797 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2470,6 +2474,9 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#include "internal.h"
 +#include "video.h"
 +
++#define MIX(x, y, a) ((x) + ((y) - (x)) * (a))
++#define CLAMP(a, b, c) (FFMIN(FFMAX((a), (b)), (c)))
++
 +enum TonemapAlgorithm {
 +    TONEMAP_NONE,
 +    TONEMAP_LINEAR,
@@ -2503,6 +2510,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    float *lin_lut;
 +    float *tonemap_lut;
 +    uint16_t *delin_lut;
++    int lut_off, lut_delin_max;
 +    int in_yuv_off, out_yuv_off;
 +
 +    struct DoviMetadata *dovi;
@@ -2581,12 +2589,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    AV_PIX_FMT_P016,
 +};
 +
-+const double dovi_lms2rgb_matrix[3][3] =
-+    {
-+        { 3.06441879, -2.16597676,  0.10155818},
-+        {-0.65612108,  1.78554118, -0.12943749},
-+        { 0.01736321, -0.04725154,  1.03004253},
-+    };
++static const double dovi_lms2rgb_matrix[3][3] =
++{
++    { 3.06441879, -2.16597676,  0.10155818},
++    {-0.65612108,  1.78554118, -0.12943749},
++    { 0.01736321, -0.04725154,  1.03004253},
++};
 +
 +static void update_dovi_buf(AVFilterContext *ctx)
 +{
@@ -2730,7 +2738,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    dest[2] = l * (float)lms2rgb_matrix[2][0] + m * (float)lms2rgb_matrix[2][1] + s * (float)lms2rgb_matrix[2][2];
 +}
 +
-+#define CLAMP(a, b, c) (FFMIN(FFMAX((a), (b)), (c)))
 +inline static void reshape_dovi_yuv(float* dest, float* src, const TonemapIntParams *ctx)
 +{
 +    int i;
@@ -2771,41 +2778,40 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        coeffs[2] = dovi_coeffs[0*4+2];
 +        coeffs[3] = dovi_coeffs[0*4+3];
 +
-+#define mix(x, y, a) ((x) + ((y) - (x)) * (a))
 +        if (i == 0 && dovi_num_pivots > 2) {
 +            int t0 = s >= dovi_pivots[0], t1 = s >= dovi_pivots[1];
 +            int t2 = s >= dovi_pivots[2], t3 = s >= dovi_pivots[3];
 +            int t4 = s >= dovi_pivots[4], t5 = s >= dovi_pivots[5], t6 = s >= dovi_pivots[6];
 +
-+            float m01[4] = { mix(dovi_coeffs[0*4+0], dovi_coeffs[1*4+0], t0),
-+                             mix(dovi_coeffs[0*4+1], dovi_coeffs[1*4+1], t0),
-+                             mix(dovi_coeffs[0*4+2], dovi_coeffs[1*4+2], t0),
-+                             mix(dovi_coeffs[0*4+3], dovi_coeffs[1*4+3], t0) };
-+            float m23[4] = { mix(dovi_coeffs[2*4+0], dovi_coeffs[3*4+0], t2),
-+                             mix(dovi_coeffs[2*4+1], dovi_coeffs[3*4+1], t2),
-+                             mix(dovi_coeffs[2*4+2], dovi_coeffs[3*4+2], t2),
-+                             mix(dovi_coeffs[2*4+3], dovi_coeffs[3*4+3], t2) };
-+            float m0123[4] = { mix(m01[0], m23[0], t1),
-+                               mix(m01[1], m23[1], t1),
-+                               mix(m01[2], m23[2], t1),
-+                               mix(m01[3], m23[3], t1) };
-+            float m45[4] = { mix(dovi_coeffs[4*4+0], dovi_coeffs[5*4+0], t4),
-+                             mix(dovi_coeffs[4*4+1], dovi_coeffs[5*4+1], t4),
-+                             mix(dovi_coeffs[4*4+2], dovi_coeffs[5*4+2], t4),
-+                             mix(dovi_coeffs[4*4+3], dovi_coeffs[5*4+3], t4) };
-+            float m67[4] = { mix(dovi_coeffs[6*4+0], dovi_coeffs[7*4+0], t6),
-+                             mix(dovi_coeffs[6*4+1], dovi_coeffs[7*4+1], t6),
-+                             mix(dovi_coeffs[6*4+2], dovi_coeffs[7*4+2], t6),
-+                             mix(dovi_coeffs[6*4+3], dovi_coeffs[7*4+3], t6) };
-+            float m4567[4] = { mix(m45[0], m67[0], t5),
-+                               mix(m45[1], m67[1], t5),
-+                               mix(m45[2], m67[2], t5),
-+                               mix(m45[3], m67[3], t5) };
++            float m01[4] = { MIX(dovi_coeffs[0*4+0], dovi_coeffs[1*4+0], t0),
++                             MIX(dovi_coeffs[0*4+1], dovi_coeffs[1*4+1], t0),
++                             MIX(dovi_coeffs[0*4+2], dovi_coeffs[1*4+2], t0),
++                             MIX(dovi_coeffs[0*4+3], dovi_coeffs[1*4+3], t0) };
++            float m23[4] = { MIX(dovi_coeffs[2*4+0], dovi_coeffs[3*4+0], t2),
++                             MIX(dovi_coeffs[2*4+1], dovi_coeffs[3*4+1], t2),
++                             MIX(dovi_coeffs[2*4+2], dovi_coeffs[3*4+2], t2),
++                             MIX(dovi_coeffs[2*4+3], dovi_coeffs[3*4+3], t2) };
++            float m0123[4] = { MIX(m01[0], m23[0], t1),
++                               MIX(m01[1], m23[1], t1),
++                               MIX(m01[2], m23[2], t1),
++                               MIX(m01[3], m23[3], t1) };
++            float m45[4] = { MIX(dovi_coeffs[4*4+0], dovi_coeffs[5*4+0], t4),
++                             MIX(dovi_coeffs[4*4+1], dovi_coeffs[5*4+1], t4),
++                             MIX(dovi_coeffs[4*4+2], dovi_coeffs[5*4+2], t4),
++                             MIX(dovi_coeffs[4*4+3], dovi_coeffs[5*4+3], t4) };
++            float m67[4] = { MIX(dovi_coeffs[6*4+0], dovi_coeffs[7*4+0], t6),
++                             MIX(dovi_coeffs[6*4+1], dovi_coeffs[7*4+1], t6),
++                             MIX(dovi_coeffs[6*4+2], dovi_coeffs[7*4+2], t6),
++                             MIX(dovi_coeffs[6*4+3], dovi_coeffs[7*4+3], t6) };
++            float m4567[4] = { MIX(m45[0], m67[0], t5),
++                               MIX(m45[1], m67[1], t5),
++                               MIX(m45[2], m67[2], t5),
++                               MIX(m45[3], m67[3], t5) };
 +
-+            coeffs[0] = mix(m0123[0], m4567[0], t3);
-+            coeffs[1] = mix(m0123[1], m4567[1], t3);
-+            coeffs[2] = mix(m0123[2], m4567[2], t3);
-+            coeffs[3] = mix(m0123[3], m4567[3], t3);
++            coeffs[0] = MIX(m0123[0], m4567[0], t3);
++            coeffs[1] = MIX(m0123[1], m4567[1], t3);
++            coeffs[2] = MIX(m0123[2], m4567[2], t3);
++            coeffs[3] = MIX(m0123[3], m4567[3], t3);
 +        }
 +
 +        has_mmr_poly = dovi_has_mmr && dovi_has_poly;
@@ -2856,21 +2862,21 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +static float bt2390(float s, float peak)
 +{
 +    float peak_pq = inverse_eotf_st2084(peak, REFERENCE_WHITE_ALT);
-+    float scale = 1.0f / peak_pq;
++    float scale = peak_pq > 0.0f ? (1.0f / peak_pq) : 1.0f;
 +
 +    // SDR peak
 +    float dst_peak = 1.0f;
 +    float s_pq = inverse_eotf_st2084(s, REFERENCE_WHITE_ALT) * scale;
-+    float maxLum = inverse_eotf_st2084(dst_peak, REFERENCE_WHITE_ALT) * scale;
++    float max_lum = inverse_eotf_st2084(dst_peak, REFERENCE_WHITE_ALT) * scale;
 +
-+    float ks = 1.5f * maxLum - 0.5f;
++    float ks = 1.5f * max_lum - 0.5f;
 +    float tb = (s_pq - ks) / (1.0f - ks);
 +    float tb2 = tb * tb;
 +    float tb3 = tb2 * tb;
 +    float pb = (2.0f * tb3 - 3.0f * tb2 + 1.0f) * ks +
 +               (tb3 - 2.0f * tb2 + tb) * (1.0f - ks) +
-+               (-2.0f * tb3 + 3.0f * tb2) * maxLum;
-+    float sig = (s_pq < ks) ? s_pq : pb;
++               (-2.0f * tb3 + 3.0f * tb2) * max_lum;
++    float sig = MIX(pb, s_pq, s_pq < ks);
 +
 +    return eotf_st2084(sig * peak_pq, REFERENCE_WHITE_ALT);
 +}
@@ -2937,12 +2943,14 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        return AVERROR(ENOMEM);
 +    if (!s->delin_lut && !(s->delin_lut = av_calloc(32768, sizeof(uint16_t))))
 +        return AVERROR(ENOMEM);
++    if (s->lut_delin_max <= 0)
++        return AVERROR(EINVAL);
 +
 +    for (i = 0; i < 32768; i++) {
-+        double v1 = (i - 2048.0f) / 28672.0f;
++        double v1 = (i - s->lut_off) / 32767.0f;
 +        double v2 = i / 32767.0f;
 +        s->lin_lut[i] = FFMAX(linearize(v1, trc_src), 0);
-+        s->delin_lut[i] = av_clip_int16(lrint(delinearize(v2, trc_dst) * 28672.0f));
++        s->delin_lut[i] = av_clip_int16(lrint(delinearize(v2, trc_dst) * s->lut_delin_max));
 +    }
 +
 +    return 0;
@@ -2957,7 +2965,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        return AVERROR(ENOMEM);
 +
 +    for (i = 0; i < 32768; i++) {
-+        double v = (i - 2048.0f) / 28672.0f;
++        double v = (i - s->lut_off) / 32767.0f;
 +        double sig = linearize(v, trc_src);
 +        float mapped = mapsig(s->tonemap, sig, peak, s->param);
 +        s->tonemap_lut[i] = (sig > 0.0f && mapped > 0.0f) ? mapped / sig : 0.0f;
@@ -2992,7 +3000,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    ff_fill_rgb2yuv_table(ocoeffs, rgb2yuv);
 +
 +    ff_get_yuv_coeffs(s->yuv2rgb_coeffs, yuv2rgb, idesc->comp[0].depth,
-+                      y_rng, uv_rng, 1);
++                      y_rng, uv_rng, 1, (irng == AVCOL_RANGE_JPEG));
 +
 +    res = ff_get_range_off(&s->out_yuv_off, &y_rng, &uv_rng,
 +                           orng, odesc->comp[0].depth);
@@ -3004,7 +3012,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    }
 +
 +    ff_get_yuv_coeffs(s->rgb2yuv_coeffs, rgb2yuv, odesc->comp[0].depth,
-+                      y_rng, uv_rng, 0);
++                      y_rng, uv_rng, 0, (orng == AVCOL_RANGE_JPEG));
++
++    s->lut_off = irng == AVCOL_RANGE_JPEG ? 0 : (16 / 256 * 32768);
++    s->lut_delin_max = orng == AVCOL_RANGE_JPEG ? 32767 : 28672;
 +
 +    return 0;
 +}
@@ -3069,20 +3080,20 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    lms2rgb(c3, c3[0], c3[1], c3[2], params->dovi->linear, *params->lms2rgb_matrix);
 +    lms2rgb(c4, c4[0], c4[1], c4[2], params->dovi->linear, *params->lms2rgb_matrix);
 +
-+    r[0] = av_clip_int16(c1[0] * 28672);
-+    r[1] = av_clip_int16(c2[0] * 28672);
-+    r[2] = av_clip_int16(c3[0] * 28672);
-+    r[3] = av_clip_int16(c4[0] * 28672);
++    r[0] = av_clip_int16(c1[0] * 32767);
++    r[1] = av_clip_int16(c2[0] * 32767);
++    r[2] = av_clip_int16(c3[0] * 32767);
++    r[3] = av_clip_int16(c4[0] * 32767);
 +
-+    g[0] = av_clip_int16(c1[1] * 28672);
-+    g[1] = av_clip_int16(c2[1] * 28672);
-+    g[2] = av_clip_int16(c3[1] * 28672);
-+    g[3] = av_clip_int16(c4[1] * 28672);
++    g[0] = av_clip_int16(c1[1] * 32767);
++    g[1] = av_clip_int16(c2[1] * 32767);
++    g[2] = av_clip_int16(c3[1] * 32767);
++    g[3] = av_clip_int16(c4[1] * 32767);
 +
-+    b[0] = av_clip_int16(c1[2] * 28672);
-+    b[1] = av_clip_int16(c2[2] * 28672);
-+    b[2] = av_clip_int16(c3[2] * 28672);
-+    b[3] = av_clip_int16(c4[2] * 28672);
++    b[0] = av_clip_int16(c1[2] * 32767);
++    b[1] = av_clip_int16(c2[2] * 32767);
++    b[2] = av_clip_int16(c3[2] * 32767);
++    b[3] = av_clip_int16(c4[2] * 32767);
 +}
 +
 +inline static void tonemap_int16(int16_t r_in, int16_t g_in, int16_t b_in,
@@ -3091,7 +3102,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +                          const AVLumaCoefficients *coeffs,
 +                          const AVLumaCoefficients *ocoeffs, double desat,
 +                          double (*rgb2rgb)[3][3],
-+                          int rgb2rgb_passthrough)
++                          int rgb2rgb_passthrough,
++                          int lut_off)
 +{
 +    int16_t sig;
 +    float mapval, r_lin, g_lin, b_lin;
@@ -3106,11 +3118,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +     * out-of-bounds clipping */
 +    sig = FFMAX3(r_in, g_in, b_in);
 +
-+    mapval = tonemap_lut[av_clip_uintp2(sig + 2048, 15)];
++    mapval = tonemap_lut[av_clip_uintp2(sig + lut_off, 15)];
 +
-+    r_lin = lin_lut[av_clip_uintp2(r_in + 2048, 15)];
-+    g_lin = lin_lut[av_clip_uintp2(g_in + 2048, 15)];
-+    b_lin = lin_lut[av_clip_uintp2(b_in + 2048, 15)];
++    r_lin = lin_lut[av_clip_uintp2(r_in + lut_off, 15)];
++    g_lin = lin_lut[av_clip_uintp2(g_in + lut_off, 15)];
++    b_lin = lin_lut[av_clip_uintp2(b_in + lut_off, 15)];
 +
 +    if (!rgb2rgb_passthrough) {
 +        r_lin = (*rgb2rgb)[0][0] * r_lin + (*rgb2rgb)[0][1] * g_lin + (*rgb2rgb)[0][2] * b_lin;
@@ -3118,7 +3130,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        b_lin = (*rgb2rgb)[2][0] * r_lin + (*rgb2rgb)[2][1] * g_lin + (*rgb2rgb)[2][2] * b_lin;
 +    }
 +
-+#define MIX(x,y,a) (x) * (1 - (a)) + (y) * (a)
 +    /* desaturate to prevent unnatural colors */
 +    if (desat > 0) {
 +        float luma = av_q2d(coeffs->cr) * r_lin + av_q2d(coeffs->cg) * g_lin + av_q2d(coeffs->cb) * b_lin;
@@ -3131,7 +3142,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    r_lin *= mapval;
 +    g_lin *= mapval;
 +    b_lin *= mapval;
-+#undef MIX
 +
 +    *r_out = delin_lut[av_clip_uintp2(r_lin * 32767 + 0.5, 15)];
 +    *g_out = delin_lut[av_clip_uintp2(g_lin * 32767 + 0.5, 15)];
@@ -3206,16 +3216,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r00 = r[0], g00 = g[0], b00 = b[0];
 +            r01 = r[1], g01 = g[1], b01 = b[1];
@@ -3280,16 +3290,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +
 +            r00 = r[0], g00 = g[0], b00 = b[0];
 +            r01 = r[1], g01 = g[1], b01 = b[1];
@@ -3354,16 +3364,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, 0);
 +
 +            r00 = r[0], g00 = g[0], b00 = b[0];
 +            r01 = r[1], g01 = g[1], b01 = b[1];
@@ -3449,16 +3459,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r00 = r[0], g00 = g[0], b00 = b[0];
 +            r01 = r[1], g01 = g[1], b01 = b[1];
@@ -3544,16 +3554,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r00 = r[0], g00 = g[0], b00 = b[0];
 +            r01 = r[1], g01 = g[1], b01 = b[1];
@@ -3641,16 +3651,16 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
 +                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r00 = r[0], g00 = g[0], b00 = b[0];
 +            r01 = r[1], g01 = g[1], b01 = b[1];
@@ -3684,6 +3694,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +.lin_lut             = s->lin_lut,                              \
 +.tonemap_lut         = s->tonemap_lut,                          \
 +.delin_lut           = s->delin_lut,                            \
++.lut_off             = s->lut_off,                              \
 +.in_yuv_off          = s->in_yuv_off,                           \
 +.out_yuv_off         = s->out_yuv_off,                          \
 +.yuv2rgb_coeffs      = &s->yuv2rgb_coeffs,                      \
@@ -3785,6 +3796,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    int ret;
 +    double peak = s->peak;
 +    const AVLumaCoefficients *coeffs;
++    enum AVColorSpace in_space = in->colorspace;
++    enum AVColorTransferCharacteristic in_trc = in->color_trc;
++    enum AVColorPrimaries in_primaries = in->color_primaries;
++    enum AVColorRange in_range = in->color_range;
 +    ThreadData td;
 +
 +    desc = av_pix_fmt_desc_get(link->format);
@@ -3832,47 +3847,27 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    out->color_primaries = s->pri == -1 ? AVCOL_PRI_UNSPECIFIED : s->pri;
 +    out->color_range = s->range == -1 ? in->color_range : s->range;
 +
-+    if (in->color_trc == AVCOL_TRC_UNSPECIFIED)
-+        in->color_trc = AVCOL_TRC_SMPTE2084;
++    if (!(in_trc == AVCOL_TRC_SMPTE2084 ||
++          in_trc == AVCOL_TRC_ARIB_STD_B67))
++        in_trc = AVCOL_TRC_SMPTE2084;
 +    if (out->color_trc == AVCOL_TRC_UNSPECIFIED)
 +        out->color_trc = AVCOL_TRC_BT709;
 +
-+    if (in->colorspace == AVCOL_SPC_UNSPECIFIED)
-+        in->colorspace = AVCOL_SPC_BT2020_NCL;
++    if (in_space != AVCOL_SPC_BT2020_NCL)
++        in_space = AVCOL_SPC_BT2020_NCL;
 +    if (out->colorspace == AVCOL_SPC_UNSPECIFIED)
 +        out->colorspace = AVCOL_SPC_BT709;
 +
-+    if (in->color_primaries == AVCOL_PRI_UNSPECIFIED)
-+        in->color_primaries = AVCOL_PRI_BT2020;
++    if (in_primaries != AVCOL_PRI_BT2020)
++        in_primaries = AVCOL_PRI_BT2020;
 +    if (out->color_primaries == AVCOL_PRI_UNSPECIFIED)
 +        out->color_primaries = AVCOL_PRI_BT709;
 +
-+    if (in->color_range == AVCOL_RANGE_UNSPECIFIED)
-+        in->color_range = AVCOL_RANGE_MPEG;
++    if (!(in_range == AVCOL_RANGE_MPEG ||
++          in_range == AVCOL_RANGE_JPEG))
++        in_range = AVCOL_RANGE_MPEG;
 +    if (out->color_range == AVCOL_RANGE_UNSPECIFIED)
 +        out->color_range = AVCOL_RANGE_MPEG;
-+
-+    if (!s->lin_lut || !s->delin_lut) {
-+        if ((ret = compute_trc_luts(s, in->color_trc, out->color_trc)) < 0)
-+            goto fail;
-+    }
-+
-+    if (!s->tonemap_lut || s->lut_peak != peak) {
-+        s->lut_peak = peak;
-+        if ((ret = compute_tonemap_lut(s, out->color_trc)) < 0)
-+            goto fail;
-+    }
-+
-+    coeffs = av_csp_luma_coeffs_from_avcsp(in->colorspace);
-+    if (s->coeffs != coeffs) {
-+        s->coeffs = coeffs;
-+        s->ocoeffs = av_csp_luma_coeffs_from_avcsp(out->colorspace);
-+        if ((ret = compute_yuv_coeffs(s, coeffs, s->ocoeffs, desc, odesc,
-+             in->color_range, out->color_range)) < 0)
-+            goto fail;
-+        if ((ret = compute_rgb_coeffs(s, in->color_primaries, out->color_primaries)) < 0)
-+            goto fail;
-+    }
 +
 +    if (s->apply_dovi) {
 +        AVFrameSideData *dovi_sd = av_frame_get_side_data(in, AV_FRAME_DATA_DOVI_METADATA);
@@ -3890,6 +3885,9 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +                    goto fail;
 +
 +                ff_map_dovi_metadata(s->dovi, metadata);
++                in_trc = AVCOL_TRC_SMPTE2084;
++                in_space = AVCOL_SPC_BT2020_NCL;
++                in_primaries = AVCOL_PRI_BT2020;
 +            }
 +        }
 +
@@ -3906,6 +3904,28 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +            s->tonemap_func_planar8 = s->tonemap_func_dovi8;
 +            s->tonemap_func_planar10 = s->tonemap_func_dovi10;
 +        }
++    }
++
++    coeffs = av_csp_luma_coeffs_from_avcsp(in_space);
++    if (s->coeffs != coeffs) {
++        s->coeffs = coeffs;
++        s->ocoeffs = av_csp_luma_coeffs_from_avcsp(out->colorspace);
++        if ((ret = compute_yuv_coeffs(s, coeffs, s->ocoeffs, desc, odesc,
++             in_range, out->color_range)) < 0)
++            goto fail;
++        if ((ret = compute_rgb_coeffs(s, in_primaries, out->color_primaries)) < 0)
++            goto fail;
++    }
++
++    if (!s->lin_lut || !s->delin_lut) {
++        if ((ret = compute_trc_luts(s, in_trc, out->color_trc)) < 0)
++            goto fail;
++    }
++
++    if (!s->tonemap_lut || s->lut_peak != peak) {
++        s->lut_peak = peak;
++        if ((ret = compute_tonemap_lut(s, in_trc)) < 0)
++            goto fail;
 +    }
 +
 +    /* do the tonemap */
@@ -4127,6 +4147,9 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    if (isnan(s->param))
 +        s->param = 1.0f;
 +
++    if (s->tonemap == TONEMAP_BT2390 && s->peak)
++        s->peak = FFMAX(s->peak / 10.0f, 1.1f);
++
 +    return 0;
 +}
 +
@@ -4194,7 +4217,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,127 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -4258,6 +4281,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +    float *lin_lut;
 +    float *tonemap_lut;
 +    uint16_t *delin_lut;
++    int lut_off;
 +    int in_yuv_off, out_yuv_off;
 +    int16_t (*yuv2rgb_coeffs)[3][3][8];
 +    int16_t (*rgb2yuv_coeffs)[3][3][8];
@@ -4338,7 +4362,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,2276 @@
+@@ -0,0 +1,2277 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -4666,13 +4690,14 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +                                                 const AVLumaCoefficients *coeffs,
 +                                                 const AVLumaCoefficients *ocoeffs, double desat,
 +                                                 double (*rgb2rgb)[3][3],
-+                                                 int rgb2rgb_passthrough)
++                                                 int rgb2rgb_passthrough,
++                                                 int lut_off)
 +{
 +    __m256i sig8;
 +    __m256 mapvalx8, r_linx8, g_linx8, b_linx8;
 +    __m256 offset = _mm256_set1_ps(0.5f);
 +    __m256i zerox8 = _mm256_setzero_si256();
-+    __m256i input_lut_offset = _mm256_set1_epi32(2048);
++    __m256i input_lut_offset = _mm256_set1_epi32(lut_off);
 +    __m256i upper_bound = _mm256_set1_epi32(32767);
 +    __m256 intermediate_upper_bound = _mm256_set1_ps(32767.0f);
 +    __m256i r, g, b, rx8, gx8, bx8;
@@ -4896,9 +4921,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(32767.0f));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(32767.0f));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(32767.0f));
 +
 +            r0x8a = _mm256_cvtps_epi32(rx8a);
 +            g0x8a = _mm256_cvtps_epi32(gx8a);
@@ -4916,9 +4941,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(32767.0f));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(32767.0f));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(32767.0f));
 +
 +            r1x8a = _mm256_cvtps_epi32(rx8a);
 +            g1x8a = _mm256_cvtps_epi32(gx8a);
@@ -4936,9 +4961,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(32767.0f));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(32767.0f));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(32767.0f));
 +
 +            r0x8b = _mm256_cvtps_epi32(rx8b);
 +            g0x8b = _mm256_cvtps_epi32(gx8b);
@@ -4956,9 +4981,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(32767.0f));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(32767.0f));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(32767.0f));
 +
 +            r1x8b = _mm256_cvtps_epi32(rx8b);
 +            g1x8b = _mm256_cvtps_epi32(gx8b);
@@ -4967,19 +4992,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x8_avx(r1x8a, g1x8a, b1x8a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x8_avx(r0x8b, g0x8b, b0x8b, &r[8], &g[8], &b[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x8_avx(r1x8b, g1x8b, b1x8b, &r1[8], &g1[8], &b1[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +
 +            r0ox16 = _mm256_lddqu_si256((const __m256i_u *)r);
 +            g0ox16 = _mm256_lddqu_si256((const __m256i_u *)g);
@@ -5211,9 +5236,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(32767.0f));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(32767.0f));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(32767.0f));
 +
 +            r0x8a = _mm256_cvtps_epi32(rx8a);
 +            g0x8a = _mm256_cvtps_epi32(gx8a);
@@ -5231,9 +5256,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(32767.0f));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(32767.0f));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(32767.0f));
 +
 +            r1x8a = _mm256_cvtps_epi32(rx8a);
 +            g1x8a = _mm256_cvtps_epi32(gx8a);
@@ -5251,9 +5276,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(32767.0f));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(32767.0f));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(32767.0f));
 +
 +            r0x8b = _mm256_cvtps_epi32(rx8b);
 +            g0x8b = _mm256_cvtps_epi32(gx8b);
@@ -5271,9 +5296,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(32767.0f));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(32767.0f));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(32767.0f));
 +
 +            r1x8b = _mm256_cvtps_epi32(rx8b);
 +            g1x8b = _mm256_cvtps_epi32(gx8b);
@@ -5282,19 +5307,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x8_avx(r1x8a, g1x8a, b1x8a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x8_avx(r0x8b, g0x8b, b0x8b, &r[8], &g[8], &b[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x8_avx(r1x8b, g1x8b, b1x8b, &r1[8], &g1[8], &b1[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +
 +            r0ox16 = _mm256_lddqu_si256((const __m256i_u *)r);
 +            g0ox16 = _mm256_lddqu_si256((const __m256i_u *)g);
@@ -5581,19 +5606,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8a, g1x8a, b1x8a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r0x8b, g0x8b, b0x8b, &r[8], &g[8], &b[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8b, g1x8b, b1x8b, &r1[8], &g1[8], &b1[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox16 = _mm256_lddqu_si256((const __m256i_u *)r);
 +            g0ox16 = _mm256_lddqu_si256((const __m256i_u *)g);
@@ -5881,19 +5906,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8a, g1x8a, b1x8a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r0x8b, g0x8b, b0x8b, &r[8], &g[8], &b[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8b, g1x8b, b1x8b, &r1[8], &g1[8], &b1[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox16 = _mm256_lddqu_si256((const __m256i_u *)r);
 +            g0ox16 = _mm256_lddqu_si256((const __m256i_u *)g);
@@ -6185,19 +6210,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8a, g1x8a, b1x8a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r0x8b, g0x8b, b0x8b, &r[8], &g[8], &b[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8b, g1x8b, b1x8b, &r1[8], &g1[8], &b1[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox16 = _mm256_lddqu_si256((const __m256i_u *)r);
 +            g0ox16 = _mm256_lddqu_si256((const __m256i_u *)g);
@@ -6486,19 +6511,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8a, g1x8a, b1x8a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r0x8b, g0x8b, b0x8b, &r[8], &g[8], &b[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x8_avx(r1x8b, g1x8b, b1x8b, &r1[8], &g1[8], &b1[8],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox16 = _mm256_lddqu_si256((const __m256i_u *)r);
 +            g0ox16 = _mm256_lddqu_si256((const __m256i_u *)g);
@@ -6692,7 +6717,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
-@@ -0,0 +1,2353 @@
+@@ -0,0 +1,2354 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -6978,12 +7003,13 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +                                                 const AVLumaCoefficients *coeffs,
 +                                                 const AVLumaCoefficients *ocoeffs, double desat,
 +                                                 double (*rgb2rgb)[3][3],
-+                                                 int rgb2rgb_passthrough)
++                                                 int rgb2rgb_passthrough,
++                                                 int lut_off)
 +{
 +    __m128i sig4;
 +    __m128 mapvalx4, r_linx4, g_linx4, b_linx4;
 +    __m128 offset = _mm_set1_ps(0.5f);
-+    __m128i input_lut_offset = _mm_set1_epi32(2048);
++    __m128i input_lut_offset = _mm_set1_epi32(lut_off);
 +    __m128 intermediate_upper_bound = _mm_set1_ps(32767.0f);
 +    __m128i r, g, b, rx4, gx4, bx4;
 +
@@ -7221,9 +7247,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(32767.0f));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(32767.0f));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(32767.0f));
 +
 +            r0x4a = _mm_cvtps_epi32(rx4a);
 +            g0x4a = _mm_cvtps_epi32(gx4a);
@@ -7261,9 +7287,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(32767.0f));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(32767.0f));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(32767.0f));
 +
 +            r1x4a = _mm_cvtps_epi32(rx4a);
 +            g1x4a = _mm_cvtps_epi32(gx4a);
@@ -7301,9 +7327,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(32767.0f));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(32767.0f));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(32767.0f));
 +
 +            r0x4b = _mm_cvtps_epi32(rx4b);
 +            g0x4b = _mm_cvtps_epi32(gx4b);
@@ -7341,9 +7367,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(32767.0f));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(32767.0f));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(32767.0f));
 +
 +            r1x4b = _mm_cvtps_epi32(rx4b);
 +            g1x4b = _mm_cvtps_epi32(gx4b);
@@ -7352,19 +7378,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x4_sse(r1x4a, g1x4a, b1x4a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x4_sse(r0x4b, g0x4b, b0x4b, &r[4], &g[4], &b[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +            tonemap_int32x4_sse(r1x4b, g1x4b, b1x4b, &r1[4], &g1[4], &b1[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, 0);
 +
 +            r0ox8 = _mm_lddqu_si128((const __m128i_u *)r);
 +            g0ox8 = _mm_lddqu_si128((const __m128i_u *)g);
@@ -7610,9 +7636,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(32767.0f));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(32767.0f));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(32767.0f));
 +
 +            r0x4a = _mm_cvtps_epi32(rx4a);
 +            g0x4a = _mm_cvtps_epi32(gx4a);
@@ -7650,9 +7676,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(32767.0f));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(32767.0f));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(32767.0f));
 +
 +            r1x4a = _mm_cvtps_epi32(rx4a);
 +            g1x4a = _mm_cvtps_epi32(gx4a);
@@ -7690,9 +7716,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(32767.0f));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(32767.0f));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(32767.0f));
 +
 +            r0x4b = _mm_cvtps_epi32(rx4b);
 +            g0x4b = _mm_cvtps_epi32(gx4b);
@@ -7730,9 +7756,9 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(32767.0f));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(32767.0f));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(32767.0f));
 +
 +            r1x4b = _mm_cvtps_epi32(rx4b);
 +            g1x4b = _mm_cvtps_epi32(gx4b);
@@ -7741,19 +7767,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4a, g1x4a, b1x4a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r0x4b, g0x4b, b0x4b, &r[4], &g[4], &b[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4b, g1x4b, b1x4b, &r1[4], &g1[4], &b1[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = _mm_lddqu_si128((const __m128i_u *)r);
 +            g0ox8 = _mm_lddqu_si128((const __m128i_u *)g);
@@ -8035,19 +8061,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4a, g1x4a, b1x4a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r0x4b, g0x4b, b0x4b, &r[4], &g[4], &b[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4b, g1x4b, b1x4b, &r1[4], &g1[4], &b1[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = _mm_lddqu_si128((const __m128i_u *)r);
 +            g0ox8 = _mm_lddqu_si128((const __m128i_u *)g);
@@ -8328,19 +8354,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4a, g1x4a, b1x4a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r0x4b, g0x4b, b0x4b, &r[4], &g[4], &b[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4b, g1x4b, b1x4b, &r1[4], &g1[4], &b1[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = _mm_lddqu_si128((const __m128i_u *)r);
 +            g0ox8 = _mm_lddqu_si128((const __m128i_u *)g);
@@ -8624,19 +8650,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4a, g1x4a, b1x4a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r0x4b, g0x4b, b0x4b, &r[4], &g[4], &b[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4b, g1x4b, b1x4b, &r1[4], &g1[4], &b1[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = _mm_lddqu_si128((const __m128i_u *)r);
 +            g0ox8 = _mm_lddqu_si128((const __m128i_u *)g);
@@ -8922,19 +8948,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4a, g1x4a, b1x4a, r1, g1, b1,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r0x4b, g0x4b, b0x4b, &r[4], &g[4], &b[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +            tonemap_int32x4_sse(r1x4b, g1x4b, b1x4b, &r1[4], &g1[4], &b1[4],
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
 +                                params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs,
-+                                params->rgb2rgb_passthrough);
++                                params->rgb2rgb_passthrough, params->lut_off);
 +
 +            r0ox8 = _mm_lddqu_si128((const __m128i_u *)r);
 +            g0ox8 = _mm_lddqu_si128((const __m128i_u *)g);
