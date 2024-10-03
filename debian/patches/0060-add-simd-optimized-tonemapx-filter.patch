@@ -95,7 +95,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,2149 @@
+@@ -0,0 +1,2153 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -347,10 +347,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    float32x4_t b_linx4a;
 +    float32x4_t b_linx4b;
 +    float32x4_t offset = vdupq_n_f32(0.5f);
-+    int32x4_t output_upper_bound = vdupq_n_s32(32767);
++    int32x4_t output_upper_bound = vdupq_n_s32(INT16_MAX);
 +    int32x4_t zerox4 = vdupq_n_s32(0);
-+    int16x8_t input_lut_offset = vdupq_n_s16(2048);
-+    int16x8_t input_upper_bound = vdupq_n_s16(32767);
 +    int16x8_t r, g, b;
 +    int32x4_t rx4a, gx4a, bx4a, rx4b, gx4b, bx4b;
 +
@@ -360,20 +358,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    g = vreinterpretq_s16_u16(g_in);
 +    b = vreinterpretq_s16_u16(b_in);
 +
-+    sig8 = vmaxq_s16(r, vmaxq_s16(g, b));
-+    sig8 = vaddq_s16(sig8, input_lut_offset);
-+    sig8 = vminq_s16(sig8, input_upper_bound);
-+    sig8 = vmaxq_s16(sig8, vreinterpretq_s16_s32(zerox4));
-+
-+    r = vaddq_s16(r, input_lut_offset);
-+    r = vminq_s16(r, input_upper_bound);
 +    r = vmaxq_s16(r, vreinterpretq_s16_s32(zerox4));
-+    g = vaddq_s16(g, input_lut_offset);
-+    g = vminq_s16(g, input_upper_bound);
 +    g = vmaxq_s16(g, vreinterpretq_s16_s32(zerox4));
-+    b = vaddq_s16(b, input_lut_offset);
-+    b = vminq_s16(b, input_upper_bound);
 +    b = vmaxq_s16(b, vreinterpretq_s16_s32(zerox4));
++
++    sig8 = vmaxq_s16(r, vmaxq_s16(g, b));
 +
 +    // Cannot use loop here as the lane has to be compile-time constant
 +#define LOAD_LUT(i) mapval4a[i] = tonemap_lut[vget_lane_s16(vget_low_s16(sig8), i)]; \
@@ -462,12 +451,12 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    g_linx4b = vmulq_f32(g_linx4b, mapvalx4b);
 +    b_linx4b = vmulq_f32(b_linx4b, mapvalx4b);
 +
-+    r_linx4a = vfmaq_n_f32(offset, r_linx4a, 32767);
-+    r_linx4b = vfmaq_n_f32(offset, r_linx4b, 32767);
-+    g_linx4a = vfmaq_n_f32(offset, g_linx4a, 32767);
-+    g_linx4b = vfmaq_n_f32(offset, g_linx4b, 32767);
-+    b_linx4a = vfmaq_n_f32(offset, b_linx4a, 32767);
-+    b_linx4b = vfmaq_n_f32(offset, b_linx4b, 32767);
++    r_linx4a = vfmaq_n_f32(offset, r_linx4a, INT16_MAX);
++    r_linx4b = vfmaq_n_f32(offset, r_linx4b, INT16_MAX);
++    g_linx4a = vfmaq_n_f32(offset, g_linx4a, INT16_MAX);
++    g_linx4b = vfmaq_n_f32(offset, g_linx4b, INT16_MAX);
++    b_linx4a = vfmaq_n_f32(offset, b_linx4a, INT16_MAX);
++    b_linx4b = vfmaq_n_f32(offset, b_linx4b, INT16_MAX);
 +
 +    rx4a = vcvtq_s32_f32(r_linx4a);
 +    rx4a = vminq_s32(rx4a, output_upper_bound);
@@ -640,9 +629,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, JPEG_SCALE);
++            gx4a = vmulq_n_f32(gx4a, JPEG_SCALE);
++            bx4a = vmulq_n_f32(bx4a, JPEG_SCALE);
 +
 +            // Reshape y0x4b
 +            ia1 = vzip1q_f32(y0x4b, ux4b);
@@ -671,13 +660,17 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, JPEG_SCALE);
++            gx4b = vmulq_n_f32(gx4b, JPEG_SCALE);
++            bx4b = vmulq_n_f32(bx4b, JPEG_SCALE);
 +
 +            r0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
 +            b0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(bx4a)), vqmovn_u32(vcvtq_u32_f32(bx4b)));
++
++            r0x8 = vminq_u16(r0x8, vdupq_n_u16(INT16_MAX));
++            g0x8 = vminq_u16(g0x8, vdupq_n_u16(INT16_MAX));
++            b0x8 = vminq_u16(b0x8, vdupq_n_u16(INT16_MAX));
 +
 +            // Reshape y1x4a
 +            ia1 = vzip1q_f32(y1x4a, ux4a);
@@ -706,9 +699,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, JPEG_SCALE);
++            gx4a = vmulq_n_f32(gx4a, JPEG_SCALE);
++            bx4a = vmulq_n_f32(bx4a, JPEG_SCALE);
 +
 +            // Reshape y1x4b
 +            ia1 = vzip1q_f32(y1x4b, ux4b);
@@ -737,13 +730,18 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, JPEG_SCALE);
++            gx4b = vmulq_n_f32(gx4b, JPEG_SCALE);
++            bx4b = vmulq_n_f32(bx4b, JPEG_SCALE);
 +
 +            r1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
 +            b1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(bx4a)), vqmovn_u32(vcvtq_u32_f32(bx4b)));
++
++            r1x8 = vminq_u16(r1x8, vdupq_n_u16(INT16_MAX));
++            g1x8 = vminq_u16(g1x8, vdupq_n_u16(INT16_MAX));
++            b1x8 = vminq_u16(b1x8, vdupq_n_u16(INT16_MAX));
++
 +
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -1497,9 +1495,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, JPEG_SCALE);
++            gx4a = vmulq_n_f32(gx4a, JPEG_SCALE);
++            bx4a = vmulq_n_f32(bx4a, JPEG_SCALE);
 +
 +            // Reshape y0x4b
 +            ia1 = vzip1q_f32(y0x4b, ux4b);
@@ -1528,13 +1526,16 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, JPEG_SCALE);
++            gx4b = vmulq_n_f32(gx4b, JPEG_SCALE);
++            bx4b = vmulq_n_f32(bx4b, JPEG_SCALE);
 +
 +            r0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
 +            b0x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(bx4a)), vqmovn_u32(vcvtq_u32_f32(bx4b)));
++            r0x8 = vminq_u16(r0x8, vdupq_n_u16(INT16_MAX));
++            g0x8 = vminq_u16(g0x8, vdupq_n_u16(INT16_MAX));
++            b0x8 = vminq_u16(b0x8, vdupq_n_u16(INT16_MAX));
 +
 +            // Reshape y1x4a
 +            ia1 = vzip1q_f32(y1x4a, ux4a);
@@ -1563,9 +1564,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = vmulq_n_f32(rx4a, 28672.0f);
-+            gx4a = vmulq_n_f32(gx4a, 28672.0f);
-+            bx4a = vmulq_n_f32(bx4a, 28672.0f);
++            rx4a = vmulq_n_f32(rx4a, JPEG_SCALE);
++            gx4a = vmulq_n_f32(gx4a, JPEG_SCALE);
++            bx4a = vmulq_n_f32(bx4a, JPEG_SCALE);
 +
 +            // Reshape y1x4b
 +            ia1 = vzip1q_f32(y1x4b, ux4b);
@@ -1594,13 +1595,16 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = vmulq_n_f32(rx4b, 28672.0f);
-+            gx4b = vmulq_n_f32(gx4b, 28672.0f);
-+            bx4b = vmulq_n_f32(bx4b, 28672.0f);
++            rx4b = vmulq_n_f32(rx4b, JPEG_SCALE);
++            gx4b = vmulq_n_f32(gx4b, JPEG_SCALE);
++            bx4b = vmulq_n_f32(bx4b, JPEG_SCALE);
 +
 +            r1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(rx4a)), vqmovn_u32(vcvtq_u32_f32(rx4b)));
 +            g1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(gx4a)), vqmovn_u32(vcvtq_u32_f32(gx4b)));
 +            b1x8 = vcombine_u16(vqmovn_u32(vcvtq_u32_f32(bx4a)), vqmovn_u32(vcvtq_u32_f32(bx4b)));
++            r1x8 = vminq_u16(r1x8, vdupq_n_u16(INT16_MAX));
++            g1x8 = vminq_u16(g1x8, vdupq_n_u16(INT16_MAX));
++            b1x8 = vminq_u16(b1x8, vdupq_n_u16(INT16_MAX));
 +
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -2342,7 +2346,7 @@ Index: FFmpeg/libavfilter/colorspace.c
  #include "libavutil/frame.h"
  #include "libavutil/mastering_display_metadata.h"
  #include "libavutil/pixdesc.h"
-@@ -354,3 +355,51 @@ float inverse_eotf_arib_b67(float x) {
+@@ -354,3 +355,53 @@ float inverse_eotf_arib_b67(float x) {
  float inverse_eotf_bt1886(float x) {
      return x > 0.0f ? powf(x, 1.0f / 2.4f) : 0.0f;
  }
@@ -2369,15 +2373,17 @@ Index: FFmpeg/libavfilter/colorspace.c
 +}
 +
 +void ff_get_yuv_coeffs(int16_t out[3][3][8], double (*table)[3],
-+                       int depth, int y_rng, int uv_rng, int yuv2rgb)
++                       int depth, int y_rng, int uv_rng, int yuv2rgb, int is_full_range)
 +{
 +#define N (yuv2rgb ? m : n)
 +#define M (yuv2rgb ? n : m)
 +    int rng, n, m, o;
++    int range_scale = is_full_range ? 32767 : 28032;
++    int range_scale_uv = is_full_range ? 32767 : 28672;
 +    int bits = 1 << (yuv2rgb ? (depth - 1) : (29 - depth));
-+    for (rng = y_rng, n = 0; n < 3; n++, rng = uv_rng) {
++    for (rng = y_rng, n = 0; n < 3; n++, rng = uv_rng, range_scale = range_scale_uv) {
 +        for (m = 0; m < 3; m++) {
-+            out[N][M][0] = lrint(bits * (yuv2rgb ? 28672 : rng) * table[N][M] / (yuv2rgb ? rng : 28672));
++            out[N][M][0] = (int16_t)lrint(bits * (yuv2rgb ? range_scale : rng) * table[N][M] / (yuv2rgb ? rng : range_scale));
 +            for (o = 1; o < 8; o++)
 +                out[N][M][o] = out[N][M][0];
 +        }
@@ -2405,13 +2411,13 @@ Index: FFmpeg/libavfilter/colorspace.h
 +int ff_get_range_off(int *off, int *y_rng, int *uv_rng,
 +                     enum AVColorRange rng, int depth);
 +void ff_get_yuv_coeffs(int16_t out[3][3][8], double (*table)[3],
-+                       int depth, int y_rng, int uv_rng, int yuv2rgb);
++                       int depth, int y_rng, int uv_rng, int yuv2rgb, int is_full_range);
  #endif
 Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1778 @@
+@@ -0,0 +1,1791 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2856,7 +2862,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +static float bt2390(float s, float peak)
 +{
 +    float peak_pq = inverse_eotf_st2084(peak, REFERENCE_WHITE_ALT);
-+    float scale = 1.0f / peak_pq;
++    float scale = peak_pq > 0.0f ? (1.0f / peak_pq) : 1.0f;
 +
 +    // SDR peak
 +    float dst_peak = 1.0f;
@@ -2939,10 +2945,9 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        return AVERROR(ENOMEM);
 +
 +    for (i = 0; i < 32768; i++) {
-+        double v1 = (i - 2048.0f) / 28672.0f;
-+        double v2 = i / 32767.0f;
-+        s->lin_lut[i] = FFMAX(linearize(v1, trc_src), 0);
-+        s->delin_lut[i] = av_clip_int16(lrint(delinearize(v2, trc_dst) * 28672.0f));
++        float v = (float)i / JPEG_SCALE;
++        s->lin_lut[i] = FFMAX(linearize(v, trc_src), 0);
++        s->delin_lut[i] = av_clip_int16((int)rintf(delinearize(v, trc_dst) * JPEG_SCALE));
 +    }
 +
 +    return 0;
@@ -2957,8 +2962,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        return AVERROR(ENOMEM);
 +
 +    for (i = 0; i < 32768; i++) {
-+        double v = (i - 2048.0f) / 28672.0f;
-+        double sig = linearize(v, trc_src);
++        float v = (float)i / JPEG_SCALE;
++        float sig = linearize(v, trc_src);
 +        float mapped = mapsig(s->tonemap, sig, peak, s->param);
 +        s->tonemap_lut[i] = (sig > 0.0f && mapped > 0.0f) ? mapped / sig : 0.0f;
 +    }
@@ -2992,7 +2997,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    ff_fill_rgb2yuv_table(ocoeffs, rgb2yuv);
 +
 +    ff_get_yuv_coeffs(s->yuv2rgb_coeffs, yuv2rgb, idesc->comp[0].depth,
-+                      y_rng, uv_rng, 1);
++                      y_rng, uv_rng, 1, irng == AVCOL_RANGE_JPEG);
 +
 +    res = ff_get_range_off(&s->out_yuv_off, &y_rng, &uv_rng,
 +                           orng, odesc->comp[0].depth);
@@ -3004,7 +3009,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    }
 +
 +    ff_get_yuv_coeffs(s->rgb2yuv_coeffs, rgb2yuv, odesc->comp[0].depth,
-+                      y_rng, uv_rng, 0);
++                      y_rng, uv_rng, 0, orng == AVCOL_RANGE_JPEG);
 +
 +    return 0;
 +}
@@ -3069,20 +3074,21 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    lms2rgb(c3, c3[0], c3[1], c3[2], params->dovi->linear, *params->lms2rgb_matrix);
 +    lms2rgb(c4, c4[0], c4[1], c4[2], params->dovi->linear, *params->lms2rgb_matrix);
 +
-+    r[0] = av_clip_int16(c1[0] * 28672);
-+    r[1] = av_clip_int16(c2[0] * 28672);
-+    r[2] = av_clip_int16(c3[0] * 28672);
-+    r[3] = av_clip_int16(c4[0] * 28672);
++    // DoVi always uses full range
++    r[0] = av_clip_uintp2((int)(c1[0] * JPEG_SCALE), 15);
++    r[1] = av_clip_uintp2((int)(c2[0] * JPEG_SCALE), 15);
++    r[2] = av_clip_uintp2((int)(c3[0] * JPEG_SCALE), 15);
++    r[3] = av_clip_uintp2((int)(c4[0] * JPEG_SCALE), 15);
 +
-+    g[0] = av_clip_int16(c1[1] * 28672);
-+    g[1] = av_clip_int16(c2[1] * 28672);
-+    g[2] = av_clip_int16(c3[1] * 28672);
-+    g[3] = av_clip_int16(c4[1] * 28672);
++    g[0] = av_clip_uintp2((int)(c1[1] * JPEG_SCALE), 15);
++    g[1] = av_clip_uintp2((int)(c2[1] * JPEG_SCALE), 15);
++    g[2] = av_clip_uintp2((int)(c3[1] * JPEG_SCALE), 15);
++    g[3] = av_clip_uintp2((int)(c4[1] * JPEG_SCALE), 15);
 +
-+    b[0] = av_clip_int16(c1[2] * 28672);
-+    b[1] = av_clip_int16(c2[2] * 28672);
-+    b[2] = av_clip_int16(c3[2] * 28672);
-+    b[3] = av_clip_int16(c4[2] * 28672);
++    b[0] = av_clip_uintp2((int)(c1[2] * JPEG_SCALE), 15);
++    b[1] = av_clip_uintp2((int)(c2[2] * JPEG_SCALE), 15);
++    b[2] = av_clip_uintp2((int)(c3[2] * JPEG_SCALE), 15);
++    b[3] = av_clip_uintp2((int)(c4[2] * JPEG_SCALE), 15);
 +}
 +
 +inline static void tonemap_int16(int16_t r_in, int16_t g_in, int16_t b_in,
@@ -3096,6 +3102,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    int16_t sig;
 +    float mapval, r_lin, g_lin, b_lin;
 +
++    r_in = av_clip_uintp2(r_in, 15);
++    g_in = av_clip_uintp2(g_in, 15);
++    b_in = av_clip_uintp2(b_in, 15);
++
 +    /* load values */
 +    *r_out = r_in;
 +    *g_out = g_in;
@@ -3106,11 +3116,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +     * out-of-bounds clipping */
 +    sig = FFMAX3(r_in, g_in, b_in);
 +
-+    mapval = tonemap_lut[av_clip_uintp2(sig + 2048, 15)];
++    mapval = tonemap_lut[sig];
 +
-+    r_lin = lin_lut[av_clip_uintp2(r_in + 2048, 15)];
-+    g_lin = lin_lut[av_clip_uintp2(g_in + 2048, 15)];
-+    b_lin = lin_lut[av_clip_uintp2(b_in + 2048, 15)];
++    r_lin = lin_lut[r_in];
++    g_lin = lin_lut[g_in];
++    b_lin = lin_lut[b_in];
 +
 +    if (!rgb2rgb_passthrough) {
 +        r_lin = (*rgb2rgb)[0][0] * r_lin + (*rgb2rgb)[0][1] * g_lin + (*rgb2rgb)[0][2] * b_lin;
@@ -3118,7 +3128,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        b_lin = (*rgb2rgb)[2][0] * r_lin + (*rgb2rgb)[2][1] * g_lin + (*rgb2rgb)[2][2] * b_lin;
 +    }
 +
-+#define MIX(x,y,a) (x) * (1 - (a)) + (y) * (a)
++#define MIX(x,y,a) ((x) * (1 - (a)) + (y) * (a))
 +    /* desaturate to prevent unnatural colors */
 +    if (desat > 0) {
 +        float luma = av_q2d(coeffs->cr) * r_lin + av_q2d(coeffs->cg) * g_lin + av_q2d(coeffs->cb) * b_lin;
@@ -3695,8 +3705,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +.desat               = s->desat,                                \
 +.dovi = s->dovi,                                                \
 +.dovi_pbuf = s->dovi_pbuf,                                      \
-+.lms2rgb_matrix = &s->lms2rgb_matrix,                            \
-+.ycc_offset = &s->ycc_offset                                     \
++.lms2rgb_matrix = &s->lms2rgb_matrix,                           \
++.ycc_offset = &s->ycc_offset                                    \
 +};
 +
 +static int filter_slice_planar8(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
@@ -3780,6 +3790,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    TonemapxContext *s = ctx->priv;
 +    AVFilterLink *outlink = ctx->outputs[0];
 +    AVFrame *out;
++    AVFrameSideData *dovi_sd;
 +    const AVPixFmtDescriptor *desc;
 +    const AVPixFmtDescriptor *odesc;
 +    int ret;
@@ -3821,10 +3832,18 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    if ((ret = av_frame_copy_props(out, in)) < 0)
 +        goto fail;
 +
++    if (s->apply_dovi) {
++        dovi_sd = av_frame_get_side_data(in, AV_FRAME_DATA_DOVI_METADATA);
++    }
++
 +    /* read peak from side data if not passed in */
 +    if (!peak) {
-+        peak = ff_determine_signal_peak(in);
-+        av_log(s, AV_LOG_DEBUG, "Computed signal peak: %f\n", peak);
++        if (dovi_sd) {
++            const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
++            s->peak = ff_determine_dovi_signal_peak(metadata);
++        } else {
++            s->peak = ff_determine_signal_peak(in);
++        }
 +    }
 +
 +    out->color_trc = s->trc == -1 ? AVCOL_TRC_UNSPECIFIED : s->trc;
@@ -3874,38 +3893,35 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +            goto fail;
 +    }
 +
-+    if (s->apply_dovi) {
-+        AVFrameSideData *dovi_sd = av_frame_get_side_data(in, AV_FRAME_DATA_DOVI_METADATA);
-+        if (dovi_sd) {
-+            const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
-+            const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
-+            // only map dovi rpus that don't require an EL and has rpu profile == 0
-+            // for performance reason we only want to do reshaping when absolutely needed
-+            // such videos usually have vdr_rpu_profile == 0, for example profile 5 videos
-+            // this could be wrong as there is no public documentation on this field
-+            if (rpu->disable_residual_flag && rpu->vdr_rpu_profile == 0) {
-+                struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
-+                s->dovi = dovi;
-+                if (!s->dovi)
-+                    goto fail;
++    if (dovi_sd) {
++        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
++        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
++        // only map dovi rpus that don't require an EL and has rpu profile == 0
++        // for performance reason we only want to do reshaping when absolutely needed
++        // such videos usually have vdr_rpu_profile == 0, for example profile 5 videos
++        // this could be wrong as there is no public documentation on this field
++        if (rpu->disable_residual_flag && rpu->vdr_rpu_profile == 0) {
++            struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
++            s->dovi = dovi;
++            if (!s->dovi)
++                goto fail;
 +
-+                ff_map_dovi_metadata(s->dovi, metadata);
-+            }
++            ff_map_dovi_metadata(s->dovi, metadata);
 +        }
++    }
 +
-+        if (s->dovi) {
-+            if (desc->comp[2].plane == 1) {
-+                av_log(s, AV_LOG_ERROR, "Input pixel format has to be yuv420p10 for Dolby Vision reshaping\n");
-+                av_assert0(0);
-+            }
-+            update_dovi_buf(ctx);
-+            ff_matrix_mul_3x3(s->lms2rgb_matrix, dovi_lms2rgb_matrix, s->dovi->linear);
-+            s->ycc_offset[0] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[0][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[0][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[0][2];
-+            s->ycc_offset[1] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[1][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[1][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[1][2];
-+            s->ycc_offset[2] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[2][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[2][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[2][2];
-+            s->tonemap_func_planar8 = s->tonemap_func_dovi8;
-+            s->tonemap_func_planar10 = s->tonemap_func_dovi10;
++    if (s->dovi) {
++        if (desc->comp[2].plane == 1) {
++            av_log(s, AV_LOG_ERROR, "Input pixel format has to be yuv420p10 for Dolby Vision reshaping\n");
++            av_assert0(0);
 +        }
++        update_dovi_buf(ctx);
++        ff_matrix_mul_3x3(s->lms2rgb_matrix, dovi_lms2rgb_matrix, s->dovi->linear);
++        s->ycc_offset[0] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[0][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[0][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[0][2];
++        s->ycc_offset[1] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[1][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[1][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[1][2];
++        s->ycc_offset[2] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[2][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[2][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[2][2];
++        s->tonemap_func_planar8 = s->tonemap_func_dovi8;
++        s->tonemap_func_planar10 = s->tonemap_func_dovi10;
 +    }
 +
 +    /* do the tonemap */
@@ -4127,6 +4143,9 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    if (isnan(s->param))
 +        s->param = 1.0f;
 +
++    if (s->peak)
++        s->peak = FFMAX(s->peak / 10.0f, 1.1f);
++
 +    return 0;
 +}
 +
@@ -4194,7 +4213,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,127 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -4252,6 +4271,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +#define pivots_sz pivots_cnt*sizeof(float)
 +#define coeffs_sz coeffs_cnt*sizeof(float)
 +#define mmr_sz mmr_cnt*sizeof(float)
++#define JPEG_SCALE 32767.0f
 +
 +typedef struct TonemapIntParams {
 +    double lut_peak;
@@ -4338,7 +4358,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,2276 @@
+@@ -0,0 +1,2289 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -4672,27 +4692,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +    __m256 mapvalx8, r_linx8, g_linx8, b_linx8;
 +    __m256 offset = _mm256_set1_ps(0.5f);
 +    __m256i zerox8 = _mm256_setzero_si256();
-+    __m256i input_lut_offset = _mm256_set1_epi32(2048);
-+    __m256i upper_bound = _mm256_set1_epi32(32767);
 +    __m256 intermediate_upper_bound = _mm256_set1_ps(32767.0f);
 +    __m256i r, g, b, rx8, gx8, bx8;
 +
 +    float mapval8[8], r_lin8[8], g_lin8[8], b_lin8[8];
 +
-+    sig8 = _mm256_max_epi32(r_in, _mm256_max_epi32(g_in, b_in));
-+    sig8 = _mm256_add_epi32(sig8, input_lut_offset);
-+    sig8 = _mm256_min_epi32(sig8, upper_bound);
-+    sig8 = _mm256_max_epi32(sig8, zerox8);
++    r = _mm256_max_epi32(r_in, zerox8);
++    g = _mm256_max_epi32(g_in, zerox8);
++    b = _mm256_max_epi32(b_in, zerox8);
 +
-+    r = _mm256_add_epi32(r_in, input_lut_offset);
-+    r = _mm256_min_epi32(r, upper_bound);
-+    r = _mm256_max_epi32(r, zerox8);
-+    g = _mm256_add_epi32(g_in, input_lut_offset);
-+    g = _mm256_min_epi32(g, upper_bound);
-+    g = _mm256_max_epi32(g, zerox8);
-+    b = _mm256_add_epi32(b_in, input_lut_offset);
-+    b = _mm256_min_epi32(b, upper_bound);
-+    b = _mm256_max_epi32(b, zerox8);
++    sig8 = _mm256_max_epi32(r, _mm256_max_epi32(g, b));
 +
 +#define LOAD_LUT(i) mapval8[i] = tonemap_lut[_mm256_extract_epi32(sig8, i)]; \
 +r_lin8[i] = lin_lut[_mm256_extract_epi32(r, i)];                             \
@@ -4896,13 +4905,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(JPEG_SCALE));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(JPEG_SCALE));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r0x8a = _mm256_cvtps_epi32(rx8a);
++            r0x8a = av_clip_int16_avx(r0x8a);
 +            g0x8a = _mm256_cvtps_epi32(gx8a);
++            g0x8a = av_clip_int16_avx(g0x8a);
 +            b0x8a = _mm256_cvtps_epi32(bx8a);
++            b0x8a = av_clip_int16_avx(b0x8a);
 +
 +            // Reshape y1x8a
 +            reshapeiptx8(&ipt0, &ipt1, &ipt2, &ipt3,
@@ -4916,13 +4928,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(JPEG_SCALE));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(JPEG_SCALE));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r1x8a = _mm256_cvtps_epi32(rx8a);
++            r1x8a = av_clip_int16_avx(r1x8a);
 +            g1x8a = _mm256_cvtps_epi32(gx8a);
++            g1x8a = av_clip_int16_avx(g1x8a);
 +            b1x8a = _mm256_cvtps_epi32(bx8a);
++            b1x8a = av_clip_int16_avx(b1x8a);
 +
 +            // Reshape y0x8b
 +            reshapeiptx8(&ipt0, &ipt1, &ipt2, &ipt3,
@@ -4936,13 +4951,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(JPEG_SCALE));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(JPEG_SCALE));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r0x8b = _mm256_cvtps_epi32(rx8b);
++            r0x8b = av_clip_int16_avx(r0x8b);
 +            g0x8b = _mm256_cvtps_epi32(gx8b);
++            g0x8b = av_clip_int16_avx(g0x8b);
 +            b0x8b = _mm256_cvtps_epi32(bx8b);
++            b0x8b = av_clip_int16_avx(b0x8b);
 +
 +            // Reshape y1x8b
 +            reshapeiptx8(&ipt0, &ipt1, &ipt2, &ipt3,
@@ -4956,13 +4974,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(JPEG_SCALE));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(JPEG_SCALE));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r1x8b = _mm256_cvtps_epi32(rx8b);
++            r1x8b = av_clip_int16_avx(r1x8b);
 +            g1x8b = _mm256_cvtps_epi32(gx8b);
++            g1x8b = av_clip_int16_avx(g1x8b);
 +            b1x8b = _mm256_cvtps_epi32(bx8b);
++            b1x8b = av_clip_int16_avx(b1x8b);
 +
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -5211,13 +5232,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(JPEG_SCALE));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(JPEG_SCALE));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r0x8a = _mm256_cvtps_epi32(rx8a);
++            r0x8a = av_clip_int16_avx(r0x8a);
 +            g0x8a = _mm256_cvtps_epi32(gx8a);
++            g0x8a = av_clip_int16_avx(g0x8a);
 +            b0x8a = _mm256_cvtps_epi32(bx8a);
++            b0x8a = av_clip_int16_avx(b0x8a);
 +
 +            // Reshape y1x8a
 +            reshapeiptx8(&ipt0, &ipt1, &ipt2, &ipt3,
@@ -5231,13 +5255,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8a, &gx8a, &bx8a, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(28672.0f));
-+            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(28672.0f));
-+            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(28672.0f));
++            rx8a = _mm256_mul_ps(rx8a, _mm256_set1_ps(JPEG_SCALE));
++            gx8a = _mm256_mul_ps(gx8a, _mm256_set1_ps(JPEG_SCALE));
++            bx8a = _mm256_mul_ps(bx8a, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r1x8a = _mm256_cvtps_epi32(rx8a);
++            r1x8a = av_clip_int16_avx(r1x8a);
 +            g1x8a = _mm256_cvtps_epi32(gx8a);
++            g1x8a = av_clip_int16_avx(g1x8a);
 +            b1x8a = _mm256_cvtps_epi32(bx8a);
++            b1x8a = av_clip_int16_avx(b1x8a);
 +
 +            // Reshape y0x8b
 +            reshapeiptx8(&ipt0, &ipt1, &ipt2, &ipt3,
@@ -5251,13 +5278,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(JPEG_SCALE));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(JPEG_SCALE));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r0x8b = _mm256_cvtps_epi32(rx8b);
++            r0x8b = av_clip_int16_avx(r0x8b);
 +            g0x8b = _mm256_cvtps_epi32(gx8b);
++            g0x8b = av_clip_int16_avx(g0x8b);
 +            b0x8b = _mm256_cvtps_epi32(bx8b);
++            b0x8b = av_clip_int16_avx(b0x8b);
 +
 +            // Reshape y1x8b
 +            reshapeiptx8(&ipt0, &ipt1, &ipt2, &ipt3,
@@ -5271,13 +5301,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            ycc2rgbx8(&lx8, &mx8, &sx8, ix8, px8, tx8, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx8(&rx8b, &gx8b, &bx8b, lx8, mx8, sx8, *params->lms2rgb_matrix);
 +
-+            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(28672.0f));
-+            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(28672.0f));
-+            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(28672.0f));
++            rx8b = _mm256_mul_ps(rx8b, _mm256_set1_ps(JPEG_SCALE));
++            gx8b = _mm256_mul_ps(gx8b, _mm256_set1_ps(JPEG_SCALE));
++            bx8b = _mm256_mul_ps(bx8b, _mm256_set1_ps(JPEG_SCALE));
 +
 +            r1x8b = _mm256_cvtps_epi32(rx8b);
++            r1x8b = av_clip_int16_avx(r1x8b);
 +            g1x8b = _mm256_cvtps_epi32(gx8b);
++            g1x8b = av_clip_int16_avx(g1x8b);
 +            b1x8b = _mm256_cvtps_epi32(bx8b);
++            b1x8b = av_clip_int16_avx(b1x8b);
 +
 +            tonemap_int32x8_avx(r0x8a, g0x8a, b0x8a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -6692,7 +6725,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
-@@ -0,0 +1,2353 @@
+@@ -0,0 +1,2371 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -6983,22 +7016,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +    __m128i sig4;
 +    __m128 mapvalx4, r_linx4, g_linx4, b_linx4;
 +    __m128 offset = _mm_set1_ps(0.5f);
-+    __m128i input_lut_offset = _mm_set1_epi32(2048);
-+    __m128 intermediate_upper_bound = _mm_set1_ps(32767.0f);
++    __m128 intermediate_upper_bound = _mm_set1_ps(JPEG_SCALE);
 +    __m128i r, g, b, rx4, gx4, bx4;
 +
 +    float mapval4[4], r_lin4[4], g_lin4[4], b_lin4[4];
 +
-+    sig4 = _mm_max_epi32(r_in, _mm_max_epi32(g_in, b_in));
-+    sig4 = _mm_add_epi32(sig4, input_lut_offset);
-+    sig4 = av_clip_uint16_sse(sig4);
++    r = av_clip_uint16_sse(r_in);
++    g = av_clip_uint16_sse(g_in);
++    b = av_clip_uint16_sse(b_in);
 +
-+    r = _mm_add_epi32(r_in, input_lut_offset);
-+    r = av_clip_uint16_sse(r);
-+    g = _mm_add_epi32(g_in, input_lut_offset);
-+    g = av_clip_uint16_sse(g);
-+    b = _mm_add_epi32(b_in, input_lut_offset);
-+    b = av_clip_uint16_sse(b);
++    sig4 = _mm_max_epi32(r, _mm_max_epi32(g, b));
 +
 +    // Cannot use loop here as the lane has to be compile-time constant
 +#define LOAD_LUT(i) mapval4[i] = tonemap_lut[_mm_extract_epi32(sig4, i)]; \
@@ -7221,13 +7248,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(JPEG_SCALE));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(JPEG_SCALE));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(JPEG_SCALE));
 +
 +            r0x4a = _mm_cvtps_epi32(rx4a);
++            r0x4a = av_clip_int16_sse(r0x4a);
 +            g0x4a = _mm_cvtps_epi32(gx4a);
++            g0x4a = av_clip_int16_sse(g0x4a);
 +            b0x4a = _mm_cvtps_epi32(bx4a);
++            b0x4a = av_clip_int16_sse(b0x4a);
 +
 +            // Reshape y1x4a
 +            ia1 = _mm_unpacklo_ps(y1x4af, ux4af);
@@ -7261,13 +7291,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(JPEG_SCALE));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(JPEG_SCALE));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(JPEG_SCALE));
 +
 +            r1x4a = _mm_cvtps_epi32(rx4a);
++            r1x4a = av_clip_int16_sse(r1x4a);
 +            g1x4a = _mm_cvtps_epi32(gx4a);
++            g1x4a = av_clip_int16_sse(g1x4a);
 +            b1x4a = _mm_cvtps_epi32(bx4a);
++            b1x4a = av_clip_int16_sse(b1x4a);
 +
 +            // Reshape y0x4b
 +            ia1 = _mm_unpacklo_ps(y0x4bf, ux4bf);
@@ -7301,13 +7334,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(JPEG_SCALE));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(JPEG_SCALE));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(JPEG_SCALE));
 +
 +            r0x4b = _mm_cvtps_epi32(rx4b);
++            r0x4b = av_clip_int16_sse(r0x4b);
 +            g0x4b = _mm_cvtps_epi32(gx4b);
++            g0x4b = av_clip_int16_sse(g0x4b);
 +            b0x4b = _mm_cvtps_epi32(bx4b);
++            b0x4b = av_clip_int16_sse(b0x4b);
 +
 +            // Reshape y1x4b
 +            ia1 = _mm_unpacklo_ps(y1x4bf, ux4bf);
@@ -7341,13 +7377,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(JPEG_SCALE));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(JPEG_SCALE));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(JPEG_SCALE));
 +
 +            r1x4b = _mm_cvtps_epi32(rx4b);
++            r1x4b = av_clip_int16_sse(r1x4b);
 +            g1x4b = _mm_cvtps_epi32(gx4b);
++            g1x4b = av_clip_int16_sse(g1x4b);
 +            b1x4b = _mm_cvtps_epi32(bx4b);
++            b1x4b = av_clip_int16_sse(b1x4b);
 +
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -7610,13 +7649,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(JPEG_SCALE));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(JPEG_SCALE));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(JPEG_SCALE));
 +
 +            r0x4a = _mm_cvtps_epi32(rx4a);
++            r0x4a = av_clip_int16_sse(r0x4a);
 +            g0x4a = _mm_cvtps_epi32(gx4a);
++            g0x4a = av_clip_int16_sse(g0x4a);
 +            b0x4a = _mm_cvtps_epi32(bx4a);
++            b0x4a = av_clip_int16_sse(b0x4a);
 +
 +            // Reshape y1x4a
 +            ia1 = _mm_unpacklo_ps(y1x4af, ux4af);
@@ -7650,13 +7692,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4a, &gx4a, &bx4a, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(28672.0f));
-+            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(28672.0f));
-+            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(28672.0f));
++            rx4a = _mm_mul_ps(rx4a, _mm_set1_ps(JPEG_SCALE));
++            gx4a = _mm_mul_ps(gx4a, _mm_set1_ps(JPEG_SCALE));
++            bx4a = _mm_mul_ps(bx4a, _mm_set1_ps(JPEG_SCALE));
 +
 +            r1x4a = _mm_cvtps_epi32(rx4a);
++            r1x4a = av_clip_int16_sse(r1x4a);
 +            g1x4a = _mm_cvtps_epi32(gx4a);
++            g1x4a = av_clip_int16_sse(g1x4a);
 +            b1x4a = _mm_cvtps_epi32(bx4a);
++            b1x4a = av_clip_int16_sse(b1x4a);
 +
 +            // Reshape y0x4b
 +            ia1 = _mm_unpacklo_ps(y0x4bf, ux4bf);
@@ -7690,13 +7735,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(JPEG_SCALE));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(JPEG_SCALE));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(JPEG_SCALE));
 +
 +            r0x4b = _mm_cvtps_epi32(rx4b);
++            r0x4b = av_clip_int16_sse(r0x4b);
 +            g0x4b = _mm_cvtps_epi32(gx4b);
++            g0x4b = av_clip_int16_sse(g0x4b);
 +            b0x4b = _mm_cvtps_epi32(bx4b);
++            b0x4b = av_clip_int16_sse(b0x4b);
 +
 +            // Reshape y1x4b
 +            ia1 = _mm_unpacklo_ps(y1x4bf, ux4bf);
@@ -7730,13 +7778,16 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            ycc2rgbx4(&lx4, &mx4, &sx4, ix4, px4, tx4, params->dovi->nonlinear, *params->ycc_offset);
 +            lms2rgbx4(&rx4b, &gx4b, &bx4b, lx4, mx4, sx4, *params->lms2rgb_matrix);
 +
-+            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(28672.0f));
-+            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(28672.0f));
-+            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(28672.0f));
++            rx4b = _mm_mul_ps(rx4b, _mm_set1_ps(JPEG_SCALE));
++            gx4b = _mm_mul_ps(gx4b, _mm_set1_ps(JPEG_SCALE));
++            bx4b = _mm_mul_ps(bx4b, _mm_set1_ps(JPEG_SCALE));
 +
 +            r1x4b = _mm_cvtps_epi32(rx4b);
++            r1x4b = av_clip_int16_sse(r1x4b);
 +            g1x4b = _mm_cvtps_epi32(gx4b);
++            g1x4b = av_clip_int16_sse(g1x4b);
 +            b1x4b = _mm_cvtps_epi32(bx4b);
++            b1x4b = av_clip_int16_sse(b1x4b);
 +
 +            tonemap_int32x4_sse(r0x4a, g0x4a, b0x4a, r, g, b,
 +                                params->lin_lut, params->tonemap_lut, params->delin_lut,

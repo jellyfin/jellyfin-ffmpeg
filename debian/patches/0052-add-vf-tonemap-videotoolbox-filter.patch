@@ -40,7 +40,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
-@@ -0,0 +1,891 @@
+@@ -0,0 +1,894 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -82,6 +82,10 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +#define ARIB_B67_C 0.55991073f
 +
 +#define FLOAT_EPS 1e-6f
++
++#define LIMITED_BLACK 0.06256109482f
++#define LIMITED_WHITE 0.9188660802f
++#define LIMITED_RANGE 0.8563049854f
 +
 +constant float ref_white [[function_constant(0)]];
 +constant float tone_param [[function_constant(1)]];
@@ -270,18 +274,16 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +// ------------
 +// Color conversion
 +float3 yuv2rgb(float y, float u, float v) {
-+    if (is_full_range_in) {
-+        u -= 0.5f;
-+        v -= 0.5f;
-+    } else {
-+        y = (y * 255.0f -  16.0f) / 219.0f;
-+        u = (u * 255.0f - 128.0f) / 224.0f;
-+        v = (v * 255.0f - 128.0f) / 224.0f;
-+    }
++    u -= 0.5f;
++    v -= 0.5f;
 +    float r = (y * rgb_matrix_1[0]) + (u * rgb_matrix_1[1]) + (v * rgb_matrix_1[2]);
 +    float g = (y * rgb_matrix_2[0]) + (u * rgb_matrix_2[1]) + (v * rgb_matrix_2[2]);
 +    float b = (y * rgb_matrix_3[0]) + (u * rgb_matrix_3[1]) + (v * rgb_matrix_3[2]);
-+    return float3(r, g, b);
++    float3 c = float3(r, g, b);
++    if (!is_full_range_in) {
++        c = (c - LIMITED_BLACK) / LIMITED_RANGE;
++    }
++    return c;
 +}
 +
 +float3 yuv2lrgb(float3 yuv) {
@@ -296,25 +298,26 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +}
 +
 +float3 rgb2yuv(float r, float g, float b) {
++    if (!is_full_range_out) {
++        r = r * LIMITED_RANGE + LIMITED_BLACK;
++        g = g * LIMITED_RANGE + LIMITED_BLACK;
++        b = b * LIMITED_RANGE + LIMITED_BLACK;
++    }
 +    float y = (r*yuv_matrix_1[0]) + (g*yuv_matrix_1[1]) + (b*yuv_matrix_1[2]);
 +    float u = (r*yuv_matrix_2[0]) + (g*yuv_matrix_2[1]) + (b*yuv_matrix_2[2]);
 +    float v = (r*yuv_matrix_3[0]) + (g*yuv_matrix_3[1]) + (b*yuv_matrix_3[2]);
-+    if (is_full_range_out) {
-+        u += 0.5f;
-+        v += 0.5f;
-+    } else {
-+        y = (219.0f * y + 16.0f) / 255.0f;
-+        u = (224.0f * u + 128.0f) / 255.0f;
-+        v = (224.0f * v + 128.0f) / 255.0f;
-+    }
++    u += 0.5f;
++    v += 0.5f;
 +    return float3(y, u, v);
 +}
 +
 +float rgb2y(float r, float g, float b) {
-+    float y = (r*yuv_matrix_1[0]) + (g*yuv_matrix_1[1]) + (b*yuv_matrix_1[2]);
 +    if (!is_full_range_out) {
-+        y = (219.0f * y + 16.0f) / 255.0f;
++        r = r * LIMITED_RANGE + LIMITED_BLACK;
++        g = g * LIMITED_RANGE + LIMITED_BLACK;
++        b = b * LIMITED_RANGE + LIMITED_BLACK;
 +    }
++    float y = (r*yuv_matrix_1[0]) + (g*yuv_matrix_1[1]) + (b*yuv_matrix_1[2]);
 +    return y;
 +}
 +
@@ -936,7 +939,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
-@@ -0,0 +1,1154 @@
+@@ -0,0 +1,1149 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1026,7 +1029,6 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    enum TonemapMode            tonemap_mode;
 +    enum AVPixelFormat          format;
 +    int                         apply_dovi;
-+    double                      ref_white;
 +    double                      peak;
 +    double                      target_peak;
 +    double                      param;
@@ -1263,7 +1265,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +
 +    MTLFunctionConstantValues* constant_values = [MTLFunctionConstantValues new];
 +    dispatch_data_t lib_data;
-+    float ref_white;
++    float ref_white = REFERENCE_WHITE_ALT;
 +    float tone_param;
 +    float desat_param;
 +    float target_peak;
@@ -1315,10 +1317,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (isnan(ctx->param))
 +        ctx->param = 1.0f;
 +
-+    ctx->ref_white = ctx->tonemap == TONEMAP_BT2390 ? REFERENCE_WHITE_ALT
-+                                                    : REFERENCE_WHITE;
-+
-+    if (ctx->tonemap == TONEMAP_BT2390 && ctx->peak)
++    if (ctx->peak)
 +        ctx->peak = FFMAX(ctx->peak / 10.0f, 1.1f);
 +
 +    // SDR peak is 1.0f
@@ -1403,12 +1402,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    }
 +
 +    tone_param = (float)ctx->param;
-+    ref_white = (float)ctx->ref_white;
 +    desat_param = (float)ctx->desat_param;
 +    target_peak = (float)ctx->target_peak;
 +    scene_threshold = (float)ctx->scene_threshold;
-+    pq_max_lum_div_ref_white = (float)(ST2084_MAX_LUMINANCE / ctx->ref_white);
-+    ref_white_div_pq_max_lum = (float)(ctx->ref_white / ST2084_MAX_LUMINANCE);
++    pq_max_lum_div_ref_white = (float)(ST2084_MAX_LUMINANCE / ref_white);
++    ref_white_div_pq_max_lum = (float)(ref_white / ST2084_MAX_LUMINANCE);
 +    tonemap_func_type = (short)ctx->tonemap;
 +    is_tone_func_bt2390 = ctx->tonemap == TONEMAP_BT2390;
 +    is_tone_mode_rgb = ctx->tonemap_mode == TONEMAP_MODE_RGB;
