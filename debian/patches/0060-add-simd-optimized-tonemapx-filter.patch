@@ -3878,7 +3878,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +
 +    if (!s->tonemap_lut || s->lut_peak != peak) {
 +        s->lut_peak = peak;
-+        if ((ret = compute_tonemap_lut(s, out->color_trc)) < 0)
++        if ((ret = compute_tonemap_lut(s, in->color_trc)) < 0)
 +            goto fail;
 +    }
 +
@@ -4358,7 +4358,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,2289 @@
+@@ -0,0 +1,2290 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -4692,6 +4692,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +    __m256 mapvalx8, r_linx8, g_linx8, b_linx8;
 +    __m256 offset = _mm256_set1_ps(0.5f);
 +    __m256i zerox8 = _mm256_setzero_si256();
++    __m256i upper_bound = _mm256_set1_epi32(32767);
 +    __m256 intermediate_upper_bound = _mm256_set1_ps(32767.0f);
 +    __m256i r, g, b, rx8, gx8, bx8;
 +
