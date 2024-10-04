@@ -324,7 +324,7 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/colorspace_common.h
-@@ -0,0 +1,330 @@
+@@ -0,0 +1,338 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -360,6 +360,10 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +#define ARIB_B67_A 0.17883277f
 +#define ARIB_B67_B 0.28466892f
 +#define ARIB_B67_C 0.55991073f
++
++#define LIMITED_BLACK 0.06256109482f
++#define LIMITED_WHITE 0.9188660802f
++#define LIMITED_RANGE 0.8563049854f
 +
 +#define FLOAT_EPS 1e-6f
 +
@@ -497,16 +501,17 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +static __inline__ __device__ float3 yuv2rgb(float y, float u, float v) {
-+    if (range_src == AVCOL_RANGE_JPEG) {
-+        u -= 0.5f; v -= 0.5f;
-+    } else {
-+        y = (y * 255.0f -  16.0f) / 219.0f;
-+        u = (u * 255.0f - 128.0f) / 224.0f;
-+        v = (v * 255.0f - 128.0f) / 224.0f;
-+    }
++    u -= 0.5f;
++    v -= 0.5f;
 +    float r = y * rgb_matrix[0] + u * rgb_matrix[1] + v * rgb_matrix[2];
 +    float g = y * rgb_matrix[3] + u * rgb_matrix[4] + v * rgb_matrix[5];
 +    float b = y * rgb_matrix[6] + u * rgb_matrix[7] + v * rgb_matrix[8];
++    if (range_src == AVCOL_RANGE_MPEG) {
++        r = (r - LIMITED_BLACK) / LIMITED_RANGE;
++        g = (g - LIMITED_BLACK) / LIMITED_RANGE;
++        b = (b - LIMITED_BLACK) / LIMITED_RANGE;
++    }
++
 +    return make_float3(r, g, b);
 +}
 +
@@ -518,23 +523,26 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +static __inline__ __device__ float3 rgb2yuv(float r, float g, float b) {
++    if (range_dst == AVCOL_RANGE_MPEG) {
++        r = r * LIMITED_RANGE + LIMITED_BLACK;
++        g = g * LIMITED_RANGE + LIMITED_BLACK;
++        b = b * LIMITED_RANGE + LIMITED_BLACK;
++    }
 +    float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
 +    float u = r*yuv_matrix[3] + g*yuv_matrix[4] + b*yuv_matrix[5];
 +    float v = r*yuv_matrix[6] + g*yuv_matrix[7] + b*yuv_matrix[8];
-+    if (range_dst == AVCOL_RANGE_JPEG) {
-+        u += 0.5f; v += 0.5f;
-+    } else {
-+        y = (219.0f * y + 16.0f) / 255.0f;
-+        u = (224.0f * u + 128.0f) / 255.0f;
-+        v = (224.0f * v + 128.0f) / 255.0f;
-+    }
++    u += 0.5f;
++    v += 0.5f;
 +    return make_float3(y, u, v);
 +}
 +
 +static __inline__ __device__ float rgb2y(float r, float g, float b) {
++    if (range_dst == AVCOL_RANGE_MPEG) {
++        r = r * LIMITED_RANGE + LIMITED_BLACK;
++        g = g * LIMITED_RANGE + LIMITED_BLACK;
++        b = b * LIMITED_RANGE + LIMITED_BLACK;
++    }
 +    float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
-+    if (range_dst != AVCOL_RANGE_JPEG)
-+        y = (219.0f * y + 16.0f) / 255.0f;
 +    return y;
 +}
 +
