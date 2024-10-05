@@ -2421,7 +2421,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1790 @@
+@@ -0,0 +1,1793 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -3793,7 +3793,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    TonemapxContext *s = ctx->priv;
 +    AVFilterLink *outlink = ctx->outputs[0];
 +    AVFrame *out;
-+    AVFrameSideData *dovi_sd;
++    AVFrameSideData *dovi_sd = NULL;
 +    const AVPixFmtDescriptor *desc;
 +    const AVPixFmtDescriptor *odesc;
 +    int ret;
@@ -3874,6 +3874,40 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    if (out->color_range == AVCOL_RANGE_UNSPECIFIED)
 +        out->color_range = AVCOL_RANGE_MPEG;
 +
++    if (dovi_sd) {
++        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
++        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
++        // only map dovi rpus that don't require an EL and has rpu profile == 0
++        // for performance reason we only want to do reshaping when absolutely needed
++        // such videos usually have vdr_rpu_profile == 0, for example profile 5 videos
++        // this could be wrong as there is no public documentation on this field
++        if (rpu->disable_residual_flag && rpu->vdr_rpu_profile == 0) {
++            struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
++            s->dovi = dovi;
++            if (!s->dovi)
++                goto fail;
++
++            ff_map_dovi_metadata(s->dovi, metadata);
++            in->color_trc = AVCOL_TRC_SMPTE2084;
++            in->colorspace = AVCOL_SPC_BT2020_NCL;
++            in->color_primaries = AVCOL_PRI_BT2020;
++        }
++    }
++
++    if (s->dovi) {
++        if (desc->comp[2].plane == 1) {
++            av_log(s, AV_LOG_ERROR, "Input pixel format has to be yuv420p10 for Dolby Vision reshaping\n");
++            av_assert0(0);
++        }
++        update_dovi_buf(ctx);
++        ff_matrix_mul_3x3(s->lms2rgb_matrix, dovi_lms2rgb_matrix, s->dovi->linear);
++        s->ycc_offset[0] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[0][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[0][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[0][2];
++        s->ycc_offset[1] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[1][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[1][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[1][2];
++        s->ycc_offset[2] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[2][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[2][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[2][2];
++        s->tonemap_func_planar8 = s->tonemap_func_dovi8;
++        s->tonemap_func_planar10 = s->tonemap_func_dovi10;
++    }
++
 +    if (!s->lin_lut || !s->delin_lut) {
 +        if ((ret = compute_trc_luts(s, in->color_trc, out->color_trc)) < 0)
 +            goto fail;
@@ -3894,37 +3928,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +            goto fail;
 +        if ((ret = compute_rgb_coeffs(s, in->color_primaries, out->color_primaries)) < 0)
 +            goto fail;
-+    }
-+
-+    if (dovi_sd) {
-+        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
-+        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
-+        // only map dovi rpus that don't require an EL and has rpu profile == 0
-+        // for performance reason we only want to do reshaping when absolutely needed
-+        // such videos usually have vdr_rpu_profile == 0, for example profile 5 videos
-+        // this could be wrong as there is no public documentation on this field
-+        if (rpu->disable_residual_flag && rpu->vdr_rpu_profile == 0) {
-+            struct DoviMetadata *dovi = av_malloc(sizeof(*dovi));
-+            s->dovi = dovi;
-+            if (!s->dovi)
-+                goto fail;
-+
-+            ff_map_dovi_metadata(s->dovi, metadata);
-+        }
-+    }
-+
-+    if (s->dovi) {
-+        if (desc->comp[2].plane == 1) {
-+            av_log(s, AV_LOG_ERROR, "Input pixel format has to be yuv420p10 for Dolby Vision reshaping\n");
-+            av_assert0(0);
-+        }
-+        update_dovi_buf(ctx);
-+        ff_matrix_mul_3x3(s->lms2rgb_matrix, dovi_lms2rgb_matrix, s->dovi->linear);
-+        s->ycc_offset[0] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[0][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[0][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[0][2];
-+        s->ycc_offset[1] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[1][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[1][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[1][2];
-+        s->ycc_offset[2] = s->dovi->nonlinear_offset[0] * (float)s->dovi->nonlinear[2][0] + s->dovi->nonlinear_offset[1] * (float)s->dovi->nonlinear[2][1] + s->dovi->nonlinear_offset[2] * (float)s->dovi->nonlinear[2][2];
-+        s->tonemap_func_planar8 = s->tonemap_func_dovi8;
-+        s->tonemap_func_planar10 = s->tonemap_func_dovi10;
 +    }
 +
 +    /* do the tonemap */
