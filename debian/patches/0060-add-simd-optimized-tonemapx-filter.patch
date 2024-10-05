@@ -95,7 +95,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,2157 @@
+@@ -0,0 +1,2142 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1116,12 +1116,12 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +#endif // ENABLE_TONEMAPX_NEON_INTRINSICS
 +}
 +
-+void tonemap_frame_p016_p010_2_nv12_neon(uint8_t *dsty, uint8_t *dstuv,
-+                                         const uint16_t *srcy, const uint16_t *srcuv,
-+                                         const int *dstlinesize, const int *srclinesize,
-+                                         int dstdepth, int srcdepth,
-+                                         int width, int height,
-+                                         const struct TonemapIntParams *params)
++void tonemap_frame_p010_2_nv12_neon(uint8_t *dsty, uint8_t *dstuv,
++                                    const uint16_t *srcy, const uint16_t *srcuv,
++                                    const int *dstlinesize, const int *srclinesize,
++                                    int dstdepth, int srcdepth,
++                                    int width, int height,
++                                    const struct TonemapIntParams *params)
 +{
 +#ifdef ENABLE_TONEMAPX_NEON_INTRINSICS
 +    uint8_t *rdsty = dsty;
@@ -1200,13 +1200,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0x8 = vld1q_u16(srcy + x);
 +            y1x8 = vld1q_u16(srcy + (srclinesize[0] / 2 + x));
 +            uvx8 = vld1q_u16(srcuv + x);
-+            if (in_depth == 10) {
-+                // shift to low10bits for 10bit input
-+                // shift bit has to be compile-time constant
-+                y0x8 = vshrq_n_u16(y0x8, 6);
-+                y1x8 = vshrq_n_u16(y1x8, 6);
-+                uvx8 = vshrq_n_u16(uvx8, 6);
-+            }
++            // shift to low10bits for 10bit input
++            // shift bit has to be compile-time constant
++            y0x8 = vshrq_n_u16(y0x8, 6);
++            y1x8 = vshrq_n_u16(y1x8, 6);
++            uvx8 = vshrq_n_u16(uvx8, 6);
 +            y0x8 = vsubq_u16(y0x8, in_yuv_offx8);
 +            y1x8 = vsubq_u16(y1x8, in_yuv_offx8);
 +            uvx8 = vsubq_u16(uvx8, in_uv_offx8);
@@ -1362,11 +1360,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +        rdstuv += offset;
 +        rsrcy += offset;
 +        rsrcuv += offset;
-+        tonemap_frame_p016_p010_2_nv12(rdsty, rdstuv,
-+                                       rsrcy, rsrcuv,
-+                                       dstlinesize, srclinesize,
-+                                       dstdepth, srcdepth,
-+                                       remainw, rheight, params);
++        tonemap_frame_p010_2_nv12(rdsty, rdstuv,
++                                  rsrcy, rsrcuv,
++                                  dstlinesize, srclinesize,
++                                  dstdepth, srcdepth,
++                                  remainw, rheight, params);
 +    }
 +#endif // ENABLE_TONEMAPX_NEON_INTRINSICS
 +}
@@ -1977,12 +1975,12 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +#endif // ENABLE_TONEMAPX_NEON_INTRINSICS
 +}
 +
-+void tonemap_frame_p016_p010_2_p016_p010_neon(uint16_t *dsty, uint16_t *dstuv,
-+                                              const uint16_t *srcy, const uint16_t *srcuv,
-+                                              const int *dstlinesize, const int *srclinesize,
-+                                              int dstdepth, int srcdepth,
-+                                              int width, int height,
-+                                              const struct TonemapIntParams *params)
++void tonemap_frame_p010_2_p010_neon(uint16_t *dsty, uint16_t *dstuv,
++                                    const uint16_t *srcy, const uint16_t *srcuv,
++                                    const int *dstlinesize, const int *srclinesize,
++                                    int dstdepth, int srcdepth,
++                                    int width, int height,
++                                    const struct TonemapIntParams *params)
 +{
 +#ifdef ENABLE_TONEMAPX_NEON_INTRINSICS
 +    uint16_t *rdsty = dsty;
@@ -2192,25 +2190,12 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
 +
-+            switch(out_depth) {
-+                default:
-+                case 10:
-+                    y0oax4 = vshrq_n_s32(y0oax4, 19);
-+                    y0obx4 = vshrq_n_s32(y0obx4, 19);
-+                    y1oax4 = vshrq_n_s32(y1oax4, 19);
-+                    y1obx4 = vshrq_n_s32(y1obx4, 19);
-+                    uox4 = vshrq_n_s32(uox4, 19);
-+                    vox4 = vshrq_n_s32(vox4, 19);
-+                    break;
-+                case 16:
-+                    y0oax4 = vshrq_n_s32(y0oax4, 13);
-+                    y0obx4 = vshrq_n_s32(y0obx4, 13);
-+                    y1oax4 = vshrq_n_s32(y1oax4, 13);
-+                    y1obx4 = vshrq_n_s32(y1obx4, 13);
-+                    uox4 = vshrq_n_s32(uox4, 13);
-+                    vox4 = vshrq_n_s32(vox4, 13);
-+                    break;
-+            }
++            y0oax4 = vshrq_n_s32(y0oax4, 19);
++            y0obx4 = vshrq_n_s32(y0obx4, 19);
++            y1oax4 = vshrq_n_s32(y1oax4, 19);
++            y1obx4 = vshrq_n_s32(y1obx4, 19);
++            uox4 = vshrq_n_s32(uox4, 19);
++            vox4 = vshrq_n_s32(vox4, 19);
 +
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +            y0oax4 = vshlq_s32(y0oax4, out_sh2x4);
@@ -2245,11 +2230,11 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +        rdstuv += offset;
 +        rsrcy += offset;
 +        rsrcuv += offset;
-+        tonemap_frame_p016_p010_2_p016_p010(rdsty, rdstuv,
-+                                            rsrcy, rsrcuv,
-+                                            dstlinesize, srclinesize,
-+                                            dstdepth, srcdepth,
-+                                            remainw, rheight, params);
++        tonemap_frame_p010_2_p010(rdsty, rdstuv,
++                                  rsrcy, rsrcuv,
++                                  dstlinesize, srclinesize,
++                                  dstdepth, srcdepth,
++                                  remainw, rheight, params);
 +    }
 +#endif // ENABLE_TONEMAPX_NEON_INTRINSICS
 +}
@@ -2297,12 +2282,12 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.h
 +                                      int width, int height,
 +                                      const struct TonemapIntParams *params);
 +
-+void tonemap_frame_p016_p010_2_nv12_neon(uint8_t *dsty, uint8_t *dstuv,
-+                                         const uint16_t *srcy, const uint16_t *srcuv,
-+                                         const int *dstlinesize, const int *srclinesize,
-+                                         int dstdepth, int srcdepth,
-+                                         int width, int height,
-+                                         const struct TonemapIntParams *params);
++void tonemap_frame_p010_2_nv12_neon(uint8_t *dsty, uint8_t *dstuv,
++                                    const uint16_t *srcy, const uint16_t *srcuv,
++                                    const int *dstlinesize, const int *srclinesize,
++                                    int dstdepth, int srcdepth,
++                                    int width, int height,
++                                    const struct TonemapIntParams *params);
 +
 +void tonemap_frame_dovi_2_420p10_neon(uint16_t *dsty, uint16_t *dstu, uint16_t *dstv,
 +                                      const uint16_t *srcy, const uint16_t *srcu, const uint16_t *srcv,
@@ -2318,12 +2303,12 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.h
 +                                        int width, int height,
 +                                        const struct TonemapIntParams *params);
 +
-+void tonemap_frame_p016_p010_2_p016_p010_neon(uint16_t *dsty, uint16_t *dstuv,
-+                                              const uint16_t *srcy, const uint16_t *srcuv,
-+                                              const int *dstlinesize, const int *srclinesize,
-+                                              int dstdepth, int srcdepth,
-+                                              int width, int height,
-+                                              const struct TonemapIntParams *params);
++void tonemap_frame_p010_2_p010_neon(uint16_t *dsty, uint16_t *dstuv,
++                                    const uint16_t *srcy, const uint16_t *srcuv,
++                                    const int *dstlinesize, const int *srclinesize,
++                                    int dstdepth, int srcdepth,
++                                    int width, int height,
++                                    const struct TonemapIntParams *params);
 +
 +#endif // AVFILTER_AARCH64_TONEMAPX_INTRIN_NEON_H
 Index: FFmpeg/libavfilter/allfilters.c
@@ -2421,7 +2406,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1793 @@
+@@ -0,0 +1,1791 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2582,7 +2567,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +static const enum AVPixelFormat in_pix_fmts[] = {
 +    AV_PIX_FMT_YUV420P10,
 +    AV_PIX_FMT_P010,
-+    AV_PIX_FMT_P016,
 +    AV_PIX_FMT_NONE,
 +};
 +
@@ -2591,7 +2575,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    AV_PIX_FMT_YUV420P10,
 +    AV_PIX_FMT_NV12,
 +    AV_PIX_FMT_P010,
-+    AV_PIX_FMT_P016,
 +};
 +
 +const double dovi_lms2rgb_matrix[3][3] =
@@ -3152,12 +3135,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +}
 +
 +// See also libavfilter/colorspacedsp_template.c
-+void tonemap_frame_p016_p010_2_nv12(uint8_t *dsty, uint8_t *dstuv,
-+                                    const uint16_t *srcy, const uint16_t *srcuv,
-+                                    const int *dstlinesize, const int *srclinesize,
-+                                    int dstdepth, int srcdepth,
-+                                    int width, int height,
-+                                    const struct TonemapIntParams *params)
++void tonemap_frame_p010_2_nv12(uint8_t *dsty, uint8_t *dstuv,
++                               const uint16_t *srcy, const uint16_t *srcuv,
++                               const int *dstlinesize, const int *srclinesize,
++                               int dstdepth, int srcdepth,
++                               int width, int height,
++                               const struct TonemapIntParams *params)
 +{
 +    const int in_depth = srcdepth;
 +    const int in_uv_offset = 128 << (in_depth - 8);
@@ -3243,6 +3226,103 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#define AVG(a,b,c,d) (((a) + (b) + (c) + (d) + 2) >> 2)
 +            dstuv[x]     = av_clip_uint8(out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh));
 +            dstuv[x + 1] = av_clip_uint8(out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh));
++#undef AVG
++        }
++    }
++}
++
++void tonemap_frame_p010_2_p010(uint16_t *dsty, uint16_t *dstuv,
++                               const uint16_t *srcy, const uint16_t *srcuv,
++                               const int *dstlinesize, const int *srclinesize,
++                               int dstdepth, int srcdepth,
++                               int width, int height,
++                               const struct TonemapIntParams *params)
++{
++    const int in_depth = srcdepth;
++    const int in_uv_offset = 128 << (in_depth - 8);
++    const int in_sh = in_depth - 1;
++    const int in_rnd = 1 << (in_sh - 1);
++    const int in_sh2 = 16 - in_depth;
++
++    const int out_depth = dstdepth;
++    const int out_uv_offset = 128 << (out_depth - 8);
++    const int out_sh = 29 - out_depth;
++    const int out_rnd = 1 << (out_sh - 1);
++    const int out_sh2 = 16 - out_depth;
++
++    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
++    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
++    int cgu = (*params->yuv2rgb_coeffs)[1][1][0];
++    int cgv = (*params->yuv2rgb_coeffs)[1][2][0];
++    int cbu = (*params->yuv2rgb_coeffs)[2][1][0];
++
++    int cry   = (*params->rgb2yuv_coeffs)[0][0][0];
++    int cgy   = (*params->rgb2yuv_coeffs)[0][1][0];
++    int cby   = (*params->rgb2yuv_coeffs)[0][2][0];
++    int cru   = (*params->rgb2yuv_coeffs)[1][0][0];
++    int ocgu  = (*params->rgb2yuv_coeffs)[1][1][0];
++    int cburv = (*params->rgb2yuv_coeffs)[1][2][0];
++    int ocgv  = (*params->rgb2yuv_coeffs)[2][1][0];
++    int cbv   = (*params->rgb2yuv_coeffs)[2][2][0];
++
++    int r00, g00, b00;
++    int r01, g01, b01;
++    int r10, g10, b10;
++    int r11, g11, b11;
++
++    int16_t r[4], g[4], b[4];
++    for (; height > 1; height -= 2,
++                       dsty += dstlinesize[0], dstuv += dstlinesize[1] / 2,
++                       srcy += srclinesize[0], srcuv += srclinesize[1] / 2) {
++        for (int x = 0; x < width; x += 2) {
++            int y00 = (srcy[x]                          >> in_sh2) - params->in_yuv_off;
++            int y01 = (srcy[x + 1]                      >> in_sh2) - params->in_yuv_off;
++            int y10 = (srcy[srclinesize[0] / 2 + x]     >> in_sh2) - params->in_yuv_off;
++            int y11 = (srcy[srclinesize[0] / 2 + x + 1] >> in_sh2) - params->in_yuv_off;
++            int u = (srcuv[x]     >> in_sh2) - in_uv_offset;
++            int v = (srcuv[x + 1] >> in_sh2) - in_uv_offset;
++
++            r[0] = av_clip_int16((y00 * cy + crv * v + in_rnd) >> in_sh);
++            r[1] = av_clip_int16((y01 * cy + crv * v + in_rnd) >> in_sh);
++            r[2] = av_clip_int16((y10 * cy + crv * v + in_rnd) >> in_sh);
++            r[3] = av_clip_int16((y11 * cy + crv * v + in_rnd) >> in_sh);
++
++            g[0] = av_clip_int16((y00 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
++            g[1] = av_clip_int16((y01 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
++            g[2] = av_clip_int16((y10 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
++            g[3] = av_clip_int16((y11 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
++
++            b[0] = av_clip_int16((y00 * cy + cbu * u + in_rnd) >> in_sh);
++            b[1] = av_clip_int16((y01 * cy + cbu * u + in_rnd) >> in_sh);
++            b[2] = av_clip_int16((y10 * cy + cbu * u + in_rnd) >> in_sh);
++            b[3] = av_clip_int16((y11 * cy + cbu * u + in_rnd) >> in_sh);
++
++            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
++                          params->lin_lut, params->tonemap_lut, params->delin_lut,
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
++                          params->lin_lut, params->tonemap_lut, params->delin_lut,
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
++                          params->lin_lut, params->tonemap_lut, params->delin_lut,
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
++                          params->lin_lut, params->tonemap_lut, params->delin_lut,
++                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
++
++            r00 = r[0], g00 = g[0], b00 = b[0];
++            r01 = r[1], g01 = g[1], b01 = b[1];
++            r10 = r[2], g10 = g[2], b10 = b[2];
++            r11 = r[3], g11 = g[3], b11 = b[3];
++
++            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
++            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
++            dsty[dstlinesize[0] / 2 + x]     = av_clip_uintp2((params->out_yuv_off + ((r10 * cry + g10 * cgy + b10 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
++            dsty[dstlinesize[0] / 2 + x + 1] = av_clip_uintp2((params->out_yuv_off + ((r11 * cry + g11 * cgy + b11 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
++
++#define AVG(a,b,c,d) (((a) + (b) + (c) + (d) + 2) >> 2)
++            dstuv[x]     = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh)) << out_sh2, 16);
++            dstuv[x + 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh)) << out_sh2, 16);
 +#undef AVG
 +        }
 +    }
@@ -3581,103 +3661,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#define AVG(a,b,c,d) (((a) + (b) + (c) + (d) + 2) >> 2)
 +            dstu[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh)), 16);
 +            dstv[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh)), 16);
-+#undef AVG
-+        }
-+    }
-+}
-+
-+void tonemap_frame_p016_p010_2_p016_p010(uint16_t *dsty, uint16_t *dstuv,
-+                                         const uint16_t *srcy, const uint16_t *srcuv,
-+                                         const int *dstlinesize, const int *srclinesize,
-+                                         int dstdepth, int srcdepth,
-+                                         int width, int height,
-+                                         const struct TonemapIntParams *params)
-+{
-+    const int in_depth = srcdepth;
-+    const int in_uv_offset = 128 << (in_depth - 8);
-+    const int in_sh = in_depth - 1;
-+    const int in_rnd = 1 << (in_sh - 1);
-+    const int in_sh2 = 16 - in_depth;
-+
-+    const int out_depth = dstdepth;
-+    const int out_uv_offset = 128 << (out_depth - 8);
-+    const int out_sh = 29 - out_depth;
-+    const int out_rnd = 1 << (out_sh - 1);
-+    const int out_sh2 = 16 - out_depth;
-+
-+    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
-+    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
-+    int cgu = (*params->yuv2rgb_coeffs)[1][1][0];
-+    int cgv = (*params->yuv2rgb_coeffs)[1][2][0];
-+    int cbu = (*params->yuv2rgb_coeffs)[2][1][0];
-+
-+    int cry   = (*params->rgb2yuv_coeffs)[0][0][0];
-+    int cgy   = (*params->rgb2yuv_coeffs)[0][1][0];
-+    int cby   = (*params->rgb2yuv_coeffs)[0][2][0];
-+    int cru   = (*params->rgb2yuv_coeffs)[1][0][0];
-+    int ocgu  = (*params->rgb2yuv_coeffs)[1][1][0];
-+    int cburv = (*params->rgb2yuv_coeffs)[1][2][0];
-+    int ocgv  = (*params->rgb2yuv_coeffs)[2][1][0];
-+    int cbv   = (*params->rgb2yuv_coeffs)[2][2][0];
-+
-+    int r00, g00, b00;
-+    int r01, g01, b01;
-+    int r10, g10, b10;
-+    int r11, g11, b11;
-+
-+    int16_t r[4], g[4], b[4];
-+    for (; height > 1; height -= 2,
-+                       dsty += dstlinesize[0], dstuv += dstlinesize[1] / 2,
-+                       srcy += srclinesize[0], srcuv += srclinesize[1] / 2) {
-+        for (int x = 0; x < width; x += 2) {
-+            int y00 = (srcy[x]                          >> in_sh2) - params->in_yuv_off;
-+            int y01 = (srcy[x + 1]                      >> in_sh2) - params->in_yuv_off;
-+            int y10 = (srcy[srclinesize[0] / 2 + x]     >> in_sh2) - params->in_yuv_off;
-+            int y11 = (srcy[srclinesize[0] / 2 + x + 1] >> in_sh2) - params->in_yuv_off;
-+            int u = (srcuv[x]     >> in_sh2) - in_uv_offset;
-+            int v = (srcuv[x + 1] >> in_sh2) - in_uv_offset;
-+
-+            r[0] = av_clip_int16((y00 * cy + crv * v + in_rnd) >> in_sh);
-+            r[1] = av_clip_int16((y01 * cy + crv * v + in_rnd) >> in_sh);
-+            r[2] = av_clip_int16((y10 * cy + crv * v + in_rnd) >> in_sh);
-+            r[3] = av_clip_int16((y11 * cy + crv * v + in_rnd) >> in_sh);
-+
-+            g[0] = av_clip_int16((y00 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g[1] = av_clip_int16((y01 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g[2] = av_clip_int16((y10 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+            g[3] = av_clip_int16((y11 * cy + cgu * u + cgv * v + in_rnd) >> in_sh);
-+
-+            b[0] = av_clip_int16((y00 * cy + cbu * u + in_rnd) >> in_sh);
-+            b[1] = av_clip_int16((y01 * cy + cbu * u + in_rnd) >> in_sh);
-+            b[2] = av_clip_int16((y10 * cy + cbu * u + in_rnd) >> in_sh);
-+            b[3] = av_clip_int16((y11 * cy + cbu * u + in_rnd) >> in_sh);
-+
-+            tonemap_int16(r[0], g[0], b[0], &r[0], &g[0], &b[0],
-+                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
-+            tonemap_int16(r[1], g[1], b[1], &r[1], &g[1], &b[1],
-+                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
-+            tonemap_int16(r[2], g[2], b[2], &r[2], &g[2], &b[2],
-+                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
-+            tonemap_int16(r[3], g[3], b[3], &r[3], &g[3], &b[3],
-+                          params->lin_lut, params->tonemap_lut, params->delin_lut,
-+                          params->coeffs, params->ocoeffs, params->desat, params->rgb2rgb_coeffs, params->rgb2rgb_passthrough);
-+
-+            r00 = r[0], g00 = g[0], b00 = b[0];
-+            r01 = r[1], g01 = g[1], b01 = b[1];
-+            r10 = r[2], g10 = g[2], b10 = b[2];
-+            r11 = r[3], g11 = g[3], b11 = b[3];
-+
-+            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
-+            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
-+            dsty[dstlinesize[0] / 2 + x]     = av_clip_uintp2((params->out_yuv_off + ((r10 * cry + g10 * cgy + b10 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
-+            dsty[dstlinesize[0] / 2 + x + 1] = av_clip_uintp2((params->out_yuv_off + ((r11 * cry + g11 * cgy + b11 * cby + out_rnd) >> out_sh)) << out_sh2, 16);
-+
-+#define AVG(a,b,c,d) (((a) + (b) + (c) + (d) + 2) >> 2)
-+            dstuv[x]     = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh)) << out_sh2, 16);
-+            dstuv[x + 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh)) << out_sh2, 16);
 +#undef AVG
 +        }
 +    }
@@ -4038,8 +4021,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    {
 +        int cpu_flags = av_get_cpu_flags();
 +        if (have_neon(cpu_flags)) {
-+            s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12_neon;
-+            s->tonemap_func_biplanar10 = tonemap_frame_p016_p010_2_p016_p010_neon;
++            s->tonemap_func_biplanar8 = tonemap_frame_p010_2_nv12_neon;
++            s->tonemap_func_biplanar10 = tonemap_frame_p010_2_p010_neon;
 +            s->tonemap_func_planar8 = tonemap_frame_420p10_2_420p_neon;
 +            s->tonemap_func_planar10 = tonemap_frame_420p10_2_420p10_neon;
 +            s->tonemap_func_dovi8 = tonemap_frame_dovi_2_420p_neon;
@@ -4055,8 +4038,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    {
 +        int cpu_flags = av_get_cpu_flags();
 +        if (X86_SSE42(cpu_flags)) {
-+            s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12_sse;
-+            s->tonemap_func_biplanar10 = tonemap_frame_p016_p010_2_p016_p010_sse;
++            s->tonemap_func_biplanar8 = tonemap_frame_p010_2_nv12_sse;
++            s->tonemap_func_biplanar10 = tonemap_frame_p010_2_p010_sse;
 +            s->tonemap_func_planar8 = tonemap_frame_420p10_2_420p_sse;
 +            s->tonemap_func_planar10 = tonemap_frame_420p10_2_420p10_sse;
 +            s->tonemap_func_dovi8 = tonemap_frame_dovi_2_420p_sse;
@@ -4071,8 +4054,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    {
 +        int cpu_flags = av_get_cpu_flags();
 +        if (X86_AVX2(cpu_flags) && X86_FMA3(cpu_flags)) {
-+            s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12_avx;
-+            s->tonemap_func_biplanar10 = tonemap_frame_p016_p010_2_p016_p010_avx;
++            s->tonemap_func_biplanar8 = tonemap_frame_p010_2_nv12_avx;
++            s->tonemap_func_biplanar10 = tonemap_frame_p010_2_p010_avx;
 +            s->tonemap_func_planar8 = tonemap_frame_420p10_2_420p_avx;
 +            s->tonemap_func_planar10 = tonemap_frame_420p10_2_420p10_avx;
 +            s->tonemap_func_dovi8 = tonemap_frame_dovi_2_420p_avx;
@@ -4092,11 +4075,11 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +#endif
 +
 +    if (!s->tonemap_func_biplanar8) {
-+        s->tonemap_func_biplanar8 = tonemap_frame_p016_p010_2_nv12;
++        s->tonemap_func_biplanar8 = tonemap_frame_p010_2_nv12;
 +    }
 +
 +    if (!s->tonemap_func_biplanar10) {
-+        s->tonemap_func_biplanar10 = tonemap_frame_p016_p010_2_p016_p010;
++        s->tonemap_func_biplanar10 = tonemap_frame_p010_2_p010;
 +    }
 +
 +    if (!s->tonemap_func_planar8) {
@@ -4318,12 +4301,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +                                 int width, int height,
 +                                 const struct TonemapIntParams *params);
 +
-+void tonemap_frame_p016_p010_2_nv12(uint8_t *dsty, uint8_t *dstuv,
-+                                    const uint16_t *srcy, const uint16_t *srcuv,
-+                                    const int *dstlinesize, const int *srclinesize,
-+                                    int dstdepth, int srcdepth,
-+                                    int width, int height,
-+                                    const struct TonemapIntParams *params);
++void tonemap_frame_p010_2_nv12(uint8_t *dsty, uint8_t *dstuv,
++                               const uint16_t *srcy, const uint16_t *srcuv,
++                               const int *dstlinesize, const int *srclinesize,
++                               int dstdepth, int srcdepth,
++                               int width, int height,
++                               const struct TonemapIntParams *params);
 +
 +void tonemap_frame_dovi_2_420p10(uint16_t *dsty, uint16_t *dstu, uint16_t *dstv,
 +                                 const uint16_t *srcy, const uint16_t *srcu, const uint16_t *srcv,
@@ -4339,12 +4322,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +                                   int width, int height,
 +                                   const struct TonemapIntParams *params);
 +
-+void tonemap_frame_p016_p010_2_p016_p010(uint16_t *dsty, uint16_t *dstuv,
-+                                         const uint16_t *srcy, const uint16_t *srcuv,
-+                                         const int *dstlinesize, const int *srclinesize,
-+                                         int dstdepth, int srcdepth,
-+                                         int width, int height,
-+                                         const struct TonemapIntParams *params);
++void tonemap_frame_p010_2_p010(uint16_t *dsty, uint16_t *dstuv,
++                               const uint16_t *srcy, const uint16_t *srcuv,
++                               const int *dstlinesize, const int *srclinesize,
++                               int dstdepth, int srcdepth,
++                               int width, int height,
++                               const struct TonemapIntParams *params);
 +
 +#endif // AVFILTER_TONEMAPX_H
 Index: FFmpeg/libavfilter/x86/Makefile
@@ -6051,12 +6034,12 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +#endif // ENABLE_TONEMAPX_AVX_INTRINSICS
 +}
 +
-+X86_64_V3 void tonemap_frame_p016_p010_2_nv12_avx(uint8_t *dsty, uint8_t *dstuv,
-+                                                  const uint16_t *srcy, const uint16_t *srcuv,
-+                                                  const int *dstlinesize, const int *srclinesize,
-+                                                  int dstdepth, int srcdepth,
-+                                                  int width, int height,
-+                                                  const struct TonemapIntParams *params)
++X86_64_V3 void tonemap_frame_p010_2_nv12_avx(uint8_t *dsty, uint8_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params)
 +{
 +#ifdef ENABLE_TONEMAPX_AVX_INTRINSICS
 +    uint8_t *rdsty = dsty;
@@ -6343,21 +6326,21 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +        rdstuv += offset;
 +        rsrcy += offset;
 +        rsrcuv += offset;
-+        tonemap_frame_p016_p010_2_nv12(rdsty, rdstuv,
-+                                       rsrcy, rsrcuv,
-+                                       dstlinesize, srclinesize,
-+                                       dstdepth, srcdepth,
-+                                       remainw, rheight, params);
++        tonemap_frame_p010_2_nv12(rdsty, rdstuv,
++                                  rsrcy, rsrcuv,
++                                  dstlinesize, srclinesize,
++                                  dstdepth, srcdepth,
++                                  remainw, rheight, params);
 +    }
 +#endif // ENABLE_TONEMAPX_AVX_INTRINSICS
 +}
 +
-+X86_64_V3 void tonemap_frame_p016_p010_2_p016_p010_avx(uint16_t *dsty, uint16_t *dstuv,
-+                                                       const uint16_t *srcy, const uint16_t *srcuv,
-+                                                       const int *dstlinesize, const int *srclinesize,
-+                                                       int dstdepth, int srcdepth,
-+                                                       int width, int height,
-+                                                       const struct TonemapIntParams *params)
++X86_64_V3 void tonemap_frame_p010_2_p010_avx(uint16_t *dsty, uint16_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params)
 +{
 +#ifdef ENABLE_TONEMAPX_AVX_INTRINSICS
 +    uint16_t *rdsty = dsty;
@@ -6650,11 +6633,11 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +        rdstuv += offset;
 +        rsrcy += offset;
 +        rsrcuv += offset;
-+        tonemap_frame_p016_p010_2_p016_p010(rdsty, rdstuv,
-+                                            rsrcy, rsrcuv,
-+                                            dstlinesize, srclinesize,
-+                                            dstdepth, srcdepth,
-+                                            remainw, rheight, params);
++        tonemap_frame_p010_2_p010(rdsty, rdstuv,
++                                  rsrcy, rsrcuv,
++                                  dstlinesize, srclinesize,
++                                  dstdepth, srcdepth,
++                                  remainw, rheight, params);
 +    }
 +#endif // ENABLE_TONEMAPX_AVX_INTRINSICS
 +}
@@ -6716,19 +6699,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.h
 +                                                 int width, int height,
 +                                                 const struct TonemapIntParams *params);
 +
-+X86_64_V3 void tonemap_frame_p016_p010_2_nv12_avx(uint8_t *dsty, uint8_t *dstuv,
-+                                                  const uint16_t *srcy, const uint16_t *srcuv,
-+                                                  const int *dstlinesize, const int *srclinesize,
-+                                                  int dstdepth, int srcdepth,
-+                                                  int width, int height,
-+                                                  const struct TonemapIntParams *params);
++X86_64_V3 void tonemap_frame_p010_2_nv12_avx(uint8_t *dsty, uint8_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params);
 +
-+X86_64_V3 void tonemap_frame_p016_p010_2_p016_p010_avx(uint16_t *dsty, uint16_t *dstuv,
-+                                                       const uint16_t *srcy, const uint16_t *srcuv,
-+                                                       const int *dstlinesize, const int *srclinesize,
-+                                                       int dstdepth, int srcdepth,
-+                                                       int width, int height,
-+                                                       const struct TonemapIntParams *params);
++X86_64_V3 void tonemap_frame_p010_2_p010_avx(uint16_t *dsty, uint16_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params);
 +
 +#endif // AVFILTER_X86_TONEMAPX_INTRIN_AVX_H
 Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
@@ -8510,12 +8493,12 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +#endif // ENABLE_TONEMAPX_SSE_INTRINSICS
 +}
 +
-+X86_64_V2 void tonemap_frame_p016_p010_2_nv12_sse(uint8_t *dsty, uint8_t *dstuv,
-+                                                  const uint16_t *srcy, const uint16_t *srcuv,
-+                                                  const int *dstlinesize, const int *srclinesize,
-+                                                  int dstdepth, int srcdepth,
-+                                                  int width, int height,
-+                                                  const struct TonemapIntParams *params)
++X86_64_V2 void tonemap_frame_p010_2_nv12_sse(uint8_t *dsty, uint8_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params)
 +{
 +#ifdef ENABLE_TONEMAPX_SSE_INTRINSICS
 +    uint8_t *rdsty = dsty;
@@ -8798,21 +8781,21 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +        rdstuv += offset;
 +        rsrcy += offset;
 +        rsrcuv += offset;
-+        tonemap_frame_p016_p010_2_nv12(rdsty, rdstuv,
-+                                       rsrcy, rsrcuv,
-+                                       dstlinesize, srclinesize,
-+                                       dstdepth, srcdepth,
-+                                       remainw, rheight, params);
++        tonemap_frame_p010_2_nv12(rdsty, rdstuv,
++                                  rsrcy, rsrcuv,
++                                  dstlinesize, srclinesize,
++                                  dstdepth, srcdepth,
++                                  remainw, rheight, params);
 +    }
 +#endif // ENABLE_TONEMAPX_SSE_INTRINSICS
 +}
 +
-+X86_64_V2 void tonemap_frame_p016_p010_2_p016_p010_sse(uint16_t *dsty, uint16_t *dstuv,
-+                                                       const uint16_t *srcy, const uint16_t *srcuv,
-+                                                       const int *dstlinesize, const int *srclinesize,
-+                                                       int dstdepth, int srcdepth,
-+                                                       int width, int height,
-+                                                       const struct TonemapIntParams *params)
++X86_64_V2 void tonemap_frame_p010_2_p010_sse(uint16_t *dsty, uint16_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params)
 +{
 +#ifdef ENABLE_TONEMAPX_SSE_INTRINSICS
 +    uint16_t *rdsty = dsty;
@@ -9102,11 +9085,11 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +        rdstuv += offset;
 +        rsrcy += offset;
 +        rsrcuv += offset;
-+        tonemap_frame_p016_p010_2_p016_p010(rdsty, rdstuv,
-+                                            rsrcy, rsrcuv,
-+                                            dstlinesize, srclinesize,
-+                                            dstdepth, srcdepth,
-+                                            remainw, rheight, params);
++        tonemap_frame_p010_2_p010(rdsty, rdstuv,
++                                  rsrcy, rsrcuv,
++                                  dstlinesize, srclinesize,
++                                  dstdepth, srcdepth,
++                                  remainw, rheight, params);
 +    }
 +#endif // ENABLE_TONEMAPX_SSE_INTRINSICS
 +}
@@ -9168,18 +9151,18 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.h
 +                                                 int width, int height,
 +                                                 const struct TonemapIntParams *params);
 +
-+X86_64_V2 void tonemap_frame_p016_p010_2_nv12_sse(uint8_t *dsty, uint8_t *dstuv,
-+                                                  const uint16_t *srcy, const uint16_t *srcuv,
-+                                                  const int *dstlinesize, const int *srclinesize,
-+                                                  int dstdepth, int srcdepth,
-+                                                  int width, int height,
-+                                                  const struct TonemapIntParams *params);
++X86_64_V2 void tonemap_frame_p010_2_nv12_sse(uint8_t *dsty, uint8_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params);
 +
-+X86_64_V2 void tonemap_frame_p016_p010_2_p016_p010_sse(uint16_t *dsty, uint16_t *dstuv,
-+                                                       const uint16_t *srcy, const uint16_t *srcuv,
-+                                                       const int *dstlinesize, const int *srclinesize,
-+                                                       int dstdepth, int srcdepth,
-+                                                       int width, int height,
-+                                                       const struct TonemapIntParams *params);
++X86_64_V2 void tonemap_frame_p010_2_p010_sse(uint16_t *dsty, uint16_t *dstuv,
++                                             const uint16_t *srcy, const uint16_t *srcuv,
++                                             const int *dstlinesize, const int *srclinesize,
++                                             int dstdepth, int srcdepth,
++                                             int width, int height,
++                                             const struct TonemapIntParams *params);
 +
 +#endif // AVFILTER_X86_TONEMAPX_INTRIN_SSE_H
