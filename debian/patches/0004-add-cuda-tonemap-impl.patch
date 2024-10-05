@@ -324,7 +324,7 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/colorspace_common.h
-@@ -0,0 +1,330 @@
+@@ -0,0 +1,338 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -360,6 +360,10 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +#define ARIB_B67_A 0.17883277f
 +#define ARIB_B67_B 0.28466892f
 +#define ARIB_B67_C 0.55991073f
++
++#define LIMITED_BLACK 0.06256109482f
++#define LIMITED_WHITE 0.9188660802f
++#define LIMITED_RANGE 0.8563049854f
 +
 +#define FLOAT_EPS 1e-6f
 +
@@ -497,16 +501,17 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +static __inline__ __device__ float3 yuv2rgb(float y, float u, float v) {
-+    if (range_src == AVCOL_RANGE_JPEG) {
-+        u -= 0.5f; v -= 0.5f;
-+    } else {
-+        y = (y * 255.0f -  16.0f) / 219.0f;
-+        u = (u * 255.0f - 128.0f) / 224.0f;
-+        v = (v * 255.0f - 128.0f) / 224.0f;
-+    }
++    u -= 0.5f;
++    v -= 0.5f;
 +    float r = y * rgb_matrix[0] + u * rgb_matrix[1] + v * rgb_matrix[2];
 +    float g = y * rgb_matrix[3] + u * rgb_matrix[4] + v * rgb_matrix[5];
 +    float b = y * rgb_matrix[6] + u * rgb_matrix[7] + v * rgb_matrix[8];
++    if (range_src == AVCOL_RANGE_MPEG) {
++        r = (r - LIMITED_BLACK) / LIMITED_RANGE;
++        g = (g - LIMITED_BLACK) / LIMITED_RANGE;
++        b = (b - LIMITED_BLACK) / LIMITED_RANGE;
++    }
++
 +    return make_float3(r, g, b);
 +}
 +
@@ -518,23 +523,26 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +static __inline__ __device__ float3 rgb2yuv(float r, float g, float b) {
++    if (range_dst == AVCOL_RANGE_MPEG) {
++        r = r * LIMITED_RANGE + LIMITED_BLACK;
++        g = g * LIMITED_RANGE + LIMITED_BLACK;
++        b = b * LIMITED_RANGE + LIMITED_BLACK;
++    }
 +    float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
 +    float u = r*yuv_matrix[3] + g*yuv_matrix[4] + b*yuv_matrix[5];
 +    float v = r*yuv_matrix[6] + g*yuv_matrix[7] + b*yuv_matrix[8];
-+    if (range_dst == AVCOL_RANGE_JPEG) {
-+        u += 0.5f; v += 0.5f;
-+    } else {
-+        y = (219.0f * y + 16.0f) / 255.0f;
-+        u = (224.0f * u + 128.0f) / 255.0f;
-+        v = (224.0f * v + 128.0f) / 255.0f;
-+    }
++    u += 0.5f;
++    v += 0.5f;
 +    return make_float3(y, u, v);
 +}
 +
 +static __inline__ __device__ float rgb2y(float r, float g, float b) {
++    if (range_dst == AVCOL_RANGE_MPEG) {
++        r = r * LIMITED_RANGE + LIMITED_BLACK;
++        g = g * LIMITED_RANGE + LIMITED_BLACK;
++        b = b * LIMITED_RANGE + LIMITED_BLACK;
++    }
 +    float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
-+    if (range_dst != AVCOL_RANGE_JPEG)
-+        y = (219.0f * y + 16.0f) / 255.0f;
 +    return y;
 +}
 +
@@ -1767,7 +1775,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1127 @@
+@@ -0,0 +1,1123 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1877,7 +1885,6 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    int apply_dovi;
 +    int tradeoff;
 +    int init_with_dovi;
-+    double ref_white;
 +    double param;
 +    double desat_param;
 +    double peak;
@@ -2311,10 +2318,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    if (isnan(s->param))
 +        s->param = 1.0f;
 +
-+    s->ref_white = s->tonemap == TONEMAP_BT2390 ? REFERENCE_WHITE_ALT
-+                                                : REFERENCE_WHITE;
-+
-+    if (s->tonemap == TONEMAP_BT2390 && s->peak)
++    if (s->peak)
 +        s->peak = FFMAX(s->peak / 10.0f, 1.1f);
 +
 +    s->dst_peak = 1.0f;
@@ -2418,11 +2422,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    CONSTANT(".u32 enable_dither       = %i", (int)(s->in_desc->comp[0].depth > s->out_desc->comp[0].depth));
 +    CONSTANT(".f32 dither_size         = %f", (float)ff_fruit_dither_size);
 +    CONSTANT(".f32 dither_quantization = %f", (float)((1 << s->out_desc->comp[0].depth) - 1));
-+    CONSTANT(".f32 ref_white           = %f", s->ref_white);
++    CONSTANT(".f32 ref_white           = %f", REFERENCE_WHITE_ALT);
 +    CONSTANT(".f32 tone_param          = %f", s->param);
 +    CONSTANT(".f32 desat_param         = %f", s->desat_param);
-+    CONSTANT(".f32 pq_max_lum_div_ref_white = %f", (float)(ST2084_MAX_LUMINANCE / s->ref_white));
-+    CONSTANT(".f32 ref_white_div_pq_max_lum = %f", (float)(s->ref_white / ST2084_MAX_LUMINANCE));
++    CONSTANT(".f32 pq_max_lum_div_ref_white = %f", (float)(ST2084_MAX_LUMINANCE / REFERENCE_WHITE_ALT));
++    CONSTANT(".f32 ref_white_div_pq_max_lum = %f", (float)(REFERENCE_WHITE_ALT / ST2084_MAX_LUMINANCE));
 +    CONSTANT_M("rgb_matrix", (s->dovi ? s->dovi->nonlinear : rgb_matrix));
 +    CONSTANT_M("yuv_matrix", yuv_matrix);
 +    CONSTANT_A(".u8 rgb2rgb_passthrough = %i", 1, in_pri == out_pri);
