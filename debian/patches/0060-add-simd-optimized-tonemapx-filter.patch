@@ -2406,7 +2406,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1791 @@
+@@ -0,0 +1,1797 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2847,7 +2847,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    return (b * b + 2.0f * b * j + j * j) / (b - a) * (in + a) / (in + b);
 +}
 +
-+static float bt2390(float s, float peak)
++static float bt2390(float s, float knee_offset, float peak)
 +{
 +    float peak_pq = inverse_eotf_st2084(peak, REFERENCE_WHITE_ALT);
 +    float scale = peak_pq > 0.0f ? (1.0f / peak_pq) : 1.0f;
@@ -2857,7 +2857,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    float s_pq = inverse_eotf_st2084(s, REFERENCE_WHITE_ALT) * scale;
 +    float max_lum = inverse_eotf_st2084(dst_peak, REFERENCE_WHITE_ALT) * scale;
 +
-+    float ks = 1.5f * max_lum - 0.5f;
++    float ks = (1.0f + knee_offset) * max_lum - knee_offset;
 +    float tb = (s_pq - ks) / (1.0f - ks);
 +    float tb2 = tb * tb;
 +    float tb3 = tb2 * tb;
@@ -2897,7 +2897,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        sig = mobius(sig, param, peak);
 +        break;
 +    case TONEMAP_BT2390:
-+        sig = bt2390(sig, peak);
++        sig = bt2390(sig, param, peak);
 +        break;
 +    }
 +
@@ -4126,6 +4126,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        case TONEMAP_MOBIUS:
 +            if (isnan(s->param))
 +                s->param = 0.3f;
++            break;
++        case TONEMAP_BT2390:
++            if (isnan(s->param))
++                s->param = 1.0f; // diff from the spec-defined 0.5f
++            else
++                s->param = FFMIN(FFMAX(s->param, 0.5f), 2.0f);
 +            break;
 +    }
 +

@@ -1162,7 +1162,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +    float s_pq = s * scale;
 +    float max_lum = inverse_eotf_st2084(dst_peak) * scale;
 +
-+    float ks = 1.5f * max_lum - 0.5f;
++    float ks = (1.0f + tone_param) * max_lum - tone_param;
 +    float tb = (s_pq - ks) / (1.0f - ks);
 +    float tb2 = tb * tb;
 +    float tb3 = tb2 * tb;
@@ -1775,7 +1775,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1123 @@
+@@ -0,0 +1,1129 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2313,6 +2313,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        if (isnan(s->param))
 +            s->param = 0.3f;
 +        break;
++    case TONEMAP_BT2390:
++        if (isnan(s->param))
++            s->param = 1.0f; // diff from the spec-defined 0.5f
++        else
++            s->param = FFMIN(FFMAX(s->param, 0.5f), 2.0f);
++        break;
 +    }
 +
 +    if (isnan(s->param))
@@ -2812,7 +2818,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +#define OFFSET(x) offsetof(TonemapCUDAContext, x)
 +#define FLAGS (AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM)
 +static const AVOption options[] = {
-+    { "tonemap",       "Tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, {.i64 = TONEMAP_NONE}, TONEMAP_NONE, TONEMAP_COUNT - 1, FLAGS, .unit = "tonemap" },
++    { "tonemap",       "Tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, {.i64 = TONEMAP_BT2390}, TONEMAP_NONE, TONEMAP_COUNT - 1, FLAGS, .unit = "tonemap" },
 +    {     "none",      0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_NONE},              0, 0, FLAGS, .unit = "tonemap" },
 +    {     "linear",    0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_LINEAR},            0, 0, FLAGS, .unit = "tonemap" },
 +    {     "gamma",     0, 0, AV_OPT_TYPE_CONST, {.i64 = TONEMAP_GAMMA},             0, 0, FLAGS, .unit = "tonemap" },
