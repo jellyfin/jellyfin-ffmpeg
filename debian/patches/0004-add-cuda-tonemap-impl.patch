@@ -1775,7 +1775,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1129 @@
+@@ -0,0 +1,1131 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2741,6 +2741,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +            in->color_trc = AVCOL_TRC_SMPTE2084;
 +            in->colorspace = AVCOL_SPC_UNSPECIFIED;
 +            in->color_primaries = AVCOL_PRI_BT2020;
++            if (rpu->bl_video_full_range_flag)
++                in->color_range = AVCOL_RANGE_JPEG;
 +        }
 +    }
 +
