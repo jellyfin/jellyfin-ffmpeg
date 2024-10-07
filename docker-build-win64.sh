@@ -390,8 +390,10 @@ make install
 popd
 
 # X265
-git clone --depth=1 https://bitbucket.org/multicoreware/x265_git.git
+x265_commit="26d2bab0063cee453b7d8012e76539a7786c032f"
+git clone https://bitbucket.org/multicoreware/x265_git.git
 pushd x265_git
+git checkout ${x265_commit}
 # Wa for https://bitbucket.org/multicoreware/x265_git/issues/624
 rm -rf .git
 x265_conf="

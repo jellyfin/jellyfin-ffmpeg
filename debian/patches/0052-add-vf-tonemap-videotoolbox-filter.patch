@@ -507,7 +507,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +    float s_pq = s * scale;
 +    float max_lum = target_peak_inv_pq * scale;
 +
-+    float ks = 1.5f * max_lum - 0.5f;
++    float ks = (1.0f + tone_param) * max_lum - tone_param;
 +    float tb = (s_pq - ks) / (1.0f - ks);
 +    float tb2 = tb * tb;
 +    float tb3 = tb2 * tb;
@@ -939,7 +939,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
-@@ -0,0 +1,1149 @@
+@@ -0,0 +1,1157 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1311,6 +1311,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +        case TONEMAP_MOBIUS:
 +            if (isnan(ctx->param))
 +                ctx->param = 0.3f;
++            break;
++        case TONEMAP_BT2390:
++            if (isnan(ctx->param))
++                ctx->param = 1.0f; // diff from the spec-defined 0.5f
++            else
++                ctx->param = FFMIN(FFMAX(ctx->param, 0.5f), 2.0f);
 +            break;
 +    }
 +
@@ -1806,25 +1812,6 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (err < 0)
 +        goto fail;
 +
-+    if (ctx->trc != -1)
-+        output->color_trc = ctx->trc;
-+    if (ctx->primaries != -1)
-+        output->color_primaries = ctx->primaries;
-+    if (ctx->colorspace != -1)
-+        output->colorspace = ctx->colorspace;
-+    if (ctx->range != -1)
-+        output->color_range = ctx->range;
-+
-+    ctx->trc_in = input->color_trc;
-+    ctx->trc_out = output->color_trc;
-+    ctx->colorspace_in = input->colorspace;
-+    ctx->colorspace_out = output->colorspace;
-+    ctx->primaries_in = input->color_primaries;
-+    ctx->primaries_out = output->color_primaries;
-+    ctx->range_in = input->color_range;
-+    ctx->range_out = output->color_range;
-+    ctx->chroma_loc = output->chroma_location;
-+
 +    if (ctx->apply_dovi)
 +        dovi_sd = av_frame_get_side_data(input, AV_FRAME_DATA_DOVI_METADATA);
 +
@@ -1861,11 +1848,32 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +                goto fail;
 +
 +            ff_map_dovi_metadata(ctx->dovi, metadata);
-+            ctx->trc_in = AVCOL_TRC_SMPTE2084;
-+            ctx->colorspace_in = AVCOL_SPC_UNSPECIFIED;
-+            ctx->primaries_in = AVCOL_PRI_BT2020;
++            output->color_trc = input->color_trc = AVCOL_TRC_SMPTE2084;
++            output->colorspace = input->colorspace = AVCOL_SPC_BT2020_NCL;
++            output->color_primaries = input->color_primaries = AVCOL_PRI_BT2020;
++            if (rpu->bl_video_full_range_flag)
++                output->color_range = input->color_range = AVCOL_RANGE_JPEG;
 +        }
 +    }
++
++    if (ctx->trc != -1)
++        output->color_trc = ctx->trc;
++    if (ctx->primaries != -1)
++        output->color_primaries = ctx->primaries;
++    if (ctx->colorspace != -1)
++        output->colorspace = ctx->colorspace;
++    if (ctx->range != -1)
++        output->color_range = ctx->range;
++
++    ctx->trc_in = input->color_trc;
++    ctx->trc_out = output->color_trc;
++    ctx->colorspace_in = input->colorspace;
++    ctx->colorspace_out = output->colorspace;
++    ctx->primaries_in = input->color_primaries;
++    ctx->primaries_out = output->color_primaries;
++    ctx->range_in = input->color_range;
++    ctx->range_out = output->color_range;
++    ctx->chroma_loc = output->chroma_location;
 +
 +    // Some DOVI video does not carry metadata in the first few frames, and we have to reset the pipeline.
 +    if (!ctx->init_with_dovi && ctx->dovi && ctx->initialised) {
@@ -2017,7 +2025,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +#define OFFSET(x) offsetof(TonemapVideoToolboxContext, x)
 +
 +static const AVOption tonemap_videotoolbox_options[] = {
-+    { "tonemap", "Tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, { .i64 = TONEMAP_NONE }, TONEMAP_NONE, TONEMAP_COUNT - 1, FLAGS, .unit = "tonemap" },
++    { "tonemap", "Tonemap algorithm selection", OFFSET(tonemap), AV_OPT_TYPE_INT, { .i64 = TONEMAP_BT2390 }, TONEMAP_NONE, TONEMAP_COUNT - 1, FLAGS, .unit = "tonemap" },
 +        { "none",     0, 0, AV_OPT_TYPE_CONST, { .i64 = TONEMAP_NONE },              0, 0, FLAGS, .unit = "tonemap" },
 +        { "linear",   0, 0, AV_OPT_TYPE_CONST, { .i64 = TONEMAP_LINEAR },            0, 0, FLAGS, .unit = "tonemap" },
 +        { "gamma",    0, 0, AV_OPT_TYPE_CONST, { .i64 = TONEMAP_GAMMA },             0, 0, FLAGS, .unit = "tonemap" },
