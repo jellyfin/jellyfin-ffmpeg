@@ -1,3 +1,11 @@
+jellyfin-ffmpeg (7.0.2-4) unstable; urgency=medium
+
+  * Use more stable range and peak handling in tonemap filters
+  * Adjust default knee_offset for bt2390 tonemapper
+  * Respect bl_video_full_range_flag for DoVi video
+
+ -- nyanmisaka <nst799610810@gmail.com>  Sun, 6 Oct 2024 21:13:39 +0800
+
 jellyfin-ffmpeg (7.0.2-3) unstable; urgency=medium
 
   * Allow VPL QSV to init with the legacy MSDK path
