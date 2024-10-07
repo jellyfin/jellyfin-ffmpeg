@@ -41,7 +41,7 @@ jobs:
             diffstat
             mingw-w64-clang-x86_64-nasm
 
-      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
+      - uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
 
       - name: Prepare prefix dir
         run: |
@@ -51,7 +51,7 @@ jobs:
         run: ./msys2/build.sh
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9 # v4.4.1
         with:
           name: win-clang-${{ matrix.os.arch }}-portable
           path: ./msys2/artifacts
