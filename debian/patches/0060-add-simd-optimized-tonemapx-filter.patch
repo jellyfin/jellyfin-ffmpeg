@@ -95,7 +95,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,2142 @@
+@@ -0,0 +1,2022 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -329,6 +329,47 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    *ds = vfmaq_n_f32(*ds, s, (float)lms2rgb_matrix[2][2]);
 +}
 +
++// Hardcoded for 10bit inputs
++inline static void yuv2rgbx8(uint16x8_t *rx8, uint16x8_t *gx8, uint16x8_t *bx8,
++                             uint16x8_t yx8, uint16x8_t ux8, uint16x8_t vx8,
++                             int cy, int crv, int cgu, int cgv, int cbu)
++{
++    int32x4_t yx4a = vmovl_s16(vget_low_s16(vreinterpretq_s16_u16(yx8)));
++    int32x4_t yx4b = vmovl_s16(vget_high_s16(vreinterpretq_s16_u16(yx8)));
++    int32x4_t ux4a = vmovl_s16(vget_low_s16(vreinterpretq_s16_u16(ux8)));
++    int32x4_t ux4b = vmovl_s16(vget_high_s16(vreinterpretq_s16_u16(ux8)));
++    int32x4_t vx4a = vmovl_s16(vget_low_s16(vreinterpretq_s16_u16(vx8)));
++    int32x4_t vx4b = vmovl_s16(vget_high_s16(vreinterpretq_s16_u16(vx8)));
++
++    int32x4_t rx4a, gx4a, bx4a, rx4b, gx4b, bx4b;
++
++    rx4a = gx4a = bx4a = vmlaq_n_s32(vdupq_n_s32(TEN_BIT_ROUNDING), yx4a,  cy);
++    rx4a = vmlaq_n_s32(rx4a, vx4a, crv);
++    rx4a = vshrq_n_s32(rx4a, 9); // 9 = 10bit - 1
++
++    gx4a = vmlaq_n_s32(gx4a, ux4a, cgu);
++    gx4a = vmlaq_n_s32(gx4a, vx4a, cgv);
++    gx4a = vshrq_n_s32(gx4a, 9);
++
++    bx4a = vmlaq_n_s32(bx4a, ux4a, cbu);
++    bx4a = vshrq_n_s32(bx4a, 9);
++
++    rx4b = gx4b = bx4b = vmlaq_n_s32(vdupq_n_s32(TEN_BIT_ROUNDING), yx4b,  cy);
++    rx4b = vmlaq_n_s32(rx4b, vx4b, crv);
++    rx4b = vshrq_n_s32(rx4b, 9);
++
++    gx4b = vmlaq_n_s32(gx4b, ux4b, cgu);
++    gx4b = vmlaq_n_s32(gx4b, vx4b, cgv);
++    gx4b = vshrq_n_s32(gx4b, 9);
++
++    bx4b = vmlaq_n_s32(bx4b, ux4b, cbu);
++    bx4b = vshrq_n_s32(bx4b, 9);
++
++    *rx8 = vreinterpretq_u16_s16(vcombine_s16(vqmovn_s32(rx4a), vqmovn_s32(rx4b)));
++    *gx8 = vreinterpretq_u16_s16(vcombine_s16(vqmovn_s32(gx4a), vqmovn_s32(gx4b)));
++    *bx8 = vreinterpretq_u16_s16(vcombine_s16(vqmovn_s32(bx4a), vqmovn_s32(bx4b)));
++}
++
 +static inline void tonemap_int16x8_neon(uint16x8_t r_in, uint16x8_t g_in, uint16x8_t b_in,
 +                                        int16_t *r_out, int16_t *g_out, int16_t *b_out,
 +                                        float *lin_lut, float *tonemap_lut, uint16_t *delin_lut,
@@ -338,14 +379,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +                                        int rgb2rgb_passthrough)
 +{
 +    int16x8_t sig8;
-+    float32x4_t mapvalx4a;
-+    float32x4_t mapvalx4b;
-+    float32x4_t r_linx4a;
-+    float32x4_t r_linx4b;
-+    float32x4_t g_linx4a;
-+    float32x4_t g_linx4b;
-+    float32x4_t b_linx4a;
-+    float32x4_t b_linx4b;
++    float32x4_t mapvalx4a, mapvalx4b;
++    float32x4_t r_linx4a, r_linx4b, g_linx4a, g_linx4b, b_linx4a, b_linx4b;
 +    float32x4_t offset = vdupq_n_f32(0.5f);
 +    int32x4_t output_upper_bound = vdupq_n_s32(INT16_MAX);
 +    int32x4_t zerox4 = vdupq_n_s32(0);
@@ -525,13 +560,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    // intentionally leave last pixel emtpy when input is odd
 +    int remainw = width & 6;
 +
-+    const int in_depth = srcdepth;
-+    const int out_depth = dstdepth;
-+    const int out_uv_offset = 128 << (out_depth - 8);
-+    const int out_sh = 29 - out_depth;
-+    const int out_rnd = 1 << (out_sh - 1);
-+    const float in_rng = (float)((1 << in_depth) - 1);
-+
 +    int cry   = (*params->rgb2yuv_coeffs)[0][0][0];
 +    int cgy   = (*params->rgb2yuv_coeffs)[0][1][0];
 +    int cby   = (*params->rgb2yuv_coeffs)[0][2][0];
@@ -560,9 +588,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    int32x2_t ravgax2, gavgax2, bavgax2, ravgbx2, gavgbx2, bavgbx2;
 +    int32x4_t ravgx4, gavgx4, bavgx4, uox4, vox4;
 +    int32x4_t out_yuv_offx4 = vdupq_n_s32(params->out_yuv_off);
-+    int32x4_t out_rndx4 = vdupq_n_s32(out_rnd);
-+    int32x4_t out_uv_offsetx4 = vdupq_n_s32(out_uv_offset);
-+    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(2);
++    int32x4_t out_rndx4 = vdupq_n_s32(EIGHT_BIT_ROUNDING);
++    int32x4_t out_uv_offsetx4 = vdupq_n_s32(EIGHT_BIT_UV_OFFSET);
++    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(CHROMA_AVG_ROUNDING);
 +    float32x4_t ipt0, ipt1, ipt2, ipt3;
 +    float32x4_t ia1, ib1, ia2, ib2;
 +    float32x4_t ix4, px4, tx4;
@@ -593,14 +621,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            vx4a = vcvtq_f32_u32(vmovl_u16(vget_low_u16(vx8)));
 +            vx4b = vcvtq_f32_u32(vmovl_u16(vget_high_u16(vx8)));
 +
-+            y0x4a = vdivq_f32(y0x4a, vdupq_n_f32(in_rng));
-+            y0x4b = vdivq_f32(y0x4b, vdupq_n_f32(in_rng));
-+            y1x4a = vdivq_f32(y1x4a, vdupq_n_f32(in_rng));
-+            y1x4b = vdivq_f32(y1x4b, vdupq_n_f32(in_rng));
-+            ux4a = vdivq_f32(ux4a, vdupq_n_f32(in_rng));
-+            ux4b = vdivq_f32(ux4b, vdupq_n_f32(in_rng));
-+            vx4a = vdivq_f32(vx4a, vdupq_n_f32(in_rng));
-+            vx4b = vdivq_f32(vx4b, vdupq_n_f32(in_rng));
++            y0x4a = vdivq_f32(y0x4a, vdupq_n_f32(TEN_BIT_SCALE));
++            y0x4b = vdivq_f32(y0x4b, vdupq_n_f32(TEN_BIT_SCALE));
++            y1x4a = vdivq_f32(y1x4a, vdupq_n_f32(TEN_BIT_SCALE));
++            y1x4b = vdivq_f32(y1x4b, vdupq_n_f32(TEN_BIT_SCALE));
++            ux4a = vdivq_f32(ux4a, vdupq_n_f32(TEN_BIT_SCALE));
++            ux4b = vdivq_f32(ux4b, vdupq_n_f32(TEN_BIT_SCALE));
++            vx4a = vdivq_f32(vx4a, vdupq_n_f32(TEN_BIT_SCALE));
++            vx4b = vdivq_f32(vx4b, vdupq_n_f32(TEN_BIT_SCALE));
 +
 +            // Reshape y0x4a
 +            ia1 = vzip1q_f32(y0x4a, ux4a);
@@ -769,14 +797,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
 +            // output shift bits for 8bit outputs is 29 - 8 = 21
-+            y0oax4 = vshrq_n_s32(y0oax4, 21);
++            y0oax4 = vshrq_n_s32(y0oax4, EIGHT_BIT_SCALE_SHIFT);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
 +            y0obx4 = vmulq_n_s32(r0obx4, cry);
 +            y0obx4 = vmlaq_n_s32(y0obx4, g0obx4, cgy);
 +            y0obx4 = vmlaq_n_s32(y0obx4, b0obx4, cby);
 +            y0obx4 = vaddq_s32(y0obx4, out_rndx4);
-+            y0obx4 = vshrq_n_s32(y0obx4, 21);
++            y0obx4 = vshrq_n_s32(y0obx4, EIGHT_BIT_SCALE_SHIFT);
 +            y0obx4 = vaddq_s32(y0obx4, out_yuv_offx4);
 +
 +            y0ox8 = vcombine_s16(vqmovn_s32(y0oax4), vqmovn_s32(y0obx4));
@@ -798,14 +826,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y1oax4 = vmlaq_n_s32(y1oax4, g1oax4, cgy);
 +            y1oax4 = vmlaq_n_s32(y1oax4, b1oax4, cby);
 +            y1oax4 = vaddq_s32(y1oax4, out_rndx4);
-+            y1oax4 = vshrq_n_s32(y1oax4, 21);
++            y1oax4 = vshrq_n_s32(y1oax4, EIGHT_BIT_SCALE_SHIFT);
 +            y1oax4 = vaddq_s32(y1oax4, out_yuv_offx4);
 +
 +            y1obx4 = vmulq_n_s32(r1obx4, cry);
 +            y1obx4 = vmlaq_n_s32(y1obx4, g1obx4, cgy);
 +            y1obx4 = vmlaq_n_s32(y1obx4, b1obx4, cby);
 +            y1obx4 = vaddq_s32(y1obx4, out_rndx4);
-+            y1obx4 = vshrq_n_s32(y1obx4, 21);
++            y1obx4 = vshrq_n_s32(y1obx4, EIGHT_BIT_SCALE_SHIFT);
 +            y1obx4 = vaddq_s32(y1obx4, out_yuv_offx4);
 +
 +            y1ox8 = vcombine_s16(vqmovn_s32(y1oax4), vqmovn_s32(y1obx4));
@@ -818,7 +846,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ravgbx2 = vpadd_s32(vget_low_s32(r1obx4), vget_high_s32(r1obx4));
 +            ravgx4 = vaddq_s32(ravgx4, vcombine_s32(ravgax2, ravgbx2));
 +            ravgx4 = vaddq_s32(ravgx4, rgb_avg_rndx4);
-+            ravgx4 = vshrq_n_s32(ravgx4, 2);
++            ravgx4 = vshrq_n_s32(ravgx4, CHROMA_AVG_ROUNDING);
 +
 +            gavgax2 = vpadd_s32(vget_low_s32(g0oax4), vget_high_s32(g0oax4));
 +            gavgbx2 = vpadd_s32(vget_low_s32(g0obx4), vget_high_s32(g0obx4));
@@ -827,7 +855,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            gavgbx2 = vpadd_s32(vget_low_s32(g1obx4), vget_high_s32(g1obx4));
 +            gavgx4 = vaddq_s32(gavgx4, vcombine_s32(gavgax2, gavgbx2));
 +            gavgx4 = vaddq_s32(gavgx4, rgb_avg_rndx4);
-+            gavgx4 = vshrq_n_s32(gavgx4, 2);
++            gavgx4 = vshrq_n_s32(gavgx4, CHROMA_AVG_ROUNDING);
 +
 +            bavgax2 = vpadd_s32(vget_low_s32(b0oax4), vget_high_s32(b0oax4));
 +            bavgbx2 = vpadd_s32(vget_low_s32(b0obx4), vget_high_s32(b0obx4));
@@ -836,19 +864,19 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            bavgbx2 = vpadd_s32(vget_low_s32(b1obx4), vget_high_s32(b1obx4));
 +            bavgx4 = vaddq_s32(bavgx4, vcombine_s32(bavgax2, bavgbx2));
 +            bavgx4 = vaddq_s32(bavgx4, rgb_avg_rndx4);
-+            bavgx4 = vshrq_n_s32(bavgx4, 2);
++            bavgx4 = vshrq_n_s32(bavgx4, CHROMA_AVG_ROUNDING);
 +
 +            uox4 = vmlaq_n_s32(out_rndx4, ravgx4, cru);
 +            uox4 = vmlaq_n_s32(uox4, gavgx4, ocgu);
 +            uox4 = vmlaq_n_s32(uox4, bavgx4, cburv);
-+            uox4 = vshrq_n_s32(uox4, 21);
++            uox4 = vshrq_n_s32(uox4, EIGHT_BIT_SCALE_SHIFT);
 +            uox4 = vaddq_s32(uox4, out_uv_offsetx4);
 +            vst1_lane_u32((uint32_t *) &dstu[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(uox4), vdup_n_s16(0)))), 0);
 +
 +            vox4 = vmlaq_n_s32(out_rndx4, ravgx4, cburv);
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
-+            vox4 = vshrq_n_s32(vox4, 21);
++            vox4 = vshrq_n_s32(vox4, EIGHT_BIT_SCALE_SHIFT);
 +            vox4 = vaddq_s32(vox4, out_uv_offsetx4);
 +            vst1_lane_u32((uint32_t *) &dstv[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(vox4), vdup_n_s16(0)))), 0);
 +        }
@@ -891,16 +919,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    // intentionally leave last pixel emtpy when input is odd
 +    int remainw = width & 6;
 +
-+    const int in_depth = srcdepth;
-+    const int in_uv_offset = 128 << (in_depth - 8);
-+    const int in_sh = in_depth - 1;
-+    const int in_rnd = 1 << (in_sh - 1);
-+
-+    const int out_depth = dstdepth;
-+    const int out_uv_offset = 128 << (out_depth - 8);
-+    const int out_sh = 29 - out_depth;
-+    const int out_rnd = 1 << (out_sh - 1);
-+
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
 +    int cgu = (*params->yuv2rgb_coeffs)[1][1][0];
@@ -918,15 +936,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +
 +    int16_t r[8], g[8], b[8];
 +    int16_t r1[8], g1[8], b1[8];
-+    uint16_t cy_shifted = av_clip_int16(cy >> in_sh);
-+    uint16_t rnd_shifted = av_clip_int16(in_rnd >> in_sh);
-+    uint16_t crv_shifted = av_clip_int16(crv >> in_sh);
-+    uint16_t cgu_shifted = av_clip_int16(cgu >> in_sh);
-+    uint16_t cgv_shifted = av_clip_int16(cgv >> in_sh);
-+    uint16_t cbu_shifted = av_clip_int16(cbu >> in_sh);
-+    uint16x8_t rndx8 = vdupq_n_u16(rnd_shifted);
-+    uint16x8_t in_yuv_offx8 = vdupq_n_u16(av_clip_int16(params->in_yuv_off));
-+    uint16x8_t in_uv_offx8 = vdupq_n_u16(av_clip_int16(in_uv_offset));
++    uint16x8_t in_yuv_offx8 = vdupq_n_u16(params->in_yuv_off);
++    uint16x8_t in_uv_offx8 = vdupq_n_u16(TEN_BIT_UV_OFFSET);
 +    uint16x8_t y0x8, y1x8, ux8, vx8;
 +    uint16x8_t r0x8, g0x8, b0x8;
 +    uint16x8_t r1x8, g1x8, b1x8;
@@ -944,9 +955,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    int32x2_t ravgax2, gavgax2, bavgax2, ravgbx2, gavgbx2, bavgbx2;
 +    int32x4_t ravgx4, gavgx4, bavgx4, uox4, vox4;
 +    int32x4_t out_yuv_offx4 = vdupq_n_s32(params->out_yuv_off);
-+    int32x4_t out_rndx4 = vdupq_n_s32(out_rnd);
-+    int32x4_t out_uv_offsetx4 = vdupq_n_s32(out_uv_offset);
-+    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(2);
++    int32x4_t out_rndx4 = vdupq_n_s32(EIGHT_BIT_ROUNDING);
++    int32x4_t out_uv_offsetx4 = vdupq_n_s32(EIGHT_BIT_UV_OFFSET);
++    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(CHROMA_AVG_ROUNDING);
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0] * 2, dstu += dstlinesize[1], dstv += dstlinesize[2],
 +                       srcy += srclinesize[0], srcu += srclinesize[1] / 2, srcv += srclinesize[2] / 2) {
@@ -959,33 +970,16 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            vx4 = vld1_u16(srcv + (x >> 1));
 +
 +            y0x8 = vsubq_u16(y0x8, in_yuv_offx8);
++            y0x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y0x8), vdupq_n_s16(0)));
 +            y1x8 = vsubq_u16(y1x8, in_yuv_offx8);
++            y1x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y1x8), vdupq_n_s16(0)));
 +            ux8 = vcombine_u16(vzip1_u16(ux4, ux4), vzip2_u16(ux4, ux4));
 +            ux8 = vsubq_u16(ux8, in_uv_offx8);
 +            vx8 = vcombine_u16(vzip1_u16(vx4, vx4), vzip2_u16(vx4, vx4));
 +            vx8 = vsubq_u16(vx8, in_uv_offx8);
 +
-+            r0x8 = g0x8 = b0x8 = vmulq_n_u16(y0x8, cy_shifted);
-+            r0x8 = vmlaq_n_u16(r0x8, vx8, crv_shifted);
-+            r0x8 = vaddq_u16(r0x8, rndx8);
-+
-+            g0x8 = vmlaq_n_u16(g0x8, ux8, cgu_shifted);
-+            g0x8 = vmlaq_n_u16(g0x8, vx8, cgv_shifted);
-+            g0x8 = vaddq_u16(g0x8, rndx8);
-+
-+            b0x8 = vmlaq_n_u16(b0x8, ux8, cbu_shifted);
-+            b0x8 = vaddq_u16(b0x8, rndx8);
-+
-+            r1x8 = g1x8 = b1x8 = vmulq_n_u16(y1x8, cy_shifted);
-+            r1x8 = vmlaq_n_u16(r1x8, vx8, crv_shifted);
-+            r1x8 = vaddq_u16(r1x8, rndx8);
-+
-+            g1x8 = vmlaq_n_u16(g1x8, ux8, cgu_shifted);
-+            g1x8 = vmlaq_n_u16(g1x8, vx8, cgv_shifted);
-+            g1x8 = vaddq_u16(g1x8, rndx8);
-+
-+            b1x8 = vmlaq_n_u16(b1x8, ux8, cbu_shifted);
-+            b1x8 = vaddq_u16(b1x8, rndx8);
++            yuv2rgbx8(&r0x8, &g0x8, &b0x8, y0x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
++            yuv2rgbx8(&r1x8, &g1x8, &b1x8, y1x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
 +
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -1013,14 +1007,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
 +            // output shift bits for 8bit outputs is 29 - 8 = 21
-+            y0oax4 = vshrq_n_s32(y0oax4, 21);
++            y0oax4 = vshrq_n_s32(y0oax4, EIGHT_BIT_SCALE_SHIFT);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
 +            y0obx4 = vmulq_n_s32(r0obx4, cry);
 +            y0obx4 = vmlaq_n_s32(y0obx4, g0obx4, cgy);
 +            y0obx4 = vmlaq_n_s32(y0obx4, b0obx4, cby);
 +            y0obx4 = vaddq_s32(y0obx4, out_rndx4);
-+            y0obx4 = vshrq_n_s32(y0obx4, 21);
++            y0obx4 = vshrq_n_s32(y0obx4, EIGHT_BIT_SCALE_SHIFT);
 +            y0obx4 = vaddq_s32(y0obx4, out_yuv_offx4);
 +
 +            y0ox8 = vcombine_s16(vqmovn_s32(y0oax4), vqmovn_s32(y0obx4));
@@ -1042,14 +1036,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y1oax4 = vmlaq_n_s32(y1oax4, g1oax4, cgy);
 +            y1oax4 = vmlaq_n_s32(y1oax4, b1oax4, cby);
 +            y1oax4 = vaddq_s32(y1oax4, out_rndx4);
-+            y1oax4 = vshrq_n_s32(y1oax4, 21);
++            y1oax4 = vshrq_n_s32(y1oax4, EIGHT_BIT_SCALE_SHIFT);
 +            y1oax4 = vaddq_s32(y1oax4, out_yuv_offx4);
 +
 +            y1obx4 = vmulq_n_s32(r1obx4, cry);
 +            y1obx4 = vmlaq_n_s32(y1obx4, g1obx4, cgy);
 +            y1obx4 = vmlaq_n_s32(y1obx4, b1obx4, cby);
 +            y1obx4 = vaddq_s32(y1obx4, out_rndx4);
-+            y1obx4 = vshrq_n_s32(y1obx4, 21);
++            y1obx4 = vshrq_n_s32(y1obx4, EIGHT_BIT_SCALE_SHIFT);
 +            y1obx4 = vaddq_s32(y1obx4, out_yuv_offx4);
 +
 +            y1ox8 = vcombine_s16(vqmovn_s32(y1oax4), vqmovn_s32(y1obx4));
@@ -1062,7 +1056,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ravgbx2 = vpadd_s32(vget_low_s32(r1obx4), vget_high_s32(r1obx4));
 +            ravgx4 = vaddq_s32(ravgx4, vcombine_s32(ravgax2, ravgbx2));
 +            ravgx4 = vaddq_s32(ravgx4, rgb_avg_rndx4);
-+            ravgx4 = vshrq_n_s32(ravgx4, 2);
++            ravgx4 = vshrq_n_s32(ravgx4, CHROMA_AVG_ROUNDING);
 +
 +            gavgax2 = vpadd_s32(vget_low_s32(g0oax4), vget_high_s32(g0oax4));
 +            gavgbx2 = vpadd_s32(vget_low_s32(g0obx4), vget_high_s32(g0obx4));
@@ -1071,7 +1065,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            gavgbx2 = vpadd_s32(vget_low_s32(g1obx4), vget_high_s32(g1obx4));
 +            gavgx4 = vaddq_s32(gavgx4, vcombine_s32(gavgax2, gavgbx2));
 +            gavgx4 = vaddq_s32(gavgx4, rgb_avg_rndx4);
-+            gavgx4 = vshrq_n_s32(gavgx4, 2);
++            gavgx4 = vshrq_n_s32(gavgx4, CHROMA_AVG_ROUNDING);
 +
 +            bavgax2 = vpadd_s32(vget_low_s32(b0oax4), vget_high_s32(b0oax4));
 +            bavgbx2 = vpadd_s32(vget_low_s32(b0obx4), vget_high_s32(b0obx4));
@@ -1080,19 +1074,19 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            bavgbx2 = vpadd_s32(vget_low_s32(b1obx4), vget_high_s32(b1obx4));
 +            bavgx4 = vaddq_s32(bavgx4, vcombine_s32(bavgax2, bavgbx2));
 +            bavgx4 = vaddq_s32(bavgx4, rgb_avg_rndx4);
-+            bavgx4 = vshrq_n_s32(bavgx4, 2);
++            bavgx4 = vshrq_n_s32(bavgx4, CHROMA_AVG_ROUNDING);
 +
 +            uox4 = vmlaq_n_s32(out_rndx4, ravgx4, cru);
 +            uox4 = vmlaq_n_s32(uox4, gavgx4, ocgu);
 +            uox4 = vmlaq_n_s32(uox4, bavgx4, cburv);
-+            uox4 = vshrq_n_s32(uox4, 21);
++            uox4 = vshrq_n_s32(uox4, EIGHT_BIT_SCALE_SHIFT);
 +            uox4 = vaddq_s32(uox4, out_uv_offsetx4);
 +            vst1_lane_u32((uint32_t *) &dstu[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(uox4), vdup_n_s16(0)))), 0);
 +
 +            vox4 = vmlaq_n_s32(out_rndx4, ravgx4, cburv);
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
-+            vox4 = vshrq_n_s32(vox4, 21);
++            vox4 = vshrq_n_s32(vox4, EIGHT_BIT_SCALE_SHIFT);
 +            vox4 = vaddq_s32(vox4, out_uv_offsetx4);
 +            vst1_lane_u32((uint32_t *) &dstv[x >> 1], vreinterpret_u32_u8(vqmovun_s16(vcombine_s16(vmovn_s32(vox4), vdup_n_s16(0)))), 0);
 +        }
@@ -1133,16 +1127,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    // intentionally leave last pixel emtpy when input is odd
 +    int remainw = width & 6;
 +
-+    const int in_depth = srcdepth;
-+    const int in_uv_offset = 128 << (in_depth - 8);
-+    const int in_sh = in_depth - 1;
-+    const int in_rnd = 1 << (in_sh - 1);
-+
-+    const int out_depth = dstdepth;
-+    const int out_uv_offset = 128 << (out_depth - 8);
-+    const int out_sh = 29 - out_depth;
-+    const int out_rnd = 1 << (out_sh - 1);
-+
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
 +    int cgu = (*params->yuv2rgb_coeffs)[1][1][0];
@@ -1160,15 +1144,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +
 +    int16_t r[8], g[8], b[8];
 +    int16_t r1[8], g1[8], b1[8];
-+    uint16_t cy_shifted = av_clip_int16(cy >> in_sh);
-+    uint16_t rnd_shifted = av_clip_int16(in_rnd >> in_sh);
-+    uint16_t crv_shifted = av_clip_int16(crv >> in_sh);
-+    uint16_t cgu_shifted = av_clip_int16(cgu >> in_sh);
-+    uint16_t cgv_shifted = av_clip_int16(cgv >> in_sh);
-+    uint16_t cbu_shifted = av_clip_int16(cbu >> in_sh);
-+    uint16x8_t rndx8 = vdupq_n_u16(rnd_shifted);
-+    uint16x8_t in_yuv_offx8 = vdupq_n_u16(av_clip_int16(params->in_yuv_off));
-+    uint16x8_t in_uv_offx8 = vdupq_n_u16(av_clip_int16(in_uv_offset));
++    uint16x8_t in_yuv_offx8 = vdupq_n_u16(params->in_yuv_off);
++    uint16x8_t in_uv_offx8 = vdupq_n_u16(TEN_BIT_UV_OFFSET);
 +    uint16x8_t uvx8;
 +    uint16x4_t ux2a, vx2a, ux2b, vx2b;
 +    uint16x8_t y0x8, y1x8, ux8, vx8;
@@ -1188,9 +1165,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    int32x2_t ravgax2, gavgax2, bavgax2, ravgbx2, gavgbx2, bavgbx2;
 +    int32x4_t ravgx4, gavgx4, bavgx4, uox4, vox4;
 +    int32x4_t out_yuv_offx4 = vdupq_n_s32(params->out_yuv_off);
-+    int32x4_t out_rndx4 = vdupq_n_s32(out_rnd);
-+    int32x4_t out_uv_offsetx4 = vdupq_n_s32(out_uv_offset);
-+    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(2);
++    int32x4_t out_rndx4 = vdupq_n_s32(EIGHT_BIT_ROUNDING);
++    int32x4_t out_uv_offsetx4 = vdupq_n_s32(EIGHT_BIT_UV_OFFSET);
++    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(CHROMA_AVG_ROUNDING);
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0] * 2, dstuv += dstlinesize[1],
 +                       srcy += srclinesize[0], srcuv += srclinesize[1] / 2) {
@@ -1206,7 +1183,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y1x8 = vshrq_n_u16(y1x8, 6);
 +            uvx8 = vshrq_n_u16(uvx8, 6);
 +            y0x8 = vsubq_u16(y0x8, in_yuv_offx8);
++            y0x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y0x8), vdupq_n_s16(0)));
 +            y1x8 = vsubq_u16(y1x8, in_yuv_offx8);
++            y1x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y1x8), vdupq_n_s16(0)));
 +            uvx8 = vsubq_u16(uvx8, in_uv_offx8);
 +
 +            ux2a = vext_u16(vdup_lane_u16(vget_low_u16(uvx8), 0), vdup_lane_u16(vget_low_u16(uvx8), 2), 2);
@@ -1217,27 +1196,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ux8 = vcombine_u16(ux2a, ux2b);
 +            vx8 = vcombine_u16(vx2a, vx2b);
 +
-+            r0x8 = g0x8 = b0x8 = vmulq_n_u16(y0x8, cy_shifted);
-+            r0x8 = vmlaq_n_u16(r0x8, vx8, crv_shifted);
-+            r0x8 = vaddq_u16(r0x8, rndx8);
-+
-+            g0x8 = vmlaq_n_u16(g0x8, ux8, cgu_shifted);
-+            g0x8 = vmlaq_n_u16(g0x8, vx8, cgv_shifted);
-+            g0x8 = vaddq_u16(g0x8, rndx8);
-+
-+            b0x8 = vmlaq_n_u16(b0x8, ux8, cbu_shifted);
-+            b0x8 = vaddq_u16(b0x8, rndx8);
-+
-+            r1x8 = g1x8 = b1x8 = vmulq_n_u16(y1x8, cy_shifted);
-+            r1x8 = vmlaq_n_u16(r1x8, vx8, crv_shifted);
-+            r1x8 = vaddq_u16(r1x8, rndx8);
-+
-+            g1x8 = vmlaq_n_u16(g1x8, ux8, cgu_shifted);
-+            g1x8 = vmlaq_n_u16(g1x8, vx8, cgv_shifted);
-+            g1x8 = vaddq_u16(g1x8, rndx8);
-+
-+            b1x8 = vmlaq_n_u16(b1x8, ux8, cbu_shifted);
-+            b1x8 = vaddq_u16(b1x8, rndx8);
++            yuv2rgbx8(&r0x8, &g0x8, &b0x8, y0x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
++            yuv2rgbx8(&r1x8, &g1x8, &b1x8, y1x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
 +
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -1265,14 +1225,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
 +            // output shift bits for 8bit outputs is 29 - 8 = 21
-+            y0oax4 = vshrq_n_s32(y0oax4, 21);
++            y0oax4 = vshrq_n_s32(y0oax4, EIGHT_BIT_SCALE_SHIFT);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
 +            y0obx4 = vmulq_n_s32(r0obx4, cry);
 +            y0obx4 = vmlaq_n_s32(y0obx4, g0obx4, cgy);
 +            y0obx4 = vmlaq_n_s32(y0obx4, b0obx4, cby);
 +            y0obx4 = vaddq_s32(y0obx4, out_rndx4);
-+            y0obx4 = vshrq_n_s32(y0obx4, 21);
++            y0obx4 = vshrq_n_s32(y0obx4, EIGHT_BIT_SCALE_SHIFT);
 +            y0obx4 = vaddq_s32(y0obx4, out_yuv_offx4);
 +
 +            y0ox8 = vcombine_s16(vqmovn_s32(y0oax4), vqmovn_s32(y0obx4));
@@ -1294,14 +1254,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y1oax4 = vmlaq_n_s32(y1oax4, g1oax4, cgy);
 +            y1oax4 = vmlaq_n_s32(y1oax4, b1oax4, cby);
 +            y1oax4 = vaddq_s32(y1oax4, out_rndx4);
-+            y1oax4 = vshrq_n_s32(y1oax4, 21);
++            y1oax4 = vshrq_n_s32(y1oax4, EIGHT_BIT_SCALE_SHIFT);
 +            y1oax4 = vaddq_s32(y1oax4, out_yuv_offx4);
 +
 +            y1obx4 = vmulq_n_s32(r1obx4, cry);
 +            y1obx4 = vmlaq_n_s32(y1obx4, g1obx4, cgy);
 +            y1obx4 = vmlaq_n_s32(y1obx4, b1obx4, cby);
 +            y1obx4 = vaddq_s32(y1obx4, out_rndx4);
-+            y1obx4 = vshrq_n_s32(y1obx4, 21);
++            y1obx4 = vshrq_n_s32(y1obx4, EIGHT_BIT_SCALE_SHIFT);
 +            y1obx4 = vaddq_s32(y1obx4, out_yuv_offx4);
 +
 +            y1ox8 = vcombine_s16(vqmovn_s32(y1oax4), vqmovn_s32(y1obx4));
@@ -1314,7 +1274,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ravgbx2 = vpadd_s32(vget_low_s32(r1obx4), vget_high_s32(r1obx4));
 +            ravgx4 = vaddq_s32(ravgx4, vcombine_s32(ravgax2, ravgbx2));
 +            ravgx4 = vaddq_s32(ravgx4, rgb_avg_rndx4);
-+            ravgx4 = vshrq_n_s32(ravgx4, 2);
++            ravgx4 = vshrq_n_s32(ravgx4, CHROMA_AVG_ROUNDING);
 +
 +            gavgax2 = vpadd_s32(vget_low_s32(g0oax4), vget_high_s32(g0oax4));
 +            gavgbx2 = vpadd_s32(vget_low_s32(g0obx4), vget_high_s32(g0obx4));
@@ -1323,7 +1283,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            gavgbx2 = vpadd_s32(vget_low_s32(g1obx4), vget_high_s32(g1obx4));
 +            gavgx4 = vaddq_s32(gavgx4, vcombine_s32(gavgax2, gavgbx2));
 +            gavgx4 = vaddq_s32(gavgx4, rgb_avg_rndx4);
-+            gavgx4 = vshrq_n_s32(gavgx4, 2);
++            gavgx4 = vshrq_n_s32(gavgx4, CHROMA_AVG_ROUNDING);
 +
 +            bavgax2 = vpadd_s32(vget_low_s32(b0oax4), vget_high_s32(b0oax4));
 +            bavgbx2 = vpadd_s32(vget_low_s32(b0obx4), vget_high_s32(b0obx4));
@@ -1332,18 +1292,18 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            bavgbx2 = vpadd_s32(vget_low_s32(b1obx4), vget_high_s32(b1obx4));
 +            bavgx4 = vaddq_s32(bavgx4, vcombine_s32(bavgax2, bavgbx2));
 +            bavgx4 = vaddq_s32(bavgx4, rgb_avg_rndx4);
-+            bavgx4 = vshrq_n_s32(bavgx4, 2);
++            bavgx4 = vshrq_n_s32(bavgx4, CHROMA_AVG_ROUNDING);
 +
 +            uox4 = vmlaq_n_s32(out_rndx4, ravgx4, cru);
 +            uox4 = vmlaq_n_s32(uox4, gavgx4, ocgu);
 +            uox4 = vmlaq_n_s32(uox4, bavgx4, cburv);
-+            uox4 = vshrq_n_s32(uox4, 21);
++            uox4 = vshrq_n_s32(uox4, EIGHT_BIT_SCALE_SHIFT);
 +            uox4 = vaddq_s32(uox4, out_uv_offsetx4);
 +
 +            vox4 = vmlaq_n_s32(out_rndx4, ravgx4, cburv);
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
-+            vox4 = vshrq_n_s32(vox4, 21);
++            vox4 = vshrq_n_s32(vox4, EIGHT_BIT_SCALE_SHIFT);
 +            vox4 = vaddq_s32(vox4, out_uv_offsetx4);
 +
 +            uvoax4 = vzip1q_s32(uox4, vox4);
@@ -1388,14 +1348,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    // intentionally leave last pixel emtpy when input is odd
 +    int remainw = width & 6;
 +
-+    const int in_depth = srcdepth;
-+    const float in_rng = (float)((1 << in_depth) - 1);
-+
-+    const int out_depth = dstdepth;
-+    const int out_uv_offset = 128 << (out_depth - 8);
-+    const int out_sh = 29 - out_depth;
-+    const int out_rnd = 1 << (out_sh - 1);
-+
 +    int cry   = (*params->rgb2yuv_coeffs)[0][0][0];
 +    int cgy   = (*params->rgb2yuv_coeffs)[0][1][0];
 +    int cby   = (*params->rgb2yuv_coeffs)[0][2][0];
@@ -1424,9 +1376,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    int32x2_t ravgax2, gavgax2, bavgax2, ravgbx2, gavgbx2, bavgbx2;
 +    int32x4_t ravgx4, gavgx4, bavgx4, uox4, vox4;
 +    int32x4_t out_yuv_offx4 = vdupq_n_s32(params->out_yuv_off);
-+    int32x4_t out_rndx4 = vdupq_n_s32(out_rnd);
-+    int32x4_t out_uv_offsetx4 = vdupq_n_s32(out_uv_offset);
-+    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(2);
++    int32x4_t out_rndx4 = vdupq_n_s32(TEN_BIT_ROUNDING);
++    int32x4_t out_uv_offsetx4 = vdupq_n_s32(TEN_BIT_UV_OFFSET);
++    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(CHROMA_AVG_ROUNDING);
 +    float32x4_t ipt0, ipt1, ipt2, ipt3;
 +    float32x4_t ia1, ib1, ia2, ib2;
 +    float32x4_t ix4, px4, tx4;
@@ -1457,14 +1409,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            vx4a = vcvtq_f32_u32(vmovl_u16(vget_low_u16(vx8)));
 +            vx4b = vcvtq_f32_u32(vmovl_u16(vget_high_u16(vx8)));
 +
-+            y0x4a = vdivq_f32(y0x4a, vdupq_n_f32(in_rng));
-+            y0x4b = vdivq_f32(y0x4b, vdupq_n_f32(in_rng));
-+            y1x4a = vdivq_f32(y1x4a, vdupq_n_f32(in_rng));
-+            y1x4b = vdivq_f32(y1x4b, vdupq_n_f32(in_rng));
-+            ux4a = vdivq_f32(ux4a, vdupq_n_f32(in_rng));
-+            ux4b = vdivq_f32(ux4b, vdupq_n_f32(in_rng));
-+            vx4a = vdivq_f32(vx4a, vdupq_n_f32(in_rng));
-+            vx4b = vdivq_f32(vx4b, vdupq_n_f32(in_rng));
++            y0x4a = vdivq_f32(y0x4a, vdupq_n_f32(TEN_BIT_SCALE));
++            y0x4b = vdivq_f32(y0x4b, vdupq_n_f32(TEN_BIT_SCALE));
++            y1x4a = vdivq_f32(y1x4a, vdupq_n_f32(TEN_BIT_SCALE));
++            y1x4b = vdivq_f32(y1x4b, vdupq_n_f32(TEN_BIT_SCALE));
++            ux4a = vdivq_f32(ux4a, vdupq_n_f32(TEN_BIT_SCALE));
++            ux4b = vdivq_f32(ux4b, vdupq_n_f32(TEN_BIT_SCALE));
++            vx4a = vdivq_f32(vx4a, vdupq_n_f32(TEN_BIT_SCALE));
++            vx4b = vdivq_f32(vx4b, vdupq_n_f32(TEN_BIT_SCALE));
 +
 +            // Reshape y0x4a
 +            ia1 = vzip1q_f32(y0x4a, ux4a);
@@ -1629,14 +1581,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, g0oax4, cgy);
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
-+            y0oax4 = vshrq_n_s32(y0oax4, 19);
++            y0oax4 = vshrq_n_s32(y0oax4, TEN_BIT_SCALE_SHIFT);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
 +            y0obx4 = vmulq_n_s32(r0obx4, cry);
 +            y0obx4 = vmlaq_n_s32(y0obx4, g0obx4, cgy);
 +            y0obx4 = vmlaq_n_s32(y0obx4, b0obx4, cby);
 +            y0obx4 = vaddq_s32(y0obx4, out_rndx4);
-+            y0obx4 = vshrq_n_s32(y0obx4, 19);
++            y0obx4 = vshrq_n_s32(y0obx4, TEN_BIT_SCALE_SHIFT);
 +            y0obx4 = vaddq_s32(y0obx4, out_yuv_offx4);
 +
 +            y0ox8 = vcombine_u16(vqmovun_s32(y0oax4), vqmovun_s32(y0obx4));
@@ -1658,14 +1610,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y1oax4 = vmlaq_n_s32(y1oax4, g1oax4, cgy);
 +            y1oax4 = vmlaq_n_s32(y1oax4, b1oax4, cby);
 +            y1oax4 = vaddq_s32(y1oax4, out_rndx4);
-+            y1oax4 = vshrq_n_s32(y1oax4, 19);
++            y1oax4 = vshrq_n_s32(y1oax4, TEN_BIT_SCALE_SHIFT);
 +            y1oax4 = vaddq_s32(y1oax4, out_yuv_offx4);
 +
 +            y1obx4 = vmulq_n_s32(r1obx4, cry);
 +            y1obx4 = vmlaq_n_s32(y1obx4, g1obx4, cgy);
 +            y1obx4 = vmlaq_n_s32(y1obx4, b1obx4, cby);
 +            y1obx4 = vaddq_s32(y1obx4, out_rndx4);
-+            y1obx4 = vshrq_n_s32(y1obx4, 19);
++            y1obx4 = vshrq_n_s32(y1obx4, TEN_BIT_SCALE_SHIFT);
 +            y1obx4 = vaddq_s32(y1obx4, out_yuv_offx4);
 +
 +            y1ox8 = vcombine_u16(vqmovun_s32(y1oax4), vqmovun_s32(y1obx4));
@@ -1678,7 +1630,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ravgbx2 = vpadd_s32(vget_low_s32(r1obx4), vget_high_s32(r1obx4));
 +            ravgx4 = vaddq_s32(ravgx4, vcombine_s32(ravgax2, ravgbx2));
 +            ravgx4 = vaddq_s32(ravgx4, rgb_avg_rndx4);
-+            ravgx4 = vshrq_n_s32(ravgx4, 2);
++            ravgx4 = vshrq_n_s32(ravgx4, CHROMA_AVG_ROUNDING);
 +
 +            gavgax2 = vpadd_s32(vget_low_s32(g0oax4), vget_high_s32(g0oax4));
 +            gavgbx2 = vpadd_s32(vget_low_s32(g0obx4), vget_high_s32(g0obx4));
@@ -1687,7 +1639,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            gavgbx2 = vpadd_s32(vget_low_s32(g1obx4), vget_high_s32(g1obx4));
 +            gavgx4 = vaddq_s32(gavgx4, vcombine_s32(gavgax2, gavgbx2));
 +            gavgx4 = vaddq_s32(gavgx4, rgb_avg_rndx4);
-+            gavgx4 = vshrq_n_s32(gavgx4, 2);
++            gavgx4 = vshrq_n_s32(gavgx4, CHROMA_AVG_ROUNDING);
 +
 +            bavgax2 = vpadd_s32(vget_low_s32(b0oax4), vget_high_s32(b0oax4));
 +            bavgbx2 = vpadd_s32(vget_low_s32(b0obx4), vget_high_s32(b0obx4));
@@ -1696,19 +1648,19 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            bavgbx2 = vpadd_s32(vget_low_s32(b1obx4), vget_high_s32(b1obx4));
 +            bavgx4 = vaddq_s32(bavgx4, vcombine_s32(bavgax2, bavgbx2));
 +            bavgx4 = vaddq_s32(bavgx4, rgb_avg_rndx4);
-+            bavgx4 = vshrq_n_s32(bavgx4, 2);
++            bavgx4 = vshrq_n_s32(bavgx4, CHROMA_AVG_ROUNDING);
 +
 +            uox4 = vmlaq_n_s32(out_rndx4, ravgx4, cru);
 +            uox4 = vmlaq_n_s32(uox4, gavgx4, ocgu);
 +            uox4 = vmlaq_n_s32(uox4, bavgx4, cburv);
-+            uox4 = vshrq_n_s32(uox4, 19);
++            uox4 = vshrq_n_s32(uox4, TEN_BIT_SCALE_SHIFT);
 +            uox4 = vaddq_s32(uox4, out_uv_offsetx4);
 +            vst1_u16(&dstu[x >> 1], vqmovun_s32(uox4));
 +
 +            vox4 = vmlaq_n_s32(out_rndx4, ravgx4, cburv);
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
-+            vox4 = vshrq_n_s32(vox4, 19);
++            vox4 = vshrq_n_s32(vox4, TEN_BIT_SCALE_SHIFT);
 +            vox4 = vaddq_s32(vox4, out_uv_offsetx4);
 +            vst1_u16(&dstv[x >> 1], vqmovun_s32(vox4));
 +        }
@@ -1751,16 +1703,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    // intentionally leave last pixel emtpy when input is odd
 +    int remainw = width & 6;
 +
-+    const int in_depth = srcdepth;
-+    const int in_uv_offset = 128 << (in_depth - 8);
-+    const int in_sh = in_depth - 1;
-+    const int in_rnd = 1 << (in_sh - 1);
-+
-+    const int out_depth = dstdepth;
-+    const int out_uv_offset = 128 << (out_depth - 8);
-+    const int out_sh = 29 - out_depth;
-+    const int out_rnd = 1 << (out_sh - 1);
-+
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
 +    int cgu = (*params->yuv2rgb_coeffs)[1][1][0];
@@ -1778,15 +1720,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +
 +    int16_t r[8], g[8], b[8];
 +    int16_t r1[8], g1[8], b1[8];
-+    uint16_t cy_shifted = av_clip_int16(cy >> in_sh);
-+    uint16_t rnd_shifted = av_clip_int16(in_rnd >> in_sh);
-+    uint16_t crv_shifted = av_clip_int16(crv >> in_sh);
-+    uint16_t cgu_shifted = av_clip_int16(cgu >> in_sh);
-+    uint16_t cgv_shifted = av_clip_int16(cgv >> in_sh);
-+    uint16_t cbu_shifted = av_clip_int16(cbu >> in_sh);
-+    uint16x8_t rndx8 = vdupq_n_u16(rnd_shifted);
-+    uint16x8_t in_yuv_offx8 = vdupq_n_u16(av_clip_int16(params->in_yuv_off));
-+    uint16x8_t in_uv_offx8 = vdupq_n_u16(av_clip_int16(in_uv_offset));
++    uint16x8_t in_yuv_offx8 = vdupq_n_u16(params->in_yuv_off);
++    uint16x8_t in_uv_offx8 = vdupq_n_u16(512);
 +    uint16x4_t ux4, vx4;
 +    uint16x8_t y0x8, y1x8, ux8, vx8;
 +    uint16x8_t r0x8, g0x8, b0x8;
@@ -1804,9 +1739,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    int32x2_t ravgax2, gavgax2, bavgax2, ravgbx2, gavgbx2, bavgbx2;
 +    int32x4_t ravgx4, gavgx4, bavgx4, uox4, vox4;
 +    int32x4_t out_yuv_offx4 = vdupq_n_s32(params->out_yuv_off);
-+    int32x4_t out_rndx4 = vdupq_n_s32(out_rnd);
-+    int32x4_t out_uv_offsetx4 = vdupq_n_s32(out_uv_offset);
-+    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(2);
++    int32x4_t out_rndx4 = vdupq_n_s32(TEN_BIT_ROUNDING);
++    int32x4_t out_uv_offsetx4 = vdupq_n_s32(TEN_BIT_UV_OFFSET);
++    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(CHROMA_AVG_ROUNDING);
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0], dstu += dstlinesize[1] / 2, dstv += dstlinesize[1] / 2,
 +                       srcy += srclinesize[0], srcu += srclinesize[1] / 2, srcv += srclinesize[1] / 2) {
@@ -1818,34 +1753,17 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ux4 = vld1_u16(srcu + (x >> 1));
 +            vx4 = vld1_u16(srcv + (x >> 1));
 +            y0x8 = vsubq_u16(y0x8, in_yuv_offx8);
++            y0x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y0x8), vdupq_n_s16(0)));
 +            y1x8 = vsubq_u16(y1x8, in_yuv_offx8);
++            y1x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y1x8), vdupq_n_s16(0)));
 +
 +            ux8 = vcombine_u16(vzip1_u16(ux4, ux4), vzip2_u16(ux4, ux4));
 +            ux8 = vsubq_u16(ux8, in_uv_offx8);
 +            vx8 = vcombine_u16(vzip1_u16(vx4, vx4), vzip2_u16(vx4, vx4));
 +            vx8 = vsubq_u16(vx8, in_uv_offx8);
 +
-+            r0x8 = g0x8 = b0x8 = vmulq_n_u16(y0x8, cy_shifted);
-+            r0x8 = vmlaq_n_u16(r0x8, vx8, crv_shifted);
-+            r0x8 = vaddq_u16(r0x8, rndx8);
-+
-+            g0x8 = vmlaq_n_u16(g0x8, ux8, cgu_shifted);
-+            g0x8 = vmlaq_n_u16(g0x8, vx8, cgv_shifted);
-+            g0x8 = vaddq_u16(g0x8, rndx8);
-+
-+            b0x8 = vmlaq_n_u16(b0x8, ux8, cbu_shifted);
-+            b0x8 = vaddq_u16(b0x8, rndx8);
-+
-+            r1x8 = g1x8 = b1x8 = vmulq_n_u16(y1x8, cy_shifted);
-+            r1x8 = vmlaq_n_u16(r1x8, vx8, crv_shifted);
-+            r1x8 = vaddq_u16(r1x8, rndx8);
-+
-+            g1x8 = vmlaq_n_u16(g1x8, ux8, cgu_shifted);
-+            g1x8 = vmlaq_n_u16(g1x8, vx8, cgv_shifted);
-+            g1x8 = vaddq_u16(g1x8, rndx8);
-+
-+            b1x8 = vmlaq_n_u16(b1x8, ux8, cbu_shifted);
-+            b1x8 = vaddq_u16(b1x8, rndx8);
++            yuv2rgbx8(&r0x8, &g0x8, &b0x8, y0x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
++            yuv2rgbx8(&r1x8, &g1x8, &b1x8, y1x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
 +
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -1872,14 +1790,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0oax4 = vmlaq_n_s32(y0oax4, g0oax4, cgy);
 +            y0oax4 = vmlaq_n_s32(y0oax4, b0oax4, cby);
 +            y0oax4 = vaddq_s32(y0oax4, out_rndx4);
-+            y0oax4 = vshrq_n_s32(y0oax4, 19);
++            y0oax4 = vshrq_n_s32(y0oax4, TEN_BIT_SCALE_SHIFT);
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
 +
 +            y0obx4 = vmulq_n_s32(r0obx4, cry);
 +            y0obx4 = vmlaq_n_s32(y0obx4, g0obx4, cgy);
 +            y0obx4 = vmlaq_n_s32(y0obx4, b0obx4, cby);
 +            y0obx4 = vaddq_s32(y0obx4, out_rndx4);
-+            y0obx4 = vshrq_n_s32(y0obx4, 19);
++            y0obx4 = vshrq_n_s32(y0obx4, TEN_BIT_SCALE_SHIFT);
 +            y0obx4 = vaddq_s32(y0obx4, out_yuv_offx4);
 +
 +            y0ox8 = vcombine_u16(vqmovun_s32(y0oax4), vqmovun_s32(y0obx4));
@@ -1901,14 +1819,14 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y1oax4 = vmlaq_n_s32(y1oax4, g1oax4, cgy);
 +            y1oax4 = vmlaq_n_s32(y1oax4, b1oax4, cby);
 +            y1oax4 = vaddq_s32(y1oax4, out_rndx4);
-+            y1oax4 = vshrq_n_s32(y1oax4, 19);
++            y1oax4 = vshrq_n_s32(y1oax4, TEN_BIT_SCALE_SHIFT);
 +            y1oax4 = vaddq_s32(y1oax4, out_yuv_offx4);
 +
 +            y1obx4 = vmulq_n_s32(r1obx4, cry);
 +            y1obx4 = vmlaq_n_s32(y1obx4, g1obx4, cgy);
 +            y1obx4 = vmlaq_n_s32(y1obx4, b1obx4, cby);
 +            y1obx4 = vaddq_s32(y1obx4, out_rndx4);
-+            y1obx4 = vshrq_n_s32(y1obx4, 19);
++            y1obx4 = vshrq_n_s32(y1obx4, TEN_BIT_SCALE_SHIFT);
 +            y1obx4 = vaddq_s32(y1obx4, out_yuv_offx4);
 +
 +            y1ox8 = vcombine_u16(vqmovun_s32(y1oax4), vqmovun_s32(y1obx4));
@@ -1921,7 +1839,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ravgbx2 = vpadd_s32(vget_low_s32(r1obx4), vget_high_s32(r1obx4));
 +            ravgx4 = vaddq_s32(ravgx4, vcombine_s32(ravgax2, ravgbx2));
 +            ravgx4 = vaddq_s32(ravgx4, rgb_avg_rndx4);
-+            ravgx4 = vshrq_n_s32(ravgx4, 2);
++            ravgx4 = vshrq_n_s32(ravgx4, CHROMA_AVG_ROUNDING);
 +
 +            gavgax2 = vpadd_s32(vget_low_s32(g0oax4), vget_high_s32(g0oax4));
 +            gavgbx2 = vpadd_s32(vget_low_s32(g0obx4), vget_high_s32(g0obx4));
@@ -1930,7 +1848,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            gavgbx2 = vpadd_s32(vget_low_s32(g1obx4), vget_high_s32(g1obx4));
 +            gavgx4 = vaddq_s32(gavgx4, vcombine_s32(gavgax2, gavgbx2));
 +            gavgx4 = vaddq_s32(gavgx4, rgb_avg_rndx4);
-+            gavgx4 = vshrq_n_s32(gavgx4, 2);
++            gavgx4 = vshrq_n_s32(gavgx4, CHROMA_AVG_ROUNDING);
 +
 +            bavgax2 = vpadd_s32(vget_low_s32(b0oax4), vget_high_s32(b0oax4));
 +            bavgbx2 = vpadd_s32(vget_low_s32(b0obx4), vget_high_s32(b0obx4));
@@ -1939,19 +1857,19 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            bavgbx2 = vpadd_s32(vget_low_s32(b1obx4), vget_high_s32(b1obx4));
 +            bavgx4 = vaddq_s32(bavgx4, vcombine_s32(bavgax2, bavgbx2));
 +            bavgx4 = vaddq_s32(bavgx4, rgb_avg_rndx4);
-+            bavgx4 = vshrq_n_s32(bavgx4, 2);
++            bavgx4 = vshrq_n_s32(bavgx4, CHROMA_AVG_ROUNDING);
 +
 +            uox4 = vmlaq_n_s32(out_rndx4, ravgx4, cru);
 +            uox4 = vmlaq_n_s32(uox4, gavgx4, ocgu);
 +            uox4 = vmlaq_n_s32(uox4, bavgx4, cburv);
-+            uox4 = vshrq_n_s32(uox4, 19);
++            uox4 = vshrq_n_s32(uox4, TEN_BIT_SCALE_SHIFT);
 +            uox4 = vaddq_s32(uox4, out_uv_offsetx4);
 +            vst1_u16(&dstu[x >> 1], vqmovun_s32(uox4));
 +
 +            vox4 = vmlaq_n_s32(out_rndx4, ravgx4, cburv);
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
-+            vox4 = vshrq_n_s32(vox4, 19);
++            vox4 = vshrq_n_s32(vox4, TEN_BIT_SCALE_SHIFT);
 +            vox4 = vaddq_s32(vox4, out_uv_offsetx4);
 +            vst1_u16(&dstv[x >> 1], vqmovun_s32(vox4));
 +        }
@@ -1992,17 +1910,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    // intentionally leave last pixel emtpy when input is odd
 +    int remainw = width & 6;
 +
-+    const int in_depth = srcdepth;
-+    const int in_uv_offset = 128 << (in_depth - 8);
-+    const int in_sh = in_depth - 1;
-+    const int in_rnd = 1 << (in_sh - 1);
-+
-+    const int out_depth = dstdepth;
-+    const int out_uv_offset = 128 << (out_depth - 8);
-+    const int out_sh = 29 - out_depth;
-+    const int out_rnd = 1 << (out_sh - 1);
-+    const int out_sh2 = 16 - out_depth;
-+
 +    int cy  = (*params->yuv2rgb_coeffs)[0][0][0];
 +    int crv = (*params->yuv2rgb_coeffs)[0][2][0];
 +    int cgu = (*params->yuv2rgb_coeffs)[1][1][0];
@@ -2020,15 +1927,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +
 +    int16_t r[8], g[8], b[8];
 +    int16_t r1[8], g1[8], b1[8];
-+    uint16_t cy_shifted = av_clip_int16(cy >> in_sh);
-+    uint16_t rnd_shifted = av_clip_int16(in_rnd >> in_sh);
-+    uint16_t crv_shifted = av_clip_int16(crv >> in_sh);
-+    uint16_t cgu_shifted = av_clip_int16(cgu >> in_sh);
-+    uint16_t cgv_shifted = av_clip_int16(cgv >> in_sh);
-+    uint16_t cbu_shifted = av_clip_int16(cbu >> in_sh);
-+    uint16x8_t rndx8 = vdupq_n_u16(rnd_shifted);
-+    uint16x8_t in_yuv_offx8 = vdupq_n_u16(av_clip_int16(params->in_yuv_off));
-+    uint16x8_t in_uv_offx8 = vdupq_n_u16(av_clip_int16(in_uv_offset));
++    uint16x8_t in_yuv_offx8 = vdupq_n_u16(params->in_yuv_off);
++    uint16x8_t in_uv_offx8 = vdupq_n_u16(TEN_BIT_UV_OFFSET);
 +    uint16x8_t uvx8;
 +    uint16x4_t ux2a, vx2a, ux2b, vx2b;
 +    uint16x8_t y0x8, y1x8, ux8, vx8;
@@ -2048,10 +1948,9 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    int32x2_t ravgax2, gavgax2, bavgax2, ravgbx2, gavgbx2, bavgbx2;
 +    int32x4_t ravgx4, gavgx4, bavgx4, uox4, vox4;
 +    int32x4_t out_yuv_offx4 = vdupq_n_s32(params->out_yuv_off);
-+    int32x4_t out_rndx4 = vdupq_n_s32(out_rnd);
-+    int32x4_t out_sh2x4 = vdupq_n_s32(out_sh2);
-+    int32x4_t out_uv_offsetx4 = vdupq_n_s32(out_uv_offset);
-+    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(2);
++    int32x4_t out_rndx4 = vdupq_n_s32(TEN_BIT_ROUNDING);
++    int32x4_t out_uv_offsetx4 = vdupq_n_s32(TEN_BIT_UV_OFFSET);
++    int32x4_t rgb_avg_rndx4 = vdupq_n_s32(CHROMA_AVG_ROUNDING);
 +    for (; height > 1; height -= 2,
 +                       dsty += dstlinesize[0], dstuv += dstlinesize[1] / 2,
 +                       srcy += srclinesize[0], srcuv += srclinesize[1] / 2) {
@@ -2061,15 +1960,15 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            y0x8 = vld1q_u16(srcy + x);
 +            y1x8 = vld1q_u16(srcy + (srclinesize[0] / 2 + x));
 +            uvx8 = vld1q_u16(srcuv + x);
-+            if (in_depth == 10) {
-+                // shift to low10bits for 10bit input
-+                // shift bit has to be compile-time constant
-+                y0x8 = vshrq_n_u16(y0x8, 6);
-+                y1x8 = vshrq_n_u16(y1x8, 6);
-+                uvx8 = vshrq_n_u16(uvx8, 6);
-+            }
++            // shift to low10bits for 10bit input
++            // shift bit has to be compile-time constant
++            y0x8 = vshrq_n_u16(y0x8, TEN_BIT_BIPLANAR_SHIFT);
++            y1x8 = vshrq_n_u16(y1x8, TEN_BIT_BIPLANAR_SHIFT);
++            uvx8 = vshrq_n_u16(uvx8, TEN_BIT_BIPLANAR_SHIFT);
 +            y0x8 = vsubq_u16(y0x8, in_yuv_offx8);
++            y0x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y0x8), vdupq_n_s16(0)));
 +            y1x8 = vsubq_u16(y1x8, in_yuv_offx8);
++            y1x8 = vreinterpretq_u16_s16(vmaxq_s16(vreinterpretq_s16_u16(y1x8), vdupq_n_s16(0)));
 +            uvx8 = vsubq_u16(uvx8, in_uv_offx8);
 +
 +            ux2a = vext_u16(vdup_lane_u16(vget_low_u16(uvx8), 0), vdup_lane_u16(vget_low_u16(uvx8), 2), 2);
@@ -2080,27 +1979,8 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ux8 = vcombine_u16(ux2a, ux2b);
 +            vx8 = vcombine_u16(vx2a, vx2b);
 +
-+            r0x8 = g0x8 = b0x8 = vmulq_n_u16(y0x8, cy_shifted);
-+            r0x8 = vmlaq_n_u16(r0x8, vx8, crv_shifted);
-+            r0x8 = vaddq_u16(r0x8, rndx8);
-+
-+            g0x8 = vmlaq_n_u16(g0x8, ux8, cgu_shifted);
-+            g0x8 = vmlaq_n_u16(g0x8, vx8, cgv_shifted);
-+            g0x8 = vaddq_u16(g0x8, rndx8);
-+
-+            b0x8 = vmlaq_n_u16(b0x8, ux8, cbu_shifted);
-+            b0x8 = vaddq_u16(b0x8, rndx8);
-+
-+            r1x8 = g1x8 = b1x8 = vmulq_n_u16(y1x8, cy_shifted);
-+            r1x8 = vmlaq_n_u16(r1x8, vx8, crv_shifted);
-+            r1x8 = vaddq_u16(r1x8, rndx8);
-+
-+            g1x8 = vmlaq_n_u16(g1x8, ux8, cgu_shifted);
-+            g1x8 = vmlaq_n_u16(g1x8, vx8, cgv_shifted);
-+            g1x8 = vaddq_u16(g1x8, rndx8);
-+
-+            b1x8 = vmlaq_n_u16(b1x8, ux8, cbu_shifted);
-+            b1x8 = vaddq_u16(b1x8, rndx8);
++            yuv2rgbx8(&r0x8, &g0x8, &b0x8, y0x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
++            yuv2rgbx8(&r1x8, &g1x8, &b1x8, y1x8, ux8, vx8, cy, crv, cgu, cgv, cbu);
 +
 +            tonemap_int16x8_neon(r0x8, g0x8, b0x8, (int16_t *) &r, (int16_t *) &g, (int16_t *) &b,
 +                                 params->lin_lut, params->tonemap_lut, params->delin_lut,
@@ -2162,7 +2042,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            ravgbx2 = vpadd_s32(vget_low_s32(r1obx4), vget_high_s32(r1obx4));
 +            ravgx4 = vaddq_s32(ravgx4, vcombine_s32(ravgax2, ravgbx2));
 +            ravgx4 = vaddq_s32(ravgx4, rgb_avg_rndx4);
-+            ravgx4 = vshrq_n_s32(ravgx4, 2);
++            ravgx4 = vshrq_n_s32(ravgx4, CHROMA_AVG_ROUNDING);
 +
 +            gavgax2 = vpadd_s32(vget_low_s32(g0oax4), vget_high_s32(g0oax4));
 +            gavgbx2 = vpadd_s32(vget_low_s32(g0obx4), vget_high_s32(g0obx4));
@@ -2171,7 +2051,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            gavgbx2 = vpadd_s32(vget_low_s32(g1obx4), vget_high_s32(g1obx4));
 +            gavgx4 = vaddq_s32(gavgx4, vcombine_s32(gavgax2, gavgbx2));
 +            gavgx4 = vaddq_s32(gavgx4, rgb_avg_rndx4);
-+            gavgx4 = vshrq_n_s32(gavgx4, 2);
++            gavgx4 = vshrq_n_s32(gavgx4, CHROMA_AVG_ROUNDING);
 +
 +            bavgax2 = vpadd_s32(vget_low_s32(b0oax4), vget_high_s32(b0oax4));
 +            bavgbx2 = vpadd_s32(vget_low_s32(b0obx4), vget_high_s32(b0obx4));
@@ -2180,7 +2060,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            bavgbx2 = vpadd_s32(vget_low_s32(b1obx4), vget_high_s32(b1obx4));
 +            bavgx4 = vaddq_s32(bavgx4, vcombine_s32(bavgax2, bavgbx2));
 +            bavgx4 = vaddq_s32(bavgx4, rgb_avg_rndx4);
-+            bavgx4 = vshrq_n_s32(bavgx4, 2);
++            bavgx4 = vshrq_n_s32(bavgx4, CHROMA_AVG_ROUNDING);
 +
 +            uox4 = vmlaq_n_s32(out_rndx4, ravgx4, cru);
 +            uox4 = vmlaq_n_s32(uox4, gavgx4, ocgu);
@@ -2190,25 +2070,25 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +            vox4 = vmlaq_n_s32(vox4, gavgx4, ocgv);
 +            vox4 = vmlaq_n_s32(vox4, bavgx4, cbv);
 +
-+            y0oax4 = vshrq_n_s32(y0oax4, 19);
-+            y0obx4 = vshrq_n_s32(y0obx4, 19);
-+            y1oax4 = vshrq_n_s32(y1oax4, 19);
-+            y1obx4 = vshrq_n_s32(y1obx4, 19);
-+            uox4 = vshrq_n_s32(uox4, 19);
-+            vox4 = vshrq_n_s32(vox4, 19);
++            y0oax4 = vshrq_n_s32(y0oax4, TEN_BIT_SCALE_SHIFT);
++            y0obx4 = vshrq_n_s32(y0obx4, TEN_BIT_SCALE_SHIFT);
++            y1oax4 = vshrq_n_s32(y1oax4, TEN_BIT_SCALE_SHIFT);
++            y1obx4 = vshrq_n_s32(y1obx4, TEN_BIT_SCALE_SHIFT);
++            uox4 = vshrq_n_s32(uox4, TEN_BIT_SCALE_SHIFT);
++            vox4 = vshrq_n_s32(vox4, TEN_BIT_SCALE_SHIFT);
 +
 +            y0oax4 = vaddq_s32(y0oax4, out_yuv_offx4);
-+            y0oax4 = vshlq_s32(y0oax4, out_sh2x4);
++            y0oax4 = vshlq_n_s32(y0oax4, TEN_BIT_BIPLANAR_SHIFT);
 +            y0obx4 = vaddq_s32(y0obx4, out_yuv_offx4);
-+            y0obx4 = vshlq_s32(y0obx4, out_sh2x4);
++            y0obx4 = vshlq_n_s32(y0obx4, TEN_BIT_BIPLANAR_SHIFT);
 +            y1oax4 = vaddq_s32(y1oax4, out_yuv_offx4);
-+            y1oax4 = vshlq_s32(y1oax4, out_sh2x4);
++            y1oax4 = vshlq_n_s32(y1oax4, TEN_BIT_BIPLANAR_SHIFT);
 +            y1obx4 = vaddq_s32(y1obx4, out_yuv_offx4);
-+            y1obx4 = vshlq_s32(y1obx4, out_sh2x4);
++            y1obx4 = vshlq_n_s32(y1obx4, TEN_BIT_BIPLANAR_SHIFT);
 +            uox4 = vaddq_s32(uox4, out_uv_offsetx4);
-+            uox4 = vshlq_s32(uox4, out_sh2x4);
++            uox4 = vshlq_n_s32(uox4, TEN_BIT_BIPLANAR_SHIFT);
 +            vox4 = vaddq_s32(vox4, out_uv_offsetx4);
-+            vox4 = vshlq_s32(vox4, out_sh2x4);
++            vox4 = vshlq_n_s32(vox4, TEN_BIT_BIPLANAR_SHIFT);
 +
 +            y0ox8 = vcombine_u16(vqmovun_s32(y0oax4), vqmovun_s32(y0obx4));
 +            vst1q_u16(&dsty[x], y0ox8);
@@ -2335,7 +2215,7 @@ Index: FFmpeg/libavfilter/colorspace.c
  #include "libavutil/frame.h"
  #include "libavutil/mastering_display_metadata.h"
  #include "libavutil/pixdesc.h"
-@@ -354,3 +355,53 @@ float inverse_eotf_arib_b67(float x) {
+@@ -354,3 +355,51 @@ float inverse_eotf_arib_b67(float x) {
  float inverse_eotf_bt1886(float x) {
      return x > 0.0f ? powf(x, 1.0f / 2.4f) : 0.0f;
  }
@@ -2361,18 +2241,16 @@ Index: FFmpeg/libavfilter/colorspace.c
 +    return 0;
 +}
 +
-+void ff_get_yuv_coeffs(int16_t out[3][3][8], double (*table)[3],
-+                       int depth, int y_rng, int uv_rng, int yuv2rgb, int is_full_range)
++void ff_get_yuv_coeffs(int out[3][3][8], double (*table)[3],
++                       int depth, int y_rng, int uv_rng, int yuv2rgb)
 +{
 +#define N (yuv2rgb ? m : n)
 +#define M (yuv2rgb ? n : m)
 +    int rng, n, m, o;
-+    int range_scale = is_full_range ? 32767 : 28032;
-+    int range_scale_uv = is_full_range ? 32767 : 28672;
 +    int bits = 1 << (yuv2rgb ? (depth - 1) : (29 - depth));
-+    for (rng = y_rng, n = 0; n < 3; n++, rng = uv_rng, range_scale = range_scale_uv) {
++    for (rng = y_rng, n = 0; n < 3; n++, rng = uv_rng) {
 +        for (m = 0; m < 3; m++) {
-+            out[N][M][0] = (int16_t)lrint(bits * (yuv2rgb ? range_scale : rng) * table[N][M] / (yuv2rgb ? rng : range_scale));
++            out[N][M][0] = (int)lrint(bits * (yuv2rgb ? 32767 : rng) * table[N][M] / (yuv2rgb ? rng : 32767));
 +            for (o = 1; o < 8; o++)
 +                out[N][M][o] = out[N][M][0];
 +        }
@@ -2399,8 +2277,8 @@ Index: FFmpeg/libavfilter/colorspace.h
  
 +int ff_get_range_off(int *off, int *y_rng, int *uv_rng,
 +                     enum AVColorRange rng, int depth);
-+void ff_get_yuv_coeffs(int16_t out[3][3][8], double (*table)[3],
-+                       int depth, int y_rng, int uv_rng, int yuv2rgb, int is_full_range);
++void ff_get_yuv_coeffs(int out[3][3][8], double (*table)[3],
++                       int depth, int y_rng, int uv_rng, int yuv2rgb);
  #endif
 Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
@@ -2506,8 +2384,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    struct DoviMetadata *dovi;
 +
 +    DECLARE_ALIGNED(16, float,   dovi_pbuf)[3*(params_sz+pivots_sz+coeffs_sz+mmr_sz)];
-+    DECLARE_ALIGNED(16, int16_t, yuv2rgb_coeffs)[3][3][8];
-+    DECLARE_ALIGNED(16, int16_t, rgb2yuv_coeffs)[3][3][8];
++    DECLARE_ALIGNED(16, int,     yuv2rgb_coeffs)[3][3][8];
++    DECLARE_ALIGNED(16, int,     rgb2yuv_coeffs)[3][3][8];
 +    DECLARE_ALIGNED(16, double,  rgb2rgb_coeffs)[3][3];
 +    DECLARE_ALIGNED(16, double,  lms2rgb_matrix)[3][3];
 +    DECLARE_ALIGNED(16, float,   ycc_offset)[3];
@@ -2985,7 +2863,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    ff_fill_rgb2yuv_table(ocoeffs, rgb2yuv);
 +
 +    ff_get_yuv_coeffs(s->yuv2rgb_coeffs, yuv2rgb, idesc->comp[0].depth,
-+                      y_rng, uv_rng, 1, irng == AVCOL_RANGE_JPEG);
++                      y_rng, uv_rng, 1);
 +
 +    res = ff_get_range_off(&s->out_yuv_off, &y_rng, &uv_rng,
 +                           orng, odesc->comp[0].depth);
@@ -2997,7 +2875,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    }
 +
 +    ff_get_yuv_coeffs(s->rgb2yuv_coeffs, rgb2yuv, odesc->comp[0].depth,
-+                      y_rng, uv_rng, 0, orng == AVCOL_RANGE_JPEG);
++                      y_rng, uv_rng, 0);
 +
 +    return 0;
 +}
@@ -3463,14 +3341,14 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +            r10 = r[2], g10 = g[2], b10 = b[2];
 +            r11 = r[3], g11 = g[3], b11 = b[3];
 +
-+            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)), 16);
-+            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)), 16);
-+            dsty[dstlinesize[0] / 2 + x]     = av_clip_uintp2((params->out_yuv_off + ((r10 * cry + g10 * cgy + b10 * cby + out_rnd) >> out_sh)), 16);
-+            dsty[dstlinesize[0] / 2 + x + 1] = av_clip_uintp2((params->out_yuv_off + ((r11 * cry + g11 * cgy + b11 * cby + out_rnd) >> out_sh)), 16);
++            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)), 10);
++            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)), 10);
++            dsty[dstlinesize[0] / 2 + x]     = av_clip_uintp2((params->out_yuv_off + ((r10 * cry + g10 * cgy + b10 * cby + out_rnd) >> out_sh)), 10);
++            dsty[dstlinesize[0] / 2 + x + 1] = av_clip_uintp2((params->out_yuv_off + ((r11 * cry + g11 * cgy + b11 * cby + out_rnd) >> out_sh)), 10);
 +
 +#define AVG(a,b,c,d) (((a) + (b) + (c) + (d) + 2) >> 2)
-+            dstu[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh)), 16);
-+            dstv[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh)), 16);
++            dstu[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh)), 10);
++            dstv[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh)), 10);
 +#undef AVG
 +        }
 +    }
@@ -3653,14 +3531,14 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +            r10 = r[2], g10 = g[2], b10 = b[2];
 +            r11 = r[3], g11 = g[3], b11 = b[3];
 +
-+            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)), 16);
-+            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)), 16);
-+            dsty[dstlinesize[0] / 2 + x]     = av_clip_uintp2((params->out_yuv_off + ((r10 * cry + g10 * cgy + b10 * cby + out_rnd) >> out_sh)), 16);
-+            dsty[dstlinesize[0] / 2 + x + 1] = av_clip_uintp2((params->out_yuv_off + ((r11 * cry + g11 * cgy + b11 * cby + out_rnd) >> out_sh)), 16);
++            dsty[x]                          = av_clip_uintp2((params->out_yuv_off + ((r00 * cry + g00 * cgy + b00 * cby + out_rnd) >> out_sh)), 10);
++            dsty[x + 1]                      = av_clip_uintp2((params->out_yuv_off + ((r01 * cry + g01 * cgy + b01 * cby + out_rnd) >> out_sh)), 10);
++            dsty[dstlinesize[0] / 2 + x]     = av_clip_uintp2((params->out_yuv_off + ((r10 * cry + g10 * cgy + b10 * cby + out_rnd) >> out_sh)), 10);
++            dsty[dstlinesize[0] / 2 + x + 1] = av_clip_uintp2((params->out_yuv_off + ((r11 * cry + g11 * cgy + b11 * cby + out_rnd) >> out_sh)), 10);
 +
 +#define AVG(a,b,c,d) (((a) + (b) + (c) + (d) + 2) >> 2)
-+            dstu[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh)), 16);
-+            dstv[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh)), 16);
++            dstu[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cru + AVG(g00, g01, g10, g11) * ocgu + AVG(b00, b01, b10, b11) * cburv + out_rnd) >> out_sh)), 10);
++            dstv[x >> 1] = av_clip_uintp2((out_uv_offset + ((AVG(r00, r01, r10, r11) * cburv + AVG(g00, g01, g10, g11) * ocgv + AVG(b00, b01, b10, b11) * cbv + out_rnd) >> out_sh)), 10);
 +#undef AVG
 +        }
 +    }
@@ -4210,7 +4088,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,137 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -4268,7 +4146,17 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +#define pivots_sz pivots_cnt*sizeof(float)
 +#define coeffs_sz coeffs_cnt*sizeof(float)
 +#define mmr_sz mmr_cnt*sizeof(float)
++
++#define CHROMA_AVG_ROUNDING 2
 +#define JPEG_SCALE 32767.0f
++#define EIGHT_BIT_ROUNDING 1048576
++#define EIGHT_BIT_UV_OFFSET 128
++#define EIGHT_BIT_SCALE_SHIFT 21
++#define TEN_BIT_SCALE 1023.0f
++#define TEN_BIT_UV_OFFSET 512
++#define TEN_BIT_ROUNDING 512
++#define TEN_BIT_BIPLANAR_SHIFT 6
++#define TEN_BIT_SCALE_SHIFT 19
 +
 +typedef struct TonemapIntParams {
 +    double lut_peak;
@@ -4276,8 +4164,8 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +    float *tonemap_lut;
 +    uint16_t *delin_lut;
 +    int in_yuv_off, out_yuv_off;
-+    int16_t (*yuv2rgb_coeffs)[3][3][8];
-+    int16_t (*rgb2yuv_coeffs)[3][3][8];
++    int (*yuv2rgb_coeffs)[3][3][8];
++    int (*rgb2yuv_coeffs)[3][3][8];
 +    double  (*rgb2rgb_coeffs)[3][3];
 +    int rgb2rgb_passthrough;
 +    const AVLumaCoefficients *coeffs, *ocoeffs;
@@ -4355,7 +4243,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,2293 @@
+@@ -0,0 +1,2289 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -6117,12 +6005,10 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            y1x16 = _mm256_lddqu_si256((__m256i*)(srcy + (srclinesize[0] / 2 + x)));
 +            uvx16 = _mm256_lddqu_si256((__m256i*)(srcuv + x));
 +
-+            if (in_depth == 10) {
-+                // shift to low10bits for 10bit input
-+                y0x16 = _mm256_srli_epi16(y0x16, 6);
-+                y1x16 = _mm256_srli_epi16(y1x16, 6);
-+                uvx16 = _mm256_srli_epi16(uvx16, 6);
-+            }
++            // shift to low10bits for 10bit input
++            y0x16 = _mm256_srli_epi16(y0x16, TEN_BIT_BIPLANAR_SHIFT);
++            y1x16 = _mm256_srli_epi16(y1x16, TEN_BIT_BIPLANAR_SHIFT);
++            uvx16 = _mm256_srli_epi16(uvx16, TEN_BIT_BIPLANAR_SHIFT);
 +
 +            y0x8a = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(y0x16, 0));
 +            y0x8b = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(y0x16, 1));
@@ -6418,12 +6304,10 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +            y1x16 = _mm256_lddqu_si256((__m256i*)(srcy + (srclinesize[0] / 2 + x)));
 +            uvx16 = _mm256_lddqu_si256((__m256i*)(srcuv + x));
 +
-+            if (in_depth == 10) {
-+                // shift to low10bits for 10bit input
-+                y0x16 = _mm256_srli_epi16(y0x16, 6);
-+                y1x16 = _mm256_srli_epi16(y1x16, 6);
-+                uvx16 = _mm256_srli_epi16(uvx16, 6);
-+            }
++            // shift to low10bits for 10bit input
++            y0x16 = _mm256_srli_epi16(y0x16, TEN_BIT_BIPLANAR_SHIFT);
++            y1x16 = _mm256_srli_epi16(y1x16, TEN_BIT_BIPLANAR_SHIFT);
++            uvx16 = _mm256_srli_epi16(uvx16, TEN_BIT_BIPLANAR_SHIFT);
 +
 +            y0x8a = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(y0x16, 0));
 +            y0x8b = _mm256_cvtepi16_epi32(_mm256_extracti128_si256(y0x16, 1));
@@ -6726,7 +6610,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
-@@ -0,0 +1,2374 @@
+@@ -0,0 +1,2370 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -8577,13 +8461,11 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            y1x8 = _mm_lddqu_si128((__m128i*)(srcy + (srclinesize[0] / 2 + x)));
 +            uvx8 = _mm_lddqu_si128((__m128i*)(srcuv + x));
 +
-+            if (in_depth == 10) {
-+                // shift to low10bits for 10bit input
-+                // shift bit has to be compile-time constant
-+                y0x8 = _mm_srli_epi16(y0x8, 6);
-+                y1x8 = _mm_srli_epi16(y1x8, 6);
-+                uvx8 = _mm_srli_epi16(uvx8, 6);
-+            }
++            // shift to low10bits for 10bit input
++            // shift bit has to be compile-time constant
++            y0x8 = _mm_srli_epi16(y0x8, TEN_BIT_BIPLANAR_SHIFT);
++            y1x8 = _mm_srli_epi16(y1x8, TEN_BIT_BIPLANAR_SHIFT);
++            uvx8 = _mm_srli_epi16(uvx8, TEN_BIT_BIPLANAR_SHIFT);
 +            y0x4a = _mm_cvtepu16_epi32(y0x8);
 +            y0x4b = _mm_unpackhi_epi16(y0x8, zero128);
 +            y1x4a = _mm_cvtepu16_epi32(y1x8);
@@ -8875,13 +8757,11 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +            y1x8 = _mm_lddqu_si128((__m128i*)(srcy + (srclinesize[0] / 2 + x)));
 +            uvx8 = _mm_lddqu_si128((__m128i*)(srcuv + x));
 +
-+            if (in_depth == 10) {
-+                // shift to low10bits for 10bit input
-+                // shift bit has to be compile-time constant
-+                y0x8 = _mm_srli_epi16(y0x8, 6);
-+                y1x8 = _mm_srli_epi16(y1x8, 6);
-+                uvx8 = _mm_srli_epi16(uvx8, 6);
-+            }
++            // shift to low10bits for 10bit input
++            // shift bit has to be compile-time constant
++            y0x8 = _mm_srli_epi16(y0x8, TEN_BIT_BIPLANAR_SHIFT);
++            y1x8 = _mm_srli_epi16(y1x8, TEN_BIT_BIPLANAR_SHIFT);
++            uvx8 = _mm_srli_epi16(uvx8, TEN_BIT_BIPLANAR_SHIFT);
 +            y0x4a = _mm_cvtepu16_epi32(y0x8);
 +            y0x4b = _mm_unpackhi_epi16(y0x8, zero128);
 +            y1x4a = _mm_cvtepu16_epi32(y1x8);
