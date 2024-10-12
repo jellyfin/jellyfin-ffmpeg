@@ -65,7 +65,7 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 ===================================================================
 --- FFmpeg.orig/libavfilter/opencl/colorspace_common.cl
 +++ FFmpeg/libavfilter/opencl/colorspace_common.cl
-@@ -17,7 +17,21 @@
+@@ -17,7 +17,17 @@
   */
  
  #define ST2084_MAX_LUMINANCE 10000.0f
@@ -80,15 +80,11 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 +#define ARIB_B67_B 0.28466892f
 +#define ARIB_B67_C 0.55991073f
 +
-+#define LIMITED_BLACK 0.06256109482f
-+#define LIMITED_WHITE 0.9188660802f
-+#define LIMITED_RANGE 0.8563049854f
-+
 +#define FLOAT_EPS 1e-6f
  
  #if chroma_loc == 1
      #define chroma_sample(a,b,c,d) (((a) + (c)) * 0.5f)
-@@ -33,92 +47,134 @@
+@@ -33,88 +43,134 @@
      #define chroma_sample(a,b,c,d) (((a) + (b) + (c) + (d)) * 0.25f)
  #endif
  
@@ -268,57 +264,69 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 +
  float3 yuv2rgb(float y, float u, float v) {
 -#ifdef FULL_RANGE_IN
-     u -= 0.5f; v -= 0.5f;
--#else
+-    u -= 0.5f; v -= 0.5f;
++    y += mix(0.0f, INPUT_QUANTIZATION_OFFSET, y > 0.0f);
++    u += mix(0.0f, INPUT_QUANTIZATION_OFFSET, u > 0.0f);
++    v += mix(0.0f, INPUT_QUANTIZATION_OFFSET, v > 0.0f);
++#ifndef FULL_RANGE_IN
++    y = INPUT_Y_SCALE * y - 0.07305936073f;
++    u = INPUT_UV_SCALE * u - 0.5714285714f;
++    v = INPUT_UV_SCALE * v - 0.5714285714f;
+ #else
 -    y = (y * 255.0f -  16.0f) / 219.0f;
 -    u = (u * 255.0f - 128.0f) / 224.0f;
 -    v = (v * 255.0f - 128.0f) / 224.0f;
--#endif
++    u -= 0.5f; v -= 0.5f;
+ #endif
      float r = y * rgb_matrix[0] + u * rgb_matrix[1] + v * rgb_matrix[2];
      float g = y * rgb_matrix[3] + u * rgb_matrix[4] + v * rgb_matrix[5];
-     float b = y * rgb_matrix[6] + u * rgb_matrix[7] + v * rgb_matrix[8];
-+#ifndef FULL_RANGE_IN
-+    r = (r - LIMITED_BLACK) / LIMITED_RANGE;
-+    g = (g - LIMITED_BLACK) / LIMITED_RANGE;
-+    b = (b - LIMITED_BLACK) / LIMITED_RANGE;
-+#endif
-     return (float3)(r, g, b);
- }
- 
-@@ -135,22 +191,25 @@ float3 yuv2lrgb(float3 yuv) {
- }
- 
- float3 rgb2yuv(float r, float g, float b) {
-+#ifndef FULL_RANGE_OUT
-+    r = r * LIMITED_RANGE + LIMITED_BLACK;
-+    g = g * LIMITED_RANGE + LIMITED_BLACK;
-+    b = b * LIMITED_RANGE + LIMITED_BLACK;
-+#endif
+@@ -138,19 +194,39 @@ float3 rgb2yuv(float r, float g, float b
      float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
      float u = r*yuv_matrix[3] + g*yuv_matrix[4] + b*yuv_matrix[5];
      float v = r*yuv_matrix[6] + g*yuv_matrix[7] + b*yuv_matrix[8];
 -#ifdef FULL_RANGE_OUT
-     u += 0.5f; v += 0.5f;
--#else
+-    u += 0.5f; v += 0.5f;
++#ifndef FULL_RANGE_OUT
++  #ifdef RESCALE_LIMITED_RANGE_OUTPUT
++    y = floor(((219.0f * y + 16.0f) * 256.0f) + 0.5f) / 65535.0f;
++    u = floor(((224.0f * u + 128.0f) * 256.0f) + 0.5f) / 65535.0f;
++    v = floor(((224.0f * v + 128.0f) * 256.0f) + 0.5f) / 65535.0f;
++  #else
++    y = floor((219.0f * y + 16.0f) + 0.5f) / 255.0f;
++    u = floor((224.0f * u + 128.0f) + 0.5f) / 255.0f;
++    v = floor((224.0f * v + 128.0f) + 0.5f) / 255.0f;
++  #endif
+ #else
 -    y = (219.0f * y + 16.0f) / 255.0f;
 -    u = (224.0f * u + 128.0f) / 255.0f;
 -    v = (224.0f * v + 128.0f) / 255.0f;
--#endif
++    u += 0.5f; v += 0.5f;
++#endif
++#ifdef OUTPUT_QUANTIZATION_OFFSET
++    y -= mix(0.0f, OUTPUT_QUANTIZATION_OFFSET, y > 0.0f);
++    u -= mix(0.0f, OUTPUT_QUANTIZATION_OFFSET, u > 0.0f);
++    v -= mix(0.0f, OUTPUT_QUANTIZATION_OFFSET, v > 0.0f);
+ #endif
      return (float3)(y, u, v);
  }
  
  float rgb2y(float r, float g, float b) {
-+#ifndef FULL_RANGE_OUT
-+    r = r * LIMITED_RANGE + LIMITED_BLACK;
-+    g = g * LIMITED_RANGE + LIMITED_BLACK;
-+    b = b * LIMITED_RANGE + LIMITED_BLACK;
-+#endif
      float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
 -    y = (219.0f * y + 16.0f) / 255.0f;
++#ifndef FULL_RANGE_OUT
++  #ifdef RESCALE_LIMITED_RANGE_OUTPUT
++    y = floor(((219.0f * y + 16.0f) * 256.0f) + 0.5f) / 65535.0f;
++  #else
++    y = floor((219.0f * y + 16.0f) + 0.5f) / 255.0f;
++  #endif
++#endif
++#ifdef OUTPUT_QUANTIZATION_OFFSET
++    y -= mix(0.0f, OUTPUT_QUANTIZATION_OFFSET, y > 0.0f);
++#endif
      return y;
  }
  
-@@ -188,18 +247,101 @@ float3 lrgb2lrgb(float3 c) {
+@@ -188,18 +264,101 @@ float3 lrgb2lrgb(float3 c) {
  #endif
  }
  
@@ -1450,7 +1458,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      switch(ctx->tonemap) {
      case TONEMAP_GAMMA:
-@@ -139,53 +353,178 @@ static int tonemap_opencl_init(AVFilterC
+@@ -139,59 +353,207 @@ static int tonemap_opencl_init(AVFilterC
          if (isnan(ctx->param))
              ctx->param = 0.3f;
          break;
@@ -1644,7 +1652,36 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      if (ctx->range_in == AVCOL_RANGE_JPEG)
          av_bprintf(&header, "#define FULL_RANGE_IN\n");
  
-@@ -199,19 +538,41 @@ static int tonemap_opencl_init(AVFilterC
+     if (ctx->range_out == AVCOL_RANGE_JPEG)
+         av_bprintf(&header, "#define FULL_RANGE_OUT\n");
+ 
++    if (ctx->in_desc->comp[0].depth == 10) {
++        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET 0.0009765774014f\n");
++        av_bprintf(&header, "#define INPUT_Y_SCALE 1.1678082192f\n");
++        av_bprintf(&header, "#define INPUT_UV_SCALE 1.1417410714f\n");
++    } else if (ctx->in_desc->comp[0].depth == 16) {
++        // 16bit texture is actually 12bit
++        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET 0.0002441443503f\n");
++        av_bprintf(&header, "#define INPUT_Y_SCALE 1.1689497717f\n");
++        av_bprintf(&header, "#define INPUT_UV_SCALE 1.1428571429f\n");
++    } else {
++        // should not happen, but for completeness
++        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET 0.0f\n");
++        av_bprintf(&header, "#define INPUT_Y_SCALE 1.0f\n");
++        av_bprintf(&header, "#define INPUT_UV_SCALE 1.0f\n");
++    }
++
++    if (ctx->out_desc->comp[0].depth > 8) {
++        av_bprintf(&header, "#define RESCALE_LIMITED_RANGE_OUTPUT\n");
++    }
++
++    if (ctx->in_desc->comp[0].depth == 10)
++        av_bprintf(&header, "#define OUTPUT_QUANTIZATION_OFFSET 0.0009765774014f\n");
++
+     av_bprintf(&header, "#define chroma_loc %d\n", (int)ctx->chroma_loc);
+ 
+     if (rgb2rgb_passthrough)
+@@ -199,19 +561,41 @@ static int tonemap_opencl_init(AVFilterC
      else
          ff_opencl_print_const_matrix_3x3(&header, "rgb2rgb", rgb2rgb);
  
@@ -1693,7 +1730,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
                 ctx->colorspace_out, av_color_space_name(ctx->colorspace_out));
          goto fail;
      }
-@@ -219,24 +580,23 @@ static int tonemap_opencl_init(AVFilterC
+@@ -219,24 +603,23 @@ static int tonemap_opencl_init(AVFilterC
      ff_fill_rgb2yuv_table(luma_dst, rgb2yuv);
      ff_opencl_print_const_matrix_3x3(&header, "yuv_matrix", rgb2yuv);
  
@@ -1733,7 +1770,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
      opencl_sources[0] = header.str;
-@@ -254,46 +614,171 @@ static int tonemap_opencl_init(AVFilterC
+@@ -254,46 +637,171 @@ static int tonemap_opencl_init(AVFilterC
      CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create OpenCL "
                       "command queue %d.\n", cle);
  
@@ -1904,13 +1941,14 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        av_log(ctx, AV_LOG_ERROR, "Unsupported output format: %s\n",
 +               av_get_pix_fmt_name(out_format));
 +        return AVERROR(ENOSYS);
-     }
++    }
 +    if (in_desc->comp[0].depth != 10 && in_desc->comp[0].depth != 16) {
 +        av_log(ctx, AV_LOG_ERROR, "Unsupported input format depth: %d\n",
 +               in_desc->comp[0].depth);
 +        return AVERROR(ENOSYS);
-+    }
-+
+     }
+ 
+-    s->ocf.output_format = s->format == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : s->format;
 +    ctx->in_fmt     = in_format;
 +    ctx->out_fmt    = out_format;
 +    ctx->in_desc    = in_desc;
@@ -1918,12 +1956,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    ctx->in_planes  = av_pix_fmt_count_planes(in_format);
 +    ctx->out_planes = av_pix_fmt_count_planes(out_format);
 +    ctx->ocf.output_format = out_format;
- 
--    s->ocf.output_format = s->format == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : s->format;
++
      ret = ff_opencl_filter_config_output(outlink);
      if (ret < 0)
          return ret;
-@@ -308,13 +793,46 @@ static int launch_kernel(AVFilterContext
+@@ -308,13 +816,46 @@ static int launch_kernel(AVFilterContext
      size_t global_work[2];
      size_t local_work[2];
      cl_int cle;
@@ -1972,7 +2009,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      local_work[0]  = 16;
      local_work[1]  = 16;
-@@ -338,13 +856,10 @@ static int tonemap_opencl_filter_frame(A
+@@ -338,13 +879,10 @@ static int tonemap_opencl_filter_frame(A
      AVFilterContext    *avctx = inlink->dst;
      AVFilterLink     *outlink = avctx->outputs[0];
      TonemapOpenCLContext *ctx = avctx->priv;
@@ -1987,7 +2024,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(ctx, AV_LOG_DEBUG, "Filter input: %s, %ux%u (%"PRId64").\n",
             av_get_pix_fmt_name(input->format),
-@@ -363,8 +878,49 @@ static int tonemap_opencl_filter_frame(A
+@@ -363,8 +901,49 @@ static int tonemap_opencl_filter_frame(A
      if (err < 0)
          goto fail;
  
@@ -2039,7 +2076,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      if (ctx->trc != -1)
          output->color_trc = ctx->trc;
-@@ -385,72 +941,50 @@ static int tonemap_opencl_filter_frame(A
+@@ -385,72 +964,50 @@ static int tonemap_opencl_filter_frame(A
      ctx->range_out = output->color_range;
      ctx->chroma_loc = output->chroma_location;
  
@@ -2135,7 +2172,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      av_frame_free(&input);
      av_frame_free(&output);
      return err;
-@@ -458,24 +992,9 @@ fail:
+@@ -458,24 +1015,9 @@ fail:
  
  static av_cold void tonemap_opencl_uninit(AVFilterContext *avctx)
  {
@@ -2162,7 +2199,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      ff_opencl_filter_uninit(avctx);
  }
-@@ -483,37 +1002,50 @@ static av_cold void tonemap_opencl_unini
+@@ -483,37 +1025,50 @@ static av_cold void tonemap_opencl_unini
  #define OFFSET(x) offsetof(TonemapOpenCLContext, x)
  #define FLAGS (AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)
  static const AVOption tonemap_opencl_options[] = {
@@ -2239,7 +2276,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        { "enabled",       0,       0,                 AV_OPT_TYPE_CONST, { .i64 = 1  }, 0, 0, FLAGS, "tradeoff" },
 +    { "peak",        "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
 +    { "param",       "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, { .dbl = NAN }, DBL_MIN, DBL_MAX, FLAGS },
-+    { "desat",       "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, { .dbl = 0.5}, 0, DBL_MAX, FLAGS },
++    { "desat",       "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
 +    { "threshold",   "Scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, { .dbl = 0.2 }, 0, DBL_MAX, FLAGS },
      { NULL }
  };
