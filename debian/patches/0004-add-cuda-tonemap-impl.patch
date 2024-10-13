@@ -257,7 +257,7 @@ Index: FFmpeg/libavfilter/colorspace.h
 ===================================================================
 --- FFmpeg.orig/libavfilter/colorspace.h
 +++ FFmpeg/libavfilter/colorspace.h
-@@ -23,10 +23,69 @@
+@@ -23,10 +23,66 @@
  #include "libavutil/csp.h"
  #include "libavutil/frame.h"
  #include "libavutil/pixfmt.h"
@@ -291,17 +291,14 @@ Index: FFmpeg/libavfilter/colorspace.h
 + * Which means the input scale = (2^n - 1) / (219 * 2^(n-8)) and input offset = 2^(n-4)) / (219 * 2^(n-8)) for Y' and
 + * 2^(n-1)) / (7 * 2^(n-3)) for Cb'Cr'
 + */
-+#define INPUT_Y_SCALE_10B 1.1678082192f
-+#define INPUT_UV_SCALE_10B 1.1417410714f
-+#define INPUT_Y_SCALE_12B 1.1689497717f
-+#define INPUT_UV_SCALE_12B 1.1428571429f
++#define INPUT_Y_SCALE(n)  ((double)((1 << (n)) - 1) / (219 * (1 << ((n) - 8))))
++#define INPUT_UV_SCALE(n) ((double)((1 << (n)) - 1) / (224 * (1 << ((n) - 8))))
 +
 +/*
 + * GPU will interpret 10bit and 12bit color as 16bit int
 + * but that will introduce a slight (2^(16-n))/2^16 quantization offset which we want to compensate for
 +*/
-+#define QUANTIZATION_OFFSET_10B 0.0009765774014f
-+#define QUANTIZATION_OFFSET_12B 0.0002441443503f
++#define QUANTIZATION_OFFSET(n) ((double)(1 << (16 - (n))) / ((1 << 16) - 1))
 +
 +// Parsed metadata from the Dolby Vision RPU
 +struct DoviMetadata {
@@ -327,7 +324,7 @@ Index: FFmpeg/libavfilter/colorspace.h
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3]);
  void ff_matrix_mul_3x3_vec(double dst[3], const double vec[3], const double mat[3][3]);
-@@ -38,4 +97,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
+@@ -38,4 +94,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
  double ff_determine_signal_peak(AVFrame *in);
  void ff_update_hdr_metadata(AVFrame *in, double peak);
  
@@ -2439,21 +2436,21 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    if ((ret = get_rgb2rgb_matrix(in_pri, out_pri, rgb2rgb_matrix)) < 0)
 +        return ret;
 +
-+    if (s->in_desc->comp[0].depth == 10) {
-+        input_quantization_offset = QUANTIZATION_OFFSET_10B;
-+        input_y_scale = INPUT_Y_SCALE_10B;
-+        input_uv_scale = INPUT_UV_SCALE_10B;
-+    } else if (s->in_desc->comp[0].depth == 16) {
++    if (s->in_desc->comp[0].depth == 16) {
 +        // Assume 16bit is actually 12bit for now as that is what the hardware decoders producing
 +        // and what videos are actually encoded in
-+        input_quantization_offset = QUANTIZATION_OFFSET_12B;
-+        input_y_scale = INPUT_Y_SCALE_12B;
-+        input_uv_scale = INPUT_UV_SCALE_12B;
++        input_quantization_offset = QUANTIZATION_OFFSET(12);
++        input_y_scale = INPUT_Y_SCALE(12);
++        input_uv_scale = INPUT_UV_SCALE(12);
++    } else {
++        input_quantization_offset = QUANTIZATION_OFFSET(s->in_desc->comp[0].depth);
++        input_y_scale = INPUT_Y_SCALE(s->in_desc->comp[0].depth);
++        input_uv_scale = INPUT_UV_SCALE(s->in_desc->comp[0].depth);
 +    }
 +
 +    if (s->out_desc->comp[0].depth == 10) {
 +        // Don't handle 12b offset for now and assume 16b output is real 16b out to make it consistent with other filters
-+        output_quantization_offset = QUANTIZATION_OFFSET_10B;
++        output_quantization_offset = QUANTIZATION_OFFSET(10);
 +    }
 +
 +    if (s->out_desc->comp[0].depth > 8) {
