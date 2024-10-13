@@ -1458,7 +1458,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      switch(ctx->tonemap) {
      case TONEMAP_GAMMA:
-@@ -139,59 +353,207 @@ static int tonemap_opencl_init(AVFilterC
+@@ -139,59 +353,210 @@ static int tonemap_opencl_init(AVFilterC
          if (isnan(ctx->param))
              ctx->param = 0.3f;
          break;
@@ -1656,16 +1656,18 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
          av_bprintf(&header, "#define FULL_RANGE_OUT\n");
  
 +    if (ctx->in_desc->comp[0].depth == 10) {
-+        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET 0.0009765774014f\n");
-+        av_bprintf(&header, "#define INPUT_Y_SCALE 1.1678082192f\n");
-+        av_bprintf(&header, "#define INPUT_UV_SCALE 1.1417410714f\n");
++        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET %ff\n", QUANTIZATION_OFFSET_10B);
++        av_bprintf(&header, "#define INPUT_Y_SCALE %ff\n", INPUT_Y_SCALE_10B);
++        av_bprintf(&header, "#define INPUT_UV_SCALE %ff\n", INPUT_UV_SCALE_10B);
 +    } else if (ctx->in_desc->comp[0].depth == 16) {
-+        // 16bit texture is actually 12bit
-+        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET 0.0002441443503f\n");
-+        av_bprintf(&header, "#define INPUT_Y_SCALE 1.1689497717f\n");
-+        av_bprintf(&header, "#define INPUT_UV_SCALE 1.1428571429f\n");
++        // Assume 16bit is actually 12bit for now as that is what the hardware decoders producing
++        // and what videos are actually encoded in
++        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET %ff\n", QUANTIZATION_OFFSET_12B);
++        av_bprintf(&header, "#define INPUT_Y_SCALE %ff\n", INPUT_Y_SCALE_12B);
++        av_bprintf(&header, "#define INPUT_UV_SCALE %ff\n", INPUT_UV_SCALE_12B);
 +    } else {
 +        // should not happen, but for completeness
++        // once we can tell if the input is real 16bit we can use this branch
 +        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET 0.0f\n");
 +        av_bprintf(&header, "#define INPUT_Y_SCALE 1.0f\n");
 +        av_bprintf(&header, "#define INPUT_UV_SCALE 1.0f\n");
@@ -1675,13 +1677,14 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        av_bprintf(&header, "#define RESCALE_LIMITED_RANGE_OUTPUT\n");
 +    }
 +
-+    if (ctx->in_desc->comp[0].depth == 10)
-+        av_bprintf(&header, "#define OUTPUT_QUANTIZATION_OFFSET 0.0009765774014f\n");
++    if (ctx->out_desc->comp[0].depth == 10)
++        av_bprintf(&header, "#define OUTPUT_QUANTIZATION_OFFSET %ff\n", QUANTIZATION_OFFSET_10B);
++    // Don't handle 12b offset for now and assume 16b output is real 16b out to make it consistent with other filters
 +
      av_bprintf(&header, "#define chroma_loc %d\n", (int)ctx->chroma_loc);
  
      if (rgb2rgb_passthrough)
-@@ -199,19 +561,41 @@ static int tonemap_opencl_init(AVFilterC
+@@ -199,19 +564,41 @@ static int tonemap_opencl_init(AVFilterC
      else
          ff_opencl_print_const_matrix_3x3(&header, "rgb2rgb", rgb2rgb);
  
@@ -1730,7 +1733,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
                 ctx->colorspace_out, av_color_space_name(ctx->colorspace_out));
          goto fail;
      }
-@@ -219,24 +603,23 @@ static int tonemap_opencl_init(AVFilterC
+@@ -219,24 +606,23 @@ static int tonemap_opencl_init(AVFilterC
      ff_fill_rgb2yuv_table(luma_dst, rgb2yuv);
      ff_opencl_print_const_matrix_3x3(&header, "yuv_matrix", rgb2yuv);
  
@@ -1770,7 +1773,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
      opencl_sources[0] = header.str;
-@@ -254,46 +637,171 @@ static int tonemap_opencl_init(AVFilterC
+@@ -254,46 +640,171 @@ static int tonemap_opencl_init(AVFilterC
      CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create OpenCL "
                       "command queue %d.\n", cle);
  
@@ -1960,7 +1963,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      ret = ff_opencl_filter_config_output(outlink);
      if (ret < 0)
          return ret;
-@@ -308,13 +816,46 @@ static int launch_kernel(AVFilterContext
+@@ -308,13 +819,46 @@ static int launch_kernel(AVFilterContext
      size_t global_work[2];
      size_t local_work[2];
      cl_int cle;
@@ -2009,7 +2012,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      local_work[0]  = 16;
      local_work[1]  = 16;
-@@ -338,13 +879,10 @@ static int tonemap_opencl_filter_frame(A
+@@ -338,13 +882,10 @@ static int tonemap_opencl_filter_frame(A
      AVFilterContext    *avctx = inlink->dst;
      AVFilterLink     *outlink = avctx->outputs[0];
      TonemapOpenCLContext *ctx = avctx->priv;
@@ -2024,7 +2027,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(ctx, AV_LOG_DEBUG, "Filter input: %s, %ux%u (%"PRId64").\n",
             av_get_pix_fmt_name(input->format),
-@@ -363,8 +901,49 @@ static int tonemap_opencl_filter_frame(A
+@@ -363,8 +904,49 @@ static int tonemap_opencl_filter_frame(A
      if (err < 0)
          goto fail;
  
@@ -2076,7 +2079,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      if (ctx->trc != -1)
          output->color_trc = ctx->trc;
-@@ -385,72 +964,50 @@ static int tonemap_opencl_filter_frame(A
+@@ -385,72 +967,50 @@ static int tonemap_opencl_filter_frame(A
      ctx->range_out = output->color_range;
      ctx->chroma_loc = output->chroma_location;
  
@@ -2172,7 +2175,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      av_frame_free(&input);
      av_frame_free(&output);
      return err;
-@@ -458,24 +1015,9 @@ fail:
+@@ -458,24 +1018,9 @@ fail:
  
  static av_cold void tonemap_opencl_uninit(AVFilterContext *avctx)
  {
@@ -2199,7 +2202,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      ff_opencl_filter_uninit(avctx);
  }
-@@ -483,37 +1025,50 @@ static av_cold void tonemap_opencl_unini
+@@ -483,37 +1028,50 @@ static av_cold void tonemap_opencl_unini
  #define OFFSET(x) offsetof(TonemapOpenCLContext, x)
  #define FLAGS (AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM)
  static const AVOption tonemap_opencl_options[] = {

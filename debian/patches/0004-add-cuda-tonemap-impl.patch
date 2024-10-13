@@ -257,7 +257,7 @@ Index: FFmpeg/libavfilter/colorspace.h
 ===================================================================
 --- FFmpeg.orig/libavfilter/colorspace.h
 +++ FFmpeg/libavfilter/colorspace.h
-@@ -23,10 +23,42 @@
+@@ -23,10 +23,69 @@
  #include "libavutil/csp.h"
  #include "libavutil/frame.h"
  #include "libavutil/pixfmt.h"
@@ -275,6 +275,33 @@ Index: FFmpeg/libavfilter/colorspace.h
 +#define ARIB_B67_B 0.28466892f
 +#define ARIB_B67_C 0.55991073f
 +#define FLOAT_EPS 1e-6f
++
++/*
++ * Pre-calculated constants used for YCbCr narrow to full range scaling
++ * The base formula is the quantization formula derived from BT.2100 Table 9:
++ * Where Y' = Round [(219 * E′ + 16) * 2^(n−8)],
++ * Cb',Cr' = Round [(224 * E′ + 128) * 2^(n−8)]
++ * where E' is the signal value in [0,1] range and n is the bit depth. Round is rounding towards 0.
++ * For inputs, the inverse is used where we are solving for E' for a given Y'Cb'Cr' normalized by GPU
++ * in [0,1] range. The GPU will interpret color as a 16bit int value, and solving for E' becomes:
++ * E' = (Y' - 2^(n-4)) / (219 * 2^(n-8))
++ * E' = (Cb'Cr' - 2^(n-1)) / (7 * 2^(n-3))
++ * Y' and Cb'Cr' is in the range of [0, 2^n - 1] in original formula, we need to scale the value normalized to [0,1]:
++ * C = Y'Cb'Cr' * (2^n - 1)
++ * Which means the input scale = (2^n - 1) / (219 * 2^(n-8)) and input offset = 2^(n-4)) / (219 * 2^(n-8)) for Y' and
++ * 2^(n-1)) / (7 * 2^(n-3)) for Cb'Cr'
++ */
++#define INPUT_Y_SCALE_10B 1.1678082192f
++#define INPUT_UV_SCALE_10B 1.1417410714f
++#define INPUT_Y_SCALE_12B 1.1689497717f
++#define INPUT_UV_SCALE_12B 1.1428571429f
++
++/*
++ * GPU will interpret 10bit and 12bit color as 16bit int
++ * but that will introduce a slight (2^(16-n))/2^16 quantization offset which we want to compensate for
++*/
++#define QUANTIZATION_OFFSET_10B 0.0009765774014f
++#define QUANTIZATION_OFFSET_12B 0.0002441443503f
 +
 +// Parsed metadata from the Dolby Vision RPU
 +struct DoviMetadata {
@@ -300,7 +327,7 @@ Index: FFmpeg/libavfilter/colorspace.h
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3]);
  void ff_matrix_mul_3x3_vec(double dst[3], const double vec[3], const double mat[3][3]);
-@@ -38,4 +70,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
+@@ -38,4 +97,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
  double ff_determine_signal_peak(AVFrame *in);
  void ff_update_hdr_metadata(AVFrame *in, double peak);
  
@@ -1785,7 +1812,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1162 @@
+@@ -0,0 +1,1165 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2413,22 +2440,25 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        return ret;
 +
 +    if (s->in_desc->comp[0].depth == 10) {
-+        input_quantization_offset = 0.0009765774014f;
-+        input_y_scale = 1.1678082192f;
-+        input_uv_scale = 1.1417410714f;
++        input_quantization_offset = QUANTIZATION_OFFSET_10B;
++        input_y_scale = INPUT_Y_SCALE_10B;
++        input_uv_scale = INPUT_UV_SCALE_10B;
 +    } else if (s->in_desc->comp[0].depth == 16) {
-+        input_quantization_offset = 0.0002441443503f;
-+        input_y_scale = 1.1689497717f;
-+        input_uv_scale = 1.1428571429f;
++        // Assume 16bit is actually 12bit for now as that is what the hardware decoders producing
++        // and what videos are actually encoded in
++        input_quantization_offset = QUANTIZATION_OFFSET_12B;
++        input_y_scale = INPUT_Y_SCALE_12B;
++        input_uv_scale = INPUT_UV_SCALE_12B;
 +    }
 +
 +    if (s->out_desc->comp[0].depth == 10) {
-+        output_quantization_offset = 0.0009765774014f;
++        // Don't handle 12b offset for now and assume 16b output is real 16b out to make it consistent with other filters
++        output_quantization_offset = QUANTIZATION_OFFSET_10B;
 +    }
 +
 +    if (s->out_desc->comp[0].depth > 8) {
-+        output_quantization_factor = 256.0f;
-+        output_quantization_scale = 65535.0f;
++        output_quantization_factor = 256.0f; // 2^(16-8)
++        output_quantization_scale = 65535.0f; // 2^16 - 1
 +    }
 +
 +    av_bprint_init(&constants, 2048, AV_BPRINT_SIZE_UNLIMITED);

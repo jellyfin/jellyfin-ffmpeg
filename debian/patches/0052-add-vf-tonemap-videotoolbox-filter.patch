@@ -40,7 +40,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
-@@ -0,0 +1,914 @@
+@@ -0,0 +1,916 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -269,6 +269,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +
 +// ------------
 +// Color conversion
++// See libavfilter/colorspace.h for derivation of these constants
 +float3 yuv2rgb(float y, float u, float v) {
 +    y += mix(0.0f, 0.0009765774014f, y > 0.0f);
 +    u += mix(0.0f, 0.0009765774014f, u > 0.0f);
@@ -317,7 +318,8 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +            v = floor(((224.0f * v + 128.0f) * 256.0f) + 0.5f) / 65535.0f;
 +        }
 +    }
-+    // in rgb2yuv conversion, enable_dither means output is 8bit
++    // in rgb2yuv conversion, enable_dither means output is 8bit in metal pipeline
++    // use this to check if we need the 10bit offset
 +    if (!enable_dither) {
 +        y -= mix(0.0f, 0.0009765774014f, y > 0.0f);
 +        u -= mix(0.0f, 0.0009765774014f, u > 0.0f);
