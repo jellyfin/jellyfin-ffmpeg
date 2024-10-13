@@ -1658,13 +1658,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    if (ctx->in_desc->comp[0].depth == 16) {
 +        // Assume 16bit is actually 12bit for now as that is what the hardware decoders producing
 +        // and what videos are actually encoded in
-+        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET %ff\n", QUANTIZATION_OFFSET(12));
-+        av_bprintf(&header, "#define INPUT_Y_SCALE %ff\n", INPUT_Y_SCALE(12));
-+        av_bprintf(&header, "#define INPUT_UV_SCALE %ff\n", INPUT_UV_SCALE(12));
++        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET %.13lff\n", QUANTIZATION_OFFSET(12));
++        av_bprintf(&header, "#define INPUT_Y_SCALE %.13lff\n", INPUT_Y_SCALE(12));
++        av_bprintf(&header, "#define INPUT_UV_SCALE %.13lff\n", INPUT_UV_SCALE(12));
 +    } else {
-+        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET %ff\n", QUANTIZATION_OFFSET(ctx->in_desc->comp[0].depth));
-+        av_bprintf(&header, "#define INPUT_Y_SCALE %ff\n", INPUT_Y_SCALE(ctx->in_desc->comp[0].depth));
-+        av_bprintf(&header, "#define INPUT_UV_SCALE %ff\n", INPUT_UV_SCALE(ctx->in_desc->comp[0].depth));
++        av_bprintf(&header, "#define INPUT_QUANTIZATION_OFFSET %.13lff\n", QUANTIZATION_OFFSET(ctx->in_desc->comp[0].depth));
++        av_bprintf(&header, "#define INPUT_Y_SCALE %.13lff\n", INPUT_Y_SCALE(ctx->in_desc->comp[0].depth));
++        av_bprintf(&header, "#define INPUT_UV_SCALE %.13lff\n", INPUT_UV_SCALE(ctx->in_desc->comp[0].depth));
 +    }
 +
 +    if (ctx->out_desc->comp[0].depth > 8) {
@@ -1672,7 +1672,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    }
 +
 +    if (ctx->out_desc->comp[0].depth == 10)
-+        av_bprintf(&header, "#define OUTPUT_QUANTIZATION_OFFSET %ff\n", QUANTIZATION_OFFSET(10));
++        av_bprintf(&header, "#define OUTPUT_QUANTIZATION_OFFSET %.13lff\n", QUANTIZATION_OFFSET(10));
 +    // Don't handle 12b offset for now and assume 16b output is real 16b out to make it consistent with other filters
 +
      av_bprintf(&header, "#define chroma_loc %d\n", (int)ctx->chroma_loc);
