@@ -2468,12 +2468,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    av_bprintf(&constants, ".visible .const .align " #align " " decl ";\n", __VA_ARGS__)
 +#define CONSTANT(decl, ...) CONSTANT_A(decl, 4, __VA_ARGS__)
 +#define CONSTANT_M(a, b) \
-+    CONSTANT(".f32 " a "[] = {%f, %f, %f, %f, %f, %f, %f, %f, %f}", \
++    CONSTANT(".f32 " a "[] = {%.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf}", \
 +             b[0][0], b[0][1], b[0][2], \
 +             b[1][0], b[1][1], b[1][2], \
 +             b[2][0], b[2][1], b[2][2])
 +#define CONSTANT_C(a, b, c, d) \
-+    CONSTANT(".f32 " a "[] = {%f, %f, %f}", \
++    CONSTANT(".f32 " a "[] = {%.13lf, %.13lf, %.13lf}", \
 +             b, c, d)
 +
 +    CONSTANT(".u32 depth_src           = %i", (int)s->in_desc->comp[0].depth);
@@ -2488,19 +2488,19 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    CONSTANT(".u32 chroma_loc_dst      = %i", (int)s->out_chroma_loc);
 +    CONSTANT(".u32 tonemap_func        = %i", (int)s->tonemap);
 +    CONSTANT(".u32 enable_dither       = %i", (int)(s->in_desc->comp[0].depth > s->out_desc->comp[0].depth));
-+    CONSTANT(".f32 dither_size         = %f", (float)ff_fruit_dither_size);
-+    CONSTANT(".f32 dither_quantization = %f", (float)((1 << s->out_desc->comp[0].depth) - 1));
-+    CONSTANT(".f32 ref_white           = %f", REFERENCE_WHITE_ALT);
-+    CONSTANT(".f32 tone_param          = %f", s->param);
-+    CONSTANT(".f32 desat_param         = %f", s->desat_param);
-+    CONSTANT(".f32 pq_max_lum_div_ref_white = %f", (float)(ST2084_MAX_LUMINANCE / REFERENCE_WHITE_ALT));
-+    CONSTANT(".f32 ref_white_div_pq_max_lum = %f", (float)(REFERENCE_WHITE_ALT / ST2084_MAX_LUMINANCE));
-+    CONSTANT(".f32 input_quantization_offset = %f", input_quantization_offset);
-+    CONSTANT(".f32 input_y_scale = %f", input_y_scale);
-+    CONSTANT(".f32 input_uv_scale = %f", input_uv_scale);
-+    CONSTANT(".f32 output_quantization_offset = %f", output_quantization_offset);
-+    CONSTANT(".f32 output_quantization_factor = %f", output_quantization_factor);
-+    CONSTANT(".f32 output_quantization_scale = %f", output_quantization_scale);
++    CONSTANT(".f32 dither_size         = %.1f", (float)ff_fruit_dither_size);
++    CONSTANT(".f32 dither_quantization = %.1f", (float)((1 << s->out_desc->comp[0].depth) - 1));
++    CONSTANT(".f32 ref_white           = %.4f", REFERENCE_WHITE_ALT);
++    CONSTANT(".f32 tone_param          = %.4f", s->param);
++    CONSTANT(".f32 desat_param         = %.4f", s->desat_param);
++    CONSTANT(".f32 pq_max_lum_div_ref_white = %.13lf", (float)(ST2084_MAX_LUMINANCE / REFERENCE_WHITE_ALT));
++    CONSTANT(".f32 ref_white_div_pq_max_lum = %.13lf", (float)(REFERENCE_WHITE_ALT / ST2084_MAX_LUMINANCE));
++    CONSTANT(".f32 input_quantization_offset = %.13lf", input_quantization_offset);
++    CONSTANT(".f32 input_y_scale = %.13lf", input_y_scale);
++    CONSTANT(".f32 input_uv_scale = %.13lf", input_uv_scale);
++    CONSTANT(".f32 output_quantization_offset = %.13lf", output_quantization_offset);
++    CONSTANT(".f32 output_quantization_factor = %.13lf", output_quantization_factor);
++    CONSTANT(".f32 output_quantization_scale = %.13lf", output_quantization_scale);
 +    CONSTANT_M("rgb_matrix", (s->dovi ? s->dovi->nonlinear : rgb_matrix));
 +    CONSTANT_M("yuv_matrix", yuv_matrix);
 +    CONSTANT_A(".u8 rgb2rgb_passthrough = %i", 1, in_pri == out_pri);
