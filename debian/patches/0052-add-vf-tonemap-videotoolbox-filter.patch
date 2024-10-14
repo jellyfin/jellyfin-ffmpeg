@@ -40,7 +40,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
-@@ -0,0 +1,894 @@
+@@ -0,0 +1,916 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -82,10 +82,6 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +#define ARIB_B67_C 0.55991073f
 +
 +#define FLOAT_EPS 1e-6f
-+
-+#define LIMITED_BLACK 0.06256109482f
-+#define LIMITED_WHITE 0.9188660802f
-+#define LIMITED_RANGE 0.8563049854f
 +
 +constant float ref_white [[function_constant(0)]];
 +constant float tone_param [[function_constant(1)]];
@@ -273,16 +269,23 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +
 +// ------------
 +// Color conversion
++// See libavfilter/colorspace.h for derivation of these constants
 +float3 yuv2rgb(float y, float u, float v) {
-+    u -= 0.5f;
-+    v -= 0.5f;
++    y += mix(0.0f, 0.0009765774014f, y > 0.0f);
++    u += mix(0.0f, 0.0009765774014f, u > 0.0f);
++    v += mix(0.0f, 0.0009765774014f, v > 0.0f);
++    if (is_full_range_in) {
++        u -= 0.5f;
++        v -= 0.5f;
++    } else {
++        y = 1.1678082192f * y - 0.07305936073f;
++        u = 1.1417410714f * u - 0.5714285714f;
++        v = 1.1417410714f * v - 0.5714285714f;
++    }
 +    float r = (y * rgb_matrix_1[0]) + (u * rgb_matrix_1[1]) + (v * rgb_matrix_1[2]);
 +    float g = (y * rgb_matrix_2[0]) + (u * rgb_matrix_2[1]) + (v * rgb_matrix_2[2]);
 +    float b = (y * rgb_matrix_3[0]) + (u * rgb_matrix_3[1]) + (v * rgb_matrix_3[2]);
 +    float3 c = float3(r, g, b);
-+    if (!is_full_range_in) {
-+        c = (c - LIMITED_BLACK) / LIMITED_RANGE;
-+    }
 +    return c;
 +}
 +
@@ -298,26 +301,45 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +}
 +
 +float3 rgb2yuv(float r, float g, float b) {
-+    if (!is_full_range_out) {
-+        r = r * LIMITED_RANGE + LIMITED_BLACK;
-+        g = g * LIMITED_RANGE + LIMITED_BLACK;
-+        b = b * LIMITED_RANGE + LIMITED_BLACK;
++    float y = (r * yuv_matrix_1[0]) + (g * yuv_matrix_1[1]) + (b * yuv_matrix_1[2]);
++    float u = (r * yuv_matrix_2[0]) + (g * yuv_matrix_2[1]) + (b * yuv_matrix_2[2]);
++    float v = (r * yuv_matrix_3[0]) + (g * yuv_matrix_3[1]) + (b * yuv_matrix_3[2]);
++    if (is_full_range_out) {
++        u += 0.5f;
++        v += 0.5f;
++    } else {
++        if (enable_dither) {
++            y = floor((219.0f * y + 16.0f) + 0.5f) / 255.0f;
++            u = floor((224.0f * u + 128.0f) + 0.5f) / 255.0f;
++            v = floor((224.0f * v + 128.0f) + 0.5f) / 255.0f;
++        } else {
++            y = floor(((219.0f * y + 16.0f) * 256.0f) + 0.5f) / 65535.0f;
++            u = floor(((224.0f * u + 128.0f) * 256.0f) + 0.5f) / 65535.0f;
++            v = floor(((224.0f * v + 128.0f) * 256.0f) + 0.5f) / 65535.0f;
++        }
 +    }
-+    float y = (r*yuv_matrix_1[0]) + (g*yuv_matrix_1[1]) + (b*yuv_matrix_1[2]);
-+    float u = (r*yuv_matrix_2[0]) + (g*yuv_matrix_2[1]) + (b*yuv_matrix_2[2]);
-+    float v = (r*yuv_matrix_3[0]) + (g*yuv_matrix_3[1]) + (b*yuv_matrix_3[2]);
-+    u += 0.5f;
-+    v += 0.5f;
++    // in rgb2yuv conversion, enable_dither means output is 8bit in metal pipeline
++    // use this to check if we need the 10bit offset
++    if (!enable_dither) {
++        y -= mix(0.0f, 0.0009765774014f, y > 0.0f);
++        u -= mix(0.0f, 0.0009765774014f, u > 0.0f);
++        v -= mix(0.0f, 0.0009765774014f, v > 0.0f);
++    }
 +    return float3(y, u, v);
 +}
 +
 +float rgb2y(float r, float g, float b) {
-+    if (!is_full_range_out) {
-+        r = r * LIMITED_RANGE + LIMITED_BLACK;
-+        g = g * LIMITED_RANGE + LIMITED_BLACK;
-+        b = b * LIMITED_RANGE + LIMITED_BLACK;
-+    }
 +    float y = (r*yuv_matrix_1[0]) + (g*yuv_matrix_1[1]) + (b*yuv_matrix_1[2]);
++    if (!is_full_range_out) {
++        if (enable_dither) {
++            y = floor((219.0f * y + 16.0f) + 0.5f) / 255.0f;
++        } else {
++            y = floor(((219.0f * y + 16.0f) * 256.0f) + 0.5f) / 65535.0f;
++        }
++    }
++    if (!enable_dither) {
++        y -= mix(0.0f, 0.0009765774014f, y > 0.0f);
++    }
 +    return y;
 +}
 +
@@ -2062,7 +2084,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    { "apply_dovi",  "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
 +    { "peak",        "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
 +    { "param",       "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, { .dbl = NAN }, DBL_MIN, DBL_MAX, FLAGS },
-+    { "desat",       "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, { .dbl = 0.5}, 0, DBL_MAX, FLAGS },
++    { "desat",       "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
 +    { "threshold",   "Scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, { .dbl = 0.2 }, 0, DBL_MAX, FLAGS },
 +    { NULL }
 +};

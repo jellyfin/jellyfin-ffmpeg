@@ -257,7 +257,7 @@ Index: FFmpeg/libavfilter/colorspace.h
 ===================================================================
 --- FFmpeg.orig/libavfilter/colorspace.h
 +++ FFmpeg/libavfilter/colorspace.h
-@@ -23,10 +23,42 @@
+@@ -23,10 +23,66 @@
  #include "libavutil/csp.h"
  #include "libavutil/frame.h"
  #include "libavutil/pixfmt.h"
@@ -275,6 +275,30 @@ Index: FFmpeg/libavfilter/colorspace.h
 +#define ARIB_B67_B 0.28466892f
 +#define ARIB_B67_C 0.55991073f
 +#define FLOAT_EPS 1e-6f
++
++/*
++ * Pre-calculated constants used for YCbCr narrow to full range scaling
++ * The base formula is the quantization formula derived from BT.2100 Table 9:
++ * Where Y' = Round [(219 * E′ + 16) * 2^(n−8)],
++ * Cb',Cr' = Round [(224 * E′ + 128) * 2^(n−8)]
++ * where E' is the signal value in [0,1] range and n is the bit depth. Round is rounding towards 0.
++ * For inputs, the inverse is used where we are solving for E' for a given Y'Cb'Cr' normalized by GPU
++ * in [0,1] range. The GPU will interpret color as a 16bit int value, and solving for E' becomes:
++ * E' = (Y' - 2^(n-4)) / (219 * 2^(n-8))
++ * E' = (Cb'Cr' - 2^(n-1)) / (7 * 2^(n-3))
++ * Y' and Cb'Cr' is in the range of [0, 2^n - 1] in original formula, we need to scale the value normalized to [0,1]:
++ * C = Y'Cb'Cr' * (2^n - 1)
++ * Which means the input scale = (2^n - 1) / (219 * 2^(n-8)) and input offset = 2^(n-4)) / (219 * 2^(n-8)) for Y' and
++ * 2^(n-1)) / (7 * 2^(n-3)) for Cb'Cr'
++ */
++#define INPUT_Y_SCALE(n)  ((double)((1 << (n)) - 1) / (219 * (1 << ((n) - 8))))
++#define INPUT_UV_SCALE(n) ((double)((1 << (n)) - 1) / (224 * (1 << ((n) - 8))))
++
++/*
++ * GPU will interpret 10bit and 12bit color as 16bit int
++ * but that will introduce a slight (2^(16-n))/2^16 quantization offset which we want to compensate for
++*/
++#define QUANTIZATION_OFFSET(n) ((double)(1 << (16 - (n))) / ((1 << 16) - 1))
 +
 +// Parsed metadata from the Dolby Vision RPU
 +struct DoviMetadata {
@@ -300,7 +324,7 @@ Index: FFmpeg/libavfilter/colorspace.h
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3]);
  void ff_matrix_mul_3x3_vec(double dst[3], const double vec[3], const double mat[3][3]);
-@@ -38,4 +70,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
+@@ -38,4 +94,19 @@ void ff_fill_rgb2yuv_table(const AVLumaC
  double ff_determine_signal_peak(AVFrame *in);
  void ff_update_hdr_metadata(AVFrame *in, double peak);
  
@@ -324,7 +348,7 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/colorspace_common.h
-@@ -0,0 +1,338 @@
+@@ -0,0 +1,348 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -361,10 +385,6 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +#define ARIB_B67_B 0.28466892f
 +#define ARIB_B67_C 0.55991073f
 +
-+#define LIMITED_BLACK 0.06256109482f
-+#define LIMITED_WHITE 0.9188660802f
-+#define LIMITED_RANGE 0.8563049854f
-+
 +#define FLOAT_EPS 1e-6f
 +
 +extern __constant__ const float ref_white;
@@ -379,6 +399,13 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +extern __constant__ const float yuv_matrix[9], rgb_matrix[9];
 +extern __constant__ const float pq_max_lum_div_ref_white;
 +extern __constant__ const float ref_white_div_pq_max_lum;
++extern __constant__ const float input_quantization_offset;
++extern __constant__ const float output_quantization_offset;
++extern __constant__ const float input_y_scale;
++extern __constant__ const float input_uv_scale;
++extern __constant__ const float output_quantization_factor;
++extern __constant__ const float output_quantization_scale;
++
 +
 +static __inline__ __device__ float get_luma_dst(float3 c, const float3& luma_dst) {
 +    return luma_dst.x * c.x + luma_dst.y * c.y + luma_dst.z * c.z;
@@ -501,16 +528,20 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +static __inline__ __device__ float3 yuv2rgb(float y, float u, float v) {
-+    u -= 0.5f;
-+    v -= 0.5f;
++    y += y > 0.0f ? input_quantization_offset : 0.0f;
++    u += u > 0.0f ? input_quantization_offset : 0.0f;
++    v += v > 0.0f ? input_quantization_offset : 0.0f;
++    if (range_src == AVCOL_RANGE_MPEG) {
++        y = input_y_scale * y - 0.07305936073f;
++        u = input_uv_scale * u - 0.5714285714f;
++        v = input_uv_scale * v - 0.5714285714f;
++    } else {
++        u -= 0.5f;
++        v -= 0.5f;
++    }
 +    float r = y * rgb_matrix[0] + u * rgb_matrix[1] + v * rgb_matrix[2];
 +    float g = y * rgb_matrix[3] + u * rgb_matrix[4] + v * rgb_matrix[5];
 +    float b = y * rgb_matrix[6] + u * rgb_matrix[7] + v * rgb_matrix[8];
-+    if (range_src == AVCOL_RANGE_MPEG) {
-+        r = (r - LIMITED_BLACK) / LIMITED_RANGE;
-+        g = (g - LIMITED_BLACK) / LIMITED_RANGE;
-+        b = (b - LIMITED_BLACK) / LIMITED_RANGE;
-+    }
 +
 +    return make_float3(r, g, b);
 +}
@@ -523,26 +554,29 @@ Index: FFmpeg/libavfilter/cuda/colorspace_common.h
 +}
 +
 +static __inline__ __device__ float3 rgb2yuv(float r, float g, float b) {
-+    if (range_dst == AVCOL_RANGE_MPEG) {
-+        r = r * LIMITED_RANGE + LIMITED_BLACK;
-+        g = g * LIMITED_RANGE + LIMITED_BLACK;
-+        b = b * LIMITED_RANGE + LIMITED_BLACK;
-+    }
 +    float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
 +    float u = r*yuv_matrix[3] + g*yuv_matrix[4] + b*yuv_matrix[5];
 +    float v = r*yuv_matrix[6] + g*yuv_matrix[7] + b*yuv_matrix[8];
-+    u += 0.5f;
-+    v += 0.5f;
++    if (range_dst == AVCOL_RANGE_MPEG) {
++        y = floorf(((219.0f * y + 16.0f) * output_quantization_factor) + 0.5f) / output_quantization_scale;
++        u = floorf(((224.0f * u + 128.0f) * output_quantization_factor) + 0.5f) / output_quantization_scale;
++        v = floorf(((224.0f * v + 128.0f) * output_quantization_factor) + 0.5f) / output_quantization_scale;
++    } else {
++        u += 0.5f;
++        v += 0.5f;
++    }
++    y -= y > 0.0f ? output_quantization_offset : 0.0f;
++    u -= u > 0.0f ? output_quantization_offset : 0.0f;
++    v -= v > 0.0f ? output_quantization_offset : 0.0f;
 +    return make_float3(y, u, v);
 +}
 +
 +static __inline__ __device__ float rgb2y(float r, float g, float b) {
-+    if (range_dst == AVCOL_RANGE_MPEG) {
-+        r = r * LIMITED_RANGE + LIMITED_BLACK;
-+        g = g * LIMITED_RANGE + LIMITED_BLACK;
-+        b = b * LIMITED_RANGE + LIMITED_BLACK;
-+    }
 +    float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
++    if (range_dst == AVCOL_RANGE_MPEG) {
++        y = floorf(((219.0f * y + 16.0f) * output_quantization_factor) + 0.5f) / output_quantization_scale;
++    }
++    y -= y > 0.0f ? output_quantization_offset : 0.0f;
 +    return y;
 +}
 +
@@ -1775,7 +1809,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1131 @@
+@@ -0,0 +1,1165 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2287,6 +2321,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    enum AVColorPrimaries in_pri = s->in_pri, out_pri = s->out_pri;
 +    enum AVColorRange in_range = s->in_range, out_range = s->out_range;
 +    int d = s->in_desc->comp[0].depth > s->out_desc->comp[0].depth && s->ditherTex;
++    float input_quantization_offset = 0.0f;
++    float output_quantization_offset = 0.0f;
++    float input_y_scale = 1.0f;
++    float input_uv_scale = 1.0f;
++    float output_quantization_factor = 1.0f;
++    float output_quantization_scale = 255.0f;
 +    char info_log[4096], error_log[4096];
 +    CUjit_option options[] = { CU_JIT_INFO_LOG_BUFFER,
 +                               CU_JIT_ERROR_LOG_BUFFER,
@@ -2396,6 +2436,28 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    if ((ret = get_rgb2rgb_matrix(in_pri, out_pri, rgb2rgb_matrix)) < 0)
 +        return ret;
 +
++    if (s->in_desc->comp[0].depth == 16) {
++        // Assume 16bit is actually 12bit for now as that is what the hardware decoders producing
++        // and what videos are actually encoded in
++        input_quantization_offset = QUANTIZATION_OFFSET(12);
++        input_y_scale = INPUT_Y_SCALE(12);
++        input_uv_scale = INPUT_UV_SCALE(12);
++    } else {
++        input_quantization_offset = QUANTIZATION_OFFSET(s->in_desc->comp[0].depth);
++        input_y_scale = INPUT_Y_SCALE(s->in_desc->comp[0].depth);
++        input_uv_scale = INPUT_UV_SCALE(s->in_desc->comp[0].depth);
++    }
++
++    if (s->out_desc->comp[0].depth == 10) {
++        // Don't handle 12b offset for now and assume 16b output is real 16b out to make it consistent with other filters
++        output_quantization_offset = QUANTIZATION_OFFSET(10);
++    }
++
++    if (s->out_desc->comp[0].depth > 8) {
++        output_quantization_factor = 256.0f; // 2^(16-8)
++        output_quantization_scale = 65535.0f; // 2^16 - 1
++    }
++
 +    av_bprint_init(&constants, 2048, AV_BPRINT_SIZE_UNLIMITED);
 +
 +    av_bprintf(&constants, ".version 3.2\n");
@@ -2406,12 +2468,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    av_bprintf(&constants, ".visible .const .align " #align " " decl ";\n", __VA_ARGS__)
 +#define CONSTANT(decl, ...) CONSTANT_A(decl, 4, __VA_ARGS__)
 +#define CONSTANT_M(a, b) \
-+    CONSTANT(".f32 " a "[] = {%f, %f, %f, %f, %f, %f, %f, %f, %f}", \
++    CONSTANT(".f32 " a "[] = {%.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf, %.13lf}", \
 +             b[0][0], b[0][1], b[0][2], \
 +             b[1][0], b[1][1], b[1][2], \
 +             b[2][0], b[2][1], b[2][2])
 +#define CONSTANT_C(a, b, c, d) \
-+    CONSTANT(".f32 " a "[] = {%f, %f, %f}", \
++    CONSTANT(".f32 " a "[] = {%.13lf, %.13lf, %.13lf}", \
 +             b, c, d)
 +
 +    CONSTANT(".u32 depth_src           = %i", (int)s->in_desc->comp[0].depth);
@@ -2426,13 +2488,19 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    CONSTANT(".u32 chroma_loc_dst      = %i", (int)s->out_chroma_loc);
 +    CONSTANT(".u32 tonemap_func        = %i", (int)s->tonemap);
 +    CONSTANT(".u32 enable_dither       = %i", (int)(s->in_desc->comp[0].depth > s->out_desc->comp[0].depth));
-+    CONSTANT(".f32 dither_size         = %f", (float)ff_fruit_dither_size);
-+    CONSTANT(".f32 dither_quantization = %f", (float)((1 << s->out_desc->comp[0].depth) - 1));
-+    CONSTANT(".f32 ref_white           = %f", REFERENCE_WHITE_ALT);
-+    CONSTANT(".f32 tone_param          = %f", s->param);
-+    CONSTANT(".f32 desat_param         = %f", s->desat_param);
-+    CONSTANT(".f32 pq_max_lum_div_ref_white = %f", (float)(ST2084_MAX_LUMINANCE / REFERENCE_WHITE_ALT));
-+    CONSTANT(".f32 ref_white_div_pq_max_lum = %f", (float)(REFERENCE_WHITE_ALT / ST2084_MAX_LUMINANCE));
++    CONSTANT(".f32 dither_size         = %.1f", (float)ff_fruit_dither_size);
++    CONSTANT(".f32 dither_quantization = %.1f", (float)((1 << s->out_desc->comp[0].depth) - 1));
++    CONSTANT(".f32 ref_white           = %.4f", REFERENCE_WHITE_ALT);
++    CONSTANT(".f32 tone_param          = %.4f", s->param);
++    CONSTANT(".f32 desat_param         = %.4f", s->desat_param);
++    CONSTANT(".f32 pq_max_lum_div_ref_white = %.13lf", (float)(ST2084_MAX_LUMINANCE / REFERENCE_WHITE_ALT));
++    CONSTANT(".f32 ref_white_div_pq_max_lum = %.13lf", (float)(REFERENCE_WHITE_ALT / ST2084_MAX_LUMINANCE));
++    CONSTANT(".f32 input_quantization_offset = %.13lf", input_quantization_offset);
++    CONSTANT(".f32 input_y_scale = %.13lf", input_y_scale);
++    CONSTANT(".f32 input_uv_scale = %.13lf", input_uv_scale);
++    CONSTANT(".f32 output_quantization_offset = %.13lf", output_quantization_offset);
++    CONSTANT(".f32 output_quantization_factor = %.13lf", output_quantization_factor);
++    CONSTANT(".f32 output_quantization_scale = %.13lf", output_quantization_scale);
 +    CONSTANT_M("rgb_matrix", (s->dovi ? s->dovi->nonlinear : rgb_matrix));
 +    CONSTANT_M("yuv_matrix", yuv_matrix);
 +    CONSTANT_A(".u8 rgb2rgb_passthrough = %i", 1, in_pri == out_pri);
@@ -2862,7 +2930,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    {     "enabled",   0, 0, AV_OPT_TYPE_CONST, {.i64 = 1},                         0, 0, FLAGS, .unit = "tradeoff" },
 +    { "peak",          "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, {.dbl = 0}, 0, DBL_MAX, FLAGS },
 +    { "param",         "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, {.dbl = NAN}, DBL_MIN, DBL_MAX, FLAGS },
-+    { "desat",         "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, {.dbl = 0.5}, 0, DBL_MAX, FLAGS },
++    { "desat",         "Desaturation parameter",   OFFSET(desat_param), AV_OPT_TYPE_DOUBLE, {.dbl = 0}, 0, DBL_MAX, FLAGS },
 +    { "threshold",     "Scene detection threshold",   OFFSET(scene_threshold), AV_OPT_TYPE_DOUBLE, {.dbl = 0.2}, 0, DBL_MAX, FLAGS },
 +    { NULL },
 +};

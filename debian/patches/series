@@ -73,3 +73,4 @@
 0073-add-12bit-decoding-on-videotoolbox.patch
 0074-fix-the-sub2video-perf-regressions.patch
 0075-allow-vpl-qsv-to-init-with-the-legacy-msdk-path.patch
+0076-alway-set-videotoolboxenc-pixel-buffer-info.patch
