@@ -280,7 +280,7 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
  #endif
      float r = y * rgb_matrix[0] + u * rgb_matrix[1] + v * rgb_matrix[2];
      float g = y * rgb_matrix[3] + u * rgb_matrix[4] + v * rgb_matrix[5];
-@@ -138,19 +194,37 @@ float3 rgb2yuv(float r, float g, float b
+@@ -138,19 +194,35 @@ float3 rgb2yuv(float r, float g, float b
      float y = r*yuv_matrix[0] + g*yuv_matrix[1] + b*yuv_matrix[2];
      float u = r*yuv_matrix[3] + g*yuv_matrix[4] + b*yuv_matrix[5];
      float v = r*yuv_matrix[6] + g*yuv_matrix[7] + b*yuv_matrix[8];
@@ -318,13 +318,11 @@ Index: FFmpeg/libavfilter/opencl/colorspace_common.cl
 +    y = floor((219.0f * y + 16.0f) + 0.5f) / 255.0f;
 +  #endif
 +#endif
-+#ifdef OUTPUT_QUANTIZATION_OFFSET
-+    y -= mix(0.0f, OUTPUT_QUANTIZATION_OFFSET, y > 0.0f);
-+#endif
++    y -= mix(0.0f, output_quantization_offset, y > 0.0f);
      return y;
  }
  
-@@ -188,18 +262,101 @@ float3 lrgb2lrgb(float3 c) {
+@@ -188,18 +260,101 @@ float3 lrgb2lrgb(float3 c) {
  #endif
  }
  
