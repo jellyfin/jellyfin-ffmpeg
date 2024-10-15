@@ -57,12 +57,11 @@ Index: FFmpeg/libavcodec/bsf/h265_metadata.c
      }
  
      return 0;
-@@ -399,6 +433,12 @@ static const CBSBSFType h265_metadata_ty
+@@ -399,6 +433,11 @@ static const CBSBSFType h265_metadata_ty
  
  static int h265_metadata_init(AVBSFContext *bsf)
  {
 +    if (((H265MetadataContext *)bsf->priv_data)->remove_dovi) {
-+        av_log(bsf, AV_LOG_WARNING, "Removing Dolby Vision config\n");
 +        av_packet_side_data_remove(bsf->par_out->coded_side_data,
 +                                   &bsf->par_out->nb_coded_side_data,
 +                                   AV_PKT_DATA_DOVI_CONF);
@@ -70,7 +69,7 @@ Index: FFmpeg/libavcodec/bsf/h265_metadata.c
      return ff_cbs_bsf_generic_init(bsf, &h265_metadata_type);
  }
  
-@@ -478,6 +518,13 @@ static const AVOption h265_metadata_opti
+@@ -478,6 +517,13 @@ static const AVOption h265_metadata_opti
      { LEVEL("8.5", 255) },
  #undef LEVEL
  
