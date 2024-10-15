@@ -19,7 +19,7 @@ Index: FFmpeg/libavcodec/bsf/h265_metadata.c
  } H265MetadataContext;
  
  
-@@ -385,6 +388,40 @@ static int h265_metadata_update_fragment
+@@ -385,6 +388,37 @@ static int h265_metadata_update_fragment
              if (err < 0)
                  return err;
          }
@@ -32,9 +32,6 @@ Index: FFmpeg/libavcodec/bsf/h265_metadata.c
 +                ff_cbs_delete_unit(au, i);
 +                av_log(bsf, AV_LOG_DEBUG, "Removing Dolby Vision EL\n");
 +            }
-+            av_packet_side_data_remove(bsf->par_out->coded_side_data,
-+                                       &bsf->par_out->nb_coded_side_data,
-+                                       AV_PKT_DATA_DOVI_CONF);
 +        }
 +        if (ctx->remove_hdr10plus) {
 +            // This implementation is not strictly correct as it does not decode the entire NAL.
@@ -60,7 +57,20 @@ Index: FFmpeg/libavcodec/bsf/h265_metadata.c
      }
  
      return 0;
-@@ -478,6 +515,13 @@ static const AVOption h265_metadata_opti
+@@ -399,6 +433,12 @@ static const CBSBSFType h265_metadata_ty
+ 
+ static int h265_metadata_init(AVBSFContext *bsf)
+ {
++    if (((H265MetadataContext *)bsf->priv_data)->remove_dovi) {
++        av_log(bsf, AV_LOG_WARNING, "Removing Dolby Vision config\n");
++        av_packet_side_data_remove(bsf->par_out->coded_side_data,
++                                   &bsf->par_out->nb_coded_side_data,
++                                   AV_PKT_DATA_DOVI_CONF);
++    }
+     return ff_cbs_bsf_generic_init(bsf, &h265_metadata_type);
+ }
+ 
+@@ -478,6 +518,13 @@ static const AVOption h265_metadata_opti
      { LEVEL("8.5", 255) },
  #undef LEVEL
  
