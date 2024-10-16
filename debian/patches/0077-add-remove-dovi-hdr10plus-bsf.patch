@@ -83,3 +83,103 @@ Index: FFmpeg/libavcodec/bsf/h265_metadata.c
      { NULL }
  };
  
+Index: FFmpeg/libavcodec/bsf/av1_metadata.c
+===================================================================
+--- FFmpeg.orig/libavcodec/bsf/av1_metadata.c
++++ FFmpeg/libavcodec/bsf/av1_metadata.c
+@@ -17,6 +17,7 @@
+  */
+ 
+ #include "libavutil/common.h"
++#include "libavutil/intreadwrite.h"
+ #include "libavutil/opt.h"
+ 
+ #include "bsf.h"
+@@ -24,6 +25,7 @@
+ #include "cbs.h"
+ #include "cbs_bsf.h"
+ #include "cbs_av1.h"
++#include "itut35.h"
+ 
+ typedef struct AV1MetadataContext {
+     CBSBSFContext common;
+@@ -42,6 +44,9 @@ typedef struct AV1MetadataContext {
+     int num_ticks_per_picture;
+ 
+     int delete_padding;
++
++    int remove_dovi;
++    int remove_hdr10plus;
+ } AV1MetadataContext;
+ 
+ 
+@@ -140,6 +145,42 @@ static int av1_metadata_update_fragment(
+         }
+     }
+ 
++    if (ctx->remove_dovi ||ctx->remove_hdr10plus) {
++        int provider_code, provider_oriented_code, application_identifier;
++        for (i = frag->nb_units - 1; i >= 0; i--) {
++            if (frag->units[i].type == AV1_OBU_METADATA) {
++                AV1RawOBU *obu = frag->units[i].content;
++                AV1RawMetadataITUTT35 *t35 = &obu->obu.metadata.metadata.itut_t35;
++                if (obu->obu.metadata.metadata_type != AV1_METADATA_TYPE_ITUT_T35 ||
++                    t35->itu_t_t35_country_code != ITU_T_T35_COUNTRY_CODE_US ||
++                    t35->payload_size < 6) {
++                    continue;
++                }
++
++                provider_code = AV_RB16(t35->payload);
++
++                if (ctx->remove_dovi && provider_code == ITU_T_T35_PROVIDER_CODE_DOLBY) {
++                    provider_oriented_code = AV_RB32(t35->payload + 2);
++                    // Dolby Vision RPU
++                    if (provider_oriented_code == 0x800) {
++                        av_log(bsf, AV_LOG_DEBUG, "Removing Dolby Vision RPU\n");
++                        ff_cbs_delete_unit(frag, i);
++                    }
++                }
++
++                if (ctx->remove_hdr10plus && provider_code == ITU_T_T35_PROVIDER_CODE_SMTPE) {
++                    provider_oriented_code = AV_RB16(t35->payload + 2);
++                    application_identifier = AV_RB8(t35->payload + 4);
++                    // HDR10+ Metadata
++                    if (provider_oriented_code == 0x01 && application_identifier == 0x04) {
++                        av_log(bsf, AV_LOG_DEBUG, "Removing HDR10+ Metadata\n");
++                        ff_cbs_delete_unit(frag, i);
++                    }
++                }
++            }
++        }
++    }
++
+     return 0;
+ }
+ 
+@@ -158,6 +199,12 @@ static int av1_metadata_init(AVBSFContex
+         .header.obu_type = AV1_OBU_TEMPORAL_DELIMITER,
+     };
+ 
++    if (ctx->remove_dovi) {
++        av_packet_side_data_remove(bsf->par_out->coded_side_data,
++                                   &bsf->par_out->nb_coded_side_data,
++                                   AV_PKT_DATA_DOVI_CONF);
++    }
++
+     return ff_cbs_bsf_generic_init(bsf, &av1_metadata_type);
+ }
+ 
+@@ -206,6 +253,13 @@ static const AVOption av1_metadata_optio
+         OFFSET(delete_padding), AV_OPT_TYPE_BOOL,
+         { .i64 = 0 }, 0, 1, FLAGS},
+ 
++    { "remove_dovi", "Remove Dolby Vision RPU",
++      OFFSET(remove_dovi), AV_OPT_TYPE_BOOL,
++      { .i64 = 0 }, 0, 1, FLAGS },
++    { "remove_hdr10plus", "Remove HDR10+ metadata",
++      OFFSET(remove_hdr10plus), AV_OPT_TYPE_BOOL,
++      { .i64 = 0 }, 0, 1, FLAGS },
++
+     { NULL }
+ };
+ 
