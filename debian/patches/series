@@ -74,3 +74,4 @@
 0074-fix-the-sub2video-perf-regressions.patch
 0075-allow-vpl-qsv-to-init-with-the-legacy-msdk-path.patch
 0076-alway-set-videotoolboxenc-pixel-buffer-info.patch
+0077-add-remove-dovi-hdr10plus-bsf.patch
