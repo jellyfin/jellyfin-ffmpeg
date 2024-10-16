@@ -73,7 +73,7 @@ Index: FFmpeg/libavcodec/bsf/h265_metadata.c
      { LEVEL("8.5", 255) },
  #undef LEVEL
  
-+    { "remove_dovi", "Remove Dolby Vision BL and RPU",
++    { "remove_dovi", "Remove Dolby Vision EL and RPU",
 +      OFFSET(remove_dovi), AV_OPT_TYPE_BOOL,
 +      { .i64 = 0 }, 0, 1, FLAGS },
 +    { "remove_hdr10plus", "Remove NALs including HDR10+ metadata",
