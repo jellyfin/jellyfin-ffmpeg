@@ -304,11 +304,11 @@ prepare_extra_amd64() {
     pushd ${SOURCE_DIR}
     mkdir amf-headers
     pushd amf-headers
-    amf_ver="1.4.34"
-    amf_link="https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v${amf_ver}/AMF-headers.tar.gz"
+    amf_ver="1.4.35"
+    amf_link="https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v${amf_ver}/AMF-headers-v${amf_ver}.tar.gz"
     wget ${amf_link} -O amf.tar.gz
     tar xaf amf.tar.gz
-    pushd AMF
+    pushd amf-headers-v${amf_ver}/AMF
     mkdir -p /usr/include/AMF
     mv * /usr/include/AMF
     popd
@@ -439,7 +439,7 @@ prepare_extra_amd64() {
     # VPL-GPU-RT (RT only)
     # Provides VPL runtime (libmfx-gen.so.1.2) for 11th Gen Tiger Lake and newer
     pushd ${SOURCE_DIR}
-    git clone -b intel-onevpl-24.3.4 --depth=1 https://github.com/intel/vpl-gpu-rt.git
+    git clone -b intel-onevpl-24.4.0 --depth=1 https://github.com/intel/vpl-gpu-rt.git
     pushd vpl-gpu-rt
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
@@ -459,7 +459,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-24.3.4 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-24.4.0 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     # enable vc1 decode on dg2 (note that mtl+ is not supported)
     wget -q -O - https://github.com/intel/media-driver/commit/d5dd47b.patch | git apply
@@ -480,7 +480,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.296 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.3.298 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -493,7 +493,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.296 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.3.298 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \

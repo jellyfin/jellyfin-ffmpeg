@@ -3,7 +3,7 @@
 _realname=x264
 pkgbase=mingw-w64-jellyfin-${_realname}
 pkgname=("${MINGW_PACKAGE_PREFIX}-jellyfin-libx264")
-pkgver=0.164.r3191.c24e06c
+pkgver=0.164.r3191.1243d9f
 pkgrel=1
 pkgdesc="Library for encoding H264/AVC video streams (mingw-w64)"
 arch=('any')
@@ -17,7 +17,7 @@ makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
                 || echo "${MINGW_PACKAGE_PREFIX}-nasm" )
              "git")
 options=('strip' 'staticlibs')
-_commit="c24e06c2e184345ceb33eb20a15d1024d9fd3497"
+_commit="1243d9ffb04dac7005ee9ecc79459034429dd5aa"
 source=("${_realname}"::"git+https://code.videolan.org/videolan/${_realname}.git#commit=${_commit}"
         0001-beautify-pc.all.patch
         0002-install-avisynth_c.h.mingw.patch
