@@ -6,7 +6,7 @@ set -o errexit
 set -o xtrace
 
 # Update mingw-w64 headers
-mingw_commit="d2491a9358bddc9573d0ff2fa73989e3175c2009"
+mingw_commit="cdf6b16b805ce7d02f6b1b742911ba0770b49bbb"
 git clone https://git.code.sf.net/p/mingw-w64/mingw-w64.git
 pushd mingw-w64/mingw-w64-headers
 git checkout ${mingw_commit}
@@ -156,7 +156,7 @@ popd
 popd
 
 # LZMA
-git clone -b v5.6.2 --depth=1 https://github.com/tukaani-project/xz.git
+git clone -b v5.6.3 --depth=1 https://github.com/tukaani-project/xz.git
 pushd xz
 ./autogen.sh --no-po4a --no-doxygen
 ./configure \
@@ -390,7 +390,7 @@ make install
 popd
 
 # X265
-x265_commit="26d2bab0063cee453b7d8012e76539a7786c032f"
+x265_commit="487105dcd21d0f36a7a9e0ec50de85577b9bed04"
 git clone https://bitbucket.org/multicoreware/x265_git.git
 pushd x265_git
 git checkout ${x265_commit}
@@ -546,11 +546,11 @@ popd
 # AMF
 mkdir amf-headers
 pushd amf-headers
-amf_ver="1.4.34"
-amf_link="https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v${amf_ver}/AMF-headers.tar.gz"
+amf_ver="1.4.35"
+amf_link="https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v${amf_ver}/AMF-headers-v${amf_ver}.tar.gz"
 wget ${amf_link} -O amf.tar.gz
 tar xaf amf.tar.gz
-pushd AMF
+pushd amf-headers-v${amf_ver}/AMF
 mkdir -p ${FF_DEPS_PREFIX}/include/AMF
 mv * ${FF_DEPS_PREFIX}/include/AMF
 popd
