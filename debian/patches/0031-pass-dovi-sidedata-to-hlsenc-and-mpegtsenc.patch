@@ -8,13 +8,13 @@ Index: FFmpeg/libavformat/hlsenc.c
      int remaining_options;
 -    int i, ret;
 +    int i, j, ret;
- 
+
      ret = avformat_alloc_output_context2(&vs->avf, vs->oformat, NULL, NULL);
      if (ret < 0)
 @@ -896,6 +896,20 @@ static int hls_mux_init(AVFormatContext
              st->codecpar->codec_tag = 0;
          }
- 
+
 +        // copy side data
 +        for (j = 0; j < vs->streams[i]->codecpar->nb_coded_side_data; j++) {
 +            const AVPacketSideData *sd_src = &vs->streams[i]->codecpar->coded_side_data[j];
@@ -64,10 +64,18 @@ Index: FFmpeg/libavformat/mpegtsenc.c
  #include "libavutil/intreadwrite.h"
  #include "libavutil/mathematics.h"
  #include "libavutil/opt.h"
-@@ -350,6 +351,52 @@ static void put_registration_descriptor(
+@@ -40,6 +41,7 @@
+ #include "internal.h"
+ #include "mpegts.h"
+ #include "mux.h"
++#include "dovi_isom.h"
+
+ #define PCR_TIME_BASE 27000000
+
+@@ -350,6 +352,52 @@ static void put_registration_descriptor(
      *q_ptr = q;
  }
- 
+
 +static int put_dovi_descriptor(AVFormatContext *s, uint8_t **q_ptr,
 +                               const AVDOVIDecoderConfigurationRecord *dovi)
 +{
@@ -117,7 +125,7 @@ Index: FFmpeg/libavformat/mpegtsenc.c
  static int get_dvb_stream_type(AVFormatContext *s, AVStream *st)
  {
      MpegTSWrite *ts = s->priv_data;
-@@ -803,7 +850,65 @@ static int mpegts_write_pmt(AVFormatCont
+@@ -803,7 +851,18 @@ static int mpegts_write_pmt(AVFormatCont
              } else if (stream_type == STREAM_TYPE_VIDEO_VC1) {
                  put_registration_descriptor(&q, MKTAG('V', 'C', '-', '1'));
              } else if (stream_type == STREAM_TYPE_VIDEO_HEVC && s->strict_std_compliance <= FF_COMPLIANCE_NORMAL) {
@@ -125,57 +133,10 @@ Index: FFmpeg/libavformat/mpegtsenc.c
 +                const AVPacketSideData *sd = av_packet_side_data_get(st->codecpar->coded_side_data,
 +                                                                     st->codecpar->nb_coded_side_data, AV_PKT_DATA_DOVI_CONF);
 +                const AVDOVIDecoderConfigurationRecord *dovi = sd ? (const AVDOVIDecoderConfigurationRecord *)sd->data : NULL;
-+                int is_dovi_config_valid = dovi != NULL;
-+
-+                if (dovi) {
-+                    switch (dovi->dv_level) {
-+                        case 4:
-+                        case 5:
-+                        case 7:
-+                        case 8:
-+                            if (st->codecpar->codec_id != AV_CODEC_ID_HEVC) {
-+                                is_dovi_config_valid = 0;
-+                            }
-+                            break;
-+                        default:
-+                            is_dovi_config_valid = 0;
-+                            break;
-+                    }
-+
-+                    switch (dovi->dv_bl_signal_compatibility_id) {
-+                        case 1:
-+                        case 6:
-+                            if (st->codecpar->color_trc != AVCOL_TRC_SMPTE2084 ||
-+                                st->codecpar->color_primaries != AVCOL_PRI_BT2020 ||
-+                                st->codecpar->color_space != AVCOL_SPC_BT2020_NCL ||
-+                                st->codecpar->color_range != AVCOL_RANGE_MPEG ||
-+                                st->codecpar->format != AV_PIX_FMT_YUV420P10) {
-+                                is_dovi_config_valid = 0;
-+                            }
-+                            break;
-+                        case 2:
-+                            // Don't check range or color info for SDR base layer as a lot of them will set to unspecified
-+                            // And a lot of players assumes unspecified as BT709 in tv range
-+                            if (st->codecpar->format != AV_PIX_FMT_YUV420P) {
-+                                is_dovi_config_valid = 0;
-+                            }
-+                            break;
-+                        case 4:
-+                            if (st->codecpar->color_trc != AVCOL_TRC_ARIB_STD_B67 ||
-+                                st->codecpar->color_primaries != AVCOL_PRI_BT2020 ||
-+                                st->codecpar->color_space != AVCOL_SPC_BT2020_NCL ||
-+                                st->codecpar->color_range != AVCOL_RANGE_MPEG ||
-+                                st->codecpar->format != AV_PIX_FMT_YUV420P10) {
-+                                is_dovi_config_valid = 0;
-+                            }
-+                            break;
-+                        default:
-+                            // others are reserved value, don't check
-+                            break;
-+                    }
-+                }
-+
-+                if (dovi && is_dovi_config_valid && dovi->bl_present_flag && s->strict_std_compliance <= FF_COMPLIANCE_UNOFFICIAL) {
++                if (dovi &&
++                    !ff_isom_validate_dovi_config(dovi, st->codecpar, MKTAG('d', 'v', 'h', '1')) && // always assume tag is valid
++                    dovi->bl_present_flag &&
++                    s->strict_std_compliance <= FF_COMPLIANCE_UNOFFICIAL) {
 +                    if (put_dovi_descriptor(s, &q, dovi) < 0)
 +                        break;
 +                } else {
@@ -184,3 +145,135 @@ Index: FFmpeg/libavformat/mpegtsenc.c
              } else if (stream_type == STREAM_TYPE_VIDEO_CAVS || stream_type == STREAM_TYPE_VIDEO_AVS2 ||
                         stream_type == STREAM_TYPE_VIDEO_AVS3) {
                  put_registration_descriptor(&q, MKTAG('A', 'V', 'S', 'V'));
+Index: FFmpeg/libavformat/dovi_isom.c
+===================================================================
+--- FFmpeg.orig/libavformat/dovi_isom.c
++++ FFmpeg/libavformat/dovi_isom.c
+@@ -116,3 +116,74 @@ void ff_isom_put_dvcc_dvvc(void *logctx,
+            dovi->bl_present_flag,
+            dovi->dv_bl_signal_compatibility_id);
+ }
++
++int ff_isom_validate_dovi_config(const AVDOVIDecoderConfigurationRecord *dovi,
++                                 const AVCodecParameters *codec_par, int codec_tag)
++{
++    if (!dovi || !codec_par)
++        return AVERROR(ENOMEM);
++
++    switch (dovi->dv_profile) {
++    case 4:
++    case 5:
++    case 7:
++    case 8:
++    case 20:
++        if (codec_par->codec_id != AV_CODEC_ID_HEVC)
++            return AVERROR(EINVAL);
++        break;
++    case 9:
++        if (codec_par->codec_id != AV_CODEC_ID_H264)
++            return AVERROR(EINVAL);
++        break;
++    case 10:
++        if (codec_par->codec_id != AV_CODEC_ID_AV1)
++            return AVERROR(EINVAL);
++        break;
++    default:
++        return AVERROR(EINVAL);
++    }
++
++    switch (dovi->dv_bl_signal_compatibility_id) {
++    case 0:
++        // Although the IPT-PQ-C2 Dolby Vision uses is always full range, some videos tag that wrong in the container
++        // To allow stream copy for such videos, don't check for the color range
++        if (codec_par->format != AV_PIX_FMT_YUV420P10 ||
++            (codec_tag && !(codec_tag == MKTAG('d', 'v', 'h', '1') ||
++                            codec_tag == MKTAG('d', 'v', 'h', 'e') ||
++                            codec_tag == MKTAG('d', 'a', 'v', '1')))) {
++            return AVERROR(EINVAL);
++        }
++        break;
++    case 1: // HDR10
++    case 6:
++        if (codec_par->color_trc != AVCOL_TRC_SMPTE2084 ||
++            codec_par->color_primaries != AVCOL_PRI_BT2020 ||
++            codec_par->color_space != AVCOL_SPC_BT2020_NCL ||
++            codec_par->color_range != AVCOL_RANGE_MPEG ||
++            codec_par->format != AV_PIX_FMT_YUV420P10) {
++            return AVERROR(EINVAL);
++        }
++        break;
++    case 2: // SDR
++        // Don't check range or color info for SDR base layer as a lot of them will set to unspecified
++        // And a lot of players assumes unspecified as BT709 in tv range
++        if (codec_par->format != AV_PIX_FMT_YUV420P)
++            return AVERROR(EINVAL);
++        break;
++    case 4: // HLG
++        if (codec_par->color_trc != AVCOL_TRC_ARIB_STD_B67 ||
++            codec_par->color_primaries != AVCOL_PRI_BT2020 ||
++            codec_par->color_space != AVCOL_SPC_BT2020_NCL ||
++            codec_par->color_range != AVCOL_RANGE_MPEG ||
++            codec_par->format != AV_PIX_FMT_YUV420P10) {
++            return AVERROR(EINVAL);
++        }
++        break;
++    default:
++        // others are reserved value, don't check
++        break;
++    }
++
++    return 0;
++}
+Index: FFmpeg/libavformat/dovi_isom.h
+===================================================================
+--- FFmpeg.orig/libavformat/dovi_isom.h
++++ FFmpeg/libavformat/dovi_isom.h
+@@ -33,4 +33,12 @@ int ff_isom_parse_dvcc_dvvc(void *logctx
+ void ff_isom_put_dvcc_dvvc(void *logctx, uint8_t out[ISOM_DVCC_DVVC_SIZE],
+                            const AVDOVIDecoderConfigurationRecord *dovi);
+
++/*
++ * Check if the AVDOVIDecoderConfigurationRecord is spec-compliant for current codec parameters
++ * Used by muxers to determine if the configuration record should be copied into the container
++ * Returns 0 when the AVDOVIDecoderConfigurationRecord is safe to copy, otherwise return an AVERROR
++ */
++int ff_isom_validate_dovi_config(const AVDOVIDecoderConfigurationRecord *dovi,
++                                 const AVCodecParameters *codec_par, int codec_tag);
++
+ #endif /* AVFORMAT_DOVI_ISOM_H */
+ Index: FFmpeg/libavformat/movenc.c
+===================================================================
+--- FFmpeg.orig/libavformat/movenc.c
++++ FFmpeg/libavformat/movenc.c
+@@ -2538,8 +2538,9 @@ static int mov_write_video_tag(AVFormatC
+             mov_write_st3d_tag(s, pb, (AVStereo3D*)stereo_3d->data);
+         if (spherical_mapping)
+             mov_write_sv3d_tag(mov->fc, pb, (AVSphericalMapping*)spherical_mapping->data);
+-        if (dovi)
++        if (dovi && !ff_isom_validate_dovi_config((AVDOVIDecoderConfigurationRecord *)dovi->data, track->par, track->tag)) {
+             mov_write_dvcc_dvvc_tag(s, pb, (AVDOVIDecoderConfigurationRecord *)dovi->data);
++        }
+     }
+
+     if (track->par->sample_aspect_ratio.den && track->par->sample_aspect_ratio.num) {
+Index: FFmpeg/libavformat/matroskaenc.c
+===================================================================
+--- FFmpeg.orig/libavformat/matroskaenc.c
++++ FFmpeg/libavformat/matroskaenc.c
+@@ -1718,13 +1718,14 @@ static void mkv_write_blockadditionmappi
+         return;
+
+     dovi = (const AVDOVIDecoderConfigurationRecord *)sd->data;
+-    if (dovi->dv_profile <= 10) {
++    if (dovi->dv_profile <= 10 &&
++        !ff_isom_validate_dovi_config(dovi, par, (int)par->codec_tag)) {
+         ebml_master mapping;
+         uint8_t buf[ISOM_DVCC_DVVC_SIZE];
+         uint32_t type;
+
+         uint64_t expected_size = (2 + 1 + (sizeof(DVCC_DVVC_BLOCK_TYPE_NAME) - 1))
+-                                + (2 + 1 + 4) + (2 + 1 + ISOM_DVCC_DVVC_SIZE);
++                                 + (2 + 1 + 4) + (2 + 1 + ISOM_DVCC_DVVC_SIZE);
+
+         if (dovi->dv_profile > 7) {
+             type = MATROSKA_BLOCK_ADD_ID_TYPE_DVVC;
