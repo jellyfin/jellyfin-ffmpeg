@@ -19,8 +19,7 @@ RUN \
 
 ENV CARGO_HOME="/opt/cargo" RUSTUP_HOME="/opt/rustup" PATH="/opt/cargo/bin:${PATH}"
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --no-modify-path
-RUN rustup install 1.81.0
-RUN cargo +1.81.0 install cargo-c && rm -rf "${CARGO_HOME}"/registry "${CARGO_HOME}"/git
+RUN cargo install --locked cargo-c && rm -rf "${CARGO_HOME}"/registry "${CARGO_HOME}"/git
 
 RUN --mount=src=.,dst=/input \
     for s in /input/*.sh; do cp $s /usr/bin/$(echo $s | sed -e 's|.*/||' -e 's/\.sh$//'); done
