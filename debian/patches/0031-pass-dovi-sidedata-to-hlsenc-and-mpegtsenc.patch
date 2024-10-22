@@ -36,7 +36,18 @@ Index: FFmpeg/libavformat/movenc.c
 ===================================================================
 --- FFmpeg.orig/libavformat/movenc.c
 +++ FFmpeg/libavformat/movenc.c
-@@ -8128,6 +8128,7 @@ static const AVCodecTag codec_mp4_tags[]
+@@ -2538,8 +2538,9 @@ static int mov_write_video_tag(AVFormatC
+             mov_write_st3d_tag(s, pb, (AVStereo3D*)stereo_3d->data);
+         if (spherical_mapping)
+             mov_write_sv3d_tag(mov->fc, pb, (AVSphericalMapping*)spherical_mapping->data);
+-        if (dovi)
++        if (dovi && !ff_isom_validate_dovi_config((AVDOVIDecoderConfigurationRecord *)dovi->data, track->par, track->tag)) {
+             mov_write_dvcc_dvvc_tag(s, pb, (AVDOVIDecoderConfigurationRecord *)dovi->data);
++        }
+     }
+
+     if (track->par->sample_aspect_ratio.den && track->par->sample_aspect_ratio.num) {
+@@ -8128,6 +8129,7 @@ static const AVCodecTag codec_mp4_tags[]
      { AV_CODEC_ID_HEVC,            MKTAG('h', 'e', 'v', '1') },
      { AV_CODEC_ID_HEVC,            MKTAG('h', 'v', 'c', '1') },
      { AV_CODEC_ID_HEVC,            MKTAG('d', 'v', 'h', '1') },
@@ -44,7 +55,7 @@ Index: FFmpeg/libavformat/movenc.c
      { AV_CODEC_ID_VVC,             MKTAG('v', 'v', 'c', '1') },
      { AV_CODEC_ID_VVC,             MKTAG('v', 'v', 'i', '1') },
      { AV_CODEC_ID_EVC,             MKTAG('e', 'v', 'c', '1') },
-@@ -8141,6 +8142,7 @@ static const AVCodecTag codec_mp4_tags[]
+@@ -8141,6 +8143,7 @@ static const AVCodecTag codec_mp4_tags[]
      { AV_CODEC_ID_TSCC2,           MKTAG('m', 'p', '4', 'v') },
      { AV_CODEC_ID_VP9,             MKTAG('v', 'p', '0', '9') },
      { AV_CODEC_ID_AV1,             MKTAG('a', 'v', '0', '1') },
@@ -134,9 +145,9 @@ Index: FFmpeg/libavformat/mpegtsenc.c
 +                                                                     st->codecpar->nb_coded_side_data, AV_PKT_DATA_DOVI_CONF);
 +                const AVDOVIDecoderConfigurationRecord *dovi = sd ? (const AVDOVIDecoderConfigurationRecord *)sd->data : NULL;
 +                if (dovi &&
-+                    !ff_isom_validate_dovi_config(dovi, st->codecpar, MKTAG('d', 'v', 'h', '1')) && // always assume tag is valid
 +                    dovi->bl_present_flag &&
-+                    s->strict_std_compliance <= FF_COMPLIANCE_UNOFFICIAL) {
++                    s->strict_std_compliance <= FF_COMPLIANCE_UNOFFICIAL &&
++                    !ff_isom_validate_dovi_config(dovi, st->codecpar, MKTAG('d', 'v', 'h', '1'))) { // always assume tag is valid
 +                    if (put_dovi_descriptor(s, &q, dovi) < 0)
 +                        break;
 +                } else {
@@ -241,26 +252,11 @@ Index: FFmpeg/libavformat/dovi_isom.h
 +                                 const AVCodecParameters *codec_par, int codec_tag);
 +
  #endif /* AVFORMAT_DOVI_ISOM_H */
- Index: FFmpeg/libavformat/movenc.c
-===================================================================
---- FFmpeg.orig/libavformat/movenc.c
-+++ FFmpeg/libavformat/movenc.c
-@@ -2538,8 +2538,9 @@ static int mov_write_video_tag(AVFormatC
-             mov_write_st3d_tag(s, pb, (AVStereo3D*)stereo_3d->data);
-         if (spherical_mapping)
-             mov_write_sv3d_tag(mov->fc, pb, (AVSphericalMapping*)spherical_mapping->data);
--        if (dovi)
-+        if (dovi && !ff_isom_validate_dovi_config((AVDOVIDecoderConfigurationRecord *)dovi->data, track->par, track->tag)) {
-             mov_write_dvcc_dvvc_tag(s, pb, (AVDOVIDecoderConfigurationRecord *)dovi->data);
-+        }
-     }
-
-     if (track->par->sample_aspect_ratio.den && track->par->sample_aspect_ratio.num) {
 Index: FFmpeg/libavformat/matroskaenc.c
 ===================================================================
 --- FFmpeg.orig/libavformat/matroskaenc.c
 +++ FFmpeg/libavformat/matroskaenc.c
-@@ -1718,13 +1718,14 @@ static void mkv_write_blockadditionmappi
+@@ -1718,7 +1718,8 @@ static void mkv_write_blockadditionmappi
          return;
 
      dovi = (const AVDOVIDecoderConfigurationRecord *)sd->data;
@@ -270,10 +266,3 @@ Index: FFmpeg/libavformat/matroskaenc.c
          ebml_master mapping;
          uint8_t buf[ISOM_DVCC_DVVC_SIZE];
          uint32_t type;
-
-         uint64_t expected_size = (2 + 1 + (sizeof(DVCC_DVVC_BLOCK_TYPE_NAME) - 1))
--                                + (2 + 1 + 4) + (2 + 1 + ISOM_DVCC_DVVC_SIZE);
-+                                 + (2 + 1 + 4) + (2 + 1 + ISOM_DVCC_DVVC_SIZE);
-
-         if (dovi->dv_profile > 7) {
-             type = MATROSKA_BLOCK_ADD_ID_TYPE_DVVC;
