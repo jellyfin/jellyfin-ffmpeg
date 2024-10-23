@@ -76,3 +76,4 @@
 0076-alway-set-videotoolboxenc-pixel-buffer-info.patch
 0077-add-remove-dovi-hdr10plus-bsf.patch
 0078-fix-atenc-layout-samplerate.patch
+0079-videotoolbox-remove-opengl-compatability.patch
