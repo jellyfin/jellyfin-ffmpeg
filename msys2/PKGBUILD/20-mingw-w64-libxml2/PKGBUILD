@@ -35,8 +35,7 @@ sha256sums=('59912db536ab56a3996489ea0299768c7bcffe57169f0235e7f962a91f483590'
             '0391a4b267ba7251ca74ff2e98bf4c0332a14b618e8147a9341ec5617e45d9d9'
             '278b4531da3d2aabda080c412c5122b471202dd6df67768b38bb0c31c7a0e508'
             '06c0afaf1b8dec10d6f23dec983026cddf992528ffbc1cc50418302fabf9dee0'
-            'b4e3cf5faf0ba1100e2ae6b632dc429c0b25c8caca327e0888b41341d6ddbf9a'
-            'SKIP')
+            'b4e3cf5faf0ba1100e2ae6b632dc429c0b25c8caca327e0888b41341d6ddbf9a')
 
 export FF_MINGW_PREFIX="${MINGW_PREFIX}/ffbuild"
 
