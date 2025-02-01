@@ -49,6 +49,8 @@ popd
 # LIBXML2
 git clone --depth=1 https://github.com/GNOME/libxml2.git
 pushd libxml2
+# Fallback to internal entropy when system native method failed
+git apply ${SOURCE_DIR}/builder/patches/libxml2/0000-fallback-to-internal-entropy.patch
 ./autogen.sh \
     --prefix=${FF_DEPS_PREFIX} \
     --host=${FF_TOOLCHAIN} \

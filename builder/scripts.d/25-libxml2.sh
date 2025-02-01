@@ -7,12 +7,21 @@ ffbuild_enabled() {
     return 0
 }
 
+ffbuild_dockerstage() {
+    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/libxml2,dst=/patches run_stage /stage.sh"
+}
+
 ffbuild_dockerbuild() {
     # libxml2 is macOS built-in
     [[ $TARGET == mac* ]] && return 0
 
     git-mini-clone "$SCRIPT_REPO" "$SCRIPT_COMMIT" libxml2
     cd libxml2
+
+    for patch in /patches/*.patch; do
+        echo "Applying $patch"
+        patch -p1 < "$patch"
+    done
 
     local myconf=(
         --prefix="$FFBUILD_PREFIX"
