@@ -8,7 +8,7 @@ ffbuild_enabled() {
 }
 
 ffbuild_dockerstage() {
-    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/libxml2,dst=/patches run_stage /stage.sh"
+    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=patches/libxml2/master,dst=/patches run_stage /stage.sh"
 }
 
 ffbuild_dockerbuild() {

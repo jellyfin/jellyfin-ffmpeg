@@ -76,7 +76,7 @@ prepare_extra_common() {
     pushd libxml2
     if [[ $(lsb_release -c -s) != "focal" ]]; then
         # Fallback to internal entropy when system native method failed
-        git apply ${SOURCE_DIR}/builder/patches/libxml2/0000-fallback-to-internal-entropy.patch
+        git apply ${SOURCE_DIR}/builder/patches/libxml2/v2.13.5/0001-dict-Fallback-to-internal-entropy.patch
     fi
     ./autogen.sh \
         ${CROSS_OPT} \

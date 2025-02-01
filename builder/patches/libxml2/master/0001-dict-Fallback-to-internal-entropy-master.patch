@@ -1,0 +1,73 @@
+From fafdb8d58fd001bd167608e9b23d1a3a1f252281 Mon Sep 17 00:00:00 2001
+From: nyanmisaka <nst799610810@gmail.com>
+Date: Sat, 1 Feb 2025 15:08:12 +0800
+Subject: [PATCH] dict: Fallback to internal entropy
+
+Signed-off-by: nyanmisaka <nst799610810@gmail.com>
+---
+ dict.c | 42 +++++++++++++++++++++++++++---------------
+ 1 file changed, 27 insertions(+), 15 deletions(-)
+
+diff --git a/dict.c b/dict.c
+index ccd8b54..f4010e4 100644
+--- a/dict.c
++++ b/dict.c
+@@ -957,28 +957,40 @@ xmlInitRandom(void) {
+         status = BCryptGenRandom(NULL, (unsigned char *) globalRngState,
+                                  sizeof(globalRngState),
+                                  BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+-        if (!BCRYPT_SUCCESS(status))
+-            xmlAbort("libxml2: BCryptGenRandom failed with error code %lu\n",
+-                     GetLastError());
++        if (!BCRYPT_SUCCESS(status)) {
++            xmlPrintErrorMessage("libxml2: BCryptGenRandom failed with "
++                                 "error code %lu, using internal entropy\n",
++                                 GetLastError());
++            goto internal_entropy;
++        }
++        return;
+ #elif HAVE_DECL_GETENTROPY
+         while (1) {
+             if (getentropy(globalRngState, sizeof(globalRngState)) == 0)
+                 break;
+ 
+-            if (errno != EINTR)
+-                xmlAbort("libxml2: getentropy failed with error code %d\n",
+-                         errno);
++            if (errno != EINTR) {
++                xmlPrintErrorMessage("libxml2: getentropy failed with "
++                                     "error code %d, using internal entropy\n",
++                                     errno);
++                goto internal_entropy;
++            }
+         }
+-#else
+-        int var;
+-
+-        globalRngState[0] =
+-                (unsigned) time(NULL) ^
+-                HASH_ROL((unsigned) ((size_t) &xmlInitRandom & 0xFFFFFFFF), 8);
+-        globalRngState[1] =
+-                HASH_ROL((unsigned) ((size_t) &xmlRngMutex & 0xFFFFFFFF), 16) ^
+-                HASH_ROL((unsigned) ((size_t) &var & 0xFFFFFFFF), 24);
++        return;
+ #endif
++internal_entropy:
++        {
++            int var;
++
++            memset(globalRngState, 0, sizeof(globalRngState));
++
++            globalRngState[0] =
++                    (unsigned) time(NULL) ^
++                    HASH_ROL((unsigned) ((size_t) &xmlInitRandom & 0xFFFFFFFF), 8);
++            globalRngState[1] =
++                    HASH_ROL((unsigned) ((size_t) &xmlRngMutex & 0xFFFFFFFF), 16) ^
++                    HASH_ROL((unsigned) ((size_t) &var & 0xFFFFFFFF), 24);
++        }
+     }
+ }
+ 
+-- 
+2.34.1
+
