@@ -47,7 +47,7 @@ popd
 popd
 
 # LIBXML2
-git clone --depth=1 https://github.com/GNOME/libxml2.git
+git clone https://github.com/GNOME/libxml2.git
 pushd libxml2
 libxml2_ver="v2.13.5"
 git checkout ${libxml2_ver}
