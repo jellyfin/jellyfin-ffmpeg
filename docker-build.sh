@@ -513,7 +513,7 @@ prepare_extra_amd64() {
     popd
 
     # SHADERC
-    shaderc_ver="v2023.7"
+    shaderc_ver="v2024.4"
     if [[ ${GCC_VER} -lt 9 ]]; then
         shaderc_ver="v2023.5"
     fi
@@ -542,16 +542,19 @@ prepare_extra_amd64() {
 
     # MESA
     # Minimal libs for AMD VAAPI, AMD RADV and Intel ANV
-    if [[ ${LLVM_VER} -ge 11 ]]; then
-        mesa_branch="llvm15"
-        mesa_codecs="all"
-        if [[ ${LLVM_VER} -lt 15 ]]; then
-            mesa_branch="llvm11"
-            mesa_codecs="vc1dec,h264dec,h264enc,h265dec,h265enc"
+    if [[ ${LLVM_VER} -ge 15 ]]; then
+        if [[ ${LLVMSPIRVLIB_VER} -ge 15 ]]; then
+            # Intel ANV requires llvmspirvlib >= 15
+            mesa_vk_drv="amd,intel"
+            mesa_llvm_clc="enabled"
+            apt-get install -y {llvm-,libllvmspirvlib-,libclc-,libclang-,libclang-cpp}${LLVMSPIRVLIB_VER}-dev libudev-dev
+        else
+            mesa_vk_drv="amd"
+            mesa_llvm_clc="disabled"
+            apt-get install -y libudev-dev
         fi
-        apt-get install -y llvm-${LLVM_VER}-dev libudev-dev
         pushd ${SOURCE_DIR}
-        git clone -b ${mesa_branch} --depth=1 https://gitlab.freedesktop.org/nyanmisaka/mesa.git
+        git clone -b mesa-25.0.0 --depth=1 https://gitlab.freedesktop.org/mesa/mesa.git
         meson setup mesa mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
@@ -561,34 +564,36 @@ prepare_extra_amd64() {
             -Db_lto=false \
             -Dplatforms=x11 \
             -Dgallium-drivers=radeonsi \
-            -Dvulkan-drivers=amd,intel \
+            -Dvulkan-drivers=${mesa_vk_drv} \
             -Dvulkan-layers=device-select,overlay \
-            -Ddri3=enabled \
             -Degl=disabled \
-            -Dgallium-{extra-hud,nine}=false \
-            -Dgallium-{omx,vdpau,xa,opencl}=disabled \
+            -Dgallium-{extra-hud,nine,rusticl}=false \
+            -Dgallium-{vdpau,xa,opencl}=disabled \
             -Dgallium-va=enabled \
-            -Dvideo-codecs=${mesa_codecs} \
+            -Dvideo-codecs=all \
             -Dgbm=disabled \
             -Dgles1=disabled \
             -Dgles2=disabled \
             -Dopengl=false \
-            -Dglvnd=false \
+            -Dglvnd=disabled \
             -Dglx=disabled \
             -Dlibunwind=disabled \
-            -Dllvm=enabled \
+            -Dllvm=${mesa_llvm_clc} \
+            -Damd-use-llvm=false \
             -Dlmsensors=disabled \
             -Dosmesa=false \
             -Dshared-glapi=disabled \
             -Dvalgrind=disabled \
             -Dtools=[] \
             -Dzstd=enabled \
-            -Dmicrosoft-clc=disabled
+            -Dmicrosoft-clc=disabled \
+            -Dintel-elk=false
         meson configure mesa_build
         ninja -j$(nproc) -C mesa_build install
         cp -a ${TARGET_DIR}/lib/libvulkan_*.so ${SOURCE_DIR}/mesa
         cp -a ${TARGET_DIR}/lib/libVkLayer_MESA*.so ${SOURCE_DIR}/mesa
-        cp -a ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
+        # radeonsi_drv_video.so -> libgallium_drv_video.so is soft link
+        cp ${TARGET_DIR}/lib/dri/radeonsi_drv_video.so ${SOURCE_DIR}/mesa
         echo "mesa/lib*.so usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
         echo "mesa/radeonsi_drv_video.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
         cp ${TARGET_DIR}/share/drirc.d/*.conf ${SOURCE_DIR}/mesa

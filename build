@@ -20,28 +20,33 @@ cli_release="${1}"
 case ${cli_release} in
     'bullseye')
         release="debian:bullseye"
-        gcc_version="10"
-        llvm_version="16"
+        gcc_ver="10"
+        llvm_ver="16"
+        llvmspirvlib_ver="11"
     ;;
     'bookworm')
         release="debian:bookworm"
-        gcc_version="12"
-        llvm_version="16"
+        gcc_ver="12"
+        llvm_ver="19"
+        llvmspirvlib_ver="15"
     ;;
     'focal')
         release="ubuntu:focal"
-        gcc_version="9"
-        llvm_version="12"
+        gcc_ver="9"
+        llvm_ver="18"
+        llvmspirvlib_ver="10"
     ;;
     'jammy')
         release="ubuntu:jammy"
-        gcc_version="11"
-        llvm_version="15"
+        gcc_ver="11"
+        llvm_ver="15"
+        llvmspirvlib_ver="15"
     ;;
     'noble')
         release="ubuntu:noble"
-        gcc_version="13"
-        llvm_version="17"
+        gcc_ver="13"
+        llvm_ver="19"
+        llvmspirvlib_ver="18"
     ;;
     *)
         echo "Invalid release."
@@ -95,7 +100,7 @@ cleanup() {
 trap cleanup EXIT INT
 
 # Generate Dockerfile
-make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_version} LLVM_VER=${llvm_version} ARCH=${arch}
+make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_ver} LLVM_VER=${llvm_ver} LLVMSPIRVLIB_VER=${llvmspirvlib_ver} ARCH=${arch}
 # Set up the build environment docker image
 ${container_cmd} build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}

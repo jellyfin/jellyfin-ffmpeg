@@ -10,6 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV ARCH=BUILD_ARCHITECTURE
 ENV GCC_VER=GCC_RELEASE_VERSION
 ENV LLVM_VER=LLVM_RELEASE_VERSION
+ENV LLVMSPIRVLIB_VER=LLVMSPIRVLIB_RELEASE_VERSION
 ENV SOURCE_DIR=/ffmpeg
 ENV ARTIFACT_DIR=/dist
 ENV TARGET_DIR=/usr/lib/jellyfin-ffmpeg
@@ -38,7 +39,7 @@ RUN apt-get update \
 
 # Install newer tools from pip3
 RUN pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") --ignore-installed pip \
- && pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") meson cmake mako jinja2
+ && pip3 install $(pip3 help install | grep -o "\-\-break-system-packages") meson cmake mako jinja2 pyyaml
 
 # Avoids timeouts when using git and disable the detachedHead advice
 RUN git config --global http.postbuffer 524288000 \
