@@ -86,3 +86,10 @@
 0086-fix-display-matrix-not-removed-after-autorotation.patch
 0087-unbreak-build-with-latest-svtav1-3-0.patch
 0088-backport-fix-for-missing-h264-sei-build-deps.patch
+0089-add-hwdevice-type-for-v4l2-request-api.patch
+0090-add-common-v4l2-request-api-code.patch
+0091-probe-for-a-capable-media-and-video-device.patch
+0092-add-common-decode-support-for-hwaccels.patch
+0093-add-v4l2-request-api-mpeg2-hwaccel.patch
+0094-add-ref_pic_marking-and-pic_order_cnt-bit_size-to-slice-context.patch
+0095-add-v4l2-request-api-h264-hwaccel.patch
