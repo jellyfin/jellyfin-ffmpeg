@@ -374,6 +374,8 @@ prepare_extra_amd64() {
     popd
 
     # INTEL-VAAPI-DRIVER
+    # intel-gpu-tools: for gen4asm shader compilers
+    yes | apt-get install -y intel-gpu-tools
     pushd ${SOURCE_DIR}
     git clone --depth=1 https://github.com/intel/intel-vaapi-driver.git
     pushd intel-vaapi-driver
@@ -385,6 +387,7 @@ prepare_extra_amd64() {
     echo "intel/dri/i965*.so usr/lib/jellyfin-ffmpeg/lib/dri" >> ${DPKG_INSTALL_LIST}
     popd
     popd
+    apt-get remove -y --auto-remove intel-gpu-tools
 
     # GMMLIB
     pushd ${SOURCE_DIR}
