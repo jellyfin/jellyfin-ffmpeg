@@ -62,6 +62,11 @@ case ${cli_arch} in
     ;;
     'arm64')
         arch="arm64"
+        cross=true
+    ;;
+    'arm64-native')
+        arch="arm64"
+        cross=false
     ;;
     *)
         echo "Invalid architecture."
@@ -97,7 +102,7 @@ cleanup() {
 trap cleanup EXIT INT
 
 # Generate Dockerfile
-make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_ver} LLVM_VER=${llvm_ver} LLVMSPIRVLIB_VER=${llvmspirvlib_ver} ARCH=${arch}
+make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_ver} LLVM_VER=${llvm_ver} LLVMSPIRVLIB_VER=${llvmspirvlib_ver} ARCH=${arch} CROSS=${cross}
 # Set up the build environment docker image
 ${container_cmd} build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}

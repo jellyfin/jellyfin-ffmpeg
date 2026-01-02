@@ -61,20 +61,23 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-nvdec \
 	--enable-nvenc \
 
-CONFIG_ARM_COMMON := --toolchain=hardened \
-	--enable-cross-compile \
-	--enable-rkmpp \
+CONFIG_ARM64_COMMON := --enable-rkmpp \
 	--enable-rkrga \
-
-CONFIG_ARM64 := --arch=arm64 \
-	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
-	${CONFIG_ARM_COMMON} \
 	--enable-ffnvcodec \
 	--enable-cuda \
 	--enable-cuda-llvm \
 	--enable-cuvid \
 	--enable-nvdec \
 	--enable-nvenc \
+
+CONFIG_ARM64 := --arch=arm64 \
+	--cross-prefix=/usr/bin/aarch64-linux-gnu- \
+	--toolchain=hardened \
+	--enable-cross-compile \
+	${CONFIG_ARM64_COMMON} \
+
+CONFIG_ARM64_NATIVE := --arch=arm64 \
+	${CONFIG_ARM64_COMMON} \
 
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
@@ -83,8 +86,13 @@ ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
 	CONFIG += $(CONFIG_x86)
 endif
 ifeq ($(BUILD_ARCH),aarch64-linux-gnu)
-	# Cross-building ARM64 on AMD64
-	CONFIG += $(CONFIG_ARM64)
+    ifeq ($(HOST_ARCH),aarch64)
+        # Building ARM64 natively
+        CONFIG += $(CONFIG_ARM64_NATIVE)
+    else
+        # Cross-building ARM64 on AMD64
+        CONFIG += $(CONFIG_ARM64)
+    endif
 endif
 
 %:

@@ -19,10 +19,17 @@ prepare_extra_common() {
             MESON_CROSS_OPT=""
         ;;
         'arm64')
-            CROSS_PREFIX_OPT="aarch64-linux-gnu-"
-            CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
-            CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
-            MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
+            if [ "${CROSS}" == true ]; then
+                CROSS_PREFIX_OPT="aarch64-linux-gnu-"
+                CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
+                CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
+                MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
+            else
+                CROSS_PREFIX_OPT=""
+                CROSS_OPT=""
+                CMAKE_TOOLCHAIN_OPT=""
+                MESON_CROSS_OPT=""
+            fi
         ;;
     esac
 
@@ -730,15 +737,25 @@ case ${ARCH} in
         BUILD_ARCH_OPT=""
     ;;
     'arm64')
-        prepare_crossbuild_env_arm64
-        ln -s /usr/bin/aarch64-linux-gnu-gcc-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc
-        ln -s /usr/bin/aarch64-linux-gnu-gcc-ar-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc-ar
-        ln -s /usr/bin/aarch64-linux-gnu-g++-${GCC_VER} /usr/bin/aarch64-linux-gnu-g++
+        if [ "${CROSS}" == true ]; then
+            prepare_crossbuild_env_arm64
+            ln -s /usr/bin/aarch64-linux-gnu-gcc-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc
+            ln -s /usr/bin/aarch64-linux-gnu-gcc-ar-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc-ar
+            ln -s /usr/bin/aarch64-linux-gnu-g++-${GCC_VER} /usr/bin/aarch64-linux-gnu-g++
+        else
+            apt-get update && apt-get dist-upgrade -y
+        fi
         prepare_extra_common
         prepare_extra_arm
-        CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
-        DEP_ARCH_OPT="--host-arch arm64"
-        BUILD_ARCH_OPT="-aarm64"
+        if [ "${CROSS}" == true ]; then
+            CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
+            DEP_ARCH_OPT="--host-arch arm64"
+            BUILD_ARCH_OPT="-aarm64"
+        else
+            CONFIG_SITE=""
+            DEP_ARCH_OPT=""
+            BUILD_ARCH_OPT=""
+        fi
     ;;
 esac
 
