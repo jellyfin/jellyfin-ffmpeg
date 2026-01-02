@@ -61,9 +61,7 @@ CONFIG_x86 := --arch=amd64 \
 	--enable-nvdec \
 	--enable-nvenc \
 
-CONFIG_ARM64_COMMON := --enable-rkmpp \
-	--enable-rkrga \
-	--enable-ffnvcodec \
+CONFIG_ARM64_COMMON := --enable-ffnvcodec \
 	--enable-cuda \
 	--enable-cuda-llvm \
 	--enable-cuvid \
@@ -75,11 +73,17 @@ CONFIG_ARM64 := --arch=arm64 \
 	--toolchain=hardened \
 	--enable-cross-compile \
 	${CONFIG_ARM64_COMMON} \
+	--enable-rkmpp \
+	--enable-rkrga \
 
 CONFIG_ARM64_NATIVE := --arch=arm64 \
 	${CONFIG_ARM64_COMMON} \
 
+CONFIG_JETSON := ${CONFIG_ARM64_NATIVE} \
+	--enable-nvmpi \
+
 HOST_ARCH := $(shell arch)
+IS_JETSON := $(wildcard /sys/bus/platform/drivers/tegra-fuse)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
 ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
 	# Native amd64 build
@@ -87,8 +91,16 @@ ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
 endif
 ifeq ($(BUILD_ARCH),aarch64-linux-gnu)
     ifeq ($(HOST_ARCH),aarch64)
-        # Building ARM64 natively
-        CONFIG += $(CONFIG_ARM64_NATIVE)
+        ifeq ($(IS_JETSON),)
+            # Building ARM64 natively
+            CONFIG += $(CONFIG_ARM64_NATIVE)
+         else
+            # Building ARM64 natively on jetson board
+            CONFIG += $(CONFIG_JETSON)
+            # l4t containers don't have nvidia apt packages installed, the libraries are mounted by nvidia's container runtime
+            SHLIBDEPS_ARGS := -X libnvmpi.so.1.0.0
+            PACKAGE_VERSION := "$(ORIG_VERSION)-$(VERSION_SUFFIX)-jetson"
+         endif
     else
         # Cross-building ARM64 on AMD64
         CONFIG += $(CONFIG_ARM64)
@@ -105,7 +117,7 @@ override_dh_auto_configure:
 	./configure $(CONFIG)
 
 override_dh_shlibdeps:
-	dh_shlibdeps
+	dh_shlibdeps $(SHLIBDEPS_ARGS)
 
 override_dh_auto_clean:
 	dh_auto_clean || true

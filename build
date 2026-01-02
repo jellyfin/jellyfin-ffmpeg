@@ -16,6 +16,7 @@ if [[ -z ${1} ]]; then
     exit 1
 fi
 
+docker_run_args=""
 cli_release="${1}"
 case ${cli_release} in
     'bullseye')
@@ -47,6 +48,13 @@ case ${cli_release} in
         gcc_ver="13"
         llvm_ver="19"
         llvmspirvlib_ver="19"
+    ;;
+    'r35.3.1')
+        release="nvcr.io\/nvidia\/l4t-jetpack:r35.3.1"
+        gcc_ver="10"
+        llvm_ver="10"
+        llvmspirvlib_ver="10"
+        docker_run_args="--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all -e NVIDIA_DRIVER_CAPABILITIES=all"
     ;;
     *)
         echo "Invalid release."
@@ -106,7 +114,7 @@ make -f Dockerfile.make DISTRO=${release} GCC_VER=${gcc_ver} LLVM_VER=${llvm_ver
 # Set up the build environment docker image
 ${container_cmd} build . -t "${image_name}"
 # Build the APKs and copy out to ${package_temporary_dir}
-${container_cmd} run --rm -e "RELEASE=${release}" -v "${package_temporary_dir}:/dist" "${image_name}"
+${container_cmd} run ${docker_run_args} --rm -e "RELEASE=${release}" -v "${package_temporary_dir}:/dist" "${image_name}"
 # If no 3rd parameter was specified, move APKs to parent directory
 if [[ -z ${3} ]]; then
     path="../bin"
