@@ -19,10 +19,17 @@ prepare_extra_common() {
             MESON_CROSS_OPT=""
         ;;
         'arm64')
-            CROSS_PREFIX_OPT="aarch64-linux-gnu-"
-            CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
-            CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
-            MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
+            if [ "${CROSS}" == true ]; then
+                CROSS_PREFIX_OPT="aarch64-linux-gnu-"
+                CROSS_OPT="--host=aarch64-linux-gnu CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++"
+                CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
+                MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
+            else
+                CROSS_PREFIX_OPT=""
+                CROSS_OPT=""
+                CMAKE_TOOLCHAIN_OPT=""
+                MESON_CROSS_OPT=""
+            fi
         ;;
     esac
 
@@ -58,6 +65,30 @@ prepare_extra_common() {
     echo "zlib${TARGET_DIR}/lib/libz.so* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
     popd
     popd
+
+    # AUTOMAKE
+    automake_ver="1.16.3"
+    IFS='.' read -ra current_automake_ver <<< "$(automake --version | head -n 1 | awk '{print $4}')"
+    IFS='.' read -ra mimimum_automake_ver <<< $automake_ver
+    update_automake=false
+    for i in {0..2}
+        do
+            if [ ${current_automake_ver[$i]} -lt ${mimimum_automake_ver[$i]} ]; then
+            update_automake=true
+            fi
+        done
+    if [ $update_automake == true ]; then
+        pushd ${SOURCE_DIR}
+        mkdir automake
+        pushd automake
+        wget https://www.artfiles.org/gnu.org/automake/automake-1.16.3.tar.xz
+        tar xpf automake-$automake_ver.tar.xz
+        cd automake-$automake_ver
+        ./configure --prefix=/usr
+        make -j$(nproc) && make install
+        popd
+        popd
+    fi
 
     # LIBXML2
     pushd ${SOURCE_DIR}
@@ -719,6 +750,40 @@ EOF
     yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-${GCC_VER}-source gcc-${GCC_VER}-aarch64-linux-gnu g++-${GCC_VER}-aarch64-linux-gnu libstdc++6-arm64-cross binutils-aarch64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev systemtap-sdt-dev autogen expect chrpath zip libc6-dev:arm64 linux-libc-dev:arm64 libgcc1:arm64 libstdc++6:arm64
 }
 
+prepare_extra_jetson() {
+    # JETSON-FFMPEG
+    ffmpeg_patch="jetson-ffmpeg-add-nvmpi-support.patch"
+    apt-get install -y quilt
+    pushd ${SOURCE_DIR}
+    git clone --depth=1 https://github.com/Keylost/jetson-ffmpeg.git
+
+    # generate patch from ffpatch.sh in jetson-ffmpeg and add it to the series
+    ln -s debian/patches patches
+    quilt push -a
+    quilt new $ffmpeg_patch
+    quilt add configure Makefile libavcodec/Makefile libavcodec/allcodecs.c libavcodec/nvmpi_dec.c libavcodec/nvmpi_enc.c
+    pushd jetson-ffmpeg
+    ./ffpatch.sh ${SOURCE_DIR}
+    popd
+    quilt refresh
+    quilt pop -a
+
+    # build nvmpi
+    pushd jetson-ffmpeg
+    mkdir build
+    pushd build
+    cmake \
+        ${CMAKE_TOOLCHAIN_OPT} \
+        -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+        -DCMAKE_BUILD_TYPE=Release \
+        ..
+    make -j$(nproc) && make install && make install DESTDIR=${SOURCE_DIR}/jetson-ffmpeg
+    echo "jetson-ffmpeg${TARGET_DIR}/lib/libnvmpi.* usr/lib/jellyfin-ffmpeg/lib" >> ${DPKG_INSTALL_LIST}
+    popd
+    popd
+    popd
+}
+
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
@@ -730,15 +795,29 @@ case ${ARCH} in
         BUILD_ARCH_OPT=""
     ;;
     'arm64')
-        prepare_crossbuild_env_arm64
-        ln -s /usr/bin/aarch64-linux-gnu-gcc-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc
-        ln -s /usr/bin/aarch64-linux-gnu-gcc-ar-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc-ar
-        ln -s /usr/bin/aarch64-linux-gnu-g++-${GCC_VER} /usr/bin/aarch64-linux-gnu-g++
+        if [ "${CROSS}" == true ]; then
+            prepare_crossbuild_env_arm64
+            ln -s /usr/bin/aarch64-linux-gnu-gcc-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc
+            ln -s /usr/bin/aarch64-linux-gnu-gcc-ar-${GCC_VER} /usr/bin/aarch64-linux-gnu-gcc-ar
+            ln -s /usr/bin/aarch64-linux-gnu-g++-${GCC_VER} /usr/bin/aarch64-linux-gnu-g++
+        else
+            apt-get update && apt-get dist-upgrade -y
+        fi
         prepare_extra_common
-        prepare_extra_arm
-        CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
-        DEP_ARCH_OPT="--host-arch arm64"
-        BUILD_ARCH_OPT="-aarm64"
+        if [ -d "/sys/bus/platform/drivers/tegra-fuse" ]; then
+            prepare_extra_jetson
+        else
+            prepare_extra_arm
+        fi
+        if [ "${CROSS}" == true ]; then
+            CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
+            DEP_ARCH_OPT="--host-arch arm64"
+            BUILD_ARCH_OPT="-aarm64"
+        else
+            CONFIG_SITE=""
+            DEP_ARCH_OPT=""
+            BUILD_ARCH_OPT=""
+        fi
     ;;
 esac
 

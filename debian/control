@@ -42,7 +42,7 @@ Build-Depends:
 # --enable-libzvbi
  libzvbi-dev,
 # --enable-cuda-llvm
- clang:amd64,
+ clang:amd64 | clang:arm64,
 # --enable-opencl
  ocl-icd-opencl-dev,
 # used to detect libraries
