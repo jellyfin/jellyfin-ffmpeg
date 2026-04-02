@@ -95,14 +95,31 @@ The following libraries are under GPL version 2:
 - libxavs
 - libxavs2
 - libxvid
+- zvbi
+- openmpt
 
 When combining them with FFmpeg, FFmpeg needs to be licensed as GPL as well by
 passing `--enable-gpl` to configure.
+
+The following libraries are under LGPL version 2.1 or later:
+- chromaprint
+- libbluray
 
 The following libraries are under LGPL version 3:
 - gmp
 - libaribb24
 - liblensfun
+
+The following libraries are under BSD 2-Clause:
+- dav1d
+- svtav1
+
+The following libraries are under ISC License:
+- libass
+
+The following libraries are under MIT License:
+- ffnvcodec
+- libvpl
 
 When combining them with FFmpeg, use the configure option `--enable-version3` to
 upgrade FFmpeg to the LGPL v3.
@@ -115,6 +132,23 @@ license version needs to be upgraded by passing `--enable-version3` to configure
 The smbclient library is under the GPL v3, to combine it with FFmpeg,
 the options `--enable-gpl` and `--enable-version3` have to be passed to
 configure to upgrade FFmpeg to the GPL v3.
+
+**Hardware Acceleration Libraries:**
+The following libraries provide hardware acceleration support and are platform-specific:
+
+*Linux:*
+- rkmpp (Rockchip Media Process Platform)
+- rkrga (Rockchip RGA 2D acceleration)
+
+*Windows:*
+- dxva (Microsoft DirectX Video Acceleration)
+- amf (AMD Media Framework)
+- mfx (Intel Media Extensions)
+- schannel (Microsoft Secure Channel - TLS/SSL)
+
+These hardware acceleration libraries are optional and platform-specific. Their
+inclusion depends on the target platform and available hardware support during
+compilation.
 
 ### Incompatible libraries
 
