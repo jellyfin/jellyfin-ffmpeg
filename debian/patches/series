@@ -92,3 +92,4 @@
 0092-add-hevc-recovery-point-support-backport-from-upstream.patch
 0093-backport-a-fix-for-unnecessary-rescale-av-nopts-in-lavfi.patch
 0094-backport-a-fix-to-unbreak-svt-av1-v4.patch
+0095-preserve-timestamps-with-copyts-and-output-ss.patch
