@@ -1,8 +1,8 @@
 #!/usr/bin/make
-DISTRO=noble
-GCC_VER=13
-LLVM_VER=19
-LLVMSPIRVLIB_VER=19
+DISTRO=resolute
+GCC_VER=15
+LLVM_VER=20
+LLVMSPIRVLIB_VER=20
 ARCH=amd64
 .PHONY: Dockerfile
 Dockerfile: Dockerfile.in

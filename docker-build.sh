@@ -49,7 +49,7 @@ prepare_extra_common() {
 
     # ZLIB
     pushd ${SOURCE_DIR}
-    git clone -b v1.3.1 --depth=1 https://github.com/madler/zlib.git
+    git clone -b v1.3.2 --depth=1 https://github.com/madler/zlib.git
     pushd zlib
     CROSS_PREFIX=${CROSS_PREFIX_OPT} ./configure \
         --prefix=${TARGET_DIR} \
@@ -61,7 +61,7 @@ prepare_extra_common() {
 
     # LIBXML2
     pushd ${SOURCE_DIR}
-    libxml2_ver="v2.15.1"
+    libxml2_ver="v2.15.2"
     git clone -b ${libxml2_ver} --depth=1 https://github.com/GNOME/libxml2.git
     pushd libxml2
     ./autogen.sh \
@@ -77,7 +77,7 @@ prepare_extra_common() {
 
     # FREETYPE
     pushd ${SOURCE_DIR}
-    git clone -b VER-2-14-1 --depth=1 https://github.com/freetype/freetype.git
+    git clone -b VER-2-14-3 --depth=1 https://github.com/freetype/freetype.git
     pushd freetype
     ./autogen.sh
     ./configure \
@@ -130,7 +130,7 @@ prepare_extra_common() {
 
     # HARFBUZZ
     pushd ${SOURCE_DIR}
-    git clone -b 10.4.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
+    git clone -b 14.1.0 --depth=1 https://github.com/harfbuzz/harfbuzz.git
     meson setup harfbuzz harfbuzz_build \
         ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
@@ -242,7 +242,7 @@ prepare_extra_common() {
 
     # DAV1D
     pushd ${SOURCE_DIR}
-    git clone -b 1.5.2 --depth=1 https://code.videolan.org/videolan/dav1d.git
+    git clone -b 1.5.3 --depth=1 https://code.videolan.org/videolan/dav1d.git
     meson setup dav1d dav1d_build \
         ${MESON_CROSS_OPT} \
         --prefix=${TARGET_DIR} \
@@ -259,7 +259,7 @@ prepare_extra_common() {
 
     # SVT-AV1
     pushd ${SOURCE_DIR}
-    git clone -b v3.1.2 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v4.1.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
     mkdir build
     pushd build
@@ -388,7 +388,7 @@ prepare_extra_amd64() {
 
     # GMMLIB
     pushd ${SOURCE_DIR}
-    git clone -b intel-gmmlib-22.9.0 --depth=1 https://github.com/intel/gmmlib.git
+    git clone -b intel-gmmlib-22.10.0 --depth=1 https://github.com/intel/gmmlib.git
     pushd gmmlib
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} ..
@@ -470,7 +470,7 @@ prepare_extra_amd64() {
     # Full Feature Build: ENABLE_KERNELS=ON(Default) ENABLE_NONFREE_KERNELS=ON(Default)
     # Free Kernel Build: ENABLE_KERNELS=ON ENABLE_NONFREE_KERNELS=OFF
     pushd ${SOURCE_DIR}
-    git clone -b intel-media-25.4.6 --depth=1 https://github.com/intel/media-driver.git
+    git clone -b intel-media-26.1.5 --depth=1 https://github.com/intel/media-driver.git
     pushd media-driver
     # Enable VC1 decode on DG2 (note that MTL+ is not supported)
     wget -q -O - https://github.com/intel/media-driver/commit/25fb926.patch | git apply
@@ -493,7 +493,7 @@ prepare_extra_amd64() {
 
     # Vulkan Headers
     pushd ${SOURCE_DIR}
-    git clone -b v1.4.337 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
+    git clone -b v1.4.348 --depth=1 https://github.com/KhronosGroup/Vulkan-Headers.git
     pushd Vulkan-Headers
     mkdir build && pushd build
     cmake \
@@ -506,7 +506,7 @@ prepare_extra_amd64() {
 
     # Vulkan ICD Loader
     pushd ${SOURCE_DIR}
-    git clone -b v1.4.337 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
+    git clone -b v1.4.348 --depth=1 https://github.com/KhronosGroup/Vulkan-Loader.git
     pushd Vulkan-Loader
     mkdir build && pushd build
     cmake \
@@ -526,7 +526,7 @@ prepare_extra_amd64() {
     popd
 
     # SHADERC
-    shaderc_ver="v2025.5"
+    shaderc_ver="v2026.1"
     pushd ${SOURCE_DIR}
     git clone -b ${shaderc_ver} --depth=1 https://github.com/google/shaderc.git
     pushd shaderc
@@ -553,8 +553,8 @@ prepare_extra_amd64() {
     # MESA
     # Minimal libs for AMD VAAPI, AMD RADV and Intel ANV
     if [[ ${LLVM_VER} -ge 15 ]]; then
-        if [[ ${LLVMSPIRVLIB_VER} -ge 15 && ${LLVMSPIRVLIB_VER} -le 20 ]]; then
-            # Intel ANV requires llvmspirvlib >= 15 (and <= 20 in mesa 25.0)
+        if [[ ${LLVMSPIRVLIB_VER} -ge 15 && ${LLVMSPIRVLIB_VER} -le 21 ]]; then
+            # Intel ANV requires llvmspirvlib >= 15 (and <= 21 in mesa 26.0)
             mesa_vk_drv="amd,intel"
             mesa_llvm_clc="enabled"
             apt-get install -y {llvm-,libllvmspirvlib-,libclc-,libclang-,libclang-cpp}${LLVMSPIRVLIB_VER}-dev libudev-dev
@@ -566,14 +566,10 @@ prepare_extra_amd64() {
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="mesa-25.0.7"
+        mesa_ver="mesa-26.0.4"
         mesa_link="https://gitlab.freedesktop.org/mesa/mesa/-/archive/${mesa_ver}/mesa-${mesa_ver}.tar.gz"
         wget ${mesa_link} -O mesa.tar.gz
         tar xaf mesa.tar.gz
-        # Cherry-pick fixes targeting mesa-stable
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/commit/ee4d7e98.patch | patch -p1 -d mesa-${mesa_ver}
-        # Fix duplicate definitions in C23/glibc
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/commit/179e744f.patch | patch -p1 -d mesa-${mesa_ver}
         meson setup mesa-${mesa_ver} mesa_build \
             --prefix=${TARGET_DIR} \
             --libdir=lib \
@@ -586,8 +582,7 @@ prepare_extra_amd64() {
             -Dvulkan-drivers=${mesa_vk_drv} \
             -Dvulkan-layers=device-select,overlay \
             -Degl=disabled \
-            -Dgallium-{extra-hud,nine,rusticl}=false \
-            -Dgallium-{vdpau,xa,opencl}=disabled \
+            -Dgallium-{extra-hud,rusticl}=false \
             -Dgallium-va=enabled \
             -Dvideo-codecs=all \
             -Dgbm=disabled \
@@ -600,7 +595,6 @@ prepare_extra_amd64() {
             -Dllvm=${mesa_llvm_clc} \
             -Damd-use-llvm=false \
             -Dlmsensors=disabled \
-            -Dosmesa=false \
             -Dshared-glapi=disabled \
             -Dvalgrind=disabled \
             -Dtools=[] \
@@ -627,11 +621,7 @@ prepare_extra_amd64() {
 
     # LIBPLACEBO
     pushd ${SOURCE_DIR}
-    git clone -b v7.351.0 --recursive --depth=1 https://github.com/haasn/libplacebo.git
-    # Wa for the regression made in Mesa RADV
-    git -C libplacebo apply ${SOURCE_DIR}/builder/patches/libplacebo/*.patch
-    # Fix build script for python 3.14
-    wget -q -O - https://github.com/haasn/libplacebo/commit/12509c0.patch | git -C libplacebo apply
+    git clone -b v7.360.1 --recursive --depth=1 https://github.com/haasn/libplacebo.git
     sed -i 's|env: python_env,||g' libplacebo/src/vulkan/meson.build
     meson setup libplacebo placebo_build \
         --prefix=${TARGET_DIR} \
