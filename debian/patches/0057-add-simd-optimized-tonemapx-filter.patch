@@ -94,7 +94,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,2360 @@
+@@ -0,0 +1,2363 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -419,26 +419,29 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    b_linx4b = vld1q_f32(b_lin4b);
 +
 +    if (!rgb2rgb_passthrough) {
-+        r_linx4a = vmulq_n_f32(r_linx4a, (float)(*rgb2rgb)[0][0]);
-+        r_linx4a = vfmaq_n_f32(r_linx4a, g_linx4a, (float)(*rgb2rgb)[0][1]);
-+        r_linx4a = vfmaq_n_f32(r_linx4a, b_linx4a, (float)(*rgb2rgb)[0][2]);
-+        r_linx4b = vmulq_n_f32(r_linx4b, (float)(*rgb2rgb)[0][0]);
-+        r_linx4b = vfmaq_n_f32(r_linx4b, g_linx4b, (float)(*rgb2rgb)[0][1]);
-+        r_linx4b = vfmaq_n_f32(r_linx4b, b_linx4b, (float)(*rgb2rgb)[0][2]);
++        float32x4_t r0_a = r_linx4a, g0_a = g_linx4a, b0_a = b_linx4a;
++        float32x4_t r0_b = r_linx4b, g0_b = g_linx4b, b0_b = b_linx4b;
 +
-+        g_linx4a = vmulq_n_f32(g_linx4a, (float)(*rgb2rgb)[1][1]);
-+        g_linx4a = vfmaq_n_f32(g_linx4a, r_linx4a, (float)(*rgb2rgb)[1][0]);
-+        g_linx4a = vfmaq_n_f32(g_linx4a, b_linx4a, (float)(*rgb2rgb)[1][2]);
-+        g_linx4b = vmulq_n_f32(g_linx4b, (float)(*rgb2rgb)[1][1]);
-+        g_linx4b = vfmaq_n_f32(g_linx4b, r_linx4b, (float)(*rgb2rgb)[1][0]);
-+        g_linx4b = vfmaq_n_f32(g_linx4b, b_linx4b, (float)(*rgb2rgb)[1][2]);
++        r_linx4a = vmulq_n_f32(r0_a, (float)(*rgb2rgb)[0][0]);
++        r_linx4a = vfmaq_n_f32(r_linx4a, g0_a, (float)(*rgb2rgb)[0][1]);
++        r_linx4a = vfmaq_n_f32(r_linx4a, b0_a, (float)(*rgb2rgb)[0][2]);
++        r_linx4b = vmulq_n_f32(r0_b, (float)(*rgb2rgb)[0][0]);
++        r_linx4b = vfmaq_n_f32(r_linx4b, g0_b, (float)(*rgb2rgb)[0][1]);
++        r_linx4b = vfmaq_n_f32(r_linx4b, b0_b, (float)(*rgb2rgb)[0][2]);
 +
-+        b_linx4a = vmulq_n_f32(b_linx4a, (float)(*rgb2rgb)[2][2]);
-+        b_linx4a = vfmaq_n_f32(b_linx4a, r_linx4a, (float)(*rgb2rgb)[2][0]);
-+        b_linx4a = vfmaq_n_f32(b_linx4a, g_linx4a, (float)(*rgb2rgb)[2][1]);
-+        b_linx4b = vmulq_n_f32(b_linx4b, (float)(*rgb2rgb)[2][2]);
-+        b_linx4b = vfmaq_n_f32(b_linx4b, r_linx4b, (float)(*rgb2rgb)[2][0]);
-+        b_linx4b = vfmaq_n_f32(b_linx4b, g_linx4b, (float)(*rgb2rgb)[2][1]);
++        g_linx4a = vmulq_n_f32(g0_a, (float)(*rgb2rgb)[1][1]);
++        g_linx4a = vfmaq_n_f32(g_linx4a, r0_a, (float)(*rgb2rgb)[1][0]);
++        g_linx4a = vfmaq_n_f32(g_linx4a, b0_a, (float)(*rgb2rgb)[1][2]);
++        g_linx4b = vmulq_n_f32(g0_b, (float)(*rgb2rgb)[1][1]);
++        g_linx4b = vfmaq_n_f32(g_linx4b, r0_b, (float)(*rgb2rgb)[1][0]);
++        g_linx4b = vfmaq_n_f32(g_linx4b, b0_b, (float)(*rgb2rgb)[1][2]);
++
++        b_linx4a = vmulq_n_f32(b0_a, (float)(*rgb2rgb)[2][2]);
++        b_linx4a = vfmaq_n_f32(b_linx4a, r0_a, (float)(*rgb2rgb)[2][0]);
++        b_linx4a = vfmaq_n_f32(b_linx4a, g0_a, (float)(*rgb2rgb)[2][1]);
++        b_linx4b = vmulq_n_f32(b0_b, (float)(*rgb2rgb)[2][2]);
++        b_linx4b = vfmaq_n_f32(b_linx4b, r0_b, (float)(*rgb2rgb)[2][0]);
++        b_linx4b = vfmaq_n_f32(b_linx4b, g0_b, (float)(*rgb2rgb)[2][1]);
 +    }
 +
 +    if (desat > 0) {
@@ -2628,7 +2631,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1948 @@
+@@ -0,0 +1,1949 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -3361,9 +3364,10 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    b_lin = lin_lut[b_in];
 +
 +    if (!rgb2rgb_passthrough) {
-+        r_lin = (*rgb2rgb)[0][0] * r_lin + (*rgb2rgb)[0][1] * g_lin + (*rgb2rgb)[0][2] * b_lin;
-+        g_lin = (*rgb2rgb)[1][0] * r_lin + (*rgb2rgb)[1][1] * g_lin + (*rgb2rgb)[1][2] * b_lin;
-+        b_lin = (*rgb2rgb)[2][0] * r_lin + (*rgb2rgb)[2][1] * g_lin + (*rgb2rgb)[2][2] * b_lin;
++        float r0 = r_lin, g0 = g_lin, b0 = b_lin;
++        r_lin = (*rgb2rgb)[0][0] * r0 + (*rgb2rgb)[0][1] * g0 + (*rgb2rgb)[0][2] * b0;
++        g_lin = (*rgb2rgb)[1][0] * r0 + (*rgb2rgb)[1][1] * g0 + (*rgb2rgb)[1][2] * b0;
++        b_lin = (*rgb2rgb)[2][0] * r0 + (*rgb2rgb)[2][1] * g0 + (*rgb2rgb)[2][2] * b0;
 +    }
 +
 +    /* desaturate to prevent unnatural colors */
@@ -4743,7 +4747,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,2577 @@
+@@ -0,0 +1,2579 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -5104,17 +5108,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +    b_linx8 = _mm256_loadu_ps(b_lin8);
 +
 +    if (!rgb2rgb_passthrough) {
-+        r_linx8 = _mm256_mul_ps(r_linx8, _mm256_set1_ps((float)(*rgb2rgb)[0][0]));
-+        r_linx8 = _mm256_fmadd_ps(g_linx8, _mm256_set1_ps((float)(*rgb2rgb)[0][1]), r_linx8);
-+        r_linx8 = _mm256_fmadd_ps(b_linx8, _mm256_set1_ps((float)(*rgb2rgb)[0][2]), r_linx8);
++        __m256 r0 = r_linx8, g0 = g_linx8, b0 = b_linx8;
 +
-+        g_linx8 = _mm256_mul_ps(g_linx8, _mm256_set1_ps((float)(*rgb2rgb)[1][1]));
-+        g_linx8 = _mm256_fmadd_ps(r_linx8, _mm256_set1_ps((float)(*rgb2rgb)[1][0]), g_linx8);
-+        g_linx8 = _mm256_fmadd_ps(b_linx8, _mm256_set1_ps((float)(*rgb2rgb)[1][2]), g_linx8);
++        r_linx8 = _mm256_mul_ps(r0, _mm256_set1_ps((float)(*rgb2rgb)[0][0]));
++        r_linx8 = _mm256_fmadd_ps(g0, _mm256_set1_ps((float)(*rgb2rgb)[0][1]), r_linx8);
++        r_linx8 = _mm256_fmadd_ps(b0, _mm256_set1_ps((float)(*rgb2rgb)[0][2]), r_linx8);
 +
-+        b_linx8 = _mm256_mul_ps(b_linx8, _mm256_set1_ps((float)(*rgb2rgb)[2][2]));
-+        b_linx8 = _mm256_fmadd_ps(r_linx8, _mm256_set1_ps((float)(*rgb2rgb)[2][0]), b_linx8);
-+        b_linx8 = _mm256_fmadd_ps(g_linx8, _mm256_set1_ps((float)(*rgb2rgb)[2][1]), b_linx8);
++        g_linx8 = _mm256_mul_ps(g0, _mm256_set1_ps((float)(*rgb2rgb)[1][1]));
++        g_linx8 = _mm256_fmadd_ps(r0, _mm256_set1_ps((float)(*rgb2rgb)[1][0]), g_linx8);
++        g_linx8 = _mm256_fmadd_ps(b0, _mm256_set1_ps((float)(*rgb2rgb)[1][2]), g_linx8);
++
++        b_linx8 = _mm256_mul_ps(b0, _mm256_set1_ps((float)(*rgb2rgb)[2][2]));
++        b_linx8 = _mm256_fmadd_ps(r0, _mm256_set1_ps((float)(*rgb2rgb)[2][0]), b_linx8);
++        b_linx8 = _mm256_fmadd_ps(g0, _mm256_set1_ps((float)(*rgb2rgb)[2][1]), b_linx8);
 +    }
 +
 +    if (desat > 0) {
@@ -7405,7 +7411,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
-@@ -0,0 +1,2740 @@
+@@ -0,0 +1,2742 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -7726,17 +7732,19 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +    b_linx4 = _mm_loadu_ps(b_lin4);
 +
 +    if (!rgb2rgb_passthrough) {
-+        r_linx4 = _mm_mul_ps(r_linx4, _mm_set1_ps((float)(*rgb2rgb)[0][0]));
-+        r_linx4 = _mm_add_ps(r_linx4, _mm_mul_ps(g_linx4, _mm_set1_ps((float)(*rgb2rgb)[0][1])));
-+        r_linx4 = _mm_add_ps(r_linx4, _mm_mul_ps(b_linx4, _mm_set1_ps((float)(*rgb2rgb)[0][2])));
++        __m128 r0 = r_linx4, g0 = g_linx4, b0 = b_linx4;
 +
-+        g_linx4 = _mm_mul_ps(g_linx4, _mm_set1_ps((float)(*rgb2rgb)[1][1]));
-+        g_linx4 = _mm_add_ps(g_linx4, _mm_mul_ps(r_linx4, _mm_set1_ps((float)(*rgb2rgb)[1][0])));
-+        g_linx4 = _mm_add_ps(g_linx4, _mm_mul_ps(b_linx4, _mm_set1_ps((float)(*rgb2rgb)[1][2])));
++        r_linx4 = _mm_mul_ps(r0, _mm_set1_ps((float)(*rgb2rgb)[0][0]));
++        r_linx4 = _mm_add_ps(r_linx4, _mm_mul_ps(g0, _mm_set1_ps((float)(*rgb2rgb)[0][1])));
++        r_linx4 = _mm_add_ps(r_linx4, _mm_mul_ps(b0, _mm_set1_ps((float)(*rgb2rgb)[0][2])));
 +
-+        b_linx4 = _mm_mul_ps(b_linx4, _mm_set1_ps((float)(*rgb2rgb)[2][2]));
-+        b_linx4 = _mm_add_ps(b_linx4, _mm_mul_ps(r_linx4, _mm_set1_ps((float)(*rgb2rgb)[2][0])));
-+        b_linx4 = _mm_add_ps(b_linx4, _mm_mul_ps(g_linx4, _mm_set1_ps((float)(*rgb2rgb)[2][1])));
++        g_linx4 = _mm_mul_ps(g0, _mm_set1_ps((float)(*rgb2rgb)[1][1]));
++        g_linx4 = _mm_add_ps(g_linx4, _mm_mul_ps(r0, _mm_set1_ps((float)(*rgb2rgb)[1][0])));
++        g_linx4 = _mm_add_ps(g_linx4, _mm_mul_ps(b0, _mm_set1_ps((float)(*rgb2rgb)[1][2])));
++
++        b_linx4 = _mm_mul_ps(b0, _mm_set1_ps((float)(*rgb2rgb)[2][2]));
++        b_linx4 = _mm_add_ps(b_linx4, _mm_mul_ps(r0, _mm_set1_ps((float)(*rgb2rgb)[2][0])));
++        b_linx4 = _mm_add_ps(b_linx4, _mm_mul_ps(g0, _mm_set1_ps((float)(*rgb2rgb)[2][1])));
 +    }
 +
 +    if (desat > 0) {
