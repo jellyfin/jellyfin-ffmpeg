@@ -94,7 +94,7 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
-@@ -0,0 +1,2406 @@
+@@ -0,0 +1,2411 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -419,15 +419,18 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +    b_linx4a = vld1q_f32(b_lin4a);
 +    b_linx4b = vld1q_f32(b_lin4b);
 +
-+    // HLG OOTF (BT.2100): luma-weighted scale via ootf_lut (nearest-neighbor); applied before gamut conversion.
-+    if (ootf_lut) {
++    // HLG OOTF (BT.2100): kick off the luma-weighted gain gather early so the
++    // stack-store/scalar-load latency overlaps with the gamut conversion below.
++    float32x4_t ga, gb;
++    int have_ootf = (ootf_lut != NULL);
++    if (have_ootf) {
 +        const float cr = (float)av_q2d(coeffs->cr);
 +        const float cg = (float)av_q2d(coeffs->cg);
 +        const float cb = (float)av_q2d(coeffs->cb);
 +        int32x4_t idx_lo = vdupq_n_s32(0);
 +        int32x4_t idx_hi = vdupq_n_s32(OOTF_LUT_SIZE - 1);
 +        float32x4_t lut_scale = vdupq_n_f32((float)(OOTF_LUT_SIZE - 1));
-+        float32x4_t Ya, Yb, ga, gb;
++        float32x4_t Ya, Yb;
 +        int32x4_t ia, ib;
 +        int32_t ia_arr[4], ib_arr[4];
 +        float aa[4], ab[4];
@@ -452,13 +455,6 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +        ab[2] = ootf_lut[ib_arr[2]]; ab[3] = ootf_lut[ib_arr[3]];
 +        ga = vld1q_f32(aa);
 +        gb = vld1q_f32(ab);
-+
-+        r_linx4a = vmulq_f32(r_linx4a, ga);
-+        g_linx4a = vmulq_f32(g_linx4a, ga);
-+        b_linx4a = vmulq_f32(b_linx4a, ga);
-+        r_linx4b = vmulq_f32(r_linx4b, gb);
-+        g_linx4b = vmulq_f32(g_linx4b, gb);
-+        b_linx4b = vmulq_f32(b_linx4b, gb);
 +    }
 +
 +    if (!rgb2rgb_passthrough) {
@@ -485,6 +481,15 @@ Index: FFmpeg/libavfilter/aarch64/vf_tonemapx_intrin_neon.c
 +        b_linx4b = vmulq_n_f32(b0_b, (float)(*rgb2rgb)[2][2]);
 +        b_linx4b = vfmaq_n_f32(b_linx4b, r0_b, (float)(*rgb2rgb)[2][0]);
 +        b_linx4b = vfmaq_n_f32(b_linx4b, g0_b, (float)(*rgb2rgb)[2][1]);
++    }
++
++    if (have_ootf) {
++        r_linx4a = vmulq_f32(r_linx4a, ga);
++        g_linx4a = vmulq_f32(g_linx4a, ga);
++        b_linx4a = vmulq_f32(b_linx4a, ga);
++        r_linx4b = vmulq_f32(r_linx4b, gb);
++        g_linx4b = vmulq_f32(g_linx4b, gb);
++        b_linx4b = vmulq_f32(b_linx4b, gb);
 +    }
 +
 +    if (desat > 0) {
@@ -2674,7 +2679,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.c
-@@ -0,0 +1,1996 @@
+@@ -0,0 +1,2001 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -3439,16 +3444,15 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    g_lin = lin_lut[g_in];
 +    b_lin = lin_lut[b_in];
 +
-+    // HLG OOTF (BT.2100): luma-weighted scale, applied in source primaries before gamut conversion.
++    // HLG OOTF (BT.2100): kick off the luma-weighted gain lookup early so it
++    // overlaps with the gamut conversion below.
++    float ootf_gain = 1.0f;
 +    if (ootf_lut) {
 +        float Y_s = av_q2d(coeffs->cr) * r_lin
 +                  + av_q2d(coeffs->cg) * g_lin
 +                  + av_q2d(coeffs->cb) * b_lin;
-+        float gain = ootf_lut[av_clip_uintp2((int)(Y_s * (OOTF_LUT_SIZE - 1) + 0.5f),
-+                                              15)];
-+        r_lin *= gain;
-+        g_lin *= gain;
-+        b_lin *= gain;
++        ootf_gain = ootf_lut[av_clip_uintp2((int)(Y_s * (OOTF_LUT_SIZE - 1) + 0.5f),
++                                            15)];
 +    }
 +
 +    if (!rgb2rgb_passthrough) {
@@ -3456,6 +3460,12 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +        r_lin = (*rgb2rgb)[0][0] * r0 + (*rgb2rgb)[0][1] * g0 + (*rgb2rgb)[0][2] * b0;
 +        g_lin = (*rgb2rgb)[1][0] * r0 + (*rgb2rgb)[1][1] * g0 + (*rgb2rgb)[1][2] * b0;
 +        b_lin = (*rgb2rgb)[2][0] * r0 + (*rgb2rgb)[2][1] * g0 + (*rgb2rgb)[2][2] * b0;
++    }
++
++    if (ootf_lut) {
++        r_lin *= ootf_gain;
++        g_lin *= ootf_gain;
++        b_lin *= ootf_gain;
 +    }
 +
 +    /* desaturate to prevent unnatural colors */
@@ -4675,7 +4685,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemapx.h
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,146 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -4725,9 +4735,6 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +#    endif // ARCH_X86
 +#endif // CC_SUPPORTS_TONEMAPX_INTRINSICS
 +
-+/* HLG OOTF gain LUT: number of evenly-spaced samples in Y_s ∈ [0, 1]. */
-+#define OOTF_LUT_SIZE 32768
-+
 +#define params_cnt 8
 +#define pivots_cnt (7+1)
 +#define coeffs_cnt 8*4
@@ -4747,6 +4754,7 @@ Index: FFmpeg/libavfilter/vf_tonemapx.h
 +#define TEN_BIT_ROUNDING 512
 +#define TEN_BIT_BIPLANAR_SHIFT 6
 +#define TEN_BIT_SCALE_SHIFT 19
++#define OOTF_LUT_SIZE 32768
 +
 +typedef struct TonemapIntParams {
 +    double lut_peak;
@@ -4841,7 +4849,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
-@@ -0,0 +1,2601 @@
+@@ -0,0 +1,2606 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -5202,12 +5210,15 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +    g_linx8 = _mm256_loadu_ps(g_lin8);
 +    b_linx8 = _mm256_loadu_ps(b_lin8);
 +
-+    // HLG OOTF (BT.2100): luma-weighted scale via ootf_lut (nearest-neighbor); applied before gamut conversion.
-+    if (ootf_lut) {
++    // HLG OOTF (BT.2100): kick off the luma-weighted gain gather early so its
++    // latency overlaps with the gamut conversion below.
++    __m256 ootf_gain8;
++    int have_ootf = (ootf_lut != NULL);
++    if (have_ootf) {
 +        const float cr = (float)av_q2d(coeffs->cr);
 +        const float cg = (float)av_q2d(coeffs->cg);
 +        const float cb = (float)av_q2d(coeffs->cb);
-+        __m256 Y, g8;
++        __m256 Y;
 +        __m256i idx;
 +
 +        Y = _mm256_mul_ps(r_linx8, _mm256_set1_ps(cr));
@@ -5216,11 +5227,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +
 +        idx = _mm256_cvttps_epi32(_mm256_add_ps(offset, _mm256_mul_ps(Y, intermediate_upper_bound)));
 +        idx = _mm256_min_epi32(_mm256_max_epi32(idx, zerox8), upper_bound);
-+        g8 = _mm256_i32gather_ps(ootf_lut, idx, sizeof(float));
-+
-+        r_linx8 = _mm256_mul_ps(r_linx8, g8);
-+        g_linx8 = _mm256_mul_ps(g_linx8, g8);
-+        b_linx8 = _mm256_mul_ps(b_linx8, g8);
++        ootf_gain8 = _mm256_i32gather_ps(ootf_lut, idx, sizeof(float));
 +    }
 +
 +    if (!rgb2rgb_passthrough) {
@@ -5237,6 +5244,12 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_avx.c
 +        b_linx8 = _mm256_mul_ps(b0, _mm256_set1_ps((float)(*rgb2rgb)[2][2]));
 +        b_linx8 = _mm256_fmadd_ps(r0, _mm256_set1_ps((float)(*rgb2rgb)[2][0]), b_linx8);
 +        b_linx8 = _mm256_fmadd_ps(g0, _mm256_set1_ps((float)(*rgb2rgb)[2][1]), b_linx8);
++    }
++
++    if (have_ootf) {
++        r_linx8 = _mm256_mul_ps(r_linx8, ootf_gain8);
++        g_linx8 = _mm256_mul_ps(g_linx8, ootf_gain8);
++        b_linx8 = _mm256_mul_ps(b_linx8, ootf_gain8);
 +    }
 +
 +    if (desat > 0) {
@@ -7527,7 +7540,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
-@@ -0,0 +1,2772 @@
+@@ -0,0 +1,2777 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -7850,12 +7863,15 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +    g_linx4 = _mm_loadu_ps(g_lin4);
 +    b_linx4 = _mm_loadu_ps(b_lin4);
 +
-+    // HLG OOTF (BT.2100): luma-weighted scale via ootf_lut (nearest-neighbor); applied before gamut conversion.
-+    if (ootf_lut) {
++    // HLG OOTF (BT.2100): kick off the luma-weighted gain gather early so its
++    // latency overlaps with the gamut conversion below.
++    __m128 ootf_gain4;
++    int have_ootf = (ootf_lut != NULL);
++    if (have_ootf) {
 +        const float cr = (float)av_q2d(coeffs->cr);
 +        const float cg = (float)av_q2d(coeffs->cg);
 +        const float cb = (float)av_q2d(coeffs->cb);
-+        __m128 Y, g4;
++        __m128 Y;
 +        __m128i idx;
 +        int idx_arr[4];
 +        float g_arr[4];
@@ -7870,11 +7886,7 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +        _mm_storeu_si128((__m128i *)idx_arr, idx);
 +        g_arr[0] = ootf_lut[idx_arr[0]]; g_arr[1] = ootf_lut[idx_arr[1]];
 +        g_arr[2] = ootf_lut[idx_arr[2]]; g_arr[3] = ootf_lut[idx_arr[3]];
-+        g4 = _mm_loadu_ps(g_arr);
-+
-+        r_linx4 = _mm_mul_ps(r_linx4, g4);
-+        g_linx4 = _mm_mul_ps(g_linx4, g4);
-+        b_linx4 = _mm_mul_ps(b_linx4, g4);
++        ootf_gain4 = _mm_loadu_ps(g_arr);
 +    }
 +
 +    if (!rgb2rgb_passthrough) {
@@ -7891,6 +7903,12 @@ Index: FFmpeg/libavfilter/x86/vf_tonemapx_intrin_sse.c
 +        b_linx4 = _mm_mul_ps(b0, _mm_set1_ps((float)(*rgb2rgb)[2][2]));
 +        b_linx4 = _mm_add_ps(b_linx4, _mm_mul_ps(r0, _mm_set1_ps((float)(*rgb2rgb)[2][0])));
 +        b_linx4 = _mm_add_ps(b_linx4, _mm_mul_ps(g0, _mm_set1_ps((float)(*rgb2rgb)[2][1])));
++    }
++
++    if (have_ootf) {
++        r_linx4 = _mm_mul_ps(r_linx4, ootf_gain4);
++        g_linx4 = _mm_mul_ps(g_linx4, ootf_gain4);
++        b_linx4 = _mm_mul_ps(b_linx4, ootf_gain4);
 +    }
 +
 +    if (desat > 0) {
