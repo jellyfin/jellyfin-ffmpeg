@@ -40,7 +40,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
-@@ -0,0 +1,921 @@
+@@ -0,0 +1,885 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -120,9 +120,9 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +constant float3 yuv_matrix_3 [[function_constant(31)]];
 +constant float3 luma_dst [[function_constant(32)]];
 +constant short linearize_type [[function_constant(33)]];
-+constant short delinearize_type [[function_constant(34)]];
 +constant bool map_in_src_space [[function_constant(35)]];
 +constant bool is_tone_mode_itp [[function_constant(36)]];
++constant float hlg_gm1 [[function_constant(37)]];
 +
 +enum AVChromaLocation {
 +    AVCHROMA_LOC_UNSPECIFIED,
@@ -200,21 +200,6 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +    return x;
 +}
 +
-+float ootf_1_2(float x) {
-+    return x > 0.0f ? powr(x, 1.2f) : x;
-+}
-+
-+float inverse_ootf_1_2(float x) {
-+    return x > 0.0f ? powr(x, 1.0f / 1.2f) : x;
-+}
-+
-+float oetf_arib_b67(float x) {
-+    x = fmax(x, 0.0f);
-+    return x <= (1.0f / 12.0f)
-+           ? sqrt(3.0f * x)
-+           : (ARIB_B67_A * log(12.0f * x - ARIB_B67_B) + ARIB_B67_C);
-+}
-+
 +float inverse_oetf_arib_b67(float x) {
 +    x = fmax(x, 0.0f);
 +    return x <= 0.5f
@@ -222,30 +207,18 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +           : (exp((x - ARIB_B67_C) / ARIB_B67_A) + ARIB_B67_B) * (1.0f / 12.0f);
 +}
 +
-+// linearizer for HLG/ARIB-B67
++// linearizer for HLG/ARIB-B67 (scene-light only)
 +float eotf_arib_b67(float x) {
-+    return ootf_1_2(inverse_oetf_arib_b67(x)) * (12.0f / REFERENCE_WHITE_HLG);
++    return inverse_oetf_arib_b67(x) * (12.0f / REFERENCE_WHITE_HLG);
 +}
 +
-+// delinearizer for HLG/ARIB-B67
-+float inverse_eotf_arib_b67(float x) {
-+    return oetf_arib_b67(inverse_ootf_1_2(x / (12.0f / REFERENCE_WHITE_HLG)));
-+}
-+
-+float4 oetf_arib_b67x4(float4 x) {
-+    x.x = oetf_arib_b67(x.x);
-+    x.y = oetf_arib_b67(x.y);
-+    x.z = oetf_arib_b67(x.z);
-+    x.w = oetf_arib_b67(x.w);
-+    return x;
-+}
-+
-+float4 inverse_oetf_arib_b67x4(float4 x) {
-+    x.x = inverse_oetf_arib_b67(x.x);
-+    x.y = inverse_oetf_arib_b67(x.y);
-+    x.z = inverse_oetf_arib_b67(x.z);
-+    x.w = inverse_oetf_arib_b67(x.w);
-+    return x;
++// BT.2100 luma-weighted OOTF for HLG. Input is display-scale RGB (post 12/REF_HLG factor).
++// hlg_gm1 is baked as a function constant so powr can use the constant-exponent fast path.
++float3 ootf_hlg(float3 c) {
++    float Y_disp = 0.2627f * c.x + 0.6780f * c.y + 0.0593f * c.z;
++    float Y_scene = Y_disp * (REFERENCE_WHITE_HLG / 12.0f);
++    float gain = Y_scene > 0.0f ? powr(Y_scene, hlg_gm1) : 0.0f;
++    return c * gain;
 +}
 +
 +// delinearizer for BT709, BT2020-10
@@ -701,25 +674,9 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +    if (dovi_reshape) {
 +        float3 c = ycc2rgb(yuv.x, yuv.y, yuv.z);
 +        c = lms2rgb(c.x, c.y, c.z);
-+        c = rgb2lrgb(c);
-+        return c;
++        return rgb2lrgb(c);
 +    } else {
-+        float3 c = yuv2lrgb(yuv);
-+        return c;
-+    }
-+}
-+
-+// Map from source space YUV to destination space RGB
-+float3 map_to_dst_space_from_yuv(float3 yuv) {
-+    if (dovi_reshape) {
-+        float3 c = ycc2rgb(yuv.x, yuv.y, yuv.z);
-+        c = lms2rgb(c.x, c.y, c.z);
-+        c = rgb2lrgb(c);
-+        return lrgb2lrgb(c);
-+    } else {
-+        float3 c = yuv2lrgb(yuv);
-+        c = lrgb2lrgb(c);
-+        return c;
++        return yuv2lrgb(yuv);
 +    }
 +}
 +
@@ -894,16 +851,23 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +
 +    float3 c0, c1, c2, c3;
 +
-+    if (map_in_src_space) {
-+        c0 = map_to_src_space_from_yuv(yuv0);
-+        c1 = map_to_src_space_from_yuv(yuv1);
-+        c2 = map_to_src_space_from_yuv(yuv2);
-+        c3 = map_to_src_space_from_yuv(yuv3);
-+    } else {
-+        c0 = map_to_dst_space_from_yuv(yuv0);
-+        c1 = map_to_dst_space_from_yuv(yuv1);
-+        c2 = map_to_dst_space_from_yuv(yuv2);
-+        c3 = map_to_dst_space_from_yuv(yuv3);
++    c0 = map_to_src_space_from_yuv(yuv0);
++    c1 = map_to_src_space_from_yuv(yuv1);
++    c2 = map_to_src_space_from_yuv(yuv2);
++    c3 = map_to_src_space_from_yuv(yuv3);
++
++    if (linearize_type == 2) {
++        c0 = ootf_hlg(c0);
++        c1 = ootf_hlg(c1);
++        c2 = ootf_hlg(c2);
++        c3 = ootf_hlg(c3);
++    }
++
++    if (!map_in_src_space) {
++        c0 = lrgb2lrgb(c0);
++        c1 = lrgb2lrgb(c1);
++        c2 = lrgb2lrgb(c2);
++        c3 = lrgb2lrgb(c3);
 +    }
 +
 +    if(!skip_tonemap) {
@@ -966,7 +930,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
-@@ -0,0 +1,1211 @@
+@@ -0,0 +1,1226 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1069,6 +1033,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    double                      peak;
 +    double                      src_peak;
 +    double                      target_peak;
++    float                       hlg_gm1;
++    float                       baked_hlg_gm1;
 +    double                      param;
 +    double                      final_param;
 +    double                      desat_param;
@@ -1087,14 +1053,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    CVMetalTextureCacheRef      texture_cache;
 +} TonemapVideoToolboxContext;
 +
-+static const short linearize_funcs[AVCOL_TRC_NB] = {
++static const short linearize_funcs[] = {
 +    [AVCOL_TRC_SMPTE2084]    = 1, //"eotf_st2084",
 +    [AVCOL_TRC_ARIB_STD_B67] = 2, //"eotf_arib_b67",
-+};
-+
-+static const short delinearize_funcs[AVCOL_TRC_NB] = {
-+    [AVCOL_TRC_BT709]     = 1, //"inverse_eotf_bt1886",
-+    [AVCOL_TRC_BT2020_10] = 1, //"inverse_eotf_bt1886",
 +};
 +
 +static const double dovi_lms2rgb_matrix[3][3] =
@@ -1111,6 +1072,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +            return 1;
 +    return 0;
 +}
++
++// BT.2100 adaptive γ-1 for HLG OOTF; src_peak is REFERENCE_WHITE_ALT-normalized.
++#define HLG_GAMMA_M1(src_peak) \
++    (float)(FFMAX(1.0, 1.2 + 0.42 * log10((src_peak) * REFERENCE_WHITE_ALT / 1000.0)) - 1.0)
 +
 +static int get_rgb2rgb_matrix(enum AVColorPrimaries in, enum AVColorPrimaries out,
 +                              double rgb2rgb[3][3])
@@ -1367,6 +1332,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (ctx->src_peak <= REF_WHITE_SCALE)
 +        ctx->src_peak = 10.0f * REF_WHITE_SCALE;
 +
++    ctx->hlg_gm1 = HLG_GAMMA_M1(ctx->src_peak);
++
 +    // SDR peak is 1.0f
 +    ctx->target_peak = 1.0f;
 +
@@ -1612,7 +1579,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +
 +    if (ctx->trc_out != AVCOL_TRC_SMPTE2084) {
 +        [constant_values setConstantValue:&linearize_funcs[ctx->trc_in] type:MTLDataTypeShort withName:@"linearize_type"];
-+        [constant_values setConstantValue:&delinearize_funcs[ctx->trc_in] type:MTLDataTypeShort withName:@"delinearize_type"];
++    }
++    if (ctx->trc_in == AVCOL_TRC_ARIB_STD_B67) {
++        [constant_values setConstantValue:&ctx->hlg_gm1 type:MTLDataTypeFloat withName:@"hlg_gm1"];
++        ctx->baked_hlg_gm1 = ctx->hlg_gm1;
 +    }
 +
 +    if (enable_dither) {
@@ -1874,6 +1844,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +            ctx->src_peak = ff_determine_signal_peak(input);
 +            ctx->src_peak *= REF_WHITE_SCALE;
 +        }
++        ctx->hlg_gm1 = HLG_GAMMA_M1(ctx->src_peak);
 +        av_log(ctx, AV_LOG_DEBUG, "Computed signal peak: %f "
 +               "at pts %"PRId64"\n", ctx->src_peak, input->pts);
 +    }
@@ -1917,6 +1888,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +
 +    // Some DOVI video does not carry metadata in the first few frames, and we have to reset the pipeline.
 +    if (!ctx->init_with_dovi && ctx->dovi && ctx->initialised) {
++        tonemap_videotoolbox_uninit_common(avctx);
++    }
++
++    // hlg_gm1 is baked into the pipeline as a Metal function constant for powr fast-path;
++    // rebuild the pipeline if it changed (e.g. DOVI per-scene peak update).
++    if (ctx->initialised && ctx->trc_in == AVCOL_TRC_ARIB_STD_B67 &&
++        ctx->hlg_gm1 != ctx->baked_hlg_gm1) {
 +        tonemap_videotoolbox_uninit_common(avctx);
 +    }
 +
@@ -2177,4 +2155,5 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    FILTER_OUTPUTS(tonemap_videotoolbox_outputs),
 +    FILTER_QUERY_FUNC(tonemap_videotoolbox_query_formats),
 +    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
++    .flags          = AVFILTER_FLAG_HWDEVICE,
 +};
