@@ -1,0 +1,15 @@
+Index: FFmpeg/fftools/ffmpeg_demux.c
+===================================================================
+--- FFmpeg.orig/fftools/ffmpeg_demux.c
++++ FFmpeg/fftools/ffmpeg_demux.c
+@@ -1601,6 +1601,10 @@ static int safe_filename(const char *f,
+         return 0;
+ 
+     for (; *f; f++) {
++        /* Non-ASCII bytes cannot be '/' or '.' */
++        if ((unsigned char)*f > 127)
++            continue;
++
+         /* A-Za-z0-9_- */
+         if (!((unsigned)((*f | 32) - 'a') < 26 ||
+               (unsigned)(*f - '0') < 10 || *f == '_' || *f == '-')) {
