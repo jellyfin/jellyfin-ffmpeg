@@ -92,4 +92,4 @@
 0092-add-hevc-recovery-point-support-backport-from-upstream.patch
 0093-backport-fixes-by-comparing-n7.1.4-and-release-7.1.patch
 0094-backport-a-fix-from-upstream-for-magicyuv-decoder.patch
-0095-fix-extracting-mkv-attachments-with-non-ascii-filenames.patch
+0095-relax-to-allow-safe-filenames-in-mkv-attachments.patch
