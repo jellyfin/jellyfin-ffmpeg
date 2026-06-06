@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "7.1.4-2"
+version: "7.1.4-3"
 packages:
   - bullseye-amd64
   - bullseye-arm64
