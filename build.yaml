@@ -9,9 +9,13 @@ packages:
   - bookworm-arm64
   - trixie-amd64
   - trixie-arm64
+  - trixie-riscv64
   - jammy-amd64
   - jammy-arm64
+  - jammy-riscv64
   - noble-amd64
   - noble-arm64
+  - noble-riscv64
   - resolute-amd64
   - resolute-arm64
+  - resolute-riscv64

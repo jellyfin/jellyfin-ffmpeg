@@ -1,0 +1,13 @@
+[binaries]
+c = 'riscv64-ffbuild-linux-gnu-gcc'
+cpp = 'riscv64-ffbuild-linux-gnu-g++'
+ld = 'riscv64-ffbuild-linux-gnu-ld'
+ar = 'riscv64-ffbuild-linux-gnu-gcc-ar'
+ranlib = 'riscv64-ffbuild-linux-gnu-gcc-ranlib'
+strip = 'riscv64-ffbuild-linux-gnu-strip'
+
+[host_machine]
+system = 'linux'
+cpu_family = 'riscv64'
+cpu = 'riscv64'
+endian = 'little'

@@ -18,7 +18,6 @@ ffbuild_dockerbuild() {
         --prefix="$FFBUILD_PREFIX"
         --buildtype=release
         --default-library=static
-        -Dasm=enabled
         -Dx11=enabled
         -Degl=true
         -Dglx=enabled
@@ -26,6 +25,13 @@ ffbuild_dockerbuild() {
         -Dgles2=true
         -Dheaders=true
     )
+
+    if [[ $TARGET == linuxriscv64 ]]; then
+        # No RISC-V assembly stubs in libglvnd yet
+        myconf+=(-Dasm=disabled)
+    else
+        myconf+=(-Dasm=enabled)
+    fi
 
     if [[ $TARGET == linux* ]]; then
         myconf+=(

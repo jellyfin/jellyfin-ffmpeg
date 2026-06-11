@@ -18,6 +18,7 @@ ffbuild_dockerbuild() {
 }
 
 ffbuild_configure() {
+    [[ $TARGET == linuxriscv64 ]] && return 0
     echo --enable-amf
 }
 

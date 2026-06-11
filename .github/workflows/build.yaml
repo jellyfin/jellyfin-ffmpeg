@@ -17,21 +17,39 @@ on:
     paths-ignore:
       - '**/*.md'
 
+  workflow_dispatch:
+
 jobs:
   build_debian:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
-      codenames: '["bullseye", "bookworm", "trixie"]'
+      codenames: '["bullseye", "bookworm"]'
       architectures: '["amd64", "arm64"]'
+      release: false
+
+  build_debian_trixie:
+    uses: ./.github/workflows/_meta.yaml
+    with:
+      distro: 'debian'
+      codenames: '["trixie"]'
+      architectures: '["amd64", "arm64", "riscv64"]'
       release: false
 
   build_ubuntu:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["jammy", "noble", "resolute"]'
-      architectures: '["amd64", "arm64"]'
+      codenames: '["jammy"]'
+      architectures: '["amd64", "arm64", "riscv64"]'
+      release: false
+
+  build_ubuntu_riscv64:
+    uses: ./.github/workflows/_meta.yaml
+    with:
+      distro: 'ubuntu'
+      codenames: '["noble", "resolute"]'
+      architectures: '["amd64", "arm64", "riscv64"]'
       release: false
 
   # Disabled as clang is stable.
@@ -51,7 +69,7 @@ jobs:
     uses: ./.github/workflows/_meta_portable.yaml
     with:
       os: 'linux'
-      architectures: '["amd64", "arm64"]'
+      architectures: '["amd64", "arm64", "riscv64"]'
       release: false
 
   build_portable_mac:

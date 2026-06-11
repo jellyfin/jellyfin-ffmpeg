@@ -33,7 +33,10 @@ ffbuild_dockerbuild() {
         myconf+=(
             --enable-neon
         )
-    else
+    elif [[ $TARGET == linuxriscv64 ]]; then
+        # RISC-V: no SIMD yet (vector extension support pending)
+        :
+    elif [[ $TARGET == linux64 || $TARGET == win64 ]]; then
         myconf+=(
             --enable-sse2
             --enable-avx
