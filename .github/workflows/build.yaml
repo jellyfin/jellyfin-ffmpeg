@@ -40,15 +40,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'ubuntu'
-      codenames: '["jammy"]'
-      architectures: '["amd64", "arm64", "riscv64"]'
-      release: false
-
-  build_ubuntu_riscv64:
-    uses: ./.github/workflows/_meta.yaml
-    with:
-      distro: 'ubuntu'
-      codenames: '["noble", "resolute"]'
+      codenames: '["jammy", "noble", "resolute"]'
       architectures: '["amd64", "arm64", "riscv64"]'
       release: false
 
