@@ -2,7 +2,7 @@ Index: FFmpeg/libavfilter/opencl.c
 ===================================================================
 --- FFmpeg.orig/libavfilter/opencl.c
 +++ FFmpeg/libavfilter/opencl.c
-@@ -170,7 +170,7 @@ int ff_opencl_filter_load_program(AVFilt
+@@ -169,7 +169,7 @@ int ff_opencl_filter_load_program(AVFilt
      }
  
      cle = clBuildProgram(ctx->program, 1, &ctx->hwctx->device_id,
@@ -11,7 +11,7 @@ Index: FFmpeg/libavfilter/opencl.c
      if (cle != CL_SUCCESS) {
          av_log(avctx, AV_LOG_ERROR, "Failed to build program: %d.\n", cle);
  
-@@ -331,7 +331,7 @@ void ff_opencl_print_const_matrix_3x3(AV
+@@ -330,7 +330,7 @@ void ff_opencl_print_const_matrix_3x3(AV
      av_bprintf(buf, "__constant float %s[9] = {\n", name_str);
      for (i = 0; i < 3; i++) {
          for (j = 0; j < 3; j++)
@@ -1637,7 +1637,6 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    if (!inlink->hw_frames_ctx)
          return AVERROR(EINVAL);
 -      }
--    }
 +    in_frames_ctx = (AVHWFramesContext*)inlink->hw_frames_ctx->data;
 +    in_format     = in_frames_ctx->sw_format;
 +    out_format    = (ctx->format == AV_PIX_FMT_NONE) ? in_format : ctx->format;
@@ -1658,8 +1657,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        av_log(ctx, AV_LOG_ERROR, "Unsupported input format depth: %d\n",
 +               in_desc->comp[0].depth);
 +        return AVERROR(ENOSYS);
-+    }
-+
+     }
+ 
+-    s->ocf.output_format = s->format == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : s->format;
 +    ctx->in_fmt     = in_format;
 +    ctx->out_fmt    = out_format;
 +    ctx->in_desc    = in_desc;
@@ -1667,8 +1667,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    ctx->in_planes  = av_pix_fmt_count_planes(in_format);
 +    ctx->out_planes = av_pix_fmt_count_planes(out_format);
 +    ctx->ocf.output_format = out_format;
- 
--    s->ocf.output_format = s->format == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : s->format;
++
      ret = ff_opencl_filter_config_output(outlink);
      if (ret < 0)
          return ret;
@@ -1721,7 +1720,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      local_work[0]  = 16;
      local_work[1]  = 16;
-@@ -338,13 +829,10 @@ static int tonemap_opencl_filter_frame(A
+@@ -338,12 +829,10 @@ static int tonemap_opencl_filter_frame(A
      AVFilterContext    *avctx = inlink->dst;
      AVFilterLink     *outlink = avctx->outputs[0];
      TonemapOpenCLContext *ctx = avctx->priv;
@@ -1731,11 +1730,18 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      int err;
 -    double peak = ctx->peak;
 -
--    AVHWFramesContext *input_frames_ctx =
--        (AVHWFramesContext*)input->hw_frames_ctx->data;
+-    AVHWFramesContext *input_frames_ctx;
  
      av_log(ctx, AV_LOG_DEBUG, "Filter input: %s, %ux%u (%"PRId64").\n",
             av_get_pix_fmt_name(input->format),
+@@ -351,7 +840,6 @@ static int tonemap_opencl_filter_frame(A
+ 
+     if (!input->hw_frames_ctx)
+         return AVERROR(EINVAL);
+-    input_frames_ctx = (AVHWFramesContext*)input->hw_frames_ctx->data;
+ 
+     output = ff_get_video_buffer(outlink, outlink->w, outlink->h);
+     if (!output) {
 @@ -363,9 +851,6 @@ static int tonemap_opencl_filter_frame(A
      if (err < 0)
          goto fail;
@@ -1885,7 +1891,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  {
 -    TonemapOpenCLContext *ctx = avctx->priv;
 -    cl_int cle;
--
++    tonemap_opencl_uninit_common(avctx);
+ 
 -    if (ctx->util_mem)
 -        clReleaseMemObject(ctx->util_mem);
 -    if (ctx->kernel) {
@@ -1894,8 +1901,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 -            av_log(avctx, AV_LOG_ERROR, "Failed to release "
 -                   "kernel: %d.\n", cle);
 -    }
-+    tonemap_opencl_uninit_common(avctx);
- 
+-
 -    if (ctx->command_queue) {
 -        cle = clReleaseCommandQueue(ctx->command_queue);
 -        if (cle != CL_SUCCESS)
@@ -1986,3 +1992,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      { NULL }
  };
  
+@@ -547,5 +1048,4 @@ const AVFilter ff_vf_tonemap_opencl = {
+     FILTER_OUTPUTS(tonemap_opencl_outputs),
+     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
+     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+-    .flags          = AVFILTER_FLAG_HWDEVICE,
+ };

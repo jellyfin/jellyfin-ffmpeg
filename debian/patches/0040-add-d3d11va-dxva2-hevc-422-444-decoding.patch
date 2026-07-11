@@ -16,14 +16,14 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2.c
  DEFINE_GUID(ff_DXVA2_ModeVP9_VLD_10bit_Profile2,0xa4c749ef,0x6ecf,0x48aa,0x84,0x48,0x50,0xa7,0xa1,0x16,0x5f,0xf7);
  DEFINE_GUID(ff_DXVA2_ModeAV1_VLD_Profile0,0xb8be4ccb,0xcf53,0x46ba,0x8d,0x59,0xd6,0xb8,0xa6,0xda,0x5d,0x2a);
 @@ -69,6 +75,8 @@ static const int prof_hevc_main[]    = {
-                                         FF_PROFILE_UNKNOWN};
- static const int prof_hevc_main10[]  = {FF_PROFILE_HEVC_MAIN_10,
-                                         FF_PROFILE_UNKNOWN};
-+static const int prof_hevc_main_rext[] = {FF_PROFILE_HEVC_REXT,
-+                                          FF_PROFILE_UNKNOWN};
- static const int prof_vp9_profile0[] = {FF_PROFILE_VP9_0,
-                                         FF_PROFILE_UNKNOWN};
- static const int prof_vp9_profile2[] = {FF_PROFILE_VP9_2,
+                                         AV_PROFILE_UNKNOWN};
+ static const int prof_hevc_main10[]  = {AV_PROFILE_HEVC_MAIN_10,
+                                         AV_PROFILE_UNKNOWN};
++static const int prof_hevc_main_rext[] = {AV_PROFILE_HEVC_REXT,
++                                          AV_PROFILE_UNKNOWN};
+ static const int prof_vp9_profile0[] = {AV_PROFILE_VP9_0,
+                                         AV_PROFILE_UNKNOWN};
+ static const int prof_vp9_profile2[] = {AV_PROFILE_VP9_2,
 @@ -97,6 +105,14 @@ static const dxva_mode dxva_modes[] = {
      { &ff_DXVA2_ModeHEVC_VLD_Main10, AV_CODEC_ID_HEVC, prof_hevc_main10 },
      { &ff_DXVA2_ModeHEVC_VLD_Main,   AV_CODEC_ID_HEVC, prof_hevc_main },
@@ -153,9 +153,9 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2_hevc.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/dxva2_hevc.c
 +++ jellyfin-ffmpeg/libavcodec/dxva2_hevc.c
-@@ -28,10 +28,60 @@
- #include "hevc_data.h"
+@@ -29,10 +29,60 @@
  #include "hevcdec.h"
+ #include "hwaccel_internal.h"
  
 +/**
 + * Picture Parameters DXVA buffer struct for Rext is not specified in DXVA
@@ -215,7 +215,7 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2_hevc.c
      DXVA_Qmatrix_HEVC     qm;
      unsigned              slice_count;
      DXVA_Slice_HEVC_Short slice_short[MAX_SLICES];
-@@ -57,18 +107,48 @@ static int get_refpic_index(const DXVA_P
+@@ -58,18 +108,48 @@ static int get_refpic_index(const DXVA_P
  }
  
  static void fill_picture_parameters(const AVCodecContext *avctx, AVDXVAContext *ctx, const HEVCContext *h,
@@ -266,7 +266,7 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2_hevc.c
      pp->wFormatAndSequenceInfoFlags = (sps->chroma_format_idc             <<  0) |
                                        (sps->separate_colour_plane_flag    <<  2) |
                                        ((sps->bit_depth - 8)               <<  3) |
-@@ -404,16 +484,18 @@ static int dxva2_hevc_decode_slice(AVCod
+@@ -405,16 +485,18 @@ static int dxva2_hevc_decode_slice(AVCod
  
  static int dxva2_hevc_end_frame(AVCodecContext *avctx)
  {
@@ -275,7 +275,7 @@ Index: jellyfin-ffmpeg/libavcodec/dxva2_hevc.c
      struct hevc_dxva2_picture_context *ctx_pic = h->ref->hwaccel_picture_private;
 -    int scale = ctx_pic->pp.dwCodingParamToolFlags & 1;
 +    int scale = ctx_pic->pp.main.dwCodingParamToolFlags & 1;
-+    int rext = avctx->profile == FF_PROFILE_HEVC_REXT;
++    int rext = avctx->profile == AV_PROFILE_HEVC_REXT;
      int ret;
  
      if (ctx_pic->slice_count <= 0 || ctx_pic->bitstream_size <= 0)
@@ -291,7 +291,7 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/hevcdec.c
 +++ jellyfin-ffmpeg/libavcodec/hevcdec.c
-@@ -453,6 +453,13 @@ static enum AVPixelFormat get_format(HEV
+@@ -458,6 +458,13 @@ static enum AVPixelFormat get_format(HEV
  #endif
          break;
      case AV_PIX_FMT_YUV444P:
@@ -305,7 +305,7 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
  #if CONFIG_HEVC_VAAPI_HWACCEL
          *fmt++ = AV_PIX_FMT_VAAPI;
  #endif
-@@ -468,6 +475,13 @@ static enum AVPixelFormat get_format(HEV
+@@ -476,6 +483,13 @@ static enum AVPixelFormat get_format(HEV
          break;
      case AV_PIX_FMT_YUV422P:
      case AV_PIX_FMT_YUV422P10LE:
@@ -319,8 +319,8 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
  #if CONFIG_HEVC_VAAPI_HWACCEL
         *fmt++ = AV_PIX_FMT_VAAPI;
  #endif
-@@ -481,6 +495,13 @@ static enum AVPixelFormat get_format(HEV
- #endif
+@@ -493,6 +507,13 @@ static enum AVPixelFormat get_format(HEV
+     /* NOTE: fallthrough */
      case AV_PIX_FMT_YUV420P12:
      case AV_PIX_FMT_YUV444P12:
 +#if CONFIG_HEVC_DXVA2_HWACCEL
@@ -333,7 +333,7 @@ Index: jellyfin-ffmpeg/libavcodec/hevcdec.c
  #if CONFIG_HEVC_VAAPI_HWACCEL
         *fmt++ = AV_PIX_FMT_VAAPI;
  #endif
-@@ -492,6 +513,13 @@ static enum AVPixelFormat get_format(HEV
+@@ -507,6 +528,13 @@ static enum AVPixelFormat get_format(HEV
  #endif
          break;
      case AV_PIX_FMT_YUV422P12:

@@ -23,7 +23,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_d3d11va.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
-@@ -545,6 +545,35 @@ static void d3d11va_device_uninit(AVHWDe
+@@ -563,6 +563,35 @@ static void d3d11va_device_uninit(AVHWDe
      }
  }
  
@@ -59,7 +59,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_d3d11va.c
  static int d3d11va_device_create(AVHWDeviceContext *ctx, const char *device,
                                   AVDictionary *opts, int flags)
  {
-@@ -608,6 +637,9 @@ static int d3d11va_device_create(AVHWDev
+@@ -661,6 +690,9 @@ static int d3d11va_device_create(AVHWDev
          ID3D10Multithread_Release(pMultithread);
      }
  

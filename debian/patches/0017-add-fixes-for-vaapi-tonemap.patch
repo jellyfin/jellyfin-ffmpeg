@@ -245,7 +245,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_vaapi.c
      err = ff_vaapi_vpp_init_params(avctx, &params,
                                     input_frame, output_frame);
      if (err < 0)
-@@ -358,6 +492,60 @@ static av_cold int tonemap_vaapi_init(AV
+@@ -361,6 +495,60 @@ static av_cold int tonemap_vaapi_init(AV
      STRING_OPTION(color_transfer,  color_transfer,  AVCOL_TRC_UNSPECIFIED);
      STRING_OPTION(color_matrix,    color_space,     AVCOL_SPC_UNSPECIFIED);
  
@@ -306,7 +306,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_tonemap_vaapi.c
      return 0;
  }
  
-@@ -383,10 +571,13 @@ static const AVOption tonemap_vaapi_opti
+@@ -386,10 +574,13 @@ static const AVOption tonemap_vaapi_opti
      { "t",        "Output color transfer characteristics set",
        OFFSET(color_transfer_string),  AV_OPT_TYPE_STRING,
        { .str = NULL }, .flags = FLAGS, "transfer" },

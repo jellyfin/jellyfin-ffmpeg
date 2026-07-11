@@ -1,3 +1,17 @@
+jellyfin-ffmpeg (6.1.6-1) unstable; urgency=medium
+
+  * New upstream version 6.1.6
+  * Rebase the Jellyfin patch set from 6.0.1 onto FFmpeg 6.1.6 (69 patches)
+  * Drop 13 patches now merged upstream in 6.1: vulkan-vaapi-interop,
+    vulkan drm-modifiers fallback, assenc null-terminator, libplacebo
+    ad-hoc/v6-api fixes, av1-vaapi encoder, upstream qsvenc fixes,
+    scale-vt backport, svt-av1 encoder backport, gcc-14 qsv-hwcontext
+    warnings, DTS:X and Atmos (eac3/truehd) detection
+  * Adapt vulkan hwcontext/filters, AMF refactor, VideoToolbox and
+    Rockchip RK3588 patches to the 6.1 APIs
+
+ -- th0ma7 <th0ma7@gmail.com>  Sat, 11 Jul 2026 11:30:22 +0000
+
 jellyfin-ffmpeg (6.0.1-8) unstable; urgency=medium
 
   * Add detection of DTS:X and DTS:X IMAX

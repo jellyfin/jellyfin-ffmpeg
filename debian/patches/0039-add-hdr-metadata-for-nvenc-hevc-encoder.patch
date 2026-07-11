@@ -10,7 +10,7 @@ Index: jellyfin-ffmpeg/libavcodec/nvenc.c
  #if CONFIG_AV1_NVENC_ENCODER
  #include "av1.h"
  #endif
-@@ -33,6 +34,7 @@
+@@ -32,6 +33,7 @@
  #include "libavutil/hwcontext.h"
  #include "libavutil/cuda_check.h"
  #include "libavutil/imgutils.h"
@@ -18,7 +18,7 @@ Index: jellyfin-ffmpeg/libavcodec/nvenc.c
  #include "libavutil/mem.h"
  #include "libavutil/pixdesc.h"
  #include "libavutil/mathematics.h"
-@@ -2445,6 +2447,80 @@ static int prepare_sei_data_array(AVCode
+@@ -2518,6 +2520,80 @@ static int prepare_sei_data_array(AVCode
              }
          }
      }

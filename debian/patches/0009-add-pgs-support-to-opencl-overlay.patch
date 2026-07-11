@@ -228,7 +228,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
  {
      OverlayOpenCLContext *ctx = avctx->priv;
      cl_int cle;
--    const char *source = ff_opencl_source_overlay;
+-    const char *source = ff_source_overlay_cl;
 -    const char *kernel;
 -    const AVPixFmtDescriptor *main_desc, *overlay_desc;
 -    int err, i, main_planes, overlay_planes;
@@ -295,7 +295,7 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
 +    av_log(avctx, AV_LOG_DEBUG, "Using kernel %s.\n", ctx->kernel_name);
  
 -    err = ff_opencl_filter_load_program(avctx, &source, 1);
-+    err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_overlay, 1);
++    err = ff_opencl_filter_load_program(avctx, &ff_source_overlay_cl, 1);
      if (err < 0)
          goto fail;
  
@@ -636,3 +636,9 @@ Index: jellyfin-ffmpeg/libavfilter/vf_overlay_opencl.c
      { NULL },
  };
  
+@@ -322,5 +497,4 @@ const AVFilter ff_vf_overlay_opencl = {
+     FILTER_OUTPUTS(overlay_opencl_outputs),
+     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
+     .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
+-    .flags          = AVFILTER_FLAG_HWDEVICE,
+ };

@@ -1,34 +1,34 @@
 diff --git a/configure b/configure
-index 3cd3bdfb44..7bf621590e 100755
+index 757953dd46..262a188856 100755
 --- a/configure
 +++ b/configure
-@@ -3751,6 +3751,7 @@ tonemap_opencl_filter_deps="opencl const_nan"
- transpose_opencl_filter_deps="opencl"
+@@ -3845,6 +3845,7 @@ transpose_opencl_filter_deps="opencl"
  transpose_vaapi_filter_deps="vaapi VAProcPipelineCaps_rotation_flags"
+ transpose_vt_filter_deps="videotoolbox VTPixelRotationSessionCreate"
  transpose_vulkan_filter_deps="vulkan spirv_compiler"
 +transpose_vt_filter_deps="coreimage videotoolbox"
  unsharp_opencl_filter_deps="opencl"
  uspp_filter_deps="gpl avcodec"
  vaguedenoiser_filter_deps="gpl"
 diff --git a/libavfilter/Makefile b/libavfilter/Makefile
-index b3d3d981dd..f4ef8cd062 100644
+index 10b8bb727e..c56d55ba44 100644
 --- a/libavfilter/Makefile
 +++ b/libavfilter/Makefile
-@@ -516,6 +516,7 @@ OBJS-$(CONFIG_TRANSPOSE_NPP_FILTER)          += vf_transpose_npp.o
- OBJS-$(CONFIG_TRANSPOSE_OPENCL_FILTER)       += vf_transpose_opencl.o opencl.o opencl/transpose.o
+@@ -541,6 +541,7 @@ OBJS-$(CONFIG_TRANSPOSE_OPENCL_FILTER)       += vf_transpose_opencl.o opencl.o o
  OBJS-$(CONFIG_TRANSPOSE_VAAPI_FILTER)        += vf_transpose_vaapi.o vaapi_vpp.o
+ OBJS-$(CONFIG_TRANSPOSE_VT_FILTER)           += vf_transpose_vt.o
  OBJS-$(CONFIG_TRANSPOSE_VULKAN_FILTER)       += vf_transpose_vulkan.o vulkan.o vulkan_filter.o
 +OBJS-$(CONFIG_TRANSPOSE_VT_FILTER)           += vf_transpose_vt.o
  OBJS-$(CONFIG_TRIM_FILTER)                   += trim.o
  OBJS-$(CONFIG_UNPREMULTIPLY_FILTER)          += vf_premultiply.o framesync.o
  OBJS-$(CONFIG_UNSHARP_FILTER)                += vf_unsharp.o
 diff --git a/libavfilter/allfilters.c b/libavfilter/allfilters.c
-index d7db46c2af..4d95949027 100644
+index a01a32d1d2..086bc5acf8 100644
 --- a/libavfilter/allfilters.c
 +++ b/libavfilter/allfilters.c
-@@ -486,6 +486,7 @@ extern const AVFilter ff_vf_transpose_npp;
- extern const AVFilter ff_vf_transpose_opencl;
+@@ -504,6 +504,7 @@ extern const AVFilter ff_vf_transpose_opencl;
  extern const AVFilter ff_vf_transpose_vaapi;
+ extern const AVFilter ff_vf_transpose_vt;
  extern const AVFilter ff_vf_transpose_vulkan;
 +extern const AVFilter ff_vf_transpose_vt;
  extern const AVFilter ff_vf_trim;

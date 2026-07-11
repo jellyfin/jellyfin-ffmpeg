@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/configure
 ===================================================================
 --- jellyfin-ffmpeg.orig/configure
 +++ jellyfin-ffmpeg/configure
-@@ -3149,6 +3149,8 @@ thumbnail_cuda_filter_deps="ffnvcodec"
+@@ -3211,6 +3211,8 @@ thumbnail_cuda_filter_deps="ffnvcodec"
  thumbnail_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
  tonemap_cuda_filter_deps="ffnvcodec const_nan"
  tonemap_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
@@ -15,7 +15,7 @@ Index: jellyfin-ffmpeg/libavfilter/Makefile
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/Makefile
 +++ jellyfin-ffmpeg/libavfilter/Makefile
-@@ -523,6 +523,8 @@ OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)
+@@ -534,6 +534,8 @@ OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)
  OBJS-$(CONFIG_TONEMAP_VAAPI_FILTER)          += vf_tonemap_vaapi.o vaapi_vpp.o
  OBJS-$(CONFIG_TPAD_FILTER)                   += vf_tpad.o
  OBJS-$(CONFIG_TRANSPOSE_FILTER)              += vf_transpose.o
@@ -28,7 +28,7 @@ Index: jellyfin-ffmpeg/libavfilter/allfilters.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/allfilters.c
 +++ jellyfin-ffmpeg/libavfilter/allfilters.c
-@@ -489,6 +489,7 @@ extern const AVFilter ff_vf_tonemap_open
+@@ -498,6 +498,7 @@ extern const AVFilter ff_vf_tonemap_open
  extern const AVFilter ff_vf_tonemap_vaapi;
  extern const AVFilter ff_vf_tpad;
  extern const AVFilter ff_vf_transpose;

@@ -2,7 +2,7 @@ Index: jellyfin-ffmpeg/libavcodec/qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavcodec/qsv.c
 +++ jellyfin-ffmpeg/libavcodec/qsv.c
-@@ -409,9 +409,17 @@ static int qsv_load_plugins(mfxSession s
+@@ -405,9 +405,17 @@ static int qsv_load_plugins(mfxSession s
                              void *logctx)
  {
  #if QSV_HAVE_USER_PLUGIN

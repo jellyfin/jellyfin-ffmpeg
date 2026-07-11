@@ -17,7 +17,7 @@ Index: jellyfin-ffmpeg/libavfilter/qsvvpp.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavfilter/qsvvpp.c
 +++ jellyfin-ffmpeg/libavfilter/qsvvpp.c
-@@ -598,6 +598,9 @@ static int init_vpp_session(AVFilterCont
+@@ -629,6 +629,9 @@ static int init_vpp_session(AVFilterCont
              out_frames_ctx->initial_pool_size += avctx->extra_hw_frames;
          out_frames_hwctx->frame_type      = s->out_mem_mode;
  
@@ -283,7 +283,7 @@ Index: jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
 ===================================================================
 --- jellyfin-ffmpeg.orig/libavutil/hwcontext_qsv.c
 +++ jellyfin-ffmpeg/libavutil/hwcontext_qsv.c
-@@ -1868,6 +1868,7 @@ static int qsv_frames_derive_to(AVHWFram
+@@ -1889,6 +1889,7 @@ static int qsv_frames_derive_to(AVHWFram
              } else {
                  dst_hwctx->frame_type |= MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET;
              }
