@@ -48,17 +48,16 @@
 #include <float.h>
 #include <libavutil/lfg.h>
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/fifo.h"
 #include "libavutil/common.h"
 #include "libavutil/avassert.h"
+#include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 #include "avfilter.h"
 #include "framequeue.h"
 #include "filters.h"
 #include "transform.h"
-#include "formats.h"
 #include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
@@ -704,7 +703,7 @@ static int minimize_error(
             total_err += deshake_ctx->ransac_err[j];
         }
 
-        if (total_err < best_err) {
+        if (i == 0 || total_err < best_err) {
             for (int mi = 0; mi < 6; ++mi) {
                 best_model[mi] = model[mi];
             }
@@ -1251,7 +1250,7 @@ static int deshake_opencl_init(AVFilterContext *avctx)
     }
     ctx->sw_format = hw_frames_ctx->sw_format;
 
-    err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_deshake, 1);
+    err = ff_opencl_filter_load_program(avctx, &ff_source_deshake_cl, 1);
     if (err < 0)
         goto fail;
 
@@ -2169,5 +2168,6 @@ const AVFilter ff_vf_deshake_opencl = {
     FILTER_INPUTS(deshake_opencl_inputs),
     FILTER_OUTPUTS(deshake_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
-    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE
+    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

@@ -27,15 +27,12 @@
 
 #include <float.h>
 
-#include "libavutil/avstring.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "framesync.h"
-#include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
-#include "video.h"
 
 #define NUM_DATA_BUFS 13
 
@@ -218,8 +215,8 @@ static int vif_filter1d(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     int dst_stride = td->dst_stride;
     int filt_w = td->filter_width;
     float *temp = td->temp[jobnr];
-    const int slice_start = (h * jobnr) / nb_jobs;
-    const int slice_end = (h * (jobnr+1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);
 
     for (int i = slice_start; i < slice_end; i++) {
         /** Vertical pass. */
@@ -305,8 +302,8 @@ static int compute_vif2(AVFilterContext *ctx,
     float *main_sq_filt = data_buf[11];
     float *ref_main_filt = data_buf[12];
 
-    float *curr_ref_scale = (float *)ref;
-    float *curr_main_scale = (float *)main;
+    const float *curr_ref_scale  = ref;
+    const float *curr_main_scale = main;
     int curr_ref_stride = ref_stride;
     int curr_main_stride = main_stride;
 

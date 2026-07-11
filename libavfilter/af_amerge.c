@@ -30,6 +30,7 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "audio.h"
+#include "formats.h"
 #include "internal.h"
 
 #define SWR_CH_MAX 64
@@ -76,7 +77,7 @@ static int query_formats(AVFilterContext *ctx)
     AVChannelLayout *inlayout[SWR_CH_MAX] = { NULL }, outlayout = { 0 };
     uint64_t outmask = 0;
     AVFilterChannelLayouts *layouts;
-    int i, ret, overlap = 0, nb_ch = 0;
+    int i, ret, nb_ch = 0;
 
     for (i = 0; i < s->nb_inputs; i++) {
         if (!ctx->inputs[i]->incfg.channel_layouts ||
@@ -91,15 +92,11 @@ static int query_formats(AVFilterContext *ctx)
             av_channel_layout_describe(inlayout[i], buf, sizeof(buf));
             av_log(ctx, AV_LOG_INFO, "Using \"%s\" for input %d\n", buf, i + 1);
         }
-        s->in[i].nb_ch = FF_LAYOUT2COUNT(inlayout[i]);
-        if (s->in[i].nb_ch) {
-            overlap++;
-        } else {
-            s->in[i].nb_ch = inlayout[i]->nb_channels;
-            if (av_channel_layout_subset(inlayout[i], outmask))
-                overlap++;
-            outmask |= inlayout[i]->order == AV_CHANNEL_ORDER_NATIVE ?
-                       inlayout[i]->u.mask : 0;
+        s->in[i].nb_ch = inlayout[i]->nb_channels;
+        for (int j = 0; j < s->in[i].nb_ch; j++) {
+            enum AVChannel id = av_channel_layout_channel_from_index(inlayout[i], j);
+            if (id >= 0 && id < 64)
+                outmask |= (1ULL << id);
         }
         nb_ch += s->in[i].nb_ch;
     }
@@ -107,7 +104,7 @@ static int query_formats(AVFilterContext *ctx)
         av_log(ctx, AV_LOG_ERROR, "Too many channels (max %d)\n", SWR_CH_MAX);
         return AVERROR(EINVAL);
     }
-    if (overlap) {
+    if (av_popcount64(outmask) != nb_ch) {
         av_log(ctx, AV_LOG_WARNING,
                "Input channel layouts overlap: "
                "output layout will be determined by the number of distinct input channels\n");
@@ -243,6 +240,10 @@ static int try_push_frame(AVFilterContext *ctx, int nb_samples)
     outbuf->pts = inbuf[0]->pts;
 
     outbuf->nb_samples     = nb_samples;
+    outbuf->duration = av_rescale_q(outbuf->nb_samples,
+                                    av_make_q(1, outlink->sample_rate),
+                                    outlink->time_base);
+
     if ((ret = av_channel_layout_copy(&outbuf->ch_layout, &outlink->ch_layout)) < 0)
         return ret;
 #if FF_API_OLD_CHANNEL_LAYOUT

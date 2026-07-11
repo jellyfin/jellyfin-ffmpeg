@@ -27,12 +27,13 @@
  * very simple video equalizer
  */
 
-#include "libavfilter/internal.h"
 #include "libavutil/common.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "internal.h"
 #include "vf_eq.h"
+#include "video.h"
 
 static void create_lut(EQParameters *param)
 {
@@ -221,7 +222,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVFilterLink *outlink = inlink->dst->outputs[0];
     EQContext *eq = ctx->priv;
     AVFrame *out;
-    int64_t pos = in->pkt_pos;
     const AVPixFmtDescriptor *desc;
     int i;
 
@@ -235,7 +235,14 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     desc = av_pix_fmt_desc_get(inlink->format);
 
     eq->var_values[VAR_N]   = inlink->frame_count_out;
-    eq->var_values[VAR_POS] = pos == -1 ? NAN : pos;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
+    {
+        int64_t pos = in->pkt_pos;
+        eq->var_values[VAR_POS] = pos == -1 ? NAN : pos;
+    }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     eq->var_values[VAR_T]   = TS2T(in->pts, inlink->time_base);
 
     if (eq->eval_mode == EVAL_MODE_FRAME) {
@@ -307,13 +314,6 @@ static const AVFilterPad eq_inputs[] = {
     },
 };
 
-static const AVFilterPad eq_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #define OFFSET(x) offsetof(EQContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 #define TFLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
@@ -348,7 +348,7 @@ const AVFilter ff_vf_eq = {
     .priv_size       = sizeof(EQContext),
     .priv_class      = &eq_class,
     FILTER_INPUTS(eq_inputs),
-    FILTER_OUTPUTS(eq_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixel_fmts_eq),
     .process_command = process_command,
     .init            = initialize,

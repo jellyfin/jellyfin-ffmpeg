@@ -623,9 +623,8 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     get_qtable(s->intraq_tab[0], s->intra_quant, luma_tab);
     get_qtable(s->intraq_tab[1], s->intra_quant, chroma_tab);
 
-    frame->key_frame = s->is_inter == 0;
-
-    if (frame->key_frame) {
+    if (s->is_inter == 0) {
+        frame->flags |= AV_FRAME_FLAG_KEY;
         ret = decode_intra(avctx, gb, frame);
         if (ret < 0)
             return ret;
@@ -638,13 +637,13 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
             return AVERROR_INVALIDDATA;
         }
 
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
         ret = decode_inter(avctx, gb, frame, s->prev_frame);
         if (ret < 0)
             return ret;
     }
 
-    av_frame_unref(s->prev_frame);
-    if ((ret = av_frame_ref(s->prev_frame, frame)) < 0)
+    if ((ret = av_frame_replace(s->prev_frame, frame)) < 0)
         return ret;
 
     *got_frame = 1;
@@ -658,7 +657,7 @@ static const uint8_t cbp_bits[] = {
 
 static av_cold void init_static_data(void)
 {
-    INIT_VLC_STATIC_FROM_LENGTHS(&cbp_tab, CBP_VLC_BITS, FF_ARRAY_ELEMS(cbp_bits),
+    VLC_INIT_STATIC_FROM_LENGTHS(&cbp_tab, CBP_VLC_BITS, FF_ARRAY_ELEMS(cbp_bits),
                                  cbp_bits, 1, NULL, 0, 0, 0, 0, 1 << CBP_VLC_BITS);
 }
 

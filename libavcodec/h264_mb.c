@@ -34,6 +34,7 @@
 #include "h264dec.h"
 #include "h264_ps.h"
 #include "qpeldsp.h"
+#include "rectangle.h"
 #include "threadframe.h"
 
 static inline int get_lowest_part_list_y(H264SliceContext *sl,
@@ -65,7 +66,7 @@ static inline void get_lowest_part_y(const H264Context *h, H264SliceContext *sl,
         // Error resilience puts the current picture in the ref list.
         // Don't try to wait on these as it will cause a deadlock.
         // Fields can wait on each other, though.
-        if (ref->parent->tf.progress->data != h->cur_pic.tf.progress->data ||
+        if (ref->parent->tf.progress != h->cur_pic.tf.progress ||
             (ref->reference & 3) != h->picture_structure) {
             my = get_lowest_part_list_y(sl, n, height, y_offset, 0);
             if (refs[0][ref_n] < 0)
@@ -78,7 +79,7 @@ static inline void get_lowest_part_y(const H264Context *h, H264SliceContext *sl,
         int ref_n    = sl->ref_cache[1][scan8[n]];
         H264Ref *ref = &sl->ref_list[1][ref_n];
 
-        if (ref->parent->tf.progress->data != h->cur_pic.tf.progress->data ||
+        if (ref->parent->tf.progress != h->cur_pic.tf.progress ||
             (ref->reference & 3) != h->picture_structure) {
             my = get_lowest_part_list_y(sl, n, height, y_offset, 1);
             if (refs[1][ref_n] < 0)
@@ -406,7 +407,7 @@ static av_always_inline void mc_part_weighted(const H264Context *h, H264SliceCon
         /* don't optimize for luma-only case, since B-frames usually
          * use implicit weights => chroma too. */
         uint8_t *tmp_cb = sl->bipred_scratchpad;
-        uint8_t *tmp_cr = sl->bipred_scratchpad + (16 << pixel_shift);
+        uint8_t *tmp_cr = sl->bipred_scratchpad + (8 << pixel_shift + (chroma_idc == 3));
         uint8_t *tmp_y  = sl->bipred_scratchpad + 16 * sl->mb_uvlinesize;
         int refn0       = sl->ref_cache[0][scan8[n]];
         int refn1       = sl->ref_cache[1][scan8[n]];

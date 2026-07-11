@@ -22,7 +22,7 @@
  *
  * Split an audio stream into per-channel streams.
  */
-
+#include "libavutil/avassert.h"
 #include "libavutil/attributes.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/internal.h"
@@ -162,6 +162,8 @@ static int filter_frame(AVFilterLink *outlink, AVFrame *buf)
     enum AVChannel channel = av_channel_layout_channel_from_index(&buf->ch_layout, s->map[i]);
     int ret;
 
+    av_assert1(channel >= 0);
+
     AVFrame *buf_out = av_frame_clone(buf);
     if (!buf_out)
         return AVERROR(ENOMEM);
@@ -232,13 +234,6 @@ static int activate(AVFilterContext *ctx)
     return FFERROR_NOT_READY;
 }
 
-static const AVFilterPad avfilter_af_channelsplit_inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_channelsplit = {
     .name           = "channelsplit",
     .description    = NULL_IF_CONFIG_SMALL("Split audio into per-channel streams."),
@@ -247,7 +242,7 @@ const AVFilter ff_af_channelsplit = {
     .init           = init,
     .activate       = activate,
     .uninit         = uninit,
-    FILTER_INPUTS(avfilter_af_channelsplit_inputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
     .outputs        = NULL,
     FILTER_QUERY_FUNC(query_formats),
     .flags          = AVFILTER_FLAG_DYNAMIC_OUTPUTS,

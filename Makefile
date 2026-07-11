@@ -47,7 +47,7 @@ FF_DEP_LIBS  := $(DEP_LIBS)
 FF_STATIC_DEP_LIBS := $(STATIC_DEP_LIBS)
 
 $(TOOLS): %$(EXESUF): %.o
-	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $^ $(EXTRALIBS-$(*F)) $(EXTRALIBS) $(ELIBS)
+	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $(filter-out $(FF_DEP_LIBS), $^) $(EXTRALIBS-$(*F)) $(EXTRALIBS) $(ELIBS)
 
 target_dec_%_fuzzer$(EXESUF): target_dec_%_fuzzer.o $(FF_DEP_LIBS)
 	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $^ $(ELIBS) $(FF_EXTRALIBS) $(LIBFUZZER_PATH)
@@ -67,6 +67,8 @@ tools/target_io_dem_fuzzer$(EXESUF): tools/target_io_dem_fuzzer.o $(FF_DEP_LIBS)
 
 tools/enum_options$(EXESUF): ELIBS = $(FF_EXTRALIBS)
 tools/enum_options$(EXESUF): $(FF_DEP_LIBS)
+tools/enc_recon_frame_test$(EXESUF): $(FF_DEP_LIBS)
+tools/enc_recon_frame_test$(EXESUF): ELIBS = $(FF_EXTRALIBS)
 tools/scale_slice_test$(EXESUF): $(FF_DEP_LIBS)
 tools/scale_slice_test$(EXESUF): ELIBS = $(FF_EXTRALIBS)
 tools/sofa2wavs$(EXESUF): ELIBS = $(FF_EXTRALIBS)
@@ -91,10 +93,10 @@ ffbuild/.config: $(CONFIGURABLE_COMPONENTS)
 SUBDIR_VARS := CLEANFILES FFLIBS HOSTPROGS TESTPROGS TOOLS               \
                HEADERS ARCH_HEADERS BUILT_HEADERS SKIPHEADERS            \
                ARMV5TE-OBJS ARMV6-OBJS ARMV8-OBJS VFP-OBJS NEON-OBJS     \
-               ALTIVEC-OBJS VSX-OBJS RVV-OBJS MMX-OBJS X86ASM-OBJS       \
+               ALTIVEC-OBJS VSX-OBJS MMX-OBJS X86ASM-OBJS                \
                MIPSFPU-OBJS MIPSDSPR2-OBJS MIPSDSP-OBJS MSA-OBJS         \
-               MMI-OBJS LSX-OBJS LASX-OBJS OBJS SLIBOBJS SHLIBOBJS       \
-               STLIBOBJS HOSTOBJS TESTOBJS
+               MMI-OBJS LSX-OBJS LASX-OBJS RV-OBJS RVV-OBJS              \
+               OBJS SLIBOBJS SHLIBOBJS STLIBOBJS HOSTOBJS TESTOBJS
 
 define RESET
 $(1) :=

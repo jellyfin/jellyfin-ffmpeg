@@ -29,6 +29,9 @@ fate-bcstm: CMD = crc -i $(TARGET_SAMPLES)/bfstm/loz-mm-mikau.bcstm -c:a copy
 FATE_SAMPLES_DEMUX-$(CONFIG_BRSTM_DEMUXER) += fate-brstm
 fate-brstm: CMD = crc -i $(TARGET_SAMPLES)/brstm/lozswd_partial.brstm -c:a copy
 
+FATE_FFPROBE_DEMUX-$(call ALLYES, CAVSVIDEO_DEMUXER CAVSVIDEO_PARSER) += fate-cavs-demux
+fate-cavs-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/cavs/bunny.mp4
+
 FATE_SAMPLES_DEMUX-$(CONFIG_CDXL_DEMUXER) += fate-cdxl-demux
 fate-cdxl-demux: CMD = framecrc -i $(TARGET_SAMPLES)/cdxl/mirage.cdxl -c:v copy -c:a copy
 
@@ -153,6 +156,9 @@ fate-xwma-demux: CMD = crc -i $(TARGET_SAMPLES)/xwma/ergon.xwma -c:a copy
 
 FATE_FFPROBE_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-demux
 fate-ts-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/ac3/mp3ac325-4864-small.ts
+
+FATE_FFPROBE_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-timed-id3-demux
+fate-ts-timed-id3-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/mpegts/id3.ts
 
 FATE_SAMPLES_DEMUX += $(FATE_SAMPLES_DEMUX-yes)
 FATE_SAMPLES_FFMPEG += $(FATE_SAMPLES_DEMUX)

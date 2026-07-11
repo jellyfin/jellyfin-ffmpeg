@@ -30,6 +30,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
 #include "framesync.h"
 #include "internal.h"
@@ -127,8 +128,8 @@ int compute_images_mse(AVFilterContext *ctx, void *arg,
     for (int c = 0; c < td->nb_components; c++) {
         const int outw = td->planewidth[c];
         const int outh = td->planeheight[c];
-        const int slice_start = (outh * jobnr) / nb_jobs;
-        const int slice_end = (outh * (jobnr+1)) / nb_jobs;
+        const int slice_start = ff_slice_pos(outh, jobnr, nb_jobs);
+        const int slice_end = ff_slice_pos(outh, jobnr + 1, nb_jobs);
         const int ref_linesize = td->ref_linesize[c];
         const int main_linesize = td->main_linesize[c];
         const uint8_t *main_line = td->main_data[c] + main_linesize * slice_start;
@@ -186,6 +187,13 @@ static int do_psnr(FFFrameSync *fs)
         td.ref_linesize[c] = ref->linesize[c];
         td.planewidth[c] = s->planewidth[c];
         td.planeheight[c] = s->planeheight[c];
+    }
+
+    if (master->color_range != ref->color_range) {
+        av_log(ctx, AV_LOG_WARNING, "master and reference "
+               "frames use different color ranges (%s != %s)\n",
+               av_color_range_name(master->color_range),
+               av_color_range_name(ref->color_range));
     }
 
     ff_filter_execute(ctx, compute_images_mse, &td, NULL,

@@ -27,6 +27,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
 #include "internal.h"
 #include "video.h"
@@ -754,8 +755,8 @@ static int filter_slice_packed(AVFilterContext *ctx, void *arg, int jobnr, int n
     const uint8_t g = curves->rgba_map[G];
     const uint8_t b = curves->rgba_map[B];
     const uint8_t a = curves->rgba_map[A];
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);
 
     if (curves->is_16bit) {
         for (y = slice_start; y < slice_end; y++) {
@@ -802,8 +803,8 @@ static int filter_slice_planar(AVFilterContext *ctx, void *arg, int jobnr, int n
     const uint8_t g = curves->rgba_map[G];
     const uint8_t b = curves->rgba_map[B];
     const uint8_t a = curves->rgba_map[A];
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);
 
     if (curves->is_16bit) {
         for (y = slice_start; y < slice_end; y++) {
@@ -1005,13 +1006,6 @@ static const AVFilterPad curves_inputs[] = {
     },
 };
 
-static const AVFilterPad curves_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_curves = {
     .name          = "curves",
     .description   = NULL_IF_CONFIG_SMALL("Adjust components curves."),
@@ -1019,7 +1013,7 @@ const AVFilter ff_vf_curves = {
     .init          = curves_init,
     .uninit        = curves_uninit,
     FILTER_INPUTS(curves_inputs),
-    FILTER_OUTPUTS(curves_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS(AV_PIX_FMT_RGB24,  AV_PIX_FMT_BGR24,
                    AV_PIX_FMT_RGBA,   AV_PIX_FMT_BGRA,
                    AV_PIX_FMT_ARGB,   AV_PIX_FMT_ABGR,

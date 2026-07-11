@@ -22,6 +22,7 @@
 
 #include "config.h"
 #include "config_components.h"
+#include <time.h>
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -204,26 +205,16 @@ typedef struct DASHContext {
     int64_t update_period;
 } DASHContext;
 
-static struct codec_string {
-    int id;
-    const char *str;
+static const struct codec_string {
+    enum AVCodecID id;
+    const char str[8];
 } codecs[] = {
     { AV_CODEC_ID_VP8, "vp8" },
     { AV_CODEC_ID_VP9, "vp9" },
     { AV_CODEC_ID_VORBIS, "vorbis" },
     { AV_CODEC_ID_OPUS, "opus" },
     { AV_CODEC_ID_FLAC, "flac" },
-    { 0, NULL }
-};
-
-static struct format_string {
-    SegmentType segment_type;
-    const char *str;
-} formats[] = {
-    { SEGMENT_TYPE_AUTO, "auto" },
-    { SEGMENT_TYPE_MP4, "mp4" },
-    { SEGMENT_TYPE_WEBM, "webm" },
-    { 0, NULL }
+    { AV_CODEC_ID_NONE }
 };
 
 static int dashenc_io_open(AVFormatContext *s, AVIOContext **pb, char *filename,
@@ -264,11 +255,12 @@ static void dashenc_io_close(AVFormatContext *s, AVIOContext **pb, char *filenam
     }
 }
 
-static const char *get_format_str(SegmentType segment_type) {
-    int i;
-    for (i = 0; i < SEGMENT_TYPE_NB; i++)
-        if (formats[i].segment_type == segment_type)
-            return formats[i].str;
+static const char *get_format_str(SegmentType segment_type)
+{
+    switch (segment_type) {
+    case SEGMENT_TYPE_MP4:  return "mp4";
+    case SEGMENT_TYPE_WEBM: return "webm";
+    }
     return NULL;
 }
 
@@ -359,7 +351,7 @@ static void set_codec_str(AVFormatContext *s, AVCodecParameters *par,
     int i;
 
     // common Webm codecs are not part of RFC 6381
-    for (i = 0; codecs[i].id; i++)
+    for (i = 0; codecs[i].id != AV_CODEC_ID_NONE; i++)
         if (codecs[i].id == par->codec_id) {
             if (codecs[i].id == AV_CODEC_ID_VP9) {
                 set_vp9_codec_str(s, par, frame_rate, str, size);
@@ -626,7 +618,7 @@ static void dash_free(AVFormatContext *s)
             if (!c->single_file)
                 ffio_free_dyn_buf(&os->ctx->pb);
             else
-                avio_close(os->ctx->pb);
+                ff_format_io_close(s, &os->ctx->pb);
         }
         ff_format_io_close(s, &os->out);
         avformat_free_context(os->ctx);
@@ -1291,7 +1283,7 @@ static int write_manifest(AVFormatContext *s, int final)
                 if (os->segment_type != SEGMENT_TYPE_MP4)
                     continue;
                 get_hls_playlist_name(playlist_file, sizeof(playlist_file), NULL, i);
-                ff_hls_write_audio_rendition(c->m3u8_out, (char *)audio_group,
+                ff_hls_write_audio_rendition(c->m3u8_out, audio_group,
                                              playlist_file, NULL, i, is_default);
                 max_audio_bitrate = FFMAX(st->codecpar->bit_rate +
                                           os->muxer_overhead, max_audio_bitrate);
@@ -1308,7 +1300,7 @@ static int write_manifest(AVFormatContext *s, int final)
                 char codec_str[128];
                 AVStream *st = s->streams[i];
                 OutputStream *os = &c->streams[i];
-                char *agroup = NULL;
+                const char *agroup = NULL;
                 int stream_bitrate = os->muxer_overhead;
                 if (os->bit_rate > 0)
                     stream_bitrate += os->bit_rate;
@@ -1322,7 +1314,7 @@ static int write_manifest(AVFormatContext *s, int final)
                     continue;
                 av_strlcpy(codec_str, os->codec_str, sizeof(codec_str));
                 if (max_audio_bitrate) {
-                    agroup = (char *)audio_group;
+                    agroup = audio_group;
                     stream_bitrate += max_audio_bitrate;
                     av_strlcat(codec_str, ",", sizeof(codec_str));
                     av_strlcat(codec_str, audio_codec_str, sizeof(codec_str));
@@ -1597,7 +1589,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
             ret = s->io_open(s, &os->out, filename, AVIO_FLAG_WRITE, &opts);
         } else {
             ctx->url = av_strdup(filename);
-            ret = avio_open2(&ctx->pb, filename, AVIO_FLAG_WRITE, NULL, &opts);
+            ret = s->io_open(s, &ctx->pb, filename, AVIO_FLAG_WRITE, &opts);
         }
         av_dict_free(&opts);
         if (ret < 0)

@@ -23,7 +23,9 @@
 
 #include "avio_internal.h"
 #include "rtpdec_formats.h"
+#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/parseutils.h"
 
@@ -127,7 +129,7 @@ static int rfc4175_parse_fmtp(AVFormatContext *s, AVStream *stream,
         data->width = atoi(value);
     else if (!strncmp(attr, "height", 6))
         data->height = atoi(value);
-    else if (!strncmp(attr, "sampling", 8))
+    else if (data->sampling == NULL && !strncmp(attr, "sampling", 8))
         data->sampling = av_strdup(value);
     else if (!strncmp(attr, "depth", 5))
         data->depth = atoi(value);
@@ -171,30 +173,39 @@ static int rfc4175_parse_fmtp(AVFormatContext *s, AVStream *stream,
 }
 
 static int rfc4175_parse_sdp_line(AVFormatContext *s, int st_index,
-                                  PayloadContext *data, const char *line)
+                                  PayloadContext *data_arg, const char *line)
 {
     const char *p;
 
     if (st_index < 0)
         return 0;
 
+    av_assert0(!data_arg->sampling);
+
     if (av_strstart(line, "fmtp:", &p)) {
         AVStream *stream = s->streams[st_index];
+        PayloadContext data0 = *data_arg, *data = &data0;
         int ret = ff_parse_fmtp(s, stream, data, p, rfc4175_parse_fmtp);
 
-        if (ret < 0)
-            return ret;
-
-
         if (!data->sampling || !data->depth || !data->width || !data->height)
-            return AVERROR(EINVAL);
+            ret =  AVERROR(EINVAL);
+
+        if (ret < 0)
+            goto fail;
+
+        ret = av_image_check_size(data->width, data->height, 0, s);
+        if (ret < 0)
+            goto fail;
 
         stream->codecpar->width = data->width;
         stream->codecpar->height = data->height;
 
         ret = rfc4175_parse_format(stream, data);
         av_freep(&data->sampling);
-
+        if (ret >= 0)
+            *data_arg = *data;
+fail:
+        av_freep(&data->sampling);
         return ret;
     }
 
@@ -294,6 +305,9 @@ static int rfc4175_handle_packet(AVFormatContext *ctx, PayloadContext *data,
 
         if (data->interlaced)
             line = 2 * line + field;
+
+        if (line >= data->height)
+            return AVERROR_INVALIDDATA;
 
         /* prevent ill-formed packets to write after buffer's end */
         copy_offset = (line * data->width + offset) * data->pgroup / data->xinc;

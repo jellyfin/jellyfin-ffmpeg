@@ -101,7 +101,7 @@ static AVRational read_fps(const char* line, int* error)
         line++;
     for (; *line>='0' && *line<='9'; line++) {
         // Truncate any numerator too large to fit into an int64_t
-        if (num > (INT64_MAX - 9) / 10 || den > INT64_MAX / 10)
+        if (num > (INT64_MAX - 9) / 10ULL || den > INT64_MAX / 10ULL)
             break;
         num  = 10 * num + (*line - '0');
         den *= 10;
@@ -117,7 +117,7 @@ static int rpl_read_header(AVFormatContext *s)
     AVIOContext *pb = s->pb;
     RPLContext *rpl = s->priv_data;
     AVStream *vst = NULL, *ast = NULL;
-    int total_audio_size;
+    int64_t total_audio_size;
     int error = 0;
     const char *endptr;
     char audio_type[RPL_LINE_LENGTH];
@@ -202,6 +202,8 @@ static int rpl_read_header(AVFormatContext *s)
         ast->codecpar->codec_tag       = audio_format;
         ast->codecpar->sample_rate     = read_line_and_int(pb, &error);  // audio bitrate
         channels                       = read_line_and_int(pb, &error);  // number of audio channels
+        if (channels <= 0)
+            return AVERROR_INVALIDDATA;
         error |= read_line(pb, line, sizeof(line));
         ast->codecpar->bits_per_coded_sample = read_int(line, &endptr, &error);  // audio bits per sample
         av_strlcpy(audio_type, endptr, RPL_LINE_LENGTH);
@@ -302,6 +304,8 @@ static int rpl_read_header(AVFormatContext *s)
         if (ast)
             av_add_index_entry(ast, offset + video_size, total_audio_size,
                                audio_size, audio_size * 8, 0);
+        if (total_audio_size/8 + (uint64_t)audio_size >= INT64_MAX/8)
+            return AVERROR_INVALIDDATA;
         total_audio_size += audio_size * 8;
     }
 

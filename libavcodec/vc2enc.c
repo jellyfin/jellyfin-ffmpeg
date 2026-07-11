@@ -185,7 +185,9 @@ typedef struct VC2EncContext {
 static av_always_inline void put_vc2_ue_uint(PutBitContext *pb, uint32_t val)
 {
     int i;
-    int pbits = 0, bits = 0, topbit = 1, maxval = 1;
+    int bits = 0;
+    unsigned topbit = 1, maxval = 1;
+    uint64_t pbits = 0;
 
     if (!val++) {
         put_bits(pb, 1, 1);
@@ -202,12 +204,13 @@ static av_always_inline void put_vc2_ue_uint(PutBitContext *pb, uint32_t val)
 
     for (i = 0; i < bits; i++) {
         topbit >>= 1;
+        av_assert2(pbits <= UINT64_MAX>>3);
         pbits <<= 2;
         if (val & topbit)
             pbits |= 0x1;
     }
 
-    put_bits(pb, bits*2 + 1, (pbits << 1) | 1);
+    put_bits64(pb, bits*2 + 1, (pbits << 1) | 1);
 }
 
 static av_always_inline int count_vc2_ue_uint(uint32_t val)
@@ -982,7 +985,7 @@ static av_cold int vc2_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     }
 
     s->slice_min_bytes = s->slice_max_bytes - s->slice_max_bytes*(s->tolerance/100.0f);
-    if (s->slice_min_bytes < 0)
+    if (s->slice_min_bytes < 0 || s->slice_max_bytes > INT_MAX >> 3)
         return AVERROR(EINVAL);
 
     ret = encode_frame(s, avpkt, frame, aux_data, header_size, s->interlaced);

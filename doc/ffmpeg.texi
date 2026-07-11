@@ -17,9 +17,9 @@ ffmpeg [@var{global_options}] @{[@var{input_file_options}] -i @file{input_url}@}
 @chapter Description
 @c man begin DESCRIPTION
 
-@command{ffmpeg} is a very fast video and audio converter that can also grab from
-a live audio/video source. It can also convert between arbitrary sample
-rates and resize video on the fly with a high quality polyphase filter.
+@command{ffmpeg} is a universal media converter. It can read a wide variety of
+inputs - including live grabbing/recording devices - filter, and transcode them
+into a plethora of output formats.
 
 @command{ffmpeg} reads from an arbitrary number of input "files" (which can be regular
 files, pipes, network streams, grabbing devices, etc.), specified by the
@@ -49,24 +49,32 @@ Do not mix input and output files -- first specify all input files, then all
 output files. Also do not mix options which belong to different files. All
 options apply ONLY to the next input or output file and are reset between files.
 
+Some simple examples follow.
+
 @itemize
 @item
-To set the video bitrate of the output file to 64 kbit/s:
+Convert an input media file to a different format, by re-encoding media streams:
 @example
-ffmpeg -i input.avi -b:v 64k -bufsize 64k output.avi
+ffmpeg -i input.avi output.mp4
 @end example
 
 @item
-To force the frame rate of the output file to 24 fps:
+Set the video bitrate of the output file to 64 kbit/s:
 @example
-ffmpeg -i input.avi -r 24 output.avi
+ffmpeg -i input.avi -b:v 64k -bufsize 64k output.mp4
 @end example
 
 @item
-To force the frame rate of the input file (valid for raw formats only)
-to 1 fps and the frame rate of the output file to 24 fps:
+Force the frame rate of the output file to 24 fps:
 @example
-ffmpeg -r 1 -i input.m2v -r 24 output.avi
+ffmpeg -i input.avi -r 24 output.mp4
+@end example
+
+@item
+Force the frame rate of the input file (valid for raw formats only) to 1 fps and
+the frame rate of the output file to 24 fps:
+@example
+ffmpeg -r 1 -i input.m2v -r 24 output.mp4
 @end example
 @end itemize
 
@@ -769,6 +777,7 @@ syntax.
 See the @ref{filter_complex_option,,-filter_complex option} if you
 want to create filtergraphs with multiple inputs and/or outputs.
 
+@anchor{filter_script option}
 @item -filter_script[:@var{stream_specifier}] @var{filename} (@emph{output,per-stream})
 This option is similar to @option{-filter}, the only difference is that its
 argument is the name of the file from which a filtergraph description is to be
@@ -1014,7 +1023,12 @@ If @var{pix_fmt} is a single @code{+}, ffmpeg selects the same pixel format
 as the input (or graph output) and automatic conversions are disabled.
 
 @item -sws_flags @var{flags} (@emph{input/output})
-Set SwScaler flags.
+Set default flags for the libswscale library. These flags are used by
+automatically inserted @code{scale} filters and those within simple
+filtergraphs, if not overridden within the filtergraph definition.
+
+See the @ref{scaler_options,,ffmpeg-scaler manual,ffmpeg-scaler} for a list
+of scaler options.
 
 @item -rc_override[:@var{stream_specifier}] @var{override} (@emph{output,per-stream})
 Rate control override for specific intervals, formatted as "int,int,int"
@@ -1025,33 +1039,27 @@ factor if negative.
 @item -psnr
 Calculate PSNR of compressed frames. This option is deprecated, pass the
 PSNR flag to the encoder instead, using @code{-flags +psnr}.
+
 @item -vstats
-Dump video coding statistics to @file{vstats_HHMMSS.log}.
+Dump video coding statistics to @file{vstats_HHMMSS.log}. See the
+@ref{vstats_file_format,,vstats file format} section for the format description.
+
 @item -vstats_file @var{file}
-Dump video coding statistics to @var{file}.
+Dump video coding statistics to @var{file}. See the
+@ref{vstats_file_format,,vstats file format} section for the format description.
+
 @item -vstats_version @var{file}
-Specifies which version of the vstats format to use. Default is 2.
+Specify which version of the vstats format to use. Default is @code{2}. See the
+@ref{vstats_file_format,,vstats file format} section for the format description.
 
-version = 1 :
-
-@code{frame= %5d q= %2.1f PSNR= %6.2f f_size= %6d s_size= %8.0fkB time= %0.3f br= %7.1fkbits/s avg_br= %7.1fkbits/s}
-
-version > 1:
-
-@code{out= %2d st= %2d frame= %5d q= %2.1f PSNR= %6.2f f_size= %6d s_size= %8.0fkB time= %0.3f br= %7.1fkbits/s avg_br= %7.1fkbits/s}
-@item -top[:@var{stream_specifier}] @var{n} (@emph{output,per-stream})
-top=1/bottom=0/auto=-1 field first
 @item -vtag @var{fourcc/tag} (@emph{output})
 Force video tag/fourcc. This is an alias for @code{-tag:v}.
-@item -qphist (@emph{global})
-Show QP histogram
 @item -vbsf @var{bitstream_filter}
 Deprecated see -bsf
 
 @item -force_key_frames[:@var{stream_specifier}] @var{time}[,@var{time}...] (@emph{output,per-stream})
 @item -force_key_frames[:@var{stream_specifier}] expr:@var{expr} (@emph{output,per-stream})
 @item -force_key_frames[:@var{stream_specifier}] source (@emph{output,per-stream})
-@item -force_key_frames[:@var{stream_specifier}] source_no_drop (@emph{output,per-stream})
 
 @var{force_key_frames} can take arguments of the following form:
 
@@ -1112,10 +1120,6 @@ starting from second 13:
 @item source
 If the argument is @code{source}, ffmpeg will force a key frame if
 the current frame being encoded is marked as a key frame in its source.
-
-@item source_no_drop
-If the argument is @code{source_no_drop}, ffmpeg will force a key frame if
-the current frame being encoded is marked as a key frame in its source.
 In cases where this particular source frame has to be dropped,
 enforce the next available frame to become a key frame instead.
 
@@ -1163,9 +1167,10 @@ Choose the first device and use the primary device context.
 @var{device} is the number of the Direct3D 11 display adapter.
 
 @item vaapi
-@var{device} is either an X11 display name or a DRM render node.
+@var{device} is either an X11 display name, a DRM render node or a DirectX adapter index.
 If not specified, it will attempt to open the default X11 display (@emph{$DISPLAY})
-and then the first DRM render node (@emph{/dev/dri/renderD128}).
+and then the first DRM render node (@emph{/dev/dri/renderD128}), or the default
+DirectX adapter on Windows.
 
 @item vdpau
 @var{device} is an X11 display name.
@@ -1701,6 +1706,9 @@ it may cause packet loss.
 It is useful for when flow speed of output packets is important, such as live streaming.
 @item -re (@emph{input})
 Read input at native frame rate. This is equivalent to setting @code{-readrate 1}.
+@item -readrate_initial_burst @var{seconds}
+Set an initial read burst time, in seconds, after which @option{-re/-readrate}
+will be enforced.
 @item -vsync @var{parameter} (@emph{global})
 @itemx -fps_mode[:@var{stream_specifier}] @var{parameter} (@emph{output,per-stream})
 Set video sync method / framerate mode. vsync is applied to all output video streams
@@ -1741,12 +1749,6 @@ be before they are dropped. In frame rate units, so 1.0 is one frame.
 The default is -1.1. One possible usecase is to avoid framedrops in case
 of noisy timestamps or to increase frame drop precision in case of exact
 timestamps.
-
-@item -adrift_threshold @var{time}
-Set the minimum difference between timestamps and audio data (in seconds) to trigger
-adding/dropping samples to make it match the timestamps. This option effectively is
-a threshold to select between hard (add/drop) and soft (squeeze/stretch) compensation.
-@code{-async} must be set to a positive value.
 
 @item -apad @var{parameters} (@emph{output,per-stream})
 Pad the output audio stream(s). This is the same as applying @code{-af apad}.
@@ -1794,8 +1796,7 @@ Try to make the choice automatically, in order to generate a sane output.
 Default value is -1.
 
 @item -enc_time_base[:@var{stream_specifier}] @var{timebase} (@emph{output,per-stream})
-Set the encoder timebase. @var{timebase} is a floating point number,
-and can assume one of the following values:
+Set the encoder timebase. @var{timebase} can assume one of the following values:
 
 @table @option
 @item 0
@@ -1803,16 +1804,17 @@ Assign a default value according to the media type.
 
 For video - use 1/framerate, for audio - use 1/samplerate.
 
-@item -1
-Use the input stream timebase when possible.
+@item demux
+Use the timebase from the demuxer.
 
-If an input stream is not available, the default timebase will be used.
+@item filter
+Use the timebase from the filtergraph.
 
-@item >0
+@item a positive number
 Use the provided number as the timebase.
 
 This field can be provided as a ratio of two integers (e.g. 1:24, 1:48000)
-or as a floating point number (e.g. 0.04166, 2.0833e-5)
+or as a decimal number (e.g. 0.04166, 2.0833e-5)
 @end table
 
 Default value is 0.
@@ -1837,12 +1839,38 @@ results, but increase memory use and latency.
 
 The default value is 10 seconds.
 
-@item -dts_delta_threshold
-Timestamp discontinuity delta threshold.
-@item -dts_error_threshold @var{seconds}
-Timestamp error delta threshold. This threshold use to discard crazy/damaged
-timestamps and the default is 30 hours which is arbitrarily picked and quite
-conservative.
+@item -dts_delta_threshold @var{threshold}
+Timestamp discontinuity delta threshold, expressed as a decimal number
+of seconds.
+
+The timestamp discontinuity correction enabled by this option is only
+applied to input formats accepting timestamp discontinuity (for which
+the @code{AV_FMT_DISCONT} flag is enabled), e.g. MPEG-TS and HLS, and
+is automatically disabled when employing the @code{-copy_ts} option
+(unless wrapping is detected).
+
+If a timestamp discontinuity is detected whose absolute value is
+greater than @var{threshold}, ffmpeg will remove the discontinuity by
+decreasing/increasing the current DTS and PTS by the corresponding
+delta value.
+
+The default value is 10.
+
+@item -dts_error_threshold @var{threshold}
+Timestamp error delta threshold, expressed as a decimal number of
+seconds.
+
+The timestamp correction enabled by this option is only applied to
+input formats not accepting timestamp discontinuity (for which the
+@code{AV_FMT_DISCONT} flag is not enabled).
+
+If a timestamp discontinuity is detected whose absolute value is
+greater than @var{threshold}, ffmpeg will drop the PTS/DTS timestamp
+value.
+
+The default value is @code{3600*30} (30 hours), which is arbitrarily
+picked and quite conservative.
+
 @item -muxdelay @var{seconds} (@emph{output})
 Set the maximum demux-decode delay.
 @item -muxpreload @var{seconds} (@emph{output})
@@ -1953,6 +1981,7 @@ The default is the number of available CPUs.
 Define a complex filtergraph, i.e. one with arbitrary number of inputs and/or
 outputs. Equivalent to @option{-filter_complex}.
 
+@anchor{filter_complex_script option}
 @item -filter_complex_script @var{filename} (@emph{global})
 This option is similar to @option{-filter_complex}, the only difference is that
 its argument is the name of the file from which a complex filtergraph
@@ -2061,6 +2090,7 @@ encoder/muxer, it does not change the stream to conform to this value. Setting
 values that do not match the stream properties may result in encoding failures
 or invalid output files.
 
+@anchor{stats_enc_options}
 @item -stats_enc_pre[:@var{stream_specifier}] @var{path} (@emph{output,per-stream})
 @item -stats_enc_post[:@var{stream_specifier}] @var{path} (@emph{output,per-stream})
 @item -stats_mux_pre[:@var{stream_specifier}] @var{path} (@emph{output,per-stream})
@@ -2108,8 +2138,8 @@ Input frame number. Index of the input frame (i.e. output by a decoder) that
 corresponds to this output frame or packet. -1 if unavailable.
 
 @item tb
-Encoder timebase, as a rational number @var{num/den}. Note that this may be
-different from the timebase used by the muxer.
+Timebase in which this frame/packet's timestamps are expressed, as a rational
+number @var{num/den}. Note that encoder and muxer may use different timebases.
 
 @item tbi
 Timebase for @var{ptsi}, as a rational number @var{num/den}. Available when
@@ -2132,30 +2162,38 @@ Presentation time of the frame or packet, as a decimal number. Equal to
 Presentation time of the input frame (see @var{ni}), as a decimal number. Equal
 to @var{ptsi} multiplied by @var{tbi}. Printed as inf when not available.
 
-@item dts
+@item dts (@emph{packet})
 Decoding timestamp of the packet, as an integer. Should be multiplied by the
-timebase to compute presentation time. Post-encoding only.
+timebase to compute presentation time.
 
-@item dt
+@item dt (@emph{packet})
 Decoding time of the frame or packet, as a decimal number. Equal to
 @var{dts} multiplied by @var{tb}.
 
-@item sn
-Number of audio samples sent to the encoder so far. Audio and pre-encoding only.
+@item sn (@emph{frame,audio})
+Number of audio samples sent to the encoder so far.
 
-@item samp
-Number of audio samples in the frame. Audio and pre-encoding only.
+@item samp (@emph{frame,audio})
+Number of audio samples in the frame.
 
-@item size
-Size of the encoded packet in bytes. Post-encoding only.
+@item size (@emph{packet})
+Size of the encoded packet in bytes.
 
-@item br
+@item br (@emph{packet})
 Current bitrate in bits per second. Post-encoding only.
 
-@item abr
+@item abr (@emph{packet})
 Average bitrate for the whole stream so far, in bits per second, -1 if it cannot
 be determined at this point. Post-encoding only.
 @end table
+
+Directives tagged with @emph{packet} may only be used with
+@option{-stats_enc_post_fmt} and @option{-stats_mux_pre_fmt}.
+
+Directives tagged with @emph{frame} may only be used with
+@option{-stats_enc_pre_fmt}.
+
+Directives tagged with @emph{audio} may only be used with audio streams.
 
 The default format strings are:
 @table @option
@@ -2227,6 +2265,63 @@ search for the file @file{libvpx-1080p.avpreset}.
 
 If no such file is found, then ffmpeg will search for a file named
 @var{arg}.avpreset in the same directories.
+
+@anchor{vstats_file_format}
+@section vstats file format
+The @code{-vstats} and @code{-vstats_file} options enable generation of a file
+containing statistics about the generated video outputs.
+
+The @code{-vstats_version} option controls the format version of the generated
+file.
+
+With version @code{1} the format is:
+@example
+frame= @var{FRAME} q= @var{FRAME_QUALITY} PSNR= @var{PSNR} f_size= @var{FRAME_SIZE} s_size= @var{STREAM_SIZE}kB time= @var{TIMESTAMP} br= @var{BITRATE}kbits/s avg_br= @var{AVERAGE_BITRATE}kbits/s
+@end example
+
+With version @code{2} the format is:
+@example
+out= @var{OUT_FILE_INDEX} st= @var{OUT_FILE_STREAM_INDEX} frame= @var{FRAME_NUMBER} q= @var{FRAME_QUALITY}f PSNR= @var{PSNR} f_size= @var{FRAME_SIZE} s_size= @var{STREAM_SIZE}kB time= @var{TIMESTAMP} br= @var{BITRATE}kbits/s avg_br= @var{AVERAGE_BITRATE}kbits/s
+@end example
+
+The value corresponding to each key is described below:
+@table @option
+@item avg_br
+average bitrate expressed in Kbits/s
+
+@item br
+bitrate expressed in Kbits/s
+
+@item frame
+number of encoded frame
+
+@item out
+out file index
+
+@item PSNR
+Peak Signal to Noise Ratio
+
+@item q
+quality of the frame
+
+@item f_size
+encoded packet size expressed as number of bytes
+
+@item s_size
+stream size expressed in KiB
+
+@item st
+out file stream index
+
+@item time
+time of the packet
+
+@item type
+picture type
+@end table
+
+See also the @ref{stats_enc_options,,-stats_enc options} for an alternative way
+to show encoding statistics.
 
 @c man end OPTIONS
 
@@ -2491,7 +2586,7 @@ ffmpeg-devices(1), ffmpeg-protocols(1), ffmpeg-filters(1)
 @ignore
 
 @setfilename ffmpeg
-@settitle ffmpeg video converter
+@settitle ffmpeg media converter
 
 @end ignore
 

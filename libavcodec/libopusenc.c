@@ -512,18 +512,14 @@ static int libopus_encode(AVCodecContext *avctx, AVPacket *avpkt,
 
     discard_padding = opus->opts.packet_size - avpkt->duration;
     // Check if subtraction resulted in an overflow
-    if ((discard_padding < opus->opts.packet_size) != (avpkt->duration > 0)) {
-        av_packet_unref(avpkt);
+    if ((discard_padding < opus->opts.packet_size) != (avpkt->duration > 0))
         return AVERROR(EINVAL);
-    }
     if (discard_padding > 0) {
         uint8_t* side_data = av_packet_new_side_data(avpkt,
                                                      AV_PKT_DATA_SKIP_SAMPLES,
                                                      10);
-        if(!side_data) {
-            av_packet_unref(avpkt);
+        if (!side_data)
             return AVERROR(ENOMEM);
-        }
         AV_WL32(side_data + 4, discard_padding);
     }
 
@@ -551,7 +547,7 @@ static const AVOption libopus_options[] = {
     { "application",    "Intended application type",           OFFSET(application),    AV_OPT_TYPE_INT,   { .i64 = OPUS_APPLICATION_AUDIO }, OPUS_APPLICATION_VOIP, OPUS_APPLICATION_RESTRICTED_LOWDELAY, FLAGS, "application" },
         { "voip",           "Favor improved speech intelligibility",   0, AV_OPT_TYPE_CONST, { .i64 = OPUS_APPLICATION_VOIP },                0, 0, FLAGS, "application" },
         { "audio",          "Favor faithfulness to the input",         0, AV_OPT_TYPE_CONST, { .i64 = OPUS_APPLICATION_AUDIO },               0, 0, FLAGS, "application" },
-        { "lowdelay",       "Restrict to only the lowest delay modes", 0, AV_OPT_TYPE_CONST, { .i64 = OPUS_APPLICATION_RESTRICTED_LOWDELAY }, 0, 0, FLAGS, "application" },
+        { "lowdelay",       "Restrict to only the lowest delay modes, disable voice-optimized modes", 0, AV_OPT_TYPE_CONST, { .i64 = OPUS_APPLICATION_RESTRICTED_LOWDELAY }, 0, 0, FLAGS, "application" },
     { "frame_duration", "Duration of a frame in milliseconds", OFFSET(frame_duration), AV_OPT_TYPE_FLOAT, { .dbl = 20.0 }, 2.5, 120.0, FLAGS },
     { "packet_loss",    "Expected packet loss percentage",     OFFSET(packet_loss),    AV_OPT_TYPE_INT,   { .i64 = 0 },    0,   100,  FLAGS },
     { "fec",             "Enable inband FEC. Expected packet loss must be non-zero",     OFFSET(fec),    AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, FLAGS },

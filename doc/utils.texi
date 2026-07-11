@@ -695,6 +695,8 @@ FL+FR+FC+LFE+SL+SR
 FL+FR+FC+BC+SL+SR
 @item 6.0(front)
 FL+FR+FLC+FRC+SL+SR
+@item 3.1.2
+FL+FR+FC+LFE+TFL+TFR
 @item hexagonal
 FL+FR+FC+BL+BR+BC
 @item 6.1
@@ -713,12 +715,18 @@ FL+FR+FC+LFE+BL+BR+SL+SR
 FL+FR+FC+LFE+BL+BR+FLC+FRC
 @item 7.1(wide-side)
 FL+FR+FC+LFE+FLC+FRC+SL+SR
-@item 7.1(top)
+@item 5.1.2
 FL+FR+FC+LFE+BL+BR+TFL+TFR
 @item octagonal
 FL+FR+FC+BL+BR+BC+SL+SR
 @item cube
 FL+FR+BL+BR+TFL+TFR+TBL+TBR
+@item 5.1.4
+FL+FR+FC+LFE+BL+BR+TFL+TFR+TBL+TBR
+@item 7.1.2
+FL+FR+FC+LFE+BL+BR+SL+SR+TFL+TFR
+@item 7.1.4
+FL+FR+FC+LFE+BL+BR+SL+SR+TFL+TFR+TBL+TBR
 @item hexadecagonal
 FL+FR+FC+BL+BR+BC+SL+SR+WL+WR+TBL+TBR+TBC+TFC+TFL+TFR
 @item downmix

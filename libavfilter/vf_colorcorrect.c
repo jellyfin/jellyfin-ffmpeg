@@ -21,9 +21,9 @@
 #include <float.h>
 
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
+#include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -68,10 +68,10 @@ static int average_slice8(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
     const float imax = s->imax;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ulinesize = frame->linesize[1];
-    const int vlinesize = frame->linesize[2];
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ulinesize = frame->linesize[1];
+    const ptrdiff_t vlinesize = frame->linesize[2];
     const uint8_t *uptr = (const uint8_t *)frame->data[1] + slice_start * ulinesize;
     const uint8_t *vptr = (const uint8_t *)frame->data[2] + slice_start * vlinesize;
     int sum_u = 0, sum_v = 0;
@@ -99,10 +99,10 @@ static int average_slice16(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
     const float imax = s->imax;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ulinesize = frame->linesize[1] / 2;
-    const int vlinesize = frame->linesize[2] / 2;
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ulinesize = frame->linesize[1] / 2;
+    const ptrdiff_t vlinesize = frame->linesize[2] / 2;
     const uint16_t *uptr = (const uint16_t *)frame->data[1] + slice_start * ulinesize;
     const uint16_t *vptr = (const uint16_t *)frame->data[2] + slice_start * vlinesize;
     int64_t sum_u = 0, sum_v = 0;
@@ -130,10 +130,10 @@ static int minmax_slice8(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
     const float imax = s->imax;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ulinesize = frame->linesize[1];
-    const int vlinesize = frame->linesize[2];
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ulinesize = frame->linesize[1];
+    const ptrdiff_t vlinesize = frame->linesize[2];
     const uint8_t *uptr = (const uint8_t *)frame->data[1] + slice_start * ulinesize;
     const uint8_t *vptr = (const uint8_t *)frame->data[2] + slice_start * vlinesize;
     int min_u = 255, min_v = 255;
@@ -166,10 +166,10 @@ static int minmax_slice16(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
     const float imax = s->imax;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ulinesize = frame->linesize[1] / 2;
-    const int vlinesize = frame->linesize[2] / 2;
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ulinesize = frame->linesize[1] / 2;
+    const ptrdiff_t vlinesize = frame->linesize[2] / 2;
     const uint16_t *uptr = (const uint16_t *)frame->data[1] + slice_start * ulinesize;
     const uint16_t *vptr = (const uint16_t *)frame->data[2] + slice_start * vlinesize;
     int min_u = INT_MAX, min_v = INT_MAX;
@@ -202,8 +202,8 @@ static int median_8(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const float imax = s->imax;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int ulinesize = frame->linesize[1];
-    const int vlinesize = frame->linesize[2];
+    const ptrdiff_t ulinesize = frame->linesize[1];
+    const ptrdiff_t vlinesize = frame->linesize[2];
     const uint8_t *uptr = (const uint8_t *)frame->data[1];
     const uint8_t *vptr = (const uint8_t *)frame->data[2];
     unsigned *uhistogram = s->uhistogram;
@@ -256,8 +256,8 @@ static int median_16(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const float imax = s->imax;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int ulinesize = frame->linesize[1] / 2;
-    const int vlinesize = frame->linesize[2] / 2;
+    const ptrdiff_t ulinesize = frame->linesize[1] / 2;
+    const ptrdiff_t vlinesize = frame->linesize[2] / 2;
     const uint16_t *uptr = (const uint16_t *)frame->data[1];
     const uint16_t *vptr = (const uint16_t *)frame->data[2];
     unsigned *uhistogram = s->uhistogram;
@@ -322,11 +322,11 @@ static int colorcorrect_slice8(AVFilterContext *ctx, void *arg, int jobnr, int n
     const int chroma_h = s->chroma_h;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ylinesize = frame->linesize[0];
-    const int ulinesize = frame->linesize[1];
-    const int vlinesize = frame->linesize[2];
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ylinesize = frame->linesize[0];
+    const ptrdiff_t ulinesize = frame->linesize[1];
+    const ptrdiff_t vlinesize = frame->linesize[2];
     uint8_t *yptr = frame->data[0] + slice_start * chroma_h * ylinesize;
     uint8_t *uptr = frame->data[1] + slice_start * ulinesize;
     uint8_t *vptr = frame->data[2] + slice_start * vlinesize;
@@ -363,11 +363,11 @@ static int colorcorrect_slice16(AVFilterContext *ctx, void *arg, int jobnr, int 
     const int chroma_h = s->chroma_h;
     const int width = s->planewidth[1];
     const int height = s->planeheight[1];
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ylinesize = frame->linesize[0] / 2;
-    const int ulinesize = frame->linesize[1] / 2;
-    const int vlinesize = frame->linesize[2] / 2;
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ylinesize = frame->linesize[0] / 2;
+    const ptrdiff_t ulinesize = frame->linesize[1] / 2;
+    const ptrdiff_t vlinesize = frame->linesize[2] / 2;
     uint16_t *yptr = (uint16_t *)frame->data[0] + slice_start * chroma_h * ylinesize;
     uint16_t *uptr = (uint16_t *)frame->data[1] + slice_start * ulinesize;
     uint16_t *vptr = (uint16_t *)frame->data[2] + slice_start * vlinesize;
@@ -498,6 +498,8 @@ static av_cold void uninit(AVFilterContext *ctx)
     ColorCorrectContext *s = ctx->priv;
 
     av_freep(&s->analyzeret);
+    av_freep(&s->uhistogram);
+    av_freep(&s->vhistogram);
 }
 
 static const AVFilterPad colorcorrect_inputs[] = {
@@ -507,13 +509,6 @@ static const AVFilterPad colorcorrect_inputs[] = {
         .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .filter_frame   = filter_frame,
         .config_props   = config_input,
-    },
-};
-
-static const AVFilterPad colorcorrect_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
     },
 };
 
@@ -543,7 +538,7 @@ const AVFilter ff_vf_colorcorrect = {
     .priv_class    = &colorcorrect_class,
     .uninit        = uninit,
     FILTER_INPUTS(colorcorrect_inputs),
-    FILTER_OUTPUTS(colorcorrect_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

@@ -22,9 +22,11 @@
 
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
+#include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct CueContext {
     const AVClass *class;
@@ -99,54 +101,26 @@ static const AVOption options[] = {
 AVFILTER_DEFINE_CLASS_EXT(cue_acue, "(a)cue", options);
 
 #if CONFIG_CUE_FILTER
-static const AVFilterPad cue_inputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
-static const AVFilterPad cue_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_cue = {
     .name        = "cue",
     .description = NULL_IF_CONFIG_SMALL("Delay filtering to match a cue."),
     .priv_class  = &cue_acue_class,
     .priv_size   = sizeof(CueContext),
-    FILTER_INPUTS(cue_inputs),
-    FILTER_OUTPUTS(cue_outputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     .activate    = activate,
 };
 #endif /* CONFIG_CUE_FILTER */
 
 #if CONFIG_ACUE_FILTER
-static const AVFilterPad acue_inputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
-static const AVFilterPad acue_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_acue = {
     .name        = "acue",
     .description = NULL_IF_CONFIG_SMALL("Delay filtering to match a cue."),
     .priv_class  = &cue_acue_class,
     .priv_size   = sizeof(CueContext),
     .flags       = AVFILTER_FLAG_METADATA_ONLY,
-    FILTER_INPUTS(acue_inputs),
-    FILTER_OUTPUTS(acue_outputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     .activate    = activate,
 };
 #endif /* CONFIG_ACUE_FILTER */

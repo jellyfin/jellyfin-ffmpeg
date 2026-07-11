@@ -50,9 +50,7 @@
 
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
-#include "video.h"
 #include "framesync.h"
 
 #define RIGHT   0
@@ -1035,10 +1033,16 @@ generate_eye_tape_map(SSIM360Context *s,
     float x_range = end_x - start_x;
 
     // Ensure tape length is a multiple of 4, for full SSIM block coverage
-    int tape_length = s->tape_length[plane] = ((int)ROUNDED_DIV(x_range, 4)) << 2;
+    float tape_length_f = ROUNDED_DIV(x_range, 4);
+    int tape_length;
 
-    s->ref_tape_map[plane][eye]  = av_malloc_array(tape_length * 8, sizeof(BilinearMap));
-    s->main_tape_map[plane][eye] = av_malloc_array(tape_length * 8, sizeof(BilinearMap));
+    if (!(tape_length_f > 0.f) || tape_length_f > INT_MAX / 4.0f)
+        return AVERROR(EINVAL);
+
+    tape_length = s->tape_length[plane] = (int)tape_length_f << 2;
+
+    s->ref_tape_map[plane][eye]  = av_malloc_array(tape_length, 8 * sizeof(BilinearMap));
+    s->main_tape_map[plane][eye] = av_malloc_array(tape_length, 8 * sizeof(BilinearMap));
     if (!s->ref_tape_map[plane][eye] || !s->main_tape_map[plane][eye])
         return AVERROR(ENOMEM);
 
@@ -1273,10 +1277,6 @@ static int parse_heatmaps(void *logctx, HeatmapList **proot,
         if (!line) {
             ret = AVERROR(ENOMEM);
             goto fail;
-        }
-        if (!line) {
-            av_freep(&line);
-            break;
         }
 
         // first value is frame id
@@ -1624,7 +1624,7 @@ static int config_output(AVFilterLink *outlink)
         memset(s->ssim360_percentile_sum, 0, sizeof(s->ssim360_percentile_sum));
 
         for (int i = 0; i < s->nb_components; i++) {
-            s->ssim360_hist[i] = av_calloc(SSIM360_HIST_SIZE, sizeof(*s->ssim360_hist));
+            FF_ALLOCZ_TYPED_ARRAY(s->ssim360_hist[i], SSIM360_HIST_SIZE);
             if (!s->ssim360_hist[i])
                 return AVERROR(ENOMEM);
         }

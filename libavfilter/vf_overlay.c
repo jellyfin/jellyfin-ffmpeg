@@ -26,6 +26,7 @@
  */
 
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
 #include "libavutil/common.h"
 #include "libavutil/eval.h"
@@ -55,7 +56,9 @@ static const char *const var_names[] = {
     "x",
     "y",
     "n",            ///< number of frame
+#if FF_API_FRAME_PKT
     "pos",          ///< position in the file
+#endif
     "t",            ///< timestamp expressed in seconds
     NULL
 };
@@ -154,7 +157,7 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 
 static const enum AVPixelFormat alpha_pix_fmts[] = {
     AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
-    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10,
+    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
     AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_RGBA,
     AV_PIX_FMT_BGRA, AV_PIX_FMT_GBRAP, AV_PIX_FMT_NONE
 };
@@ -202,6 +205,13 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_YUVA444P, AV_PIX_FMT_NONE
     };
 
+    static const enum AVPixelFormat main_pix_fmts_yuv444p10[] = {
+        AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE
+    };
+    static const enum AVPixelFormat overlay_pix_fmts_yuv444p10[] = {
+        AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE
+    };
+
     static const enum AVPixelFormat main_pix_fmts_gbrp[] = {
         AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP, AV_PIX_FMT_NONE
     };
@@ -245,6 +255,10 @@ static int query_formats(AVFilterContext *ctx)
     case OVERLAY_FORMAT_YUV444:
         main_formats    = main_pix_fmts_yuv444;
         overlay_formats = overlay_pix_fmts_yuv444;
+        break;
+    case OVERLAY_FORMAT_YUV444P10:
+        main_formats    = main_pix_fmts_yuv444p10;
+        overlay_formats = overlay_pix_fmts_yuv444p10;
         break;
     case OVERLAY_FORMAT_RGB:
         main_formats    = main_pix_fmts_rgb;
@@ -290,7 +304,9 @@ static int config_input_overlay(AVFilterLink *inlink)
     s->var_values[VAR_Y]     = NAN;
     s->var_values[VAR_N]     = 0;
     s->var_values[VAR_T]     = NAN;
+#if FF_API_FRAME_PKT
     s->var_values[VAR_POS]   = NAN;
+#endif
 
     if ((ret = set_expr(&s->x_pexpr,      s->x_expr,      "x",      ctx)) < 0 ||
         (ret = set_expr(&s->y_pexpr,      s->y_expr,      "y",      ctx)) < 0)
@@ -374,8 +390,8 @@ static av_always_inline void blend_slice_packed_rgb(AVFilterContext *ctx,
     i = FFMAX(-y, 0);
     imax = FFMIN3(-y + dst_h, FFMIN(src_h, dst_h), y + src_h);
 
-    slice_start = i + (imax * jobnr) / nb_jobs;
-    slice_end = i + (imax * (jobnr+1)) / nb_jobs;
+    slice_start = i + ff_slice_pos(imax, jobnr, nb_jobs);
+    slice_end = i + ff_slice_pos(imax, jobnr + 1, nb_jobs);
 
     sp = src->data[0] + (slice_start)     * src->linesize[0];
     dp = dst->data[0] + (y + slice_start) * dst->linesize[0];
@@ -467,8 +483,8 @@ static av_always_inline void blend_plane_##depth##_##nbits##bits(AVFilterContext
     j = FFMAX(-yp, 0);                                                                                     \
     jmax = FFMIN3(-yp + dst_hp, FFMIN(src_hp, dst_hp), yp + src_hp);                                       \
                                                                                                            \
-    slice_start = j + (jmax * jobnr) / nb_jobs;                                                            \
-    slice_end = j + (jmax * (jobnr+1)) / nb_jobs;                                                          \
+    slice_start = j + ff_slice_pos(jmax, jobnr, nb_jobs);                                                  \
+    slice_end = j + ff_slice_pos(jmax, jobnr + 1, nb_jobs);                                                \
                                                                                                            \
     sp = (uint##depth##_t *)(src->data[i] + (slice_start) * src->linesize[i]);                             \
     dp = (uint##depth##_t *)(dst->data[dst_plane]                                                          \
@@ -577,9 +593,8 @@ static inline void alpha_composite_##depth##_##nbits##bits(const AVFrame *src, c
                                                                                                            \
     imax = FFMIN3(-y + dst_h, FFMIN(src_h, dst_h), y + src_h);                                             \
     i = FFMAX(-y, 0);                                                                                      \
-                                                                                                           \
-    slice_start = i + (imax * jobnr) / nb_jobs;                                                            \
-    slice_end = i + ((imax * (jobnr+1)) / nb_jobs);                                                        \
+    slice_start = i + ff_slice_pos(imax, jobnr, nb_jobs);                                                  \
+    slice_end =   i + (ff_slice_pos(imax, jobnr + 1, nb_jobs));                                            \
                                                                                                            \
     sa = (uint##depth##_t *)(src->data[3] + (slice_start) * src->linesize[3]);                             \
     da = (uint##depth##_t *)(dst->data[3] + (y + slice_start) * dst->linesize[3]);                         \
@@ -755,6 +770,22 @@ static int blend_slice_yuva444(AVFilterContext *ctx, void *arg, int jobnr, int n
     return 0;
 }
 
+static int blend_slice_yuv444p10(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+{
+    OverlayContext *s = ctx->priv;
+    ThreadData *td = arg;
+    blend_slice_yuv_16_10bits(ctx, td->dst, td->src, 0, 0, 0, s->x, s->y, 1, jobnr, nb_jobs);
+    return 0;
+}
+
+static int blend_slice_yuva444p10(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+{
+    OverlayContext *s = ctx->priv;
+    ThreadData *td = arg;
+    blend_slice_yuv_16_10bits(ctx, td->dst, td->src, 0, 0, 1, s->x, s->y, 1, jobnr, nb_jobs);
+    return 0;
+}
+
 static int blend_slice_gbrp(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 {
     OverlayContext *s = ctx->priv;
@@ -898,6 +929,9 @@ static int config_input_main(AVFilterLink *inlink)
     case OVERLAY_FORMAT_YUV444:
         s->blend_slice = s->main_has_alpha ? blend_slice_yuva444 : blend_slice_yuv444;
         break;
+    case OVERLAY_FORMAT_YUV444P10:
+        s->blend_slice = s->main_has_alpha ? blend_slice_yuva444p10 : blend_slice_yuv444p10;
+        break;
     case OVERLAY_FORMAT_RGB:
         s->blend_slice = s->main_has_alpha ? blend_slice_rgba : blend_slice_rgb;
         break;
@@ -920,6 +954,9 @@ static int config_input_main(AVFilterLink *inlink)
             break;
         case AV_PIX_FMT_YUVA444P:
             s->blend_slice = blend_slice_yuva444;
+            break;
+        case AV_PIX_FMT_YUVA444P10:
+            s->blend_slice = blend_slice_yuva444p10;
             break;
         case AV_PIX_FMT_ARGB:
         case AV_PIX_FMT_RGBA:
@@ -1007,12 +1044,18 @@ static int do_blend(FFFrameSync *fs)
         return ff_filter_frame(ctx->outputs[0], mainpic);
 
     if (s->eval_mode == EVAL_MODE_FRAME) {
-        int64_t pos = mainpic->pkt_pos;
 
         s->var_values[VAR_N] = inlink->frame_count_out;
         s->var_values[VAR_T] = mainpic->pts == AV_NOPTS_VALUE ?
             NAN : mainpic->pts * av_q2d(inlink->time_base);
-        s->var_values[VAR_POS] = pos == -1 ? NAN : pos;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
+        {
+            int64_t pos = mainpic->pkt_pos;
+            s->var_values[VAR_POS] = pos == -1 ? NAN : pos;
+        }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
         s->var_values[VAR_OVERLAY_W] = s->var_values[VAR_OW] = second->width;
         s->var_values[VAR_OVERLAY_H] = s->var_values[VAR_OH] = second->height;
@@ -1020,8 +1063,8 @@ static int do_blend(FFFrameSync *fs)
         s->var_values[VAR_MAIN_H   ] = s->var_values[VAR_MH] = mainpic->height;
 
         eval_expr(ctx);
-        av_log(ctx, AV_LOG_DEBUG, "n:%f t:%f pos:%f x:%f xi:%d y:%f yi:%d\n",
-               s->var_values[VAR_N], s->var_values[VAR_T], s->var_values[VAR_POS],
+        av_log(ctx, AV_LOG_DEBUG, "n:%f t:%f x:%f xi:%d y:%f yi:%d\n",
+               s->var_values[VAR_N], s->var_values[VAR_T],
                s->var_values[VAR_X], s->x,
                s->var_values[VAR_Y], s->y);
     }
@@ -1074,6 +1117,7 @@ static const AVOption overlay_options[] = {
         { "yuv422", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV422}, .flags = FLAGS, .unit = "format" },
         { "yuv422p10", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV422P10}, .flags = FLAGS, .unit = "format" },
         { "yuv444", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV444}, .flags = FLAGS, .unit = "format" },
+        { "yuv444p10", "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_YUV444P10}, .flags = FLAGS, .unit = "format" },
         { "rgb",    "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_RGB},    .flags = FLAGS, .unit = "format" },
         { "gbrp",   "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_GBRP},   .flags = FLAGS, .unit = "format" },
         { "auto",   "", 0, AV_OPT_TYPE_CONST, {.i64=OVERLAY_FORMAT_AUTO},   .flags = FLAGS, .unit = "format" },

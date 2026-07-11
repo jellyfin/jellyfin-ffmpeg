@@ -21,13 +21,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <string.h>
+
 #include "config_components.h"
 
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
+#include "libavutil/error.h"
 #include "libavutil/mem.h"
 
-#include "avformat.h"
 #include "avio_internal.h"
 #include "url.h"
 
@@ -108,6 +110,12 @@ static av_cold int concat_open(URLContext *h, const char *uri, int flags)
         if ((size = ffurl_size(uc)) < 0) {
             ffurl_close(uc);
             err = AVERROR(ENOSYS);
+            break;
+        }
+
+        if (total_size > INT64_MAX - size) {
+            ffurl_close(uc);
+            err = AVERROR_INVALIDDATA;
             break;
         }
 
@@ -277,6 +285,12 @@ static av_cold int concatf_open(URLContext *h, const char *uri, int flags)
         if ((size = ffurl_size(uc)) < 0) {
             ffurl_close(uc);
             err = AVERROR(ENOSYS);
+            break;
+        }
+
+        if (total_size > INT64_MAX - size) {
+            ffurl_close(uc);
+            err = AVERROR_INVALIDDATA;
             break;
         }
 

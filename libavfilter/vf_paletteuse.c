@@ -31,9 +31,11 @@
 #include "libavutil/qsort.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
 #include "palette.h"
+#include "video.h"
 
 enum dithering_mode {
     DITHERING_NONE,
@@ -779,9 +781,8 @@ static int apply_palette(AVFilterLink *inlink, AVFrame *in, AVFrame **outf)
 
     set_processing_window(s->diff_mode, s->last_in, in,
                           s->last_out, out, &x, &y, &w, &h);
-    av_frame_unref(s->last_in);
     av_frame_unref(s->last_out);
-    if ((ret = av_frame_ref(s->last_in, in))       < 0 ||
+    if ((ret = av_frame_replace(s->last_in, in))   < 0 ||
         (ret = av_frame_ref(s->last_out, out))     < 0 ||
         (ret = ff_inlink_make_frame_writable(inlink, &s->last_in)) < 0) {
         av_frame_free(&out);
@@ -844,7 +845,7 @@ static void load_palette(PaletteUseContext *s, const AVFrame *palette_frame)
 {
     int i, x, y;
     const uint32_t *p = (const uint32_t *)palette_frame->data[0];
-    const int p_linesize = palette_frame->linesize[0] >> 2;
+    const ptrdiff_t p_linesize = palette_frame->linesize[0] >> 2;
 
     s->transparency_index = -1;
 

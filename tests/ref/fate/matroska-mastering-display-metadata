@@ -1,5 +1,5 @@
-69a904789151abaee46033391a4fce46 *tests/data/fate/matroska-mastering-display-metadata.matroska
-1669555 tests/data/fate/matroska-mastering-display-metadata.matroska
+9d0fb8123a2e90e85153428a91d1ee9d *tests/data/fate/matroska-mastering-display-metadata.matroska
+1669589 tests/data/fate/matroska-mastering-display-metadata.matroska
 #extradata 0:        4, 0x040901a3
 #extradata 3:      200, 0x506463a8
 #tb 0: 1/1000
@@ -22,9 +22,9 @@
 #codec_id 3: ffv1
 #dimensions 3: 1280x720
 #sar 3: 1/1
-0,          0,          0,       16,    57008, 0x43416399, S=2,        8,       88
+0,          0,          0,       16,    57008, 0x43416399
 1,          0,          0,       16,     2403, 0xaa818522
-3,          0,          0,       16,   274117, 0xc439610f, S=2,        8,       88
+3,          0,          0,       16,   274117, 0xc439610f
 0,         17,         17,       16,    57248, 0xa06cd7b5
 1,         17,         17,       16,     2403, 0xe1a991e5
 2,         17,         17,       16,     1602, 0x5d868171

@@ -50,6 +50,8 @@ typedef struct RASCContext {
     GetByteContext  gb;
     uint8_t        *delta;
     int             delta_size;
+    uint8_t        *mv_scratch;
+    unsigned int    mv_scratch_size;
     uint8_t        *cursor;
     int             cursor_size;
     unsigned        cursor_w;
@@ -293,10 +295,8 @@ static int decode_move(AVCodecContext *avctx,
                 b2 -= s->frame2->linesize[0];
             }
         } else if (type == 0) {
-            uint8_t *buffer;
-
-            av_fast_padded_malloc(&s->delta, &s->delta_size, w * h * s->bpp);
-            buffer = s->delta;
+            av_fast_padded_malloc(&s->mv_scratch, &s->mv_scratch_size, w * h * s->bpp);
+            uint8_t *buffer = s->mv_scratch;
             if (!buffer)
                 return AVERROR(ENOMEM);
 
@@ -379,8 +379,8 @@ static int decode_dlta(AVCodecContext *avctx,
     if (!s->frame2->data[0] || !s->frame1->data[0])
         return AVERROR_INVALIDDATA;
 
-    b1  = s->frame1->data[0] + s->frame1->linesize[0] * (y + h - 1) + x * s->bpp;
-    b2  = s->frame2->data[0] + s->frame2->linesize[0] * (y + h - 1) + x * s->bpp;
+    b1  = s->frame1->data[0] + s->frame1->linesize[0] * (int)(y + h - 1) + ((int)x) * s->bpp;
+    b2  = s->frame2->data[0] + s->frame2->linesize[0] * (int)(y + h - 1) + ((int)x) * s->bpp;
     cx = 0, cy = h;
     while (bytestream2_get_bytes_left(&dc) > 0) {
         int type = bytestream2_get_byte(&dc);
@@ -620,7 +620,7 @@ static void draw_cursor(AVCodecContext *avctx)
                 if (cr == s->cursor[0] && cg == s->cursor[1] && cb == s->cursor[2])
                     continue;
 
-                dst = s->frame->data[0] + s->frame->linesize[0] * (s->cursor_y + i) + (s->cursor_x + j);
+                dst = s->frame->data[0] + s->frame->linesize[0] * (int)(s->cursor_y + i) + (int)(s->cursor_x + j);
                 for (int k = 0; k < 256; k++) {
                     int pr = pal[k * 4 + 0];
                     int pg = pal[k * 4 + 1];
@@ -646,7 +646,7 @@ static void draw_cursor(AVCodecContext *avctx)
                     continue;
 
                 cr >>= 3; cg >>=3; cb >>= 3;
-                dst = s->frame->data[0] + s->frame->linesize[0] * (s->cursor_y + i) + 2 * (s->cursor_x + j);
+                dst = s->frame->data[0] + s->frame->linesize[0] * (int)(s->cursor_y + i) + 2 * (s->cursor_x + j);
                 AV_WL16(dst, cr | cg << 5 | cb << 10);
             }
         }
@@ -660,7 +660,7 @@ static void draw_cursor(AVCodecContext *avctx)
                 if (cr == s->cursor[0] && cg == s->cursor[1] && cb == s->cursor[2])
                     continue;
 
-                dst = s->frame->data[0] + s->frame->linesize[0] * (s->cursor_y + i) + 4 * (s->cursor_x + j);
+                dst = s->frame->data[0] + s->frame->linesize[0] * (int)(s->cursor_y + i) + 4 * (s->cursor_x + j);
                 dst[0] = cb;
                 dst[1] = cg;
                 dst[2] = cr;
@@ -740,7 +740,10 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if (!s->skip_cursor)
         draw_cursor(avctx);
 
-    s->frame->key_frame = intra;
+    if (intra)
+        s->frame->flags |= AV_FRAME_FLAG_KEY;
+    else
+        s->frame->flags &= ~AV_FRAME_FLAG_KEY;
     s->frame->pict_type = intra ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
     *got_frame = 1;
@@ -768,6 +771,8 @@ static av_cold int decode_close(AVCodecContext *avctx)
     s->cursor_size = 0;
     av_freep(&s->delta);
     s->delta_size = 0;
+    av_freep(&s->mv_scratch);
+    s->mv_scratch_size = 0;
     av_frame_free(&s->frame1);
     av_frame_free(&s->frame2);
     ff_inflate_end(&s->zstream);

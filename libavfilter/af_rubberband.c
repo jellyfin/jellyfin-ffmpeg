@@ -25,7 +25,6 @@
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "internal.h"
 
 typedef struct RubberBandContext {
@@ -38,7 +37,9 @@ typedef struct RubberBandContext {
     int64_t nb_samples_out;
     int64_t nb_samples_in;
     int64_t first_pts;
+    int64_t last_pts;
     int nb_samples;
+    int eof;
 } RubberBandContext;
 
 #define OFFSET(x) offsetof(RubberBandContext, x)
@@ -100,7 +101,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     if (s->first_pts == AV_NOPTS_VALUE)
         s->first_pts = in->pts;
 
-    rubberband_process(s->rbs, (const float *const *)in->data, in->nb_samples, ff_outlink_get_status(inlink));
+    rubberband_process(s->rbs, (const float *const *)in->extended_data, in->nb_samples, s->eof);
     s->nb_samples_in += in->nb_samples;
 
     nb_samples = rubberband_available(s->rbs);
@@ -113,7 +114,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         out->pts = s->first_pts + av_rescale_q(s->nb_samples_out,
                      (AVRational){ 1, outlink->sample_rate },
                      outlink->time_base);
-        nb_samples = rubberband_retrieve(s->rbs, (float *const *)out->data, nb_samples);
+        s->last_pts = out->pts;
+        nb_samples = rubberband_retrieve(s->rbs, (float *const *)out->extended_data, nb_samples);
         out->nb_samples = nb_samples;
         ret = ff_filter_frame(outlink, out);
         s->nb_samples_out += nb_samples;
@@ -151,11 +153,16 @@ static int activate(AVFilterContext *ctx)
     AVFilterLink *outlink = ctx->outputs[0];
     RubberBandContext *s = ctx->priv;
     AVFrame *in = NULL;
-    int ret;
+    int64_t pts;
+    int status, ret;
 
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
     ret = ff_inlink_consume_samples(inlink, s->nb_samples, s->nb_samples, &in);
+
+    if (ff_inlink_acknowledge_status(inlink, &status, &pts))
+        s->eof |= status == AVERROR_EOF;
+
     if (ret < 0)
         return ret;
     if (ret > 0) {
@@ -164,7 +171,11 @@ static int activate(AVFilterContext *ctx)
             return ret;
     }
 
-    FF_FILTER_FORWARD_STATUS(inlink, outlink);
+    if (s->eof) {
+        ff_outlink_set_status(outlink, AVERROR_EOF, s->last_pts);
+        return 0;
+    }
+
     FF_FILTER_FORWARD_WANTED(outlink, inlink);
 
     return FFERROR_NOT_READY;
@@ -195,13 +206,6 @@ static const AVFilterPad rubberband_inputs[] = {
     },
 };
 
-static const AVFilterPad rubberband_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_rubberband = {
     .name          = "rubberband",
     .description   = NULL_IF_CONFIG_SMALL("Apply time-stretching and pitch-shifting."),
@@ -210,7 +214,7 @@ const AVFilter ff_af_rubberband = {
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(rubberband_inputs),
-    FILTER_OUTPUTS(rubberband_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .process_command = process_command,
 };

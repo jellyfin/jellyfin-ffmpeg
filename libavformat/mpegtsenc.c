@@ -28,8 +28,8 @@
 #include "libavutil/opt.h"
 
 #include "libavcodec/ac3_parser_internal.h"
-#include "libavcodec/avcodec.h"
 #include "libavcodec/bytestream.h"
+#include "libavcodec/defs.h"
 #include "libavcodec/h264.h"
 #include "libavcodec/startcode.h"
 
@@ -54,6 +54,7 @@ typedef struct MpegTSSection {
     int discontinuity;
     void (*write_packet)(struct MpegTSSection *s, const uint8_t *packet);
     void *opaque;
+    int remaining;
 } MpegTSSection;
 
 typedef struct MpegTSService {
@@ -300,11 +301,11 @@ static int put_arib_caption_descriptor(AVFormatContext *s, uint8_t **q_ptr,
     uint8_t *q = *q_ptr;
 
     switch (codecpar->profile) {
-    case FF_PROFILE_ARIB_PROFILE_A:
+    case AV_PROFILE_ARIB_PROFILE_A:
         stream_identifier = 0x30;
         data_component_id = 0x0008;
         break;
-    case FF_PROFILE_ARIB_PROFILE_C:
+    case AV_PROFILE_ARIB_PROFILE_C:
         stream_identifier = 0x87;
         data_component_id = 0x0012;
         break;
@@ -422,13 +423,16 @@ static int get_dvb_stream_type(AVFormatContext *s, AVStream *st)
     case AV_CODEC_ID_TIMED_ID3:
         stream_type = STREAM_TYPE_METADATA;
         break;
+    case AV_CODEC_ID_SMPTE_2038:
+        stream_type = STREAM_TYPE_PRIVATE_DATA;
+        break;
     case AV_CODEC_ID_DVB_SUBTITLE:
     case AV_CODEC_ID_DVB_TELETEXT:
     case AV_CODEC_ID_ARIB_CAPTION:
         stream_type = STREAM_TYPE_PRIVATE_DATA;
         break;
     case AV_CODEC_ID_SMPTE_KLV:
-        if (st->codecpar->profile == FF_PROFILE_KLVA_SYNC) {
+        if (st->codecpar->profile == AV_PROFILE_KLVA_SYNC) {
             stream_type = STREAM_TYPE_METADATA;
         } else {
             stream_type = STREAM_TYPE_PRIVATE_DATA;
@@ -804,6 +808,8 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
         case AVMEDIA_TYPE_DATA:
             if (codec_id == AV_CODEC_ID_SMPTE_KLV) {
                 put_registration_descriptor(&q, MKTAG('K', 'L', 'V', 'A'));
+            } else if (codec_id == AV_CODEC_ID_SMPTE_2038) {
+                put_registration_descriptor(&q, MKTAG('V', 'A', 'N', 'C'));
             } else if (codec_id == AV_CODEC_ID_TIMED_ID3) {
                 const char *tag = "ID3 ";
                 *q++ = METADATA_DESCRIPTOR;
@@ -1005,6 +1011,10 @@ static MpegTSService *mpegts_add_service(AVFormatContext *s, int sid,
         av_log(s, AV_LOG_ERROR, "Too long service or provider name\n");
         goto fail;
     }
+    ts->sdt.remaining -= 10 + service->provider_name[0] + service->name[0];
+    if (ts->sdt.remaining < 0)
+        goto fail;
+
     if (av_dynarray_add_nofree(&ts->services, &ts->nb_services, service) < 0)
         goto fail;
 
@@ -1114,6 +1124,8 @@ static int mpegts_init(AVFormatContext *s)
 
     // round up to a whole number of TS packets
     ts->pes_payload_size = (ts->pes_payload_size + 14 + 183) / 184 * 184 - 14;
+
+    ts->sdt.remaining    = SECTION_LENGTH - 3;
 
     if (!s->nb_programs) {
         /* allocate a single DVB service */
@@ -1455,7 +1467,8 @@ static int get_pes_stream_id(AVFormatContext *s, AVStream *st, int stream_id, in
                st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
         return STREAM_ID_PRIVATE_STREAM_1;
     } else if (st->codecpar->codec_type == AVMEDIA_TYPE_DATA) {
-        if (stream_id == STREAM_ID_PRIVATE_STREAM_1) /* asynchronous KLV */
+        if (st->codecpar->codec_id == AV_CODEC_ID_SMPTE_KLV &&
+            stream_id == STREAM_ID_PRIVATE_STREAM_1) /* asynchronous KLV */
             *async = 1;
         return stream_id != -1 ? stream_id : STREAM_ID_METADATA_STREAM;
     } else {
@@ -2355,6 +2368,11 @@ const FFOutputFormat ff_mpegts_muxer = {
     .write_trailer  = mpegts_write_end,
     .deinit         = mpegts_deinit,
     .check_bitstream = mpegts_check_bitstream,
+#if FF_API_ALLOW_FLUSH
     .p.flags        = AVFMT_ALLOW_FLUSH | AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
+#else
+    .p.flags         = AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
+#endif
+    .flags_internal  = FF_FMT_ALLOW_FLUSH,
     .p.priv_class   = &mpegts_muxer_class,
 };

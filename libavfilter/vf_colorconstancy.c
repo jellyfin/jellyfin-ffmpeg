@@ -28,14 +28,11 @@
  * J. van de Weijer, Th. Gevers, A. Gijsenij "Edge-Based Color Constancy".
  */
 
-#include "config_components.h"
-
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
-#include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -273,8 +270,8 @@ static int slice_get_derivative(AVFilterContext* ctx, void* arg, int jobnr, int 
         if (dir == DIR_X) {
             /** Applying gauss horizontally along each row */
             const uint8_t *src = in->data[plane];
-            slice_start = (height * jobnr      ) / nb_jobs;
-            slice_end   = (height * (jobnr + 1)) / nb_jobs;
+            slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+            slice_end   = ff_slice_pos(height, jobnr + 1, nb_jobs);
 
             for (r = slice_start; r < slice_end; ++r) {
                 for (c = 0; c < width; ++c) {
@@ -288,8 +285,8 @@ static int slice_get_derivative(AVFilterContext* ctx, void* arg, int jobnr, int 
         } else {
             /** Applying gauss vertically along each column */
             const double *src = td->data[src_index][plane];
-            slice_start = (width * jobnr      ) / nb_jobs;
-            slice_end   = (width * (jobnr + 1)) / nb_jobs;
+            slice_start = ff_slice_pos(width, jobnr, nb_jobs);
+            slice_end   = ff_slice_pos(width, jobnr + 1, nb_jobs);
 
             for (c = slice_start; c < slice_end; ++c) {
                 for (r = 0; r < height; ++r) {
@@ -451,8 +448,8 @@ static int filter_slice_grey_edge(AVFilterContext* ctx, void* arg, int jobnr, in
         const int height        = s->planeheight[plane];
         const int width         = s->planewidth[plane];
         const int in_linesize   = in->linesize[plane];
-        const int slice_start   = (height * jobnr) / nb_jobs;
-        const int slice_end     = (height * (jobnr+1)) / nb_jobs;
+        const int slice_start   = ff_slice_pos(height, jobnr, nb_jobs);
+        const int slice_end     = ff_slice_pos(height, jobnr + 1, nb_jobs);
         const uint8_t *img_data = in->data[plane];
         const double *src       = td->data[INDEX_NORM][plane];
         double *dst             = td->data[INDEX_DST][plane];
@@ -719,15 +716,6 @@ static const AVFilterPad colorconstancy_inputs[] = {
     },
 };
 
-static const AVFilterPad colorconstancy_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
-#if CONFIG_GREYEDGE_FILTER
-
 static const AVOption greyedge_options[] = {
     { "difford",  "set differentiation order", OFFSET(difford),  AV_OPT_TYPE_INT,    {.i64=1}, 0,   2,      FLAGS },
     { "minknorm", "set Minkowski norm",        OFFSET(minknorm), AV_OPT_TYPE_INT,    {.i64=1}, 0,   20,     FLAGS },
@@ -744,11 +732,9 @@ const AVFilter ff_vf_greyedge = {
     .priv_class    = &greyedge_class,
     .uninit        = uninit,
     FILTER_INPUTS(colorconstancy_inputs),
-    FILTER_OUTPUTS(colorconstancy_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     // TODO: support more formats
     // FIXME: error when saving to .jpg
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_GBRP),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };
-
-#endif /* CONFIG_GREY_EDGE_FILTER */

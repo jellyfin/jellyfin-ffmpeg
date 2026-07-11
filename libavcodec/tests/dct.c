@@ -37,12 +37,14 @@
 
 #include "libavutil/cpu.h"
 #include "libavutil/common.h"
+#include "libavutil/emms.h"
 #include "libavutil/internal.h"
 #include "libavutil/lfg.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/time.h"
 
 #include "libavcodec/dct.h"
+#include "libavcodec/fdctdsp.h"
 #include "libavcodec/idctdsp.h"
 #include "libavcodec/simple_idct.h"
 #include "libavcodec/xvididct.h"
@@ -224,8 +226,8 @@ static int dct_error(const struct algo *dct, int test, int is_idct, int speed, c
             v = abs(err);
             if (v > err_inf)
                 err_inf = v;
-            err2_matrix[i] += v * v;
-            err2 += v * v;
+            err2_matrix[i] += v * (int64_t)v;
+            err2 += v * (int64_t)v;
             sysErr[i] += block[i] - block1[i];
             blockSumErr += v;
             if (abs(block[i]) > maxout)

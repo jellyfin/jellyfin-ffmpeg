@@ -24,6 +24,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixfmt.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "framesync.h"
 #include "internal.h"
 #include "vf_blend_init.h"
@@ -133,8 +134,8 @@ static void blend_expr_## name(const uint8_t *_top, ptrdiff_t top_linesize,     
                                ptrdiff_t width, ptrdiff_t height,              \
                                FilterParams *param, double *values, int starty) \
 {                                                                              \
-    const type *top = (type*)_top;                                             \
-    const type *bottom = (type*)_bottom;                                       \
+    const type *top = (const type*)_top;                                       \
+    const type *bottom = (const type*)_bottom;                                 \
     type *dst = (type*)_dst;                                                   \
     AVExpr *e = param->e;                                                      \
     int y, x;                                                                  \
@@ -163,8 +164,8 @@ DEFINE_BLEND_EXPR(float, 32bit, 4)
 static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 {
     ThreadData *td = arg;
-    int slice_start = (td->h *  jobnr   ) / nb_jobs;
-    int slice_end   = (td->h * (jobnr+1)) / nb_jobs;
+    int slice_start = ff_slice_pos(td->h, jobnr, nb_jobs);
+    int slice_end   = ff_slice_pos(td->h, jobnr + 1, nb_jobs);
     int height      = slice_end - slice_start;
     const uint8_t *top    = td->top->data[td->plane];
     const uint8_t *bottom = td->bottom->data[td->plane];

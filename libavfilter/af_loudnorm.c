@@ -23,6 +23,7 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 #include "audio.h"
 #include "ebur128.h"
@@ -730,26 +731,24 @@ static int activate(AVFilterContext *ctx)
 static int query_formats(AVFilterContext *ctx)
 {
     LoudNormContext *s = ctx->priv;
-    AVFilterFormats *formats = NULL;
     static const int input_srate[] = {192000, -1};
+    static const enum AVSampleFormat sample_fmts[] = {
+            AV_SAMPLE_FMT_DBL,
+            AV_SAMPLE_FMT_NONE
+    };
     int ret = ff_set_common_all_channel_counts(ctx);
     if (ret < 0)
         return ret;
 
-    ret = ff_add_format(&formats, AV_SAMPLE_FMT_DBL);
-    if (ret)
-        return ret;
-    ret = ff_set_common_formats(ctx, formats);
-    if (ret)
+    ret = ff_set_common_formats_from_list(ctx, sample_fmts);
+    if (ret < 0)
         return ret;
 
-    if (s->frame_type != LINEAR_MODE) {
-        formats = ff_make_format_list(input_srate);
+    if (s->frame_type == LINEAR_MODE) {
+        return ff_set_common_all_samplerates(ctx);
     } else {
-        formats = ff_all_samplerates();
+        return ff_set_common_samplerates_from_list(ctx, input_srate);
     }
-
-    return ff_set_common_samplerates(ctx, formats);
 }
 
 static int config_input(AVFilterLink *inlink)
@@ -928,13 +927,6 @@ static const AVFilterPad avfilter_af_loudnorm_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_af_loudnorm_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_loudnorm = {
     .name          = "loudnorm",
     .description   = NULL_IF_CONFIG_SMALL("EBU R128 loudness normalization"),
@@ -944,6 +936,6 @@ const AVFilter ff_af_loudnorm = {
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_loudnorm_inputs),
-    FILTER_OUTPUTS(avfilter_af_loudnorm_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
 };

@@ -28,12 +28,12 @@
 #include "avformat.h"
 #include "dovi_isom.h"
 
-int ff_isom_parse_dvcc_dvvc(AVFormatContext *s, AVStream *st, const uint8_t *buf_ptr, uint64_t size)
+int ff_isom_parse_dvcc_dvvc(void *logctx, AVStream *st,
+                            const uint8_t *buf_ptr, uint64_t size)
 {
     uint32_t buf;
     AVDOVIDecoderConfigurationRecord *dovi;
     size_t dovi_size;
-    int ret;
 
     if (size > (1 << 30) || size < 4)
         return AVERROR_INVALIDDATA;
@@ -63,14 +63,13 @@ int ff_isom_parse_dvcc_dvvc(AVFormatContext *s, AVStream *st, const uint8_t *buf
         dovi->dv_bl_signal_compatibility_id = 0;
     }
 
-    ret = av_stream_add_side_data(st, AV_PKT_DATA_DOVI_CONF,
-                                  (uint8_t *)dovi, dovi_size);
-    if (ret < 0) {
+    if (!av_packet_side_data_add(&st->codecpar->coded_side_data, &st->codecpar->nb_coded_side_data,
+                                 AV_PKT_DATA_DOVI_CONF, (uint8_t *)dovi, dovi_size, 0)) {
         av_free(dovi);
-        return ret;
+        return AVERROR(ENOMEM);
     }
 
-    av_log(s, AV_LOG_TRACE, "DOVI in dvcC/dvvC/dvwC box, version: %d.%d, profile: %d, level: %d, "
+    av_log(logctx, AV_LOG_TRACE, "DOVI in dvcC/dvvC/dvwC box, version: %d.%d, profile: %d, level: %d, "
            "rpu flag: %d, el flag: %d, bl flag: %d, compatibility id: %d\n",
            dovi->dv_version_major, dovi->dv_version_minor,
            dovi->dv_profile, dovi->dv_level,
@@ -82,8 +81,8 @@ int ff_isom_parse_dvcc_dvvc(AVFormatContext *s, AVStream *st, const uint8_t *buf
     return 0;
 }
 
-void ff_isom_put_dvcc_dvvc(AVFormatContext *s, uint8_t out[ISOM_DVCC_DVVC_SIZE],
-                           AVDOVIDecoderConfigurationRecord *dovi)
+void ff_isom_put_dvcc_dvvc(void *logctx, uint8_t out[ISOM_DVCC_DVVC_SIZE],
+                           const AVDOVIDecoderConfigurationRecord *dovi)
 {
     PutBitContext pb;
 
@@ -106,7 +105,8 @@ void ff_isom_put_dvcc_dvvc(AVFormatContext *s, uint8_t out[ISOM_DVCC_DVVC_SIZE],
 
     flush_put_bits(&pb);
 
-    av_log(s, AV_LOG_DEBUG, "DOVI in %s box, version: %d.%d, profile: %d, level: %d, "
+    av_log(logctx, AV_LOG_DEBUG,
+           "DOVI in %s box, version: %d.%d, profile: %d, level: %d, "
            "rpu flag: %d, el flag: %d, bl flag: %d, compatibility id: %d\n",
            dovi->dv_profile > 10 ? "dvwC" : (dovi->dv_profile > 7 ? "dvvC" : "dvcC"),
            dovi->dv_version_major, dovi->dv_version_minor,

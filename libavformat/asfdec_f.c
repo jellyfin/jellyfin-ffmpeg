@@ -239,8 +239,10 @@ static void get_tag(AVFormatContext *s, const char *key, int type, int len, int 
     case ASF_UNICODE:
         avio_get_str16le(s->pb, len, value, 2 * len + 1);
         break;
-    case -1: // ASCI
-        avio_read(s->pb, value, len);
+    case -1:; // ASCII
+        int ret = ffio_read_size(s->pb, value, len);
+        if (ret < 0)
+            goto finish;
         value[len]=0;
         break;
     case ASF_BYTE_ARRAY:
@@ -445,6 +447,8 @@ static int asf_read_stream_properties(AVFormatContext *s, int64_t size)
 
         st->codecpar->codec_tag = tag1;
         st->codecpar->codec_id  = ff_codec_get_id(ff_codec_bmp_tags, tag1);
+        if (!st->codecpar->codec_id)
+            st->codecpar->codec_id = ff_codec_get_id(ff_codec_bmp_tags_unofficial, tag1);
         if (tag1 == MKTAG('D', 'V', 'R', ' ')) {
             sti->need_parsing = AVSTREAM_PARSE_FULL;
             /* issue658 contains wrong w/h and MS even puts a fake seq header
@@ -458,7 +462,9 @@ static int asf_read_stream_properties(AVFormatContext *s, int64_t size)
         if (st->codecpar->codec_id == AV_CODEC_ID_H264)
             sti->need_parsing = AVSTREAM_PARSE_FULL_ONCE;
         if (st->codecpar->codec_id == AV_CODEC_ID_MPEG4)
-            sti->need_parsing = AVSTREAM_PARSE_FULL_ONCE;
+            sti->need_parsing = AVSTREAM_PARSE_FULL;
+        if (st->codecpar->codec_id == AV_CODEC_ID_HEVC)
+            sti->need_parsing = AVSTREAM_PARSE_FULL;
     }
     pos2 = avio_tell(pb);
     avio_skip(pb, size - (pos2 - pos1 + 24));
@@ -670,7 +676,7 @@ static int asf_read_marker(AVFormatContext *s)
 
         avio_rl64(pb);             // offset, 8 bytes
         pres_time = avio_rl64(pb); // presentation time
-        pres_time = av_sat_sub64(pres_time, asf->hdr.preroll * 10000);
+        pres_time = av_sat_sub64(pres_time, asf->hdr.preroll * 10000LL);
         avio_rl16(pb);             // entry length
         avio_rl32(pb);             // send time
         avio_rl32(pb);             // flags

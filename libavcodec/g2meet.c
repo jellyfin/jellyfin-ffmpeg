@@ -195,8 +195,8 @@ static av_cold void jpg_free_context(JPGContext *ctx)
     int i;
 
     for (i = 0; i < 2; i++) {
-        ff_free_vlc(&ctx->dc_vlc[i]);
-        ff_free_vlc(&ctx->ac_vlc[i]);
+        ff_vlc_free(&ctx->dc_vlc[i]);
+        ff_vlc_free(&ctx->ac_vlc[i]);
     }
 
     av_freep(&ctx->buf);
@@ -480,12 +480,13 @@ static void epic_free_pixel_cache(ePICPixHash *hash)
 static inline int is_pixel_on_stack(const ePICContext *dc, uint32_t pix)
 {
     int i;
+    int n = FFMIN(dc->stack_pos, EPIC_PIX_STACK_SIZE);
 
-    for (i = 0; i < dc->stack_pos; i++)
+    for (i = 0; i < n; i++)
         if (dc->stack[i] == pix)
             break;
 
-    return i != dc->stack_pos;
+    return i != n;
 }
 
 #define TOSIGNED(val) (((val) >> 1) ^ -((val) & 1))
@@ -1560,7 +1561,10 @@ static int g2m_decode_frame(AVCodecContext *avctx, AVFrame *pic,
         if ((ret = ff_get_buffer(avctx, pic, 0)) < 0)
             return ret;
 
-        pic->key_frame = got_header;
+        if (got_header)
+            pic->flags |= AV_FRAME_FLAG_KEY;
+        else
+            pic->flags &= ~AV_FRAME_FLAG_KEY;
         pic->pict_type = got_header ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
         for (i = 0; i < avctx->height; i++)

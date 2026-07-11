@@ -22,6 +22,7 @@
 #include "config.h"
 #include "config_components.h"
 
+#include <time.h>
 #if CONFIG_ZLIB
 #include <zlib.h>
 #endif /* CONFIG_ZLIB */
@@ -136,6 +137,7 @@ typedef struct HTTPContext {
     char *new_location;
     AVDictionary *redirect_cache;
     uint64_t filesize_from_content_range;
+    int max_redirects;
 } HTTPContext;
 
 #define OFFSET(x) offsetof(HTTPContext, x)
@@ -178,6 +180,7 @@ static const AVOption options[] = {
     { "resource", "The resource requested by a client", OFFSET(resource), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, E },
     { "reply_code", "The http status code to return to a client", OFFSET(reply_code), AV_OPT_TYPE_INT, { .i64 = 200}, INT_MIN, 599, E},
     { "short_seek_size", "Threshold to favor readahead over seek.", OFFSET(short_seek_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, D },
+    { "max_redirects", "Maximum number of redirects", OFFSET(max_redirects), AV_OPT_TYPE_INT, { .i64 = MAX_REDIRECTS }, 0, INT_MAX, D },
     { NULL }
 };
 
@@ -233,7 +236,11 @@ static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
             if (err < 0)
                 goto end;
         }
+    } else if (strcmp(proto, "http")) {
+        err = AVERROR(EINVAL);
+        goto end;
     }
+
     if (port < 0)
         port = 80;
 
@@ -362,6 +369,9 @@ redo:
 
     cached = redirect_cache_get(s);
     if (cached) {
+        if (redirects++ >= s->max_redirects)
+            return AVERROR(EIO);
+
         av_free(s->location);
         s->location = av_strdup(cached);
         if (!s->location) {
@@ -418,7 +428,7 @@ redo:
         s->new_location) {
         /* url moved, get next */
         ffurl_closep(&s->hd);
-        if (redirects++ >= MAX_REDIRECTS)
+        if (redirects++ >= s->max_redirects)
             return AVERROR(EIO);
 
         if (!s->expires) {
@@ -1098,6 +1108,8 @@ static int process_line(URLContext *h, char *line, int line_count)
             method = p;
             while (*p && !av_isspace(*p))
                 p++;
+            if (!av_isspace(*p))
+                return ff_http_averror(400, AVERROR(EIO));
             *(p++) = '\0';
             av_log(h, AV_LOG_TRACE, "Received method: %s\n", method);
             if (s->method) {
@@ -1124,6 +1136,8 @@ static int process_line(URLContext *h, char *line, int line_count)
             resource = p;
             while (*p && !av_isspace(*p))
                 p++;
+            if (!av_isspace(*p))
+                return ff_http_averror(400, AVERROR(EIO));
             *(p++) = '\0';
             av_log(h, AV_LOG_TRACE, "Requested resource: %s\n", resource);
             if (!(s->resource = av_strdup(resource)))
@@ -1205,7 +1219,7 @@ static int process_line(URLContext *h, char *line, int line_count)
             }
         } else if (!av_strcasecmp(tag, "Content-Type")) {
             av_free(s->mime_type);
-            s->mime_type = av_strdup(p);
+            s->mime_type = av_get_token((const char **)&p, ";");
         } else if (!av_strcasecmp(tag, "Set-Cookie")) {
             if (parse_cookie(s, p, &s->cookie_dict))
                 av_log(h, AV_LOG_WARNING, "Unable to parse '%s'\n", p);
@@ -1293,9 +1307,9 @@ static int get_cookies(HTTPContext *s, char **cookies, const char *path,
                 goto skip_cookie;
         }
 
-        // ensure this cookie matches the path
+        // if a cookie path is provided, ensure the request path is within that path
         e = av_dict_get(cookie_params, "path", NULL, 0);
-        if (!e || av_strncasecmp(path, e->value, strlen(e->value)))
+        if (e && av_strncasecmp(path, e->value, strlen(e->value)))
             goto skip_cookie;
 
         // cookie parameters match, so copy the value
@@ -1787,7 +1801,7 @@ static int store_icy(URLContext *h, int size)
             ret = http_read_stream_all(h, data, len);
             if (ret < 0)
                 return ret;
-            data[len + 1] = 0;
+            data[len] = 0;
             if ((ret = av_opt_set(s, "icy_metadata_packet", data, 0)) < 0)
                 return ret;
             update_metadata(h, data);

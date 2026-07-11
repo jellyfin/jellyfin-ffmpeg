@@ -28,6 +28,7 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "internal.h"
+#include "video.h"
 
 #include "vidstabutils.h"
 
@@ -192,7 +193,7 @@ static int config_input(AVFilterLink *inlink)
         av_log(ctx, AV_LOG_INFO, "    zoomspeed = %g\n", tc->conf.zoomSpeed);
     av_log(ctx, AV_LOG_INFO, "    interpol  = %s\n", getInterpolationTypeName(tc->conf.interpolType));
 
-    f = avpriv_fopen_utf8(tc->input, "r");
+    f = avpriv_fopen_utf8(tc->input, "rb");
     if (!f) {
         int ret = AVERROR(errno);
         av_log(ctx, AV_LOG_ERROR, "cannot open input file %s\n", tc->input);
@@ -282,13 +283,6 @@ static const AVFilterPad avfilter_vf_vidstabtransform_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_vidstabtransform_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_vidstabtransform = {
     .name          = "vidstabtransform",
     .description   = NULL_IF_CONFIG_SMALL("Transform the frames, "
@@ -298,7 +292,7 @@ const AVFilter ff_vf_vidstabtransform = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_vidstabtransform_inputs),
-    FILTER_OUTPUTS(avfilter_vf_vidstabtransform_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(ff_vidstab_pix_fmts),
     .priv_class    = &vidstabtransform_class,
 };

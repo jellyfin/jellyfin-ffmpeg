@@ -438,8 +438,8 @@ static int filter_channel(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
     const float *window_func_lut = s->window_func_lut;
     AVFrame *in = arg;
     const int channels = s->nb_channels;
-    const int start = (channels * jobnr) / nb_jobs;
-    const int end = (channels * (jobnr+1)) / nb_jobs;
+    const int start = ff_slice_pos(channels, jobnr, nb_jobs);
+    const int end = ff_slice_pos(channels, jobnr + 1, nb_jobs);
     const int offset = s->win_size - s->hop_size;
 
     for (int ch = start; ch < end; ch++) {
@@ -600,13 +600,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_frame_free(&s->window);
 }
 
-static const AVFilterPad aspectralstats_inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 static const AVFilterPad aspectralstats_outputs[] = {
     {
         .name         = "default",
@@ -622,7 +615,7 @@ const AVFilter ff_af_aspectralstats = {
     .priv_class    = &aspectralstats_class,
     .uninit        = uninit,
     .activate      = activate,
-    FILTER_INPUTS(aspectralstats_inputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(aspectralstats_outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .flags         = AVFILTER_FLAG_SLICE_THREADS,

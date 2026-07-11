@@ -22,11 +22,9 @@
 #include "motion_estimation.h"
 #include "libavcodec/mathops.h"
 #include "libavutil/common.h"
-#include "libavutil/motion_vector.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "scene_sad.h"
@@ -827,7 +825,6 @@ static int detect_scene_change(AVFilterContext *ctx)
         double ret = 0, mafd, diff;
         uint64_t sad;
         mi_ctx->sad(p1, linesize1, p2, linesize2, input->w, input->h, &sad);
-        emms_c();
         mafd = (double) sad * 100.0 / (input->h * input->w) / (1 << mi_ctx->bitdepth);
         diff = fabs(mafd - mi_ctx->prev_mafd);
         ret  = av_clipf(FFMIN(mafd, diff), 0, 100.0);
@@ -1078,8 +1075,13 @@ static void interpolate(AVFilterLink *inlink, AVFrame *avf_out)
     pts = av_rescale(avf_out->pts, (int64_t) ALPHA_MAX * outlink->time_base.num * inlink->time_base.den,
                                    (int64_t)             outlink->time_base.den * inlink->time_base.num);
 
-    alpha = (pts - mi_ctx->frames[1].avf->pts * ALPHA_MAX) / (mi_ctx->frames[2].avf->pts - mi_ctx->frames[1].avf->pts);
-    alpha = av_clip(alpha, 0, ALPHA_MAX);
+    if (mi_ctx->frames[2].avf->pts > mi_ctx->frames[1].avf->pts) {
+        alpha = (pts - mi_ctx->frames[1].avf->pts * ALPHA_MAX) / (mi_ctx->frames[2].avf->pts - mi_ctx->frames[1].avf->pts);
+        alpha = av_clip(alpha, 0, ALPHA_MAX);
+    } else {
+        av_log(ctx, AV_LOG_DEBUG, "duplicate input PTS detected\n");
+        alpha = 0;
+    }
 
     if (alpha == 0 || alpha == ALPHA_MAX) {
         av_frame_copy(avf_out, alpha ? mi_ctx->frames[2].avf : mi_ctx->frames[1].avf);

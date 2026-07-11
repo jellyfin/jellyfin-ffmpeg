@@ -36,6 +36,7 @@
 #include "avfilter.h"
 #include "qp_table.h"
 #include "internal.h"
+#include "video.h"
 
 #define MV_P_FOR  (1<<0)
 #define MV_B_FOR  (1<<1)
@@ -110,7 +111,7 @@ static int clip_line(int *sx, int *sy, int *ex, int *ey, int maxx)
  * @param color color of the arrow
  */
 static void draw_line(uint8_t *buf, int sx, int sy, int ex, int ey,
-                      int w, int h, int stride, int color)
+                      int w, int h, ptrdiff_t stride, int color)
 {
     int x, y, fr, f;
 
@@ -168,7 +169,7 @@ static void draw_line(uint8_t *buf, int sx, int sy, int ex, int ey,
  * @param color color of the arrow
  */
 static void draw_arrow(uint8_t *buf, int sx, int sy, int ex,
-                       int ey, int w, int h, int stride, int color, int tail, int direction)
+                       int ey, int w, int h, ptrdiff_t stride, int color, int tail, int direction)
 {
     int dx,dy;
 
@@ -205,7 +206,7 @@ static void draw_arrow(uint8_t *buf, int sx, int sy, int ex,
     draw_line(buf, sx, sy, ex, ey, w, h, stride, color);
 }
 
-static void draw_block_rectangle(uint8_t *buf, int sx, int sy, int w, int h, int stride, int color)
+static void draw_block_rectangle(uint8_t *buf, int sx, int sy, int w, int h, ptrdiff_t stride, int color)
 {
     for (int x = sx; x < sx + w; x++)
         buf[x] = color;
@@ -215,9 +216,6 @@ static void draw_block_rectangle(uint8_t *buf, int sx, int sy, int w, int h, int
         buf[sx + w - 1] = color;
         buf += stride;
     }
-
-    for (int x = sx; x < sx + w; x++)
-        buf[x] = color;
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
@@ -243,8 +241,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             const int h = AV_CEIL_RSHIFT(frame->height, s->vsub);
             uint8_t *pu = frame->data[1];
             uint8_t *pv = frame->data[2];
-            const int lzu = frame->linesize[1];
-            const int lzv = frame->linesize[2];
+            const ptrdiff_t lzu = frame->linesize[1];
+            const ptrdiff_t lzv = frame->linesize[2];
 
             for (y = 0; y < h; y++) {
                 for (x = 0; x < w; x++) {
@@ -262,14 +260,27 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
         AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
         if (sd) {
             AVVideoEncParams *par = (AVVideoEncParams*)sd->data;
-            const int stride = frame->linesize[0];
+            const ptrdiff_t stride = frame->linesize[0];
 
             if (par->nb_blocks) {
                 for (int block_idx = 0; block_idx < par->nb_blocks; block_idx++) {
                     AVVideoBlockParams *b = av_video_enc_params_block(par, block_idx);
-                    uint8_t *buf = frame->data[0] + b->src_y * stride;
 
-                    draw_block_rectangle(buf, b->src_x, b->src_y, b->w, b->h, stride, 100);
+                    int64_t x0 = b->src_x;
+                    int64_t y0 = b->src_y;
+                    int64_t x1 = x0 + b->w;
+                    int64_t y1 = y0 + b->h;
+
+                    x0 = FFMAX(x0, 0);
+                    y0 = FFMAX(y0, 0);
+                    x1 = FFMIN(x1, frame->width);
+                    y1 = FFMIN(y1, frame->height);
+
+                    if (x1 <= x0 || y1 <= y0)
+                        continue;
+
+                    uint8_t *buf = frame->data[0] + y0 * stride;
+                    draw_block_rectangle(buf, x0, y0, x1-x0, y1-y0, stride, 100);
                 }
             }
         }
@@ -334,19 +345,12 @@ static const AVFilterPad codecview_inputs[] = {
     },
 };
 
-static const AVFilterPad codecview_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_codecview = {
     .name          = "codecview",
     .description   = NULL_IF_CONFIG_SMALL("Visualize information about some codecs."),
     .priv_size     = sizeof(CodecViewContext),
     FILTER_INPUTS(codecview_inputs),
-    FILTER_OUTPUTS(codecview_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     // TODO: we can probably add way more pixel formats without any other
     // changes; anything with 8-bit luma in first plane should be working
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_YUV420P),

@@ -354,7 +354,7 @@ static int hq_hqa_decode_frame(AVCodecContext *avctx, AVFrame *pic,
         return ret;
     }
 
-    pic->key_frame = 1;
+    pic->flags |= AV_FRAME_FLAG_KEY;
     pic->pict_type = AV_PICTURE_TYPE_I;
 
     *got_frame = 1;
@@ -376,8 +376,8 @@ static av_cold int hq_hqa_decode_close(AVCodecContext *avctx)
 {
     HQContext *ctx = avctx->priv_data;
 
-    ff_free_vlc(&ctx->hq_ac_vlc);
-    ff_free_vlc(&ctx->hqa_cbp_vlc);
+    ff_vlc_free(&ctx->hq_ac_vlc);
+    ff_vlc_free(&ctx->hqa_cbp_vlc);
 
     return 0;
 }

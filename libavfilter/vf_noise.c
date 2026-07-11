@@ -24,12 +24,14 @@
  * noise generator
  */
 
+#include "libavutil/emms.h"
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/lfg.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
 #include "internal.h"
 #include "vf_noise.h"
@@ -229,8 +231,8 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 
     for (plane = 0; plane < s->nb_planes; plane++) {
         const int height = s->height[plane];
-        const int start  = (height *  jobnr   ) / nb_jobs;
-        const int end    = (height * (jobnr+1)) / nb_jobs;
+        const int start  = ff_slice_pos(height, jobnr, nb_jobs);
+        const int end    = ff_slice_pos(height, jobnr + 1, nb_jobs);
         noise(td->out->data[plane] + start * td->out->linesize[plane],
               td->in->data[plane]  + start * td->in->linesize[plane],
               td->out->linesize[plane], td->in->linesize[plane],
@@ -330,13 +332,6 @@ static const AVFilterPad noise_inputs[] = {
     },
 };
 
-static const AVFilterPad noise_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_noise = {
     .name          = "noise",
     .description   = NULL_IF_CONFIG_SMALL("Add noise."),
@@ -344,7 +339,7 @@ const AVFilter ff_vf_noise = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(noise_inputs),
-    FILTER_OUTPUTS(noise_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &noise_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

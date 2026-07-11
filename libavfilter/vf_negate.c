@@ -16,14 +16,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/attributes.h"
 #include "libavutil/common.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -89,6 +88,8 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV440P12,
     AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV420P14,
     AV_PIX_FMT_YUV444P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV420P16,
+    AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA420P10,
+    AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA422P12,
     AV_PIX_FMT_YUVA444P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA420P16,
     AV_PIX_FMT_ARGB, AV_PIX_FMT_RGBA,
     AV_PIX_FMT_ABGR, AV_PIX_FMT_BGRA,
@@ -97,7 +98,7 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_BGR48, AV_PIX_FMT_BGRA64,
     AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRAP,
     AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
-    AV_PIX_FMT_GBRAP10,
+    AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP14,
     AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14,
     AV_PIX_FMT_GBRP16, AV_PIX_FMT_GBRAP12,
     AV_PIX_FMT_GBRAP16,
@@ -277,8 +278,8 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
 
     for (int p = 0; p < s->nb_planes; p++) {
         const int h = s->height[p];
-        const int slice_start = (h * jobnr) / nb_jobs;
-        const int slice_end = (h * (jobnr+1)) / nb_jobs;
+        const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);
+        const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);
 
         if (!((1 << p) & s->planes)) {
             if (out != in)
@@ -355,20 +356,13 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_negate = {
     .name          = "negate",
     .description   = NULL_IF_CONFIG_SMALL("Negate input video."),
     .priv_size     = sizeof(NegateContext),
     .priv_class    = &negate_class,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,

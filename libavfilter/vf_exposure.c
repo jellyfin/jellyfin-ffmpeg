@@ -21,9 +21,8 @@
 #include <float.h>
 
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -48,8 +47,8 @@ static int exposure_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
     ThreadData *td = arg;
     const int width = td->out->width;
     const int height = td->out->height;
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
     const float black = s->black;
     const float scale = s->scale;
 
@@ -133,13 +132,6 @@ static const AVFilterPad exposure_inputs[] = {
     },
 };
 
-static const AVFilterPad exposure_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #define OFFSET(x) offsetof(ExposureContext, x)
 #define VF AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
@@ -157,7 +149,7 @@ const AVFilter ff_vf_exposure = {
     .priv_size     = sizeof(ExposureContext),
     .priv_class    = &exposure_class,
     FILTER_INPUTS(exposure_inputs),
-    FILTER_OUTPUTS(exposure_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS(AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

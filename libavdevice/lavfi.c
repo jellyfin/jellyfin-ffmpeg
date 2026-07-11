@@ -39,7 +39,6 @@
 #include "libavutil/pixdesc.h"
 #include "libavfilter/avfilter.h"
 #include "libavfilter/buffersink.h"
-#include "libavformat/avio_internal.h"
 #include "libavformat/internal.h"
 #include "avdevice.h"
 
@@ -174,6 +173,10 @@ av_cold static int lavfi_read_header(AVFormatContext *avctx)
      * create a mapping between them and the streams */
     for (i = 0, inout = output_links; inout; i++, inout = inout->next) {
         int stream_idx = 0, suffix = 0, use_subcc = 0;
+        if (!inout->name) {
+            av_log(avctx, AV_LOG_ERROR, "Missing %d outpad name\n", i);
+            FAIL(AVERROR(EINVAL));
+        }
         sscanf(inout->name, "out%n%d%n", &suffix, &stream_idx, &suffix);
         if (!suffix) {
             av_log(avctx,  AV_LOG_ERROR,
@@ -343,7 +346,11 @@ static int create_subcc_packet(AVFormatContext *avctx, AVFrame *frame,
     memcpy(lavfi->subcc_packet.data, sd->data, sd->size);
     lavfi->subcc_packet.stream_index = stream_idx;
     lavfi->subcc_packet.pts = frame->pts;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
     lavfi->subcc_packet.pos = frame->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     return 0;
 }
 
@@ -358,7 +365,7 @@ static int lavfi_read_packet(AVFormatContext *avctx, AVPacket *pkt)
     LavfiContext *lavfi = avctx->priv_data;
     double min_pts = DBL_MAX;
     int stream_idx, min_pts_sink_idx = 0;
-    AVFrame *frame;
+    AVFrame *frame, *frame_to_free;
     AVDictionary *frame_metadata;
     int ret, i;
     AVStream *st;
@@ -371,6 +378,7 @@ static int lavfi_read_packet(AVFormatContext *avctx, AVPacket *pkt)
     frame = av_frame_alloc();
     if (!frame)
         return AVERROR(ENOMEM);
+    frame_to_free = frame;
 
     /* iterate through all the graph sinks. Select the sink with the
      * minimum PTS */
@@ -416,6 +424,7 @@ static int lavfi_read_packet(AVFormatContext *avctx, AVPacket *pkt)
             ret = AVERROR(ENOMEM);
             goto fail;
         }
+        frame_to_free = NULL;
 
         pkt->data   = pkt->buf->data;
         pkt->size   = pkt->buf->size;
@@ -450,14 +459,17 @@ static int lavfi_read_packet(AVFormatContext *avctx, AVPacket *pkt)
 
     pkt->stream_index = stream_idx;
     pkt->pts = frame->pts;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
     pkt->pos = frame->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
-    if (st->codecpar->codec_type != AVMEDIA_TYPE_VIDEO)
-        av_frame_free(&frame);
+    av_frame_free(&frame_to_free);
 
     return pkt->size;
 fail:
-    av_frame_free(&frame);
+    av_frame_free(&frame_to_free);
     return ret;
 
 }

@@ -20,6 +20,7 @@
  */
 
 #include "avformat.h"
+#include "avio_internal.h"
 #include "internal.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/dict.h"
@@ -49,22 +50,28 @@ static int vqf_probe(const AVProbeData *probe_packet)
     return AVPROBE_SCORE_EXTENSION;
 }
 
-static void add_metadata(AVFormatContext *s, uint32_t tag,
+static int add_metadata(AVFormatContext *s, uint32_t tag,
                          unsigned int tag_len, unsigned int remaining)
 {
     int len = FFMIN(tag_len, remaining);
     char *buf, key[5] = {0};
+    int ret;
 
     if (len == UINT_MAX)
-        return;
+        return AVERROR_INVALIDDATA;
 
     buf = av_malloc(len+1);
     if (!buf)
-        return;
-    avio_read(s->pb, buf, len);
+        return AVERROR(ENOMEM);
+
+    ret = avio_read(s->pb, buf, len);
+    if (ret < 0)
+        return ret;
+    if (len != ret)
+        return AVERROR_INVALIDDATA;
     buf[len] = 0;
     AV_WL32(key, tag);
-    av_dict_set(&s->metadata, key, buf, AV_DICT_DONT_STRDUP_VAL);
+    return av_dict_set(&s->metadata, key, buf, AV_DICT_DONT_STRDUP_VAL);
 }
 
 static const AVMetadataConv vqf_metadata_conv[] = {
@@ -135,7 +142,9 @@ static int vqf_read_header(AVFormatContext *s)
             if (len < 12)
                 return AVERROR_INVALIDDATA;
 
-            avio_read(s->pb, comm_chunk, 12);
+            ret = ffio_read_size(s->pb, comm_chunk, 12);
+            if (ret < 0)
+                return ret;
             st->codecpar->ch_layout.nb_channels = AV_RB32(comm_chunk) + 1;
             read_bitrate        = AV_RB32(comm_chunk + 4);
             rate_flag           = AV_RB32(comm_chunk + 8);
@@ -162,7 +171,9 @@ static int vqf_read_header(AVFormatContext *s)
             avio_skip(s->pb, FFMIN(len, header_size));
             break;
         default:
-            add_metadata(s, chunk_tag, len, header_size);
+            ret = add_metadata(s, chunk_tag, len, header_size);
+            if (ret < 0)
+                return ret;
             break;
         }
 

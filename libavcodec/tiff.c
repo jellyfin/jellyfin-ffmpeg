@@ -337,7 +337,7 @@ static void av_always_inline dng_blit(TiffContext *s, uint8_t *dst, int dst_stri
            (split vertically in the middle). */
         for (line = 0; line < height / 2; line++) {
             uint16_t *dst_u16 = (uint16_t *)dst;
-            uint16_t *src_u16 = (uint16_t *)src;
+            const uint16_t *src_u16 = (const uint16_t *)src;
 
             /* Blit first half of input row row to initial row of output */
             for (col = 0; col < width; col++)
@@ -360,7 +360,7 @@ static void av_always_inline dng_blit(TiffContext *s, uint8_t *dst, int dst_stri
         if (is_u16) {
             for (line = 0; line < height; line++) {
                 uint16_t *dst_u16 = (uint16_t *)dst;
-                uint16_t *src_u16 = (uint16_t *)src;
+                const uint16_t *src_u16 = (const uint16_t *)src;
 
                 for (col = 0; col < width; col++)
                     *dst_u16++ = dng_process_color16(*src_u16++, s->dng_lut,
@@ -427,7 +427,8 @@ static void av_always_inline horizontal_fill(TiffContext *s,
             uint8_t shift = is_dng ? 0 : 16 - bpp;
             GetBitContext gb;
 
-            init_get_bits8(&gb, src, width);
+            int ret = init_get_bits8(&gb, src, width);
+            av_assert1(ret >= 0);
             for (int i = 0; i < s->width; i++) {
                 dst16[i] = get_bits(&gb, bpp) << shift;
             }
@@ -461,7 +462,8 @@ static void unpack_gray(TiffContext *s, AVFrame *p,
     GetBitContext gb;
     uint16_t *dst = (uint16_t *)(p->data[0] + lnum * p->linesize[0]);
 
-    init_get_bits8(&gb, src, width);
+    int ret = init_get_bits8(&gb, src, width);
+    av_assert1(ret >= 0);
 
     for (int i = 0; i < s->width; i++) {
         dst[i] = get_bits(&gb, bpp);
@@ -570,7 +572,7 @@ static int tiff_uncompress_lzma(uint8_t *dst, uint64_t *len, const uint8_t *src,
     lzma_stream stream = LZMA_STREAM_INIT;
     lzma_ret ret;
 
-    stream.next_in   = (uint8_t *)src;
+    stream.next_in   = src;
     stream.avail_in  = size;
     stream.next_out  = dst;
     stream.avail_out = *len;
@@ -1036,7 +1038,7 @@ static int dng_decode_tiles(AVCodecContext *avctx, AVFrame *frame,
 
     /* Frame is ready to be output */
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
 
     return avpkt->size;
 }
@@ -1301,9 +1303,13 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         s->is_thumbnail = (value != 0);
         break;
     case TIFF_WIDTH:
+        if (value > INT_MAX)
+            return AVERROR_INVALIDDATA;
         s->width = value;
         break;
     case TIFF_HEIGHT:
+        if (value > INT_MAX)
+            return AVERROR_INVALIDDATA;
         s->height = value;
         break;
     case TIFF_BPP:
@@ -1435,12 +1441,18 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         s->tile_byte_counts_offset = off;
         break;
     case TIFF_TILE_LENGTH:
+        if (value > INT_MAX)
+            return AVERROR_INVALIDDATA;
         s->tile_length = value;
         break;
     case TIFF_TILE_WIDTH:
+        if (value > INT_MAX)
+            return AVERROR_INVALIDDATA;
         s->tile_width = value;
         break;
     case TIFF_PREDICTOR:
+        if (value > INT_MAX)
+            return AVERROR_INVALIDDATA;
         s->predictor = value;
         break;
     case TIFF_SUB_IFDS:
@@ -1585,12 +1597,18 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         }
         break;
     case TIFF_T4OPTIONS:
-        if (s->compr == TIFF_G3)
+        if (s->compr == TIFF_G3) {
+            if (value > INT_MAX)
+                return AVERROR_INVALIDDATA;
             s->fax_opts = value;
+        }
         break;
     case TIFF_T6OPTIONS:
-        if (s->compr == TIFF_G4)
+        if (s->compr == TIFF_G4) {
+            if (value > INT_MAX)
+                return AVERROR_INVALIDDATA;
             s->fax_opts = value;
+        }
         break;
 #define ADD_METADATA(count, name, sep)\
     if ((ret = add_metadata(count, type, name, sep, s, frame)) < 0) {\
@@ -2379,6 +2397,7 @@ again:
         }
     }
 
+    p->flags |= AV_FRAME_FLAG_KEY;
     *got_frame = 1;
 
     return avpkt->size;

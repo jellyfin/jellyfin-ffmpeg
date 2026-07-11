@@ -60,24 +60,28 @@ static UInt32 ffat_get_format_id(enum AVCodecID codec, int profile)
     switch (codec) {
     case AV_CODEC_ID_AAC:
         switch (profile) {
-        case FF_PROFILE_AAC_LOW:
+        case AV_PROFILE_AAC_LOW:
         default:
             return kAudioFormatMPEG4AAC;
-        case FF_PROFILE_AAC_HE:
+        case AV_PROFILE_AAC_HE:
             return kAudioFormatMPEG4AAC_HE;
-        case FF_PROFILE_AAC_HE_V2:
+        case AV_PROFILE_AAC_HE_V2:
             return kAudioFormatMPEG4AAC_HE_V2;
-        case FF_PROFILE_AAC_LD:
+        case AV_PROFILE_AAC_LD:
             return kAudioFormatMPEG4AAC_LD;
-        case FF_PROFILE_AAC_ELD:
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
+        case AV_PROFILE_AAC_ELD:
             return kAudioFormatMPEG4AAC_ELD;
+#endif
         }
     case AV_CODEC_ID_ADPCM_IMA_QT:
         return kAudioFormatAppleIMA4;
     case AV_CODEC_ID_ALAC:
         return kAudioFormatAppleLossless;
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
     case AV_CODEC_ID_ILBC:
         return kAudioFormatiLBC;
+#endif
     case AV_CODEC_ID_PCM_ALAW:
         return kAudioFormatALaw;
     case AV_CODEC_ID_PCM_MULAW:
@@ -479,8 +483,7 @@ static OSStatus ffat_encode_callback(AudioConverterRef converter, UInt32 *nb_pac
     if (*nb_packets > frame->nb_samples)
         *nb_packets = frame->nb_samples;
 
-    av_frame_unref(at->encoding_frame);
-    ret = av_frame_ref(at->encoding_frame, frame);
+    ret = av_frame_replace(at->encoding_frame, frame);
     if (ret < 0) {
         *nb_packets = 0;
         return ret;
@@ -582,12 +585,12 @@ static av_cold int ffat_close_encoder(AVCodecContext *avctx)
 }
 
 static const AVProfile aac_profiles[] = {
-    { FF_PROFILE_AAC_LOW,   "LC"       },
-    { FF_PROFILE_AAC_HE,    "HE-AAC"   },
-    { FF_PROFILE_AAC_HE_V2, "HE-AACv2" },
-    { FF_PROFILE_AAC_LD,    "LD"       },
-    { FF_PROFILE_AAC_ELD,   "ELD"      },
-    { FF_PROFILE_UNKNOWN },
+    { AV_PROFILE_AAC_LOW,   "LC"       },
+    { AV_PROFILE_AAC_HE,    "HE-AAC"   },
+    { AV_PROFILE_AAC_HE_V2, "HE-AACv2" },
+    { AV_PROFILE_AAC_LD,    "LD"       },
+    { AV_PROFILE_AAC_ELD,   "ELD"      },
+    { AV_PROFILE_UNKNOWN },
 };
 
 #define AE AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM

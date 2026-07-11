@@ -77,7 +77,9 @@ static int64_t count_ts(const char *p)
 static int64_t read_ts(const char *p, int64_t *start)
 {
     int64_t offset = 0;
-    uint64_t mm, ss, cs;
+    uint32_t mm;
+    double ss;
+    char prefix[3];
 
     while(p[offset] == ' ' || p[offset] == '\t') {
         offset++;
@@ -85,13 +87,13 @@ static int64_t read_ts(const char *p, int64_t *start)
     if(p[offset] != '[') {
         return 0;
     }
-    if(sscanf(p, "[-%"SCNu64":%"SCNu64".%"SCNu64"]", &mm, &ss, &cs) == 3) {
-        /* Just in case negative pts, players may drop it but we won't. */
-        *start = -(int64_t) (mm*60000 + ss*1000 + cs*10);
-    } else if(sscanf(p, "[%"SCNu64":%"SCNu64".%"SCNu64"]", &mm, &ss, &cs) == 3) {
-        *start = mm*60000 + ss*1000 + cs*10;
-    } else {
+    int ret = sscanf(p, "%2[[-]%"SCNu32":%lf]", prefix, &mm, &ss);
+    if (ret != 3 || prefix[0] != '[' || ss < 0 || ss > 60 || !isfinite(ss)) {
         return 0;
+    }
+    *start = llrint((mm * 60 + ss) * AV_TIME_BASE);
+    if (prefix[1] == '-') {
+        *start = - *start;
     }
     do {
         offset++;
@@ -163,15 +165,18 @@ static int lrc_read_header(AVFormatContext *s)
     if(!st) {
         return AVERROR(ENOMEM);
     }
-    avpriv_set_pts_info(st, 64, 1, 1000);
+    avpriv_set_pts_info(st, 64, 1, AV_TIME_BASE);
     lrc->ts_offset = 0;
     st->codecpar->codec_type = AVMEDIA_TYPE_SUBTITLE;
     st->codecpar->codec_id   = AV_CODEC_ID_TEXT;
     av_bprint_init(&line, 0, AV_BPRINT_SIZE_UNLIMITED);
 
     while(!avio_feof(s->pb)) {
-        int64_t pos = read_line(&line, s->pb);
-        int64_t header_offset = find_header(line.str);
+        int64_t header_offset, pos = read_line(&line, s->pb);
+
+        if (!av_bprint_is_complete(&line))
+            goto err_nomem_out;
+        header_offset = find_header(line.str);
         if(header_offset >= 0) {
             char *comma_offset = strchr(line.str, ':');
             if(comma_offset) {
@@ -205,7 +210,7 @@ static int lrc_read_header(AVFormatContext *s)
                 sub = ff_subtitles_queue_insert(&lrc->q, line.str + ts_strlength,
                                                 line.len - ts_strlength, 0);
                 if (!sub)
-                    return AVERROR(ENOMEM);
+                    goto err_nomem_out;
                 sub->pos = pos;
                 sub->pts = ts_start - lrc->ts_offset;
                 sub->duration = -1;
@@ -216,6 +221,9 @@ static int lrc_read_header(AVFormatContext *s)
     ff_metadata_conv_ctx(s, NULL, ff_lrc_metadata_conv);
     av_bprint_finalize(&line, NULL);
     return 0;
+err_nomem_out:
+    av_bprint_finalize(&line, NULL);
+    return AVERROR(ENOMEM);
 }
 
 const AVInputFormat ff_lrc_demuxer = {

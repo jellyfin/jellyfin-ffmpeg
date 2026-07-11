@@ -22,7 +22,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -169,8 +169,8 @@ static int maskfun##name(AVFilterContext *ctx, void *arg,    \
         const int linesize = out->linesize[p] / div;         \
         const int w = s->planewidth[p];                      \
         const int h = s->planeheight[p];                     \
-        const int slice_start = (h * jobnr) / nb_jobs;       \
-        const int slice_end = (h * (jobnr+1)) / nb_jobs;     \
+        const int slice_start = ff_slice_pos(h, jobnr, nb_jobs); \
+        const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs); \
         const type *src = (type *)in->data[p] +              \
                            slice_start * src_linesize;       \
         type *dst = (type *)out->data[p] +                   \
@@ -317,20 +317,13 @@ static const AVFilterPad maskfun_inputs[] = {
     },
 };
 
-static const AVFilterPad maskfun_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_maskfun = {
     .name          = "maskfun",
     .description   = NULL_IF_CONFIG_SMALL("Create Mask."),
     .priv_size     = sizeof(MaskFunContext),
     .uninit        = uninit,
     FILTER_INPUTS(maskfun_inputs),
-    FILTER_OUTPUTS(maskfun_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &maskfun_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

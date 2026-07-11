@@ -30,8 +30,8 @@
 #include "libswscale/swscale.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 #define RADIUS_MIN 0.1
 #define RADIUS_MAX 5.0
@@ -136,7 +136,7 @@ static int alloc_sws_context(FilterParam *f, int width, int height, unsigned int
     vec->coeff[vec->length / 2] += 1.0 - f->strength;
     sws_filter.lumH = sws_filter.lumV = vec;
     sws_filter.chrH = sws_filter.chrV = NULL;
-    f->filter_context = sws_getCachedContext(NULL,
+    f->filter_context = sws_getCachedContext(f->filter_context,
                                              width, height, AV_PIX_FMT_GRAY8,
                                              width, height, AV_PIX_FMT_GRAY8,
                                              flags, &sws_filter, NULL, NULL);
@@ -274,13 +274,6 @@ static const AVFilterPad smartblur_inputs[] = {
     },
 };
 
-static const AVFilterPad smartblur_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_smartblur = {
     .name          = "smartblur",
     .description   = NULL_IF_CONFIG_SMALL("Blur the input video without impacting the outlines."),
@@ -288,7 +281,7 @@ const AVFilter ff_vf_smartblur = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(smartblur_inputs),
-    FILTER_OUTPUTS(smartblur_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &smartblur_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,

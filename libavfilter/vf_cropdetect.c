@@ -30,7 +30,6 @@
 #include "libavutil/qsort.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "edge_common.h"
@@ -495,13 +494,6 @@ static const AVFilterPad avfilter_vf_cropdetect_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_cropdetect_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO
-    },
-};
-
 const AVFilter ff_vf_cropdetect = {
     .name          = "cropdetect",
     .description   = NULL_IF_CONFIG_SMALL("Auto-detect crop size."),
@@ -510,7 +502,7 @@ const AVFilter ff_vf_cropdetect = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_cropdetect_inputs),
-    FILTER_OUTPUTS(avfilter_vf_cropdetect_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_METADATA_ONLY,
     .process_command = process_command,

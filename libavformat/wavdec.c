@@ -34,6 +34,7 @@
 #include "libavutil/log.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
+#include "libavcodec/internal.h"
 #include "avformat.h"
 #include "avio.h"
 #include "avio_internal.h"
@@ -121,11 +122,11 @@ static int64_t next_tag(AVIOContext *pb, uint32_t *tag, int big_endian)
 }
 
 /* RIFF chunks are always at even offsets relative to where they start. */
-static int64_t wav_seek_tag(WAVDemuxContext * wav, AVIOContext *s, int64_t offset, int whence)
+static int64_t wav_seek_tag(WAVDemuxContext * wav, AVIOContext *s, int64_t offset)
 {
     offset += offset < INT64_MAX && offset + wav->unaligned & 1;
 
-    return avio_seek(s, offset, whence);
+    return avio_seek(s, offset, SEEK_SET);
 }
 
 /* return the size of the found tag */
@@ -134,13 +135,16 @@ static int64_t find_tag(WAVDemuxContext * wav, AVIOContext *pb, uint32_t tag1)
     unsigned int tag;
     int64_t size;
 
+    if (avio_tell(pb) + wav->unaligned & 1)
+        avio_skip(pb, 1);
+
     for (;;) {
         if (avio_feof(pb))
             return AVERROR_EOF;
         size = next_tag(pb, &tag, wav->rifx);
         if (tag == tag1)
             break;
-        wav_seek_tag(wav, pb, size, SEEK_CUR);
+        avio_skip(pb, size + (size & 1));
     }
     return size;
 }
@@ -168,7 +172,7 @@ static void handle_stream_probing(AVStream *st)
 {
     if (st->codecpar->codec_id == AV_CODEC_ID_PCM_S16LE) {
         FFStream *const sti = ffstream(st);
-        sti->request_probe = AVPROBE_SCORE_EXTENSION;
+        sti->request_probe = AVPROBE_SCORE_EXTENSION + 1;
         sti->probe_packets = FFMIN(sti->probe_packets, 32);
     }
 }
@@ -412,7 +416,7 @@ static int wav_read_header(AVFormatContext *s)
     for (;;) {
         AVStream *vst;
         size         = next_tag(pb, &tag, wav->rifx);
-        next_tag_ofs = avio_tell(pb) + size;
+        next_tag_ofs = avio_tell(pb) + size + (size & 1);
 
         if (avio_feof(pb))
             break;
@@ -444,10 +448,12 @@ static int wav_read_header(AVFormatContext *s)
             }
 
             if (rf64 || bw64) {
-                next_tag_ofs = wav->data_end = avio_tell(pb) + data_size;
-            } else if (size != 0xFFFFFFFF) {
+                wav->data_end = av_sat_add64(avio_tell(pb), data_size);
+                next_tag_ofs = wav->data_end + (data_size & 1);
+            } else if (size > 0 && size != 0xFFFFFFFF) {
                 data_size    = size;
-                next_tag_ofs = wav->data_end = size ? next_tag_ofs : INT64_MAX;
+                wav->data_end = avio_tell(pb) + size;
+                next_tag_ofs = wav->data_end + (size & 1);
             } else {
                 av_log(s, AV_LOG_WARNING, "Ignoring maximum wav data size, "
                        "file may be invalid\n");
@@ -589,7 +595,7 @@ static int wav_read_header(AVFormatContext *s)
 
         /* seek to next tag unless we know that we'll run into EOF */
         if ((avio_size(pb) > 0 && next_tag_ofs >= avio_size(pb)) ||
-            wav_seek_tag(wav, pb, next_tag_ofs, SEEK_SET) < 0) {
+            wav_seek_tag(wav, pb, next_tag_ofs) < 0) {
             break;
         }
     }
@@ -683,7 +689,8 @@ static int64_t find_guid(AVIOContext *pb, const uint8_t guid1[16])
     int64_t size;
 
     while (!avio_feof(pb)) {
-        avio_read(pb, guid, 16);
+        if (avio_read(pb, guid, 16) != 16)
+            break;
         size = avio_rl64(pb);
         if (size <= 24 || size > INT64_MAX - 8)
             return AVERROR_INVALIDDATA;
@@ -863,8 +870,7 @@ static int w64_read_header(AVFormatContext *s)
     uint8_t guid[16];
     int ret;
 
-    avio_read(pb, guid, 16);
-    if (memcmp(guid, ff_w64_guid_riff, 16))
+    if (avio_read(pb, guid, 16) != 16 || memcmp(guid, ff_w64_guid_riff, 16))
         return AVERROR_INVALIDDATA;
 
     /* riff + wave + fmt + sizes */
@@ -887,8 +893,11 @@ static int w64_read_header(AVFormatContext *s)
         if (avio_read(pb, guid, 16) != 16)
             break;
         size = avio_rl64(pb);
-        if (size <= 24 || INT64_MAX - size < avio_tell(pb))
+        if (size <= 24 || INT64_MAX - size < avio_tell(pb)) {
+            if (data_ofs)
+                break;
             return AVERROR_INVALIDDATA;
+        }
 
         if (!memcmp(guid, ff_w64_guid_fmt, 16)) {
             /* subtract chunk header size - normal wav file doesn't count it */
@@ -896,7 +905,20 @@ static int w64_read_header(AVFormatContext *s)
             if (ret < 0)
                 return ret;
             avio_skip(pb, FFALIGN(size, INT64_C(8)) - size);
+            if (st->codecpar->block_align &&
+                st->codecpar->ch_layout.nb_channels < FF_SANE_NB_CHANNELS &&
+                st->codecpar->bits_per_coded_sample < 128) {
+                int64_t block_align = st->codecpar->block_align;
 
+                block_align = FFMAX(block_align,
+                                    ((st->codecpar->bits_per_coded_sample + 7LL) / 8) *
+                                    st->codecpar->ch_layout.nb_channels);
+                if (block_align > st->codecpar->block_align) {
+                    av_log(s, AV_LOG_WARNING, "invalid block_align: %d, broken file.\n",
+                           st->codecpar->block_align);
+                    st->codecpar->block_align = block_align;
+                }
+            }
             avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
         } else if (!memcmp(guid, ff_w64_guid_fact, 16)) {
             int64_t samples;

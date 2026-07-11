@@ -43,7 +43,9 @@
 static const char *const var_names[] = {
     "N",     /* frame number */
     "T",     /* frame time in seconds */
+#if FF_API_FRAME_PKT
     "POS",   /* original position in the file of the frame */
+#endif
     "PTS",   /* frame pts */
     "TS",    /* interval start time in seconds */
     "TE",    /* interval end time in seconds */
@@ -56,7 +58,9 @@ static const char *const var_names[] = {
 enum var_name {
     VAR_N,
     VAR_T,
+#if FF_API_FRAME_PKT
     VAR_POS,
+#endif
     VAR_PTS,
     VAR_TS,
     VAR_TE,
@@ -531,7 +535,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *ref)
                         double current = TS2T(ref->pts, inlink->time_base);
 
                         var_values[VAR_N]   = inlink->frame_count_in;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
                         var_values[VAR_POS] = ref->pkt_pos == -1 ? NAN : ref->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
                         var_values[VAR_PTS] = TS2D(ref->pts);
                         var_values[VAR_T]   = current;
                         var_values[VAR_TS]  = start;
@@ -592,13 +600,6 @@ static const AVFilterPad sendcmd_inputs[] = {
     },
 };
 
-static const AVFilterPad sendcmd_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_sendcmd = {
     .name        = "sendcmd",
     .description = NULL_IF_CONFIG_SMALL("Send commands to filters."),
@@ -607,7 +608,7 @@ const AVFilter ff_vf_sendcmd = {
     .priv_size   = sizeof(SendCmdContext),
     .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(sendcmd_inputs),
-    FILTER_OUTPUTS(sendcmd_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     .priv_class  = &sendcmd_class,
 };
 
@@ -623,13 +624,6 @@ static const AVFilterPad asendcmd_inputs[] = {
     },
 };
 
-static const AVFilterPad asendcmd_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_asendcmd = {
     .name        = "asendcmd",
     .description = NULL_IF_CONFIG_SMALL("Send commands to filters."),
@@ -639,7 +633,7 @@ const AVFilter ff_af_asendcmd = {
     .priv_size   = sizeof(SendCmdContext),
     .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(asendcmd_inputs),
-    FILTER_OUTPUTS(asendcmd_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
 };
 
 #endif

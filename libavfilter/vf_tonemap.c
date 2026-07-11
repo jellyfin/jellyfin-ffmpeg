@@ -25,7 +25,6 @@
 
 #include <float.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "libavutil/csp.h"
 #include "libavutil/imgutils.h"
@@ -35,8 +34,8 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
+#include "filters.h"
 #include "colorspace.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -185,8 +184,8 @@ static int tonemap_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
     AVFrame *in = td->in;
     AVFrame *out = td->out;
     const AVPixFmtDescriptor *desc = td->desc;
-    const int slice_start = (in->height * jobnr) / nb_jobs;
-    const int slice_end = (in->height * (jobnr+1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(in->height, jobnr + 1, nb_jobs);
     double peak = td->peak;
 
     for (int y = slice_start; y < slice_end; y++)
@@ -307,13 +306,6 @@ static const AVFilterPad tonemap_inputs[] = {
     },
 };
 
-static const AVFilterPad tonemap_outputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_tonemap = {
     .name            = "tonemap",
     .description     = NULL_IF_CONFIG_SMALL("Conversion to/from different dynamic ranges."),
@@ -321,7 +313,7 @@ const AVFilter ff_vf_tonemap = {
     .priv_size       = sizeof(TonemapContext),
     .priv_class      = &tonemap_class,
     FILTER_INPUTS(tonemap_inputs),
-    FILTER_OUTPUTS(tonemap_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS(AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32),
     .flags           = AVFILTER_FLAG_SLICE_THREADS,
 };

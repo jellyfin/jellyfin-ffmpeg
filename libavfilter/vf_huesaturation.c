@@ -17,10 +17,10 @@
  */
 
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
+#include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -104,9 +104,9 @@ static int do_slice_##name##_##xall(AVFilterContext *ctx,            \
     const int step = s->step;                                        \
     const int width = frame->width;                                  \
     const int process_h = frame->height;                             \
-    const int slice_start = (process_h *  jobnr   ) / nb_jobs;       \
-    const int slice_end   = (process_h * (jobnr+1)) / nb_jobs;       \
-    const int linesize = frame->linesize[0] / sizeof(type);          \
+    const int slice_start = ff_slice_pos(process_h, jobnr, nb_jobs); \
+    const int slice_end   = ff_slice_pos(process_h, jobnr + 1, nb_jobs); \
+    const ptrdiff_t linesize = frame->linesize[0] / sizeof(type);    \
     type *row = (type *)frame->data[0] + linesize * slice_start;     \
     const uint8_t offset_r = s->rgba_map[R];                         \
     const uint8_t offset_g = s->rgba_map[G];                         \
@@ -434,13 +434,6 @@ static const AVFilterPad huesaturation_inputs[] = {
     },
 };
 
-static const AVFilterPad huesaturation_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #define OFFSET(x) offsetof(HueSaturationContext, x)
 #define VF AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
@@ -472,7 +465,7 @@ const AVFilter ff_vf_huesaturation = {
     .priv_size       = sizeof(HueSaturationContext),
     .priv_class      = &huesaturation_class,
     FILTER_INPUTS(huesaturation_inputs),
-    FILTER_OUTPUTS(huesaturation_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

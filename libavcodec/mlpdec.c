@@ -42,6 +42,7 @@
 #include "mlpdsp.h"
 #include "mlp.h"
 #include "config.h"
+#include "profiles.h"
 
 /** number of bits used for VLC lookup - longest Huffman code is 9 */
 #if ARCH_ARM
@@ -92,14 +93,6 @@ typedef struct SubStream {
 
     /// Bitmask of which parameter sets are conveyed in a decoding parameter block.
     uint8_t     param_presence_flags;
-#define PARAM_BLOCKSIZE     (1 << 7)
-#define PARAM_MATRIX        (1 << 6)
-#define PARAM_OUTSHIFT      (1 << 5)
-#define PARAM_QUANTSTEP     (1 << 4)
-#define PARAM_FIR           (1 << 3)
-#define PARAM_IIR           (1 << 2)
-#define PARAM_HUFFOFFSET    (1 << 1)
-#define PARAM_PRESENCE      (1 << 0)
     //@}
 
     //@{
@@ -229,9 +222,9 @@ static av_cold void init_static(void)
         static VLCElem vlc_buf[3 * VLC_STATIC_SIZE];
         huff_vlc[i].table           = &vlc_buf[i * VLC_STATIC_SIZE];
         huff_vlc[i].table_allocated = VLC_STATIC_SIZE;
-        init_vlc(&huff_vlc[i], VLC_BITS, 18,
+        vlc_init(&huff_vlc[i], VLC_BITS, 18,
                  &ff_mlp_huffman_tables[i][0][1], 2, 1,
-                 &ff_mlp_huffman_tables[i][0][0], 2, 1, INIT_VLC_USE_NEW_STATIC);
+                 &ff_mlp_huffman_tables[i][0][0], 2, 1, VLC_INIT_USE_STATIC);
     }
 
     ff_mlp_init_crc();
@@ -390,7 +383,16 @@ static int read_major_sync(MLPDecodeContext *m, GetBitContext *gb)
     m->access_unit_size_pow2 = mh.access_unit_size_pow2;
 
     m->num_substreams        = mh.num_substreams;
+    m->extended_substream_info = mh.extended_substream_info;
     m->substream_info        = mh.substream_info;
+
+    /*  If there is a 4th substream and the MSB of substream_info is set,
+     *  there is a 16-channel spatial presentation (Atmos in TrueHD).
+     */
+    if (m->avctx->codec_id == AV_CODEC_ID_TRUEHD
+            && m->num_substreams == 4 && m->substream_info >> 7 == 1) {
+        m->avctx->profile     = AV_PROFILE_TRUEHD_ATMOS;
+    }
 
     /* limit to decoding 3 substreams, as the 4th is used by Dolby Atmos for non-audio data */
     m->max_decoded_substream = FFMIN(m->num_substreams - 1, 2);
@@ -450,7 +452,10 @@ static int read_major_sync(MLPDecodeContext *m, GetBitContext *gb)
             else
                 m->substream[2].mask = mh.channel_layout_thd_stream1;
         if (m->avctx->ch_layout.nb_channels > 2)
-            m->substream[mh.num_substreams > 1].mask = mh.channel_layout_thd_stream1;
+            if (mh.num_substreams > 2)
+                m->substream[1].mask = mh.channel_layout_thd_stream1;
+            else
+                m->substream[mh.num_substreams > 1].mask = mh.channel_layout_thd_stream2;
     }
 
     m->needs_reordering = mh.channel_arrangement >= 18 && mh.channel_arrangement <= 20;
@@ -1452,5 +1457,6 @@ const FFCodec ff_truehd_decoder = {
     FF_CODEC_DECODE_CB(read_access_unit),
     .flush          = mlp_decode_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.profiles     = NULL_IF_CONFIG_SMALL(ff_truehd_profiles),
 };
 #endif /* CONFIG_TRUEHD_DECODER */

@@ -18,13 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -87,8 +85,8 @@ static int dedotcrawl##name(AVFilterContext *ctx, void *arg,     \
     int p3_linesize = s->frames[3]->linesize[0] / div;           \
     int p4_linesize = s->frames[4]->linesize[0] / div;           \
     const int h = s->planeheight[0];                             \
-    int slice_start = (h * jobnr) / nb_jobs;                     \
-    int slice_end = (h * (jobnr+1)) / nb_jobs;                   \
+    int slice_start = ff_slice_pos(h, jobnr, nb_jobs);           \
+    int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);         \
     type *p0 = (type *)s->frames[0]->data[0];                    \
     type *p1 = (type *)s->frames[1]->data[0];                    \
     type *p3 = (type *)s->frames[3]->data[0];                    \
@@ -162,8 +160,8 @@ static int derainbow##name(AVFilterContext *ctx, void *arg,  \
     AVFrame *out = td->out;                                  \
     const int plane = td->plane;                             \
     const int h = s->planeheight[plane];                     \
-    int slice_start = (h * jobnr) / nb_jobs;                 \
-    int slice_end = (h * (jobnr+1)) / nb_jobs;               \
+    int slice_start = ff_slice_pos(h, jobnr, nb_jobs);       \
+    int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);     \
     int src_linesize = s->frames[2]->linesize[plane] / div;  \
     int dst_linesize = out->linesize[plane] / div;           \
     int p0_linesize = s->frames[0]->linesize[plane] / div;   \
@@ -375,13 +373,6 @@ static const AVOption dedot_options[] = {
     { NULL },
 };
 
-static const AVFilterPad inputs[] = {
-    {
-        .name           = "default",
-        .type           = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 static const AVFilterPad outputs[] = {
     {
         .name          = "default",
@@ -399,7 +390,7 @@ const AVFilter ff_vf_dedot = {
     .priv_class    = &dedot_class,
     .activate      = activate,
     .uninit        = uninit,
-    FILTER_INPUTS(inputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
     FILTER_OUTPUTS(outputs),
     FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,

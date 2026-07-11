@@ -26,6 +26,13 @@
 #include "internal.h"
 #include "formats.h"
 #include "drawutils.h"
+#include "video.h"
+
+enum PadMode {
+    MODE_ADD = 0,
+    MODE_CLONE,
+    NB_MODE
+};
 
 typedef struct TPadContext {
     const AVClass *class;
@@ -51,10 +58,10 @@ typedef struct TPadContext {
 static const AVOption tpad_options[] = {
     { "start", "set the number of frames to delay input",              OFFSET(pad_start),  AV_OPT_TYPE_INT,   {.i64=0},        0,   INT_MAX, VF },
     { "stop",  "set the number of frames to add after input finished", OFFSET(pad_stop),   AV_OPT_TYPE_INT,   {.i64=0},       -1,   INT_MAX, VF },
-    { "start_mode", "set the mode of added frames to start",           OFFSET(start_mode), AV_OPT_TYPE_INT,   {.i64=0},        0,         1, VF, "mode" },
-    { "add",   "add solid-color frames",                               0,                  AV_OPT_TYPE_CONST, {.i64=0},        0,         0, VF, "mode" },
-    { "clone", "clone first/last frame",                               0,                  AV_OPT_TYPE_CONST, {.i64=1},        0,         0, VF, "mode" },
-    { "stop_mode",  "set the mode of added frames to end",             OFFSET(stop_mode),  AV_OPT_TYPE_INT,   {.i64=0},        0,         1, VF, "mode" },
+    { "start_mode", "set the mode of added frames to start",           OFFSET(start_mode), AV_OPT_TYPE_INT,   {.i64=MODE_ADD}, 0, NB_MODE-1, VF, "mode" },
+    { "add",   "add solid-color frames",                               0,                  AV_OPT_TYPE_CONST, {.i64=MODE_ADD},   0,         0, VF, "mode" },
+    { "clone", "clone first/last frame",                               0,                  AV_OPT_TYPE_CONST, {.i64=MODE_CLONE}, 0,         0, VF, "mode" },
+    { "stop_mode",  "set the mode of added frames to end",             OFFSET(stop_mode),  AV_OPT_TYPE_INT,   {.i64=MODE_ADD}, 0, NB_MODE-1, VF, "mode" },
     { "start_duration", "set the duration to delay input",             OFFSET(start_duration), AV_OPT_TYPE_DURATION, {.i64=0}, 0, INT64_MAX, VF },
     { "stop_duration",  "set the duration to pad input",               OFFSET(stop_duration),  AV_OPT_TYPE_DURATION, {.i64=0}, 0, INT64_MAX, VF },
     { "color", "set the color of the added frames",                    OFFSET(rgba_color), AV_OPT_TYPE_COLOR, {.str="black"},  0,         0, VF },
@@ -63,9 +70,20 @@ static const AVOption tpad_options[] = {
 
 AVFILTER_DEFINE_CLASS(tpad);
 
+static int needs_drawing(const TPadContext *s) {
+    return (
+        (s->stop_mode  == MODE_ADD && (s->pad_stop  != 0 || s->stop_duration  != 0)) ||
+        (s->start_mode == MODE_ADD && (s->pad_start != 0 || s->start_duration != 0))
+    );
+}
+
 static int query_formats(AVFilterContext *ctx)
 {
-    return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
+    TPadContext *s = ctx->priv;
+    if (needs_drawing(s))
+        return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
+
+    return ff_set_common_formats(ctx, ff_all_formats(AVMEDIA_TYPE_VIDEO));
 }
 
 static int activate(AVFilterContext *ctx)
@@ -91,7 +109,7 @@ static int activate(AVFilterContext *ctx)
         }
     }
 
-    if (s->start_mode == 0 && s->pad_start > 0 && ff_outlink_frame_wanted(outlink)) {
+    if (s->start_mode == MODE_ADD && s->pad_start > 0 && ff_outlink_frame_wanted(outlink)) {
         frame = ff_get_video_buffer(outlink, outlink->w, outlink->h);
         if (!frame)
             return AVERROR(ENOMEM);
@@ -106,7 +124,7 @@ static int activate(AVFilterContext *ctx)
         return ff_filter_frame(outlink, frame);
     }
 
-    if (s->start_mode == 1 && s->pad_start > 0) {
+    if (s->start_mode == MODE_CLONE && s->pad_start > 0) {
         if (s->eof) {
             ff_outlink_set_status(outlink, AVERROR_EOF, 0);
             return 0;
@@ -133,7 +151,7 @@ static int activate(AVFilterContext *ctx)
         if (ret < 0)
             return ret;
         if (ret > 0) {
-            if (s->stop_mode == 1 && s->pad_stop != 0) {
+            if (s->stop_mode == MODE_CLONE && s->pad_stop != 0) {
                 av_frame_free(&s->cache_stop);
                 s->cache_stop = av_frame_clone(frame);
             }
@@ -147,14 +165,14 @@ static int activate(AVFilterContext *ctx)
             ff_outlink_set_status(outlink, AVERROR_EOF, s->pts);
             return 0;
         }
-        if (s->stop_mode == 0) {
+        if (s->stop_mode == MODE_ADD) {
             frame = ff_get_video_buffer(outlink, outlink->w, outlink->h);
             if (!frame)
                 return AVERROR(ENOMEM);
             ff_fill_rectangle(&s->draw, &s->color,
                               frame->data, frame->linesize,
                               0, 0, frame->width, frame->height);
-        } else if (s->stop_mode == 1) {
+        } else if (s->stop_mode == MODE_CLONE) {
             if (!s->cache_stop) {
                 s->pad_stop = 0;
                 ff_outlink_set_status(outlink, AVERROR_EOF, s->pts);
@@ -184,8 +202,10 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     TPadContext *s = ctx->priv;
 
-    ff_draw_init(&s->draw, inlink->format, 0);
-    ff_draw_color(&s->draw, &s->color, s->rgba_color);
+    if (needs_drawing(s)) {
+        ff_draw_init(&s->draw, inlink->format, 0);
+        ff_draw_color(&s->draw, &s->color, s->rgba_color);
+    }
 
     if (s->start_duration)
         s->pad_start = av_rescale_q(s->start_duration, inlink->frame_rate, av_inv_q(AV_TIME_BASE_Q));
@@ -210,13 +230,6 @@ static const AVFilterPad tpad_inputs[] = {
     },
 };
 
-static const AVFilterPad tpad_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_tpad = {
     .name          = "tpad",
     .description   = NULL_IF_CONFIG_SMALL("Temporarily pad video frames."),
@@ -225,6 +238,6 @@ const AVFilter ff_vf_tpad = {
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(tpad_inputs),
-    FILTER_OUTPUTS(tpad_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
 };

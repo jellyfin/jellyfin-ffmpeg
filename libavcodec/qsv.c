@@ -208,7 +208,6 @@ enum AVPixelFormat ff_qsv_map_fourcc(uint32_t fourcc)
     case MFX_FOURCC_P8:   return AV_PIX_FMT_PAL8;
     case MFX_FOURCC_A2RGB10: return AV_PIX_FMT_X2RGB10;
     case MFX_FOURCC_RGB4: return AV_PIX_FMT_BGRA;
-#if CONFIG_VAAPI
     case MFX_FOURCC_YUY2: return AV_PIX_FMT_YUYV422;
     case MFX_FOURCC_Y210: return AV_PIX_FMT_Y210;
     case MFX_FOURCC_AYUV: return AV_PIX_FMT_VUYX;
@@ -217,7 +216,6 @@ enum AVPixelFormat ff_qsv_map_fourcc(uint32_t fourcc)
     case MFX_FOURCC_P016: return AV_PIX_FMT_P012;
     case MFX_FOURCC_Y216: return AV_PIX_FMT_Y212;
     case MFX_FOURCC_Y416: return AV_PIX_FMT_XV36;
-#endif
 #endif
     }
     return AV_PIX_FMT_NONE;
@@ -245,7 +243,6 @@ int ff_qsv_map_pixfmt(enum AVPixelFormat format, uint32_t *fourcc, uint16_t *shi
         *fourcc = MFX_FOURCC_RGB4;
         *shift = 0;
         return AV_PIX_FMT_BGRA;
-#if CONFIG_VAAPI
     case AV_PIX_FMT_YUV422P:
     case AV_PIX_FMT_YUYV422:
         *fourcc = MFX_FOURCC_YUY2;
@@ -277,7 +274,6 @@ int ff_qsv_map_pixfmt(enum AVPixelFormat format, uint32_t *fourcc, uint16_t *shi
         *fourcc = MFX_FOURCC_Y416;
         *shift = 1;
         return AV_PIX_FMT_XV36;
-#endif
 #endif
     default:
         return AVERROR(ENOSYS);
@@ -500,7 +496,7 @@ static int qsv_new_mfx_loader(AVCodecContext *avctx,
     mfxStatus sts;
     mfxLoader loader = NULL;
     mfxConfig cfg;
-    mfxVariant impl_value;
+    mfxVariant impl_value = {0};
 
     loader = MFXLoad();
     if (!loader) {
@@ -681,18 +677,31 @@ static int qsv_create_mfx_session(AVCodecContext *avctx,
 int ff_qsv_init_internal_session(AVCodecContext *avctx, QSVSession *qs,
                                  const char *load_plugins, int gpu_copy)
 {
+    mfxIMPL impls[] = {
 #if CONFIG_D3D11VA
-    mfxIMPL          impl = MFX_IMPL_AUTO_ANY | MFX_IMPL_VIA_D3D11;
-#else
-    mfxIMPL          impl = MFX_IMPL_AUTO_ANY;
+        MFX_IMPL_AUTO_ANY | MFX_IMPL_VIA_D3D11,
 #endif
+        MFX_IMPL_AUTO_ANY
+    };
+    mfxIMPL impl;
     mfxVersion        ver = { { QSV_VERSION_MINOR, QSV_VERSION_MAJOR } };
 
     const char *desc;
-    int ret = qsv_create_mfx_session(avctx, impl, &ver, gpu_copy, &qs->session,
+    int ret;
+
+    for (int i = 0; i < FF_ARRAY_ELEMS(impls); i++) {
+        ret = qsv_create_mfx_session(avctx, impls[i], &ver, gpu_copy, &qs->session,
                                      &qs->loader);
-    if (ret)
-        return ret;
+
+        if (ret == 0)
+            break;
+
+        if (i == FF_ARRAY_ELEMS(impls) - 1)
+            return ret;
+        else
+            av_log(avctx, AV_LOG_ERROR, "The current mfx implementation is not "
+                   "supported, try next mfx implementation.\n");
+    }
 
 #ifdef AVCODEC_QSV_LINUX_SESSION_HANDLE
     ret = ff_qsv_set_display_handle(avctx, qs);

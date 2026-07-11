@@ -1978,7 +1978,7 @@ static void encode_flush(WavPackEncodeContext *s)
                 put_bits(pb, 31, 0x7FFFFFFF);
                 cbits -= 31;
             } else {
-                put_bits(pb, cbits, (1 << cbits) - 1);
+                put_bits(pb, cbits, (1U << cbits) - 1);
                 cbits = 0;
             }
         } while (cbits);
@@ -2007,7 +2007,7 @@ static void encode_flush(WavPackEncodeContext *s)
                     put_bits(pb, 31, 0x7FFFFFFF);
                     cbits -= 31;
                 } else {
-                    put_bits(pb, cbits, (1 << cbits) - 1);
+                    put_bits(pb, cbits, (1U << cbits) - 1);
                     cbits = 0;
                 }
             } while (cbits);
@@ -2592,7 +2592,16 @@ static int wavpack_encode_block(WavPackEncodeContext *s,
         s->avctx->ch_layout.u.mask != AV_CH_LAYOUT_STEREO) {
         put_metadata_block(&pb, WP_ID_CHANINFO, 5);
         bytestream2_put_byte(&pb, s->avctx->ch_layout.nb_channels);
-        bytestream2_put_le32(&pb, s->avctx->ch_layout.u.mask);
+        if (s->avctx->ch_layout.u.mask >> 32)
+            bytestream2_put_le32(&pb, 0);
+        else
+            bytestream2_put_le32(&pb, s->avctx->ch_layout.u.mask);
+        bytestream2_put_byte(&pb, 0);
+    } else if (s->flags & WV_INITIAL_BLOCK &&
+               s->avctx->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
+        put_metadata_block(&pb, WP_ID_CHANINFO, 5);
+        bytestream2_put_byte(&pb, s->avctx->ch_layout.nb_channels);
+        bytestream2_put_le32(&pb, 0);
         bytestream2_put_byte(&pb, 0);
     }
 
@@ -2824,7 +2833,7 @@ static void fill_buffer(WavPackEncodeContext *s,
 
     switch (s->avctx->sample_fmt) {
     case AV_SAMPLE_FMT_U8P:
-        COPY_SAMPLES(int8_t, 0x80, 0);
+        COPY_SAMPLES(uint8_t, 0x80, 0);
         break;
     case AV_SAMPLE_FMT_S16P:
         COPY_SAMPLES(int16_t, 0, 0);

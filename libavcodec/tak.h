@@ -29,7 +29,6 @@
 
 #include <stdint.h>
 
-#include "avcodec.h"
 #include "get_bits.h"
 
 #define TAK_FORMAT_DATA_TYPE_BITS               3
@@ -149,17 +148,15 @@ int ff_tak_check_crc(const uint8_t *buf, unsigned int buf_size);
  */
 int avpriv_tak_parse_streaminfo(TAKStreamInfo *s, const uint8_t *buf, int size);
 
-void ff_tak_parse_streaminfo(TAKStreamInfo *s, GetBitContext *gb);
-
 /**
  * Validate and decode a frame header.
- * @param      avctx             AVCodecContext to use as av_log() context
+ * @param      logctx            for use as av_log() context
  * @param[in]  gb                GetBitContext from which to read frame header
  * @param[out] s                 frame information
  * @param      log_level_offset  log level offset, can be used to silence
  *                               error messages.
  * @return non-zero on error, 0 if OK
  */
-int ff_tak_decode_frame_header(AVCodecContext *avctx, GetBitContext *gb,
+int ff_tak_decode_frame_header(void *logctx, GetBitContext *gb,
                                TAKStreamInfo *s, int log_level_offset);
 #endif /* AVCODEC_TAK_H */

@@ -649,7 +649,7 @@ static int imf_read_header(AVFormatContext *s)
 
     av_log(s, AV_LOG_DEBUG, "start parsing IMF CPL: %s\n", s->url);
 
-    if ((ret = ff_imf_parse_cpl(s->pb, &c->cpl)) < 0)
+    if ((ret = ff_imf_parse_cpl(s, s->pb, &c->cpl)) < 0)
         return ret;
 
     tcr = av_dict_get(s->metadata, "timecode", NULL, 0);
@@ -700,11 +700,8 @@ static int imf_read_header(AVFormatContext *s)
 static IMFVirtualTrackPlaybackCtx *get_next_track_with_minimum_timestamp(AVFormatContext *s)
 {
     IMFContext *c = s->priv_data;
-    IMFVirtualTrackPlaybackCtx *track;
+    IMFVirtualTrackPlaybackCtx *track = NULL;
     AVRational minimum_timestamp = av_make_q(INT32_MAX, 1);
-
-    if (!c->track_count)
-        return NULL;
 
     for (uint32_t i = c->track_count; i > 0; i--) {
         av_log(s, AV_LOG_TRACE, "Compare track %d timestamp " AVRATIONAL_FORMAT
@@ -1022,7 +1019,7 @@ static const AVClass imf_class = {
 const AVInputFormat ff_imf_demuxer = {
     .name           = "imf",
     .long_name      = NULL_IF_CONFIG_SMALL("IMF (Interoperable Master Format)"),
-    .flags          = AVFMT_EXPERIMENTAL | AVFMT_NO_BYTE_SEEK,
+    .flags          = AVFMT_NO_BYTE_SEEK,
     .flags_internal = FF_FMT_INIT_CLEANUP,
     .priv_class     = &imf_class,
     .priv_data_size = sizeof(IMFContext),

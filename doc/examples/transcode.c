@@ -97,6 +97,11 @@ static int open_input_file(const char *filename)
                    "for stream #%u\n", i);
             return ret;
         }
+
+        /* Inform the decoder about the timebase for the packet timestamps.
+         * This is highly recommended, but not mandatory. */
+        codec_ctx->pkt_timebase = stream->time_base;
+
         /* Reencode video & audio and remux subtitles etc. */
         if (codec_ctx->codec_type == AVMEDIA_TYPE_VIDEO
                 || codec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -266,7 +271,7 @@ static int init_filter(FilteringContext* fctx, AVCodecContext *dec_ctx,
         snprintf(args, sizeof(args),
                 "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
                 dec_ctx->width, dec_ctx->height, dec_ctx->pix_fmt,
-                dec_ctx->time_base.num, dec_ctx->time_base.den,
+                dec_ctx->pkt_timebase.num, dec_ctx->pkt_timebase.den,
                 dec_ctx->sample_aspect_ratio.num,
                 dec_ctx->sample_aspect_ratio.den);
 
@@ -306,7 +311,7 @@ static int init_filter(FilteringContext* fctx, AVCodecContext *dec_ctx,
         av_channel_layout_describe(&dec_ctx->ch_layout, buf, sizeof(buf));
         snprintf(args, sizeof(args),
                 "time_base=%d/%d:sample_rate=%d:sample_fmt=%s:channel_layout=%s",
-                dec_ctx->time_base.num, dec_ctx->time_base.den, dec_ctx->sample_rate,
+                dec_ctx->pkt_timebase.num, dec_ctx->pkt_timebase.den, dec_ctx->sample_rate,
                 av_get_sample_fmt_name(dec_ctx->sample_fmt),
                 buf);
         ret = avfilter_graph_create_filter(&buffersrc_ctx, buffersrc, "in",
@@ -436,6 +441,10 @@ static int encode_write_frame(unsigned int stream_index, int flush)
     /* encode filtered frame */
     av_packet_unref(enc_pkt);
 
+    if (filt_frame && filt_frame->pts != AV_NOPTS_VALUE)
+        filt_frame->pts = av_rescale_q(filt_frame->pts, filt_frame->time_base,
+                                       stream->enc_ctx->time_base);
+
     ret = avcodec_send_frame(stream->enc_ctx, filt_frame);
 
     if (ret < 0)
@@ -490,6 +499,7 @@ static int filter_encode_write_frame(AVFrame *frame, unsigned int stream_index)
             break;
         }
 
+        filter->filtered_frame->time_base = av_buffersink_get_time_base(filter->buffersink_ctx);;
         filter->filtered_frame->pict_type = AV_PICTURE_TYPE_NONE;
         ret = encode_write_frame(stream_index, 0);
         av_frame_unref(filter->filtered_frame);
@@ -544,9 +554,6 @@ int main(int argc, char **argv)
 
             av_log(NULL, AV_LOG_DEBUG, "Going to reencode&filter the frame\n");
 
-            av_packet_rescale_ts(packet,
-                                 ifmt_ctx->streams[stream_index]->time_base,
-                                 stream->dec_ctx->time_base);
             ret = avcodec_send_packet(stream->dec_ctx, packet);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR, "Decoding failed\n");
@@ -578,11 +585,38 @@ int main(int argc, char **argv)
         av_packet_unref(packet);
     }
 
-    /* flush filters and encoders */
+    /* flush decoders, filters and encoders */
     for (i = 0; i < ifmt_ctx->nb_streams; i++) {
-        /* flush filter */
+        StreamContext *stream;
+
         if (!filter_ctx[i].filter_graph)
             continue;
+
+        stream = &stream_ctx[i];
+
+        av_log(NULL, AV_LOG_INFO, "Flushing stream %u decoder\n", i);
+
+        /* flush decoder */
+        ret = avcodec_send_packet(stream->dec_ctx, NULL);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Flushing decoding failed\n");
+            goto end;
+        }
+
+        while (ret >= 0) {
+            ret = avcodec_receive_frame(stream->dec_ctx, stream->dec_frame);
+            if (ret == AVERROR_EOF)
+                break;
+            else if (ret < 0)
+                goto end;
+
+            stream->dec_frame->pts = stream->dec_frame->best_effort_timestamp;
+            ret = filter_encode_write_frame(stream->dec_frame, i);
+            if (ret < 0)
+                goto end;
+        }
+
+        /* flush filter */
         ret = filter_encode_write_frame(NULL, i);
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Flushing filter failed\n");

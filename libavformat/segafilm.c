@@ -160,7 +160,7 @@ static int film_read_header(AVFormatContext *s)
         st->codecpar->height = AV_RB32(&scratch[12]);
 
         if (film->video_type == AV_CODEC_ID_RAWVIDEO) {
-            if (scratch[20] == 24) {
+            if (film->version == 0 || scratch[20] == 24) {
                 st->codecpar->format = AV_PIX_FMT_RGB24;
             } else {
                 av_log(s, AV_LOG_ERROR, "raw video is using unhandled %dbpp\n", scratch[20]);
@@ -233,6 +233,7 @@ static int film_read_header(AVFormatContext *s)
             else if (film->audio_type != AV_CODEC_ID_NONE)
                 audio_frame_counter += (film->sample_table[i].sample_size /
                     (film->audio_channels * film->audio_bits / 8));
+            film->sample_table[i].keyframe = 1;
         } else {
             film->sample_table[i].stream = film->video_stream_index;
             film->sample_table[i].pts = AV_RB32(&scratch[8]) & 0x7FFFFFFF;

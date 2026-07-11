@@ -25,7 +25,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -157,8 +157,8 @@ static void bilateralh_##name(BilateralContext *s, AVFrame *out, AVFrame *in, \
 {                                                                             \
     const int width = s->planewidth[plane];                                   \
     const int height = s->planeheight[plane];                                 \
-    const int slice_start = (height * jobnr) / nb_jobs;                       \
-    const int slice_end = (height * (jobnr+1)) / nb_jobs;                     \
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);             \
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);           \
     const int src_linesize = in->linesize[plane] / sizeof(type);              \
     const type *src = (const type *)in->data[plane];                          \
     float *img_temp = s->img_temp[plane];                                     \
@@ -229,8 +229,8 @@ static void bilateralv_##name(BilateralContext *s, AVFrame *out, AVFrame *in, \
 {                                                                             \
     const int width = s->planewidth[plane];                                   \
     const int height = s->planeheight[plane];                                 \
-    const int slice_start = (width * jobnr) / nb_jobs;                        \
-    const int slice_end = (width * (jobnr+1)) / nb_jobs;                      \
+    const int slice_start = ff_slice_pos(width, jobnr, nb_jobs);              \
+    const int slice_end = ff_slice_pos(width, jobnr + 1, nb_jobs);            \
     const int src_linesize = in->linesize[plane] / sizeof(type);              \
     const type *src = (const type *)in->data[plane] + slice_start;            \
     float *img_out_f = s->img_out_f[plane] + slice_start;                     \
@@ -332,8 +332,8 @@ static void bilateralo_##name(BilateralContext *s, AVFrame *out, AVFrame *in, \
 {                                                                             \
     const int width = s->planewidth[plane];                                   \
     const int height = s->planeheight[plane];                                 \
-    const int slice_start = (height * jobnr) / nb_jobs;                       \
-    const int slice_end = (height * (jobnr+1)) / nb_jobs;                     \
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);             \
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);           \
     const int dst_linesize = out->linesize[plane] / sizeof(type);             \
                                                                               \
     for (int i = slice_start; i < slice_end; i++) {                           \
@@ -401,8 +401,8 @@ static int bilateralo_planes(AVFilterContext *ctx, void *arg,
         if (!(s->planes & (1 << plane))) {
             if (out != in) {
                 const int height = s->planeheight[plane];
-                const int slice_start = (height * jobnr) / nb_jobs;
-                const int slice_end = (height * (jobnr+1)) / nb_jobs;
+                const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+                const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
                 const int width = s->planewidth[plane];
                 const int linesize = in->linesize[plane];
                 const int dst_linesize = out->linesize[plane];
@@ -498,13 +498,6 @@ static const AVFilterPad bilateral_inputs[] = {
     },
 };
 
-static const AVFilterPad bilateral_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_bilateral = {
     .name          = "bilateral",
     .description   = NULL_IF_CONFIG_SMALL("Apply Bilateral filter."),
@@ -512,7 +505,7 @@ const AVFilter ff_vf_bilateral = {
     .priv_class    = &bilateral_class,
     .uninit        = uninit,
     FILTER_INPUTS(bilateral_inputs),
-    FILTER_OUTPUTS(bilateral_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
                      AVFILTER_FLAG_SLICE_THREADS,

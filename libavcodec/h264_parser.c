@@ -47,6 +47,7 @@
 #include "h264data.h"
 #include "mpegutils.h"
 #include "parser.h"
+#include "refstruct.h"
 #include "startcode.h"
 
 typedef struct H264ParseContext {
@@ -222,6 +223,9 @@ static int scan_mmco_reset(AVCodecParserContext *s, GetBitContext *gb,
     if (get_bits1(gb)) { // adaptive_ref_pic_marking_mode_flag
         int i;
         for (i = 0; i < H264_MAX_MMCO_COUNT; i++) {
+            if (get_bits_left(gb) < 1)
+                return AVERROR_INVALIDDATA;
+
             MMCOOpcode opcode = get_ue_golomb_31(gb);
             if (opcode > (unsigned) MMCO_LONG) {
                 av_log(logctx, AV_LOG_ERROR,
@@ -373,13 +377,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
                 goto fail;
             }
 
-            av_buffer_unref(&p->ps.pps_ref);
-            p->ps.pps = NULL;
-            p->ps.sps = NULL;
-            p->ps.pps_ref = av_buffer_ref(p->ps.pps_list[pps_id]);
-            if (!p->ps.pps_ref)
-                goto fail;
-            p->ps.pps = (const PPS*)p->ps.pps_ref->data;
+            ff_refstruct_replace(&p->ps.pps, p->ps.pps_list[pps_id]);
             p->ps.sps = p->ps.pps->sps;
             sps       = p->ps.sps;
 
@@ -568,7 +566,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
                 if (p->sei.common.unregistered.x264_build < 44U)
                     den *= 2;
                 av_reduce(&avctx->framerate.den, &avctx->framerate.num,
-                          sps->num_units_in_tick * avctx->ticks_per_frame, den, 1 << 30);
+                          sps->num_units_in_tick * 2, den, 1 << 30);
             }
 
             av_freep(&rbsp.rbsp_buffer);
@@ -625,7 +623,7 @@ static int h264_parse(AVCodecParserContext *s,
     parse_nal_units(s, avctx, buf, buf_size);
 
     if (avctx->framerate.num)
-        time_base = av_inv_q(av_mul_q(avctx->framerate, (AVRational){avctx->ticks_per_frame, 1}));
+        time_base = av_inv_q(av_mul_q(avctx->framerate, (AVRational){2, 1}));
     if (p->sei.picture_timing.cpb_removal_delay >= 0) {
         s->dts_sync_point    = p->sei.buffering_period.present;
         s->dts_ref_dts_delta = p->sei.picture_timing.cpb_removal_delay;
@@ -652,8 +650,12 @@ static int h264_parse(AVCodecParserContext *s,
                 s->dts = av_sat_add64(p->reference_dts, av_rescale(s->dts_ref_dts_delta, num, den));
             }
 
-            if (p->reference_dts != AV_NOPTS_VALUE && s->pts == AV_NOPTS_VALUE)
-                s->pts = s->dts + av_rescale(s->pts_dts_delta, num, den);
+            if (p->reference_dts != AV_NOPTS_VALUE && s->pts == AV_NOPTS_VALUE) {
+                int64_t pts_dts_delta = av_rescale(s->pts_dts_delta, num, den);
+                uint64_t pts = (uint64_t)s->dts + pts_dts_delta;
+                if (pts == av_sat_add64(s->dts, pts_dts_delta))
+                    s->pts = pts;
+            }
 
             if (s->dts_sync_point > 0)
                 p->reference_dts = s->dts; // new reference

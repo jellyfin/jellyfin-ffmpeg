@@ -35,6 +35,7 @@
 #include "libavutil/avstring.h"
 #include "drawutils.h"
 #include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "lut3d.h"
 
@@ -327,8 +328,8 @@ static int interp_##nbits##_##name##_p##depth(AVFilterContext *ctx, void *arg, i
     const AVFrame *in  = td->in;                                                                       \
     const AVFrame *out = td->out;                                                                      \
     const int direct = out == in;                                                                      \
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;                                        \
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;                                        \
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);                                  \
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);                              \
     uint8_t *grow = out->data[0] + slice_start * out->linesize[0];                                     \
     uint8_t *brow = out->data[1] + slice_start * out->linesize[1];                                     \
     uint8_t *rrow = out->data[2] + slice_start * out->linesize[2];                                     \
@@ -425,8 +426,8 @@ static int interp_##name##_pf##depth(AVFilterContext *ctx, void *arg, int jobnr,
     const AVFrame *in  = td->in;                                                                       \
     const AVFrame *out = td->out;                                                                      \
     const int direct = out == in;                                                                      \
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;                                        \
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;                                        \
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);                                  \
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);                              \
     uint8_t *grow = out->data[0] + slice_start * out->linesize[0];                                     \
     uint8_t *brow = out->data[1] + slice_start * out->linesize[1];                                     \
     uint8_t *rrow = out->data[2] + slice_start * out->linesize[2];                                     \
@@ -497,8 +498,8 @@ static int interp_##nbits##_##name(AVFilterContext *ctx, void *arg, int jobnr, i
     const uint8_t g = lut3d->rgba_map[G];                                                           \
     const uint8_t b = lut3d->rgba_map[B];                                                           \
     const uint8_t a = lut3d->rgba_map[A];                                                           \
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;                                     \
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;                                     \
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);                               \
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);                           \
     uint8_t       *dstrow = out->data[0] + slice_start * out->linesize[0];                          \
     const uint8_t *srcrow = in ->data[0] + slice_start * in ->linesize[0];                          \
     const float lut_max = lut3d->lutsize - 1;                                                       \
@@ -702,7 +703,8 @@ try_again:
                                 else if (!strncmp(line + 7, "MAX ", 4)) vals = max;
                                 if (!vals)
                                     return AVERROR_INVALIDDATA;
-                                av_sscanf(line + 11, "%f %f %f", vals, vals + 1, vals + 2);
+                                if (av_sscanf(line + 11, "%f %f %f", vals, vals + 1, vals + 2) != 3)
+                                    return AVERROR_INVALIDDATA;
                                 av_log(ctx, AV_LOG_DEBUG, "min: %f %f %f | max: %f %f %f\n",
                                        min[0], min[1], min[2], max[0], max[1], max[2]);
                                 goto try_again;
@@ -1301,13 +1303,6 @@ static const AVFilterPad lut3d_inputs[] = {
     },
 };
 
-static const AVFilterPad lut3d_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_lut3d = {
     .name          = "lut3d",
     .description   = NULL_IF_CONFIG_SMALL("Adjust colors using a 3D LUT."),
@@ -1315,7 +1310,7 @@ const AVFilter ff_vf_lut3d = {
     .init          = lut3d_init,
     .uninit        = lut3d_uninit,
     FILTER_INPUTS(lut3d_inputs),
-    FILTER_OUTPUTS(lut3d_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &lut3d_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
@@ -1328,7 +1323,7 @@ const AVFilter ff_vf_lut3d = {
 static void update_clut_packed(LUT3DContext *lut3d, const AVFrame *frame)
 {
     const uint8_t *data = frame->data[0];
-    const int linesize  = frame->linesize[0];
+    const ptrdiff_t linesize  = frame->linesize[0];
     const int w = lut3d->clut_width;
     const int step = lut3d->clut_step;
     const uint8_t *rgba_map = lut3d->clut_rgba_map;
@@ -1367,9 +1362,9 @@ static void update_clut_planar(LUT3DContext *lut3d, const AVFrame *frame)
     const uint8_t *datag = frame->data[0];
     const uint8_t *datab = frame->data[1];
     const uint8_t *datar = frame->data[2];
-    const int glinesize  = frame->linesize[0];
-    const int blinesize  = frame->linesize[1];
-    const int rlinesize  = frame->linesize[2];
+    const ptrdiff_t glinesize  = frame->linesize[0];
+    const ptrdiff_t blinesize  = frame->linesize[1];
+    const ptrdiff_t rlinesize  = frame->linesize[2];
     const int w = lut3d->clut_width;
     const int level = lut3d->lutsize;
     const int level2 = lut3d->lutsize2;
@@ -1414,9 +1409,9 @@ static void update_clut_float(LUT3DContext *lut3d, const AVFrame *frame)
     const uint8_t *datag = frame->data[0];
     const uint8_t *datab = frame->data[1];
     const uint8_t *datar = frame->data[2];
-    const int glinesize  = frame->linesize[0];
-    const int blinesize  = frame->linesize[1];
-    const int rlinesize  = frame->linesize[2];
+    const ptrdiff_t glinesize  = frame->linesize[0];
+    const ptrdiff_t blinesize  = frame->linesize[1];
+    const ptrdiff_t rlinesize  = frame->linesize[2];
     const int w = lut3d->clut_width;
     const int level = lut3d->lutsize;
     const int level2 = lut3d->lutsize2;
@@ -1740,12 +1735,14 @@ try_again:
                         else if (!strncmp(line + 7, "MAX ", 4)) vals = max;
                         if (!vals)
                             return AVERROR_INVALIDDATA;
-                        av_sscanf(line + 11, "%f %f %f", vals, vals + 1, vals + 2);
+                        if (av_sscanf(line + 11, "%f %f %f", vals, vals + 1, vals + 2) != 3)
+                            return AVERROR_INVALIDDATA;
                         av_log(ctx, AV_LOG_DEBUG, "min: %f %f %f | max: %f %f %f\n",
                                min[0], min[1], min[2], max[0], max[1], max[2]);
                         goto try_again;
                     } else if (!strncmp(line, "LUT_1D_INPUT_RANGE ", 19)) {
-                        av_sscanf(line + 19, "%f %f", min, max);
+                        if (av_sscanf(line + 19, "%f %f", min, max) != 2)
+                            return AVERROR_INVALIDDATA;
                         min[1] = min[2] = min[0];
                         max[1] = max[2] = max[0];
                         goto try_again;
@@ -1868,8 +1865,8 @@ static int interp_1d_##nbits##_##name##_p##depth(AVFilterContext *ctx,       \
     const AVFrame *in  = td->in;                                             \
     const AVFrame *out = td->out;                                            \
     const int direct = out == in;                                            \
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;              \
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;              \
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);        \
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);    \
     uint8_t *grow = out->data[0] + slice_start * out->linesize[0];           \
     uint8_t *brow = out->data[1] + slice_start * out->linesize[1];           \
     uint8_t *rrow = out->data[2] + slice_start * out->linesize[2];           \
@@ -1964,8 +1961,8 @@ static int interp_1d_##name##_pf##depth(AVFilterContext *ctx,                \
     const AVFrame *in  = td->in;                                             \
     const AVFrame *out = td->out;                                            \
     const int direct = out == in;                                            \
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;              \
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;              \
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);        \
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);    \
     uint8_t *grow = out->data[0] + slice_start * out->linesize[0];           \
     uint8_t *brow = out->data[1] + slice_start * out->linesize[1];           \
     uint8_t *rrow = out->data[2] + slice_start * out->linesize[2];           \
@@ -2034,8 +2031,8 @@ static int interp_1d_##nbits##_##name(AVFilterContext *ctx, void *arg,       \
     const uint8_t g = lut1d->rgba_map[G];                                    \
     const uint8_t b = lut1d->rgba_map[B];                                    \
     const uint8_t a = lut1d->rgba_map[A];                                    \
-    const int slice_start = (in->height *  jobnr   ) / nb_jobs;              \
-    const int slice_end   = (in->height * (jobnr+1)) / nb_jobs;              \
+    const int slice_start = ff_slice_pos(in->height, jobnr, nb_jobs);        \
+    const int slice_end   = ff_slice_pos(in->height, jobnr + 1, nb_jobs);    \
     uint8_t       *dstrow = out->data[0] + slice_start * out->linesize[0];   \
     const uint8_t *srcrow = in ->data[0] + slice_start * in ->linesize[0];   \
     const float factor = (1 << nbits) - 1;                                   \
@@ -2232,20 +2229,13 @@ static const AVFilterPad lut1d_inputs[] = {
     },
 };
 
-static const AVFilterPad lut1d_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_lut1d = {
     .name          = "lut1d",
     .description   = NULL_IF_CONFIG_SMALL("Adjust colors using a 1D LUT."),
     .priv_size     = sizeof(LUT1DContext),
     .init          = lut1d_init,
     FILTER_INPUTS(lut1d_inputs),
-    FILTER_OUTPUTS(lut1d_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &lut1d_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

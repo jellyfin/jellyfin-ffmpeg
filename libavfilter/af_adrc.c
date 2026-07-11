@@ -349,8 +349,8 @@ static int drc_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     AudioDRCContext *s = ctx->priv;
     AVFrame *in = s->in;
     AVFrame *out = arg;
-    const int start = (out->ch_layout.nb_channels * jobnr) / nb_jobs;
-    const int end = (out->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
+    const int start = ff_slice_pos(out->ch_layout.nb_channels, jobnr, nb_jobs);
+    const int end = ff_slice_pos(out->ch_layout.nb_channels, jobnr + 1, nb_jobs);
 
     for (int ch = start; ch < end; ch++)
         drc_channel(ctx, in, out, ch);
@@ -485,13 +485,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_adrc = {
     .name            = "adrc",
     .description     = NULL_IF_CONFIG_SMALL("Audio Spectral Dynamic Range Controller."),
@@ -499,7 +492,7 @@ const AVFilter ff_af_adrc = {
     .priv_class      = &adrc_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                        AVFILTER_FLAG_SLICE_THREADS,

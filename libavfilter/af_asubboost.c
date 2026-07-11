@@ -20,8 +20,8 @@
 #include "libavutil/ffmath.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "audio.h"
-#include "formats.h"
 
 typedef struct ASubBoostContext {
     const AVClass *class;
@@ -107,8 +107,8 @@ static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
     const double b2 = s->b2;
     const double a1 = -s->a1;
     const double a2 = -s->a2;
-    const int start = (in->ch_layout.nb_channels * jobnr) / nb_jobs;
-    const int end = (in->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
+    const int start = ff_slice_pos(in->ch_layout.nb_channels, jobnr, nb_jobs);
+    const int end = ff_slice_pos(in->ch_layout.nb_channels, jobnr + 1, nb_jobs);
     const int buffer_samples = s->buffer_samples;
 
     for (int ch = start; ch < end; ch++) {
@@ -237,13 +237,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_asubboost = {
     .name           = "asubboost",
     .description    = NULL_IF_CONFIG_SMALL("Boost subwoofer frequencies."),
@@ -251,7 +244,7 @@ const AVFilter ff_af_asubboost = {
     .priv_class     = &asubboost_class,
     .uninit         = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |

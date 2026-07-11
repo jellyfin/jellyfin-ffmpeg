@@ -34,7 +34,9 @@ enum var_name {
     VAR_X,
     VAR_Y,
     VAR_N,
+#if FF_API_FRAME_PKT
     VAR_POS,
+#endif
     VAR_T,
     VAR_VARS_NB
 };
@@ -45,6 +47,7 @@ enum OverlayFormat {
     OVERLAY_FORMAT_YUV422,
     OVERLAY_FORMAT_YUV422P10,
     OVERLAY_FORMAT_YUV444,
+    OVERLAY_FORMAT_YUV444P10,
     OVERLAY_FORMAT_RGB,
     OVERLAY_FORMAT_GBRP,
     OVERLAY_FORMAT_AUTO,

@@ -115,9 +115,9 @@ static av_cold void mss4_init_vlc(VLC *vlc, unsigned *offset,
 
     vlc->table           = &vlc_buf[*offset];
     vlc->table_allocated = FF_ARRAY_ELEMS(vlc_buf) - *offset;
-    ff_init_vlc_from_lengths(vlc, FFMIN(bits[idx - 1], 9), idx,
+    ff_vlc_init_from_lengths(vlc, FFMIN(bits[idx - 1], 9), idx,
                              bits, 1, syms, 1, 1,
-                             0, INIT_VLC_STATIC_OVERLONG, NULL);
+                             0, VLC_INIT_STATIC_OVERLONG, NULL);
     *offset += vlc->table_size;
 }
 
@@ -503,7 +503,10 @@ static int mss4_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     if ((ret = ff_reget_buffer(avctx, c->pic, 0)) < 0)
         return ret;
-    c->pic->key_frame = (frame_type == INTRA_FRAME);
+    if (frame_type == INTRA_FRAME)
+        c->pic->flags |= AV_FRAME_FLAG_KEY;
+    else
+        c->pic->flags &= ~AV_FRAME_FLAG_KEY;
     c->pic->pict_type = (frame_type == INTRA_FRAME) ? AV_PICTURE_TYPE_I
                                                    : AV_PICTURE_TYPE_P;
     if (frame_type == SKIP_FRAME) {

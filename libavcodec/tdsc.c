@@ -242,7 +242,6 @@ static int tdsc_load_cursor(AVCodecContext *avctx)
                     bits <<= 1;
                 }
             }
-            dst += ctx->cursor_stride - ctx->cursor_w * 4;
         }
 
         dst = ctx->cursor;
@@ -274,7 +273,6 @@ static int tdsc_load_cursor(AVCodecContext *avctx)
                     bits <<= 1;
                 }
             }
-            dst += ctx->cursor_stride - ctx->cursor_w * 4;
         }
         break;
     case CUR_FMT_BGRA:
@@ -360,7 +358,8 @@ static int tdsc_decode_jpeg_tile(AVCodecContext *avctx, int tile_size,
     }
 
     ret = avcodec_receive_frame(ctx->jpeg_avctx, ctx->jpgframe);
-    if (ret < 0 || ctx->jpgframe->format != AV_PIX_FMT_YUVJ420P) {
+    if (ret < 0 || ctx->jpgframe->format != AV_PIX_FMT_YUVJ420P ||
+        w > ctx->jpgframe->width || h > ctx->jpgframe->height) {
         av_log(avctx, AV_LOG_ERROR,
                "JPEG decoding error (%d).\n", ret);
 
@@ -404,7 +403,7 @@ static int tdsc_decode_tiles(AVCodecContext *avctx, int number_tiles)
         }
 
         tile_size = bytestream2_get_le32(&ctx->gbc);
-        if (bytestream2_get_bytes_left(&ctx->gbc) < tile_size)
+        if (bytestream2_get_bytes_left(&ctx->gbc) < tile_size + 24LL)
             return AVERROR_INVALIDDATA;
 
         tile_mode = bytestream2_get_le32(&ctx->gbc);
@@ -437,6 +436,9 @@ static int tdsc_decode_tiles(AVCodecContext *avctx, int number_tiles)
             if (ret < 0)
                 return ret;
         } else if (tile_mode == MKTAG(' ','W','A','R')) {
+            if (3LL * w * h > tile_size)
+                return AVERROR_INVALIDDATA;
+
             /* Just copy the buffer to output */
             av_image_copy_plane(ctx->refframe->data[0] + x * 3 +
                                 ctx->refframe->linesize[0] * y,
@@ -612,7 +614,7 @@ static int tdsc_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     /* Frame is ready to be output */
     if (keyframe) {
         frame->pict_type = AV_PICTURE_TYPE_I;
-        frame->key_frame = 1;
+        frame->flags |= AV_FRAME_FLAG_KEY;
     } else {
         frame->pict_type = AV_PICTURE_TYPE_P;
     }

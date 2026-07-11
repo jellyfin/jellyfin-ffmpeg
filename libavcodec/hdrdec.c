@@ -72,7 +72,7 @@ static int decompress(uint8_t *scanline, int w, GetByteContext *gb, const uint8_
             for (int i = run << rshift; i > 0 && w > 0 && scanline >= start + 4; i--) {
                 memcpy(scanline, scanline - 4, 4);
                 scanline += 4;
-                w -= 4;
+                w--;
             }
             rshift += 8;
             if (rshift > 16)
@@ -125,6 +125,9 @@ static int hdr_decode_frame(AVCodecContext *avctx, AVFrame *p,
     } else if (sscanf(line, "+X %d -Y %d\n", &width, &height) == 2) {
         ;
     }
+
+    if (bytestream2_get_bytes_left(&gb) < height * 4)
+        return AVERROR_INVALIDDATA;
 
     if ((ret = ff_set_dimensions(avctx, width, height)) < 0)
         return ret;
@@ -212,7 +215,7 @@ convert:
         }
     }
 
-    p->key_frame = 1;
+    p->flags |= AV_FRAME_FLAG_KEY;
     p->pict_type = AV_PICTURE_TYPE_I;
 
     *got_frame   = 1;

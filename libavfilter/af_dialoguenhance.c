@@ -24,6 +24,7 @@
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 #include "window_func.h"
 
@@ -385,13 +386,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_dialoguenhance = {
     .name            = "dialoguenhance",
     .description     = NULL_IF_CONFIG_SMALL("Audio Dialogue Enhancement."),
@@ -399,7 +393,7 @@ const AVFilter ff_af_dialoguenhance = {
     .priv_class      = &dialoguenhance_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .activate        = activate,

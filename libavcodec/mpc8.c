@@ -103,8 +103,8 @@ static av_cold void build_vlc(VLC *vlc, unsigned *buf_offset,
         for (unsigned tmp = num + codes_counts[i - 1]; num < tmp; num++)
             len[num] = i;
 
-    ff_init_vlc_from_lengths(vlc, FFMIN(len[0], 9), num, len, 1,
-                             *syms, 1, 1, offset, INIT_VLC_STATIC_OVERLONG, NULL);
+    ff_vlc_init_from_lengths(vlc, FFMIN(len[0], 9), num, len, 1,
+                             *syms, 1, 1, offset, VLC_INIT_STATIC_OVERLONG, NULL);
     *buf_offset += vlc->table_size;
     *syms       += num;
 }
@@ -155,7 +155,13 @@ static av_cold int mpc8_decode_init(AVCodecContext * avctx)
 
     init_get_bits(&gb, avctx->extradata, 16);
 
-    skip_bits(&gb, 3);//sample rate
+    uint8_t sample_rate_idx = get_bits(&gb, 3);
+    static const int sample_rates[] = { 44100, 48000, 37800, 32000 };
+    if (sample_rate_idx >= FF_ARRAY_ELEMS(sample_rates)) {
+        av_log(avctx, AV_LOG_ERROR, "invalid sample rate index (%u)\n", sample_rate_idx);
+        return AVERROR_INVALIDDATA;
+    }
+    avctx->sample_rate = sample_rates[sample_rate_idx];
     c->maxbands = get_bits(&gb, 5) + 1;
     if (c->maxbands >= BANDS) {
         av_log(avctx,AV_LOG_ERROR, "maxbands %d too high\n", c->maxbands);

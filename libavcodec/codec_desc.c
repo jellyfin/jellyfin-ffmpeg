@@ -38,14 +38,20 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "mpeg1video",
         .long_name = NULL_IF_CONFIG_SMALL("MPEG-1 video"),
-        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER,
+        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER |
+                     // FIXME this is strigly speaking not true, as MPEG-1 does
+                     // not allow field coding, but our mpeg12 code (decoder and
+                     // parser) can sometimes change codec id at runtime, so
+                     // this is safer
+                     AV_CODEC_PROP_FIELDS,
     },
     {
         .id        = AV_CODEC_ID_MPEG2VIDEO,
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "mpeg2video",
         .long_name = NULL_IF_CONFIG_SMALL("MPEG-2 video"),
-        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER,
+        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER |
+                     AV_CODEC_PROP_FIELDS,
         .profiles  = NULL_IF_CONFIG_SMALL(ff_mpeg2_video_profiles),
     },
     {
@@ -225,7 +231,8 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "h264",
         .long_name = NULL_IF_CONFIG_SMALL("H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
-        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_LOSSLESS | AV_CODEC_PROP_REORDER,
+        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_LOSSLESS |
+                     AV_CODEC_PROP_REORDER | AV_CODEC_PROP_FIELDS,
         .profiles  = NULL_IF_CONFIG_SMALL(ff_h264_profiles),
     },
     {
@@ -529,7 +536,8 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "vc1",
         .long_name = NULL_IF_CONFIG_SMALL("SMPTE VC-1"),
-        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER,
+        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER |
+                     AV_CODEC_PROP_FIELDS,
         .profiles  = NULL_IF_CONFIG_SMALL(ff_vc1_profiles),
     },
     {
@@ -1923,6 +1931,35 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("ViewQuest VQC"),
         .props     = AV_CODEC_PROP_LOSSY,
     },
+    {
+        .id        = AV_CODEC_ID_PDV,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "pdv",
+        .long_name = NULL_IF_CONFIG_SMALL("PDV (PlayDate Video)"),
+        .props     = AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_EVC,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "evc",
+        .long_name = NULL_IF_CONFIG_SMALL("MPEG-5 EVC (Essential Video Coding)"),
+        .props     = AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_REORDER,
+        .profiles  = NULL_IF_CONFIG_SMALL(ff_evc_profiles),
+    },
+    {
+        .id        = AV_CODEC_ID_RTV1,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "rtv1",
+        .long_name = NULL_IF_CONFIG_SMALL("RTV1 (RivaTuner Video)"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_VMIX,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "vmix",
+        .long_name = NULL_IF_CONFIG_SMALL("vMix Video"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
 
     /* various PCM "codecs" */
     {
@@ -2931,6 +2968,7 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "eac3",
         .long_name = NULL_IF_CONFIG_SMALL("ATSC A/52B (AC-3, E-AC-3)"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+        .profiles  = NULL_IF_CONFIG_SMALL(ff_eac3_profiles),
     },
     {
         .id        = AV_CODEC_ID_SIPR,
@@ -2959,6 +2997,7 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "truehd",
         .long_name = NULL_IF_CONFIG_SMALL("TrueHD"),
         .props     = AV_CODEC_PROP_LOSSLESS,
+        .profiles  = NULL_IF_CONFIG_SMALL(ff_truehd_profiles),
     },
     {
         .id        = AV_CODEC_ID_MP4ALS,
@@ -3367,6 +3406,20 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("RKA (RK Audio)"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_LOSSLESS,
     },
+    {
+        .id        = AV_CODEC_ID_AC4,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "ac4",
+        .long_name = NULL_IF_CONFIG_SMALL("AC-4"),
+        .props     = AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_OSQ,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "osq",
+        .long_name = NULL_IF_CONFIG_SMALL("OSQ (Original Sound Quality)"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
+    },
 
     /* subtitle codecs */
     {
@@ -3548,7 +3601,6 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .type      = AVMEDIA_TYPE_SUBTITLE,
         .name      = "arib_caption",
         .long_name = NULL_IF_CONFIG_SMALL("ARIB STD-B24 caption"),
-        .props     = AV_CODEC_PROP_TEXT_SUB,
         .profiles  = NULL_IF_CONFIG_SMALL(ff_arib_caption_profiles),
     },
 
@@ -3624,6 +3676,12 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "bin_data",
         .long_name = NULL_IF_CONFIG_SMALL("binary data"),
         .mime_types= MT("application/octet-stream"),
+    },
+    {
+        .id        = AV_CODEC_ID_SMPTE_2038,
+        .type      = AVMEDIA_TYPE_DATA,
+        .name      = "smpte_2038",
+        .long_name = NULL_IF_CONFIG_SMALL("SMPTE ST 2038 VANC in MPEG-2 TS"),
     },
     {
         .id        = AV_CODEC_ID_MPEG2TS,

@@ -21,10 +21,10 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "transpose.h"
 #include "vaapi_vpp.h"
+#include "video.h"
 
 typedef struct TransposeVAAPIContext {
     VAAPIVPPContext vpp_ctx; // must be the first field

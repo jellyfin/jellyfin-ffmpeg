@@ -24,7 +24,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "median.h"
 #include "video.h"
@@ -186,8 +186,8 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     for (int plane = 0; plane < s->nb_planes; plane++) {
         const int h = s->planeheight[plane];
         const int w = s->planewidth[plane];
-        const int slice_h_start = (h * jobnr) / nb_jobs;
-        const int slice_h_end = (h * (jobnr+1)) / nb_jobs;
+        const int slice_h_start = ff_slice_pos(h, jobnr, nb_jobs);
+        const int slice_h_end = ff_slice_pos(h, jobnr + 1, nb_jobs);
 
         if (!(s->planes & (1 << plane))) {
             av_image_copy_plane(out->data[plane] + slice_h_start * out->linesize[plane],
@@ -270,13 +270,6 @@ static const AVFilterPad median_inputs[] = {
     },
 };
 
-static const AVFilterPad median_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_median = {
     .name          = "median",
     .description   = NULL_IF_CONFIG_SMALL("Apply Median filter."),
@@ -284,7 +277,7 @@ const AVFilter ff_vf_median = {
     .priv_class    = &median_class,
     .uninit        = uninit,
     FILTER_INPUTS(median_inputs),
-    FILTER_OUTPUTS(median_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,

@@ -78,9 +78,9 @@ static int output_video_frame(AVFrame *frame)
 
     /* copy decoded frame to destination buffer:
      * this is required since rawvideo expects non aligned data */
-    av_image_copy(video_dst_data, video_dst_linesize,
-                  (const uint8_t **)(frame->data), frame->linesize,
-                  pix_fmt, width, height);
+    av_image_copy2(video_dst_data, video_dst_linesize,
+                   frame->data, frame->linesize,
+                   pix_fmt, width, height);
 
     /* write to rawvideo file */
     fwrite(video_dst_data[0], 1, video_dst_bufsize, video_dst_file);
@@ -138,11 +138,9 @@ static int decode_packet(AVCodecContext *dec, const AVPacket *pkt)
             ret = output_audio_frame(frame);
 
         av_frame_unref(frame);
-        if (ret < 0)
-            return ret;
     }
 
-    return 0;
+    return ret;
 }
 
 static int open_codec_context(int *stream_idx,

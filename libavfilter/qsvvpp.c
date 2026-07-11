@@ -460,8 +460,8 @@ static QSVFrame *submit_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *p
                                                       inlink->time_base, default_tb);
 
     qsv_frame->surface.Info.PicStruct =
-            !qsv_frame->frame->interlaced_frame ? MFX_PICSTRUCT_PROGRESSIVE :
-            (qsv_frame->frame->top_field_first ? MFX_PICSTRUCT_FIELD_TFF :
+            !(qsv_frame->frame->flags & AV_FRAME_FLAG_INTERLACED) ? MFX_PICSTRUCT_PROGRESSIVE :
+            ((qsv_frame->frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? MFX_PICSTRUCT_FIELD_TFF :
                                                  MFX_PICSTRUCT_FIELD_BFF);
     if (qsv_frame->frame->repeat_pict == 1)
         qsv_frame->surface.Info.PicStruct |= MFX_PICSTRUCT_FIELD_REPEATED;
@@ -474,7 +474,7 @@ static QSVFrame *submit_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *p
 }
 
 /* get the output surface */
-static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink)
+static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFrame *in)
 {
     AVFilterContext *ctx = outlink->src;
     QSVFrame        *out_frame;
@@ -493,6 +493,12 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink)
         if (!out_frame->frame)
             return NULL;
 
+        ret = av_frame_copy_props(out_frame->frame, in);
+        if (ret < 0) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
+            return NULL;
+        }
+
         ret = av_hwframe_get_buffer(outlink->hw_frames_ctx, out_frame->frame, 0);
         if (ret < 0) {
             av_log(ctx, AV_LOG_ERROR, "Can't allocate a surface.\n");
@@ -509,6 +515,12 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink)
         if (!out_frame->frame)
             return NULL;
 
+        ret = av_frame_copy_props(out_frame->frame, in);
+        if (ret < 0) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to copy metadata fields from src to dst.\n");
+            return NULL;
+        }
+
         ret = map_frame_to_surface(out_frame->frame,
                                    &out_frame->surface);
         if (ret < 0)
@@ -523,6 +535,25 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink)
     out_frame->frame->width  = outlink->w;
     out_frame->frame->height = outlink->h;
     out_frame->surface.Info = s->vpp_param.vpp.Out;
+
+    for (int i = 0; i < s->vpp_param.NumExtParam; i++) {
+        mfxExtBuffer *extbuf = s->vpp_param.ExtParam[i];
+
+        if (extbuf->BufferId == MFX_EXTBUFF_VPP_DEINTERLACING) {
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+            out_frame->frame->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+            out_frame->frame->flags &= ~AV_FRAME_FLAG_INTERLACED;
+            break;
+        }
+    }
+
+    out_frame->surface.Info.PicStruct =
+        !(out_frame->frame->flags & AV_FRAME_FLAG_INTERLACED) ? MFX_PICSTRUCT_PROGRESSIVE :
+        ((out_frame->frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? MFX_PICSTRUCT_FIELD_TFF :
+         MFX_PICSTRUCT_FIELD_BFF);
 
     return out_frame;
 }
@@ -655,6 +686,12 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
     if (ret)
         return ret;
 
+    ret = MFXQueryVersion(s->session, &s->ver);
+    if (ret != MFX_ERR_NONE) {
+        av_log(avctx, AV_LOG_ERROR, "Error querying the runtime version\n");
+        return AVERROR_UNKNOWN;
+    }
+
     if (handle) {
         ret = MFXVideoCORE_SetHandle(s->session, handle_type, handle);
         if (ret != MFX_ERR_NONE)
@@ -699,6 +736,11 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
     return 0;
 }
 
+static int set_frame_ext_params_null(AVFilterContext *ctx, const AVFrame *in, AVFrame *out, QSVVPPFrameParam *fp)
+{
+    return 0;
+}
+
 int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param)
 {
     int i;
@@ -709,6 +751,10 @@ int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param)
     if (!s->filter_frame)
         s->filter_frame = ff_filter_frame;
     s->out_sw_format = param->out_sw_format;
+
+    s->set_frame_ext_params = param->set_frame_ext_params;
+    if (!s->set_frame_ext_params)
+        s->set_frame_ext_params = set_frame_ext_params_null;
 
     /* create the vpp session */
     ret = init_vpp_session(avctx, s);
@@ -749,28 +795,39 @@ int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param)
         goto failed;
     }
 
+    s->nb_seq_buffers = param->num_ext_buf;
 #if QSV_HAVE_OPAQUE
-    if (IS_OPAQUE_MEMORY(s->in_mem_mode) || IS_OPAQUE_MEMORY(s->out_mem_mode)) {
-        s->nb_ext_buffers = param->num_ext_buf + 1;
+    if (IS_OPAQUE_MEMORY(s->in_mem_mode) || IS_OPAQUE_MEMORY(s->out_mem_mode))
+        s->nb_seq_buffers++;
+#endif
+
+    if (s->nb_seq_buffers) {
+        s->seq_buffers = av_calloc(s->nb_seq_buffers, sizeof(*s->seq_buffers));
+        if (!s->seq_buffers) {
+            ret = AVERROR(ENOMEM);
+            goto failed;
+        }
+
+        for (i = 0; i < param->num_ext_buf; i++)
+            s->seq_buffers[i]    = param->ext_buf[i];
+
+#if QSV_HAVE_OPAQUE
+        if (IS_OPAQUE_MEMORY(s->in_mem_mode) || IS_OPAQUE_MEMORY(s->out_mem_mode))
+            s->seq_buffers[i] = (mfxExtBuffer *)&s->opaque_alloc;
+#endif
+
+        s->nb_ext_buffers = s->nb_seq_buffers;
         s->ext_buffers = av_calloc(s->nb_ext_buffers, sizeof(*s->ext_buffers));
         if (!s->ext_buffers) {
             ret = AVERROR(ENOMEM);
             goto failed;
         }
 
-        s->ext_buffers[0] = (mfxExtBuffer *)&s->opaque_alloc;
-        for (i = 1; i < param->num_ext_buf; i++)
-            s->ext_buffers[i]    = param->ext_buf[i - 1];
-        s->vpp_param.ExtParam    = s->ext_buffers;
-        s->vpp_param.NumExtParam = s->nb_ext_buffers;
-    } else {
-        s->vpp_param.NumExtParam = param->num_ext_buf;
-        s->vpp_param.ExtParam    = param->ext_buf;
+        memcpy(s->ext_buffers, s->seq_buffers, s->nb_seq_buffers * sizeof(*s->seq_buffers));
     }
-#else
-    s->vpp_param.NumExtParam = param->num_ext_buf;
-    s->vpp_param.ExtParam    = param->ext_buf;
-#endif
+
+    s->vpp_param.ExtParam    = s->ext_buffers;
+    s->vpp_param.NumExtParam = s->nb_ext_buffers;
 
     s->got_frame = 0;
 
@@ -805,12 +862,14 @@ int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param)
     ff_qsvvpp_print_iopattern(avctx, s->vpp_param.IOPattern & 0x0F, "VPP");
     /* Print output memory mode */
     ff_qsvvpp_print_iopattern(avctx, s->vpp_param.IOPattern & 0xF0, "VPP");
-    ret = MFXVideoVPP_Init(s->session, &s->vpp_param);
+
+    /* Validate VPP params, but don't initial VPP session here */
+    ret = MFXVideoVPP_Query(s->session, &s->vpp_param, &s->vpp_param);
     if (ret < 0) {
-        ret = ff_qsvvpp_print_error(avctx, ret, "Failed to create a qsvvpp");
+        ret = ff_qsvvpp_print_error(avctx, ret, "Error querying VPP params");
         goto failed;
     } else if (ret > 0)
-        ff_qsvvpp_print_warning(avctx, ret, "Warning When creating qsvvpp");
+        ff_qsvvpp_print_warning(avctx, ret, "Warning When querying VPP params");
 
     return 0;
 
@@ -818,6 +877,60 @@ failed:
     ff_qsvvpp_close(avctx);
 
     return ret;
+}
+
+static int qsvvpp_init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s, const QSVFrame *in, QSVFrame *out)
+{
+    int ret;
+    mfxExtBuffer *ext_param[QSVVPP_MAX_FRAME_EXTBUFS];
+    QSVVPPFrameParam fp = { 0, ext_param };
+
+    ret = s->set_frame_ext_params(avctx, in->frame, out->frame, &fp);
+    if (ret)
+        return ret;
+
+    if (fp.num_ext_buf) {
+        av_freep(&s->ext_buffers);
+        s->nb_ext_buffers = s->nb_seq_buffers + fp.num_ext_buf;
+
+        s->ext_buffers = av_calloc(s->nb_ext_buffers, sizeof(*s->ext_buffers));
+        if (!s->ext_buffers)
+            return AVERROR(ENOMEM);
+
+        memcpy(&s->ext_buffers[0], s->seq_buffers, s->nb_seq_buffers * sizeof(*s->seq_buffers));
+        memcpy(&s->ext_buffers[s->nb_seq_buffers], fp.ext_buf, fp.num_ext_buf * sizeof(*fp.ext_buf));
+        s->vpp_param.ExtParam    = s->ext_buffers;
+        s->vpp_param.NumExtParam = s->nb_ext_buffers;
+    }
+
+    if (!s->vpp_initted) {
+        s->vpp_param.vpp.In.PicStruct = in->surface.Info.PicStruct;
+        s->vpp_param.vpp.Out.PicStruct = out->surface.Info.PicStruct;
+
+        /* Query VPP params again, including params for frame */
+        ret = MFXVideoVPP_Query(s->session, &s->vpp_param, &s->vpp_param);
+        if (ret < 0)
+            return ff_qsvvpp_print_error(avctx, ret, "Error querying VPP params");
+        else if (ret > 0)
+            ff_qsvvpp_print_warning(avctx, ret, "Warning When querying VPP params");
+
+        ret = MFXVideoVPP_Init(s->session, &s->vpp_param);
+        if (ret < 0)
+            return ff_qsvvpp_print_error(avctx, ret, "Failed to create a qsvvpp");
+        else if (ret > 0)
+            ff_qsvvpp_print_warning(avctx, ret, "Warning When creating qsvvpp");
+
+        s->vpp_initted = 1;
+    } else if (fp.num_ext_buf) {
+        ret = MFXVideoVPP_Reset(s->session, &s->vpp_param);
+        if (ret < 0) {
+            ret = ff_qsvvpp_print_error(avctx, ret, "Failed to reset session for qsvvpp");
+            return ret;
+        } else if (ret > 0)
+            ff_qsvvpp_print_warning(avctx, ret, "Warning When resetting session for qsvvpp");
+    }
+
+    return 0;
 }
 
 int ff_qsvvpp_close(AVFilterContext *avctx)
@@ -828,6 +941,7 @@ int ff_qsvvpp_close(AVFilterContext *avctx)
         MFXVideoVPP_Close(s->session);
         MFXClose(s->session);
         s->session = NULL;
+        s->vpp_initted = 0;
     }
 
     /* release all the resources */
@@ -835,9 +949,8 @@ int ff_qsvvpp_close(AVFilterContext *avctx)
     clear_frame_list(&s->out_frame_list);
     av_freep(&s->surface_ptrs_in);
     av_freep(&s->surface_ptrs_out);
-#if QSV_HAVE_OPAQUE
+    av_freep(&s->seq_buffers);
     av_freep(&s->ext_buffers);
-#endif
     av_freep(&s->frame_infos);
     av_fifo_freep2(&s->async_fifo);
 
@@ -878,11 +991,15 @@ int ff_qsvvpp_filter_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *picr
     }
 
     do {
-        out_frame = query_frame(s, outlink);
+        out_frame = query_frame(s, outlink, in_frame->frame);
         if (!out_frame) {
             av_log(ctx, AV_LOG_ERROR, "Failed to query an output frame.\n");
             return AVERROR(ENOMEM);
         }
+
+        ret = qsvvpp_init_vpp_session(ctx, s, in_frame, out_frame);
+        if (ret)
+            return ret;
 
         do {
             ret = MFXVideoVPP_RunFrameVPPAsync(s->session, &in_frame->surface,

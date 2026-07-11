@@ -208,7 +208,7 @@ static av_cold int build_vlc(VLC *vlc, int nb_bits, const uint8_t counts[16],
         for (unsigned count = num + counts[i]; num < count; num++)
             lens[num] = i + 1;
 
-    return ff_init_vlc_from_lengths(vlc, nb_bits, num, lens, 1,
+    return ff_vlc_init_from_lengths(vlc, nb_bits, num, lens, 1,
                                     syms, symbol_size, symbol_size,
                                     offset, 0, logctx);
 }
@@ -341,11 +341,11 @@ static av_cold int cook_decode_close(AVCodecContext *avctx)
 
     /* Free the VLC tables. */
     for (i = 0; i < 13; i++)
-        ff_free_vlc(&q->envelope_quant_index[i]);
+        ff_vlc_free(&q->envelope_quant_index[i]);
     for (i = 0; i < 7; i++)
-        ff_free_vlc(&q->sqvh[i]);
+        ff_vlc_free(&q->sqvh[i]);
     for (i = 0; i < q->num_subpackets; i++)
-        ff_free_vlc(&q->subpacket[i].channel_coupling);
+        ff_vlc_free(&q->subpacket[i].channel_coupling);
 
     av_log(avctx, AV_LOG_DEBUG, "Memory deallocated.\n");
 
@@ -1079,6 +1079,7 @@ static av_cold int cook_decode_init(AVCodecContext *avctx)
     int s = 0;
     unsigned int channel_mask = 0;
     int samples_per_frame = 0;
+    int total_channels = 0;
     int ret;
     int channels = avctx->ch_layout.nb_channels;
 
@@ -1236,10 +1237,12 @@ static av_cold int cook_decode_init(AVCodecContext *avctx)
         q->subpacket[s].gains2.now      = q->subpacket[s].gain_3;
         q->subpacket[s].gains2.previous = q->subpacket[s].gain_4;
 
-        if (q->num_subpackets + q->subpacket[s].num_channels > channels) {
-            av_log(avctx, AV_LOG_ERROR, "Too many subpackets %d for channels %d\n", q->num_subpackets, channels);
+        if (total_channels + q->subpacket[s].num_channels > channels) {
+            av_log(avctx, AV_LOG_ERROR, "Too many subpacket channels %d for channels %d\n",
+                   total_channels + q->subpacket[s].num_channels, channels);
             return AVERROR_INVALIDDATA;
         }
+        total_channels += q->subpacket[s].num_channels;
 
         q->num_subpackets++;
         s++;

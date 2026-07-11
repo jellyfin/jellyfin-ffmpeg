@@ -24,6 +24,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/xga_font_data.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
 #include "internal.h"
 #include "video.h"
@@ -120,6 +121,7 @@ typedef struct WaveformContext {
     float          ftint[2];
     int            tint[2];
     int            fitmode;
+    int            input;
 
     int (*waveform_slice)(AVFilterContext *ctx, void *arg,
                           int jobnr, int nb_jobs);
@@ -196,6 +198,9 @@ static const AVOption waveform_options[] = {
     { "fm", "set fit mode", OFFSET(fitmode), AV_OPT_TYPE_INT, {.i64=0}, 0, NB_FITMODES-1, FLAGS, "fitmode" },
         { "none", NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_NONE}, 0, 0, FLAGS, "fitmode" },
         { "size", NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_SIZE}, 0, 0, FLAGS, "fitmode" },
+    { "input", "set input formats selection", OFFSET(input), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "input" },
+        { "all", "try to select from all available formats", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "input" },
+        { "first", "pick first available format", 0, AV_OPT_TYPE_CONST, {.i64=1},  0, 0, FLAGS, "input" },
     { NULL }
 };
 
@@ -356,7 +361,7 @@ static int query_formats(AVFilterContext *ctx)
     depth2 = desc2->comp[0].depth;
     if (ncomp != ncomp2 || depth != depth2)
         return AVERROR(EAGAIN);
-    for (i = 1; i < avff->nb_formats; i++) {
+    for (i = 1; i < avff->nb_formats && !s->input; i++) {
         desc = av_pix_fmt_desc_get(avff->formats[i]);
         if (rgb != (desc->flags & AV_PIX_FMT_FLAG_RGB) ||
             depth != desc->comp[0].depth)
@@ -701,10 +706,10 @@ static av_always_inline void lowpass16(WaveformContext *s,
     const int max = limit - intensity;
     const int src_h = AV_CEIL_RSHIFT(in->height, shift_h);
     const int src_w = AV_CEIL_RSHIFT(in->width, shift_w);
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     const int step = column ? 1 << shift_w : 1 << shift_h;
     const uint16_t *src_data = (const uint16_t *)in->data[plane] + sliceh_start * src_linesize;
     uint16_t *dst_data = (uint16_t *)out->data[dplane] + (offset_y + sliceh_start * step) * dst_linesize + offset_x;
@@ -745,7 +750,7 @@ static av_always_inline void lowpass16(WaveformContext *s,
         dst_data += dst_linesize * step;
     }
 
-    if (s->display != OVERLAY && column && !s->rgb) {
+    if (s->display != OVERLAY && column && !s->rgb && out->data[1] && out->data[2]) {
         const int mult = s->max / 256;
         const int bg = s->bg_color[0] * mult;
         const int t0 = s->tint[0];
@@ -769,7 +774,7 @@ static av_always_inline void lowpass16(WaveformContext *s,
             dst0 += dst_linesize;
             dst1 += dst_linesize;
         }
-    } else if (s->display != OVERLAY && !s->rgb) {
+    } else if (s->display != OVERLAY && !s->rgb && out->data[1] && out->data[2]) {
         const int mult = s->max / 256;
         const int bg = s->bg_color[0] * mult;
         const int t0 = s->tint[0];
@@ -838,10 +843,10 @@ static av_always_inline void lowpass(WaveformContext *s,
     const int max = 255 - intensity;
     const int src_h = AV_CEIL_RSHIFT(in->height, shift_h);
     const int src_w = AV_CEIL_RSHIFT(in->width, shift_w);
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     const int step = column ? 1 << shift_w : 1 << shift_h;
     const uint8_t *src_data = in->data[plane] + sliceh_start * src_linesize;
     uint8_t *dst_data = out->data[dplane] + (offset_y + sliceh_start * step) * dst_linesize + offset_x;
@@ -982,10 +987,10 @@ static av_always_inline void flat16(WaveformContext *s,
     const int mid = s->max / 2;
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     int x, y;
 
     if (column) {
@@ -1119,10 +1124,10 @@ static av_always_inline void flat(WaveformContext *s,
     const int max = 255 - intensity;
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     int x, y;
 
     if (column) {
@@ -1265,10 +1270,10 @@ static int name(AVFilterContext *ctx,                                           
     const int mid = s->max / 2;                                                                                    \
     const int src_h = in->height;                                                                                  \
     const int src_w = in->width;                                                                                   \
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;                                              \
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;                                        \
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;                                               \
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;                                         \
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;                                    \
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;                              \
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;                                     \
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;                               \
     int x, y;                                                                                                      \
                                                                                                                    \
     if (column) {                                                                                                  \
@@ -1382,10 +1387,10 @@ static int name(AVFilterContext *ctx,                                           
     int offset_x = td->offset_x;                                                                      \
     const int src_h = in->height;                                                                     \
     const int src_w = in->width;                                                                      \
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;                                 \
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;                           \
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;                                  \
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;                            \
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;                       \
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;                 \
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;                        \
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;                  \
     const int intensity = s->intensity;                                                               \
     const int plane = s->desc->comp[component].plane;                                                 \
     const int c0_linesize = in->linesize[ plane + 0 ];                                                \
@@ -1546,10 +1551,10 @@ static av_always_inline void chroma16(WaveformContext *s,
     const int c1_shift_h = s->shift_h[(component + 2) % s->ncomp];
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     int x, y;
 
     if (column) {
@@ -1642,10 +1647,10 @@ static av_always_inline void chroma(WaveformContext *s,
     const int plane = s->desc->comp[component].plane;
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     const int c0_linesize = in->linesize[(plane + 1) % s->ncomp];
     const int c1_linesize = in->linesize[(plane + 2) % s->ncomp];
     const int dst_linesize = out->linesize[plane];
@@ -1747,10 +1752,10 @@ static av_always_inline void color16(WaveformContext *s,
     const int limit = s->max - 1;
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     const int c0_linesize = in->linesize[ plane + 0 ] / 2;
     const int c1_linesize = in->linesize[(plane + 1) % s->ncomp] / 2;
     const int c2_linesize = in->linesize[(plane + 2) % s->ncomp] / 2;
@@ -1879,10 +1884,10 @@ static av_always_inline void color(WaveformContext *s,
     const int plane = s->desc->comp[component].plane;
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     const int c0_linesize = in->linesize[ plane + 0 ];
     const int c1_linesize = in->linesize[(plane + 1) % s->ncomp];
     const int c2_linesize = in->linesize[(plane + 2) % s->ncomp];
@@ -2013,10 +2018,10 @@ static av_always_inline void acolor16(WaveformContext *s,
     const int max = limit - intensity;
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     const int c0_shift_h = s->shift_h[ component + 0 ];
     const int c1_shift_h = s->shift_h[(component + 1) % s->ncomp];
     const int c2_shift_h = s->shift_h[(component + 2) % s->ncomp];
@@ -2145,10 +2150,10 @@ static av_always_inline void acolor(WaveformContext *s,
     const int plane = s->desc->comp[component].plane;
     const int src_h = in->height;
     const int src_w = in->width;
-    const int sliceh_start = !column ? (src_h * jobnr) / nb_jobs : 0;
-    const int sliceh_end = !column ? (src_h * (jobnr+1)) / nb_jobs : src_h;
-    const int slicew_start = column ? (src_w * jobnr) / nb_jobs : 0;
-    const int slicew_end = column ? (src_w * (jobnr+1)) / nb_jobs : src_w;
+    const int sliceh_start = !column ? ff_slice_pos(src_h, jobnr, nb_jobs) : 0;
+    const int sliceh_end = !column ? ff_slice_pos(src_h, jobnr + 1, nb_jobs) : src_h;
+    const int slicew_start = column ? ff_slice_pos(src_w, jobnr, nb_jobs) : 0;
+    const int slicew_end = column ? ff_slice_pos(src_w, jobnr + 1, nb_jobs) : src_w;
     const int c0_shift_w = s->shift_w[ component + 0 ];
     const int c1_shift_w = s->shift_w[(component + 1) % s->ncomp];
     const int c2_shift_w = s->shift_w[(component + 2) % s->ncomp];

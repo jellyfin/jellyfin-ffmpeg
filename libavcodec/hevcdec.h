@@ -75,7 +75,7 @@
 #define IS_IDR(s) ((s)->nal_unit_type == HEVC_NAL_IDR_W_RADL || (s)->nal_unit_type == HEVC_NAL_IDR_N_LP)
 #define IS_BLA(s) ((s)->nal_unit_type == HEVC_NAL_BLA_W_RADL || (s)->nal_unit_type == HEVC_NAL_BLA_W_LP || \
                    (s)->nal_unit_type == HEVC_NAL_BLA_N_LP)
-#define IS_IRAP(s) ((s)->nal_unit_type >= 16 && (s)->nal_unit_type <= 23)
+#define IS_IRAP(s) ((s)->nal_unit_type >= HEVC_NAL_BLA_W_LP && (s)->nal_unit_type <= HEVC_NAL_RSV_IRAP_VCL23)
 
 enum RPSType {
     ST_CURR_BEF = 0,
@@ -295,12 +295,17 @@ typedef struct SliceHeader {
     int slice_cb_qp_offset;
     int slice_cr_qp_offset;
 
+    int slice_act_y_qp_offset;
+    int slice_act_cb_qp_offset;
+    int slice_act_cr_qp_offset;
+
     uint8_t cu_chroma_qp_offset_enabled_flag;
 
     int beta_offset;    ///< beta_offset_div2 * 2
     int tc_offset;      ///< tc_offset_div2 * 2
 
-    unsigned int max_num_merge_cand; ///< 5 - 5_minus_max_num_merge_cand
+    uint8_t max_num_merge_cand; ///< 5 - 5_minus_max_num_merge_cand
+    uint8_t use_integer_mv_flag;
 
     unsigned *entry_point_offset;
     int * offset;
@@ -408,14 +413,13 @@ typedef struct HEVCFrame {
     RefPicListTab **rpl_tab;
     int ctb_count;
     int poc;
-    struct HEVCFrame *collocated_ref;
 
     AVBufferRef *tab_mvf_buf;
     AVBufferRef *rpl_tab_buf;
-    AVBufferRef *rpl_buf;
+    RefPicListTab *rpl;            ///< RefStruct reference
+    int nb_rpl_elems;
 
-    AVBufferRef *hwaccel_priv_buf;
-    void *hwaccel_picture_private;
+    void *hwaccel_picture_private; ///< RefStruct reference
 
     /**
      * A sequence counter, so that old frames are output first
@@ -524,6 +528,7 @@ typedef struct HEVCContext {
     enum HEVCNALUnitType nal_unit_type;
     int temporal_id;  ///< temporal_id_plus1 - 1
     HEVCFrame *ref;
+    HEVCFrame *collocated_ref;
     HEVCFrame DPB[32];
     int poc;
     int pocTid0;
@@ -590,6 +595,8 @@ typedef struct HEVCContext {
 
     int nal_length_size;    ///< Number of bytes used for nal length (1, 2 or 4)
     int nuh_layer_id;
+
+    int film_grain_warning_shown;
 
     AVBufferRef *rpu_buf;       ///< 0 or 1 Dolby Vision RPUs.
     DOVIContext dovi_ctx;       ///< Dolby Vision decoding context
@@ -683,7 +690,7 @@ int ff_hevc_output_frame(HEVCContext *s, AVFrame *frame, int flush);
 
 void ff_hevc_bump_frame(HEVCContext *s);
 
-void ff_hevc_unref_frame(HEVCContext *s, HEVCFrame *frame, int flags);
+void ff_hevc_unref_frame(HEVCFrame *frame, int flags);
 
 void ff_hevc_set_neighbour_available(HEVCLocalContext *lc, int x0, int y0,
                                      int nPbW, int nPbH);

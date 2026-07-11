@@ -9,6 +9,7 @@ bgra                929aac15e848038e367c250037575f9f
 gbrap               5f16cccab5a17cb766c882e865995167
 gbrap10le           e63e0a1ae9afd7e6a732f18be194e761
 gbrap12le           eb7a5ff44a9b5b46bb9829838224ed8e
+gbrap14le           4c8b549942e66f442de0f5c1d21e9b8e
 gbrap16le           d0f6fc33cb75588327aec1b5ad6ab4f0
 gbrp                3c94d39256db2409015df913fd330a90
 gbrp10le            5b356737cd8a396f39bbdadb7cb35e06
@@ -31,8 +32,10 @@ p010le              fbbc23cc1d764a5e6fb71883d985f3ed
 p012le              3a92c1bd3e9de050bf6abcc3fd911ab7
 p016le              fbbc23cc1d764a5e6fb71883d985f3ed
 p210le              680912c059de39c3401cac856bd1b0c1
+p212le              a2f88017bcce2383ba60bc4872e639ba
 p216le              8718662e226a4581561e7bb532af2d83
 p410le              5ca28f2bcc849987810e1f3437b12feb
+p412le              2a619fca8166dcd09251a577ed36ab53
 p416le              fa4e023d0bf4b03b0ffef3d4d35abf7e
 rgb0                0984eb985dabbe757ed6beb53db84eff
 rgb24               17f9e2e0c609009acaf2175c42d4a2a5

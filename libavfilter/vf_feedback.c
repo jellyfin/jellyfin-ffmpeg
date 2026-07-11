@@ -27,6 +27,7 @@
 #include "libavutil/internal.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -163,11 +164,11 @@ static int activate(AVFilterContext *ctx)
                     src->data[0] + y * src->linesize[0], src->width * s->max_step[0]);
         }
 
-        for (int i = 1; i < 3; i ++) {
+        for (int i = 1; i < 3; i++) {
             if (dst->data[i]) {
                 for (int y = 0; y < src->height; y++) {
-                    memmove(dst->data[i] + ((s->y + y) >> s->vsub) * dst->linesize[i] + ((s->x * s->max_step[i]) >> s->hsub),
-                            src->data[i] + (y >> s->vsub) * src->linesize[i], (src->width * s->max_step[i]) >> s->hsub);
+                    memmove(dst->data[i] + ((s->y + y) >> s->vsub) * dst->linesize[i] + (s->x >> s->hsub) * s->max_step[i],
+                            src->data[i] + (y >> s->vsub) * src->linesize[i], (src->width >> s->hsub) * s->max_step[i]);
                 }
             }
         }
@@ -213,7 +214,7 @@ static int activate(AVFilterContext *ctx)
             for (int i = 1; i < 3; i ++) {
                 if (frame->data[i]) {
                     frame->data[i] += (s->y >> s->vsub) * frame->linesize[i];
-                    frame->data[i] += (s->x * s->max_step[i]) >> s->hsub;
+                    frame->data[i] += (s->x >> s->hsub) * s->max_step[i];
                 }
             }
 

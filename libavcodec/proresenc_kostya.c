@@ -3,9 +3,6 @@
  *
  * Copyright (c) 2012 Konstantin Shishkov
  *
- * This encoder appears to be based on Anatoliy Wassermans considering
- * similarities in the bugs.
- *
  * This file is part of FFmpeg.
  *
  * FFmpeg is free software; you can redistribute it and/or
@@ -370,7 +367,7 @@ static void get_slice_data(ProresContext *ctx, const uint16_t *src,
 
 static void get_alpha_data(ProresContext *ctx, const uint16_t *src,
                            ptrdiff_t linesize, int x, int y, int w, int h,
-                           int16_t *blocks, int mbs_per_slice, int abits)
+                           uint16_t *blocks, int mbs_per_slice, int abits)
 {
     const int slice_width = 16 * mbs_per_slice;
     int i, j, copy_w, copy_h;
@@ -585,7 +582,7 @@ static int encode_slice(AVCodecContext *avctx, const AVFrame *pic,
     if (ctx->pictures_per_frame == 1)
         line_add = 0;
     else
-        line_add = ctx->cur_picture_idx ^ !pic->top_field_first;
+        line_add = ctx->cur_picture_idx ^ !(pic->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST);
 
     if (ctx->force_quant) {
         qmat = ctx->quants[0];
@@ -838,7 +835,7 @@ static int find_slice_quant(AVCodecContext *avctx,
     if (ctx->pictures_per_frame == 1)
         line_add = 0;
     else
-        line_add = ctx->cur_picture_idx ^ !ctx->pic->top_field_first;
+        line_add = ctx->cur_picture_idx ^ !(ctx->pic->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST);
     mbs = x + mbs_per_slice;
 
     for (i = 0; i < ctx->num_planes; i++) {
@@ -1045,7 +1042,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     frame_flags = ctx->chroma_factor << 6;
     if (avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT)
-        frame_flags |= pic->top_field_first ? 0x04 : 0x08;
+        frame_flags |= (pic->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? 0x04 : 0x08;
     bytestream_put_byte  (&buf, frame_flags);
 
     bytestream_put_byte  (&buf, 0);             // reserved
@@ -1355,6 +1352,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     }
 
     avctx->codec_tag   = ctx->profile_info->tag;
+    avctx->profile = ctx->profile;
 
     av_log(avctx, AV_LOG_DEBUG,
            "profile %d, %d slices, interlacing: %s, %d bits per MB\n",

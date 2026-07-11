@@ -21,6 +21,7 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
+#include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "audio_frame_queue.h"
@@ -46,6 +47,15 @@ typedef struct AACContext {
     int latm;
     int header_period;
     int vbr;
+    int drc_profile;
+    int drc_target_ref;
+    int comp_profile;
+    int comp_target_ref;
+    int prog_ref;
+    int metadata_mode;
+    AACENC_MetaData metaDataSetup;
+    int delay_sent;
+    int frame_length;
 
     AudioFrameQueue afq;
 } AACContext;
@@ -64,6 +74,12 @@ static const AVOption aac_enc_options[] = {
     { "latm", "Output LATM/LOAS encapsulated data", offsetof(AACContext, latm), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
     { "header_period", "StreamMuxConfig and PCE repetition period (in frames)", offsetof(AACContext, header_period), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 0xffff, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
     { "vbr", "VBR mode (1-5)", offsetof(AACContext, vbr), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 5, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
+    { "drc_profile", "The desired compression profile for AAC DRC", offsetof(AACContext, drc_profile), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 256, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
+    { "drc_target_ref", "Expected target reference level at decoder side in dB (for clipping prevention/limiter)", offsetof(AACContext, drc_target_ref), AV_OPT_TYPE_INT, { .i64 = 0.0 }, -31.75, 0, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
+    { "comp_profile", "The desired compression profile for AAC DRC", offsetof(AACContext, comp_profile), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 256, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
+    { "comp_target_ref", "Expected target reference level at decoder side in dB (for clipping prevention/limiter)", offsetof(AACContext, comp_target_ref), AV_OPT_TYPE_INT, { .i64 = 0.0 }, -31.75, 0, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
+    { "prog_ref", "The program reference level or dialog level in dB", offsetof(AACContext, prog_ref), AV_OPT_TYPE_INT, { .i64 = 0.0 }, -31.75, 0, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
+    { "frame_length", "The desired frame length", offsetof(AACContext, frame_length), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1024, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_ENCODING_PARAM },
     FF_AAC_PROFILE_OPTS
     { NULL }
 };
@@ -118,6 +134,44 @@ static int aac_encode_close(AVCodecContext *avctx)
     return 0;
 }
 
+static void aac_encode_flush(AVCodecContext *avctx)
+{
+    AACContext *s = avctx->priv_data;
+    AACENC_BufDesc in_buf   = { 0 }, out_buf = { 0 };
+    AACENC_InArgs  in_args  = { 0 };
+    AACENC_OutArgs out_args;
+    int64_t pts, duration;
+    uint8_t dummy_in[1], dummy_out[1];
+    int in_buffer_identifiers[] = { IN_AUDIO_DATA, IN_METADATA_SETUP };
+    int in_buffer_element_sizes[] = { 2, sizeof(AACENC_MetaData) };
+    int in_buffer_sizes[] = { 0, sizeof(s->metaDataSetup) };
+    int out_buffer_identifier = OUT_BITSTREAM_DATA;
+    int out_buffer_size = sizeof(dummy_out), out_buffer_element_size = 1;
+    void* inBuffer[] = { dummy_in, &s->metaDataSetup };
+    void *out_ptr = dummy_out;
+    AACENC_ERROR err;
+
+    ff_af_queue_remove(&s->afq, s->afq.frame_count, &pts, &duration);
+
+    in_buf.bufs              = (void **)inBuffer;
+    in_buf.numBufs           = s->metadata_mode == 0 ? 1 : 2;
+    in_buf.bufferIdentifiers = in_buffer_identifiers;
+    in_buf.bufSizes          = in_buffer_sizes;
+    in_buf.bufElSizes        = in_buffer_element_sizes;
+
+    out_buf.numBufs           = 1;
+    out_buf.bufs              = &out_ptr;
+    out_buf.bufferIdentifiers = &out_buffer_identifier;
+    out_buf.bufSizes          = &out_buffer_size;
+    out_buf.bufElSizes        = &out_buffer_element_size;
+
+    err = aacEncEncode(s->handle, &in_buf, &out_buf, &in_args, &out_args);
+    if (err != AACENC_OK) {
+        av_log(avctx, AV_LOG_ERROR, "Unexpected error while flushing: %s\n",
+               aac_get_error(err));
+    }
+}
+
 static av_cold int aac_encode_init(AVCodecContext *avctx)
 {
     AACContext *s = avctx->priv_data;
@@ -125,7 +179,7 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     AACENC_InfoStruct info = { 0 };
     CHANNEL_MODE mode;
     AACENC_ERROR err;
-    int aot = FF_PROFILE_AAC_LOW + 1;
+    int aot = AV_PROFILE_AAC_LOW + 1;
     int sce = 0, cpe = 0;
 
     if ((err = aacEncOpen(&s->handle, 0, avctx->ch_layout.nb_channels)) != AACENC_OK) {
@@ -134,7 +188,7 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         goto error;
     }
 
-    if (avctx->profile != FF_PROFILE_UNKNOWN)
+    if (avctx->profile != AV_PROFILE_UNKNOWN)
         aot = avctx->profile + 1;
 
     if ((err = aacEncoder_SetParam(s->handle, AACENC_AOT, aot)) != AACENC_OK) {
@@ -143,10 +197,19 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         goto error;
     }
 
-    if (aot == FF_PROFILE_AAC_ELD + 1 && s->eld_sbr) {
+    if (aot == AV_PROFILE_AAC_ELD + 1 && s->eld_sbr) {
         if ((err = aacEncoder_SetParam(s->handle, AACENC_SBR_MODE,
                                        1)) != AACENC_OK) {
             av_log(avctx, AV_LOG_ERROR, "Unable to enable SBR for ELD: %s\n",
+                   aac_get_error(err));
+            goto error;
+        }
+    }
+
+    if (s->frame_length >= 0) {
+        if ((err = aacEncoder_SetParam(s->handle, AACENC_GRANULE_LENGTH,
+                                       s->frame_length)) != AACENC_OK) {
+            av_log(avctx, AV_LOG_ERROR, "Unable to set granule length: %s\n",
                    aac_get_error(err));
             goto error;
         }
@@ -164,7 +227,7 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     case 2:
 #if FDKENC_VER_AT_LEAST(4, 0) // 4.0.0
       // (profile + 1) to map from profile range to AOT range
-      if (aot == FF_PROFILE_AAC_ELD + 1 && s->eld_v2) {
+      if (aot == AV_PROFILE_AAC_ELD + 1 && s->eld_v2) {
           if ((err = aacEncoder_SetParam(s->handle, AACENC_CHANNELMODE,
                                          128)) != AACENC_OK) {
               av_log(avctx, AV_LOG_ERROR, "Unable to enable ELDv2: %s\n",
@@ -247,14 +310,14 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         }
     } else {
         if (avctx->bit_rate <= 0) {
-            if (avctx->profile == FF_PROFILE_AAC_HE_V2) {
+            if (avctx->profile == AV_PROFILE_AAC_HE_V2) {
                 sce = 1;
                 cpe = 0;
             }
             avctx->bit_rate = (96*sce + 128*cpe) * avctx->sample_rate / 44;
-            if (avctx->profile == FF_PROFILE_AAC_HE ||
-                avctx->profile == FF_PROFILE_AAC_HE_V2 ||
-                avctx->profile == FF_PROFILE_MPEG2_AAC_HE ||
+            if (avctx->profile == AV_PROFILE_AAC_HE ||
+                avctx->profile == AV_PROFILE_AAC_HE_V2 ||
+                avctx->profile == AV_PROFILE_MPEG2_AAC_HE ||
                 s->eld_sbr)
                 avctx->bit_rate /= 2;
         }
@@ -319,6 +382,30 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
         }
     }
 
+    s->metadata_mode = 0;
+    if (s->prog_ref) {
+        s->metadata_mode = 1;
+        s->metaDataSetup.prog_ref_level_present = 1;
+        s->metaDataSetup.prog_ref_level = s->prog_ref << 16;
+    }
+    if (s->drc_profile) {
+        s->metadata_mode = 1;
+        s->metaDataSetup.drc_profile = s->drc_profile;
+        s->metaDataSetup.drc_TargetRefLevel = s->drc_target_ref << 16;
+        if (s->comp_profile) {
+            /* Including the comp_profile means that we need to set the mode to ETSI */
+            s->metadata_mode = 2;
+            s->metaDataSetup.comp_profile = s->comp_profile;
+            s->metaDataSetup.comp_TargetRefLevel = s->comp_target_ref << 16;
+        }
+    }
+
+    if ((err = aacEncoder_SetParam(s->handle, AACENC_METADATA_MODE, s->metadata_mode)) != AACENC_OK) {
+        av_log(avctx, AV_LOG_ERROR, "Unable to set metadata mode to %d: %s\n",
+                s->metadata_mode, aac_get_error(err));
+        goto error;
+    }
+
     if ((err = aacEncEncode(s->handle, NULL, NULL, NULL, NULL)) != AACENC_OK) {
         av_log(avctx, AV_LOG_ERROR, "Unable to initialize the encoder: %s\n",
                aac_get_error(err));
@@ -363,12 +450,14 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     AACENC_BufDesc in_buf   = { 0 }, out_buf = { 0 };
     AACENC_InArgs  in_args  = { 0 };
     AACENC_OutArgs out_args = { 0 };
-    int in_buffer_identifier = IN_AUDIO_DATA;
-    int in_buffer_size, in_buffer_element_size;
+    void* inBuffer[] = { 0, &s->metaDataSetup };
+    int in_buffer_identifiers[] = { IN_AUDIO_DATA, IN_METADATA_SETUP };
+    int in_buffer_element_sizes[] = { 2, sizeof(AACENC_MetaData) };
+    int in_buffer_sizes[] = { 0, sizeof(s->metaDataSetup) };
     int out_buffer_identifier = OUT_BITSTREAM_DATA;
     int out_buffer_size, out_buffer_element_size;
-    void *in_ptr, *out_ptr;
-    int ret;
+    void *out_ptr;
+    int ret, discard_padding;
     uint8_t dummy_buf[1];
     AACENC_ERROR err;
 
@@ -376,13 +465,12 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     if (!frame) {
         /* Must be a non-null pointer, even if it's a dummy. We could use
          * the address of anything else on the stack as well. */
-        in_ptr               = dummy_buf;
-        in_buffer_size       = 0;
+        inBuffer[0]          = dummy_buf;
 
         in_args.numInSamples = -1;
     } else {
-        in_ptr               = frame->data[0];
-        in_buffer_size       = 2 * avctx->ch_layout.nb_channels * frame->nb_samples;
+        inBuffer[0]          = frame->data[0];
+        in_buffer_sizes[0]   = 2 * avctx->ch_layout.nb_channels * frame->nb_samples;
 
         in_args.numInSamples = avctx->ch_layout.nb_channels * frame->nb_samples;
 
@@ -391,12 +479,16 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
             return ret;
     }
 
-    in_buffer_element_size   = 2;
-    in_buf.numBufs           = 1;
-    in_buf.bufs              = &in_ptr;
-    in_buf.bufferIdentifiers = &in_buffer_identifier;
-    in_buf.bufSizes          = &in_buffer_size;
-    in_buf.bufElSizes        = &in_buffer_element_size;
+    if (s->metadata_mode == 0) {
+        in_buf.numBufs       = 1;
+    } else {
+        in_buf.numBufs       = 2;
+    }
+
+    in_buf.bufs              = (void**)inBuffer;
+    in_buf.bufferIdentifiers = in_buffer_identifiers;
+    in_buf.bufSizes          = in_buffer_sizes;
+    in_buf.bufElSizes        = in_buffer_element_sizes;
 
     /* The maximum packet size is 6144 bits aka 768 bytes per channel. */
     ret = ff_alloc_packet(avctx, avpkt, FFMAX(8192, 768 * avctx->ch_layout.nb_channels));
@@ -428,18 +520,36 @@ static int aac_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     ff_af_queue_remove(&s->afq, avctx->frame_size, &avpkt->pts,
                        &avpkt->duration);
 
+    discard_padding = avctx->frame_size - avpkt->duration;
+    // Check if subtraction resulted in an overflow
+    if ((discard_padding < avctx->frame_size) != (avpkt->duration > 0)) {
+        av_log(avctx, AV_LOG_ERROR, "discard padding overflow\n");
+        return AVERROR(EINVAL);
+    }
+    if ((!s->delay_sent && avctx->initial_padding > 0) || discard_padding > 0) {
+        uint8_t *side_data =
+            av_packet_new_side_data(avpkt, AV_PKT_DATA_SKIP_SAMPLES, 10);
+        if (!side_data)
+            return AVERROR(ENOMEM);
+        if (!s->delay_sent) {
+            AV_WL32(side_data, avctx->initial_padding);
+            s->delay_sent = 1;
+        }
+        AV_WL32(side_data + 4, discard_padding);
+    }
+
     avpkt->size     = out_args.numOutBytes;
     *got_packet_ptr = 1;
     return 0;
 }
 
 static const AVProfile profiles[] = {
-    { FF_PROFILE_AAC_LOW,   "LC"       },
-    { FF_PROFILE_AAC_HE,    "HE-AAC"   },
-    { FF_PROFILE_AAC_HE_V2, "HE-AACv2" },
-    { FF_PROFILE_AAC_LD,    "LD"       },
-    { FF_PROFILE_AAC_ELD,   "ELD"      },
-    { FF_PROFILE_UNKNOWN },
+    { AV_PROFILE_AAC_LOW,   "LC"       },
+    { AV_PROFILE_AAC_HE,    "HE-AAC"   },
+    { AV_PROFILE_AAC_HE_V2, "HE-AACv2" },
+    { AV_PROFILE_AAC_LD,    "LD"       },
+    { AV_PROFILE_AAC_ELD,   "ELD"      },
+    { AV_PROFILE_UNKNOWN },
 };
 
 static const FFCodecDefault aac_encode_defaults[] = {
@@ -500,11 +610,13 @@ const FFCodec ff_libfdk_aac_encoder = {
     .p.type                = AVMEDIA_TYPE_AUDIO,
     .p.id                  = AV_CODEC_ID_AAC,
     .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                             AV_CODEC_CAP_ENCODER_FLUSH |
                              AV_CODEC_CAP_SMALL_LAST_FRAME,
     .caps_internal         = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size        = sizeof(AACContext),
     .init                  = aac_encode_init,
     FF_CODEC_ENCODE_CB(aac_encode_frame),
+    .flush                 = aac_encode_flush,
     .close                 = aac_encode_close,
     .p.sample_fmts         = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                             AV_SAMPLE_FMT_NONE },

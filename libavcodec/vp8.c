@@ -31,8 +31,10 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "decode.h"
+#include "hwaccel_internal.h"
 #include "hwconfig.h"
 #include "mathops.h"
+#include "refstruct.h"
 #include "thread.h"
 #include "threadframe.h"
 #include "vp8.h"
@@ -104,53 +106,39 @@ static int vp8_alloc_frame(VP8Context *s, VP8Frame *f, int ref)
     if ((ret = ff_thread_get_ext_buffer(s->avctx, &f->tf,
                                         ref ? AV_GET_BUFFER_FLAG_REF : 0)) < 0)
         return ret;
-    if (!(f->seg_map = av_buffer_allocz(s->mb_width * s->mb_height)))
+    if (!(f->seg_map = ff_refstruct_allocz(s->mb_width * s->mb_height)))
         goto fail;
-    if (s->avctx->hwaccel) {
-        const AVHWAccel *hwaccel = s->avctx->hwaccel;
-        if (hwaccel->frame_priv_data_size) {
-            f->hwaccel_priv_buf = av_buffer_allocz(hwaccel->frame_priv_data_size);
-            if (!f->hwaccel_priv_buf)
-                goto fail;
-            f->hwaccel_picture_private = f->hwaccel_priv_buf->data;
-        }
-    }
+    ret = ff_hwaccel_frame_priv_alloc(s->avctx, &f->hwaccel_picture_private);
+    if (ret < 0)
+        goto fail;
+
     return 0;
 
 fail:
-    av_buffer_unref(&f->seg_map);
-    ff_thread_release_ext_buffer(s->avctx, &f->tf);
-    return AVERROR(ENOMEM);
+    ff_refstruct_unref(&f->seg_map);
+    ff_thread_release_ext_buffer(&f->tf);
+    return ret;
 }
 
-static void vp8_release_frame(VP8Context *s, VP8Frame *f)
+static void vp8_release_frame(VP8Frame *f)
 {
-    av_buffer_unref(&f->seg_map);
-    av_buffer_unref(&f->hwaccel_priv_buf);
-    f->hwaccel_picture_private = NULL;
-    ff_thread_release_ext_buffer(s->avctx, &f->tf);
+    ff_refstruct_unref(&f->seg_map);
+    ff_refstruct_unref(&f->hwaccel_picture_private);
+    ff_thread_release_ext_buffer(&f->tf);
 }
 
 #if CONFIG_VP8_DECODER
-static int vp8_ref_frame(VP8Context *s, VP8Frame *dst, const VP8Frame *src)
+static int vp8_ref_frame(VP8Frame *dst, const VP8Frame *src)
 {
     int ret;
 
-    vp8_release_frame(s, dst);
+    vp8_release_frame(dst);
 
     if ((ret = ff_thread_ref_frame(&dst->tf, &src->tf)) < 0)
         return ret;
-    if (src->seg_map &&
-        !(dst->seg_map = av_buffer_ref(src->seg_map))) {
-        vp8_release_frame(s, dst);
-        return AVERROR(ENOMEM);
-    }
-    if (src->hwaccel_picture_private) {
-        dst->hwaccel_priv_buf = av_buffer_ref(src->hwaccel_priv_buf);
-        if (!dst->hwaccel_priv_buf)
-            return AVERROR(ENOMEM);
-        dst->hwaccel_picture_private = dst->hwaccel_priv_buf->data;
-    }
+    ff_refstruct_replace(&dst->seg_map, src->seg_map);
+    ff_refstruct_replace(&dst->hwaccel_picture_private,
+                          src->hwaccel_picture_private);
 
     return 0;
 }
@@ -162,11 +150,14 @@ static void vp8_decode_flush_impl(AVCodecContext *avctx, int free_mem)
     int i;
 
     for (i = 0; i < FF_ARRAY_ELEMS(s->frames); i++)
-        vp8_release_frame(s, &s->frames[i]);
+        vp8_release_frame(&s->frames[i]);
     memset(s->framep, 0, sizeof(s->framep));
 
     if (free_mem)
         free_buffers(s);
+
+    if (FF_HW_HAS_CB(avctx, flush))
+        FF_HW_SIMPLE_CALL(avctx, flush);
 }
 
 static void vp8_decode_flush(AVCodecContext *avctx)
@@ -193,7 +184,7 @@ static VP8Frame *vp8_find_free_buffer(VP8Context *s)
         abort();
     }
     if (frame->tf.f->buf[0])
-        vp8_release_frame(s, frame);
+        vp8_release_frame(frame);
 
     return frame;
 }
@@ -269,8 +260,16 @@ int update_dimensions(VP8Context *s, int width, int height, int is_vp7)
             return AVERROR(ENOMEM);
         }
 #if HAVE_THREADS
-        pthread_mutex_init(&s->thread_data[i].lock, NULL);
-        pthread_cond_init(&s->thread_data[i].cond, NULL);
+        ret = pthread_mutex_init(&s->thread_data[i].lock, NULL);
+        if (ret) {
+            free_buffers(s);
+            return AVERROR(ret);
+        }
+        ret = pthread_cond_init(&s->thread_data[i].cond, NULL);
+        if (ret) {
+            free_buffers(s);
+            return AVERROR(ret);
+        }
 #endif
     }
 
@@ -363,9 +362,8 @@ static int setup_partitions(VP8Context *s, const uint8_t *buf, int buf_size)
     }
 
     s->coeff_partition_size[i] = buf_size;
-    ff_vpx_init_range_decoder(&s->coeff_partition[i], buf, buf_size);
 
-    return 0;
+    return ff_vpx_init_range_decoder(&s->coeff_partition[i], buf, buf_size);
 }
 
 static void vp7_get_quants(VP8Context *s)
@@ -2332,9 +2330,9 @@ int vp78_decode_mv_mb_modes(AVCodecContext *avctx, VP8Frame *curframe,
             if (mb_y == 0)
                 AV_WN32A((mb - s->mb_width - 1)->intra4x4_pred_mode_top,
                          DC_PRED * 0x01010101);
-            decode_mb_mode(s, &s->mv_bounds, mb, mb_x, mb_y, curframe->seg_map->data + mb_xy,
+            decode_mb_mode(s, &s->mv_bounds, mb, mb_x, mb_y, curframe->seg_map + mb_xy,
                            prev_frame && prev_frame->seg_map ?
-                           prev_frame->seg_map->data + mb_xy : NULL, 1, is_vp7);
+                           prev_frame->seg_map + mb_xy : NULL, 1, is_vp7);
             s->mv_bounds.mv_min.x -= 64;
             s->mv_bounds.mv_max.x -= 64;
         }
@@ -2465,9 +2463,9 @@ static av_always_inline int decode_mb_row_no_filter(AVCodecContext *avctx, void 
                          dst[2] - dst[1], 2);
 
         if (!s->mb_layout)
-            decode_mb_mode(s, &td->mv_bounds, mb, mb_x, mb_y, curframe->seg_map->data + mb_xy,
+            decode_mb_mode(s, &td->mv_bounds, mb, mb_x, mb_y, curframe->seg_map + mb_xy,
                            prev_frame && prev_frame->seg_map ?
-                           prev_frame->seg_map->data + mb_xy : NULL, 0, is_vp7);
+                           prev_frame->seg_map + mb_xy : NULL, 0, is_vp7);
 
         prefetch_motion(s, mb, mb_x, mb_y, mb_xy, VP8_FRAME_PREVIOUS);
 
@@ -2708,7 +2706,7 @@ int vp78_decode_frame(AVCodecContext *avctx, AVFrame *rframe, int *got_frame,
             &s->frames[i] != s->framep[VP8_FRAME_PREVIOUS] &&
             &s->frames[i] != s->framep[VP8_FRAME_GOLDEN]   &&
             &s->frames[i] != s->framep[VP8_FRAME_ALTREF])
-            vp8_release_frame(s, &s->frames[i]);
+            vp8_release_frame(&s->frames[i]);
 
     curframe = s->framep[VP8_FRAME_CURRENT] = vp8_find_free_buffer(s);
 
@@ -2732,7 +2730,10 @@ int vp78_decode_frame(AVCodecContext *avctx, AVFrame *rframe, int *got_frame,
         goto err;
     }
 
-    curframe->tf.f->key_frame = s->keyframe;
+    if (s->keyframe)
+        curframe->tf.f->flags |= AV_FRAME_FLAG_KEY;
+    else
+        curframe->tf.f->flags &= ~AV_FRAME_FLAG_KEY;
     curframe->tf.f->pict_type = s->keyframe ? AV_PICTURE_TYPE_I
                                             : AV_PICTURE_TYPE_P;
     if ((ret = vp8_alloc_frame(s, curframe, referenced)) < 0)
@@ -2760,15 +2761,16 @@ int vp78_decode_frame(AVCodecContext *avctx, AVFrame *rframe, int *got_frame,
         ff_thread_finish_setup(avctx);
 
     if (avctx->hwaccel) {
-        ret = avctx->hwaccel->start_frame(avctx, avpkt->data, avpkt->size);
+        const FFHWAccel *hwaccel = ffhwaccel(avctx->hwaccel);
+        ret = hwaccel->start_frame(avctx, avpkt->data, avpkt->size);
         if (ret < 0)
             goto err;
 
-        ret = avctx->hwaccel->decode_slice(avctx, avpkt->data, avpkt->size);
+        ret = hwaccel->decode_slice(avctx, avpkt->data, avpkt->size);
         if (ret < 0)
             goto err;
 
-        ret = avctx->hwaccel->end_frame(avctx);
+        ret = hwaccel->end_frame(avctx);
         if (ret < 0)
             goto err;
 
@@ -2955,7 +2957,7 @@ static int vp8_decode_update_thread_context(AVCodecContext *dst,
 
     for (i = 0; i < FF_ARRAY_ELEMS(s_src->frames); i++) {
         if (s_src->frames[i].tf.f->buf[0]) {
-            int ret = vp8_ref_frame(s, &s->frames[i], &s_src->frames[i]);
+            int ret = vp8_ref_frame(&s->frames[i], &s_src->frames[i]);
             if (ret < 0)
                 return ret;
         }

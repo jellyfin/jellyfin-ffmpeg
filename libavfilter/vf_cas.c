@@ -19,7 +19,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -53,8 +53,8 @@ static int cas_slice8(AVFilterContext *avctx, void *arg, int jobnr, int nb_jobs)
     AVFrame *in = s->in;
 
     for (int p = 0; p < s->nb_planes; p++) {
-        const int slice_start = (s->planeheight[p] * jobnr) / nb_jobs;
-        const int slice_end = (s->planeheight[p] * (jobnr+1)) / nb_jobs;
+        const int slice_start = ff_slice_pos(s->planeheight[p], jobnr, nb_jobs);
+        const int slice_end = ff_slice_pos(s->planeheight[p], jobnr + 1, nb_jobs);
         const int linesize = out->linesize[p];
         const int in_linesize = in->linesize[p];
         const int w = s->planewidth[p];
@@ -120,8 +120,8 @@ static int cas_slice16(AVFilterContext *avctx, void *arg, int jobnr, int nb_jobs
     AVFrame *in = s->in;
 
     for (int p = 0; p < s->nb_planes; p++) {
-        const int slice_start = (s->planeheight[p] * jobnr) / nb_jobs;
-        const int slice_end = (s->planeheight[p] * (jobnr+1)) / nb_jobs;
+        const int slice_start = ff_slice_pos(s->planeheight[p], jobnr, nb_jobs);
+        const int slice_end = ff_slice_pos(s->planeheight[p], jobnr + 1, nb_jobs);
         const int linesize = out->linesize[p] / 2;
         const int in_linesize = in->linesize[p] / 2;
         const int w = s->planewidth[p];
@@ -255,13 +255,6 @@ static const AVFilterPad cas_inputs[] = {
     },
 };
 
-static const AVFilterPad cas_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #define OFFSET(x) offsetof(CASContext, x)
 #define VF AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
@@ -279,7 +272,7 @@ const AVFilter ff_vf_cas = {
     .priv_size     = sizeof(CASContext),
     .priv_class    = &cas_class,
     FILTER_INPUTS(cas_inputs),
-    FILTER_OUTPUTS(cas_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

@@ -21,11 +21,9 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
-#include "libavutil/opt.h"
 
 #include "audio.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "filters.h"
 #include "internal.h"
 
@@ -92,7 +90,6 @@ static int activate(AVFilterContext *ctx)
                                      plane_samples);
             }
         }
-        emms_c();
 
         av_frame_free(&s->frames[0]);
         av_frame_free(&s->frames[1]);

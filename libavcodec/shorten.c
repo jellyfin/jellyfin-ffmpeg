@@ -280,7 +280,7 @@ static int decode_wave_header(AVCodecContext *avctx, const uint8_t *header,
                               int header_size)
 {
     int len, bps;
-    short wave_format;
+    uint16_t wave_format;
     GetByteContext gb;
 
     bytestream2_init(&gb, header, header_size);
@@ -562,6 +562,7 @@ static int shorten_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     buf               = &s->bitstream[s->bitstream_index];
     buf_size         += s->bitstream_size;
     s->bitstream_size = buf_size;
+    memset(buf + buf_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
     /* do not decode until buffer has at least max_framesize bytes or
      * the end of the file has been reached */
@@ -814,8 +815,10 @@ const FFCodec ff_shorten_decoder = {
     FF_CODEC_DECODE_CB(shorten_decode_frame),
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DELAY |
-                      AV_CODEC_CAP_DR1 |
-                      AV_CODEC_CAP_SUBFRAMES ,
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_U8P,
                                                       AV_SAMPLE_FMT_NONE },

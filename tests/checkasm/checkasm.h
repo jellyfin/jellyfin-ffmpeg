@@ -37,6 +37,7 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/cpu.h"
+#include "libavutil/emms.h"
 #include "libavutil/internal.h"
 #include "libavutil/lfg.h"
 #include "libavutil/timer.h"
@@ -56,10 +57,12 @@ void checkasm_check_flacdsp(void);
 void checkasm_check_float_dsp(void);
 void checkasm_check_fmtconvert(void);
 void checkasm_check_g722dsp(void);
+void checkasm_check_h264chroma(void);
 void checkasm_check_h264dsp(void);
 void checkasm_check_h264pred(void);
 void checkasm_check_h264qpel(void);
 void checkasm_check_hevc_add_res(void);
+void checkasm_check_hevc_deblock(void);
 void checkasm_check_hevc_idct(void);
 void checkasm_check_hevc_pel(void);
 void checkasm_check_hevc_sao(void);
@@ -82,6 +85,7 @@ void checkasm_check_utvideodsp(void);
 void checkasm_check_v210dec(void);
 void checkasm_check_v210enc(void);
 void checkasm_check_vc1dsp(void);
+void checkasm_check_vf_bwdif(void);
 void checkasm_check_vf_eq(void);
 void checkasm_check_vf_gblur(void);
 void checkasm_check_vf_hflip(void);
@@ -208,11 +212,14 @@ void checkasm_checked_call(void *func, ...);
 void checkasm_set_function(void *);
 void *checkasm_get_wrapper(void);
 
-#if (__riscv_xlen == 64) && defined (__riscv_d)
+#if HAVE_RV && (__riscv_xlen == 64) && defined (__riscv_d)
 #define declare_new(ret, ...) \
     ret (*checked_call)(__VA_ARGS__) = checkasm_get_wrapper();
 #define call_new(...) \
     (checkasm_set_function(func_new), checked_call(__VA_ARGS__))
+#else
+#define declare_new(ret, ...)
+#define call_new(...) ((func_type *)func_new)(__VA_ARGS__)
 #endif
 #else
 #define declare_new(ret, ...)

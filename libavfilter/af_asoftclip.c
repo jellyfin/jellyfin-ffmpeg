@@ -22,8 +22,8 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "audio.h"
-#include "formats.h"
 
 #define MAX_OVERSAMPLE 64
 
@@ -410,8 +410,8 @@ static int filter_channels(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
     AVFrame *in = td->in;
     const int channels = td->channels;
     const int nb_samples = td->nb_samples;
-    const int start = (channels * jobnr) / nb_jobs;
-    const int end = (channels * (jobnr+1)) / nb_jobs;
+    const int start = ff_slice_pos(channels, jobnr, nb_jobs);
+    const int end = ff_slice_pos(channels, jobnr + 1, nb_jobs);
 
     s->filter(s, (void **)out->extended_data, (const void **)in->extended_data,
               nb_samples, channels, start, end);
@@ -473,20 +473,13 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_asoftclip = {
     .name           = "asoftclip",
     .description    = NULL_IF_CONFIG_SMALL("Audio Soft Clipper."),
     .priv_size      = sizeof(ASoftClipContext),
     .priv_class     = &asoftclip_class,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .uninit         = uninit,
     .process_command = ff_filter_process_command,

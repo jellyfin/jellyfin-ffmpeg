@@ -194,25 +194,27 @@ static int cmv_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((ret = av_image_check_size(s->width, s->height, 0, s->avctx)) < 0)
         return ret;
 
+    buf += EA_PREAMBLE_SIZE;
+    if (!(buf[0]&1) && buf_end - buf < s->width * s->height * (int64_t)(100 - s->avctx->discard_damaged_percentage) / 100)
+        return AVERROR_INVALIDDATA;
+
     if ((ret = ff_get_buffer(avctx, frame, AV_GET_BUFFER_FLAG_REF)) < 0)
         return ret;
 
     memcpy(frame->data[1], s->palette, AVPALETTE_SIZE);
 
-    buf += EA_PREAMBLE_SIZE;
     if ((buf[0]&1)) {  // subtype
         cmv_decode_inter(s, frame, buf+2, buf_end);
-        frame->key_frame = 0;
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
         frame->pict_type = AV_PICTURE_TYPE_P;
     }else{
-        frame->key_frame = 1;
+        frame->flags |= AV_FRAME_FLAG_KEY;
         frame->pict_type = AV_PICTURE_TYPE_I;
         cmv_decode_intra(s, frame, buf+2, buf_end);
     }
 
-    av_frame_unref(s->last2_frame);
-    av_frame_move_ref(s->last2_frame, s->last_frame);
-    if ((ret = av_frame_ref(s->last_frame, frame)) < 0)
+    FFSWAP(AVFrame*, s->last2_frame, s->last_frame);
+    if ((ret = av_frame_replace(s->last_frame, frame)) < 0)
         return ret;
 
     *got_frame = 1;

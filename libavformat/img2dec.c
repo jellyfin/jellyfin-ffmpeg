@@ -25,6 +25,7 @@
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #include <sys/stat.h>
+#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
@@ -36,7 +37,8 @@
 #include "avio_internal.h"
 #include "internal.h"
 #include "img2.h"
-#include "jpegxl_probe.h"
+#include "os_support.h"
+#include "libavcodec/jpegxl_parse.h"
 #include "libavcodec/mjpeg.h"
 #include "libavcodec/vbn.h"
 #include "libavcodec/xwd.h"
@@ -412,8 +414,9 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
     char filename_bytes[1024];
     char *filename = filename_bytes;
     int i, res;
-    int size[3]           = { 0 }, ret[3] = { 0 };
-    AVIOContext *f[3]     = { NULL };
+    int ret[3] = { 0 };
+    int64_t size[3] = { 0 };
+    AVIOContext *f[3] = { NULL };
     AVCodecParameters *par = s1->streams[0]->codecpar;
 
     if (!s->is_pipe) {
@@ -493,7 +496,15 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
         }
     }
 
-    res = av_new_packet(pkt, size[0] + size[1] + size[2]);
+    int total_size = 0;
+    for (int i = 0; i < 3; i++) {
+        if ((uint64_t)size[i] > INT_MAX - total_size)
+            return AVERROR_INVALIDDATA;
+
+        total_size += size[i];
+    }
+
+    res = av_new_packet(pkt, total_size);
     if (res < 0) {
         goto fail;
     }
@@ -501,6 +512,7 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
     pkt->flags       |= AV_PKT_FLAG_KEY;
     if (s->ts_from_file) {
         struct stat img_stat;
+        av_assert0(!s->is_pipe); // The ts_from_file option is not supported by piped input demuxers
         if (stat(filename, &img_stat)) {
             res = AVERROR(EIO);
             goto fail;
@@ -558,6 +570,7 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
         }
         goto fail;
     } else {
+        memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
         s->img_count++;
         s->img_number++;
         s->pts++;
@@ -791,13 +804,14 @@ static int jpeg_probe(const AVProbeData *p)
                 return 0;
             state = EOI;
             break;
-        case DQT:
         case APP0:
-            if (AV_RL32(&b[i + 4]) == MKTAG('J','F','I','F'))
+            if (c == APP0 && AV_RL32(&b[i + 4]) == MKTAG('J','F','I','F'))
                 got_header = 1;
+            /* fallthrough */
         case APP1:
-            if (AV_RL32(&b[i + 4]) == MKTAG('E','x','i','f'))
+            if (c == APP1 && AV_RL32(&b[i + 4]) == MKTAG('E','x','i','f'))
                 got_header = 1;
+            /* fallthrough */
         case APP2:
         case APP3:
         case APP4:
@@ -812,6 +826,7 @@ static int jpeg_probe(const AVProbeData *p)
         case APP13:
         case APP14:
         case APP15:
+        case DQT: /* fallthrough */
         case COM:
             i += AV_RB16(&b[i + 2]) + 1;
             break;
@@ -850,7 +865,7 @@ static int jpegxl_probe(const AVProbeData *p)
     if (AV_RL16(b) != FF_JPEGXL_CODESTREAM_SIGNATURE_LE)
         return 0;
 #if CONFIG_IMAGE_JPEGXL_PIPE_DEMUXER
-    if (ff_jpegxl_verify_codestream_header(p->buf, p->buf_size) >= 0)
+    if (ff_jpegxl_parse_codestream_header(p->buf, p->buf_size, NULL, 5) >= 0)
         return AVPROBE_SCORE_MAX - 2;
 #endif
     return 0;
@@ -964,8 +979,13 @@ static int svg_probe(const AVProbeData *p)
 {
     const uint8_t *b = p->buf;
     const uint8_t *end = p->buf + p->buf_size;
-
-    if (memcmp(p->buf, "<?xml", 5))
+    while (b < end && av_isspace(*b))
+        b++;
+    if (b >= end - 5)
+        return 0;
+    if (!memcmp(b, "<svg", 4))
+        return AVPROBE_SCORE_EXTENSION + 1;
+    if (memcmp(p->buf, "<?xml", 5) && memcmp(b, "<!--", 4))
         return 0;
     while (b < end) {
         int inc = ff_subtitles_next_line(b);

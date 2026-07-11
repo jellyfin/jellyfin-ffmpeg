@@ -39,9 +39,13 @@
 
 static int sox_probe(const AVProbeData *p)
 {
-    if (AV_RL32(p->buf) == SOX_TAG || AV_RB32(p->buf) == SOX_TAG)
-        return AVPROBE_SCORE_MAX;
-    return 0;
+    if (AV_RL32(p->buf) != SOX_TAG && AV_RB32(p->buf) != SOX_TAG)
+        return 0;
+    if (AV_RN32(p->buf+4) == 0)
+        return 0;
+    if (AV_RN32(p->buf+24) == 0)
+        return 0;
+    return AVPROBE_SCORE_MAX;
 }
 
 static int sox_read_header(AVFormatContext *s)
@@ -81,7 +85,7 @@ static int sox_read_header(AVFormatContext *s)
         return AVERROR_INVALIDDATA;
     }
 
-    if (sample_rate <= 0 || sample_rate > INT_MAX) {
+    if (sample_rate <= 0 || sample_rate > INT_MAX || isnan(sample_rate)) {
         av_log(s, AV_LOG_ERROR, "invalid sample rate (%f)\n", sample_rate);
         return AVERROR_INVALIDDATA;
     }
@@ -129,7 +133,7 @@ static int sox_read_header(AVFormatContext *s)
 
 const AVInputFormat ff_sox_demuxer = {
     .name           = "sox",
-    .long_name      = NULL_IF_CONFIG_SMALL("SoX native"),
+    .long_name      = NULL_IF_CONFIG_SMALL("SoX (Sound eXchange) native"),
     .read_probe     = sox_probe,
     .read_header    = sox_read_header,
     .read_packet    = ff_pcm_read_packet,

@@ -76,7 +76,6 @@ static double get_scene_score(AVFilterContext *ctx, AVFrame *crnt, AVFrame *next
 
         ff_dlog(ctx, "get_scene_score() process\n");
         s->sad(crnt->data[0], crnt->linesize[0], next->data[0], next->linesize[0], crnt->width, crnt->height, &sad);
-        emms_c();
         mafd = (double)sad * 100.0 / (crnt->width * crnt->height) / (1 << s->bitdepth);
         diff = fabs(mafd - s->prev_mafd);
         ret  = av_clipf(FFMIN(mafd, diff), 0, 100.0);
@@ -318,7 +317,7 @@ retry:
         return ret;
 
     if (inpicref) {
-        if (inpicref->interlaced_frame)
+        if (inpicref->flags & AV_FRAME_FLAG_INTERLACED)
             av_log(ctx, AV_LOG_WARNING, "Interlaced frame found - the output will not be correct.\n");
 
         if (inpicref->pts == AV_NOPTS_VALUE) {

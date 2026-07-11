@@ -27,6 +27,7 @@
  * project, and ported by Arwa Arif for FFmpeg.
  */
 
+#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
@@ -34,6 +35,7 @@
 #include "internal.h"
 #include "qp_table.h"
 #include "vf_pp7.h"
+#include "video.h"
 
 enum mode {
     MODE_HARD,
@@ -385,20 +387,13 @@ static const AVFilterPad pp7_inputs[] = {
     },
 };
 
-static const AVFilterPad pp7_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_pp7 = {
     .name            = "pp7",
     .description     = NULL_IF_CONFIG_SMALL("Apply Postprocessing 7 filter."),
     .priv_size       = sizeof(PP7Context),
     .uninit          = uninit,
     FILTER_INPUTS(pp7_inputs),
-    FILTER_OUTPUTS(pp7_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class      = &pp7_class,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,

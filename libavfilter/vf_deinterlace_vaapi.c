@@ -23,7 +23,6 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "vaapi_vpp.h"
@@ -252,7 +251,7 @@ static int deint_vaapi_filter_frame(AVFilterLink *inlink, AVFrame *input_frame)
         if (err < 0)
             goto fail;
 
-        if (!ctx->auto_enable || input_frame->interlaced_frame) {
+        if (!ctx->auto_enable || (input_frame->flags & AV_FRAME_FLAG_INTERLACED)) {
             vas = vaMapBuffer(vpp_ctx->hwctx->display, vpp_ctx->filter_buffers[0],
                               &filter_params_addr);
             if (vas != VA_STATUS_SUCCESS) {
@@ -263,7 +262,7 @@ static int deint_vaapi_filter_frame(AVFilterLink *inlink, AVFrame *input_frame)
             }
             filter_params = filter_params_addr;
             filter_params->flags = 0;
-            if (input_frame->top_field_first) {
+            if (input_frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) {
                 filter_params->flags |= field ? VA_DEINTERLACING_BOTTOM_FIELD : 0;
             } else {
                 filter_params->flags |= VA_DEINTERLACING_BOTTOM_FIELD_FIRST;
@@ -303,7 +302,12 @@ static int deint_vaapi_filter_frame(AVFilterLink *inlink, AVFrame *input_frame)
                 output_frame->pts = input_frame->pts +
                     ctx->frame_queue[current_frame_index + 1]->pts;
         }
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         output_frame->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        output_frame->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
         av_log(avctx, AV_LOG_DEBUG, "Filter output: %s, %ux%u (%"PRId64").\n",
                av_get_pix_fmt_name(output_frame->format),

@@ -607,6 +607,7 @@ static int sbr_make_f_derived(AACContext *ac, SpectralBandReplication *sbr)
 
     if (sbr->n_q > 5) {
         av_log(ac->avctx, AV_LOG_ERROR, "Too many noise floor scale factors: %d\n", sbr->n_q);
+        sbr->n_q = 1;
         return -1;
     }
 
@@ -973,7 +974,7 @@ static void read_sbr_extension(AACContext *ac, SpectralBandReplication *sbr,
             *num_bits_left = 0;
         } else {
             *num_bits_left -= ff_ps_read_data(ac->avctx, gb, &sbr->ps.common, *num_bits_left);
-            ac->avctx->profile = FF_PROFILE_AAC_HE_V2;
+            ac->avctx->profile = AV_PROFILE_AAC_HE_V2;
             // ensure the warning is not printed if PS extension is present
             ac->warned_he_aac_mono = 1;
         }
@@ -1452,6 +1453,9 @@ static void sbr_env_estimate(AAC_FLOAT (*e_curr)[48], INTFLOAT X_high[64][40][2]
             int ilb = ch_data->t_env[e]     * 2 + ENVELOPE_ADJUSTMENT_OFFSET;
             int iub = ch_data->t_env[e + 1] * 2 + ENVELOPE_ADJUSTMENT_OFFSET;
 
+            if (ilb >= 40)
+                return;
+
             for (m = 0; m < sbr->m[1]; m++) {
                 AAC_FLOAT sum = sbr->dsp.sum_square(X_high[m+kx1] + ilb, iub - ilb);
 #if USE_FIXED
@@ -1469,6 +1473,9 @@ static void sbr_env_estimate(AAC_FLOAT (*e_curr)[48], INTFLOAT X_high[64][40][2]
             int ilb = ch_data->t_env[e]     * 2 + ENVELOPE_ADJUSTMENT_OFFSET;
             int iub = ch_data->t_env[e + 1] * 2 + ENVELOPE_ADJUSTMENT_OFFSET;
             const uint16_t *table = ch_data->bs_freq_res[e + 1] ? sbr->f_tablehigh : sbr->f_tablelow;
+
+            if (ilb >= 40)
+                return;
 
             for (p = 0; p < sbr->n[ch_data->bs_freq_res[e + 1]]; p++) {
 #if USE_FIXED

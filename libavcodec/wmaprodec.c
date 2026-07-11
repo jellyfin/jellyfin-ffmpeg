@@ -320,25 +320,25 @@ static av_cold int get_rate(AVCodecContext *avctx)
 
 static av_cold void decode_init_static(void)
 {
-    INIT_VLC_STATIC_FROM_LENGTHS(&sf_vlc, SCALEVLCBITS, HUFF_SCALE_SIZE,
+    VLC_INIT_STATIC_FROM_LENGTHS(&sf_vlc, SCALEVLCBITS, HUFF_SCALE_SIZE,
                                  &scale_table[0][1], 2,
                                  &scale_table[0][0], 2, 1, -60, 0, 616);
-    INIT_VLC_STATIC_FROM_LENGTHS(&sf_rl_vlc, VLCBITS, HUFF_SCALE_RL_SIZE,
+    VLC_INIT_STATIC_FROM_LENGTHS(&sf_rl_vlc, VLCBITS, HUFF_SCALE_RL_SIZE,
                                  &scale_rl_table[0][1], 2,
                                  &scale_rl_table[0][0], 2, 1, 0, 0, 1406);
-    INIT_VLC_STATIC_FROM_LENGTHS(&coef_vlc[0], VLCBITS, HUFF_COEF0_SIZE,
+    VLC_INIT_STATIC_FROM_LENGTHS(&coef_vlc[0], VLCBITS, HUFF_COEF0_SIZE,
                                  coef0_lens, 1,
                                  coef0_syms, 2, 2, 0, 0, 2108);
-    INIT_VLC_STATIC_FROM_LENGTHS(&coef_vlc[1], VLCBITS, HUFF_COEF1_SIZE,
+    VLC_INIT_STATIC_FROM_LENGTHS(&coef_vlc[1], VLCBITS, HUFF_COEF1_SIZE,
                                  &coef1_table[0][1], 2,
                                  &coef1_table[0][0], 2, 1, 0, 0, 3912);
-    INIT_VLC_STATIC_FROM_LENGTHS(&vec4_vlc, VLCBITS, HUFF_VEC4_SIZE,
+    VLC_INIT_STATIC_FROM_LENGTHS(&vec4_vlc, VLCBITS, HUFF_VEC4_SIZE,
                                  vec4_lens, 1,
                                  vec4_syms, 2, 2, -1, 0, 604);
-    INIT_VLC_STATIC_FROM_LENGTHS(&vec2_vlc, VLCBITS, HUFF_VEC2_SIZE,
+    VLC_INIT_STATIC_FROM_LENGTHS(&vec2_vlc, VLCBITS, HUFF_VEC2_SIZE,
                                  &vec2_table[0][1], 2,
                                  &vec2_table[0][0], 2, 1, -1, 0, 562);
-    INIT_VLC_STATIC_FROM_LENGTHS(&vec1_vlc, VLCBITS, HUFF_VEC1_SIZE,
+    VLC_INIT_STATIC_FROM_LENGTHS(&vec1_vlc, VLCBITS, HUFF_VEC1_SIZE,
                                  &vec1_table[0][1], 2,
                                  &vec1_table[0][0], 2, 1, 0, 0, 562);
 
@@ -2094,7 +2094,11 @@ const FFCodec ff_wmapro_decoder = {
     .init           = wmapro_decode_init,
     .close          = wmapro_decode_end,
     FF_CODEC_DECODE_CB(wmapro_decode_packet),
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1,
     .flush          = wmapro_flush,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
@@ -2111,7 +2115,11 @@ const FFCodec ff_xma1_decoder = {
     .close          = xma_decode_end,
     FF_CODEC_DECODE_CB(xma_decode_packet),
     .flush          = xma_flush,
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
@@ -2127,7 +2135,11 @@ const FFCodec ff_xma2_decoder = {
     .close          = xma_decode_end,
     FF_CODEC_DECODE_CB(xma_decode_packet),
     .flush          = xma_flush,
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,

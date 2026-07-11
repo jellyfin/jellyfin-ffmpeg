@@ -29,6 +29,7 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "scene_sad.h"
+#include "video.h"
 
 typedef struct SCDetContext {
     const AVClass *class;
@@ -125,7 +126,6 @@ static double get_scene_score(AVFilterContext *ctx, AVFrame *frame)
             count += s->width[plane] * s->height[plane];
         }
 
-        emms_c();
         mafd = (double)sad * 100. / count / (1ULL << s->bitdepth);
         diff = fabs(mafd - s->prev_mafd);
         ret  = av_clipf(FFMIN(mafd, diff), 0, 100.);
@@ -193,13 +193,6 @@ static const AVFilterPad scdet_inputs[] = {
     },
 };
 
-static const AVFilterPad scdet_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_scdet = {
     .name          = "scdet",
     .description   = NULL_IF_CONFIG_SMALL("Detect video scene change"),
@@ -208,7 +201,7 @@ const AVFilter ff_vf_scdet = {
     .uninit        = uninit,
     .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(scdet_inputs),
-    FILTER_OUTPUTS(scdet_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .activate      = activate,
 };

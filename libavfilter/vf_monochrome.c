@@ -21,9 +21,9 @@
 #include <float.h>
 
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
+#include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -88,11 +88,11 @@ static int monochrome_slice8(AVFilterContext *ctx, void *arg, int jobnr, int nb_
     const float imax = 1.f / max;
     const int width = frame->width;
     const int height = frame->height;
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ylinesize = frame->linesize[0];
-    const int ulinesize = frame->linesize[1];
-    const int vlinesize = frame->linesize[2];
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ylinesize = frame->linesize[0];
+    const ptrdiff_t ulinesize = frame->linesize[1];
+    const ptrdiff_t vlinesize = frame->linesize[2];
     uint8_t *yptr = frame->data[0] + slice_start * ylinesize;
     const float ihigh = 1.f - s->high;
     const float size = 1.f / s->size;
@@ -127,11 +127,11 @@ static int monochrome_slice16(AVFilterContext *ctx, void *arg, int jobnr, int nb
     const float imax = 1.f / max;
     const int width = frame->width;
     const int height = frame->height;
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ylinesize = frame->linesize[0] / 2;
-    const int ulinesize = frame->linesize[1] / 2;
-    const int vlinesize = frame->linesize[2] / 2;
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ylinesize = frame->linesize[0] / 2;
+    const ptrdiff_t ulinesize = frame->linesize[1] / 2;
+    const ptrdiff_t vlinesize = frame->linesize[2] / 2;
     uint16_t *yptr = (uint16_t *)frame->data[0] + slice_start * ylinesize;
     const float ihigh = 1.f - s->high;
     const float size = 1.f / s->size;
@@ -165,10 +165,10 @@ static int clear_slice8(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const int subh = s->subh;
     const int width = AV_CEIL_RSHIFT(frame->width, subw);
     const int height = AV_CEIL_RSHIFT(frame->height, subh);
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ulinesize = frame->linesize[1];
-    const int vlinesize = frame->linesize[2];
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ulinesize = frame->linesize[1];
+    const ptrdiff_t vlinesize = frame->linesize[2];
 
     for (int y = slice_start; y < slice_end; y++) {
         uint8_t *uptr = frame->data[1] + y * ulinesize;
@@ -191,10 +191,10 @@ static int clear_slice16(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
     const int subh = s->subh;
     const int width = AV_CEIL_RSHIFT(frame->width, subw);
     const int height = AV_CEIL_RSHIFT(frame->height, subh);
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end = (height * (jobnr + 1)) / nb_jobs;
-    const int ulinesize = frame->linesize[1] / 2;
-    const int vlinesize = frame->linesize[2] / 2;
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
+    const ptrdiff_t ulinesize = frame->linesize[1] / 2;
+    const ptrdiff_t vlinesize = frame->linesize[2] / 2;
 
     for (int y = slice_start; y < slice_end; y++) {
         uint16_t *uptr = (uint16_t *)frame->data[1] + y * ulinesize;
@@ -268,13 +268,6 @@ static const AVFilterPad monochrome_inputs[] = {
     },
 };
 
-static const AVFilterPad monochrome_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #define OFFSET(x) offsetof(MonochromeContext, x)
 #define VF AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
@@ -294,7 +287,7 @@ const AVFilter ff_vf_monochrome = {
     .priv_size     = sizeof(MonochromeContext),
     .priv_class    = &monochrome_class,
     FILTER_INPUTS(monochrome_inputs),
-    FILTER_OUTPUTS(monochrome_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixel_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

@@ -17,9 +17,7 @@
  */
 
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
@@ -52,7 +50,7 @@ static int colorkey_opencl_init(AVFilterContext *avctx)
     cl_int cle;
     int err;
 
-    err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_colorkey, 1);
+    err = ff_opencl_filter_load_program(avctx, &ff_source_colorkey_cl, 1);
     if (err < 0)
         goto fail;
 
@@ -238,5 +236,6 @@ const AVFilter ff_vf_colorkey_opencl = {
     FILTER_INPUTS(colorkey_opencl_inputs),
     FILTER_OUTPUTS(colorkey_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
-    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE
+    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

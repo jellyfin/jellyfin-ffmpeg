@@ -126,6 +126,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         s->prev = ff_get_audio_buffer(inlink, 1);
         if (!s->prev) {
             av_frame_free(&in);
+            av_frame_free(&out);
             return AVERROR(ENOMEM);
         }
     }
@@ -153,13 +154,6 @@ static const AVFilterPad aderivative_inputs[] = {
     },
 };
 
-static const AVFilterPad aderivative_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 static const AVOption aderivative_options[] = {
     { NULL }
 };
@@ -173,7 +167,7 @@ const AVFilter ff_af_aderivative = {
     .priv_class    = &aderivative_class,
     .uninit        = uninit,
     FILTER_INPUTS(aderivative_inputs),
-    FILTER_OUTPUTS(aderivative_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_FLTP,
                       AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_DBLP),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
@@ -186,7 +180,7 @@ const AVFilter ff_af_aintegral = {
     .priv_class    = &aderivative_class,
     .uninit        = uninit,
     FILTER_INPUTS(aderivative_inputs),
-    FILTER_OUTPUTS(aderivative_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

@@ -25,36 +25,32 @@
 #include "avformat.h"
 #include "pcm.h"
 
-#define AT1_SU_SIZE     212
+#define AT1_SU_SIZE 212
 
 static int aea_read_probe(const AVProbeData *p)
 {
-    if (p->buf_size <= 2048+212)
+    if (p->buf_size <= 2048+AT1_SU_SIZE)
         return 0;
 
     /* Magic is '00 08 00 00' in little-endian*/
     if (AV_RL32(p->buf)==0x800) {
-        int ch, i;
+        int ch, block_size, score = 0;
         ch = p->buf[264];
 
         if (ch != 1 && ch != 2)
             return 0;
 
+        block_size = ch * AT1_SU_SIZE;
         /* Check so that the redundant bsm bytes and info bytes are valid
          * the block size mode bytes have to be the same
          * the info bytes have to be the same
          */
-        for (i = 2048; i + 211 < p->buf_size; i+= 212) {
-            int bsm_s, bsm_e, inb_s, inb_e;
-            bsm_s = p->buf[0];
-            inb_s = p->buf[1];
-            inb_e = p->buf[210];
-            bsm_e = p->buf[211];
-
-            if (bsm_s != bsm_e || inb_s != inb_e)
+        for (int i = 2048 + block_size; i + block_size <= p->buf_size; i += block_size) {
+            if (AV_RN16(p->buf+i) != AV_RN16(p->buf+i+AT1_SU_SIZE))
                 return 0;
+            score++;
         }
-        return AVPROBE_SCORE_MAX / 4 + 1;
+        return FFMIN(AVPROBE_SCORE_MAX / 4 + score, AVPROBE_SCORE_MAX);
     }
     return 0;
 }
@@ -75,7 +71,7 @@ static int aea_read_header(AVFormatContext *s)
     st->codecpar->codec_type     = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id       = AV_CODEC_ID_ATRAC1;
     st->codecpar->sample_rate    = 44100;
-    st->codecpar->bit_rate       = 292000;
+    st->codecpar->bit_rate       = 146000 * channels;
 
     if (channels != 1 && channels != 2) {
         av_log(s, AV_LOG_ERROR, "Channels %d not supported!\n", channels);
@@ -90,13 +86,7 @@ static int aea_read_header(AVFormatContext *s)
 
 static int aea_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
-    int ret = av_get_packet(s->pb, pkt, s->streams[0]->codecpar->block_align);
-
-    pkt->stream_index = 0;
-    if (ret <= 0)
-        return AVERROR(EIO);
-
-    return ret;
+    return av_get_packet(s->pb, pkt, s->streams[0]->codecpar->block_align);
 }
 
 const AVInputFormat ff_aea_demuxer = {

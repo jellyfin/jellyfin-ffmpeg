@@ -25,7 +25,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -68,6 +68,12 @@ enum Curves {
     CIVIDIS,
     SOLAR,
     SPECTRAL,
+    COOL,
+    HEAT,
+    FIERY,
+    BLUES,
+    GREEN,
+    HELIX,
     NB_CURVES,
 };
 
@@ -87,6 +93,12 @@ enum Presets {
     PRESET_PREFERRED,
     PRESET_TOTAL,
     PRESET_SPECTRAL,
+    PRESET_COOL,
+    PRESET_HEAT,
+    PRESET_FIERY,
+    PRESET_BLUES,
+    PRESET_GREEN,
+    PRESET_HELIX,
     NB_PRESETS,
 };
 
@@ -96,6 +108,7 @@ typedef struct Curve {
     double coef[3][8];
     double offset[3];
     curve_fun fun[3];
+    int yuv;
 } Curve;
 
 typedef struct Fill {
@@ -135,6 +148,46 @@ static double limit(double x)
 static double solarfun(double x)
 {
     return 0.5 * sin(x) + 0.5;
+}
+
+static double coolfunu(double x)
+{
+    return 0.25 * sin(2.0 * x * M_PI - M_PI) + 0.5;
+}
+
+static double coolfunv(double x)
+{
+    return 0.25 * sin(2.0 * x * M_PI) + 0.5;
+}
+
+static double heatfunu(double x)
+{
+    return 0.25 * cos(2.0 * x * M_PI + M_PI) + 0.75;
+}
+
+static double heatfunv(double x)
+{
+    return 0.25 * sin(2.0 * x * M_PI) + 0.5;
+}
+
+static double fieryfunu(double x)
+{
+    return 0.75 - 0.25 * cos(2.0 * x * M_PI);
+}
+
+static double fieryfunv(double x)
+{
+    return 0.25 + 0.25 * cos(2.0 * x * M_PI);
+}
+
+static double helixfunu(double x)
+{
+    return 0.5 + 0.15 * sin(5.0 * x * M_PI + M_PI);
+}
+
+static double helixfunv(double x)
+{
+    return 0.5 + 0.15 * cos(6.0 * x * M_PI + M_PI_2);
 }
 
 static const Curve curves[] =
@@ -181,6 +234,54 @@ static const Curve curves[] =
         {  1.2526e-15,  -1.2203e-12,   4.7013e-10,  -8.9360e-08,   8.3839e-06,  -3.6642e-04, 1.4784e-02,  -9.8075e-03 },
         {  1.4755e-15,  -1.6765e-12,   7.3188e-10,  -1.5522e-07,   1.6406e-05,  -7.7883e-04, 1.4502e-02,   2.1597e-01 },
     }, .fun = { limit, limit, limit }, },
+    [COOL] = {{
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+    },
+    .offset = { 0., 0., 0 },
+    .yuv = 1,
+    .fun = { coolfunu, limit, coolfunv }, },
+    [HEAT] = {{
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+    },
+    .offset = { 0., 0., 0 },
+    .yuv = 1,
+    .fun = { heatfunu, limit, heatfunv }, },
+    [FIERY] = {{
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+    },
+    .offset = { 0., 0., 0 },
+    .yuv = 1,
+    .fun = { fieryfunu, limit, fieryfunv }, },
+    [BLUES] = {{
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+    },
+    .offset = { 0., 0., 0 },
+    .yuv = 1,
+    .fun = { fieryfunv, limit, fieryfunu }, },
+    [GREEN] = {{
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+    },
+    .offset = { 0., 0., 0 },
+    .yuv = 1,
+    .fun = { fieryfunv, limit, fieryfunv }, },
+    [HELIX] = {{
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+        { 0, 0, 0, 0, 0, 0, 1./256, 0 },
+    },
+    .offset = { 0., 0., 0 },
+    .yuv = 1,
+    .fun = { helixfunu, limit, helixfunv }, },
 };
 
 static const Preset presets[] =
@@ -200,6 +301,12 @@ static const Preset presets[] =
     [PRESET_HIGHLIGHTS] = { 3, highlights_range, NULL,     highlights_fills },
     [PRESET_SOLAR]   = { 1, &full_range, &curves[SOLAR],   NULL },
     [PRESET_SPECTRAL]= { 1, &full_range, &curves[SPECTRAL],NULL },
+    [PRESET_COOL]    = { 1, &full_range, &curves[COOL],    NULL },
+    [PRESET_HEAT]    = { 1, &full_range, &curves[HEAT],    NULL },
+    [PRESET_FIERY]   = { 1, &full_range, &curves[FIERY],   NULL },
+    [PRESET_BLUES]   = { 1, &full_range, &curves[BLUES],   NULL },
+    [PRESET_GREEN]   = { 1, &full_range, &curves[GREEN],   NULL },
+    [PRESET_HELIX]   = { 1, &full_range, &curves[HELIX],   NULL },
 };
 
 typedef struct PseudoColorContext {
@@ -255,6 +362,12 @@ static const AVOption pseudocolor_options[] = {
     { "preferred",  NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_PREFERRED},.flags=FLAGS,"preset" },
     { "total",      NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_TOTAL},   .flags=FLAGS, "preset" },
     { "spectral",   NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_SPECTRAL},.flags = FLAGS, "preset" },
+    { "cool",       NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_COOL},    .flags = FLAGS, "preset" },
+    { "heat",       NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_HEAT},    .flags = FLAGS, "preset" },
+    { "fiery",      NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_FIERY},   .flags = FLAGS, "preset" },
+    { "blues",      NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_BLUES},   .flags = FLAGS, "preset" },
+    { "green",      NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_GREEN},   .flags = FLAGS, "preset" },
+    { "helix",      NULL,                  0,                        AV_OPT_TYPE_CONST,  {.i64=PRESET_HELIX},   .flags = FLAGS, "preset" },
     { "opacity", "set pseudocolor opacity",OFFSET(opacity),          AV_OPT_TYPE_FLOAT,  {.dbl=1}, 0, 1, .flags = FLAGS },
     { NULL }
 };
@@ -272,8 +385,8 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUVA422P10,
     AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10,
     AV_PIX_FMT_YUV420P12,
-    AV_PIX_FMT_YUV422P12,
-    AV_PIX_FMT_YUV444P12,
+    AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUVA422P12,
+    AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUVA444P12,
     AV_PIX_FMT_YUV420P14,
     AV_PIX_FMT_YUV422P14,
     AV_PIX_FMT_YUV444P14,
@@ -283,7 +396,7 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_GBRP9,
     AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
     AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12,
-    AV_PIX_FMT_GBRP14,
+    AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRAP14,
     AV_PIX_FMT_GBRP16, AV_PIX_FMT_GBRAP16,
     AV_PIX_FMT_NONE
 };
@@ -571,6 +684,19 @@ static void pseudocolor_filter_16_11d(int max, int width, int height,
 ((0.50000*224.0/255.0) * r1 - (0.45415*224.0/255.0) * g1 - \
    (0.04585*224.0/255.0) * b1 + max * 0.5)
 
+#define Wr 0.2126
+#define Wb 0.0722
+#define Wg (1 - Wr - Wb)
+#define Umax 0.436
+#define Vmax 0.615
+
+#define YUV_BT709_TO_R(y, u, v, max) \
+    ((y + v * (1 - Wr) / Vmax) * max)
+#define YUV_BT709_TO_G(y, u, v, max) \
+    ((y - (u * Wb * (1 - Wb) / (Umax * Wg)) - (v * Wr * (1 - Wr) / (Vmax * Wg))) * max)
+#define YUV_BT709_TO_B(y, u, v, max) \
+    ((y + u * (1 - Wb) / Umax) * max)
+
 static double poly_eval(const double *const poly, double x, curve_fun fun)
 {
     double res = 0.;
@@ -696,11 +822,17 @@ static int config_input(AVFilterLink *inlink)
                     const double lf = i / (double)s->max * 256.;
                     double r, g, b;
 
-                    g = poly_eval(curve.coef[1], lf + curve.offset[1], curve.fun[1]) * s->max;
-                    b = poly_eval(curve.coef[2], lf + curve.offset[2], curve.fun[2]) * s->max;
-                    r = poly_eval(curve.coef[0], lf + curve.offset[0], curve.fun[0]) * s->max;
+                    g = poly_eval(curve.coef[1], lf + curve.offset[1], curve.fun[1]);
+                    b = poly_eval(curve.coef[2], lf + curve.offset[2], curve.fun[2]);
+                    r = poly_eval(curve.coef[0], lf + curve.offset[0], curve.fun[0]);
 
-                    if (!rgb) {
+                    if (!curve.yuv || !rgb) {
+                        g *= s->max;
+                        b *= s->max;
+                        r *= s->max;
+                    }
+
+                    if (!rgb && !curve.yuv) {
                         double y = RGB_TO_Y_BT709(r, g, b);
                         double u = RGB_TO_U_BT709(r, g, b, s->max);
                         double v = RGB_TO_V_BT709(r, g, b, s->max);
@@ -708,6 +840,14 @@ static int config_input(AVFilterLink *inlink)
                         r = v;
                         g = y;
                         b = u;
+                    } else if (rgb && curve.yuv) {
+                        double y = g;
+                        double u = b - 0.5;
+                        double v = r - 0.5;
+
+                        r = av_clipd(YUV_BT709_TO_R(y, u, v, s->max), 0, s->max);
+                        g = av_clipd(YUV_BT709_TO_G(y, u, v, s->max), 0, s->max);
+                        b = av_clipd(YUV_BT709_TO_B(y, u, v, s->max), 0, s->max);
                     }
 
                     s->lut[0][i] = g;
@@ -762,6 +902,7 @@ static int config_input(AVFilterLink *inlink)
     case AV_PIX_FMT_YUV444P10:
     case AV_PIX_FMT_YUVA444P10:
     case AV_PIX_FMT_YUV444P12:
+    case AV_PIX_FMT_YUVA444P12:
     case AV_PIX_FMT_YUV444P14:
     case AV_PIX_FMT_YUV444P16:
     case AV_PIX_FMT_YUVA444P16:
@@ -772,6 +913,7 @@ static int config_input(AVFilterLink *inlink)
     case AV_PIX_FMT_GBRP16:
     case AV_PIX_FMT_GBRAP10:
     case AV_PIX_FMT_GBRAP12:
+    case AV_PIX_FMT_GBRAP14:
     case AV_PIX_FMT_GBRAP16:
     case AV_PIX_FMT_GRAY9:
     case AV_PIX_FMT_GRAY10:
@@ -785,6 +927,7 @@ static int config_input(AVFilterLink *inlink)
     case AV_PIX_FMT_YUV422P10:
     case AV_PIX_FMT_YUVA422P10:
     case AV_PIX_FMT_YUV422P12:
+    case AV_PIX_FMT_YUVA422P12:
     case AV_PIX_FMT_YUV422P14:
     case AV_PIX_FMT_YUV422P16:
     case AV_PIX_FMT_YUVA422P16:
@@ -839,9 +982,9 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     AVFrame *out = td->out;
 
     for (int plane = 0; plane < s->nb_planes; plane++) {
-        const int slice_start = (s->height[plane] * jobnr) / nb_jobs;
-        const int slice_end = (s->height[plane] * (jobnr+1)) / nb_jobs;
-        const int islice_start = (s->height[s->index] * jobnr) / nb_jobs;
+        const int slice_start = ff_slice_pos(s->height[plane], jobnr, nb_jobs);
+        const int slice_end = ff_slice_pos(s->height[plane], jobnr + 1, nb_jobs);
+        const int islice_start = ff_slice_pos(s->height[s->index], jobnr, nb_jobs);
         ptrdiff_t ilinesize = in->linesize[s->index];
         ptrdiff_t slinesize = in->linesize[plane];
         ptrdiff_t dlinesize = out->linesize[plane];
@@ -900,13 +1043,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 static av_cold void uninit(AVFilterContext *ctx)
 {
     PseudoColorContext *s = ctx->priv;
@@ -927,7 +1063,7 @@ const AVFilter ff_vf_pseudocolor = {
     .priv_class    = &pseudocolor_class,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,

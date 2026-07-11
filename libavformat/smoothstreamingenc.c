@@ -75,7 +75,11 @@ typedef struct SmoothStreamingContext {
     int nb_fragments;
 } SmoothStreamingContext;
 
+#if FF_API_AVIO_WRITE_NONCONST
 static int ism_write(void *opaque, uint8_t *buf, int buf_size)
+#else
+static int ism_write(void *opaque, const uint8_t *buf, int buf_size)
+#endif
 {
     OutputStream *os = opaque;
     if (os->out)
@@ -340,7 +344,7 @@ static int ism_write_header(AVFormatContext *s)
         }
 
         av_dict_set_int(&opts, "ism_lookahead", c->lookahead_count, 0);
-        av_dict_set(&opts, "movflags", "frag_custom", 0);
+        av_dict_set(&opts, "movflags", "+frag_custom", 0);
         ret = avformat_write_header(ctx, &opts);
         av_dict_free(&opts);
         if (ret < 0) {

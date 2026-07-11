@@ -26,6 +26,7 @@
  */
 
 #include <inttypes.h>
+#include <time.h>
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
@@ -42,7 +43,7 @@
     "%08"PRIx32"-%04"PRIx16"-%04"PRIx16"-%02x%02x%02x%02x%02x%02x%02x%02x"
 #define ARG_PRETTY_GUID(g) \
     AV_RL32(g),AV_RL16(g+4),AV_RL16(g+6),g[8],g[9],g[10],g[11],g[12],g[13],g[14],g[15]
-#define LEN_PRETTY_GUID 34
+#define LEN_PRETTY_GUID 35
 
 /*
  * File system routines
@@ -183,7 +184,7 @@ static AVIOContext * wtvfile_open_sector(unsigned first_sector, uint64_t length,
         int nb_sectors1 = read_ints(s->pb, sectors1, WTV_SECTOR_SIZE / 4);
         int i;
 
-        wf->sectors = av_malloc_array(nb_sectors1, 1 << WTV_SECTOR_BITS);
+        wf->sectors = av_calloc(nb_sectors1, 1 << WTV_SECTOR_BITS);
         if (!wf->sectors) {
             av_free(wf);
             return NULL;
@@ -459,71 +460,62 @@ done:
 
 static void get_tag(AVFormatContext *s, AVIOContext *pb, const char *key, int type, int length)
 {
-    int buf_size;
-    char *buf;
+    char buf[LEN_PRETTY_GUID + 1], *bufp = buf;
+    unsigned dict_flags = 0;
 
     if (!strcmp(key, "WM/MediaThumbType")) {
         avio_skip(pb, length);
         return;
     }
 
-    buf_size = FFMAX(2*length, LEN_PRETTY_GUID) + 1;
-    buf = av_malloc(buf_size);
-    if (!buf)
-        return;
-
     if (type == 0 && length == 4) {
-        snprintf(buf, buf_size, "%u", avio_rl32(pb));
+        snprintf(buf, sizeof(buf), "%u", avio_rl32(pb));
     } else if (type == 1) {
-        avio_get_str16le(pb, length, buf, buf_size);
-        if (!strlen(buf)) {
-           av_free(buf);
+        int buflen = FFMIN(length + length / 2U + 1, INT_MAX);
+        bufp = av_malloc(buflen);
+        if (!bufp)
+            return;
+        avio_get_str16le(pb, length, bufp, buflen);
+        if (!*bufp) {
+           av_free(bufp);
            return;
         }
+        dict_flags = AV_DICT_DONT_STRDUP_VAL;
     } else if (type == 3 && length == 4) {
         strcpy(buf, avio_rl32(pb) ? "true" : "false");
     } else if (type == 4 && length == 8) {
         int64_t num = avio_rl64(pb);
         if (!strcmp(key, "WM/EncodingTime") ||
             !strcmp(key, "WM/MediaOriginalBroadcastDateTime")) {
-            if (filetime_to_iso8601(buf, buf_size, num) < 0) {
-                av_free(buf);
+            if (filetime_to_iso8601(buf, sizeof(buf), num) < 0)
                 return;
-            }
         } else if (!strcmp(key, "WM/WMRVEncodeTime") ||
                    !strcmp(key, "WM/WMRVEndTime")) {
-            if (crazytime_to_iso8601(buf, buf_size, num) < 0) {
-                av_free(buf);
+            if (crazytime_to_iso8601(buf, sizeof(buf), num) < 0)
                 return;
-            }
         } else if (!strcmp(key, "WM/WMRVExpirationDate")) {
-            if (oledate_to_iso8601(buf, buf_size, num) < 0 ) {
-                av_free(buf);
+            if (oledate_to_iso8601(buf, sizeof(buf), num) < 0)
                 return;
-            }
         } else if (!strcmp(key, "WM/WMRVBitrate"))
-            snprintf(buf, buf_size, "%f", av_int2double(num));
+            snprintf(buf, sizeof(buf), "%f", av_int2double(num));
         else
-            snprintf(buf, buf_size, "%"PRIi64, num);
+            snprintf(buf, sizeof(buf), "%"PRIi64, num);
     } else if (type == 5 && length == 2) {
-        snprintf(buf, buf_size, "%u", avio_rl16(pb));
+        snprintf(buf, sizeof(buf), "%u", avio_rl16(pb));
     } else if (type == 6 && length == 16) {
         ff_asf_guid guid;
         avio_read(pb, guid, 16);
-        snprintf(buf, buf_size, PRI_PRETTY_GUID, ARG_PRETTY_GUID(guid));
+        snprintf(buf, sizeof(buf), PRI_PRETTY_GUID, ARG_PRETTY_GUID(guid));
     } else if (type == 2 && !strcmp(key, "WM/Picture")) {
         get_attachment(s, pb, length);
-        av_freep(&buf);
         return;
     } else {
-        av_freep(&buf);
         av_log(s, AV_LOG_WARNING, "unsupported metadata entry; key:%s, type:%d, length:0x%x\n", key, type, length);
         avio_skip(pb, length);
         return;
     }
 
-    av_dict_set(&s->metadata, key, buf, 0);
-    av_freep(&buf);
+    av_dict_set(&s->metadata, key, bufp, dict_flags);
 }
 
 /**
@@ -538,7 +530,7 @@ static void parse_legacy_attrib(AVFormatContext *s, AVIOContext *pb)
         ff_get_guid(pb, &guid);
         type   = avio_rl32(pb);
         length = avio_rl32(pb);
-        if (!length)
+        if (length <= 0)
             break;
         if (ff_guidcmp(&guid, ff_metadata_guid)) {
             av_log(s, AV_LOG_WARNING, "unknown guid "FF_PRI_GUID", expected metadata_guid; "
@@ -840,7 +832,7 @@ static int parse_chunks(AVFormatContext *s, int mode, int64_t seekts, int *len_p
             int stream_index = ff_find_stream_index(s, sid);
             if (stream_index >= 0) {
                 AVStream *st = s->streams[stream_index];
-                uint8_t buf[258];
+                uint8_t buf[258] = {0};
                 const uint8_t *pbuf = buf;
                 int buf_size;
 
@@ -853,7 +845,8 @@ static int parse_chunks(AVFormatContext *s, int mode, int64_t seekts, int *len_p
                 }
 
                 buf_size = FFMIN(len - consumed, sizeof(buf));
-                avio_read(pb, buf, buf_size);
+                if (avio_read(pb, buf, buf_size) != buf_size)
+                    return AVERROR_INVALIDDATA;
                 consumed += buf_size;
                 ff_parse_mpeg2_descriptor(s, st, 0, &pbuf, buf + buf_size, NULL, 0, 0, NULL);
             }
@@ -884,7 +877,8 @@ static int parse_chunks(AVFormatContext *s, int mode, int64_t seekts, int *len_p
                 AVStream *st = s->streams[stream_index];
                 uint8_t language[4];
                 avio_skip(pb, 12);
-                avio_read(pb, language, 3);
+                if (avio_read(pb, language, 3) != 3)
+                    return AVERROR_INVALIDDATA;
                 if (language[0]) {
                     language[3] = 0;
                     av_dict_set(&st->metadata, "language", language, 0);

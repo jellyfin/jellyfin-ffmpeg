@@ -56,8 +56,8 @@ static void copy_frame(AVFrame *f, const uint8_t *src, int width, int height)
     int src_linesize[4];
     av_image_fill_arrays(src_data, src_linesize, src,
                          f->format, width, height, 1);
-    av_image_copy(f->data, f->linesize, (const uint8_t **)src_data, src_linesize,
-                  f->format, width, height);
+    av_image_copy2(f->data, f->linesize, src_data, src_linesize,
+                   f->format, width, height);
 }
 
 /**
@@ -263,7 +263,10 @@ retry:
     }
 
     c->pic->pict_type = keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
-    c->pic->key_frame = keyframe;
+    if (keyframe)
+        c->pic->flags |= AV_FRAME_FLAG_KEY;
+    else
+        c->pic->flags &= ~AV_FRAME_FLAG_KEY;
     // decompress/copy/whatever data
     switch (comptype) {
     case NUV_LZO:

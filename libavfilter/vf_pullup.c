@@ -19,11 +19,11 @@
  */
 
 #include "libavutil/avassert.h"
+#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "vf_pullup.h"
@@ -666,11 +666,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         goto end;
     }
 
-    av_image_copy(b->planes, s->planewidth,
-                  (const uint8_t**)in->data, in->linesize,
-                  inlink->format, inlink->w, inlink->h);
+    av_image_copy2(b->planes, s->planewidth,
+                   in->data, in->linesize,
+                   inlink->format, inlink->w, inlink->h);
 
-    p = in->interlaced_frame ? !in->top_field_first : 0;
+    p = (in->flags & AV_FRAME_FLAG_INTERLACED) ?
+        !(in->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) : 0;
     pullup_submit_field(s, b, p  );
     pullup_submit_field(s, b, p^1);
 
@@ -713,9 +714,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     }
     av_frame_copy_props(out, in);
 
-    av_image_copy(out->data, out->linesize,
-                  (const uint8_t**)f->buffer->planes, s->planewidth,
-                  inlink->format, inlink->w, inlink->h);
+    av_image_copy2(out->data, out->linesize,
+                   f->buffer->planes, s->planewidth,
+                   inlink->format, inlink->w, inlink->h);
 
     ret = ff_filter_frame(outlink, out);
     pullup_release_frame(f);
@@ -748,13 +749,6 @@ static const AVFilterPad pullup_inputs[] = {
     },
 };
 
-static const AVFilterPad pullup_outputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_pullup = {
     .name          = "pullup",
     .description   = NULL_IF_CONFIG_SMALL("Pullup from field sequence to frames."),
@@ -762,6 +756,6 @@ const AVFilter ff_vf_pullup = {
     .priv_class    = &pullup_class,
     .uninit        = uninit,
     FILTER_INPUTS(pullup_inputs),
-    FILTER_OUTPUTS(pullup_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

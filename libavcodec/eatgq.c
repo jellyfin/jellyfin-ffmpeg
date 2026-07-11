@@ -178,7 +178,8 @@ static int tgq_decode_mb(TgqContext *s, GetByteContext *gbyte,
             dc[4] = bytestream2_get_byte(gbyte);
             dc[5] = bytestream2_get_byte(gbyte);
         } else if (mode == 6) {
-            bytestream2_get_buffer(gbyte, dc, 6);
+            if (bytestream2_get_buffer(gbyte, dc, 6) != 6)
+                return AVERROR_INVALIDDATA;
         } else if (mode == 12) {
             for (i = 0; i < 6; i++) {
                 dc[i] = bytestream2_get_byte(gbyte);
@@ -237,7 +238,7 @@ static int tgq_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     frame->pict_type = AV_PICTURE_TYPE_I;
 
     for (y = 0; y < FFALIGN(avctx->height, 16) >> 4; y++)

@@ -18,12 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "preserve_color.h"
@@ -108,8 +107,8 @@ typedef struct ThreadData {
     const int linesize = s->linesize;                                           \
     const int step = s->step;                                                   \
     const int process_h = td->h;                                                \
-    const int slice_start = (process_h *  jobnr   ) / nb_jobs;                  \
-    const int slice_end   = (process_h * (jobnr+1)) / nb_jobs;                  \
+    const int slice_start = ff_slice_pos(process_h, jobnr, nb_jobs);            \
+    const int slice_end   = ff_slice_pos(process_h, jobnr + 1, nb_jobs);        \
     const int src_linesize = td->src_linesize / sizeof(type);                   \
     const int dst_linesize = td->dst_linesize / sizeof(type);                   \
     const type *src_r = (const type *)(td->srcrow[R]) + src_linesize * slice_start; \
@@ -559,20 +558,13 @@ static const AVFilterPad colorlevels_inputs[] = {
     },
 };
 
-static const AVFilterPad colorlevels_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_colorlevels = {
     .name          = "colorlevels",
     .description   = NULL_IF_CONFIG_SMALL("Adjust the color levels."),
     .priv_size     = sizeof(ColorLevelsContext),
     .priv_class    = &colorlevels_class,
     FILTER_INPUTS(colorlevels_inputs),
-    FILTER_OUTPUTS(colorlevels_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS(AV_PIX_FMT_0RGB,   AV_PIX_FMT_0BGR,
                    AV_PIX_FMT_ARGB,   AV_PIX_FMT_ABGR,
                    AV_PIX_FMT_RGB0,   AV_PIX_FMT_BGR0,

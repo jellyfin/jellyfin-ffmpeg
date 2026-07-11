@@ -18,15 +18,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avstring.h"
-#include "libavutil/eval.h"
 #include "libavutil/imgutils.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -68,8 +65,8 @@ static int smear_slice ## depth(AVFilterContext *ctx, void *arg, int jobnr, int 
     const int crv = s->crv;                                                               \
     const int h = s->height[1];                                                           \
     const int w = s->width[1];                                                            \
-    const int slice_start = (h * jobnr) / nb_jobs;                                        \
-    const int slice_end = (h * (jobnr+1)) / nb_jobs;                                      \
+    const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);                              \
+    const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);                            \
     const type *su = (const type *)in->data[1];                                           \
     const type *sv = (const type *)in->data[2];                                           \
     type *du = (type *)out->data[1] + slice_start * ulinesize;                            \
@@ -110,8 +107,8 @@ static int wrap_slice ## depth(AVFilterContext *ctx, void *arg, int jobnr, int n
     const int crv = s->crv;                                                               \
     const int h = s->height[1];                                                           \
     const int w = s->width[1];                                                            \
-    const int slice_start = (h * jobnr) / nb_jobs;                                        \
-    const int slice_end = (h * (jobnr+1)) / nb_jobs;                                      \
+    const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);                              \
+    const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);                            \
     const type *su = (const type *)in->data[1];                                           \
     const type *sv = (const type *)in->data[2];                                           \
     type *du = (type *)out->data[1] + slice_start * ulinesize;                            \
@@ -173,8 +170,8 @@ static int rgbasmear_slice ## depth(AVFilterContext *ctx, void *arg, int jobnr, 
     const int av = s->av;                                                                 \
     const int h = s->height[1];                                                           \
     const int w = s->width[1];                                                            \
-    const int slice_start = (h * jobnr) / nb_jobs;                                        \
-    const int slice_end = (h * (jobnr+1)) / nb_jobs;                                      \
+    const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);                              \
+    const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);                            \
     const type *sr = (const type *)in->data[2];                                           \
     const type *sg = (const type *)in->data[0];                                           \
     const type *sb = (const type *)in->data[1];                                           \
@@ -240,8 +237,8 @@ static int rgbawrap_slice ## depth(AVFilterContext *ctx, void *arg, int jobnr, i
     const int av = s->av;                                                                 \
     const int h = s->height[1];                                                           \
     const int w = s->width[1];                                                            \
-    const int slice_start = (h * jobnr) / nb_jobs;                                        \
-    const int slice_end = (h * (jobnr+1)) / nb_jobs;                                      \
+    const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);                              \
+    const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);                            \
     const type *sr = (const type *)in->data[2];                                           \
     const type *sg = (const type *)in->data[0];                                           \
     const type *sb = (const type *)in->data[1];                                           \
@@ -382,13 +379,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 static const enum AVPixelFormat yuv_pix_fmts[] = {
     AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA420P,
     AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P, AV_PIX_FMT_YUVJ422P,AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ411P,
@@ -411,7 +401,7 @@ const AVFilter ff_vf_chromashift = {
     .description   = NULL_IF_CONFIG_SMALL("Shift chroma."),
     .priv_size     = sizeof(ChromaShiftContext),
     .priv_class    = &chromashift_class,
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_INPUTS(inputs),
     FILTER_PIXFMTS_ARRAY(yuv_pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
@@ -448,7 +438,7 @@ const AVFilter ff_vf_rgbashift = {
     .description   = NULL_IF_CONFIG_SMALL("Shift RGBA."),
     .priv_size     = sizeof(ChromaShiftContext),
     .priv_class    = &rgbashift_class,
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_INPUTS(inputs),
     FILTER_PIXFMTS_ARRAY(rgb_pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

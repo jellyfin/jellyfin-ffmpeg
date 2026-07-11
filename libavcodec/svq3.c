@@ -1252,6 +1252,7 @@ static av_cold int svq3_decode_init(AVCodecContext *avctx)
             uint8_t *buf;
 
             if (watermark_height <= 0 ||
+                get_bits_left(&gb) <= 0 ||
                 (uint64_t)watermark_width * 4 > UINT_MAX / watermark_height)
                 return AVERROR_INVALIDDATA;
 
@@ -1399,6 +1400,9 @@ static int svq3_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     if (svq3_decode_slice_header(avctx))
         return -1;
 
+    if (avpkt->size < s->mb_width * s->mb_height / 8)
+        return AVERROR_INVALIDDATA;
+
     s->pict_type = s->slice_type;
 
     if (s->pict_type != AV_PICTURE_TYPE_B)
@@ -1408,7 +1412,10 @@ static int svq3_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     /* for skipping the frame */
     s->cur_pic->f->pict_type = s->pict_type;
-    s->cur_pic->f->key_frame = (s->pict_type == AV_PICTURE_TYPE_I);
+    if (s->pict_type == AV_PICTURE_TYPE_I)
+        s->cur_pic->f->flags |= AV_FRAME_FLAG_KEY;
+    else
+        s->cur_pic->f->flags &= ~AV_FRAME_FLAG_KEY;
 
     ret = get_buffer(avctx, s->cur_pic);
     if (ret < 0)

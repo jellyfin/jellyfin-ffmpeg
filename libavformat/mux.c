@@ -24,12 +24,14 @@
 #include "mux.h"
 #include "version.h"
 #include "libavcodec/bsf.h"
+#include "libavcodec/codec_desc.h"
 #include "libavcodec/internal.h"
 #include "libavcodec/packet_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/dict.h"
 #include "libavutil/timestamp.h"
 #include "libavutil/avassert.h"
+#include "libavutil/frame.h"
 #include "libavutil/internal.h"
 #include "libavutil/mathematics.h"
 
@@ -102,7 +104,7 @@ int avformat_alloc_output_context2(AVFormatContext **avctx, const AVOutputFormat
         if (format) {
             oformat = av_guess_format(format, NULL, NULL);
             if (!oformat) {
-                av_log(s, AV_LOG_ERROR, "Requested output format '%s' is not a suitable output format\n", format);
+                av_log(s, AV_LOG_ERROR, "Requested output format '%s' is not known.\n", format);
                 ret = AVERROR(EINVAL);
                 goto error;
             }
@@ -110,8 +112,10 @@ int avformat_alloc_output_context2(AVFormatContext **avctx, const AVOutputFormat
             oformat = av_guess_format(NULL, filename, NULL);
             if (!oformat) {
                 ret = AVERROR(EINVAL);
-                av_log(s, AV_LOG_ERROR, "Unable to find a suitable output format for '%s'\n",
-                       filename);
+                av_log(s, AV_LOG_ERROR,
+                       "Unable to choose an output format for '%s'; "
+                       "use a standard extension for the filename or specify "
+                       "the format manually.\n", filename);
                 goto error;
             }
         }
@@ -275,6 +279,27 @@ FF_ENABLE_DEPRECATION_WARNINGS
             break;
         }
 
+#if FF_API_AVSTREAM_SIDE_DATA
+FF_DISABLE_DEPRECATION_WARNINGS
+        /* if the caller is using the deprecated AVStream side_data API,
+         * copy its contents to AVStream.codecpar, giving it priority
+           over existing side data in the latter */
+        for (int i = 0; i < st->nb_side_data; i++) {
+            const AVPacketSideData *sd_src = &st->side_data[i];
+            AVPacketSideData *sd_dst;
+
+            sd_dst = av_packet_side_data_new(&st->codecpar->coded_side_data,
+                                             &st->codecpar->nb_coded_side_data,
+                                             sd_src->type, sd_src->size, 0);
+            if (!sd_dst) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
+            memcpy(sd_dst->data, sd_src->data, sd_src->size);
+        }
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
         desc = avcodec_descriptor_get(par->codec_id);
         if (desc && desc->props & AV_CODEC_PROP_REORDER)
             sti->reorder = 1;
@@ -304,7 +329,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 par->codec_tag = av_codec_get_tag(of->p.codec_tag, par->codec_id);
         }
 
-        if (par->codec_type != AVMEDIA_TYPE_ATTACHMENT)
+        if (par->codec_type != AVMEDIA_TYPE_ATTACHMENT &&
+            par->codec_id != AV_CODEC_ID_SMPTE_2038)
             si->nb_interleaved_streams++;
     }
     si->interleave_packet = of->interleave_packet;
@@ -459,9 +485,9 @@ int avformat_write_header(AVFormatContext *s, AVDictionary **options)
         if ((ret = avformat_init_output(s, options)) < 0)
             return ret;
 
-    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
-        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
     if (ffofmt(s->oformat)->write_header) {
+        if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+            avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
         ret = ffofmt(s->oformat)->write_header(s);
         if (ret >= 0 && s->pb && s->pb->error < 0)
             ret = s->pb->error;
@@ -942,7 +968,8 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
             ++stream_count;
         } else if (par->codec_type != AVMEDIA_TYPE_ATTACHMENT &&
                    par->codec_id != AV_CODEC_ID_VP8 &&
-                   par->codec_id != AV_CODEC_ID_VP9) {
+                   par->codec_id != AV_CODEC_ID_VP9 &&
+                   par->codec_id != AV_CODEC_ID_SMPTE_2038) {
             ++noninterleaved_count;
         }
     }
@@ -986,6 +1013,7 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
         }
     }
 
+#if FF_API_LAVF_SHORTEST
     if (si->packet_buffer.head &&
         eof &&
         (s->flags & AVFMT_FLAG_SHORTEST) &&
@@ -1021,6 +1049,7 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
             flush = 0;
         }
     }
+#endif
 
     if (stream_count && flush) {
         PacketListEntry *pktl = si->packet_buffer.head;
@@ -1114,7 +1143,7 @@ static int write_packet_common(AVFormatContext *s, AVStream *st, AVPacket *pkt, 
     int ret;
 
     if (s->debug & FF_FDEBUG_TS)
-        av_log(s, AV_LOG_DEBUG, "%s size:%d dts:%s pts:%s\n", __FUNCTION__,
+        av_log(s, AV_LOG_DEBUG, "%s size:%d dts:%s pts:%s\n", __func__,
                pkt->size, av_ts2str(pkt->dts), av_ts2str(pkt->pts));
 
     guess_pkt_duration(s, st, pkt);
@@ -1198,7 +1227,13 @@ int av_write_frame(AVFormatContext *s, AVPacket *in)
     int ret;
 
     if (!in) {
+#if FF_API_ALLOW_FLUSH || LIBAVFORMAT_VERSION_MAJOR >= 61
+        // Hint: The pulse audio output device has this set,
+        // so we can't switch the check to FF_FMT_ALLOW_FLUSH immediately.
         if (s->oformat->flags & AVFMT_ALLOW_FLUSH) {
+#else
+        if (ffofmt(s->oformat)->flags_internal & FF_FMT_ALLOW_FLUSH) {
+#endif
             ret = ffofmt(s->oformat)->write_packet(s, NULL);
             flush_if_needed(s);
             if (ret >= 0 && s->pb && s->pb->error < 0)

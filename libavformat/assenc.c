@@ -63,15 +63,16 @@ static int write_header(AVFormatContext *s)
         if (trailer)
             trailer = strstr(trailer, "\n");
 
-        if (trailer++) {
-            header_size = (trailer - par->extradata);
+        if (trailer) {
+            header_size = (++trailer - par->extradata);
             ass->trailer_size = par->extradata_size - header_size;
             if (ass->trailer_size)
                 ass->trailer = trailer;
         }
 
+        header_size = av_strnlen(par->extradata, header_size);
         avio_write(s->pb, par->extradata, header_size);
-        if (par->extradata[header_size - 1] != '\n')
+        if (header_size && par->extradata[header_size - 1] != '\n')
             avio_write(s->pb, "\r\n", 2);
         ass->ssa_mode = !strstr(par->extradata, "\n[V4+ Styles]");
         if (!strstr(par->extradata, "\n[Events]"))

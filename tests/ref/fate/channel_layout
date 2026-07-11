@@ -15,6 +15,7 @@ quad(side)     FL+FR+SL+SR
 5.1(side)      FL+FR+FC+LFE+SL+SR
 6.0            FL+FR+FC+BC+SL+SR
 6.0(front)     FL+FR+FLC+FRC+SL+SR
+3.1.2          FL+FR+FC+LFE+TFL+TFR
 hexagonal      FL+FR+FC+BL+BR+BC
 6.1            FL+FR+FC+LFE+BC+SL+SR
 6.1(back)      FL+FR+FC+LFE+BL+BR+BC
@@ -24,9 +25,12 @@ hexagonal      FL+FR+FC+BL+BR+BC
 7.1            FL+FR+FC+LFE+BL+BR+SL+SR
 7.1(wide)      FL+FR+FC+LFE+BL+BR+FLC+FRC
 7.1(wide-side) FL+FR+FC+LFE+FLC+FRC+SL+SR
-7.1(top)       FL+FR+FC+LFE+BL+BR+TFL+TFR
+5.1.2          FL+FR+FC+LFE+BL+BR+TFL+TFR
 octagonal      FL+FR+FC+BL+BR+BC+SL+SR
 cube           FL+FR+BL+BR+TFL+TFR+TBL+TBR
+5.1.4          FL+FR+FC+LFE+BL+BR+TFL+TFR+TBL+TBR
+7.1.2          FL+FR+FC+LFE+BL+BR+SL+SR+TFL+TFR
+7.1.4          FL+FR+FC+LFE+BL+BR+SL+SR+TFL+TFR+TBL+TBR
 hexadecagonal  FL+FR+FC+BL+BR+BC+SL+SR+TFL+TFC+TFR+TBL+TBC+TBR+WL+WR
 downmix        DL+DR
 22.2           FL+FR+FC+LFE+BL+BR+FLC+FRC+BC+SL+SR+TC+TFL+TFC+TFR+TBL+TBC+TBR+LFE2+TSL+TSR+BFC+BFL+BFR

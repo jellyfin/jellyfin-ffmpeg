@@ -20,13 +20,13 @@
 
 #include <float.h>
 
+#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
 #include "libavutil/tx.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 #include "filters.h"
 
 #define C       (M_LN10 * 0.1)
@@ -376,6 +376,8 @@ static void process_frame(AVFilterContext *ctx,
         case AV_SAMPLE_FMT_DBLP:
             noisy_data[i] = mag = hypot(fft_data_dbl[i].re, fft_data_dbl[i].im);
             break;
+        default:
+            av_assert2(0);
         }
 
         power = mag * mag;
@@ -970,6 +972,8 @@ static void sample_noise_block(AudioFFTDeNoiseContext *s,
             mag2 = fft_out_dbl[n].re * fft_out_dbl[n].re +
                    fft_out_dbl[n].im * fft_out_dbl[n].im;
             break;
+        default:
+            av_assert2(0);
         }
 
         mag2 = fmax(mag2, s->sample_floor);
@@ -1044,8 +1048,8 @@ static int filter_channel(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
 {
     AudioFFTDeNoiseContext *s = ctx->priv;
     AVFrame *in = arg;
-    const int start = (in->ch_layout.nb_channels * jobnr) / nb_jobs;
-    const int end = (in->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
+    const int start = ff_slice_pos(in->ch_layout.nb_channels, jobnr, nb_jobs);
+    const int end = ff_slice_pos(in->ch_layout.nb_channels, jobnr + 1, nb_jobs);
     const int window_length = s->window_length;
     const double *window = s->window;
 
@@ -1357,13 +1361,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_afftdn = {
     .name            = "afftdn",
     .description     = NULL_IF_CONFIG_SMALL("Denoise audio samples using FFT."),
@@ -1372,7 +1369,7 @@ const AVFilter ff_af_afftdn = {
     .activate        = activate,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |

@@ -26,7 +26,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -269,8 +269,8 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
         const int dstride = out->linesize[plane];
         const int height = s->planeheight[plane];
         const int width  = s->planewidth[plane];
-        const int slice_start = (height * jobnr) / nb_jobs;
-        const int slice_end = (height * (jobnr+1)) / nb_jobs;
+        const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+        const int slice_end = ff_slice_pos(height, jobnr + 1, nb_jobs);
         const uint8_t *src = (const uint8_t *)in->data[plane] + slice_start * stride;
         uint8_t *dst = out->data[plane] + slice_start * dstride;
 
@@ -341,13 +341,6 @@ static const AVFilterPad neighbor_inputs[] = {
     },
 };
 
-static const AVFilterPad neighbor_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #define OFFSET(x) offsetof(NContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
@@ -358,7 +351,7 @@ const AVFilter ff_vf_##name_ = {                                   \
     .priv_class    = &priv_class_##_class,                   \
     .priv_size     = sizeof(NContext),                       \
     FILTER_INPUTS(neighbor_inputs),                          \
-    FILTER_OUTPUTS(neighbor_outputs),                        \
+    FILTER_OUTPUTS(ff_video_default_filterpad),              \
     FILTER_PIXFMTS_ARRAY(pix_fmts),                          \
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC| \
                      AVFILTER_FLAG_SLICE_THREADS,            \

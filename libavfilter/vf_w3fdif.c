@@ -26,7 +26,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 #include "w3fdif.h"
@@ -376,11 +376,11 @@ static int deinterlace_plane_slice(AVFilterContext *ctx, void *arg,
     const int cur_line_stride = cur->linesize[plane];
     const int adj_line_stride = adj->linesize[plane];
     const int dst_line_stride = out->linesize[plane];
-    const int start = (height * jobnr) / nb_jobs;
-    const int end = (height * (jobnr+1)) / nb_jobs;
+    const int start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int end = ff_slice_pos(height, jobnr + 1, nb_jobs);
     const int max = s->max;
-    const int interlaced = cur->interlaced_frame;
-    const int tff = s->field == (s->parity == -1 ? interlaced ? cur->top_field_first : 1 :
+    const int interlaced = !!(cur->flags & AV_FRAME_FLAG_INTERLACED);
+    const int tff = s->field == (s->parity == -1 ? interlaced ? !!(cur->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) : 1 :
                                  s->parity ^ 1);
     int j, y_in, y_out;
 
@@ -486,7 +486,12 @@ static int filter(AVFilterContext *ctx, int is_second)
     if (!out)
         return AVERROR(ENOMEM);
     av_frame_copy_props(out, s->cur);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     out->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    out->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
     if (!is_second) {
         if (out->pts != AV_NOPTS_VALUE)
@@ -533,7 +538,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     if (!s->prev)
         return 0;
 
-    if ((s->deint && !s->cur->interlaced_frame) || ctx->is_disabled) {
+    if ((s->deint && !(s->cur->flags & AV_FRAME_FLAG_INTERLACED)) || ctx->is_disabled) {
         AVFrame *out = av_frame_clone(s->cur);
         if (!out)
             return AVERROR(ENOMEM);

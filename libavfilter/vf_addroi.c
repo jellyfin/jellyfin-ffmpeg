@@ -21,6 +21,7 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "internal.h"
+#include "video.h"
 
 enum {
     X, Y, W, H,
@@ -38,6 +39,7 @@ enum {
 static const char *const addroi_var_names[] = {
     "iw",
     "ih",
+    NULL,
 };
 
 typedef struct AddROIContext {
@@ -246,13 +248,6 @@ static const AVFilterPad addroi_inputs[] = {
     },
 };
 
-static const AVFilterPad addroi_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_addroi = {
     .name        = "addroi",
     .description = NULL_IF_CONFIG_SMALL("Add region of interest to frame."),
@@ -265,5 +260,5 @@ const AVFilter ff_vf_addroi = {
     .flags       = AVFILTER_FLAG_METADATA_ONLY,
 
     FILTER_INPUTS(addroi_inputs),
-    FILTER_OUTPUTS(addroi_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
 };

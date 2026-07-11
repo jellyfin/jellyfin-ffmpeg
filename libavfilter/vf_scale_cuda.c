@@ -22,9 +22,7 @@
 
 #include <float.h>
 #include <stdio.h>
-#include <string.h>
 
-#include "libavutil/avstring.h"
 #include "libavutil/common.h"
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_cuda_internal.h"
@@ -34,7 +32,6 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "scale_eval.h"
 #include "video.h"
@@ -51,6 +48,8 @@ static const enum AVPixelFormat supported_formats[] = {
     AV_PIX_FMT_YUV444P16,
     AV_PIX_FMT_0RGB32,
     AV_PIX_FMT_0BGR32,
+    AV_PIX_FMT_RGB32,
+    AV_PIX_FMT_BGR32,
 };
 
 #define DIV_UP(a, b) ( ((a) + (b) - 1) / (b) )

@@ -26,6 +26,7 @@
 #include "filters.h"
 #include "dnn_filter_common.h"
 #include "internal.h"
+#include "video.h"
 #include "libavutil/time.h"
 #include "libavutil/avstring.h"
 #include "libavutil/detection_bbox.h"
@@ -43,12 +44,12 @@ typedef struct DnnDetectContext {
 #define OFFSET2(x) offsetof(DnnDetectContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption dnn_detect_options[] = {
-    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = 2 },    INT_MIN, INT_MAX, FLAGS, "backend" },
+    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = DNN_OV },    INT_MIN, INT_MAX, FLAGS, "backend" },
 #if (CONFIG_LIBTENSORFLOW == 1)
-    { "tensorflow",  "tensorflow backend flag",    0,                        AV_OPT_TYPE_CONST,     { .i64 = 1 },    0, 0, FLAGS, "backend" },
+    { "tensorflow",  "tensorflow backend flag",    0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_TF },    0, 0, FLAGS, "backend" },
 #endif
 #if (CONFIG_LIBOPENVINO == 1)
-    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = 2 },    0, 0, FLAGS, "backend" },
+    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, "backend" },
 #endif
     DNN_COMMON_OPTIONS
     { "confidence",  "threshold of confidence",    OFFSET2(confidence),      AV_OPT_TYPE_FLOAT,     { .dbl = 0.5 },  0, 1, FLAGS},
@@ -106,12 +107,11 @@ static int dnn_detect_post_proc_ov(AVFrame *frame, DNNData *output, AVFilterCont
         float x1     =      detections[i * detect_size + 5];
         float y1     =      detections[i * detect_size + 6];
 
-        bbox = av_get_detection_bbox(header, i);
-
         if (conf < conf_threshold) {
             continue;
         }
 
+        bbox = av_get_detection_bbox(header, header->nb_bboxes - nb_bboxes);
         bbox->x = (int)(x0 * frame->width);
         bbox->w = (int)(x1 * frame->width) - bbox->x;
         bbox->y = (int)(y0 * frame->height);
@@ -436,28 +436,14 @@ static av_cold void dnn_detect_uninit(AVFilterContext *context)
     free_detect_labels(ctx);
 }
 
-static const AVFilterPad dnn_detect_inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
-static const AVFilterPad dnn_detect_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_dnn_detect = {
     .name          = "dnn_detect",
     .description   = NULL_IF_CONFIG_SMALL("Apply DNN detect filter to the input."),
     .priv_size     = sizeof(DnnDetectContext),
     .init          = dnn_detect_init,
     .uninit        = dnn_detect_uninit,
-    FILTER_INPUTS(dnn_detect_inputs),
-    FILTER_OUTPUTS(dnn_detect_outputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &dnn_detect_class,
     .activate      = dnn_detect_activate,

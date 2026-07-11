@@ -38,7 +38,6 @@
 #include "libavutil/tx.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
 #include "video.h"
@@ -274,7 +273,7 @@ static void do_block_matching_multi(BM3DContext *s, const uint8_t *src, int src_
                                     int r_y, int r_x, int plane, int jobnr)
 {
     SliceContext *sc = &s->slices[jobnr];
-    double MSE2SSE = s->group_size * s->block_size * s->block_size * src_range * src_range / (s->max * s->max);
+    double MSE2SSE = s->group_size * s->block_size * s->block_size * src_range * src_range / (double)(s->max * s->max);
     double distMul = 1. / MSE2SSE;
     double th_sse = th_mse * MSE2SSE;
     int index = sc->nb_match_blocks;
@@ -696,9 +695,9 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const int height = s->planeheight[plane];
     const int block_pos_bottom = FFMAX(0, height - s->block_size);
     const int block_pos_right  = FFMAX(0, width - s->block_size);
-    const int slice_start = (((height + block_step - 1) / block_step) * jobnr / nb_jobs) * block_step;
+    const int slice_start = ff_slice_pos((height + block_step - 1) / block_step, jobnr, nb_jobs) * block_step;
     const int slice_end = (jobnr == nb_jobs - 1) ? block_pos_bottom + block_step :
-                          (((height + block_step - 1) / block_step) * (jobnr + 1) / nb_jobs) * block_step;
+                          ff_slice_pos((height + block_step - 1) / block_step, jobnr + 1, nb_jobs) * block_step;
 
     memset(sc->num, 0, width * height * sizeof(float));
     memset(sc->den, 0, width * height * sizeof(float));

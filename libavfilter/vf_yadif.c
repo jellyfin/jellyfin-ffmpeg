@@ -21,11 +21,9 @@
 
 #include "libavutil/common.h"
 #include "libavutil/pixdesc.h"
-#include "libavutil/imgutils.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
-#include "video.h"
 #include "yadif.h"
 
 typedef struct ThreadData {
@@ -196,8 +194,8 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     int refs = s->cur->linesize[td->plane];
     int df = (s->csp->comp[td->plane].depth + 7) / 8;
     int pix_3 = 3 * df;
-    int slice_start = (td->h *  jobnr   ) / nb_jobs;
-    int slice_end   = (td->h * (jobnr+1)) / nb_jobs;
+    int slice_start = ff_slice_pos(td->h, jobnr, nb_jobs);
+    int slice_end   = ff_slice_pos(td->h, jobnr + 1, nb_jobs);
     int y;
     int edge = 3 + MAX_ALIGN / df - 1;
 
@@ -261,6 +259,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_frame_free(&yadif->prev);
     av_frame_free(&yadif->cur );
     av_frame_free(&yadif->next);
+    ff_ccfifo_uninit(&yadif->cc_fifo);
 }
 
 static const enum AVPixelFormat pix_fmts[] = {
@@ -285,6 +284,7 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     YADIFContext *s = ctx->priv;
+    int ret;
 
     outlink->time_base = av_mul_q(ctx->inputs[0]->time_base, (AVRational){1, 2});
     outlink->w             = ctx->inputs[0]->w;
@@ -293,6 +293,14 @@ static int config_output(AVFilterLink *outlink)
     if(s->mode & 1)
         outlink->frame_rate = av_mul_q(ctx->inputs[0]->frame_rate,
                                     (AVRational){2, 1});
+    else
+        outlink->frame_rate = ctx->inputs[0]->frame_rate;
+
+    ret = ff_ccfifo_init(&s->cc_fifo, outlink->frame_rate, ctx);
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR, "Failure to setup CC FIFO queue\n");
+        return ret;
+    }
 
     if (outlink->w < 3 || outlink->h < 3) {
         av_log(ctx, AV_LOG_ERROR, "Video of less than 3 columns or lines is not supported\n");

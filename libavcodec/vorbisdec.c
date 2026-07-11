@@ -210,7 +210,7 @@ static void vorbis_free(vorbis_context *vc)
     if (vc->codebooks)
         for (i = 0; i < vc->codebook_count; ++i) {
             av_freep(&vc->codebooks[i].codevectors);
-            ff_free_vlc(&vc->codebooks[i].vlc);
+            ff_vlc_free(&vc->codebooks[i].vlc);
         }
     av_freep(&vc->codebooks);
 
@@ -454,11 +454,11 @@ static int vorbis_parse_setup_hdr_codebooks(vorbis_context *vc)
 
         codebook_setup->maxdepth = (codebook_setup->maxdepth+codebook_setup->nb_bits - 1) / codebook_setup->nb_bits;
 
-        if ((ret = init_vlc(&codebook_setup->vlc, codebook_setup->nb_bits,
+        if ((ret = vlc_init(&codebook_setup->vlc, codebook_setup->nb_bits,
                             entries, tmp_vlc_bits, sizeof(*tmp_vlc_bits),
                             sizeof(*tmp_vlc_bits), tmp_vlc_codes,
                             sizeof(*tmp_vlc_codes), sizeof(*tmp_vlc_codes),
-                            INIT_VLC_LE))) {
+                            VLC_INIT_LE))) {
             av_log(vc->avctx, AV_LOG_ERROR, " Error generating vlc tables. \n");
             goto error;
         }
@@ -1467,6 +1467,11 @@ static av_always_inline int vorbis_residue_decode_internal(vorbis_context *vc,
                             unsigned dim  = vc->codebooks[vqbook].dimensions;
                             unsigned step = FASTDIV(vr->partition_size << 1, dim << 1);
                             vorbis_codebook codebook = vc->codebooks[vqbook];
+
+                            if (get_bits_left(gb) < 0) {
+                                av_log(vc->avctx, AV_LOG_ERROR, "Overread %d bits\n", -get_bits_left(gb));
+                                return 0;
+                            }
 
                             if (vr_type == 0) {
 

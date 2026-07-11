@@ -146,14 +146,14 @@ static int h264_set_extradata(AVCodecContext *avctx, FFAMediaFormat *format)
 
     for (i = 0; i < MAX_PPS_COUNT; i++) {
         if (ps.pps_list[i]) {
-            pps = (const PPS*)ps.pps_list[i]->data;
+            pps = ps.pps_list[i];
             break;
         }
     }
 
     if (pps) {
         if (ps.sps_list[pps->sps_id]) {
-            sps = (const SPS*)ps.sps_list[pps->sps_id]->data;
+            sps = ps.sps_list[pps->sps_id];
         }
     }
 
@@ -223,21 +223,21 @@ static int hevc_set_extradata(AVCodecContext *avctx, FFAMediaFormat *format)
 
     for (i = 0; i < HEVC_MAX_VPS_COUNT; i++) {
         if (ps.vps_list[i]) {
-            vps = (const HEVCVPS*)ps.vps_list[i]->data;
+            vps = ps.vps_list[i];
             break;
         }
     }
 
     for (i = 0; i < HEVC_MAX_PPS_COUNT; i++) {
         if (ps.pps_list[i]) {
-            pps = (const HEVCPPS*)ps.pps_list[i]->data;
+            pps = ps.pps_list[i];
             break;
         }
     }
 
     if (pps) {
         if (ps.sps_list[pps->sps_id]) {
-            sps = (const HEVCSPS*)ps.sps_list[pps->sps_id]->data;
+            sps = ps.sps_list[pps->sps_id];
         }
     }
 
@@ -577,8 +577,7 @@ const FFCodec ff_ ## short_name ## _mediacodec_decoder = {                      
     .flush          = mediacodec_decode_flush,                                                 \
     .close          = mediacodec_decode_close,                                                 \
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
-    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |                                       \
-                      FF_CODEC_CAP_SETS_PKT_DTS,                                               \
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,                                        \
     .bsfs           = bsf,                                                                     \
     .hw_configs     = mediacodec_hw_configs,                                                   \
     .p.wrapper_name = "mediacodec",                                                            \

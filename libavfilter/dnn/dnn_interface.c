@@ -24,57 +24,26 @@
  */
 
 #include "../dnn_interface.h"
-#include "dnn_backend_native.h"
-#include "dnn_backend_tf.h"
-#include "dnn_backend_openvino.h"
 #include "libavutil/mem.h"
 
-DNNModule *ff_get_dnn_module(DNNBackendType backend_type)
+extern const DNNModule ff_dnn_backend_openvino;
+extern const DNNModule ff_dnn_backend_tf;
+
+const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx)
 {
-    DNNModule *dnn_module;
-
-    dnn_module = av_mallocz(sizeof(DNNModule));
-    if(!dnn_module){
-        return NULL;
-    }
-
     switch(backend_type){
-    case DNN_NATIVE:
-        dnn_module->load_model = &ff_dnn_load_model_native;
-        dnn_module->execute_model = &ff_dnn_execute_model_native;
-        dnn_module->get_result = &ff_dnn_get_result_native;
-        dnn_module->flush = &ff_dnn_flush_native;
-        dnn_module->free_model = &ff_dnn_free_model_native;
-        break;
-    case DNN_TF:
     #if (CONFIG_LIBTENSORFLOW == 1)
-        dnn_module->load_model = &ff_dnn_load_model_tf;
-        dnn_module->execute_model = &ff_dnn_execute_model_tf;
-        dnn_module->get_result = &ff_dnn_get_result_tf;
-        dnn_module->flush = &ff_dnn_flush_tf;
-        dnn_module->free_model = &ff_dnn_free_model_tf;
-    #else
-        av_freep(&dnn_module);
-        return NULL;
+    case DNN_TF:
+        return &ff_dnn_backend_tf;
     #endif
-        break;
-    case DNN_OV:
     #if (CONFIG_LIBOPENVINO == 1)
-        dnn_module->load_model = &ff_dnn_load_model_ov;
-        dnn_module->execute_model = &ff_dnn_execute_model_ov;
-        dnn_module->get_result = &ff_dnn_get_result_ov;
-        dnn_module->flush = &ff_dnn_flush_ov;
-        dnn_module->free_model = &ff_dnn_free_model_ov;
-    #else
-        av_freep(&dnn_module);
-        return NULL;
+    case DNN_OV:
+        return &ff_dnn_backend_openvino;
     #endif
-        break;
     default:
-        av_log(NULL, AV_LOG_ERROR, "Module backend_type is not native or tensorflow\n");
-        av_freep(&dnn_module);
+        av_log(log_ctx, AV_LOG_ERROR,
+                "Module backend_type %d is not supported or enabled.\n",
+                backend_type);
         return NULL;
     }
-
-    return dnn_module;
 }

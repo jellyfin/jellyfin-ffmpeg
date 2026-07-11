@@ -69,7 +69,7 @@ static int parse_channel_name(char **arg, int *rchannel, int *rnamed)
 
     skip_spaces(arg);
     /* try to parse a channel name, e.g. "FL" */
-    if (sscanf(*arg, "%7[A-Z]%n", buf, &len)) {
+    if (sscanf(*arg, "%7[A-Z]%n", buf, &len) >= 1) {
         channel_id = av_channel_from_string(buf);
         if (channel_id < 0)
             return channel_id;
@@ -80,7 +80,7 @@ static int parse_channel_name(char **arg, int *rchannel, int *rnamed)
         return 0;
     }
     /* try to parse a channel number, e.g. "c2" */
-    if (sscanf(*arg, "c%d%n", &channel_id, &len) &&
+    if (sscanf(*arg, "c%d%n", &channel_id, &len) >= 1 &&
         channel_id >= 0 && channel_id < MAX_CHANNELS) {
         *rchannel = channel_id;
         *rnamed = 0;
@@ -117,6 +117,14 @@ static av_cold int init(AVFilterContext *ctx)
                                   &pan->nb_output_channels, arg, ctx);
     if (ret < 0)
         goto fail;
+
+    if (pan->nb_output_channels > MAX_CHANNELS) {
+        av_log(ctx, AV_LOG_ERROR,
+               "af_pan supports a maximum of %d channels. "
+               "Feel free to ask for a higher limit.\n", MAX_CHANNELS);
+        ret = AVERROR_PATCHWELCOME;
+        goto fail;
+    }
 
     /* parse channel specifications */
     while ((arg = arg0 = av_strtok(NULL, "|", &tokenizer))) {
@@ -165,7 +173,7 @@ static av_cold int init(AVFilterContext *ctx)
         sign = 1;
         while (1) {
             gain = 1;
-            if (sscanf(arg, "%lf%n *%n", &gain, &len, &len))
+            if (sscanf(arg, "%lf%n *%n", &gain, &len, &len) >= 1)
                 arg += len;
             if (parse_channel_name(&arg, &in_ch_id, &named)){
                 av_log(ctx, AV_LOG_ERROR,
@@ -385,12 +393,14 @@ FF_DISABLE_DEPRECATION_WARNINGS
     outsamples->channels = outlink->ch_layout.nb_channels;
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
-    if ((ret = av_channel_layout_copy(&outsamples->ch_layout, &outlink->ch_layout)) < 0)
+    if ((ret = av_channel_layout_copy(&outsamples->ch_layout, &outlink->ch_layout)) < 0) {
+        av_frame_free(&outsamples);
+        av_frame_free(&insamples);
         return ret;
+    }
 
-    ret = ff_filter_frame(outlink, outsamples);
     av_frame_free(&insamples);
-    return ret;
+    return ff_filter_frame(outlink, outsamples);
 }
 
 static av_cold void uninit(AVFilterContext *ctx)
@@ -417,13 +427,6 @@ static const AVFilterPad pan_inputs[] = {
     },
 };
 
-static const AVFilterPad pan_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_pan = {
     .name          = "pan",
     .description   = NULL_IF_CONFIG_SMALL("Remix channels with coefficients (panning)."),
@@ -432,6 +435,6 @@ const AVFilter ff_af_pan = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(pan_inputs),
-    FILTER_OUTPUTS(pan_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
 };

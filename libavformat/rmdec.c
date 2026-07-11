@@ -187,7 +187,8 @@ static int rm_read_audio_stream_info(AVFormatContext *s, AVIOContext *pb,
         st->codecpar->ch_layout.nb_channels = avio_rb16(pb);
         if (version == 5) {
             ast->deint_id = avio_rl32(pb);
-            avio_read(pb, buf, 4);
+            if (avio_read(pb, buf, 4) != 4)
+                return AVERROR_INVALIDDATA;
             buf[4] = 0;
         } else {
             AV_WL32(buf, 0);
@@ -267,9 +268,9 @@ static int rm_read_audio_stream_info(AVFormatContext *s, AVIOContext *pb,
         case DEINT_ID_INT4:
             if (ast->coded_framesize > ast->audio_framesize ||
                 sub_packet_h <= 1 ||
-                ast->coded_framesize * (uint64_t)sub_packet_h > (2 + (sub_packet_h & 1)) * ast->audio_framesize)
+                ast->coded_framesize * (uint64_t)sub_packet_h > (2LL + (sub_packet_h & 1)) * ast->audio_framesize)
                 return AVERROR_INVALIDDATA;
-            if (ast->coded_framesize * (uint64_t)sub_packet_h != 2*ast->audio_framesize) {
+            if (ast->coded_framesize * (uint64_t)sub_packet_h != 2LL*ast->audio_framesize) {
                 avpriv_request_sample(s, "mismatching interleaver parameters");
                 return AVERROR_INVALIDDATA;
             }

@@ -64,16 +64,16 @@ typedef struct H261DecContext {
 
 static av_cold void h261_decode_init_static(void)
 {
-    INIT_VLC_STATIC(&h261_mba_vlc, H261_MBA_VLC_BITS, 35,
+    VLC_INIT_STATIC(&h261_mba_vlc, H261_MBA_VLC_BITS, 35,
                     ff_h261_mba_bits, 1, 1,
                     ff_h261_mba_code, 1, 1, 540);
-    INIT_VLC_STATIC(&h261_mtype_vlc, H261_MTYPE_VLC_BITS, 10,
+    VLC_INIT_STATIC(&h261_mtype_vlc, H261_MTYPE_VLC_BITS, 10,
                     ff_h261_mtype_bits, 1, 1,
                     ff_h261_mtype_code, 1, 1, 80);
-    INIT_VLC_STATIC(&h261_mv_vlc, H261_MV_VLC_BITS, 17,
+    VLC_INIT_STATIC(&h261_mv_vlc, H261_MV_VLC_BITS, 17,
                     &ff_h261_mv_tab[0][1], 2, 1,
                     &ff_h261_mv_tab[0][0], 2, 1, 144);
-    INIT_VLC_STATIC(&h261_cbp_vlc, H261_CBP_VLC_BITS, 63,
+    VLC_INIT_STATIC(&h261_cbp_vlc, H261_CBP_VLC_BITS, 63,
                     &ff_h261_cbp_tab[0][1], 2, 1,
                     &ff_h261_cbp_tab[0][0], 2, 1, 512);
     INIT_FIRST_VLC_RL(ff_h261_rl_tcoeff, 552);
@@ -94,7 +94,6 @@ static av_cold int h261_decode_init(AVCodecContext *avctx)
     avctx->pix_fmt = AV_PIX_FMT_YUV420P;
 
     h->gob_start_code_skipped = 0;
-    ff_mpv_idct_init(s);
 
     ff_thread_once(&init_static_once, h261_decode_init_static);
 
@@ -513,10 +512,7 @@ static int h261_decode_picture_header(H261DecContext *h)
     }
 
     /* temporal reference */
-    i = get_bits(&s->gb, 5); /* picture timestamp */
-    if (i < (s->picture_number & 31))
-        i += 32;
-    s->picture_number = (s->picture_number & ~31) + i;
+    skip_bits(&s->gb, 5); /* picture timestamp */
 
     s->avctx->framerate = (AVRational) { 30000, 1001 };
 
@@ -531,16 +527,10 @@ static int h261_decode_picture_header(H261DecContext *h)
     if (format == 0) { // QCIF
         s->width     = 176;
         s->height    = 144;
-        s->mb_width  = 11;
-        s->mb_height = 9;
     } else { // CIF
         s->width     = 352;
         s->height    = 288;
-        s->mb_width  = 22;
-        s->mb_height = 18;
     }
-
-    s->mb_num = s->mb_width * s->mb_height;
 
     skip_bits1(&s->gb); /* still image mode off */
     skip_bits1(&s->gb); /* Reserved */
@@ -615,7 +605,6 @@ static int h261_decode_frame(AVCodecContext *avctx, AVFrame *pict,
 
     h->gob_start_code_skipped = 0;
 
-retry:
     init_get_bits(&s->gb, buf, buf_size * 8);
 
     ret = h261_decode_picture_header(h);
@@ -637,18 +626,12 @@ retry:
         ret = ff_set_dimensions(avctx, s->width, s->height);
         if (ret < 0)
             return ret;
-
-        goto retry;
     }
-
-    // for skipping the frame
-    s->current_picture.f->pict_type = s->pict_type;
-    s->current_picture.f->key_frame = s->pict_type == AV_PICTURE_TYPE_I;
 
     if ((avctx->skip_frame >= AVDISCARD_NONREF && s->pict_type == AV_PICTURE_TYPE_B) ||
         (avctx->skip_frame >= AVDISCARD_NONKEY && s->pict_type != AV_PICTURE_TYPE_I) ||
          avctx->skip_frame >= AVDISCARD_ALL)
-        return get_consumed_bytes(s, buf_size);
+        return buf_size;
 
     if (ff_mpv_frame_start(s, avctx) < 0)
         return -1;

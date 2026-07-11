@@ -801,7 +801,9 @@ static int atrac9_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if (ret < 0)
         return ret;
 
-    init_get_bits8(&gb, avpkt->data, avpkt->size);
+    ret = init_get_bits8(&gb, avpkt->data, avpkt->size);
+    if (ret < 0)
+        return ret;
 
     for (int i = 0; i < frames; i++) {
         for (int j = 0; j < s->block_config->count; j++) {
@@ -849,9 +851,9 @@ static av_cold void atrac9_init_vlc(VLC *vlc, int nb_bits, int nb_codes,
 
     vlc->table           = &vlc_buf[*buf_offset];
     vlc->table_allocated = FF_ARRAY_ELEMS(vlc_buf) - *buf_offset;
-    ff_init_vlc_from_lengths(vlc, nb_bits, nb_codes,
+    ff_vlc_init_from_lengths(vlc, nb_bits, nb_codes,
                              &(*tab)[0][1], 2, &(*tab)[0][0], 2, 1,
-                             offset, INIT_VLC_STATIC_OVERLONG, NULL);
+                             offset, VLC_INIT_STATIC_OVERLONG, NULL);
     *buf_offset += vlc->table_size;
     *tab        += nb_codes;
 }
@@ -923,7 +925,9 @@ static av_cold int atrac9_decode_init(AVCodecContext *avctx)
         return AVERROR_INVALIDDATA;
     }
 
-    init_get_bits8(&gb, avctx->extradata + 4, avctx->extradata_size);
+    err = init_get_bits8(&gb, avctx->extradata + 4, avctx->extradata_size);
+    if (err < 0)
+        return err;
 
     if (get_bits(&gb, 8) != 0xFE) {
         av_log(avctx, AV_LOG_ERROR, "Incorrect magic byte!\n");
@@ -1003,5 +1007,9 @@ const FFCodec ff_atrac9_decoder = {
     FF_CODEC_DECODE_CB(atrac9_decode_frame),
     .flush          = atrac9_decode_flush,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
-    .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
 };

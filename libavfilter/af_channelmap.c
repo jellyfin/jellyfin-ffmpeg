@@ -85,7 +85,7 @@ static char* split(char *message, char delim) {
     return next;
 }
 
-static int get_channel_idx(char **map, int *ch, char delim, int max_ch)
+static int get_channel_idx(char **map, int *ch, char delim, int max_nb_channels)
 {
     char *next;
     int len;
@@ -99,7 +99,7 @@ static int get_channel_idx(char **map, int *ch, char delim, int max_ch)
     sscanf(*map, "%d%n", ch, &n);
     if (n != len)
         return AVERROR(EINVAL);
-    if (*ch < 0 || *ch > max_ch)
+    if (*ch < 0 || *ch >= max_nb_channels)
         return AVERROR(EINVAL);
     *map = next;
     return 0;
@@ -167,7 +167,7 @@ static av_cold int channelmap_init(AVFilterContext *ctx)
 
     for (i = 0; i < map_entries; i++) {
         int in_ch_idx = -1, out_ch_idx = -1;
-        int in_ch = 0, out_ch = 0;
+        int in_ch = -1, out_ch = -1;
         static const char err[] = "Failed to parse channel map\n";
         switch (mode) {
         case MAP_ONE_INT:
@@ -375,14 +375,14 @@ static int channelmap_config_input(AVFilterLink *inlink)
     for (i = 0; i < s->nch; i++) {
         struct ChannelMap *m = &s->map[i];
 
-        if (s->mode == MAP_PAIR_STR_INT || s->mode == MAP_PAIR_STR_STR) {
+        if (s->mode == MAP_PAIR_STR_INT || s->mode == MAP_PAIR_STR_STR || s->mode == MAP_ONE_STR) {
             m->in_channel_idx = av_channel_layout_index_from_channel(
                 &inlink->ch_layout, m->in_channel);
         }
 
         if (m->in_channel_idx < 0 || m->in_channel_idx >= nb_channels) {
             av_channel_layout_describe(&inlink->ch_layout, layout_name, sizeof(layout_name));
-            if (m->in_channel) {
+            if (m->in_channel >= 0) {
                 av_channel_name(channel_name, sizeof(channel_name), m->in_channel);
                 av_log(ctx, AV_LOG_ERROR,
                        "input channel '%s' not available from input layout '%s'\n",
@@ -409,13 +409,6 @@ static const AVFilterPad avfilter_af_channelmap_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_af_channelmap_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO
-    },
-};
-
 const AVFilter ff_af_channelmap = {
     .name          = "channelmap",
     .description   = NULL_IF_CONFIG_SMALL("Remap audio channels."),
@@ -423,6 +416,6 @@ const AVFilter ff_af_channelmap = {
     .priv_size     = sizeof(ChannelMapContext),
     .priv_class    = &channelmap_class,
     FILTER_INPUTS(avfilter_af_channelmap_inputs),
-    FILTER_OUTPUTS(avfilter_af_channelmap_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(channelmap_query_formats),
 };

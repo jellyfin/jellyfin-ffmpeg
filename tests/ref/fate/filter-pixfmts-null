@@ -23,6 +23,8 @@ gbrap10be           edcffb185e44b6dae5c2ead5505b7125
 gbrap10le           2a7392e14b21b1f9457526a071236a6d
 gbrap12be           0c4c1f8af361571265ca259d5f70f026
 gbrap12le           5f1d8c663d4c28863e687192433b34a4
+gbrap14be           25694ddb34dceabec5143a7677c8072d
+gbrap14le           0eba343fc6f713d310db3d67f7d5a06b
 gbrap16be           e4edca4361d643794034e5aa9ef290b1
 gbrap16le           9a95b389d2bf556179e8f4b27fb550ab
 gbrapf32be          d908f0950d3735863fe6f0793fa24f76
@@ -68,10 +70,14 @@ p016be              7f9842d6015026136bad60d03c035cc3
 p016le              c453421b9f726bdaf2bacf59a492c43b
 p210be              847e9c6e292b17349e69570829252b3e
 p210le              c06e4b76cf504e908128081f92b60ce2
+p212be              4df641ed058718ad27a01889f923b04f
+p212le              414d3c187722afa8da718358924a9f6b
 p216be              f5009974fc1cd5d552705eeb52de35d9
 p216le              2f634e1a3cd5c9c122e0f2ebadb3503d
 p410be              7c2509d2df4bbb199ab653ebb6dce61e
 p410le              527761e1f4381007044679710a352ecc
+p412be              d3055624d596c30deb633f24761d6888
+p412le              1f19a675b00d8c9df499200fd80bcc10
 p416be              fd828e966d45ae908f5d2d4b3349b816
 p416le              983064bfd506be1e26cd57bafc14ae50
 pal8                ff5929f5b42075793b2c34cb441bede5

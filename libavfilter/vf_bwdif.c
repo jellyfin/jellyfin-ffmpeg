@@ -31,22 +31,17 @@
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "libavutil/imgutils.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "bwdifdsp.h"
+#include "ccfifo.h"
+#include "filters.h"
 #include "internal.h"
-#include "video.h"
-#include "bwdif.h"
+#include "yadif.h"
 
-/*
- * Filter coefficients coef_lf and coef_hf taken from BBC PH-2071 (Weston 3 Field Deinterlacer).
- * Used when there is spatial and temporal interpolation.
- * Filter coefficients coef_sp are used when there is spatial interpolation only.
- * Adjusted for matching visual sharpness impression of spatial and temporal interpolation.
- */
-static const uint16_t coef_lf[2] = { 4309, 213 };
-static const uint16_t coef_hf[3] = { 5570, 3801, 1016 };
-static const uint16_t coef_sp[2] = { 5077, 981 };
+typedef struct BWDIFContext {
+    YADIFContext yadif;
+    BWDIFDSPContext dsp;
+} BWDIFContext;
 
 typedef struct ThreadData {
     AVFrame *frame;
@@ -56,160 +51,11 @@ typedef struct ThreadData {
     int tff;
 } ThreadData;
 
-#define FILTER_INTRA() \
-    for (x = 0; x < w; x++) { \
-        interpol = (coef_sp[0] * (cur[mrefs] + cur[prefs]) - coef_sp[1] * (cur[mrefs3] + cur[prefs3])) >> 13; \
-        dst[0] = av_clip(interpol, 0, clip_max); \
- \
-        dst++; \
-        cur++; \
-    }
-
-#define FILTER1() \
-    for (x = 0; x < w; x++) { \
-        int c = cur[mrefs]; \
-        int d = (prev2[0] + next2[0]) >> 1; \
-        int e = cur[prefs]; \
-        int temporal_diff0 = FFABS(prev2[0] - next2[0]); \
-        int temporal_diff1 =(FFABS(prev[mrefs] - c) + FFABS(prev[prefs] - e)) >> 1; \
-        int temporal_diff2 =(FFABS(next[mrefs] - c) + FFABS(next[prefs] - e)) >> 1; \
-        int diff = FFMAX3(temporal_diff0 >> 1, temporal_diff1, temporal_diff2); \
- \
-        if (!diff) { \
-            dst[0] = d; \
-        } else {
-
-#define SPAT_CHECK() \
-            int b = ((prev2[mrefs2] + next2[mrefs2]) >> 1) - c; \
-            int f = ((prev2[prefs2] + next2[prefs2]) >> 1) - e; \
-            int dc = d - c; \
-            int de = d - e; \
-            int max = FFMAX3(de, dc, FFMIN(b, f)); \
-            int min = FFMIN3(de, dc, FFMAX(b, f)); \
-            diff = FFMAX3(diff, min, -max);
-
-#define FILTER_LINE() \
-            SPAT_CHECK() \
-            if (FFABS(c - e) > temporal_diff0) { \
-                interpol = (((coef_hf[0] * (prev2[0] + next2[0]) \
-                    - coef_hf[1] * (prev2[mrefs2] + next2[mrefs2] + prev2[prefs2] + next2[prefs2]) \
-                    + coef_hf[2] * (prev2[mrefs4] + next2[mrefs4] + prev2[prefs4] + next2[prefs4])) >> 2) \
-                    + coef_lf[0] * (c + e) - coef_lf[1] * (cur[mrefs3] + cur[prefs3])) >> 13; \
-            } else { \
-                interpol = (coef_sp[0] * (c + e) - coef_sp[1] * (cur[mrefs3] + cur[prefs3])) >> 13; \
-            }
-
-#define FILTER_EDGE() \
-            if (spat) { \
-                SPAT_CHECK() \
-            } \
-            interpol = (c + e) >> 1;
-
-#define FILTER2() \
-            if (interpol > d + diff) \
-                interpol = d + diff; \
-            else if (interpol < d - diff) \
-                interpol = d - diff; \
- \
-            dst[0] = av_clip(interpol, 0, clip_max); \
-        } \
- \
-        dst++; \
-        cur++; \
-        prev++; \
-        next++; \
-        prev2++; \
-        next2++; \
-    }
-
-static void filter_intra(void *dst1, void *cur1, int w, int prefs, int mrefs,
-                         int prefs3, int mrefs3, int parity, int clip_max)
+// Round job start line down to multiple of 4 so that if filter_line3 exists
+// and the frame is a multiple of 4 high then filter_line will never be called
+static inline int job_start(const int jobnr, const int nb_jobs, const int h)
 {
-    uint8_t *dst = dst1;
-    uint8_t *cur = cur1;
-    int interpol, x;
-
-    FILTER_INTRA()
-}
-
-static void filter_line_c(void *dst1, void *prev1, void *cur1, void *next1,
-                          int w, int prefs, int mrefs, int prefs2, int mrefs2,
-                          int prefs3, int mrefs3, int prefs4, int mrefs4,
-                          int parity, int clip_max)
-{
-    uint8_t *dst   = dst1;
-    uint8_t *prev  = prev1;
-    uint8_t *cur   = cur1;
-    uint8_t *next  = next1;
-    uint8_t *prev2 = parity ? prev : cur ;
-    uint8_t *next2 = parity ? cur  : next;
-    int interpol, x;
-
-    FILTER1()
-    FILTER_LINE()
-    FILTER2()
-}
-
-static void filter_edge(void *dst1, void *prev1, void *cur1, void *next1,
-                        int w, int prefs, int mrefs, int prefs2, int mrefs2,
-                        int parity, int clip_max, int spat)
-{
-    uint8_t *dst   = dst1;
-    uint8_t *prev  = prev1;
-    uint8_t *cur   = cur1;
-    uint8_t *next  = next1;
-    uint8_t *prev2 = parity ? prev : cur ;
-    uint8_t *next2 = parity ? cur  : next;
-    int interpol, x;
-
-    FILTER1()
-    FILTER_EDGE()
-    FILTER2()
-}
-
-static void filter_intra_16bit(void *dst1, void *cur1, int w, int prefs, int mrefs,
-                               int prefs3, int mrefs3, int parity, int clip_max)
-{
-    uint16_t *dst = dst1;
-    uint16_t *cur = cur1;
-    int interpol, x;
-
-    FILTER_INTRA()
-}
-
-static void filter_line_c_16bit(void *dst1, void *prev1, void *cur1, void *next1,
-                                int w, int prefs, int mrefs, int prefs2, int mrefs2,
-                                int prefs3, int mrefs3, int prefs4, int mrefs4,
-                                int parity, int clip_max)
-{
-    uint16_t *dst   = dst1;
-    uint16_t *prev  = prev1;
-    uint16_t *cur   = cur1;
-    uint16_t *next  = next1;
-    uint16_t *prev2 = parity ? prev : cur ;
-    uint16_t *next2 = parity ? cur  : next;
-    int interpol, x;
-
-    FILTER1()
-    FILTER_LINE()
-    FILTER2()
-}
-
-static void filter_edge_16bit(void *dst1, void *prev1, void *cur1, void *next1,
-                              int w, int prefs, int mrefs, int prefs2, int mrefs2,
-                              int parity, int clip_max, int spat)
-{
-    uint16_t *dst   = dst1;
-    uint16_t *prev  = prev1;
-    uint16_t *cur   = cur1;
-    uint16_t *next  = next1;
-    uint16_t *prev2 = parity ? prev : cur ;
-    uint16_t *next2 = parity ? cur  : next;
-    int interpol, x;
-
-    FILTER1()
-    FILTER_EDGE()
-    FILTER2()
+    return jobnr >= nb_jobs ? h : (ff_slice_pos(h, jobnr, nb_jobs)) & ~3;
 }
 
 static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
@@ -221,8 +67,8 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     int clip_max = (1 << (yadif->csp->comp[td->plane].depth)) - 1;
     int df = (yadif->csp->comp[td->plane].depth + 7) / 8;
     int refs = linesize / df;
-    int slice_start = (td->h *  jobnr   ) / nb_jobs;
-    int slice_end   = (td->h * (jobnr+1)) / nb_jobs;
+    int slice_start = job_start(jobnr, nb_jobs, td->h);
+    int slice_end   = job_start(jobnr + 1, nb_jobs, td->h);
     int y;
 
     for (y = slice_start; y < slice_end; y++) {
@@ -232,20 +78,34 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
             uint8_t *next = &yadif->next->data[td->plane][y * linesize];
             uint8_t *dst  = &td->frame->data[td->plane][y * td->frame->linesize[td->plane]];
             if (yadif->current_field == YADIF_FIELD_END) {
-                s->filter_intra(dst, cur, td->w, (y + df) < td->h ? refs : -refs,
-                                y > (df - 1) ? -refs : refs,
-                                (y + 3*df) < td->h ? 3 * refs : -refs,
-                                y > (3*df - 1) ? -3 * refs : refs,
-                                td->parity ^ td->tff, clip_max);
+                if ((y < 3) || ((y + 3) >= td->h)) {
+                    s->dsp.filter_edge(dst, prev, cur, next, td->w,
+                                   (y + df) < td->h ? refs : -refs,
+                                   y > (df - 1) ? -refs : refs,
+                                   refs << 1, -(refs << 1),
+                                   td->parity ^ td->tff, clip_max,
+                                   (y < 2) || ((y + 3) > td->h) ? 0 : 1);
+                } else {
+                    s->dsp.filter_intra(dst, cur, td->w, (y + df) < td->h ? refs : -refs,
+                                    y > (df - 1) ? -refs : refs,
+                                    (y + 3*df) < td->h ? 3 * refs : -refs,
+                                    y > (3*df - 1) ? -3 * refs : refs,
+                                    td->parity ^ td->tff, clip_max);
+                }
             } else if ((y < 4) || ((y + 5) > td->h)) {
-                s->filter_edge(dst, prev, cur, next, td->w,
+                s->dsp.filter_edge(dst, prev, cur, next, td->w,
                                (y + df) < td->h ? refs : -refs,
                                y > (df - 1) ? -refs : refs,
                                refs << 1, -(refs << 1),
                                td->parity ^ td->tff, clip_max,
                                (y < 2) || ((y + 3) > td->h) ? 0 : 1);
+            } else if (s->dsp.filter_line3 && y + 2 < slice_end && y + 6 < td->h) {
+                s->dsp.filter_line3(dst, td->frame->linesize[td->plane],
+                                prev, cur, next, linesize, td->w,
+                                td->parity ^ td->tff, clip_max);
+                y += 2;
             } else {
-                s->filter_line(dst, prev, cur, next, td->w,
+                s->dsp.filter_line(dst, prev, cur, next, td->w,
                                refs, -refs, refs << 1, -(refs << 1),
                                3 * refs, -3 * refs, refs << 2, -(refs << 2),
                                td->parity ^ td->tff, clip_max);
@@ -280,13 +140,11 @@ static void filter(AVFilterContext *ctx, AVFrame *dstpic,
         td.plane = i;
 
         ff_filter_execute(ctx, filter_slice, &td, NULL,
-                          FFMIN(h, ff_filter_get_nb_threads(ctx)));
+                          FFMIN((h+3)/4, ff_filter_get_nb_threads(ctx)));
     }
     if (yadif->current_field == YADIF_FIELD_END) {
         yadif->current_field = YADIF_FIELD_NORMAL;
     }
-
-    emms_c();
 }
 
 static av_cold void uninit(AVFilterContext *ctx)
@@ -297,6 +155,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_frame_free(&yadif->prev);
     av_frame_free(&yadif->cur );
     av_frame_free(&yadif->next);
+    ff_ccfifo_uninit(&yadif->cc_fifo);
 }
 
 static const enum AVPixelFormat pix_fmts[] = {
@@ -325,6 +184,7 @@ static int config_props(AVFilterLink *link)
     AVFilterContext *ctx = link->src;
     BWDIFContext *s = link->src->priv;
     YADIFContext *yadif = &s->yadif;
+    int ret;
 
     link->time_base = av_mul_q(ctx->inputs[0]->time_base, (AVRational){1, 2});
     link->w         = link->src->inputs[0]->w;
@@ -332,27 +192,24 @@ static int config_props(AVFilterLink *link)
 
     if(yadif->mode&1)
         link->frame_rate = av_mul_q(link->src->inputs[0]->frame_rate, (AVRational){2,1});
+    else
+        link->frame_rate = ctx->inputs[0]->frame_rate;
 
-    if (link->w < 3 || link->h < 4) {
-        av_log(ctx, AV_LOG_ERROR, "Video of less than 3 columns or 4 lines is not supported\n");
-        return AVERROR(EINVAL);
+    ret = ff_ccfifo_init(&yadif->cc_fifo, link->frame_rate, ctx);
+    if (ret < 0 ) {
+        av_log(ctx, AV_LOG_ERROR, "Failure to setup CC FIFO queue\n");
+        return ret;
     }
 
     yadif->csp = av_pix_fmt_desc_get(link->format);
     yadif->filter = filter;
-    if (yadif->csp->comp[0].depth > 8) {
-        s->filter_intra = filter_intra_16bit;
-        s->filter_line  = filter_line_c_16bit;
-        s->filter_edge  = filter_edge_16bit;
-    } else {
-        s->filter_intra = filter_intra;
-        s->filter_line  = filter_line_c;
-        s->filter_edge  = filter_edge;
+
+    if (AV_CEIL_RSHIFT(link->w, yadif->csp->log2_chroma_w) < 3 || AV_CEIL_RSHIFT(link->h, yadif->csp->log2_chroma_h) < 4) {
+        av_log(ctx, AV_LOG_ERROR, "Video with planes less than 3 columns or 4 lines is not supported\n");
+        return AVERROR(EINVAL);
     }
 
-#if ARCH_X86
-    ff_bwdif_init_x86(s);
-#endif
+    ff_bwdif_init_filter_line(&s->dsp, yadif->csp->comp[0].depth);
 
     return 0;
 }

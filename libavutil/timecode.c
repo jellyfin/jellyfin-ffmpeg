@@ -61,8 +61,8 @@ uint32_t av_timecode_get_smpte_from_framenum(const AVTimecode *tc, int framenum)
         framenum = av_timecode_adjust_ntsc_framenum2(framenum, tc->fps);
     ff = framenum % fps;
     ss = framenum / fps      % 60;
-    mm = framenum / (fps*60) % 60;
-    hh = framenum / (fps*3600) % 24;
+    mm = framenum / (fps*60LL) % 60;
+    hh = framenum / (fps*3600LL) % 24;
     return av_timecode_get_smpte(tc->rate, drop, hh, mm, ss, ff);
 }
 
@@ -100,11 +100,12 @@ uint32_t av_timecode_get_smpte(AVRational rate, int drop, int hh, int mm, int ss
     return tc;
 }
 
-char *av_timecode_make_string(const AVTimecode *tc, char *buf, int framenum)
+char *av_timecode_make_string(const AVTimecode *tc, char *buf, int framenum_arg)
 {
     int fps = tc->fps;
     int drop = tc->flags & AV_TIMECODE_FLAG_DROPFRAME;
     int hh, mm, ss, ff, ff_len, neg = 0;
+    int64_t framenum = framenum_arg;
 
     framenum += tc->start;
     if (drop)
@@ -210,7 +211,7 @@ static int fps_from_frame_rate(AVRational rate)
 {
     if (!rate.den || !rate.num)
         return -1;
-    return (rate.num + rate.den/2) / rate.den;
+    return (rate.num + rate.den/2LL) / rate.den;
 }
 
 int av_timecode_check_frame_rate(AVRational rate)
@@ -231,6 +232,7 @@ int av_timecode_init(AVTimecode *tc, AVRational rate, int flags, int frame_start
 int av_timecode_init_from_components(AVTimecode *tc, AVRational rate, int flags, int hh, int mm, int ss, int ff, void *log_ctx)
 {
     int ret;
+    int64_t s;
 
     memset(tc, 0, sizeof(*tc));
     tc->flags = flags;
@@ -241,7 +243,15 @@ int av_timecode_init_from_components(AVTimecode *tc, AVRational rate, int flags,
     if (ret < 0)
         return ret;
 
-    tc->start = (hh*3600 + mm*60 + ss) * tc->fps + ff;
+    s = hh*3600LL + mm*60LL + ss;
+    if (s != (int32_t)s)
+        return AVERROR(EINVAL);
+
+    s = s * tc->fps + ff;
+    if (s != (int32_t)s)
+        return AVERROR(EINVAL);
+    tc->start = s;
+
     if (tc->flags & AV_TIMECODE_FLAG_DROPFRAME) { /* adjust frame number */
         int tmins = 60*hh + mm;
         tc->start -= (tc->fps / 30 * 2) * (tmins - tmins/10);

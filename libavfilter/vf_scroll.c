@@ -22,8 +22,9 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct ScrollContext {
     const AVClass *class;
@@ -80,8 +81,8 @@ static int scroll_slice(AVFilterContext *ctx, void *arg, int jobnr,
         const uint8_t *src = in->data[p];
         const int h = s->planeheight[p];
         const int w = s->planewidth[p] * s->bytes;
-        const int slice_start = (h * jobnr) / nb_jobs;
-        const int slice_end = (h * (jobnr+1)) / nb_jobs;
+        const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);
+        const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);
         uint8_t *dst = out->data[p] + slice_start * out->linesize[p];
 
         for (int y = slice_start; y < slice_end; y++) {
@@ -194,20 +195,13 @@ static const AVFilterPad scroll_inputs[] = {
     },
 };
 
-static const AVFilterPad scroll_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_scroll = {
     .name          = "scroll",
     .description   = NULL_IF_CONFIG_SMALL("Scroll input video."),
     .priv_size     = sizeof(ScrollContext),
     .priv_class    = &scroll_class,
     FILTER_INPUTS(scroll_inputs),
-    FILTER_OUTPUTS(scroll_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

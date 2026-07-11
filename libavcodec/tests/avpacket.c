@@ -50,6 +50,7 @@ static int setup_side_data_entry(AVPacket* avpkt)
     ret = av_packet_add_side_data(avpkt, AV_PKT_DATA_NEW_EXTRADATA,
                                         extra_data, bytes);
     if(ret < 0){
+        av_free(extra_data);
         fprintf(stderr,
                 "Error occurred in av_packet_add_side_data: %s\n",
                 av_err2str(ret));
@@ -100,11 +101,14 @@ int main(void)
 
     if(!avpkt_clone) {
         av_log(NULL, AV_LOG_ERROR,"av_packet_clone failed to clone AVPacket\n");
+        av_packet_free(&avpkt);
         return 1;
     }
     /*test av_grow_packet*/
     if(av_grow_packet(avpkt_clone, 20) < 0){
         av_log(NULL, AV_LOG_ERROR, "av_grow_packet failed\n");
+        av_packet_free(&avpkt_clone);
+        av_packet_free(&avpkt);
         return 1;
     }
     if(av_grow_packet(avpkt_clone, INT_MAX) == 0){

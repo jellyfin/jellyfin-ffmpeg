@@ -440,7 +440,7 @@ static int get_opcodes(GetByteContext *gb, uint32_t *table, uint8_t *dst, int op
 
     size_in_bits = bytestream2_get_le32(gb);
     endoffset = ((size_in_bits + 7) >> 3) - 4;
-    if (endoffset <= 0 || bytestream2_get_bytes_left(gb) < endoffset)
+    if ((int)endoffset <= 0 || bytestream2_get_bytes_left(gb) < endoffset)
         return AVERROR_INVALIDDATA;
 
     offset = endoffset;
@@ -474,7 +474,9 @@ static int dxv_decompress_opcodes(GetByteContext *gb, void *dstp, size_t op_size
 
     if ((flag & 3) == 0) {
         bytestream2_skip(gb, 1);
-        bytestream2_get_buffer(gb, dstp, op_size);
+        int read_size = bytestream2_get_buffer(gb, dstp, op_size);
+        if (read_size != op_size)
+            return AVERROR_INVALIDDATA;
     } else if ((flag & 3) == 1) {
         bytestream2_skip(gb, 1);
         memset(dstp, bytestream2_get_byte(gb), op_size);
@@ -1145,6 +1147,8 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
         ctx->tex_rat = 1;
         break;
     }
+    if (avctx->coded_height / 2 / TEXTURE_BLOCK_H < 1)
+        return AVERROR_INVALIDDATA;
 
     ctx->slice_count = av_clip(avctx->thread_count, 1,
                                avctx->coded_height / FFMAX(ctx->texture_block_h,
@@ -1220,7 +1224,7 @@ static int dxv_decode(AVCodecContext *avctx, AVFrame *frame,
 
     /* Frame is ready to be output. */
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     *got_frame = 1;
 
     return avpkt->size;

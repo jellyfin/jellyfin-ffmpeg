@@ -82,6 +82,13 @@ static const struct {
 } supported_formats[] = {
     { MKTAG('N', 'V', '1', '2'), AV_PIX_FMT_NV12 },
     { MKTAG('P', '0', '1', '0'), AV_PIX_FMT_P010 },
+    { MKTAG('A', 'Y', 'U', 'V'), AV_PIX_FMT_VUYX },
+    { MKTAG('Y', 'U', 'Y', '2'), AV_PIX_FMT_YUYV422 },
+    { MKTAG('Y', '2', '1', '0'), AV_PIX_FMT_Y210 },
+    { MKTAG('Y', '4', '1', '0'), AV_PIX_FMT_XV30 },
+    { MKTAG('P', '0', '1', '6'), AV_PIX_FMT_P012 },
+    { MKTAG('Y', '2', '1', '6'), AV_PIX_FMT_Y212 },
+    { MKTAG('Y', '4', '1', '6'), AV_PIX_FMT_XV36 },
     { D3DFMT_P8,                 AV_PIX_FMT_PAL8 },
     { D3DFMT_A8R8G8B8,           AV_PIX_FMT_BGRA },
 };
@@ -134,7 +141,7 @@ static AVBufferRef *dxva2_pool_alloc(void *opaque, size_t size)
     if (s->nb_surfaces_used < hwctx->nb_surfaces) {
         s->nb_surfaces_used++;
         return av_buffer_create((uint8_t*)s->surfaces_internal[s->nb_surfaces_used - 1],
-                                sizeof(*hwctx->surfaces), dxva2_pool_release_dummy, 0, 0);
+                                sizeof(**hwctx->surfaces), dxva2_pool_release_dummy, 0, 0);
     }
 
     return NULL;
@@ -349,8 +356,8 @@ static int dxva2_transfer_data_to(AVHWFramesContext *ctx, AVFrame *dst,
     if (ret < 0)
         goto fail;
 
-    av_image_copy(map->data, map->linesize, (const uint8_t **)src->data, src->linesize,
-                  ctx->sw_format, src->width, src->height);
+    av_image_copy2(map->data, map->linesize, src->data, src->linesize,
+                   ctx->sw_format, src->width, src->height);
 
 fail:
     av_frame_free(&map);

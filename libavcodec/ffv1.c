@@ -64,7 +64,7 @@ av_cold int ff_ffv1_init_slice_state(const FFV1Context *f, FFV1Context *fs)
 
         if (fs->ac != AC_GOLOMB_RICE) {
             if (!p->state)
-                p->state = av_malloc_array(p->context_count, CONTEXT_SIZE *
+                p->state = av_calloc(p->context_count, CONTEXT_SIZE *
                                      sizeof(uint8_t));
             if (!p->state)
                 return AVERROR(ENOMEM);
@@ -101,6 +101,13 @@ av_cold int ff_ffv1_init_slices_state(FFV1Context *f)
             return AVERROR(ENOMEM);
     }
     return 0;
+}
+
+int ff_need_new_slices(int width, int num_h_slices, int chroma_shift) {
+    int mpw = 1<<chroma_shift;
+    int i = width * (int64_t)(num_h_slices - 1) / num_h_slices;
+
+    return width % mpw && (width - i) % mpw == 0;
 }
 
 av_cold int ff_ffv1_init_slice_contexts(FFV1Context *f)

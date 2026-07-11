@@ -67,6 +67,7 @@ typedef struct AVSyncTestContext {
 #define OFFSET(x) offsetof(AVSyncTestContext, x)
 #define A AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
 #define V AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
+#define R AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption avsynctest_options[] = {
     {"size",       "set frame size",  OFFSET(w),            AV_OPT_TYPE_IMAGE_SIZE, {.str="hd720"},   0,   0, V },
@@ -75,14 +76,14 @@ static const AVOption avsynctest_options[] = {
     {"fr",         "set frame rate",  OFFSET(frame_rate),   AV_OPT_TYPE_VIDEO_RATE, {.str="30"},   0,INT_MAX, V },
     {"samplerate", "set sample rate", OFFSET(sample_rate),  AV_OPT_TYPE_INT,        {.i64=44100},8000,384000, A },
     {"sr",         "set sample rate", OFFSET(sample_rate),  AV_OPT_TYPE_INT,        {.i64=44100},8000,384000, A },
-    {"amplitude",  "set beep amplitude", OFFSET(amplitude), AV_OPT_TYPE_FLOAT,      {.dbl=.7},       0.,  1., A },
-    {"a",          "set beep amplitude", OFFSET(amplitude), AV_OPT_TYPE_FLOAT,      {.dbl=.7},       0.,  1., A },
+    {"amplitude",  "set beep amplitude", OFFSET(amplitude), AV_OPT_TYPE_FLOAT,      {.dbl=.7},       0.,  1., A|R },
+    {"a",          "set beep amplitude", OFFSET(amplitude), AV_OPT_TYPE_FLOAT,      {.dbl=.7},       0.,  1., A|R },
     {"period",     "set beep period", OFFSET(period),       AV_OPT_TYPE_INT,        {.i64=3},         1, 99., A },
     {"p",          "set beep period", OFFSET(period),       AV_OPT_TYPE_INT,        {.i64=3},         1, 99., A },
-    {"delay",      "set flash delay", OFFSET(delay),        AV_OPT_TYPE_INT,        {.i64=0},       -30,  30, V },
-    {"dl",         "set flash delay", OFFSET(delay),        AV_OPT_TYPE_INT,        {.i64=0},       -30,  30, V },
-    {"cycle",      "set delay cycle", OFFSET(cycle),        AV_OPT_TYPE_BOOL,       {.i64=0},         0,   1, V },
-    {"c",          "set delay cycle", OFFSET(cycle),        AV_OPT_TYPE_BOOL,       {.i64=0},         0,   1, V },
+    {"delay",      "set flash delay", OFFSET(delay),        AV_OPT_TYPE_INT,        {.i64=0},       -30,  30, V|R },
+    {"dl",         "set flash delay", OFFSET(delay),        AV_OPT_TYPE_INT,        {.i64=0},       -30,  30, V|R },
+    {"cycle",      "set delay cycle", OFFSET(cycle),        AV_OPT_TYPE_BOOL,       {.i64=0},         0,   1, V|R },
+    {"c",          "set delay cycle", OFFSET(cycle),        AV_OPT_TYPE_BOOL,       {.i64=0},         0,   1, V|R },
     {"duration",   "set duration",    OFFSET(duration),     AV_OPT_TYPE_DURATION,   {.i64=0},         0, INT64_MAX, V|A },
     {"d",          "set duration",    OFFSET(duration),     AV_OPT_TYPE_DURATION,   {.i64=0},         0, INT64_MAX, V|A },
     {"fg",         "set foreground color", OFFSET(rgba[0]), AV_OPT_TYPE_COLOR,      {.str="white"},   0,   0, V },
@@ -170,7 +171,7 @@ static av_cold int config_props(AVFilterLink *outlink)
 
 #define FPI 0x8000
 
-static int32_t sin32(int32_t x, int shift)
+static int32_t sin32(int32_t x, AVRational scale)
 {
     const double pi = M_PI;
     const int32_t a = ((2.0 * pi) * (1 << 24));
@@ -194,7 +195,8 @@ static int32_t sin32(int32_t x, int shift)
     result = a + t2;
     result *= x;
     result += (1U << 31);
-    result >>= (32 - shift);
+    result >>= 17;
+    result = av_rescale(result, scale.num, scale.den);
 
     return result;
 }
@@ -203,7 +205,7 @@ static int audio_frame(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVSyncTestContext *s = ctx->priv;
-    const int a = lrintf(s->amplitude * 15);
+    const AVRational a = av_d2q(s->amplitude, 32768);
     int64_t duration[2];
     int64_t delta;
     AVFrame *out;
@@ -276,6 +278,9 @@ static int video_frame(AVFilterLink *outlink)
     int new_offset;
     int64_t delta, temp, intpart;
     AVFrame *out;
+
+    if (!s->cycle)
+        s->vdelay = av_make_q(s->delay, 1);
 
     delta = av_rescale_q(s->apts, s->frame_rate, av_make_q(s->sample_rate, 1)) - s->vpts;
     if (delta < 0)
@@ -400,4 +405,5 @@ const AVFilter ff_avsrc_avsynctest = {
     .activate      = activate,
     FILTER_OUTPUTS(avsynctest_outputs),
     FILTER_QUERY_FUNC(query_formats),
+    .process_command = ff_filter_process_command,
 };

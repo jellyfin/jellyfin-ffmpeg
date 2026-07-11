@@ -24,6 +24,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/xga_font_data.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
 #include "formats.h"
 #include "internal.h"
@@ -190,8 +191,8 @@ static int filter_color2(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
     const int W = (outlink->w - xoff) / (C * 10);
     const int H = (outlink->h - yoff) / (PP * 12);
     const char *format[4] = {"%02X\n", "%04X\n", "%03d\n", "%05d\n"};
-    const int slice_start = (W * jobnr) / nb_jobs;
-    const int slice_end = (W * (jobnr+1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(W, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(W, jobnr + 1, nb_jobs);
     int x, y, p;
 
     for (y = 0; y < H && (y + s->y < inlink->h); y++) {
@@ -237,8 +238,8 @@ static int filter_color(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const int W = (outlink->w - xoff) / (C * 10);
     const int H = (outlink->h - yoff) / (PP * 12);
     const char *format[4] = {"%02X\n", "%04X\n", "%03d\n", "%05d\n"};
-    const int slice_start = (W * jobnr) / nb_jobs;
-    const int slice_end = (W * (jobnr+1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(W, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(W, jobnr + 1, nb_jobs);
     int x, y, p;
 
     for (y = 0; y < H && (y + s->y < inlink->h); y++) {
@@ -280,8 +281,8 @@ static int filter_mono(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const int W = (outlink->w - xoff) / (C * 10);
     const int H = (outlink->h - yoff) / (PP * 12);
     const char *format[4] = {"%02X\n", "%04X\n", "%03d\n", "%05d\n"};
-    const int slice_start = (W * jobnr) / nb_jobs;
-    const int slice_end = (W * (jobnr+1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(W, jobnr, nb_jobs);
+    const int slice_end = ff_slice_pos(W, jobnr + 1, nb_jobs);
     int x, y, p;
 
     for (y = 0; y < H && (y + s->y < inlink->h); y++) {
@@ -728,20 +729,13 @@ static const AVFilterPad pixscope_inputs[] = {
     },
 };
 
-static const AVFilterPad pixscope_outputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_pixscope = {
     .name          = "pixscope",
     .description   = NULL_IF_CONFIG_SMALL("Pixel data analysis."),
     .priv_size     = sizeof(PixscopeContext),
     .priv_class    = &pixscope_class,
     FILTER_INPUTS(pixscope_inputs),
-    FILTER_OUTPUTS(pixscope_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = pixscope_process_command,
@@ -1132,13 +1126,6 @@ static const AVFilterPad oscilloscope_inputs[] = {
     },
 };
 
-static const AVFilterPad oscilloscope_outputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_oscilloscope = {
     .name          = "oscilloscope",
     .description   = NULL_IF_CONFIG_SMALL("2D Video Oscilloscope."),
@@ -1146,7 +1133,7 @@ const AVFilter ff_vf_oscilloscope = {
     .priv_class    = &oscilloscope_class,
     .uninit        = oscilloscope_uninit,
     FILTER_INPUTS(oscilloscope_inputs),
-    FILTER_OUTPUTS(oscilloscope_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = oscilloscope_process_command,

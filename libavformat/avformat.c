@@ -23,12 +23,14 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/frame.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/samplefmt.h"
 #include "libavcodec/avcodec.h"
+#include "libavcodec/codec.h"
 #include "libavcodec/bsf.h"
 #include "libavcodec/codec_desc.h"
 #include "libavcodec/packet_internal.h"
@@ -46,9 +48,13 @@ void ff_free_stream(AVStream **pst)
     if (!st)
         return;
 
+#if FF_API_AVSTREAM_SIDE_DATA
+FF_DISABLE_DEPRECATION_WARNINGS
     for (int i = 0; i < st->nb_side_data; i++)
         av_freep(&st->side_data[i].data);
     av_freep(&st->side_data);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     if (st->attached_pic.data)
         av_packet_unref(&st->attached_pic);
@@ -138,6 +144,8 @@ void avformat_free_context(AVFormatContext *s)
     av_free(s);
 }
 
+#if FF_API_AVSTREAM_SIDE_DATA
+FF_DISABLE_DEPRECATION_WARNINGS
 uint8_t *av_stream_get_side_data(const AVStream *st,
                                  enum AVPacketSideDataType type, size_t *size)
 {
@@ -205,36 +213,8 @@ uint8_t *av_stream_new_side_data(AVStream *st, enum AVPacketSideDataType type,
 
     return data;
 }
-
-int ff_stream_side_data_copy(AVStream *dst, const AVStream *src)
-{
-    /* Free existing side data*/
-    for (int i = 0; i < dst->nb_side_data; i++)
-        av_free(dst->side_data[i].data);
-    av_freep(&dst->side_data);
-    dst->nb_side_data = 0;
-
-    /* Copy side data if present */
-    if (src->nb_side_data) {
-        dst->side_data = av_calloc(src->nb_side_data,
-                                   sizeof(*dst->side_data));
-        if (!dst->side_data)
-            return AVERROR(ENOMEM);
-        dst->nb_side_data = src->nb_side_data;
-
-        for (int i = 0; i < src->nb_side_data; i++) {
-            uint8_t *data = av_memdup(src->side_data[i].data,
-                                      src->side_data[i].size);
-            if (!data)
-                return AVERROR(ENOMEM);
-            dst->side_data[i].type = src->side_data[i].type;
-            dst->side_data[i].size = src->side_data[i].size;
-            dst->side_data[i].data = data;
-        }
-    }
-
-    return 0;
-}
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
 /**
  * Copy all stream parameters from source to destination stream, with the
@@ -267,10 +247,6 @@ static int stream_params_copy(AVStream *dst, const AVStream *src)
         return ret;
 
     ret = avcodec_parameters_copy(dst->codecpar, src->codecpar);
-    if (ret < 0)
-        return ret;
-
-    ret = ff_stream_side_data_copy(dst, src);
     if (ret < 0)
         return ret;
 
@@ -679,6 +655,7 @@ AVRational av_guess_sample_aspect_ratio(AVFormatContext *format, AVStream *strea
 AVRational av_guess_frame_rate(AVFormatContext *format, AVStream *st, AVFrame *frame)
 {
     AVRational fr = st->r_frame_rate;
+    const AVCodecDescriptor *desc = cffstream(st)->codec_desc;
     AVCodecContext *const avctx = ffstream(st)->avctx;
     AVRational codec_fr = avctx->framerate;
     AVRational   avg_fr = st->avg_frame_rate;
@@ -688,7 +665,7 @@ AVRational av_guess_frame_rate(AVFormatContext *format, AVStream *st, AVFrame *f
         fr = avg_fr;
     }
 
-    if (avctx->ticks_per_frame > 1) {
+    if (desc && (desc->props & AV_CODEC_PROP_FIELDS)) {
         if (   codec_fr.num > 0 && codec_fr.den > 0 &&
             (fr.num == 0 || av_q2d(codec_fr) < av_q2d(fr)*0.7 && fabs(1.0 - av_q2d(av_div_q(avg_fr, fr))) > 0.1))
             fr = codec_fr;
@@ -701,13 +678,14 @@ int avformat_transfer_internal_stream_timing_info(const AVOutputFormat *ofmt,
                                                   AVStream *ost, const AVStream *ist,
                                                   enum AVTimebaseSource copy_tb)
 {
+    const AVCodecDescriptor       *desc = cffstream(ist)->codec_desc;
     const AVCodecContext *const dec_ctx = cffstream(ist)->avctx;
     AVCodecContext       *const enc_ctx =  ffstream(ost)->avctx;
-    AVRational dec_ctx_tb = dec_ctx->framerate.num ? av_inv_q(av_mul_q(dec_ctx->framerate,
-                                                                       (AVRational){dec_ctx->ticks_per_frame, 1}))
+
+    AVRational mul = (AVRational){ desc && (desc->props & AV_CODEC_PROP_FIELDS) ? 2 : 1, 1 };
+    AVRational dec_ctx_tb = dec_ctx->framerate.num ? av_inv_q(av_mul_q(dec_ctx->framerate, mul))
                                                    : (ist->codecpar->codec_type == AVMEDIA_TYPE_AUDIO ? (AVRational){0, 1}
                                                                                                       : ist->time_base);
-
     enc_ctx->time_base = ist->time_base;
     /*
      * Avi is a special case here because it supports variable fps but
@@ -724,7 +702,11 @@ int avformat_transfer_internal_stream_timing_info(const AVOutputFormat *ofmt,
             || copy_tb == AVFMT_TBCF_R_FRAMERATE) {
             enc_ctx->time_base.num = ist->r_frame_rate.den;
             enc_ctx->time_base.den = 2*ist->r_frame_rate.num;
+#if FF_API_TICKS_PER_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
             enc_ctx->ticks_per_frame = 2;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         } else
 #endif
             if (copy_tb == AVFMT_TBCF_AUTO && dec_ctx->framerate.num &&
@@ -733,9 +715,13 @@ int avformat_transfer_internal_stream_timing_info(const AVOutputFormat *ofmt,
                    || (copy_tb == AVFMT_TBCF_DECODER &&
                        (dec_ctx->framerate.num || ist->codecpar->codec_type == AVMEDIA_TYPE_AUDIO))) {
             enc_ctx->time_base = dec_ctx_tb;
-            enc_ctx->time_base.num *= dec_ctx->ticks_per_frame;
             enc_ctx->time_base.den *= 2;
+#if FF_API_TICKS_PER_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+            enc_ctx->time_base.num *= dec_ctx->ticks_per_frame;
             enc_ctx->ticks_per_frame = 2;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         }
     } else if (!(ofmt->flags & AVFMT_VARIABLE_FPS)
                && !av_match_name(ofmt->name, "mov,mp4,3gp,3g2,psp,ipod,ismv,f4v")) {
@@ -745,7 +731,11 @@ int avformat_transfer_internal_stream_timing_info(const AVOutputFormat *ofmt,
             || (copy_tb == AVFMT_TBCF_DECODER &&
                 (dec_ctx->framerate.num || ist->codecpar->codec_type == AVMEDIA_TYPE_AUDIO))) {
             enc_ctx->time_base = dec_ctx_tb;
+#if FF_API_TICKS_PER_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
             enc_ctx->time_base.num *= dec_ctx->ticks_per_frame;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         }
     }
 

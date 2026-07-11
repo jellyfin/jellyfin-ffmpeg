@@ -31,8 +31,8 @@
 #include "libavutil/pixdesc.h"
 #include "libavcodec/mathops.h" // for mid_pred(), which is a macro so no link dependency
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -316,8 +316,8 @@ static inline int selective_color_##nbits(AVFilterContext *ctx, ThreadData *td, 
     const SelectiveColorContext *s = ctx->priv;                                                         \
     const int height = in->height;                                                                      \
     const int width  = in->width;                                                                       \
-    const int slice_start = (height *  jobnr   ) / nb_jobs;                                             \
-    const int slice_end   = (height * (jobnr+1)) / nb_jobs;                                             \
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);                                       \
+    const int slice_end   = ff_slice_pos(height, jobnr + 1, nb_jobs);                                   \
     const int dst_linesize = out->linesize[0] / ((nbits + 7) / 8);                                      \
     const int src_linesize =  in->linesize[0] / ((nbits + 7) / 8);                                      \
     const uint8_t roffset = s->rgba_map[R];                                                             \
@@ -474,19 +474,12 @@ static const AVFilterPad selectivecolor_inputs[] = {
     },
 };
 
-static const AVFilterPad selectivecolor_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_selectivecolor = {
     .name          = "selectivecolor",
     .description   = NULL_IF_CONFIG_SMALL("Apply CMYK adjustments to specific color ranges."),
     .priv_size     = sizeof(SelectiveColorContext),
     FILTER_INPUTS(selectivecolor_inputs),
-    FILTER_OUTPUTS(selectivecolor_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &selectivecolor_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

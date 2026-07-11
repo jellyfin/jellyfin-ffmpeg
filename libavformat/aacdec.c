@@ -113,7 +113,7 @@ static int adts_aac_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
 
     st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
-    st->codecpar->codec_id   = s->iformat->raw_codec_id;
+    st->codecpar->codec_id   = AV_CODEC_ID_AAC;
     ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL_RAW;
 
     ff_id3v1_read(s);
@@ -146,7 +146,7 @@ static int handle_id3(AVFormatContext *s, AVPacket *pkt)
         return ret;
     }
 
-    ffio_init_context(&pb, pkt->data, pkt->size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&pb, pkt->data, pkt->size);
     ff_id3v2_read_dict(&pb.pub, &metadata, ID3v2_DEFAULT_MAGIC, &id3v2_extra_meta);
     if ((ret = ff_id3v2_parse_priv_dict(&metadata, id3v2_extra_meta)) < 0)
         goto error;

@@ -85,13 +85,14 @@ static av_cold int libkvazaar_init(AVCodecContext *avctx)
         cfg->framerate_num   = avctx->framerate.num;
         cfg->framerate_denom = avctx->framerate.den;
     } else {
-        if (avctx->ticks_per_frame > INT_MAX / avctx->time_base.num) {
-            av_log(avctx, AV_LOG_ERROR,
-                   "Could not set framerate for kvazaar: integer overflow\n");
-            return AVERROR(EINVAL);
-        }
         cfg->framerate_num   = avctx->time_base.den;
-        cfg->framerate_denom = avctx->time_base.num * avctx->ticks_per_frame;
+FF_DISABLE_DEPRECATION_WARNINGS
+        cfg->framerate_denom = avctx->time_base.num
+#if FF_API_TICKS_PER_FRAME
+            * avctx->ticks_per_frame
+#endif
+            ;
+FF_ENABLE_DEPRECATION_WARNINGS
     }
     cfg->target_bitrate = avctx->bit_rate;
     cfg->vui.sar_width  = avctx->sample_aspect_ratio.num;
@@ -99,6 +100,13 @@ static av_cold int libkvazaar_init(AVCodecContext *avctx)
     if (avctx->bit_rate) {
         cfg->rc_algorithm = KVZ_LAMBDA;
     }
+
+    cfg->vui.fullrange   = avctx->color_range == AVCOL_RANGE_JPEG;
+    cfg->vui.colorprim   = avctx->color_primaries;
+    cfg->vui.transfer    = avctx->color_trc;
+    cfg->vui.colormatrix = avctx->colorspace;
+    if (avctx->chroma_sample_location != AVCHROMA_LOC_UNSPECIFIED)
+        cfg->vui.chroma_loc = avctx->chroma_sample_location - 1;
 
     if (ctx->kvz_params) {
         AVDictionary *dict = NULL;
@@ -220,9 +228,9 @@ static int libkvazaar_encode(AVCodecContext *avctx,
               frame->width / 2,
               0
             };
-            av_image_copy(dst, dst_linesizes,
-                          (const uint8_t **)frame->data, frame->linesize,
-                          frame->format, frame->width, frame->height);
+            av_image_copy2(dst, dst_linesizes,
+                           frame->data, frame->linesize,
+                           frame->format, frame->width, frame->height);
         }
 
         input_pic->pts = frame->pts;

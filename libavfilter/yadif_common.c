@@ -22,6 +22,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
 #include "internal.h"
+#include "video.h"
 #include "yadif.h"
 
 static int return_frame(AVFilterContext *ctx, int is_second)
@@ -31,8 +32,8 @@ static int return_frame(AVFilterContext *ctx, int is_second)
     int tff, ret;
 
     if (yadif->parity == -1) {
-        tff = yadif->cur->interlaced_frame ?
-              yadif->cur->top_field_first : 1;
+        tff = (yadif->cur->flags & AV_FRAME_FLAG_INTERLACED) ?
+              !!(yadif->cur->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) : 1;
     } else {
         tff = yadif->parity ^ 1;
     }
@@ -43,7 +44,12 @@ static int return_frame(AVFilterContext *ctx, int is_second)
             return AVERROR(ENOMEM);
 
         av_frame_copy_props(yadif->out, yadif->cur);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         yadif->out->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        yadif->out->flags &= ~AV_FRAME_FLAG_INTERLACED;
         if (yadif->current_field == YADIF_FIELD_BACK_END)
             yadif->current_field = YADIF_FIELD_END;
     }
@@ -60,6 +66,8 @@ static int return_frame(AVFilterContext *ctx, int is_second)
             yadif->out->pts = AV_NOPTS_VALUE;
         }
     }
+
+    ff_ccfifo_inject(&yadif->cc_fifo, yadif->out);
     ret = ff_filter_frame(ctx->outputs[0], yadif->out);
 
     yadif->frame_pending = (yadif->mode&1) && !is_second;
@@ -81,9 +89,9 @@ static void fixstride(AVFilterLink *link, AVFrame *f)
     if(!dst)
         return;
     av_frame_copy_props(dst, f);
-    av_image_copy(dst->data, dst->linesize,
-                  (const uint8_t **)f->data, f->linesize,
-                  dst->format, dst->width, dst->height);
+    av_image_copy2(dst->data, dst->linesize,
+                   f->data, f->linesize,
+                   dst->format, dst->width, dst->height);
     av_frame_unref(f);
     av_frame_move_ref(f, dst);
     av_frame_free(&dst);
@@ -95,6 +103,8 @@ int ff_yadif_filter_frame(AVFilterLink *link, AVFrame *frame)
     YADIFContext *yadif = ctx->priv;
 
     av_assert0(frame);
+
+    ff_ccfifo_extract(&yadif->cc_fifo, frame);
 
     if (yadif->frame_pending)
         return_frame(ctx, 1);
@@ -128,18 +138,20 @@ int ff_yadif_filter_frame(AVFilterLink *link, AVFrame *frame)
     if (!yadif->prev)
         return 0;
 
-    if ((yadif->deint && !yadif->cur->interlaced_frame) ||
+    if ((yadif->deint && !(yadif->cur->flags & AV_FRAME_FLAG_INTERLACED)) ||
         ctx->is_disabled ||
-        (yadif->deint && !yadif->prev->interlaced_frame && yadif->prev->repeat_pict) ||
-        (yadif->deint && !yadif->next->interlaced_frame && yadif->next->repeat_pict)
+        (yadif->deint && !(yadif->prev->flags & AV_FRAME_FLAG_INTERLACED) && yadif->prev->repeat_pict) ||
+        (yadif->deint && !(yadif->next->flags & AV_FRAME_FLAG_INTERLACED) && yadif->next->repeat_pict)
     ) {
         yadif->out  = av_frame_clone(yadif->cur);
         if (!yadif->out)
             return AVERROR(ENOMEM);
 
+        ff_ccfifo_inject(&yadif->cc_fifo, yadif->out);
         av_frame_free(&yadif->prev);
         if (yadif->out->pts != AV_NOPTS_VALUE)
             yadif->out->pts *= 2;
+        yadif->out->duration *= 2;
         return ff_filter_frame(ctx->outputs[0], yadif->out);
     }
 
@@ -148,10 +160,17 @@ int ff_yadif_filter_frame(AVFilterLink *link, AVFrame *frame)
         return AVERROR(ENOMEM);
 
     av_frame_copy_props(yadif->out, yadif->cur);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     yadif->out->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    yadif->out->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
     if (yadif->out->pts != AV_NOPTS_VALUE)
         yadif->out->pts *= 2;
+    if (!(yadif->mode & 1))
+        yadif->out->duration *= 2;
 
     return return_frame(ctx, 0);
 }

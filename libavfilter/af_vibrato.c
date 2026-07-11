@@ -54,9 +54,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterContext *ctx = inlink->dst;
     VibratoContext *s = ctx->priv;
+    const int wave_table_size = s->wave_table_size;
+    const double *wave_table = s->wave_table;
     AVFilterLink *outlink = ctx->outputs[0];
+    const int channels = s->channels;
+    const int buf_size = s->buf_size;
+    const double depth = s->depth;
+    int wave_table_index = s->wave_table_index;
+    int buf_index = s->buf_index;
     AVFrame *out;
-    int n, c;
     const double *src;
     double *dst;
 
@@ -71,39 +77,40 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_copy_props(out, in);
     }
 
-    for (n = 0; n < in->nb_samples; n++) {
+    for (int n = 0; n < in->nb_samples; n++) {
+        int samp1_index, samp2_index;
         double integer, decimal;
-        decimal = modf(s->depth * s->wave_table[s->wave_table_index], &integer);
+        decimal = modf(depth * wave_table[wave_table_index], &integer);
 
-        s->wave_table_index++;
-        if (s->wave_table_index >= s->wave_table_size)
-            s->wave_table_index -= s->wave_table_size;
+        wave_table_index++;
+        if (wave_table_index >= wave_table_size)
+            wave_table_index -= wave_table_size;
 
-        for (c = 0; c < inlink->ch_layout.nb_channels; c++) {
-            int samp1_index, samp2_index;
-            double *buf;
-            double this_samp;
+        samp1_index = buf_index + integer;
+        if (samp1_index >= buf_size)
+            samp1_index -= buf_size;
+        samp2_index = samp1_index + 1;
+        if (samp2_index >= buf_size)
+            samp2_index -= buf_size;
+
+        for (int c = 0; c < channels; c++) {
+            double *buf, this_samp;
 
             src = (const double *)in->extended_data[c];
             dst = (double *)out->extended_data[c];
             buf = s->buf[c];
 
-            samp1_index = s->buf_index + integer;
-            if (samp1_index >= s->buf_size)
-                samp1_index -= s->buf_size;
-            samp2_index = samp1_index + 1;
-            if (samp2_index >= s->buf_size)
-                samp2_index -= s->buf_size;
-
             this_samp = src[n];
             dst[n] = buf[samp1_index] + (decimal * (buf[samp2_index] - buf[samp1_index]));
-            buf[s->buf_index] = this_samp;
+            buf[buf_index] = this_samp;
         }
-        s->buf_index++;
-        if (s->buf_index >= s->buf_size)
-            s->buf_index -= s->buf_size;
+        buf_index++;
+        if (buf_index >= buf_size)
+            buf_index -= buf_size;
     }
 
+    s->wave_table_index = wave_table_index;
+    s->buf_index = buf_index;
     if (in != out)
         av_frame_free(&in);
 
@@ -158,13 +165,6 @@ static const AVFilterPad avfilter_af_vibrato_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_af_vibrato_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_vibrato = {
     .name          = "vibrato",
     .description   = NULL_IF_CONFIG_SMALL("Apply vibrato effect."),
@@ -172,7 +172,7 @@ const AVFilter ff_af_vibrato = {
     .priv_class    = &vibrato_class,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_vibrato_inputs),
-    FILTER_OUTPUTS(avfilter_af_vibrato_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <time.h>
+
 #include "libavutil/parseutils.h"
 #include "avio_internal.h"
 #include "avformat.h"
@@ -269,9 +271,12 @@ static int dhav_read_header(AVFormatContext *s)
 {
     DHAVContext *dhav = s->priv_data;
     uint8_t signature[5];
+    int ret;
 
     ffio_ensure_seekback(s->pb, 5);
-    avio_read(s->pb, signature, sizeof(signature));
+    ret = ffio_read_size(s->pb, signature, sizeof(signature));
+    if (ret < 0)
+        return ret;
     if (!memcmp(signature, "DAHUA", 5)) {
         avio_skip(s->pb, 0x400 - 5);
         dhav->last_good_pos = avio_tell(s->pb);
@@ -288,7 +293,9 @@ static int dhav_read_header(AVFormatContext *s)
                 if (seek_back < 9)
                     break;
                 dhav->last_good_pos = avio_tell(s->pb);
-                avio_seek(s->pb, -seek_back, SEEK_CUR);
+                int64_t ret64 = avio_seek(s->pb, -seek_back, SEEK_CUR);
+                if (ret64 < 0)
+                    return ret64;
             }
             avio_seek(s->pb, dhav->last_good_pos, SEEK_SET);
         }

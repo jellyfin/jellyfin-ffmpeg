@@ -210,10 +210,11 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
         AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
         AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+        AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA422P12,
         AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
         AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
         AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP16,
+        AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP14, AV_PIX_FMT_GBRAP16,
         AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32,
         AV_PIX_FMT_NONE
     };
@@ -251,7 +252,7 @@ static int config_props(AVFilterLink *outlink)
     double var_values[VARS_NB], res;
     char *expr;
     int ret;
-    int factor_w, factor_h;
+    int64_t factor_w, factor_h;
 
     var_values[VAR_IN_W]  = var_values[VAR_IW] = inlink->w;
     var_values[VAR_IN_H]  = var_values[VAR_IH] = inlink->h;
@@ -270,17 +271,26 @@ static int config_props(AVFilterLink *outlink)
     av_expr_parse_and_eval(&res, (expr = s->w_expr),
                            var_names, var_values,
                            NULL, NULL, NULL, NULL, NULL, 0, ctx);
-    s->w = var_values[VAR_OUT_W] = var_values[VAR_OW] = res;
+    var_values[VAR_OUT_W] = var_values[VAR_OW] = trunc(res);
     if ((ret = av_expr_parse_and_eval(&res, (expr = s->h_expr),
                                       var_names, var_values,
                                       NULL, NULL, NULL, NULL, NULL, 0, ctx)) < 0)
         goto fail;
+    if (!(res >= INT32_MIN && res <= INT32_MAX)) {
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
+
     s->h = var_values[VAR_OUT_H] = var_values[VAR_OH] = res;
     /* evaluate again the width, as it may depend on the output height */
     if ((ret = av_expr_parse_and_eval(&res, (expr = s->w_expr),
                                       var_names, var_values,
                                       NULL, NULL, NULL, NULL, NULL, 0, ctx)) < 0)
         goto fail;
+    if (!(res >= INT32_MIN && res <= INT32_MAX)) {
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
     s->w = res;
 
     w = s->w;
@@ -900,14 +910,22 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
             int x, y;
             if (odesc->flags & AV_PIX_FMT_FLAG_FLOAT) {
                 for (y = 0; y < out->height; y++) {
+                    const ptrdiff_t row =  y * out->linesize[3];
                     for (x = 0; x < out->width; x++) {
-                        AV_WN32(out->data[3] + x * odesc->comp[3].step + y * out->linesize[3],
+                        AV_WN32(out->data[3] + x * odesc->comp[3].step + row,
                                 av_float2int(1.0f));
                     }
                 }
-            } else {
+            } else if (s->dst_format.depth == 8) {
                 for (y = 0; y < outlink->h; y++)
                     memset(out->data[3] + y * out->linesize[3], 0xff, outlink->w);
+            } else {
+                const uint16_t max = (1 << s->dst_format.depth) - 1;
+                for (y = 0; y < outlink->h; y++) {
+                    const ptrdiff_t row =  y * out->linesize[3];
+                    for (x = 0; x < out->width; x++)
+                        AV_WN16(out->data[3] + x * odesc->comp[3].step + row, max);
+                }
             }
         }
     } else {

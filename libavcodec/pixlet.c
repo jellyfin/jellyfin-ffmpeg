@@ -230,8 +230,8 @@ static int read_high_coeffs(AVCodecContext *avctx, const uint8_t *src, int16_t *
         if (cnt1 >= length) {
             cnt1 = get_bits(bc, nbits);
         } else {
-            pfx = 14 + ((((uint64_t)(value - 14)) >> 32) & (value - 14));
-            if (pfx < 1 || pfx > 25)
+            pfx = FFMIN(value, 14);
+            if (pfx < 1)
                 return AVERROR_INVALIDDATA;
             cnt1 *= (1 << pfx) - 1;
             shbits = show_bits(bc, pfx);
@@ -667,7 +667,7 @@ static int pixlet_decode_frame(AVCodecContext *avctx, AVFrame *p,
     bytestream2_skip(&ctx->gb, 8);
 
     p->pict_type = AV_PICTURE_TYPE_I;
-    p->key_frame = 1;
+    p->flags |= AV_FRAME_FLAG_KEY;
     p->color_range = AVCOL_RANGE_JPEG;
 
     ret = ff_thread_get_buffer(avctx, p, 0);

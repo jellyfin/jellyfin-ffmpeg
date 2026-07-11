@@ -25,7 +25,6 @@
 
 #include "audio.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "filters.h"
 #include "internal.h"
 
@@ -34,6 +33,7 @@ enum OutModes {
     DESIRED_MODE,
     OUT_MODE,
     NOISE_MODE,
+    ERROR_MODE,
     NB_OMODES
 };
 
@@ -73,27 +73,11 @@ static const AVOption anlms_options[] = {
     {  "d", "desired",               0,          AV_OPT_TYPE_CONST,    {.i64=DESIRED_MODE}, 0, 0, AT, "mode" },
     {  "o", "output",                0,          AV_OPT_TYPE_CONST,    {.i64=OUT_MODE},     0, 0, AT, "mode" },
     {  "n", "noise",                 0,          AV_OPT_TYPE_CONST,    {.i64=NOISE_MODE},   0, 0, AT, "mode" },
+    {  "e", "error",                 0,          AV_OPT_TYPE_CONST,    {.i64=ERROR_MODE},   0, 0, AT, "mode" },
     { NULL }
 };
 
 AVFILTER_DEFINE_CLASS_EXT(anlms, "anlm(f|s)", anlms_options);
-
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVSampleFormat sample_fmts[] = {
-        AV_SAMPLE_FMT_FLTP,
-        AV_SAMPLE_FMT_NONE
-    };
-    int ret = ff_set_common_all_channel_counts(ctx);
-    if (ret < 0)
-        return ret;
-
-    ret = ff_set_common_formats_from_list(ctx, sample_fmts);
-    if (ret < 0)
-        return ret;
-
-    return ff_set_common_all_samplerates(ctx);
-}
 
 static float fir_sample(AudioNLMSContext *s, float sample, float *delay,
                         float *coeffs, float *tmp, int *offset)
@@ -119,7 +103,7 @@ static float process_sample(AudioNLMSContext *s, float input, float desired,
     const int order = s->order;
     const float leakage = s->leakage;
     const float mu = s->mu;
-    const float a = 1.f - leakage * mu;
+    const float a = 1.f - leakage;
     float sum, output, e, norm, b;
     int offset = *offsetp;
 
@@ -133,7 +117,7 @@ static float process_sample(AudioNLMSContext *s, float input, float desired,
     norm = s->eps + sum;
     b = mu * e / norm;
     if (s->anlmf)
-        b *= 4.f * e * e;
+        b *= e * e;
 
     memcpy(tmp, delay + offset, order * sizeof(float));
 
@@ -146,8 +130,9 @@ static float process_sample(AudioNLMSContext *s, float input, float desired,
     switch (s->output_mode) {
     case IN_MODE:       output = input;         break;
     case DESIRED_MODE:  output = desired;       break;
-    case OUT_MODE: /*output = output;*/         break;
-    case NOISE_MODE: output = desired - output; break;
+    case OUT_MODE:   output = desired - output; break;
+    case NOISE_MODE: output = input - output;   break;
+    case ERROR_MODE:                            break;
     }
     return output;
 }
@@ -316,7 +301,7 @@ const AVFilter ff_af_anlms = {
     .activate       = activate,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                       AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
@@ -332,7 +317,7 @@ const AVFilter ff_af_anlmf = {
     .activate       = activate,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                       AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,

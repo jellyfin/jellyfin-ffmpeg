@@ -607,6 +607,9 @@ static int xan_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
     }
 
+    if (buf_size < 9)
+        return AVERROR_INVALIDDATA;
+
     if ((ret = ff_get_buffer(avctx, frame, AV_GET_BUFFER_FLAG_REF)) < 0)
         return ret;
 
@@ -622,8 +625,7 @@ static int xan_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if (xan_wc3_decode_frame(s, frame) < 0)
         return AVERROR_INVALIDDATA;
 
-    av_frame_unref(s->last_frame);
-    if ((ret = av_frame_ref(s->last_frame, frame)) < 0)
+    if ((ret = av_frame_replace(s->last_frame, frame)) < 0)
         return ret;
 
     *got_frame = 1;

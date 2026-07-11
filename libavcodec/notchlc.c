@@ -76,20 +76,26 @@ static int lz4_decompress(AVCodecContext *avctx,
                           GetByteContext *gb,
                           PutByteContext *pb)
 {
-    unsigned reference_pos, match_length, delta, pos = 0;
-    uint8_t history[64 * 1024];
+    unsigned reference_pos, delta, pos = 0;
+    uint8_t history[64 * 1024] = { 0 };
+    int match_length;
 
     while (bytestream2_get_bytes_left(gb) > 0) {
         uint8_t token = bytestream2_get_byte(gb);
-        unsigned num_literals = token >> 4;
+        int num_literals = token >> 4;
 
         if (num_literals == 15) {
             unsigned char current;
             do {
                 current = bytestream2_get_byte(gb);
+                if (current > INT_MAX - num_literals)
+                    return AVERROR_INVALIDDATA;
                 num_literals += current;
             } while (current == 255);
         }
+
+        if (bytestream2_get_bytes_left(gb) < num_literals)
+            return AVERROR_INVALIDDATA;
 
         if (pos + num_literals < HISTORY_SIZE) {
             bytestream2_get_buffer(gb, history + pos, num_literals);
@@ -116,6 +122,8 @@ static int lz4_decompress(AVCodecContext *avctx,
 
             do {
                 current = bytestream2_get_byte(gb);
+                if (current > INT_MAX - match_length)
+                    return AVERROR_INVALIDDATA;
                 match_length += current;
             } while (current == 255);
         }
@@ -241,7 +249,9 @@ static int decode_blocks(AVCodecContext *avctx, AVFrame *p,
 
         bytestream2_seek(&dgb, s->y_data_offset + row_offset, SEEK_SET);
 
-        init_get_bits8(&bit, dgb.buffer, bytestream2_get_bytes_left(&dgb));
+        ret = init_get_bits8(&bit, dgb.buffer, bytestream2_get_bytes_left(&dgb));
+        if (ret < 0)
+            return ret;
         for (int x = 0; x < avctx->width; x += 4) {
             unsigned item = bytestream2_get_le32(gb);
             unsigned y_min = item & 4095;
@@ -514,7 +524,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
         return ret;
 
     p->pict_type = AV_PICTURE_TYPE_I;
-    p->key_frame = 1;
+    p->flags |= AV_FRAME_FLAG_KEY;
 
     *got_frame = 1;
 

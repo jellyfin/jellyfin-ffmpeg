@@ -51,7 +51,7 @@ static int overlay_opencl_load(AVFilterContext *avctx,
 {
     OverlayOpenCLContext *ctx = avctx->priv;
     cl_int cle;
-    const char *source = ff_opencl_source_overlay;
+    const char *source = ff_source_overlay_cl;
     const char *kernel;
     const AVPixFmtDescriptor *main_desc, *overlay_desc;
     int err, i, main_planes, overlay_planes;
@@ -322,4 +322,5 @@ const AVFilter ff_vf_overlay_opencl = {
     FILTER_OUTPUTS(overlay_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

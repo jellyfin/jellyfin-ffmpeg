@@ -454,6 +454,9 @@ static int output_configure(AACContext *ac,
     uint8_t id_map[TYPE_END][MAX_ELEM_ID] = {{ 0 }};
     uint8_t type_counts[TYPE_END] = { 0 };
 
+    if (get_new_frame && !ac->frame)
+        return AVERROR_INVALIDDATA;
+
     if (ac->oc[1].layout_map != layout_map) {
         memcpy(ac->oc[1].layout_map, layout_map, tags * sizeof(layout_map[0]));
         ac->oc[1].layout_map_tags = tags;
@@ -1133,14 +1136,14 @@ static av_cold void aac_static_table_init(void)
     for (unsigned i = 0, offset = 0; i < 11; i++) {
         vlc_spectral[i].table           = &vlc_buf[offset];
         vlc_spectral[i].table_allocated = FF_ARRAY_ELEMS(vlc_buf) - offset;
-        ff_init_vlc_sparse(&vlc_spectral[i], 8, ff_aac_spectral_sizes[i],
+        ff_vlc_init_sparse(&vlc_spectral[i], 8, ff_aac_spectral_sizes[i],
                            ff_aac_spectral_bits[i],       sizeof(ff_aac_spectral_bits[i][0]),
                                                           sizeof(ff_aac_spectral_bits[i][0]),
                            ff_aac_spectral_codes[i],      sizeof(ff_aac_spectral_codes[i][0]),
                                                           sizeof(ff_aac_spectral_codes[i][0]),
                            ff_aac_codebook_vector_idx[i], sizeof(ff_aac_codebook_vector_idx[i][0]),
                                                           sizeof(ff_aac_codebook_vector_idx[i][0]),
-                 INIT_VLC_STATIC_OVERLONG);
+                 VLC_INIT_STATIC_OVERLONG);
         offset += vlc_spectral[i].table_size;
     }
 
@@ -1148,7 +1151,7 @@ static av_cold void aac_static_table_init(void)
 
     ff_aac_tableinit();
 
-    INIT_VLC_STATIC(&vlc_scalefactors, 7,
+    VLC_INIT_STATIC(&vlc_scalefactors, 7,
                     FF_ARRAY_ELEMS(ff_aac_scalefactor_code),
                     ff_aac_scalefactor_bits,
                     sizeof(ff_aac_scalefactor_bits[0]),
@@ -1159,8 +1162,8 @@ static av_cold void aac_static_table_init(void)
                     352);
 
     // window initialization
-    AAC_RENAME(ff_kbd_window_init)(AAC_RENAME(aac_kbd_long_960), 4.0, 960);
-    AAC_RENAME(ff_kbd_window_init)(AAC_RENAME(aac_kbd_short_120), 6.0, 120);
+    AAC_RENAME(avpriv_kbd_window_init)(AAC_RENAME(aac_kbd_long_960), 4.0, 960);
+    AAC_RENAME(avpriv_kbd_window_init)(AAC_RENAME(aac_kbd_short_120), 6.0, 120);
 
 #if !USE_FIXED
     AAC_RENAME(ff_sine_window_init)(AAC_RENAME(sine_960), 960);
@@ -1168,8 +1171,8 @@ static av_cold void aac_static_table_init(void)
     AAC_RENAME(ff_init_ff_sine_windows)(9);
     ff_aac_float_common_init();
 #else
-    AAC_RENAME(ff_kbd_window_init)(AAC_RENAME2(aac_kbd_long_1024), 4.0, 1024);
-    AAC_RENAME(ff_kbd_window_init)(AAC_RENAME2(aac_kbd_short_128), 6.0, 128);
+    AAC_RENAME(avpriv_kbd_window_init)(AAC_RENAME2(aac_kbd_long_1024), 4.0, 1024);
+    AAC_RENAME(avpriv_kbd_window_init)(AAC_RENAME2(aac_kbd_short_128), 6.0, 128);
     init_sine_windows_fixed();
 #endif
 
@@ -2486,12 +2489,12 @@ static int decode_extension_payload(AACContext *ac, GetBitContext *gb, int cnt,
                    ac->avctx->ch_layout.nb_channels == 1) {
             ac->oc[1].m4ac.sbr = 1;
             ac->oc[1].m4ac.ps = 1;
-            ac->avctx->profile = FF_PROFILE_AAC_HE_V2;
+            ac->avctx->profile = AV_PROFILE_AAC_HE_V2;
             output_configure(ac, ac->oc[1].layout_map, ac->oc[1].layout_map_tags,
                              ac->oc[1].status, 1);
         } else {
             ac->oc[1].m4ac.sbr = 1;
-            ac->avctx->profile = FF_PROFILE_AAC_HE;
+            ac->avctx->profile = AV_PROFILE_AAC_HE;
         }
         res = AAC_RENAME(ff_decode_sbr_extension)(ac, &che->sbr, gb, crc_flag, cnt, elem_type);
         if (ac->oc[1].m4ac.ps == 1 && !ac->warned_he_aac_mono) {
@@ -3080,7 +3083,7 @@ static int aac_decode_er_frame(AVCodecContext *avctx, void *data,
     if ((err = frame_configure_elements(avctx)) < 0)
         return err;
 
-    // The FF_PROFILE_AAC_* defines are all object_type - 1
+    // The AV_PROFILE_AAC_* defines are all object_type - 1
     // This may lead to an undefined profile being signaled
     ac->avctx->profile = aot - 1;
 
@@ -3163,7 +3166,7 @@ static int aac_decode_frame_int(AVCodecContext *avctx, AVFrame *frame,
     if ((err = frame_configure_elements(avctx)) < 0)
         goto fail;
 
-    // The FF_PROFILE_AAC_* defines are all object_type - 1
+    // The AV_PROFILE_AAC_* defines are all object_type - 1
     // This may lead to an undefined profile being signaled
     ac->avctx->profile = ac->oc[1].m4ac.object_type - 1;
 
@@ -3311,6 +3314,12 @@ static int aac_decode_frame_int(AVCodecContext *avctx, AVFrame *frame,
         avctx->sample_rate = ac->oc[1].m4ac.sample_rate << multiplier;
         avctx->frame_size = samples;
         ac->oc[1].status = OC_LOCKED;
+    }
+
+    if (samples && avctx->sample_rate <= 0) {
+        av_log(avctx, AV_LOG_ERROR,
+               "Cannot output a frame without a valid sample rate\n");
+        return AVERROR_INVALIDDATA;
     }
 
     if (!ac->frame->data[0] && samples) {

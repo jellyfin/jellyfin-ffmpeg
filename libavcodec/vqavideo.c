@@ -570,8 +570,9 @@ static int vqa_decode_frame_pal8(VqaContext *s, AVFrame *frame)
         }
 
         /* accumulate partial codebook */
-        bytestream2_get_buffer(&s->gb, &s->next_codebook_buffer[s->next_codebook_buffer_index],
-                               chunk_size);
+        if (chunk_size != bytestream2_get_buffer(&s->gb, &s->next_codebook_buffer[s->next_codebook_buffer_index],
+                               chunk_size))
+            return AVERROR_INVALIDDATA;
         s->next_codebook_buffer_index += chunk_size;
 
         s->partial_countdown--;
@@ -599,8 +600,9 @@ static int vqa_decode_frame_pal8(VqaContext *s, AVFrame *frame)
         }
 
         /* accumulate partial codebook */
-        bytestream2_get_buffer(&s->gb, &s->next_codebook_buffer[s->next_codebook_buffer_index],
-                               chunk_size);
+        if (chunk_size != bytestream2_get_buffer(&s->gb, &s->next_codebook_buffer[s->next_codebook_buffer_index],
+                               chunk_size))
+            return AVERROR_INVALIDDATA;
         s->next_codebook_buffer_index += chunk_size;
 
         s->partial_countdown--;
@@ -809,7 +811,11 @@ static int vqa_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
         /* make the palette available on the way out */
         memcpy(s->frame->data[1], s->palette, PALETTE_COUNT * 4);
+#if FF_API_PALETTE_HAS_CHANGED
+FF_DISABLE_DEPRECATION_WARNINGS
         s->frame->palette_has_changed = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     } else if (avctx->pix_fmt == AV_PIX_FMT_RGB555LE) {
         if ((res = vqa_decode_frame_hicolor(s, s->frame)) < 0)
             return res;

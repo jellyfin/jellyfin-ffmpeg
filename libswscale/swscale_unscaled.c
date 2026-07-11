@@ -126,9 +126,13 @@ static void copyPlane(const uint8_t *src, int srcStride,
                       int srcSliceY, int srcSliceH, int width,
                       uint8_t *dst, int dstStride)
 {
+    if (!srcSliceH)
+        return;
+    av_assert0(srcSliceH > 0);
+
     dst += dstStride * srcSliceY;
     if (dstStride == srcStride && srcStride > 0) {
-        memcpy(dst, src, srcSliceH * dstStride);
+        memcpy(dst, src, (srcSliceH - 1) * dstStride + width);
     } else {
         int i;
         for (i = 0; i < srcSliceH; i++) {
@@ -728,7 +732,7 @@ static int Rgb16ToPlanarRgb16Wrapper(SwsContext *c, const uint8_t *src[],
         return srcSliceH;
     }
 
-    for(i=0; i<4; i++) {
+    for (i = 0; i < 4 && dst[i]; i++) {
         dst2013[i] += stride2013[i] * srcSliceY / 2;
         dst1023[i] += stride1023[i] * srcSliceY / 2;
     }
@@ -2073,6 +2077,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
          dstFormat == AV_PIX_FMT_GBRP16LE || dstFormat == AV_PIX_FMT_GBRP16BE ||
          dstFormat == AV_PIX_FMT_GBRAP10LE || dstFormat == AV_PIX_FMT_GBRAP10BE ||
          dstFormat == AV_PIX_FMT_GBRAP12LE || dstFormat == AV_PIX_FMT_GBRAP12BE ||
+         dstFormat == AV_PIX_FMT_GBRAP14LE || dstFormat == AV_PIX_FMT_GBRAP14BE ||
          dstFormat == AV_PIX_FMT_GBRAP16LE || dstFormat == AV_PIX_FMT_GBRAP16BE ))
         c->convert_unscaled = Rgb16ToPlanarRgb16Wrapper;
 
@@ -2083,6 +2088,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
          srcFormat == AV_PIX_FMT_GBRP14LE || srcFormat == AV_PIX_FMT_GBRP14BE ||
          srcFormat == AV_PIX_FMT_GBRAP10LE || srcFormat == AV_PIX_FMT_GBRAP10BE ||
          srcFormat == AV_PIX_FMT_GBRAP12LE || srcFormat == AV_PIX_FMT_GBRAP12BE ||
+         srcFormat == AV_PIX_FMT_GBRAP14LE || srcFormat == AV_PIX_FMT_GBRAP14BE ||
          srcFormat == AV_PIX_FMT_GBRAP16LE || srcFormat == AV_PIX_FMT_GBRAP16BE) &&
         (dstFormat == AV_PIX_FMT_RGB48LE  || dstFormat == AV_PIX_FMT_RGB48BE  ||
          dstFormat == AV_PIX_FMT_BGR48LE  || dstFormat == AV_PIX_FMT_BGR48BE  ||
@@ -2132,6 +2138,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRP16) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRAP10) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRAP12) ||
+        IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRAP14) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRAP16) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_RGB444) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_RGB48)  ||
@@ -2217,10 +2224,13 @@ void ff_get_unscaled_swscale(SwsContext *c)
          c->chrDstVSubSample == c->chrSrcVSubSample &&
          !isSemiPlanarYUV(srcFormat) && !isSemiPlanarYUV(dstFormat))))
     {
-        if (isPacked(c->srcFormat))
+        if (isPacked(c->srcFormat)) {
             c->convert_unscaled = packedCopyWrapper;
-        else /* Planar YUV or gray */
+        } else { /* Planar YUV or gray */
             c->convert_unscaled = planarCopyWrapper;
+            if (c->dither != SWS_DITHER_NONE)
+                c->dst_slice_align = 8 << c->chrDstVSubSample;
+        }
     }
 
 #if ARCH_PPC

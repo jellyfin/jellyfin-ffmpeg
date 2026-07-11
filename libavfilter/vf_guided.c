@@ -23,7 +23,6 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
 #include "video.h"
@@ -114,8 +113,8 @@ static int box_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const int height = t->height;
     const int src_stride = t->srcStride;
     const int dst_stride = t->dstStride;
-    const int slice_start = (height * jobnr) / nb_jobs;
-    const int slice_end   = (height * (jobnr + 1)) / nb_jobs;
+    const int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    const int slice_end   = ff_slice_pos(height, jobnr + 1, nb_jobs);
     const int radius = s->radius;
     const float *src = t->src;
     float *dst = t->dst;

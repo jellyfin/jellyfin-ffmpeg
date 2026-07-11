@@ -90,12 +90,12 @@ static inline void init_ref(MotionEstContext *c, uint8_t *const src[3],
     };
     int i;
     for(i=0; i<3; i++){
-        c->src[0][i]= src [i] + offset[i];
-        c->ref[0][i]= ref [i] + offset[i];
+        c->src[0][i]= src[i] ? FF_PTR_ADD(src[i], offset[i]) : NULL;
+        c->ref[0][i]= ref[i] ? FF_PTR_ADD(ref[i], offset[i]) : NULL;
     }
     if(ref_index){
         for(i=0; i<3; i++){
-            c->ref[ref_index][i]= ref2[i] + offset[i];
+            c->ref[ref_index][i]= ref2[i] ? FF_PTR_ADD(ref2[i], offset[i]) : NULL;
         }
     }
 }
@@ -1446,7 +1446,7 @@ static inline int direct_search(MpegEncContext * s, int mb_x, int mb_y)
         s->b_direct_mv_table[mot_xy][0]= 0;
         s->b_direct_mv_table[mot_xy][1]= 0;
 
-        return 256*256*256*64;
+        return 256*256*256*64-1;
     }
 
     c->xmin= xmin;

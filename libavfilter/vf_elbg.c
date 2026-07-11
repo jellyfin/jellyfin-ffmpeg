@@ -30,6 +30,7 @@
 
 #include "avfilter.h"
 #include "drawutils.h"
+#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -193,7 +194,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
         p0 = (uint8_t *)out->data[0];
 
         for (i = 0; i < elbg->codebook_length; i++) {
-            const int al =  elbg->use_alpha ? elbg->codebook[i*4+3] : 0xff;
+            const unsigned al =  elbg->use_alpha ? elbg->codebook[i*4+3] : 0xff;
             pal[i] =  al                    << 24  |
                      (elbg->codebook[i*4+2] << 16) |
                      (elbg->codebook[i*4+1] <<  8) |
@@ -253,13 +254,6 @@ static const AVFilterPad elbg_inputs[] = {
     },
 };
 
-static const AVFilterPad elbg_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_elbg = {
     .name          = "elbg",
     .description   = NULL_IF_CONFIG_SMALL("Apply posterize effect, using the ELBG algorithm."),
@@ -268,6 +262,6 @@ const AVFilter ff_vf_elbg = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(elbg_inputs),
-    FILTER_OUTPUTS(elbg_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
 };

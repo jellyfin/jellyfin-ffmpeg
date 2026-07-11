@@ -93,7 +93,7 @@ static int xfade_opencl_load(AVFilterContext *avctx,
     if (ctx->transition == CUSTOM) {
         err = ff_opencl_filter_load_program_from_file(avctx, ctx->source_file);
     } else {
-        err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_xfade, 1);
+        err = ff_opencl_filter_load_program(avctx, &ff_source_xfade_cl, 1);
     }
     if (err < 0)
         return err;
@@ -293,7 +293,9 @@ static int xfade_opencl_activate(AVFilterContext *avctx)
             if (ctx->first_pts + ctx->offset_pts > ctx->xf[0]->pts) {
                 ctx->xf[0] = NULL;
                 ctx->need_second = 0;
-                ff_inlink_consume_frame(avctx->inputs[0], &in);
+                ret = ff_inlink_consume_frame(avctx->inputs[0], &in);
+                if (ret < 0)
+                    return ret;
                 return ff_filter_frame(outlink, in);
             }
 
@@ -302,8 +304,14 @@ static int xfade_opencl_activate(AVFilterContext *avctx)
     }
 
     if (ctx->xf[0] && ff_inlink_queued_frames(avctx->inputs[1]) > 0) {
-        ff_inlink_consume_frame(avctx->inputs[0], &ctx->xf[0]);
-        ff_inlink_consume_frame(avctx->inputs[1], &ctx->xf[1]);
+        ret = ff_inlink_consume_frame(avctx->inputs[0], &ctx->xf[0]);
+        if (ret < 0)
+            return ret;
+        ret = ff_inlink_consume_frame(avctx->inputs[1], &ctx->xf[1]);
+        if (ret < 0) {
+            av_frame_free(&ctx->xf[0]);
+            return ret;
+        }
 
         ctx->last_pts = ctx->xf[1]->pts;
         ctx->pts = ctx->xf[0]->pts;
@@ -433,4 +441,5 @@ const AVFilter ff_vf_xfade_opencl = {
     FILTER_OUTPUTS(xfade_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

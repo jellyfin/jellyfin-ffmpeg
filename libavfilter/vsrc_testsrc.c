@@ -88,6 +88,15 @@ typedef struct TestSourceContext {
 
     /* only used by haldclut */
     int level;
+
+    /* only used by zoneplate */
+    int k0, kx, ky, kt;
+    int kxt, kyt, kxy;
+    int kx2, ky2, kt2;
+    int xo, yo, to, kU, kV;
+    int lut_precision;
+    uint8_t *lut;
+    int (*fill_slice_fn)(AVFilterContext *ctx, void *arg, int job, int nb_jobs);
 } TestSourceContext;
 
 #define OFFSET(x) offsetof(TestSourceContext, x)
@@ -135,6 +144,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     TestSourceContext *test = ctx->priv;
 
     av_frame_free(&test->picref);
+    av_freep(&test->lut);
 }
 
 static int config_props(AVFilterLink *outlink)
@@ -184,8 +194,18 @@ static int activate(AVFilterContext *ctx)
         return AVERROR(ENOMEM);
     frame->pts                 = test->pts;
     frame->duration            = 1;
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
     frame->key_frame           = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    frame->flags              |= AV_FRAME_FLAG_KEY;
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     frame->interlaced_frame    = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    frame->flags              &= ~AV_FRAME_FLAG_INTERLACED;
     frame->pict_type           = AV_PICTURE_TYPE_I;
     frame->sample_aspect_ratio = test->sar;
     if (!test->draw_once)
@@ -307,8 +327,8 @@ static void haldclutsrc_fill_picture(AVFilterContext *ctx, AVFrame *frame)
     float scale;
     const int w = frame->width;
     const int h = frame->height;
-    const uint8_t *data = frame->data[0];
-    const int linesize  = frame->linesize[0];
+    uint8_t *data = frame->data[0];
+    const ptrdiff_t linesize  = frame->linesize[0];
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
     const int depth = desc->comp[0].depth;
     const int planar = desc->flags & AV_PIX_FMT_FLAG_PLANAR;
@@ -490,7 +510,7 @@ AVFILTER_DEFINE_CLASS(testsrc);
  * @param w width  of the rectangle to draw, expressed as a number of segment_width units
  * @param h height of the rectangle to draw, expressed as a number of segment_width units
  */
-static void draw_rectangle(unsigned val, uint8_t *dst, int dst_linesize, int segment_width,
+static void draw_rectangle(unsigned val, uint8_t *dst, ptrdiff_t dst_linesize, int segment_width,
                            int x, int y, int w, int h)
 {
     int i;
@@ -505,7 +525,7 @@ static void draw_rectangle(unsigned val, uint8_t *dst, int dst_linesize, int seg
     }
 }
 
-static void draw_digit(int digit, uint8_t *dst, int dst_linesize,
+static void draw_digit(int digit, uint8_t *dst, ptrdiff_t dst_linesize,
                        int segment_width)
 {
 #define TOP_HBAR        1
@@ -984,7 +1004,7 @@ static void rgbtest_put_pixel(uint8_t *dstp[4], int dst_linesizep[4],
                               uint8_t rgba_map[4])
 {
     uint8_t *dst = dstp[0];
-    int dst_linesize = dst_linesizep[0];
+    ptrdiff_t dst_linesize = dst_linesizep[0];
     uint32_t v;
     uint8_t *p;
     uint16_t *p16;
@@ -1011,7 +1031,7 @@ static void rgbtest_put_pixel(uint8_t *dstp[4], int dst_linesizep[4],
         AV_WL32(p, v);
         break;
     case AV_PIX_FMT_GBRP:
-        p = dstp[0] + x + y * dst_linesizep[0];
+        p = dstp[0] + x + y * dst_linesize;
         p[0] = g;
         p = dstp[1] + x + y * dst_linesizep[1];
         p[0] = b;
@@ -1140,9 +1160,9 @@ static void yuvtest_fill_picture8(AVFilterContext *ctx, AVFrame *frame)
     uint8_t *ydst = frame->data[0];
     uint8_t *udst = frame->data[1];
     uint8_t *vdst = frame->data[2];
-    int ylinesize = frame->linesize[0];
-    int ulinesize = frame->linesize[1];
-    int vlinesize = frame->linesize[2];
+    ptrdiff_t ylinesize = frame->linesize[0];
+    ptrdiff_t ulinesize = frame->linesize[1];
+    ptrdiff_t vlinesize = frame->linesize[2];
 
     for (y = 0; y < h; y++) {
         for (x = 0; x < w; x++) {
@@ -1197,9 +1217,9 @@ static void yuvtest_fill_picture16(AVFilterContext *ctx, AVFrame *frame)
     uint16_t *ydst = (uint16_t *)frame->data[0];
     uint16_t *udst = (uint16_t *)frame->data[1];
     uint16_t *vdst = (uint16_t *)frame->data[2];
-    int ylinesize = frame->linesize[0] / 2;
-    int ulinesize = frame->linesize[1] / 2;
-    int vlinesize = frame->linesize[2] / 2;
+    ptrdiff_t ylinesize = frame->linesize[0] / 2;
+    ptrdiff_t ulinesize = frame->linesize[1] / 2;
+    ptrdiff_t vlinesize = frame->linesize[2] / 2;
 
     for (y = 0; y < h; y++) {
         for (x = 0; x < w; x++) {
@@ -1374,7 +1394,7 @@ static void draw_bar(TestSourceContext *test, const uint8_t color[4],
 
     for (plane = 0; frame->data[plane]; plane++) {
         const int c = color[plane];
-        const int linesize = frame->linesize[plane];
+        const ptrdiff_t linesize = frame->linesize[plane];
         int i, px, py, pw, ph;
 
         if (plane == 1 || plane == 2) {
@@ -1682,9 +1702,9 @@ AVFILTER_DEFINE_CLASS_EXT(allyuv_allrgb, "allyuv/allrgb",
 
 static void allyuv_fill_picture(AVFilterContext *ctx, AVFrame *frame)
 {
-    const int ys = frame->linesize[0];
-    const int us = frame->linesize[1];
-    const int vs = frame->linesize[2];
+    const ptrdiff_t ys = frame->linesize[0];
+    const ptrdiff_t us = frame->linesize[1];
+    const ptrdiff_t vs = frame->linesize[2];
     int x, y, j;
 
     for (y = 0; y < 4096; y++) {
@@ -1743,7 +1763,7 @@ const AVFilter ff_vsrc_allyuv = {
 static void allrgb_fill_picture(AVFilterContext *ctx, AVFrame *frame)
 {
     unsigned x, y;
-    const int linesize = frame->linesize[0];
+    const ptrdiff_t linesize = frame->linesize[0];
     uint8_t *line = frame->data[0];
 
     for (y = 0; y < 4096; y++) {
@@ -2039,3 +2059,191 @@ const AVFilter ff_vsrc_colorchart = {
 };
 
 #endif /* CONFIG_COLORCHART_FILTER */
+
+#if CONFIG_ZONEPLATE_FILTER
+
+static const AVOption zoneplate_options[] = {
+    COMMON_OPTIONS
+    { "precision", "set LUT precision", OFFSET(lut_precision), AV_OPT_TYPE_INT, {.i64=10}, 4, 16, FLAGS },
+    { "xo", "set X-axis offset", OFFSET(xo), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "yo", "set Y-axis offset", OFFSET(yo), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "to", "set T-axis offset", OFFSET(to), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "k0", "set 0-order phase", OFFSET(k0), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kx", "set 1-order X-axis phase", OFFSET(kx), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "ky", "set 1-order Y-axis phase", OFFSET(ky), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kt", "set 1-order T-axis phase", OFFSET(kt), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kxt", "set X-axis*T-axis product phase", OFFSET(kxt), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kyt", "set Y-axis*T-axis product phase", OFFSET(kyt), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kxy", "set X-axis*Y-axis product phase", OFFSET(kxy), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kx2", "set 2-order X-axis phase", OFFSET(kx2), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "ky2", "set 2-order Y-axis phase", OFFSET(ky2), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kt2", "set 2-order T-axis phase", OFFSET(kt2), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "ku", "set 0-order U-color phase", OFFSET(kU), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { "kv", "set 0-order V-color phase", OFFSET(kV), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGSR },
+    { NULL }
+};
+
+AVFILTER_DEFINE_CLASS(zoneplate);
+
+#define ZONEPLATE_SLICE(name, type)                                \
+static int zoneplate_fill_slice_##name(AVFilterContext *ctx,       \
+                                       void *arg, int job,         \
+                                       int nb_jobs)                \
+{                                                                  \
+    TestSourceContext *test = ctx->priv;                           \
+    AVFrame *frame = arg;                                          \
+    const int w = frame->width;                                    \
+    const int h = frame->height;                                   \
+    const int kxt = test->kxt, kyt = test->kyt, kx2 = test->kx2;   \
+    const int t = test->pts + test->to, k0 = test->k0;             \
+    const int kt = test->kt, kt2 = test->kt2, ky2 = test->ky2;     \
+    const int ky = test->ky, kx = test->kx, kxy = test->kxy;       \
+    const int lut_mask = (1 << test->lut_precision) - 1;           \
+    const int nkt2t = kt2 * t * t, nktt = kt * t;                  \
+    const int start = (h *  job   ) / nb_jobs;                     \
+    const int end   = (h * (job+1)) / nb_jobs;                     \
+    const ptrdiff_t ylinesize = frame->linesize[0] / sizeof(type); \
+    const ptrdiff_t ulinesize = frame->linesize[1] / sizeof(type); \
+    const ptrdiff_t vlinesize = frame->linesize[2] / sizeof(type); \
+    const int xreset = -(w / 2) - test->xo;                        \
+    const int yreset = -(h / 2) - test->yo + start;                \
+    const int kU = test->kU, kV = test->kV;                        \
+    const int skxy = 0xffff / (w / 2);                             \
+    const int skx2 = 0xffff / w;                                   \
+    const int dkxt = kxt * t;                                      \
+    type *ydst = ((type *)frame->data[0]) + start * ylinesize;     \
+    type *udst = ((type *)frame->data[1]) + start * ulinesize;     \
+    type *vdst = ((type *)frame->data[2]) + start * vlinesize;     \
+    const type *lut = (const type *)test->lut;                     \
+    int akx, akxt, aky, akyt;                                      \
+                                                                   \
+    aky = start * ky;                                              \
+    akyt = start * kyt * t;                                        \
+                                                                   \
+    for (int j = start, y = yreset; j < end; j++, y++) {           \
+        const int dkxy = kxy * y * skxy;                           \
+        const int nky2kt2 = (ky2 * y * y) / h + (nkt2t >> 1);      \
+        int akxy = dkxy * xreset;                                  \
+                                                                   \
+        akx = 0;                                                   \
+        akxt = 0;                                                  \
+        aky += ky;                                                 \
+        akyt += kyt * t;                                           \
+                                                                   \
+        for (int i = 0, x = xreset; i < w; i++, x++) {             \
+            int phase = k0, uphase = kU, vphase = kV;              \
+                                                                   \
+            akx += kx;                                             \
+            phase += akx + aky + nktt;                             \
+                                                                   \
+            akxt += dkxt;                                          \
+            akxy += dkxy;                                          \
+            phase += akxt + akyt;                                  \
+            phase += akxy >> 16;                                   \
+            phase += ((kx2 * x * x * skx2) >> 16) + nky2kt2;       \
+            uphase += phase;                                       \
+            vphase += phase;                                       \
+                                                                   \
+            ydst[i] = lut[phase  & lut_mask];                      \
+            udst[i] = lut[uphase & lut_mask];                      \
+            vdst[i] = lut[vphase & lut_mask];                      \
+        }                                                          \
+                                                                   \
+        ydst += ylinesize;                                         \
+        udst += ulinesize;                                         \
+        vdst += vlinesize;                                         \
+    }                                                              \
+                                                                   \
+    return 0;                                                      \
+}
+
+ZONEPLATE_SLICE( 8, uint8_t)
+ZONEPLATE_SLICE( 9, uint16_t)
+ZONEPLATE_SLICE(10, uint16_t)
+ZONEPLATE_SLICE(12, uint16_t)
+ZONEPLATE_SLICE(14, uint16_t)
+ZONEPLATE_SLICE(16, uint16_t)
+
+static void zoneplate_fill_picture(AVFilterContext *ctx, AVFrame *frame)
+{
+    TestSourceContext *test = ctx->priv;
+    frame->color_range = AVCOL_RANGE_JPEG;
+    ff_filter_execute(ctx, test->fill_slice_fn, frame, NULL,
+                      FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
+}
+
+static int zoneplate_config_props(AVFilterLink *outlink)
+{
+    AVFilterContext *ctx = outlink->src;
+    TestSourceContext *test = ctx->priv;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
+    const int lut_size = 1 << test->lut_precision;
+    const int depth = desc->comp[0].depth;
+    uint16_t *lut16;
+    uint8_t *lut8;
+
+    if (av_image_check_size(test->w, test->h, 0, ctx) < 0)
+        return AVERROR(EINVAL);
+
+    test->lut = av_calloc(lut_size, sizeof(*test->lut) * ((depth + 7) / 8));
+    if (!test->lut)
+        return AVERROR(ENOMEM);
+
+    lut8 = test->lut;
+    lut16 = (uint16_t *)test->lut;
+    switch (depth) {
+    case 8:
+        for (int i = 0; i < lut_size; i++)
+            lut8[i] = lrintf(255.f * (0.5f + 0.5f * sinf((2.f * M_PI * i) / lut_size)));
+        break;
+    default:
+        for (int i = 0; i < lut_size; i++)
+            lut16[i] = lrintf(((1 << depth) - 1) * (0.5f + 0.5f * sinf((2.f * M_PI * i) / lut_size)));
+        break;
+    }
+
+    test->draw_once = 0;
+    test->fill_picture_fn = zoneplate_fill_picture;
+
+    switch (depth) {
+    case  8: test->fill_slice_fn = zoneplate_fill_slice_8;  break;
+    case  9: test->fill_slice_fn = zoneplate_fill_slice_9;  break;
+    case 10: test->fill_slice_fn = zoneplate_fill_slice_10; break;
+    case 12: test->fill_slice_fn = zoneplate_fill_slice_12; break;
+    case 14: test->fill_slice_fn = zoneplate_fill_slice_14; break;
+    case 16: test->fill_slice_fn = zoneplate_fill_slice_16; break;
+    }
+    return config_props(outlink);
+}
+
+static const enum AVPixelFormat zoneplate_pix_fmts[] = {
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUV444P12,
+    AV_PIX_FMT_YUV444P14, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_NONE,
+};
+
+static const AVFilterPad avfilter_vsrc_zoneplate_outputs[] = {
+    {
+        .name          = "default",
+        .type          = AVMEDIA_TYPE_VIDEO,
+        .config_props  = zoneplate_config_props,
+    },
+};
+
+const AVFilter ff_vsrc_zoneplate = {
+    .name          = "zoneplate",
+    .description   = NULL_IF_CONFIG_SMALL("Generate zone-plate."),
+    .priv_size     = sizeof(TestSourceContext),
+    .priv_class    = &zoneplate_class,
+    .init          = init,
+    .uninit        = uninit,
+    .activate      = activate,
+    .inputs        = NULL,
+    FILTER_OUTPUTS(avfilter_vsrc_zoneplate_outputs),
+    FILTER_PIXFMTS_ARRAY(zoneplate_pix_fmts),
+    .flags         = AVFILTER_FLAG_SLICE_THREADS,
+    .process_command = ff_filter_process_command,
+};
+
+#endif /* CONFIG_ZONEPLATE_FILTER */

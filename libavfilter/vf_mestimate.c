@@ -21,12 +21,9 @@
 #include "motion_estimation.h"
 #include "libavcodec/mathops.h"
 #include "libavutil/common.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
-#include "libavutil/pixdesc.h"
 #include "libavutil/motion_vector.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -350,13 +347,6 @@ static const AVFilterPad mestimate_inputs[] = {
     },
 };
 
-static const AVFilterPad mestimate_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_mestimate = {
     .name          = "mestimate",
     .description   = NULL_IF_CONFIG_SMALL("Generate motion vectors."),
@@ -365,6 +355,6 @@ const AVFilter ff_vf_mestimate = {
     .uninit        = uninit,
     .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(mestimate_inputs),
-    FILTER_OUTPUTS(mestimate_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

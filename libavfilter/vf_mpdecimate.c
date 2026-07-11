@@ -24,13 +24,13 @@
  * Rich Felker.
  */
 
+#include "libavutil/emms.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixelutils.h"
 #include "libavutil/timestamp.h"
 #include "avfilter.h"
 #include "internal.h"
-#include "formats.h"
 #include "video.h"
 
 typedef struct DecimateContext {
@@ -46,6 +46,9 @@ typedef struct DecimateContext {
     int drop_count;                ///< if positive: number of frames sequentially dropped
                                    ///< if negative: number of sequential frames which were not dropped
 
+    int max_keep_count;            ///< number of similar frames to ignore before to start dropping them
+    int keep_count;                ///< number of similar frames already ignored
+
     int hsub, vsub;                ///< chroma subsampling values
     AVFrame *ref;                  ///< reference picture
     av_pixelutils_sad_fn sad;      ///< sum of absolute difference function
@@ -57,6 +60,8 @@ typedef struct DecimateContext {
 static const AVOption mpdecimate_options[] = {
     { "max",  "set the maximum number of consecutive dropped frames (positive), or the minimum interval between dropped frames (negative)",
       OFFSET(max_drop_count), AV_OPT_TYPE_INT, {.i64=0}, INT_MIN, INT_MAX, FLAGS },
+    { "keep", "set the number of similar consecutive frames to be kept before starting to drop similar frames",
+      OFFSET(max_keep_count), AV_OPT_TYPE_INT, {.i64=0}, 0, INT_MAX, FLAGS },
     { "hi",   "set high dropping threshold", OFFSET(hi), AV_OPT_TYPE_INT, {.i64=64*12}, INT_MIN, INT_MAX, FLAGS },
     { "lo",   "set low dropping threshold", OFFSET(lo), AV_OPT_TYPE_INT, {.i64=64*5}, INT_MIN, INT_MAX, FLAGS },
     { "frac", "set fraction dropping threshold",  OFFSET(frac), AV_OPT_TYPE_FLOAT, {.dbl=0.33}, 0, 1, FLAGS },
@@ -112,6 +117,12 @@ static int decimate_frame(AVFilterContext *ctx,
     DecimateContext *decimate = ctx->priv;
     int plane;
 
+    if (decimate->max_keep_count > 0 &&
+        decimate->keep_count > -1 &&
+        decimate->keep_count < decimate->max_keep_count) {
+        decimate->keep_count++;
+        return 0;
+    }
     if (decimate->max_drop_count > 0 &&
         decimate->drop_count >= decimate->max_drop_count)
         return 0;
@@ -196,20 +207,24 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *cur)
 
     if (decimate->ref && decimate_frame(inlink->dst, cur, decimate->ref)) {
         decimate->drop_count = FFMAX(1, decimate->drop_count+1);
+        decimate->keep_count = -1; // do not keep any more frames until non-similar frames are detected
     } else {
         av_frame_free(&decimate->ref);
         decimate->ref = cur;
         decimate->drop_count = FFMIN(-1, decimate->drop_count-1);
+        if (decimate->keep_count < 0) // re-enable counting similiar frames to ignore before dropping
+            decimate->keep_count = 0;
 
         if ((ret = ff_filter_frame(outlink, av_frame_clone(cur))) < 0)
             return ret;
     }
 
     av_log(inlink->dst, AV_LOG_DEBUG,
-           "%s pts:%s pts_time:%s drop_count:%d\n",
+           "%s pts:%s pts_time:%s drop_count:%d keep_count:%d\n",
            decimate->drop_count > 0 ? "drop" : "keep",
            av_ts2str(cur->pts), av_ts2timestr(cur->pts, &inlink->time_base),
-           decimate->drop_count);
+           decimate->drop_count,
+           decimate->keep_count);
 
     if (decimate->drop_count > 0)
         av_frame_free(&cur);
@@ -226,13 +241,6 @@ static const AVFilterPad mpdecimate_inputs[] = {
     },
 };
 
-static const AVFilterPad mpdecimate_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_mpdecimate = {
     .name          = "mpdecimate",
     .description   = NULL_IF_CONFIG_SMALL("Remove near-duplicate frames."),
@@ -241,6 +249,6 @@ const AVFilter ff_vf_mpdecimate = {
     .priv_size     = sizeof(DecimateContext),
     .priv_class    = &mpdecimate_class,
     FILTER_INPUTS(mpdecimate_inputs),
-    FILTER_OUTPUTS(mpdecimate_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

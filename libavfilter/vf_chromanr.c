@@ -18,13 +18,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avstring.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -99,8 +98,8 @@ static int distance ## _slice##name(AVFilterContext *ctx, void *arg,            
     const int thres_v = s->thres_v;                                                      \
     const int h = s->planeheight[1];                                                     \
     const int w = s->planewidth[1];                                                      \
-    const int slice_start = (h * jobnr) / nb_jobs;                                       \
-    const int slice_end = (h * (jobnr+1)) / nb_jobs;                                     \
+    const int slice_start = ff_slice_pos(h, jobnr, nb_jobs);                             \
+    const int slice_end = ff_slice_pos(h, jobnr + 1, nb_jobs);                           \
     type *out_uptr = (type *)(out->data[1] + slice_start * out_ulinesize);               \
     type *out_vptr = (type *)(out->data[2] + slice_start * out_vlinesize);               \
                                                                                          \
@@ -289,13 +288,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 AVFILTER_DEFINE_CLASS(chromanr);
 
 const AVFilter ff_vf_chromanr = {
@@ -303,7 +295,7 @@ const AVFilter ff_vf_chromanr = {
     .description   = NULL_IF_CONFIG_SMALL("Reduce chrominance noise."),
     .priv_size     = sizeof(ChromaNRContext),
     .priv_class    = &chromanr_class,
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_INPUTS(inputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

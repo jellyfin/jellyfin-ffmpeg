@@ -108,7 +108,9 @@ int av_channel_name(char *buf, size_t buf_size, enum AVChannel channel_id)
     av_bprint_init_for_buffer(&bp, buf, buf_size);
     av_channel_name_bprint(&bp, channel_id);
 
-    return bp.len;
+    if (bp.len >= INT_MAX)
+        return AVERROR(ERANGE);
+    return bp.len + 1;
 }
 
 void av_channel_description_bprint(AVBPrint *bp, enum AVChannel channel_id)
@@ -135,7 +137,9 @@ int av_channel_description(char *buf, size_t buf_size, enum AVChannel channel_id
     av_bprint_init_for_buffer(&bp, buf, buf_size);
     av_channel_description_bprint(&bp, channel_id);
 
-    return bp.len;
+    if (bp.len >= INT_MAX)
+        return AVERROR(ERANGE);
+    return bp.len + 1;
 }
 
 enum AVChannel av_channel_from_string(const char *str)
@@ -187,6 +191,7 @@ static const struct channel_layout_name channel_layout_map[] = {
     { "5.1(side)",      AV_CHANNEL_LAYOUT_5POINT1             },
     { "6.0",            AV_CHANNEL_LAYOUT_6POINT0             },
     { "6.0(front)",     AV_CHANNEL_LAYOUT_6POINT0_FRONT       },
+    { "3.1.2",          AV_CHANNEL_LAYOUT_3POINT1POINT2       },
     { "hexagonal",      AV_CHANNEL_LAYOUT_HEXAGONAL           },
     { "6.1",            AV_CHANNEL_LAYOUT_6POINT1             },
     { "6.1(back)",      AV_CHANNEL_LAYOUT_6POINT1_BACK        },
@@ -196,9 +201,12 @@ static const struct channel_layout_name channel_layout_map[] = {
     { "7.1",            AV_CHANNEL_LAYOUT_7POINT1             },
     { "7.1(wide)",      AV_CHANNEL_LAYOUT_7POINT1_WIDE_BACK   },
     { "7.1(wide-side)", AV_CHANNEL_LAYOUT_7POINT1_WIDE        },
-    { "7.1(top)",       AV_CHANNEL_LAYOUT_7POINT1_TOP_BACK    },
+    { "5.1.2",          AV_CHANNEL_LAYOUT_5POINT1POINT2_BACK  },
     { "octagonal",      AV_CHANNEL_LAYOUT_OCTAGONAL           },
     { "cube",           AV_CHANNEL_LAYOUT_CUBE                },
+    { "5.1.4",          AV_CHANNEL_LAYOUT_5POINT1POINT4_BACK  },
+    { "7.1.2",          AV_CHANNEL_LAYOUT_7POINT1POINT2       },
+    { "7.1.4",          AV_CHANNEL_LAYOUT_7POINT1POINT4_BACK  },
     { "hexadecagonal",  AV_CHANNEL_LAYOUT_HEXADECAGONAL       },
     { "downmix",        AV_CHANNEL_LAYOUT_STEREO_DOWNMIX,     },
     { "22.2",           AV_CHANNEL_LAYOUT_22POINT2,           },
@@ -789,7 +797,9 @@ int av_channel_layout_describe(const AVChannelLayout *channel_layout,
     if (ret < 0)
         return ret;
 
-    return bp.len;
+    if (bp.len >= INT_MAX)
+        return AVERROR(ERANGE);
+    return bp.len + 1;
 }
 
 enum AVChannel

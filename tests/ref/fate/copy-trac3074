@@ -1,11 +1,11 @@
-36fcc0a62695bcf93068fcfe68283ee9 *tests/data/fate/copy-trac3074.mp4
-334016 tests/data/fate/copy-trac3074.mp4
+5b4a3ed9de3b2a92e5dcb127bca12e68 *tests/data/fate/copy-trac3074.mp4
+334015 tests/data/fate/copy-trac3074.mp4
 #tb 0: 1/48000
 #media_type 0: audio
 #codec_id 0: eac3
 #sample_rate 0: 48000
 #channel_layout_name 0: stereo
-0,          0,          0,     1536,      512, 0x2beaf79f, S=1,        4
+0,          0,          0,     1536,      512, 0x2beaf79f
 0,       1536,       1536,     1536,      512, 0x29ddf9d6
 0,       3072,       3072,     1536,      512, 0xba0afa79
 0,       4608,       4608,     1536,      512, 0xe019f394

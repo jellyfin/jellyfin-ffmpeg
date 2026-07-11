@@ -17,16 +17,14 @@
  */
 #include <string.h>
 
-#include "libavutil/avassert.h"
-#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
 #include "framesync.h"
-#include "formats.h"
 #include "internal.h"
 #include "vaapi_vpp.h"
+#include "video.h"
 #include "libavutil/eval.h"
 
 enum var_name {
@@ -237,6 +235,7 @@ static int overlay_vaapi_blend(FFFrameSync *fs)
         params[1].blend_state = &blend_state;
 
         params[1].surface       = (VASurfaceID)(uintptr_t)input_overlay->data[3];
+        params[1].surface_region = NULL;
         params[1].output_region = &overlay_region;
     }
 

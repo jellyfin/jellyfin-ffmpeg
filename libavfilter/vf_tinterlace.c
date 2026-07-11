@@ -32,6 +32,7 @@
 #include "avfilter.h"
 #include "internal.h"
 #include "tinterlace.h"
+#include "video.h"
 
 #define OFFSET(x) offsetof(TInterlaceContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
@@ -203,6 +204,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_frame_free(&tinterlace->next);
     av_freep(&tinterlace->black_data[0][0]);
     av_freep(&tinterlace->black_data[1][0]);
+    ff_ccfifo_uninit(&tinterlace->cc_fifo);
 }
 
 static int config_out_props(AVFilterLink *outlink)
@@ -211,7 +213,7 @@ static int config_out_props(AVFilterLink *outlink)
     AVFilterLink *inlink = outlink->src->inputs[0];
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
     TInterlaceContext *tinterlace = ctx->priv;
-    int i;
+    int ret, i;
 
     tinterlace->vsub = desc->log2_chroma_h;
     outlink->w = inlink->w;
@@ -223,7 +225,6 @@ static int config_out_props(AVFilterLink *outlink)
 
     if (tinterlace->mode == MODE_PAD) {
         uint8_t black[4] = { 0, 0, 0, 16 };
-        int ret;
         ff_draw_init(&tinterlace->draw, outlink->format, 0);
         ff_draw_color(&tinterlace->draw, &tinterlace->color, black);
         /* limited range */
@@ -289,6 +290,12 @@ static int config_out_props(AVFilterLink *outlink)
 #if ARCH_X86
         ff_tinterlace_init_x86(tinterlace);
 #endif
+    }
+
+    ret = ff_ccfifo_init(&tinterlace->cc_fifo, outlink->frame_rate, ctx);
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR, "Failure to setup CC FIFO queue\n");
+        return ret;
     }
 
     av_log(ctx, AV_LOG_VERBOSE, "mode:%d filter:%s h:%d -> h:%d\n", tinterlace->mode,
@@ -375,6 +382,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
     tinterlace->cur  = tinterlace->next;
     tinterlace->next = picref;
 
+    ff_ccfifo_extract(&tinterlace->cc_fifo, picref);
+
     cur = tinterlace->cur;
     next = tinterlace->next;
     /* we need at least two frames */
@@ -391,8 +400,13 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
             return AVERROR(ENOMEM);
         av_frame_copy_props(out, cur);
         out->height = outlink->h;
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         out->interlaced_frame = 1;
         out->top_field_first = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        out->flags |= AV_FRAME_FLAG_INTERLACED | AV_FRAME_FLAG_TOP_FIELD_FIRST;
         out->sample_aspect_ratio = av_mul_q(cur->sample_aspect_ratio, av_make_q(2, 1));
 
         /* write odd frame lines into the upper field of the new frame */
@@ -444,13 +458,14 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
          * halving the frame rate and preserving image height */
     case MODE_INTERLEAVE_TOP:    /* top    field first */
     case MODE_INTERLEAVE_BOTTOM: /* bottom field first */
-        if ((tinterlace->flags & TINTERLACE_FLAG_BYPASS_IL) && cur->interlaced_frame) {
+        if ((tinterlace->flags & TINTERLACE_FLAG_BYPASS_IL) && (cur->flags & AV_FRAME_FLAG_INTERLACED)) {
             av_log(ctx, AV_LOG_WARNING,
                    "video is already interlaced, adjusting framerate only\n");
             out = av_frame_clone(cur);
             if (!out)
                 return AVERROR(ENOMEM);
             out->pts /= 2;  // adjust pts to new framerate
+            ff_ccfifo_inject(&tinterlace->cc_fifo, out);
             ret = ff_filter_frame(outlink, out);
             return ret;
         }
@@ -459,8 +474,17 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
         if (!out)
             return AVERROR(ENOMEM);
         av_frame_copy_props(out, cur);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         out->interlaced_frame = 1;
         out->top_field_first = tff;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        out->flags |= AV_FRAME_FLAG_INTERLACED;
+        if (tff)
+            out->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+        else
+            out->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
 
         /* copy upper/lower field from cur */
         copy_picture_field(tinterlace, out->data, out->linesize,
@@ -481,22 +505,37 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
         out = av_frame_clone(cur);
         if (!out)
             return AVERROR(ENOMEM);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         out->interlaced_frame = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        out->flags |= AV_FRAME_FLAG_INTERLACED;
         if (cur->pts != AV_NOPTS_VALUE)
             out->pts = cur->pts*2;
 
         out->pts = av_rescale_q(out->pts, tinterlace->preout_time_base, outlink->time_base);
+        ff_ccfifo_inject(&tinterlace->cc_fifo, out);
         if ((ret = ff_filter_frame(outlink, out)) < 0)
             return ret;
 
         /* output mix of current and next frame */
-        tff = next->top_field_first;
+        tff = !!(next->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST);
         out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
         if (!out)
             return AVERROR(ENOMEM);
         av_frame_copy_props(out, next);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
         out->interlaced_frame = 1;
         out->top_field_first = !tff;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+        out->flags |= AV_FRAME_FLAG_INTERLACED;
+        if (tff)
+            out->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
+        else
+            out->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
 
         if (next->pts != AV_NOPTS_VALUE && cur->pts != AV_NOPTS_VALUE)
             out->pts = cur->pts + next->pts;
@@ -521,6 +560,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
 
     out->pts = av_rescale_q(out->pts, tinterlace->preout_time_base, outlink->time_base);
     out->duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+    ff_ccfifo_inject(&tinterlace->cc_fifo, out);
     ret = ff_filter_frame(outlink, out);
 
     return ret;

@@ -863,10 +863,10 @@ static av_cold void atrac3_init_static_data(void)
     for (i = 0; i < 7; i++) {
         spectral_coeff_tab[i].table           = table;
         spectral_coeff_tab[i].table_allocated = 256;
-        ff_init_vlc_from_lengths(&spectral_coeff_tab[i], ATRAC3_VLC_BITS, huff_tab_sizes[i],
+        ff_vlc_init_from_lengths(&spectral_coeff_tab[i], ATRAC3_VLC_BITS, huff_tab_sizes[i],
                                  &hufftabs[0][1], 2,
                                  &hufftabs[0][0], 2, 1,
-                                 -31, INIT_VLC_USE_NEW_STATIC, NULL);
+                                 -31, VLC_INIT_USE_STATIC, NULL);
         hufftabs += huff_tab_sizes[i];
         table += 256;
     }
@@ -1026,7 +1026,11 @@ const FFCodec ff_atrac3_decoder = {
     .init             = atrac3_decode_init,
     .close            = atrac3_decode_close,
     FF_CODEC_DECODE_CB(atrac3_decode_frame),
-    .p.capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .p.capabilities   =
+#if FF_API_SUBFRAMES
+                        AV_CODEC_CAP_SUBFRAMES |
+#endif
+                        AV_CODEC_CAP_DR1,
     .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                         AV_SAMPLE_FMT_NONE },
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
@@ -1041,7 +1045,11 @@ const FFCodec ff_atrac3al_decoder = {
     .init             = atrac3_decode_init,
     .close            = atrac3_decode_close,
     FF_CODEC_DECODE_CB(atrac3al_decode_frame),
-    .p.capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
+    .p.capabilities   =
+#if FF_API_SUBFRAMES
+                        AV_CODEC_CAP_SUBFRAMES |
+#endif
+                        AV_CODEC_CAP_DR1,
     .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                         AV_SAMPLE_FMT_NONE },
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,

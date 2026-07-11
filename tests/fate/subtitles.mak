@@ -39,7 +39,7 @@ FATE_SUBTITLES_ASS-$(call DEMDEC, MOV, MOVTEXT) += fate-sub-movtext
 fate-sub-movtext: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/MovText_capability_tester.mp4
 
 FATE_SUBTITLES-$(call ENCDEC, MOVTEXT, MOV) += fate-binsub-movtextenc
-fate-binsub-movtextenc: CMD = md5 -i $(TARGET_SAMPLES)/sub/MovText_capability_tester.mp4 -map 0 -scodec mov_text -f mp4 -flags +bitexact -fflags +bitexact -movflags frag_keyframe+empty_moov
+fate-binsub-movtextenc: CMD = md5 -i $(TARGET_SAMPLES)/sub/MovText_capability_tester.mp4 -map 0 -scodec mov_text -f mp4 -flags +bitexact -fflags +bitexact -movflags +frag_keyframe+empty_moov
 
 FATE_SUBTITLES_ASS-$(call DEMDEC, MPL2, MPL2) += fate-sub-mpl2
 fate-sub-mpl2: CMD = fmtstdout ass -i $(TARGET_SAMPLES)/sub/MPL2_capability_tester.txt
@@ -114,6 +114,7 @@ fate-sub-charenc: CMD = fmtstdout ass -sub_charenc cp1251 -i $(TARGET_SAMPLES)/s
 
 FATE_SUBTITLES-$(call DEMDEC, SCC, CCAPTION) += fate-sub-scc
 fate-sub-scc: CMD = fmtstdout ass -ss 57 -i $(TARGET_SAMPLES)/sub/witch.scc
+fate-sub-scc: CMP = diff
 
 FATE_SUBTITLES-$(call DEMMUX, SCC, SCC) += fate-sub-scc-remux
 fate-sub-scc-remux: CMD = fmtstdout scc -i $(TARGET_SAMPLES)/sub/witch.scc -ss 4:00 -map 0 -c copy

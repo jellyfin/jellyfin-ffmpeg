@@ -26,6 +26,7 @@
 #include "libavformat/mux.h"
 #include "libavformat/version.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/frame.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
@@ -470,10 +471,11 @@ static av_cold int pulse_write_header(AVFormatContext *h)
     s->nonblocking = (h->flags & AVFMT_FLAG_NONBLOCK);
 
     if (s->buffer_duration) {
-        int64_t bytes = s->buffer_duration;
-        bytes *= st->codecpar->ch_layout.nb_channels * st->codecpar->sample_rate *
-                 av_get_bytes_per_sample(st->codecpar->format);
-        bytes /= 1000;
+        int64_t bytes = av_rescale(s->buffer_duration,
+                                   st->codecpar->ch_layout.nb_channels *
+                                    (int64_t)st->codecpar->sample_rate *
+                                    av_get_bytes_per_sample(st->codecpar->format),
+                                   1000);
         buffer_attributes.tlength = FFMAX(s->buffer_size, av_clip64(bytes, 0, UINT32_MAX - 1));
         av_log(s, AV_LOG_DEBUG,
                "Buffer duration: %ums recalculated into %"PRId64" bytes buffer.\n",
@@ -801,6 +803,11 @@ const FFOutputFormat ff_pulse_muxer = {
     .get_output_timestamp = pulse_get_output_timestamp,
     .get_device_list      = pulse_get_device_list,
     .control_message      = pulse_control_message,
+#if FF_API_ALLOW_FLUSH
     .p.flags              = AVFMT_NOFILE | AVFMT_ALLOW_FLUSH,
+#else
+    .p.flags              = AVFMT_NOFILE,
+#endif
     .p.priv_class         = &pulse_muxer_class,
+    .flags_internal       = FF_FMT_ALLOW_FLUSH,
 };

@@ -20,8 +20,8 @@
 #include "libavutil/ffmath.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "audio.h"
-#include "formats.h"
 
 #define MAX_ORDER 30
 
@@ -125,8 +125,8 @@ static int filter_channels_## name(AVFilterContext *ctx, void *arg, \
     ThreadData *td = arg;                                           \
     AVFrame *out = td->out;                                         \
     AVFrame *in = td->in;                                           \
-    const int start = (in->ch_layout.nb_channels * jobnr) / nb_jobs; \
-    const int end = (in->ch_layout.nb_channels * (jobnr+1)) / nb_jobs; \
+    const int start = ff_slice_pos(in->ch_layout.nb_channels, jobnr, nb_jobs); \
+    const int end = ff_slice_pos(in->ch_layout.nb_channels, jobnr + 1, nb_jobs); \
     const type level = s->level;                                    \
                                                                     \
     for (int ch = start; ch < end; ch++) {                          \
@@ -246,13 +246,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_atilt = {
     .name            = "atilt",
     .description     = NULL_IF_CONFIG_SMALL("Apply spectral tilt to audio."),
@@ -260,7 +253,7 @@ const AVFilter ff_af_atilt = {
     .priv_class      = &atilt_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .process_command = process_command,
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |

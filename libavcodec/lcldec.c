@@ -167,7 +167,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     LclDecContext * const c = avctx->priv_data;
-    unsigned int pixel_ptr;
+    ptrdiff_t pixel_ptr;
     int row, col;
     unsigned char *encoded = avpkt->data, *outptr;
     uint8_t *y_out, *u_out, *v_out;
@@ -175,7 +175,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     int height = avctx->height; // Real image height
     unsigned int mszh_dlen;
     unsigned char yq, y1q, uq, vq;
-    int uqvq, ret;
+    int ret;
     unsigned int mthread_inlen, mthread_outlen;
     unsigned int len = buf_size;
     int linesize, offset;
@@ -221,7 +221,9 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                 if (c->decomp_size != mszh_dlen) {
                     av_log(avctx, AV_LOG_ERROR, "Decoded size differs (%d != %d)\n",
                            c->decomp_size, mszh_dlen);
-                    return AVERROR_INVALIDDATA;
+                    if (c->decomp_size != mszh_dlen &&
+                        c->decomp_size != mszh_dlen + 2) // YUV420 306x306 is missing 2 bytes
+                        return AVERROR_INVALIDDATA;
                 }
                 encoded = c->decomp_buf;
                 len = mszh_dlen;
@@ -304,7 +306,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
             for (row = 0; row < height; row++) {
                 pixel_ptr = row * width * 3;
                 yq = encoded[pixel_ptr++];
-                uqvq = AV_RL16(encoded+pixel_ptr);
+                unsigned uqvq = AV_RL16(encoded+pixel_ptr);
                 pixel_ptr += 2;
                 for (col = 1; col < width; col++) {
                     encoded[pixel_ptr] = yq -= encoded[pixel_ptr];
@@ -479,7 +481,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
     }
 
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     frame->pict_type = AV_PICTURE_TYPE_I;
 
     *got_frame = 1;

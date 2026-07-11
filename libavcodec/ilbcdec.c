@@ -658,7 +658,7 @@ static void get_codebook(int16_t * cbvec,   /* (o) Constructed codebook vector *
     int16_t k, base_size;
     int16_t lag;
     /* Stack based */
-    int16_t tempbuff2[SUBL + 5];
+    int16_t tempbuff2[SUBL + 5] = {0};
 
     /* Determine size of codebook sections */
     base_size = lMem - cbveclen + 1;
@@ -675,6 +675,7 @@ static void get_codebook(int16_t * cbvec,   /* (o) Constructed codebook vector *
         /* get vector */
         memcpy(cbvec, mem + lMem - k, cbveclen * 2);
     } else if (index < base_size) {
+        memset(cbvec, 0, cbveclen * 2);
 
         /* Calculate lag */
 
@@ -701,6 +702,7 @@ static void get_codebook(int16_t * cbvec,   /* (o) Constructed codebook vector *
 
             filter_mafq12(&mem[memIndTest + 4], cbvec, kCbFiltersRev, CB_FILTERLEN, cbveclen);
         } else {
+            memset(cbvec, 0, cbveclen * 2);
             /* interpolated vectors */
             /* Stuff zeros outside memory buffer  */
             memIndTest = lMem - cbveclen - CB_FILTERLEN;
@@ -1095,12 +1097,6 @@ static void do_plc(int16_t *plc_residual,      /* (o) concealed residual */
 
         if (s->consPLICount * s->block_samples > 320) {
             use_gain = 29491;   /* 0.9 in Q15 */
-        } else if (s->consPLICount * s->block_samples > 640) {
-            use_gain = 22938;   /* 0.7 in Q15 */
-        } else if (s->consPLICount * s->block_samples > 960) {
-            use_gain = 16384;   /* 0.5 in Q15 */
-        } else if (s->consPLICount * s->block_samples > 1280) {
-            use_gain = 0;       /* 0.0 in Q15 */
         }
 
         /* Compute mixing factor of picth repeatition and noise:

@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #include <libxml/parser.h>
+#include <time.h>
 #include "libavutil/bprint.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
@@ -28,6 +29,7 @@
 #include "avio_internal.h"
 #include "dash.h"
 #include "demux.h"
+#include "url.h"
 
 #define INITIAL_BUFFER_SIZE 32768
 
@@ -443,7 +445,7 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
     av_freep(pb);
     av_dict_copy(&tmp, *opts, 0);
     av_dict_copy(&tmp, opts2, 0);
-    ret = avio_open2(pb, url, AVIO_FLAG_READ, c->interrupt_callback, &tmp);
+    ret = s->io_open(s, pb, url, AVIO_FLAG_READ, &tmp);
     if (ret >= 0) {
         // update cookies on http response with setcookies.
         char *new_cookies = NULL;
@@ -732,7 +734,7 @@ static int resolve_content_path(AVFormatContext *s, const char *url, int *max_ur
     }
 
     tmp_max_url_size = aligned(tmp_max_url_size);
-    text = av_mallocz(tmp_max_url_size);
+    text = av_mallocz(tmp_max_url_size + 1);
     if (!text) {
         updated = AVERROR(ENOMEM);
         goto end;
@@ -744,7 +746,7 @@ static int resolve_content_path(AVFormatContext *s, const char *url, int *max_ur
     }
     av_free(text);
 
-    path = av_mallocz(tmp_max_url_size);
+    path = av_mallocz(tmp_max_url_size + 2);
     tmp_str = av_mallocz(tmp_max_url_size);
     if (!tmp_str || !path) {
         updated = AVERROR(ENOMEM);
@@ -766,6 +768,15 @@ static int resolve_content_path(AVFormatContext *s, const char *url, int *max_ur
 
     node = baseurl_nodes[rootId];
     baseurl = xmlNodeGetContent(node);
+    if (baseurl) {
+        size_t len = xmlStrlen(baseurl)+2;
+        char *tmp = xmlRealloc(baseurl, len);
+        if (!tmp) {
+            updated = AVERROR(ENOMEM);
+            goto end;
+        }
+        baseurl = tmp;
+    }
     root_url = (av_strcasecmp(baseurl, "")) ? baseurl : path;
     if (node) {
         xmlNodeSetContent(node, root_url);
@@ -818,6 +829,43 @@ end:
     return updated;
 
 }
+
+#define SET_REPRESENTATION_SEQUENCE_BASE_INFO(arg, cnt) { \
+        val = get_val_from_nodes_tab((arg), (cnt), "duration"); \
+        if (val) { \
+            int64_t fragment_duration = (int64_t) strtoll(val, NULL, 10); \
+            if (fragment_duration < 0) { \
+                av_log(s, AV_LOG_WARNING, "duration invalid, autochanged to 0.\n"); \
+                fragment_duration = 0; \
+            } \
+            rep->fragment_duration = fragment_duration; \
+            av_log(s, AV_LOG_TRACE, "rep->fragment_duration = [%"PRId64"]\n", rep->fragment_duration); \
+            xmlFree(val); \
+        } \
+        val = get_val_from_nodes_tab((arg), (cnt), "timescale"); \
+        if (val) { \
+            int64_t fragment_timescale = (int64_t) strtoll(val, NULL, 10); \
+            if (fragment_timescale < 0) { \
+                av_log(s, AV_LOG_WARNING, "timescale invalid, autochanged to 0.\n"); \
+                fragment_timescale = 0; \
+            } \
+            rep->fragment_timescale = fragment_timescale; \
+            av_log(s, AV_LOG_TRACE, "rep->fragment_timescale = [%"PRId64"]\n", rep->fragment_timescale); \
+            xmlFree(val); \
+        } \
+        val = get_val_from_nodes_tab((arg), (cnt), "startNumber"); \
+        if (val) { \
+            int64_t start_number = (int64_t) strtoll(val, NULL, 10); \
+            if (start_number < 0) { \
+                av_log(s, AV_LOG_WARNING, "startNumber invalid, autochanged to 0.\n"); \
+                start_number = 0; \
+            } \
+            rep->start_number = rep->first_seq_no = start_number; \
+            av_log(s, AV_LOG_TRACE, "rep->first_seq_no = [%"PRId64"]\n", rep->first_seq_no); \
+            xmlFree(val); \
+        } \
+    }
+
 
 static int parse_manifest_representation(AVFormatContext *s, const char *url,
                                          xmlNodePtr node,
@@ -933,28 +981,17 @@ static int parse_manifest_representation(AVFormatContext *s, const char *url,
         }
         val = get_val_from_nodes_tab(fragment_templates_tab, 4, "presentationTimeOffset");
         if (val) {
-            rep->presentation_timeoffset = (int64_t) strtoll(val, NULL, 10);
+            int64_t presentation_timeoffset = (int64_t) strtoll(val, NULL, 10);
+            if (presentation_timeoffset < 0) {
+                av_log(s, AV_LOG_WARNING, "presentationTimeOffset invalid, autochanged to 0.\n");
+                presentation_timeoffset = 0;
+            }
+            rep->presentation_timeoffset = presentation_timeoffset;
             av_log(s, AV_LOG_TRACE, "rep->presentation_timeoffset = [%"PRId64"]\n", rep->presentation_timeoffset);
             xmlFree(val);
         }
-        val = get_val_from_nodes_tab(fragment_templates_tab, 4, "duration");
-        if (val) {
-            rep->fragment_duration = (int64_t) strtoll(val, NULL, 10);
-            av_log(s, AV_LOG_TRACE, "rep->fragment_duration = [%"PRId64"]\n", rep->fragment_duration);
-            xmlFree(val);
-        }
-        val = get_val_from_nodes_tab(fragment_templates_tab, 4, "timescale");
-        if (val) {
-            rep->fragment_timescale = (int64_t) strtoll(val, NULL, 10);
-            av_log(s, AV_LOG_TRACE, "rep->fragment_timescale = [%"PRId64"]\n", rep->fragment_timescale);
-            xmlFree(val);
-        }
-        val = get_val_from_nodes_tab(fragment_templates_tab, 4, "startNumber");
-        if (val) {
-            rep->start_number = rep->first_seq_no = (int64_t) strtoll(val, NULL, 10);
-            av_log(s, AV_LOG_TRACE, "rep->first_seq_no = [%"PRId64"]\n", rep->first_seq_no);
-            xmlFree(val);
-        }
+
+        SET_REPRESENTATION_SEQUENCE_BASE_INFO(fragment_templates_tab, 4);
         if (adaptionset_supplementalproperty_node) {
             char *scheme_id_uri = xmlGetProp(adaptionset_supplementalproperty_node, "schemeIdUri");
             if (scheme_id_uri) {
@@ -1011,25 +1048,7 @@ static int parse_manifest_representation(AVFormatContext *s, const char *url,
         segmentlists_tab[1] = adaptionset_segmentlist_node;
         segmentlists_tab[2] = period_segmentlist_node;
 
-        val = get_val_from_nodes_tab(segmentlists_tab, 3, "duration");
-        if (val) {
-            rep->fragment_duration = (int64_t) strtoll(val, NULL, 10);
-            av_log(s, AV_LOG_TRACE, "rep->fragment_duration = [%"PRId64"]\n", rep->fragment_duration);
-            xmlFree(val);
-        }
-        val = get_val_from_nodes_tab(segmentlists_tab, 3, "timescale");
-        if (val) {
-            rep->fragment_timescale = (int64_t) strtoll(val, NULL, 10);
-            av_log(s, AV_LOG_TRACE, "rep->fragment_timescale = [%"PRId64"]\n", rep->fragment_timescale);
-            xmlFree(val);
-        }
-        val = get_val_from_nodes_tab(segmentlists_tab, 3, "startNumber");
-        if (val) {
-            rep->start_number = rep->first_seq_no = (int64_t) strtoll(val, NULL, 10);
-            av_log(s, AV_LOG_TRACE, "rep->first_seq_no = [%"PRId64"]\n", rep->first_seq_no);
-            xmlFree(val);
-        }
-
+        SET_REPRESENTATION_SEQUENCE_BASE_INFO(segmentlists_tab, 3)
         fragmenturl_node = xmlFirstElementChild(representation_segmentlist_node);
         while (fragmenturl_node) {
             ret = parse_manifest_segmenturlnode(s, rep, fragmenturl_node,
@@ -1222,7 +1241,7 @@ static int parse_manifest(AVFormatContext *s, const char *url, AVIOContext *in)
         close_in = 1;
 
         av_dict_copy(&opts, c->avio_opts, 0);
-        ret = avio_open2(&in, url, AVIO_FLAG_READ, c->interrupt_callback, &opts);
+        ret = s->io_open(s, &in, url, AVIO_FLAG_READ, &opts);
         av_dict_free(&opts);
         if (ret < 0)
             return ret;
@@ -1365,7 +1384,7 @@ cleanup:
 
     av_bprint_finalize(&buf, NULL);
     if (close_in) {
-        avio_close(in);
+        ff_format_io_close(s, &in);
     }
     return ret;
 }
@@ -1952,17 +1971,6 @@ static int open_demux_for_component(AVFormatContext *s, struct representation *p
 
         // copy disposition
         st->disposition = ist->disposition;
-
-        // copy side data
-        for (int i = 0; i < ist->nb_side_data; i++) {
-            const AVPacketSideData *sd_src = &ist->side_data[i];
-            uint8_t *dst_data;
-
-            dst_data = av_stream_new_side_data(st, sd_src->type, sd_src->size);
-            if (!dst_data)
-                return AVERROR(ENOMEM);
-            memcpy(dst_data, sd_src->data, sd_src->size);
-        }
     }
 
     return 0;
@@ -2060,6 +2068,8 @@ static int dash_read_header(AVFormatContext *s)
 
         if (ret)
             return ret;
+        if (rep->ctx->nb_streams == 0)
+            return AVERROR_PATCHWELCOME;
         rep->stream_index = stream_index;
         ++stream_index;
     }
@@ -2078,6 +2088,8 @@ static int dash_read_header(AVFormatContext *s)
 
         if (ret)
             return ret;
+        if (rep->ctx->nb_streams == 0)
+            return AVERROR_PATCHWELCOME;
         rep->stream_index = stream_index;
         ++stream_index;
     }
@@ -2096,6 +2108,8 @@ static int dash_read_header(AVFormatContext *s)
 
         if (ret)
             return ret;
+        if (rep->ctx->nb_streams == 0)
+            return AVERROR_PATCHWELCOME;
         rep->stream_index = stream_index;
         ++stream_index;
     }

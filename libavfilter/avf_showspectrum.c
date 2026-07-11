@@ -40,6 +40,7 @@
 #include "libavutil/parseutils.h"
 #include "libavutil/xga_font_data.h"
 #include "audio.h"
+#include "formats.h"
 #include "video.h"
 #include "avfilter.h"
 #include "filters.h"
@@ -109,6 +110,7 @@ typedef struct ShowSpectrumContext {
     float dmin, dmax;
     uint64_t samples;
     int (*plot_channel)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
+    int eof;
 
     float opacity_factor;
 
@@ -1149,6 +1151,11 @@ static int config_output(AVFilterLink *outlink)
             float scale = 1.f;
 
             ret = av_tx_init(&s->fft[i], &s->tx_fn, AV_TX_FLOAT_FFT, 0, fft_size << (!!s->stop), &scale, 0);
+            if (ret < 0) {
+                av_log(ctx, AV_LOG_ERROR, "Unable to create FFT context. "
+                       "The window size might be too high.\n");
+                return ret;
+            }
             if (s->stop) {
                 ret = av_tx_init(&s->ifft[i], &s->itx_fn, AV_TX_FLOAT_FFT, 1, fft_size << (!!s->stop), &scale, 0);
                 if (ret < 0) {
@@ -1156,11 +1163,6 @@ static int config_output(AVFilterLink *outlink)
                            "The window size might be too high.\n");
                     return ret;
                 }
-            }
-            if (ret < 0) {
-                av_log(ctx, AV_LOG_ERROR, "Unable to create FFT context. "
-                       "The window size might be too high.\n");
-                return ret;
             }
         }
 
@@ -1292,6 +1294,8 @@ static int config_output(AVFilterLink *outlink)
             av_realloc_f(s->combine_buffer, s->w * 4,
                          sizeof(*s->combine_buffer));
     }
+    if (!s->combine_buffer)
+        return AVERROR(ENOMEM);
 
     av_log(ctx, AV_LOG_VERBOSE, "s:%dx%d FFT window size:%d\n",
            s->w, s->h, s->win_size);
@@ -1541,8 +1545,7 @@ static int plot_spectrum_column(AVFilterLink *inlink, AVFrame *insamples)
 
     if (!s->single_pic && (s->sliding != FULLFRAME || s->xpos == 0)) {
         if (s->old_pts < outpicref->pts || s->sliding == FULLFRAME ||
-            (ff_outlink_get_status(inlink) == AVERROR_EOF &&
-             ff_inlink_queued_samples(inlink) <= s->hop_size)) {
+            (s->eof && ff_inlink_queued_samples(inlink) <= s->hop_size)) {
             AVFrame *clone;
 
             if (s->legend) {
@@ -1598,7 +1601,7 @@ static int activate(AVFilterContext *ctx)
 
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
 
-    if (s->outpicref) {
+    if (s->outpicref && ff_inlink_queued_samples(inlink) > 0) {
         AVFrame *fin;
 
         ret = ff_inlink_consume_samples(inlink, s->hop_size, s->hop_size, &fin);
@@ -1625,8 +1628,7 @@ static int activate(AVFilterContext *ctx)
         }
     }
 
-    if (ff_outlink_get_status(inlink) == AVERROR_EOF &&
-        s->sliding == FULLFRAME &&
+    if (s->eof && s->sliding == FULLFRAME &&
         s->xpos > 0 && s->outpicref) {
 
         if (s->orientation == VERTICAL) {
@@ -1654,11 +1656,15 @@ static int activate(AVFilterContext *ctx)
         return 0;
     }
 
-    if (ff_inlink_acknowledge_status(inlink, &status, &pts)) {
-        if (status == AVERROR_EOF) {
-            ff_outlink_set_status(outlink, status, s->pts);
-            return 0;
-        }
+    if (!s->eof && ff_inlink_acknowledge_status(inlink, &status, &pts)) {
+        s->eof = status == AVERROR_EOF;
+        ff_filter_set_ready(ctx, 100);
+        return 0;
+    }
+
+    if (s->eof) {
+        ff_outlink_set_status(outlink, AVERROR_EOF, s->pts);
+        return 0;
     }
 
     if (ff_inlink_queued_samples(inlink) >= s->hop_size) {
@@ -1674,13 +1680,6 @@ static int activate(AVFilterContext *ctx)
     return FFERROR_NOT_READY;
 }
 
-static const AVFilterPad showspectrum_inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 static const AVFilterPad showspectrum_outputs[] = {
     {
         .name          = "default",
@@ -1694,7 +1693,7 @@ const AVFilter ff_avf_showspectrum = {
     .description   = NULL_IF_CONFIG_SMALL("Convert input audio to a spectrum video output."),
     .uninit        = uninit,
     .priv_size     = sizeof(ShowSpectrumContext),
-    FILTER_INPUTS(showspectrum_inputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(showspectrum_outputs),
     FILTER_QUERY_FUNC(query_formats),
     .activate      = activate,
@@ -1785,7 +1784,7 @@ static int showspectrumpic_request_frame(AVFilterLink *outlink)
             int acc_samples = 0;
             int dst_offset = 0;
 
-            while (nb_frame <= s->nb_frames) {
+            while (nb_frame < s->nb_frames) {
                 AVFrame *cur_frame = s->frames[nb_frame];
                 int cur_frame_samples = cur_frame->nb_samples;
                 int nb_samples = 0;

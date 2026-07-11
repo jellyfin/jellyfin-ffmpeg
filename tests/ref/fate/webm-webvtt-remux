@@ -1,5 +1,5 @@
-0b43695bf27bbe48ea44e969d8908e1f *tests/data/fate/webm-webvtt-remux.webm
-6528 tests/data/fate/webm-webvtt-remux.webm
+c372c76c062d368f1d17373c19f83579 *tests/data/fate/webm-webvtt-remux.webm
+6524 tests/data/fate/webm-webvtt-remux.webm
 #tb 0: 1/1000
 #media_type 0: subtitle
 #codec_id 0: webvtt
@@ -387,6 +387,7 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:non_diegetic=0
 DISPOSITION:captions=0
 DISPOSITION:descriptions=1
 DISPOSITION:metadata=0
@@ -408,6 +409,7 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:non_diegetic=0
 DISPOSITION:captions=0
 DISPOSITION:descriptions=0
 DISPOSITION:metadata=1
@@ -429,6 +431,7 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:non_diegetic=0
 DISPOSITION:captions=0
 DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
@@ -450,6 +453,7 @@ DISPOSITION:visual_impaired=0
 DISPOSITION:clean_effects=0
 DISPOSITION:attached_pic=0
 DISPOSITION:timed_thumbnails=0
+DISPOSITION:non_diegetic=0
 DISPOSITION:captions=1
 DISPOSITION:descriptions=0
 DISPOSITION:metadata=0

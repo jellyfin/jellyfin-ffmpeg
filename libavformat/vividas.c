@@ -129,7 +129,7 @@ static void xor_block(void *p1, void *p2, unsigned size, int key, unsigned *key_
     size >>= 2;
 
     while (size > 0) {
-        *d2 = *d1 ^ (HAVE_BIGENDIAN ? av_bswap32(k) : k);
+        AV_WN32(d2, AV_RN32(d1) ^ (HAVE_BIGENDIAN ? av_bswap32(k) : k));
         k += key;
         d1++;
         d2++;
@@ -277,7 +277,8 @@ static uint8_t *read_sb_block(AVIOContext *src, unsigned *size,
     return buf;
 }
 
-static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *buf, int size)
+static int track_header(VividasDemuxContext *viv, AVFormatContext *s,
+                        const uint8_t *buf, int size)
 {
     int i, j, ret;
     int64_t off;
@@ -286,7 +287,7 @@ static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *
     FFIOContext pb0;
     AVIOContext *const pb = &pb0.pub;
 
-    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&pb0, buf, size);
 
     ffio_read_varlen(pb); // track_header_len
     avio_r8(pb); // '1'
@@ -432,7 +433,8 @@ static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *
     return 0;
 }
 
-static int track_index(VividasDemuxContext *viv, AVFormatContext *s, uint8_t *buf, unsigned size)
+static int track_index(VividasDemuxContext *viv, AVFormatContext *s,
+                       const uint8_t *buf, unsigned size)
 {
     int64_t off;
     int64_t poff;
@@ -443,7 +445,7 @@ static int track_index(VividasDemuxContext *viv, AVFormatContext *s, uint8_t *bu
     int64_t filesize = avio_size(s->pb);
     uint64_t n_sb_blocks_tmp;
 
-    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&pb0, buf, size);
 
     ffio_read_varlen(pb); // track_index_len
     avio_r8(pb); // 'c'
@@ -563,7 +565,8 @@ static int viv_read_header(AVFormatContext *s)
     v = avio_r8(pb);
     avio_seek(pb, v, SEEK_CUR);
 
-    avio_read(pb, keybuffer, 187);
+    if (avio_read(pb, keybuffer, 187) != 187)
+        return AVERROR_INVALIDDATA;
     key = decode_key(keybuffer);
     viv->sb_key = key;
 
@@ -583,7 +586,9 @@ static int viv_read_header(AVFormatContext *s)
         block_type = avio_r8(pb);
 
         if (block_type == 22) {
-            avio_read(pb, keybuffer, 187);
+            ret = ffio_read_size(pb, keybuffer, 187);
+            if (ret < 0)
+                return ret;
             b22_key = decode_key(keybuffer);
             b22_size = avio_rl32(pb);
         }
@@ -717,8 +722,10 @@ static int viv_read_packet(AVFormatContext *s,
         }
         last_start =
         viv->audio_subpackets[viv->n_audio_subpackets].start = (int)(off - avio_tell(pb));
-        if (last_start < last)
+        if (last_start < last) {
+            viv->n_audio_subpackets = 0;
             return AVERROR_INVALIDDATA;
+        }
         viv->current_audio_subpacket = 0;
 
     } else {

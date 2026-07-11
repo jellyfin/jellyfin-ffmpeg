@@ -22,6 +22,7 @@
 
 #include "config.h"
 #include <stdint.h>
+#include <time.h>
 
 #include "libavutil/time_internal.h"
 
@@ -192,4 +193,3 @@ void ff_hls_write_end_list(AVIOContext *out)
         return;
     avio_printf(out, "#EXT-X-ENDLIST\n");
 }
-

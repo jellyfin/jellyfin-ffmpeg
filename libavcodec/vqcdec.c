@@ -53,7 +53,7 @@ static VLC vector_vlc;
 
 static av_cold void vqc_init_static_data(void)
 {
-    INIT_VLC_STATIC_FROM_LENGTHS(&vector_vlc, VECTOR_VLC_BITS, FF_ARRAY_ELEMS(vector_nbits),
+    VLC_INIT_STATIC_FROM_LENGTHS(&vector_vlc, VECTOR_VLC_BITS, FF_ARRAY_ELEMS(vector_nbits),
                              vector_nbits, 1,
                              vector_symbols, 1, 1,
                              0, 0, 1 << VECTOR_VLC_BITS);
@@ -145,10 +145,13 @@ static int decode_vectors(VqcContext * s, const uint8_t * buf, int size, int wid
     GetBitContext gb;
     uint8_t * vectors = s->vectors;
     uint8_t * vectors_end = s->vectors + (width * height * 3) / 2;
+    int ret;
 
     memset(vectors, 0, 3 * width * height / 2);
 
-    init_get_bits8(&gb, buf, size);
+    ret = init_get_bits8(&gb, buf, size);
+    if (ret < 0)
+        return ret;
 
     for (int i = 0; i < 3 * width * height / 2 / 32; i++) {
         uint8_t * dst = vectors;

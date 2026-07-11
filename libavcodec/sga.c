@@ -72,7 +72,7 @@ static int decode_palette(GetByteContext *gb, uint32_t *pal)
         return AVERROR_INVALIDDATA;
 
     memset(pal, 0, 16 * sizeof(*pal));
-    init_get_bits8(&gbit, gb->buffer, 18);
+    (void)init_get_bits8(&gbit, gb->buffer, 18);
 
     for (int RGBIndex = 0; RGBIndex < 3; RGBIndex++) {
         for (int index = 0; index < 16; index++) {
@@ -127,19 +127,18 @@ static int decode_index_palmap(SGAVideoContext *s, AVFrame *frame)
 
 static int decode_index_tilemap(SGAVideoContext *s, AVFrame *frame)
 {
-    GetByteContext *gb = &s->gb;
-    GetBitContext pm;
+    GetByteContext *gb = &s->gb, gb2;
 
     bytestream2_seek(gb, s->tilemapdata_offset, SEEK_SET);
     if (bytestream2_get_bytes_left(gb) < s->tilemapdata_size)
         return AVERROR_INVALIDDATA;
 
-    init_get_bits8(&pm, gb->buffer, s->tilemapdata_size);
+    gb2 = *gb;
 
     for (int y = 0; y < s->tiles_h; y++) {
         for (int x = 0; x < s->tiles_w; x++) {
             uint8_t tile[64];
-            int tilemap = get_bits(&pm, 16);
+            int tilemap = bytestream2_get_be16u(&gb2);
             int flip_x = (tilemap >> 11) & 1;
             int flip_y = (tilemap >> 12) & 1;
             int tindex = av_clip((tilemap & 511) - 1, 0, s->nb_tiles - 1);
@@ -254,11 +253,13 @@ static int decode_palmapdata(AVCodecContext *avctx)
     const int bits = (s->nb_pal + 1) / 2;
     GetByteContext *gb = &s->gb;
     GetBitContext pm;
+    int ret;
 
     bytestream2_seek(gb, s->palmapdata_offset, SEEK_SET);
     if (bytestream2_get_bytes_left(gb) < s->palmapdata_size)
         return AVERROR_INVALIDDATA;
-    init_get_bits8(&pm, gb->buffer, s->palmapdata_size);
+    ret = init_get_bits8(&pm, gb->buffer, s->palmapdata_size);
+    av_assert1(ret >= 0);
 
     for (int y = 0; y < s->tiles_h; y++) {
         uint8_t *dst = s->palmapindex_data + y * s->tiles_w;
@@ -277,11 +278,13 @@ static int decode_tiledata(AVCodecContext *avctx)
     SGAVideoContext *s = avctx->priv_data;
     GetByteContext *gb = &s->gb;
     GetBitContext tm;
+    int ret;
 
     bytestream2_seek(gb, s->tiledata_offset, SEEK_SET);
     if (bytestream2_get_bytes_left(gb) < s->tiledata_size)
         return AVERROR_INVALIDDATA;
-    init_get_bits8(&tm, gb->buffer, s->tiledata_size);
+    ret = init_get_bits8(&tm, gb->buffer, s->tiledata_size);
+    av_assert1(ret >= 0);
 
     for (int n = 0; n < s->nb_tiles; n++) {
         uint8_t *dst = s->tileindex_data + n * 64;
@@ -497,9 +500,13 @@ static int sga_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     }
 
     memcpy(frame->data[1], s->pal, AVPALETTE_SIZE);
+#if FF_API_PALETTE_HAS_CHANGED
+FF_DISABLE_DEPRECATION_WARNINGS
     frame->palette_has_changed = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
 
     *got_frame = 1;
 

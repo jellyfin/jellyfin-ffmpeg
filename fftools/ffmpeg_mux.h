@@ -44,6 +44,9 @@ typedef struct MuxStream {
     AVFifo *muxing_queue;
 
     AVBSFContext *bsf_ctx;
+    AVPacket     *bsf_pkt;
+
+    AVPacket     *pkt;
 
     EncStats stats;
 
@@ -60,9 +63,27 @@ typedef struct MuxStream {
     /* Threshold after which max_muxing_queue_size will be in effect */
     size_t muxing_queue_data_threshold;
 
+    // timestamp from which the streamcopied streams should start,
+    // in AV_TIME_BASE_Q;
+    // everything before it should be discarded
+    int64_t ts_copy_start;
+
     /* dts of the last packet sent to the muxer, in the stream timebase
      * used for making up missing dts values */
     int64_t last_mux_dts;
+
+    int64_t    stream_duration;
+    AVRational stream_duration_tb;
+
+    // state for av_rescale_delta() call for audio in write_packet()
+    int64_t ts_rescale_delta_last;
+
+    // combined size of all the packets sent to the muxer
+    uint64_t data_size_mux;
+
+    int copy_initial_nonkeyframes;
+    int copy_prior_start;
+    int streamcopy_started;
 } MuxStream;
 
 typedef struct Muxer {

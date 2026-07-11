@@ -25,7 +25,6 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -288,7 +287,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         const int width = s->planewidth[plane];
 
         if (!(s->planes & (1 << plane))) {
-            if (out != in)
+            if (out->data[plane] != in->data[plane])
                 av_image_copy_plane(out->data[plane], out->linesize[plane],
                                     in->data[plane], in->linesize[plane],
                                     width * ((s->depth + 7) / 8), height);
@@ -334,13 +333,6 @@ static const AVFilterPad avgblur_inputs[] = {
     },
 };
 
-static const AVFilterPad avgblur_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_avgblur = {
     .name          = "avgblur",
     .description   = NULL_IF_CONFIG_SMALL("Apply Average Blur filter."),
@@ -348,7 +340,7 @@ const AVFilter ff_vf_avgblur = {
     .priv_class    = &avgblur_class,
     .uninit        = uninit,
     FILTER_INPUTS(avgblur_inputs),
-    FILTER_OUTPUTS(avgblur_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = process_command,

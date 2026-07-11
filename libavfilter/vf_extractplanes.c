@@ -28,7 +28,9 @@
 #include "avfilter.h"
 #include "drawutils.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 #define PLANE_R 0x01
 #define PLANE_G 0x02
@@ -117,7 +119,7 @@ AVFILTER_DEFINE_CLASS(extractplanes);
         AV_PIX_FMT_YUVA422P9##suf,                             \
         AV_PIX_FMT_YUVA444P9##suf,                             \
         AV_PIX_FMT_GBRP9##suf,                                 \
-        AV_PIX_FMT_GBRP14##suf,                                \
+        AV_PIX_FMT_GBRP14##suf, AV_PIX_FMT_GBRAP14##suf,       \
         AV_PIX_FMT_YUV420P14##suf,                             \
         AV_PIX_FMT_YUV422P14##suf,                             \
         AV_PIX_FMT_YUV444P14##suf

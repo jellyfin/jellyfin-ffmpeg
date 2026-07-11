@@ -26,6 +26,7 @@
 #include "libavutil/attributes.h"
 #include "libavutil/buffer.h"
 #include "libavutil/common.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/pixdesc.h"
 
@@ -274,6 +275,9 @@ static int alloc_buffers(AVCodecContext *avctx)
         int width  = (i || bayer) ? s->coded_width  >> chroma_x_shift : s->coded_width;
         int height = (i || bayer) ? s->coded_height >> chroma_y_shift : s->coded_height;
         ptrdiff_t stride = (FFALIGN(width  / 8, 8) + 64) * 8;
+
+        if ((ret = av_image_check_size2(stride, height, avctx->max_pixels, s->coded_format, 0, avctx)) < 0)
+            return ret;
 
         if (chroma_y_shift && !bayer)
             height = FFALIGN(height / 8, 2) * 8;
@@ -635,7 +639,7 @@ static int cfhd_decode(AVCodecContext *avctx, AVFrame *pic,
         } else
             av_log(avctx, AV_LOG_DEBUG,  "Unknown tag %i data %x\n", tag, data);
 
-        if (tag == BitstreamMarker && data == 0xf0f &&
+        if (tag == BitstreamMarker && data == CoefficientSegment &&
             s->coded_format != AV_PIX_FMT_NONE) {
             int lowpass_height = s->plane[s->channel_num].band[0][0].height;
             int lowpass_width  = s->plane[s->channel_num].band[0][0].width;
@@ -702,10 +706,15 @@ static int cfhd_decode(AVCodecContext *avctx, AVFrame *pic,
 
         if (s->subband_num_actual == 255)
             goto finish;
+
+        if (tag == BitstreamMarker && data == CoefficientSegment || tag == BandHeader || tag == BandSecondPass || s->peak.level)
+            if (s->transform_type != s->a_transform_type)
+                return AVERROR_PATCHWELCOME;
+
         coeff_data = s->plane[s->channel_num].subband[s->subband_num_actual];
 
         /* Lowpass coefficients */
-        if (tag == BitstreamMarker && data == 0xf0f) {
+        if (tag == BitstreamMarker && data == CoefficientSegment) {
             int lowpass_height, lowpass_width, lowpass_a_height, lowpass_a_width;
 
             if (!s->a_width || !s->a_height) {
@@ -1087,8 +1096,8 @@ finish:
                     dst  += dst_linesize;
                 }
             } else {
-                av_log(avctx, AV_LOG_DEBUG, "interlaced frame ? %d", pic->interlaced_frame);
-                pic->interlaced_frame = 1;
+                av_log(avctx, AV_LOG_DEBUG, "interlaced frame ? %d", !!(pic->flags & AV_FRAME_FLAG_INTERLACED));
+                pic->flags |= AV_FRAME_FLAG_INTERLACED;
                 low    = s->plane[plane].subband[0];
                 high   = s->plane[plane].subband[7];
                 output = s->plane[plane].l_h[6];
@@ -1284,7 +1293,7 @@ finish:
                     dst  += dst_linesize;
                 }
             } else {
-                pic->interlaced_frame = 1;
+                pic->flags |= AV_FRAME_FLAG_INTERLACED;
                 low    = s->plane[plane].l_h[7];
                 high   = s->plane[plane].subband[14];
                 output = s->plane[plane].l_h[6];

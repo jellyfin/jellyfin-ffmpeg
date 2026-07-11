@@ -24,11 +24,13 @@
 #include "libavutil/avassert.h"
 #include "libavutil/cpu.h"
 #include "libavutil/film_grain_params.h"
+#include "libavutil/hdr_dynamic_metadata.h"
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 
 #include "atsc_a53.h"
+#include "av1_parse.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
@@ -153,12 +155,9 @@ static void libdav1d_init_params(AVCodecContext *c, const Dav1dSequenceHeader *s
     else
         c->pix_fmt = pix_fmt[seq->layout][seq->hbd];
 
-    if (seq->num_units_in_tick && seq->time_scale) {
-        av_reduce(&c->framerate.den, &c->framerate.num,
-                  seq->num_units_in_tick, seq->time_scale, INT_MAX);
-        if (seq->equal_picture_interval)
-            c->ticks_per_frame = seq->num_ticks_per_picture;
-    }
+    c->framerate = ff_av1_framerate(seq->num_ticks_per_picture,
+                                    (unsigned)seq->num_units_in_tick,
+                                    (unsigned)seq->time_scale);
 
    if (seq->film_grain_present)
        c->properties |= FF_CODEC_PROPERTY_FILM_GRAIN;
@@ -277,6 +276,15 @@ static av_cold int libdav1d_init(AVCodecContext *c)
     if (res < 0)
         return AVERROR(ENOMEM);
 
+#if FF_DAV1D_VERSION_AT_LEAST(6,7)
+    res = dav1d_get_frame_delay(&s);
+    if (res < 0) // Should not happen
+        return AVERROR_EXTERNAL;
+
+    // When dav1d_get_frame_delay() returns 1, there's no delay whatsoever
+    c->delay = res > 1 ? res : 0;
+#endif
+
     return 0;
 }
 
@@ -308,20 +316,14 @@ static void libdav1d_user_data_free(const uint8_t *data, void *opaque) {
     av_packet_free(&pkt);
 }
 
-static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
+static int libdav1d_receive_frame_internal(AVCodecContext *c, Dav1dPicture *p)
 {
     Libdav1dContext *dav1d = c->priv_data;
     Dav1dData *data = &dav1d->data;
-    Dav1dPicture pic = { 0 }, *p = &pic;
-    AVPacket *pkt;
-    OpaqueData *od = NULL;
-#if FF_DAV1D_VERSION_AT_LEAST(5,1)
-    enum Dav1dEventFlags event_flags = 0;
-#endif
     int res;
 
     if (!data->sz) {
-        pkt = av_packet_alloc();
+        AVPacket *pkt = av_packet_alloc();
 
         if (!pkt)
             return AVERROR(ENOMEM);
@@ -333,6 +335,8 @@ static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
         }
 
         if (pkt->size) {
+            OpaqueData *od = NULL;
+
             res = dav1d_data_wrap(data, pkt->data, pkt->size,
                                   libdav1d_data_free, pkt->buf);
             if (res < 0) {
@@ -392,11 +396,30 @@ FF_ENABLE_DEPRECATION_WARNINGS
     if (res < 0) {
         if (res == AVERROR(EINVAL))
             res = AVERROR_INVALIDDATA;
-        else if (res == AVERROR(EAGAIN) && c->internal->draining)
-            res = AVERROR_EOF;
-
-        return res;
+        else if (res == AVERROR(EAGAIN))
+            res = c->internal->draining ? AVERROR_EOF : 1;
     }
+
+    return res;
+}
+
+static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
+{
+    Libdav1dContext *dav1d = c->priv_data;
+    Dav1dPicture pic = { 0 }, *p = &pic;
+    AVPacket *pkt;
+    OpaqueData *od = NULL;
+#if FF_DAV1D_VERSION_AT_LEAST(5,1)
+    enum Dav1dEventFlags event_flags = 0;
+#endif
+    int res;
+
+    do {
+        res = libdav1d_receive_frame_internal(c, p);
+    } while (res > 0);
+
+    if (res < 0)
+        return res;
 
     av_assert0(p->data[0] && p->allocator_data);
 
@@ -462,7 +485,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
         goto fail;
 
     frame->pkt_dts = pkt->pts;
-    frame->key_frame = p->frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY;
+    if (p->frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY)
+        frame->flags |= AV_FRAME_FLAG_KEY;
+    else
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
 
     switch (p->frame_hdr->frame_type) {
     case DAV1D_FRAME_TYPE_KEY:
@@ -510,32 +536,69 @@ FF_ENABLE_DEPRECATION_WARNINGS
         light->MaxFALL = p->content_light->max_frame_average_light_level;
     }
     if (p->itut_t35) {
+#if FF_DAV1D_VERSION_AT_LEAST(6,9)
+        for (size_t i = 0; i < p->n_itut_t35; i++) {
+            const Dav1dITUTT35 *itut_t35 = &p->itut_t35[i];
+#else
+        const Dav1dITUTT35 *itut_t35 = p->itut_t35;
+#endif
         GetByteContext gb;
-        unsigned int user_identifier;
+        int provider_code;
 
-        bytestream2_init(&gb, p->itut_t35->payload, p->itut_t35->payload_size);
-        bytestream2_skip(&gb, 1); // terminal provider code
-        bytestream2_skip(&gb, 1); // terminal provider oriented code
-        user_identifier = bytestream2_get_be32(&gb);
-        switch (user_identifier) {
-        case MKBETAG('G', 'A', '9', '4'): { // closed captions
-            AVBufferRef *buf = NULL;
+        bytestream2_init(&gb, itut_t35->payload, itut_t35->payload_size);
 
-            res = ff_parse_a53_cc(&buf, gb.buffer, bytestream2_get_bytes_left(&gb));
-            if (res < 0)
-                goto fail;
-            if (!res)
+        provider_code = bytestream2_get_be16(&gb);
+        switch (provider_code) {
+        case 0x31: { // atsc_provider_code
+            uint32_t user_identifier = bytestream2_get_be32(&gb);
+            switch (user_identifier) {
+            case MKBETAG('G', 'A', '9', '4'): { // closed captions
+                AVBufferRef *buf = NULL;
+
+                res = ff_parse_a53_cc(&buf, gb.buffer, bytestream2_get_bytes_left(&gb));
+                if (res < 0)
+                    goto fail;
+                if (!res)
+                    break;
+
+                if (!av_frame_new_side_data_from_buf(frame, AV_FRAME_DATA_A53_CC, buf))
+                    av_buffer_unref(&buf);
+
+                c->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
+                break;
+            }
+            default: // ignore unsupported identifiers
+                break;
+            }
+            break;
+        }
+        case 0x3C: { // smpte_provider_code
+            AVDynamicHDRPlus *hdrplus;
+            int provider_oriented_code = bytestream2_get_be16(&gb);
+            int application_identifier = bytestream2_get_byte(&gb);
+
+            if (itut_t35->country_code != 0xB5 ||
+                provider_oriented_code != 1 || application_identifier != 4)
                 break;
 
-            if (!av_frame_new_side_data_from_buf(frame, AV_FRAME_DATA_A53_CC, buf))
-                av_buffer_unref(&buf);
+            hdrplus = av_dynamic_hdr_plus_create_side_data(frame);
+            if (!hdrplus) {
+                res = AVERROR(ENOMEM);
+                goto fail;
+            }
 
-            c->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
+            res = av_dynamic_hdr_plus_from_t35(hdrplus, gb.buffer,
+                                               bytestream2_get_bytes_left(&gb));
+            if (res < 0)
+                goto fail;
             break;
         }
-        default: // ignore unsupported identifiers
+        default: // ignore unsupported provider codes
             break;
         }
+#if FF_DAV1D_VERSION_AT_LEAST(6,9)
+        }
+#endif
     }
     if (p->frame_hdr->film_grain.present && (!dav1d->apply_grain ||
         (c->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN))) {
@@ -635,7 +698,7 @@ const FFCodec ff_libdav1d_decoder = {
     .flush          = libdav1d_flush,
     FF_CODEC_RECEIVE_FRAME_CB(libdav1d_receive_frame),
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_OTHER_THREADS,
-    .caps_internal  = FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_SETS_FRAME_PROPS |
+    .caps_internal  = FF_CODEC_CAP_SETS_FRAME_PROPS |
                       FF_CODEC_CAP_AUTO_THREADS,
     .p.priv_class   = &libdav1d_class,
     .p.wrapper_name = "libdav1d",

@@ -29,6 +29,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -540,16 +541,16 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
     const float in_scale = s->in_scale;
     const float out_scale = s->out_scale;
     const int depth = s->depth;
-    const int interlaced = in->interlaced_frame;
-    const int tff = s->field_n == (s->field < 0 ? interlaced ? in->top_field_first : 1 :
+    const int interlaced = !!(in->flags & AV_FRAME_FLAG_INTERLACED);
+    const int tff = s->field_n == (s->field < 0 ? interlaced ? (in->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) : 1 :
                                   (s->field & 1) ^ 1);
 
 
     for (int p = 0; p < s->nb_planes; p++) {
         const int height = s->planeheight[p];
         const int width = s->planewidth[p];
-        const int slice_start = 2 * ((height / 2 * jobnr) / nb_jobs);
-        const int slice_end = 2 * ((height / 2 * (jobnr+1)) / nb_jobs);
+        const int slice_start = 2 * (ff_slice_pos(height / 2, jobnr, nb_jobs));
+        const int slice_end = 2 * (ff_slice_pos(height / 2, jobnr + 1, nb_jobs));
         const uint8_t *src_data = in->data[p];
         uint8_t *dst_data = out->data[p];
         uint8_t *dst = out->data[p] + slice_start * out->linesize[p];
@@ -665,7 +666,12 @@ static int get_frame(AVFilterContext *ctx, int is_second)
     if (!dst)
         return AVERROR(ENOMEM);
     av_frame_copy_props(dst, s->prev);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     dst->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    dst->flags &= ~AV_FRAME_FLAG_INTERLACED;
     dst->pts = s->pts;
 
     ff_filter_execute(ctx, filter_slice, dst, NULL,
@@ -688,7 +694,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         return 0;
     }
 
-    if ((s->deint && !s->prev->interlaced_frame) || ctx->is_disabled) {
+    if ((s->deint && !(s->prev->flags & AV_FRAME_FLAG_INTERLACED)) || ctx->is_disabled) {
         s->prev->pts *= 2;
         ret = ff_filter_frame(ctx->outputs[0], s->prev);
         s->prev = in;

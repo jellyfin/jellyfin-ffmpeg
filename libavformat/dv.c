@@ -69,6 +69,9 @@ struct DVDemuxContext {
     uint8_t           audio_buf[4][8192];
     int               ach;
     int               frames;
+
+    int64_t           next_pts_video;
+    int64_t           next_pts_audio;
 };
 
 static inline uint16_t dv_audio_12to16(uint16_t sample)
@@ -280,7 +283,7 @@ static int dv_extract_audio_info(DVDemuxContext *c, const uint8_t *frame)
             if (!c->ast[i])
                 return AVERROR(ENOMEM);
 
-            avpriv_set_pts_info(c->ast[i], 64, c->sys->time_base.num, c->sys->time_base.den);
+            avpriv_set_pts_info(c->ast[i], 64, 1, DV_TIMESCALE_AUDIO);
             c->ast[i]->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
             c->ast[i]->codecpar->codec_id   = AV_CODEC_ID_PCM_S16LE;
             c->ast[i]->codecpar->ch_layout  = (AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO;
@@ -314,8 +317,6 @@ static int dv_extract_video_info(DVDemuxContext *c, const uint8_t *frame)
 
     par = c->vst->codecpar;
 
-    avpriv_set_pts_info(c->vst, 64, c->sys->time_base.num,
-                        c->sys->time_base.den);
     c->vst->avg_frame_rate = av_inv_q(c->vst->time_base);
 
     /* finding out SAR is a little bit messy */
@@ -357,8 +358,9 @@ static int dv_init_demux(AVFormatContext *s, DVDemuxContext *c)
     c->fctx                   = s;
     c->vst->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
     c->vst->codecpar->codec_id   = AV_CODEC_ID_DVVIDEO;
-    c->vst->codecpar->bit_rate   = 25000000;
     c->vst->start_time        = 0;
+
+    avpriv_set_pts_info(c->vst, 64, 1, DV_TIMESCALE_VIDEO);
 
     /* Audio streams are added later as they are encountered. */
     s->ctx_flags |= AVFMTCTX_NOHEADER;
@@ -419,6 +421,7 @@ int avpriv_dv_get_packet(DVDemuxContext *c, AVPacket *pkt)
 int avpriv_dv_produce_packet(DVDemuxContext *c, AVPacket *pkt,
                              uint8_t *buf, int buf_size, int64_t pos)
 {
+    int64_t pts, duration;
     int size, i;
     uint8_t *ppcm[5] = { 0 };
 
@@ -434,11 +437,31 @@ int avpriv_dv_produce_packet(DVDemuxContext *c, AVPacket *pkt,
     if (size < 0)
         return size;
 
+    if (c->ach) {
+        int64_t next_pts_video = av_rescale_q(c->next_pts_video, c->vst->time_base,
+                                              c->ast[0]->time_base);
+
+        duration = av_rescale_q(size / 4,
+                                (AVRational){ 1, c->audio_pkt[0].sample_rate },
+                                c->ast[0]->time_base);
+
+        // if audio timestamps are more than one frame away from video,
+        // assume desync happened (e.g. due to dropped audio frames) and
+        // resynchronize
+        pts = (FFABS(next_pts_video - c->next_pts_audio) >= duration) ?
+              next_pts_video : c->next_pts_audio;
+
+        c->next_pts_audio = pts + duration;
+    }
+
     for (i = 0; i < c->ach; i++) {
-        c->audio_pkt[i].pos  = pos;
-        c->audio_pkt[i].size = size;
-        c->audio_pkt[i].pts  = (c->sys->height == 720) ? (c->frames & ~1) : c->frames;
-        c->audio_pkt[i].duration = 1;
+        DVPacket *dpkt = &c->audio_pkt[i];
+
+        dpkt->pos      = pos;
+        dpkt->size     = size;
+        dpkt->pts      = pts;
+        dpkt->duration = duration;
+
         ppcm[i] = c->audio_buf[i];
     }
     if (c->ach)
@@ -463,7 +486,10 @@ int avpriv_dv_produce_packet(DVDemuxContext *c, AVPacket *pkt,
         pkt->size         = size;
         pkt->flags       |= AV_PKT_FLAG_KEY;
         pkt->stream_index = c->vst->index;
-        pkt->pts          = c->frames;
+        pkt->pts          = c->next_pts_video;
+        pkt->duration     = av_rescale_q(1, c->sys->time_base, c->vst->time_base);
+
+        c->next_pts_video += pkt->duration;
     }
 
     c->frames++;
@@ -472,28 +498,36 @@ int avpriv_dv_produce_packet(DVDemuxContext *c, AVPacket *pkt,
 }
 
 static int64_t dv_frame_offset(AVFormatContext *s, DVDemuxContext *c,
-                               int64_t timestamp, int flags)
+                               int64_t *timestamp)
 {
     // FIXME: sys may be wrong if last dv_read_packet() failed (buffer is junk)
     FFFormatContext *const si = ffformatcontext(s);
     const int frame_size = c->sys->frame_size;
+    int64_t  frame_count = av_rescale_q(*timestamp, c->vst->time_base, c->sys->time_base);
     int64_t offset;
     int64_t size       = avio_size(s->pb) - si->data_offset;
     int64_t max_offset = ((size - 1) / frame_size) * frame_size;
 
-    offset = frame_size * timestamp;
+    offset = frame_size * frame_count;
 
     if (size >= 0 && offset > max_offset)
         offset = max_offset;
     else if (offset < 0)
         offset = 0;
 
+    *timestamp = av_rescale_q(offset / frame_size, c->sys->time_base, c->vst->time_base);
+
     return offset + si->data_offset;
 }
 
-void ff_dv_offset_reset(DVDemuxContext *c, int64_t frame_offset)
+void ff_dv_ts_reset(DVDemuxContext *c, int64_t ts)
 {
-    c->frames = frame_offset;
+    c->frames         = !c->sys ? 0 :
+                        av_rescale_q(ts, c->vst->time_base, c->sys->time_base);
+    c->next_pts_video = ts;
+    c->next_pts_audio = (!c->sys || !c->ast[0]) ? AV_NOPTS_VALUE :
+                        av_rescale_q(ts, c->vst->time_base, c->ast[0]->time_base);
+
     c->audio_pkt[0].size = c->audio_pkt[1].size = 0;
     c->audio_pkt[2].size = c->audio_pkt[3].size = 0;
 }
@@ -618,12 +652,19 @@ static int dv_read_seek(AVFormatContext *s, int stream_index,
 {
     RawDVContext *r   = s->priv_data;
     DVDemuxContext *c = &r->dv_demux;
-    int64_t offset    = dv_frame_offset(s, c, timestamp, flags);
+    int64_t offset;
+
+    // seek using the video stream
+    if (stream_index != c->vst->index)
+        timestamp = av_rescale_q(timestamp, s->streams[stream_index]->time_base,
+                                 c->vst->time_base);
+
+    offset = dv_frame_offset(s, c, &timestamp);
 
     if (avio_seek(s->pb, offset, SEEK_SET) < 0)
         return -1;
 
-    ff_dv_offset_reset(c, offset / c->sys->frame_size);
+    ff_dv_ts_reset(c, timestamp);
     return 0;
 }
 

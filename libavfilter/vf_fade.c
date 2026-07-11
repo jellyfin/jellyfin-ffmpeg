@@ -32,6 +32,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "drawutils.h"
 #include "formats.h"
 #include "internal.h"
@@ -234,8 +235,8 @@ static int filter_slice_rgb(AVFilterContext *ctx, void *arg, int jobnr,
 {
     FadeContext *s = ctx->priv;
     AVFrame *frame = arg;
-    int slice_start = (frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (frame->height * (jobnr+1)) / nb_jobs;
+    int slice_start = ff_slice_pos(frame->height, jobnr, nb_jobs);
+    int slice_end   = ff_slice_pos(frame->height, jobnr + 1, nb_jobs);
 
     if      (s->is_planar && s->alpha)
                           filter_rgb_planar(s, frame, slice_start, slice_end, 1);
@@ -254,8 +255,8 @@ static int filter_slice_luma(AVFilterContext *ctx, void *arg, int jobnr,
 {
     FadeContext *s = ctx->priv;
     AVFrame *frame = arg;
-    int slice_start = (frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (frame->height * (jobnr+1)) / nb_jobs;
+    int slice_start = ff_slice_pos(frame->height, jobnr, nb_jobs);
+    int slice_end   = ff_slice_pos(frame->height, jobnr + 1, nb_jobs);
     int i, j;
 
     for (int k = 0; k < 1 + 2 * (s->is_planar && s->is_rgb); k++) {
@@ -279,8 +280,8 @@ static int filter_slice_luma16(AVFilterContext *ctx, void *arg, int jobnr,
 {
     FadeContext *s = ctx->priv;
     AVFrame *frame = arg;
-    int slice_start = (frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (frame->height * (jobnr+1)) / nb_jobs;
+    int slice_start = ff_slice_pos(frame->height, jobnr, nb_jobs);
+    int slice_end   = ff_slice_pos(frame->height, jobnr + 1, nb_jobs);
     int i, j;
 
     for (int k = 0; k < 1 + 2 * (s->is_planar && s->is_rgb); k++) {
@@ -307,8 +308,8 @@ static int filter_slice_chroma(AVFilterContext *ctx, void *arg, int jobnr,
     int i, j, plane;
     const int width = AV_CEIL_RSHIFT(frame->width, s->hsub);
     const int height= AV_CEIL_RSHIFT(frame->height, s->vsub);
-    int slice_start = (height *  jobnr   ) / nb_jobs;
-    int slice_end   = FFMIN(((height * (jobnr+1)) / nb_jobs), frame->height);
+    int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    int slice_end   = FFMIN((ff_slice_pos(height, jobnr + 1, nb_jobs)), frame->height);
 
     for (plane = 1; plane < 3; plane++) {
         for (i = slice_start; i < slice_end; i++) {
@@ -336,8 +337,8 @@ static int filter_slice_chroma16(AVFilterContext *ctx, void *arg, int jobnr,
     const int height= AV_CEIL_RSHIFT(frame->height, s->vsub);
     const int mid = 1 << (s->depth - 1);
     const int add = ((mid << 1) + 1) << 15;
-    int slice_start = (height *  jobnr   ) / nb_jobs;
-    int slice_end   = FFMIN(((height * (jobnr+1)) / nb_jobs), frame->height);
+    int slice_start = ff_slice_pos(height, jobnr, nb_jobs);
+    int slice_end   = FFMIN((ff_slice_pos(height, jobnr + 1, nb_jobs)), frame->height);
 
     for (plane = 1; plane < 3; plane++) {
         for (i = slice_start; i < slice_end; i++) {
@@ -358,8 +359,8 @@ static int filter_slice_alpha(AVFilterContext *ctx, void *arg, int jobnr,
     FadeContext *s = ctx->priv;
     AVFrame *frame = arg;
     int plane = s->is_packed_rgb ? 0 : A;
-    int slice_start = (frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (frame->height * (jobnr+1)) / nb_jobs;
+    int slice_start = ff_slice_pos(frame->height, jobnr, nb_jobs);
+    int slice_end   = ff_slice_pos(frame->height, jobnr + 1, nb_jobs);
     int i, j;
 
     for (i = slice_start; i < slice_end; i++) {
@@ -383,8 +384,8 @@ static int filter_slice_alpha16(AVFilterContext *ctx, void *arg, int jobnr,
     FadeContext *s = ctx->priv;
     AVFrame *frame = arg;
     int plane = s->is_packed_rgb ? 0 : A;
-    int slice_start = (frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (frame->height * (jobnr+1)) / nb_jobs;
+    int slice_start = ff_slice_pos(frame->height, jobnr, nb_jobs);
+    int slice_end   = ff_slice_pos(frame->height, jobnr + 1, nb_jobs);
     int i, j;
 
     for (i = slice_start; i < slice_end; i++) {
@@ -557,13 +558,6 @@ static const AVFilterPad avfilter_vf_fade_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_fade_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_fade = {
     .name          = "fade",
     .description   = NULL_IF_CONFIG_SMALL("Fade in/out input video."),
@@ -571,7 +565,7 @@ const AVFilter ff_vf_fade = {
     .priv_size     = sizeof(FadeContext),
     .priv_class    = &fade_class,
     FILTER_INPUTS(avfilter_vf_fade_inputs),
-    FILTER_OUTPUTS(avfilter_vf_fade_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SLICE_THREADS |
                      AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,

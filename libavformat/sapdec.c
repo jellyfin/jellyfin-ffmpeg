@@ -148,8 +148,7 @@ static int sap_read_header(AVFormatContext *s)
     }
 
     av_log(s, AV_LOG_VERBOSE, "SDP:\n%s\n", sap->sdp);
-    ffio_init_context(&sap->sdp_pb, sap->sdp, strlen(sap->sdp), 0, NULL, NULL,
-                  NULL, NULL);
+    ffio_init_read_context(&sap->sdp_pb, sap->sdp, strlen(sap->sdp));
 
     infmt = av_find_input_format("sdp");
     if (!infmt)
@@ -196,6 +195,9 @@ static int sap_fetch_packet(AVFormatContext *s, AVPacket *pkt)
     int n, ret;
     struct pollfd p = {fd, POLLIN, 0};
     uint8_t recvbuf[RTP_MAX_PACKET_LENGTH];
+
+    if (fd < 0)
+        return fd;
 
     if (sap->eof)
         return AVERROR_EOF;

@@ -56,7 +56,9 @@ static const char *const var_names[] = {
     "ovsub",
     "n",
     "t",
+#if FF_API_FRAME_PKT
     "pos",
+#endif
     "main_w",
     "main_h",
     "main_a",
@@ -84,7 +86,9 @@ enum var_name {
     VAR_OVSUB,
     VAR_N,
     VAR_T,
+#if FF_API_FRAME_PKT
     VAR_POS,
+#endif
     VAR_S2R_MAIN_W,
     VAR_S2R_MAIN_H,
     VAR_S2R_MAIN_A,
@@ -205,7 +209,9 @@ static int check_exprs(AVFilterContext *ctx)
     if (scale->eval_mode == EVAL_MODE_INIT &&
         (vars_w[VAR_N]            || vars_h[VAR_N]           ||
          vars_w[VAR_T]            || vars_h[VAR_T]           ||
+#if FF_API_FRAME_PKT
          vars_w[VAR_POS]          || vars_h[VAR_POS]         ||
+#endif
          vars_w[VAR_S2R_MAIN_N]   || vars_h[VAR_S2R_MAIN_N]  ||
          vars_w[VAR_S2R_MAIN_T]   || vars_h[VAR_S2R_MAIN_T]  ||
          vars_w[VAR_S2R_MAIN_POS] || vars_h[VAR_S2R_MAIN_POS]) ) {
@@ -512,6 +518,7 @@ static int config_props(AVFilterLink *outlink)
                             outlink->src->inputs[0];
     enum AVPixelFormat outfmt = outlink->format;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
+    const AVPixFmtDescriptor *outdesc = av_pix_fmt_desc_get(outfmt);
     ScaleContext *scale = ctx->priv;
     uint8_t *flags_val = NULL;
     int ret;
@@ -522,14 +529,17 @@ static int config_props(AVFilterLink *outlink)
     outlink->w = scale->w;
     outlink->h = scale->h;
 
-    ff_scale_adjust_dimensions(inlink, &outlink->w, &outlink->h,
+    ret = ff_scale_adjust_dimensions(inlink, &outlink->w, &outlink->h,
                                scale->force_original_aspect_ratio,
                                scale->force_divisible_by);
 
+    if (ret < 0)
+        goto fail;
+
     if (outlink->w > INT_MAX ||
         outlink->h > INT_MAX ||
-        (outlink->h * inlink->w) > INT_MAX ||
-        (outlink->w * inlink->h) > INT_MAX)
+        (outlink->h * (uint64_t)inlink->w) > INT_MAX ||
+        (outlink->w * (uint64_t)inlink->h) > INT_MAX)
         av_log(ctx, AV_LOG_ERROR, "Rescaled value for width or height is too big.\n");
 
     /* TODO: make algorithm configurable */
@@ -582,14 +592,15 @@ static int config_props(AVFilterLink *outlink)
                 av_opt_set_int(s, "dst_range",
                                scale->out_range == AVCOL_RANGE_JPEG, 0);
 
-            /* Override YUV420P default settings to have the correct (MPEG-2) chroma positions
-             * MPEG-2 chroma positions are used by convention
-             * XXX: support other 4:2:0 pixel formats */
-            if (inlink0->format == AV_PIX_FMT_YUV420P && scale->in_v_chr_pos == -513) {
+            /* Override chroma location default settings to have the correct
+             * chroma positions. MPEG chroma positions are used by convention.
+             * Note that this works for both MPEG-1/JPEG and MPEG-2/4 chroma
+             * locations, since they share a vertical alignment */
+            if (desc->log2_chroma_h == 1 && scale->in_v_chr_pos == -513) {
                 in_v_chr_pos = (i == 0) ? 128 : (i == 1) ? 64 : 192;
             }
 
-            if (outlink->format == AV_PIX_FMT_YUV420P && scale->out_v_chr_pos == -513) {
+            if (outdesc->log2_chroma_h == 1 && scale->out_v_chr_pos == -513) {
                 out_v_chr_pos = (i == 0) ? 128 : (i == 1) ? 64 : 192;
             }
 
@@ -738,8 +749,16 @@ static int scale_frame(AVFilterLink *link, AVFrame *in, AVFrame **frame_out)
         if (scale->eval_mode == EVAL_MODE_FRAME &&
             !frame_changed &&
             ctx->filter != &ff_vf_scale2ref &&
-            !(vars_w[VAR_N] || vars_w[VAR_T] || vars_w[VAR_POS]) &&
-            !(vars_h[VAR_N] || vars_h[VAR_T] || vars_h[VAR_POS]) &&
+            !(vars_w[VAR_N] || vars_w[VAR_T]
+#if FF_API_FRAME_PKT
+              || vars_w[VAR_POS]
+#endif
+              ) &&
+            !(vars_h[VAR_N] || vars_h[VAR_T]
+#if FF_API_FRAME_PKT
+              || vars_h[VAR_POS]
+#endif
+              ) &&
             scale->w && scale->h)
             goto scale;
 
@@ -761,11 +780,19 @@ static int scale_frame(AVFilterLink *link, AVFrame *in, AVFrame **frame_out)
         if (ctx->filter == &ff_vf_scale2ref) {
             scale->var_values[VAR_S2R_MAIN_N] = link->frame_count_out;
             scale->var_values[VAR_S2R_MAIN_T] = TS2T(in->pts, link->time_base);
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
             scale->var_values[VAR_S2R_MAIN_POS] = in->pkt_pos == -1 ? NAN : in->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         } else {
             scale->var_values[VAR_N] = link->frame_count_out;
             scale->var_values[VAR_T] = TS2T(in->pts, link->time_base);
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
             scale->var_values[VAR_POS] = in->pkt_pos == -1 ? NAN : in->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         }
 
         link->dst->inputs[0]->format = in->format;
@@ -862,7 +889,8 @@ scale:
               (int64_t)in->sample_aspect_ratio.den * outlink->w * link->h,
               INT_MAX);
 
-    if (scale->interlaced>0 || (scale->interlaced<0 && in->interlaced_frame)) {
+    if (scale->interlaced>0 || (scale->interlaced<0 &&
+        (in->flags & AV_FRAME_FLAG_INTERLACED))) {
         ret = scale_field(scale, out, in, 0);
         if (ret >= 0)
             ret = scale_field(scale, out, in, 1);
@@ -915,7 +943,11 @@ static int filter_frame_ref(AVFilterLink *link, AVFrame *in)
     if (scale->eval_mode == EVAL_MODE_FRAME) {
         scale->var_values[VAR_N] = link->frame_count_out;
         scale->var_values[VAR_T] = TS2T(in->pts, link->time_base);
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
         scale->var_values[VAR_POS] = in->pkt_pos == -1 ? NAN : in->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     }
 
     return ff_filter_frame(outlink, in);
