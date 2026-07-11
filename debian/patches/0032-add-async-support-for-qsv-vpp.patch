@@ -2720,8 +2720,8 @@ Index: jellyfin-ffmpeg/libavutil/frame.c
 -        }
 -        av_dict_copy(&sd_dst->metadata, sd_src->metadata, 0);
 -    }
-+    if (ret = av_frame_copy_side_data(dst, src,
-+        force_copy ? AV_FRAME_COPY_PROPS_FORCECOPY : 0) < 0)
++    if ((ret = av_frame_copy_side_data(dst, src,
++        force_copy ? AV_FRAME_COPY_PROPS_FORCECOPY : 0)) < 0)
 +        return ret;
  
  #if FF_API_FRAME_QP
