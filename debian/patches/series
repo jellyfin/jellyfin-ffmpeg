@@ -98,3 +98,4 @@
 0098-backport-a-fix-to-not-stall-sub2video-on-stream-eof.patch
 0099-fix-qsv-av1-decoder-exporting-hdr-side-data.patch
 0100-backport-trim-bitstream-filter.patch
+0101-add-hw-caps-detection-and-usage-monitoring-to-ffprobe.patch
