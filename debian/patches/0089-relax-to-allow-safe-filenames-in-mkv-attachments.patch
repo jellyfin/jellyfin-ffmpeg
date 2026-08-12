@@ -2,7 +2,7 @@ Index: FFmpeg/fftools/ffmpeg_demux.c
 ===================================================================
 --- FFmpeg.orig/fftools/ffmpeg_demux.c
 +++ FFmpeg/fftools/ffmpeg_demux.c
-@@ -1770,23 +1770,54 @@ static int is_windows_reserved_device_na
+@@ -1770,23 +1770,59 @@ static int is_windows_reserved_device_na
  {
  #if HAVE_DOS_PATHS
      for (const char *p = f; p && *p; ) {
@@ -45,14 +45,19 @@ Index: FFmpeg/fftools/ffmpeg_demux.c
 +
 +        len = seg_end - p;
 +
++        /* Match 6-byte and 7-byte console device names: CONIN$, CONOUT$ */
++        if ((len == 6 && !av_strncasecmp(p, "CONIN$",  6)) ||
++            (len == 7 && !av_strncasecmp(p, "CONOUT$", 7)))
+             return 1;
+ 
+-        p = strchr(p, '/');
 +        /* Match 3-byte legacy device names: AUX, CON, NUL, PRN */
 +        if (len == 3 && (!av_strncasecmp(p, "AUX", 3) ||
 +                         !av_strncasecmp(p, "CON", 3) ||
 +                         !av_strncasecmp(p, "NUL", 3) ||
 +                         !av_strncasecmp(p, "PRN", 3)))
-             return 1;
- 
--        p = strchr(p, '/');
++            return 1;
++
 +        /* Match COM1-9 / LPT1-9 and their UTF-8 superscript aliases */
 +        if ((len == 4 || len == 5) && (!av_strncasecmp(p, "COM", 3) ||
 +                                       !av_strncasecmp(p, "LPT", 3))) {
@@ -72,7 +77,32 @@ Index: FFmpeg/fftools/ffmpeg_demux.c
          if (p)
              p++;
      }
-@@ -1802,18 +1833,35 @@ static int safe_filename(const char *f,
+@@ -1794,26 +1830,66 @@ static int is_windows_reserved_device_na
+     return 0;
+ }
+ 
++static int valid_utf8_filename(const char *s)
++{
++    const uint8_t *p   = (const uint8_t *)s;
++    const uint8_t *end = p + strlen(s);
++
++    while (p < end) {
++        int32_t code;
++
++        if (av_utf8_decode(&code, &p, end,
++                           AV_UTF8_FLAG_ACCEPT_NON_CHARACTERS) < 0)
++            return 0;
++    }
++    return 1;
++}
++
+ static int safe_filename(const char *f, int allow_subdir)
+ {
+     const char *start = f;
+ 
+-    if (!*f || is_windows_reserved_device_name(f))
++    if (!*f || !valid_utf8_filename(f) ||
++        is_windows_reserved_device_name(f))
          return 0;
  
      for (; *f; f++) {
@@ -83,6 +113,13 @@ Index: FFmpeg/fftools/ffmpeg_demux.c
 +        /* Non-ASCII bytes cannot be '/' or '.' */
 +        if ((unsigned char)*f > 127)
 +            continue;
++
++#if HAVE_DOS_PATHS
++        /* Reject Windows reserved filename punctuation */
++        if (strchr("<>\"|?*", *f))
++            return 0;
++#endif
++
 +        /* Block control characters and dangerous path characters */
 +        if ((unsigned char)*f < 32 || *f == '\\' || *f == ':')
 +            return 0;
@@ -116,7 +153,7 @@ Index: FFmpeg/fftools/ffmpeg_demux.c
  }
  
  static int dump_attachment(InputStream *ist, const char *filename)
-@@ -1830,8 +1878,8 @@ static int dump_attachment(InputStream *
+@@ -1830,8 +1906,8 @@ static int dump_attachment(InputStream *
      if (!*filename && (e = av_dict_get(st->metadata, "filename", NULL, 0))) {
          filename = e->value;
          if (!safe_filename(filename, 0)) {
