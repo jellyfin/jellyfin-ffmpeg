@@ -1160,13 +1160,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.h
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
-+#ifndef AVFILTER_VF_TONEMAP_D3D11_H
-+#define AVFILTER_VF_TONEMAP_D3D11_H
++#ifndef AVFILTER_TONEMAP_D3D11_H
++#define AVFILTER_TONEMAP_D3D11_H
 +
 +#define TONEMAP_D3D11_TGX 16
 +#define TONEMAP_D3D11_TGY 16
 +
-+#endif /* AVFILTER_VF_TONEMAP_D3D11_H */
++#endif /* AVFILTER_TONEMAP_D3D11_H */
 Index: FFmpeg/libavfilter/d3d11/tonemap.hlsl
 ===================================================================
 --- /dev/null
