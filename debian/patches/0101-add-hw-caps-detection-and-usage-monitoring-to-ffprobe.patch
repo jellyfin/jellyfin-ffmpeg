@@ -298,7 +298,15 @@ Index: FFmpeg/configure
 ===================================================================
 --- FFmpeg.orig/configure
 +++ FFmpeg/configure
-@@ -2569,6 +2569,10 @@ SYSTEM_FUNCS="
+@@ -2565,10 +2565,18 @@ SYSTEM_FUNCS="
+     usleep
+     UTGetOSTypeFromString
+     VirtualAlloc
++    VTCopySupportedPropertyDictionaryForEncoder
++    VTCopyVideoEncoderList
++    VTIsHardwareDecodeSupported
++    VTRegisterSupplementalVideoDecoderIfAvailable
+     wglGetProcAddress
  "
  
  SYSTEM_LIBRARIES="
@@ -309,7 +317,7 @@ Index: FFmpeg/configure
      bcrypt
      vaapi_drm
      vaapi_x11
-@@ -2611,6 +2615,7 @@ TOOLCHAIN_FEATURES="
+@@ -2611,6 +2619,7 @@ TOOLCHAIN_FEATURES="
  
  TYPES_LIST="
      DPI_AWARENESS_CONTEXT
@@ -317,16 +325,25 @@ Index: FFmpeg/configure
      IDXGIOutput5
      __x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession5
      IDirect3DDxgiInterfaceAccess
-@@ -4359,7 +4364,7 @@ ffplay_deps="avcodec avformat avfilter s
+@@ -2633,6 +2642,8 @@ TYPES_LIST="
+     kCVImageBufferColorPrimaries_ITU_R_2020
+     kCVImageBufferTransferFunction_ITU_R_2020
+     kCVImageBufferTransferFunction_SMPTE_ST_428_1
++    kVTVideoEncoderList_GPURegistryID
++    kVTVideoEncoderList_IsHardwareAccelerated
+     kVTQPModulationLevel_Default
+     SecPkgContext_KeyingMaterialInfo
+     socklen_t
+@@ -4364,7 +4375,7 @@ ffplay_deps="avcodec avformat avfilter s
  ffplay_select="crop_filter transpose_filter hflip_filter vflip_filter rotate_filter"
  ffplay_suggest="shell32 libplacebo vulkan"
  ffprobe_deps="avcodec avformat"
 -ffprobe_suggest="shell32"
-+ffprobe_suggest="advapi32 cfgmgr32 ole32 shell32 pdh"
++ffprobe_suggest="advapi32 cfgmgr32 metal ole32 shell32 pdh"
  
  # documentation
  podpages_deps="perl"
-@@ -7074,6 +7079,8 @@ check_lib bcrypt   "windows.h bcrypt.h"
+@@ -7080,6 +7091,8 @@ check_lib bcrypt   "windows.h bcrypt.h"
  check_lib ole32    "windows.h objbase.h"  CoTaskMemFree        -lole32
  check_lib shell32  "windows.h shellapi.h" CommandLineToArgvW   -lshell32
  check_lib psapi    "windows.h psapi.h"    GetProcessMemoryInfo -lpsapi
@@ -335,7 +352,20 @@ Index: FFmpeg/configure
  
  check_lib android android/native_window.h ANativeWindow_acquire -landroid
  check_lib mediandk "stdint.h media/NdkMediaFormat.h" AMediaFormat_new -lmediandk
-@@ -7135,6 +7142,7 @@ check_type "windows.h dxva.h" "DXVA_PicP
+@@ -7114,6 +7127,12 @@ enabled videotoolbox && {
+     check_func_headers CoreMedia/CMFormatDescription.h kCMVideoCodecType_HEVCWithAlpha "-framework CoreMedia"
+     check_func_headers CoreMedia/CMFormatDescription.h kCMVideoCodecType_VP9 "-framework CoreMedia"
+     check_func_headers CoreMedia/CMFormatDescription.h kCMVideoCodecType_AV1 "-framework CoreMedia"
++    check_func_headers VideoToolbox/VTDecompressionSession.h VTIsHardwareDecodeSupported "-framework VideoToolbox"
++    check_func_headers VideoToolbox/VTUtilities.h VTRegisterSupplementalVideoDecoderIfAvailable "-framework VideoToolbox"
++    check_func_headers VideoToolbox/VTVideoEncoderList.h VTCopySupportedPropertyDictionaryForEncoder "-framework VideoToolbox"
++    check_func_headers VideoToolbox/VTVideoEncoderList.h VTCopyVideoEncoderList "-framework VideoToolbox"
++    check_func_headers VideoToolbox/VTVideoEncoderList.h kVTVideoEncoderList_GPURegistryID "-framework VideoToolbox"
++    check_func_headers VideoToolbox/VTVideoEncoderList.h kVTVideoEncoderList_IsHardwareAccelerated "-framework VideoToolbox"
+     check_func_headers CoreVideo/CVPixelBuffer.h kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange "-framework CoreVideo"
+     check_func_headers CoreVideo/CVPixelBuffer.h kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange "-framework CoreVideo"
+     check_func_headers CoreVideo/CVPixelBuffer.h kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange "-framework CoreVideo"
+@@ -7141,6 +7160,7 @@ check_type "windows.h dxva.h" "DXVA_PicP
  check_type "windows.h dxgi1_2.h" "DXGI_OUTDUPL_FRAME_INFO"
  check_type "windows.h dxgi1_2.h" "IDXGIOutput1"
  check_type "windows.h dxgi1_5.h" "IDXGIOutput5"
@@ -347,9 +377,11 @@ Index: FFmpeg/fftools/Makefile
 ===================================================================
 --- FFmpeg.orig/fftools/Makefile
 +++ FFmpeg/fftools/Makefile
-@@ -39,6 +39,16 @@ OBJS-ffmpeg +=                  \
+@@ -38,7 +38,18 @@ OBJS-ffmpeg +=                  \
+     $(OBJS-resman)                    \
      $(RESOBJS)                        \
  
++OBJS-ffprobe-$(CONFIG_VIDEOTOOLBOX) += fftools/ffprobe_hw_videotoolbox.o
  OBJS-ffprobe +=                       \
 +    fftools/ffprobe_hw.o              \
 +    fftools/ffprobe_hw_vaapi.o        \
@@ -484,7 +516,7 @@ Index: FFmpeg/fftools/ffprobe.c
      [SECTION_ID_STREAMS] =            { SECTION_ID_STREAMS, "streams", AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_STREAM, -1 } },
      [SECTION_ID_STREAM] =             { SECTION_ID_STREAM, "stream", 0, { SECTION_ID_STREAM_DISPOSITION, SECTION_ID_STREAM_TAGS, SECTION_ID_STREAM_SIDE_DATA_LIST, -1 } },
      [SECTION_ID_STREAM_DISPOSITION] = { SECTION_ID_STREAM_DISPOSITION, "disposition", 0, { -1 }, .unique_name = "stream_disposition" },
-@@ -329,6 +268,61 @@ static const AVTextFormatSection section
+@@ -329,6 +268,64 @@ static const AVTextFormatSection section
      [SECTION_ID_STREAM_SIDE_DATA_LIST] ={ SECTION_ID_STREAM_SIDE_DATA_LIST, "side_data_list", AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_STREAM_SIDE_DATA, -1 }, .element_name = "side_data", .unique_name = "stream_side_data_list" },
      [SECTION_ID_STREAM_SIDE_DATA] =     { SECTION_ID_STREAM_SIDE_DATA, "side_data", AV_TEXTFORMAT_SECTION_FLAG_HAS_TYPE|AV_TEXTFORMAT_SECTION_FLAG_HAS_VARIABLE_FIELDS, { -1 }, .unique_name = "stream_side_data", .element_name = "side_datum", .get_type = get_packet_side_data_type },
      [SECTION_ID_SUBTITLE] =           { SECTION_ID_SUBTITLE, "subtitle", 0, { -1 } },
@@ -494,11 +526,11 @@ Index: FFmpeg/fftools/ffprobe.c
 +    [SECTION_ID_HWACCEL_DEVICE] =     { SECTION_ID_HWACCEL_DEVICE, "hwaccel_device", 0,
 +                                        { SECTION_ID_DEVICE_PATH_DRM, SECTION_ID_DEVICE_INDEX_D3D11VA, SECTION_ID_DEVICE_INDEX_CUDA,
 +                                          SECTION_ID_DEVICE_INFO_DRM, SECTION_ID_DEVICE_INFO_VAAPI, SECTION_ID_DEVICE_INFO_D3D11VA, SECTION_ID_DEVICE_INFO_QSV,
-+                                          SECTION_ID_DEVICE_INFO_OPENCL, SECTION_ID_DEVICE_INFO_VULKAN, SECTION_ID_DEVICE_INFO_CUDA, SECTION_ID_DEVICE_INFO_AMF,
++                                          SECTION_ID_DEVICE_INFO_OPENCL, SECTION_ID_DEVICE_INFO_METAL, SECTION_ID_DEVICE_INFO_VULKAN, SECTION_ID_DEVICE_INFO_CUDA, SECTION_ID_DEVICE_INFO_AMF,
 +                                          SECTION_ID_DEVICE_UTIL_DRM, SECTION_ID_DEVICE_UTIL_D3D11VA, SECTION_ID_DEVICE_UTIL_CUDA,
-+                                          SECTION_ID_DEVICE_DECODERS_VAAPI, SECTION_ID_DEVICE_DECODERS_D3D11VA, SECTION_ID_DEVICE_DECODERS_QSV, SECTION_ID_DEVICE_DECODERS_CUDA, SECTION_ID_DEVICE_DECODERS_RKMPP,
++                                          SECTION_ID_DEVICE_DECODERS_VAAPI, SECTION_ID_DEVICE_DECODERS_D3D11VA, SECTION_ID_DEVICE_DECODERS_QSV, SECTION_ID_DEVICE_DECODERS_CUDA, SECTION_ID_DEVICE_DECODERS_RKMPP, SECTION_ID_DEVICE_DECODERS_VIDEOTOOLBOX,
 +                                          SECTION_ID_DEVICE_ENCODERS_VAAPI, SECTION_ID_DEVICE_ENCODERS_QSV, SECTION_ID_DEVICE_ENCODERS_CUDA, SECTION_ID_DEVICE_ENCODERS_AMF,
-+                                          SECTION_ID_DEVICE_ENCODERS_MF, SECTION_ID_DEVICE_ENCODERS_RKMPP, SECTION_ID_DEVICE_FILTERS_VAAPI, SECTION_ID_DEVICE_FILTERS_QSV, SECTION_ID_DEVICE_FILTERS_RKMPP, -1 } },
++                                          SECTION_ID_DEVICE_ENCODERS_MF, SECTION_ID_DEVICE_ENCODERS_RKMPP, SECTION_ID_DEVICE_ENCODERS_VIDEOTOOLBOX, SECTION_ID_DEVICE_FILTERS_VAAPI, SECTION_ID_DEVICE_FILTERS_QSV, SECTION_ID_DEVICE_FILTERS_RKMPP, -1 } },
 +
 +    [SECTION_ID_DEVICE_PATH_DRM] =         { SECTION_ID_DEVICE_PATH_DRM,         "device_path_drm",      0, { -1 } },
 +    [SECTION_ID_DEVICE_INDEX_D3D11VA] =    { SECTION_ID_DEVICE_INDEX_D3D11VA,    "device_index_d3d11va", 0, { -1 } },
@@ -509,6 +541,7 @@ Index: FFmpeg/fftools/ffprobe.c
 +    [SECTION_ID_DEVICE_INFO_D3D11VA] =     { SECTION_ID_DEVICE_INFO_D3D11VA,     "device_info_d3d11va",  0, { -1 } },
 +    [SECTION_ID_DEVICE_INFO_QSV] =         { SECTION_ID_DEVICE_INFO_QSV,         "device_info_qsv",      0, { -1 } },
 +    [SECTION_ID_DEVICE_INFO_OPENCL] =      { SECTION_ID_DEVICE_INFO_OPENCL,      "device_info_opencl",   0, { -1 } },
++    [SECTION_ID_DEVICE_INFO_METAL] =       { SECTION_ID_DEVICE_INFO_METAL,       "device_info_metal",    0, { -1 } },
 +    [SECTION_ID_DEVICE_INFO_VULKAN] =      { SECTION_ID_DEVICE_INFO_VULKAN,      "device_info_vulkan",   0, { -1 } },
 +    [SECTION_ID_DEVICE_INFO_CUDA] =        { SECTION_ID_DEVICE_INFO_CUDA,        "device_info_cuda",     0, { -1 } },
 +    [SECTION_ID_DEVICE_INFO_AMF] =         { SECTION_ID_DEVICE_INFO_AMF,         "device_info_amf",      0, { -1 } },
@@ -522,6 +555,7 @@ Index: FFmpeg/fftools/ffprobe.c
 +    [SECTION_ID_DEVICE_DECODERS_QSV] =     { SECTION_ID_DEVICE_DECODERS_QSV,     "device_decoders_qsv",     AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_DECODER, -1 } },
 +    [SECTION_ID_DEVICE_DECODERS_CUDA] =    { SECTION_ID_DEVICE_DECODERS_CUDA,    "device_decoders_cuda",    AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_DECODER, -1 } },
 +    [SECTION_ID_DEVICE_DECODERS_RKMPP] =   { SECTION_ID_DEVICE_DECODERS_RKMPP,   "device_decoders_rkmpp",   AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_DECODER, -1 } },
++    [SECTION_ID_DEVICE_DECODERS_VIDEOTOOLBOX] = { SECTION_ID_DEVICE_DECODERS_VIDEOTOOLBOX, "device_decoders_videotoolbox", AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_DECODER, -1 } },
 +    [SECTION_ID_DEVICE_DECODER] =          { SECTION_ID_DEVICE_DECODER,          "device_decoder", 0, { SECTION_ID_DEVICE_PROFILES, SECTION_ID_DEVICE_PIX_FMTS, -1 } },
 +
 +    [SECTION_ID_DEVICE_ENCODERS_VAAPI] =   { SECTION_ID_DEVICE_ENCODERS_VAAPI,   "device_encoders_vaapi",   AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_ENCODER, -1 } },
@@ -530,6 +564,7 @@ Index: FFmpeg/fftools/ffprobe.c
 +    [SECTION_ID_DEVICE_ENCODERS_AMF] =     { SECTION_ID_DEVICE_ENCODERS_AMF,     "device_encoders_amf",     AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_ENCODER, -1 } },
 +    [SECTION_ID_DEVICE_ENCODERS_MF] =      { SECTION_ID_DEVICE_ENCODERS_MF,      "device_encoders_mf",      AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_ENCODER, -1 } },
 +    [SECTION_ID_DEVICE_ENCODERS_RKMPP] =   { SECTION_ID_DEVICE_ENCODERS_RKMPP,   "device_encoders_rkmpp",   AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_ENCODER, -1 } },
++    [SECTION_ID_DEVICE_ENCODERS_VIDEOTOOLBOX] = { SECTION_ID_DEVICE_ENCODERS_VIDEOTOOLBOX, "device_encoders_videotoolbox", AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_ENCODER, -1 } },
 +    [SECTION_ID_DEVICE_ENCODER] =          { SECTION_ID_DEVICE_ENCODER,          "device_encoder", 0, { SECTION_ID_DEVICE_PROFILES, SECTION_ID_DEVICE_PIX_FMTS, SECTION_ID_DEVICE_PRESETS, -1 } },
 +
 +    [SECTION_ID_DEVICE_FILTERS_VAAPI] =    { SECTION_ID_DEVICE_FILTERS_VAAPI,    "device_filters_vaapi",    AV_TEXTFORMAT_SECTION_FLAG_IS_ARRAY, { SECTION_ID_DEVICE_FILTER, -1 } },
@@ -546,7 +581,7 @@ Index: FFmpeg/fftools/ffprobe.c
  };
  
  typedef struct EntrySelection {
-@@ -2875,8 +2869,8 @@ static int opt_format(void *optctx, cons
+@@ -2875,8 +2872,8 @@ static int opt_format(void *optctx, cons
      return 0;
  }
  
@@ -557,7 +592,7 @@ Index: FFmpeg/fftools/ffprobe.c
  {
      EntrySelection *selection = &selected_entries[section_id];
  
-@@ -3234,6 +3228,78 @@ static int opt_show_versions(void *optct
+@@ -3234,6 +3231,79 @@ static int opt_show_versions(void *optct
      return 0;
  }
  
@@ -568,6 +603,7 @@ Index: FFmpeg/fftools/ffprobe.c
 +    [AV_HWDEVICE_TYPE_QSV]     = "qsv",
 +    [AV_HWDEVICE_TYPE_AMF]     = "amf",
 +    [AV_HWDEVICE_TYPE_RKMPP]   = "rkmpp",
++    [AV_HWDEVICE_TYPE_VIDEOTOOLBOX] = "videotoolbox",
 +};
 +
 +static int opt_show_hwaccel(void *optctx, const char *opt, const char *arg)
@@ -579,7 +615,7 @@ Index: FFmpeg/fftools/ffprobe.c
 +    }
 +    if (hwaccel_type == AV_HWDEVICE_TYPE_NONE) {
 +        av_log(NULL, AV_LOG_ERROR, "hwaccel type '%s' is not supported!\n", arg);
-+        av_log(NULL, AV_LOG_ERROR, "Available types are: vaapi, d3d11va, cuda, qsv, amf, rkmpp\n");
++        av_log(NULL, AV_LOG_ERROR, "Available types are: vaapi, d3d11va, cuda, qsv, amf, rkmpp, videotoolbox\n");
 +        return AVERROR(EINVAL);
 +    }
 +
@@ -636,19 +672,19 @@ Index: FFmpeg/fftools/ffprobe.c
  #define DEFINE_OPT_SHOW_SECTION(section, target_section_id)             \
      static int opt_show_##section(void *optctx, const char *opt, const char *arg) \
      {                                                                   \
-@@ -3306,6 +3372,11 @@ static const OptionDef real_options[] =
+@@ -3306,6 +3376,11 @@ static const OptionDef real_options[] =
      { "c",                     OPT_TYPE_FUNC, OPT_FUNC_ARG, { .func_arg = opt_codec}, "force decoder", "decoder_name" },
      { "codec",                 OPT_TYPE_FUNC, OPT_FUNC_ARG, { .func_arg = opt_codec}, "alias for -c (force decoder)", "decoder_name" },
      { "only_first_vframe",     OPT_TYPE_BOOL,        0, { &only_show_first_video_frame }, "only show first video frame when show_frames is used" },
 +    { "show_hwaccel",          OPT_TYPE_FUNC, OPT_FUNC_ARG, { .func_arg = &opt_show_hwaccel },
-+        "show details of the given hwaccel type (available types are: vaapi, d3d11va, cuda, qsv, amf, rkmpp)" },
++        "show details of the given hwaccel type (available types are: vaapi, d3d11va, cuda, qsv, amf, rkmpp, videotoolbox)" },
 +    { "hwaccel_flags",         OPT_TYPE_FUNC, OPT_FUNC_ARG, { .func_arg = &opt_hwaccel_flags },
 +        "set hwaccel flags for showing (available flags are: all, dev, dec, enc, vpp, ocl, vk, dx11, subdev, util)" },
 +    { "hwaccel_device",        OPT_TYPE_STRING,      0, { &hwaccel_device }, "set a hwaccel device for showing" },
      { NULL, },
  };
  
-@@ -3323,6 +3394,16 @@ static inline int check_section_show_ent
+@@ -3323,6 +3398,16 @@ static inline int check_section_show_ent
      return 0;
  }
  
@@ -665,7 +701,7 @@ Index: FFmpeg/fftools/ffprobe.c
  #define SET_DO_SHOW(id, varname) do {                                   \
          if (check_section_show_entries(SECTION_ID_##id))                \
              do_show_##varname = 1;                                      \
-@@ -3391,6 +3472,8 @@ int main(int argc, char **argv)
+@@ -3391,6 +3476,8 @@ int main(int argc, char **argv)
      SET_DO_SHOW(STREAM_GROUP_STREAM_TAGS, stream_tags);
      SET_DO_SHOW(PACKET_TAGS, packet_tags);
  
@@ -674,7 +710,7 @@ Index: FFmpeg/fftools/ffprobe.c
      if (do_bitexact && (do_show_program_version || do_show_library_versions)) {
          av_log(NULL, AV_LOG_ERROR,
                 "-bitexact and -show_program_version or -show_library_versions "
-@@ -3463,10 +3546,12 @@ int main(int argc, char **argv)
+@@ -3463,10 +3550,12 @@ int main(int argc, char **argv)
              ffprobe_show_library_versions(tctx);
          if (do_show_pixel_formats)
              ffprobe_show_pixel_formats(tctx);
@@ -692,7 +728,7 @@ Index: FFmpeg/fftools/ffprobe.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/fftools/ffprobe.h
-@@ -0,0 +1,145 @@
+@@ -0,0 +1,148 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -796,6 +832,7 @@ Index: FFmpeg/fftools/ffprobe.h
 +    SECTION_ID_DEVICE_INFO_D3D11VA,
 +    SECTION_ID_DEVICE_INFO_QSV,
 +    SECTION_ID_DEVICE_INFO_OPENCL,
++    SECTION_ID_DEVICE_INFO_METAL,
 +    SECTION_ID_DEVICE_INFO_VULKAN,
 +    SECTION_ID_DEVICE_INFO_CUDA,
 +    SECTION_ID_DEVICE_INFO_AMF,
@@ -809,6 +846,7 @@ Index: FFmpeg/fftools/ffprobe.h
 +    SECTION_ID_DEVICE_DECODERS_QSV,
 +    SECTION_ID_DEVICE_DECODERS_CUDA,
 +    SECTION_ID_DEVICE_DECODERS_RKMPP,
++    SECTION_ID_DEVICE_DECODERS_VIDEOTOOLBOX,
 +    SECTION_ID_DEVICE_DECODER,
 +
 +    SECTION_ID_DEVICE_ENCODERS_VAAPI,
@@ -817,6 +855,7 @@ Index: FFmpeg/fftools/ffprobe.h
 +    SECTION_ID_DEVICE_ENCODERS_AMF,
 +    SECTION_ID_DEVICE_ENCODERS_MF,
 +    SECTION_ID_DEVICE_ENCODERS_RKMPP,
++    SECTION_ID_DEVICE_ENCODERS_VIDEOTOOLBOX,
 +    SECTION_ID_DEVICE_ENCODER,
 +
 +    SECTION_ID_DEVICE_FILTERS_VAAPI,
@@ -842,7 +881,7 @@ Index: FFmpeg/fftools/ffprobe_hw.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/fftools/ffprobe_hw.c
-@@ -0,0 +1,540 @@
+@@ -0,0 +1,569 @@
 +/*
 + * Copyright (C) 2026 NyanMisaka
 + *
@@ -865,6 +904,7 @@ Index: FFmpeg/fftools/ffprobe_hw.c
 +
 +#include <errno.h>
 +#include <stdlib.h>
++#include <string.h>
 +
 +#include "ffprobe_hw_internal.h"
 +
@@ -1331,6 +1371,31 @@ Index: FFmpeg/fftools/ffprobe_hw.c
 +    return ret;
 +}
 +
++static int show_videotoolbox_info(AVTextFormatContext *tfc,
++                                  int hwaccel_flags,
++                                  const char *hwaccel_device)
++{
++    if (!tfc)
++        return AVERROR(EINVAL);
++
++#if CONFIG_VIDEOTOOLBOX
++    mark_section_show_entries(SECTION_ID_HWACCEL_DEVICE, 1, NULL);
++    avtext_print_section_header(tfc, NULL, SECTION_ID_HWACCEL_DEVICE);
++
++    if (hwaccel_flags & FFPROBE_HW_FLAG_PRINT_DEV)
++        print_metal_device_info(tfc);
++
++    if (hwaccel_flags & FFPROBE_HW_FLAG_PRINT_DEC)
++        print_videotoolbox_decoder_info(tfc);
++
++    if (hwaccel_flags & FFPROBE_HW_FLAG_PRINT_ENC)
++        print_videotoolbox_encoder_info(tfc);
++
++    avtext_print_section_footer(tfc); // SECTION_ID_HWACCEL_DEVICE
++#endif
++    return 0;
++}
++
 +void ffprobe_show_hwaccel_internal(AVTextFormatContext *tfc,
 +                                   enum AVHWDeviceType hwaccel_type,
 +                                   int hwaccel_flags,
@@ -1359,6 +1424,9 @@ Index: FFmpeg/fftools/ffprobe_hw.c
 +        break;
 +    case AV_HWDEVICE_TYPE_RKMPP:
 +        show_rkmpp_info(tfc, refs, hwaccel_flags, hwaccel_device);
++        break;
++    case AV_HWDEVICE_TYPE_VIDEOTOOLBOX:
++        show_videotoolbox_info(tfc, hwaccel_flags, hwaccel_device);
 +        break;
 +    default:
 +        return;
@@ -4743,7 +4811,7 @@ Index: FFmpeg/fftools/ffprobe_hw_internal.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/fftools/ffprobe_hw_internal.h
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,185 @@
 +/*
 + * Copyright (C) 2026 NyanMisaka
 + *
@@ -4916,6 +4984,11 @@ Index: FFmpeg/fftools/ffprobe_hw_internal.h
 +int print_rkmpp_decoder_info(AVTextFormatContext *tfc, const char *device_tree);
 +int print_rkmpp_encoder_info(AVTextFormatContext *tfc, const char *device_tree);
 +int print_rkmpp_vpp_info(AVTextFormatContext *tfc, const char *device_tree);
++
++/* VideoToolbox/Metal */
++int print_metal_device_info(AVTextFormatContext *tfc);
++int print_videotoolbox_decoder_info(AVTextFormatContext *tfc);
++int print_videotoolbox_encoder_info(AVTextFormatContext *tfc);
 +
 +/* OPENCL */
 +int print_opencl_device_info(AVTextFormatContext *tfc, AVBufferRef *opencl_ref);
@@ -9670,7 +9743,7 @@ Index: FFmpeg/fftools/textformat/avtextformat.h
  #include "avtextwriters.h"
  
 -#define SECTION_MAX_NB_CHILDREN 11
-+#define SECTION_MAX_NB_CHILDREN (11+17)
++#define SECTION_MAX_NB_CHILDREN (11+20)
  
  typedef struct AVTextFormatSectionContext {
      char *context_id;
@@ -9679,7 +9752,7 @@ Index: FFmpeg/fftools/textformat/avtextformat.h
  
  #define SECTION_MAX_NB_LEVELS    12
 -#define SECTION_MAX_NB_SECTIONS 100
-+#define SECTION_MAX_NB_SECTIONS (100+5)
++#define SECTION_MAX_NB_SECTIONS (100+8)
  
  typedef struct AVTextFormatOptions {
      /**
@@ -9724,3 +9797,775 @@ Index: FFmpeg/libavutil/cuda_check.h
 +#define FF_NVML_CHECK_DL(avclass, nvmldl, x) ff_nvml_check(avclass, nvmldl->nvmlErrorString, (x), #x)
 +
  #endif /* AVUTIL_CUDA_CHECK_H */
+Index: FFmpeg/fftools/ffprobe_hw_videotoolbox.m
+===================================================================
+--- /dev/null
++++ FFmpeg/fftools/ffprobe_hw_videotoolbox.m
+@@ -0,0 +1,767 @@
++/*
++ * Copyright (c) 2024 Gnattu OC
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#include <dlfcn.h>
++#include <string.h>
++
++#include "config.h"
++
++#include <TargetConditionals.h>
++#include <CoreMedia/CoreMedia.h>
++#include <VideoToolbox/VideoToolbox.h>
++
++#if CONFIG_METAL
++#import <Metal/Metal.h>
++#endif
++
++#include "ffprobe_hw_internal.h"
++
++typedef struct VTCodec {
++    CMVideoCodecType cm_codec;
++    enum AVCodecID codec;
++    const char *description;
++} VTCodec;
++
++typedef OSStatus (*VTCopyVideoDecoderListFn)(CFDictionaryRef options,
++                                             CFArrayRef *decoders);
++typedef CFDictionaryRef (*VTCopyDecoderCapabilitiesFn)(CFArrayRef codec_types);
++
++static CFTypeRef vt_dict_get_typed_value(CFDictionaryRef dict, const void *key,
++                                         CFTypeID type)
++{
++    CFTypeRef value;
++
++    if (!dict)
++        return NULL;
++
++    value = CFDictionaryGetValue(dict, key);
++    return value && CFGetTypeID(value) == type ? value : NULL;
++}
++
++static int vt_cfvalue_get_bool(CFTypeRef value, int *result)
++{
++    if (!value || !result)
++        return 0;
++
++    if (CFGetTypeID(value) == CFBooleanGetTypeID()) {
++        *result = CFBooleanGetValue(value);
++        return 1;
++    }
++    if (CFGetTypeID(value) == CFNumberGetTypeID())
++        return CFNumberGetValue(value, kCFNumberIntType, result);
++
++    return 0;
++}
++
++static int vt_cfvalue_get_i64(CFTypeRef value, int64_t *result)
++{
++    if (!value || !result || CFGetTypeID(value) != CFNumberGetTypeID())
++        return 0;
++
++    return CFNumberGetValue(value, kCFNumberSInt64Type, result);
++}
++
++static const char *vt_cfstring_get_cstr(CFStringRef str, char *buf, size_t size)
++{
++    const char *ptr;
++
++    if (!str)
++        return NULL;
++
++    ptr = CFStringGetCStringPtr(str, kCFStringEncodingUTF8);
++    if (ptr)
++        return ptr;
++
++    if (CFStringGetCString(str, buf, size, kCFStringEncodingUTF8))
++        return buf;
++
++    return NULL;
++}
++
++static void vt_print_cfstring(AVTextFormatContext *tfc, const char *key,
++                              CFStringRef value)
++{
++    char buf[512];
++    const char *str = vt_cfstring_get_cstr(value, buf, sizeof(buf));
++
++    if (str)
++        print_str(key, str);
++}
++
++static void vt_print_cfnumber(AVTextFormatContext *tfc, const char *key,
++                              CFTypeRef value)
++{
++    int64_t number;
++
++    if (vt_cfvalue_get_i64(value, &number))
++        print_int(key, number);
++}
++
++int print_metal_device_info(AVTextFormatContext *tfc)
++{
++#if CONFIG_METAL
++    id<MTLDevice> device;
++
++    if (!tfc)
++        return AVERROR(EINVAL);
++
++    if (@available(macOS 10.11, iOS 8.0, tvOS 9.0, *)) {
++        device = MTLCreateSystemDefaultDevice();
++        if (!device)
++            return AVERROR(ENOSYS);
++
++        mark_section_show_entries(SECTION_ID_DEVICE_INFO_METAL, 1, NULL);
++        avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_INFO_METAL);
++
++        print_str("device_name", device.name.UTF8String);
++
++#if TARGET_OS_OSX
++        print_int("device_low_power", device.lowPower);
++        print_int("device_headless", device.headless);
++
++#ifdef MAC_OS_X_VERSION_10_12
++        if (@available(macOS 10.12, *))
++            print_int("device_recommended_max_working_set_size",
++                      device.recommendedMaxWorkingSetSize);
++#endif
++#ifdef MAC_OS_X_VERSION_10_13
++        if (@available(macOS 10.13, *)) {
++            print_int("device_registry_id", device.registryID);
++            print_int("device_removable", device.removable);
++        }
++#endif
++#ifdef MAC_OS_X_VERSION_10_15
++        if (@available(macOS 10.15, *)) {
++            print_int("device_unified_memory", device.hasUnifiedMemory);
++            print_int("device_location", device.location);
++            print_int("device_location_number", device.locationNumber);
++            print_int("device_max_transfer_rate", device.maxTransferRate);
++        }
++#endif
++#endif
++
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_INFO_METAL
++        [device release];
++    }
++#endif
++    return 0;
++}
++
++#if HAVE_VTISHARDWAREDECODESUPPORTED
++/*
++ * Decoder enumeration and detailed capabilities are VideoToolbox SPI.
++ * Resolve them lazily so systems without the symbols retain codec-only output.
++ */
++static CFArrayRef vt_copy_video_decoder_list(void)
++{
++    static VTCopyVideoDecoderListFn copy_decoder_list;
++    static int resolved;
++    CFArrayRef decoders = NULL;
++
++    if (!resolved) {
++        copy_decoder_list = (VTCopyVideoDecoderListFn)dlsym(
++            RTLD_DEFAULT, "VTCopyVideoDecoderList");
++        resolved = 1;
++    }
++    if (!copy_decoder_list ||
++        copy_decoder_list(NULL, &decoders) != noErr)
++        return NULL;
++
++    return decoders;
++}
++
++static CFDictionaryRef vt_copy_decoder_capabilities(CMVideoCodecType codec)
++{
++    static VTCopyDecoderCapabilitiesFn copy_capabilities;
++    static int resolved;
++    CFDictionaryRef capabilities = NULL;
++    CFNumberRef codec_number;
++    CFArrayRef codec_types;
++
++    if (!resolved) {
++        copy_capabilities = (VTCopyDecoderCapabilitiesFn)dlsym(
++            RTLD_DEFAULT,
++            "VTCopyDecoderCapabilitiesDictionaryForCodecTypes");
++        resolved = 1;
++    }
++    if (!copy_capabilities)
++        return NULL;
++
++    codec_number = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type,
++                                  &codec);
++    if (!codec_number)
++        return NULL;
++
++    codec_types = CFArrayCreate(kCFAllocatorDefault,
++                                (const void **)&codec_number, 1,
++                                &kCFTypeArrayCallBacks);
++    if (codec_types) {
++        capabilities = copy_capabilities(codec_types);
++        CFRelease(codec_types);
++    }
++    CFRelease(codec_number);
++
++    return capabilities;
++}
++
++static CFDictionaryRef vt_find_hardware_decoder(CFArrayRef decoders,
++                                                 CMVideoCodecType codec)
++{
++    CFDictionaryRef best = NULL;
++    int64_t best_rating = 0;
++
++    if (!decoders)
++        return NULL;
++
++    for (CFIndex i = 0; i < CFArrayGetCount(decoders); i++) {
++        CFTypeRef value = CFArrayGetValueAtIndex(decoders, i);
++        CFDictionaryRef decoder;
++        int64_t decoder_codec;
++        int64_t rating = 0;
++        int hardware;
++
++        if (!value || CFGetTypeID(value) != CFDictionaryGetTypeID())
++            continue;
++        decoder = value;
++        if (!vt_cfvalue_get_i64(CFDictionaryGetValue(decoder,
++                                                     CFSTR("CodecType")),
++                                &decoder_codec) ||
++            decoder_codec != codec ||
++            !vt_cfvalue_get_bool(CFDictionaryGetValue(
++                                     decoder, CFSTR("IsHardwareAccelerated")),
++                                 &hardware) ||
++            !hardware)
++            continue;
++
++        vt_cfvalue_get_i64(CFDictionaryGetValue(decoder,
++                                                CFSTR("PerformanceRating")),
++                           &rating);
++        if (!best || rating > best_rating) {
++            best = decoder;
++            best_rating = rating;
++        }
++    }
++
++    return best;
++}
++
++static CFDictionaryRef vt_get_codec_capabilities(CFDictionaryRef capabilities)
++{
++    CFDictionaryRef codecs = vt_dict_get_typed_value(
++        capabilities, CFSTR("VTCodecSupportDict"), CFDictionaryGetTypeID());
++    const void *value;
++
++    if (!codecs || CFDictionaryGetCount(codecs) != 1)
++        return NULL;
++
++    CFDictionaryGetKeysAndValues(codecs, NULL, &value);
++    if (!value || CFGetTypeID(value) != CFDictionaryGetTypeID())
++        return NULL;
++
++    return value;
++}
++
++static void vt_print_decoder_implementation(AVTextFormatContext *tfc,
++                                            CFDictionaryRef decoder)
++{
++    CFStringRef name;
++    CFTypeRef hardware;
++    int value;
++
++    if (!decoder)
++        return;
++
++    name = vt_dict_get_typed_value(decoder, CFSTR("DisplayName"),
++                                   CFStringGetTypeID());
++    if (!name)
++        name = vt_dict_get_typed_value(decoder, CFSTR("DecoderName"),
++                                       CFStringGetTypeID());
++    if (!name)
++        name = vt_dict_get_typed_value(decoder, CFSTR("CodecName"),
++                                       CFStringGetTypeID());
++
++    vt_print_cfstring(tfc, "decoder_name", name);
++    vt_print_cfstring(tfc, "decoder_id",
++                      vt_dict_get_typed_value(decoder, CFSTR("DecoderID"),
++                                              CFStringGetTypeID()));
++
++    hardware = CFDictionaryGetValue(decoder, CFSTR("IsHardwareAccelerated"));
++    if (vt_cfvalue_get_bool(hardware, &value))
++        print_int("is_hardware_accelerated", value);
++
++    vt_print_cfnumber(tfc, "performance_rating",
++                      CFDictionaryGetValue(decoder,
++                                           CFSTR("PerformanceRating")));
++    vt_print_cfnumber(tfc, "device_registry_id",
++                      CFDictionaryGetValue(decoder, CFSTR("GPURegistryID")));
++    vt_print_cfnumber(tfc, "instance_limit",
++                      CFDictionaryGetValue(decoder, CFSTR("InstanceLimit")));
++}
++
++static void vt_print_decoder_profiles(AVTextFormatContext *tfc,
++                                      CFDictionaryRef capabilities,
++                                      enum AVCodecID codec)
++{
++    CFDictionaryRef codec_caps = vt_get_codec_capabilities(capabilities);
++    CFDictionaryRef details;
++    CFArrayRef profiles;
++    CFTypeRef hdr;
++    int hdr_supported;
++    int header_printed = 0;
++
++    if (!codec_caps)
++        return;
++
++    hdr = CFDictionaryGetValue(codec_caps,
++                               CFSTR("VTIsHDRAllowedOnDevice"));
++    if (!hdr && capabilities)
++        hdr = CFDictionaryGetValue(capabilities,
++                                   CFSTR("VTIsHDRAllowedOnDevice"));
++    if (vt_cfvalue_get_bool(hdr, &hdr_supported))
++        print_int("support_hdr_decode", hdr_supported);
++
++    profiles = vt_dict_get_typed_value(codec_caps,
++                                       CFSTR("VTSupportedProfiles"),
++                                       CFArrayGetTypeID());
++    details = vt_dict_get_typed_value(codec_caps,
++                                      CFSTR("VTPerProfileSupport"),
++                                      CFDictionaryGetTypeID());
++    if (!profiles || !details)
++        return;
++
++    for (CFIndex i = 0; i < CFArrayGetCount(profiles); i++) {
++        CFTypeRef profile_value = CFArrayGetValueAtIndex(profiles, i);
++        char profile_key_buf[16];
++        CFStringRef profile_key;
++        CFDictionaryRef profile_caps;
++        const char *profile_name;
++        int hardware;
++        int profile;
++
++        if (!profile_value ||
++            CFGetTypeID(profile_value) != CFNumberGetTypeID() ||
++            !CFNumberGetValue(profile_value, kCFNumberIntType, &profile))
++            continue;
++        snprintf(profile_key_buf, sizeof(profile_key_buf), "%d", profile);
++        profile_key = CFStringCreateWithCString(kCFAllocatorDefault,
++                                                profile_key_buf,
++                                                kCFStringEncodingASCII);
++        if (!profile_key)
++            continue;
++        profile_caps = vt_dict_get_typed_value(details, profile_key,
++                                               CFDictionaryGetTypeID());
++        CFRelease(profile_key);
++        if (!profile_caps ||
++            !vt_cfvalue_get_bool(CFDictionaryGetValue(
++                                     profile_caps,
++                                     CFSTR("VTIsHardwareAccelerated")),
++                                 &hardware) ||
++            !hardware)
++            continue;
++
++        profile_name = avcodec_profile_name(codec, profile);
++        if (!profile_name)
++            continue;
++
++        if (!header_printed) {
++            mark_section_show_entries(SECTION_ID_DEVICE_PROFILES, 1, NULL);
++            avtext_print_section_header(tfc, NULL,
++                                        SECTION_ID_DEVICE_PROFILES);
++            header_printed = 1;
++        }
++
++        mark_section_show_entries(SECTION_ID_DEVICE_PROFILE, 1, NULL);
++        avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_PROFILE);
++        print_str("profile_name", profile_name);
++        print_int("profile_id", profile);
++        vt_print_cfnumber(tfc, "max_decode_level",
++                          CFDictionaryGetValue(profile_caps,
++                                               CFSTR("VTMaxDecodeLevel")));
++        vt_print_cfnumber(tfc, "max_playback_level",
++                          CFDictionaryGetValue(profile_caps,
++                                               CFSTR("VTMaxPlaybackLevel")));
++        vt_print_cfnumber(tfc, "max_hdr_playback_level",
++                          CFDictionaryGetValue(
++                              profile_caps,
++                              CFSTR("VTMaxHDRPlaybackLevel")));
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_PROFILE
++    }
++
++    if (header_printed)
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_PROFILES
++}
++
++static int print_videotoolbox_decoder_info_available(AVTextFormatContext *tfc)
++    API_AVAILABLE(macos(10.13), ios(11.0), tvos(11.0))
++{
++    static const VTCodec codecs[] = {
++        { kCMVideoCodecType_MPEG2Video, AV_CODEC_ID_MPEG2VIDEO, "VideoToolbox MPEG-2 Decoder" },
++        { kCMVideoCodecType_MPEG4Video, AV_CODEC_ID_MPEG4,      "VideoToolbox MPEG-4 Decoder" },
++        { kCMVideoCodecType_JPEG,       AV_CODEC_ID_MJPEG,      "VideoToolbox MJPEG Decoder" },
++        { kCMVideoCodecType_H264,       AV_CODEC_ID_H264,       "VideoToolbox H.264 Decoder" },
++#if HAVE_KCMVIDEOCODECTYPE_HEVC
++        { kCMVideoCodecType_HEVC,       AV_CODEC_ID_HEVC,       "VideoToolbox HEVC Decoder" },
++#endif
++#if HAVE_KCMVIDEOCODECTYPE_VP9
++        { kCMVideoCodecType_VP9,        AV_CODEC_ID_VP9,        "VideoToolbox VP9 Decoder" },
++#endif
++#if HAVE_KCMVIDEOCODECTYPE_AV1
++        { kCMVideoCodecType_AV1,        AV_CODEC_ID_AV1,        "VideoToolbox AV1 Decoder" },
++#endif
++    };
++    CFArrayRef decoders;
++    int header_printed = 0;
++
++    for (unsigned i = 0; i < FF_ARRAY_ELEMS(codecs); i++) {
++#if HAVE_VTREGISTERSUPPLEMENTALVIDEODECODERIFAVAILABLE && TARGET_OS_OSX
++        if (@available(macOS 11.0, *))
++            VTRegisterSupplementalVideoDecoderIfAvailable(codecs[i].cm_codec);
++#endif
++    }
++
++    decoders = vt_copy_video_decoder_list();
++    for (unsigned i = 0; i < FF_ARRAY_ELEMS(codecs); i++) {
++        CFDictionaryRef capabilities;
++        CFDictionaryRef decoder;
++
++        if (!VTIsHardwareDecodeSupported(codecs[i].cm_codec))
++            continue;
++
++        decoder = vt_find_hardware_decoder(decoders, codecs[i].cm_codec);
++        capabilities = vt_copy_decoder_capabilities(codecs[i].cm_codec);
++
++        if (!header_printed) {
++            mark_section_show_entries(SECTION_ID_DEVICE_DECODERS_VIDEOTOOLBOX, 1, NULL);
++            avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_DECODERS_VIDEOTOOLBOX);
++            header_printed = 1;
++        }
++
++        mark_section_show_entries(SECTION_ID_DEVICE_DECODER, 1, NULL);
++        avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_DECODER);
++        print_str("codec_name", avcodec_get_name(codecs[i].codec));
++        print_int("codec_id", codecs[i].codec);
++        print_str("codec_desc", codecs[i].description);
++        vt_print_decoder_implementation(tfc, decoder);
++        vt_print_decoder_profiles(tfc, capabilities, codecs[i].codec);
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_DECODER
++
++        if (capabilities)
++            CFRelease(capabilities);
++    }
++
++    if (header_printed)
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_DECODERS_VIDEOTOOLBOX
++
++    if (decoders)
++        CFRelease(decoders);
++    return 0;
++}
++#endif
++
++int print_videotoolbox_decoder_info(AVTextFormatContext *tfc)
++{
++    if (!tfc)
++        return AVERROR(EINVAL);
++
++#if HAVE_VTISHARDWAREDECODESUPPORTED
++    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *))
++        return print_videotoolbox_decoder_info_available(tfc);
++#endif
++    return 0;
++}
++
++static enum AVCodecID vt_codec_id_from_cm(CMVideoCodecType codec)
++{
++    switch (codec) {
++    case kCMVideoCodecType_MPEG4Video:
++        return AV_CODEC_ID_MPEG4;
++    case kCMVideoCodecType_JPEG:
++        return AV_CODEC_ID_MJPEG;
++    case kCMVideoCodecType_H264:
++        return AV_CODEC_ID_H264;
++#if HAVE_KCMVIDEOCODECTYPE_HEVC
++    case kCMVideoCodecType_HEVC:
++        return AV_CODEC_ID_HEVC;
++#endif
++#if HAVE_KCMVIDEOCODECTYPE_HEVCWITHALPHA
++    case kCMVideoCodecType_HEVCWithAlpha:
++        return AV_CODEC_ID_HEVC;
++#endif
++#if HAVE_KCMVIDEOCODECTYPE_AV1
++    case kCMVideoCodecType_AV1:
++        return AV_CODEC_ID_AV1;
++#endif
++    case kCMVideoCodecType_AppleProRes422:
++    case kCMVideoCodecType_AppleProRes422HQ:
++    case kCMVideoCodecType_AppleProRes422LT:
++    case kCMVideoCodecType_AppleProRes422Proxy:
++    case kCMVideoCodecType_AppleProRes4444XQ:
++    case kCMVideoCodecType_AppleProRes4444:
++        return AV_CODEC_ID_PRORES;
++    default:
++        return AV_CODEC_ID_NONE;
++    }
++}
++
++static int vt_profile_id_from_name(enum AVCodecID codec, const char *name)
++{
++    if (codec == AV_CODEC_ID_H264) {
++        if (strstr(name, "H264_ConstrainedBaseline"))
++            return AV_PROFILE_H264_CONSTRAINED_BASELINE;
++        if (strstr(name, "H264_Baseline"))
++            return AV_PROFILE_H264_BASELINE;
++        if (strstr(name, "H264_Main"))
++            return AV_PROFILE_H264_MAIN;
++        if (strstr(name, "H264_Extended"))
++            return AV_PROFILE_H264_EXTENDED;
++        if (strstr(name, "H264_High444"))
++            return AV_PROFILE_H264_HIGH_444_PREDICTIVE;
++        if (strstr(name, "H264_High422"))
++            return AV_PROFILE_H264_HIGH_422;
++        if (strstr(name, "H264_High10"))
++            return AV_PROFILE_H264_HIGH_10;
++        if (strstr(name, "H264_High") || strstr(name, "H264_ConstrainedHigh"))
++            return AV_PROFILE_H264_HIGH;
++    } else if (codec == AV_CODEC_ID_HEVC) {
++        if (strstr(name, "HEVC_MainStill"))
++            return AV_PROFILE_HEVC_MAIN_STILL_PICTURE;
++        if (strstr(name, "HEVC_Main10"))
++            return AV_PROFILE_HEVC_MAIN_10;
++        if (strstr(name, "HEVC_Main422") || strstr(name, "HEVC_Main444") ||
++            strstr(name, "HEVC_Monochrome"))
++            return AV_PROFILE_HEVC_REXT;
++        if (strstr(name, "HEVC_Main"))
++            return AV_PROFILE_HEVC_MAIN;
++    } else if (codec == AV_CODEC_ID_AV1 && strstr(name, "AV1_Main")) {
++        return AV_PROFILE_AV1_MAIN;
++    }
++
++    return AV_PROFILE_UNKNOWN;
++}
++
++static void vt_print_encoder_profiles(AVTextFormatContext *tfc,
++                                      CFDictionaryRef supported_props,
++                                      enum AVCodecID codec)
++{
++    CFDictionaryRef property;
++    CFArrayRef values = NULL;
++    int profiles[16];
++    int nb_profiles = 0;
++    int support_10bit = 0;
++    int support_hdr = 0;
++    int support_yuv444 = 0;
++
++    property = CFDictionaryGetValue(supported_props,
++                                    kVTCompressionPropertyKey_ProfileLevel);
++    if (property)
++        values = CFDictionaryGetValue(property, kVTPropertySupportedValueListKey);
++
++    if (values) {
++        for (CFIndex i = 0; i < CFArrayGetCount(values); i++) {
++            char buf[256];
++            const char *name = vt_cfstring_get_cstr(CFArrayGetValueAtIndex(values, i),
++                                                    buf, sizeof(buf));
++            int profile;
++            int duplicate = 0;
++
++            if (!name)
++                continue;
++
++            if (strstr(name, "High10") || strstr(name, "High422") ||
++                strstr(name, "Main10") || strstr(name, "42210") ||
++                strstr(name, "44410"))
++                support_10bit = 1;
++            if (strstr(name, "444"))
++                support_yuv444 = 1;
++
++            profile = vt_profile_id_from_name(codec, name);
++            if (profile == AV_PROFILE_UNKNOWN)
++                continue;
++
++            for (int j = 0; j < nb_profiles; j++) {
++                if (profiles[j] == profile) {
++                    duplicate = 1;
++                    break;
++                }
++            }
++            if (!duplicate && nb_profiles < FF_ARRAY_ELEMS(profiles))
++                profiles[nb_profiles++] = profile;
++        }
++    }
++
++    property = CFDictionaryGetValue(supported_props,
++                                    kVTCompressionPropertyKey_TransferFunction);
++    if (property)
++        values = CFDictionaryGetValue(property, kVTPropertySupportedValueListKey);
++    else
++        values = NULL;
++
++    if (values) {
++        for (CFIndex i = 0; i < CFArrayGetCount(values); i++) {
++            char buf[256];
++            const char *name = vt_cfstring_get_cstr(CFArrayGetValueAtIndex(values, i),
++                                                    buf, sizeof(buf));
++
++            if (name && (strstr(name, "2084") || strstr(name, "2100_HLG") ||
++                         strstr(name, "HLG"))) {
++                support_hdr = 1;
++                break;
++            }
++        }
++    }
++
++    print_int("support_10bit_encode", support_10bit);
++    print_int("support_hdr_encode", support_hdr);
++    print_int("support_yuv444_encode", support_yuv444);
++
++    if (!nb_profiles)
++        return;
++
++    mark_section_show_entries(SECTION_ID_DEVICE_PROFILES, 1, NULL);
++    avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_PROFILES);
++    for (int i = 0; i < nb_profiles; i++) {
++        const char *name = avcodec_profile_name(codec, profiles[i]);
++
++        mark_section_show_entries(SECTION_ID_DEVICE_PROFILE, 1, NULL);
++        avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_PROFILE);
++        print_str("profile_name", name ? name : "unknown");
++        print_int("profile_id", profiles[i]);
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_PROFILE
++    }
++    avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_PROFILES
++}
++
++#if HAVE_VTCOPYVIDEOENCODERLIST && HAVE_VTCOPYSUPPORTEDPROPERTYDICTIONARYFORENCODER && HAVE_KVTVIDEOENCODERLIST_ISHARDWAREACCELERATED
++static int print_videotoolbox_encoder_info_available(AVTextFormatContext *tfc)
++    API_AVAILABLE(macos(10.14), ios(13.0), tvos(13.0))
++{
++    CFArrayRef encoders = NULL;
++    int header_printed = 0;
++    OSStatus status = VTCopyVideoEncoderList(NULL, &encoders);
++
++    if (status != noErr || !encoders)
++        return AVERROR_EXTERNAL;
++
++    for (CFIndex i = 0; i < CFArrayGetCount(encoders); i++) {
++        CFDictionaryRef enc_info = CFArrayGetValueAtIndex(encoders, i);
++        CFBooleanRef hardware = CFDictionaryGetValue(enc_info,
++                                                      kVTVideoEncoderList_IsHardwareAccelerated);
++        CFNumberRef codec_num = CFDictionaryGetValue(enc_info, kVTVideoEncoderList_CodecType);
++        CFStringRef encoder_id = CFDictionaryGetValue(enc_info, kVTVideoEncoderList_EncoderID);
++        CFStringRef encoder_name = CFDictionaryGetValue(enc_info, kVTVideoEncoderList_DisplayName);
++        CFMutableDictionaryRef enc_spec = NULL;
++        CFDictionaryRef supported_props = NULL;
++        const AVCodecDescriptor *codec_desc;
++        CMVideoCodecType cm_codec;
++        enum AVCodecID codec;
++        int max_width = 0;
++        int max_height = 0;
++
++        if (!hardware || !CFBooleanGetValue(hardware) || !codec_num || !encoder_id ||
++            !CFNumberGetValue(codec_num, kCFNumberSInt32Type, &cm_codec))
++            continue;
++
++        codec = vt_codec_id_from_cm(cm_codec);
++        if (codec == AV_CODEC_ID_NONE)
++            continue;
++        codec_desc = avcodec_descriptor_get(codec);
++
++        enc_spec = CFDictionaryCreateMutable(kCFAllocatorDefault, 1,
++                                             &kCFTypeDictionaryKeyCallBacks,
++                                             &kCFTypeDictionaryValueCallBacks);
++        if (!enc_spec) {
++            status = memFullErr;
++            break;
++        }
++        CFDictionarySetValue(enc_spec, kVTVideoEncoderSpecification_EncoderID,
++                             encoder_id);
++
++        for (const HwRes *r = hw_res_ascend; r->width; r++) {
++            CFDictionaryRef candidate = NULL;
++
++            status = VTCopySupportedPropertyDictionaryForEncoder(r->width, r->height,
++                                                                  cm_codec, enc_spec,
++                                                                  NULL, &candidate);
++            if (status == noErr && candidate) {
++                if (supported_props)
++                    CFRelease(supported_props);
++                supported_props = candidate;
++                max_width = r->width;
++                max_height = r->height;
++            } else if (candidate) {
++                CFRelease(candidate);
++            }
++        }
++
++        CFRelease(enc_spec);
++        if (!supported_props)
++            continue;
++
++        if (!header_printed) {
++            mark_section_show_entries(SECTION_ID_DEVICE_ENCODERS_VIDEOTOOLBOX, 1, NULL);
++            avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_ENCODERS_VIDEOTOOLBOX);
++            header_printed = 1;
++        }
++
++        mark_section_show_entries(SECTION_ID_DEVICE_ENCODER, 1, NULL);
++        avtext_print_section_header(tfc, NULL, SECTION_ID_DEVICE_ENCODER);
++        print_str("codec_name", avcodec_get_name(codec));
++        print_int("codec_id", codec);
++        if (codec_desc)
++            print_str("codec_desc", codec_desc->long_name);
++        vt_print_cfstring(tfc, "encoder_name", encoder_name);
++        vt_print_cfstring(tfc, "encoder_id", encoder_id);
++#if HAVE_KVTVIDEOENCODERLIST_GPUREGISTRYID
++        {
++            CFNumberRef registry_id = CFDictionaryGetValue(enc_info,
++                                                            kVTVideoEncoderList_GPURegistryID);
++            int64_t value;
++
++            if (registry_id && CFNumberGetValue(registry_id, kCFNumberSInt64Type, &value))
++                print_int("device_registry_id", value);
++        }
++#endif
++        print_int("max_width", max_width);
++        print_int("max_height", max_height);
++        vt_print_encoder_profiles(tfc, supported_props, codec);
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_ENCODER
++
++        CFRelease(supported_props);
++    }
++
++    if (header_printed)
++        avtext_print_section_footer(tfc); // SECTION_ID_DEVICE_ENCODERS_VIDEOTOOLBOX
++
++    CFRelease(encoders);
++    return status == memFullErr ? AVERROR(ENOMEM) : 0;
++}
++#endif
++
++int print_videotoolbox_encoder_info(AVTextFormatContext *tfc)
++{
++    if (!tfc)
++        return AVERROR(EINVAL);
++
++#if HAVE_VTCOPYVIDEOENCODERLIST && HAVE_VTCOPYSUPPORTEDPROPERTYDICTIONARYFORENCODER && HAVE_KVTVIDEOENCODERLIST_ISHARDWAREACCELERATED
++    if (@available(macOS 10.14, iOS 13.0, tvOS 13.0, *))
++        return print_videotoolbox_encoder_info_available(tfc);
++#endif
++    return 0;
++}
