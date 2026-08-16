@@ -95,3 +95,4 @@
 0095-add-scale-d3d11-p010-shader-fallback.patch
 0096-fix-full-range-input-for-mjpeg-vaapi-encoder.patch
 0097-add-misc-enhancements-to-mfenc-hw-encoder.patch
+0098-add-hw-caps-detection-and-usage-monitoring-to-ffprobe.patch
