@@ -65,6 +65,104 @@ Index: FFmpeg/libavcodec/vp9.c
      f->segmentation_map = NULL;
  }
  
+Index: FFmpeg/libavcodec/vulkan_decode.c
+===================================================================
+--- FFmpeg.orig/libavcodec/vulkan_decode.c
++++ FFmpeg/libavcodec/vulkan_decode.c
+@@ -233,7 +233,8 @@ int ff_vk_decode_prepare_frame(FFVulkanD
+                                 (AVVkFrame *)pic->data[0],
+                                 hwfc->format[0],
+                                 VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
+-                                (!is_current ? VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR : 0));
++                                (hwfc->usage & VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR));
++                                // the above fixes VUID-VkVideoBeginCodingInfoKHR-slotIndex-07245
+         if (err < 0)
+             return err;
+ 
+@@ -335,15 +336,28 @@ int ff_vk_decode_add_slice(AVCodecContex
+          * easier, and gives us ample headroom. */
+         buf_size = 2 << av_log2(buf_size);
+ 
++        /* When the frames context uses DRM modifier tiling,
++         * hwctx->create_pnext contains VkImageDrmFormatModifierListCreateInfoEXT,
++         * which per spec does not extend VkBufferCreateInfo, so we need to find
++         * the VkVideoProfileListInfoKHR structure within it. */
++        void *buf_pnext = ctx->s.hwfc->create_pnext;
++        if (ctx->s.hwfc->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
++            buf_pnext = (void *)ff_vk_find_struct(ctx->s.hwfc->create_pnext,
++                                                  VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR);
++
++        VkBufferUsageFlags buf_usage = DECODER_IS_SDR(avctx->codec_id) ?
++                                       (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
++                                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) :
++                                       VK_BUFFER_USAGE_VIDEO_DECODE_SRC_BIT_KHR;
++
+         err = ff_vk_get_pooled_buffer(&ctx->s, &ctx->buf_pool, &new_ref,
+-                                      DECODER_IS_SDR(avctx->codec_id) ?
+-                                      (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+-                                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) :
+-                                      VK_BUFFER_USAGE_VIDEO_DECODE_SRC_BIT_KHR,
+-                                      ctx->s.hwfc->create_pnext, buf_size,
++                                      buf_usage, buf_pnext, buf_size,
+                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+-                                      (DECODER_IS_SDR(avctx->codec_id) ?
+-                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT : 0x0));
++                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
++        if (err < 0)
++            err = ff_vk_get_pooled_buffer(&ctx->s, &ctx->buf_pool, &new_ref,
++                                          buf_usage, buf_pnext, buf_size,
++                                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+         if (err < 0)
+             return err;
+ 
+@@ -1033,8 +1047,8 @@ static int vulkan_decode_get_profile(AVC
+                "VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR are set!\n");
+         return AVERROR_EXTERNAL;
+     } else if ((dec_caps->flags & (VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR |
+-                                   VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR) ==
+-                                   VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR) &&
++                                   VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR)) ==
++                                   VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR &&
+                !(caps->flags & VK_VIDEO_CAPABILITY_SEPARATE_REFERENCE_IMAGES_BIT_KHR)) {
+         av_log(avctx, AV_LOG_ERROR, "Cannot initialize Vulkan decoding session, buggy driver: "
+                "VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR set "
+@@ -1217,7 +1231,9 @@ int ff_vk_frame_params(AVCodecContext *a
+         }
+     }
+ 
+-    hwfc->tiling = VK_IMAGE_TILING_OPTIMAL;
++    if (hwfc->tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
++        hwfc->tiling = VK_IMAGE_TILING_OPTIMAL;
++
+     hwfc->usage  = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                    VK_IMAGE_USAGE_STORAGE_BIT      |
+                    VK_IMAGE_USAGE_SAMPLED_BIT;
+@@ -1382,10 +1398,22 @@ int ff_vk_decode_init(AVCodecContext *av
+         dpb_frames->height    = s->frames->height;
+ 
+         dpb_hwfc = dpb_frames->hwctx;
+-        dpb_hwfc->create_pnext = (void *)ff_vk_find_struct(ctx->s.hwfc->create_pnext,
+-                                                           VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR);
++        void *profile_list = (void *)ff_vk_find_struct(ctx->s.hwfc->create_pnext,
++                                                       VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR);
++        /* Reference (DPB) images use the same tiling and pNext chain as output.
++         * If VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR is 0, the
++         * driver does not support separate output and DPB with different layouts/tiling. */
++        void *drm_create_pnext = ff_vk_find_struct(ctx->s.hwfc->create_pnext,
++                                                   VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT);
++        if (drm_create_pnext) {
++            dpb_hwfc->create_pnext = drm_create_pnext;
++            dpb_hwfc->tiling       = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
++            av_assert2(ff_vk_find_struct(drm_create_pnext, VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR));
++        } else {
++            dpb_hwfc->create_pnext = profile_list;
++            dpb_hwfc->tiling       = VK_IMAGE_TILING_OPTIMAL;
++        }
+         dpb_hwfc->format[0]    = s->hwfc->format[0];
+-        dpb_hwfc->tiling       = VK_IMAGE_TILING_OPTIMAL;
+         dpb_hwfc->usage        = VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR;
+ 
+         if (ctx->common.layered_dpb)
 Index: FFmpeg/libavcodec/vulkan_encode.c
 ===================================================================
 --- FFmpeg.orig/libavcodec/vulkan_encode.c
@@ -135,6 +233,33 @@ Index: FFmpeg/libavcodec/vulkan_encode.c
  
      return 0;
  }
+@@ -354,12 +369,15 @@ static int vulkan_encode_issue(AVCodecCo
+     if (err < 0)
+         goto fail;
+ 
+-    /* Source image layout conversion */
++    /* Source image layout conversion. Writes to it happened on other
++     * queues, and were made available by the semaphore wait: their access
++     * flags are not to be carried over, and may not even be valid on this
++     * queue. */
+     img_bar[nb_img_bar] = (VkImageMemoryBarrier2) {
+         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+         .pNext = NULL,
+         .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+-        .srcAccessMask = vkf->access[0],
++        .srcAccessMask = VK_ACCESS_2_NONE,
+         .dstStageMask = VK_PIPELINE_STAGE_2_VIDEO_ENCODE_BIT_KHR,
+         .dstAccessMask = VK_ACCESS_2_VIDEO_ENCODE_READ_BIT_KHR,
+         .oldLayout = vkf->layout[0],
+@@ -1037,7 +1055,7 @@ av_cold int ff_vulkan_encode_init(AVCode
+ 
+     /* Create session */
+     session_create.pVideoProfile = &ctx->profile;
+-    session_create.flags = 0x0;
++    session_create.flags = VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR;
+     session_create.queueFamilyIndex = ctx->qf_enc->idx;
+     session_create.maxCodedExtent = ctx->caps.maxCodedExtent;
+     session_create.maxDpbSlots = ctx->caps.maxDpbSlots;
 Index: FFmpeg/libavcodec/vulkan_encode.h
 ===================================================================
 --- FFmpeg.orig/libavcodec/vulkan_encode.h
@@ -295,7 +420,39 @@ Index: FFmpeg/libavcodec/vulkan_encode_h264.c
 ===================================================================
 --- FFmpeg.orig/libavcodec/vulkan_encode_h264.c
 +++ FFmpeg/libavcodec/vulkan_encode_h264.c
-@@ -1148,7 +1148,7 @@ static int init_base_units(AVCodecContex
+@@ -702,7 +702,7 @@ static int init_profile(AVCodecContext *
+         AV_PROFILE_H264_CONSTRAINED_BASELINE,
+         AV_PROFILE_H264_MAIN,
+         AV_PROFILE_H264_HIGH,
+-        AV_PROFILE_H264_HIGH_10,
++        AV_PROFILE_H264_HIGH_444_PREDICTIVE,
+     };
+     int nb_profiles = FF_ARRAY_ELEMS(known_profiles);
+ 
+@@ -834,12 +834,16 @@ static av_cold int init_sequence_headers
+     if (err < 0)
+         return err;
+ 
+-    units->raw_sps.seq_scaling_matrix_present_flag =
+-        !!(enc->caps.stdSyntaxFlags & VK_VIDEO_ENCODE_H264_STD_SCALING_MATRIX_PRESENT_FLAG_SET_BIT_KHR);
+-    units->raw_pps.pic_scaling_matrix_present_flag =
+-        !!(enc->caps.stdSyntaxFlags & VK_VIDEO_ENCODE_H264_STD_SCALING_MATRIX_PRESENT_FLAG_SET_BIT_KHR);
+-    units->raw_pps.transform_8x8_mode_flag =
+-        !!(enc->caps.stdSyntaxFlags & VK_VIDEO_ENCODE_H264_STD_TRANSFORM_8X8_MODE_FLAG_SET_BIT_KHR);
++    /* High profile syntax: the capabilities only signal implementation
++     * support, lesser profiles prohibit these outright */
++    if (units->raw_pps.more_rbsp_data) {
++        units->raw_sps.seq_scaling_matrix_present_flag =
++            !!(enc->caps.stdSyntaxFlags & VK_VIDEO_ENCODE_H264_STD_SCALING_MATRIX_PRESENT_FLAG_SET_BIT_KHR);
++        units->raw_pps.pic_scaling_matrix_present_flag =
++            !!(enc->caps.stdSyntaxFlags & VK_VIDEO_ENCODE_H264_STD_SCALING_MATRIX_PRESENT_FLAG_SET_BIT_KHR);
++        units->raw_pps.transform_8x8_mode_flag =
++            !!(enc->caps.stdSyntaxFlags & VK_VIDEO_ENCODE_H264_STD_TRANSFORM_8X8_MODE_FLAG_SET_BIT_KHR);
++    }
+ 
+     return 0;
+ }
+@@ -1148,7 +1152,7 @@ static int init_base_units(AVCodecContex
              return AVERROR(ENOMEM);
      } else {
          av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for H.264 units = %zu\n", data_size);
@@ -304,7 +461,7 @@ Index: FFmpeg/libavcodec/vulkan_encode_h264.c
      }
  
      ret = vk->GetEncodedVideoSessionParametersKHR(s->hwctx->act_dev, &params_info,
-@@ -1156,7 +1156,8 @@ static int init_base_units(AVCodecContex
+@@ -1156,7 +1160,8 @@ static int init_base_units(AVCodecContex
                                                    &data_size, data);
      if (ret != VK_SUCCESS) {
          av_log(avctx, AV_LOG_ERROR, "Error writing feedback units\n");
@@ -314,7 +471,7 @@ Index: FFmpeg/libavcodec/vulkan_encode_h264.c
      }
  
      av_log(avctx, AV_LOG_VERBOSE, "Feedback units written, overrides: %i (SPS: %i PPS: %i)\n",
-@@ -1168,22 +1169,23 @@ static int init_base_units(AVCodecContex
+@@ -1168,22 +1173,23 @@ static int init_base_units(AVCodecContex
      h264_params_feedback.hasStdPPSOverrides = 1;
  
      /* No need to sync any overrides */
@@ -343,7 +500,20 @@ Index: FFmpeg/libavcodec/vulkan_encode_h264.c
  }
  
  static int vulkan_encode_h264_add_nal(AVCodecContext *avctx,
-@@ -1561,6 +1563,13 @@ static av_cold int vulkan_encode_h264_in
+@@ -1474,6 +1480,12 @@ static av_cold int vulkan_encode_h264_in
+         return err;
+ 
+     flags = ctx->codec->flags;
++
++    /* Baseline profiles have no B-slices */
++    if (avctx->profile == AV_PROFILE_H264_BASELINE ||
++        avctx->profile == AV_PROFILE_H264_CONSTRAINED_BASELINE)
++        flags &= ~(FF_HW_FLAG_B_PICTURES | FF_HW_FLAG_B_PICTURE_REFERENCES);
++
+     if (!enc->caps.maxPPictureL0ReferenceCount &&
+         !enc->caps.maxBPictureL0ReferenceCount &&
+         !enc->caps.maxL1ReferenceCount) {
+@@ -1561,6 +1573,13 @@ static av_cold int vulkan_encode_h264_in
  static av_cold int vulkan_encode_h264_close(AVCodecContext *avctx)
  {
      VulkanEncodeH264Context *enc = avctx->priv_data;
@@ -357,11 +527,66 @@ Index: FFmpeg/libavcodec/vulkan_encode_h264.c
      ff_vulkan_encode_uninit(&enc->common);
      return 0;
  }
+@@ -1580,7 +1599,7 @@ static const AVOption vulkan_encode_h264
+     { PROFILE("constrained_baseline", AV_PROFILE_H264_CONSTRAINED_BASELINE) },
+     { PROFILE("main",                 AV_PROFILE_H264_MAIN) },
+     { PROFILE("high",                 AV_PROFILE_H264_HIGH) },
+-    { PROFILE("high444p",             AV_PROFILE_H264_HIGH_10) },
++    { PROFILE("high444p",             AV_PROFILE_H264_HIGH_444_PREDICTIVE) },
+ #undef PROFILE
+ 
+     { "level", "Set level (level_idc)",
 Index: FFmpeg/libavcodec/vulkan_encode_h265.c
 ===================================================================
 --- FFmpeg.orig/libavcodec/vulkan_encode_h265.c
 +++ FFmpeg/libavcodec/vulkan_encode_h265.c
-@@ -1317,7 +1317,7 @@ static int init_base_units(AVCodecContex
+@@ -793,14 +793,21 @@ static av_cold int init_sequence_headers
+     else if (enc->caps.transformBlockSizes & VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_4_BIT_KHR)
+         max_tb_size = 4;
+ 
+-    units->raw_sps.log2_min_luma_coding_block_size_minus3 = 0;
+-    units->raw_sps.log2_diff_max_min_luma_coding_block_size = av_log2(max_ctb_size) - 3;
++    /* Prefer 16x16 min CU when the CTB is at least 32; 8x8 min CU is much
++     * more expensive on some implementations for the common quality levels. */
++    if (max_ctb_size >= 32) {
++        units->raw_sps.log2_min_luma_coding_block_size_minus3 = 1;
++        units->raw_sps.log2_diff_max_min_luma_coding_block_size = av_log2(max_ctb_size) - 4;
++    } else {
++        units->raw_sps.log2_min_luma_coding_block_size_minus3 = 0;
++        units->raw_sps.log2_diff_max_min_luma_coding_block_size = av_log2(max_ctb_size) - 3;
++    }
+     units->raw_sps.log2_min_luma_transform_block_size_minus2 = av_log2(min_tb_size) - 2;
+     units->raw_sps.log2_diff_max_min_luma_transform_block_size = av_log2(max_tb_size) - av_log2(min_tb_size);
+ 
+     max_transform_hierarchy = av_log2(max_ctb_size) - av_log2(min_tb_size);
+     units->raw_sps.max_transform_hierarchy_depth_intra = max_transform_hierarchy;
+-    units->raw_sps.max_transform_hierarchy_depth_intra = max_transform_hierarchy;
++    units->raw_sps.max_transform_hierarchy_depth_inter = max_transform_hierarchy;
+ 
+     units->raw_sps.vui.bitstream_restriction_flag = 0;
+     units->raw_sps.vui.max_bytes_per_pic_denom = 2;
+@@ -1227,7 +1234,19 @@ static int parse_feedback_units(AVCodecC
+                 H265RawSPS *sps = au.units[i].content;
+                 enc->units.raw_sps.pic_width_in_luma_samples = sps->pic_width_in_luma_samples;
+                 enc->units.raw_sps.pic_height_in_luma_samples = sps->pic_height_in_luma_samples;
+-                enc->units.raw_sps.log2_diff_max_min_luma_coding_block_size = sps->log2_diff_max_min_luma_coding_block_size;
++                enc->units.raw_sps.conformance_window_flag = sps->conformance_window_flag;
++                enc->units.raw_sps.conf_win_left_offset = sps->conf_win_left_offset;
++                enc->units.raw_sps.conf_win_right_offset = sps->conf_win_right_offset;
++                enc->units.raw_sps.conf_win_top_offset = sps->conf_win_top_offset;
++                enc->units.raw_sps.conf_win_bottom_offset = sps->conf_win_bottom_offset;
++                enc->units.raw_sps.log2_min_luma_coding_block_size_minus3 =
++                    sps->log2_min_luma_coding_block_size_minus3;
++                enc->units.raw_sps.log2_diff_max_min_luma_coding_block_size =
++                    sps->log2_diff_max_min_luma_coding_block_size;
++                enc->units.raw_sps.log2_min_luma_transform_block_size_minus2 =
++                    sps->log2_min_luma_transform_block_size_minus2;
++                enc->units.raw_sps.log2_diff_max_min_luma_transform_block_size =
++                    sps->log2_diff_max_min_luma_transform_block_size;
+                 enc->units.raw_sps.max_transform_hierarchy_depth_inter = sps->max_transform_hierarchy_depth_inter;
+                 enc->units.raw_sps.max_transform_hierarchy_depth_intra = sps->max_transform_hierarchy_depth_intra;
+             }
+@@ -1317,7 +1336,7 @@ static int init_base_units(AVCodecContex
              return AVERROR(ENOMEM);
      } else {
          av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for H.265 units = %zu\n", data_size);
@@ -370,7 +595,7 @@ Index: FFmpeg/libavcodec/vulkan_encode_h265.c
      }
  
      ret = vk->GetEncodedVideoSessionParametersKHR(s->hwctx->act_dev, &params_info,
-@@ -1325,7 +1325,8 @@ static int init_base_units(AVCodecContex
+@@ -1325,7 +1344,8 @@ static int init_base_units(AVCodecContex
                                                    &data_size, data);
      if (ret != VK_SUCCESS) {
          av_log(avctx, AV_LOG_ERROR, "Error writing feedback units\n");
@@ -380,7 +605,7 @@ Index: FFmpeg/libavcodec/vulkan_encode_h265.c
      }
  
      av_log(avctx, AV_LOG_VERBOSE, "Feedback units written, overrides: %i (SPS: %i PPS: %i VPS: %i)\n",
-@@ -1339,22 +1340,23 @@ static int init_base_units(AVCodecContex
+@@ -1339,22 +1359,23 @@ static int init_base_units(AVCodecContex
      h265_params_feedback.hasStdPPSOverrides = 1;
  
      /* No need to sync any overrides */
@@ -409,7 +634,7 @@ Index: FFmpeg/libavcodec/vulkan_encode_h265.c
  }
  
  static int vulkan_encode_h265_add_nal(AVCodecContext *avctx,
-@@ -1595,23 +1597,21 @@ static av_cold int vulkan_encode_h265_in
+@@ -1595,23 +1616,21 @@ static av_cold int vulkan_encode_h265_in
  
      av_log(avctx, AV_LOG_VERBOSE, "    Capability flags:\n");
      av_log(avctx, AV_LOG_VERBOSE, "        hdr_compliance: %i\n",
@@ -441,7 +666,7 @@ Index: FFmpeg/libavcodec/vulkan_encode_h265.c
  
      av_log(avctx, AV_LOG_VERBOSE, "    Capabilities:\n");
      av_log(avctx, AV_LOG_VERBOSE, "        maxLevelIdc: %i\n",
-@@ -1698,6 +1698,12 @@ static av_cold int vulkan_encode_h265_in
+@@ -1698,6 +1717,12 @@ static av_cold int vulkan_encode_h265_in
  static av_cold int vulkan_encode_h265_close(AVCodecContext *avctx)
  {
      VulkanEncodeH265Context *enc = avctx->priv_data;
@@ -454,6 +679,18 @@ Index: FFmpeg/libavcodec/vulkan_encode_h265.c
      ff_vulkan_encode_uninit(&enc->common);
      return 0;
  }
+Index: FFmpeg/libavcodec/vulkan_video.c
+===================================================================
+--- FFmpeg.orig/libavcodec/vulkan_video.c
++++ FFmpeg/libavcodec/vulkan_video.c
+@@ -260,6 +260,7 @@ StdVideoAV1Level ff_vk_av1_level_to_vk(i
+ StdVideoH264ProfileIdc ff_vk_h264_profile_to_vk(int profile)
+ {
+     switch (profile) {
++    case AV_PROFILE_H264_BASELINE:
+     case AV_PROFILE_H264_CONSTRAINED_BASELINE: return STD_VIDEO_H264_PROFILE_IDC_BASELINE;
+     case AV_PROFILE_H264_MAIN: return STD_VIDEO_H264_PROFILE_IDC_MAIN;
+     case AV_PROFILE_H264_HIGH: return STD_VIDEO_H264_PROFILE_IDC_HIGH;
 Index: FFmpeg/libavutil/hwcontext_vulkan.c
 ===================================================================
 --- FFmpeg.orig/libavutil/hwcontext_vulkan.c
@@ -537,7 +774,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
          .usage  = hwctx->usage,
 -        .flags  = VK_IMAGE_CREATE_ALIAS_BIT,
 +        .flags  = (hwctx->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT && has_mods) ?
-+                  (hwctx->img_flags) : (VkImageCreateFlags)(VK_IMAGE_CREATE_ALIAS_BIT),
++                  (hwctx->img_flags) : hwctx->img_flags ? hwctx->img_flags : (VkImageCreateFlags)(VK_IMAGE_CREATE_ALIAS_BIT),
      };
  
      nb_mods = has_mods ? drm_mod_info->drmFormatModifierCount : 1;
@@ -590,7 +827,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      vulkan_frame_free(hwfc, f);
      return NULL;
  }
-@@ -3044,7 +3075,14 @@ static int vulkan_frames_init(AVHWFrames
+@@ -3044,16 +3075,29 @@ static int vulkan_frames_init(AVHWFrames
      }
  
      /* Lone DPB images do not need additional flags. */
@@ -606,7 +843,23 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
          /* Image usage flags */
          hwctx->usage |= supported_usage & (VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                                             VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-@@ -3163,8 +3201,8 @@ static int vulkan_frames_init(AVHWFrames
+                                            VK_IMAGE_USAGE_STORAGE_BIT      |
+                                            VK_IMAGE_USAGE_SAMPLED_BIT);
+ 
++        /* Frames which may double as active references (coinciding decode
++         * output) cannot support host transfers: decode submissions bake the
++         * image layout into their barriers at record time, so a host-side
++         * layout transition cannot be synchronized against them, not even
++         * by the frame lock and timeline semaphore. */
+         if (p->vkctx.extensions & FF_VK_EXT_HOST_IMAGE_COPY &&
+             !(p->dprops.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY) &&
+-            !(p->dprops.driverID == VK_DRIVER_ID_MOLTENVK))
++            !(p->dprops.driverID == VK_DRIVER_ID_MOLTENVK) &&
++            !(hwctx->usage & VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR))
+             hwctx->usage |= supported_usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT;
+ 
+         /* Enables encoding of images, if supported by format and extensions */
+@@ -3163,8 +3207,8 @@ static int vulkan_frames_init(AVHWFrames
              }
              vk->GetPhysicalDeviceFormatProperties2(dev_hwctx->phys_dev, fmt->fallback[i], &fmtp);
  
@@ -617,7 +870,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
                  if (m->drmFormatModifier == drm_mod.drmFormatModifier) {
                      mod_props = m;
                      break;
-@@ -3502,7 +3540,7 @@ static int vulkan_map_from_drm_frame_des
+@@ -3502,7 +3546,7 @@ static int vulkan_map_from_drm_frame_des
                          &f->flags, &f->mem[i]);
          if (err) {
              close(idesc.fd);
@@ -626,7 +879,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
          }
  
          f->size[i] = req2.memoryRequirements.size;
-@@ -3969,7 +4007,7 @@ static int vulkan_export_to_cuda(AVHWFra
+@@ -3969,7 +4013,7 @@ static int vulkan_export_to_cuda(AVHWFra
      return 0;
  
  fail:
@@ -635,7 +888,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      return err;
  }
  
-@@ -3980,6 +4018,7 @@ static int vulkan_transfer_data_from_cud
+@@ -3980,6 +4024,7 @@ static int vulkan_transfer_data_from_cud
      CUcontext dummy;
      AVVkFrame *dst_f;
      AVVkFrameInternal *dst_int;
@@ -643,7 +896,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      VulkanFramesPriv *fp = hwfc->hwctx;
      const int planes = av_pix_fmt_count_planes(hwfc->sw_format);
      const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(hwfc->sw_format);
-@@ -4058,7 +4097,7 @@ static int vulkan_transfer_data_from_cud
+@@ -4058,7 +4103,7 @@ static int vulkan_transfer_data_from_cud
  
  fail:
      CHECK_CU(cu->cuCtxPopCurrent(&dummy));
@@ -652,7 +905,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      av_buffer_unref(&dst->buf[0]);
      return err;
  }
-@@ -4128,6 +4167,72 @@ static VkImageAspectFlags plane_index_to
+@@ -4128,6 +4173,72 @@ static VkImageAspectFlags plane_index_to
      return VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT;
  }
  
@@ -725,7 +978,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
  static int vulkan_map_to_drm(AVHWFramesContext *hwfc, AVFrame *dst,
                               const AVFrame *src, int flags)
  {
-@@ -4138,15 +4243,14 @@ static int vulkan_map_to_drm(AVHWFramesC
+@@ -4138,15 +4249,14 @@ static int vulkan_map_to_drm(AVHWFramesC
      AVVulkanDeviceContext *hwctx = &p->p;
      FFVulkanFunctions *vk = &p->vkctx.vkfn;
      VulkanFramesPriv *fp = hwfc->hwctx;
@@ -745,7 +998,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
  
      AVDRMFrameDescriptor *drm_desc = av_mallocz(sizeof(*drm_desc));
      if (!drm_desc)
-@@ -4156,16 +4260,36 @@ static int vulkan_map_to_drm(AVHWFramesC
+@@ -4156,16 +4266,36 @@ static int vulkan_map_to_drm(AVHWFramesC
      if (err < 0)
          goto end;
  
@@ -786,7 +1039,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      ret = vk->GetImageDrmFormatModifierPropertiesEXT(hwctx->act_dev, f->img[0],
                                                       &drm_mod);
      if (ret != VK_SUCCESS) {
-@@ -4174,7 +4298,7 @@ static int vulkan_map_to_drm(AVHWFramesC
+@@ -4174,7 +4304,7 @@ static int vulkan_map_to_drm(AVHWFramesC
          goto end;
      }
  
@@ -795,7 +1048,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
          VkMemoryGetFdInfoKHR export_info = {
              .sType      = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
              .memory     = f->mem[i],
-@@ -4189,12 +4313,30 @@ static int vulkan_map_to_drm(AVHWFramesC
+@@ -4189,12 +4319,30 @@ static int vulkan_map_to_drm(AVHWFramesC
              goto end;
          }
  
@@ -827,7 +1080,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      for (int i = 0; i < drm_desc->nb_layers; i++) {
          VkFormat plane_vkfmt = av_vkfmt_from_pixfmt(hwfc->sw_format)[i];
  
-@@ -4209,13 +4351,14 @@ static int vulkan_map_to_drm(AVHWFramesC
+@@ -4209,13 +4357,14 @@ static int vulkan_map_to_drm(AVHWFramesC
  
          for (int j = 0; j < drm_desc->layers[i].nb_planes; j++) {
              VkSubresourceLayout layout;
@@ -844,7 +1097,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
              drm_desc->layers[i].planes[j].offset = layout.offset;
              drm_desc->layers[i].planes[j].pitch  = layout.rowPitch;
          }
-@@ -4235,13 +4378,22 @@ static int vulkan_map_to_drm(AVHWFramesC
+@@ -4235,13 +4384,22 @@ static int vulkan_map_to_drm(AVHWFramesC
      dst->width   = src->width;
      dst->height  = src->height;
      dst->data[0] = (uint8_t *)drm_desc;
@@ -868,7 +1121,51 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      return err;
  }
  
-@@ -4751,6 +4903,7 @@ static int vulkan_transfer_data_to_cuda(
+@@ -4469,10 +4627,12 @@ static int vulkan_transfer_host(AVHWFram
+         if (compat)
+             continue;
+ 
++        /* This should only ever happen on uploads, so using UNDEFINED is safe */
++        av_assert1(upload);
+         layout_ch_info[nb_layout_ch] = (VkHostImageLayoutTransitionInfoEXT) {
+             .sType = VK_STRUCTURE_TYPE_HOST_IMAGE_LAYOUT_TRANSITION_INFO_EXT,
+             .image = hwf_vk->img[i],
+-            .oldLayout = hwf_vk->layout[i],
++            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+             .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+             .subresourceRange = {
+                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+@@ -4594,8 +4754,27 @@ static int vulkan_transfer_frame(AVHWFra
+     if (swf->width > hwfc->width || swf->height > hwfc->height)
+         return AVERROR(EINVAL);
+ 
+-    if (hwctx->usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT &&
+-        !(p->dprops.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY))
++    int host_copy = hwctx->usage & VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT &&
++                    !(p->dprops.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY);
++
++    /* Host layout transitions may only originate from a host-copyable layout */
++    if (!upload && host_copy) {
++        for (int i = 0; i < nb_images; i++) {
++            int compat = 0;
++            for (int j = 0; j < p->vkctx.host_image_props.copySrcLayoutCount; j++) {
++                if (hwf_vk->layout[i] == p->vkctx.host_image_props.pCopySrcLayouts[j]) {
++                    compat = 1;
++                    break;
++                }
++            }
++            if (!compat) {
++                host_copy = 0;
++                break;
++            }
++        }
++    }
++
++    if (host_copy)
+         return vulkan_transfer_host(hwfc, hwf, swf, upload);
+ 
+     for (int i = 0; i < av_pix_fmt_count_planes(swf->format); i++) {
+@@ -4751,6 +4930,7 @@ static int vulkan_transfer_data_to_cuda(
      CUcontext dummy;
      AVVkFrame *dst_f;
      AVVkFrameInternal *dst_int;
@@ -876,7 +1173,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      VulkanFramesPriv *fp = hwfc->hwctx;
      const int planes = av_pix_fmt_count_planes(hwfc->sw_format);
      const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(hwfc->sw_format);
-@@ -4831,7 +4984,7 @@ static int vulkan_transfer_data_to_cuda(
+@@ -4831,7 +5011,7 @@ static int vulkan_transfer_data_to_cuda(
  
  fail:
      CHECK_CU(cu->cuCtxPopCurrent(&dummy));

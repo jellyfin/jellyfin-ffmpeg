@@ -135,7 +135,7 @@ Index: FFmpeg/libavutil/hwcontext_vulkan.c
      default:
 @@ -2874,6 +2928,8 @@ static void try_export_flags(AVHWFramesC
          .flags  = (hwctx->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT && has_mods) ?
-                   (hwctx->img_flags) : (VkImageCreateFlags)(VK_IMAGE_CREATE_ALIAS_BIT),
+                   (hwctx->img_flags) : hwctx->img_flags ? hwctx->img_flags : (VkImageCreateFlags)(VK_IMAGE_CREATE_ALIAS_BIT),
      };
 +    VkPhysicalDeviceImageFormatInfo2 pinfo_fallback = pinfo;
 +    pinfo_fallback.format = av_vkfmt_from_pixfmt(hwfc->sw_format)[0];
