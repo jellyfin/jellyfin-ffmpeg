@@ -885,8 +885,8 @@ Index: FFmpeg/libavfilter/vf_overlay_d3d11.h
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
-+#ifndef AVFILTER_VF_OVERLAY_D3D11_H
-+#define AVFILTER_VF_OVERLAY_D3D11_H
++#ifndef AVFILTER_OVERLAY_D3D11_H
++#define AVFILTER_OVERLAY_D3D11_H
 +
 +#define OVERLAY_D3D11_THREAD_GROUP_X 16
 +#define OVERLAY_D3D11_THREAD_GROUP_Y 16
@@ -906,7 +906,7 @@ Index: FFmpeg/libavfilter/vf_overlay_d3d11.h
 +    float pad2;
 +} OverlayD3D11Params;
 +
-+#endif /* AVFILTER_VF_OVERLAY_D3D11_H */
++#endif /* AVFILTER_OVERLAY_D3D11_H */
 Index: FFmpeg/libavfilter/vf_transpose_d3d11.c
 ===================================================================
 --- /dev/null

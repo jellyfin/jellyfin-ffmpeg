@@ -769,13 +769,13 @@ Index: FFmpeg/libavfilter/vf_yadif_d3d11.h
 + * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 + */
 +
-+#ifndef AVFILTER_VF_YADIF_D3D11_H
-+#define AVFILTER_VF_YADIF_D3D11_H
++#ifndef AVFILTER_YADIF_D3D11_H
++#define AVFILTER_YADIF_D3D11_H
 +
 +#define DEINT_D3D11_TGX 16
 +#define DEINT_D3D11_TGY 16
 +
-+#endif /* AVFILTER_VF_YADIF_D3D11_H */
++#endif /* AVFILTER_YADIF_D3D11_H */
 Index: FFmpeg/libavfilter/d3d11/deint.hlsl
 ===================================================================
 --- /dev/null

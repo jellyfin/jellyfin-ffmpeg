@@ -487,22 +487,10 @@ prepare_extra_common() {
         pushd ${SOURCE_DIR}
         mkdir mesa
         pushd mesa
-        mesa_ver="mesa-26.0.8"
-        mesa_link="https://gitlab.freedesktop.org/mesa/mesa/-/archive/${mesa_ver}/mesa-${mesa_ver}.tar.gz"
+        mesa_ver="26.0-backport"
+        mesa_link="https://gitlab.freedesktop.org/nyanmisaka/mesa/-/archive/${mesa_ver}/mesa-${mesa_ver}.tar.gz"
         wget ${mesa_link} -O mesa.tar.gz
         tar xaf mesa.tar.gz
-        # Enable VAAPI VPP alpha blending support
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/41090.patch | \
-            patch -p1 -d mesa-${mesa_ver}
-        # Fix misc CSC issues in VAAPI VPP
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/42181.patch | \
-            patch -p1 -d mesa-${mesa_ver}
-        # Fix setting VPE rotation with horizontal flip enabled
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/42408.patch | \
-            sed 's#/mm/#/#g' | patch -p1 -d mesa-${mesa_ver}
-        # Fix setting chroma swizzle mode in VK Video on GFX9
-        wget -q -O - https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/42763.patch | \
-            patch -p1 -d mesa-${mesa_ver}
         meson setup mesa-${mesa_ver} mesa_build \
             ${MESON_CROSS_OPT} \
             --prefix=${TARGET_DIR} \
