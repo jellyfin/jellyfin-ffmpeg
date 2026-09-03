@@ -83,7 +83,7 @@
 0083-backport-fixes-for-cuda-from-upstream.patch
 0084-backport-fixes-for-detecting-ac4-streams-in-mpegts.patch
 0085-fix-hdr10-sidedata-not-removed-in-libplacebo-outlink.patch
-0086-workaround-amd-hevc-vaapi-encoder-out-of-band-vtag-hvc1.patch
+0086-fix-amd-hevc-vaapi-encoder-extradata-with-overrides.patch
 0087-add-dtsx-detect-for-dts-hd-hra.patch
 0088-add-webp-to-matroskadec-image-mime-types.patch
 0089-relax-to-allow-safe-filenames-in-mkv-attachments.patch
