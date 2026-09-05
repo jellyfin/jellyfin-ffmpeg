@@ -16,6 +16,7 @@ ffbuild_dockerbuild() {
 }
 
 ffbuild_configure() {
+    [[ $TARGET == linuxriscv64 ]] && return 0
     echo --enable-ffnvcodec --enable-cuda --enable-cuda-llvm --enable-cuvid --enable-nvdec --enable-nvenc
 }
 

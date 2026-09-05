@@ -24,6 +24,12 @@ prepare_extra_common() {
             CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
             MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
         ;;
+        'riscv64')
+            CROSS_PREFIX_OPT="riscv64-linux-gnu-"
+            CROSS_OPT="--host=riscv64-linux-gnu CC=riscv64-linux-gnu-gcc CXX=riscv64-linux-gnu-g++"
+            CMAKE_TOOLCHAIN_OPT="-DCMAKE_TOOLCHAIN_FILE=${SOURCE_DIR}/toolchain-${ARCH}.cmake"
+            MESON_CROSS_OPT="--cross-file=${SOURCE_DIR}/cross-${ARCH}.meson"
+        ;;
     esac
 
     # ICONV
@@ -222,6 +228,8 @@ prepare_extra_common() {
     pushd fftw-${fftw3_ver}
     if [ "${ARCH}" = "amd64" ]; then
         fftw3_optimizations="--enable-sse2 --enable-avx --enable-avx-128-fma --enable-avx2 --enable-avx512"
+    elif [ "${ARCH}" = "riscv64" ]; then
+        fftw3_optimizations=""
     else
         fftw3_optimizations="--enable-neon"
     fi
@@ -784,6 +792,40 @@ EOF
     export PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:/usr/lib/aarch64-linux-gnu/pkgconfig
 }
 
+# Prepare the cross-toolchain for riscv64
+prepare_crossbuild_env_riscv64() {
+    # Prepare the Ubuntu-specific cross-build requirements
+    if [[ $( lsb_release -i -s ) == "Debian" ]]; then
+        CODENAME="$( lsb_release -c -s )"
+        echo "deb [arch=amd64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+        echo "deb [arch=riscv64] ${DEBIAN_ADDR} ${CODENAME}-backports main restricted universe multiverse" >> /etc/apt/sources.list
+    fi
+    if [[ $( lsb_release -i -s ) == "Ubuntu" ]]; then
+        CODENAME="$( lsb_release -c -s )"
+        # Remove the default sources
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources
+        # Add arch-specific list files
+        cat <<EOF > /etc/apt/sources.list.d/amd64.list
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=amd64] ${UBUNTU_ARCHIVE_ADDR} ${CODENAME}-security main restricted universe multiverse
+EOF
+        cat <<EOF > /etc/apt/sources.list.d/riscv64.list
+deb [arch=riscv64] ${UBUNTU_PORTS_ADDR} ${CODENAME} main restricted universe multiverse
+deb [arch=riscv64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-updates main restricted universe multiverse
+deb [arch=riscv64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-backports main restricted universe multiverse
+deb [arch=riscv64] ${UBUNTU_PORTS_ADDR} ${CODENAME}-security main restricted universe multiverse
+EOF
+    fi
+    # Add riscv64 architecture
+    dpkg --add-architecture riscv64
+    apt-get update && apt-get dist-upgrade -y
+    # Install dependencies
+    ln -fs /usr/share/zoneinfo/America/Toronto /etc/localtime
+    yes | apt-get install -y -o Dpkg::Options::="--force-overwrite" -o APT::Immediate-Configure=0 gcc-riscv64-linux-gnu g++-riscv64-linux-gnu binutils-riscv64-linux-gnu bison flex libtool gdb sharutils netbase libmpc-dev libmpfr-dev autogen expect chrpath zip libc6-dev:riscv64 linux-libc-dev:riscv64 libgcc1:riscv64 libgcc-s1:riscv64 libstdc++6:riscv64 libatomic1:riscv64
+}
+
 # Set the architecture-specific options
 case ${ARCH} in
     'amd64')
@@ -800,6 +842,15 @@ case ${ARCH} in
         CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
         DEP_ARCH_OPT="--host-arch arm64"
         BUILD_ARCH_OPT="-aarm64"
+    ;;
+    'riscv64')
+        prepare_crossbuild_env_riscv64
+        prepare_extra_common
+        CONFIG_SITE="/etc/dpkg-cross/cross-config.${ARCH}"
+        DEP_ARCH_OPT="--host-arch riscv64"
+        BUILD_ARCH_OPT="-ariscv64"
+        # RISC-V needs libatomic for 128-bit atomic operations
+        export LDFLAGS="${LDFLAGS} -latomic -Wl,--as-needed"
     ;;
 esac
 

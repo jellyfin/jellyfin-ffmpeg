@@ -51,6 +51,17 @@ ffbuild_dockerbuild() {
             -Dwith_glx=no
             -Dwith_wayland=no
         )
+    elif [[ $TARGET == linuxriscv64 ]]; then
+        myconf+=(
+            --cross-file=/cross.meson
+            --default-library=shared
+            --sysconfdir="/etc"
+            -Ddriverdir="/usr/lib/riscv64-linux-gnu/dri"
+            -Ddisable_drm=false
+            -Dwith_x11=yes
+            -Dwith_glx=no
+            -Dwith_wayland=no
+        )
     else
         echo "Unknown target"
         return -1

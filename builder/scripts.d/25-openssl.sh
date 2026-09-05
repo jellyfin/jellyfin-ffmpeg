@@ -50,6 +50,11 @@ ffbuild_dockerbuild() {
             --cross-compile-prefix="$FFBUILD_CROSS_PREFIX"
             linux-aarch64
         )
+    elif [[ $TARGET == linuxriscv64 ]]; then
+        myconf+=(
+            --cross-compile-prefix="$FFBUILD_CROSS_PREFIX"
+            linux64-riscv64
+        )
     elif [[ $TARGET == mac* ]]; then
         if [ "$MACOS_BUILDER_CPU_ARCH" = "arm64" ] && [ "$TARGET" = "mac64" ]; then
             myconf+=(

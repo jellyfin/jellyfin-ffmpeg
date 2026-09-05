@@ -71,6 +71,24 @@ CONFIG_ARM64 := --arch=arm64 \
 	--enable-rkmpp \
 	--enable-rkrga \
 
+CONFIG_RISCV64 := --arch=riscv64 \
+	--cross-prefix=/usr/bin/riscv64-linux-gnu- \
+	--enable-cross-compile \
+	--disable-ffnvcodec \
+	--disable-cuda \
+	--disable-cuda-llvm \
+	--disable-cuvid \
+	--disable-nvdec \
+	--disable-nvenc \
+	--disable-amf \
+	--disable-libvpl \
+	--disable-vaapi \
+	--disable-vulkan \
+	--disable-libshaderc \
+	--disable-libplacebo \
+	--disable-opencl \
+	--disable-libdrm \
+
 HOST_ARCH := $(shell arch)
 BUILD_ARCH := ${DEB_HOST_MULTIARCH}
 ifeq ($(BUILD_ARCH),x86_64-linux-gnu)
@@ -80,6 +98,10 @@ endif
 ifeq ($(BUILD_ARCH),aarch64-linux-gnu)
 	# Cross-building ARM64 on AMD64
 	CONFIG += $(CONFIG_ARM64)
+endif
+ifeq ($(BUILD_ARCH),riscv64-linux-gnu)
+	# Cross-building RISC-V on AMD64
+	CONFIG += $(CONFIG_RISCV64)
 endif
 
 %:

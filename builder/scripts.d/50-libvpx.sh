@@ -43,6 +43,11 @@ ffbuild_dockerbuild() {
             --target=arm64-linux-gcc
         )
         export CROSS="$FFBUILD_CROSS_PREFIX"
+    elif [[ $TARGET == linuxriscv64 ]]; then
+        myconf+=(
+            --target=generic-gnu
+        )
+        export CROSS="$FFBUILD_CROSS_PREFIX"
     elif [[ $TARGET == mac* ]]; then
         if [ "$MACOS_BUILDER_CPU_ARCH" = "arm64" ] && [ "$TARGET" = "mac64" ]; then
             myconf+=(
