@@ -21,11 +21,13 @@ makedepends=("${MINGW_PACKAGE_PREFIX}-cmake"
 source=("https://github.com/intel/libvpl/archive/v${pkgver}/${_realname}-${pkgver}.tar.gz"
         0001-fix-pkgconfig-file.patch
         0002-cmake-install-vars-sh.patch
-        0003-cmake-fix-32bit-install.patch)
+        0003-cmake-fix-32bit-install.patch
+        0004-avoid-brittle-wcscpy_s-and-wcscat_s-defines-on-mingw.patch)
 sha256sums=('SKIP'
             'f23ca1ccbaa9c8e3fd4fd7320996e5be2753cfcdc6e2a25f6def08222a5691cd'
             'b9b1cdcb531ee0b6b1d7eef8bbfb1df8ca1ffe72d76961050dd912203edecc67'
-            '21b2cc2f466f636940c8ef81f50dff177aff96d60dc4bc57f58c5c9f016502fe')
+            '21b2cc2f466f636940c8ef81f50dff177aff96d60dc4bc57f58c5c9f016502fe'
+            '37cfec93ffd6cdc804d1aa576069d843db590c735165e50a058ad692103a8e26')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
 export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
@@ -44,7 +46,8 @@ prepare() {
   apply_patch_with_msg \
     0001-fix-pkgconfig-file.patch \
     0002-cmake-install-vars-sh.patch \
-    0003-cmake-fix-32bit-install.patch
+    0003-cmake-fix-32bit-install.patch \
+    0004-avoid-brittle-wcscpy_s-and-wcscat_s-defines-on-mingw.patch
 }
 
 build() {
