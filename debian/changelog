@@ -1,6 +1,7 @@
 jellyfin-ffmpeg (8.1.2-4) unstable; urgency=medium
 
   * Fix AMD hevc_vaapi encoder extradata with overrides
+  * Drop support for EOL Debian Bullseye (old old stable)
 
  -- nyanmisaka <nst799610810@gmail.com>  Thu, 3 Sep 2026 12:38:02 +0800
 

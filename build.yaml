@@ -3,8 +3,6 @@
 name: "jellyfin-ffmpeg"
 version: "8.1.2-4"
 packages:
-  - bullseye-amd64
-  - bullseye-arm64
   - bookworm-amd64
   - bookworm-arm64
   - trixie-amd64

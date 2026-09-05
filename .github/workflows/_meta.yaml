@@ -8,7 +8,7 @@ on:
       codenames:
         description: 'Stringified JSON object listing target distro codenames'
         required: true
-        default: '["bullseye"]'
+        default: '["trixie"]'
         type: string
       architectures:
         description: 'Stringified JSON object listing target architectures'

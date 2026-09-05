@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/_meta.yaml
     with:
       distro: 'debian'
-      codenames: '["bullseye", "bookworm", "trixie"]'
+      codenames: '["bookworm", "trixie"]'
       architectures: '["amd64", "arm64"]'
       release: false
 
