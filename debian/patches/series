@@ -96,3 +96,4 @@
 0096-fix-full-range-input-for-mjpeg-vaapi-encoder.patch
 0097-add-misc-enhancements-to-mfenc-hw-encoder.patch
 0098-backport-a-fix-to-not-stall-sub2video-on-stream-eof.patch
+0099-fix-qsv-av1-decoder-exporting-hdr-side-data.patch
