@@ -3,6 +3,7 @@ jellyfin-ffmpeg (8.1.2-5) unstable; urgency=medium
   * Make HDR10+ removal more precise
   * Sync some fixes for ac4dec
   * Fix QSV AV1 decoder exporting HDR side data
+  * Fix using hwmap with swscale unstable
 
  -- nyanmisaka <nst799610810@gmail.com>  Wed, 9 Sep 2026 17:31:57 +0800
 
