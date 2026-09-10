@@ -2,16 +2,14 @@ Index: FFmpeg/libavcodec/qsvdec.c
 ===================================================================
 --- FFmpeg.orig/libavcodec/qsvdec.c
 +++ FFmpeg/libavcodec/qsvdec.c
-@@ -707,18 +707,36 @@ static int qsv_export_hdr_side_data(AVCo
- 
+@@ -708,17 +708,35 @@ static int qsv_export_hdr_side_data(AVCo
      // The SDK reuses this flag for HDR SEI parsing
      if (mdcv->InsertPayloadToggle) {
--        AVMasteringDisplayMetadata *mastering;
+         AVMasteringDisplayMetadata *mastering;
 -        const int mapping[3] = {2, 0, 1};
 -        const int chroma_den = 50000;
 -        const int luma_den = 10000;
 -        int i;
-+        AVMasteringDisplayMetadata *mastering = NULL;
 +        int mapping[3] = { 0, 1, 2 };
 +        int chroma_den;
 +        int max_luma_den;
@@ -56,15 +54,6 @@ Index: FFmpeg/libavcodec/qsvdec.c
  
              mastering->has_luminance = 1;
              mastering->has_primaries = 1;
-@@ -737,7 +755,7 @@ static int qsv_export_hdr_side_data(AVCo
- 
-     // The SDK reuses this flag for HDR SEI parsing
-     if (clli->InsertPayloadToggle) {
--        AVContentLightMetadata *light;
-+        AVContentLightMetadata *light = NULL;
- 
-         ret = ff_decode_content_light_new(avctx, frame, &light);
-         if (ret < 0)
 @@ -751,46 +769,6 @@ static int qsv_export_hdr_side_data(AVCo
  
      return 0;
