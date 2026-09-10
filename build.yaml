@@ -1,7 +1,7 @@
 ---
 # We just wrap `build` so this is really it
 name: "jellyfin-ffmpeg"
-version: "8.1.2-4"
+version: "8.1.2-5"
 packages:
   - bookworm-amd64
   - bookworm-arm64
