@@ -97,3 +97,4 @@
 0097-add-misc-enhancements-to-mfenc-hw-encoder.patch
 0098-backport-a-fix-to-not-stall-sub2video-on-stream-eof.patch
 0099-fix-qsv-av1-decoder-exporting-hdr-side-data.patch
+0100-backport-trim-bitstream-filter.patch
