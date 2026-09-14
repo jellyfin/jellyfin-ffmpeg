@@ -2,7 +2,7 @@ Index: FFmpeg/libswscale/format.c
 ===================================================================
 --- FFmpeg.orig/libswscale/format.c
 +++ FFmpeg/libswscale/format.c
-@@ -320,7 +320,12 @@ SwsFormat ff_fmt_from_frame(const AVFram
+@@ -320,7 +320,10 @@ SwsFormat ff_fmt_from_frame(const AVFram
      enum AVPixelFormat hw_format = AV_PIX_FMT_NONE;
  
  #if CONFIG_UNSTABLE
@@ -10,9 +10,7 @@ Index: FFmpeg/libswscale/format.c
 +    const AVPixFmtDescriptor *hw_desc = av_pix_fmt_desc_get(frame->format);
 +    av_assert0(hw_desc);
 +
-+    if (hw_desc->flags & AV_PIX_FMT_FLAG_HWACCEL) {
-+        av_assert0(frame->hw_frames_ctx);
-+
++    if ((hw_desc->flags & AV_PIX_FMT_FLAG_HWACCEL) && frame->hw_frames_ctx) {
          AVHWFramesContext *hwfc = (AVHWFramesContext *)frame->hw_frames_ctx->data;
          hw_format = frame->format;
          format = hwfc->sw_format;
