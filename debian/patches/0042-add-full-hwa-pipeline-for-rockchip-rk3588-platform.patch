@@ -7308,7 +7308,7 @@ Index: FFmpeg/libavutil/hwcontext_rkmpp.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavutil/hwcontext_rkmpp.c
-@@ -0,0 +1,603 @@
+@@ -0,0 +1,604 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -7614,8 +7614,9 @@ Index: FFmpeg/libavutil/hwcontext_rkmpp.c
 +            return AVERROR(ENOMEM);
 +    }
 +
++    avfc->flags |= hwctx->flags;
 +    ret = mpp_buffer_group_get_internal(&avfc->buf_group,
-+                                        MPP_BUFFER_TYPE_DRM | hwctx->flags | avfc->flags);
++                                        MPP_BUFFER_TYPE_DRM | avfc->flags);
 +    if (ret != MPP_OK) {
 +        av_log(hwfc, AV_LOG_ERROR, "Failed to get MPP internal buffer group: %d\n", ret);
 +        return AVERROR_EXTERNAL;
@@ -8221,7 +8222,7 @@ Index: FFmpeg/libswscale/swscale_unscaled.c
 ===================================================================
 --- FFmpeg.orig/libswscale/swscale_unscaled.c
 +++ FFmpeg/libswscale/swscale_unscaled.c
-@@ -269,6 +269,62 @@ static int nv24ToYuv420Wrapper(SwsIntern
+@@ -269,6 +269,74 @@ static int nv24ToYuv420Wrapper(SwsIntern
      return srcSliceH;
  }
  
@@ -8259,6 +8260,14 @@ Index: FFmpeg/libswscale/swscale_unscaled.c
 +            *tdstY++ = (((tsrcY[4] & 0xFF) << 2) | ((tsrcY[3] >> 6) & 0x3 )) << shift[0];
 +            tsrcY += 5;
 +        }
++        const int y_rem = c->opts.src_w & 3;
++        if (y_rem) {
++            *tdstY++ = (((tsrcY[1] & 0x3) << 8) | (tsrcY[0] & 0xFF)) << shift[0];
++            if (y_rem > 1)
++                *tdstY++ = (((tsrcY[2] & 0xF ) << 6) | ((tsrcY[1] >> 2) & 0x3F)) << shift[0];
++            if (y_rem > 2)
++                *tdstY++ = (((tsrcY[3] & 0x3F) << 4) | ((tsrcY[2] >> 4) & 0xF )) << shift[0];
++        }
 +        src[0] += srcStride[0];
 +        dstY += dstStride[0] / sizeof(uint16_t);
 +    }
@@ -8273,6 +8282,10 @@ Index: FFmpeg/libswscale/swscale_unscaled.c
 +            *tdstV++ = (((tsrcUV[4] & 0xFF) << 2) | ((tsrcUV[3] >> 6) & 0x3 )) << shift[2];
 +            tsrcUV += 5;
 +        }
++        if (c->chrSrcW & 1) {
++            *tdstU++ = (((tsrcUV[1] & 0x3) << 8) | (tsrcUV[0]        & 0xFF)) << shift[1];
++            *tdstV++ = (((tsrcUV[2] & 0xF) << 6) | ((tsrcUV[1] >> 2) & 0x3F)) << shift[2];
++        }
 +        src[1] += srcStride[1];
 +        dstU += dstStride[1] / sizeof(uint16_t);
 +        dstV += dstStride[2] / sizeof(uint16_t);
@@ -8284,7 +8297,7 @@ Index: FFmpeg/libswscale/swscale_unscaled.c
  static int planarToP01xWrapper(SwsInternal *c, const uint8_t *const src8[],
                                 const int srcStride[], int srcSliceY,
                                 int srcSliceH, uint8_t *const dstParam8[],
-@@ -2411,6 +2467,19 @@ void ff_get_unscaled_swscale(SwsInternal
+@@ -2411,6 +2479,19 @@ void ff_get_unscaled_swscale(SwsInternal
          (srcFormat == AV_PIX_FMT_NV24 || srcFormat == AV_PIX_FMT_NV42)) {
          c->convert_unscaled = nv24ToPlanarWrapper;
      }
