@@ -350,6 +350,28 @@ Index: FFmpeg/libavfilter/vf_vpp_qsv.c
      { NULL },
  };
  
+Index: FFmpeg/libavutil/hwcontext_d3d11va.c
+===================================================================
+--- FFmpeg.orig/libavutil/hwcontext_d3d11va.c
++++ FFmpeg/libavutil/hwcontext_d3d11va.c
+@@ -42,8 +42,6 @@
+ #include "thread.h"
+ #include "compat/w32dlfcn.h"
+ 
+-#define MAX_ARRAY_SIZE 64 // Driver specification limits ArraySize to 64 for decoder-bound resources
+-
+ typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(REFIID riid, void **ppFactory);
+ 
+ static AVOnce functions_loaded = AV_ONCE_INIT;
+@@ -293,8 +291,6 @@ static int d3d11va_frames_init(AVHWFrame
+     hwctx->BindFlags |= device_hwctx->BindFlags;
+     hwctx->MiscFlags |= device_hwctx->MiscFlags;
+ 
+-    ctx->initial_pool_size = FFMIN(ctx->initial_pool_size, MAX_ARRAY_SIZE);
+-
+     texDesc = (D3D11_TEXTURE2D_DESC){
+         .Width      = ctx->width,
+         .Height     = ctx->height,
 Index: FFmpeg/libavutil/hwcontext_qsv.c
 ===================================================================
 --- FFmpeg.orig/libavutil/hwcontext_qsv.c
