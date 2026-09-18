@@ -30,6 +30,7 @@
 #include "hwcontext_opencl.h"
 #include "mem.h"
 #include "pixdesc.h"
+#include "time.h"
 
 #if HAVE_OPENCL_VAAPI_BEIGNET
 #include <unistd.h>
@@ -1110,6 +1111,16 @@ static int opencl_enumerate_d3d11_devices(AVHWDeviceContext *hwdev,
     ID3D11Device *device = context;
     clGetDeviceIDsFromD3D11KHR_fn clGetDeviceIDsFromD3D11KHR;
     cl_int cle;
+    // clGetDeviceIDsFromD3D11KHR() has been observed to spuriously return
+    // CL_DEVICE_NOT_FOUND on some AMD driver/OpenCL ICD combinations when
+    // another process is concurrently acquiring the same D3D11 device for
+    // its own OpenCL interop setup (e.g. a second overlapping transcode).
+    // Retry a few times with a short delay before treating it as a genuine
+    // "no devices support this" answer, since that failure otherwise
+    // propagates all the way up as an unrecoverable device-acquisition error.
+    const int max_attempts = 5;
+    const int retry_delay_us = 20000;
+    int attempt;
 
     clGetDeviceIDsFromD3D11KHR =
         clGetExtensionFunctionAddressForPlatform(platform_id,
@@ -1120,13 +1131,25 @@ static int opencl_enumerate_d3d11_devices(AVHWDeviceContext *hwdev,
         return AVERROR_UNKNOWN;
     }
 
-    cle = clGetDeviceIDsFromD3D11KHR(platform_id,
-                                     CL_D3D11_DEVICE_KHR, device,
-                                     CL_PREFERRED_DEVICES_FOR_D3D11_KHR,
-                                     0, NULL, nb_devices);
+    for (attempt = 0; attempt < max_attempts; attempt++) {
+        cle = clGetDeviceIDsFromD3D11KHR(platform_id,
+                                         CL_D3D11_DEVICE_KHR, device,
+                                         CL_PREFERRED_DEVICES_FOR_D3D11_KHR,
+                                         0, NULL, nb_devices);
+        if (cle != CL_DEVICE_NOT_FOUND)
+            break;
+        if (attempt + 1 < max_attempts) {
+            av_log(hwdev, AV_LOG_DEBUG, "clGetDeviceIDsFromD3D11KHR() "
+                   "returned CL_DEVICE_NOT_FOUND on platform \"%s\" "
+                   "(attempt %d/%d), retrying.\n",
+                   platform_name, attempt + 1, max_attempts);
+            av_usleep(retry_delay_us);
+        }
+    }
     if (cle == CL_DEVICE_NOT_FOUND) {
         av_log(hwdev, AV_LOG_DEBUG, "No D3D11-supporting devices found "
-               "on platform \"%s\".\n", platform_name);
+               "on platform \"%s\" after %d attempts.\n",
+               platform_name, max_attempts);
         *nb_devices = 0;
         return 0;
     } else if (cle != CL_SUCCESS) {
@@ -1139,10 +1162,21 @@ static int opencl_enumerate_d3d11_devices(AVHWDeviceContext *hwdev,
     if (!*devices)
         return AVERROR(ENOMEM);
 
-    cle = clGetDeviceIDsFromD3D11KHR(platform_id,
-                                     CL_D3D11_DEVICE_KHR, device,
-                                     CL_PREFERRED_DEVICES_FOR_D3D11_KHR,
-                                     *nb_devices, *devices, NULL);
+    for (attempt = 0; attempt < max_attempts; attempt++) {
+        cle = clGetDeviceIDsFromD3D11KHR(platform_id,
+                                         CL_D3D11_DEVICE_KHR, device,
+                                         CL_PREFERRED_DEVICES_FOR_D3D11_KHR,
+                                         *nb_devices, *devices, NULL);
+        if (cle != CL_DEVICE_NOT_FOUND)
+            break;
+        if (attempt + 1 < max_attempts) {
+            av_log(hwdev, AV_LOG_DEBUG, "clGetDeviceIDsFromD3D11KHR() "
+                   "(device list) returned CL_DEVICE_NOT_FOUND on platform "
+                   "\"%s\" (attempt %d/%d), retrying.\n",
+                   platform_name, attempt + 1, max_attempts);
+            av_usleep(retry_delay_us);
+        }
+    }
     if (cle != CL_SUCCESS) {
         av_log(hwdev, AV_LOG_ERROR, "Failed to get list of D3D11-supporting "
                "devices on platform \"%s\": %d.\n", platform_name, cle);
