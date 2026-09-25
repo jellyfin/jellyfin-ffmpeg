@@ -953,7 +953,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
-@@ -0,0 +1,1230 @@
+@@ -0,0 +1,1231 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -1350,12 +1350,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (isnan(ctx->final_param))
 +        ctx->final_param = 1.0f;
 +
-+    if (ctx->peak)
++    if (ctx->peak) {
 +        ctx->src_peak = ctx->peak / 10.0f * REF_WHITE_SCALE;
-+
-+    // sanity check
-+    if (ctx->src_peak <= REF_WHITE_SCALE)
-+        ctx->src_peak = 10.0f * REF_WHITE_SCALE;
++        if (ctx->src_peak <= REF_WHITE_SCALE)
++            ctx->src_peak = 10.0f * REF_WHITE_SCALE;
++    }
 +
 +    // SDR peak is 1.0f
 +    ctx->target_peak = 1.0f;
@@ -1873,12 +1872,14 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (!ctx->peak) {
 +        if (dovi_sd) {
 +            const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
-+            ctx->src_peak = ff_determine_dovi_signal_peak(metadata, 0);
++            ctx->src_peak = ff_determine_dovi_tonemap_peak(input, metadata, 0);
 +            ctx->src_peak *= REF_WHITE_SCALE;
 +        } else if (!ctx->src_peak) {
 +            ctx->src_peak = ff_determine_signal_peak(input);
 +            ctx->src_peak *= REF_WHITE_SCALE;
 +        }
++        if (ctx->src_peak <= REF_WHITE_SCALE)
++            ctx->src_peak = 10.0f * REF_WHITE_SCALE;
 +        av_log(ctx, AV_LOG_DEBUG, "Computed signal peak: %f "
 +               "at pts %"PRId64"\n", ctx->src_peak, input->pts);
 +    }

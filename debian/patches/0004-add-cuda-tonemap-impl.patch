@@ -96,7 +96,7 @@ Index: FFmpeg/libavfilter/colorspace.c
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3])
  {
-@@ -191,3 +203,162 @@ void ff_update_hdr_metadata(AVFrame *in,
+@@ -191,3 +203,177 @@ void ff_update_hdr_metadata(AVFrame *in,
              metadata->max_luminance = av_d2q(peak * REFERENCE_WHITE, 10000);
      }
  }
@@ -124,6 +124,21 @@ Index: FFmpeg/libavfilter/colorspace.c
 +    peak = FFMAX(peak - ST2084_C1, 0.0f) / FFMAX((ST2084_C2 - ST2084_C3 * peak), FLOAT_EPS);
 +    peak = powf(peak, 1.0f / ST2084_M1);
 +    peak *= (ST2084_MAX_LUMINANCE / REFERENCE_WHITE);
++
++    return peak;
++}
++
++double ff_determine_dovi_tonemap_peak(AVFrame *in, const AVDOVIMetadata *data,
++                                     int l0_only)
++{
++    double peak = ff_determine_dovi_signal_peak(data, l0_only);
++
++    if (!l0_only && peak <= 1.0)
++        peak = ff_determine_dovi_signal_peak(data, 1);
++    if (peak <= 1.0)
++        peak = ff_determine_signal_peak(in);
++    if (peak <= 1.0)
++        peak = 10.0;
 +
 +    return peak;
 +}
@@ -335,11 +350,14 @@ Index: FFmpeg/libavfilter/colorspace.h
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3]);
  void ff_matrix_mul_3x3_vec(double dst[3], const double vec[3], const double mat[3][3]);
-@@ -38,4 +99,14 @@ void ff_fill_rgb2yuv_table(const AVLumaC
+@@ -38,4 +99,17 @@ void ff_fill_rgb2yuv_table(const AVLumaC
  double ff_determine_signal_peak(AVFrame *in);
  void ff_update_hdr_metadata(AVFrame *in, double peak);
  
 +double ff_determine_dovi_signal_peak(const AVDOVIMetadata *data, int l0_only);
++/* Peak in REFERENCE_WHITE units; fallback: L1 (unless l0_only), L0, HDR metadata, 1000 nits. */
++double ff_determine_dovi_tonemap_peak(AVFrame *in, const AVDOVIMetadata *data,
++                                     int l0_only);
 +void ff_map_dovi_metadata(struct FFDOVIMetadataRemap *out, const AVDOVIMetadata *data);
 +
 +float ff_eotf_st2084_common(float x);
@@ -2012,7 +2030,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1284 @@
+@@ -0,0 +1,1285 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2605,12 +2623,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    if (isnan(s->final_param))
 +        s->final_param = 1.0f;
 +
-+    if (s->peak)
++    if (s->peak) {
 +        s->src_peak = s->peak / 10.0f * REF_WHITE_SCALE;
-+
-+    // sanity check
-+    if (s->src_peak <= REF_WHITE_SCALE)
-+        s->src_peak = 10.0f * REF_WHITE_SCALE;
++        if (s->src_peak <= REF_WHITE_SCALE)
++            s->src_peak = 10.0f * REF_WHITE_SCALE;
++    }
 +
 +    s->dst_peak = 1.0f;
 +
@@ -3064,13 +3081,15 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +            const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
 +            const int l0_only = s->tradeoff == 1 || !s->src_peak;
 +            if (!s->src_peak || s->tradeoff != 1) {
-+                s->src_peak = ff_determine_dovi_signal_peak(metadata, l0_only);
++                s->src_peak = ff_determine_dovi_tonemap_peak(in, metadata, l0_only);
 +                s->src_peak *= REF_WHITE_SCALE;
 +            }
 +        } else if (!s->src_peak) {
 +            s->src_peak = ff_determine_signal_peak(in);
 +            s->src_peak *= REF_WHITE_SCALE;
 +        }
++        if (s->src_peak <= REF_WHITE_SCALE)
++            s->src_peak = 10.0f * REF_WHITE_SCALE;
 +        av_log(ctx, AV_LOG_DEBUG, "Computed signal peak: %f "
 +               "at pts %"PRId64"\n", s->src_peak, in->pts);
 +    }

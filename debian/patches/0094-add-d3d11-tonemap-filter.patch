@@ -38,7 +38,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_d3d11.c
-@@ -0,0 +1,1094 @@
+@@ -0,0 +1,1096 @@
 +/*
 + * D3D11 tonemap filter
 + *
@@ -785,7 +785,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    if (s->peak) {
 +        s->src_peak = s->peak / 10.0f * REF_WHITE_SCALE;
 +    } else if (s->apply_dovi_frame) {
-+        s->src_peak = ff_determine_dovi_signal_peak((const AVDOVIMetadata *)av_frame_get_side_data(input, AV_FRAME_DATA_DOVI_METADATA)->data, 0) * REF_WHITE_SCALE;
++        const AVDOVIMetadata *metadata = (const AVDOVIMetadata *)
++            av_frame_get_side_data(input, AV_FRAME_DATA_DOVI_METADATA)->data;
++        s->src_peak = ff_determine_dovi_tonemap_peak(input, metadata, 0) * REF_WHITE_SCALE;
 +        av_log(avctx, AV_LOG_DEBUG, "Computed DOVI signal peak: %f at pts %"PRId64"\n",
 +               s->src_peak, input->pts);
 +    } else {
