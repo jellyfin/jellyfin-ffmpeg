@@ -14,7 +14,7 @@ Index: FFmpeg/libavfilter/Makefile
 ===================================================================
 --- FFmpeg.orig/libavfilter/Makefile
 +++ FFmpeg/libavfilter/Makefile
-@@ -560,6 +560,7 @@ OBJS-$(CONFIG_TONEMAP_FILTER)
+@@ -566,6 +566,7 @@ OBJS-$(CONFIG_TONEMAP_FILTER)
  OBJS-$(CONFIG_TONEMAPX_FILTER)               += vf_tonemapx.o
  OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)           += vf_tonemap_cuda.o cuda/tonemap.ptx.o \
                                                  cuda/host_util.o cuda/load_helper.o
@@ -38,7 +38,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_d3d11.c
-@@ -0,0 +1,1096 @@
+@@ -0,0 +1,1167 @@
 +/*
 + * D3D11 tonemap filter
 + *
@@ -81,6 +81,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +#include "libavutil/pixdesc.h"
 +
 +#include "colorspace.h"
++#include "dovi_el.h"
 +#include "filters.h"
 +#include "formats.h"
 +#include "video.h"
@@ -148,6 +149,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    float dovi_pivots[6][4];
 +    float dovi_coeffs[24][4];
 +    float dovi_mmr[144][4];
++    float el_params[20];
 +} TonemapD3D11Params;
 +
 +typedef struct TonemapD3D11Context {
@@ -159,6 +161,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    enum AVColorRange range;
 +    enum AVPixelFormat format;
 +    int apply_dovi;
++    int apply_el;
++    FFDOVIELContext el_sync;
++    float el_params[20];
++    const AVFrame *el;
++    ID3D11Texture2D *el_tex;
++    ID3D11SamplerState *el_sampler;
++    int el_w, el_h, direct_el_srv;
 +    int force_output_copy;
 +
 +    int tonemap;
@@ -239,6 +248,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    FF_D3D11_RELEASE(s->params_buf);
 +    FF_D3D11_RELEASE(s->src_tex);
 +    FF_D3D11_RELEASE(s->work_tex);
++    FF_D3D11_RELEASE(s->el_tex);
++    FF_D3D11_RELEASE(s->el_sampler);
++    s->el_w = s->el_h = 0;
 +    s->shader_tonemap = s->shader_mode = s->shader_trc_in = s->shader_trc_out = -1;
 +    s->shader_full_in = s->shader_full_out = s->shader_out_depth = s->shader_skip = s->shader_dovi = -1;
 +    s->src_w = s->src_h = 0;
@@ -268,6 +280,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +        { "OUT_DEPTH_VAL", out_depth_buf },
 +        { "SKIP_TONEMAP_VAL", skip_buf },
 +        { "APPLY_DOVI_VAL", dovi_buf },
++        { "ENHANCEMENT_LAYER", s->apply_el ? "1" : "0" },
 +        { NULL, NULL },
 +    };
 +
@@ -394,36 +407,38 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +}
 +
 +static int prepare_input_srvs(AVFilterContext *ctx, AVFrame *input,
-+                              ID3D11ShaderResourceView **srvs)
++                              ID3D11ShaderResourceView **srvs,
++                              ID3D11Texture2D **cache, int *cache_w, int *cache_h,
++                              int *direct)
 +{
 +    TonemapD3D11Context *s = ctx->priv;
 +    int ret;
 +
-+    if (s->direct_input_srv) {
++    if (*direct) {
 +        ret = create_frame_srvs(ctx, input, srvs);
 +        if (ret >= 0) {
-+            if (s->direct_input_srv < 0) {
++            if (*direct < 0) {
 +                av_log(ctx, AV_LOG_DEBUG, "D3D11 shader input: direct SRV\n");
-+                s->direct_input_srv = 1;
++                *direct = 1;
 +            }
 +            return 0;
 +        }
-+        if (s->direct_input_srv < 0)
++        if (*direct < 0)
 +            av_log(ctx, AV_LOG_DEBUG, "D3D11 shader input: copied to internal SRV texture\n");
-+        s->direct_input_srv = 0;
++        *direct = 0;
 +    }
 +
 +
-+    ret = ensure_texture(ctx, &s->src_tex, &s->src_w, &s->src_h,
++    ret = ensure_texture(ctx, cache, cache_w, cache_h,
 +                         input->width, input->height, s->in_fmt,
 +                         D3D11_BIND_SHADER_RESOURCE);
 +    if (ret < 0)
 +        return ret;
-+    ff_d3d11_copy_frame_to_texture(s->context, input, s->src_tex);
-+    ret = create_srv_view(ctx, s->src_tex, 0, s->in_fmt, 0, AV_LOG_ERROR, &srvs[0]);
++    ff_d3d11_copy_frame_to_texture(s->context, input, *cache);
++    ret = create_srv_view(ctx, *cache, 0, s->in_fmt, 0, AV_LOG_ERROR, &srvs[0]);
 +    if (ret < 0)
 +        return ret;
-+    ret = create_srv_view(ctx, s->src_tex, 0, s->in_fmt, 1, AV_LOG_ERROR, &srvs[1]);
++    ret = create_srv_view(ctx, *cache, 0, s->in_fmt, 1, AV_LOG_ERROR, &srvs[1]);
 +    if (ret < 0)
 +        FF_D3D11_RELEASE(srvs[0]);
 +    return ret;
@@ -635,6 +650,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    params->chroma_loc = output->chroma_location;
 +    params->skip_tonemap = output->color_trc == AVCOL_TRC_SMPTE2084;
 +    params->apply_dovi = s->apply_dovi_frame;
++    memcpy(params->el_params, s->el_params, sizeof(params->el_params));
 +    params->tone_param = s->final_param;
 +    params->desat_param = s->desat_param;
 +    params->peak = s->src_peak;
@@ -660,8 +676,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +static int run_filter(AVFilterContext *ctx, AVFrame *output, AVFrame *input)
 +{
 +    TonemapD3D11Context *s = ctx->priv;
-+    ID3D11ShaderResourceView *srvs[2] = { NULL, NULL };
-+    ID3D11ShaderResourceView *null_srvs[2] = { NULL, NULL };
++    ID3D11ShaderResourceView *srvs[4] = { NULL };
++    ID3D11ShaderResourceView *null_srvs[4] = { NULL };
 +    ID3D11UnorderedAccessView *uavs[2] = { NULL, NULL };
 +    ID3D11UnorderedAccessView *null_uavs[2] = { NULL, NULL };
 +    ID3D11Buffer *null_cb[1] = { NULL };
@@ -671,7 +687,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    HRESULT hr;
 +    int ret;
 +
-+    ret = prepare_input_srvs(ctx, input, srvs);
++    ret = prepare_input_srvs(ctx, input, srvs, &s->src_tex, &s->src_w, &s->src_h,
++                             &s->direct_input_srv);
++    if (ret < 0)
++        goto fail;
++    if (s->el_params[15])
++        ret = prepare_input_srvs(ctx, (AVFrame *)s->el, srvs + 2,
++                                 &s->el_tex, &s->el_w, &s->el_h, &s->direct_el_srv);
 +    if (ret < 0)
 +        goto fail;
 +    ret = prepare_output_uavs(ctx, output, uavs, &direct_output);
@@ -697,8 +719,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    s->context->lpVtbl->Unmap(s->context, (ID3D11Resource *)s->params_buf, 0);
 +
 +    s->context->lpVtbl->CSSetConstantBuffers(s->context, 0, 1, &s->params_buf);
-+    s->context->lpVtbl->CSSetShaderResources(s->context, 0, 2, srvs);
++    s->context->lpVtbl->CSSetShaderResources(s->context, 0, s->apply_el ? 4 : 2, srvs);
 +    s->context->lpVtbl->CSSetUnorderedAccessViews(s->context, 0, 2, uavs, NULL);
++    if (s->apply_el)
++        s->context->lpVtbl->CSSetSamplers(s->context, 0, 1, &s->el_sampler);
 +    s->context->lpVtbl->CSSetShader(s->context, s->cs, NULL, 0);
 +    s->context->lpVtbl->Dispatch(s->context,
 +                                 (((params.width + 1) >> 1) + TONEMAP_D3D11_TGX - 1) / TONEMAP_D3D11_TGX,
@@ -706,7 +730,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +                                 1);
 +
 +    s->context->lpVtbl->CSSetShader(s->context, NULL, NULL, 0);
-+    s->context->lpVtbl->CSSetShaderResources(s->context, 0, 2, null_srvs);
++    s->context->lpVtbl->CSSetShaderResources(s->context, 0, s->apply_el ? 4 : 2, null_srvs);
 +    s->context->lpVtbl->CSSetUnorderedAccessViews(s->context, 0, 2, null_uavs, NULL);
 +    s->context->lpVtbl->CSSetConstantBuffers(s->context, 0, 1, null_cb);
 +
@@ -715,17 +739,23 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +
 +fail:
 +    s->context->lpVtbl->CSSetShader(s->context, NULL, NULL, 0);
-+    s->context->lpVtbl->CSSetShaderResources(s->context, 0, 2, null_srvs);
++    s->context->lpVtbl->CSSetShaderResources(s->context, 0, s->apply_el ? 4 : 2, null_srvs);
 +    s->context->lpVtbl->CSSetUnorderedAccessViews(s->context, 0, 2, null_uavs, NULL);
 +    s->context->lpVtbl->CSSetConstantBuffers(s->context, 0, 1, null_cb);
 +    FF_D3D11_RELEASE(srvs[0]);
 +    FF_D3D11_RELEASE(srvs[1]);
++    FF_D3D11_RELEASE(srvs[2]);
++    FF_D3D11_RELEASE(srvs[3]);
++    if (s->apply_el) {
++        ID3D11SamplerState *none = NULL;
++        s->context->lpVtbl->CSSetSamplers(s->context, 0, 1, &none);
++    }
 +    FF_D3D11_RELEASE(uavs[0]);
 +    FF_D3D11_RELEASE(uavs[1]);
 +    return ret;
 +}
 +
-+static int tonemap_d3d11_filter_frame(AVFilterLink *inlink, AVFrame *input)
++static int tonemap_d3d11_filter_frame(AVFilterLink *inlink, AVFrame *input, const AVFrame *el)
 +{
 +    AVFilterContext *avctx = inlink->dst;
 +    AVFilterLink *outlink = avctx->outputs[0];
@@ -737,14 +767,24 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +        return AVERROR(EINVAL);
 +
 +    s->apply_dovi_frame = 0;
++    s->el = el;
++    s->el_params[15] = 0.0f;
 +    if (s->apply_dovi) {
 +        AVFrameSideData *dovi_sd = av_frame_get_side_data(input, AV_FRAME_DATA_DOVI_METADATA);
 +        if (dovi_sd) {
 +            const AVDOVIMetadata *metadata = (const AVDOVIMetadata *)dovi_sd->data;
 +            const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
-+            if (rpu->disable_residual_flag) {
++            if (rpu->disable_residual_flag || s->apply_el) {
 +                ff_map_dovi_metadata(&s->dovi, metadata);
 +                s->apply_dovi_frame = 1;
++                if (el) {
++                    ff_dovi_el_prepare(s->el_params, metadata, s->apply_el,
++                                       input->width, input->height, el->width, el->height,
++                                       el->chroma_location, 65535.0f / (64.0f * 1023.0f));
++                    /* Visible EL size, used to exclude padded texture rows. */
++                    s->el_params[3] = el->width;
++                    s->el_params[7] = el->height;
++                }
 +                input->color_trc = AVCOL_TRC_SMPTE2084;
 +                input->colorspace = AVCOL_SPC_BT2020_NCL;
 +                input->color_primaries = AVCOL_PRI_BT2020;
@@ -896,6 +936,26 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    d3d11_ctx = (AVD3D11VADeviceContext *)device_ctx->hwctx;
 +    s->device = d3d11_ctx->device;
 +    s->context = d3d11_ctx->device_context;
++    if (s->apply_el) {
++        AVBufferRef *ref = ff_filter_link(avctx->inputs[1])->hw_frames_ctx;
++        AVHWFramesContext *ef = ref ? (AVHWFramesContext *)ref->data : NULL;
++        D3D11_SAMPLER_DESC sd = { 0 };
++        HRESULT hr;
++        if (s->in_fmt != AV_PIX_FMT_P010 || !ef || ef->sw_format != AV_PIX_FMT_P010 ||
++            ((AVD3D11VADeviceContext *)ef->device_ctx->hwctx)->device != s->device) {
++            av_log(avctx, AV_LOG_ERROR, "BL/EL inputs must be P010 and share a D3D11 device.\n");
++            return AVERROR(EINVAL);
++        }
++        if ((ret = ff_dovi_el_configure(avctx, &s->el_sync)) < 0)
++            return ret;
++        s->direct_el_srv = -1;
++        sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
++        sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
++        sd.MaxLOD = D3D11_FLOAT32_MAX;
++        hr = s->device->lpVtbl->CreateSamplerState(s->device, &sd, &s->el_sampler);
++        if (FAILED(hr))
++            return AVERROR_EXTERNAL;
++    }
 +
 +    outlink->w = inlink->w;
 +    outlink->h = inlink->h;
@@ -1003,12 +1063,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +        s->final_param = 1.0f;
 +
 +    s->target_peak = 1.0f;
-+    return 0;
++    return ff_dovi_el_init(avctx, &s->el_sync, s->apply_el, tonemap_d3d11_filter_frame);
 +}
 +
 +static av_cold void tonemap_d3d11_uninit(AVFilterContext *avctx)
 +{
 +    TonemapD3D11Context *s = avctx->priv;
++    ff_framesync_uninit(&s->el_sync.fs);
 +    release_d3d11_resources(s);
 +    av_buffer_unref(&s->hw_device_ctx);
 +    av_buffer_unref(&s->hw_frames_ctx_out);
@@ -1021,6 +1082,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    AVFilterFormats *formats;
 +    int ret;
 +    const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_D3D11, AV_PIX_FMT_NONE };
++
++    if (s->apply_el && (ret = ff_dovi_el_query_formats(avctx, AV_PIX_FMT_D3D11)) < 0)
++        return ret;
 +
 +    // single format
 +    formats = ff_make_format_list(pix_fmts);
@@ -1094,6 +1158,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +        { "limited", 0, 0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG }, 0, 0, FLAGS, "range" },
 +        { "full",    0, 0, AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_JPEG }, 0, 0, FLAGS, "range" },
 +    { "format", "Output pixel format", OFFSET(format), AV_OPT_TYPE_PIXEL_FMT, { .i64 = AV_PIX_FMT_NONE }, AV_PIX_FMT_NONE, INT_MAX, FLAGS, "fmt" },
++    { "apply_el", "Apply Dolby Vision enhancement layer", OFFSET(apply_el), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
 +    { "apply_dovi", "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
 +    { "force_output_copy", "Force output through an internal unordered-access texture", OFFSET(force_output_copy), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
 +    { "peak", "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
@@ -1104,11 +1169,16 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +
 +AVFILTER_DEFINE_CLASS(tonemap_d3d11);
 +
++static int tonemap_d3d11_activate(AVFilterContext *avctx)
++{
++    TonemapD3D11Context *s = avctx->priv;
++    return ff_dovi_el_activate(avctx, &s->el_sync, s->apply_el);
++}
++
 +static const AVFilterPad tonemap_d3d11_inputs[] = {
 +    {
 +        .name         = "default",
 +        .type         = AVMEDIA_TYPE_VIDEO,
-+        .filter_frame = tonemap_d3d11_filter_frame,
 +        .config_props = tonemap_d3d11_config_input,
 +    },
 +};
@@ -1128,12 +1198,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_d3d11.c
 +    .p.priv_class   = &tonemap_d3d11_class,
 +    .preinit        = tonemap_d3d11_preinit,
 +    .init           = tonemap_d3d11_init,
++    .activate       = tonemap_d3d11_activate,
 +    .uninit         = tonemap_d3d11_uninit,
 +    FILTER_INPUTS(tonemap_d3d11_inputs),
 +    FILTER_OUTPUTS(tonemap_d3d11_outputs),
 +    FILTER_QUERY_FUNC(tonemap_d3d11_query_formats),
 +    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
++    .p.flags        = AVFILTER_FLAG_HWDEVICE | AVFILTER_FLAG_DYNAMIC_INPUTS,
 +};
 Index: FFmpeg/libavfilter/vf_tonemap_d3d11.h
 ===================================================================
@@ -1173,7 +1244,7 @@ Index: FFmpeg/libavfilter/d3d11/tonemap.hlsl
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/d3d11/tonemap.hlsl
-@@ -0,0 +1,626 @@
+@@ -0,0 +1,660 @@
 +/*
 + * D3D11 tonemap
 + *
@@ -1198,6 +1269,12 @@ Index: FFmpeg/libavfilter/d3d11/tonemap.hlsl
 +
 +Texture2DArray<float4> src_y  : register(t0);
 +Texture2DArray<float4> src_uv : register(t1);
++
++#if ENHANCEMENT_LAYER
++Texture2DArray<float4> el_y : register(t2);
++Texture2DArray<float4> el_uv : register(t3);
++SamplerState el_sampler : register(s0);
++#endif
 +
 +RWTexture2DArray<float>  dst_y  : register(u0);
 +RWTexture2DArray<float2> dst_uv : register(u1);
@@ -1239,6 +1316,7 @@ Index: FFmpeg/libavfilter/d3d11/tonemap.hlsl
 +    float4 dovi_pivots[6];
 +    float4 dovi_coeffs[24];
 +    float4 dovi_mmr[144];
++    float4 el_offset, el_slope, el_threshold, el_scale, el_coords;
 +};
 +
 +// d3d compiler at optimization level 3 would remove dead branches when comparing with those constants
@@ -1714,10 +1792,37 @@ Index: FFmpeg/libavfilter/d3d11/tonemap.hlsl
 +                  dovi_reshape_channel(sig, 2));
 +}
 +
-+float3 process(float3 yuv)
++#if ENHANCEMENT_LAYER
++float3 compose_el(float3 bl, float2 pos)
 +{
-+    if (APPLY_DOVI_VAL != 0)
++    if (el_scale.w == 0.0)
++        return bl;
++    uint yw, yh, yn, cw, ch, cn;
++    el_y.GetDimensions(yw, yh, yn);
++    el_uv.GetDimensions(cw, ch, cn);
++    float2 visible = float2(el_offset.w, el_slope.w);
++    float2 base = pos * el_scale.xy;
++    float2 chroma_visible = ceil(visible * 0.5);
++    float2 ly = clamp((base + el_coords.xy) * visible, 0.5, visible - 0.5) / float2(yw, yh);
++    float2 uv = clamp((base + el_coords.zw) * chroma_visible, 0.5, chroma_visible - 0.5) / float2(cw, ch);
++    float3 el = float3(el_y.SampleLevel(el_sampler, float3(ly, 0), 0).r,
++                       el_uv.SampleLevel(el_sampler, float3(uv, 0), 0).rg);
++    float3 d = el * el_scale.z - el_offset.xyz;
++    return bl + sign(d) * (abs(d) * el_slope.xyz + el_threshold.xyz);
++}
++#endif
++
++float3 process(float3 yuv, float2 pos)
++{
++    if (APPLY_DOVI_VAL != 0) {
++#if ENHANCEMENT_LAYER
++        yuv *= 65535.0 / (64.0 * 1023.0);
++#endif
 +        yuv = dovi_reshape(yuv);
++#if ENHANCEMENT_LAYER
++        yuv = compose_el(yuv, pos);
++#endif
++    }
 +
 +    float3 c;
 +    if (APPLY_DOVI_VAL != 0) {
@@ -1784,10 +1889,10 @@ Index: FFmpeg/libavfilter/d3d11/tonemap.hlsl
 +    float3 yuv2 = float3(src_y.Load(int4(x, min(y + 1, (uint)height - 1), 0, 0)).r, uv);
 +    float3 yuv3 = float3(src_y.Load(int4(min(x + 1, (uint)width - 1), min(y + 1, (uint)height - 1), 0, 0)).r, uv);
 +
-+    float3 c0 = process(yuv0);
-+    float3 c1 = process(yuv1);
-+    float3 c2 = process(yuv2);
-+    float3 c3 = process(yuv3);
++    float3 c0 = process(yuv0, float2(x, y));
++    float3 c1 = process(yuv1, float2(min(x + 1, (uint)width - 1), y));
++    float3 c2 = process(yuv2, float2(x, min(y + 1, (uint)height - 1)));
++    float3 c3 = process(yuv3, float2(min(x + 1, (uint)width - 1), min(y + 1, (uint)height - 1)));
 +
 +    dst_y[uint3(x, y, 0)] = c0.x;
 +    if (x + 1 < (uint)width)

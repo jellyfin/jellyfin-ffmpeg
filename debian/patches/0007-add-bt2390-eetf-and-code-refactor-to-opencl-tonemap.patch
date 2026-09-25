@@ -648,7 +648,7 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
      float j = tone_param;
      float a, b;
  
-@@ -71,202 +105,1040 @@ float mobius(float s, float peak) {
+@@ -71,202 +105,1094 @@ float mobius(float s, float peak) {
          return s;
  
      a = -j * j * (peak - 1.0f) / (j * j - 2.0f * j + peak);
@@ -861,20 +861,6 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +#endif
 +    return c;
 +}
-+
-+// Map from source space YUV to destination space RGB
-+float3 map_to_dst_space_from_yuv(float3 yuv) {
-+#ifdef DOVI_RESHAPE
-+    float3 c = ycc2rgb(yuv.x, yuv.y, yuv.z);
-+    c = lms2rgb(c.x, c.y, c.z);
-+    c = rgb2lrgb(c);
-+    c = lrgb2lrgb(c);
-+#else
-+    float3 c = yuv2lrgb(yuv);
-+    c = lrgb2lrgb(c);
-+#endif
-+    return c;
-+}
  
 -    if (lidx == 0 && lidy == 0 && atomic_add(counter_wg_p, 1) == num_wg - 1) {
 -        *counter_wg_p = 0;
@@ -895,6 +881,20 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 -                avg_buf[frame_idx] = cur_avg;
 -                peak_buf[frame_idx] = cur_max;
 -            }
++// Map from source space YUV to destination space RGB
++float3 map_to_dst_space_from_yuv(float3 yuv) {
++#ifdef DOVI_RESHAPE
++    float3 c = ycc2rgb(yuv.x, yuv.y, yuv.z);
++    c = lms2rgb(c.x, c.y, c.z);
++    c = rgb2lrgb(c);
++    c = lrgb2lrgb(c);
++#else
++    float3 c = yuv2lrgb(yuv);
++    c = lrgb2lrgb(c);
++#endif
++    return c;
++}
++
 +#ifdef DOVI_RESHAPE
 +vec reshape_mmr(vec3 sig,
 +                vec4 coeffs,
@@ -1052,11 +1052,7 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +    return sx4;
 +  #undef DOT_MMR
 +}
- 
--    // Scale the signal to compensate for differences in the average brightness
--    float slope = min(1.0f, sdr_avg / average);
--    sig *= slope;
--    peak *= slope;
++
 +void reshape_dovi_iptx4(float3 *ipt0,
 +                        float3 *ipt1,
 +                        float3 *ipt2,
@@ -1156,6 +1152,13 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +        coeffs_temp = PICK_COEFF_FOR(sig_i4.y);
 +        PACK_COEFFS(y)
  
+-    // Scale the signal to compensate for differences in the average brightness
+-    float slope = min(1.0f, sdr_avg / average);
+-    sig *= slope;
+-    peak *= slope;
++        coeffs_temp = PICK_COEFF_FOR(sig_i4.z);
++        PACK_COEFFS(z)
+ 
 -    // Desaturate the color using a coefficient dependent on the signal level
 -    if (desat_param > 0.0f) {
 -        float luma = get_luma_dst(rgb);
@@ -1163,9 +1166,6 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 -        coeff = native_powr(coeff, 10.0f / desat_param);
 -        rgb = mix(rgb, (float3)luma, (float3)coeff);
 -        sig = mix(sig, luma * slope, coeff);
-+        coeffs_temp = PICK_COEFF_FOR(sig_i4.z);
-+        PACK_COEFFS(z)
-+
 +        coeffs_temp = PICK_COEFF_FOR(sig_i4.w);
 +        PACK_COEFFS(w)
 +
@@ -1328,8 +1328,8 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +  #else
 +    *dst = clamp(s, dovi_lo, dovi_hi);
 +  #endif
-+}
-+
+ }
+ 
 +void reshape_dovi_ipt(float3 *ipt,
 +                      __global const vec *src_dovi_params,
 +                      __global const vec *src_dovi_pivots,
@@ -1346,7 +1346,7 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +    reshape_dovi_sig(&dstp, sig.y, &sig, 1, src_dovi_params, src_dovi_pivots, src_dovi_coeffs, src_dovi_mmr);
 +    reshape_dovi_sig(&dstt, sig.z, &sig, 2, src_dovi_params, src_dovi_pivots, src_dovi_coeffs, src_dovi_mmr);
 +    *ipt = (float3)(dsti, dstp, dstt);
- }
++}
 +#endif //#ifdef IS_QCOM_GPU
 +#endif //#ifdef DOVI_RESHAPE
 +
@@ -1361,7 +1361,27 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +__constant sampler_t d_sampler = (CLK_NORMALIZED_COORDS_TRUE  |
 +                                  CLK_ADDRESS_REPEAT          |
 +                                  CLK_FILTER_NEAREST);
- 
++
++#ifdef DOVI_EL
++float3 compose_el(float3 bl, float2 pos, __read_only image2d_t el_y,
++                   __read_only image2d_t el_uv, float16 nlq, float4 offsets)
++{
++    if (!nlq.sf)
++        return bl;
++    float2 base = pos * nlq.scd;
++    float2 visible = (float2)(nlq.s3, nlq.s7);
++    float2 chroma_visible = ceil(visible * 0.5f);
++    float2 ly = clamp((base + offsets.xy) * visible, (float2)(0.5f), visible - 0.5f) /
++                convert_float2(get_image_dim(el_y));
++    float2 uv = clamp((base + offsets.zw) * chroma_visible, (float2)(0.5f), chroma_visible - 0.5f) /
++                convert_float2(get_image_dim(el_uv));
++    float3 el = (float3)(read_imagef(el_y, l_sampler, ly).x,
++                         read_imagef(el_uv, l_sampler, uv).xy);
++    float3 d = el * nlq.se - nlq.s012;
++    return bl + sign(d) * (fabs(d) * nlq.s456 + nlq.s89a);
++}
++#endif
++
  __kernel void tonemap(__write_only image2d_t dst1,
                        __read_only  image2d_t src1,
                        __write_only image2d_t dst2,
@@ -1369,6 +1389,11 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 -                      global uint *util_buf,
 -                      float peak
 -                      )
+-{
+-    __local uint sum_wg;
+-    const sampler_t sampler = (CLK_NORMALIZED_COORDS_FALSE |
+-                               CLK_ADDRESS_CLAMP_TO_EDGE   |
+-                               CLK_FILTER_NEAREST);
 +#ifdef NON_SEMI_PLANAR_OUT
 +                      __write_only image2d_t dst3,
 +#endif
@@ -1381,12 +1406,13 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +#ifdef DOVI_RESHAPE
 +                      __global const vec *dovi_buf,
 +#endif
++#ifdef DOVI_EL
++                      __read_only image2d_t el_y,
++                      __read_only image2d_t el_uv,
++                      float16 nlq, float4 el_offsets,
++#endif
 +                      float peak)
- {
--    __local uint sum_wg;
--    const sampler_t sampler = (CLK_NORMALIZED_COORDS_FALSE |
--                               CLK_ADDRESS_CLAMP_TO_EDGE   |
--                               CLK_FILTER_NEAREST);
++{
      int xi = get_global_id(0);
      int yi = get_global_id(1);
      // each work item process four pixels
@@ -1471,6 +1497,12 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +#endif
 +
 +#ifdef DOVI_RESHAPE
++#ifdef DOVI_EL
++    yuv0 *= 65535.0f / (64.0f * 1023.0f);
++    yuv1 *= 65535.0f / (64.0f * 1023.0f);
++    yuv2 *= 65535.0f / (64.0f * 1023.0f);
++    yuv3 *= 65535.0f / (64.0f * 1023.0f);
++#endif
 +    __global const vec *dovi_params = dovi_buf;
 +    __global const vec *dovi_pivots = dovi_buf + 24;
 +    __global const vec4 *dovi_coeffs = (__global const vec4 *)(dovi_buf + 48);
@@ -1483,6 +1515,12 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +  #else
 +    reshape_dovi_iptx4(&yuv0, &yuv1, &yuv2, &yuv3, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
 +  #endif
++#ifdef DOVI_EL
++    yuv0 = compose_el(yuv0, (float2)(x, y), el_y, el_uv, nlq, el_offsets);
++    yuv1 = compose_el(yuv1, (float2)(x + 1, y), el_y, el_uv, nlq, el_offsets);
++    yuv2 = compose_el(yuv2, (float2)(x, y + 1), el_y, el_uv, nlq, el_offsets);
++    yuv3 = compose_el(yuv3, (float2)(x + 1, y + 1), el_y, el_uv, nlq, el_offsets);
++#endif
 +#endif
 +
 +    float3 c0, c1, c2, c3;
@@ -1694,7 +1732,12 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +#ifdef DOVI_RESHAPE
 +                          __global const vec *restrict dovi_buf,
 +#endif
-+                          float peak)
++    #ifdef DOVI_EL
++                      __read_only image2d_t el_y,
++                      __read_only image2d_t el_uv,
++                      float16 nlq, float4 el_offsets,
++#endif
++                      float peak)
 +{
 +    int xi = get_global_id(0);
 +    int yi = get_global_id(1);
@@ -1778,6 +1821,12 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +#endif
 +
 +#ifdef DOVI_RESHAPE
++#ifdef DOVI_EL
++    yuv0 *= 65535.0f / (64.0f * 1023.0f);
++    yuv1 *= 65535.0f / (64.0f * 1023.0f);
++    yuv2 *= 65535.0f / (64.0f * 1023.0f);
++    yuv3 *= 65535.0f / (64.0f * 1023.0f);
++#endif
 +    __global const vec *dovi_params = dovi_buf;
 +    __global const vec *dovi_pivots = dovi_buf + 24;
 +    __global const vec4 *dovi_coeffs = (__global const vec4 *)(dovi_buf + 48);
@@ -1790,6 +1839,12 @@ Index: FFmpeg/libavfilter/opencl/tonemap.cl
 +  #else
 +    reshape_dovi_iptx4(&yuv0, &yuv1, &yuv2, &yuv3, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
 +  #endif
++#ifdef DOVI_EL
++    yuv0 = compose_el(yuv0, (float2)(x, y), el_y, el_uv, nlq, el_offsets);
++    yuv1 = compose_el(yuv1, (float2)(x + 1, y), el_y, el_uv, nlq, el_offsets);
++    yuv2 = compose_el(yuv2, (float2)(x, y + 1), el_y, el_uv, nlq, el_offsets);
++    yuv3 = compose_el(yuv3, (float2)(x + 1, y + 1), el_y, el_uv, nlq, el_offsets);
++#endif
 +#endif
 +
 +    float3 c0, c1, c2, c3;
@@ -1862,7 +1917,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
   * This file is part of FFmpeg.
   *
   * FFmpeg is free software; you can redistribute it and/or
-@@ -15,27 +15,50 @@
+@@ -15,27 +15,51 @@
   * License along with FFmpeg; if not, write to the Free Software
   * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
   */
@@ -1890,6 +1945,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  #include "opencl_source.h"
  #include "video.h"
  #include "colorspace.h"
++#include "dovi_el.h"
 +#include "dither_matrix.h"
  
 -// TODO:
@@ -1919,7 +1975,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
  enum TonemapAlgorithm {
      TONEMAP_NONE,
-@@ -45,7 +68,17 @@ enum TonemapAlgorithm {
+@@ -45,7 +69,17 @@ enum TonemapAlgorithm {
      TONEMAP_REINHARD,
      TONEMAP_HABLE,
      TONEMAP_MOBIUS,
@@ -1938,7 +1994,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  };
  
  typedef struct TonemapOpenCLContext {
-@@ -56,32 +89,61 @@ typedef struct TonemapOpenCLContext {
+@@ -56,32 +90,65 @@ typedef struct TonemapOpenCLContext {
      enum AVColorPrimaries primaries, primaries_in, primaries_out;
      enum AVColorRange range, range_in, range_out;
      enum AVChromaLocation chroma_loc;
@@ -1967,6 +2023,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    int                   tonemap_mode;
      enum AVPixelFormat    format;
 +    int                   apply_dovi;
++    int apply_el;
++    FFDOVIELContext el_sync;
++    float el_params[20];
++    const AVFrame *el;
      double                peak;
 +    double                src_peak;
 +    double                target_peak;
@@ -2007,7 +2067,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      [TONEMAP_NONE]     = "direct",
      [TONEMAP_LINEAR]   = "linear",
      [TONEMAP_GAMMA]    = "gamma",
-@@ -89,6 +151,14 @@ static const char *const tonemap_func[TO
+@@ -89,6 +156,14 @@ static const char *const tonemap_func[TO
      [TONEMAP_REINHARD] = "reinhard",
      [TONEMAP_HABLE]    = "hable",
      [TONEMAP_MOBIUS]   = "mobius",
@@ -2022,7 +2082,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  };
  
  static int get_rgb2rgb_matrix(enum AVColorPrimaries in, enum AVColorPrimaries out,
-@@ -109,90 +179,514 @@ static int get_rgb2rgb_matrix(enum AVCol
+@@ -109,90 +184,516 @@ static int get_rgb2rgb_matrix(enum AVCol
      return 0;
  }
  
@@ -2394,7 +2454,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    }
 +
 +    // for low perf device, only do reshaping for pure dovi
-+    if (ctx->tradeoff && ctx->dovi && !ctx->is_pure_dovi) {
++    if (ctx->tradeoff && ctx->dovi && !ctx->is_pure_dovi && !ctx->apply_el) {
 +        av_freep(&ctx->dovi);
 +        ctx->apply_dovi = 0;
 +        if (ctx->is_hlg_dovi) {
@@ -2406,7 +2466,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +
 +    // use FP16 for dovi reshaping only when tradeoff is enabled and it's supported
 +    ctx->dovi_use_fp16 = 0;
-+    if (ctx->tradeoff && ctx->dovi && device_exts && strstr(device_exts, "cl_khr_fp16")) {
++    if (ctx->tradeoff && ctx->dovi && !ctx->apply_el && device_exts && strstr(device_exts, "cl_khr_fp16")) {
 +        ctx->dovi_use_fp16 = 1;
 +        av_log(avctx, AV_LOG_DEBUG, "FP16 is enabled for DOVI reshaping.\n");
 +    }
@@ -2477,6 +2537,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    }
 +
 +    av_bprint_init(&header, 2048, AV_BPRINT_SIZE_UNLIMITED);
++    if (ctx->apply_el)
++        av_bprintf(&header, "#define DOVI_EL\n");
 +
 +    if (is_qcom_proprietary)
 +        av_bprintf(&header, "#define IS_QCOM_GPU\n");
@@ -2566,7 +2628,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      av_bprintf(&header, "#define chroma_loc %d\n", (int)ctx->chroma_loc);
  
      if (rgb2rgb_passthrough)
-@@ -200,44 +694,64 @@ static int tonemap_opencl_init(AVFilterC
+@@ -200,44 +701,64 @@ static int tonemap_opencl_init(AVFilterC
      else
          ff_opencl_print_const_matrix_3x3(&header, "rgb2rgb", rgb2rgb);
  
@@ -2651,7 +2713,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
      opencl_sources[0] = header.str;
-@@ -255,50 +769,291 @@ static int tonemap_opencl_init(AVFilterC
+@@ -255,50 +776,303 @@ static int tonemap_opencl_init(AVFilterC
      CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create OpenCL "
                       "command queue %d.\n", cle);
  
@@ -2684,12 +2746,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +            err = AVERROR(EIO);
 +            goto fail;
 +        }
- 
--    ctx->util_mem =
--        clCreateBuffer(ctx->ocf.hwctx->context, 0,
--                       (2 * DETECTION_FRAMES + 7) * sizeof(unsigned),
--                       NULL, &cle);
--    CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create util buffer: %d.\n", cle);
++
 +        cle = clEnqueueWriteImage(ctx->command_queue,
 +                                  ctx->dither_image,
 +                                  CL_FALSE, m_origin, m_region,
@@ -2755,7 +2812,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +                                             1, &event_in, &event_out);
 +            CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to enqueue copy of lut buffer to image: %d.\n", cle);
 +        }
-+
+ 
+-    ctx->util_mem =
+-        clCreateBuffer(ctx->ocf.hwctx->context, 0,
+-                       (2 * DETECTION_FRAMES + 7) * sizeof(unsigned),
+-                       NULL, &cle);
+-    CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to create util buffer: %d.\n", cle);
 +        cle = clWaitForEvents(1, &event_out);
 +        CL_FAIL_ON_ERROR(AVERROR(EIO), "Failed to wait for event completion: %d.\n", cle);
 +        if (event_in) {
@@ -2935,14 +2997,25 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        av_log(ctx, AV_LOG_ERROR, "Unsupported output format: %s\n",
 +               av_get_pix_fmt_name(out_format));
 +        return AVERROR(ENOSYS);
-+    }
+     }
 +    if (in_desc->comp[0].depth != 10 && in_desc->comp[0].depth != 16) {
 +        av_log(ctx, AV_LOG_ERROR, "Unsupported input format depth: %d\n",
 +               in_desc->comp[0].depth);
 +        return AVERROR(ENOSYS);
-     }
- 
--    s->ocf.output_format = s->format == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : s->format;
++    }
++
++    if (ctx->apply_el) {
++        AVBufferRef *ref = ff_filter_link(avctx->inputs[1])->hw_frames_ctx;
++        AVHWFramesContext *ef = ref ? (AVHWFramesContext *)ref->data : NULL;
++        if (in_format != AV_PIX_FMT_P010 || !ef || ef->sw_format != AV_PIX_FMT_P010 ||
++            ((AVOpenCLDeviceContext *)ef->device_ctx->hwctx)->context != ctx->ocf.hwctx->context) {
++            av_log(avctx, AV_LOG_ERROR, "BL/EL inputs must be P010 and share an OpenCL context.\n");
++            return AVERROR(EINVAL);
++        }
++        if ((ret = ff_dovi_el_configure(avctx, &ctx->el_sync)) < 0)
++            return ret;
++    }
++
 +    ctx->in_fmt     = in_format;
 +    ctx->out_fmt    = out_format;
 +    ctx->in_desc    = in_desc;
@@ -2950,7 +3023,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    ctx->in_planes  = av_pix_fmt_count_planes(in_format);
 +    ctx->out_planes = av_pix_fmt_count_planes(out_format);
 +    ctx->ocf.output_format = out_format;
-+
+ 
+-    s->ocf.output_format = s->format == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : s->format;
      ret = ff_opencl_filter_config_output(outlink);
      if (ret < 0)
          return ret;
@@ -2965,7 +3039,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      return 0;
  }
  
-@@ -309,13 +1064,50 @@ static int launch_kernel(AVFilterContext
+@@ -309,13 +1083,57 @@ static int launch_kernel(AVFilterContext
      size_t global_work[2];
      size_t local_work[2];
      cl_int cle;
@@ -2980,13 +3054,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        err = AVERROR(EIO);
 +        goto fail;
 +    }
- 
--    CL_SET_KERNEL_ARG(kernel, 0, cl_mem, &output->data[0]);
--    CL_SET_KERNEL_ARG(kernel, 1, cl_mem, &input->data[0]);
--    CL_SET_KERNEL_ARG(kernel, 2, cl_mem, &output->data[1]);
--    CL_SET_KERNEL_ARG(kernel, 3, cl_mem, &input->data[1]);
--    CL_SET_KERNEL_ARG(kernel, 4, cl_mem, &ctx->util_mem);
--    CL_SET_KERNEL_ARG(kernel, 5, cl_float, &peak);
++
 +    if (ctx->in_planes > 2 && !input->data[2]) {
 +        err = AVERROR(EIO);
 +        goto fail;
@@ -3001,7 +3069,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +    CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_mem, &input->data[0]);
 +    CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_mem, &output->data[1]);
 +    CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_mem, &input->data[1]);
-+
+ 
+-    CL_SET_KERNEL_ARG(kernel, 0, cl_mem, &output->data[0]);
+-    CL_SET_KERNEL_ARG(kernel, 1, cl_mem, &input->data[0]);
+-    CL_SET_KERNEL_ARG(kernel, 2, cl_mem, &output->data[1]);
+-    CL_SET_KERNEL_ARG(kernel, 3, cl_mem, &input->data[1]);
+-    CL_SET_KERNEL_ARG(kernel, 4, cl_mem, &ctx->util_mem);
+-    CL_SET_KERNEL_ARG(kernel, 5, cl_float, &peak);
 +    if (ctx->out_planes > 2) {
 +        CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_mem, &output->data[2]);
 +    }
@@ -3018,11 +3092,24 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_mem, &ctx->dovi_buf);
 +    }
 +
++    if (ctx->apply_el) {
++        const AVFrame *el = ctx->el_params[15] ? ctx->el : input;
++        CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_mem, &el->data[0]);
++        CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_mem, &el->data[1]);
++        CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_float16, ctx->el_params);
++        CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_float4, ctx->el_params + 16);
++    }
 +    CL_SET_KERNEL_ARG(kernel, idx_arg++, cl_float, &peak);
  
      local_work[0]  = 16;
      local_work[1]  = 16;
-@@ -339,12 +1131,10 @@ static int tonemap_opencl_filter_frame(A
+@@ -334,17 +1152,15 @@ fail:
+     return err;
+ }
+ 
+-static int tonemap_opencl_filter_frame(AVFilterLink *inlink, AVFrame *input)
++static int tonemap_opencl_filter_frame(AVFilterLink *inlink, AVFrame *input, const AVFrame *el)
+ {
      AVFilterContext    *avctx = inlink->dst;
      AVFilterLink     *outlink = avctx->outputs[0];
      TonemapOpenCLContext *ctx = avctx->priv;
@@ -3036,7 +3123,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      av_log(ctx, AV_LOG_DEBUG, "Filter input: %s, %ux%u (%"PRId64").\n",
             av_get_pix_fmt_name(input->format),
-@@ -352,7 +1142,6 @@ static int tonemap_opencl_filter_frame(A
+@@ -352,7 +1168,6 @@ static int tonemap_opencl_filter_frame(A
  
      if (!input->hw_frames_ctx)
          return AVERROR(EINVAL);
@@ -3044,12 +3131,14 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      output = ff_get_video_buffer(outlink, outlink->w, outlink->h);
      if (!output) {
-@@ -364,17 +1153,68 @@ static int tonemap_opencl_filter_frame(A
+@@ -364,17 +1179,77 @@ static int tonemap_opencl_filter_frame(A
      if (err < 0)
          goto fail;
  
 -    if (!peak)
 -        peak = ff_determine_signal_peak(input);
++    ctx->el = el;
++    ctx->el_params[15] = 0.0f;
 +    if (ctx->apply_dovi)
 +        dovi_sd = av_frame_get_side_data(input, AV_FRAME_DATA_DOVI_METADATA);
 +
@@ -3087,7 +3176,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
 +        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
 +        // only map dovi rpus that don't require an EL
-+        if (rpu->disable_residual_flag) {
++        if (rpu->disable_residual_flag || ctx->apply_el) {
 +            struct FFDOVIMetadataRemap *dovi = av_malloc(sizeof(*dovi));
 +            ctx->dovi = dovi;
 +            if (!ctx->dovi)
@@ -3097,6 +3186,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +            ctx->is_hlg_dovi = input->color_trc == AVCOL_TRC_ARIB_STD_B67;
 +
 +            ff_map_dovi_metadata(ctx->dovi, metadata);
++            if (el && ctx->apply_el) {
++                ff_dovi_el_prepare(ctx->el_params, metadata, ctx->apply_el,
++                                   input->width, input->height, el->width, el->height,
++                                   el->chroma_location, 65535.0f / (64.0f * 1023.0f));
++                ctx->el_params[3] = el->width;
++                ctx->el_params[7] = el->height;
++            }
 +            output->color_trc = input->color_trc = AVCOL_TRC_SMPTE2084;
 +            output->colorspace = input->colorspace = AVCOL_SPC_BT2020_NCL;
 +            output->color_primaries = input->color_primaries = AVCOL_PRI_BT2020;
@@ -3119,7 +3215,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
  
      ctx->trc_in = input->color_trc;
      ctx->trc_out = output->color_trc;
-@@ -386,72 +1226,50 @@ static int tonemap_opencl_filter_frame(A
+@@ -386,72 +1261,50 @@ static int tonemap_opencl_filter_frame(A
      ctx->range_out = output->color_range;
      ctx->chroma_loc = output->chroma_location;
  
@@ -3215,10 +3311,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      av_frame_free(&input);
      av_frame_free(&output);
      return err;
-@@ -459,62 +1277,101 @@ fail:
+@@ -459,72 +1312,131 @@ fail:
  
  static av_cold void tonemap_opencl_uninit(AVFilterContext *avctx)
  {
++    ff_framesync_uninit(&((TonemapOpenCLContext *)avctx->priv)->el_sync.fs);
 +    tonemap_opencl_uninit_common(avctx);
 +
 +    tonemap_opencl_uninit_dovi(avctx);
@@ -3242,10 +3339,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 -            av_log(avctx, AV_LOG_ERROR, "Failed to release "
 -                   "kernel: %d.\n", cle);
 -    }
-+    // single format
-+    formats = ff_make_format_list(pix_fmts);
-+    ret = ff_formats_ref(formats, &avctx->inputs[0]->outcfg.formats);
-+    if (ret < 0)
++    if (ctx->apply_el && (ret = ff_dovi_el_query_formats(avctx, AV_PIX_FMT_OPENCL)) < 0)
 +        return ret;
  
 -    if (ctx->command_queue) {
@@ -3254,11 +3348,17 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 -            av_log(avctx, AV_LOG_ERROR, "Failed to release "
 -                   "command queue: %d.\n", cle);
 -    }
-+    ret = ff_formats_ref(formats, &avctx->outputs[0]->incfg.formats);
++    // single format
++    formats = ff_make_format_list(pix_fmts);
++    ret = ff_formats_ref(formats, &avctx->inputs[0]->outcfg.formats);
 +    if (ret < 0)
 +        return ret;
  
 -    ff_opencl_filter_uninit(avctx);
++    ret = ff_formats_ref(formats, &avctx->outputs[0]->incfg.formats);
++    if (ret < 0)
++        return ret;
++
 +    // colorspaces and ranges
 +    if ((ret = ff_formats_ref(ff_all_color_spaces(),
 +                              &avctx->inputs[0]->outcfg.color_spaces)) < 0)
@@ -3352,6 +3452,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
 +        { "limited",       0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG },         0, 0, FLAGS, "range" },
 +        { "full",          0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_JPEG },         0, 0, FLAGS, "range" },
 +    { "format",      "Output pixel format", OFFSET(format), AV_OPT_TYPE_PIXEL_FMT, { .i64 = AV_PIX_FMT_NONE }, AV_PIX_FMT_NONE, INT_MAX, FLAGS, "fmt" },
++    { "apply_el", "Apply Dolby Vision enhancement layer", OFFSET(apply_el), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
 +    { "apply_dovi",  "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
 +    { "tradeoff",    "Apply tradeoffs to offload computing", OFFSET(tradeoff), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, FLAGS, "tradeoff" },
 +        { "auto",          0,       0,                 AV_OPT_TYPE_CONST, { .i64 = -1 }, 0, 0, FLAGS, "tradeoff" },
@@ -3364,21 +3465,49 @@ Index: FFmpeg/libavfilter/vf_tonemap_opencl.c
      { NULL }
  };
  
-@@ -540,13 +1397,14 @@ static const AVFilterPad tonemap_opencl_
+ AVFILTER_DEFINE_CLASS(tonemap_opencl);
+ 
++static int tonemap_opencl_init_inputs(AVFilterContext *avctx)
++{
++    TonemapOpenCLContext *ctx = avctx->priv;
++    int ret = ff_opencl_filter_init(avctx);
++    if (ret < 0)
++        return ret;
++    return ff_dovi_el_init(avctx, &ctx->el_sync, ctx->apply_el,
++                          tonemap_opencl_filter_frame);
++}
++
++static int tonemap_opencl_activate(AVFilterContext *avctx)
++{
++    TonemapOpenCLContext *ctx = avctx->priv;
++    return ff_dovi_el_activate(avctx, &ctx->el_sync, ctx->apply_el);
++}
++
+ static const AVFilterPad tonemap_opencl_inputs[] = {
+     {
+         .name         = "default",
+         .type         = AVMEDIA_TYPE_VIDEO,
+-        .filter_frame = &tonemap_opencl_filter_frame,
+         .config_props = &ff_opencl_filter_config_input,
+     },
+ };
+@@ -540,13 +1452,15 @@ static const AVFilterPad tonemap_opencl_
  const FFFilter ff_vf_tonemap_opencl = {
      .p.name         = "tonemap_opencl",
      .p.description  = NULL_IF_CONFIG_SMALL("Perform HDR to SDR conversion with tonemapping."),
 -    .p.priv_class   = &tonemap_opencl_class,
 -    .p.flags        = AVFILTER_FLAG_HWDEVICE,
      .priv_size      = sizeof(TonemapOpenCLContext),
+-    .init           = &ff_opencl_filter_init,
 +    .p.priv_class   = &tonemap_opencl_class,
 +    .preinit        = &tonemap_opencl_preinit,
-     .init           = &ff_opencl_filter_init,
++    .init           = tonemap_opencl_init_inputs,
++    .activate       = tonemap_opencl_activate,
      .uninit         = &tonemap_opencl_uninit,
      FILTER_INPUTS(tonemap_opencl_inputs),
      FILTER_OUTPUTS(tonemap_opencl_outputs),
 -    FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
 +    FILTER_QUERY_FUNC(tonemap_opencl_query_formats),
      .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
++    .p.flags        = AVFILTER_FLAG_HWDEVICE | AVFILTER_FLAG_DYNAMIC_INPUTS,
  };

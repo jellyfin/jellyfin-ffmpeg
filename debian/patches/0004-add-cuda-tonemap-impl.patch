@@ -52,7 +52,20 @@ Index: FFmpeg/libavfilter/Makefile
 ===================================================================
 --- FFmpeg.orig/libavfilter/Makefile
 +++ FFmpeg/libavfilter/Makefile
-@@ -541,6 +541,8 @@ OBJS-$(CONFIG_TMEDIAN_FILTER)
+@@ -35,6 +35,12 @@ OBJS-$(CONFIG_QSVVPP)
+ OBJS-$(CONFIG_SCENE_SAD)                     += scene_sad.o
+ OBJS-$(CONFIG_DNN)                           += dnn_filter_common.o
+ 
++# Shared Dolby Vision enhancement-layer processing
++OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)         += dovi_el.o framesync.o
++OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)       += dovi_el.o framesync.o
++OBJS-$(CONFIG_TONEMAP_VIDEOTOOLBOX_FILTER)  += dovi_el.o framesync.o
++OBJS-$(CONFIG_TONEMAP_D3D11_FILTER)        += dovi_el.o framesync.o
++
+ # audio filters
+ OBJS-$(CONFIG_AAP_FILTER)                    += af_aap.o
+ OBJS-$(CONFIG_ABENCH_FILTER)                 += f_bench.o
+@@ -541,6 +547,8 @@ OBJS-$(CONFIG_TMEDIAN_FILTER)
  OBJS-$(CONFIG_TMIDEQUALIZER_FILTER)          += vf_tmidequalizer.o
  OBJS-$(CONFIG_TMIX_FILTER)                   += vf_mix.o framesync.o
  OBJS-$(CONFIG_TONEMAP_FILTER)                += vf_tonemap.o
@@ -96,7 +109,7 @@ Index: FFmpeg/libavfilter/colorspace.c
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3])
  {
-@@ -191,3 +203,177 @@ void ff_update_hdr_metadata(AVFrame *in,
+@@ -191,3 +203,220 @@ void ff_update_hdr_metadata(AVFrame *in,
              metadata->max_luminance = av_d2q(peak * REFERENCE_WHITE, 10000);
      }
  }
@@ -195,6 +208,49 @@ Index: FFmpeg/libavfilter/colorspace.c
 +            }
 +        }
 +    }
++}
++
++/* Same LINEAR_DZ normalization as libplacebo's pl_map_dovi_metadata. */
++int ff_map_dovi_nlq(struct FFDOVINLQParams *out, const AVDOVIMetadata *data)
++{
++    const AVDOVIRpuDataHeader *h = av_dovi_get_header(data);
++    const AVDOVIDataMapping *m = av_dovi_get_mapping(data);
++    const double coef_scale = 1.0 / (1ULL << h->coef_log2_denom);
++    const double el_max = (1U << h->el_bit_depth) - 1;
++    int trivial = 1;
++
++    if (h->disable_residual_flag || m->nlq_method_idc != AV_DOVI_NLQ_LINEAR_DZ)
++        return 0;
++    for (int c = 0; c < 3; c++) {
++        const AVDOVINLQParams *n = &m->nlq[c];
++        trivial &= n->nlq_offset == 0 &&
++                   n->vdr_in_max == (1ULL << h->coef_log2_denom) &&
++                   n->linear_deadzone_slope == 0 && n->linear_deadzone_threshold == 0;
++        out->offset[c] = n->nlq_offset / el_max;
++        out->slope[c] = el_max * coef_scale * n->linear_deadzone_slope;
++        out->threshold[c] = coef_scale * ((double)n->linear_deadzone_threshold -
++                                         0.5 * n->linear_deadzone_slope);
++    }
++    return !trivial;
++}
++
++void ff_get_dovi_el_sampling(struct FFDOVIELSampling *out,
++                             int bl_width, int bl_height,
++                             int el_width, int el_height,
++                             enum AVChromaLocation chroma_location)
++{
++    const float bl_w = bl_width, bl_h = bl_height;
++    const float el_w = el_width, el_h = el_height;
++    int x = 0, y = 0;
++
++    av_chroma_location_enum_to_pos(&x, &y, chroma_location == AVCHROMA_LOC_UNSPECIFIED ?
++                                   AVCHROMA_LOC_LEFT : chroma_location);
++    out->scale[0] = 1.0f / bl_w;
++    out->scale[1] = 1.0f / bl_h;
++    out->luma_offset[0] = (el_w < bl_w ? 1.0f : 0.5f) / bl_w;
++    out->luma_offset[1] = 0.5f / bl_h;
++    out->chroma_offset[0] = out->luma_offset[0] - (x - 128) / (256.0f * el_w);
++    out->chroma_offset[1] = out->luma_offset[1] - (y - 128) / (256.0f * el_h);
 +}
 +
 +// linearizer for PQ/ST2084
@@ -350,7 +406,7 @@ Index: FFmpeg/libavfilter/colorspace.h
  void ff_matrix_mul_3x3(double dst[3][3],
                 const double src1[3][3], const double src2[3][3]);
  void ff_matrix_mul_3x3_vec(double dst[3], const double vec[3], const double mat[3][3]);
-@@ -38,4 +99,17 @@ void ff_fill_rgb2yuv_table(const AVLumaC
+@@ -38,4 +99,36 @@ void ff_fill_rgb2yuv_table(const AVLumaC
  double ff_determine_signal_peak(AVFrame *in);
  void ff_update_hdr_metadata(AVFrame *in, double peak);
  
@@ -359,6 +415,25 @@ Index: FFmpeg/libavfilter/colorspace.h
 +double ff_determine_dovi_tonemap_peak(AVFrame *in, const AVDOVIMetadata *data,
 +                                     int l0_only);
 +void ff_map_dovi_metadata(struct FFDOVIMetadataRemap *out, const AVDOVIMetadata *data);
++
++struct FFDOVINLQParams {
++    float offset[3];
++    float slope[3];
++    float threshold[3];
++};
++
++int ff_map_dovi_nlq(struct FFDOVINLQParams *out, const AVDOVIMetadata *data);
++
++struct FFDOVIELSampling {
++    float scale[2];
++    float luma_offset[2];
++    float chroma_offset[2];
++};
++
++void ff_get_dovi_el_sampling(struct FFDOVIELSampling *out,
++                             int bl_width, int bl_height,
++                             int el_width, int el_height,
++                             enum AVChromaLocation chroma_location);
 +
 +float ff_eotf_st2084_common(float x);
 +float ff_eotf_st2084(float x, float ref_white);
@@ -735,7 +810,7 @@ Index: FFmpeg/libavfilter/cuda/host_util.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/host_util.c
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,75 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -762,6 +837,7 @@ Index: FFmpeg/libavfilter/cuda/host_util.c
 +#define CHECK_CU(x) FF_CUDA_CHECK_DL(ctx, cu, x)
 +#define DEPTH_BYTES(depth) (((depth) + 7) / 8)
 +
++/* make_cu_tex == 2 uses normalized bilinear sampling on every plane (EL). */
 +int ff_make_cuda_frame(AVFilterContext *ctx, CudaFunctions *cu, int make_cu_tex,
 +                       FFCUDAFrame *dst, const AVFrame *src, const AVPixFmtDescriptor *src_desc)
 +{
@@ -778,8 +854,8 @@ Index: FFmpeg/libavfilter/cuda/host_util.c
 +    for (i = 0; make_cu_tex && (i < dst->planes); i++) {
 +        CUDA_TEXTURE_DESC tex_desc = {
 +            .addressMode = { CU_TR_ADDRESS_MODE_CLAMP, CU_TR_ADDRESS_MODE_CLAMP },
-+            .filterMode  = i ? CU_TR_FILTER_MODE_LINEAR : CU_TR_FILTER_MODE_POINT,
-+            .flags       = i ? 2 /* CU_TRSF_NORMALIZED_COORDINATES */ : 0
++            .filterMode  = (i || make_cu_tex == 2) ? CU_TR_FILTER_MODE_LINEAR : CU_TR_FILTER_MODE_POINT,
++            .flags       = (i || make_cu_tex == 2) ? 2 /* CU_TRSF_NORMALIZED_COORDINATES */ : 0
 +        };
 +
 +        CUDA_RESOURCE_DESC res_desc = {
@@ -1207,7 +1283,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/tonemap.cu
-@@ -0,0 +1,663 @@
+@@ -0,0 +1,704 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1661,6 +1737,25 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +                       + f_min * (c111 - c1), 0.0f, 1.0f);
 +}
 +
++static __inline__ __device__
++float3 compose_el(float3 bl, int x, int y, const FFCUDAFrame& el,
++                   const FFCUDAELParams& el_params)
++{
++    const float *p = el_params.params;
++    if (!p[15])
++        return bl;
++    float ly = tex2D<float>(el.tex[0], x * p[12] + p[16], y * p[13] + p[17]);
++    float2 uv = tex2D<float2>(el.tex[1], x * p[12] + p[18], y * p[13] + p[19]);
++    float v[3] = { ly, uv.x, uv.y };
++    float r[3];
++    for (int c = 0; c < 3; c++) {
++        float d = v[c] * p[14] - p[c];
++        r[c] = (d > 0.0f ? 1.0f : d < 0.0f ? -1.0f : 0.0f) *
++               (fabsf(d) * p[4 + c] + p[8 + c]);
++    }
++    return make_float3(bl.x + r[0], bl.y + r[1], bl.z + r[2]);
++}
++
 +extern "C" {
 +
 +#define _READER \
@@ -1684,6 +1779,17 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +    yuv1 = reshape_dovi_yuv(yuv1, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr); \
 +    yuv2 = reshape_dovi_yuv(yuv2, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr); \
 +    yuv3 = reshape_dovi_yuv(yuv3, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++
++#define _RESHAPE_EL \
++    yuv0 = yuv0 * (65535.0f / (64.0f * 1023.0f)); \
++    yuv1 = yuv1 * (65535.0f / (64.0f * 1023.0f)); \
++    yuv2 = yuv2 * (65535.0f / (64.0f * 1023.0f)); \
++    yuv3 = yuv3 * (65535.0f / (64.0f * 1023.0f)); \
++    _RESHAPE \
++    yuv0 = compose_el(yuv0, x, y, el, el_params); \
++    yuv1 = compose_el(yuv1, x + 1, y, el, el_params); \
++    yuv2 = compose_el(yuv2, x, y + 1, el, el_params); \
++    yuv3 = compose_el(yuv3, x + 1, y + 1, el, el_params);
 +
 +#define _YUV2RGB \
 +    float3 c0 = map_to_dst_space_from_yuv(yuv0); \
@@ -1775,7 +1881,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +__global__ void tonemap ## NAME( \
 +    FFCUDAFrame src, FFCUDAFrame dst, \
 +    cudaTextureObject_t dither_tex, \
-+    const float *__restrict__ dovi_buf) \
++    const float *__restrict__ dovi_buf, FFCUDAFrame el, FFCUDAELParams el_params) \
 +{ \
 +    READER \
 +    RESHAPE \
@@ -1803,6 +1909,16 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +TONEMAP_VARIANT(_dovi_itp,   _READER, _RESHAPE, _YCC2RGB_SRC, _TONEMAP_ITP, _RGB2YUV_SRC,        , _WRITER)
 +TONEMAP_VARIANT(_dovi_itp_d, _READER, _RESHAPE, _YCC2RGB_SRC, _TONEMAP_ITP, _RGB2YUV_SRC, _DITHER, _WRITER)
 +TONEMAP_VARIANT(_dovi_pq,    _READER, _RESHAPE, _YCC2RGB,                 , _RGB2YUV,            , _WRITER)
++
++TONEMAP_VARIANT(_dovi_el_max,   _READER, _RESHAPE_EL, _YCC2RGB,     _TONEMAP_MAX, _RGB2YUV,            , _WRITER)
++TONEMAP_VARIANT(_dovi_el_max_d, _READER, _RESHAPE_EL, _YCC2RGB,     _TONEMAP_MAX, _RGB2YUV,     _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_el_rgb,   _READER, _RESHAPE_EL, _YCC2RGB,     _TONEMAP_RGB, _RGB2YUV,            , _WRITER)
++TONEMAP_VARIANT(_dovi_el_rgb_d, _READER, _RESHAPE_EL, _YCC2RGB,     _TONEMAP_RGB, _RGB2YUV,     _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_el_lum,   _READER, _RESHAPE_EL, _YCC2RGB_SRC, _TONEMAP_LUM, _RGB2YUV_SRC,        , _WRITER)
++TONEMAP_VARIANT(_dovi_el_lum_d, _READER, _RESHAPE_EL, _YCC2RGB_SRC, _TONEMAP_LUM, _RGB2YUV_SRC, _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_el_itp,   _READER, _RESHAPE_EL, _YCC2RGB_SRC, _TONEMAP_ITP, _RGB2YUV_SRC,        , _WRITER)
++TONEMAP_VARIANT(_dovi_el_itp_d, _READER, _RESHAPE_EL, _YCC2RGB_SRC, _TONEMAP_ITP, _RGB2YUV_SRC, _DITHER, _WRITER)
++TONEMAP_VARIANT(_dovi_el_pq,    _READER, _RESHAPE_EL, _YCC2RGB,                 , _RGB2YUV,            , _WRITER)
 +
 +__global__ void build_lut(float4 *__restrict__ lut,
 +                          float peak,
@@ -1859,7 +1975,7 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +__global__ void tonemap_lut ## NAME( \
 +    FFCUDAFrame src, FFCUDAFrame dst, \
 +    const float4 *__restrict__ lut, \
-+    const float *__restrict__ dovi_buf) \
++    const float *__restrict__ dovi_buf, FFCUDAFrame el, FFCUDAELParams el_params) \
 +{ \
 +    READER \
 +    RESHAPE \
@@ -1869,13 +1985,14 @@ Index: FFmpeg/libavfilter/cuda/tonemap.cu
 +
 +TONEMAP_LUT_VARIANT(     , _READER,         , _LUT3D, _WRITER)
 +TONEMAP_LUT_VARIANT(_dovi, _READER, _RESHAPE, _LUT3D, _WRITER)
++TONEMAP_LUT_VARIANT(_dovi_el, _READER, _RESHAPE_EL, _LUT3D, _WRITER)
 +
 +}
 Index: FFmpeg/libavfilter/cuda/tonemap.h
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/cuda/tonemap.h
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,47 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -1896,6 +2013,10 @@ Index: FFmpeg/libavfilter/cuda/tonemap.h
 +
 +#ifndef AVFILTER_CUDA_TONEMAP_H
 +#define AVFILTER_CUDA_TONEMAP_H
++
++typedef struct FFCUDAELParams {
++    float params[20];
++} FFCUDAELParams;
 +
 +enum TonemapAlgorithm {
 +    TONEMAP_NONE,
@@ -2030,7 +2151,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_cuda.c
-@@ -0,0 +1,1285 @@
+@@ -0,0 +1,1339 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -2066,6 +2187,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +#include "avfilter.h"
 +#include "colorspace.h"
++#include "dovi_el.h"
 +#include "cuda/host_util.h"
 +#include "cuda/load_helper.h"
 +#include "cuda/shared.h"
@@ -2154,6 +2276,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    /* enum TonemapMode */
 +    int tonemap_mode;
 +    int apply_dovi;
++    int apply_el;
++    FFDOVIELContext el_sync;
++    FFCUDAELParams el_params;
++    const AVFrame *el;
 +    int tradeoff;
 +    int init_with_dovi;
 +    double param;
@@ -2173,6 +2299,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    s->final_param = NAN;
 +    return 0;
 +}
++
++static int filter_frame(AVFilterLink *link, AVFrame *in, const AVFrame *el);
 +
 +static av_cold int init(AVFilterContext *ctx)
 +{
@@ -2200,7 +2328,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    s->dovi = NULL;
 +    s->dovi_buffer = 0;
 +
-+    return 0;
++    return ff_dovi_el_init(ctx, &s->el_sync, s->apply_el, filter_frame);
 +}
 +
 +static av_cold void uninit_dovi(AVFilterContext *ctx)
@@ -2266,6 +2394,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +static av_cold void uninit(AVFilterContext *ctx)
 +{
++    ff_framesync_uninit(&((TonemapCUDAContext *)ctx->priv)->el_sync.fs);
 +    TonemapCUDAContext *s = ctx->priv;
 +
 +    uninit_common(ctx);
@@ -2872,7 +3001,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        if (ret < 0)
 +            goto fail2;
 +
-+        ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_dovi, s->cu_module, "tonemap_lut_dovi"));
++        ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_dovi, s->cu_module, s->apply_el ? "tonemap_lut_dovi_el" : "tonemap_lut_dovi"));
 +        s->cu_func_dovi_pq = s->cu_func_dovi;
 +        if (ret < 0)
 +            goto fail2;
@@ -2898,7 +3027,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        if (ret < 0)
 +            goto fail2;
 +
-+        func_name = av_asprintf("tonemap_dovi%s%s",
++        func_name = av_asprintf("tonemap_dovi%s%s%s",
++                                s->apply_el ? "_el" : "",
 +                                ((mode == TONEMAP_MODE_ITP) ? "_itp" :
 +                                 (mode == TONEMAP_MODE_LUM) ? "_lum" :
 +                                 (mode == TONEMAP_MODE_RGB) ? "_rgb" : "_max"), (d ? "_d" : ""));
@@ -2907,7 +3037,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        if (ret < 0)
 +            goto fail2;
 +
-+        ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_dovi_pq, s->cu_module, "tonemap_dovi_pq"));
++        ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_dovi_pq, s->cu_module, s->apply_el ? "tonemap_dovi_el_pq" : "tonemap_dovi_pq"));
 +        if (ret < 0)
 +            goto fail2;
 +    }
@@ -2950,6 +3080,17 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    device_hwctx = frames_ctx->device_ctx->hwctx;
 +
 +    s->hwctx = device_hwctx;
++    if (s->apply_el) {
++        AVBufferRef *ref = ff_filter_link(ctx->inputs[1])->hw_frames_ctx;
++        AVHWFramesContext *ef = ref ? (AVHWFramesContext *)ref->data : NULL;
++        if (s->in_fmt != AV_PIX_FMT_P010 || !ef || ef->sw_format != AV_PIX_FMT_P010 ||
++            ((AVCUDADeviceContext *)ef->device_ctx->hwctx)->cuda_ctx != s->hwctx->cuda_ctx) {
++            av_log(ctx, AV_LOG_ERROR, "BL/EL inputs must be P010 and share a CUDA context.\n");
++            return AVERROR(EINVAL);
++        }
++        if ((ret = ff_dovi_el_configure(ctx, &s->el_sync)) < 0)
++            return ret;
++    }
 +
 +    if (s->in_desc->comp[0].depth > s->out_desc->comp[0].depth) {
 +        if ((ret = setup_dither(ctx)) < 0)
@@ -2973,21 +3114,31 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +{
 +    TonemapCUDAContext *s = ctx->priv;
 +    CudaFunctions *cu = s->hwctx->internal->cuda_dl;
-+    FFCUDAFrame src, dst;
-+    void *args[] = { &src, &dst, &s->dither_tex, &s->dovi_buffer };
-+    void *args2[] = { &src, &dst, &s->lut_buffer, &s->dovi_buffer };
++    FFCUDAFrame src = { 0 }, dst = { 0 }, el_src = { 0 };
++    void *args[] = { &src, &dst, &s->dither_tex, &s->dovi_buffer, &el_src, &s->el_params };
++    void *args2[] = { &src, &dst, &s->lut_buffer, &s->dovi_buffer, &el_src, &s->el_params };
 +    int ret, pq_out = s->out_trc == AVCOL_TRC_SMPTE2084;
 +
 +    ret = ff_make_cuda_frame(ctx, cu, 1,
 +                             &src, in, s->in_desc);
-+    if (ret < 0)
++    if (ret < 0) {
++        memset(&src, 0, sizeof(src)); /* Texture helper already released it. */
 +        goto fail;
++    }
 +
 +    ret = ff_make_cuda_frame(ctx, cu, 0,
 +                             &dst, out, s->out_desc);
 +    if (ret < 0)
 +        goto fail;
 +
++    if (s->el_params.params[15]) {
++        ret = ff_make_cuda_frame(ctx, cu, 2, &el_src, s->el,
++                                av_pix_fmt_desc_get(AV_PIX_FMT_P010));
++        if (ret < 0) {
++            memset(&el_src, 0, sizeof(el_src));
++            goto fail;
++        }
++    }
 +    src.peak = s->src_peak;
 +    dst.peak = s->dst_peak;
 +
@@ -2996,6 +3147,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +                                      BLOCKX, BLOCKY, 1, 0, s->hwctx->stream, (s->lut_buffer ? args2 : args), NULL));
 +
 +fail:
++    for (int i = 0; i < el_src.planes; i++)
++        if (el_src.tex[i])
++            CHECK_CU(cu->cuTexObjectDestroy(el_src.tex[i]));
 +    for (int i = 0; i < src.planes; i++)
 +        if (src.tex[i])
 +            CHECK_CU(cu->cuTexObjectDestroy(src.tex[i]));
@@ -3043,7 +3197,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    return 0;
 +}
 +
-+static int filter_frame(AVFilterLink *link, AVFrame *in)
++static int filter_frame(AVFilterLink *link, AVFrame *in, const AVFrame *el)
 +{
 +    AVFilterContext       *ctx = link->dst;
 +    TonemapCUDAContext      *s = ctx->priv;
@@ -3061,6 +3215,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        goto fail;
 +    }
 +
++    s->el = el;
++    s->el_params.params[15] = 0.0f;
 +    if (s->apply_dovi)
 +        dovi_sd = av_frame_get_side_data(in, AV_FRAME_DATA_DOVI_METADATA);
 +
@@ -3098,13 +3254,17 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
 +        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
 +        // only map dovi rpus that don't require an EL
-+        if (rpu->disable_residual_flag) {
++        if (rpu->disable_residual_flag || s->apply_el) {
 +            struct FFDOVIMetadataRemap *dovi = av_malloc(sizeof(*dovi));
 +            s->dovi = dovi;
 +            if (!s->dovi)
 +                goto fail;
 +
 +            ff_map_dovi_metadata(s->dovi, metadata);
++            if (el)
++                ff_dovi_el_prepare(s->el_params.params, metadata, s->apply_el,
++                                   in->width, in->height, el->width, el->height,
++                                   el->chroma_location, 65535.0f / (64.0f * 1023.0f));
 +            in->color_trc = AVCOL_TRC_SMPTE2084;
 +            in->colorspace = AVCOL_SPC_UNSPECIFIED;
 +            in->color_primaries = AVCOL_PRI_BT2020;
@@ -3157,6 +3317,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    }
 +
 +    ret = do_tonemap(ctx, out, in);
++    if (ret < 0) {
++        CHECK_CU(cu->cuCtxPopCurrent(&dummy));
++        goto fail;
++    }
 +
 +    if (s->dovi)
 +        av_freep(&s->dovi);
@@ -3190,6 +3354,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    AVFilterFormats *formats;
 +    int ret;
 +    const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_CUDA, AV_PIX_FMT_NONE };
++
++    if (s->apply_el && (ret = ff_dovi_el_query_formats(avctx, AV_PIX_FMT_CUDA)) < 0)
++        return ret;
 +
 +    // single format
 +    formats = ff_make_format_list(pix_fmts);
@@ -3263,6 +3430,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    {     "limited",   0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG},          0, 0, FLAGS, .unit = "range" },
 +    {     "full",      0, 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG},          0, 0, FLAGS, .unit = "range" },
 +    { "format",        "Output format",       OFFSET(format_str), AV_OPT_TYPE_STRING, { .str = "same" }, .flags = FLAGS },
++    { "apply_el", "Apply Dolby Vision enhancement layer", OFFSET(apply_el), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
 +    { "apply_dovi",    "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
 +    { "tradeoff",      "Apply tradeoffs to offload computing", OFFSET(tradeoff), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 1, FLAGS, .unit = "tradeoff" },
 +    {     "auto",      0, 0, AV_OPT_TYPE_CONST, {.i64 = -1},                        0, 0, FLAGS, .unit = "tradeoff" },
@@ -3282,11 +3450,16 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    .version    = LIBAVUTIL_VERSION_INT,
 +};
 +
++static int activate(AVFilterContext *ctx)
++{
++    TonemapCUDAContext *s = ctx->priv;
++    return ff_dovi_el_activate(ctx, &s->el_sync, s->apply_el);
++}
++
 +static const AVFilterPad tonemap_cuda_inputs[] = {
 +    {
 +        .name         = "default",
 +        .type         = AVMEDIA_TYPE_VIDEO,
-+        .filter_frame = filter_frame,
 +    },
 +};
 +
@@ -3302,6 +3475,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +    .p.name           = "tonemap_cuda",
 +    .p.description    = NULL_IF_CONFIG_SMALL("GPU accelerated HDR to SDR tonemapping"),
 +
++    .p.flags        = AVFILTER_FLAG_DYNAMIC_INPUTS,
++    .activate       = activate,
 +    .preinit        = preinit,
 +    .init           = init,
 +    .uninit         = uninit,
@@ -3316,3 +3491,175 @@ Index: FFmpeg/libavfilter/vf_tonemap_cuda.c
 +
 +    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 +};
+Index: FFmpeg/libavfilter/dovi_el.c
+===================================================================
+--- /dev/null
++++ FFmpeg/libavfilter/dovi_el.c
+@@ -0,0 +1,118 @@
++/*
++ * Copyright (c) 2026 Gnattu OC <gnattuoc@me.com>
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#include "libavutil/dict.h"
++#include "dovi_el.h"
++#include "filters.h"
++#include "formats.h"
++
++static int dovi_el_on_event(FFFrameSync *fs)
++{
++    AVFilterContext *ctx = fs->parent;
++    FFDOVIELContext *s = fs->opaque;
++    AVFrame *bl, *el;
++    const char *status = "missing";
++    int ret = ff_framesync_dualinput_get(fs, &bl, &el);
++    if (ret < 0)
++        return ret;
++    if (el && av_dict_get(el->metadata, "lavfi.dovi.el_timing_invalid", NULL, 0)) {
++        status = "untrusted";
++        el = NULL;
++    }
++    if (el && (fs->pts == AV_NOPTS_VALUE || el->pts == AV_NOPTS_VALUE ||
++               llabs(el->pts - fs->pts) > s->ts_tolerance))
++        el = NULL;
++    av_log(ctx, AV_LOG_DEBUG, "DV pairing: BL pts %"PRId64" EL %s\n",
++           bl->pts, el ? "matched" : status);
++    return s->process(ctx->inputs[0], bl, el);
++}
++
++int ff_dovi_el_init(AVFilterContext *ctx, FFDOVIELContext *s, int enabled,
++                   int (*process)(AVFilterLink *, AVFrame *, const AVFrame *))
++{
++    AVFilterPad pad = { .name = "el", .type = AVMEDIA_TYPE_VIDEO };
++    s->process = process;
++    return enabled ? ff_append_inpad(ctx, &pad) : 0;
++}
++
++int ff_dovi_el_configure(AVFilterContext *ctx, FFDOVIELContext *s)
++{
++    int ret = ff_framesync_init_dualinput(&s->fs, ctx);
++    if (ret < 0)
++        return ret;
++    s->fs.opaque = s;
++    s->fs.on_event = dovi_el_on_event;
++    s->fs.opt_repeatlast = 0;
++    s->fs.opt_ts_sync_mode = TS_NEAREST;
++    s->fs.in[1].before = EXT_INFINITY;
++    s->fs.time_base = ctx->outputs[0]->time_base = ctx->inputs[0]->time_base;
++    s->ts_tolerance = (1 + av_rescale_q_rnd(1, ctx->inputs[1]->time_base,
++                                         s->fs.time_base, AV_ROUND_UP)) / 2;
++    return ff_framesync_configure(&s->fs);
++}
++
++int ff_dovi_el_activate(AVFilterContext *ctx, FFDOVIELContext *s, int enabled)
++{
++    AVFilterLink *inlink = ctx->inputs[0], *outlink = ctx->outputs[0];
++    AVFrame *frame;
++    int ret;
++    if (enabled)
++        return ff_framesync_activate(&s->fs);
++    FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
++    ret = ff_inlink_consume_frame(inlink, &frame);
++    if (ret < 0)
++        return ret;
++    if (ret)
++        return s->process(inlink, frame, NULL);
++    FF_FILTER_FORWARD_STATUS(inlink, outlink);
++    FF_FILTER_FORWARD_WANTED(outlink, inlink);
++    return FFERROR_NOT_READY;
++}
++
++int ff_dovi_el_query_formats(AVFilterContext *ctx, enum AVPixelFormat format)
++{
++    AVFilterLink *el = ctx->inputs[1];
++    int ret;
++    if ((ret = ff_formats_ref(ff_make_formats_list_singleton(format), &el->outcfg.formats)) < 0 ||
++        (ret = ff_formats_ref(ff_all_color_spaces(), &el->outcfg.color_spaces)) < 0 ||
++        (ret = ff_formats_ref(ff_all_color_ranges(), &el->outcfg.color_ranges)) < 0)
++        return ret;
++    return 0;
++}
++
++void ff_dovi_el_prepare(float params[20], const AVDOVIMetadata *metadata,
++                       int apply_el, int bl_w, int bl_h, int el_w, int el_h,
++                       enum AVChromaLocation chroma_location, float sample_scale)
++{
++    struct FFDOVINLQParams nlq;
++    struct FFDOVIELSampling sampling;
++    params[15] = 0.0f;
++    if (!apply_el || !ff_map_dovi_nlq(&nlq, metadata))
++        return;
++    ff_get_dovi_el_sampling(&sampling, bl_w, bl_h, el_w, el_h, chroma_location);
++    memcpy(params, nlq.offset, sizeof(nlq.offset));
++    memcpy(params + 4, nlq.slope, sizeof(nlq.slope));
++    memcpy(params + 8, nlq.threshold, sizeof(nlq.threshold));
++    memcpy(params + 12, sampling.scale, sizeof(sampling.scale));
++    params[14] = sample_scale;
++    params[15] = 1.0f;
++    memcpy(params + 16, sampling.luma_offset, sizeof(sampling.luma_offset));
++    memcpy(params + 18, sampling.chroma_offset, sizeof(sampling.chroma_offset));
++}
+Index: FFmpeg/libavfilter/dovi_el.h
+===================================================================
+--- /dev/null
++++ FFmpeg/libavfilter/dovi_el.h
+@@ -0,0 +1,44 @@
++/*
++ * Copyright (c) 2026 Gnattu OC <gnattuoc@me.com>
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#ifndef AVFILTER_DOVI_EL_H
++#define AVFILTER_DOVI_EL_H
++
++#include "avfilter.h"
++#include "colorspace.h"
++#include "framesync.h"
++
++typedef struct FFDOVIELContext {
++    FFFrameSync fs;
++    int64_t ts_tolerance;
++    int (*process)(AVFilterLink *inlink, AVFrame *bl, const AVFrame *el);
++} FFDOVIELContext;
++
++int ff_dovi_el_init(AVFilterContext *ctx, FFDOVIELContext *s, int enabled,
++                   int (*process)(AVFilterLink *, AVFrame *, const AVFrame *));
++int ff_dovi_el_configure(AVFilterContext *ctx, FFDOVIELContext *s);
++int ff_dovi_el_activate(AVFilterContext *ctx, FFDOVIELContext *s, int enabled);
++int ff_dovi_el_query_formats(AVFilterContext *ctx, enum AVPixelFormat format);
++
++void ff_dovi_el_prepare(float params[20], const AVDOVIMetadata *metadata,
++                       int apply_el, int bl_w, int bl_h, int el_w, int el_h,
++                       enum AVChromaLocation chroma_location, float sample_scale);
++
++#endif
