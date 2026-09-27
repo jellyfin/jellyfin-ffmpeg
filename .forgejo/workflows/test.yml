@@ -41,7 +41,7 @@ jobs:
         run: make -j$(nproc)
       - name: Restore Cached Fate-Suite
         id: cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: fate-suite
           key: fate-suite
@@ -53,7 +53,7 @@ jobs:
           make fate-rsync SAMPLES=$PWD/fate-suite
           echo "hash=$(find fate-suite -type f -printf "%P %s %T@\n" | sort | sha256sum | cut -d' ' -f1)" >> $FORGEJO_OUTPUT
       - name: Cache Fate-Suite
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         if: ${{ format('fate-suite-{0}', steps.fate.outputs.hash) != steps.cache.outputs.cache-matched-key }}
         with:
           path: fate-suite
@@ -90,7 +90,7 @@ jobs:
         run: make -j$(nproc)
       - name: Restore Cached Fate-Suite
         id: cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: fate-suite
           key: fate-suite
@@ -102,7 +102,7 @@ jobs:
           make fate-rsync SAMPLES=$PWD/fate-suite
           echo "hash=$(find fate-suite -type f -printf "%P %s %T@\n" | sort | sha256sum | cut -d' ' -f1)" >> $FORGEJO_OUTPUT
       - name: Cache Fate-Suite
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         if: ${{ format('fate-suite-{0}', steps.fate.outputs.hash) != steps.cache.outputs.cache-matched-key }}
         with:
           path: fate-suite
