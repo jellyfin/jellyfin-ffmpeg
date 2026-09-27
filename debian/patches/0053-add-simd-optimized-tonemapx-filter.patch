@@ -2567,7 +2567,7 @@ Index: FFmpeg/libavfilter/colorspace.c
  #include "libavutil/frame.h"
  #include "libavutil/mastering_display_metadata.h"
  #include "libavutil/pixdesc.h"
-@@ -362,3 +363,51 @@ float ff_eotf_arib_b67(float x, float re
+@@ -377,3 +378,51 @@ float ff_eotf_arib_b67(float x, float re
  float ff_inverse_eotf_bt1886(float x) {
      return x > 0.0f ? powf(x, 1.0f / 2.4f) : 0.0f;
  }
@@ -2623,7 +2623,7 @@ Index: FFmpeg/libavfilter/colorspace.h
 ===================================================================
 --- FFmpeg.orig/libavfilter/colorspace.h
 +++ FFmpeg/libavfilter/colorspace.h
-@@ -109,4 +109,9 @@ float ff_inverse_eotf_st2084(float x, fl
+@@ -114,4 +114,9 @@ float ff_inverse_eotf_st2084(float x, fl
  float ff_eotf_arib_b67(float x, float ref_white, int bt2446b);
  float ff_inverse_eotf_bt1886(float x);
  
@@ -4160,17 +4160,17 @@ Index: FFmpeg/libavfilter/vf_tonemapx.c
 +    if (!s->peak) {
 +        if (dovi_sd) {
 +            const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
-+            s->src_peak = ff_determine_dovi_signal_peak(metadata, 1);
++            s->src_peak = ff_determine_dovi_tonemap_peak(in, metadata, 1);
 +            s->src_peak *= REF_WHITE_SCALE;
 +        } else if (!s->src_peak) {
 +            s->src_peak = ff_determine_signal_peak(in);
 +            s->src_peak *= REF_WHITE_SCALE;
 +        }
-+        av_log(s, AV_LOG_DEBUG, "Computed signal peak: %f "
-+               "at pts %"PRId64"\n", s->src_peak, in->pts);
 +        // sanity check
 +        if (s->src_peak <= REF_WHITE_SCALE)
 +            s->src_peak = 10.0f * REF_WHITE_SCALE;
++        av_log(s, AV_LOG_DEBUG, "Computed signal peak: %f "
++               "at pts %"PRId64"\n", s->src_peak, in->pts);
 +    }
 +
 +    if (dovi_sd) {

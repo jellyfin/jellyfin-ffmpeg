@@ -14,11 +14,11 @@ Index: FFmpeg/libavfilter/Makefile
 ===================================================================
 --- FFmpeg.orig/libavfilter/Makefile
 +++ FFmpeg/libavfilter/Makefile
-@@ -554,6 +554,9 @@ OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)
+@@ -560,6 +560,9 @@ OBJS-$(CONFIG_TONEMAP_CUDA_FILTER)
  OBJS-$(CONFIG_TONEMAP_OPENCL_FILTER)         += vf_tonemap_opencl.o opencl.o \
                                                  opencl/tonemap.o opencl/colorspace_common.o
  OBJS-$(CONFIG_TONEMAP_VAAPI_FILTER)          += vf_tonemap_vaapi.o vaapi_vpp.o
-+OBJS-$(CONFIG_TONEMAP_VIDEOTOOLBOX_FILTER)   += vf_tonemap_videotoolbox.o \
++OBJS-$(CONFIG_TONEMAP_VIDEOTOOLBOX_FILTER)   += vf_tonemap_videotoolbox.o framesync.o \
 +                                                metal/vf_tonemap_videotoolbox.metallib.o \
 +                                                metal/utils.o
  OBJS-$(CONFIG_TPAD_FILTER)                   += vf_tpad.o
@@ -40,7 +40,7 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
-@@ -0,0 +1,908 @@
+@@ -0,0 +1,938 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -131,6 +131,8 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +constant bool map_in_src_space [[function_constant(36)]];
 +constant bool is_tone_mode_itp [[function_constant(37)]];
 +constant bool hlg_eotf_bt2446b [[function_constant(38)]];
++constant bool dovi_el [[function_constant(39)]];
++constant float dovi_bl_scale [[function_constant(40)]];
 +
 +enum AVChromaLocation {
 +    AVCHROMA_LOC_UNSPECIFIED,
@@ -817,6 +819,24 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +constexpr sampler l_sampler(coord::normalized, address::clamp_to_edge, filter::linear);
 +constexpr sampler d_sampler(coord::normalized, address::repeat, filter::nearest);
 +
++float3 compose_el(float3 bl, float2 pos,
++                   texture2d<float, access::sample> el_y,
++                   texture2d<float, access::sample> el_uv,
++                   constant float *nlq)
++{
++    float2 coord = pos * float2(nlq[12], nlq[13]);
++    float2 luma_coord = coord + float2(nlq[16], nlq[17]);
++    float2 chroma_coord = coord + float2(nlq[18], nlq[19]);
++    float3 el(el_y.sample(l_sampler, luma_coord).x,
++              el_uv.sample(l_sampler, chroma_coord).xy);
++    el *= nlq[14];
++    float3 centered = el - float3(nlq[0], nlq[1], nlq[2]);
++    float3 residual = sign(centered) *
++        (abs(centered) * float3(nlq[4], nlq[5], nlq[6]) +
++         float3(nlq[8], nlq[9], nlq[10]));
++    return bl + residual;
++}
++
 +//------------
 +// kernel
 +kernel void tonemap(texture2d<float, access::write> dst1 [[texture(0)]],
@@ -828,6 +848,9 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +                    texture2d<float, access::sample> dither [[texture(6), function_constant(enable_dither)]],
 +                    constant float* dovi_buf [[buffer(7), function_constant(dovi_reshape)]],
 +                    constant float* peak [[buffer(8)]],
++                    texture2d<float, access::sample> el_y [[texture(9), function_constant(dovi_el)]],
++                    texture2d<float, access::sample> el_uv [[texture(10), function_constant(dovi_el)]],
++                    constant float* nlq [[buffer(9), function_constant(dovi_el)]],
 +                    uint2 index [[thread_position_in_grid]])
 +{
 +    int xi = index.x;
@@ -873,10 +896,17 @@ Index: FFmpeg/libavfilter/metal/vf_tonemap_videotoolbox.metal
 +        constant float *dovi_pivots = dovi_buf + 24;
 +        constant float4 *dovi_coeffs = (constant float4 *)(dovi_buf + 48);
 +        constant float4 *dovi_mmr = (constant float4 *)(dovi_buf + 144);
-+        yuv0 = reshape_dovi_yuv(yuv0, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
-+        yuv1 = reshape_dovi_yuv(yuv1, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
-+        yuv2 = reshape_dovi_yuv(yuv2, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
-+        yuv3 = reshape_dovi_yuv(yuv3, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++        yuv0 = reshape_dovi_yuv(yuv0 * dovi_bl_scale, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++        yuv1 = reshape_dovi_yuv(yuv1 * dovi_bl_scale, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++        yuv2 = reshape_dovi_yuv(yuv2 * dovi_bl_scale, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++        yuv3 = reshape_dovi_yuv(yuv3 * dovi_bl_scale, dovi_params, dovi_pivots, dovi_coeffs, dovi_mmr);
++    }
++
++    if (dovi_el) {
++        yuv0 = compose_el(yuv0, float2(x, y), el_y, el_uv, nlq);
++        yuv1 = compose_el(yuv1, float2(x + 1, y), el_y, el_uv, nlq);
++        yuv2 = compose_el(yuv2, float2(x, y + 1), el_y, el_uv, nlq);
++        yuv3 = compose_el(yuv3, float2(x + 1, y + 1), el_y, el_uv, nlq);
 +    }
 +
 +    float3 c0, c1, c2, c3;
@@ -953,7 +983,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 ===================================================================
 --- /dev/null
 +++ FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
-@@ -0,0 +1,1230 @@
+@@ -0,0 +1,1353 @@
 +/*
 + * Copyright (c) 2024 Gnattu OC <gnattuoc@me.com>
 + *
@@ -986,6 +1016,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +#include "avfilter.h"
 +#include "filters.h"
 +#include "formats.h"
++#include "dovi_el.h"
 +#include "video.h"
 +#include "colorspace.h"
 +#include "dither_matrix.h"
@@ -1055,6 +1086,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    int                         tonemap_mode;
 +    enum AVPixelFormat          format;
 +    int                         apply_dovi;
++    int                         apply_el;
++    FFDOVIELContext             el_sync;
++    int                         nlq_active;
++    int                         init_with_el;
++    float                       nlq[20];
 +    double                      peak;
 +    double                      src_peak;
 +    double                      target_peak;
@@ -1244,11 +1280,22 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    return 0;
 +}
 +
++static int tonemap_videotoolbox_filter_frame(AVFilterLink *inlink, AVFrame *input,
++                                            const AVFrame *el);
++
++static int tonemap_videotoolbox_init_inputs(AVFilterContext *avctx)
++{
++    TonemapVideoToolboxContext *ctx = avctx->priv;
++    return ff_dovi_el_init(avctx, &ctx->el_sync, ctx->apply_el,
++                          tonemap_videotoolbox_filter_frame);
++}
++
 +static av_cold void tonemap_videotoolbox_uninit_common(AVFilterContext *avctx)
 +{
 +    TonemapVideoToolboxContext *ctx = avctx->priv;
 +
 +    ff_objc_release(&ctx->dither_texture);
++    ff_objc_release(&ctx->mtl_dovi_buffer);
 +    ff_objc_release(&ctx->mtl_peak_buffer);
 +    ff_objc_release(&ctx->mtl_function);
 +    ff_objc_release(&ctx->mtl_pipeline);
@@ -1265,7 +1312,6 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +static av_cold void tonemap_videotoolbox_uninit_dovi(AVFilterContext *avctx)
 +{
 +    TonemapVideoToolboxContext *ctx = avctx->priv;
-+    ff_objc_release(&ctx->mtl_dovi_buffer);
 +    if (ctx->dovi) {
 +        av_freep(&ctx->dovi);
 +    }
@@ -1276,6 +1322,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +{
 +    tonemap_videotoolbox_uninit_common(avctx);
 +    tonemap_videotoolbox_uninit_dovi(avctx);
++    ff_framesync_uninit(&((TonemapVideoToolboxContext *)avctx->priv)->el_sync.fs);
 +}
 +
 +static int tonemap_videotoolbox_init(AVFilterContext *avctx)
@@ -1314,6 +1361,8 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    bool skip_tonemap;
 +    bool hlg_eotf_bt2446b;
 +    bool dovi_reshape;
++    bool dovi_el = ctx->nlq_active;
++    float dovi_bl_scale = ctx->apply_el ? 65535.0f / (64.0f * 1023.0f) : 1.0f;
 +    bool map_in_src_space;
 +
 +    int i, j, err;
@@ -1350,12 +1399,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (isnan(ctx->final_param))
 +        ctx->final_param = 1.0f;
 +
-+    if (ctx->peak)
++    if (ctx->peak) {
 +        ctx->src_peak = ctx->peak / 10.0f * REF_WHITE_SCALE;
-+
-+    // sanity check
-+    if (ctx->src_peak <= REF_WHITE_SCALE)
-+        ctx->src_peak = 10.0f * REF_WHITE_SCALE;
++        if (ctx->src_peak <= REF_WHITE_SCALE)
++            ctx->src_peak = 10.0f * REF_WHITE_SCALE;
++    }
 +
 +    // SDR peak is 1.0f
 +    ctx->target_peak = 1.0f;
@@ -1459,6 +1507,10 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    hlg_eotf_bt2446b = ctx->trc_in == AVCOL_TRC_ARIB_STD_B67 &&
 +                       ctx->trc_out != AVCOL_TRC_SMPTE2084;
 +    dovi_reshape = !!ctx->dovi;
++    av_log(avctx, AV_LOG_VERBOSE, "Dolby Vision reshape: %d, EL residual composition: %d\n",
++           dovi_reshape, dovi_el);
++    [constant_values setConstantValue:&dovi_el type:MTLDataTypeBool withName:@"dovi_el"];
++    [constant_values setConstantValue:&dovi_bl_scale type:MTLDataTypeFloat withName:@"dovi_bl_scale"];
 +    map_in_src_space = !is_tone_mode_rgb && !is_tone_mode_max;
 +
 +    [constant_values setConstantValue:&tone_param type:MTLDataTypeFloat withName:@"tone_param"];
@@ -1696,6 +1748,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    return err;
 +}
 +
++
 +static int tonemap_videotoolbox_config_output(AVFilterLink *outlink)
 +{
 +    FilterLink          *outl = ff_filter_link(outlink);
@@ -1732,6 +1785,19 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +        av_log(ctx, AV_LOG_ERROR, "Unsupported input format depth: %d\n",
 +               in_desc->comp[0].depth);
 +        return AVERROR(ENOSYS);
++    }
++
++    if (ctx->apply_el) {
++        FilterLink *ell = ff_filter_link(avctx->inputs[1]);
++        AVHWFramesContext *elfc = ell->hw_frames_ctx ?
++            (AVHWFramesContext *)ell->hw_frames_ctx->data : NULL;
++        if (in_format != AV_PIX_FMT_P010 || !elfc || elfc->sw_format != AV_PIX_FMT_P010) {
++            av_log(avctx, AV_LOG_ERROR, "BL/EL inputs must be P010 VideoToolbox frames.\n");
++            return AVERROR(EINVAL);
++        }
++        ret = ff_dovi_el_configure(avctx, &ctx->el_sync);
++        if (ret < 0)
++            return ret;
 +    }
 +
 +    ctx->in_fmt     = in_format;
@@ -1786,7 +1852,9 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +                        id<MTLTexture> out_u_uv_tex,
 +                        id<MTLTexture> in_v_tex,
 +                        id<MTLTexture> out_v_tex,
-+                        float peak)
++                        float peak,
++                        id<MTLTexture> el_y_tex,
++                        id<MTLTexture> el_uv_tex)
 +{
 +    TonemapVideoToolboxContext *ctx = avctx->priv;
 +    id<MTLCommandBuffer> buffer = ctx->mtl_queue.commandBuffer;
@@ -1811,6 +1879,11 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +        [encoder setBuffer:ctx->mtl_dovi_buffer offset:0 atIndex:7];
 +    }
 +    [encoder setBuffer:ctx->mtl_peak_buffer offset:0 atIndex:8];
++    if (ctx->nlq_active) {
++        [encoder setTexture:el_y_tex atIndex:9];
++        [encoder setTexture:el_uv_tex atIndex:10];
++        [encoder setBytes:ctx->nlq length:sizeof(ctx->nlq) atIndex:9];
++    }
 +
 +    ff_metal_compute_encoder_dispatch(ctx->mtl_device, ctx->mtl_pipeline, encoder, out_u_uv_tex.width, out_u_uv_tex.height);
 +
@@ -1820,7 +1893,41 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    [buffer waitUntilCompleted];
 +}
 +
-+static int tonemap_videotoolbox_filter_frame(AVFilterLink *inlink, AVFrame *input)
++static void tonemap_videotoolbox_map_nlq(TonemapVideoToolboxContext *ctx,
++                                        const AVDOVIMetadata *metadata,
++                                        const AVFrame *bl,
++                                        const AVFrame *el)
++{
++    struct FFDOVINLQParams nlq;
++    struct FFDOVIELSampling sampling;
++    CVPixelBufferRef bl_buf, el_buf;
++
++    ctx->nlq_active = ctx->apply_el && ff_map_dovi_nlq(&nlq, metadata);
++    if (!ctx->nlq_active)
++        return;
++
++    /* Use the surface sizes, matching the actual Metal texture dimensions. */
++    bl_buf = (CVPixelBufferRef)bl->data[3];
++    el_buf = (CVPixelBufferRef)el->data[3];
++    ff_get_dovi_el_sampling(&sampling,
++                           CVPixelBufferGetWidthOfPlane(bl_buf, 0),
++                           CVPixelBufferGetHeightOfPlane(bl_buf, 0),
++                           CVPixelBufferGetWidthOfPlane(el_buf, 0),
++                           CVPixelBufferGetHeightOfPlane(el_buf, 0),
++                           el->chroma_location);
++
++    /* Keep the Metal uniform layout and P010 UNORM-to-code-value scale local. */
++    memcpy(ctx->nlq,     nlq.offset,    sizeof(nlq.offset));
++    memcpy(ctx->nlq + 4, nlq.slope,     sizeof(nlq.slope));
++    memcpy(ctx->nlq + 8, nlq.threshold, sizeof(nlq.threshold));
++    memcpy(ctx->nlq + 12, sampling.scale,         sizeof(sampling.scale));
++    ctx->nlq[14] = 65535.0f / (64.0f * 1023.0f);
++    memcpy(ctx->nlq + 16, sampling.luma_offset,   sizeof(sampling.luma_offset));
++    memcpy(ctx->nlq + 18, sampling.chroma_offset, sizeof(sampling.chroma_offset));
++}
++
++static int tonemap_videotoolbox_filter_frame(AVFilterLink *inlink, AVFrame *input,
++                                            const AVFrame *el)
 +{
 +    AVFilterContext    *avctx = inlink->dst;
 +    AVFilterLink     *outlink = avctx->outputs[0];
@@ -1829,6 +1936,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    AVFrame *output = NULL;
 +
 +    CVMetalTextureRef in_y, in_u_uv, in_v;
++    CVMetalTextureRef el_y = NULL, el_uv = NULL;
 +    id<MTLTexture> in_y_tex, in_u_uv_tex, in_v_tex = NULL;
 +
 +    CVMetalTextureRef out_y, out_u_uv, out_v;
@@ -1855,6 +1963,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (err < 0)
 +        goto fail;
 +
++    ctx->nlq_active = 0;
 +    if (ctx->apply_dovi)
 +        dovi_sd = av_frame_get_side_data(input, AV_FRAME_DATA_DOVI_METADATA);
 +
@@ -1873,12 +1982,14 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (!ctx->peak) {
 +        if (dovi_sd) {
 +            const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
-+            ctx->src_peak = ff_determine_dovi_signal_peak(metadata, 0);
++            ctx->src_peak = ff_determine_dovi_tonemap_peak(input, metadata, 0);
 +            ctx->src_peak *= REF_WHITE_SCALE;
 +        } else if (!ctx->src_peak) {
 +            ctx->src_peak = ff_determine_signal_peak(input);
 +            ctx->src_peak *= REF_WHITE_SCALE;
 +        }
++        if (ctx->src_peak <= REF_WHITE_SCALE)
++            ctx->src_peak = 10.0f * REF_WHITE_SCALE;
 +        av_log(ctx, AV_LOG_DEBUG, "Computed signal peak: %f "
 +               "at pts %"PRId64"\n", ctx->src_peak, input->pts);
 +    }
@@ -1886,14 +1997,18 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (dovi_sd) {
 +        const AVDOVIMetadata *metadata = (AVDOVIMetadata *) dovi_sd->data;
 +        const AVDOVIRpuDataHeader *rpu = av_dovi_get_header(metadata);
-+        // only map dovi rpus that don't require an EL
-+        if (rpu->disable_residual_flag) {
++        // Keep BL/RPU reshaping when a paired enhancement frame is missing.
++        if (rpu->disable_residual_flag || ctx->apply_el) {
 +            struct FFDOVIMetadataRemap *dovi = av_malloc(sizeof(*dovi));
 +            ctx->dovi = dovi;
-+            if (!ctx->dovi)
++            if (!ctx->dovi) {
++                err = AVERROR(ENOMEM);
 +                goto fail;
++            }
 +
 +            ff_map_dovi_metadata(ctx->dovi, metadata);
++            if (el)
++                tonemap_videotoolbox_map_nlq(ctx, metadata, input, el);
 +            output->color_trc = input->color_trc = AVCOL_TRC_SMPTE2084;
 +            output->colorspace = input->colorspace = AVCOL_SPC_BT2020_NCL;
 +            output->color_primaries = input->color_primaries = AVCOL_PRI_BT2020;
@@ -1921,16 +2036,25 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    ctx->chroma_loc = output->chroma_location;
 +
 +    // Some DOVI video does not carry metadata in the first few frames, and we have to reset the pipeline.
-+    if (!ctx->init_with_dovi && ctx->dovi && ctx->initialised) {
++    if (ctx->initialised &&
++        ((!ctx->init_with_dovi && ctx->dovi) || ctx->init_with_el != ctx->nlq_active)) {
 +        tonemap_videotoolbox_uninit_common(avctx);
 +    }
 +
 +    if (!ctx->initialised) {
++        if (el) {
++            CVPixelBufferRef pixbuf = (CVPixelBufferRef)el->data[3];
++            av_log(avctx, AV_LOG_VERBOSE,
++                   "EL frame %dx%d, surface %zux%zu, chroma %s\n",
++                   el->width, el->height, CVPixelBufferGetWidth(pixbuf),
++                   CVPixelBufferGetHeight(pixbuf), av_chroma_location_name(el->chroma_location));
++        }
 +        err = tonemap_videotoolbox_init(avctx);
 +        if (err < 0)
 +            goto fail;
 +
 +        ctx->init_with_dovi = ctx->dovi != NULL;
++        ctx->init_with_el = ctx->nlq_active;
 +    }
 +
 +    if (ctx->dovi) {
@@ -1996,6 +2120,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +        out_v_tex = CVMetalTextureGetTexture(out_v);
 +    }
 +
++    if (ctx->nlq_active) {
++        el_y = ff_metal_texture_from_pixbuf(ctx, ctx->texture_cache,
++                    (CVPixelBufferRef)el->data[3], 0, MTLPixelFormatR16Unorm);
++        el_uv = ff_metal_texture_from_pixbuf(ctx, ctx->texture_cache,
++                    (CVPixelBufferRef)el->data[3], 1, MTLPixelFormatRG16Unorm);
++    }
++
 +    call_kernel(avctx,
 +                in_y_tex,
 +                in_u_uv_tex,
@@ -2003,7 +2134,13 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +                out_u_uv_tex,
 +                in_v_tex,
 +                out_v_tex,
-+                (float)ctx->src_peak);
++                (float)ctx->src_peak,
++                el_y ? CVMetalTextureGetTexture(el_y) : nil,
++                el_uv ? CVMetalTextureGetTexture(el_uv) : nil);
++    if (el_y)
++        CFRelease(el_y);
++    if (el_uv)
++        CFRelease(el_uv);
 +
 +    CFRelease(in_y);
 +    CFRelease(in_u_uv);
@@ -2066,6 +2203,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    return err;
 +}
 +
++static int tonemap_videotoolbox_activate(AVFilterContext *avctx)
++{
++    TonemapVideoToolboxContext *ctx = avctx->priv;
++    return ff_dovi_el_activate(avctx, &ctx->el_sync, ctx->apply_el);
++}
++
 +static int tonemap_videotoolbox_query_formats(AVFilterContext *avctx)
 +{
 +    TonemapVideoToolboxContext *ctx = avctx->priv;
@@ -2079,6 +2222,14 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    if (ret < 0)
 +        return ret;
 +
++    if (ctx->apply_el) {
++        ret = ff_formats_ref(formats, &avctx->inputs[1]->outcfg.formats);
++        if (ret < 0)
++            return ret;
++        if ((ret = ff_formats_ref(ff_all_color_spaces(), &avctx->inputs[1]->outcfg.color_spaces)) < 0 ||
++            (ret = ff_formats_ref(ff_all_color_ranges(), &avctx->inputs[1]->outcfg.color_ranges)) < 0)
++            return ret;
++    }
 +    ret = ff_formats_ref(formats, &avctx->outputs[0]->incfg.formats);
 +    if (ret < 0)
 +        return ret;
@@ -2145,6 +2296,7 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +        { "limited",       0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_MPEG },         0, 0, FLAGS, .unit = "range" },
 +        { "full",          0,       0,                 AV_OPT_TYPE_CONST, { .i64 = AVCOL_RANGE_JPEG },         0, 0, FLAGS, .unit = "range" },
 +    { "format",      "Output pixel format", OFFSET(format), AV_OPT_TYPE_PIXEL_FMT, { .i64 = AV_PIX_FMT_NONE }, AV_PIX_FMT_NONE, INT_MAX, FLAGS },
++    { "apply_el", "Apply Dolby Vision enhancement layer", OFFSET(apply_el), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
 +    { "apply_dovi",  "Apply Dolby Vision metadata if possible", OFFSET(apply_dovi), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
 +    { "peak",        "Signal peak override", OFFSET(peak), AV_OPT_TYPE_DOUBLE, { .dbl = 0 }, 0, DBL_MAX, FLAGS },
 +    { "param",       "Tonemap parameter",   OFFSET(param), AV_OPT_TYPE_DOUBLE, { .dbl = NAN }, DBL_MIN, DBL_MAX, FLAGS },
@@ -2159,7 +2311,6 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    {
 +        .name         = "default",
 +        .type         = AVMEDIA_TYPE_VIDEO,
-+        .filter_frame = tonemap_videotoolbox_filter_frame,
 +    },
 +};
 +
@@ -2177,10 +2328,12 @@ Index: FFmpeg/libavfilter/vf_tonemap_videotoolbox.m
 +    .priv_size      = sizeof(TonemapVideoToolboxContext),
 +    .p.priv_class   = &tonemap_videotoolbox_class,
 +    .preinit        = tonemap_videotoolbox_preinit,
++    .init           = tonemap_videotoolbox_init_inputs,
++    .activate       = tonemap_videotoolbox_activate,
 +    .uninit         = tonemap_videotoolbox_uninit,
 +    FILTER_INPUTS(tonemap_videotoolbox_inputs),
 +    FILTER_OUTPUTS(tonemap_videotoolbox_outputs),
 +    FILTER_QUERY_FUNC(tonemap_videotoolbox_query_formats),
 +    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
++    .p.flags        = AVFILTER_FLAG_HWDEVICE | AVFILTER_FLAG_DYNAMIC_INPUTS,
 +};
