@@ -72,6 +72,8 @@ typedef struct PNGEncContext {
     int color_type;
     int bits_per_pixel;
 
+    AVBufferRef *exif_data;
+
     // APNG
     uint32_t palette_checksum;   // Used to ensure a single unique palette
     uint32_t sequence_number;
@@ -377,7 +379,6 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
 {
     AVFrameSideData *side_data;
     PNGEncContext *s = avctx->priv_data;
-    AVBufferRef *exif_data = NULL;
     int ret;
 
     /* write png header */
@@ -419,17 +420,10 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
         }
     }
 
-    ret = ff_exif_get_buffer(avctx, pict, &exif_data, AV_EXIF_TIFF_HEADER);
-    if (exif_data) {
-        // png_write_chunk accepts an int, not a size_t, so we have to check overflow
-        if (exif_data->size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE)
-            // that's a very big exif chunk, probably a bug
-            av_log(avctx, AV_LOG_ERROR, "extremely large EXIF buffer detected, not writing\n");
-        else
-            png_write_chunk(&s->bytestream, MKTAG('e','X','I','f'), exif_data->data, exif_data->size);
-        av_buffer_unref(&exif_data);
-    } else if (ret < 0) {
-        av_log(avctx, AV_LOG_WARNING, "unable to attach EXIF metadata: %s\n", av_err2str(ret));
+    if (s->exif_data) {
+        /* we checked for overflow when we attached the buffer to s->exif_data */
+        png_write_chunk(&s->bytestream, MKTAG('e','X','I','f'), s->exif_data->data, s->exif_data->size);
+        av_buffer_unref(&s->exif_data);
     }
 
     side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_ICC_PROFILE);
@@ -649,25 +643,30 @@ static int add_icc_profile_size(AVCodecContext *avctx, const AVFrame *pict,
 static int add_exif_profile_size(AVCodecContext *avctx, const AVFrame *pict,
                                  uint64_t *max_packet_size)
 {
-    const AVFrameSideData *sd;
     uint64_t new_pkt_size;
-    /* includes orientation tag */
-    const int base_exif_size = 92;
-    uint64_t estimated_exif_size;
+    PNGEncContext *s = avctx->priv_data;
 
-    sd = av_frame_get_side_data(pict, AV_FRAME_DATA_EXIF);
-    estimated_exif_size = sd ? sd->size : 0;
-    sd = av_frame_get_side_data(pict, AV_FRAME_DATA_DISPLAYMATRIX);
-    if (sd)
-        estimated_exif_size += base_exif_size;
-
-    if (!estimated_exif_size)
+    int result = ff_exif_get_buffer(avctx, pict, &s->exif_data, AV_EXIF_TIFF_HEADER);
+    if (!s->exif_data) {
+        if (result < 0)
+            av_log(avctx, AV_LOG_WARNING, "unable to attach EXIF metadata: %s\n", av_err2str(result));
         return 0;
+    }
+
+    /* png_write_chunk accepts an int, not a size_t, so we have to check overflow */
+    if (s->exif_data->size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE) {
+        /* that's a very big exif chunk, probably a bug */
+        av_log(avctx, AV_LOG_ERROR, "extremely large EXIF buffer detected, not writing\n");
+        av_buffer_unref(&s->exif_data);
+        return 0;
+    }
 
     /* 12 is the png chunk header size */
-    new_pkt_size = *max_packet_size + estimated_exif_size + 12;
-    if (new_pkt_size < *max_packet_size)
+    new_pkt_size = *max_packet_size + s->exif_data->size + 12;
+    if (new_pkt_size < *max_packet_size) {
+        av_buffer_unref(&s->exif_data);
         return AVERROR_INVALIDDATA;
+    }
 
     *max_packet_size = new_pkt_size;
 
@@ -1258,6 +1257,7 @@ static av_cold int png_enc_close(AVCodecContext *avctx)
     ff_deflate_end(&s->zstream);
     av_frame_free(&s->last_frame);
     av_frame_free(&s->prev_frame);
+    av_buffer_unref(&s->exif_data);
     av_freep(&s->last_frame_packet);
     av_freep(&s->extra_data);
     s->extra_data_size = 0;

@@ -159,7 +159,7 @@ static int init_pic_rc(AVCodecContext *avctx, FFHWBaseEncodePicture *pic,
     return 0;
 }
 
-static void set_name_slot(int slot, int *slot_indices, uint32_t allowed_idx, int group)
+static int set_name_slot(int slot, int *slot_indices, uint32_t allowed_idx, int group)
 {
     int from = group ? AV1_REF_FRAME_GOLDEN : 0;
     int to = group ? AV1_REFS_PER_FRAME : AV1_REF_FRAME_GOLDEN;
@@ -167,7 +167,7 @@ static void set_name_slot(int slot, int *slot_indices, uint32_t allowed_idx, int
     for (int i = from; i < to; i++) {
         if ((slot_indices[i] == -1) && (allowed_idx & (1 << i))) {
             slot_indices[i] = slot;
-            return;
+            return i;
         }
     }
 
@@ -377,12 +377,12 @@ static int init_pic_params(AVCodecContext *avctx, FFHWBaseEncodePicture *pic,
         for (int i = 0; i < AV1_REFS_PER_FRAME; i++)
             ap->av1pic_info.ref_frame_idx[i] = ap_ref->slot;
 
-        ap->av1pic_info.primary_ref_frame = ap_ref->slot;
         ap->av1pic_info.ref_order_hint[ap_ref->slot] = ref->display_order - ap_ref->last_idr_frame;
         rc_group = VK_VIDEO_ENCODE_AV1_RATE_CONTROL_GROUP_PREDICTIVE_KHR;
         pred_mode = VK_VIDEO_ENCODE_AV1_PREDICTION_MODE_SINGLE_REFERENCE_KHR;
         ref_name_mask = enc->caps.singleReferenceNameMask;
-        set_name_slot(ap_ref->av1pic_info.current_frame_id, name_slots, ref_name_mask, 0);
+        ap->av1pic_info.primary_ref_frame =
+            set_name_slot(ap_ref->av1pic_info.current_frame_id, name_slots, ref_name_mask, 0);
 
 //        vpic->ref_frame_ctrl_l0.fields.search_idx0 = AV1_REF_FRAME_LAST;
 
@@ -422,11 +422,11 @@ static int init_pic_params(AVCodecContext *avctx, FFHWBaseEncodePicture *pic,
         ref = pic->refs[0][pic->nb_refs[0] - 1];
         ap_ref = ref->codec_priv;
         ap->last_idr_frame = ap_ref->last_idr_frame;
-        ap->av1pic_info.primary_ref_frame = ap_ref->slot;
         ap->av1pic_info.ref_order_hint[ap_ref->slot] = ref->display_order - ap_ref->last_idr_frame;
         for (int i = 0; i < AV1_REF_FRAME_GOLDEN; i++)
             ap->av1pic_info.ref_frame_idx[i] = ap_ref->slot;
-        set_name_slot(ap_ref->av1pic_info.current_frame_id, name_slots, ref_name_mask, 0);
+        ap->av1pic_info.primary_ref_frame =
+            set_name_slot(ap_ref->av1pic_info.current_frame_id, name_slots, ref_name_mask, 0);
 
         ref = pic->refs[1][pic->nb_refs[1] - 1];
         ap_ref = ref->codec_priv;
@@ -1023,7 +1023,7 @@ static int init_base_units(AVCodecContext *avctx)
     } else {
         av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for AV1 sequence header = %zu\n",
                data_size);
-        return err;
+        return AVERROR_EXTERNAL;
     }
 
     ret = vk->GetEncodedVideoSessionParametersKHR(s->hwctx->act_dev, &params_info,
@@ -1031,7 +1031,8 @@ static int init_base_units(AVCodecContext *avctx)
                                                   &data_size, data);
     if (ret != VK_SUCCESS) {
         av_log(avctx, AV_LOG_ERROR, "Error writing feedback units\n");
-        return err;
+        err = AVERROR_EXTERNAL;
+        goto end;
     }
 
     av_log(avctx, AV_LOG_VERBOSE, "Feedback units written, overrides: %i\n",
@@ -1040,20 +1041,21 @@ static int init_base_units(AVCodecContext *avctx)
     params_feedback.hasOverrides = 1;
 
     /* No need to sync any overrides */
+    err = 0;
     if (!params_feedback.hasOverrides)
-        return 0;
+        goto end;
 
     /* Parse back tne units and override */
     err = parse_feedback_units(avctx, data, data_size);
     if (err < 0)
-        return err;
+        goto end;
 
     /* Create final session parameters */
     err = create_session_params(avctx);
-    if (err < 0)
-        return err;
 
-    return 0;
+end:
+    av_free(data);
+    return err;
 }
 
 static int vulkan_encode_av1_add_obu(AVCodecContext *avctx,

@@ -405,6 +405,9 @@ int ff_dovi_rpu_parse(DOVIContext *s, const uint8_t *rpu, size_t rpu_size,
         VALIDATE(rpu[0], 25, 25); /* NAL prefix */
         rpu++;
         rpu_size--;
+        /* Strip trailing padding zero bytes */
+        while (rpu_size && !rpu[rpu_size - 1])
+            rpu_size--;
     }
 
     if ((ret = init_get_bits8(gb, rpu, rpu_size)) < 0)
@@ -582,6 +585,8 @@ int ff_dovi_rpu_parse(DOVIContext *s, const uint8_t *rpu, size_t rpu_size,
 
         mapping->num_x_partitions = get_ue_golomb_long(gb) + 1;
         mapping->num_y_partitions = get_ue_golomb_long(gb) + 1;
+        VALIDATE(mapping->num_x_partitions, 1, 0xFFFF);
+        VALIDATE(mapping->num_y_partitions, 1, 0xFFFF);
         /* End of rpu_data_header(), start of vdr_rpu_data_payload() */
 
         for (int c = 0; c < 3; c++) {
@@ -708,7 +713,8 @@ int ff_dovi_rpu_parse(DOVIContext *s, const uint8_t *rpu, size_t rpu_size,
             return ret;
         }
 
-        if (get_bits_left(gb) > 48 /* padding + CRC32 + terminator */) {
+        /* ue(1) + ue(0) + level + CRC32 + terminator */
+        if (get_bits_left(gb) >= 3 + 1 + 8 + 32 + 8) {
             if ((ret = parse_ext_blocks(s, gb, 2, dm_compression, err_recognition)) < 0) {
                 ff_dovi_ctx_unref(s);
                 return ret;

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_REPO="https://gitlab.com/AOMediaCodec/SVT-AV1.git"
-SCRIPT_COMMIT="c04f951541ad600e0d9c10836f2ab7b9bc69816d"
+SCRIPT_COMMIT="9292ec8e32bce26f781f277ec8739b53426c4300"
 
 ffbuild_enabled() {
     [[ $TARGET == win32 ]] && return -1

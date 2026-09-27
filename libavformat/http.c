@@ -567,6 +567,7 @@ int ff_http_do_new_request2(URLContext *h, const char *uri, AVDictionary **opts)
 
     s->end_chunked_post = 0;
     s->chunkend      = 0;
+    s->range_end     = 0;
     s->off           = 0;
     s->icy_data_read = 0;
 
@@ -1055,8 +1056,10 @@ static int parse_cookie(HTTPContext *s, const char *p, AVDictionary **cookies)
     char *eql, *name;
 
     // ensure the cookie is parsable
-    if (parse_set_cookie(p, &new_params))
+    if (parse_set_cookie(p, &new_params)) {
+        av_dict_free(&new_params);
         return -1;
+    }
 
     // if there is no cookie value there is nothing to parse
     cookie_entry = av_dict_iterate(new_params, NULL);
@@ -1663,6 +1666,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
     s->off              = 0;
     s->icy_data_read    = 0;
     s->filesize         = UINT64_MAX;
+    s->range_end        = 0;
     s->willclose        = 0;
     s->end_chunked_post = 0;
     s->end_header       = 0;
@@ -2161,14 +2165,16 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
         s->hd = NULL;
     }
 
-    /* if it fails, continue on old connection */
     if ((ret = http_open_cnx(h, &options)) < 0) {
+        /* if it fails, continue on old connection if possible */
+        if (old_hd) {
+            memcpy(s->buffer, old_buf, old_buf_size);
+            s->buf_ptr = s->buffer;
+            s->buf_end = s->buffer + old_buf_size;
+            s->hd      = old_hd;
+            s->off     = old_off;
+        }
         av_dict_free(&options);
-        memcpy(s->buffer, old_buf, old_buf_size);
-        s->buf_ptr = s->buffer;
-        s->buf_end = s->buffer + old_buf_size;
-        s->hd      = old_hd;
-        s->off     = old_off;
         return ret;
     }
     av_dict_free(&options);

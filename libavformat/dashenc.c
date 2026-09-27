@@ -432,7 +432,7 @@ static void write_hls_media_playlist(OutputStream *os, AVFormatContext *s,
                                 (double) seg->duration / timescale, 0,
                                 seg->range_length, seg->start_pos, NULL,
                                 c->single_file ? os->initfile : seg->file,
-                                &prog_date_time, 0, 0, 0);
+                                &prog_date_time, 0);
         if (ret < 0) {
             av_log(os->ctx, AV_LOG_WARNING, "ff_hls_write_file_entry get error\n");
         }
@@ -1453,8 +1453,10 @@ static int dash_init(AVFormatContext *s)
         snprintf(filename, sizeof(filename), "%s%s", c->dirname, os->initfile);
         set_http_options(&opts, c);
         if (!c->single_file) {
-            if ((ret = avio_open_dyn_buf(&ctx->pb)) < 0)
+            if ((ret = avio_open_dyn_buf(&ctx->pb)) < 0) {
+                av_dict_free(&opts);
                 return ret;
+            }
             ret = s->io_open(s, &os->out, filename, AVIO_FLAG_WRITE, &opts);
         } else {
             ctx->url = av_strdup(filename);

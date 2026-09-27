@@ -117,6 +117,7 @@ typedef struct MJpegDecodeContext {
     AVFrame *picture; /* picture structure */
     AVFrame *picture_ptr; /* pointer to picture structure */
     int got_picture;                                ///< we found a SOF and picture is valid, too.
+    int nb_seq_component_scans;                     ///< component scans decoded since the SOF (sequential images: <= nb_components)
     int linesize[MAX_COMPONENTS];                   ///< linesize << interlaced
     DECLARE_ALIGNED(32, int16_t, block)[64];
     int16_t (*blocks[MAX_COMPONENTS])[64]; ///< intermediate sums (progressive mode)
@@ -139,6 +140,7 @@ typedef struct MJpegDecodeContext {
     int mjpb_skiptosod;
 
     int cur_scan; /* current scan, used by JPEG-LS */
+    int64_t total_ls_decoded_height; /* cumulative JPEG-LS rows decoded in the current packet */
     int flipped; /* true if picture is flipped */
 
     uint16_t (*ljpeg_buffer)[4];

@@ -28,7 +28,9 @@ using subsample_function_t = T (*)(cudaTextureObject_t tex, int xo, int yo,
                                    int dst_width, int dst_height,
                                    int src_left, int src_top,
                                    int src_width, int src_height,
-                                   int bit_depth, float param);
+                                   int bit_depth, float param,
+                                   const float *weights, const int *offsets,
+                                   int filter_size);
 
 // --- CONVERSION LOGIC ---
 
@@ -90,14 +92,16 @@ static inline __device__ ushort conv_16to10pl(ushort in)
     __device__ static inline void N(cudaTextureObject_t src_tex[4], T *dst[4], int xo, int yo, \
                                     int dst_width, int dst_height, int dst_pitch,              \
                                     int src_left, int src_top, int src_width, int src_height,  \
-                                    float param, int mpeg_range)
+                                    float param, int mpeg_range,                               \
+                                    const float *weights, const int *offsets, int filter_size)
 
 #define SUB_F(m, plane) \
     subsample_func_##m(src_tex[plane], xo, yo, \
                        dst_width, dst_height,  \
                        src_left, src_top,      \
                        src_width, src_height,  \
-                       in_bit_depth, param)
+                       in_bit_depth, param,    \
+                       weights, offsets, filter_size)
 
 // FFmpeg passes pitch in bytes, CUDA uses potentially larger types
 #define FIXED_PITCH \
@@ -1095,7 +1099,9 @@ __device__ static inline T Subsample_Nearest(cudaTextureObject_t tex,
                                              int dst_width, int dst_height,
                                              int src_left, int src_top,
                                              int src_width, int src_height,
-                                             int bit_depth, float param)
+                                             int bit_depth, float param,
+                                             const float *weights, const int *offsets,
+                                             int filter_size)
 {
     float hscale = (float)src_width / (float)dst_width;
     float vscale = (float)src_height / (float)dst_height;
@@ -1111,7 +1117,9 @@ __device__ static inline T Subsample_Bilinear(cudaTextureObject_t tex,
                                               int dst_width, int dst_height,
                                               int src_left, int src_top,
                                               int src_width, int src_height,
-                                              int bit_depth, float param)
+                                              int bit_depth, float param,
+                                              const float *weights, const int *offsets,
+                                              int filter_size)
 {
     float hscale = (float)src_width / (float)dst_width;
     float vscale = (float)src_height / (float)dst_height;
@@ -1143,7 +1151,9 @@ __device__ static inline T Subsample_Bicubic(cudaTextureObject_t tex,
                                              int dst_width, int dst_height,
                                              int src_left, int src_top,
                                              int src_width, int src_height,
-                                             int bit_depth, float param)
+                                             int bit_depth, float param,
+                                             const float *weights, const int *offsets,
+                                             int filter_size)
 {
     float hscale = (float)src_width / (float)dst_width;
     float vscale = (float)src_height / (float)dst_height;
@@ -1173,6 +1183,43 @@ __device__ static inline T Subsample_Bicubic(cudaTextureObject_t tex,
 #undef PIX
 }
 
+enum ScaleDir {
+    SCALE_DIR_X,
+    SCALE_DIR_Y,
+};
+
+template<typename T, int dir>
+__device__ static inline T Subsample_Generic(cudaTextureObject_t tex,
+                                             int xo, int yo,
+                                             int dst_width, int dst_height,
+                                             int src_left, int src_top,
+                                             int src_width, int src_height,
+                                             int bit_depth, float param,
+                                             const float *weights, const int *offsets,
+                                             int filter_size)
+{
+    const float factor = bit_depth > 8 ? 0xFFFF : 0xFF;
+
+    floatT sum;
+    vec_set_scalar(sum, 0.0f);
+
+    if (dir == SCALE_DIR_X) {
+        const float *row = &weights[xo * filter_size];
+        const float x = 0.5f + src_left + offsets[xo];
+        const float y = 0.5f + src_top  + yo;
+        for (int i = 0; i < filter_size; i++)
+            sum += tex2D<floatT>(tex, x + i, y) * row[i];
+    } else {
+        const float *col = &weights[yo * filter_size];
+        const float x = 0.5f + src_left + xo;
+        const float y = 0.5f + src_top  + offsets[yo];
+        for (int i = 0; i < filter_size; i++)
+            sum += tex2D<floatT>(tex, x, y + i) * col[i];
+    }
+
+    return from_floatN<T, floatT>(sum * factor);
+}
+
 /// --- FUNCTION EXPORTS ---
 
 #define KERNEL_ARGS(T) CUDAScaleKernelParams params
@@ -1194,7 +1241,10 @@ __device__ static inline T Subsample_Bicubic(cudaTextureObject_t tex,
         params.dst_width, params.dst_height, params.dst_pitch, \
         params.src_left, params.src_top,                \
         params.src_width, params.src_height,            \
-        params.param, params.mpeg_range);
+        params.param, params.mpeg_range,                \
+        (const float*) params.weights,                  \
+        (const int*) params.offsets,                    \
+        params.filter_size);
 
 extern "C" {
 
@@ -1357,4 +1407,46 @@ LANCZOS_KERNELS_RGB(rgb0)
 LANCZOS_KERNELS_RGB(bgr0)
 LANCZOS_KERNELS_RGB(rgba)
 LANCZOS_KERNELS_RGB(bgra)
+
+#define GENERIC_KERNEL(D, DIR, C, S) \
+    __global__ void Subsample_Generic_##D##_##C##S(                     \
+        KERNEL_ARGS(Convert_##C::out_T##S))                             \
+    {                                                                   \
+        SUBSAMPLE((Convert_##C::Convert##S<                             \
+                       Subsample_Generic<Convert_##C::in_T, DIR>,       \
+                       Subsample_Generic<Convert_##C::in_T_uv, DIR> >), \
+                  Convert_##C::out_T##S) \
+    }
+
+#define GENERIC_KERNEL_RAW(C) \
+    GENERIC_KERNEL(h, SCALE_DIR_X, C,)      \
+    GENERIC_KERNEL(h, SCALE_DIR_X, C,_uv)   \
+    GENERIC_KERNEL(v, SCALE_DIR_Y, C,)      \
+    GENERIC_KERNEL(v, SCALE_DIR_Y, C,_uv)
+
+#define GENERIC_KERNELS(C) \
+    GENERIC_KERNEL_RAW(planar8_ ## C)       \
+    GENERIC_KERNEL_RAW(planar10_ ## C)      \
+    GENERIC_KERNEL_RAW(planar16_ ## C)      \
+    GENERIC_KERNEL_RAW(semiplanar8_ ## C)   \
+    GENERIC_KERNEL_RAW(semiplanar10_ ## C)  \
+    GENERIC_KERNEL_RAW(semiplanar16_ ## C)
+
+#define GENERIC_KERNELS_RGB(C) \
+    GENERIC_KERNEL_RAW(rgb0_ ## C)  \
+    GENERIC_KERNEL_RAW(bgr0_ ## C)  \
+    GENERIC_KERNEL_RAW(rgba_ ## C)  \
+    GENERIC_KERNEL_RAW(bgra_ ## C)
+
+GENERIC_KERNELS(planar8)
+GENERIC_KERNELS(planar10)
+GENERIC_KERNELS(planar16)
+GENERIC_KERNELS(semiplanar8)
+GENERIC_KERNELS(semiplanar10)
+GENERIC_KERNELS(semiplanar16)
+
+GENERIC_KERNELS_RGB(rgb0)
+GENERIC_KERNELS_RGB(bgr0)
+GENERIC_KERNELS_RGB(rgba)
+GENERIC_KERNELS_RGB(bgra)
 }

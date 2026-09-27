@@ -374,9 +374,10 @@ static struct variant *new_variant(HLSContext *c, struct variant_info *info,
     return var;
 }
 
-static void handle_variant_args(struct variant_info *info, const char *key,
+static void handle_variant_args(void *context, const char *key,
                                 int key_len, char **dest, int *dest_len)
 {
+    struct variant_info *info = context;
     if (!strncmp(key, "BANDWIDTH=", key_len)) {
         *dest     =        info->bandwidth;
         *dest_len = sizeof(info->bandwidth);
@@ -398,9 +399,10 @@ struct key_info {
      char iv[35];
 };
 
-static void handle_key_args(struct key_info *info, const char *key,
+static void handle_key_args(void *context, const char *key,
                             int key_len, char **dest, int *dest_len)
 {
+    struct key_info *info = context;
     if (!strncmp(key, "METHOD=", key_len)) {
         *dest     =        info->method;
         *dest_len = sizeof(info->method);
@@ -831,7 +833,7 @@ static int parse_playlist(HLSContext *c, const char *url,
         if (c->http_persistent)
             av_dict_set(&opts, "multiple_requests", "1", 0);
 
-        ret = c->ctx->io_open(c->ctx, &in, url, AVIO_FLAG_READ, &opts);
+        ret = open_url(c->ctx, &in, url, &opts, NULL, NULL);
         av_dict_free(&opts);
         if (ret < 0)
             return ret;
@@ -864,14 +866,18 @@ static int parse_playlist(HLSContext *c, const char *url,
     while (!avio_feof(in)) {
         ff_get_chomp_line(in, line, sizeof(line));
         if (av_strstart(line, "#EXT-X-STREAM-INF:", &ptr)) {
+            if (pls) {
+                av_log(c->ctx, AV_LOG_ERROR,
+                       "Master Playlist tag found in a Media Playlist\n");
+                ret = AVERROR_INVALIDDATA;
+                goto fail;
+            }
             is_variant = 1;
             memset(&variant_info, 0, sizeof(variant_info));
-            ff_parse_key_value(ptr, (ff_parse_key_val_cb) handle_variant_args,
-                               &variant_info);
+            ff_parse_key_value(ptr, handle_variant_args, &variant_info);
         } else if (av_strstart(line, "#EXT-X-KEY:", &ptr)) {
             struct key_info info = {{0}};
-            ff_parse_key_value(ptr, (ff_parse_key_val_cb) handle_key_args,
-                               &info);
+            ff_parse_key_value(ptr, handle_key_args, &info);
             key_type = KEY_NONE;
             has_iv = 0;
             if (!strcmp(info.method, "AES-128"))
@@ -885,8 +891,13 @@ static int parse_playlist(HLSContext *c, const char *url,
             av_strlcpy(key, info.uri, sizeof(key));
         } else if (av_strstart(line, "#EXT-X-MEDIA:", &ptr)) {
             struct rendition_info info = {{0}};
-            ff_parse_key_value(ptr, (ff_parse_key_val_cb) handle_rendition_args,
-                               &info);
+            if (pls) {
+                av_log(c->ctx, AV_LOG_ERROR,
+                       "Master Playlist tag found in a Media Playlist\n");
+                ret = AVERROR_INVALIDDATA;
+                goto fail;
+            }
+            ff_parse_key_value(ptr, handle_rendition_args, &info);
             new_rendition(c, &info, url);
         } else if (av_strstart(line, "#EXT-X-TARGETDURATION:", &ptr)) {
             int64_t t;

@@ -30,12 +30,14 @@
 
 #include "libavutil/attributes_internal.h"
 #include "libavutil/avassert.h"
+#include "libavutil/macros.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
+#include "libavutil/parseutils.h"
 #include "libavutil/log.h"
 #include "libavutil/random_seed.h"
 #include "libavutil/time.h"
@@ -1130,20 +1132,31 @@ static int hls_append_segment(struct AVFormatContext *s, HLSContext *hls,
     return 0;
 }
 
-static int extract_segment_number(const char *filename) {
+static int extract_segment_number(const char *filename)
+{
     const char *dot = strrchr(filename, '.');
-    const char *num_start = dot - 1;
+    const char *num_start;
+    char *end;
+    long value;
 
-    while (num_start > filename && *num_start >= '0' && *num_start <= '9') {
+    if (!dot)
+        return -1;
+    if (dot == filename)
+        return -1;
+
+    num_start = dot;
+    while (num_start > filename &&
+           num_start[-1] >= '0' && num_start[-1] <= '9')
         num_start--;
-    }
-
-    num_start++;
-
     if (num_start == dot)
         return -1;
 
-    return atoi(num_start);
+    errno = 0;
+    value = strtol(num_start, &end, 10);
+    if (errno == ERANGE || end != dot || value > INT_MAX)
+        return -1;
+
+    return (int)value;
 }
 
 static int parse_playlist(AVFormatContext *s, const char *url, VariantStream *vs)
@@ -1190,11 +1203,13 @@ static int parse_playlist(AVFormatContext *s, const char *url, VariantStream *vs
             ptr = av_stristr(line, "URI=\"");
             if (ptr) {
                 ptr += strlen("URI=\"");
-                end = av_stristr(ptr, ",");
+                end = strchr(ptr, '"');
                 if (end) {
-                    av_strlcpy(vs->key_uri, ptr, end - ptr);
+                    av_strlcpy(vs->key_uri, ptr,
+                               FFMIN(end - ptr + 1, sizeof(vs->key_uri)));
                 } else {
-                    av_strlcpy(vs->key_uri, ptr, sizeof(vs->key_uri));
+                    ret = AVERROR_INVALIDDATA;
+                    goto fail;
                 }
             }
 
@@ -1203,29 +1218,32 @@ static int parse_playlist(AVFormatContext *s, const char *url, VariantStream *vs
                 ptr += strlen("IV=0x");
                 end = av_stristr(ptr, ",");
                 if (end) {
-                    av_strlcpy(vs->iv_string, ptr, end - ptr);
+                    av_strlcpy(vs->iv_string, ptr, FFMIN(end - ptr + 1, sizeof(vs->iv_string)));
                 } else {
                     av_strlcpy(vs->iv_string, ptr, sizeof(vs->iv_string));
                 }
             }
         } else if (av_strstart(line, "#EXT-X-PROGRAM-DATE-TIME:", &ptr)) {
-            struct tm program_date_time;
-            int y,M,d,h,m,s;
-            double ms;
-            if (sscanf(ptr, "%d-%d-%dT%d:%d:%d.%lf", &y, &M, &d, &h, &m, &s, &ms) != 7) {
+            struct tm program_date_time = { 0 };
+            double ms = 0;
+            char *q = av_small_strptime(ptr, "%Y-%m-%dT%H:%M:%S", &program_date_time);
+
+            if (!q) {
                 ret = AVERROR_INVALIDDATA;
                 goto fail;
             }
-
-            program_date_time.tm_year = y - 1900;
-            program_date_time.tm_mon = M - 1;
-            program_date_time.tm_mday = d;
-            program_date_time.tm_hour = h;
-            program_date_time.tm_min = m;
-            program_date_time.tm_sec = s;
+            if (*q == '.')
+                ms = atof(q + 1);
             program_date_time.tm_isdst = -1;
 
-            discont_program_date_time = mktime(&program_date_time);
+            errno = 0;
+            time_t t = mktime(&program_date_time);
+            if (t == (time_t)-1 && errno == EOVERFLOW) {
+                ret = AVERROR_INVALIDDATA;
+                goto fail;
+            }
+            discont_program_date_time = t;
+
             discont_program_date_time += (double)(ms / 1000);
         } else if (av_strstart(line, "#", NULL)) {
             continue;
@@ -1459,6 +1477,7 @@ static int create_master_playlist(AVFormatContext *s,
             avg_bandwidth = vs->avg_bitrate;
         } else {
             bandwidth = 0;
+            avg_bandwidth = 0;
             if (vid_st)
                 bandwidth += get_stream_bit_rate(vid_st);
             if (aud_st)
@@ -1603,7 +1622,7 @@ static int hls_window(AVFormatContext *s, int last, VariantStream *vs)
                                       en->size, en->pos, hls->baseurl,
                                       en->filename,
                                       en->discont_program_date_time ? &en->discont_program_date_time : prog_date_time_p,
-                                      en->keyframe_size, en->keyframe_pos, hls->flags & HLS_I_FRAMES_ONLY);
+                                      hls->flags & HLS_I_FRAMES_ONLY);
         if (en->discont_program_date_time)
             en->discont_program_date_time -= en->duration;
         if (ret < 0) {
@@ -1627,7 +1646,7 @@ static int hls_window(AVFormatContext *s, int last, VariantStream *vs)
         for (en = vs->segments; en; en = en->next) {
             ret = ff_hls_write_file_entry(hls->sub_m3u8_out, en->discont, byterange_mode,
                                           en->duration, 0, en->size, en->pos,
-                                          hls->baseurl, en->sub_filename, NULL, 0, 0, 0);
+                                          hls->baseurl, en->sub_filename, NULL, 0);
             if (ret < 0) {
                 av_log(s, AV_LOG_WARNING, "ff_hls_write_file_entry get error\n");
             }
@@ -2971,8 +2990,12 @@ static int hls_init(AVFormatContext *s)
         if (vs->has_video > 1)
             av_log(s, AV_LOG_WARNING, "More than a single video stream present, expect issues decoding it.\n");
         if (hls->segment_type == SEGMENT_TYPE_FMP4) {
+#if CONFIG_MP4_MUXER
             EXTERN const FFOutputFormat ff_mp4_muxer;
             vs->oformat = &ff_mp4_muxer.p;
+#else
+            return AVERROR_MUXER_NOT_FOUND;
+#endif
         } else {
             EXTERN const FFOutputFormat ff_mpegts_muxer;
             vs->oformat = &ff_mpegts_muxer.p;

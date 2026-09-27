@@ -51,6 +51,9 @@
  * synchronization is lost */
 #define MAX_RESYNC_SIZE 65536
 
+/* payload of a TS packet which carries no adaptation field */
+#define TS_PAYLOAD_SIZE (TS_PACKET_SIZE - 4)
+
 #define MAX_MP4_DESCR_COUNT 16
 
 #define MOD_UNLIKELY(modulus, dividend, divisor, prev_dividend)                \
@@ -211,7 +214,7 @@ static const AVOption options[] = {
     {"skip_clear", "skip clearing programs", offsetof(MpegTSContext, skip_clear), AV_OPT_TYPE_BOOL,
      {.i64 = 0}, 0, 1, 0 },
     {"max_packet_size", "maximum size of emitted packet", offsetof(MpegTSContext, max_packet_size), AV_OPT_TYPE_INT,
-     {.i64 = 204800}, 1, INT_MAX/2, AV_OPT_FLAG_DECODING_PARAM },
+     {.i64 = 204800}, TS_PAYLOAD_SIZE, INT_MAX/2, AV_OPT_FLAG_DECODING_PARAM },
     { NULL },
 };
 
@@ -583,7 +586,7 @@ static void mpegts_close_filter(MpegTSContext *ts, MpegTSFilter *filter)
         av_buffer_unref(&pes->buffer);
         /* referenced private data will be freed later in
          * avformat_close_input (pes->st->priv_data == pes) */
-        if (!pes->st || pes->merged_st) {
+        if (!pes->st || pes->merged_st || !pes->st->priv_data) {
             av_freep(&filter->u.pes_filter.opaque);
         }
     }
@@ -1416,8 +1419,14 @@ skip:
         case MPEGTS_PAYLOAD:
             do {
                 int max_packet_size = ts->max_packet_size;
-                if (pes->PES_packet_length && pes->PES_packet_length + PES_START_SIZE > pes->pes_header_size)
-                    max_packet_size = pes->PES_packet_length + PES_START_SIZE - pes->pes_header_size;
+                if (pes->PES_packet_length && pes->PES_packet_length + PES_START_SIZE > pes->pes_header_size) {
+                    const int pes_payload_size = pes->PES_packet_length + PES_START_SIZE - pes->pes_header_size;
+
+                    if (pes_payload_size > ts->max_packet_size)
+                        pes->PES_packet_length = 0;
+                    else
+                        max_packet_size = pes_payload_size;
+                }
 
                 if (pes->data_index > 0 &&
                     pes->data_index + buf_size > max_packet_size) {

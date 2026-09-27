@@ -86,6 +86,8 @@ static int tl_create(TabList *l)
 
         for (int i = 0; i < l->nb_tabs; i++) {
             Tab *t = l->tabs + i;
+            if (!t->size)
+                continue;
             *t->tab = l->zero ? av_mallocz(t->size) : av_malloc(t->size);
             if (!*t->tab)
                 return AVERROR(ENOMEM);
@@ -245,17 +247,15 @@ static void pixel_buffer_nz_tl_init(TabList *l, VVCFrameContext *fc)
 
     tl_init(l, 0, changed);
 
-    for (int c_idx = 0; c_idx < c_end; c_idx++) {
-        const int w = width  >> (sps ? sps->hshift[c_idx] : 0);
-        const int h = height >> (sps ? sps->vshift[c_idx] : 0);
+    /* Add size 0 tabs for the components beyond c_end, so tl_free() frees
+     * tabs allocated under a previous, larger chroma format. */
+    for (int c_idx = 0; c_idx < VVC_MAX_SAMPLE_ARRAYS; c_idx++) {
+        const int active = c_idx < c_end;
+        const int w = active ? width  >> (sps ? sps->hshift[c_idx] : 0) : 0;
+        const int h = active ? height >> (sps ? sps->vshift[c_idx] : 0) : 0;
+        const int border_pixels = c_idx ? ALF_BORDER_CHROMA : ALF_BORDER_LUMA;
         TL_ADD(sao_pixel_buffer_h[c_idx], (w * 2 * ctu_height) << ps);
         TL_ADD(sao_pixel_buffer_v[c_idx], (h * 2 * ctu_width)  << ps);
-    }
-
-    for (int c_idx = 0; c_idx < c_end; c_idx++) {
-        const int w = width  >> (sps ? sps->hshift[c_idx] : 0);
-        const int h = height >> (sps ? sps->vshift[c_idx] : 0);
-        const int border_pixels = c_idx ? ALF_BORDER_CHROMA : ALF_BORDER_LUMA;
         for (int i = 0; i < 2; i++) {
             TL_ADD(alf_pixel_buffer_h[c_idx][i], (w * border_pixels * ctu_height) << ps);
             TL_ADD(alf_pixel_buffer_v[c_idx][i], h * ALF_PADDING_SIZE * ctu_width);
@@ -301,7 +301,7 @@ static void ibc_tl_init(TabList *l, VVCFrameContext *fc)
     const int has_ibc    = sps ? sps->r->sps_ibc_enabled_flag : 0;
     const int changed    = fc->tab.sz.chroma_format_idc != chroma_idc ||
         fc->tab.sz.ctu_height != ctu_height ||
-        fc->tab.sz.ctu_size != ctu_size ||
+        fc->tab.sz.ctu_size != ctu_size * ctu_size ||
         fc->tab.sz.pixel_shift != ps;
 
     fc->tab.sz.ibc_buffer_width = ctu_size ? 2 * MAX_CTU_SIZE * MAX_CTU_SIZE / ctu_size : 0;
@@ -369,13 +369,11 @@ static int pic_arrays_init(VVCContext *s, VVCFrameContext *fc)
     const VVCPPS *pps            = fc->ps.pps;
     const int ctu_count          = pps->ctb_count;
     const int pic_size_in_min_pu = pps->min_pu_width * pps->min_pu_height;
-    int ret;
 
     free_cus(fc);
 
-    ret = frame_context_for_each_tl(fc, tl_create);
-    if (ret < 0)
-        return ret;
+    if (frame_context_for_each_tl(fc, tl_create) < 0)
+        goto fail;
 
     // for error handling case, we may call free_cus before VVC_TASK_STAGE_INIT, so we need to set cus to 0 here
     memset(fc->tab.cus, 0, sizeof(*fc->tab.cus) * ctu_count);
@@ -386,7 +384,7 @@ static int pic_arrays_init(VVCContext *s, VVCFrameContext *fc)
         av_refstruct_pool_uninit(&fc->rpl_tab_pool);
         fc->rpl_tab_pool = av_refstruct_pool_alloc(ctu_count * sizeof(RefPicListTab), 0);
         if (!fc->rpl_tab_pool)
-            return AVERROR(ENOMEM);
+            goto fail;
     }
 
     if (fc->tab.sz.pic_size_in_min_pu != pic_size_in_min_pu) {
@@ -394,7 +392,7 @@ static int pic_arrays_init(VVCContext *s, VVCFrameContext *fc)
         fc->tab_dmvr_mvf_pool = av_refstruct_pool_alloc(
             pic_size_in_min_pu * sizeof(MvField), AV_REFSTRUCT_POOL_FLAG_ZERO_EVERY_TIME);
         if (!fc->tab_dmvr_mvf_pool)
-            return AVERROR(ENOMEM);
+            goto fail;
     }
 
     fc->tab.sz.ctu_count          = pps->ctb_count;
@@ -410,6 +408,11 @@ static int pic_arrays_init(VVCContext *s, VVCFrameContext *fc)
     fc->tab.sz.pixel_shift        = sps->pixel_shift;
 
     return 0;
+
+fail:
+    fc->tab.sz.ctu_count = 0;
+    pic_arrays_free(fc);
+    return AVERROR(ENOMEM);
 }
 
 int ff_vvc_per_frame_init(VVCFrameContext *fc)

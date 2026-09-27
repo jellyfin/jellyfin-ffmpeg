@@ -74,7 +74,7 @@
 0074-fix-mapped-hwframe-to-swframe-swscale-conversion.patch
 0075-fix-hwupload-filter-cannot-use-devices-created-by-hwaccel.patch
 0076-fix-seeking-h264-open-gop-videos-with-d3d11va-on-amd.patch
-0077-fix-readrate-catchup-caused-remuxing-to-stall.patch
+0077-suppress-the-resumed-reading-at-pts-with-rate-warning.patch
 0078-backport-fixes-for-vulkan-from-upstream.patch
 0079-add-fixes-for-vaapi-drm-prime-vulkan-interop.patch
 0080-prefer-vulkan-device-with-higher-api-version.patch

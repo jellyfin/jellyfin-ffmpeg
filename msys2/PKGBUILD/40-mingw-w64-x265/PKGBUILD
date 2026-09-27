@@ -18,13 +18,13 @@ makedepends=(
    $([[ "${CARCH}" != "x86_64" ]] || echo "${MINGW_PACKAGE_PREFIX}-nasm")
 )
 options=('strip')
-url='https://bitbucket.org/multicoreware/x265_git'
+url='https://github.com/Multicorewareinc/x265'
 msys2_references=(
   "cpe: cpe:/a:multicorewareinc:x265"
   "cpe: cpe:/a:multicorewareinc:x265_high_efficiency_video_coding"
 )
-_commit="e444744c03978c1fb4e037168967020cf2648427"
-source=("${_realname}"::"git+https://bitbucket.org/multicoreware/x265_git.git#commit=${_commit}"
+_commit="e9b88125dc21393b3fd8d68e98083bdfb89778a8"
+source=("${_realname}"::"git+https://github.com/Multicorewareinc/x265.git#commit=${_commit}"
         "0001-missing-include.patch")
 sha256sums=('SKIP'
             '20e240c5365665e254b6030a458376fac16c1797903d607cae5863b280859a8f')

@@ -39,8 +39,8 @@ typedef struct FloodfillContext {
     int d[4];
 
     int nb_planes;
-    int back, front;
     Points *points;
+    unsigned int points_size;
 
     int (*is_same)(const AVFrame *frame, int x, int y,
                    unsigned s0, unsigned s1, unsigned s2, unsigned s3);
@@ -270,11 +270,6 @@ static int config_input(AVFilterLink *inlink)
        }
     }
 
-    s->front = s->back = 0;
-    s->points = av_calloc(inlink->w * inlink->h, 4 * sizeof(Points));
-    if (!s->points)
-        return AVERROR(ENOMEM);
-
     return 0;
 }
 
@@ -292,7 +287,22 @@ static int filter_frame(AVFilterLink *link, AVFrame *frame)
     int s3 = s->s[3];
     const int w = frame->width;
     const int h = frame->height;
+    size_t nb_points, points_size;
     int i, ret;
+    int front = 0;
+
+    if (w > UINT16_MAX + 1 || h > UINT16_MAX + 1 ||
+        av_size_mult(w, h, &nb_points) < 0 ||
+        av_size_mult(nb_points, 4 * sizeof(*s->points), &points_size) < 0) {
+        av_frame_free(&frame);
+        return AVERROR(EINVAL);
+    }
+
+    av_fast_malloc(&s->points, &s->points_size, points_size);
+    if (!s->points) {
+        av_frame_free(&frame);
+        return AVERROR(ENOMEM);
+    }
 
     if (is_inside(s->x, s->y, w, h)) {
         s->pick_pixel(frame, s->x, s->y, &s0, &s1, &s2, &s3);
@@ -310,9 +320,9 @@ static int filter_frame(AVFilterLink *link, AVFrame *frame)
             goto end;
 
         if (s->is_same(frame, s->x, s->y, s0, s1, s2, s3)) {
-            s->points[s->front].x = s->x;
-            s->points[s->front].y = s->y;
-            s->front++;
+            s->points[front].x = s->x;
+            s->points[front].y = s->y;
+            front++;
         }
 
         if (ret = ff_inlink_make_frame_writable(link, &frame)) {
@@ -320,34 +330,34 @@ static int filter_frame(AVFilterLink *link, AVFrame *frame)
             return ret;
         }
 
-        while (s->front > s->back) {
+        while (front > 0) {
             int x, y;
 
-            s->front--;
-            x = s->points[s->front].x;
-            y = s->points[s->front].y;
+            front--;
+            x = s->points[front].x;
+            y = s->points[front].y;
 
             if (s->is_same(frame, x, y, s0, s1, s2, s3)) {
                 s->set_pixel(frame, x, y, d0, d1, d2, d3);
 
                 if (is_inside(x + 1, y, w, h)) {
-                    s->points[s->front]  .x = x + 1;
-                    s->points[s->front++].y = y;
+                    s->points[front]  .x = x + 1;
+                    s->points[front++].y = y;
                 }
 
                 if (is_inside(x - 1, y, w, h)) {
-                    s->points[s->front]  .x = x - 1;
-                    s->points[s->front++].y = y;
+                    s->points[front]  .x = x - 1;
+                    s->points[front++].y = y;
                 }
 
                 if (is_inside(x, y + 1, w, h)) {
-                    s->points[s->front]  .x = x;
-                    s->points[s->front++].y = y + 1;
+                    s->points[front]  .x = x;
+                    s->points[front++].y = y + 1;
                 }
 
                 if (is_inside(x, y - 1, w, h)) {
-                    s->points[s->front]  .x = x;
-                    s->points[s->front++].y = y - 1;
+                    s->points[front]  .x = x;
+                    s->points[front++].y = y - 1;
                 }
             }
         }

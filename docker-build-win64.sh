@@ -387,8 +387,8 @@ make install
 popd
 
 # X265
-x265_commit="e444744c03978c1fb4e037168967020cf2648427"
-git clone https://bitbucket.org/multicoreware/x265_git.git
+x265_commit="e9b88125dc21393b3fd8d68e98083bdfb89778a8"
+git clone https://github.com/Multicorewareinc/x265.git
 pushd x265_git
 git checkout ${x265_commit}
 # Unbreak GCC 15
@@ -454,7 +454,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v4.1.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v4.2.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
@@ -470,7 +470,7 @@ popd
 popd
 
 # DAV1D
-git clone -b 1.5.3 --depth=1 https://code.videolan.org/videolan/dav1d.git
+git clone -b 1.5.4 --depth=1 https://code.videolan.org/videolan/dav1d.git
 meson setup dav1d dav1d_build \
     --prefix=${FF_DEPS_PREFIX} \
     --cross-file=${FF_MESON_TOOLCHAIN} \
