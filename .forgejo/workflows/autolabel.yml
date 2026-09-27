@@ -23,7 +23,7 @@ jobs:
           configuration-path: .forgejo/labeler/labeler.yml
           repo-token: ${{ secrets.AUTOLABELER_TOKEN }}
       - name: Label by title-match
-        uses: actions/github-script@v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const script = require('.forgejo/labeler/labeler.js')
