@@ -1,0 +1,781 @@
+Description: Backport the Dolby Vision layer-splitting bitstream filter
+ Add dovi_split with its bl, bl_rpu, el and el_rpu modes, plus the
+ enhancement-layer HEVC configuration side data and MP4/Matroska readers
+ needed when the EL parameter sets are stored in the container.
+ .
+ Add an opt-in downstream fix_el_timing mode that automatically validates
+ EL timestamps against HEVC picture order, preserves correctly ordered
+ packet properties, and repairs timestamp association on a best-effort basis.
+ Mark untrusted EL for compositor fallback when timing cannot be established.
+ Keep the upstream default packet-copy path unchanged.
+ .
+ Preserve the upstream AV_PKT_DATA_HEVC_CONF value by reserving the preceding enum slot
+ for AV_PKT_DATA_DYNAMIC_HDR_SMPTE_2094_APP5, which is absent in FFmpeg 8.1.
+ Omit upstream version bumps, release notes and unrelated muxer/stream-group
+ changes. The filter does not convert Dolby Vision profiles or reconstruct FEL.
+Author: Kacper Michajłow <kasper93@gmail.com>
+Author: Romain Beauxis <romain.beauxis@gmail.com>
+Origin: backport, https://github.com/FFmpeg/FFmpeg/commit/6026988b753ebb1bd424612f40b17c0c363d8ed7
+Origin: backport, https://github.com/FFmpeg/FFmpeg/commit/5f6dff5e7dbd9b1f3221f7c37225365dbf1e1038
+Origin: backport, https://github.com/FFmpeg/FFmpeg/commit/2c74d197eed2805bf77e9fdb0fe4eae1171ffdaa
+Origin: backport, https://github.com/FFmpeg/FFmpeg/commit/e2cfc80f32bfb1bf79e67cec74f7c4b57fabfcde
+Origin: backport, https://github.com/FFmpeg/FFmpeg/commit/523b9faa945bf8a69295548389c3c0151cb09251
+Forwarded: not-needed
+Index: FFmpeg/configure
+===================================================================
+--- FFmpeg.orig/configure
++++ FFmpeg/configure
+@@ -3727,6 +3727,7 @@ av1_frame_merge_bsf_select="cbs_av1"
+ av1_frame_split_bsf_select="cbs_av1"
+ av1_metadata_bsf_select="cbs_av1"
+ dovi_rpu_bsf_select="cbs_h265 cbs_av1 dovi_rpudec dovi_rpuenc"
++dovi_split_bsf_select="hevc_parser"
+ dts2pts_bsf_select="cbs_h264 h264parse cbs_h265 hevc_parser"
+ eac3_core_bsf_select="ac3_parser"
+ eia608_to_smpte436m_bsf_select="smpte_436m"
+Index: FFmpeg/libavcodec/bitstream_filters.c
+===================================================================
+--- FFmpeg.orig/libavcodec/bitstream_filters.c
++++ FFmpeg/libavcodec/bitstream_filters.c
+@@ -34,6 +34,7 @@ extern const FFBitStreamFilter ff_chomp_
+ extern const FFBitStreamFilter ff_dump_extradata_bsf;
+ extern const FFBitStreamFilter ff_dca_core_bsf;
+ extern const FFBitStreamFilter ff_dovi_rpu_bsf;
++extern const FFBitStreamFilter ff_dovi_split_bsf;
+ extern const FFBitStreamFilter ff_dts2pts_bsf;
+ extern const FFBitStreamFilter ff_dv_error_marker_bsf;
+ extern const FFBitStreamFilter ff_eac3_core_bsf;
+Index: FFmpeg/libavcodec/bsf/Makefile
+===================================================================
+--- FFmpeg.orig/libavcodec/bsf/Makefile
++++ FFmpeg/libavcodec/bsf/Makefile
+@@ -23,6 +23,7 @@ OBJS-$(CONFIG_H264_REDUNDANT_PPS_BSF)
+ OBJS-$(CONFIG_HAPQA_EXTRACT_BSF)          += bsf/hapqa_extract.o
+ OBJS-$(CONFIG_HEVC_METADATA_BSF)          += bsf/h265_metadata.o
+ OBJS-$(CONFIG_DOVI_RPU_BSF)               += bsf/dovi_rpu.o
++OBJS-$(CONFIG_DOVI_SPLIT_BSF)             += bsf/dovi_split.o
+ OBJS-$(CONFIG_HEVC_MP4TOANNEXB_BSF)       += bsf/hevc_mp4toannexb.o
+ OBJS-$(CONFIG_IMX_DUMP_HEADER_BSF)        += bsf/imx_dump_header.o
+ OBJS-$(CONFIG_LCEVC_METADATA_BSF)         += bsf/lcevc_metadata.o
+Index: FFmpeg/libavcodec/bsf/dovi_split.c
+===================================================================
+--- /dev/null
++++ FFmpeg/libavcodec/bsf/dovi_split.c
+@@ -0,0 +1,539 @@
++/*
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#include <stdbool.h>
++
++#include "libavutil/avassert.h"
++#include "libavutil/dovi_meta.h"
++#include "libavutil/dict.h"
++#include "libavutil/intreadwrite.h"
++#include "libavutil/mem.h"
++#include "libavutil/opt.h"
++
++#include "avcodec.h"
++#include "bsf.h"
++#include "bsf_internal.h"
++#include "h2645_parse.h"
++#include "packet.h"
++
++#include "hevc/hevc.h"
++
++enum DOVISplitMode {
++    DOVI_SPLIT_BL     = 0,
++    DOVI_SPLIT_BL_RPU = 1,
++    DOVI_SPLIT_EL     = 2,
++    DOVI_SPLIT_EL_RPU = 3,
++};
++
++/* One DPB for pending PTS, one for decode-order output, plus one incoming packet. */
++#define TIMING_QUEUE_SIZE (2 * HEVC_MAX_DPB_SIZE + 1)
++
++typedef struct DOVITimedPacket {
++    AVPacket *pkt;
++    int poc;
++    unsigned epoch;
++    int assigned;
++    int key_frame;
++} DOVITimedPacket;
++
++typedef struct DOVITimestamp {
++    int64_t pts;
++    int64_t duration;
++} DOVITimestamp;
++
++typedef struct DOVISplitContext {
++    const AVClass *class;
++    int mode;
++    int fix_el_timing;
++    AVCodecParserContext *parser;
++    AVCodecContext *parser_ctx;
++    DOVITimedPacket queue[TIMING_QUEUE_SIZE];
++    DOVITimestamp timestamps[TIMING_QUEUE_SIZE];
++    int nb_queue, nb_timestamps;
++    int eof;
++    unsigned epoch;
++    int picture_count, starts_epoch;
++    int repairing, timing_failed;
++    int64_t last_pts;
++    unsigned last_epoch;
++    int last_poc;
++
++    int nal_length_size;        /* 0 means Annex-B input */
++    int out_nal_length_size;    /* 0 means Annex-B output */
++    H2645Packet pkt;
++} DOVISplitContext;
++
++static int hvcc_nal_length_size(const uint8_t *data, int size)
++{
++    if (size >= 23 && data[0] == 1 && AV_RB24(data) != 1 && AV_RB32(data) != 1)
++        return (data[21] & 3) + 1;
++    return 0;
++}
++
++static int dovi_split_init(AVBSFContext *ctx)
++{
++    DOVISplitContext *s = ctx->priv_data;
++    bool keep_bl  = s->mode == DOVI_SPLIT_BL || s->mode == DOVI_SPLIT_BL_RPU;
++    bool keep_el  = s->mode == DOVI_SPLIT_EL || s->mode == DOVI_SPLIT_EL_RPU;
++    bool keep_rpu = s->mode == DOVI_SPLIT_BL_RPU || s->mode == DOVI_SPLIT_EL_RPU;
++
++    if (s->fix_el_timing) {
++        if (s->mode != DOVI_SPLIT_EL) {
++            av_log(ctx, AV_LOG_ERROR, "fix_el_timing requires mode=el; RPU timing belongs to the base layer.\n");
++            return AVERROR(EINVAL);
++        }
++        s->parser_ctx = avcodec_alloc_context3(NULL);
++        if (!s->parser_ctx)
++            return AVERROR(ENOMEM);
++    }
++
++    /* Profile 7 is currently the only supported variant with EL by Dolby.
++     * Default to that in case there is no DOVI config. */
++    uint8_t dv_profile = 7;
++
++    for (int i = 0; i < ctx->par_out->nb_coded_side_data; i++) {
++        AVPacketSideData *sd = &ctx->par_out->coded_side_data[i];
++        AVDOVIDecoderConfigurationRecord *cfg;
++        if (sd->type != AV_PKT_DATA_DOVI_CONF)
++            continue;
++        cfg = (AVDOVIDecoderConfigurationRecord *)sd->data;
++        cfg->bl_present_flag  &= keep_bl;
++        cfg->el_present_flag  &= keep_el;
++        cfg->rpu_present_flag &= keep_rpu;
++        dv_profile = cfg->dv_profile;
++        break;
++    }
++
++    if (keep_el) {
++        const AVPacketSideData *sd;
++        sd = av_packet_side_data_get(ctx->par_out->coded_side_data,
++                                     ctx->par_out->nb_coded_side_data,
++                                     AV_PKT_DATA_HEVC_CONF);
++        if (sd && sd->size >= 23) {
++            uint8_t *new_ed = av_mallocz(sd->size + AV_INPUT_BUFFER_PADDING_SIZE);
++            if (!new_ed)
++                return AVERROR(ENOMEM);
++            memcpy(new_ed, sd->data, sd->size);
++            av_freep(&ctx->par_out->extradata);
++            ctx->par_out->extradata = new_ed;
++            ctx->par_out->extradata_size = sd->size;
++        }
++
++        /* DV profile to EL size ratio */
++        static const uint8_t el_div[] = {
++            [2] = 2,
++            [3] = 1,
++            [4] = 2,
++            [6] = 2,
++            [7] = 2,
++        };
++        int div = dv_profile < FF_ARRAY_ELEMS(el_div) ? el_div[dv_profile] : 0;
++        if (!div)
++            av_log(ctx, AV_LOG_WARNING, "Unexpected DV Profile %d.\n", dv_profile);
++
++        /* P7: EL is 1:1 for FHD BL */
++        if (dv_profile == 7 && ctx->par_in->width <= 1920)
++            div = 1;
++        if (div > 1) {
++            ctx->par_out->width = ctx->par_in->width / div;
++            ctx->par_out->height = ctx->par_in->height / div;
++        }
++    }
++
++    /* Drop AV_PKT_DATA_HEVC_CONF as it's no longer valid on output. It's
++     * set as extradata for EL. */
++    av_packet_side_data_remove(ctx->par_out->coded_side_data,
++                               &ctx->par_out->nb_coded_side_data,
++                               AV_PKT_DATA_HEVC_CONF);
++
++    s->nal_length_size = hvcc_nal_length_size(ctx->par_in->extradata,
++                                              ctx->par_in->extradata_size);
++    s->out_nal_length_size = hvcc_nal_length_size(ctx->par_out->extradata,
++                                                  ctx->par_out->extradata_size);
++
++    s->last_pts = AV_NOPTS_VALUE;
++    if (s->fix_el_timing)
++        return avcodec_parameters_to_context(s->parser_ctx, ctx->par_out);
++    return 0;
++}
++
++static void dovi_split_flush(AVBSFContext *ctx)
++{
++    DOVISplitContext *s = ctx->priv_data;
++    for (int i = 0; i < s->nb_queue; i++)
++        av_packet_free(&s->queue[i].pkt);
++    s->nb_queue = s->nb_timestamps = s->eof = s->epoch = 0;
++    s->repairing = s->timing_failed = 0;
++    s->last_pts = AV_NOPTS_VALUE;
++    av_parser_close(s->parser);
++    s->parser = NULL;
++}
++
++static void dovi_split_close(AVBSFContext *ctx)
++{
++    DOVISplitContext *s = ctx->priv_data;
++    dovi_split_flush(ctx);
++    avcodec_free_context(&s->parser_ctx);
++    ff_h2645_packet_uninit(&s->pkt);
++}
++
++static int nal_is_kept(const DOVISplitContext *s, const H2645NAL *nal,
++                       const uint8_t **payload, int *payload_size)
++{
++    bool keep_el  = s->mode == DOVI_SPLIT_EL || s->mode == DOVI_SPLIT_EL_RPU;
++    bool keep_bl  = s->mode == DOVI_SPLIT_BL || s->mode == DOVI_SPLIT_BL_RPU;
++    bool keep_rpu = s->mode == DOVI_SPLIT_BL_RPU || s->mode == DOVI_SPLIT_EL_RPU;
++
++    switch (nal->type) {
++    case HEVC_NAL_UNSPEC63:
++        /* EL: keep only when extracting EL, strip two-bytes of outer NAL header */
++        if (!keep_el || nal->raw_size <= 2)
++            return 0;
++        *payload = nal->raw_data + 2;
++        *payload_size = nal->raw_size - 2;
++        return 1;
++    case HEVC_NAL_UNSPEC62:
++        /* RPU: kept verbatim only when the selected mode opted in. */
++        if (!keep_rpu)
++            return 0;
++        *payload = nal->raw_data;
++        *payload_size = nal->raw_size;
++        return 1;
++    default:
++        /* Anything else is a base-layer NAL. */
++        if (!keep_bl)
++            return 0;
++        *payload = nal->raw_data;
++        *payload_size = nal->raw_size;
++        return 1;
++    }
++}
++
++static int dovi_split_packet(AVBSFContext *ctx, AVPacket *out)
++{
++    DOVISplitContext *s = ctx->priv_data;
++    AVPacket *in = NULL;
++    AVBufferRef *out_buf = NULL;
++    uint8_t *dst;
++    size_t out_size = 0;
++    int kept_count = 0;
++    int flags = (s->nal_length_size ? H2645_FLAG_IS_NALFF : 0) |
++                H2645_FLAG_SMALL_PADDING;
++    int prefix_size = s->out_nal_length_size ? s->out_nal_length_size : 4;
++    int ret;
++
++    ret = ff_bsf_get_packet(ctx, &in);
++    if (ret < 0)
++        return ret;
++
++    ret = ff_h2645_packet_split(&s->pkt, in->data, in->size, ctx,
++                                s->nal_length_size, AV_CODEC_ID_HEVC, flags);
++    if (ret < 0)
++        goto fail;
++
++    s->picture_count = s->starts_epoch = 0;
++    for (int i = 0; i < s->pkt.nb_nals; i++) {
++        const uint8_t *payload;
++        int payload_size;
++        if (!nal_is_kept(s, &s->pkt.nals[i], &payload, &payload_size))
++            continue;
++        if (s->fix_el_timing && payload_size >= 3) {
++            int type = (payload[0] >> 1) & 0x3f;
++            if (type < 32 && (payload[2] & 0x80)) {
++                s->picture_count++;
++                s->starts_epoch |= type >= HEVC_NAL_BLA_W_LP && type <= HEVC_NAL_IDR_N_LP;
++            }
++        }
++        out_size += prefix_size + payload_size;
++        kept_count++;
++    }
++
++    if (!kept_count) {
++        ret = AVERROR(EAGAIN);
++        goto fail;
++    }
++
++    out_buf = av_buffer_alloc(out_size + AV_INPUT_BUFFER_PADDING_SIZE);
++    if (!out_buf) {
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++
++    dst = out_buf->data;
++    for (int i = 0; i < s->pkt.nb_nals; i++) {
++        const uint8_t *payload;
++        int payload_size;
++        if (!nal_is_kept(s, &s->pkt.nals[i], &payload, &payload_size))
++            continue;
++        switch (s->out_nal_length_size) {
++        case 0: AV_WB32(dst, 1);            break;
++        case 1: AV_WB8 (dst, payload_size); break;
++        case 2: AV_WB16(dst, payload_size); break;
++        case 3: AV_WB24(dst, payload_size); break;
++        case 4: AV_WB32(dst, payload_size); break;
++        }
++        dst += prefix_size;
++        memcpy(dst, payload, payload_size);
++        dst += payload_size;
++    }
++    memset(dst, 0, AV_INPUT_BUFFER_PADDING_SIZE);
++    av_assert0(dst == out_buf->data + out_size);
++
++    ret = av_packet_copy_props(out, in);
++    if (ret < 0)
++        goto fail;
++
++    out->buf  = out_buf;
++    out->data = out_buf->data;
++    out->size = out_size;
++    out_buf   = NULL;
++
++fail:
++    av_buffer_unref(&out_buf);
++    av_packet_free(&in);
++    if (ret < 0 && ret != AVERROR(EAGAIN))
++        av_packet_unref(out);
++    return ret;
++}
++
++/* Mark untrusted EL timing so decoder-generated PTS cannot hide it. */
++static int dovi_split_mark_untrusted(AVPacket *pkt)
++{
++    AVDictionary *metadata = NULL;
++    size_t size;
++    const uint8_t *old = av_packet_get_side_data(pkt, AV_PKT_DATA_STRINGS_METADATA, &size);
++    uint8_t *data;
++    int ret;
++
++    if (old) {
++        ret = av_packet_unpack_dictionary(old, size, &metadata);
++        if (ret < 0)
++            goto end;
++    }
++    ret = av_dict_set(&metadata, "lavfi.dovi.el_timing_invalid", "1", 0);
++    if (ret < 0)
++        goto end;
++    data = av_packet_pack_dictionary(metadata, &size);
++    if (!data) {
++        ret = AVERROR(ENOMEM);
++        goto end;
++    }
++    ret = av_packet_add_side_data(pkt, AV_PKT_DATA_STRINGS_METADATA, data, size);
++    if (ret < 0)
++        av_free(data);
++end:
++    av_dict_free(&metadata);
++    return ret;
++}
++
++static void dovi_split_timing_fallback(AVBSFContext *ctx, const char *reason)
++{
++    DOVISplitContext *s = ctx->priv_data;
++    av_log(ctx, AV_LOG_WARNING, "Cannot establish EL timing (%s); "
++           "disabling EL composition until the next flush.\n", reason);
++    s->timing_failed = 1;
++    s->nb_timestamps = 0;
++    /* Allow queued packets to drain without further timestamp repair. */
++    for (int i = 0; i < s->nb_queue; i++)
++        s->queue[i].assigned = 1;
++}
++
++/* Validate existing presentation timestamps in HEVC picture order. If their
++ * association is wrong, reassign the same timestamp slots as a best-effort
++ * repair. */
++static void dovi_split_assign_timestamp(AVBSFContext *ctx)
++{
++    DOVISplitContext *s = ctx->priv_data;
++    DOVITimedPacket *p;
++    int picture = -1, timestamp = 0;
++    int64_t pts;
++
++    for (int i = 0; i < s->nb_queue; i++) {
++        DOVITimedPacket *q = &s->queue[i];
++        if (!q->assigned && (picture < 0 ||
++            q->epoch < s->queue[picture].epoch ||
++            (q->epoch == s->queue[picture].epoch && q->poc < s->queue[picture].poc)))
++            picture = i;
++    }
++    for (int i = 1; i < s->nb_timestamps; i++)
++        if (s->timestamps[i].pts < s->timestamps[timestamp].pts)
++            timestamp = i;
++
++    av_assert0(picture >= 0 && s->nb_timestamps > 0);
++    p = &s->queue[picture];
++    pts = s->timestamps[timestamp].pts;
++    for (int i = 0; i < s->nb_timestamps; i++) {
++        if (i != timestamp && s->timestamps[i].pts == pts) {
++            dovi_split_timing_fallback(ctx, "duplicate presentation timestamps");
++            return;
++        }
++    }
++    for (int i = 0; i < s->nb_queue; i++) {
++        DOVITimedPacket *q = &s->queue[i];
++        if (i != picture && !q->assigned && q->epoch == p->epoch && q->poc == p->poc) {
++            dovi_split_timing_fallback(ctx, "duplicate HEVC picture order");
++            return;
++        }
++    }
++    if (s->last_pts != AV_NOPTS_VALUE &&
++        (pts <= s->last_pts || p->epoch < s->last_epoch ||
++         (p->epoch == s->last_epoch && p->poc <= s->last_poc))) {
++        dovi_split_timing_fallback(ctx, "duplicate or discontinuous picture order/timestamps");
++        return;
++    }
++    if (p->pkt->pts != pts) {
++        if (!s->repairing)
++            av_log(ctx, AV_LOG_INFO, "EL timestamps disagree with HEVC picture order; "
++                   "repairing their association automatically.\n");
++        s->repairing = 1;
++        av_log(ctx, AV_LOG_DEBUG, "EL timing: epoch %u POC %d pts %"PRId64" -> %"PRId64"\n",
++               p->epoch, p->poc, p->pkt->pts, pts);
++        p->pkt->pts = pts;
++        p->pkt->duration = s->timestamps[timestamp].duration;
++    }
++    p->assigned = 1;
++    s->last_pts = pts;
++    s->last_epoch = p->epoch;
++    s->last_poc = p->poc;
++    s->timestamps[timestamp] = s->timestamps[--s->nb_timestamps];
++}
++
++static int dovi_split_filter(AVBSFContext *ctx, AVPacket *out)
++{
++    DOVISplitContext *s = ctx->priv_data;
++    if (!s->fix_el_timing)
++        return dovi_split_packet(ctx, out);
++
++    for (;;) {
++        DOVITimedPacket *p;
++        uint8_t *parsed;
++        int parsed_size, ret;
++
++        if (s->nb_queue && s->queue[0].assigned) {
++            p = &s->queue[0];
++            av_packet_move_ref(out, p->pkt);
++            if (s->repairing) {
++                /* BL DTS and keyframe flags may not match the EL. */
++                out->dts = AV_NOPTS_VALUE;
++                out->flags = (out->flags & ~AV_PKT_FLAG_KEY) |
++                             (p->key_frame ? AV_PKT_FLAG_KEY : 0);
++            }
++            av_packet_free(&p->pkt);
++            memmove(s->queue, s->queue + 1, --s->nb_queue * sizeof(*s->queue));
++            return s->timing_failed ? dovi_split_mark_untrusted(out) : 0;
++        }
++        if (s->nb_timestamps > HEVC_MAX_DPB_SIZE || (s->eof && s->nb_timestamps)) {
++            dovi_split_assign_timestamp(ctx);
++            continue;
++        }
++        if (s->eof)
++            return AVERROR_EOF;
++        if (s->timing_failed) {
++            ret = dovi_split_packet(ctx, out);
++            return ret < 0 ? ret : dovi_split_mark_untrusted(out);
++        }
++        if (s->nb_queue == TIMING_QUEUE_SIZE) {
++            dovi_split_timing_fallback(ctx, "reordering exceeds the HEVC queue bound");
++            continue;
++        }
++
++        ret = dovi_split_packet(ctx, out);
++        if (ret == AVERROR_EOF) {
++            s->eof = 1;
++            continue;
++        }
++        if (ret < 0)
++            return ret;
++        if (s->picture_count != 1 || out->pts == AV_NOPTS_VALUE) {
++            dovi_split_timing_fallback(ctx, s->picture_count != 1 ?
++                                      "access unit does not contain one EL picture" :
++                                      "missing presentation timestamp");
++            goto enqueue;
++        }
++        if (!s->parser) {
++            s->parser = av_parser_init(AV_CODEC_ID_HEVC);
++            if (!s->parser) {
++                av_packet_unref(out);
++                return AVERROR(ENOMEM);
++            }
++            s->parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
++        }
++        s->parser->output_picture_number = INT_MIN;
++        ret = av_parser_parse2(s->parser, s->parser_ctx, &parsed, &parsed_size,
++                               out->data, out->size, out->pts, out->dts, out->pos);
++        if (ret < 0 || s->parser->output_picture_number == INT_MIN) {
++            if (ret == AVERROR(ENOMEM)) {
++                av_packet_unref(out);
++                return ret;
++            }
++            dovi_split_timing_fallback(ctx, "cannot parse HEVC picture order");
++        }
++enqueue:
++        p = &s->queue[s->nb_queue];
++        p->pkt = av_packet_alloc();
++        if (!p->pkt) {
++            av_packet_unref(out);
++            return AVERROR(ENOMEM);
++        }
++        p->assigned = s->timing_failed;
++        p->key_frame = !!(out->flags & AV_PKT_FLAG_KEY);
++        if (!s->timing_failed) {
++            s->epoch += s->starts_epoch;
++            p->epoch = s->epoch;
++            p->poc = s->parser->output_picture_number;
++            p->key_frame = s->parser->key_frame;
++            s->timestamps[s->nb_timestamps++] = (DOVITimestamp){out->pts, out->duration};
++        }
++        av_packet_move_ref(p->pkt, out);
++        s->nb_queue++;
++    }
++}
++
++#define OFFSET(x) offsetof(DOVISplitContext, x)
++#define FLAGS (AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_BSF_PARAM)
++static const AVOption dovi_split_options[] = {
++    { "mode", "Which Dolby Vision components to keep in the output bitstream", OFFSET(mode), AV_OPT_TYPE_INT, { .i64 = DOVI_SPLIT_BL }, DOVI_SPLIT_BL, DOVI_SPLIT_EL_RPU, FLAGS, .unit = "mode" },
++        { "bl", "Base layer only", 0, AV_OPT_TYPE_CONST, { .i64 = DOVI_SPLIT_BL }, .flags = FLAGS, .unit = "mode" },
++        { "bl_rpu", "Base layer with the RPU NAL", 0, AV_OPT_TYPE_CONST, { .i64 = DOVI_SPLIT_BL_RPU }, .flags = FLAGS, .unit = "mode" },
++        { "el", "Enhancement layer only", 0, AV_OPT_TYPE_CONST, { .i64 = DOVI_SPLIT_EL }, .flags = FLAGS, .unit = "mode" },
++        { "el_rpu", "Enhancement layer with the RPU NAL", 0, AV_OPT_TYPE_CONST, { .i64 = DOVI_SPLIT_EL_RPU }, .flags = FLAGS, .unit = "mode" },
++    { "fix_el_timing", "Validate and repair EL timestamps", OFFSET(fix_el_timing), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
++    { NULL },
++};
++
++static const AVClass dovi_split_class = {
++    .class_name = "dovi_split_bsf",
++    .item_name  = av_default_item_name,
++    .option     = dovi_split_options,
++    .version    = LIBAVUTIL_VERSION_INT,
++};
++
++static const enum AVCodecID dovi_split_codec_ids[] = {
++    AV_CODEC_ID_HEVC, AV_CODEC_ID_NONE,
++};
++
++const FFBitStreamFilter ff_dovi_split_bsf = {
++    .p.name         = "dovi_split",
++    .p.codec_ids    = dovi_split_codec_ids,
++    .p.priv_class   = &dovi_split_class,
++    .priv_data_size = sizeof(DOVISplitContext),
++    .init           = dovi_split_init,
++    .close          = dovi_split_close,
++    .flush          = dovi_split_flush,
++    .filter         = dovi_split_filter,
++};
+Index: FFmpeg/libavcodec/packet.c
+===================================================================
+--- FFmpeg.orig/libavcodec/packet.c
++++ FFmpeg/libavcodec/packet.c
+@@ -310,6 +310,7 @@ const char *av_packet_side_data_name(enu
+     case AV_PKT_DATA_3D_REFERENCE_DISPLAYS:      return "3D Reference Displays Info";
+     case AV_PKT_DATA_RTCP_SR:                    return "RTCP Sender Report";
+     case AV_PKT_DATA_EXIF:                       return "EXIF metadata";
++    case AV_PKT_DATA_HEVC_CONF:                  return "HEVC enhancement-layer decoder configuration";
+     }
+     return NULL;
+ }
+Index: FFmpeg/libavcodec/packet.h
+===================================================================
+--- FFmpeg.orig/libavcodec/packet.h
++++ FFmpeg/libavcodec/packet.h
+@@ -369,6 +369,15 @@ enum AVPacketSideDataType {
+      AV_PKT_DATA_EXIF,
+ 
+     /**
++     * Dolby Vision enhancement-layer HEVC decoder configuration.
++     * Parsed from the @c hvcE box in ISOM-based containers or the
++     * corresponding BlockAdditionMapping in Matroska. The data is a raw
++     * HEVCDecoderConfigurationRecord as defined in ISO 14496-15.
++     */
++    // Keep the upstream value, reserving the preceding slot for SMPTE 2094-50.
++    AV_PKT_DATA_HEVC_CONF = AV_PKT_DATA_EXIF + 2,
++
++    /**
+      * The number of side data types.
+      * This is not part of the public API/ABI in the sense that it may
+      * change when new side data types are added.
+Index: FFmpeg/libavformat/matroska.h
+===================================================================
+--- FFmpeg.orig/libavformat/matroska.h
++++ FFmpeg/libavformat/matroska.h
+@@ -363,6 +363,7 @@ typedef enum {
+   MATROSKA_BLOCK_ADD_ID_TYPE_ITU_T_T35              = 4,
+   MATROSKA_BLOCK_ADD_ID_TYPE_DVCC                   = 0x64766343, // MKBETAG('d','v','c','C')
+   MATROSKA_BLOCK_ADD_ID_TYPE_DVVC                   = 0x64767643, // MKBETAG('d','v','v','C')
++  MATROSKA_BLOCK_ADD_ID_TYPE_HVCE                   = 0x68766345, // MKBETAG('h','v','c','E')
+ } MatroskaBlockAddIDType;
+ 
+ #define MATROSKA_BLOCK_ADD_ID_OPAQUE 1
+@@ -437,5 +438,6 @@ extern const char * const ff_matroska_vi
+ #define CODEC_PRIVATE_SIZE "webm_dash_manifest_codec_priv_size"
+ 
+ #define DVCC_DVVC_BLOCK_TYPE_NAME "Dolby Vision configuration"
++#define HVCE_BLOCK_TYPE_NAME      "HEVC enhancement-layer configuration"
+ 
+ #endif /* AVFORMAT_MATROSKA_H */
+Index: FFmpeg/libavformat/matroskadec.c
+===================================================================
+--- FFmpeg.orig/libavformat/matroskadec.c
++++ FFmpeg/libavformat/matroskadec.c
+@@ -2509,6 +2509,26 @@ static int mkv_parse_dvcc_dvvc(AVFormatC
+     return ff_isom_parse_dvcc_dvvc(s, st, bin->data, bin->size);
+ }
+ 
++static int mkv_parse_hvce(AVFormatContext *s, AVStream *st, EbmlBin *bin)
++{
++    AVPacketSideData *sd;
++
++    if (bin->size < 23) {
++        av_log(s, AV_LOG_ERROR, "Invalid hvcE size %d\n", bin->size);
++        return AVERROR_INVALIDDATA;
++    }
++
++    sd = av_packet_side_data_new(&st->codecpar->coded_side_data,
++                                 &st->codecpar->nb_coded_side_data,
++                                 AV_PKT_DATA_HEVC_CONF,
++                                 bin->size, 0);
++    if (!sd)
++        return AVERROR(ENOMEM);
++
++    memcpy(sd->data, bin->data, bin->size);
++    return 0;
++}
++
+ static int mkv_parse_block_addition_mappings(AVFormatContext *s, AVStream *st, MatroskaTrack *track)
+ {
+     const EbmlList *mappings_list = &track->block_addition_mappings;
+@@ -2544,6 +2564,11 @@ static int mkv_parse_block_addition_mapp
+                 return ret;
+ 
+             break;
++        case MATROSKA_BLOCK_ADD_ID_TYPE_HVCE:
++            if ((ret = mkv_parse_hvce(s, st, &mapping->extradata)) < 0)
++                return ret;
++
++            break;
+         default:
+             av_log(s, AV_LOG_DEBUG,
+                    "Unknown Block Addition Mapping type 0x%"PRIx64", value %"PRIu64", name \"%s\"\n",
+Index: FFmpeg/libavformat/mov.c
+===================================================================
+--- FFmpeg.orig/libavformat/mov.c
++++ FFmpeg/libavformat/mov.c
+@@ -8667,6 +8667,33 @@ static int mov_read_dvcc_dvvc(MOVContext
+     return ff_isom_parse_dvcc_dvvc(c->fc, st, buf, read_size);
+ }
+ 
++static int mov_read_hvce(MOVContext *c, AVIOContext *pb, MOVAtom atom)
++{
++    AVStream *st;
++    AVPacketSideData *sd;
++    int ret;
++
++    if (c->fc->nb_streams < 1)
++        return 0;
++    st = c->fc->streams[c->fc->nb_streams - 1];
++
++    if (atom.size < 23 || atom.size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE)
++        return AVERROR_INVALIDDATA;
++
++    sd = av_packet_side_data_new(&st->codecpar->coded_side_data,
++                                 &st->codecpar->nb_coded_side_data,
++                                 AV_PKT_DATA_HEVC_CONF,
++                                 atom.size, 0);
++    if (!sd)
++        return AVERROR(ENOMEM);
++
++    ret = ffio_read_size(pb, sd->data, atom.size);
++    if (ret < 0)
++        return ret;
++
++    return 0;
++}
++
+ static int mov_read_lhvc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+ {
+     AVStream *st;
+@@ -9630,6 +9657,7 @@ static const MOVParseTableEntry mov_defa
+ { MKTAG('d','v','c','C'), mov_read_dvcc_dvvc },
+ { MKTAG('d','v','v','C'), mov_read_dvcc_dvvc },
+ { MKTAG('d','v','w','C'), mov_read_dvcc_dvvc },
++{ MKTAG('h','v','c','E'), mov_read_hvce },
+ { MKTAG('k','i','n','d'), mov_read_kind },
+ { MKTAG('S','A','3','D'), mov_read_SA3D }, /* ambisonic audio box */
+ { MKTAG('S','A','N','D'), mov_read_SAND }, /* non diegetic audio box */
+Index: FFmpeg/doc/bitstream_filters.texi
+===================================================================
+--- FFmpeg.orig/doc/bitstream_filters.texi
++++ FFmpeg/doc/bitstream_filters.texi
+@@ -124,6 +124,33 @@ that this level currently behaves the sa
+ @end table
+ @end table
+ 
++@section dovi_split
++
++Split a Dolby Vision Profile 7 multi-layer HEVC bitstream. Profile 7 carries the
++enhancement-layer HEVC bitstream interleaved inside the base-layer access units,
++wrapped in user-unspecified NAL units of type 63 (UNSPEC63), and the RPU metadata
++as a sibling user-unspecified NAL of type 62 (UNSPEC62).
++
++@table @option
++@item mode
++Which Dolby Vision components to keep in the output bitstream.
++@table @samp
++@item bl
++Base layer only: drop every UNSPEC63 (EL) and every UNSPEC62 (RPU).
++The output is a plain HEVC stream with no Dolby Vision markers. This is the
++default.
++@item bl_rpu
++Base layer with the RPU NAL kept.
++@item el
++Enhancement layer only: for every UNSPEC63 NAL, strip the two-byte outer NAL
++header and emit the inner payload. The result is a standalone HEVC bitstream.
++UNSPEC62 (RPU) is dropped.
++@item el_rpu
++Enhancement layer with the RPU NAL kept verbatim. Same as @samp{el}, but the
++UNSPEC62 RPU NALs are also emitted alongside the unwrapped EL NALs.
++@end table
++@end table
++
+ @section dump_extra
+ 
+ Add extradata to the beginning of the filtered packets except when
