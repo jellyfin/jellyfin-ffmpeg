@@ -454,7 +454,7 @@ popd
 popd
 
 # SVT-AV1
-git clone -b v4.2.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+git clone -b v4.2.0-cqp-extended --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
 pushd SVT-AV1
 mkdir build
 pushd build
