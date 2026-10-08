@@ -14,14 +14,14 @@ makedepends=("${MINGW_PACKAGE_PREFIX}-cmake"
              "${MINGW_PACKAGE_PREFIX}-ninja"
              "${MINGW_PACKAGE_PREFIX}-nasm"
              "${MINGW_PACKAGE_PREFIX}-cc")
-source=("${url}/-/archive/v${pkgver}/${_realname}-v${pkgver}.tar.gz")
+source=("${url}/-/archive/v${pkgver}-cqp-extended/${_realname}-v${pkgver}-cqp-extended.tar.gz")
 sha256sums=('SKIP')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
 export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
 
 prepare() {
-  cd "${srcdir}"/${_realname}-v${pkgver}
+  cd "${srcdir}"/${_realname}-v${pkgver}-cqp-extended
 }
 
 build() {
@@ -44,7 +44,7 @@ build() {
       "${extra_config[@]}" \
       -DBUILD_SHARED_LIBS=OFF \
       -DREPRODUCIBLE_BUILDS=ON \
-      ../${_realname}-v${pkgver}
+      ../${_realname}-v${pkgver}-cqp-extended
 
   ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake --build .
 }
@@ -53,6 +53,6 @@ package() {
   cd "${srcdir}"/build-${MSYSTEM}-static
   DESTDIR="${pkgdir}" ${MINGW_TOOLCHAIN_PREFIX}/bin/cmake --install .
 
-  install -Dm644 ${srcdir}/${_realname}-v${pkgver}/LICENSE.md ${pkgdir}${FF_MINGW_PREFIX}/share/licenses/svt-av1/LICENSE
-  install -Dm644 ${srcdir}/${_realname}-v${pkgver}/PATENTS.md ${pkgdir}${FF_MINGW_PREFIX}/share/licenses/svt-av1/PATENTS.md
+  install -Dm644 ${srcdir}/${_realname}-v${pkgver}-cqp-extended/LICENSE.md ${pkgdir}${FF_MINGW_PREFIX}/share/licenses/svt-av1/LICENSE
+  install -Dm644 ${srcdir}/${_realname}-v${pkgver}-cqp-extended/PATENTS.md ${pkgdir}${FF_MINGW_PREFIX}/share/licenses/svt-av1/PATENTS.md
 }
