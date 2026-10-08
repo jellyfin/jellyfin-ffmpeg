@@ -1,3 +1,9 @@
+jellyfin-ffmpeg (8.1.3-2) unstable; urgency=medium
+
+  * Fix SVT-AV1 regression on legacy Windows versions (Server/LTSC 2016)
+
+ -- nyanmisaka <nst799610810@gmail.com>  Thu, 8 Oct 2026 13:31:45 +0800
+
 jellyfin-ffmpeg (8.1.3-1) unstable; urgency=medium
 
   * New upstream version 8.1.3
