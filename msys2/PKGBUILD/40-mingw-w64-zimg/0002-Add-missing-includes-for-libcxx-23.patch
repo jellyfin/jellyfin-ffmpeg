@@ -1,0 +1,36 @@
+From 5dafb81a1a1493d2400b325f29af617e235c951f Mon Sep 17 00:00:00 2001
+From: nyanmisaka <nst799610810@gmail.com>
+Date: Wed, 14 Oct 2026 20:46:38 +0800
+Subject: [PATCH] Add missing includes for libcxx-23
+
+Signed-off-by: nyanmisaka <nst799610810@gmail.com>
+---
+ doc/example/tile_example.cpp | 1 +
+ src/zimg/api/zimg.cpp        | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/doc/example/tile_example.cpp b/doc/example/tile_example.cpp
+index 795a513..eac4b4f 100644
+--- a/doc/example/tile_example.cpp
++++ b/doc/example/tile_example.cpp
+@@ -7,6 +7,7 @@
+ #include <algorithm>
+ #include <cstddef>
+ #include <cstdint>
++#include <exception>
+ #include <iostream>
+ #include <memory>
+ #include <mutex>
+diff --git a/src/zimg/api/zimg.cpp b/src/zimg/api/zimg.cpp
+index 90eb082..1a63bc0 100644
+--- a/src/zimg/api/zimg.cpp
++++ b/src/zimg/api/zimg.cpp
+@@ -1,4 +1,5 @@
+ #include <cmath>
++#include <exception>
+ #include <memory>
+ #include <string>
+ #include <tuple>
+-- 
+2.34.1
+
