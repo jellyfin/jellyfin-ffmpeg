@@ -16,10 +16,12 @@ makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
 depends=("${MINGW_PACKAGE_PREFIX}-gcc-libs"
          "${MINGW_PACKAGE_PREFIX}-winpthreads-git")
 source=("${_realname}-${pkgver}.tar.gz::https://github.com/sekrit-twc/${_realname}/archive/release-${pkgver}.tar.gz"
-        0001-zimg-export-def-symbols.patch)
+        "0001-zimg-export-def-symbols.patch"
+        "0002-Add-missing-includes-for-libcxx-23.patch")
 noextract=("${_realname}-${pkgver}.tar.gz")
 sha256sums=('be89390f13a5c9b2388ce0f44a5e89364a20c1c57ce46d382b1fcc3967057577'
-            '6e52d715d19080434392f04b33005fee428368e12176da20555f4059209c8134')
+            '6e52d715d19080434392f04b33005fee428368e12176da20555f4059209c8134'
+            'efb8db08da266d1a8ad64df57a316877652311d8ee77e79de368312b01c35b28')
 
 export MINGW_TOOLCHAIN_PREFIX="${MINGW_PREFIX}"
 export FF_MINGW_PREFIX="${MINGW_TOOLCHAIN_PREFIX}/ffbuild"
@@ -28,6 +30,7 @@ prepare(){
   bsdtar -xzf "${srcdir}/${_realname}-${pkgver}.tar.gz" || bsdtar -xzf "${srcdir}/${_realname}-${pkgver}.tar.gz"
   cd "${srcdir}/${_realname}-release-${pkgver}"
   patch -p1 -i "${srcdir}/0001-zimg-export-def-symbols.patch"
+  patch -p1 -i "${srcdir}/0002-Add-missing-includes-for-libcxx-23.patch"
   ./autogen.sh
 }
 
