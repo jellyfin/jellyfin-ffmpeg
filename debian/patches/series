@@ -100,3 +100,4 @@
 0100-backport-trim-bitstream-filter.patch
 0101-fix-videotoolbox-closed-caption-sei.patch
 0102-fix-sse2-scene-sad-unaligned-input.patch
+0103-drop-closed-captions-of-skipped-mpeg2-pictures.patch

@@ -1,0 +1,87 @@
+Index: FFmpeg/libavcodec/mpeg12dec.c
+===================================================================
+--- FFmpeg.orig/libavcodec/mpeg12dec.c
++++ FFmpeg/libavcodec/mpeg12dec.c
+@@ -84,6 +84,7 @@
+     enum AVStereo3DType stereo3d_type;
+     int has_stereo3d;
+     AVBufferRef *a53_buf_ref;
++    int cc_pending;             /* picture header seen, its CC not yet attached to a frame */
+     enum Mpeg2ClosedCaptionsFormat cc_format;
+     uint8_t afd;
+     int has_afd;
+@@ -1228,6 +1229,8 @@
+     int second_field = 0;
+     int ret;
+ 
++    s1->cc_pending = 0;
++
+     if (!(avctx->flags2 & AV_CODEC_FLAG2_CHUNKS)) {
+         if (s->mb_width * s->mb_height * 11LL / (33 * 2 * 8) > buf_size)
+             return AVERROR_INVALIDDATA;
+@@ -1900,6 +1903,18 @@
+ #endif
+ }
+ 
++/* Closed captions are collected from the user data of each picture and
++ * attached to the frame when the picture is decoded. Drop those of a picture
++ * that was skipped instead (e.g. B-frames of an open GOP or P-frames before
++ * the first keyframe when starting mid-stream), so they don't pile up on the
++ * next decoded frame. */
++static void mpeg_drop_skipped_cc(Mpeg1Context *s1)
++{
++    if (s1->cc_pending)
++        av_buffer_unref(&s1->a53_buf_ref);
++    s1->cc_pending = 0;
++}
++
+ static int mpeg_decode_a53_cc(AVCodecContext *avctx,
+                               const uint8_t *p, int buf_size)
+ {
+@@ -2276,6 +2291,7 @@
+         switch (start_code) {
+         case SEQ_START_CODE:
+             if (last_code == 0) {
++                mpeg_drop_skipped_cc(s);
+                 mpeg1_decode_sequence(avctx, buf_ptr, input_size);
+                 if (buf != avctx->extradata)
+                     s->sync = 1;
+@@ -2323,6 +2339,9 @@
+                     return ret;
+                 }
+ 
++                mpeg_drop_skipped_cc(s);
++                s->cc_pending = 1;
++
+                 /* We have a complete image: we try to decompress it. */
+                 if (mpeg1_decode_picture(avctx, buf_ptr, input_size) < 0)
+                     s2->pict_type = 0;
+@@ -2382,6 +2401,7 @@
+             break;
+         case GOP_START_CODE:
+             if (last_code == 0) {
++                mpeg_drop_skipped_cc(s);
+                 s2->first_field = 0;
+                 ret = mpeg_decode_gop(avctx, buf_ptr, input_size);
+                 if (ret < 0)
+@@ -2628,6 +2648,7 @@
+     s->closed_gop = 0;
+ 
+     av_buffer_unref(&s->a53_buf_ref);
++    s->cc_pending = 0;
+     ff_mpeg_flush(avctx);
+ }
+ 
+Index: FFmpeg/tests/fate/subtitles.mak
+===================================================================
+--- FFmpeg.orig/tests/fate/subtitles.mak
++++ FFmpeg/tests/fate/subtitles.mak
+@@ -133,7 +133,7 @@
+ FATE_SUBTITLES-$(call ALLYES, AVDEVICE LAVFI_INDEV MOVIE_FILTER MPEGTS_DEMUXER MCC_MUXER EIA608_TO_SMPTE436M_BSF) += fate-sub-mcc
+ fate-sub-mcc: CMD = md5 -f lavfi -i "movie=$(TARGET_SAMPLES)/sub/scte20.ts[out0+subcc]" -map 0:s -c copy -override_time_code_rate ntsc -creation_time "1970-01-02T00:00:00" -bitexact -f mcc
+ fate-sub-mcc: CMP = oneline
+-fate-sub-mcc: REF = 73982c4db86f3a809c1e8262d3701fc2
++fate-sub-mcc: REF = 1253c9f01124447cf03e79f34b52b7fa
+ 
+ FATE_SUBTITLES-$(call DEMMUX, MCC, MCC, SMPTE436M_TO_EIA608_BSF EIA608_TO_SMPTE436M_BSF) += fate-sub-mcc-remux-eia608-bsf
+ fate-sub-mcc-remux-eia608-bsf: CMD = fmtstdout mcc -f mcc -i $(SRC_PATH)/tests/ref/fate/sub-mcc-remux -map 0:s -c copy -bsf "eia608_to_smpte436m=cdp_frame_rate=60000/1001:initial_cdp_sequence_cntr=65535:line_number=11" -override_time_code_rate ntsc -creation_time "1970-01-02T00:00:00"
