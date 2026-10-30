@@ -684,6 +684,8 @@ prepare_extra_amd64() {
     pushd media-driver
     # Enable VC1 decode on DG2 (note that MTL+ is not supported)
     wget -q -O - https://github.com/intel/media-driver/commit/e47702f.patch | git apply
+    # Fix use-after-free when DestroyContext races StatusCheck (MTL+ only)
+    wget -q -O - https://github.com/intel/media-driver/commit/576fd26.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DCMAKE_C_FLAGS="${CFLAGS} -Wno-error=array-bounds" \
