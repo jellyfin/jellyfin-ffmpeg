@@ -102,3 +102,4 @@
 0102-fix-sse2-scene-sad-unaligned-input.patch
 0103-backport-a-fix-for-pts-overflow-in-deint-vaapi-filter.patch
 0104-backport-a-fix-for-data-race-with-frame-threading-in-dxva.patch
+0105-skip-oversized-a53-caption-sei-in-qsv-h264-encoder.patch
