@@ -100,3 +100,5 @@
 0100-backport-trim-bitstream-filter.patch
 0101-fix-videotoolbox-closed-caption-sei.patch
 0102-fix-sse2-scene-sad-unaligned-input.patch
+0103-backport-a-fix-for-pts-overflow-in-deint-vaapi-filter.patch
+0104-backport-a-fix-for-data-race-with-frame-threading-in-dxva.patch
