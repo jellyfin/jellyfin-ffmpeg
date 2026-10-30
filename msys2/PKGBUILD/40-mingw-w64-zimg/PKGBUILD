@@ -13,7 +13,7 @@ license=('spdx:WTFPL')
 makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
              "${MINGW_PACKAGE_PREFIX}-autotools"
              "bsdtar")
-depends=("${MINGW_PACKAGE_PREFIX}-gcc-libs"
+depends=("${MINGW_PACKAGE_PREFIX}-cc-libs"
          "${MINGW_PACKAGE_PREFIX}-winpthreads-git")
 source=("${_realname}-${pkgver}.tar.gz::https://github.com/sekrit-twc/${_realname}/archive/release-${pkgver}.tar.gz"
         "0001-zimg-export-def-symbols.patch"
