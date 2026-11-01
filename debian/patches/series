@@ -103,3 +103,4 @@
 0103-backport-a-fix-for-pts-overflow-in-deint-vaapi-filter.patch
 0104-backport-a-fix-for-data-race-with-frame-threading-in-dxva.patch
 0105-skip-oversized-a53-caption-sei-in-qsv-h264-encoder.patch
+0106-unref-the-last-frame-on-filter-graph-cleanup.patch
