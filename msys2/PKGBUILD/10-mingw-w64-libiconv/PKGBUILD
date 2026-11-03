@@ -15,7 +15,7 @@ makedepends=("${MINGW_PACKAGE_PREFIX}-cc"
              "${MINGW_PACKAGE_PREFIX}-autotools"
              "${MINGW_PACKAGE_PREFIX}-gettext-tools"
              "${MINGW_PACKAGE_PREFIX}-gperf")
-source=("https://mirrors.edge.kernel.org/gnu/${_realname}/${_realname}-${pkgver}.tar.gz"{,.sig}
+source=("https://ftpmirror.gnu.org/gnu/${_realname}/${_realname}-${pkgver}.tar.gz"{,.sig}
         0003-add-cp65001-as-utf8-alias.patch
         0002-fix-cr-for-awk-in-configure.all.patch
         fix-pointer-buf.patch

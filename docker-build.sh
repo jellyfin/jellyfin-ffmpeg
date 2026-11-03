@@ -31,7 +31,7 @@ prepare_extra_common() {
     mkdir iconv
     pushd iconv
     iconv_ver="1.19"
-    iconv_link="https://mirrors.edge.kernel.org/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
+    iconv_link="https://ftpmirror.gnu.org/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
     wget ${iconv_link} -O iconv.tar.gz
     tar xaf iconv.tar.gz
     pushd libiconv-${iconv_ver}
@@ -292,7 +292,7 @@ prepare_extra_common() {
 
     # SVT-AV1
     pushd ${SOURCE_DIR}
-    git clone -b v4.2.0-cqp-extended --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    git clone -b v4.3.0 --depth=1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
     pushd SVT-AV1
     mkdir build
     pushd build
@@ -684,6 +684,8 @@ prepare_extra_amd64() {
     pushd media-driver
     # Enable VC1 decode on DG2 (note that MTL+ is not supported)
     wget -q -O - https://github.com/intel/media-driver/commit/e47702f.patch | git apply
+    # Fix use-after-free when DestroyContext races StatusCheck (MTL+ only)
+    wget -q -O - https://github.com/intel/media-driver/commit/576fd26.patch | git apply
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DCMAKE_C_FLAGS="${CFLAGS} -Wno-error=array-bounds" \
