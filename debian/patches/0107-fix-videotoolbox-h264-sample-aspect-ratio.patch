@@ -1,0 +1,257 @@
+Index: FFmpeg/configure
+===================================================================
+--- FFmpeg.orig/configure
++++ FFmpeg/configure
+@@ -3782,7 +3782,7 @@ pcm_mulaw_at_encoder_deps="audiotoolbox"
+ pcm_mulaw_at_encoder_select="audio_frame_queue"
+ chromaprint_muxer_deps="chromaprint"
+ h264_videotoolbox_encoder_deps="pthreads"
+-h264_videotoolbox_encoder_select="atsc_a53 videotoolbox_encoder"
++h264_videotoolbox_encoder_select="atsc_a53 cbs_h264 videotoolbox_encoder"
+ hevc_videotoolbox_encoder_deps="pthreads"
+ hevc_videotoolbox_encoder_select="atsc_a53 videotoolbox_encoder"
+ mjpeg_videotoolbox_encoder_deps="pthreads"
+Index: FFmpeg/libavcodec/Makefile
+===================================================================
+--- FFmpeg.orig/libavcodec/Makefile
++++ FFmpeg/libavcodec/Makefile
+@@ -456,7 +456,7 @@ OBJS-$(CONFIG_H264_VAAPI_ENCODER)      += vaapi_encode_h264.o h264_levels.o \
+ OBJS-$(CONFIG_H264_VULKAN_ENCODER)     += vulkan_encode.o vulkan_encode_h264.o \
+                                           hw_base_encode.o hw_base_encode_h264.o \
+                                           h264_levels.o h2645data.o
+-OBJS-$(CONFIG_H264_VIDEOTOOLBOX_ENCODER) += videotoolboxenc.o
++OBJS-$(CONFIG_H264_VIDEOTOOLBOX_ENCODER) += videotoolboxenc.o h2645data.o
+ OBJS-$(CONFIG_H264_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
+ OBJS-$(CONFIG_H264_V4L2M2M_ENCODER)    += v4l2_m2m_enc.o
+ OBJS-$(CONFIG_HAP_DECODER)             += hapdec.o hap.o
+Index: FFmpeg/libavcodec/videotoolboxenc.c
+===================================================================
+--- FFmpeg.orig/libavcodec/videotoolboxenc.c
++++ FFmpeg/libavcodec/videotoolboxenc.c
+@@ -34,10 +34,13 @@
+ #include "libavutil/hwcontext_videotoolbox.h"
+ 
+ #include "atsc_a53.h"
++#include "cbs.h"
++#include "cbs_h264.h"
+ #include "codec_internal.h"
+ #include "encode.h"
+ #include "h264.h"
+ #include "h264_sei.h"
++#include "h2645data.h"
+ #include "hwconfig.h"
+ #include "internal.h"
+ 
+@@ -289,6 +292,12 @@ typedef struct VTEncContext {
+     int power_efficient;
+     int max_ref_frames;
+     int spatialaq;
++
++    /* Last H.264 SPS returned by the encoder, and its SAR-fixed rewrite. */
++    uint8_t *sps_in;
++    size_t   sps_in_size;
++    uint8_t *sps_out;
++    size_t   sps_out_size;
+ } VTEncContext;
+ 
+ static void vtenc_free_buf_node(BufNode *info)
+@@ -408,6 +417,11 @@ static void vtenc_reset(VTEncContext *vtctx)
+         CFRelease(vtctx->ycbcr_matrix);
+         vtctx->ycbcr_matrix = NULL;
+     }
++
++    av_freep(&vtctx->sps_in);
++    av_freep(&vtctx->sps_out);
++    vtctx->sps_in_size  = 0;
++    vtctx->sps_out_size = 0;
+ }
+ 
+ static int vtenc_q_pop(VTEncContext *vtctx, bool wait, CMSampleBufferRef *buf, ExtraSEI *sei)
+@@ -561,6 +575,159 @@ static CMVideoCodecType get_cm_codec_type(AVCodecContext *avctx,
+     }
+ }
+ 
++/*
++ * The hardware H.264 encoders accept kVTCompressionPropertyKey_PixelAspectRatio
++ * but do not write aspect_ratio_info to the SPS VUI (frequently there is no
++ * VUI at all), so the sample aspect ratio only survives in containers that
++ * carry it out of band, such as the MP4 pasp box. In MPEG-TS and HLS the
++ * picture is shown with square pixels, e.g. 704x576 16:9 PAL SD becomes 11:9.
++ * Rewrite the SPS to signal the sample aspect ratio when the encoder left it out.
++ */
++static int rewrite_h264_sps_sar(AVCodecContext *avctx,
++                                const uint8_t  *ps,
++                                size_t          ps_size)
++{
++    VTEncContext *vtctx = avctx->priv_data;
++    CodedBitstreamContext *cbc = NULL;
++    CodedBitstreamFragment frag = { 0 };
++    H264RawSPS *sps = NULL;
++    uint8_t *buf = NULL;
++    const uint8_t *data;
++    size_t size;
++    int num, den, i, ret;
++
++    av_freep(&vtctx->sps_in);
++    av_freep(&vtctx->sps_out);
++    vtctx->sps_in_size  = 0;
++    vtctx->sps_out_size = 0;
++
++    vtctx->sps_in = av_memdup(ps, ps_size);
++    if (!vtctx->sps_in)
++        return AVERROR(ENOMEM);
++    vtctx->sps_in_size = ps_size;
++
++    buf = av_malloc(sizeof(start_code) + ps_size);
++    if (!buf)
++        return AVERROR(ENOMEM);
++    memcpy(buf, start_code, sizeof(start_code));
++    memcpy(buf + sizeof(start_code), ps, ps_size);
++
++    ret = ff_cbs_init(&cbc, AV_CODEC_ID_H264, avctx);
++    if (ret < 0)
++        goto end;
++
++    ret = ff_cbs_read(cbc, &frag, NULL, buf, sizeof(start_code) + ps_size);
++    if (ret < 0)
++        goto end;
++
++    for (i = 0; i < frag.nb_units; i++) {
++        if (frag.units[i].type == H264_NAL_SPS) {
++            sps = frag.units[i].content;
++            break;
++        }
++    }
++    if (!sps) {
++        ret = AVERROR_INVALIDDATA;
++        goto end;
++    }
++
++    /* The encoder signalled an aspect ratio itself: keep its SPS. */
++    if (sps->vui_parameters_present_flag && sps->vui.aspect_ratio_info_present_flag)
++        goto end;
++
++    av_reduce(&num, &den, avctx->sample_aspect_ratio.num,
++              avctx->sample_aspect_ratio.den, 65535);
++
++    for (i = 1; i < FF_ARRAY_ELEMS(ff_h2645_pixel_aspect); i++) {
++        if (num == ff_h2645_pixel_aspect[i].num &&
++            den == ff_h2645_pixel_aspect[i].den)
++            break;
++    }
++    if (i == FF_ARRAY_ELEMS(ff_h2645_pixel_aspect)) {
++        sps->vui.aspect_ratio_idc = 255;
++        sps->vui.sar_width        = num;
++        sps->vui.sar_height       = den;
++    } else {
++        sps->vui.aspect_ratio_idc = i;
++    }
++    sps->vui.aspect_ratio_info_present_flag = 1;
++    sps->vui_parameters_present_flag        = 1;
++
++    ret = ff_cbs_write_fragment_data(cbc, &frag);
++    if (ret < 0)
++        goto end;
++
++    /* Strip the Annex B start code written by CBS. */
++    data = frag.data;
++    size = frag.data_size;
++    while (size > 1 && !data[0]) {
++        data++;
++        size--;
++    }
++    if (size < 2 || data[0] != 1) {
++        ret = AVERROR_INVALIDDATA;
++        goto end;
++    }
++    data++;
++    size--;
++
++    vtctx->sps_out = av_memdup(data, size);
++    if (!vtctx->sps_out) {
++        ret = AVERROR(ENOMEM);
++        goto end;
++    }
++    vtctx->sps_out_size = size;
++
++end:
++    ff_cbs_fragment_free(&frag);
++    ff_cbs_close(&cbc);
++    av_free(buf);
++    return ret;
++}
++
++/*
++ * Wraps get_param_set_func() and substitutes the SAR-fixed H.264 SPS
++ * (see rewrite_h264_sps_sar()) when one is needed.
++ */
++static int get_param_set(AVCodecContext              *avctx,
++                         CMVideoFormatDescriptionRef vid_fmt,
++                         size_t                      index,
++                         const uint8_t               **ps,
++                         size_t                      *ps_size)
++{
++    VTEncContext *vtctx = avctx->priv_data;
++    AVRational sar = avctx->sample_aspect_ratio;
++    int status;
++
++    status = vtctx->get_param_set_func(vid_fmt, index, ps, ps_size, NULL, NULL);
++    if (status)
++        return status;
++
++    if (vtctx->codec_id != AV_CODEC_ID_H264 ||
++        sar.num <= 0 || sar.den <= 0 || sar.num == sar.den ||
++        !*ps_size || ((*ps)[0] & 0x1F) != H264_NAL_SPS)
++        return 0;
++
++    if (!vtctx->sps_in || vtctx->sps_in_size != *ps_size ||
++        memcmp(vtctx->sps_in, *ps, *ps_size)) {
++        int ret = rewrite_h264_sps_sar(avctx, *ps, *ps_size);
++        if (ret < 0) {
++            av_log(avctx, AV_LOG_WARNING,
++                   "Could not add the sample aspect ratio to the SPS: %s\n",
++                   av_err2str(ret));
++            av_freep(&vtctx->sps_out);
++            vtctx->sps_out_size = 0;
++        }
++    }
++
++    if (vtctx->sps_out) {
++        *ps      = vtctx->sps_out;
++        *ps_size = vtctx->sps_out_size;
++    }
++
++    return 0;
++}
++
+ /**
+  * Get the parameter sets from a CMSampleBufferRef.
+  * @param dst If *dst isn't NULL, the parameters are copied into existing
+@@ -595,12 +762,7 @@ static int get_params_size(
+     for (i = 0; i < ps_count || is_count_bad; i++) {
+         const uint8_t *ps;
+         size_t ps_size;
+-        status = vtctx->get_param_set_func(vid_fmt,
+-                                           i,
+-                                           &ps,
+-                                           &ps_size,
+-                                           NULL,
+-                                           NULL);
++        status = get_param_set(avctx, vid_fmt, i, &ps, &ps_size);
+         if (status) {
+             /*
+              * When ps_count is invalid, status != 0 ends the loop normally
+@@ -654,12 +816,7 @@ static int copy_param_sets(
+         size_t ps_size;
+         size_t next_offset;
+ 
+-        status = vtctx->get_param_set_func(vid_fmt,
+-                                           i,
+-                                           &ps,
+-                                           &ps_size,
+-                                           NULL,
+-                                           NULL);
++        status = get_param_set(avctx, vid_fmt, i, &ps, &ps_size);
+         if (status) {
+             if (i > 0 && is_count_bad) status = 0;
+ 
