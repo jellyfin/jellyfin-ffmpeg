@@ -31,7 +31,7 @@ prepare_extra_common() {
     mkdir iconv
     pushd iconv
     iconv_ver="1.19"
-    iconv_link="https://mirrors.edge.kernel.org/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
+    iconv_link="https://ftpmirror.gnu.org/gnu/libiconv/libiconv-${iconv_ver}.tar.gz"
     wget ${iconv_link} -O iconv.tar.gz
     tar xaf iconv.tar.gz
     pushd libiconv-${iconv_ver}

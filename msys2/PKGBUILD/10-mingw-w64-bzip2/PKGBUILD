@@ -17,7 +17,7 @@ license=("custom")
 depends=("${MINGW_PACKAGE_PREFIX}-cc-libs")
 makedepends=("${MINGW_PACKAGE_PREFIX}-cc" "${MINGW_PACKAGE_PREFIX}-autotools")
 options=('strip' 'staticlibs')
-source=("https://mirrors.edge.kernel.org/sourceware/bzip2/bzip2-${pkgver}.tar.gz"
+source=("https://sourceware.org/pub/bzip2/bzip2-${pkgver}.tar.gz"
         "bzip2-cygming-1.0.6.src.all.patch"
         "bzip2-buildsystem.all.patch"
         "bzip2-1.0.6-progress.all.patch")
