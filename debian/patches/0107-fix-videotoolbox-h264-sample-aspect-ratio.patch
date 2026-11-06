@@ -1,0 +1,119 @@
+Index: FFmpeg/configure
+===================================================================
+--- FFmpeg.orig/configure
++++ FFmpeg/configure
+@@ -3782,7 +3782,7 @@ pcm_mulaw_at_encoder_deps="audiotoolbox"
+ pcm_mulaw_at_encoder_select="audio_frame_queue"
+ chromaprint_muxer_deps="chromaprint"
+ h264_videotoolbox_encoder_deps="pthreads"
+-h264_videotoolbox_encoder_select="atsc_a53 videotoolbox_encoder"
++h264_videotoolbox_encoder_select="atsc_a53 h264_metadata_bsf videotoolbox_encoder"
+ hevc_videotoolbox_encoder_deps="pthreads"
+ hevc_videotoolbox_encoder_select="atsc_a53 videotoolbox_encoder"
+ mjpeg_videotoolbox_encoder_deps="pthreads"
+Index: FFmpeg/libavcodec/videotoolboxenc.c
+===================================================================
+--- FFmpeg.orig/libavcodec/videotoolboxenc.c
++++ FFmpeg/libavcodec/videotoolboxenc.c
+@@ -34,6 +34,7 @@
+ #include "libavutil/hwcontext_videotoolbox.h"
+ 
+ #include "atsc_a53.h"
++#include "bsf.h"
+ #include "codec_internal.h"
+ #include "encode.h"
+ #include "h264.h"
+@@ -289,6 +290,8 @@ typedef struct VTEncContext {
+     int power_efficient;
+     int max_ref_frames;
+     int spatialaq;
++
++    AVBSFContext *bsf;
+ } VTEncContext;
+ 
+ static void vtenc_free_buf_node(BufNode *info)
+@@ -1768,6 +1771,52 @@ init_cleanup:
+     return status;
+ }
+ 
++/*
++ * The hardware H.264 encoder does not write aspect_ratio_info to the SPS VUI,
++ * so anamorphic content is shown with square pixels by players that rely on
++ * the bitstream (e.g. MPEG-TS/HLS output). Signal the SAR with h264_metadata.
++ * Reported to Apple as FB25427151.
++ */
++static av_cold int vtenc_init_sar_bsf(AVCodecContext *avctx)
++{
++    VTEncContext *vtctx = avctx->priv_data;
++    AVRational sar = avctx->sample_aspect_ratio;
++    char str[64];
++    int ret;
++
++    if (avctx->codec_id != AV_CODEC_ID_H264 ||
++        sar.num <= 0 || sar.den <= 0 || sar.num == sar.den)
++        return 0;
++
++    snprintf(str, sizeof(str), "h264_metadata=sample_aspect_ratio=%d/%d",
++             sar.num, sar.den);
++    ret = av_bsf_list_parse_str(str, &vtctx->bsf);
++    if (ret < 0)
++        return ret;
++
++    ret = avcodec_parameters_from_context(vtctx->bsf->par_in, avctx);
++    if (ret < 0)
++        return ret;
++    vtctx->bsf->time_base_in = avctx->time_base;
++    ret = av_bsf_init(vtctx->bsf);
++    if (ret < 0)
++        return ret;
++
++    if (avctx->extradata) {
++        const AVCodecParameters *par = vtctx->bsf->par_out;
++        uint8_t *extradata = av_mallocz(par->extradata_size +
++                                        AV_INPUT_BUFFER_PADDING_SIZE);
++        if (!extradata)
++            return AVERROR(ENOMEM);
++        memcpy(extradata, par->extradata, par->extradata_size);
++        av_free(avctx->extradata);
++        avctx->extradata      = extradata;
++        avctx->extradata_size = par->extradata_size;
++    }
++
++    return 0;
++}
++
+ static av_cold int vtenc_init(AVCodecContext *avctx)
+ {
+     VTEncContext    *vtctx = avctx->priv_data;
+@@ -1801,7 +1850,7 @@ static av_cold int vtenc_init(AVCodecContext *avctx)
+     }
+     avctx->has_b_frames = vtctx->has_b_frames;
+ 
+-    return 0;
++    return vtenc_init_sar_bsf(avctx);
+ }
+ 
+ static void vtenc_get_frame_info(CMSampleBufferRef buffer, bool *is_key_frame)
+@@ -2498,6 +2547,13 @@ static av_cold int vtenc_frame(
+     CFRelease(buf);
+     if (status) goto end_nopkt;
+ 
++    if (vtctx->bsf) {
++        status = av_bsf_send_packet(vtctx->bsf, pkt);
++        if (status < 0) goto end_nopkt;
++        status = av_bsf_receive_packet(vtctx->bsf, pkt);
++        if (status < 0) goto end_nopkt;
++    }
++
+     *got_packet = 1;
+     return 0;
+ 
+@@ -2613,6 +2669,8 @@ static av_cold int vtenc_close(AVCodecContext *avctx)
+ {
+     VTEncContext *vtctx = avctx->priv_data;
+ 
++    av_bsf_free(&vtctx->bsf);
++
+     if(!vtctx->session) {
+         pthread_cond_destroy(&vtctx->cv_sample_sent);
+         pthread_mutex_destroy(&vtctx->lock);
