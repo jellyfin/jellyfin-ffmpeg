@@ -638,6 +638,8 @@ prepare_extra_amd64() {
     git clone -b v2.17.0 --depth=1 https://github.com/intel/libvpl.git
     pushd libvpl
     sed -i 's|ParseEnvSearchPaths(ONEVPL_PRIORITY_PATH_VAR, searchDirList)|searchDirList.push_back("/usr/lib/jellyfin-ffmpeg/lib")|g' libvpl/src/mfx_dispatcher_vpl_loader.cpp
+    # Fix MSDK runtime being selected on unsupported GPUs
+    git apply ${SOURCE_DIR}/builder/patches/libvpl/*.patch
     mkdir build && pushd build
     cmake -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
           -DCMAKE_INSTALL_BINDIR=${TARGET_DIR}/bin \

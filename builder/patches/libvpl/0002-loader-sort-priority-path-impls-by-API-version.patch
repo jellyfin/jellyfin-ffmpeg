@@ -1,0 +1,39 @@
+From 7466924eba655e5c3d28abca7f9d25f0145d8587 Mon Sep 17 00:00:00 2001
+From: thelamer <ryankuba@gmail.com>
+Date: Wed, 4 Nov 2026 10:51:02 -0500
+Subject: [PATCH 2/2] loader: sort priority path impls by API version
+
+jellyfin-ffmpeg forces its bundled lib dir to be the priority path,
+which bypasses all sorting, so libmfx-gen and libmfxhw64 are enumerated
+in readdir() order. That order depends on the filesystem and can change
+between image pulls, so the MSDK runtime can land at index 0 on GPUs it
+does not support.
+
+Keep the highest API version first within the priority path libs.
+---
+ libvpl/src/mfx_dispatcher_vpl_loader.cpp | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/libvpl/src/mfx_dispatcher_vpl_loader.cpp b/libvpl/src/mfx_dispatcher_vpl_loader.cpp
+index 6e54c99..7fc2ee1 100644
+--- a/libvpl/src/mfx_dispatcher_vpl_loader.cpp
++++ b/libvpl/src/mfx_dispatcher_vpl_loader.cpp
+@@ -1617,7 +1617,14 @@ mfxStatus LoaderCtxVPL::PrioritizeImplList(void) {
+     });
+ 
+     if (m_bPriorityPathEnabled) {
+-        // add back unsorted ONEVPL_PRIORITY_PATH libs to beginning of list
++        // sort by API version, otherwise order depends on readdir()
++        implInfoListPriority.sort([](const ImplInfo *impl1, const ImplInfo *impl2) {
++            mfxImplDescription *implDesc1 = (mfxImplDescription *)(impl1->implDesc);
++            mfxImplDescription *implDesc2 = (mfxImplDescription *)(impl2->implDesc);
++            return (implDesc1->ApiVersion.Version > implDesc2->ApiVersion.Version);
++        });
++
++        // add back ONEVPL_PRIORITY_PATH libs to beginning of list
+         m_implInfoList.splice(m_implInfoList.begin(), implInfoListPriority);
+     }
+ 
+-- 
+2.47.3
+

@@ -1,0 +1,46 @@
+From 0e8c1675740a9f7ae4e29a81979af71ff545131d Mon Sep 17 00:00:00 2001
+From: thelamer <ryankuba@gmail.com>
+Date: Wed, 4 Nov 2026 10:51:02 -0500
+Subject: [PATCH 1/2] msdk: skip render nodes that cannot be opened
+
+/sys/class/drm is not namespaced, so inside a container it lists every
+GPU on the host, including ones that were not passed in. MFXInitEx() in
+the MSDK runtime does not open the device, so an MSDK implementation is
+reported for an adapter the process cannot use. No VPL runtime impl can
+exist for that adapter, so it is not pruned by the matching DeviceID
+check, and with several identical GPUs it passes the application's
+DeviceID filter. If it is enumerated first, the application creates an
+MSDK session and then fails in SetHandle() with MFX_ERR_DEVICE_FAILED.
+
+Only report MSDK adapters whose render node is accessible.
+---
+ libvpl/src/mfx_dispatcher_vpl_msdk.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/libvpl/src/mfx_dispatcher_vpl_msdk.cpp b/libvpl/src/mfx_dispatcher_vpl_msdk.cpp
+index 770014b..6c7cfb4 100644
+--- a/libvpl/src/mfx_dispatcher_vpl_msdk.cpp
++++ b/libvpl/src/mfx_dispatcher_vpl_msdk.cpp
+@@ -13,6 +13,7 @@
+ 
+ #ifdef __linux__
+     #include <pthread.h>
++    #include <unistd.h>
+     #define strncpy_s(dst, size, src, cnt) strncpy((dst), (src), (cnt)) // NOLINT
+ #endif
+ 
+@@ -527,6 +528,11 @@ mfxStatus LoaderCtxMSDK::GetRenderNodeDescription(mfxU32 adapterID,
+     if (deviceID == 0)
+         return MFX_ERR_UNSUPPORTED;
+ 
++    // skip render nodes which cannot be opened (e.g. not passed into container)
++    std::string renderPath = "/dev/dri/renderD" + nodeStr;
++    if (access(renderPath.c_str(), R_OK | W_OK) != 0)
++        return MFX_ERR_UNSUPPORTED;
++
+     return MFX_ERR_NONE;
+ #else
+     return MFX_ERR_UNSUPPORTED;
+-- 
+2.47.3
+
